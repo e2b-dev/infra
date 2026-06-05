@@ -33,6 +33,7 @@ import (
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
@@ -1144,7 +1145,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Creating sandbox factory...")
 	}
-	factory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, flags, hoststats.NewNoopDelivery(), cgroup.NewNoopManager(), egressProxy, sandboxes)
+	factory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, flags, hoststats.NewNoopDelivery(), cgroup.NewNoopManager(), egressProxy, sandboxes, memory.NewSharedMemfileManager())
 
 	fmt.Printf("📦 Loading %s...\n", buildID)
 	tmpl, err := cache.GetTemplate(ctx, buildID, false, false)

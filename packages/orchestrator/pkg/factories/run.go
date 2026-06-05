@@ -44,6 +44,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
@@ -544,7 +545,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	closers = append(closers, closer{"network pool", networkPool.Close})
 
 	// sandbox factory
-	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, hostStatsDelivery, cgroupManager, egressSetup.Proxy, sandboxes)
+	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, hostStatsDelivery, cgroupManager, egressSetup.Proxy, sandboxes, memory.NewSharedMemfileManager())
 
 	// isolated filesystems cache (for nfs proxy)
 	builder := chrooted.NewBuilder(config)

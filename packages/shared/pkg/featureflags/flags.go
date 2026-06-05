@@ -171,6 +171,30 @@ var (
 	// HeaderV5WriteFlag makes Pause emit V5 headers. When enabled it also
 	// supersedes V4HeaderForUncompressedFlag for uncompressed uploads.
 	HeaderV5WriteFlag = NewBoolFlag("header-v5-write", false)
+
+	// ── Phase 3: CoW Overlay & Smart Reclaim ──────────────────────────
+
+	// Phase3CowOverlayFlag enables CoW overlay creation on sandbox exit.
+	Phase3CowOverlayFlag = NewBoolFlag("phase3-cow-overlay", false)
+
+	// Phase3PTEBatchPrefaultFlag enables PTE batch pre-faulting via MADV_POPULATE_WRITE.
+	Phase3PTEBatchPrefaultFlag = NewBoolFlag("phase3-pte-batch-prefault", false)
+
+	// Phase3SmartReclaimFlag enables smart memory reclamation (MADV_DONTNEED +
+	// MADV_COLD + L2 checkpoint save) on sandbox exit.
+	Phase3SmartReclaimFlag = NewBoolFlag("phase3-smart-reclaim", false)
+
+	// ── Phase 4: THP & Network Optimizations ──────────────────────────
+
+	// Phase4THPOptimizationFlag enables Transparent Huge Page (MADV_HUGEPAGE)
+	// advising for shared memory layers.
+	Phase4THPOptimizationFlag = NewBoolFlag("phase4-thp-optimization", false)
+
+	// Phase4LazyNetworkFlag enables lazy network setup (DNS cache) for sandboxes.
+	Phase4LazyNetworkFlag = NewBoolFlag("phase4-lazy-network", false)
+
+	// Phase4EntropyManagementFlag enables entropy device management optimization.
+	Phase4EntropyManagementFlag = NewBoolFlag("phase4-entropy-management", false)
 )
 
 type IntFlag struct {

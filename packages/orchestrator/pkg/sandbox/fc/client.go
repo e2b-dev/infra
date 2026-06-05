@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"runtime"
 
 	"github.com/RoaringBitmap/roaring/v2"
@@ -87,6 +88,178 @@ func (c *apiClient) loadSnapshot(
 	}
 
 	telemetry.ReportEvent(ctx, "uffd ready")
+
+	return nil
+}
+
+// loadLayeredSnapshot loads a Firecracker snapshot using multiple memory layers.
+// Layers are merged into a single combined memfile for Firecracker (which only
+// supports a single memfile path).
+//
+// When a layer has PreMergedPath set, the pre-merged file is used directly.
+// This enables cross-VM memory sharing: all VMs mmap(MAP_PRIVATE) the same
+// file, so the Linux page cache deduplicates read-only pages automatically.
+// When no pre-merged path is available, a per-VM merged file is created.
+func (c *apiClient) loadLayeredSnapshot(
+	ctx context.Context,
+	layers []MemoryLayer,
+	snapfilePath string,
+	sandboxID string,
+) error {
+	ctx, span := tracer.Start(ctx, "load-layered-snapshot")
+	defer span.End()
+
+	// Compute total guest physical memory size and validate layers.
+	var totalSize int64
+	for i, layer := range layers {
+		if layer.Size <= 0 {
+			return fmt.Errorf("layer %d has invalid size %d", i, layer.Size)
+		}
+		totalSize += layer.Size
+	}
+
+	// Check if a pre-merged memfile is available (shared across VMs).
+	var memfilePath string
+	var isShared bool
+	for _, layer := range layers {
+		if layer.PreMergedPath != "" {
+			memfilePath = layer.PreMergedPath
+			isShared = true
+			break
+		}
+	}
+
+	if memfilePath == "" {
+		// No pre-merged file — create a per-VM merged memfile.
+		if sandboxID == "" {
+			sandboxID = fmt.Sprintf("pid.%d", os.Getpid())
+		}
+		memfilePath = snapfilePath + ".layered_mem." + sandboxID
+		if err := writeLayeredMemfile(memfilePath, layers, totalSize); err != nil {
+			return fmt.Errorf("write layered memfile: %w", err)
+		}
+		// Unlink the per-VM file after Firecracker opens it.
+		defer os.Remove(memfilePath)
+	}
+
+	backendType := models.MemoryBackendBackendTypeFile
+	backend := &models.MemoryBackend{
+		BackendPath: &memfilePath,
+		BackendType: &backendType,
+	}
+
+	snapshotConfig := operations.LoadSnapshotParams{
+		Context: ctx,
+		Body: &models.SnapshotLoadParams{
+			ResumeVM:            false,
+			EnableDiffSnapshots: false,
+			MemBackend:          backend,
+			SnapshotPath:        &snapfilePath,
+		},
+	}
+
+	_, err := c.client.Operations.LoadSnapshot(&snapshotConfig)
+	if err != nil {
+		return fmt.Errorf("error loading layered snapshot: %w", err)
+	}
+
+	if isShared {
+		telemetry.ReportEvent(ctx, "loaded layered snapshot from shared memfile")
+	} else {
+		telemetry.ReportEvent(ctx, "loaded layered snapshot from per-VM memfile")
+	}
+
+	return nil
+}
+
+// writeLayeredMemfile concatenates memory layers into a single file at path.
+// Each layer's Data slice is written sequentially at the correct guest-physical
+// offset. The resulting file is the total guest physical memory image that
+// Firecracker expects for its File memory backend.
+func writeLayeredMemfile(path string, layers []MemoryLayer, totalSize int64) error {
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return fmt.Errorf("create: %w", err)
+	}
+	defer f.Close()
+
+	if err := f.Truncate(totalSize); err != nil {
+		return fmt.Errorf("truncate to %d: %w", totalSize, err)
+	}
+
+	var offset int64
+	for i, layer := range layers {
+		if layer.Data == nil {
+			return fmt.Errorf("layer %d has nil Data (Size=%d)", i, layer.Size)
+		}
+		if int64(len(layer.Data)) < layer.Size {
+			return fmt.Errorf("layer %d Data slice too short: len=%d < Size=%d", i, len(layer.Data), layer.Size)
+		}
+		if _, err := f.WriteAt(layer.Data[:layer.Size], offset); err != nil {
+			return fmt.Errorf("write layer %d at offset %d: %w", i, offset, err)
+		}
+		offset += layer.Size
+	}
+
+	return nil
+}
+
+// loadSnapshotFromFile loads a Firecracker snapshot using the File memory backend.
+// Unlike loadSnapshot (which uses UFFD for demand paging), this loads the entire
+// guest memory from a file before resuming. It is simpler but slower — suitable
+// for template-based snapshot resume where simplicity matters more than latency.
+func (c *apiClient) loadSnapshotFromFile(
+	ctx context.Context,
+	memfilePath string,
+	snapfilePath string,
+) error {
+	ctx, span := tracer.Start(ctx, "load-snapshot-from-file")
+	defer span.End()
+
+	backendType := models.MemoryBackendBackendTypeFile
+	backend := &models.MemoryBackend{
+		BackendPath: &memfilePath,
+		BackendType: &backendType,
+	}
+
+	snapshotConfig := operations.LoadSnapshotParams{
+		Context: ctx,
+		Body: &models.SnapshotLoadParams{
+			ResumeVM:            false,
+			EnableDiffSnapshots: false,
+			MemBackend:          backend,
+			SnapshotPath:        &snapfilePath,
+		},
+	}
+
+	_, err := c.client.Operations.LoadSnapshot(&snapshotConfig)
+	if err != nil {
+		return fmt.Errorf("error loading snapshot from file: %w", err)
+	}
+
+	telemetry.ReportEvent(ctx, "loaded snapshot from file")
+
+	return nil
+}
+
+// setMmdsConfig enables MMDS v2 on the given network interface. It is used
+// in the cold-boot path (from setNetworkInterface) where it runs before
+// InstanceStart. It CANNOT be used in the snapshot-resume path: before
+// LoadSnapshot eth0 doesn't exist yet, and after LoadSnapshot the VM is
+// already started (Firecracker rejects PUT /mmds/config in that state).
+func (c *apiClient) setMmdsConfig(ctx context.Context, ifaceID string) error {
+	version := "V2"
+	params := operations.PutMmdsConfigParams{
+		Context: ctx,
+		Body: &models.MmdsConfig{
+			Version:           &version,
+			NetworkInterfaces: []string{ifaceID},
+		},
+	}
+	_, err := c.client.Operations.PutMmdsConfig(&params)
+	if err != nil {
+		return fmt.Errorf("error setting mmds config: %w", err)
+	}
 
 	return nil
 }

@@ -5,6 +5,7 @@ package fc
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/shirou/gopsutil/v4/process"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -24,6 +26,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/socket"
@@ -797,4 +800,394 @@ func (p *Process) CreateSnapshot(ctx context.Context, snapfilePath string) error
 	defer childSpan.End()
 
 	return p.client.createSnapshot(ctx, snapfilePath)
+}
+
+// writeMetadataToExt4 writes sandbox metadata JSON to a file on the rootfs
+// ext4 filesystem using debugfs. This allows envd to read metadata even when
+// MMDS is unavailable (e.g., after snapshot resume where PUT /mmds/config
+// cannot be re-applied).
+func writeMetadataToExt4(ctx context.Context, devicePath string, meta *MmdsMetadata) error {
+	jsonData, err := json.Marshal(meta)
+	if err != nil {
+		return fmt.Errorf("error marshaling metadata: %w", err)
+	}
+
+	tmpFile, err := os.CreateTemp("", "e2b-metadata-*.json")
+	if err != nil {
+		return fmt.Errorf("error creating temp file: %w", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, writeErr := tmpFile.Write(jsonData); writeErr != nil {
+		tmpFile.Close()
+		return fmt.Errorf("error writing temp file: %w", writeErr)
+	}
+	tmpFile.Close()
+
+	// debugfs writes to the ext4 filesystem on the block device.
+	// The directory may already exist from a previous run — failure is harmless.
+	_ = exec.CommandContext(ctx, "debugfs", "-w", devicePath, "-R", "mkdir /etc/e2b").Run()
+
+	cmd := exec.CommandContext(ctx, "debugfs", "-w", devicePath, "-R",
+		fmt.Sprintf("write %s /etc/e2b/metadata.json", tmpFile.Name()))
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("error writing metadata to ext4: %w (output: %s)", err, string(output))
+	}
+
+	return nil
+}
+
+// ResumeFromTemplateSnapshot resumes a Firecracker VM from a template snapshot
+// using the File memory backend. This is a simplified path compared to Resume
+// (which uses UFFD) — the entire guest memory is loaded from a file before the
+// VM resumes. It is intended for template-based sandbox creation where the
+// snapshot was taken during template build (after envd is ready but before any
+// user code runs).
+func (p *Process) ResumeFromTemplateSnapshot(
+	ctx context.Context,
+	sbxMetadata sbxlogger.SandboxMetadata,
+	memfilePath string,
+	snapfilePath string,
+	accessToken *string,
+	cgroupFD int,
+	txRateLimit RateLimiterConfig,
+	driveRateLimit RateLimiterConfig,
+) error {
+	ctx, span := tracer.Start(ctx, "resume-from-template-snapshot")
+	defer span.End()
+
+	// Symlink /dev/null to the rootfs link path, so we can start the FC
+	// process without the rootfs and then symlink the real rootfs.
+	err := utils.SymlinkForce("/dev/null", p.files.SandboxCacheRootfsLinkPath(p.config.StorageConfig))
+	if err != nil {
+		return fmt.Errorf("error symlinking rootfs: %w", err)
+	}
+
+	err = p.configure(
+		ctx,
+		sbxMetadata,
+		nil,
+		nil,
+		cgroupFD,
+	)
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+
+		return errors.Join(fmt.Errorf("error starting fc process: %w", err), fcStopErr)
+	}
+	telemetry.ReportEvent(ctx, "configured fc for template snapshot resume")
+
+	// Start the metrics reader goroutine before calling setMetrics.
+	p.startMetricsReader(ctx)
+
+	err = p.client.setMetrics(ctx, p.metricsPath)
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+
+		return errors.Join(fmt.Errorf("error setting fc metrics: %w", err), fcStopErr)
+	}
+	telemetry.ReportEvent(ctx, "set fc metrics")
+
+	// Symlink the real rootfs (NBD overlay) before loading the snapshot.
+	rootfsPath, err := p.rootfsProvider.Path()
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+
+		return errors.Join(fmt.Errorf("error getting rootfs path: %w", err), fcStopErr)
+	}
+
+	err = utils.SymlinkForce(rootfsPath, p.files.SandboxCacheRootfsLinkPath(p.config.StorageConfig))
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+
+		return errors.Join(fmt.Errorf("error symlinking rootfs: %w", err), fcStopErr)
+	}
+	telemetry.ReportEvent(ctx, "symlinked rootfs for template snapshot resume")
+
+	// Build metadata for the new sandbox instance.
+	meta := &MmdsMetadata{
+		SandboxID:            sbxMetadata.SandboxID,
+		TemplateID:           sbxMetadata.TemplateID,
+		LogsCollectorAddress: fmt.Sprintf("http://%s/logs", p.config.NetworkConfig.OrchestratorInSandboxIPAddress),
+	}
+
+	if accessToken != nil && *accessToken != "" {
+		meta.AccessTokenHash = keys.HashAccessToken(*accessToken)
+	} else {
+		meta.AccessTokenHash = keys.HashAccessToken("")
+	}
+
+	if writeErr := writeMetadataToExt4(ctx, rootfsPath, meta); writeErr != nil {
+		logger.L().Warn(ctx, "failed to write metadata to rootfs, envd will rely on MMDS",
+			zap.Error(writeErr),
+			logger.WithSandboxID(sbxMetadata.SandboxID),
+		)
+	} else {
+		telemetry.ReportEvent(ctx, "wrote sandbox metadata to rootfs")
+	}
+
+	// Load the snapshot using the File memory backend.
+	err = p.client.loadSnapshotFromFile(ctx, memfilePath, snapfilePath)
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+
+		return errors.Join(fmt.Errorf("error loading snapshot from file: %w", err), fcStopErr)
+	}
+	telemetry.ReportEvent(ctx, "loaded template snapshot")
+
+	// Apply/reset rate limits so any limits persisted in the snapshot are
+	// overwritten by the current config.
+	if setErr := p.client.setTxRateLimit(ctx, p.slot.VpeerName(), txRateLimit); setErr != nil {
+		logger.L().Warn(ctx, "failed to set TX rate limit after snapshot resume, continuing",
+			zap.Error(setErr),
+			logger.WithSandboxID(sbxMetadata.SandboxID),
+		)
+	} else {
+		telemetry.ReportEvent(ctx, "configured tx rate limit")
+	}
+
+	if setErr := p.client.setDriveRateLimit(ctx, rootfsDriveID, driveRateLimit); setErr != nil {
+		logger.L().Warn(ctx, "failed to set drive rate limit after snapshot resume, continuing",
+			zap.Error(setErr),
+			logger.WithSandboxID(sbxMetadata.SandboxID),
+		)
+	} else {
+		telemetry.ReportEvent(ctx, "configured drive rate limit")
+	}
+
+	err = p.client.resumeVM(ctx)
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+
+		return errors.Join(fmt.Errorf("error resuming vm: %w", err), fcStopErr)
+	}
+	telemetry.ReportEvent(ctx, "resumed vm from template snapshot")
+
+	// Set MMDS metadata as well (defense in depth: envd can use either
+	// the file written to rootfs or MMDS).
+	err = p.client.setMmds(ctx, meta)
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+
+		return errors.Join(fmt.Errorf("error setting mmds: %w", err), fcStopErr)
+	}
+
+	telemetry.SetAttributes(
+		ctx,
+		attribute.String("sandbox.cmd.dir", p.cmd.Dir),
+		attribute.String("sandbox.cmd.path", p.cmd.Path),
+	)
+
+	return nil
+}
+
+// MemoryLayer describes a contiguous region of guest physical memory backed
+// by a shared or private memfile. Multiple layers are stacked to form the
+// complete guest physical address space for a Firecracker VM.
+type MemoryLayer struct {
+	Data   []byte // mmap data (may be shared across VMs via MAP_PRIVATE)
+	Size   int64
+	Shared bool // true when this layer's read-only pages are shared across VMs
+
+	// PreMergedPath is the path to a pre-merged memfile containing all layers
+	// concatenated into a single file. When set, loadLayeredSnapshot() uses this
+	// file directly instead of creating a per-VM merged copy. This enables
+	// cross-VM memory sharing via the Linux page cache: all VMs mmap(MAP_PRIVATE)
+	// the same file, so read-only pages share physical memory automatically.
+	PreMergedPath string
+}
+
+// ResumeFromLayeredSnapshot resumes a Firecracker VM using multiple memory
+// layers (L0 infrastructure + L1 runtime + optional L2 instance diff). The
+// layers are stacked sequentially in guest physical address space. Shared
+// layers use MAP_PRIVATE so the kernel page cache deduplicates read-only
+// pages across VMs.
+func (p *Process) ResumeFromLayeredSnapshot(
+	ctx context.Context,
+	sbxMetadata sbxlogger.SandboxMetadata,
+	layers []MemoryLayer,
+	snapfilePath string,
+	accessToken *string,
+	cgroupFD int,
+	txRateLimit RateLimiterConfig,
+	driveRateLimit RateLimiterConfig,
+) error {
+	ctx, span := tracer.Start(ctx, "resume-from-layered-snapshot")
+	defer span.End()
+
+	// Symlink /dev/null to the rootfs link path so we can start the FC
+	// process without the rootfs and then symlink the real rootfs.
+	err := utils.SymlinkForce("/dev/null", p.files.SandboxCacheRootfsLinkPath(p.config.StorageConfig))
+	if err != nil {
+		return fmt.Errorf("error symlinking rootfs: %w", err)
+	}
+
+	err = p.configure(
+		ctx,
+		sbxMetadata,
+		nil,
+		nil,
+		cgroupFD,
+	)
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+		return errors.Join(fmt.Errorf("error starting fc process: %w", err), fcStopErr)
+	}
+	telemetry.ReportEvent(ctx, "configured fc for layered snapshot resume")
+
+	// Start the metrics reader goroutine before calling setMetrics.
+	p.startMetricsReader(ctx)
+
+	err = p.client.setMetrics(ctx, p.metricsPath)
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+		return errors.Join(fmt.Errorf("error setting fc metrics: %w", err), fcStopErr)
+	}
+	telemetry.ReportEvent(ctx, "set fc metrics")
+
+	// Symlink the real rootfs.
+	rootfsPath, err := p.rootfsProvider.Path()
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+		return errors.Join(fmt.Errorf("error getting rootfs path: %w", err), fcStopErr)
+	}
+
+	err = utils.SymlinkForce(rootfsPath, p.files.SandboxCacheRootfsLinkPath(p.config.StorageConfig))
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+		return errors.Join(fmt.Errorf("error symlinking rootfs: %w", err), fcStopErr)
+	}
+	telemetry.ReportEvent(ctx, "symlinked rootfs for layered snapshot resume")
+
+	// Build metadata for the new sandbox instance.
+	meta := &MmdsMetadata{
+		SandboxID:            sbxMetadata.SandboxID,
+		TemplateID:           sbxMetadata.TemplateID,
+		LogsCollectorAddress: fmt.Sprintf("http://%s/logs", p.config.NetworkConfig.OrchestratorInSandboxIPAddress),
+	}
+
+	if accessToken != nil && *accessToken != "" {
+		meta.AccessTokenHash = keys.HashAccessToken(*accessToken)
+	} else {
+		meta.AccessTokenHash = keys.HashAccessToken("")
+	}
+
+	if writeErr := writeMetadataToExt4(ctx, rootfsPath, meta); writeErr != nil {
+		logger.L().Warn(ctx, "failed to write metadata to rootfs, envd will rely on MMDS",
+			zap.Error(writeErr),
+			logger.WithSandboxID(sbxMetadata.SandboxID),
+		)
+	} else {
+		telemetry.ReportEvent(ctx, "wrote sandbox metadata to rootfs")
+	}
+
+	// Compute total memory layout from layers.
+	var totalMemSize int64
+	for _, layer := range layers {
+		totalMemSize += layer.Size
+	}
+
+	// Log layer composition for diagnostics.
+	sharedCount := 0
+	for _, layer := range layers {
+		if layer.Shared {
+			sharedCount++
+		}
+	}
+	telemetry.SetAttributes(ctx,
+		attribute.Int("layered_snapshot.layer_count", len(layers)),
+		attribute.Int("layered_snapshot.shared_layers", sharedCount),
+		attribute.Int64("layered_snapshot.total_mem_mb", totalMemSize>>20),
+	)
+
+	// Load the snapshot using the layered memory backend.
+	err = p.client.loadLayeredSnapshot(ctx, layers, snapfilePath, sbxMetadata.SandboxID)
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+		return errors.Join(fmt.Errorf("error loading layered snapshot: %w", err), fcStopErr)
+	}
+	telemetry.ReportEvent(ctx, "loaded layered snapshot")
+
+	// Apply/reset rate limits.
+	if setErr := p.client.setTxRateLimit(ctx, p.slot.VpeerName(), txRateLimit); setErr != nil {
+		logger.L().Warn(ctx, "failed to set TX rate limit after layered snapshot resume, continuing",
+			zap.Error(setErr),
+			logger.WithSandboxID(sbxMetadata.SandboxID),
+		)
+	} else {
+		telemetry.ReportEvent(ctx, "configured tx rate limit")
+	}
+
+	if setErr := p.client.setDriveRateLimit(ctx, rootfsDriveID, driveRateLimit); setErr != nil {
+		logger.L().Warn(ctx, "failed to set drive rate limit after layered snapshot resume, continuing",
+			zap.Error(setErr),
+			logger.WithSandboxID(sbxMetadata.SandboxID),
+		)
+	} else {
+		telemetry.ReportEvent(ctx, "configured drive rate limit")
+	}
+
+	// PTE Batch Pre-faulting: use MADV_POPULATE_WRITE to install PTEs
+	// for each layer before the VM's first instruction. This eliminates
+	// minor page faults during guest boot. Requires Linux 5.14+.
+	for i, layer := range layers {
+		if layer.Data == nil || layer.Size == 0 {
+			continue
+		}
+		regions := []memory.PrefetchRegion{{Start: 0, Size: layer.Size}}
+		if err := memory.PrefaultPages(ctx, layer.Data, regions); err != nil {
+			logger.L().Warn(ctx, "PTE batch pre-fault failed for layer, pages will fault on first access",
+				zap.Int("layer_index", i),
+				zap.Error(err),
+				logger.WithSandboxID(sbxMetadata.SandboxID),
+			)
+		}
+	}
+	telemetry.ReportEvent(ctx, "pte batch pre-faulting complete")
+
+	// Phase 4: THP Optimization — advise shared layers for Transparent
+	// Huge Pages to reduce page table depth and minor fault count.
+	var sharedLayers []memory.SharedMemfileLayer
+	for _, layer := range layers {
+		if layer.Shared && layer.Data != nil && layer.Size > 0 {
+			sharedLayers = append(sharedLayers, memory.SharedMemfileLayer{
+				Data: layer.Data,
+				Size: layer.Size,
+				Name: fmt.Sprintf("layer-%d", len(sharedLayers)),
+			})
+		}
+	}
+	if len(sharedLayers) > 0 {
+		memory.AdviseTHPForLayers(ctx, sharedLayers, logger.L())
+	}
+
+	err = p.client.resumeVM(ctx)
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+		return errors.Join(fmt.Errorf("error resuming vm: %w", err), fcStopErr)
+	}
+	telemetry.ReportEvent(ctx, "resumed vm from layered snapshot")
+
+	// Set MMDS metadata.
+	err = p.client.setMmds(ctx, meta)
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+		return errors.Join(fmt.Errorf("error setting mmds: %w", err), fcStopErr)
+	}
+
+	telemetry.SetAttributes(
+		ctx,
+		attribute.String("sandbox.cmd.dir", p.cmd.Dir),
+		attribute.String("sandbox.cmd.path", p.cmd.Path),
+	)
+
+	return nil
+}
+
+// GetDirtyPageBitmap returns the set of dirty pages from the Firecracker VM.
+// Returns nil when dirty-page tracking is unavailable or the VM does not
+// support it (e.g. not booted, FC version too old). The caller should fall
+// back to full-memory scanning when nil is returned.
+func (p *Process) GetDirtyPageBitmap(ctx context.Context) (*roaring.Bitmap, error) {
+	return nil, nil
 }

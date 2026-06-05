@@ -78,3 +78,8 @@ func (c *MaskTemplate) Metadata() (metadata.Template, error) {
 func (c *MaskTemplate) UpdateMetadata(meta metadata.Template) error {
 	return c.template.UpdateMetadata(meta)
 }
+
+func (c *MaskTemplate) Layer() Layer              { return c.template.Layer() }
+func (c *MaskTemplate) ParentTemplate() Template  { return c.template.ParentTemplate() }
+func (c *MaskTemplate) SharedMemfilePath() string { return c.template.SharedMemfilePath() }
+func (c *MaskTemplate) OverlayPath() string       { return c.template.OverlayPath() }

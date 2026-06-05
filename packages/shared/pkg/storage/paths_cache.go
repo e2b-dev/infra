@@ -43,6 +43,10 @@ func (c CachePaths) CacheSnapfile() string {
 	return filepath.Join(c.cacheDir(), SnapfileName)
 }
 
+func (c CachePaths) CacheSnapshotMemfile() string {
+	return filepath.Join(c.cacheDir(), SnapshotMemfileName)
+}
+
 func (c CachePaths) CacheMetadata() string {
 	return filepath.Join(c.cacheDir(), MetadataName)
 }

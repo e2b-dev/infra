@@ -322,3 +322,8 @@ func (t *storageTemplate) UpdateMetadata(meta metadata.Template) error {
 
 	return meta.ToFile(metafile.Path())
 }
+
+func (t *storageTemplate) Layer() Layer              { return "" }
+func (t *storageTemplate) ParentTemplate() Template  { return nil }
+func (t *storageTemplate) SharedMemfilePath() string { return "" }
+func (t *storageTemplate) OverlayPath() string       { return "" }

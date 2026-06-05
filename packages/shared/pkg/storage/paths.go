@@ -8,10 +8,11 @@ import (
 const (
 	GuestEnvdPath = "/usr/bin/envd"
 
-	MemfileName  = "memfile"
-	RootfsName   = "rootfs.ext4"
-	SnapfileName = "snapfile"
-	MetadataName = "metadata.json"
+	MemfileName         = "memfile"
+	RootfsName          = "rootfs.ext4"
+	SnapfileName        = "snapfile"
+	MetadataName        = "metadata.json"
+	SnapshotMemfileName = "snapshot_memfile"
 
 	HeaderSuffix = ".header"
 )
@@ -47,6 +48,10 @@ func (p Paths) RootfsHeader() string {
 
 func (p Paths) Snapfile() string {
 	return fmt.Sprintf("%s/%s", p.BuildID, SnapfileName)
+}
+
+func (p Paths) SnapshotMemfile() string {
+	return fmt.Sprintf("%s/%s", p.BuildID, SnapshotMemfileName)
 }
 
 func (p Paths) Metadata() string {

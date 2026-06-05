@@ -60,3 +60,8 @@ func (t *LocalTemplate) Metadata() (metadata.Template, error) {
 func (t *LocalTemplate) UpdateMetadata(_ metadata.Template) error {
 	return errors.New("metadata not available in local template")
 }
+
+func (t *LocalTemplate) Layer() Layer                         { return "" }
+func (t *LocalTemplate) ParentTemplate() Template             { return nil }
+func (t *LocalTemplate) SharedMemfilePath() string            { return "" }
+func (t *LocalTemplate) OverlayPath() string                  { return "" }

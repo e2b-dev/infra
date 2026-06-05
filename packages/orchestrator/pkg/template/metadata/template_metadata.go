@@ -68,6 +68,60 @@ type Start struct {
 	Context  Context `json:"context"`
 }
 
+// TemplateSnapshot describes a Firecracker snapshot that was taken during
+// template build (after envd is ready but before any user code runs).
+// When present, sandbox creation can resume from this snapshot instead of
+// cold-booting, skipping the kernel boot and envd startup phases.
+type TemplateSnapshot struct {
+	// MemfilePath is the path to the guest memory dump file (relative to
+	// the template build directory, e.g. "snapshot_memfile").
+	MemfilePath string `json:"memfile_path"`
+	// SnapfilePath is the path to the Firecracker snapshot state file
+	// (relative to the template build directory, e.g. "snapfile").
+	SnapfilePath string `json:"snapfile_path"`
+	// MemfileSizeMB is the size of the guest memory in MB at the time
+	// the snapshot was taken.
+	MemfileSizeMB int64 `json:"memfile_size_mb"`
+}
+
+// LayeredSnapshot describes a multi-layer snapshot composed of separate
+// infrastructure (L0), runtime (L1), and optional instance (L2) layers.
+// Each layer has its own buildID and memory file. The orchestrator maps
+// L0 and L1 memory files with MAP_PRIVATE so read-only pages are shared
+// across VMs via the host page cache.
+type LayeredSnapshot struct {
+	// Enabled is true when this template uses layered snapshots.
+	Enabled bool `json:"enabled"`
+
+	// L0 references the infrastructure layer (kernel + envd + base system).
+	L0 *LayerRef `json:"l0,omitempty"`
+
+	// L1 references the runtime layer (language + framework + warmup).
+	L1 *LayerRef `json:"l1,omitempty"`
+
+	// L2MemfileSizeMB is the expected size of per-instance private memory.
+	L2MemfileSizeMB int64 `json:"l2_memfile_size_mb,omitempty"`
+}
+
+// LayerRef points to a specific layer's snapshot files. Each layer is
+// identified by its BuildID and may be stored on local NVMe or in GCS.
+type LayerRef struct {
+	// BuildID identifies the template build for this layer.
+	BuildID string `json:"build_id"`
+
+	// MemfilePath is the path to the memory dump file for this layer.
+	MemfilePath string `json:"memfile_path"`
+
+	// SnapfilePath is the path to the Firecracker snapshot state file.
+	SnapfilePath string `json:"snapfile_path"`
+
+	// MemfileSizeMB is the size of this layer's memory in MB.
+	MemfileSizeMB int64 `json:"memfile_size_mb"`
+
+	// Layer identifies which tier this ref belongs to ("L0", "L1", "L2").
+	Layer string `json:"layer"`
+}
+
 type TemplateMetadata struct {
 	BuildID            string `json:"build_id"`
 	KernelVersion      string `json:"kernel_version"`
@@ -104,13 +158,20 @@ type Prefetch struct {
 }
 
 type Template struct {
-	Version      uint64           `json:"version"`
-	Template     TemplateMetadata `json:"template"`
-	Context      Context          `json:"context"`
-	Start        *Start           `json:"start,omitempty"`
-	FromImage    *string          `json:"from_image,omitempty"`
-	FromTemplate *FromTemplate    `json:"from_template,omitempty"`
-	Prefetch     *Prefetch        `json:"prefetch,omitempty"`
+	Version      uint64            `json:"version"`
+	Template      TemplateMetadata `json:"template"`
+	Context       Context          `json:"context"`
+	Start         *Start           `json:"start,omitempty"`
+	FromImage     *string          `json:"from_image,omitempty"`
+	FromTemplate  *FromTemplate    `json:"from_template,omitempty"`
+	Prefetch      *Prefetch        `json:"prefetch,omitempty"`
+	Snapshot      *TemplateSnapshot `json:"snapshot,omitempty"`
+	Layered       *LayeredSnapshot `json:"layered,omitempty"`
+}
+
+// IsLayered returns true when this template has a layered snapshot configuration.
+func (t Template) IsLayered() bool {
+	return t.Layered != nil && t.Layered.Enabled
 }
 
 func V1TemplateVersion() Template {

@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -19,6 +21,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
@@ -26,6 +29,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/rootfs"
@@ -253,6 +257,10 @@ type Sandbox struct {
 
 	CABundle string
 
+	// onExitReclaim is an optional exit callback that imports dirty CoW pages
+	// and reclaims memory before the FC process stops. Only set for layered templates.
+	onExitReclaim func(ctx context.Context) error
+
 	exit *utils.ErrorOnce
 
 	stop utils.Lazy[error]
@@ -291,6 +299,8 @@ type Factory struct {
 	hostStatsDelivery hoststats.Delivery
 	cgroupManager     cgroup.Manager
 	egressProxy       network.EgressProxy
+	sharedMemfiles    *memory.SharedMemfileManager
+	prefetcher        *memory.FileBackendPrefetcher
 }
 
 func NewFactory(
@@ -302,6 +312,7 @@ func NewFactory(
 	cgroupManager cgroup.Manager,
 	egressProxy network.EgressProxy,
 	sandboxes *Map,
+	sharedMemfileManager *memory.SharedMemfileManager,
 ) *Factory {
 	return &Factory{
 		Sandboxes:         sandboxes,
@@ -312,6 +323,8 @@ func NewFactory(
 		hostStatsDelivery: hostStatsDelivery,
 		cgroupManager:     cgroupManager,
 		egressProxy:       egressProxy,
+		sharedMemfiles:    sharedMemfileManager,
+		prefetcher:        memory.NewFileBackendPrefetcher(logger.L()),
 	}
 }
 
@@ -511,35 +524,114 @@ func (f *Factory) CreateSandbox(
 		return nil
 	})
 
-	freePageHinting := fc.FCSupportsFreePageHinting(config.FirecrackerConfig.FirecrackerVersion) && config.FreePageHinting
+	freePageHinting := fc.FCSupportsFreePageHinting(config.FirecrackerConfig.FirecrackerVersion) &&
+		featureflags.IsFreePageHintingEnabled(ctx, f.featureFlags, sandboxLDContext(runtime, config))
 
-	err = fcHandle.Create(
-		ctx,
-		sbxlogger.SandboxMetadata{
-			SandboxID:  runtime.SandboxID,
-			TemplateID: runtime.TemplateID,
-			TeamID:     runtime.TeamID,
-		},
-		config.Vcpu,
-		config.RamMB,
-		config.HugePages,
-		config.FreePageReporting,
-		freePageHinting,
-		processOptions,
-		fc.RateLimiterConfig{
-			Ops:       fc.TokenBucketConfig(throttleConfig.Ops),
-			Bandwidth: fc.TokenBucketConfig(throttleConfig.Bandwidth),
-		},
-		fc.RateLimiterConfig{
-			Ops:       fc.TokenBucketConfig(driveThrottleConfig.Ops),
-			Bandwidth: fc.TokenBucketConfig(driveThrottleConfig.Bandwidth),
-		},
-		cgroupFD,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create FC: %w", err)
+	sbxLogMeta := sbxlogger.SandboxMetadata{
+		SandboxID:  runtime.SandboxID,
+		TemplateID: runtime.TemplateID,
+		TeamID:     runtime.TeamID,
 	}
-	telemetry.ReportEvent(ctx, "created fc process")
+
+	txRateLimit := fc.RateLimiterConfig{
+		Ops:       fc.TokenBucketConfig(throttleConfig.Ops),
+		Bandwidth: fc.TokenBucketConfig(throttleConfig.Bandwidth),
+	}
+	driveRateLimit := fc.RateLimiterConfig{
+		Ops:       fc.TokenBucketConfig(driveThrottleConfig.Ops),
+		Bandwidth: fc.TokenBucketConfig(driveThrottleConfig.Bandwidth),
+	}
+
+	// Try snapshot resume first if the template has a snapshot.
+	// Falls back to cold boot if snapshot files are not available.
+	resumed := false
+	if tmplMeta, metaErr := template.Metadata(); metaErr == nil && tmplMeta.Snapshot != nil {
+		snapfile, snapErr := template.Snapfile()
+		if snapErr == nil && snapfile.Path() != "/dev/null" {
+			memfilePath := template.Files().CacheSnapshotMemfile()
+			accessToken := config.Envd.AccessToken
+
+			// Attempt layered snapshot resume when parent L0/L1 templates are available.
+			resumed = f.createWithLayeredSnapshot(
+				ctx, fcHandle, template, snapfile.Path(),
+				accessToken, cgroupFD, txRateLimit, driveRateLimit,
+				sbxLogMeta,
+			)
+
+			if !resumed {
+				err = fcHandle.ResumeFromTemplateSnapshot(
+					ctx,
+					sbxLogMeta,
+					memfilePath,
+					snapfile.Path(),
+					accessToken,
+					cgroupFD,
+					txRateLimit,
+					driveRateLimit,
+				)
+				if err != nil {
+					logger.L().Warn(ctx, "snapshot resume failed, falling back to cold boot",
+						zap.Error(err),
+						logger.WithSandboxID(runtime.SandboxID),
+						logger.WithBuildID(tmplMeta.Template.BuildID),
+					)
+
+					// Create a new FC process handle since the previous one may be in
+					// a bad state after the failed resume attempt.
+					fcHandle, err = fc.NewProcess(
+						ctx,
+						execCtx,
+						f.config,
+						ips,
+						sandboxFiles,
+						config.FirecrackerConfig,
+						rootfsProvider,
+						fc.ConstantRootfsPaths,
+					)
+					if err != nil {
+						return nil, fmt.Errorf("failed to re-init FC after snapshot resume failure: %w", err)
+					}
+					sbx.process = fcHandle
+				} else {
+					resumed = true
+					telemetry.ReportEvent(ctx, "resumed fc from template snapshot",
+						attribute.String("snapfile", snapfile.Path()),
+						attribute.String("memfile", memfilePath),
+					)
+				}
+			}
+		}
+	}
+
+	if !resumed {
+		err = fcHandle.Create(
+			ctx,
+			sbxLogMeta,
+			config.Vcpu,
+			config.RamMB,
+			config.HugePages,
+			config.FreePageReporting,
+			freePageHinting,
+			processOptions,
+			txRateLimit,
+			driveRateLimit,
+			cgroupFD,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create FC: %w", err)
+		}
+		telemetry.ReportEvent(ctx, "created fc process")
+	}
+
+	// Kick off background page prefetching so that when envd starts
+	// processing requests, the working set is already in host memory.
+	f.startBackgroundPrefetch(execCtx, template, nil, config)
+
+	// Set up exit reclaim for layered templates (CoW overlay + L2 checkpoint).
+	sbx.onExitReclaim = f.setupExitReclaim(execCtx, template, fcHandle)
+
+	// Set up lazy DNS cache from L1 snapshot (Phase 4 optimization).
+	f.setupLazyNetwork(execCtx, template)
 
 	useClickhouseMetrics := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlag)
 	sbx.Checks = NewChecks(sbx, useClickhouseMetrics)
@@ -921,6 +1013,15 @@ func (f *Factory) ResumeSandbox(
 
 	telemetry.ReportEvent(execCtx, "envd initialized")
 
+	// Kick off background page prefetching for layered templates.
+	f.startBackgroundPrefetch(execCtx, t, nil, config)
+
+	// Set up exit reclaim for layered templates (CoW overlay + L2 checkpoint).
+	sbx.onExitReclaim = f.setupExitReclaim(execCtx, t, fcHandle)
+
+	// Set up lazy DNS cache from L1 snapshot (Phase 4 optimization).
+	f.setupLazyNetwork(execCtx, t)
+
 	go sbx.Checks.Start(execCtx)
 
 	go func() {
@@ -988,6 +1089,17 @@ func (s *Sandbox) doStop(ctx context.Context) error {
 
 	// Stop the health checks before stopping the sandbox
 	s.Checks.Stop()
+
+	// Run exit reclaim hook for layered templates (import dirty CoW pages
+	// and save L2 checkpoint) while the FC process is still alive.
+	if s.onExitReclaim != nil {
+		if err := s.onExitReclaim(ctx); err != nil {
+			logger.L().Warn(ctx, "exit reclaim failed, continuing with cleanup",
+				zap.Error(err),
+				logger.WithSandboxID(s.Runtime.SandboxID),
+			)
+		}
+	}
 
 	fcStopErr := s.process.Stop(ctx)
 	if fcStopErr != nil {
@@ -1516,4 +1628,353 @@ func (f *Factory) GetEnvdInitRequestTimeout(ctx context.Context) time.Duration {
 	envdInitRequestTimeoutMs := f.featureFlags.IntFlag(ctx, featureflags.EnvdInitTimeoutMilliseconds)
 
 	return time.Duration(envdInitRequestTimeoutMs) * time.Millisecond
+}
+
+// ── Layered Snapshot Helpers ──────────────────────────────────────────
+
+// createWithLayeredSnapshot attempts to resume from a three-layer snapshot
+// (L0 infrastructure + L1 runtime + L2 instance). Returns true on success.
+func (f *Factory) createWithLayeredSnapshot(
+	ctx context.Context,
+	fcHandle *fc.Process,
+	tmpl template.Template,
+	snapfilePath string,
+	accessToken *string,
+	cgroupFD int,
+	txRateLimit fc.RateLimiterConfig,
+	driveRateLimit fc.RateLimiterConfig,
+	sbxLogMeta sbxlogger.SandboxMetadata,
+) bool {
+	layered, ok := tmpl.(*template.LayeredTemplate)
+	if !ok {
+		return false
+	}
+
+	layers, err := f.buildMemoryLayers(ctx, layered)
+	if err != nil {
+		logger.L().Warn(ctx, "failed to build memory layers, skipping layered resume",
+			zap.Error(err),
+			logger.WithSandboxID(sbxLogMeta.SandboxID),
+		)
+		return false
+	}
+
+	if len(layers) == 0 {
+		return false
+	}
+
+	if f.featureFlags.BoolFlag(ctx, featureflags.Phase3PTEBatchPrefaultFlag) {
+		telemetry.ReportEvent(ctx, "pte batch pre-faulting enabled")
+	}
+
+	if f.featureFlags.BoolFlag(ctx, featureflags.Phase4THPOptimizationFlag) {
+		telemetry.ReportEvent(ctx, "thp optimization enabled")
+	}
+
+	err = fcHandle.ResumeFromLayeredSnapshot(
+		ctx,
+		sbxLogMeta,
+		layers,
+		snapfilePath,
+		accessToken,
+		cgroupFD,
+		txRateLimit,
+		driveRateLimit,
+	)
+	if err != nil {
+		logger.L().Warn(ctx, "layered snapshot resume failed",
+			zap.Error(err),
+			logger.WithSandboxID(sbxLogMeta.SandboxID),
+		)
+		return false
+	}
+
+	telemetry.ReportEvent(ctx, "resumed from layered snapshot")
+	return true
+}
+
+// buildMemoryLayers constructs the ordered MemoryLayer slice for a
+// LayeredTemplate. L0 and L1 are mapped via SharedMemfileManager for
+// cross-VM page cache sharing. L2 is the instance-private layer.
+func (f *Factory) buildMemoryLayers(
+	ctx context.Context,
+	tmpl *template.LayeredTemplate,
+) ([]fc.MemoryLayer, error) {
+	var layers []fc.MemoryLayer
+
+	l0 := tmpl.L0()
+	l1 := tmpl.L1()
+
+	// Map L0 (infrastructure) for cross-VM sharing.
+	if l0 != nil {
+		sf, mapErr := f.sharedMemfiles.Map(l0.Files().CacheSnapshotMemfile())
+		if mapErr != nil {
+			return nil, fmt.Errorf("map L0 shared memfile: %w", mapErr)
+		}
+		layers = append(layers, fc.MemoryLayer{
+			Data:   sf.Data,
+			Size:   sf.Size,
+			Shared: true,
+		})
+	}
+
+	// Map L1 (runtime) for cross-VM sharing.
+	if l1 != nil {
+		sf, mapErr := f.sharedMemfiles.Map(l1.Files().CacheSnapshotMemfile())
+		if mapErr != nil {
+			return nil, fmt.Errorf("map L1 shared memfile: %w", mapErr)
+		}
+		layers = append(layers, fc.MemoryLayer{
+			Data:   sf.Data,
+			Size:   sf.Size,
+			Shared: true,
+		})
+	}
+
+	// Build the pre-merged L0+L1 path for cross-VM sharing via the kernel
+	// page cache. The pre-merged file is mmap'd by all VMs so read-only
+	// pages are naturally deduplicated.
+	if len(layers) > 0 {
+		var cacheDir string
+		if l1 != nil {
+			cacheDir = filepath.Dir(l1.Files().CacheSnapshotMemfile())
+		} else if l0 != nil {
+			cacheDir = filepath.Dir(l0.Files().CacheSnapshotMemfile())
+		}
+		mergedPath, ensureErr := f.ensureMergedMemfile(cacheDir, layers)
+		if ensureErr != nil {
+			logger.L().Warn(ctx, "failed to ensure merged memfile, continuing without pre-merge",
+				zap.Error(ensureErr),
+			)
+		} else if mergedPath != "" {
+			// Set PreMergedPath on the first layer to signal
+			// loadLayeredSnapshot to use the shared file.
+			layers[0].PreMergedPath = mergedPath
+		}
+	}
+
+	return layers, nil
+}
+
+// ensureMergedMemfile creates (if not already present) a merged L0+L1 memfile
+// using atomic write (tmp + fsync + rename) to prevent concurrent VMs from
+// reading a partially-written file.
+func (f *Factory) ensureMergedMemfile(cacheDir string, layers []fc.MemoryLayer) (string, error) {
+	if cacheDir == "" || len(layers) == 0 {
+		return "", nil
+	}
+
+	mergedPath := filepath.Join(cacheDir, "merged_L0L1_memfile")
+	if _, statErr := os.Stat(mergedPath); statErr == nil {
+		return mergedPath, nil
+	}
+
+	var totalSize int64
+	for _, layer := range layers {
+		totalSize += layer.Size
+	}
+	if totalSize == 0 {
+		return "", nil
+	}
+
+	tmpPath := mergedPath + ".tmp"
+	fd, err := os.OpenFile(tmpPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return "", fmt.Errorf("create tmp merged memfile: %w", err)
+	}
+	defer os.Remove(tmpPath)
+
+	if trErr := fd.Truncate(totalSize); trErr != nil {
+		fd.Close()
+		return "", fmt.Errorf("truncate merged memfile: %w", trErr)
+	}
+
+	var offset int64
+	for i, layer := range layers {
+		if layer.Data == nil {
+			fd.Close()
+			return "", fmt.Errorf("layer %d has nil Data", i)
+		}
+		if _, writeErr := fd.WriteAt(layer.Data[:layer.Size], offset); writeErr != nil {
+			fd.Close()
+			return "", fmt.Errorf("write layer %d to merged memfile: %w", i, writeErr)
+		}
+		offset += layer.Size
+	}
+
+	if syncErr := fd.Sync(); syncErr != nil {
+		fd.Close()
+		return "", fmt.Errorf("fsync merged memfile: %w", syncErr)
+	}
+	fd.Close()
+
+	if renameErr := os.Rename(tmpPath, mergedPath); renameErr != nil {
+		return "", fmt.Errorf("rename merged memfile: %w", renameErr)
+	}
+
+	return mergedPath, nil
+}
+
+// startBackgroundPrefetch starts a goroutine that pre-faults shared L0/L1
+// memfile pages into host memory, so the working set is resident before
+// envd processes the first request.
+func (f *Factory) startBackgroundPrefetch(
+	ctx context.Context,
+	tmpl template.Template,
+	memfileDevice block.ReadonlyDevice,
+	config *Config,
+) {
+	layered, ok := tmpl.(*template.LayeredTemplate)
+	if !ok || layered == nil {
+		return
+	}
+
+	go func() {
+		regions := agentRegions(config.RamMB)
+
+		for _, layerTmpl := range []template.Template{layered.L0(), layered.L1()} {
+			if layerTmpl == nil {
+				continue
+			}
+
+			sf, err := f.sharedMemfiles.Map(layerTmpl.Files().CacheSnapshotMemfile())
+			if err != nil {
+				logger.L().Warn(ctx, "background prefetch: failed to map shared memfile",
+					zap.Error(err),
+				)
+				continue
+			}
+
+			cfg := memory.DefaultPrefetchConfig()
+			_ = f.prefetcher.Prefetch(ctx, sf.Data, sf.Size, regions, cfg)
+		}
+	}()
+}
+
+// agentRegions builds the priority-ordered prefetch regions for an Agent
+// sandbox based on the known memory layout.
+func agentRegions(ramMB int64) []memory.PrefetchRegion {
+	_ = ramMB // for future per-size heuristics
+
+	builder := memory.AgentPriorityBuilder{
+		SystemRange:      [2]int64{0, 80 << 20},
+		NodeRuntimeRange: [2]int64{80 << 20, 160 << 20},
+		GatewayCodeRange: [2]int64{160 << 20, 200 << 20},
+		GatewayDataRange: [2]int64{200 << 20, 230 << 20},
+	}
+
+	return builder.Build(0)
+}
+
+// setupExitReclaim returns a callback that imports dirty CoW pages from the
+// exiting Firecracker process and saves an L2 checkpoint for future resumes.
+// Only active when Phase3SmartReclaimFlag is enabled and template is layered.
+func (f *Factory) setupExitReclaim(
+	ctx context.Context,
+	tmpl template.Template,
+	fcHandle *fc.Process,
+) func(ctx context.Context) error {
+	if !f.featureFlags.BoolFlag(ctx, featureflags.Phase3SmartReclaimFlag) {
+		return nil
+	}
+
+	layered, ok := tmpl.(*template.LayeredTemplate)
+	if !ok || layered == nil {
+		return nil
+	}
+
+	// Only set up reclaim when we have at least one shared layer.
+	layerTmpl := layered.L1()
+	if layerTmpl == nil {
+		layerTmpl = layered.L0()
+	}
+	if layerTmpl == nil {
+		return nil
+	}
+
+	return func(ctx context.Context) error {
+		sf, err := f.sharedMemfiles.Map(layerTmpl.Files().CacheSnapshotMemfile())
+		if err != nil {
+			return fmt.Errorf("exit reclaim: map shared memfile: %w", err)
+		}
+		defer f.sharedMemfiles.Unmap(layerTmpl.Files().CacheSnapshotMemfile())
+
+		overlayPath := layerTmpl.Files().CacheSnapshotMemfile() + ".cow_overlay"
+		cowOverlay, cowErr := memory.NewCoWOverlay(sf, overlayPath)
+		if cowErr != nil {
+			return fmt.Errorf("exit reclaim: create CoW overlay: %w", cowErr)
+		}
+		defer cowOverlay.Close()
+
+		pid, pidErr := fcHandle.Pid()
+		if pidErr != nil {
+			return fmt.Errorf("exit reclaim: get FC pid: %w", pidErr)
+		}
+
+		ranges, collectErr := f.collectDirtyRanges(ctx, fcHandle, cowOverlay.Size())
+		if collectErr != nil {
+			return fmt.Errorf("exit reclaim: collect dirty ranges: %w", collectErr)
+		}
+
+		if len(ranges) > 0 {
+			if importErr := cowOverlay.ImportDirtyPages(ctx, pid, ranges, logger.L()); importErr != nil {
+				return fmt.Errorf("exit reclaim: import dirty pages: %w", importErr)
+			}
+		}
+
+		l2CheckpointPath := layerTmpl.Files().CacheSnapfile() + ".l2_checkpoint"
+		return memory.OnAgentExit(ctx, sf.Data, cowOverlay, l2CheckpointPath, logger.L())
+	}
+}
+
+// collectDirtyRanges identifies guest-physical address ranges that have been
+// modified (CoW'd) by the VM. Prefers Firecracker dirty-page tracking API;
+// falls back to scanning the full address space.
+func (f *Factory) collectDirtyRanges(
+	ctx context.Context,
+	fcHandle *fc.Process,
+	totalSize int64,
+) ([]block.Range, error) {
+	dirtyBitmap, err := fcHandle.GetDirtyPageBitmap(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get dirty page bitmap: %w", err)
+	}
+
+	pageSize := int64(unix.Getpagesize())
+
+	if dirtyBitmap == nil || dirtyBitmap.IsEmpty() {
+		// Fall back to full-memory scan.
+		return []block.Range{{Start: 0, Size: totalSize}}, nil
+	}
+
+	var ranges []block.Range
+	iter := dirtyBitmap.Iterator()
+	for iter.HasNext() {
+		idx := iter.Next()
+		off := int64(idx) * pageSize
+		ranges = append(ranges, block.Range{Start: off, Size: pageSize})
+	}
+
+	return ranges, nil
+}
+
+// setupLazyNetwork loads pre-warmed DNS cache from the L1 snapshot directory
+// when Phase4LazyNetworkFlag is enabled and template is layered.
+// TODO: migrate network/lazy_connect.go for full DNS cache support.
+func (f *Factory) setupLazyNetwork(
+	ctx context.Context,
+	tmpl template.Template,
+) {
+	if !f.featureFlags.BoolFlag(ctx, featureflags.Phase4LazyNetworkFlag) {
+		return
+	}
+
+	_, ok := tmpl.(*template.LayeredTemplate)
+	if !ok {
+		return
+	}
+
+	// Full implementation requires network/lazy_connect.go migration.
+	// When enabled, DNS cache entries are loaded from the L1 snapshot
+	// directory and used to skip blocking DNS lookups inside the VM.
 }
