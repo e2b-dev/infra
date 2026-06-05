@@ -93,6 +93,13 @@ func (p *Prefetcher) Start(ctx context.Context) error {
 	maxFetchWorkers := p.featureFlags.IntFlag(ctx, featureflags.MemoryPrefetchMaxFetchWorkers)
 	maxCopyWorkers := p.featureFlags.IntFlag(ctx, featureflags.MemoryPrefetchMaxCopyWorkers)
 
+	// cancelRun aborts the whole run early. Copy workers fire it on ErrClosed
+	// (uffd gone: sandbox teardown) so fetch workers stop fetching and
+	// queueing pages nobody will ever copy, instead of running the fetch
+	// phase to completion for a dead sandbox.
+	ctx, cancelRun := context.WithCancel(ctx)
+	defer cancelRun()
+
 	blockSize := p.mapping.BlockSize
 	totalPages := len(indices)
 
@@ -147,7 +154,7 @@ func (p *Prefetcher) Start(ctx context.Context) error {
 
 	// Start copy coordinator - waits for uffd ready, then spawns copy workers
 	copyWg.Go(func() {
-		p.startCopyWorkers(ctx, copyCh, maxCopyWorkers, &copyStart, &copiedCount, &copySkippedCount)
+		p.startCopyWorkers(ctx, cancelRun, copyCh, maxCopyWorkers, &copyStart, &copiedCount, &copySkippedCount)
 	})
 
 	// Wait for fetch workers to complete
@@ -185,6 +192,7 @@ func (p *Prefetcher) Start(ctx context.Context) error {
 // startCopyWorkers waits for uffd to be ready, then starts copy workers
 func (p *Prefetcher) startCopyWorkers(
 	ctx context.Context,
+	cancelRun context.CancelFunc,
 	copyCh chan prefetchData,
 	maxCopyWorkers int,
 	copyStart *atomic.Pointer[time.Time],
@@ -208,7 +216,7 @@ func (p *Prefetcher) startCopyWorkers(
 
 	for range maxCopyWorkers {
 		copyWorkerWg.Go(func() {
-			p.copyWorker(ctx, copyCh, copiedCount, copySkippedCount)
+			p.copyWorker(ctx, cancelRun, copyCh, copiedCount, copySkippedCount)
 		})
 	}
 
@@ -259,6 +267,7 @@ func (p *Prefetcher) fetchWorker(
 // copyWorker copies pages to guest memory via uffd
 func (p *Prefetcher) copyWorker(
 	ctx context.Context,
+	cancelRun context.CancelFunc,
 	copyCh <-chan prefetchData,
 	copiedCount *atomic.Uint64,
 	skippedCount *atomic.Uint64,
@@ -275,9 +284,12 @@ func (p *Prefetcher) copyWorker(
 			installed, err := p.uffd.Prefault(ctx, d.offset, d.data)
 			if errors.Is(err, userfaultfd.ErrClosed) {
 				// The uffd is gone (sandbox teardown): every remaining queued
-				// page would hit the same path. Stop draining and count
+				// page would hit the same path. Cancel the run so the fetch
+				// workers stop pulling pages nobody will copy, and count
 				// nothing, keeping stage="copied" consistent with the
 				// per-page prefault metric, which skips this path too.
+				cancelRun()
+
 				return
 			}
 			if err != nil {
