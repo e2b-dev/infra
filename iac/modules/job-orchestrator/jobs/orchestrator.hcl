@@ -60,6 +60,9 @@ job "orchestrator-${latest_orchestrator_job_id}" {
         attempts = 0
       }
 
+      # Matches the Nomad client max_kill_timeout.
+      kill_timeout = "24h"
+
       resources {
         memory     = 1024
         memory_max = -1
