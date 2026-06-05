@@ -37,7 +37,8 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) (
 
 	// Test hook: fires before settleRequests.RLock so that a test can park
 	// the goroutine here, call Close() concurrently, then release and observe
-	// that the closed check below returns nil without calling UFFDIO_COPY.
+	// that the closed check below returns ErrClosed without calling
+	// UFFDIO_COPY.
 	if h := u.testFaultHook.Load(); h != nil {
 		(*h)(0, faultPhaseBeforePrefaultRLock)
 	}
