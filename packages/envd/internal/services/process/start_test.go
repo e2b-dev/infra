@@ -6,6 +6,10 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/user"
+	"slices"
+	"strconv"
+	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -82,6 +86,113 @@ func TestStart_ShortCommand(t *testing.T) {
 	require.GreaterOrEqual(t, len(events), 2, "expected at least start + end events")
 	assert.NotNil(t, events[0].GetStart(), "first event should be Start")
 	assert.NotNil(t, events[len(events)-1].GetEnd(), "last event should be End")
+}
+
+// TestSendSignal_KillsProcessTree verifies that killing a command also
+// terminates the child processes it spawned. envd's per-process handle only
+// signaled the leader, so children kept running after a kill; non-PTY commands
+// now run in their own process group and SIGKILL reaches the whole tree.
+func TestSendSignal_KillsProcessTree(t *testing.T) {
+	t.Parallel()
+
+	client, cleanup := newTestService(t)
+	defer cleanup()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+
+	// The leader spawns two long-lived children and waits on them.
+	stream, err := client.Start(ctx, connect.NewRequest(&rpc.StartRequest{
+		Process: &rpc.ProcessConfig{
+			Cmd:  "/bin/sh",
+			Args: []string{"-c", "sleep 120 & sleep 120 & wait"},
+		},
+	}))
+	require.NoError(t, err)
+
+	// Read the start event to capture the leader pid.
+	require.True(t, stream.Receive(), "expected a start event")
+	pid := stream.Msg().GetEvent().GetStart().GetPid()
+	require.NotZero(t, pid)
+
+	// Wait for the children to come up, then capture their pids.
+	var childPids []int
+	require.Eventually(t, func() bool {
+		childPids = childrenOf(t, int(pid))
+
+		return len(childPids) == 2
+	}, 5*time.Second, 50*time.Millisecond, "expected leader to spawn two children")
+
+	// Kill the command — this should take down the whole process group.
+	_, err = client.SendSignal(ctx, connect.NewRequest(&rpc.SendSignalRequest{
+		Process: &rpc.ProcessSelector{
+			Selector: &rpc.ProcessSelector_Pid{Pid: pid},
+		},
+		Signal: rpc.Signal_SIGNAL_SIGKILL,
+	}))
+	require.NoError(t, err)
+
+	// Drain the stream so the leader is reaped.
+	for stream.Receive() {
+	}
+	_ = stream.Close()
+
+	// The leader and every child must be gone.
+	require.Eventually(t, func() bool {
+		return !slices.ContainsFunc(childPids, processAlive)
+	}, 5*time.Second, 50*time.Millisecond, "child processes should be killed with the leader")
+}
+
+// childrenOf returns the pids whose parent is ppid, read from /proc.
+func childrenOf(t *testing.T, ppid int) []int {
+	t.Helper()
+
+	entries, err := os.ReadDir("/proc")
+	require.NoError(t, err)
+
+	var children []int
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		pid, err := strconv.Atoi(entry.Name())
+		if err != nil {
+			continue
+		}
+
+		data, err := os.ReadFile("/proc/" + entry.Name() + "/stat")
+		if err != nil {
+			// The process may have exited between listing and reading.
+			continue
+		}
+
+		// /proc/<pid>/stat fields: pid (comm) state ppid ...
+		// comm can contain spaces/parens, so parse after the closing paren.
+		stat := string(data)
+		idx := strings.LastIndex(stat, ")")
+		if idx == -1 {
+			continue
+		}
+
+		fields := strings.Fields(stat[idx+1:])
+		// fields[0]=state, fields[1]=ppid
+		if len(fields) < 2 {
+			continue
+		}
+
+		if parsed, err := strconv.Atoi(fields[1]); err == nil && parsed == ppid {
+			children = append(children, pid)
+		}
+	}
+
+	return children
+}
+
+// processAlive reports whether the given pid still exists.
+func processAlive(pid int) bool {
+	// Signal 0 performs error checking without actually sending a signal.
+	return syscall.Kill(pid, 0) == nil
 }
 
 // TestStart_ClientDisconnectMidStream verifies that when a client
