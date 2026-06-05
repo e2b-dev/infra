@@ -30,8 +30,8 @@ func NewNoopMemory(size, blockSize int64) *NoopMemory {
 	}
 }
 
-func (m *NoopMemory) Prefault(_ context.Context, _ int64, _ []byte) error {
-	return nil
+func (m *NoopMemory) Prefault(_ context.Context, _ int64, _ []byte) (bool, error) {
+	return false, nil
 }
 
 func (m *NoopMemory) DiffMetadata(ctx context.Context, f *fc.Process) (*header.DiffMetadata, error) {

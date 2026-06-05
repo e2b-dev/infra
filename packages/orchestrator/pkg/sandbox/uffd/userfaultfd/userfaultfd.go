@@ -45,6 +45,10 @@ const (
 
 var ErrUnexpectedEventType = errors.New("unexpected event type")
 
+// ErrClosed reports that the userfaultfd was already closed (sandbox
+// teardown) and the requested operation was skipped.
+var ErrClosed = errors.New("userfaultfd is closed")
+
 func hasEvent(revents, event int16) bool {
 	return revents&event != 0
 }
@@ -124,8 +128,11 @@ const (
 type faultOutcome uint8
 
 const (
-	// faultInstalled: page was installed (or already mapped; EEXIST).
+	// faultInstalled: page was installed by this call.
 	faultInstalled faultOutcome = iota
+	// faultAlreadyPresent: no install by this call — the page was already
+	// mapped (EEXIST), e.g. a concurrent worker or a prefault won the race.
+	faultAlreadyPresent
 	// faultDeferred: soft failure (EAGAIN); the caller must retry later.
 	faultDeferred
 	// faultDiscarded: no install happened and retry is pointless
@@ -399,6 +406,19 @@ func (u *Userfaultfd) Serve(
 			}
 
 			u.wg.Go(func() error {
+				// Record serve latency / installed bytes / fault count once
+				// per serve attempt, tagged by page class and outcome. Begun
+				// before the RLock so the latency covers lock wait + faultPage
+				// for this attempt. Note: a deferred fault is re-served (and
+				// re-timed) by a later worker, so the guest's full stall —
+				// including the deferred-queue wait — can exceed any single
+				// recorded serve.
+				sw := serveTimer.Begin()
+				pclass := pageClassUnknown
+				result := faultResultInstalled
+				var servedBytes int64
+				defer func() { sw.RecordRaw(ctx, servedBytes, serveAttrs[pclass][result]) }()
+
 				if h := u.testFaultHook.Load(); h != nil {
 					(*h)(addr, faultPhaseBeforeRLock)
 				}
@@ -417,13 +437,20 @@ func (u *Userfaultfd) Serve(
 				case block.Dirty:
 					// Pages must not be swappable for this short-circuit to hold:
 					// only UFFD_EVENT_REMOVE moves a page out of Dirty.
+					pclass = pageClassResident
+					result = faultResultPresent
+
 					return nil
 				case block.Zero:
 					// Zero-fill. We still owe the kernel an ack for the original
 					// MISSING fault or the faulting thread stays blocked.
+					pclass = pageClassZero
 				case block.NotPresent:
+					pclass = pageClassNew
 					source = u.src
 				default:
+					result = faultResultError
+
 					return fmt.Errorf("unexpected block.State: %#v", state)
 				}
 
@@ -447,11 +474,23 @@ func (u *Userfaultfd) Serve(
 					fdExit.SignalExit,
 				)
 				if err != nil {
+					result = faultResultError
+
 					return err
 				}
 
 				switch outcome {
-				case faultInstalled:
+				case faultInstalled, faultAlreadyPresent:
+					if outcome == faultInstalled {
+						// A page was installed (zero-filled or pulled from
+						// source) by this serve, so count its bytes. On
+						// faultAlreadyPresent a concurrent worker or prefault
+						// copied the page — record it as "present" with no
+						// bytes so the bytes counter stays attributable.
+						servedBytes = int64(u.pageSize)
+					} else {
+						result = faultResultPresent
+					}
 					// Zero-fill on a read fault installs zero+WP; the page still
 					// reads as zero, so keep the tracker entry as Zero so the
 					// snapshot diff marks it Empty. WP-async will catch any
@@ -461,10 +500,16 @@ func (u *Userfaultfd) Serve(
 					}
 					u.prefetchTracker.Add(offset, accessType)
 				case faultDeferred:
+					result = faultResultDeferred
 					deferred.push(pf)
 					u.signalWakeup()
 				case faultDiscarded:
 					// No install happened (ESRCH); retry would be pointless.
+					result = faultResultDiscarded
+				default:
+					result = faultResultError
+
+					return fmt.Errorf("unexpected faultOutcome: %#v", outcome)
 				}
 
 				return nil
@@ -601,7 +646,7 @@ func (u *Userfaultfd) faultPage(
 
 		u.fd.wake(addr, u.pageSize) //nolint:errcheck // best-effort; thread may already be awake
 
-		return faultInstalled, nil
+		return faultAlreadyPresent, nil
 	}
 
 	// ESRCH: faulting thread exited during sandbox teardown. No install
