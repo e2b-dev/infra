@@ -94,8 +94,10 @@ func addToSudoers(
 	cmdMetadata metadata.Context,
 	userArg string,
 ) (metadata.Context, error) {
-	// Add user to the admin group. The group name differs across distros:
-	// "sudo" on Debian/Ubuntu, "wheel" on RHEL/Fedora/openSUSE/Arch.
+	// Add user to the admin group. The group name differs across distros
+	// ("sudo" on Debian/Ubuntu, "wheel" elsewhere) and some minimal images ship
+	// neither, so this is best-effort: the /etc/sudoers entry below is what
+	// actually grants privileges.
 	err := sandboxtools.RunCommandWithLogger(
 		ctx,
 		proxy,
@@ -103,7 +105,7 @@ func addToSudoers(
 		lvl,
 		prefix,
 		sandboxID,
-		fmt.Sprintf("usermod -aG sudo %s 2>/dev/null || usermod -aG wheel %s", userArg, userArg),
+		fmt.Sprintf("usermod -aG sudo %s 2>/dev/null || usermod -aG wheel %s 2>/dev/null || true", userArg, userArg),
 		metadata.Context{
 			User:    "root",
 			EnvVars: cmdMetadata.EnvVars,

@@ -42,18 +42,21 @@ echo "Detected package family: $PKG_FAMILY"
 # Required packages, mapped to each distro's package names. systemd-sysv is
 # Debian-only (systemd itself provides init elsewhere); bash is listed so even
 # minimal images get it (required by the build's /bin/bash command runner).
+# passwd/useradd/usermod (used here and by later build steps) are not always
+# present on minimal images: on Debian they come from `passwd`, on RHEL from
+# `shadow-utils` + `passwd`, on SUSE/Arch from `shadow`.
 case "$PKG_FAMILY" in
     debian)
-        PACKAGES="systemd systemd-sysv openssh-server sudo chrony socat curl ca-certificates fuse3 iptables git nfs-common less nftables iputils-ping jq bash"
+        PACKAGES="systemd systemd-sysv passwd openssh-server sudo chrony socat curl ca-certificates fuse3 iptables git nfs-common less nftables iputils-ping jq bash"
         ;;
     rhel)
-        PACKAGES="systemd openssh-server sudo chrony socat curl ca-certificates fuse3 iptables git nfs-utils less nftables iputils jq bash"
+        PACKAGES="systemd shadow-utils passwd openssh-server sudo chrony socat curl ca-certificates fuse3 iptables git nfs-utils less nftables iputils jq bash"
         ;;
     suse)
-        PACKAGES="systemd openssh sudo chrony socat curl ca-certificates fuse3 iptables git nfs-client less nftables iputils jq bash"
+        PACKAGES="systemd shadow openssh sudo chrony socat curl ca-certificates fuse3 iptables git nfs-client less nftables iputils jq bash"
         ;;
     arch)
-        PACKAGES="systemd openssh sudo chrony socat curl ca-certificates fuse3 iptables git nfs-utils less nftables iputils jq bash"
+        PACKAGES="systemd shadow openssh sudo chrony socat curl ca-certificates fuse3 iptables git nfs-utils less nftables iputils jq bash"
         ;;
 esac
 
