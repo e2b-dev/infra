@@ -246,8 +246,11 @@ func createTmpfsMountWithInodes(t *testing.T, sizeInBytes, inodesCount int) stri
 	t.Cleanup(func() {
 		ctx := context.WithoutCancel(t.Context())
 		cmd := exec.CommandContext(ctx, "umount", tempDir)
-		err := cmd.Run()
-		require.NoError(t, err)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			cmd = exec.CommandContext(ctx, "umount", "--lazy", tempDir)
+			lazyOutput, lazyErr := cmd.CombinedOutput()
+			require.NoError(t, lazyErr, "umount failed: %s; lazy umount failed: %s", output, lazyOutput)
+		}
 	})
 
 	return tempDir
