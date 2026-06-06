@@ -404,6 +404,14 @@ func signalProcessGroup(cmd *exec.Cmd, signal syscall.Signal) error {
 		return errors.New("process not started")
 	}
 
+	// Once the leader has been reaped (ProcessState set by cmd.Wait) the kernel
+	// is free to recycle its pid. A raw kill(-pid) could then land on an
+	// unrelated command that reused the pid as its own process group leader, so
+	// bail out here just as Go's os.Process.Signal does via ErrProcessDone.
+	if cmd.ProcessState != nil {
+		return os.ErrProcessDone
+	}
+
 	err := syscall.Kill(-cmd.Process.Pid, signal)
 	if err != nil && !errors.Is(err, syscall.ESRCH) {
 		return err

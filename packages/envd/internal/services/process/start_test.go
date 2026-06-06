@@ -9,7 +9,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -189,10 +188,28 @@ func childrenOf(t *testing.T, ppid int) []int {
 	return children
 }
 
-// processAlive reports whether the given pid still exists.
+// processAlive reports whether the given pid exists and is not a zombie.
+// kill(pid, 0) succeeds for killed-but-unreaped processes, so we read the
+// process state from /proc and treat zombies (state "Z") as not alive — the
+// orphaned children may not be reaped promptly depending on who PID 1 is.
 func processAlive(pid int) bool {
-	// Signal 0 performs error checking without actually sending a signal.
-	return syscall.Kill(pid, 0) == nil
+	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
+	if err != nil {
+		// Gone from /proc entirely — definitely not alive.
+		return false
+	}
+
+	// /proc/<pid>/stat: pid (comm) state ...; comm can contain spaces/parens,
+	// so the state is the first field after the closing paren.
+	stat := string(data)
+	idx := strings.LastIndex(stat, ")")
+	if idx == -1 {
+		return false
+	}
+
+	fields := strings.Fields(stat[idx+1:])
+
+	return len(fields) > 0 && fields[0] != "Z"
 }
 
 // TestStart_ClientDisconnectMidStream verifies that when a client
