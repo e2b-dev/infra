@@ -24,13 +24,13 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
 const (
 	defaultNice      = 0
 	defaultOomScore  = 100
 	outputBufferSize = 64
+	systemTag        = "_system"
 	stdChunkSize     = 32 << 10 // 32 KiB
 	ptyChunkSize     = 16 << 10 // 16 KiB
 )
@@ -338,7 +338,7 @@ func New(
 }
 
 func getProcType(req *rpc.StartRequest) cgroups.ProcessType {
-	if req != nil && req.GetTag() == consts.SystemTag {
+	if req != nil && req.GetTag() == systemTag {
 		return cgroups.ProcessTypeSystem
 	}
 
