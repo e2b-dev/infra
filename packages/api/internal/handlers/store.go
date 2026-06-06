@@ -431,8 +431,8 @@ func (a *APIStore) GetTeamFromAdminToken(ctx context.Context, _ *gin.Context, te
 		}
 
 		return nil, &api.APIError{
-			Code:      http.StatusNotFound,
-			ClientMsg: "Team not found",
+			Code:      http.StatusInternalServerError,
+			ClientMsg: "Backend authentication failed",
 			Err:       fmt.Errorf("failed getting team: %w", err),
 		}
 	}
