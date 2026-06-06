@@ -26,6 +26,11 @@ const (
 	// tunnelKeepAliveInterval pings the WebSocket peer to keep the connection alive
 	// through the upstream proxies' idle timeouts (orchestrator/client-proxy ~620s).
 	tunnelKeepAliveInterval = 30 * time.Second
+
+	// tunnelPingTimeout bounds how long we wait for a pong before treating the
+	// connection as dead. Without it a silently-dead connection would block the
+	// ping indefinitely.
+	tunnelPingTimeout = 5 * time.Second
 )
 
 // GetTunnel upgrades the request to a WebSocket and relays raw TCP bytes between
@@ -141,7 +146,15 @@ func (a *API) tunnelKeepAlive(ctx context.Context, conn *websocket.Conn) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := conn.Ping(ctx); err != nil {
+			pingCtx, pingCancel := context.WithTimeout(ctx, tunnelPingTimeout)
+			err := conn.Ping(pingCtx)
+			pingCancel()
+			if err != nil {
+				// A failed ping means the connection is dead. Close it so the relay's
+				// io.Copy calls unblock and the tunnel tears down immediately, instead
+				// of lingering until an upstream proxy idle timeout.
+				conn.CloseNow()
+
 				return
 			}
 		}
