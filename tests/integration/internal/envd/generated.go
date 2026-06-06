@@ -217,6 +217,15 @@ type PostInitJSONBody struct {
 	VolumeMounts *[]VolumeMount `json:"volumeMounts,omitempty"`
 }
 
+// GetTunnelParams defines parameters for GetTunnel.
+type GetTunnelParams struct {
+	// Host Target host to connect to inside the sandbox. Defaults to "localhost".
+	Host *string `form:"host,omitempty" json:"host,omitempty"`
+
+	// Port Target TCP port to connect to inside the sandbox.
+	Port int `form:"port" json:"port"`
+}
+
 // PostFilesMultipartRequestBody defines body for PostFiles for multipart/form-data ContentType.
 type PostFilesMultipartRequestBody PostFilesMultipartBody
 
@@ -326,6 +335,9 @@ type ClientInterface interface {
 
 	// GetMetrics request
 	GetMetrics(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetTunnel request
+	GetTunnel(ctx context.Context, params *GetTunnelParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PostUnfreeze request
 	PostUnfreeze(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -441,6 +453,18 @@ func (c *Client) PostInit(ctx context.Context, body PostInitJSONRequestBody, req
 
 func (c *Client) GetMetrics(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetMetricsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetTunnel(ctx context.Context, params *GetTunnelParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTunnelRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -833,6 +857,68 @@ func NewGetMetricsRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewGetTunnelRequest generates requests for GetTunnel
+func NewGetTunnelRequest(server string, params *GetTunnelParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/tunnel")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Host != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "host", *params.Host, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "port", params.Port, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewPostUnfreezeRequest generates requests for PostUnfreeze
 func NewPostUnfreezeRequest(server string) (*http.Request, error) {
 	var err error
@@ -930,6 +1016,9 @@ type ClientWithResponsesInterface interface {
 
 	// GetMetricsWithResponse request
 	GetMetricsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetMetricsResponse, error)
+
+	// GetTunnelWithResponse request
+	GetTunnelWithResponse(ctx context.Context, params *GetTunnelParams, reqEditors ...RequestEditorFn) (*GetTunnelResponse, error)
 
 	// PostUnfreezeWithResponse request
 	PostUnfreezeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*PostUnfreezeResponse, error)
@@ -1186,6 +1275,38 @@ func (r GetMetricsResponse) ContentType() string {
 	return ""
 }
 
+type GetTunnelResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *InvalidPath
+	JSON401      *InvalidUser
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetTunnelResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetTunnelResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetTunnelResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type PostUnfreezeResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -1302,6 +1423,15 @@ func (c *ClientWithResponses) GetMetricsWithResponse(ctx context.Context, reqEdi
 		return nil, err
 	}
 	return ParseGetMetricsResponse(rsp)
+}
+
+// GetTunnelWithResponse request returning *GetTunnelResponse
+func (c *ClientWithResponses) GetTunnelWithResponse(ctx context.Context, params *GetTunnelParams, reqEditors ...RequestEditorFn) (*GetTunnelResponse, error) {
+	rsp, err := c.GetTunnel(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetTunnelResponse(rsp)
 }
 
 // PostUnfreezeWithResponse request returning *PostUnfreezeResponse
@@ -1586,6 +1716,46 @@ func ParseGetMetricsResponse(rsp *http.Response) (*GetMetricsResponse, error) {
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetTunnelResponse parses an HTTP response from a GetTunnelWithResponse call
+func ParseGetTunnelResponse(rsp *http.Response) (*GetTunnelResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetTunnelResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest InvalidPath
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest InvalidUser
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
 
 	}
 
