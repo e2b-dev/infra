@@ -1049,16 +1049,12 @@ func TestTemplateBuildInstalledPackagesAvailable(t *testing.T) {
 				"nfs-common", "less", "nftables", "iputils-ping", "jq", "bash",
 			},
 		},
-		{
-			name:      "fedora",
-			fromImage: "fedora:40",
-			verify:    rpmVerify,
-			packages: []string{
-				"systemd", "openssh-server", "sudo", "chrony", "socat", "curl",
-				"ca-certificates", "fuse3", "iptables-nft", "git", "nfs-utils",
-				"less", "nftables", "iputils", "jq", "bash",
-			},
-		},
+		// NOTE: Fedora (dnf/RHEL family) is intentionally NOT tested here. It
+		// takes the exact same "rhel" provisioning path as AlmaLinux below
+		// (same PKG_FAMILY, package list, and install commands), so it adds no
+		// provisioning-code coverage. The fedora:40 base is also the heaviest
+		// image and, when all distro cases run in parallel, boots past envd's
+		// init timeout under CI node contention. AlmaLinux covers the family.
 		{
 			name:      "almalinux",
 			fromImage: "almalinux:9",
