@@ -53,7 +53,9 @@ type ClickhouseDelivery struct {
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/clickhouse/pkg/events")
 
-func NewDefaultClickhouseSandboxEventsDelivery(ctx context.Context, conn driver.Conn, featureFlags *featureflags.Client) (*ClickhouseDelivery, error) {
+const DefaultBatcherName = "sandbox-events"
+
+func NewDefaultClickhouseSandboxEventsDelivery(ctx context.Context, conn driver.Conn, featureFlags *featureflags.Client, batcherName string) (*ClickhouseDelivery, error) {
 	maxBatchSize := featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherMaxBatchSize)
 
 	maxDelay := time.Duration(featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherMaxDelay)) * time.Millisecond
@@ -62,7 +64,7 @@ func NewDefaultClickhouseSandboxEventsDelivery(ctx context.Context, conn driver.
 
 	return NewClickhouseSandboxEventsDelivery(
 		ctx, conn, batcher.BatcherOptions{
-			Name:         "sandbox-events",
+			Name:         batcherName,
 			MaxBatchSize: maxBatchSize,
 			MaxDelay:     maxDelay,
 			QueueSize:    batcherQueueSize,
@@ -112,7 +114,8 @@ func (c *ClickhouseDelivery) Publish(_ context.Context, _ string, event events.S
 	})
 }
 
-func (c *ClickhouseDelivery) Close(context.Context) error {
+// Close waits for queued items to flush.
+func (c *ClickhouseDelivery) Close(_ context.Context) error {
 	return c.batcher.Stop()
 }
 
@@ -128,6 +131,7 @@ func (c *ClickhouseDelivery) batchInserter(ctx context.Context, events []Sandbox
 
 		return fmt.Errorf("error preparing batch: %w", err)
 	}
+	defer batch.Close()
 
 	for _, event := range events {
 		err := batch.Append(
