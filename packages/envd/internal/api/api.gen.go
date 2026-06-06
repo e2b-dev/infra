@@ -214,6 +214,15 @@ type PostInitJSONBody struct {
 	VolumeMounts *[]VolumeMount `json:"volumeMounts,omitempty"`
 }
 
+// GetTunnelParams defines parameters for GetTunnel.
+type GetTunnelParams struct {
+	// Host Target host to connect to inside the sandbox. Defaults to "localhost".
+	Host *string `form:"host,omitempty" json:"host,omitempty"`
+
+	// Port Target TCP port to connect to inside the sandbox.
+	Port int `form:"port" json:"port"`
+}
+
 // PostFilesMultipartRequestBody defines body for PostFiles for multipart/form-data ContentType.
 type PostFilesMultipartRequestBody PostFilesMultipartBody
 
@@ -249,6 +258,9 @@ type ServerInterface interface {
 	// Get the stats of the service
 	// (GET /metrics)
 	GetMetrics(w http.ResponseWriter, r *http.Request)
+	// Open a raw TCP tunnel to a target reachable inside the sandbox over a WebSocket
+	// (GET /tunnel)
+	GetTunnel(w http.ResponseWriter, r *http.Request, params GetTunnelParams)
 	// Unfreeze user/pty/socat cgroups. Intended ONLY for the orchestrator's pause-failure rollback path; the normal resume thaw happens via /init's deferred unfreeze, not here.
 	// (POST /unfreeze)
 	PostUnfreeze(w http.ResponseWriter, r *http.Request)
@@ -303,6 +315,12 @@ func (_ Unimplemented) PostInit(w http.ResponseWriter, r *http.Request) {
 // Get the stats of the service
 // (GET /metrics)
 func (_ Unimplemented) GetMetrics(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Open a raw TCP tunnel to a target reachable inside the sandbox over a WebSocket
+// (GET /tunnel)
+func (_ Unimplemented) GetTunnel(w http.ResponseWriter, r *http.Request, params GetTunnelParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -591,6 +609,58 @@ func (siw *ServerInterfaceWrapper) GetMetrics(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// GetTunnel operation middleware
+func (siw *ServerInterfaceWrapper) GetTunnel(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTunnelParams
+
+	// ------------- Optional query parameter "host" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "host", r.URL.Query(), &params.Host, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "host"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "host", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "port" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "port", r.URL.Query(), &params.Port, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "port"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "port", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTunnel(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PostUnfreeze operation middleware
 func (siw *ServerInterfaceWrapper) PostUnfreeze(w http.ResponseWriter, r *http.Request) {
 
@@ -747,6 +817,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/metrics", wrapper.GetMetrics)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/tunnel", wrapper.GetTunnel)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/unfreeze", wrapper.PostUnfreeze)

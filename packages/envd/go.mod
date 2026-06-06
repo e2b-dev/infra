@@ -11,6 +11,7 @@ require (
 	connectrpc.com/connect v1.18.1
 	connectrpc.com/cors v0.1.0
 	github.com/awnumar/memguard v0.23.0
+	github.com/coder/websocket v1.8.13
 	github.com/creack/pty v1.1.24
 	github.com/e2b-dev/fsnotify v0.0.1
 	github.com/e2b-dev/infra/packages/shared v0.0.0
