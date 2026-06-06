@@ -1095,13 +1095,22 @@ func TestTemplateBuildInstalledPackagesAvailable(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			steps := make([]api.TemplateStep, 0, len(tc.packages))
+			steps := make([]api.TemplateStep, 0, len(tc.packages)+1)
 			for _, pkg := range tc.packages {
 				steps = append(steps, api.TemplateStep{
 					Type: "RUN",
 					Args: new([]string{tc.verify(pkg)}),
 				})
 			}
+
+			// Assert the Debian-style CA bundle path that envd's CA injection
+			// requires exists on every distro family. On non-Debian images
+			// provision.sh has to synthesize it (via update-ca-trust or a
+			// symlink), so this guards against that path being skipped.
+			steps = append(steps, api.TemplateStep{
+				Type: "RUN",
+				Args: new([]string{"test -s /etc/ssl/certs/ca-certificates.crt"}),
+			})
 
 			buildConfig := api.TemplateBuildStartV2{
 				Force:     new(ForceBaseBuild),

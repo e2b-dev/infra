@@ -53,6 +53,9 @@ func (u *User) Execute(
 
 	// Only create user if it doesn't exist
 	if !userExists {
+		// useradd is part of shadow-utils and available on every supported
+		// distro family (Debian/Ubuntu, RHEL/Fedora, openSUSE, Arch), unlike
+		// Debian's adduser wrapper. -m creates the home dir, -s sets the shell.
 		err = sandboxtools.RunCommandWithLogger(
 			ctx,
 			proxy,
@@ -60,7 +63,7 @@ func (u *User) Execute(
 			lvl,
 			prefix,
 			sandboxID,
-			fmt.Sprintf("adduser --disabled-password --gecos \"\" %s", userArg),
+			fmt.Sprintf("useradd -m -s /bin/bash %s", userArg),
 			metadata.Context{
 				User:    "root",
 				EnvVars: cmdMetadata.EnvVars,
@@ -91,7 +94,8 @@ func addToSudoers(
 	cmdMetadata metadata.Context,
 	userArg string,
 ) (metadata.Context, error) {
-	// Add user to sudo group
+	// Add user to the admin group. The group name differs across distros:
+	// "sudo" on Debian/Ubuntu, "wheel" on RHEL/Fedora/openSUSE/Arch.
 	err := sandboxtools.RunCommandWithLogger(
 		ctx,
 		proxy,
@@ -99,7 +103,7 @@ func addToSudoers(
 		lvl,
 		prefix,
 		sandboxID,
-		fmt.Sprintf("usermod -aG sudo %s", userArg),
+		fmt.Sprintf("usermod -aG sudo %s 2>/dev/null || usermod -aG wheel %s", userArg, userArg),
 		metadata.Context{
 			User:    "root",
 			EnvVars: cmdMetadata.EnvVars,

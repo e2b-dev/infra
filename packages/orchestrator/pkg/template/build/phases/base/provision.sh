@@ -19,10 +19,13 @@ $BUSYBOX chattr +i /etc/resolv.conf
 RPM_INSTALL=""
 if command -v apt-get >/dev/null 2>&1; then
     PKG_FAMILY="debian"
+# --allowerasing lets dnf/yum swap conflicting packages (e.g. replace the
+# preinstalled curl-minimal with the full curl package on RHEL/Alma) instead of
+# failing the whole transaction.
 elif command -v dnf >/dev/null 2>&1; then
-    PKG_FAMILY="rhel"; RPM_INSTALL="dnf -y install"
+    PKG_FAMILY="rhel"; RPM_INSTALL="dnf -y --allowerasing install"
 elif command -v yum >/dev/null 2>&1; then
-    PKG_FAMILY="rhel"; RPM_INSTALL="yum -y install"
+    PKG_FAMILY="rhel"; RPM_INSTALL="yum -y --allowerasing install"
 elif command -v microdnf >/dev/null 2>&1; then
     PKG_FAMILY="rhel"; RPM_INSTALL="microdnf -y install"
 elif command -v zypper >/dev/null 2>&1; then
@@ -154,8 +157,8 @@ echo "Disable system first boot wizard"
 systemctl mask systemd-firstboot.service
 
 # The chrony service unit name differs across distros (chrony on Debian,
-# chronyd on RHEL/SUSE/Arch). rootfs.go statically enables chrony.service for
-# Debian; enable the correct unit here for the others (idempotent on Debian).
+# chronyd on RHEL/SUSE/Arch). Enable whichever exists; this is the single place
+# chrony autostart is configured for every distro family.
 echo "Enabling time synchronization service"
 systemctl enable chronyd 2>/dev/null || systemctl enable chrony 2>/dev/null || true
 
@@ -165,14 +168,30 @@ systemctl enable chronyd 2>/dev/null || systemctl enable chrony 2>/dev/null || t
 # /etc/pki, so expose it under the Debian-style path envd expects.
 echo "Ensuring CA certificate bundle exists"
 if [ ! -s /etc/ssl/certs/ca-certificates.crt ]; then
+    # Run both helpers sequentially rather than as if/elif: openSUSE ships
+    # update-ca-certificates but it writes to /var/lib/ca-certificates and does
+    # NOT create the Debian-style path, so we must still fall through to the
+    # update-ca-trust step and the symlink fallback below.
     if command -v update-ca-certificates >/dev/null 2>&1; then
         update-ca-certificates || true
-    elif command -v update-ca-trust >/dev/null 2>&1; then
+    fi
+    if [ ! -s /etc/ssl/certs/ca-certificates.crt ] && command -v update-ca-trust >/dev/null 2>&1; then
         update-ca-trust extract || true
-        if [ ! -s /etc/ssl/certs/ca-certificates.crt ] && [ -s /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem ]; then
-            mkdir -p /etc/ssl/certs
-            ln -sf /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem /etc/ssl/certs/ca-certificates.crt
-        fi
+    fi
+    # If the canonical path still doesn't exist, symlink it to whichever
+    # distro-specific bundle was generated (RHEL/Arch under /etc/pki, openSUSE
+    # under /var/lib/ca-certificates or /etc/ssl).
+    if [ ! -s /etc/ssl/certs/ca-certificates.crt ]; then
+        mkdir -p /etc/ssl/certs
+        for src in \
+            /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem \
+            /var/lib/ca-certificates/ca-bundle.pem \
+            /etc/ssl/ca-bundle.pem; do
+            if [ -s "$src" ]; then
+                ln -sf "$src" /etc/ssl/certs/ca-certificates.crt
+                break
+            fi
+        done
     fi
 fi
 
