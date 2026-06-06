@@ -102,7 +102,7 @@ func (a *APIStore) getSandboxLogs(
 	direction *api.LogsDirection,
 	level *logs.LogLevel,
 	search *string,
-	cid *string,
+	pid *string,
 ) (api.SandboxLogs, *api.APIError) {
 	clusterID := clustersshared.WithClusterFallback(team.ClusterID)
 	cluster, ok := a.clusters.GetClusterById(clusterID)
@@ -114,7 +114,7 @@ func (a *APIStore) getSandboxLogs(
 		}
 	}
 
-	logs, apiErr := cluster.GetResources().GetSandboxLogs(ctx, team.ID.String(), sandboxID, start, end, limit, direction, level, search, cid)
+	logs, apiErr := cluster.GetResources().GetSandboxLogs(ctx, team.ID.String(), sandboxID, start, end, limit, direction, level, search, pid)
 	if apiErr != nil {
 		return api.SandboxLogs{}, apiErr
 	}

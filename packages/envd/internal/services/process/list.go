@@ -17,7 +17,6 @@ func (s *Service) List(context.Context, *connect.Request[rpc.ListRequest]) (*con
 			Pid:    pid,
 			Tag:    value.Tag,
 			Config: value.Config,
-			Cid:    value.Cid,
 		})
 
 		return true

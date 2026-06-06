@@ -43,9 +43,6 @@ message ProcessInfo {
     ProcessConfig config = 1;
     uint32 pid = 2;
     optional string tag = 3;
-    // Unique per-execution command ID assigned by envd. Used to retrieve the
-    // command's persisted output logs later (unlike pid, it is never reused).
-    string cid = 4;
 }
 
 message ListResponse {
@@ -79,9 +76,6 @@ message ProcessEvent {
     
     message StartEvent {
         uint32 pid = 1;
-        // Unique per-execution command ID assigned by envd. Used to retrieve the
-        // command's persisted output logs later (unlike pid, it is never reused).
-        string cid = 2;
     }
 
     message DataEvent {

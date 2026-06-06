@@ -1599,10 +1599,13 @@ type GetV2SandboxesParams struct {
 	Limit *PaginationLimit `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
-// GetV2SandboxesSandboxIDCommandsCidLogsParams defines parameters for GetV2SandboxesSandboxIDCommandsCidLogs.
-type GetV2SandboxesSandboxIDCommandsCidLogsParams struct {
-	// Cursor Starting timestamp of the logs that should be returned in milliseconds
-	Cursor *int64 `form:"cursor,omitempty" json:"cursor,omitempty"`
+// GetV2SandboxesSandboxIDCommandsPidLogsParams defines parameters for GetV2SandboxesSandboxIDCommandsPidLogs.
+type GetV2SandboxesSandboxIDCommandsPidLogsParams struct {
+	// Start Start of the time window in milliseconds (defaults to the start of the retention window). Should match when the command started.
+	Start *int64 `form:"start,omitempty" json:"start,omitempty"`
+
+	// End End of the time window in milliseconds (defaults to now). Should match when the command ended, or be left open for a running command.
+	End *int64 `form:"end,omitempty" json:"end,omitempty"`
 
 	// Limit Maximum number of logs that should be returned
 	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
@@ -2068,8 +2071,8 @@ type ClientInterface interface {
 	// GetV2Sandboxes request
 	GetV2Sandboxes(ctx context.Context, params *GetV2SandboxesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetV2SandboxesSandboxIDCommandsCidLogs request
-	GetV2SandboxesSandboxIDCommandsCidLogs(ctx context.Context, sandboxID SandboxID, cid string, params *GetV2SandboxesSandboxIDCommandsCidLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// GetV2SandboxesSandboxIDCommandsPidLogs request
+	GetV2SandboxesSandboxIDCommandsPidLogs(ctx context.Context, sandboxID SandboxID, pid int32, params *GetV2SandboxesSandboxIDCommandsPidLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV2SandboxesSandboxIDLogs request
 	GetV2SandboxesSandboxIDLogs(ctx context.Context, sandboxID SandboxID, params *GetV2SandboxesSandboxIDLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2877,8 +2880,8 @@ func (c *Client) GetV2Sandboxes(ctx context.Context, params *GetV2SandboxesParam
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV2SandboxesSandboxIDCommandsCidLogs(ctx context.Context, sandboxID SandboxID, cid string, params *GetV2SandboxesSandboxIDCommandsCidLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV2SandboxesSandboxIDCommandsCidLogsRequest(c.Server, sandboxID, cid, params)
+func (c *Client) GetV2SandboxesSandboxIDCommandsPidLogs(ctx context.Context, sandboxID SandboxID, pid int32, params *GetV2SandboxesSandboxIDCommandsPidLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV2SandboxesSandboxIDCommandsPidLogsRequest(c.Server, sandboxID, pid, params)
 	if err != nil {
 		return nil, err
 	}
@@ -5384,8 +5387,8 @@ func NewGetV2SandboxesRequest(server string, params *GetV2SandboxesParams) (*htt
 	return req, nil
 }
 
-// NewGetV2SandboxesSandboxIDCommandsCidLogsRequest generates requests for GetV2SandboxesSandboxIDCommandsCidLogs
-func NewGetV2SandboxesSandboxIDCommandsCidLogsRequest(server string, sandboxID SandboxID, cid string, params *GetV2SandboxesSandboxIDCommandsCidLogsParams) (*http.Request, error) {
+// NewGetV2SandboxesSandboxIDCommandsPidLogsRequest generates requests for GetV2SandboxesSandboxIDCommandsPidLogs
+func NewGetV2SandboxesSandboxIDCommandsPidLogsRequest(server string, sandboxID SandboxID, pid int32, params *GetV2SandboxesSandboxIDCommandsPidLogsParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -5397,7 +5400,7 @@ func NewGetV2SandboxesSandboxIDCommandsCidLogsRequest(server string, sandboxID S
 
 	var pathParam1 string
 
-	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "cid", cid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "pid", pid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: "int32"})
 	if err != nil {
 		return nil, err
 	}
@@ -5426,9 +5429,21 @@ func NewGetV2SandboxesSandboxIDCommandsCidLogsRequest(server string, sandboxID S
 		// per the OpenAPI spec (e.g. "color=blue,black,brown").
 		var rawQueryFragments []string
 
-		if params.Cursor != nil {
+		if params.Start != nil {
 
-			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "start", *params.Start, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.End != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "end", *params.End, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -6143,8 +6158,8 @@ type ClientWithResponsesInterface interface {
 	// GetV2SandboxesWithResponse request
 	GetV2SandboxesWithResponse(ctx context.Context, params *GetV2SandboxesParams, reqEditors ...RequestEditorFn) (*GetV2SandboxesResponse, error)
 
-	// GetV2SandboxesSandboxIDCommandsCidLogsWithResponse request
-	GetV2SandboxesSandboxIDCommandsCidLogsWithResponse(ctx context.Context, sandboxID SandboxID, cid string, params *GetV2SandboxesSandboxIDCommandsCidLogsParams, reqEditors ...RequestEditorFn) (*GetV2SandboxesSandboxIDCommandsCidLogsResponse, error)
+	// GetV2SandboxesSandboxIDCommandsPidLogsWithResponse request
+	GetV2SandboxesSandboxIDCommandsPidLogsWithResponse(ctx context.Context, sandboxID SandboxID, pid int32, params *GetV2SandboxesSandboxIDCommandsPidLogsParams, reqEditors ...RequestEditorFn) (*GetV2SandboxesSandboxIDCommandsPidLogsResponse, error)
 
 	// GetV2SandboxesSandboxIDLogsWithResponse request
 	GetV2SandboxesSandboxIDLogsWithResponse(ctx context.Context, sandboxID SandboxID, params *GetV2SandboxesSandboxIDLogsParams, reqEditors ...RequestEditorFn) (*GetV2SandboxesSandboxIDLogsResponse, error)
@@ -7723,7 +7738,7 @@ func (r GetV2SandboxesResponse) ContentType() string {
 	return ""
 }
 
-type GetV2SandboxesSandboxIDCommandsCidLogsResponse struct {
+type GetV2SandboxesSandboxIDCommandsPidLogsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON200      *SandboxLogsV2Response
@@ -7733,7 +7748,7 @@ type GetV2SandboxesSandboxIDCommandsCidLogsResponse struct {
 }
 
 // Status returns HTTPResponse.Status
-func (r GetV2SandboxesSandboxIDCommandsCidLogsResponse) Status() string {
+func (r GetV2SandboxesSandboxIDCommandsPidLogsResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -7741,7 +7756,7 @@ func (r GetV2SandboxesSandboxIDCommandsCidLogsResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r GetV2SandboxesSandboxIDCommandsCidLogsResponse) StatusCode() int {
+func (r GetV2SandboxesSandboxIDCommandsPidLogsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -7749,7 +7764,7 @@ func (r GetV2SandboxesSandboxIDCommandsCidLogsResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r GetV2SandboxesSandboxIDCommandsCidLogsResponse) ContentType() string {
+func (r GetV2SandboxesSandboxIDCommandsPidLogsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -8609,13 +8624,13 @@ func (c *ClientWithResponses) GetV2SandboxesWithResponse(ctx context.Context, pa
 	return ParseGetV2SandboxesResponse(rsp)
 }
 
-// GetV2SandboxesSandboxIDCommandsCidLogsWithResponse request returning *GetV2SandboxesSandboxIDCommandsCidLogsResponse
-func (c *ClientWithResponses) GetV2SandboxesSandboxIDCommandsCidLogsWithResponse(ctx context.Context, sandboxID SandboxID, cid string, params *GetV2SandboxesSandboxIDCommandsCidLogsParams, reqEditors ...RequestEditorFn) (*GetV2SandboxesSandboxIDCommandsCidLogsResponse, error) {
-	rsp, err := c.GetV2SandboxesSandboxIDCommandsCidLogs(ctx, sandboxID, cid, params, reqEditors...)
+// GetV2SandboxesSandboxIDCommandsPidLogsWithResponse request returning *GetV2SandboxesSandboxIDCommandsPidLogsResponse
+func (c *ClientWithResponses) GetV2SandboxesSandboxIDCommandsPidLogsWithResponse(ctx context.Context, sandboxID SandboxID, pid int32, params *GetV2SandboxesSandboxIDCommandsPidLogsParams, reqEditors ...RequestEditorFn) (*GetV2SandboxesSandboxIDCommandsPidLogsResponse, error) {
+	rsp, err := c.GetV2SandboxesSandboxIDCommandsPidLogs(ctx, sandboxID, pid, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseGetV2SandboxesSandboxIDCommandsCidLogsResponse(rsp)
+	return ParseGetV2SandboxesSandboxIDCommandsPidLogsResponse(rsp)
 }
 
 // GetV2SandboxesSandboxIDLogsWithResponse request returning *GetV2SandboxesSandboxIDLogsResponse
@@ -10864,15 +10879,15 @@ func ParseGetV2SandboxesResponse(rsp *http.Response) (*GetV2SandboxesResponse, e
 	return response, nil
 }
 
-// ParseGetV2SandboxesSandboxIDCommandsCidLogsResponse parses an HTTP response from a GetV2SandboxesSandboxIDCommandsCidLogsWithResponse call
-func ParseGetV2SandboxesSandboxIDCommandsCidLogsResponse(rsp *http.Response) (*GetV2SandboxesSandboxIDCommandsCidLogsResponse, error) {
+// ParseGetV2SandboxesSandboxIDCommandsPidLogsResponse parses an HTTP response from a GetV2SandboxesSandboxIDCommandsPidLogsWithResponse call
+func ParseGetV2SandboxesSandboxIDCommandsPidLogsResponse(rsp *http.Response) (*GetV2SandboxesSandboxIDCommandsPidLogsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &GetV2SandboxesSandboxIDCommandsCidLogsResponse{
+	response := &GetV2SandboxesSandboxIDCommandsPidLogsResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}

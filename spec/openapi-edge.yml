@@ -444,10 +444,10 @@ paths:
             maxLength: 256
           description: Case-sensitive substring match on log message content
         - in: query
-          name: cid
+          name: pid
           schema:
             type: string
-          description: Restrict the logs to the output of a single command identified by its envd-assigned command ID
+          description: Restrict the logs to the output of a single command identified by its process ID (pid). Combine with start/end to disambiguate reused pids.
       responses:
         "200":
           description: Successfully returned the sandbox logs

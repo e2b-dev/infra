@@ -14,7 +14,7 @@ import (
 type logLine struct {
 	EventType string `json:"event_type"`
 	Stream    string `json:"stream"`
-	Cid       string `json:"cid"`
+	Pid       uint32 `json:"pid"`
 	Message   string `json:"message"`
 	Level     string `json:"level"`
 }
@@ -36,20 +36,24 @@ func parseLines(t *testing.T, raw []byte) []logLine {
 	return lines
 }
 
-func newCapturingLogger(cid string) (*zerolog.Logger, *bytes.Buffer) {
+func newCapturingLogger() (*zerolog.Logger, *bytes.Buffer) {
 	buf := &bytes.Buffer{}
-	l := zerolog.New(buf).With().Str("cid", cid).Logger()
+	l := zerolog.New(buf)
 
 	return &l, buf
 }
 
+const testPid = uint32(1234)
+
+func testPidFn() uint32 { return testPid }
+
 // TestOutputLogger_SplitsLines verifies output is emitted one log line per newline,
-// carrying the cid (bound on the logger), the stream, and the line content as message.
+// carrying the pid, the stream, and the line content as message.
 func TestOutputLogger_SplitsLines(t *testing.T) {
 	t.Parallel()
 
-	logger, buf := newCapturingLogger("cmd-1")
-	o := newOutputLogger(logger, newCommandLogBudget(), "stdout")
+	logger, buf := newCapturingLogger()
+	o := newOutputLogger(logger, newCommandLogBudget(), "stdout", testPidFn)
 
 	// Chunk boundaries deliberately split a line ("hel" + "lo\nworld").
 	o.write([]byte("hel"))
@@ -60,7 +64,7 @@ func TestOutputLogger_SplitsLines(t *testing.T) {
 
 	lines := parseLines(t, buf.Bytes())
 	require.Len(t, lines, 2)
-	assert.Equal(t, logLine{EventType: "process_output", Stream: "stdout", Cid: "cmd-1", Message: "hello", Level: "info"}, lines[0])
+	assert.Equal(t, logLine{EventType: "process_output", Stream: "stdout", Pid: testPid, Message: "hello", Level: "info"}, lines[0])
 	assert.Equal(t, "world", lines[1].Message)
 
 	o.flush()
@@ -73,8 +77,8 @@ func TestOutputLogger_SplitsLines(t *testing.T) {
 func TestOutputLogger_TrimsCarriageReturn(t *testing.T) {
 	t.Parallel()
 
-	logger, buf := newCapturingLogger("cmd-1")
-	o := newOutputLogger(logger, newCommandLogBudget(), "stderr")
+	logger, buf := newCapturingLogger()
+	o := newOutputLogger(logger, newCommandLogBudget(), "stderr", testPidFn)
 
 	o.write([]byte("crlf-line\r\n"))
 
@@ -89,10 +93,10 @@ func TestOutputLogger_TrimsCarriageReturn(t *testing.T) {
 func TestOutputLogger_PerCommandCap(t *testing.T) {
 	t.Parallel()
 
-	logger, buf := newCapturingLogger("cmd-1")
+	logger, buf := newCapturingLogger()
 	budget := newCommandLogBudget()
-	stdoutLog := newOutputLogger(logger, budget, "stdout")
-	stderrLog := newOutputLogger(logger, budget, "stderr")
+	stdoutLog := newOutputLogger(logger, budget, "stdout", testPidFn)
+	stderrLog := newOutputLogger(logger, budget, "stderr", testPidFn)
 
 	// One full line is ~maxOutputLineBytes; emit well past maxCommandOutputBytes.
 	line := strings.Repeat("a", maxOutputLineBytes) + "\n"

@@ -52,15 +52,17 @@ func (b *commandLogBudget) markTruncated(logger *zerolog.Logger) {
 type outputLogger struct {
 	logger *zerolog.Logger
 	budget *commandLogBudget
-	stream string // "stdout" or "stderr"
-	buf    []byte // accumulated bytes of the current, not-yet-terminated line
+	stream string        // "stdout" or "stderr"
+	pid    func() uint32 // process pid, resolved lazily (only valid after the process starts)
+	buf    []byte        // accumulated bytes of the current, not-yet-terminated line
 }
 
-func newOutputLogger(logger *zerolog.Logger, budget *commandLogBudget, stream string) *outputLogger {
+func newOutputLogger(logger *zerolog.Logger, budget *commandLogBudget, stream string, pid func() uint32) *outputLogger {
 	return &outputLogger{
 		logger: logger,
 		budget: budget,
 		stream: stream,
+		pid:    pid,
 	}
 }
 
@@ -113,11 +115,12 @@ func (o *outputLogger) emitLine(line []byte) {
 		line = line[:maxOutputLineBytes]
 	}
 
-	// The cid is already bound on the logger; the line content goes into "message"
-	// so the existing sandbox-logs search filter works against command output too.
+	// pid + event_type scope retrieval to a single command's output; the line
+	// content goes into "message" so the sandbox-logs search filter works too.
 	o.logger.Info().
 		Str("event_type", "process_output").
 		Str("stream", o.stream).
+		Uint32("pid", o.pid()).
 		Msg(string(line))
 
 	if o.budget.remaining.Add(-int64(len(line))) <= 0 {

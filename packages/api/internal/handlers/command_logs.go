@@ -2,22 +2,23 @@ package handlers
 
 import (
 	"net/http"
-	"time"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-// GetV2SandboxesSandboxIDCommandsCidLogs returns the persisted output (stdout/stderr)
-// of a single command, scoped by the envd-assigned command ID (cid). It reuses the
-// sandbox logs pipeline, adding the cid as a filter.
-func (a *APIStore) GetV2SandboxesSandboxIDCommandsCidLogs(c *gin.Context, sandboxID api.SandboxID, cid string, params api.GetV2SandboxesSandboxIDCommandsCidLogsParams) {
+// GetV2SandboxesSandboxIDCommandsPidLogs returns the persisted output (stdout/stderr)
+// of a single command, scoped by its process ID (pid) and a time window. It reuses the
+// sandbox logs pipeline, adding the pid as a filter. The window disambiguates a reused
+// pid: within [start, end] a pid maps to a single command execution. When start/end are
+// omitted, the resources layer falls back to the full retention window.
+func (a *APIStore) GetV2SandboxesSandboxIDCommandsPidLogs(c *gin.Context, sandboxID api.SandboxID, pid int32, params api.GetV2SandboxesSandboxIDCommandsPidLogsParams) {
 	ctx := c.Request.Context()
 
 	var err error
@@ -28,8 +29,8 @@ func (a *APIStore) GetV2SandboxesSandboxIDCommandsCidLogs(c *gin.Context, sandbo
 		return
 	}
 
-	if cid == "" {
-		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid command ID")
+	if pid < 0 {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid command pid")
 
 		return
 	}
@@ -38,7 +39,7 @@ func (a *APIStore) GetV2SandboxesSandboxIDCommandsCidLogs(c *gin.Context, sandbo
 
 	telemetry.SetAttributes(ctx,
 		attribute.String("instance.id", sandboxID),
-		attribute.String("command.id", cid),
+		attribute.Int("command.pid", int(pid)),
 		telemetry.WithTeamID(team.ID.String()),
 	)
 
@@ -47,17 +48,9 @@ func (a *APIStore) GetV2SandboxesSandboxIDCommandsCidLogs(c *gin.Context, sandbo
 		direction = *params.Direction
 	}
 
-	var cursor *time.Time
-	if params.Cursor != nil {
-		cursor = new(time.UnixMilli(*params.Cursor))
-	}
+	pidStr := strconv.Itoa(int(pid))
 
-	start, end := clusters.LogQueryWindow(cursor, direction)
-
-	startMs := start.UnixMilli()
-	endMs := end.UnixMilli()
-
-	logs, apiErr := a.getSandboxLogs(ctx, team, sandboxID, &startMs, &endMs, params.Limit, &direction, apiToLogLevel(params.Level), params.Search, &cid)
+	logs, apiErr := a.getSandboxLogs(ctx, team, sandboxID, params.Start, params.End, params.Limit, &direction, apiToLogLevel(params.Level), params.Search, &pidStr)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportErrorByCode(ctx, apiErr.Code, "error when returning logs for command", apiErr.Err)

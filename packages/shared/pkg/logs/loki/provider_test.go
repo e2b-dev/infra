@@ -72,15 +72,15 @@ func TestBuildSandboxLogsQueryWithMessageSearch(t *testing.T) {
 	)
 }
 
-func TestBuildSandboxLogsQueryWithCid(t *testing.T) {
+func TestBuildSandboxLogsQueryWithPid(t *testing.T) {
 	t.Parallel()
 
-	cid := "abc`123"
-	query := buildSandboxLogsQuery("team-id", "sandbox-id", nil, nil, &cid)
+	pid := "12`34"
+	query := buildSandboxLogsQuery("team-id", "sandbox-id", nil, nil, &pid)
 
 	assert.Equal(
 		t,
-		"{teamID=`team-id`, sandboxID=`sandbox-id`, category!=\"metrics\"} | json | cid = `abc123` | event_type = `process_output`",
+		"{teamID=`team-id`, sandboxID=`sandbox-id`, category!=\"metrics\"} | json | pid = `1234` | event_type = `process_output`",
 		query,
 	)
 }

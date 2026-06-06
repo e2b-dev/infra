@@ -18,7 +18,6 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/creack/pty"
-	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
@@ -47,11 +46,6 @@ type Handler struct {
 	Config *rpc.ProcessConfig
 
 	logger *zerolog.Logger
-
-	// Cid is a unique per-execution command ID assigned by envd. It is returned
-	// to the client in the StartEvent and stamped on every output log line so a
-	// command's output can be retrieved later (unlike pid, it is never reused).
-	Cid string
 
 	Tag *string
 	cmd *exec.Cmd
@@ -183,22 +177,16 @@ func New(
 	// Cancellation of the process via timeout will propagate and cancel this context too.
 	outCtx, outCancel := context.WithCancel(ctx)
 
-	// Assign a unique command ID and bind it onto the logger so that every line
-	// the handler emits (process_start/process_end/process_output) carries the cid.
-	cid := uuid.NewString()
-	cmdLogger := logger.With().Str("cid", cid).Logger()
-
 	h := &Handler{
 		Config:    req.GetProcess(),
 		cmd:       cmd,
-		Cid:       cid,
 		Tag:       req.Tag,
 		DataEvent: outMultiplex,
 		cancel:    cancel,
 		outCtx:    outCtx,
 		outCancel: outCancel,
 		EndEvent:  NewMultiplexedChannel[rpc.ProcessEvent_End](0),
-		logger:    &cmdLogger,
+		logger:    logger,
 	}
 
 	if req.GetPty() != nil {
@@ -259,7 +247,7 @@ func New(
 
 		outWg.Go(func() {
 			readBuf := make([]byte, stdChunkSize)
-			outLog := newOutputLogger(&cmdLogger, outputBudget, "stdout")
+			outLog := newOutputLogger(logger, outputBudget, "stdout", h.Pid)
 			defer outLog.flush()
 
 			for {
@@ -303,7 +291,7 @@ func New(
 
 		outWg.Go(func() {
 			readBuf := make([]byte, stdChunkSize)
-			outLog := newOutputLogger(&cmdLogger, outputBudget, "stderr")
+			outLog := newOutputLogger(logger, outputBudget, "stderr", h.Pid)
 			defer outLog.flush()
 
 			for {
