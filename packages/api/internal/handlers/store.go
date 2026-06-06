@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"math"
@@ -421,10 +422,25 @@ func (a *APIStore) GetTeamFromAdminToken(ctx context.Context, _ *gin.Context, te
 			}
 		}
 
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, &api.APIError{
+				Code:      http.StatusNotFound,
+				ClientMsg: "Team not found",
+				Err:       fmt.Errorf("failed getting team: %w", err),
+			}
+		}
+
 		return nil, &api.APIError{
-			Code:      http.StatusUnauthorized,
-			ClientMsg: "Backend authentication failed",
+			Code:      http.StatusNotFound,
+			ClientMsg: "Team not found",
 			Err:       fmt.Errorf("failed getting team: %w", err),
+		}
+	}
+	if team == nil {
+		return nil, &api.APIError{
+			Code:      http.StatusNotFound,
+			ClientMsg: "Team not found",
+			Err:       errors.New("team not found"),
 		}
 	}
 

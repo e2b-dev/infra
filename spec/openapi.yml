@@ -2803,8 +2803,6 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
       requestBody:
         required: true
         content:
@@ -2863,8 +2861,6 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       requestBody:
@@ -2948,8 +2944,6 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -3543,8 +3537,6 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
       requestBody:
         required: true
         content:
