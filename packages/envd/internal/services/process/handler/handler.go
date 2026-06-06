@@ -58,6 +58,10 @@ type Handler struct {
 	// own session and we leave their signal handling untouched.
 	processGroup bool
 
+	// reaped is set once cmd.Wait has reaped the leader. After that point the
+	// leader's pid may be recycled, so process-group signals must not be sent.
+	reaped atomic.Bool
+
 	cancel context.CancelFunc
 
 	outCtx    context.Context //nolint:containedctx // todo: refactor so this can be removed
@@ -389,6 +393,15 @@ func (p *Handler) SendSignal(signal syscall.Signal) error {
 	// the command's children are terminated together with the leader. PTY
 	// processes keep the original single-process behavior.
 	if p.processGroup {
+		// Once the leader has been reaped the kernel is free to recycle its pid,
+		// and a raw kill(-pid) could then land on an unrelated command that
+		// reused the pid as its own process group leader. Bail out here just as
+		// Go's os.Process.Signal does via ErrProcessDone. The flag is read with
+		// atomics to avoid racing the reaper goroutine in Wait.
+		if p.reaped.Load() {
+			return os.ErrProcessDone
+		}
+
 		return signalProcessGroup(p.cmd, signal)
 	}
 
@@ -399,17 +412,14 @@ func (p *Handler) SendSignal(signal syscall.Signal) error {
 // The command is started with Setpgid, so the process group id equals the
 // leader's pid; signaling the negative pid targets the entire group. An already
 // gone group (ESRCH) is treated as success — there is nothing left to kill.
+//
+// Callers must ensure the leader has not been reaped before calling this (the
+// pid may otherwise have been recycled); see the p.reaped guard in SendSignal.
+// The timeout-driven cmd.Cancel callback is safe because exec stops invoking it
+// once the process exits.
 func signalProcessGroup(cmd *exec.Cmd, signal syscall.Signal) error {
 	if cmd.Process == nil {
 		return errors.New("process not started")
-	}
-
-	// Once the leader has been reaped (ProcessState set by cmd.Wait) the kernel
-	// is free to recycle its pid. A raw kill(-pid) could then land on an
-	// unrelated command that reused the pid as its own process group leader, so
-	// bail out here just as Go's os.Process.Signal does via ErrProcessDone.
-	if cmd.ProcessState != nil {
-		return os.ErrProcessDone
 	}
 
 	err := syscall.Kill(-cmd.Process.Pid, signal)
@@ -508,6 +518,11 @@ func (p *Handler) Wait() {
 	<-p.outCtx.Done()
 
 	err := p.cmd.Wait()
+
+	// The leader has been reaped; stop process-group signals from targeting a
+	// potentially recycled pid. Must be set before the blocking EndEvent send
+	// below, which can hold the handler discoverable for a while.
+	p.reaped.Store(true)
 
 	p.tty.Close()
 
