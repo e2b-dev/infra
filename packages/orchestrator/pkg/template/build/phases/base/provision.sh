@@ -28,13 +28,11 @@ elif command -v yum >/dev/null 2>&1; then
     PKG_FAMILY="rhel"; RPM_INSTALL="yum -y --allowerasing install"
 elif command -v microdnf >/dev/null 2>&1; then
     PKG_FAMILY="rhel"; RPM_INSTALL="microdnf -y install"
-elif command -v zypper >/dev/null 2>&1; then
-    PKG_FAMILY="suse"
 elif command -v pacman >/dev/null 2>&1; then
     PKG_FAMILY="arch"
 else
-    echo "ERROR: no supported package manager found (need apt-get, dnf/yum/microdnf, zypper, or pacman)."
-    echo "Alpine and other non-systemd distributions are not supported."
+    echo "ERROR: no supported package manager found (need apt-get, dnf/yum/microdnf, or pacman)."
+    echo "Alpine, openSUSE, and other unsupported distributions will fail here."
     exit 1
 fi
 echo "Detected package family: $PKG_FAMILY"
@@ -44,7 +42,7 @@ echo "Detected package family: $PKG_FAMILY"
 # minimal images get it (required by the build's /bin/bash command runner).
 # passwd/useradd/usermod (used here and by later build steps) are not always
 # present on minimal images: on Debian they come from `passwd`, on RHEL from
-# `shadow-utils` + `passwd`, on SUSE/Arch from `shadow`.
+# `shadow-utils` + `passwd`, on Arch from `shadow`.
 case "$PKG_FAMILY" in
     debian)
         PACKAGES="systemd systemd-sysv passwd openssh-server sudo chrony socat curl ca-certificates fuse3 iptables git nfs-common less nftables iputils-ping jq bash"
@@ -55,9 +53,6 @@ case "$PKG_FAMILY" in
         # rpm -q iptables would never match. Use the real package name.
         PACKAGES="systemd shadow-utils passwd openssh-server sudo chrony socat curl ca-certificates fuse3 iptables-nft git nfs-utils less nftables iputils jq bash"
         ;;
-    suse)
-        PACKAGES="systemd shadow openssh sudo chrony socat curl ca-certificates fuse3 iptables git nfs-client less nftables iputils jq bash"
-        ;;
     arch)
         PACKAGES="systemd shadow openssh sudo chrony socat curl ca-certificates fuse3 iptables git nfs-utils less nftables iputils jq bash"
         ;;
@@ -67,7 +62,7 @@ esac
 is_package_installed() {
     case "$PKG_FAMILY" in
         debian) dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q "install ok installed" ;;
-        rhel|suse) rpm -q "$1" >/dev/null 2>&1 ;;
+        rhel) rpm -q "$1" >/dev/null 2>&1 ;;
         arch) pacman -Q "$1" >/dev/null 2>&1 ;;
     esac
 }
@@ -91,10 +86,6 @@ if [ -n "$MISSING" ]; then
             ;;
         rhel)
             $RPM_INSTALL $MISSING
-            ;;
-        suse)
-            zypper --non-interactive --gpg-auto-import-keys refresh
-            zypper --non-interactive --gpg-auto-import-keys install $MISSING
             ;;
         arch)
             pacman -Sy --noconfirm
@@ -163,41 +154,28 @@ echo "Disable system first boot wizard"
 systemctl mask systemd-firstboot.service
 
 # The chrony service unit name differs across distros (chrony on Debian,
-# chronyd on RHEL/SUSE/Arch). Enable whichever exists; this is the single place
+# chronyd on RHEL/Arch). Enable whichever exists; this is the single place
 # chrony autostart is configured for every distro family.
 echo "Enabling time synchronization service"
 systemctl enable chronyd 2>/dev/null || systemctl enable chrony 2>/dev/null || true
 
 # Ensure /etc/ssl/certs/ca-certificates.crt exists so envd's CA injection and
 # TLS clients work. Debian's ca-certificates package creates it on install; on
-# RHEL/SUSE/Arch the bundle is generated via update-ca-trust and lives under
-# /etc/pki, so expose it under the Debian-style path envd expects.
+# RHEL the bundle is generated via update-ca-trust under /etc/pki, so expose it
+# under the Debian-style path envd expects. (Arch creates this path natively.)
 echo "Ensuring CA certificate bundle exists"
 if [ ! -s /etc/ssl/certs/ca-certificates.crt ]; then
-    # Run both helpers sequentially rather than as if/elif: openSUSE ships
-    # update-ca-certificates but it writes to /var/lib/ca-certificates and does
-    # NOT create the Debian-style path, so we must still fall through to the
-    # update-ca-trust step and the symlink fallback below.
     if command -v update-ca-certificates >/dev/null 2>&1; then
         update-ca-certificates || true
     fi
     if [ ! -s /etc/ssl/certs/ca-certificates.crt ] && command -v update-ca-trust >/dev/null 2>&1; then
         update-ca-trust extract || true
     fi
-    # If the canonical path still doesn't exist, symlink it to whichever
-    # distro-specific bundle was generated (RHEL/Arch under /etc/pki, openSUSE
-    # under /var/lib/ca-certificates or /etc/ssl).
-    if [ ! -s /etc/ssl/certs/ca-certificates.crt ]; then
+    # If the canonical path still doesn't exist, symlink it to the bundle that
+    # update-ca-trust generated under /etc/pki (RHEL).
+    if [ ! -s /etc/ssl/certs/ca-certificates.crt ] && [ -s /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem ]; then
         mkdir -p /etc/ssl/certs
-        for src in \
-            /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem \
-            /var/lib/ca-certificates/ca-bundle.pem \
-            /etc/ssl/ca-bundle.pem; do
-            if [ -s "$src" ]; then
-                ln -sf "$src" /etc/ssl/certs/ca-certificates.crt
-                break
-            fi
-        done
+        ln -sf /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem /etc/ssl/certs/ca-certificates.crt
     fi
 fi
 

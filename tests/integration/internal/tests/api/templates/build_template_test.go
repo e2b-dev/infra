@@ -1066,16 +1066,6 @@ func TestTemplateBuildInstalledPackagesAvailable(t *testing.T) {
 			},
 		},
 		{
-			name:      "opensuse",
-			fromImage: "opensuse/leap:15",
-			verify:    rpmVerify,
-			packages: []string{
-				"systemd", "openssh", "sudo", "chrony", "socat", "curl",
-				"ca-certificates", "fuse3", "iptables", "git", "nfs-client",
-				"less", "nftables", "iputils", "jq", "bash",
-			},
-		},
-		{
 			name:      "arch",
 			fromImage: "archlinux:latest",
 			verify:    pacmanVerify,
