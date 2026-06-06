@@ -1055,7 +1055,7 @@ func TestTemplateBuildInstalledPackagesAvailable(t *testing.T) {
 			verify:    rpmVerify,
 			packages: []string{
 				"systemd", "openssh-server", "sudo", "chrony", "socat", "curl",
-				"ca-certificates", "fuse3", "iptables", "git", "nfs-utils",
+				"ca-certificates", "fuse3", "iptables-nft", "git", "nfs-utils",
 				"less", "nftables", "iputils", "jq", "bash",
 			},
 		},
@@ -1065,7 +1065,7 @@ func TestTemplateBuildInstalledPackagesAvailable(t *testing.T) {
 			verify:    rpmVerify,
 			packages: []string{
 				"systemd", "openssh-server", "sudo", "chrony", "socat", "curl",
-				"ca-certificates", "fuse3", "iptables", "git", "nfs-utils",
+				"ca-certificates", "fuse3", "iptables-nft", "git", "nfs-utils",
 				"less", "nftables", "iputils", "jq", "bash",
 			},
 		},

@@ -50,7 +50,10 @@ case "$PKG_FAMILY" in
         PACKAGES="systemd systemd-sysv passwd openssh-server sudo chrony socat curl ca-certificates fuse3 iptables git nfs-common less nftables iputils-ping jq bash"
         ;;
     rhel)
-        PACKAGES="systemd shadow-utils passwd openssh-server sudo chrony socat curl ca-certificates fuse3 iptables git nfs-utils less nftables iputils jq bash"
+        # On RHEL 9 the iptables command ships in iptables-nft; the bare
+        # "iptables" package no longer exists (it's only a virtual provide), so
+        # rpm -q iptables would never match. Use the real package name.
+        PACKAGES="systemd shadow-utils passwd openssh-server sudo chrony socat curl ca-certificates fuse3 iptables-nft git nfs-utils less nftables iputils jq bash"
         ;;
     suse)
         PACKAGES="systemd shadow openssh sudo chrony socat curl ca-certificates fuse3 iptables git nfs-client less nftables iputils jq bash"
