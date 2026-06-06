@@ -1022,42 +1022,96 @@ func TestTemplateBuildWithDifferentSourceImages(t *testing.T) {
 func TestTemplateBuildInstalledPackagesAvailable(t *testing.T) {
 	t.Parallel()
 
-	// Test that packages installed by provision.sh are available during template build
-	packages := []string{
-		"systemd",
-		"systemd-sysv",
-		"openssh-server",
-		"sudo",
-		"chrony",
-		"socat",
-		"curl",
-		"ca-certificates",
-		"fuse3",
-		"iptables",
-		"git",
-		"less",
-		"nftables",
-		"iputils-ping",
-		"jq",
+	// Test that the packages installed by provision.sh are available during the
+	// template build across all supported (systemd-based) base image families:
+	// Debian/Ubuntu (apt), Fedora/RHEL/Rocky/Alma (dnf/yum), openSUSE (zypper),
+	// and Arch (pacman). The package names mirror those in provision.sh, and the
+	// verify command matches each distro's package database.
+	dpkgVerify := func(pkg string) string {
+		return "dpkg-query -W -f='${Status}' " + pkg + " | grep -q 'install ok installed'"
+	}
+	rpmVerify := func(pkg string) string { return "rpm -q " + pkg }
+	pacmanVerify := func(pkg string) string { return "pacman -Q " + pkg }
+
+	testCases := []struct {
+		name      string
+		fromImage string
+		verify    func(pkg string) string
+		packages  []string
+	}{
+		{
+			name:      "ubuntu",
+			fromImage: "ubuntu:22.04",
+			verify:    dpkgVerify,
+			packages: []string{
+				"systemd", "systemd-sysv", "openssh-server", "sudo", "chrony",
+				"socat", "curl", "ca-certificates", "fuse3", "iptables", "git",
+				"nfs-common", "less", "nftables", "iputils-ping", "jq", "bash",
+			},
+		},
+		{
+			name:      "fedora",
+			fromImage: "fedora:40",
+			verify:    rpmVerify,
+			packages: []string{
+				"systemd", "openssh-server", "sudo", "chrony", "socat", "curl",
+				"ca-certificates", "fuse3", "iptables", "git", "nfs-utils",
+				"less", "nftables", "iputils", "jq", "bash",
+			},
+		},
+		{
+			name:      "almalinux",
+			fromImage: "almalinux:9",
+			verify:    rpmVerify,
+			packages: []string{
+				"systemd", "openssh-server", "sudo", "chrony", "socat", "curl",
+				"ca-certificates", "fuse3", "iptables", "git", "nfs-utils",
+				"less", "nftables", "iputils", "jq", "bash",
+			},
+		},
+		{
+			name:      "opensuse",
+			fromImage: "opensuse/leap:15",
+			verify:    rpmVerify,
+			packages: []string{
+				"systemd", "openssh", "sudo", "chrony", "socat", "curl",
+				"ca-certificates", "fuse3", "iptables", "git", "nfs-client",
+				"less", "nftables", "iputils", "jq", "bash",
+			},
+		},
+		{
+			name:      "arch",
+			fromImage: "archlinux:latest",
+			verify:    pacmanVerify,
+			packages: []string{
+				"systemd", "openssh", "sudo", "chrony", "socat", "curl",
+				"ca-certificates", "fuse3", "iptables", "git", "nfs-utils",
+				"less", "nftables", "iputils", "jq", "bash",
+			},
+		},
 	}
 
-	steps := make([]api.TemplateStep, 0, len(packages))
-	for _, pkg := range packages {
-		steps = append(steps, api.TemplateStep{
-			Type: "RUN",
-			Args: new([]string{
-				"dpkg-query -W -f='${Status}' " + pkg + " | grep -q 'install ok installed'",
-			}),
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			steps := make([]api.TemplateStep, 0, len(tc.packages))
+			for _, pkg := range tc.packages {
+				steps = append(steps, api.TemplateStep{
+					Type: "RUN",
+					Args: new([]string{tc.verify(pkg)}),
+				})
+			}
+
+			buildConfig := api.TemplateBuildStartV2{
+				Force:     new(ForceBaseBuild),
+				FromImage: new(tc.fromImage),
+				Steps:     new(steps),
+			}
+
+			assert.True(t, buildTemplate(t, "test-"+tc.name+"-packages-available", buildConfig, defaultBuildLogHandler(t)))
 		})
 	}
-
-	buildConfig := api.TemplateBuildStartV2{
-		Force:     new(ForceBaseBuild),
-		FromImage: new("ubuntu:22.04"),
-		Steps:     new(steps),
-	}
-
-	assert.True(t, buildTemplate(t, "test-ubuntu-packages-available", buildConfig, defaultBuildLogHandler(t)))
 }
 
 func createTarWithFile(tb testing.TB, fileName string, content string) []byte {
