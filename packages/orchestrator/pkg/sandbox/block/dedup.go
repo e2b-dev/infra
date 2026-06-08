@@ -310,8 +310,14 @@ func (w fetchWindower) bestParentRun(pages []dedupPageInfo, budget int) []int {
 	if best := w.bestByRatio(pages, budget, before, parentRuns(pages)); best != nil {
 		return best
 	}
+	if best := w.bestByRatio(pages, budget, before, parentKeyGroups(pages)); best != nil {
+		return best
+	}
 
-	return w.bestByRatio(pages, budget, before, parentKeyGroups(pages))
+	// Last resort: promote parents across fetch keys together. Some blocks
+	// (e.g. current/A/current/B) only shrink when distinct-key parents are
+	// promoted jointly, since each alone just opens another current window.
+	return w.bestByRatio(pages, budget, before, parentUnion(pages))
 }
 
 // bestByRatio picks the candidate page set whose promotion removes the most
@@ -393,6 +399,23 @@ func parentKeyGroups(pages []dedupPageInfo) iter.Seq[[]int] {
 	})
 
 	return slices.Values(groups)
+}
+
+// parentUnion yields all parent page indices as a single candidate so parents
+// in different fetch windows can be promoted together when only their combined
+// promotion removes a fetch window.
+func parentUnion(pages []dedupPageInfo) iter.Seq[[]int] {
+	return func(yield func([]int) bool) {
+		var all []int
+		for i, p := range pages {
+			if p.kind == dedupPageParent {
+				all = append(all, i)
+			}
+		}
+		if len(all) > 0 {
+			yield(all)
+		}
+	}
 }
 
 // countAfter counts fetch windows as if the given parent indices were promoted

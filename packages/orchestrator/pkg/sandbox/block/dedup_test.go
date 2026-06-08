@@ -285,6 +285,25 @@ func TestFetchWindowerBestParentRun(t *testing.T) {
 		got := w.bestParentRun(pages, 4)
 		require.Equal(t, []int{0, 2}, got)
 	})
+
+	t.Run("combines distinct-key parents when only the union helps", func(t *testing.T) {
+		t.Parallel()
+
+		// current/A/current/B with two-page fetch windows: promoting either
+		// parent alone opens a second current window (zero benefit), but
+		// promoting both folds everything into two current windows (3 -> 2).
+		w := fetchWindower{windowPages: 2, currentStart: 0}
+		buildB := uuid.New()
+		pages := []dedupPageInfo{
+			currentPage(),
+			parentKeyPage(build, 0, 2),
+			currentPage(),
+			parentKeyPage(buildB, 0, 2),
+		}
+
+		got := w.bestParentRun(pages, 2)
+		require.Equal(t, []int{1, 3}, got)
+	})
 }
 
 func TestRecordBlockPages(t *testing.T) {
