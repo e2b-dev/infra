@@ -211,12 +211,12 @@ func NewAuthProviderTeamAuthenticator(validationFunc func(ctx context.Context, g
 	}
 }
 
-// NewAdminApiTokenAuthenticator creates an authenticator for the AdminApiTokenAuth security scheme (X-Admin-Token header).
-func NewAdminApiTokenAuthenticator(adminToken string) Authenticator {
-	return newAdminApiTokenAuthenticator("AdminApiTokenAuth", adminToken)
+// NewAdminApiKeyAuthenticator creates an authenticator for the AdminApiKeyAuth security scheme (X-Admin-Token header).
+func NewAdminApiKeyAuthenticator(adminToken string) Authenticator {
+	return newAdminApiKeyAuthenticator("AdminApiKeyAuth", adminToken)
 }
 
-func newAdminApiTokenAuthenticator(schemeName, adminToken string) Authenticator {
+func newAdminApiKeyAuthenticator(schemeName, adminToken string) Authenticator {
 	return &commonAuthenticator[struct{}]{
 		schemeName: schemeName,
 		header: headerKey{

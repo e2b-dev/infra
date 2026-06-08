@@ -33,7 +33,7 @@ func TestSpecSecuritySchemeHeaderNames(t *testing.T) {
 		{"Supabase1TokenAuth", auth.HeaderSupabaseToken},
 		{"Supabase2TeamAuth", auth.HeaderSupabaseTeam},
 		{"AuthProviderTeamAuth", auth.HeaderTeamID},
-		{"AdminApiTokenAuth", auth.HeaderAdminToken},
+		{"AdminApiKeyAuth", auth.HeaderAdminToken},
 		{"AdminTeamAuth", auth.HeaderTeamID},
 	}
 
@@ -78,7 +78,7 @@ func TestAuthProviderTeamAuthHeaderRoutes(t *testing.T) {
 		"Supabase2TeamAuth":      auth.HeaderSupabaseTeam,
 		"AuthProviderBearerAuth": auth.HeaderAuthorization,
 		"AuthProviderTeamAuth":   auth.HeaderTeamID,
-		"AdminApiTokenAuth":      auth.HeaderAdminToken,
+		"AdminApiKeyAuth":        auth.HeaderAdminToken,
 		"AdminTeamAuth":          auth.HeaderTeamID,
 	}
 
@@ -167,7 +167,7 @@ func TestAdminTeamAuthSchemeOrder(t *testing.T) {
 		"Supabase2TeamAuth":      auth.HeaderSupabaseTeam,
 		"AuthProviderBearerAuth": auth.HeaderAuthorization,
 		"AuthProviderTeamAuth":   auth.HeaderTeamID,
-		"AdminApiTokenAuth":      auth.HeaderAdminToken,
+		"AdminApiKeyAuth":        auth.HeaderAdminToken,
 		"AdminTeamAuth":          auth.HeaderTeamID,
 	}
 
@@ -182,7 +182,7 @@ func TestAdminTeamAuthSchemeOrder(t *testing.T) {
 		}
 
 		switch input.SecuritySchemeName {
-		case "AdminApiTokenAuth", "AdminTeamAuth":
+		case "AdminApiKeyAuth", "AdminTeamAuth":
 			adminSchemeOrder = append(adminSchemeOrder, input.SecuritySchemeName)
 		}
 
@@ -213,5 +213,5 @@ func TestAdminTeamAuthSchemeOrder(t *testing.T) {
 	r.ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code, "request with admin token and team header should pass auth (body: %s)", rr.Body.String())
-	require.Equal(t, []string{"AdminApiTokenAuth", "AdminTeamAuth"}, adminSchemeOrder)
+	require.Equal(t, []string{"AdminApiKeyAuth", "AdminTeamAuth"}, adminSchemeOrder)
 }

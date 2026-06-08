@@ -26,7 +26,7 @@ import (
 
 const (
 	AccessTokenAuthScopes        accessTokenAuthContextKey        = "AccessTokenAuth.Scopes"
-	AdminApiTokenAuthScopes      adminApiTokenAuthContextKey      = "AdminApiTokenAuth.Scopes"
+	AdminApiKeyAuthScopes        adminApiKeyAuthContextKey        = "AdminApiKeyAuth.Scopes"
 	AdminTeamAuthScopes          adminTeamAuthContextKey          = "AdminTeamAuth.Scopes"
 	ApiKeyAuthScopes             apiKeyAuthContextKey             = "ApiKeyAuth.Scopes"
 	AuthProviderBearerAuthScopes authProviderBearerAuthContextKey = "AuthProviderBearerAuth.Scopes"
@@ -1463,8 +1463,8 @@ type N500 = Error
 // accessTokenAuthContextKey is the context key for AccessTokenAuth security scheme
 type accessTokenAuthContextKey string
 
-// adminApiTokenAuthContextKey is the context key for AdminApiTokenAuth security scheme
-type adminApiTokenAuthContextKey string
+// adminApiKeyAuthContextKey is the context key for AdminApiKeyAuth security scheme
+type adminApiKeyAuthContextKey string
 
 // adminTeamAuthContextKey is the context key for AdminTeamAuth security scheme
 type adminTeamAuthContextKey string
@@ -11323,7 +11323,7 @@ func (siw *ServerInterfaceWrapper) PostAdminTeamsTeamIDApiKeys(c *gin.Context) {
 		return
 	}
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -11359,7 +11359,7 @@ func (siw *ServerInterfaceWrapper) DeleteAdminTeamsTeamIDApiKeysApiKeyID(c *gin.
 		return
 	}
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -11386,7 +11386,7 @@ func (siw *ServerInterfaceWrapper) PostAdminTeamsTeamIDBuildsCancel(c *gin.Conte
 		return
 	}
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -11413,7 +11413,7 @@ func (siw *ServerInterfaceWrapper) PostAdminTeamsTeamIDSandboxesKill(c *gin.Cont
 		return
 	}
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -11436,7 +11436,7 @@ func (siw *ServerInterfaceWrapper) GetApiKeys(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -11494,7 +11494,7 @@ func (siw *ServerInterfaceWrapper) DeleteApiKeysApiKeyID(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -11531,7 +11531,7 @@ func (siw *ServerInterfaceWrapper) PatchApiKeysApiKeyID(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -11564,7 +11564,7 @@ func (siw *ServerInterfaceWrapper) GetNodes(c *gin.Context) {
 	var err error
 	_ = err
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetNodesParams
@@ -11602,7 +11602,7 @@ func (siw *ServerInterfaceWrapper) GetNodesNodeID(c *gin.Context) {
 		return
 	}
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetNodesNodeIDParams
@@ -11640,7 +11640,7 @@ func (siw *ServerInterfaceWrapper) PostNodesNodeID(c *gin.Context) {
 		return
 	}
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -11668,7 +11668,7 @@ func (siw *ServerInterfaceWrapper) GetSandboxes(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -11706,7 +11706,7 @@ func (siw *ServerInterfaceWrapper) PostSandboxes(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -11736,7 +11736,7 @@ func (siw *ServerInterfaceWrapper) GetSandboxesMetrics(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -11786,7 +11786,7 @@ func (siw *ServerInterfaceWrapper) DeleteSandboxesSandboxID(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -11825,7 +11825,7 @@ func (siw *ServerInterfaceWrapper) GetSandboxesSandboxID(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -11864,7 +11864,7 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDConnect(c *gin.Context)
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -11903,7 +11903,7 @@ func (siw *ServerInterfaceWrapper) GetSandboxesSandboxIDLogs(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -11961,7 +11961,7 @@ func (siw *ServerInterfaceWrapper) GetSandboxesSandboxIDMetrics(c *gin.Context) 
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -12019,7 +12019,7 @@ func (siw *ServerInterfaceWrapper) PutSandboxesSandboxIDNetwork(c *gin.Context) 
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -12058,7 +12058,7 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDPause(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -12097,7 +12097,7 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDRefreshes(c *gin.Contex
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -12136,7 +12136,7 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDResume(c *gin.Context) 
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -12175,7 +12175,7 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDSnapshots(c *gin.Contex
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -12214,7 +12214,7 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDTimeout(c *gin.Context)
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -12244,7 +12244,7 @@ func (siw *ServerInterfaceWrapper) GetSnapshots(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -12329,7 +12329,7 @@ func (siw *ServerInterfaceWrapper) GetTeamsTeamIDMetrics(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -12387,7 +12387,7 @@ func (siw *ServerInterfaceWrapper) GetTeamsTeamIDMetricsMax(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -12446,7 +12446,7 @@ func (siw *ServerInterfaceWrapper) GetTemplates(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -12519,7 +12519,7 @@ func (siw *ServerInterfaceWrapper) GetTemplatesAliasesAlias(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -12546,7 +12546,7 @@ func (siw *ServerInterfaceWrapper) DeleteTemplatesTags(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -12573,7 +12573,7 @@ func (siw *ServerInterfaceWrapper) PostTemplatesTags(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -12614,7 +12614,7 @@ func (siw *ServerInterfaceWrapper) DeleteTemplatesTemplateID(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -12653,7 +12653,7 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateID(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -12713,7 +12713,7 @@ func (siw *ServerInterfaceWrapper) PatchTemplatesTemplateID(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -12842,7 +12842,7 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDBuildsBuildIDLogs(c *gi
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -12935,7 +12935,7 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDBuildsBuildIDStatus(c *
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -13012,7 +13012,7 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDFilesHash(c *gin.Contex
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -13051,7 +13051,7 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDTags(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -13081,7 +13081,7 @@ func (siw *ServerInterfaceWrapper) GetV2Sandboxes(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -13155,7 +13155,7 @@ func (siw *ServerInterfaceWrapper) GetV2SandboxesSandboxIDLogs(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -13225,7 +13225,7 @@ func (siw *ServerInterfaceWrapper) PostV2Templates(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -13266,7 +13266,7 @@ func (siw *ServerInterfaceWrapper) PatchV2TemplatesTemplateID(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -13314,7 +13314,7 @@ func (siw *ServerInterfaceWrapper) PostV2TemplatesTemplateIDBuildsBuildID(c *gin
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -13341,7 +13341,7 @@ func (siw *ServerInterfaceWrapper) PostV3Templates(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -13368,7 +13368,7 @@ func (siw *ServerInterfaceWrapper) GetVolumes(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -13395,7 +13395,7 @@ func (siw *ServerInterfaceWrapper) PostVolumes(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -13434,7 +13434,7 @@ func (siw *ServerInterfaceWrapper) DeleteVolumesVolumeID(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -13473,7 +13473,7 @@ func (siw *ServerInterfaceWrapper) GetVolumesVolumeID(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
-	c.Set(string(AdminApiTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	c.Set(string(AdminTeamAuthScopes), []string{})
 
@@ -13684,69 +13684,69 @@ var swaggerSpec = []string{
 	"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",
-	"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",
-	"v3NF6vbp/wUAAP//",
+	"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",
+	"V6Bun/5fAAAA//8=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
