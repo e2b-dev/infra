@@ -87,7 +87,7 @@ jobs:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
   build-staging-images:
     name: Build staging images
-    uses: ./.github/workflows/deploy-job.yml
+    uses: ./.github/workflows/deploy-image.yml
     with:
       commit_sha: ${{ github.sha }}
       environment: staging
