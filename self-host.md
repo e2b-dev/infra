@@ -232,7 +232,6 @@ You can build your own kernel and Firecracker version from source by running `ma
 - `make plan-without-jobs` - plans the terraform changes without provisioning nomad jobs
 - `make plan-only-jobs` - plans the terraform changes only for provisioning nomad jobs
 - `make destroy` - destroys the cluster
-- `make version` - increments the repo version
 - `make build-and-upload` - builds and uploads the docker images, binaries, and cluster disk image
 - `make copy-public-builds` - copies busybox, kernels, and firecracker versions from the public bucket to your bucket
 - `make migrate` - runs the migrations for your database
