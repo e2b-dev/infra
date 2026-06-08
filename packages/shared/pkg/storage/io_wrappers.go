@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"time"
 
 	"go.opentelemetry.io/otel/trace"
 
@@ -13,6 +14,7 @@ import (
 )
 
 var (
+	_ io.Reader   = (*meteredReader)(nil)
 	_ RangeReader = (*sectionReader)(nil)
 	_ RangeReader = (*observableReader)(nil)
 	_ RangeReader = (*rangeReader)(nil)
@@ -20,15 +22,15 @@ var (
 )
 
 // rangeReader adapts an io.ReadCloser into a RangeReader by ignoring the
-// Close context.
+// Close context. It does not meter, so Close returns nil stats.
 type rangeReader struct {
 	io.ReadCloser
 }
 
 func NewRangeReader(rc io.ReadCloser) RangeReader { return &rangeReader{ReadCloser: rc} }
 
-func (p *rangeReader) Close(context.Context) error {
-	return p.ReadCloser.Close()
+func (p *rangeReader) Close(context.Context) (*ReadStats, error) {
+	return nil, p.ReadCloser.Close()
 }
 
 type sectionReader struct {
@@ -44,16 +46,33 @@ func newSectionReader(f *os.File, off, length int64) *sectionReader {
 	}
 }
 
-func (r *sectionReader) Close(context.Context) error {
-	return r.file.Close()
+func (r *sectionReader) Close(context.Context) (*ReadStats, error) {
+	return nil, r.file.Close()
+}
+
+// meteredReader records cumulative time and bytes spent pulling from inner so
+// a decoder built on top can separate source-read wall from decompression CPU.
+// Single-goroutine: Read is sequential, stats are read after EOF in Close.
+type meteredReader struct {
+	inner io.Reader
+	nanos int64
+	bytes int64
+}
+
+func (m *meteredReader) Read(p []byte) (int, error) {
+	t0 := time.Now()
+	n, err := m.inner.Read(p)
+	m.nanos += int64(time.Since(t0))
+	m.bytes += int64(n)
+
+	return n, err
 }
 
 // captureReader tees every read byte into a buffer and hands the captured
-// bytes to onClose on Close. Used by the cache writeback paths.
-//
+// bytes to onClose on Close. Used by the compressed cache writeback path.
 // drainOnClose=true reads inner to EOF on Close even if the caller above hasn't
-// consumed everything. Needed when capturing under a decoder that stops short
-// of EOF on its source (e.g. lz4.Reader skips the 4-byte EndMark).
+// consumed everything — the compressed cache needs the full frame regardless
+// of how many bytes the decoder happened to demand.
 type captureReader struct {
 	inner        RangeReader
 	buf          *bytes.Buffer
@@ -79,34 +98,50 @@ func (r *captureReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-func (r *captureReader) Close(ctx context.Context) error {
+func (r *captureReader) Close(ctx context.Context) (*ReadStats, error) {
 	if r.drainOnClose {
 		_, _ = io.Copy(io.Discard, r)
 	}
-	err := r.inner.Close(ctx)
+	stats, err := r.inner.Close(ctx)
 	r.onClose(ctx, r.buf.Bytes())
 
-	return err
+	return stats, err
 }
 
-// observableReader layers OTEL observability (legacy per-backend timer + span)
-// onto an inner RangeReader, all applied on Close. timer and span are optional;
-// pass nil if unused.
+// observableReader layers OTEL observability onto an inner RangeReader, all
+// applied on Close. The with* builder methods are optional and chainable.
 type observableReader struct {
 	inner RangeReader
+
 	timer *telemetry.Stopwatch
 	span  trace.Span
 
 	bytes   int64
 	readErr error
+
+	read time.Duration
 }
 
-func newObservableReader(inner RangeReader, timer *telemetry.Stopwatch, span trace.Span) *observableReader {
-	return &observableReader{inner: inner, timer: timer, span: span}
+func newObservableReader(inner RangeReader) *observableReader {
+	return &observableReader{inner: inner}
+}
+
+func (r *observableReader) withTimer(t *telemetry.Stopwatch) *observableReader {
+	r.timer = t
+
+	return r
+}
+
+func (r *observableReader) withSpan(s trace.Span) *observableReader {
+	r.span = s
+
+	return r
 }
 
 func (r *observableReader) Read(p []byte) (int, error) {
+	t0 := time.Now()
 	n, err := r.inner.Read(p)
+	r.read += time.Since(t0)
 	r.bytes += int64(n)
 
 	if err != nil && !errors.Is(err, io.EOF) {
@@ -116,8 +151,16 @@ func (r *observableReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-func (r *observableReader) Close(ctx context.Context) error {
-	closeErr := r.inner.Close(ctx)
+func (r *observableReader) Close(ctx context.Context) (*ReadStats, error) {
+	stats, closeErr := r.inner.Close(ctx)
+
+	if stats == nil {
+		stats = &ReadStats{
+			CompressedBytes:   r.bytes,
+			UncompressedBytes: r.bytes,
+			Read:              r.read,
+		}
+	}
 
 	if r.timer != nil {
 		if r.readErr != nil || closeErr != nil {
@@ -137,5 +180,5 @@ func (r *observableReader) Close(ctx context.Context) error {
 		r.span.End()
 	}
 
-	return closeErr
+	return stats, closeErr
 }

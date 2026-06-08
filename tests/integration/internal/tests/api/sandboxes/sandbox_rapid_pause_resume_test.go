@@ -147,7 +147,7 @@ func verifyChecksum(t *testing.T, ctx context.Context, persistence storage.Stora
 	obj, err := persistence.OpenSeekable(ctx, dataPath, objType)
 	require.NoErrorf(t, err, "%s/%s: open data file %s", node.name, fileName, dataPath)
 
-	rc, err := obj.OpenRangeReader(ctx, 0, bd.Size, bd.FrameData)
+	rc, _, err := obj.OpenRangeReader(ctx, 0, bd.Size, bd.FrameData)
 	require.NoErrorf(t, err, "%s/%s: open range reader", node.name, fileName)
 	defer rc.Close(ctx)
 

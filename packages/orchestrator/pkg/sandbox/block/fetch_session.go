@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 type fetchSession struct {
@@ -21,10 +23,21 @@ type fetchSession struct {
 	fetchErr error
 	done     bool // true once terminated (success or error)
 
+	// source is the backend that served the fetch; set by runFetch.
+	source atomic.Int32
+
 	// bytesReady is the byte count (from chunkOff) up to which all blocks
 	// are fully written and marked cached. Atomic so registerAndWait can
 	// do a lock-free fast-path check: bytesReady only increases.
 	bytesReady atomic.Int64
+}
+
+func (s *fetchSession) setSource(src storage.Source) {
+	s.source.Store(int32(src))
+}
+
+func (s *fetchSession) Source() storage.Source {
+	return storage.Source(s.source.Load())
 }
 
 // contains reports whether the session covers the byte range [off, off+length).

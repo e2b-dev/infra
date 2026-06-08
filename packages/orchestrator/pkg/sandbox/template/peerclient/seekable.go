@@ -102,7 +102,7 @@ func (s *peerSeekable) Size(ctx context.Context) (int64, error) {
 	return base.Size(ctx)
 }
 
-func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length int64, frameTable *storage.FrameTable) (storage.RangeReader, error) {
+func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length int64, frameTable *storage.FrameTable) (storage.RangeReader, storage.Source, error) {
 	res, err := tryPeer(ctx, &s.peerHandle, "peer-seekable-open-range-reader", attrOpRangeReader,
 		func(ctx context.Context) (peerAttempt[storage.RangeReader], error) {
 			streamCtx, cancel := context.WithCancel(ctx)
@@ -126,31 +126,31 @@ func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length in
 			}, nil
 		})
 	if res.hit {
-		return res.value, err
+		return res.value, storage.SourcePeer, err
 	}
 
 	if s.uploaded != nil && s.uploaded.Load() {
 		now := time.Now()
 		if s.transitionAt.CompareAndSwap(nil, &now) {
-			return nil, &storage.PeerTransitionedError{}
+			return nil, storage.SourcePeer, &storage.PeerTransitionedError{}
 		}
 	}
 
 	base, err := s.getBase(ctx, frameTable.CompressionType())
 	if err != nil {
-		return nil, err
+		return nil, storage.SourcePeer, err
 	}
 
-	rc, err := base.OpenRangeReader(ctx, off, length, frameTable)
+	rc, src, err := base.OpenRangeReader(ctx, off, length, frameTable)
 	// GCS can briefly 404 a just-finalized object; within the retry window
 	// re-emit so build.File reloads the header and retries with backoff.
 	if errors.Is(err, storage.ErrObjectNotExist) {
 		if at := s.transitionAt.Load(); at != nil && time.Since(*at) < postTransitionRetryWindow {
-			return nil, &storage.PeerTransitionedError{RetryAfter: postTransitionRetryDelay}
+			return nil, src, &storage.PeerTransitionedError{RetryAfter: postTransitionRetryDelay}
 		}
 	}
 
-	return rc, err
+	return rc, src, err
 }
 
 func (s *peerSeekable) StoreFile(context.Context, string, ...storage.PutOption) (*storage.FrameTable, [32]byte, error) {
