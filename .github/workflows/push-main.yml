@@ -29,10 +29,6 @@ jobs:
         with:
           base: ${{ github.ref }}
           filters: |
-            iac:
-              - 'iac/**'
-              - '.github/**'
-              - '.tool-versions'
             test-inputs:
               - 'packages/**'
               - 'tests/**'
@@ -72,11 +68,6 @@ jobs:
       run-tests: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') }}
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-  terraform-validation:
-    needs: [detect-changes]
-    uses: ./.github/workflows/validate-iac.yml
-    with:
-      run-validation: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'iac') }}
   integration-tests:
     needs: [detect-changes]
     uses: ./.github/workflows/integration_tests.yml

@@ -53,10 +53,6 @@ jobs:
       - name: Setup Go
         uses: ./.github/actions/go-setup-cache
 
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "${{ env.TERRAFORM }}"
-
       - name: Run integrity check
         run: make tidy
 
@@ -71,7 +67,7 @@ jobs:
         run: make generate  # cannot do this in parallel, as there are some race conditions
 
       - name: Format code
-        run: make fmt
+        run: golangci-lint fmt
 
       - name: Commit generated changes if any
         # head_ref is attacker-controlled (PR branch name); pass via env to avoid
