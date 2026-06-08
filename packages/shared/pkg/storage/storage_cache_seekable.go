@@ -501,9 +501,8 @@ func (c *cachedSeekable) writeChunkFromFile(ctx context.Context, offset int64, i
 	}
 	defer utils.Cleanup(ctx, "failed to close file", output.Close)
 
-	offsetReader := newOffsetReader(input, offset)
-	count, err := io.CopyN(output, offsetReader, c.chunkSize)
-	if ignoreEOF(err) != nil {
+	count, err := io.Copy(output, io.NewSectionReader(input, offset, c.chunkSize))
+	if err != nil {
 		writeTimer.Failure(ctx, count)
 		safelyRemoveFile(ctx, chunkPath)
 

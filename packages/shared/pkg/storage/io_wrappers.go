@@ -13,30 +13,11 @@ import (
 )
 
 var (
-	_ io.Reader   = (*offsetReader)(nil)
 	_ RangeReader = (*sectionReader)(nil)
 	_ RangeReader = (*observableReader)(nil)
 	_ RangeReader = (*rangeReader)(nil)
 	_ RangeReader = (*captureReader)(nil)
 )
-
-// offsetReader adapts an io.ReaderAt into a sequential io.Reader
-// starting at the given offset.
-type offsetReader struct {
-	wrapped io.ReaderAt
-	offset  int64
-}
-
-func (r *offsetReader) Read(p []byte) (n int, err error) {
-	n, err = r.wrapped.ReadAt(p, r.offset)
-	r.offset += int64(n)
-
-	return
-}
-
-func newOffsetReader(reader io.ReaderAt, offset int64) *offsetReader {
-	return &offsetReader{reader, offset}
-}
 
 // rangeReader adapts an io.ReadCloser into a RangeReader by ignoring the
 // Close context.
