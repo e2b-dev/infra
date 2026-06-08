@@ -60,9 +60,11 @@ func putZstdDecoder(dec *zstd.Decoder) {
 
 // decompressReader decompresses on Read, metering raw pulls vs decoded output
 // separately so source-read wall and decompression CPU are split. On Close it
-// drains the decoder to EOF (so any wrapper below — e.g. captureReader —
-// observes the full encoded stream) and emits the orchestrator.read.decompress
-// record (decompress time + uncompressed bytes, keyed by file_type/source/codec).
+// emits the orchestrator.read.decompress record (decompress time +
+// uncompressed bytes, keyed by file_type/source/codec). No drain: the source
+// range is bounded to exactly C bytes by construction, and the cache-writeback
+// path's captureReader has its own drainOnClose for the LZ4-BlockChecksum
+// 4-byte EndMark tail.
 type decompressReader struct {
 	inner        RangeReader // retained to call Close;
 	meteredIn    *meteredReader
@@ -124,13 +126,6 @@ func (r *decompressReader) Read(p []byte) (int, error) {
 }
 
 func (r *decompressReader) Close(ctx context.Context) (*ReadStats, error) {
-	// Drain to EOF so any wrapper below observes the full encoded stream. With
-	// LZ4 BlockChecksum=true / Checksum=false the 4-byte EndMark is otherwise
-	// left unread.
-	if r.readErr == nil {
-		_, _ = io.Copy(io.Discard, r.meteredOut)
-	}
-
 	r.releaseCodec()
 
 	stats := &ReadStats{
