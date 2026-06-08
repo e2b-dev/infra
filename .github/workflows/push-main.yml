@@ -85,14 +85,6 @@ jobs:
       run-tests: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') }}
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-  build-staging-images:
-    name: Build staging images
-    uses: ./.github/workflows/build-and-upload-image.yml
-    with:
-      commit_sha: ${{ github.sha }}
-      environment: staging
-      image_names: api;client-proxy;dashboard-api;docker-reverse-proxy;clean-nfs-cache;orchestrator;template-manager;envd;clickhouse-migrator;nomad-nodepool-apm
-
   publish-test-results:
     needs:
       - detect-changes

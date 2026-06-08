@@ -1,24 +1,6 @@
 name: Build and Upload Image
 
 on:
-  workflow_dispatch:
-    inputs:
-      commit_sha:
-        description: "Specific commit SHA to checkout"
-        required: true
-        type: string
-      tracking_id:
-        description: "Unique tracking ID used for identifying the workflow run"
-        required: false
-        type: string
-      environment:
-        description: "Target environment for image upload, e.g. staging"
-        required: true
-        type: string
-      image_names:
-        description: "Name of the images to build and upload, e.g. api, template-manager, separated by ;"
-        required: true
-        type: string
   workflow_call:
     inputs:
       commit_sha:
