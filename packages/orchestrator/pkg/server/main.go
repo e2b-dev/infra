@@ -151,6 +151,45 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 		return nil, fmt.Errorf("failed to register orchestrator status gauge: %w", err)
 	}
 
+	cpuAllocatedGauge, err := telemetry.GetGaugeInt(meter, telemetry.OrchestratorCpuAllocatedGaugeName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create orchestrator CPU allocated gauge: %w", err)
+	}
+
+	memoryAllocatedGauge, err := telemetry.GetGaugeInt(meter, telemetry.OrchestratorMemoryAllocatedGaugeName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create orchestrator memory allocated gauge: %w", err)
+	}
+
+	diskAllocatedGauge, err := telemetry.GetGaugeInt(meter, telemetry.OrchestratorDiskAllocatedGaugeName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create orchestrator disk allocated gauge: %w", err)
+	}
+
+	_, err = meter.RegisterCallback(
+		func(_ context.Context, obs metric.Observer) error {
+			var (
+				cpuAllocated    int64
+				memoryAllocated int64
+				diskAllocated   int64
+			)
+
+			for _, item := range server.sandboxFactory.Sandboxes.Items() {
+				cpuAllocated += item.Config.Vcpu
+				memoryAllocated += item.Config.RamMB * 1024 * 1024
+				diskAllocated += item.Config.TotalDiskSizeMB * 1024 * 1024
+			}
+
+			obs.ObserveInt64(cpuAllocatedGauge, cpuAllocated)
+			obs.ObserveInt64(memoryAllocatedGauge, memoryAllocated)
+			obs.ObserveInt64(diskAllocatedGauge, diskAllocated)
+
+			return nil
+		}, cpuAllocatedGauge, memoryAllocatedGauge, diskAllocatedGauge)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register orchestrator sandbox resource gauges: %w", err)
+	}
+
 	go server.refreshStartingSandboxesLimit(ctx)
 
 	return server, nil
