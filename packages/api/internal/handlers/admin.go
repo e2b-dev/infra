@@ -66,7 +66,8 @@ func (a *APIStore) PostNodesNodeID(c *gin.Context, nodeId api.NodeID) {
 		return
 	}
 
-	err = node.SendStatusChange(ctx, body.Status)
+	forceStop := body.ForceStop != nil && *body.ForceStop
+	err = node.SendStatusChange(ctx, body.Status, forceStop)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when sending status change: %s", err))
 

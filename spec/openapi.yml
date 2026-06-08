@@ -1455,6 +1455,9 @@ components:
           type: string
           format: uuid
           description: Identifier of the cluster
+        forceStop:
+          type: boolean
+          description: Force stop existing sandboxes and template builds when setting the node status to draining.
         status:
           $ref: "#/components/schemas/NodeStatus"
 

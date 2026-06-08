@@ -85,6 +85,27 @@ func TestTemplateBuildDeleteRejectsAfterDrainStarts(t *testing.T) {
 	require.Nil(t, got)
 }
 
+func TestStartDrainingDoesNotCancelRunningBuild(t *testing.T) {
+	t.Parallel()
+
+	buildCache := templatecache.NewBuildCache(t.Context(), noop.NewMeterProvider())
+	s := &ServerStore{
+		logger:     logger.NewNopLogger(),
+		drainDone:  make(chan struct{}),
+		buildCache: buildCache,
+	}
+	buildInfo, err := buildCache.Create("team-id", "build-id", buildlogger.NewLogEntryLogger())
+	require.NoError(t, err)
+
+	s.StartDraining(t.Context())
+
+	select {
+	case <-buildInfo.Result.Done:
+		t.Fatal("normal drain canceled running build")
+	default:
+	}
+}
+
 func TestWaitCanceledContextCancelsBuildsAndReturns(t *testing.T) {
 	t.Parallel()
 

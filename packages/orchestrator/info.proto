@@ -73,6 +73,7 @@ message ServiceInfoResponse {
 
 message ServiceStatusChangeRequest {
   ServiceInfoStatus service_status = 2;
+  optional bool force_stop = 3;
 }
 
 service InfoService {
