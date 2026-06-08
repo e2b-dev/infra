@@ -15,7 +15,7 @@ on:
         description: "Target environment for image upload, e.g. staging"
         required: true
         type: string
-      job_names:
+      image_names:
         description: "Name of the images to build and upload, e.g. api, template-manager, separated by ;"
         required: true
         type: string
@@ -33,7 +33,7 @@ on:
         description: "Target environment for image upload, e.g. staging"
         required: true
         type: string
-      job_names:
+      image_names:
         description: "Name of the images to build and upload, e.g. api, template-manager, separated by ;"
         required: true
         type: string
@@ -115,18 +115,18 @@ jobs:
           echo "::add-mask::$DOCKER_AUTH_BASE64"
           echo "DOCKER_AUTH_BASE64=${DOCKER_AUTH_BASE64}" >> "$GITHUB_ENV"
 
-      - name: Build and upload jobs
+      - name: Build and upload images
         env:
           AUTO_CONFIRM_DEPLOY: true
         run: |
-          IFS=';' read -ra JOBS <<< "${{ inputs.job_names }}"
+          IFS=';' read -ra IMAGES <<< "${{ inputs.image_names }}"
 
-          for job_name in "${JOBS[@]}"; do
-            job_name="$(echo "$job_name" | xargs)"
+          for image_name in "${IMAGES[@]}"; do
+            image_name="$(echo "$image_name" | xargs)"
 
-            if [ -n "$job_name" ]; then
-              echo "::group::Building and uploading job: $job_name"
-              make "build-and-upload/$job_name"
+            if [ -n "$image_name" ]; then
+              echo "::group::Building and uploading image: $image_name"
+              make "build-and-upload/$image_name"
               echo "::endgroup::"
             fi
           done
