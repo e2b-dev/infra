@@ -88,16 +88,14 @@ func (s *peerSeekable) Size(ctx context.Context) (int64, error) {
 	if res.hit {
 		return res.value, err
 	}
-	if s.uploaded.Load() {
-		return 0, &storage.PeerTransitionedError{}
-	}
 
-	base, err := s.getBase(ctx, storage.CompressionNone)
-	if err != nil {
-		return 0, err
-	}
-
-	return base.Size(ctx)
+	// Size has no caller-provided frame table to source the compression type
+	// from, and the basic-name fall-through would 404 on compressed V4 builds
+	// (data lives at .zstd). Surface PeerTransitionedError unconditionally on
+	// miss so the caller refreshes against the authoritative header — which
+	// knows the compression type — and either recovers or surfaces a clean "not
+	// yet on storage" error.
+	return 0, &storage.PeerTransitionedError{}
 }
 
 func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length int64, frameTable *storage.FrameTable) (io.ReadCloser, error) {

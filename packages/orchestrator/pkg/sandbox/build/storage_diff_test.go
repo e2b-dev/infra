@@ -153,10 +153,11 @@ func TestStorageDiff_SwapsHeaderOnSelfMatch(t *testing.T) {
 }
 
 // A loaded header that matches self by BuildId but doesn't carry an
-// authoritative self entry in its Builds map (mid-P2P upload, V3 with no
-// Builds map, or other incomplete state) must NOT be promoted via SwapHeader
-// — it would be a downgrade of File's current view.
-func TestStorageDiff_DoesNotSwapWhenLoadedLacksSelfEntry(t *testing.T) {
+// authoritative self entry (mid-P2P upload, V3 with no Builds map, or other
+// incomplete state) must NOT be promoted via SwapHeader, AND createDiff must
+// fail loudly rather than silently latching the zero-value bd as
+// authoritatively uncompressed.
+func TestStorageDiff_RejectsLoadedHeaderLackingSelfEntry(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -166,7 +167,6 @@ func TestStorageDiff_DoesNotSwapWhenLoadedLacksSelfEntry(t *testing.T) {
 	)
 
 	selfID := uuid.New()
-	payload := bytes.Repeat([]byte("incomplete-self-"), payloadSize/len("incomplete-self-")+1)[:payloadSize]
 
 	// Loaded header: self BuildId matches, but Builds map is empty —
 	// e.g. mid-P2P state where the peer hasn't populated its self entry.
@@ -188,25 +188,18 @@ func TestStorageDiff_DoesNotSwapWhenLoadedLacksSelfEntry(t *testing.T) {
 		OpenBlob(mock.Anything, paths.HeaderFile(storage.MemfileName), mock.Anything).
 		Return(headerBlob, nil).Once()
 
-	// Loaded header has empty Builds → bd is zero → size=0, initCT=None →
-	// newStorageDiff opens uncompressed path and falls back to obj.Size().
-	uncompressedSeekable := storage.NewMockSeekable(t)
-	uncompressedSeekable.EXPECT().
-		Size(mock.Anything).
-		Return(int64(payloadSize), nil).Once()
-	uncompressedSeekable.EXPECT().
-		OpenRangeReader(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (io.ReadCloser, error) {
-			end := min(off+length, int64(len(payload)))
+	// No OpenSeekable / Size / OpenRangeReader expectations: refresh must error
+	// out before any upstream is opened. If any of these fire the mock fails.
 
-			return io.NopCloser(bytes.NewReader(payload[off:end])), nil
-		})
-	provider.EXPECT().
-		OpenSeekable(mock.Anything, paths.DataFile(storage.MemfileName, storage.CompressionNone), mock.Anything).
-		Return(uncompressedSeekable, nil).Once()
+	store, err := NewDiffStore(cfg.Config{}, &featureflags.Client{}, t.TempDir(), time.Hour, time.Minute, nil)
+	require.NoError(t, err)
+	m, err := blockmetrics.NewMetrics(noop.NewMeterProvider())
+	require.NoError(t, err)
+	f := NewFile(staleHeader, store, Memfile, provider, m)
 
-	got, f := runReadOnFile(t, staleHeader, provider, readLen)
-	require.Equal(t, payload[:readLen], got)
+	_, err = f.ReadAt(t.Context(), make([]byte, readLen), 0)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no self entry")
 	require.Same(t, staleHeader, f.Header(), "File.header must not be swapped to an incomplete loaded one")
 }
 

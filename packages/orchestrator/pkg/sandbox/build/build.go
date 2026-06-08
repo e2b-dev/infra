@@ -459,7 +459,17 @@ func (b *File) refreshAncestorAndOpenUpstream(ctx context.Context, buildID uuid.
 		}
 	}
 
-	bd := loaded.Builds[buildID]
+	bd, hasSelf := loaded.Builds[buildID]
+	if !hasSelf {
+		// A finalized V4+ storage header always carries a self entry
+		// (build_upload_v4 populates it before publish). Reaching here means a
+		// routed OpenBlob hit a peer's in-flight header — which shouldn't be
+		// possible on this code path (we entered after !peerActive). Surface
+		// loudly rather than silently latching the zero-value bd as an
+		// authoritative uncompressed FT.
+		return nil, 0, nil, fmt.Errorf("createDiff: loaded header for build %s has no self entry (peer-served incomplete?)", buildID)
+	}
+
 	ft := bd.FrameData
 	if ft == nil {
 		ft = storage.UncompressedFrameTable

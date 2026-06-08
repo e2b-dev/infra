@@ -122,8 +122,7 @@ func (s *DiffStore) Close() {
 }
 
 // Get returns the cached Diff for key, refreshing TTL and cancelling any
-// pending eviction. Returns (nil, false) if the key isn't present. Use
-// Lookup for a side-effect-free probe (e.g. from IsCached).
+// pending eviction. Returns (nil, false) if the key isn't present.
 func (s *DiffStore) Get(key DiffStoreKey) (Diff, bool) {
 	s.resetDelete(key)
 	item := s.cache.Get(key)

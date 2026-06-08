@@ -30,17 +30,18 @@ func TestPeerSeekable_Size_PeerSucceeds(t *testing.T) {
 	assert.Equal(t, int64(4096), size)
 }
 
-func TestPeerSeekable_Size_PeerNotAvailable_FallsBackToBase(t *testing.T) {
+// Size has no caller-provided FT and cannot guess the CT, so a peer miss must
+// emit PeerTransitionedError so the caller refreshes against the authoritative
+// header rather than 404ing against a basic-name fall-through on compressed
+// builds. base must NOT be touched.
+func TestPeerSeekable_Size_PeerNotAvailable_EmitsPeerTransitionedError(t *testing.T) {
 	t.Parallel()
 
 	client := orchestratormocks.NewMockChunkServiceClient(t)
 	client.EXPECT().GetBuildFileSize(mock.Anything, mock.Anything).Return(&orchestrator.GetBuildFileSizeResponse{Availability: &orchestrator.PeerAvailability{NotAvailable: true}}, nil)
 
-	baseSeekable := storage.NewMockSeekable(t)
-	baseSeekable.EXPECT().Size(mock.Anything).Return(int64(8192), nil)
-
+	// NewMockStorageProvider auto-fails on any unexpected call.
 	base := storage.NewMockStorageProvider(t)
-	base.EXPECT().OpenSeekable(mock.Anything, "build-1/memfile", storage.MemfileObjectType).Return(baseSeekable, nil)
 
 	s := &peerSeekable{
 		peerHandle: peerHandle{
@@ -52,9 +53,9 @@ func TestPeerSeekable_Size_PeerNotAvailable_FallsBackToBase(t *testing.T) {
 		basePersistence: base,
 		objType:         storage.MemfileObjectType,
 	}
-	size, err := s.Size(t.Context())
-	require.NoError(t, err)
-	assert.Equal(t, int64(8192), size)
+	_, err := s.Size(t.Context())
+	var transErr *storage.PeerTransitionedError
+	require.ErrorAs(t, err, &transErr)
 }
 
 func TestPeerSeekable_OpenRangeReader_PeerSucceeds(t *testing.T) {
