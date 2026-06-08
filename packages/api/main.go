@@ -349,7 +349,12 @@ func run() int {
 
 	config, err := cfg.Parse()
 	if err != nil {
-		logger.L().Fatal(ctx, "Error parsing config", zap.Error(err))
+		fields := []zap.Field{zap.Error(err)}
+		if condition, ok := cfg.ParseFailureCondition(err); ok {
+			fields = append(fields, zap.String("config_failure_condition", string(condition)))
+		}
+
+		logger.L().Fatal(ctx, "Error parsing config", fields...)
 	}
 
 	err = sqlcdb.CheckMigrationVersion(ctx, config.PostgresConnectionString, expectedMigration)
