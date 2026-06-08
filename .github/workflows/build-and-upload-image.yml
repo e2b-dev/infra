@@ -1,4 +1,4 @@
-name: Deploy Image
+name: Build and Upload Image
 
 on:
   workflow_dispatch:
@@ -12,11 +12,11 @@ on:
         required: false
         type: string
       environment:
-        description: "Target environment for deployment, e.g. staging"
+        description: "Target environment for image upload, e.g. staging"
         required: true
         type: string
       job_names:
-        description: "Name of the images to deploy, e.g. api, template-manager, separated by ;"
+        description: "Name of the images to build and upload, e.g. api, template-manager, separated by ;"
         required: true
         type: string
   workflow_call:
@@ -30,11 +30,11 @@ on:
         required: false
         type: string
       environment:
-        description: "Target environment for deployment, e.g. staging"
+        description: "Target environment for image upload, e.g. staging"
         required: true
         type: string
       job_names:
-        description: "Name of the images to deploy, e.g. api, template-manager, separated by ;"
+        description: "Name of the images to build and upload, e.g. api, template-manager, separated by ;"
         required: true
         type: string
 
@@ -47,7 +47,7 @@ concurrency:
 
 jobs:
   deploy:
-    name: Deploy image to the ${{ inputs.environment }} environment
+    name: Build and upload image to the ${{ inputs.environment }} environment
     runs-on: ci-builder
     environment: ${{ inputs.environment }}
     permissions:
