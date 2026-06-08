@@ -98,7 +98,7 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, ginCtx *gin.C
 			return validationError.Err
 		}
 
-		return fmt.Errorf("%s\n%s (%w)", a.errorMessage, validationError.ClientMsg, validationError.Err)
+		return fmt.Errorf("%s\n%s", a.errorMessage, validationError.ClientMsg)
 	}
 
 	telemetry.ReportEvent(ctx, "api key validated")

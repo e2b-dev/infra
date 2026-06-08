@@ -13,8 +13,8 @@ import (
 
 const createSnapshotTemplateEnv = `-- name: CreateSnapshotTemplateEnv :one
 WITH new_env AS (
-    INSERT INTO "public"."envs" (id, public, created_by, team_id, updated_at, source)
-    VALUES ($1, FALSE, NULL, $2, now(), 'snapshot_template')
+    INSERT INTO "public"."envs" (id, public, created_by, team_id, updated_at, source, cluster_id)
+    VALUES ($1, FALSE, NULL, $2, now(), 'snapshot_template', $3)
     RETURNING id
 ),
 
@@ -22,9 +22,9 @@ snapshot_template AS (
     INSERT INTO "public"."snapshot_templates" (env_id, sandbox_id, origin_node_id, build_id)
     VALUES (
         (SELECT id FROM new_env),
-        $3,
         $4,
-        $5
+        $5,
+        $6
     )
 ),
 
@@ -32,8 +32,8 @@ build_assignment AS (
     INSERT INTO "public"."env_build_assignments" (env_id, build_id, tag)
     VALUES (
         (SELECT id FROM new_env),
-        $5,
-        $6
+        $6,
+        $7
     )
     RETURNING env_id as snapshot_id
 )
@@ -44,6 +44,7 @@ SELECT snapshot_id FROM build_assignment
 type CreateSnapshotTemplateEnvParams struct {
 	SnapshotID   string
 	TeamID       uuid.UUID
+	ClusterID    *uuid.UUID
 	SandboxID    string
 	OriginNodeID *string
 	BuildID      *uuid.UUID
@@ -56,6 +57,7 @@ func (q *Queries) CreateSnapshotTemplateEnv(ctx context.Context, arg CreateSnaps
 	row := q.db.QueryRow(ctx, createSnapshotTemplateEnv,
 		arg.SnapshotID,
 		arg.TeamID,
+		arg.ClusterID,
 		arg.SandboxID,
 		arg.OriginNodeID,
 		arg.BuildID,
