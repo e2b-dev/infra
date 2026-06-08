@@ -70,6 +70,12 @@ type FrameTable struct {
 	entries         []frameEntry // sorted by StartU
 }
 
+// UncompressedFrameTable is the canonical sentinel for "data is stored
+// uncompressed" — an empty FrameTable has no frames to decompress, so a reader
+// handed this back skips the U→C translation entirely. Shared across callers
+// to avoid per-call allocation; read-only and must never be mutated.
+var UncompressedFrameTable = &FrameTable{}
+
 // newFrameTableFromEntries creates a FrameTable from pre-computed absolute-offset entries.
 func newFrameTableFromEntries(ct CompressionType, entries []frameEntry) *FrameTable {
 	return &FrameTable{compressionType: ct, entries: entries}

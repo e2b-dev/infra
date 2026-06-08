@@ -11,15 +11,39 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerclient"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
+)
+
+var (
+	buildMeter = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build")
+
+	// frameTableRefreshTimer measures ancestor-header refresh events as the
+	// standard (duration, bytes, count) triple. A refresh is triggered when a
+	// parent had no Builds[self] entry (proactive load at source resolution)
+	// or a P2P peer transitions to storage mid-read.
+	//
+	// Attributes:
+	//   cause     — proactive | peer_transitioned
+	//   file_type — memfile | rootfs
+	//   result    — success | failure (added by TimerFactory)
+	frameTableRefreshTimer = utils.Must(telemetry.NewTimerFactory(buildMeter,
+		"orchestrator.storage.diff.frame_table_refresh",
+		"Duration of frame-table refresh header loads",
+		"Bytes loaded during frame-table refreshes",
+		"Frame-table refresh events",
+	))
 )
 
 type File struct {
@@ -94,7 +118,8 @@ type readSegment struct {
 	length int64
 	diff   Diff
 	// ft uses the nil-vs-empty convention: nil = no entry (hint unknown),
-	// empty &FrameTable{} = authoritatively uncompressed, non-empty = compressed.
+	// storage.UncompressedFrameTable = authoritatively uncompressed,
+	// non-empty = compressed.
 	ft *storage.FrameTable
 }
 
@@ -119,19 +144,23 @@ func (b *File) readSegments(ctx context.Context, p []byte, segments []readSegmen
 	return nil
 }
 
-// readSegment reads one segment, recovering from PeerTransitionedError or a
-// wrong-CT 404 by refreshing the FT from storage and retrying once.
+// readSegment reads one segment. On PeerTransitionedError, it waits the
+// peer's RetryAfter, refreshes the diff's source against the post-finalize
+// header/CT, and retries once. All other errors propagate.
 func (b *File) readSegment(ctx context.Context, p []byte, s readSegment) error {
-	refresher, _ := s.diff.(FrameTableRefresher)
 	dst := p[s.dstOff : s.dstOff+int(s.length)]
 
 	n, err := s.diff.ReadAt(ctx, dst, s.srcOff, s.ft)
 	if err != nil {
-		if refresher == nil {
+		var transitionErr *storage.PeerTransitionedError
+		if !errors.As(err, &transitionErr) {
 			return err
 		}
-		if err = b.specialErrorHandler(ctx, refresher, s, err); err != nil {
-			return err
+		if waitErr := waitTransitionBackoff(ctx, b.fileType, transitionErr); waitErr != nil {
+			return waitErr
+		}
+		if refreshErr := s.diff.RefreshSource(ctx); refreshErr != nil {
+			return fmt.Errorf("refresh after peer transition: %w", refreshErr)
 		}
 		n, err = s.diff.ReadAt(ctx, dst, s.srcOff, s.ft)
 		if err != nil {
@@ -140,33 +169,6 @@ func (b *File) readSegment(ctx context.Context, p []byte, s readSegment) error {
 	}
 	if int64(n) != s.length {
 		return io.ErrUnexpectedEOF
-	}
-
-	return nil
-}
-
-func (b *File) specialErrorHandler(ctx context.Context, refresher FrameTableRefresher, s readSegment, err error) error {
-	var transitionErr *storage.PeerTransitionedError
-	switch {
-	case errors.As(err, &transitionErr):
-		if waitErr := waitTransitionBackoff(ctx, b.fileType, transitionErr); waitErr != nil {
-			return waitErr
-		}
-	case errors.Is(err, storage.ErrObjectNotExist) && s.ft == nil:
-		// fall through to refresh
-	default:
-		return err
-	}
-
-	h, rerr := refresher.RefreshFrameTable(ctx)
-	if rerr != nil {
-		return fmt.Errorf("recover after %w: %w", err, rerr)
-	}
-	// If the just-loaded header is *this* file's own finalized header, promote
-	// it: every subsequent read picks up authoritative Builds[ancestor] hints
-	// instead of paying a separate refresh per ancestor.
-	if h != nil && h.Metadata.BuildId == b.Header().Metadata.BuildId {
-		b.SwapHeader(h)
 	}
 
 	return nil
@@ -206,7 +208,7 @@ func (b *File) planRead(ctx context.Context, p []byte, off int64) ([]readSegment
 			continue
 		}
 
-		diff, err := b.cachedBuild(ctx, h, mappedToBuild.BuildId, &cacheIDs, &cacheDiffs)
+		diff, err := b.cachedBuild(ctx, mappedToBuild.BuildId, &cacheIDs, &cacheDiffs)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -223,14 +225,14 @@ func (b *File) planRead(ctx context.Context, p []byte, off int64) ([]readSegment
 	return segments, n, nil
 }
 
-func (b *File) cachedBuild(ctx context.Context, h *header.Header, buildID uuid.UUID, ids *[]uuid.UUID, diffs *[]Diff) (Diff, error) {
+func (b *File) cachedBuild(ctx context.Context, buildID uuid.UUID, ids *[]uuid.UUID, diffs *[]Diff) (Diff, error) {
 	for i, id := range *ids {
 		if id == buildID {
 			return (*diffs)[i], nil
 		}
 	}
 
-	diff, err := b.getBuild(ctx, buildID, b.buildFileSize(h, buildID), h.GetBuildFrameData(buildID).CompressionType())
+	diff, err := b.getBuild(ctx, buildID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get build: %w", err)
 	}
@@ -253,9 +255,8 @@ func (b *File) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 				return header.EmptyHugePage[:length], nil
 			}
 			if m.BuildId != uuid.Nil {
-				size := b.buildFileSize(h, m.BuildId)
 				ft := h.GetBuildFrameData(m.BuildId)
-				diff, derr := b.getBuild(ctx, m.BuildId, size, ft.CompressionType())
+				diff, derr := b.getBuild(ctx, m.BuildId)
 				if derr != nil {
 					logger.L().Warn(ctx, "failed to get build for slice fast path", zap.Error(derr))
 				} else {
@@ -330,35 +331,173 @@ func waitTransitionBackoff(ctx context.Context, fileType DiffType, transErr *sto
 	return nil
 }
 
-// buildFileSize returns the uncompressed file size for a build. Returns 0 for
-// V3 headers, which signals the read path to fall back to a Size() RPC.
-func (b *File) buildFileSize(h *header.Header, buildID uuid.UUID) int64 {
-	if bd, ok := h.Builds[buildID]; ok {
-		return bd.Size
-	}
+// getBuild returns the cached StorageDiff for buildID, constructing one via
+// createDiff on miss. The singleflight inside GetOrCreate ensures createDiff
+// runs at most once per key across concurrent callers.
+func (b *File) getBuild(ctx context.Context, buildID uuid.UUID) (Diff, error) {
+	key := GetDiffStoreKey(buildID.String(), b.fileType)
 
-	return 0
+	return b.store.GetOrCreate(ctx, key, func(ctx context.Context) (Diff, error) {
+		return b.createDiff(ctx, buildID)
+	})
 }
 
-func (b *File) getBuild(ctx context.Context, buildID uuid.UUID, uncompressedSize int64, hintCT storage.CompressionType) (Diff, error) {
-	storageDiff, err := newStorageDiff(
+func (b *File) createDiff(ctx context.Context, buildID uuid.UUID) (Diff, error) {
+	h := b.Header()
+	blockSize := int64(h.Metadata.BlockSize)
+
+	objType, ok := storageObjectType(b.fileType)
+	if !ok {
+		return nil, UnknownDiffTypeError{b.fileType}
+	}
+
+	var (
+		upstream  storage.Seekable
+		size      int64
+		initialCT storage.CompressionType
+		initialFT *storage.FrameTable
+	)
+
+	bd, hasEntry := h.Builds[buildID]
+	switch {
+	case hasEntry:
+		// Our header has a Builds entry for this ancestor. Do NOT latch
+		// bd.FrameData as the StorageDiff's authoritative full-file FT — it is
+		// filtered to only the frames our header references, not the ancestor's
+		// full table.
+		size = bd.Size
+		initialCT = bd.FrameData.CompressionType()
+
+	case h.Metadata.Version >= header.MetadataVersionV4:
+		peerActive := b.store.isActivePeer != nil && b.store.isActivePeer(buildID.String())
+		if peerActive {
+			// Peer mode is active for the build. Open at the uncompressed path
+			// (peers serve uncompressed by basic name regardless of stored CT)
+			// and ask the peer for size. initFT stays nil (as opposed to {})
+			// since we do not know what it is.
+			var err error
+			upstream, err = b.openUpstream(ctx, buildID, objType, initialCT)
+			if err != nil {
+				return nil, err
+			}
+			if peerReportedSize, ok, err := initialSize(ctx, upstream); err != nil {
+				return nil, fmt.Errorf("createDiff: peer Size for build %s: %w", buildID, err)
+			} else if ok {
+				size = peerReportedSize
+
+				break
+			}
+
+			// fall through to refresh.
+		}
+
+		// Refresh ancestor and open upstream.
+		var err error
+		upstream, size, initialFT, err = b.refreshAncestorAndOpenUpstream(ctx, buildID, objType)
+		if err != nil {
+			return nil, err
+		}
+
+	default:
+		initialFT = storage.UncompressedFrameTable
+	}
+
+	if upstream == nil {
+		var err error
+		upstream, err = b.openUpstream(ctx, buildID, objType, initialCT)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if size == 0 {
+		// (d) and degenerate (a) where bd.Size was zero. Ask storage directly.
+		var err error
+		size, err = upstream.Size(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("createDiff: size lookup for build %s: %w", buildID, err)
+		}
+	}
+
+	return newStorageDiff(
 		b.store.cachePath,
 		buildID.String(),
 		b.fileType,
-		int64(b.Header().Metadata.BlockSize),
+		objType,
+		blockSize,
 		b.metrics,
 		b.persistence,
-		uncompressedSize, hintCT,
+		b.store.isActivePeer,
+		upstream,
+		size,
+		initialFT,
 		b.store.flags,
 	)
+}
+
+// openUpstream resolves the data-file path for buildID at ct and opens it.
+func (b *File) openUpstream(ctx context.Context, buildID uuid.UUID, objType storage.SeekableObjectType, ct storage.CompressionType) (storage.Seekable, error) {
+	path := storage.Paths{BuildID: buildID.String()}.DataFile(string(b.fileType), ct)
+	upstream, err := b.persistence.OpenSeekable(ctx, path, objType)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create storage diff: %w", err)
+		return nil, fmt.Errorf("createDiff: open upstream for build %s at %s: %w", buildID, path, err)
 	}
 
-	source, err := b.store.Get(ctx, storageDiff)
+	return upstream, nil
+}
+
+func (b *File) refreshAncestorAndOpenUpstream(ctx context.Context, buildID uuid.UUID, objType storage.SeekableObjectType) (storage.Seekable, int64, *storage.FrameTable, error) {
+	loaded, err := refreshBuildHeader(ctx, b.persistence, buildID, b.fileType, refreshCauseProactive)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get build from store: %w", err)
+		return nil, 0, nil, fmt.Errorf("createDiff: proactive header load for build %s: %w", buildID, err)
 	}
 
-	return source, nil
+	// Promote a self-matching loaded header if authoritative.
+	if h := b.Header(); loaded.Metadata.BuildId == h.Metadata.BuildId {
+		if _, hasSelf := loaded.Builds[loaded.Metadata.BuildId]; hasSelf {
+			b.SwapHeader(loaded)
+		}
+	}
+
+	bd := loaded.Builds[buildID]
+	ft := bd.FrameData
+	if ft == nil {
+		ft = storage.UncompressedFrameTable
+	}
+
+	upstream, err := b.openUpstream(ctx, buildID, objType, ft.CompressionType())
+	if err != nil {
+		return nil, 0, nil, err
+	}
+
+	return upstream, bd.Size, ft, nil
+}
+
+// initialSize is THE only production code path that calls Size on
+// a freshly opened upstream. Invoked from createDiff when the V4+ ancestor is
+// peer-active: ask the peer wrapper for the size. Four outcomes:
+//
+//   - peer-routed wrapper, peer answered → (size, true, nil)
+//   - peer-routed wrapper, PeerTransitionedError → (0, false, nil)  caller refreshes
+//   - peer-routed wrapper, peer RPC failure → (0, false, err)
+//   - NOT peer-routed (resolveProvider cleared between IsActive probe and
+//     OpenSeekable) → (0, false, nil)  caller refreshes
+//
+// Symmetric with readSegment's PeerTransitionedError handling on the read path:
+// peer says "go to storage" → refresh authoritative header → continue.
+// No 404-driven recovery.
+func initialSize(ctx context.Context, upstream storage.Seekable) (size int64, ok bool, err error) {
+	if _, peerRouted := upstream.(peerclient.PeerRouted); !peerRouted {
+		return 0, false, nil
+	}
+	size, err = upstream.Size(ctx)
+	if err == nil {
+		return size, true, nil
+	}
+	var transErr *storage.PeerTransitionedError
+	if errors.As(err, &transErr) {
+		return 0, false, nil
+	}
+
+	return 0, false, err
 }

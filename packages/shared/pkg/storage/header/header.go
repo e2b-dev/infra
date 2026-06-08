@@ -179,14 +179,15 @@ func (t *Header) GetShiftedMapping(ctx context.Context, offset int64) (BuildMap,
 }
 
 // GetBuildFrameData returns the FrameTable for a build: nil = no entry,
-// empty &FrameTable{} = authoritatively uncompressed, else compressed.
+// storage.UncompressedFrameTable = authoritatively uncompressed, else
+// compressed.
 func (t *Header) GetBuildFrameData(buildID uuid.UUID) *storage.FrameTable {
 	bd, ok := t.Builds[buildID]
 	if !ok {
 		return nil
 	}
 	if bd.FrameData == nil {
-		return &storage.FrameTable{}
+		return storage.UncompressedFrameTable
 	}
 
 	return bd.FrameData

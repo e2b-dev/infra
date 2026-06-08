@@ -11,10 +11,11 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 type DiffType string
+
+type IsActivePeer func(buildID string) bool
 
 type NoDiffError struct{}
 
@@ -39,12 +40,11 @@ type Diff interface {
 	// on disk. Used by the DiffStore evictor.
 	FileSize(ctx context.Context) (int64, error)
 	BlockSize() int64
-	Init(ctx context.Context) error
-}
-
-type FrameTableRefresher interface {
-	FrameTable() *storage.FrameTable // nil if the authoritative FT isn't installed yet
-	RefreshFrameTable(ctx context.Context) (*header.Header, error)
+	// RefreshSource synchronously re-resolves the diff's upstream data object
+	// (path) and the frame table by reloading the build's header and reopening
+	// upstream at the resulting CT. Called when the caller knows the currently
+	// latched source is stale. To support P2P header swaps.
+	RefreshSource(ctx context.Context) error
 }
 
 type NoDiff struct{}
@@ -79,9 +79,7 @@ func (n *NoDiff) CacheKey() DiffStoreKey {
 	return ""
 }
 
-func (n *NoDiff) Init(context.Context) error {
-	return NoDiffError{}
-}
+func (n *NoDiff) RefreshSource(_ context.Context) error { return nil }
 
 func (n *NoDiff) BlockSize() int64 {
 	return 0

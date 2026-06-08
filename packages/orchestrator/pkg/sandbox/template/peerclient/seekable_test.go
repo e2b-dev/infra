@@ -143,31 +143,20 @@ func TestPeerSeekable_OpenRangeReader_Uploaded_ReturnsPeerTransitionedError(t *t
 	require.ErrorAs(t, err, &transErr)
 }
 
-// TestPeerStorageProvider_FullTransitionFlow walks the whole peerclient
-// surface across a peer→storage transition with a header swap from V3 (basic
-// path) to V4 (zstd-compressed path). Regression cover for the bug where the
-// post-transition read kept hitting the original uncompressed path.
-//
-// Sequence:
-//  1. Pre-transition: caller passes ft={ct=None}; peer answers; bytes flow.
-//  2. Peer signals UseStorage; uploaded flips to true.
-//  3. First post-transition call: peerSeekable returns PeerTransitionedError
-//     immediately (no peer call, no base open).
-//  4. Caller (build.File.retryOnTransition, simulated here) reloads the V4
-//     header and retries with ft={ct=Zstd}.
-//  5. peerSeekable falls through to base, which opens "build-1/memfile.zstd"
-//     (not "build-1/memfile") and serves the compressed bytes.
-func TestPeerStorageProvider_FullTransitionFlow(t *testing.T) {
+// TestPeerStorageProvider_TransitionEmitsError covers the peer→storage
+// transition contract: while uploaded is false, peerSeekable serves from the
+// peer; the call that observes UseStorage flips uploaded and returns its
+// bytes; the NEXT call on the same wrapper returns PeerTransitionedError
+// without touching peer or base. The wrapper never falls through to base
+// post-transition — that's the resolver's job (attrResolveUploaded) once the
+// caller reopens. Catching a peerSeekable falling through here would mean we
+// regressed to the 404-driven recovery design.
+func TestPeerStorageProvider_TransitionEmitsError(t *testing.T) {
 	t.Parallel()
 
 	uploaded := &atomic.Bool{}
-
 	prePeerBytes := []byte("pre-transition peer payload")
-	postBaseBytes := []byte("post-transition compressed payload")
 
-	// Pre-transition peer stream: serves bytes once, then EOF. uploaded is
-	// flipped via UseStorage on the EOF response so subsequent calls skip
-	// the peer.
 	preStream := orchestratormocks.NewMockChunkService_ReadAtBuildSeekableClient(t)
 	preStream.EXPECT().Recv().Return(&orchestrator.ReadAtBuildSeekableResponse{Data: prePeerBytes}, nil).Once()
 	preStream.EXPECT().Recv().RunAndReturn(func() (*orchestrator.ReadAtBuildSeekableResponse, error) {
@@ -178,27 +167,18 @@ func TestPeerStorageProvider_FullTransitionFlow(t *testing.T) {
 
 	client := orchestratormocks.NewMockChunkServiceClient(t)
 	client.EXPECT().ReadAtBuildSeekable(mock.Anything, mock.MatchedBy(func(req *orchestrator.ReadAtBuildSeekableRequest) bool {
-		// Peer is asked by basic name only.
 		return req.GetBuildId() == "build-1" && req.GetName() == storage.MemfileName
 	})).Return(preStream, nil).Once()
 
-	// Base is only consulted post-transition, and only against the compressed
-	// path. If the bug regresses (uncompressed path), this expectation fails.
-	postBaseSeekable := storage.NewMockSeekable(t)
-	postBaseSeekable.EXPECT().
-		OpenRangeReader(mock.Anything, int64(0), int64(len(postBaseBytes)), mock.Anything).
-		Return(io.NopCloser(bytes.NewReader(postBaseBytes)), nil).Once()
-
+	// base must NOT be touched: any post-transition fall-through would be a
+	// regression to 404-driven recovery. NewMockStorageProvider(t) auto-asserts
+	// no unexpected calls on cleanup.
 	base := storage.NewMockStorageProvider(t)
-	base.EXPECT().
-		OpenSeekable(mock.Anything, "build-1/memfile.zstd", storage.MemfileObjectType).
-		Return(postBaseSeekable, nil).Once()
 
 	p := newPeerStorageProvider(base, client, uploaded)
 	seekable, err := p.OpenSeekable(t.Context(), "build-1/memfile", storage.MemfileObjectType)
 	require.NoError(t, err)
 
-	// 1. Pre-transition read via peer. ft={ct=None} (V3 header).
 	rc, err := seekable.OpenRangeReader(t.Context(), 0, int64(len(prePeerBytes)),
 		storage.NewFrameTable(storage.CompressionNone, nil))
 	require.NoError(t, err)
@@ -208,19 +188,8 @@ func TestPeerStorageProvider_FullTransitionFlow(t *testing.T) {
 	assert.Equal(t, prePeerBytes, got)
 	require.True(t, uploaded.Load(), "uploaded flag should be set after peer EOF with UseStorage")
 
-	// 2. First post-transition call: retriable error, no peer/base contact.
 	_, err = seekable.OpenRangeReader(t.Context(), 0, 1,
 		storage.NewFrameTable(storage.CompressionNone, nil))
 	var transErr *storage.PeerTransitionedError
 	require.ErrorAs(t, err, &transErr)
-
-	// 3. Caller reloads V4 header and retries with ct=Zstd. This must hit the
-	//    compressed path on base.
-	rc, err = seekable.OpenRangeReader(t.Context(), 0, int64(len(postBaseBytes)),
-		storage.NewFrameTable(storage.CompressionZstd, nil))
-	require.NoError(t, err)
-	got, err = io.ReadAll(rc)
-	require.NoError(t, err)
-	require.NoError(t, rc.Close())
-	assert.Equal(t, postBaseBytes, got)
 }

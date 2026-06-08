@@ -839,7 +839,7 @@ func TestSerializeDeserialize_V4_Uncompressed_SelfEntry(t *testing.T) {
 	require.Equal(t, uint64(MetadataVersionV4), got.Metadata.Version)
 	require.Len(t, got.Builds, 1)
 	require.Contains(t, got.Builds, buildID)
-	require.Equal(t, &storage.FrameTable{}, got.GetBuildFrameData(buildID))
+	require.Equal(t, storage.UncompressedFrameTable, got.GetBuildFrameData(buildID))
 }
 
 // Layered chain V4-uncompressed (self) → V4-compressed (mid) → V4-uncompressed
@@ -893,8 +893,8 @@ func TestSerializeDeserialize_V4_MixedChain(t *testing.T) {
 	require.Equal(t, 5, got.Mapping.Len())
 	require.Len(t, got.Builds, 3)
 
-	require.Equal(t, &storage.FrameTable{}, got.GetBuildFrameData(selfID))
-	require.Equal(t, &storage.FrameTable{}, got.GetBuildFrameData(olderID))
+	require.Equal(t, storage.UncompressedFrameTable, got.GetBuildFrameData(selfID))
+	require.Equal(t, storage.UncompressedFrameTable, got.GetBuildFrameData(olderID))
 
 	gotMidFT := got.GetBuildFrameData(midID)
 	require.NotNil(t, gotMidFT)
