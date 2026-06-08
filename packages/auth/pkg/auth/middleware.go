@@ -211,18 +211,12 @@ func NewAuthProviderTeamAuthenticator(validationFunc func(ctx context.Context, g
 	}
 }
 
-// NewAdminTokenAuthenticator creates an authenticator for the AdminTokenAuth security scheme (X-Admin-Token header).
-func NewAdminTokenAuthenticator(adminToken string) Authenticator {
-	return newAdminTokenAuthenticator("AdminTokenAuth", adminToken)
+// NewAdminApiTokenAuthenticator creates an authenticator for the AdminApiTokenAuth security scheme (X-Admin-Token header).
+func NewAdminApiTokenAuthenticator(adminToken string) Authenticator {
+	return newAdminApiTokenAuthenticator("AdminApiTokenAuth", adminToken)
 }
 
-// NewAdmin1TokenAuthenticator creates an authenticator for the Admin1TokenAuth security scheme (X-Admin-Token header).
-// The numbered name ensures token auth sorts before Admin2TeamAuth in multi-scheme requirements.
-func NewAdmin1TokenAuthenticator(adminToken string) Authenticator {
-	return newAdminTokenAuthenticator("Admin1TokenAuth", adminToken)
-}
-
-func newAdminTokenAuthenticator(schemeName, adminToken string) Authenticator {
+func newAdminApiTokenAuthenticator(schemeName, adminToken string) Authenticator {
 	return &commonAuthenticator[struct{}]{
 		schemeName: schemeName,
 		header: headerKey{
@@ -236,12 +230,6 @@ func newAdminTokenAuthenticator(schemeName, adminToken string) Authenticator {
 // NewAdminTeamAuthenticator creates an authenticator for AdminTeamAuth (X-Team-ID header).
 func NewAdminTeamAuthenticator(validationFunc func(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *APIError)) Authenticator {
 	return newAdminTeamAuthenticator("AdminTeamAuth", validationFunc)
-}
-
-// NewAdmin2TeamAuthenticator creates an authenticator for Admin2TeamAuth (X-Team-ID header).
-// It is intended to be paired with Admin1TokenAuth on routes that need team context.
-func NewAdmin2TeamAuthenticator(validationFunc func(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *APIError)) Authenticator {
-	return newAdminTeamAuthenticator("Admin2TeamAuth", validationFunc)
 }
 
 func newAdminTeamAuthenticator(

@@ -37,13 +37,13 @@ components:
       type: apiKey
       in: header
       name: X-Team-ID
-    # Admin1TokenAuth / Admin2TeamAuth: numbered names ensure token
+    # AdminApiTokenAuth / AdminTeamAuth: alphabetical names ensure token
     # validation runs before team context population.
-    Admin1TokenAuth:
+    AdminApiTokenAuth:
       type: apiKey
       in: header
       name: X-Admin-Token
-    Admin2TeamAuth:
+    AdminTeamAuth:
       type: apiKey
       in: header
       name: X-Team-ID
@@ -1949,8 +1949,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/teamID"
         - in: query
@@ -1995,8 +1995,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/teamID"
         - in: query
@@ -2046,8 +2046,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - name: metadata
           in: query
@@ -2079,8 +2079,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       requestBody:
         required: true
         content:
@@ -2111,8 +2111,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - name: metadata
           in: query
@@ -2158,8 +2158,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - name: sandbox_ids
           in: query
@@ -2197,8 +2197,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
         - in: query
@@ -2240,8 +2240,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
         - in: query
@@ -2300,8 +2300,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -2327,8 +2327,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -2351,8 +2351,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
         - in: query
@@ -2399,8 +2399,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -2426,8 +2426,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       requestBody:
@@ -2462,8 +2462,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       requestBody:
@@ -2503,8 +2503,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       tags: [sandboxes]
       requestBody:
         content:
@@ -2532,8 +2532,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       tags: [sandboxes]
       requestBody:
         required: true
@@ -2564,8 +2564,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       tags: [sandboxes]
       requestBody:
         content:
@@ -2592,8 +2592,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       requestBody:
@@ -2628,8 +2628,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - name: sandboxID
           in: query
@@ -2663,8 +2663,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       requestBody:
         required: true
         content:
@@ -2699,8 +2699,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       requestBody:
         required: true
         content:
@@ -2733,8 +2733,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - in: path
@@ -2771,8 +2771,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - in: query
           required: false
@@ -2834,8 +2834,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/paginationNextToken"
@@ -2891,8 +2891,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       responses:
@@ -2913,8 +2913,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       requestBody:
@@ -2965,8 +2965,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -2995,8 +2995,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       requestBody:
@@ -3030,8 +3030,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -3081,8 +3081,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -3139,8 +3139,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       requestBody:
         required: true
         content:
@@ -3171,8 +3171,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       requestBody:
         required: true
         content:
@@ -3201,8 +3201,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       responses:
@@ -3233,8 +3233,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - name: alias
           in: path
@@ -3263,7 +3263,7 @@ paths:
       description: List all nodes
       tags: [admin]
       security:
-        - Admin1TokenAuth: []
+        - AdminApiTokenAuth: []
       parameters:
         - in: query
           name: clusterID
@@ -3291,7 +3291,7 @@ paths:
       description: Get node info
       tags: [admin]
       security:
-        - Admin1TokenAuth: []
+        - AdminApiTokenAuth: []
       parameters:
         - $ref: "#/components/parameters/nodeID"
         - in: query
@@ -3318,7 +3318,7 @@ paths:
       description: Change status of a node
       tags: [admin]
       security:
-        - Admin1TokenAuth: []
+        - AdminApiTokenAuth: []
       parameters:
         - $ref: "#/components/parameters/nodeID"
       requestBody:
@@ -3342,7 +3342,7 @@ paths:
       description: Kills all sandboxes for the specified team
       tags: [admin]
       security:
-        - Admin1TokenAuth: []
+        - AdminApiTokenAuth: []
       parameters:
         - name: teamID
           in: path
@@ -3371,7 +3371,7 @@ paths:
       description: Cancels all in-progress and pending builds for the specified team
       tags: [admin]
       security:
-        - Admin1TokenAuth: []
+        - AdminApiTokenAuth: []
       parameters:
         - name: teamID
           in: path
@@ -3400,7 +3400,7 @@ paths:
       description: Creates a team API key for internal service workflows.
       tags: [admin]
       security:
-        - Admin1TokenAuth: []
+        - AdminApiTokenAuth: []
       parameters:
         - name: teamID
           in: path
@@ -3439,7 +3439,7 @@ paths:
       description: Deletes a team API key for internal service workflows.
       tags: [admin]
       security:
-        - Admin1TokenAuth: []
+        - AdminApiTokenAuth: []
       parameters:
         - name: teamID
           in: path
@@ -3514,8 +3514,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       responses:
         "200":
           description: Successfully returned all team API keys
@@ -3564,8 +3564,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/apiKeyID"
       requestBody:
@@ -3591,8 +3591,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/apiKeyID"
       responses:
@@ -3615,8 +3615,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       responses:
         "200":
           description: Successfully listed all team volumes
@@ -3640,8 +3640,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       requestBody:
         required: true
         content:
@@ -3672,8 +3672,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/volumeID"
       responses:
@@ -3699,8 +3699,8 @@ paths:
           Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
-        - Admin1TokenAuth: []
-          Admin2TeamAuth: []
+        - AdminApiTokenAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/volumeID"
       responses:

@@ -33,8 +33,8 @@ func TestSpecSecuritySchemeHeaderNames(t *testing.T) {
 		{"Supabase1TokenAuth", auth.HeaderSupabaseToken},
 		{"Supabase2TeamAuth", auth.HeaderSupabaseTeam},
 		{"AuthProviderTeamAuth", auth.HeaderTeamID},
-		{"Admin1TokenAuth", auth.HeaderAdminToken},
-		{"Admin2TeamAuth", auth.HeaderTeamID},
+		{"AdminApiTokenAuth", auth.HeaderAdminToken},
+		{"AdminTeamAuth", auth.HeaderTeamID},
 	}
 
 	for _, tc := range cases {
@@ -78,8 +78,8 @@ func TestAuthProviderTeamAuthHeaderRoutes(t *testing.T) {
 		"Supabase2TeamAuth":      auth.HeaderSupabaseTeam,
 		"AuthProviderBearerAuth": auth.HeaderAuthorization,
 		"AuthProviderTeamAuth":   auth.HeaderTeamID,
-		"Admin1TokenAuth":        auth.HeaderAdminToken,
-		"Admin2TeamAuth":         auth.HeaderTeamID,
+		"AdminApiTokenAuth":      auth.HeaderAdminToken,
+		"AdminTeamAuth":          auth.HeaderTeamID,
 	}
 
 	authFn := func(_ context.Context, input *openapi3filter.AuthenticationInput) error {
@@ -148,7 +148,7 @@ func TestAuthProviderTeamAuthHeaderRoutes(t *testing.T) {
 	require.Equal(t, wantToken, gotToken)
 }
 
-// TestAdminTeamAuthSchemeOrder verifies that the numbered admin security
+// TestAdminTeamAuthSchemeOrder verifies that the admin security
 // schemes validate the admin token before the team header. kin-openapi sorts
 // schemes by name inside one security requirement.
 func TestAdminTeamAuthSchemeOrder(t *testing.T) {
@@ -167,8 +167,8 @@ func TestAdminTeamAuthSchemeOrder(t *testing.T) {
 		"Supabase2TeamAuth":      auth.HeaderSupabaseTeam,
 		"AuthProviderBearerAuth": auth.HeaderAuthorization,
 		"AuthProviderTeamAuth":   auth.HeaderTeamID,
-		"Admin1TokenAuth":        auth.HeaderAdminToken,
-		"Admin2TeamAuth":         auth.HeaderTeamID,
+		"AdminApiTokenAuth":      auth.HeaderAdminToken,
+		"AdminTeamAuth":          auth.HeaderTeamID,
 	}
 
 	authFn := func(_ context.Context, input *openapi3filter.AuthenticationInput) error {
@@ -182,7 +182,7 @@ func TestAdminTeamAuthSchemeOrder(t *testing.T) {
 		}
 
 		switch input.SecuritySchemeName {
-		case "Admin1TokenAuth", "Admin2TeamAuth":
+		case "AdminApiTokenAuth", "AdminTeamAuth":
 			adminSchemeOrder = append(adminSchemeOrder, input.SecuritySchemeName)
 		}
 
@@ -213,5 +213,5 @@ func TestAdminTeamAuthSchemeOrder(t *testing.T) {
 	r.ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code, "request with admin token and team header should pass auth (body: %s)", rr.Body.String())
-	require.Equal(t, []string{"Admin1TokenAuth", "Admin2TeamAuth"}, adminSchemeOrder)
+	require.Equal(t, []string{"AdminApiTokenAuth", "AdminTeamAuth"}, adminSchemeOrder)
 }

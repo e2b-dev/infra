@@ -36,7 +36,7 @@ func TestAdminValidationFunction(t *testing.T) {
 	})
 }
 
-func TestAdmin2TeamAuthenticatorSetsTeamContext(t *testing.T) {
+func TestAdminTeamAuthenticatorSetsTeamContext(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -47,7 +47,7 @@ func TestAdmin2TeamAuthenticatorSetsTeamContext(t *testing.T) {
 	req.Header.Set(HeaderTeamID, teamID.String())
 
 	ginCtx, _ := gin.CreateTestContext(httptest.NewRecorder())
-	authenticator := NewAdmin2TeamAuthenticator(func(_ context.Context, _ *gin.Context, gotTeamID string) (*types.Team, *APIError) {
+	authenticator := NewAdminTeamAuthenticator(func(_ context.Context, _ *gin.Context, gotTeamID string) (*types.Team, *APIError) {
 		if gotTeamID != teamID.String() {
 			return nil, &APIError{
 				Err:       ErrInvalidAuthHeader,
@@ -58,15 +58,15 @@ func TestAdmin2TeamAuthenticatorSetsTeamContext(t *testing.T) {
 
 		return team, nil
 	})
-	if got, want := authenticator.SecuritySchemeName(), "Admin2TeamAuth"; got != want {
-		t.Fatalf("NewAdmin2TeamAuthenticator().SecuritySchemeName() = %q, want %q", got, want)
+	if got, want := authenticator.SecuritySchemeName(), "AdminTeamAuth"; got != want {
+		t.Fatalf("NewAdminTeamAuthenticator().SecuritySchemeName() = %q, want %q", got, want)
 	}
 
 	err := authenticator.Authenticate(ctx, ginCtx, &openapi3filter.AuthenticationInput{
 		RequestValidationInput: &openapi3filter.RequestValidationInput{Request: req},
 	})
 	if err != nil {
-		t.Fatalf("Admin2TeamAuth.Authenticate(valid team ID) error: %v", err)
+		t.Fatalf("AdminTeamAuth.Authenticate(valid team ID) error: %v", err)
 	}
 
 	got, ok := GetTeamInfo(ginCtx)
