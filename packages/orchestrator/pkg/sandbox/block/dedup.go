@@ -319,22 +319,31 @@ func (w fetchWindower) bestParentRun(pages []dedupPageInfo, budget int) []int {
 func (w fetchWindower) bestByRatio(pages []dedupPageInfo, budget, before int, candidates iter.Seq[[]int]) []int {
 	var best []int
 	bestBenefit, bestCost := 0, 0
-	for idxs := range candidates {
-		// An over-budget candidate can still help via an affordable prefix; the
-		// benefit check below discards prefixes that don't remove a window.
-		if len(idxs) > budget {
-			idxs = idxs[:budget]
-		}
+	consider := func(idxs []int) {
 		cost := len(idxs)
-		if cost == 0 {
-			continue
+		if cost == 0 || cost > budget {
+			return
 		}
 		benefit := before - w.countAfter(pages, idxs)
 		if benefit <= 0 {
-			continue
+			return
 		}
 		if best == nil || cost*bestBenefit < bestCost*benefit {
 			best, bestBenefit, bestCost = idxs, benefit, cost
+		}
+	}
+	for idxs := range candidates {
+		if len(idxs) <= budget {
+			consider(idxs)
+
+			continue
+		}
+		// An over-budget candidate can still help via an affordable sub-slice.
+		// Slide a budget-sized window across it so a beneficial tail (not just
+		// the prefix) is considered; the benefit check discards sub-slices that
+		// don't remove a window.
+		for start := 0; start+budget <= len(idxs); start++ {
+			consider(idxs[start : start+budget])
 		}
 	}
 

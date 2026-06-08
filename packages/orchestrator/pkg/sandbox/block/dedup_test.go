@@ -494,6 +494,25 @@ func TestFetchWindowerBestByRatio(t *testing.T) {
 		got := w.bestByRatio(run, 2, w.count(run), slices.Values([][]int{{0, 1, 2}}))
 		require.Equal(t, []int{0, 1}, got)
 	})
+
+	t.Run("over-budget run selects a beneficial tail sub-slice", func(t *testing.T) {
+		t.Parallel()
+
+		// Run A,A,B,C: A spans two pages of one window, B and C are distinct
+		// single-page windows. Budget 2 cannot eliminate A (its prefix folds
+		// into a current window for zero benefit), but the tail B,C collapses
+		// two parent windows into one current window (3 -> 2 windows).
+		buildB := uuid.New()
+		buildC := uuid.New()
+		run := []dedupPageInfo{
+			parentKeyPage(build, 0, windowPages),
+			parentKeyPage(build, header.PageSize, windowPages),
+			parentKeyPage(buildB, 0, windowPages),
+			parentKeyPage(buildC, 0, windowPages),
+		}
+		got := w.bestByRatio(run, 2, w.count(run), slices.Values([][]int{{0, 1, 2, 3}}))
+		require.Equal(t, []int{2, 3}, got)
+	})
 }
 
 // classifyPage maps a source page to empty/parent/current based on the parent
