@@ -15,10 +15,6 @@ on:
         description: "Target environment for image upload, e.g. staging"
         required: true
         type: string
-      image_names:
-        description: "Name of the images to build and upload, e.g. api, template-manager, separated by ;"
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -100,15 +96,4 @@ jobs:
       - name: Build and upload images
         env:
           AUTO_CONFIRM_DEPLOY: true
-        run: |
-          IFS=';' read -ra IMAGES <<< "${{ inputs.image_names }}"
-
-          for image_name in "${IMAGES[@]}"; do
-            image_name="$(echo "$image_name" | xargs)"
-
-            if [ -n "$image_name" ]; then
-              echo "::group::Building and uploading image: $image_name"
-              make "build-and-upload/$image_name"
-              echo "::endgroup::"
-            fi
-          done
+        run: make build-and-upload
