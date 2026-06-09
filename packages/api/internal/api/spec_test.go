@@ -33,7 +33,8 @@ func TestSpecSecuritySchemeHeaderNames(t *testing.T) {
 		{"Supabase1TokenAuth", auth.HeaderSupabaseToken},
 		{"Supabase2TeamAuth", auth.HeaderSupabaseTeam},
 		{"AuthProviderTeamAuth", auth.HeaderTeamID},
-		{"AdminTokenAuth", auth.HeaderAdminToken},
+		{"AdminApiKeyAuth", auth.HeaderAdminToken},
+		{"AdminTeamAuth", auth.HeaderTeamID},
 	}
 
 	for _, tc := range cases {
@@ -77,7 +78,8 @@ func TestAuthProviderTeamAuthHeaderRoutes(t *testing.T) {
 		"Supabase2TeamAuth":      auth.HeaderSupabaseTeam,
 		"AuthProviderBearerAuth": auth.HeaderAuthorization,
 		"AuthProviderTeamAuth":   auth.HeaderTeamID,
-		"AdminTokenAuth":         auth.HeaderAdminToken,
+		"AdminApiKeyAuth":        auth.HeaderAdminToken,
+		"AdminTeamAuth":          auth.HeaderTeamID,
 	}
 
 	authFn := func(_ context.Context, input *openapi3filter.AuthenticationInput) error {
@@ -144,4 +146,72 @@ func TestAuthProviderTeamAuthHeaderRoutes(t *testing.T) {
 	require.Equal(t, http.StatusOK, rr.Code, "request with %s header should pass auth (body: %s)", auth.HeaderTeamID, rr.Body.String())
 	require.Equal(t, "AuthProviderTeamAuth", gotSchemeName)
 	require.Equal(t, wantToken, gotToken)
+}
+
+// TestAdminTeamAuthSchemeOrder verifies that the admin security
+// schemes validate the admin token before the team header. kin-openapi sorts
+// schemes by name inside one security requirement.
+func TestAdminTeamAuthSchemeOrder(t *testing.T) {
+	t.Parallel()
+
+	swagger, err := GetSpec()
+	require.NoError(t, err)
+	swagger.Servers = nil
+
+	var adminSchemeOrder []string
+
+	schemeHeaders := map[string]string{
+		"ApiKeyAuth":             auth.HeaderAPIKey,
+		"AccessTokenAuth":        auth.HeaderAuthorization,
+		"Supabase1TokenAuth":     auth.HeaderSupabaseToken,
+		"Supabase2TeamAuth":      auth.HeaderSupabaseTeam,
+		"AuthProviderBearerAuth": auth.HeaderAuthorization,
+		"AuthProviderTeamAuth":   auth.HeaderTeamID,
+		"AdminApiKeyAuth":        auth.HeaderAdminToken,
+		"AdminTeamAuth":          auth.HeaderTeamID,
+	}
+
+	authFn := func(_ context.Context, input *openapi3filter.AuthenticationInput) error {
+		header, ok := schemeHeaders[input.SecuritySchemeName]
+		if !ok {
+			return http.ErrNoCookie
+		}
+
+		if value := input.RequestValidationInput.Request.Header.Get(header); value == "" {
+			return http.ErrNoCookie
+		}
+
+		switch input.SecuritySchemeName {
+		case "AdminApiKeyAuth", "AdminTeamAuth":
+			adminSchemeOrder = append(adminSchemeOrder, input.SecuritySchemeName)
+		}
+
+		return nil
+	}
+
+	r := gin.New()
+	r.Use(middleware.OapiRequestValidatorWithOptions(swagger, &middleware.Options{
+		Options: openapi3filter.Options{
+			AuthenticationFunc: authFn,
+			MultiError:         true,
+		},
+		SilenceServersWarning: true,
+	}))
+
+	r.NoRoute(func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+	r.Any("/*any", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api-keys", nil)
+	req.Header.Set(auth.HeaderAdminToken, "admin-token")
+	req.Header.Set(auth.HeaderTeamID, "team-id")
+
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code, "request with admin token and team header should pass auth (body: %s)", rr.Body.String())
+	require.Equal(t, []string{"AdminApiKeyAuth", "AdminTeamAuth"}, adminSchemeOrder)
 }

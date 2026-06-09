@@ -90,6 +90,41 @@ type Config struct {
 	DomainName string `env:"DOMAIN_NAME" envDefault:""`
 }
 
+type FailureCondition string
+
+const (
+	FailureConditionInvalidServiceDiscoveryProvider FailureCondition = "invalid_service_discovery_provider"
+)
+
+type FailureError struct {
+	Condition FailureCondition
+	err       error
+}
+
+func (e *FailureError) Error() string {
+	return e.err.Error()
+}
+
+func (e *FailureError) Unwrap() error {
+	return e.err
+}
+
+func ParseFailureCondition(err error) (FailureCondition, bool) {
+	var failureErr *FailureError
+	if !errors.As(err, &failureErr) {
+		return "", false
+	}
+
+	return failureErr.Condition, true
+}
+
+func newFailureError(condition FailureCondition, message string) error {
+	return &FailureError{
+		Condition: condition,
+		err:       errors.New(message),
+	}
+}
+
 type JWTSigningKey any
 
 type VolumesTokenConfig struct {
@@ -157,7 +192,10 @@ func Parse() (Config, error) {
 	}
 
 	if !slices.Contains([]string{ServiceDiscoveryProviderNomad, ServiceDiscoveryProviderKubernetes, ServiceDiscoveryProviderLocal}, config.ServiceDiscoveryProvider) {
-		return config, fmt.Errorf("invalid service discovery provider: %s", config.ServiceDiscoveryProvider)
+		return config, newFailureError(
+			FailureConditionInvalidServiceDiscoveryProvider,
+			fmt.Sprintf("invalid service discovery provider: %s", config.ServiceDiscoveryProvider),
+		)
 	}
 
 	return config, nil

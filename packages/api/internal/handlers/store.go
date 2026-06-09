@@ -35,6 +35,7 @@ import (
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
+	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
 	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -395,4 +396,53 @@ func (a *APIStore) GetTeamFromAuthProviderToken(ctx context.Context, ginCtx *gin
 	defer span.End()
 
 	return a.authService.ValidateSupabaseTeam(ctx, ginCtx, teamID)
+}
+
+func (a *APIStore) GetTeamFromAdminToken(ctx context.Context, _ *gin.Context, teamID string) (*types.Team, *api.APIError) {
+	ctx, span := tracer.Start(ctx, "get team from admin token")
+	defer span.End()
+
+	teamUUID, err := uuid.Parse(teamID)
+	if err != nil {
+		return nil, &api.APIError{
+			Code:      http.StatusBadRequest,
+			ClientMsg: "Invalid team ID",
+			Err:       fmt.Errorf("failed to parse team ID: %w", err),
+		}
+	}
+
+	team, err := a.authService.GetTeamByID(ctx, teamUUID)
+	if err != nil {
+		var forbiddenErr *sharedauth.TeamForbiddenError
+		if errors.As(err, &forbiddenErr) {
+			return nil, &api.APIError{
+				Code:      http.StatusForbidden,
+				ClientMsg: err.Error(),
+				Err:       fmt.Errorf("failed getting team: %w", err),
+			}
+		}
+
+		if dberrors.IsNotFoundError(err) {
+			return nil, &api.APIError{
+				Code:      http.StatusNotFound,
+				ClientMsg: "Team not found",
+				Err:       fmt.Errorf("failed getting team: %w", err),
+			}
+		}
+
+		return nil, &api.APIError{
+			Code:      http.StatusInternalServerError,
+			ClientMsg: "Backend authentication failed",
+			Err:       fmt.Errorf("failed getting team: %w", err),
+		}
+	}
+	if team == nil {
+		return nil, &api.APIError{
+			Code:      http.StatusNotFound,
+			ClientMsg: "Team not found",
+			Err:       errors.New("team not found"),
+		}
+	}
+
+	return team, nil
 }
