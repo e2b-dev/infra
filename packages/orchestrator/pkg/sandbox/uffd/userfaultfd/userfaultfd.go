@@ -14,6 +14,7 @@ import (
 	"unsafe"
 
 	"github.com/RoaringBitmap/roaring/v2"
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -297,6 +298,49 @@ func (u *Userfaultfd) writeProtectWithRetry(ctx context.Context, addr, length ui
 	}
 
 	return err
+}
+
+// DropMissingForEmptyRanges stops MISSING-fault tracking for every region the
+// snapshot we serve reports as empty (uuid.Nil mappings), so the kernel serves
+// those zero hugepages directly without a userspace round-trip while WP-async
+// keeps capturing any later writes. Hugepages only: dropping MISSING for
+// anonymous 4K pages zaps the PTE and loses WP tracking (see the REMOVE handler).
+//
+// Unlike the REMOVE path it does NOT mark the pages block.Zero. They are already
+// uuid.Nil in the base snapshot, so an untouched page falls through to the base
+// layer and a written one is caught by WP-async; marking them Zero would only
+// bloat every diff with redundant empty entries that duplicate the base.
+//
+// Must run before the guest can fault (before the handler is marked ready).
+func (u *Userfaultfd) DropMissingForEmptyRanges(ctx context.Context, h *header.Header) error {
+	if h == nil || u.pageSize != header.HugepageSize {
+		return nil
+	}
+
+	var ranges, pages int
+	for _, m := range h.Mapping.All() {
+		if m.BuildId != uuid.Nil {
+			continue
+		}
+
+		hostVirtRanges, err := u.ma.GetHostVirtRanges(int64(m.Offset), int64(m.Length))
+		if err != nil {
+			return fmt.Errorf("failed to resolve host virt ranges for empty range [%d, %d): %w", m.Offset, m.Offset+m.Length, err)
+		}
+
+		for _, r := range hostVirtRanges {
+			if err := u.dropMissingEventsTracking(ctx, uintptr(r.Start), uintptr(r.Size)); err != nil {
+				return fmt.Errorf("failed to drop MISSING tracking for empty range [%#x, %#x): %w", r.Start, r.Start+r.Size, err)
+			}
+			ranges++
+			pages += int(r.Size / int64(u.pageSize))
+		}
+	}
+
+	u.logger.Debug(ctx, "UFFD: dropped MISSING tracking for snapshot empty ranges",
+		zap.Int("ranges", ranges), zap.Int("pages", pages))
+
+	return nil
 }
 
 func (u *Userfaultfd) Serve(

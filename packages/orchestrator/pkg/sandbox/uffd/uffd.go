@@ -204,6 +204,13 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string, fdExit *fdexit.FdEx
 		u.memfd.Store(memfd)
 	}
 
+	// Drop MISSING tracking for the snapshot's empty ranges before the guest can
+	// fault, so the kernel serves those zero hugepages directly while WP-async
+	// still catches writes.
+	if err = uffd.DropMissingForEmptyRanges(ctx, u.memfile.Header()); err != nil {
+		return fmt.Errorf("failed to drop MISSING tracking for empty ranges: %w", err)
+	}
+
 	u.handler.SetValue(uffd)
 
 	u.readyOnce.Do(func() { close(u.readyCh) })
