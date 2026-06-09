@@ -81,7 +81,7 @@ func TestEntryInfoFromFileInfo_SymlinkChain(t *testing.T) {
 	require.NoError(t, os.Symlink(link2, link1))
 
 	// run the test
-	result, err := GetEntryFromPath(link1)
+	result, err := GetEntryFromPath(link1, true)
 	require.NoError(t, err)
 
 	// verify the results
@@ -120,7 +120,7 @@ func TestEntryInfoFromFileInfo_DifferentPermissions(t *testing.T) {
 			testFile := filepath.Join(tempDir, tc.name+".txt")
 			require.NoError(t, os.WriteFile(testFile, []byte("test"), tc.permissions))
 
-			result, err := GetEntryFromPath(testFile)
+			result, err := GetEntryFromPath(testFile, true)
 			require.NoError(t, err)
 			assert.Equal(t, tc.expectedMode, result.Mode)
 			assert.Equal(t, tc.expectedString, result.Permissions)
@@ -135,7 +135,7 @@ func TestEntryInfoFromFileInfo_EmptyFile(t *testing.T) {
 	emptyFile := filepath.Join(tempDir, "empty.txt")
 	require.NoError(t, os.WriteFile(emptyFile, []byte{}, 0o600))
 
-	result, err := GetEntryFromPath(emptyFile)
+	result, err := GetEntryFromPath(emptyFile, true)
 	require.NoError(t, err)
 
 	assert.Equal(t, "empty.txt", result.Name)
@@ -153,7 +153,7 @@ func TestEntryInfoFromFileInfo_CyclicSymlink(t *testing.T) {
 	cyclicSymlink := filepath.Join(tempDir, "cyclic")
 	require.NoError(t, os.Symlink(cyclicSymlink, cyclicSymlink))
 
-	result, err := GetEntryFromPath(cyclicSymlink)
+	result, err := GetEntryFromPath(cyclicSymlink, true)
 	require.NoError(t, err)
 
 	assert.Equal(t, "cyclic", result.Name)
@@ -171,7 +171,7 @@ func TestEntryInfoFromFileInfo_BrokenSymlink(t *testing.T) {
 	brokenSymlink := filepath.Join(tempDir, "broken")
 	require.NoError(t, os.Symlink("/nonexistent", brokenSymlink))
 
-	result, err := GetEntryFromPath(brokenSymlink)
+	result, err := GetEntryFromPath(brokenSymlink, true)
 	require.NoError(t, err)
 
 	assert.Equal(t, "broken", result.Name)
@@ -195,7 +195,7 @@ func TestEntryInfoFromFileInfo(t *testing.T) {
 	currentUser, err := user.Current()
 	require.NoError(t, err)
 
-	result, err := GetEntryFromPath(testFile)
+	result, err := GetEntryFromPath(testFile, true)
 	require.NoError(t, err)
 
 	// Basic assertions
@@ -222,7 +222,7 @@ func TestEntryInfoFromFileInfo_Directory(t *testing.T) {
 	testDir := filepath.Join(tempDir, "testdir")
 	require.NoError(t, os.MkdirAll(testDir, 0o755))
 
-	result, err := GetEntryFromPath(testDir)
+	result, err := GetEntryFromPath(testDir, true)
 	require.NoError(t, err)
 
 	assert.Equal(t, "testdir", result.Name)
@@ -249,7 +249,7 @@ func TestEntryInfoFromFileInfo_Symlink(t *testing.T) {
 	require.NoError(t, os.Symlink(targetFile, symlinkPath))
 
 	// Use Lstat to get symlink info (not the target)
-	result, err := GetEntryFromPath(symlinkPath)
+	result, err := GetEntryFromPath(symlinkPath, true)
 	require.NoError(t, err)
 
 	assert.Equal(t, "symlink", result.Name)
