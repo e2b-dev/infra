@@ -241,6 +241,11 @@ client {
     "node_labels" = "${node_labels:-}"
     ${job_constraint:+"\"job_constraint\"" = "\"$job_constraint\""}
   }
+  server_join {
+    retry_join     = ["nomad.service.consul:4647"]
+    retry_interval = "15s"
+    retry_max      = 0
+  }
   max_kill_timeout = "24h"
 }
 

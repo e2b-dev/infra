@@ -215,6 +215,11 @@ client {
     ${job_constraint:+"\"job_constraint\"" = "\"$job_constraint\""}
     ${orchestrator_job_version:+"\"orchestrator_job_version\"" = "\"$orchestrator_job_version\""}
   }
+  server_join {
+    retry_join     = ["nomad.service.consul:4647"]
+    retry_interval = "15s"
+    retry_max      = 0
+  }
   max_kill_timeout = "24h"
 }
 
