@@ -198,6 +198,45 @@ func TestQuerySandboxLogsRejectsInvalidQuery(t *testing.T) {
 	assert.ErrorIs(t, err, ErrInvalidQuery)
 }
 
+func TestQuerySandboxLogsRejectsScopeBypassPipeline(t *testing.T) {
+	t.Parallel()
+
+	// Each of these attempts to escape the enforced team/sandbox scoping by supplying
+	// a binary/alternative selector or turning the query into a metric expression
+	// instead of a plain filtering pipeline.
+	bypassPipelines := []string{
+		`or {category!="metrics"}`,
+		`or {teamID="other-team"}`,
+		`} or {teamID="other-team"}`,
+		`| rate({teamID="other-team"}[5m])`,
+	}
+
+	provider, err := NewLokiQueryProvider("http://loki.invalid", "", "")
+	require.NoError(t, err)
+
+	for _, pipeline := range bypassPipelines {
+		t.Run(pipeline, func(t *testing.T) {
+			t.Parallel()
+
+			res, qErr := provider.QuerySandboxLogs(
+				context.Background(),
+				"team-id",
+				"sandbox-id",
+				time.UnixMilli(0),
+				time.UnixMilli(1),
+				10,
+				DefaultDirection,
+				nil,
+				nil,
+				&pipeline,
+			)
+
+			assert.Nil(t, res)
+			assert.ErrorIsf(t, qErr, ErrInvalidQuery, "scope-bypass pipeline %q must be rejected", pipeline)
+		})
+	}
+}
+
 func TestBuildSandboxLogsQueryEscapesInjectionLikeSearchInput(t *testing.T) {
 	t.Parallel()
 

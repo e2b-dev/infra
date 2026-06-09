@@ -11,6 +11,7 @@ import (
 	loki "github.com/grafana/loki/v3/pkg/logcli/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/prometheus/prometheus/model/labels"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -95,8 +96,8 @@ func (l *LokiQueryProvider) QuerySandboxLogs(
 	// query locally before sending it to Loki: this returns a helpful parse error instead
 	// of the opaque, retried failure the Loki client surfaces for a 400 response.
 	if strings.TrimSpace(utils.DerefOrDefault(pipeline, "")) != "" {
-		if _, err := syntax.ParseExpr(query); err != nil {
-			return nil, fmt.Errorf("%w: %w", ErrInvalidQuery, err)
+		if err := validateScopedQuery(query, teamID, sandboxID); err != nil {
+			return nil, err
 		}
 	}
 
@@ -121,6 +122,57 @@ func (l *LokiQueryProvider) QuerySandboxLogs(
 	}
 
 	return lm, nil
+}
+
+// validateScopedQuery parses a fully-built sandbox logs query and verifies that it
+// is still scoped to the caller's own team + sandbox. It returns ErrInvalidQuery if
+// the query does not parse, is not a log-selector query (e.g. a metric/binary
+// expression), or no longer enforces the team/sandbox stream selector.
+//
+// The client only ever supplies a pipeline that is appended AFTER the server-built
+// stream selector, so in normal use the leftmost selector — the one that decides
+// which streams Loki reads — always carries the enforced matchers. This is a
+// defense-in-depth check: rather than trusting that LogQL grammar guarantees the
+// fragment can only ever filter (and never re-root the query into something like
+// `selector or attacker_selector`), we assert the security property directly on the
+// parsed AST, so scoping holds even if the query language evolves.
+func validateScopedQuery(query string, teamID string, sandboxID string) error {
+	expr, err := syntax.ParseExpr(query)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidQuery, err)
+	}
+
+	// A log query (returning streams) must be a LogSelectorExpr; metric/binary
+	// expressions are not, so this also rejects attempts to change the query root.
+	selector, ok := expr.(syntax.LogSelectorExpr)
+	if !ok {
+		return fmt.Errorf("%w: query must be a log selector query, not %T", ErrInvalidQuery, expr)
+	}
+
+	if !matchersEnforceScope(selector.Matchers(), sanitizeLokiLabel(teamID), sanitizeLokiLabel(sandboxID)) {
+		return fmt.Errorf("%w: query must keep the enforced team and sandbox scope", ErrInvalidQuery)
+	}
+
+	return nil
+}
+
+// matchersEnforceScope reports whether the stream selector matchers contain exact
+// equality matches for both the enforced team and sandbox.
+func matchersEnforceScope(matchers []*labels.Matcher, teamID string, sandboxID string) bool {
+	var hasTeam, hasSandbox bool
+	for _, m := range matchers {
+		if m.Type != labels.MatchEqual {
+			continue
+		}
+		switch m.Name {
+		case "teamID":
+			hasTeam = m.Value == teamID
+		case "sandboxID":
+			hasSandbox = m.Value == sandboxID
+		}
+	}
+
+	return hasTeam && hasSandbox
 }
 
 // sanitizeLokiLabel removes backticks from label values to avoid breaking LogQL selectors.

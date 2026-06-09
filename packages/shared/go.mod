@@ -38,6 +38,7 @@ require (
 	github.com/oapi-codegen/runtime v1.4.0
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pierrec/lz4/v4 v4.1.22
+	github.com/prometheus/prometheus v0.311.3
 	github.com/redis/go-redis/extra/redisotel/v9 v9.17.3
 	github.com/redis/go-redis/v9 v9.17.3
 	github.com/stretchr/testify v1.11.1
@@ -307,7 +308,6 @@ require (
 	github.com/prometheus/exporter-toolkit v0.15.1 // indirect
 	github.com/prometheus/otlptranslator v1.0.0 // indirect
 	github.com/prometheus/procfs v0.17.0 // indirect
-	github.com/prometheus/prometheus v0.311.3 // indirect
 	github.com/prometheus/sigv4 v0.4.1 // indirect
 	github.com/puzpuzpuz/xsync/v4 v4.4.0 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
