@@ -661,18 +661,15 @@ func (c *Cache) WriteZeroesAt(off, length int64) (int, error) {
 // The size might differ from the dirty size, as it may not be fully on disk.
 func (c *Cache) FileSize(_ context.Context) (int64, error) {
 	var stat syscall.Stat_t
-	err := syscall.Stat(c.filePath, &stat)
-	if err != nil {
+	if err := syscall.Stat(c.filePath, &stat); err != nil {
 		return 0, fmt.Errorf("failed to get file stats: %w", err)
 	}
 
-	var fsStat syscall.Statfs_t
-	err = syscall.Statfs(c.filePath, &fsStat)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get disk stats for path %s: %w", c.filePath, err)
-	}
+	// Per POSIX (and Linux man 2 stat), stat.Blocks is always reported in
+	// 512-byte units, regardless of the underlying filesystem's block size.
+	const stBlockSize = 512
 
-	return stat.Blocks * fsStat.Bsize, nil
+	return stat.Blocks * stBlockSize, nil
 }
 
 func (c *Cache) address(off int64) (*byte, error) {

@@ -26,6 +26,9 @@ func createTestSnapshot(t *testing.T, db *testutils.Database, teamID uuid.UUID, 
 	totalDiskSize := int64(1024)
 	allowInternet := true
 
+	// Source build the snapshot copies its CPU info from
+	sourceBuildID := testutils.CreateTestBuild(t, t.Context(), db, baseEnvID, "uploaded")
+
 	// UpsertSnapshot will create the env automatically, so we pass envID as TemplateID
 	params := queries.UpsertSnapshotParams{
 		TemplateID:          envID,
@@ -51,8 +54,9 @@ func createTestSnapshot(t *testing.T, db *testutils.Database, teamID uuid.UUID, 
 				},
 			},
 		},
-		OriginNodeID: "node-1",
-		Status:       "success",
+		OriginNodeID:  "node-1",
+		SourceBuildID: sourceBuildID,
+		Status:        "success",
 	}
 
 	result, err := db.SqlcClient.UpsertSnapshot(t.Context(), params)

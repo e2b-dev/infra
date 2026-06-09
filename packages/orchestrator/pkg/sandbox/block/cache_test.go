@@ -1140,3 +1140,43 @@ func TestCacheDedup_BestEffortPerPageCacheCheck(t *testing.T) {
 	require.True(t, meta.Dirty.Contains(1))
 	require.True(t, meta.Dirty.Contains(3))
 }
+
+// TestCache_FileSize_MatchesActualAllocation writes a known number of full
+// blocks through Cache and verifies that FileSize reports the on-disk
+// allocation in bytes — i.e. one block written ⇒ one block on disk.
+//
+// This is a regression test for using the wrong block-size constant in the
+// stat.Blocks math. Before the fix, FileSize multiplied stat.Blocks (POSIX
+// 512-byte units) by statfs.Bsize (4096 on ext4), inflating the reported
+// usage by 8× and stalling the build-cache disk-pressure eviction loop.
+func TestCache_FileSize_MatchesActualAllocation(t *testing.T) {
+	t.Parallel()
+
+	const (
+		blockSize = int64(4096)
+		nBlocks   = int64(4)
+		fileSize  = blockSize * 64 // sparse, only nBlocks actually allocated
+	)
+
+	cache, err := NewCache(fileSize, blockSize, t.TempDir()+"/cache", false)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cache.Close() })
+
+	buf := make([]byte, blockSize)
+	_, err = rand.Read(buf)
+	require.NoError(t, err)
+	for i := range nBlocks {
+		_, err = cache.WriteAt(buf, i*blockSize)
+		require.NoError(t, err)
+	}
+
+	got, err := cache.FileSize(t.Context())
+	require.NoError(t, err)
+
+	expected := nBlocks * blockSize
+	t.Logf("wrote %d blocks of %d B; FileSize=%d B (expected %d B)", nBlocks, blockSize, got, expected)
+
+	require.Equal(t, expected, got,
+		"FileSize must report on-disk allocation in bytes; a value ~%d× expected suggests stat.Blocks was multiplied by statfs.Bsize instead of the POSIX 512",
+		int64(4096)/int64(512))
+}

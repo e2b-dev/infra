@@ -60,10 +60,10 @@ func New(memfile block.ReadonlyDevice, socketPath string) *Uffd {
 	}
 }
 
-func (u *Uffd) Prefault(ctx context.Context, offset int64, data []byte) error {
+func (u *Uffd) Prefault(ctx context.Context, offset int64, data []byte) (installed bool, e error) {
 	handler, err := u.handler.WaitWithContext(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get uffd: %w", err)
+		return false, fmt.Errorf("failed to get uffd: %w", err)
 	}
 
 	return handler.Prefault(ctx, offset, data)

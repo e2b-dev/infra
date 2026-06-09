@@ -2,7 +2,6 @@ package cfg
 
 import (
 	"errors"
-	"fmt"
 	"reflect"
 	"strings"
 
@@ -36,6 +35,45 @@ type Config struct {
 	OryIssuerURL        string           `env:"ORY_ISSUER_URL"`
 }
 
+type FailureCondition string
+
+const (
+	FailureConditionMissingRedisConnection FailureCondition = "missing_redis_connection"
+	FailureConditionMissingOrySDKURL       FailureCondition = "missing_ory_sdk_url"
+	FailureConditionMissingOryProjectToken FailureCondition = "missing_ory_project_api_token"
+	FailureConditionMissingOryIssuerURL    FailureCondition = "missing_ory_issuer_url"
+	FailureConditionOryIssuerURLMismatch   FailureCondition = "ory_issuer_url_mismatch"
+)
+
+type FailureError struct {
+	Condition FailureCondition
+	err       error
+}
+
+func (e *FailureError) Error() string {
+	return e.err.Error()
+}
+
+func (e *FailureError) Unwrap() error {
+	return e.err
+}
+
+func ParseFailureCondition(err error) (FailureCondition, bool) {
+	var failureErr *FailureError
+	if !errors.As(err, &failureErr) {
+		return "", false
+	}
+
+	return failureErr.Condition, true
+}
+
+func newFailureError(condition FailureCondition, message string) error {
+	return &FailureError{
+		Condition: condition,
+		err:       errors.New(message),
+	}
+}
+
 func Parse() (Config, error) {
 	var config Config
 	err := env.ParseWithOptions(&config, env.Options{
@@ -58,7 +96,7 @@ func Parse() (Config, error) {
 	}
 
 	if err == nil && config.RedisURL == "" && config.RedisClusterURL == "" {
-		err = errors.New("at least one of REDIS_URL or REDIS_CLUSTER_URL must be set")
+		err = newFailureError(FailureConditionMissingRedisConnection, "at least one of REDIS_URL or REDIS_CLUSTER_URL must be set")
 	}
 
 	if err == nil {
@@ -77,17 +115,17 @@ func validateUserProfileProvider(config *Config) error {
 	}
 
 	if config.OrySDKURL == "" {
-		return errors.New("ORY_SDK_URL is required when USER_PROFILE_PROVIDER uses ory")
+		return newFailureError(FailureConditionMissingOrySDKURL, "ORY_SDK_URL is required when USER_PROFILE_PROVIDER uses ory")
 	}
 	if config.OryProjectAPIToken == "" {
-		return errors.New("ORY_PROJECT_API_TOKEN is required when USER_PROFILE_PROVIDER uses ory")
+		return newFailureError(FailureConditionMissingOryProjectToken, "ORY_PROJECT_API_TOKEN is required when USER_PROFILE_PROVIDER uses ory")
 	}
 
 	if config.OryIssuerURL == "" && len(config.AuthProvider.JWT) == 1 {
 		config.OryIssuerURL = strings.TrimSpace(config.AuthProvider.JWT[0].Issuer.URL)
 	}
 	if config.OryIssuerURL == "" {
-		return errors.New("ORY_ISSUER_URL is required when USER_PROFILE_PROVIDER uses ory")
+		return newFailureError(FailureConditionMissingOryIssuerURL, "ORY_ISSUER_URL is required when USER_PROFILE_PROVIDER uses ory")
 	}
 
 	if len(config.AuthProvider.JWT) > 0 {
@@ -97,7 +135,7 @@ func validateUserProfileProvider(config *Config) error {
 			}
 		}
 
-		return fmt.Errorf("ORY_ISSUER_URL %q does not match any AUTH_PROVIDER_CONFIG.jwt[].issuer.url; identities stored at bootstrap would be invisible to the Ory profile provider", config.OryIssuerURL)
+		return newFailureError(FailureConditionOryIssuerURLMismatch, "ORY_ISSUER_URL does not match any AUTH_PROVIDER_CONFIG.jwt[].issuer.url; identities stored at bootstrap would be invisible to the Ory profile provider")
 	}
 
 	return nil

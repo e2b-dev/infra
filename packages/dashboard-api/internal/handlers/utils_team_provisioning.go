@@ -26,6 +26,7 @@ const (
 	baseTierID                   = "base_v1"
 	maxTeamsPerUser              = 3
 	maxTeamsPerUserWithProTier   = 10
+	bootstrapProvisionRetryAge   = 30 * time.Second
 	teamProvisionRollbackTimeout = 5 * time.Second
 )
 
@@ -209,14 +210,16 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 			return provisionedTeam{}, fmt.Errorf("commit existing user bootstrap transaction: %w", err)
 		}
 
-		req := teamprovision.TeamBillingProvisionRequestedV1{
-			TeamID:        existingTeam.ID,
-			TeamName:      existingTeam.Name,
-			TeamEmail:     existingTeam.Email,
-			CreatorUserID: profile.UserID,
-			Reason:        teamprovision.ReasonDefaultSignupTeam,
+		if time.Since(existingTeam.CreatedAt) < bootstrapProvisionRetryAge {
+			req := teamprovision.TeamBillingProvisionRequestedV1{
+				TeamID:        existingTeam.ID,
+				TeamName:      existingTeam.Name,
+				TeamEmail:     existingTeam.Email,
+				CreatorUserID: profile.UserID,
+				Reason:        teamprovision.ReasonDefaultSignupTeam,
+			}
+			_ = s.teamProvisionSink.ProvisionTeam(ctx, req)
 		}
-		_ = s.teamProvisionSink.ProvisionTeam(ctx, req)
 
 		return provisionedTeam{
 			ID:            existingTeam.ID,
