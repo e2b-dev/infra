@@ -89,13 +89,15 @@ func (l *LokiQueryProvider) QuerySandboxLogs(
 ) ([]logs.LogEntry, error) {
 	query := buildSandboxLogsQuery(teamID, sandboxID, level, search, pipeline)
 
-	// Validate the query locally before sending it to Loki. The stream selector and
-	// the structured level/search filters are always built (and sanitized) server-side,
-	// so the only way the final query is malformed is a bad client-supplied pipeline.
-	// Catching it here returns a helpful parse error instead of the opaque, retried
-	// failure the Loki client surfaces for a 400 response.
-	if _, err := syntax.ParseExpr(query); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidQuery, err)
+	// Only the client-supplied pipeline can be malformed; the stream selector and the
+	// structured level/search filters are always built (and sanitized) server-side, so
+	// we trust them by default. When a raw pipeline is supplied, validate the resulting
+	// query locally before sending it to Loki: this returns a helpful parse error instead
+	// of the opaque, retried failure the Loki client surfaces for a 400 response.
+	if strings.TrimSpace(utils.DerefOrDefault(pipeline, "")) != "" {
+		if _, err := syntax.ParseExpr(query); err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrInvalidQuery, err)
+		}
 	}
 
 	res, err := l.client.QueryRange(query, limit, start, end, direction, time.Duration(0), time.Duration(0), true)
