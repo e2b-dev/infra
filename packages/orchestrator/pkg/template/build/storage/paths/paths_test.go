@@ -27,12 +27,12 @@ func TestGetLayerFilesCachePathRejectsInvalidHashes(t *testing.T) {
 		{
 			name:       "hash with slash",
 			cacheScope: "team-id",
-			hash:       "../other-team/files/hash",
+			hash:       "../tenant-b/files/hash",
 		},
 		{
 			name:       "hash with backslash",
 			cacheScope: "team-id",
-			hash:       `..\other-team`,
+			hash:       `..\team-id`,
 		},
 		{
 			name:       "dot hash",
