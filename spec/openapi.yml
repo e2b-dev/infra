@@ -2254,82 +2254,16 @@ paths:
             type: string
             maxLength: 256
           description: Case-sensitive substring match on log message content
+        - in: query
+          name: pid
+          schema:
+            type: integer
+            format: int32
+            minimum: 0
+          description: Restrict the results to the output (stdout/stderr) of a single command identified by its process ID (pid). Combine with cursor/direction to bound the window and disambiguate a reused pid.
       responses:
         "200":
           description: Successfully returned the sandbox logs
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SandboxLogsV2Response"
-        "401":
-          $ref: "#/components/responses/401"
-        "404":
-          $ref: "#/components/responses/404"
-        "500":
-          $ref: "#/components/responses/500"
-
-  /v2/sandboxes/{sandboxID}/commands/{pid}/logs:
-    get:
-      description: Get the output (stdout/stderr) logs of a single command, identified by its process ID (pid). Pass the command's start/end timestamps to scope the window and disambiguate a reused pid.
-      tags: [sandboxes]
-      security:
-        - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
-        - AuthProviderBearerAuth: []
-          AuthProviderTeamAuth: []
-      parameters:
-        - $ref: "#/components/parameters/sandboxID"
-        - in: path
-          name: pid
-          required: true
-          schema:
-            type: integer
-            format: int32
-            minimum: 0
-          description: The process ID (pid) returned when the command was started
-        - in: query
-          name: start
-          schema:
-            type: integer
-            format: int64
-            minimum: 0
-          description: Start of the time window in milliseconds (defaults to the start of the retention window). Should match when the command started.
-        - in: query
-          name: end
-          schema:
-            type: integer
-            format: int64
-            minimum: 0
-          description: End of the time window in milliseconds (defaults to now). Should match when the command ended, or be left open for a running command.
-        - in: query
-          name: limit
-          schema:
-            default: 1000
-            type: integer
-            format: int32
-            minimum: 0
-            maximum: 1000
-          description: Maximum number of logs that should be returned
-        - in: query
-          name: direction
-          schema:
-            $ref: "#/components/schemas/LogsDirection"
-          description: Direction of the logs that should be returned
-        - in: query
-          name: level
-          schema:
-            $ref: "#/components/schemas/LogLevel"
-          description: Minimum log level to return. Logs below this level are excluded
-        - in: query
-          name: search
-          schema:
-            type: string
-            maxLength: 256
-          description: Case-sensitive substring match on log message content
-      responses:
-        "200":
-          description: Successfully returned the command logs
           content:
             application/json:
               schema:
