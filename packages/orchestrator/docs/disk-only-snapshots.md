@@ -416,3 +416,27 @@ transport (ublk) would help. Switching would replace `nbd.DirectPathMount` /
 `Overlay`/`Cache`/`block` layers can stay, only the kernel-facing export changes,
 and FC would consume `/dev/ublkbN` instead of `/dev/nbdN`. Tracked separately;
 keep the disk-only block layer transport-agnostic so it benefits for free.
+
+## 8. Read-only disk access API (future note)
+
+Idea: let users read the persisted rootfs of a (disk-only) snapshot without
+booting a sandbox — e.g. list/download files from a paused snapshot's disk.
+
+Feasibility: the rootfs is stored as a sparse diff + header and is already
+assembled lazily host-side via the `block` / `header` / `Overlay` stack. There is
+existing tooling that materializes a build rootfs read-only on the host
+(`packages/orchestrator/cmd/mount-build-rootfs/main.go`: NBD-mount + `e2fsck -nfv`),
+so serving a read-only view is mostly plumbing on top of what exists.
+
+Sketch: assemble the snapshot rootfs read-only (no overlay writes, or a throwaway
+cache), mount it, and expose file ops behind an API. Cleaner end-state if it
+reuses envd's filesystem API surface so the access path matches live sandboxes.
+
+Blockers / open:
+- Decide where it runs: a short-lived helper/VM vs a host-side mount on an
+  orchestrator node (host mounts of guest-controlled ext4 are a security concern —
+  prefer a sandboxed reader over mounting untrusted fs in the host kernel).
+- Pairs naturally with disk-only snapshots (the disk is the whole artifact) and
+  benefits from journal-clean rootfs (workstream 4) so no replay is needed to read.
+- Lifecycle/auth: map snapshot ownership → access; concurrency with resume.
+- Likely wants rootfs prefetch (workstream 6) to be usable over the network.
