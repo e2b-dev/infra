@@ -128,11 +128,15 @@ func newFailureError(condition FailureCondition, message string) error {
 type JWTSigningKey any
 
 type VolumesTokenConfig struct {
-	Issuer         string            `env:"VOLUME_TOKEN_ISSUER,required"`
-	SigningMethod  jwt.SigningMethod `env:"VOLUME_TOKEN_SIGNING_METHOD,required"`
-	SigningKey     JWTSigningKey     `env:"VOLUME_TOKEN_SIGNING_KEY,required"`
-	SigningKeyName string            `env:"VOLUME_TOKEN_SIGNING_KEY_NAME,required"`
-	Duration       time.Duration     `env:"VOLUME_TOKEN_DURATION"                  envDefault:"1h"`
+	Issuer         string            `env:"VOLUME_TOKEN_ISSUER"`
+	SigningMethod  jwt.SigningMethod `env:"VOLUME_TOKEN_SIGNING_METHOD"`
+	SigningKey     JWTSigningKey     `env:"VOLUME_TOKEN_SIGNING_KEY"`
+	SigningKeyName string            `env:"VOLUME_TOKEN_SIGNING_KEY_NAME"`
+	Duration       time.Duration     `env:"VOLUME_TOKEN_DURATION"         envDefault:"1h"`
+}
+
+func (c VolumesTokenConfig) IsConfigured() bool {
+	return c.Issuer != "" && c.SigningKey != nil && c.SigningMethod != nil
 }
 
 var (

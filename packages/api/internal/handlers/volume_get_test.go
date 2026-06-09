@@ -44,8 +44,8 @@ func TestGenerateVolumeContentToken_SetsTokidHeader(t *testing.T) {
 	}
 
 	// Act: generate token
-	tokenStr, err := generateVolumeContentToken(config, volume, team)
-	require.NoError(t, err)
+	tokenStr, apiErr := generateVolumeContentToken(config, volume, team)
+	require.Nil(t, apiErr)
 	require.NotEmpty(t, tokenStr)
 
 	// Parse token to inspect headers and claims
