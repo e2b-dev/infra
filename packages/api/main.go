@@ -197,7 +197,8 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 			auth.NewSupabaseTokenAuthenticator(apiStore.GetUserIDFromAuthProviderToken),
 			auth.NewSupabaseTeamAuthenticator(apiStore.GetTeamFromSupabaseToken),
 			auth.NewAuthProviderTeamAuthenticator(apiStore.GetTeamFromAuthProviderToken),
-			auth.NewAdminTokenAuthenticator(config.AdminToken),
+			auth.NewAdminApiKeyAuthenticator(config.AdminToken),
+			auth.NewAdminTeamAuthenticator(apiStore.GetTeamFromAdminToken),
 		},
 		metricsMiddleware.SetProcessingStartTime,
 	)
@@ -348,7 +349,12 @@ func run() int {
 
 	config, err := cfg.Parse()
 	if err != nil {
-		logger.L().Fatal(ctx, "Error parsing config", zap.Error(err))
+		fields := []zap.Field{zap.Error(err)}
+		if condition, ok := cfg.ParseFailureCondition(err); ok {
+			fields = append(fields, zap.String("config_failure_condition", string(condition)))
+		}
+
+		logger.L().Fatal(ctx, "Error parsing config", fields...)
 	}
 
 	err = sqlcdb.CheckMigrationVersion(ctx, config.PostgresConnectionString, expectedMigration)

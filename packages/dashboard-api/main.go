@@ -230,7 +230,7 @@ func run() int {
 
 	authenticationFunc := sharedauth.CreateAuthenticationFunc(
 		[]sharedauth.Authenticator{
-			sharedauth.NewAdminTokenAuthenticator(config.AdminToken),
+			sharedauth.NewAdminApiKeyAuthenticator(config.AdminToken),
 			sharedauth.NewAuthProviderBearerAuthenticator(apiStore.GetUserIDFromAuthProviderToken),
 			sharedauth.NewSupabaseTokenAuthenticator(apiStore.GetUserIDFromAuthProviderToken),
 			sharedauth.NewSupabaseTeamAuthenticator(apiStore.GetTeamFromSupabaseToken),

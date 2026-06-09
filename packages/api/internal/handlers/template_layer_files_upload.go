@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -12,8 +13,17 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+const templateLayerFilesHashLength = 64
+
 func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID api.TemplateID, hash string) {
 	ctx := c.Request.Context()
+
+	if !isTemplateLayerFilesHash(hash) {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid files hash")
+		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, "invalid files hash", errors.New("invalid files hash"), telemetry.WithTemplateID(templateID), attribute.String("hash", hash))
+
+		return
+	}
 
 	// Check if the user has access to the template
 	templateDB, err := a.sqlcDB.GetTemplateByID(ctx, templateID)
@@ -61,4 +71,18 @@ func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID ap
 		Present: resp.GetPresent(),
 		Url:     resp.Url,
 	})
+}
+
+func isTemplateLayerFilesHash(hash string) bool {
+	if len(hash) != templateLayerFilesHashLength {
+		return false
+	}
+
+	for _, r := range hash {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+
+	return true
 }

@@ -51,6 +51,17 @@ func TestParse(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, content, result.VolumesToken.SigningKey)
 	})
+
+	t.Run("invalid service discovery provider exposes failure condition", func(t *testing.T) {
+		t.Setenv("SERVICE_DISCOVERY_PROVIDER", "invalid")
+
+		_, err := Parse()
+		require.Error(t, err)
+
+		condition, ok := ParseFailureCondition(err)
+		require.True(t, ok)
+		assert.Equal(t, FailureConditionInvalidServiceDiscoveryProvider, condition)
+	})
 }
 
 // removeEnv was mostly copied from the implementation of t.Setenv
