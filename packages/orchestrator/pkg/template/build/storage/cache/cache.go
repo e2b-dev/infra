@@ -64,7 +64,12 @@ func (h *HashIndex) LayerMetaFromHash(ctx context.Context, hash string) (LayerMe
 	ctx, span := tracer.Start(ctx, "get layer_metadata")
 	defer span.End()
 
-	obj, err := h.indexStorage.OpenBlob(ctx, paths.HashToPath(h.cacheScope, hash), storage.LayerMetadataObjectType)
+	hashPath, err := paths.HashToPath(h.cacheScope, hash)
+	if err != nil {
+		return LayerMetadata{}, fmt.Errorf("invalid hash index path: %w", err)
+	}
+
+	obj, err := h.indexStorage.OpenBlob(ctx, hashPath, storage.LayerMetadataObjectType)
 	if err != nil {
 		return LayerMetadata{}, fmt.Errorf("error opening object for layer metadata: %w", err)
 	}
@@ -91,7 +96,12 @@ func (h *HashIndex) SaveLayerMeta(ctx context.Context, hash string, template Lay
 	ctx, span := tracer.Start(ctx, "save layer_metadata")
 	defer span.End()
 
-	obj, err := h.indexStorage.OpenBlob(ctx, paths.HashToPath(h.cacheScope, hash), storage.LayerMetadataObjectType)
+	hashPath, err := paths.HashToPath(h.cacheScope, hash)
+	if err != nil {
+		return fmt.Errorf("invalid hash index path: %w", err)
+	}
+
+	obj, err := h.indexStorage.OpenBlob(ctx, hashPath, storage.LayerMetadataObjectType)
 	if err != nil {
 		return fmt.Errorf("error creating object for saving UUID: %w", err)
 	}

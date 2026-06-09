@@ -24,7 +24,11 @@ func (s *ServerStore) InitLayerFileUpload(ctx context.Context, in *templatemanag
 		cacheScope = in.GetCacheScope()
 	}
 
-	path := paths.GetLayerFilesCachePath(cacheScope, in.GetHash())
+	path, err := paths.GetLayerFilesCachePath(cacheScope, in.GetHash())
+	if err != nil {
+		return nil, fmt.Errorf("invalid layer files cache path: %w", err)
+	}
+
 	obj, err := s.buildStorage.OpenBlob(ctx, path, storage.BuildLayerFileObjectType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open layer files cache: %w", err)
