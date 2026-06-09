@@ -134,10 +134,11 @@ func (s *Service) isRoot(path string) bool {
 }
 
 func toEntry(fullVolumePath string, fileInfo os.FileInfo) *orchestrator.EntryInfo {
-	// The orchestrator EntryInfo proto has no metadata field and these paths
-	// are resolved from the host's view of a chroot-relative path, so skip the
-	// xattr read — it would be wasted syscalls and could read the wrong file.
-	entryInfo := filesystem.GetEntryInfoWithoutMetadata(fullVolumePath, fileInfo)
+	// GetEntryInfo doesn't read xattr metadata, which is what we want here: the
+	// orchestrator EntryInfo proto has no metadata field, and these paths are
+	// the host's view of a chroot-relative path, so a metadata read would be
+	// wasted syscalls and could read the wrong file.
+	entryInfo := filesystem.GetEntryInfo(fullVolumePath, fileInfo)
 
 	return fromEntryInfo(fullVolumePath, entryInfo)
 }

@@ -23,14 +23,18 @@ func GetEntryFromPath(path string) (EntryInfo, error) {
 		return EntryInfo{}, err
 	}
 
-	return GetEntryInfo(path, fileInfo), nil
+	return GetEntryInfoWithMetadata(path, fileInfo), nil
 }
 
-// GetEntryInfo builds an EntryInfo for fileInfo at path, including any
-// user-defined metadata stored in xattrs (read from path). Callers that don't
-// surface metadata should use GetEntryInfoWithoutMetadata instead.
-func GetEntryInfo(path string, fileInfo os.FileInfo) EntryInfo {
-	entry := GetEntryInfoWithoutMetadata(path, fileInfo)
+// GetEntryInfoWithMetadata is GetEntryInfo plus the file's user-defined xattr
+// metadata, read from path. Use this only when the caller surfaces metadata and
+// resolves path in the entry's own mount namespace (e.g. envd's Stat/ListDir) —
+// ReadMetadata issues path-based xattr syscalls, so calling it for a path
+// interpreted outside the entry's namespace (e.g. the orchestrator volume
+// service's host-side chroot-relative paths) would be wasted work and could
+// read the wrong file's xattrs. Such callers should use GetEntryInfo instead.
+func GetEntryInfoWithMetadata(path string, fileInfo os.FileInfo) EntryInfo {
+	entry := GetEntryInfo(path, fileInfo)
 
 	// Metadata is best-effort: a read failure shouldn't fail the entry lookup
 	// (Size/Mode/times are still valid), and this helper has no logger to
@@ -41,14 +45,9 @@ func GetEntryInfo(path string, fileInfo os.FileInfo) EntryInfo {
 	return entry
 }
 
-// GetEntryInfoWithoutMetadata builds an EntryInfo purely from fileInfo, without
-// reading xattr metadata from path. ReadMetadata issues path-based xattr
-// syscalls that resolve in the caller's mount namespace, so callers that build
-// entries from a path interpreted outside the entry's namespace — e.g. the
-// orchestrator volume service, which passes host-side chroot-relative paths and
-// doesn't surface metadata anyway — must use this to avoid both wasted syscalls
-// and reading the wrong file's xattrs.
-func GetEntryInfoWithoutMetadata(path string, fileInfo os.FileInfo) EntryInfo {
+// GetEntryInfo builds an EntryInfo purely from fileInfo. It does not read xattr
+// metadata; callers that surface metadata should use GetEntryInfoWithMetadata.
+func GetEntryInfo(path string, fileInfo os.FileInfo) EntryInfo {
 	fileMode := fileInfo.Mode()
 
 	var symlinkTarget *string
