@@ -366,15 +366,7 @@ starts without round-trips. Note: the guest kernel is a separate host file
 rootfs" doesn't apply. "Compress envd" only helps if fewer bytes cross the
 network than CPU cost to decompress.
 
-## 7. NBD → ublk (note only; prepared elsewhere)
-
-No `ublk` references exist today; all block export is kernel NBD (`/dev/nbd*` via
-`nbdnl`). The rootfs-heavy reboot path benefits most from a lower-overhead
-userspace transport. Switching replaces `nbd.DirectPathMount`/`DevicePool`/dispatch;
-the `Overlay`/`Cache`/`block` layers stay; FC consumes `/dev/ublkbN`. Keep the
-disk-only block layer transport-agnostic so it benefits for free.
-
-## 8. Live disk snapshot via overlay insertion (future)
+## 7. Live disk snapshot via overlay insertion (future)
 
 Today `NBDProvider.ExportDiff` stops the sandbox to export. Instead: guest `sync`
 (or brief `fsfreeze`/FC pause), then insert a fresh overlay/cache on top so the
@@ -384,13 +376,13 @@ of a *running* sandbox. Blockers: atomic NBD backing-device swap during the
 freeze window without confusing FC virtio-block; consistency = quiesce quality;
 layer depth grows → needs compaction.
 
-## 9. Upload the sparse overlay directly, no copy (next-next)
+## 8. Upload the sparse overlay directly, no copy (next-next)
 
 `cache.ExportToDiff` copies the cache into a fresh diff before upload. The cache
 is already sparse — upload it directly (compacted), skipping the materialize step.
 Pure optimization; after the basic FS-only snapshot lands.
 
-## 10. Read-only disk access API (future)
+## 9. Read-only disk access API (future)
 
 Let users read a (disk-only) snapshot's rootfs without booting — list/download
 files from a paused snapshot's disk. Feasible: the rootfs is assembled lazily
