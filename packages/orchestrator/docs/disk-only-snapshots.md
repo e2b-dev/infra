@@ -355,6 +355,14 @@ Run envd `sync` before `process.Pause`; keep the `CreateSnapshot` disk
 drain+flush (or a dedicated flush); use `IoEngine: Sync`. Stronger consistency →
 `fsfreeze` via envd (new envd endpoint + version bump).
 
+Note: today the disk drain+flush is a side effect of the custom FC
+`CreateSnapshot` call, so disk-only either keeps creating a throwaway snapfile or
+needs a **dedicated FC IO-flush endpoint**. We likely want to expose the FC IO
+flush as its own external (custom-FC) endpoint so disk-only can flush the virtio
+disk to the host without producing a snapfile at all. That's a custom-FC change
+(new endpoint + client wiring in `fc/`); track it as part of this workstream and
+see open question 4.
+
 ## 4. Repair/replay the journal at snapshot time
 
 With `noload` removed, every reboot replays the ext4 journal on the resume
@@ -423,8 +431,9 @@ and rootfs prefetch (6).
    rely on first-time `/init` setup? (Risk 1 — decide in phase 1.)
 2. Auto-resume on a disk-only snapshot: block, or allow with explicit opt-in?
 3. Connect on a disk-only snapshot: block, error, or allow?
-4. Keep `CreateSnapshot` for its disk-flush side effect, or add a dedicated FC
-   flush and skip snapfile creation entirely?
+4. Keep `CreateSnapshot` for its disk-flush side effect, or expose a dedicated
+   custom-FC IO-flush endpoint and skip snapfile creation entirely? (See
+   workstream 3.)
 5. Disk-only selectable per-pause, per-template, or both?
 6. Explicit persisted flag vs `ErrObjectNotExist` fallback for resume-path
    selection?
