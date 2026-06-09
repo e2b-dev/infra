@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"syscall"
+	"unicode/utf8"
 
 	"github.com/pkg/xattr"
 )
@@ -102,10 +103,22 @@ func ReadMetadata(path string) (map[string]string, error) {
 			return nil, err
 		}
 
+		key := strings.TrimPrefix(name, MetadataXattrPrefix)
+
+		// Metadata can be set directly inside the sandbox (e.g. via setfattr),
+		// not just through our upload API, so a value may hold arbitrary bytes.
+		// EntryInfo surfaces metadata as a proto map<string, string>, which
+		// requires valid UTF-8 — a non-UTF-8 entry would make the whole
+		// Stat/ListDir response fail to marshal. Skip such entries rather than
+		// poisoning the lookup; well-formed metadata is unaffected.
+		if !utf8.ValidString(key) || !utf8.Valid(value) {
+			continue
+		}
+
 		if metadata == nil {
 			metadata = make(map[string]string)
 		}
-		metadata[strings.TrimPrefix(name, MetadataXattrPrefix)] = string(value)
+		metadata[key] = string(value)
 	}
 
 	return metadata, nil

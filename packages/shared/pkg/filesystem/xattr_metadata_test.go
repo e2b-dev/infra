@@ -66,6 +66,40 @@ func TestReadMetadataEmptyValue(t *testing.T) {
 	}
 }
 
+// TestReadMetadataSkipsInvalidUTF8 verifies that metadata set directly inside
+// the sandbox (e.g. via setfattr) with non-UTF-8 bytes is skipped on read, so
+// it can't break proto marshaling of EntryInfo.metadata. Valid entries on the
+// same file are still returned.
+func TestReadMetadataSkipsInvalidUTF8(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "f")
+	if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	if err := xattr.Set(path, MetadataXattrPrefix+"bad", []byte{0xff, 0xfe}); err != nil {
+		if IsXattrUnsupported(err) {
+			t.Skipf("filesystem does not support xattrs: %v", err)
+		}
+		t.Fatalf("Set: %v", err)
+	}
+	if err := xattr.Set(path, MetadataXattrPrefix+"good", []byte("ok")); err != nil {
+		t.Fatalf("Set good: %v", err)
+	}
+
+	got, err := ReadMetadata(path)
+	if err != nil {
+		t.Fatalf("ReadMetadata: %v", err)
+	}
+	if _, leaked := got["bad"]; leaked {
+		t.Errorf("non-UTF-8 value should be skipped, got %v", got)
+	}
+	if got["good"] != "ok" {
+		t.Errorf("expected good=ok, got %v", got)
+	}
+}
+
 func TestReadMetadataIgnoresNonUserPrefix(t *testing.T) {
 	t.Parallel()
 
