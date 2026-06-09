@@ -132,8 +132,7 @@ func (tm *TemplateManager) CreateTemplate(
 	if err != nil {
 		// If the error is related to fromTemplate, set the build status to failed with the appropriate message
 		// This is to unify the error handling with fromImage errors
-		var fromTemplateErr *FromTemplateError
-		if !errors.As(err, &fromTemplateErr) {
+		if _, ok := errors.AsType[*FromTemplateError](err); !ok {
 			return fmt.Errorf("failed to set template source: %w", err)
 		}
 

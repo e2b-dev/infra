@@ -677,13 +677,8 @@ func (r *timedReadCloser) Close() error {
 }
 
 func isResourceExhausted(err error) bool {
-	type grpcStatusProvider interface {
-		GRPCStatus() *status.Status
-	}
-
-	var se grpcStatusProvider
-	if errors.As(err, &se) {
-		return se.GRPCStatus().Code() == codes.ResourceExhausted
+	if s, ok := status.FromError(err); ok {
+		return s.Code() == codes.ResourceExhausted
 	}
 
 	return false

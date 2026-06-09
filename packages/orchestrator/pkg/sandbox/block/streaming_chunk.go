@@ -89,7 +89,7 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64, ft *storage.Fram
 		return b, nil
 	}
 
-	if !errors.As(err, &BytesNotAvailableError{}) {
+	if _, ok := errors.AsType[BytesNotAvailableError](err); !ok {
 		timer.RecordRaw(ctx, length, attrs.failCacheRead)
 
 		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)

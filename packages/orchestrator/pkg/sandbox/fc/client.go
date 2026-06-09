@@ -472,8 +472,7 @@ func (c *apiClient) startBalloonHinting(ctx context.Context, acknowledgeOnStop b
 		// FC returns 204 (no content) on success, but the FC OpenAPI spec only
 		// declares 200/400 — go-swagger treats any other 2xx as "unexpected
 		// success" and surfaces it as a *runtime.APIError. Honour the 2xx.
-		var apiErr *openapiruntime.APIError
-		if errors.As(err, &apiErr) && apiErr.IsSuccess() {
+		if apiErr, ok := errors.AsType[*openapiruntime.APIError](err); ok && apiErr.IsSuccess() {
 			return nil
 		}
 

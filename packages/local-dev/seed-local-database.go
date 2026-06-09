@@ -174,8 +174,7 @@ func upsertUserToken(ctx context.Context, db *authdb.Client, tokenPrefix, token 
 
 func ignoreConstraints(err error) error {
 	// sqlc check
-	var pgconnErr *pgconn.PgError
-	if errors.As(err, &pgconnErr) {
+	if pgconnErr, ok := errors.AsType[*pgconn.PgError](err); ok {
 		if pgconnErr.Code == "23505" {
 			return nil
 		}

@@ -48,17 +48,16 @@ func ErrorToAPIError(err error, fallbackIdentifier string) *api.APIError {
 }
 
 func ToAPIError(err error, identifier string) *api.APIError {
-	var tagErr templateTagNotFoundError
-	switch {
-	case errors.As(err, &tagErr):
+	if tagErr, ok := errors.AsType[templateTagNotFoundError](err); ok {
 		return &api.APIError{
 			Code:      http.StatusNotFound,
 			ClientMsg: fmt.Sprintf("tag '%s' does not exist for template '%s'", tagErr.Tag, identifier),
 			Err:       err,
 		}
-	case errors.Is(err, ErrTemplateNotFound):
-		var notFoundErr templateNotFoundError
-		if errors.As(err, &notFoundErr) {
+	}
+
+	if errors.Is(err, ErrTemplateNotFound) {
+		if notFoundErr, ok := errors.AsType[templateNotFoundError](err); ok {
 			identifier = notFoundErr.Identifier
 		}
 
@@ -67,13 +66,17 @@ func ToAPIError(err error, identifier string) *api.APIError {
 			ClientMsg: fmt.Sprintf("template '%s' not found", identifier),
 			Err:       err,
 		}
-	case errors.Is(err, ErrAccessDenied):
+	}
+
+	if errors.Is(err, ErrAccessDenied) {
 		return &api.APIError{
 			Code:      http.StatusForbidden,
 			ClientMsg: fmt.Sprintf("you don't have access to template '%s'", identifier),
 			Err:       err,
 		}
-	case errors.Is(err, ErrClusterMismatch):
+	}
+
+	if errors.Is(err, ErrClusterMismatch) {
 		return &api.APIError{
 			Code:      http.StatusBadRequest,
 			ClientMsg: fmt.Sprintf("template '%s' is not available in the requested cluster", identifier),
@@ -97,8 +100,8 @@ func (r TemplateRef) APIError(err error) *api.APIError {
 		}
 	}
 
-	var tagErr templateTagNotFoundError
-	if !errors.As(err, &tagErr) {
+	tagErr, ok := errors.AsType[templateTagNotFoundError](err)
+	if !ok {
 		return ToAPIError(err, r.Identifier)
 	}
 

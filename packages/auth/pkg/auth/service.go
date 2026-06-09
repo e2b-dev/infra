@@ -104,8 +104,7 @@ func (s *authService) ValidateAPIKey(ctx context.Context, ginCtx *gin.Context, a
 		return s.store.GetTeamByHashedAPIKey(ctx, key)
 	})
 	if err != nil {
-		var forbiddenErr *TeamForbiddenError
-		if errors.As(err, &forbiddenErr) {
+		if _, ok := errors.AsType[*TeamForbiddenError](err); ok {
 			return nil, &APIError{
 				Err:       err,
 				ClientMsg: err.Error(),
@@ -226,8 +225,7 @@ func (s *authService) ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.Cont
 		return s.store.GetTeamByIDAndUserID(ctx, userID, teamID)
 	})
 	if err != nil {
-		var forbiddenErr *TeamForbiddenError
-		if errors.As(err, &forbiddenErr) {
+		if _, ok := errors.AsType[*TeamForbiddenError](err); ok {
 			return nil, &APIError{
 				Err:       fmt.Errorf("failed getting team: %w", err),
 				ClientMsg: fmt.Sprintf("Forbidden: %s", err.Error()),

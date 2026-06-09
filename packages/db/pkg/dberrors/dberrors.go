@@ -13,8 +13,7 @@ func IsNotFoundError(err error) bool {
 }
 
 func IsUniqueConstraintViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
+	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok {
 		return pgErr.Code == "23505"
 	}
 
@@ -22,8 +21,7 @@ func IsUniqueConstraintViolation(err error) bool {
 }
 
 func IsForeignKeyViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
+	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok {
 		return pgErr.Code == "23503"
 	}
 
