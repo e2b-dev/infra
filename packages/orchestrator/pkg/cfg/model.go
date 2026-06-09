@@ -36,6 +36,16 @@ type BuilderConfig struct {
 
 	DefaultCacheDir string `env:"DEFAULT_CACHE_DIR,expand" envDefault:"${ORCHESTRATOR_BASE_PATH}/build"`
 
+	// TemplateCacheMaxEntries caps the number of templates held in the in-memory
+	// mmap cache. When the limit is reached the LRU entry is evicted and its
+	// mmap pages are released. 0 means unlimited (original behaviour).
+	TemplateCacheMaxEntries int `env:"TEMPLATE_CACHE_MAX_ENTRIES" envDefault:"0"`
+
+	// TemplateCacheMinFreeMemoryMB triggers proactive LRU eviction from the
+	// template cache when host free memory (MemAvailable) drops below this
+	// threshold. 0 disables the check.
+	TemplateCacheMinFreeMemoryMB int64 `env:"TEMPLATE_CACHE_MIN_FREE_MEMORY_MB" envDefault:"0"`
+
 	Provider string `env:"PROVIDER" envDefault:"gcp"`
 
 	StorageConfig storage.Config

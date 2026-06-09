@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
@@ -70,9 +71,13 @@ func NewCache(
 	metrics blockmetrics.Metrics,
 	peers peerclient.Resolver,
 ) (*Cache, error) {
-	cache := ttlcache.New(
+	cacheOpts := []ttlcache.Option[string, Template]{
 		ttlcache.WithTTL[string, Template](templateExpiration),
-	)
+	}
+	if config.TemplateCacheMaxEntries > 0 {
+		cacheOpts = append(cacheOpts, ttlcache.WithCapacity[string, Template](uint64(config.TemplateCacheMaxEntries)))
+	}
+	cache := ttlcache.New(cacheOpts...)
 
 	cache.OnEviction(func(ctx context.Context, _ ttlcache.EvictionReason, item *ttlcache.Item[string, Template]) {
 		peers.Purge(item.Key())
@@ -118,6 +123,69 @@ func (c *Cache) Start(ctx context.Context) {
 	c.buildStore.Start(ctx)
 
 	go c.cache.Start()
+
+	if c.config.TemplateCacheMinFreeMemoryMB > 0 {
+		go c.startMemoryPressureEviction(ctx)
+	}
+}
+
+// startMemoryPressureEviction evicts the LRU template cache entry whenever
+// MemAvailable on the host drops below TemplateCacheMinFreeMemoryMB.
+// It reads /proc/meminfo directly to avoid a cgo dependency.
+func (c *Cache) startMemoryPressureEviction(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	thresholdBytes := uint64(c.config.TemplateCacheMinFreeMemoryMB) * 1024 * 1024
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			// Evict LRU entries one-by-one until free memory is above the
+			// threshold or the cache is empty.
+			for {
+				var info unix.Sysinfo_t
+				if err := unix.Sysinfo(&info); err != nil {
+					logger.L().Warn(ctx, "memory pressure eviction: sysinfo failed", zap.Error(err))
+					break
+				}
+
+				// Sysinfo.Freeram is in units of Sysinfo.Unit bytes.
+				freeBytes := info.Freeram * uint64(info.Unit)
+				if freeBytes >= thresholdBytes {
+					break
+				}
+
+				// Find the LRU entry: the one whose TTL was reset least recently,
+				// i.e. the item with the earliest ExpiresAt timestamp.
+				items := c.cache.Items()
+				if len(items) == 0 {
+					break
+				}
+
+				var (
+					oldestKey    string
+					oldestExpiry time.Time
+				)
+				for k, item := range items {
+					exp := item.ExpiresAt()
+					if oldestKey == "" || exp.Before(oldestExpiry) {
+						oldestKey = k
+						oldestExpiry = exp
+					}
+				}
+
+				logger.L().Info(ctx, "memory pressure eviction: evicting LRU template",
+					zap.String("key", oldestKey),
+					zap.Uint64("free_bytes", freeBytes),
+					zap.Uint64("threshold_bytes", thresholdBytes),
+				)
+				c.cache.Delete(oldestKey)
+			}
+		}
+	}
 }
 
 func (c *Cache) Stop() {
