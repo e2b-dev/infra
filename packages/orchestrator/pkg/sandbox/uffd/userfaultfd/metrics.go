@@ -53,23 +53,25 @@ const (
 type faultResult uint8
 
 const (
-	faultResultInstalled faultResult = iota // page installed by this serve
-	faultResultPresent                      // page already present: resident short-circuit or lost install race (EEXIST)
-	faultResultDeferred                     // EAGAIN: must be retried later
-	faultResultDiscarded                    // ESRCH: faulting thread gone, retry pointless
-	faultResultError                        // serving failed
-	faultResultSkipped                      // prefault only: tracker already Dirty/Zero — prefetch arrived too late
+	faultResultInstalled   faultResult = iota // page installed by this serve
+	faultResultPresent                        // page already present: resident short-circuit or lost install race (EEXIST)
+	faultResultDeferred                       // EAGAIN: must be retried later
+	faultResultDiscarded                      // ESRCH: faulting thread gone, retry pointless
+	faultResultError                          // serving failed
+	faultResultSkipped                        // prefault only: tracker already Dirty/Zero — prefetch arrived too late
+	faultResultAfterRemove                    // page removed in the same loop
 	numFaultResult
 )
 
 // resultNames maps faultResult values to their metric label strings.
 var resultNames = [numFaultResult]string{
-	faultResultInstalled: "installed",
-	faultResultPresent:   "present",
-	faultResultDeferred:  "deferred",
-	faultResultDiscarded: "discarded",
-	faultResultError:     "error",
-	faultResultSkipped:   "skipped",
+	faultResultInstalled:   "installed",
+	faultResultPresent:     "present",
+	faultResultDeferred:    "deferred",
+	faultResultDiscarded:   "discarded",
+	faultResultError:       "error",
+	faultResultSkipped:     "skipped",
+	faultResultAfterRemove: "removed",
 }
 
 // serveAttrs holds a precomputed metric.MeasurementOption per

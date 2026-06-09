@@ -223,8 +223,21 @@ func TestRemoveThenFault(t *testing.T) {
 			states, err := h.pageStates()
 			require.NoError(t, err)
 
-			assert.Empty(t, states.removed, "page should not be in removed state after re-fault")
-			assert.Contains(t, states.faulted, uint(0), "page should be back in faulted state")
+			if tt.pagesize == header.HugepageSize {
+				// Hugepage REMOVE drops MISSING tracking, so the post-remove
+				// write is served by the kernel — the handler never re-faults.
+				// The page stays zero/removed in the tracker; the write is still
+				// captured via WP-async (asserted by checkDirtiness below).
+				assert.Contains(t, states.removed, uint(0),
+					"removed hugepage stays removed: write was kernel-served, not re-faulted")
+				assert.NotContains(t, states.faulted, uint(0),
+					"handler must not re-fault a removed hugepage")
+			} else {
+				// 4K keeps MISSING tracking, so the write re-faults through the
+				// handler.
+				assert.Empty(t, states.removed, "page should not be in removed state after re-fault")
+				assert.Contains(t, states.faulted, uint(0), "page should be back in faulted state")
+			}
 
 			h.checkDirtiness(t, tt.operations)
 		})

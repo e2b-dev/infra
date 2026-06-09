@@ -41,6 +41,16 @@ const (
 	sliceRetryBaseDelay = 50 * time.Millisecond
 	// sliceRetryMaxDelay is the maximum backoff delay between retries.
 	sliceRetryMaxDelay = 500 * time.Millisecond
+
+	// wpMaxRetries bounds the UFFDIO_WRITEPROTECT EAGAIN retry in
+	// dropMissingEventsTracking. Total attempts = wpMaxRetries + 1.
+	wpMaxRetries = 8
+	// wpRetryBaseDelay is the initial backoff before retrying a write-protect
+	// that raced mmap_changing; it doubles each attempt, capped at
+	// wpRetryMaxDelay. The delays are short because mmap_changing clears as soon
+	// as the REMOVE-triggering madvise thread is rescheduled.
+	wpRetryBaseDelay = 1 * time.Millisecond
+	wpRetryMaxDelay  = 10 * time.Millisecond
 )
 
 var ErrUnexpectedEventType = errors.New("unexpected event type")
@@ -138,6 +148,10 @@ const (
 	// faultDiscarded: no install happened and retry is pointless
 	// (e.g. ESRCH — the faulting thread is gone).
 	faultDiscarded
+	// faultAfterRemove: no install happened because we got a UFFD_EVENT_REMOVE
+	// concurrently with a page fault. We first handle the remove event, so
+	// the page fault will be handled by the kernel.
+	faultAfterRemove
 )
 
 // NewUserfaultfdFromFd creates a new userfaultfd instance. Page size is
@@ -233,6 +247,56 @@ func (u *Userfaultfd) readEvents(ctx context.Context) ([]*UffdRemove, []*UffdPag
 	}
 
 	return removes, pagefaults, nil
+}
+
+// dropMissingEventsTracking drops MISSING registration for [addr, addr+len) so the
+// kernel starts handling the page faults (we stop receiving UFFD_EVENT_PAGEFAULT
+// events). We do want the kernel to keep handling the WP bit asynchronously, so
+// we need to re-register the region for WP and write protect it.
+func (u *Userfaultfd) dropMissingEventsTracking(ctx context.Context, addr, length uintptr) error {
+	if err := u.fd.unregister(addr, length); err != nil {
+		return fmt.Errorf("uffd: failed to unregister memory: %w", err)
+	}
+	if err := u.fd.register(addr, length, UFFDIO_REGISTER_MODE_WP); err != nil {
+		return fmt.Errorf("uffd: failed to register memory: %w", err)
+	}
+	if err := u.writeProtectWithRetry(ctx, addr, length); err != nil {
+		return fmt.Errorf("uffd: failed to write protect memory: %w", err)
+	}
+
+	return nil
+}
+
+// writeProtectWithRetry write-protects [addr, addr+length), retrying on EAGAIN.
+// When this runs from the REMOVE handler the triggering MADV_DONTNEED still
+// holds mmap_changing until its thread is rescheduled to ack the event, and the
+// kernel rejects UFFDIO_WRITEPROTECT with EAGAIN until then. The short backoff
+// yields the CPU so that thread can release mmap_changing.
+func (u *Userfaultfd) writeProtectWithRetry(ctx context.Context, addr, length uintptr) error {
+	var err error
+	for attempt := range wpMaxRetries + 1 {
+		err = u.fd.writeProtect(addr, length, UFFDIO_WRITEPROTECT_MODE_WP)
+		if !errors.Is(err, unix.EAGAIN) {
+			// nil (success) or a non-retryable error.
+			return err
+		}
+
+		if attempt >= wpMaxRetries {
+			break
+		}
+
+		delay := min(wpRetryBaseDelay<<attempt, wpRetryMaxDelay)
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+
+			return errors.Join(err, ctx.Err())
+		case <-timer.C:
+		}
+	}
+
+	return err
 }
 
 func (u *Userfaultfd) Serve(
@@ -362,6 +426,16 @@ func (u *Userfaultfd) Serve(
 
 					startIdx := uint32(header.BlockIdx(startOff, int64(u.pageSize)))
 					endIdx := startIdx + uint32(uint64(rm.end-rm.start)/uint64(u.pageSize))
+
+					// For huge pages we can stop tracking MISSING events and keep WP-tracking
+					// enabled. We can't do the same for anonymous 4K pages. When 4K pages are
+					// freed the page table entry is zapped and we lose capability for WP
+					// tracking.
+					if u.pageSize == header.HugepageSize {
+						if err = u.dropMissingEventsTracking(ctx, uintptr(rm.start), uintptr(rm.end-rm.start)); err != nil {
+							return fmt.Errorf("failed to handle REMOVE: %w", err)
+						}
+					}
 					u.pageTracker.SetRange(startIdx, endIdx, block.Zero)
 				}
 				u.settleRequests.Unlock()
@@ -506,6 +580,9 @@ func (u *Userfaultfd) Serve(
 				case faultDiscarded:
 					// No install happened (ESRCH); retry would be pointless.
 					result = faultResultDiscarded
+				case faultAfterRemove:
+					// No install happened
+					result = faultResultAfterRemove
 				default:
 					result = faultResultError
 
@@ -564,7 +641,8 @@ func (u *Userfaultfd) faultPage(
 	case source == nil && u.pageSize == header.PageSize && accessType == block.Write:
 		writeErr = u.fd.zero(addr, u.pageSize, 0)
 	case source == nil && u.pageSize == header.HugepageSize:
-		writeErr = u.fd.copy(addr, u.pageSize, header.EmptyHugePage, mode)
+		// Nothing to do, handling removes in the current loop unregistered the page.
+		return faultAfterRemove, nil
 	default:
 		var b []byte
 		if u.pageSize == header.HugepageSize {
