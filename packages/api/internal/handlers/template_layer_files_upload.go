@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -19,7 +20,7 @@ func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID ap
 
 	if !isTemplateLayerFilesHash(hash) {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid files hash")
-		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, "invalid files hash", fmt.Errorf("invalid files hash"), telemetry.WithTemplateID(templateID), attribute.String("hash", hash))
+		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, "invalid files hash", errors.New("invalid files hash"), telemetry.WithTemplateID(templateID), attribute.String("hash", hash))
 
 		return
 	}
