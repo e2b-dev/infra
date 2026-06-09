@@ -100,12 +100,16 @@ func (l *LokiQueryProvider) QuerySandboxLogs(
 		}
 	}
 
+	// Upstream Loki failures (transport errors, timeouts, mapping issues) stay
+	// best-effort: log them and return an empty list so a transient outage does not
+	// break the logs endpoint for otherwise-valid requests. Only a malformed query
+	// (handled above) is surfaced as an error.
 	res, err := l.client.QueryRange(query, limit, start, end, direction, time.Duration(0), time.Duration(0), true)
 	if err != nil {
 		telemetry.ReportError(ctx, "error when returning logs for sandbox", err)
 		logger.L().Error(ctx, "error when returning logs for sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
 
-		return nil, fmt.Errorf("error when returning logs for sandbox: %w", err)
+		return make([]logs.LogEntry, 0), nil
 	}
 
 	lm, err := ResponseMapper(ctx, res, 0, direction)
@@ -113,7 +117,7 @@ func (l *LokiQueryProvider) QuerySandboxLogs(
 		telemetry.ReportError(ctx, "error when mapping sandbox logs", err)
 		logger.L().Error(ctx, "error when mapping logs for sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
 
-		return nil, fmt.Errorf("error when mapping sandbox logs: %w", err)
+		return make([]logs.LogEntry, 0), nil
 	}
 
 	return lm, nil
