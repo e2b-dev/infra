@@ -419,11 +419,11 @@ func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig, nod
 				wg.Go(func(sbx *LiveSandbox) func() {
 					return func() {
 						placementStart := time.Now()
-						node, err := PlaceSandbox(ctx, algorithm, nodes, nil, &orchestratorgrpc.SandboxCreateRequest{Sandbox: &orchestratorgrpc.SandboxConfig{
+						node, _, err := PlaceSandbox(ctx, algorithm, nodes, nil, &orchestratorgrpc.SandboxCreateRequest{Sandbox: &orchestratorgrpc.SandboxConfig{
 							SandboxId: sbx.ID,
 							Vcpu:      sbx.RequestedCPU,
 							RamMb:     sbx.RequestedMemory,
-						}}, machineinfo.MachineInfo{}, false, nil)
+						}}, machineinfo.MachineInfo{}, false, nil, nil)
 
 						placementTime := time.Since(placementStart)
 						sbx.PlacementLatency = placementTime
@@ -717,13 +717,13 @@ func BenchmarkPlacementDistribution(b *testing.B) {
 						wg.Add(1)
 						go func(s *LiveSandbox) {
 							// Execute placement algorithm
-							node, err := PlaceSandbox(ctx, alg.algo, nodes, nil, &orchestratorgrpc.SandboxCreateRequest{
+							node, _, err := PlaceSandbox(ctx, alg.algo, nodes, nil, &orchestratorgrpc.SandboxCreateRequest{
 								Sandbox: &orchestratorgrpc.SandboxConfig{
 									SandboxId: s.ID,
 									Vcpu:      s.RequestedCPU,
 									RamMb:     s.RequestedMemory,
 								},
-							}, machineinfo.MachineInfo{}, false, nil)
+							}, machineinfo.MachineInfo{}, false, nil, nil)
 
 							if err == nil && node != nil {
 								if simNode, ok := nodeMap[node.ID]; ok {

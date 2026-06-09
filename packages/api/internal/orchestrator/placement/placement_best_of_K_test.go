@@ -25,14 +25,14 @@ func TestBestOfK_Score(t *testing.T) {
 		MiBMemory: 512,
 	}
 
-	score := algo.Score(node, resources, config)
+	score := algo.Score(node, resources, config, nil)
 
 	// Score should be non-negative
 	assert.GreaterOrEqual(t, score, 0.0)
 
 	// Test with different CPU usage
 	node2 := nodemanager.NewTestNode("test-node2", api.NodeStatusReady, 10, 4)
-	score2 := algo.Score(node2, resources, config)
+	score2 := algo.Score(node2, resources, config, nil)
 
 	// Higher CPU usage should result in higher score (worse)
 	assert.Greater(t, score2, score)
@@ -52,14 +52,14 @@ func TestBestOfK_Score_PreferBiggerNode(t *testing.T) {
 		MiBMemory: 512,
 	}
 
-	score := algo.Score(node, resources, config)
+	score := algo.Score(node, resources, config, nil)
 
 	// Score should be non-negative
 	assert.GreaterOrEqual(t, score, 0.0)
 
 	// Test with different CPU usage
 	node2 := nodemanager.NewTestNode("test-node2", api.NodeStatusReady, 1, 8)
-	score2 := algo.Score(node2, resources, config)
+	score2 := algo.Score(node2, resources, config, nil)
 
 	// Lower CPU count should result in higher score (worse) as the expected load is higher
 	assert.Greater(t, score, score2)
@@ -87,8 +87,8 @@ func TestBestOfK_Score_WithPendingResources(t *testing.T) {
 		MiBMemory: 512,
 	}
 
-	scoreNormal := algo.Score(nodeNormal, reqResources, config)
-	scorePending := algo.Score(nodeWithPending, reqResources, config)
+	scoreNormal := algo.Score(nodeNormal, reqResources, config, nil)
+	scorePending := algo.Score(nodeWithPending, reqResources, config, nil)
 
 	// A node with pending resources has a higher 'reserved' CPU count,
 	// so its calculated Score should be greater (meaning worse/lower priority)
@@ -145,7 +145,7 @@ func TestBestOfK_ChooseNode(t *testing.T) {
 	}
 
 	// Test selection - should work with proper config
-	selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources, machineinfo.MachineInfo{}, false, nil)
+	selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources, machineinfo.MachineInfo{}, false, nil, nil)
 	require.NoError(t, err)
 	assert.NotNil(t, selected)
 	assert.Contains(t, []string{"node1", "node2", "node3"}, selected.ID)
@@ -178,7 +178,7 @@ func TestBestOfK_ChooseNode_WithExclusions(t *testing.T) {
 		MiBMemory: 512,
 	}
 
-	selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources, machineinfo.MachineInfo{}, false, nil)
+	selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources, machineinfo.MachineInfo{}, false, nil, nil)
 	require.NoError(t, err)
 	// Should not select excluded node
 	assert.NotEqual(t, "node2", selected.ID)
@@ -202,7 +202,7 @@ func TestBestOfK_ChooseNode_NoAvailableNodes(t *testing.T) {
 		MiBMemory: 1024,
 	}
 
-	selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources, machineinfo.MachineInfo{}, false, nil)
+	selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources, machineinfo.MachineInfo{}, false, nil, nil)
 	require.Error(t, err)
 	assert.Nil(t, selected)
 	assert.Contains(t, err.Error(), "no node available")
@@ -248,6 +248,49 @@ func TestBestOfK_Sample(t *testing.T) {
 	}
 }
 
+func TestBestOfK_ChooseNode_AffinityPrefersWarmNode(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	config := BestOfKConfig{R: 10, Alpha: 0.5, K: 3}
+	algo := NewBestOfK(config).(*BestOfK)
+
+	// Three identical nodes; only the affinity bonus differentiates them.
+	nodes := []*nodemanager.Node{
+		nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4),
+		nodemanager.NewTestNode("node2", api.NodeStatusReady, 2, 4),
+		nodemanager.NewTestNode("node3", api.NodeStatusReady, 2, 4),
+	}
+	resources := nodemanager.SandboxResources{CPUs: 1, MiBMemory: 512}
+	affinity := map[string]float64{"node2": 0.01}
+
+	for range 20 {
+		selected, err := algo.chooseNode(ctx, nodes, nil, resources, machineinfo.MachineInfo{}, false, nil, affinity)
+		require.NoError(t, err)
+		assert.Equal(t, "node2", selected.ID)
+	}
+}
+
+func TestBestOfK_ChooseNode_LoadDominatesAffinity(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	config := BestOfKConfig{R: 10, Alpha: 0.5, K: 2}
+	algo := NewBestOfK(config).(*BestOfK)
+
+	// The warm node is far more loaded than the cold one; the bounded affinity
+	// bonus must not be able to overcome a real load difference.
+	cold := nodemanager.NewTestNode("cold", api.NodeStatusReady, 0, 4)
+	warm := nodemanager.NewTestNode("warm", api.NodeStatusReady, 20, 4)
+	nodes := []*nodemanager.Node{cold, warm}
+	resources := nodemanager.SandboxResources{CPUs: 1, MiBMemory: 512}
+	affinity := map[string]float64{"warm": 0.02}
+
+	for range 20 {
+		selected, err := algo.chooseNode(ctx, nodes, nil, resources, machineinfo.MachineInfo{}, false, nil, affinity)
+		require.NoError(t, err)
+		assert.Equal(t, "cold", selected.ID)
+	}
+}
+
 func TestBestOfK_PowerOfKChoices(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
@@ -275,7 +318,7 @@ func TestBestOfK_PowerOfKChoices(t *testing.T) {
 	selectedCounts := make(map[string]int)
 	successCount := 0
 	for range 100 {
-		selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources, machineinfo.MachineInfo{}, false, nil)
+		selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources, machineinfo.MachineInfo{}, false, nil, nil)
 		if err == nil && selected != nil {
 			selectedCounts[selected.ID]++
 			successCount++

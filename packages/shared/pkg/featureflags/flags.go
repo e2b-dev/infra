@@ -161,6 +161,23 @@ var (
 	FreePageReportingFlag            = NewBoolFlag("free-page-reporting", false)
 	FreezeUserCgroupFlag             = NewBoolFlag("freeze-user-cgroup", env.IsDevelopment())
 
+	// SandboxPlacementCacheAffinityFlag configures the build-ID cache-affinity
+	// bonus inside Best-of-K placement. Weights are in PPM of the placement
+	// score, clamped so load and capacity always dominate.
+	SandboxPlacementCacheAffinityFlag = NewJSONFlag("sandbox-placement-cache-affinity", ldvalue.FromJSONMarshal(map[string]any{
+		"enabled":            false,
+		"ttlSeconds":         28800,
+		"topNodes":           20,
+		"readTimeoutMs":      100,
+		"writeTimeoutMs":     1000,
+		"maxHits":            10,
+		"exactWeightPpm":     2000,
+		"baseWeightPpm":      1000,
+		"lineageWeightPpm":   500,
+		"maxBonusPpm":        20000,
+		"maxLineageRecorded": 16,
+	}))
+
 	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())
 
 	// V4HeaderForUncompressedFlag forces the V4 header layout on uncompressed

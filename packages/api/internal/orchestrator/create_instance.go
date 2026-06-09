@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement/affinity"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	teamtypes "github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/pkg/builds"
@@ -301,7 +302,13 @@ func (o *Orchestrator) CreateSandbox(
 
 	labelFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx, featureflags.SandboxLabelBasedSchedulingFlag, featureflags.TeamContext(team.ID.String()), featureflags.SandboxContext(sandboxID))
 
-	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, team.SandboxSchedulingLabels)
+	affinityCfg := affinity.ConfigFromFlags(ctx, o.featureFlagsClient, featureflags.TeamContext(team.ID.String()), featureflags.TemplateContext(sbxData.TemplateID), featureflags.SandboxContext(sandboxID))
+	var affinityScores map[string]float64
+	if affinityCfg.Enabled && node == nil {
+		affinityScores = o.placementAffinity.Scores(ctx, affinityCfg, nodeClusterID, sbxData.Build.ID.String())
+	}
+
+	node, schedulingMeta, err := placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, team.SandboxSchedulingLabels, affinityScores)
 	if err != nil {
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,
@@ -315,8 +322,12 @@ func (o *Orchestrator) CreateSandbox(
 		attribute.Bool("is_resume", isResume),
 		attribute.Bool("node_affinity_requested", sbxData.NodeID != nil),
 		attribute.Bool("node_affinity_success", sbxData.NodeID != nil && node.ID == *sbxData.NodeID),
+		attribute.Bool("cache_affinity_hit", affinityScores[node.ID] > 0),
 	}
 	o.createdSandboxesCounter.Add(ctx, 1, metric.WithAttributes(attributes...))
+	if affinityCfg.Enabled {
+		go o.placementAffinity.Record(context.WithoutCancel(ctx), affinityCfg, nodeClusterID, node.ID, schedulingMeta)
+	}
 
 	telemetry.SetAttributes(ctx, attribute.String("node.id", node.ID))
 	telemetry.ReportEvent(ctx, "Created sandbox")

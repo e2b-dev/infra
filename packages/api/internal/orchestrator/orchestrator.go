@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/evictor"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement/affinity"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	redisreservations "github.com/e2b-dev/infra/packages/api/internal/sandbox/reservations/redis"
 	redisbackend "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
@@ -65,6 +66,7 @@ type Orchestrator struct {
 
 	snapshotUpsertSem *utils.AdjustableSemaphore
 	redisStorage      *redisbackend.Storage
+	placementAffinity *affinity.Index
 
 	// connectGroup deduplicates concurrent dial+register attempts for the same
 	// physical node. It is keyed by NomadNodeShortID (Nomad-managed nodes) or
@@ -147,6 +149,7 @@ func New(
 		tel:                  tel,
 		clusters:             clusters,
 		redisStorage:         redisStorage,
+		placementAffinity:    affinity.NewIndex(redisClient),
 
 		createdCounter: createdCounter,
 

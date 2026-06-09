@@ -13,10 +13,12 @@ import (
 	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement/affinity"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -55,7 +57,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 		zap.String("source_build_id", sbx.BuildID.String()),
 	)
 
-	err = snapshotInstance(ctx, node, sbx, result.TemplateID, result.BuildID.String())
+	schedulingMeta, err := snapshotInstance(ctx, node, sbx, result.TemplateID, result.BuildID.String())
 	if errors.Is(err, PauseQueueExhaustedError{}) {
 		telemetry.ReportCriticalError(ctx, "pause queue exhausted", err)
 
@@ -66,6 +68,13 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 		telemetry.ReportCriticalError(ctx, "error pausing sandbox", err)
 
 		return fmt.Errorf("error pausing sandbox: %w", err)
+	}
+
+	// The pausing node holds the new snapshot's artifacts; record it so a resume
+	// that lost its node pin can still find a warm node.
+	affinityCfg := affinity.ConfigFromFlags(ctx, o.featureFlagsClient, featureflags.TeamContext(sbx.TeamID.String()))
+	if affinityCfg.Enabled {
+		go o.placementAffinity.Record(context.WithoutCancel(ctx), affinityCfg, node.ClusterID, node.ID, schedulingMeta)
 	}
 
 	now := time.Now()
@@ -86,12 +95,12 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 	return nil
 }
 
-func snapshotInstance(ctx context.Context, node *nodemanager.Node, sbx sandbox.Sandbox, templateID, buildID string) error {
+func snapshotInstance(ctx context.Context, node *nodemanager.Node, sbx sandbox.Sandbox, templateID, buildID string) (*orchestrator.SchedulingMetadata, error) {
 	childCtx, childSpan := tracer.Start(ctx, "snapshot-instance")
 	defer childSpan.End()
 
 	client, childCtx := node.GetSandboxDeleteCtx(childCtx, sbx.SandboxID, sbx.ExecutionID)
-	_, err := client.Sandbox.Pause(
+	resp, err := client.Sandbox.Pause(
 		childCtx, &orchestrator.SandboxPauseRequest{
 			SandboxId:  sbx.SandboxID,
 			TemplateId: templateID,
@@ -102,19 +111,19 @@ func snapshotInstance(ctx context.Context, node *nodemanager.Node, sbx sandbox.S
 	if err == nil {
 		telemetry.ReportEvent(ctx, "Paused sandbox")
 
-		return nil
+		return resp.GetSchedulingMetadata(), nil
 	}
 
 	st, ok := status.FromError(err)
 	if !ok {
-		return err
+		return nil, err
 	}
 
 	if st.Code() == codes.ResourceExhausted {
-		return PauseQueueExhaustedError{}
+		return nil, PauseQueueExhaustedError{}
 	}
 
-	return fmt.Errorf("failed to pause sandbox '%s': %w", sbx.SandboxID, err)
+	return nil, fmt.Errorf("failed to pause sandbox '%s': %w", sbx.SandboxID, err)
 }
 
 func (o *Orchestrator) WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandboxID string) error {

@@ -35,8 +35,9 @@ func DefaultBestOfKConfig() BestOfKConfig {
 	}
 }
 
-// Score calculates the placement score for this node
-func (b *BestOfK) Score(node *nodemanager.Node, resources nodemanager.SandboxResources, config BestOfKConfig) float64 {
+// Score calculates the placement score for this node. affinityScores is an
+// optional cache-affinity bonus per node ID (lower score wins).
+func (b *BestOfK) Score(node *nodemanager.Node, resources nodemanager.SandboxResources, config BestOfKConfig, affinityScores map[string]float64) float64 {
 	metrics := node.Metrics()
 
 	// Get locally recorded resources that haven't been reported yet.
@@ -61,7 +62,7 @@ func (b *BestOfK) Score(node *nodemanager.Node, resources nodemanager.SandboxRes
 
 	cpuRequested := float64(resources.CPUs)
 
-	return (cpuRequested + float64(reserved) + config.Alpha*usageAvg) / totalCapacity
+	return (cpuRequested+float64(reserved)+config.Alpha*usageAvg)/totalCapacity - affinityScores[node.ID]
 }
 
 // CanFit checks if the node can fit a new VM with the given quota
@@ -110,8 +111,10 @@ func (b *BestOfK) UpdateConfig(config BestOfKConfig) {
 	b.config = config
 }
 
-// chooseNode selects the best node for placing a VM with the given quota
-func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, excludedNodes map[string]struct{}, resources nodemanager.SandboxResources, buildMachineInfo machineinfo.MachineInfo, filterByLabels bool, requiredLabels []string) (bestNode *nodemanager.Node, err error) {
+// chooseNode selects the best node for placing a VM with the given quota.
+// The cache-affinity bonus is applied only inside the sampled candidate set so
+// it cannot turn placement into "always the globally hottest node".
+func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, excludedNodes map[string]struct{}, resources nodemanager.SandboxResources, buildMachineInfo machineinfo.MachineInfo, filterByLabels bool, requiredLabels []string, affinityScores map[string]float64) (bestNode *nodemanager.Node, err error) {
 	// Fix the config, we want to dynamically update it
 	config := b.getConfig()
 
@@ -123,7 +126,7 @@ func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, exclu
 
 	for _, node := range candidates {
 		// Calculate score
-		score := b.Score(node, resources, config)
+		score := b.Score(node, resources, config, affinityScores)
 
 		if score < bestScore {
 			bestNode = node
