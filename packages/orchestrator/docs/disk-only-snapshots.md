@@ -65,18 +65,22 @@ Public OpenAPI (`spec/openapi.yml`) additions — disk-only only:
 
 Not exposed publicly: `reboot` on create/resume/connect.
 
-Internal transport (API → orchestrator gRPC):
+Internal transport (API → orchestrator gRPC) — typed proto fields, not metadata.
+The orchestrator proto is an internal service contract, so use real request
+fields (type-checked, visible in generated clients, greppable) rather than
+stuffing semantics into gRPC metadata:
 
-- `reboot` travels as a gRPC **metadata key** (`x-e2b-reboot-from-rootfs`), which
-  reads as an internal flag rather than a public-looking proto field. It is set
-  by the API when resuming a disk-only snapshot, and reused for the
-  escape-hatch / fallback (missing or corrupt memfile → reboot) and for
-  testing/ops.
-- `memory: false` likewise maps to `x-e2b-memory-snapshot: false` on
-  pause/checkpoint.
+- `SandboxCreateRequest.reboot bool` — set by the API when resuming a disk-only
+  snapshot, and reused for the escape-hatch / fallback (missing or corrupt
+  memfile → reboot) and for testing/ops. (#2877 used exactly this.)
+- `memory: false` maps to a disk-only field on the pause/checkpoint request
+  (e.g. `SandboxPauseRequest.memory_snapshot bool` / `skip_memory`).
 - The durable public state is the disk-only bit persisted on the snapshot
-  (config/metadata, workstream 1); the API derives the internal `reboot` signal
+  (config/metadata, workstream 1); the API derives the internal `reboot` field
   from it on resume.
+
+(Both require regenerating `orchestrator.pb.go`; that's a routine internal proto
+bump, not a public API change.)
 
 ## Orchestrator changes
 
@@ -164,9 +168,10 @@ previously running guest. Add a named constant + comment to lock this in.
    (#2875) for the mark-running ordering.
 
 Resolved:
-- `reboot` is internal-only (gRPC metadata `x-e2b-reboot-from-rootfs`); the public
-  surface is disk-only (`memory: false`). Resume derives reboot from the persisted
-  disk-only flag. (No public `reboot` on create/resume/connect.)
+- `reboot` is internal-only, carried as a typed proto request field
+  (`SandboxCreateRequest.reboot`), not gRPC metadata. The public surface is
+  disk-only (`memory: false`); resume derives reboot from the persisted disk-only
+  flag. (No public `reboot` on create/resume/connect.)
 
 ## Implementation plan
 
@@ -238,8 +243,9 @@ What's needed:
   `internal/api/*.gen.go` and `tests/integration/internal/api/generated.go`.
 - Persist the disk-only bit on the snapshot (workstream 1); on resume the API
   reads it and sets the internal reboot signal.
-- Internal transport is gRPC metadata: `x-e2b-reboot-from-rootfs` on create/resume
-  and `x-e2b-memory-snapshot: false` on pause/checkpoint (no proto bump needed).
+- Internal transport is typed proto fields: `SandboxCreateRequest.reboot` on
+  create/resume and a disk-only field on the pause/checkpoint request (regenerate
+  `orchestrator.pb.go`).
 - Thread the flags through handlers → `Orchestrator.CreateSandbox` and
   `RemoveSandbox`/pause. `RemoveOpts` gains `SkipMemory`
   (`packages/api/internal/sandbox/sandboxtypes/states.go`).
