@@ -6,11 +6,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestIsTemplateLayerFilesHash(t *testing.T) {
+func TestTemplateFilesHashPattern(t *testing.T) {
 	t.Parallel()
 
 	validHash := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-	require.True(t, isTemplateLayerFilesHash(validHash))
+	require.True(t, templateFilesHashPattern.MatchString(validHash))
 
 	tests := []string{
 		"../tenant-b/files/hash",
@@ -27,7 +27,7 @@ func TestIsTemplateLayerFilesHash(t *testing.T) {
 		t.Run(tt, func(t *testing.T) {
 			t.Parallel()
 
-			require.False(t, isTemplateLayerFilesHash(tt))
+			require.False(t, templateFilesHashPattern.MatchString(tt))
 		})
 	}
 }
