@@ -303,8 +303,10 @@ func (o *Orchestrator) CreateSandbox(
 	labelFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx, featureflags.SandboxLabelBasedSchedulingFlag, featureflags.TeamContext(team.ID.String()), featureflags.SandboxContext(sandboxID))
 
 	affinityCfg := affinity.ConfigFromFlags(ctx, o.featureFlagsClient, featureflags.TeamContext(team.ID.String()), featureflags.TemplateContext(sbxData.TemplateID), featureflags.SandboxContext(sandboxID))
+	// Fetched even with a pinned resume node so retries after a failed create
+	// still get the bonus.
 	var affinityScores map[string]float64
-	if affinityCfg.Enabled && node == nil {
+	if affinityCfg.Enabled {
 		affinityScores = o.placementAffinity.Scores(ctx, affinityCfg, nodeClusterID, sbxData.Build.ID.String())
 	}
 
