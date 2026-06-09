@@ -119,10 +119,6 @@ func (b *StorageDiff) CacheKey() DiffStoreKey {
 }
 
 func (b *StorageDiff) Close() error {
-	if b.chunker == nil {
-		return nil
-	}
-
 	return b.chunker.Close()
 }
 
@@ -150,18 +146,10 @@ func (b *StorageDiff) CachePath(context.Context) (string, error) {
 }
 
 func (b *StorageDiff) FileSize(ctx context.Context) (int64, error) {
-	if b.chunker == nil {
-		return 0, nil
-	}
-
 	return b.chunker.FileSize(ctx)
 }
 
 func (b *StorageDiff) Size(_ context.Context) (int64, error) {
-	if b.chunker == nil {
-		return 0, nil
-	}
-
 	return b.chunker.Size(), nil
 }
 
@@ -170,13 +158,8 @@ func (b *StorageDiff) BlockSize() int64 {
 }
 
 // IsCached reports whether [off, off+length) is in the chunker's local cache.
-// Returns false if the chunker hasn't been Init'd yet (would otherwise trigger
-// OpenSeekable). Side-effect-free.
+// Side-effect-free.
 func (b *StorageDiff) IsCached(ctx context.Context, off, length int64) bool {
-	if b.chunker == nil {
-		return false
-	}
-
 	return b.chunker.IsCached(ctx, off, length)
 }
 
@@ -251,31 +234,19 @@ func (b *StorageDiff) reloadSource(ctx context.Context, cause string) error {
 	return b.reloadSourceLocked(ctx, cause)
 }
 
-// loadAuthoritativeHeader fetches the build's storage header and extracts the
-// canonical (size, ft). Returns an error if the header lacks a self entry —
-// that only happens with peer-served incomplete headers, never with
-// storage-uploaded ones (build_upload_v4 always populates self before publish).
-// Shared by reloadSourceLocked (read-time refresh) and createDiff
-// (construction-time recovery when the peer-active bootstrap finds itself
-// routed to base).
-func loadAuthoritativeHeader(
-	ctx context.Context,
-	persistence storage.StorageProvider,
-	buildID uuid.UUID,
-	diffType DiffType,
-	cause string,
-) (int64, *storage.FrameTable, error) {
-	loaded, err := refreshBuildHeader(ctx, persistence, buildID, diffType, cause)
-	if err != nil {
-		return 0, nil, err
-	}
+// extractSelfBuildData returns (size, ft) from loaded.Builds[buildID]. Errors
+// if the header lacks a self entry — that only happens with peer-served
+// incomplete headers, never with storage-uploaded ones (build_upload_v4 always
+// populates self before publish). A nil FrameData normalizes to
+// UncompressedFrameTable (V4+ authoritatively uncompressed).
+func extractSelfBuildData(loaded *header.Header, buildID uuid.UUID) (int64, *storage.FrameTable, error) {
 	bd, hasSelf := loaded.Builds[buildID]
 	if !hasSelf {
-		return 0, nil, fmt.Errorf("authoritative header for build %s has no self entry (peer-served incomplete?)", buildID)
+		return 0, nil, fmt.Errorf("header for build %s has no self entry (peer-served incomplete?)", buildID)
 	}
 	ft := bd.FrameData
 	if ft == nil {
-		ft = storage.UncompressedFrameTable // V4+ authoritatively uncompressed
+		ft = storage.UncompressedFrameTable
 	}
 
 	return bd.Size, ft, nil
@@ -300,9 +271,13 @@ func (b *StorageDiff) reloadSourceLocked(ctx context.Context, cause string) erro
 	if err != nil {
 		return fmt.Errorf("parse build id %s: %w", b.buildID, err)
 	}
-	_, ft, err := loadAuthoritativeHeader(ctx, b.persistence, bid, b.diffType, cause)
+	loaded, err := refreshBuildHeader(ctx, b.persistence, bid, b.diffType, cause)
 	if err != nil {
-		return fmt.Errorf("reloadSourceLocked: load authoritative header for build %s (cause=%s): %w", b.buildID, cause, err)
+		return fmt.Errorf("reloadSourceLocked: load header for build %s (cause=%s): %w", b.buildID, cause, err)
+	}
+	_, ft, err := extractSelfBuildData(loaded, bid)
+	if err != nil {
+		return fmt.Errorf("reloadSourceLocked: build %s (cause=%s): %w", b.buildID, cause, err)
 	}
 	newPath := storage.Paths{BuildID: b.buildID}.DataFile(string(b.diffType), ft.CompressionType())
 	newObj, err := b.persistence.OpenSeekable(ctx, newPath, b.storageObjectType)

@@ -156,8 +156,8 @@ func (b *File) readSegment(ctx context.Context, p []byte, s readSegment) error {
 		if !errors.As(err, &transitionErr) {
 			return err
 		}
-		if waitErr := waitTransitionBackoff(ctx, b.fileType, transitionErr); waitErr != nil {
-			return waitErr
+		if err = waitTransitionBackoff(ctx, transitionErr); err != nil {
+			return err
 		}
 		if refreshErr := s.diff.RefreshSource(ctx); refreshErr != nil {
 			return fmt.Errorf("refresh after peer transition: %w", refreshErr)
@@ -316,7 +316,7 @@ func (b *File) IsCached(ctx context.Context, off, length int64) bool {
 
 // waitTransitionBackoff honors the peer's RetryAfter hint before the caller
 // retries against base storage. Returns ctx.Err() if cancelled during sleep.
-func waitTransitionBackoff(ctx context.Context, fileType DiffType, transErr *storage.PeerTransitionedError) error {
+func waitTransitionBackoff(ctx context.Context, transErr *storage.PeerTransitionedError) error {
 	if transErr.RetryAfter > 0 {
 		timer := time.NewTimer(transErr.RetryAfter)
 		defer timer.Stop()
@@ -326,7 +326,6 @@ func waitTransitionBackoff(ctx context.Context, fileType DiffType, transErr *sto
 			return ctx.Err()
 		}
 	}
-	logger.L().Info(ctx, "peer transition detected, recovering", zap.String("file_type", string(fileType)))
 
 	return nil
 }
@@ -459,20 +458,15 @@ func (b *File) refreshAncestorAndOpenUpstream(ctx context.Context, buildID uuid.
 		}
 	}
 
-	bd, hasSelf := loaded.Builds[buildID]
-	if !hasSelf {
-		// A finalized V4+ storage header always carries a self entry
-		// (build_upload_v4 populates it before publish). Reaching here means a
-		// routed OpenBlob hit a peer's in-flight header — which shouldn't be
-		// possible on this code path (we entered after !peerActive). Surface
-		// loudly rather than silently latching the zero-value bd as an
-		// authoritative uncompressed FT.
-		return nil, 0, nil, fmt.Errorf("createDiff: loaded header for build %s has no self entry (peer-served incomplete?)", buildID)
-	}
-
-	ft := bd.FrameData
-	if ft == nil {
-		ft = storage.UncompressedFrameTable
+	// A finalized V4+ storage header always carries a self entry
+	// (build_upload_v4 populates it before publish). A missing self entry here
+	// means a routed OpenBlob hit a peer's in-flight header — which shouldn't
+	// be possible on this code path (we entered after !peerActive). Surface
+	// loudly rather than silently latching a zero-value bd as an authoritative
+	// uncompressed FT.
+	size, ft, err := extractSelfBuildData(loaded, buildID)
+	if err != nil {
+		return nil, 0, nil, fmt.Errorf("createDiff: %w", err)
 	}
 
 	upstream, err := b.openUpstream(ctx, buildID, objType, ft.CompressionType())
@@ -480,7 +474,7 @@ func (b *File) refreshAncestorAndOpenUpstream(ctx context.Context, buildID uuid.
 		return nil, 0, nil, err
 	}
 
-	return upstream, bd.Size, ft, nil
+	return upstream, size, ft, nil
 }
 
 // initialSize is THE only production code path that calls Size on
