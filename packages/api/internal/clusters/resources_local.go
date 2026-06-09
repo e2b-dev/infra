@@ -2,6 +2,7 @@ package clusters
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -132,6 +133,16 @@ func (l *LocalClusterResourceProvider) GetSandboxLogs(ctx context.Context, teamI
 
 	raw, err := l.queryLogsProvider.QuerySandboxLogs(ctx, teamID, sandboxID, start, end, limit, apiLogDirectionToLokiProtoDirection(qDirection), level, search, query)
 	if err != nil {
+		// A malformed client-supplied query is a client error: surface the parse
+		// message so the caller can fix it, rather than an opaque 500.
+		if errors.Is(err, loki.ErrInvalidQuery) {
+			return api.SandboxLogs{}, &api.APIError{
+				Err:       fmt.Errorf("invalid sandbox logs query: %w", err),
+				ClientMsg: err.Error(),
+				Code:      http.StatusBadRequest,
+			}
+		}
+
 		return api.SandboxLogs{}, &api.APIError{
 			Err:       fmt.Errorf("error when fetching sandbox logs: %w", err),
 			ClientMsg: "Failed to fetch sandbox logs",

@@ -1,9 +1,13 @@
 package loki
 
 import (
+	"context"
 	"testing"
+	"time"
 
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 )
@@ -128,6 +132,70 @@ func TestBuildBuildLogsQuerySanitizesBackticks(t *testing.T) {
 		"{service=\"template-manager\", buildID=`buildid`, envID=`envid`} | json | level =~ `(warn|error)`",
 		query,
 	)
+}
+
+func TestBuildSandboxLogsQueryProducesValidLogQL(t *testing.T) {
+	t.Parallel()
+
+	level := logs.LevelWarn
+	search := "needle (with) special+chars"
+	pipeline := `| json | pid="1234" | event_type="process_output"`
+	lineFilter := `|= "error"`
+
+	tests := []struct {
+		name     string
+		level    *logs.LogLevel
+		search   *string
+		pipeline *string
+	}{
+		{name: "selector_only"},
+		{name: "with_level", level: &level},
+		{name: "with_search", search: &search},
+		{name: "with_level_and_search", level: &level, search: &search},
+		{name: "with_pipeline", pipeline: &pipeline},
+		{name: "with_line_filter", pipeline: &lineFilter},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			query := buildSandboxLogsQuery("team-id", "sandbox-id", tt.level, tt.search, tt.pipeline)
+
+			// The server-built portions must always be valid LogQL so QuerySandboxLogs
+			// never rejects them as ErrInvalidQuery (a false 400).
+			_, err := syntax.ParseExpr(query)
+			assert.NoErrorf(t, err, "expected valid LogQL, got query %q", query)
+		})
+	}
+}
+
+func TestQuerySandboxLogsRejectsInvalidQuery(t *testing.T) {
+	t.Parallel()
+
+	// An unterminated string literal in the client-supplied pipeline is invalid LogQL.
+	pipeline := `| json | pid="unterminated`
+
+	provider, err := NewLokiQueryProvider("http://loki.invalid", "", "")
+	require.NoError(t, err)
+
+	// Validation happens before any network call, so the nonexistent address is never
+	// reached: the malformed query short-circuits with ErrInvalidQuery.
+	res, err := provider.QuerySandboxLogs(
+		context.Background(),
+		"team-id",
+		"sandbox-id",
+		time.UnixMilli(0),
+		time.UnixMilli(1),
+		10,
+		DefaultDirection,
+		nil,
+		nil,
+		&pipeline,
+	)
+
+	assert.Nil(t, res)
+	assert.ErrorIs(t, err, ErrInvalidQuery)
 }
 
 func TestBuildSandboxLogsQueryEscapesInjectionLikeSearchInput(t *testing.T) {

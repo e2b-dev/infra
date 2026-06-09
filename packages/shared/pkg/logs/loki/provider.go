@@ -2,6 +2,7 @@ package loki
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	loki "github.com/grafana/loki/v3/pkg/logcli/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -16,6 +18,12 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
+
+// ErrInvalidQuery indicates that the (user-supplied) LogQL query failed to
+// parse. It is a client error (the caller passed a malformed query), as opposed
+// to an upstream/transport failure talking to Loki. Callers can use errors.Is to
+// map it to an HTTP 400 instead of a 500.
+var ErrInvalidQuery = errors.New("invalid log query")
 
 type LokiQueryProvider struct {
 	client *loki.DefaultClient
@@ -81,12 +89,21 @@ func (l *LokiQueryProvider) QuerySandboxLogs(
 ) ([]logs.LogEntry, error) {
 	query := buildSandboxLogsQuery(teamID, sandboxID, level, search, pipeline)
 
+	// Validate the query locally before sending it to Loki. The stream selector and
+	// the structured level/search filters are always built (and sanitized) server-side,
+	// so the only way the final query is malformed is a bad client-supplied pipeline.
+	// Catching it here returns a helpful parse error instead of the opaque, retried
+	// failure the Loki client surfaces for a 400 response.
+	if _, err := syntax.ParseExpr(query); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidQuery, err)
+	}
+
 	res, err := l.client.QueryRange(query, limit, start, end, direction, time.Duration(0), time.Duration(0), true)
 	if err != nil {
 		telemetry.ReportError(ctx, "error when returning logs for sandbox", err)
 		logger.L().Error(ctx, "error when returning logs for sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
 
-		return make([]logs.LogEntry, 0), nil
+		return nil, fmt.Errorf("error when returning logs for sandbox: %w", err)
 	}
 
 	lm, err := ResponseMapper(ctx, res, 0, direction)
@@ -94,7 +111,7 @@ func (l *LokiQueryProvider) QuerySandboxLogs(
 		telemetry.ReportError(ctx, "error when mapping sandbox logs", err)
 		logger.L().Error(ctx, "error when mapping logs for sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
 
-		return make([]logs.LogEntry, 0), nil
+		return nil, fmt.Errorf("error when mapping sandbox logs: %w", err)
 	}
 
 	return lm, nil
