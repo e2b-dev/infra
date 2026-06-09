@@ -118,6 +118,51 @@ var prefaultTimer = utils.Must(telemetry.NewTimerFactory(
 	"UFFD prefault attempts",
 ))
 
+// ServeSnapshot is a cumulative count of demand faults a handler has served,
+// read at a point in time via Userfaultfd.ServeStats. Prefaults bypass the
+// serve loop and are not counted. Sampling it at the envd-init boundary yields
+// the pages/bytes a guest needed to start.
+type ServeSnapshot struct {
+	// Pages is the number of demand faults resolved (installed or already
+	// present) — the count of distinct pages the guest needed.
+	Pages int64
+	// SourcePages is the subset of Pages installed from the source
+	// (page_class=new); the rest were zero-filled or already resident (a
+	// prefetch hit or a concurrent install).
+	SourcePages int64
+	// Bytes is the number of bytes installed into the guest by this handler
+	// (page_class new + zero). On a fixed page size this is Pages-minus-present
+	// times the page size, but it is tracked directly so it stays correct
+	// across mixed page sizes.
+	Bytes int64
+}
+
+// ServeStats returns a cumulative snapshot of the demand faults served so far.
+func (u *Userfaultfd) ServeStats() ServeSnapshot {
+	return ServeSnapshot{
+		Pages:       u.servedPages.Load(),
+		SourcePages: u.servedSourcePages.Load(),
+		Bytes:       u.servedBytes.Load(),
+	}
+}
+
+// recordServeStats folds one finished serve attempt into the cumulative
+// counters read by ServeStats. Only resolved faults (installed or already
+// present) count as a needed page; deferred faults are re-served and counted
+// when they finally resolve, so they are not double counted here.
+func (u *Userfaultfd) recordServeStats(pclass pageClass, result faultResult, servedBytes int64) {
+	switch result {
+	case faultResultInstalled, faultResultPresent:
+		u.servedPages.Add(1)
+		if servedBytes > 0 {
+			u.servedBytes.Add(servedBytes)
+			if pclass == pageClassNew {
+				u.servedSourcePages.Add(1)
+			}
+		}
+	}
+}
+
 // prefaultAttrs holds a precomputed metric.MeasurementOption per faultResult.
 // Prefaults have no page_class: they only ever target not-present pages (the
 // Dirty/Zero pre-check records result="skipped" instead).
