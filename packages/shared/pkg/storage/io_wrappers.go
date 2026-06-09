@@ -84,7 +84,9 @@ func (r *captureReader) Close(ctx context.Context) error {
 		_, _ = io.Copy(io.Discard, r)
 	}
 	err := r.inner.Close(ctx)
-	r.onClose(ctx, r.buf.Bytes())
+	if err == nil {
+		r.onClose(ctx, r.buf.Bytes())
+	}
 
 	return err
 }
