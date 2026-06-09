@@ -55,17 +55,17 @@ func (p *dualProvider) FindProfilesByEmail(ctx context.Context, email string) ([
 }
 
 func (p *dualProvider) GetTeamCreatorContext(ctx context.Context, userID uuid.UUID) (*sharedteamprovision.CreatorContextV1, error) {
+	primary, err := p.primary.GetTeamCreatorContext(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
 	secondary, err := p.secondary.GetTeamCreatorContext(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 	if secondary != nil {
 		return secondary, nil
-	}
-
-	primary, err := p.primary.GetTeamCreatorContext(ctx, userID)
-	if err != nil {
-		return nil, err
 	}
 
 	return primary, nil

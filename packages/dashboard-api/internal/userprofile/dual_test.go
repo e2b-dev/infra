@@ -191,6 +191,81 @@ func TestDualProvider_FindProfilesByEmail_FallsBackToPrimary(t *testing.T) {
 	}
 }
 
+func TestDualProvider_GetTeamCreatorContext_PrefersSecondary(t *testing.T) {
+	t.Parallel()
+
+	primary := &fakeProvider{context: &sharedteamprovision.CreatorContextV1{
+		IPAddress:  "203.0.113.10",
+		UserAgent:  "Primary/1.0",
+		AuthMethod: sharedteamprovision.AuthMethodPassword,
+	}}
+	secondary := &fakeProvider{context: &sharedteamprovision.CreatorContextV1{
+		AuthMethod: sharedteamprovision.AuthMethodSocial,
+	}}
+
+	dual := newDualProvider(primary, secondary)
+	got, err := dual.GetTeamCreatorContext(t.Context(), uuid.New())
+	if err != nil {
+		t.Fatalf("GetTeamCreatorContext() error = %v", err)
+	}
+	if got == nil {
+		t.Fatal("GetTeamCreatorContext() returned nil")
+	}
+	if got.IPAddress != "" || got.UserAgent != "" || got.AuthMethod != sharedteamprovision.AuthMethodSocial {
+		t.Fatalf("GetTeamCreatorContext() = %+v, want secondary context", got)
+	}
+}
+
+func TestDualProvider_GetTeamCreatorContext_FallsBackToPrimary(t *testing.T) {
+	t.Parallel()
+
+	primaryContext := &sharedteamprovision.CreatorContextV1{
+		IPAddress:  "203.0.113.10",
+		UserAgent:  "Primary/1.0",
+		AuthMethod: sharedteamprovision.AuthMethodPassword,
+	}
+	primary := &fakeProvider{context: primaryContext}
+	secondary := &fakeProvider{}
+
+	dual := newDualProvider(primary, secondary)
+	got, err := dual.GetTeamCreatorContext(t.Context(), uuid.New())
+	if err != nil {
+		t.Fatalf("GetTeamCreatorContext() error = %v", err)
+	}
+	if got != primaryContext {
+		t.Fatalf("GetTeamCreatorContext() = %+v, want primary context", got)
+	}
+}
+
+func TestDualProvider_GetTeamCreatorContext_PropagatesPrimaryError(t *testing.T) {
+	t.Parallel()
+
+	primary := &fakeProvider{err: errors.New("primary boom")}
+	secondary := &fakeProvider{context: &sharedteamprovision.CreatorContextV1{IPAddress: "198.51.100.20"}}
+
+	dual := newDualProvider(primary, secondary)
+	_, err := dual.GetTeamCreatorContext(t.Context(), uuid.New())
+	if err == nil || err.Error() != "primary boom" {
+		t.Fatalf("expected primary error, got %v", err)
+	}
+	if secondary.calls != 0 {
+		t.Fatalf("secondary calls = %d, want 0", secondary.calls)
+	}
+}
+
+func TestDualProvider_GetTeamCreatorContext_PropagatesSecondaryError(t *testing.T) {
+	t.Parallel()
+
+	primary := &fakeProvider{context: &sharedteamprovision.CreatorContextV1{IPAddress: "203.0.113.10"}}
+	secondary := &fakeProvider{err: errors.New("secondary boom")}
+
+	dual := newDualProvider(primary, secondary)
+	_, err := dual.GetTeamCreatorContext(t.Context(), uuid.New())
+	if err == nil || err.Error() != "secondary boom" {
+		t.Fatalf("expected secondary error, got %v", err)
+	}
+}
+
 func TestNewProvider_FactorySelection(t *testing.T) {
 	t.Parallel()
 
