@@ -75,6 +75,7 @@ type Cluster struct {
 	Token              string
 	SandboxProxyDomain pgtype.Text
 	AuthOrgID          pgtype.Text
+	Name               string
 }
 
 type Env struct {
