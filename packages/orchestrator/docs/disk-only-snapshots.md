@@ -208,7 +208,11 @@ How dirty/zero filtering works without UFFD (mixing case only): the custom FC
 `GetMemory` endpoint (`fc/client.go:512`) returns `Resident` (pages faulted in,
 via mincore) and `Empty` (resident-but-all-zero) bitmaps; `NoopMemory` keeps
 `Resident AndNot Empty` (`noop.go:43`) and the export reads those ranges from
-`/proc/<pid>/mem` (`fc/memory.go:30`). So:
+`/proc/<pid>/mem` (`fc/memory.go:30`). mincore is backend-agnostic here: in cold
+boot the template memfile is used **only for sizing** `NoopMemory`
+(`sandbox.go:401,458`) — guest RAM is FC's own anonymous memory — so the masked
+empty memfile of an fs-only-started sandbox does not affect what mincore sees.
+So:
 
 - No UFFD/async write-protect is involved or needed for cold-booted sandboxes —
   `NoopMemory` backs RAM with plain anonymous memory, nothing is WP-registered.
