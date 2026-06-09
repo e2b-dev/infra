@@ -117,9 +117,10 @@ type readSegment struct {
 	srcOff int64
 	length int64
 	diff   Diff
-	// ft uses the nil-vs-empty convention: nil = no entry (hint unknown),
+
+	// ft uses the nil-vs-empty convention: nil = no entry,
 	// storage.UncompressedFrameTable = authoritatively uncompressed,
-	// non-empty = compressed.
+	// non-empty = see ft.compressionType.
 	ft *storage.FrameTable
 }
 

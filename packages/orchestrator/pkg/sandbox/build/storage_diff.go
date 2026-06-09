@@ -77,7 +77,7 @@ func newStorageDiff(
 	isActivePeer IsActivePeer,
 	upstream storage.Seekable,
 	uncompressedSize int64,
-	initFT *storage.FrameTable,
+	initialFT *storage.FrameTable,
 	ff *featureflags.Client,
 ) (*StorageDiff, error) {
 	cachePath := GenerateDiffCachePath(basePath, buildID, diffType)
@@ -98,7 +98,7 @@ func newStorageDiff(
 		chunker:           c,
 		cacheKey:          GetDiffStoreKey(buildID, diffType),
 	}
-	d.source.Store(&source{upstream: upstream, fullDiffFrameTable: initFT})
+	d.source.Store(&source{upstream: upstream, fullDiffFrameTable: initialFT})
 
 	return d, nil
 }
