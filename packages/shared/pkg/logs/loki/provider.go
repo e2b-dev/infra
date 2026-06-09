@@ -77,9 +77,8 @@ func (l *LokiQueryProvider) QuerySandboxLogs(
 	direction logproto.Direction,
 	level *logs.LogLevel,
 	search *string,
-	pipeline *string,
 ) ([]logs.LogEntry, error) {
-	query := buildSandboxLogsQuery(teamID, sandboxID, level, search, pipeline)
+	query := buildSandboxLogsQuery(teamID, sandboxID, level, search)
 
 	res, err := l.client.QueryRange(query, limit, start, end, direction, time.Duration(0), time.Duration(0), true)
 	if err != nil {
@@ -143,30 +142,17 @@ func buildBuildLogsQuery(templateID string, buildID string, level *logs.LogLevel
 	return query + fmt.Sprintf(" | json | level =~ `%s`", minLevelRegexFilter(*level))
 }
 
-func buildSandboxLogsQuery(teamID string, sandboxID string, level *logs.LogLevel, search *string, pipeline *string) string {
+func buildSandboxLogsQuery(teamID string, sandboxID string, level *logs.LogLevel, search *string) string {
 	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
 	sandboxIDSanitized := sanitizeLokiLabel(sandboxID)
 	teamIDSanitized := sanitizeLokiLabel(teamID)
 
-	// The stream selector is always built server-side and scopes the query to the
-	// caller's own team + sandbox. Anything the client supplies is only ever appended
-	// AFTER it; LogQL cannot reopen a stream selector in a later pipeline stage, so the
-	// scoping holds no matter what the client passes.
-	selector := fmt.Sprintf("{teamID=`%s`, sandboxID=`%s`, category!=\"metrics\"}", teamIDSanitized, sandboxIDSanitized)
-
-	// When a raw pipeline is supplied the client owns the entire log pipeline; the
-	// server contributes only the stream selector. The client provides its own parser
-	// and filter stages in valid LogQL order, e.g. `| json | pid="1234"` or `|= "error"`.
-	// This takes precedence over the structured level/search filters.
-	if pipelineValue := strings.TrimSpace(utils.DerefOrDefault(pipeline, "")); pipelineValue != "" {
-		return selector + " " + pipelineValue
-	}
-
+	query := fmt.Sprintf("{teamID=`%s`, sandboxID=`%s`, category!=\"metrics\"}", teamIDSanitized, sandboxIDSanitized)
 	if level == nil && utils.DerefOrDefault(search, "") == "" {
-		return selector
+		return query
 	}
 
-	query := selector + " | json"
+	query += " | json"
 	if level != nil {
 		query += fmt.Sprintf(" | level =~ `%s`", minLevelRegexFilter(*level))
 	}

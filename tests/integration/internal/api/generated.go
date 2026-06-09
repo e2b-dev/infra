@@ -1619,9 +1619,6 @@ type GetV2SandboxesSandboxIDLogsParams struct {
 
 	// Search Case-sensitive substring match on log message content
 	Search *string `form:"search,omitempty" json:"search,omitempty"`
-
-	// Query Advanced LogQL log pipeline appended verbatim after the server-enforced stream selector (`{teamID, sandboxID, category!="metrics"}`). The selector always scopes results to this sandbox, so the expression can only narrow within the caller's own logs. Provide the complete pipeline, including your own parser stage, in valid LogQL order — e.g. `| json | pid="1234" | event_type="process_output"` to fetch a single command's output (pid comes from the process Start event), or `|= "error"` for a bare line filter. Takes precedence over the level and search filters.
-	Query *string `form:"query,omitempty" json:"query,omitempty"`
 }
 
 // PostAccessTokensJSONRequestBody defines body for PostAccessTokens for application/json ContentType.
@@ -5444,18 +5441,6 @@ func NewGetV2SandboxesSandboxIDLogsRequest(server string, sandboxID SandboxID, p
 		if params.Search != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "search", *params.Search, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
-				return nil, err
-			} else {
-				for _, qp := range strings.Split(queryFrag, "&") {
-					rawQueryFragments = append(rawQueryFragments, qp)
-				}
-			}
-
-		}
-
-		if params.Query != nil {
-
-			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "query", *params.Query, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {

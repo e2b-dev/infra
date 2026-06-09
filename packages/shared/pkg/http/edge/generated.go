@@ -321,9 +321,6 @@ type V1SandboxLogsParams struct {
 
 	// Search Case-sensitive substring match on log message content
 	Search *string `form:"search,omitempty" json:"search,omitempty"`
-
-	// Query Advanced LogQL log pipeline appended verbatim after the server-enforced stream selector. Scoped to this sandbox; can only narrow within the caller's own logs. Provide the complete pipeline including your own parser stage, e.g. `| json | pid="1234"` or `|= "error"`.
-	Query *string `form:"query,omitempty" json:"query,omitempty"`
 }
 
 // V1SandboxLogsParamsDirection defines parameters for V1SandboxLogs.
@@ -822,18 +819,6 @@ func NewV1SandboxLogsRequest(server string, sandboxID string, params *V1SandboxL
 		if params.Search != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "search", *params.Search, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
-				return nil, err
-			} else {
-				for _, qp := range strings.Split(queryFrag, "&") {
-					rawQueryFragments = append(rawQueryFragments, qp)
-				}
-			}
-
-		}
-
-		if params.Query != nil {
-
-			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "query", *params.Query, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {

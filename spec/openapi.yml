@@ -2276,20 +2276,6 @@ paths:
             type: string
             maxLength: 256
           description: Case-sensitive substring match on log message content
-        - in: query
-          name: query
-          schema:
-            type: string
-            maxLength: 1024
-          description: >-
-            Advanced LogQL log pipeline appended verbatim after the server-enforced
-            stream selector (`{teamID, sandboxID, category!="metrics"}`). The selector
-            always scopes results to this sandbox, so the expression can only narrow
-            within the caller's own logs. Provide the complete pipeline, including your
-            own parser stage, in valid LogQL order — e.g.
-            `| json | pid="1234" | event_type="process_output"` to fetch a single
-            command's output (pid comes from the process Start event), or `|= "error"`
-            for a bare line filter. Takes precedence over the level and search filters.
       responses:
         "200":
           description: Successfully returned the sandbox logs

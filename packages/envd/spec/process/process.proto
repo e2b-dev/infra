@@ -77,7 +77,7 @@ message ProcessEvent {
     message StartEvent {
         uint32 pid = 1;
     }
-
+    
     message DataEvent {
         oneof output {
             bytes stdout = 1;

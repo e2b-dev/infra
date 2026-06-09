@@ -107,7 +107,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(ctx context.Context, t
 	return items, nil
 }
 
-func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, start *int64, end *int64, limit *int32, dr *api.LogsDirection, level *logs.LogLevel, search *string, query *string) (api.SandboxLogs, *api.APIError) {
+func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, start *int64, end *int64, limit *int32, dr *api.LogsDirection, level *logs.LogLevel, search *string) (api.SandboxLogs, *api.APIError) {
 	direction := apiLogDirectionToEdgeSandboxLogsDirection(dr)
 	params := &edgeapi.V1SandboxLogsParams{
 		TeamID:    teamID,
@@ -117,7 +117,6 @@ func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID
 		Direction: direction,
 		Level:     logToEdgeLevel(level),
 		Search:    search,
-		Query:     query,
 	}
 	res, err := r.client.V1SandboxLogsWithResponse(ctx, sandboxID, params)
 	if err != nil {

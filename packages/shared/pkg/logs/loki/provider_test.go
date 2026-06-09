@@ -54,7 +54,7 @@ func TestSanitizeLogMessageRegexFilter(t *testing.T) {
 func TestBuildSandboxLogsQueryWithoutSearch(t *testing.T) {
 	t.Parallel()
 
-	query := buildSandboxLogsQuery("team`id", "sandbox`id", nil, nil, nil)
+	query := buildSandboxLogsQuery("team`id", "sandbox`id", nil, nil)
 
 	assert.Equal(t, "{teamID=`teamid`, sandboxID=`sandboxid`, category!=\"metrics\"}", query)
 }
@@ -63,56 +63,11 @@ func TestBuildSandboxLogsQueryWithMessageSearch(t *testing.T) {
 	t.Parallel()
 
 	search := "hello` (world)+"
-	query := buildSandboxLogsQuery("team-id", "sandbox-id", nil, &search, nil)
+	query := buildSandboxLogsQuery("team-id", "sandbox-id", nil, &search)
 
 	assert.Equal(
 		t,
 		"{teamID=`team-id`, sandboxID=`sandbox-id`, category!=\"metrics\"} | json | message =~ `.*hello \\(world\\)\\+.*`",
-		query,
-	)
-}
-
-func TestBuildSandboxLogsQueryWithPipeline(t *testing.T) {
-	t.Parallel()
-
-	// The client owns the whole pipeline (including its own `| json`); the server only
-	// contributes the enforced stream selector.
-	pipeline := `| json | pid="1234" | event_type="process_output"`
-	query := buildSandboxLogsQuery("team-id", "sandbox-id", nil, nil, &pipeline)
-
-	assert.Equal(
-		t,
-		"{teamID=`team-id`, sandboxID=`sandbox-id`, category!=\"metrics\"} | json | pid=\"1234\" | event_type=\"process_output\"",
-		query,
-	)
-}
-
-func TestBuildSandboxLogsQueryWithLineFilterPipeline(t *testing.T) {
-	t.Parallel()
-
-	// A bare line filter is valid directly after the selector (no forced `| json` in
-	// front of it that would produce invalid `| json |= "..."`).
-	pipeline := `|= "error"`
-	query := buildSandboxLogsQuery("team-id", "sandbox-id", nil, nil, &pipeline)
-
-	assert.Equal(
-		t,
-		"{teamID=`team-id`, sandboxID=`sandbox-id`, category!=\"metrics\"} |= \"error\"",
-		query,
-	)
-}
-
-func TestBuildSandboxLogsQueryPipelineKeepsSelectorScope(t *testing.T) {
-	t.Parallel()
-
-	// Even an attempt to reference another team is only appended after the enforced
-	// selector, so it can only narrow within the caller's own logs.
-	pipeline := `| json | teamID="other-team"`
-	query := buildSandboxLogsQuery("team-id", "sandbox-id", nil, nil, &pipeline)
-
-	assert.Equal(
-		t,
-		"{teamID=`team-id`, sandboxID=`sandbox-id`, category!=\"metrics\"} | json | teamID=\"other-team\"",
 		query,
 	)
 }
@@ -134,7 +89,7 @@ func TestBuildSandboxLogsQueryEscapesInjectionLikeSearchInput(t *testing.T) {
 	t.Parallel()
 
 	search := "`foo.*(bar)+?|baz\\qux` | json | level =~ `error`"
-	query := buildSandboxLogsQuery("team-id", "sandbox-id", nil, &search, nil)
+	query := buildSandboxLogsQuery("team-id", "sandbox-id", nil, &search)
 
 	assert.Equal(
 		t,
