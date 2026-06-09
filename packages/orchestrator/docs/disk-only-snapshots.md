@@ -227,6 +227,15 @@ So:
   unused today. Only worth enabling (at a runtime cost) if cheap *repeated
   memory* snapshots of cold-booted sandboxes are ever wanted — not for disk-only.
 
+Dedup zero-check also works for `NoopMemory`. With the memfile-dedup flag on, the
+nil-memfd path runs `cache.Dedup` → `dedupCompare`, whose `header.IsZero(srcPage)`
+check (`cache.go:252`) is byte-level over the cache (`/proc/<pid>/mem`-sourced),
+so it is backend-agnostic. Against an empty/masked base (`BuildId == uuid.Nil`)
+the base comparison short-circuits (`cache.go:259-273`) — every non-zero page is
+kept — so for cold/fs-only sandboxes the **zero-check is the only effective part**
+of dedup, and it works. With the flag off, zeros are still dropped (block-granular)
+via `GetMemory`'s `Empty` bitmap in `DiffMetadata`.
+
 ### Resume side (cold boot from rootfs)
 
 New `Server.createSandboxFromRootfs(ctx, template, config, runtime, req)`:
