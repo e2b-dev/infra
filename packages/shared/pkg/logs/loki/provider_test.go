@@ -207,8 +207,13 @@ func TestQuerySandboxLogsRejectsScopeBypassPipeline(t *testing.T) {
 	bypassPipelines := []string{
 		`or {category!="metrics"}`,
 		`or {teamID="other-team"}`,
+		// A full second stream selector carrying both enforced labels: the attempted
+		// "union of two selectors" that would read another team's/sandbox's streams.
+		`or {teamID="other-team", sandboxID="other-sandbox"}`,
 		`} or {teamID="other-team"}`,
+		`{teamID="other-team"}`,
 		`| rate({teamID="other-team"}[5m])`,
+		`or sum(count_over_time({teamID="other-team"}[5m]))`,
 	}
 
 	provider, err := NewLokiQueryProvider("http://loki.invalid", "", "")
