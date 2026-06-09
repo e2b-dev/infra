@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"iter"
 	"maps"
 	"os"
 	"slices"
@@ -262,25 +261,48 @@ type fetchWindower struct {
 
 // compact promotes parent pages to current until the block fits within
 // maxWindows fetch windows or the promotion budget is exhausted.
+//
+// Only whole fetch-key groups are considered: a partially promoted key keeps
+// its fetch window while the promoted pages can only widen the packed current
+// span, so partial promotion never reduces the count. Promoting cheapest
+// groups first removes the most windows per promoted page.
 func (w fetchWindower) compact(pages []dedupPageInfo, maxWindows, maxPromoted int) int {
-	if maxWindows <= 0 || maxPromoted <= 0 {
+	if maxWindows <= 0 || maxPromoted <= 0 || w.count(pages) <= maxWindows {
 		return 0
 	}
 
-	var promoted int
-	for promoted < maxPromoted && w.count(pages) > maxWindows {
-		idxs := w.bestParentRun(pages, maxPromoted-promoted)
-		if len(idxs) == 0 {
-			break
+	groups := parentKeyGroups(pages)
+	slices.SortStableFunc(groups, func(a, b []int) int {
+		return len(a) - len(b)
+	})
+
+	// Scan cheapest-first prefixes of whole groups and commit the first one
+	// that meets maxWindows, or failing that, the one with the lowest count.
+	// A zero-benefit prefix (e.g. a lone promotion that removes one parent
+	// window but opens another current window) is only kept when a longer
+	// prefix improves on it.
+	var chosen, candidate []int
+	best := w.count(pages)
+	for _, group := range groups {
+		if len(candidate)+len(group) > maxPromoted {
+			break // groups are size-sorted, so no later group fits either
 		}
-		for _, i := range idxs {
-			pages[i].kind = dedupPageCurrent
-			pages[i].key = dedupFetchKey{}
-			promoted++
+		candidate = append(candidate, group...)
+		if c := w.countAfter(pages, candidate); c < best {
+			best = c
+			chosen = slices.Clone(candidate)
+		}
+		if best <= maxWindows {
+			break
 		}
 	}
 
-	return promoted
+	for _, i := range chosen {
+		pages[i].kind = dedupPageCurrent
+		pages[i].key = dedupFetchKey{}
+	}
+
+	return len(chosen)
 }
 
 func (w fetchWindower) count(pages []dedupPageInfo) int {
@@ -302,90 +324,10 @@ func (w fetchWindower) count(pages []dedupPageInfo) int {
 	return len(keys)
 }
 
-// bestParentRun returns the parent page indices whose promotion to current best
-// reduces fetch windows per promoted page, scanning contiguous parent/empty
-// runs first and falling back to per-key promotion.
-func (w fetchWindower) bestParentRun(pages []dedupPageInfo, budget int) []int {
-	before := w.count(pages)
-	if best := w.bestByRatio(pages, budget, before, parentRuns(pages)); best != nil {
-		return best
-	}
-	if best := w.bestByRatio(pages, budget, before, parentKeyGroups(pages)); best != nil {
-		return best
-	}
-
-	// Last resort: promote parents across fetch keys together. Some blocks
-	// (e.g. current/A/current/B) only shrink when distinct-key parents are
-	// promoted jointly, since each alone just opens another current window.
-	return w.bestByRatio(pages, budget, before, parentUnion(pages))
-}
-
-// bestByRatio picks the candidate page set whose promotion removes the most
-// fetch windows per promoted page (highest benefit/cost), within budget.
-func (w fetchWindower) bestByRatio(pages []dedupPageInfo, budget, before int, candidates iter.Seq[[]int]) []int {
-	var best []int
-	bestBenefit, bestCost := 0, 0
-	consider := func(idxs []int) {
-		cost := len(idxs)
-		if cost == 0 || cost > budget {
-			return
-		}
-		benefit := before - w.countAfter(pages, idxs)
-		if benefit <= 0 {
-			return
-		}
-		if best == nil || cost*bestBenefit < bestCost*benefit {
-			best, bestBenefit, bestCost = idxs, benefit, cost
-		}
-	}
-	for idxs := range candidates {
-		if len(idxs) <= budget {
-			consider(idxs)
-
-			continue
-		}
-		// An over-budget candidate can still help via an affordable sub-slice.
-		// Slide a budget-sized window across it so a beneficial tail (not just
-		// the prefix) is considered; the benefit check discards sub-slices that
-		// don't remove a window.
-		for start := 0; start+budget <= len(idxs); start++ {
-			consider(idxs[start : start+budget])
-		}
-	}
-
-	return best
-}
-
-// parentRuns yields the parent page indices of each maximal run of parent/empty
-// pages. A run starts at a parent page and extends across adjacent parent and
-// empty pages; current pages and the slice ends bound it.
-func parentRuns(pages []dedupPageInfo) iter.Seq[[]int] {
-	return func(yield func([]int) bool) {
-		var run []int
-		for i, p := range pages {
-			switch p.kind {
-			case dedupPageParent:
-				run = append(run, i)
-			case dedupPageEmpty:
-				// Empties extend an in-progress run but never start one.
-			default: // dedupPageCurrent
-				if len(run) > 0 && !yield(run) {
-					return
-				}
-				run = nil
-			}
-		}
-		if len(run) > 0 {
-			yield(run)
-		}
-	}
-}
-
-// parentKeyGroups yields the parent page indices grouped by fetch key, so a set
-// of non-adjacent parents sharing one fetch window can be promoted together.
+// parentKeyGroups returns the parent page indices grouped by fetch key.
 // Groups are ordered by their first page index so the selection is
 // deterministic regardless of map iteration order.
-func parentKeyGroups(pages []dedupPageInfo) iter.Seq[[]int] {
+func parentKeyGroups(pages []dedupPageInfo) [][]int {
 	idxByKey := make(map[dedupFetchKey][]int)
 	for i, p := range pages {
 		if p.kind == dedupPageParent {
@@ -398,24 +340,7 @@ func parentKeyGroups(pages []dedupPageInfo) iter.Seq[[]int] {
 		return a[0] - b[0]
 	})
 
-	return slices.Values(groups)
-}
-
-// parentUnion yields all parent page indices as a single candidate so parents
-// in different fetch windows can be promoted together when only their combined
-// promotion removes a fetch window.
-func parentUnion(pages []dedupPageInfo) iter.Seq[[]int] {
-	return func(yield func([]int) bool) {
-		var all []int
-		for i, p := range pages {
-			if p.kind == dedupPageParent {
-				all = append(all, i)
-			}
-		}
-		if len(all) > 0 {
-			yield(all)
-		}
-	}
+	return groups
 }
 
 // countAfter counts fetch windows as if the given parent indices were promoted

@@ -4,7 +4,6 @@ package block
 
 import (
 	"bytes"
-	"slices"
 	"testing"
 
 	"github.com/RoaringBitmap/roaring/v2"
@@ -17,103 +16,6 @@ import (
 func parentPage() dedupPageInfo  { return dedupPageInfo{kind: dedupPageParent} }
 func currentPage() dedupPageInfo { return dedupPageInfo{kind: dedupPageCurrent} }
 func emptyPage() dedupPageInfo   { return dedupPageInfo{kind: dedupPageEmpty} }
-
-func collectRuns(seq func(func([]int) bool)) [][]int {
-	var runs [][]int
-	for r := range seq {
-		runs = append(runs, slices.Clone(r))
-	}
-
-	return runs
-}
-
-func TestParentRuns(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name  string
-		pages []dedupPageInfo
-		want  [][]int
-	}{
-		{
-			name:  "empty input",
-			pages: nil,
-			want:  nil,
-		},
-		{
-			name:  "no parents",
-			pages: []dedupPageInfo{currentPage(), emptyPage(), currentPage()},
-			want:  nil,
-		},
-		{
-			name:  "single parent",
-			pages: []dedupPageInfo{parentPage()},
-			want:  [][]int{{0}},
-		},
-		{
-			name:  "contiguous parents are one run",
-			pages: []dedupPageInfo{parentPage(), parentPage(), parentPage()},
-			want:  [][]int{{0, 1, 2}},
-		},
-		{
-			name:  "current page splits runs",
-			pages: []dedupPageInfo{parentPage(), currentPage(), parentPage()},
-			want:  [][]int{{0}, {2}},
-		},
-		{
-			// Empty pages are virtual (never stored, no fetch window) so they
-			// keep surrounding parents in the same run.
-			name:  "empty page bridges parents into one run",
-			pages: []dedupPageInfo{parentPage(), emptyPage(), parentPage()},
-			want:  [][]int{{0, 2}},
-		},
-		{
-			name:  "leading empty does not start a run",
-			pages: []dedupPageInfo{emptyPage(), parentPage()},
-			want:  [][]int{{1}},
-		},
-		{
-			name:  "trailing empty is dropped from run",
-			pages: []dedupPageInfo{parentPage(), emptyPage()},
-			want:  [][]int{{0}},
-		},
-		{
-			name: "mixed runs separated by current",
-			pages: []dedupPageInfo{
-				parentPage(), emptyPage(), parentPage(), // run {0,2}
-				currentPage(),
-				parentPage(), // run {4}
-			},
-			want: [][]int{{0, 2}, {4}},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			got := collectRuns(parentRuns(tt.pages))
-			require.Equal(t, tt.want, got)
-		})
-	}
-}
-
-func TestParentRuns_EarlyStopOnYieldFalse(t *testing.T) {
-	t.Parallel()
-
-	pages := []dedupPageInfo{
-		parentPage(), currentPage(), parentPage(), currentPage(), parentPage(),
-	}
-
-	var seen [][]int
-	for r := range parentRuns(pages) {
-		seen = append(seen, slices.Clone(r))
-
-		break // consumer stops after the first run
-	}
-
-	require.Equal(t, [][]int{{0}}, seen)
-}
 
 // compareBlock accumulates a block's results into the accumulator in place.
 func TestCompareBlock_AccumulatesInPlace(t *testing.T) {
@@ -189,7 +91,7 @@ func TestParentKeyGroups(t *testing.T) {
 	// Groups are emitted ordered by their first page index, so the order is
 	// stable across runs despite the underlying map. keyA's first index (0)
 	// precedes keyB's (2).
-	got := slices.Collect(parentKeyGroups(pages))
+	got := parentKeyGroups(pages)
 	require.Equal(t, [][]int{{0, 3}, {2}}, got)
 }
 
@@ -237,72 +139,6 @@ func TestFetchWindowerCount(t *testing.T) {
 			parentKeyPage(build, int64(windowPages)*header.PageSize, windowPages),
 		}
 		require.Equal(t, 2, w.count(pages))
-	})
-}
-
-func TestFetchWindowerBestParentRun(t *testing.T) {
-	t.Parallel()
-
-	windowPages := 4
-	build := uuid.New()
-
-	t.Run("no parents yields nothing", func(t *testing.T) {
-		t.Parallel()
-
-		w := fetchWindower{windowPages: windowPages, currentStart: 0}
-		pages := []dedupPageInfo{currentPage(), currentPage()}
-		require.Nil(t, w.bestParentRun(pages, 4))
-	})
-
-	t.Run("budget too small to remove a window yields nothing", func(t *testing.T) {
-		t.Parallel()
-
-		w := fetchWindower{windowPages: windowPages, currentStart: 0}
-		// Two parents in distinct windows; promoting one of them costs 1 but the
-		// other still needs its window, and the promoted page joins a current
-		// window, so a single promotion does not reduce the total.
-		pages := []dedupPageInfo{
-			parentKeyPage(build, 0, windowPages),
-			parentKeyPage(build, int64(windowPages)*header.PageSize, windowPages),
-		}
-		require.Nil(t, w.bestParentRun(pages, 0))
-	})
-
-	t.Run("falls back to key grouping for non-adjacent parents", func(t *testing.T) {
-		t.Parallel()
-
-		w := fetchWindower{windowPages: windowPages, currentStart: 0}
-		// Two parents sharing one window but separated by a current page: no
-		// contiguous run covers both, so the key-group fallback selects them.
-		sharedOff0 := int64(0)
-		sharedOff1 := int64(header.PageSize)
-		pages := []dedupPageInfo{
-			parentKeyPage(build, sharedOff0, windowPages),
-			currentPage(),
-			parentKeyPage(build, sharedOff1, windowPages),
-		}
-
-		got := w.bestParentRun(pages, 4)
-		require.Equal(t, []int{0, 2}, got)
-	})
-
-	t.Run("combines distinct-key parents when only the union helps", func(t *testing.T) {
-		t.Parallel()
-
-		// current/A/current/B with two-page fetch windows: promoting either
-		// parent alone opens a second current window (zero benefit), but
-		// promoting both folds everything into two current windows (3 -> 2).
-		w := fetchWindower{windowPages: 2, currentStart: 0}
-		buildB := uuid.New()
-		pages := []dedupPageInfo{
-			currentPage(),
-			parentKeyPage(build, 0, 2),
-			currentPage(),
-			parentKeyPage(buildB, 0, 2),
-		}
-
-		got := w.bestParentRun(pages, 2)
-		require.Equal(t, []int{1, 3}, got)
 	})
 }
 
@@ -432,6 +268,75 @@ func TestFetchWindowerCompact(t *testing.T) {
 		require.Equal(t, dedupPageCurrent, pages[1].kind, "parent must be promoted")
 		require.Equal(t, dedupFetchKey{}, pages[1].key, "promoted key is cleared")
 	})
+
+	t.Run("zero-benefit promotion is not committed", func(t *testing.T) {
+		t.Parallel()
+
+		w := fetchWindower{windowPages: windowPages, currentStart: 0}
+		// Two parents in distinct windows; the budget only covers one, and
+		// promoting it just trades a parent window for a current window.
+		pages := []dedupPageInfo{
+			parentKeyPage(build, 0, windowPages),
+			parentKeyPage(build, int64(windowPages)*header.PageSize, windowPages),
+		}
+		require.Equal(t, 0, w.compact(pages, 1, 1))
+		require.Equal(t, dedupPageParent, pages[0].kind)
+		require.Equal(t, dedupPageParent, pages[1].kind)
+	})
+
+	t.Run("promotes a whole key group of non-adjacent parents", func(t *testing.T) {
+		t.Parallel()
+
+		w := fetchWindower{windowPages: windowPages, currentStart: 0}
+		// Two parents sharing one window, separated by a current page: the
+		// whole key group is promoted together (2 -> 1 windows).
+		pages := []dedupPageInfo{
+			parentKeyPage(build, 0, windowPages),
+			currentPage(),
+			parentKeyPage(build, header.PageSize, windowPages),
+		}
+		require.Equal(t, 2, w.compact(pages, 1, 4))
+		require.Equal(t, dedupPageCurrent, pages[0].kind)
+		require.Equal(t, dedupPageCurrent, pages[2].kind)
+	})
+
+	t.Run("combines distinct-key parents when only the union helps", func(t *testing.T) {
+		t.Parallel()
+
+		// current/A/current/B with two-page fetch windows: promoting either
+		// parent alone opens a second current window (zero benefit), but
+		// promoting both folds everything into two current windows (3 -> 2).
+		w := fetchWindower{windowPages: 2, currentStart: 0}
+		pages := []dedupPageInfo{
+			currentPage(),
+			parentKeyPage(build, 0, 2),
+			currentPage(),
+			parentKeyPage(uuid.New(), 0, 2),
+		}
+		require.Equal(t, 2, w.compact(pages, 2, 2))
+		require.Equal(t, dedupPageCurrent, pages[1].kind)
+		require.Equal(t, dedupPageCurrent, pages[3].kind)
+	})
+
+	t.Run("budget spent on cheapest groups first", func(t *testing.T) {
+		t.Parallel()
+
+		// A spans two pages of one window; B and C are distinct single-page
+		// windows. Budget 2 cannot eliminate A, but the cheaper B and C
+		// collapse into one current window (3 -> 2 windows).
+		w := fetchWindower{windowPages: windowPages, currentStart: 0}
+		pages := []dedupPageInfo{
+			parentKeyPage(build, 0, windowPages),
+			parentKeyPage(build, header.PageSize, windowPages),
+			parentKeyPage(uuid.New(), 0, windowPages),
+			parentKeyPage(uuid.New(), 0, windowPages),
+		}
+		require.Equal(t, 2, w.compact(pages, 1, 2))
+		require.Equal(t, dedupPageParent, pages[0].kind)
+		require.Equal(t, dedupPageParent, pages[1].kind)
+		require.Equal(t, dedupPageCurrent, pages[2].kind)
+		require.Equal(t, dedupPageCurrent, pages[3].kind)
+	})
 }
 
 func TestFetchWindowerCountAfter(t *testing.T) {
@@ -458,80 +363,6 @@ func TestFetchWindowerCountAfter(t *testing.T) {
 		pages[0].key,
 		"input page key unchanged",
 	)
-}
-
-func TestFetchWindowerBestByRatio(t *testing.T) {
-	t.Parallel()
-
-	windowPages := 4
-	build := uuid.New()
-	w := fetchWindower{windowPages: windowPages, currentStart: 0}
-
-	// current, parent (window 0), current: the parent is its own fetch window,
-	// so promoting it into the surrounding current window removes one window.
-	pages := []dedupPageInfo{
-		currentPage(),
-		parentKeyPage(build, 0, windowPages),
-		currentPage(),
-	}
-	before := w.count(pages)
-	require.Equal(t, 2, before)
-
-	t.Run("candidate over budget is skipped", func(t *testing.T) {
-		t.Parallel()
-
-		got := w.bestByRatio(pages, 0, before, slices.Values([][]int{{1}}))
-		require.Nil(t, got, "cost 1 exceeds budget 0")
-	})
-
-	t.Run("beneficial candidate within budget is selected", func(t *testing.T) {
-		t.Parallel()
-
-		got := w.bestByRatio(pages, windowPages, before, slices.Values([][]int{{1}}))
-		require.Equal(t, []int{1}, got)
-	})
-
-	t.Run("zero-benefit candidate is skipped", func(t *testing.T) {
-		t.Parallel()
-
-		// Index 0 is already current; promoting it removes no fetch window.
-		got := w.bestByRatio(pages, windowPages, before, slices.Values([][]int{{0}}))
-		require.Nil(t, got)
-	})
-
-	t.Run("over-budget run is clamped to an affordable, beneficial prefix", func(t *testing.T) {
-		t.Parallel()
-
-		// Three parent pages in three distinct single-page windows: the whole
-		// run costs 3 but budget is 2. Clamping to the first two folds them into
-		// one current window, leaving one parent window (3 -> 2 windows).
-		run := []dedupPageInfo{
-			parentKeyPage(build, 0, windowPages),
-			parentKeyPage(build, int64(windowPages)*header.PageSize, windowPages),
-			parentKeyPage(build, 2*int64(windowPages)*header.PageSize, windowPages),
-		}
-		got := w.bestByRatio(run, 2, w.count(run), slices.Values([][]int{{0, 1, 2}}))
-		require.Equal(t, []int{0, 1}, got)
-	})
-
-	t.Run("over-budget run selects a beneficial tail sub-slice", func(t *testing.T) {
-		t.Parallel()
-
-		// Run A,A,B,C: A spans two pages of one window, B and C are distinct
-		// single-page windows. Budget 2 cannot eliminate A (its prefix folds
-		// into a current window for zero benefit), but the tail B,C collapses
-		// two parent windows into one current window (3 -> 2 windows).
-		buildB := uuid.New()
-		buildC := uuid.New()
-		run := []dedupPageInfo{
-			parentKeyPage(build, 0, windowPages),
-			parentKeyPage(build, header.PageSize, windowPages),
-			parentKeyPage(buildB, 0, windowPages),
-			parentKeyPage(buildC, 0, windowPages),
-		}
-		got := w.bestByRatio(run, 2, w.count(run), slices.Values([][]int{{0, 1, 2, 3}}))
-		require.Equal(t, []int{2, 3}, got)
-	})
 }
 
 // classifyPage maps a source page to empty/parent/current based on the parent
