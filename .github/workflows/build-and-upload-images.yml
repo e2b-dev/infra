@@ -1,33 +1,31 @@
-name: Build and Upload Image
+name: Build and upload images
 
 on:
-  workflow_call:
-    inputs:
-      commit_sha:
-        description: "Specific commit SHA to checkout"
-        required: true
-        type: string
-      tracking_id:
-        description: "Unique tracking ID used for identifying the workflow run"
-        required: false
-        type: string
-      environment:
-        description: "Target environment for image upload, e.g. staging"
-        required: true
-        type: string
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
 
 permissions:
   contents: read
-
-concurrency:
-  group: build-images-${{ inputs.environment }}
-  cancel-in-progress: false
+  id-token: write
 
 jobs:
-  deploy:
-    name: Build and upload image to the ${{ inputs.environment }} environment
+  build-images:
+    name: Build and upload images to the ${{ matrix.environment }} environment
     runs-on: ci-builder
-    environment: ${{ inputs.environment }}
+    strategy:
+      fail-fast: false
+      matrix:
+        environment:
+          - staging
+          - foxtrot
+          - juliett
+    environment: ${{ matrix.environment }}
+    concurrency:
+      group: build-images-${{ matrix.environment }}
+      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write
@@ -36,7 +34,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.commit_sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Pull deployment secrets into temporary file
@@ -45,13 +43,13 @@ jobs:
           method: "oidc"
           identity-id: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
           project-slug: "infra-deployment"
-          env-slug: ${{ inputs.environment }}
+          env-slug: ${{ matrix.environment }}
           export-type: "file"
           file-output-path: "/.env.infisical"
 
       - name: Load deployment environment
         env:
-          ENVIRONMENT: ${{ inputs.environment }}
+          ENVIRONMENT: ${{ matrix.environment }}
         run: |
           echo "${ENVIRONMENT}" > .last_used_env
           cat .env.infisical | sed "s/='\(.*\)'$/=\1/g" > ".env.${ENVIRONMENT}"
@@ -70,7 +68,7 @@ jobs:
           method: "oidc"
           identity-id: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
           project-slug: "infra-deployment-env"
-          env-slug: ${{ inputs.environment }}
+          env-slug: ${{ matrix.environment }}
           export-type: "env"
 
       - name: Setup Service Account
