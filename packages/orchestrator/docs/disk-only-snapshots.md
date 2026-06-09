@@ -253,13 +253,25 @@ runtime `WRITE_ZEROES` + `TRIM` hole-punching and zero handling
 because each pause goes through `NBDProvider.ExportDiff` and the overlay chains on
 the previous snapshot's rootfs exactly like a normal resume.
 
-Discard is also NBD-only. `DirectProvider` has no command path (plain mmap; no
-`WriteZeroesAt`/TRIM), and the FC `Drive` model exposes no discard field
-(`fc/models/drive.go`). So the guest's `rootflags=discard` TRIM is only actively
-serviced in the NBD path (→ hole-punch the overlay cache); under `DirectProvider`
-any discard effect depends on FC's own file-backed virtio-blk (not configured
-here), and the build instead relies on `resize2fs -M` + the export zero-check.
-The fs-only reboot path uses NBD, so it gets live discard elision.
+Discard is NBD-only in our code. The only thing that turns a guest TRIM into
+reclaimed/zeroed blocks anywhere in the orchestrator is the NBD handler
+(`cache.punchHole`/`WriteZeroesAt`, `dispatch.go` `NBDCmdTrim`/`NBDCmdWriteZeroes`).
+`DirectProvider` has no command path (plain mmap), and the FC `Drive` model
+exposes no discard field (`fc/models/drive.go`). Consequences:
+
+- Never-written / already-zero regions are reclaimed in both paths via
+  `resize2fs -M` (`filesystem/ext4.go:174`) + the 4 KiB export zero-check.
+- Written-then-freed blocks (the real discard savings) are reclaimed **only if
+  they are zero at export**. The NBD path guarantees this in our code (TRIM →
+  hole-punch → reads as zero → elided). Under `DirectProvider` it depends on
+  whether the custom FC punches the backing file on guest discard
+  (FC-internal, not configured here); `resize2fs -M` relocates live data but does
+  not zero stale freed blocks, so without an FC file-punch those blocks export as
+  non-zero garbage and are stored. **Verify empirically** whether the build
+  reclaims freed blocks (write-then-delete a large file, compare diff size).
+
+So the fs-only reboot path (NBD) reclaims freed blocks deterministically; the
+build path's freed-block reclamation is FC-dependent and unconfirmed here.
 
 Zero detection is 4 KiB-block granular: `RootfsBlockSize = 4 KiB`
 (`header/diff.go:12`); the export zero-check `DiffMetadataBuilder.Process` →
