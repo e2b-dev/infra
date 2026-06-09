@@ -253,6 +253,14 @@ runtime `WRITE_ZEROES` + `TRIM` hole-punching and zero handling
 because each pause goes through `NBDProvider.ExportDiff` and the overlay chains on
 the previous snapshot's rootfs exactly like a normal resume.
 
+Discard is also NBD-only. `DirectProvider` has no command path (plain mmap; no
+`WriteZeroesAt`/TRIM), and the FC `Drive` model exposes no discard field
+(`fc/models/drive.go`). So the guest's `rootflags=discard` TRIM is only actively
+serviced in the NBD path (→ hole-punch the overlay cache); under `DirectProvider`
+any discard effect depends on FC's own file-backed virtio-blk (not configured
+here), and the build instead relies on `resize2fs -M` + the export zero-check.
+The fs-only reboot path uses NBD, so it gets live discard elision.
+
 Zero detection is 4 KiB-block granular: `RootfsBlockSize = 4 KiB`
 (`header/diff.go:12`); the export zero-check `DiffMetadataBuilder.Process` →
 `IsZero(block)` marks all-zero 4 KiB blocks `Empty` instead of storing them
