@@ -2255,12 +2255,18 @@ paths:
             maxLength: 256
           description: Case-sensitive substring match on log message content
         - in: query
-          name: pid
+          name: query
           schema:
-            type: integer
-            format: int32
-            minimum: 0
-          description: Restrict the results to the output (stdout/stderr) of a single command identified by its process ID (pid). Combine with cursor/direction to bound the window and disambiguate a reused pid.
+            type: string
+            maxLength: 1024
+          description: >-
+            Advanced filter appended verbatim as LogQL pipeline stages after the
+            server-enforced selector (`{teamID, sandboxID} | json`). The selector
+            always scopes results to this sandbox, so the expression can only narrow
+            within the caller's own logs. Include the stage separators, e.g.
+            `| pid="1234" | event_type="process_output"` or `|= "error"`. To fetch a
+            single command's output, filter by its pid (from the process Start event)
+            and `event_type="process_output"`.
       responses:
         "200":
           description: Successfully returned the sandbox logs

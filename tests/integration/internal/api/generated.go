@@ -1616,8 +1616,8 @@ type GetV2SandboxesSandboxIDLogsParams struct {
 	// Search Case-sensitive substring match on log message content
 	Search *string `form:"search,omitempty" json:"search,omitempty"`
 
-	// Pid Restrict the results to the output (stdout/stderr) of a single command identified by its process ID (pid). Combine with cursor/direction to bound the window and disambiguate a reused pid.
-	Pid *int32 `form:"pid,omitempty" json:"pid,omitempty"`
+	// Query Advanced filter appended verbatim as LogQL pipeline stages after the server-enforced selector (`{teamID, sandboxID} | json`). The selector always scopes results to this sandbox, so the expression can only narrow within the caller's own logs. Include the stage separators, e.g. `| pid="1234" | event_type="process_output"` or `|= "error"`. To fetch a single command's output, filter by its pid (from the process Start event) and `event_type="process_output"`.
+	Query *string `form:"query,omitempty" json:"query,omitempty"`
 }
 
 // PostAccessTokensJSONRequestBody defines body for PostAccessTokens for application/json ContentType.
@@ -5449,9 +5449,9 @@ func NewGetV2SandboxesSandboxIDLogsRequest(server string, sandboxID SandboxID, p
 
 		}
 
-		if params.Pid != nil {
+		if params.Query != nil {
 
-			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "pid", *params.Pid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "query", *params.Query, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {

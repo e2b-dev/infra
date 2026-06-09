@@ -72,15 +72,31 @@ func TestBuildSandboxLogsQueryWithMessageSearch(t *testing.T) {
 	)
 }
 
-func TestBuildSandboxLogsQueryWithPid(t *testing.T) {
+func TestBuildSandboxLogsQueryWithPipeline(t *testing.T) {
 	t.Parallel()
 
-	pid := "12`34"
-	query := buildSandboxLogsQuery("team-id", "sandbox-id", nil, nil, &pid)
+	pipeline := `| pid="1234" | event_type="process_output"`
+	query := buildSandboxLogsQuery("team-id", "sandbox-id", nil, nil, &pipeline)
+
+	// The enforced stream selector is preserved; the client pipeline is appended verbatim.
+	assert.Equal(
+		t,
+		"{teamID=`team-id`, sandboxID=`sandbox-id`, category!=\"metrics\"} | json | pid=\"1234\" | event_type=\"process_output\"",
+		query,
+	)
+}
+
+func TestBuildSandboxLogsQueryPipelineKeepsSelectorScope(t *testing.T) {
+	t.Parallel()
+
+	// Even an attempt to reference another team is only appended as a pipeline stage
+	// after the enforced selector, so it can only narrow within the caller's own logs.
+	pipeline := `| teamID="other-team"`
+	query := buildSandboxLogsQuery("team-id", "sandbox-id", nil, nil, &pipeline)
 
 	assert.Equal(
 		t,
-		"{teamID=`team-id`, sandboxID=`sandbox-id`, category!=\"metrics\"} | json | pid = `1234` | event_type = `process_output`",
+		"{teamID=`team-id`, sandboxID=`sandbox-id`, category!=\"metrics\"} | json | teamID=\"other-team\"",
 		query,
 	)
 }

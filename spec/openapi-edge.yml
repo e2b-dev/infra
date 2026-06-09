@@ -444,10 +444,11 @@ paths:
             maxLength: 256
           description: Case-sensitive substring match on log message content
         - in: query
-          name: pid
+          name: query
           schema:
             type: string
-          description: Restrict the logs to the output of a single command identified by its process ID (pid). Combine with start/end to disambiguate reused pids.
+            maxLength: 1024
+          description: Advanced filter appended verbatim as LogQL pipeline stages after the server-enforced selector. Scoped to this sandbox; can only narrow within the caller's own logs.
       responses:
         "200":
           description: Successfully returned the sandbox logs
