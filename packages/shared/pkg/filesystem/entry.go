@@ -23,30 +23,22 @@ func GetEntryFromPath(path string) (EntryInfo, error) {
 		return EntryInfo{}, err
 	}
 
-	return GetEntryInfoWithMetadata(path, fileInfo), nil
-}
-
-// GetEntryInfoWithMetadata is GetEntryInfo plus the file's user-defined xattr
-// metadata, read from path. Use this only when the caller surfaces metadata and
-// resolves path in the entry's own mount namespace (e.g. envd's Stat/ListDir) —
-// ReadMetadata issues path-based xattr syscalls, so calling it for a path
-// interpreted outside the entry's namespace (e.g. the orchestrator volume
-// service's host-side chroot-relative paths) would be wasted work and could
-// read the wrong file's xattrs. Such callers should use GetEntryInfo instead.
-func GetEntryInfoWithMetadata(path string, fileInfo os.FileInfo) EntryInfo {
 	entry := GetEntryInfo(path, fileInfo)
 
 	// Metadata is best-effort: a read failure shouldn't fail the entry lookup
 	// (Size/Mode/times are still valid), and this helper has no logger to
 	// report it through. Callers that need the error (e.g. the upload handler)
-	// call ReadMetadata directly.
+	// call ReadMetadata directly. This reads xattrs via path, so it resolves in
+	// the caller's mount namespace — fine here (envd, and the orchestrator's
+	// chrooted fs which runs this inside fs.act).
 	entry.Metadata, _ = ReadMetadata(path)
 
-	return entry
+	return entry, nil
 }
 
 // GetEntryInfo builds an EntryInfo purely from fileInfo. It does not read xattr
-// metadata; callers that surface metadata should use GetEntryInfoWithMetadata.
+// metadata; callers that surface metadata use GetEntryFromPath (which reads it
+// in the path's own mount namespace).
 func GetEntryInfo(path string, fileInfo os.FileInfo) EntryInfo {
 	fileMode := fileInfo.Mode()
 
