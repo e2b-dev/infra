@@ -55,6 +55,12 @@ func (u *Upload) runV4(ctx context.Context) error {
 	meta := storage.WithMetadata(u.objectMetadata)
 
 	eg.Go(func() error {
+		// Filesystem-only snapshots have no usable VM state; the snapfile only
+		// existed for its disk drain+flush side effect.
+		if !u.snap.MemorySnapshot {
+			return nil
+		}
+
 		return uploadBlobWithMetrics(ctx, u.store, u.paths.Snapfile(), storage.SnapfileObjectType, u.snap.Snapfile.Path(), uploadFileSnap, meta)
 	})
 
