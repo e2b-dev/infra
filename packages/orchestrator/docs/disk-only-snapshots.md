@@ -1,267 +1,314 @@
-# Disk-only snapshots and reboot-from-rootfs resume
+# Disk-only (filesystem-only) snapshots
 
 ## Goal
 
 Support snapshots that persist **only the filesystem (rootfs)** and skip the VM
 memory snapshot. Resuming such a snapshot does **not** restore guest memory;
-instead the orchestrator boots a fresh Firecracker VM from the snapshot rootfs,
-effectively rebooting the guest. This is useful as:
+instead the orchestrator cold-boots a fresh Firecracker VM from the snapshot
+rootfs — effectively rebooting the guest. Useful as:
 
+- a cheaper/faster pause for workloads that don't need warm memory state,
 - an escape hatch when memory snapshots are slow, large, or corrupted,
-- a cheaper pause for workloads that don't need warm memory state,
 - a recovery path when memory artifacts are missing on resume.
 
-Normal memory snapshots remain the default; disk-only is strictly opt-in.
+Normal memory snapshots stay the default; disk-only is strictly opt-in.
 
-## Prior art
+## Semantics (what the user gets)
 
-This design consolidates three closed exploration PRs:
+A disk-only resume **reboots** the guest. That means: guest RAM, running
+processes, open connections/sockets, in-memory state, PIDs, and **unsynced disk
+writes** are all lost. What survives is the filesystem as of the snapshot's
+`sync` point. This is a fundamentally different contract from a memory snapshot
+("resume exactly where you left off"), so it must never silently replace a
+memory resume (see Correctness risks).
 
-- #2877 — minimal `reboot` escape hatch on create/resume (boot from rootfs with
-  fresh memory).
-- #2875 — full feature: disk-only persistence at pause/checkpoint time, plus a
-  rootfs-reboot fallback on resume when memory artifacts are absent.
-- #2874 — same reboot fallback bundled with unrelated cross-artifact dedup
-  analysis tooling (the dedup tooling is out of scope here).
+---
 
-The SDKs also need a small change to expose the new request fields (separate
-repo).
+## Current architecture (grounded reference)
 
-## Concept
+Everything below is verified against `main`. Production user sandboxes today
+**always** resume through `Factory.ResumeSandbox` (FC `LoadSnapshot` + UFFD);
+`Factory.CreateSandbox` (cold boot) is exercised only by the template builder.
+Disk-only wires the cold-boot primitive into the user resume/create path.
 
-A snapshot has two artifacts: `rootfs` (disk diff) and `memfile` (memory diff) +
-`snapfile`/`metadata`. Today both are always produced and resume restores the
-memory snapshot via Firecracker's load-snapshot.
+### Pause / snapshot pipeline
 
-Disk-only mode splits the two sides:
+`Sandbox.Pause` (`packages/orchestrator/pkg/sandbox/sandbox.go:1058`) runs, in
+order:
 
-1. **Pause / checkpoint (disk-only):** persist rootfs + metadata, skip memfile /
-   snapfile entirely. Before snapshotting, `sync` the guest filesystem so the
-   rootfs is crash-consistent.
-2. **Resume / create (reboot):** mask the template's memfile with a fresh empty
-   memfile and cold-boot the VM through systemd init (`/sbin/init`) instead of
-   loading a memory snapshot. Wait for envd, then mark the sandbox running.
+1. `Checks.Stop()` (`:1087`).
+2. `bestEffortReclaim` — optional fstrim/sync/drop_caches via envd, LD-flag
+   gated, defaults disabled (`:1092`).
+3. `DrainBalloon` — free-page-hinting drain (`:1107`).
+4. `process.Pause(ctx)` — FC vCPUs paused (`:1113`).
+5. `process.CreateSnapshot(snapfile)` (`:1125`). Per the function's own comment
+   (`:1050-1052`), the custom FC build makes this call **create the snapfile AND
+   drain+flush the disk**. The disk flush is a *side effect of snapshot
+   creation* — important for disk-only (see below).
+6. memory diff: `memory.DiffMetadata` + `pauseProcessMemory` (copies dirty RAM
+   pages to a local cache, optional dedup) (`:1141-1172`). **This is the
+   expensive part disk-only removes.**
+7. rootfs diff: `pauseProcessRootfs` with `RootfsDiffCreator{closeHook: s.Close}`
+   (`:1174`). The close hook **stops the sandbox** — `NBDProvider.ExportDiff`
+   (`rootfs/nbd.go:73`) ejects the overlay cache, `closeSandbox` runs, then
+   `NBDProvider.Close` does `BLKFLSBUF` + `fsync` on the NBD device
+   (`rootfs/nbd.go:162`), then `cache.ExportToDiff` writes the diff.
+8. `metadata.Template.ToFile` → `metadata.json` (`:1204`).
+9. returns `Snapshot{Snapfile, Metafile, MemfileDiff, MemfileDiffHeader,
+   RootfsDiff, RootfsDiffHeader, MemfileBlockSize, RootfsBlockSize, BuildID, ...}`
+   (`snapshot.go:29`).
 
-Because the guest is rebooting (not resuming), the rootfs must be replayable
-like a normal disk after an unclean-ish shutdown: the ext4 root mount must
-**not** use `noload` so the journal is replayed on boot.
+Key consequences for disk-only:
+- The **disk flush lives inside `CreateSnapshot`**. If disk-only skips
+  `CreateSnapshot`, it must flush the disk another way. Cheapest correct option:
+  keep calling `CreateSnapshot` (the snapfile is FC device state, small — KBs,
+  not RAM) for its flush side effect, and simply **don't upload** the snapfile.
+- The rootfs export already stops the VM and flushes the host NBD device; that
+  path is unchanged.
+- The **guest** page cache is never flushed by FC — only a guest-side `sync`
+  does that (workstream "guest sync" below). For a memory resume this is moot
+  (page cache is restored); for a reboot it's required.
 
-## API surface
+### Upload
 
-Design decision: **`reboot` is internal-only; disk-only is the public concept.**
-Customers control how they *snapshot* (`memory: false`), not how they resume.
-Resume reboots automatically when it sees a disk-only snapshot, because there is
-no memory to restore — a public per-resume `reboot` flag would only allow invalid
-combinations (e.g. `reboot:false` on a memfile-less snapshot). We can promote
-`reboot` to public later if per-resume control is ever wanted; un-exposing is
-harder, so keep it private for now.
+`Server.Pause` → `snapshotAndCacheSandbox` → `sbx.Pause(...)` → `AddSnapshot`
+(local cache) → async `uploadSnapshotAsync`
+(`server/sandboxes.go:525-605, 804-887`). `NewUpload` picks V3 (uncompressed) or
+V4 (compressed) by compression config / LD flags
+(`build_upload.go`/`_v3.go`/`_v4.go`). Artifacts at `{buildID}/`: `memfile`,
+`memfile.header`, `rootfs.ext4`, `rootfs.ext4.header`, `snapfile`,
+`metadata.json` (`shared/pkg/storage/paths.go`). Memfile body upload is already
+skipped when its diff resolves to an empty cache path.
 
-Public OpenAPI (`spec/openapi.yml`) additions — disk-only only:
+### Checkpoint (snapshot-template)
 
-- `POST /sandboxes/{id}/snapshots` body `memory: bool` (default `true`) — set
-  `false` to snapshot disk only.
-- Pause (`POST /sandboxes/{id}/pause`) body `memory: bool` (default `true`) —
-  set `false` for disk-only pause. Body is optional/empty-tolerant.
+`Server.Checkpoint` (`server/sandboxes.go`) shares the snapshot path with Pause,
+then **resumes the sandbox in place** via `ResumeSandbox` (same `ExecutionID`)
+and collects memory prefetch (`MemoryPrefetchData`) to embed in metadata. For
+disk-only this resume must instead reboot, and prefetch collection is skipped
+(`NoopMemory.PrefetchData` is empty anyway).
 
-Not exposed publicly: `reboot` on create/resume/connect.
+### Resume vs cold boot (the factory)
 
-Internal transport (API → orchestrator gRPC) — typed proto fields, not metadata.
-The orchestrator proto is an internal service contract, so use real request
-fields (type-checked, visible in generated clients, greppable) rather than
-stuffing semantics into gRPC metadata:
+`Factory.ResumeSandbox` vs `Factory.CreateSandbox`
+(`sandbox.go:579` vs `:326`):
 
+| | CreateSandbox (cold) | ResumeSandbox |
+|--|--|--|
+| Memory | `uffd.NewNoopMemory` (fresh empty RAM) | real UFFD + `serveMemory` + optional prefetch |
+| FC | `fcHandle.Create` → `startVM` (kernel boot, `init=`) | `fcHandle.Resume` → `loadSnapshot` + `resumeVM` |
+| Boot source | `setBootSource` with kernel cmdline (`ip=`, `init=`, `rootflags=discard`) | none (restored from snapfile) |
+| MMDS | transport configured only (`PutMmdsConfig`); **no `setMmds`** | `setMmds` writes `AccessTokenHash` (`fc/process.go:605`) |
+| `WaitForEnvd` | **not** called in factory (caller must) | called inside factory (`:912`) |
+| `MarkRunning` | **before** envd is up (`:563`) | **after** `WaitForEnvd` (`:920`) |
+| `Checks.Start` | not started in factory | started after MarkRunning (`:924`) |
+| `preBootFn` | supported (host-side rootfs hook) | not supported |
+
+Cold-boot building blocks that already exist: `block.NewEmpty`
+(`block/empty.go:21`), `NewMaskTemplate(WithMemfile(...))`
+(`template/mask_template.go:27`), `constants.SystemdInitPath = "/sbin/init"`,
+`uffd.NewNoopMemory`, `rootflags=discard` **without** `noload`
+(`fc/process.go:374`, so ext4 journal replays on boot).
+
+### DB & API plumbing
+
+- Pause: `sandbox_pause.go` → `RemoveSandbox` (`StateActionPause`) →
+  `pauseSandbox` → `UpsertSnapshot` (DB) **then** gRPC `Sandbox.Pause` **then**
+  `UpdateEnvBuildStatus(success)` (`orchestrator/pause_instance.go:29`). BuildID
+  is generated API-side in `UpsertSnapshot` **before** the orchestrator call.
+- `snapshots` table has a `config jsonb` mapped to
+  `types.PausedSandboxConfig` (`db/pkg/types/types.go`: Version, Network,
+  AutoResume, VolumeMounts). No memory/disk-only field today.
+- Resume: `sandbox_resume.go` → `buildResumeSandboxData` reads `snapshots.config`
+  via `GetLastSnapshot` (latest `tag='default'` build with `status_group='ready'`)
+  → `CreateSandbox` builds `SandboxCreateRequest` (`create_instance.go:256`).
+- Orchestrator **never reads Postgres**; it learns resume mode only from the
+  gRPC `SandboxConfig.snapshot` bool + `build_id`, and reads `metadata.json` via
+  `templateCache.GetTemplate`.
+- New `ExecutionID` is generated per resume API-side (`handlers/sandbox.go:64`);
+  routing is keyed by **sandbox ID**, not IP, so a new network slot/IP on reboot
+  is fine.
+
+---
+
+## API surface and decisions
+
+**`reboot` is internal-only; disk-only is the public concept.** Customers control
+how they *snapshot* (`memory: false`), not how they resume. Resume reboots
+automatically when it sees a disk-only snapshot — a public per-resume `reboot`
+flag would only allow invalid combinations (e.g. `reboot:false` on a
+memfile-less snapshot). Promotable to public later if ever needed.
+
+Public OpenAPI (`spec/openapi.yml`):
+- `POST /sandboxes/{id}/snapshots` body `memory: bool` (default `true`).
+- `POST /sandboxes/{id}/pause` body `memory: bool` (default `true`). The pause
+  endpoint has **no body today**; add an optional, empty-tolerant body (all-pointer
+  schema + `ginutils.ParseBody`, or `ParseBodyWith` to tolerate no `Content-Type`).
+- No public `reboot` on create/resume/connect.
+
+Internal transport (API → orchestrator gRPC) — **typed proto request fields, not
+metadata** (the orchestrator proto is an internal contract; metadata is for
+cross-cutting concerns):
 - `SandboxCreateRequest.reboot bool` — set by the API when resuming a disk-only
-  snapshot, and reused for the escape-hatch / fallback (missing or corrupt
-  memfile → reboot) and for testing/ops. (#2877 used exactly this.)
-- `memory: false` maps to a disk-only field on the pause/checkpoint request
-  (e.g. `SandboxPauseRequest.memory_snapshot bool` / `skip_memory`).
-- The durable public state is the disk-only bit persisted on the snapshot
-  (config/metadata, workstream 1); the API derives the internal `reboot` field
-  from it on resume.
+  snapshot; also the escape-hatch/fallback signal.
+- A disk-only field on `SandboxPauseRequest` / `SandboxCheckpointRequest`
+  (e.g. `memory_snapshot bool`).
+- Requires regenerating `orchestrator.pb.go` (routine internal proto bump).
 
-(Both require regenerating `orchestrator.pb.go`; that's a routine internal proto
-bump, not a public API change.)
+Durable state: persist the disk-only bit on the snapshot (workstream 1); the API
+derives the internal `reboot` field from it on resume.
 
-## Orchestrator changes
+---
 
-### Pause side (disk-only snapshot)
+## Implementation: orchestrator
 
-`Sandbox.Pause` gains a `WithMemorySnapshot(bool)` option; `Sandbox.DiskOnlySnapshot`
-forces it off. When memory is skipped:
+### Pause side (produce a disk-only snapshot)
 
-- run `bestEffortGuestSync` (envd `sync`) and clear `metadata.Prefetch`,
-- skip `DiffMetadata` / `pauseProcessMemory` / dedup, emit a `NoDiff` memfile
-  diff and empty header,
-- set `Snapshot.MemorySnapshot = false` and `MemfileBlockSize = 0`.
+`Sandbox.Pause` gains a memory-skip option (e.g. `WithMemorySnapshot(false)`),
+and `Server.Pause`/`Checkpoint` read it from the new proto field. When disk-only:
 
-Uploads (`build_upload.go`, `build_upload_v3.go`, `build_upload_v4.go`) skip the
-memfile, memfile header, and snapfile when `MemorySnapshot` is false; metadata and
-rootfs still upload.
+- Before `process.Pause`, run a guest `sync` over envd (best-effort, short
+  timeout) so ext4 flushes dirty pages into virtio.
+- Keep `process.CreateSnapshot` for its disk drain+flush side effect, but **do
+  not upload** the resulting snapfile. (Alternative: add a dedicated FC disk-flush
+  call and skip snapfile creation entirely — needs a custom-FC endpoint check.)
+- Skip `memory.DiffMetadata` / `pauseProcessMemory` / dedup. Produce a `NoDiff`
+  memfile diff + empty/nil header so downstream upload/cache code doesn't
+  nil-deref; set `Snapshot.MemorySnapshot=false`, `MemfileBlockSize=0`.
+- Still run `pauseProcessRootfs` (unchanged) and write `metadata.json` (clear
+  `Prefetch`).
 
-API plumbing: `RemoveOpts.SkipMemory`, `pauseSandbox(..., skipMemory)`,
-`snapshotInstance(..., skipMemory)`, and `SnapshotTemplateOpts.SkipMemory` thread
-the flag from handlers down to the orchestrator Pause/Checkpoint RPCs.
+Upload (`build_upload*.go`): skip `memfile`, `memfile.header`, and `snapfile`
+when `MemorySnapshot=false`; still upload `rootfs.ext4(.header)` and
+`metadata.json`. Absence of the memory artifacts is the on-storage signal.
 
-### Resume / create side (reboot from rootfs)
+### Resume side (cold boot from rootfs)
 
 New `Server.createSandboxFromRootfs(ctx, template, config, runtime, req)`:
 
-- parse `BuildID`, build an empty memfile with `block.NewEmpty(RamMB, pageSize, buildID)`
-  (page size = huge page vs normal),
-- `maskedTemplate := NewMaskTemplate(template, WithMemfile(memfile))`,
-- `Factory.CreateSandbox(...)` with `ProcessOptions{ InitScriptPath: SystemdInitPath,
-  KvmClock: envd >= 0.2.11, IoEngine: sync }`,
-- honor the API's absolute start/end window (don't let queue delay extend TTL),
-- `WaitForEnvd`, then `MarkRunning` and start `Checks`.
+- `block.NewEmpty(units.MBToBytes(config.RamMB), pageSize, buildID)` where
+  `pageSize` = huge vs normal page from `config.HugePages`.
+- `maskedTemplate := NewMaskTemplate(template, WithMemfile(empty))`.
+- `Factory.CreateSandbox(..., ProcessOptions{ InitScriptPath: SystemdInitPath,
+  KvmClock: envd >= 0.2.11, IoEngine: Sync }, ...)`.
+- Re-apply the API's absolute start/end window (don't let queue delay extend TTL).
+- `WaitForEnvd`, then `MarkRunning`, then `go Checks.Start(...)`.
 
-To avoid the rebooted VM being routable before envd is ready, `CreateSandbox`
-gains a `WithDeferredMarkRunning()` option so the caller marks running only after
-`WaitForEnvd` (matching the resume path). #2875 instead set `DiskOnlySnapshot =
-true` on the returned sandbox; reconcile these two approaches.
+To preserve the "not routable until envd ready" ordering, either add
+`CreateSandbox` `WithDeferredMarkRunning()` (mark running in the server after
+`WaitForEnvd`) or mark running in `createSandboxFromRootfs`. **Do not** keep
+`CreateSandbox`'s default early `MarkRunning` for this path.
 
-`Server.Create` dispatches to `createSandboxFromRootfs` when reboot is requested,
-and (per #2875) also falls back to it when a normal resume hits
-`storage.ErrObjectNotExist` for the memory artifacts.
-
-`Server.Checkpoint` resumes via `createSandboxFromRootfs` (no prefetch) when the
-snapshot is disk-only, otherwise via `ResumeSandbox`.
+`Server.Create` dispatches to `createSandboxFromRootfs` when
+`req.GetReboot()`/disk-only; `Server.Checkpoint` uses it (no prefetch) when the
+snapshot is disk-only.
 
 ### Firecracker boot flag
 
-`fc/process.go`: root `rootflags` must stay `discard` (TRIM) but must **not**
-add `noload`, so ext4 replays its journal after a disk-only snapshot of a
-previously running guest. Add a named constant + comment to lock this in.
+`fc/process.go`: keep `rootflags=discard`, never add `noload`, so ext4 replays
+its journal on the reboot. Lock in with a named constant + comment.
 
-## Building blocks already in main
+---
 
-- `block.NewEmpty(size, blockSize, buildID)` — empty CoW memfile span.
-- `sbxtemplate.NewMaskTemplate(t, WithMemfile(...))` — swap memfile artifact.
-- `constants.SystemdInitPath = "/sbin/init"` — cold-boot init.
-- `Factory.CreateSandbox(...)` / `Factory.ResumeSandbox(...)`.
-- `Sandbox.WaitForEnvd`, `Sandboxes.MarkRunning`, `Checks.Start`.
+## Implementation: API
 
-## Edge cases and risks
+- OpenAPI `memory: bool` on pause + snapshots bodies; regen `internal/api/*.gen.go`
+  and `tests/integration/internal/api/generated.go`.
+- `RemoveOpts.SkipMemory` (`sandboxtypes/states.go`) threaded:
+  `sandbox_pause.go` → `delete_instance.go` → `pauseSandbox(..., skipMemory)` →
+  `snapshotInstance(..., skipMemory)` → new field on `SandboxPauseRequest`.
+- `SnapshotTemplateOpts.SkipMemory` → `Checkpoint` request field.
+- Persist disk-only in `PausedSandboxConfig` inside `buildUpsertSnapshotParams`
+  (`pause_instance.go:133`).
+- On resume, read it in `buildResumeSandboxData` (`sandbox_resume.go:230`) and set
+  `SandboxCreateRequest.reboot` in `create_instance.go:256`.
 
-- **Crash consistency:** disk-only relies on guest `sync` before snapshot; in-flight,
-  un-synced writes are lost on reboot. `sync` is best-effort with a short timeout.
-- **Journal replay:** removing `noload` is required; verify it doesn't regress
-  normal memory-resume boots (they don't reboot, so should be unaffected).
-- **TTL accounting:** the reboot path must apply the absolute start/end window
-  like resume, or queue delay silently extends sandbox lifetime.
-- **Routing/visibility:** defer mark-running until envd is healthy so a booting
-  sandbox isn't routed traffic it can't serve.
-- **Auto-pause / auto-resume:** disk-only changes guest-visible behavior (reboot,
-  lost memory, lost PIDs/connections). Keep it off by default for connect and
-  auto-resume unless explicitly requested.
-- **Metadata/prefetch:** prefetch data is meaningless without a memfile; clear it
-  and skip prefetch collection on checkpoint.
-- **envd version gating:** `KvmClock` and other boot options depend on envd
-  version; reuse the existing version checks.
+## Implementation: DB
 
-## Open questions
+- Add a `disk_only` (a.k.a. `memory_snapshot=false`) bool to
+  `types.PausedSandboxConfig` (`db/pkg/types/types.go`). Since it lives inside the
+  existing `snapshots.config jsonb`, **no SQL migration is required**; run
+  `make generate/db` if struct shape changes. (A dedicated column is an
+  alternative but needs a goose migration + SQL edits.)
+- Optionally mirror the flag into `metadata.json` (`template/metadata`) so a node
+  that only has `build_id` can decide the resume path before fetching artifacts.
 
-1. Keep the automatic rootfs fallback when memory artifacts are missing, or make
-   it strictly opt-in to avoid silently rebooting a guest that expected warm
-   memory?
-2. Should disk-only be selectable per-pause, per-template, or both?
-3. Reconcile `WithDeferredMarkRunning()` (#2877) vs `DiskOnlySnapshot` flag
-   (#2875) for the mark-running ordering.
+## Implementation: SDK (separate repo, last)
 
-Resolved:
-- `reboot` is internal-only, carried as a typed proto request field
-  (`SandboxCreateRequest.reboot`), not gRPC metadata. The public surface is
-  disk-only (`memory: false`); resume derives reboot from the persisted disk-only
-  flag. (No public `reboot` on create/resume/connect.)
+- Expose `memory` on pause/snapshot in JS + Python SDKs (request-field only).
+- Document the reboot semantics prominently.
 
-## Implementation plan
+---
 
-Split into small, reviewable PRs (target < 20 files each):
+## Correctness risks (must handle)
 
-1. **Boot primitive:** `createSandboxFromRootfs` + `WithDeferredMarkRunning`,
-   `noload` fix, plus the `reboot` flag on create/resume (#2877 scope). No pause
-   changes yet. Ships the escape hatch.
-2. **Disk-only pause:** `Pause` memory-skip option, `Snapshot.MemorySnapshot`,
-   upload skips, API `memory` flags on pause + snapshot endpoints, Checkpoint
-   disk-only resume.
-3. **Resume fallback (optional):** auto reboot-from-rootfs when memory artifacts
-   are missing.
-4. **SDKs:** expose `reboot` / `memory` (separate repo).
+1. **envd auth / MMDS on cold boot — highest risk.** On resume the orchestrator
+   calls `setMmds(AccessTokenHash)` (`fc/process.go:605`) so envd can authenticate
+   the post-resume `/init`. Cold boot (`CreateSandbox`) **never calls `setMmds`** —
+   it only configures the MMDS transport. A rebooted *secure* sandbox starts a
+   fresh envd with **no in-memory token**; envd's `/init` then takes the
+   "first-time setup" branch (`envd/internal/api/init.go:43`) and installs the
+   token the orchestrator passes (the API regenerates it deterministically as
+   `HMAC(sandboxID)`, `sandbox_envd_secret.go`). This *should* work, but:
+   - there's a window where envd is up with no token and `/init` is
+     unauthenticated at the HTTP layer (`auth.go` excludes `/init`);
+   - the MMDS-based re-auth guarantee that resume has is absent.
+   Decision needed: **call `setMmds` in the cold-boot path too** (recommended, to
+   match resume's guarantees) vs rely on first-time `/init`. Must be validated
+   end-to-end for secure sandboxes before shipping.
+2. **Silent reboot via auto-resume.** Auto-resume (client-proxy catalog miss →
+   API `proxy_grpc.go` → `startSandboxInternal` → `ResumeSandbox`) has **no
+   snapshot-kind check**. A disk-only sandbox with `autoResume=any` would be
+   silently rebooted on the next request, looking like a transparent resume. Gate
+   disk-only out of (or explicitly handle it in) auto-resume at
+   `getAutoResumeSnapshot` (`proxy_grpc.go:113`) / `buildResumeSandboxData`.
+3. **Silent reboot via connect.** `POST /connect` on a paused sandbox does a full
+   implicit resume via the same `buildResumeSandboxData` path, with a stronger
+   "same sandbox" expectation than auto-resume. Decide whether connect on a
+   disk-only snapshot is allowed, errors, or requires an explicit opt-in.
+4. **Disk flush coupling.** The guest-visible disk consistency depends on (a)
+   guest `sync` before pause and (b) the FC disk drain/flush that currently rides
+   on `CreateSnapshot`. Don't drop both. Use `IoEngine: Sync` to avoid async
+   writes in flight. A stronger guarantee than `sync` would be `fsfreeze` via
+   envd (not exposed today; needs an envd addition + version bump).
+5. **Routing/visibility.** Mark running only after `WaitForEnvd`, or the
+   client-proxy may route to a still-booting guest (`map.go` live set →
+   `proxy.go`). Cold boot needs a longer envd-ready window than memory resume; if
+   boot exceeds `EnvdTimeout` (default 10s), create fails — size the timeout.
+6. **TTL accounting.** Re-apply the absolute start/end window in the reboot path;
+   `CreateSandbox` otherwise anchors lifetime to "now".
+7. **Resume path selection / fallback.** A disk-only build has no
+   snapfile/memfile; `ResumeSandbox` would error on fetch. Either gate on the
+   persisted disk-only flag (preferred) or treat `storage.ErrObjectNotExist` as a
+   fallback-to-reboot trigger (simpler but silently reboots). Audit all
+   `Template.Memfile()/Snapfile()` callers so none runs in the disk-only path.
+8. **Crash consistency.** Anything not synced before pause is lost on reboot;
+   document clearly and make `sync` reliable (deadline + logging).
+
+---
+
+## Phased plan (small, reviewable PRs)
+
+1. **Boot primitive (escape hatch).** `createSandboxFromRootfs` +
+   deferred mark-running + `noload` lock-in + `SandboxCreateRequest.reboot`.
+   Resolve envd-auth/MMDS (risk 1) here, since it gates everything. No pause
+   changes; validate by rebooting a normal (memory) snapshot's rootfs.
+2. **Disk-only pause.** `Pause` memory-skip + guest `sync`, `Snapshot.MemorySnapshot`,
+   upload skips, public `memory` flag on pause + snapshots, DB persistence,
+   Checkpoint disk-only resume.
+3. **Resume wiring + safety.** API reads persisted flag → reboot; handle
+   auto-resume (risk 2) and connect (risk 3) explicitly.
+4. **SDKs** (separate repo).
 
 ## Verification
 
 - Unit: `go test ./packages/orchestrator/pkg/sandbox/... ./packages/orchestrator/pkg/server`.
-- Manual: create template, disk-only pause, resume → confirm guest rebooted
-  (uptime reset, files written-then-synced persist, un-synced writes lost).
-- Confirm normal memory snapshots and resume are unchanged when flags are unset.
-
----
-
-# Rollout order and blockers
-
-Investigation grounded in current `main`. Production user sandboxes today
-**always** resume via `Factory.ResumeSandbox` (FC `LoadSnapshot` + UFFD);
-`Factory.CreateSandbox` (cold boot) is only exercised by the template builder.
-The disk-only feature wires cold boot into the user resume/create path.
-
-## 1. Orchestrator (first)
-
-This is where all the real work lives; API and SDK are thin passthroughs.
-
-What exists already and helps:
-- `block.NewEmpty(size, blockSize, buildID)` (`packages/orchestrator/pkg/sandbox/block/empty.go:21`)
-  yields a valid in-memory memfile header with zero stored bytes.
-- `sbxtemplate.NewMaskTemplate(t, WithMemfile(...))` (`packages/orchestrator/pkg/sandbox/template/mask_template.go:27`).
-- `Factory.CreateSandbox` (`packages/orchestrator/pkg/sandbox/sandbox.go:326`) +
-  `constants.SystemdInitPath = "/sbin/init"` + `WaitForEnvd` — the same pattern
-  the layer builder uses (`packages/orchestrator/pkg/template/build/layer/create_sandbox.go:115`).
-- Rootfs kernel cmdline already uses `rootflags=discard` **without** `noload`
-  (`packages/orchestrator/pkg/sandbox/fc/process.go:374`), so ext4 journal replay
-  on the reboot already works; just lock it in with a constant + comment.
-
-Blockers / gaps:
-- No `createSandboxFromRootfs` on the orchestrator server; `Server.Create`
-  unconditionally calls `ResumeSandbox` (`packages/orchestrator/pkg/server/sandboxes.go:190`).
-- `CreateSandbox` marks the sandbox running **before** envd is up
-  (`sandbox.go:563`), whereas resume marks running only after `WaitForEnvd`
-  (`sandbox.go:~915`). A rebooting sandbox must not be routable before envd is
-  ready → need `WithDeferredMarkRunning()` (or mark running in the server after
-  `WaitForEnvd`, as the disk-only path does).
-- TTL: `CreateSandbox` anchors lifetime to "now"; the reboot path must re-apply
-  the API's absolute start/end window like resume, or queue delay extends TTL.
-- IO engine: reboot path should pass `IoEngine: Sync`
-  (`fcmodels.DriveIoEngineSync`) — matches the build default
-  (`create_sandbox.go:41`) and avoids async writes in flight at pause.
-- `kvmClock` gating on `envd >= 0.2.11` must be reused (`utils.IsGTEVersion`).
-
-## 2. API (second)
-
-Thin plumbing; no logic.
-
-What's needed:
-- OpenAPI (`spec/openapi.yml`): only `memory: bool` (default true) on the pause
-  and `POST /sandboxes/{id}/snapshots` bodies — no public `reboot`. Regenerate
-  `internal/api/*.gen.go` and `tests/integration/internal/api/generated.go`.
-- Persist the disk-only bit on the snapshot (workstream 1); on resume the API
-  reads it and sets the internal reboot signal.
-- Internal transport is typed proto fields: `SandboxCreateRequest.reboot` on
-  create/resume and a disk-only field on the pause/checkpoint request (regenerate
-  `orchestrator.pb.go`).
-- Thread the flags through handlers → `Orchestrator.CreateSandbox` and
-  `RemoveSandbox`/pause. `RemoveOpts` gains `SkipMemory`
-  (`packages/api/internal/sandbox/sandboxtypes/states.go`).
-
-Blockers:
-- Pause endpoint currently takes no body; must accept an optional, empty-tolerant
-  JSON body without breaking existing clients.
-- Keep disk-only off for auto-resume by default; reboot is implied only by a
-  disk-only snapshot (or the missing-memfile fallback).
-
-## 3. SDK (later, separate repo)
-
-- Expose `reboot` on resume/create and `memory` on pause/snapshot in the JS and
-  Python SDKs. Pure request-field additions; no protocol work.
-- Document the semantic change clearly: disk-only resume **reboots** the guest —
-  memory, running processes, open connections, and unsynced writes are lost.
+- Manual: disk-only pause → resume; confirm guest rebooted (uptime reset),
+  synced files persist, unsynced writes lost.
+- Secure sandbox: disk-only pause → resume → confirm envd auth still works
+  (X-Access-Token accepted) — this is the gating test for risk 1.
+- Confirm memory snapshots/resume and auto-resume/connect are unchanged when the
+  flag is unset.
 
 ---
 
@@ -269,209 +316,105 @@ Blockers:
 
 ## 1. Persist "disk-only" in the DB
 
-Current state: snapshots live in the `snapshots` table; build artifacts are
-referenced only by `build_id` (object storage at `{buildID}/...`). There is no
-memory/disk-only column. `snapshots.config` is a `jsonb` `PausedSandboxConfig`
-(`packages/db/queries/types.go`) already carrying network/autoResume/volumeMounts.
+Add the flag to `PausedSandboxConfig` (jsonb `snapshots.config`); no migration
+needed. Mirror into `metadata.json` if cross-node pre-fetch gating is wanted.
+Blocker/decision: explicit persistence vs `ErrObjectNotExist` fallback (risk 7).
 
-Plan: add a `disk_only` (a.k.a. `memory_snapshot=false`) boolean. Natural home is
-`snapshots.config` (no migration shape change, travels with resume) and/or the
-template `metadata.json` so the orchestrator can decide the resume path without a
-DB round-trip on a different node.
+## 2. Skip memfile header / snapfile upload
 
-Blockers / decisions:
-- Cross-node resume must know it's disk-only **before** fetching artifacts,
-  otherwise it tries `ResumeSandbox`, fails on missing snapfile/memfile, and only
-  then falls back. Either persist the flag (config/metadata) or keep the
-  fallback-on-`ErrObjectNotExist` as the detection mechanism (simpler, but
-  silently reboots). Prefer explicit persistence.
-- Migration + sqlc regen (`make generate/db`).
+When disk-only, don't upload `memfile`, `memfile.header`, `snapfile`; emit
+`NoDiff` + empty header locally. Absence is the signal. No "null header" object.
+Blocker: gate the resume path off the persisted flag so `ResumeSandbox` is never
+called for these builds; audit memfile/snapfile callers.
 
-## 2. Null the memfile header / skip its upload
+## 3. Guest sync + FC flush on snapshot
 
-Current state: a normal pause uploads `memfile`, `memfile.header`, `snapfile`,
-`rootfs.ext4`, `rootfs.ext4.header`, `metadata.json`
-(`packages/orchestrator/pkg/sandbox/build_upload_v3.go` / `_v4.go`). Template
-load (`storage_template.go` `Fetch`) hard-errors if `snapfile` is missing and
-resolves a memfile via header or a legacy raw-file fallback
-(`packages/orchestrator/pkg/sandbox/template/storage.go:67`).
+Run envd `sync` before `process.Pause`; keep the `CreateSnapshot` disk
+drain+flush (or a dedicated flush); use `IoEngine: Sync`. Stronger consistency →
+`fsfreeze` via envd (new envd endpoint + version bump).
 
-Plan: when disk-only, just **don't upload** memfile, memfile.header, or snapfile
-(skip the three upload goroutines). Set `Snapshot.MemorySnapshot=false`,
-`MemfileBlockSize=0`, emit a `NoDiff` memfile diff + empty header locally so the
-in-process upload/cache code doesn't deref nil. No "null header" object is
-written — absence is the signal.
+## 4. Repair/replay the journal at snapshot time
 
-Blockers:
-- The cross-node resume path must NOT call `ResumeSandbox` for these builds
-  (it fetches snapfile/memfile and will error). Gate on the persisted disk-only
-  flag (workstream 1) → `createSandboxFromRootfs`.
-- Audit every `Template.Memfile()/Snapfile()` caller to ensure none runs in the
-  disk-only resume path.
-
-## 3. Sync + wait for FC flush on snapshot, rootfs-only handling
-
-Why: on a memory snapshot the guest page cache is restored, so unsynced ext4
-dirty pages don't matter. On disk-only **reboot** they're lost, so the guest must
-flush to the virtio block device before we capture the rootfs.
-
-Current flush chain on pause: guest writes → virtio (FC) → NBD device →
-`block.Overlay` → mmap `Cache`. `NBDProvider.Close` does `BLKFLSBUF` + `fsync`
-on the NBD device (`packages/orchestrator/pkg/sandbox/rootfs/nbd.go:162`), and
-`ExportDiff` ejects+exports the cache (`nbd.go:73`). This flushes the **host**
-device buffers but does **not** flush the **guest** page cache.
-
-Plan:
-- Before `process.Pause`, run a guest `sync` over envd (`bestEffortGuestSync`,
-  short timeout) so ext4 issues its dirty pages to virtio.
-- Use `IoEngine: Sync` so FC has no async writes outstanding at pause time.
-- Skip the entire memfd export/dedup branch; still create the FC snapshot? No —
-  for disk-only we skip `CreateSnapshot` (snapfile) too; only run
-  `pauseProcessRootfs`.
-
-Blockers:
-- `sync` is best-effort with a deadline; a stronger guarantee needs `fsfreeze -f`
-  in the guest (envd doesn't expose it today — possible envd addition, requires
-  envd version bump).
-- Confirm FC, when paused with the Sync engine, leaves no in-flight virtio writes
-  (it should, but verify against the FC version in use).
-
-## 4. Repair/replay the journal at snapshot time (save a clean rootfs)
-
-Why: with `noload` removed, every disk-only boot replays the ext4 journal — that
-cost lands on the **resume** critical path, every time. Doing the replay once at
-snapshot time persists an already-clean fs.
-
-Current tooling: the builder already shells out to `e2fsck`
-(`packages/orchestrator/pkg/template/build/core/filesystem/ext4.go:236`),
-`tune2fs`, `resize2fs`; `cmd/mount-build-rootfs` runs `e2fsck -nfv`.
-
-Plan: after guest `sync` and FC stop, run `e2fsck -p` (or journal replay) against
-the assembled overlay device before exporting the diff, so the repair writes land
-in the cache and are captured in the persisted rootfs.
-
-Blockers:
-- e2fsck must run against the **full** filesystem (base + overlay cache), not the
-  sparse diff. That means running it on the NBD/overlay device after guest stop
-  but before `EjectCache` — reworking the export ordering in
-  `NBDProvider.ExportDiff`.
-- Added snapshot latency vs faster/safer boots — make it opt-in/measured.
-- Risk of e2fsck modifying blocks that bloat the diff; measure diff-size impact.
+With `noload` removed, every reboot replays the ext4 journal on the resume
+critical path. Replaying once at snapshot time (e2fsck) persists a clean fs.
+Tooling exists (`template/build/core/filesystem/ext4.go:236` e2fsck/tune2fs;
+`cmd/mount-build-rootfs` runs `e2fsck -nfv`). Blocker: must run against the full
+overlay device after guest stop but before `EjectCache` (reorders
+`NBDProvider.ExportDiff`); added latency vs faster boots; measure diff-size
+impact.
 
 ## 5. Make cold (systemd) boot fast enough
 
-Why: snapshot resume is near-instant; a disk-only reboot pays a full guest boot.
-`envd.service` is `After=multi-user.target` with
-`ExecStart=/bin/bash -l -c "/usr/bin/envd"`
-(`packages/orchestrator/pkg/template/build/core/rootfs/files/envd.service.tpl`),
-so envd starts late in boot. `WaitForEnvd` budget is `EnvdTimeout` (default 10s,
-`packages/orchestrator/internal/cfg/model.go`); template build allows 60s.
+`envd.service` is `After=multi-user.target` with `ExecStart=/bin/bash -l -c
+"/usr/bin/envd"` — envd starts late. Start envd earlier (own target /
+`DefaultDependencies=no`), drop the login-shell wrapper, mask unneeded units.
+Measure via `orchestrator.sandbox.create.duration` /
+`orchestrator.sandbox.envd.init.duration` split by a reboot attribute. Blocker:
+guest-image changes affect all templates; needs envd-version awareness. Boot
+time also depends on rootfs fetch latency (workstream 6).
 
-Levers:
-- Start envd earlier (own target / `DefaultDependencies=no` / before
-  multi-user) to cut time-to-ready; drop the `bash -l` login-shell wrapper.
-- Mask/remove unnecessary systemd units in the template image.
-- Tune kernel cmdline (already `quiet loglevel=1`).
-- Measure with the existing `orchestrator.sandbox.create.duration` and
-  `orchestrator.sandbox.envd.init.duration` histograms, split by
-  `sandbox.reboot_from_rootfs`.
+## 6. Rootfs prefetch (+ envd locality)
 
-Blockers: changes to the guest image/systemd affect all templates; needs envd
-version awareness and careful testing. Boot time also depends on rootfs fetch
-latency on a cold node → see workstream 6.
-
-## 6. Rootfs prefetch (+ envd/kernel locality)
-
-Current state: only **memory** prefetch exists
-(`metadata.Prefetch.Memory`, UFFD `Prefault`,
-`packages/orchestrator/pkg/sandbox/uffd/prefetch/`). Rootfs is fetched lazily in
-4 MB chunks on NBD cache miss (`block.NewChunker`,
-`packages/orchestrator/pkg/sandbox/build/storage_diff.go`). On a cold node a
-reboot triggers many synchronous chunk fetches from GCS on the boot path → slow.
-
-Note: the guest **kernel** is a separate host file (`vmlinux.bin` from
-`/fc-kernels`), not on the rootfs (`packages/orchestrator/pkg/sandbox/fc/config.go:40`),
-so "find the kernel on the rootfs" doesn't apply; the relevant artifacts on the
-rootfs are systemd + shared libs + `/usr/bin/envd`.
-
-Plan:
-- Add a rootfs prefetch mapping (mirror `Prefetch.Memory` with `Prefetch.Rootfs`),
-  collected during the optimize phase by tracking NBD/overlay block accesses
-  during a representative boot, and warmed into the overlay cache before/at boot
-  in the reboot path.
-- Ensure the `/usr/bin/envd` blocks (and its dynamic-link deps) are always in the
-  prefetch set so envd starts without round-trips. envd is stored **uncompressed**
-  in the rootfs (`rootfs.go:202`); "compress envd" → consider shipping/storing a
-  compressed envd to shrink fetched bytes, but it must be decompressed before the
-  guest runs it (net win only if fewer bytes crossed the network than CPU cost).
-
-Blockers:
-- Today's `PrefetchTracker` is UFFD-only; need a block-device access tracker for
-  rootfs.
-- Prefetch is meaningless for memory on disk-only (already cleared in pause); make
-  sure rootfs prefetch is the analog and is collected even when memory snapshot is
-  skipped.
+Only memory prefetch exists today (`metadata.Prefetch.Memory`, UFFD `Prefault`).
+Rootfs is fetched lazily in 4 MB chunks on NBD miss — a cold-node reboot triggers
+many synchronous GCS fetches on the boot path. Add a `Prefetch.Rootfs` mapping
+collected during the optimize phase (needs a block-device access tracker; current
+`PrefetchTracker` is UFFD-only), warmed into the overlay cache at boot. Always
+include `/usr/bin/envd` blocks (stored uncompressed, `rootfs.go:202`) so envd
+starts without round-trips. Note: the guest kernel is a separate host file
+(`vmlinux.bin` from `/fc-kernels`), not on the rootfs, so "find the kernel on the
+rootfs" doesn't apply. "Compress envd" only helps if fewer bytes cross the
+network than CPU cost to decompress.
 
 ## 7. NBD → ublk (note only; prepared elsewhere)
 
-No `ublk` references exist in the repo today; all block export is kernel NBD
-(`/dev/nbd*` via `nbdnl`, `packages/orchestrator/pkg/sandbox/nbd/`). The
-rootfs-heavy reboot path is exactly where a lower-overhead userspace block
-transport (ublk) would help. Switching would replace `nbd.DirectPathMount` /
-`DevicePool` / dispatch with a ublk control + request/completion path; the
-`Overlay`/`Cache`/`block` layers can stay, only the kernel-facing export changes,
-and FC would consume `/dev/ublkbN` instead of `/dev/nbdN`. Tracked separately;
-keep the disk-only block layer transport-agnostic so it benefits for free.
+No `ublk` references exist today; all block export is kernel NBD (`/dev/nbd*` via
+`nbdnl`). The rootfs-heavy reboot path benefits most from a lower-overhead
+userspace transport. Switching replaces `nbd.DirectPathMount`/`DevicePool`/dispatch;
+the `Overlay`/`Cache`/`block` layers stay; FC consumes `/dev/ublkbN`. Keep the
+disk-only block layer transport-agnostic so it benefits for free.
 
-## 8. Live disk snapshot via overlay insertion (future note)
+## 8. Live disk snapshot via overlay insertion (future)
 
-Idea: once disk-only snapshots exist, the same machinery enables a *better,
-non-destructive* disk snapshot that doesn't require tearing the sandbox down.
+Today `NBDProvider.ExportDiff` stops the sandbox to export. Instead: guest `sync`
+(or brief `fsfreeze`/FC pause), then insert a fresh overlay/cache on top so the
+current cache becomes an immutable lower layer; the VM resumes writing into the
+new top layer; upload the frozen lower cache. Gives point-in-time disk snapshots
+of a *running* sandbox. Blockers: atomic NBD backing-device swap during the
+freeze window without confusing FC virtio-block; consistency = quiesce quality;
+layer depth grows → needs compaction.
 
-Today the rootfs is `block.Overlay(base readonly, Cache mmap)`, and
-`NBDProvider.ExportDiff` (`packages/orchestrator/pkg/sandbox/rootfs/nbd.go:73`)
-stops the sandbox, `EjectCache`s, and exports — i.e. snapshotting the disk
-currently ends the VM.
+## 9. Upload the sparse overlay directly, no copy (next-next)
 
-Sketch: guest `sync` (or briefly `fsfreeze` / FC pause for consistency), then
-**insert a fresh overlay/cache on top** so the current cache becomes an immutable
-lower layer. The VM resumes writing into the new top layer; the frozen lower
-cache is uploaded as the snapshot diff. Net result: point-in-time disk snapshots
-of a *running* sandbox.
+`cache.ExportToDiff` copies the cache into a fresh diff before upload. The cache
+is already sparse — upload it directly (compacted), skipping the materialize step.
+Pure optimization; after the basic FS-only snapshot lands.
 
-Blockers / open:
-- Need an atomic swap of the NBD backing device to the new stacked overlay during
-  the short freeze window without confusing FC's virtio-block.
-- Consistency is only as good as the quiesce (sync vs fsfreeze, workstream 3).
-- Layer depth grows per snapshot → eventually needs compaction.
+## 10. Read-only disk access API (future)
 
-## 9. Upload the sparse overlay directly, no copy (next-next version)
+Let users read a (disk-only) snapshot's rootfs without booting — list/download
+files from a paused snapshot's disk. Feasible: the rootfs is assembled lazily
+host-side already, and `cmd/mount-build-rootfs` already materializes a build
+rootfs read-only (NBD mount + `e2fsck -nfv`). Sketch: assemble read-only, expose
+file ops (ideally via envd's filesystem API for parity). Blockers: where it runs
+(prefer a sandboxed reader over host-mounting untrusted guest ext4 — security);
+auth/lifecycle/concurrency with resume; benefits from journal-clean rootfs (4)
+and rootfs prefetch (6).
 
-`cache.ExportToDiff` copies the cache into a fresh diff file before upload. The
-cache file is already sparse, so the copy is wasted I/O — we could upload the
-sparse cache directly in its compacted form (skip the materialize-to-diff step).
-Pure optimization; sequence it after the basic filesystem-only snapshot lands.
+---
 
-## 10. Read-only disk access API (future note)
+## Open questions
 
-Idea: let users read the persisted rootfs of a (disk-only) snapshot without
-booting a sandbox — e.g. list/download files from a paused snapshot's disk.
+1. envd auth on cold boot: add `setMmds` to the cold-boot path (match resume) or
+   rely on first-time `/init` setup? (Risk 1 — decide in phase 1.)
+2. Auto-resume on a disk-only snapshot: block, or allow with explicit opt-in?
+3. Connect on a disk-only snapshot: block, error, or allow?
+4. Keep `CreateSnapshot` for its disk-flush side effect, or add a dedicated FC
+   flush and skip snapfile creation entirely?
+5. Disk-only selectable per-pause, per-template, or both?
+6. Explicit persisted flag vs `ErrObjectNotExist` fallback for resume-path
+   selection?
 
-Feasibility: the rootfs is stored as a sparse diff + header and is already
-assembled lazily host-side via the `block` / `header` / `Overlay` stack. There is
-existing tooling that materializes a build rootfs read-only on the host
-(`packages/orchestrator/cmd/mount-build-rootfs/main.go`: NBD-mount + `e2fsck -nfv`),
-so serving a read-only view is mostly plumbing on top of what exists.
-
-Sketch: assemble the snapshot rootfs read-only (no overlay writes, or a throwaway
-cache), mount it, and expose file ops behind an API. Cleaner end-state if it
-reuses envd's filesystem API surface so the access path matches live sandboxes.
-
-Blockers / open:
-- Decide where it runs: a short-lived helper/VM vs a host-side mount on an
-  orchestrator node (host mounts of guest-controlled ext4 are a security concern —
-  prefer a sandboxed reader over mounting untrusted fs in the host kernel).
-- Pairs naturally with disk-only snapshots (the disk is the whole artifact) and
-  benefits from journal-clean rootfs (workstream 4) so no replay is needed to read.
-- Lifecycle/auth: map snapshot ownership → access; concurrency with resume.
-- Likely wants rootfs prefetch (workstream 6) to be usable over the network.
+Resolved:
+- `reboot` is internal-only, a typed proto field (`SandboxCreateRequest.reboot`),
+  not gRPC metadata. Public surface is disk-only (`memory: false`).
