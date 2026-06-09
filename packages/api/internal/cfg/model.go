@@ -131,7 +131,7 @@ type VolumesTokenConfig struct {
 	// Enabled explicitly toggles volume content token signing. When true (the
 	// default), all signing env vars are required. Set to false when volumes are
 	// disabled so the signing env vars may be omitted entirely.
-	Enabled bool `env:"VOLUME_TOKEN_ENABLED"          envDefault:"true"`
+	Enabled bool `env:"VOLUME_TOKEN_ENABLED" envDefault:"true"`
 
 	Issuer         string            `env:"VOLUME_TOKEN_ISSUER"`
 	SigningMethod  jwt.SigningMethod `env:"VOLUME_TOKEN_SIGNING_METHOD"`
