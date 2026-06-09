@@ -1165,7 +1165,7 @@ func TestCache_FileSize_MatchesActualAllocation(t *testing.T) {
 	buf := make([]byte, blockSize)
 	_, err = rand.Read(buf)
 	require.NoError(t, err)
-	for i := int64(0); i < nBlocks; i++ {
+	for i := range nBlocks {
 		_, err = cache.WriteAt(buf, i*blockSize)
 		require.NoError(t, err)
 	}
