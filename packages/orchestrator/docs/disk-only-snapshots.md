@@ -236,6 +236,30 @@ kept — so for cold/fs-only sandboxes the **zero-check is the only effective pa
 of dedup, and it works. With the flag off, zeros are still dropped (block-granular)
 via `GetMemory`'s `Empty` bitmap in `DiffMetadata`.
 
+### Rootfs provider: use NBD for the reboot path
+
+`CreateSandbox` selects the rootfs provider by `rootfsCachePath`
+(`sandbox.go:367-384`): empty → `NBDProvider`, non-empty → `DirectProvider`. The
+build's no-memory cold boots pass a cache path and use `DirectProvider` (plain
+mmap, no NBD command handling): provisioning (`base/provision.go:128`) and base
+layer (`WithRootfsCachePath`, `base/builder.go:262`).
+
+The fs-only resume path must pass `rootfsCachePath=""` so it uses **`NBDProvider`**
+— the same provider normal `ResumeSandbox` uses. This keeps the NBD handler's
+runtime `WRITE_ZEROES` + `TRIM` hole-punching and zero handling
+(`dispatch.go`: `NBDCmdTrim`/`NBDCmdWriteZeroes` → `cmdWriteZeroes` →
+`WriteZeroesAt`, advertised via `NBD_FLAG_SEND_WRITE_ZEROES | FlagSendTrim`,
+`path_direct.go:180`), which `DirectProvider` lacks. Repeated fs-only works
+because each pause goes through `NBDProvider.ExportDiff` and the overlay chains on
+the previous snapshot's rootfs exactly like a normal resume.
+
+Zero detection is 4 KiB-block granular: `RootfsBlockSize = 4 KiB`
+(`header/diff.go:12`); the export zero-check `DiffMetadataBuilder.Process` →
+`IsZero(block)` marks all-zero 4 KiB blocks `Empty` instead of storing them
+(`header/metadata.go:204`). Build minimization combines `resize2fs -M`
+(`filesystem/ext4.go:174`), the `discard` rootflag (guest TRIM), and this 4 KiB
+zero-check; NBD `WriteZeroesAt`/TRIM hole-punch is likewise 4 KiB-aligned.
+
 ### Resume side (cold boot from rootfs)
 
 New `Server.createSandboxFromRootfs(ctx, template, config, runtime, req)`:
