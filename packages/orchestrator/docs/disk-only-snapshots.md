@@ -423,7 +423,36 @@ transport (ublk) would help. Switching would replace `nbd.DirectPathMount` /
 and FC would consume `/dev/ublkbN` instead of `/dev/nbdN`. Tracked separately;
 keep the disk-only block layer transport-agnostic so it benefits for free.
 
-## 8. Read-only disk access API (future note)
+## 8. Live disk snapshot via overlay insertion (future note)
+
+Idea: once disk-only snapshots exist, the same machinery enables a *better,
+non-destructive* disk snapshot that doesn't require tearing the sandbox down.
+
+Today the rootfs is `block.Overlay(base readonly, Cache mmap)`, and
+`NBDProvider.ExportDiff` (`packages/orchestrator/pkg/sandbox/rootfs/nbd.go:73`)
+stops the sandbox, `EjectCache`s, and exports — i.e. snapshotting the disk
+currently ends the VM.
+
+Sketch: guest `sync` (or briefly `fsfreeze` / FC pause for consistency), then
+**insert a fresh overlay/cache on top** so the current cache becomes an immutable
+lower layer. The VM resumes writing into the new top layer; the frozen lower
+cache is uploaded as the snapshot diff. Net result: point-in-time disk snapshots
+of a *running* sandbox.
+
+Blockers / open:
+- Need an atomic swap of the NBD backing device to the new stacked overlay during
+  the short freeze window without confusing FC's virtio-block.
+- Consistency is only as good as the quiesce (sync vs fsfreeze, workstream 3).
+- Layer depth grows per snapshot → eventually needs compaction.
+
+## 9. Upload the sparse overlay directly, no copy (next-next version)
+
+`cache.ExportToDiff` copies the cache into a fresh diff file before upload. The
+cache file is already sparse, so the copy is wasted I/O — we could upload the
+sparse cache directly in its compacted form (skip the materialize-to-diff step).
+Pure optimization; sequence it after the basic filesystem-only snapshot lands.
+
+## 10. Read-only disk access API (future note)
 
 Idea: let users read the persisted rootfs of a (disk-only) snapshot without
 booting a sandbox — e.g. list/download files from a paused snapshot's disk.
