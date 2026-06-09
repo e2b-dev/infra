@@ -25,14 +25,14 @@ import (
 //	                                    fd.close()          ← fd freed/recycled
 //	                                    releases Lock
 //	 acquires RLock
-//	 sees closed == true → return nil  ✓
+//	 sees closed == true → return ErrClosed  ✓
 //
 // Without the fix, Prefault had no closed check and would call UFFDIO_COPY
 // on the closed (and potentially recycled) fd, returning EBADF or ENOTTY.
 //
 // The test uses faultPhaseBeforePrefaultRLock to park Prefault before the
 // RLock acquisition, lets Close() run to completion, then releases the park
-// and asserts Prefault returns nil.
+// and asserts Prefault returns ErrClosed without touching the fd.
 func TestPrefaultConcurrentWithClose(t *testing.T) {
 	t.Parallel()
 
@@ -89,7 +89,8 @@ func TestPrefaultConcurrentWithClose(t *testing.T) {
 
 		prefaultErrs := make(chan error, 1)
 		go func() {
-			prefaultErrs <- u.Prefault(ctx, 0, pageData)
+			_, err := u.Prefault(ctx, 0, pageData)
+			prefaultErrs <- err
 		}()
 
 		// Wait for Prefault to park at the pre-RLock hook.
@@ -103,7 +104,7 @@ func TestPrefaultConcurrentWithClose(t *testing.T) {
 		// Pre-fix: fd gets closed and may be recycled; Prefault later calls
 		//   UFFDIO_COPY on it and returns EBADF or ENOTTY.
 		// Post-fix: Close() holds Lock(); Prefault acquires RLock, sees
-		//   closed==true, returns nil without touching the fd.
+		//   closed==true, returns ErrClosed without touching the fd.
 		require.NoError(t, u.Close())
 
 		// Release the parked Prefault goroutine.
@@ -111,9 +112,9 @@ func TestPrefaultConcurrentWithClose(t *testing.T) {
 
 		select {
 		case err := <-prefaultErrs:
-			require.NoError(t, err,
-				"Prefault must return nil after concurrent Close() — "+
-					"a non-nil error means UFFDIO_COPY was attempted on the closed fd (EBADF/ENOTTY regression)")
+			require.ErrorIs(t, err, ErrClosed,
+				"Prefault must return ErrClosed after concurrent Close() — "+
+					"any other error means UFFDIO_COPY was attempted on the closed fd (EBADF/ENOTTY regression)")
 		case <-ctx.Done():
 			t.Fatal("Prefault goroutine did not complete after hook release")
 		}

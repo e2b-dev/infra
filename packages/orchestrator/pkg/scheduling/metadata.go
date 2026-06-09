@@ -25,16 +25,15 @@ func FromHeaders(buildID uuid.UUID, memfileHeader, rootfsHeader *header.Header, 
 		return nil
 	}
 
-	base := memfileHeader.Metadata.BaseBuildId
-	if base == uuid.Nil {
-		base = rootfsHeader.Metadata.BaseBuildId
-	}
+	memfileBase := memfileHeader.Metadata.BaseBuildId
+	rootfsBase := rootfsHeader.Metadata.BaseBuildId
 
-	memIDs, memBytes, memDropped := artifactBuilds(memfileHeader, base, buildID, newMemfileBytes)
-	rootIDs, rootBytes, rootDropped := artifactBuilds(rootfsHeader, base, buildID, 0)
+	memIDs, memBytes, memDropped := artifactBuilds(memfileHeader, memfileBase, buildID, newMemfileBytes)
+	rootIDs, rootBytes, rootDropped := artifactBuilds(rootfsHeader, rootfsBase, buildID, 0)
 
 	return &orchestrator.SchedulingMetadata{
-		BaseBuildId:          base.String(),
+		MemfileBaseBuildId:   memfileBase.String(),
+		RootfsBaseBuildId:    rootfsBase.String(),
 		BuildId:              buildID.String(),
 		MemfileBuildIds:      memIDs,
 		RootfsBuildIds:       rootIDs,
