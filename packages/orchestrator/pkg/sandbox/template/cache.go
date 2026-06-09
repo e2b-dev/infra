@@ -3,10 +3,12 @@
 package template
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
@@ -16,7 +18,6 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
@@ -129,11 +130,44 @@ func (c *Cache) Start(ctx context.Context) {
 	}
 }
 
-// startMemoryPressureEviction evicts the LRU template cache entry whenever
-// MemAvailable on the host drops below TemplateCacheMinFreeMemoryMB.
-// It reads /proc/meminfo directly to avoid a cgo dependency.
+// memAvailableBytes reads MemAvailable from /proc/meminfo.
+// This is the correct metric for "how much memory can new allocations use"
+// because it includes reclaimable page cache, unlike Sysinfo.Freeram which
+// only counts completely unused pages and is typically very low.
+func memAvailableBytes() (uint64, error) {
+	data, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		return 0, fmt.Errorf("read /proc/meminfo: %w", err)
+	}
+
+	for _, line := range bytes.Split(data, []byte("\n")) {
+		if !bytes.HasPrefix(line, []byte("MemAvailable:")) {
+			continue
+		}
+		// Format: "MemAvailable:   12345678 kB"
+		fields := bytes.Fields(line)
+		if len(fields) < 2 {
+			break
+		}
+
+		kb, err := strconv.ParseUint(string(fields[1]), 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("parse MemAvailable: %w", err)
+		}
+
+		return kb * 1024, nil
+	}
+
+	return 0, fmt.Errorf("MemAvailable not found in /proc/meminfo")
+}
+
+// startMemoryPressureEviction evicts one LRU template cache entry per tick
+// whenever MemAvailable on the host drops below TemplateCacheMinFreeMemoryMB.
+// One entry per tick is intentional: mmap page reclamation is not instantaneous,
+// so the OS memory stats won't reflect the freed pages until after the next tick,
+// preventing the loop from over-evicting the entire cache in a single burst.
 func (c *Cache) startMemoryPressureEviction(ctx context.Context) {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
 	thresholdBytes := uint64(c.config.TemplateCacheMinFreeMemoryMB) * 1024 * 1024
@@ -143,47 +177,41 @@ func (c *Cache) startMemoryPressureEviction(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			// Evict LRU entries one-by-one until free memory is above the
-			// threshold or the cache is empty.
-			for {
-				var info unix.Sysinfo_t
-				if err := unix.Sysinfo(&info); err != nil {
-					logger.L().Warn(ctx, "memory pressure eviction: sysinfo failed", zap.Error(err))
-					break
-				}
-
-				// Sysinfo.Freeram is in units of Sysinfo.Unit bytes.
-				freeBytes := info.Freeram * uint64(info.Unit)
-				if freeBytes >= thresholdBytes {
-					break
-				}
-
-				// Find the LRU entry: the one whose TTL was reset least recently,
-				// i.e. the item with the earliest ExpiresAt timestamp.
-				items := c.cache.Items()
-				if len(items) == 0 {
-					break
-				}
-
-				var (
-					oldestKey    string
-					oldestExpiry time.Time
-				)
-				for k, item := range items {
-					exp := item.ExpiresAt()
-					if oldestKey == "" || exp.Before(oldestExpiry) {
-						oldestKey = k
-						oldestExpiry = exp
-					}
-				}
-
-				logger.L().Info(ctx, "memory pressure eviction: evicting LRU template",
-					zap.String("key", oldestKey),
-					zap.Uint64("free_bytes", freeBytes),
-					zap.Uint64("threshold_bytes", thresholdBytes),
-				)
-				c.cache.Delete(oldestKey)
+			available, err := memAvailableBytes()
+			if err != nil {
+				logger.L().Warn(ctx, "memory pressure eviction: failed to read MemAvailable", zap.Error(err))
+				continue
 			}
+
+			if available >= thresholdBytes {
+				continue
+			}
+
+			// Find the LRU entry: the one whose TTL was reset least recently,
+			// i.e. the item with the earliest ExpiresAt timestamp.
+			items := c.cache.Items()
+			if len(items) == 0 {
+				continue
+			}
+
+			var (
+				oldestKey    string
+				oldestExpiry time.Time
+			)
+			for k, item := range items {
+				exp := item.ExpiresAt()
+				if oldestKey == "" || exp.Before(oldestExpiry) {
+					oldestKey = k
+					oldestExpiry = exp
+				}
+			}
+
+			logger.L().Info(ctx, "memory pressure eviction: evicting LRU template",
+				zap.String("key", oldestKey),
+				zap.Uint64("mem_available_bytes", available),
+				zap.Uint64("threshold_bytes", thresholdBytes),
+			)
+			c.cache.Delete(oldestKey)
 		}
 	}
 }
