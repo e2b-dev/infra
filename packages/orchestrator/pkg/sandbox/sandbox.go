@@ -267,6 +267,14 @@ type Sandbox struct {
 	exit *utils.ErrorOnce
 
 	stop utils.Lazy[error]
+
+	// startupStatsOnce guards the orchestrator.sandbox.uffd.startup.* recording
+	// so it fires only on the first WaitForEnvd — the actual sandbox start.
+	// ServeStats() is lifetime-cumulative on the UFFD handler, so a later
+	// WaitForEnvd on the same handler (e.g. the envd-binary swap + restart in a
+	// template build) would otherwise emit a sample inflated with post-startup
+	// faults rather than that init's working set.
+	startupStatsOnce sync.Once
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -1485,18 +1493,23 @@ func (s *Sandbox) WaitForEnvd(
 		))
 
 		// Record the demand-fault working set the guest needed to reach this
-		// point, once per start. envd init is the first thing after resume, so
-		// the handler's cumulative serve counters here equal the startup
-		// counts. Recorded for both outcomes (success label) so slow/failed
-		// starts can be correlated with page volume.
-		stats := s.memory.ServeStats()
-		startupAttrs := metric.WithAttributes(
-			attribute.String("start_type", startType),
-			attribute.Bool("success", e == nil),
-		)
-		uffdStartupPagesHistogram.Record(ctx, stats.Pages, startupAttrs)
-		uffdStartupSourcePagesHistogram.Record(ctx, stats.SourcePages, startupAttrs)
-		uffdStartupBytesHistogram.Record(ctx, stats.Bytes, startupAttrs)
+		// point. Only on the first WaitForEnvd: it is the actual start, and
+		// ServeStats() is cumulative since resume, so at this instant it equals
+		// the startup counts. A later WaitForEnvd on the same handler (e.g. the
+		// envd-binary swap + restart during a template build) would otherwise
+		// re-report a cumulative total polluted with intervening faults.
+		// Recorded for both outcomes (success label) so slow/failed starts can
+		// be correlated with page volume.
+		s.startupStatsOnce.Do(func() {
+			stats := s.memory.ServeStats()
+			startupAttrs := metric.WithAttributes(
+				attribute.String("start_type", startType),
+				attribute.Bool("success", e == nil),
+			)
+			uffdStartupPagesHistogram.Record(ctx, stats.Pages, startupAttrs)
+			uffdStartupSourcePagesHistogram.Record(ctx, stats.SourcePages, startupAttrs)
+			uffdStartupBytesHistogram.Record(ctx, stats.Bytes, startupAttrs)
+		})
 
 		if e != nil {
 			return
