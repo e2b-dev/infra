@@ -22,6 +22,7 @@ func TestGenerateVolumeContentToken_SetsTokidHeader(t *testing.T) {
 
 	// Minimal APIStore with the VolumesToken config set for signing
 	config := cfg.VolumesTokenConfig{
+		Enabled:        true,
 		SigningKeyName: "key-v1",
 		Issuer:         "test-issuer",
 		SigningMethod:  jwt.SigningMethodHS256,

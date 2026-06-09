@@ -43,6 +43,15 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 		return
 	}
 
+	// Fail fast before allocating any resources if token signing is not configured,
+	// otherwise we would persist a volume that we cannot mint a content token for.
+	if !a.config.VolumesToken.IsConfigured() {
+		a.sendAPIStoreError(c, http.StatusNotImplemented, ErrVolumesTokenNotConfigured.Error())
+		telemetry.ReportError(ctx, "volumes content token signing is not configured", ErrVolumesTokenNotConfigured)
+
+		return
+	}
+
 	// parse body
 	body, err := ginutils.ParseBody[api.PostVolumesJSONRequestBody](ctx, c)
 	if err != nil {
