@@ -1190,7 +1190,6 @@ func (s *Sandbox) Pause(
 	var memfileHeader *header.Header
 	var newMemfileBytes uint64
 	if pauseOpts.memorySnapshot {
-		// Gather data for postprocessing
 		originalMemfile, err := s.Template.Memfile(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get original memfile: %w", err)

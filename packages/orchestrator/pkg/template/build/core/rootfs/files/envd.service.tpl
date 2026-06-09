@@ -3,9 +3,8 @@
 
 [Unit]
 Description=Env Daemon Service
-# No explicit After: default dependencies order envd after basic.target, so a
-# cold boot doesn't wait for multi-user.target (gated on slow units like
-# chrony-wait, ~8s).
+# No After=multi-user.target: that gated envd on chrony-wait (~8s on cold
+# boot); default dependencies start it after basic.target instead.
 # Disable rate limiting; retry forever
 StartLimitIntervalSec=0
 
