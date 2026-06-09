@@ -109,8 +109,7 @@ func (s *Sandbox) bestEffortReclaim(ctx context.Context) {
 }
 
 // bestEffortGuestSync runs sync in the guest via envd so ext4 flushes dirty
-// pages to the virtio disk before a filesystem-only pause. FC never flushes
-// the guest page cache; without this, unsynced writes are lost on reboot.
+// pages to the virtio disk before a filesystem-only pause.
 func (s *Sandbox) bestEffortGuestSync(ctx context.Context) {
 	const syncTimeout = 5 * time.Second
 

@@ -90,8 +90,6 @@ func (u *Upload) runV3(ctx context.Context) error {
 	})
 
 	eg.Go(func() error {
-		// Filesystem-only snapshots have no usable VM state; the snapfile only
-		// existed for its disk drain+flush side effect.
 		if !u.snap.MemorySnapshot {
 			return nil
 		}

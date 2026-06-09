@@ -339,8 +339,6 @@ type runner struct {
 	storage    storage.StorageProvider
 }
 
-// startSandbox resumes the build from its memory snapshot, or cold-boots from
-// its rootfs when -reboot is set.
 func (r *runner) startSandbox(ctx context.Context, runtime sandbox.RuntimeMetadata, start, end time.Time) (*sandbox.Sandbox, error) {
 	if r.reboot {
 		return r.factory.RebootSandbox(ctx, r.tmpl, r.sbxConfig, runtime, start, end, nil)
@@ -383,7 +381,7 @@ func (r *runner) interactive(ctx context.Context) error {
 		return err
 	}
 
-	fmt.Printf("✅ Running (started in %s)\n", time.Since(t0))
+	fmt.Printf("✅ Running (resumed in %s)\n", time.Since(t0))
 	fmt.Printf("   sudo nsenter --net=/var/run/netns/%s ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@169.254.0.21\n", sbx.Slot.NamespaceID())
 
 	defer func() {

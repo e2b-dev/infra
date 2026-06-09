@@ -53,8 +53,8 @@ func (f *Factory) RebootSandbox(
 		return nil, fmt.Errorf("parse build ID: %w", err)
 	}
 
-	// The template memfile is masked with an empty one: it is used only for
-	// sizing NoopMemory — guest RAM is FC's own fresh anonymous memory.
+	// The masked empty memfile is used only for sizing NoopMemory — guest RAM
+	// is FC's own fresh anonymous memory.
 	pageSize := int64(header.PageSize)
 	if config.HugePages {
 		pageSize = int64(header.HugepageSize)
@@ -71,8 +71,7 @@ func (f *Factory) RebootSandbox(
 		return nil, fmt.Errorf("compare envd version: %w", err)
 	}
 
-	// Sync IO engine so no async writes are in flight if this sandbox is
-	// paused again.
+	// Sync IO engine so no async writes are in flight if the sandbox is paused again.
 	ioEngine := models.DriveIoEngineSync
 
 	timeout := time.Until(endAt)
@@ -86,9 +85,9 @@ func (f *Factory) RebootSandbox(
 		runtime,
 		maskedTemplate,
 		timeout,
-		// Empty rootfs cache path selects the NBD provider — the same provider a
-		// memory resume uses — so guest TRIM/WRITE_ZEROES keep working and a
-		// later pause exports the overlay diff exactly like a normal resume.
+		// Empty rootfs cache path selects the NBD provider, same as a memory
+		// resume, so guest TRIM keeps working and a later pause exports the
+		// overlay diff exactly like a normal resume.
 		"",
 		fc.ProcessOptions{
 			InitScriptPath: constants.SystemdInitPath,
@@ -97,16 +96,13 @@ func (f *Factory) RebootSandbox(
 		},
 		apiConfigToStore,
 		nil,
-		// Defer marking running until envd is ready so the rebooted sandbox
-		// isn't visible/routable before it can serve traffic.
 		WithDeferredMarkRunning(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create sandbox from rootfs: %w", err)
 	}
 
-	// CreateSandbox anchors the lifetime to now; honor the caller's absolute
-	// window so queue delay can't extend the end time.
+	// CreateSandbox anchors the lifetime to now; honor the caller's absolute window.
 	sbx.SetStartedAt(startedAt)
 	sbx.SetEndAt(endAt)
 

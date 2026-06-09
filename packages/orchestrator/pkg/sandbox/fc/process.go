@@ -79,9 +79,9 @@ func (f *fcLogFilter) Write(p []byte) (n int, err error) {
 	return len(p), err
 }
 
-// ext4RootFlags must not include "noload": filesystem-only snapshot resume
-// relies on ext4 replaying the journal after a snapshot was taken from a
-// previously running guest.
+// ext4RootFlags: discard so ext4 issues TRIM on freed blocks (elided from the
+// snapshot diff). Must never include "noload": filesystem-only snapshot resume
+// relies on ext4 replaying the journal when rebooting from the snapshot rootfs.
 const ext4RootFlags = "discard"
 
 type ProcessOptions struct {
@@ -378,9 +378,6 @@ func (p *Process) Create(
 		"i8042.noaux":      "",
 		"random.trust_cpu": "on",
 
-		// discard: ext4 issues TRIM on freed blocks so they are elided from the snapshot diff.
-		// Must never include "noload": filesystem-only snapshots rely on ext4
-		// replaying the journal when rebooting from a previously running guest's rootfs.
 		"rootflags": ext4RootFlags,
 	}
 

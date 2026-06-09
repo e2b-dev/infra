@@ -36,9 +36,8 @@ type Snapshot struct {
 	BuildID            uuid.UUID
 	SchedulingMetadata *orchestrator.SchedulingMetadata
 
-	// MemorySnapshot is false for filesystem-only snapshots: the memfile diff
-	// is empty and the memfile, memfile header, and snapfile are not uploaded.
-	// Absence of the memory artifacts in storage is the on-storage signal.
+	// MemorySnapshot is false for filesystem-only snapshots: the memfile diff is
+	// empty and the memfile, memfile header, and snapfile are not uploaded.
 	MemorySnapshot bool
 
 	// Template block sizes captured sync at Pause time. They equal

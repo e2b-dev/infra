@@ -3,7 +3,9 @@
 
 [Unit]
 Description=Env Daemon Service
-After=multi-user.target
+# No explicit After: default dependencies order envd after basic.target, so a
+# cold boot doesn't wait for multi-user.target (gated on slow units like
+# chrony-wait, ~8s).
 # Disable rate limiting; retry forever
 StartLimitIntervalSec=0
 
@@ -14,8 +16,8 @@ User=root
 Group=root
 Environment=GOTRACEBACK=all
 LimitCORE=infinity
-ExecStartPre=/bin/sh -c 'mountpoint -q /etc/ssl/certs || (mkdir -p /run/e2b/certs && mount --bind /run/e2b/certs /etc/ssl/certs) && ([ -s /etc/ssl/certs/ca-certificates.crt ] || update-ca-certificates)'
-ExecStart=/bin/bash -l -c "/usr/bin/envd"
+ExecStartPre=/bin/sh -c 'mountpoint -q /etc/ssl/certs || { mkdir -p /run/e2b/certs && cp -a /etc/ssl/certs/. /run/e2b/certs/ 2>/dev/null; mount --bind /run/e2b/certs /etc/ssl/certs; } && ([ -s /etc/ssl/certs/ca-certificates.crt ] || update-ca-certificates)'
+ExecStart=/usr/bin/envd
 Nice=-20
 IOSchedulingClass=realtime
 IOSchedulingPriority=4

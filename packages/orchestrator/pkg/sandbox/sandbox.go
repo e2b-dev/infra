@@ -1135,11 +1135,10 @@ func (s *Sandbox) Pause(
 	// all default to 0 which disables the chain entirely. Non-fatal.
 	s.bestEffortReclaim(ctx)
 	if !pauseOpts.memorySnapshot {
-		// The guest page cache is never flushed by FC; a memory resume restores
-		// it, but a reboot loses it — sync so the persisted filesystem is
-		// consistent up to the pause point.
+		// FC never flushes the guest page cache; sync so the persisted
+		// filesystem is consistent up to the pause point.
 		s.bestEffortGuestSync(ctx)
-		// Memory prefetch data refers to the memfile, which is not persisted.
+		// Memory prefetch refers to the memfile, which is not persisted.
 		m.Prefetch = nil
 	}
 	// reclaim freezes user cgroups; if pause/snapshot fails the sandbox stays
@@ -1257,7 +1256,6 @@ func (s *Sandbox) Pause(
 	// base-identical ones, so it over-estimates. The rootfs copy is synchronous
 	// today, so its new header carries the exact rootfs chain and bytes; if it
 	// ever becomes async, switch it to the parent plus a dirty proxy like memfile.
-	// For filesystem-only snapshots memfileHeader is nil and this resolves to nil.
 	schedulingMetadata := scheduling.FromHeaders(buildID, memfileHeader, rootfsHeader, newMemfileBytes)
 
 	metadataFileLink := template.NewLocalFileLink(cachePaths.CacheMetadata())
