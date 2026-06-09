@@ -204,6 +204,25 @@ has no memory base, so `DiffMetadata` marks all resident pages dirty
 (`noop.go:43-47`) → the memfile is a **full** snapshot, not an incremental diff
 (larger/slower, but correct; already true for template builds).
 
+How dirty/zero filtering works without UFFD (mixing case only): the custom FC
+`GetMemory` endpoint (`fc/client.go:512`) returns `Resident` (pages faulted in,
+via mincore) and `Empty` (resident-but-all-zero) bitmaps; `NoopMemory` keeps
+`Resident AndNot Empty` (`noop.go:43`) and the export reads those ranges from
+`/proc/<pid>/mem` (`fc/memory.go:30`). So:
+
+- No UFFD/async write-protect is involved or needed for cold-booted sandboxes —
+  `NoopMemory` backs RAM with plain anonymous memory, nothing is WP-registered.
+  (Retro-fitting async-WP would be fragile: a gap between registration and the
+  first WP fault, plus racy per-fault re-arming, can miss writes — not the path.)
+- Free-page hinting (`DrainBalloon`, the pre-pause balloon drain) is an
+  orthogonal optimization that shrinks the resident set; it is not the dirty/zero
+  filter.
+- True incremental memory diffs on a cold-booted VM would need KVM dirty-page
+  logging (`TrackDirtyPages` + `GetDirtyMemory`, `fc/client.go:529`), but
+  `TrackDirtyPages` is hard-coded `false` at boot (`fc/client.go:375`), so it is
+  unused today. Only worth enabling (at a runtime cost) if cheap *repeated
+  memory* snapshots of cold-booted sandboxes are ever wanted — not for disk-only.
+
 ### Resume side (cold boot from rootfs)
 
 New `Server.createSandboxFromRootfs(ctx, template, config, runtime, req)`:
