@@ -271,7 +271,12 @@ exposes no discard field (`fc/models/drive.go`). Consequences:
   reclaims freed blocks (write-then-delete a large file, compare diff size).
 
 So the fs-only reboot path (NBD) reclaims freed blocks deterministically; the
-build path's freed-block reclamation is FC-dependent and unconfirmed here.
+build path's freed-block reclamation is FC-dependent and unconfirmed here. If the
+empirical check shows the build does **not** fully reclaim freed blocks, that's a
+separate template-size improvement to consider — either service discard for the
+build path (e.g. NBD-backed build, or an explicit fstrim/zero pass before export)
+or confirm/enable an FC file-punch — tracked as a follow-up, not a blocker for
+disk-only.
 
 Zero detection is 4 KiB-block granular: `RootfsBlockSize = 4 KiB`
 (`header/diff.go:12`); the export zero-check `DiffMetadataBuilder.Process` →
