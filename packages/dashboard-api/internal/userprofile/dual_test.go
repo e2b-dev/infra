@@ -6,11 +6,14 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+
+	sharedteamprovision "github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 )
 
 type fakeProvider struct {
 	byID    map[uuid.UUID]Profile
 	byEmail map[string][]Profile
+	context *sharedteamprovision.CreatorContextV1
 	err     error
 	calls   int
 }
@@ -38,6 +41,15 @@ func (f *fakeProvider) FindProfilesByEmail(_ context.Context, email string) ([]P
 	}
 
 	return f.byEmail[email], nil
+}
+
+func (f *fakeProvider) GetTeamCreatorContext(_ context.Context, _ uuid.UUID) (*sharedteamprovision.CreatorContextV1, error) {
+	f.calls++
+	if f.err != nil {
+		return nil, f.err
+	}
+
+	return f.context, nil
 }
 
 func TestDualProvider_GetProfilesByUserID_PrefersSecondaryFallsBackToPrimary(t *testing.T) {

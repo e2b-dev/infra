@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+
+	sharedteamprovision "github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 )
 
 type Profile struct {
@@ -18,6 +20,7 @@ type Profile struct {
 type Provider interface {
 	GetProfilesByUserID(ctx context.Context, userIDs []uuid.UUID) (map[uuid.UUID]Profile, error)
 	FindProfilesByEmail(ctx context.Context, email string) ([]Profile, error)
+	GetTeamCreatorContext(ctx context.Context, userID uuid.UUID) (*sharedteamprovision.CreatorContextV1, error)
 }
 
 func NewProvider(mode Mode, supa Provider, ory Provider) (Provider, error) {

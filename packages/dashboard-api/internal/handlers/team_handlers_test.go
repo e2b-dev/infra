@@ -477,7 +477,8 @@ func TestPostUsersBootstrap_CreatesDefaultTeamAndCallsSink(t *testing.T) {
 	}
 	if err := testDB.SupabaseDB.TestsRawSQL(ctx, `
 UPDATE auth.users
-SET raw_user_meta_data = '{"first_name":"ada"}'::jsonb
+SET raw_user_meta_data = '{"first_name":"ada"}'::jsonb,
+    raw_app_meta_data = '{"signup_ip":"203.0.113.10","signup_user_agent":"Mozilla/5.0","providers":["email"]}'::jsonb
 WHERE id = $1
 `, userID); err != nil {
 		t.Fatalf("failed to update auth user metadata: %v", err)
@@ -521,6 +522,18 @@ WHERE id = $1
 	}
 	if req.TeamName != team.Name {
 		t.Fatalf("expected sink team name %q, got %q", team.Name, req.TeamName)
+	}
+	if req.CreatorContext == nil {
+		t.Fatal("expected sink creator context")
+	}
+	if req.CreatorContext.IPAddress != "203.0.113.10" {
+		t.Fatalf("expected sink creator ip %q, got %q", "203.0.113.10", req.CreatorContext.IPAddress)
+	}
+	if req.CreatorContext.UserAgent != "Mozilla/5.0" {
+		t.Fatalf("expected sink creator user agent %q, got %q", "Mozilla/5.0", req.CreatorContext.UserAgent)
+	}
+	if req.CreatorContext.AuthMethod != teamprovision.AuthMethodPassword {
+		t.Fatalf("expected sink creator auth method %q, got %q", teamprovision.AuthMethodPassword, req.CreatorContext.AuthMethod)
 	}
 
 	var responseBody map[string]any

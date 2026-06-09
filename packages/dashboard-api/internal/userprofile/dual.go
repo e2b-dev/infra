@@ -5,6 +5,8 @@ import (
 	"maps"
 
 	"github.com/google/uuid"
+
+	sharedteamprovision "github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 )
 
 type dualProvider struct {
@@ -50,6 +52,23 @@ func (p *dualProvider) FindProfilesByEmail(ctx context.Context, email string) ([
 	}
 
 	return uniqueProfilesByUserID(primary), nil
+}
+
+func (p *dualProvider) GetTeamCreatorContext(ctx context.Context, userID uuid.UUID) (*sharedteamprovision.CreatorContextV1, error) {
+	secondary, err := p.secondary.GetTeamCreatorContext(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if secondary != nil {
+		return secondary, nil
+	}
+
+	primary, err := p.primary.GetTeamCreatorContext(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return primary, nil
 }
 
 func uniqueProfilesByUserID(profiles []Profile) []Profile {
