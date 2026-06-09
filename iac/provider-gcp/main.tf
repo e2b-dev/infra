@@ -127,7 +127,6 @@ locals {
     TEMPLATE_BUCKET_NAME           = "skip"
     DEFAULT_PERSISTENT_VOLUME_TYPE = var.default_persistent_volume_type
 
-    VOLUME_TOKEN_ENABLED          = true
     VOLUME_TOKEN_ISSUER           = local.volume_token_issuer
     VOLUME_TOKEN_SIGNING_KEY      = local.volume_token_signing_key
     VOLUME_TOKEN_SIGNING_KEY_NAME = local.volume_token_signature_name
