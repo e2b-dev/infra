@@ -48,6 +48,17 @@ var (
 	meter                        = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox")
 	envdInitCalls                = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdInitCalls))
 	waitForEnvdDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.WaitForEnvdDurationHistogramName))
+
+	uffdStartupPagesHistogram       = utils.Must(telemetry.GetHistogram(meter, telemetry.UffdStartupPagesHistogramName))
+	uffdStartupSourcePagesHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.UffdStartupSourcePagesHistogramName))
+	uffdStartupBytesHistogram       = utils.Must(telemetry.GetHistogram(meter, telemetry.UffdStartupBytesHistogramName))
+)
+
+// Sandbox start types recorded on the orchestrator.sandbox.uffd.startup.*
+// metrics via the start_type attribute.
+const (
+	StartTypeCreate = "create" // cold boot (template build)
+	StartTypeResume = "resume" // resume from a snapshot (the common runtime path)
 )
 
 var SandboxHttpTransport = otelhttp.NewTransport(
@@ -911,6 +922,7 @@ func (f *Factory) ResumeSandbox(
 
 	err = sbx.WaitForEnvd(
 		ctx,
+		StartTypeResume,
 		f.config.EnvdTimeout,
 	)
 	if err != nil {
@@ -1457,6 +1469,7 @@ func (s *Sandbox) WaitForExit(ctx context.Context) error {
 
 func (s *Sandbox) WaitForEnvd(
 	ctx context.Context,
+	startType string,
 	timeout time.Duration,
 ) (e error) {
 	start := time.Now()
@@ -1470,6 +1483,20 @@ func (s *Sandbox) WaitForEnvd(
 			attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
 			attribute.Bool("success", e == nil),
 		))
+
+		// Record the demand-fault working set the guest needed to reach this
+		// point, once per start. envd init is the first thing after resume, so
+		// the handler's cumulative serve counters here equal the startup
+		// counts. Recorded for both outcomes (success label) so slow/failed
+		// starts can be correlated with page volume.
+		stats := s.memory.ServeStats()
+		startupAttrs := metric.WithAttributes(
+			attribute.String("start_type", startType),
+			attribute.Bool("success", e == nil),
+		)
+		uffdStartupPagesHistogram.Record(ctx, stats.Pages, startupAttrs)
+		uffdStartupSourcePagesHistogram.Record(ctx, stats.SourcePages, startupAttrs)
+		uffdStartupBytesHistogram.Record(ctx, stats.Bytes, startupAttrs)
 
 		if e != nil {
 			return

@@ -167,6 +167,7 @@ func (cs *CreateSandbox) Sandbox(
 
 	err = sbx.WaitForEnvd(
 		ctx,
+		sandbox.StartTypeCreate,
 		waitEnvdTimeout,
 	)
 	if err != nil {
