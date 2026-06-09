@@ -182,6 +182,28 @@ Upload (`build_upload*.go`): skip `memfile`, `memfile.header`, and `snapfile`
 when `MemorySnapshot=false`; still upload `rootfs.ext4(.header)` and
 `metadata.json`. Absence of the memory artifacts is the on-storage signal.
 
+#### Repeated and mixed snapshots (already supported)
+
+A disk-only resume yields a cold-booted, `NoopMemory` (no-UFFD) sandbox — the
+same shape the template builder produces (`CreateSandbox` → `Pause`). Re-pausing
+it works with existing mechanisms:
+
+- Memory dirty/resident tracking does not require UFFD: `NoopMemory.DiffMetadata`
+  (`uffd/noop.go:37`) reads the custom FC `MemoryInfo` endpoint for the
+  dirty/empty bitmaps. `Memfd()` is nil (`noop.go:87`) and `pauseProcessMemory`
+  → `fc.ExportMemory` copies pages directly from the FC process for a nil memfd
+  (`sandbox.go:1261`).
+- `CreateSnapshot`'s disk drain+flush is memory-backend-independent and runs on
+  cold-booted VMs every template build, so it works after a previous disk-only
+  snapshot.
+
+Therefore: disk-only-after-disk-only works (the memory path is skipped entirely),
+and mixing is supported — you can later take a full *memory* snapshot of a
+disk-only-resumed sandbox via the custom-FC path. Caveat: a cold-booted sandbox
+has no memory base, so `DiffMetadata` marks all resident pages dirty
+(`noop.go:43-47`) → the memfile is a **full** snapshot, not an incremental diff
+(larger/slower, but correct; already true for template builds).
+
 ### Resume side (cold boot from rootfs)
 
 New `Server.createSandboxFromRootfs(ctx, template, config, runtime, req)`:
