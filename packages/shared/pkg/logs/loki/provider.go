@@ -149,26 +149,29 @@ func buildSandboxLogsQuery(teamID string, sandboxID string, level *logs.LogLevel
 	teamIDSanitized := sanitizeLokiLabel(teamID)
 
 	// The stream selector is always built server-side and scopes the query to the
-	// caller's own team + sandbox. The optional client pipeline is only ever appended
+	// caller's own team + sandbox. Anything the client supplies is only ever appended
 	// AFTER it; LogQL cannot reopen a stream selector in a later pipeline stage, so the
 	// scoping holds no matter what the client passes.
-	query := fmt.Sprintf("{teamID=`%s`, sandboxID=`%s`, category!=\"metrics\"}", teamIDSanitized, sandboxIDSanitized)
-	pipelineValue := strings.TrimSpace(utils.DerefOrDefault(pipeline, ""))
-	if level == nil && utils.DerefOrDefault(search, "") == "" && pipelineValue == "" {
-		return query
+	selector := fmt.Sprintf("{teamID=`%s`, sandboxID=`%s`, category!=\"metrics\"}", teamIDSanitized, sandboxIDSanitized)
+
+	// When a raw pipeline is supplied the client owns the entire log pipeline; the
+	// server contributes only the stream selector. The client provides its own parser
+	// and filter stages in valid LogQL order, e.g. `| json | pid="1234"` or `|= "error"`.
+	// This takes precedence over the structured level/search filters.
+	if pipelineValue := strings.TrimSpace(utils.DerefOrDefault(pipeline, "")); pipelineValue != "" {
+		return selector + " " + pipelineValue
 	}
 
-	query += " | json"
+	if level == nil && utils.DerefOrDefault(search, "") == "" {
+		return selector
+	}
+
+	query := selector + " | json"
 	if level != nil {
 		query += fmt.Sprintf(" | level =~ `%s`", minLevelRegexFilter(*level))
 	}
 	if utils.DerefOrDefault(search, "") != "" {
 		query += fmt.Sprintf(" | message =~ `%s`", sanitizeLogMessageRegexFilter(*search))
-	}
-	if pipelineValue != "" {
-		// Appended verbatim as LogQL pipeline stages. The client supplies the stage
-		// separators, e.g. `| pid="1234" | event_type="process_output"` or `|= "error"`.
-		query += " " + pipelineValue
 	}
 
 	return query

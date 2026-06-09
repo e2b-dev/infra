@@ -75,10 +75,11 @@ func TestBuildSandboxLogsQueryWithMessageSearch(t *testing.T) {
 func TestBuildSandboxLogsQueryWithPipeline(t *testing.T) {
 	t.Parallel()
 
-	pipeline := `| pid="1234" | event_type="process_output"`
+	// The client owns the whole pipeline (including its own `| json`); the server only
+	// contributes the enforced stream selector.
+	pipeline := `| json | pid="1234" | event_type="process_output"`
 	query := buildSandboxLogsQuery("team-id", "sandbox-id", nil, nil, &pipeline)
 
-	// The enforced stream selector is preserved; the client pipeline is appended verbatim.
 	assert.Equal(
 		t,
 		"{teamID=`team-id`, sandboxID=`sandbox-id`, category!=\"metrics\"} | json | pid=\"1234\" | event_type=\"process_output\"",
@@ -86,12 +87,27 @@ func TestBuildSandboxLogsQueryWithPipeline(t *testing.T) {
 	)
 }
 
+func TestBuildSandboxLogsQueryWithLineFilterPipeline(t *testing.T) {
+	t.Parallel()
+
+	// A bare line filter is valid directly after the selector (no forced `| json` in
+	// front of it that would produce invalid `| json |= "..."`).
+	pipeline := `|= "error"`
+	query := buildSandboxLogsQuery("team-id", "sandbox-id", nil, nil, &pipeline)
+
+	assert.Equal(
+		t,
+		"{teamID=`team-id`, sandboxID=`sandbox-id`, category!=\"metrics\"} |= \"error\"",
+		query,
+	)
+}
+
 func TestBuildSandboxLogsQueryPipelineKeepsSelectorScope(t *testing.T) {
 	t.Parallel()
 
-	// Even an attempt to reference another team is only appended as a pipeline stage
-	// after the enforced selector, so it can only narrow within the caller's own logs.
-	pipeline := `| teamID="other-team"`
+	// Even an attempt to reference another team is only appended after the enforced
+	// selector, so it can only narrow within the caller's own logs.
+	pipeline := `| json | teamID="other-team"`
 	query := buildSandboxLogsQuery("team-id", "sandbox-id", nil, nil, &pipeline)
 
 	assert.Equal(

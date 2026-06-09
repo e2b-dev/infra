@@ -1616,7 +1616,7 @@ type GetV2SandboxesSandboxIDLogsParams struct {
 	// Search Case-sensitive substring match on log message content
 	Search *string `form:"search,omitempty" json:"search,omitempty"`
 
-	// Query Advanced filter appended verbatim as LogQL pipeline stages after the server-enforced selector (`{teamID, sandboxID} | json`). The selector always scopes results to this sandbox, so the expression can only narrow within the caller's own logs. Include the stage separators, e.g. `| pid="1234" | event_type="process_output"` or `|= "error"`. To fetch a single command's output, filter by its pid (from the process Start event) and `event_type="process_output"`.
+	// Query Advanced LogQL log pipeline appended verbatim after the server-enforced stream selector (`{teamID, sandboxID, category!="metrics"}`). The selector always scopes results to this sandbox, so the expression can only narrow within the caller's own logs. Provide the complete pipeline, including your own parser stage, in valid LogQL order — e.g. `| json | pid="1234" | event_type="process_output"` to fetch a single command's output (pid comes from the process Start event), or `|= "error"` for a bare line filter. Takes precedence over the level and search filters.
 	Query *string `form:"query,omitempty" json:"query,omitempty"`
 }
 

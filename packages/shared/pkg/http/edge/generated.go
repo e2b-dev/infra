@@ -322,7 +322,7 @@ type V1SandboxLogsParams struct {
 	// Search Case-sensitive substring match on log message content
 	Search *string `form:"search,omitempty" json:"search,omitempty"`
 
-	// Query Advanced filter appended verbatim as LogQL pipeline stages after the server-enforced selector. Scoped to this sandbox; can only narrow within the caller's own logs.
+	// Query Advanced LogQL log pipeline appended verbatim after the server-enforced stream selector. Scoped to this sandbox; can only narrow within the caller's own logs. Provide the complete pipeline including your own parser stage, e.g. `| json | pid="1234"` or `|= "error"`.
 	Query *string `form:"query,omitempty" json:"query,omitempty"`
 }
 
