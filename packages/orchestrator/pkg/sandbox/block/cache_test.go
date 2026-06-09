@@ -1212,6 +1212,74 @@ func TestCacheDedup_BudgetExhaustionKeepsParentsDeduped(t *testing.T) {
 	require.EqualValues(t, 0, meta.Empty.GetCardinality())
 }
 
+func parentKeyedPage(buildID uuid.UUID, window int) dedupPageInfo {
+	return dedupPageInfo{
+		kind: dedupPageParent,
+		key:  dedupFetchKey{sourceType: parentFetchSource, buildID: buildID, window: window},
+	}
+}
+
+func TestFetchWindowerCompact(t *testing.T) {
+	t.Parallel()
+
+	current := dedupPageInfo{kind: dedupPageCurrent}
+	buildA, buildB, buildC := uuid.New(), uuid.New(), uuid.New()
+
+	t.Run("zero-benefit promotion is not committed", func(t *testing.T) {
+		t.Parallel()
+
+		// Two parents in distinct windows; the budget only covers one, and
+		// promoting it just trades a parent window for a current window.
+		w := fetchWindower{windowPages: 4}
+		pages := []dedupPageInfo{parentKeyedPage(buildA, 0), parentKeyedPage(buildA, 1)}
+		require.Equal(t, 0, w.compact(pages, 1, 1))
+		require.Equal(t, dedupPageParent, pages[0].kind)
+	})
+
+	t.Run("promotes a whole key group of non-adjacent parents", func(t *testing.T) {
+		t.Parallel()
+
+		// Two parents sharing one window, separated by a current page: the
+		// whole key group is promoted together (2 -> 1 windows).
+		w := fetchWindower{windowPages: 4}
+		pages := []dedupPageInfo{parentKeyedPage(buildA, 0), current, parentKeyedPage(buildA, 0)}
+		require.Equal(t, 2, w.compact(pages, 1, 4))
+		require.Equal(t, dedupPageCurrent, pages[0].kind)
+		require.Equal(t, dedupPageCurrent, pages[2].kind)
+	})
+
+	t.Run("combines distinct-key parents when only the union helps", func(t *testing.T) {
+		t.Parallel()
+
+		// current/A/current/B with two-page fetch windows: promoting either
+		// parent alone opens a second current window (zero benefit), but
+		// promoting both folds everything into two current windows (3 -> 2).
+		w := fetchWindower{windowPages: 2}
+		pages := []dedupPageInfo{current, parentKeyedPage(buildA, 0), current, parentKeyedPage(buildB, 0)}
+		require.Equal(t, 2, w.compact(pages, 2, 2))
+		require.Equal(t, dedupPageCurrent, pages[1].kind)
+		require.Equal(t, dedupPageCurrent, pages[3].kind)
+	})
+
+	t.Run("budget spent on cheapest groups first", func(t *testing.T) {
+		t.Parallel()
+
+		// A spans two pages of one window; B and C are distinct single-page
+		// windows. Budget 2 cannot eliminate A, but the cheaper B and C
+		// collapse into one current window (3 -> 2 windows).
+		w := fetchWindower{windowPages: 4}
+		pages := []dedupPageInfo{
+			parentKeyedPage(buildA, 0), parentKeyedPage(buildA, 0),
+			parentKeyedPage(buildB, 0), parentKeyedPage(buildC, 0),
+		}
+		require.Equal(t, 2, w.compact(pages, 1, 2))
+		require.Equal(t, dedupPageParent, pages[0].kind)
+		require.Equal(t, dedupPageParent, pages[1].kind)
+		require.Equal(t, dedupPageCurrent, pages[2].kind)
+		require.Equal(t, dedupPageCurrent, pages[3].kind)
+	})
+}
+
 // TestCache_FileSize_MatchesActualAllocation writes a known number of full
 // blocks through Cache and verifies that FileSize reports the on-disk
 // allocation in bytes — i.e. one block written ⇒ one block on disk.
