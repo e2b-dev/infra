@@ -72,7 +72,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 
 	// The pausing node holds the new snapshot's artifacts; record it so a resume
 	// that lost its node pin can still find a warm node.
-	affinityCfg := affinity.ConfigFromFlags(ctx, o.featureFlagsClient, featureflags.TeamContext(sbx.TeamID.String()))
+	affinityCfg := affinity.ConfigFromFlags(ctx, o.featureFlagsClient, featureflags.TeamContext(sbx.TeamID.String()), featureflags.TemplateContext(sbx.TemplateID), featureflags.SandboxContext(sbx.SandboxID))
 	if affinityCfg.Enabled {
 		go o.placementAffinity.Record(context.WithoutCancel(ctx), affinityCfg, node.ClusterID, node.ID, schedulingMeta)
 	}
