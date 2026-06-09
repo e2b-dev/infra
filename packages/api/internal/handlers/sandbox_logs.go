@@ -37,7 +37,7 @@ func (a *APIStore) GetSandboxesSandboxIDLogs(c *gin.Context, sandboxID string, p
 		telemetry.WithTeamID(team.ID.String()),
 	)
 
-	logs, apiErr := a.getSandboxLogs(ctx, team, sandboxID, params.Start, nil, params.Limit, nil, nil, nil)
+	logs, apiErr := a.getSandboxLogs(ctx, team, sandboxID, params.Start, nil, params.Limit, nil, nil, nil, nil)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportErrorByCode(ctx, apiErr.Code, "error when returning logs for sandbox", apiErr.Err)
@@ -81,7 +81,7 @@ func (a *APIStore) GetV2SandboxesSandboxIDLogs(c *gin.Context, sandboxID api.San
 	startMs := start.UnixMilli()
 	endMs := end.UnixMilli()
 
-	logs, apiErr := a.getSandboxLogs(ctx, team, sandboxID, &startMs, &endMs, params.Limit, &direction, apiToLogLevel(params.Level), params.Search)
+	logs, apiErr := a.getSandboxLogs(ctx, team, sandboxID, &startMs, &endMs, params.Limit, &direction, apiToLogLevel(params.Level), params.Search, params.Query)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportErrorByCode(ctx, apiErr.Code, "error when returning logs for sandbox", apiErr.Err)
@@ -102,6 +102,7 @@ func (a *APIStore) getSandboxLogs(
 	direction *api.LogsDirection,
 	level *logs.LogLevel,
 	search *string,
+	query *string,
 ) (api.SandboxLogs, *api.APIError) {
 	clusterID := clustersshared.WithClusterFallback(team.ClusterID)
 	cluster, ok := a.clusters.GetClusterById(clusterID)
@@ -113,7 +114,7 @@ func (a *APIStore) getSandboxLogs(
 		}
 	}
 
-	logs, apiErr := cluster.GetResources().GetSandboxLogs(ctx, team.ID.String(), sandboxID, start, end, limit, direction, level, search)
+	logs, apiErr := cluster.GetResources().GetSandboxLogs(ctx, team.ID.String(), sandboxID, start, end, limit, direction, level, search, query)
 	if apiErr != nil {
 		return api.SandboxLogs{}, apiErr
 	}
