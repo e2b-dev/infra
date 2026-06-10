@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/rs/zerolog"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
@@ -64,6 +65,42 @@ func entryInfo(path string) (*rpc.EntryInfo, error) {
 		SymlinkTarget: info.SymlinkTarget,
 		Metadata:      info.Metadata,
 	}, nil
+}
+
+// opCarriesEntry reports whether a filesystem event of the given type refers to an entry
+// that is expected to still exist at the path, and may therefore carry EntryInfo. Remove
+// and rename events refer to a path whose original entry is gone, so they must never carry
+// entry info: stat-ing the path could otherwise attach a replacement entry that was created
+// at the same path before the event was handled.
+func opCarriesEntry(op rpc.EventType) bool {
+	switch op {
+	case rpc.EventType_EVENT_TYPE_CREATE,
+		rpc.EventType_EVENT_TYPE_WRITE,
+		rpc.EventType_EVENT_TYPE_CHMOD:
+		return true
+	default:
+		return false
+	}
+}
+
+// eventEntryInfo returns the EntryInfo for the path that triggered a filesystem event.
+// It must only be called for events that carry an entry (see opCarriesEntry).
+//
+// Entry info is best-effort: a nil entry is returned (and the watch keeps running) when it
+// cannot be retrieved. A NotFound result is treated as a benign race (the entry was removed
+// between the event and the stat) and is not logged; any other failure is logged at warn level.
+func eventEntryInfo(logger *zerolog.Logger, path string) *rpc.EntryInfo {
+	entry, err := entryInfo(path)
+	if err != nil {
+		// NotFound is a benign race: the entry was removed before we could stat it.
+		if connect.CodeOf(err) != connect.CodeNotFound {
+			logger.Warn().Err(err).Str("path", path).Msg("failed to get entry info for filesystem event")
+		}
+
+		return nil
+	}
+
+	return entry
 }
 
 func toTimestamp(time time.Time) *timestamppb.Timestamp {
