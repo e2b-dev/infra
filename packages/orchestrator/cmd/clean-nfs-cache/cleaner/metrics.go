@@ -10,11 +10,13 @@ import (
 // Metric attribute keys (Attr*) and the values they take (Val*) used across
 // the cleaner.
 const (
-	AttrDepth  = "depth"
-	AttrKind   = "kind"
-	AttrSource = "source"
-	AttrResult = "result"
-	AttrAction = "action"
+	AttrDepth    = "depth"
+	AttrKind     = "kind"
+	AttrSource   = "source"
+	AttrResult   = "result"
+	AttrAction   = "action"
+	AttrLayout   = "layout"
+	AttrScenario = "scenario"
 
 	ValKindFile               = "file"
 	ValKindDir                = "dir"
@@ -29,6 +31,9 @@ const (
 	ValActionDeleted          = "deleted"
 	ValActionSkippedGrace     = "skipped_grace_period"
 	ValActionDeleteFailed     = "delete_failed"
+
+	ValLayoutFlat    = "flat"
+	ValLayoutSharded = "sharded"
 )
 
 // Metrics holds the OTEL instruments emitted by the cleaner. Construct via
@@ -54,6 +59,11 @@ type Metrics struct {
 
 	// Empty/orphan directory encounters during scan.
 	EmptyDirEncountered metric.Int64Counter // attrs: kind, action
+
+	// Sharding A/B benchmark instruments. Recorded only by the
+	// --bench-shard-read mode of the cleaner binary.
+	BenchOpenDuration metric.Int64Histogram // us; attrs: layout, scenario
+	BenchOpenOps      metric.Int64Counter   // attrs: layout, scenario, result
 }
 
 // NewMetrics builds all instruments from the given meter. A noop meter
@@ -158,6 +168,21 @@ func NewMetrics(meter metric.Meter) (*Metrics, error) {
 		metric.WithDescription("Directories scanned that were either truly empty or orphaned (no memfile/ or rootfs.ext4/ subdir), split by what we did about it"),
 	); err != nil {
 		return nil, fmt.Errorf("empty_dir.encountered: %w", err)
+	}
+
+	if m.BenchOpenDuration, err = meter.Int64Histogram(
+		"clean.nfs.bench.open.duration",
+		metric.WithDescription("Wall time of a single os.Open in the sharding A/B benchmark"),
+		metric.WithUnit("us"),
+	); err != nil {
+		return nil, fmt.Errorf("bench.open.duration: %w", err)
+	}
+
+	if m.BenchOpenOps, err = meter.Int64Counter(
+		"clean.nfs.bench.open.ops",
+		metric.WithDescription("Total open attempts performed in the sharding A/B benchmark, by outcome"),
+	); err != nil {
+		return nil, fmt.Errorf("bench.open.ops: %w", err)
 	}
 
 	return m, nil

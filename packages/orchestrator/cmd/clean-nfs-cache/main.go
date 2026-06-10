@@ -41,12 +41,13 @@ func main() {
 	ctx := context.Background()
 	var log logger.Logger
 	var err error
-	var opts cleaner.Options
+	var cfg runConfig
 
 	var lp telemetry.LogProvider
 	var mp *sdkmetric.MeterProvider
 	var metrics *cleaner.Metrics
-	opts, log, lp, mp, metrics, err = preRun(ctx)
+	cfg, log, lp, mp, metrics, err = preRun(ctx)
+	opts := cfg.Cleaner
 	if err != nil {
 		fmt.Println("NFS cache cleaner failed:", err)
 		if lp != nil {
@@ -74,6 +75,22 @@ func main() {
 		}
 		lp.Shutdown(ctx)
 	}()
+
+	if cfg.BenchEnabled {
+		log.Info(ctx, "starting bench-shard-read",
+			zap.String("path", cfg.Bench.Path),
+			zap.Int("bench_build_ids", cfg.Bench.NumBuildIDs),
+			zap.Int("bench_chunks_per_build", cfg.Bench.ChunksPerBuild),
+			zap.Int("bench_file_size", cfg.Bench.FileSize),
+			zap.Int("bench_concurrency", cfg.Bench.Concurrency),
+			zap.Bool("bench_drop_caches", cfg.Bench.DropCaches),
+			zap.Bool("bench_keep_artifacts", cfg.Bench.KeepArtifacts),
+			zap.String("otel_collector_endpoint", opts.OtelCollectorEndpoint),
+		)
+		err = cleaner.RunBench(ctx, cfg.Bench, metrics, log)
+
+		return
+	}
 
 	start := time.Now()
 	log.Info(ctx, "starting",
@@ -141,8 +158,17 @@ func main() {
 		zap.Duration("std_deviation", sd.Round(time.Second)))
 }
 
-func preRun(ctx context.Context) (cleaner.Options, logger.Logger, telemetry.LogProvider, *sdkmetric.MeterProvider, *cleaner.Metrics, error) {
-	var opts cleaner.Options
+// runConfig bundles everything preRun parses, including the optional
+// sharding A/B benchmark mode. Keeps preRun's return tuple small.
+type runConfig struct {
+	Cleaner      cleaner.Options
+	Bench        cleaner.BenchOptions
+	BenchEnabled bool
+}
+
+func preRun(ctx context.Context) (runConfig, logger.Logger, telemetry.LogProvider, *sdkmetric.MeterProvider, *cleaner.Metrics, error) {
+	var cfg runConfig
+	opts := &cfg.Cleaner
 	var featureFlagPresent bool
 
 	flags := flag.NewFlagSet("clean-nfs-cache", flag.ExitOnError)
@@ -158,20 +184,29 @@ func preRun(ctx context.Context) (cleaner.Options, logger.Logger, telemetry.LogP
 	flags.IntVar(&opts.MaxConcurrentDelete, "max-concurrent-delete", 1, "number of concurrent deleter goroutines")
 	flags.IntVar(&opts.MaxErrorRetries, "max-retries", 10, "maximum number of continuous error or miss retries before giving up")
 
+	flags.BoolVar(&cfg.BenchEnabled, "bench-shard-read", false, "run the flat-vs-sharded read-path benchmark instead of cleaning up; bench artifacts live under <path>/bench-shard-read/")
+	flags.IntVar(&cfg.Bench.NumBuildIDs, "bench-build-ids", 200, "number of synthetic BuildID dirs per layout in --bench-shard-read mode")
+	flags.IntVar(&cfg.Bench.ChunksPerBuild, "bench-chunks-per-build", 50, "number of synthetic chunk files per BuildID in --bench-shard-read mode")
+	flags.IntVar(&cfg.Bench.FileSize, "bench-file-size", 4096, "size of each synthetic chunk file in bytes; small is fine, the bench targets metadata cost, not throughput")
+	flags.IntVar(&cfg.Bench.Concurrency, "bench-concurrency", 8, "number of goroutines for the parallel-within-build scenario")
+	flags.BoolVar(&cfg.Bench.DropCaches, "bench-drop-caches", false, "drop kernel FS caches between cold runs (requires root; on failure the bench logs and proceeds)")
+	flags.BoolVar(&cfg.Bench.KeepArtifacts, "bench-keep-artifacts", false, "do not RemoveAll the synthetic bench tree on exit; useful for post-hoc inspection")
+
 	args := os.Args[1:] // skip the command name
 	if err := flags.Parse(args); err != nil {
-		return opts, nil, nil, nil, nil, fmt.Errorf("could not parse flags: %w", err)
+		return cfg, nil, nil, nil, nil, fmt.Errorf("could not parse flags: %w", err)
 	}
 
 	args = flags.Args()
 	if len(args) != 1 {
-		return opts, nil, nil, nil, nil, ErrUsage
+		return cfg, nil, nil, nil, nil, ErrUsage
 	}
 	opts.Path = args[0]
+	cfg.Bench.Path = args[0]
 
 	ffc, err := featureflags.NewClient()
 	if err != nil {
-		return opts, nil, nil, nil, nil, err
+		return cfg, nil, nil, nil, nil, err
 	}
 	defer ffc.Close(ctx)
 
@@ -210,14 +245,14 @@ func preRun(ctx context.Context) (cleaner.Options, logger.Logger, telemetry.LogP
 		var err error
 		otelCore, logProvider, err = newOtelCore(ctx, opts.OtelCollectorEndpoint)
 		if err != nil {
-			return opts, nil, nil, nil, nil, fmt.Errorf("failed to create otel logger: %w", err)
+			return cfg, nil, nil, nil, nil, fmt.Errorf("failed to create otel logger: %w", err)
 		}
 		cores = append(cores, otelCore)
 
 		meterProvider, metrics, err = newOtelMetrics(ctx, opts.OtelCollectorEndpoint)
 		if err != nil {
 			logProvider.Shutdown(ctx)
-			return opts, nil, nil, nil, nil, fmt.Errorf("failed to create otel metrics: %w", err)
+			return cfg, nil, nil, nil, nil, fmt.Errorf("failed to create otel metrics: %w", err)
 		}
 	}
 
@@ -247,7 +282,7 @@ func preRun(ctx context.Context) (cleaner.Options, logger.Logger, telemetry.LogP
 				meterProvider.Shutdown(ctx)
 			}
 
-			return opts, nil, nil, nil, nil, fmt.Errorf("could not get disk info: %w", err)
+			return cfg, nil, nil, nil, nil, fmt.Errorf("could not get disk info: %w", err)
 		}
 		targetDiskUsage := uint64(opts.TargetDiskUsagePercent / 100 * float64(diskInfo.Total))
 		if uint64(diskInfo.Used) > targetDiskUsage {
@@ -255,7 +290,7 @@ func preRun(ctx context.Context) (cleaner.Options, logger.Logger, telemetry.LogP
 		}
 	}
 
-	return opts, l, logProvider, meterProvider, metrics, nil
+	return cfg, l, logProvider, meterProvider, metrics, nil
 }
 
 // newOtelMetrics mirrors newOtelCore but for the metric pipeline. Returns the
