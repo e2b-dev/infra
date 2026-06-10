@@ -113,6 +113,11 @@ func TestOutputLogger_PerCommandCap(t *testing.T) {
 	for _, l := range lines {
 		if l.Message == truncationMarker {
 			markers++
+			// The marker must carry the same fields as regular output lines so it
+			// survives the pid-scoped retrieval filter.
+			assert.Equal(t, "process_output", l.EventType)
+			assert.Equal(t, testPid, l.Pid)
+			assert.NotEmpty(t, l.Stream)
 		} else {
 			emitted++
 		}

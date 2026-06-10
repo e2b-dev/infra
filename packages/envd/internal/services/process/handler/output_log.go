@@ -46,11 +46,15 @@ func newCommandLogBudget() *commandLogBudget {
 	return b
 }
 
-// markTruncated emits the truncation marker exactly once across both streams.
-func (b *commandLogBudget) markTruncated(logger *zerolog.Logger) {
+// markTruncated emits the truncation marker exactly once across both streams. The
+// marker carries the same pid/stream fields as regular output lines so it survives
+// the pid-scoped retrieval filter and command-specific queries report truncation.
+func (b *commandLogBudget) markTruncated(logger *zerolog.Logger, stream string, pid uint32) {
 	b.truncated.Do(func() {
 		logger.Warn().
 			Str("event_type", "process_output").
+			Str("stream", stream).
+			Uint32("pid", pid).
 			Msg(truncationMarker)
 	})
 }
@@ -115,7 +119,7 @@ func (o *outputLogger) emitLine(line []byte) {
 	}
 
 	if o.budget.remainingBytes.Load() <= 0 || o.budget.remainingRecords.Load() <= 0 {
-		o.budget.markTruncated(o.logger)
+		o.budget.markTruncated(o.logger, o.stream, o.pid())
 
 		return
 	}
@@ -135,6 +139,6 @@ func (o *outputLogger) emitLine(line []byte) {
 	bytesLeft := o.budget.remainingBytes.Add(-int64(len(line)))
 	recordsLeft := o.budget.remainingRecords.Add(-1)
 	if bytesLeft <= 0 || recordsLeft <= 0 {
-		o.budget.markTruncated(o.logger)
+		o.budget.markTruncated(o.logger, o.stream, o.pid())
 	}
 }
