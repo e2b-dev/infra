@@ -17,6 +17,7 @@ const (
 	AttrAction   = "action"
 	AttrLayout   = "layout"
 	AttrScenario = "scenario"
+	AttrScale    = "scale"
 
 	ValKindFile               = "file"
 	ValKindDir                = "dir"

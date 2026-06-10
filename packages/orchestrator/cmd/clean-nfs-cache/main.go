@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -79,7 +81,7 @@ func main() {
 	if cfg.BenchEnabled {
 		log.Info(ctx, "starting bench-shard-read",
 			zap.String("path", cfg.Bench.Path),
-			zap.Int("bench_build_ids", cfg.Bench.NumBuildIDs),
+			zap.Ints("bench_scales", cfg.Bench.Scales),
 			zap.Int("bench_chunks_per_build", cfg.Bench.ChunksPerBuild),
 			zap.Int("bench_file_size", cfg.Bench.FileSize),
 			zap.Int("bench_concurrency", cfg.Bench.Concurrency),
@@ -185,8 +187,10 @@ func preRun(ctx context.Context) (runConfig, logger.Logger, telemetry.LogProvide
 	flags.IntVar(&opts.MaxConcurrentDelete, "max-concurrent-delete", 1, "number of concurrent deleter goroutines")
 	flags.IntVar(&opts.MaxErrorRetries, "max-retries", 10, "maximum number of continuous error or miss retries before giving up")
 
+	var benchScalesRaw string
 	flags.BoolVar(&cfg.BenchEnabled, "bench-shard-read", false, "run the flat-vs-sharded read-path benchmark instead of cleaning up; bench artifacts live under <path>/bench-shard-read/")
-	flags.IntVar(&cfg.Bench.NumBuildIDs, "bench-build-ids", 10000, "number of synthetic BuildID dirs per layout in --bench-shard-read mode; drives the cold_cross_build sample count and is the variable to scale up when probing real Filestore-sized directories")
+	flags.StringVar(&benchScalesRaw, "bench-scales", "100,1000,10000", "comma-separated ladder of BuildID-count scales to sweep, e.g. 100,1000,10000; one data tree is laid down at the largest scale and each smaller scale runs against a prefix of the BuildID list")
+	flags.IntVar(&cfg.Bench.NumBuildIDs, "bench-build-ids", 0, "single-scale shortcut: equivalent to setting --bench-scales=<N>; ignored if --bench-scales is non-empty")
 	flags.IntVar(&cfg.Bench.ChunksPerBuild, "bench-chunks-per-build", 5, "number of synthetic chunk files per BuildID; only affects warm_same_build and parallel_within_build sample counts")
 	flags.IntVar(&cfg.Bench.FileSize, "bench-file-size", 4096, "size of each synthetic chunk file in bytes; small is fine, the bench targets metadata + small-read cost, not throughput")
 	flags.IntVar(&cfg.Bench.Concurrency, "bench-concurrency", 8, "number of goroutines for the parallel-within-build scenario")
@@ -205,6 +209,12 @@ func preRun(ctx context.Context) (runConfig, logger.Logger, telemetry.LogProvide
 	}
 	opts.Path = args[0]
 	cfg.Bench.Path = args[0]
+
+	scales, scalesErr := parseBenchScales(benchScalesRaw)
+	if scalesErr != nil {
+		return cfg, nil, nil, nil, nil, fmt.Errorf("--bench-scales: %w", scalesErr)
+	}
+	cfg.Bench.Scales = scales
 
 	ffc, err := featureflags.NewClient()
 	if err != nil {
@@ -407,6 +417,34 @@ func loop[T any](items []T, betterThan func(one, two T) bool) T {
 }
 
 var ErrUsage = errors.New("usage: clean-nfs-cache <path> [<options>]")
+
+// parseBenchScales turns a comma-separated string like "100,1000,10000" into
+// a sorted, deduplicated, all-positive []int. Empty input returns nil so the
+// caller can fall back to the single-scale shortcut (--bench-build-ids).
+func parseBenchScales(raw string) ([]int, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]int, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		n, err := strconv.Atoi(p)
+		if err != nil {
+			return nil, fmt.Errorf("invalid scale %q: %w", p, err)
+		}
+		if n <= 0 {
+			return nil, fmt.Errorf("scales must be > 0, got %d", n)
+		}
+		out = append(out, n)
+	}
+
+	return out, nil
+}
 
 func timeit(ctx context.Context, message string, fn func()) {
 	start := time.Now()

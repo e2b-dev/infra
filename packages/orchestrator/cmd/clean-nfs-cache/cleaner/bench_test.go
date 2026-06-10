@@ -12,7 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-func TestRunBench_EndToEnd(t *testing.T) {
+func TestRunBench_EndToEnd_SingleScale(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 
@@ -29,6 +29,29 @@ func TestRunBench_EndToEnd(t *testing.T) {
 	// Artifacts should have been removed by default.
 	_, statErr := os.Stat(filepath.Join(root, "bench-shard-read"))
 	require.True(t, os.IsNotExist(statErr), "bench artifacts should be removed; got: %v", statErr)
+}
+
+func TestRunBench_EndToEnd_Sweep(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+
+	opts := BenchOptions{
+		Path:           root,
+		Scales:         []int{2, 4, 6},
+		ChunksPerBuild: 2,
+		FileSize:       128,
+		Concurrency:    2,
+		KeepArtifacts:  true,
+	}
+
+	require.NoError(t, RunBench(t.Context(), opts, nil, logger.NewNopLogger()))
+
+	// max(Scales) controls how much data exists on disk; smaller scales run
+	// against a prefix of the BuildID list and share that tree.
+	flatRoot := filepath.Join(root, "bench-shard-read", "flat")
+	flatBuildDirs, err := os.ReadDir(flatRoot)
+	require.NoError(t, err)
+	require.Len(t, flatBuildDirs, 6, "setup should create max(Scales) BuildIDs")
 }
 
 func TestRunBench_KeepArtifactsCreatesBothLayouts(t *testing.T) {
@@ -91,9 +114,10 @@ func TestRunBench_ValidatesOptions(t *testing.T) {
 		want string
 	}{
 		{"missing path", BenchOptions{NumBuildIDs: 1, ChunksPerBuild: 1, FileSize: 1, Concurrency: 1}, "Path is required"},
-		{"zero build ids", BenchOptions{Path: "/tmp", ChunksPerBuild: 1, FileSize: 1, Concurrency: 1}, "NumBuildIDs"},
+		{"no scales no build ids", BenchOptions{Path: "/tmp", ChunksPerBuild: 1, FileSize: 1, Concurrency: 1}, "Scales or NumBuildIDs"},
 		{"zero chunks", BenchOptions{Path: "/tmp", NumBuildIDs: 1, FileSize: 1, Concurrency: 1}, "ChunksPerBuild"},
 		{"zero concurrency", BenchOptions{Path: "/tmp", NumBuildIDs: 1, ChunksPerBuild: 1, FileSize: 1}, "Concurrency"},
+		{"negative scale entry", BenchOptions{Path: "/tmp", Scales: []int{-1}, ChunksPerBuild: 1, FileSize: 1, Concurrency: 1}, "Scales entry"},
 	}
 
 	for _, tc := range cases {

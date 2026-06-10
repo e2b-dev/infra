@@ -38,11 +38,18 @@ type BenchOptions struct {
 	// subdirectory under it, never touching real cache contents.
 	Path string
 
-	// NumBuildIDs is how many synthetic BuildID dirs to create per layout.
-	// The cold_cross_build scenario opens one chunk per BuildID so this
-	// directly drives that scenario's sample count and is the variable to
-	// scale up when probing the realistic Filestore directory size.
+	// NumBuildIDs is how many synthetic BuildID dirs to create per layout
+	// when not running a sweep. The cold_cross_build scenario opens one
+	// chunk per BuildID, so this directly drives that scenario's sample
+	// count. Ignored when Scales is set.
 	NumBuildIDs int
+
+	// Scales is the sweep ladder: e.g. [100, 1000, 10000] runs every
+	// scenario at each scale and emits a `scale=N` attribute on metrics.
+	// The data tree is laid down once at max(Scales) and each scale runs
+	// against a prefix of the BuildID list. Empty falls back to single
+	// scale = NumBuildIDs.
+	Scales []int
 
 	// ChunksPerBuild is how many chunk files to create per BuildID.
 	ChunksPerBuild int
@@ -72,8 +79,8 @@ type BenchOptions struct {
 }
 
 // RunBench performs the sharding A/B benchmark and reports results.
-// The OTEL Metrics, if non-nil, receive per-open timings tagged with
-// {layout, scenario}; a noop *Metrics is acceptable for local runs.
+// The OTEL Metrics, if non-nil, receive per-read timings tagged with
+// {layout, scenario, scale}; a noop *Metrics is acceptable for local runs.
 func RunBench(ctx context.Context, opts BenchOptions, metrics *Metrics, log logger.Logger) error {
 	if metrics == nil {
 		metrics = NoopMetrics()
@@ -83,12 +90,15 @@ func RunBench(ctx context.Context, opts BenchOptions, metrics *Metrics, log logg
 	}
 
 	benchRoot := filepath.Join(opts.Path, "bench-shard-read")
+	maxScale := opts.Scales[len(opts.Scales)-1]
 	log.Info(ctx, "bench: setup",
 		zap.String("root", benchRoot),
-		zap.Int("build_ids", opts.NumBuildIDs),
+		zap.Ints("scales", opts.Scales),
+		zap.Int("max_scale", maxScale),
 		zap.Int("chunks_per_build", opts.ChunksPerBuild),
 		zap.Int("file_size", opts.FileSize),
 		zap.Int("concurrency", opts.Concurrency),
+		zap.Int("setup_concurrency", opts.SetupConcurrency),
 		zap.Bool("drop_caches", opts.DropCaches),
 	)
 
@@ -103,37 +113,49 @@ func RunBench(ctx context.Context, opts BenchOptions, metrics *Metrics, log logg
 		}()
 	}
 
-	buildIDs, err := setupBenchData(ctx, opts, flatRoot, shardedRoot, log)
+	buildIDs, err := setupBenchData(ctx, opts, maxScale, flatRoot, shardedRoot, log)
 	if err != nil {
 		return fmt.Errorf("bench setup: %w", err)
 	}
 
-	results := make(map[string]map[string]*scenarioStats) // layout → scenario → stats
+	// scale → layout → scenario → stats
+	results := make(map[int]map[string]map[string]*scenarioStats, len(opts.Scales))
 
-	for _, layout := range []struct {
-		name string
-		root string
-	}{
-		{ValLayoutFlat, flatRoot},
-		{ValLayoutSharded, shardedRoot},
-	} {
-		layoutResults := map[string]*scenarioStats{}
+	for _, scale := range opts.Scales {
+		subset := buildIDs[:scale]
+		log.Info(ctx, "bench: scale starting", zap.Int("scale", scale))
+		scaleResults := make(map[string]map[string]*scenarioStats, 2)
 
-		log.Info(ctx, "bench: running cold cross-build scenario", zap.String("layout", layout.name))
-		tryDropCaches(ctx, opts, log)
-		layoutResults[ValScenarioColdCrossBuild] = runColdCrossBuild(ctx, layout.name, layout.root, opts, buildIDs, metrics)
+		for _, layout := range []struct {
+			name string
+			root string
+		}{
+			{ValLayoutFlat, flatRoot},
+			{ValLayoutSharded, shardedRoot},
+		} {
+			layoutResults := map[string]*scenarioStats{}
 
-		log.Info(ctx, "bench: running warm same-build scenario", zap.String("layout", layout.name))
-		layoutResults[ValScenarioWarmSameBuild] = runWarmSameBuild(ctx, layout.name, layout.root, opts, buildIDs, metrics)
+			log.Info(ctx, "bench: running cold cross-build scenario",
+				zap.Int("scale", scale), zap.String("layout", layout.name))
+			tryDropCaches(ctx, opts, log)
+			layoutResults[ValScenarioColdCrossBuild] = runColdCrossBuild(ctx, scale, layout.name, layout.root, opts, subset, metrics)
 
-		log.Info(ctx, "bench: running parallel within-build scenario", zap.String("layout", layout.name))
-		tryDropCaches(ctx, opts, log)
-		layoutResults[ValScenarioParallel] = runParallelWithinBuild(ctx, layout.name, layout.root, opts, buildIDs, metrics)
+			log.Info(ctx, "bench: running warm same-build scenario",
+				zap.Int("scale", scale), zap.String("layout", layout.name))
+			layoutResults[ValScenarioWarmSameBuild] = runWarmSameBuild(ctx, scale, layout.name, layout.root, opts, subset, metrics)
 
-		results[layout.name] = layoutResults
+			log.Info(ctx, "bench: running parallel within-build scenario",
+				zap.Int("scale", scale), zap.String("layout", layout.name))
+			tryDropCaches(ctx, opts, log)
+			layoutResults[ValScenarioParallel] = runParallelWithinBuild(ctx, scale, layout.name, layout.root, opts, subset, metrics)
+
+			scaleResults[layout.name] = layoutResults
+		}
+
+		results[scale] = scaleResults
 	}
 
-	reportSummary(ctx, log, results)
+	reportSummary(ctx, log, opts.Scales, results)
 
 	return nil
 }
@@ -142,9 +164,6 @@ func validateBenchOptions(opts *BenchOptions) error {
 	var errs []error
 	if opts.Path == "" {
 		errs = append(errs, errors.New("Path is required"))
-	}
-	if opts.NumBuildIDs <= 0 {
-		errs = append(errs, errors.New("NumBuildIDs must be > 0"))
 	}
 	if opts.ChunksPerBuild <= 0 {
 		errs = append(errs, errors.New("ChunksPerBuild must be > 0"))
@@ -156,8 +175,27 @@ func validateBenchOptions(opts *BenchOptions) error {
 		errs = append(errs, errors.New("Concurrency must be > 0"))
 	}
 	if opts.SetupConcurrency <= 0 {
-		// Permissive default: callers (tests, ad-hoc) may not bother to set it.
 		opts.SetupConcurrency = 32
+	}
+
+	// Normalize the scale ladder. If Scales is empty, fall back to a single
+	// scale derived from NumBuildIDs. Sort ascending so the sweep runs
+	// small-to-large (cheaper to drop-and-warm on smaller cohorts first).
+	if len(opts.Scales) == 0 {
+		if opts.NumBuildIDs <= 0 {
+			errs = append(errs, errors.New("either Scales or NumBuildIDs must be > 0"))
+		} else {
+			opts.Scales = []int{opts.NumBuildIDs}
+		}
+	} else {
+		for _, s := range opts.Scales {
+			if s <= 0 {
+				errs = append(errs, fmt.Errorf("Scales entry must be > 0, got %d", s))
+			}
+		}
+		slices.Sort(opts.Scales)
+		// Deduplicate sorted scales in-place.
+		opts.Scales = slices.Compact(opts.Scales)
 	}
 
 	return errors.Join(errs...)
@@ -190,15 +228,16 @@ func chunkFilename(index, fileSize int) string {
 	return fmt.Sprintf("%012d-%d.bin", index, fileSize)
 }
 
-// setupBenchData creates NumBuildIDs UUID-named directories under both
-// flat and sharded roots, each populated with ChunksPerBuild chunk files
-// of FileSize bytes. Returns the list of BuildIDs used.
+// setupBenchData creates `total` UUID-named directories under both flat
+// and sharded roots, each populated with ChunksPerBuild chunk files of
+// FileSize bytes. Returns the list of BuildIDs used (sweep code runs each
+// scale against a prefix of this slice, so order is stable and meaningful).
 //
 // Setup is parallelized across SetupConcurrency goroutines because NFS file
 // creation is RTT-bound; at 10K+ BuildIDs a sequential loop would take
 // minutes per layout.
-func setupBenchData(ctx context.Context, opts BenchOptions, flatRoot, shardedRoot string, log logger.Logger) ([]string, error) {
-	buildIDs := make([]string, opts.NumBuildIDs)
+func setupBenchData(ctx context.Context, opts BenchOptions, total int, flatRoot, shardedRoot string, log logger.Logger) ([]string, error) {
+	buildIDs := make([]string, total)
 	for i := range buildIDs {
 		buildIDs[i] = uuid.NewString()
 	}
@@ -362,10 +401,11 @@ func recordRead(ctx context.Context, path string, attrs []attribute.KeyValue, me
 // runColdCrossBuild opens one chunk from each BuildID in shuffled order. This
 // is the worst case for sharded layouts on a cold attr cache: every open
 // traverses a different intermediate directory tree.
-func runColdCrossBuild(ctx context.Context, layout, root string, opts BenchOptions, buildIDs []string, metrics *Metrics) *scenarioStats {
+func runColdCrossBuild(ctx context.Context, scale int, layout, root string, opts BenchOptions, buildIDs []string, metrics *Metrics) *scenarioStats {
 	attrs := []attribute.KeyValue{
 		attribute.String(AttrLayout, layout),
 		attribute.String(AttrScenario, ValScenarioColdCrossBuild),
+		attribute.Int(AttrScale, scale),
 	}
 	stats := &scenarioStats{}
 
@@ -385,10 +425,11 @@ func runColdCrossBuild(ctx context.Context, layout, root string, opts BenchOptio
 // runWarmSameBuild opens every chunk of one BuildID in order. The attribute
 // cache should hit on the leaf directory after the first open, so the per-open
 // cost converges to the warm minimum and the layout depth should not matter.
-func runWarmSameBuild(ctx context.Context, layout, root string, opts BenchOptions, buildIDs []string, metrics *Metrics) *scenarioStats {
+func runWarmSameBuild(ctx context.Context, scale int, layout, root string, opts BenchOptions, buildIDs []string, metrics *Metrics) *scenarioStats {
 	attrs := []attribute.KeyValue{
 		attribute.String(AttrLayout, layout),
 		attribute.String(AttrScenario, ValScenarioWarmSameBuild),
+		attribute.Int(AttrScale, scale),
 	}
 	stats := &scenarioStats{}
 
@@ -407,10 +448,11 @@ func runWarmSameBuild(ctx context.Context, layout, root string, opts BenchOption
 // runParallelWithinBuild fires Concurrency goroutines that each open every
 // chunk in one BuildID. Mimics NBD's pattern where many block reads target
 // the same data file in parallel.
-func runParallelWithinBuild(ctx context.Context, layout, root string, opts BenchOptions, buildIDs []string, metrics *Metrics) *scenarioStats {
+func runParallelWithinBuild(ctx context.Context, scale int, layout, root string, opts BenchOptions, buildIDs []string, metrics *Metrics) *scenarioStats {
 	attrs := []attribute.KeyValue{
 		attribute.String(AttrLayout, layout),
 		attribute.String(AttrScenario, ValScenarioParallel),
+		attribute.Int(AttrScale, scale),
 	}
 
 	b := buildIDs[0]
@@ -450,43 +492,48 @@ func buildDirFor(layout, root, buildID string) string {
 	return flatBuildDir(root, buildID)
 }
 
-// reportSummary prints a layout × scenario comparison table to the log.
-func reportSummary(ctx context.Context, log logger.Logger, results map[string]map[string]*scenarioStats) {
+// reportSummary prints a scale × scenario × layout comparison to the log.
+// One line per (scale, scenario) with flat/sharded percentiles and the delta.
+func reportSummary(ctx context.Context, log logger.Logger, scales []int, results map[int]map[string]map[string]*scenarioStats) {
 	scenarios := []string{ValScenarioColdCrossBuild, ValScenarioWarmSameBuild, ValScenarioParallel}
-	for _, s := range scenarios {
-		flat := results[ValLayoutFlat][s]
-		sharded := results[ValLayoutSharded][s]
-		fields := []zap.Field{
-			zap.String("scenario", s),
+	for _, scale := range scales {
+		scaleResults := results[scale]
+		for _, s := range scenarios {
+			flat := scaleResults[ValLayoutFlat][s]
+			sharded := scaleResults[ValLayoutSharded][s]
+			fields := []zap.Field{
+				zap.Int("scale", scale),
+				zap.String("scenario", s),
+			}
+			if flat != nil {
+				meanF := flat.mean()
+				p50F, p99F, maxF := flat.percentiles()
+				fields = append(fields,
+					zap.Int("flat_samples", len(flat.durations)),
+					zap.Int("flat_errs", flat.errs),
+					zap.Duration("flat_mean", meanF),
+					zap.Duration("flat_p50", p50F),
+					zap.Duration("flat_p99", p99F),
+					zap.Duration("flat_max", maxF),
+				)
+			}
+			if sharded != nil {
+				meanS := sharded.mean()
+				p50S, p99S, maxS := sharded.percentiles()
+				fields = append(fields,
+					zap.Int("sharded_samples", len(sharded.durations)),
+					zap.Int("sharded_errs", sharded.errs),
+					zap.Duration("sharded_mean", meanS),
+					zap.Duration("sharded_p50", p50S),
+					zap.Duration("sharded_p99", p99S),
+					zap.Duration("sharded_max", maxS),
+				)
+			}
+			if flat != nil && sharded != nil && flat.mean() > 0 {
+				deltaPct := float64(sharded.mean()-flat.mean()) / float64(flat.mean()) * 100
+				fields = append(fields, zap.Float64("sharded_vs_flat_mean_pct", deltaPct))
+			}
+			log.Info(ctx, "bench: result", fields...)
 		}
-		if flat != nil {
-			meanF := flat.mean()
-			p50F, p99F, maxF := flat.percentiles()
-			fields = append(fields,
-				zap.Int("flat_samples", len(flat.durations)),
-				zap.Int("flat_errs", flat.errs),
-				zap.Duration("flat_mean", meanF),
-				zap.Duration("flat_p50", p50F),
-				zap.Duration("flat_p99", p99F),
-				zap.Duration("flat_max", maxF),
-			)
-		}
-		if sharded != nil {
-			meanS := sharded.mean()
-			p50S, p99S, maxS := sharded.percentiles()
-			fields = append(fields,
-				zap.Int("sharded_samples", len(sharded.durations)),
-				zap.Int("sharded_errs", sharded.errs),
-				zap.Duration("sharded_mean", meanS),
-				zap.Duration("sharded_p50", p50S),
-				zap.Duration("sharded_p99", p99S),
-				zap.Duration("sharded_max", maxS),
-			)
-		}
-		if flat != nil && sharded != nil && flat.mean() > 0 {
-			deltaPct := float64(sharded.mean()-flat.mean()) / float64(flat.mean()) * 100
-			fields = append(fields, zap.Float64("sharded_vs_flat_mean_pct", deltaPct))
-		}
-		log.Info(ctx, "bench: result", fields...)
 	}
 }
