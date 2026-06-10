@@ -1156,6 +1156,7 @@ func (s *Sandbox) Pause(
 		dedupBudget = block.DedupBudget{
 			MaxFetchWindowsPerBlock:        dedupCfg.Get("maxFetchWindowsPerBlock").IntValue(),
 			MaxPromotedParentPagesPerBlock: dedupCfg.Get("maxPromotedParentPagesPerBlock").IntValue(),
+			MaxPromotedParentPagesTotal:    dedupCfg.Get("maxPromotedParentPagesTotal").IntValue(),
 			FetchRunWindowPages:            dedupCfg.Get("fetchRunWindowPages").IntValue(),
 		}
 	}

@@ -148,6 +148,7 @@ var (
 		"directIO":                       false,
 		"maxFetchWindowsPerBlock":        0,
 		"maxPromotedParentPagesPerBlock": 0,
+		"maxPromotedParentPagesTotal":    0,
 		"fetchRunWindowPages":            0,
 	}))
 

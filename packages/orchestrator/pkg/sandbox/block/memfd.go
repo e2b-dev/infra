@@ -306,14 +306,7 @@ func (d *DedupedMemfdCache) runDedup(
 		logger.L().Warn(ctx, "close memfd after dedup drain", zap.Error(closeErr))
 	}
 
-	recordDedupAttrs(ctx,
-		plan.exportedSize/header.PageSize,
-		int64(plan.pageDirty.GetCardinality()),
-		int64(plan.pageEmpty.GetCardinality()),
-		plan.promotedBlocks,
-		plan.promotedPages,
-		compareDur, writeDur,
-	)
+	recordDedupAttrs(ctx, plan, compareDur, writeDur)
 	logSetOnceErr(ctx, "dedup done", d.done.SetResult(cache, err))
 }
 

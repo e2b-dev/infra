@@ -1176,6 +1176,95 @@ func TestCacheDedup_BestEffortPerPageCacheCheck(t *testing.T) {
 	require.True(t, meta.Dirty.Contains(3))
 }
 
+func TestDedupPlanPromoteCheapestFrames(t *testing.T) {
+	t.Parallel()
+
+	buildA, buildB := uuid.New(), uuid.New()
+	newPlan := func() *dedupPlan { return &dedupPlan{pageDirty: roaring.New(), pageEmpty: roaring.New()} }
+
+	t.Run("cheapest keys first until budget", func(t *testing.T) {
+		t.Parallel()
+
+		p := newPlan()
+		p.promoteCheapestFrames(map[dedupFetchKey]*roaring.Bitmap{
+			{buildID: buildA, window: 0}: roaring.BitmapOf(10, 11, 12),
+			{buildID: buildA, window: 1}: roaring.BitmapOf(20),
+			{buildID: buildB, window: 0}: roaring.BitmapOf(30, 31),
+		}, 3, 512)
+
+		// The 1-page and 2-page keys fit the budget; the 3-page key does not.
+		require.EqualValues(t, 2, p.promotedFrames)
+		require.EqualValues(t, 3, p.promotedFramePages)
+		require.True(t, p.pageDirty.Contains(20))
+		require.True(t, p.pageDirty.Contains(30))
+		require.True(t, p.pageDirty.Contains(31))
+		require.False(t, p.pageDirty.Contains(10))
+	})
+
+	t.Run("full-window keys are never promoted", func(t *testing.T) {
+		t.Parallel()
+
+		p := newPlan()
+		p.promoteCheapestFrames(map[dedupFetchKey]*roaring.Bitmap{
+			{buildID: buildA, window: 0}: roaring.BitmapOf(0, 1, 2, 3),
+		}, 100, 4)
+
+		require.EqualValues(t, 0, p.promotedFrames)
+		require.True(t, p.pageDirty.IsEmpty())
+	})
+
+	t.Run("nil map is a no-op", func(t *testing.T) {
+		t.Parallel()
+
+		p := newPlan()
+		p.promoteCheapestFrames(nil, 100, 512)
+
+		require.EqualValues(t, 0, p.promotedFrames)
+	})
+}
+
+func TestCacheDedup_GlobalFrameBudgetPromotesCheapestKeys(t *testing.T) {
+	t.Parallel()
+
+	pageSize := int64(header.PageSize)
+	blockSize := 4 * pageSize
+	size := 2 * blockSize
+
+	baseData := make([]byte, size)
+	_, err := rand.Read(baseData)
+	require.NoError(t, err)
+	srcData := make([]byte, size)
+	copy(srcData, baseData)
+	// Pages 0,4,6,7 differ (current); pages 1-3 match base in fetch window 0
+	// (3 parent pages) and page 5 matches in window 1 (1 parent page).
+	for _, p := range []int64{0, 4, 6, 7} {
+		srcData[p*pageSize] ^= 0xFF
+	}
+
+	dirty := fullDirty(size, blockSize)
+	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
+
+	// Budget 2 promotes only the cheapest key (window 1, 1 page); window 0
+	// needs 3 more pages and does not fit.
+	cache, meta, err := src.Dedup(t.Context(), &fakeOriginalDevice{data: baseData}, dirty, blockSize, t.TempDir()+"/dedup", false, false, DedupBudget{MaxPromotedParentPagesTotal: 2, FetchRunWindowPages: 4})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cache.Close() })
+
+	require.EqualValues(t, 5, meta.Dirty.GetCardinality())
+	require.True(t, meta.Dirty.Contains(5))
+	for _, p := range []uint32{1, 2, 3} {
+		require.False(t, meta.Dirty.Contains(p), "page %d should stay deduped", p)
+	}
+	require.EqualValues(t, 0, meta.Empty.GetCardinality())
+
+	// The cache packs dirty pages: page 5 sits at slot Rank(5)-1.
+	slot := int64(meta.Dirty.Rank(5)) - 1
+	got := make([]byte, pageSize)
+	_, err = cache.ReadAt(got, slot*pageSize)
+	require.NoError(t, err)
+	require.Equal(t, srcData[5*pageSize:6*pageSize], got)
+}
+
 // With no promotion budget, parent pages that match the base stay deduped even
 // when the block exceeds MaxFetchWindowsPerBlock: the compaction can't spend
 // any promotions, so it must leave the parents out of the diff rather than
