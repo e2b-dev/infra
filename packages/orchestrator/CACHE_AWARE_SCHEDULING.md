@@ -130,6 +130,43 @@ For a primitive policy, `EndTime`, `autoPause`, explicit pause, and timeout-driv
 
 Pause/resume and snapshots behave like checkpoints. The runtime behavior of a sandbox before checkpointing may predict future behavior of resumes from that checkpoint: fetched memfile regions, write-heavy rootfs activity, runtime length, and repeated pause/resume patterns may all indicate which cached data will matter next. This should be treated as an optional ML feature later, not a requirement for the primitive build-ID policy.
 
+## Load Balancing vs Cache Affinity
+
+The goal is to keep Best-of-K's good load distribution while raising cache locality, without overwhelming the nodes that hold popular artifacts. The current and planned mechanisms, in order of authority:
+
+1. **Best-of-K sampling.** `chooseNode` scores only K uniformly-sampled eligible candidates, not the whole fleet — "power of K choices" is itself a load balancer. The affinity bonus is applied only inside that random candidate set, so it can never make placement "always pick the globally hottest node": a hot node only competes when it is randomly sampled.
+2. **Hard admission filters.** `sample` drops a candidate before scoring if it is not ready, CPU-incompatible, missing labels, over the overcommit ratio (`CanFit`, the `R` ceiling), or already starting too many instances (`maxStartingInstancesPerNode`). Affinity cannot override capacity or health.
+3. **Bounded subtractive bonus.** The score is `load_term - bonus`, with the bonus clamped by `maxHits` and `maxBonusPpm`. The load term grows as a node fills (allocated + in-flight + live usage, normalized by `R*cpuCount`), and `OptimisticAdd` bumps load immediately on a successful placement, before the next metrics report. So affinity buys a fixed amount of "load slack" and no more; past it, a less-loaded cold node wins automatically.
+
+Known weaknesses of the current flat-bonus design, and the planned improvements:
+
+- **Small K misses warm nodes.** With K=3 and a large fleet, a warm node is often not sampled, so the hit is missed entirely. Planned fix: a **warm-augmented candidate set** — inject 1–2 nodes from the affinity index into the candidate set alongside the K uniform samples, still subject to the same admission filters. This raises hit rate without disturbing load balance.
+- **Flat bonus can still nudge a busy warm node.** The bonus is the same regardless of the warm node's load (up to the clamp). Planned fix: a **capacity-aware bonus that decays with load** (e.g. scale by `max(0, 1 - load/R)`), so a warm node is preferred only while it has headroom and stops winning once busy. This turns "don't overwhelm" into a structural property rather than something `maxBonus` approximates.
+- **Thundering herd onto a freshly-warm node.** Concurrent placements for the same build read the same warm nodes within the TTL window before load metrics catch up. Mitigated today by the `maxBonus` clamp and `OptimisticAdd`; if canary shows skew, the knobs are `maxBonusPpm` down, `topNodes` up (spread across more warm nodes), or `K` up. A later refinement is to spread placements across the `topNodes` warm set rather than always preferring the single highest-scoring warm node.
+
+Lineage scoring (EN-32) amplifies the herd risk: a popular base layer is shared by many builds, so shared-ancestor affinity steers many different builds toward the same base-holding nodes. Capacity-aware decay goes from nice-to-have to required once lineage is enabled.
+
+## Redis Operational Characteristics
+
+The index is Redis-backed. Cost per operation (exact-build-ID version):
+
+- **Read (`Scores`)** — one `ZRevRangeWithScores`, synchronous on the create hot path, `readTimeoutMs` ceiling (default 100ms), fail-open to plain Best-of-K on any error.
+- **Write (`Record`)** — a 3-command pipeline (`ZIncrBy` + `ZRemRangeByRank` + `Expire`), async in a goroutine, one round trip, on each successful create and each pause.
+
+At a target of 200 creates/s + 200 pauses/s: ~200 reads/s + ~400 writes/s ≈ 600 round trips/s, ~1,400 commands/s. A single Redis instance handles 10⁴–10⁵+ ops/s, so throughput is not the constraint (one to two orders of magnitude of headroom). The real limits:
+
+- **Memory / key cardinality.** Keys are `placement-affinity:<cluster>:<buildID>`, ZSET capped at `topNodes`, TTL `ttlSeconds` (default 28800 = 8h). Every pause generates a fresh snapshot build ID, so pause writes create a unique key read once (by that sandbox's resume) and then resident for 8h. At 200 pauses/s that is up to ~5.8M single-member keys (~hundreds of MB to ~1GB). Fix: **split TTL** — short (minutes) for pause/resume keys, long for create/template keys — plus `maxmemory` with `volatile-ttl`/LRU eviction so affinity can never starve other tenants.
+- **Create-path latency coupling.** `Scores` is on the critical path of every create. Single sub-ms round trip, bounded and fail-open, but the **connection pool must be sized** for the peak concurrent in-flight `Scores` within `readTimeoutMs`, or pool waits (not Redis) become the latency source.
+- **Shared-instance contention / SPOF.** It currently reuses the main sandbox-store `redisClient`. Affinity is best-effort and should not compete with the store during spikes or Redis persistence/GC pauses; put it on a separate logical DB or instance.
+- **Write goroutine fan-out.** `Record` is `go`-dispatched per event; concurrency stays low at 400/s of sub-ms work, but unbounded spawn under a burst is a minor risk. A bounded worker pool, or a small batching buffer that pipelines several builds' `ZIncrBy` per round trip, would make it sturdier and cut round trips.
+
+Lineage version (EN-32): writes get wider (the node is recorded under exact + base + up to `maxLineageRecorded` lineage keys — ~19 IDs × 3 commands in one pipeline, still one round trip), and reads depend on how ancestors are supplied:
+
+- **Option A (reverse-cache ancestors in Redis):** a `GET` of stored metadata, then a pipeline of N `ZRevRange` — **two sequential round trips** on the create hot path, roughly doubling create-path Redis latency. Avoid.
+- **Option B (persist base build IDs on `EnvBuild`):** ancestors come from the Postgres row already fetched in `getSandboxData`, so `Scores` stays **one round trip** (a single pipeline of N `ZRevRange`), at the cost of merging up to ~18 sorted sets per placement. Preferred.
+
+Memory for lineage grows sublinearly (base/lineage keys are shared ancestor IDs across many child builds, bounded by `topNodes` and `maxLineageRecorded`). Popular base layers become hot read keys — cheap for Redis, but they concentrate placement, which is why lineage needs the capacity-aware bonus decay above.
+
 ## Predictive Cache Policy
 
 The ML-shaped problem is cache retention, prewarming, and replication, not the first version of placement.
