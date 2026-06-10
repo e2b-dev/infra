@@ -51,6 +51,17 @@ type Handler struct {
 	cmd *exec.Cmd
 	tty *os.File
 
+	// processGroup is true when the command was started in its own process
+	// group (Setpgid). When set, signals are delivered to the whole group so
+	// the command's child processes are terminated together with the leader.
+	// PTY processes are excluded — the pty package already puts them in their
+	// own session and we leave their signal handling untouched.
+	processGroup bool
+
+	// reaped is set once cmd.Wait has reaped the leader. After that point the
+	// leader's pid may be recycled, so process-group signals must not be sent.
+	reaped atomic.Bool
+
 	cancel context.CancelFunc
 
 	outCtx    context.Context //nolint:containedctx // todo: refactor so this can be removed
@@ -134,6 +145,25 @@ func New(
 	}
 	applyCgroupFD(cmd.SysProcAttr, cgroupFD, ok)
 
+	// Non-PTY commands run in their own process group so that SendSignal can
+	// reach the command's entire process tree (the leader plus any children it
+	// spawned), not just the single process envd manages. envd's per-process
+	// handle could not otherwise terminate those children, leaving them running
+	// — and consuming resources — after the command was killed.
+	// PTY processes are left alone: the pty package starts them in their own
+	// session already, and we keep their existing signal behavior.
+	isPTY := req.GetPty() != nil
+	if !isPTY {
+		cmd.SysProcAttr.Setpgid = true
+
+		// exec.CommandContext kills only the leader when the context (e.g. the
+		// command timeout) fires. Override the canceller to signal the whole
+		// process group instead, matching SendSignal's behavior.
+		cmd.Cancel = func() error {
+			return signalProcessGroup(cmd, syscall.SIGKILL)
+		}
+	}
+
 	resolvedPath, err := permissions.ExpandAndResolve(req.GetProcess().GetCwd(), user, defaults.Workdir)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
@@ -178,15 +208,16 @@ func New(
 	outCtx, outCancel := context.WithCancel(ctx)
 
 	h := &Handler{
-		Config:    req.GetProcess(),
-		cmd:       cmd,
-		Tag:       req.Tag,
-		DataEvent: outMultiplex,
-		cancel:    cancel,
-		outCtx:    outCtx,
-		outCancel: outCancel,
-		EndEvent:  NewMultiplexedChannel[rpc.ProcessEvent_End](0),
-		logger:    logger,
+		Config:       req.GetProcess(),
+		cmd:          cmd,
+		Tag:          req.Tag,
+		DataEvent:    outMultiplex,
+		cancel:       cancel,
+		outCtx:       outCtx,
+		outCancel:    outCancel,
+		EndEvent:     NewMultiplexedChannel[rpc.ProcessEvent_End](0),
+		logger:       logger,
+		processGroup: !isPTY,
 	}
 
 	if req.GetPty() != nil {
@@ -358,7 +389,45 @@ func (p *Handler) SendSignal(signal syscall.Signal) error {
 		p.outCancel()
 	}
 
+	// For non-PTY commands the signal is delivered to the whole process group so
+	// the command's children are terminated together with the leader. PTY
+	// processes keep the original single-process behavior.
+	if p.processGroup {
+		// Once the leader has been reaped the kernel is free to recycle its pid,
+		// and a raw kill(-pid) could then land on an unrelated command that
+		// reused the pid as its own process group leader. Bail out here just as
+		// Go's os.Process.Signal does via ErrProcessDone. The flag is read with
+		// atomics to avoid racing the reaper goroutine in Wait.
+		if p.reaped.Load() {
+			return os.ErrProcessDone
+		}
+
+		return signalProcessGroup(p.cmd, signal)
+	}
+
 	return p.cmd.Process.Signal(signal)
+}
+
+// signalProcessGroup delivers signal to every process in cmd's process group.
+// The command is started with Setpgid, so the process group id equals the
+// leader's pid; signaling the negative pid targets the entire group. An already
+// gone group (ESRCH) is treated as success — there is nothing left to kill.
+//
+// Callers must ensure the leader has not been reaped before calling this (the
+// pid may otherwise have been recycled); see the p.reaped guard in SendSignal.
+// The timeout-driven cmd.Cancel callback is safe because exec stops invoking it
+// once the process exits.
+func signalProcessGroup(cmd *exec.Cmd, signal syscall.Signal) error {
+	if cmd.Process == nil {
+		return errors.New("process not started")
+	}
+
+	err := syscall.Kill(-cmd.Process.Pid, signal)
+	if err != nil && !errors.Is(err, syscall.ESRCH) {
+		return err
+	}
+
+	return nil
 }
 
 func (p *Handler) ResizeTty(size *pty.Winsize) error {
@@ -449,6 +518,11 @@ func (p *Handler) Wait() {
 	<-p.outCtx.Done()
 
 	err := p.cmd.Wait()
+
+	// The leader has been reaped; stop process-group signals from targeting a
+	// potentially recycled pid. Must be set before the blocking EndEvent send
+	// below, which can hold the handler discoverable for a while.
+	p.reaped.Store(true)
 
 	p.tty.Close()
 
