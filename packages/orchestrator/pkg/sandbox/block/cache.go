@@ -281,6 +281,13 @@ func dedupCompare(
 	baseHeader := base.Header()
 	peeker, _ := base.(CachePeeker)
 
+	// First pass: classify all pages and collect parent-key groups
+	type blockInfo struct {
+		absOff int64
+		pages  []dedupPageInfo
+	}
+	var blocks []blockInfo
+	
 	pages := make([]dedupPageInfo, blockSize/header.PageSize)
 	for r := range BitsetRanges(dirty, blockSize) {
 		plan.exportedSize += r.Size
@@ -296,7 +303,7 @@ func dedupCompare(
 				return nil, err
 			}
 
-			clear(pages)
+			blockPages := make([]dedupPageInfo, blockSize/header.PageSize)
 			for i := int64(0); i < blockSize; i += header.PageSize {
 				srcPage := srcBuf[i : i+header.PageSize]
 				pageOff := absOff + i
@@ -304,7 +311,7 @@ func dedupCompare(
 				if header.IsZero(srcPage) {
 					continue // zero value of dedupPageInfo is empty
 				}
-				info := &pages[i/header.PageSize]
+				info := &blockPages[i/header.PageSize]
 				info.kind = dedupPageCurrent
 
 				var mapped header.BuildMap
@@ -335,39 +342,94 @@ func dedupCompare(
 				} else {
 					info.key = dedupFetchKey{window: int(pageOff / windowBytes)}
 				}
-			}
 
-			w := fetchWindower{windowPages: budget.FetchRunWindowPages, currentStart: currentStoredPages}
-			if n := w.compact(pages, budget.MaxFetchWindowsPerBlock, budget.MaxPromotedParentPagesPerBlock); n > 0 {
-				plan.promotedBlocks++
-				plan.promotedPages += int64(n)
-			}
-
-			for p, info := range pages {
-				pageIdx := uint32(absOff/header.PageSize) + uint32(p)
-				switch info.kind {
-				case dedupPageEmpty:
-					plan.pageEmpty.Add(pageIdx)
-				case dedupPageCurrent:
-					plan.pageDirty.Add(pageIdx)
-					currentStoredPages++
-				case dedupPageParent:
-					if parentByKey != nil {
-						bm := parentByKey[info.key]
-						if bm == nil {
-							bm = roaring.New()
-							parentByKey[info.key] = bm
-						}
-						bm.Add(pageIdx)
+				if parentByKey != nil {
+					pageIdx := uint32(absOff/header.PageSize) + uint32(i/header.PageSize)
+					bm := parentByKey[info.key]
+					if bm == nil {
+						bm = roaring.New()
+						parentByKey[info.key] = bm
 					}
+					bm.Add(pageIdx)
+				}
+			}
+
+			blocks = append(blocks, blockInfo{absOff: absOff, pages: blockPages})
+		}
+	}
+
+	// Determine which parent pages will be globally promoted
+	globallyPromoted := roaring.New()
+	if parentByKey != nil {
+		globallyPromoted = determineGlobalPromotion(parentByKey, budget.MaxPromotedParentPagesTotal, budget.FetchRunWindowPages, plan)
+	}
+
+	// Second pass: apply per-block promotion with correct currentStart
+	for _, block := range blocks {
+		copy(pages, block.pages)
+		
+		w := fetchWindower{windowPages: budget.FetchRunWindowPages, currentStart: currentStoredPages}
+		if n := w.compact(pages, budget.MaxFetchWindowsPerBlock, budget.MaxPromotedParentPagesPerBlock); n > 0 {
+			plan.promotedBlocks++
+			plan.promotedPages += int64(n)
+		}
+
+		for p, info := range pages {
+			pageIdx := uint32(block.absOff/header.PageSize) + uint32(p)
+			switch info.kind {
+			case dedupPageEmpty:
+				plan.pageEmpty.Add(pageIdx)
+			case dedupPageCurrent:
+				plan.pageDirty.Add(pageIdx)
+				currentStoredPages++
+			case dedupPageParent:
+				if globallyPromoted.Contains(pageIdx) {
+					currentStoredPages++
 				}
 			}
 		}
 	}
 
-	plan.promoteCheapestFrames(parentByKey, budget.MaxPromotedParentPagesTotal, budget.FetchRunWindowPages)
+	// Add globally promoted pages to pageDirty
+	plan.pageDirty.Or(globallyPromoted)
 
 	return plan, nil
+}
+
+// determineGlobalPromotion identifies which parent pages will be promoted globally
+// and updates plan metrics, returning a bitmap of the promoted page indices.
+func determineGlobalPromotion(parentByKey map[dedupFetchKey]*roaring.Bitmap, budgetPages, windowPages int, plan *dedupPlan) *roaring.Bitmap {
+	type candidate struct {
+		key   dedupFetchKey
+		pages *roaring.Bitmap
+	}
+	cands := make([]candidate, 0, len(parentByKey))
+	for k, bm := range parentByKey {
+		cands = append(cands, candidate{k, bm})
+	}
+	slices.SortFunc(cands, func(a, b candidate) int {
+		if d := int(a.pages.GetCardinality()) - int(b.pages.GetCardinality()); d != 0 {
+			return d
+		}
+		if d := bytes.Compare(a.key.buildID[:], b.key.buildID[:]); d != 0 {
+			return d
+		}
+		return a.key.window - b.key.window
+	})
+
+	globallyPromoted := roaring.New()
+	spent := 0
+	for _, c := range cands {
+		n := int(c.pages.GetCardinality())
+		if n >= windowPages || spent+n > budgetPages {
+			break
+		}
+		spent += n
+		globallyPromoted.Or(c.pages)
+		plan.promotedFrames++
+		plan.promotedFramePages += int64(n)
+	}
+	return globallyPromoted
 }
 
 // promoteCheapestFrames stores whole parent fetch-key page sets in the diff,
