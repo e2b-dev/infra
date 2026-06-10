@@ -17,15 +17,32 @@ type statTimes struct {
 	gid   uint32
 }
 
-func GetEntryFromPath(path string) (EntryInfo, error) {
+// GetEntryFromPath looks up the entry at path. When includeMetadata is true it
+// also reads the file's user-defined xattr metadata; callers that don't surface
+// metadata (e.g. the orchestrator volume service) pass false to skip the extra
+// path-based xattr syscalls. The metadata read resolves path in the caller's
+// mount namespace, so it's only correct when path is interpreted there.
+func GetEntryFromPath(path string, includeMetadata bool) (EntryInfo, error) {
 	fileInfo, err := os.Lstat(path)
 	if err != nil {
 		return EntryInfo{}, err
 	}
 
-	return GetEntryInfo(path, fileInfo), nil
+	entry := GetEntryInfo(path, fileInfo)
+	if includeMetadata {
+		// Metadata is best-effort: a read failure shouldn't fail the entry
+		// lookup (Size/Mode/times are still valid), and this helper has no
+		// logger to report it through. Callers that need the error (e.g. the
+		// upload handler) call ReadMetadata directly.
+		entry.Metadata, _ = ReadMetadata(path)
+	}
+
+	return entry, nil
 }
 
+// GetEntryInfo builds an EntryInfo purely from fileInfo. It does not read xattr
+// metadata; callers that surface metadata use GetEntryFromPath with
+// includeMetadata set.
 func GetEntryInfo(path string, fileInfo os.FileInfo) EntryInfo {
 	fileMode := fileInfo.Mode()
 
