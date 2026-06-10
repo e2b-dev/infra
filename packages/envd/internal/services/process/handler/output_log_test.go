@@ -73,6 +73,29 @@ func TestOutputLogger_SplitsLines(t *testing.T) {
 	assert.Equal(t, "tail", lines[2].Message)
 }
 
+// TestOutputLogger_EmitsBlankLines verifies completed empty lines are persisted as
+// records with an empty message instead of being dropped, so retrieval matches the
+// command's actual output.
+func TestOutputLogger_EmitsBlankLines(t *testing.T) {
+	t.Parallel()
+
+	logger, buf := newCapturingLogger()
+	o := newOutputLogger(logger, newCommandLogBudget(), "stdout", testPidFn)
+
+	o.write([]byte("a\n\nb\r\n\r\n"))
+
+	lines := parseLines(t, buf.Bytes())
+	require.Len(t, lines, 4)
+	assert.Equal(t, "a", lines[0].Message)
+	assert.Empty(t, lines[1].Message)
+	assert.Equal(t, "b", lines[2].Message)
+	assert.Empty(t, lines[3].Message)
+	for _, l := range lines {
+		assert.Equal(t, testPid, l.Pid)
+		assert.Equal(t, "process_output", l.EventType)
+	}
+}
+
 // TestOutputLogger_TrimsCarriageReturn verifies CRLF line endings are normalized.
 func TestOutputLogger_TrimsCarriageReturn(t *testing.T) {
 	t.Parallel()

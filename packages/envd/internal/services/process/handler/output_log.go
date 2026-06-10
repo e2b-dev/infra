@@ -113,11 +113,10 @@ func (o *outputLogger) flush() {
 	}
 }
 
+// emitLine persists one completed output line as a log record. Blank lines are
+// emitted too (with an empty message): they are part of the command's real output,
+// and dropping them would make pid-filtered retrieval diverge from the live stream.
 func (o *outputLogger) emitLine(line []byte) {
-	if len(line) == 0 {
-		return
-	}
-
 	if o.budget.remainingBytes.Load() <= 0 || o.budget.remainingRecords.Load() <= 0 {
 		o.budget.markTruncated(o.logger, o.stream, o.pid())
 
