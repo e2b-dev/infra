@@ -587,6 +587,23 @@ real nodes also depends on rootfs fetch latency (workstream 6 — rootfs
 prefetch is the next lever for cold nodes). Measure in prod via
 `orchestrator.sandbox.create.duration` split by a reboot attribute.
 
+Remaining ideas (untracked, roughly by effort):
+
+- **Slimmer guest kernel config** — kernel init is ~235 ms, now roughly half
+  the local boot; dropping unused drivers/initcalls is the main lever left.
+- **`rw` in the kernel cmdline** — the cmdline passes neither `ro` nor `rw`
+  and the kernel defaults to read-only; booting `rw` makes
+  `systemd-remount-fs` a no-op and lets envd drop that ordering. Few ms.
+  Safe here: no boot-time fsck, and ext4 replays the journal at mount either
+  way (we never set `noload`).
+- **Skip systemd entirely (opt-in)** — a minimal init that mounts essentials
+  and execs envd directly would make the sandbox routable in ~kernel time,
+  with systemd started behind it (or not at all). Changes guest semantics:
+  templates relying on systemd units at boot would break, so opt-in only.
+  Floor estimate: FC VM setup ~20-30 ms + minimal-kernel init ~60-100 ms +
+  envd start — ~100-150 ms to routable, the practical limit without
+  resurrecting memory snapshots.
+
 ## 6. Rootfs prefetch (+ envd locality)
 
 Only memory prefetch exists today (`metadata.Prefetch.Memory`, UFFD `Prefault`).
