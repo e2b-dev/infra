@@ -484,7 +484,9 @@ its journal on the reboot. Lock in with a named constant + comment.
    guest `sync` before pause and (b) the FC disk drain/flush that currently rides
    on `CreateSnapshot`. Don't drop both. Use `IoEngine: Sync` to avoid async
    writes in flight. A stronger guarantee than `sync` would be `fsfreeze` via
-   envd (not exposed today; needs an envd addition + version bump).
+   envd (not exposed today; needs an envd addition + version bump), or a clean
+   guest shutdown — see the quiesce flow in workstream 3. `sync` alone leaves a
+   sync→pause race window where acknowledged writes can be lost.
 5. **Routing/visibility.** Mark running only after `WaitForEnvd`, or the
    client-proxy may route to a still-booting guest (`map.go` live set →
    `proxy.go`). Cold boot needs a longer envd-ready window than memory resume; if
@@ -548,6 +550,25 @@ called for these builds; audit memfile/snapfile callers.
 Run envd `sync` before `process.Pause`; keep the `CreateSnapshot` disk
 drain+flush (or a dedicated flush); use `IoEngine: Sync`. Stronger consistency →
 `fsfreeze` via envd (new envd endpoint + version bump).
+
+Known gap (flagged in PR review): `sync` is point-in-time — a writer racing
+between `sync` returning and `process.Pause` can get an acknowledged write
+that lives only in the guest page cache and is lost on reboot. The cgroup
+freeze in the prototype is best-effort/flag-gated, so quiescing is not yet
+guaranteed. Planned hardening — make guest quiesce mandatory for fs-only
+pause; candidate flow (best combination of the guest-side step TBD):
+
+1. Guest-side quiesce via envd: `sync` + `fsfreeze`, or a clean guest
+   shutdown/reboot — the guest unmounts its filesystems and the FC process
+   just exits, the strongest quiesce of all.
+2. Pause FC (for the host-side IO flush; today via `CreateSnapshot`'s
+   drain+flush side effect, later a dedicated flush endpoint — open
+   question 4). Skipped entirely if the guest already shut down.
+3. Copy/export only the filesystem (rootfs diff), as today.
+4. Repair/replay the ext4 journal host-side at snapshot time (workstream 4)
+   so the persisted fs is clean.
+5. Resume by cold-booting FC with just the fs, as the build system already
+   does (`Factory.RebootSandbox`).
 
 Note: today the disk drain+flush is a side effect of the custom FC
 `CreateSnapshot` call, so disk-only either keeps creating a throwaway snapfile or
