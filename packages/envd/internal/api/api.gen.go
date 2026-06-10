@@ -48,6 +48,9 @@ type ComposeRequest struct {
 
 // EntryInfo defines model for EntryInfo.
 type EntryInfo struct {
+	// Metadata User-defined metadata stored as extended attributes on the file.
+	Metadata *map[string]string `json:"metadata,omitempty"`
+
 	// Name Name of the file
 	Name string `json:"name"`
 
@@ -246,7 +249,7 @@ type ServerInterface interface {
 	// Compose multiple files into a single file using zero-copy concatenation. Source files are deleted after successful composition.
 	// (POST /files/compose)
 	PostFilesCompose(w http.ResponseWriter, r *http.Request)
-	// Freeze user/pty/socat cgroups before pause. Written directly by envd to avoid Process.Start / shell overhead under load.
+	// Freeze user/pty cgroups before pause. Written directly by envd to avoid Process.Start / shell overhead under load.
 	// (POST /freeze)
 	PostFreeze(w http.ResponseWriter, r *http.Request)
 	// Check the health of the service
@@ -294,7 +297,7 @@ func (_ Unimplemented) PostFilesCompose(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Freeze user/pty/socat cgroups before pause. Written directly by envd to avoid Process.Start / shell overhead under load.
+// Freeze user/pty cgroups before pause. Written directly by envd to avoid Process.Start / shell overhead under load.
 // (POST /freeze)
 func (_ Unimplemented) PostFreeze(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)

@@ -6,7 +6,7 @@ info:
 
 components:
   securitySchemes:
-    AdminTokenAuth:
+    AdminApiKeyAuth:
       type: apiKey
       in: header
       name: X-Admin-Token
@@ -1054,7 +1054,7 @@ paths:
       summary: Bootstrap user
       tags: [teams]
       security:
-        - AdminTokenAuth: []
+        - AdminApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/userId"
       responses:
@@ -1074,7 +1074,7 @@ paths:
       summary: Bootstrap auth provider user
       tags: [teams]
       security:
-        - AdminTokenAuth: []
+        - AdminApiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -1101,7 +1101,7 @@ paths:
       description: Creates and provisions a team for an admin-authenticated bootstrap workflow.
       tags: [admin]
       security:
-        - AdminTokenAuth: []
+        - AdminApiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -1129,7 +1129,7 @@ paths:
       summary: Resolve user profiles
       tags: [admin]
       security:
-        - AdminTokenAuth: []
+        - AdminApiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -1155,7 +1155,7 @@ paths:
       summary: Lookup user profiles by email
       tags: [admin]
       security:
-        - AdminTokenAuth: []
+        - AdminApiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -1181,7 +1181,7 @@ paths:
       summary: Get user profile
       tags: [admin]
       security:
-        - AdminTokenAuth: []
+        - AdminApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/userId"
       responses:
