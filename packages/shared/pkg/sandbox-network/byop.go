@@ -175,9 +175,15 @@ func ValidateEgressProxy(ctx context.Context, cfg *EgressProxyConfig, resolve Ho
 	}, nil
 }
 
-// IsIPInDeniedSandboxCIDRs reports whether ip falls into any entry of
-// DeniedSandboxCIDRs.
+// IsIPInDeniedSandboxCIDRs reports whether ip must be denied as a BYOP egress
+// proxy endpoint: the unspecified address (0.0.0.0 / ::) or any IP in
+// DeniedSandboxCIDRs. The unspecified address is checked here because
+// 0.0.0.0/8 cannot be encoded into the kernel nftables denylist.
 func IsIPInDeniedSandboxCIDRs(ip net.IP) bool {
+	if ip == nil || ip.IsUnspecified() {
+		return true
+	}
+
 	for _, ipNet := range parsedDeniedSandboxCIDRs {
 		if ipNet.Contains(ip) {
 			return true

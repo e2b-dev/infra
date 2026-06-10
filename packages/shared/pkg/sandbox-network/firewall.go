@@ -18,7 +18,6 @@ const (
 
 var DeniedSandboxCIDRs = []string{
 	// IPv4 private/local ranges
-	"0.0.0.0/8",      // RFC 1122 "this network"; not a valid unicast destination.
 	"10.0.0.0/8",     // RFC 1918 private.
 	"100.64.0.0/10",  // RFC 6598 CGNAT / shared address space; used by some cloud providers for internal services.
 	"127.0.0.0/8",    // RFC 1122 loopback.
