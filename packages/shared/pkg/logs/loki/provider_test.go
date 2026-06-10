@@ -85,6 +85,23 @@ func TestBuildSandboxLogsQueryWithPid(t *testing.T) {
 	)
 }
 
+// TestBuildSandboxLogsQueryWithPidIgnoresLevel verifies a minimum-level filter is
+// dropped for pid-scoped queries: command output is persisted at info, so applying
+// warn/error would always return empty results.
+func TestBuildSandboxLogsQueryWithPidIgnoresLevel(t *testing.T) {
+	t.Parallel()
+
+	pid := "1234"
+	level := logs.LevelError
+	query := buildSandboxLogsQuery("team-id", "sandbox-id", &level, nil, &pid)
+
+	assert.Equal(
+		t,
+		"{teamID=`team-id`, sandboxID=`sandbox-id`, category!=\"metrics\"} | json | pid = `1234` | event_type = `process_output`",
+		query,
+	)
+}
+
 func TestBuildBuildLogsQuerySanitizesBackticks(t *testing.T) {
 	t.Parallel()
 

@@ -1620,7 +1620,7 @@ type GetV2SandboxesSandboxIDLogsParams struct {
 	// Search Case-sensitive substring match on log message content
 	Search *string `form:"search,omitempty" json:"search,omitempty"`
 
-	// Pid Restrict the results to the output (stdout/stderr) of a single command identified by its process ID (pid). Combine with cursor/direction to bound the window and disambiguate a reused pid.
+	// Pid Restrict the results to the output (stdout/stderr) of a single command identified by its process ID (pid). Combine with cursor/direction to bound the window and disambiguate a reused pid. The level filter is ignored for pid-scoped queries, as command output is persisted at info level.
 	Pid *int32 `form:"pid,omitempty" json:"pid,omitempty"`
 }
 

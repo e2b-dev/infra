@@ -1625,7 +1625,7 @@ type GetV2SandboxesSandboxIDLogsParams struct {
 	// Search Case-sensitive substring match on log message content
 	Search *string `form:"search,omitempty" json:"search,omitempty"`
 
-	// Pid Restrict the results to the output (stdout/stderr) of a single command identified by its process ID (pid). Combine with cursor/direction to bound the window and disambiguate a reused pid.
+	// Pid Restrict the results to the output (stdout/stderr) of a single command identified by its process ID (pid). Combine with cursor/direction to bound the window and disambiguate a reused pid. The level filter is ignored for pid-scoped queries, as command output is persisted at info level.
 	Pid *int32 `form:"pid,omitempty" json:"pid,omitempty"`
 }
 
@@ -13765,13 +13765,13 @@ var swaggerSpec = []string{
 	"MKrA1d+87cp4MkGqN5qSiN3rRCO6AeYEkYcgysJm3K7NdnuCBdkTJBFU0juCRDbVQgvFWAYLxBKAPCZC",
 	"4Lm+GCoe3CCHCObBogRWjB/OSTJXB/zwL38ddwvGS6K+BdKkYxFZJKF0FGRTymSaSfSTkCHL5L6QIeH8",
 	"Z13cUtBkDjfXOFZynNq3PiEUV5ECpZwp/o3OTtFPKQ1/nqATFk9pYiJZ9CHazylAzTllmcnjdE+TkN2D",
-	"hhBSgeMpnWf6KQgnoH+ktFFBSGnYeDZfTLb1r4erWbV3edc3LfZKr+nW/1Lp6+FzvFX6evjS4yUMJnaF",
-	"DDdtMHFJvBYg7ATMDQ6Pcyj7xw6Q2wgQzcJgF4H3Os5PR0TT0Pgl73F6vgimDcspwMggKfWyAqhetUR4",
-	"26T0rKjivH0WFeftc6k4BgDLwy0gL0vb2aXQ6D4HLMpi0jOvHLKtfSau/NPm7ap6rsEG1QjMsfXV7Dim",
-	"j1IsdnpUsNfcMceon0E69LGRqvWWKLb7ZFTPepyExhXRQYI2O3QdZ7tL3/oI1mFs+9/1P/o/Bm0mY93I",
-	"EPJXM+xghdTC0/MlaIl87CtQXCednUlsTbyuJSgzR3ljROYmiePguZiWzRK3o7sNsixYB7+zdJLxaHQ0",
-	"WkiZiqP9fZzSCTmcTnCajpz+34u0ZEWGru+VjNblHyGFmvs37POeVKgpN0zp3i1Zln4zgTD537kCdfP4",
-	"/wIAAP//",
+	"hhBSgeMpnWf6KQgnoH+kNNRJZ/QWGl2ECkTnCeMkBK0+peGeCFhKQhNKLsYIixxmszwq8oxVIcISLIx6",
+	"2CYVJKVh4+l/Mfncvx6uZjffZXbftGAtvddb/1uor4fP8Rrq6+FLj8gwmNiVSty0ScYl8VoIshOSNzgA",
+	"z6HsHzsEbyNANAuDXYzf6zg/HTFTQyOkvMfp+WKkNiynACODpNTLCtF61RLhbZPSs6KK8/ZZVJy3z6Xi",
+	"GAAsD7eAvCxtZ5eko/scsCiLSc/Mdci29hnR8k+bt9zquQabbCNzoa6uZscxfZRisdOjRr7mjjlG/QzS",
+	"oY+N1MW3RLHdR6l61uMkNM6ODhK0+afrONtd+tZHsA5j2/+u/9H/uWkzGetGhpC/mmEHK6QWnp5vTUvk",
+	"Y9+Z4jrp7Exia+J1LWGfOcobYz43SRwHz8W0bB66Hd1tkGXBOvidpZOMR6Oj0ULKVBzt7+OUTsjhdILT",
+	"dOT0/14kPitygH2v5Mwu/whJ2ty/YZ/3pEJNuWFK927JsvSbCbXJ/84VqJvH/xcAAP//",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

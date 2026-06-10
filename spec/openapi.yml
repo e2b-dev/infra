@@ -2282,7 +2282,7 @@ paths:
             type: integer
             format: int32
             minimum: 0
-          description: Restrict the results to the output (stdout/stderr) of a single command identified by its process ID (pid). Combine with cursor/direction to bound the window and disambiguate a reused pid.
+          description: Restrict the results to the output (stdout/stderr) of a single command identified by its process ID (pid). Combine with cursor/direction to bound the window and disambiguate a reused pid. The level filter is ignored for pid-scoped queries, as command output is persisted at info level.
       responses:
         "200":
           description: Successfully returned the sandbox logs

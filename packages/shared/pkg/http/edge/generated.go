@@ -322,7 +322,7 @@ type V1SandboxLogsParams struct {
 	// Search Case-sensitive substring match on log message content
 	Search *string `form:"search,omitempty" json:"search,omitempty"`
 
-	// Pid Restrict the logs to the output of a single command identified by its process ID (pid). Combine with start/end to disambiguate reused pids.
+	// Pid Restrict the logs to the output of a single command identified by its process ID (pid). Combine with start/end to disambiguate reused pids. The level filter is ignored for pid-scoped queries, as command output is persisted at info level.
 	Pid *string `form:"pid,omitempty" json:"pid,omitempty"`
 }
 

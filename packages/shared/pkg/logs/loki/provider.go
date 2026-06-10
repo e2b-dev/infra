@@ -160,6 +160,11 @@ func buildSandboxLogsQuery(teamID string, sandboxID string, level *logs.LogLevel
 		// must also bound the time range so a reused pid can't match a later command;
 		// process_start/process_end lines share the pid but are not command output.
 		query += fmt.Sprintf(" | pid = `%s` | event_type = `process_output`", sanitizeLokiLabel(pidValue))
+
+		// Command output lines are always persisted at info (the truncation marker at
+		// warn), so a minimum-level filter of warn or error would erase the very output
+		// the pid scopes to. Ignore level for pid-scoped queries.
+		level = nil
 	}
 	if level != nil {
 		query += fmt.Sprintf(" | level =~ `%s`", minLevelRegexFilter(*level))
