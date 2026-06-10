@@ -1215,7 +1215,7 @@ func TestCacheDedup_BudgetExhaustionKeepsParentsDeduped(t *testing.T) {
 func parentKeyedPage(buildID uuid.UUID, window int) dedupPageInfo {
 	return dedupPageInfo{
 		kind: dedupPageParent,
-		key:  dedupFetchKey{sourceType: parentFetchSource, buildID: buildID, window: window},
+		key:  dedupFetchKey{buildID: buildID, window: window},
 	}
 }
 

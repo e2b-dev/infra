@@ -236,17 +236,10 @@ const (
 	dedupPageCurrent
 )
 
-type fetchSource byte
-
-const (
-	currentFetchSource fetchSource = iota + 1
-	parentFetchSource
-)
-
+// dedupFetchKey identifies the parent fetch window backing a deduped page.
 type dedupFetchKey struct {
-	sourceType fetchSource
-	buildID    uuid.UUID
-	window     int
+	buildID uuid.UUID
+	window  int
 }
 
 type dedupPageInfo struct {
@@ -326,12 +319,10 @@ func dedupCompare(
 				}
 
 				info.kind = dedupPageParent
-				info.key = dedupFetchKey{sourceType: parentFetchSource}
 				if hasMapping {
-					info.key.buildID = mapped.BuildId
-					info.key.window = int(mapped.Offset / uint64(windowBytes))
+					info.key = dedupFetchKey{buildID: mapped.BuildId, window: int(mapped.Offset / uint64(windowBytes))}
 				} else {
-					info.key.window = int(pageOff / windowBytes)
+					info.key = dedupFetchKey{window: int(pageOff / windowBytes)}
 				}
 			}
 
@@ -357,7 +348,7 @@ func dedupCompare(
 	return plan, nil
 }
 
-// fetchWindower counts the distinct fetch windows a block's pages resolve to:
+// fetchWindower models the distinct fetch windows a block's pages resolve to:
 // parent pages by their backing fetch key, current pages by the window of
 // their packed position in the diff (currentStart is the running count of
 // pages stored so far).
@@ -369,85 +360,73 @@ type fetchWindower struct {
 // compact promotes parent pages to current until the block fits within
 // maxWindows fetch windows or the promotion budget is exhausted.
 //
-// Only whole fetch-key groups are considered: a partially promoted key keeps
+// Only whole fetch-key groups are promoted: a partially promoted key keeps
 // its fetch window while the promoted pages can only widen the packed current
-// span, so partial promotion never reduces the count. Promoting cheapest
-// groups first removes the most windows per promoted page.
+// span, so partial promotion never reduces the count. After promoting g whole
+// groups totaling n pages the count is (parentKeys-g) + currentWindows(nCur+n)
+// — current windows depend only on the page count, not which pages — so the
+// cheapest-first prefix scan considers the optimal whole-group selection for
+// every affordable budget.
 func (w fetchWindower) compact(pages []dedupPageInfo, maxWindows, maxPromoted int) int {
 	if maxWindows <= 0 || maxPromoted <= 0 {
 		return 0
 	}
-	best := w.count(pages)
+
+	nCur := 0
+	for _, p := range pages {
+		if p.kind == dedupPageCurrent {
+			nCur++
+		}
+	}
+	groups := parentKeyGroups(pages)
+
+	best := len(groups) + w.currentWindows(nCur)
 	if best <= maxWindows {
 		return 0
 	}
 
-	groups := parentKeyGroups(pages)
-	slices.SortStableFunc(groups, func(a, b []int) int {
-		return len(a) - len(b)
-	})
-
-	// Scan cheapest-first prefixes of whole groups and commit the first one
-	// that meets maxWindows, or failing that, the one with the lowest count.
-	// A zero-benefit prefix (e.g. a lone promotion that removes one parent
-	// window but opens another current window) is only kept when a longer
-	// prefix improves on it.
-	var chosen, candidate []int
-	for _, group := range groups {
-		if len(candidate)+len(group) > maxPromoted {
+	// Commit the shortest cheapest-first prefix that meets maxWindows, or
+	// failing that, the one with the lowest count. A zero-benefit prefix
+	// (e.g. a lone promotion that trades a parent window for a current one)
+	// is only kept when a longer prefix improves on it.
+	chosen, promoted := 0, 0
+	for g, n := 0, 0; g < len(groups); g++ {
+		n += len(groups[g])
+		if n > maxPromoted {
 			break // groups are size-sorted, so no later group fits either
 		}
-		candidate = append(candidate, group...)
-		if c := w.countAfter(pages, candidate); c < best {
-			best = c
-			chosen = slices.Clone(candidate)
+		if c := len(groups) - (g + 1) + w.currentWindows(nCur+n); c < best {
+			best, chosen, promoted = c, g+1, n
 		}
 		if best <= maxWindows {
 			break
 		}
 	}
 
-	for _, i := range chosen {
-		pages[i].kind = dedupPageCurrent
-		pages[i].key = dedupFetchKey{}
-	}
-
-	return len(chosen)
-}
-
-func (w fetchWindower) count(pages []dedupPageInfo) int {
-	keys := make(map[dedupFetchKey]struct{})
-	var currentOrdinal int64
-	for _, p := range pages {
-		switch p.kind {
-		case dedupPageParent:
-			keys[p.key] = struct{}{}
-		case dedupPageCurrent:
-			keys[dedupFetchKey{
-				sourceType: currentFetchSource,
-				window:     int(w.currentStart+currentOrdinal) / w.windowPages,
-			}] = struct{}{}
-			currentOrdinal++
+	for _, group := range groups[:chosen] {
+		for _, i := range group {
+			pages[i].kind = dedupPageCurrent
+			pages[i].key = dedupFetchKey{}
 		}
 	}
 
-	return len(keys)
+	return promoted
 }
 
-// countAfter counts fetch windows as if the given parent indices were promoted
-// to current, without mutating pages.
-func (w fetchWindower) countAfter(pages []dedupPageInfo, promote []int) int {
-	candidate := slices.Clone(pages)
-	for _, i := range promote {
-		candidate[i].kind = dedupPageCurrent
-		candidate[i].key = dedupFetchKey{}
+// currentWindows is the number of fetch windows covered by n pages packed
+// into the diff starting at currentStart.
+func (w fetchWindower) currentWindows(n int) int {
+	if n == 0 {
+		return 0
 	}
+	wp := int64(w.windowPages)
 
-	return w.count(candidate)
+	return int((w.currentStart+int64(n)-1)/wp - w.currentStart/wp + 1)
 }
 
 // parentKeyGroups returns the parent page indices grouped by fetch key,
-// ordered by first page index so the selection is deterministic.
+// cheapest group first (ties by first page index, so the selection is
+// deterministic).
 func parentKeyGroups(pages []dedupPageInfo) [][]int {
 	idxByKey := make(map[dedupFetchKey][]int)
 	for i, p := range pages {
@@ -458,6 +437,10 @@ func parentKeyGroups(pages []dedupPageInfo) [][]int {
 
 	groups := slices.Collect(maps.Values(idxByKey))
 	slices.SortFunc(groups, func(a, b []int) int {
+		if d := len(a) - len(b); d != 0 {
+			return d
+		}
+
 		return a[0] - b[0]
 	})
 
