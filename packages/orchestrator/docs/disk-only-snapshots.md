@@ -5,7 +5,8 @@
 Implemented here (orchestrator-only, no API/proto/DB wiring yet):
 
 - **Pause memory-skip** — `Sandbox.Pause(..., WithMemorySnapshot(false))`:
-  guest `sync` via envd (`bestEffortGuestSync`), `CreateSnapshot` kept for its
+  mandatory guest `sync` via envd (`guestSync`; a failed sync fails the pause
+  since no memory snapshot preserves the page cache), `CreateSnapshot` kept for its
   disk drain+flush side effect, memory diff skipped (`NoDiff` memfile + nil
   header, `MemfileBlockSize=0`, prefetch cleared), `Snapshot.MemorySnapshot`
   flag. Upload skips `memfile`, `memfile.header`, `snapfile` — absence is the
@@ -276,8 +277,9 @@ derives the internal `reboot` field from it on resume.
 `Sandbox.Pause` gains a memory-skip option (e.g. `WithMemorySnapshot(false)`),
 and `Server.Pause`/`Checkpoint` read it from the new proto field. When disk-only:
 
-- Before `process.Pause`, run a guest `sync` over envd (best-effort, short
-  timeout) so ext4 flushes dirty pages into virtio.
+- Before `process.Pause`, run a guest `sync` over envd (mandatory, short
+  timeout — a failed sync fails the pause) so ext4 flushes dirty pages into
+  virtio.
 - Keep `process.CreateSnapshot` for its disk drain+flush side effect, but **do
   not upload** the resulting snapfile. (Alternative: add a dedicated FC disk-flush
   call and skip snapfile creation entirely — needs a custom-FC endpoint check.)
