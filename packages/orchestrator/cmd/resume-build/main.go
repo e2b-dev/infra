@@ -341,7 +341,7 @@ type runner struct {
 
 func (r *runner) startSandbox(ctx context.Context, runtime sandbox.RuntimeMetadata, start, end time.Time) (*sandbox.Sandbox, error) {
 	if r.reboot {
-		return r.factory.RebootSandbox(ctx, r.tmpl, r.sbxConfig, runtime, start, end, nil)
+		return r.factory.RebootSandbox(ctx, r.tmpl, r.sbxConfig, runtime, end, nil)
 	}
 
 	return r.factory.ResumeSandbox(ctx, r.tmpl, r.sbxConfig, runtime, start, end, nil)

@@ -34,14 +34,14 @@ const (
 // without restoring guest memory. Used to resume filesystem-only snapshots:
 // guest RAM, processes, and sockets are lost; only the filesystem survives.
 // The sandbox is marked running only after envd is ready, matching
-// ResumeSandbox's routing guarantees.
+// ResumeSandbox's routing guarantees; startedAt is set to the envd-ready time
+// (same as a resume) and endAt to the caller's absolute end time.
 // IMPORTANT: You must Close() the sandbox after you are done with it.
 func (f *Factory) RebootSandbox(
 	ctx context.Context,
 	t template.Template,
 	config *Config,
 	runtime RuntimeMetadata,
-	startedAt time.Time,
 	endAt time.Time,
 	apiConfigToStore *orchestrator.SandboxConfig,
 ) (*Sandbox, error) {
@@ -102,8 +102,9 @@ func (f *Factory) RebootSandbox(
 		return nil, fmt.Errorf("create sandbox from rootfs: %w", err)
 	}
 
-	// CreateSandbox anchors the lifetime to now; honor the caller's absolute window.
-	sbx.SetStartedAt(startedAt)
+	// CreateSandbox anchors the lifetime to now; honor the caller's absolute
+	// end time so queue delay can't extend the TTL. startedAt is set by
+	// WaitForEnvd below.
 	sbx.SetEndAt(endAt)
 
 	if err := sbx.WaitForEnvd(ctx, rebootEnvdTimeout); err != nil {
