@@ -689,7 +689,7 @@ func TestFrameTable_LocateCompressed(t *testing.T) {
 		{U: 2048, C: 1024},
 		{U: 2048, C: 900},
 		{U: 4096, C: 3500},
-	})
+	}).Table()
 
 	// Frame 0: U=[0,2048), C=[0,1024)
 	r, err := fd.LocateCompressed(0)
@@ -725,7 +725,7 @@ func TestFrameTable_LocateUncompressed(t *testing.T) {
 	fd := storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{
 		{U: 2048, C: 1024},
 		{U: 4096, C: 3500},
-	})
+	}).Table()
 
 	// Frame 0: U=[0,2048)
 	r, err := fd.LocateUncompressed(0)
@@ -916,7 +916,7 @@ func TestSerializeDeserialize_V4_MixedChain(t *testing.T) {
 // Layered chain with a compressed self entry:
 // C-v4 (self) → U-v4 (mid) → C-v4 (older) → V3 → V3. After a serialize round
 // trip, every virtual offset resolves to the right build via GetShiftedMapping
-// and carries the expected compression (FrameTable present iff compressed).
+// and carries the expected compression (FrameData present iff compressed).
 func TestSerializeDeserialize_V4_CompressedSelfChain(t *testing.T) {
 	t.Parallel()
 

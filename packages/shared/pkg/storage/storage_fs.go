@@ -136,13 +136,14 @@ func (o *fsObject) StoreFile(ctx context.Context, path string, opts ...PutOption
 	if cfg.IsCompressionEnabled() {
 		ft, checksum, err := o.storeFileCompressed(ctx, path, cfg, putOpts.FrameSink)
 		if err == nil {
+			t := ft.Table()
 			logger.L().Debug(ctx, "Stored file to filesystem",
 				zap.String("object", o.path),
 				zap.String("source", path),
-				zap.Int64("size_uncompressed", ft.UncompressedSize()),
-				zap.Int64("size_compressed", ft.CompressedSize()),
+				zap.Int64("size_uncompressed", t.UncompressedSize()),
+				zap.Int64("size_compressed", t.CompressedSize()),
 				zap.String("compression", cfg.CompressionType().String()),
-				zap.Int("frames", ft.NumFrames()),
+				zap.Int("frames", t.NumFrames()),
 			)
 		}
 

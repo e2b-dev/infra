@@ -651,10 +651,11 @@ func TestCachedSeekable_StoreFile_Compressed_WriteThrough(t *testing.T) {
 
 	c.wg.Wait()
 
-	require.Equal(t, 3, capturedFT.NumFrames())
+	ft := capturedFT.Table()
+	require.Equal(t, 3, ft.NumFrames())
 	assembled := up.Assemble()
-	for i := range capturedFT.NumFrames() {
-		_, _, startC, endC := capturedFT.FrameAt(i)
+	for i := range ft.NumFrames() {
+		_, _, startC, endC := ft.FrameAt(i)
 		framePath := makeFrameFilename(c.path, Range{Offset: startC, Length: int(endC - startC)})
 		onDisk, err := os.ReadFile(framePath)
 		require.NoError(t, err)

@@ -82,9 +82,10 @@ func (u *Upload) uploadFramed(
 
 		// Compressed: frame-table byte count, since sparse memfile diffs stream
 		// fewer bytes than they occupy on disk. Uncompressed has no table.
-		size := fullFT.UncompressedSize()
-		compressedSize := fullFT.CompressedSize()
-		if !fullFT.IsCompressed() {
+		ft := fullFT.Table()
+		size := ft.UncompressedSize()
+		compressedSize := ft.CompressedSize()
+		if !ft.IsCompressed() {
 			info, statErr := os.Stat(srcPath)
 			if statErr != nil {
 				return fmt.Errorf("%s stat: %w", fileType, statErr)
@@ -98,7 +99,7 @@ func (u *Upload) uploadFramed(
 			dataFileType = uploadFileRootfs
 		}
 		recordUploadCompression(ctx, dataFileType, cfg, size, compressedSize)
-		selfBuild = headers.BuildData{Size: size, Checksum: checksum, FrameData: fullFT.Table()}
+		selfBuild = headers.BuildData{Size: size, Checksum: checksum, FrameData: ft}
 	}
 
 	h := srcHeader.CloneForUpload(u.headerVersion)

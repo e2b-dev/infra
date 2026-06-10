@@ -160,7 +160,7 @@ func TestCompressStreamRoundTrip(t *testing.T) {
 			up := &memPartUploader{}
 			cfg := defaultCfg(tc.codec, tc.workers, tc.frameSize)
 
-			ft, checksum, err := compressStream(
+			fullFT, checksum, err := compressStream(
 				t.Context(),
 				bytes.NewReader(original),
 				cfg,
@@ -169,6 +169,7 @@ func TestCompressStreamRoundTrip(t *testing.T) {
 				nil,
 			)
 			require.NoError(t, err)
+			ft := fullFT.Table()
 
 			if tc.dataSize == 0 {
 				require.Equal(t, 0, ft.NumFrames())
@@ -186,7 +187,7 @@ func TestCompressStreamRoundTrip(t *testing.T) {
 
 			// Round-trip: decompress and compare.
 			compressed := up.Assemble()
-			decompressed, err := decompressAll(ft.Table(), compressed)
+			decompressed, err := decompressAll(ft, compressed)
 			require.NoError(t, err)
 			require.Equal(t, original, decompressed)
 		})
@@ -417,10 +418,11 @@ func BenchmarkStoreFile(b *testing.B) {
 					outPath := filepath.Join(outDir, "output.dat")
 					obj := &fsObject{path: outPath}
 
-					ft, _, err := obj.StoreFile(b.Context(), inputPath, WithCompressConfig(compCfg))
+					fullFT, _, err := obj.StoreFile(b.Context(), inputPath, WithCompressConfig(compCfg))
 					if err != nil {
 						b.Fatal(err)
 					}
+					ft := fullFT.Table()
 
 					b.ReportMetric(float64(ft.CompressedSize())/float64(ft.UncompressedSize()), "ratio")
 				}
