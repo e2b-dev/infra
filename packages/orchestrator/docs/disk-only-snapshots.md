@@ -570,6 +570,15 @@ pause; candidate flow (best combination of the guest-side step TBD):
 5. Resume by cold-booting FC with just the fs, as the build system already
    does (`Factory.RebootSandbox`).
 
+Related ideas:
+
+- **Default-on `fstrim` for fs-only pause** — today it's flag-gated
+  best-effort; under NBD, TRIM punches holes, directly shrinking the rootfs
+  diff.
+- **Tune ext4 `commit=` (e.g. `commit=1`) for fs-only-intended sandboxes** —
+  shrinks the acknowledged-but-unsynced window; trades runtime IO perf,
+  measure.
+
 Note: today the disk drain+flush is a side effect of the custom FC
 `CreateSnapshot` call, so disk-only either keeps creating a throwaway snapfile or
 needs a **dedicated FC IO-flush endpoint**. We likely want to expose the FC IO
@@ -628,6 +637,17 @@ Remaining ideas (untracked, roughly by effort):
   Realistic floor with systemd: ~250-350 ms total boot. (A minimal init that
   execs envd in ~kernel time remains a future opt-in idea — not now, since it
   breaks boot-time systemd unit semantics.)
+- **`quiet loglevel=3` on the guest cmdline** — serial console writes are
+  synchronous and slow on FC; kernel+systemd console output is measurable at
+  a ~0.5 s boot.
+- **`mitigations=off` in the guest kernel cmdline** — guests are FC-isolated;
+  saves boot and runtime CPU on 1-vCPU guests. Needs a security sign-off.
+- **Tighten `WaitForEnvd` polling for the reboot path** — poll granularity
+  can add tens of ms now that boot is ~0.5 s.
+- **Verify guest clock after reboot** — `chrony-wait` is masked; kvmclock
+  should hand over correct time, but TLS validation depends on it. Check,
+  and let chrony step in the background (`makestep`) instead of blocking
+  boot.
 
 ## 6. Rootfs prefetch (+ envd locality)
 
@@ -671,7 +691,21 @@ layer depth grows → needs compaction.
 is already sparse — upload it directly (compacted), skipping the materialize step.
 Pure optimization; after the basic FS-only snapshot lands.
 
-## 9. Read-only disk access API (future)
+## 9. Snapshot tiering: degrade old memory snapshots to fs-only (future)
+
+Drop memory artifacts (`memfile`, `memfile.header`, `snapfile`) from paused
+sandboxes after N days, keeping only the rootfs — large storage savings;
+resume degrades to a reboot. Needs the persisted-flag resume gating
+(workstream 1) and explicit user opt-in, since the resume semantics change.
+
+## 10. Warm-after-reboot: background memory snapshot (future)
+
+After a reboot resume, take a background memory snapshot once envd is ready
+so the *next* resume is warm again. Mixing (memory snapshot of a cold-booted
+sandbox) is already validated; the memfile is a full snapshot, not a diff —
+cost vs. benefit per use case.
+
+## 11. Read-only disk access API (future)
 
 Let users read a (disk-only) snapshot's rootfs without booting — list/download
 files from a paused snapshot's disk. Feasible: the rootfs is assembled lazily
