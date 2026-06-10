@@ -31,7 +31,7 @@ const (
 // BenchOptions configures the sharding A/B read-path benchmark. The benchmark
 // lays down identical synthetic data in two sibling subtrees under
 // <Path>/bench-shard-read/ — one flat, one sharded — then exercises read paths
-// against each and records per-open latency to OTEL plus a summary log.
+// against each and records per-read latency to OTEL plus a summary log.
 type BenchOptions struct {
 	// Path is the chunks-cache root (the same path the cleaner normally
 	// operates on). All bench artifacts are scoped to a "bench-shard-read"
@@ -39,17 +39,27 @@ type BenchOptions struct {
 	Path string
 
 	// NumBuildIDs is how many synthetic BuildID dirs to create per layout.
+	// The cold_cross_build scenario opens one chunk per BuildID so this
+	// directly drives that scenario's sample count and is the variable to
+	// scale up when probing the realistic Filestore directory size.
 	NumBuildIDs int
 
 	// ChunksPerBuild is how many chunk files to create per BuildID.
 	ChunksPerBuild int
 
 	// FileSize is the size (bytes) of each synthetic chunk file. Small files
-	// are fine — the benchmark targets open/LOOKUP latency, not throughput.
+	// are fine — the benchmark targets metadata + small-read latency, not
+	// throughput.
 	FileSize int
 
 	// Concurrency is the number of goroutines for the parallel scenario.
 	Concurrency int
+
+	// SetupConcurrency is the number of goroutines used to lay down the
+	// synthetic data tree. NFS file creation is dominated by per-op RTT,
+	// so concurrency is the main lever for keeping setup time reasonable
+	// at scale.
+	SetupConcurrency int
 
 	// DropCaches asks the benchmark to drop kernel filesystem caches between
 	// cold-phase runs by writing to /proc/sys/vm/drop_caches. Requires root.
@@ -145,6 +155,10 @@ func validateBenchOptions(opts *BenchOptions) error {
 	if opts.Concurrency <= 0 {
 		errs = append(errs, errors.New("Concurrency must be > 0"))
 	}
+	if opts.SetupConcurrency <= 0 {
+		// Permissive default: callers (tests, ad-hoc) may not bother to set it.
+		opts.SetupConcurrency = 32
+	}
 
 	return errors.Join(errs...)
 }
@@ -179,6 +193,10 @@ func chunkFilename(index, fileSize int) string {
 // setupBenchData creates NumBuildIDs UUID-named directories under both
 // flat and sharded roots, each populated with ChunksPerBuild chunk files
 // of FileSize bytes. Returns the list of BuildIDs used.
+//
+// Setup is parallelized across SetupConcurrency goroutines because NFS file
+// creation is RTT-bound; at 10K+ BuildIDs a sequential loop would take
+// minutes per layout.
 func setupBenchData(ctx context.Context, opts BenchOptions, flatRoot, shardedRoot string, log logger.Logger) ([]string, error) {
 	buildIDs := make([]string, opts.NumBuildIDs)
 	for i := range buildIDs {
@@ -193,21 +211,67 @@ func setupBenchData(ctx context.Context, opts BenchOptions, flatRoot, shardedRoo
 	}
 
 	start := time.Now()
-	for _, b := range buildIDs {
-		for _, dir := range []string{flatBuildDir(flatRoot, b), shardedBuildDir(shardedRoot, b)} {
-			if err := os.MkdirAll(dir, 0o755); err != nil {
-				return nil, fmt.Errorf("mkdir %s: %w", dir, err)
-			}
-			for i := 0; i < opts.ChunksPerBuild; i++ {
-				p := filepath.Join(dir, chunkFilename(i, opts.FileSize))
-				if err := os.WriteFile(p, payload, 0o644); err != nil {
-					return nil, fmt.Errorf("write %s: %w", p, err)
+
+	jobs := make(chan string, opts.SetupConcurrency*2)
+	errCh := make(chan error, opts.SetupConcurrency)
+
+	var wg sync.WaitGroup
+	worker := func() {
+		defer wg.Done()
+		for b := range jobs {
+			for _, dir := range []string{flatBuildDir(flatRoot, b), shardedBuildDir(shardedRoot, b)} {
+				if err := os.MkdirAll(dir, 0o755); err != nil {
+					select {
+					case errCh <- fmt.Errorf("mkdir %s: %w", dir, err):
+					default:
+					}
+
+					return
+				}
+				for i := 0; i < opts.ChunksPerBuild; i++ {
+					p := filepath.Join(dir, chunkFilename(i, opts.FileSize))
+					if err := os.WriteFile(p, payload, 0o644); err != nil {
+						select {
+						case errCh <- fmt.Errorf("write %s: %w", p, err):
+						default:
+						}
+
+						return
+					}
 				}
 			}
 		}
 	}
+
+	for i := 0; i < opts.SetupConcurrency; i++ {
+		wg.Add(1)
+		go worker()
+	}
+
+	go func() {
+		defer close(jobs)
+		for _, b := range buildIDs {
+			select {
+			case <-ctx.Done():
+				return
+			case jobs <- b:
+			}
+		}
+	}()
+
+	wg.Wait()
+	select {
+	case err := <-errCh:
+		return nil, err
+	default:
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	log.Info(ctx, "bench: setup complete",
 		zap.Int("total_files", opts.NumBuildIDs*opts.ChunksPerBuild*2),
+		zap.Int("setup_concurrency", opts.SetupConcurrency),
 		zap.Duration("duration", time.Since(start)))
 
 	return buildIDs, nil
@@ -274,24 +338,25 @@ func (s *scenarioStats) mean() time.Duration {
 	return sum / time.Duration(len(s.durations))
 }
 
-// recordOpen times one os.Open call and emits OTEL + accumulates stats.
-func recordOpen(ctx context.Context, path string, attrs []attribute.KeyValue, metrics *Metrics, stats *scenarioStats) {
+// recordRead times one os.ReadFile call and emits OTEL + accumulates stats.
+// ReadFile (vs Open) mirrors what the orchestrator actually does on a cache
+// hit: LOOKUP + OPEN + READ + CLOSE in one round of syscalls. For small
+// payloads the result is metadata-bound, but using ReadFile keeps the
+// benchmark honest about what we're really measuring.
+func recordRead(ctx context.Context, path string, attrs []attribute.KeyValue, metrics *Metrics, stats *scenarioStats) {
 	start := time.Now()
-	f, err := os.Open(path)
+	_, err := os.ReadFile(path)
 	elapsed := time.Since(start)
-	if err == nil {
-		f.Close()
-	}
 	stats.record(elapsed, err)
 
-	metrics.BenchOpenDuration.Record(ctx, elapsed.Microseconds(), metric.WithAttributes(attrs...))
+	metrics.BenchReadDuration.Record(ctx, elapsed.Microseconds(), metric.WithAttributes(attrs...))
 	result := ValResultOk
 	if err != nil {
 		result = ValResultErr
 	}
 	resultAttrs := append([]attribute.KeyValue{}, attrs...)
 	resultAttrs = append(resultAttrs, attribute.String(AttrResult, result))
-	metrics.BenchOpenOps.Add(ctx, 1, metric.WithAttributes(resultAttrs...))
+	metrics.BenchReadOps.Add(ctx, 1, metric.WithAttributes(resultAttrs...))
 }
 
 // runColdCrossBuild opens one chunk from each BuildID in shuffled order. This
@@ -311,7 +376,7 @@ func runColdCrossBuild(ctx context.Context, layout, root string, opts BenchOptio
 		}
 		b := buildIDs[idx]
 		p := filepath.Join(buildDirFor(layout, root, b), chunkFilename(0, opts.FileSize))
-		recordOpen(ctx, p, attrs, metrics, stats)
+		recordRead(ctx, p, attrs, metrics, stats)
 	}
 
 	return stats
@@ -333,7 +398,7 @@ func runWarmSameBuild(ctx context.Context, layout, root string, opts BenchOption
 		if err := ctx.Err(); err != nil {
 			return stats
 		}
-		recordOpen(ctx, filepath.Join(dir, chunkFilename(i, opts.FileSize)), attrs, metrics, stats)
+		recordRead(ctx, filepath.Join(dir, chunkFilename(i, opts.FileSize)), attrs, metrics, stats)
 	}
 
 	return stats
@@ -364,7 +429,7 @@ func runParallelWithinBuild(ctx context.Context, layout, root string, opts Bench
 				if err := ctx.Err(); err != nil {
 					return
 				}
-				recordOpen(ctx, filepath.Join(dir, chunkFilename(i, opts.FileSize)), attrs, metrics, local)
+				recordRead(ctx, filepath.Join(dir, chunkFilename(i, opts.FileSize)), attrs, metrics, local)
 			}
 			statsMu.Lock()
 			combined.durations = append(combined.durations, local.durations...)

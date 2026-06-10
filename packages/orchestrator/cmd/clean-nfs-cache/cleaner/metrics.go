@@ -62,8 +62,8 @@ type Metrics struct {
 
 	// Sharding A/B benchmark instruments. Recorded only by the
 	// --bench-shard-read mode of the cleaner binary.
-	BenchOpenDuration metric.Int64Histogram // us; attrs: layout, scenario
-	BenchOpenOps      metric.Int64Counter   // attrs: layout, scenario, result
+	BenchReadDuration metric.Int64Histogram // us; attrs: layout, scenario
+	BenchReadOps      metric.Int64Counter   // attrs: layout, scenario, result
 }
 
 // NewMetrics builds all instruments from the given meter. A noop meter
@@ -170,19 +170,19 @@ func NewMetrics(meter metric.Meter) (*Metrics, error) {
 		return nil, fmt.Errorf("empty_dir.encountered: %w", err)
 	}
 
-	if m.BenchOpenDuration, err = meter.Int64Histogram(
-		"clean.nfs.bench.open.duration",
-		metric.WithDescription("Wall time of a single os.Open in the sharding A/B benchmark"),
+	if m.BenchReadDuration, err = meter.Int64Histogram(
+		"clean.nfs.bench.read.duration",
+		metric.WithDescription("Wall time of a single os.ReadFile (LOOKUP+OPEN+READ+CLOSE) in the sharding A/B benchmark"),
 		metric.WithUnit("us"),
 	); err != nil {
-		return nil, fmt.Errorf("bench.open.duration: %w", err)
+		return nil, fmt.Errorf("bench.read.duration: %w", err)
 	}
 
-	if m.BenchOpenOps, err = meter.Int64Counter(
-		"clean.nfs.bench.open.ops",
-		metric.WithDescription("Total open attempts performed in the sharding A/B benchmark, by outcome"),
+	if m.BenchReadOps, err = meter.Int64Counter(
+		"clean.nfs.bench.read.ops",
+		metric.WithDescription("Total ReadFile attempts performed in the sharding A/B benchmark, by outcome"),
 	); err != nil {
-		return nil, fmt.Errorf("bench.open.ops: %w", err)
+		return nil, fmt.Errorf("bench.read.ops: %w", err)
 	}
 
 	return m, nil

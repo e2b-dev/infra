@@ -83,6 +83,7 @@ func main() {
 			zap.Int("bench_chunks_per_build", cfg.Bench.ChunksPerBuild),
 			zap.Int("bench_file_size", cfg.Bench.FileSize),
 			zap.Int("bench_concurrency", cfg.Bench.Concurrency),
+			zap.Int("bench_setup_concurrency", cfg.Bench.SetupConcurrency),
 			zap.Bool("bench_drop_caches", cfg.Bench.DropCaches),
 			zap.Bool("bench_keep_artifacts", cfg.Bench.KeepArtifacts),
 			zap.String("otel_collector_endpoint", opts.OtelCollectorEndpoint),
@@ -185,10 +186,11 @@ func preRun(ctx context.Context) (runConfig, logger.Logger, telemetry.LogProvide
 	flags.IntVar(&opts.MaxErrorRetries, "max-retries", 10, "maximum number of continuous error or miss retries before giving up")
 
 	flags.BoolVar(&cfg.BenchEnabled, "bench-shard-read", false, "run the flat-vs-sharded read-path benchmark instead of cleaning up; bench artifacts live under <path>/bench-shard-read/")
-	flags.IntVar(&cfg.Bench.NumBuildIDs, "bench-build-ids", 200, "number of synthetic BuildID dirs per layout in --bench-shard-read mode")
-	flags.IntVar(&cfg.Bench.ChunksPerBuild, "bench-chunks-per-build", 50, "number of synthetic chunk files per BuildID in --bench-shard-read mode")
-	flags.IntVar(&cfg.Bench.FileSize, "bench-file-size", 4096, "size of each synthetic chunk file in bytes; small is fine, the bench targets metadata cost, not throughput")
+	flags.IntVar(&cfg.Bench.NumBuildIDs, "bench-build-ids", 10000, "number of synthetic BuildID dirs per layout in --bench-shard-read mode; drives the cold_cross_build sample count and is the variable to scale up when probing real Filestore-sized directories")
+	flags.IntVar(&cfg.Bench.ChunksPerBuild, "bench-chunks-per-build", 5, "number of synthetic chunk files per BuildID; only affects warm_same_build and parallel_within_build sample counts")
+	flags.IntVar(&cfg.Bench.FileSize, "bench-file-size", 4096, "size of each synthetic chunk file in bytes; small is fine, the bench targets metadata + small-read cost, not throughput")
 	flags.IntVar(&cfg.Bench.Concurrency, "bench-concurrency", 8, "number of goroutines for the parallel-within-build scenario")
+	flags.IntVar(&cfg.Bench.SetupConcurrency, "bench-setup-concurrency", 32, "number of goroutines used to lay down the synthetic data; NFS file creation is RTT-bound so concurrency is the main lever for keeping setup time reasonable at scale")
 	flags.BoolVar(&cfg.Bench.DropCaches, "bench-drop-caches", false, "drop kernel FS caches between cold runs (requires root; on failure the bench logs and proceeds)")
 	flags.BoolVar(&cfg.Bench.KeepArtifacts, "bench-keep-artifacts", false, "do not RemoveAll the synthetic bench tree on exit; useful for post-hoc inspection")
 
