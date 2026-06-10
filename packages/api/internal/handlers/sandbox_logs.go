@@ -85,7 +85,8 @@ func (a *APIStore) GetV2SandboxesSandboxIDLogs(c *gin.Context, sandboxID api.San
 	// pid (optional) restricts the results to a single command's output.
 	var pid *string
 	if params.Pid != nil {
-		pid = new(strconv.Itoa(int(*params.Pid)))
+		pidStr := strconv.Itoa(int(*params.Pid))
+		pid = &pidStr
 	}
 
 	logs, apiErr := a.getSandboxLogs(ctx, team, sandboxID, &startMs, &endMs, params.Limit, &direction, apiToLogLevel(params.Level), params.Search, pid)
