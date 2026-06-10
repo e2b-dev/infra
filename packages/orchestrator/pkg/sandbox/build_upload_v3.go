@@ -90,10 +90,6 @@ func (u *Upload) runV3(ctx context.Context) error {
 	})
 
 	eg.Go(func() error {
-		if !u.snap.MemorySnapshot {
-			return nil
-		}
-
 		return uploadBlobWithMetrics(egCtx, u.store, u.paths.Snapfile(), storage.SnapfileObjectType, u.snap.Snapfile.Path(), uploadFileSnap, meta)
 	})
 

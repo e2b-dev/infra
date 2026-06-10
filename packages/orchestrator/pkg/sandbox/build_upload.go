@@ -42,14 +42,9 @@ func NewUpload(
 	useCase string,
 	objectMetadata storage.ObjectMetadata,
 ) (*Upload, error) {
-	var mem storage.CompressConfig
-	var memV4 bool
-	if snap.MemorySnapshot {
-		var err error
-		mem, memV4, err = resolveCompressConfig(ctx, cfg, ff, storage.MemfileName, snap.MemfileBlockSize, useCase)
-		if err != nil {
-			return nil, fmt.Errorf("resolve memfile compress config: %w", err)
-		}
+	mem, memV4, err := resolveCompressConfig(ctx, cfg, ff, storage.MemfileName, snap.MemfileBlockSize, useCase)
+	if err != nil {
+		return nil, fmt.Errorf("resolve memfile compress config: %w", err)
 	}
 	root, rootV4, err := resolveCompressConfig(ctx, cfg, ff, storage.RootfsName, snap.RootfsBlockSize, useCase)
 	if err != nil {

@@ -95,24 +95,6 @@ echo "Disable system first boot wizard"
 # and Linux boot was stuck in wizard until envd wait timeout
 systemctl mask systemd-firstboot.service
 
-echo "Disable chrony-wait"
-# chrony-wait blocks multi-user.target until the first clock sync (~8s);
-# chrony still syncs in the background, nothing needs to wait for it.
-systemctl mask chrony-wait.service
-
-echo "Disable slow boot units not needed in the sandbox"
-# binfmt registrations (foreign-arch exec) take ~1s of CPU early in boot and
-# compete with envd start; e2scrub is for LVM-backed ext4 only.
-systemctl mask systemd-binfmt.service
-systemctl mask e2scrub_reap.service
-
-echo "Pre-packing CA certificates for fast boot"
-# Single contiguous file: seeding the /etc/ssl/certs tmpfs from one tar is one
-# sequential read instead of ~150 scattered small reads on the lazily-fetched
-# rootfs (see envd.service ExecStartPre).
-mkdir -p /usr/local/share/e2b
-tar -C /etc/ssl/certs -cf /usr/local/share/e2b/ssl-certs.tar .
-
 # Clean machine-id from Docker
 rm -rf /etc/machine-id
 

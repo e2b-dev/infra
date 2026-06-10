@@ -79,11 +79,6 @@ func (f *fcLogFilter) Write(p []byte) (n int, err error) {
 	return len(p), err
 }
 
-// ext4RootFlags: discard so ext4 issues TRIM on freed blocks (elided from the
-// snapshot diff). Must never include "noload": filesystem-only snapshot resume
-// relies on ext4 replaying the journal when rebooting from the snapshot rootfs.
-const ext4RootFlags = "discard"
-
 type ProcessOptions struct {
 	// IoEngine is the io engine to use for the rootfs drive.
 	IoEngine *string
@@ -378,7 +373,8 @@ func (p *Process) Create(
 		"i8042.noaux":      "",
 		"random.trust_cpu": "on",
 
-		"rootflags": ext4RootFlags,
+		// discard: ext4 issues TRIM on freed blocks so they are elided from the snapshot diff.
+		"rootflags": "discard",
 	}
 
 	if options.KvmClock {

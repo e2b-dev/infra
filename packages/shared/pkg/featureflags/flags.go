@@ -143,12 +143,9 @@ var (
 	// against the base memfile. bestEffort skips uncached blocks;
 	// directIO opens the dedup output with O_DIRECT.
 	MemfileDiffDedupFlag = NewJSONFlag("memfile-diff-dedup", ldvalue.FromJSONMarshal(map[string]any{
-		"enabled":                        false,
-		"bestEffort":                     false,
-		"directIO":                       false,
-		"maxFetchWindowsPerBlock":        0,
-		"maxPromotedParentPagesPerBlock": 0,
-		"fetchRunWindowPages":            0,
+		"enabled":    false,
+		"bestEffort": false,
+		"directIO":   false,
 	}))
 
 	// PeerToPeerChunkTransferFlag enables peer-to-peer chunk routing.

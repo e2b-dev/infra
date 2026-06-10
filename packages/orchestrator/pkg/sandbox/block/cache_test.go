@@ -786,7 +786,7 @@ func runDedup(t *testing.T, srcMem, baseMem []byte, dirty *roaring.Bitmap, block
 	t.Helper()
 
 	src := buildPackedSrcCache(t, srcMem, dirty, blockSize)
-	cache, meta, err := src.Dedup(t.Context(), &fakeOriginalDevice{data: baseMem}, dirty, blockSize, t.TempDir()+"/dedup", false, false, DedupBudget{})
+	cache, meta, err := src.Dedup(t.Context(), &fakeOriginalDevice{data: baseMem}, dirty, blockSize, t.TempDir()+"/dedup", false, false)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
@@ -908,7 +908,7 @@ func TestCacheDedup_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	_, _, err = src.Dedup(ctx, &fakeOriginalDevice{data: data}, dirty, blockSize, t.TempDir()+"/dedup", false, false, DedupBudget{})
+	_, _, err = src.Dedup(ctx, &fakeOriginalDevice{data: data}, dirty, blockSize, t.TempDir()+"/dedup", false, false)
 	require.ErrorIs(t, err, context.Canceled)
 }
 
@@ -932,7 +932,6 @@ func TestCacheDedup_OriginalMemfileReadError(t *testing.T) {
 		t.TempDir()+"/dedup",
 		false,
 		false,
-		DedupBudget{},
 	)
 	require.ErrorIs(t, err, sentinel)
 }
@@ -966,7 +965,7 @@ func TestCacheDedup_EmptyParentMappingSkipsBaseReadAt(t *testing.T) {
 	junk := bytes.Repeat([]byte{0xFF}, int(size))
 	base := &fakeOriginalDevice{data: junk, hdr: hdr}
 
-	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", false, false, DedupBudget{})
+	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", false, false)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
@@ -1059,7 +1058,7 @@ func TestCacheDedup_BestEffortUncachedSkipsBaseReadAt(t *testing.T) {
 	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
 	base := &peekingOriginalDevice{fakeOriginalDevice: fakeOriginalDevice{data: baseData}, cached: false}
 
-	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", true, false, DedupBudget{})
+	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", true, false)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
@@ -1091,46 +1090,12 @@ func TestCacheDedup_BestEffortCachedMatchesNormalPath(t *testing.T) {
 	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
 	base := &peekingOriginalDevice{fakeOriginalDevice: fakeOriginalDevice{data: baseData}, cached: true}
 
-	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", true, false, DedupBudget{})
+	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", true, false)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
 	require.EqualValues(t, 1, meta.Dirty.GetCardinality(), "only the genuinely differing page is dirty")
 	require.EqualValues(t, 0, meta.Empty.GetCardinality())
-}
-
-func TestCacheDedup_FetchRunBudgetPromotesSmallParentRun(t *testing.T) {
-	t.Parallel()
-
-	pageSize := int64(header.PageSize)
-	blockSize := 4 * pageSize
-	size := blockSize
-
-	baseData := make([]byte, size)
-	_, err := rand.Read(baseData)
-	require.NoError(t, err)
-	srcData := make([]byte, size)
-	copy(srcData, baseData)
-	srcData[0] ^= 0xFF
-	srcData[2*pageSize] ^= 0xFF
-	clear(srcData[3*pageSize : 4*pageSize])
-
-	dirty := fullDirty(size, blockSize)
-	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
-
-	cache, meta, err := src.Dedup(t.Context(), &fakeOriginalDevice{data: baseData}, dirty, blockSize, t.TempDir()+"/dedup", false, false, DedupBudget{MaxFetchWindowsPerBlock: 1, MaxPromotedParentPagesPerBlock: 1, FetchRunWindowPages: 4})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = cache.Close() })
-
-	require.EqualValues(t, 3, meta.Dirty.GetCardinality())
-	require.EqualValues(t, 1, meta.Empty.GetCardinality())
-
-	for _, i := range []int64{0, 1, 2} {
-		got := make([]byte, pageSize)
-		_, err := cache.ReadAt(got, i*pageSize)
-		require.NoError(t, err)
-		require.Equal(t, srcData[i*pageSize:(i+1)*pageSize], got, "promoted page %d", i)
-	}
 }
 
 type perPagePeeker struct {
@@ -1167,117 +1132,13 @@ func TestCacheDedup_BestEffortPerPageCacheCheck(t *testing.T) {
 		cachedPages:        map[uint32]bool{0: true, 1: false, 2: true, 3: false},
 	}
 
-	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", true, false, DedupBudget{})
+	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", true, false)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
 	require.EqualValues(t, 2, meta.Dirty.GetCardinality())
 	require.True(t, meta.Dirty.Contains(1))
 	require.True(t, meta.Dirty.Contains(3))
-}
-
-// With no promotion budget, parent pages that match the base stay deduped even
-// when the block exceeds MaxFetchWindowsPerBlock: the compaction can't spend
-// any promotions, so it must leave the parents out of the diff rather than
-// over-promote them into Dirty.
-func TestCacheDedup_BudgetExhaustionKeepsParentsDeduped(t *testing.T) {
-	t.Parallel()
-
-	pageSize := int64(header.PageSize)
-	blockSize := 4 * pageSize
-	size := blockSize
-
-	baseData := make([]byte, size)
-	_, err := rand.Read(baseData)
-	require.NoError(t, err)
-	srcData := make([]byte, size)
-	copy(srcData, baseData)
-	// Pages 0 and 2 differ (current); pages 1 and 3 match base (parent).
-	srcData[0] ^= 0xFF
-	srcData[2*pageSize] ^= 0xFF
-
-	dirty := fullDirty(size, blockSize)
-	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
-
-	// MaxFetchWindowsPerBlock unsatisfiable, but no promotions allowed.
-	cache, meta, err := src.Dedup(t.Context(), &fakeOriginalDevice{data: baseData}, dirty, blockSize, t.TempDir()+"/dedup", false, false, DedupBudget{MaxFetchWindowsPerBlock: 0, MaxPromotedParentPagesPerBlock: 0, FetchRunWindowPages: 4})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = cache.Close() })
-
-	// Only the two genuinely differing pages are stored; matching parents are
-	// deduped away (not promoted), and nothing is empty.
-	require.EqualValues(t, 2, meta.Dirty.GetCardinality())
-	require.True(t, meta.Dirty.Contains(0))
-	require.True(t, meta.Dirty.Contains(2))
-	require.EqualValues(t, 0, meta.Empty.GetCardinality())
-}
-
-func parentKeyedPage(buildID uuid.UUID, window int) dedupPageInfo {
-	return dedupPageInfo{
-		kind: dedupPageParent,
-		key:  dedupFetchKey{sourceType: parentFetchSource, buildID: buildID, window: window},
-	}
-}
-
-func TestFetchWindowerCompact(t *testing.T) {
-	t.Parallel()
-
-	current := dedupPageInfo{kind: dedupPageCurrent}
-	buildA, buildB, buildC := uuid.New(), uuid.New(), uuid.New()
-
-	t.Run("zero-benefit promotion is not committed", func(t *testing.T) {
-		t.Parallel()
-
-		// Two parents in distinct windows; the budget only covers one, and
-		// promoting it just trades a parent window for a current window.
-		w := fetchWindower{windowPages: 4}
-		pages := []dedupPageInfo{parentKeyedPage(buildA, 0), parentKeyedPage(buildA, 1)}
-		require.Equal(t, 0, w.compact(pages, 1, 1))
-		require.Equal(t, dedupPageParent, pages[0].kind)
-	})
-
-	t.Run("promotes a whole key group of non-adjacent parents", func(t *testing.T) {
-		t.Parallel()
-
-		// Two parents sharing one window, separated by a current page: the
-		// whole key group is promoted together (2 -> 1 windows).
-		w := fetchWindower{windowPages: 4}
-		pages := []dedupPageInfo{parentKeyedPage(buildA, 0), current, parentKeyedPage(buildA, 0)}
-		require.Equal(t, 2, w.compact(pages, 1, 4))
-		require.Equal(t, dedupPageCurrent, pages[0].kind)
-		require.Equal(t, dedupPageCurrent, pages[2].kind)
-	})
-
-	t.Run("combines distinct-key parents when only the union helps", func(t *testing.T) {
-		t.Parallel()
-
-		// current/A/current/B with two-page fetch windows: promoting either
-		// parent alone opens a second current window (zero benefit), but
-		// promoting both folds everything into two current windows (3 -> 2).
-		w := fetchWindower{windowPages: 2}
-		pages := []dedupPageInfo{current, parentKeyedPage(buildA, 0), current, parentKeyedPage(buildB, 0)}
-		require.Equal(t, 2, w.compact(pages, 2, 2))
-		require.Equal(t, dedupPageCurrent, pages[1].kind)
-		require.Equal(t, dedupPageCurrent, pages[3].kind)
-	})
-
-	t.Run("budget spent on cheapest groups first", func(t *testing.T) {
-		t.Parallel()
-
-		// A spans two pages of one window; B and C are distinct single-page
-		// windows. Budget 2 cannot eliminate A, but the cheaper B and C
-		// collapse into one current window (3 -> 2 windows).
-		w := fetchWindower{windowPages: 4}
-		pages := []dedupPageInfo{
-			parentKeyedPage(buildA, 0), parentKeyedPage(buildA, 0),
-			parentKeyedPage(buildB, 0), parentKeyedPage(buildC, 0),
-		}
-		require.Equal(t, 2, w.compact(pages, 1, 2))
-		require.Equal(t, dedupPageParent, pages[0].kind)
-		require.Equal(t, dedupPageParent, pages[1].kind)
-		require.Equal(t, dedupPageCurrent, pages[2].kind)
-		require.Equal(t, dedupPageCurrent, pages[3].kind)
-	})
 }
 
 // TestCache_FileSize_MatchesActualAllocation writes a known number of full

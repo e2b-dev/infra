@@ -321,18 +321,6 @@ func NewFactory(
 // on the host side.
 type PreBootFn func(ctx context.Context, rootfsPath string) error
 
-type createOptions struct {
-	deferMarkRunning bool
-}
-
-type CreateOption func(*createOptions)
-
-// WithDeferredMarkRunning skips marking the sandbox running inside CreateSandbox
-// so the caller can mark it only after envd is ready, matching ResumeSandbox.
-func WithDeferredMarkRunning() CreateOption {
-	return func(o *createOptions) { o.deferMarkRunning = true }
-}
-
 // CreateSandbox creates the sandbox.
 // IMPORTANT: You must Close() the sandbox after you are done with it.
 func (f *Factory) CreateSandbox(
@@ -345,16 +333,10 @@ func (f *Factory) CreateSandbox(
 	processOptions fc.ProcessOptions,
 	apiConfigToStore *orchestrator.SandboxConfig,
 	preBootFn PreBootFn,
-	opts ...CreateOption,
 ) (s *Sandbox, e error) {
 	ctx, span := tracer.Start(ctx, "create sandbox")
 	defer span.End()
 	defer handleSpanError(span, &e)
-
-	var createOpts createOptions
-	for _, opt := range opts {
-		opt(&createOpts)
-	}
 
 	execCtx, execSpan := startExecutionSpan(ctx)
 
@@ -578,9 +560,7 @@ func (f *Factory) CreateSandbox(
 		exit.SetError(errors.Join(err, fcErr))
 	}()
 
-	if !createOpts.deferMarkRunning {
-		f.Sandboxes.MarkRunning(ctx, sbx)
-	}
+	f.Sandboxes.MarkRunning(ctx, sbx)
 
 	return sbx, nil
 }
@@ -1064,19 +1044,6 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-type pauseOptions struct {
-	memorySnapshot bool
-}
-
-type PauseOption func(*pauseOptions)
-
-// WithMemorySnapshot controls whether the pause snapshots guest memory.
-// When disabled, only the filesystem (rootfs) is persisted; resuming such a
-// snapshot reboots the guest instead of restoring memory state.
-func WithMemorySnapshot(enabled bool) PauseOption {
-	return func(o *pauseOptions) { o.memorySnapshot = enabled }
-}
-
 // Pause creates a snapshot of the sandbox.
 //
 // Currently the memory snapshotting works like this:
@@ -1088,24 +1055,13 @@ func WithMemorySnapshot(enabled bool) PauseOption {
 //     that returns info about resident memory pages and about empty memory pages.
 //  5. Base on the info from the custom FC endpoint or from Uffd we copy the pages directly from the FC process to a local cache.
 //  6. We then can either close the sandbox or resume it.
-//
-// With WithMemorySnapshot(false), steps 3-5 are skipped: a guest sync flushes
-// the page cache to disk before pause, CreateSnapshot is still called for its
-// disk drain+flush side effect (the snapfile is not uploaded), and the memfile
-// diff is empty.
 func (s *Sandbox) Pause(
 	ctx context.Context,
 	m metadata.Template,
 	useCase SnapshotUseCase,
-	opts ...PauseOption,
 ) (st *Snapshot, e error) {
 	ctx, span := tracer.Start(ctx, "sandbox-snapshot")
 	defer span.End()
-
-	pauseOpts := pauseOptions{memorySnapshot: true}
-	for _, opt := range opts {
-		opt(&pauseOpts)
-	}
 
 	cleanup := NewCleanup()
 	defer func() {
@@ -1134,13 +1090,6 @@ func (s *Sandbox) Pause(
 	// compact_memory) on the live VM via envd. Per-step caps are LD-flag-driven;
 	// all default to 0 which disables the chain entirely. Non-fatal.
 	s.bestEffortReclaim(ctx)
-	if !pauseOpts.memorySnapshot {
-		// FC never flushes the guest page cache; sync so the persisted
-		// filesystem is consistent up to the pause point.
-		s.bestEffortGuestSync(ctx)
-		// Memory prefetch refers to the memfile, which is not persisted.
-		m.Prefetch = nil
-	}
 	// reclaim freezes user cgroups; if pause/snapshot fails the sandbox stays
 	// live, so unfreeze on error to avoid a permanently frozen live VM.
 	// Only runs via cleanup.Run on the error path; success leaves the frozen
@@ -1178,65 +1127,49 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("error creating snapshot: %w", err)
 	}
 
+	// Gather data for postprocessing
+	originalMemfile, err := s.Template.Memfile(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get original memfile: %w", err)
+	}
+
 	originalRootfs, err := s.Template.Rootfs()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get original rootfs: %w", err)
 	}
 
-	// Start POSTPROCESSING
-	memfileDiff := build.Diff(&build.NoDiff{})
-	memfileDiffHeader := NewResolvedDiffHeader(nil)
-	var memfileBlockSize uint64
-	var memfileHeader *header.Header
-	var newMemfileBytes uint64
-	if pauseOpts.memorySnapshot {
-		originalMemfile, err := s.Template.Memfile(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get original memfile: %w", err)
-		}
-		memfileBlockSize = originalMemfile.Header().Metadata.BlockSize
-		memfileHeader = originalMemfile.Header()
-
-		memfileDiffMetadata, err := s.Resources.memory.DiffMetadata(ctx, s.process)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get memfile metadata: %w", err)
-		}
-		recordSnapshotDiff(ctx, "memfile", memfileDiffMetadata, originalMemfile.Header())
-		newMemfileBytes = memfileDiffMetadata.Dirty.GetCardinality() * uint64(memfileDiffMetadata.BlockSize)
-
-		var dedupBase block.ReadonlyDevice
-		var dedupBestEffort, dedupDirectIO bool
-		var dedupBudget block.DedupBudget
-		dedupCfg := s.featureFlags.JSONFlag(ctx, featureflags.MemfileDiffDedupFlag, sandboxLDContext(s.Runtime, s.Config)).AsValueMap()
-		if dedupCfg.Get("enabled").BoolValue() {
-			dedupBase = originalMemfile
-			dedupBestEffort = dedupCfg.Get("bestEffort").BoolValue()
-			dedupDirectIO = dedupCfg.Get("directIO").BoolValue()
-			dedupBudget = block.DedupBudget{
-				MaxFetchWindowsPerBlock:        dedupCfg.Get("maxFetchWindowsPerBlock").IntValue(),
-				MaxPromotedParentPagesPerBlock: dedupCfg.Get("maxPromotedParentPagesPerBlock").IntValue(),
-				FetchRunWindowPages:            dedupCfg.Get("fetchRunWindowPages").IntValue(),
-			}
-		}
-		memfileDiff, memfileDiffHeader, err = pauseProcessMemory(
-			ctx,
-			buildID,
-			originalMemfile.Header(),
-			memfileDiffMetadata,
-			s.config.DefaultCacheDir,
-			s.process,
-			s.memory.Memfd(ctx),
-			s.featureFlags.BoolFlag(ctx, featureflags.MemfdBackgroundCopyFlag, sandboxLDContext(s.Runtime, s.Config)),
-			dedupBase,
-			dedupBestEffort,
-			dedupDirectIO,
-			dedupBudget,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("error while post processing: %w", err)
-		}
-		cleanup.AddNoContext(ctx, memfileDiff.Close)
+	memfileDiffMetadata, err := s.Resources.memory.DiffMetadata(ctx, s.process)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get memfile metadata: %w", err)
 	}
+	recordSnapshotDiff(ctx, "memfile", memfileDiffMetadata, originalMemfile.Header())
+
+	// Start POSTPROCESSING
+	var dedupBase block.ReadonlyDevice
+	var dedupBestEffort, dedupDirectIO bool
+	dedupCfg := s.featureFlags.JSONFlag(ctx, featureflags.MemfileDiffDedupFlag, sandboxLDContext(s.Runtime, s.Config)).AsValueMap()
+	if dedupCfg.Get("enabled").BoolValue() {
+		dedupBase = originalMemfile
+		dedupBestEffort = dedupCfg.Get("bestEffort").BoolValue()
+		dedupDirectIO = dedupCfg.Get("directIO").BoolValue()
+	}
+	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
+		ctx,
+		buildID,
+		originalMemfile.Header(),
+		memfileDiffMetadata,
+		s.config.DefaultCacheDir,
+		s.process,
+		s.memory.Memfd(ctx),
+		s.featureFlags.BoolFlag(ctx, featureflags.MemfdBackgroundCopyFlag, sandboxLDContext(s.Runtime, s.Config)),
+		dedupBase,
+		dedupBestEffort,
+		dedupDirectIO,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error while post processing: %w", err)
+	}
+	cleanup.AddNoContext(ctx, memfileDiff.Close)
 
 	rootfsDiff, rootfsHeader, err := pauseProcessRootfs(
 		ctx,
@@ -1262,7 +1195,8 @@ func (s *Sandbox) Pause(
 	// base-identical ones, so it over-estimates. The rootfs copy is synchronous
 	// today, so its new header carries the exact rootfs chain and bytes; if it
 	// ever becomes async, switch it to the parent plus a dirty proxy like memfile.
-	schedulingMetadata := scheduling.FromHeaders(buildID, memfileHeader, rootfsHeader, newMemfileBytes)
+	newMemfileBytes := memfileDiffMetadata.Dirty.GetCardinality() * uint64(memfileDiffMetadata.BlockSize)
+	schedulingMetadata := scheduling.FromHeaders(buildID, originalMemfile.Header(), rootfsHeader, newMemfileBytes)
 
 	metadataFileLink := template.NewLocalFileLink(cachePaths.CacheMetadata())
 	cleanup.AddNoContext(ctx, metadataFileLink.Close)
@@ -1280,8 +1214,7 @@ func (s *Sandbox) Pause(
 		RootfsDiff:         rootfsDiff,
 		RootfsDiffHeader:   rootfsDiffHeader,
 		SchedulingMetadata: schedulingMetadata,
-		MemorySnapshot:     pauseOpts.memorySnapshot,
-		MemfileBlockSize:   memfileBlockSize,
+		MemfileBlockSize:   originalMemfile.Header().Metadata.BlockSize,
 		RootfsBlockSize:    originalRootfs.Header().Metadata.BlockSize,
 
 		BuildID: buildID,
@@ -1318,7 +1251,6 @@ func pauseProcessMemory(
 	originalMemfile block.ReadonlyDevice,
 	dedupBestEffort bool,
 	dedupDirectIO bool,
-	dedupBudget block.DedupBudget,
 ) (d build.Diff, h *DiffHeader, e error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
@@ -1328,7 +1260,7 @@ func pauseProcessMemory(
 	// ExportMemory owns memfd and closes it on all paths.
 	cache, err := fc.ExportMemory(
 		ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd, bgCopy,
-		originalMemfile, dedupBestEffort, dedupDirectIO, dedupBudget, diffMetadata.Empty, metaOut,
+		originalMemfile, dedupBestEffort, dedupDirectIO, diffMetadata.Empty, metaOut,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to export memory: %w", err)
