@@ -108,6 +108,32 @@ func (s *Sandbox) bestEffortReclaim(ctx context.Context) {
 	}
 }
 
+// bestEffortGuestSync runs sync in the guest via envd so ext4 flushes dirty
+// pages to the virtio disk before a filesystem-only pause.
+func (s *Sandbox) bestEffortGuestSync(ctx context.Context) {
+	const syncTimeout = 5 * time.Second
+
+	ctx, span := tracer.Start(ctx, "envd-guest-sync")
+	defer span.End()
+
+	rcCtx, cancel := context.WithTimeout(ctx, syncTimeout+reclaimOuterSlack)
+	defer cancel()
+
+	stream, err := s.StartEnvdSystemShell(rcCtx, "/bin/sh", []string{"-c", "sync"}, "root", syncTimeout)
+	if err != nil {
+		logger.L().Warn(ctx, "envd guest sync failed", logger.WithSandboxID(s.Runtime.SandboxID), zap.Error(err))
+
+		return
+	}
+	defer stream.Close()
+
+	for stream.Receive() {
+	}
+	if err := stream.Err(); err != nil {
+		logger.L().Warn(ctx, "envd guest sync stream error", logger.WithSandboxID(s.Runtime.SandboxID), zap.Error(err))
+	}
+}
+
 // envdSupportsCgroupFreeze reports whether the sandbox's envd exposes the
 // native /freeze and /unfreeze endpoints. Bad version strings log and return
 // false so we never accidentally call an unsupported endpoint.
