@@ -5,4 +5,5 @@ const (
 	EdgeRpcAuthHeader                                     = "authorization"
 	EdgeRpcServiceInstanceIDHeader                        = "service-instance-id"
 	EdgeFeatureSandboxLogsLevelTextFilteringEnabledHeader = "X-E2B-Edge-Feature-Sandbox-Logs-Level-Text-Filtering-Enabled"
+	EdgeFeatureSandboxLogsPidFilteringEnabledHeader       = "X-E2B-Edge-Feature-Sandbox-Logs-Pid-Filtering-Enabled"
 )
