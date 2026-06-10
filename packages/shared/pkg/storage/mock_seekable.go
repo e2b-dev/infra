@@ -259,8 +259,8 @@ func (_c *MockSeekable_StoreFile_Call) Run(run func(ctx context.Context, path st
 	return _c
 }
 
-func (_c *MockSeekable_StoreFile_Call) Return(frameTable *FullFrameTable, bytes [32]byte, err error) *MockSeekable_StoreFile_Call {
-	_c.Call.Return(frameTable, bytes, err)
+func (_c *MockSeekable_StoreFile_Call) Return(fullFrameTable *FullFrameTable, bytes [32]byte, err error) *MockSeekable_StoreFile_Call {
+	_c.Call.Return(fullFrameTable, bytes, err)
 	return _c
 }
 
