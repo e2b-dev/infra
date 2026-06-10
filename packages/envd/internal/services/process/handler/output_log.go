@@ -19,6 +19,13 @@ const (
 	// well under the exporter's per-line limit (192 KiB) even after JSON wrapping.
 	maxOutputLineBytes = 64 << 10 // 64 KiB
 
+	// perEventOverheadBytes approximates the fixed cost of one emitted log record
+	// (timestamp, level, pid, stream, event_type, JSON framing) on top of the message
+	// payload. Charging it against the budget also bounds the number of records a
+	// command can produce: floods of tiny lines (e.g. `yes`) would otherwise emit
+	// millions of records while consuming almost none of the byte budget.
+	perEventOverheadBytes = 256
+
 	truncationMarker = "[output truncated: command exceeded log capture limit]"
 )
 
@@ -123,7 +130,7 @@ func (o *outputLogger) emitLine(line []byte) {
 		Uint32("pid", o.pid()).
 		Msg(string(line))
 
-	if o.budget.remaining.Add(-int64(len(line))) <= 0 {
+	if o.budget.remaining.Add(-(int64(len(line)) + perEventOverheadBytes)) <= 0 {
 		o.budget.markTruncated(o.logger)
 	}
 }

@@ -123,3 +123,38 @@ func TestOutputLogger_PerCommandCap(t *testing.T) {
 	assert.Less(t, emitted, totalLines, "output past the cap should be dropped")
 	assert.Positive(t, emitted, "output up to the cap should be emitted")
 }
+
+// TestOutputLogger_TinyLineFloodBoundsRecordCount verifies the per-event overhead
+// charge bounds the number of emitted records, not just payload bytes: a command
+// emitting tiny lines (e.g. `yes`) must not turn the byte budget into millions of
+// log records.
+func TestOutputLogger_TinyLineFloodBoundsRecordCount(t *testing.T) {
+	t.Parallel()
+
+	logger, buf := newCapturingLogger()
+	o := newOutputLogger(logger, newCommandLogBudget(), "stdout", testPidFn)
+
+	// Each line carries a 1-byte payload, so the budget allows at most
+	// budget/(overhead+1) records. Write comfortably past that.
+	const chunkLines = 1024
+	chunk := []byte(strings.Repeat("y\n", chunkLines))
+	maxRecords := maxCommandOutputBytes / (perEventOverheadBytes + 1)
+	for written := 0; written < maxRecords+2*chunkLines; written += chunkLines {
+		o.write(chunk)
+	}
+
+	lines := parseLines(t, buf.Bytes())
+
+	var markers, emitted int
+	for _, l := range lines {
+		if l.Message == truncationMarker {
+			markers++
+		} else {
+			emitted++
+		}
+	}
+
+	assert.Equal(t, 1, markers, "expected exactly one truncation marker")
+	assert.Positive(t, emitted, "output up to the cap should be emitted")
+	assert.LessOrEqual(t, emitted, maxRecords+1, "record count must be bounded by the per-event overhead charge")
+}
