@@ -210,11 +210,17 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 }
 
 type dedupPlan struct {
-	pageDirty          *roaring.Bitmap
-	pageEmpty          *roaring.Bitmap
-	exportedSize       int64
-	promotedBlocks     int64
-	promotedPages      int64
+	pageDirty    *roaring.Bitmap
+	pageEmpty    *roaring.Bitmap
+	exportedSize int64
+
+	// Per-block window cap (fetchWindower.compact).
+	promotedBlocks int64
+	promotedPages  int64
+
+	// Global cheapest-key promotion (promoteCheapestFrames). parentFrames is
+	// the distinct parent fetch keys before promotion, i.e. the predicted
+	// cold-restore fetches contributed by this diff's deduped pages.
 	parentFrames       int64
 	promotedFrames     int64
 	promotedFramePages int64
@@ -244,6 +250,8 @@ const (
 )
 
 // dedupFetchKey identifies the parent fetch window backing a deduped page.
+// Windows are frame-sized spans of the parent build's stored file, so on a
+// cold restore each distinct key costs one backing fetch.
 type dedupFetchKey struct {
 	buildID uuid.UUID
 	window  int
@@ -254,9 +262,17 @@ type dedupPageInfo struct {
 	key  dedupFetchKey
 }
 
-// dedupCompare classifies each dirty page against base into pageDirty or
-// pageEmpty. Per-page IsCached so a single uncached neighbour can't poison
-// cached pages of the same block when the parent header is page-granular.
+// dedupCompare classifies each dirty page against base: zero pages become
+// pageEmpty, pages differing from base become pageDirty (stored in the diff),
+// and pages equal to base are deduped away to be served by the parent.
+// Per-page IsCached so a single uncached neighbour can't poison cached pages
+// of the same block when the parent header is page-granular.
+//
+// Two optional budget passes then trade diff bytes for fetch contiguity by
+// promoting deduped pages into pageDirty: a per-block fetch-window cap
+// (fetchWindower.compact) and a global cheapest-key promotion
+// (promoteCheapestFrames). Promoted pages are byte-identical to the parent,
+// so promotion never changes the restored image.
 func dedupCompare(
 	ctx context.Context,
 	src func(absOff int64) ([]byte, error),
@@ -361,8 +377,6 @@ func dedupCompare(
 		}
 	}
 
-	// parentFrames is the predicted cold-restore fetch count contributed by
-	// this diff's deduped pages: each distinct key is one backing frame fetch.
 	plan.parentFrames = int64(len(parentByKey))
 	plan.promoteCheapestFrames(parentByKey, budget.MaxPromotedParentPagesTotal, budget.FetchRunWindowPages)
 

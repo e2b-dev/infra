@@ -1265,6 +1265,59 @@ func TestCacheDedup_GlobalFrameBudgetPromotesCheapestKeys(t *testing.T) {
 	require.Equal(t, srcData[5*pageSize:6*pageSize], got)
 }
 
+// Exercises both budget passes together: the per-block cap compacts a
+// fragmented block, and the global budget then promotes a lonely surviving
+// key from a block the per-block cap left alone.
+func TestCacheDedup_PerBlockAndGlobalBudgetsCompose(t *testing.T) {
+	t.Parallel()
+
+	pageSize := int64(header.PageSize)
+	blockSize := 4 * pageSize
+	size := 2 * blockSize
+
+	baseData := make([]byte, size)
+	_, err := rand.Read(baseData)
+	require.NoError(t, err)
+	srcData := make([]byte, size)
+	copy(srcData, baseData)
+	// Block 0: pages 0,2 differ; parents 1,3 land in distinct 2-page windows,
+	// so the block spans 3 fetch windows and the per-block cap (2) promotes
+	// both parents. Block 1: page 4 differs, page 5 matches (lonely key),
+	// pages 6,7 are zero; the block fits 2 windows so the per-block cap is
+	// idle and the global budget (1 page) picks up page 5.
+	for _, p := range []int64{0, 2, 4} {
+		srcData[p*pageSize] ^= 0xFF
+	}
+	clear(srcData[6*pageSize : 8*pageSize])
+
+	dirty := fullDirty(size, blockSize)
+	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
+
+	budget := DedupBudget{
+		MaxFetchWindowsPerBlock:        2,
+		MaxPromotedParentPagesPerBlock: 2,
+		MaxPromotedParentPagesTotal:    1,
+		FetchRunWindowPages:            2,
+	}
+	cache, meta, err := src.Dedup(t.Context(), &fakeOriginalDevice{data: baseData}, dirty, blockSize, t.TempDir()+"/dedup", false, false, budget)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cache.Close() })
+
+	require.EqualValues(t, 6, meta.Dirty.GetCardinality())
+	for _, p := range []uint32{0, 1, 2, 3, 4, 5} {
+		require.True(t, meta.Dirty.Contains(p), "page %d should be stored", p)
+	}
+	require.EqualValues(t, 2, meta.Empty.GetCardinality())
+
+	// Dirty = {0..5}, so packed slot == page index for both promoted pages.
+	for _, p := range []int64{1, 5} {
+		got := make([]byte, pageSize)
+		_, err := cache.ReadAt(got, p*pageSize)
+		require.NoError(t, err)
+		require.Equal(t, srcData[p*pageSize:(p+1)*pageSize], got, "promoted page %d", p)
+	}
+}
+
 // With no promotion budget, parent pages that match the base stay deduped even
 // when the block exceeds MaxFetchWindowsPerBlock: the compaction can't spend
 // any promotions, so it must leave the parents out of the diff rather than
