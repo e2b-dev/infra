@@ -89,6 +89,7 @@ func main() {
 		zap.Int("max_concurrent_stat", opts.MaxConcurrentStat),
 		zap.Int("max_concurrent_scan", opts.MaxConcurrentScan),
 		zap.Int("max_concurrent_delete", opts.MaxConcurrentDelete),
+		zap.Duration("orphan_grace_period", cleaner.OrphanGracePeriod),
 	)
 
 	// preRun leaves both targets at 0 when disk usage is already at or
@@ -99,6 +100,10 @@ func main() {
 		log.Info(ctx, "disk already at or below target, nothing to do",
 			zap.Float64("target_disk_usage_percent", opts.TargetDiskUsagePercent))
 
+		return
+	}
+
+	if err = cleaner.VerifyChunksCacheRoot(opts.Path); err != nil {
 		return
 	}
 

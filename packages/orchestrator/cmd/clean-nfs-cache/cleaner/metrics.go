@@ -14,15 +14,21 @@ const (
 	AttrKind   = "kind"
 	AttrSource = "source"
 	AttrResult = "result"
+	AttrAction = "action"
 
-	ValKindFile  = "file"
-	ValKindDir   = "dir"
-	ValSrcInDir  = "in_dir"
-	ValSrcAlone  = "standalone"
-	ValResultOk  = "ok"
-	ValResultErr = "err"
-	ValResultAGN = "already_gone"
-	ValResultSAC = "skipped_atime_changed"
+	ValKindFile               = "file"
+	ValKindDir                = "dir"
+	ValKindTrulyEmpty         = "truly_empty"
+	ValKindOrphanNoMemRootfs  = "orphan_no_memfile_rootfs"
+	ValSrcInDir               = "in_dir"
+	ValSrcAlone               = "standalone"
+	ValResultOk               = "ok"
+	ValResultErr              = "err"
+	ValResultAGN              = "already_gone"
+	ValResultSAC              = "skipped_atime_changed"
+	ValActionDeleted          = "deleted"
+	ValActionSkippedGrace     = "skipped_grace_period"
+	ValActionDeleteFailed     = "delete_failed"
 )
 
 // Metrics holds the OTEL instruments emitted by the cleaner. Construct via
@@ -45,6 +51,9 @@ type Metrics struct {
 	UnlinkOps  metric.Int64Counter // attrs: result
 	RmdirOps   metric.Int64Counter // attrs: result
 	ScanBusy   metric.Int64Counter // ErrBusy retries on scanDir
+
+	// Empty/orphan directory encounters during scan.
+	EmptyDirEncountered metric.Int64Counter // attrs: kind, action
 }
 
 // NewMetrics builds all instruments from the given meter. A noop meter
@@ -142,6 +151,13 @@ func NewMetrics(meter metric.Meter) (*Metrics, error) {
 		metric.WithDescription("ErrBusy hits when a scanner tried a directory another scanner had already claimed"),
 	); err != nil {
 		return nil, fmt.Errorf("scan.busy: %w", err)
+	}
+
+	if m.EmptyDirEncountered, err = meter.Int64Counter(
+		"clean.nfs.empty_dir.encountered",
+		metric.WithDescription("Directories scanned that were either truly empty or orphaned (no memfile/ or rootfs.ext4/ subdir), split by what we did about it"),
+	); err != nil {
+		return nil, fmt.Errorf("empty_dir.encountered: %w", err)
 	}
 
 	return m, nil

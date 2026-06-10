@@ -2,15 +2,19 @@ package cleaner
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 func TestScanDir(t *testing.T) {
@@ -107,4 +111,186 @@ func TestRandomSubdirOrOldestFile(t *testing.T) {
 	d3 := &Dir{}
 	_, _, err = d3.randomSubdirOrOldestFile()
 	require.ErrorIs(t, err, ErrNoFiles)
+}
+
+// runOrphanScan runs scanDir against {root}/{buildID}/ with one stat worker.
+// Returns the ErrNoFiles wrap (if any) so callers can assert on the
+// orphan-vs-empty path.
+func runOrphanScan(t *testing.T, c *Cleaner, buildID string) error {
+	t.Helper()
+	ctx, cancel := context.WithCancel(t.Context())
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	c.statRequestCh = make(chan *statReq, 1)
+	go c.Statter(ctx, wg)
+	t.Cleanup(func() {
+		cancel()
+		wg.Wait()
+	})
+
+	buildDir := NewDir(buildID)
+	c.root.Dirs = append(c.root.Dirs, buildDir)
+
+	_, err := c.scanDir(ctx, []*Dir{c.root, buildDir})
+
+	return err
+}
+
+func TestScanDir_OrphanReap(t *testing.T) {
+	t.Parallel()
+
+	t.Run("reaps BuildID dir with no memfile or rootfs subdir past grace", func(t *testing.T) {
+		t.Parallel()
+		root := t.TempDir()
+		buildID := "orphan-build"
+		buildDir := filepath.Join(root, buildID)
+		require.NoError(t, os.MkdirAll(filepath.Join(buildDir, "stale-junk"), 0o755))
+		// Backdate the BuildID dir mtime so it is past the grace period.
+		old := time.Now().Add(-2 * time.Hour)
+		require.NoError(t, os.Chtimes(buildDir, old, old))
+
+		c := NewCleaner(Options{
+			Path: root,
+		}, logger.NewNopLogger(), nil)
+
+		err := runOrphanScan(t, c, buildID)
+		require.ErrorIs(t, err, ErrNoFiles)
+		_, statErr := os.Stat(buildDir)
+		require.True(t, os.IsNotExist(statErr), "BuildID dir should have been removed, got: %v", statErr)
+	})
+
+	t.Run("skips BuildID dir within grace period", func(t *testing.T) {
+		t.Parallel()
+		root := t.TempDir()
+		buildID := "fresh-build"
+		buildDir := filepath.Join(root, buildID)
+		// Fresh dir with no memfile/rootfs subdir but mtime = now → within grace.
+		require.NoError(t, os.MkdirAll(filepath.Join(buildDir, "cache", "sandbox-uuid"), 0o755))
+
+		c := NewCleaner(Options{
+			Path: root,
+		}, logger.NewNopLogger(), nil)
+
+		err := runOrphanScan(t, c, buildID)
+		// Fresh orphan-shaped dir is left alone; the scan should NOT delete it.
+		// It may legitimately return ErrNoFiles for "no eligible files to evict
+		// in this dir" — but the dir itself must remain.
+		if err != nil {
+			require.True(t, errors.Is(err, ErrNoFiles), "unexpected error: %v", err)
+		}
+		_, statErr := os.Stat(buildDir)
+		require.NoError(t, statErr, "fresh BuildID dir must not be reaped")
+	})
+
+	t.Run("does not reap BuildID dir that has memfile subdir", func(t *testing.T) {
+		t.Parallel()
+		root := t.TempDir()
+		buildID := "live-build"
+		buildDir := filepath.Join(root, buildID)
+		require.NoError(t, os.MkdirAll(filepath.Join(buildDir, storage.MemfileName), 0o755))
+		// Backdate to past grace so the only reason not to reap is the data subdir.
+		old := time.Now().Add(-2 * time.Hour)
+		require.NoError(t, os.Chtimes(buildDir, old, old))
+
+		c := NewCleaner(Options{
+			Path: root,
+		}, logger.NewNopLogger(), nil)
+
+		_ = runOrphanScan(t, c, buildID)
+		_, statErr := os.Stat(buildDir)
+		require.NoError(t, statErr, "BuildID with memfile/ subdir must not be reaped")
+	})
+
+	t.Run("does not reap BuildID dir that has rootfs subdir", func(t *testing.T) {
+		t.Parallel()
+		root := t.TempDir()
+		buildID := "live-build-rootfs"
+		buildDir := filepath.Join(root, buildID)
+		require.NoError(t, os.MkdirAll(filepath.Join(buildDir, storage.RootfsName), 0o755))
+		old := time.Now().Add(-2 * time.Hour)
+		require.NoError(t, os.Chtimes(buildDir, old, old))
+
+		c := NewCleaner(Options{
+			Path: root,
+		}, logger.NewNopLogger(), nil)
+
+		_ = runOrphanScan(t, c, buildID)
+		_, statErr := os.Stat(buildDir)
+		require.NoError(t, statErr, "BuildID with rootfs.ext4/ subdir must not be reaped")
+	})
+
+	t.Run("respects DryRun", func(t *testing.T) {
+		t.Parallel()
+		root := t.TempDir()
+		buildID := "dryrun-build"
+		buildDir := filepath.Join(root, buildID)
+		require.NoError(t, os.MkdirAll(filepath.Join(buildDir, "stale-junk"), 0o755))
+		old := time.Now().Add(-2 * time.Hour)
+		require.NoError(t, os.Chtimes(buildDir, old, old))
+
+		c := NewCleaner(Options{
+			Path:   root,
+			DryRun: true,
+		}, logger.NewNopLogger(), nil)
+
+		err := runOrphanScan(t, c, buildID)
+		require.ErrorIs(t, err, ErrNoFiles)
+		_, statErr := os.Stat(buildDir)
+		require.NoError(t, statErr, "DryRun must not actually delete the dir")
+	})
+}
+
+func TestVerifyChunksCacheRoot(t *testing.T) {
+	t.Parallel()
+
+	t.Run("accepts root with a UUID dir that has memfile subdir", func(t *testing.T) {
+		t.Parallel()
+		root := t.TempDir()
+		buildID := uuid.NewString()
+		require.NoError(t, os.MkdirAll(filepath.Join(root, buildID, storage.MemfileName), 0o755))
+		require.NoError(t, VerifyChunksCacheRoot(root))
+	})
+
+	t.Run("accepts root with a UUID dir that has rootfs subdir", func(t *testing.T) {
+		t.Parallel()
+		root := t.TempDir()
+		buildID := uuid.NewString()
+		require.NoError(t, os.MkdirAll(filepath.Join(root, buildID, storage.RootfsName), 0o755))
+		require.NoError(t, VerifyChunksCacheRoot(root))
+	})
+
+	t.Run("accepts empty root", func(t *testing.T) {
+		t.Parallel()
+		root := t.TempDir()
+		require.NoError(t, VerifyChunksCacheRoot(root))
+	})
+
+	t.Run("accepts root with no UUID-named children", func(t *testing.T) {
+		t.Parallel()
+		root := t.TempDir()
+		// e.g. a fresh mount with only the lost+found / .snapshot kind of stuff,
+		// or some non-cache scratch dir. No UUID-shaped entries → permissive.
+		require.NoError(t, os.MkdirAll(filepath.Join(root, "lost+found"), 0o755))
+		require.NoError(t, os.MkdirAll(filepath.Join(root, "some-non-uuid-thing"), 0o755))
+		require.NoError(t, VerifyChunksCacheRoot(root))
+	})
+
+	t.Run("rejects root whose UUID children lack memfile/rootfs subdirs", func(t *testing.T) {
+		t.Parallel()
+		// Simulates pointing the cleaner one level too high: the children
+		// here parse as UUIDs but contain unrelated stuff.
+		root := t.TempDir()
+		for range 3 {
+			require.NoError(t, os.MkdirAll(filepath.Join(root, uuid.NewString(), "stale-junk"), 0o755))
+		}
+		err := VerifyChunksCacheRoot(root)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "refusing")
+	})
+
+	t.Run("rejects nonexistent path", func(t *testing.T) {
+		t.Parallel()
+		err := VerifyChunksCacheRoot(filepath.Join(t.TempDir(), "does-not-exist"))
+		require.Error(t, err)
+	})
 }
