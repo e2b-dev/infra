@@ -277,6 +277,7 @@ func dedupCompare(
 	baseHeader := base.Header()
 	peeker, _ := base.(CachePeeker)
 
+	pages := make([]dedupPageInfo, blockSize/header.PageSize)
 	for r := range BitsetRanges(dirty, blockSize) {
 		plan.exportedSize += r.Size
 
@@ -291,7 +292,7 @@ func dedupCompare(
 				return nil, err
 			}
 
-			pages := make([]dedupPageInfo, blockSize/header.PageSize)
+			clear(pages)
 			for i := int64(0); i < blockSize; i += header.PageSize {
 				srcPage := srcBuf[i : i+header.PageSize]
 				pageOff := absOff + i
@@ -373,7 +374,11 @@ type fetchWindower struct {
 // span, so partial promotion never reduces the count. Promoting cheapest
 // groups first removes the most windows per promoted page.
 func (w fetchWindower) compact(pages []dedupPageInfo, maxWindows, maxPromoted int) int {
-	if maxWindows <= 0 || maxPromoted <= 0 || w.count(pages) <= maxWindows {
+	if maxWindows <= 0 || maxPromoted <= 0 {
+		return 0
+	}
+	best := w.count(pages)
+	if best <= maxWindows {
 		return 0
 	}
 
@@ -388,7 +393,6 @@ func (w fetchWindower) compact(pages []dedupPageInfo, maxWindows, maxPromoted in
 	// window but opens another current window) is only kept when a longer
 	// prefix improves on it.
 	var chosen, candidate []int
-	best := w.count(pages)
 	for _, group := range groups {
 		if len(candidate)+len(group) > maxPromoted {
 			break // groups are size-sorted, so no later group fits either
