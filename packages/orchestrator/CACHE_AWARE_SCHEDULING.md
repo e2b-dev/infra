@@ -179,11 +179,13 @@ This can start as a simple heuristic or supervised model:
 - **Reuse/demand prediction** (will a build be reused soon, how much): the dominant signal, and a pure supervised problem with observable labels — we actually see whether/when a build was reused. This should carry the load. Best fit: gradient-boosted trees (LightGBM/XGBoost) on the features above; optionally a Hawkes/self-exciting point process for bursty launch arrivals. Feeds the deterministic expected-value policy directly.
 - **Prewarm/replication tuning**: the only slot where a contextual bandit genuinely fits — counterfactual reward (we only observe the policy we ran) and low stakes.
 
+We may never ship a bandit at all. The deterministic Best-of-K + affinity score (placement) plus a supervised reuse-forecast feeding the expected-value policy (retention/prewarm) likely cover most of the win. The contextual bandit is a speculative, last-mile online tuner for prewarm/replication — only worth it if those two layers plateau and there is measurable headroom left in prewarm/replication decisions. Treat it as optional, not planned.
+
 Why not a bandit for the whole thing: we have labels for the parts that matter, so we can train offline on logged data instead of paying online exploration cost; exploration is risky in a latency-critical, capacity-constrained scheduler; and the bandit is weakest exactly where the value is (placement). A plain multi-armed bandit is an even worse fit because context matters too much.
 
 Offline RL (e.g. CQL on logged placement/cache traces) is the only paradigm that could beat supervised by jointly optimizing placement + eviction + prewarm as one sequential controller. It is far more expensive to build, validate, and make safe, needs the simulator regardless, and should not be touched until the deterministic + supervised stack provably plateaus.
 
-Next steps (revisit later): build the offline replay/simulator; ship the supervised reuse-forecast as the predictive workhorse feeding the expected-value policy; keep the contextual bandit as a narrow online fine-tuner on top; consider offline RL only if that plateaus.
+Next steps (revisit later): build the offline replay/simulator; ship the supervised reuse-forecast as the predictive workhorse feeding the expected-value policy; only then consider a contextual bandit as a narrow online fine-tuner if there is still headroom (it may never be needed); consider offline RL only if the whole stack plateaus.
 
 Good future bandit actions:
 
