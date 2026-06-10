@@ -37,12 +37,6 @@ func NewProvider(mode Mode, supa Provider, ory Provider) (Provider, error) {
 		}
 
 		return ory, nil
-	case ModeSupabaseOryFallback:
-		if supa == nil || ory == nil {
-			return nil, fmt.Errorf("mode %q requires both supabase and ory providers", mode)
-		}
-
-		return newDualProvider(supa, ory), nil
 	default:
 		return nil, fmt.Errorf("unknown user profile provider mode %q", mode)
 	}

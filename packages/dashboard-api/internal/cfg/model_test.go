@@ -93,13 +93,6 @@ func TestParseUserProfileProviderOryRequiresOryEnv(t *testing.T) {
 			token:         "pat",
 			wantErrSubstr: "ORY_SDK_URL",
 		},
-		{
-			name:          "fallback mode applies same requirements",
-			mode:          "supabase-ory-fallback",
-			token:         "pat",
-			issuer:        "https://ory.example.test",
-			wantErrSubstr: "ORY_SDK_URL",
-		},
 	}
 
 	for _, tt := range tests {
@@ -123,14 +116,14 @@ func TestParseUserProfileProviderOryHappyPathIsIndependentOfAuthProvider(t *test
 	t.Setenv("POSTGRES_CONNECTION_STRING", "postgres://example")
 	t.Setenv("ADMIN_TOKEN", "admin-token")
 	t.Setenv("REDIS_URL", "redis://example")
-	t.Setenv("USER_PROFILE_PROVIDER", "supabase-ory-fallback")
+	t.Setenv("USER_PROFILE_PROVIDER", "ory")
 	t.Setenv("ORY_SDK_URL", "https://ory.example.test")
 	t.Setenv("ORY_PROJECT_API_TOKEN", "pat")
 	t.Setenv("ORY_ISSUER_URL", "https://ory.example.test")
 
 	config, err := Parse()
 	require.NoError(t, err)
-	require.Equal(t, userprofile.ModeSupabaseOryFallback, config.UserProfileProvider)
+	require.Equal(t, userprofile.ModeOry, config.UserProfileProvider)
 	require.Equal(t, "https://ory.example.test", config.OrySDKURL)
 	require.Equal(t, "pat", config.OryProjectAPIToken)
 	require.Equal(t, "https://ory.example.test", config.OryIssuerURL)
