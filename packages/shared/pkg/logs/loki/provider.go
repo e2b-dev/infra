@@ -77,8 +77,9 @@ func (l *LokiQueryProvider) QuerySandboxLogs(
 	direction logproto.Direction,
 	level *logs.LogLevel,
 	search *string,
+	pid *string,
 ) ([]logs.LogEntry, error) {
-	query := buildSandboxLogsQuery(teamID, sandboxID, level, search)
+	query := buildSandboxLogsQuery(teamID, sandboxID, level, search, pid)
 
 	res, err := l.client.QueryRange(query, limit, start, end, direction, time.Duration(0), time.Duration(0), true)
 	if err != nil {
@@ -142,17 +143,24 @@ func buildBuildLogsQuery(templateID string, buildID string, level *logs.LogLevel
 	return query + fmt.Sprintf(" | json | level =~ `%s`", minLevelRegexFilter(*level))
 }
 
-func buildSandboxLogsQuery(teamID string, sandboxID string, level *logs.LogLevel, search *string) string {
+func buildSandboxLogsQuery(teamID string, sandboxID string, level *logs.LogLevel, search *string, pid *string) string {
 	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
 	sandboxIDSanitized := sanitizeLokiLabel(sandboxID)
 	teamIDSanitized := sanitizeLokiLabel(teamID)
 
 	query := fmt.Sprintf("{teamID=`%s`, sandboxID=`%s`, category!=\"metrics\"}", teamIDSanitized, sandboxIDSanitized)
-	if level == nil && utils.DerefOrDefault(search, "") == "" {
+	pidValue := utils.DerefOrDefault(pid, "")
+	if level == nil && utils.DerefOrDefault(search, "") == "" && pidValue == "" {
 		return query
 	}
 
 	query += " | json"
+	if pidValue != "" {
+		// pid + event_type scope the result to a single command's output. The caller
+		// must also bound the time range so a reused pid can't match a later command;
+		// process_start/process_end lines share the pid but are not command output.
+		query += fmt.Sprintf(" | pid = `%s` | event_type = `process_output`", sanitizeLokiLabel(pidValue))
+	}
 	if level != nil {
 		query += fmt.Sprintf(" | level =~ `%s`", minLevelRegexFilter(*level))
 	}

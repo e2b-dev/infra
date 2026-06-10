@@ -443,6 +443,11 @@ paths:
             type: string
             maxLength: 256
           description: Case-sensitive substring match on log message content
+        - in: query
+          name: pid
+          schema:
+            type: string
+          description: Restrict the logs to the output of a single command identified by its process ID (pid). Combine with start/end to disambiguate reused pids.
       responses:
         "200":
           description: Successfully returned the sandbox logs

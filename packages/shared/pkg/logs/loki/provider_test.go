@@ -54,7 +54,7 @@ func TestSanitizeLogMessageRegexFilter(t *testing.T) {
 func TestBuildSandboxLogsQueryWithoutSearch(t *testing.T) {
 	t.Parallel()
 
-	query := buildSandboxLogsQuery("team`id", "sandbox`id", nil, nil)
+	query := buildSandboxLogsQuery("team`id", "sandbox`id", nil, nil, nil)
 
 	assert.Equal(t, "{teamID=`teamid`, sandboxID=`sandboxid`, category!=\"metrics\"}", query)
 }
@@ -63,11 +63,24 @@ func TestBuildSandboxLogsQueryWithMessageSearch(t *testing.T) {
 	t.Parallel()
 
 	search := "hello` (world)+"
-	query := buildSandboxLogsQuery("team-id", "sandbox-id", nil, &search)
+	query := buildSandboxLogsQuery("team-id", "sandbox-id", nil, &search, nil)
 
 	assert.Equal(
 		t,
 		"{teamID=`team-id`, sandboxID=`sandbox-id`, category!=\"metrics\"} | json | message =~ `.*hello \\(world\\)\\+.*`",
+		query,
+	)
+}
+
+func TestBuildSandboxLogsQueryWithPid(t *testing.T) {
+	t.Parallel()
+
+	pid := "12`34"
+	query := buildSandboxLogsQuery("team-id", "sandbox-id", nil, nil, &pid)
+
+	assert.Equal(
+		t,
+		"{teamID=`team-id`, sandboxID=`sandbox-id`, category!=\"metrics\"} | json | pid = `1234` | event_type = `process_output`",
 		query,
 	)
 }
@@ -89,7 +102,7 @@ func TestBuildSandboxLogsQueryEscapesInjectionLikeSearchInput(t *testing.T) {
 	t.Parallel()
 
 	search := "`foo.*(bar)+?|baz\\qux` | json | level =~ `error`"
-	query := buildSandboxLogsQuery("team-id", "sandbox-id", nil, &search)
+	query := buildSandboxLogsQuery("team-id", "sandbox-id", nil, &search, nil)
 
 	assert.Equal(
 		t,

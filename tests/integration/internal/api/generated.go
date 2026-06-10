@@ -1512,6 +1512,18 @@ type GetSandboxesSandboxIDLogsParams struct {
 	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// GetSandboxesSandboxIDLogsCommandPidParams defines parameters for GetSandboxesSandboxIDLogsCommandPid.
+type GetSandboxesSandboxIDLogsCommandPidParams struct {
+	// Start Start of the time window in milliseconds (defaults to the start of the retention window). Should match when the command started.
+	Start *int64 `form:"start,omitempty" json:"start,omitempty"`
+
+	// End End of the time window in milliseconds (defaults to now). Should match when the command ended, or be left open for a running command.
+	End *int64 `form:"end,omitempty" json:"end,omitempty"`
+
+	// Limit Maximum number of logs that should be returned
+	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // GetSandboxesSandboxIDMetricsParams defines parameters for GetSandboxesSandboxIDMetrics.
 type GetSandboxesSandboxIDMetricsParams struct {
 	// Start Unix timestamp for the start of the interval, in seconds, for which the metrics
@@ -1955,6 +1967,9 @@ type ClientInterface interface {
 
 	// GetSandboxesSandboxIDLogs request
 	GetSandboxesSandboxIDLogs(ctx context.Context, sandboxID SandboxID, params *GetSandboxesSandboxIDLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSandboxesSandboxIDLogsCommandPid request
+	GetSandboxesSandboxIDLogsCommandPid(ctx context.Context, sandboxID SandboxID, pid int32, params *GetSandboxesSandboxIDLogsCommandPidParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetSandboxesSandboxIDMetrics request
 	GetSandboxesSandboxIDMetrics(ctx context.Context, sandboxID SandboxID, params *GetSandboxesSandboxIDMetricsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2418,6 +2433,18 @@ func (c *Client) PostSandboxesSandboxIDConnect(ctx context.Context, sandboxID Sa
 
 func (c *Client) GetSandboxesSandboxIDLogs(ctx context.Context, sandboxID SandboxID, params *GetSandboxesSandboxIDLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetSandboxesSandboxIDLogsRequest(c.Server, sandboxID, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetSandboxesSandboxIDLogsCommandPid(ctx context.Context, sandboxID SandboxID, pid int32, params *GetSandboxesSandboxIDLogsCommandPidParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSandboxesSandboxIDLogsCommandPidRequest(c.Server, sandboxID, pid, params)
 	if err != nil {
 		return nil, err
 	}
@@ -3896,6 +3923,98 @@ func NewGetSandboxesSandboxIDLogsRequest(server string, sandboxID SandboxID, par
 		if params.Start != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "start", *params.Start, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSandboxesSandboxIDLogsCommandPidRequest generates requests for GetSandboxesSandboxIDLogsCommandPid
+func NewGetSandboxesSandboxIDLogsCommandPidRequest(server string, sandboxID SandboxID, pid int32, params *GetSandboxesSandboxIDLogsCommandPidParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "sandboxID", sandboxID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "pid", pid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: "int32"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/sandboxes/%s/logs/command/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Start != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "start", *params.Start, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.End != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "end", *params.End, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -5900,6 +6019,9 @@ type ClientWithResponsesInterface interface {
 	// GetSandboxesSandboxIDLogsWithResponse request
 	GetSandboxesSandboxIDLogsWithResponse(ctx context.Context, sandboxID SandboxID, params *GetSandboxesSandboxIDLogsParams, reqEditors ...RequestEditorFn) (*GetSandboxesSandboxIDLogsResponse, error)
 
+	// GetSandboxesSandboxIDLogsCommandPidWithResponse request
+	GetSandboxesSandboxIDLogsCommandPidWithResponse(ctx context.Context, sandboxID SandboxID, pid int32, params *GetSandboxesSandboxIDLogsCommandPidParams, reqEditors ...RequestEditorFn) (*GetSandboxesSandboxIDLogsCommandPidResponse, error)
+
 	// GetSandboxesSandboxIDMetricsWithResponse request
 	GetSandboxesSandboxIDMetricsWithResponse(ctx context.Context, sandboxID SandboxID, params *GetSandboxesSandboxIDMetricsParams, reqEditors ...RequestEditorFn) (*GetSandboxesSandboxIDMetricsResponse, error)
 
@@ -6715,6 +6837,39 @@ func (r GetSandboxesSandboxIDLogsResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetSandboxesSandboxIDLogsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetSandboxesSandboxIDLogsCommandPidResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SandboxLogsV2Response
+	JSON401      *N401
+	JSON404      *N404
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSandboxesSandboxIDLogsCommandPidResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSandboxesSandboxIDLogsCommandPidResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetSandboxesSandboxIDLogsCommandPidResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -8114,6 +8269,15 @@ func (c *ClientWithResponses) GetSandboxesSandboxIDLogsWithResponse(ctx context.
 	return ParseGetSandboxesSandboxIDLogsResponse(rsp)
 }
 
+// GetSandboxesSandboxIDLogsCommandPidWithResponse request returning *GetSandboxesSandboxIDLogsCommandPidResponse
+func (c *ClientWithResponses) GetSandboxesSandboxIDLogsCommandPidWithResponse(ctx context.Context, sandboxID SandboxID, pid int32, params *GetSandboxesSandboxIDLogsCommandPidParams, reqEditors ...RequestEditorFn) (*GetSandboxesSandboxIDLogsCommandPidResponse, error) {
+	rsp, err := c.GetSandboxesSandboxIDLogsCommandPid(ctx, sandboxID, pid, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSandboxesSandboxIDLogsCommandPidResponse(rsp)
+}
+
 // GetSandboxesSandboxIDMetricsWithResponse request returning *GetSandboxesSandboxIDMetricsResponse
 func (c *ClientWithResponses) GetSandboxesSandboxIDMetricsWithResponse(ctx context.Context, sandboxID SandboxID, params *GetSandboxesSandboxIDMetricsParams, reqEditors ...RequestEditorFn) (*GetSandboxesSandboxIDMetricsResponse, error) {
 	rsp, err := c.GetSandboxesSandboxIDMetrics(ctx, sandboxID, params, reqEditors...)
@@ -9449,6 +9613,53 @@ func ParseGetSandboxesSandboxIDLogsResponse(rsp *http.Response) (*GetSandboxesSa
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest SandboxLogs
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSandboxesSandboxIDLogsCommandPidResponse parses an HTTP response from a GetSandboxesSandboxIDLogsCommandPidWithResponse call
+func ParseGetSandboxesSandboxIDLogsCommandPidResponse(rsp *http.Response) (*GetSandboxesSandboxIDLogsCommandPidResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSandboxesSandboxIDLogsCommandPidResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SandboxLogsV2Response
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
