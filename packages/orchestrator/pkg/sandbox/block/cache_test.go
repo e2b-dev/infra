@@ -1265,9 +1265,10 @@ func TestCacheDedup_GlobalFrameBudgetPromotesCheapestKeys(t *testing.T) {
 	require.Equal(t, srcData[5*pageSize:6*pageSize], got)
 }
 
-// Exercises both budget passes together: the per-block cap compacts a
-// fragmented block, and the global budget then promotes a lonely surviving
-// key from a block the per-block cap left alone.
+// Exercises both budget passes together. The global budget (1 page) runs
+// first and promotes the cheapest key (page 1); the per-block cap then sees
+// the final layout, compacts block 0 by promoting page 3, and leaves block 1
+// alone since it already fits — so page 5 stays deduped.
 func TestCacheDedup_PerBlockAndGlobalBudgetsCompose(t *testing.T) {
 	t.Parallel()
 
@@ -1280,11 +1281,8 @@ func TestCacheDedup_PerBlockAndGlobalBudgetsCompose(t *testing.T) {
 	require.NoError(t, err)
 	srcData := make([]byte, size)
 	copy(srcData, baseData)
-	// Block 0: pages 0,2 differ; parents 1,3 land in distinct 2-page windows,
-	// so the block spans 3 fetch windows and the per-block cap (2) promotes
-	// both parents. Block 1: page 4 differs, page 5 matches (lonely key),
-	// pages 6,7 are zero; the block fits 2 windows so the per-block cap is
-	// idle and the global budget (1 page) picks up page 5.
+	// Block 0: pages 0,2 differ; parents 1,3 land in distinct 2-page windows.
+	// Block 1: page 4 differs, page 5 matches, pages 6,7 are zero.
 	for _, p := range []int64{0, 2, 4} {
 		srcData[p*pageSize] ^= 0xFF
 	}
@@ -1303,14 +1301,15 @@ func TestCacheDedup_PerBlockAndGlobalBudgetsCompose(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
-	require.EqualValues(t, 6, meta.Dirty.GetCardinality())
-	for _, p := range []uint32{0, 1, 2, 3, 4, 5} {
+	require.EqualValues(t, 5, meta.Dirty.GetCardinality())
+	for _, p := range []uint32{0, 1, 2, 3, 4} {
 		require.True(t, meta.Dirty.Contains(p), "page %d should be stored", p)
 	}
+	require.False(t, meta.Dirty.Contains(5), "page 5 should stay deduped")
 	require.EqualValues(t, 2, meta.Empty.GetCardinality())
 
-	// Dirty = {0..5}, so packed slot == page index for both promoted pages.
-	for _, p := range []int64{1, 5} {
+	// Dirty = {0..4}, so packed slot == page index for both promoted pages.
+	for _, p := range []int64{1, 3} {
 		got := make([]byte, pageSize)
 		_, err := cache.ReadAt(got, p*pageSize)
 		require.NoError(t, err)

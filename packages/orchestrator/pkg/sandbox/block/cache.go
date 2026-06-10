@@ -269,10 +269,12 @@ type dedupPageInfo struct {
 // of the same block when the parent header is page-granular.
 //
 // Two optional budget passes then trade diff bytes for fetch contiguity by
-// promoting deduped pages into pageDirty: a per-block fetch-window cap
-// (fetchWindower.compact) and a global cheapest-key promotion
-// (promoteCheapestFrames). Promoted pages are byte-identical to the parent,
-// so promotion never changes the restored image.
+// promoting deduped pages into pageDirty: a global cheapest-key promotion
+// (promoteCheapestFrames) followed by a per-block fetch-window cap
+// (fetchWindower.compact). The per-block cap runs last so its packed-position
+// model sees the final diff layout, and only spends on fan-out the global
+// pass did not already remove. Promoted pages are byte-identical to the
+// parent, so promotion never changes the restored image.
 func dedupCompare(
 	ctx context.Context,
 	src func(absOff int64) ([]byte, error),
@@ -288,7 +290,6 @@ func dedupCompare(
 	windowBytes := int64(budget.FetchRunWindowPages) * header.PageSize
 
 	plan := &dedupPlan{pageDirty: roaring.New(), pageEmpty: roaring.New()}
-	var currentStoredPages int64
 
 	parentByKey := make(map[dedupFetchKey]*roaring.Bitmap)
 
@@ -344,17 +345,7 @@ func dedupCompare(
 				}
 
 				info.kind = dedupPageParent
-				if hasMapping {
-					info.key = dedupFetchKey{buildID: mapped.BuildId, window: int(mapped.Offset / uint64(windowBytes))}
-				} else {
-					info.key = dedupFetchKey{window: int(pageOff / windowBytes)}
-				}
-			}
-
-			w := fetchWindower{windowPages: budget.FetchRunWindowPages, currentStart: currentStoredPages}
-			if n := w.compact(pages, budget.MaxFetchWindowsPerBlock, budget.MaxPromotedParentPagesPerBlock); n > 0 {
-				plan.promotedBlocks++
-				plan.promotedPages += int64(n)
+				info.key = parentFetchKey(mapped, hasMapping, pageOff, windowBytes)
 			}
 
 			for p, info := range pages {
@@ -364,7 +355,6 @@ func dedupCompare(
 					plan.pageEmpty.Add(pageIdx)
 				case dedupPageCurrent:
 					plan.pageDirty.Add(pageIdx)
-					currentStoredPages++
 				case dedupPageParent:
 					bm := parentByKey[info.key]
 					if bm == nil {
@@ -380,7 +370,90 @@ func dedupCompare(
 	plan.parentFrames = int64(len(parentByKey))
 	plan.promoteCheapestFrames(parentByKey, budget.MaxPromotedParentPagesTotal, budget.FetchRunWindowPages)
 
+	if err := compactBlockWindows(ctx, plan, baseHeader, dirty, blockSize, windowBytes, budget); err != nil {
+		return nil, err
+	}
+
 	return plan, nil
+}
+
+// parentFetchKey is the fetch key of the parent window backing pageOff.
+func parentFetchKey(mapped header.BuildMap, hasMapping bool, pageOff, windowBytes int64) dedupFetchKey {
+	if hasMapping {
+		return dedupFetchKey{buildID: mapped.BuildId, window: int(mapped.Offset / uint64(windowBytes))}
+	}
+
+	return dedupFetchKey{window: int(pageOff / windowBytes)}
+}
+
+// compactBlockWindows applies the per-block fetch-window cap. It runs after
+// the global promotion so fetchWindower's packed-position model sees the
+// final diff layout: earlier promotions shift the packed slots of every
+// later stored page. It needs no IO — within dirty blocks every page is
+// already classified by the plan (dirty = stored, empty, else parent), and
+// parent keys are recomputed from the in-memory header.
+func compactBlockWindows(
+	ctx context.Context,
+	plan *dedupPlan,
+	baseHeader *header.Header,
+	dirty *roaring.Bitmap,
+	blockSize int64,
+	windowBytes int64,
+	budget DedupBudget,
+) error {
+	if budget.MaxFetchWindowsPerBlock <= 0 || budget.MaxPromotedParentPagesPerBlock <= 0 {
+		return nil
+	}
+
+	pages := make([]dedupPageInfo, blockSize/header.PageSize)
+	var currentStoredPages int64
+	for r := range BitsetRanges(dirty, blockSize) {
+		for chunkOff := int64(0); chunkOff < r.Size; chunkOff += blockSize {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+
+			absOff := r.Start + chunkOff
+			firstPage := uint32(absOff / header.PageSize)
+
+			clear(pages)
+			for p := range pages {
+				pageIdx := firstPage + uint32(p)
+				switch {
+				case plan.pageDirty.Contains(pageIdx):
+					pages[p].kind = dedupPageCurrent
+				case plan.pageEmpty.Contains(pageIdx):
+					// zero value of dedupPageInfo is empty
+				default:
+					pageOff := absOff + int64(p)*header.PageSize
+					var mapped header.BuildMap
+					hasMapping := false
+					if baseHeader != nil {
+						if m, mErr := baseHeader.GetShiftedMapping(ctx, pageOff); mErr == nil {
+							mapped, hasMapping = m, true
+						}
+					}
+					pages[p].kind = dedupPageParent
+					pages[p].key = parentFetchKey(mapped, hasMapping, pageOff, windowBytes)
+				}
+			}
+
+			w := fetchWindower{windowPages: budget.FetchRunWindowPages, currentStart: currentStoredPages}
+			if n := w.compact(pages, budget.MaxFetchWindowsPerBlock, budget.MaxPromotedParentPagesPerBlock); n > 0 {
+				plan.promotedBlocks++
+				plan.promotedPages += int64(n)
+			}
+
+			for p, info := range pages {
+				if info.kind == dedupPageCurrent {
+					plan.pageDirty.Add(firstPage + uint32(p))
+					currentStoredPages++
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 // promoteCheapestFrames stores whole parent fetch-key page sets in the diff,
