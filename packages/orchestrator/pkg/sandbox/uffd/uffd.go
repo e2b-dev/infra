@@ -281,3 +281,15 @@ func (u *Uffd) PrefetchData(ctx context.Context) (block.PrefetchData, error) {
 func (u *Uffd) Memfd(_ context.Context) *block.Memfd {
 	return u.memfd.Swap(nil)
 }
+
+// ServeStats returns a cumulative snapshot of demand faults served so far, or a
+// zero snapshot if the handler has not been created yet (FC has not connected).
+// It never blocks.
+func (u *Uffd) ServeStats() userfaultfd.ServeSnapshot {
+	handler, err := u.handler.Result()
+	if err != nil {
+		return userfaultfd.ServeSnapshot{}
+	}
+
+	return handler.ServeStats()
+}

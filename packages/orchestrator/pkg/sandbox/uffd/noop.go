@@ -9,6 +9,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/userfaultfd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -86,4 +87,10 @@ func (m *NoopMemory) Exit() *utils.ErrorOnce {
 
 func (m *NoopMemory) Memfd(context.Context) *block.Memfd {
 	return nil
+}
+
+// ServeStats returns a zero snapshot: NoopMemory has no UFFD serve loop, so no
+// pages are demand-faulted through it.
+func (m *NoopMemory) ServeStats() userfaultfd.ServeSnapshot {
+	return userfaultfd.ServeSnapshot{}
 }
