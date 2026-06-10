@@ -16,12 +16,15 @@ Implemented here (orchestrator-only, no API/proto/DB wiring yet):
   ready; absolute start/end window honored. `rootflags` locked to never
   include `noload` (journal replay on reboot).
 - **Boot-time fixes** (guest image; apply to newly built templates only):
-  `envd.service` no longer ordered `After=multi-user.target` — that gated envd
-  on `chrony-wait.service` (~8 s); default deps start it after `basic.target`.
-  `ExecStartPre` seeds `/run/e2b/certs` by copying the baked certs instead of
-  regenerating with `update-ca-certificates` (~0.5–1 s), and the
+  `envd.service` runs with `DefaultDependencies=no` ordered only after
+  journald's socket and `systemd-remount-fs` (previously
+  `After=multi-user.target`, gated ~8 s on `chrony-wait.service`); the
+  `/etc/ssl/certs` tmpfs is seeded from a tar packed at build time (one
+  sequential rootfs read instead of ~150 scattered ones, was ~0.7 s); the
   `bash -l -c` wrapper is dropped (child shells still source profile via
-  envd's own `bash -l -c` invocation).
+  envd's own `bash -l -c`); `chrony-wait`, `systemd-binfmt`, and
+  `e2scrub_reap` are masked (binfmt took ~1 s of early-boot CPU and caused a
+  bimodal ~+0.9 s tail on 1-vCPU sandboxes).
 - **Local test harness** — `cmd/resume-build -fs-only` (pause) and `-reboot`
   (cold-boot resume).
 
@@ -35,15 +38,18 @@ Verified locally via `cmd/resume-build` (local storage, base template):
 - Mixed: a memory snapshot of a rebooted sandbox resumes warm.
 - Memory resume of an fs-only build fails with `storage.ErrObjectNotExist`
   (API-side gating lands in the resume-wiring phase).
-- Reboot time: ~9.5 s with old guest image → **avg ~1.6 s, p99 ~2.1 s** with
-  the `envd.service` fixes (8 runs, warm local cache).
+- Reboot time: ~9.5 s with old guest image → **avg ~0.51 s, p95 ~0.51 s, max
+  ~0.72 s** with the guest-image fixes (15 runs, warm local cache, 1 vCPU).
+- Known pre-existing (also on templates built from unmodified main with the
+  current base image): `nftables.service` and
+  `systemd-network-generator.service` fail in the guest — unrelated to this
+  branch.
 
 Not done yet (next PRs): public `memory` flag on pause/snapshots, proto
 `SandboxCreateRequest.reboot` + server dispatch, `PausedSandboxConfig`
 persistence + resume wiring, auto-resume/connect safety, Checkpoint
 disk-only path, SDKs. Boot-time follow-ups: rootfs prefetch (cold-node GCS
-fetches dominate real deployments), journal replay at snapshot time, possibly
-`DefaultDependencies=no` for envd (basic.target adds ~0.5 s).
+fetches dominate real deployments) and journal replay at snapshot time.
 
 ---
 
@@ -505,21 +511,22 @@ impact.
 
 ## 5. Make cold (systemd) boot fast enough
 
-**Partially done on this branch.** Measured breakdown of the original ~9.5 s
-boot (`systemd-analyze`): kernel ~235 ms; `multi-user.target` reached at
-~9.4 s because `chrony-wait.service` holds it for ~8 s, and `envd.service` was
-`After=multi-user.target`; `envd.service` itself ~1 s (ExecStartPre
-`update-ca-certificates` into the empty `/run` tmpfs + `bash -l` wrapper).
+**Done on this branch** (~9.5 s → ~0.51 s avg locally). Measured breakdown of
+the original boot (`systemd-analyze`): kernel ~235 ms; `multi-user.target`
+reached at ~9.4 s because `chrony-wait.service` holds it for ~8 s and
+`envd.service` was `After=multi-user.target`; `envd.service` itself ~1 s
+(ExecStartPre `update-ca-certificates` into the empty `/run` tmpfs + `bash -l`
+wrapper); `systemd-binfmt` ~1 s of early-boot CPU contention (bimodal +0.9 s
+tail on 1 vCPU).
 
-Applied: drop the `After=multi-user.target` ordering (default deps →
-`basic.target`, ~0.5 s), seed `/run/e2b/certs` from the baked certs instead
-of regenerating, exec envd directly. Result: avg ~1.6 s / p99 ~2.1 s locally.
+Applied: `DefaultDependencies=no` + `After=systemd-journald.socket
+systemd-remount-fs.service` so envd starts ~0.4 s into the guest; cert tmpfs
+seeded from a build-time tar (one sequential read); direct `ExecStart`;
+masked `chrony-wait`, `systemd-binfmt`, `e2scrub_reap`.
 
-Remaining ideas: `DefaultDependencies=no` + explicit minimal deps (saves the
-~0.5 s `basic.target` wait, riskier), mask `systemd-binfmt.service` (~0.3 s,
-affects workloads needing binfmt). Caveat: guest-image changes apply only to
-newly built templates. Boot time on real nodes also depends on rootfs fetch
-latency (workstream 6). Measure in prod via
+Caveat: guest-image changes apply only to newly built templates. Boot time on
+real nodes also depends on rootfs fetch latency (workstream 6 — rootfs
+prefetch is the next lever for cold nodes). Measure in prod via
 `orchestrator.sandbox.create.duration` split by a reboot attribute.
 
 ## 6. Rootfs prefetch (+ envd locality)
