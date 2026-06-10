@@ -48,6 +48,9 @@ type ComposeRequest struct {
 
 // EntryInfo defines model for EntryInfo.
 type EntryInfo struct {
+	// Metadata User-defined metadata stored as extended attributes on the file.
+	Metadata *map[string]string `json:"metadata,omitempty"`
+
 	// Name Name of the file
 	Name string `json:"name"`
 

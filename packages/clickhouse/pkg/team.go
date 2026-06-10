@@ -119,6 +119,10 @@ func (c *Client) QueryMaxStartRateTeamMetrics(ctx context.Context, teamID string
 
 	// No data -> return 0
 	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return MaxTeamMetric{}, fmt.Errorf("error iterating max start rate team metrics: %w", err)
+		}
+
 		return MaxTeamMetric{
 			Value:     0,
 			Timestamp: time.Now(),
@@ -158,6 +162,10 @@ func (c *Client) QueryMaxConcurrentTeamMetrics(ctx context.Context, teamID strin
 
 	// No data -> return 0
 	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return MaxTeamMetric{}, fmt.Errorf("error iterating max concurrent team metrics: %w", err)
+		}
+
 		return MaxTeamMetric{
 			Value:     0,
 			Timestamp: time.Now(),

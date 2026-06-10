@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
@@ -12,8 +14,17 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+var templateFilesHashPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
 func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID api.TemplateID, hash string) {
 	ctx := c.Request.Context()
+
+	if !templateFilesHashPattern.MatchString(hash) {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid files hash")
+		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, "invalid files hash", errors.New("invalid files hash"), telemetry.WithTemplateID(templateID), attribute.String("hash", hash))
+
+		return
+	}
 
 	// Check if the user has access to the template
 	templateDB, err := a.sqlcDB.GetTemplateByID(ctx, templateID)

@@ -40,7 +40,7 @@ func IsPathOnNetworkMount(path string) (bool, error) {
 }
 
 func entryInfo(path string) (*rpc.EntryInfo, error) {
-	info, err := filesystem.GetEntryFromPath(path)
+	info, err := filesystem.GetEntryFromPath(path, true)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("file not found: %w", err))
@@ -62,6 +62,7 @@ func entryInfo(path string) (*rpc.EntryInfo, error) {
 		Group:         group,
 		ModifiedTime:  toTimestamp(info.ModifiedTime),
 		SymlinkTarget: info.SymlinkTarget,
+		Metadata:      info.Metadata,
 	}, nil
 }
 

@@ -16,7 +16,7 @@ runs:
   using: "composite"
   steps:
     - name: Pull infisical secrets into temporary file
-      uses: Infisical/secrets-action@v1.0.15
+      uses: Infisical/secrets-action@v1.0.16
       with:
         method: "oidc"
         identity-id: ${{ inputs.infisical_machine_identity_id }}
@@ -45,7 +45,7 @@ runs:
       shell: bash
 
     - name: Load environment variables from Infisical
-      uses: Infisical/secrets-action@v1.0.15
+      uses: Infisical/secrets-action@v1.0.16
       with:
         method: "oidc"
         identity-id: ${{ inputs.infisical_machine_identity_id }}
@@ -54,14 +54,14 @@ runs:
         export-type: "env"
 
     - name: Setup Service Account
-      uses: google-github-actions/auth@v2
+      uses: google-github-actions/auth@v3
       with:
         project_id: ${{ env.GCP_PROJECT_ID }}
         workload_identity_provider: ${{ env.GH_WORKLOAD_IDENTITY_PROVIDER }}
 
     - name: Set up Cloud SDK
       if: inputs.install_gcloud == 'true'
-      uses: google-github-actions/setup-gcloud@v2
+      uses: google-github-actions/setup-gcloud@v3
 
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3

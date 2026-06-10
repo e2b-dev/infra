@@ -22,6 +22,7 @@ func TestGenerateVolumeContentToken_SetsTokidHeader(t *testing.T) {
 
 	// Minimal APIStore with the VolumesToken config set for signing
 	config := cfg.VolumesTokenConfig{
+		Enabled:        true,
 		SigningKeyName: "key-v1",
 		Issuer:         "test-issuer",
 		SigningMethod:  jwt.SigningMethodHS256,
@@ -44,8 +45,8 @@ func TestGenerateVolumeContentToken_SetsTokidHeader(t *testing.T) {
 	}
 
 	// Act: generate token
-	tokenStr, err := generateVolumeContentToken(config, volume, team)
-	require.NoError(t, err)
+	tokenStr, apiErr := generateVolumeContentToken(config, volume, team)
+	require.Nil(t, apiErr)
 	require.NotEmpty(t, tokenStr)
 
 	// Parse token to inspect headers and claims

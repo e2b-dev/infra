@@ -24,8 +24,25 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      # Don't use go-setup-cache here: its key has no arch component, so this
+      # job would share it with amd64 jobs and restore a multi-GB cache of
+      # useless amd64 objects, then rebuild everything for arm64 on top —
+      # which can fill the runner disk (and the arm64 objects never get
+      # saved). Keep a dedicated arm64-keyed cache instead.
       - name: Setup Go
-        uses: ./.github/actions/go-setup-cache
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.work
+          cache: false
+
+      - name: Restore ARM64 Go cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-arm64-cross-${{ hashFiles('go.work', 'packages/*/go.mod', 'packages/*/go.sum') }}
+          restore-keys: go-arm64-cross-
 
       - name: Install ARM64 cross-compiler
         run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
