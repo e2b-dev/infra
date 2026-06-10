@@ -364,30 +364,31 @@ runtime `WRITE_ZEROES` + `TRIM` hole-punching and zero handling
 because each pause goes through `NBDProvider.ExportDiff` and the overlay chains on
 the previous snapshot's rootfs exactly like a normal resume.
 
-Discard is NBD-only in our code. The only thing that turns a guest TRIM into
-reclaimed/zeroed blocks anywhere in the orchestrator is the NBD handler
-(`cache.punchHole`/`WriteZeroesAt`, `dispatch.go` `NBDCmdTrim`/`NBDCmdWriteZeroes`).
-`DirectProvider` has no command path (plain mmap), and the FC `Drive` model
-exposes no discard field (`fc/models/drive.go`). Consequences:
+Discard works in **both** paths, via different mechanisms (verified in the FC
+fork, `src/vmm/src/devices/virtio/block/virtio`): the custom FC advertises
+`VIRTIO_BLK_F_DISCARD` + `VIRTIO_BLK_F_WRITE_ZEROES` on writable drives
+(`device.rs:368`) and services both with
+`fallocate(FALLOC_FL_PUNCH_HOLE | KEEP_SIZE)` on the backing fd
+(`sync_io.rs:83`; WRITE_ZEROES with UNMAP=0 uses `ZERO_RANGE`); the first
+`EOPNOTSUPP` disables it for the drive with a warning.
 
-- Never-written / already-zero regions are reclaimed in both paths via
-  `resize2fs -M` (`filesystem/ext4.go:174`) + the 4 KiB export zero-check.
-- Written-then-freed blocks (the real discard savings) are reclaimed **only if
-  they are zero at export**. The NBD path guarantees this in our code (TRIM →
-  hole-punch → reads as zero → elided). Under `DirectProvider` it depends on
-  whether the custom FC punches the backing file on guest discard
-  (FC-internal, not configured here); `resize2fs -M` relocates live data but does
-  not zero stale freed blocks, so without an FC file-punch those blocks export as
-  non-zero garbage and are stored. **Verify empirically** whether the build
-  reclaims freed blocks (write-then-delete a large file, compare diff size).
+- NBD path: the backing fd is `/dev/nbdX`, so the punch becomes a kernel
+  `REQ_OP_DISCARD` → NBD `TRIM`/`WRITE_ZEROES` to our server →
+  `cache.punchHole` + Zero-tracked (`dispatch.go` `NBDCmdTrim`/
+  `NBDCmdWriteZeroes`).
+- Direct path (build): the backing fd is the rootfs file itself — FC punches
+  holes in it directly; punched ranges read back as zeros and the 4 KiB
+  export zero-scan (`DirectProvider.exportToDiff`) marks them `Empty`.
 
-So the fs-only reboot path (NBD) reclaims freed blocks deterministically; the
-build path's freed-block reclamation is FC-dependent and unconfirmed here. If the
-empirical check shows the build does **not** fully reclaim freed blocks, that's a
-separate template-size improvement to consider — either service discard for the
-build path (e.g. NBD-backed build, or an explicit fstrim/zero pass before export)
-or confirm/enable an FC file-punch — tracked as a follow-up, not a blocker for
-disk-only.
+So the *resulting reduction* is equivalent in both flows: written-then-freed
+blocks are reclaimed as long as the guest issues discards
+(`rootflags=discard` is on the cold-boot cmdline, so ext4 discards on free
+during build) and the host fs supports hole punching (ext4/xfs do).
+Never-written regions are covered by `resize2fs -M` + the zero-scan either
+way. Residual garbage is limited to blocks freed without a discard reaching
+the device (e.g. crash between free and discard, or a non-discard mount) —
+a host-side `zerofree` before export would catch even those, but it's an
+optimization, not a gap in the common path.
 
 Zero detection is 4 KiB-block granular: `RootfsBlockSize = 4 KiB`
 (`header/diff.go:12`); the export zero-check `DiffMetadataBuilder.Process` →
