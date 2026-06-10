@@ -268,6 +268,49 @@ func (u *Userfaultfd) dropMissingEventsTracking(ctx context.Context, addr, lengt
 	return nil
 }
 
+// handleRemoves applies a batch of UFFD_EVENT_REMOVE events under
+// settleRequests.Lock: for hugepages it drops MISSING tracking (so the kernel
+// serves the freed pages directly) and marks the range zero in the tracker. It
+// returns the total bytes whose MISSING tracking was dropped, for the
+// unregisterTimer bytes counter.
+func (u *Userfaultfd) handleRemoves(ctx context.Context, removes []*UffdRemove) (int64, error) {
+	u.settleRequests.Lock()
+	defer u.settleRequests.Unlock()
+
+	var unregisteredBytes int64
+	for _, rm := range removes {
+		// rm.start (inclusive) and rm.end (exclusive) are page-aligned to
+		// u.pageSize for the registered VMA (UFFD invariant), so startOff is a
+		// multiple of pageSize and length is an integer number of pages — both
+		// divisions below are exact, and SetRange's half-open [startIdx, endIdx)
+		// lines up with the half-open [rm.start, rm.end).
+		startOff, err := u.ma.GetOffset(uintptr(rm.start))
+		if err != nil {
+			u.logger.Error(ctx, "UFFD REMOVE: failed to map start address",
+				zap.Uintptr("start", uintptr(rm.start)), zap.Error(err))
+
+			continue
+		}
+
+		startIdx := uint32(header.BlockIdx(startOff, int64(u.pageSize)))
+		endIdx := startIdx + uint32(uint64(rm.end-rm.start)/uint64(u.pageSize))
+
+		// For huge pages we can stop tracking MISSING events and keep WP-tracking
+		// enabled. We can't do the same for anonymous 4K pages. When 4K pages are
+		// freed the page table entry is zapped and we lose capability for WP
+		// tracking.
+		if u.pageSize == header.HugepageSize {
+			if err = u.dropMissingEventsTracking(ctx, uintptr(rm.start), uintptr(rm.end-rm.start)); err != nil {
+				return unregisteredBytes, err
+			}
+			unregisteredBytes += int64(rm.end - rm.start)
+		}
+		u.pageTracker.SetRange(startIdx, endIdx, block.Zero)
+	}
+
+	return unregisteredBytes, nil
+}
+
 // writeProtectWithRetry write-protects [addr, addr+length), retrying on EAGAIN.
 // When this runs from the REMOVE handler the triggering MADV_DONTNEED still
 // holds mmap_changing until its thread is rescheduled to ack the event, and the
@@ -317,6 +360,13 @@ func (u *Userfaultfd) DropMissingForEmptyRanges(ctx context.Context, h *header.H
 		return nil
 	}
 
+	// Time the whole pass, mirroring serveTimer. The deferred RecordRaw runs
+	// even on an early error return, so a partial pass still reports the bytes
+	// unregistered and the time spent.
+	sw := unregisterTimer.Begin()
+	var unregisteredBytes int64
+	defer func() { sw.RecordRaw(ctx, unregisteredBytes, unregisterAttrs[unregisterSourceEmpty]) }()
+
 	var ranges, pages int
 	for _, m := range h.Mapping.All() {
 		if m.BuildId != uuid.Nil {
@@ -332,6 +382,7 @@ func (u *Userfaultfd) DropMissingForEmptyRanges(ctx context.Context, h *header.H
 			if err := u.dropMissingEventsTracking(ctx, uintptr(r.Start), uintptr(r.Size)); err != nil {
 				return fmt.Errorf("failed to drop MISSING tracking for empty range [%#x, %#x): %w", r.Start, r.Start+r.Size, err)
 			}
+			unregisteredBytes += r.Size
 			ranges++
 			pages += int(r.Size / int64(u.pageSize))
 		}
@@ -452,37 +503,15 @@ func (u *Userfaultfd) Serve(
 			}
 
 			if len(removes) > 0 {
-				u.settleRequests.Lock()
-				for _, rm := range removes {
-					// rm.start (inclusive) and rm.end (exclusive) are page-aligned
-					// to u.pageSize for the registered VMA (UFFD invariant), so
-					// startOff is a multiple of pageSize and length is an integer
-					// number of pages — both divisions below are exact, and
-					// SetRange's half-open [startIdx, endIdx) lines up with the
-					// half-open [rm.start, rm.end).
-					startOff, err := u.ma.GetOffset(uintptr(rm.start))
-					if err != nil {
-						u.logger.Error(ctx, "UFFD REMOVE: failed to map start address",
-							zap.Uintptr("start", uintptr(rm.start)), zap.Error(err))
-
-						continue
-					}
-
-					startIdx := uint32(header.BlockIdx(startOff, int64(u.pageSize)))
-					endIdx := startIdx + uint32(uint64(rm.end-rm.start)/uint64(u.pageSize))
-
-					// For huge pages we can stop tracking MISSING events and keep WP-tracking
-					// enabled. We can't do the same for anonymous 4K pages. When 4K pages are
-					// freed the page table entry is zapped and we lose capability for WP
-					// tracking.
-					if u.pageSize == header.HugepageSize {
-						if err = u.dropMissingEventsTracking(ctx, uintptr(rm.start), uintptr(rm.end-rm.start)); err != nil {
-							return fmt.Errorf("failed to handle REMOVE: %w", err)
-						}
-					}
-					u.pageTracker.SetRange(startIdx, endIdx, block.Zero)
+				// Time the whole REMOVE batch (unregister + WP re-arm + tracker
+				// update), mirroring serveTimer. RecordRaw runs even on error so
+				// the latency of a failed batch is still captured.
+				sw := unregisterTimer.Begin()
+				unregisteredBytes, err := u.handleRemoves(ctx, removes)
+				sw.RecordRaw(ctx, unregisteredBytes, unregisterAttrs[unregisterSourceRemove])
+				if err != nil {
+					return fmt.Errorf("failed to handle REMOVE: %w", err)
 				}
-				u.settleRequests.Unlock()
 			}
 
 			u.readSerial.Unlock()

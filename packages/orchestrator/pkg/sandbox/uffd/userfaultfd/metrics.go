@@ -100,6 +100,50 @@ func buildServeAttrs() [numPageClass][numFaultResult]metric.MeasurementOption {
 	return t
 }
 
+// unregisterMetricName is the metric under which the time / bytes / count of
+// dropping MISSING uffd tracking (UFFDIO_UNREGISTER + WP re-arm) is reported (a
+// TimerFactory triplet), tagged by the source that triggered it.
+const unregisterMetricName = "orchestrator.sandbox.uffd.unregister"
+
+// unregisterTimer records, per unregister operation, the time spent (ms
+// histogram), the bytes whose MISSING tracking was dropped (counter) and the
+// operation count (counter), tagged by source. The operation is a whole REMOVE
+// batch for source="remove" and a whole DropMissingForEmptyRanges pass for
+// source="empty". Divide bytes by u.pageSize for pages.
+var unregisterTimer = utils.Must(telemetry.NewTimerFactory(
+	meter,
+	unregisterMetricName,
+	"Time spent dropping MISSING uffd tracking (unregister + WP re-arm)",
+	"Bytes whose MISSING uffd tracking was dropped",
+	"UFFD unregister operations",
+))
+
+// unregisterSource classifies what triggered an unregister.
+type unregisterSource uint8
+
+const (
+	unregisterSourceRemove unregisterSource = iota // UFFD_EVENT_REMOVE (guest freed the pages)
+	unregisterSourceEmpty                          // start-time pass over snapshot empty (uuid.Nil) ranges
+	numUnregisterSource
+)
+
+// unregisterAttrs holds a precomputed metric.MeasurementOption per source.
+var unregisterAttrs = buildUnregisterAttrs()
+
+func buildUnregisterAttrs() [numUnregisterSource]metric.MeasurementOption {
+	names := [numUnregisterSource]string{
+		unregisterSourceRemove: "remove",
+		unregisterSourceEmpty:  "empty",
+	}
+
+	var t [numUnregisterSource]metric.MeasurementOption
+	for s := range names {
+		t[s] = telemetry.PrecomputeAttrs(attribute.String("source", names[s]))
+	}
+
+	return t
+}
+
 // prefaultMetricName is the metric under which per-page prefault latency /
 // installed bytes / attempt count are reported (a TimerFactory triplet).
 const prefaultMetricName = "orchestrator.sandbox.uffd.prefault"

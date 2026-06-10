@@ -144,6 +144,56 @@ func TestPrefaultMetric(t *testing.T) {
 	assert.Equal(t, int64(0), bytesSum["deferred"])
 }
 
+// TestUnregisterMetric exercises the unregister recording exactly as the serve
+// loop (per REMOVE batch) and DropMissingForEmptyRanges (per pass) do —
+// unregisterTimer.Begin() + RecordRaw(ctx, bytes, unregisterAttrs[source]) — and
+// asserts the orchestrator.sandbox.uffd.unregister datapoints carry the right
+// source attribute, operation counts and unregistered bytes. Like the other
+// metric tests it pins the metric definition + attrs table in-process (the real
+// paths need a real userfaultfd / forked harness). NOT parallel: it swaps the
+// package-level unregisterTimer.
+//
+//nolint:paralleltest // swaps the package-level unregisterTimer
+func TestUnregisterMetric(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+
+	prev := unregisterTimer
+	unregisterTimer = utils.Must(telemetry.NewTimerFactory(
+		mp.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/userfaultfd"),
+		unregisterMetricName,
+		"Time spent dropping MISSING uffd tracking (unregister + WP re-arm)",
+		"Bytes whose MISSING uffd tracking was dropped",
+		"UFFD unregister operations",
+	))
+	t.Cleanup(func() { unregisterTimer = prev })
+
+	ctx := context.Background()
+	hp := int64(header.HugepageSize)
+
+	record := func(source unregisterSource, bytes int64, n int) {
+		for range n {
+			sw := unregisterTimer.Begin()
+			sw.RecordRaw(ctx, bytes, unregisterAttrs[source])
+		}
+	}
+	// 3 REMOVE batches, two hugepages dropped each.
+	record(unregisterSourceRemove, 2*hp, 3)
+	// 1 start-time pass, five hugepages dropped.
+	record(unregisterSourceEmpty, 5*hp, 1)
+
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(ctx, &rm))
+
+	counts, bytesSum := collectTripletBy(t, rm, unregisterMetricName, "source")
+
+	assert.Equal(t, int64(3), counts["remove"], "remove operation count")
+	assert.Equal(t, 3*(2*hp), bytesSum["remove"], "remove unregistered bytes")
+
+	assert.Equal(t, int64(1), counts["empty"], "empty operation count")
+	assert.Equal(t, 5*hp, bytesSum["empty"], "empty unregistered bytes")
+}
+
 func key(pageClass, result string) string { return pageClass + "/" + result }
 
 // attrKey returns "page_class/result" for serve datapoints and just "result"
@@ -190,6 +240,53 @@ func collectTriplet(t *testing.T, rm metricdata.ResourceMetrics, name string) (c
 				}
 				for _, dp := range data.DataPoints {
 					bytesSum[attrKey(t, dp.Attributes)] += dp.Value
+				}
+			}
+		}
+	}
+
+	require.True(t, sawMetric, "metric %q not found in collected metrics", name)
+
+	return counts, bytesSum
+}
+
+// collectTripletBy is collectTriplet keyed on a single attribute (e.g. "source")
+// rather than the page_class/result pair, for TimerFactory metrics that carry
+// just one label.
+func collectTripletBy(t *testing.T, rm metricdata.ResourceMetrics, name, attrName string) (counts, bytesSum map[string]int64) {
+	t.Helper()
+
+	counts = map[string]int64{}
+	bytesSum = map[string]int64{}
+	sawMetric := false
+
+	keyOf := func(attrs attribute.Set) string {
+		v, ok := attrs.Value(attribute.Key(attrName))
+		require.True(t, ok, "datapoint missing %q attribute", attrName)
+
+		return v.AsString()
+	}
+
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != name {
+				continue
+			}
+			sawMetric = true
+
+			switch data := m.Data.(type) {
+			case metricdata.Histogram[int64]:
+				for _, dp := range data.DataPoints {
+					counts[keyOf(dp.Attributes)] += int64(dp.Count)
+				}
+			case metricdata.Sum[int64]:
+				// The TimerFactory emits two same-named counters; the
+				// bytes one carries the "By" unit.
+				if m.Unit != "By" {
+					continue
+				}
+				for _, dp := range data.DataPoints {
+					bytesSum[keyOf(dp.Attributes)] += dp.Value
 				}
 			}
 		}

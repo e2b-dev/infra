@@ -11,12 +11,16 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/testutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // faultTimeout bounds in-process page faults. A fault that never returns means
@@ -200,4 +204,47 @@ func TestDropMissingForEmptyRanges4KNoop(t *testing.T) {
 	// faulting a page, which blocks forever with no handler, so we assert the
 	// contract via the guard returning nil.
 	require.NoError(t, u.DropMissingForEmptyRanges(t.Context(), h))
+}
+
+// TestDropMissingForEmptyRangesMetric runs the real start-time pass over a
+// hugepage snapshot with two empty ranges and asserts the unregister timer
+// records source="empty" with one operation and the two unregistered hugepages'
+// worth of bytes — i.e. the production path wires the metric correctly.
+//
+//nolint:paralleltest // swaps the package-level unregisterTimer
+func TestDropMissingForEmptyRangesMetric(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("this test requires root privileges")
+	}
+
+	const numberOfPages = 4
+	pagesize := uint64(header.HugepageSize)
+	emptyPages := map[uint64]bool{0: true, 2: true} // two empty hugepages
+	h := buildHeader(t, pagesize, numberOfPages, emptyPages)
+
+	u, _, _ := newHandler(t, pagesize, numberOfPages)
+
+	reader := sdkmetric.NewManualReader()
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	prev := unregisterTimer
+	unregisterTimer = utils.Must(telemetry.NewTimerFactory(
+		mp.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/userfaultfd"),
+		unregisterMetricName,
+		"Time spent dropping MISSING uffd tracking (unregister + WP re-arm)",
+		"Bytes whose MISSING uffd tracking was dropped",
+		"UFFD unregister operations",
+	))
+	t.Cleanup(func() { unregisterTimer = prev })
+
+	require.NoError(t, u.DropMissingForEmptyRanges(t.Context(), h))
+
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(t.Context(), &rm))
+
+	counts, bytesSum := collectTripletBy(t, rm, unregisterMetricName, "source")
+
+	assert.Equal(t, int64(1), counts["empty"], "one DropMissingForEmptyRanges pass")
+	assert.Equal(t, int64(len(emptyPages))*int64(pagesize), bytesSum["empty"],
+		"bytes for the two empty hugepages")
+	assert.NotContains(t, counts, "remove", "start-time pass must not record source=remove")
 }
