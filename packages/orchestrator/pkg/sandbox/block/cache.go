@@ -215,6 +215,7 @@ type dedupPlan struct {
 	exportedSize       int64
 	promotedBlocks     int64
 	promotedPages      int64
+	parentFrames       int64
 	promotedFrames     int64
 	promotedFramePages int64
 }
@@ -273,10 +274,7 @@ func dedupCompare(
 	plan := &dedupPlan{pageDirty: roaring.New(), pageEmpty: roaring.New()}
 	var currentStoredPages int64
 
-	var parentByKey map[dedupFetchKey]*roaring.Bitmap
-	if budget.MaxPromotedParentPagesTotal > 0 {
-		parentByKey = make(map[dedupFetchKey]*roaring.Bitmap)
-	}
+	parentByKey := make(map[dedupFetchKey]*roaring.Bitmap)
 
 	baseHeader := base.Header()
 	peeker, _ := base.(CachePeeker)
@@ -352,19 +350,20 @@ func dedupCompare(
 					plan.pageDirty.Add(pageIdx)
 					currentStoredPages++
 				case dedupPageParent:
-					if parentByKey != nil {
-						bm := parentByKey[info.key]
-						if bm == nil {
-							bm = roaring.New()
-							parentByKey[info.key] = bm
-						}
-						bm.Add(pageIdx)
+					bm := parentByKey[info.key]
+					if bm == nil {
+						bm = roaring.New()
+						parentByKey[info.key] = bm
 					}
+					bm.Add(pageIdx)
 				}
 			}
 		}
 	}
 
+	// parentFrames is the predicted cold-restore fetch count contributed by
+	// this diff's deduped pages: each distinct key is one backing frame fetch.
+	plan.parentFrames = int64(len(parentByKey))
 	plan.promoteCheapestFrames(parentByKey, budget.MaxPromotedParentPagesTotal, budget.FetchRunWindowPages)
 
 	return plan, nil
@@ -381,6 +380,10 @@ func dedupCompare(
 // already verified byte-identical to the parent, so the restored image is
 // unaffected.
 func (p *dedupPlan) promoteCheapestFrames(parentByKey map[dedupFetchKey]*roaring.Bitmap, budgetPages, windowPages int) {
+	if budgetPages <= 0 {
+		return
+	}
+
 	type candidate struct {
 		key   dedupFetchKey
 		pages *roaring.Bitmap
@@ -574,6 +577,7 @@ func recordDedupAttrs(ctx context.Context, plan *dedupPlan, compareDur, writeDur
 		attribute.Int64("dedup.empty_pages", emptyPages),
 		attribute.Int64("dedup.promoted_blocks", plan.promotedBlocks),
 		attribute.Int64("dedup.promoted_pages", plan.promotedPages),
+		attribute.Int64("dedup.parent_frames", plan.parentFrames),
 		attribute.Int64("dedup.promoted_frames", plan.promotedFrames),
 		attribute.Int64("dedup.promoted_frame_pages", plan.promotedFramePages),
 		attribute.Float64("dedup.ratio", ratio),
