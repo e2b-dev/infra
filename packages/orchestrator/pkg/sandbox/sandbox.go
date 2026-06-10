@@ -1134,13 +1134,6 @@ func (s *Sandbox) Pause(
 	// compact_memory) on the live VM via envd. Per-step caps are LD-flag-driven;
 	// all default to 0 which disables the chain entirely. Non-fatal.
 	s.bestEffortReclaim(ctx)
-	if !pauseOpts.memorySnapshot {
-		// FC never flushes the guest page cache; sync so the persisted
-		// filesystem is consistent up to the pause point.
-		s.bestEffortGuestSync(ctx)
-		// Memory prefetch refers to the memfile, which is not persisted.
-		m.Prefetch = nil
-	}
 	// reclaim freezes user cgroups; if pause/snapshot fails the sandbox stays
 	// live, so unfreeze on error to avoid a permanently frozen live VM.
 	// Only runs via cleanup.Run on the error path; success leaves the frozen
@@ -1150,6 +1143,17 @@ func (s *Sandbox) Pause(
 
 		return nil
 	})
+
+	if !pauseOpts.memorySnapshot {
+		// FC never flushes the guest page cache and no memory snapshot will
+		// preserve it, so a failed sync would persist a rootfs missing
+		// acknowledged writes. Mandatory, unlike the best-effort reclaim above.
+		if err := s.guestSync(ctx); err != nil {
+			return nil, fmt.Errorf("guest sync before filesystem-only pause: %w", err)
+		}
+		// Memory prefetch refers to the memfile, which is not persisted.
+		m.Prefetch = nil
+	}
 
 	// Drain free-page-hinting before pause so the snapshot doesn't capture
 	// pages the guest already considers free. Timeout per use case; 0 disables.
