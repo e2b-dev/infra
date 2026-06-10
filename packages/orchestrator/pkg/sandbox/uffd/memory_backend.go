@@ -14,7 +14,9 @@ import (
 type MemoryBackend interface {
 	DiffMetadata(ctx context.Context, f *fc.Process) (*header.DiffMetadata, error)
 	PrefetchData(ctx context.Context) (block.PrefetchData, error)
-	Prefault(ctx context.Context, offset int64, data []byte) error
+	// Prefault returns whether this call installed the page (false on
+	// skipped/present/deferred nil-error paths); see Userfaultfd.Prefault.
+	Prefault(ctx context.Context, offset int64, data []byte) (installed bool, e error)
 	Start(ctx context.Context, sandboxId string) error
 	Stop() error
 	Ready() chan struct{}

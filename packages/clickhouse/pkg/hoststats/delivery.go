@@ -47,10 +47,13 @@ type ClickhouseDelivery struct {
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats")
 
+const DefaultBatcherName = "sandbox-host-stats"
+
 func NewDefaultClickhouseHostStatsDelivery(
 	ctx context.Context,
 	conn driver.Conn,
 	featureFlags *featureflags.Client,
+	batcherName string,
 ) (*ClickhouseDelivery, error) {
 	maxBatchSize := featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherMaxBatchSize)
 	maxDelay := time.Duration(featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherMaxDelay)) * time.Millisecond
@@ -58,7 +61,7 @@ func NewDefaultClickhouseHostStatsDelivery(
 
 	return NewClickhouseHostStatsDelivery(
 		ctx, conn, batcher.BatcherOptions{
-			Name:         "sandbox-host-stats",
+			Name:         batcherName,
 			MaxBatchSize: maxBatchSize,
 			MaxDelay:     maxDelay,
 			QueueSize:    batcherQueueSize,
@@ -93,7 +96,10 @@ func (c *ClickhouseDelivery) Push(stat SandboxHostStat) error {
 	return c.batcher.Push(stat)
 }
 
-func (c *ClickhouseDelivery) Close(context.Context) error {
+// Close waits for queued items to flush. ctx is ignored: honoring it would
+// leak the flush goroutine onto a connection the caller is about to tear
+// down. Real deadlines require plumbing ctx through batcher.Stop.
+func (c *ClickhouseDelivery) Close(_ context.Context) error {
 	return c.batcher.Stop()
 }
 
@@ -109,6 +115,7 @@ func (c *ClickhouseDelivery) batchInserter(ctx context.Context, stats []SandboxH
 
 		return fmt.Errorf("error preparing batch: %w", err)
 	}
+	defer batch.Close()
 
 	for _, stat := range stats {
 		err := batch.Append(

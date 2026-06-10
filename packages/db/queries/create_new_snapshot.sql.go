@@ -15,12 +15,12 @@ import (
 
 const upsertSnapshot = `-- name: UpsertSnapshot :one
 WITH new_template AS (
-    INSERT INTO "public"."envs" (id, public, created_by, team_id, updated_at, source)
-    SELECT $1, FALSE, NULL, $2, now(), 'snapshot'
+    INSERT INTO "public"."envs" (id, public, created_by, team_id, updated_at, source, cluster_id)
+    SELECT $1, FALSE, NULL, $2, now(), 'snapshot', $3
     WHERE NOT EXISTS (
         SELECT id
         FROM "public"."snapshots" s
-        WHERE s.sandbox_id = $3
+        WHERE s.sandbox_id = $4
     ) RETURNING id
 ),
 
@@ -40,18 +40,18 @@ snapshot as (
        created_at
     )
     VALUES (
-            $3,
             $4,
+            $5,
             $2,
             -- If snapshot already exists, new_template id will be null, env_id can't be null, so use placeholder ''
             COALESCE((SELECT id FROM new_template), ''),
-            $5,
             $6,
             $7,
             $8,
             $9,
             $10,
             $11,
+            $12,
             now()
    )
     ON CONFLICT (sandbox_id) DO UPDATE SET
@@ -83,21 +83,21 @@ new_build as (
         cpu_flags
     )
     VALUES (
-        $12,
         $13,
         $14,
         $15,
         $16,
         $17,
         $18,
-        $9,
         $19,
+        $10,
+        $20,
         now(),
-        (SELECT eb.cpu_architecture FROM "public"."env_builds" eb WHERE eb.id = $20),
-        (SELECT eb.cpu_family FROM "public"."env_builds" eb WHERE eb.id = $20),
-        (SELECT eb.cpu_model FROM "public"."env_builds" eb WHERE eb.id = $20),
-        (SELECT eb.cpu_model_name FROM "public"."env_builds" eb WHERE eb.id = $20),
-        (SELECT eb.cpu_flags FROM "public"."env_builds" eb WHERE eb.id = $20)
+        (SELECT eb.cpu_architecture FROM "public"."env_builds" eb WHERE eb.id = $21),
+        (SELECT eb.cpu_family FROM "public"."env_builds" eb WHERE eb.id = $21),
+        (SELECT eb.cpu_model FROM "public"."env_builds" eb WHERE eb.id = $21),
+        (SELECT eb.cpu_model_name FROM "public"."env_builds" eb WHERE eb.id = $21),
+        (SELECT eb.cpu_flags FROM "public"."env_builds" eb WHERE eb.id = $21)
     )
     RETURNING id as build_id
 ),
@@ -118,6 +118,7 @@ SELECT build_id, template_id FROM build_assignment
 type UpsertSnapshotParams struct {
 	TemplateID          string
 	TeamID              uuid.UUID
+	ClusterID           *uuid.UUID
 	SandboxID           string
 	BaseTemplateID      string
 	Metadata            types.JSONBStringMap
@@ -153,6 +154,7 @@ func (q *Queries) UpsertSnapshot(ctx context.Context, arg UpsertSnapshotParams) 
 	row := q.db.QueryRow(ctx, upsertSnapshot,
 		arg.TemplateID,
 		arg.TeamID,
+		arg.ClusterID,
 		arg.SandboxID,
 		arg.BaseTemplateID,
 		arg.Metadata,

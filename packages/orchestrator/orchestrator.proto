@@ -128,9 +128,10 @@ message SandboxPauseRequest {
 }
 
 message SchedulingMetadata {
-  // base_build_id is the root layer (shared across the template's sandboxes);
-  // build_id is the final/current layer. Both also appear in the lists below.
-  string base_build_id = 1;
+  // memfile_base_build_id / rootfs_base_build_id are each artifact's root layer
+  // (shared across the template's sandboxes); they can differ. build_id is the
+  // final/current layer. All also appear in the lists below.
+  string memfile_base_build_id = 1;
   string build_id = 2;
   // Deduplicated build IDs whose data each artifact references (all ancestor
   // layers plus the build itself). Sorted; order is not significant. When a
@@ -144,6 +145,7 @@ message SchedulingMetadata {
   // new memfile layer's bytes are a pre-dedup, block-granular upper bound.
   repeated uint64 memfile_build_bytes = 7;
   repeated uint64 rootfs_build_bytes = 8;
+  string rootfs_base_build_id = 9;
 }
 
 message SandboxPauseResponse {

@@ -25,7 +25,9 @@ func TestCommandKillNextApp(t *testing.T) {
 	envdClient := setup.GetEnvdClient(t, ctx)
 
 	// Run `npx create-next-app`
-	err := utils.ExecCommand(t, ctx, sbx, envdClient, "npx", "create-next-app@latest", "nextapp", "--yes")
+	// Pinned to the latest known-good stable release; `@latest` currently resolves
+	// to a 16.3.0 pre-release that ships a broken SWC binary and 404s on preview.
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "npx", "create-next-app@16.2.8", "nextapp", "--yes")
 	require.NoError(t, err)
 
 	// Run `npm run dev` in background
