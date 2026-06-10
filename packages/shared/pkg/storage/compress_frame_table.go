@@ -65,21 +65,47 @@ type frameEntry struct {
 // FrameTable is the decompression index for a compressed diff file.
 // Immutable after construction; safe to share across goroutines.
 // Sparse tables (gaps between entries) are supported.
+//
+// FrameTable is the general type: it is what BuildData stores, what
+// DeserializeFrameTable / TrimToRanges return, and what the hot read path
+// (ReadAt / OpenRangeReader) accepts. The FullFrameTable wrapper below
+// marks the two narrow producer/fallback contexts where intent matters at
+// compile time.
 type FrameTable struct {
 	compressionType CompressionType
 	entries         []frameEntry // sorted by StartU
 }
 
-// newFrameTableFromEntries creates a FrameTable from pre-computed absolute-offset entries.
-func newFrameTableFromEntries(ct CompressionType, entries []frameEntry) *FrameTable {
-	return &FrameTable{compressionType: ct, entries: entries}
+// FullFrameTable marks a FrameTable that covers an entire file with no gaps
+// (entries[0].StartU == 0, frames contiguous). It appears in exactly two
+// contexts: (a) fresh out of compressStream / CompressBytes / StoreFile /
+// UploadFramed, and (b) latched to a StorageDiff as a fallback when no
+// authoritative FrameTable from the header is available. Wraps FrameTable
+// by value so layout and method set are unchanged; downcast with Table()
+// to feed the hot read path or BuildData.FrameTable.
+type FullFrameTable struct{ FrameTable }
+
+// Table returns the underlying *FrameTable, nil-safely. Use when handing the
+// FT to a hot-path consumer (ReadAt / OpenRangeReader) or assigning to
+// BuildData.FrameTable.
+func (ft *FullFrameTable) Table() *FrameTable {
+	if ft == nil {
+		return nil
+	}
+
+	return &ft.FrameTable
 }
 
-// NewFrameTable creates a FrameTable from consecutive frame sizes, computing
-// absolute offsets starting from zero.
-func NewFrameTable(ct CompressionType, sizes []FrameSize) *FrameTable {
+// newFrameTableFromEntries creates a FrameTable from pre-computed absolute-offset entries.
+func newFrameTableFromEntries(ct CompressionType, entries []frameEntry) FrameTable {
+	return FrameTable{compressionType: ct, entries: entries}
+}
+
+// NewFullFrameTable creates a FullFrameTable from consecutive frame sizes,
+// computing absolute offsets starting from zero. Producer-side constructor.
+func NewFullFrameTable(ct CompressionType, sizes []FrameSize) *FullFrameTable {
 	if len(sizes) == 0 {
-		return newFrameTableFromEntries(ct, nil)
+		return &FullFrameTable{newFrameTableFromEntries(ct, nil)}
 	}
 
 	entries := make([]frameEntry, len(sizes))
@@ -96,7 +122,7 @@ func NewFrameTable(ct CompressionType, sizes []FrameSize) *FrameTable {
 		c += int64(s.C)
 	}
 
-	return newFrameTableFromEntries(ct, entries)
+	return &FullFrameTable{newFrameTableFromEntries(ct, entries)}
 }
 
 // CompressionType returns the compression type. Nil-safe: returns CompressionNone for nil.
@@ -208,7 +234,8 @@ func (ft *FrameTable) LocateUncompressed(offset int64) (Range, error) {
 }
 
 // Serialize writes the frame table to w in binary little-endian format.
-// Nil-safe: writes zeros for type and count.
+// Nil-safe: writes zeros for type and count. The V4 writer trims before
+// calling this, so headers never carry a full (untrimmed) table.
 func (ft *FrameTable) Serialize(w io.Writer) error {
 	var ct CompressionType
 	var n int
@@ -277,16 +304,20 @@ func DeserializeFrameTable(r io.Reader) (*FrameTable, error) {
 		}
 	}
 
-	return newFrameTableFromEntries(CompressionType(ct), entries), nil
+	ft := newFrameTableFromEntries(CompressionType(ct), entries)
+
+	return &ft, nil
 }
 
 // TrimToRanges returns a new FrameTable containing only the frames that
-// overlap with at least one of the given U-space byte ranges.
-// Used during V4 header serialization to keep headers compact when a build
-// has many frames but only a few are referenced in the current layer.
-// Nil-safe: returns ft unchanged when ft is nil or ranges is empty.
+// overlap with at least one of the given U-space byte ranges. Used during
+// V4 header serialization to keep headers compact when a build has many
+// frames but only a few are referenced in the current layer. Nil-safe.
 func (ft *FrameTable) TrimToRanges(ranges []Range) *FrameTable {
-	if ft == nil || len(ft.entries) == 0 || len(ranges) == 0 {
+	if ft == nil {
+		return nil
+	}
+	if len(ft.entries) == 0 || len(ranges) == 0 {
 		return ft
 	}
 
@@ -320,7 +351,9 @@ func (ft *FrameTable) TrimToRanges(ranges []Range) *FrameTable {
 		}
 	}
 
-	return newFrameTableFromEntries(ft.compressionType, trimmed)
+	out := newFrameTableFromEntries(ft.compressionType, trimmed)
+
+	return &out
 }
 
 func (ct CompressionType) Suffix() string {

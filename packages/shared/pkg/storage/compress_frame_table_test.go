@@ -93,7 +93,7 @@ func TestLocate(t *testing.T) {
 func TestNewFrameTable(t *testing.T) {
 	t.Parallel()
 
-	ft := NewFrameTable(CompressionZstd, []FrameSize{
+	ft := NewFullFrameTable(CompressionZstd, []FrameSize{
 		{U: 1 << 20, C: 500_000},
 		{U: 1 << 20, C: 600_000},
 	})
@@ -118,7 +118,7 @@ func TestNewFrameTable(t *testing.T) {
 func TestFrameTable_TrimToRanges(t *testing.T) {
 	t.Parallel()
 
-	ft := NewFrameTable(CompressionLZ4, []FrameSize{
+	ft := NewFullFrameTable(CompressionLZ4, []FrameSize{
 		{U: 1 << 20, C: 500_000},
 		{U: 1 << 20, C: 600_000},
 		{U: 1 << 20, C: 400_000},
@@ -128,7 +128,7 @@ func TestFrameTable_TrimToRanges(t *testing.T) {
 	t.Run("all frames retained", func(t *testing.T) {
 		t.Parallel()
 		trimmed := ft.TrimToRanges([]Range{{Offset: 0, Length: 4 << 20}})
-		require.Same(t, ft, trimmed)
+		require.Equal(t, ft.NumFrames(), trimmed.NumFrames())
 	})
 
 	t.Run("single range trims to subset", func(t *testing.T) {
@@ -190,13 +190,15 @@ func TestSerializeDeserializeFrameTable(t *testing.T) {
 
 	t.Run("round-trip", func(t *testing.T) {
 		t.Parallel()
-		ft := NewFrameTable(CompressionZstd, []FrameSize{
+		ft := NewFullFrameTable(CompressionZstd, []FrameSize{
 			{U: 2048, C: 1024},
 			{U: 4096, C: 3500},
 		})
+		// Persisted FTs are always Partial; trim with nil ranges keeps every frame.
+		partial := ft.TrimToRanges(nil)
 
 		var buf bytes.Buffer
-		require.NoError(t, ft.Serialize(&buf))
+		require.NoError(t, partial.Serialize(&buf))
 
 		got, err := DeserializeFrameTable(&buf)
 		require.NoError(t, err)

@@ -154,7 +154,7 @@ func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length in
 	return rc, err
 }
 
-func (s *peerSeekable) StoreFile(context.Context, string, ...storage.PutOption) (*storage.FrameTable, [32]byte, error) {
+func (s *peerSeekable) StoreFile(context.Context, string, ...storage.PutOption) (*storage.FullFrameTable, [32]byte, error) {
 	// peerSeekable only exists when routingProvider routed this buildID to an
 	// active peer at open time, i.e. the file is being P2P-served (the peer
 	// owns the upload). Asking the local orchestrator to upload it is a

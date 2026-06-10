@@ -130,7 +130,7 @@ func (o *fsObject) Put(_ context.Context, data []byte, _ ...PutOption) error {
 	return err
 }
 
-func (o *fsObject) StoreFile(ctx context.Context, path string, opts ...PutOption) (*FrameTable, [32]byte, error) {
+func (o *fsObject) StoreFile(ctx context.Context, path string, opts ...PutOption) (*FullFrameTable, [32]byte, error) {
 	putOpts := ApplyPutOptions(opts)
 	cfg := CompressConfigFromOpts(putOpts)
 	if cfg.IsCompressionEnabled() {
@@ -174,7 +174,7 @@ func (o *fsObject) StoreFile(ctx context.Context, path string, opts ...PutOption
 	return nil, [32]byte{}, err
 }
 
-func (o *fsObject) storeFileCompressed(ctx context.Context, localPath string, cfg CompressConfig, sink FrameSink) (*FrameTable, [32]byte, error) {
+func (o *fsObject) storeFileCompressed(ctx context.Context, localPath string, cfg CompressConfig, sink FrameSink) (*FullFrameTable, [32]byte, error) {
 	file, err := os.Open(localPath)
 	if err != nil {
 		return nil, [32]byte{}, fmt.Errorf("failed to open local file %s: %w", localPath, err)

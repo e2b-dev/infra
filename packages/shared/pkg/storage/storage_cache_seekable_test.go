@@ -622,11 +622,11 @@ func TestCachedSeekable_StoreFile_Compressed_WriteThrough(t *testing.T) {
 	// Stub inner.StoreFile: open the file and run compressStream with the sink
 	// pulled from opts — mirrors what fs/GCS backends do for compressed puts.
 	up := &memPartUploader{}
-	var capturedFT *FrameTable
+	var capturedFT *FullFrameTable
 	inner := NewMockSeekable(t)
 	inner.EXPECT().
 		StoreFile(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(ctx context.Context, path string, opts ...PutOption) (*FrameTable, [32]byte, error) {
+		RunAndReturn(func(ctx context.Context, path string, opts ...PutOption) (*FullFrameTable, [32]byte, error) {
 			po := ApplyPutOptions(opts)
 			require.NotNil(t, po.FrameSink, "cachedSeekable must attach a FrameSink for compressed+writeThrough")
 

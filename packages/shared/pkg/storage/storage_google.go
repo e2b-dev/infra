@@ -401,7 +401,7 @@ func (o *gcpObject) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 	return n, nil
 }
 
-func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOption) (_ *FrameTable, _ [32]byte, e error) {
+func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOption) (_ *FullFrameTable, _ [32]byte, e error) {
 	ctx, span := tracer.Start(ctx, "write to gcp from file system")
 	defer func() {
 		recordError(span, e)
@@ -547,7 +547,7 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 	return nil, sum256(hasher), e
 }
 
-func (o *gcpObject) storeFileCompressed(ctx context.Context, localPath string, cfg CompressConfig, maxConcurrency int, putOpts PutOptions) (*FrameTable, [32]byte, error) {
+func (o *gcpObject) storeFileCompressed(ctx context.Context, localPath string, cfg CompressConfig, maxConcurrency int, putOpts PutOptions) (*FullFrameTable, [32]byte, error) {
 	file, err := os.Open(localPath)
 	if err != nil {
 		return nil, [32]byte{}, fmt.Errorf("failed to open local file %s: %w", localPath, err)

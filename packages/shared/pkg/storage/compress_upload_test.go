@@ -186,7 +186,7 @@ func TestCompressStreamRoundTrip(t *testing.T) {
 
 			// Round-trip: decompress and compare.
 			compressed := up.Assemble()
-			decompressed, err := decompressAll(ft, compressed)
+			decompressed, err := decompressAll(ft.Table(), compressed)
 			require.NoError(t, err)
 			require.Equal(t, original, decompressed)
 		})
@@ -300,7 +300,7 @@ func TestCompressStreamRace(t *testing.T) {
 				return fmt.Errorf("stream %d: checksum mismatch", i)
 			}
 
-			decompressed, err := decompressAll(ft, up.Assemble())
+			decompressed, err := decompressAll(ft.Table(), up.Assemble())
 			if err != nil {
 				return fmt.Errorf("stream %d: decompress: %w", i, err)
 			}

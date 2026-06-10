@@ -296,7 +296,7 @@ func (c *cachedSeekable) Size(ctx context.Context) (n int64, e error) {
 	return size, nil
 }
 
-func (c *cachedSeekable) StoreFile(ctx context.Context, path string, opts ...PutOption) (_ *FrameTable, _ [32]byte, e error) {
+func (c *cachedSeekable) StoreFile(ctx context.Context, path string, opts ...PutOption) (_ *FullFrameTable, _ [32]byte, e error) {
 	ctx, span := c.tracer.Start(ctx, "write object from file system",
 		trace.WithAttributes(attribute.String("path", path)),
 	)
