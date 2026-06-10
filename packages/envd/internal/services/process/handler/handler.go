@@ -53,6 +53,13 @@ type Handler struct {
 
 	cancel context.CancelFunc
 
+	// pid is published (and pidReady closed) once the process has started. The
+	// output logger goroutines are launched before Start, so they must not read
+	// cmd.Process directly: a fast command can produce output before Start has
+	// finished publishing it.
+	pid      atomic.Uint32
+	pidReady chan struct{}
+
 	outCtx    context.Context //nolint:containedctx // todo: refactor so this can be removed
 	outCancel context.CancelFunc
 
@@ -70,6 +77,14 @@ type Handler struct {
 // This method must be called only after the process has been started
 func (p *Handler) Pid() uint32 {
 	return uint32(p.cmd.Process.Pid)
+}
+
+// waitPid blocks until the process has started, then returns its pid. Safe to call
+// from the output logger goroutines, which can observe output before Start returns.
+func (p *Handler) waitPid() uint32 {
+	<-p.pidReady
+
+	return p.pid.Load()
 }
 
 // userCommand returns a human-readable representation of the user's original command,
@@ -183,6 +198,7 @@ func New(
 		Tag:       req.Tag,
 		DataEvent: outMultiplex,
 		cancel:    cancel,
+		pidReady:  make(chan struct{}),
 		outCtx:    outCtx,
 		outCancel: outCancel,
 		EndEvent:  NewMultiplexedChannel[rpc.ProcessEvent_End](0),
@@ -247,7 +263,7 @@ func New(
 
 		outWg.Go(func() {
 			readBuf := make([]byte, stdChunkSize)
-			outLog := newOutputLogger(logger, outputBudget, "stdout", h.Pid)
+			outLog := newOutputLogger(logger, outputBudget, "stdout", h.waitPid)
 			defer outLog.flush()
 
 			for {
@@ -291,7 +307,7 @@ func New(
 
 		outWg.Go(func() {
 			readBuf := make([]byte, stdChunkSize)
-			outLog := newOutputLogger(logger, outputBudget, "stderr", h.Pid)
+			outLog := newOutputLogger(logger, outputBudget, "stderr", h.waitPid)
 			defer outLog.flush()
 
 			for {
@@ -446,6 +462,11 @@ func (p *Handler) Start(requestTimeout time.Duration) (uint32, error) {
 			return 0, fmt.Errorf("error starting process '%s': %w", p.userCommand(), err)
 		}
 	}
+
+	// Publish the pid for the output logger goroutines, which may already be
+	// reading the process's output.
+	p.pid.Store(uint32(p.cmd.Process.Pid))
+	close(p.pidReady)
 
 	p.logger.
 		Info().
