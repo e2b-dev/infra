@@ -614,12 +614,25 @@ Only memory prefetch exists today (`metadata.Prefetch.Memory`, UFFD `Prefault`).
 Rootfs is fetched lazily in 4 MB chunks on NBD miss — a cold-node reboot triggers
 many synchronous GCS fetches on the boot path. Add a `Prefetch.Rootfs` mapping
 collected during the optimize phase (needs a block-device access tracker; current
-`PrefetchTracker` is UFFD-only), warmed into the overlay cache at boot. Always
-include `/usr/bin/envd` blocks (stored uncompressed, `rootfs.go:202`) so envd
-starts without round-trips. Note: the guest kernel is a separate host file
-(`vmlinux.bin` from `/fc-kernels`), not on the rootfs, so "find the kernel on the
-rootfs" doesn't apply. "Compress envd" only helps if fewer bytes cross the
-network than CPU cost to decompress.
+`PrefetchTracker` is UFFD-only), warmed into the overlay cache at boot.
+
+Two complements to the runtime tracker:
+
+- **Static fs analysis** — walk the ext4 metadata of the built rootfs
+  (filefrag/debugfs-style extent walk at build time) to map boot-critical
+  files to block ranges without needing a traced boot: `/usr/bin/envd`, the
+  dynamic loader + libs it links, systemd unit files/generators, and the ext4
+  superblock/group descriptors/journal blocks that mount itself touches.
+  Deterministic, survives template changes that a stale trace wouldn't, and
+  gives the always-include set (envd blocks especially — stored uncompressed,
+  `rootfs.go:202`) even when the tracker is missing or stale. Note: the guest
+  kernel is a separate host file (`vmlinux.bin` from `/fc-kernels`), not on
+  the rootfs, so it never needs rootfs prefetch.
+- **Shrink/compress envd** — fewer bytes to fetch on a cold node: strip the
+  binary (`-ldflags "-s -w"`), and optionally store it compressed and unpack
+  into tmpfs at boot. Only wins if bytes saved over the network beat the
+  boot-time decompress CPU (1 vCPU guests are CPU-poor — measure); stripping
+  is free and worth doing regardless.
 
 ## 7. Live disk snapshot via overlay insertion (future)
 
