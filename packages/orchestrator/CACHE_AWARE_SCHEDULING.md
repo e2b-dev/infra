@@ -257,16 +257,17 @@ The most important split is memfile vs rootfs. We need to know whether a launch 
 
 Code lives in `packages/api/internal/orchestrator/placement/affinity/`, wired in `create_instance.go`, `pause_instance.go`, and `placement_best_of_K.go`.
 
-- **Redis index** (`affinity.Index`): per cluster, three ZSET tiers keyed by build ID — `exact` (node ran this build), `base` (node ran a build whose base is this build), `lineage` (node ran a build referencing this build). Populated asynchronously from `SchedulingMetadata` on successful create/resume (`PlaceSandbox` now surfaces the create response) and pause. Bounded: capped node sets per key (`topNodes`), short TTLs, lineage capped to the heaviest-by-bytes IDs (`maxLineageRecorded`).
-- **Scoring**: one pipelined Redis read per placement (not per candidate), producing a per-node bonus subtracted from the Best-of-K score. Applied only inside the sampled candidate set; per-tier hit counts clamped (`maxHits`) and total bonus clamped (`maxBonusPpm`) so load and capacity always dominate. Nil/timeout degrades to plain Best-of-K.
-- **Feature flag** `sandbox-placement-cache-affinity` (off by default): `enabled`, `ttlSeconds` (28800 — observed ~8h residence), `topNodes`, `readTimeoutMs`/`writeTimeoutMs`, `maxHits`, `exactWeightPpm`/`baseWeightPpm`/`lineageWeightPpm`, `maxBonusPpm`, `maxLineageRecorded`. Weights are PPM of the placement score; for a 64-core node at R=4 the max bonus (20000 PPM = 0.02) is worth roughly 2.5 queued 2-vCPU sandboxes.
+This first version is exact build-ID match only; base/lineage/byte weighting is deferred (see below).
+
+- **Redis index** (`affinity.Index`): per cluster, one ZSET per build ID holding the nodes that recently ran it. Populated asynchronously from `SchedulingMetadata` on successful create/resume (`PlaceSandbox` now surfaces the create response) and pause. Bounded: capped node set per key (`topNodes`), short TTL.
+- **Scoring**: one Redis read per placement (not per candidate), producing a per-node bonus subtracted from the Best-of-K score. Applied only inside the sampled candidate set; hit count clamped (`maxHits`) and bonus clamped (`maxBonusPpm`) so load and capacity always dominate. Nil/timeout degrades to plain Best-of-K.
+- **Feature flag** `sandbox-placement-cache-affinity` (off by default): `enabled`, `ttlSeconds` (28800 — observed ~8h residence), `topNodes`, `readTimeoutMs`/`writeTimeoutMs`, `maxHits`, `weightPpm`, `maxBonusPpm`. Weight is PPM of the placement score; for a 64-core node at R=4 the max bonus (20000 PPM = 0.02) is worth roughly 2.5 queued 2-vCPU sandboxes.
 - **Observability**: `cache_affinity_hit` attribute on the created-sandboxes counter.
-- **Simulation harness** (`placement/affinity_simulation_test.go`): replays an identical zipf workload (24 nodes, 120 builds, 3000 placements, per-node LRU cache) through the real Best-of-K + real Redis index, with and without affinity. Current result: node-local hit rate 0.34 -> 0.43 with no load skew (~83±2 placements/node). Use this to tune weights/`K` before canarying.
 
 ### Not done yet
 
 - **EN-29 telemetry/replay logging** — only the `cache_affinity_hit` attribute exists; full per-placement replay logging (candidates sampled, score components, latency phases, memfile-vs-rootfs blocking) is open.
-- **EN-32 lineage overlap + lifecycle weighting** — the index already writes ancestor-keyed tiers, but placement queries only the requested build ID (its own ancestors are unknown API-side pre-placement). Lifecycle signals (`EndTime` proximity, autoPause, explicit-vs-timeout pause) are unused.
+- **EN-32 ancestor/lineage overlap scoring** — placement queries only the requested build ID; matching a build to nodes warm on its shared ancestors needs the build's ancestor IDs API-side pre-placement.
 - **EN-33 byte weighting + filesystem-only snapshot profile.**
 - **EN-34 predictive retention/prewarm policy.**
-- **EN-35 offline replay simulator + contextual bandits** — the test harness above is a starting point, but production-event replay is open.
+- **EN-35 offline replay simulator + contextual bandits.**
