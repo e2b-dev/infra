@@ -264,7 +264,7 @@ type ServerInterface interface {
 	// Open a raw TCP tunnel to a target reachable inside the sandbox over a WebSocket
 	// (GET /tunnel)
 	GetTunnel(w http.ResponseWriter, r *http.Request, params GetTunnelParams)
-	// Unfreeze user/pty/socat cgroups. Intended ONLY for the orchestrator's pause-failure rollback path; the normal resume thaw happens via /init's deferred unfreeze, not here.
+	// Unfreeze user/pty cgroups. Intended ONLY for the orchestrator's pause-failure rollback path; the normal resume thaw happens via /init's deferred unfreeze, not here.
 	// (POST /unfreeze)
 	PostUnfreeze(w http.ResponseWriter, r *http.Request)
 }
@@ -327,7 +327,7 @@ func (_ Unimplemented) GetTunnel(w http.ResponseWriter, r *http.Request, params 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Unfreeze user/pty/socat cgroups. Intended ONLY for the orchestrator's pause-failure rollback path; the normal resume thaw happens via /init's deferred unfreeze, not here.
+// Unfreeze user/pty cgroups. Intended ONLY for the orchestrator's pause-failure rollback path; the normal resume thaw happens via /init's deferred unfreeze, not here.
 // (POST /unfreeze)
 func (_ Unimplemented) PostUnfreeze(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
