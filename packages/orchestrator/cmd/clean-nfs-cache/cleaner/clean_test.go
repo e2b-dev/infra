@@ -98,7 +98,7 @@ func TestCleanDeletesOldestFiles(t *testing.T) {
 		MaxConcurrentDelete: 1,
 	}
 
-	c := NewCleaner(opts, logger.NewNopLogger())
+	c := NewCleaner(opts, logger.NewNopLogger(), nil)
 
 	err = c.Clean(t.Context())
 	require.NoError(t, err)

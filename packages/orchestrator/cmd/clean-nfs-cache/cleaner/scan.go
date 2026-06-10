@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 )
 
@@ -31,6 +33,7 @@ func (c *Cleaner) Scanner(ctx context.Context, candidateCh chan<- *Candidate, er
 
 			case errors.Is(err, ErrBusy):
 				// We tried a busy directory, just retry
+				c.metrics.ScanBusy.Add(ctx, 1)
 				time.Sleep(1 * time.Millisecond)
 
 				continue
@@ -60,12 +63,16 @@ func (c *Cleaner) Scanner(ctx context.Context, candidateCh chan<- *Candidate, er
 
 func (c *Cleaner) Statter(ctx context.Context, done *sync.WaitGroup) {
 	defer done.Done()
+	statInDirAttrs := metric.WithAttributes(attribute.String(AttrSource, ValSrcInDir))
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case req := <-c.statRequestCh:
+			start := time.Now()
 			f, err := c.statInDir(req.df, req.name)
+			c.metrics.StatDuration.Record(ctx, time.Since(start).Milliseconds(), statInDirAttrs)
+			c.metrics.StatOps.Add(ctx, 1, statInDirAttrs)
 			req.f = f
 			req.err = err
 			req.response <- req
@@ -160,9 +167,15 @@ func (c *Cleaner) scanDir(ctx context.Context, path []*Dir) (out *Dir, err error
 	}
 	defer df.Close()
 
+	depth := int64(len(path) - 1)
+	depthAttr := attribute.Int64(AttrDepth, depth)
+	depthAttrSet := metric.WithAttributes(depthAttr)
+
+	readdirStart := time.Now()
 	entries := []os.DirEntry{}
 	for {
 		c.ReadDirC.Add(1)
+		c.metrics.ReaddirOps.Add(ctx, 1, depthAttrSet)
 		e, err := df.ReadDir(2048)
 		if len(e) != 0 {
 			entries = append(entries, e...)
@@ -181,6 +194,7 @@ func (c *Cleaner) scanDir(ctx context.Context, path []*Dir) (out *Dir, err error
 
 		break
 	}
+	c.metrics.ScanReaddirDuration.Record(ctx, time.Since(readdirStart).Milliseconds(), depthAttrSet)
 
 	// If the directory is empty, remove it from its parent and delete it
 	if len(entries) == 0 && len(path) > 1 {
@@ -203,6 +217,14 @@ func (c *Cleaner) scanDir(ctx context.Context, path []*Dir) (out *Dir, err error
 		}
 	}
 
+	// Record entry-count distributions by kind so we can see, per depth,
+	// whether dirs (e.g. BuildID UUIDs at the top level) or files (chunks
+	// inside a BuildID) dominate.
+	c.metrics.ScanEntries.Record(ctx, int64(len(dirs)),
+		metric.WithAttributes(depthAttr, attribute.String(AttrKind, ValKindDir)))
+	c.metrics.ScanEntries.Record(ctx, int64(len(filenames)),
+		metric.WithAttributes(depthAttr, attribute.String(AttrKind, ValKindFile)))
+
 	// Submit stat requests using the directory fd so Statter can use
 	// fd-relative statx — on NFS this avoids per-component LOOKUP RPCs.
 	//
@@ -212,6 +234,7 @@ func (c *Cleaner) scanDir(ctx context.Context, path []*Dir) (out *Dir, err error
 	// successfully-submitted request before returning, even when ctx is
 	// canceled mid-loop. responseCh is buffered to len(filenames) so a
 	// Statter's send back never blocks.
+	statPhaseStart := time.Now()
 	responseCh := make(chan *statReq, len(filenames))
 	submitted := 0
 submitLoop:
@@ -238,6 +261,7 @@ submitLoop:
 			files = append(files, *resp.f)
 		}
 	}
+	c.metrics.ScanStatPhaseDuration.Record(ctx, time.Since(statPhaseStart).Milliseconds(), depthAttrSet)
 	if err != nil {
 		return nil, err
 	}
@@ -273,7 +297,9 @@ func (c *Cleaner) removeEmptyDir(ctx context.Context, path []*Dir) {
 	if !c.DryRun {
 		if err := os.Remove(absPath); err == nil {
 			c.RemoveDirC.Add(1)
+			c.metrics.RmdirOps.Add(ctx, 1, metric.WithAttributes(attribute.String(AttrResult, ValResultOk)))
 		} else {
+			c.metrics.RmdirOps.Add(ctx, 1, metric.WithAttributes(attribute.String(AttrResult, ValResultErr)))
 			c.Info(ctx, "failed to delete empty dir",
 				zap.String("dir", absPath),
 				zap.Error(err))

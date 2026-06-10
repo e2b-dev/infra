@@ -12,6 +12,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -22,6 +24,12 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
+
+// meterExportPeriod controls how often the periodic reader flushes. Short
+// enough that a typical cleaner run flushes at least once mid-flight (so we
+// see metrics even if Shutdown's ForceFlush is interrupted), but not so
+// short that we add meaningful CPU/network overhead.
+const meterExportPeriod = 5 * time.Second
 
 const (
 	serviceName    = "clean-nfs-cache"
@@ -36,11 +44,16 @@ func main() {
 	var opts cleaner.Options
 
 	var lp telemetry.LogProvider
-	opts, log, lp, err = preRun(ctx)
+	var mp *sdkmetric.MeterProvider
+	var metrics *cleaner.Metrics
+	opts, log, lp, mp, metrics, err = preRun(ctx)
 	if err != nil {
 		fmt.Println("NFS cache cleaner failed:", err)
 		if lp != nil {
 			lp.Shutdown(ctx)
+		}
+		if mp != nil {
+			mp.Shutdown(ctx)
 		}
 		os.Exit(1)
 	}
@@ -51,6 +64,14 @@ func main() {
 			defer os.Exit(1)
 		}
 		log.Sync()
+		// Force-flush metrics before shutdown; this is a short-lived process
+		// and the last batch of counters would otherwise be dropped.
+		if mp != nil {
+			flushCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			_ = mp.ForceFlush(flushCtx)
+			cancel()
+			mp.Shutdown(ctx)
+		}
 		lp.Shutdown(ctx)
 	}()
 
@@ -81,7 +102,7 @@ func main() {
 		return
 	}
 
-	c := cleaner.NewCleaner(opts, log)
+	c := cleaner.NewCleaner(opts, log, metrics)
 	if err = c.Clean(ctx); err != nil {
 		return
 	}
@@ -115,7 +136,7 @@ func main() {
 		zap.Duration("std_deviation", sd.Round(time.Second)))
 }
 
-func preRun(ctx context.Context) (cleaner.Options, logger.Logger, telemetry.LogProvider, error) {
+func preRun(ctx context.Context) (cleaner.Options, logger.Logger, telemetry.LogProvider, *sdkmetric.MeterProvider, *cleaner.Metrics, error) {
 	var opts cleaner.Options
 	var featureFlagPresent bool
 
@@ -134,18 +155,18 @@ func preRun(ctx context.Context) (cleaner.Options, logger.Logger, telemetry.LogP
 
 	args := os.Args[1:] // skip the command name
 	if err := flags.Parse(args); err != nil {
-		return opts, nil, nil, fmt.Errorf("could not parse flags: %w", err)
+		return opts, nil, nil, nil, nil, fmt.Errorf("could not parse flags: %w", err)
 	}
 
 	args = flags.Args()
 	if len(args) != 1 {
-		return opts, nil, nil, ErrUsage
+		return opts, nil, nil, nil, nil, ErrUsage
 	}
 	opts.Path = args[0]
 
 	ffc, err := featureflags.NewClient()
 	if err != nil {
-		return opts, nil, nil, err
+		return opts, nil, nil, nil, nil, err
 	}
 	defer ffc.Close(ctx)
 
@@ -175,14 +196,24 @@ func preRun(ctx context.Context) (cleaner.Options, logger.Logger, telemetry.LogP
 
 	var cores []zapcore.Core
 	logProvider := telemetry.NewNoopLogProvider()
+	var meterProvider *sdkmetric.MeterProvider
+	// Default to noop metrics so cleaner methods are safe to call when no
+	// collector endpoint is configured (e.g. local dev).
+	metrics := cleaner.NoopMetrics()
 	if opts.OtelCollectorEndpoint != "" {
 		var otelCore zapcore.Core
 		var err error
 		otelCore, logProvider, err = newOtelCore(ctx, opts.OtelCollectorEndpoint)
 		if err != nil {
-			return opts, nil, nil, fmt.Errorf("failed to create otel logger: %w", err)
+			return opts, nil, nil, nil, nil, fmt.Errorf("failed to create otel logger: %w", err)
 		}
 		cores = append(cores, otelCore)
+
+		meterProvider, metrics, err = newOtelMetrics(ctx, opts.OtelCollectorEndpoint)
+		if err != nil {
+			logProvider.Shutdown(ctx)
+			return opts, nil, nil, nil, nil, fmt.Errorf("failed to create otel metrics: %w", err)
+		}
 	}
 
 	l := utils.Must(logger.NewLogger(logger.LoggerConfig{
@@ -207,8 +238,11 @@ func preRun(ctx context.Context) (cleaner.Options, logger.Logger, telemetry.LogP
 			if logProvider != nil {
 				logProvider.Shutdown(ctx)
 			}
+			if meterProvider != nil {
+				meterProvider.Shutdown(ctx)
+			}
 
-			return opts, nil, nil, fmt.Errorf("could not get disk info: %w", err)
+			return opts, nil, nil, nil, nil, fmt.Errorf("could not get disk info: %w", err)
 		}
 		targetDiskUsage := uint64(opts.TargetDiskUsagePercent / 100 * float64(diskInfo.Total))
 		if uint64(diskInfo.Used) > targetDiskUsage {
@@ -216,7 +250,46 @@ func preRun(ctx context.Context) (cleaner.Options, logger.Logger, telemetry.LogP
 		}
 	}
 
-	return opts, l, logProvider, nil
+	return opts, l, logProvider, meterProvider, metrics, nil
+}
+
+// newOtelMetrics mirrors newOtelCore but for the metric pipeline. Returns the
+// MeterProvider so main can flush and shut it down on exit, plus the
+// pre-built Metrics struct holding all cleaner instruments.
+func newOtelMetrics(ctx context.Context, endpoint string) (*sdkmetric.MeterProvider, *cleaner.Metrics, error) {
+	nodeID := env.GetNodeID()
+	serviceInstanceID := uuid.NewString()
+
+	res, err := telemetry.GetResource(ctx, nodeID, serviceName, commitSHA, serviceVersion, serviceInstanceID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create resource: %w", err)
+	}
+
+	exporter, err := telemetry.NewMeterExporter(ctx, otlpmetricgrpc.WithEndpoint(endpoint))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create meter exporter: %w", err)
+	}
+
+	mp, err := telemetry.NewMeterProvider(exporter, meterExportPeriod, res)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create meter provider: %w", err)
+	}
+
+	// telemetry.NewMeterProvider returns the metric.MeterProvider interface,
+	// but our caller needs the concrete *sdkmetric.MeterProvider for
+	// ForceFlush/Shutdown. Type-assert here so the dependency is local.
+	sdkmp, ok := mp.(*sdkmetric.MeterProvider)
+	if !ok {
+		return nil, nil, fmt.Errorf("meter provider was not *sdkmetric.MeterProvider: %T", mp)
+	}
+
+	m, err := cleaner.NewMetrics(sdkmp.Meter("github.com/e2b-dev/infra/packages/orchestrator/cmd/clean-nfs-cache/cleaner"))
+	if err != nil {
+		sdkmp.Shutdown(ctx)
+		return nil, nil, fmt.Errorf("failed to create cleaner metrics: %w", err)
+	}
+
+	return sdkmp, m, nil
 }
 
 func newOtelCore(ctx context.Context, endpoint string) (zapcore.Core, telemetry.LogProvider, error) {

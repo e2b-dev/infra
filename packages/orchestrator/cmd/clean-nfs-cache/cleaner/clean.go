@@ -29,6 +29,7 @@ type Cleaner struct {
 	base          string
 	root          *Dir
 	statRequestCh chan *statReq
+	metrics       *Metrics
 }
 
 type Options struct {
@@ -97,6 +98,11 @@ type Candidate struct {
 	ATimeUnix int64
 	BTimeUnix int64
 	Size      uint64
+
+	// enqueuedAt is set when the candidate is sent to the delete channel,
+	// so the Deleter can record how long it waited in the queue. Zero
+	// value means "not (yet) queued for deletion".
+	enqueuedAt time.Time
 }
 
 type statReq struct {
@@ -114,12 +120,16 @@ var (
 	ErrUsage      = errors.New("usage: clean-nfs-cache <path> [<options>]")
 )
 
-func NewCleaner(opts Options, log logger.Logger) *Cleaner {
+func NewCleaner(opts Options, log logger.Logger, metrics *Metrics) *Cleaner {
+	if metrics == nil {
+		metrics = NoopMetrics()
+	}
 	c := &Cleaner{
 		Options: opts,
 		Logger:  log,
 		base:    filepath.Dir(opts.Path),
 		root:    NewDir(filepath.Base(opts.Path)),
+		metrics: metrics,
 	}
 
 	return c
@@ -199,6 +209,11 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 	baseMem := runtime.MemStats{}
 	runtime.ReadMemStats(&baseMem)
 	batchNumber := 0
+	// batchStart is set when the first candidate of a fresh batch arrives,
+	// and reset after the batch is dispatched. Lets us emit a wall-time
+	// histogram of how long each BatchN-sized batch takes to assemble —
+	// slow assembly = scanners are starving.
+	var batchStart time.Time
 
 	for range c.MaxConcurrentStat {
 		running.Add(1)
@@ -240,11 +255,15 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 				continue
 			}
 
+			if n == 0 {
+				batchStart = time.Now()
+			}
 			n++
 			batch = append(batch, candidate)
 			if n < c.BatchN {
 				continue
 			}
+			c.metrics.BatchAssembleDuration.Record(ctx, time.Since(batchStart).Milliseconds())
 
 			// reinsert the "younger" candidates back into the directory tree
 			del, reinsertBackToCache := c.splitBatch(batch)
@@ -270,7 +289,9 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 			c.reinsertCandidates(reinsertBackToCache)
 
 			total := uint64(0)
+			enqueueTime := time.Now()
 			for _, toDelete := range del {
+				toDelete.enqueuedAt = enqueueTime
 				deleteCh <- toDelete
 				c.DeleteSubmittedC.Add(1)
 				total += toDelete.Size
@@ -400,14 +421,6 @@ func (d *Dir) IsEmpty() bool {
 	defer d.mu.Unlock()
 
 	return d.isEmpty()
-}
-
-func (c *Cleaner) timeit(ctx context.Context, message string, fn func()) {
-	start := time.Now()
-	fn()
-	done := time.Since(start).Round(time.Millisecond)
-
-	c.Debug(ctx, message, zap.Duration("duration", done))
 }
 
 func CreateTestDir(path string, nDirs int, nFiles int, fsize int) {

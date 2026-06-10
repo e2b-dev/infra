@@ -23,7 +23,7 @@ func TestScanDir(t *testing.T) {
 
 	c := NewCleaner(Options{
 		Path: path,
-	}, logger.NewNopLogger())
+	}, logger.NewNopLogger(), nil)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	wg := &sync.WaitGroup{}
