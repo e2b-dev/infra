@@ -77,7 +77,7 @@ paths:
 
   /freeze:
     post:
-      summary: Freeze user/pty/socat cgroups before pause. Written directly by envd to avoid Process.Start / shell overhead under load.
+      summary: Freeze user/pty cgroups before pause. Written directly by envd to avoid Process.Start / shell overhead under load.
       security:
         - AccessTokenAuth: []
         - {}
@@ -91,7 +91,7 @@ paths:
 
   /unfreeze:
     post:
-      summary: Unfreeze user/pty/socat cgroups. Intended ONLY for the orchestrator's pause-failure rollback path; the normal resume thaw happens via /init's deferred unfreeze, not here.
+      summary: Unfreeze user/pty cgroups. Intended ONLY for the orchestrator's pause-failure rollback path; the normal resume thaw happens via /init's deferred unfreeze, not here.
       security:
         - AccessTokenAuth: []
         - {}

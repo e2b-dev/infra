@@ -240,7 +240,7 @@ type ServerInterface interface {
 	// Compose multiple files into a single file using zero-copy concatenation. Source files are deleted after successful composition.
 	// (POST /files/compose)
 	PostFilesCompose(w http.ResponseWriter, r *http.Request)
-	// Freeze user/pty/socat cgroups before pause. Written directly by envd to avoid Process.Start / shell overhead under load.
+	// Freeze user/pty cgroups before pause. Written directly by envd to avoid Process.Start / shell overhead under load.
 	// (POST /freeze)
 	PostFreeze(w http.ResponseWriter, r *http.Request)
 	// Check the health of the service
@@ -252,7 +252,7 @@ type ServerInterface interface {
 	// Get the stats of the service
 	// (GET /metrics)
 	GetMetrics(w http.ResponseWriter, r *http.Request)
-	// Unfreeze user/pty/socat cgroups. Intended ONLY for the orchestrator's pause-failure rollback path; the normal resume thaw happens via /init's deferred unfreeze, not here.
+	// Unfreeze user/pty cgroups. Intended ONLY for the orchestrator's pause-failure rollback path; the normal resume thaw happens via /init's deferred unfreeze, not here.
 	// (POST /unfreeze)
 	PostUnfreeze(w http.ResponseWriter, r *http.Request)
 }
@@ -285,7 +285,7 @@ func (_ Unimplemented) PostFilesCompose(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Freeze user/pty/socat cgroups before pause. Written directly by envd to avoid Process.Start / shell overhead under load.
+// Freeze user/pty cgroups before pause. Written directly by envd to avoid Process.Start / shell overhead under load.
 // (POST /freeze)
 func (_ Unimplemented) PostFreeze(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -309,7 +309,7 @@ func (_ Unimplemented) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Unfreeze user/pty/socat cgroups. Intended ONLY for the orchestrator's pause-failure rollback path; the normal resume thaw happens via /init's deferred unfreeze, not here.
+// Unfreeze user/pty cgroups. Intended ONLY for the orchestrator's pause-failure rollback path; the normal resume thaw happens via /init's deferred unfreeze, not here.
 // (POST /unfreeze)
 func (_ Unimplemented) PostUnfreeze(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)

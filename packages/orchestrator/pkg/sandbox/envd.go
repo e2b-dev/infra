@@ -94,7 +94,7 @@ func (s *Sandbox) doRequestWithInfiniteRetries(
 }
 
 // callEnvdFreeze calls envd's native POST /freeze endpoint to freeze
-// user/pty/socat cgroups directly (no Process.Start, no shell). Used pre-pause
+// user/pty cgroups directly (no Process.Start, no shell). Used pre-pause
 // with a tight, freeze-only timeout.
 func (s *Sandbox) callEnvdFreeze(ctx context.Context, timeout time.Duration) error {
 	return s.callEnvdCgroupOp(ctx, timeout, envdCgroupOpFreeze)
