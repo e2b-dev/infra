@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
@@ -35,7 +37,11 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 	ctx, span := tracer.Start(ctx, "place-sandbox")
 	defer span.End()
 
+	// nodesExcluded: nodes that hard-failed and must not be retried.
+	// nodesExhausted: nodes that reported ResourceExhausted; skipped so other
+	// nodes are tried first, then retried after a bounded backoff.
 	nodesExcluded := make(map[string]struct{})
+	nodesExhausted := make(map[string]struct{})
 	var err error
 
 	var node *nodemanager.Node
@@ -44,6 +50,7 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 	}
 
 	attempt := 0
+	exhaustedRetries := 0
 	for attempt < maxRetries {
 		select {
 		case <-ctx.Done():
@@ -59,9 +66,36 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 				return nil, nil, errors.New("no nodes available")
 			}
 
-			node, err = algorithm.chooseNode(ctx, clusterNodes, nodesExcluded, nodemanager.SandboxResources{CPUs: sbxRequest.GetSandbox().GetVcpu(), MiBMemory: sbxRequest.GetSandbox().GetRamMb()}, buildMachineInfo, labelFilteringEnabled, requiredLabels, affinityScores)
+			skip := make(map[string]struct{}, len(nodesExcluded)+len(nodesExhausted))
+			for id := range nodesExcluded {
+				skip[id] = struct{}{}
+			}
+			for id := range nodesExhausted {
+				skip[id] = struct{}{}
+			}
+
+			node, err = algorithm.chooseNode(ctx, clusterNodes, skip, nodemanager.SandboxResources{CPUs: sbxRequest.GetSandbox().GetVcpu(), MiBMemory: sbxRequest.GetSandbox().GetRamMb()}, buildMachineInfo, labelFilteringEnabled, requiredLabels, affinityScores)
 			if err != nil {
-				return nil, nil, err
+				// No selectable node. If exhausted nodes are the only blocker,
+				// back off and retry them until the request deadline (capacity is
+				// usually transient); otherwise give up.
+				if len(nodesExhausted) == 0 {
+					return nil, nil, err
+				}
+
+				exhaustedRetries++
+
+				select {
+				case <-ctx.Done():
+					logger.L().Warn(ctx, "Placement failed, all nodes exhausted", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithTemplateID(sbxRequest.GetSandbox().GetTemplateId()), logger.WithBuildID(sbxRequest.GetSandbox().GetBuildId()), zap.Int("exhausted_retries", exhaustedRetries))
+
+					return nil, nil, fmt.Errorf("request timed out after %d exhausted retries", exhaustedRetries)
+				case <-time.After(exhaustedBackoff(exhaustedRetries)):
+				}
+
+				nodesExhausted = make(map[string]struct{})
+
+				continue
 			}
 
 			telemetry.ReportEvent(ctx, "Placing sandbox on the node", telemetry.WithNodeID(node.ID))
@@ -105,14 +139,36 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 		switch statusCode {
 		case codes.ResourceExhausted:
 			failedNode.PlacementMetrics.Skip(sbxRequest.GetSandbox().GetSandboxId())
-			logger.L().Warn(ctx, "Node exhausted, trying another node", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(failedNode.ID))
+			nodesExhausted[failedNode.ID] = struct{}{}
 		default:
 			nodesExcluded[failedNode.ID] = struct{}{}
 			failedNode.PlacementMetrics.Fail(sbxRequest.GetSandbox().GetSandboxId())
-			logger.L().Error(ctx, "Failed to create sandbox", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(failedNode.ID), zap.Int("attempt", attempt+1), zap.Error(utils.UnwrapGRPCError(err)))
+			logger.L().Error(ctx, "Failed to create sandbox",
+				logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()),
+				logger.WithNodeID(failedNode.ID),
+				logger.WithTemplateID(sbxRequest.GetSandbox().GetTemplateId()),
+				logger.WithBuildID(sbxRequest.GetSandbox().GetBuildId()),
+				zap.Int("attempt", attempt+1),
+				zap.Error(utils.UnwrapGRPCError(err)),
+			)
 			attempt++
 		}
 	}
 
 	return nil, nil, errSandboxCreateFailed
+}
+
+// exhaustedBackoff returns a jittered, exponentially growing wait for the n-th
+// (1-based) ResourceExhausted retry, capped at resourceExhaustedBackoffMaxWait.
+func exhaustedBackoff(n int) time.Duration {
+	wait := resourceExhaustedBackoffMaxWait
+	// Cap the shift to avoid overflow once n grows large; the wait is capped at
+	// the max anyway.
+	if n >= 1 && n <= 16 {
+		if w := resourceExhaustedBackoffBase << (n - 1); w > 0 && w < wait {
+			wait = w
+		}
+	}
+
+	return time.Duration(rand.Int63n(int64(wait)) + 1)
 }
