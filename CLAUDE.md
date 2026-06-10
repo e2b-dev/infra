@@ -130,7 +130,7 @@ Client → Client-Proxy → API (REST) ⟷ PostgreSQL
 - Process management API: `/spec/process/process.proto`
 - Filesystem API: `/spec/filesystem/filesystem.proto`
 - Port: 49983
-- **Version in `pkg/version.go` must be bumped on every behavioral change** (not comments/docs-only changes)
+- **Every change must include a changeset** — run `npx changeset` from the repo root (or `npx changeset --empty` for changes that don't affect the compiled binary); CI bumps `pkg/version.go` automatically on merge to main
 
 **Client Proxy (`packages/client-proxy/`)** - Edge routing layer
 - Service discovery via Consul

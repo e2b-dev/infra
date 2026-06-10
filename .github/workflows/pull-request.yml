@@ -47,6 +47,9 @@ jobs:
               - '.golangci.yml'
               - '.github/**'
               - '.tool-versions'
+            envd:
+              - 'packages/envd/**'
+              - '.changeset/**'
             openapi-inputs:
               - 'spec/openapi*.yml'
               - 'packages/envd/spec/envd.yaml'
@@ -88,6 +91,11 @@ jobs:
     secrets:
       app_id: ${{ vars.AUTOFIXER_APP_ID }}
       app_secret: ${{ secrets.AUTOFIXER_APP_SECRET }}
+  envd-changeset:
+    needs: [detect-changes]
+    uses: ./.github/workflows/envd-changeset.yml
+    with:
+      run-check: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'envd') }}
   out-of-order-migrations:
     uses: ./.github/workflows/out-of-order-migrations.yml
   unit-tests:

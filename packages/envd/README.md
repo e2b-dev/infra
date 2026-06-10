@@ -6,7 +6,13 @@ Daemon that runs inside a sandbox that allows interacting with the sandbox via c
 
 ### Versioning
 
-The envd version in `pkg/version.go` must be bumped on every change that affects behavior (code changes, dependency updates, etc.). Pure comment or documentation changes that don't affect the compiled binary don't require a version bump.
+The envd version in `pkg/version.go` is managed automatically with [changesets](../../.changeset/README.md). Every PR that touches this package must include a changeset describing the change (run from the repo root):
+
+```bash
+npx changeset
+```
+
+Use `npx changeset --empty` for changes that can't affect the compiled binary (docs, comments, dev tooling). On merge to `main`, CI consumes the pending changesets, bumps `package.json` and `pkg/version.go` accordingly, and updates `CHANGELOG.md` — don't bump the version manually.
 
 ### Running locally
 

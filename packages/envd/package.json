@@ -1,0 +1,6 @@
+{
+  "name": "envd",
+  "version": "0.6.3",
+  "private": true,
+  "description": "Version stub for changesets — the source of truth synced into pkg/version.go by scripts/sync-envd-version.sh"
+}

@@ -1,0 +1,13 @@
+{
+  "name": "e2b-infra",
+  "private": true,
+  "workspaces": [
+    "packages/envd"
+  ],
+  "scripts": {
+    "changeset": "changeset"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.31.0"
+  }
+}
