@@ -38,7 +38,7 @@ jobs:
           persist-credentials: false
 
       - name: Pull deployment secrets into temporary file
-        uses: Infisical/secrets-action@v1.0.15
+        uses: Infisical/secrets-action@v1.0.16
         with:
           method: "oidc"
           identity-id: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
@@ -63,7 +63,7 @@ jobs:
           echo "GH_WORKLOAD_IDENTITY_PROVIDER=${GH_WORKLOAD_IDENTITY_PROVIDER}" >> "$GITHUB_ENV"
 
       - name: Load runtime environment
-        uses: Infisical/secrets-action@v1.0.15
+        uses: Infisical/secrets-action@v1.0.16
         with:
           method: "oidc"
           identity-id: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
@@ -72,13 +72,13 @@ jobs:
           export-type: "env"
 
       - name: Setup Service Account
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
           workload_identity_provider: ${{ env.GH_WORKLOAD_IDENTITY_PROVIDER }}
 
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
 
       - name: Set up Docker
         env:
