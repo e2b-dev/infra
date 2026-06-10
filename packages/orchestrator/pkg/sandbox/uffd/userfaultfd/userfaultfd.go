@@ -14,6 +14,7 @@ import (
 	"unsafe"
 
 	"github.com/RoaringBitmap/roaring/v2"
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -41,6 +42,16 @@ const (
 	sliceRetryBaseDelay = 50 * time.Millisecond
 	// sliceRetryMaxDelay is the maximum backoff delay between retries.
 	sliceRetryMaxDelay = 500 * time.Millisecond
+
+	// wpMaxRetries bounds the UFFDIO_WRITEPROTECT EAGAIN retry in
+	// dropMissingEventsTracking. Total attempts = wpMaxRetries + 1.
+	wpMaxRetries = 8
+	// wpRetryBaseDelay is the initial backoff before retrying a write-protect
+	// that raced mmap_changing; it doubles each attempt, capped at
+	// wpRetryMaxDelay. The delays are short because mmap_changing clears as soon
+	// as the REMOVE-triggering madvise thread is rescheduled.
+	wpRetryBaseDelay = 1 * time.Millisecond
+	wpRetryMaxDelay  = 10 * time.Millisecond
 )
 
 var ErrUnexpectedEventType = errors.New("unexpected event type")
@@ -138,6 +149,10 @@ const (
 	// faultDiscarded: no install happened and retry is pointless
 	// (e.g. ESRCH — the faulting thread is gone).
 	faultDiscarded
+	// faultAfterRemove: no install happened because we got a UFFD_EVENT_REMOVE
+	// concurrently with a page fault. We first handle the remove event, so
+	// the page fault will be handled by the kernel.
+	faultAfterRemove
 )
 
 // NewUserfaultfdFromFd creates a new userfaultfd instance. Page size is
@@ -233,6 +248,150 @@ func (u *Userfaultfd) readEvents(ctx context.Context) ([]*UffdRemove, []*UffdPag
 	}
 
 	return removes, pagefaults, nil
+}
+
+// dropMissingEventsTracking drops MISSING registration for [addr, addr+len) so the
+// kernel starts handling the page faults (we stop receiving UFFD_EVENT_PAGEFAULT
+// events). We do want the kernel to keep handling the WP bit asynchronously, so
+// we need to re-register the region for WP and write protect it.
+func (u *Userfaultfd) dropMissingEventsTracking(ctx context.Context, addr, length uintptr) error {
+	if err := u.fd.unregister(addr, length); err != nil {
+		return fmt.Errorf("uffd: failed to unregister memory: %w", err)
+	}
+	if err := u.fd.register(addr, length, UFFDIO_REGISTER_MODE_WP); err != nil {
+		return fmt.Errorf("uffd: failed to register memory: %w", err)
+	}
+	if err := u.writeProtectWithRetry(ctx, addr, length); err != nil {
+		return fmt.Errorf("uffd: failed to write protect memory: %w", err)
+	}
+
+	return nil
+}
+
+// handleRemoves applies a batch of UFFD_EVENT_REMOVE events under
+// settleRequests.Lock: for hugepages it drops MISSING tracking (so the kernel
+// serves the freed pages directly) and marks the range zero in the tracker. It
+// returns the total bytes whose MISSING tracking was dropped, for the
+// unregisterTimer bytes counter.
+func (u *Userfaultfd) handleRemoves(ctx context.Context, removes []*UffdRemove) (int64, error) {
+	u.settleRequests.Lock()
+	defer u.settleRequests.Unlock()
+
+	var unregisteredBytes int64
+	for _, rm := range removes {
+		// rm.start (inclusive) and rm.end (exclusive) are page-aligned to
+		// u.pageSize for the registered VMA (UFFD invariant), so startOff is a
+		// multiple of pageSize and length is an integer number of pages — both
+		// divisions below are exact, and SetRange's half-open [startIdx, endIdx)
+		// lines up with the half-open [rm.start, rm.end).
+		startOff, err := u.ma.GetOffset(uintptr(rm.start))
+		if err != nil {
+			u.logger.Error(ctx, "UFFD REMOVE: failed to map start address",
+				zap.Uintptr("start", uintptr(rm.start)), zap.Error(err))
+
+			continue
+		}
+
+		startIdx := uint32(header.BlockIdx(startOff, int64(u.pageSize)))
+		endIdx := startIdx + uint32(uint64(rm.end-rm.start)/uint64(u.pageSize))
+
+		// For huge pages we can stop tracking MISSING events and keep WP-tracking
+		// enabled. We can't do the same for anonymous 4K pages. When 4K pages are
+		// freed the page table entry is zapped and we lose capability for WP
+		// tracking.
+		if u.pageSize == header.HugepageSize {
+			if err = u.dropMissingEventsTracking(ctx, uintptr(rm.start), uintptr(rm.end-rm.start)); err != nil {
+				return unregisteredBytes, err
+			}
+			unregisteredBytes += int64(rm.end - rm.start)
+		}
+		u.pageTracker.SetRange(startIdx, endIdx, block.Zero)
+	}
+
+	return unregisteredBytes, nil
+}
+
+// writeProtectWithRetry write-protects [addr, addr+length), retrying on EAGAIN.
+// When this runs from the REMOVE handler the triggering MADV_DONTNEED still
+// holds mmap_changing until its thread is rescheduled to ack the event, and the
+// kernel rejects UFFDIO_WRITEPROTECT with EAGAIN until then. The short backoff
+// yields the CPU so that thread can release mmap_changing.
+func (u *Userfaultfd) writeProtectWithRetry(ctx context.Context, addr, length uintptr) error {
+	var err error
+	for attempt := range wpMaxRetries + 1 {
+		err = u.fd.writeProtect(addr, length, UFFDIO_WRITEPROTECT_MODE_WP)
+		if !errors.Is(err, unix.EAGAIN) {
+			// nil (success) or a non-retryable error.
+			return err
+		}
+
+		if attempt >= wpMaxRetries {
+			break
+		}
+
+		delay := min(wpRetryBaseDelay<<attempt, wpRetryMaxDelay)
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+
+			return errors.Join(err, ctx.Err())
+		case <-timer.C:
+		}
+	}
+
+	return err
+}
+
+// DropMissingForEmptyRanges stops MISSING-fault tracking for every region the
+// snapshot we serve reports as empty (uuid.Nil mappings), so the kernel serves
+// those zero hugepages directly without a userspace round-trip while WP-async
+// keeps capturing any later writes. Hugepages only: dropping MISSING for
+// anonymous 4K pages zaps the PTE and loses WP tracking (see the REMOVE handler).
+//
+// Unlike the REMOVE path it does NOT mark the pages block.Zero. They are already
+// uuid.Nil in the base snapshot, so an untouched page falls through to the base
+// layer and a written one is caught by WP-async; marking them Zero would only
+// bloat every diff with redundant empty entries that duplicate the base.
+//
+// Must run before the guest can fault (before the handler is marked ready).
+func (u *Userfaultfd) DropMissingForEmptyRanges(ctx context.Context, h *header.Header) error {
+	if h == nil || u.pageSize != header.HugepageSize {
+		return nil
+	}
+
+	// Time the whole pass, mirroring serveTimer. The deferred RecordRaw runs
+	// even on an early error return, so a partial pass still reports the bytes
+	// unregistered and the time spent.
+	sw := unregisterTimer.Begin()
+	var unregisteredBytes int64
+	defer func() { sw.RecordRaw(ctx, unregisteredBytes, unregisterAttrs[unregisterSourceEmpty]) }()
+
+	var ranges, pages int
+	for _, m := range h.Mapping.All() {
+		if m.BuildId != uuid.Nil {
+			continue
+		}
+
+		hostVirtRanges, err := u.ma.GetHostVirtRanges(int64(m.Offset), int64(m.Length))
+		if err != nil {
+			return fmt.Errorf("failed to resolve host virt ranges for empty range [%d, %d): %w", m.Offset, m.Offset+m.Length, err)
+		}
+
+		for _, r := range hostVirtRanges {
+			if err := u.dropMissingEventsTracking(ctx, uintptr(r.Start), uintptr(r.Size)); err != nil {
+				return fmt.Errorf("failed to drop MISSING tracking for empty range [%#x, %#x): %w", r.Start, r.Start+r.Size, err)
+			}
+			unregisteredBytes += r.Size
+			ranges++
+			pages += int(r.Size / int64(u.pageSize))
+		}
+	}
+
+	u.logger.Debug(ctx, "UFFD: dropped MISSING tracking for snapshot empty ranges",
+		zap.Int("ranges", ranges), zap.Int("pages", pages))
+
+	return nil
 }
 
 func (u *Userfaultfd) Serve(
@@ -344,27 +503,15 @@ func (u *Userfaultfd) Serve(
 			}
 
 			if len(removes) > 0 {
-				u.settleRequests.Lock()
-				for _, rm := range removes {
-					// rm.start (inclusive) and rm.end (exclusive) are page-aligned
-					// to u.pageSize for the registered VMA (UFFD invariant), so
-					// startOff is a multiple of pageSize and length is an integer
-					// number of pages — both divisions below are exact, and
-					// SetRange's half-open [startIdx, endIdx) lines up with the
-					// half-open [rm.start, rm.end).
-					startOff, err := u.ma.GetOffset(uintptr(rm.start))
-					if err != nil {
-						u.logger.Error(ctx, "UFFD REMOVE: failed to map start address",
-							zap.Uintptr("start", uintptr(rm.start)), zap.Error(err))
-
-						continue
-					}
-
-					startIdx := uint32(header.BlockIdx(startOff, int64(u.pageSize)))
-					endIdx := startIdx + uint32(uint64(rm.end-rm.start)/uint64(u.pageSize))
-					u.pageTracker.SetRange(startIdx, endIdx, block.Zero)
+				// Time the whole REMOVE batch (unregister + WP re-arm + tracker
+				// update), mirroring serveTimer. RecordRaw runs even on error so
+				// the latency of a failed batch is still captured.
+				sw := unregisterTimer.Begin()
+				unregisteredBytes, err := u.handleRemoves(ctx, removes)
+				sw.RecordRaw(ctx, unregisteredBytes, unregisterAttrs[unregisterSourceRemove])
+				if err != nil {
+					return fmt.Errorf("failed to handle REMOVE: %w", err)
 				}
-				u.settleRequests.Unlock()
 			}
 
 			u.readSerial.Unlock()
@@ -506,6 +653,9 @@ func (u *Userfaultfd) Serve(
 				case faultDiscarded:
 					// No install happened (ESRCH); retry would be pointless.
 					result = faultResultDiscarded
+				case faultAfterRemove:
+					// No install happened
+					result = faultResultAfterRemove
 				default:
 					result = faultResultError
 
@@ -564,7 +714,8 @@ func (u *Userfaultfd) faultPage(
 	case source == nil && u.pageSize == header.PageSize && accessType == block.Write:
 		writeErr = u.fd.zero(addr, u.pageSize, 0)
 	case source == nil && u.pageSize == header.HugepageSize:
-		writeErr = u.fd.copy(addr, u.pageSize, header.EmptyHugePage, mode)
+		// Nothing to do, handling removes in the current loop unregistered the page.
+		return faultAfterRemove, nil
 	default:
 		var b []byte
 		if u.pageSize == header.HugepageSize {

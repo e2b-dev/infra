@@ -150,6 +150,35 @@ func getPagefaultAddress(pagefault *UffdPagefault) uintptr {
 // Fd is a helper type that wraps uffd fd.
 type Fd uintptr
 
+// register a memory region with UFFD
+func (f Fd) register(addr, length uintptr, mode CULong) error {
+	uffdRegister := newUffdioRegister(CULong(addr), CULong(length), mode)
+	if _, _, errno := syscall.Syscall(
+		syscall.SYS_IOCTL,
+		uintptr(f),
+		UFFDIO_REGISTER,
+		uintptr(unsafe.Pointer(&uffdRegister)),
+	); errno != 0 {
+		return errno
+	}
+
+	return nil
+}
+
+// unregister calls to unregister a memory region from UFFD tracking
+func (f Fd) unregister(addr, length uintptr) error {
+	uffdRange := newUffdioRange(CULong(addr), CULong(length))
+	if _, _, errno := syscall.Syscall(
+		syscall.SYS_IOCTL,
+		uintptr(f),
+		UFFDIO_UNREGISTER,
+		uintptr(unsafe.Pointer(&uffdRange))); errno != 0 {
+		return errno
+	}
+
+	return nil
+}
+
 // copy requires UFFDIO_COPY_MODE_WP when both MISSING and WP tracking are active.
 func (f Fd) copy(addr, pagesize uintptr, data []byte, mode CULong) error {
 	if len(data) == 0 {
