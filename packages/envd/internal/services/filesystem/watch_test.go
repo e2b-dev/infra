@@ -97,7 +97,11 @@ func TestWatcherIncludeEntryInfo(t *testing.T) {
 	}
 }
 
-func TestWatcherIncludeEntryInfo_RemovedEntry(t *testing.T) {
+// TestWatcherIncludeEntryInfo_RemoveDoesNotCarryReplacement guards against a TOCTOU race:
+// if an entry is removed and a different entry is created at the same path before the
+// watcher handles the remove event, stat-ing the path would succeed and could attach the
+// replacement's info to the remove event. Remove/rename events must never carry entry info.
+func TestWatcherIncludeEntryInfo_RemoveDoesNotCarryReplacement(t *testing.T) {
 	t.Parallel()
 
 	u, err := user.Current()
@@ -105,7 +109,7 @@ func TestWatcherIncludeEntryInfo_RemovedEntry(t *testing.T) {
 
 	root := t.TempDir()
 
-	// File exists before we start watching, so the only event we expect is its removal.
+	// File exists before we start watching, so its removal is what we observe.
 	filePath := filepath.Join(root, "file.txt")
 	require.NoError(t, os.WriteFile(filePath, []byte("hello"), 0o644))
 
@@ -125,13 +129,38 @@ func TestWatcherIncludeEntryInfo_RemovedEntry(t *testing.T) {
 	})
 
 	require.NoError(t, os.Remove(filePath))
+	// Recreate a different entry at the same path before the watcher handles the remove
+	// event, so the path is occupied (and stat-able) by the time the event is processed.
+	require.NoError(t, os.WriteFile(filePath, []byte("replacement"), 0o644))
 
-	events := collectEvents(t, ctx, svc, watcherID)
-	require.NotEmpty(t, events, "expected at least one filesystem event")
+	// Accumulate events until we have observed both the removal and the replacement, or time out.
+	var removeEvent, replacementEvent *filesystem.FilesystemEvent
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && (removeEvent == nil || replacementEvent == nil) {
+		resp, eventsErr := svc.GetWatcherEvents(ctx, connect.NewRequest(&filesystem.GetWatcherEventsRequest{
+			WatcherId: watcherID,
+		}))
+		require.NoError(t, eventsErr)
 
-	// The entry no longer exists, so even with include_entry the entry must be nil.
-	for _, e := range events {
-		assert.Equal(t, "file.txt", e.GetName())
-		assert.Nil(t, e.GetEntry(), "removed entry should not carry entry info, got event %s", e.GetType())
+		for _, e := range resp.Msg.GetEvents() {
+			switch e.GetType() {
+			case filesystem.EventType_EVENT_TYPE_REMOVE:
+				removeEvent = e
+			case filesystem.EventType_EVENT_TYPE_CREATE, filesystem.EventType_EVENT_TYPE_WRITE:
+				if replacementEvent == nil {
+					replacementEvent = e
+				}
+			}
+		}
+
+		time.Sleep(20 * time.Millisecond)
 	}
+
+	require.NotNil(t, removeEvent, "expected a remove event")
+	assert.Nil(t, removeEvent.GetEntry(), "remove event must not carry entry info even when a new entry occupies the path")
+
+	// Sanity check: the replacement is stat-able, so the nil above is by design — not just
+	// because the path happens to be empty.
+	require.NotNil(t, replacementEvent, "expected a create/write event for the replacement")
+	assert.NotNil(t, replacementEvent.GetEntry(), "event for the existing replacement should carry entry info")
 }

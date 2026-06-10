@@ -57,17 +57,17 @@ func CreateFileWatcher(ctx context.Context, logger *zerolog.Logger, watchPath st
 				return
 			case chErr, ok := <-w.Errors:
 				if !ok {
-					fw.Error = connect.NewError(connect.CodeInternal, errors.New("watcher error channel closed"))
+					fw.setError(connect.NewError(connect.CodeInternal, errors.New("watcher error channel closed")))
 
 					return
 				}
 
-				fw.Error = connect.NewError(connect.CodeInternal, fmt.Errorf("watcher error: %w", chErr))
+				fw.setError(connect.NewError(connect.CodeInternal, fmt.Errorf("watcher error: %w", chErr)))
 
 				return
 			case e, ok := <-w.Events:
 				if !ok {
-					fw.Error = connect.NewError(connect.CodeInternal, errors.New("watcher event channel closed"))
+					fw.setError(connect.NewError(connect.CodeInternal, errors.New("watcher event channel closed")))
 
 					return
 				}
@@ -98,7 +98,7 @@ func CreateFileWatcher(ctx context.Context, logger *zerolog.Logger, watchPath st
 				for _, op := range ops {
 					name, nameErr := filepath.Rel(watchPath, e.Name)
 					if nameErr != nil {
-						fw.Error = connect.NewError(connect.CodeInternal, fmt.Errorf("error getting relative path: %w", nameErr))
+						fw.setError(connect.NewError(connect.CodeInternal, fmt.Errorf("error getting relative path: %w", nameErr)))
 
 						return
 					}
@@ -108,7 +108,7 @@ func CreateFileWatcher(ctx context.Context, logger *zerolog.Logger, watchPath st
 						Type: op,
 					}
 
-					if includeEntryInfo {
+					if includeEntryInfo && opCarriesEntry(op) {
 						filesystemEvent.Entry = eventEntryInfo(logger, e.Name)
 					}
 
@@ -126,6 +126,15 @@ func CreateFileWatcher(ctx context.Context, logger *zerolog.Logger, watchPath st
 func (fw *FileWatcher) Close() {
 	_ = fw.watcher.Close()
 	fw.cancel()
+}
+
+// setError records a terminal watcher error. Guarded by Lock so it is safe against
+// concurrent GetWatcherEvents reads.
+func (fw *FileWatcher) setError(err error) {
+	fw.Lock.Lock()
+	defer fw.Lock.Unlock()
+
+	fw.Error = err
 }
 
 func (s Service) CreateWatcher(ctx context.Context, req *connect.Request[rpc.CreateWatcherRequest]) (*connect.Response[rpc.CreateWatcherResponse], error) {
@@ -183,12 +192,13 @@ func (s Service) GetWatcherEvents(_ context.Context, req *connect.Request[rpc.Ge
 		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("watcher with id %s not found", watcherId))
 	}
 
+	w.Lock.Lock()
+	defer w.Lock.Unlock()
+
 	if w.Error != nil {
 		return nil, w.Error
 	}
 
-	w.Lock.Lock()
-	defer w.Lock.Unlock()
 	events := w.Events
 	w.Events = []*rpc.FilesystemEvent{}
 

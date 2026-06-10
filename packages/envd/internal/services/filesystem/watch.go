@@ -134,7 +134,7 @@ func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.Watc
 					Type: op,
 				}
 
-				if req.Msg.GetIncludeEntry() {
+				if req.Msg.GetIncludeEntry() && opCarriesEntry(op) {
 					filesystemEvent.Entry = eventEntryInfo(s.logger, e.Name)
 				}
 
