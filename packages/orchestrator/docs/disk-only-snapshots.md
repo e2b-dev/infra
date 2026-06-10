@@ -51,6 +51,62 @@ persistence + resume wiring, auto-resume/connect safety, Checkpoint
 disk-only path, SDKs. Boot-time follow-ups: rootfs prefetch (cold-node GCS
 fetches dominate real deployments) and journal replay at snapshot time.
 
+## Local testing (no deploy needed)
+
+Everything runs on a Linux host via `cmd/create-build` and `cmd/resume-build`
+against a local storage directory (`packages/orchestrator/.local-build`).
+
+One-time host setup (root required; hugepages only if the template uses them):
+
+```bash
+sudo modprobe nbd nbds_max=64
+sudo sysctl vm.nr_hugepages=1024   # 2 GiB; not persisted across host reboots
+```
+
+Build the tools and a local base template (pulls `e2bdev/base` directly from
+the registry, no Docker daemon needed; envd is baked in from `HOST_ENVD_PATH`):
+
+```bash
+cd packages/envd && CGO_ENABLED=0 GOOS=linux go build -trimpath -o bin/envd -ldflags "-s -w" . \
+  && sudo cp bin/envd ../orchestrator/.local-build/envd/envd
+cd ../orchestrator
+go build -o /tmp/create-build ./cmd/create-build
+go build -o /tmp/resume-build ./cmd/resume-build
+sudo /tmp/create-build -storage .local-build -to-build <base-uuid> -memory 1024
+```
+
+Filesystem-only snapshot + reboot resume:
+
+```bash
+# fs-only pause (writes only rootfs.ext4(.header) + metadata.json)
+sudo /tmp/resume-build -storage .local-build -from-build <base-uuid> \
+  -fs-only -cmd-pause 'echo hi > /root/x.txt' -to-build <snap-uuid>
+
+# reboot from it; verify the file persisted and uptime reset
+sudo /tmp/resume-build -storage .local-build -from-build <snap-uuid> \
+  -reboot -cmd 'cat /root/x.txt; cat /proc/uptime'
+```
+
+Iterating on reboot/start time:
+
+```bash
+# benchmark (add -cold to drop caches between runs)
+sudo /tmp/resume-build -storage .local-build -from-build <uuid> -reboot -iterations 10
+
+# where does guest boot time go? (systemd-analyze needs boot to finish, hence sleep)
+sudo /tmp/resume-build -storage .local-build -from-build <uuid> -reboot \
+  -cmd 'sleep 8; systemd-analyze blame | head; systemd-analyze critical-chain envd.service'
+
+# envd start timestamps + early unit timeline without waiting for full boot
+sudo /tmp/resume-build -storage .local-build -from-build <uuid> -reboot \
+  -cmd 'systemctl show envd -p InactiveExitTimestampMonotonic -p ExecMainStartTimestampMonotonic;
+        journalctl -b -o short-monotonic --no-pager -t systemd | head -40'
+```
+
+Guest-image changes (`envd.service.tpl`, `provision.sh`) only apply to newly
+built templates: rebuild `/tmp/create-build`, run it with a fresh
+`-to-build` UUID, and benchmark that build. Loop time is ~30 s per template.
+
 ---
 
 ## Goal
