@@ -596,13 +596,17 @@ Remaining ideas (untracked, roughly by effort):
   `systemd-remount-fs` a no-op and lets envd drop that ordering. Few ms.
   Safe here: no boot-time fsck, and ext4 replays the journal at mount either
   way (we never set `noload`).
-- **Skip systemd entirely (opt-in)** — a minimal init that mounts essentials
-  and execs envd directly would make the sandbox routable in ~kernel time,
-  with systemd started behind it (or not at all). Changes guest semantics:
-  templates relying on systemd units at boot would break, so opt-in only.
-  Floor estimate: FC VM setup ~20-30 ms + minimal-kernel init ~60-100 ms +
-  envd start — ~100-150 ms to routable, the practical limit without
-  resurrecting memory snapshots.
+- **Shrink systemd's pre-envd cost (keep systemd)** — we keep systemd as PID 1
+  for now (templates rely on units starting at boot). envd already orders only
+  after `systemd-journald.socket` + `systemd-remount-fs.service`, so what's
+  left is systemd's own manager init before it launches jobs (~150-200 ms):
+  unit/generator parsing dominates. Levers: prune unused unit files and
+  generators from the guest image (generators run serially before any job),
+  `rw` cmdline to drop the remount-fs ordering edge, and check
+  `systemd-analyze critical-chain envd.service` after each template change.
+  Realistic floor with systemd: ~250-350 ms total boot. (A minimal init that
+  execs envd in ~kernel time remains a future opt-in idea — not now, since it
+  breaks boot-time systemd unit semantics.)
 
 ## 6. Rootfs prefetch (+ envd locality)
 
