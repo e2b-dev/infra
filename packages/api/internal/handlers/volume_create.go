@@ -43,6 +43,15 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 		return
 	}
 
+	// Fail fast before allocating any resources if token signing is not configured,
+	// otherwise we would persist a volume that we cannot mint a content token for.
+	if !a.config.VolumesToken.IsConfigured() {
+		a.sendAPIStoreError(c, http.StatusNotImplemented, ErrVolumesTokenNotConfigured.Error())
+		telemetry.ReportError(ctx, "volumes content token signing is not configured", ErrVolumesTokenNotConfigured)
+
+		return
+	}
+
 	// parse body
 	body, err := ginutils.ParseBody[api.PostVolumesJSONRequestBody](ctx, c)
 	if err != nil {
@@ -148,10 +157,10 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 		Set("volume_type", volumeType),
 	)
 
-	token, err := generateVolumeContentToken(a.config.VolumesToken, volume, team)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Volume created, but failed to generate volume content token")
-		telemetry.ReportCriticalError(ctx, "Failed to generate volume content token", err)
+	token, apiErr := generateVolumeContentToken(a.config.VolumesToken, volume, team)
+	if apiErr != nil {
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportCriticalError(ctx, apiErr.ClientMsg, apiErr.Err)
 
 		return
 	}
