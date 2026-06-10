@@ -15,31 +15,33 @@ const (
 	// downstream log storage from runaway commands. Tunable.
 	maxCommandOutputBytes = 2 << 20 // 2 MiB
 
+	// maxCommandOutputRecords caps how many log records one command may emit. The
+	// byte budget alone does not bound record count: a flood of tiny lines (e.g.
+	// `yes`) stays within the byte cap while emitting millions of records, each
+	// carrying ~200 bytes of field/JSON framing through the exporter. Tunable.
+	maxCommandOutputRecords = 10_000
+
 	// maxOutputLineBytes caps the length of a single emitted output line, keeping it
 	// well under the exporter's per-line limit (192 KiB) even after JSON wrapping.
 	maxOutputLineBytes = 64 << 10 // 64 KiB
 
-	// perEventOverheadBytes approximates the fixed cost of one emitted log record
-	// (timestamp, level, pid, stream, event_type, JSON framing) on top of the message
-	// payload. Charging it against the budget also bounds the number of records a
-	// command can produce: floods of tiny lines (e.g. `yes`) would otherwise emit
-	// millions of records while consuming almost none of the byte budget.
-	perEventOverheadBytes = 256
-
 	truncationMarker = "[output truncated: command exceeded log capture limit]"
 )
 
-// commandLogBudget bounds the total output logged for one command. It is shared
-// between the command's stdout and stderr outputLoggers so the cap is per-command,
-// not per-stream. Safe for concurrent use by the two output goroutines.
+// commandLogBudget bounds the total output logged for one command, by bytes of
+// payload and by number of records. It is shared between the command's stdout and
+// stderr outputLoggers so the caps are per-command, not per-stream. Safe for
+// concurrent use by the two output goroutines.
 type commandLogBudget struct {
-	remaining atomic.Int64
-	truncated sync.Once
+	remainingBytes   atomic.Int64
+	remainingRecords atomic.Int64
+	truncated        sync.Once
 }
 
 func newCommandLogBudget() *commandLogBudget {
 	b := &commandLogBudget{}
-	b.remaining.Store(maxCommandOutputBytes)
+	b.remainingBytes.Store(maxCommandOutputBytes)
+	b.remainingRecords.Store(maxCommandOutputRecords)
 
 	return b
 }
@@ -112,7 +114,7 @@ func (o *outputLogger) emitLine(line []byte) {
 		return
 	}
 
-	if o.budget.remaining.Load() <= 0 {
+	if o.budget.remainingBytes.Load() <= 0 || o.budget.remainingRecords.Load() <= 0 {
 		o.budget.markTruncated(o.logger)
 
 		return
@@ -130,7 +132,9 @@ func (o *outputLogger) emitLine(line []byte) {
 		Uint32("pid", o.pid()).
 		Msg(string(line))
 
-	if o.budget.remaining.Add(-(int64(len(line)) + perEventOverheadBytes)) <= 0 {
+	bytesLeft := o.budget.remainingBytes.Add(-int64(len(line)))
+	recordsLeft := o.budget.remainingRecords.Add(-1)
+	if bytesLeft <= 0 || recordsLeft <= 0 {
 		o.budget.markTruncated(o.logger)
 	}
 }
