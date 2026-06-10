@@ -75,6 +75,14 @@ const (
 	OrchestratorSandboxCreateDurationName HistogramType = "orchestrator.sandbox.create.duration"
 	WaitForEnvdDurationHistogramName      HistogramType = "orchestrator.sandbox.envd.init.duration"
 
+	// Sandbox startup working-set histograms: demand-fault pages/bytes a guest
+	// needed to reach a successful envd init, recorded once per start. Sampled
+	// per start (not per fault), so histogram_quantile yields per-sandbox
+	// percentiles.
+	UffdStartupPagesHistogramName       HistogramType = "orchestrator.sandbox.uffd.startup.pages"
+	UffdStartupSourcePagesHistogramName HistogramType = "orchestrator.sandbox.uffd.startup.source_pages"
+	UffdStartupBytesHistogramName       HistogramType = "orchestrator.sandbox.uffd.startup.bytes"
+
 	// TCP Firewall histograms
 	TCPFirewallConnectionDurationHistogramName    HistogramType = "orchestrator.tcpfirewall.connection.duration"
 	TCPFirewallConnectionsPerSandboxHistogramName HistogramType = "orchestrator.tcpfirewall.connections.per_sandbox"
@@ -382,6 +390,10 @@ var histogramDesc = map[HistogramType]string{
 	OrchestratorSandboxCreateDurationName: "Time taken to create a sandbox",
 	WaitForEnvdDurationHistogramName:      "Time taken for Envd to initialize successfully",
 
+	UffdStartupPagesHistogramName:       "Demand-fault pages a guest needed to reach a successful envd init, per start",
+	UffdStartupSourcePagesHistogramName: "Subset of startup demand-fault pages pulled from the source (e.g. GCS), per start",
+	UffdStartupBytesHistogramName:       "Bytes faulted into a guest to reach a successful envd init, per start",
+
 	TCPFirewallConnectionDurationHistogramName:    "Duration of TCP firewall proxied connections",
 	TCPFirewallConnectionsPerSandboxHistogramName: "Number of active TCP firewall connections per sandbox",
 
@@ -422,6 +434,9 @@ var histogramUnits = map[HistogramType]string{
 	BuildRootfsSizeHistogramName:                  "{By}",
 	OrchestratorSandboxCreateDurationName:         "ms",
 	WaitForEnvdDurationHistogramName:              "ms",
+	UffdStartupPagesHistogramName:                 "{page}",
+	UffdStartupSourcePagesHistogramName:           "{page}",
+	UffdStartupBytesHistogramName:                 "{By}",
 	TCPFirewallConnectionDurationHistogramName:    "ms",
 	TCPFirewallConnectionsPerSandboxHistogramName: "{connection}",
 

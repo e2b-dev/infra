@@ -235,6 +235,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 	// Step 4: Wait for envd to initialize
 	err = sbx.WaitForEnvd(
 		ctx,
+		sandbox.StartTypeCreate,
 		waitEnvdTimeout,
 	)
 	if err != nil {
