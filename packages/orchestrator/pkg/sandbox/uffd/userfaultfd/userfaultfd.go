@@ -108,6 +108,15 @@ type Userfaultfd struct {
 	// that has already been closed (and potentially recycled by the OS).
 	closed bool
 
+	// Cumulative demand-fault serve counters, read via ServeStats(). They
+	// mirror the orchestrator.sandbox.uffd.serve metric but as a per-handler
+	// snapshot, so a caller can sample "how many pages did this guest need so
+	// far" at a point in time (e.g. the moment envd init returns). Prefaults
+	// bypass the serve loop and are not counted here. See recordServeStats.
+	servedPages       atomic.Int64 // faults resolved (installed or already-present)
+	servedSourcePages atomic.Int64 // subset installed from the source (page_class=new)
+	servedBytes       atomic.Int64 // bytes installed into the guest (new + zero)
+
 	logger logger.Logger
 }
 
@@ -417,7 +426,10 @@ func (u *Userfaultfd) Serve(
 				pclass := pageClassUnknown
 				result := faultResultInstalled
 				var servedBytes int64
-				defer func() { sw.RecordRaw(ctx, servedBytes, serveAttrs[pclass][result]) }()
+				defer func() {
+					sw.RecordRaw(ctx, servedBytes, serveAttrs[pclass][result])
+					u.recordServeStats(pclass, result, servedBytes)
+				}()
 
 				if h := u.testFaultHook.Load(); h != nil {
 					(*h)(addr, faultPhaseBeforeRLock)

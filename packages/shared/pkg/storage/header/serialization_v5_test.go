@@ -61,7 +61,7 @@ func TestV5_RoundTrip(t *testing.T) {
 	}
 	checksum := sha256.Sum256([]byte("a"))
 	h := v5Header(t, metadata, mappings, map[uuid.UUID]BuildData{
-		a: {Size: 100, Checksum: checksum, FrameData: storage.NewFrameTable(storage.CompressionZstd, []storage.FrameSize{{U: int32(bs), C: 1000}, {U: int32(2 * bs), C: 2000}})},
+		a: {Size: 100, Checksum: checksum, FrameData: storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{{U: int32(bs), C: 1000}, {U: int32(2 * bs), C: 2000}}).Table()},
 		b: {Size: 200},
 	})
 
