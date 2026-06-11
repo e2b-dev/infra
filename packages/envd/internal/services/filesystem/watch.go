@@ -45,12 +45,14 @@ func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.Watc
 	}
 
 	// Check if path is on a network filesystem mount
-	isNetworkMount, err := IsPathOnNetworkMount(watchPath)
-	if err != nil {
-		return connect.NewError(connect.CodeInternal, fmt.Errorf("error checking mount status: %w", err))
-	}
-	if isNetworkMount {
-		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cannot watch path on network filesystem: %s", watchPath))
+	if !req.Msg.GetAllowNetworkMounts() {
+		isNetworkMount, err := IsPathOnNetworkMount(watchPath)
+		if err != nil {
+			return connect.NewError(connect.CodeInternal, fmt.Errorf("error checking mount status: %w", err))
+		}
+		if isNetworkMount {
+			return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cannot watch path on network filesystem: %s", watchPath))
+		}
 	}
 
 	w, err := fsnotify.NewWatcher()
