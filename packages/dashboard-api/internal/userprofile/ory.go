@@ -181,7 +181,7 @@ func (p *oryProvider) GetTeamCreatorContext(ctx context.Context, userID uuid.UUI
 
 func (p *oryProvider) DeleteUser(ctx context.Context, userID uuid.UUID) error {
 	if userID == uuid.Nil {
-		return fmt.Errorf("user id is required")
+		return errors.New("user id is required")
 	}
 
 	userIDBySubject, err := p.subjectsForUserIDs(ctx, []uuid.UUID{userID})
