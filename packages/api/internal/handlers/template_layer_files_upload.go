@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
@@ -13,12 +14,12 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const templateLayerFilesHashLength = 64
+var templateFilesHashPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID api.TemplateID, hash string) {
 	ctx := c.Request.Context()
 
-	if !isTemplateLayerFilesHash(hash) {
+	if !templateFilesHashPattern.MatchString(hash) {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid files hash")
 		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, "invalid files hash", errors.New("invalid files hash"), telemetry.WithTemplateID(templateID), attribute.String("hash", hash))
 
@@ -71,18 +72,4 @@ func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID ap
 		Present: resp.GetPresent(),
 		Url:     resp.Url,
 	})
-}
-
-func isTemplateLayerFilesHash(hash string) bool {
-	if len(hash) != templateLayerFilesHashLength {
-		return false
-	}
-
-	for _, r := range hash {
-		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
-			return false
-		}
-	}
-
-	return true
 }

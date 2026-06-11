@@ -129,15 +129,19 @@ func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.Watc
 					return connect.NewError(connect.CodeInternal, fmt.Errorf("error getting relative path: %w", nameErr))
 				}
 
-				filesystemEvent := &rpc.WatchDirResponse_Filesystem{
-					Filesystem: &rpc.FilesystemEvent{
-						Name: name,
-						Type: op,
-					},
+				filesystemEvent := &rpc.FilesystemEvent{
+					Name: name,
+					Type: op,
+				}
+
+				if req.Msg.GetIncludeEntry() && opCarriesEntry(op) {
+					filesystemEvent.Entry = eventEntryInfo(s.logger, e.Name)
 				}
 
 				event := &rpc.WatchDirResponse{
-					Event: filesystemEvent,
+					Event: &rpc.WatchDirResponse_Filesystem{
+						Filesystem: filesystemEvent,
+					},
 				}
 
 				if streamErr := stream.Send(event); streamErr != nil {

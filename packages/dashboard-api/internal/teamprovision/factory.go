@@ -7,7 +7,6 @@ import (
 
 	"go.uber.org/zap"
 
-	supabasedb "github.com/e2b-dev/infra/packages/db/pkg/supabase"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -16,7 +15,7 @@ var (
 	ErrMissingAPIToken = errors.New("billing server api token is required when billing server url is configured")
 )
 
-func NewProvisionSink(ctx context.Context, baseURL, apiToken string, supabaseDB *supabasedb.Client) (TeamProvisionSink, error) {
+func NewProvisionSink(ctx context.Context, baseURL, apiToken string) (TeamProvisionSink, error) {
 	baseURL = strings.TrimSpace(baseURL)
 	apiToken = strings.TrimSpace(apiToken)
 
@@ -43,5 +42,5 @@ func NewProvisionSink(ctx context.Context, baseURL, apiToken string, supabaseDB 
 		zap.String("base_url", baseURL),
 	)
 
-	return NewHTTPProvisionSink(baseURL, apiToken, supabaseDB), nil
+	return NewHTTPProvisionSink(baseURL, apiToken), nil
 }

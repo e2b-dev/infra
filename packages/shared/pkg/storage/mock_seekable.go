@@ -179,7 +179,7 @@ func (_c *MockSeekable_Size_Call) RunAndReturn(run func(ctx context.Context) (in
 }
 
 // StoreFile provides a mock function for the type MockSeekable
-func (_mock *MockSeekable) StoreFile(ctx context.Context, path string, opts ...PutOption) (*FrameTable, [32]byte, error) {
+func (_mock *MockSeekable) StoreFile(ctx context.Context, path string, opts ...PutOption) (*FullFrameTable, [32]byte, error) {
 	var tmpRet mock.Arguments
 	if len(opts) > 0 {
 		tmpRet = _mock.Called(ctx, path, opts)
@@ -192,17 +192,17 @@ func (_mock *MockSeekable) StoreFile(ctx context.Context, path string, opts ...P
 		panic("no return value specified for StoreFile")
 	}
 
-	var r0 *FrameTable
+	var r0 *FullFrameTable
 	var r1 [32]byte
 	var r2 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, ...PutOption) (*FrameTable, [32]byte, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, ...PutOption) (*FullFrameTable, [32]byte, error)); ok {
 		return returnFunc(ctx, path, opts...)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, ...PutOption) *FrameTable); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, ...PutOption) *FullFrameTable); ok {
 		r0 = returnFunc(ctx, path, opts...)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*FrameTable)
+			r0 = ret.Get(0).(*FullFrameTable)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, string, ...PutOption) [32]byte); ok {
@@ -259,12 +259,12 @@ func (_c *MockSeekable_StoreFile_Call) Run(run func(ctx context.Context, path st
 	return _c
 }
 
-func (_c *MockSeekable_StoreFile_Call) Return(frameTable *FrameTable, bytes [32]byte, err error) *MockSeekable_StoreFile_Call {
-	_c.Call.Return(frameTable, bytes, err)
+func (_c *MockSeekable_StoreFile_Call) Return(fullFrameTable *FullFrameTable, bytes [32]byte, err error) *MockSeekable_StoreFile_Call {
+	_c.Call.Return(fullFrameTable, bytes, err)
 	return _c
 }
 
-func (_c *MockSeekable_StoreFile_Call) RunAndReturn(run func(ctx context.Context, path string, opts ...PutOption) (*FrameTable, [32]byte, error)) *MockSeekable_StoreFile_Call {
+func (_c *MockSeekable_StoreFile_Call) RunAndReturn(run func(ctx context.Context, path string, opts ...PutOption) (*FullFrameTable, [32]byte, error)) *MockSeekable_StoreFile_Call {
 	_c.Call.Return(run)
 	return _c
 }

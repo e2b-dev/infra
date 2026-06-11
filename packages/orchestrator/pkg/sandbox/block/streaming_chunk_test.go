@@ -78,7 +78,7 @@ func (s *fakeSeekable) Size(_ context.Context) (int64, error) {
 	return int64(len(s.data)), nil
 }
 
-func (s *fakeSeekable) StoreFile(context.Context, string, ...storage.PutOption) (*storage.FrameTable, [32]byte, error) {
+func (s *fakeSeekable) StoreFile(context.Context, string, ...storage.PutOption) (*storage.FullFrameTable, [32]byte, error) {
 	panic("not used")
 }
 
@@ -146,7 +146,7 @@ func makeCompressedTestData(tb testing.TB, data []byte) (*storage.FrameTable, *f
 	})
 	require.NoError(tb, err)
 
-	return ft, &fakeSeekable{data: compressed}
+	return ft.Table(), &fakeSeekable{data: compressed}
 }
 
 type chunkerTestCase struct {
@@ -424,7 +424,7 @@ func (s *panicSeekable) Size(_ context.Context) (int64, error) {
 	return int64(len(s.data)), nil
 }
 
-func (s *panicSeekable) StoreFile(context.Context, string, ...storage.PutOption) (*storage.FrameTable, [32]byte, error) {
+func (s *panicSeekable) StoreFile(context.Context, string, ...storage.PutOption) (*storage.FullFrameTable, [32]byte, error) {
 	panic("not used")
 }
 

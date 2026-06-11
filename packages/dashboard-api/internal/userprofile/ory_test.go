@@ -6,6 +6,8 @@ import (
 
 	"github.com/google/uuid"
 	ory "github.com/ory/client-go"
+
+	sharedteamprovision "github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 )
 
 func TestProfileFromOryIdentity(t *testing.T) {
@@ -127,5 +129,40 @@ func TestProfileFromOryIdentity(t *testing.T) {
 				t.Fatalf("Providers = %v, want %v", got.Providers, tt.wantProviders)
 			}
 		})
+	}
+}
+
+func TestCreatorContextFromOryIdentityUsesMetadataAdmin(t *testing.T) {
+	t.Parallel()
+
+	credentials := map[string]ory.IdentityCredentials{
+		"oidc": {
+			Config: map[string]any{
+				"providers": []any{map[string]any{"provider": "github-main"}},
+			},
+		},
+	}
+	identity := ory.Identity{
+		Id: uuid.NewString(),
+		MetadataAdmin: map[string]any{
+			"ip_address": "198.51.100.20",
+			"user_agent": "Dashboard/1.0",
+		},
+		MetadataPublic: map[string]any{
+			"signup_ip":         "should-not-be-used",
+			"signup_user_agent": "should-not-be-used",
+		},
+		Credentials: &credentials,
+	}
+
+	got := creatorContextFromOryIdentity(identity)
+	if got.IPAddress != "198.51.100.20" {
+		t.Fatalf("IPAddress = %q, want %q", got.IPAddress, "198.51.100.20")
+	}
+	if got.UserAgent != "Dashboard/1.0" {
+		t.Fatalf("UserAgent = %q, want %q", got.UserAgent, "Dashboard/1.0")
+	}
+	if got.AuthMethod != sharedteamprovision.AuthMethodSocial {
+		t.Fatalf("AuthMethod = %q, want %q", got.AuthMethod, sharedteamprovision.AuthMethodSocial)
 	}
 }

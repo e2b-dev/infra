@@ -144,6 +144,36 @@ func TestPrefaultMetric(t *testing.T) {
 	assert.Equal(t, int64(0), bytesSum["deferred"])
 }
 
+// TestServeStats folds the same mix of finished serve attempts that
+// TestServeMetric records and asserts the cumulative ServeStats() snapshot —
+// the point-in-time count the startup metric samples at the envd-init boundary.
+// Only resolved faults (installed or already-present) count as a needed page;
+// deferred and errored attempts do not, so a deferred fault is not
+// double-counted when it is later re-served and resolves.
+func TestServeStats(t *testing.T) {
+	t.Parallel()
+
+	pageSize := int64(header.PageSize)
+
+	var u Userfaultfd
+	fold := func(class pageClass, result faultResult, bytes int64, n int) {
+		for range n {
+			u.recordServeStats(class, result, bytes)
+		}
+	}
+	fold(pageClassNew, faultResultInstalled, pageSize, 3)  // +3 pages, +3 source, +3 pages of bytes
+	fold(pageClassZero, faultResultInstalled, pageSize, 1) // +1 page, +1 page of bytes (not source)
+	fold(pageClassResident, faultResultPresent, 0, 2)      // +2 pages, no bytes
+	fold(pageClassNew, faultResultPresent, 0, 1)           // +1 page (lost race), no bytes/source
+	fold(pageClassNew, faultResultDeferred, 0, 1)          // not counted (re-served later)
+	fold(pageClassNew, faultResultError, 0, 1)             // not counted (never resolved)
+
+	stats := u.ServeStats()
+	assert.Equal(t, int64(7), stats.Pages, "resolved demand faults (installed+present)")
+	assert.Equal(t, int64(3), stats.SourcePages, "subset installed from the source")
+	assert.Equal(t, 4*pageSize, stats.Bytes, "bytes installed (new+zero), present/deferred/error contribute none")
+}
+
 func key(pageClass, result string) string { return pageClass + "/" + result }
 
 // attrKey returns "page_class/result" for serve datapoints and just "result"
