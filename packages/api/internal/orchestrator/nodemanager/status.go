@@ -21,31 +21,34 @@ var ApiNodeToOrchestratorStateMapper = map[api.NodeStatus]orchestratorinfo.Servi
 }
 
 func (n *Node) Status() api.NodeStatus {
-	n.mutex.RLock()
-	defer n.mutex.RUnlock()
+	status, _ := n.StatusWithChangedAt()
 
-	if n.status != api.NodeStatusReady {
-		return n.status
-	}
-
-	switch n.client.Connection.GetState() {
-	case connectivity.Shutdown:
-		return api.NodeStatusUnhealthy
-	case connectivity.TransientFailure:
-		return api.NodeStatusConnecting
-	case connectivity.Connecting:
-		return api.NodeStatusConnecting
-	default:
-		return n.status
-	}
+	return status
 }
 
-// StatusChangedAt returns the time of the last node status change.
-func (n *Node) StatusChangedAt() time.Time {
-	n.mutex.RLock()
-	defer n.mutex.RUnlock()
+// StatusWithChangedAt atomically returns the node status together with the time of the last status change.
+// The reported status can differ from the stored status when the gRPC connection is not healthy,
+// so transitions of the reported status are tracked to keep the timestamp consistent with it.
+func (n *Node) StatusWithChangedAt() (api.NodeStatus, time.Time) {
+	n.mutex.Lock()
+	defer n.mutex.Unlock()
 
-	return n.statusChangedAt
+	status := n.status
+	if status == api.NodeStatusReady {
+		switch n.client.Connection.GetState() {
+		case connectivity.Shutdown:
+			status = api.NodeStatusUnhealthy
+		case connectivity.TransientFailure, connectivity.Connecting:
+			status = api.NodeStatusConnecting
+		}
+	}
+
+	if status != n.reportedStatus {
+		n.reportedStatus = status
+		n.statusChangedAt = time.Now()
+	}
+
+	return status, n.statusChangedAt
 }
 
 // setStatus updates the node status together with the time of the last status change.
@@ -57,6 +60,7 @@ func (n *Node) setStatus(ctx context.Context, status api.NodeStatus, changedAt t
 	if n.status != status {
 		logger.L().Info(ctx, "NodeID status changed", logger.WithNodeID(n.ID), zap.String("status", string(status)))
 		n.status = status
+		n.reportedStatus = status
 
 		if changedAt.IsZero() {
 			changedAt = time.Now()

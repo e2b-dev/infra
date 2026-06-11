@@ -40,8 +40,11 @@ type Node struct {
 	IPAddress     string
 	SandboxDomain *string
 
-	client          *clusters.GRPCClient
-	status          api.NodeStatus
+	client *clusters.GRPCClient
+	status api.NodeStatus
+	// reportedStatus is the last status returned to callers, which can differ from the
+	// stored status when it is derived from the gRPC connection state.
+	reportedStatus  api.NodeStatus
 	statusChangedAt time.Time
 
 	metrics   Metrics
@@ -105,6 +108,7 @@ func New(
 
 		client:          client,
 		status:          nodeStatus,
+		reportedStatus:  nodeStatus,
 		statusChangedAt: nodeStatusChangedAt,
 		meta:            nodeMetadata,
 
@@ -159,6 +163,7 @@ func NewClusterNode(ctx context.Context, client *clusters.GRPCClient, clusterID 
 
 		client:          client,
 		status:          status,
+		reportedStatus:  status,
 		statusChangedAt: statusChangedAt,
 		meta:            nodeMetadata,
 		featureflags:    ff,
