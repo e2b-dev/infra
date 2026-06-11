@@ -3,7 +3,6 @@
 package block
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -18,7 +17,6 @@ import (
 
 	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/edsrzf/mmap-go"
-	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
@@ -206,88 +204,6 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	return diffMetadata, nil
 }
 
-type dedupPlan struct {
-	pageDirty    *roaring.Bitmap
-	pageEmpty    *roaring.Bitmap
-	exportedSize int64
-}
-
-// dedupCompare classifies each dirty page against base into pageDirty or
-// pageEmpty. Per-page IsCached so a single uncached neighbour can't poison
-// cached pages of the same block when the parent header is page-granular.
-func dedupCompare(
-	ctx context.Context,
-	src func(absOff int64) ([]byte, error),
-	base ReadonlyDevice,
-	dirty *roaring.Bitmap,
-	blockSize int64,
-	bestEffort bool,
-) (*dedupPlan, error) {
-	pageDirty := roaring.New()
-	pageEmpty := roaring.New()
-	var exportedSize int64
-
-	baseHeader := base.Header()
-	peeker, _ := base.(CachePeeker)
-
-	for r := range BitsetRanges(dirty, blockSize) {
-		exportedSize += r.Size
-
-		for chunkOff := int64(0); chunkOff < r.Size; chunkOff += blockSize {
-			if err := ctx.Err(); err != nil {
-				return nil, err
-			}
-
-			absOff := r.Start + chunkOff
-			srcBuf, err := src(absOff)
-			if err != nil {
-				return nil, err
-			}
-
-			for i := int64(0); i < blockSize; i += header.PageSize {
-				srcPage := srcBuf[i : i+header.PageSize]
-				pageIdx := uint32((absOff + i) / header.PageSize)
-				pageOff := absOff + i
-
-				if header.IsZero(srcPage) {
-					pageEmpty.Add(pageIdx)
-
-					continue
-				}
-
-				skip := false
-				if baseHeader != nil {
-					if m, err := baseHeader.GetShiftedMapping(ctx, pageOff); err == nil {
-						if m.BuildId == uuid.Nil && int64(m.Length) >= header.PageSize {
-							skip = true
-						}
-					}
-				}
-				if !skip && bestEffort && peeker != nil && !peeker.IsCached(ctx, pageOff, header.PageSize) {
-					skip = true
-				}
-				if skip {
-					pageDirty.Add(pageIdx)
-
-					continue
-				}
-
-				basePage, sErr := base.Slice(ctx, pageOff, header.PageSize)
-				if sErr != nil {
-					return nil, fmt.Errorf("slice base at %d: %w", pageOff, sErr)
-				}
-				if bytes.Equal(srcPage, basePage) {
-					continue
-				}
-
-				pageDirty.Add(pageIdx)
-			}
-		}
-	}
-
-	return &dedupPlan{pageDirty: pageDirty, pageEmpty: pageEmpty, exportedSize: exportedSize}, nil
-}
-
 // dedupDrain writes pageDirty pages from src to outPath packed at PageSize.
 func dedupDrain(
 	ctx context.Context,
@@ -332,23 +248,6 @@ func dedupDrain(
 	cache.setIsCached(0, fileOff)
 
 	return cache, nil
-}
-
-func recordDedupAttrs(ctx context.Context, totalPages, uniquePages, emptyPages int64, compareDur, writeDur time.Duration) {
-	dedupedPages := totalPages - uniquePages - emptyPages
-	ratio := 0.0
-	if totalPages > 0 {
-		ratio = float64(dedupedPages) / float64(totalPages)
-	}
-	telemetry.SetAttributes(ctx,
-		attribute.Int64("dedup.total_pages", totalPages),
-		attribute.Int64("dedup.deduped_pages", dedupedPages),
-		attribute.Int64("dedup.unique_pages", uniquePages),
-		attribute.Int64("dedup.empty_pages", emptyPages),
-		attribute.Float64("dedup.ratio", ratio),
-		attribute.Int64("dedup.compare_ms", compareDur.Milliseconds()),
-		attribute.Int64("dedup.write_ms", writeDur.Milliseconds()),
-	)
 }
 
 // drainDirtyPages packs pageDirty pages from src into fd. Mirrors
@@ -402,6 +301,7 @@ func (c *Cache) Dedup(
 	outPath string,
 	bestEffort bool,
 	directIO bool,
+	budget DedupBudget,
 ) (*Cache, *header.DiffMetadata, error) {
 	ctx, span := tracer.Start(ctx, "dedup-pages")
 	defer span.End()
@@ -425,7 +325,7 @@ func (c *Cache) Dedup(
 	}
 
 	compareStart := time.Now()
-	plan, err := dedupCompare(ctx, src, base, dirty, blockSize, bestEffort)
+	plan, err := dedupCompare(ctx, src, base, dirty, blockSize, bestEffort, budget)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -436,12 +336,7 @@ func (c *Cache) Dedup(
 	if err != nil {
 		return nil, nil, err
 	}
-	recordDedupAttrs(ctx,
-		plan.exportedSize/header.PageSize,
-		int64(plan.pageDirty.GetCardinality()),
-		int64(plan.pageEmpty.GetCardinality()),
-		compareDur, time.Since(writeStart),
-	)
+	recordDedupAttrs(ctx, plan, compareDur, time.Since(writeStart))
 
 	return cache, &header.DiffMetadata{
 		Dirty:     plan.pageDirty,
