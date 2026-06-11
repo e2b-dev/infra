@@ -59,6 +59,7 @@ var (
 const (
 	StartTypeCreate = "create" // cold boot (template build)
 	StartTypeResume = "resume" // resume from a snapshot (the common runtime path)
+	StartTypeReboot = "reboot" // cold boot from a snapshot rootfs (fs-only resume)
 )
 
 var SandboxHttpTransport = otelhttp.NewTransport(

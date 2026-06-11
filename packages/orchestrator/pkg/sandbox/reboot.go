@@ -107,7 +107,7 @@ func (f *Factory) RebootSandbox(
 	// WaitForEnvd below.
 	sbx.SetEndAt(endAt)
 
-	if err := sbx.WaitForEnvd(ctx, rebootEnvdTimeout); err != nil {
+	if err := sbx.WaitForEnvd(ctx, StartTypeReboot, rebootEnvdTimeout); err != nil {
 		closeErr := sbx.Close(context.WithoutCancel(ctx))
 
 		return nil, errors.Join(fmt.Errorf("wait for envd after reboot: %w", err), closeErr)
