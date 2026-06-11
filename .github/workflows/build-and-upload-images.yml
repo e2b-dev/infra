@@ -94,4 +94,4 @@ jobs:
       - name: Build and upload images
         env:
           AUTO_CONFIRM_DEPLOY: true
-        run: make build-and-upload
+        run: make build-and-upload-images
