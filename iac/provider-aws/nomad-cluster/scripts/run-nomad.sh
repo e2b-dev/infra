@@ -219,6 +219,10 @@ server {
   enabled = true
   bootstrap_expect = $num_servers
   heartbeat_grace = "1m"
+
+  default_scheduler_config {
+    memory_oversubscription_enabled = true
+  }
 }
 
 EOF

@@ -3,12 +3,15 @@ package userprofile
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
 
+	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	supabasedb "github.com/e2b-dev/infra/packages/db/pkg/supabase"
 	supabasequeries "github.com/e2b-dev/infra/packages/db/pkg/supabase/queries"
+	sharedteamprovision "github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -62,6 +65,25 @@ func (p *supabaseProvider) FindProfilesByEmail(ctx context.Context, email string
 	return profiles, nil
 }
 
+func (p *supabaseProvider) GetTeamCreatorContext(ctx context.Context, userID uuid.UUID) (*sharedteamprovision.CreatorContextV1, error) {
+	if userID == uuid.Nil {
+		return nil, nil
+	}
+
+	authUser, err := p.queries.GetAuthUserByID(ctx, userID)
+	if err != nil {
+		if dberrors.IsNotFoundError(err) {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf("get auth user: %w", err)
+	}
+
+	appMetadata := rawUserMetadata(authUser.RawAppMetaData)
+
+	return creatorContextFromMetadata(appMetadata, providerNamesFromSupabaseMetadata(appMetadata)), nil
+}
+
 func profileFromAuthUser(user supabasequeries.AuthUser) Profile {
 	userMetadata := rawUserMetadata(user.RawUserMetaData)
 	appMetadata := rawUserMetadata(user.RawAppMetaData)
@@ -79,23 +101,7 @@ func profileFromAuthUser(user supabasequeries.AuthUser) Profile {
 // providers under raw_app_meta_data: a `providers` array plus an `provider`
 // scalar for the most recently used one.
 func supabaseLinkedProviders(appMetadata map[string]any) []string {
-	if appMetadata == nil {
-		return nil
-	}
-
-	candidates := make([]string, 0, 4)
-	if list, ok := appMetadata["providers"].([]any); ok {
-		for _, entry := range list {
-			if name, ok := entry.(string); ok {
-				candidates = append(candidates, name)
-			}
-		}
-	}
-	if name, ok := appMetadata["provider"].(string); ok {
-		candidates = append(candidates, name)
-	}
-
-	return normalizeAuthProviders(candidates)
+	return normalizeAuthProviders(providerNamesFromSupabaseMetadata(appMetadata))
 }
 
 func displayNameFromMetadata(metadata map[string]any) string {

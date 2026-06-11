@@ -62,6 +62,18 @@ variable "client_proxy_env_vars" {
   sensitive = true
 }
 
+variable "orchestrator_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "template_manager_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
 variable "api_server_machine_type" {
   type    = string
   default = "t3.xlarge"

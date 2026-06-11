@@ -11,6 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -72,7 +73,7 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 		return SnapshotTemplateResult{}, fmt.Errorf("error upserting snapshot: %w", err)
 	}
 
-	snapshotTemplateEnvID, err := o.resolveOrCreateSnapshotTemplate(ctx, sandboxID, teamID, upsertResult.BuildID, sbx.NodeID, opts)
+	snapshotTemplateEnvID, err := o.resolveOrCreateSnapshotTemplate(ctx, sandboxID, teamID, upsertResult.BuildID, sbx.NodeID, sbx.ClusterID, opts)
 	if err != nil {
 		o.failSnapshotBuild(ctx, upsertResult.BuildID, err)
 
@@ -142,6 +143,7 @@ func (o *Orchestrator) resolveOrCreateSnapshotTemplate(
 	teamID uuid.UUID,
 	buildID uuid.UUID,
 	originNodeID string,
+	clusterID uuid.UUID,
 	opts SnapshotTemplateOpts,
 ) (string, error) {
 	// Existing template — just assign the build
@@ -158,10 +160,16 @@ func (o *Orchestrator) resolveOrCreateSnapshotTemplate(
 		return *opts.ExistingTemplateID, nil
 	}
 
+	var clusterIDPtr *uuid.UUID
+	if clusterID != consts.LocalClusterID {
+		clusterIDPtr = &clusterID
+	}
+
 	// Create new snapshot template env
 	envID, err := o.sqlcDB.CreateSnapshotTemplateEnv(ctx, queries.CreateSnapshotTemplateEnvParams{
 		SnapshotID:   id.Generate(),
 		TeamID:       teamID,
+		ClusterID:    clusterIDPtr,
 		SandboxID:    sandboxID,
 		OriginNodeID: &originNodeID,
 		BuildID:      &buildID,
