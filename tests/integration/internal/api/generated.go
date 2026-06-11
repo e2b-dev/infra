@@ -698,6 +698,9 @@ type NodeStatusChange struct {
 	// ClusterID Identifier of the cluster
 	ClusterID *openapi_types.UUID `json:"clusterID,omitempty"`
 
+	// ForceStop Force stop existing sandboxes and template builds when setting the node status to draining.
+	ForceStop *bool `json:"forceStop,omitempty"`
+
 	// Status Status of the node.
 	// - draining: the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
 	// - standby: the node is not actively used, but it can return to ready and continue serving traffic.
