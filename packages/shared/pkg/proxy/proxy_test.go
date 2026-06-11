@@ -814,8 +814,9 @@ func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 // listen turns the same socket into a live listener. This avoids the
 // close-and-rebind race where another process grabs the port in between.
 type reservedPort struct {
-	fd   int
-	addr string
+	fd     int
+	addr   string
+	closed bool
 }
 
 func reserveTCPPort(t *testing.T) *reservedPort {
@@ -823,11 +824,24 @@ func reserveTCPPort(t *testing.T) *reservedPort {
 
 	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
 	require.NoError(t, err)
+	r := &reservedPort{fd: fd}
+	t.Cleanup(r.close)
+
 	require.NoError(t, syscall.Bind(fd, &syscall.SockaddrInet4{Addr: [4]byte{127, 0, 0, 1}}))
 	sa, err := syscall.Getsockname(fd)
 	require.NoError(t, err)
+	r.addr = fmt.Sprintf("127.0.0.1:%d", sa.(*syscall.SockaddrInet4).Port)
 
-	return &reservedPort{fd: fd, addr: fmt.Sprintf("127.0.0.1:%d", sa.(*syscall.SockaddrInet4).Port)}
+	return r
+}
+
+// close releases the raw fd unless listen already handed it off.
+func (r *reservedPort) close() {
+	if r.closed {
+		return
+	}
+	r.closed = true
+	_ = syscall.Close(r.fd)
 }
 
 func (r *reservedPort) listen() (net.Listener, error) {
@@ -837,6 +851,7 @@ func (r *reservedPort) listen() (net.Listener, error) {
 	if err := syscall.SetNonblock(r.fd, true); err != nil {
 		return nil, fmt.Errorf("set nonblock: %w", err)
 	}
+	r.closed = true // fd ownership moves to the os.File below
 	f := os.NewFile(uintptr(r.fd), "reserved-port")
 	defer f.Close() // net.FileListener dups the fd
 
