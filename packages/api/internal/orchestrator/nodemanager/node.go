@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/metric"
@@ -39,8 +40,9 @@ type Node struct {
 	IPAddress     string
 	SandboxDomain *string
 
-	client *clusters.GRPCClient
-	status api.NodeStatus
+	client          *clusters.GRPCClient
+	status          api.NodeStatus
+	statusChangedAt time.Time
 
 	metrics   Metrics
 	metricsMu sync.RWMutex
@@ -83,6 +85,11 @@ func New(
 		nodeStatus = api.NodeStatusUnhealthy
 	}
 
+	nodeStatusChangedAt := time.Now()
+	if ts := nodeInfo.GetServiceStatusChangedAt(); ts.IsValid() {
+		nodeStatusChangedAt = ts.AsTime()
+	}
+
 	nodeMetadata := NodeMetadata{
 		ServiceInstanceID: nodeInfo.GetServiceId(),
 		Commit:            nodeInfo.GetServiceCommit(),
@@ -96,9 +103,10 @@ func New(
 		IPAddress:        discoveredNode.IPAddress,
 		SandboxDomain:    nil,
 
-		client: client,
-		status: nodeStatus,
-		meta:   nodeMetadata,
+		client:          client,
+		status:          nodeStatus,
+		statusChangedAt: nodeStatusChangedAt,
+		meta:            nodeMetadata,
 
 		PlacementMetrics: PlacementMetrics{
 			sandboxesInProgress: smap.New[SandboxResources](),
@@ -124,6 +132,11 @@ func NewClusterNode(ctx context.Context, client *clusters.GRPCClient, clusterID 
 		status = api.NodeStatusUnhealthy
 	}
 
+	statusChangedAt := info.StatusChangedAt
+	if statusChangedAt.IsZero() {
+		statusChangedAt = time.Now()
+	}
+
 	nodeMetadata := NodeMetadata{
 		ServiceInstanceID: info.ServiceInstanceID,
 		Commit:            info.ServiceVersionCommit,
@@ -144,10 +157,11 @@ func NewClusterNode(ctx context.Context, client *clusters.GRPCClient, clusterID 
 			createFails:         atomic.Uint64{},
 		},
 
-		client:       client,
-		status:       status,
-		meta:         nodeMetadata,
-		featureflags: ff,
+		client:          client,
+		status:          status,
+		statusChangedAt: statusChangedAt,
+		meta:            nodeMetadata,
+		featureflags:    ff,
 	}
 
 	nodeClient, ctx := n.GetClient(ctx)

@@ -1579,6 +1579,7 @@ components:
         - serviceInstanceID
         - clusterID
         - status
+        - statusChangedAt
         - sandboxCount
         - metrics
         - createSuccesses
@@ -1607,6 +1608,10 @@ components:
           $ref: "#/components/schemas/MachineInfo"
         status:
           $ref: "#/components/schemas/NodeStatus"
+        statusChangedAt:
+          type: string
+          format: date-time
+          description: Time when the node status was last changed
         sandboxCount:
           type: integer
           format: uint32
@@ -1632,6 +1637,7 @@ components:
         - serviceInstanceID
         - clusterID
         - status
+        - statusChangedAt
         - sandboxCount
         - cachedBuilds
         - createSuccesses
@@ -1660,6 +1666,10 @@ components:
           $ref: "#/components/schemas/MachineInfo"
         status:
           $ref: "#/components/schemas/NodeStatus"
+        statusChangedAt:
+          type: string
+          format: date-time
+          description: Time when the node status was last changed
         sandboxCount:
           type: integer
           format: uint32

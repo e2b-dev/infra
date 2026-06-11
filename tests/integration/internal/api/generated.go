@@ -621,6 +621,9 @@ type Node struct {
 	// - standby: the node is not actively used, but it can return to ready and continue serving traffic.
 	Status NodeStatus `json:"status"`
 
+	// StatusChangedAt Time when the node status was last changed
+	StatusChangedAt time.Time `json:"statusChangedAt"`
+
 	// Version Version of the orchestrator
 	Version string `json:"version"`
 }
@@ -659,6 +662,9 @@ type NodeDetail struct {
 	// - draining: the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
 	// - standby: the node is not actively used, but it can return to ready and continue serving traffic.
 	Status NodeStatus `json:"status"`
+
+	// StatusChangedAt Time when the node status was last changed
+	StatusChangedAt time.Time `json:"statusChangedAt"`
 
 	// Version Version of the orchestrator
 	Version string `json:"version"`

@@ -3,6 +3,7 @@ package nodemanager
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc/connectivity"
@@ -39,13 +40,31 @@ func (n *Node) Status() api.NodeStatus {
 	}
 }
 
-func (n *Node) setStatus(ctx context.Context, status api.NodeStatus) {
+// StatusChangedAt returns the time of the last node status change.
+func (n *Node) StatusChangedAt() time.Time {
+	n.mutex.RLock()
+	defer n.mutex.RUnlock()
+
+	return n.statusChangedAt
+}
+
+// setStatus updates the node status together with the time of the last status change.
+// The changedAt value is the timestamp reported by the orchestrator, zero when not available.
+func (n *Node) setStatus(ctx context.Context, status api.NodeStatus, changedAt time.Time) {
 	n.mutex.Lock()
 	defer n.mutex.Unlock()
 
 	if n.status != status {
 		logger.L().Info(ctx, "NodeID status changed", logger.WithNodeID(n.ID), zap.String("status", string(status)))
 		n.status = status
+
+		if changedAt.IsZero() {
+			changedAt = time.Now()
+		}
+		n.statusChangedAt = changedAt
+	} else if changedAt.After(n.statusChangedAt) {
+		// Status is the same from the API perspective, but the orchestrator reported a newer change.
+		n.statusChangedAt = changedAt
 	}
 }
 
