@@ -3,6 +3,7 @@
 package block
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math/rand"
@@ -482,4 +483,108 @@ func logSimRow(t *testing.T, r simResult) {
 	t.Helper()
 	t.Logf("%-22s %10.1f %8d %10d %8d %8.0f %7.0f %10d",
 		r.name, r.storedMiB, r.hot.fetches, r.hot.coalesced, r.hot.layers, r.hot.mib, r.hot.estMs, r.hot.maxFanout)
+}
+
+// TestDedupRandomChain_NoCorruption runs random pause chains with random
+// budget combinations through the real planner and header merge, keeping a
+// per-layer store packed exactly like export packs the diff (Dirty pages
+// ascending). After every pause each page of the memfile is resolved through
+// GetShiftedMapping — the lookup restore uses — and must be byte-identical to
+// live memory, so any misclassification, bad promotion, or packing/merge
+// offset bug fails here. Runs in CI (seeds are fixed, ~seconds).
+func TestDedupRandomChain_NoCorruption(t *testing.T) {
+	t.Parallel()
+
+	for seed := range int64(6) {
+		t.Run(fmt.Sprintf("seed=%d", seed), func(t *testing.T) {
+			t.Parallel()
+			rng := rand.New(rand.NewSource(seed))
+
+			cfg := simConfig{
+				blocks:       16,
+				cycles:       6,
+				hotRegions:   2,
+				hotRegionBlk: 2,
+				hotFrac:      0.6,
+				scattered:    40,
+				identFrac:    0.5,
+				zeroFrac:     0.1,
+				workloadSeed: seed,
+				templateSeed: seed + 100,
+			}
+			budget := DedupBudget{FetchRunWindowPages: []int{0, 16, 512}[rng.Intn(3)]}
+			if seed&1 != 0 {
+				budget.MaxFetchWindowsPerBlock = 1 + rng.Intn(4)
+				budget.MaxPromotedParentPagesPerBlock = 1 << rng.Intn(7)
+			}
+			if seed&2 != 0 {
+				budget.MaxPagesPerPromotedFrame = 1 << (4 + rng.Intn(6))
+				budget.BlockFaultPct = []int{0, 20, 40, 80}[rng.Intn(4)]
+			}
+			t.Logf("budget: %+v", budget)
+
+			trng := rand.New(rand.NewSource(cfg.templateSeed))
+			mem := make([]byte, cfg.size())
+			_, err := trng.Read(mem)
+			require.NoError(t, err)
+			for p := range cfg.totalPages() {
+				if trng.Float64() < cfg.zeroFrac {
+					clear(mem[int64(p)*simPageSize : int64(p+1)*simPageSize])
+				}
+			}
+			parent := slices.Clone(mem)
+
+			templateBuild := uuid.New()
+			hdr, err := header.NewHeader(header.NewTemplateMetadata(templateBuild, uint64(simPageSize), uint64(cfg.size())), nil)
+			require.NoError(t, err)
+			layers := map[uuid.UUID][]byte{templateBuild: slices.Clone(mem)}
+
+			planner := plannerDedup(budget)
+			for cycle, ws := range simWorkload(cfg) {
+				dirty := roaring.New()
+				for _, w := range ws {
+					if w.newData {
+						pg := mem[int64(w.page)*simPageSize : int64(w.page+1)*simPageSize]
+						if w.zero {
+							clear(pg)
+						} else {
+							_, err := rand.New(rand.NewSource(w.seed)).Read(pg)
+							require.NoError(t, err)
+						}
+					}
+					dirty.Add(uint32(int64(w.page) * simPageSize / simBlockSize))
+				}
+
+				meta, _ := planner(t, mem, parent, hdr, dirty, cycle)
+
+				var payload []byte
+				for it := meta.Dirty.Iterator(); it.HasNext(); {
+					p := int64(it.Next())
+					payload = append(payload, mem[p*simPageSize:(p+1)*simPageSize]...)
+				}
+				build := uuid.New()
+				layers[build] = payload
+
+				hdr, err = meta.ToDiffHeader(context.Background(), hdr, build)
+				require.NoError(t, err)
+				copy(parent, mem)
+
+				for off := int64(0); off < cfg.size(); off += simPageSize {
+					page := off / simPageSize
+					m, err := hdr.GetShiftedMapping(context.Background(), off)
+					require.NoError(t, err)
+					want := mem[off : off+simPageSize]
+					if m.BuildId == uuid.Nil {
+						require.True(t, header.IsZero(want), "cycle %d: page %d mapped empty but live page is non-zero", cycle, page)
+						continue
+					}
+					layer, ok := layers[m.BuildId]
+					require.True(t, ok, "cycle %d: page %d mapped to unknown build %s", cycle, page, m.BuildId)
+					start := int64(m.Offset)
+					require.LessOrEqual(t, start+simPageSize, int64(len(layer)), "cycle %d: page %d mapped past layer end", cycle, page)
+					require.True(t, bytes.Equal(want, layer[start:start+simPageSize]), "cycle %d: page %d restored bytes differ", cycle, page)
+				}
+			}
+		})
+	}
 }
