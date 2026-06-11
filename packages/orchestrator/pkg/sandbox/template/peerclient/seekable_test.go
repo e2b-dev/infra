@@ -200,7 +200,7 @@ func TestPeerStorageProvider_FullTransitionFlow(t *testing.T) {
 
 	// 1. Pre-transition read via peer. ft={ct=None} (V3 header).
 	rc, err := seekable.OpenRangeReader(t.Context(), 0, int64(len(prePeerBytes)),
-		storage.NewFrameTable(storage.CompressionNone, nil))
+		storage.NewFullFrameTable(storage.CompressionNone, nil).Table())
 	require.NoError(t, err)
 	got, err := io.ReadAll(rc)
 	require.NoError(t, err)
@@ -210,14 +210,14 @@ func TestPeerStorageProvider_FullTransitionFlow(t *testing.T) {
 
 	// 2. First post-transition call: retriable error, no peer/base contact.
 	_, err = seekable.OpenRangeReader(t.Context(), 0, 1,
-		storage.NewFrameTable(storage.CompressionNone, nil))
+		storage.NewFullFrameTable(storage.CompressionNone, nil).Table())
 	var transErr *storage.PeerTransitionedError
 	require.ErrorAs(t, err, &transErr)
 
 	// 3. Caller reloads V4 header and retries with ct=Zstd. This must hit the
 	//    compressed path on base.
 	rc, err = seekable.OpenRangeReader(t.Context(), 0, int64(len(postBaseBytes)),
-		storage.NewFrameTable(storage.CompressionZstd, nil))
+		storage.NewFullFrameTable(storage.CompressionZstd, nil).Table())
 	require.NoError(t, err)
 	got, err = io.ReadAll(rc)
 	require.NoError(t, err)

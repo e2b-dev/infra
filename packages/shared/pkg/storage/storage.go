@@ -153,7 +153,7 @@ type StreamingReader interface {
 
 type SeekableWriter interface {
 	// Store entire file. Compression is opt-in via WithCompressConfig.
-	StoreFile(ctx context.Context, path string, opts ...PutOption) (*FrameTable, [32]byte, error)
+	StoreFile(ctx context.Context, path string, opts ...PutOption) (*FullFrameTable, [32]byte, error)
 }
 
 type Seekable interface {
@@ -162,7 +162,7 @@ type Seekable interface {
 	Size(ctx context.Context) (int64, error)
 }
 
-func UploadFramed(ctx context.Context, provider StorageProvider, remotePath string, objType SeekableObjectType, localPath string, opts ...PutOption) (*FrameTable, [32]byte, error) {
+func UploadFramed(ctx context.Context, provider StorageProvider, remotePath string, objType SeekableObjectType, localPath string, opts ...PutOption) (*FullFrameTable, [32]byte, error) {
 	object, err := provider.OpenSeekable(ctx, remotePath, objType)
 	if err != nil {
 		return nil, [32]byte{}, err

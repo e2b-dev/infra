@@ -70,16 +70,31 @@ type FrameTable struct {
 	entries         []frameEntry // sorted by StartU
 }
 
+// FullFrameTable marks a FrameTable that covers an entire file with no gaps.
+// Produced by compressStream / CompressBytes / StoreFile / UploadFramed.
+// The inner FrameTable is unexported and unembedded so methods are not
+// promoted; consumers must reach functionality through nil-safe Table().
+type FullFrameTable struct{ ft FrameTable }
+
+// Table returns the underlying *FrameTable, nil-safely.
+func (ft *FullFrameTable) Table() *FrameTable {
+	if ft == nil {
+		return nil
+	}
+
+	return &ft.ft
+}
+
 // newFrameTableFromEntries creates a FrameTable from pre-computed absolute-offset entries.
 func newFrameTableFromEntries(ct CompressionType, entries []frameEntry) *FrameTable {
 	return &FrameTable{compressionType: ct, entries: entries}
 }
 
-// NewFrameTable creates a FrameTable from consecutive frame sizes, computing
-// absolute offsets starting from zero.
-func NewFrameTable(ct CompressionType, sizes []FrameSize) *FrameTable {
+// NewFullFrameTable creates a FullFrameTable from consecutive frame sizes,
+// computing absolute offsets starting from zero.
+func NewFullFrameTable(ct CompressionType, sizes []FrameSize) *FullFrameTable {
 	if len(sizes) == 0 {
-		return newFrameTableFromEntries(ct, nil)
+		return &FullFrameTable{ft: *newFrameTableFromEntries(ct, nil)}
 	}
 
 	entries := make([]frameEntry, len(sizes))
@@ -96,7 +111,7 @@ func NewFrameTable(ct CompressionType, sizes []FrameSize) *FrameTable {
 		c += int64(s.C)
 	}
 
-	return newFrameTableFromEntries(ct, entries)
+	return &FullFrameTable{ft: *newFrameTableFromEntries(ct, entries)}
 }
 
 // CompressionType returns the compression type. Nil-safe: returns CompressionNone for nil.

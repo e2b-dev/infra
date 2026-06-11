@@ -224,10 +224,10 @@ func TestSerializeDeserialize_V4_WithFrameTable(t *testing.T) {
 	h.Builds = map[uuid.UUID]BuildData{
 		buildID: {
 			Size: 12345, Checksum: checksum,
-			FrameData: storage.NewFrameTable(storage.CompressionLZ4, []storage.FrameSize{
+			FrameData: storage.NewFullFrameTable(storage.CompressionLZ4, []storage.FrameSize{
 				{U: 2048, C: 1024},
 				{U: 2048, C: 900},
-			}),
+			}).Table(),
 		},
 		baseID: {Size: 67890},
 	}
@@ -296,11 +296,11 @@ func TestSerializeDeserialize_V4_Zstd(t *testing.T) {
 	// 3 frames; only the third [8192, 12288) overlaps the mapping.
 	h.Builds = map[uuid.UUID]BuildData{
 		buildID: {
-			FrameData: storage.NewFrameTable(storage.CompressionZstd, []storage.FrameSize{
+			FrameData: storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{
 				{U: 4096, C: 2000},
 				{U: 4096, C: 3000},
 				{U: 4096, C: 3500},
-			}),
+			}).Table(),
 		},
 	}
 
@@ -398,7 +398,7 @@ func TestSerializeDeserialize_V4_ManyFrames(t *testing.T) {
 	h, err := NewHeader(metadata, mappings)
 	require.NoError(t, err)
 	h.Builds = map[uuid.UUID]BuildData{
-		buildID: {FrameData: storage.NewFrameTable(storage.CompressionLZ4, frames)},
+		buildID: {FrameData: storage.NewFullFrameTable(storage.CompressionLZ4, frames).Table()},
 	}
 
 	data, err := SerializeHeader(h)
@@ -506,7 +506,7 @@ func TestSerializeDeserialize_V4_MultiBuild_LocateCompressed(t *testing.T) {
 	//   Frame 0: U=[0,4096)   C=[0,1000)
 	//   Frame 1: U=[4096,8192) C=[1000,2800)
 	//   Frame 2: U=[8192,12288) C=[2800,5100)
-	ftA := storage.NewFrameTable(storage.CompressionZstd, []storage.FrameSize{
+	ftA := storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{
 		{U: 4096, C: 1000},
 		{U: 4096, C: 1800},
 		{U: 4096, C: 2300},
@@ -515,7 +515,7 @@ func TestSerializeDeserialize_V4_MultiBuild_LocateCompressed(t *testing.T) {
 	// Build B: 2 frames, each 4096 uncompressed.
 	//   Frame 0: U=[0,4096)   C=[0,500)
 	//   Frame 1: U=[4096,8192) C=[500,1700)
-	ftB := storage.NewFrameTable(storage.CompressionLZ4, []storage.FrameSize{
+	ftB := storage.NewFullFrameTable(storage.CompressionLZ4, []storage.FrameSize{
 		{U: 4096, C: 500},
 		{U: 4096, C: 1200},
 	})
@@ -545,8 +545,8 @@ func TestSerializeDeserialize_V4_MultiBuild_LocateCompressed(t *testing.T) {
 	h, err := NewHeader(metadata, mappings)
 	require.NoError(t, err)
 	h.Builds = map[uuid.UUID]BuildData{
-		buildA: {Size: 12288, Checksum: checksumA, FrameData: ftA},
-		buildB: {Size: 8192, Checksum: checksumB, FrameData: ftB},
+		buildA: {Size: 12288, Checksum: checksumA, FrameData: ftA.Table()},
+		buildB: {Size: 8192, Checksum: checksumB, FrameData: ftB.Table()},
 	}
 
 	data, err := SerializeHeader(h)
@@ -618,7 +618,7 @@ func TestSerializeDeserialize_V4_TrimmedOffsets_Error(t *testing.T) {
 	buildID := uuid.New()
 
 	// 4 frames, each 4096 uncompressed.
-	ft := storage.NewFrameTable(storage.CompressionZstd, []storage.FrameSize{
+	ft := storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{
 		{U: 4096, C: 2000},
 		{U: 4096, C: 3000},
 		{U: 4096, C: 3500},
@@ -648,7 +648,7 @@ func TestSerializeDeserialize_V4_TrimmedOffsets_Error(t *testing.T) {
 	h, err := NewHeader(metadata, mappings)
 	require.NoError(t, err)
 	h.Builds = map[uuid.UUID]BuildData{
-		buildID: {FrameData: ft},
+		buildID: {FrameData: ft.Table()},
 	}
 
 	data, err := SerializeHeader(h)
@@ -685,11 +685,11 @@ func TestSerializeDeserialize_V4_TrimmedOffsets_Error(t *testing.T) {
 func TestFrameTable_LocateCompressed(t *testing.T) {
 	t.Parallel()
 
-	fd := storage.NewFrameTable(storage.CompressionZstd, []storage.FrameSize{
+	fd := storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{
 		{U: 2048, C: 1024},
 		{U: 2048, C: 900},
 		{U: 4096, C: 3500},
-	})
+	}).Table()
 
 	// Frame 0: U=[0,2048), C=[0,1024)
 	r, err := fd.LocateCompressed(0)
@@ -722,10 +722,10 @@ func TestFrameTable_LocateCompressed(t *testing.T) {
 func TestFrameTable_LocateUncompressed(t *testing.T) {
 	t.Parallel()
 
-	fd := storage.NewFrameTable(storage.CompressionZstd, []storage.FrameSize{
+	fd := storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{
 		{U: 2048, C: 1024},
 		{U: 4096, C: 3500},
-	})
+	}).Table()
 
 	// Frame 0: U=[0,2048)
 	r, err := fd.LocateUncompressed(0)
@@ -750,7 +750,7 @@ func TestSerializeDeserialize_V4_SparseTrimming(t *testing.T) {
 	buildID := uuid.New()
 	otherID := uuid.New()
 
-	ft := storage.NewFrameTable(storage.CompressionLZ4, []storage.FrameSize{
+	ft := storage.NewFullFrameTable(storage.CompressionLZ4, []storage.FrameSize{
 		{U: 4096, C: 2000},
 		{U: 4096, C: 3000},
 		{U: 4096, C: 2500},
@@ -776,7 +776,7 @@ func TestSerializeDeserialize_V4_SparseTrimming(t *testing.T) {
 	h, err := NewHeader(metadata, mappings)
 	require.NoError(t, err)
 	h.Builds = map[uuid.UUID]BuildData{
-		buildID: {FrameData: ft, Size: 16384},
+		buildID: {FrameData: ft.Table(), Size: 16384},
 		otherID: {Size: 8192},
 	}
 
@@ -854,7 +854,7 @@ func TestSerializeDeserialize_V4_MixedChain(t *testing.T) {
 	v3aID := uuid.New()
 	v3bID := uuid.New()
 
-	midFT := storage.NewFrameTable(storage.CompressionZstd, []storage.FrameSize{
+	midFT := storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{
 		{U: 4096, C: 1234},
 	})
 
@@ -879,7 +879,7 @@ func TestSerializeDeserialize_V4_MixedChain(t *testing.T) {
 	require.NoError(t, err)
 	h.Builds = map[uuid.UUID]BuildData{
 		selfID:  {},
-		midID:   {Size: 4096, FrameData: midFT},
+		midID:   {Size: 4096, FrameData: midFT.Table()},
 		olderID: {Size: 4096},
 	}
 
@@ -926,11 +926,11 @@ func TestSerializeDeserialize_V4_CompressedSelfChain(t *testing.T) {
 	v3aID := uuid.New()
 	v3bID := uuid.New()
 
-	selfFT := storage.NewFrameTable(storage.CompressionZstd, []storage.FrameSize{
+	selfFT := storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{
 		{U: 4096, C: 1100},
 		{U: 4096, C: 1200},
 	})
-	olderFT := storage.NewFrameTable(storage.CompressionZstd, []storage.FrameSize{
+	olderFT := storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{
 		{U: 4096, C: 1300},
 	})
 
@@ -955,9 +955,9 @@ func TestSerializeDeserialize_V4_CompressedSelfChain(t *testing.T) {
 	h, err := NewHeader(metadata, mappings)
 	require.NoError(t, err)
 	h.Builds = map[uuid.UUID]BuildData{
-		selfID:  {Size: 8192, FrameData: selfFT},
+		selfID:  {Size: 8192, FrameData: selfFT.Table()},
 		midID:   {Size: 4096},
-		olderID: {Size: 4096, FrameData: olderFT},
+		olderID: {Size: 4096, FrameData: olderFT.Table()},
 	}
 
 	data, err := SerializeHeader(h)
@@ -992,10 +992,10 @@ func TestSerializeDeserialize_V4_CompressedSelfChain(t *testing.T) {
 
 		ft := got.GetBuildFrameData(m.BuildId)
 		if tc.compressed {
-			require.NotNil(t, ft, "offset %d expected FrameData", tc.offset)
+			require.NotNil(t, ft, "offset %d expected FrameTable", tc.offset)
 			require.Equal(t, storage.CompressionZstd, ft.CompressionType(), "offset %d", tc.offset)
 		} else {
-			require.Nil(t, ft, "offset %d expected no FrameData", tc.offset)
+			require.Nil(t, ft, "offset %d expected no FrameTable", tc.offset)
 		}
 	}
 
