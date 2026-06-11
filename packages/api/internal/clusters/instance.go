@@ -45,9 +45,9 @@ type Instance struct {
 	status          infogrpc.ServiceInfoStatus
 	statusChangedAt time.Time
 	machine         machineinfo.MachineInfo
-	roles          []infogrpc.ServiceInfoRole
-	isBuilder      bool
-	isOrchestrator bool
+	roles           []infogrpc.ServiceInfoRole
+	isBuilder       bool
+	isOrchestrator  bool
 
 	syncFailCount int
 
