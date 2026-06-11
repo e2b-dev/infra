@@ -9,10 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"go.uber.org/zap"
-
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 // DevAllowedProxyEndpointCIDRs is a dev-only allowlist that overrides
@@ -56,13 +53,7 @@ func parseCIDRsEnv(name string) []string {
 			continue
 		}
 		if _, _, err := net.ParseCIDR(p); err != nil {
-			logger.L().Warn(context.Background(), "ignoring malformed CIDR in env var",
-				zap.String("env", name),
-				zap.String("cidr", p),
-				zap.Error(err),
-			)
-
-			continue
+			panic(fmt.Sprintf("sandbox_network: invalid CIDR in env var %s: %q: %v", name, p, err))
 		}
 		out = append(out, p)
 	}
