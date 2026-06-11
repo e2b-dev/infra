@@ -228,7 +228,7 @@ func plannerRunKnapsack(budgetPages int) simPlanner {
 
 	return func(t *testing.T, mem, parent []byte, hdr *header.Header, dirty *roaring.Bitmap, cycle int) (*header.DiffMetadata, *dedupPlan) {
 		t.Helper()
-		meta, plan := plain(t, mem, parent, hdr, dirty, cycle)
+		_, plan := plain(t, mem, parent, hdr, dirty, cycle)
 
 		type frameKey struct {
 			build uuid.UUID
@@ -295,7 +295,7 @@ func plannerRunKnapsack(budgetPages int) simPlanner {
 			plan.pageDirty.Or(r.pages)
 		}
 
-		return meta, plan
+		return planFromDedup(plan), plan
 	}
 }
 
