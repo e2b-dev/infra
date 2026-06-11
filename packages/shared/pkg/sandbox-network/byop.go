@@ -91,10 +91,6 @@ type EgressProxyConfig struct {
 	Password string
 }
 
-// SandboxIDPlaceholder is substituted with the sandbox ID at dial time.
-// Validation leaves it literal.
-const SandboxIDPlaceholder = "{{sandboxID}}"
-
 // maxSOCKS5CredentialLen is the maximum byte length of a SOCKS5
 // username or password, see RFC 1929.
 const maxSOCKS5CredentialLen = 255
@@ -138,7 +134,6 @@ func DefaultHostResolver(ctx context.Context, host string) ([]net.IP, error) {
 //   - Every resolved A/AAAA record must NOT be in DeniedSandboxCIDRs.
 //   - If Username == "" then Password must also be "" (no orphan password).
 //   - Username and Password are each capped at 255 bytes (RFC 1929).
-//   - Username and Password may contain {{sandboxID}} literally.
 func ValidateEgressProxy(ctx context.Context, cfg *EgressProxyConfig, resolve HostResolver) (*EgressProxyConfig, error) {
 	if cfg == nil {
 		return nil, nil

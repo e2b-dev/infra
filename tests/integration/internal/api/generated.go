@@ -808,10 +808,10 @@ type SandboxEgressProxyConfig struct {
 	// Address SOCKS5 proxy address in host:port format (e.g. "proxy.example.com:1080").
 	Address string `json:"address"`
 
-	// Password Optional SOCKS5 password (RFC 1929), max 255 bytes. Supports {{sandboxID}}, substituted at dial time.
+	// Password Optional SOCKS5 password (RFC 1929), max 255 bytes.
 	Password *string `json:"password,omitempty"`
 
-	// Username Optional SOCKS5 username (RFC 1929), max 255 bytes. Supports the {{sandboxID}} placeholder, substituted at dial time.
+	// Username Optional SOCKS5 username (RFC 1929), max 255 bytes.
 	Username *string `json:"username,omitempty"`
 }
 

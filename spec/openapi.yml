@@ -381,13 +381,12 @@ components:
           type: string
           maxLength: 255
           description: >-
-            Optional SOCKS5 username (RFC 1929), max 255 bytes. Supports the {{sandboxID}}
-            placeholder, substituted at dial time.
+            Optional SOCKS5 username (RFC 1929), max 255 bytes.
         password:
           type: string
           maxLength: 255
           description: >-
-            Optional SOCKS5 password (RFC 1929), max 255 bytes. Supports {{sandboxID}}, substituted at dial time.
+            Optional SOCKS5 password (RFC 1929), max 255 bytes.
 
     SandboxAutoResumeEnabled:
       type: boolean

@@ -187,20 +187,6 @@ func TestValidateEgressProxy_AcceptsEmptyCreds(t *testing.T) {
 	assert.Empty(t, got.Password)
 }
 
-func TestValidateEgressProxy_PreservesSandboxIDPlaceholder(t *testing.T) {
-	t.Parallel()
-	// {{sandboxID}} is allowed through unaltered; substitution happens at
-	// dial time in the orchestrator.
-	got, err := ValidateEgressProxy(t.Context(), &EgressProxyConfig{
-		Address:  "203.0.113.5:1080",
-		Username: "sbx-{{sandboxID}}",
-		Password: "token-{{sandboxID}}",
-	}, literalOnlyResolver())
-	require.NoError(t, err)
-	assert.Equal(t, "sbx-{{sandboxID}}", got.Username)
-	assert.Equal(t, "token-{{sandboxID}}", got.Password)
-}
-
 func TestValidateEgressProxy_DoesNotMutateInput(t *testing.T) {
 	t.Parallel()
 	in := &EgressProxyConfig{
