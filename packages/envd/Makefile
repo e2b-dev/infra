@@ -36,6 +36,15 @@ else
 endif
 endif
 
+.PHONY: promote
+promote:
+	$(if $(ENVD_COMMIT_SHA),,$(error ENVD_COMMIT_SHA is required))
+ifeq ($(PROVIDER),aws)
+	aws s3 cp "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/envd.$(ENVD_COMMIT_SHA)" "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/envd" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
+else
+	gsutil -h "Cache-Control:no-cache, max-age=0" cp "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/envd.$(ENVD_COMMIT_SHA)" "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/envd"
+endif
+
 build:
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(BUILD_ARCH) go build -trimpath -buildvcs=false -a -o bin/envd ${PROD_LDFLAGS}
 
