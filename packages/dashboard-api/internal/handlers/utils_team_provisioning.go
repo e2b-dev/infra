@@ -46,6 +46,7 @@ type bootstrapUserProfile struct {
 	UserID          uuid.UUID
 	Email           string
 	DefaultTeamName string
+	CreatorContext  *teamprovision.CreatorContextV1
 }
 
 type bootstrapUserIdentity struct {
@@ -54,10 +55,12 @@ type bootstrapUserIdentity struct {
 }
 
 type oidcUserBootstrapInput struct {
-	OIDCIssuer    string
-	OIDCUserID    string
-	OIDCUserEmail string
-	OIDCUserName  *string
+	OIDCIssuer      string
+	OIDCUserID      string
+	OIDCUserEmail   string
+	OIDCUserName    *string
+	SignupIP        string
+	SignupUserAgent string
 }
 
 func (s *APIStore) bootstrapSupabaseUser(ctx context.Context, userID uuid.UUID) (provisionedTeam, error) {
@@ -111,6 +114,7 @@ func (s *APIStore) bootstrapOIDCUser(ctx context.Context, input oidcUserBootstra
 		UserID:          uuid.New(),
 		Email:           input.OIDCUserEmail,
 		DefaultTeamName: defaultTeamNameFromOIDCUserName(input.OIDCUserName),
+		CreatorContext:  creatorContextFromSignupMetadata(input.SignupIP, input.SignupUserAgent, teamprovision.AuthMethodSocial),
 	}
 
 	return s.bootstrapUserWithIdentity(ctx, profile, &bootstrapUserIdentity{
@@ -219,7 +223,7 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 				TeamName:       existingTeam.Name,
 				TeamEmail:      existingTeam.Email,
 				CreatorUserID:  profile.UserID,
-				CreatorContext: s.resolveTeamCreatorContext(ctx, profile.UserID),
+				CreatorContext: s.teamCreatorContextForProvisioning(ctx, profile),
 				Reason:         teamprovision.ReasonDefaultSignupTeam,
 			}
 			_ = s.teamProvisionSink.ProvisionTeam(ctx, req)
@@ -267,7 +271,7 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 		TeamName:       team.Name,
 		TeamEmail:      team.Email,
 		CreatorUserID:  profile.UserID,
-		CreatorContext: s.resolveTeamCreatorContext(ctx, profile.UserID),
+		CreatorContext: s.teamCreatorContextForProvisioning(ctx, profile),
 		Reason:         teamprovision.ReasonDefaultSignupTeam,
 	}
 	_ = s.teamProvisionSink.ProvisionTeam(ctx, req)
@@ -462,7 +466,40 @@ func (s *APIStore) resolveTeamCreatorContext(ctx context.Context, userID uuid.UU
 		return nil
 	}
 
-	return creatorContext
+	return normalizeCreatorContext(creatorContext)
+}
+
+func (s *APIStore) teamCreatorContextForProvisioning(ctx context.Context, profile bootstrapUserProfile) *teamprovision.CreatorContextV1 {
+	if profile.CreatorContext != nil {
+		return normalizeCreatorContext(profile.CreatorContext)
+	}
+
+	return s.resolveTeamCreatorContext(ctx, profile.UserID)
+}
+
+func creatorContextFromSignupMetadata(signupIP, signupUserAgent, authMethod string) *teamprovision.CreatorContextV1 {
+	return normalizeCreatorContext(&teamprovision.CreatorContextV1{
+		IPAddress:  signupIP,
+		UserAgent:  signupUserAgent,
+		AuthMethod: authMethod,
+	})
+}
+
+func normalizeCreatorContext(creatorContext *teamprovision.CreatorContextV1) *teamprovision.CreatorContextV1 {
+	if creatorContext == nil {
+		return nil
+	}
+
+	ipAddress := strings.TrimSpace(creatorContext.IPAddress)
+	if ipAddress == "" {
+		return nil
+	}
+
+	return &teamprovision.CreatorContextV1{
+		IPAddress:  ipAddress,
+		UserAgent:  strings.TrimSpace(creatorContext.UserAgent),
+		AuthMethod: strings.TrimSpace(creatorContext.AuthMethod),
+	}
 }
 
 func defaultTeamNameFromProfile(profile userprofile.Profile) string {

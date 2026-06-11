@@ -58,10 +58,12 @@ func (s *APIStore) PostAdminUsersBootstrap(c *gin.Context) {
 	}
 
 	team, err := s.bootstrapOIDCUser(ctx, oidcUserBootstrapInput{
-		OIDCIssuer:    oidcIssuer,
-		OIDCUserID:    oidcUserID,
-		OIDCUserEmail: oidcUserEmail,
-		OIDCUserName:  body.OidcUserName,
+		OIDCIssuer:      oidcIssuer,
+		OIDCUserID:      oidcUserID,
+		OIDCUserEmail:   oidcUserEmail,
+		OIDCUserName:    body.OidcUserName,
+		SignupIP:        strings.TrimSpace(valueOrEmpty(body.SignupIp)),
+		SignupUserAgent: strings.TrimSpace(valueOrEmpty(body.SignupUserAgent)),
 	})
 	if err != nil {
 		s.handleProvisioningError(ctx, c, "bootstrap auth provider user", err)
@@ -73,4 +75,12 @@ func (s *APIStore) PostAdminUsersBootstrap(c *gin.Context) {
 		Id:   team.ID,
 		Slug: team.Slug,
 	})
+}
+
+func valueOrEmpty(value *string) string {
+	if value == nil {
+		return ""
+	}
+
+	return *value
 }

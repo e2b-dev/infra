@@ -145,8 +145,10 @@ func TestCreatorContextFromOryIdentityUsesMetadataAdmin(t *testing.T) {
 	identity := ory.Identity{
 		Id: uuid.NewString(),
 		MetadataAdmin: map[string]any{
-			"ip_address": "198.51.100.20",
-			"user_agent": "Dashboard/1.0",
+			"signup_ip":         "198.51.100.20",
+			"signup_user_agent": "Dashboard/1.0",
+			"ip_address":        "should-not-be-used",
+			"user_agent":        "should-not-be-used",
 		},
 		MetadataPublic: map[string]any{
 			"signup_ip":         "should-not-be-used",
