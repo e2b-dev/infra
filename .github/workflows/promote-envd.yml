@@ -36,8 +36,8 @@ jobs:
         env:
           ENVD_COMMIT_SHA: ${{ inputs.commit_sha }}
         run: |
-          if [[ ! "$ENVD_COMMIT_SHA" =~ ^[0-9a-f]{9}$ ]]; then
-            echo "commit_sha must be the lowercase 9-character SHA suffix uploaded by the build workflow."
+          if [[ ! "$ENVD_COMMIT_SHA" =~ ^[0-9a-f]{7,40}$ ]]; then
+            echo "commit_sha must be a lowercase hexadecimal Git SHA suffix."
             exit 1
           fi
 
