@@ -100,6 +100,7 @@ func TestFileReadAt_RecordsZeroFanoutForNilMapping(t *testing.T) {
 		t.TempDir(),
 		time.Hour,
 		time.Minute,
+		nil,
 	)
 	require.NoError(t, err)
 

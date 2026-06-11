@@ -58,7 +58,7 @@ func NewStorage(
 		}
 
 		var err error
-		h, err = header.LoadHeader(ctx, persistence, hdrPath)
+		h, _, err = header.LoadHeader(ctx, persistence, hdrPath)
 		if err != nil && !errors.Is(err, storage.ErrObjectNotExist) {
 			return nil, err
 		}
