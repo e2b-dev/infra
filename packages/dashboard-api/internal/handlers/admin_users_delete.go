@@ -22,7 +22,7 @@ func (s *APIStore) DeleteAdminUsersUserId(c *gin.Context, userId api.UserId) {
 	handle, err := s.userProfiles.PrepareDeleteUser(ctx, userId)
 	if err != nil {
 		logger.L().Error(ctx, "failed to prepare user deletion", zap.String("user_id", userId.String()), zap.Error(err))
-		s.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("User %s not found or has no identity provider record", userId))
+		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to resolve identity provider record for user")
 
 		return
 	}
