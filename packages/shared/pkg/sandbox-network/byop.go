@@ -86,6 +86,10 @@ type EgressProxyConfig struct {
 // Validation leaves it literal.
 const SandboxIDPlaceholder = "{{sandboxID}}"
 
+// maxSOCKS5CredentialLen is the maximum byte length of a SOCKS5
+// username or password, see RFC 1929.
+const maxSOCKS5CredentialLen = 255
+
 // ErrEgressProxyInternalEndpoint is returned when a configured BYOP endpoint
 // resolves to an IP in DeniedSandboxCIDRs.
 var ErrEgressProxyInternalEndpoint = errors.New("egress proxy endpoint resolves to an internal / denied IP range")
@@ -124,6 +128,7 @@ func DefaultHostResolver(ctx context.Context, host string) ([]net.IP, error) {
 //   - Host must be an IP literal or resolve via the provided resolver.
 //   - Every resolved A/AAAA record must NOT be in DeniedSandboxCIDRs.
 //   - If Username == "" then Password must also be "" (no orphan password).
+//   - Username and Password are each capped at 255 bytes (RFC 1929).
 //   - Username and Password may contain {{sandboxID}} literally.
 func ValidateEgressProxy(ctx context.Context, cfg *EgressProxyConfig, resolve HostResolver) (*EgressProxyConfig, error) {
 	if cfg == nil {
@@ -166,6 +171,12 @@ func ValidateEgressProxy(ctx context.Context, cfg *EgressProxyConfig, resolve Ho
 	password := cfg.Password
 	if username == "" && password != "" {
 		return nil, errors.New("egress proxy password must be empty when username is empty")
+	}
+	if len(username) > maxSOCKS5CredentialLen {
+		return nil, fmt.Errorf("egress proxy username must not exceed %d bytes", maxSOCKS5CredentialLen)
+	}
+	if len(password) > maxSOCKS5CredentialLen {
+		return nil, fmt.Errorf("egress proxy password must not exceed %d bytes", maxSOCKS5CredentialLen)
 	}
 
 	return &EgressProxyConfig{

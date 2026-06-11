@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -140,6 +141,42 @@ func TestValidateEgressProxy_RejectsOrphanPassword(t *testing.T) {
 	}, literalOnlyResolver())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "password must be empty when username is empty")
+}
+
+func TestValidateEgressProxy_RejectsOverlongUsername(t *testing.T) {
+	t.Parallel()
+	_, err := ValidateEgressProxy(t.Context(), &EgressProxyConfig{
+		Address:  "203.0.113.5:1080",
+		Username: strings.Repeat("a", 256),
+		Password: "pw",
+	}, literalOnlyResolver())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "username must not exceed 255 bytes")
+}
+
+func TestValidateEgressProxy_RejectsOverlongPassword(t *testing.T) {
+	t.Parallel()
+	_, err := ValidateEgressProxy(t.Context(), &EgressProxyConfig{
+		Address:  "203.0.113.5:1080",
+		Username: "alice",
+		Password: strings.Repeat("p", 256),
+	}, literalOnlyResolver())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "password must not exceed 255 bytes")
+}
+
+func TestValidateEgressProxy_AcceptsMaxLengthCreds(t *testing.T) {
+	t.Parallel()
+	user := strings.Repeat("a", 255)
+	pass := strings.Repeat("p", 255)
+	got, err := ValidateEgressProxy(t.Context(), &EgressProxyConfig{
+		Address:  "203.0.113.5:1080",
+		Username: user,
+		Password: pass,
+	}, literalOnlyResolver())
+	require.NoError(t, err)
+	assert.Equal(t, user, got.Username)
+	assert.Equal(t, pass, got.Password)
 }
 
 func TestValidateEgressProxy_AcceptsEmptyCreds(t *testing.T) {
