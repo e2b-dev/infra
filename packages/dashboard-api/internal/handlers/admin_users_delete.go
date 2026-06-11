@@ -32,6 +32,7 @@ func (s *APIStore) DeleteAdminUsersUserId(c *gin.Context, userId api.UserId) {
 	if err := s.authDB.Write.DeletePublicUser(ctx, userId); err != nil {
 		if dberrors.IsNotFoundError(err) {
 			s.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("User %s not found", userId))
+
 			return
 		}
 
