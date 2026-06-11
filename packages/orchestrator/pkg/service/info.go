@@ -44,12 +44,12 @@ func (s *ServiceInfo) GetStatus() orchestratorinfo.ServiceInfoStatus {
 	return s.status
 }
 
-// GetStatusChangedAt returns the timestamp of the last status change.
-func (s *ServiceInfo) GetStatusChangedAt() time.Time {
+// GetStatusAndChangedAt atomically returns the status together with the timestamp of the last status change.
+func (s *ServiceInfo) GetStatusAndChangedAt() (orchestratorinfo.ServiceInfoStatus, time.Time) {
 	s.statusMu.RLock()
 	defer s.statusMu.RUnlock()
 
-	return s.statusChangedAt
+	return s.status, s.statusChangedAt
 }
 
 func (s *ServiceInfo) SetStatus(ctx context.Context, status orchestratorinfo.ServiceInfoStatus) {

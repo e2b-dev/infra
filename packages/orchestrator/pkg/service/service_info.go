@@ -65,11 +65,13 @@ func (s *Server) ServiceInfo(ctx context.Context, _ *emptypb.Empty) (*orchestrat
 		sandboxDiskAllocated += uint64(item.Config.TotalDiskSizeMB) * 1024 * 1024
 	}
 
+	serviceStatus, statusChangedAt := info.GetStatusAndChangedAt()
+
 	return &orchestratorinfo.ServiceInfoResponse{
 		NodeId:                 info.ClientId,
 		ServiceId:              info.ServiceId,
-		ServiceStatus:          info.GetStatus(),
-		ServiceStatusChangedAt: timestamppb.New(info.GetStatusChangedAt()),
+		ServiceStatus:          serviceStatus,
+		ServiceStatusChangedAt: timestamppb.New(statusChangedAt),
 
 		ServiceVersion: info.SourceVersion,
 		ServiceCommit:  info.SourceCommit,
