@@ -233,9 +233,9 @@ func TestParentFetchKey_UsesBuildFrameTable(t *testing.T) {
 
 	build := uuid.New()
 	frameU := int32(1 << 20) // 1 MiB frames, half the default window
-	ft := storage.NewFrameTable(storage.CompressionZstd, []storage.FrameSize{
+	ft := storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{
 		{U: frameU, C: 100}, {U: frameU, C: 100}, {U: frameU, C: 100},
-	})
+	}).Table()
 
 	hdr, err := header.NewHeader(header.NewTemplateMetadata(build, uint64(header.PageSize), 4<<20), nil)
 	require.NoError(t, err)
