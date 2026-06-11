@@ -137,10 +137,7 @@ func (o *Orchestrator) CreateSandbox(
 	// Check if team has reached max instances
 	finishStart, waitForStart, err := o.sandboxStore.Reserve(ctx, team.Team.ID, sandboxID, int(totalConcurrentInstances))
 	if err != nil {
-		var limitErr *sandbox.LimitExceededError
-
-		switch {
-		case errors.As(err, &limitErr):
+		if _, ok := errors.AsType[*sandbox.LimitExceededError](err); ok {
 			return sandbox.Sandbox{}, &api.APIError{
 				Code: http.StatusTooManyRequests,
 				ClientMsg: fmt.Sprintf(
@@ -148,14 +145,14 @@ func (o *Orchestrator) CreateSandbox(
 						"please visit 'https://e2b.dev/docs/billing'", totalConcurrentInstances),
 				Err: fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.ID, totalConcurrentInstances),
 			}
-		default:
-			logger.L().Error(ctx, "failed to reserve sandbox for team", logger.WithSandboxID(sandboxID), zap.Error(err))
+		}
 
-			return sandbox.Sandbox{}, &api.APIError{
-				Code:      http.StatusInternalServerError,
-				ClientMsg: fmt.Sprintf("Failed to create sandbox: %s", err),
-				Err:       err,
-			}
+		logger.L().Error(ctx, "failed to reserve sandbox for team", logger.WithSandboxID(sandboxID), zap.Error(err))
+
+		return sandbox.Sandbox{}, &api.APIError{
+			Code:      http.StatusInternalServerError,
+			ClientMsg: fmt.Sprintf("Failed to create sandbox: %s", err),
+			Err:       err,
 		}
 	}
 
@@ -169,8 +166,7 @@ func (o *Orchestrator) CreateSandbox(
 		if err != nil {
 			logger.L().Warn(ctx, "Error waiting for sandbox to start", zap.Error(err), logger.WithSandboxID(sandboxID))
 
-			var apiErr *api.APIError
-			if errors.As(err, &apiErr) {
+			if apiErr, ok := errors.AsType[*api.APIError](err); ok {
 				return sandbox.Sandbox{}, apiErr
 			}
 

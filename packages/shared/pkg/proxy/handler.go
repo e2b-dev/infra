@@ -18,8 +18,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 		ctx := r.Context()
 		d, err := getDestination(r)
 
-		var mhe MissingHeaderError
-		if errors.As(err, &mhe) {
+		if mhe, ok := errors.AsType[MissingHeaderError](err); ok {
 			logger.L().Warn(ctx, "missing header", zap.Error(mhe))
 			http.Error(w, "missing header", http.StatusBadRequest)
 
@@ -40,16 +39,14 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
-		var invalidPortErr *InvalidSandboxPortError
-		if errors.As(err, &invalidPortErr) {
+		if invalidPortErr, ok := errors.AsType[*InvalidSandboxPortError](err); ok {
 			logger.L().Warn(ctx, "invalid sandbox port", zap.String("host", r.Host), zap.String("port", invalidPortErr.Port))
 			http.Error(w, "Invalid sandbox port", http.StatusBadRequest)
 
 			return
 		}
 
-		var notFoundErr *SandboxNotFoundError
-		if errors.As(err, &notFoundErr) {
+		if notFoundErr, ok := errors.AsType[*SandboxNotFoundError](err); ok {
 			logger.L().Warn(ctx, "sandbox not found",
 				zap.String("host", r.Host),
 				logger.WithSandboxID(notFoundErr.SandboxId))
@@ -67,8 +64,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
-		var resumeDeniedErr *SandboxResumePermissionDeniedError
-		if errors.As(err, &resumeDeniedErr) {
+		if resumeDeniedErr, ok := errors.AsType[*SandboxResumePermissionDeniedError](err); ok {
 			logger.L().Warn(ctx, "sandbox resume permission denied",
 				zap.String("host", r.Host),
 				logger.WithSandboxID(resumeDeniedErr.SandboxId))
@@ -86,8 +82,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
-		var stillTransitioningErr *SandboxStillTransitioningError
-		if errors.As(err, &stillTransitioningErr) {
+		if stillTransitioningErr, ok := errors.AsType[*SandboxStillTransitioningError](err); ok {
 			logger.L().Warn(ctx, "sandbox still transitioning",
 				zap.String("host", r.Host),
 				logger.WithSandboxID(stillTransitioningErr.SandboxId))
@@ -105,8 +100,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
-		var resourceExhaustedErr *SandboxResourceExhaustedError
-		if errors.As(err, &resourceExhaustedErr) {
+		if resourceExhaustedErr, ok := errors.AsType[*SandboxResourceExhaustedError](err); ok {
 			logger.L().Warn(ctx, "team sandbox limit reached",
 				zap.String("host", r.Host),
 				logger.WithSandboxID(resourceExhaustedErr.SandboxId))
@@ -124,8 +118,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
-		var trafficMissingTokenErr *MissingTrafficAccessTokenError
-		if errors.As(err, &trafficMissingTokenErr) {
+		if trafficMissingTokenErr, ok := errors.AsType[*MissingTrafficAccessTokenError](err); ok {
 			logger.L().Warn(ctx, "traffic access token is missing", zap.String("host", r.Host))
 
 			err = template.
@@ -141,8 +134,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
-		var trafficInvalidTokenErr *InvalidTrafficAccessTokenError
-		if errors.As(err, &trafficInvalidTokenErr) {
+		if trafficInvalidTokenErr, ok := errors.AsType[*InvalidTrafficAccessTokenError](err); ok {
 			logger.L().Warn(ctx, "traffic access token is invalid", zap.String("host", r.Host))
 
 			err = template.

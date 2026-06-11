@@ -83,8 +83,7 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
 		// A Diff can be evicted and closed between planning and reading. Re-plan
 		// the whole read; reads are idempotent, so re-filling already-written
 		// regions is safe and getBuild re-resolves the closed Diff.
-		var closed *block.CacheClosedError
-		if errors.As(err, &closed) {
+		if _, ok := errors.AsType[*block.CacheClosedError](err); ok {
 			continue
 		}
 		// A peer transition swaps the header to the finalized one; retry against it.
@@ -292,8 +291,8 @@ func (b *File) IsCached(ctx context.Context, off, length int64) bool {
 // the header object already exists in storage. A single LoadHeader is enough;
 // polling here would multiply GCS reads under high peer-transition rates.
 func (b *File) retryOnTransition(ctx context.Context, err error) (bool, error) {
-	var transErr *storage.PeerTransitionedError
-	if !errors.As(err, &transErr) {
+	transErr, ok := errors.AsType[*storage.PeerTransitionedError](err)
+	if !ok {
 		return false, nil
 	}
 	if transErr.RetryAfter > 0 {

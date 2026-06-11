@@ -159,8 +159,8 @@ func walkDir(requestedPath string, dirPath string, depth int) (entries []*rpc.En
 
 		entryInfo, err := entryInfo(path)
 		if err != nil {
-			var connectErr *connect.Error
-			if errors.As(err, &connectErr) && connectErr.Code() == connect.CodeNotFound {
+			connectErr, ok := errors.AsType[*connect.Error](err)
+			if ok && connectErr.Code() == connect.CodeNotFound {
 				// Skip entries that don't exist anymore
 				return nil
 			}

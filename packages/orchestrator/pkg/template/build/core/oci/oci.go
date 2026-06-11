@@ -73,8 +73,7 @@ func wrapImagePullError(err error, imageRef string) error {
 	}
 
 	// Check for transport errors with specific error codes from the registry API
-	var transportErr *transport.Error
-	if errors.As(err, &transportErr) {
+	if transportErr, ok := errors.AsType[*transport.Error](err); ok {
 		for _, e := range transportErr.Errors {
 			switch e.Code {
 			case transport.ManifestUnknownErrorCode:

@@ -292,8 +292,7 @@ func TestReservation_ConcurrentReservations(t *testing.T) {
 			if err == nil {
 				successCount.Add(1)
 			} else {
-				var limitExceededError *sandboxtypes.LimitExceededError
-				if errors.As(err, &limitExceededError) {
+				if _, ok := errors.AsType[*sandboxtypes.LimitExceededError](err); ok {
 					limitExceededCount.Add(1)
 				}
 			}
@@ -448,8 +447,7 @@ func TestReservation_RaceConditionStressTest(t *testing.T) {
 						}()
 					}
 				} else {
-					var limitExceededError *sandboxtypes.LimitExceededError
-					if errors.As(err, &limitExceededError) || errors.Is(err, sandboxtypes.ErrAlreadyExists) {
+					if _, ok := errors.AsType[*sandboxtypes.LimitExceededError](err); ok || errors.Is(err, sandboxtypes.ErrAlreadyExists) {
 						operationCount.Add(1)
 					}
 				}

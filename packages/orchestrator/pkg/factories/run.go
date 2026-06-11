@@ -896,10 +896,11 @@ func run(config cfg.Config, opts Options) (success bool) {
 	}
 
 	logger.L().Info(ctx, "Waiting for services to finish")
-	var sde serviceDoneError
-	if err := g.Wait(); err != nil && !errors.As(err, &sde) {
-		logger.L().Error(ctx, "service group error", zap.Error(err))
-		success = false
+	if err := g.Wait(); err != nil {
+		if _, ok := errors.AsType[serviceDoneError](err); !ok {
+			logger.L().Error(ctx, "service group error", zap.Error(err))
+			success = false
+		}
 	}
 
 	return success

@@ -815,8 +815,7 @@ func TestBootstrapOIDCUser_OryModeRejectsNonOryJWTIssuer(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected ory mode to reject a non-Ory JWT issuer at bootstrap")
 	}
-	var provErr *internalteamprovision.ProvisionError
-	if !errors.As(err, &provErr) || provErr.StatusCode != http.StatusBadRequest {
+	if provErr, ok := errors.AsType[*internalteamprovision.ProvisionError](err); !ok || provErr.StatusCode != http.StatusBadRequest {
 		t.Fatalf("expected ProvisionError with status 400, got %v", err)
 	}
 }
@@ -852,8 +851,7 @@ func TestBootstrapOIDCUser_UnknownIssuerReturnsBadRequest(t *testing.T) {
 		t.Fatal("expected unknown issuer to be rejected")
 	}
 
-	var provErr *internalteamprovision.ProvisionError
-	if !errors.As(err, &provErr) || provErr.StatusCode != http.StatusBadRequest {
+	if provErr, ok := errors.AsType[*internalteamprovision.ProvisionError](err); !ok || provErr.StatusCode != http.StatusBadRequest {
 		t.Fatalf("expected ProvisionError with status 400, got %v", err)
 	}
 	if len(sink.requests) != 0 {
@@ -1497,8 +1495,8 @@ func TestCreateTeam_ConcurrentRequestsRespectLocalPolicyWithZeroMemberships(t *t
 			continue
 		}
 
-		var provisionErr *internalteamprovision.ProvisionError
-		if !errors.As(err, &provisionErr) {
+		provisionErr, ok := errors.AsType[*internalteamprovision.ProvisionError](err)
+		if !ok {
 			t.Fatalf("expected provisioning error, got %T: %v", err, err)
 		}
 		if provisionErr.StatusCode == http.StatusBadRequest {

@@ -93,8 +93,7 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, ginCtx *gin.C
 
 		ginCtx.Status(validationError.Code)
 
-		var forbiddenError *TeamForbiddenError
-		if errors.As(validationError.Err, &forbiddenError) {
+		if _, ok := errors.AsType[*TeamForbiddenError](validationError.Err); ok {
 			return validationError.Err
 		}
 
