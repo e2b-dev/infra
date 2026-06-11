@@ -83,17 +83,6 @@ build-and-upload:build-and-upload/template-manager
 build-and-upload:build-and-upload/envd
 build-and-upload:build-and-upload/clickhouse-migrator
 build-and-upload:build-and-upload/nomad-nodepool-apm
-
-.PHONY: build-and-upload-images
-build-and-upload-images:build-and-upload/api
-build-and-upload-images:build-and-upload/client-proxy
-build-and-upload-images:build-and-upload/dashboard-api
-build-and-upload-images:build-and-upload/docker-reverse-proxy
-build-and-upload-images:build-and-upload/clean-nfs-cache
-build-and-upload-images:build-and-upload/orchestrator
-build-and-upload-images:build-and-upload/template-manager
-build-and-upload-images:build-and-upload/clickhouse-migrator
-build-and-upload-images:build-and-upload/nomad-nodepool-apm
 build-and-upload/clean-nfs-cache:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload/clean-nfs-cache
