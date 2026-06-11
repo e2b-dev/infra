@@ -66,9 +66,10 @@ func (s *Server) ServiceInfo(ctx context.Context, _ *emptypb.Empty) (*orchestrat
 	}
 
 	return &orchestratorinfo.ServiceInfoResponse{
-		NodeId:        info.ClientId,
-		ServiceId:     info.ServiceId,
-		ServiceStatus: info.GetStatus(),
+		NodeId:                 info.ClientId,
+		ServiceId:              info.ServiceId,
+		ServiceStatus:          info.GetStatus(),
+		ServiceStatusChangedAt: timestamppb.New(info.GetStatusChangedAt()),
 
 		ServiceVersion: info.SourceVersion,
 		ServiceCommit:  info.SourceCommit,

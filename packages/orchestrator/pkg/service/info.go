@@ -27,8 +27,9 @@ type ServiceInfo struct {
 	Labels      []string
 	MachineInfo machineinfo.MachineInfo
 
-	status   orchestratorinfo.ServiceInfoStatus
-	statusMu sync.RWMutex
+	status          orchestratorinfo.ServiceInfoStatus
+	statusChangedAt time.Time
+	statusMu        sync.RWMutex
 }
 
 var serviceRolesMapper = map[cfg.ServiceType]orchestratorinfo.ServiceInfoRole{
@@ -43,6 +44,14 @@ func (s *ServiceInfo) GetStatus() orchestratorinfo.ServiceInfoStatus {
 	return s.status
 }
 
+// GetStatusChangedAt returns the timestamp of the last status change.
+func (s *ServiceInfo) GetStatusChangedAt() time.Time {
+	s.statusMu.RLock()
+	defer s.statusMu.RUnlock()
+
+	return s.statusChangedAt
+}
+
 func (s *ServiceInfo) SetStatus(ctx context.Context, status orchestratorinfo.ServiceInfoStatus) {
 	s.statusMu.Lock()
 	defer s.statusMu.Unlock()
@@ -50,6 +59,7 @@ func (s *ServiceInfo) SetStatus(ctx context.Context, status orchestratorinfo.Ser
 	if s.status != status {
 		logger.L().Info(ctx, "Service status changed", zap.String("status", status.String()))
 		s.status = status
+		s.statusChangedAt = time.Now()
 	}
 }
 
@@ -63,11 +73,14 @@ func NewInfoContainer(ctx context.Context, clientId string, version string, comm
 		}
 	}
 
+	startup := time.Now()
 	serviceInfo := &ServiceInfo{
 		ClientId:  clientId,
 		ServiceId: instanceID,
 
-		Startup:     time.Now(),
+		statusChangedAt: startup,
+
+		Startup:     startup,
 		Roles:       serviceRoles,
 		Labels:      config.NodeLabels,
 		MachineInfo: machineInfo,
