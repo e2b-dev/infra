@@ -29,9 +29,9 @@ type dedupPlan struct {
 	promotedBlocks int64
 	promotedPages  int64
 
-	// Global cheap-frame promotion (promoteCheapFrames). parentFrames
-	// counts distinct parent fetch keys before promotion, i.e. the predicted
-	// cold-restore fetches contributed by this diff's deduped pages.
+	// Global cheap-frame promotion (promoteCheapFrames). parentFrames counts
+	// distinct parent fetch keys before promotion: the predicted cold-restore
+	// fetches contributed by this diff's deduped pages.
 	parentFrames       int64
 	promotedFrames     int64
 	promotedFramePages int64
@@ -40,17 +40,12 @@ type dedupPlan struct {
 // DedupBudget caps fetch fragmentation of the deduped diff. When a block
 // spans more than MaxFetchWindowsPerBlock backing fetch windows, the cheapest
 // parent pages are promoted into the diff, up to
-// MaxPromotedParentPagesPerBlock per block.
-//
-// Independently, a parent fetch key is promoted whole when its page count is
-// at most MaxPagesPerPromotedFrame times the expected backing fetches the
-// promotion removes — a scale-free price per fetch that holds across VM
-// sizes. The expected value assumes each block faults independently with
-// probability BlockFaultPct/100 on a restore: removing the diff's references
-// only saves the fetch when no block outside the diff (which keeps its old
-// mapping to the same frame) faults too. BlockFaultPct outside (0,100) is
-// strict: only frames referenced by nothing outside the diff are promoted.
-//
+// MaxPromotedParentPagesPerBlock per block. Independently, a parent fetch key
+// is promoted whole when its page count is at most MaxPagesPerPromotedFrame
+// times the expected backing fetches removed — a scale-free price per fetch
+// that holds across VM sizes. The expected value assumes blocks fault
+// independently with probability BlockFaultPct/100; values outside (0,100)
+// are strict: only frames referenced by nothing outside the diff promote.
 // Zero values disable promotion; FetchRunWindowPages 0 uses the compression
 // frame size.
 type DedupBudget struct {
@@ -87,10 +82,9 @@ type dedupPageInfo struct {
 // Per-page IsCached so a single uncached neighbour can't poison cached pages
 // of the same block when the parent header is page-granular.
 //
-// Two optional budget passes then trade diff bytes for fetch contiguity by
-// promoting deduped pages into pageDirty: a global cheap-frame promotion
-// followed by a per-block fetch-window cap. The per-block cap runs last so
-// its packed-position model sees the final diff layout. Promoted pages are
+// Two optional budget passes then promote deduped pages into pageDirty: a
+// global cheap-frame promotion, then a per-block fetch-window cap (last, so
+// its packed-position model sees the final layout). Promoted pages are
 // byte-identical to the parent, so promotion never changes the restored
 // image.
 func dedupCompare(
@@ -219,8 +213,7 @@ func parentFetchKey(baseHeader *header.Header, mapped header.BuildMap, hasMappin
 // fetchKeyAndEnd returns the fetch key of the parent window containing the
 // build-local (uncompressed) offset and the end of that window: the exact
 // frame when the build's frame table is known, a windowBytes bucket
-// otherwise. The returned end is always past off, so walking a range window
-// by window terminates.
+// otherwise. The end is always past off, so window walks terminate.
 func fetchKeyAndEnd(ft *storage.FrameTable, buildID uuid.UUID, off, windowBytes int64) (dedupFetchKey, int64) {
 	if ft.IsCompressed() {
 		if u, err := ft.LocateUncompressed(off); err == nil && u.Offset+int64(u.Length) > off {
@@ -344,13 +337,11 @@ func countExternalBlocks(
 }
 
 // promoteCheapFrames stores whole parent fetch-key page sets in the diff when
-// they are cheap relative to their value. Promoting a key removes the
-// expected backing fetch its diff references cause: the chance any diff
-// block referencing it faults, discounted by the chance a block outside the
-// diff (still mapped to the frame) forces the fetch anyway. A key is
-// promoted when its page count is at most MaxPagesPerPromotedFrame times
-// that value, capped below one fetch window: bigger promotions would add at
-// least as many diff frames as they remove.
+// they are cheap relative to their value: the chance any diff block
+// referencing the key faults, discounted by the chance a block outside the
+// diff (still mapped to the frame) forces the fetch anyway. The price is
+// capped below one fetch window: bigger promotions would add at least as
+// many diff frames as they remove.
 func (p *dedupPlan) promoteCheapFrames(parentByKey map[dedupFetchKey]*roaring.Bitmap, extBlocks map[dedupFetchKey]int, pagesPerBlock int, budget DedupBudget) {
 	maxPages := min(budget.MaxPagesPerPromotedFrame, budget.FetchRunWindowPages-1)
 	pFault := 1.0 // outside (0,100): strict, only frames unreferenced outside the diff

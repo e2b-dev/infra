@@ -104,48 +104,6 @@ func TestDedupPlanPromoteCheapFrames(t *testing.T) {
 	})
 }
 
-func TestCacheDedup_GlobalThresholdPromotesCheapFrames(t *testing.T) {
-	t.Parallel()
-
-	pageSize := int64(header.PageSize)
-	blockSize := 4 * pageSize
-	size := 2 * blockSize
-
-	baseData := make([]byte, size)
-	_, err := rand.Read(baseData)
-	require.NoError(t, err)
-	srcData := make([]byte, size)
-	copy(srcData, baseData)
-	// Pages 0,4,6,7 differ (current); pages 1-3 match base in fetch window 0
-	// (3 parent pages) and page 5 matches in window 1 (1 parent page).
-	for _, p := range []int64{0, 4, 6, 7} {
-		srcData[p*pageSize] ^= 0xFF
-	}
-
-	dirty := fullDirty(size, blockSize)
-	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
-
-	// Threshold 2 promotes only the cheap key (window 1, 1 page); window 0
-	// costs 3 pages and is over the price cap.
-	cache, meta, err := src.Dedup(t.Context(), &fakeOriginalDevice{data: baseData}, dirty, blockSize, t.TempDir()+"/dedup", false, false, DedupBudget{MaxPagesPerPromotedFrame: 2, FetchRunWindowPages: 4})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = cache.Close() })
-
-	require.EqualValues(t, 5, meta.Dirty.GetCardinality())
-	require.True(t, meta.Dirty.Contains(5))
-	for _, p := range []uint32{1, 2, 3} {
-		require.False(t, meta.Dirty.Contains(p), "page %d should stay deduped", p)
-	}
-	require.EqualValues(t, 0, meta.Empty.GetCardinality())
-
-	// The cache packs dirty pages: page 5 sits at slot Rank(5)-1.
-	slot := int64(meta.Dirty.Rank(5)) - 1
-	got := make([]byte, pageSize)
-	_, err = cache.ReadAt(got, slot*pageSize)
-	require.NoError(t, err)
-	require.Equal(t, srcData[5*pageSize:6*pageSize], got)
-}
-
 // Exercises both budget passes together. The global threshold (1 page) runs
 // first and promotes block 0's cheap frame (page 1) but not block 1's 2-page
 // frame; the per-block cap then sees the final layout and compacts block 1 by
