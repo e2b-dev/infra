@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"sync"
 	"sync/atomic"
 
@@ -98,9 +97,9 @@ func (s *peerSeekable) Size(ctx context.Context) (int64, error) {
 	return 0, &storage.PeerTransitionedError{}
 }
 
-func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length int64, frameTable *storage.FrameTable) (io.ReadCloser, error) {
+func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length int64, frameTable *storage.FrameTable) (storage.RangeReader, error) {
 	res, err := tryPeer(ctx, &s.peerHandle, "peer-seekable-open-range-reader", attrOpRangeReader,
-		func(ctx context.Context) (peerAttempt[io.ReadCloser], error) {
+		func(ctx context.Context) (peerAttempt[storage.RangeReader], error) {
 			streamCtx, cancel := context.WithCancel(ctx)
 
 			recv, err := openPeerSeekableStream(streamCtx, s.client, &orchestrator.ReadAtBuildSeekableRequest{
@@ -113,10 +112,10 @@ func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length in
 				logger.L().Warn(ctx, "failed to open range reader from peer", logger.WithBuildID(s.buildID), zap.Int64("off", off), zap.Int64("length", length), zap.Error(err))
 				cancel()
 
-				return peerAttempt[io.ReadCloser]{}, nil
+				return peerAttempt[storage.RangeReader]{}, nil
 			}
 
-			return peerAttempt[io.ReadCloser]{
+			return peerAttempt[storage.RangeReader]{
 				value: newPeerStreamReader(recv, cancel),
 				hit:   true,
 			}, nil
