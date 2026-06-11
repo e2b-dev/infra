@@ -82,27 +82,15 @@ jobs:
           ENVIRONMENT: staging
         run: |
           echo "${ENVIRONMENT}" > .last_used_env
-          load_env() {
-            local key="$1"
-            local value
-            value="$(awk -v key="$key" '
-              $0 ~ "^" key "=" {
-                value = substr($0, index($0, "=") + 1)
-                if (value ~ /^'\''.*'\''$/) {
-                  value = substr(value, 2, length(value) - 2)
-                }
-                print value
-                found = 1
-                exit
-              }
-              END { if (!found) exit 1 }
-            ' .env.infisical)"
-            printf "%s=%s\n" "$key" "$value" >> "$GITHUB_ENV"
-          }
+          cat .env.infisical | sed "s/='\(.*\)'$/=\1/g" > ".env.${ENVIRONMENT}"
 
-          load_env GCP_REGION
-          load_env GCP_PROJECT_ID
-          load_env GH_WORKLOAD_IDENTITY_PROVIDER
+          set -a
+          . ".env.${ENVIRONMENT}"
+          set +a
+
+          echo "GCP_REGION=${GCP_REGION}" >> "$GITHUB_ENV"
+          echo "GCP_PROJECT_ID=${GCP_PROJECT_ID}" >> "$GITHUB_ENV"
+          echo "GH_WORKLOAD_IDENTITY_PROVIDER=${GH_WORKLOAD_IDENTITY_PROVIDER}" >> "$GITHUB_ENV"
 
       - name: Load runtime environment
         uses: Infisical/secrets-action@v1.0.16
@@ -162,27 +150,15 @@ jobs:
           ENVIRONMENT: foxtrot
         run: |
           echo "${ENVIRONMENT}" > .last_used_env
-          load_env() {
-            local key="$1"
-            local value
-            value="$(awk -v key="$key" '
-              $0 ~ "^" key "=" {
-                value = substr($0, index($0, "=") + 1)
-                if (value ~ /^'\''.*'\''$/) {
-                  value = substr(value, 2, length(value) - 2)
-                }
-                print value
-                found = 1
-                exit
-              }
-              END { if (!found) exit 1 }
-            ' .env.infisical)"
-            printf "%s=%s\n" "$key" "$value" >> "$GITHUB_ENV"
-          }
+          cat .env.infisical | sed "s/='\(.*\)'$/=\1/g" > ".env.${ENVIRONMENT}"
 
-          load_env GCP_REGION
-          load_env GCP_PROJECT_ID
-          load_env GH_WORKLOAD_IDENTITY_PROVIDER
+          set -a
+          . ".env.${ENVIRONMENT}"
+          set +a
+
+          echo "GCP_REGION=${GCP_REGION}" >> "$GITHUB_ENV"
+          echo "GCP_PROJECT_ID=${GCP_PROJECT_ID}" >> "$GITHUB_ENV"
+          echo "GH_WORKLOAD_IDENTITY_PROVIDER=${GH_WORKLOAD_IDENTITY_PROVIDER}" >> "$GITHUB_ENV"
 
       - name: Load runtime environment
         uses: Infisical/secrets-action@v1.0.16
@@ -242,27 +218,15 @@ jobs:
           ENVIRONMENT: juliett
         run: |
           echo "${ENVIRONMENT}" > .last_used_env
-          load_env() {
-            local key="$1"
-            local value
-            value="$(awk -v key="$key" '
-              $0 ~ "^" key "=" {
-                value = substr($0, index($0, "=") + 1)
-                if (value ~ /^'\''.*'\''$/) {
-                  value = substr(value, 2, length(value) - 2)
-                }
-                print value
-                found = 1
-                exit
-              }
-              END { if (!found) exit 1 }
-            ' .env.infisical)"
-            printf "%s=%s\n" "$key" "$value" >> "$GITHUB_ENV"
-          }
+          cat .env.infisical | sed "s/='\(.*\)'$/=\1/g" > ".env.${ENVIRONMENT}"
 
-          load_env GCP_REGION
-          load_env GCP_PROJECT_ID
-          load_env GH_WORKLOAD_IDENTITY_PROVIDER
+          set -a
+          . ".env.${ENVIRONMENT}"
+          set +a
+
+          echo "GCP_REGION=${GCP_REGION}" >> "$GITHUB_ENV"
+          echo "GCP_PROJECT_ID=${GCP_PROJECT_ID}" >> "$GITHUB_ENV"
+          echo "GH_WORKLOAD_IDENTITY_PROVIDER=${GH_WORKLOAD_IDENTITY_PROVIDER}" >> "$GITHUB_ENV"
 
       - name: Load runtime environment
         uses: Infisical/secrets-action@v1.0.16
