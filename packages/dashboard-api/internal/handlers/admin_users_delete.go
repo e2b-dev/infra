@@ -1,14 +1,19 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
+	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
+
+const identityDeleteMaxRetries = 3
 
 func (s *APIStore) DeleteAdminUsersUserId(c *gin.Context, userId api.UserId) {
 	ctx := c.Request.Context()
@@ -17,7 +22,7 @@ func (s *APIStore) DeleteAdminUsersUserId(c *gin.Context, userId api.UserId) {
 	handle, err := s.userProfiles.PrepareDeleteUser(ctx, userId)
 	if err != nil {
 		logger.L().Error(ctx, "failed to prepare user deletion", zap.String("user_id", userId.String()), zap.Error(err))
-		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to prepare user deletion")
+		s.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("User %s not found or has no identity provider record", userId))
 
 		return
 	}
@@ -25,6 +30,18 @@ func (s *APIStore) DeleteAdminUsersUserId(c *gin.Context, userId api.UserId) {
 	// Delete from public.users (cascades to user_identities via FK).
 	// Done before the IdP removal so a DB failure does not orphan the identity.
 	if err := s.authDB.Write.DeletePublicUser(ctx, userId); err != nil {
+		if dberrors.IsNotFoundError(err) {
+			s.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("User %s not found", userId))
+			return
+		}
+
+		if dberrors.IsForeignKeyViolation(err) {
+			logger.L().Warn(ctx, "cannot delete user due to existing references", zap.String("user_id", userId.String()), zap.Error(err))
+			s.sendAPIStoreError(c, http.StatusConflict, "Cannot delete user: existing references (e.g. addons) must be removed first")
+
+			return
+		}
+
 		logger.L().Error(ctx, "failed to delete public user", zap.String("user_id", userId.String()), zap.Error(err))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to delete public user record")
 
@@ -32,9 +49,27 @@ func (s *APIStore) DeleteAdminUsersUserId(c *gin.Context, userId api.UserId) {
 	}
 
 	// Remove the external identity (e.g. Ory) using pre-fetched references.
-	if err := handle.Execute(ctx); err != nil {
-		logger.L().Error(ctx, "failed to delete user identity provider record", zap.String("user_id", userId.String()), zap.Error(err))
-		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to delete user identity provider record")
+	// Retry since the DB rows are already gone and we must not leave the IdP identity active.
+	var identityErr error
+	for attempt := range identityDeleteMaxRetries {
+		identityErr = handle.Execute(ctx)
+		if identityErr == nil {
+			break
+		}
+
+		logger.L().Warn(ctx, "retrying identity deletion",
+			zap.String("user_id", userId.String()),
+			zap.Int("attempt", attempt+1),
+			zap.Error(identityErr),
+		)
+
+		time.Sleep(time.Duration(attempt+1) * 200 * time.Millisecond)
+	}
+
+	if identityErr != nil {
+		logger.L().Error(ctx, "failed to delete user identity provider record after retries", zap.String("user_id", userId.String()), zap.Error(identityErr))
+		s.sendAPIStoreError(c, http.StatusInternalServerError,
+			"User DB records deleted but identity provider removal failed — the IdP identity may need manual cleanup")
 
 		return
 	}
