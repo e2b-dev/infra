@@ -90,7 +90,7 @@ func (c *cachedSeekable) OpenRangeReader(ctx context.Context, off int64, length 
 	))
 
 	if compressed {
-		rc, err := c.openReaderCompressed(ctx, off, frameTable)
+		rc, err := c.openReaderCompressed(ctx, off, length, frameTable)
 		if err != nil {
 			recordError(span, err)
 			span.End()

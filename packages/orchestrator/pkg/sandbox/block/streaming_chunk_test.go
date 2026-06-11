@@ -106,31 +106,41 @@ func (s *fakeSeekable) OpenRangeReader(_ context.Context, offsetU int64, length 
 		}, nil
 	}
 
-	var fetchOff, fetchLen int64
 	if frameTable.IsCompressed() {
-		r, err := frameTable.LocateCompressed(offsetU)
-		if err != nil {
-			return nil, fmt.Errorf("frame lookup: %w", err)
+		// Serve every frame the uncompressed range spans (the production
+		// upstream honors multi-frame lengths the same way).
+		var readers []io.Reader
+		for cur := offsetU; cur < offsetU+length; {
+			u, err := frameTable.LocateUncompressed(cur)
+			if err != nil {
+				return nil, fmt.Errorf("frame lookup: %w", err)
+			}
+			c, err := frameTable.LocateCompressed(cur)
+			if err != nil {
+				return nil, fmt.Errorf("frame lookup: %w", err)
+			}
+			end := min(c.Offset+int64(c.Length), int64(len(s.data)))
+			if s.failAfter > 0 {
+				end = min(end, s.failAfter)
+			}
+			dec, err := storage.NewDecompressingReader(bytes.NewReader(s.data[c.Offset:end]), frameTable.CompressionType())
+			if err != nil {
+				return nil, err
+			}
+			readers = append(readers, dec)
+			cur = u.Offset + int64(u.Length)
 		}
 
-		fetchOff = r.Offset
-		fetchLen = int64(r.Length)
-	} else {
-		fetchOff = offsetU
-		fetchLen = length
+		return io.NopCloser(io.MultiReader(readers...)), nil
 	}
 
+	fetchOff, fetchLen := offsetU, length
 	end := min(fetchOff+fetchLen, int64(len(s.data)))
 	if s.failAfter > 0 {
 		end = min(end, s.failAfter)
 	}
 
-	r := io.Reader(bytes.NewReader(s.data[fetchOff:end]))
-	if frameTable.IsCompressed() {
-		return storage.NewDecompressingReader(r, frameTable.CompressionType())
-	}
-
-	return io.NopCloser(r), nil
+	return io.NopCloser(bytes.NewReader(s.data[fetchOff:end])), nil
 }
 
 func makeCompressedTestData(tb testing.TB, data []byte) (*storage.FrameTable, *fakeSeekable) {
@@ -190,6 +200,75 @@ func TestChunker_BasicSlice(t *testing.T) {
 			require.Equal(t, data[:testBlockSize], slice)
 		})
 	}
+}
+
+// TestChunker_CoalescedFetch verifies that with coalescing enabled, a read
+// spanning several adjacent uncached frames issues a single upstream fetch,
+// while the default path issues one per frame.
+func TestChunker_CoalescedFetch(t *testing.T) {
+	t.Parallel()
+
+	data := makeTestData(testFileSize) // 4 frames
+
+	t.Run("disabled: one fetch per frame", func(t *testing.T) {
+		t.Parallel()
+
+		ft, file := makeCompressedTestData(t, data)
+		chunker := newTestChunker(t, file, int64(len(data)))
+		defer chunker.Close()
+
+		slice, err := chunker.Slice(t.Context(), 0, int64(testFileSize), ft)
+		require.NoError(t, err)
+		require.Equal(t, data, slice)
+		require.EqualValues(t, 4, file.fetchCount.Load())
+	})
+
+	t.Run("enabled: one fetch for the whole run", func(t *testing.T) {
+		t.Parallel()
+
+		featureflags.NewIntFlag("chunker-coalesce-frames", 8)
+		ff, err := featureflags.NewClient()
+		require.NoError(t, err)
+
+		ft, file := makeCompressedTestData(t, data)
+		chunker, err := NewChunker(ff, int64(len(data)), testBlockSize, file, t.TempDir()+"/cache", newTestMetrics(t))
+		require.NoError(t, err)
+		defer chunker.Close()
+
+		slice, err := chunker.Slice(t.Context(), 0, int64(testFileSize), ft)
+		require.NoError(t, err)
+		require.Equal(t, data, slice)
+		require.EqualValues(t, 1, file.fetchCount.Load())
+
+		// Cached after the run fetch: no further upstream reads.
+		_, err = chunker.Slice(t.Context(), 0, testBlockSize, ft)
+		require.NoError(t, err)
+		require.EqualValues(t, 1, file.fetchCount.Load())
+	})
+
+	t.Run("enabled: cached frame splits the run", func(t *testing.T) {
+		t.Parallel()
+
+		featureflags.NewIntFlag("chunker-coalesce-frames", 8)
+		ff, err := featureflags.NewClient()
+		require.NoError(t, err)
+
+		ft, file := makeCompressedTestData(t, data)
+		chunker, err := NewChunker(ff, int64(len(data)), testBlockSize, file, t.TempDir()+"/cache", newTestMetrics(t))
+		require.NoError(t, err)
+		defer chunker.Close()
+
+		// Fetch frame 2 alone, then the whole file: frames 0-1 and frame 3
+		// are two disjoint uncached runs → two more fetches.
+		_, err = chunker.Slice(t.Context(), 2*testFrameSize, testBlockSize, ft)
+		require.NoError(t, err)
+		require.EqualValues(t, 1, file.fetchCount.Load())
+
+		slice, err := chunker.Slice(t.Context(), 0, int64(testFileSize), ft)
+		require.NoError(t, err)
+		require.Equal(t, data, slice)
+		require.EqualValues(t, 3, file.fetchCount.Load())
+	})
 }
 
 // TestChunker_CacheHit verifies that a second read of the same block

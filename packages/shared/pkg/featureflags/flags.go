@@ -269,6 +269,11 @@ var (
 
 	MinChunkerReadSizeKB = NewIntFlag("min-chunker-read-size-kb", 16)
 
+	// ChunkerCoalesceFrames is the maximum number of adjacent compressed
+	// frames one chunker fetch may coalesce into a single upstream ranged
+	// read. 1 or lower keeps the existing one-fetch-per-frame behavior.
+	ChunkerCoalesceFrames = NewIntFlag("chunker-coalesce-frames", 1)
+
 	// MaxParallelBuildReadSegments limits concurrent backing reads within one fragmented build read.
 	// 1 or lower keeps the existing serial path.
 	MaxParallelBuildReadSegments = NewIntFlag("max-parallel-build-read-segments", 1)

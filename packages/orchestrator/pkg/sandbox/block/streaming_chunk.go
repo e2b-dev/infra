@@ -95,23 +95,34 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64, ft *storage.Fram
 		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
 	}
 
-	// Fetch every chunk the range spans (one fetch session per chunk).
-	end := off + length
-	for cur := off; cur < end; {
-		chunkOff, chunkLen, lerr := c.locateChunk(cur, ft)
-		if lerr != nil {
+	// Coalesced path: merge adjacent uncached frames into single fetch
+	// sessions (one upstream ranged read each) and run disjoint runs
+	// concurrently instead of fetching frame by frame serially.
+	if maxFrames := c.featureFlags.IntFlag(ctx, featureflags.ChunkerCoalesceFrames); maxFrames > 1 && ft.IsCompressed() {
+		if err := c.fetchCoalesced(ctx, off, length, ft, maxFrames); err != nil {
 			timer.RecordRaw(ctx, length, attrs.failRemoteFetch)
 
-			return nil, fmt.Errorf("failed to locate chunk for offset %d: %w", cur, lerr)
+			return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, err)
 		}
-		chunkEnd := chunkOff + chunkLen
-		rangeEnd := min(end, chunkEnd)
-		if err := c.fetch(ctx, cur, rangeEnd-cur, ft); err != nil {
-			timer.RecordRaw(ctx, length, attrs.failRemoteFetch)
+	} else {
+		// Fetch every chunk the range spans (one fetch session per chunk).
+		end := off + length
+		for cur := off; cur < end; {
+			chunkOff, chunkLen, lerr := c.locateChunk(cur, ft)
+			if lerr != nil {
+				timer.RecordRaw(ctx, length, attrs.failRemoteFetch)
 
-			return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", cur, rangeEnd, err)
+				return nil, fmt.Errorf("failed to locate chunk for offset %d: %w", cur, lerr)
+			}
+			chunkEnd := chunkOff + chunkLen
+			rangeEnd := min(end, chunkEnd)
+			if err := c.fetch(ctx, cur, rangeEnd-cur, ft); err != nil {
+				timer.RecordRaw(ctx, length, attrs.failRemoteFetch)
+
+				return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", cur, rangeEnd, err)
+			}
+			cur = chunkEnd
 		}
-		cur = chunkEnd
 	}
 
 	// sliceDirect skips isCached — the waiter already confirmed the data is in the mmap.
@@ -182,6 +193,88 @@ func (c *Chunker) fetch(ctx context.Context, off, length int64, ft *storage.Fram
 		}
 		if err := session.registerAndWait(ctx, b); err != nil {
 			return err
+		}
+	}
+
+	return nil
+}
+
+// fetchCoalesced ensures [off, off+length) is fetched. Adjacent uncached
+// frames are merged into single fetch sessions of up to maxFrames frames
+// (one upstream ranged read each); all sessions the range needs are started
+// before any waiting happens, so disjoint runs fetch concurrently.
+func (c *Chunker) fetchCoalesced(ctx context.Context, off, length int64, ft *storage.FrameTable, maxFrames int) error {
+	type wait struct {
+		s          *fetchSession
+		start, end int64 // requested range ∩ session range
+	}
+	end := off + length
+	var waits []wait
+
+	// Plan under one lock acquisition: chunks covered by an in-flight
+	// session are joined, cached chunks are skipped, and consecutive
+	// missing chunks accumulate into runs.
+	c.fetchMu.Lock()
+	runStart, runEnd := int64(-1), int64(0)
+	runFrames := 0
+	closeRun := func() {
+		if runStart < 0 {
+			return
+		}
+		s := newFetchSession(runStart, runEnd-runStart, c.cache)
+		c.fetchSessions = append(c.fetchSessions, s)
+		go c.runFetch(context.WithoutCancel(ctx), s, ft)
+		waits = append(waits, wait{s, max(off, runStart), min(end, runEnd)})
+		runStart, runFrames = -1, 0
+	}
+	for cur := off; cur < end; {
+		chunkOff, chunkLen, err := c.locateChunk(cur, ft)
+		if err != nil {
+			closeRun()
+			c.fetchMu.Unlock()
+
+			return fmt.Errorf("failed to locate chunk for offset %d: %w", cur, err)
+		}
+		chunkEnd := chunkOff + chunkLen
+
+		switch s := c.sessionCoveringLocked(chunkOff, chunkLen); {
+		case s != nil:
+			closeRun()
+			waits = append(waits, wait{s, max(off, chunkOff), min(end, chunkEnd)})
+		case c.cache.isCached(chunkOff, chunkLen):
+			closeRun()
+		case runStart >= 0 && chunkOff == runEnd && runFrames < maxFrames:
+			runEnd = chunkEnd
+			runFrames++
+		default:
+			closeRun()
+			runStart, runEnd, runFrames = chunkOff, chunkEnd, 1
+		}
+		cur = chunkEnd
+	}
+	closeRun()
+	c.fetchMu.Unlock()
+
+	blockSize := c.cache.BlockSize()
+	for _, w := range waits {
+		startBlock := (w.start / blockSize) * blockSize
+		endBlock := ((w.end - 1) / blockSize) * blockSize
+		for b := startBlock; b <= endBlock; b += blockSize {
+			if err := w.s.registerAndWait(ctx, b); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// sessionCoveringLocked returns the in-flight session containing
+// [off, off+length), or nil. Caller must hold fetchMu.
+func (c *Chunker) sessionCoveringLocked(off, length int64) *fetchSession {
+	for _, s := range c.fetchSessions {
+		if s.contains(off, length) {
+			return s
 		}
 	}
 

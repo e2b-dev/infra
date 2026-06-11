@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -18,8 +19,19 @@ var compressedCacheReadAttrs = []attribute.KeyValue{
 
 // openReaderCompressed handles the compressed cache path for OpenRangeReader.
 // NFS stores compressed frames (.frm); on hit we decompress, on miss we fetch
-// raw compressed bytes and tee them to NFS on Close.
-func (c *cachedSeekable) openReaderCompressed(ctx context.Context, offsetU int64, frameTable *FrameTable) (io.ReadCloser, error) {
+// raw compressed bytes and tee them to NFS on Close. When the requested range
+// exactly spans several frames, missing frames that are contiguous in
+// compressed space are fetched with one upstream ranged read (see
+// frameRunReader); single-frame and unaligned requests keep the legacy path.
+func (c *cachedSeekable) openReaderCompressed(ctx context.Context, offsetU, length int64, frameTable *FrameTable) (io.ReadCloser, error) {
+	if frames, ok := collectFrameRun(frameTable, offsetU, length); ok && len(frames) > 1 {
+		return &frameRunReader{ctx: ctx, cache: c, ft: frameTable, frames: frames}, nil
+	}
+
+	return c.openSingleFrameReader(ctx, offsetU, frameTable)
+}
+
+func (c *cachedSeekable) openSingleFrameReader(ctx context.Context, offsetU int64, frameTable *FrameTable) (io.ReadCloser, error) {
 	r, err := frameTable.LocateCompressed(offsetU)
 	if err != nil {
 		return nil, fmt.Errorf("frame lookup for offset %d: %w", offsetU, err)
@@ -181,4 +193,194 @@ func (r *decompressingCacheReader) Close() error {
 // Format: {cacheBasePath}/{016xStart}-{xLength}.frm
 func makeFrameFilename(cacheBasePath string, r Range) string {
 	return fmt.Sprintf("%s/%016x-%x.frm", cacheBasePath, r.Offset, uint32(r.Length))
+}
+
+// runFrame is one frame of a coalesced read: its uncompressed and compressed
+// ranges in the stored file.
+type runFrame struct {
+	u, c Range
+}
+
+// collectFrameRun resolves the frames covering [offsetU, offsetU+length).
+// ok is false when the range does not start and end exactly on frame
+// boundaries (legacy single-frame callers) or a frame lookup fails.
+func collectFrameRun(ft *FrameTable, offsetU, length int64) ([]runFrame, bool) {
+	if length <= 0 {
+		return nil, false
+	}
+
+	var frames []runFrame
+	for cur := offsetU; cur < offsetU+length; {
+		u, err := ft.LocateUncompressed(cur)
+		if err != nil {
+			return nil, false
+		}
+		if cur == offsetU && u.Offset != offsetU {
+			return nil, false
+		}
+		cr, err := ft.LocateCompressed(cur)
+		if err != nil {
+			return nil, false
+		}
+		frames = append(frames, runFrame{u: u, c: cr})
+		cur = u.Offset + int64(u.Length)
+	}
+
+	last := frames[len(frames)-1]
+	if last.u.Offset+int64(last.u.Length) != offsetU+length {
+		return nil, false
+	}
+
+	return frames, true
+}
+
+// frameRunReader serves a run of frames sequentially: cached frames from
+// their .frm files, misses via grouped upstream reads — one ranged read per
+// maximal compressed-contiguous group of missing frames. Each missed frame
+// is decompressed through its own bounded sub-reader and written back to the
+// cache individually, so the cache layout matches the single-frame path
+// exactly.
+type frameRunReader struct {
+	ctx    context.Context //nolint:containedctx // reader API has no ctx; needed for cache write-back
+	cache  *cachedSeekable
+	ft     *FrameTable
+	frames []runFrame
+
+	idx     int
+	cur     io.ReadCloser // reader for frames[idx]
+	raw     io.ReadCloser // active grouped upstream read shared by the group
+	rawLeft int           // frames remaining in the active group (incl. current)
+	err     error
+}
+
+func (r *frameRunReader) Read(p []byte) (int, error) {
+	if r.err != nil {
+		return 0, r.err
+	}
+	for {
+		if r.cur == nil {
+			if r.idx >= len(r.frames) {
+				return 0, io.EOF
+			}
+			if err := r.openFrame(); err != nil {
+				r.err = err
+
+				return 0, err
+			}
+		}
+
+		n, err := r.cur.Read(p)
+		if err == io.EOF {
+			r.finishFrame()
+			if n > 0 {
+				return n, nil
+			}
+
+			continue
+		}
+		if err != nil {
+			r.err = err
+		}
+
+		return n, err
+	}
+}
+
+func (r *frameRunReader) openFrame() error {
+	f := r.frames[r.idx]
+	path := makeFrameFilename(r.cache.path, f.c)
+
+	// Cache-hit check only between groups: while a grouped read is active
+	// the current frame is by construction part of the miss group.
+	if r.raw == nil {
+		if fl, err := os.Open(path); err == nil {
+			if fi, statErr := fl.Stat(); statErr == nil && fi.Size() == int64(f.c.Length) {
+				recordCacheRead(r.ctx, true, int64(f.c.Length), cacheTypeSeekable, cacheOpOpenRangeReader)
+				dec, derr := newDecompressingReadCloser(fl, r.ft.CompressionType())
+				if derr != nil {
+					fl.Close()
+
+					return fmt.Errorf("decompress cached frame: %w", derr)
+				}
+				r.cur = dec
+
+				return nil
+			}
+			fl.Close()
+		}
+
+		frames, cLen := r.groupExtent()
+		raw, err := r.cache.inner.OpenRangeReader(r.ctx, f.c.Offset, cLen, nil)
+		if err != nil {
+			return fmt.Errorf("raw fetch at C=%d: %w", f.c.Offset, err)
+		}
+		r.raw = raw
+		r.rawLeft = frames
+	}
+
+	recordCacheRead(r.ctx, false, int64(f.c.Length), cacheTypeSeekable, cacheOpOpenRangeReader)
+
+	limited := io.NopCloser(io.LimitReader(r.raw, int64(f.c.Length)))
+	rc, err := newDecompressingCacheReader(limited, r.ft.CompressionType(), f.c.Length, r.cache, r.ctx, path, f.u.Offset)
+	if err != nil {
+		return fmt.Errorf("create decompressor: %w", err)
+	}
+	r.cur = rc
+
+	return nil
+}
+
+// groupExtent returns how many frames starting at idx form one upstream read:
+// consecutive in compressed space and not present in the frame cache.
+func (r *frameRunReader) groupExtent() (frames int, cLen int64) {
+	nextC := r.frames[r.idx].c.Offset
+	for i := r.idx; i < len(r.frames); i++ {
+		f := r.frames[i]
+		if f.c.Offset != nextC {
+			break // compressed-space gap: separate read
+		}
+		if i > r.idx {
+			if fi, err := os.Stat(makeFrameFilename(r.cache.path, f.c)); err == nil && fi.Size() == int64(f.c.Length) {
+				break // cached frame: serve locally, end the group
+			}
+		}
+		frames++
+		cLen += int64(f.c.Length)
+		nextC = f.c.Offset + int64(f.c.Length)
+	}
+
+	return frames, cLen
+}
+
+// finishFrame closes the completed frame reader (triggering its cache
+// write-back) and releases the grouped upstream read once exhausted.
+func (r *frameRunReader) finishFrame() {
+	if closeErr := r.cur.Close(); closeErr != nil && r.err == nil {
+		r.err = closeErr
+	}
+	r.cur = nil
+	r.idx++
+	if r.raw != nil {
+		r.rawLeft--
+		if r.rawLeft == 0 {
+			if closeErr := r.raw.Close(); closeErr != nil && r.err == nil {
+				r.err = closeErr
+			}
+			r.raw = nil
+		}
+	}
+}
+
+func (r *frameRunReader) Close() error {
+	var errs []error
+	if r.cur != nil {
+		errs = append(errs, r.cur.Close()) // drains the frame, triggering write-back
+		r.cur = nil
+	}
+	if r.raw != nil {
+		errs = append(errs, r.raw.Close())
+		r.raw = nil
+	}
+
+	return errors.Join(errs...)
 }
