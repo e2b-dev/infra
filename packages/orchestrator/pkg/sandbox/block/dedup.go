@@ -129,6 +129,7 @@ func dedupCompare(
 
 				if header.IsZero(srcPage) {
 					plan.pageEmpty.Add(pageIdx)
+
 					continue
 				}
 
@@ -141,10 +142,12 @@ func dedupCompare(
 				}
 				if hasMapping && mapped.BuildId == uuid.Nil && int64(mapped.Length) >= header.PageSize {
 					plan.pageDirty.Add(pageIdx) // unbacked parent hole: store as current
+
 					continue
 				}
 				if bestEffort && peeker != nil && !peeker.IsCached(ctx, pageOff, header.PageSize) {
 					plan.pageDirty.Add(pageIdx) // uncached parent page: store as current
+
 					continue
 				}
 
@@ -154,6 +157,7 @@ func dedupCompare(
 				}
 				if !bytes.Equal(srcPage, basePage) {
 					plan.pageDirty.Add(pageIdx)
+
 					continue
 				}
 

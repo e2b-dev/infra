@@ -576,6 +576,7 @@ func TestDedupRandomChain_NoCorruption(t *testing.T) {
 					want := mem[off : off+simPageSize]
 					if m.BuildId == uuid.Nil {
 						require.True(t, header.IsZero(want), "cycle %d: page %d mapped empty but live page is non-zero", cycle, page)
+
 						continue
 					}
 					layer, ok := layers[m.BuildId]
