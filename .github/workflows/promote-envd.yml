@@ -88,6 +88,7 @@ jobs:
           . ".env.${ENVIRONMENT}"
           set +a
 
+          echo "GCP_REGION=${GCP_REGION}" >> "$GITHUB_ENV"
           echo "GCP_PROJECT_ID=${GCP_PROJECT_ID}" >> "$GITHUB_ENV"
           echo "GH_WORKLOAD_IDENTITY_PROVIDER=${GH_WORKLOAD_IDENTITY_PROVIDER}" >> "$GITHUB_ENV"
 
@@ -155,6 +156,7 @@ jobs:
           . ".env.${ENVIRONMENT}"
           set +a
 
+          echo "GCP_REGION=${GCP_REGION}" >> "$GITHUB_ENV"
           echo "GCP_PROJECT_ID=${GCP_PROJECT_ID}" >> "$GITHUB_ENV"
           echo "GH_WORKLOAD_IDENTITY_PROVIDER=${GH_WORKLOAD_IDENTITY_PROVIDER}" >> "$GITHUB_ENV"
 
@@ -222,6 +224,7 @@ jobs:
           . ".env.${ENVIRONMENT}"
           set +a
 
+          echo "GCP_REGION=${GCP_REGION}" >> "$GITHUB_ENV"
           echo "GCP_PROJECT_ID=${GCP_PROJECT_ID}" >> "$GITHUB_ENV"
           echo "GH_WORKLOAD_IDENTITY_PROVIDER=${GH_WORKLOAD_IDENTITY_PROVIDER}" >> "$GITHUB_ENV"
 
