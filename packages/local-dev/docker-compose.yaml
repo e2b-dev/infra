@@ -74,7 +74,7 @@ services:
       - postgres:/var/lib/postgresql/17/docker
 
   redis:
-    image: redis:7.4.2
+    image: redis:7.4.6
     ports:
       - "6379:6379"
 
