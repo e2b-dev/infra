@@ -21,6 +21,7 @@ type Provider interface {
 	GetProfilesByUserID(ctx context.Context, userIDs []uuid.UUID) (map[uuid.UUID]Profile, error)
 	FindProfilesByEmail(ctx context.Context, email string) ([]Profile, error)
 	GetTeamCreatorContext(ctx context.Context, userID uuid.UUID) (*sharedteamprovision.CreatorContextV1, error)
+	DeleteUser(ctx context.Context, userID uuid.UUID) error
 }
 
 func NewProvider(mode Mode, supa Provider, ory Provider) (Provider, error) {

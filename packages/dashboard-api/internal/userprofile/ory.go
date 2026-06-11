@@ -179,6 +179,31 @@ func (p *oryProvider) GetTeamCreatorContext(ctx context.Context, userID uuid.UUI
 	return creatorContextFromOryIdentity(identities[0]), nil
 }
 
+func (p *oryProvider) DeleteUser(ctx context.Context, userID uuid.UUID) error {
+	if userID == uuid.Nil {
+		return fmt.Errorf("user id is required")
+	}
+
+	userIDBySubject, err := p.subjectsForUserIDs(ctx, []uuid.UUID{userID})
+	if err != nil {
+		return fmt.Errorf("lookup ory subject for user: %w", err)
+	}
+
+	for subject := range userIDBySubject {
+		resp, err := p.identities.DeleteIdentityExecute(
+			p.identities.DeleteIdentity(p.authCtx(ctx), subject),
+		)
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+		if err != nil {
+			return fmt.Errorf("delete ory identity %s: %w", subject, err)
+		}
+	}
+
+	return nil
+}
+
 func (p *oryProvider) subjectsForUserIDs(ctx context.Context, userIDs []uuid.UUID) (map[string]uuid.UUID, error) {
 	rows, err := p.resolver.GetUserIdentitiesByUserIDs(ctx, authqueries.GetUserIdentitiesByUserIDsParams{
 		OidcIss: p.issuer,
