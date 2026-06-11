@@ -4,30 +4,19 @@ import (
 	"strings"
 
 	sharedteamprovision "github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
 	signupIPMetadataKey        = "signup_ip"
 	signupUserAgentMetadataKey = "signup_user_agent"
-	ipMetadataKey              = "ip"
-	ipAddressMetadataKey       = "ip_address"
-	userAgentMetadataKey       = "user_agent"
 	providersMetadataKey       = "providers"
 	providerMetadataKey        = "provider"
 )
 
 func creatorContextFromMetadata(metadata map[string]any, providerNames []string) *sharedteamprovision.CreatorContextV1 {
 	return &sharedteamprovision.CreatorContextV1{
-		IPAddress: utils.FirstNonEmpty(
-			metadataString(metadata, signupIPMetadataKey),
-			metadataString(metadata, ipAddressMetadataKey),
-			metadataString(metadata, ipMetadataKey),
-		),
-		UserAgent: utils.FirstNonEmpty(
-			metadataString(metadata, signupUserAgentMetadataKey),
-			metadataString(metadata, userAgentMetadataKey),
-		),
+		IPAddress:  metadataString(metadata, signupIPMetadataKey),
+		UserAgent:  metadataString(metadata, signupUserAgentMetadataKey),
 		AuthMethod: authMethodFromProviderNames(providerNames),
 	}
 }

@@ -313,6 +313,10 @@ components:
         oidc_user_name:
           type: string
           nullable: true
+        signup_ip:
+          type: string
+        signup_user_agent:
+          type: string
 
     AdminTeamBootstrapRequest:
       type: object

@@ -81,6 +81,8 @@ func TestSupabaseCreatorContextFromMetadata(t *testing.T) {
 	metadata := map[string]any{
 		"signup_ip":         "203.0.113.10",
 		"signup_user_agent": "Mozilla/5.0",
+		"ip_address":        "should-not-be-used",
+		"user_agent":        "should-not-be-used",
 		"providers":         []any{"email", "github"},
 	}
 
@@ -93,5 +95,27 @@ func TestSupabaseCreatorContextFromMetadata(t *testing.T) {
 	}
 	if got.AuthMethod != sharedteamprovision.AuthMethodSocial {
 		t.Fatalf("AuthMethod = %q, want %q", got.AuthMethod, sharedteamprovision.AuthMethodSocial)
+	}
+}
+
+func TestCreatorContextFromMetadataIgnoresNonSignupNetworkFields(t *testing.T) {
+	t.Parallel()
+
+	metadata := map[string]any{
+		"ip":         "203.0.113.99",
+		"ip_address": "203.0.113.98",
+		"user_agent": "should-not-be-used",
+		"providers":  []any{"email"},
+	}
+
+	got := creatorContextFromMetadata(metadata, providerNamesFromSupabaseMetadata(metadata))
+	if got.IPAddress != "" {
+		t.Fatalf("IPAddress = %q, want empty", got.IPAddress)
+	}
+	if got.UserAgent != "" {
+		t.Fatalf("UserAgent = %q, want empty", got.UserAgent)
+	}
+	if got.AuthMethod != sharedteamprovision.AuthMethodPassword {
+		t.Fatalf("AuthMethod = %q, want %q", got.AuthMethod, sharedteamprovision.AuthMethodPassword)
 	}
 }
