@@ -97,13 +97,13 @@ func (s *fakeSeekable) OpenRangeReader(_ context.Context, offsetU int64, length 
 
 		end := min(offsetU+length, int64(len(s.data)))
 
-		return storage.NewRangeReader(&controlledReader{
+		return &controlledReader{
 			data:     s.data[offsetU:end],
 			step:     max(16*1024, testBlockSize),
 			advance:  s.ctrl.advance,
 			consumed: s.ctrl.consumed,
 			closed:   s.ctrl.closed,
-		}), nil
+		}, nil
 	}
 
 	var fetchOff, fetchLen int64
@@ -432,10 +432,10 @@ func (s *panicSeekable) StoreFile(context.Context, string, ...storage.PutOption)
 func (s *panicSeekable) OpenRangeReader(_ context.Context, off int64, length int64, _ *storage.FrameTable) (storage.RangeReader, error) {
 	end := min(off+length, int64(len(s.data)))
 
-	return storage.NewRangeReader(&panicReader{
+	return &panicReader{
 		data:       s.data[off:end],
 		panicAfter: int(s.panicAfter - off),
-	}), nil
+	}, nil
 }
 
 type panicReader struct {
@@ -460,7 +460,7 @@ func (r *panicReader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-func (r *panicReader) Close() error {
+func (r *panicReader) Close(context.Context) error {
 	return nil
 }
 
@@ -587,7 +587,7 @@ func (r *controlledReader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-func (r *controlledReader) Close() error {
+func (r *controlledReader) Close(context.Context) error {
 	select {
 	case r.closed <- struct{}{}:
 	default:

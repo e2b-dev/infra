@@ -264,7 +264,7 @@ func (o *gcpObject) Size(ctx context.Context) (int64, error) {
 	return attrs.Size, nil
 }
 
-func (o *gcpObject) openRangeReader(ctx context.Context, off, length int64) (io.ReadCloser, error) {
+func (o *gcpObject) openRangeReader(ctx context.Context, off, length int64) (RangeReader, error) {
 	readCtx, cancel := context.WithCancel(ctx)
 
 	openTimer := time.AfterFunc(googleReadTimeout, cancel)
@@ -291,7 +291,6 @@ func (o *gcpObject) openRangeReader(ctx context.Context, off, length int64) (io.
 		ReadCloser: reader,
 		cancel:     cancel,
 		timer:      time.AfterFunc(googleReadTimeout, cancel),
-		gaugeCtx:   ctx,
 	}, nil
 }
 
@@ -301,9 +300,8 @@ func (o *gcpObject) openRangeReader(ctx context.Context, off, length int64) (io.
 type idleTimeoutReader struct {
 	io.ReadCloser
 
-	cancel   context.CancelFunc
-	timer    *time.Timer
-	gaugeCtx context.Context //nolint:containedctx // needed to decrement gcsConcurrentReads on Close
+	cancel context.CancelFunc
+	timer  *time.Timer
 }
 
 func (r *idleTimeoutReader) Read(p []byte) (int, error) {
@@ -319,10 +317,10 @@ func (r *idleTimeoutReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-func (r *idleTimeoutReader) Close() error {
+func (r *idleTimeoutReader) Close(ctx context.Context) error {
 	r.timer.Stop()
 	defer r.cancel()
-	gcsConcurrentReads.Add(r.gaugeCtx, -1)
+	gcsConcurrentReads.Add(ctx, -1)
 
 	return r.ReadCloser.Close()
 }
@@ -616,7 +614,7 @@ func (o *gcpObject) OpenRangeReader(ctx context.Context, offsetU int64, length i
 			return nil, err
 		}
 
-		return newObservableReader(NewRangeReader(rc), timer, nil), nil
+		return newObservableReader(rc, timer, nil), nil
 	}
 
 	r, err := frameTable.LocateCompressed(offsetU)
@@ -633,9 +631,9 @@ func (o *gcpObject) OpenRangeReader(ctx context.Context, offsetU int64, length i
 		return nil, err
 	}
 
-	dec, err := NewDecompressingReader(NewRangeReader(raw), frameTable.CompressionType())
+	dec, err := NewDecompressingReader(raw, frameTable.CompressionType())
 	if err != nil {
-		raw.Close()
+		raw.Close(ctx)
 		timer.Failure(ctx, 0)
 
 		return nil, err
