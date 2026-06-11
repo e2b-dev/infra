@@ -7,12 +7,10 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	supabasedb "github.com/e2b-dev/infra/packages/db/pkg/supabase"
 	supabasequeries "github.com/e2b-dev/infra/packages/db/pkg/supabase/queries"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sharedteamprovision "github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -82,28 +80,8 @@ func (p *supabaseProvider) GetTeamCreatorContext(ctx context.Context, userID uui
 	}
 
 	appMetadata := rawUserMetadata(authUser.RawAppMetaData)
-	creatorContext := creatorContextFromMetadata(appMetadata, providerNamesFromSupabaseMetadata(appMetadata))
 
-	if creatorContext.AuthMethod == sharedteamprovision.AuthMethodSocial && (creatorContext.IPAddress == "" || creatorContext.UserAgent == "") {
-		session, sessionErr := p.queries.GetLatestAuthSessionByUserID(ctx, userID)
-		if sessionErr != nil {
-			if !dberrors.IsNotFoundError(sessionErr) {
-				logger.L().Warn(ctx, "failed to resolve latest auth session for creator context, falling back to metadata",
-					zap.String("user_id", userID.String()),
-					zap.Error(sessionErr),
-				)
-			}
-		} else {
-			if creatorContext.IPAddress == "" {
-				creatorContext.IPAddress = utils.DerefOrDefault(session.Ip, "")
-			}
-			if creatorContext.UserAgent == "" {
-				creatorContext.UserAgent = utils.DerefOrDefault(session.UserAgent, "")
-			}
-		}
-	}
-
-	return creatorContext, nil
+	return creatorContextFromMetadata(appMetadata, providerNamesFromSupabaseMetadata(appMetadata)), nil
 }
 
 func profileFromAuthUser(user supabasequeries.AuthUser) Profile {

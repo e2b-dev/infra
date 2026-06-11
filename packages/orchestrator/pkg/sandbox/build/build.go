@@ -62,11 +62,15 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
 	maxParallel := b.store.flags.IntFlag(ctx, featureflags.MaxParallelBuildReadSegments)
 
 	for {
-		segments, n, err := b.planRead(ctx, p, off)
+		segments, n, distinctBuilds, err := b.planRead(ctx, p, off)
 		if err == nil {
 			err = b.readSegments(ctx, p, segments, maxParallel)
 		}
 		if err == nil {
+			// Recorded only for the attempt that succeeded, so eviction /
+			// transition retries don't double-count the read.
+			recordReadFanout(ctx, b.fileType, len(segments), distinctBuilds)
+
 			// Fewer bytes than requested means the mappings ran out: report the
 			// bytes filled so far with io.EOF, matching io.ReaderAt semantics.
 			if n < len(p) {
@@ -137,7 +141,10 @@ func (b *File) readSegment(ctx context.Context, p []byte, s readSegment) error {
 
 // planRead resolves the segments covering p, zero-filling uuid.Nil regions.
 // A returned byte count below len(p) means the mappings ran out (EOF).
-func (b *File) planRead(ctx context.Context, p []byte, off int64) ([]readSegment, int, error) {
+// distinctBuilds counts the distinct builds the segments reference; it
+// saturates at buildCacheSize when a single read crosses more builds than the
+// per-read cache holds (already deep in the "very fragmented" regime).
+func (b *File) planRead(ctx context.Context, p []byte, off int64) (segments []readSegment, n int, distinctBuilds int, err error) {
 	// Per-read Diff cache: avoids the DiffStore TTL cache mutex on every mapping.
 	const buildCacheSize = 16
 	var (
@@ -145,21 +152,19 @@ func (b *File) planRead(ctx context.Context, p []byte, off int64) ([]readSegment
 		underlyingDiffs [buildCacheSize]Diff
 		cacheIDs        = underlyingIDs[:0]
 		cacheDiffs      = underlyingDiffs[:0]
-		segments        []readSegment
 	)
 
-	var n int
 	for n < len(p) {
 		h := b.Header()
 		mappedToBuild, err := h.GetShiftedMapping(ctx, off+int64(n))
 		if err != nil {
-			return nil, 0, fmt.Errorf("failed to get mapping: %w", err)
+			return nil, 0, 0, fmt.Errorf("failed to get mapping: %w", err)
 		}
 		readLength := min(int64(mappedToBuild.Length), int64(len(p)-n))
 		// A zero-length mapping means off+n is past the last mapping (EOF); stop
 		// and let the caller surface io.EOF for the bytes covered so far.
 		if readLength <= 0 {
-			return segments, n, nil
+			return segments, n, len(cacheIDs), nil
 		}
 		// uuid.Nil marks an unmapped/empty region; zero-fill it in place.
 		if mappedToBuild.BuildId == uuid.Nil {
@@ -171,7 +176,7 @@ func (b *File) planRead(ctx context.Context, p []byte, off int64) ([]readSegment
 
 		diff, err := b.cachedBuild(ctx, h, mappedToBuild.BuildId, &cacheIDs, &cacheDiffs)
 		if err != nil {
-			return nil, 0, err
+			return nil, 0, 0, err
 		}
 		segments = append(segments, readSegment{
 			dstOff: n,
@@ -183,7 +188,7 @@ func (b *File) planRead(ctx context.Context, p []byte, off int64) ([]readSegment
 		n += int(readLength)
 	}
 
-	return segments, n, nil
+	return segments, n, len(cacheIDs), nil
 }
 
 func (b *File) cachedBuild(ctx context.Context, h *header.Header, buildID uuid.UUID, ids *[]uuid.UUID, diffs *[]Diff) (Diff, error) {
