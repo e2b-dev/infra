@@ -69,6 +69,28 @@ func (m *Memfd) Close() error {
 	return err
 }
 
+// punchHole releases the backing pages for [off, off+length) of the memfd via
+// MADV_REMOVE, which frees the shmem/hugetlbfs backing store (like a fallocate
+// hole-punch). It lets a snapshot copy free each guest range as soon as it has
+// been read into the cache, keeping peak (source + destination) memory ~1x
+// instead of ~2x for large sandboxes.
+//
+// off and length must be huge-page aligned: hugetlbfs rejects sub-hugepage
+// ranges, and callers iterate block-aligned dirty ranges, so a misaligned range
+// is a bug rather than a runtime condition. The mapping is PROT_READ, so there
+// is deliberately no clear() fallback (unlike Cache.punchHole): writing would
+// fault and would not free anything.
+//
+// DESTRUCTIVE: this zeroes the pages for every mapping of the fd, including
+// Firecracker's. Only call when the VM is committed to teardown.
+func (m *Memfd) punchHole(off, length int64) error {
+	if off%header.HugepageSize != 0 || length%header.HugepageSize != 0 {
+		return fmt.Errorf("punch range [%d,%d) not %d-aligned", off, off+length, header.HugepageSize)
+	}
+
+	return unix.Madvise(m.mmap[off:off+length], unix.MADV_REMOVE)
+}
+
 // NewCacheFromMemfd builds a Cache populated from a memfd. The memfd is
 // consumed and closed during construction.
 func NewCacheFromMemfd(
@@ -77,6 +99,7 @@ func NewCacheFromMemfd(
 	filePath string,
 	memfd *Memfd,
 	dirty *roaring.Bitmap,
+	punchSource bool,
 ) (*Cache, error) {
 	ctx, span := tracer.Start(ctx, "export-memory-from-memfd",
 		trace.WithAttributes(
@@ -89,7 +112,7 @@ func NewCacheFromMemfd(
 	if err != nil {
 		return nil, errors.Join(err, memfd.Close())
 	}
-	if err := copyFromMemfd(ctx, cache, memfd, dirty, blockSize); err != nil {
+	if err := copyFromMemfd(ctx, cache, memfd, dirty, blockSize, punchSource); err != nil {
 		return nil, errors.Join(err, memfd.Close(), cache.Close())
 	}
 	if err := memfd.Close(); err != nil {
@@ -99,7 +122,12 @@ func NewCacheFromMemfd(
 	return cache, nil
 }
 
-func copyFromMemfd(ctx context.Context, cache *Cache, memfd *Memfd, dirty *roaring.Bitmap, blockSize int64) error {
+// copyFromMemfd copies each dirty range from the memfd into the cache. When
+// punchSource is set, it frees each range from the memfd (memfd.punchHole) as
+// soon as it has been copied, keeping peak (source + destination) memory ~1x
+// instead of ~2x. Punching is DESTRUCTIVE to the guest pages, so callers must
+// only set it on the pause-and-discard path.
+func copyFromMemfd(ctx context.Context, cache *Cache, memfd *Memfd, dirty *roaring.Bitmap, blockSize int64, punchSource bool) error {
 	var cacheOff int64
 	for r := range BitsetRanges(dirty, blockSize) {
 		if err := ctx.Err(); err != nil {
@@ -114,6 +142,16 @@ func copyFromMemfd(ctx context.Context, cache *Cache, memfd *Memfd, dirty *roari
 		copy((*cache.mmap)[cacheOff:cacheOff+r.Size], src)
 		cache.setIsCached(cacheOff, r.Size)
 		cacheOff += r.Size
+
+		// Free the guest range now that it is in the cache. Punch at the source
+		// offset r.Start (the memfd is addressed by guest offset), not the
+		// packed cacheOff. Each dirty range is visited once and never re-read,
+		// so the range reading back as zero afterwards is harmless.
+		if punchSource {
+			if err := memfd.punchHole(r.Start, r.Size); err != nil {
+				return fmt.Errorf("punch memfd source [%d,%d): %w", r.Start, r.Start+r.Size, err)
+			}
+		}
 	}
 
 	return nil
@@ -139,6 +177,7 @@ func NewCacheFromMemfdAsync(
 	filePath string,
 	memfd *Memfd,
 	dirty *roaring.Bitmap,
+	punchSource bool,
 ) (*MemfdCache, error) {
 	ctx, span := tracer.Start(ctx, "export-memory-from-memfd",
 		trace.WithAttributes(
@@ -165,13 +204,13 @@ func NewCacheFromMemfdAsync(
 	copyCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	m := &MemfdCache{cache: cache, cancel: cancel, done: done}
 
-	go m.runCopy(copyCtx, memfd, dirty, blockSize)
+	go m.runCopy(copyCtx, memfd, dirty, blockSize, punchSource)
 
 	return m, nil
 }
 
-func (m *MemfdCache) runCopy(ctx context.Context, memfd *Memfd, dirty *roaring.Bitmap, blockSize int64) {
-	err := copyFromMemfd(ctx, m.cache, memfd, dirty, blockSize)
+func (m *MemfdCache) runCopy(ctx context.Context, memfd *Memfd, dirty *roaring.Bitmap, blockSize int64, punchSource bool) {
+	err := copyFromMemfd(ctx, m.cache, memfd, dirty, blockSize, punchSource)
 	if closeErr := memfd.Close(); closeErr != nil {
 		err = errors.Join(err, fmt.Errorf("close memfd: %w", closeErr))
 	}

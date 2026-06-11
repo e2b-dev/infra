@@ -141,7 +141,7 @@ func TestNewCacheFromMemfd_NonAdjacentBlocks(t *testing.T) {
 	dirty := roaring.New()
 	dirty.AddMany([]uint32{0, 2, 5})
 
-	cache, err := NewCacheFromMemfd(t.Context(), pageSize, t.TempDir()+"/cache", memfd, dirty)
+	cache, err := NewCacheFromMemfd(t.Context(), pageSize, t.TempDir()+"/cache", memfd, dirty, false)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
@@ -164,7 +164,7 @@ func TestNewCacheFromMemfd_NonZeroRangeStart(t *testing.T) {
 	dirty := roaring.New()
 	dirty.AddMany([]uint32{3, 4})
 
-	cache, err := NewCacheFromMemfd(t.Context(), pageSize, t.TempDir()+"/cache", memfd, dirty)
+	cache, err := NewCacheFromMemfd(t.Context(), pageSize, t.TempDir()+"/cache", memfd, dirty, false)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
@@ -188,7 +188,7 @@ func TestNewCacheFromMemfdAsync_DetachesAndFlushes(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cachePath := t.TempDir() + "/cache"
-	cache, err := NewCacheFromMemfdAsync(ctx, pageSize, cachePath, memfd, dirty)
+	cache, err := NewCacheFromMemfdAsync(ctx, pageSize, cachePath, memfd, dirty, false)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
