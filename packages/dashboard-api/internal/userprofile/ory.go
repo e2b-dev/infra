@@ -189,6 +189,10 @@ func (p *oryProvider) PrepareDeleteUser(ctx context.Context, userID uuid.UUID) (
 		return nil, fmt.Errorf("lookup ory subject for user: %w", err)
 	}
 
+	if len(subjectsByUser) == 0 {
+		return nil, fmt.Errorf("%w: no identity mapping for user %s", ErrUserNotFound, userID)
+	}
+
 	subjects := make([]string, 0, len(subjectsByUser))
 	for s := range subjectsByUser {
 		subjects = append(subjects, s)

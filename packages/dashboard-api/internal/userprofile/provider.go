@@ -2,12 +2,16 @@ package userprofile
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
 
 	sharedteamprovision "github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 )
+
+// ErrUserNotFound is returned when the requested user has no identity mapping.  
+var ErrUserNotFound = errors.New("user not found")
 
 type Profile struct {
 	UserID            uuid.UUID
