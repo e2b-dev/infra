@@ -23,6 +23,10 @@ func (f *fakeProvider) GetTeamCreatorContext(_ context.Context, _ uuid.UUID) (*s
 	return nil, nil
 }
 
+func (f *fakeProvider) DeleteUser(_ context.Context, _ uuid.UUID) error {
+	return nil
+}
+
 func TestNewProvider_FactorySelection(t *testing.T) {
 	t.Parallel()
 
