@@ -24,7 +24,7 @@ func TestHTTPProvisionSink_ReturnsJSONErrorMessage(t *testing.T) {
 	}))
 	defer server.Close()
 
-	sink := NewHTTPProvisionSink(server.URL, "token", nil)
+	sink := NewHTTPProvisionSink(server.URL, "token")
 	err := sink.ProvisionTeam(t.Context(), testProvisionRequest())
 	require.Error(t, err)
 
@@ -52,7 +52,7 @@ func TestHTTPProvisionSink_RetriesRetryableResponsesAndSucceeds(t *testing.T) {
 	}))
 	defer server.Close()
 
-	sink := NewHTTPProvisionSink(server.URL, "token", nil)
+	sink := NewHTTPProvisionSink(server.URL, "token")
 	sink.client.RetryWaitMin = time.Millisecond
 	sink.client.RetryWaitMax = time.Millisecond
 	err := sink.ProvisionTeam(t.Context(), testProvisionRequest())
@@ -74,7 +74,7 @@ func TestHTTPProvisionSink_RetriesRequestTimeoutWithinOverallBudget(t *testing.T
 	}))
 	defer server.Close()
 
-	sink := NewHTTPProvisionSink(server.URL, "token", nil)
+	sink := NewHTTPProvisionSink(server.URL, "token")
 	sink.timeout = 80 * time.Millisecond
 	sink.client.HTTPClient.Timeout = 25 * time.Millisecond
 	sink.client.RetryWaitMin = time.Millisecond

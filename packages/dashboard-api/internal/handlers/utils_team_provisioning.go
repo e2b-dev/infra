@@ -12,11 +12,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
 
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -28,6 +30,7 @@ const (
 	maxTeamsPerUserWithProTier   = 10
 	bootstrapProvisionRetryAge   = 30 * time.Second
 	teamProvisionRollbackTimeout = 5 * time.Second
+	creatorContextResolveTimeout = 2 * time.Second
 )
 
 type provisionedTeam struct {
@@ -212,11 +215,12 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 
 		if time.Since(existingTeam.CreatedAt) < bootstrapProvisionRetryAge {
 			req := teamprovision.TeamBillingProvisionRequestedV1{
-				TeamID:        existingTeam.ID,
-				TeamName:      existingTeam.Name,
-				TeamEmail:     existingTeam.Email,
-				CreatorUserID: profile.UserID,
-				Reason:        teamprovision.ReasonDefaultSignupTeam,
+				TeamID:         existingTeam.ID,
+				TeamName:       existingTeam.Name,
+				TeamEmail:      existingTeam.Email,
+				CreatorUserID:  profile.UserID,
+				CreatorContext: s.resolveTeamCreatorContext(ctx, profile.UserID),
+				Reason:         teamprovision.ReasonDefaultSignupTeam,
 			}
 			_ = s.teamProvisionSink.ProvisionTeam(ctx, req)
 		}
@@ -259,11 +263,12 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 	}
 
 	req := teamprovision.TeamBillingProvisionRequestedV1{
-		TeamID:        team.ID,
-		TeamName:      team.Name,
-		TeamEmail:     team.Email,
-		CreatorUserID: profile.UserID,
-		Reason:        teamprovision.ReasonDefaultSignupTeam,
+		TeamID:         team.ID,
+		TeamName:       team.Name,
+		TeamEmail:      team.Email,
+		CreatorUserID:  profile.UserID,
+		CreatorContext: s.resolveTeamCreatorContext(ctx, profile.UserID),
+		Reason:         teamprovision.ReasonDefaultSignupTeam,
 	}
 	_ = s.teamProvisionSink.ProvisionTeam(ctx, req)
 
@@ -329,11 +334,12 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 	}
 
 	req := teamprovision.TeamBillingProvisionRequestedV1{
-		TeamID:        team.ID,
-		TeamName:      team.Name,
-		TeamEmail:     team.Email,
-		CreatorUserID: userID,
-		Reason:        teamprovision.ReasonAdditionalTeam,
+		TeamID:         team.ID,
+		TeamName:       team.Name,
+		TeamEmail:      team.Email,
+		CreatorUserID:  userID,
+		CreatorContext: s.resolveTeamCreatorContext(ctx, userID),
+		Reason:         teamprovision.ReasonAdditionalTeam,
 	}
 	if err := s.teamProvisionSink.ProvisionTeam(ctx, req); err != nil {
 		rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), teamProvisionRollbackTimeout)
@@ -436,6 +442,27 @@ func validateTeamCreationAllowed(ctx context.Context, authTxDB *authqueries.Quer
 	}
 
 	return nil
+}
+
+func (s *APIStore) resolveTeamCreatorContext(ctx context.Context, userID uuid.UUID) *teamprovision.CreatorContextV1 {
+	if userID == uuid.Nil || s.userProfiles == nil {
+		return nil
+	}
+
+	resolveCtx, cancel := context.WithTimeout(ctx, creatorContextResolveTimeout)
+	defer cancel()
+
+	creatorContext, err := s.userProfiles.GetTeamCreatorContext(resolveCtx, userID)
+	if err != nil {
+		logger.L().Warn(ctx, "failed to resolve creator context for team provisioning",
+			zap.String("user_id", userID.String()),
+			zap.Error(err),
+		)
+
+		return nil
+	}
+
+	return creatorContext
 }
 
 func defaultTeamNameFromProfile(profile userprofile.Profile) string {
