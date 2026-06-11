@@ -66,10 +66,6 @@ func (p *supabaseProvider) FindProfilesByEmail(ctx context.Context, email string
 	return profiles, nil
 }
 
-type noopDeleteHandle struct{}
-
-func (noopDeleteHandle) Execute(_ context.Context) error { return nil }
-
 func (p *supabaseProvider) PrepareDeleteUser(_ context.Context, _ uuid.UUID) (DeleteUserHandle, error) {
 	return nil, errors.New("user deletion is not supported in supabase mode")
 }
