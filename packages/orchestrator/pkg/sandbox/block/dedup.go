@@ -98,6 +98,12 @@ func dedupCompare(
 
 	plan := &dedupPlan{pageDirty: roaring.New(), pageEmpty: roaring.New()}
 
+	// Keys exceeding maxTracked pages can never be promoted (the global pass
+	// skips keys holding a full fetch window or more than its page budget),
+	// so their bitmaps are dropped (nil) and only the key is kept for the
+	// parentFrames count. This bounds planner memory; with the promotion
+	// budget disabled nothing is tracked at all.
+	maxTracked := min(budget.MaxPromotedParentPagesTotal, budget.FetchRunWindowPages-1)
 	parentByKey := make(map[dedupFetchKey]*roaring.Bitmap)
 
 	baseHeader := base.Header()
@@ -163,12 +169,19 @@ func dedupCompare(
 				case dedupPageCurrent:
 					plan.pageDirty.Add(pageIdx)
 				case dedupPageParent:
-					bm := parentByKey[info.key]
-					if bm == nil {
-						bm = roaring.New()
+					bm, seen := parentByKey[info.key]
+					if !seen {
+						if maxTracked > 0 {
+							bm = roaring.New()
+						}
 						parentByKey[info.key] = bm
 					}
-					bm.Add(pageIdx)
+					if bm != nil {
+						bm.Add(pageIdx)
+						if bm.GetCardinality() > uint64(maxTracked) {
+							parentByKey[info.key] = nil
+						}
+					}
 				}
 			}
 		}
@@ -291,6 +304,9 @@ func (p *dedupPlan) promoteCheapestFrames(parentByKey map[dedupFetchKey]*roaring
 	}
 	cands := make([]candidate, 0, len(parentByKey))
 	for k, bm := range parentByKey {
+		if bm == nil {
+			continue // capped during the scan: never promotable
+		}
 		cands = append(cands, candidate{k, bm})
 	}
 	slices.SortFunc(cands, func(a, b candidate) int {
