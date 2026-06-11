@@ -108,7 +108,6 @@ func dedupCompare(
 	baseHeader := base.Header()
 	peeker, _ := base.(CachePeeker)
 
-	pages := make([]dedupPageInfo, blockSize/header.PageSize)
 	for r := range BitsetRanges(dirty, blockSize) {
 		plan.exportedSize += r.Size
 
@@ -123,16 +122,15 @@ func dedupCompare(
 				return nil, err
 			}
 
-			clear(pages)
 			for i := int64(0); i < blockSize; i += header.PageSize {
 				srcPage := srcBuf[i : i+header.PageSize]
 				pageOff := absOff + i
+				pageIdx := uint32(pageOff / header.PageSize)
 
 				if header.IsZero(srcPage) {
-					continue // zero value of dedupPageInfo is empty
+					plan.pageEmpty.Add(pageIdx)
+					continue
 				}
-				info := &pages[i/header.PageSize]
-				info.kind = dedupPageCurrent
 
 				var mapped header.BuildMap
 				hasMapping := false
@@ -142,10 +140,12 @@ func dedupCompare(
 					}
 				}
 				if hasMapping && mapped.BuildId == uuid.Nil && int64(mapped.Length) >= header.PageSize {
-					continue // unbacked parent hole: store as current
+					plan.pageDirty.Add(pageIdx) // unbacked parent hole: store as current
+					continue
 				}
 				if bestEffort && peeker != nil && !peeker.IsCached(ctx, pageOff, header.PageSize) {
-					continue // uncached parent page: store as current
+					plan.pageDirty.Add(pageIdx) // uncached parent page: store as current
+					continue
 				}
 
 				basePage, sErr := base.Slice(ctx, pageOff, header.PageSize)
@@ -153,28 +153,17 @@ func dedupCompare(
 					return nil, fmt.Errorf("slice base at %d: %w", pageOff, sErr)
 				}
 				if !bytes.Equal(srcPage, basePage) {
+					plan.pageDirty.Add(pageIdx)
 					continue
 				}
 
-				info.kind = dedupPageParent
-				info.key = parentFetchKey(baseHeader, mapped, hasMapping, pageOff, windowBytes)
-			}
-
-			for p, info := range pages {
-				pageIdx := uint32(absOff/header.PageSize) + uint32(p)
-				switch info.kind {
-				case dedupPageEmpty:
-					plan.pageEmpty.Add(pageIdx)
-				case dedupPageCurrent:
-					plan.pageDirty.Add(pageIdx)
-				case dedupPageParent:
-					bm := parentByKey[info.key]
-					if bm == nil {
-						bm = roaring.New()
-						parentByKey[info.key] = bm
-					}
-					bm.Add(pageIdx)
+				key := parentFetchKey(baseHeader, mapped, hasMapping, pageOff, windowBytes)
+				bm := parentByKey[key]
+				if bm == nil {
+					bm = roaring.New()
+					parentByKey[key] = bm
 				}
+				bm.Add(pageIdx)
 			}
 		}
 	}
