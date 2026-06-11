@@ -140,9 +140,10 @@ var (
 	MemfdBackgroundCopyFlag = NewBoolFlag("memfd-background-copy", false)
 
 	// MemfileDiffDedupFlag enables 4 KiB-page dedup of the memfile diff
-	// against the base memfile. bestEffort skips uncached blocks;
-	// directIO opens the dedup output with O_DIRECT. The max*/fetchRun*
-	// keys cap fetch fragmentation of the deduped diff; see
+	// against the base memfile. bestEffort skips uncached blocks; directIO
+	// opens the dedup output with O_DIRECT. The remaining keys budget fetch
+	// defragmentation of the deduped diff — fetchRunWindowPages is the
+	// uncompressed frame/window size served per backing fetch — see
 	// orchestrator block.DedupBudget for semantics (0 = disabled/default).
 	MemfileDiffDedupFlag = NewJSONFlag("memfile-diff-dedup", ldvalue.FromJSONMarshal(map[string]any{
 		"enabled":                        false,

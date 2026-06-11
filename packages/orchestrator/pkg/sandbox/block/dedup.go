@@ -207,15 +207,28 @@ func parentFetchKey(baseHeader *header.Header, mapped header.BuildMap, hasMappin
 		return dedupFetchKey{window: int(pageOff / windowBytes)}
 	}
 
+	var ft *storage.FrameTable
 	if baseHeader != nil {
-		if ft := baseHeader.GetBuildFrameData(mapped.BuildId); ft.IsCompressed() {
-			if u, err := ft.LocateUncompressed(int64(mapped.Offset)); err == nil {
-				return dedupFetchKey{buildID: mapped.BuildId, window: int(u.Offset / header.PageSize)}
-			}
+		ft = baseHeader.GetBuildFrameData(mapped.BuildId)
+	}
+	key, _ := fetchKeyAndEnd(ft, mapped.BuildId, int64(mapped.Offset), windowBytes)
+
+	return key
+}
+
+// fetchKeyAndEnd returns the fetch key of the parent window containing the
+// build-local (uncompressed) offset and the end of that window: the exact
+// frame when the build's frame table is known, a windowBytes bucket
+// otherwise. The returned end is always past off, so walking a range window
+// by window terminates.
+func fetchKeyAndEnd(ft *storage.FrameTable, buildID uuid.UUID, off, windowBytes int64) (dedupFetchKey, int64) {
+	if ft.IsCompressed() {
+		if u, err := ft.LocateUncompressed(off); err == nil && u.Offset+int64(u.Length) > off {
+			return dedupFetchKey{buildID: buildID, window: int(u.Offset / header.PageSize)}, u.Offset + int64(u.Length)
 		}
 	}
 
-	return dedupFetchKey{buildID: mapped.BuildId, window: int(mapped.Offset / uint64(windowBytes))}
+	return dedupFetchKey{buildID: buildID, window: int(off / windowBytes)}, (off/windowBytes + 1) * windowBytes
 }
 
 // compactBlockWindows applies the per-block fetch-window cap. It runs after
@@ -298,7 +311,7 @@ func countExternalBlocks(
 	blockSize, windowBytes int64,
 ) map[dedupFetchKey]int {
 	counts := make(map[dedupFetchKey]int)
-	if baseHeader == nil {
+	if baseHeader == nil || len(candidates) == 0 {
 		return counts
 	}
 
@@ -317,14 +330,7 @@ func countExternalBlocks(
 			lo := max(block*blockSize, int64(m.Offset)) - int64(m.Offset) + int64(m.BuildStorageOffset)
 			hi := min((block+1)*blockSize, end) - int64(m.Offset) + int64(m.BuildStorageOffset)
 			for off := lo; off < hi; {
-				key := dedupFetchKey{buildID: m.BuildId, window: int(off / windowBytes)}
-				next := (off/windowBytes + 1) * windowBytes
-				if ft.IsCompressed() {
-					if u, err := ft.LocateUncompressed(off); err == nil {
-						key.window = int(u.Offset / header.PageSize)
-						next = u.Offset + int64(u.Length)
-					}
-				}
+				key, next := fetchKeyAndEnd(ft, m.BuildId, off, windowBytes)
 				if _, ok := candidates[key]; ok && lastBlock[key] != block+1 {
 					counts[key]++
 					lastBlock[key] = block + 1 // +1 so block 0 differs from the zero value
