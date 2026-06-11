@@ -59,9 +59,10 @@ const (
 	dedupPageCurrent
 )
 
-// dedupFetchKey identifies the parent fetch window backing a deduped page.
-// Windows are frame-sized spans of the parent build's stored file, so on a
-// cold restore each distinct key costs one backing fetch.
+// dedupFetchKey identifies the parent fetch window backing a deduped page:
+// the exact compression frame when the build's frame table is known, or a
+// configured-size bucket of the build's stored file otherwise. On a cold
+// restore each distinct key costs one backing fetch.
 type dedupFetchKey struct {
 	buildID uuid.UUID
 	window  int
@@ -155,7 +156,7 @@ func dedupCompare(
 				}
 
 				info.kind = dedupPageParent
-				info.key = parentFetchKey(mapped, hasMapping, pageOff, windowBytes)
+				info.key = parentFetchKey(baseHeader, mapped, hasMapping, pageOff, windowBytes)
 			}
 
 			for p, info := range pages {
@@ -187,13 +188,24 @@ func dedupCompare(
 	return plan, nil
 }
 
-// parentFetchKey is the fetch key of the parent window backing pageOff.
-func parentFetchKey(mapped header.BuildMap, hasMapping bool, pageOff, windowBytes int64) dedupFetchKey {
-	if hasMapping {
-		return dedupFetchKey{buildID: mapped.BuildId, window: int(mapped.Offset / uint64(windowBytes))}
+// parentFetchKey is the fetch key of the parent window backing pageOff. When
+// the parent build's frame table is known, the key is the exact frame restore
+// would fetch (builds can be compressed with non-default frame sizes);
+// otherwise offsets are bucketed by the configured window size.
+func parentFetchKey(baseHeader *header.Header, mapped header.BuildMap, hasMapping bool, pageOff, windowBytes int64) dedupFetchKey {
+	if !hasMapping {
+		return dedupFetchKey{window: int(pageOff / windowBytes)}
 	}
 
-	return dedupFetchKey{window: int(pageOff / windowBytes)}
+	if baseHeader != nil {
+		if ft := baseHeader.GetBuildFrameData(mapped.BuildId); ft.IsCompressed() {
+			if u, err := ft.LocateUncompressed(int64(mapped.Offset)); err == nil {
+				return dedupFetchKey{buildID: mapped.BuildId, window: int(u.Offset / header.PageSize)}
+			}
+		}
+	}
+
+	return dedupFetchKey{buildID: mapped.BuildId, window: int(mapped.Offset / uint64(windowBytes))}
 }
 
 // compactBlockWindows applies the per-block fetch-window cap. It runs after
@@ -244,7 +256,7 @@ func compactBlockWindows(
 						}
 					}
 					pages[p].kind = dedupPageParent
-					pages[p].key = parentFetchKey(mapped, hasMapping, pageOff, windowBytes)
+					pages[p].key = parentFetchKey(baseHeader, mapped, hasMapping, pageOff, windowBytes)
 				}
 			}
 

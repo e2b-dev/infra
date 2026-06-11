@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
@@ -222,6 +223,42 @@ func TestCacheDedup_BudgetExhaustionKeepsParentsDeduped(t *testing.T) {
 	require.True(t, meta.Dirty.Contains(0))
 	require.True(t, meta.Dirty.Contains(2))
 	require.EqualValues(t, 0, meta.Empty.GetCardinality())
+}
+
+// Parent pages must be keyed by the frames restore actually fetches: a build
+// compressed with a non-default frame size uses its own frame table, not the
+// configured window bucketing.
+func TestParentFetchKey_UsesBuildFrameTable(t *testing.T) {
+	t.Parallel()
+
+	build := uuid.New()
+	frameU := int32(1 << 20) // 1 MiB frames, half the default window
+	ft := storage.NewFrameTable(storage.CompressionZstd, []storage.FrameSize{
+		{U: frameU, C: 100}, {U: frameU, C: 100}, {U: frameU, C: 100},
+	})
+
+	hdr, err := header.NewHeader(header.NewTemplateMetadata(build, uint64(header.PageSize), 4<<20), nil)
+	require.NoError(t, err)
+	hdr.SetBuild(build, header.BuildData{FrameData: ft})
+
+	windowBytes := int64(2 << 20)
+	key := func(storageOff uint64) dedupFetchKey {
+		return parentFetchKey(hdr, header.BuildMap{BuildId: build, Offset: storageOff}, true, 0, windowBytes)
+	}
+
+	// Offsets in frame 0 and frame 1 are distinct keys even though they share
+	// one 2 MiB configured window; frame 1 and frame 2 differ as well.
+	require.Equal(t, key(0), key(uint64(frameU)-1))
+	require.NotEqual(t, key(0), key(uint64(frameU)))
+	require.NotEqual(t, key(uint64(frameU)), key(uint64(2*frameU)))
+
+	// Builds without frame data fall back to configured-window bucketing.
+	other := uuid.New()
+	fallback := func(storageOff uint64) dedupFetchKey {
+		return parentFetchKey(hdr, header.BuildMap{BuildId: other, Offset: storageOff}, true, 0, windowBytes)
+	}
+	require.Equal(t, fallback(0), fallback(uint64(windowBytes)-1))
+	require.NotEqual(t, fallback(0), fallback(uint64(windowBytes)))
 }
 
 func parentKeyedPage(buildID uuid.UUID, window int) dedupPageInfo {
