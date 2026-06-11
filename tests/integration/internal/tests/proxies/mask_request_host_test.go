@@ -30,25 +30,21 @@ func TestMaskRequestHostAPIParameter(t *testing.T) {
 	// Create sandbox with maskRequestHost set
 	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithNetwork(sbxNet), utils.WithTimeout(120))
 
-	// run sudo apt-get update; sudo apt-get install -y netcat
-	// run nc -l -p 8080
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	// Install netcat for the test
-	err := utils.ExecCommandAsRoot(t, ctx, sbx, envdClient, "apt-get", "update")
-	require.NoError(t, err)
-	err = utils.ExecCommandAsRoot(t, ctx, sbx, envdClient, "apt-get", "install", "-y", "netcat-traditional")
-	require.NoError(t, err)
-
 	port := 8080
-	// Start a netcat listener on port that outputs request headers to a file
+	// Single-shot listener that dumps the raw request to a file. Uses the
+	// preinstalled python instead of installing netcat via apt-get, which is
+	// page-fault-heavy enough to wedge the sandbox under parallel test load.
 	outputFile := "/tmp/nc_output.txt"
+	listener := fmt.Sprintf(
+		`import socket; s=socket.socket(); s.bind(("0.0.0.0",%d)); s.listen(1); c,_=s.accept(); open(%q,"wb").write(c.recv(65536))`,
+		port, outputFile)
 	go func() {
-		_ = utils.ExecCommandAsRoot(t, ctx, sbx, envdClient,
-			"/bin/bash", "-c", fmt.Sprintf("nc -l -p %d > %s", port, outputFile))
+		_ = utils.ExecCommandAsRoot(t, ctx, sbx, envdClient, "python3", "-c", listener)
 	}()
 
-	// Wait for nc to be up
+	// Wait for the listener to be up
 	time.Sleep(2 * time.Second)
 
 	// Prepare the sandbox URL using helpers
