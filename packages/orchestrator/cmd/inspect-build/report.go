@@ -246,7 +246,7 @@ func gather(ctx context.Context, storagePath, buildID, artifact string) (*report
 		r.Header.Ratio = ratio(r.Data.UncompressedSize, r.Header.StorageSize)
 	}
 	r.Mappings, r.Image.Ancestors = gatherMappings(h)
-	r.Builds = gatherBuilds(h)
+	r.Builds = gatherBuilds(h, r.Header.StorageSize)
 	r.Fetchmap = gatherFetchmap(h, fetchmapChunkSize)
 	// Self's frames live in two places — r.Data.Frames (the rendering path)
 	// and r.Builds[self].Frames (the JSON contract). Annotate both.
@@ -441,8 +441,16 @@ func gatherData(h *header.Header, ft *storage.FrameTable, storedSize int64) data
 		return d
 	}
 
-	d.UncompressedSize = ft.UncompressedSize()
-	d.CompressedSize = ft.CompressedSize()
+	// Canonical sizes: Builds[self].Size is the recorded uncompressed image
+	// size, the on-disk storedSize is the compressed file's bytes. ft.*Size()
+	// would be smaller when the self frame table is sparse-trimmed (V4+ can
+	// drop frames while preserving original U offsets).
+	if bd, ok := h.Builds[h.Metadata.BuildId]; ok && bd.Size > 0 {
+		d.UncompressedSize = bd.Size
+	} else {
+		d.UncompressedSize = ft.UncompressedSize()
+	}
+	d.CompressedSize = storedSize
 	d.Ratio = ratio(d.UncompressedSize, d.CompressedSize)
 	d.FrameCount = ft.NumFrames()
 	for i := range d.FrameCount {
@@ -626,7 +634,7 @@ func gatherFetchmap(h *header.Header, chunkSize uint64) *fetchmap {
 	return fm
 }
 
-func gatherBuilds(h *header.Header) []buildInfo {
+func gatherBuilds(h *header.Header, selfStoredSize int64) []buildInfo {
 	builds := make([]buildInfo, 0, len(h.Builds))
 	for id, bd := range h.Builds {
 		b := buildInfo{
@@ -637,9 +645,14 @@ func gatherBuilds(h *header.Header) []buildInfo {
 			Checksum:         checksumString(bd.Checksum),
 		}
 		if bd.FrameData.IsCompressed() {
-			b.CompressedSize = bd.FrameData.CompressedSize()
-			b.UncompressedSize = bd.FrameData.UncompressedSize()
-			b.Ratio = ratio(b.UncompressedSize, b.CompressedSize)
+			// Canonical uncompressed size is bd.Size (set above). The header
+			// has no recorded compressed size, so only self's CompressedSize
+			// is known here (from the on-disk storedSize); ancestor entries
+			// stay zero and the renderer omits the line.
+			if id == h.Metadata.BuildId && selfStoredSize > 0 {
+				b.CompressedSize = selfStoredSize
+				b.Ratio = ratio(b.UncompressedSize, b.CompressedSize)
+			}
 			b.FrameCount = bd.FrameData.NumFrames()
 			b.Frames = make([]frameInfo, b.FrameCount)
 			for i := range b.Frames {

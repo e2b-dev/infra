@@ -543,7 +543,7 @@ func renderFrameMap(w io.Writer, r *report, vw view, colors map[uuid.UUID]rgb) {
 	builds := buildPerChunk(r.h, fm.ChunkCount, bs)
 	width := min(fm.ChunkCount, heatmapRowWidth(vw))
 	cmpRow := framemapRow(cmp, fm.ChunkCount, width, compressionCell, worstCompression)
-	fetchRow := framemapRow(intsToFloat(fm.Cells), fm.ChunkCount, width, fetchCell, worstFetch)
+	fetchRow := framemapRow(intsToFloat(fm.Cells), fm.ChunkCount, width, densityCell, worstFetch)
 	buildRow := buildmapRow(builds, fm.ChunkCount, width, colors)
 	densRow := framemapRow(dens, fm.ChunkCount, width, densityCell, worstFetch)
 
@@ -555,7 +555,7 @@ func renderFrameMap(w io.Writer, r *report, vw view, colors map[uuid.UUID]rgb) {
 		cmpAvg = " avg " + ratioColored(r.Data.Ratio)
 	}
 	cmpLegend := "C: " + gradientLegend("10x+", "1x", 1.0, 0.0) + cmpAvg
-	fetchLegend := "F: " + gradientLegend("1", "8+", 1.0, 0.0) +
+	fetchLegend := "F: " + gradientLegend("2", "8+", 1.0, 0.0) +
 		fmt.Sprintf(" avg %.2f", fm.AvgSegments)
 	densLegend := "M: " + gradientLegend("2", "8+", 1.0, 0.0) +
 		fmt.Sprintf(" avg %.2f", avgDensity)
@@ -573,13 +573,14 @@ func renderFrameMap(w io.Writer, r *report, vw view, colors map[uuid.UUID]rgb) {
 }
 
 // buildPerChunk maps each virtual chunk to the build ID whose mappings
-// cover the most bytes inside that chunk. Chunks served only by zero-fill
-// (Nil) mappings get uuid.Nil.
+// cover the most bytes inside that chunk. Nil mappings are excluded — they
+// carry no fetch cost so they shouldn't outvote a real backing build. A
+// chunk with no non-Nil mappings (fully sparse) stays at uuid.Nil.
 func buildPerChunk(h *header.Header, chunkCount int, chunkSize int64) []uuid.UUID {
 	winners := make([]uuid.UUID, chunkCount)
 	bytesPer := make([]map[uuid.UUID]uint64, chunkCount)
 	for _, m := range h.Mapping.All() {
-		if m.Length == 0 {
+		if m.Length == 0 || m.BuildId == uuid.Nil {
 			continue
 		}
 		vStart := int64(m.Offset)
@@ -613,12 +614,14 @@ func buildPerChunk(h *header.Header, chunkCount int, chunkSize int64) []uuid.UUI
 	return winners
 }
 
-// mappingDensityPerChunk counts how many distinct mappings (any build,
-// including Nil) overlap each chunk. High counts indicate fragmentation.
+// mappingDensityPerChunk counts how many distinct backing mappings overlap
+// each chunk — sparse (Nil) mappings are excluded since they carry no fetch
+// cost. With Nil out, M matches F's "fetchable layers" semantics, and the
+// invariant M ≤ (number of distinct builds touching the chunk) holds.
 func mappingDensityPerChunk(h *header.Header, chunkCount int, chunkSize int64) []float64 {
 	out := make([]float64, chunkCount)
 	for _, m := range h.Mapping.All() {
-		if m.Length == 0 {
+		if m.Length == 0 || m.BuildId == uuid.Nil {
 			continue
 		}
 		first := int64(m.Offset) / chunkSize
@@ -635,8 +638,10 @@ func mappingDensityPerChunk(h *header.Header, chunkCount int, chunkSize int64) [
 }
 
 // buildmapRow downsamples a per-chunk winner-build series to width cells.
-// Each output cell picks the most common winner across its bucket; ties
-// broken by first occurrence.
+// Each output cell picks the most common non-Nil winner across its bucket
+// (ties broken by first occurrence). A cell is only rendered as Nil when
+// every input chunk in its bucket is Nil — otherwise we'd hide real
+// backing builds whenever a bucket is mostly-but-not-all sparse.
 func buildmapRow(winners []uuid.UUID, n, width int, colors map[uuid.UUID]rgb) string {
 	if n == 0 || width == 0 {
 		return ""
@@ -650,6 +655,9 @@ func buildmapRow(winners []uuid.UUID, n, width int, colors map[uuid.UUID]rgb) st
 		var top uuid.UUID
 		var topN int
 		for _, id := range winners[i:hi] {
+			if id == uuid.Nil {
+				continue
+			}
 			counts[id]++
 			if counts[id] > topN {
 				topN, top = counts[id], id
@@ -818,24 +826,10 @@ func compressionCell(r float64) string {
 	return heatColor(ratioNorm(r)).fg() + "█" + ansiReset
 }
 
-// fetchCell picks the char + color for a single chunk's fetch fanout. 0
-// (untouched) is a dimmed dot; everything else is a solid block colored
-// cool→hot, scaled from 1 fetch (green) to 8+ (red).
-func fetchCell(n float64) string {
-	v := int(n)
-	if v == 0 {
-		return ansiDim + "·" + ansiReset
-	}
-	// heatColor 0→red→1→green; hot = many fetches = small t → invert.
-	t := float64(min(v, 8)-1) / 7
-
-	return heatColor(1-t).fg() + "█" + ansiReset
-}
-
-// densityCell picks the char + color for a single chunk's mapping count.
-// 0 (untouched) and 1 (single mapping → ideal) both render as a dimmed dot
-// — visually aligning with the zero markers in the C/F rows above; 2..8+
-// are colored cool→hot.
+// densityCell picks the char + color for a single chunk's count-of-thing
+// metric — used by both F (fetches/hugepage) and M (mappings/hugepage).
+// 0 (untouched) and 1 (single fetch/mapping → unavoidable, ideal) render as
+// a dimmed dot; 2..8+ are colored cool→hot.
 func densityCell(n float64) string {
 	v := int(n)
 	if v <= 1 {

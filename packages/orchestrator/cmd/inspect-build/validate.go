@@ -11,6 +11,7 @@ import (
 	"slices"
 	"sync/atomic"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/metric/noop"
 	"golang.org/x/sync/errgroup"
 
@@ -28,14 +29,23 @@ const validateConcurrency = 10
 
 // runValidate validates the target build through the production read path
 // (block.Chunker) and, with recursive, every ancestor its mappings draw on.
+// In recursive mode the target's Builds map is treated as authoritative: each
+// ancestor's own recorded Size is cross-checked against the target's record.
 func runValidate(ctx context.Context, storagePath, buildID, artifact string, recursive bool) error {
 	if !recursive {
-		return validateBuild(ctx, storagePath, buildID, artifact)
+		return validateBuild(ctx, storagePath, buildID, artifact, 0)
 	}
 
 	chain, err := gatherChain(ctx, storagePath, buildID, artifact, true)
 	if err != nil {
 		return err
+	}
+
+	expected := map[uuid.UUID]int64{}
+	for id, bd := range chain[0].h.Builds {
+		if bd.Size > 0 {
+			expected[id] = bd.Size
+		}
 	}
 
 	var validated, failed int
@@ -48,7 +58,7 @@ func runValidate(ctx context.Context, storagePath, buildID, artifact string, rec
 		fmt.Printf("\n──── %s (%s) ────\n", id, roleOf(id, chain[0].h.Metadata))
 
 		validated++
-		if err := validateBuild(ctx, storagePath, id.String(), artifact); err != nil {
+		if err := validateBuild(ctx, storagePath, id.String(), artifact, expected[id]); err != nil {
 			failed++
 			fmt.Fprintf(os.Stderr, "  %s\n", err)
 		}
@@ -64,8 +74,10 @@ func runValidate(ctx context.Context, storagePath, buildID, artifact string, rec
 
 // validateBuild reads a build's entire image through the production block
 // Chunker — the same fetch+decompress path the orchestrator uses — and verifies
-// the SHA-256 checksum and the frame table.
-func validateBuild(ctx context.Context, storagePath, buildID, artifact string) error {
+// the SHA-256 checksum and the frame table. expectedSize is the size the
+// caller expects (e.g., a descendant's record of this build); 0 = no
+// expectation. Mismatches are reported by reportValidation.
+func validateBuild(ctx context.Context, storagePath, buildID, artifact string, expectedSize int64) error {
 	headerData, _, err := cmdutil.ReadFile(ctx, storagePath, buildID, artifact+storage.HeaderSuffix)
 	if err != nil {
 		return fmt.Errorf("read header: %w", err)
@@ -130,7 +142,7 @@ func validateBuild(ctx context.Context, storagePath, buildID, artifact string) e
 	var got [32]byte
 	copy(got[:], hasher.Sum(nil))
 
-	return reportValidation(h, ft, got, expected)
+	return reportValidation(h, ft, got, expected, size, expectedSize)
 }
 
 // openChunker wires a production block.Chunker over the build's data file,
@@ -153,11 +165,14 @@ func openChunker(ctx context.Context, storagePath, buildID, artifact string, h *
 		return nil, 0, nil, fmt.Errorf("open data: %w", err)
 	}
 
-	// Uncompressed image size: the frame table for compressed builds, the data
-	// object's own size otherwise (V3 builds have no Builds entry to read).
+	// Mirror production (build/storage_diff.go:Init): the canonical uncompressed
+	// size is h.Builds[self].Size — correct even when the serialized self frame
+	// table is sparse-trimmed (V4+ can drop frames while preserving original U
+	// offsets, so ft.UncompressedSize() would be smaller). Fall back to the
+	// storage object's own Size() for V3 headers, which have no Builds map.
 	var size int64
-	if ft.IsCompressed() {
-		size = ft.UncompressedSize()
+	if bd, ok := h.Builds[h.Metadata.BuildId]; ok && bd.Size > 0 {
+		size = bd.Size
 	} else if size, err = obj.Size(ctx); err != nil {
 		return nil, 0, nil, fmt.Errorf("get data size: %w", err)
 	}
@@ -190,16 +205,28 @@ func openChunker(ctx context.Context, storagePath, buildID, artifact string, h *
 	return chunker, size, cleanup, nil
 }
 
-// reportValidation prints the VALIDATION block: checksum and frame-table verdicts.
-func reportValidation(h *header.Header, ft *storage.FrameTable, got, expected [32]byte) error {
+// reportValidation prints the VALIDATION block: size, checksum, frame-table
+// verdicts. size is the canonical uncompressed image size; expectedSize is
+// what a descendant's Builds map recorded for this build (0 = no expectation).
+func reportValidation(h *header.Header, ft *storage.FrameTable, got, expected [32]byte, size, expectedSize int64) error {
 	var ftProblems []string
 	if ft.IsCompressed() {
 		ftProblems = validateFrameTable(h, ft)
 	}
+	sizeMismatch := expectedSize > 0 && expectedSize != size
 
 	fmt.Printf("\nVALIDATION\n")
 	if ft.IsCompressed() {
 		fmt.Printf("  Frames           %d\n", ft.NumFrames())
+	}
+	switch {
+	case expectedSize == 0:
+		fmt.Printf("  Size             %d (%s)\n", size, humanSize(size))
+	case sizeMismatch:
+		fmt.Printf("  Size             MISMATCH\n    expected %d (%s)\n    actual   %d (%s)\n",
+			expectedSize, humanSize(expectedSize), size, humanSize(size))
+	default:
+		fmt.Printf("  Size             OK  %d (%s)  (matches descendant's record)\n", size, humanSize(size))
 	}
 	noChecksum := expected == ([32]byte{})
 	switch {
@@ -221,7 +248,7 @@ func reportValidation(h *header.Header, ft *storage.FrameTable, got, expected [3
 		}
 	}
 
-	if (!noChecksum && got != expected) || len(ftProblems) > 0 {
+	if sizeMismatch || (!noChecksum && got != expected) || len(ftProblems) > 0 {
 		return errors.New("validation failed")
 	}
 
