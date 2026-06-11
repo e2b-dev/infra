@@ -47,7 +47,7 @@ func TestNewProvisionSink(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			sink, err := NewProvisionSink(t.Context(), tt.baseURL, tt.apiToken, nil)
+			sink, err := NewProvisionSink(t.Context(), tt.baseURL, tt.apiToken)
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)
 				require.Nil(t, sink)

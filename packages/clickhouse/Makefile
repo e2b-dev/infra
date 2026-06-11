@@ -33,11 +33,14 @@ migrate-local:
 
 .PHONY: build
 build:
-	@docker build --platform linux/amd64 --tag "$(CLICKHOUSE_MIGRATOR_IMAGE)" .
+	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
+	@docker build --platform linux/amd64 --tag "$(CLICKHOUSE_MIGRATOR_IMAGE)" --tag "$(CLICKHOUSE_MIGRATOR_IMAGE):$(COMMIT_SHA)" .
 
 .PHONY: build-and-upload
 build-and-upload:build
+	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
 	@docker push "$(CLICKHOUSE_MIGRATOR_IMAGE)"
+	@docker push "$(CLICKHOUSE_MIGRATOR_IMAGE):$(COMMIT_SHA)"
 
 .PHONY: connect-clickhouse
 connect-clickhouse:

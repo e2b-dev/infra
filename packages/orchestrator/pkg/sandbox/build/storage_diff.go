@@ -27,12 +27,19 @@ const (
 // non-nil after construction but may be switched once over the lifetime; the ft
 // pointer's nil/empty/non-empty state encodes the lifecycle:
 //
-//	ft == nil                          not authoritative. may trigger refresh logic.
-//	ft == storage.UncompressedFrameTable   authoritatively uncompressed (only set by refresh)
-//	ft non-empty                       authoritatively compressed with the bound full-file FT
+//	ft == nil                                  not authoritative. may trigger refresh logic.
+//	ft == storage.UncompressedFullFrameTable   authoritatively uncompressed (only set by refresh)
+//	ft non-empty                               authoritatively compressed with the bound full-file FT
+//
+// fullDiffFrameTable is *FullFrameTable rather than *FrameTable: this is the
+// one place in the read path where we hold an upcasted full table. The
+// invariant — builds[self] for an ancestor we just refreshed is a complete
+// table, never a trimmed one — is documented at (*header.Header).SelfBuildData.
+// Everywhere else, FrameTables are treated as potentially partial
+// (per-mapping, trimmed).
 type source struct {
 	upstream           storage.RangeOpener
-	fullDiffFrameTable *storage.FrameTable
+	fullDiffFrameTable *storage.FullFrameTable
 }
 
 type StorageDiff struct {
@@ -77,7 +84,7 @@ func newStorageDiff(
 	isActivePeer IsActivePeer,
 	upstream storage.Seekable,
 	uncompressedSize int64,
-	initialFT *storage.FrameTable,
+	initialFT *storage.FullFrameTable,
 	ff *featureflags.Client,
 ) (*StorageDiff, error) {
 	cachePath := GenerateDiffCachePath(basePath, buildID, diffType)
@@ -190,7 +197,7 @@ func refreshBuildHeader(ctx context.Context, persistence storage.StorageProvider
 func (b *StorageDiff) resolve(ctx context.Context, callerFT *storage.FrameTable) (storage.RangeOpener, *storage.FrameTable, error) {
 	cur := b.source.Load()
 	if cur.fullDiffFrameTable != nil {
-		return cur.upstream, cur.fullDiffFrameTable, nil
+		return cur.upstream, cur.fullDiffFrameTable.Table(), nil
 	}
 	if callerFT != nil {
 		return cur.upstream, callerFT, nil
@@ -206,7 +213,7 @@ func (b *StorageDiff) resolve(ctx context.Context, callerFT *storage.FrameTable)
 	}
 	cur = b.source.Load()
 
-	return cur.upstream, cur.fullDiffFrameTable, nil
+	return cur.upstream, cur.fullDiffFrameTable.Table(), nil
 }
 
 // RefreshSource reloads the build's header, latches the authoritative FT, and
@@ -234,24 +241,6 @@ func (b *StorageDiff) reloadSource(ctx context.Context, cause string) error {
 	return b.reloadSourceLocked(ctx, cause)
 }
 
-// extractSelfBuildData returns (size, ft) from loaded.Builds[buildID]. Errors
-// if the header lacks a self entry — that only happens with peer-served
-// incomplete headers, never with storage-uploaded ones (build_upload_v4 always
-// populates self before publish). A nil FrameData normalizes to
-// UncompressedFrameTable (V4+ authoritatively uncompressed).
-func extractSelfBuildData(loaded *header.Header, buildID uuid.UUID) (int64, *storage.FrameTable, error) {
-	bd, hasSelf := loaded.Builds[buildID]
-	if !hasSelf {
-		return 0, nil, fmt.Errorf("header for build %s has no self entry (peer-served incomplete?)", buildID)
-	}
-	ft := bd.FrameData
-	if ft == nil {
-		ft = storage.UncompressedFrameTable
-	}
-
-	return bd.Size, ft, nil
-}
-
 // reloadSourceLocked re-fetches the header and reopens upstream. Caller must
 // hold refreshMu.
 //
@@ -275,11 +264,11 @@ func (b *StorageDiff) reloadSourceLocked(ctx context.Context, cause string) erro
 	if err != nil {
 		return fmt.Errorf("reloadSourceLocked: load header for build %s (cause=%s): %w", b.buildID, cause, err)
 	}
-	_, ft, err := extractSelfBuildData(loaded, bid)
+	_, ft, err := loaded.SelfBuildData()
 	if err != nil {
 		return fmt.Errorf("reloadSourceLocked: build %s (cause=%s): %w", b.buildID, cause, err)
 	}
-	newPath := storage.Paths{BuildID: b.buildID}.DataFile(string(b.diffType), ft.CompressionType())
+	newPath := storage.Paths{BuildID: b.buildID}.DataFile(string(b.diffType), ft.Table().CompressionType())
 	newObj, err := b.persistence.OpenSeekable(ctx, newPath, b.storageObjectType)
 	if err != nil {
 		return fmt.Errorf("reloadSourceLocked: reopen upstream for build %s at %s (cause=%s): %w", b.buildID, newPath, cause, err)

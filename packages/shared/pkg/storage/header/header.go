@@ -193,6 +193,25 @@ func (t *Header) GetBuildFrameData(buildID uuid.UUID) *storage.FrameTable {
 	return bd.FrameData
 }
 
+// SelfBuildData returns the size and full FrameTable for the header's own
+// build (t.Metadata.BuildId). Errors when the self entry is missing — only
+// possible with peer-served incomplete headers, never with storage-uploaded
+// ones (build_upload_v4 always populates self before publish).
+//
+// This is the *only* place the FullFrameTable upcast happens in production:
+// Builds[id].FrameData is typed *FrameTable to match the trimmed-FT case
+// where our header carries only the frames we mapped from an ancestor. For
+// the self entry, build_upload_v4 always stores the complete table, so the
+// upcast via storage.FullFromTable is sound.
+func (t *Header) SelfBuildData() (int64, *storage.FullFrameTable, error) {
+	bd, hasSelf := t.Builds[t.Metadata.BuildId]
+	if !hasSelf {
+		return 0, nil, fmt.Errorf("header for build %s has no self entry (peer-served incomplete?)", t.Metadata.BuildId)
+	}
+
+	return bd.Size, storage.FullFromTable(bd.FrameData), nil
+}
+
 func (t *Header) getMapping(ctx context.Context, offset int64) (BuildMap, int64, error) {
 	if offset < 0 || offset >= int64(t.Metadata.Size) {
 		if t.IsNormalizeFixApplied() {

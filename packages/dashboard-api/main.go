@@ -203,7 +203,6 @@ func run() int {
 		ctx,
 		config.BillingServerURL,
 		config.BillingServerAPIToken,
-		supabaseDB,
 	)
 	if err != nil {
 		l.Error(ctx, "initializing team provision sink", zap.Error(err))
@@ -230,7 +229,7 @@ func run() int {
 
 	authenticationFunc := sharedauth.CreateAuthenticationFunc(
 		[]sharedauth.Authenticator{
-			sharedauth.NewAdminTokenAuthenticator(config.AdminToken),
+			sharedauth.NewAdminApiKeyAuthenticator(config.AdminToken),
 			sharedauth.NewAuthProviderBearerAuthenticator(apiStore.GetUserIDFromAuthProviderToken),
 			sharedauth.NewSupabaseTokenAuthenticator(apiStore.GetUserIDFromAuthProviderToken),
 			sharedauth.NewSupabaseTeamAuthenticator(apiStore.GetTeamFromSupabaseToken),

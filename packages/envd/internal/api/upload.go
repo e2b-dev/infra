@@ -20,11 +20,38 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/filesystem"
 )
 
 var ErrNoDiskSpace = errors.New("not enough disk space available")
 
-func processFile(r *http.Request, path string, part io.Reader, uid, gid int, logger zerolog.Logger) (int, error) {
+// metadataHeaderPrefix is the request-header prefix used to attach
+// user-defined metadata to file uploads. Each `<metadataHeaderPrefix><key>:
+// <value>` header becomes a `user.e2b.<key>` xattr on the uploaded file.
+const metadataHeaderPrefix = "X-Metadata-"
+
+// extractMetadataHeaders returns all `X-Metadata-*` headers from h, with the
+// prefix stripped and keys lowercased. Returns nil if none are present.
+func extractMetadataHeaders(h http.Header) map[string]string {
+	var metadata map[string]string
+	for name, values := range h {
+		if len(values) == 0 || !strings.HasPrefix(name, metadataHeaderPrefix) {
+			continue
+		}
+		key := strings.ToLower(strings.TrimPrefix(name, metadataHeaderPrefix))
+		if key == "" {
+			continue
+		}
+		if metadata == nil {
+			metadata = make(map[string]string)
+		}
+		metadata[key] = values[0]
+	}
+
+	return metadata
+}
+
+func processFile(r *http.Request, path string, part io.Reader, uid, gid int, metadata map[string]string, logger zerolog.Logger) (int, error) {
 	logger.Debug().
 		Str("path", path).
 		Msg("File processing")
@@ -105,6 +132,27 @@ func processFile(r *http.Request, path string, part io.Reader, uid, gid int, log
 		return http.StatusInternalServerError, err
 	}
 
+	// Always (re)write metadata, even with an empty/nil map, so that
+	// overwriting a file replaces its full metadata set: keys absent from
+	// this request are cleared (O_TRUNC truncates the body but preserves
+	// xattrs from a prior upload).
+	if err := filesystem.WriteMetadata(path, metadata); err != nil {
+		switch {
+		case filesystem.IsXattrUnsupported(err):
+			// Filesystem doesn't support xattrs. ext4 (the sandbox rootfs)
+			// always supports them; this branch only triggers for virtual
+			// filesystems such as /sys and /proc that the upload API also
+			// supports. The file body was already persisted, so we log and
+			// continue; the response EntryInfo reads xattrs back from disk
+			// so it won't falsely claim metadata was persisted.
+			logger.Warn().Str("path", path).Err(err).Msg("filesystem does not support xattrs; metadata not persisted")
+		case errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT):
+			return http.StatusInsufficientStorage, fmt.Errorf("not enough space for file metadata: %w", err)
+		default:
+			return http.StatusInternalServerError, fmt.Errorf("error writing file metadata: %w", err)
+		}
+	}
+
 	return http.StatusNoContent, nil
 }
 
@@ -149,7 +197,7 @@ func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, defau
 	return filePath, nil
 }
 
-func (a *API) handlePart(r *http.Request, part *multipart.Part, paths UploadSuccess, u *user.User, uid, gid int, operationID string, params PostFilesParams) (*EntryInfo, int, error) {
+func (a *API) handlePart(r *http.Request, part *multipart.Part, paths UploadSuccess, u *user.User, uid, gid int, metadata map[string]string, operationID string, params PostFilesParams) (*EntryInfo, int, error) {
 	defer part.Close()
 
 	if part.FormName() != "file" {
@@ -167,16 +215,25 @@ func (a *API) handlePart(r *http.Request, part *multipart.Part, paths UploadSucc
 		Str("event_type", "file_processing").
 		Logger()
 
-	status, err := processFile(r, filePath, part, uid, gid, logger)
+	status, err := processFile(r, filePath, part, uid, gid, metadata, logger)
 	if err != nil {
 		return nil, status, err
 	}
 
-	return &EntryInfo{
+	entry := &EntryInfo{
 		Path: filePath,
 		Name: filepath.Base(filePath),
 		Type: File,
-	}, http.StatusOK, nil
+	}
+	persisted, err := filesystem.ReadMetadata(filePath)
+	if err != nil {
+		logger.Warn().Str("path", filePath).Err(err).Msg("failed to read back file metadata for upload response")
+	}
+	if len(persisted) > 0 {
+		entry.Metadata = &persisted
+	}
+
+	return entry, http.StatusOK, nil
 }
 
 func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFilesParams) {
@@ -257,6 +314,15 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 		return
 	}
 
+	metadata := extractMetadataHeaders(r.Header)
+	if err := filesystem.ValidateMetadata(metadata); err != nil {
+		errMsg = fmt.Errorf("invalid metadata: %w", err)
+		errorCode = http.StatusBadRequest
+		jsonError(w, errorCode, errMsg)
+
+		return
+	}
+
 	// Use raw body upload only for application/octet-stream, default to multipart for backwards compatibility
 	contentType := r.Header.Get("Content-Type")
 	mediaType, _, _ := mime.ParseMediaType(contentType)
@@ -265,9 +331,9 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 
 	switch {
 	case mediaType == "application/octet-stream":
-		paths, errorCode, errMsg = a.handleRawUpload(r, u, uid, gid, operationID, params)
+		paths, errorCode, errMsg = a.handleRawUpload(r, u, uid, gid, metadata, operationID, params)
 	case strings.HasPrefix(mediaType, "multipart/"):
-		paths, errorCode, errMsg = a.handleMultipartUpload(r, u, uid, gid, operationID, params)
+		paths, errorCode, errMsg = a.handleMultipartUpload(r, u, uid, gid, metadata, operationID, params)
 	default:
 		errorCode = http.StatusBadRequest
 		errMsg = fmt.Errorf("unsupported content type: %s, expected multipart/form-data or application/octet-stream", contentType)
@@ -292,7 +358,7 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 	_, _ = w.Write(data)
 }
 
-func (a *API) handleMultipartUpload(r *http.Request, u *user.User, uid, gid int, operationID string, params PostFilesParams) (UploadSuccess, int, error) {
+func (a *API) handleMultipartUpload(r *http.Request, u *user.User, uid, gid int, metadata map[string]string, operationID string, params PostFilesParams) (UploadSuccess, int, error) {
 	f, err := r.MultipartReader()
 	if err != nil {
 		return nil, http.StatusInternalServerError, fmt.Errorf("error parsing multipart form: %w", err)
@@ -309,7 +375,7 @@ func (a *API) handleMultipartUpload(r *http.Request, u *user.User, uid, gid int,
 			return nil, http.StatusInternalServerError, fmt.Errorf("error reading form: %w", partErr)
 		}
 
-		entry, status, err := a.handlePart(r, part, paths, u, uid, gid, operationID, params)
+		entry, status, err := a.handlePart(r, part, paths, u, uid, gid, metadata, operationID, params)
 		if err != nil {
 			return nil, status, err
 		}
@@ -322,7 +388,7 @@ func (a *API) handleMultipartUpload(r *http.Request, u *user.User, uid, gid int,
 	return paths, http.StatusOK, nil
 }
 
-func (a *API) handleRawUpload(r *http.Request, u *user.User, uid, gid int, operationID string, params PostFilesParams) (UploadSuccess, int, error) {
+func (a *API) handleRawUpload(r *http.Request, u *user.User, uid, gid int, metadata map[string]string, operationID string, params PostFilesParams) (UploadSuccess, int, error) {
 	if params.Path == nil {
 		return nil, http.StatusBadRequest, errors.New("path query parameter is required for raw body upload")
 	}
@@ -338,14 +404,23 @@ func (a *API) handleRawUpload(r *http.Request, u *user.User, uid, gid int, opera
 		Str("event_type", "file_processing").
 		Logger()
 
-	status, err := processFile(r, filePath, r.Body, uid, gid, logger)
+	status, err := processFile(r, filePath, r.Body, uid, gid, metadata, logger)
 	if err != nil {
 		return nil, status, err
 	}
 
-	return UploadSuccess{{
+	entry := EntryInfo{
 		Path: filePath,
 		Name: filepath.Base(filePath),
 		Type: File,
-	}}, http.StatusOK, nil
+	}
+	persisted, err := filesystem.ReadMetadata(filePath)
+	if err != nil {
+		logger.Warn().Str("path", filePath).Err(err).Msg("failed to read back file metadata for upload response")
+	}
+	if len(persisted) > 0 {
+		entry.Metadata = &persisted
+	}
+
+	return UploadSuccess{entry}, http.StatusOK, nil
 }

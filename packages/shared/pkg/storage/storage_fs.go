@@ -130,19 +130,20 @@ func (o *fsObject) Put(_ context.Context, data []byte, _ ...PutOption) error {
 	return err
 }
 
-func (o *fsObject) StoreFile(ctx context.Context, path string, opts ...PutOption) (*FrameTable, [32]byte, error) {
+func (o *fsObject) StoreFile(ctx context.Context, path string, opts ...PutOption) (*FullFrameTable, [32]byte, error) {
 	putOpts := ApplyPutOptions(opts)
 	cfg := CompressConfigFromOpts(putOpts)
 	if cfg.IsCompressionEnabled() {
 		ft, checksum, err := o.storeFileCompressed(ctx, path, cfg, putOpts.FrameSink)
 		if err == nil {
+			t := ft.Table()
 			logger.L().Debug(ctx, "Stored file to filesystem",
 				zap.String("object", o.path),
 				zap.String("source", path),
-				zap.Int64("size_uncompressed", ft.UncompressedSize()),
-				zap.Int64("size_compressed", ft.CompressedSize()),
+				zap.Int64("size_uncompressed", t.UncompressedSize()),
+				zap.Int64("size_compressed", t.CompressedSize()),
 				zap.String("compression", cfg.CompressionType().String()),
-				zap.Int("frames", ft.NumFrames()),
+				zap.Int("frames", t.NumFrames()),
 			)
 		}
 
@@ -174,7 +175,7 @@ func (o *fsObject) StoreFile(ctx context.Context, path string, opts ...PutOption
 	return nil, [32]byte{}, err
 }
 
-func (o *fsObject) storeFileCompressed(ctx context.Context, localPath string, cfg CompressConfig, sink FrameSink) (*FrameTable, [32]byte, error) {
+func (o *fsObject) storeFileCompressed(ctx context.Context, localPath string, cfg CompressConfig, sink FrameSink) (*FullFrameTable, [32]byte, error) {
 	file, err := os.Open(localPath)
 	if err != nil {
 		return nil, [32]byte{}, fmt.Errorf("failed to open local file %s: %w", localPath, err)

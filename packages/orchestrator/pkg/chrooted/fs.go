@@ -63,7 +63,9 @@ func (fs *Chrooted) Stat(filename string) (info os.FileInfo, err error) {
 
 func (fs *Chrooted) GetEntry(filename string) (info filesystem.EntryInfo, err error) {
 	err = fs.act(func() error {
-		info, err = filesystem.GetEntryFromPath(filename)
+		// includeMetadata=false: the orchestrator EntryInfo proto has no
+		// metadata field, so skip the extra xattr syscalls.
+		info, err = filesystem.GetEntryFromPath(filename, false)
 
 		return err
 	})

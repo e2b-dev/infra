@@ -8,9 +8,8 @@ import (
 type Mode string
 
 const (
-	ModeSupabase            Mode = "supabase"
-	ModeOry                 Mode = "ory"
-	ModeSupabaseOryFallback Mode = "supabase-ory-fallback"
+	ModeSupabase Mode = "supabase"
+	ModeOry      Mode = "ory"
 )
 
 func ParseMode(value string) (Mode, error) {
@@ -19,13 +18,11 @@ func ParseMode(value string) (Mode, error) {
 		return ModeSupabase, nil
 	case ModeOry:
 		return ModeOry, nil
-	case ModeSupabaseOryFallback:
-		return ModeSupabaseOryFallback, nil
 	default:
-		return "", fmt.Errorf("invalid user profile provider %q (want one of %q, %q, %q)", value, ModeSupabase, ModeOry, ModeSupabaseOryFallback)
+		return "", fmt.Errorf("invalid user profile provider %q (want one of %q, %q)", value, ModeSupabase, ModeOry)
 	}
 }
 
 func (m Mode) RequiresOry() bool {
-	return m == ModeOry || m == ModeSupabaseOryFallback
+	return m == ModeOry
 }

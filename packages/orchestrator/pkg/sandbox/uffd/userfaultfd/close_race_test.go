@@ -62,7 +62,7 @@ func TestPrefaultConcurrentWithClose(t *testing.T) {
 		log, err := logger.NewDevelopmentLogger()
 		require.NoError(t, err)
 
-		u, err := NewUserfaultfdFromFd(uintptr(uffdFd), src, mapping, log)
+		u, err := NewUserfaultfdFromFd(uintptr(uffdFd), src, mapping, 0, log)
 		require.NoError(t, err)
 
 		// Barrier channels: park Prefault at faultPhaseBeforePrefaultRLock so

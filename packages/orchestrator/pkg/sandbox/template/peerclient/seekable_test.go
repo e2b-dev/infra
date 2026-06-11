@@ -181,7 +181,7 @@ func TestPeerStorageProvider_TransitionEmitsError(t *testing.T) {
 	require.NoError(t, err)
 
 	rc, err := seekable.OpenRangeReader(t.Context(), 0, int64(len(prePeerBytes)),
-		storage.NewFrameTable(storage.CompressionNone, nil))
+		storage.NewFullFrameTable(storage.CompressionNone, nil).Table())
 	require.NoError(t, err)
 	got, err := io.ReadAll(rc)
 	require.NoError(t, err)
@@ -190,7 +190,7 @@ func TestPeerStorageProvider_TransitionEmitsError(t *testing.T) {
 	require.True(t, uploaded.Load(), "uploaded flag should be set after peer EOF with UseStorage")
 
 	_, err = seekable.OpenRangeReader(t.Context(), 0, 1,
-		storage.NewFrameTable(storage.CompressionNone, nil))
+		storage.NewFullFrameTable(storage.CompressionNone, nil).Table())
 	var transErr *storage.PeerTransitionedError
 	require.ErrorAs(t, err, &transErr)
 }

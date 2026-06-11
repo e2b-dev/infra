@@ -33,7 +33,7 @@ build-debug:
 .PHONY: build-and-upload
 build-and-upload:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
-	@docker buildx build --platform $(BUILD_PLATFORM) --tag $(IMAGE_REGISTRY) --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
+	@docker buildx build --platform $(BUILD_PLATFORM) --tag $(IMAGE_REGISTRY) --tag $(IMAGE_REGISTRY):$(COMMIT_SHA) --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
 
 .PHONY: run
 run:

@@ -51,7 +51,7 @@ func TestStorageDiff_LoadsOwnHeaderWhenParentHasNoEntry(t *testing.T) {
 	require.NoError(t, err)
 
 	aHeader := buildHeader(t, aID, payloadSize, aID)
-	aHeader.SetBuild(aID, header.BuildData{Size: int64(payloadSize), FrameData: aFrameTable})
+	aHeader.SetBuild(aID, header.BuildData{Size: int64(payloadSize), FrameData: aFrameTable.Table()})
 	aHeaderBytes, err := header.SerializeHeader(aHeader)
 	require.NoError(t, err)
 
@@ -114,7 +114,7 @@ func TestStorageDiff_SwapsHeaderOnSelfMatch(t *testing.T) {
 
 	// Sidecar header: V4, self-identified, with a populated Builds map.
 	fullHeader := buildHeader(t, selfID, payloadSize, selfID)
-	fullHeader.SetBuild(selfID, header.BuildData{Size: int64(payloadSize), FrameData: frameTable})
+	fullHeader.SetBuild(selfID, header.BuildData{Size: int64(payloadSize), FrameData: frameTable.Table()})
 	fullHeaderBytes, err := header.SerializeHeader(fullHeader)
 	require.NoError(t, err)
 
