@@ -1,7 +1,7 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 
-BUILD := $(shell git rev-parse --short HEAD)
+BUILD := $(shell git rev-parse --short=9 HEAD)
 LDFLAGS=-ldflags "-X=main.commitSHA=$(BUILD)"
 PROD_LDFLAGS=-ldflags "-X=main.commitSHA=$(BUILD) -s -w -buildid="
 
