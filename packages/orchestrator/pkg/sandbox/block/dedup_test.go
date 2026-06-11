@@ -48,23 +48,24 @@ func TestCacheDedup_FetchRunBudgetPromotesSmallParentRun(t *testing.T) {
 	}
 }
 
-func TestDedupPlanPromoteCheapestFrames(t *testing.T) {
+func TestDedupPlanPromoteCheapFrames(t *testing.T) {
 	t.Parallel()
 
 	buildA, buildB := uuid.New(), uuid.New()
 	newPlan := func() *dedupPlan { return &dedupPlan{pageDirty: roaring.New(), pageEmpty: roaring.New()} }
 
-	t.Run("cheapest keys first until budget", func(t *testing.T) {
+	t.Run("frames at or under the price threshold", func(t *testing.T) {
 		t.Parallel()
 
 		p := newPlan()
-		p.promoteCheapestFrames(map[dedupFetchKey]*roaring.Bitmap{
+		p.promoteCheapFrames(map[dedupFetchKey]*roaring.Bitmap{
 			{buildID: buildA, window: 0}: roaring.BitmapOf(10, 11, 12),
 			{buildID: buildA, window: 1}: roaring.BitmapOf(20),
 			{buildID: buildB, window: 0}: roaring.BitmapOf(30, 31),
-		}, 3, 512)
+		}, nil, 512, DedupBudget{MaxPagesPerPromotedFrame: 2, FetchRunWindowPages: 512})
 
-		// The 1-page and 2-page keys fit the budget; the 3-page key does not.
+		// The 1-page and 2-page keys are at or under the threshold; the
+		// 3-page key costs too much.
 		require.EqualValues(t, 2, p.promotedFrames)
 		require.EqualValues(t, 3, p.promotedFramePages)
 		require.True(t, p.pageDirty.Contains(20))
@@ -73,20 +74,37 @@ func TestDedupPlanPromoteCheapestFrames(t *testing.T) {
 		require.False(t, p.pageDirty.Contains(10))
 	})
 
+	t.Run("external references discount the expected value", func(t *testing.T) {
+		t.Parallel()
+
+		key := dedupFetchKey{buildID: buildA, window: 0}
+		budget := DedupBudget{MaxPagesPerPromotedFrame: 4, BlockFaultPct: 50, FetchRunWindowPages: 512}
+
+		// 1 internal + 1 external block: value 0.5*0.5, price 4*0.25 = 1 page.
+		p := newPlan()
+		p.promoteCheapFrames(map[dedupFetchKey]*roaring.Bitmap{key: roaring.BitmapOf(0)}, map[dedupFetchKey]int{key: 1}, 4, budget)
+		require.EqualValues(t, 1, p.promotedFrames)
+
+		// A second external block halves the value below the 1-page cost.
+		p = newPlan()
+		p.promoteCheapFrames(map[dedupFetchKey]*roaring.Bitmap{key: roaring.BitmapOf(0)}, map[dedupFetchKey]int{key: 2}, 4, budget)
+		require.EqualValues(t, 0, p.promotedFrames)
+	})
+
 	t.Run("full-window keys are never promoted", func(t *testing.T) {
 		t.Parallel()
 
 		p := newPlan()
-		p.promoteCheapestFrames(map[dedupFetchKey]*roaring.Bitmap{
+		p.promoteCheapFrames(map[dedupFetchKey]*roaring.Bitmap{
 			{buildID: buildA, window: 0}: roaring.BitmapOf(0, 1, 2, 3),
-		}, 100, 4)
+		}, nil, 512, DedupBudget{MaxPagesPerPromotedFrame: 100, FetchRunWindowPages: 4})
 
 		require.EqualValues(t, 0, p.promotedFrames)
 		require.True(t, p.pageDirty.IsEmpty())
 	})
 }
 
-func TestCacheDedup_GlobalFrameBudgetPromotesCheapestKeys(t *testing.T) {
+func TestCacheDedup_GlobalThresholdPromotesCheapFrames(t *testing.T) {
 	t.Parallel()
 
 	pageSize := int64(header.PageSize)
@@ -107,9 +125,9 @@ func TestCacheDedup_GlobalFrameBudgetPromotesCheapestKeys(t *testing.T) {
 	dirty := fullDirty(size, blockSize)
 	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
 
-	// Budget 2 promotes only the cheapest key (window 1, 1 page); window 0
-	// needs 3 more pages and does not fit.
-	cache, meta, err := src.Dedup(t.Context(), &fakeOriginalDevice{data: baseData}, dirty, blockSize, t.TempDir()+"/dedup", false, false, DedupBudget{MaxPromotedParentPagesTotal: 2, FetchRunWindowPages: 4})
+	// Threshold 2 promotes only the cheap key (window 1, 1 page); window 0
+	// costs 3 pages and is over the price cap.
+	cache, meta, err := src.Dedup(t.Context(), &fakeOriginalDevice{data: baseData}, dirty, blockSize, t.TempDir()+"/dedup", false, false, DedupBudget{MaxPagesPerPromotedFrame: 2, FetchRunWindowPages: 4})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
@@ -128,10 +146,10 @@ func TestCacheDedup_GlobalFrameBudgetPromotesCheapestKeys(t *testing.T) {
 	require.Equal(t, srcData[5*pageSize:6*pageSize], got)
 }
 
-// Exercises both budget passes together. The global budget (1 page) runs
-// first and promotes the cheapest key (page 1); the per-block cap then sees
-// the final layout, compacts block 0 by promoting page 3, and leaves block 1
-// alone since it already fits — so page 5 stays deduped.
+// Exercises both budget passes together. The global threshold (1 page) runs
+// first and promotes block 0's cheap frame (page 1) but not block 1's 2-page
+// frame; the per-block cap then sees the final layout and compacts block 1 by
+// promoting pages 6,7 into the current window.
 func TestCacheDedup_PerBlockAndGlobalBudgetsCompose(t *testing.T) {
 	t.Parallel()
 
@@ -144,40 +162,77 @@ func TestCacheDedup_PerBlockAndGlobalBudgetsCompose(t *testing.T) {
 	require.NoError(t, err)
 	srcData := make([]byte, size)
 	copy(srcData, baseData)
-	// Block 0: pages 0,2 differ; parents 1,3 land in distinct 2-page windows.
-	// Block 1: page 4 differs, page 5 matches, pages 6,7 are zero.
-	for _, p := range []int64{0, 2, 4} {
-		srcData[p*pageSize] ^= 0xFF
-	}
-	clear(srcData[6*pageSize : 8*pageSize])
+	// Block 0: page 1 matches base (1-page frame in window 0); 0,2,3 zero.
+	// Block 1: page 4 differs, page 5 zero, pages 6,7 match (2-page frame in
+	// window 1).
+	clear(srcData[0:pageSize])
+	clear(srcData[2*pageSize : 4*pageSize])
+	srcData[4*pageSize] ^= 0xFF
+	clear(srcData[5*pageSize : 6*pageSize])
 
 	dirty := fullDirty(size, blockSize)
 	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
 
 	budget := DedupBudget{
-		MaxFetchWindowsPerBlock:        2,
+		MaxFetchWindowsPerBlock:        1,
 		MaxPromotedParentPagesPerBlock: 2,
-		MaxPromotedParentPagesTotal:    1,
-		FetchRunWindowPages:            2,
+		MaxPagesPerPromotedFrame:       1,
+		FetchRunWindowPages:            4,
 	}
 	cache, meta, err := src.Dedup(t.Context(), &fakeOriginalDevice{data: baseData}, dirty, blockSize, t.TempDir()+"/dedup", false, false, budget)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
-	require.EqualValues(t, 5, meta.Dirty.GetCardinality())
-	for _, p := range []uint32{0, 1, 2, 3, 4} {
+	require.EqualValues(t, 4, meta.Dirty.GetCardinality())
+	for _, p := range []uint32{1, 4, 6, 7} {
 		require.True(t, meta.Dirty.Contains(p), "page %d should be stored", p)
 	}
-	require.False(t, meta.Dirty.Contains(5), "page 5 should stay deduped")
-	require.EqualValues(t, 2, meta.Empty.GetCardinality())
+	require.EqualValues(t, 4, meta.Empty.GetCardinality())
 
-	// Dirty = {0..4}, so packed slot == page index for both promoted pages.
-	for _, p := range []int64{1, 3} {
+	// Dirty = {1,4,6,7} packs to slots 0-3.
+	for slot, p := range []int64{1, 4, 6, 7} {
 		got := make([]byte, pageSize)
-		_, err := cache.ReadAt(got, p*pageSize)
+		_, err := cache.ReadAt(got, int64(slot)*pageSize)
 		require.NoError(t, err)
-		require.Equal(t, srcData[p*pageSize:(p+1)*pageSize], got, "promoted page %d", p)
+		require.Equal(t, srcData[p*pageSize:(p+1)*pageSize], got, "page %d", p)
 	}
+}
+
+// A frame referenced by blocks outside the diff is fetched on restore no
+// matter what this diff stores, so the global pass must not waste pages
+// promoting it.
+func TestCacheDedup_ExternallyReferencedFrameNotPromoted(t *testing.T) {
+	t.Parallel()
+
+	pageSize := int64(header.PageSize)
+	blockSize := 4 * pageSize
+	size := 2 * blockSize
+
+	baseData := make([]byte, size)
+	_, err := rand.Read(baseData)
+	require.NoError(t, err)
+	srcData := make([]byte, size)
+	copy(srcData, baseData)
+	srcData[0] ^= 0xFF // page 0 differs; pages 1-3 match base
+
+	build := uuid.New()
+	hdr, err := header.NewHeader(
+		header.NewTemplateMetadata(build, uint64(blockSize), uint64(size)),
+		nil,
+	)
+	require.NoError(t, err)
+
+	// Only block 0 is dirty; the 8-page fetch window covers the whole file,
+	// so untouched block 1 keeps referencing the same parent frame.
+	dirty := roaring.BitmapOf(0)
+	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
+
+	cache, meta, err := src.Dedup(t.Context(), &fakeOriginalDevice{data: baseData, hdr: hdr}, dirty, blockSize, t.TempDir()+"/dedup", false, false, DedupBudget{MaxPagesPerPromotedFrame: 4, FetchRunWindowPages: 8})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cache.Close() })
+
+	require.EqualValues(t, 1, meta.Dirty.GetCardinality())
+	require.True(t, meta.Dirty.Contains(0))
 }
 
 // Parent pages must be keyed by the frames restore actually fetches: a build
