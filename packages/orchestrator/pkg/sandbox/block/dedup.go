@@ -28,22 +28,21 @@ type dedupPlan struct {
 	promotedBlocks int64
 	promotedPages  int64
 
-	// Global cheapest-key promotion (promoteCheapestFrames). parentFrames is
-	// the distinct parent fetch keys before promotion, i.e. the predicted
+	// Global cheapest-key promotion (promoteCheapestFrames). parentFrames
+	// counts distinct parent fetch keys before promotion, i.e. the predicted
 	// cold-restore fetches contributed by this diff's deduped pages.
 	parentFrames       int64
 	promotedFrames     int64
 	promotedFramePages int64
 }
 
-// DedupBudget caps fetch fragmentation of the deduped diff. When a block's
-// distinct non-empty backing fetch windows exceed MaxFetchWindowsPerBlock,
-// compaction promotes the cheapest parent-hit pages into the diff, spending at
-// most MaxPromotedParentPagesPerBlock pages per block. Independently,
+// DedupBudget caps fetch fragmentation of the deduped diff. When a block
+// spans more than MaxFetchWindowsPerBlock backing fetch windows, the cheapest
+// parent pages are promoted into the diff, up to
+// MaxPromotedParentPagesPerBlock per block. Independently,
 // MaxPromotedParentPagesTotal promotes the cheapest whole parent fetch keys
-// across the entire diff, removing one backing fetch per promoted key. Zero
-// values disable promotion; FetchRunWindowPages 0 uses the compression frame
-// size.
+// diff-wide, removing one backing fetch per promoted key. Zero values disable
+// promotion; FetchRunWindowPages 0 uses the compression frame size.
 type DedupBudget struct {
 	MaxFetchWindowsPerBlock        int
 	MaxPromotedParentPagesPerBlock int
@@ -59,10 +58,8 @@ const (
 	dedupPageCurrent
 )
 
-// dedupFetchKey identifies the parent fetch window backing a deduped page:
-// the exact compression frame when the build's frame table is known, or a
-// configured-size bucket of the build's stored file otherwise. On a cold
-// restore each distinct key costs one backing fetch.
+// dedupFetchKey identifies the parent fetch window backing a deduped page.
+// On a cold restore each distinct key costs one backing fetch.
 type dedupFetchKey struct {
 	buildID uuid.UUID
 	window  int
@@ -81,11 +78,10 @@ type dedupPageInfo struct {
 //
 // Two optional budget passes then trade diff bytes for fetch contiguity by
 // promoting deduped pages into pageDirty: a global cheapest-key promotion
-// (promoteCheapestFrames) followed by a per-block fetch-window cap
-// (fetchWindower.compact). The per-block cap runs last so its packed-position
-// model sees the final diff layout, and only spends on fan-out the global
-// pass did not already remove. Promoted pages are byte-identical to the
-// parent, so promotion never changes the restored image.
+// followed by a per-block fetch-window cap. The per-block cap runs last so
+// its packed-position model sees the final diff layout. Promoted pages are
+// byte-identical to the parent, so promotion never changes the restored
+// image.
 func dedupCompare(
 	ctx context.Context,
 	src func(absOff int64) ([]byte, error),
@@ -210,10 +206,9 @@ func parentFetchKey(baseHeader *header.Header, mapped header.BuildMap, hasMappin
 
 // compactBlockWindows applies the per-block fetch-window cap. It runs after
 // the global promotion so fetchWindower's packed-position model sees the
-// final diff layout: earlier promotions shift the packed slots of every
-// later stored page. It needs no IO — within dirty blocks every page is
-// already classified by the plan (dirty = stored, empty, else parent), and
-// parent keys are recomputed from the in-memory header.
+// final diff layout. It needs no IO: every page is already classified by the
+// plan (dirty = stored, empty, else parent) and parent keys are recomputed
+// from the in-memory header.
 func compactBlockWindows(
 	ctx context.Context,
 	plan *dedupPlan,
@@ -279,15 +274,12 @@ func compactBlockWindows(
 }
 
 // promoteCheapestFrames stores whole parent fetch-key page sets in the diff,
-// cheapest first, until the global page budget is spent. The restore chunker
-// caches frames, so each kept key costs one backing fetch regardless of how
-// many blocks reference it; promoting a key removes that fetch for the price
-// of its page count. Minimizing distinct fetches under a page budget is a
-// unit-value knapsack, for which cheapest-first is optimal. Keys holding a
-// full fetch window of pages or more are never promoted: they would add at
-// least as many diff frames as they remove. Promotion only copies pages
-// already verified byte-identical to the parent, so the restored image is
-// unaffected.
+// cheapest first, until the global page budget is spent. Each kept key costs
+// one backing fetch on a cold restore regardless of how many blocks reference
+// it, so minimizing fetches under a page budget is a unit-value knapsack and
+// cheapest-first is optimal. Keys holding a full fetch window of pages or
+// more are never promoted: they would add at least as many diff frames as
+// they remove.
 func (p *dedupPlan) promoteCheapestFrames(parentByKey map[dedupFetchKey]*roaring.Bitmap, budgetPages, windowPages int) {
 	if budgetPages <= 0 {
 		return
@@ -335,15 +327,12 @@ type fetchWindower struct {
 }
 
 // compact promotes parent pages to current until the block fits within
-// maxWindows fetch windows or the promotion budget is exhausted.
-//
-// Only whole fetch-key groups are promoted: a partially promoted key keeps
-// its fetch window while the promoted pages can only widen the packed current
-// span, so partial promotion never reduces the count. After promoting g whole
-// groups totaling n pages the count is (parentKeys-g) + currentWindows(nCur+n)
-// — current windows depend only on the page count, not which pages — so the
-// cheapest-first prefix scan considers the optimal whole-group selection for
-// every affordable budget.
+// maxWindows fetch windows or the promotion budget is exhausted. Only whole
+// fetch-key groups are promoted: a partially promoted key keeps its fetch
+// window, so partial promotion never reduces the count. The resulting count
+// depends only on how many pages are promoted, so the cheapest-first prefix
+// scan considers the optimal whole-group selection for every affordable
+// budget.
 func (w fetchWindower) compact(pages []dedupPageInfo, maxWindows, maxPromoted int) int {
 	if maxWindows <= 0 || maxPromoted <= 0 {
 		return 0
@@ -383,7 +372,6 @@ func (w fetchWindower) compact(pages []dedupPageInfo, maxWindows, maxPromoted in
 	for _, group := range groups[:chosen] {
 		for _, i := range group {
 			pages[i].kind = dedupPageCurrent
-			pages[i].key = dedupFetchKey{}
 		}
 	}
 
