@@ -170,7 +170,7 @@ func loadHeaderWithPolling(t *testing.T, ctx context.Context, persistence storag
 	var h *header.Header
 	require.Eventually(t, func() bool {
 		var err error
-		h, err = header.LoadHeader(ctx, persistence, path)
+		h, _, err = header.LoadHeader(ctx, persistence, path)
 
 		return err == nil && h != nil
 	}, 2*time.Minute, 500*time.Millisecond, "%s/%s: %s never appeared in storage", name, fileLabel, path)

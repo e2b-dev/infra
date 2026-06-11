@@ -46,6 +46,19 @@ var (
 	attrPeerHitFalse = attribute.Bool("peer_hit", false)
 )
 
+// PeerRouted marks a Seekable that resolveProvider actually routed through a
+// peer at open time. Callers that need to distinguish "the routing provider
+// gave me a peer wrapper" from "the routing provider fell through to base"
+// type-assert against this marker; presence is the signal — the method body
+// is intentionally empty.
+type PeerRouted interface {
+	IsPeerRouted()
+}
+
+func (*peerSeekable) IsPeerRouted() {}
+
+var _ PeerRouted = (*peerSeekable)(nil)
+
 var _ storage.StorageProvider = (*routingProvider)(nil)
 
 // routingProvider wraps a base StorageProvider and, for each Open call,

@@ -26,7 +26,6 @@ const (
 )
 
 type Chunker struct {
-	upstream     storage.StreamingReader
 	cache        *Cache
 	metrics      metrics.Metrics
 	fetchTimeout time.Duration
@@ -38,15 +37,9 @@ type Chunker struct {
 	fetchSessions []*fetchSession
 }
 
-var (
-	_ FramedReader = (*Chunker)(nil)
-	_ FramedSlicer = (*Chunker)(nil)
-)
-
 func NewChunker(
 	ff *featureflags.Client,
 	size, blockSize int64,
-	upstream storage.StreamingReader,
 	cachePath string,
 	metrics metrics.Metrics,
 ) (*Chunker, error) {
@@ -57,7 +50,6 @@ func NewChunker(
 
 	return &Chunker{
 		size:         size,
-		upstream:     upstream,
 		cache:        cache,
 		metrics:      metrics,
 		featureFlags: ff,
@@ -65,8 +57,10 @@ func NewChunker(
 	}, nil
 }
 
-func (c *Chunker) ReadAt(ctx context.Context, b []byte, off int64, ft *storage.FrameTable) (int, error) {
-	slice, err := c.Slice(ctx, off, int64(len(b)), ft)
+// ReadAt and Slice take {upstream, ft} as a paired snapshot from the caller.
+// The caller is responsible for keeping them consistent.
+func (c *Chunker) ReadAt(ctx context.Context, b []byte, off int64, upstream storage.RangeOpener, ft *storage.FrameTable) (int, error) {
+	slice, err := c.Slice(ctx, off, int64(len(b)), upstream, ft)
 	if err != nil {
 		return 0, fmt.Errorf("failed to slice cache at %d-%d: %w", off, off+int64(len(b)), err)
 	}
@@ -74,7 +68,7 @@ func (c *Chunker) ReadAt(ctx context.Context, b []byte, off int64, ft *storage.F
 	return copy(b, slice), nil
 }
 
-func (c *Chunker) Slice(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error) {
+func (c *Chunker) Slice(ctx context.Context, off, length int64, upstream storage.RangeOpener, ft *storage.FrameTable) ([]byte, error) {
 	attrs := chunkerAttrs
 	if ft.IsCompressed() {
 		attrs = chunkerAttrsCompressed
@@ -106,7 +100,7 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64, ft *storage.Fram
 		}
 		chunkEnd := chunkOff + chunkLen
 		rangeEnd := min(end, chunkEnd)
-		if err := c.fetch(ctx, cur, rangeEnd-cur, ft); err != nil {
+		if err := c.fetch(ctx, cur, rangeEnd-cur, upstream, ft); err != nil {
 			timer.RecordRaw(ctx, length, attrs.failRemoteFetch)
 
 			return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", cur, rangeEnd, err)
@@ -129,7 +123,7 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64, ft *storage.Fram
 
 // getOrCreateSession returns a fetch session for the chunk at [off, off+length),
 // or (nil, true) if the data is already fully cached.
-func (c *Chunker) getOrCreateSession(ctx context.Context, off, length int64, ft *storage.FrameTable) (_ *fetchSession, cached bool) {
+func (c *Chunker) getOrCreateSession(ctx context.Context, off, length int64, upstream storage.RangeOpener, ft *storage.FrameTable) (_ *fetchSession, cached bool) {
 	c.fetchMu.Lock()
 	defer c.fetchMu.Unlock()
 
@@ -152,8 +146,9 @@ func (c *Chunker) getOrCreateSession(ctx context.Context, off, length int64, ft 
 
 	// Detach from the caller's cancel signal so the shared fetch goroutine
 	// continues even if the first caller's context is cancelled. Trace/value
-	// context is preserved for metrics.
-	go c.runFetch(context.WithoutCancel(ctx), s, ft)
+	// context is preserved for metrics. The (upstream, ft) pair is captured
+	// by value here — in-flight sessions are unaffected by later swaps.
+	go c.runFetch(context.WithoutCancel(ctx), s, upstream, ft)
 
 	return s, false
 }
@@ -161,13 +156,13 @@ func (c *Chunker) getOrCreateSession(ctx context.Context, off, length int64, ft 
 // fetch ensures the chunk for [off, off+length) is fetched and waits
 // for every block the range spans (a span can cross block boundaries
 // after dedup; waiting only on the start block leaves the tail unfetched).
-func (c *Chunker) fetch(ctx context.Context, off, length int64, ft *storage.FrameTable) error {
+func (c *Chunker) fetch(ctx context.Context, off, length int64, upstream storage.RangeOpener, ft *storage.FrameTable) error {
 	chunkOff, chunkLen, err := c.locateChunk(off, ft)
 	if err != nil {
 		return fmt.Errorf("failed to locate chunk for offset %d: %w", off, err)
 	}
 
-	session, justGotCached := c.getOrCreateSession(ctx, chunkOff, chunkLen, ft)
+	session, justGotCached := c.getOrCreateSession(ctx, chunkOff, chunkLen, upstream, ft)
 	if justGotCached {
 		return nil
 	}
@@ -189,7 +184,7 @@ func (c *Chunker) fetch(ctx context.Context, off, length int64, ft *storage.Fram
 }
 
 // runFetch fetches data from storage into the mmap cache. Runs in a background goroutine.
-func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, ft *storage.FrameTable) {
+func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, upstream storage.RangeOpener, ft *storage.FrameTable) {
 	ctx, cancel := context.WithTimeout(ctx, c.fetchTimeout)
 	defer cancel()
 
@@ -222,7 +217,7 @@ func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, ft *storage.Fra
 	}
 	fetchTimer := c.metrics.RemoteReadsTimerFactory.Begin()
 
-	readBytes, err := c.progressiveRead(ctx, s, mmapSlice, ft)
+	readBytes, err := c.progressiveRead(ctx, s, mmapSlice, upstream, ft)
 	if err != nil {
 		fetchTimer.RecordRaw(ctx, readBytes, attrs.remoteFailure)
 
@@ -240,8 +235,8 @@ func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, ft *storage.Fra
 	s.setDone()
 }
 
-func (c *Chunker) progressiveRead(ctx context.Context, s *fetchSession, mmapSlice []byte, ft *storage.FrameTable) (totalRead int64, err error) {
-	reader, err := c.upstream.OpenRangeReader(ctx, s.chunkOff, s.chunkLen, ft)
+func (c *Chunker) progressiveRead(ctx context.Context, s *fetchSession, mmapSlice []byte, upstream storage.RangeOpener, ft *storage.FrameTable) (totalRead int64, err error) {
+	reader, err := upstream.OpenRangeReader(ctx, s.chunkOff, s.chunkLen, ft)
 	if err != nil {
 		return 0, fmt.Errorf("failed to open range reader at %d: %w", s.chunkOff, err)
 	}
@@ -328,6 +323,10 @@ func (c *Chunker) Close() error {
 // mmap cache (no remote fetch needed). Used by best-effort dedup.
 func (c *Chunker) IsCached(_ context.Context, off, length int64) bool {
 	return c.cache.isCached(off, length)
+}
+
+func (c *Chunker) Size() int64 {
+	return c.size
 }
 
 func (c *Chunker) FileSize(ctx context.Context) (int64, error) {

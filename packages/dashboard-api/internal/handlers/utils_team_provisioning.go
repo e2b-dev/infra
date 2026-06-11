@@ -12,11 +12,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
 
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -28,6 +30,7 @@ const (
 	maxTeamsPerUserWithProTier   = 10
 	bootstrapProvisionRetryAge   = 30 * time.Second
 	teamProvisionRollbackTimeout = 5 * time.Second
+	creatorContextResolveTimeout = 2 * time.Second
 )
 
 type provisionedTeam struct {
@@ -43,6 +46,7 @@ type bootstrapUserProfile struct {
 	UserID          uuid.UUID
 	Email           string
 	DefaultTeamName string
+	CreatorContext  *teamprovision.CreatorContextV1
 }
 
 type bootstrapUserIdentity struct {
@@ -51,10 +55,12 @@ type bootstrapUserIdentity struct {
 }
 
 type oidcUserBootstrapInput struct {
-	OIDCIssuer    string
-	OIDCUserID    string
-	OIDCUserEmail string
-	OIDCUserName  *string
+	OIDCIssuer      string
+	OIDCUserID      string
+	OIDCUserEmail   string
+	OIDCUserName    *string
+	SignupIP        string
+	SignupUserAgent string
 }
 
 func (s *APIStore) bootstrapSupabaseUser(ctx context.Context, userID uuid.UUID) (provisionedTeam, error) {
@@ -108,6 +114,7 @@ func (s *APIStore) bootstrapOIDCUser(ctx context.Context, input oidcUserBootstra
 		UserID:          uuid.New(),
 		Email:           input.OIDCUserEmail,
 		DefaultTeamName: defaultTeamNameFromOIDCUserName(input.OIDCUserName),
+		CreatorContext:  creatorContextFromSignupMetadata(input.SignupIP, input.SignupUserAgent, teamprovision.AuthMethodSocial),
 	}
 
 	return s.bootstrapUserWithIdentity(ctx, profile, &bootstrapUserIdentity{
@@ -212,11 +219,12 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 
 		if time.Since(existingTeam.CreatedAt) < bootstrapProvisionRetryAge {
 			req := teamprovision.TeamBillingProvisionRequestedV1{
-				TeamID:        existingTeam.ID,
-				TeamName:      existingTeam.Name,
-				TeamEmail:     existingTeam.Email,
-				CreatorUserID: profile.UserID,
-				Reason:        teamprovision.ReasonDefaultSignupTeam,
+				TeamID:         existingTeam.ID,
+				TeamName:       existingTeam.Name,
+				TeamEmail:      existingTeam.Email,
+				CreatorUserID:  profile.UserID,
+				CreatorContext: s.teamCreatorContextForProvisioning(ctx, profile),
+				Reason:         teamprovision.ReasonDefaultSignupTeam,
 			}
 			_ = s.teamProvisionSink.ProvisionTeam(ctx, req)
 		}
@@ -259,11 +267,12 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 	}
 
 	req := teamprovision.TeamBillingProvisionRequestedV1{
-		TeamID:        team.ID,
-		TeamName:      team.Name,
-		TeamEmail:     team.Email,
-		CreatorUserID: profile.UserID,
-		Reason:        teamprovision.ReasonDefaultSignupTeam,
+		TeamID:         team.ID,
+		TeamName:       team.Name,
+		TeamEmail:      team.Email,
+		CreatorUserID:  profile.UserID,
+		CreatorContext: s.teamCreatorContextForProvisioning(ctx, profile),
+		Reason:         teamprovision.ReasonDefaultSignupTeam,
 	}
 	_ = s.teamProvisionSink.ProvisionTeam(ctx, req)
 
@@ -329,11 +338,12 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 	}
 
 	req := teamprovision.TeamBillingProvisionRequestedV1{
-		TeamID:        team.ID,
-		TeamName:      team.Name,
-		TeamEmail:     team.Email,
-		CreatorUserID: userID,
-		Reason:        teamprovision.ReasonAdditionalTeam,
+		TeamID:         team.ID,
+		TeamName:       team.Name,
+		TeamEmail:      team.Email,
+		CreatorUserID:  userID,
+		CreatorContext: s.resolveTeamCreatorContext(ctx, userID),
+		Reason:         teamprovision.ReasonAdditionalTeam,
 	}
 	if err := s.teamProvisionSink.ProvisionTeam(ctx, req); err != nil {
 		rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), teamProvisionRollbackTimeout)
@@ -436,6 +446,60 @@ func validateTeamCreationAllowed(ctx context.Context, authTxDB *authqueries.Quer
 	}
 
 	return nil
+}
+
+func (s *APIStore) resolveTeamCreatorContext(ctx context.Context, userID uuid.UUID) *teamprovision.CreatorContextV1 {
+	if userID == uuid.Nil || s.userProfiles == nil {
+		return nil
+	}
+
+	resolveCtx, cancel := context.WithTimeout(ctx, creatorContextResolveTimeout)
+	defer cancel()
+
+	creatorContext, err := s.userProfiles.GetTeamCreatorContext(resolveCtx, userID)
+	if err != nil {
+		logger.L().Warn(ctx, "failed to resolve creator context for team provisioning",
+			zap.String("user_id", userID.String()),
+			zap.Error(err),
+		)
+
+		return nil
+	}
+
+	return normalizeCreatorContext(creatorContext)
+}
+
+func (s *APIStore) teamCreatorContextForProvisioning(ctx context.Context, profile bootstrapUserProfile) *teamprovision.CreatorContextV1 {
+	if profile.CreatorContext != nil {
+		return normalizeCreatorContext(profile.CreatorContext)
+	}
+
+	return s.resolveTeamCreatorContext(ctx, profile.UserID)
+}
+
+func creatorContextFromSignupMetadata(signupIP, signupUserAgent, authMethod string) *teamprovision.CreatorContextV1 {
+	return normalizeCreatorContext(&teamprovision.CreatorContextV1{
+		IPAddress:  signupIP,
+		UserAgent:  signupUserAgent,
+		AuthMethod: authMethod,
+	})
+}
+
+func normalizeCreatorContext(creatorContext *teamprovision.CreatorContextV1) *teamprovision.CreatorContextV1 {
+	if creatorContext == nil {
+		return nil
+	}
+
+	ipAddress := strings.TrimSpace(creatorContext.IPAddress)
+	if ipAddress == "" {
+		return nil
+	}
+
+	return &teamprovision.CreatorContextV1{
+		IPAddress:  ipAddress,
+		UserAgent:  strings.TrimSpace(creatorContext.UserAgent),
+		AuthMethod: strings.TrimSpace(creatorContext.AuthMethod),
+	}
 }
 
 func defaultTeamNameFromProfile(profile userprofile.Profile) string {

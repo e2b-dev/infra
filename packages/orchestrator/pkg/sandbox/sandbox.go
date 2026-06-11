@@ -48,6 +48,17 @@ var (
 	meter                        = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox")
 	envdInitCalls                = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdInitCalls))
 	waitForEnvdDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.WaitForEnvdDurationHistogramName))
+
+	uffdStartupPagesHistogram       = utils.Must(telemetry.GetHistogram(meter, telemetry.UffdStartupPagesHistogramName))
+	uffdStartupSourcePagesHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.UffdStartupSourcePagesHistogramName))
+	uffdStartupBytesHistogram       = utils.Must(telemetry.GetHistogram(meter, telemetry.UffdStartupBytesHistogramName))
+)
+
+// Sandbox start types recorded on the orchestrator.sandbox.uffd.startup.*
+// metrics via the start_type attribute.
+const (
+	StartTypeCreate = "create" // cold boot (template build)
+	StartTypeResume = "resume" // resume from a snapshot (the common runtime path)
 )
 
 var SandboxHttpTransport = otelhttp.NewTransport(
@@ -256,6 +267,14 @@ type Sandbox struct {
 	exit *utils.ErrorOnce
 
 	stop utils.Lazy[error]
+
+	// startupStatsOnce guards the orchestrator.sandbox.uffd.startup.* recording
+	// so it fires only on the first WaitForEnvd — the actual sandbox start.
+	// ServeStats() is lifetime-cumulative on the UFFD handler, so a later
+	// WaitForEnvd on the same handler (e.g. the envd-binary swap + restart in a
+	// template build) would otherwise emit a sample inflated with post-startup
+	// faults rather than that init's working set.
+	startupStatsOnce sync.Once
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -911,6 +930,7 @@ func (f *Factory) ResumeSandbox(
 
 	err = sbx.WaitForEnvd(
 		ctx,
+		StartTypeResume,
 		f.config.EnvdTimeout,
 	)
 	if err != nil {
@@ -1147,11 +1167,19 @@ func (s *Sandbox) Pause(
 	// Start POSTPROCESSING
 	var dedupBase block.ReadonlyDevice
 	var dedupBestEffort, dedupDirectIO bool
+	var dedupBudget block.DedupBudget
 	dedupCfg := s.featureFlags.JSONFlag(ctx, featureflags.MemfileDiffDedupFlag, sandboxLDContext(s.Runtime, s.Config)).AsValueMap()
 	if dedupCfg.Get("enabled").BoolValue() {
 		dedupBase = originalMemfile
 		dedupBestEffort = dedupCfg.Get("bestEffort").BoolValue()
 		dedupDirectIO = dedupCfg.Get("directIO").BoolValue()
+		dedupBudget = block.DedupBudget{
+			MaxFetchWindowsPerBlock:        dedupCfg.Get("maxFetchWindowsPerBlock").IntValue(),
+			MaxPromotedParentPagesPerBlock: dedupCfg.Get("maxPromotedParentPagesPerBlock").IntValue(),
+			MaxPagesPerPromotedFrame:       dedupCfg.Get("maxPagesPerPromotedFrame").IntValue(),
+			BlockFaultPct:                  dedupCfg.Get("blockFaultPct").IntValue(),
+			FetchRunWindowPages:            dedupCfg.Get("fetchRunWindowPages").IntValue(),
+		}
 	}
 	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
 		ctx,
@@ -1165,6 +1193,7 @@ func (s *Sandbox) Pause(
 		dedupBase,
 		dedupBestEffort,
 		dedupDirectIO,
+		dedupBudget,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
@@ -1251,6 +1280,7 @@ func pauseProcessMemory(
 	originalMemfile block.ReadonlyDevice,
 	dedupBestEffort bool,
 	dedupDirectIO bool,
+	dedupBudget block.DedupBudget,
 ) (d build.Diff, h *DiffHeader, e error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
@@ -1260,7 +1290,7 @@ func pauseProcessMemory(
 	// ExportMemory owns memfd and closes it on all paths.
 	cache, err := fc.ExportMemory(
 		ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd, bgCopy,
-		originalMemfile, dedupBestEffort, dedupDirectIO, diffMetadata.Empty, metaOut,
+		originalMemfile, dedupBestEffort, dedupDirectIO, dedupBudget, diffMetadata.Empty, metaOut,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to export memory: %w", err)
@@ -1457,6 +1487,7 @@ func (s *Sandbox) WaitForExit(ctx context.Context) error {
 
 func (s *Sandbox) WaitForEnvd(
 	ctx context.Context,
+	startType string,
 	timeout time.Duration,
 ) (e error) {
 	start := time.Now()
@@ -1470,6 +1501,25 @@ func (s *Sandbox) WaitForEnvd(
 			attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
 			attribute.Bool("success", e == nil),
 		))
+
+		// Record the demand-fault working set the guest needed to reach this
+		// point. Only on the first WaitForEnvd: it is the actual start, and
+		// ServeStats() is cumulative since resume, so at this instant it equals
+		// the startup counts. A later WaitForEnvd on the same handler (e.g. the
+		// envd-binary swap + restart during a template build) would otherwise
+		// re-report a cumulative total polluted with intervening faults.
+		// Recorded for both outcomes (success label) so slow/failed starts can
+		// be correlated with page volume.
+		s.startupStatsOnce.Do(func() {
+			stats := s.memory.ServeStats()
+			startupAttrs := metric.WithAttributes(
+				attribute.String("start_type", startType),
+				attribute.Bool("success", e == nil),
+			)
+			uffdStartupPagesHistogram.Record(ctx, stats.Pages, startupAttrs)
+			uffdStartupSourcePagesHistogram.Record(ctx, stats.SourcePages, startupAttrs)
+			uffdStartupBytesHistogram.Record(ctx, stats.Bytes, startupAttrs)
+		})
 
 		if e != nil {
 			return

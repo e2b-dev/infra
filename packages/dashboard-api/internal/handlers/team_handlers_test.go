@@ -477,7 +477,8 @@ func TestPostUsersBootstrap_CreatesDefaultTeamAndCallsSink(t *testing.T) {
 	}
 	if err := testDB.SupabaseDB.TestsRawSQL(ctx, `
 UPDATE auth.users
-SET raw_user_meta_data = '{"first_name":"ada"}'::jsonb
+SET raw_user_meta_data = '{"first_name":"ada"}'::jsonb,
+    raw_app_meta_data = '{"signup_ip":"203.0.113.10","signup_user_agent":"Mozilla/5.0","providers":["email"]}'::jsonb
 WHERE id = $1
 `, userID); err != nil {
 		t.Fatalf("failed to update auth user metadata: %v", err)
@@ -522,6 +523,18 @@ WHERE id = $1
 	if req.TeamName != team.Name {
 		t.Fatalf("expected sink team name %q, got %q", team.Name, req.TeamName)
 	}
+	if req.CreatorContext == nil {
+		t.Fatal("expected sink creator context")
+	}
+	if req.CreatorContext.IPAddress != "203.0.113.10" {
+		t.Fatalf("expected sink creator ip %q, got %q", "203.0.113.10", req.CreatorContext.IPAddress)
+	}
+	if req.CreatorContext.UserAgent != "Mozilla/5.0" {
+		t.Fatalf("expected sink creator user agent %q, got %q", "Mozilla/5.0", req.CreatorContext.UserAgent)
+	}
+	if req.CreatorContext.AuthMethod != teamprovision.AuthMethodPassword {
+		t.Fatalf("expected sink creator auth method %q, got %q", teamprovision.AuthMethodPassword, req.CreatorContext.AuthMethod)
+	}
 
 	var responseBody map[string]any
 	if err := json.Unmarshal(recorder.Body.Bytes(), &responseBody); err != nil {
@@ -559,10 +572,12 @@ func TestBootstrapAuthProviderUser_CreatesIdentityAndDefaultTeam(t *testing.T) {
 	}
 
 	input := oidcUserBootstrapInput{
-		OIDCIssuer:    "https://ory.example.test",
-		OIDCUserID:    uuid.NewString(),
-		OIDCUserEmail: "ada@example.test",
-		OIDCUserName:  nil,
+		OIDCIssuer:      "https://ory.example.test",
+		OIDCUserID:      uuid.NewString(),
+		OIDCUserEmail:   "ada@example.test",
+		OIDCUserName:    nil,
+		SignupIP:        "198.51.100.20",
+		SignupUserAgent: "Mozilla/5.0",
 	}
 
 	team, err := store.bootstrapOIDCUser(ctx, input)
@@ -597,6 +612,18 @@ func TestBootstrapAuthProviderUser_CreatesIdentityAndDefaultTeam(t *testing.T) {
 	}
 	if sink.requests[0].CreatorUserID != userIdentity.UserID {
 		t.Fatalf("expected sink creator %s, got %s", userIdentity.UserID, sink.requests[0].CreatorUserID)
+	}
+	if sink.requests[0].CreatorContext == nil {
+		t.Fatal("expected sink creator context")
+	}
+	if sink.requests[0].CreatorContext.IPAddress != "198.51.100.20" {
+		t.Fatalf("expected sink creator ip %q, got %q", "198.51.100.20", sink.requests[0].CreatorContext.IPAddress)
+	}
+	if sink.requests[0].CreatorContext.UserAgent != "Mozilla/5.0" {
+		t.Fatalf("expected sink creator user agent %q, got %q", "Mozilla/5.0", sink.requests[0].CreatorContext.UserAgent)
+	}
+	if sink.requests[0].CreatorContext.AuthMethod != teamprovision.AuthMethodSocial {
+		t.Fatalf("expected sink creator auth method %q, got %q", teamprovision.AuthMethodSocial, sink.requests[0].CreatorContext.AuthMethod)
 	}
 }
 

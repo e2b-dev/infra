@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	supabasequeries "github.com/e2b-dev/infra/packages/db/pkg/supabase/queries"
+	sharedteamprovision "github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 )
 
 func TestProfileFromAuthUserNamePrecedence(t *testing.T) {
@@ -71,5 +72,50 @@ func TestProfileFromAuthUserProviders(t *testing.T) {
 	want := []string{"email", "google", "github"}
 	if !reflect.DeepEqual(got.Providers, want) {
 		t.Fatalf("profileFromAuthUser().Providers = %v, want %v", got.Providers, want)
+	}
+}
+
+func TestSupabaseCreatorContextFromMetadata(t *testing.T) {
+	t.Parallel()
+
+	metadata := map[string]any{
+		"signup_ip":         "203.0.113.10",
+		"signup_user_agent": "Mozilla/5.0",
+		"ip_address":        "should-not-be-used",
+		"user_agent":        "should-not-be-used",
+		"providers":         []any{"email", "github"},
+	}
+
+	got := creatorContextFromMetadata(metadata, providerNamesFromSupabaseMetadata(metadata))
+	if got.IPAddress != "203.0.113.10" {
+		t.Fatalf("IPAddress = %q, want %q", got.IPAddress, "203.0.113.10")
+	}
+	if got.UserAgent != "Mozilla/5.0" {
+		t.Fatalf("UserAgent = %q, want %q", got.UserAgent, "Mozilla/5.0")
+	}
+	if got.AuthMethod != sharedteamprovision.AuthMethodSocial {
+		t.Fatalf("AuthMethod = %q, want %q", got.AuthMethod, sharedteamprovision.AuthMethodSocial)
+	}
+}
+
+func TestCreatorContextFromMetadataIgnoresNonSignupNetworkFields(t *testing.T) {
+	t.Parallel()
+
+	metadata := map[string]any{
+		"ip":         "203.0.113.99",
+		"ip_address": "203.0.113.98",
+		"user_agent": "should-not-be-used",
+		"providers":  []any{"email"},
+	}
+
+	got := creatorContextFromMetadata(metadata, providerNamesFromSupabaseMetadata(metadata))
+	if got.IPAddress != "" {
+		t.Fatalf("IPAddress = %q, want empty", got.IPAddress)
+	}
+	if got.UserAgent != "" {
+		t.Fatalf("UserAgent = %q, want empty", got.UserAgent)
+	}
+	if got.AuthMethod != sharedteamprovision.AuthMethodPassword {
+		t.Fatalf("AuthMethod = %q, want %q", got.AuthMethod, sharedteamprovision.AuthMethodPassword)
 	}
 }
