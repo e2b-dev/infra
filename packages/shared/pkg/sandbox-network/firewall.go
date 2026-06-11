@@ -32,20 +32,8 @@ var DeniedSandboxCIDRs = []string{
 
 var DeniedSandboxSetData = utils.Must(set.AddressStringsToSetData(DeniedSandboxCIDRs))
 
-// parsedDeniedSandboxCIDRs is DeniedSandboxCIDRs pre-parsed for
-// IsIPInDeniedSandboxCIDRs.
-var parsedDeniedSandboxCIDRs = func() []*net.IPNet {
-	out := make([]*net.IPNet, 0, len(DeniedSandboxCIDRs))
-	for _, c := range DeniedSandboxCIDRs {
-		_, ipNet, err := net.ParseCIDR(c)
-		if err != nil {
-			panic(fmt.Sprintf("sandbox_network: invalid CIDR in DeniedSandboxCIDRs: %q: %v", c, err))
-		}
-		out = append(out, ipNet)
-	}
-
-	return out
-}()
+// DeniedSandboxIPNets is the preparsed net.IPNet form of DeniedSandboxCIDRs.
+var DeniedSandboxIPNets = utils.Must(ParseCIDRs(DeniedSandboxCIDRs))
 
 // AddressStringToCIDR converts a string address to the CIDR format.
 // Supports only IPv4 addresses.
@@ -106,6 +94,46 @@ func IsSpecifiedIPOrCIDR(s string) bool {
 	}
 
 	return !ip.IsUnspecified()
+}
+
+// ParseCIDRs converts a list of IPs or CIDRs into net.IPNet values.
+// Bare IPs get a full-length mask (/32 for IPv4, /128 for IPv6).
+func ParseCIDRs(entries []string) ([]*net.IPNet, error) {
+	nets := make([]*net.IPNet, 0, len(entries))
+
+	for _, entry := range entries {
+		if ip := net.ParseIP(entry); ip != nil {
+			bits := 8 * net.IPv6len
+			if v4 := ip.To4(); v4 != nil {
+				ip = v4
+				bits = 8 * net.IPv4len
+			}
+
+			nets = append(nets, &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)})
+
+			continue
+		}
+
+		_, ipNet, err := net.ParseCIDR(entry)
+		if err != nil {
+			return nil, fmt.Errorf("invalid CIDR %q: %w", entry, err)
+		}
+
+		nets = append(nets, ipNet)
+	}
+
+	return nets, nil
+}
+
+// IPInNets reports whether the IP is contained in any of the networks.
+func IPInNets(ip net.IP, nets []*net.IPNet) bool {
+	for _, n := range nets {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // ParseAddressesAndDomains separates a list of strings into IP addresses/CIDRs and domain names.

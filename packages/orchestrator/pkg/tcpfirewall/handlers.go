@@ -27,7 +27,7 @@ const (
 )
 
 // domainHandler handles connections with hostname information (HTTP Host header or TLS SNI).
-func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol) {
+func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol, internalAllowedNets []*net.IPNet) {
 	// Get hostname from tcpproxy's wrapped connection (HTTP Host or TLS SNI).
 	// Hostname can be empty, e.g. for https://1.1.1.1 like requests.
 	var hostname string
@@ -35,7 +35,7 @@ func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int
 		hostname = tc.HostName
 	}
 
-	allowed, matchType, err := isEgressAllowed(sbx, hostname, dstIP)
+	allowed, matchType, err := isEgressAllowed(sbx, hostname, dstIP, internalAllowedNets)
 	if err != nil {
 		logger.Error(ctx, "Egress check failed", zap.Error(err))
 		metrics.RecordError(ctx, ErrorTypeEgressCheck, protocol)
@@ -60,7 +60,7 @@ func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int
 	// After connecting, we verify the connected IP is not internal/private.
 	if matchType == MatchTypeDomain {
 		upstreamAddr := net.JoinHostPort(hostname, fmt.Sprintf("%d", dstPort))
-		proxyWithIPVerification(ctx, conn, upstreamAddr, logger, metrics, protocol)
+		proxyWithIPVerification(ctx, conn, upstreamAddr, logger, metrics, protocol, internalAllowedNets)
 
 		return
 	}
@@ -71,9 +71,9 @@ func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int
 }
 
 // cidrOnlyHandler handles connections without hostname information.
-func cidrOnlyHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol) {
+func cidrOnlyHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol, internalAllowedNets []*net.IPNet) {
 	// No hostname available for CIDR-only handler
-	allowed, matchType, err := isEgressAllowed(sbx, noHostnameValue, dstIP)
+	allowed, matchType, err := isEgressAllowed(sbx, noHostnameValue, dstIP, internalAllowedNets)
 	if err != nil {
 		logger.Error(ctx, "Egress check failed", zap.Error(err))
 		metrics.RecordError(ctx, ErrorTypeEgressCheck, protocol)
@@ -115,7 +115,7 @@ func proxy(ctx context.Context, conn net.Conn, upstreamAddr string, metrics *Met
 //
 // The ControlContext callback is called after DNS resolution but before the TCP connect()
 // syscall, so no TCP handshake occurs to internal IPs.
-func proxyWithIPVerification(ctx context.Context, conn net.Conn, upstreamAddr string, logger logger.Logger, metrics *Metrics, protocol Protocol) {
+func proxyWithIPVerification(ctx context.Context, conn net.Conn, upstreamAddr string, logger logger.Logger, metrics *Metrics, protocol Protocol, internalAllowedNets []*net.IPNet) {
 	tracker := metrics.TrackConnection(protocol)
 	defer tracker.Close(ctx)
 
@@ -142,7 +142,7 @@ func proxyWithIPVerification(ctx context.Context, conn net.Conn, upstreamAddr st
 						return fmt.Errorf("failed to parse IP from resolved address %q", host)
 					}
 
-					if isIPInAlwaysDeniedCIDRs(resolvedIP) {
+					if isIPInAlwaysDeniedCIDRs(resolvedIP, internalAllowedNets) {
 						logger.Warn(ctx, "Blocked connection to internal IP via hostname",
 							zap.String("upstream_addr", addr),
 							zap.String("resolved_ip", resolvedIP.String()))
@@ -164,17 +164,23 @@ func proxyWithIPVerification(ctx context.Context, conn net.Conn, upstreamAddr st
 // isEgressAllowed checks if egress is allowed based on domain and CIDR rules.
 // Returns the allowed status and the match type for metrics.
 // Priority order:
-//  1. Allow domain / Allow CIDR (if either matches → allow)
-//  2. Deny domain / Deny CIDR (if either matches → deny)
-//  3. Default: allow
-func isEgressAllowed(sbx *sandbox.Sandbox, hostname string, ip net.IP) (bool, MatchType, error) {
+//  1. Infra-level internal allowlist (ALLOW_SANDBOX_INTERNAL_CIDRS) → allow.
+//  2. Allow domain / Allow CIDR (if either matches → allow)
+//  3. Deny domain / Deny CIDR (if either matches → deny)
+//  4. Default: allow
+func isEgressAllowed(sbx *sandbox.Sandbox, hostname string, ip net.IP, internalAllowedNets []*net.IPNet) (bool, MatchType, error) {
+	// Priority 1: infra-level whitelisted CIDRs are always allowed.
+	if sandbox_network.IPInNets(ip, internalAllowedNets) {
+		return true, MatchTypeInternal, nil
+	}
+
 	egress := sbx.Config.GetNetworkEgress()
 	if egress == nil {
 		// No egress configuration, allow all traffic.
 		return true, MatchTypeNone, nil
 	}
 
-	// Priority 1: Check allowed domains
+	// Priority 2: Check allowed domains
 	if hostname != noHostnameValue {
 		for _, domain := range egress.GetAllowedDomains() {
 			if matchDomain(hostname, domain) {
@@ -183,7 +189,7 @@ func isEgressAllowed(sbx *sandbox.Sandbox, hostname string, ip net.IP) (bool, Ma
 		}
 	}
 
-	// Priority 1: Check allowed CIDRs
+	// Priority 2: Check allowed CIDRs
 	for _, cidr := range egress.GetAllowedCidrs() {
 		_, ipNet, err := net.ParseCIDR(cidr)
 		if err != nil {
@@ -195,7 +201,7 @@ func isEgressAllowed(sbx *sandbox.Sandbox, hostname string, ip net.IP) (bool, Ma
 		}
 	}
 
-	// Priority 2: Check denied CIDRs
+	// Priority 3: Check denied CIDRs
 	for _, cidr := range egress.GetDeniedCidrs() {
 		_, ipNet, err := net.ParseCIDR(cidr)
 		if err != nil {
@@ -233,17 +239,11 @@ func matchDomain(hostname, pattern string) bool {
 }
 
 // isIPInAlwaysDeniedCIDRs checks if an IP is within the denied sandbox CIDRs (internal/private ranges).
-func isIPInAlwaysDeniedCIDRs(ip net.IP) bool {
-	for _, cidr := range sandbox_network.DeniedSandboxCIDRs {
-		_, ipNet, err := net.ParseCIDR(cidr)
-		if err != nil {
-			continue
-		}
-
-		if ipNet.Contains(ip) {
-			return true
-		}
+// IPs covered by the infra-level internal allowlist (ALLOW_SANDBOX_INTERNAL_CIDRS) are exempt.
+func isIPInAlwaysDeniedCIDRs(ip net.IP, internalAllowedNets []*net.IPNet) bool {
+	if sandbox_network.IPInNets(ip, internalAllowedNets) {
+		return false
 	}
 
-	return false
+	return sandbox_network.IPInNets(ip, sandbox_network.DeniedSandboxIPNets)
 }

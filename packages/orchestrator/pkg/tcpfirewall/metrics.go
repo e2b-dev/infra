@@ -37,7 +37,9 @@ type MatchType string
 const (
 	MatchTypeDomain MatchType = "domain"
 	MatchTypeCIDR   MatchType = "cidr"
-	MatchTypeNone   MatchType = "none"
+	// MatchTypeInternal is an infra-level internal allowlist match (ALLOW_SANDBOX_INTERNAL_CIDRS).
+	MatchTypeInternal MatchType = "internal"
+	MatchTypeNone     MatchType = "none"
 )
 
 // ErrorType represents the type of error that occurred.

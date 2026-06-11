@@ -1,6 +1,7 @@
 package sandbox_network
 
 import (
+	"net"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -70,4 +71,38 @@ func TestAddressStringToCIDR(t *testing.T) {
 			require.Equal(t, tc.expected, result, tc.desc)
 		})
 	}
+}
+
+func TestParseCIDRs(t *testing.T) {
+	t.Parallel()
+
+	t.Run("valid entries", func(t *testing.T) {
+		t.Parallel()
+		nets, err := ParseCIDRs([]string{"10.0.11.254/32", "192.168.0.0/16", "8.8.8.8", "fc00::/7", "::1"})
+		require.NoError(t, err)
+		require.Len(t, nets, 5)
+
+		require.True(t, IPInNets(net.ParseIP("10.0.11.254"), nets))
+		require.False(t, IPInNets(net.ParseIP("10.0.11.253"), nets))
+		require.True(t, IPInNets(net.ParseIP("192.168.42.1"), nets))
+		require.True(t, IPInNets(net.ParseIP("8.8.8.8"), nets), "bare IPv4 should be treated as /32")
+		require.False(t, IPInNets(net.ParseIP("8.8.8.9"), nets))
+		require.True(t, IPInNets(net.ParseIP("fc00::1"), nets))
+		require.True(t, IPInNets(net.ParseIP("::1"), nets), "bare IPv6 should be treated as /128")
+		require.False(t, IPInNets(net.ParseIP("::2"), nets))
+	})
+
+	t.Run("empty list", func(t *testing.T) {
+		t.Parallel()
+		nets, err := ParseCIDRs(nil)
+		require.NoError(t, err)
+		require.Empty(t, nets)
+		require.False(t, IPInNets(net.ParseIP("10.0.11.254"), nets))
+	})
+
+	t.Run("invalid entry", func(t *testing.T) {
+		t.Parallel()
+		_, err := ParseCIDRs([]string{"10.0.11.254/32", "not-a-cidr"})
+		require.Error(t, err)
+	})
 }

@@ -200,7 +200,7 @@ func IsIPInDeniedSandboxCIDRs(ip net.IP) bool {
 		return true
 	}
 
-	for _, ipNet := range parsedDeniedSandboxCIDRs {
+	for _, ipNet := range DeniedSandboxIPNets {
 		if ipNet.Contains(ip) {
 			return true
 		}

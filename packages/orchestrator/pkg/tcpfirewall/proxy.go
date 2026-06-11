@@ -19,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
 
 var _ sandbox.MapSubscriber = (*Proxy)(nil)
@@ -38,20 +39,32 @@ type Proxy struct {
 	tlsPort   uint16 // For port 443 traffic - TLS SNI inspection
 	otherPort uint16 // For all other ports - CIDR-only, no protocol inspection
 
+	// internalAllowedNets are infra-level whitelisted CIDRs that are always allowed,
+	// even when they fall into the always-denied private ranges or user deny rules.
+	internalAllowedNets []*net.IPNet
+
 	proxyRules []proxyRule
 	proxy      *tcpproxy.Proxy
 }
 
 func New(logger logger.Logger, networkConfig network.Config, sandboxes *sandbox.Map, meterProvider metric.MeterProvider, featureFlags *featureflags.Client) *Proxy {
+	internalAllowedNets, err := sandbox_network.ParseCIDRs(networkConfig.AllowSandboxInternalCIDRs)
+	if err != nil {
+		logger.Error(context.Background(), "failed to parse ALLOW_SANDBOX_INTERNAL_CIDRS for TCP firewall",
+			zap.Strings("cidrs", networkConfig.AllowSandboxInternalCIDRs),
+			zap.Error(err))
+	}
+
 	p := &Proxy{
-		httpPort:     networkConfig.SandboxTCPFirewallHTTPPort,
-		tlsPort:      networkConfig.SandboxTCPFirewallTLSPort,
-		otherPort:    networkConfig.SandboxTCPFirewallOtherPort,
-		logger:       logger,
-		sandboxes:    sandboxes,
-		metrics:      NewMetrics(meterProvider),
-		limiter:      connlimit.NewConnectionLimiter(),
-		featureFlags: featureFlags,
+		httpPort:            networkConfig.SandboxTCPFirewallHTTPPort,
+		tlsPort:             networkConfig.SandboxTCPFirewallTLSPort,
+		otherPort:           networkConfig.SandboxTCPFirewallOtherPort,
+		logger:              logger,
+		sandboxes:           sandboxes,
+		metrics:             NewMetrics(meterProvider),
+		limiter:             connlimit.NewConnectionLimiter(),
+		featureFlags:        featureFlags,
+		internalAllowedNets: internalAllowedNets,
 	}
 
 	p.proxyRules = []proxyRule{
@@ -98,16 +111,16 @@ func (p *Proxy) Start(ctx context.Context) error {
 	otherAddr := fmt.Sprintf("0.0.0.0:%d", p.otherPort)
 
 	// HTTP listener (port 80 traffic): inspect Host header for domain allowlist
-	p.proxy.AddHTTPHostMatchRoute(httpAddr, func(_ context.Context, _ string) bool { return true }, newConnectionHandler(ctx, domainHandler, ProtocolHTTP, p.metrics, p.limiter, p.logger, p.sandboxes, p.featureFlags))
-	p.proxy.AddRoute(httpAddr, newConnectionHandler(ctx, cidrOnlyHandler, ProtocolHTTP, p.metrics, p.limiter, p.logger, p.sandboxes, p.featureFlags))
+	p.proxy.AddHTTPHostMatchRoute(httpAddr, func(_ context.Context, _ string) bool { return true }, p.newConnectionHandler(ctx, domainHandler, ProtocolHTTP))
+	p.proxy.AddRoute(httpAddr, p.newConnectionHandler(ctx, cidrOnlyHandler, ProtocolHTTP))
 
 	// TLS listener (port 443 traffic): inspect SNI for domain allowlist
-	p.proxy.AddSNIMatchRoute(tlsAddr, func(_ context.Context, _ string) bool { return true }, newConnectionHandler(ctx, domainHandler, ProtocolTLS, p.metrics, p.limiter, p.logger, p.sandboxes, p.featureFlags))
-	p.proxy.AddRoute(tlsAddr, newConnectionHandler(ctx, cidrOnlyHandler, ProtocolTLS, p.metrics, p.limiter, p.logger, p.sandboxes, p.featureFlags))
+	p.proxy.AddSNIMatchRoute(tlsAddr, func(_ context.Context, _ string) bool { return true }, p.newConnectionHandler(ctx, domainHandler, ProtocolTLS))
+	p.proxy.AddRoute(tlsAddr, p.newConnectionHandler(ctx, cidrOnlyHandler, ProtocolTLS))
 
 	// Other listener (all other ports): CIDR-only check, no protocol inspection
 	// This prevents blocking on server-first protocols like SSH
-	p.proxy.AddRoute(otherAddr, newConnectionHandler(ctx, cidrOnlyHandler, ProtocolOther, p.metrics, p.limiter, p.logger, p.sandboxes, p.featureFlags))
+	p.proxy.AddRoute(otherAddr, p.newConnectionHandler(ctx, cidrOnlyHandler, ProtocolOther))
 
 	p.logger.Info(ctx, "TCP firewall proxy started",
 		zap.Uint16("http_port", p.httpPort),
@@ -186,7 +199,7 @@ func (p *Proxy) SupportsBYOP() bool {
 }
 
 // handlerFunc is the signature for connection handlers.
-type handlerFunc func(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol)
+type handlerFunc func(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol, internalAllowedNets []*net.IPNet)
 
 var _ tcpproxy.Target = (*connectionHandler)(nil)
 
@@ -194,25 +207,27 @@ var _ tcpproxy.Target = (*connectionHandler)(nil)
 type connectionHandler struct {
 	ctx context.Context //nolint:containedctx // base context for request tracing
 
-	handler      handlerFunc
-	protocol     Protocol
-	metrics      *Metrics
-	limiter      *connlimit.ConnectionLimiter
-	logger       logger.Logger
-	sandboxes    *sandbox.Map
-	featureFlags *featureflags.Client
+	handler             handlerFunc
+	protocol            Protocol
+	metrics             *Metrics
+	limiter             *connlimit.ConnectionLimiter
+	logger              logger.Logger
+	sandboxes           *sandbox.Map
+	featureFlags        *featureflags.Client
+	internalAllowedNets []*net.IPNet
 }
 
-func newConnectionHandler(ctx context.Context, handler handlerFunc, protocol Protocol, metrics *Metrics, limiter *connlimit.ConnectionLimiter, logger logger.Logger, sandboxes *sandbox.Map, featureFlags *featureflags.Client) *connectionHandler {
+func (p *Proxy) newConnectionHandler(ctx context.Context, handler handlerFunc, protocol Protocol) *connectionHandler {
 	return &connectionHandler{
-		ctx:          ctx,
-		handler:      handler,
-		protocol:     protocol,
-		metrics:      metrics,
-		limiter:      limiter,
-		logger:       logger,
-		sandboxes:    sandboxes,
-		featureFlags: featureFlags,
+		ctx:                 ctx,
+		handler:             handler,
+		protocol:            protocol,
+		metrics:             p.metrics,
+		limiter:             p.limiter,
+		logger:              p.logger,
+		sandboxes:           p.sandboxes,
+		featureFlags:        p.featureFlags,
+		internalAllowedNets: p.internalAllowedNets,
 	}
 }
 
@@ -272,7 +287,7 @@ func (t *connectionHandler) HandleConn(conn net.Conn) {
 	// Wrap the handler to release the connection slot when done
 	wrappedHandler := func(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, l logger.Logger, metrics *Metrics, protocol Protocol) {
 		defer t.limiter.Release(limiterKey)
-		t.handler(ctx, conn, dstIP, dstPort, sbx, l, metrics, protocol)
+		t.handler(ctx, conn, dstIP, dstPort, sbx, l, metrics, protocol, t.internalAllowedNets)
 	}
 
 	wrappedHandler(ctx, conn, ip, port, sbx, sbxLogger, t.metrics, t.protocol)

@@ -132,12 +132,13 @@ func TestMatchDomain(t *testing.T) {
 func TestIsEgressAllowed(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name      string
-		network   *orchestrator.SandboxNetworkConfig
-		hostname  string
-		ip        net.IP
-		want      bool
-		wantError bool
+		name          string
+		network       *orchestrator.SandboxNetworkConfig
+		hostname      string
+		ip            net.IP
+		internalCIDRs []string
+		want          bool
+		wantError     bool
 	}{
 		// ---------------------------------------------------------------------
 		// Default Allow Behavior
@@ -340,6 +341,55 @@ func TestIsEgressAllowed(t *testing.T) {
 		},
 
 		// ---------------------------------------------------------------------
+		// Infra-level Internal Allowlist (ALLOW_SANDBOX_INTERNAL_CIDRS)
+		// Always wins, even over user deny rules.
+		// ---------------------------------------------------------------------
+		{
+			name: "internal allowlist bypasses user deny all",
+			network: &orchestrator.SandboxNetworkConfig{
+				Egress: &orchestrator.SandboxNetworkEgressConfig{
+					DeniedCidrs: []string{sandbox_network.AllInternetTrafficCIDR},
+				},
+			},
+			hostname:      "",
+			ip:            net.ParseIP("10.0.11.254"),
+			internalCIDRs: []string{"10.0.11.254/32"},
+			want:          true,
+		},
+		{
+			name: "internal allowlist bypasses specific user deny",
+			network: &orchestrator.SandboxNetworkConfig{
+				Egress: &orchestrator.SandboxNetworkEgressConfig{
+					DeniedCidrs: []string{"10.0.0.0/8"},
+				},
+			},
+			hostname:      "",
+			ip:            net.ParseIP("10.0.11.254"),
+			internalCIDRs: []string{"10.0.11.254/32"},
+			want:          true,
+		},
+		{
+			name: "IP outside internal allowlist still blocked by user deny",
+			network: &orchestrator.SandboxNetworkConfig{
+				Egress: &orchestrator.SandboxNetworkEgressConfig{
+					DeniedCidrs: []string{"10.0.0.0/8"},
+				},
+			},
+			hostname:      "",
+			ip:            net.ParseIP("10.0.11.253"),
+			internalCIDRs: []string{"10.0.11.254/32"},
+			want:          false,
+		},
+		{
+			name:          "internal allowlist works with nil egress config",
+			network:       &orchestrator.SandboxNetworkConfig{},
+			hostname:      "",
+			ip:            net.ParseIP("10.0.11.254"),
+			internalCIDRs: []string{"10.0.11.254/32"},
+			want:          true,
+		},
+
+		// ---------------------------------------------------------------------
 		// Error Handling
 		// ---------------------------------------------------------------------
 		{
@@ -390,7 +440,12 @@ func TestIsEgressAllowed(t *testing.T) {
 				},
 			}
 
-			got, _, err := isEgressAllowed(sbx, tt.hostname, tt.ip)
+			internalNets, err := sandbox_network.ParseCIDRs(tt.internalCIDRs)
+			if err != nil {
+				t.Fatalf("failed to parse internal CIDRs: %v", err)
+			}
+
+			got, _, err := isEgressAllowed(sbx, tt.hostname, tt.ip, internalNets)
 
 			if tt.wantError {
 				if err == nil {
@@ -416,35 +471,42 @@ func TestIsEgressAllowed(t *testing.T) {
 func TestAlwaysDeniedCIDRs(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name string
-		ip   string
-		want bool
+		name          string
+		ip            string
+		internalCIDRs []string
+		want          bool
 	}{
 		// IPs in denied CIDRs (internal/private ranges)
-		{"10.0.0.1 is denied", "10.0.0.1", true},
-		{"10.255.255.255 is denied", "10.255.255.255", true},
-		{"192.168.1.1 is denied", "192.168.1.1", true},
-		{"172.16.0.1 is denied", "172.16.0.1", true},
-		{"172.31.255.255 is denied", "172.31.255.255", true},
-		{"169.254.1.1 is denied (link-local)", "169.254.1.1", true},
-		{"127.0.0.1 is denied (loopback)", "127.0.0.1", true},
+		{"10.0.0.1 is denied", "10.0.0.1", nil, true},
+		{"10.255.255.255 is denied", "10.255.255.255", nil, true},
+		{"192.168.1.1 is denied", "192.168.1.1", nil, true},
+		{"172.16.0.1 is denied", "172.16.0.1", nil, true},
+		{"172.31.255.255 is denied", "172.31.255.255", nil, true},
+		{"169.254.1.1 is denied (link-local)", "169.254.1.1", nil, true},
+		{"127.0.0.1 is denied (loopback)", "127.0.0.1", nil, true},
 
 		// IPs NOT in denied CIDRs (public IPs)
-		{"8.8.8.8 is allowed (Google DNS)", "8.8.8.8", false},
-		{"1.1.1.1 is allowed (Cloudflare)", "1.1.1.1", false},
-		{"142.250.80.46 is allowed (Google)", "142.250.80.46", false},
+		{"8.8.8.8 is allowed (Google DNS)", "8.8.8.8", nil, false},
+		{"1.1.1.1 is allowed (Cloudflare)", "1.1.1.1", nil, false},
+		{"142.250.80.46 is allowed (Google)", "142.250.80.46", nil, false},
 
 		// IPv6 denied ranges
-		{"::1 is denied (IPv6 loopback)", "::1", true},
-		{"fc00::1 is denied (IPv6 unique local)", "fc00::1", true},
-		{"fe80::1 is denied (IPv6 link-local)", "fe80::1", true},
+		{"::1 is denied (IPv6 loopback)", "::1", nil, true},
+		{"fc00::1 is denied (IPv6 unique local)", "fc00::1", nil, true},
+		{"fe80::1 is denied (IPv6 link-local)", "fe80::1", nil, true},
 
 		// IPv6 allowed (public)
-		{"2001:4860:4860::8888 is allowed (Google IPv6 DNS)", "2001:4860:4860::8888", false},
+		{"2001:4860:4860::8888 is allowed (Google IPv6 DNS)", "2001:4860:4860::8888", nil, false},
 
 		// Edge cases around CIDR boundaries
-		{"172.15.255.255 is allowed (just before 172.16.0.0/12)", "172.15.255.255", false},
-		{"172.32.0.0 is allowed (just after 172.16.0.0/12)", "172.32.0.0", false},
+		{"172.15.255.255 is allowed (just before 172.16.0.0/12)", "172.15.255.255", nil, false},
+		{"172.32.0.0 is allowed (just after 172.16.0.0/12)", "172.32.0.0", nil, false},
+
+		// Infra-level internal allowlist exemptions
+		{"10.0.11.254 is allowed when whitelisted", "10.0.11.254", []string{"10.0.11.254/32"}, false},
+		{"10.0.11.253 is denied when only 10.0.11.254/32 whitelisted", "10.0.11.253", []string{"10.0.11.254/32"}, true},
+		{"192.168.1.1 is allowed when range whitelisted", "192.168.1.1", []string{"192.168.0.0/16"}, false},
+		{"bare IP whitelist entry is treated as /32", "10.0.11.254", []string{"10.0.11.254"}, false},
 	}
 
 	for _, tt := range tests {
@@ -455,7 +517,12 @@ func TestAlwaysDeniedCIDRs(t *testing.T) {
 				t.Fatalf("Failed to parse IP: %s", tt.ip)
 			}
 
-			got := isIPInAlwaysDeniedCIDRs(ip)
+			internalNets, err := sandbox_network.ParseCIDRs(tt.internalCIDRs)
+			if err != nil {
+				t.Fatalf("failed to parse internal CIDRs: %v", err)
+			}
+
+			got := isIPInAlwaysDeniedCIDRs(ip, internalNets)
 			if got != tt.want {
 				t.Errorf("isIPInDeniedCIDRs(%s) = %v, want %v", tt.ip, got, tt.want)
 			}
