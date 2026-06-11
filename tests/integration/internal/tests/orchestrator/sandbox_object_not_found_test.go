@@ -25,7 +25,7 @@ func TestSandboxObjectNotFound(t *testing.T) {
 	// Under full host load (parallel 100-sandbox tests) the orchestrator can
 	// report ResourceExhausted for minutes before template validation is
 	// reached, so keep the retry window generous.
-	for range 36 {
+	for range 42 {
 		_, err := client.Create(ctx, &orchestrator.SandboxCreateRequest{
 			Sandbox: &orchestrator.SandboxConfig{
 				TemplateId:          "nonexistent-template-id",
@@ -70,6 +70,6 @@ func TestSandboxObjectNotFound(t *testing.T) {
 		return
 	}
 
-	t.Log("failed to create sandbox after 36 retries")
+	t.Log("failed to create sandbox after 42 retries")
 	t.FailNow()
 }
