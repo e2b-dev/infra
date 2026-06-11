@@ -579,6 +579,14 @@ Related ideas:
 - **Tune ext4 `commit=` (e.g. `commit=1`) for fs-only-intended sandboxes** —
   shrinks the acknowledged-but-unsynced window; trades runtime IO perf,
   measure.
+- **`noatime` (or `lazytime`) in rootflags** — we mount with only `discard`
+  today; under the default `relatime`, reads can dirty inode blocks, which is
+  pure diff churn for read-heavy workloads. Likely the cheapest diff-size win
+  available. `lazytime` keeps atime semantics but batches the inode
+  writeback; `noatime` drops it entirely.
+- **Small fixed journal** (`mke2fs -J size=...` at build) — the journal is a
+  cyclically rewritten region that lands in every diff layer; bounding its
+  size bounds that churn.
 
 Note: today the disk drain+flush is a side effect of the custom FC
 `CreateSnapshot` call, so disk-only either keeps creating a throwaway snapfile or
