@@ -80,6 +80,7 @@ func (p *supabaseProvider) GetTeamCreatorContext(ctx context.Context, userID uui
 	}
 
 	appMetadata := rawUserMetadata(authUser.RawAppMetaData)
+
 	return creatorContextFromMetadata(appMetadata, providerNamesFromSupabaseMetadata(appMetadata)), nil
 }
 
