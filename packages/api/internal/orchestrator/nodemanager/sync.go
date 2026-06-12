@@ -67,8 +67,8 @@ func (n *Node) Sync(ctx context.Context, store *sandbox.Store) {
 
 	if !syncRetrySuccess {
 		logger.L().Error(ctx, "Failed to sync node after max retries, temporarily marking as unhealthy", logger.WithNodeID(n.ID))
-		// Local status change, the timestamp is the time of the observation.
-		n.setStatus(ctx, api.NodeStatusUnhealthy, time.Now())
+		// Local status change, the timestamp is the time of the first unhealthy observation.
+		n.markUnhealthyLocal(ctx)
 
 		return
 	}
