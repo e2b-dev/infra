@@ -910,8 +910,10 @@ func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, 
 	uploadCtx := context.WithoutCancel(ctx)
 
 	s.uploadsWG.Add(1)
+	s.uploadsInFlight.Add(1)
 	go func() {
 		defer s.uploadsWG.Done()
+		defer s.uploadsInFlight.Add(-1)
 
 		spanCtx, span := tracer.Start(uploadCtx, "upload snapshot")
 		defer span.End()

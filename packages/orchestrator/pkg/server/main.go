@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
@@ -38,6 +39,10 @@ const uploadedBuildsTTL = 1 * time.Hour
 // MaxStartingInstancesPerNode feature flag and resize the semaphore.
 const startingSandboxesLimitRefreshInterval = 30 * time.Second
 
+// uploadDrainLogInterval is how often Close logs progress while waiting for
+// in-flight snapshot uploads to finish during shutdown.
+const uploadDrainLogInterval = 10 * time.Second
+
 type Server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 	orchestrator.UnimplementedChunkServiceServer
@@ -61,8 +66,10 @@ type Server struct {
 	uploadFailedCounter   metric.Int64Counter
 
 	// uploadsWG tracks in-flight async snapshot uploads so a graceful shutdown
-	// can wait for them to finish instead of dropping them.
-	uploadsWG sync.WaitGroup
+	// can wait for them to finish instead of dropping them. uploadsInFlight is
+	// the live count, used to log drain progress during shutdown.
+	uploadsWG       sync.WaitGroup
+	uploadsInFlight atomic.Int64
 
 	done      chan struct{}
 	closeOnce sync.Once
@@ -181,15 +188,45 @@ func (s *Server) Close(ctx context.Context) error {
 		close(uploadsDone)
 	}()
 
-	select {
-	case <-uploadsDone:
-	case <-ctx.Done():
-		logger.L().Warn(ctx, "shutting down with snapshot uploads still in flight", zap.Error(context.Cause(ctx)))
-	}
+	s.drainUploads(ctx, uploadsDone)
 
 	s.uploadedBuilds.Stop()
 
 	return nil
+}
+
+// drainUploads waits for in-flight snapshot uploads to finish, logging progress
+// periodically, until they complete or ctx is cancelled (forced stop).
+func (s *Server) drainUploads(ctx context.Context, uploadsDone <-chan struct{}) {
+	inFlight := s.uploadsInFlight.Load()
+	if inFlight == 0 {
+		return
+	}
+
+	logger.L().Info(ctx, "waiting for in-flight snapshot uploads to finish", zap.Int64("uploads", inFlight))
+
+	ticker := time.NewTicker(uploadDrainLogInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-uploadsDone:
+			logger.L().Info(ctx, "all in-flight snapshot uploads finished")
+
+			return
+		case <-ctx.Done():
+			logger.L().Warn(ctx, "shutting down with snapshot uploads still in flight",
+				zap.Int64("uploads", s.uploadsInFlight.Load()),
+				zap.Error(context.Cause(ctx)),
+			)
+
+			return
+		case <-ticker.C:
+			logger.L().Info(ctx, "still waiting for in-flight snapshot uploads",
+				zap.Int64("uploads", s.uploadsInFlight.Load()),
+			)
+		}
+	}
 }
 
 func (s *Server) refreshStartingSandboxesLimit(ctx context.Context) {
