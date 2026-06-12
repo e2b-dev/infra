@@ -1223,9 +1223,9 @@ func (s *Sandbox) Pause(
 	// For a filesystem-only pause the memory snapshot is skipped entirely: the
 	// memfile diff stays NoDiff with no header, and the memfile-derived fields
 	// stay zero so the snapshot and scheduling metadata carry rootfs only.
-	mem := memorySnapshot{
-		diff:       build.Diff(&build.NoDiff{}),
-		diffHeader: NewResolvedDiffHeader(nil),
+	mem := MemorySnapshot{
+		Diff:       build.Diff(&build.NoDiff{}),
+		DiffHeader: NewResolvedDiffHeader(nil),
 	}
 	if !pauseOpts.filesystemSnapshot {
 		mem, err = s.processMemorySnapshot(ctx, buildID)
@@ -1235,7 +1235,7 @@ func (s *Sandbox) Pause(
 	}
 	// NoDiff.Close is a no-op, so registering it for the filesystem-only case is
 	// harmless and keeps the cleanup ordering identical to the memory path.
-	cleanup.AddNoContext(ctx, mem.diff.Close)
+	cleanup.AddNoContext(ctx, mem.Diff.Close)
 
 	rootfsDiff, rootfsHeader, err := pauseProcessRootfs(
 		ctx,
@@ -1275,13 +1275,11 @@ func (s *Sandbox) Pause(
 	return &Snapshot{
 		Snapfile:           snapfile,
 		Metafile:           metadataFileLink,
-		MemfileDiff:        mem.diff,
-		MemfileDiffHeader:  mem.diffHeader,
+		MemorySnapshot:     mem,
 		RootfsDiff:         rootfsDiff,
 		RootfsDiffHeader:   rootfsDiffHeader,
 		SchedulingMetadata: schedulingMetadata,
 		FilesystemSnapshot: pauseOpts.filesystemSnapshot,
-		MemfileBlockSize:   mem.blockSize,
 		RootfsBlockSize:    originalRootfs.Header().Metadata.BlockSize,
 
 		BuildID: buildID,
@@ -1290,16 +1288,22 @@ func (s *Sandbox) Pause(
 	}, nil
 }
 
-// memorySnapshot holds the products of memory postprocessing during a
-// Pause. For a filesystem-only pause it is left zero-valued except for an empty
-// NoDiff and its resolved-nil header.
-type memorySnapshot struct {
-	diff       build.Diff
-	diffHeader *DiffHeader
-	header     *header.Header
-	blockSize  uint64
-	// newBytes is the pre-dedup dirty-byte upper bound passed to scheduling
-	// metadata for the new layer.
+// MemorySnapshot bundles the products of memory postprocessing during a Pause:
+// the memfile diff, its (async-resolved) header, and the block size. It is
+// embedded in Snapshot. For a filesystem-only pause it is zero-valued except for
+// an empty NoDiff and a resolved-nil header (see Snapshot.FilesystemSnapshot).
+type MemorySnapshot struct {
+	Diff       build.Diff
+	DiffHeader *DiffHeader
+	// BlockSize is captured synchronously at Pause time because NewUpload's
+	// compression validation needs it before the async dedup header resolves;
+	// the dedup memfile path produces a page-granular Diff.BlockSize() that
+	// doesn't match the chunker-read granularity on restore.
+	BlockSize uint64
+
+	// header (base memfile) and newBytes (pre-dedup dirty-byte upper bound) are
+	// scheduling inputs consumed only at Pause time, so they stay unexported.
+	header   *header.Header
 	newBytes uint64
 }
 
@@ -1307,16 +1311,16 @@ type memorySnapshot struct {
 // and builds its header — steps 3-5 of Pause. Only called for a full memory
 // snapshot; a filesystem-only pause skips it. The returned diff's Close must be
 // registered for cleanup by the caller.
-func (s *Sandbox) processMemorySnapshot(ctx context.Context, buildID uuid.UUID) (memorySnapshot, error) {
+func (s *Sandbox) processMemorySnapshot(ctx context.Context, buildID uuid.UUID) (MemorySnapshot, error) {
 	originalMemfile, err := s.Template.Memfile(ctx)
 	if err != nil {
-		return memorySnapshot{}, fmt.Errorf("failed to get original memfile: %w", err)
+		return MemorySnapshot{}, fmt.Errorf("failed to get original memfile: %w", err)
 	}
 	memfileHeader := originalMemfile.Header()
 
 	memfileDiffMetadata, err := s.Resources.memory.DiffMetadata(ctx, s.process)
 	if err != nil {
-		return memorySnapshot{}, fmt.Errorf("failed to get memfile metadata: %w", err)
+		return MemorySnapshot{}, fmt.Errorf("failed to get memfile metadata: %w", err)
 	}
 	recordSnapshotDiff(ctx, "memfile", memfileDiffMetadata, memfileHeader)
 
@@ -1352,14 +1356,14 @@ func (s *Sandbox) processMemorySnapshot(ctx context.Context, buildID uuid.UUID) 
 		dedupBudget,
 	)
 	if err != nil {
-		return memorySnapshot{}, fmt.Errorf("error while post processing: %w", err)
+		return MemorySnapshot{}, fmt.Errorf("error while post processing: %w", err)
 	}
 
-	return memorySnapshot{
-		diff:       memfileDiff,
-		diffHeader: memfileDiffHeader,
+	return MemorySnapshot{
+		Diff:       memfileDiff,
+		DiffHeader: memfileDiffHeader,
+		BlockSize:  memfileHeader.Metadata.BlockSize,
 		header:     memfileHeader,
-		blockSize:  memfileHeader.Metadata.BlockSize,
 		newBytes:   memfileDiffMetadata.Dirty.GetCardinality() * uint64(memfileDiffMetadata.BlockSize),
 	}, nil
 }

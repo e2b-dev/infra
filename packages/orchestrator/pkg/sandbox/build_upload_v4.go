@@ -16,7 +16,7 @@ import (
 )
 
 func (u *Upload) runV4(ctx context.Context) error {
-	memSrc, err := u.snap.MemfileDiff.CachePath(ctx)
+	memSrc, err := u.snap.MemorySnapshot.Diff.CachePath(ctx)
 	if err != nil {
 		return fmt.Errorf("memfile diff path: %w", err)
 	}
@@ -29,7 +29,7 @@ func (u *Upload) runV4(ctx context.Context) error {
 	eg, ctx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
-		h, err := u.snap.MemfileDiffHeader.WaitWithContext(ctx)
+		h, err := u.snap.MemorySnapshot.DiffHeader.WaitWithContext(ctx)
 		if err != nil {
 			return fmt.Errorf("wait memfile diff header: %w", err)
 		}
