@@ -30,14 +30,14 @@ func (n *Node) Status() api.NodeStatus {
 	return n.StatusInfo().Status
 }
 
-// StatusInfo atomically returns the node status together with the time of the last status change.
-// The reported status can differ from the stored status when the gRPC connection is not healthy,
-// so transitions of the reported status are tracked to keep the timestamp consistent with it.
+// StatusInfo returns the node status together with the time of the last status change.
+// The returned status can be derived from the gRPC connection state, in which case the
+// timestamp still refers to the last stored status change.
 func (n *Node) StatusInfo() StatusInfo {
-	n.mutex.Lock()
-	defer n.mutex.Unlock()
+	n.mutex.RLock()
+	defer n.mutex.RUnlock()
 
-	status := n.status
+	status := n.status.Status
 	if status == api.NodeStatusReady {
 		switch n.client.Connection.GetState() {
 		case connectivity.Shutdown:
@@ -47,11 +47,7 @@ func (n *Node) StatusInfo() StatusInfo {
 		}
 	}
 
-	if status != n.reported.Status {
-		n.reported = StatusInfo{Status: status, ChangedAt: time.Now()}
-	}
-
-	return n.reported
+	return StatusInfo{Status: status, ChangedAt: n.status.ChangedAt}
 }
 
 // setStatus updates the node status together with the time of the last status change.
@@ -60,13 +56,12 @@ func (n *Node) setStatus(ctx context.Context, status api.NodeStatus, changedAt t
 	n.mutex.Lock()
 	defer n.mutex.Unlock()
 
-	if n.status != status {
+	if n.status.Status != status {
 		logger.L().Info(ctx, "NodeID status changed", logger.WithNodeID(n.ID), zap.String("status", string(status)))
-		n.status = status
-		n.reported = StatusInfo{Status: status, ChangedAt: changedAt}
-	} else if changedAt.After(n.reported.ChangedAt) {
-		// Status is the same from the API perspective, but the orchestrator reported a newer change.
-		n.reported.ChangedAt = changedAt
+		n.status = StatusInfo{Status: status, ChangedAt: changedAt}
+	} else if changedAt.After(n.status.ChangedAt) {
+		// Status is the same, but the orchestrator reported a newer change.
+		n.status.ChangedAt = changedAt
 	}
 }
 
