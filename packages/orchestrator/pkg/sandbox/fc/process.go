@@ -79,6 +79,13 @@ func (f *fcLogFilter) Write(p []byte) (n int, err error) {
 	return len(p), err
 }
 
+// ext4RootFlags are the ext4 mount flags passed on the kernel cmdline.
+// discard: ext4 issues TRIM on freed blocks so they are elided from the
+// snapshot diff. It must never include "noload": a filesystem-only snapshot
+// resume cold-boots from the snapshot rootfs and relies on ext4 replaying the
+// journal on mount.
+const ext4RootFlags = "discard"
+
 type ProcessOptions struct {
 	// IoEngine is the io engine to use for the rootfs drive.
 	IoEngine *string
@@ -373,8 +380,7 @@ func (p *Process) Create(
 		"i8042.noaux":      "",
 		"random.trust_cpu": "on",
 
-		// discard: ext4 issues TRIM on freed blocks so they are elided from the snapshot diff.
-		"rootflags": "discard",
+		"rootflags": ext4RootFlags,
 	}
 
 	if options.KvmClock {
