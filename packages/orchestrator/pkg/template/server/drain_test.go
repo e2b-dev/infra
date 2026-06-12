@@ -4,6 +4,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -19,6 +20,50 @@ import (
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
+
+type fakeCloser struct {
+	closed bool
+	err    error
+}
+
+func (f *fakeCloser) Close() error {
+	f.closed = true
+
+	return f.err
+}
+
+func TestCloseRunsClosersWithCanceledContext(t *testing.T) {
+	t.Parallel()
+
+	first := &fakeCloser{}
+	second := &fakeCloser{}
+	s := &ServerStore{
+		logger:  logger.NewNopLogger(),
+		closers: []closeable{first, second},
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	require.NoError(t, s.Close(ctx))
+	require.True(t, first.closed)
+	require.True(t, second.closed)
+}
+
+func TestCloseJoinsCloserErrors(t *testing.T) {
+	t.Parallel()
+
+	failing := &fakeCloser{err: errors.New("close failed")}
+	ok := &fakeCloser{}
+	s := &ServerStore{
+		logger:  logger.NewNopLogger(),
+		closers: []closeable{failing, ok},
+	}
+
+	err := s.Close(t.Context())
+	require.ErrorContains(t, err, "close failed")
+	require.True(t, ok.closed)
+}
 
 func TestWaitBuildStartsCanceledDoesNotBlockDrainingRejection(t *testing.T) {
 	t.Parallel()

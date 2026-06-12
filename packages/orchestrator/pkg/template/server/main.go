@@ -140,26 +140,25 @@ func New(
 	return store, nil
 }
 
+// Close releases resources held by the template server, such as remote
+// repository clients. Waiting for builds to drain is handled separately by
+// Wait or ForceStop, so closers always run even if ctx is already canceled
+// (for example during a forced or timed-out shutdown).
 func (s *ServerStore) Close(ctx context.Context) error {
 	s.StartDraining(ctx)
 
-	select {
-	case <-ctx.Done():
-		return errors.New("force exit, not waiting for builds to finish")
-	default:
-		var closersErr error
-		for _, closer := range s.closers {
-			err := closer.Close()
-			if err != nil {
-				closersErr = errors.Join(closersErr, err)
-			}
+	var closersErr error
+	for _, closer := range s.closers {
+		err := closer.Close()
+		if err != nil {
+			closersErr = errors.Join(closersErr, err)
 		}
-		if closersErr != nil {
-			return fmt.Errorf("failed to close services: %w", closersErr)
-		}
-
-		return nil
 	}
+	if closersErr != nil {
+		return fmt.Errorf("failed to close services: %w", closersErr)
+	}
+
+	return nil
 }
 
 func (s *ServerStore) Wait(ctx context.Context) error {
