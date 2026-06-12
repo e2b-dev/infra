@@ -33,7 +33,6 @@ func (n *Node) Sync(ctx context.Context, store *sandbox.Store) {
 			nodeStatus = api.NodeStatusUnhealthy
 		}
 
-		// Zero when the orchestrator does not report the status change timestamp yet.
 		var statusChangedAt time.Time
 		if ts := nodeInfo.GetServiceStatusChangedAt(); ts.IsValid() {
 			statusChangedAt = ts.AsTime()
