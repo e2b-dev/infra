@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -54,8 +53,6 @@ func (s *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 		teamID: teamID,
 		// Default templates are E2B-wide and don't belong on a dedicated cluster.
 		includeDefaults: team.ClusterID == nil,
-		cpuCount:        int64(utils.DerefOrDefault(params.CpuCount, 0)),
-		memoryMb:        int64(utils.DerefOrDefault(params.MemoryMB, 0)),
 		filterPublic:    templatesPublicFilter(params.Public),
 		search:          strings.TrimSpace(utils.DerefOrDefault(params.Search, "")),
 	}
@@ -100,8 +97,6 @@ func (s *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 type templatesFilter struct {
 	teamID          uuid.UUID
 	includeDefaults bool
-	cpuCount        int64
-	memoryMb        int64
 	filterPublic    int16
 	search          string
 }
@@ -122,8 +117,6 @@ func (s *APIStore) listTemplates(
 		rows, err := s.db.Dashboard.ListTeamTemplatesByNameAsc(ctx, dashboardqueries.ListTeamTemplatesByNameAscParams{
 			TeamID:          filter.teamID,
 			IncludeDefaults: filter.includeDefaults,
-			CpuCount:        filter.cpuCount,
-			MemoryMb:        filter.memoryMb,
 			FilterPublic:    filter.filterPublic,
 			Search:          filter.search,
 			CursorName:      cursorValue,
@@ -144,115 +137,9 @@ func (s *APIStore) listTemplates(
 		rows, err := s.db.Dashboard.ListTeamTemplatesByNameDesc(ctx, dashboardqueries.ListTeamTemplatesByNameDescParams{
 			TeamID:          filter.teamID,
 			IncludeDefaults: filter.includeDefaults,
-			CpuCount:        filter.cpuCount,
-			MemoryMb:        filter.memoryMb,
 			FilterPublic:    filter.filterPublic,
 			Search:          filter.search,
 			CursorName:      cursorValue,
-			CursorID:        cursorID,
-			LimitPlusOne:    limitPlusOne,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		fields := make([]templateRowFields, len(rows))
-		for i := range rows {
-			fields[i] = templateRowFields(rows[i])
-		}
-
-		return fields, nil
-	case templatesSortCpuCountAsc:
-		cursorCPU, parseErr := cursorInt64(cursorValue)
-		if parseErr != nil {
-			return nil, parseErr
-		}
-		rows, err := s.db.Dashboard.ListTeamTemplatesByCpuCountAsc(ctx, dashboardqueries.ListTeamTemplatesByCpuCountAscParams{
-			TeamID:          filter.teamID,
-			IncludeDefaults: filter.includeDefaults,
-			CpuCount:        filter.cpuCount,
-			MemoryMb:        filter.memoryMb,
-			FilterPublic:    filter.filterPublic,
-			Search:          filter.search,
-			CursorCpuCount:  cursorCPU,
-			CursorID:        cursorID,
-			LimitPlusOne:    limitPlusOne,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		fields := make([]templateRowFields, len(rows))
-		for i := range rows {
-			fields[i] = templateRowFields(rows[i])
-		}
-
-		return fields, nil
-	case templatesSortCpuCountDesc:
-		cursorCPU, parseErr := cursorInt64(cursorValue)
-		if parseErr != nil {
-			return nil, parseErr
-		}
-		rows, err := s.db.Dashboard.ListTeamTemplatesByCpuCountDesc(ctx, dashboardqueries.ListTeamTemplatesByCpuCountDescParams{
-			TeamID:          filter.teamID,
-			IncludeDefaults: filter.includeDefaults,
-			CpuCount:        filter.cpuCount,
-			MemoryMb:        filter.memoryMb,
-			FilterPublic:    filter.filterPublic,
-			Search:          filter.search,
-			CursorCpuCount:  cursorCPU,
-			CursorID:        cursorID,
-			LimitPlusOne:    limitPlusOne,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		fields := make([]templateRowFields, len(rows))
-		for i := range rows {
-			fields[i] = templateRowFields(rows[i])
-		}
-
-		return fields, nil
-	case templatesSortMemoryMbAsc:
-		cursorMem, parseErr := cursorInt64(cursorValue)
-		if parseErr != nil {
-			return nil, parseErr
-		}
-		rows, err := s.db.Dashboard.ListTeamTemplatesByMemoryMbAsc(ctx, dashboardqueries.ListTeamTemplatesByMemoryMbAscParams{
-			TeamID:          filter.teamID,
-			IncludeDefaults: filter.includeDefaults,
-			CpuCount:        filter.cpuCount,
-			MemoryMb:        filter.memoryMb,
-			FilterPublic:    filter.filterPublic,
-			Search:          filter.search,
-			CursorMemoryMb:  cursorMem,
-			CursorID:        cursorID,
-			LimitPlusOne:    limitPlusOne,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		fields := make([]templateRowFields, len(rows))
-		for i := range rows {
-			fields[i] = templateRowFields(rows[i])
-		}
-
-		return fields, nil
-	case templatesSortMemoryMbDesc:
-		cursorMem, parseErr := cursorInt64(cursorValue)
-		if parseErr != nil {
-			return nil, parseErr
-		}
-		rows, err := s.db.Dashboard.ListTeamTemplatesByMemoryMbDesc(ctx, dashboardqueries.ListTeamTemplatesByMemoryMbDescParams{
-			TeamID:          filter.teamID,
-			IncludeDefaults: filter.includeDefaults,
-			CpuCount:        filter.cpuCount,
-			MemoryMb:        filter.memoryMb,
-			FilterPublic:    filter.filterPublic,
-			Search:          filter.search,
-			CursorMemoryMb:  cursorMem,
 			CursorID:        cursorID,
 			LimitPlusOne:    limitPlusOne,
 		})
@@ -275,8 +162,6 @@ func (s *APIStore) listTemplates(
 		rows, err := s.db.Dashboard.ListTeamTemplatesByCreatedAtAsc(ctx, dashboardqueries.ListTeamTemplatesByCreatedAtAscParams{
 			TeamID:          filter.teamID,
 			IncludeDefaults: filter.includeDefaults,
-			CpuCount:        filter.cpuCount,
-			MemoryMb:        filter.memoryMb,
 			FilterPublic:    filter.filterPublic,
 			Search:          filter.search,
 			CursorCreatedAt: ct,
@@ -302,8 +187,6 @@ func (s *APIStore) listTemplates(
 		rows, err := s.db.Dashboard.ListTeamTemplatesByCreatedAtDesc(ctx, dashboardqueries.ListTeamTemplatesByCreatedAtDescParams{
 			TeamID:          filter.teamID,
 			IncludeDefaults: filter.includeDefaults,
-			CpuCount:        filter.cpuCount,
-			MemoryMb:        filter.memoryMb,
 			FilterPublic:    filter.filterPublic,
 			Search:          filter.search,
 			CursorCreatedAt: ct,
@@ -329,8 +212,6 @@ func (s *APIStore) listTemplates(
 		rows, err := s.db.Dashboard.ListTeamTemplatesByUpdatedAtAsc(ctx, dashboardqueries.ListTeamTemplatesByUpdatedAtAscParams{
 			TeamID:          filter.teamID,
 			IncludeDefaults: filter.includeDefaults,
-			CpuCount:        filter.cpuCount,
-			MemoryMb:        filter.memoryMb,
 			FilterPublic:    filter.filterPublic,
 			Search:          filter.search,
 			CursorUpdatedAt: ct,
@@ -356,8 +237,6 @@ func (s *APIStore) listTemplates(
 		rows, err := s.db.Dashboard.ListTeamTemplatesByUpdatedAtDesc(ctx, dashboardqueries.ListTeamTemplatesByUpdatedAtDescParams{
 			TeamID:          filter.teamID,
 			IncludeDefaults: filter.includeDefaults,
-			CpuCount:        filter.cpuCount,
-			MemoryMb:        filter.memoryMb,
 			FilterPublic:    filter.filterPublic,
 			Search:          filter.search,
 			CursorUpdatedAt: ct,
@@ -385,10 +264,6 @@ func templatesSortValue(sort templatesSort, f templateRowFields) string {
 	switch sort {
 	case templatesSortNameAsc, templatesSortNameDesc:
 		return f.NameSortKey
-	case templatesSortCpuCountAsc, templatesSortCpuCountDesc:
-		return strconv.FormatInt(f.CpuCount, 10)
-	case templatesSortMemoryMbAsc, templatesSortMemoryMbDesc:
-		return strconv.FormatInt(f.MemoryMb, 10)
 	case templatesSortCreatedAtAsc, templatesSortCreatedAtDesc:
 		return f.CreatedAt.UTC().Format(time.RFC3339Nano)
 	default: // updated_at
