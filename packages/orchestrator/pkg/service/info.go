@@ -15,6 +15,12 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
+// ServiceStatus bundles the service status with the time of its last change.
+type ServiceStatus struct {
+	Status    orchestratorinfo.ServiceInfoStatus
+	ChangedAt time.Time
+}
+
 type ServiceInfo struct {
 	ClientId  string
 	ServiceId string
@@ -27,9 +33,8 @@ type ServiceInfo struct {
 	Labels      []string
 	MachineInfo machineinfo.MachineInfo
 
-	status          orchestratorinfo.ServiceInfoStatus
-	statusChangedAt time.Time
-	statusMu        sync.RWMutex
+	status   ServiceStatus
+	statusMu sync.RWMutex
 }
 
 var serviceRolesMapper = map[cfg.ServiceType]orchestratorinfo.ServiceInfoRole{
@@ -37,33 +42,24 @@ var serviceRolesMapper = map[cfg.ServiceType]orchestratorinfo.ServiceInfoRole{
 	cfg.TemplateManager: orchestratorinfo.ServiceInfoRole_TemplateBuilder,
 }
 
-func (s *ServiceInfo) GetStatus() orchestratorinfo.ServiceInfoStatus {
+func (s *ServiceInfo) GetStatus() ServiceStatus {
 	s.statusMu.RLock()
 	defer s.statusMu.RUnlock()
 
 	return s.status
 }
 
-// GetStatusAndChangedAt atomically returns the status together with the timestamp of the last status change.
-func (s *ServiceInfo) GetStatusAndChangedAt() (orchestratorinfo.ServiceInfoStatus, time.Time) {
-	s.statusMu.RLock()
-	defer s.statusMu.RUnlock()
-
-	return s.status, s.statusChangedAt
-}
-
 func (s *ServiceInfo) SetStatus(ctx context.Context, status orchestratorinfo.ServiceInfoStatus) {
 	s.statusMu.Lock()
 	defer s.statusMu.Unlock()
 
-	if s.status != status {
+	if s.status.Status != status {
 		logger.L().Info(ctx, "Service status changed", zap.String("status", status.String()))
-		s.status = status
-		s.statusChangedAt = time.Now()
+		s.status = ServiceStatus{Status: status, ChangedAt: time.Now()}
 	}
 }
 
-func NewInfoContainer(ctx context.Context, clientId string, version string, commit string, instanceID string, machineInfo machineinfo.MachineInfo, config cfg.Config) *ServiceInfo {
+func NewInfoContainer(clientId string, version string, commit string, instanceID string, machineInfo machineinfo.MachineInfo, config cfg.Config) *ServiceInfo {
 	services := cfg.GetServices(config)
 	serviceRoles := make([]orchestratorinfo.ServiceInfoRole, 0)
 
@@ -78,7 +74,7 @@ func NewInfoContainer(ctx context.Context, clientId string, version string, comm
 		ClientId:  clientId,
 		ServiceId: instanceID,
 
-		statusChangedAt: startup,
+		status: ServiceStatus{Status: orchestratorinfo.ServiceInfoStatus_Healthy, ChangedAt: startup},
 
 		Startup:     startup,
 		Roles:       serviceRoles,
@@ -88,8 +84,6 @@ func NewInfoContainer(ctx context.Context, clientId string, version string, comm
 		SourceVersion: version,
 		SourceCommit:  commit,
 	}
-
-	serviceInfo.SetStatus(ctx, orchestratorinfo.ServiceInfoStatus_Healthy)
 
 	return serviceInfo
 }

@@ -156,10 +156,8 @@ func (i *Instance) Sync(ctx context.Context) error {
 
 	if ts := info.GetServiceStatusChangedAt(); ts.IsValid() {
 		i.statusChangedAt = ts.AsTime()
-	} else if i.status != info.GetServiceStatus() {
-		// Fallback for orchestrators that do not report the status change timestamp yet.
-		i.statusChangedAt = time.Now()
 	}
+
 	i.status = info.GetServiceStatus()
 	i.roles = info.GetServiceRoles()
 	i.machine = machineinfo.FromGRPCInfo(info.GetMachineInfo())
