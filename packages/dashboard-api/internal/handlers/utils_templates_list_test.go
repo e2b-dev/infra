@@ -14,7 +14,8 @@ func TestParseTemplatesSort(t *testing.T) {
 	t.Parallel()
 
 	nameAsc := api.GetTemplatesParamsSortNameAsc
-	cpuDesc := api.GetTemplatesParamsSortCpuCountDesc
+	updatedDesc := api.GetTemplatesParamsSortUpdatedAtDesc
+	removedCpuSort := api.GetTemplatesParamsSort("cpu_count_desc")
 	bogus := api.GetTemplatesParamsSort("bogus")
 
 	tests := []struct {
@@ -25,7 +26,8 @@ func TestParseTemplatesSort(t *testing.T) {
 	}{
 		{"defaults to created_at_desc", nil, templatesSortCreatedAtDesc, false},
 		{"name_asc", &nameAsc, templatesSortNameAsc, false},
-		{"cpu_count_desc", &cpuDesc, templatesSortCpuCountDesc, false},
+		{"updated_at_desc", &updatedDesc, templatesSortUpdatedAtDesc, false},
+		{"removed build-field sort", &removedCpuSort, "", true},
 		{"invalid", &bogus, "", true},
 	}
 
@@ -124,35 +126,17 @@ func TestTemplatesSortValue(t *testing.T) {
 		TemplateID:  "env-abc",
 		CreatedAt:   created,
 		UpdatedAt:   updated,
-		CpuCount:    4,
-		MemoryMb:    2048,
 		NameSortKey: "org/my-template",
 	}
 
 	assert.Equal(t, "org/my-template", templatesSortValue(templatesSortNameAsc, row))
 	assert.Equal(t, "org/my-template", templatesSortValue(templatesSortNameDesc, row))
-	assert.Equal(t, "4", templatesSortValue(templatesSortCpuCountAsc, row))
-	assert.Equal(t, "2048", templatesSortValue(templatesSortMemoryMbDesc, row))
 	assert.Equal(t, created.Format(time.RFC3339Nano), templatesSortValue(templatesSortCreatedAtAsc, row))
 	assert.Equal(t, updated.Format(time.RFC3339Nano), templatesSortValue(templatesSortUpdatedAtDesc, row))
 }
 
 func TestCursorTypedParsers(t *testing.T) {
 	t.Parallel()
-
-	v := "42"
-	n, err := cursorInt64(&v)
-	require.NoError(t, err)
-	require.NotNil(t, n)
-	assert.Equal(t, int64(42), *n)
-
-	n, err = cursorInt64(nil)
-	require.NoError(t, err)
-	assert.Nil(t, n)
-
-	bad := "not-a-number"
-	_, err = cursorInt64(&bad)
-	require.ErrorIs(t, err, errInvalidTemplatesCursor)
 
 	ts := "2026-05-30T12:34:56.123456789Z"
 	parsed, err := cursorTime(&ts)
