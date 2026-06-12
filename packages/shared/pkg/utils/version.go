@@ -14,6 +14,11 @@ const MinEnvdVersionForSnapshot = "0.5.0"
 // sandbox doesn't end up permanently frozen after resume on older envds.
 const MinEnvdVersionForCgroupFreeze = "0.6.0"
 
+// MinEnvdVersionForHeapCollapse is the first envd that exposes a native
+// POST /collapse endpoint, which compacts envd's own anonymous heap into 2 MiB
+// hugepages before pause to reduce the frames it faults on resume.
+const MinEnvdVersionForHeapCollapse = "0.6.4"
+
 func sanitizeVersion(version string) string {
 	if len(version) > 0 && version[0] != 'v' {
 		version = "v" + version

@@ -8,6 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
@@ -22,6 +25,12 @@ const reclaimOuterSlack = 500 * time.Millisecond
 // single sysfs write but envd may be slow to schedule under load, so this
 // must stay independent of the reclaim shell deadline.
 const freezeTimeout = 2 * time.Second
+
+// collapseTimeout bounds the native POST /collapse call. Collapsing migrates
+// envd's scattered heap pages into hugepages, which is heavier than the freeze
+// sysfs write, so it gets a larger, independent budget. Best-effort: if it is
+// cut short, the partially-collapsed heap is still an improvement.
+const collapseTimeout = 10 * time.Second
 
 // buildReclaimScript builds the fstrim/sync/drop_caches/compact_memory chain.
 // Returns ("", 0) when every step is disabled.
@@ -76,6 +85,14 @@ func (s *Sandbox) bestEffortReclaim(ctx context.Context) {
 		s.bestEffortFreeze(ctx)
 	}
 
+	if s.featureFlags.BoolFlag(ctx, featureflags.CollapseEnvdHeapFlag,
+		featureflags.SandboxContext(s.Runtime.SandboxID),
+		featureflags.TeamContext(s.Runtime.TeamID),
+		featureflags.TemplateContext(s.Runtime.TemplateID),
+	) {
+		s.bestEffortCollapse(ctx)
+	}
+
 	script, timeout := s.buildReclaimScript(cfg)
 	if script == "" {
 		return
@@ -120,6 +137,73 @@ func (s *Sandbox) envdSupportsCgroupFreeze(ctx context.Context) bool {
 	}
 
 	return ok
+}
+
+// envdSupportsHeapCollapse reports whether the sandbox's envd exposes the native
+// /collapse endpoint. Bad version strings log and return false so we never call
+// an unsupported endpoint.
+func (s *Sandbox) envdSupportsHeapCollapse(ctx context.Context) bool {
+	ok, err := utils.IsGTEVersion(s.Config.Envd.Version, utils.MinEnvdVersionForHeapCollapse)
+	if err != nil {
+		logger.L().Warn(ctx, "heap collapse version gate: bad envd version", logger.WithSandboxID(s.Runtime.SandboxID), zap.String("envd_version", s.Config.Envd.Version), zap.Error(err))
+
+		return false
+	}
+
+	return ok
+}
+
+// bestEffortCollapse asks envd to collapse its own heap into hugepages before
+// pause, so on resume envd touches fewer distinct frames. Gated on envd version;
+// failures are logged but never block pause.
+func (s *Sandbox) bestEffortCollapse(ctx context.Context) {
+	if !s.envdSupportsHeapCollapse(ctx) {
+		return
+	}
+
+	ctx, span := tracer.Start(ctx, "envd-collapse")
+	defer span.End()
+
+	start := time.Now()
+	stats, err := s.callEnvdCollapse(ctx, collapseTimeout)
+	elapsedMs := time.Since(start).Milliseconds()
+	success := err == nil
+
+	// Record the round-trip duration whether or not it succeeded: a timed-out or
+	// failed collapse still spends time on the pause path and must be visible.
+	envdCollapseDurationHistogram.Record(ctx, elapsedMs, metric.WithAttributes(attribute.Bool("success", success)))
+	span.SetAttributes(
+		attribute.Bool("collapse.success", success),
+		attribute.Int64("collapse.duration_ms", elapsedMs),
+	)
+
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		logger.L().Warn(ctx, "envd heap collapse failed", logger.WithSandboxID(s.Runtime.SandboxID), zap.Error(err))
+
+		return
+	}
+
+	// Chunk-level efficacy: attempts = collapsed + skipped, successful = collapsed.
+	// One counter split by result so attempts (sum) and successes (collapsed) are
+	// both queryable.
+	envdCollapseChunks.Add(ctx, int64(stats.Collapsed), metric.WithAttributes(attribute.String("result", "collapsed")))
+	envdCollapseChunks.Add(ctx, int64(stats.Skipped), metric.WithAttributes(attribute.String("result", "skipped")))
+	span.SetAttributes(
+		attribute.Int("collapse.regions", stats.Regions),
+		attribute.Int("collapse.chunks", stats.Chunks),
+		attribute.Int("collapse.collapsed", stats.Collapsed),
+		attribute.Int("collapse.skipped", stats.Skipped),
+	)
+
+	logger.L().Info(ctx, "envd heap collapsed",
+		logger.WithSandboxID(s.Runtime.SandboxID),
+		zap.Int("regions", stats.Regions),
+		zap.Int("chunks", stats.Chunks),
+		zap.Int("collapsed", stats.Collapsed),
+		zap.Int("skipped", stats.Skipped),
+		zap.Int64("duration_ms", elapsedMs),
+	)
 }
 
 // bestEffortFreeze calls envd's native /freeze endpoint with a tight, freeze-
