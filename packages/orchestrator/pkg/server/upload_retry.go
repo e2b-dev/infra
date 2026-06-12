@@ -5,97 +5,22 @@ package server
 import (
 	"context"
 	"errors"
-	"fmt"
-	"time"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
+	"github.com/e2b-dev/infra/packages/shared/pkg/retry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-// errUploadBudgetExhausted is returned when a snapshot upload could not be made
-// durable within the retry budget.
-var errUploadBudgetExhausted = errors.New("snapshot upload budget exhausted")
-
-// uploadRetryPolicy is the retry configuration as data: the total wall-clock
-// budget, the per-attempt timeout, and the exponential backoff between
-// attempts. Kept free of clocks/IO so the loop is unit-testable with
-// millisecond values.
-type uploadRetryPolicy struct {
-	totalBudget    time.Duration // wall-clock budget across all attempts
-	attemptTimeout time.Duration // fresh per-attempt deadline
-	initialBackoff time.Duration
-	maxBackoff     time.Duration
-	multiplier     int
-}
-
-func defaultUploadRetryPolicy() uploadRetryPolicy {
-	return uploadRetryPolicy{
-		totalBudget:    uploadTotalBudget,
-		attemptTimeout: uploadTimeout,
-		initialBackoff: uploadRetryInitialBackoff,
-		maxBackoff:     uploadRetryMaxBackoff,
-		multiplier:     uploadRetryBackoffMultiplier,
-	}
-}
-
-// uploadWithRetry retries upload until it lands durably, the budget is
-// exhausted, the error is non-retryable, or the parent context is cancelled.
-// Each attempt gets a FRESH per-attempt timeout so a single slow attempt never
-// poisons later ones.
-//
-// Re-running upload is safe: it targets content-addressed storage and the
-// header swap is idempotent, so a retry simply re-uploads whatever didn't land.
-func uploadWithRetry(
-	ctx context.Context,
-	policy uploadRetryPolicy,
-	upload func(ctx context.Context) error,
-	onRetry func(attempt int, backoff time.Duration, err error),
-) error {
-	deadline := time.Now().Add(policy.totalBudget)
-	backoff := policy.initialBackoff
-
-	var lastErr error
-	for attempt := 1; ; attempt++ {
-		remaining := time.Until(deadline)
-		if remaining <= 0 {
-			return fmt.Errorf("%w after %d attempts: %w", errUploadBudgetExhausted, attempt-1, lastErr)
-		}
-
-		// Fresh per-attempt context, capped to the remaining budget so total
-		// runtime never exceeds totalBudget (and a stuck attempt can't push the
-		// loop past it). Still cancelled by the parent context.
-		attemptCtx, cancel := context.WithTimeout(ctx, min(policy.attemptTimeout, remaining))
-		lastErr = upload(attemptCtx)
-		cancel()
-
-		if lastErr == nil {
-			return nil
-		}
-
-		// Parent cancelled (shutdown): stop immediately.
-		if ctx.Err() != nil {
-			return errors.Join(lastErr, context.Cause(ctx))
-		}
-
-		if !isRetryableUploadErr(lastErr) {
-			return fmt.Errorf("non-retryable snapshot upload error after %d attempts: %w", attempt, lastErr)
-		}
-
-		wait := min(backoff, time.Until(deadline))
-		if wait <= 0 {
-			return fmt.Errorf("%w after %d attempts: %w", errUploadBudgetExhausted, attempt, lastErr)
-		}
-		if onRetry != nil {
-			onRetry(attempt, wait, lastErr)
-		}
-
-		select {
-		case <-ctx.Done():
-			return errors.Join(lastErr, context.Cause(ctx))
-		case <-time.After(wait):
-		}
-
-		backoff = min(backoff*time.Duration(policy.multiplier), policy.maxBackoff)
+// defaultUploadRetryPolicy is the retry policy for pause-snapshot uploads:
+// retry with a fresh per-attempt timeout under the total budget, with
+// exponential backoff.
+func defaultUploadRetryPolicy() retry.Policy {
+	return retry.Policy{
+		TotalBudget:    uploadTotalBudget,
+		AttemptTimeout: uploadTimeout,
+		InitialBackoff: uploadRetryInitialBackoff,
+		MaxBackoff:     uploadRetryMaxBackoff,
+		Multiplier:     uploadRetryBackoffMultiplier,
 	}
 }
 

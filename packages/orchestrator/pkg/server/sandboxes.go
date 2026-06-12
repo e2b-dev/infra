@@ -33,6 +33,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/retry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -924,9 +925,10 @@ func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, 
 		spanCtx, span := tracer.Start(uploadCtx, "upload snapshot")
 		defer span.End()
 
-		err := uploadWithRetry(
+		err := retry.Do(
 			spanCtx,
 			defaultUploadRetryPolicy(),
+			isRetryableUploadErr,
 			res.upload.Run,
 			func(attempt int, backoff time.Duration, err error) {
 				sbxlogger.I(sbx).Warn(spanCtx, "snapshot upload attempt failed, retrying",
