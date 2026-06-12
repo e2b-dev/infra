@@ -102,6 +102,8 @@ func ParseCIDRs(entries []string) ([]*net.IPNet, error) {
 	nets := make([]*net.IPNet, 0, len(entries))
 
 	for _, entry := range entries {
+		entry = strings.TrimSpace(entry)
+
 		if ip := net.ParseIP(entry); ip != nil {
 			bits := 8 * net.IPv6len
 			if v4 := ip.To4(); v4 != nil {
