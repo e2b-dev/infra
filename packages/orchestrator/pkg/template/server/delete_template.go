@@ -26,7 +26,14 @@ func (s *ServerStore) TemplateBuildDelete(ctx context.Context, in *templatemanag
 	))
 	defer childSpan.End()
 
+	releaseDeleteStart, err := s.enterBuildStart(ctx, "template-delete")
+	if err != nil {
+		return nil, err
+	}
+	defer releaseDeleteStart()
+
 	s.wg.Add(1)
+	releaseDeleteStart()
 	defer s.wg.Done()
 
 	if in.GetTemplateID() == "" || in.GetBuildID() == "" {
@@ -48,5 +55,5 @@ func (s *ServerStore) TemplateBuildDelete(ctx context.Context, in *templatemanag
 		return nil, err
 	}
 
-	return nil, nil
+	return &emptypb.Empty{}, nil
 }

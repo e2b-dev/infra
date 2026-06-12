@@ -64,12 +64,12 @@ func (b *BuildInfo) SetSuccess(metadata *template_manager.TemplateBuildMetadata)
 	})
 }
 
-func (b *BuildInfo) SetFail(reason *template_manager.TemplateBuildStatusReason) {
-	_ = b.Result.SetValue(BuildInfoResult{
+func (b *BuildInfo) SetFail(reason *template_manager.TemplateBuildStatusReason) bool {
+	return b.Result.SetValue(BuildInfoResult{
 		Status:   template_manager.TemplateBuildState_Failed,
 		Reason:   reason,
 		Metadata: nil,
-	})
+	}) == nil
 }
 
 func (b *BuildInfo) GetLogs() []*template_manager.TemplateBuildLogEntry {
@@ -165,4 +165,24 @@ func (c *BuildCache) Create(teamID string, buildID string, logs *buildlogger.Log
 
 func (c *BuildCache) Delete(buildID string) {
 	c.cache.Delete(buildID)
+}
+
+func (c *BuildCache) FailRunning(reason *template_manager.TemplateBuildStatusReason) int {
+	failed := 0
+	for _, item := range c.cache.Items() {
+		if item == nil {
+			continue
+		}
+
+		build := item.Value()
+		if build == nil || !build.IsRunning() {
+			continue
+		}
+
+		if build.SetFail(reason) {
+			failed++
+		}
+	}
+
+	return failed
 }
