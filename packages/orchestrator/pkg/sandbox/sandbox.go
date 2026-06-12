@@ -1018,9 +1018,20 @@ func (s *Sandbox) doStop(ctx context.Context) error {
 		errs = append(errs, fmt.Errorf("failed to stop FC: %w", fcStopErr))
 	}
 
-	// The process exited, we can continue with the rest of the cleanup.
-	// We could use select with ctx.Done() to wait for cancellation, but if the process is not exited the whole cleanup will be in a bad state and will result in unexpected behavior.
-	<-s.process.Exit.Done()
+	cgroupKillErr := s.cgroupHandle.Kill(ctx)
+	if cgroupKillErr != nil {
+		errs = append(errs, fmt.Errorf("failed to kill sandbox cgroup: %w", cgroupKillErr))
+	}
+
+	// The process should exit before the rest of cleanup, but memory shutdown
+	// must still run if the wait context is canceled so UFFD can exit.
+	// FC's own exit error is reported via the exit waiters, not as a stop
+	// failure, so only a canceled wait counts as an error here.
+	select {
+	case <-s.process.Exit.Done():
+	case <-ctx.Done():
+		errs = append(errs, fmt.Errorf("failed waiting for FC exit: %w", ctx.Err()))
+	}
 
 	uffdStopErr := s.Resources.memory.Stop()
 	if uffdStopErr != nil {
