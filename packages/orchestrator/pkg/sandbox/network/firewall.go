@@ -7,7 +7,6 @@ import (
 	"net/netip"
 	"slices"
 	"sync"
-	"sync/atomic"
 
 	"github.com/google/nftables"
 	"github.com/google/nftables/binaryutil"
@@ -40,10 +39,6 @@ type Firewall struct {
 	tapInterface string
 
 	allowedRanges []string
-
-	// byopEnabled tracks whether Rule 3 is in BYOP mode (non-TCP only) vs
-	// default (all protocols).
-	byopEnabled atomic.Bool
 }
 
 func NewFirewall(tapIf string, orchestratorInternalIP string, extraAllowedCIDRs []string) (*Firewall, error) {
@@ -250,19 +245,6 @@ func (fw *Firewall) installRules(byop bool) {
 	// - TCP: iptables REDIRECT handles TCP traffic to proxy
 }
 
-// bufferBYOPSwitch buffers a chain flush and reinstall in the given mode and
-// updates byopEnabled. Buffer-only; the caller flushes and rolls back
-// byopEnabled on failure. Returns false when already in the requested mode.
-func (fw *Firewall) bufferBYOPSwitch(byop bool) (changed bool) {
-	if !fw.byopEnabled.CompareAndSwap(!byop, byop) {
-		return false
-	}
-	fw.conn.FlushChain(fw.filterChain)
-	fw.installRules(byop)
-
-	return true
-}
-
 // bufferUserRules buffers a full replacement of every firewall set.
 // Buffer-only; the caller flushes.
 func (fw *Firewall) bufferUserRules(allowedCIDRs, deniedCIDRs []string) error {
@@ -293,26 +275,22 @@ func (fw *Firewall) bufferUserRules(allowedCIDRs, deniedCIDRs []string) error {
 	return nil
 }
 
-// ApplyRules switches BYOP mode and replaces all user sets in a single flush,
-// so the kernel never holds the new Rule 3 mode with stale user sets.
+// ApplyRules reinstalls the filter chain in the given BYOP mode and replaces
+// all firewall sets, committed in a single atomic flush so the kernel never
+// holds the new Rule 3 mode with stale user sets. The chain is always rebuilt
+// from scratch; on flush failure the kernel keeps the previous ruleset and no
+// in-memory state can desync from it.
 func (fw *Firewall) ApplyRules(byop bool, allowedCIDRs, deniedCIDRs []string) error {
 	fw.mu.Lock()
 	defer fw.mu.Unlock()
 
-	switched := fw.bufferBYOPSwitch(byop)
+	fw.conn.FlushChain(fw.filterChain)
+	fw.installRules(byop)
 	if err := fw.bufferUserRules(allowedCIDRs, deniedCIDRs); err != nil {
-		if switched {
-			fw.byopEnabled.Store(!byop)
-		}
-
 		return err
 	}
-	// 5. Single atomic flush.
-	if err := fw.conn.Flush(); err != nil {
-		if switched {
-			fw.byopEnabled.Store(!byop)
-		}
 
+	if err := fw.conn.Flush(); err != nil {
 		return fmt.Errorf("flush atomic rule application: %w", err)
 	}
 
