@@ -232,6 +232,20 @@ func (s *Sandbox) envdSupportsCgroupFreeze(ctx context.Context) bool {
 	return ok
 }
 
+// envdSupportsFsFreeze reports whether the sandbox's envd exposes the native
+// /fsfreeze and /fsthaw endpoints. Bad version strings log and return false so
+// the filesystem-only pause falls back to a plain guest sync.
+func (s *Sandbox) envdSupportsFsFreeze(ctx context.Context) bool {
+	ok, err := utils.IsGTEVersion(s.Config.Envd.Version, utils.MinEnvdVersionForFsFreeze)
+	if err != nil {
+		logger.L().Warn(ctx, "fsfreeze version gate: bad envd version", logger.WithSandboxID(s.Runtime.SandboxID), zap.String("envd_version", s.Config.Envd.Version), zap.Error(err))
+
+		return false
+	}
+
+	return ok
+}
+
 // envdSupportsHeapCollapse reports whether the sandbox's envd exposes the native
 // /collapse endpoint. Bad version strings log and return false so we never call
 // an unsupported endpoint.
