@@ -7,14 +7,16 @@ WITH tag_window AS (
     JOIN public.env_builds eb ON eb.id = eba.build_id
     WHERE eba.env_id = sqlc.arg(template_id)::text
       AND eb.status_group = 'ready'
+      -- tags and search input are lowercased on write, so matching is case-insensitive
       AND (
           sqlc.arg(search)::text = ''
           OR strpos(eba.tag, sqlc.arg(search)::text) > 0
       )
+      AND (
+          sqlc.narg(cursor_tag)::text IS NULL
+          OR eba.tag < sqlc.narg(cursor_tag)::text
+      )
     GROUP BY eba.tag
-    HAVING
-        sqlc.narg(cursor_tag)::text IS NULL
-        OR eba.tag < sqlc.narg(cursor_tag)::text
     ORDER BY tag DESC
     LIMIT sqlc.arg(tags_limit_plus_one)::int
 ),
