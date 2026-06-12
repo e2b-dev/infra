@@ -230,16 +230,16 @@ func TestIsIPInDeniedSandboxCIDRs_Exported(t *testing.T) {
 		{"::1", true},
 		{"fe80::1", true},
 		{"fc00::1", true},
-		// Unspecified addresses are denied as BYOP endpoints even though they
-		// are not part of the kernel DeniedSandboxCIDRs nftables set.
-		{"0.0.0.0", true},
-		{"::", true},
 		{"1.0.0.1", false},
 		{"8.8.8.8", false},
 		{"100.63.255.255", false},
 		{"100.128.0.0", false},
 		{"203.0.113.5", false},
 		{"2001:db8::1", false},
+		// The unspecified and "this network" block address are denied as BYOP endpoints.
+		{"0.0.0.0", true},
+		{"0.1.2.3", true},
+		{"::", true},
 	}
 	for _, c := range cases {
 		t.Run(c.ip, func(t *testing.T) {

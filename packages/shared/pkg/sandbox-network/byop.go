@@ -181,12 +181,22 @@ func ValidateEgressProxy(ctx context.Context, cfg *EgressProxyConfig, resolve Ho
 	}, nil
 }
 
+// thisNetworkCIDR is the IPv4 "this network" block (RFC 1122, 0.0.0.0/8).
+var thisNetworkCIDR = func() *net.IPNet {
+	_, ipNet, err := net.ParseCIDR("0.0.0.0/8")
+	if err != nil {
+		panic(fmt.Sprintf("sandbox_network: invalid CIDR in thisNetworkCIDR: %v", err))
+	}
+
+	return ipNet
+}()
+
 // IsIPInDeniedSandboxCIDRs reports whether ip must be denied as a BYOP egress
-// proxy endpoint: the unspecified address (0.0.0.0 / ::) or any IP in
-// DeniedSandboxCIDRs. The unspecified address is checked here because
-// 0.0.0.0/8 cannot be encoded into the kernel nftables denylist.
+// proxy endpoint: the unspecified addresses, "this network" block
+// (0.0.0.0/8) or any IP in DeniedSandboxCIDRs. 0.0.0.0/8 is checked here
+// because it cannot be encoded into the kernel nftables denylist.
 func IsIPInDeniedSandboxCIDRs(ip net.IP) bool {
-	if ip == nil || ip.IsUnspecified() {
+	if ip == nil || ip.IsUnspecified() || thisNetworkCIDR.Contains(ip) {
 		return true
 	}
 
