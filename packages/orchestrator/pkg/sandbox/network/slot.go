@@ -83,6 +83,8 @@ type Slot struct {
 
 	egressProxy EgressProxy
 	config      Config
+
+	mountNamespace *mountNamespace
 }
 
 func NewSlot(key string, idx int, config Config, egressProxy EgressProxy) (*Slot, error) {
@@ -191,6 +193,46 @@ func (s *Slot) NamespaceID() string {
 	return fmt.Sprintf("ns-%d", s.Idx)
 }
 
+// NamespacePath returns the bind-mounted network namespace path for this slot.
+func (s *Slot) NamespacePath() string {
+	return filepath.Join(netNamespacesDir, s.NamespaceID())
+}
+
+func (s *Slot) assignMountNamespace(mountNS *mountNamespace) error {
+	if mountNS == nil {
+		return fmt.Errorf("cannot assign nil mount namespace to slot %d", s.Idx)
+	}
+
+	if s.mountNamespace != nil {
+		return fmt.Errorf("slot %d already has mount namespace %q", s.Idx, s.mountNamespace.Path)
+	}
+
+	s.mountNamespace = mountNS
+
+	return nil
+}
+
+// AssignedMountNamespacePath returns the prepared mount namespace path assigned
+// to this slot for the lifetime of a sandbox.
+func (s *Slot) AssignedMountNamespacePath() (path string, ok bool) {
+	if s.mountNamespace == nil {
+		return "", false
+	}
+
+	return s.mountNamespace.Path, true
+}
+
+func (s *Slot) releaseMountNamespace() error {
+	if s.mountNamespace == nil {
+		return nil
+	}
+
+	mountNS := s.mountNamespace
+	s.mountNamespace = nil
+
+	return mountNS.Close()
+}
+
 func (s *Slot) TapName() string {
 	return tapInterfaceName
 }
@@ -267,7 +309,7 @@ func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.Sand
 
 	s.firewallCustomRules.Store(true)
 
-	n, err := ns.GetNS(filepath.Join(netNamespacesDir, s.NamespaceID()))
+	n, err := ns.GetNS(s.NamespacePath())
 	if err != nil {
 		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
 	}
@@ -294,7 +336,7 @@ func (s *Slot) UpdateInternet(ctx context.Context, egress *orchestrator.SandboxN
 	deniedCIDRs := egress.GetDeniedCidrs()
 	hasBYOP := egress.GetEgressProxyAddress() != ""
 
-	n, err := ns.GetNS(filepath.Join(netNamespacesDir, s.NamespaceID()))
+	n, err := ns.GetNS(s.NamespacePath())
 	if err != nil {
 		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
 	}
@@ -323,7 +365,7 @@ func (s *Slot) ResetInternet(ctx context.Context) error {
 		return nil
 	}
 
-	n, err := ns.GetNS(filepath.Join(netNamespacesDir, s.NamespaceID()))
+	n, err := ns.GetNS(s.NamespacePath())
 	if err != nil {
 		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
 	}

@@ -26,7 +26,10 @@ type StorageLocal struct {
 	egressProxy  EgressProxy
 }
 
-const netNamespacesDir = "/var/run/netns"
+const (
+	netNamespacesDir   = "/var/run/netns"
+	mountNamespacesDir = "/run/fc-mntns"
+)
 
 func NewStorageLocal(ctx context.Context, config Config, egressProxy EgressProxy) (*StorageLocal, error) {
 	// get namespaces that we want to always skip
