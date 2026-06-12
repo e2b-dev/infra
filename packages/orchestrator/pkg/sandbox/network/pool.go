@@ -99,6 +99,10 @@ type Pool struct {
 	newSlots    chan *Slot
 	reusedSlots chan *Slot
 
+	// returnsWG tracks in-flight asynchronous slot returns; Close waits for
+	// it before draining the pool.
+	returnsWG sync.WaitGroup
+
 	slotStorage Storage
 }
 
@@ -108,15 +112,13 @@ func NewPool(newSlotsPoolSize, reusedSlotsPoolSize int, slotStorage Storage, con
 	newSlots := make(chan *Slot, newSlotsPoolSize-1)
 	reusedSlots := make(chan *Slot, reusedSlotsPoolSize)
 
-	pool := &Pool{
+	return &Pool{
 		config:      config,
 		done:        make(chan struct{}),
 		newSlots:    newSlots,
 		reusedSlots: reusedSlots,
 		slotStorage: slotStorage,
 	}
-
-	return pool
 }
 
 func (p *Pool) createNetworkSlot(ctx context.Context) (*Slot, error) {
@@ -153,8 +155,22 @@ func (p *Pool) Populate(ctx context.Context) {
 				continue
 			}
 
-			newSlotsAvailableCounter.Add(ctx, 1)
-			p.newSlots <- slot
+			select {
+			case <-p.done:
+				if err := p.cleanup(context.WithoutCancel(ctx), slot); err != nil {
+					logger.L().Error(ctx, "[network slot pool]: failed to cleanup created slot while closing", zap.Error(err), zap.Int("slot_index", slot.Idx))
+				}
+
+				return
+			case <-ctx.Done():
+				if err := p.cleanup(context.WithoutCancel(ctx), slot); err != nil {
+					logger.L().Error(ctx, "[network slot pool]: failed to cleanup created slot after context cancellation", zap.Error(err), zap.Int("slot_index", slot.Idx))
+				}
+
+				return
+			case p.newSlots <- slot:
+				newSlotsAvailableCounter.Add(ctx, 1)
+			}
 		}
 	}
 }
@@ -189,16 +205,36 @@ func (p *Pool) Get(ctx context.Context, network *orchestrator.SandboxNetworkConf
 	err := slot.ConfigureInternet(ctx, network)
 	if err != nil {
 		// Return the slot to the pool if configuring internet fails
-		go func() {
-			if returnErr := p.recycle(context.WithoutCancel(ctx), slot); returnErr != nil {
-				logger.L().Error(ctx, "failed to return slot to the pool", zap.Error(returnErr), zap.Int("slot_index", slot.Idx))
-			}
-		}()
+		p.recycleAcquiredSlot(ctx, slot)
 
 		return nil, fmt.Errorf("error setting slot internet access: %w", err)
 	}
 
 	return slot, nil
+}
+
+// recycleAcquiredSlot recycles a slot whose acquisition failed, in the
+// background when Close can wait for it, inline otherwise: Close cannot
+// observe goroutines started after the pool closed, and the process may
+// exit right after Close returns, leaking the slot.
+func (p *Pool) recycleAcquiredSlot(ctx context.Context, slot *Slot) {
+	recycleSlot := func() {
+		if returnErr := p.recycle(context.WithoutCancel(ctx), slot); returnErr != nil {
+			logger.L().Error(ctx, "failed to return slot to the pool", zap.Error(returnErr), zap.Int("slot_index", slot.Idx))
+		}
+	}
+
+	if !p.tryTrackReturn() {
+		recycleSlot()
+
+		return
+	}
+
+	go func() {
+		defer p.returnsWG.Done()
+
+		recycleSlot()
+	}()
 }
 
 // Return recycles a slot that was used by a sandbox. It waits returnDelay
@@ -233,6 +269,47 @@ func (p *Pool) Return(ctx context.Context, slot *Slot, releasedFn ReleaseNotify,
 	notifyNetworkRelease()
 
 	return p.recycle(ctx, slot)
+}
+
+// tryTrackReturn registers an in-flight slot return so Close can wait for
+// it. It reports false when the pool is already closed and the caller must
+// process the slot inline.
+func (p *Pool) tryTrackReturn() bool {
+	p.closeMu.RLock()
+	defer p.closeMu.RUnlock()
+
+	if p.closed {
+		return false
+	}
+
+	p.returnsWG.Add(1)
+
+	return true
+}
+
+// ReturnAsync recycles a slot in the background, logging errors instead of
+// returning them. Close waits for all in-flight returns before draining the
+// pool. If the pool is already closed the slot is cleaned up synchronously.
+func (p *Pool) ReturnAsync(ctx context.Context, slot *Slot, releasedFn ReleaseNotify, returnDelay time.Duration) error {
+	if !p.tryTrackReturn() {
+		return p.Return(ctx, slot, releasedFn, returnDelay)
+	}
+
+	go func() {
+		defer p.returnsWG.Done()
+
+		err := p.Return(ctx, slot, releasedFn, returnDelay)
+		switch {
+		case err == nil:
+		case errors.Is(err, ErrClosed), errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+			// Expected when the pool closes or the context ends mid-return.
+			logger.L().Warn(ctx, "network slot returned during pool shutdown", zap.Error(err), zap.Int("slot_index", slot.Idx))
+		default:
+			logger.L().Error(ctx, "failed to return network slot to pool", zap.Error(err), zap.Int("slot_index", slot.Idx))
+		}
+	}()
+
+	return nil
 }
 
 // recycle resets the slot's internet configuration and puts it back into the
@@ -325,6 +402,10 @@ func (p *Pool) Close(ctx context.Context) error {
 	p.closeMu.Lock()
 	p.closed = true
 	p.closeMu.Unlock()
+
+	// Wait for in-flight asynchronous returns: each either cleans its slot
+	// up itself or has already pushed it into reusedSlots, drained below.
+	p.returnsWG.Wait()
 
 	var errs []error
 
