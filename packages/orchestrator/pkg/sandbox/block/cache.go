@@ -336,7 +336,7 @@ func (c *Cache) Dedup(
 	if err != nil {
 		return nil, nil, err
 	}
-	recordDedupAttrs(ctx, plan, compareDur, time.Since(writeStart))
+	recordDedupAttrs(ctx, plan, int64(plan.pageEmpty.GetCardinality()), compareDur, time.Since(writeStart))
 
 	return cache, &header.DiffMetadata{
 		Dirty:     plan.pageDirty,

@@ -295,8 +295,7 @@ func (o *gcpObject) openRangeReader(ctx context.Context, off, length int64) (Ran
 }
 
 // idleTimeoutReader fires cancel() after googleReadTimeout with no Read
-// activity (in-flight Read with no progress, or no Read called). It also
-// pairs with gcsConcurrentReads: +1 on construction, -1 on Close.
+// activity (in-flight Read with no progress, or no Read called).
 type idleTimeoutReader struct {
 	io.ReadCloser
 

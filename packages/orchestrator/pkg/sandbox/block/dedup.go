@@ -460,10 +460,12 @@ func parentKeyGroups(pages []dedupPageInfo) [][]int {
 	return groups
 }
 
-func recordDedupAttrs(ctx context.Context, plan *dedupPlan, compareDur, writeDur time.Duration) {
+// recordDedupAttrs takes emptyPages explicitly because the memfd path merges
+// the whole-VM inputEmpty bitmap into plan.pageEmpty in place before this
+// runs; the caller captures the scan-only count first.
+func recordDedupAttrs(ctx context.Context, plan *dedupPlan, emptyPages int64, compareDur, writeDur time.Duration) {
 	totalPages := plan.exportedSize / header.PageSize
 	uniquePages := int64(plan.pageDirty.GetCardinality())
-	emptyPages := int64(plan.pageEmpty.GetCardinality())
 	dedupedPages := totalPages - uniquePages - emptyPages
 	ratio := 0.0
 	if totalPages > 0 {

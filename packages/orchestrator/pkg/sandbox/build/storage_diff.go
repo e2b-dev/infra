@@ -251,10 +251,13 @@ func (b *StorageDiff) reloadSource(ctx context.Context, cause string) error {
 // Fail loudly; the read path will retry when the peer transitions and the
 // storage-authoritative header is available.
 //
-// V3 never reaches reloadSourceLocked: getBuild's V3 branch latches an
-// authoritative empty &{} FT at construction, so resolve short-circuits and
-// reloadSource is never called; V3 builds aren't peer-routed so
-// PeerTransitionedError never fires against them either.
+// A V3 *current* header never reaches reloadSourceLocked (createDiff's
+// default branch latches an authoritative uncompressed FT at construction),
+// but a V3 *ancestor* of a V4+ header can: the V4 header carries no Builds
+// entry for it (appendAncestorBuilds skips V3 ancestors), so the latch is
+// empty and the first read funnels here. Pre-V4 headers have no Builds map,
+// so they are latched as authoritatively uncompressed instead of failing the
+// self-entry lookup.
 func (b *StorageDiff) reloadSourceLocked(ctx context.Context, cause string) error {
 	bid, err := uuid.Parse(b.buildID)
 	if err != nil {
@@ -263,6 +266,16 @@ func (b *StorageDiff) reloadSourceLocked(ctx context.Context, cause string) erro
 	loaded, err := refreshBuildHeader(ctx, b.persistence, bid, b.diffType, cause)
 	if err != nil {
 		return fmt.Errorf("reloadSourceLocked: load header for build %s (cause=%s): %w", b.buildID, cause, err)
+	}
+	if loaded.Metadata.Version < header.MetadataVersionV4 {
+		newPath := storage.Paths{BuildID: b.buildID}.DataFile(string(b.diffType), storage.CompressionNone)
+		newObj, openErr := b.persistence.OpenSeekable(ctx, newPath, b.storageObjectType)
+		if openErr != nil {
+			return fmt.Errorf("reloadSourceLocked: reopen uncompressed upstream for pre-V4 build %s at %s (cause=%s): %w", b.buildID, newPath, cause, openErr)
+		}
+		b.source.Store(&source{upstream: newObj, fullDiffFrameTable: storage.UncompressedFullFrameTable})
+
+		return nil
 	}
 	_, ft, err := loaded.SelfBuildData()
 	if err != nil {

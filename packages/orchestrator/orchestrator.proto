@@ -89,6 +89,11 @@ message SandboxNetworkEgressConfig {
   repeated string denied_cidrs = 2;
   repeated string allowed_domains = 3;
   map<string, SandboxNetworkDomainRules> rules = 4;
+
+  // BYOP SOCKS5 egress proxy.
+  string egress_proxy_address = 5;
+  string egress_proxy_username = 6;
+  string egress_proxy_password = 7;
 }
 
 message SandboxNetworkIngressConfig {
