@@ -73,6 +73,14 @@ func (f *Factory) RebootSandbox(
 	// Sync IO engine so no async writes are in flight if the sandbox is paused again.
 	ioEngine := models.DriveIoEngineSync
 
+	// Always write MMDS metadata for a reboot so the cold-booted envd can
+	// authenticate /init like a memory resume. An empty token hashes to the
+	// "no token" value, matching ResumeSandbox's behavior for non-secure sandboxes.
+	accessToken := ""
+	if config.Envd.AccessToken != nil {
+		accessToken = *config.Envd.AccessToken
+	}
+
 	timeout := time.Until(endAt)
 	if timeout <= 0 {
 		return nil, fmt.Errorf("sandbox end time %s is in the past", endAt)
@@ -92,6 +100,7 @@ func (f *Factory) RebootSandbox(
 			InitScriptPath: constants.SystemdInitPath,
 			KvmClock:       kvmClock,
 			IoEngine:       &ioEngine,
+			AccessToken:    &accessToken,
 		},
 		apiConfigToStore,
 		nil,
