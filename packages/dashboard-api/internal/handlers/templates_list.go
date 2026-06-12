@@ -113,46 +113,6 @@ func (s *APIStore) listTemplates(
 	limitPlusOne int32,
 ) ([]templateRowFields, error) {
 	switch sort {
-	case templatesSortNameAsc:
-		rows, err := s.db.Dashboard.ListTeamTemplatesByNameAsc(ctx, dashboardqueries.ListTeamTemplatesByNameAscParams{
-			TeamID:          filter.teamID,
-			IncludeDefaults: filter.includeDefaults,
-			FilterPublic:    filter.filterPublic,
-			Search:          filter.search,
-			CursorName:      cursorValue,
-			CursorID:        cursorID,
-			LimitPlusOne:    limitPlusOne,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		fields := make([]templateRowFields, len(rows))
-		for i := range rows {
-			fields[i] = templateRowFields(rows[i])
-		}
-
-		return fields, nil
-	case templatesSortNameDesc:
-		rows, err := s.db.Dashboard.ListTeamTemplatesByNameDesc(ctx, dashboardqueries.ListTeamTemplatesByNameDescParams{
-			TeamID:          filter.teamID,
-			IncludeDefaults: filter.includeDefaults,
-			FilterPublic:    filter.filterPublic,
-			Search:          filter.search,
-			CursorName:      cursorValue,
-			CursorID:        cursorID,
-			LimitPlusOne:    limitPlusOne,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		fields := make([]templateRowFields, len(rows))
-		for i := range rows {
-			fields[i] = templateRowFields(rows[i])
-		}
-
-		return fields, nil
 	case templatesSortCreatedAtAsc:
 		cursorTs, parseErr := cursorTime(cursorValue)
 		if parseErr != nil {
@@ -262,8 +222,6 @@ func (s *APIStore) listTemplates(
 // given row so it can be embedded in the next-page cursor.
 func templatesSortValue(sort templatesSort, f templateRowFields) string {
 	switch sort {
-	case templatesSortNameAsc, templatesSortNameDesc:
-		return f.NameSortKey
 	case templatesSortCreatedAtAsc, templatesSortCreatedAtDesc:
 		return f.CreatedAt.UTC().Format(time.RFC3339Nano)
 	default: // updated_at
