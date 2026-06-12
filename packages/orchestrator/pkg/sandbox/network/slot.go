@@ -274,16 +274,7 @@ func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.Sand
 	defer n.Close()
 
 	err = n.Do(func(_ ns.NetNS) error {
-		if hasBYOP {
-			if err := s.Firewall.EnableBYOPProxy(); err != nil {
-				return fmt.Errorf("enable BYOP proxy mode: %w", err)
-			}
-		}
-		if hasUserRules {
-			return s.Firewall.ReplaceUserRules(egress.GetAllowedCidrs(), egress.GetDeniedCidrs())
-		}
-
-		return nil
+		return s.Firewall.ApplyRules(hasBYOP, egress.GetAllowedCidrs(), egress.GetDeniedCidrs())
 	})
 	if err != nil {
 		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
@@ -313,17 +304,7 @@ func (s *Slot) UpdateInternet(ctx context.Context, egress *orchestrator.SandboxN
 	s.firewallCustomRules.Store(true)
 
 	err = n.Do(func(_ ns.NetNS) error {
-		if hasBYOP {
-			if err := s.Firewall.EnableBYOPProxy(); err != nil {
-				return fmt.Errorf("enable BYOP proxy mode: %w", err)
-			}
-		} else {
-			if err := s.Firewall.DisableBYOPProxy(); err != nil {
-				return fmt.Errorf("disable BYOP proxy mode: %w", err)
-			}
-		}
-
-		return s.Firewall.ReplaceUserRules(allowedCIDRs, deniedCIDRs)
+		return s.Firewall.ApplyRules(hasBYOP, allowedCIDRs, deniedCIDRs)
 	})
 	if err != nil {
 		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
@@ -349,14 +330,8 @@ func (s *Slot) ResetInternet(ctx context.Context) error {
 	defer n.Close()
 
 	err = n.Do(func(_ ns.NetNS) error {
-		// Revert BYOP narrowing before clearing user sets so a non-BYOP
-		// tenant cannot inherit a kernel firewall with TCP allowed to
-		// predefined-deny ranges.
-		if err := s.Firewall.DisableBYOPProxy(); err != nil {
-			return fmt.Errorf("disable BYOP proxy mode: %w", err)
-		}
-
-		return s.Firewall.ReplaceUserRules(nil, nil)
+		// Revert BYOP so the next tenant can't inherit non-TCP-only deny rules.
+		return s.Firewall.ApplyRules(false, nil, nil)
 	})
 	if err != nil {
 		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)

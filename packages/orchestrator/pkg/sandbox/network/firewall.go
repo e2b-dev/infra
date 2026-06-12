@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/netip"
 	"slices"
+	"sync"
 	"sync/atomic"
 
 	"github.com/google/nftables"
@@ -21,6 +22,9 @@ import (
 const tableName = "slot-firewall"
 
 type Firewall struct {
+	// mu serializes the shared conn buffer, which is committed on Flush().
+	mu sync.Mutex
+
 	conn  *nftables.Conn
 	table *nftables.Table
 
@@ -37,8 +41,8 @@ type Firewall struct {
 
 	allowedRanges []string
 
-	// byopEnabled tracks whether Rule 3 is currently in BYOP mode (non-TCP
-	// only) vs default (all protocols). See Enable/DisableBYOPProxy.
+	// byopEnabled tracks whether Rule 3 is in BYOP mode (non-TCP only) vs
+	// default (all protocols).
 	byopEnabled atomic.Bool
 }
 
@@ -99,15 +103,13 @@ func NewFirewall(tapIf string, orchestratorInternalIP string, extraAllowedCIDRs 
 		filterChain: filterChain,
 	}
 
-	// Install in default (non-BYOP) mode. EnableBYOPProxy switches later.
-	if err := fw.installRules(false); err != nil {
-		return nil, err
-	}
-
-	// Populate the sets with initial data
-	err = fw.ReplaceUserRules(nil, nil)
-	if err != nil {
+	// Install default rules and initial set data in a single flush.
+	fw.installRules(false)
+	if err := fw.bufferUserRules(nil, nil); err != nil {
 		return nil, fmt.Errorf("error while configuring initial data: %w", err)
+	}
+	if err := fw.conn.Flush(); err != nil {
+		return nil, fmt.Errorf("flush initial firewall rules: %w", err)
 	}
 
 	return fw, nil
@@ -188,10 +190,10 @@ func (fw *Firewall) addNonTCPSetFilterRule(ipSet *nftables.Set, drop bool) {
 	})
 }
 
-// installRules installs the filter chain. When byop is true, Rule 3 drops
-// non-TCP only (TCP shifts to userspace tcpfw via the user SOCKS5 proxy);
-// otherwise Rule 3 drops all protocols.
-func (fw *Firewall) installRules(byop bool) error {
+// installRules buffers the filter chain rules. When byop is true, Rule 3 drops
+// non-TCP only (TCP shifts to the userspace SOCKS5 proxy); otherwise it drops
+// all protocols. Buffer-only; the caller must Flush.
+func (fw *Firewall) installRules(byop bool) {
 	// FILTER CHAIN (PREROUTING, priority -150)
 	//   1. ESTABLISHED/RELATED → accept
 	//   2. predefinedAllowSet → accept (all protocols)
@@ -246,49 +248,24 @@ func (fw *Firewall) installRules(byop bool) error {
 	// Default policy: ACCEPT
 	// - Non-TCP not in user sets: allowed (default policy)
 	// - TCP: iptables REDIRECT handles TCP traffic to proxy
-
-	if err := fw.conn.Flush(); err != nil {
-		return fmt.Errorf("flush nftables changes: %w", err)
-	}
-
-	return nil
 }
 
-// EnableBYOPProxy flushes the filter chain and reinstalls it with Rule 3
-// narrowed to non-TCP. Idempotent; rolls back the flag on failure.
-func (fw *Firewall) EnableBYOPProxy() error {
-	if !fw.byopEnabled.CompareAndSwap(false, true) {
-		return nil
+// bufferBYOPSwitch buffers a chain flush and reinstall in the given mode and
+// updates byopEnabled. Buffer-only; the caller flushes and rolls back
+// byopEnabled on failure. Returns false when already in the requested mode.
+func (fw *Firewall) bufferBYOPSwitch(byop bool) (changed bool) {
+	if !fw.byopEnabled.CompareAndSwap(!byop, byop) {
+		return false
 	}
 	fw.conn.FlushChain(fw.filterChain)
-	if err := fw.installRules(true); err != nil {
-		fw.byopEnabled.Store(false)
+	fw.installRules(byop)
 
-		return err
-	}
-
-	return nil
+	return true
 }
 
-// DisableBYOPProxy reverts the filter chain to default (Rule 3 drops all
-// protocols). Idempotent; rolls back the flag on failure.
-func (fw *Firewall) DisableBYOPProxy() error {
-	if !fw.byopEnabled.CompareAndSwap(true, false) {
-		return nil
-	}
-	fw.conn.FlushChain(fw.filterChain)
-	if err := fw.installRules(false); err != nil {
-		fw.byopEnabled.Store(true)
-
-		return err
-	}
-
-	return nil
-}
-
-// ReplaceUserRules atomically replaces all firewall sets in a single flush.
-// This avoids any window where rules are partially applied.
-func (fw *Firewall) ReplaceUserRules(allowedCIDRs, deniedCIDRs []string) error {
+// bufferUserRules buffers a full replacement of every firewall set.
+// Buffer-only; the caller flushes.
+func (fw *Firewall) bufferUserRules(allowedCIDRs, deniedCIDRs []string) error {
 	// 1. Reset predefined deny set to default blocked ranges (buffered, no flush).
 	if err := fw.predefinedDenySet.ClearAndAddElements(fw.conn, sandbox_network.DeniedSandboxSetData); err != nil {
 		return fmt.Errorf("reset predefined deny set: %w", err)
@@ -313,9 +290,30 @@ func (fw *Firewall) ReplaceUserRules(allowedCIDRs, deniedCIDRs []string) error {
 		return fmt.Errorf("replace user allow set: %w", err)
 	}
 
+	return nil
+}
+
+// ApplyRules switches BYOP mode and replaces all user sets in a single flush,
+// so the kernel never holds the new Rule 3 mode with stale user sets.
+func (fw *Firewall) ApplyRules(byop bool, allowedCIDRs, deniedCIDRs []string) error {
+	fw.mu.Lock()
+	defer fw.mu.Unlock()
+
+	switched := fw.bufferBYOPSwitch(byop)
+	if err := fw.bufferUserRules(allowedCIDRs, deniedCIDRs); err != nil {
+		if switched {
+			fw.byopEnabled.Store(!byop)
+		}
+
+		return err
+	}
 	// 5. Single atomic flush.
 	if err := fw.conn.Flush(); err != nil {
-		return fmt.Errorf("flush atomic rule replacement: %w", err)
+		if switched {
+			fw.byopEnabled.Store(!byop)
+		}
+
+		return fmt.Errorf("flush atomic rule application: %w", err)
 	}
 
 	return nil
