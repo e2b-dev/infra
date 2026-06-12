@@ -12,8 +12,8 @@ type Notifier struct {
 
 // Subscribe registers interest in routingKey. The returned channel is
 // signaled (non-blocking, drop-on-full) whenever a matching message
-// arrives on the shared notify channel. The caller MUST invoke cleanup
-// when done to avoid a memory leak.
+// arrives on the shared notify channel. The caller MUST invoke the
+// returned cleanup function when done to avoid a memory leak.
 func (n *Notifier) Subscribe(routingKey string) (<-chan struct{}, func()) {
 	return n.sub.subscribe(routingKey)
 }
