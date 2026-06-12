@@ -1,0 +1,69 @@
+{
+  "benchmark": "BenchmarkRealFirecracker",
+  "system": "E2B Real Firecracker VM",
+  "date": "2026-06-11",
+  "hardware": {
+    "cpu": "Intel Xeon E5-2660 v3 @ 2.60GHz",
+    "cores": 40,
+    "ram_gib": 157
+  },
+  "config": {
+    "vcpu": 2,
+    "ram_mb": 512,
+    "disk_mb": 2048,
+    "kernel": "vmlinux-6.1.102",
+    "firecracker": "v1.12.1_210cbac",
+    "template": "e2bdev/base",
+    "benchtime": 10
+  },
+  "results": {
+    "concurrency_1": {
+      "avg_ms": 315,
+      "p50_ms": 322,
+      "p95_ms": 336,
+      "p99_ms": 336,
+      "min_ms": 269,
+      "max_ms": 346,
+      "wall_clock_ms": 315,
+      "ok_per_iter": 1,
+      "fail_per_iter": 0,
+      "samples": 10
+    },
+    "concurrency_2": {
+      "avg_ms": 319,
+      "p50_ms": 322,
+      "p95_ms": 351,
+      "p99_ms": 351,
+      "min_ms": 271,
+      "max_ms": 397,
+      "wall_clock_ms": 332,
+      "ok_per_iter": 2,
+      "fail_per_iter": 0,
+      "samples": 20
+    },
+    "concurrency_5": {
+      "avg_ms": 289,
+      "p50_ms": 286,
+      "p95_ms": 331,
+      "p99_ms": 337,
+      "min_ms": 219,
+      "max_ms": 356,
+      "wall_clock_ms": 316,
+      "ok_per_iter": 5,
+      "fail_per_iter": 0,
+      "samples": 50
+    },
+    "concurrency_10": {
+      "avg_ms": 369,
+      "p50_ms": 375,
+      "p95_ms": 436,
+      "p99_ms": 466,
+      "min_ms": 224,
+      "max_ms": 466,
+      "wall_clock_ms": 402,
+      "ok_per_iter": 10,
+      "fail_per_iter": 0,
+      "samples": 100
+    }
+  }
+}

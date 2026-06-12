@@ -36,9 +36,9 @@ func NewInfo(nodeID, serviceID, version, commit string, labels []string) *InfoSe
 		startedAt: time.Now(),
 		machineInfo: &orchestratorinfo.MachineInfo{
 			CpuArchitecture: runtime.GOARCH,
-			CpuFamily:       "darwin-dummy",
-			CpuModel:        "darwin-dummy",
-			CpuModelName:    "darwin-dummy",
+			CpuFamily:       "dummy",
+			CpuModel:        "dummy",
+			CpuModelName:    "dummy",
 		},
 	}
 }
@@ -54,6 +54,14 @@ func (s *InfoServer) ServiceInfo(_ context.Context, _ *emptypb.Empty) (*orchestr
 		ServiceStartup: timestamppb.New(s.startedAt),
 		MachineInfo:    s.machineInfo,
 		Labels:         s.labels,
+		// Report dummy metrics so placement algorithm can fit sandboxes
+		MetricCpuCount:             40,
+		MetricMemoryTotalBytes:     128 * 1024 * 1024 * 1024, // 128 GiB
+		MetricCpuPercent:           0,
+		MetricMemoryUsedBytes:      0,
+		MetricCpuAllocated:         0,
+		MetricMemoryAllocatedBytes: 0,
+		MetricSandboxesRunning:     0,
 	}, nil
 }
 

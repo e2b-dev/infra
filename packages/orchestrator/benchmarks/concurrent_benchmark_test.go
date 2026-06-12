@@ -47,6 +47,7 @@ import (
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
@@ -266,6 +267,7 @@ func BenchmarkConcurrentResume(b *testing.B) {
 	sandboxFactory := sandbox.NewFactory(
 		config.BuilderConfig, networkPool, devicePool,
 		featureFlags, hoststats.NewNoopDelivery(), cgroupManager, network.NewNoopEgressProxy(), sandboxes,
+		memory.NewSharedMemfileManager(),
 	)
 
 	dockerhubRepository, err := dockerhub.GetRemoteRepository(b.Context())
