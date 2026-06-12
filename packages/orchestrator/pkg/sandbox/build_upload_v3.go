@@ -90,6 +90,12 @@ func (u *Upload) runV3(ctx context.Context) error {
 	})
 
 	eg.Go(func() error {
+		// Filesystem-only snapshots resume by reboot, not snapfile restore, so
+		// the snapfile (created only for its disk-flush side effect) is not uploaded.
+		if u.snap.FilesystemSnapshot {
+			return nil
+		}
+
 		return uploadBlobWithMetrics(egCtx, u.store, u.paths.Snapfile(), storage.SnapfileObjectType, u.snap.Snapfile.Path(), uploadFileSnap, meta)
 	})
 

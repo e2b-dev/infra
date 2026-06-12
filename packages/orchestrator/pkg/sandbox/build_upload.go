@@ -42,9 +42,17 @@ func NewUpload(
 	useCase string,
 	objectMetadata storage.ObjectMetadata,
 ) (*Upload, error) {
-	mem, memV4, err := resolveCompressConfig(ctx, cfg, ff, storage.MemfileName, snap.MemorySnapshot.BlockSize, useCase)
-	if err != nil {
-		return nil, fmt.Errorf("resolve memfile compress config: %w", err)
+	// Filesystem-only snapshots have no memfile (NoDiff, block size 0), so
+	// resolving its compress config would fail validation ("block size must be
+	// positive"). The memfile body and header are never uploaded anyway.
+	var mem storage.CompressConfig
+	var memV4 bool
+	var err error
+	if !snap.FilesystemSnapshot {
+		mem, memV4, err = resolveCompressConfig(ctx, cfg, ff, storage.MemfileName, snap.MemorySnapshot.BlockSize, useCase)
+		if err != nil {
+			return nil, fmt.Errorf("resolve memfile compress config: %w", err)
+		}
 	}
 	root, rootV4, err := resolveCompressConfig(ctx, cfg, ff, storage.RootfsName, snap.RootfsBlockSize, useCase)
 	if err != nil {
