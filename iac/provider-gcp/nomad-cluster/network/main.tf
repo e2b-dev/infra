@@ -306,8 +306,19 @@ resource "google_compute_url_map" "orch_map" {
   }
 
   path_matcher {
-    name            = "session-paths"
-    default_service = google_compute_backend_service.default["session"].self_link
+    name = "session-paths"
+
+    default_route_action {
+      weighted_backend_services {
+        backend_service = google_compute_backend_service.default["session"].self_link
+        weight          = 100 - var.ingress_sandbox_traffic_weight
+      }
+
+      weighted_backend_services {
+        backend_service = google_compute_backend_service.ingress.self_link
+        weight          = var.ingress_sandbox_traffic_weight
+      }
+    }
   }
 
   path_matcher {

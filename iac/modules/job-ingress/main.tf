@@ -12,6 +12,9 @@ locals {
 
     otel_collector_grpc_endpoint = var.otel_collector_grpc_endpoint
   })
+
+  ingress_cpu_count = var.ingress_cpu_count == null ? 1 : var.ingress_cpu_count
+  ingress_memory_mb = var.ingress_memory_mb == null ? 512 : var.ingress_memory_mb
 }
 
 resource "nomad_job" "ingress" {
@@ -19,8 +22,9 @@ resource "nomad_job" "ingress" {
     count         = var.ingress_count
     node_pool     = var.node_pool
     update_stanza = var.update_stanza
-    cpu_count     = var.ingress_cpu_count
-    memory_mb     = var.ingress_memory_mb
+
+    cpu_count = local.ingress_cpu_count
+    memory_mb = local.ingress_memory_mb
 
     control_port          = var.control_port
     ingress_port          = var.ingress_port

@@ -47,6 +47,8 @@ tf_vars := \
 	$(call tfvar, API_RESOURCES_CPU_COUNT) \
 	$(call tfvar, API_RESOURCES_MEMORY_MB) \
 	$(call tfvar, INGRESS_COUNT) \
+	$(call tfvar, INGRESS_MEMORY_MB) \
+	$(call tfvar, INGRESS_CPU_COUNT) \
 	$(call tfvar, CLIENT_PROXY_COUNT) \
 	$(call tfvar, CLIENT_PROXY_RESOURCES_CPU_COUNT) \
 	$(call tfvar, CLIENT_PROXY_RESOURCES_MEMORY_MB) \
@@ -98,7 +100,8 @@ tf_vars := \
 	$(call tfvar, ORY_ISSUER_URL) \
 	$(call tfvar, GCS_GRPC_CONNECTION_POOL_SIZE) \
 	$(call tfvar, ADDITIONAL_API_PATHS_HANDLED_BY_INGRESS) \
-	$(call tfvar, ANYWHERE_CACHE_ENABLED)
+	$(call tfvar, ANYWHERE_CACHE_ENABLED) \
+	$(call tfvar, INGRESS_SANDBOX_TRAFFIC_WEIGHT)
 
 .PHONY: init
 init:
