@@ -291,21 +291,20 @@ func (d *DedupedMemfdCache) runDedup(
 		return
 	}
 
-	// Clone before merging inputEmpty: plan.pageEmpty must stay scan-only so
-	// recordDedupAttrs reports content-detected zeros, not whole-VM empties.
-	metaEmpty := plan.pageEmpty
+	// Capture the scan-only zero count before inputEmpty is merged in place:
+	// dedup.empty_pages must report content-detected zeros, not whole-VM
+	// empties (cloning the bitmap to preserve it would be too expensive).
+	scanEmptyPages := int64(plan.pageEmpty.GetCardinality())
 	if inputEmpty != nil {
-		metaEmpty = plan.pageEmpty.Clone()
 		ratio := uint64(blockSize / header.PageSize)
 		for start, end := range inputEmpty.Ranges() {
-			metaEmpty.AddRange(uint64(start)*ratio, end*ratio)
+			plan.pageEmpty.AddRange(uint64(start)*ratio, end*ratio)
 		}
 	}
-	meta := &header.DiffMetadata{Dirty: plan.pageDirty, Empty: metaEmpty, BlockSize: header.PageSize}
-	// Whole-VM empty set recorded in the header (scan zeros + inputEmpty);
-	// dedup.empty_pages stays the scan-only count.
+	meta := &header.DiffMetadata{Dirty: plan.pageDirty, Empty: plan.pageEmpty, BlockSize: header.PageSize}
+	// Whole-VM empty set recorded in the header (scan zeros + inputEmpty).
 	telemetry.SetAttributes(ctx,
-		attribute.Int64("dedup.header_empty_pages", int64(metaEmpty.GetCardinality())))
+		attribute.Int64("dedup.header_empty_pages", int64(plan.pageEmpty.GetCardinality())))
 	logSetOnceErr(ctx, "dedup metaOut", metaOut.SetValue(meta))
 
 	writeStart := time.Now()
@@ -315,7 +314,7 @@ func (d *DedupedMemfdCache) runDedup(
 		logger.L().Warn(ctx, "close memfd after dedup drain", zap.Error(closeErr))
 	}
 
-	recordDedupAttrs(ctx, plan, compareDur, writeDur)
+	recordDedupAttrs(ctx, plan, scanEmptyPages, compareDur, writeDur)
 	logSetOnceErr(ctx, "dedup done", d.done.SetResult(cache, err))
 }
 
