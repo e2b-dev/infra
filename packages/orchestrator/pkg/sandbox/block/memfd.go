@@ -290,13 +290,17 @@ func (d *DedupedMemfdCache) runDedup(
 		return
 	}
 
-	meta := &header.DiffMetadata{Dirty: plan.pageDirty, Empty: plan.pageEmpty, BlockSize: header.PageSize}
+	// Clone before merging inputEmpty: plan.pageEmpty must stay scan-only so
+	// recordDedupAttrs reports content-detected zeros, not whole-VM empties.
+	metaEmpty := plan.pageEmpty
 	if inputEmpty != nil {
+		metaEmpty = plan.pageEmpty.Clone()
 		ratio := uint64(blockSize / header.PageSize)
 		for start, end := range inputEmpty.Ranges() {
-			meta.Empty.AddRange(uint64(start)*ratio, end*ratio)
+			metaEmpty.AddRange(uint64(start)*ratio, end*ratio)
 		}
 	}
+	meta := &header.DiffMetadata{Dirty: plan.pageDirty, Empty: metaEmpty, BlockSize: header.PageSize}
 	logSetOnceErr(ctx, "dedup metaOut", metaOut.SetValue(meta))
 
 	writeStart := time.Now()
