@@ -3,7 +3,15 @@
 
 [Unit]
 Description=Env Daemon Service
-After=multi-user.target
+# Start as early as possible on cold boot: envd only needs journald's socket
+# and a writable rootfs; networking is configured by the kernel (ip=) before
+# userspace. Default dependencies would gate it on sysinit/basic.target
+# (~0.5s), and the previous After=multi-user.target on chrony-wait (~8s).
+DefaultDependencies=no
+After=systemd-journald.socket systemd-remount-fs.service
+Wants=systemd-journald.socket
+Conflicts=shutdown.target
+Before=shutdown.target
 # Disable rate limiting; retry forever
 StartLimitIntervalSec=0
 
@@ -14,8 +22,20 @@ User=root
 Group=root
 Environment=GOTRACEBACK=all
 LimitCORE=infinity
-ExecStartPre=/bin/sh -c 'mountpoint -q /etc/ssl/certs || (mkdir -p /run/e2b/certs && mount --bind /run/e2b/certs /etc/ssl/certs) && ([ -s /etc/ssl/certs/ca-certificates.crt ] || update-ca-certificates)'
-ExecStart=/bin/bash -l -c "/usr/bin/envd"
+# Seed the tmpfs from the tar packed at build time (one sequential read);
+# fall back to copying the cert dir, then to regenerating the bundle.
+#
+# Contract: seeding from the tar gives a complete ca-certificates.crt, so
+# update-ca-certificates is skipped (its scattered rootfs reads are the cost we
+# avoid). It therefore does NOT re-merge a persisted egress-proxy CA
+# (/usr/local/share/ca-certificates/e2b-ca.crt) into the bundle at boot. That CA
+# is (re)installed by envd's POST /init for the current proxy, which runs before
+# the orchestrator marks the sandbox running/routable — so the egress CA is
+# guaranteed present for the sandbox's routable lifetime. The only gap is guest
+# units that auto-start and egress over TLS before /init; that is accepted
+# (revisit if a template needs boot-time egress).
+ExecStartPre=/bin/sh -c 'mountpoint -q /etc/ssl/certs || { mkdir -p /run/e2b/certs && { tar -C /run/e2b/certs -xf /usr/local/share/e2b/ssl-certs.tar 2>/dev/null || cp -a /etc/ssl/certs/. /run/e2b/certs/ 2>/dev/null; }; mount --bind /run/e2b/certs /etc/ssl/certs; } && ([ -s /etc/ssl/certs/ca-certificates.crt ] || update-ca-certificates)'
+ExecStart=/usr/bin/envd
 Nice=-20
 IOSchedulingClass=realtime
 IOSchedulingPriority=4
