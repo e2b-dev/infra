@@ -17,6 +17,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -301,6 +302,10 @@ func (d *DedupedMemfdCache) runDedup(
 		}
 	}
 	meta := &header.DiffMetadata{Dirty: plan.pageDirty, Empty: metaEmpty, BlockSize: header.PageSize}
+	// Whole-VM empty set recorded in the header (scan zeros + inputEmpty);
+	// dedup.empty_pages stays the scan-only count.
+	telemetry.SetAttributes(ctx,
+		attribute.Int64("dedup.header_empty_pages", int64(metaEmpty.GetCardinality())))
 	logSetOnceErr(ctx, "dedup metaOut", metaOut.SetValue(meta))
 
 	writeStart := time.Now()
