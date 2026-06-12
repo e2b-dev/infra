@@ -22,11 +22,7 @@ if [[ -f "$ENV_FILE" ]]; then
   if ! diff -q "$ENV_FILE" "$TMP_FILE" > /dev/null; then
     echo "⚠️ Diff detected:"
 
-    if command -v colordiff > /dev/null; then
-      colordiff -u "$ENV_FILE" "$TMP_FILE" || true
-    else
-      diff --no-index  "$ENV_FILE" "$TMP_FILE" || true
-    fi
+    git --no-pager diff --no-index "$ENV_FILE" "$TMP_FILE" || [ $? -eq 1 ]
 
     read -p "Do you want to overwrite $ENV_FILE? (y/N): " CONFIRM
     if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
