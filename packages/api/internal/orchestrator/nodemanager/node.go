@@ -136,8 +136,6 @@ func NewClusterNode(ctx context.Context, client *clusters.GRPCClient, clusterID 
 		status = api.NodeStatusUnhealthy
 	}
 
-
-
 	nodeMetadata := NodeMetadata{
 		ServiceInstanceID: info.ServiceInstanceID,
 		Commit:            info.ServiceVersionCommit,
