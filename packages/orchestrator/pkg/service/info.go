@@ -47,10 +47,31 @@ func (s *ServiceInfo) SetStatus(ctx context.Context, status orchestratorinfo.Ser
 	s.statusMu.Lock()
 	defer s.statusMu.Unlock()
 
+	s.setStatusLocked(ctx, status)
+}
+
+func (s *ServiceInfo) TransitionStatus(ctx context.Context, status orchestratorinfo.ServiceInfoStatus, validate func(current orchestratorinfo.ServiceInfoStatus) error) (bool, error) {
+	s.statusMu.Lock()
+	defer s.statusMu.Unlock()
+
+	if validate != nil {
+		if err := validate(s.status); err != nil {
+			return false, err
+		}
+	}
+
+	return s.setStatusLocked(ctx, status), nil
+}
+
+func (s *ServiceInfo) setStatusLocked(ctx context.Context, status orchestratorinfo.ServiceInfoStatus) bool {
 	if s.status != status {
 		logger.L().Info(ctx, "Service status changed", zap.String("status", status.String()))
 		s.status = status
+
+		return true
 	}
+
+	return false
 }
 
 func NewInfoContainer(ctx context.Context, clientId string, version string, commit string, instanceID string, machineInfo machineinfo.MachineInfo, config cfg.Config) *ServiceInfo {

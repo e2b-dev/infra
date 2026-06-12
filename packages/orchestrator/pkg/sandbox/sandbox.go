@@ -22,6 +22,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/draingate"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
@@ -60,6 +61,9 @@ const (
 	StartTypeCreate = "create" // cold boot (template build)
 	StartTypeResume = "resume" // resume from a snapshot (the common runtime path)
 )
+
+// ErrFactoryDraining is returned when a sandbox start is attempted after the factory entered drain mode.
+var ErrFactoryDraining = errors.New("sandbox factory is draining")
 
 var SandboxHttpTransport = otelhttp.NewTransport(
 	&http.Transport{
@@ -247,6 +251,8 @@ type Sandbox struct {
 	files   *storage.SandboxFiles
 	cleanup *Cleanup
 
+	sandboxes *Map
+
 	featureFlags *featureflags.Client
 
 	process      *fc.Process
@@ -310,6 +316,8 @@ type Factory struct {
 	hostStatsDelivery hoststats.Delivery
 	cgroupManager     cgroup.Manager
 	egressProxy       network.EgressProxy
+
+	startGate draingate.Gate
 }
 
 func NewFactory(
@@ -338,6 +346,51 @@ func (f *Factory) EgressProxy() network.EgressProxy {
 	return f.egressProxy
 }
 
+func (f *Factory) StartDraining(ctx context.Context) {
+	if f == nil {
+		return
+	}
+
+	if f.startGate.StartDraining() {
+		trackedSandboxes := 0
+		if f.Sandboxes != nil {
+			trackedSandboxes = len(f.Sandboxes.LifecycleItems())
+		}
+
+		logger.L().Info(ctx, "sandbox factory entering drain mode", zap.Int("tracked_sandboxes", trackedSandboxes))
+	}
+}
+
+func (f *Factory) Draining() bool {
+	if f == nil {
+		return false
+	}
+
+	return f.startGate.Draining()
+}
+
+func (f *Factory) enterSandboxStart() (func(), error) {
+	release, err := f.startGate.Enter()
+	if errors.Is(err, draingate.ErrDraining) {
+		return nil, ErrFactoryDraining
+	}
+
+	return release, err
+}
+
+func (f *Factory) WaitSandboxStarts(ctx context.Context) error {
+	logger.L().Info(ctx, "waiting for in-flight sandbox factory start operations to finish")
+
+	if err := f.startGate.Wait(ctx); err != nil {
+		return fmt.Errorf("waiting for in-flight sandbox factory start operations: %w", err)
+	}
+
+	logger.L().Info(ctx, "in-flight sandbox factory start gate acquired")
+	logger.L().Info(ctx, "in-flight sandbox factory start operations finished")
+
+	return nil
+}
+
 // PreBootFn is an optional callback invoked after the rootfs is ready but before
 // Firecracker boots. It receives the rootfs device path (e.g., a file path for
 // DirectProvider or /dev/nbdX for NBDProvider) and may modify the filesystem
@@ -360,6 +413,11 @@ func (f *Factory) CreateSandbox(
 	ctx, span := tracer.Start(ctx, "create sandbox")
 	defer span.End()
 	defer handleSpanError(span, &e)
+	releaseSandboxStart, err := f.enterSandboxStart()
+	if err != nil {
+		return nil, err
+	}
+	defer releaseSandboxStart()
 
 	execCtx, execSpan := startExecutionSpan(ctx)
 
@@ -500,10 +558,11 @@ func (f *Factory) CreateSandbox(
 		Metadata:     metadata,
 		cgroupHandle: cgroupHandle,
 
-		Template: template,
-		config:   f.config,
-		files:    sandboxFiles,
-		process:  fcHandle,
+		Template:  template,
+		config:    f.config,
+		files:     sandboxFiles,
+		process:   fcHandle,
+		sandboxes: f.Sandboxes,
 
 		cleanup:      cleanup,
 		featureFlags: f.featureFlags,
@@ -611,6 +670,11 @@ func (f *Factory) ResumeSandbox(
 	ctx, span := tracer.Start(ctx, "resume sandbox")
 	defer span.End()
 	defer handleSpanError(span, &e)
+	releaseSandboxStart, err := f.enterSandboxStart()
+	if err != nil {
+		return nil, err
+	}
+	defer releaseSandboxStart()
 
 	execCtx, execSpan := startExecutionSpan(ctx)
 
@@ -845,10 +909,11 @@ func (f *Factory) ResumeSandbox(
 		Metadata:     metadata,
 		cgroupHandle: cgroupHandle,
 
-		Template: t,
-		config:   f.config,
-		files:    sandboxFiles,
-		process:  fcHandle,
+		Template:  t,
+		config:    f.config,
+		files:     sandboxFiles,
+		process:   fcHandle,
+		sandboxes: f.Sandboxes,
 
 		cleanup:      cleanup,
 		featureFlags: f.featureFlags,
@@ -988,6 +1053,10 @@ func (s *Sandbox) Wait(ctx context.Context) error {
 
 func (s *Sandbox) Close(ctx context.Context) error {
 	err := s.cleanup.Run(ctx)
+	if s.sandboxes != nil {
+		s.sandboxes.MarkStopped(context.WithoutCancel(ctx), s)
+	}
+
 	if err != nil {
 		return fmt.Errorf("failed to cleanup sandbox: %w", err)
 	}
@@ -1018,9 +1087,16 @@ func (s *Sandbox) doStop(ctx context.Context) error {
 		errs = append(errs, fmt.Errorf("failed to stop FC: %w", fcStopErr))
 	}
 
-	// The process exited, we can continue with the rest of the cleanup.
-	// We could use select with ctx.Done() to wait for cancellation, but if the process is not exited the whole cleanup will be in a bad state and will result in unexpected behavior.
-	<-s.process.Exit.Done()
+	cgroupKillErr := s.cgroupHandle.Kill(ctx)
+	if cgroupKillErr != nil {
+		errs = append(errs, fmt.Errorf("failed to kill sandbox cgroup: %w", cgroupKillErr))
+	}
+
+	// The process should exit before the rest of cleanup, but memory shutdown
+	// must still run if the wait context is canceled so UFFD can exit.
+	if waitErr := s.process.Exit.WaitWithContext(ctx); waitErr != nil {
+		errs = append(errs, fmt.Errorf("failed waiting for FC exit: %w", waitErr))
+	}
 
 	uffdStopErr := s.Resources.memory.Stop()
 	if uffdStopErr != nil {
@@ -1422,15 +1498,7 @@ func getNetworkSlot(
 			ctx, span := tracer.Start(ctx, "clean network-slot")
 			defer span.End()
 
-			// We can run this cleanup asynchronously, as it is not important for the sandbox lifecycle
-			go func(ctx context.Context) {
-				returnErr := networkPool.Return(ctx, slot, networkReleased, network.ReturnDelay)
-				if returnErr != nil {
-					logger.L().Error(ctx, "failed to return network slot", zap.Error(returnErr))
-				}
-			}(context.WithoutCancel(ctx))
-
-			return nil
+			return networkPool.Return(ctx, slot, networkReleased, network.ReturnDelay)
 		})
 
 		return slot, nil

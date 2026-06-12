@@ -6,6 +6,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
@@ -58,6 +60,13 @@ func (a *APIStore) PostNodesNodeID(c *gin.Context, nodeId api.NodeID) {
 		return
 	}
 
+	forceStop := body.ForceStop != nil && *body.ForceStop
+	if forceStop && body.Status != api.NodeStatusDraining {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "forceStop is only supported when setting status to draining")
+
+		return
+	}
+
 	clusterID := clusters.WithClusterFallback(body.ClusterID)
 	node := a.orchestrator.GetNode(clusterID, nodeId)
 	if node == nil {
@@ -66,8 +75,24 @@ func (a *APIStore) PostNodesNodeID(c *gin.Context, nodeId api.NodeID) {
 		return
 	}
 
-	err = node.SendStatusChange(ctx, body.Status)
+	err = node.SendStatusChange(ctx, body.Status, forceStop)
 	if err != nil {
+		grpcStatus, ok := grpcstatus.FromError(err)
+		if ok {
+			switch grpcStatus.Code() {
+			case codes.InvalidArgument:
+				a.sendAPIStoreError(c, http.StatusBadRequest, grpcStatus.Message())
+
+				return
+			case codes.FailedPrecondition:
+				// Drain reversal is a node state conflict, not malformed input, so this
+				// intentionally diverges from grpc-gateway's 400 mapping.
+				a.sendAPIStoreError(c, http.StatusConflict, grpcStatus.Message())
+
+				return
+			}
+		}
+
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when sending status change: %s", err))
 
 		telemetry.ReportCriticalError(ctx, "error when sending status change", err)
