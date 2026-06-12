@@ -45,9 +45,11 @@ import (
 )
 
 var (
-	meter                        = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox")
-	envdInitCalls                = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdInitCalls))
-	waitForEnvdDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.WaitForEnvdDurationHistogramName))
+	meter                         = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox")
+	envdInitCalls                 = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdInitCalls))
+	waitForEnvdDurationHistogram  = utils.Must(telemetry.GetHistogram(meter, telemetry.WaitForEnvdDurationHistogramName))
+	envdCollapseDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.EnvdCollapseDurationHistogramName))
+	envdCollapseChunks            = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdCollapseChunks))
 
 	uffdStartupPagesHistogram       = utils.Must(telemetry.GetHistogram(meter, telemetry.UffdStartupPagesHistogramName))
 	uffdStartupSourcePagesHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.UffdStartupSourcePagesHistogramName))

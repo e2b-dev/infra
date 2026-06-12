@@ -28,6 +28,24 @@ func (e EntryInfoType) Valid() bool {
 	}
 }
 
+// CollapseResult Per-call statistics from a heap collapse
+type CollapseResult struct {
+	// Chunks 2 MiB chunks attempted
+	Chunks int `json:"chunks,omitempty"`
+
+	// Collapsed Chunks collapsed into a hugepage
+	Collapsed int `json:"collapsed,omitempty"`
+
+	// ElapsedMs Wall-clock time spent collapsing, in milliseconds
+	ElapsedMs int64 `json:"elapsedMs,omitempty"`
+
+	// Regions Anonymous read-write regions scanned
+	Regions int `json:"regions,omitempty"`
+
+	// Skipped Chunks that could not be collapsed (empty or ineligible)
+	Skipped int `json:"skipped,omitempty"`
+}
+
 // ComposeRequest defines model for ComposeRequest.
 type ComposeRequest struct {
 	// Destination Destination file path for the composed file

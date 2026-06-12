@@ -160,6 +160,10 @@ var (
 	OptimisticResourceAccountingFlag = NewBoolFlag("sandbox-placement-optimistic-resource-accounting", false)
 	FreePageReportingFlag            = NewBoolFlag("free-page-reporting", false)
 	FreezeUserCgroupFlag             = NewBoolFlag("freeze-user-cgroup", env.IsDevelopment())
+	// CollapseEnvdHeapFlag makes the orchestrator ask envd to collapse its own
+	// anonymous heap into 2 MiB hugepages just before pause, reducing the number
+	// of distinct frames envd faults on resume. Off by default; rolled out via LD.
+	CollapseEnvdHeapFlag = NewBoolFlag("collapse-envd-heap", false)
 
 	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())
 
