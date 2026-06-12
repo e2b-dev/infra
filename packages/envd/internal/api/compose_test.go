@@ -45,7 +45,7 @@ func writeSourceFile(t *testing.T, dir string, name string, data []byte) string 
 	return path
 }
 
-func callCompose(t *testing.T, api *API, req ComposeRequest) *httptest.ResponseRecorder {
+func callCompose(t *testing.T, api *API, req Compose) *httptest.ResponseRecorder {
 	t.Helper()
 
 	body, err := json.Marshal(req)
@@ -71,7 +71,7 @@ func TestCompose_ConcatenatesFiles(t *testing.T) {
 	src1 := writeSourceFile(t, srcDir, "part1", []byte("World"))
 	src2 := writeSourceFile(t, srcDir, "part2", []byte("!"))
 
-	w := callCompose(t, api, ComposeRequest{
+	w := callCompose(t, api, Compose{
 		SourcePaths: []string{src0, src1, src2},
 		Destination: destPath,
 		Username:    &currentUser.Username,
@@ -82,7 +82,7 @@ func TestCompose_ConcatenatesFiles(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
-	var result EntryInfo
+	var result ComposeSuccess
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
 	assert.Equal(t, destPath, result.Path)
 	assert.Equal(t, "composed.txt", result.Name)
@@ -103,7 +103,7 @@ func TestCompose_DeletesSourceFiles(t *testing.T) {
 	src0 := writeSourceFile(t, srcDir, "part0", []byte("aaa"))
 	src1 := writeSourceFile(t, srcDir, "part1", []byte("bbb"))
 
-	w := callCompose(t, api, ComposeRequest{
+	w := callCompose(t, api, Compose{
 		SourcePaths: []string{src0, src1},
 		Destination: destPath,
 		Username:    &currentUser.Username,
@@ -122,7 +122,7 @@ func TestCompose_RequiresSourcePaths(t *testing.T) {
 
 	api, currentUser := newComposeTestAPI(t)
 
-	w := callCompose(t, api, ComposeRequest{
+	w := callCompose(t, api, Compose{
 		SourcePaths: []string{},
 		Destination: "/tmp/dest.txt",
 		Username:    &currentUser.Username,
@@ -136,7 +136,7 @@ func TestCompose_RequiresDestination(t *testing.T) {
 
 	api, currentUser := newComposeTestAPI(t)
 
-	w := callCompose(t, api, ComposeRequest{
+	w := callCompose(t, api, Compose{
 		SourcePaths: []string{"/tmp/something"},
 		Destination: "",
 		Username:    &currentUser.Username,
@@ -152,7 +152,7 @@ func TestCompose_SourceEqualsDestination(t *testing.T) {
 	srcDir := t.TempDir()
 	src := writeSourceFile(t, srcDir, "file.txt", []byte("data"))
 
-	w := callCompose(t, api, ComposeRequest{
+	w := callCompose(t, api, Compose{
 		SourcePaths: []string{src},
 		Destination: src,
 		Username:    &currentUser.Username,
@@ -166,7 +166,7 @@ func TestCompose_SourceIsDirectory(t *testing.T) {
 
 	api, currentUser := newComposeTestAPI(t)
 
-	w := callCompose(t, api, ComposeRequest{
+	w := callCompose(t, api, Compose{
 		SourcePaths: []string{t.TempDir()},
 		Destination: filepath.Join(t.TempDir(), "dest.txt"),
 		Username:    &currentUser.Username,
@@ -180,7 +180,7 @@ func TestCompose_SourceNotFound(t *testing.T) {
 
 	api, currentUser := newComposeTestAPI(t)
 
-	w := callCompose(t, api, ComposeRequest{
+	w := callCompose(t, api, Compose{
 		SourcePaths: []string{"/tmp/nonexistent-file-12345"},
 		Destination: filepath.Join(t.TempDir(), "dest.txt"),
 		Username:    &currentUser.Username,
@@ -198,7 +198,7 @@ func TestCompose_CreatesParentDirs(t *testing.T) {
 
 	src := writeSourceFile(t, srcDir, "part0", []byte("content"))
 
-	w := callCompose(t, api, ComposeRequest{
+	w := callCompose(t, api, Compose{
 		SourcePaths: []string{src},
 		Destination: destPath,
 		Username:    &currentUser.Username,
@@ -228,7 +228,7 @@ func TestCompose_LargeFile(t *testing.T) {
 		expectedTotal += int64(partSize)
 	}
 
-	w := callCompose(t, api, ComposeRequest{
+	w := callCompose(t, api, Compose{
 		SourcePaths: sources,
 		Destination: destPath,
 		Username:    &currentUser.Username,
@@ -239,7 +239,7 @@ func TestCompose_LargeFile(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
-	var result EntryInfo
+	var result ComposeSuccess
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
 	assert.Equal(t, destPath, result.Path)
 	assert.Equal(t, File, result.Type)
@@ -265,7 +265,7 @@ func TestCompose_RoundTripWithDownload(t *testing.T) {
 	src0 := writeSourceFile(t, srcDir, "part0", []byte("round"))
 	src1 := writeSourceFile(t, srcDir, "part1", []byte("trip"))
 
-	w := callCompose(t, api, ComposeRequest{
+	w := callCompose(t, api, Compose{
 		SourcePaths: []string{src0, src1},
 		Destination: destPath,
 		Username:    &currentUser.Username,
@@ -309,7 +309,7 @@ func TestCompose_PreservesExistingFileOnFailure(t *testing.T) {
 	require.NoError(t, os.Chmod(destDir, 0o500))
 	defer os.Chmod(destDir, 0o755)
 
-	w := callCompose(t, api, ComposeRequest{
+	w := callCompose(t, api, Compose{
 		SourcePaths: []string{src},
 		Destination: destPath,
 		Username:    &currentUser.Username,
@@ -337,7 +337,7 @@ func TestCompose_SingleFile(t *testing.T) {
 
 	src := writeSourceFile(t, srcDir, "only", []byte("solo"))
 
-	w := callCompose(t, api, ComposeRequest{
+	w := callCompose(t, api, Compose{
 		SourcePaths: []string{src},
 		Destination: destPath,
 		Username:    &currentUser.Username,
@@ -348,7 +348,7 @@ func TestCompose_SingleFile(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
-	var result EntryInfo
+	var result ComposeSuccess
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
 	assert.Equal(t, destPath, result.Path)
 	assert.Equal(t, "single.txt", result.Name)

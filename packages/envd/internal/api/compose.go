@@ -22,7 +22,7 @@ func (a *API) PostFilesCompose(w http.ResponseWriter, r *http.Request) {
 
 	operationID := logs.AssignOperationID()
 
-	var req ComposeRequest
+	var req Compose
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, http.StatusBadRequest, fmt.Errorf("invalid request body: %w", err))
 
@@ -204,7 +204,7 @@ func (a *API) PostFilesCompose(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
-	if err := json.NewEncoder(w).Encode(EntryInfo{
+	if err := json.NewEncoder(w).Encode(ComposeSuccess{
 		Path: destPath,
 		Name: filepath.Base(destPath),
 		Type: File,
