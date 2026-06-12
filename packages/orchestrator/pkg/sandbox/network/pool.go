@@ -108,15 +108,13 @@ func NewPool(newSlotsPoolSize, reusedSlotsPoolSize int, slotStorage Storage, con
 	newSlots := make(chan *Slot, newSlotsPoolSize-1)
 	reusedSlots := make(chan *Slot, reusedSlotsPoolSize)
 
-	pool := &Pool{
+	return &Pool{
 		config:      config,
 		done:        make(chan struct{}),
 		newSlots:    newSlots,
 		reusedSlots: reusedSlots,
 		slotStorage: slotStorage,
 	}
-
-	return pool
 }
 
 func (p *Pool) createNetworkSlot(ctx context.Context) (*Slot, error) {
@@ -153,8 +151,22 @@ func (p *Pool) Populate(ctx context.Context) {
 				continue
 			}
 
-			newSlotsAvailableCounter.Add(ctx, 1)
-			p.newSlots <- slot
+			select {
+			case <-p.done:
+				if err := p.cleanup(context.WithoutCancel(ctx), slot); err != nil {
+					logger.L().Error(ctx, "[network slot pool]: failed to cleanup created slot while closing", zap.Error(err), zap.Int("slot_index", slot.Idx))
+				}
+
+				return
+			case <-ctx.Done():
+				if err := p.cleanup(context.WithoutCancel(ctx), slot); err != nil {
+					logger.L().Error(ctx, "[network slot pool]: failed to cleanup created slot after context cancellation", zap.Error(err), zap.Int("slot_index", slot.Idx))
+				}
+
+				return
+			case p.newSlots <- slot:
+				newSlotsAvailableCounter.Add(ctx, 1)
+			}
 		}
 	}
 }
