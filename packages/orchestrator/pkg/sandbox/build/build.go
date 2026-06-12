@@ -464,6 +464,22 @@ func (b *File) refreshAncestorAndOpenUpstream(ctx context.Context, buildID uuid.
 		}
 	}
 
+	// Pre-V4 ancestor headers (old template builds) carry no Builds map at
+	// all: their data file is stored uncompressed at the basic path. Latch
+	// that authoritatively — failing the self-entry lookup here breaks every
+	// V4 snapshot that still maps pages to a V3-era ancestor (sandbox resume
+	// then EIOs on first uncached read).
+	if loaded.Metadata.Version < header.MetadataVersionV4 {
+		upstream, err := b.openUpstream(ctx, buildID, objType, storage.CompressionNone)
+		if err != nil {
+			return nil, 0, nil, err
+		}
+
+		// Size 0: createDiff falls back to upstream.Size, matching the
+		// pre-refresh behavior for V3 builds.
+		return upstream, 0, storage.UncompressedFullFrameTable, nil
+	}
+
 	// A finalized V4+ storage header always carries a self entry
 	// (build_upload_v4 populates it before publish). A missing self entry here
 	// means a routed OpenBlob hit a peer's in-flight header — which shouldn't

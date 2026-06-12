@@ -287,6 +287,129 @@ func TestStorageDiff_SkipsHeaderRefreshWhenPeerActive(t *testing.T) {
 	require.Equal(t, payload[:readLen], got)
 }
 
+// A V4 snapshot header can map pages to a V3-era ancestor it carries no
+// Builds entry for (appendAncestorBuilds skips V3 ancestors). The proactive
+// refresh then loads the ancestor's own V3 header — which has no Builds map
+// at all — and must latch it as authoritatively uncompressed instead of
+// failing the self-entry lookup, which made every resume of a pre-V4
+// template EIO on its first uncached read.
+func TestStorageDiff_V3AncestorFallsBackToUncompressed(t *testing.T) {
+	t.Parallel()
+
+	const payloadSize = 256 * 1024
+	readLen := testBlockSize
+
+	aID := uuid.New()
+	payload := bytes.Repeat([]byte("v3-ancestor-data-"), payloadSize/len("v3-ancestor-data-")+1)[:payloadSize]
+
+	// A's storage header is V3 (NewTemplateMetadata default): no Builds map.
+	aMeta := header.NewTemplateMetadata(aID, uint64(testBlockSize), uint64(payloadSize))
+	aHeader, err := header.NewHeader(aMeta, []header.BuildMap{{
+		Offset: 0, Length: uint64(payloadSize), BuildId: aID, BuildStorageOffset: 0,
+	}})
+	require.NoError(t, err)
+	aHeaderBytes, err := header.SerializeHeader(aHeader)
+	require.NoError(t, err)
+
+	// Current header: V4, maps to A, no Builds entry for A.
+	bHeader := buildHeader(t, uuid.New(), payloadSize, aID)
+
+	aPaths := storage.Paths{BuildID: aID.String()}
+	provider := storage.NewMockStorageProvider(t)
+
+	headerBlob := storage.NewMockBlob(t)
+	headerBlob.EXPECT().
+		WriteTo(mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, w io.Writer) (int64, error) {
+			return io.Copy(w, bytes.NewReader(aHeaderBytes))
+		}).Once()
+	provider.EXPECT().
+		OpenBlob(mock.Anything, aPaths.HeaderFile(storage.MemfileName), mock.Anything).
+		Return(headerBlob, nil).Once()
+
+	// The fallback must open the *uncompressed* data path and serve raw bytes.
+	rawSeekable := storage.NewMockSeekable(t)
+	rawSeekable.EXPECT().
+		Size(mock.Anything).
+		Return(int64(payloadSize), nil).Once()
+	rawSeekable.EXPECT().
+		OpenRangeReader(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (io.ReadCloser, error) {
+			end := min(off+length, int64(len(payload)))
+
+			return io.NopCloser(bytes.NewReader(payload[off:end])), nil
+		})
+	provider.EXPECT().
+		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone), mock.Anything).
+		Return(rawSeekable, nil).Once()
+
+	require.Equal(t, payload[:readLen], runRead(t, bHeader, provider, readLen))
+}
+
+// Same V3 fallback on the read-time refresh path: a StorageDiff with no
+// latched FT and no caller FT funnels through reloadSource, which must latch
+// a pre-V4 header as authoritatively uncompressed rather than failing the
+// self-entry lookup.
+func TestStorageDiff_ReloadSourceLatchesV3AsUncompressed(t *testing.T) {
+	t.Parallel()
+
+	const payloadSize = 64 * 1024
+	readLen := testBlockSize
+
+	aID := uuid.New()
+	payload := bytes.Repeat([]byte("v3-reload-data-"), payloadSize/len("v3-reload-data-")+1)[:payloadSize]
+
+	aMeta := header.NewTemplateMetadata(aID, uint64(testBlockSize), uint64(payloadSize))
+	aHeader, err := header.NewHeader(aMeta, []header.BuildMap{{
+		Offset: 0, Length: uint64(payloadSize), BuildId: aID, BuildStorageOffset: 0,
+	}})
+	require.NoError(t, err)
+	aHeaderBytes, err := header.SerializeHeader(aHeader)
+	require.NoError(t, err)
+
+	aPaths := storage.Paths{BuildID: aID.String()}
+	provider := storage.NewMockStorageProvider(t)
+
+	headerBlob := storage.NewMockBlob(t)
+	headerBlob.EXPECT().
+		WriteTo(mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, w io.Writer) (int64, error) {
+			return io.Copy(w, bytes.NewReader(aHeaderBytes))
+		}).Once()
+	provider.EXPECT().
+		OpenBlob(mock.Anything, aPaths.HeaderFile(storage.MemfileName), mock.Anything).
+		Return(headerBlob, nil).Once()
+
+	rawSeekable := storage.NewMockSeekable(t)
+	rawSeekable.EXPECT().
+		OpenRangeReader(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (io.ReadCloser, error) {
+			end := min(off+length, int64(len(payload)))
+
+			return io.NopCloser(bytes.NewReader(payload[off:end])), nil
+		})
+	provider.EXPECT().
+		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone), mock.Anything).
+		Return(rawSeekable, nil).Once()
+
+	m, err := blockmetrics.NewMetrics(noop.NewMeterProvider())
+	require.NoError(t, err)
+
+	// Bootstrap with no latched FT (initialFT nil) — the first read with a nil
+	// caller FT must refresh and latch the V3 header as uncompressed.
+	bootstrap := storage.NewMockSeekable(t)
+	diff, err := newStorageDiff(t.TempDir(), aID.String(), Memfile, storage.MemfileObjectType,
+		testBlockSize, m, provider, nil, bootstrap, int64(payloadSize), nil, &featureflags.Client{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = diff.Close() })
+
+	buf := make([]byte, readLen)
+	n, err := diff.ReadAt(t.Context(), buf, 0, nil)
+	require.NoError(t, err)
+	require.Equal(t, int(readLen), n)
+	require.Equal(t, payload[:readLen], buf)
+}
+
 // runRead wires up a File over a fresh DiffStore + noop metrics and returns
 // the first `n` bytes read from offset 0.
 func runRead(t *testing.T, h *header.Header, provider storage.StorageProvider, n int64) []byte {
