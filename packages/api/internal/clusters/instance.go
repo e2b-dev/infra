@@ -41,12 +41,13 @@ type Instance struct {
 	serviceVersion       string
 	serviceVersionCommit string
 
-	client         *GRPCClient
-	status         infogrpc.ServiceInfoStatus
-	machine        machineinfo.MachineInfo
-	roles          []infogrpc.ServiceInfoRole
-	isBuilder      bool
-	isOrchestrator bool
+	client          *GRPCClient
+	status          infogrpc.ServiceInfoStatus
+	statusChangedAt time.Time
+	machine         machineinfo.MachineInfo
+	roles           []infogrpc.ServiceInfoRole
+	isBuilder       bool
+	isOrchestrator  bool
 
 	syncFailCount int
 
@@ -59,6 +60,7 @@ type InstanceInfo struct {
 	ServiceVersion       string
 	ServiceVersionCommit string
 	Status               infogrpc.ServiceInfoStatus
+	StatusChangedAt      time.Time
 	IsOrchestrator       bool
 	IsBuilder            bool
 }
@@ -137,7 +139,10 @@ func (i *Instance) Sync(ctx context.Context) error {
 				zap.Error(err),
 			)
 
-			i.status = infogrpc.ServiceInfoStatus_Unhealthy
+			if i.status != infogrpc.ServiceInfoStatus_Unhealthy {
+				i.status = infogrpc.ServiceInfoStatus_Unhealthy
+				i.statusChangedAt = time.Now()
+			}
 		}
 
 		return err
@@ -148,6 +153,10 @@ func (i *Instance) Sync(ctx context.Context) error {
 
 	// Reset fail count on successful sync
 	i.syncFailCount = 0
+
+	if ts := info.GetServiceStatusChangedAt(); ts.IsValid() {
+		i.statusChangedAt = ts.AsTime()
+	}
 
 	i.status = info.GetServiceStatus()
 	i.roles = info.GetServiceRoles()
@@ -181,6 +190,7 @@ func (i *Instance) GetInfo() InstanceInfo {
 		ServiceVersion:       i.serviceVersion,
 		ServiceVersionCommit: i.serviceVersionCommit,
 		Status:               i.status,
+		StatusChangedAt:      i.statusChangedAt,
 		IsOrchestrator:       i.isOrchestrator,
 		IsBuilder:            i.isBuilder,
 	}

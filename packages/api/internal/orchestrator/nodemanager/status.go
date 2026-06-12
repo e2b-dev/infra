@@ -3,6 +3,7 @@ package nodemanager
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc/connectivity"
@@ -19,34 +20,56 @@ var ApiNodeToOrchestratorStateMapper = map[api.NodeStatus]orchestratorinfo.Servi
 	api.NodeStatusStandby:   orchestratorinfo.ServiceInfoStatus_Standby,
 }
 
+type StatusInfo struct {
+	Status    api.NodeStatus
+	ChangedAt time.Time
+}
+
 func (n *Node) Status() api.NodeStatus {
+	return n.StatusInfo().Status
+}
+
+func (n *Node) StatusInfo() StatusInfo {
 	n.mutex.RLock()
 	defer n.mutex.RUnlock()
 
-	if n.status != api.NodeStatusReady {
-		return n.status
+	status := n.status.Status
+	if status == api.NodeStatusReady {
+		switch n.client.Connection.GetState() {
+		case connectivity.Shutdown:
+			status = api.NodeStatusUnhealthy
+		case connectivity.TransientFailure, connectivity.Connecting:
+			status = api.NodeStatusConnecting
+		}
 	}
 
-	switch n.client.Connection.GetState() {
-	case connectivity.Shutdown:
-		return api.NodeStatusUnhealthy
-	case connectivity.TransientFailure:
-		return api.NodeStatusConnecting
-	case connectivity.Connecting:
-		return api.NodeStatusConnecting
-	default:
-		return n.status
-	}
+	return StatusInfo{Status: status, ChangedAt: n.status.ChangedAt}
 }
 
-func (n *Node) setStatus(ctx context.Context, status api.NodeStatus) {
+func (n *Node) setStatus(ctx context.Context, status api.NodeStatus, changedAt time.Time) {
 	n.mutex.Lock()
 	defer n.mutex.Unlock()
 
-	if n.status != status {
+	if n.status.Status != status {
 		logger.L().Info(ctx, "NodeID status changed", logger.WithNodeID(n.ID), zap.String("status", string(status)))
-		n.status = status
 	}
+
+	n.status = StatusInfo{Status: status, ChangedAt: changedAt}
+}
+
+// markUnhealthyLocal marks the node as unhealthy based on a local observation.
+// If the node is already unhealthy, the original transition time is preserved
+// so the status change timestamp reflects when the node first became unhealthy.
+func (n *Node) markUnhealthyLocal(ctx context.Context) {
+	n.mutex.Lock()
+	defer n.mutex.Unlock()
+
+	if n.status.Status == api.NodeStatusUnhealthy {
+		return
+	}
+
+	logger.L().Info(ctx, "NodeID status changed", logger.WithNodeID(n.ID), zap.String("status", string(api.NodeStatusUnhealthy)))
+	n.status = StatusInfo{Status: api.NodeStatusUnhealthy, ChangedAt: time.Now()}
 }
 
 func (n *Node) SendStatusChange(ctx context.Context, s api.NodeStatus) error {
