@@ -61,6 +61,7 @@ var (
 const (
 	StartTypeCreate = "create" // cold boot (template build)
 	StartTypeResume = "resume" // resume from a snapshot (the common runtime path)
+	StartTypeReboot = "reboot" // cold boot from a snapshot rootfs (filesystem-only resume)
 )
 
 var SandboxHttpTransport = otelhttp.NewTransport(
@@ -348,6 +349,20 @@ func (f *Factory) EgressProxy() network.EgressProxy {
 // on the host side.
 type PreBootFn func(ctx context.Context, rootfsPath string) error
 
+type createOptions struct {
+	deferMarkRunning bool
+}
+
+type CreateOption func(*createOptions)
+
+// WithDeferredMarkRunning skips marking the sandbox running inside CreateSandbox
+// so the caller can mark it only after envd is ready, matching ResumeSandbox.
+// Used by the reboot path, where the guest is cold-booting and must not be
+// routable until envd answers.
+func WithDeferredMarkRunning() CreateOption {
+	return func(o *createOptions) { o.deferMarkRunning = true }
+}
+
 // CreateSandbox creates the sandbox.
 // IMPORTANT: You must Close() the sandbox after you are done with it.
 func (f *Factory) CreateSandbox(
@@ -360,10 +375,16 @@ func (f *Factory) CreateSandbox(
 	processOptions fc.ProcessOptions,
 	apiConfigToStore *orchestrator.SandboxConfig,
 	preBootFn PreBootFn,
+	opts ...CreateOption,
 ) (s *Sandbox, e error) {
 	ctx, span := tracer.Start(ctx, "create sandbox")
 	defer span.End()
 	defer handleSpanError(span, &e)
+
+	var createOpts createOptions
+	for _, opt := range opts {
+		opt(&createOpts)
+	}
 
 	execCtx, execSpan := startExecutionSpan(ctx)
 
@@ -588,7 +609,9 @@ func (f *Factory) CreateSandbox(
 		exit.SetError(errors.Join(err, fcErr))
 	}()
 
-	f.Sandboxes.MarkRunning(ctx, sbx)
+	if !createOpts.deferMarkRunning {
+		f.Sandboxes.MarkRunning(ctx, sbx)
+	}
 
 	return sbx, nil
 }
