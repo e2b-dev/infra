@@ -63,10 +63,6 @@ func (n *Node) setStatus(ctx context.Context, status api.NodeStatus, changedAt t
 	if n.status != status {
 		logger.L().Info(ctx, "NodeID status changed", logger.WithNodeID(n.ID), zap.String("status", string(status)))
 		n.status = status
-
-		if changedAt.IsZero() {
-			changedAt = time.Now()
-		}
 		n.reported = StatusInfo{Status: status, ChangedAt: changedAt}
 	} else if changedAt.After(n.reported.ChangedAt) {
 		// Status is the same from the API perspective, but the orchestrator reported a newer change.
