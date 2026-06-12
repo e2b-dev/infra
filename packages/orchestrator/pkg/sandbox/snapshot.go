@@ -36,6 +36,13 @@ type Snapshot struct {
 	BuildID            uuid.UUID
 	SchedulingMetadata *orchestrator.SchedulingMetadata
 
+	// FilesystemSnapshot is true for filesystem-only snapshots: the memfile diff
+	// is empty (NoDiff) and the memfile, memfile header, and snapfile are not
+	// uploaded. It records the decision made at pause time, which can't be
+	// inferred from the diff shape — a memory snapshot with zero dirty pages also
+	// produces a NoDiff memfile but still needs its snapfile uploaded.
+	FilesystemSnapshot bool
+
 	// Template block sizes captured sync at Pause time. They equal
 	// MemfileDiffHeader.Metadata.BlockSize once that header resolves, but
 	// are needed sync by NewUpload's compression validation — the dedup
