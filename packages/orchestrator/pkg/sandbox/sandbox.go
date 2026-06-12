@@ -1198,13 +1198,13 @@ func (s *Sandbox) Pause(
 
 	if pauseOpts.filesystemSnapshot {
 		// FC never flushes the guest page cache and no memory snapshot will
-		// preserve it, so a failed sync would persist a rootfs missing
-		// acknowledged writes. Mandatory, unlike the best-effort reclaim above.
-		// The unfreeze cleanup is already registered, so failing here can't
-		// leave the live VM frozen.
-		if err := s.guestSync(ctx); err != nil {
-			return nil, fmt.Errorf("guest sync before filesystem-only pause: %w", err)
+		// preserve it, so the rootfs must be quiesced before pause or it would
+		// persist missing acknowledged writes. This is mandatory, unlike the
+		// best-effort reclaim above.
+		if err := s.guestPrepareFsForPause(ctx, cleanup); err != nil {
+			return nil, err
 		}
+
 		// Memory prefetch refers to the memfile, which is not persisted.
 		m.Prefetch = nil
 	}
