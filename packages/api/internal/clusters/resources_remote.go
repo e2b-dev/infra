@@ -107,7 +107,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(ctx context.Context, t
 	return items, nil
 }
 
-func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, start *int64, end *int64, limit *int32, dr *api.LogsDirection, level *logs.LogLevel, search *string) (api.SandboxLogs, *api.APIError) {
+func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, start *int64, end *int64, limit *int32, dr *api.LogsDirection, level *logs.LogLevel, search *string, pid *string) (api.SandboxLogs, *api.APIError) {
 	direction := apiLogDirectionToEdgeSandboxLogsDirection(dr)
 	params := &edgeapi.V1SandboxLogsParams{
 		TeamID:    teamID,
@@ -117,6 +117,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID
 		Direction: direction,
 		Level:     logToEdgeLevel(level),
 		Search:    search,
+		Pid:       pid,
 	}
 	res, err := r.client.V1SandboxLogsWithResponse(ctx, sandboxID, params)
 	if err != nil {
@@ -129,6 +130,10 @@ func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID
 
 	if res.StatusCode() != http.StatusOK || res.JSON200 == nil {
 		return api.SandboxLogs{}, handleEdgeErrorResponse(res.StatusCode(), res.JSON400, res.JSON401, res.JSON500, "Failed to fetch sandbox logs")
+	}
+
+	if apiErr := r.checkEdgeLogsPidFilteringCompatibility(ctx, sandboxID, pid, res.HTTPResponse); apiErr != nil {
+		return api.SandboxLogs{}, apiErr
 	}
 
 	raw := *res.JSON200
@@ -250,6 +255,32 @@ func handleEdgeErrorResponse(statusCode int, json400, json401, json500 *edgeapi.
 		Err:       fmt.Errorf("edge error: %s (http code %d)", errMsg, statusCode),
 		ClientMsg: clientMsg,
 		Code:      http.StatusInternalServerError,
+	}
+}
+
+// checkEdgeLogsPidFilteringCompatibility fails closed when a pid filter was requested but the
+// Edge deployment does not advertise support for it. An older Edge ignores the unknown pid query
+// param and returns unfiltered sandbox logs, which the caller would mistake for command-scoped
+// output — unlike level/search, where degrading to unfiltered logs is acceptable.
+func (r *ClusterResourceProviderImpl) checkEdgeLogsPidFilteringCompatibility(ctx context.Context, sandboxID string, pid *string, response *http.Response) *api.APIError {
+	pidRequested := pid != nil && *pid != ""
+	pidApplied := response != nil && response.Header.Get(consts.EdgeFeatureSandboxLogsPidFilteringEnabledHeader) != ""
+	if !pidRequested || pidApplied {
+		return nil
+	}
+
+	edgeapi.WarnMissingFeatureHeader(
+		ctx,
+		consts.EdgeFeatureSandboxLogsPidFilteringEnabledHeader,
+		"sandbox logs pid filtering not supported",
+		logger.WithClusterID(r.clusterID),
+		logger.WithSandboxID(sandboxID),
+	)
+
+	return &api.APIError{
+		Err:       fmt.Errorf("edge cluster '%s' does not support pid-scoped sandbox log queries", r.clusterID),
+		ClientMsg: "Filtering sandbox logs by pid is not supported by this cluster yet",
+		Code:      http.StatusNotImplemented,
 	}
 }
 

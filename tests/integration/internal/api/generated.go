@@ -1619,6 +1619,9 @@ type GetV2SandboxesSandboxIDLogsParams struct {
 
 	// Search Case-sensitive substring match on log message content
 	Search *string `form:"search,omitempty" json:"search,omitempty"`
+
+	// Pid Restrict the results to the output (stdout/stderr) of a single command identified by its process ID (pid). Combine with cursor/direction to bound the window and disambiguate a reused pid. The level filter is ignored for pid-scoped queries, as command output is persisted at info level.
+	Pid *int32 `form:"pid,omitempty" json:"pid,omitempty"`
 }
 
 // PostAccessTokensJSONRequestBody defines body for PostAccessTokens for application/json ContentType.
@@ -5441,6 +5444,18 @@ func NewGetV2SandboxesSandboxIDLogsRequest(server string, sandboxID SandboxID, p
 		if params.Search != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "search", *params.Search, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Pid != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "pid", *params.Pid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {

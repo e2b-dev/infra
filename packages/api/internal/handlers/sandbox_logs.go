@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -37,7 +38,7 @@ func (a *APIStore) GetSandboxesSandboxIDLogs(c *gin.Context, sandboxID string, p
 		telemetry.WithTeamID(team.ID.String()),
 	)
 
-	logs, apiErr := a.getSandboxLogs(ctx, team, sandboxID, params.Start, nil, params.Limit, nil, nil, nil)
+	logs, apiErr := a.getSandboxLogs(ctx, team, sandboxID, params.Start, nil, params.Limit, nil, nil, nil, nil)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportErrorByCode(ctx, apiErr.Code, "error when returning logs for sandbox", apiErr.Err)
@@ -81,7 +82,14 @@ func (a *APIStore) GetV2SandboxesSandboxIDLogs(c *gin.Context, sandboxID api.San
 	startMs := start.UnixMilli()
 	endMs := end.UnixMilli()
 
-	logs, apiErr := a.getSandboxLogs(ctx, team, sandboxID, &startMs, &endMs, params.Limit, &direction, apiToLogLevel(params.Level), params.Search)
+	// pid (optional) restricts the results to a single command's output.
+	var pid *string
+	if params.Pid != nil {
+		pidStr := strconv.Itoa(int(*params.Pid))
+		pid = &pidStr
+	}
+
+	logs, apiErr := a.getSandboxLogs(ctx, team, sandboxID, &startMs, &endMs, params.Limit, &direction, apiToLogLevel(params.Level), params.Search, pid)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportErrorByCode(ctx, apiErr.Code, "error when returning logs for sandbox", apiErr.Err)
@@ -102,6 +110,7 @@ func (a *APIStore) getSandboxLogs(
 	direction *api.LogsDirection,
 	level *logs.LogLevel,
 	search *string,
+	pid *string,
 ) (api.SandboxLogs, *api.APIError) {
 	clusterID := clustersshared.WithClusterFallback(team.ClusterID)
 	cluster, ok := a.clusters.GetClusterById(clusterID)
@@ -113,7 +122,7 @@ func (a *APIStore) getSandboxLogs(
 		}
 	}
 
-	logs, apiErr := cluster.GetResources().GetSandboxLogs(ctx, team.ID.String(), sandboxID, start, end, limit, direction, level, search)
+	logs, apiErr := cluster.GetResources().GetSandboxLogs(ctx, team.ID.String(), sandboxID, start, end, limit, direction, level, search, pid)
 	if apiErr != nil {
 		return api.SandboxLogs{}, apiErr
 	}
