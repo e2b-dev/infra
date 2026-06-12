@@ -113,6 +113,42 @@ type closer struct {
 
 const forceShutdownTimeout = 30 * time.Second
 
+type orchestratorDrainController struct {
+	orchestrator *server.Server
+	template     *tmplserver.ServerStore
+}
+
+func (d *orchestratorDrainController) StartDraining(ctx context.Context) {
+	if d.orchestrator != nil {
+		d.orchestrator.StartDraining(ctx)
+	}
+	if d.template != nil {
+		d.template.StartDraining(ctx)
+	}
+}
+
+func (d *orchestratorDrainController) ForceStop(ctx context.Context) error {
+	var errs []error
+
+	if d.template != nil {
+		tmplCtx, cancel := context.WithTimeout(ctx, forceShutdownTimeout)
+		if err := d.template.ForceStop(tmplCtx); err != nil {
+			errs = append(errs, fmt.Errorf("force stopping template builds: %w", err))
+		}
+		cancel()
+	}
+
+	if d.orchestrator != nil {
+		sandboxCtx, cancel := context.WithTimeout(ctx, forceShutdownTimeout)
+		if err := d.orchestrator.ForceStopSandboxes(sandboxCtx); err != nil {
+			errs = append(errs, fmt.Errorf("force stopping sandboxes: %w", err))
+		}
+		cancel()
+	}
+
+	return errors.Join(errs...)
+}
+
 type serviceDoneError struct {
 	name string
 }
@@ -789,7 +825,10 @@ func run(config cfg.Config, opts Options) (success bool) {
 		closers = append(closers, closer{"template server", tmpl.Close})
 	}
 
-	infoService := service.NewInfoService(serviceInfo, sandboxes, hostMetrics)
+	infoService := service.NewInfoService(serviceInfo, sandboxes, hostMetrics, &orchestratorDrainController{
+		orchestrator: orchestratorService,
+		template:     tmpl,
+	})
 	orchestratorinfo.RegisterInfoServiceServer(grpcServer, infoService)
 
 	grpcHealth := health.NewServer()

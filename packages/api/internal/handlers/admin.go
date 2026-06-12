@@ -58,6 +58,8 @@ func (a *APIStore) PostNodesNodeID(c *gin.Context, nodeId api.NodeID) {
 		return
 	}
 
+	forceStop := body.ForceStop != nil && *body.ForceStop
+
 	clusterID := clusters.WithClusterFallback(body.ClusterID)
 	node := a.orchestrator.GetNode(clusterID, nodeId)
 	if node == nil {
@@ -66,7 +68,7 @@ func (a *APIStore) PostNodesNodeID(c *gin.Context, nodeId api.NodeID) {
 		return
 	}
 
-	err = node.SendStatusChange(ctx, body.Status)
+	err = node.SendStatusChange(ctx, body.Status, forceStop)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when sending status change: %s", err))
 
