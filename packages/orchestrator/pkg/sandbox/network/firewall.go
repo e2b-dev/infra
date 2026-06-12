@@ -111,6 +111,9 @@ func NewFirewall(tapIf string, orchestratorInternalIP string, extraAllowedCIDRs 
 }
 
 func (fw *Firewall) Close() error {
+	fw.mu.Lock()
+	defer fw.mu.Unlock()
+
 	return fw.conn.CloseLasting()
 }
 
