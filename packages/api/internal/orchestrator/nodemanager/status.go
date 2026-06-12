@@ -57,6 +57,21 @@ func (n *Node) setStatus(ctx context.Context, status api.NodeStatus, changedAt t
 	n.status = StatusInfo{Status: status, ChangedAt: changedAt}
 }
 
+// markUnhealthyLocal marks the node as unhealthy based on a local observation.
+// If the node is already unhealthy, the original transition time is preserved
+// so the status change timestamp reflects when the node first became unhealthy.
+func (n *Node) markUnhealthyLocal(ctx context.Context) {
+	n.mutex.Lock()
+	defer n.mutex.Unlock()
+
+	if n.status.Status == api.NodeStatusUnhealthy {
+		return
+	}
+
+	logger.L().Info(ctx, "NodeID status changed", logger.WithNodeID(n.ID), zap.String("status", string(api.NodeStatusUnhealthy)))
+	n.status = StatusInfo{Status: api.NodeStatusUnhealthy, ChangedAt: time.Now()}
+}
+
 func (n *Node) SendStatusChange(ctx context.Context, s api.NodeStatus) error {
 	nodeStatus, ok := ApiNodeToOrchestratorStateMapper[s]
 	if !ok {
