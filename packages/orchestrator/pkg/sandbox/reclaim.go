@@ -108,6 +108,43 @@ func (s *Sandbox) bestEffortReclaim(ctx context.Context) {
 	}
 }
 
+// guestSync runs sync in the guest via envd so ext4 flushes dirty pages to the
+// virtio disk. Mandatory before a filesystem-only pause: without a memory
+// snapshot the guest page cache is lost, so callers must fail the pause on
+// error instead of persisting a rootfs missing acknowledged writes. Unlike
+// bestEffortReclaim's sync step (LD-flag gated, best-effort), this always runs
+// and always reports failure.
+func (s *Sandbox) guestSync(ctx context.Context) error {
+	const syncTimeout = 5 * time.Second
+
+	ctx, span := tracer.Start(ctx, "envd-guest-sync")
+	defer span.End()
+
+	rcCtx, cancel := context.WithTimeout(ctx, syncTimeout+reclaimOuterSlack)
+	defer cancel()
+
+	stream, err := s.StartEnvdSystemShell(rcCtx, "/bin/sh", []string{"-c", "sync"}, "root", syncTimeout)
+	if err != nil {
+		return fmt.Errorf("start guest sync: %w", err)
+	}
+	defer stream.Close()
+
+	exitCode := int32(-1)
+	for stream.Receive() {
+		if end := stream.Msg().GetEvent().GetEnd(); end != nil {
+			exitCode = end.GetExitCode()
+		}
+	}
+	if err := stream.Err(); err != nil {
+		return fmt.Errorf("guest sync stream: %w", err)
+	}
+	if exitCode != 0 {
+		return fmt.Errorf("guest sync exited with code %d", exitCode)
+	}
+
+	return nil
+}
+
 // envdSupportsCgroupFreeze reports whether the sandbox's envd exposes the
 // native /freeze and /unfreeze endpoints. Bad version strings log and return
 // false so we never accidentally call an unsupported endpoint.

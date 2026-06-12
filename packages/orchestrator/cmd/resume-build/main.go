@@ -71,6 +71,7 @@ func main() {
 	cmdPause := flag.String("cmd-pause", "", "execute command in sandbox, then pause on success")
 	cmdSignalPause := flag.String("cmd-signal-pause", "", "execute command in sandbox, then wait for SIGUSR1 before pausing")
 	optimize := flag.Bool("optimize", false, "collect fresh prefetch mapping after pause (resumes snapshot to record page faults)")
+	fsOnly := flag.Bool("fs-only", false, "pause without a memory snapshot (filesystem-only; resume reboots the guest)")
 	shell := flag.Bool("shell", false, "attach an interactive PTY shell via envd (no sshd required in the sandbox)")
 
 	fphTimeoutMs := flag.Int("fph-timeout-ms", 0, "override free-page-hinting-config pause timeout LD flag (0 = use LD default)")
@@ -157,6 +158,12 @@ func main() {
 	if *optimize && *iterations > 0 {
 		log.Fatal("-optimize is incompatible with -iterations (benchmarking doesn't upload)")
 	}
+	if *fsOnly && !isPauseMode {
+		log.Fatal("-fs-only requires a pause flag (-pause, -signal-pause, -cmd-pause, or -cmd-signal-pause)")
+	}
+	if *fsOnly && (*optimize || *fphBench) {
+		log.Fatal("-fs-only is incompatible with -optimize and -fph-bench (no memory snapshot)")
+	}
 
 	if *shell && (isCmdMode || isPauseMode || *iterations > 0) {
 		log.Fatal("-shell can only be used in interactive mode (no -cmd, no pause flags, no -iterations)")
@@ -193,6 +200,7 @@ func main() {
 		newBuildID:      outputBuildID,
 		iterations:      *iterations,
 		optimize:        *optimize,
+		fsOnly:          *fsOnly,
 	}
 
 	runOpts := runOptions{
@@ -228,6 +236,7 @@ type pauseOptions struct {
 	newBuildID      string
 	iterations      int // for benchmarking pause (only with immediate)
 	optimize        bool
+	fsOnly          bool
 }
 
 func (p pauseOptions) enabled() bool {
@@ -671,8 +680,12 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 	}
 
 	// Pause and create snapshot
+	var pauseSnapshotOpts []sandbox.PauseOption
+	if opts.fsOnly {
+		pauseSnapshotOpts = append(pauseSnapshotOpts, sandbox.WithFilesystemSnapshot())
+	}
 	pauseStart := time.Now()
-	snapshot, err := sbx.Pause(ctx, newMeta, sandbox.SnapshotUseCasePause)
+	snapshot, err := sbx.Pause(ctx, newMeta, sandbox.SnapshotUseCasePause, pauseSnapshotOpts...)
 	pauseDur := time.Since(pauseStart)
 	totalDur := time.Since(t0)
 

@@ -276,18 +276,28 @@ func (t *storageTemplate) Files() storage.CachePaths {
 // rather than the header holders, which stay unset for templates loaded from
 // storage (the headers are resolved internally by NewStorage during Fetch).
 func (t *storageTemplate) SchedulingMetadata(ctx context.Context) *orchestrator.SchedulingMetadata {
-	memfile, memfileErr := t.memfile.WaitWithContext(ctx)
+	// The rootfs is always present; its header carries the build ID and is the
+	// minimum needed for scheduling metadata.
 	rootfs, rootfsErr := t.rootfs.WaitWithContext(ctx)
-	if memfileErr != nil || rootfsErr != nil {
+	if rootfsErr != nil {
 		return nil
 	}
 
-	mh := memfile.Header()
-	if mh == nil || mh.Metadata == nil {
+	rh := rootfs.Header()
+	if rh == nil || rh.Metadata == nil {
 		return nil
 	}
 
-	return scheduling.FromHeaders(mh.Metadata.BuildId, mh, rootfs.Header(), 0)
+	// Filesystem-only snapshots have no memfile object, so memfile.WaitWithContext
+	// errors on reload. Tolerate that and report rootfs-only scheduling metadata
+	// (FromHeaders treats a nil memfile header as rootfs-only) instead of
+	// dropping the rootfs affinity data too.
+	var mh *header.Header
+	if memfile, memfileErr := t.memfile.WaitWithContext(ctx); memfileErr == nil {
+		mh = memfile.Header()
+	}
+
+	return scheduling.FromHeaders(rh.Metadata.BuildId, mh, rh, 0)
 }
 
 func (t *storageTemplate) Memfile(ctx context.Context) (block.ReadonlyDevice, error) {
