@@ -105,6 +105,23 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		featureflags.VersionContext(s.info.ClientId, s.info.SourceCommit),
 	)
 
+	// BYOP egress proxy kill-switch; mirrors the API gate for direct gRPC
+	// callers and snapshot resumes.
+	if req.GetSandbox().GetNetwork().GetEgress().GetEgressProxyAddress() != "" {
+		if !s.featureFlags.BoolFlag(ctx, featureflags.BYOPProxyEnabledFlag) {
+			telemetry.ReportEvent(ctx, "egressProxy rejected by BYOPProxyEnabledFlag")
+
+			return nil, status.Error(codes.PermissionDenied,
+				"egress proxy is not enabled for this team")
+		}
+		if !s.sandboxFactory.EgressProxy().SupportsBYOP() {
+			telemetry.ReportEvent(ctx, "egressProxy rejected: orchestrator build has no BYOP dialer")
+
+			return nil, status.Error(codes.Unimplemented,
+				"egress proxy is not supported by this orchestrator build")
+		}
+	}
+
 	maxRunningSandboxesPerNode := s.featureFlags.IntFlag(ctx, featureflags.MaxSandboxesPerNode)
 
 	runningSandboxes := s.sandboxFactory.Sandboxes.Count()
@@ -307,6 +324,28 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		telemetry.WithEnvdVersion(sbx.Config.Envd.Version),
 	)
 
+	// Mirror the Create-side BYOP gates; defense-in-depth for direct gRPC
+	// callers.
+	if req.GetEgress().GetEgressProxyAddress() != "" {
+		ctx = featureflags.AddToContext(ctx,
+			ldcontext.NewBuilder(sbx.Runtime.TeamID).
+				Kind(featureflags.TeamKind).
+				Build(),
+		)
+		if !s.featureFlags.BoolFlag(ctx, featureflags.BYOPProxyEnabledFlag) {
+			telemetry.ReportEvent(ctx, "egressProxy update rejected by BYOPProxyEnabledFlag")
+
+			return nil, status.Error(codes.PermissionDenied,
+				"egress proxy is not enabled for this team")
+		}
+		if !s.sandboxFactory.EgressProxy().SupportsBYOP() {
+			telemetry.ReportEvent(ctx, "egressProxy update rejected: orchestrator build has no BYOP dialer")
+
+			return nil, status.Error(codes.Unimplemented,
+				"egress proxy is not supported by this orchestrator build")
+		}
+	}
+
 	var updates []utils.UpdateFunc
 
 	if req.GetEndTime() != nil {
@@ -327,7 +366,7 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 			}
 
 			egress := req.GetEgress()
-			if len(egress.GetAllowedCidrs()) == 0 && len(egress.GetDeniedCidrs()) == 0 && len(egress.GetAllowedDomains()) == 0 && len(egress.GetRules()) == 0 {
+			if len(egress.GetAllowedCidrs()) == 0 && len(egress.GetDeniedCidrs()) == 0 && len(egress.GetAllowedDomains()) == 0 && len(egress.GetRules()) == 0 && egress.GetEgressProxyAddress() == "" {
 				sbx.Config.SetNetworkEgress(nil)
 			} else {
 				sbx.Config.SetNetworkEgress(egress)

@@ -75,6 +75,11 @@ type SandboxNetworkEgressConfig struct {
 	AllowedAddresses []string                        `json:"allowedAddresses,omitempty"`
 	DeniedAddresses  []string                        `json:"deniedAddresses,omitempty"`
 	Rules            map[string][]SandboxNetworkRule `json:"rules,omitempty"`
+
+	// SOCKS5 BYOP egress proxy configuration.
+	EgressProxyAddress  string `json:"egressProxyAddress,omitempty"`
+	EgressProxyUsername string `json:"egressProxyUsername,omitempty"`
+	EgressProxyPassword string `json:"egressProxyPassword,omitempty"`
 }
 
 const AllowPublicAccessDefault = true
