@@ -179,6 +179,49 @@ func (p *oryProvider) GetTeamCreatorContext(ctx context.Context, userID uuid.UUI
 	return creatorContextFromOryIdentity(identities[0]), nil
 }
 
+func (p *oryProvider) PrepareDeleteUser(ctx context.Context, userID uuid.UUID) (DeleteUserHandle, error) {
+	if userID == uuid.Nil {
+		return nil, errors.New("user id is required")
+	}
+
+	subjectsByUser, err := p.subjectsForUserIDs(ctx, []uuid.UUID{userID})
+	if err != nil {
+		return nil, fmt.Errorf("lookup ory subject for user: %w", err)
+	}
+
+	if len(subjectsByUser) == 0 {
+		return nil, fmt.Errorf("%w: no identity mapping for user %s", ErrUserNotFound, userID)
+	}
+
+	subjects := make([]string, 0, len(subjectsByUser))
+	for s := range subjectsByUser {
+		subjects = append(subjects, s)
+	}
+
+	return &oryDeleteHandle{provider: p, subjects: subjects}, nil
+}
+
+type oryDeleteHandle struct {
+	provider *oryProvider
+	subjects []string
+}
+
+func (h *oryDeleteHandle) Execute(ctx context.Context) error {
+	for _, subject := range h.subjects {
+		resp, err := h.provider.identities.DeleteIdentityExecute(
+			h.provider.identities.DeleteIdentity(h.provider.authCtx(ctx), subject),
+		)
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+		if err != nil {
+			return fmt.Errorf("delete ory identity %s: %w", subject, err)
+		}
+	}
+
+	return nil
+}
+
 func (p *oryProvider) subjectsForUserIDs(ctx context.Context, userIDs []uuid.UUID) (map[string]uuid.UUID, error) {
 	rows, err := p.resolver.GetUserIdentitiesByUserIDs(ctx, authqueries.GetUserIdentitiesByUserIDsParams{
 		OidcIss: p.issuer,
