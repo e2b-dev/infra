@@ -903,20 +903,33 @@ func (s *Server) snapshotAndCacheSandbox(
 // background and cleans up the Redis peer key once done. Used by the Pause
 // handler where no prefetch data is available.
 func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, res *snapshotResult) {
-	// Detach from the request: the upload retries for up to uploadTotalBudget.
-	// The budget (not an outer deadline) bounds it.
-	uploadCtx := context.WithoutCancel(ctx)
+	// Detach from the request (the upload retries for up to uploadTotalBudget),
+	// but cancel on server shutdown so the background loop doesn't outlive the
+	// process.
+	uploadCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+
+	// Watcher: cancel on shutdown. Exits when the upload finishes (uploadCtx
+	// cancelled by the worker's defer), so it never leaks.
+	go func() {
+		select {
+		case <-s.done:
+			cancel()
+		case <-uploadCtx.Done():
+		}
+	}()
 
 	go func() {
-		uploadCtx, span := tracer.Start(uploadCtx, "upload snapshot")
+		defer cancel()
+
+		spanCtx, span := tracer.Start(uploadCtx, "upload snapshot")
 		defer span.End()
 
 		err := uploadWithRetry(
-			uploadCtx,
+			spanCtx,
 			defaultUploadRetryPolicy(),
 			res.upload.Run,
 			func(attempt int, backoff time.Duration, err error) {
-				sbxlogger.I(sbx).Warn(uploadCtx, "snapshot upload attempt failed, retrying",
+				sbxlogger.I(sbx).Warn(spanCtx, "snapshot upload attempt failed, retrying",
 					zap.Int("attempt", attempt),
 					zap.Duration("backoff", backoff),
 					zap.Error(err),
@@ -924,13 +937,13 @@ func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, 
 			},
 		)
 		if err != nil {
-			sbxlogger.I(sbx).Error(uploadCtx, "snapshot upload did not durably land", zap.Error(err))
-			s.uploadFailedCounter.Add(uploadCtx, 1)
+			sbxlogger.I(sbx).Error(spanCtx, "snapshot upload did not durably land", zap.Error(err))
+			s.uploadFailedCounter.Add(spanCtx, 1)
 		} else {
-			sbxlogger.I(sbx).Info(uploadCtx, "snapshot finished uploading successfully")
+			sbxlogger.I(sbx).Info(spanCtx, "snapshot finished uploading successfully")
 		}
 
-		res.completeUpload(uploadCtx, err)
+		res.completeUpload(spanCtx, err)
 	}()
 }
 

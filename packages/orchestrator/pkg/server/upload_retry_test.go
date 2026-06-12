@@ -80,6 +80,35 @@ func TestUploadWithRetry_PerAttemptTimeoutDoesNotAbortLoop(t *testing.T) {
 	assert.EqualValues(t, 2, attempts.Load(), "per-attempt timeout must not abort the loop")
 }
 
+func TestUploadWithRetry_CapsAttemptToRemainingBudget(t *testing.T) {
+	t.Parallel()
+
+	// attemptTimeout (10s) is far larger than the total budget (100ms). A slow
+	// attempt that blocks on its context must be cut off at the budget, not run
+	// for the full per-attempt timeout, so the loop never overruns totalBudget.
+	policy := uploadRetryPolicy{
+		totalBudget:    100 * time.Millisecond,
+		attemptTimeout: 10 * time.Second,
+		initialBackoff: time.Millisecond,
+		maxBackoff:     5 * time.Millisecond,
+		multiplier:     2,
+	}
+
+	upload := func(ctx context.Context) error {
+		<-ctx.Done() // never succeeds; relies on the capped deadline
+
+		return ctx.Err()
+	}
+
+	start := time.Now()
+	err := uploadWithRetry(context.Background(), policy, upload, nil)
+	elapsed := time.Since(start)
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errUploadBudgetExhausted)
+	assert.Less(t, elapsed, 2*time.Second, "must not run for the full per-attempt timeout")
+}
+
 func TestUploadWithRetry_NonRetryableStops(t *testing.T) {
 	t.Parallel()
 

@@ -56,9 +56,15 @@ func uploadWithRetry(
 
 	var lastErr error
 	for attempt := 1; ; attempt++ {
-		// Fresh per-attempt context: an independent deadline that does not
-		// poison subsequent attempts, still cancelled by the parent context.
-		attemptCtx, cancel := context.WithTimeout(ctx, policy.attemptTimeout)
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return fmt.Errorf("%w after %d attempts: %w", errUploadBudgetExhausted, attempt-1, lastErr)
+		}
+
+		// Fresh per-attempt context, capped to the remaining budget so total
+		// runtime never exceeds totalBudget (and a stuck attempt can't push the
+		// loop past it). Still cancelled by the parent context.
+		attemptCtx, cancel := context.WithTimeout(ctx, min(policy.attemptTimeout, remaining))
 		lastErr = upload(attemptCtx)
 		cancel()
 
@@ -75,12 +81,10 @@ func uploadWithRetry(
 			return fmt.Errorf("non-retryable snapshot upload error after %d attempts: %w", attempt, lastErr)
 		}
 
-		remaining := time.Until(deadline)
-		if remaining <= 0 {
+		wait := min(backoff, time.Until(deadline))
+		if wait <= 0 {
 			return fmt.Errorf("%w after %d attempts: %w", errUploadBudgetExhausted, attempt, lastErr)
 		}
-
-		wait := min(backoff, remaining)
 		if onRetry != nil {
 			onRetry(attempt, wait, lastErr)
 		}
