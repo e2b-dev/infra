@@ -88,7 +88,8 @@ func New(
 		nodeStatus = api.NodeStatusUnhealthy
 	}
 
-	nodeStatusChangedAt := time.Now()
+	// Zero when the orchestrator does not report the status change timestamp.
+	var nodeStatusChangedAt time.Time
 	if ts := nodeInfo.GetServiceStatusChangedAt(); ts.IsValid() {
 		nodeStatusChangedAt = ts.AsTime()
 	}
@@ -135,10 +136,7 @@ func NewClusterNode(ctx context.Context, client *clusters.GRPCClient, clusterID 
 		status = api.NodeStatusUnhealthy
 	}
 
-	statusChangedAt := info.StatusChangedAt
-	if statusChangedAt.IsZero() {
-		statusChangedAt = time.Now()
-	}
+
 
 	nodeMetadata := NodeMetadata{
 		ServiceInstanceID: info.ServiceInstanceID,
@@ -162,7 +160,7 @@ func NewClusterNode(ctx context.Context, client *clusters.GRPCClient, clusterID 
 
 		client:       client,
 		status:       status,
-		reported:     StatusInfo{Status: status, ChangedAt: statusChangedAt},
+		reported:     StatusInfo{Status: status, ChangedAt: info.StatusChangedAt},
 		meta:         nodeMetadata,
 		featureflags: ff,
 	}
