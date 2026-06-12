@@ -60,6 +60,10 @@ type Server struct {
 	sandboxKilledCounter  metric.Int64Counter
 	uploadFailedCounter   metric.Int64Counter
 
+	// uploadsWG tracks in-flight async snapshot uploads so a graceful shutdown
+	// can wait for them to finish instead of dropping them.
+	uploadsWG sync.WaitGroup
+
 	done      chan struct{}
 	closeOnce sync.Once
 }
@@ -163,10 +167,25 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 	return server, nil
 }
 
-func (s *Server) Close() error {
+func (s *Server) Close(ctx context.Context) error {
 	s.closeOnce.Do(func() {
 		close(s.done)
 	})
+
+	// Wait for in-flight snapshot uploads to finish so a graceful shutdown
+	// doesn't drop a snapshot that is still uploading. ctx is cancelled on a
+	// forced stop, in which case we stop waiting and let the process exit.
+	uploadsDone := make(chan struct{})
+	go func() {
+		s.uploadsWG.Wait()
+		close(uploadsDone)
+	}()
+
+	select {
+	case <-uploadsDone:
+	case <-ctx.Done():
+		logger.L().Warn(ctx, "shutting down with snapshot uploads still in flight", zap.Error(context.Cause(ctx)))
+	}
 
 	s.uploadedBuilds.Stop()
 

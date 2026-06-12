@@ -904,23 +904,14 @@ func (s *Server) snapshotAndCacheSandbox(
 // background and cleans up the Redis peer key once done. Used by the Pause
 // handler where no prefetch data is available.
 func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, res *snapshotResult) {
-	// Detach from the request (the upload retries for up to uploadTotalBudget),
-	// but cancel on server shutdown so the background loop doesn't outlive the
-	// process.
-	uploadCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	// Detach from the request: the upload retries for up to uploadTotalBudget.
+	// A graceful shutdown waits for it to finish (see Server.Close via uploadsWG)
+	// rather than cancelling, so an in-flight snapshot isn't dropped on restart.
+	uploadCtx := context.WithoutCancel(ctx)
 
-	// Watcher: cancel on shutdown. Exits when the upload finishes (uploadCtx
-	// cancelled by the worker's defer), so it never leaks.
+	s.uploadsWG.Add(1)
 	go func() {
-		select {
-		case <-s.done:
-			cancel()
-		case <-uploadCtx.Done():
-		}
-	}()
-
-	go func() {
-		defer cancel()
+		defer s.uploadsWG.Done()
 
 		spanCtx, span := tracer.Start(uploadCtx, "upload snapshot")
 		defer span.End()

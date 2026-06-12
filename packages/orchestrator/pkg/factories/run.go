@@ -575,8 +575,8 @@ func run(config cfg.Config, opts Options) (success bool) {
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create orchestrator server", zap.Error(err))
 	}
-	closers = append(closers, closer{"orchestrator server", func(context.Context) error {
-		return orchestratorService.Close()
+	closers = append(closers, closer{"orchestrator server", func(ctx context.Context) error {
+		return orchestratorService.Close(ctx)
 	}})
 
 	// template manager sandbox logger
