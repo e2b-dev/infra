@@ -909,10 +909,8 @@ func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, 
 	// rather than cancelling, so an in-flight snapshot isn't dropped on restart.
 	uploadCtx := context.WithoutCancel(ctx)
 
-	s.uploadsWG.Add(1)
 	s.uploadsInFlight.Add(1)
-	go func() {
-		defer s.uploadsWG.Done()
+	s.uploadsWG.Go(func() {
 		defer s.uploadsInFlight.Add(-1)
 
 		spanCtx, span := tracer.Start(uploadCtx, "upload snapshot")
@@ -939,7 +937,7 @@ func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, 
 		}
 
 		res.completeUpload(spanCtx, err)
-	}()
+	})
 }
 
 // setupSandboxLifecycle sets up the cleanup goroutine for a sandbox.

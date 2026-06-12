@@ -1,5 +1,3 @@
-// Package retry provides a small, general-purpose retry runner with a total
-// budget, optional per-attempt timeout, and exponential backoff.
 package retry
 
 import (
