@@ -472,26 +472,6 @@ variable "dashboard_api_env_vars" {
   sensitive = true
 }
 
-variable "volume_token_issuer" {
-  type = string
-}
-
-variable "volume_token_signing_key" {
-  type = string
-}
-
-variable "volume_token_signing_key_name" {
-  type = string
-}
-
-variable "volume_token_signing_method" {
-  type = string
-}
-
-variable "volume_token_duration" {
-  type = string
-}
-
 variable "gcs_grpc_connection_pool_size" {
   description = "Number of gRPC connections in the GCS connection pool"
   type        = number
