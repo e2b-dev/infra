@@ -20,16 +20,20 @@ var ApiNodeToOrchestratorStateMapper = map[api.NodeStatus]orchestratorinfo.Servi
 	api.NodeStatusStandby:   orchestratorinfo.ServiceInfoStatus_Standby,
 }
 
-func (n *Node) Status() api.NodeStatus {
-	status, _ := n.StatusWithChangedAt()
-
-	return status
+// StatusInfo bundles the node status with the time of its last change.
+type StatusInfo struct {
+	Status    api.NodeStatus
+	ChangedAt time.Time
 }
 
-// StatusWithChangedAt atomically returns the node status together with the time of the last status change.
+func (n *Node) Status() api.NodeStatus {
+	return n.StatusInfo().Status
+}
+
+// StatusInfo atomically returns the node status together with the time of the last status change.
 // The reported status can differ from the stored status when the gRPC connection is not healthy,
 // so transitions of the reported status are tracked to keep the timestamp consistent with it.
-func (n *Node) StatusWithChangedAt() (api.NodeStatus, time.Time) {
+func (n *Node) StatusInfo() StatusInfo {
 	n.mutex.Lock()
 	defer n.mutex.Unlock()
 
@@ -43,12 +47,11 @@ func (n *Node) StatusWithChangedAt() (api.NodeStatus, time.Time) {
 		}
 	}
 
-	if status != n.reportedStatus {
-		n.reportedStatus = status
-		n.statusChangedAt = time.Now()
+	if status != n.reported.Status {
+		n.reported = StatusInfo{Status: status, ChangedAt: time.Now()}
 	}
 
-	return status, n.statusChangedAt
+	return n.reported
 }
 
 // setStatus updates the node status together with the time of the last status change.
@@ -60,15 +63,14 @@ func (n *Node) setStatus(ctx context.Context, status api.NodeStatus, changedAt t
 	if n.status != status {
 		logger.L().Info(ctx, "NodeID status changed", logger.WithNodeID(n.ID), zap.String("status", string(status)))
 		n.status = status
-		n.reportedStatus = status
 
 		if changedAt.IsZero() {
 			changedAt = time.Now()
 		}
-		n.statusChangedAt = changedAt
-	} else if changedAt.After(n.statusChangedAt) {
+		n.reported = StatusInfo{Status: status, ChangedAt: changedAt}
+	} else if changedAt.After(n.reported.ChangedAt) {
 		// Status is the same from the API perspective, but the orchestrator reported a newer change.
-		n.statusChangedAt = changedAt
+		n.reported.ChangedAt = changedAt
 	}
 }
 

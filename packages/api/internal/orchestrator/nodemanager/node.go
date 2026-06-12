@@ -42,10 +42,10 @@ type Node struct {
 
 	client *clusters.GRPCClient
 	status api.NodeStatus
-	// reportedStatus is the last status returned to callers, which can differ from the
-	// stored status when it is derived from the gRPC connection state.
-	reportedStatus  api.NodeStatus
-	statusChangedAt time.Time
+	// reported is the last status returned to callers together with the time of its
+	// last change. It can differ from the stored status when it is derived from the
+	// gRPC connection state.
+	reported StatusInfo
 
 	metrics   Metrics
 	metricsMu sync.RWMutex
@@ -106,11 +106,10 @@ func New(
 		IPAddress:        discoveredNode.IPAddress,
 		SandboxDomain:    nil,
 
-		client:          client,
-		status:          nodeStatus,
-		reportedStatus:  nodeStatus,
-		statusChangedAt: nodeStatusChangedAt,
-		meta:            nodeMetadata,
+		client:   client,
+		status:   nodeStatus,
+		reported: StatusInfo{Status: nodeStatus, ChangedAt: nodeStatusChangedAt},
+		meta:     nodeMetadata,
 
 		PlacementMetrics: PlacementMetrics{
 			sandboxesInProgress: smap.New[SandboxResources](),
@@ -161,12 +160,11 @@ func NewClusterNode(ctx context.Context, client *clusters.GRPCClient, clusterID 
 			createFails:         atomic.Uint64{},
 		},
 
-		client:          client,
-		status:          status,
-		reportedStatus:  status,
-		statusChangedAt: statusChangedAt,
-		meta:            nodeMetadata,
-		featureflags:    ff,
+		client:       client,
+		status:       status,
+		reported:     StatusInfo{Status: status, ChangedAt: statusChangedAt},
+		meta:         nodeMetadata,
+		featureflags: ff,
 	}
 
 	nodeClient, ctx := n.GetClient(ctx)

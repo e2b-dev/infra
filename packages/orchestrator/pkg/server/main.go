@@ -140,7 +140,7 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 	_, err = meter.RegisterCallback(
 		func(_ context.Context, obs metric.Observer) error {
 			obs.ObserveInt64(statusGauge, 1, metric.WithAttributes(
-				attribute.String("status", server.info.GetStatus().String()),
+				attribute.String("status", server.info.GetStatus().Status.String()),
 				attribute.String("version", server.info.SourceVersion),
 				attribute.String("commit", server.info.SourceCommit),
 			))
