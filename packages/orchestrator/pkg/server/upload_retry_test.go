@@ -56,7 +56,7 @@ func TestUploadWithRetry_BudgetExhaustion(t *testing.T) {
 
 	err := uploadWithRetry(context.Background(), fastPolicy(), upload, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, errUploadBudgetExhausted)
+	require.ErrorIs(t, err, errUploadBudgetExhausted)
 	assert.Greater(t, attempts.Load(), int32(1), "retried within budget")
 }
 
@@ -105,7 +105,7 @@ func TestUploadWithRetry_CapsAttemptToRemainingBudget(t *testing.T) {
 	elapsed := time.Since(start)
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, errUploadBudgetExhausted)
+	require.ErrorIs(t, err, errUploadBudgetExhausted)
 	assert.Less(t, elapsed, 2*time.Second, "must not run for the full per-attempt timeout")
 }
 
@@ -122,7 +122,7 @@ func TestUploadWithRetry_NonRetryableStops(t *testing.T) {
 
 	err := uploadWithRetry(context.Background(), fastPolicy(), upload, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, storage.ErrObjectNotExist)
+	require.ErrorIs(t, err, storage.ErrObjectNotExist)
 	assert.EqualValues(t, 1, attempts.Load(), "non-retryable error stops immediately")
 }
 
