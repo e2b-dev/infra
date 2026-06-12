@@ -20,7 +20,6 @@ var ApiNodeToOrchestratorStateMapper = map[api.NodeStatus]orchestratorinfo.Servi
 	api.NodeStatusStandby:   orchestratorinfo.ServiceInfoStatus_Standby,
 }
 
-// StatusInfo bundles the node status with the time of its last change.
 type StatusInfo struct {
 	Status    api.NodeStatus
 	ChangedAt time.Time
@@ -30,9 +29,6 @@ func (n *Node) Status() api.NodeStatus {
 	return n.StatusInfo().Status
 }
 
-// StatusInfo returns the node status together with the time of the last status change.
-// The returned status can be derived from the gRPC connection state, in which case the
-// timestamp still refers to the last stored status change.
 func (n *Node) StatusInfo() StatusInfo {
 	n.mutex.RLock()
 	defer n.mutex.RUnlock()
@@ -50,19 +46,15 @@ func (n *Node) StatusInfo() StatusInfo {
 	return StatusInfo{Status: status, ChangedAt: n.status.ChangedAt}
 }
 
-// setStatus updates the node status together with the time of the last status change.
-// The changedAt value is the timestamp reported by the orchestrator, zero when not available.
 func (n *Node) setStatus(ctx context.Context, status api.NodeStatus, changedAt time.Time) {
 	n.mutex.Lock()
 	defer n.mutex.Unlock()
 
 	if n.status.Status != status {
 		logger.L().Info(ctx, "NodeID status changed", logger.WithNodeID(n.ID), zap.String("status", string(status)))
-		n.status = StatusInfo{Status: status, ChangedAt: changedAt}
-	} else if changedAt.After(n.status.ChangedAt) {
-		// Status is the same, but the orchestrator reported a newer change.
-		n.status.ChangedAt = changedAt
 	}
+
+	n.status = StatusInfo{Status: status, ChangedAt: changedAt}
 }
 
 func (n *Node) SendStatusChange(ctx context.Context, s api.NodeStatus) error {
