@@ -49,7 +49,7 @@ func TestDo_BudgetExhausted(t *testing.T) {
 
 	err := Do(context.Background(), fastPolicy(), nil, fn, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrBudgetExhausted)
+	require.ErrorIs(t, err, ErrBudgetExhausted)
 	assert.Greater(t, attempts.Load(), int32(1))
 }
 
@@ -127,7 +127,7 @@ func TestDo_ParentCancelAborts(t *testing.T) {
 
 	err := Do(ctx, fastPolicy(), nil, fn, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, context.Canceled)
+	require.ErrorIs(t, err, context.Canceled)
 	assert.NotErrorIs(t, err, ErrBudgetExhausted)
 }
 
