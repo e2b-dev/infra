@@ -25,14 +25,18 @@ type MapSubscriber interface {
 	OnNetworkRelease(ctx context.Context, sbx *Sandbox)
 }
 
-// Map holds sandboxes that are live (running) together with a IP-to-sandbox index
-// The two maps are managed independently.
+// Map holds sandboxes that are live (running), known active lifecycles,
+// together with a IP-to-sandbox index. The indexes are managed independently.
 //
 // AssignNetwork/NetworkReleased manage the IP map,
 // MarkRunning/MarkStopping manage the live set.
 type Map struct {
-	live    *smap.Map[*Sandbox]
-	network *smap.Map[*Sandbox]
+	live       *smap.Map[*Sandbox]
+	lifecycles *smap.Map[*Sandbox]
+	network    *smap.Map[*Sandbox]
+
+	lifecycleMu      sync.Mutex
+	lifecycleChanged chan struct{}
 
 	subs     []MapSubscriber
 	subsLock sync.RWMutex
@@ -40,9 +44,15 @@ type Map struct {
 
 func NewSandboxesMap() *Map {
 	return &Map{
-		live:    smap.New[*Sandbox](),
-		network: smap.New[*Sandbox](),
+		live:             smap.New[*Sandbox](),
+		lifecycles:       smap.New[*Sandbox](),
+		network:          smap.New[*Sandbox](),
+		lifecycleChanged: make(chan struct{}),
 	}
+}
+
+func sandboxLifecycleKey(sandboxID, lifecycleID string) string {
+	return fmt.Sprintf("%s/%s", sandboxID, lifecycleID)
 }
 
 func (m *Map) Subscribe(subscriber MapSubscriber) {
@@ -73,6 +83,36 @@ func (m *Map) Get(sandboxID string) (*Sandbox, bool) {
 	return m.live.Get(sandboxID)
 }
 
+func (m *Map) LifecycleItems() []*Sandbox {
+	items := m.lifecycles.Items()
+	sandboxes := make([]*Sandbox, 0, len(items))
+	for _, sbx := range items {
+		sandboxes = append(sandboxes, sbx)
+	}
+
+	return sandboxes
+}
+
+func (m *Map) WaitLifecycles(ctx context.Context) error {
+	for {
+		m.lifecycleMu.Lock()
+		if m.lifecycles.Count() == 0 {
+			m.lifecycleMu.Unlock()
+
+			return nil
+		}
+
+		changed := m.lifecycleChanged
+		m.lifecycleMu.Unlock()
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("waiting for sandbox lifecycle cleanup: %w", ctx.Err())
+		case <-changed:
+		}
+	}
+}
+
 // GetByHostPort looks up a sandbox by its host IP address parsed from hostPort.
 func (m *Map) GetByHostPort(hostPort string) (*Sandbox, error) {
 	reqIP, _, err := net.SplitHostPort(hostPort)
@@ -100,11 +140,26 @@ func (m *Map) AssignNetwork(ctx context.Context, sbx *Sandbox) {
 	)
 }
 
+func (m *Map) trackLifecycle(ctx context.Context, sbx *Sandbox) {
+	m.lifecycleMu.Lock()
+	m.lifecycles.Insert(sandboxLifecycleKey(sbx.Runtime.SandboxID, sbx.LifecycleID), sbx)
+	m.notifyLifecycleChangeLocked()
+	m.lifecycleMu.Unlock()
+
+	logger.L().Info(ctx, "sandbox lifecycle tracked",
+		logger.WithSandboxID(sbx.Runtime.SandboxID),
+		logger.WithLifecycleID(sbx.LifecycleID),
+		logger.WithSandboxIP(sbx.Slot.HostIPString()),
+	)
+}
+
 // MarkRunning makes the sandbox visible to Get/Items/Count and notifies OnInsert subscribers.
 func (m *Map) MarkRunning(ctx context.Context, sbx *Sandbox) {
 	if !m.live.InsertIfAbsent(sbx.Runtime.SandboxID, sbx) {
 		return
 	}
+
+	m.trackLifecycle(ctx, sbx)
 
 	m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
 		s.OnInsert(ctx, sbx)
@@ -148,6 +203,24 @@ func (m *Map) MarkStopping(ctx context.Context, sandboxID, lifecycleID string) b
 	})
 
 	return stopped
+}
+
+func (m *Map) MarkStopped(ctx context.Context, sbx *Sandbox) {
+	m.lifecycleMu.Lock()
+	m.lifecycles.Remove(sandboxLifecycleKey(sbx.Runtime.SandboxID, sbx.LifecycleID))
+	m.notifyLifecycleChangeLocked()
+	m.lifecycleMu.Unlock()
+
+	logger.L().Info(ctx, "sandbox lifecycle stopped",
+		logger.WithSandboxID(sbx.Runtime.SandboxID),
+		logger.WithLifecycleID(sbx.LifecycleID),
+		logger.WithSandboxIP(sbx.Slot.HostIPString()),
+	)
+}
+
+func (m *Map) notifyLifecycleChangeLocked() {
+	close(m.lifecycleChanged)
+	m.lifecycleChanged = make(chan struct{})
 }
 
 // NetworkReleased unregisters a sandbox's IP and notifies OnNetworkRelease

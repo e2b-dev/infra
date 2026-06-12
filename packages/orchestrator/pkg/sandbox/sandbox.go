@@ -247,6 +247,8 @@ type Sandbox struct {
 	files   *storage.SandboxFiles
 	cleanup *Cleanup
 
+	sandboxes *Map
+
 	featureFlags *featureflags.Client
 
 	process      *fc.Process
@@ -500,10 +502,11 @@ func (f *Factory) CreateSandbox(
 		Metadata:     metadata,
 		cgroupHandle: cgroupHandle,
 
-		Template: template,
-		config:   f.config,
-		files:    sandboxFiles,
-		process:  fcHandle,
+		Template:  template,
+		config:    f.config,
+		files:     sandboxFiles,
+		process:   fcHandle,
+		sandboxes: f.Sandboxes,
 
 		cleanup:      cleanup,
 		featureFlags: f.featureFlags,
@@ -845,10 +848,11 @@ func (f *Factory) ResumeSandbox(
 		Metadata:     metadata,
 		cgroupHandle: cgroupHandle,
 
-		Template: t,
-		config:   f.config,
-		files:    sandboxFiles,
-		process:  fcHandle,
+		Template:  t,
+		config:    f.config,
+		files:     sandboxFiles,
+		process:   fcHandle,
+		sandboxes: f.Sandboxes,
 
 		cleanup:      cleanup,
 		featureFlags: f.featureFlags,
@@ -988,6 +992,10 @@ func (s *Sandbox) Wait(ctx context.Context) error {
 
 func (s *Sandbox) Close(ctx context.Context) error {
 	err := s.cleanup.Run(ctx)
+	if s.sandboxes != nil {
+		s.sandboxes.MarkStopped(context.WithoutCancel(ctx), s)
+	}
+
 	if err != nil {
 		return fmt.Errorf("failed to cleanup sandbox: %w", err)
 	}
