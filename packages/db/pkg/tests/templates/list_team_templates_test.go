@@ -53,7 +53,7 @@ func createReadyBuildWithAssignment(t *testing.T, ctx context.Context, db *testu
 }
 
 // TestListTeamTemplates_AllVariantsExecute smoke-tests every sort variant with
-// include_defaults enabled, so SQL errors in any of the six generated queries
+// include_defaults enabled, so SQL errors in any of the four generated queries
 // surface here instead of in production.
 func TestListTeamTemplates_AllVariantsExecute(t *testing.T) {
 	t.Parallel()
@@ -70,20 +70,6 @@ func TestListTeamTemplates_AllVariantsExecute(t *testing.T) {
 	d := db.SqlcClient.Dashboard
 
 	variants := map[string]func() (int, error){
-		"NameAsc": func() (int, error) {
-			rows, err := d.ListTeamTemplatesByNameAsc(ctx, dashboardqueries.ListTeamTemplatesByNameAscParams{
-				TeamID: teamID, IncludeDefaults: true, FilterPublic: -1, LimitPlusOne: 10,
-			})
-
-			return len(rows), err
-		},
-		"NameDesc": func() (int, error) {
-			rows, err := d.ListTeamTemplatesByNameDesc(ctx, dashboardqueries.ListTeamTemplatesByNameDescParams{
-				TeamID: teamID, IncludeDefaults: true, FilterPublic: -1, LimitPlusOne: 10,
-			})
-
-			return len(rows), err
-		},
 		"CreatedAtAsc": func() (int, error) {
 			rows, err := d.ListTeamTemplatesByCreatedAtAsc(ctx, dashboardqueries.ListTeamTemplatesByCreatedAtAscParams{
 				TeamID: teamID, IncludeDefaults: true, FilterPublic: -1, LimitPlusOne: 10,
@@ -125,19 +111,19 @@ func TestListTeamTemplates_AllVariantsExecute(t *testing.T) {
 	}
 }
 
-func listNameAscParams(teamID uuid.UUID, limitPlusOne int32) dashboardqueries.ListTeamTemplatesByNameAscParams {
-	return dashboardqueries.ListTeamTemplatesByNameAscParams{
+func listCreatedAtAscParams(teamID uuid.UUID, limitPlusOne int32) dashboardqueries.ListTeamTemplatesByCreatedAtAscParams {
+	return dashboardqueries.ListTeamTemplatesByCreatedAtAscParams{
 		TeamID:          teamID,
 		IncludeDefaults: false,
 		FilterPublic:    -1,
 		Search:          "",
-		CursorName:      nil,
-		CursorID:        nil,
+		CursorCreatedAt: time.Time{},
+		CursorID:        "",
 		LimitPlusOne:    limitPlusOne,
 	}
 }
 
-func TestListTeamTemplatesByName_SortsAndPaginates(t *testing.T) {
+func TestListTeamTemplatesByCreatedAt_SortsAndPaginates(t *testing.T) {
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
 	ctx := t.Context()
@@ -145,43 +131,46 @@ func TestListTeamTemplatesByName_SortsAndPaginates(t *testing.T) {
 
 	teamID := testutils.CreateTestTeam(t, db)
 
-	firstTemplate := testutils.CreateTestTemplate(t, db, teamID)
-	secondTemplate := testutils.CreateTestTemplate(t, db, teamID)
-	thirdTemplate := testutils.CreateTestTemplate(t, db, teamID)
-	testutils.CreateTestTemplateAliasWithName(t, db, firstTemplate, "aaa-template", nil)
-	testutils.CreateTestTemplateAliasWithName(t, db, secondTemplate, "mmm-template", nil)
-	testutils.CreateTestTemplateAliasWithName(t, db, thirdTemplate, "zzz-template", nil)
+	templateIDs := make([]string, 3)
+	for i := range templateIDs {
+		templateIDs[i] = testutils.CreateTestTemplate(t, db, teamID)
+		// Distinct created_at values so the sort order is deterministic.
+		err := db.SqlcClient.TestsRawSQL(ctx,
+			"UPDATE public.envs SET created_at = NOW() - ($2 || ' hours')::interval WHERE id = $1",
+			templateIDs[i], 3-i,
+		)
+		require.NoError(t, err)
+	}
 
-	rows, err := db.SqlcClient.Dashboard.ListTeamTemplatesByNameAsc(ctx, listNameAscParams(teamID, 10))
+	rows, err := db.SqlcClient.Dashboard.ListTeamTemplatesByCreatedAtAsc(ctx, listCreatedAtAscParams(teamID, 10))
 	require.NoError(t, err)
 	require.Len(t, rows, 3)
-	require.Equal(t, []string{"aaa-template", "mmm-template", "zzz-template"},
-		[]string{rows[0].NameSortKey, rows[1].NameSortKey, rows[2].NameSortKey})
+	require.Equal(t, []string{rows[0].TemplateID, rows[1].TemplateID, rows[2].TemplateID}, templateIDs)
 
-	descRows, err := db.SqlcClient.Dashboard.ListTeamTemplatesByNameDesc(ctx, dashboardqueries.ListTeamTemplatesByNameDescParams{
+	descRows, err := db.SqlcClient.Dashboard.ListTeamTemplatesByCreatedAtDesc(ctx, dashboardqueries.ListTeamTemplatesByCreatedAtDescParams{
 		TeamID:          teamID,
 		IncludeDefaults: false,
 		FilterPublic:    -1,
-		CursorName:      nil,
-		CursorID:        nil,
+		CursorCreatedAt: time.Now().Add(time.Hour),
+		CursorID:        "",
 		LimitPlusOne:    10,
 	})
 	require.NoError(t, err)
 	require.Len(t, descRows, 3)
-	require.Equal(t, "zzz-template", descRows[0].NameSortKey)
+	require.Equal(t, templateIDs[2], descRows[0].TemplateID)
 
 	// Keyset pagination: page of 2, then continue from the last row's cursor.
-	firstPage, err := db.SqlcClient.Dashboard.ListTeamTemplatesByNameAsc(ctx, listNameAscParams(teamID, 2))
+	firstPage, err := db.SqlcClient.Dashboard.ListTeamTemplatesByCreatedAtAsc(ctx, listCreatedAtAscParams(teamID, 2))
 	require.NoError(t, err)
 	require.Len(t, firstPage, 2)
 
-	params := listNameAscParams(teamID, 10)
-	params.CursorName = &firstPage[1].NameSortKey
-	params.CursorID = &firstPage[1].TemplateID
-	secondPage, err := db.SqlcClient.Dashboard.ListTeamTemplatesByNameAsc(ctx, params)
+	params := listCreatedAtAscParams(teamID, 10)
+	params.CursorCreatedAt = firstPage[1].CreatedAt
+	params.CursorID = firstPage[1].TemplateID
+	secondPage, err := db.SqlcClient.Dashboard.ListTeamTemplatesByCreatedAtAsc(ctx, params)
 	require.NoError(t, err)
 	require.Len(t, secondPage, 1)
-	require.Equal(t, thirdTemplate, secondPage[0].TemplateID)
+	require.Equal(t, templateIDs[2], secondPage[0].TemplateID)
 }
 
 func TestListTeamTemplates_BuildDisplayFields(t *testing.T) {
@@ -194,11 +183,12 @@ func TestListTeamTemplates_BuildDisplayFields(t *testing.T) {
 
 	buildlessTemplate := testutils.CreateTestTemplate(t, db, teamID)
 	builtTemplate := testutils.CreateTestTemplate(t, db, teamID)
-	testutils.CreateTestTemplateAliasWithName(t, db, buildlessTemplate, "aaa-buildless", nil)
-	testutils.CreateTestTemplateAliasWithName(t, db, builtTemplate, "bbb-built", nil)
+	err := db.SqlcClient.TestsRawSQL(ctx,
+		"UPDATE public.envs SET created_at = NOW() - interval '1 hour' WHERE id = $1", buildlessTemplate)
+	require.NoError(t, err)
 	buildID := createReadyBuildWithAssignment(t, ctx, db, builtTemplate, 4, 4096, 0)
 
-	rows, err := db.SqlcClient.Dashboard.ListTeamTemplatesByNameAsc(ctx, listNameAscParams(teamID, 10))
+	rows, err := db.SqlcClient.Dashboard.ListTeamTemplatesByCreatedAtAsc(ctx, listCreatedAtAscParams(teamID, 10))
 	require.NoError(t, err)
 	require.Len(t, rows, 2)
 

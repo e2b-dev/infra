@@ -15,8 +15,6 @@ import (
 type templatesSort string
 
 const (
-	templatesSortNameAsc       templatesSort = "name_asc"
-	templatesSortNameDesc      templatesSort = "name_desc"
 	templatesSortCreatedAtAsc  templatesSort = "created_at_asc"
 	templatesSortCreatedAtDesc templatesSort = "created_at_desc"
 	templatesSortUpdatedAtAsc  templatesSort = "updated_at_asc"
@@ -40,8 +38,7 @@ func parseTemplatesSort(value *api.GetTemplatesParamsSort) (templatesSort, error
 	}
 
 	switch templatesSort(*value) {
-	case templatesSortNameAsc, templatesSortNameDesc,
-		templatesSortCreatedAtAsc, templatesSortCreatedAtDesc,
+	case templatesSortCreatedAtAsc, templatesSortCreatedAtDesc,
 		templatesSortUpdatedAtAsc, templatesSortUpdatedAtDesc:
 		return templatesSort(*value), nil
 	default:
