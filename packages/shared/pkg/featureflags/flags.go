@@ -140,12 +140,20 @@ var (
 	MemfdBackgroundCopyFlag = NewBoolFlag("memfd-background-copy", false)
 
 	// MemfileDiffDedupFlag enables 4 KiB-page dedup of the memfile diff
-	// against the base memfile. bestEffort skips uncached blocks;
-	// directIO opens the dedup output with O_DIRECT.
+	// against the base memfile. bestEffort skips uncached blocks; directIO
+	// opens the dedup output with O_DIRECT. The remaining keys budget fetch
+	// defragmentation of the deduped diff — fetchRunWindowPages is the
+	// uncompressed frame/window size served per backing fetch — see
+	// orchestrator block.DedupBudget for semantics (0 = disabled/default).
 	MemfileDiffDedupFlag = NewJSONFlag("memfile-diff-dedup", ldvalue.FromJSONMarshal(map[string]any{
-		"enabled":    false,
-		"bestEffort": false,
-		"directIO":   false,
+		"enabled":                        false,
+		"bestEffort":                     false,
+		"directIO":                       false,
+		"maxFetchWindowsPerBlock":        0,
+		"maxPromotedParentPagesPerBlock": 0,
+		"maxPagesPerPromotedFrame":       0,
+		"blockFaultPct":                  0,
+		"fetchRunWindowPages":            0,
 	}))
 
 	// PeerToPeerChunkTransferFlag enables peer-to-peer chunk routing.
@@ -162,6 +170,8 @@ var (
 	FreezeUserCgroupFlag             = NewBoolFlag("freeze-user-cgroup", env.IsDevelopment())
 
 	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())
+
+	BYOPProxyEnabledFlag = NewBoolFlag("byop-proxy-enabled", env.IsDevelopment())
 
 	// V4HeaderForUncompressedFlag forces the V4 header layout on uncompressed
 	// uploads. Independent of compress-config: it changes the header format,

@@ -76,8 +76,8 @@ type cachedSeekable struct {
 }
 
 var (
-	_ Seekable        = (*cachedSeekable)(nil)
-	_ StreamingReader = (*cachedSeekable)(nil)
+	_ Seekable    = (*cachedSeekable)(nil)
+	_ RangeOpener = (*cachedSeekable)(nil)
 )
 
 func (c *cachedSeekable) OpenRangeReader(ctx context.Context, off int64, length int64, frameTable *FrameTable) (io.ReadCloser, error) {
@@ -296,7 +296,7 @@ func (c *cachedSeekable) Size(ctx context.Context) (n int64, e error) {
 	return size, nil
 }
 
-func (c *cachedSeekable) StoreFile(ctx context.Context, path string, opts ...PutOption) (_ *FrameTable, _ [32]byte, e error) {
+func (c *cachedSeekable) StoreFile(ctx context.Context, path string, opts ...PutOption) (_ *FullFrameTable, _ [32]byte, e error) {
 	ctx, span := c.tracer.Start(ctx, "write object from file system",
 		trace.WithAttributes(attribute.String("path", path)),
 	)

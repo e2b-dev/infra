@@ -26,7 +26,8 @@ import (
 
 const (
 	AccessTokenAuthScopes        accessTokenAuthContextKey        = "AccessTokenAuth.Scopes"
-	AdminTokenAuthScopes         adminTokenAuthContextKey         = "AdminTokenAuth.Scopes"
+	AdminApiKeyAuthScopes        adminApiKeyAuthContextKey        = "AdminApiKeyAuth.Scopes"
+	AdminTeamAuthScopes          adminTeamAuthContextKey          = "AdminTeamAuth.Scopes"
 	ApiKeyAuthScopes             apiKeyAuthContextKey             = "ApiKeyAuth.Scopes"
 	AuthProviderBearerAuthScopes authProviderBearerAuthContextKey = "AuthProviderBearerAuth.Scopes"
 	AuthProviderTeamAuthScopes   authProviderTeamAuthContextKey   = "AuthProviderTeamAuth.Scopes"
@@ -807,6 +808,18 @@ type SandboxDetail struct {
 	VolumeMounts *[]SandboxVolumeMount `json:"volumeMounts,omitempty"`
 }
 
+// SandboxEgressProxyConfig SOCKS5 proxy for sandbox egress. Outbound TCP is tunneled through the proxy after allow/deny filtering; the sandbox is unaware. Domain-matched flows use remote DNS (ATYP=domain).
+type SandboxEgressProxyConfig struct {
+	// Address SOCKS5 proxy address in host:port format (e.g. "proxy.example.com:1080").
+	Address string `json:"address"`
+
+	// Password Optional SOCKS5 password (RFC 1929), max 255 bytes.
+	Password *string `json:"password,omitempty"`
+
+	// Username Optional SOCKS5 username (RFC 1929), max 255 bytes.
+	Username *string `json:"username,omitempty"`
+}
+
 // SandboxLifecycle Sandbox lifecycle policy returned by sandbox info.
 type SandboxLifecycle struct {
 	// AutoResume Whether the sandbox can auto-resume.
@@ -899,6 +912,9 @@ type SandboxNetworkConfig struct {
 	// DenyOut List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
 	DenyOut *[]string `json:"denyOut,omitempty"`
 
+	// EgressProxy SOCKS5 proxy for sandbox egress. Outbound TCP is tunneled through the proxy after allow/deny filtering; the sandbox is unaware. Domain-matched flows use remote DNS (ATYP=domain).
+	EgressProxy *SandboxEgressProxyConfig `json:"egressProxy,omitempty"`
+
 	// MaskRequestHost Specify host mask which will be used for all sandbox requests
 	MaskRequestHost *string `json:"maskRequestHost,omitempty"`
 
@@ -928,6 +944,9 @@ type SandboxNetworkUpdateConfig struct {
 
 	// DenyOut List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
 	DenyOut *[]string `json:"denyOut,omitempty"`
+
+	// EgressProxy SOCKS5 proxy for sandbox egress. Outbound TCP is tunneled through the proxy after allow/deny filtering; the sandbox is unaware. Domain-matched flows use remote DNS (ATYP=domain).
+	EgressProxy *SandboxEgressProxyConfig `json:"egressProxy,omitempty"`
 
 	// Rules Per-domain transform rules. Replaces all existing rules when provided.
 	Rules *map[string][]SandboxNetworkRule `json:"rules,omitempty"`
@@ -1462,8 +1481,11 @@ type N500 = Error
 // accessTokenAuthContextKey is the context key for AccessTokenAuth security scheme
 type accessTokenAuthContextKey string
 
-// adminTokenAuthContextKey is the context key for AdminTokenAuth security scheme
-type adminTokenAuthContextKey string
+// adminApiKeyAuthContextKey is the context key for AdminApiKeyAuth security scheme
+type adminApiKeyAuthContextKey string
+
+// adminTeamAuthContextKey is the context key for AdminTeamAuth security scheme
+type adminTeamAuthContextKey string
 
 // apiKeyAuthContextKey is the context key for ApiKeyAuth security scheme
 type apiKeyAuthContextKey string
@@ -11319,7 +11341,7 @@ func (siw *ServerInterfaceWrapper) PostAdminTeamsTeamIDApiKeys(c *gin.Context) {
 		return
 	}
 
-	c.Set(string(AdminTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -11355,7 +11377,7 @@ func (siw *ServerInterfaceWrapper) DeleteAdminTeamsTeamIDApiKeysApiKeyID(c *gin.
 		return
 	}
 
-	c.Set(string(AdminTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -11382,7 +11404,7 @@ func (siw *ServerInterfaceWrapper) PostAdminTeamsTeamIDBuildsCancel(c *gin.Conte
 		return
 	}
 
-	c.Set(string(AdminTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -11409,7 +11431,7 @@ func (siw *ServerInterfaceWrapper) PostAdminTeamsTeamIDSandboxesKill(c *gin.Cont
 		return
 	}
 
-	c.Set(string(AdminTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -11431,6 +11453,10 @@ func (siw *ServerInterfaceWrapper) GetApiKeys(c *gin.Context) {
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -11486,6 +11512,10 @@ func (siw *ServerInterfaceWrapper) DeleteApiKeysApiKeyID(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -11519,6 +11549,10 @@ func (siw *ServerInterfaceWrapper) PatchApiKeysApiKeyID(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -11548,7 +11582,7 @@ func (siw *ServerInterfaceWrapper) GetNodes(c *gin.Context) {
 	var err error
 	_ = err
 
-	c.Set(string(AdminTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetNodesParams
@@ -11586,7 +11620,7 @@ func (siw *ServerInterfaceWrapper) GetNodesNodeID(c *gin.Context) {
 		return
 	}
 
-	c.Set(string(AdminTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetNodesNodeIDParams
@@ -11624,7 +11658,7 @@ func (siw *ServerInterfaceWrapper) PostNodesNodeID(c *gin.Context) {
 		return
 	}
 
-	c.Set(string(AdminTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -11651,6 +11685,10 @@ func (siw *ServerInterfaceWrapper) GetSandboxes(c *gin.Context) {
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetSandboxesParams
@@ -11686,6 +11724,10 @@ func (siw *ServerInterfaceWrapper) PostSandboxes(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -11711,6 +11753,10 @@ func (siw *ServerInterfaceWrapper) GetSandboxesMetrics(c *gin.Context) {
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetSandboxesMetricsParams
@@ -11758,6 +11804,10 @@ func (siw *ServerInterfaceWrapper) DeleteSandboxesSandboxID(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -11792,6 +11842,10 @@ func (siw *ServerInterfaceWrapper) GetSandboxesSandboxID(c *gin.Context) {
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -11828,6 +11882,10 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDConnect(c *gin.Context)
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -11862,6 +11920,10 @@ func (siw *ServerInterfaceWrapper) GetSandboxesSandboxIDLogs(c *gin.Context) {
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetSandboxesSandboxIDLogsParams
@@ -11917,6 +11979,10 @@ func (siw *ServerInterfaceWrapper) GetSandboxesSandboxIDMetrics(c *gin.Context) 
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
+
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetSandboxesSandboxIDMetricsParams
 
@@ -11971,6 +12037,10 @@ func (siw *ServerInterfaceWrapper) PutSandboxesSandboxIDNetwork(c *gin.Context) 
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -12005,6 +12075,10 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDPause(c *gin.Context) {
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -12041,6 +12115,10 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDRefreshes(c *gin.Contex
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -12075,6 +12153,10 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDResume(c *gin.Context) 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -12111,6 +12193,10 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDSnapshots(c *gin.Contex
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -12146,6 +12232,10 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDTimeout(c *gin.Context)
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -12171,6 +12261,10 @@ func (siw *ServerInterfaceWrapper) GetSnapshots(c *gin.Context) {
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetSnapshotsParams
@@ -12253,6 +12347,10 @@ func (siw *ServerInterfaceWrapper) GetTeamsTeamIDMetrics(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
+
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetTeamsTeamIDMetricsParams
 
@@ -12306,6 +12404,10 @@ func (siw *ServerInterfaceWrapper) GetTeamsTeamIDMetricsMax(c *gin.Context) {
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetTeamsTeamIDMetricsMaxParams
@@ -12361,6 +12463,10 @@ func (siw *ServerInterfaceWrapper) GetTemplates(c *gin.Context) {
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetTemplatesParams
@@ -12431,6 +12537,10 @@ func (siw *ServerInterfaceWrapper) GetTemplatesAliasesAlias(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -12454,6 +12564,10 @@ func (siw *ServerInterfaceWrapper) DeleteTemplatesTags(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -12476,6 +12590,10 @@ func (siw *ServerInterfaceWrapper) PostTemplatesTags(c *gin.Context) {
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -12514,6 +12632,10 @@ func (siw *ServerInterfaceWrapper) DeleteTemplatesTemplateID(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -12548,6 +12670,10 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateID(c *gin.Context) {
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetTemplatesTemplateIDParams
@@ -12604,6 +12730,10 @@ func (siw *ServerInterfaceWrapper) PatchTemplatesTemplateID(c *gin.Context) {
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -12730,6 +12860,10 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDBuildsBuildIDLogs(c *gi
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
+
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetTemplatesTemplateIDBuildsBuildIDLogsParams
 
@@ -12819,6 +12953,10 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDBuildsBuildIDStatus(c *
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
+
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetTemplatesTemplateIDBuildsBuildIDStatusParams
 
@@ -12892,6 +13030,10 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDFilesHash(c *gin.Contex
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -12927,6 +13069,10 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDTags(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -12952,6 +13098,10 @@ func (siw *ServerInterfaceWrapper) GetV2Sandboxes(c *gin.Context) {
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetV2SandboxesParams
@@ -13023,6 +13173,10 @@ func (siw *ServerInterfaceWrapper) GetV2SandboxesSandboxIDLogs(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
+
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetV2SandboxesSandboxIDLogsParams
 
@@ -13089,6 +13243,10 @@ func (siw *ServerInterfaceWrapper) PostV2Templates(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -13125,6 +13283,10 @@ func (siw *ServerInterfaceWrapper) PatchV2TemplatesTemplateID(c *gin.Context) {
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -13170,6 +13332,10 @@ func (siw *ServerInterfaceWrapper) PostV2TemplatesTemplateIDBuildsBuildID(c *gin
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -13192,6 +13358,10 @@ func (siw *ServerInterfaceWrapper) PostV3Templates(c *gin.Context) {
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -13216,6 +13386,10 @@ func (siw *ServerInterfaceWrapper) GetVolumes(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -13238,6 +13412,10 @@ func (siw *ServerInterfaceWrapper) PostVolumes(c *gin.Context) {
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -13274,6 +13452,10 @@ func (siw *ServerInterfaceWrapper) DeleteVolumesVolumeID(c *gin.Context) {
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -13308,6 +13490,10 @@ func (siw *ServerInterfaceWrapper) GetVolumesVolumeID(c *gin.Context) {
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -13409,175 +13595,179 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"CLngcsOU7tyRRek3HRmQ/50rJrdP/x0AAP//",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

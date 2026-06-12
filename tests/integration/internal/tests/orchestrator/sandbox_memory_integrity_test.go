@@ -21,6 +21,11 @@ func TestSandboxMemoryIntegrity(t *testing.T) {
 
 	c := setup.GetAPIClient()
 
+	// Resuming without an explicit timeout gives the sandbox only the 15s
+	// default; hashing the tmpfs after resume can take longer than that under
+	// load, so the sandbox would be evicted mid-check.
+	resumeTimeout := int32(300)
+
 	// Build a template with stress-ng and time pre-installed so subtests
 	// skip the page-fault-heavy apt-get phase that saturates decompression
 	// under parallel load.
@@ -100,7 +105,7 @@ echo "Used memory after tmpfs mount and file fill: ${USED_MEM_MB_AFTER} MB"
 			require.NotNil(t, res.JSON200)
 			assert.Equal(t, api.Paused, res.JSON200.State)
 
-			sbxResume, err := c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())
+			sbxResume, err := c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDResumeJSONRequestBody{Timeout: &resumeTimeout}, setup.WithAPIKey())
 			require.NoError(t, err)
 			require.Equal(t, http.StatusCreated, sbxResume.StatusCode())
 			require.NotNil(t, sbxResume.JSON201)
@@ -135,7 +140,7 @@ echo "Used memory after tmpfs mount and file fill: ${USED_MEM_MB_AFTER} MB"
 		}
 		resume := func() {
 			t.Helper()
-			r, err := c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())
+			r, err := c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDResumeJSONRequestBody{Timeout: &resumeTimeout}, setup.WithAPIKey())
 			require.NoError(t, err)
 			require.Equal(t, http.StatusCreated, r.StatusCode())
 		}

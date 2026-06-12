@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -126,10 +127,16 @@ func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node) quer
 		metadata = types.JSONBStringMap{}
 	}
 
+	var clusterID *uuid.UUID
+	if sbx.ClusterID != consts.LocalClusterID {
+		clusterID = &sbx.ClusterID
+	}
+
 	return queries.UpsertSnapshotParams{
 		// Used if there's no snapshot for this sandbox yet
 		TemplateID:     id.Generate(),
 		TeamID:         sbx.TeamID,
+		ClusterID:      clusterID,
 		BaseTemplateID: sbx.BaseTemplateID,
 		SandboxID:      sbx.SandboxID,
 		StartedAt:      pgtype.Timestamptz{Time: sbx.StartTime, Valid: true},

@@ -246,7 +246,7 @@ variable "auth_provider_config" {
 variable "user_profile_provider" {
   type        = string
   default     = ""
-  description = "Source for dashboard-api user profile lookups. One of: supabase, ory, supabase-ory-fallback. Empty leaves the binary default (supabase)."
+  description = "Source for dashboard-api user profile lookups. One of: supabase, ory. Empty leaves the binary default (supabase)."
 }
 
 variable "ory_sdk_url" {

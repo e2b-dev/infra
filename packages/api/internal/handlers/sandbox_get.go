@@ -74,6 +74,18 @@ func dbNetworkConfigToAPI(network *dbtypes.SandboxNetworkConfig) *api.SandboxNet
 			}
 			result.Rules = &apiRules
 		}
+
+		// Password is omitted so credentials never leak via GET.
+		if egress.EgressProxyAddress != "" {
+			proxyCfg := &api.SandboxEgressProxyConfig{
+				Address: egress.EgressProxyAddress,
+			}
+			if egress.EgressProxyUsername != "" {
+				username := egress.EgressProxyUsername
+				proxyCfg.Username = &username
+			}
+			result.EgressProxy = proxyCfg
+		}
 	}
 
 	return result

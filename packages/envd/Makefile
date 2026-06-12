@@ -7,6 +7,7 @@ PROD_LDFLAGS=-ldflags "-X=main.commitSHA=$(BUILD) -s -w -buildid="
 
 AWS_BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
 GCP_BUCKET_PREFIX ?= $(GCP_PROJECT_ID)-
+ENVD_UPLOAD_MODE ?= latest
 
 # Architecture for builds. Defaults to amd64; override for ARM64 builds.
 # (e.g., BUILD_ARCH=arm64 make build-local)
@@ -22,9 +23,26 @@ init:
 upload:
 	chmod +x bin/envd
 ifeq ($(PROVIDER),aws)
+ifeq ($(ENVD_UPLOAD_MODE),versioned)
+	aws s3 cp ./bin/envd "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/envd.$(BUILD)" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
+else
 	aws s3 cp ./bin/envd "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/envd" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
+endif
+else
+ifeq ($(ENVD_UPLOAD_MODE),versioned)
+	gsutil -h "Cache-Control:no-cache, max-age=0" cp bin/envd "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/envd.$(BUILD)"
 else
 	gsutil -h "Cache-Control:no-cache, max-age=0" cp bin/envd "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/envd"
+endif
+endif
+
+.PHONY: promote
+promote:
+	$(if $(ENVD_COMMIT_SHA),,$(error ENVD_COMMIT_SHA is required))
+ifeq ($(PROVIDER),aws)
+	aws s3 cp "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/envd.$(ENVD_COMMIT_SHA)" "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/envd" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
+else
+	gsutil -h "Cache-Control:no-cache, max-age=0" cp "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/envd.$(ENVD_COMMIT_SHA)" "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/envd"
 endif
 
 build:
@@ -49,8 +67,8 @@ start-docker:
 	/usr/bin/envd -isnotfc -verbose
 
 build-and-upload:
-	make build
-	make upload
+	$(MAKE) build
+	$(MAKE) upload
 
 .PHONY: generate
 generate:
