@@ -33,6 +33,11 @@ const (
 
 	OrchestratorSandboxKilledCounterName CounterType = "orchestrator.sandbox.killed"
 
+	// OrchestratorSnapshotUploadFailedCounterName counts pause-snapshot uploads
+	// that never landed durably (budget exhausted or a non-retryable error).
+	// A non-zero rate means lost snapshots.
+	OrchestratorSnapshotUploadFailedCounterName CounterType = "orchestrator.snapshot.upload.failed"
+
 	ApiRedisStoragePublisherPublished CounterType = "api.redis_storage.publisher.published"
 	ApiRedisStoragePublisherDropped   CounterType = "api.redis_storage.publisher.dropped"
 )
@@ -166,17 +171,18 @@ const (
 )
 
 var counterDesc = map[CounterType]string{
-	SandboxCreateMeterName:                   "Number of currently waiting requests to create a new sandbox",
-	ApiOrchestratorCreatedSandboxes:          "Number of successfully created sandboxes",
-	BuildResultCounterName:                   "Number of template build results",
-	BuildCacheResultCounterName:              "Number of build cache results",
-	TeamSandboxCreated:                       "Counter of started sandboxes for the team in the interval",
-	OrchestratorHostBalanceDirtyPagesThreads: "Cumulative stalled thread-polls during sandbox resume; rate() gives throttle intensity",
-	EnvdInitCalls:                            "Number of envd initialization calls",
-	OrchestratorSandboxKilledCounterName:     "Number of sandboxes killed, labeled by kill reason",
-	TCPFirewallConnectionsTotal:              "Total number of TCP firewall connections processed",
-	TCPFirewallErrorsTotal:                   "Total number of TCP firewall errors",
-	TCPFirewallDecisionsTotal:                "Total number of TCP firewall allow/block decisions",
+	SandboxCreateMeterName:                      "Number of currently waiting requests to create a new sandbox",
+	ApiOrchestratorCreatedSandboxes:             "Number of successfully created sandboxes",
+	BuildResultCounterName:                      "Number of template build results",
+	BuildCacheResultCounterName:                 "Number of build cache results",
+	TeamSandboxCreated:                          "Counter of started sandboxes for the team in the interval",
+	OrchestratorHostBalanceDirtyPagesThreads:    "Cumulative stalled thread-polls during sandbox resume; rate() gives throttle intensity",
+	EnvdInitCalls:                               "Number of envd initialization calls",
+	OrchestratorSandboxKilledCounterName:        "Number of sandboxes killed, labeled by kill reason",
+	OrchestratorSnapshotUploadFailedCounterName: "Number of pause-snapshot uploads that never landed durably",
+	TCPFirewallConnectionsTotal:                 "Total number of TCP firewall connections processed",
+	TCPFirewallErrorsTotal:                      "Total number of TCP firewall errors",
+	TCPFirewallDecisionsTotal:                   "Total number of TCP firewall allow/block decisions",
 
 	IngressProxyConnectionsBlockedTotal: "Total number of ingress proxy connections blocked by connection limit",
 	CmuxErrorsTotal:                     "Total number of cmux connection multiplexer errors",
@@ -193,17 +199,18 @@ var counterDesc = map[CounterType]string{
 }
 
 var counterUnits = map[CounterType]string{
-	SandboxCreateMeterName:                   "{sandbox}",
-	ApiOrchestratorCreatedSandboxes:          "{sandbox}",
-	BuildResultCounterName:                   "{build}",
-	BuildCacheResultCounterName:              "{layer}",
-	TeamSandboxCreated:                       "{sandbox}",
-	OrchestratorHostBalanceDirtyPagesThreads: "{thread}",
-	EnvdInitCalls:                            "1",
-	OrchestratorSandboxKilledCounterName:     "{sandbox}",
-	TCPFirewallConnectionsTotal:              "{connection}",
-	TCPFirewallErrorsTotal:                   "{error}",
-	TCPFirewallDecisionsTotal:                "{decision}",
+	SandboxCreateMeterName:                      "{sandbox}",
+	ApiOrchestratorCreatedSandboxes:             "{sandbox}",
+	BuildResultCounterName:                      "{build}",
+	BuildCacheResultCounterName:                 "{layer}",
+	TeamSandboxCreated:                          "{sandbox}",
+	OrchestratorHostBalanceDirtyPagesThreads:    "{thread}",
+	EnvdInitCalls:                               "1",
+	OrchestratorSandboxKilledCounterName:        "{sandbox}",
+	OrchestratorSnapshotUploadFailedCounterName: "{snapshot}",
+	TCPFirewallConnectionsTotal:                 "{connection}",
+	TCPFirewallErrorsTotal:                      "{error}",
+	TCPFirewallDecisionsTotal:                   "{decision}",
 
 	IngressProxyConnectionsBlockedTotal: "{connection}",
 	CmuxErrorsTotal:                     "{error}",
