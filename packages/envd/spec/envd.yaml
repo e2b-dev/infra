@@ -103,6 +103,22 @@ paths:
         "503":
           description: Freeze lock is held by another operation
 
+  /collapse:
+    post:
+      summary: Collapse envd's own anonymous heap into 2 MiB transparent hugepages before pause, so on resume envd touches fewer distinct guest-physical frames (each a cold fault). Best-effort.
+      security:
+        - AccessTokenAuth: []
+        - {}
+      responses:
+        "200":
+          description: Heap collapsed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollapseResult"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
   /envs:
     get:
       summary: Get the environment variables
@@ -424,6 +440,26 @@ components:
         disk_total:
           type: integer
           description: Total disk space in bytes
+    CollapseResult:
+      type: object
+      description: Per-call statistics from a heap collapse
+      properties:
+        regions:
+          type: integer
+          description: Anonymous read-write regions scanned
+        chunks:
+          type: integer
+          description: 2 MiB chunks attempted
+        collapsed:
+          type: integer
+          description: Chunks collapsed into a hugepage
+        skipped:
+          type: integer
+          description: Chunks that could not be collapsed (empty or ineligible)
+        elapsedMs:
+          type: integer
+          format: int64
+          description: Wall-clock time spent collapsing, in milliseconds
     ComposeRequest:
       type: object
       required:
