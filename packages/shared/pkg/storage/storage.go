@@ -140,14 +140,8 @@ type Blob interface {
 	Exists(ctx context.Context) (bool, error)
 }
 
-type SeekableReader interface {
-	// Random slice access, off and buffer length must be aligned to block size
-	ReadAt(ctx context.Context, buffer []byte, off int64, ft *FrameTable) (int, error)
-	Size(ctx context.Context) (int64, error)
-}
-
-// StreamingReader supports progressive reads via a streaming range reader.
-type StreamingReader interface {
+// RangeOpener supports progressive reads via a streaming range reader.
+type RangeOpener interface {
 	OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (io.ReadCloser, error)
 }
 
@@ -157,7 +151,7 @@ type SeekableWriter interface {
 }
 
 type Seekable interface {
-	StreamingReader
+	RangeOpener
 	SeekableWriter
 	Size(ctx context.Context) (int64, error)
 }

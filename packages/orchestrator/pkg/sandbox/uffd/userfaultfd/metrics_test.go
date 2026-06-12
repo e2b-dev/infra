@@ -45,11 +45,13 @@ func TestServeMetric(t *testing.T) {
 	ctx := context.Background()
 	pageSize := int64(header.PageSize)
 
-	// Record a mix of faults the way the worker would.
+	// Record a mix of faults the way the worker would. All under one
+	// generation bucket — the per-bucket split is pinned separately by
+	// TestServeMetric_GenerationBucket.
 	record := func(class pageClass, result faultResult, bytes int64, n int) {
 		for range n {
 			sw := serveTimer.Begin()
-			sw.RecordRaw(ctx, bytes, serveAttrs[class][result])
+			sw.RecordRaw(ctx, bytes, serveAttrs[genBucket1To10][class][result])
 		}
 	}
 	record(pageClassNew, faultResultInstalled, pageSize, 3)
@@ -114,7 +116,7 @@ func TestPrefaultMetric(t *testing.T) {
 	record := func(result faultResult, bytes int64, n int) {
 		for range n {
 			sw := prefaultTimer.Begin()
-			sw.RecordRaw(ctx, bytes, prefaultAttrs[result])
+			sw.RecordRaw(ctx, bytes, prefaultAttrs[genBucket0][result])
 		}
 	}
 	record(faultResultInstalled, pageSize, 3)
@@ -174,12 +176,93 @@ func TestServeStats(t *testing.T) {
 	assert.Equal(t, 4*pageSize, stats.Bytes, "bytes installed (new+zero), present/deferred/error contribute none")
 }
 
+// bucketForGeneration pins the log-scale bucket edges: 0 is its own bucket
+// (fresh template), then 1-10 / 11-100 / 101-1000 / >1000.
+func TestBucketForGeneration(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		generation uint64
+		want       generationBucket
+	}{
+		{0, genBucket0},
+		{1, genBucket1To10},
+		{10, genBucket1To10},
+		{11, genBucket11To100},
+		{100, genBucket11To100},
+		{101, genBucket101To1000},
+		{1000, genBucket101To1000},
+		{1001, genBucketOver1000},
+		{2314, genBucketOver1000}, // prod p99 at time of writing
+	}
+
+	for _, tt := range tests {
+		require.Equal(t, tt.want, bucketForGeneration(tt.generation), "generation %d", tt.generation)
+	}
+}
+
+// Serve datapoints recorded under different generation buckets land in
+// distinct series, tagged with the right generation_bucket label value.
+//
+//nolint:paralleltest // swaps the package-level serveTimer
+func TestServeMetric_GenerationBucket(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+
+	prev := serveTimer
+	serveTimer = utils.Must(telemetry.NewTimerFactory(
+		mp.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/userfaultfd"),
+		serveMetricName,
+		"Time to serve a UFFD page fault",
+		"Bytes faulted into the guest",
+		"UFFD faults served",
+	))
+	t.Cleanup(func() { serveTimer = prev })
+
+	ctx := context.Background()
+
+	record := func(bucket generationBucket, n int) {
+		for range n {
+			sw := serveTimer.Begin()
+			sw.RecordRaw(ctx, int64(header.PageSize), serveAttrs[bucket][pageClassNew][faultResultInstalled])
+		}
+	}
+	record(genBucket0, 1)
+	record(genBucket11To100, 2)
+	record(genBucketOver1000, 3)
+
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(ctx, &rm))
+
+	// Count datapoints by generation_bucket label value.
+	counts := map[string]int64{}
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			hist, ok := m.Data.(metricdata.Histogram[int64])
+			if m.Name != serveMetricName || !ok {
+				continue
+			}
+			for _, dp := range hist.DataPoints {
+				g, ok := dp.Attributes.Value("generation_bucket")
+				require.True(t, ok, "datapoint missing generation_bucket attribute")
+				counts[g.AsString()] += int64(dp.Count)
+			}
+		}
+	}
+
+	assert.Equal(t, map[string]int64{"0": 1, "11-100": 2, ">1000": 3}, counts)
+}
+
 func key(pageClass, result string) string { return pageClass + "/" + result }
 
 // attrKey returns "page_class/result" for serve datapoints and just "result"
-// for prefault datapoints (which carry no page_class).
+// for prefault datapoints (which carry no page_class). Both kinds must carry
+// a generation_bucket attribute; its value is asserted separately by
+// TestServeMetric_GenerationBucket, not folded into the key.
 func attrKey(t *testing.T, attrs attribute.Set) string {
 	t.Helper()
+	_, ok := attrs.Value("generation_bucket")
+	require.True(t, ok, "datapoint missing generation_bucket attribute")
 	r, ok := attrs.Value("result")
 	require.True(t, ok, "datapoint missing result attribute")
 	pc, ok := attrs.Value("page_class")

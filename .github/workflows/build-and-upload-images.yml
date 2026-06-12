@@ -94,4 +94,5 @@ jobs:
       - name: Build and upload images
         env:
           AUTO_CONFIRM_DEPLOY: true
+          ENVD_UPLOAD_MODE: versioned
         run: make build-and-upload

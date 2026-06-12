@@ -89,6 +89,7 @@ func TemplateRootfs(ctx context.Context, buildID string) (*BuildDevice, *Cleaner
 		diffCacheDir,
 		24*time.Hour,
 		24*time.Hour,
+		nil,
 	)
 	if err != nil {
 		return nil, &cleaner, fmt.Errorf("failed to create diff store: %w", err)

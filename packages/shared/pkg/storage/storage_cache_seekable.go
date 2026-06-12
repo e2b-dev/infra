@@ -76,8 +76,8 @@ type cachedSeekable struct {
 }
 
 var (
-	_ Seekable        = (*cachedSeekable)(nil)
-	_ StreamingReader = (*cachedSeekable)(nil)
+	_ Seekable    = (*cachedSeekable)(nil)
+	_ RangeOpener = (*cachedSeekable)(nil)
 )
 
 func (c *cachedSeekable) OpenRangeReader(ctx context.Context, off int64, length int64, frameTable *FrameTable) (io.ReadCloser, error) {

@@ -31,7 +31,7 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) (
 	var installedBytes int64
 	defer func() {
 		if record {
-			sw.RecordRaw(ctx, installedBytes, prefaultAttrs[result])
+			sw.RecordRaw(ctx, installedBytes, prefaultAttrs[u.genBucket][result])
 		}
 	}()
 
