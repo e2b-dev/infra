@@ -10,21 +10,23 @@ TEMPLATE_ID={{ .TemplateID }}
 BUILD_ID={{ .BuildID }}
 EOF
 
-# Create default user.
-# if the /home/user directory exists, we copy the skeleton files to it because the adduser command
-# will ignore the directory if it exists, but we want to include the skeleton files in the home directory
-# in our case.
+# Create default user. useradd is part of shadow-utils and available on every
+# supported distro family, unlike Debian's adduser wrapper.
 echo "Create default user 'user' (if doesn't exist yet)"
-ADDUSER_OUTPUT=$(adduser -disabled-password --gecos "" user 2>&1 || true)
-echo "$ADDUSER_OUTPUT"
-if echo "$ADDUSER_OUTPUT" | grep -q "The home directory \`/home/user' already exists"; then
-    # Copy skeleton files if they don't exist in the home directory
+if ! id -u user >/dev/null 2>&1; then
+    useradd -m -s /bin/bash user || true
+fi
+# useradd -m skips skeleton files when /home/user already exists, so copy them
+# explicitly (no-clobber) to match the previous adduser behavior.
+if [ -d /home/user ]; then
     echo "Copy skeleton files to /home/user"
-    cp -rn /etc/skel/. /home/user/
+    cp -rn /etc/skel/. /home/user/ 2>/dev/null || true
 fi
 
 echo "Add sudo to 'user' with no password"
-usermod -aG sudo user
+# Admin group differs by distro ("sudo" on Debian/Ubuntu, "wheel" elsewhere)
+# and some images ship neither; the sudoers entry below grants privileges.
+usermod -aG sudo user 2>/dev/null || usermod -aG wheel user 2>/dev/null || true
 passwd -d user
 echo "user ALL=(ALL:ALL) NOPASSWD: ALL" >>/etc/sudoers
 
