@@ -1207,6 +1207,9 @@ func (s *Sandbox) Pause(
 	snapfile := template.NewLocalFileLink(cachePaths.CacheSnapfile())
 	cleanup.AddNoContext(ctx, snapfile.Close)
 
+	// CreateSnapshot also drains and flushes the virtio disk in our custom FC, so
+	// it runs even for a filesystem-only pause (which needs the disk flush); the
+	// resulting snapfile is just not uploaded in that case.
 	err = s.process.CreateSnapshot(ctx, snapfile.Path())
 	if err != nil {
 		return nil, fmt.Errorf("error creating snapshot: %w", err)
