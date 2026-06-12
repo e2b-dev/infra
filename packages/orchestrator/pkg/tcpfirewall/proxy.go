@@ -47,12 +47,10 @@ type Proxy struct {
 	proxy      *tcpproxy.Proxy
 }
 
-func New(logger logger.Logger, networkConfig network.Config, sandboxes *sandbox.Map, meterProvider metric.MeterProvider, featureFlags *featureflags.Client) *Proxy {
+func New(logger logger.Logger, networkConfig network.Config, sandboxes *sandbox.Map, meterProvider metric.MeterProvider, featureFlags *featureflags.Client) (*Proxy, error) {
 	internalAllowedNets, err := sandbox_network.ParseCIDRs(networkConfig.AllowSandboxInternalCIDRs)
 	if err != nil {
-		logger.Error(context.Background(), "failed to parse ALLOW_SANDBOX_INTERNAL_CIDRS for TCP firewall",
-			zap.Strings("cidrs", networkConfig.AllowSandboxInternalCIDRs),
-			zap.Error(err))
+		return nil, fmt.Errorf("error parsing internal allowed CIDRs: %w", err)
 	}
 
 	p := &Proxy{
@@ -75,7 +73,7 @@ func New(logger logger.Logger, networkConfig network.Config, sandboxes *sandbox.
 
 	sandboxes.Subscribe(p)
 
-	return p
+	return p, nil
 }
 
 func (p *Proxy) OnInsert(_ context.Context, _ *sandbox.Sandbox) {}

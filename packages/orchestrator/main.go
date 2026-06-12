@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
@@ -40,13 +41,16 @@ func applyTestFlagOverrides() {
 }
 
 func defaultEgressFactory(_ context.Context, deps *factories.Deps) (*factories.EgressSetup, error) {
-	fw := tcpfirewall.New(
+	fw, err := tcpfirewall.New(
 		deps.Logger,
 		deps.Config.NetworkConfig,
 		deps.Sandboxes,
 		deps.MeterProvider,
 		deps.FeatureFlags,
 	)
+	if err != nil {
+		return nil, fmt.Errorf("error creating TCP firewall: %w", err)
+	}
 
 	return &factories.EgressSetup{
 		Proxy: fw,

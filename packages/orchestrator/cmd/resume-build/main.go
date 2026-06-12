@@ -1075,7 +1075,10 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Starting TCP firewall...")
 	}
-	tcpFw := tcpfirewall.New(l, config.NetworkConfig, sandboxes, tel.MeterProvider, flags)
+	tcpFw, err := tcpfirewall.New(l, config.NetworkConfig, sandboxes, tel.MeterProvider, flags)
+	if err != nil {
+		return fmt.Errorf("error creating TCP firewall: %w", err)
+	}
 	go tcpFw.Start(ctx)
 	defer tcpFw.Close(context.WithoutCancel(ctx))
 

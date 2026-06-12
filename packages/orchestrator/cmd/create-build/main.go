@@ -281,7 +281,10 @@ func doBuild(
 	}()
 	defer sandboxProxy.Close(parentCtx)
 
-	tcpFirewall := tcpfirewall.New(l, networkConfig, sandboxes, noop.NewMeterProvider(), featureFlags)
+	tcpFirewall, err := tcpfirewall.New(l, networkConfig, sandboxes, noop.NewMeterProvider(), featureFlags)
+	if err != nil {
+		return fmt.Errorf("error creating TCP firewall: %w", err)
+	}
 	go tcpFirewall.Start(ctx)
 	defer tcpFirewall.Close(parentCtx)
 

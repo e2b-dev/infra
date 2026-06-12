@@ -301,7 +301,8 @@ func BenchmarkConcurrentResume(b *testing.B) {
 
 	var proxyPort uint16 = 5007
 
-	tcpFw := tcpfirewall.New(l, config.NetworkConfig, sandboxes, noop.NewMeterProvider(), featureFlags)
+	tcpFw, err := tcpfirewall.New(l, config.NetworkConfig, sandboxes, noop.NewMeterProvider(), featureFlags)
+	require.NoError(b, err)
 	go func() { assert.NoError(b, tcpFw.Start(b.Context())) }()
 	b.Cleanup(func() {
 		ctx := context.WithoutCancel(b.Context())

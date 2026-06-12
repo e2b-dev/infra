@@ -232,13 +232,14 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 
 	var proxyPort uint16 = 5007
 
-	tcpFirewall := tcpfirewall.New(
+	tcpFirewall, err := tcpfirewall.New(
 		l,
 		config.NetworkConfig,
 		sandboxes,
 		noop.NewMeterProvider(),
 		featureFlags,
 	)
+	require.NoError(b, err)
 	go func() {
 		err := tcpFirewall.Start(b.Context())
 		assert.NoError(b, err)
