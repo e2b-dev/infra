@@ -58,6 +58,7 @@ type Server struct {
 	uploads               *sandbox.Uploads
 	sandboxCreateDuration metric.Int64Histogram
 	sandboxKilledCounter  metric.Int64Counter
+	uploadFailedCounter   metric.Int64Counter
 
 	done      chan struct{}
 	closeOnce sync.Once
@@ -122,6 +123,12 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 		return nil, fmt.Errorf("failed to register sandbox kills counter: %w", err)
 	}
 	server.sandboxKilledCounter = sandboxKilledCounter
+
+	uploadFailedCounter, err := telemetry.GetCounter(meter, telemetry.OrchestratorSnapshotUploadFailedCounterName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register snapshot upload failed counter: %w", err)
+	}
+	server.uploadFailedCounter = uploadFailedCounter
 
 	_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(_ context.Context, observer metric.Int64Observer) error {
 		observer.Observe(int64(server.sandboxFactory.Sandboxes.Count()))
