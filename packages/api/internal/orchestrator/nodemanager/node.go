@@ -84,7 +84,6 @@ func New(
 		nodeStatus = api.NodeStatusUnhealthy
 	}
 
-	// Zero when the orchestrator does not report the status change timestamp.
 	var nodeStatusChangedAt time.Time
 	if ts := nodeInfo.GetServiceStatusChangedAt(); ts.IsValid() {
 		nodeStatusChangedAt = ts.AsTime()
