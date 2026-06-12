@@ -22,14 +22,16 @@ WITH tag_window AS (
     JOIN public.env_builds eb ON eb.id = eba.build_id
     WHERE eba.env_id = $2::text
       AND eb.status_group = 'ready'
+      -- tags and search input are lowercased on write, so matching is case-insensitive
       AND (
           $3::text = ''
           OR strpos(eba.tag, $3::text) > 0
       )
+      AND (
+          $4::text IS NULL
+          OR eba.tag < $4::text
+      )
     GROUP BY eba.tag
-    HAVING
-        $4::text IS NULL
-        OR eba.tag < $4::text
     ORDER BY tag DESC
     LIMIT $5::int
 ),
