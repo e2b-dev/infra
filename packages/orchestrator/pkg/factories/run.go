@@ -111,12 +111,36 @@ type closer struct {
 	close func(ctx context.Context) error
 }
 
+const forceShutdownTimeout = 30 * time.Second
+
 type serviceDoneError struct {
 	name string
 }
 
 func (e serviceDoneError) Error() string {
 	return fmt.Sprintf("service %s finished", e.name)
+}
+
+func isServiceDoneError(err error) bool {
+	var sde serviceDoneError
+
+	return errors.As(err, &sde)
+}
+
+func isIgnorableSyncError(err error) bool {
+	return errors.Is(err, syscall.EINVAL)
+}
+
+// shutdownContext returns the context that bounds the graceful drain phase of
+// shutdown. With no ShutdownDrainTimeout configured (the default) it never
+// expires: drain waits until sandboxes exit on their own or a force-stop API
+// call empties the node.
+func shutdownContext(config cfg.Config) (context.Context, context.CancelFunc) {
+	if config.ShutdownDrainTimeout > 0 {
+		return context.WithTimeout(context.Background(), config.ShutdownDrainTimeout)
+	}
+
+	return context.WithCancel(context.Background())
 }
 
 // Run starts the orchestrator, blocking until shutdown.
@@ -198,7 +222,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 			}
 
 			// Remove the lock file on graceful shutdown
-			if success == true {
+			if success {
 				if fileErr = os.Remove(fileLockName); fileErr != nil {
 					log.Printf("Failed to remove lock file %s: %v", fileLockName, fileErr)
 				}
@@ -234,7 +258,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	// there's a panic.
 	defer func(g *errgroup.Group) {
 		err := g.Wait()
-		if err != nil {
+		if err != nil && !isServiceDoneError(err) {
 			log.Printf("error while shutting down: %v", err)
 			success = false
 		}
@@ -275,7 +299,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	}))
 	defer func(l logger.Logger) {
 		err := l.Sync()
-		if err != nil {
+		if err != nil && !isIgnorableSyncError(err) {
 			log.Printf("error while shutting down logger: %v", err)
 			success = false
 		}
@@ -293,7 +317,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	)
 	defer func(l logger.Logger) {
 		err := l.Sync()
-		if err != nil {
+		if err != nil && !isIgnorableSyncError(err) {
 			log.Printf("error while shutting down sandbox logger: %v", err)
 			success = false
 		}
@@ -311,7 +335,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	)
 	defer func(l logger.Logger) {
 		err := l.Sync()
-		if err != nil {
+		if err != nil && !isIgnorableSyncError(err) {
 			log.Printf("error while shutting down sandbox logger: %v", err)
 			success = false
 		}
@@ -678,8 +702,8 @@ func run(config cfg.Config, opts Options) (success bool) {
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create orchestrator server", zap.Error(err))
 	}
-	closers = append(closers, closer{"orchestrator server", func(context.Context) error {
-		return orchestratorService.Close()
+	closers = append(closers, closer{"orchestrator server", func(closeCtx context.Context) error {
+		return orchestratorService.Close(closeCtx)
 	}})
 
 	// template manager sandbox logger
@@ -694,8 +718,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	)
 	closers = append(closers, closer{
 		"template manager sandbox logger", func(context.Context) error {
-			// Sync returns EINVAL when path is /dev/stdout (for example)
-			if err := tmplSbxLoggerExternal.Sync(); err != nil && !errors.Is(err, syscall.EINVAL) {
+			if err := tmplSbxLoggerExternal.Sync(); err != nil && !isIgnorableSyncError(err) {
 				return err
 			}
 
@@ -858,7 +881,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 		logger.L().Error(ctx, "Service error", zap.Error(serviceErr))
 	}
 
-	closeCtx, cancelCloseCtx := context.WithCancel(context.Background())
+	closeCtx, cancelCloseCtx := shutdownContext(config)
 	defer cancelCloseCtx()
 	if config.ForceStop {
 		cancelCloseCtx()
@@ -876,12 +899,41 @@ func run(config cfg.Config, opts Options) (success bool) {
 		}
 	}
 
+	orchestratorService.StartDraining(ctx)
+
 	// Wait for services to be drained before closing them
 	if tmpl != nil {
 		err := tmpl.Wait(closeCtx)
 		if err != nil {
 			logger.L().Error(ctx, "error while waiting for template manager to drain", zap.Error(err))
 			success = false
+		}
+	}
+
+	forceStopSandboxes := func() {
+		forceCtx, forceCancel := context.WithTimeout(context.WithoutCancel(ctx), forceShutdownTimeout)
+		defer forceCancel()
+
+		forceErr := orchestratorService.ForceStopSandboxes(forceCtx)
+		if forceErr != nil {
+			logger.L().Error(ctx, "forced sandbox shutdown failed", zap.Error(forceErr))
+			success = false
+		}
+	}
+
+	logger.L().Info(ctx, "Starting sandbox drain phase",
+		zap.Bool("forced", config.ForceStop),
+		zap.Int("sandbox_count", sandboxes.Count()),
+	)
+
+	if config.ForceStop {
+		forceStopSandboxes()
+	} else {
+		err := orchestratorService.DrainSandboxes(closeCtx)
+		if err != nil {
+			logger.L().Warn(ctx, "sandbox drain phase did not complete gracefully; forcing sandbox shutdown", zap.Error(err))
+
+			forceStopSandboxes()
 		}
 	}
 
@@ -896,8 +948,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	}
 
 	logger.L().Info(ctx, "Waiting for services to finish")
-	var sde serviceDoneError
-	if err := g.Wait(); err != nil && !errors.As(err, &sde) {
+	if err := g.Wait(); err != nil && !isServiceDoneError(err) {
 		logger.L().Error(ctx, "service group error", zap.Error(err))
 		success = false
 	}
