@@ -100,7 +100,7 @@ func (a *APIStore) executeOnOrchestratorByClusterID(
 	// otherwise a volume could be created in a node pool whose nodes will never
 	// run the team's sandboxes. This mirrors the label-based filtering used
 	// during sandbox placement.
-	if a.featureFlags.BoolFlag(ctx, featureflags.SandboxLabelBasedSchedulingFlag, featureflags.TeamContext(team.ID.String())) {
+	if team != nil && a.featureFlags.BoolFlag(ctx, featureflags.SandboxLabelBasedSchedulingFlag, featureflags.TeamContext(team.ID.String())) {
 		compatibleNodes := make([]*nodemanager.Node, 0, len(nodes))
 		for _, node := range nodes {
 			if placement.IsNodeLabelsCompatible(node, team.SandboxSchedulingLabels) {
@@ -180,6 +180,92 @@ func (a *APIStore) executeOnOrchestratorByClusterID(
 		}
 
 		return err
+	}
+
+	if receivedUnknownVolumeTypeErrors == len(nodes)-notReadyNodeCount && receivedUnknownVolumeTypeErrors > 0 {
+		return fmt.Errorf("%w: %s", ErrUnknownVolumeType, unknownVolumeType)
+	}
+
+	return ErrNoHealthyOrchestratorFound
+}
+
+func (a *APIStore) executeOnAllOrchestratorsByClusterID(
+	ctx context.Context,
+	clusterID uuid.UUID,
+	fn func(context.Context, *clusters.GRPCClient) error,
+) error {
+	nodes := a.orchestrator.GetClusterNodes(clusterID)
+
+	if len(nodes) == 0 {
+		return ErrClusterNotFound
+	}
+
+	rand.Shuffle(len(nodes), func(i, j int) { nodes[i], nodes[j] = nodes[j], nodes[i] })
+
+	var (
+		receivedUnknownVolumeTypeErrors int
+		unknownVolumeType               string
+		notReadyNodeCount               int
+		successCount                    int
+		errorList                       []error
+	)
+	defer func() {
+		if receivedUnknownVolumeTypeErrors != 0 {
+			logger.L().Warn(ctx, "received unknown volume type errors",
+				zap.String("volume_type", unknownVolumeType),
+				zap.Int("total_nodes", len(nodes)),
+				zap.Int("unknown_type_errors", receivedUnknownVolumeTypeErrors),
+			)
+		}
+	}()
+
+	for _, node := range nodes {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("context error: %w", err)
+		}
+
+		if node.Status() != api.NodeStatusReady {
+			notReadyNodeCount++
+
+			continue
+		}
+
+		c, clientCtx := node.GetClient(ctx)
+
+		err := fn(clientCtx, c)
+		if err == nil {
+			successCount++
+
+			continue
+		}
+
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return errors.Join(
+				fmt.Errorf("orchestrator error: %w", err),
+				fmt.Errorf("request error: %w", ctxErr),
+			)
+		}
+
+		if volumeType, ok := isUnknownVolumeTypeError(err); ok {
+			unknownVolumeType = volumeType
+			receivedUnknownVolumeTypeErrors++
+
+			continue
+		}
+
+		if isRetryableError(err) {
+			logger.L().Warn(clientCtx, "failed to make orchestrator call", zap.Error(err))
+		}
+
+		errorList = append(errorList, err)
+	}
+
+	if len(errorList) != 0 {
+		return errors.Join(errorList...)
+	}
+
+	if successCount != 0 {
+		return nil
 	}
 
 	if receivedUnknownVolumeTypeErrors == len(nodes)-notReadyNodeCount && receivedUnknownVolumeTypeErrors > 0 {

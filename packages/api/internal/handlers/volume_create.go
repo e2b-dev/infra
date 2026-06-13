@@ -139,7 +139,7 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 
 	if err := tx.Commit(ctx); err != nil {
 		go func(ctx context.Context) {
-			if err := a.deleteVolume(ctx, clusterID, team, volume); err != nil {
+			if err := a.deleteVolume(ctx, clusterID, volume); err != nil {
 				telemetry.ReportCriticalError(ctx, "failed to clean up volume after failing to commit transaction", err)
 			}
 		}(context.WithoutCancel(ctx))
