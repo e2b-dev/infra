@@ -149,7 +149,12 @@ func (p *mountNamespaceFactory) createTemplate(ctx context.Context) (*mountNames
 	_ = template.Close()
 
 	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
+	threadRestored := true
+	defer func() {
+		if threadRestored {
+			runtime.UnlockOSThread()
+		}
+	}()
 
 	if err := unix.Unshare(unix.CLONE_FS); err != nil {
 		return nil, fmt.Errorf("failed to unshare fs attributes before creating template mount namespace: %w", err)
@@ -161,16 +166,29 @@ func (p *mountNamespaceFactory) createTemplate(ctx context.Context) (*mountNames
 	}
 	defer hostMntNS.Close()
 
-	restoreHostNS := func() {
+	restoreHostNS := func() error {
+		if threadRestored {
+			return nil
+		}
+
 		if err := unix.Setns(int(hostMntNS.Fd()), unix.CLONE_NEWNS); err != nil {
+			return err
+		}
+
+		threadRestored = true
+
+		return nil
+	}
+	defer func() {
+		if err := restoreHostNS(); err != nil {
 			logger.L().Error(ctx, "error resetting mount namespace back to the host namespace", zap.Error(err))
 		}
-	}
+	}()
 
 	if err := unix.Unshare(unix.CLONE_NEWNS); err != nil {
 		return nil, fmt.Errorf("failed to unshare template mount namespace: %w", err)
 	}
-	defer restoreHostNS()
+	threadRestored = false
 
 	if err := unix.Mount("", "/", "", unix.MS_PRIVATE|unix.MS_REC, ""); err != nil {
 		return nil, fmt.Errorf("failed to make template mount namespace private: %w", err)
@@ -193,7 +211,7 @@ func (p *mountNamespaceFactory) createTemplate(ctx context.Context) (*mountNames
 		killAndWait(holderPID, holder.Process)
 	}
 
-	if err := unix.Setns(int(hostMntNS.Fd()), unix.CLONE_NEWNS); err != nil {
+	if err := restoreHostNS(); err != nil {
 		cleanupHolder()
 		return nil, fmt.Errorf("failed to restore host mount namespace before recording template holder: %w", err)
 	}
@@ -234,7 +252,12 @@ func (p *mountNamespaceFactory) create(ctx context.Context, templateMntNS *os.Fi
 	_ = mountNS.Close()
 
 	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
+	threadRestored := true
+	defer func() {
+		if threadRestored {
+			runtime.UnlockOSThread()
+		}
+	}()
 
 	if err := unix.Unshare(unix.CLONE_FS); err != nil {
 		return nil, fmt.Errorf("failed to unshare fs attributes before creating mount namespace: %w", err)
@@ -246,16 +269,29 @@ func (p *mountNamespaceFactory) create(ctx context.Context, templateMntNS *os.Fi
 	}
 	defer hostMntNS.Close()
 
-	restoreHostNS := func() {
+	restoreHostNS := func() error {
+		if threadRestored {
+			return nil
+		}
+
 		if err := unix.Setns(int(hostMntNS.Fd()), unix.CLONE_NEWNS); err != nil {
+			return err
+		}
+
+		threadRestored = true
+
+		return nil
+	}
+	defer func() {
+		if err := restoreHostNS(); err != nil {
 			logger.L().Error(ctx, "error resetting mount namespace back to the host namespace", zap.Error(err))
 		}
-	}
+	}()
 
 	if err := unix.Setns(int(templateMntNS.Fd()), unix.CLONE_NEWNS); err != nil {
 		return nil, fmt.Errorf("failed to enter template mount namespace: %w", err)
 	}
-	defer restoreHostNS()
+	threadRestored = false
 
 	if err := unix.Unshare(unix.CLONE_NEWNS); err != nil {
 		return nil, fmt.Errorf("failed to unshare mount namespace: %w", err)
@@ -277,7 +313,7 @@ func (p *mountNamespaceFactory) create(ctx context.Context, templateMntNS *os.Fi
 		killAndWait(holderPID, holder.Process)
 	}
 
-	if err := unix.Setns(int(hostMntNS.Fd()), unix.CLONE_NEWNS); err != nil {
+	if err := restoreHostNS(); err != nil {
 		cleanupHolder()
 		return nil, fmt.Errorf("failed to restore host mount namespace before recording holder: %w", err)
 	}
