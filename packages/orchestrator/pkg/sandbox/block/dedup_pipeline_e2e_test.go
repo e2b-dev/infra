@@ -95,7 +95,7 @@ func runDedupPipelineChain(t *testing.T, version uint64, budget DedupBudget, see
 	// nowhere (open fails loudly), so put directIO runs on a real filesystem.
 	diffDir := func() string { return t.TempDir() }
 	if directIO {
-		base, err := os.MkdirTemp(".", "dedup-e2e-directio-")
+		base, err := os.MkdirTemp(".", "dedup-e2e-directio-") //nolint:usetesting // t.TempDir may be tmpfs, which rejects O_DIRECT
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = os.RemoveAll(base) })
 		var n int
@@ -122,7 +122,7 @@ func runDedupPipelineChain(t *testing.T, version uint64, budget DedupBudget, see
 	template := make([]byte, size)
 	_, err := rng.Read(template)
 	require.NoError(t, err)
-	for p := int64(0); p < size/header.PageSize; p++ {
+	for p := range size / header.PageSize {
 		if rng.Float64() < 0.05 {
 			clear(template[p*header.PageSize : (p+1)*header.PageSize])
 		}
