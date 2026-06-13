@@ -483,6 +483,25 @@ func (c *apiClient) startBalloonHinting(ctx context.Context, acknowledgeOnStop b
 	return nil
 }
 
+// stopBalloonHinting ends the current hinting run: FC sets host_cmd to DONE
+// synchronously on its event-loop thread, after which any hint descriptors
+// still queued are acked without being discarded.
+func (c *apiClient) stopBalloonHinting(ctx context.Context) error {
+	params := operations.StopBalloonHintingParams{Context: ctx}
+	_, err := c.client.Operations.StopBalloonHinting(&params)
+	if err != nil {
+		// Same 204-vs-spec quirk as startBalloonHinting.
+		var apiErr *openapiruntime.APIError
+		if errors.As(err, &apiErr) && apiErr.IsSuccess() {
+			return nil
+		}
+
+		return fmt.Errorf("error stopping balloon hinting: %w", err)
+	}
+
+	return nil
+}
+
 func (c *apiClient) describeBalloonHinting(ctx context.Context) (hostCmd int64, err error) {
 	params := operations.DescribeBalloonHintingParams{Context: ctx}
 	res, err := c.client.Operations.DescribeBalloonHinting(&params)
