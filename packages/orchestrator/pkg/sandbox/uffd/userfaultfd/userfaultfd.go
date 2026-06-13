@@ -395,7 +395,7 @@ func (u *Userfaultfd) Serve(
 					}
 
 					length := int64(rm.end - rm.start)
-					if _, tainted := applyRemoveRange(u.pageTracker, u.removeTainted, startOff, length, int64(u.pageSize)); tainted > 0 {
+					if tainted := applyRemoveRange(u.pageTracker, u.removeTainted, startOff, length, int64(u.pageSize)); tainted > 0 {
 						u.logger.Warn(ctx, "UFFD REMOVE range not aligned to tracker page size; tainted partially covered blocks for pause re-scan",
 							zap.Int64("start_off", startOff),
 							zap.Int64("length", length),

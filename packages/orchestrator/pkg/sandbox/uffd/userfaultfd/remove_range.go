@@ -26,13 +26,12 @@ import (
 //
 // The caller must hold settleRequests.Lock (same as the Zero SetRange in
 // the serve loop's REMOVE batch).
-func applyRemoveRange(tracker *block.Tracker, tainted *roaring.Bitmap, startOff, length, pageSize int64) (zeroedBlocks, taintedBlocks int) {
+func applyRemoveRange(tracker *block.Tracker, tainted *roaring.Bitmap, startOff, length, pageSize int64) (taintedBlocks int) {
 	end := startOff + length
 	zeroStart := (startOff + pageSize - 1) / pageSize
 	zeroEnd := end / pageSize
 	if zeroEnd > zeroStart {
 		tracker.SetRange(uint32(zeroStart), uint32(zeroEnd), block.Zero)
-		zeroedBlocks = int(zeroEnd - zeroStart)
 	}
 
 	taint := func(idx int64) {
@@ -50,5 +49,5 @@ func applyRemoveRange(tracker *block.Tracker, tainted *roaring.Bitmap, startOff,
 		taint(end / pageSize)
 	}
 
-	return zeroedBlocks, taintedBlocks
+	return taintedBlocks
 }
