@@ -53,9 +53,7 @@ func (a *APIStore) DeleteVolumesVolumeID(c *gin.Context, volumeID api.VolumeID) 
 }
 
 func (a *APIStore) deleteVolume(ctx context.Context, clusterID uuid.UUID, volume queries.Volume) error {
-	// RemoveAll succeeds for missing paths, so cleanup must fan out across pools
-	// instead of stopping after the first node reports success.
-	return a.executeOnAllOrchestratorsByClusterID(ctx, clusterID, func(ctx context.Context, client *clusters.GRPCClient) error {
+	return a.executeOnOrchestratorByClusterID(ctx, clusterID, nil, func(ctx context.Context, client *clusters.GRPCClient) error {
 		_, err := client.Volumes.DeleteVolume(ctx, &orchestrator.DeleteVolumeRequest{
 			Volume: toVolumeKey(volume),
 		})
