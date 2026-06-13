@@ -11,6 +11,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	clustershared "github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -44,7 +45,7 @@ func (a *APIStore) DeleteVolumesVolumeID(c *gin.Context, volumeID api.VolumeID) 
 
 	go func(ctx context.Context) {
 		// if this fails, we can clean it up later
-		if err := a.deleteVolume(ctx, clusterID, volume); err != nil {
+		if err := a.deleteVolume(ctx, clusterID, team, volume); err != nil {
 			telemetry.ReportCriticalError(ctx, fmt.Sprintf("failed to delete data in volume %q", volume.ID.String()), err)
 		}
 	}(context.WithoutCancel(ctx))
@@ -52,8 +53,8 @@ func (a *APIStore) DeleteVolumesVolumeID(c *gin.Context, volumeID api.VolumeID) 
 	c.Status(http.StatusNoContent)
 }
 
-func (a *APIStore) deleteVolume(ctx context.Context, clusterID uuid.UUID, volume queries.Volume) error {
-	return a.executeOnOrchestratorByClusterID(ctx, clusterID, func(ctx context.Context, client *clusters.GRPCClient) error {
+func (a *APIStore) deleteVolume(ctx context.Context, clusterID uuid.UUID, team *types.Team, volume queries.Volume) error {
+	return a.executeOnOrchestratorByClusterID(ctx, clusterID, team, func(ctx context.Context, client *clusters.GRPCClient) error {
 		_, err := client.Volumes.DeleteVolume(ctx, &orchestrator.DeleteVolumeRequest{
 			Volume: toVolumeKey(volume),
 		})

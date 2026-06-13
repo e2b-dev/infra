@@ -179,7 +179,7 @@ func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, exclud
 		}
 
 		// Skip if node doesn't have the required labels
-		if filterByLabels && !isNodeLabelsCompatible(n, requiredLabels) {
+		if filterByLabels && !IsNodeLabelsCompatible(n, requiredLabels) {
 			continue
 		}
 

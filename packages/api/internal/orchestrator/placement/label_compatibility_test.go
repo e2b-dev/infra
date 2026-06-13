@@ -164,7 +164,7 @@ func TestIsNodeLabelsCompatible(t *testing.T) {
 
 			node := nodemanager.NewTestNode("test-node", api.NodeStatusReady, 0, 4, opts...)
 
-			result := isNodeLabelsCompatible(node, tt.requiredLabels)
+			result := IsNodeLabelsCompatible(node, tt.requiredLabels)
 			assert.Equal(t, tt.expected, result, "nodeLabels=%v requiredLabels=%v", tt.nodeLabels, tt.requiredLabels)
 		})
 	}

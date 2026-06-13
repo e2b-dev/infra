@@ -15,9 +15,12 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -84,12 +87,37 @@ var ErrUnknownVolumeType = errors.New("unknown volume type")
 func (a *APIStore) executeOnOrchestratorByClusterID(
 	ctx context.Context,
 	clusterID uuid.UUID,
+	team *types.Team,
 	fn func(context.Context, *clusters.GRPCClient) error,
 ) error {
 	nodes := a.orchestrator.GetClusterNodes(clusterID)
 
 	if len(nodes) == 0 {
 		return ErrClusterNotFound
+	}
+
+	// Volume data must live on nodes where the team's sandboxes can be scheduled,
+	// otherwise a volume could be created in a node pool whose nodes will never
+	// run the team's sandboxes. This mirrors the label-based filtering used
+	// during sandbox placement.
+	if a.featureFlags.BoolFlag(ctx, featureflags.SandboxLabelBasedSchedulingFlag, featureflags.TeamContext(team.ID.String())) {
+		compatibleNodes := make([]*nodemanager.Node, 0, len(nodes))
+		for _, node := range nodes {
+			if placement.IsNodeLabelsCompatible(node, team.SandboxSchedulingLabels) {
+				compatibleNodes = append(compatibleNodes, node)
+			}
+		}
+
+		if len(compatibleNodes) == 0 {
+			logger.L().Warn(ctx, "no orchestrator nodes compatible with team scheduling labels",
+				zap.Strings("team_scheduling_labels", team.SandboxSchedulingLabels),
+				zap.Int("total_nodes", len(nodes)),
+			)
+
+			return ErrNoHealthyOrchestratorFound
+		}
+
+		nodes = compatibleNodes
 	}
 
 	rand.Shuffle(len(nodes), func(i, j int) { nodes[i], nodes[j] = nodes[j], nodes[i] })

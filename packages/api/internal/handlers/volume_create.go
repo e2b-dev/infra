@@ -12,6 +12,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	clustershared "github.com/e2b-dev/infra/packages/shared/pkg/clusters"
@@ -115,7 +116,7 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 	default:
 	}
 
-	if err := a.createVolume(ctx, clusterID, volume); err != nil {
+	if err := a.createVolume(ctx, clusterID, team, volume); err != nil {
 		if errors.Is(err, ErrClusterNotFound) {
 			a.sendAPIStoreError(c, http.StatusServiceUnavailable, "Cluster not found")
 			telemetry.ReportError(ctx, "cluster not found", err)
@@ -138,7 +139,7 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 
 	if err := tx.Commit(ctx); err != nil {
 		go func(ctx context.Context) {
-			if err := a.deleteVolume(ctx, clusterID, volume); err != nil {
+			if err := a.deleteVolume(ctx, clusterID, team, volume); err != nil {
 				telemetry.ReportCriticalError(ctx, "failed to clean up volume after failing to commit transaction", err)
 			}
 		}(context.WithoutCancel(ctx))
@@ -189,8 +190,8 @@ func isValidVolumeName(name string) bool {
 	return validVolumeNameRegex.MatchString(name)
 }
 
-func (a *APIStore) createVolume(ctx context.Context, clusterID uuid.UUID, volume queries.Volume) error {
-	return a.executeOnOrchestratorByClusterID(ctx, clusterID, func(ctx context.Context, client *clusters.GRPCClient) error {
+func (a *APIStore) createVolume(ctx context.Context, clusterID uuid.UUID, team *types.Team, volume queries.Volume) error {
+	return a.executeOnOrchestratorByClusterID(ctx, clusterID, team, func(ctx context.Context, client *clusters.GRPCClient) error {
 		_, err := client.Volumes.CreateVolume(ctx, &orchestrator.CreateVolumeRequest{
 			Volume: toVolumeKey(volume),
 		})

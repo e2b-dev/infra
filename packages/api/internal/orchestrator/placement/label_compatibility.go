@@ -24,10 +24,10 @@ func effectiveSandboxLabels(requiredLabels []string) []string {
 	return requiredLabels
 }
 
-// isNodeLabelsCompatible checks if a node is compatible with the required scheduling labels.
+// IsNodeLabelsCompatible checks if a node is compatible with the required scheduling labels.
 // Empty labels on either side are normalized to ["default"] before comparison.
 // After normalization, all required labels must be a subset of node labels.
-func isNodeLabelsCompatible(node *nodemanager.Node, requiredLabels []string) bool {
+func IsNodeLabelsCompatible(node *nodemanager.Node, requiredLabels []string) bool {
 	nodeLabels := effectiveNodeLabels(node.Labels())
 	sbxExpectedLabels := effectiveSandboxLabels(requiredLabels)
 
