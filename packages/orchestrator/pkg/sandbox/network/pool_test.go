@@ -42,8 +42,8 @@ func newTestSlot(idx int) *Slot {
 	return &Slot{Idx: idx + testSlotIdxOffset, egressProxy: NoopEgressProxy{}}
 }
 
-// noopRelease satisfies Pool.Return's ReleaseNotify parameter without doing
-// anything. Tests cover Return's cleanup path and don't care about the
+// noopRelease satisfies returnSlot's ReleaseNotify parameter without doing
+// anything. Tests cover the cleanup path and don't care about the
 // network-release notification.
 func noopRelease(context.Context, string) {}
 
@@ -75,7 +75,7 @@ func TestReturn_NoPanicDuringClose(t *testing.T) {
 				<-start
 
 				for i := range iters {
-					_ = pool.Return(t.Context(), newTestSlot(w*iters+i+1), noopRelease, 0)
+					_ = pool.returnSlot(t.Context(), newTestSlot(w*iters+i+1), noopRelease, 0)
 				}
 			})
 		}
@@ -107,7 +107,7 @@ func TestReturn_AfterCloseCleansUpLocally(t *testing.T) {
 	require.NoError(t, pool.Close(t.Context()))
 
 	before := storage.released.Load()
-	err := pool.Return(t.Context(), newTestSlot(1), noopRelease, 0)
+	err := pool.returnSlot(t.Context(), newTestSlot(1), noopRelease, 0)
 	after := storage.released.Load()
 
 	assert.Equal(t, int64(1), after-before, "Return after Close must invoke Storage.Release via cleanup")
@@ -178,22 +178,6 @@ func TestReturnAsync_AfterCloseCleansUpSynchronously(t *testing.T) {
 	assert.Equal(t, int64(1), storage.released.Load(), "ReturnAsync after Close must release the slot before returning")
 }
 
-// After Close, recycleAcquiredSlot cannot register with Close's wait, so
-// it must recycle inline instead of starting a goroutine Close (and process
-// exit) cannot observe.
-func TestRecycleAcquiredSlot_AfterCloseCleansUpInline(t *testing.T) {
-	t.Parallel()
-
-	storage := &fakeStorage{}
-	pool := NewPool(2, 4, storage, Config{})
-	close(pool.newSlots)
-
-	require.NoError(t, pool.Close(t.Context()))
-
-	pool.recycleAcquiredSlot(t.Context(), newTestSlot(1))
-	assert.Equal(t, int64(1), storage.released.Load(), "recycleAcquiredSlot after Close must release the slot before returning")
-}
-
 func TestReturn_AfterClose_CleanupFailure_PreservesErrClosed(t *testing.T) {
 	t.Parallel()
 
@@ -204,7 +188,7 @@ func TestReturn_AfterClose_CleanupFailure_PreservesErrClosed(t *testing.T) {
 
 	require.NoError(t, pool.Close(t.Context()))
 
-	err := pool.Return(t.Context(), newTestSlot(1), noopRelease, 0)
+	err := pool.returnSlot(t.Context(), newTestSlot(1), noopRelease, 0)
 	require.ErrorIs(t, err, ErrClosed)
 	require.ErrorIs(t, err, boom)
 }
