@@ -139,24 +139,6 @@ components:
       description: Cursor returned by the previous list response in `{sort}|{value}|{templateID}` format. Rejected if its sort does not match the request.
       schema:
         type: string
-    templates_cpu_count:
-      name: cpuCount
-      in: query
-      required: false
-      description: Filter templates by exact vCPU count.
-      schema:
-        type: integer
-        format: int32
-        minimum: 1
-    templates_memory_mb:
-      name: memoryMB
-      in: query
-      required: false
-      description: Filter templates by exact memory size in MB.
-      schema:
-        type: integer
-        format: int32
-        minimum: 1
     templates_public:
       name: public
       in: query
@@ -180,12 +162,6 @@ components:
         type: string
         enum:
           [
-            name_asc,
-            name_desc,
-            cpu_count_asc,
-            cpu_count_desc,
-            memory_mb_asc,
-            memory_mb_desc,
             created_at_asc,
             created_at_desc,
             updated_at_asc,
@@ -1350,8 +1326,6 @@ paths:
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
       parameters:
-        - $ref: "#/components/parameters/templates_cpu_count"
-        - $ref: "#/components/parameters/templates_memory_mb"
         - $ref: "#/components/parameters/templates_public"
         - $ref: "#/components/parameters/templates_search"
         - $ref: "#/components/parameters/templates_sort"
