@@ -10,6 +10,8 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -156,57 +158,73 @@ func NewProcess(
 	))
 	defer childSpan.End()
 
-	// Build the firecracker start script and get computed paths
-	startBuilder := NewStartScriptBuilder(config)
-	startScript, err := startBuilder.Build(versions, files, rootfsPaths, slot.NamespaceID())
-	if err != nil {
-		return nil, err
+	startPaths := NewStartPathsBuilder(config).Build(versions, rootfsPaths)
+
+	firecrackerPath := versions.FirecrackerPath(config)
+	firecrackerSocketPath := files.SandboxFirecrackerSocketPath()
+	hostKernelPath := versions.HostKernelPath(config)
+	rootfsSourcePath := files.SandboxCacheRootfsLinkPath(config.StorageConfig)
+	rootfsMountDir := filepath.Dir(startPaths.RootfsPath)
+	kernelDir := filepath.Dir(startPaths.KernelPath)
+
+	mountNamespacePath, ok := slot.AssignedMountNamespacePath()
+	if !ok {
+		return nil, fmt.Errorf("slot %d does not have an assigned mount namespace", slot.Idx)
 	}
 
-	telemetry.SetAttributes(ctx,
-		attribute.String("sandbox.cmd", startScript.Value),
-	)
+	if _, err := os.Stat(config.FirecrackerNsenterPath); err != nil {
+		return nil, fmt.Errorf("error stating firecracker namespace enter binary: %w", err)
+	}
 
-	_, err = os.Stat(versions.FirecrackerPath(config))
-	if err != nil {
+	if _, err := os.Stat(firecrackerPath); err != nil {
 		return nil, fmt.Errorf("error stating firecracker binary: %w", err)
 	}
 
-	_, err = os.Stat(versions.HostKernelPath(config))
-	if err != nil {
+	if _, err := os.Stat(hostKernelPath); err != nil {
 		return nil, fmt.Errorf("error stating kernel file: %w", err)
 	}
 
-	cmd := exec.CommandContext(execCtx,
-		"unshare",
-		"-m",
-		"--",
-		"bash",
-		"-c",
-		startScript.Value,
+	cmdArgs := []string{
+		"--mount-ns", mountNamespacePath,
+		"--net-ns", slot.NamespacePath(),
+		"--rootfs-mount-dir", rootfsMountDir,
+		"--rootfs-source", rootfsSourcePath,
+		"--rootfs-link", startPaths.RootfsPath,
+		"--kernel-dir", kernelDir,
+		"--kernel-source", hostKernelPath,
+		"--kernel-link", startPaths.KernelPath,
+		"--firecracker", firecrackerPath,
+		"--api-sock", firecrackerSocketPath,
+	}
+	if rootfsPaths.TemplateVersion <= 1 {
+		cmdArgs = append(cmdArgs, "--mount-kernel-dir")
+	}
+
+	telemetry.SetAttributes(ctx,
+		attribute.String("sandbox.cmd", strings.Join(append([]string{config.FirecrackerNsenterPath}, cmdArgs...), " ")),
 	)
 
-	p := &Process{
-		Versions:              versions,
-		Exit:                  utils.NewErrorOnce(),
-		cmd:                   cmd,
-		firecrackerSocketPath: files.SandboxFirecrackerSocketPath(),
-		metricsPath:           files.SandboxMetricsFifoPath(),
-		config:                config,
-		client:                newApiClient(files.SandboxFirecrackerSocketPath()),
-		rootfsProvider:        rootfsProvider,
-		files:                 files,
-		slot:                  slot,
-
-		kernelPath: startScript.KernelPath,
-		rootfsPath: startScript.RootfsPath,
-	}
+	cmd := exec.CommandContext(execCtx, config.FirecrackerNsenterPath, cmdArgs...)
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setsid: true, // Create a new session
 	}
 
-	return p, nil
+	return &Process{
+		Versions:              versions,
+		Exit:                  utils.NewErrorOnce(),
+		cmd:                   cmd,
+		firecrackerSocketPath: firecrackerSocketPath,
+		metricsPath:           files.SandboxMetricsFifoPath(),
+		config:                config,
+		client:                newApiClient(firecrackerSocketPath),
+		rootfsProvider:        rootfsProvider,
+		files:                 files,
+		slot:                  slot,
+
+		kernelPath: startPaths.KernelPath,
+		rootfsPath: startPaths.RootfsPath,
+	}, nil
 }
 
 func (p *Process) configure(

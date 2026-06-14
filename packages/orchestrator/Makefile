@@ -43,10 +43,12 @@ build-local:
 	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
 	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -o bin/orchestrator -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" .
 	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -o bin/clean-nfs-cache -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" ./cmd/clean-nfs-cache
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(BUILD_ARCH) go build -trimpath -o bin/fc-nsenter -ldflags "-s -w" ./cmd/fc-nsenter
 
 .PHONY: build-debug
 build-debug:
 	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -race -gcflags=all="-N -l" -o bin/orchestrator .
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(BUILD_ARCH) go build -trimpath -o bin/fc-nsenter -ldflags "-s -w" ./cmd/fc-nsenter
 
 # Builds the dummy orchestrator. It only implements the orchestrator.proto
 # SandboxService surface against an in-memory store, and is meant for local
@@ -85,7 +87,7 @@ endef
 run-local:
 	$(call setup_local_env)
 	mkdir -p ./.data/test-volume
-	NODE_ID=$(HOSTNAME) ./bin/orchestrator
+	FIRECRACKER_NSENTER_PATH=$(CURDIR)/bin/fc-nsenter NODE_ID=$(HOSTNAME) ./bin/orchestrator
 
 .PHONY: upload/clean-nfs-cache
 upload/clean-nfs-cache:

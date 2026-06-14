@@ -45,3 +45,4 @@ FROM scratch
 
 COPY --from=builder /build/orchestrator/bin/clean-nfs-cache .
 COPY --from=builder /build/orchestrator/bin/orchestrator .
+COPY --from=builder /build/orchestrator/bin/fc-nsenter .
