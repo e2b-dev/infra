@@ -31,8 +31,11 @@ jobs:
   validate-inputs:
     name: Validate inputs
     runs-on: ubuntu-24.04
+    outputs:
+      commit_sha: ${{ steps.normalize.outputs.commit_sha }}
     steps:
-      - name: Validate commit SHA
+      - name: Validate and normalize commit SHA
+        id: normalize
         env:
           ENVD_COMMIT_SHA: ${{ inputs.commit_sha }}
         run: |
@@ -40,6 +43,9 @@ jobs:
             echo "commit_sha must be a lowercase hexadecimal Git SHA suffix."
             exit 1
           fi
+          # envd binaries are uploaded keyed by the short SHA (git rev-parse --short),
+          # so truncate to 7 chars to match (e.g. 9799dd02631...cf84 -> 9799dd0).
+          echo "commit_sha=${ENVD_COMMIT_SHA:0:7}" >> "$GITHUB_OUTPUT"
 
       - name: Require an environment
         if: ${{ inputs.staging != true && inputs.foxtrot != true && inputs.juliett != true }}
@@ -112,7 +118,7 @@ jobs:
 
       - name: Promote envd
         env:
-          ENVD_COMMIT_SHA: ${{ inputs.commit_sha }}
+          ENVD_COMMIT_SHA: ${{ needs.validate-inputs.outputs.commit_sha }}
         run: make -C packages/envd promote
 
   promote-foxtrot:
@@ -180,7 +186,7 @@ jobs:
 
       - name: Promote envd
         env:
-          ENVD_COMMIT_SHA: ${{ inputs.commit_sha }}
+          ENVD_COMMIT_SHA: ${{ needs.validate-inputs.outputs.commit_sha }}
         run: make -C packages/envd promote
 
   promote-juliett:
@@ -248,5 +254,5 @@ jobs:
 
       - name: Promote envd
         env:
-          ENVD_COMMIT_SHA: ${{ inputs.commit_sha }}
+          ENVD_COMMIT_SHA: ${{ needs.validate-inputs.outputs.commit_sha }}
         run: make -C packages/envd promote
