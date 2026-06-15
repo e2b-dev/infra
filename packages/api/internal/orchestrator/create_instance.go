@@ -402,9 +402,19 @@ func (o *Orchestrator) generateRequiredNodeLabels(ctx context.Context, sandboxID
 		allLabels = []string{"default"}
 	}
 
-	for _, mount := range sbxData.VolumeMounts {
-		label := internal.MakeVolumeTypeLabel(mount.GetType())
-		allLabels = append(allLabels, label)
+	clusterID := clusters.WithClusterFallback(team.ClusterID)
+	volumeFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx,
+		featureflags.SandboxVolumeLabelBasedSchedulingFlag,
+		featureflags.TeamContext(team.ID.String()),
+		featureflags.ClusterContext(clusterID),
+		featureflags.SandboxContext(sandboxID),
+	)
+
+	if volumeFilteringEnabled {
+		for _, mount := range sbxData.VolumeMounts {
+			label := internal.MakeVolumeTypeLabel(mount.GetType())
+			allLabels = append(allLabels, label)
+		}
 	}
 
 	return allLabels, labelFilteringEnabled

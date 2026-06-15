@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/gin-gonic/gin"
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 
@@ -45,10 +46,8 @@ func createLaunchDarklyTeamContext(c *gin.Context) (ldcontext.Context, bool) {
 	var contexts []ldcontext.Context
 	if team != nil {
 		contexts = append(contexts, featureflags.TeamContextWithName(team.ID.String(), team.Name))
-		if clusterID := team.ClusterID; clusterID != nil {
-			contexts = append(contexts, featureflags.ClusterContext(clusterID.String()))
-		}
-
+		realClusterID := clusters.WithClusterFallback(team.ClusterID)
+		contexts = append(contexts, featureflags.ClusterContext(realClusterID))
 		contexts = append(contexts, featureflags.TierContext(team.Tier, team.Tier))
 	}
 

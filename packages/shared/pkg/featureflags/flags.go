@@ -154,12 +154,13 @@ var (
 	// of synchronous. Only safe to enable after PeerToPeerChunkTransferFlag is ON.
 	PeerToPeerAsyncCheckpointFlag = NewBoolFlag("peer-to-peer-async-checkpoint", false)
 
-	PersistentVolumesFlag            = NewBoolFlag("can-use-persistent-volumes", env.IsDevelopment())
-	ExecutionMetricsOnWebhooksFlag   = NewBoolFlag("execution-metrics-on-webhooks", false) // TODO: Remove NLT 20250315
-	SandboxLabelBasedSchedulingFlag  = NewBoolFlag("sandbox-label-based-scheduling", false)
-	OptimisticResourceAccountingFlag = NewBoolFlag("sandbox-placement-optimistic-resource-accounting", false)
-	FreePageReportingFlag            = NewBoolFlag("free-page-reporting", false)
-	FreezeUserCgroupFlag             = NewBoolFlag("freeze-user-cgroup", env.IsDevelopment())
+	PersistentVolumesFlag                 = NewBoolFlag("can-use-persistent-volumes", env.IsDevelopment())
+	ExecutionMetricsOnWebhooksFlag        = NewBoolFlag("execution-metrics-on-webhooks", false) // TODO: Remove NLT 20250315
+	SandboxLabelBasedSchedulingFlag       = NewBoolFlag("sandbox-label-based-scheduling", false)
+	SandboxVolumeLabelBasedSchedulingFlag = NewBoolFlag("sandbox-volume-label-based-scheduling", false)
+	OptimisticResourceAccountingFlag      = NewBoolFlag("sandbox-placement-optimistic-resource-accounting", false)
+	FreePageReportingFlag                 = NewBoolFlag("free-page-reporting", false)
+	FreezeUserCgroupFlag                  = NewBoolFlag("freeze-user-cgroup", env.IsDevelopment())
 
 	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())
 
