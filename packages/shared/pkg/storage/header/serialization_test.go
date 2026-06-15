@@ -1029,3 +1029,57 @@ func TestDeserialize_V3_StaysV3(t *testing.T) {
 	require.Nil(t, got.Builds)
 	require.Nil(t, got.GetBuildFrameData(buildID))
 }
+
+func TestFillMissingBuildsAsSentinels(t *testing.T) {
+	t.Parallel()
+
+	selfID := uuid.New()
+	v3aID := uuid.New()
+	v3bID := uuid.New()
+	knownID := uuid.New()
+
+	knownFT := storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{{U: 4096, C: 1024}})
+
+	meta := &Metadata{
+		Version: MetadataVersionV5, BlockSize: 4096, Size: 4096 * 4,
+		BuildId: selfID, BaseBuildId: v3bID,
+	}
+	h, err := NewHeader(meta, []BuildMap{
+		{Offset: 0, Length: 4096, BuildId: selfID, BuildStorageOffset: 0},
+		{Offset: 4096, Length: 4096, BuildId: knownID, BuildStorageOffset: 0},
+		{Offset: 8192, Length: 4096, BuildId: v3aID, BuildStorageOffset: 0},
+		{Offset: 12288, Length: 4096, BuildId: v3bID, BuildStorageOffset: 0},
+	})
+	require.NoError(t, err)
+	h.Builds = map[uuid.UUID]BuildData{
+		knownID: {Size: 4096, FrameData: knownFT.Table()},
+	}
+
+	backfillMissingV3UncompressedBuilds(h)
+
+	require.Len(t, h.Builds, 4)
+	require.Equal(t, BuildData{Size: 4096, FrameData: knownFT.Table()}, h.Builds[knownID])
+	require.Equal(t, BuildData{}, h.Builds[selfID])
+	require.Equal(t, BuildData{}, h.Builds[v3aID])
+	require.Equal(t, BuildData{}, h.Builds[v3bID])
+}
+
+func TestFillMissingBuildsAsSentinels_NilBuilds(t *testing.T) {
+	t.Parallel()
+
+	selfID := uuid.New()
+	meta := &Metadata{
+		Version: MetadataVersionV5, BlockSize: 4096, Size: 4096,
+		BuildId: selfID, BaseBuildId: selfID,
+	}
+	h, err := NewHeader(meta, []BuildMap{
+		{Offset: 0, Length: 4096, BuildId: selfID, BuildStorageOffset: 0},
+	})
+	require.NoError(t, err)
+	require.Nil(t, h.Builds)
+
+	backfillMissingV3UncompressedBuilds(h)
+
+	require.NotNil(t, h.Builds)
+	require.Equal(t, BuildData{}, h.Builds[selfID])
+}

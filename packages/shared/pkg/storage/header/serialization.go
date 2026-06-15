@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -61,6 +63,18 @@ func DeserializeBytes(data []byte) (*Header, error) {
 	}
 }
 
+func backfillMissingV3UncompressedBuilds(h *Header) {
+	for _, bid := range h.Mapping.Builds() {
+		if _, ok := h.Builds[bid]; ok {
+			continue
+		}
+		if h.Builds == nil {
+			h.Builds = make(map[uuid.UUID]BuildData)
+		}
+		h.Builds[bid] = BuildData{}
+	}
+}
+
 // LoadHeader fetches a serialized header from storage and deserializes it.
 // Returns the on-wire byte count alongside the header so callers can attribute
 // it to throughput telemetry. Errors (including storage.ErrObjectNotExist) are
@@ -79,6 +93,10 @@ func LoadHeader(ctx context.Context, s storage.StorageProvider, path string) (*H
 	h, err := DeserializeBytes(data)
 	if err != nil {
 		return nil, len(data), err
+	}
+
+	if !h.IncompletePendingUpload {
+		backfillMissingV3UncompressedBuilds(h)
 	}
 
 	return h, len(data), nil

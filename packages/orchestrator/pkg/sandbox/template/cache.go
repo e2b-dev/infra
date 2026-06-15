@@ -97,7 +97,6 @@ func NewCache(
 		config.DefaultCacheDir,
 		buildCacheTTL,
 		buildCacheDelayEviction,
-		peers.IsActive,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create build store: %w", err)
