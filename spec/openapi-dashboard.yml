@@ -351,6 +351,10 @@ components:
         - statusMessage
         - createdAt
         - finishedAt
+        - cpuCount
+        - memoryMB
+        - diskSizeMB
+        - envdVersion
       properties:
         id:
           type: string
@@ -377,6 +381,23 @@ components:
           format: date-time
           nullable: true
           description: Build completion timestamp in RFC3339 format, if finished.
+        cpuCount:
+          type: integer
+          format: int64
+          description: CPU cores configured for the build.
+        memoryMB:
+          type: integer
+          format: int64
+          description: Memory in MiB configured for the build.
+        diskSizeMB:
+          type: integer
+          format: int64
+          nullable: true
+          description: Disk size in MiB configured for the build, if recorded.
+        envdVersion:
+          type: string
+          nullable: true
+          description: envd version the build was created with, if recorded.
 
     BuildsListResponse:
       type: object
