@@ -26,6 +26,24 @@ const reclaimOuterSlack = 500 * time.Millisecond
 // must stay independent of the reclaim shell deadline.
 const freezeTimeout = 2 * time.Second
 
+const (
+	// syncMinTimeout floors the guest-sync deadline; it covers small-RAM
+	// sandboxes and the shell round-trip.
+	syncMinTimeout = 5 * time.Second
+
+	// syncMaxTimeout caps the guest-sync deadline so a stuck sync still fails the
+	// pause in bounded time rather than hanging it.
+	syncMaxTimeout = 2 * time.Minute
+
+	// syncFlushFloorBytesPerSec is a pessimistic floor for guest page-cache
+	// flush throughput to the virtio disk under IO contention. The data a sync
+	// must flush is bounded by the dirty page cache (≈ guest RAM; pages already
+	// written back are not re-flushed), so the deadline scales with RAM against
+	// this floor. Conservative on purpose: too low only over-waits, while too
+	// high would falsely fail the (mandatory) pre-pause sync.
+	syncFlushFloorBytesPerSec = 50 * 1024 * 1024
+)
+
 // buildReclaimScript builds the fstrim/sync/drop_caches/compact_memory chain.
 // Returns ("", 0) when every step is disabled.
 func (s *Sandbox) buildReclaimScript(cfg featureflags.ReclaimConfig) (string, time.Duration) {
@@ -119,6 +137,39 @@ func (s *Sandbox) bestEffortReclaim(ctx context.Context) {
 	}
 }
 
+// ramScaledSyncTimeout derives the guest-sync deadline from guest RAM. The
+// dirty page cache that sync must flush is bounded by RAM, divided by a
+// pessimistic flush-throughput floor, then clamped to
+// [syncMinTimeout, syncMaxTimeout].
+func ramScaledSyncTimeout(ramMB int64) time.Duration {
+	ramBytes := ramMB * 1024 * 1024
+	d := time.Duration(ramBytes/syncFlushFloorBytesPerSec) * time.Second
+
+	if d < syncMinTimeout {
+		return syncMinTimeout
+	}
+	if d > syncMaxTimeout {
+		return syncMaxTimeout
+	}
+
+	return d
+}
+
+// guestSyncTimeout returns the deadline for the pre-pause guest sync. The
+// GuestSyncTimeoutMs feature flag pins it (milliseconds) when set to a positive
+// value; otherwise it scales with guest RAM via ramScaledSyncTimeout.
+func (s *Sandbox) guestSyncTimeout(ctx context.Context) time.Duration {
+	if ms := s.featureFlags.IntFlag(ctx, featureflags.GuestSyncTimeoutMs,
+		featureflags.SandboxContext(s.Runtime.SandboxID),
+		featureflags.TeamContext(s.Runtime.TeamID),
+		featureflags.TemplateContext(s.Runtime.TemplateID),
+	); ms > 0 {
+		return time.Duration(ms) * time.Millisecond
+	}
+
+	return ramScaledSyncTimeout(s.Config.RamMB)
+}
+
 // guestSync runs sync in the guest via envd so ext4 flushes dirty pages to the
 // virtio disk. Mandatory before a filesystem-only pause: without a memory
 // snapshot the guest page cache is lost, so callers must fail the pause on
@@ -126,7 +177,7 @@ func (s *Sandbox) bestEffortReclaim(ctx context.Context) {
 // bestEffortReclaim's sync step (LD-flag gated, best-effort), this always runs
 // and always reports failure.
 func (s *Sandbox) guestSync(ctx context.Context) error {
-	const syncTimeout = 5 * time.Second
+	syncTimeout := s.guestSyncTimeout(ctx)
 
 	ctx, span := tracer.Start(ctx, "envd-guest-sync")
 	defer span.End()
