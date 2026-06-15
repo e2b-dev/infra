@@ -23,9 +23,9 @@ job "filestore-cleanup" {
 
           env {
             NODE_ID = "$${node.unique.name}"
-            %{ if launch_darkly_api_key != "" }
-                LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
-            %{ endif }
+%{ for key, value in job_env_vars ~}
+            ${key} = "${value}"
+%{ endfor ~}
           }
 
           config {

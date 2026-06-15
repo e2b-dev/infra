@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"database/sql"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,7 +10,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 )
 
-func TestRequireRowLevelSecurity(t *testing.T) {
+func TestNoRowLevelSecurity(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
@@ -21,31 +22,40 @@ func TestRequireRowLevelSecurity(t *testing.T) {
 	var checked int
 	for _, item := range results {
 		if item.NamespaceName != "public" {
-			// only the "public" namespace requires row level security
+			// only the "public" namespace used to carry Supabase row level security.
+			continue
+		}
+		if item.Kind == "v" {
 			continue
 		}
 
 		checked++
 
-		var isSecure bool
-		if item.Kind == "v" {
-			isSecure = isSecurityInvoker(item.Options)
-		} else {
-			isSecure = item.RowLevelSecurity
-		}
-
-		assert.Truef(t, isSecure, "database object %s.%s is not secure [%s] (%v)", item.NamespaceName, item.TableName, item.Kind, item.Options)
+		assert.Falsef(t, item.RowLevelSecurity, "database object %s.%s still has row level security enabled [%s]", item.NamespaceName, item.TableName, item.Kind)
 	}
 	assert.NotEmpty(t, checked)
-}
 
-func isSecurityInvoker(options []string) bool {
-	for _, option := range options {
-		switch option {
-		case "security_invoker=1", "security_invoker=true", "security_invoker=on":
-			return true
-		}
+	sqlDB, err := sql.Open("pgx", db.ConnStr())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		assert.NoError(t, sqlDB.Close())
+	})
+
+	rows, err := sqlDB.QueryContext(t.Context(), `
+		SELECT policyname
+		FROM pg_policies
+		WHERE schemaname = 'public'
+	`)
+	require.NoError(t, err)
+	defer rows.Close()
+
+	var policies []string
+	for rows.Next() {
+		var policy string
+		require.NoError(t, rows.Scan(&policy))
+		policies = append(policies, policy)
 	}
+	require.NoError(t, rows.Err())
 
-	return false
+	assert.Empty(t, policies, "public RLS policies should not be managed by default")
 }

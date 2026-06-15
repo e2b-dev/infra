@@ -160,14 +160,16 @@ func TestCompressStreamRoundTrip(t *testing.T) {
 			up := &memPartUploader{}
 			cfg := defaultCfg(tc.codec, tc.workers, tc.frameSize)
 
-			ft, checksum, err := compressStream(
+			fullFT, checksum, err := compressStream(
 				t.Context(),
 				bytes.NewReader(original),
 				cfg,
 				up,
 				4,
+				nil,
 			)
 			require.NoError(t, err)
+			ft := fullFT.Table()
 
 			if tc.dataSize == 0 {
 				require.Equal(t, 0, ft.NumFrames())
@@ -203,7 +205,7 @@ func TestCompressStreamContextCancel(t *testing.T) {
 	up := &memPartUploader{}
 	cfg := defaultCfg(CompressionZstd, 4, 2*megabyte)
 
-	_, _, err := compressStream(ctx, bytes.NewReader(data), cfg, up, 4)
+	_, _, err := compressStream(ctx, bytes.NewReader(data), cfg, up, 4, nil)
 	require.Error(t, err)
 	require.ErrorIs(t, err, context.Canceled)
 }
@@ -234,7 +236,7 @@ func TestCompressStreamPartSizeMinimum(t *testing.T) {
 			cfg := defaultCfg(CompressionZstd, 4, tc.frameSize)
 			cfg.MinPartSizeMB = tc.minPartSizeMB
 
-			_, _, err := compressStream(t.Context(), bytes.NewReader(data), cfg, up, 4)
+			_, _, err := compressStream(t.Context(), bytes.NewReader(data), cfg, up, 4, nil)
 			require.NoError(t, err)
 
 			// Verify: no non-final part is under 5 MiB.
@@ -290,7 +292,7 @@ func TestCompressStreamRace(t *testing.T) {
 				cfg.EncoderConcurrency = 4 // multi-threaded zstd encoders for more contention
 			}
 
-			ft, checksum, err := compressStream(ctx, bytes.NewReader(data), cfg, up, 4)
+			ft, checksum, err := compressStream(ctx, bytes.NewReader(data), cfg, up, 4, nil)
 			if err != nil {
 				return fmt.Errorf("stream %d: compress: %w", i, err)
 			}
@@ -299,7 +301,7 @@ func TestCompressStreamRace(t *testing.T) {
 				return fmt.Errorf("stream %d: checksum mismatch", i)
 			}
 
-			decompressed, err := decompressAll(ft, up.Assemble())
+			decompressed, err := decompressAll(ft.Table(), up.Assemble())
 			if err != nil {
 				return fmt.Errorf("stream %d: decompress: %w", i, err)
 			}
@@ -357,6 +359,7 @@ func BenchmarkCompress(b *testing.B) {
 					bytes.NewReader(data),
 					compCfg,
 					up, 4,
+					nil,
 				)
 				if err != nil {
 					b.Fatal(err)
@@ -415,10 +418,11 @@ func BenchmarkStoreFile(b *testing.B) {
 					outPath := filepath.Join(outDir, "output.dat")
 					obj := &fsObject{path: outPath}
 
-					ft, _, err := obj.StoreFile(b.Context(), inputPath, WithCompressConfig(compCfg))
+					fullFT, _, err := obj.StoreFile(b.Context(), inputPath, WithCompressConfig(compCfg))
 					if err != nil {
 						b.Fatal(err)
 					}
+					ft := fullFT.Table()
 
 					b.ReportMetric(float64(ft.CompressedSize())/float64(ft.UncompressedSize()), "ratio")
 				}

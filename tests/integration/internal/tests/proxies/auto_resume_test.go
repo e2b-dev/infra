@@ -109,8 +109,9 @@ func TestSandboxAutoResumeViaProxy(t *testing.T) {
 	require.NotNil(t, res.JSON200, "expected 200 response, got status %d", res.StatusCode())
 	require.Equal(t, api.Paused, res.JSON200.State)
 
-	// Make a proxy request to trigger auto-resume.
-	resumeClient := &http.Client{Timeout: 10 * time.Second}
+	// Make a proxy request to trigger auto-resume. The single request must
+	// cover the whole snapshot resume, which can take a while under load.
+	resumeClient := &http.Client{Timeout: 60 * time.Second}
 	req := utils.NewRequest(sbx, proxyURL, port, nil)
 	resp, err = resumeClient.Do(req)
 	require.NoError(t, err)

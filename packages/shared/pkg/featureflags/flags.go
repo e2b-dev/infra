@@ -140,12 +140,20 @@ var (
 	MemfdBackgroundCopyFlag = NewBoolFlag("memfd-background-copy", false)
 
 	// MemfileDiffDedupFlag enables 4 KiB-page dedup of the memfile diff
-	// against the base memfile. bestEffort skips uncached blocks;
-	// directIO opens the dedup output with O_DIRECT.
+	// against the base memfile. bestEffort skips uncached blocks; directIO
+	// opens the dedup output with O_DIRECT. The remaining keys budget fetch
+	// defragmentation of the deduped diff — fetchRunWindowPages is the
+	// uncompressed frame/window size served per backing fetch — see
+	// orchestrator block.DedupBudget for semantics (0 = disabled/default).
 	MemfileDiffDedupFlag = NewJSONFlag("memfile-diff-dedup", ldvalue.FromJSONMarshal(map[string]any{
-		"enabled":    false,
-		"bestEffort": false,
-		"directIO":   false,
+		"enabled":                        false,
+		"bestEffort":                     false,
+		"directIO":                       false,
+		"maxFetchWindowsPerBlock":        0,
+		"maxPromotedParentPagesPerBlock": 0,
+		"maxPagesPerPromotedFrame":       0,
+		"blockFaultPct":                  0,
+		"fetchRunWindowPages":            0,
 	}))
 
 	// PeerToPeerChunkTransferFlag enables peer-to-peer chunk routing.
@@ -163,10 +171,16 @@ var (
 
 	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())
 
+	BYOPProxyEnabledFlag = NewBoolFlag("byop-proxy-enabled", env.IsDevelopment())
+
 	// V4HeaderForUncompressedFlag forces the V4 header layout on uncompressed
 	// uploads. Independent of compress-config: it changes the header format,
 	// not whether data is compressed.
 	V4HeaderForUncompressedFlag = NewBoolFlag("v4-header-for-uncompressed", false)
+
+	// HeaderV5WriteFlag makes Pause emit V5 headers. When enabled it also
+	// supersedes V4HeaderForUncompressedFlag for uncompressed uploads.
+	HeaderV5WriteFlag = NewBoolFlag("header-v5-write", false)
 )
 
 type IntFlag struct {
@@ -264,6 +278,10 @@ var (
 	MaxConcurrentSnapshotBuildQueries = NewIntFlag("max-concurrent-snapshot-build-queries", 0)
 
 	MinChunkerReadSizeKB = NewIntFlag("min-chunker-read-size-kb", 16)
+
+	// MaxParallelBuildReadSegments limits concurrent backing reads within one fragmented build read.
+	// 1 or lower keeps the existing serial path.
+	MaxParallelBuildReadSegments = NewIntFlag("max-parallel-build-read-segments", 1)
 )
 
 // ReclaimConfigFlag holds per-step caps in milliseconds for the pre-pause

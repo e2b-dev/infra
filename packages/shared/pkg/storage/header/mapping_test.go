@@ -882,3 +882,66 @@ func TestMergeMappings_Splits(t *testing.T) {
 		})
 	}
 }
+
+// TestNormalizeMappings_DoesNotMergeAcrossStorageGap guards against silently
+// remapping reads: two adjacent same-build runs whose storage is not
+// contiguous must stay separate, because the read path resolves bytes as
+// BuildStorageOffset + shift. Merging them would make the second run read
+// from the wrong position in the build's data blob.
+func TestNormalizeMappings_DoesNotMergeAcrossStorageGap(t *testing.T) {
+	t.Parallel()
+
+	input := []BuildMap{
+		{Offset: 0, Length: 2 * blockSize, BuildId: baseID, BuildStorageOffset: 0},
+		// Same build, but storage jumps past the contiguous end (2*blockSize).
+		{Offset: 2 * blockSize, Length: 2 * blockSize, BuildId: baseID, BuildStorageOffset: 10 * blockSize},
+	}
+
+	m := NormalizeMappings(input)
+
+	require.Len(t, m, 2, "non-contiguous storage must not be merged")
+	assert.Equal(t, uint64(0), m[0].BuildStorageOffset)
+	assert.Equal(t, 2*blockSize, m[0].Length)
+	assert.Equal(t, 10*blockSize, m[1].BuildStorageOffset)
+	assert.Equal(t, 2*blockSize, m[1].Length)
+
+	require.NoError(t, ValidateMappings(m, 4*blockSize, blockSize))
+}
+
+// TestNormalizeMappings_MergesContiguousStorage confirms the common case
+// still collapses: same build, storage offsets continue where the previous
+// run ended.
+func TestNormalizeMappings_MergesContiguousStorage(t *testing.T) {
+	t.Parallel()
+
+	input := []BuildMap{
+		{Offset: 0, Length: 2 * blockSize, BuildId: baseID, BuildStorageOffset: 4 * blockSize},
+		{Offset: 2 * blockSize, Length: 3 * blockSize, BuildId: baseID, BuildStorageOffset: 6 * blockSize},
+	}
+
+	m := NormalizeMappings(input)
+
+	require.Len(t, m, 1)
+	assert.Equal(t, 5*blockSize, m[0].Length)
+	assert.Equal(t, 4*blockSize, m[0].BuildStorageOffset)
+}
+
+// TestNormalizeMappings_MergesEmptyRegardlessOfStorage verifies empty
+// (uuid.Nil) regions always merge. They are served as zeros and never read
+// from storage, so their BuildStorageOffset is irrelevant; keeping them
+// separate would only bloat the header.
+func TestNormalizeMappings_MergesEmptyRegardlessOfStorage(t *testing.T) {
+	t.Parallel()
+
+	input := []BuildMap{
+		{Offset: 0, Length: 2 * blockSize, BuildId: ignoreID, BuildStorageOffset: 0},
+		// Discontiguous storage, but empty: must still merge.
+		{Offset: 2 * blockSize, Length: 2 * blockSize, BuildId: ignoreID, BuildStorageOffset: 99 * blockSize},
+	}
+
+	m := NormalizeMappings(input)
+
+	require.Len(t, m, 1, "empty regions must merge regardless of storage offset")
+	assert.Equal(t, ignoreID, m[0].BuildId)
+	assert.Equal(t, 4*blockSize, m[0].Length)
+}

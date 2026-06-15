@@ -3,16 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
 	"slices"
-	"strings"
 	"unsafe"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/cmd/internal/cmdutil"
@@ -22,6 +17,21 @@ import (
 const nilUUID = "00000000-0000-0000-0000-000000000000"
 
 func main() {
+	// Default to the redesigned dashboard CLI (runInspect, see inspect.go);
+	// --old keeps the original header-dump tool implemented below.
+	runLegacy := false
+	for _, name := range []string{"--old", "-old"} {
+		if i := slices.Index(os.Args, name); i != -1 {
+			os.Args = slices.Delete(os.Args, i, i+1)
+			runLegacy = true
+		}
+	}
+	if !runLegacy {
+		runInspect()
+
+		return
+	}
+
 	build := flag.String("build", "", "build ID")
 	template := flag.String("template", "", "template ID or alias (requires E2B_API_KEY)")
 	storagePath := flag.String("storage", ".local-build", "storage: local path or gs://bucket")
@@ -38,7 +48,7 @@ func main() {
 		log.Fatal("specify either -build or -template, not both")
 	}
 	if *template != "" {
-		resolvedBuild, err := resolveTemplateID(*template)
+		resolvedBuild, err := cmdutil.ResolveTemplateID(*template)
 		if err != nil {
 			log.Fatalf("failed to resolve template: %s", err)
 		}
@@ -105,7 +115,7 @@ func printUsage() {
 
 func printHeader(h *header.Header, source string) {
 	// Validate mappings
-	err := header.ValidateMappings(h.Mapping, h.Metadata.Size, h.Metadata.BlockSize)
+	err := h.Mapping.Validate(h.Metadata.Size, h.Metadata.BlockSize)
 	if err != nil {
 		fmt.Printf("\n⚠️  WARNING: Mapping validation failed!\n%s\n\n", err)
 	}
@@ -121,7 +131,7 @@ func printHeader(h *header.Header, source string) {
 	fmt.Printf("Block size         %d B\n", h.Metadata.BlockSize)
 	fmt.Printf("Blocks             %d\n", (h.Metadata.Size+h.Metadata.BlockSize-1)/h.Metadata.BlockSize)
 
-	totalSize := int64(unsafe.Sizeof(header.BuildMap{})) * int64(len(h.Mapping)) / 1024
+	totalSize := int64(unsafe.Sizeof(header.BuildMap{})) * int64(h.Mapping.Len()) / 1024
 	var sizeMessage string
 	if totalSize == 0 {
 		sizeMessage = "<1 KiB"
@@ -129,10 +139,10 @@ func printHeader(h *header.Header, source string) {
 		sizeMessage = fmt.Sprintf("%d KiB", totalSize)
 	}
 
-	fmt.Printf("\nMAPPING (%d maps, uses %s in storage)\n", len(h.Mapping), sizeMessage)
+	fmt.Printf("\nMAPPING (%d maps, uses %s in storage)\n", h.Mapping.Len(), sizeMessage)
 	fmt.Printf("=======\n")
 
-	for _, mapping := range h.Mapping {
+	for _, mapping := range h.Mapping.All() {
 		fmt.Println(mapping.Format(h.Metadata.BlockSize))
 	}
 
@@ -140,7 +150,7 @@ func printHeader(h *header.Header, source string) {
 	fmt.Printf("===============\n")
 
 	builds := make(map[string]int64)
-	for _, mapping := range h.Mapping {
+	for _, mapping := range h.Mapping.All() {
 		builds[mapping.BuildId.String()] += int64(mapping.Length)
 	}
 
@@ -223,95 +233,4 @@ func inspectData(ctx context.Context, storagePath, buildID, dataFile string, h *
 	fmt.Printf("Empty size: %d B (%d MiB)\n", int64(emptyCount)*blockSize, int64(emptyCount)*blockSize/1024/1024)
 
 	reader.Close()
-}
-
-// templateInfo represents a template from the E2B API.
-type templateInfo struct {
-	TemplateID string   `json:"templateID"`
-	BuildID    string   `json:"buildID"`
-	Aliases    []string `json:"aliases"`
-	Names      []string `json:"names"`
-}
-
-// resolveTemplateID fetches the build ID for a template from the E2B API.
-// Input can be a template ID, alias, or full name (e.g., "e2b/base").
-func resolveTemplateID(input string) (string, error) {
-	apiKey := os.Getenv("E2B_API_KEY")
-	if apiKey == "" {
-		return "", errors.New("E2B_API_KEY environment variable required for -template flag")
-	}
-
-	// Determine API URL
-	apiURL := "https://api.e2b.dev/templates"
-	if domain := os.Getenv("E2B_DOMAIN"); domain != "" {
-		apiURL = fmt.Sprintf("https://api.%s/templates", domain)
-	}
-
-	// Make HTTP request
-	ctx := context.Background()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("X-API-Key", apiKey)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to fetch templates: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-
-		return "", fmt.Errorf("API returned %d: %s", resp.StatusCode, string(body))
-	}
-
-	// Parse response
-	var templates []templateInfo
-	if err := json.NewDecoder(resp.Body).Decode(&templates); err != nil {
-		return "", fmt.Errorf("failed to parse API response: %w", err)
-	}
-
-	// Find matching template
-	var match *templateInfo
-	var availableAliases []string
-
-	for i := range templates {
-		t := &templates[i]
-
-		// Collect aliases for error message
-		availableAliases = append(availableAliases, t.Aliases...)
-
-		// Match by template ID
-		if t.TemplateID == input {
-			match = t
-
-			break
-		}
-
-		// Match by alias
-		if slices.Contains(t.Aliases, input) {
-			match = t
-
-			break
-		}
-
-		// Match by full name (e.g., "e2b/base")
-		if slices.Contains(t.Names, input) {
-			match = t
-
-			break
-		}
-	}
-
-	if match == nil {
-		return "", fmt.Errorf("template %q not found. Available aliases: %s", input, strings.Join(availableAliases, ", "))
-	}
-
-	if match.BuildID == "" || match.BuildID == nilUUID {
-		return "", fmt.Errorf("template %q has no successful build", input)
-	}
-
-	return match.BuildID, nil
 }

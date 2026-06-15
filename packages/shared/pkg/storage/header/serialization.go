@@ -8,18 +8,31 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
+const metadataVersionMask = 0xFFFF
+
+func metadataFormatVersion(version uint64) uint64 {
+	return version & metadataVersionMask
+}
+
 // SerializeHeader serializes a header, dispatching to the version-specific format.
 //
 // V3 (Version <= 3): [Metadata] [v3 mappings…]
 // V4 (Version >= 4): [Metadata] [uint8 flags] [uint32 uncompressedSize] [LZ4( Builds + v4 mappings )]
 func SerializeHeader(h *Header) ([]byte, error) {
-	if h.Metadata.Version <= 3 {
+	switch metadataFormatVersion(h.Metadata.Version) {
+	case 1, 2, 3:
 		return serializeV3(h.Metadata, h.Mapping)
+	case MetadataVersionV4:
+		data, _, err := serializeV4(h.Metadata, h.Builds, h.Mapping, h.IncompletePendingUpload)
+
+		return data, err
+	case MetadataVersionV5:
+		data, _, err := serializeV5(h.Metadata, h.Builds, h.Mapping, h.IncompletePendingUpload)
+
+		return data, err
+	default:
+		return nil, fmt.Errorf("unsupported header version %d", h.Metadata.Version)
 	}
-
-	data, _, err := serializeV4(h.Metadata, h.Builds, h.Mapping, h.IncompletePendingUpload)
-
-	return data, err
 }
 
 // DeserializeBytes auto-detects the header version and deserializes accordingly.
@@ -36,27 +49,39 @@ func DeserializeBytes(data []byte) (*Header, error) {
 
 	blockData := data[metadataSize:]
 
-	if metadata.Version >= 4 {
+	switch metadataFormatVersion(metadata.Version) {
+	case MetadataVersionV5:
+		return deserializeV5(metadata, blockData)
+	case MetadataVersionV4:
 		return deserializeV4(metadata, blockData)
+	case 1, 2, 3:
+		return deserializeV3(metadata, blockData)
+	default:
+		return nil, fmt.Errorf("unsupported header version %d", metadata.Version)
 	}
-
-	return deserializeV3(metadata, blockData)
 }
 
 // LoadHeader fetches a serialized header from storage and deserializes it.
-// Errors (including storage.ErrObjectNotExist) are returned as-is.
-func LoadHeader(ctx context.Context, s storage.StorageProvider, path string) (*Header, error) {
+// Returns the on-wire byte count alongside the header so callers can attribute
+// it to throughput telemetry. Errors (including storage.ErrObjectNotExist) are
+// returned as-is.
+func LoadHeader(ctx context.Context, s storage.StorageProvider, path string) (*Header, int, error) {
 	blob, err := s.OpenBlob(ctx, path, storage.MetadataObjectType)
 	if err != nil {
-		return nil, fmt.Errorf("open blob %s: %w", path, err)
+		return nil, 0, fmt.Errorf("open blob %s: %w", path, err)
 	}
 
 	data, err := storage.GetBlob(ctx, blob)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return DeserializeBytes(data)
+	h, err := DeserializeBytes(data)
+	if err != nil {
+		return nil, len(data), err
+	}
+
+	return h, len(data), nil
 }
 
 // StoreHeader serializes a header, uploads it, and returns the effective
@@ -73,15 +98,20 @@ func StoreHeader(ctx context.Context, s storage.StorageProvider, path string, h 
 	}
 
 	var data []byte
-	if h.Metadata.Version <= 3 {
+	switch metadataFormatVersion(h.Metadata.Version) {
+	case 1, 2, 3:
 		data, err = serializeV3(h.Metadata, h.Mapping)
 		if err != nil {
 			return storage.CompressConfig{}, 0, 0, fmt.Errorf("serialize header: %w", err)
 		}
 		uncompressed = int64(len(data))
-	} else {
+	case MetadataVersionV4, MetadataVersionV5:
 		var blockUncompressed int64
-		data, blockUncompressed, err = serializeV4(h.Metadata, h.Builds, h.Mapping, h.IncompletePendingUpload)
+		if metadataFormatVersion(h.Metadata.Version) == MetadataVersionV5 {
+			data, blockUncompressed, err = serializeV5(h.Metadata, h.Builds, h.Mapping, h.IncompletePendingUpload)
+		} else {
+			data, blockUncompressed, err = serializeV4(h.Metadata, h.Builds, h.Mapping, h.IncompletePendingUpload)
+		}
 		if err != nil {
 			return storage.CompressConfig{}, 0, 0, fmt.Errorf("serialize header: %w", err)
 		}
@@ -96,6 +126,8 @@ func StoreHeader(ctx context.Context, s storage.StorageProvider, path string, h 
 
 		uncompressed = int64(metadataSize+v4FlagsLen+v4SizePrefixLen) + blockUncompressed
 		cfg.Type = storage.CompressionLZ4.String()
+	default:
+		return storage.CompressConfig{}, 0, 0, fmt.Errorf("unsupported header version %d", h.Metadata.Version)
 	}
 
 	blob, err := s.OpenBlob(ctx, path, storage.MetadataObjectType)

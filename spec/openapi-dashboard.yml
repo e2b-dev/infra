@@ -6,7 +6,7 @@ info:
 
 components:
   securitySchemes:
-    AdminTokenAuth:
+    AdminApiKeyAuth:
       type: apiKey
       in: header
       name: X-Admin-Token
@@ -121,6 +121,77 @@ components:
       description: Team slug to resolve.
       schema:
         type: string
+    templates_limit:
+      name: limit
+      in: query
+      required: false
+      description: Maximum number of items to return per page.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 100
+        default: 50
+    templates_cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Cursor returned by the previous list response in `{sort}|{value}|{templateID}` format. Rejected if its sort does not match the request.
+      schema:
+        type: string
+    templates_cpu_count:
+      name: cpuCount
+      in: query
+      required: false
+      description: Filter templates by exact vCPU count.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+    templates_memory_mb:
+      name: memoryMB
+      in: query
+      required: false
+      description: Filter templates by exact memory size in MB.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+    templates_public:
+      name: public
+      in: query
+      required: false
+      description: Filter templates by visibility (true = public, false = internal).
+      schema:
+        type: boolean
+    templates_search:
+      name: search
+      in: query
+      required: false
+      description: Case-insensitive substring match on template names, aliases, and template id.
+      schema:
+        type: string
+    templates_sort:
+      name: sort
+      in: query
+      required: false
+      description: Sort column and direction.
+      schema:
+        type: string
+        enum:
+          [
+            name_asc,
+            name_desc,
+            cpu_count_asc,
+            cpu_count_desc,
+            memory_mb_asc,
+            memory_mb_desc,
+            created_at_asc,
+            created_at_desc,
+            updated_at_asc,
+            updated_at_desc,
+          ]
+        default: created_at_desc
 
   responses:
     "400":
@@ -222,6 +293,30 @@ components:
         email:
           type: string
           format: email
+
+    AdminAuthProviderUserBootstrapRequest:
+      type: object
+      required:
+        - oidc_issuer
+        - oidc_user_id
+        - oidc_user_email
+      properties:
+        oidc_issuer:
+          type: string
+          minLength: 1
+        oidc_user_id:
+          type: string
+          minLength: 1
+        oidc_user_email:
+          type: string
+          format: email
+        oidc_user_name:
+          type: string
+          nullable: true
+        signup_ip:
+          type: string
+        signup_user_agent:
+          type: string
 
     AdminTeamBootstrapRequest:
       type: object
@@ -520,12 +615,24 @@ components:
         - email
         - isDefault
         - createdAt
+        - providers
       properties:
         id:
           type: string
           format: uuid
         email:
           type: string
+        name:
+          type: string
+          nullable: true
+        profilePictureUrl:
+          type: string
+          format: uri
+          nullable: true
+        providers:
+          type: array
+          items:
+            type: string
         isDefault:
           type: boolean
         addedBy:
@@ -661,6 +768,103 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/DefaultTemplate"
+
+    TeamTemplate:
+      type: object
+      required:
+        - templateID
+        - buildID
+        - cpuCount
+        - memoryMB
+        - diskSizeMB
+        - public
+        - aliases
+        - names
+        - createdAt
+        - updatedAt
+        - createdBy
+        - lastSpawnedAt
+        - spawnCount
+        - buildCount
+        - envdVersion
+        - isDefault
+      properties:
+        templateID:
+          type: string
+        buildID:
+          type: string
+          format: uuid
+        cpuCount:
+          type: integer
+          format: int64
+        memoryMB:
+          type: integer
+          format: int64
+        diskSizeMB:
+          type: integer
+          format: int64
+          nullable: true
+        public:
+          type: boolean
+        aliases:
+          type: array
+          items:
+            type: string
+        names:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        createdBy:
+          nullable: true
+          type: object
+          required:
+            - id
+          properties:
+            id:
+              type: string
+              format: uuid
+            email:
+              type: string
+              nullable: true
+        lastSpawnedAt:
+          type: string
+          format: date-time
+          nullable: true
+        spawnCount:
+          type: integer
+          format: int64
+        buildCount:
+          type: integer
+          format: int32
+        envdVersion:
+          type: string
+          nullable: true
+        isDefault:
+          type: boolean
+        defaultDescription:
+          type: string
+          nullable: true
+
+    TeamTemplatesResponse:
+      type: object
+      required:
+        - data
+        - nextCursor
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeamTemplate"
+        nextCursor:
+          type: string
+          nullable: true
+          description: Cursor to pass to the next list request, or `null` if there is no next page.
 
     TeamResolveResponse:
       type: object
@@ -854,7 +1058,7 @@ paths:
       summary: Bootstrap user
       tags: [teams]
       security:
-        - AdminTokenAuth: []
+        - AdminApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/userId"
       responses:
@@ -869,13 +1073,39 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
+  /admin/users/bootstrap:
+    post:
+      summary: Bootstrap auth provider user
+      tags: [teams]
+      security:
+        - AdminApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAuthProviderUserBootstrapRequest"
+      responses:
+        "200":
+          description: Successfully bootstrapped user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamResolveResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
   /admin/teams/bootstrap:
     post:
       summary: Bootstrap team
       description: Creates and provisions a team for an admin-authenticated bootstrap workflow.
       tags: [admin]
       security:
-        - AdminTokenAuth: []
+        - AdminApiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -903,7 +1133,7 @@ paths:
       summary: Resolve user profiles
       tags: [admin]
       security:
-        - AdminTokenAuth: []
+        - AdminApiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -929,7 +1159,7 @@ paths:
       summary: Lookup user profiles by email
       tags: [admin]
       security:
-        - AdminTokenAuth: []
+        - AdminApiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -955,7 +1185,7 @@ paths:
       summary: Get user profile
       tags: [admin]
       security:
-        - AdminTokenAuth: []
+        - AdminApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/userId"
       responses:
@@ -1100,6 +1330,40 @@ paths:
       responses:
         "204":
           description: Successfully removed team member.
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /templates:
+    get:
+      summary: List team templates
+      description: Returns a paginated list of the team's templates (and default templates inline, unless the team is on a dedicated cluster), with filtering, search, and column sorting via keyset cursor pagination.
+      tags: [templates]
+      security:
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templates_cpu_count"
+        - $ref: "#/components/parameters/templates_memory_mb"
+        - $ref: "#/components/parameters/templates_public"
+        - $ref: "#/components/parameters/templates_search"
+        - $ref: "#/components/parameters/templates_sort"
+        - $ref: "#/components/parameters/templates_limit"
+        - $ref: "#/components/parameters/templates_cursor"
+      responses:
+        "200":
+          description: Successfully returned paginated templates.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamTemplatesResponse"
         "400":
           $ref: "#/components/responses/400"
         "401":

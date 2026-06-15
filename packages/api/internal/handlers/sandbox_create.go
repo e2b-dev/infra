@@ -200,6 +200,32 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 			},
 		}
 
+		if ep := n.EgressProxy; ep != nil {
+			if !a.featureFlags.BoolFlag(ctx, featureflags.BYOPProxyEnabledFlag) {
+				telemetry.ReportEvent(ctx, "egressProxy rejected by BYOPProxyEnabledFlag")
+				a.sendAPIStoreError(c, http.StatusForbidden,
+					"Egress proxy (network.egressProxy) is not enabled for this team.")
+
+				return
+			}
+
+			canonical, err := sandbox_network.ValidateEgressProxy(ctx, &sandbox_network.EgressProxyConfig{
+				Address:  ep.Address,
+				Username: sharedUtils.DerefOrDefault(ep.Username, ""),
+				Password: sharedUtils.DerefOrDefault(ep.Password, ""),
+			}, nil)
+			if err != nil {
+				telemetry.ReportError(ctx, "invalid egress proxy config", err, telemetry.WithSandboxID(sandboxID))
+				a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid egress proxy config: %s", err))
+
+				return
+			}
+
+			network.Egress.EgressProxyAddress = canonical.Address
+			network.Egress.EgressProxyUsername = canonical.Username
+			network.Egress.EgressProxyPassword = canonical.Password
+		}
+
 		// Make sure envd seucre access is enforced when public access is disabled,
 		// This requirement forces users using newer features to secure sandboxes properly.
 		if !sharedUtils.DerefOrDefault(network.Ingress.AllowPublicAccess, types.AllowPublicAccessDefault) && envdAccessToken == nil {

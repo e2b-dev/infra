@@ -14,7 +14,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/shirou/gopsutil/v4/process"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -187,11 +186,7 @@ func NewProcess(
 		startScript.Value,
 	)
 
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setsid: true, // Create a new session
-	}
-
-	return &Process{
+	p := &Process{
 		Versions:              versions,
 		Exit:                  utils.NewErrorOnce(),
 		cmd:                   cmd,
@@ -205,7 +200,13 @@ func NewProcess(
 
 		kernelPath: startScript.KernelPath,
 		rootfsPath: startScript.RootfsPath,
-	}, nil
+	}
+
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setsid: true, // Create a new session
+	}
+
+	return p, nil
 }
 
 func (p *Process) configure(
@@ -638,18 +639,6 @@ func (p *Process) Pid() (int, error) {
 	return p.cmd.Process.Pid, nil
 }
 
-// getProcessStatus returns the process status using gopsutil.
-// Return values: R (running), S (sleep), T (stop), I (idle),
-// Z (zombie), W (wait), L (lock), D (disk sleep / uninterruptible).
-func getProcessStatus(pid int) ([]string, error) {
-	proc, err := process.NewProcess(int32(pid))
-	if err != nil {
-		return nil, fmt.Errorf("process %d not found: %w", pid, err)
-	}
-
-	return proc.Status()
-}
-
 func (p *Process) Stop(ctx context.Context) error {
 	if p.cmd.Process == nil {
 		return errors.New("fc process not started")
@@ -661,7 +650,10 @@ func (p *Process) Stop(ctx context.Context) error {
 		logger.L().Warn(ctx, "failed to remove fc metrics FIFO", zap.Error(removeErr), logger.WithSandboxID(p.files.SandboxID))
 	}
 
-	// Check if process has already exited.
+	pid := p.cmd.Process.Pid
+
+	// Check if the Firecracker leader has already exited. Descendant cleanup is
+	// handled by the sandbox cgroup so Stop never signals a numeric process group.
 	select {
 	case <-p.Exit.Done():
 		logger.L().Info(ctx, "fc process already exited", logger.WithSandboxID(p.files.SandboxID))
@@ -673,6 +665,7 @@ func (p *Process) Stop(ctx context.Context) error {
 	// this function should never fail b/c a previous context was canceled.
 	ctx = context.WithoutCancel(ctx)
 
+	// On Linux >= 5.4, Go backs os.Process with pidfd, so Signal is safe against PID reuse.
 	err := p.cmd.Process.Signal(syscall.SIGTERM)
 	if err != nil {
 		if errors.Is(err, os.ErrProcessDone) {
@@ -684,38 +677,38 @@ func (p *Process) Stop(ctx context.Context) error {
 		logger.L().Warn(ctx, "failed to send SIGTERM to fc process", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
 	}
 
-	go func() {
-		select {
-		// Wait 10 sec for the FC process to exit, if it doesn't, send SIGKILL.
-		case <-time.After(10 * time.Second):
-			// Check process status right before Kill — the pre-SIGTERM status
-			// captured above is 10s stale and no longer useful here.
-			status, stateErr := getProcessStatus(p.cmd.Process.Pid)
-			if errors.Is(stateErr, process.ErrorProcessNotRunning) {
-				// Process already exited, no need to send SIGKILL.
-				return
-			} else if stateErr != nil {
-				logger.L().Warn(ctx, "failed to get fc process status before SIGKILL", zap.Error(stateErr), logger.WithSandboxID(p.files.SandboxID))
-			}
+	termDeadline := time.NewTimer(10 * time.Second)
+	defer termDeadline.Stop()
 
-			err := p.cmd.Process.Kill()
-			if err == nil {
-				logger.L().Info(ctx, "sent SIGKILL to fc process because it was not responding to SIGTERM for 10 seconds",
-					zap.Strings("status", status),
-					logger.WithSandboxID(p.files.SandboxID),
-				)
-			}
-			if err != nil && !errors.Is(err, os.ErrProcessDone) {
-				logger.L().Warn(ctx, "failed to send SIGKILL to fc process", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
-			}
-
-		// If the FC process exited, we can return.
-		case <-p.Exit.Done():
-			return
+	select {
+	case <-p.Exit.Done():
+		return nil
+	case <-termDeadline.C:
+		killErr := p.cmd.Process.Kill()
+		if killErr == nil {
+			logger.L().Info(ctx, "sent SIGKILL to fc process because it was not responding to SIGTERM for 10 seconds",
+				logger.WithSandboxID(p.files.SandboxID),
+			)
 		}
-	}()
+		if errors.Is(killErr, os.ErrProcessDone) {
+			logger.L().Info(ctx, "fc process already exited", logger.WithSandboxID(p.files.SandboxID))
 
-	return nil
+			return nil
+		}
+		if killErr != nil && !errors.Is(killErr, os.ErrProcessDone) {
+			logger.L().Warn(ctx, "failed to send SIGKILL to fc process", zap.Error(killErr), logger.WithSandboxID(p.files.SandboxID))
+		}
+
+		killDeadline := time.NewTimer(time.Second)
+		defer killDeadline.Stop()
+
+		select {
+		case <-p.Exit.Done():
+			return nil
+		case <-killDeadline.C:
+			return fmt.Errorf("fc process %d still exists after SIGKILL", pid)
+		}
+	}
 }
 
 func (p *Process) Pause(ctx context.Context) error {

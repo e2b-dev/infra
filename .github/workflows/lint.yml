@@ -1,13 +1,22 @@
 name: Lint
 
-on: [workflow_call]
+on:
+  workflow_call:
+    inputs:
+      run-lint:
+        type: boolean
+        description: "Whether to run package linting"
+        required: false
+        default: true
 
 permissions:
   contents: read
 
 jobs:
   detect-modules:
+    if: ${{ inputs.run-lint == true }}
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       modules: ${{ steps.set-modules.outputs.modules }}
     steps:
@@ -17,6 +26,7 @@ jobs:
 
   golangci-lint:
     needs: detect-modules
+    if: ${{ inputs.run-lint == true }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -44,3 +54,30 @@ jobs:
           # disable, as it randomly fails with the following error:
           # The command is terminated due to an error: [../../.golangci.yml] validate: compile schema: failing loading "https://golangci-lint.run/jsonschema/golangci.v2.11.jsonschema.json": Get "https://golangci-lint.run/jsonschema/golangci.v2.11.jsonschema.json": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
           verify: 'false'
+
+  lint:
+    needs:
+      - detect-modules
+      - golangci-lint
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Aggregate lint result
+        run: |
+          if [[ "${{ inputs.run-lint }}" != "true" ]]; then
+            echo "lint skipped because lint inputs did not change"
+            exit 0
+          fi
+
+          if [[ "${{ needs.detect-modules.result }}" != "success" ]]; then
+            echo "detect modules result: ${{ needs.detect-modules.result }}"
+            exit 1
+          fi
+
+          if [[ "${{ needs.golangci-lint.result }}" != "success" ]]; then
+            echo "golangci-lint result: ${{ needs.golangci-lint.result }}"
+            exit 1
+          fi
+
+          echo "lint succeeded"

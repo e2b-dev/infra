@@ -39,12 +39,13 @@ type deleteDiff struct {
 }
 
 type DiffStore struct {
-	cachePath string
-	cache     *ttlcache.Cache[DiffStoreKey, Diff]
-	initGroup singleflight.Group
-	cancel    func()
-	config    cfg.Config
-	flags     *featureflags.Client
+	cachePath    string
+	cache        *ttlcache.Cache[DiffStoreKey, Diff]
+	initGroup    singleflight.Group
+	cancel       func()
+	config       cfg.Config
+	flags        *featureflags.Client
+	isActivePeer IsActivePeer
 
 	// pdSizes is used to keep track of the diff sizes
 	// that are scheduled for deletion, as this won't show up in the disk usage.
@@ -60,6 +61,7 @@ func NewDiffStore(
 	flags *featureflags.Client,
 	cachePath string,
 	ttl, delay time.Duration,
+	isActivePeer IsActivePeer,
 ) (*DiffStore, error) {
 	err := os.MkdirAll(cachePath, 0o755)
 	if err != nil {
@@ -71,13 +73,14 @@ func NewDiffStore(
 	)
 
 	ds := &DiffStore{
-		cachePath: cachePath,
-		cache:     cache,
-		cancel:    func() {},
-		config:    config,
-		flags:     flags,
-		pdSizes:   make(map[DiffStoreKey]*deleteDiff),
-		pdDelay:   delay,
+		cachePath:    cachePath,
+		cache:        cache,
+		cancel:       func() {},
+		config:       config,
+		flags:        flags,
+		isActivePeer: isActivePeer,
+		pdSizes:      make(map[DiffStoreKey]*deleteDiff),
+		pdDelay:      delay,
 	}
 
 	cache.OnEviction(func(ctx context.Context, _ ttlcache.EvictionReason, item *ttlcache.Item[DiffStoreKey, Diff]) {
@@ -118,8 +121,23 @@ func (s *DiffStore) Close() {
 	s.cache.Stop()
 }
 
-func (s *DiffStore) Get(ctx context.Context, diff Diff) (Diff, error) {
-	key := diff.CacheKey()
+// Get returns the cached Diff for key, refreshing TTL and cancelling any
+// pending eviction. Returns (nil, false) if the key isn't present.
+func (s *DiffStore) Get(key DiffStoreKey) (Diff, bool) {
+	s.resetDelete(key)
+	item := s.cache.Get(key)
+	if item == nil {
+		return nil, false
+	}
+
+	return item.Value(), true
+}
+
+// GetOrCreate returns the cached Diff for key, or calls create inside a
+// singleflight to construct + cache a new one. The create closure is invoked
+// at most once per key across concurrent callers; on success the returned Diff
+// is cached and its insertion time recorded.
+func (s *DiffStore) GetOrCreate(ctx context.Context, key DiffStoreKey, create func(context.Context) (Diff, error)) (Diff, error) {
 	s.resetDelete(key)
 
 	if item := s.cache.Get(key); item != nil {
@@ -134,7 +152,8 @@ func (s *DiffStore) Get(ctx context.Context, diff Diff) (Diff, error) {
 
 		insertTime := time.Now()
 
-		if err := diff.Init(ctx); err != nil {
+		diff, err := create(ctx)
+		if err != nil {
 			return nil, err
 		}
 
@@ -144,7 +163,7 @@ func (s *DiffStore) Get(ctx context.Context, diff Diff) (Diff, error) {
 		return diff, nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to init source: %w", err)
+		return nil, fmt.Errorf("failed to create diff: %w", err)
 	}
 
 	return v.(Diff), nil

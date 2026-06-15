@@ -94,6 +94,7 @@ type (
 	ObjectMetadata = storageopts.ObjectMetadata
 	PutOptions     = storageopts.PutOptions
 	PutOption      = storageopts.PutOption
+	FrameSink      = storageopts.FrameSink
 )
 
 const ObjectMetadataTeamID = storageopts.ObjectMetadataTeamID
@@ -104,6 +105,8 @@ func WithMetadata(metadata ObjectMetadata) PutOption { return storageopts.WithMe
 // stored as `any` in storageopts to avoid importing storage from there;
 // backends use CompressConfigFromOpts to pull it back out.
 func WithCompressConfig(cfg CompressConfig) PutOption { return storageopts.WithCompression(cfg) }
+
+func WithFrameSink(s FrameSink) PutOption { return storageopts.WithFrameSink(s) }
 
 func WithChecksumSHA256() PutOption {
 	return func(o *PutOptions) { o.Checksum = true }
@@ -137,29 +140,23 @@ type Blob interface {
 	Exists(ctx context.Context) (bool, error)
 }
 
-type SeekableReader interface {
-	// Random slice access, off and buffer length must be aligned to block size
-	ReadAt(ctx context.Context, buffer []byte, off int64, ft *FrameTable) (int, error)
-	Size(ctx context.Context) (int64, error)
-}
-
-// StreamingReader supports progressive reads via a streaming range reader.
-type StreamingReader interface {
+// RangeOpener supports progressive reads via a streaming range reader.
+type RangeOpener interface {
 	OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (io.ReadCloser, error)
 }
 
 type SeekableWriter interface {
 	// Store entire file. Compression is opt-in via WithCompressConfig.
-	StoreFile(ctx context.Context, path string, opts ...PutOption) (*FrameTable, [32]byte, error)
+	StoreFile(ctx context.Context, path string, opts ...PutOption) (*FullFrameTable, [32]byte, error)
 }
 
 type Seekable interface {
-	StreamingReader
+	RangeOpener
 	SeekableWriter
 	Size(ctx context.Context) (int64, error)
 }
 
-func UploadFramed(ctx context.Context, provider StorageProvider, remotePath string, objType SeekableObjectType, localPath string, opts ...PutOption) (*FrameTable, [32]byte, error) {
+func UploadFramed(ctx context.Context, provider StorageProvider, remotePath string, objType SeekableObjectType, localPath string, opts ...PutOption) (*FullFrameTable, [32]byte, error) {
 	object, err := provider.OpenSeekable(ctx, remotePath, objType)
 	if err != nil {
 		return nil, [32]byte{}, err

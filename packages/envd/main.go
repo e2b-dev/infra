@@ -27,7 +27,6 @@ import (
 	processRpc "github.com/e2b-dev/infra/packages/envd/internal/services/process"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 	"github.com/e2b-dev/infra/packages/envd/pkg"
-	"github.com/e2b-dev/infra/packages/shared/pkg/httpserver"
 )
 
 const (
@@ -216,7 +215,6 @@ func run() error {
 		WriteTimeout: 0,
 		IdleTimeout:  idleTimeout,
 	}
-	httpserver.ConfigureH2C(s)
 
 	// Bind all open ports on 127.0.0.1 and localhost to the eth0 interface
 	portScanner := publicport.NewScanner(portScannerInterval)

@@ -15,6 +15,8 @@ import (
 
 type DiffType string
 
+type IsActivePeer func(buildID string) bool
+
 type NoDiffError struct{}
 
 func (NoDiffError) Error() string {
@@ -28,13 +30,21 @@ const (
 
 type Diff interface {
 	io.Closer
-	storage.SeekableReader
+	block.FramedReader
 	block.FramedSlicer
 	CacheKey() DiffStoreKey
 	CachePath(ctx context.Context) (string, error)
+	// Size returns the logical (uncompressed, U-space) file size.
+	Size(ctx context.Context) (int64, error)
+	// FileSize returns the number of bytes resident in the local cache file
+	// on disk. Used by the DiffStore evictor.
 	FileSize(ctx context.Context) (int64, error)
 	BlockSize() int64
-	Init(ctx context.Context) error
+	// RefreshSource synchronously re-resolves the diff's upstream data object
+	// (path) and the frame table by reloading the build's header and reopening
+	// upstream at the resulting CT. Called when the caller knows the currently
+	// latched source is stale. To support P2P header swaps.
+	RefreshSource(ctx context.Context) error
 }
 
 type NoDiff struct{}
@@ -69,9 +79,7 @@ func (n *NoDiff) CacheKey() DiffStoreKey {
 	return ""
 }
 
-func (n *NoDiff) Init(context.Context) error {
-	return NoDiffError{}
-}
+func (n *NoDiff) RefreshSource(_ context.Context) error { return nil }
 
 func (n *NoDiff) BlockSize() int64 {
 	return 0

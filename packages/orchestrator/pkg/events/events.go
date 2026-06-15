@@ -41,25 +41,32 @@ func (e *EventsService) Publish(ctx context.Context, teamID uuid.UUID, event eve
 		return
 	}
 
-	wg := sync.WaitGroup{}
+	for _, target := range e.deliveryTargets {
+		if err := target.Publish(ctx, deliveryKey, event); err != nil {
+			logger.L().Error(ctx, "Failed to publish sandbox event", zap.Error(err), zap.Any("event", event))
+		}
+	}
+}
+
+// Close is parallel: a stalled target must not block the others from draining.
+func (e *EventsService) Close(ctx context.Context) error {
+	var (
+		wg   sync.WaitGroup
+		mu   sync.Mutex
+		errs error
+	)
 	for _, target := range e.deliveryTargets {
 		wg.Go(func() {
-			if err := target.Publish(ctx, deliveryKey, event); err != nil {
-				logger.L().Error(ctx, "Failed to publish sandbox event", zap.Error(err), zap.Any("event", event))
+			if closeErr := target.Close(ctx); closeErr != nil {
+				mu.Lock()
+				errs = errors.Join(errs, closeErr)
+				mu.Unlock()
 			}
 		})
 	}
 	wg.Wait()
-}
 
-func (e *EventsService) Close(ctx context.Context) error {
-	var err error
-	for _, target := range e.deliveryTargets {
-		closeErr := target.Close(ctx)
-		err = errors.Join(err, closeErr)
-	}
-
-	return err
+	return errs
 }
 
 func validateEvent(event events.SandboxEvent) error {

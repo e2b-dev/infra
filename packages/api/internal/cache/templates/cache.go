@@ -9,6 +9,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
@@ -17,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/cache"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -109,7 +112,12 @@ func (c *TemplateCache) GetMetadata(ctx context.Context, templateID string) (*Te
 // Does NOT do alias resolution - callers should use ResolveAlias first.
 // Performs access control and cluster checks.
 func (c *TemplateCache) Get(ctx context.Context, templateID string, tag *string, teamID uuid.UUID, clusterID uuid.UUID) (*api.Template, *queries.EnvBuild, error) {
-	ctx, span := tracer.Start(ctx, "get template")
+	ctx, span := tracer.Start(ctx, "get template", trace.WithAttributes(
+		telemetry.WithTemplateID(templateID),
+		telemetry.WithTeamID(teamID.String()),
+		telemetry.WithClusterID(clusterID),
+		attribute.String("tag", sharedUtils.DerefOrDefault(tag, id.DefaultTag)),
+	))
 	defer span.End()
 
 	// Step 1: Get template with build by ID and tag

@@ -93,6 +93,9 @@ tf_vars := \
 	$(call tfvar, AUTH_DB_MAX_OPEN_CONNECTIONS) \
 	$(call tfvar, AUTH_DB_MIN_IDLE_CONNECTIONS) \
 	$(call tfvar, CLIENT_PROXY_OIDC_ISSUER_URL) \
+	$(call tfvar, USER_PROFILE_PROVIDER) \
+	$(call tfvar, ORY_SDK_URL) \
+	$(call tfvar, ORY_ISSUER_URL) \
 	$(call tfvar, GCS_GRPC_CONNECTION_POOL_SIZE) \
 	$(call tfvar, ADDITIONAL_API_PATHS_HANDLED_BY_INGRESS) \
 	$(call tfvar, ANYWHERE_CACHE_ENABLED)
@@ -130,6 +133,8 @@ state-migrate:
 	@ $(tf_vars) $(TF) state mv 'random_password.dashboard_api_admin_secret' 'module.init.random_password.dashboard_api_admin_secret' || true
 	@ $(tf_vars) $(TF) state mv 'google_secret_manager_secret.dashboard_api_admin_token' 'module.init.google_secret_manager_secret.dashboard_api_admin_token' || true
 	@ $(tf_vars) $(TF) state mv 'google_secret_manager_secret_version.dashboard_api_admin_token_value' 'module.init.google_secret_manager_secret_version.dashboard_api_admin_token_value' || true
+	@ $(tf_vars) $(TF) state mv 'module.nomad.random_password.clickhouse_password' 'random_password.clickhouse_password' || true
+	@ $(tf_vars) $(TF) state mv 'module.nomad.random_password.clickhouse_server_secret' 'random_password.clickhouse_server_secret' || true
 
 .PHONY: apply-init
 apply-init:
@@ -160,31 +165,33 @@ terraform:
 # Deploy all jobs in Nomad
 # When job name is specified, all '-' are replaced with '_' in the job name
 # Clickhouse jobs are scoped in Clickhouse submodule so we need special handling for them
+plan_only_jobs_moved_targets = -target="random_password.clickhouse_password" -target="random_password.clickhouse_server_secret" -target="module.nomad.random_password.clickhouse_password" -target="module.nomad.random_password.clickhouse_server_secret"
+
 .PHONY: plan-only-jobs plan-only-jobs/clickhouse plan-only-jobs/clickhouse_migrator plan-only-jobs/clickhouse_backup plan-only-jobs/clickhouse_backup_restore
 plan-only-jobs/clickhouse:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(call tf_fmt)
-	$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target="module.nomad.module.clickhouse.nomad_job.clickhouse"
+	$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target="module.nomad.module.clickhouse.nomad_job.clickhouse" $(plan_only_jobs_moved_targets)
 plan-only-jobs/clickhouse_migrator:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(call tf_fmt)
-	$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target="module.nomad.module.clickhouse.nomad_job.clickhouse_migrator"
+	$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target="module.nomad.module.clickhouse.nomad_job.clickhouse_migrator" $(plan_only_jobs_moved_targets)
 plan-only-jobs/clickhouse_backup:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(call tf_fmt)
-	$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target="module.nomad.module.clickhouse.nomad_job.clickhouse_backup"
+	$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target="module.nomad.module.clickhouse.nomad_job.clickhouse_backup" $(plan_only_jobs_moved_targets)
 plan-only-jobs/clickhouse_backup_restore:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(call tf_fmt)
-	$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target="module.nomad.module.clickhouse.nomad_job.clickhouse_backup_restore"
+	$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target="module.nomad.module.clickhouse.nomad_job.clickhouse_backup_restore" $(plan_only_jobs_moved_targets)
 plan-only-jobs/%:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(call tf_fmt)
-	@ $(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target=module.nomad.nomad_job.$(subst -,_,$(notdir $@)) -target=module.nomad.module.$(subst -,_,$(notdir $@))
+	@ $(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target=module.nomad.nomad_job.$(subst -,_,$(notdir $@)) -target=module.nomad.module.$(subst -,_,$(notdir $@)) $(plan_only_jobs_moved_targets)
 plan-only-jobs:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(call tf_fmt)
-	@ $(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target=module.nomad
+	@ $(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target=module.nomad $(plan_only_jobs_moved_targets)
 
 .PHONY: plan-without-jobs
 plan-without-jobs:

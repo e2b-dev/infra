@@ -206,6 +206,13 @@ func MergeMappings(
 
 // NormalizeMappings joins adjacent mappings that have the same buildId.
 //
+// Same-build runs are only merged when their storage is contiguous, i.e.
+// mp.BuildStorageOffset == current end. The read path resolves bytes as
+// BuildStorageOffset + shift, so merging a run across a storage discontinuity
+// would silently remap reads to the wrong bytes. Empty (uuid.Nil) regions are
+// served as zeros and never read from storage (see build.ReadAt), so their
+// storage offset is irrelevant and they always merge.
+//
 // Clone the result so the oversized intermediate (cap == len(input)) is
 // released; the merged Header is cached for up to 25h. slices.Clip will
 // not do — it only retightens cap on the same backing array.
@@ -220,7 +227,9 @@ func NormalizeMappings(mappings []BuildMap) []BuildMap {
 
 	for i := 1; i < len(mappings); i++ {
 		mp := mappings[i]
-		if mp.BuildId == current.BuildId {
+		storageContiguous := mp.BuildId == ignoreBuildID ||
+			mp.BuildStorageOffset == current.BuildStorageOffset+current.Length
+		if mp.BuildId == current.BuildId && storageContiguous {
 			current.Length += mp.Length
 		} else {
 			result = append(result, current)

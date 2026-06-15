@@ -64,7 +64,10 @@ locals {
         timeout_sec        = 3
         check_interval_sec = 3
       }
-      groups = [{ group = var.api_instance_group }]
+      groups = concat(
+        [{ group = var.api_instance_group }],
+        [for g in var.extra_api_instance_groups : { group = g }],
+      )
     }
     docker-reverse-proxy = {
       protocol                        = "HTTP"
@@ -732,34 +735,6 @@ resource "google_compute_security_policy_rule" "sandbox-throttling-ip" {
   }
 
   description = "Requests to sandboxes from IP address"
-}
-
-resource "google_compute_security_policy" "disable-bots-log-collector" {
-  name = "disable-bots-log-collector"
-
-  rule {
-    action   = "allow"
-    priority = "300"
-    match {
-      expr {
-        expression = "request.path == \"/\" && request.method == \"POST\""
-      }
-    }
-
-    description = "Allow POST requests  to / (collecting logs)"
-  }
-
-  rule {
-    action      = "deny(403)"
-    priority    = "2147483647"
-    description = "Default rule, higher priority overrides it"
-    match {
-      versioned_expr = "SRC_IPS_V1"
-      config {
-        src_ip_ranges = ["*"]
-      }
-    }
-  }
 }
 
 # Cloud Router for NAT

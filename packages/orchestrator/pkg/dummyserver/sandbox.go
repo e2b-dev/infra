@@ -129,7 +129,7 @@ func (s *SandboxServer) Delete(_ context.Context, req *orchestrator.SandboxDelet
 	return &emptypb.Empty{}, nil
 }
 
-func (s *SandboxServer) Pause(_ context.Context, req *orchestrator.SandboxPauseRequest) (*emptypb.Empty, error) {
+func (s *SandboxServer) Pause(_ context.Context, req *orchestrator.SandboxPauseRequest) (*orchestrator.SandboxPauseResponse, error) {
 	if req.GetSandboxId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "sandbox_id is required")
 	}
@@ -139,7 +139,7 @@ func (s *SandboxServer) Pause(_ context.Context, req *orchestrator.SandboxPauseR
 	delete(s.sandboxes, req.GetSandboxId())
 	s.mu.Unlock()
 
-	return &emptypb.Empty{}, nil
+	return &orchestrator.SandboxPauseResponse{}, nil
 }
 
 func (s *SandboxServer) Checkpoint(_ context.Context, _ *orchestrator.SandboxCheckpointRequest) (*orchestrator.SandboxCheckpointResponse, error) {

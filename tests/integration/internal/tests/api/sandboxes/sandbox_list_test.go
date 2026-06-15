@@ -321,11 +321,26 @@ func TestSandboxListPaginationRunningLargerLimit(t *testing.T) { //nolint:tparal
 	sbxsCount := 12
 	sandboxes := make([]string, sbxsCount)
 	for i := range sbxsCount {
-		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
+		// Default 30s timeout is shorter than creating 12 sandboxes plus the
+		// list assertions under load, so the sandboxes would expire mid-test.
+		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithTimeout(300), utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
 		sandboxes[sbxsCount-i-1] = sbx.SandboxID
 
 		t.Logf("Created sandbox %d/%d: %s", i+1, sbxsCount, sbx.SandboxID)
 	}
+
+	require.EventuallyWithT(t, func(cT *assert.CollectT) {
+		listResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
+			Limit:    new(int32(sbxsCount)),
+			State:    &[]api.SandboxState{api.Running},
+			Metadata: &metadataString,
+		}, setup.WithAPIKey())
+		require.NoError(cT, err)
+		require.NotNil(cT, listResponse)
+		require.Equal(cT, http.StatusOK, listResponse.StatusCode())
+		require.NotNil(cT, listResponse.JSON200)
+		require.Len(cT, *listResponse.JSON200, sbxsCount)
+	}, time.Minute, time.Second)
 
 	t.Run("check all sandboxes list", func(t *testing.T) {
 		t.Parallel()

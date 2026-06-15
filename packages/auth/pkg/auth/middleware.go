@@ -67,12 +67,13 @@ func (a *commonAuthenticator[T]) getHeaderKeysFromRequest(req *http.Request) (st
 func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, ginCtx *gin.Context, input *openapi3filter.AuthenticationInput) error {
 	key, err := a.getHeaderKeysFromRequest(input.RequestValidationInput.Request)
 	if err != nil {
-		telemetry.ReportError(ctx,
-			"authorization header is missing",
-			err,
-			attribute.String("error.message", a.errorMessage),
+		telemetry.ReportEvent(ctx, "auth scheme skipped",
+			attribute.String("auth.scheme", a.schemeName),
+			attribute.String("auth.reason", err.Error()),
 		)
 
+		// stamp 401 so the ErrorHandler's max(writer, 400) resolves to 401
+		// when every security group fails. without this, auth failures become 400s.
 		ginCtx.Status(http.StatusUnauthorized)
 
 		return err
@@ -97,7 +98,7 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, ginCtx *gin.C
 			return validationError.Err
 		}
 
-		return fmt.Errorf("%s\n%s (%w)", a.errorMessage, validationError.ClientMsg, validationError.Err)
+		return fmt.Errorf("%s\n%s", a.errorMessage, validationError.ClientMsg)
 	}
 
 	telemetry.ReportEvent(ctx, "api key validated")
@@ -210,15 +211,39 @@ func NewAuthProviderTeamAuthenticator(validationFunc func(ctx context.Context, g
 	}
 }
 
-// NewAdminTokenAuthenticator creates an authenticator for the AdminTokenAuth security scheme (X-Admin-Token header).
-func NewAdminTokenAuthenticator(adminToken string) Authenticator {
+// NewAdminApiKeyAuthenticator creates an authenticator for the AdminApiKeyAuth security scheme (X-Admin-Token header).
+func NewAdminApiKeyAuthenticator(adminToken string) Authenticator {
+	return newAdminApiKeyAuthenticator("AdminApiKeyAuth", adminToken)
+}
+
+func newAdminApiKeyAuthenticator(schemeName, adminToken string) Authenticator {
 	return &commonAuthenticator[struct{}]{
-		schemeName: "AdminTokenAuth",
+		schemeName: schemeName,
 		header: headerKey{
 			name: HeaderAdminToken,
 		},
 		validationFunc: adminValidationFunction(adminToken),
 		errorMessage:   "Invalid Access token.",
+	}
+}
+
+// NewAdminTeamAuthenticator creates an authenticator for AdminTeamAuth (X-Team-ID header).
+func NewAdminTeamAuthenticator(validationFunc func(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *APIError)) Authenticator {
+	return newAdminTeamAuthenticator("AdminTeamAuth", validationFunc)
+}
+
+func newAdminTeamAuthenticator(
+	schemeName string,
+	validationFunc func(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *APIError),
+) Authenticator {
+	return &commonAuthenticator[*types.Team]{
+		schemeName: schemeName,
+		header: headerKey{
+			name: HeaderTeamID,
+		},
+		validationFunc: validationFunc,
+		setContextFunc: setTeamInfo,
+		errorMessage:   "Invalid admin token teamID.",
 	}
 }
 

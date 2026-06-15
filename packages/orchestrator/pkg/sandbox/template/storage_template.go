@@ -16,7 +16,9 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/scheduling"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -268,6 +270,24 @@ func (t *storageTemplate) Close(ctx context.Context) error {
 
 func (t *storageTemplate) Files() storage.CachePaths {
 	return t.paths
+}
+
+// SchedulingMetadata reads the headers from the resolved memfile/rootfs devices
+// rather than the header holders, which stay unset for templates loaded from
+// storage (the headers are resolved internally by NewStorage during Fetch).
+func (t *storageTemplate) SchedulingMetadata(ctx context.Context) *orchestrator.SchedulingMetadata {
+	memfile, memfileErr := t.memfile.WaitWithContext(ctx)
+	rootfs, rootfsErr := t.rootfs.WaitWithContext(ctx)
+	if memfileErr != nil || rootfsErr != nil {
+		return nil
+	}
+
+	mh := memfile.Header()
+	if mh == nil || mh.Metadata == nil {
+		return nil
+	}
+
+	return scheduling.FromHeaders(mh.Metadata.BuildId, mh, rootfs.Header(), 0)
 }
 
 func (t *storageTemplate) Memfile(ctx context.Context) (block.ReadonlyDevice, error) {

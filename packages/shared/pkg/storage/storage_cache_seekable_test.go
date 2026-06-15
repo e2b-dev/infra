@@ -605,6 +605,64 @@ func TestCachedSeekable_OpenRangeReader(t *testing.T) {
 	})
 }
 
+func TestCachedSeekable_StoreFile_Compressed_WriteThrough(t *testing.T) {
+	t.Parallel()
+
+	const frameSize = 64 * 1024
+	cfg := defaultCfg(CompressionZstd, 2, frameSize)
+	data := generateSemiRandomData(3 * frameSize)
+
+	tempDir := t.TempDir()
+	cacheDir := filepath.Join(tempDir, "cache")
+	require.NoError(t, os.MkdirAll(cacheDir, os.ModePerm))
+
+	srcPath := filepath.Join(tempDir, "src.bin")
+	require.NoError(t, os.WriteFile(srcPath, data, 0o644))
+
+	// Stub inner.StoreFile: open the file and run compressStream with the sink
+	// pulled from opts — mirrors what fs/GCS backends do for compressed puts.
+	up := &memPartUploader{}
+	var capturedFT *FullFrameTable
+	inner := NewMockSeekable(t)
+	inner.EXPECT().
+		StoreFile(mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(ctx context.Context, path string, opts ...PutOption) (*FullFrameTable, [32]byte, error) {
+			po := ApplyPutOptions(opts)
+			require.NotNil(t, po.FrameSink, "cachedSeekable must attach a FrameSink for compressed+writeThrough")
+
+			f, err := os.Open(path)
+			require.NoError(t, err)
+			defer f.Close()
+
+			ft, sum, err := compressStream(ctx, f, cfg, up, 4, po.FrameSink)
+			capturedFT = ft
+
+			return ft, sum, err
+		})
+
+	flags := NewMockFeatureFlagsClient(t)
+	flags.EXPECT().BoolFlag(mock.Anything, mock.Anything).Return(true)
+	flags.EXPECT().IntFlag(mock.Anything, mock.Anything).Return(4)
+
+	c := cachedSeekable{path: cacheDir, inner: inner, chunkSize: frameSize, flags: flags, tracer: noopTracer}
+
+	_, _, err := c.StoreFile(t.Context(), srcPath, WithCompressConfig(cfg))
+	require.NoError(t, err)
+
+	c.wg.Wait()
+
+	ft := capturedFT.Table()
+	require.Equal(t, 3, ft.NumFrames())
+	assembled := up.Assemble()
+	for i := range ft.NumFrames() {
+		_, _, startC, endC := ft.FrameAt(i)
+		framePath := makeFrameFilename(c.path, Range{Offset: startC, Length: int(endC - startC)})
+		onDisk, err := os.ReadFile(framePath)
+		require.NoError(t, err)
+		assert.Equal(t, assembled[startC:endC], onDisk)
+	}
+}
+
 func TestCacheWriteThroughReader(t *testing.T) {
 	t.Parallel()
 

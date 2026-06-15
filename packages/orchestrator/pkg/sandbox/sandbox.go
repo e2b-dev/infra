@@ -32,6 +32,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/prefetch"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/scheduling"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -47,6 +48,17 @@ var (
 	meter                        = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox")
 	envdInitCalls                = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdInitCalls))
 	waitForEnvdDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.WaitForEnvdDurationHistogramName))
+
+	uffdStartupPagesHistogram       = utils.Must(telemetry.GetHistogram(meter, telemetry.UffdStartupPagesHistogramName))
+	uffdStartupSourcePagesHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.UffdStartupSourcePagesHistogramName))
+	uffdStartupBytesHistogram       = utils.Must(telemetry.GetHistogram(meter, telemetry.UffdStartupBytesHistogramName))
+)
+
+// Sandbox start types recorded on the orchestrator.sandbox.uffd.startup.*
+// metrics via the start_type attribute.
+const (
+	StartTypeCreate = "create" // cold boot (template build)
+	StartTypeResume = "resume" // resume from a snapshot (the common runtime path)
 )
 
 var SandboxHttpTransport = otelhttp.NewTransport(
@@ -235,6 +247,8 @@ type Sandbox struct {
 	files   *storage.SandboxFiles
 	cleanup *Cleanup
 
+	sandboxes *Map
+
 	featureFlags *featureflags.Client
 
 	process      *fc.Process
@@ -255,6 +269,14 @@ type Sandbox struct {
 	exit *utils.ErrorOnce
 
 	stop utils.Lazy[error]
+
+	// startupStatsOnce guards the orchestrator.sandbox.uffd.startup.* recording
+	// so it fires only on the first WaitForEnvd — the actual sandbox start.
+	// ServeStats() is lifetime-cumulative on the UFFD handler, so a later
+	// WaitForEnvd on the same handler (e.g. the envd-binary swap + restart in a
+	// template build) would otherwise emit a sample inflated with post-startup
+	// faults rather than that init's working set.
+	startupStatsOnce sync.Once
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -312,6 +334,10 @@ func NewFactory(
 		cgroupManager:     cgroupManager,
 		egressProxy:       egressProxy,
 	}
+}
+
+func (f *Factory) EgressProxy() network.EgressProxy {
+	return f.egressProxy
 }
 
 // PreBootFn is an optional callback invoked after the rootfs is ready but before
@@ -476,10 +502,11 @@ func (f *Factory) CreateSandbox(
 		Metadata:     metadata,
 		cgroupHandle: cgroupHandle,
 
-		Template: template,
-		config:   f.config,
-		files:    sandboxFiles,
-		process:  fcHandle,
+		Template:  template,
+		config:    f.config,
+		files:     sandboxFiles,
+		process:   fcHandle,
+		sandboxes: f.Sandboxes,
 
 		cleanup:      cleanup,
 		featureFlags: f.featureFlags,
@@ -821,10 +848,11 @@ func (f *Factory) ResumeSandbox(
 		Metadata:     metadata,
 		cgroupHandle: cgroupHandle,
 
-		Template: t,
-		config:   f.config,
-		files:    sandboxFiles,
-		process:  fcHandle,
+		Template:  t,
+		config:    f.config,
+		files:     sandboxFiles,
+		process:   fcHandle,
+		sandboxes: f.Sandboxes,
 
 		cleanup:      cleanup,
 		featureFlags: f.featureFlags,
@@ -910,6 +938,7 @@ func (f *Factory) ResumeSandbox(
 
 	err = sbx.WaitForEnvd(
 		ctx,
+		StartTypeResume,
 		f.config.EnvdTimeout,
 	)
 	if err != nil {
@@ -963,6 +992,10 @@ func (s *Sandbox) Wait(ctx context.Context) error {
 
 func (s *Sandbox) Close(ctx context.Context) error {
 	err := s.cleanup.Run(ctx)
+	if s.sandboxes != nil {
+		s.sandboxes.MarkStopped(context.WithoutCancel(ctx), s)
+	}
+
 	if err != nil {
 		return fmt.Errorf("failed to cleanup sandbox: %w", err)
 	}
@@ -993,9 +1026,20 @@ func (s *Sandbox) doStop(ctx context.Context) error {
 		errs = append(errs, fmt.Errorf("failed to stop FC: %w", fcStopErr))
 	}
 
-	// The process exited, we can continue with the rest of the cleanup.
-	// We could use select with ctx.Done() to wait for cancellation, but if the process is not exited the whole cleanup will be in a bad state and will result in unexpected behavior.
-	<-s.process.Exit.Done()
+	cgroupKillErr := s.cgroupHandle.Kill(ctx)
+	if cgroupKillErr != nil {
+		errs = append(errs, fmt.Errorf("failed to kill sandbox cgroup: %w", cgroupKillErr))
+	}
+
+	// The process should exit before the rest of cleanup, but memory shutdown
+	// must still run if the wait context is canceled so UFFD can exit.
+	// FC's own exit error is reported via the exit waiters, not as a stop
+	// failure, so only a canceled wait counts as an error here.
+	select {
+	case <-s.process.Exit.Done():
+	case <-ctx.Done():
+		errs = append(errs, fmt.Errorf("failed waiting for FC exit: %w", ctx.Err()))
+	}
 
 	uffdStopErr := s.Resources.memory.Stop()
 	if uffdStopErr != nil {
@@ -1146,11 +1190,19 @@ func (s *Sandbox) Pause(
 	// Start POSTPROCESSING
 	var dedupBase block.ReadonlyDevice
 	var dedupBestEffort, dedupDirectIO bool
+	var dedupBudget block.DedupBudget
 	dedupCfg := s.featureFlags.JSONFlag(ctx, featureflags.MemfileDiffDedupFlag, sandboxLDContext(s.Runtime, s.Config)).AsValueMap()
 	if dedupCfg.Get("enabled").BoolValue() {
 		dedupBase = originalMemfile
 		dedupBestEffort = dedupCfg.Get("bestEffort").BoolValue()
 		dedupDirectIO = dedupCfg.Get("directIO").BoolValue()
+		dedupBudget = block.DedupBudget{
+			MaxFetchWindowsPerBlock:        dedupCfg.Get("maxFetchWindowsPerBlock").IntValue(),
+			MaxPromotedParentPagesPerBlock: dedupCfg.Get("maxPromotedParentPagesPerBlock").IntValue(),
+			MaxPagesPerPromotedFrame:       dedupCfg.Get("maxPagesPerPromotedFrame").IntValue(),
+			BlockFaultPct:                  dedupCfg.Get("blockFaultPct").IntValue(),
+			FetchRunWindowPages:            dedupCfg.Get("fetchRunWindowPages").IntValue(),
+		}
 	}
 	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
 		ctx,
@@ -1164,6 +1216,7 @@ func (s *Sandbox) Pause(
 		dedupBase,
 		dedupBestEffort,
 		dedupDirectIO,
+		dedupBudget,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
@@ -1185,6 +1238,18 @@ func (s *Sandbox) Pause(
 	}
 	cleanup.AddNoContext(ctx, rootfsDiff.Close)
 
+	rootfsDiffHeader := NewResolvedDiffHeader(rootfsHeader)
+	// Derive scheduling metadata synchronously so Pause never blocks on the
+	// async memfile-dedup header: the memfile chain comes from the resolved
+	// parent header plus the new build, whose exact bytes aren't known yet, so
+	// we pass the pre-dedup dirty size as an upper bound. It is block-granular
+	// (dirty blocks * diff block size) and counts pages before dedup drops the
+	// base-identical ones, so it over-estimates. The rootfs copy is synchronous
+	// today, so its new header carries the exact rootfs chain and bytes; if it
+	// ever becomes async, switch it to the parent plus a dirty proxy like memfile.
+	newMemfileBytes := memfileDiffMetadata.Dirty.GetCardinality() * uint64(memfileDiffMetadata.BlockSize)
+	schedulingMetadata := scheduling.FromHeaders(buildID, originalMemfile.Header(), rootfsHeader, newMemfileBytes)
+
 	metadataFileLink := template.NewLocalFileLink(cachePaths.CacheMetadata())
 	cleanup.AddNoContext(ctx, metadataFileLink.Close)
 
@@ -1194,14 +1259,15 @@ func (s *Sandbox) Pause(
 	}
 
 	return &Snapshot{
-		Snapfile:          snapfile,
-		Metafile:          metadataFileLink,
-		MemfileDiff:       memfileDiff,
-		MemfileDiffHeader: memfileDiffHeader,
-		RootfsDiff:        rootfsDiff,
-		RootfsDiffHeader:  NewResolvedDiffHeader(rootfsHeader),
-		MemfileBlockSize:  originalMemfile.Header().Metadata.BlockSize,
-		RootfsBlockSize:   originalRootfs.Header().Metadata.BlockSize,
+		Snapfile:           snapfile,
+		Metafile:           metadataFileLink,
+		MemfileDiff:        memfileDiff,
+		MemfileDiffHeader:  memfileDiffHeader,
+		RootfsDiff:         rootfsDiff,
+		RootfsDiffHeader:   rootfsDiffHeader,
+		SchedulingMetadata: schedulingMetadata,
+		MemfileBlockSize:   originalMemfile.Header().Metadata.BlockSize,
+		RootfsBlockSize:    originalRootfs.Header().Metadata.BlockSize,
 
 		BuildID: buildID,
 
@@ -1237,6 +1303,7 @@ func pauseProcessMemory(
 	originalMemfile block.ReadonlyDevice,
 	dedupBestEffort bool,
 	dedupDirectIO bool,
+	dedupBudget block.DedupBudget,
 ) (d build.Diff, h *DiffHeader, e error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
@@ -1246,7 +1313,7 @@ func pauseProcessMemory(
 	// ExportMemory owns memfd and closes it on all paths.
 	cache, err := fc.ExportMemory(
 		ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd, bgCopy,
-		originalMemfile, dedupBestEffort, dedupDirectIO, diffMetadata.Empty, metaOut,
+		originalMemfile, dedupBestEffort, dedupDirectIO, dedupBudget, diffMetadata.Empty, metaOut,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to export memory: %w", err)
@@ -1374,15 +1441,9 @@ func getNetworkSlot(
 			ctx, span := tracer.Start(ctx, "clean network-slot")
 			defer span.End()
 
-			// We can run this cleanup asynchronously, as it is not important for the sandbox lifecycle
-			go func(ctx context.Context) {
-				returnErr := networkPool.Return(ctx, slot, networkReleased, network.ReturnDelay)
-				if returnErr != nil {
-					logger.L().Error(ctx, "failed to return network slot", zap.Error(returnErr))
-				}
-			}(context.WithoutCancel(ctx))
-
-			return nil
+			// Async so sandbox cleanup doesn't block on the return delay or
+			// network teardown; the pool's Close waits for in-flight returns.
+			return networkPool.ReturnAsync(ctx, slot, networkReleased, network.ReturnDelay)
 		})
 
 		return slot, nil
@@ -1443,6 +1504,7 @@ func (s *Sandbox) WaitForExit(ctx context.Context) error {
 
 func (s *Sandbox) WaitForEnvd(
 	ctx context.Context,
+	startType string,
 	timeout time.Duration,
 ) (e error) {
 	start := time.Now()
@@ -1456,6 +1518,25 @@ func (s *Sandbox) WaitForEnvd(
 			attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
 			attribute.Bool("success", e == nil),
 		))
+
+		// Record the demand-fault working set the guest needed to reach this
+		// point. Only on the first WaitForEnvd: it is the actual start, and
+		// ServeStats() is cumulative since resume, so at this instant it equals
+		// the startup counts. A later WaitForEnvd on the same handler (e.g. the
+		// envd-binary swap + restart during a template build) would otherwise
+		// re-report a cumulative total polluted with intervening faults.
+		// Recorded for both outcomes (success label) so slow/failed starts can
+		// be correlated with page volume.
+		s.startupStatsOnce.Do(func() {
+			stats := s.memory.ServeStats()
+			startupAttrs := metric.WithAttributes(
+				attribute.String("start_type", startType),
+				attribute.Bool("success", e == nil),
+			)
+			uffdStartupPagesHistogram.Record(ctx, stats.Pages, startupAttrs)
+			uffdStartupSourcePagesHistogram.Record(ctx, stats.SourcePages, startupAttrs)
+			uffdStartupBytesHistogram.Record(ctx, stats.Bytes, startupAttrs)
+		})
 
 		if e != nil {
 			return

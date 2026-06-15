@@ -8,15 +8,13 @@
   - Used for building the disk image of the orchestrator client and server
 
 - [Terraform](https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli) (v1.5.x)
-  - We ask for v1.5.x because starting from v1.6 Terraform [switched](https://github.com/hashicorp/terraform/commit/b145fbcaadf0fa7d0e7040eac641d9aef2a26433) their license from Mozilla Public License to Business Source License.
-  - The last version of Terraform that supports Mozilla Public License is **v1.5.7**
     - Binaries are available [here](https://developer.hashicorp.com/terraform/install/versions#binary-downloads)
-    - You can also install it via [tfenv](https://github.com/tfutils/tfenv)
-      ```sh
-      brew install tfenv
-      tfenv install 1.5.7
-      tfenv use 1.5.7
-      ```
+  - You can also install it via [tfenv](https://github.com/tfutils/tfenv)
+    ```sh
+    brew install tfenv
+    tfenv install 1.7.5
+    tfenv use 1.7.5
+    ```
 
 - [Golang](https://go.dev/doc/install)
 
@@ -234,7 +232,6 @@ You can build your own kernel and Firecracker version from source by running `ma
 - `make plan-without-jobs` - plans the terraform changes without provisioning nomad jobs
 - `make plan-only-jobs` - plans the terraform changes only for provisioning nomad jobs
 - `make destroy` - destroys the cluster
-- `make version` - increments the repo version
 - `make build-and-upload` - builds and uploads the docker images, binaries, and cluster disk image
 - `make copy-public-builds` - copies busybox, kernels, and firecracker versions from the public bucket to your bucket
 - `make migrate` - runs the migrations for your database
