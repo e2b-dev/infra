@@ -300,12 +300,7 @@ func (o *Orchestrator) CreateSandbox(
 	nodeClusterID := clusters.WithClusterFallback(team.ClusterID)
 	clusterNodes := o.GetClusterNodes(nodeClusterID)
 
-	allLabels := team.SandboxSchedulingLabels
-	labelFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx, featureflags.SandboxLabelBasedSchedulingFlag, featureflags.TeamContext(team.ID.String()), featureflags.SandboxContext(sandboxID))
-	for _, mount := range sbxData.VolumeMounts {
-		label := internal.MakeVolumeTypeLabel(mount.Type)
-		allLabels = append(allLabels, label)
-	}
+	allLabels, labelFilteringEnabled := o.generateRequiredNodeLabels(ctx, sandboxID, team, sbxData)
 
 	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, allLabels)
 	if err != nil {
@@ -394,4 +389,23 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	return sbx, nil
+}
+
+func (o *Orchestrator) generateRequiredNodeLabels(ctx context.Context, sandboxID string, team *teamtypes.Team, sbxData SandboxMetadata) ([]string, bool) {
+	labelFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx, featureflags.SandboxLabelBasedSchedulingFlag, featureflags.TeamContext(team.ID.String()), featureflags.SandboxContext(sandboxID))
+	if !labelFilteringEnabled {
+		return nil, false
+	}
+
+	allLabels := team.SandboxSchedulingLabels
+	if len(allLabels) == 0 {
+		allLabels = []string{"default"}
+	}
+
+	for _, mount := range sbxData.VolumeMounts {
+		label := internal.MakeVolumeTypeLabel(mount.Type)
+		allLabels = append(allLabels, label)
+	}
+
+	return allLabels, labelFilteringEnabled
 }
