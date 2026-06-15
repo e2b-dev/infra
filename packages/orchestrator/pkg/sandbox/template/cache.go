@@ -3,10 +3,12 @@
 package template
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
@@ -70,9 +72,13 @@ func NewCache(
 	metrics blockmetrics.Metrics,
 	peers peerclient.Resolver,
 ) (*Cache, error) {
-	cache := ttlcache.New(
+	cacheOpts := []ttlcache.Option[string, Template]{
 		ttlcache.WithTTL[string, Template](templateExpiration),
-	)
+	}
+	if config.TemplateCacheMaxEntries > 0 {
+		cacheOpts = append(cacheOpts, ttlcache.WithCapacity[string, Template](uint64(config.TemplateCacheMaxEntries)))
+	}
+	cache := ttlcache.New(cacheOpts...)
 
 	cache.OnEviction(func(ctx context.Context, _ ttlcache.EvictionReason, item *ttlcache.Item[string, Template]) {
 		peers.Purge(item.Key())
@@ -119,6 +125,96 @@ func (c *Cache) Start(ctx context.Context) {
 	c.buildStore.Start(ctx)
 
 	go c.cache.Start()
+
+	if c.config.TemplateCacheMinFreeMemoryMB > 0 {
+		go c.startMemoryPressureEviction(ctx)
+	}
+}
+
+// memAvailableBytes reads MemAvailable from /proc/meminfo.
+// This is the correct metric for "how much memory can new allocations use"
+// because it includes reclaimable page cache, unlike Sysinfo.Freeram which
+// only counts completely unused pages and is typically very low.
+func memAvailableBytes() (uint64, error) {
+	data, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		return 0, fmt.Errorf("read /proc/meminfo: %w", err)
+	}
+
+	for _, line := range bytes.Split(data, []byte("\n")) {
+		if !bytes.HasPrefix(line, []byte("MemAvailable:")) {
+			continue
+		}
+		// Format: "MemAvailable:   12345678 kB"
+		fields := bytes.Fields(line)
+		if len(fields) < 2 {
+			break
+		}
+
+		kb, err := strconv.ParseUint(string(fields[1]), 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("parse MemAvailable: %w", err)
+		}
+
+		return kb * 1024, nil
+	}
+
+	return 0, fmt.Errorf("MemAvailable not found in /proc/meminfo")
+}
+
+// startMemoryPressureEviction evicts one LRU template cache entry per tick
+// whenever MemAvailable on the host drops below TemplateCacheMinFreeMemoryMB.
+// One entry per tick is intentional: mmap page reclamation is not instantaneous,
+// so the OS memory stats won't reflect the freed pages until after the next tick,
+// preventing the loop from over-evicting the entire cache in a single burst.
+func (c *Cache) startMemoryPressureEviction(ctx context.Context) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	thresholdBytes := uint64(c.config.TemplateCacheMinFreeMemoryMB) * 1024 * 1024
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			available, err := memAvailableBytes()
+			if err != nil {
+				logger.L().Warn(ctx, "memory pressure eviction: failed to read MemAvailable", zap.Error(err))
+				continue
+			}
+
+			if available >= thresholdBytes {
+				continue
+			}
+
+			// Find the LRU entry: the one whose TTL was reset least recently,
+			// i.e. the item with the earliest ExpiresAt timestamp.
+			items := c.cache.Items()
+			if len(items) == 0 {
+				continue
+			}
+
+			var (
+				oldestKey    string
+				oldestExpiry time.Time
+			)
+			for k, item := range items {
+				exp := item.ExpiresAt()
+				if oldestKey == "" || exp.Before(oldestExpiry) {
+					oldestKey = k
+					oldestExpiry = exp
+				}
+			}
+
+			logger.L().Info(ctx, "memory pressure eviction: evicting LRU template",
+				zap.String("key", oldestKey),
+				zap.Uint64("mem_available_bytes", available),
+				zap.Uint64("threshold_bytes", thresholdBytes),
+			)
+			c.cache.Delete(oldestKey)
+		}
+	}
 }
 
 func (c *Cache) Stop() {
