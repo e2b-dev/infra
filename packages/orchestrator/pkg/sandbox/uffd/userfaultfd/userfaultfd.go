@@ -76,6 +76,12 @@ type Userfaultfd struct {
 	pageSize    uintptr
 	pageTracker *block.Tracker
 
+	// removeTainted records blocks a REMOVE event covered only partially
+	// (see applyRemoveRange): their content mixes live data with
+	// kernel-zeroed bytes, so the pause must re-scan them from the memfd
+	// rather than trust tracker state. Guarded by settleRequests.
+	removeTainted *roaring.Bitmap
+
 	// settleRequests guards the pageTracker / prefetchTracker. Workers take
 	// RLock for the lookup→install→SetRange sequence; the REMOVE batch takes
 	// Lock so a concurrent worker can't overwrite a removed state.
@@ -181,6 +187,7 @@ func NewUserfaultfdFromFd(fd uintptr, src PageReader, m *memory.Mapping, generat
 		src:             src,
 		pageSize:        pageSize,
 		pageTracker:     block.NewTracker(),
+		removeTainted:   roaring.New(),
 		prefetchTracker: block.NewPrefetchTracker(int64(pageSize)),
 		ma:              m,
 		wakeupPipe:      wakeupPipe,
@@ -203,6 +210,16 @@ func (u *Userfaultfd) ExportPageStates() (faulted, removed *roaring.Bitmap) {
 	defer u.settleRequests.Unlock()
 
 	return u.pageTracker.Export()
+}
+
+// RemoveTainted returns a snapshot of the blocks partially covered by REMOVE
+// events (see applyRemoveRange). The pause folds them into the dirty set so
+// their true content is re-read from the memfd.
+func (u *Userfaultfd) RemoveTainted() *roaring.Bitmap {
+	u.settleRequests.RLock()
+	defer u.settleRequests.RUnlock()
+
+	return u.removeTainted.Clone()
 }
 
 func (u *Userfaultfd) readEvents(ctx context.Context) ([]*UffdRemove, []*UffdPagefault, error) {
@@ -362,12 +379,13 @@ func (u *Userfaultfd) Serve(
 			if len(removes) > 0 {
 				u.settleRequests.Lock()
 				for _, rm := range removes {
-					// rm.start (inclusive) and rm.end (exclusive) are page-aligned
-					// to u.pageSize for the registered VMA (UFFD invariant), so
-					// startOff is a multiple of pageSize and length is an integer
-					// number of pages — both divisions below are exact, and
-					// SetRange's half-open [startIdx, endIdx) lines up with the
-					// half-open [rm.start, rm.end).
+					// rm.start (inclusive) and rm.end (exclusive) come from the
+					// madvise range, which the kernel only guarantees to be host
+					// page (4 KiB) aligned — NOT u.pageSize aligned (FC's
+					// discard_range rejects unaligned ranges today, but that is
+					// FC's guard, not a UFFD invariant). applyRemoveRange marks
+					// only fully covered blocks Zero and taints partially
+					// covered Dirty blocks for a pause-time re-scan.
 					startOff, err := u.ma.GetOffset(uintptr(rm.start))
 					if err != nil {
 						u.logger.Error(ctx, "UFFD REMOVE: failed to map start address",
@@ -376,9 +394,15 @@ func (u *Userfaultfd) Serve(
 						continue
 					}
 
-					startIdx := uint32(header.BlockIdx(startOff, int64(u.pageSize)))
-					endIdx := startIdx + uint32(uint64(rm.end-rm.start)/uint64(u.pageSize))
-					u.pageTracker.SetRange(startIdx, endIdx, block.Zero)
+					length := int64(rm.end - rm.start)
+					if tainted := applyRemoveRange(u.pageTracker, u.removeTainted, startOff, length, int64(u.pageSize)); tainted > 0 {
+						u.logger.Warn(ctx, "UFFD REMOVE range not aligned to tracker page size; tainted partially covered blocks for pause re-scan",
+							zap.Int64("start_off", startOff),
+							zap.Int64("length", length),
+							zap.Uint64("page_size", uint64(u.pageSize)),
+							zap.Int("tainted_blocks", tainted),
+						)
+					}
 				}
 				u.settleRequests.Unlock()
 			}

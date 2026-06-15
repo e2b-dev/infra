@@ -263,6 +263,14 @@ func (u *Uffd) DiffMetadata(ctx context.Context, f *fc.Process) (*header.DiffMet
 		return nil, fmt.Errorf("failed to get dirty memory: %w", err)
 	}
 
+	// Blocks only partially covered by a REMOVE event mix live data with
+	// kernel-zeroed bytes; their tracker state is untrustworthy and the
+	// kernel-zeroed slice never shows up in the WP-async pagemap. Fold them
+	// into Dirty so the export re-reads their true content from the memfd.
+	if tainted := handler.RemoveTainted(); !tainted.IsEmpty() {
+		diff.Dirty.Or(tainted)
+	}
+
 	// Pages that were zero-installed and later written show up in diff.Dirty
 	// via WP-async, so dirty wins over empty for those.
 	empty.AndNot(diff.Dirty)
