@@ -839,7 +839,7 @@ func TestSerializeDeserialize_V4_Uncompressed_SelfEntry(t *testing.T) {
 	require.Equal(t, uint64(MetadataVersionV4), got.Metadata.Version)
 	require.Len(t, got.Builds, 1)
 	require.Contains(t, got.Builds, buildID)
-	require.Nil(t, got.GetBuildFrameData(buildID))
+	require.Equal(t, storage.UncompressedFrameTable, got.GetBuildFrameData(buildID))
 }
 
 // Layered chain V4-uncompressed (self) → V4-compressed (mid) → V4-uncompressed
@@ -893,8 +893,8 @@ func TestSerializeDeserialize_V4_MixedChain(t *testing.T) {
 	require.Equal(t, 5, got.Mapping.Len())
 	require.Len(t, got.Builds, 3)
 
-	require.Nil(t, got.GetBuildFrameData(selfID))
-	require.Nil(t, got.GetBuildFrameData(olderID))
+	require.Equal(t, storage.UncompressedFrameTable, got.GetBuildFrameData(selfID))
+	require.Equal(t, storage.UncompressedFrameTable, got.GetBuildFrameData(olderID))
 
 	gotMidFT := got.GetBuildFrameData(midID)
 	require.NotNil(t, gotMidFT)
@@ -990,12 +990,11 @@ func TestSerializeDeserialize_V4_CompressedSelfChain(t *testing.T) {
 		require.Equal(t, tc.wantBuild, m.BuildId, "offset %d build", tc.offset)
 		require.Equal(t, tc.wantOffset, m.Offset, "offset %d storage offset", tc.offset)
 
-		ft := got.GetBuildFrameData(m.BuildId)
+		ct := got.GetBuildFrameData(m.BuildId).CompressionType()
 		if tc.compressed {
-			require.NotNil(t, ft, "offset %d expected FrameTable", tc.offset)
-			require.Equal(t, storage.CompressionZstd, ft.CompressionType(), "offset %d", tc.offset)
+			require.Equal(t, storage.CompressionZstd, ct, "offset %d", tc.offset)
 		} else {
-			require.Nil(t, ft, "offset %d expected no FrameTable", tc.offset)
+			require.Equal(t, storage.CompressionNone, ct, "offset %d", tc.offset)
 		}
 	}
 

@@ -62,19 +62,26 @@ func DeserializeBytes(data []byte) (*Header, error) {
 }
 
 // LoadHeader fetches a serialized header from storage and deserializes it.
-// Errors (including storage.ErrObjectNotExist) are returned as-is.
-func LoadHeader(ctx context.Context, s storage.StorageProvider, path string) (*Header, error) {
+// Returns the on-wire byte count alongside the header so callers can attribute
+// it to throughput telemetry. Errors (including storage.ErrObjectNotExist) are
+// returned as-is.
+func LoadHeader(ctx context.Context, s storage.StorageProvider, path string) (*Header, int, error) {
 	blob, err := s.OpenBlob(ctx, path, storage.MetadataObjectType)
 	if err != nil {
-		return nil, fmt.Errorf("open blob %s: %w", path, err)
+		return nil, 0, fmt.Errorf("open blob %s: %w", path, err)
 	}
 
 	data, err := storage.GetBlob(ctx, blob)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return DeserializeBytes(data)
+	h, err := DeserializeBytes(data)
+	if err != nil {
+		return nil, len(data), err
+	}
+
+	return h, len(data), nil
 }
 
 // StoreHeader serializes a header, uploads it, and returns the effective

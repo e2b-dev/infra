@@ -181,6 +181,10 @@ func (p *Proxy) CABundle() string {
 	return ""
 }
 
+func (p *Proxy) SupportsBYOP() bool {
+	return false
+}
+
 // handlerFunc is the signature for connection handlers.
 type handlerFunc func(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol)
 

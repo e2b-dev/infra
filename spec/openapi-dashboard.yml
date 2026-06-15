@@ -139,24 +139,6 @@ components:
       description: Cursor returned by the previous list response in `{sort}|{value}|{templateID}` format. Rejected if its sort does not match the request.
       schema:
         type: string
-    templates_cpu_count:
-      name: cpuCount
-      in: query
-      required: false
-      description: Filter templates by exact vCPU count.
-      schema:
-        type: integer
-        format: int32
-        minimum: 1
-    templates_memory_mb:
-      name: memoryMB
-      in: query
-      required: false
-      description: Filter templates by exact memory size in MB.
-      schema:
-        type: integer
-        format: int32
-        minimum: 1
     templates_public:
       name: public
       in: query
@@ -180,12 +162,6 @@ components:
         type: string
         enum:
           [
-            name_asc,
-            name_desc,
-            cpu_count_asc,
-            cpu_count_desc,
-            memory_mb_asc,
-            memory_mb_desc,
             created_at_asc,
             created_at_desc,
             updated_at_asc,
@@ -214,6 +190,12 @@ components:
             $ref: "#/components/schemas/Error"
     "404":
       description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    "409":
+      description: Conflict
       content:
         application/json:
           schema:
@@ -313,6 +295,10 @@ components:
         oidc_user_name:
           type: string
           nullable: true
+        signup_ip:
+          type: string
+        signup_user_agent:
+          type: string
 
     AdminTeamBootstrapRequest:
       type: object
@@ -347,6 +333,10 @@ components:
         - statusMessage
         - createdAt
         - finishedAt
+        - cpuCount
+        - memoryMB
+        - diskSizeMB
+        - envdVersion
       properties:
         id:
           type: string
@@ -373,6 +363,23 @@ components:
           format: date-time
           nullable: true
           description: Build completion timestamp in RFC3339 format, if finished.
+        cpuCount:
+          type: integer
+          format: int64
+          description: CPU cores configured for the build.
+        memoryMB:
+          type: integer
+          format: int64
+          description: Memory in MiB configured for the build.
+        diskSizeMB:
+          type: integer
+          format: int64
+          nullable: true
+          description: Disk size in MiB configured for the build, if recorded.
+        envdVersion:
+          type: string
+          nullable: true
+          description: envd version the build was created with, if recorded.
 
     BuildsListResponse:
       type: object
@@ -1198,6 +1205,29 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
+  /admin/users/{userId}:
+    delete:
+      summary: Delete user
+      description: Deletes a user by removing the identity provider record, user_identities mapping, and public.users row.
+      tags: [admin]
+      security:
+        - AdminApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      responses:
+        "204":
+          description: Successfully deleted user.
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
+        "500":
+          $ref: "#/components/responses/500"
+
   /teams/resolve:
     get:
       summary: Resolve team identity
@@ -1346,8 +1376,6 @@ paths:
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
       parameters:
-        - $ref: "#/components/parameters/templates_cpu_count"
-        - $ref: "#/components/parameters/templates_memory_mb"
         - $ref: "#/components/parameters/templates_public"
         - $ref: "#/components/parameters/templates_search"
         - $ref: "#/components/parameters/templates_sort"

@@ -298,6 +298,8 @@ components:
           description: List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
           items:
             type: string
+        egressProxy:
+          $ref: "#/components/schemas/SandboxEgressProxyConfig"
         maskRequestHost:
           type: string
           description: Specify host mask which will be used for all sandbox requests
@@ -326,6 +328,8 @@ components:
           description: List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
           items:
             type: string
+        egressProxy:
+          $ref: "#/components/schemas/SandboxEgressProxyConfig"
         rules:
           type: object
           description: Per-domain transform rules. Replaces all existing rules when provided.
@@ -358,6 +362,31 @@ components:
             secret resolution happens client-side before sending to the API.
           additionalProperties:
             type: string
+
+    SandboxEgressProxyConfig:
+      type: object
+      nullable: true
+      description: >-
+        SOCKS5 proxy for sandbox egress. Outbound TCP is tunneled through the
+        proxy after allow/deny filtering; the sandbox is unaware. Domain-matched
+        flows use remote DNS (ATYP=domain).
+      required:
+        - address
+      properties:
+        address:
+          type: string
+          description: >-
+            SOCKS5 proxy address in host:port format (e.g. "proxy.example.com:1080").
+        username:
+          type: string
+          maxLength: 255
+          description: >-
+            Optional SOCKS5 username (RFC 1929), max 255 bytes.
+        password:
+          type: string
+          maxLength: 255
+          description: >-
+            Optional SOCKS5 password (RFC 1929), max 255 bytes.
 
     SandboxAutoResumeEnabled:
       type: boolean

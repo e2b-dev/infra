@@ -72,12 +72,54 @@ var resultNames = [numFaultResult]string{
 	faultResultSkipped:   "skipped",
 }
 
+// generationBucket coarsens the snapshot's Metadata.Generation (its
+// pause/resume cycle count) into log-scale ranges, so fault latency can be
+// cut by snapshot chain depth — the fragmentation axis — without
+// per-generation label cardinality. Generations reach thousands in prod
+// (p99 ≈ 2.3k), hence the split tail.
+type generationBucket uint8
+
+const (
+	genBucket0 generationBucket = iota // generation 0: fresh template build
+	genBucket1To10
+	genBucket11To100
+	genBucket101To1000
+	genBucketOver1000
+	numGenerationBucket
+)
+
+// generationBucketNames maps generationBucket values to their metric label
+// strings.
+var generationBucketNames = [numGenerationBucket]string{
+	genBucket0:         "0",
+	genBucket1To10:     "1-10",
+	genBucket11To100:   "11-100",
+	genBucket101To1000: "101-1000",
+	genBucketOver1000:  ">1000",
+}
+
+func bucketForGeneration(generation uint64) generationBucket {
+	switch {
+	case generation == 0:
+		return genBucket0
+	case generation <= 10:
+		return genBucket1To10
+	case generation <= 100:
+		return genBucket11To100
+	case generation <= 1000:
+		return genBucket101To1000
+	default:
+		return genBucketOver1000
+	}
+}
+
 // serveAttrs holds a precomputed metric.MeasurementOption per
-// (pageClass, faultResult) combination so the per-fault hot path allocates no
-// attributes (mirrors the precomputed attrs in block/streaming_chunk.go).
+// (generationBucket, pageClass, faultResult) combination so the per-fault hot
+// path allocates no attributes (mirrors the precomputed attrs in
+// block/streaming_chunk.go).
 var serveAttrs = buildServeAttrs()
 
-func buildServeAttrs() [numPageClass][numFaultResult]metric.MeasurementOption {
+func buildServeAttrs() [numGenerationBucket][numPageClass][numFaultResult]metric.MeasurementOption {
 	classNames := [numPageClass]string{
 		pageClassNew:      "new",
 		pageClassZero:     "zero",
@@ -85,13 +127,16 @@ func buildServeAttrs() [numPageClass][numFaultResult]metric.MeasurementOption {
 		pageClassUnknown:  "unknown",
 	}
 
-	var t [numPageClass][numFaultResult]metric.MeasurementOption
-	for c := range classNames {
-		for r := range resultNames {
-			t[c][r] = telemetry.PrecomputeAttrs(
-				attribute.String("page_class", classNames[c]),
-				attribute.String("result", resultNames[r]),
-			)
+	var t [numGenerationBucket][numPageClass][numFaultResult]metric.MeasurementOption
+	for g := range generationBucketNames {
+		for c := range classNames {
+			for r := range resultNames {
+				t[g][c][r] = telemetry.PrecomputeAttrs(
+					attribute.String("generation_bucket", generationBucketNames[g]),
+					attribute.String("page_class", classNames[c]),
+					attribute.String("result", resultNames[r]),
+				)
+			}
 		}
 	}
 
@@ -163,15 +208,21 @@ func (u *Userfaultfd) recordServeStats(pclass pageClass, result faultResult, ser
 	}
 }
 
-// prefaultAttrs holds a precomputed metric.MeasurementOption per faultResult.
-// Prefaults have no page_class: they only ever target not-present pages (the
-// Dirty/Zero pre-check records result="skipped" instead).
+// prefaultAttrs holds a precomputed metric.MeasurementOption per
+// (generationBucket, faultResult). Prefaults have no page_class: they only
+// ever target not-present pages (the Dirty/Zero pre-check records
+// result="skipped" instead).
 var prefaultAttrs = buildPrefaultAttrs()
 
-func buildPrefaultAttrs() [numFaultResult]metric.MeasurementOption {
-	var t [numFaultResult]metric.MeasurementOption
-	for r := range resultNames {
-		t[r] = telemetry.PrecomputeAttrs(attribute.String("result", resultNames[r]))
+func buildPrefaultAttrs() [numGenerationBucket][numFaultResult]metric.MeasurementOption {
+	var t [numGenerationBucket][numFaultResult]metric.MeasurementOption
+	for g := range generationBucketNames {
+		for r := range resultNames {
+			t[g][r] = telemetry.PrecomputeAttrs(
+				attribute.String("generation_bucket", generationBucketNames[g]),
+				attribute.String("result", resultNames[r]),
+			)
+		}
 	}
 
 	return t

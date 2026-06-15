@@ -3,16 +3,15 @@ package userprofile
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	supabasedb "github.com/e2b-dev/infra/packages/db/pkg/supabase"
 	supabasequeries "github.com/e2b-dev/infra/packages/db/pkg/supabase/queries"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sharedteamprovision "github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -67,6 +66,10 @@ func (p *supabaseProvider) FindProfilesByEmail(ctx context.Context, email string
 	return profiles, nil
 }
 
+func (p *supabaseProvider) PrepareDeleteUser(_ context.Context, _ uuid.UUID) (DeleteUserHandle, error) {
+	return nil, errors.New("user deletion is not supported in supabase mode")
+}
+
 func (p *supabaseProvider) GetTeamCreatorContext(ctx context.Context, userID uuid.UUID) (*sharedteamprovision.CreatorContextV1, error) {
 	if userID == uuid.Nil {
 		return nil, nil
@@ -82,28 +85,8 @@ func (p *supabaseProvider) GetTeamCreatorContext(ctx context.Context, userID uui
 	}
 
 	appMetadata := rawUserMetadata(authUser.RawAppMetaData)
-	creatorContext := creatorContextFromMetadata(appMetadata, providerNamesFromSupabaseMetadata(appMetadata))
 
-	if creatorContext.AuthMethod == sharedteamprovision.AuthMethodSocial && (creatorContext.IPAddress == "" || creatorContext.UserAgent == "") {
-		session, sessionErr := p.queries.GetLatestAuthSessionByUserID(ctx, userID)
-		if sessionErr != nil {
-			if !dberrors.IsNotFoundError(sessionErr) {
-				logger.L().Warn(ctx, "failed to resolve latest auth session for creator context, falling back to metadata",
-					zap.String("user_id", userID.String()),
-					zap.Error(sessionErr),
-				)
-			}
-		} else {
-			if creatorContext.IPAddress == "" {
-				creatorContext.IPAddress = utils.DerefOrDefault(session.Ip, "")
-			}
-			if creatorContext.UserAgent == "" {
-				creatorContext.UserAgent = utils.DerefOrDefault(session.UserAgent, "")
-			}
-		}
-	}
-
-	return creatorContext, nil
+	return creatorContextFromMetadata(appMetadata, providerNamesFromSupabaseMetadata(appMetadata)), nil
 }
 
 func profileFromAuthUser(user supabasequeries.AuthUser) Profile {
