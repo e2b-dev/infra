@@ -77,7 +77,7 @@ func (c *cachedSeekable) openReaderCompressed(ctx context.Context, offsetU int64
 
 	dec, err := NewDecompressingReader(in, ct)
 	if err != nil {
-		in.Close(ctx)
+		raw.Close(ctx)
 
 		return nil, fmt.Errorf("create decompressor: %w", err)
 	}
