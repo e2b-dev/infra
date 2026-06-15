@@ -333,7 +333,11 @@ func (d *DevicePool) ReleaseDevice(ctx context.Context, idx DeviceSlot, opts ...
 			logger.L().Error(ctx, "error releasing device", zap.Int("attempt", attempt), zap.Error(err))
 		}
 
-		time.Sleep(500 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(500 * time.Millisecond):
+		}
 	}
 }
 
