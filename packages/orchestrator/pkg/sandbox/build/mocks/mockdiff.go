@@ -371,57 +371,6 @@ func (_c *MockDiff_ReadAt_Call) RunAndReturn(run func(ctx context.Context, p []b
 	return _c
 }
 
-// RefreshSource provides a mock function for the type MockDiff
-func (_mock *MockDiff) RefreshSource(ctx context.Context) error {
-	ret := _mock.Called(ctx)
-
-	if len(ret) == 0 {
-		panic("no return value specified for RefreshSource")
-	}
-
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context) error); ok {
-		r0 = returnFunc(ctx)
-	} else {
-		r0 = ret.Error(0)
-	}
-	return r0
-}
-
-// MockDiff_RefreshSource_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RefreshSource'
-type MockDiff_RefreshSource_Call struct {
-	*mock.Call
-}
-
-// RefreshSource is a helper method to define mock.On call
-//   - ctx context.Context
-func (_e *MockDiff_Expecter) RefreshSource(ctx interface{}) *MockDiff_RefreshSource_Call {
-	return &MockDiff_RefreshSource_Call{Call: _e.mock.On("RefreshSource", ctx)}
-}
-
-func (_c *MockDiff_RefreshSource_Call) Run(run func(ctx context.Context)) *MockDiff_RefreshSource_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		run(
-			arg0,
-		)
-	})
-	return _c
-}
-
-func (_c *MockDiff_RefreshSource_Call) Return(err error) *MockDiff_RefreshSource_Call {
-	_c.Call.Return(err)
-	return _c
-}
-
-func (_c *MockDiff_RefreshSource_Call) RunAndReturn(run func(ctx context.Context) error) *MockDiff_RefreshSource_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // Size provides a mock function for the type MockDiff
 func (_mock *MockDiff) Size(ctx context.Context) (int64, error) {
 	ret := _mock.Called(ctx)

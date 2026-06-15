@@ -31,8 +31,8 @@ const (
 // ft is *FullFrameTable rather than *FrameTable — see
 // (*header.Header).SelfBuildData for the invariant justifying the upcast.
 type source struct {
-	upstream storage.RangeOpener
-	ft       *storage.FullFrameTable
+	upstream           storage.RangeOpener
+	fullDiffFrameTable *storage.FullFrameTable
 }
 
 func isPeerRouted(v any) bool {
@@ -101,7 +101,7 @@ func newStorageDiff(
 		chunker:           c,
 		cacheKey:          GetDiffStoreKey(buildID, diffType),
 	}
-	d.source.Store(&source{upstream: upstream, ft: initialFT})
+	d.source.Store(&source{upstream: upstream, fullDiffFrameTable: initialFT})
 
 	return d, nil
 }
@@ -258,9 +258,6 @@ func (b *StorageDiff) Close() error {
 	return b.chunker.Close()
 }
 
-// ReadAt and Slice catch *PeerTransitionedError once and retry against the
-// post-refresh base upstream. Inlined to avoid closure allocation on the hot path.
-
 func (b *StorageDiff) ReadAt(ctx context.Context, p []byte, off int64, callerFT *storage.FrameTable) (int, error) {
 	up, ft, err := b.resolve(ctx, callerFT)
 	if err != nil {
@@ -358,8 +355,8 @@ func refreshHeader(ctx context.Context, persistence storage.StorageProvider, bui
 // header tells us where to read from.
 func (b *StorageDiff) resolve(ctx context.Context, callerFT *storage.FrameTable) (storage.RangeOpener, *storage.FrameTable, error) {
 	cur := b.source.Load()
-	if cur.ft != nil {
-		return cur.upstream, cur.ft.Table(), nil
+	if cur.fullDiffFrameTable != nil {
+		return cur.upstream, cur.fullDiffFrameTable.Table(), nil
 	}
 	if callerFT != nil {
 		return cur.upstream, callerFT, nil
@@ -372,7 +369,7 @@ func (b *StorageDiff) resolve(ctx context.Context, callerFT *storage.FrameTable)
 	}
 	cur = b.source.Load()
 
-	return cur.upstream, cur.ft.Table(), nil
+	return cur.upstream, cur.fullDiffFrameTable.Table(), nil
 }
 
 // reloadAfterPeerTransition refreshes the source after a peerSeekable signaled
@@ -394,7 +391,7 @@ func (b *StorageDiff) reloadAfterPeerTransition(ctx context.Context) error {
 func (b *StorageDiff) reloadProactive(ctx context.Context) error {
 	b.refreshMu.Lock()
 	defer b.refreshMu.Unlock()
-	if b.source.Load().ft != nil {
+	if b.source.Load().fullDiffFrameTable != nil {
 		return nil
 	}
 
@@ -416,7 +413,7 @@ func (b *StorageDiff) reloadSourceLocked(ctx context.Context, cause string) erro
 	if err != nil {
 		return fmt.Errorf("reloadSourceLocked: build %s: %w", b.buildID, err)
 	}
-	b.source.Store(&source{upstream: upstream, ft: ft})
+	b.source.Store(&source{upstream: upstream, fullDiffFrameTable: ft})
 
 	return nil
 }
