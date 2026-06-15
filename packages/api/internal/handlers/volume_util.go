@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -84,10 +85,14 @@ var ErrUnknownVolumeType = errors.New("unknown volume type")
 func (a *APIStore) executeOnOrchestratorByClusterID(
 	ctx context.Context,
 	clusterID uuid.UUID,
+	volume queries.Volume,
 	fn func(context.Context, *clusters.GRPCClient) error,
 ) error {
 	nodes := a.orchestrator.GetClusterNodes(clusterID)
-
+	labeledNodes := findVolumeNodes(nodes, volume)
+	if len(labeledNodes) != 0 {
+		nodes = labeledNodes
+	}
 	if len(nodes) == 0 {
 		return ErrClusterNotFound
 	}
@@ -159,6 +164,20 @@ func (a *APIStore) executeOnOrchestratorByClusterID(
 	}
 
 	return ErrNoHealthyOrchestratorFound
+}
+
+func findVolumeNodes(nodes []*nodemanager.Node, volume queries.Volume) []*nodemanager.Node {
+	expectedLabel := volume.VolumeType + "=" + volume.TeamID.String()
+
+	var matchingNodes []*nodemanager.Node
+	for _, node := range nodes {
+		labels := node.Labels()
+		if _, ok := labels[expectedLabel]; ok {
+			matchingNodes = append(matchingNodes, node)
+		}
+	}
+
+	return matchingNodes
 }
 
 func isUnknownVolumeTypeError(err error) (string, bool) {
