@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc/status"
 
+	"github.com/e2b-dev/infra/packages/api/internal"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
@@ -167,7 +168,7 @@ func (a *APIStore) executeOnOrchestratorByClusterID(
 }
 
 func findVolumeNodes(nodes []*nodemanager.Node, volume queries.Volume) []*nodemanager.Node {
-	expectedLabel := volume.VolumeType + "=" + volume.TeamID.String()
+	expectedLabel := internal.MakeVolumeTypeLabel(volume.VolumeType)
 
 	var matchingNodes []*nodemanager.Node
 	for _, node := range nodes {
