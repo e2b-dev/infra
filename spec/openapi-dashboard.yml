@@ -66,6 +66,24 @@ components:
       description: Cursor returned by the previous list response in `created_at|build_id` format.
       schema:
         type: string
+    builds_cpu_count:
+      name: cpuCount
+      in: query
+      required: false
+      description: Filter builds by exact vCPU count.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+    builds_memory_mb:
+      name: memoryMB
+      in: query
+      required: false
+      description: Filter builds by exact memory size in MB.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
     build_id_or_template:
       name: build_id_or_template
       in: query
@@ -929,6 +947,8 @@ paths:
       parameters:
         - $ref: "#/components/parameters/build_id_or_template"
         - $ref: "#/components/parameters/build_statuses"
+        - $ref: "#/components/parameters/builds_cpu_count"
+        - $ref: "#/components/parameters/builds_memory_mb"
         - $ref: "#/components/parameters/builds_limit"
         - $ref: "#/components/parameters/builds_cursor"
       responses:

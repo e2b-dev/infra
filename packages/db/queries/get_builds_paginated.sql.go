@@ -14,6 +14,7 @@ import (
 )
 
 const getTeamBuildsPage = `-- name: GetTeamBuildsPage :many
+
 SELECT
   b.id,
   b.status_group,
@@ -42,20 +43,39 @@ LEFT JOIN LATERAL (
   LIMIT 1
 ) ea ON TRUE
 WHERE b.team_id = $1::uuid
-  AND (b.created_at, b.id) < (
-    $2::timestamptz,
-    $3::uuid
+  AND b.status_group = ANY($2::text[])
+  AND ($3::uuid IS NULL OR b.id = $3::uuid)
+  AND (
+    $4::text IS NULL
+    OR eba.env_id = $4::text
+    OR EXISTS (
+      SELECT 1 FROM public.env_aliases af
+      WHERE af.env_id = eba.env_id
+        AND (
+          af.alias ILIKE '%' || $4::text || '%'
+          OR COALESCE(af.namespace, '') || '/' || af.alias ILIKE '%' || $4::text || '%'
+        )
+    )
   )
-  AND b.status_group = ANY($4::text[])
+  AND ($5::bigint = 0 OR COALESCE(b.vcpu, 0) = $5::bigint)
+  AND ($6::bigint = 0 OR COALESCE(b.ram_mb, 0) = $6::bigint)
+  AND (
+    $7::timestamptz IS NULL
+    OR (b.created_at, b.id) < ($7::timestamptz, $8::uuid)
+  )
 ORDER BY b.created_at DESC, b.id DESC
-LIMIT $5::int
+LIMIT $9::int
 `
 
 type GetTeamBuildsPageParams struct {
 	TeamID          uuid.UUID
-	CursorCreatedAt time.Time
-	CursorID        uuid.UUID
 	Statuses        []string
+	FilterBuildID   *uuid.UUID
+	NameSearch      *string
+	CpuCount        int64
+	MemoryMb        int64
+	CursorCreatedAt *time.Time
+	CursorID        *uuid.UUID
 	LimitPlusOne    int32
 }
 
@@ -73,12 +93,24 @@ type GetTeamBuildsPageRow struct {
 	TemplateAlias   string
 }
 
+// Builds list, newest first, with keyset pagination, optional search, and the
+// optional cpu/memory resource filters.
+//
+//   - filter_build_id: exact build id (set when the search term is a UUID).
+//   - name_search: exact template id OR case-insensitive substring on the
+//     displayed template's alias / `namespace/alias` (set otherwise).
+//   - cpu_count / memory_mb args: 0 means "unfiltered".
+//   - cursor_* nargs: NULL means "first page".
 func (q *Queries) GetTeamBuildsPage(ctx context.Context, arg GetTeamBuildsPageParams) ([]GetTeamBuildsPageRow, error) {
 	rows, err := q.db.Query(ctx, getTeamBuildsPage,
 		arg.TeamID,
+		arg.Statuses,
+		arg.FilterBuildID,
+		arg.NameSearch,
+		arg.CpuCount,
+		arg.MemoryMb,
 		arg.CursorCreatedAt,
 		arg.CursorID,
-		arg.Statuses,
 		arg.LimitPlusOne,
 	)
 	if err != nil {
@@ -88,314 +120,6 @@ func (q *Queries) GetTeamBuildsPage(ctx context.Context, arg GetTeamBuildsPagePa
 	var items []GetTeamBuildsPageRow
 	for rows.Next() {
 		var i GetTeamBuildsPageRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.StatusGroup,
-			&i.Reason,
-			&i.CreatedAt,
-			&i.FinishedAt,
-			&i.Vcpu,
-			&i.RamMb,
-			&i.TotalDiskSizeMb,
-			&i.EnvdVersion,
-			&i.TemplateID,
-			&i.TemplateAlias,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const getTeamBuildsPageByBuildID = `-- name: GetTeamBuildsPageByBuildID :many
-SELECT
-  b.id,
-  b.status_group,
-  b.reason,
-  b.created_at,
-  b.finished_at,
-  b.vcpu,
-  b.ram_mb,
-  b.total_disk_size_mb,
-  b.envd_version,
-  eba.env_id AS template_id,
-  COALESCE(ea.alias, '') AS template_alias
-FROM public.env_builds b
-JOIN LATERAL (
-  SELECT a.env_id
-  FROM public.env_build_assignments a
-  WHERE a.build_id = b.id
-  ORDER BY a.created_at DESC, a.id DESC
-  LIMIT 1
-) eba ON TRUE
-LEFT JOIN LATERAL (
-  SELECT x.alias
-  FROM public.env_aliases x
-  WHERE x.env_id = eba.env_id
-  ORDER BY x.alias ASC
-  LIMIT 1
-) ea ON TRUE
-WHERE b.team_id = $1::uuid
-  AND b.id = $2::uuid
-  AND (b.created_at, b.id) < (
-    $3::timestamptz,
-    $4::uuid
-  )
-  AND b.status_group = ANY($5::text[])
-ORDER BY b.created_at DESC, b.id DESC
-LIMIT $6::int
-`
-
-type GetTeamBuildsPageByBuildIDParams struct {
-	TeamID          uuid.UUID
-	BuildID         uuid.UUID
-	CursorCreatedAt time.Time
-	CursorID        uuid.UUID
-	Statuses        []string
-	LimitPlusOne    int32
-}
-
-type GetTeamBuildsPageByBuildIDRow struct {
-	ID              uuid.UUID
-	StatusGroup     types.BuildStatusGroup
-	Reason          types.BuildReason
-	CreatedAt       time.Time
-	FinishedAt      *time.Time
-	Vcpu            int64
-	RamMb           int64
-	TotalDiskSizeMb *int64
-	EnvdVersion     *string
-	TemplateID      string
-	TemplateAlias   string
-}
-
-func (q *Queries) GetTeamBuildsPageByBuildID(ctx context.Context, arg GetTeamBuildsPageByBuildIDParams) ([]GetTeamBuildsPageByBuildIDRow, error) {
-	rows, err := q.db.Query(ctx, getTeamBuildsPageByBuildID,
-		arg.TeamID,
-		arg.BuildID,
-		arg.CursorCreatedAt,
-		arg.CursorID,
-		arg.Statuses,
-		arg.LimitPlusOne,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []GetTeamBuildsPageByBuildIDRow
-	for rows.Next() {
-		var i GetTeamBuildsPageByBuildIDRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.StatusGroup,
-			&i.Reason,
-			&i.CreatedAt,
-			&i.FinishedAt,
-			&i.Vcpu,
-			&i.RamMb,
-			&i.TotalDiskSizeMb,
-			&i.EnvdVersion,
-			&i.TemplateID,
-			&i.TemplateAlias,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const getTeamBuildsPageByTemplateAlias = `-- name: GetTeamBuildsPageByTemplateAlias :many
-SELECT
-  b.id,
-  b.status_group,
-  b.reason,
-  b.created_at,
-  b.finished_at,
-  b.vcpu,
-  b.ram_mb,
-  b.total_disk_size_mb,
-  b.envd_version,
-  eba.env_id AS template_id,
-  COALESCE(ea.alias, '') AS template_alias
-FROM public.env_builds b
-JOIN LATERAL (
-  SELECT a.env_id
-  FROM public.env_build_assignments a
-  WHERE a.build_id = b.id
-    AND EXISTS (
-      SELECT 1
-      FROM public.env_aliases af
-      WHERE af.env_id = a.env_id
-        AND af.alias = $1::text
-    )
-  ORDER BY a.created_at DESC, a.id DESC
-  LIMIT 1
-) eba ON TRUE
-LEFT JOIN LATERAL (
-  SELECT x.alias
-  FROM public.env_aliases x
-  WHERE x.env_id = eba.env_id
-  ORDER BY x.alias ASC
-  LIMIT 1
-) ea ON TRUE
-WHERE b.team_id = $2::uuid
-  AND (b.created_at, b.id) < (
-    $3::timestamptz,
-    $4::uuid
-  )
-  AND b.status_group = ANY($5::text[])
-ORDER BY b.created_at DESC, b.id DESC
-LIMIT $6::int
-`
-
-type GetTeamBuildsPageByTemplateAliasParams struct {
-	TemplateAlias   string
-	TeamID          uuid.UUID
-	CursorCreatedAt time.Time
-	CursorID        uuid.UUID
-	Statuses        []string
-	LimitPlusOne    int32
-}
-
-type GetTeamBuildsPageByTemplateAliasRow struct {
-	ID              uuid.UUID
-	StatusGroup     types.BuildStatusGroup
-	Reason          types.BuildReason
-	CreatedAt       time.Time
-	FinishedAt      *time.Time
-	Vcpu            int64
-	RamMb           int64
-	TotalDiskSizeMb *int64
-	EnvdVersion     *string
-	TemplateID      string
-	TemplateAlias   string
-}
-
-func (q *Queries) GetTeamBuildsPageByTemplateAlias(ctx context.Context, arg GetTeamBuildsPageByTemplateAliasParams) ([]GetTeamBuildsPageByTemplateAliasRow, error) {
-	rows, err := q.db.Query(ctx, getTeamBuildsPageByTemplateAlias,
-		arg.TemplateAlias,
-		arg.TeamID,
-		arg.CursorCreatedAt,
-		arg.CursorID,
-		arg.Statuses,
-		arg.LimitPlusOne,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []GetTeamBuildsPageByTemplateAliasRow
-	for rows.Next() {
-		var i GetTeamBuildsPageByTemplateAliasRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.StatusGroup,
-			&i.Reason,
-			&i.CreatedAt,
-			&i.FinishedAt,
-			&i.Vcpu,
-			&i.RamMb,
-			&i.TotalDiskSizeMb,
-			&i.EnvdVersion,
-			&i.TemplateID,
-			&i.TemplateAlias,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const getTeamBuildsPageByTemplateID = `-- name: GetTeamBuildsPageByTemplateID :many
-SELECT
-  b.id,
-  b.status_group,
-  b.reason,
-  b.created_at,
-  b.finished_at,
-  b.vcpu,
-  b.ram_mb,
-  b.total_disk_size_mb,
-  b.envd_version,
-  eba.env_id AS template_id,
-  COALESCE(ea.alias, '') AS template_alias
-FROM public.env_builds b
-JOIN LATERAL (
-  SELECT a.env_id
-  FROM public.env_build_assignments a
-  WHERE a.build_id = b.id
-    AND a.env_id = $1::text
-  ORDER BY a.created_at DESC, a.id DESC
-  LIMIT 1
-) eba ON TRUE
-LEFT JOIN LATERAL (
-  SELECT x.alias
-  FROM public.env_aliases x
-  WHERE x.env_id = eba.env_id
-  ORDER BY x.alias ASC
-  LIMIT 1
-) ea ON TRUE
-WHERE b.team_id = $2::uuid
-  AND (b.created_at, b.id) < (
-    $3::timestamptz,
-    $4::uuid
-  )
-  AND b.status_group = ANY($5::text[])
-ORDER BY b.created_at DESC, b.id DESC
-LIMIT $6::int
-`
-
-type GetTeamBuildsPageByTemplateIDParams struct {
-	TemplateID      string
-	TeamID          uuid.UUID
-	CursorCreatedAt time.Time
-	CursorID        uuid.UUID
-	Statuses        []string
-	LimitPlusOne    int32
-}
-
-type GetTeamBuildsPageByTemplateIDRow struct {
-	ID              uuid.UUID
-	StatusGroup     types.BuildStatusGroup
-	Reason          types.BuildReason
-	CreatedAt       time.Time
-	FinishedAt      *time.Time
-	Vcpu            int64
-	RamMb           int64
-	TotalDiskSizeMb *int64
-	EnvdVersion     *string
-	TemplateID      string
-	TemplateAlias   string
-}
-
-func (q *Queries) GetTeamBuildsPageByTemplateID(ctx context.Context, arg GetTeamBuildsPageByTemplateIDParams) ([]GetTeamBuildsPageByTemplateIDRow, error) {
-	rows, err := q.db.Query(ctx, getTeamBuildsPageByTemplateID,
-		arg.TemplateID,
-		arg.TeamID,
-		arg.CursorCreatedAt,
-		arg.CursorID,
-		arg.Statuses,
-		arg.LimitPlusOne,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []GetTeamBuildsPageByTemplateIDRow
-	for rows.Next() {
-		var i GetTeamBuildsPageByTemplateIDRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.StatusGroup,
