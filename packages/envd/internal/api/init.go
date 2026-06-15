@@ -367,7 +367,7 @@ func (a *API) setupNFS(ctx context.Context, logger zerolog.Logger, lifecycleID *
 	if !a.isMountingNFS.CompareAndSwap(false, true) {
 		logger.Debug().Msg("NFS volumes already mounting")
 
-		return e
+		return fmt.Errorf("NFS mount already in progress")
 	}
 	defer a.isMountingNFS.Store(false)
 
