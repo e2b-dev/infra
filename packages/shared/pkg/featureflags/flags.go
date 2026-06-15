@@ -168,6 +168,18 @@ var (
 	OptimisticResourceAccountingFlag = NewBoolFlag("sandbox-placement-optimistic-resource-accounting", false)
 	FreePageReportingFlag            = NewBoolFlag("free-page-reporting", false)
 	FreezeUserCgroupFlag             = NewBoolFlag("freeze-user-cgroup", env.IsDevelopment())
+	// CollapseEnvdHeapFlag makes the orchestrator ask envd to collapse its own
+	// anonymous heap into 2 MiB hugepages just before pause, reducing the number
+	// of distinct frames envd faults on resume. Off by default; rolled out via LD.
+	CollapseEnvdHeapFlag = NewBoolFlag("collapse-envd-heap", false)
+
+	// CollapseEnvdHeapTimeoutMsFlag bounds the pre-pause POST /collapse call, in
+	// milliseconds. Collapsing migrates envd's scattered heap pages into
+	// hugepages, which is heavier than the freeze sysfs write, so it gets a
+	// larger, independent budget. Collapse is best-effort: a cut-short run still
+	// helps, so this can be tuned per rollout without redeploying. The fallback
+	// (returned when LD is unavailable or the flag is unset) is the default.
+	CollapseEnvdHeapTimeoutMsFlag = NewIntFlag("collapse-envd-heap-timeout-ms", 10000) // 10s in milliseconds
 
 	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())
 

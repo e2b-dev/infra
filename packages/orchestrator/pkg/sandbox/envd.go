@@ -108,13 +108,70 @@ func (s *Sandbox) callEnvdUnfreeze(ctx context.Context, timeout time.Duration) e
 }
 
 func (s *Sandbox) callEnvdCgroupOp(ctx context.Context, timeout time.Duration, op envdCgroupOp) error {
+	return s.postEnvd(ctx, timeout, string(op))
+}
+
+// callEnvdCollapse calls envd's native POST /collapse endpoint, which compacts
+// envd's own anonymous heap into 2 MiB hugepages before pause so it faults
+// fewer distinct frames on resume. Unlike freeze/unfreeze it returns a body:
+// the per-call collapse stats, which the caller records as metrics and span
+// attributes.
+func (s *Sandbox) callEnvdCollapse(ctx context.Context, timeout time.Duration) (envd.CollapseResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	address := fmt.Sprintf("http://%s:%d/%s", s.Slot.HostIPString(), consts.DefaultEnvdServerPort, op)
+	resp, err := s.doEnvdPost(ctx, "collapse")
+	if err != nil {
+		return envd.CollapseResult{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+
+		return envd.CollapseResult{}, fmt.Errorf("collapse returned %d: %s", resp.StatusCode, utils.Truncate(string(body), 100))
+	}
+
+	var result envd.CollapseResult
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return envd.CollapseResult{}, fmt.Errorf("decode collapse result: %w", err)
+	}
+
+	return result, nil
+}
+
+// postEnvd issues an authenticated POST to envd's /<path> endpoint with a tight,
+// dedicated deadline and expects 204 No Content.
+func (s *Sandbox) postEnvd(ctx context.Context, timeout time.Duration, path string) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	resp, err := s.doEnvdPost(ctx, path)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+
+		return fmt.Errorf("%s returned %d: %s", path, resp.StatusCode, utils.Truncate(string(body), 100))
+	}
+
+	return nil
+}
+
+// doEnvdPost builds and sends an authenticated POST to envd's /<path> endpoint.
+// The caller owns the returned response and must close its body. Status handling
+// is left to the caller because the endpoints disagree on success: /collapse
+// returns 200 with a body, while the cgroup ops return 204 No Content. The
+// deadline must live on ctx (callers set it via context.WithTimeout) so it
+// stays in force while the caller reads the body.
+func (s *Sandbox) doEnvdPost(ctx context.Context, path string) (*http.Response, error) {
+	address := fmt.Sprintf("http://%s:%d/%s", s.Slot.HostIPString(), consts.DefaultEnvdServerPort, path)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, address, nil)
 	if err != nil {
-		return fmt.Errorf("build %s request: %w", op, err)
+		return nil, fmt.Errorf("build %s request: %w", path, err)
 	}
 	if s.Config.Envd.AccessToken != nil {
 		req.Header.Set("X-Access-Token", *s.Config.Envd.AccessToken)
@@ -122,17 +179,10 @@ func (s *Sandbox) callEnvdCgroupOp(ctx context.Context, timeout time.Duration, o
 
 	resp, err := sandboxHttpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("%s request: %w", op, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNoContent {
-		body, _ := io.ReadAll(resp.Body)
-
-		return fmt.Errorf("%s returned %d: %s", op, resp.StatusCode, utils.Truncate(string(body), 100))
+		return nil, fmt.Errorf("%s request: %w", path, err)
 	}
 
-	return nil
+	return resp, nil
 }
 
 func (s *Sandbox) convertMounts(mounts []VolumeMountConfig) []envd.VolumeMount {
