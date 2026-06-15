@@ -144,18 +144,30 @@ func (fw *Firewall) resetConn(ctx context.Context) error {
 
 	conn, err := nftables.New(nftables.AsLasting())
 	if err != nil {
-		// Fall back to a transient conn, which cannot fail and dials
-		// per-Flush in the calling thread's netns.
 		err = fmt.Errorf("open new lasting nftables conn: %w", err)
-		conn, _ = nftables.New()
+
+		// Fall back to a transient conn.
+		var transientErr error
+		conn, transientErr = nftables.New()
+		if transientErr != nil {
+			err = errors.Join(err, fmt.Errorf("open transient nftables conn: %w", transientErr))
+		}
 	}
-	fw.conn = conn
 
 	resetErr := errors.Join(closeErr, err)
-	if resetErr != nil {
+	switch {
+	case conn == nil:
+		// Both the lasting and transient constructors failed. Keep the old
+		// (already closed, possibly poisoned) conn rather than storing nil and
+		// panicking on next use; the firewall is left in a degraded state.
+		logger.L().Error(ctx, "firewall nftables conn reset failed; reusing the old conn",
+			zap.String("tap_interface", fw.tapInterface), zap.Error(resetErr))
+	case resetErr != nil:
+		fw.conn = conn
 		logger.L().Error(ctx, "firewall nftables conn reset after apply failure encountered errors",
 			zap.String("tap_interface", fw.tapInterface), zap.Error(resetErr))
-	} else {
+	default:
+		fw.conn = conn
 		logger.L().Warn(ctx, "firewall nftables conn reset after apply failure",
 			zap.String("tap_interface", fw.tapInterface))
 	}
