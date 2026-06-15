@@ -249,7 +249,7 @@ func (s *Slot) CloseFirewall() error {
 }
 
 func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.SandboxNetworkConfig) (e error) {
-	_, span := tracer.Start(ctx, "slot-internet-configure", trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, "slot-internet-configure", trace.WithAttributes(
 		attribute.String("namespace_id", s.NamespaceID()),
 	))
 	defer span.End()
@@ -274,7 +274,7 @@ func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.Sand
 	defer n.Close()
 
 	err = n.Do(func(_ ns.NetNS) error {
-		return s.Firewall.ApplyRules(hasBYOP, egress.GetAllowedCidrs(), egress.GetDeniedCidrs())
+		return s.Firewall.ApplyRules(ctx, hasBYOP, egress.GetAllowedCidrs(), egress.GetDeniedCidrs())
 	})
 	if err != nil {
 		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
@@ -285,7 +285,7 @@ func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.Sand
 
 // UpdateInternet replaces all user firewall rules atomically in a single nftables flush.
 func (s *Slot) UpdateInternet(ctx context.Context, egress *orchestrator.SandboxNetworkEgressConfig) error {
-	_, span := tracer.Start(ctx, "slot-internet-update", trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, "slot-internet-update", trace.WithAttributes(
 		attribute.String("namespace_id", s.NamespaceID()),
 	))
 	defer span.End()
@@ -304,7 +304,7 @@ func (s *Slot) UpdateInternet(ctx context.Context, egress *orchestrator.SandboxN
 	s.firewallCustomRules.Store(true)
 
 	err = n.Do(func(_ ns.NetNS) error {
-		return s.Firewall.ApplyRules(hasBYOP, allowedCIDRs, deniedCIDRs)
+		return s.Firewall.ApplyRules(ctx, hasBYOP, allowedCIDRs, deniedCIDRs)
 	})
 	if err != nil {
 		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
@@ -314,7 +314,7 @@ func (s *Slot) UpdateInternet(ctx context.Context, egress *orchestrator.SandboxN
 }
 
 func (s *Slot) ResetInternet(ctx context.Context) error {
-	_, span := tracer.Start(ctx, "slot-internet-reset", trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, "slot-internet-reset", trace.WithAttributes(
 		attribute.String("namespace_id", s.NamespaceID()),
 	))
 	defer span.End()
@@ -331,7 +331,7 @@ func (s *Slot) ResetInternet(ctx context.Context) error {
 
 	err = n.Do(func(_ ns.NetNS) error {
 		// Revert BYOP so the next tenant can't inherit non-TCP-only deny rules.
-		return s.Firewall.ApplyRules(false, nil, nil)
+		return s.Firewall.ApplyRules(ctx, false, nil, nil)
 	})
 	if err != nil {
 		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)

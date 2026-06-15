@@ -3,6 +3,7 @@
 package network
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -14,8 +15,10 @@ import (
 	"github.com/google/nftables/expr"
 	"github.com/ngrok/firewall_toolkit/pkg/expressions"
 	"github.com/ngrok/firewall_toolkit/pkg/set"
+	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
 
@@ -136,7 +139,7 @@ func (fw *Firewall) Close() error {
 // resetConn replaces fw.conn with a fresh netlink connection, discarding
 // buffered messages and any sticky serialization error — nftables.Conn has no
 // API for that (see https://github.com/google/nftables/pull/324).
-func (fw *Firewall) resetConn() error {
+func (fw *Firewall) resetConn(ctx context.Context) error {
 	closeErr := fw.conn.CloseLasting()
 
 	conn, err := nftables.New(nftables.AsLasting())
@@ -148,7 +151,16 @@ func (fw *Firewall) resetConn() error {
 	}
 	fw.conn = conn
 
-	return errors.Join(closeErr, err)
+	resetErr := errors.Join(closeErr, err)
+	if resetErr != nil {
+		logger.L().Error(ctx, "firewall nftables conn reset after apply failure encountered errors",
+			zap.String("tap_interface", fw.tapInterface), zap.Error(resetErr))
+	} else {
+		logger.L().Warn(ctx, "firewall nftables conn reset after apply failure",
+			zap.String("tap_interface", fw.tapInterface))
+	}
+
+	return resetErr
 }
 
 // tapIfaceMatch returns expressions that match packets from the tap interface.
@@ -320,13 +332,13 @@ func (fw *Firewall) bufferUserRules(allowedCIDRs, deniedCIDRs []string) error {
 //
 // On any failure the conn is replaced via resetConn, so a poisoned batch can
 // never leak into a later flush.
-func (fw *Firewall) ApplyRules(byop bool, allowedCIDRs, deniedCIDRs []string) (err error) {
+func (fw *Firewall) ApplyRules(ctx context.Context, byop bool, allowedCIDRs, deniedCIDRs []string) (err error) {
 	fw.mu.Lock()
 	defer fw.mu.Unlock()
 
 	defer func() {
 		if err != nil {
-			err = errors.Join(err, fw.resetConn())
+			err = errors.Join(err, fw.resetConn(ctx))
 		}
 	}()
 
