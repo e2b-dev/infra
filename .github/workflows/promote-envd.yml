@@ -34,6 +34,12 @@ jobs:
     outputs:
       commit_sha: ${{ steps.normalize.outputs.commit_sha }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
       - name: Validate and normalize commit SHA
         id: normalize
         env:
@@ -43,9 +49,11 @@ jobs:
             echo "commit_sha must be a lowercase hexadecimal Git SHA suffix."
             exit 1
           fi
-          # envd binaries are uploaded keyed by the short SHA (git rev-parse --short),
-          # so truncate to 7 chars to match (e.g. 9799dd02631...cf84 -> 9799dd0).
-          echo "commit_sha=${ENVD_COMMIT_SHA:0:7}" >> "$GITHUB_OUTPUT"
+          # envd binaries are uploaded keyed by the abbreviated SHA
+          # (git rev-parse --short HEAD), so abbreviate the input the same way
+          # to match (e.g. 9799dd02631...cf84 -> 9799dd026).
+          SHORT_SHA="$(git rev-parse --short "$ENVD_COMMIT_SHA")"
+          echo "commit_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Require an environment
         if: ${{ inputs.staging != true && inputs.foxtrot != true && inputs.juliett != true }}
