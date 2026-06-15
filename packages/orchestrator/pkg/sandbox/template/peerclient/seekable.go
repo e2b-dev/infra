@@ -7,18 +7,12 @@ import (
 	"io"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-)
-
-const (
-	postTransitionRetryWindow = 30 * time.Second
-	postTransitionRetryDelay  = 250 * time.Millisecond
 )
 
 var _ storage.Seekable = (*peerSeekable)(nil)
@@ -38,12 +32,6 @@ type peerSeekable struct {
 	base   storage.Seekable
 	baseCT storage.CompressionType
 	loaded bool
-
-	// transitionAt is set on first PeerTransitionedError emission after
-	// uploaded flips to true; nil otherwise. Subsequent base 404s within
-	// postTransitionRetryWindow re-emit PeerTransitionedError so concurrent
-	// readers retry against the post-upload header.
-	transitionAt atomic.Pointer[time.Time]
 }
 
 // getBase returns a base Seekable opened against the storage path composed
@@ -71,6 +59,15 @@ func (s *peerSeekable) getBase(ctx context.Context, ct storage.CompressionType) 
 	return base, nil
 }
 
+// Post-tryPeer fall-through rule shared by Size and OpenRangeReader: if
+// uploaded has flipped (peer signaled UseStorage), return PeerTransitionedError
+// so the caller refreshes + reopens. We never serve base from a post-transition
+// peerSeekable — this wrapper's base path was captured pre-finalization (basic
+// name); the actual GCS object lives at the CT-qualified path the refreshed
+// header reveals. Routing back through the resolver after refresh returns base
+// directly (attrResolveUploaded), so the retry hits GCS at the right path with
+// no wrapper involved.
+
 func (s *peerSeekable) Size(ctx context.Context) (int64, error) {
 	res, err := tryPeer(ctx, &s.peerHandle, "size peer-seekable", attrOpSize,
 		func(ctx context.Context) (peerAttempt[int64], error) {
@@ -92,15 +89,13 @@ func (s *peerSeekable) Size(ctx context.Context) (int64, error) {
 		return res.value, err
 	}
 
-	// Size only reaches base for V3 builds (uncompressedSize unknown);
-	// V4 builds carry the size in the header so the chunker never calls Size.
-	// V3 implies CompressionNone, matching reality.
-	base, err := s.getBase(ctx, storage.CompressionNone)
-	if err != nil {
-		return 0, err
-	}
-
-	return base.Size(ctx)
+	// Size has no caller-provided frame table to source the compression type
+	// from, and the basic-name fall-through would 404 on compressed V4 builds
+	// (data lives at .zstd). Surface PeerTransitionedError unconditionally on
+	// miss so the caller refreshes against the authoritative header — which
+	// knows the compression type — and either recovers or surfaces a clean "not
+	// yet on storage" error.
+	return 0, &storage.PeerTransitionedError{}
 }
 
 func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length int64, frameTable *storage.FrameTable) (io.ReadCloser, error) {
@@ -129,12 +124,8 @@ func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length in
 	if res.hit {
 		return res.value, err
 	}
-
-	if s.uploaded != nil && s.uploaded.Load() {
-		now := time.Now()
-		if s.transitionAt.CompareAndSwap(nil, &now) {
-			return nil, &storage.PeerTransitionedError{}
-		}
+	if s.uploaded.Load() {
+		return nil, &storage.PeerTransitionedError{}
 	}
 
 	base, err := s.getBase(ctx, frameTable.CompressionType())
@@ -142,16 +133,7 @@ func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length in
 		return nil, err
 	}
 
-	rc, err := base.OpenRangeReader(ctx, off, length, frameTable)
-	// GCS can briefly 404 a just-finalized object; within the retry window
-	// re-emit so build.File reloads the header and retries with backoff.
-	if errors.Is(err, storage.ErrObjectNotExist) {
-		if at := s.transitionAt.Load(); at != nil && time.Since(*at) < postTransitionRetryWindow {
-			return nil, &storage.PeerTransitionedError{RetryAfter: postTransitionRetryDelay}
-		}
-	}
-
-	return rc, err
+	return base.OpenRangeReader(ctx, off, length, frameTable)
 }
 
 func (s *peerSeekable) StoreFile(context.Context, string, ...storage.PutOption) (*storage.FullFrameTable, [32]byte, error) {

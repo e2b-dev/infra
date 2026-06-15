@@ -255,7 +255,12 @@ func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.Sand
 	defer span.End()
 
 	egress := network.GetEgress()
-	if len(egress.GetAllowedCidrs()) == 0 && len(egress.GetDeniedCidrs()) == 0 && len(egress.GetAllowedDomains()) == 0 {
+	hasUserRules := len(egress.GetAllowedCidrs()) != 0 ||
+		len(egress.GetDeniedCidrs()) != 0 ||
+		len(egress.GetAllowedDomains()) != 0
+	hasBYOP := egress.GetEgressProxyAddress() != ""
+
+	if !hasUserRules && !hasBYOP {
 		// Internet access is allowed by default.
 		return nil
 	}
@@ -269,7 +274,7 @@ func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.Sand
 	defer n.Close()
 
 	err = n.Do(func(_ ns.NetNS) error {
-		return s.Firewall.ReplaceUserRules(egress.GetAllowedCidrs(), egress.GetDeniedCidrs())
+		return s.Firewall.ApplyRules(hasBYOP, egress.GetAllowedCidrs(), egress.GetDeniedCidrs())
 	})
 	if err != nil {
 		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
@@ -287,6 +292,7 @@ func (s *Slot) UpdateInternet(ctx context.Context, egress *orchestrator.SandboxN
 
 	allowedCIDRs := egress.GetAllowedCidrs()
 	deniedCIDRs := egress.GetDeniedCidrs()
+	hasBYOP := egress.GetEgressProxyAddress() != ""
 
 	n, err := ns.GetNS(filepath.Join(netNamespacesDir, s.NamespaceID()))
 	if err != nil {
@@ -294,14 +300,15 @@ func (s *Slot) UpdateInternet(ctx context.Context, egress *orchestrator.SandboxN
 	}
 	defer n.Close()
 
+	// Set before mutating: a partial failure must still trigger cleanup.
+	s.firewallCustomRules.Store(true)
+
 	err = n.Do(func(_ ns.NetNS) error {
-		return s.Firewall.ReplaceUserRules(allowedCIDRs, deniedCIDRs)
+		return s.Firewall.ApplyRules(hasBYOP, allowedCIDRs, deniedCIDRs)
 	})
 	if err != nil {
 		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
 	}
-
-	s.firewallCustomRules.Store(true)
 
 	return nil
 }
@@ -312,7 +319,7 @@ func (s *Slot) ResetInternet(ctx context.Context) error {
 	))
 	defer span.End()
 
-	if !s.firewallCustomRules.CompareAndSwap(true, false) {
+	if !s.firewallCustomRules.Load() {
 		return nil
 	}
 
@@ -323,11 +330,14 @@ func (s *Slot) ResetInternet(ctx context.Context) error {
 	defer n.Close()
 
 	err = n.Do(func(_ ns.NetNS) error {
-		return s.Firewall.ReplaceUserRules(nil, nil)
+		// Revert BYOP so the next tenant can't inherit non-TCP-only deny rules.
+		return s.Firewall.ApplyRules(false, nil, nil)
 	})
 	if err != nil {
 		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
 	}
+
+	s.firewallCustomRules.Store(false)
 
 	return nil
 }
