@@ -9,15 +9,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 )
 
-func labelsSet(labels ...string) map[string]struct{} {
-	s := make(map[string]struct{}, len(labels))
-	for _, l := range labels {
-		s[l] = struct{}{}
-	}
-
-	return s
-}
-
 func TestIsNodeLabelsCompatible(t *testing.T) {
 	t.Parallel()
 

@@ -403,7 +403,7 @@ func (o *Orchestrator) generateRequiredNodeLabels(ctx context.Context, sandboxID
 	}
 
 	for _, mount := range sbxData.VolumeMounts {
-		label := internal.MakeVolumeTypeLabel(mount.Type)
+		label := internal.MakeVolumeTypeLabel(mount.GetType())
 		allLabels = append(allLabels, label)
 	}
 
