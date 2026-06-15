@@ -1,11 +1,11 @@
 package middleware
 
 import (
-	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/gin-gonic/gin"
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 )
 
