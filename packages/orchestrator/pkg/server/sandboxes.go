@@ -33,6 +33,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/retry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -45,12 +46,25 @@ const (
 	// acquireTimeout is the max time to wait for a semaphore for resuming sandboxes snapshot.
 	acquireTimeout = 15 * time.Second
 
-	// uploadTimeout is the max time allowed for uploading snapshot files to
-	// remote storage.
+	// uploadTimeout is the max time allowed for a single upload attempt to
+	// remote storage. The overall retry window is uploadTotalBudget.
 	uploadTimeout = 20 * time.Minute
-	// redisPeerKeyTTL is slightly longer than uploadTimeout so the key is still
-	// valid for the entire upload window before being cleaned up.
-	redisPeerKeyTTL = uploadTimeout + 2*time.Minute
+	// uploadTotalBudget bounds how long a snapshot upload is retried before it
+	// is given up. Covers a long GCS outage without retrying forever.
+	uploadTotalBudget = 2 * time.Hour
+	// redisPeerKeyTTL keeps the peer routing key valid across the whole retry
+	// window so a long retry doesn't drop peer routing mid-upload. It is
+	// unregistered promptly once the upload finishes (success or give-up).
+	redisPeerKeyTTL = uploadTotalBudget + 2*time.Minute
+
+	// uploadRetryInitialBackoff is the wait before the first retry; it grows
+	// exponentially up to uploadRetryMaxBackoff.
+	uploadRetryInitialBackoff = 5 * time.Second
+	// uploadRetryMaxBackoff caps the backoff between attempts.
+	uploadRetryMaxBackoff = 2 * time.Minute
+	// uploadRetryBackoffMultiplier is the exponential growth factor between
+	// retry attempts.
+	uploadRetryBackoffMultiplier = 2
 
 	// executionEventDataKey is the key used in webhook event data for sandbox execution metrics.
 	executionEventDataKey = "execution"
@@ -899,7 +913,12 @@ func (s *Server) snapshotAndCacheSandbox(
 			return
 		}
 
-		s.uploadedBuilds.Set(meta.Template.BuildID, struct{}{}, ttlcache.DefaultTTL)
+		// Only advertise the build as fully uploaded when it actually landed.
+		// On abandon/failure the bytes are not in storage, so marking it would
+		// make chunk-serving falsely report "already uploaded".
+		if uploadErr == nil {
+			s.uploadedBuilds.Set(meta.Template.BuildID, struct{}{}, ttlcache.DefaultTTL)
+		}
 
 		if err := s.peerRegistry.Unregister(ctx, meta.Template.BuildID); err != nil {
 			logger.L().Warn(ctx, "failed to unregister peer address from routing", zap.String("build_id", meta.Template.BuildID), zap.Error(err))
@@ -924,23 +943,40 @@ func (s *Server) snapshotAndCacheSandbox(
 // background and cleans up the Redis peer key once done. Used by the Pause
 // handler where no prefetch data is available.
 func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, res *snapshotResult) {
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uploadTimeout)
+	// Detach from the request: the upload retries for up to uploadTotalBudget.
+	// A graceful shutdown waits for it to finish (see Server.Close via uploadsWG)
+	// rather than cancelling, so an in-flight snapshot isn't dropped on restart.
+	uploadCtx := context.WithoutCancel(ctx)
 
-	go func() {
-		defer cancel()
+	s.uploadsInFlight.Add(1)
+	s.uploadsWG.Go(func() {
+		defer s.uploadsInFlight.Add(-1)
 
-		ctx, span := tracer.Start(ctx, "upload snapshot")
+		spanCtx, span := tracer.Start(uploadCtx, "upload snapshot")
 		defer span.End()
 
-		err := res.upload.Run(ctx)
+		err := retry.Do(
+			spanCtx,
+			defaultUploadRetryPolicy(),
+			isRetryableUploadErr,
+			res.upload.Run,
+			func(attempt int, backoff time.Duration, err error) {
+				sbxlogger.I(sbx).Warn(spanCtx, "snapshot upload attempt failed, retrying",
+					zap.Int("attempt", attempt),
+					zap.Duration("backoff", backoff),
+					zap.Error(err),
+				)
+			},
+		)
 		if err != nil {
-			sbxlogger.I(sbx).Error(ctx, "error uploading snapshot files", zap.Error(err))
+			sbxlogger.I(sbx).Error(spanCtx, "snapshot upload did not durably land", zap.Error(err))
+			s.uploadFailedCounter.Add(spanCtx, 1)
 		} else {
-			sbxlogger.I(sbx).Info(ctx, "snapshot finished uploading successfully")
+			sbxlogger.I(sbx).Info(spanCtx, "snapshot finished uploading successfully")
 		}
 
-		res.completeUpload(ctx, err)
-	}()
+		res.completeUpload(spanCtx, err)
+	})
 }
 
 // setupSandboxLifecycle sets up the cleanup goroutine for a sandbox.

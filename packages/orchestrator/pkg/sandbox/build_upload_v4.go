@@ -128,8 +128,16 @@ func (u *Upload) uploadFramed(
 // (excluding self) — gating publish on parents' header finalization — and,
 // when dst is non-nil, writes the freshest BuildData into it. Existing dst
 // entries are overwritten (Wait is more authoritative than CloneForUpload).
-// Skips silently when Wait returns nil or the ancestor carries no Builds
-// entry (V3 ancestor); pre-existing dst entries are preserved.
+// Skips silently when Wait returns nil.
+//
+// V3 ancestors carry no Builds map, so a sentinel empty BuildData{} is
+// written — the entry's presence alone is what matters: GetBuildFrameData
+// returns UncompressedFrameTable (nil FrameData → sentinel), and createDiff's
+// hasEntry branch handles size=0 by falling back to upstream.Size. We avoid
+// computing the diff size here on purpose: it's not in Metadata.Size (that's
+// the virtual size), and asking storage at upload time across a long
+// ancestor chain would multiply roundtrips. The fallback amortizes into the
+// read that's about to happen anyway.
 //
 // V3 callers pass dst=nil — they need the barrier but have no Builds map.
 //
@@ -162,6 +170,12 @@ func (u *Upload) appendAncestorBuilds(
 
 		if bd, ok := h.Builds[buildID]; ok {
 			dst[buildID] = bd
+
+			continue
+		}
+
+		if h.Metadata.Version < headers.MetadataVersionV4 {
+			dst[buildID] = headers.BuildData{}
 		}
 	}
 

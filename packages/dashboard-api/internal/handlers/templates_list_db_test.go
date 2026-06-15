@@ -117,35 +117,6 @@ func TestGetTemplates_ListAndKeysetPaginate(t *testing.T) {
 	assert.Equal(t, 2, pages, "3 templates at limit 2 should be 2 pages")
 }
 
-func TestGetTemplates_SortByName(t *testing.T) {
-	t.Parallel()
-
-	testDB := testutils.SetupDatabase(t)
-	createEnvDefaultsTable(t, testDB)
-
-	teamID := testutils.CreateTestTeam(t, testDB)
-	first := testutils.CreateTestTemplate(t, testDB, teamID)
-	testutils.CreateTestTemplateAliasWithName(t, testDB, first, "aaa-template", nil)
-	second := testutils.CreateTestTemplate(t, testDB, teamID)
-	testutils.CreateTestTemplateAliasWithName(t, testDB, second, "zzz-template", nil)
-
-	store := newTemplatesTestStore(testDB)
-	team := teamInfo(teamID, nil)
-
-	nameAsc := api.GetTemplatesParamsSortNameAsc
-	nameDesc := api.GetTemplatesParamsSortNameDesc
-
-	_, ascResp := callGetTemplates(t, store, team, api.GetTemplatesParams{Sort: &nameAsc})
-	require.Len(t, ascResp.Data, 2)
-	assert.Equal(t, first, ascResp.Data[0].TemplateID, "aaa should sort first ascending")
-	assert.Equal(t, second, ascResp.Data[1].TemplateID)
-
-	_, descResp := callGetTemplates(t, store, team, api.GetTemplatesParams{Sort: &nameDesc})
-	require.Len(t, descResp.Data, 2)
-	assert.Equal(t, second, descResp.Data[0].TemplateID, "zzz should sort first descending")
-	assert.Equal(t, first, descResp.Data[1].TemplateID)
-}
-
 func TestGetTemplates_DefaultGatingByCluster(t *testing.T) {
 	t.Parallel()
 

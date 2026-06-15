@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
@@ -26,6 +27,9 @@ const (
 	// NoCgroupFD is a sentinel value indicating that no cgroup file descriptor
 	// is available (e.g. cgroup accounting is disabled or the FD has been released).
 	NoCgroupFD = -1
+
+	cgroupKillTimeout      = 2 * time.Second
+	cgroupKillPollInterval = 100 * time.Millisecond
 )
 
 // Stats contains resource usage statistics from a cgroup
@@ -103,6 +107,88 @@ func (h *CgroupHandle) GetStats(ctx context.Context) (*Stats, error) {
 	return h.manager.getStatsForPath(ctx, h.path, h.memoryPeakFile)
 }
 
+// Kill terminates all processes currently in this cgroup.
+// Safe to call multiple times. Returns nil if the cgroup is already empty or gone.
+func (h *CgroupHandle) Kill(ctx context.Context) error {
+	if h == nil || h.noop || h.removed {
+		return nil
+	}
+
+	return h.kill(ctx)
+}
+
+func (h *CgroupHandle) kill(ctx context.Context) error {
+	if h == nil || h.noop {
+		return nil
+	}
+
+	populated, err := h.populated()
+	if err != nil {
+		return err
+	}
+	if !populated {
+		return nil
+	}
+
+	if err := os.WriteFile(filepath.Join(h.path, "cgroup.kill"), []byte("1"), 0); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+
+		return fmt.Errorf("failed to write cgroup.kill: %w", err)
+	}
+
+	events, err := os.Open(filepath.Join(h.path, "cgroup.events"))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("failed to open cgroup.events: %w", err)
+	}
+	defer events.Close()
+
+	deadline := time.Now().Add(cgroupKillTimeout)
+
+	for {
+		populated, err := cgroupEventsPopulated(events)
+		if err != nil {
+			return err
+		}
+		if !populated {
+			return nil
+		}
+
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return fmt.Errorf("cgroup %s still has processes after cgroup.kill", h.cgroupName)
+		}
+
+		pollTimeout := min(remaining, cgroupKillPollInterval)
+		pollTimeoutMillis := int(pollTimeout / time.Millisecond)
+		if pollTimeoutMillis == 0 {
+			pollTimeoutMillis = 1
+		}
+
+		fds := []unix.PollFd{{
+			Fd:     int32(events.Fd()),
+			Events: unix.POLLPRI | unix.POLLERR,
+		}}
+
+		_, err = unix.Poll(fds, pollTimeoutMillis)
+		if err != nil {
+			if errors.Is(err, unix.EINTR) {
+				continue
+			}
+
+			return fmt.Errorf("failed to poll cgroup.events: %w", err)
+		}
+	}
+}
+
 // Remove closes all open FDs and deletes the cgroup directory.
 // The handle should not be used after calling Remove.
 // Safe to call multiple times. Returns error if removal fails
@@ -144,8 +230,8 @@ func (h *CgroupHandle) Remove(ctx context.Context) error {
 		zap.String("path", h.path),
 		zap.Error(rmErr))
 
-	if err := os.WriteFile(filepath.Join(h.path, "cgroup.kill"), []byte("1"), 0); err != nil && !os.IsNotExist(err) {
-		logger.L().Warn(ctx, "failed to write cgroup.kill",
+	if err := h.kill(ctx); err != nil {
+		logger.L().Warn(ctx, "failed to kill cgroup processes",
 			zap.String("cgroup_name", h.cgroupName),
 			zap.String("path", h.path),
 			zap.Error(err))
@@ -190,6 +276,58 @@ func (h *CgroupHandle) CgroupName() string {
 	}
 
 	return h.cgroupName
+}
+
+func (h *CgroupHandle) populated() (bool, error) {
+	data, err := os.ReadFile(filepath.Join(h.path, "cgroup.events"))
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("failed to read cgroup.events: %w", err)
+	}
+
+	return parseCgroupEventsPopulated(data)
+}
+
+func cgroupEventsPopulated(file *os.File) (bool, error) {
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+
+		return false, fmt.Errorf("failed to seek cgroup.events: %w", err)
+	}
+
+	data, err := io.ReadAll(file)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("failed to read cgroup.events: %w", err)
+	}
+
+	return parseCgroupEventsPopulated(data)
+}
+
+func parseCgroupEventsPopulated(data []byte) (bool, error) {
+	for line := range strings.SplitSeq(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 || fields[0] != "populated" {
+			continue
+		}
+
+		switch fields[1] {
+		case "0":
+			return false, nil
+		case "1":
+			return true, nil
+		default:
+			return false, fmt.Errorf("invalid populated value in cgroup.events: %q", fields[1])
+		}
+	}
+
+	return false, errors.New("missing populated value in cgroup.events")
 }
 
 // Manager handles initialization and creation of cgroups

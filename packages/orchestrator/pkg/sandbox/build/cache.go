@@ -39,13 +39,12 @@ type deleteDiff struct {
 }
 
 type DiffStore struct {
-	cachePath    string
-	cache        *ttlcache.Cache[DiffStoreKey, Diff]
-	initGroup    singleflight.Group
-	cancel       func()
-	config       cfg.Config
-	flags        *featureflags.Client
-	isActivePeer IsActivePeer
+	cachePath string
+	cache     *ttlcache.Cache[DiffStoreKey, Diff]
+	initGroup singleflight.Group
+	cancel    func()
+	config    cfg.Config
+	flags     *featureflags.Client
 
 	// pdSizes is used to keep track of the diff sizes
 	// that are scheduled for deletion, as this won't show up in the disk usage.
@@ -61,7 +60,6 @@ func NewDiffStore(
 	flags *featureflags.Client,
 	cachePath string,
 	ttl, delay time.Duration,
-	isActivePeer IsActivePeer,
 ) (*DiffStore, error) {
 	err := os.MkdirAll(cachePath, 0o755)
 	if err != nil {
@@ -73,14 +71,13 @@ func NewDiffStore(
 	)
 
 	ds := &DiffStore{
-		cachePath:    cachePath,
-		cache:        cache,
-		cancel:       func() {},
-		config:       config,
-		flags:        flags,
-		isActivePeer: isActivePeer,
-		pdSizes:      make(map[DiffStoreKey]*deleteDiff),
-		pdDelay:      delay,
+		cachePath: cachePath,
+		cache:     cache,
+		cancel:    func() {},
+		config:    config,
+		flags:     flags,
+		pdSizes:   make(map[DiffStoreKey]*deleteDiff),
+		pdDelay:   delay,
 	}
 
 	cache.OnEviction(func(ctx context.Context, _ ttlcache.EvictionReason, item *ttlcache.Item[DiffStoreKey, Diff]) {
