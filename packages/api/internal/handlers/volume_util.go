@@ -99,22 +99,23 @@ func (a *APIStore) executeOnOrchestratorByClusterID(
 	// of the cluster. A node that fails with a retryable error simply moves on
 	// to the next one, so we only reach the unlabeled nodes once every labeled
 	// node has failed with a retryable error.
-	labeledNodes, otherNodes := partitionNodesByVolumeLabel(nodes, volume)
+	volumeLabel := internal.MakeVolumeTypeLabel(volume.VolumeType)
+	labeledNodes, otherNodes := findNodesByVolumeLabel(nodes, volumeLabel)
 	rand.Shuffle(len(labeledNodes), func(i, j int) { labeledNodes[i], labeledNodes[j] = labeledNodes[j], labeledNodes[i] })
 	rand.Shuffle(len(otherNodes), func(i, j int) { otherNodes[i], otherNodes[j] = otherNodes[j], otherNodes[i] })
 
 	// Falling back to unlabeled nodes is only useful during the volume-label
 	// migration; once every node is labeled, unlabeled nodes fail 100% of the
 	// time. The flag lets us turn the fallback off (and eventually remove it).
-	fallbackToUnlabeled := a.featureFlags.BoolFlag(ctx,
-		featureflags.VolumeFallbackToUnlabeledNodesFlag,
+	fallbackToUnmatched := a.featureFlags.BoolFlag(ctx,
+		featureflags.VolumeFallbackToUnmatchedNodesFlag,
 		featureflags.TeamContext(volume.TeamID.String()),
 		featureflags.ClusterContext(clusterID),
 		featureflags.VolumeContext(volume.ID.String()),
 	)
 
 	nodes = labeledNodes
-	if fallbackToUnlabeled {
+	if fallbackToUnmatched {
 		nodes = append(nodes, otherNodes...)
 	}
 
@@ -185,24 +186,22 @@ func (a *APIStore) executeOnOrchestratorByClusterID(
 	return ErrNoHealthyOrchestratorFound
 }
 
-// partitionNodesByVolumeLabel splits nodes into those that advertise the
+// findNodesByVolumeLabel splits nodes into those that advertise the
 // volume's type label and those that don't, preserving the input order within
 // each group.
-func partitionNodesByVolumeLabel(nodes []*nodemanager.Node, volume queries.Volume) (labeled, unlabeled []*nodemanager.Node) {
-	expectedLabel := internal.MakeVolumeTypeLabel(volume.VolumeType)
-
+func findNodesByVolumeLabel(nodes []*nodemanager.Node, expectedLabel string) (matched, unmatched []*nodemanager.Node) {
 	for _, node := range nodes {
 		labels := node.Labels()
 		if _, ok := labels[expectedLabel]; ok {
-			labeled = append(labeled, node)
+			matched = append(matched, node)
 
 			continue
 		}
 
-		unlabeled = append(unlabeled, node)
+		unmatched = append(unmatched, node)
 	}
 
-	return labeled, unlabeled
+	return matched, unmatched
 }
 
 func isUnknownVolumeTypeError(err error) (string, bool) {
