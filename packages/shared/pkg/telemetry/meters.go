@@ -84,6 +84,7 @@ const (
 	// Sandbox timing histograms
 	OrchestratorSandboxCreateDurationName HistogramType = "orchestrator.sandbox.create.duration"
 	WaitForEnvdDurationHistogramName      HistogramType = "orchestrator.sandbox.envd.init.duration"
+	GuestSyncDurationHistogramName        HistogramType = "orchestrator.sandbox.guest_sync.duration"
 
 	// Pre-pause envd heap collapse round-trip duration (the pause-path cost of
 	// POST /collapse: network plus envd's madvise work), recorded once per pause
@@ -409,6 +410,7 @@ var histogramDesc = map[HistogramType]string{
 	OrchestratorSandboxCreateDurationName: "Time taken to create a sandbox",
 	WaitForEnvdDurationHistogramName:      "Time taken for Envd to initialize successfully",
 	EnvdCollapseDurationHistogramName:     "Time taken for the pre-pause envd heap collapse round-trip",
+	GuestSyncDurationHistogramName:        "Time taken for the mandatory pre-pause guest sync (filesystem-only pause)",
 
 	UffdStartupPagesHistogramName:       "Demand-fault pages a guest needed to reach a successful envd init, per start",
 	UffdStartupSourcePagesHistogramName: "Subset of startup demand-fault pages pulled from the source (e.g. GCS), per start",
@@ -455,6 +457,7 @@ var histogramUnits = map[HistogramType]string{
 	OrchestratorSandboxCreateDurationName:         "ms",
 	WaitForEnvdDurationHistogramName:              "ms",
 	EnvdCollapseDurationHistogramName:             "ms",
+	GuestSyncDurationHistogramName:                "ms",
 	UffdStartupPagesHistogramName:                 "{page}",
 	UffdStartupSourcePagesHistogramName:           "{page}",
 	UffdStartupBytesHistogramName:                 "{By}",

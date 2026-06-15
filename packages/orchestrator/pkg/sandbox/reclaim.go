@@ -176,11 +176,22 @@ func (s *Sandbox) guestSyncTimeout(ctx context.Context) time.Duration {
 // error instead of persisting a rootfs missing acknowledged writes. Unlike
 // bestEffortReclaim's sync step (LD-flag gated, best-effort), this always runs
 // and always reports failure.
-func (s *Sandbox) guestSync(ctx context.Context) error {
+func (s *Sandbox) guestSync(ctx context.Context) (e error) {
 	syncTimeout := s.guestSyncTimeout(ctx)
+	start := time.Now()
 
 	ctx, span := tracer.Start(ctx, "envd-guest-sync")
 	defer span.End()
+
+	// Record on every exit so slow and timed-out syncs are captured too.
+	defer func() {
+		guestSyncDurationHistogram.Record(ctx, time.Since(start).Milliseconds(),
+			metric.WithAttributes(
+				attribute.Bool("success", e == nil),
+				attribute.Int64("timeout_ms", syncTimeout.Milliseconds()),
+			),
+		)
+	}()
 
 	rcCtx, cancel := context.WithTimeout(ctx, syncTimeout+reclaimOuterSlack)
 	defer cancel()
