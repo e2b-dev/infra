@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // templatesSort is the combined sort column + direction. Its values match the
@@ -47,17 +48,15 @@ func parseTemplatesSort(value *api.GetTemplatesParamsSort) (templatesSort, error
 }
 
 func normalizeTemplatesLimit(limit *api.TemplatesLimit) int32 {
-	if limit == nil {
-		return defaultTemplatesLimit
-	}
-	if *limit < 1 {
+	v := utils.DerefOrDefault(limit, defaultTemplatesLimit)
+	if v < 1 {
 		return 1
 	}
-	if *limit > maxTemplatesLimit {
+	if v > maxTemplatesLimit {
 		return maxTemplatesLimit
 	}
 
-	return *limit
+	return v
 }
 
 // templatesPublicFilter encodes the optional visibility filter for the query:

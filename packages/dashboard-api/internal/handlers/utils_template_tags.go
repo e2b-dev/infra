@@ -41,35 +41,29 @@ const (
 )
 
 func normalizeAssignmentsPerGroupLimit(limit *api.TagAssignmentLimit) int32 {
-	if limit == nil {
-		return defaultAssignmentsPerGroup
-	}
-
-	if *limit < 1 {
+	v := utils.DerefOrDefault(limit, defaultAssignmentsPerGroup)
+	if v < 1 {
 		return 1
 	}
 
-	if *limit > maxAssignmentsPerGroup {
+	if v > maxAssignmentsPerGroup {
 		return maxAssignmentsPerGroup
 	}
 
-	return *limit
+	return v
 }
 
 func normalizeTagGroupsLimit(limit *api.TagGroupsLimit) int32 {
-	if limit == nil {
-		return defaultTagGroupsLimit
-	}
-
-	if *limit < 1 {
+	v := utils.DerefOrDefault(limit, defaultTagGroupsLimit)
+	if v < 1 {
 		return 1
 	}
 
-	if *limit > maxTagGroupsLimit {
+	if v > maxTagGroupsLimit {
 		return maxTagGroupsLimit
 	}
 
-	return *limit
+	return v
 }
 
 func parseTagGroupsSort(value *api.GetTemplatesTemplateIDTagsGroupsParamsSort) (tagGroupsSort, error) {

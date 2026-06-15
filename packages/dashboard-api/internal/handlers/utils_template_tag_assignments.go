@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -16,19 +17,16 @@ const (
 )
 
 func normalizeTagAssignmentsPageLimit(limit *api.TagAssignmentsLimit) int32 {
-	if limit == nil {
-		return defaultTagAssignmentsPageSize
-	}
-
-	if *limit < 1 {
+	v := utils.DerefOrDefault(limit, defaultTagAssignmentsPageSize)
+	if v < 1 {
 		return 1
 	}
 
-	if *limit > maxTagAssignmentsPageSize {
+	if v > maxTagAssignmentsPageSize {
 		return maxTagAssignmentsPageSize
 	}
 
-	return *limit
+	return v
 }
 
 // parseTagAssignmentsCursor decodes the {assigned_at}|{assignment_id} cursor.
