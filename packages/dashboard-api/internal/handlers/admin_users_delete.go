@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -59,9 +60,13 @@ func (s *APIStore) DeleteAdminUsersUserId(c *gin.Context, userId api.UserId) {
 
 	// Remove the external identity (e.g. Ory) using pre-fetched references.
 	// Retry since the DB rows are already gone and we must not leave the IdP identity active.
+	// Use a detached context so a client disconnect does not cancel the cleanup.
+	cleanupCtx, cleanupCancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cleanupCancel()
+
 	var identityErr error
 	for attempt := range identityDeleteMaxRetries {
-		identityErr = handle.Execute(ctx)
+		identityErr = handle.Execute(cleanupCtx)
 		if identityErr == nil {
 			break
 		}
