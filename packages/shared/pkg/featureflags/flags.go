@@ -158,9 +158,15 @@ var (
 	ExecutionMetricsOnWebhooksFlag        = NewBoolFlag("execution-metrics-on-webhooks", false) // TODO: Remove NLT 20250315
 	SandboxLabelBasedSchedulingFlag       = NewBoolFlag("sandbox-label-based-scheduling", false)
 	SandboxVolumeLabelBasedSchedulingFlag = NewBoolFlag("sandbox-volume-label-based-scheduling", false)
-	OptimisticResourceAccountingFlag      = NewBoolFlag("sandbox-placement-optimistic-resource-accounting", false)
-	FreePageReportingFlag                 = NewBoolFlag("free-page-reporting", false)
-	FreezeUserCgroupFlag                  = NewBoolFlag("freeze-user-cgroup", env.IsDevelopment())
+	// VolumeFallbackToUnlabeledNodesFlag allows volume operations to fall back to
+	// orchestrator nodes that don't advertise the volume's type label when every
+	// labeled node fails with a retryable error. This is a transitional flag for
+	// the volume-label migration: once every node is labeled, unlabeled nodes will
+	// fail 100% of the time, so this should be turned off and removed afterwards.
+	VolumeFallbackToUnlabeledNodesFlag = NewBoolFlag("volume-fallback-to-unlabeled-nodes", true)
+	OptimisticResourceAccountingFlag   = NewBoolFlag("sandbox-placement-optimistic-resource-accounting", false)
+	FreePageReportingFlag              = NewBoolFlag("free-page-reporting", false)
+	FreezeUserCgroupFlag               = NewBoolFlag("freeze-user-cgroup", env.IsDevelopment())
 
 	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())
 

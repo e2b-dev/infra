@@ -397,9 +397,9 @@ func (o *Orchestrator) generateRequiredNodeLabels(ctx context.Context, sandboxID
 		return nil, false
 	}
 
-	allLabels := team.SandboxSchedulingLabels
+	allLabels := append([]string{}, team.SandboxSchedulingLabels...)
 	if len(allLabels) == 0 {
-		allLabels = []string{"default"}
+		allLabels = append(allLabels, "default")
 	}
 
 	clusterID := clusters.WithClusterFallback(team.ClusterID)
