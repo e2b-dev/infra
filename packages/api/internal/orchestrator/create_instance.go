@@ -409,6 +409,9 @@ func (o *Orchestrator) generateRequiredNodeLabels(ctx context.Context, sandboxID
 		return nil, false
 	}
 
+	// if the team doesn't require a specific label, we default to "default",
+	// which corresponds to all unoptimized nodes (nodes that don't expect
+	// high cpu, high memory, long lifespan, etc)
 	allLabels := append([]string{}, team.SandboxSchedulingLabels...)
 	if len(allLabels) == 0 {
 		allLabels = append(allLabels, "default")
