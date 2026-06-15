@@ -860,6 +860,59 @@ components:
           items:
             $ref: "#/components/schemas/DefaultTemplate"
 
+    Agent:
+      type: object
+      required:
+        - id
+        - name
+        - template
+        - description
+        - public
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        teamId:
+          type: string
+          format: uuid
+          nullable: true
+        name:
+          type: string
+        template:
+          type: string
+        description:
+          type: string
+        command:
+          type: string
+          nullable: true
+        author:
+          type: string
+          nullable: true
+        public:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    AgentsResponse:
+      type: object
+      required:
+        - agents
+      properties:
+        agents:
+          type: array
+          items:
+            $ref: "#/components/schemas/Agent"
+
     TeamTemplate:
       type: object
       required:
@@ -1154,6 +1207,7 @@ components:
           type: string
 
 tags:
+  - name: agents
   - name: builds
   - name: sandboxes
   - name: teams
@@ -1170,6 +1224,28 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthResponse"
+
+  /agents:
+    get:
+      summary: List agents
+      description: Returns the consolidated agent launcher list.
+      tags: [agents]
+      security:
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+      responses:
+        "200":
+          description: Successfully returned agents.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentsResponse"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "500":
+          $ref: "#/components/responses/500"
 
   /builds:
     get:
