@@ -132,12 +132,12 @@ var (
 	// UseMemFdFlag asks Firecracker to back guest memory with a memfd and
 	// pass the fd over the UFFD socket; the orchestrator then mmaps it
 	// directly instead of using process_vm_readv on pause.
-	UseMemFdFlag = NewBoolFlag("use-memfd", false)
+	UseMemFdFlag = NewBoolFlag("use-memfd", true)
 
 	// MemfdBackgroundCopyFlag streams the memfd into the snapshot cache on
 	// a goroutine so Pause returns as soon as the diff metadata is written.
 	// Only takes effect when UseMemFdFlag is also on.
-	MemfdBackgroundCopyFlag = NewBoolFlag("memfd-background-copy", false)
+	MemfdBackgroundCopyFlag = NewBoolFlag("memfd-background-copy", true)
 
 	// MemfileDiffDedupFlag enables 4 KiB-page dedup of the memfile diff
 	// against the base memfile. bestEffort skips uncached blocks; directIO

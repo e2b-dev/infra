@@ -34,8 +34,8 @@ func applyTestFlagOverrides() {
 			"directIO":   mode == "direct_io",
 		}))
 	}
-	if os.Getenv("TESTS_USE_MEMFD") == "true" {
-		featureflags.OverrideBoolFlag(featureflags.UseMemFdFlag, true)
+	if os.Getenv("TESTS_DISABLE_MEMFD") == "true" {
+		featureflags.OverrideBoolFlag(featureflags.UseMemFdFlag, false)
 	}
 }
 
