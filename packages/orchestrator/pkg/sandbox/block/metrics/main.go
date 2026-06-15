@@ -12,17 +12,20 @@ const (
 	orchestratorBlockSlices      = "orchestrator.blocks.slices"
 	orchestratorBlockChunksFetch = "orchestrator.blocks.chunks.fetch"
 	orchestratorBlockChunksStore = "orchestrator.blocks.chunks.store"
+	orchestratorChunkSlice       = "orchestrator.chunk.slice"
 )
 
 type Metrics struct {
 	// SlicesMetric is used to measure page faulting performance.
 	SlicesTimerFactory telemetry.TimerFactory
 
-	// WriteChunksMetric is used to measure the time taken to download chunks from remote storage
+	// RemoteReadsTimerFactory is used to measure the time taken to download chunks from remote storage
 	RemoteReadsTimerFactory telemetry.TimerFactory
 
 	// WriteChunksMetric is used to measure performance of writing chunks to disk.
 	WriteChunksTimerFactory telemetry.TimerFactory
+
+	ChunkSliceTimerFactory telemetry.FloatTimerFactory
 }
 
 func NewMetrics(meterProvider metric.MeterProvider) (Metrics, error) {
@@ -56,6 +59,15 @@ func NewMetrics(meterProvider metric.MeterProvider) (Metrics, error) {
 		"Total cache writes",
 	); err != nil {
 		return m, fmt.Errorf("failed to get stored chunks metric: %w", err)
+	}
+
+	if m.ChunkSliceTimerFactory, err = telemetry.NewFloatTimerFactory(
+		blocksMeter, orchestratorChunkSlice,
+		"Time taken by Chunker to serve a Slice() (source=mmap when served from cache)",
+		"Bytes returned",
+		"Slice call count",
+	); err != nil {
+		return m, fmt.Errorf("error creating chunk slice timer factory: %w", err)
 	}
 
 	return m, nil

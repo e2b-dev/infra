@@ -190,7 +190,7 @@ func openChunker(ctx context.Context, storagePath, buildID, artifact string, h *
 		return nil, nil, 0, nil, err
 	}
 
-	chunker, err := block.NewChunker(flags, size, int64(h.Metadata.BlockSize), filepath.Join(cacheDir, "cache"), m)
+	chunker, err := block.NewChunker(flags, size, int64(h.Metadata.BlockSize), filepath.Join(cacheDir, "cache"), m, seekableType(artifact))
 	if err != nil {
 		os.RemoveAll(cacheDir)
 

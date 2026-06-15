@@ -68,7 +68,19 @@ const (
 	UnknownSeekableObjectType SeekableObjectType = iota
 	MemfileObjectType
 	RootFSObjectType
+	numSeekableObjectTypes
 )
+
+func (t SeekableObjectType) String() string {
+	switch t {
+	case MemfileObjectType:
+		return "memfile"
+	case RootFSObjectType:
+		return "rootfs"
+	default:
+		return "unknown"
+	}
+}
 
 type ObjectType int
 
@@ -140,14 +152,32 @@ type Blob interface {
 	Exists(ctx context.Context) (bool, error)
 }
 
+type SeekableReader interface {
+	// Random slice access, off and buffer length must be aligned to block size
+	ReadAt(ctx context.Context, buffer []byte, off int64, ft *FrameTable) (int, error)
+	Size(ctx context.Context) (int64, error)
+}
+
+// ReadStats is what a RangeReader did over its lifetime; returned from Close.
+type ReadStats struct {
+	CompressedBytes   int64
+	UncompressedBytes int64
+	Read              time.Duration // source I/O wall, excluding open and decompression
+	Decompress        time.Duration
+}
+
+
 type RangeReader interface {
 	io.Reader
-	Close(ctx context.Context) error
+	// Close returns stats from the reader's lifetime, or nil if the reader did
+	// not meter (e.g. a pure adapter). Callers should treat nil as "no stats".
+	Close(ctx context.Context) (*ReadStats, error)
 }
 
 // RangeOpener supports progressive reads via a streaming range reader.
+// OpenRangeReader returns the Source that served the bytes.
 type RangeOpener interface {
-	OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (RangeReader, error)
+	OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (RangeReader, Source, error)
 }
 
 type SeekableWriter interface {

@@ -12,6 +12,8 @@ import (
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
@@ -45,12 +47,18 @@ var (
 	))
 )
 
+var fileReadAtTimer = utils.Must(telemetry.NewFloatTimerFactory(meter, "orchestrator.file.read_at",
+	"Time to serve a build.File ReadAt across all source builds",
+	"Bytes read", "ReadAt call count"))
+
 type File struct {
 	header      atomic.Pointer[header.Header]
 	store       *DiffStore
 	fileType    DiffType
 	persistence storage.StorageProvider
 	metrics     blockmetrics.Metrics
+
+	okAttrs metric.MeasurementOption
 }
 
 func NewFile(
@@ -65,10 +73,21 @@ func NewFile(
 		fileType:    fileType,
 		persistence: persistence,
 		metrics:     metrics,
+		okAttrs: metric.WithAttributes(
+			attribute.String(storage.AttrFileType, string(fileType)),
+			attribute.String(storage.AttrOutcome, storage.OutcomeOK),
+		),
 	}
 	f.header.Store(header)
 
 	return f
+}
+
+func (b *File) errAttrs(err error) metric.MeasurementOption {
+	return metric.WithAttributes(
+		attribute.String(storage.AttrFileType, string(b.fileType)),
+		attribute.String(storage.AttrOutcome, storage.Outcome(err)),
+	)
 }
 
 func (b *File) Header() *header.Header {
@@ -79,9 +98,24 @@ func (b *File) SwapHeader(h *header.Header) {
 	b.header.Store(h)
 }
 
-// ReadAt fills p from the mapped build segments, optionally in parallel.
+// ReadAt records file.read_at timing around the readAt worker. Slice's
+// compose path goes through readAt directly to avoid double counting.
+func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err error) {
+	start := time.Now()
+	n, err = b.readAt(ctx, p, off)
+	if err != nil {
+		fileReadAtTimer.Record(ctx, time.Since(start), int64(n), b.errAttrs(err))
+
+		return n, err
+	}
+	fileReadAtTimer.Record(ctx, time.Since(start), int64(n), b.okAttrs)
+
+	return n, nil
+}
+
+// readAt fills p from the mapped build segments, optionally in parallel.
 // Cache eviction or a peer transition re-resolves and retries.
-func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
+func (b *File) readAt(ctx context.Context, p []byte, off int64) (int, error) {
 	maxParallel := b.store.flags.IntFlag(ctx, featureflags.MaxParallelBuildReadSegments)
 
 	for {
@@ -259,7 +293,7 @@ func (b *File) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 		}
 	}
 	out := make([]byte, length)
-	if _, err := b.ReadAt(ctx, out, off); err != nil {
+	if _, err := b.readAt(ctx, out, off); err != nil {
 		return nil, fmt.Errorf("failed to read at: %w", err)
 	}
 

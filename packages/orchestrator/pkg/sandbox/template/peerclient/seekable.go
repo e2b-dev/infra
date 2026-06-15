@@ -97,7 +97,7 @@ func (s *peerSeekable) Size(ctx context.Context) (int64, error) {
 	return 0, &storage.PeerTransitionedError{}
 }
 
-func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length int64, frameTable *storage.FrameTable) (storage.RangeReader, error) {
+func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length int64, frameTable *storage.FrameTable) (storage.RangeReader, storage.Source, error) {
 	res, err := tryPeer(ctx, &s.peerHandle, "peer-seekable-open-range-reader", attrOpRangeReader,
 		func(ctx context.Context) (peerAttempt[storage.RangeReader], error) {
 			streamCtx, cancel := context.WithCancel(ctx)
@@ -121,15 +121,15 @@ func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length in
 			}, nil
 		})
 	if res.hit {
-		return res.value, err
+		return res.value, storage.SourcePeer, err
 	}
 	if s.uploaded.Load() {
-		return nil, &storage.PeerTransitionedError{}
+		return nil, storage.SourcePeer, &storage.PeerTransitionedError{}
 	}
 
 	base, err := s.getBase(ctx, frameTable.CompressionType())
 	if err != nil {
-		return nil, err
+		return nil, storage.SourcePeer, err
 	}
 
 	return base.OpenRangeReader(ctx, off, length, frameTable)

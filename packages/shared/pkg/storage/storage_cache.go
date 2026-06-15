@@ -122,6 +122,7 @@ func (c cache) OpenSeekable(ctx context.Context, path string, objectType Seekabl
 		inner:     innerObject,
 		flags:     c.flags,
 		tracer:    c.tracer,
+		objType:   objectType,
 	}, nil
 }
 

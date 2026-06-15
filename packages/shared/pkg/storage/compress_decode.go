@@ -2,9 +2,11 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/klauspost/compress/zstd"
 	lz4 "github.com/pierrec/lz4/v4"
@@ -56,25 +58,44 @@ func putZstdDecoder(dec *zstd.Decoder) {
 	zstdDecoderPool.Put(dec)
 }
 
-// decompressReader decompresses inner on Read; Close releases the codec back
-// to its pool and closes inner.
+// decompressReader decompresses on Read, metering raw pulls vs decoded output
+// separately so source-read wall and decompression CPU are split. On Close it
+// emits the orchestrator.read.decompress record (decompress time +
+// uncompressed bytes, keyed by file_type/source/codec). No drain: the source
+// range is bounded to exactly C bytes by construction, and the cache-writeback
+// path's captureReader has its own drainOnClose for the LZ4-BlockChecksum
+// 4-byte EndMark tail.
 type decompressReader struct {
-	inner        RangeReader
-	dec          io.Reader
+	inner        RangeReader // retained to call Close;
+	meteredIn    *meteredReader
+	meteredOut   *meteredReader
 	releaseCodec func()
+	ct           CompressionType
+	source       Source
+	objType      SeekableObjectType
+	readErr      error
 }
 
+// NewDecompressingReader wraps inner so Read returns decompressed bytes;
+// metric attribution falls back to defaults (callers that care provide it via
+// newDecompressReader directly).
 func NewDecompressingReader(inner RangeReader, ct CompressionType) (RangeReader, error) {
+	return newDecompressReader(inner, ct, UnknownSource, UnknownSeekableObjectType)
+}
+
+func newDecompressReader(inner RangeReader, ct CompressionType, src Source, ot SeekableObjectType) (*decompressReader, error) {
+	compressed := &meteredReader{inner: inner}
+
 	var dec io.Reader
 	var releaseCodec func()
 
 	switch ct {
 	case CompressionLZ4:
-		d := getLZ4Decoder(inner)
+		d := getLZ4Decoder(compressed)
 		dec, releaseCodec = d, func() { putLZ4Decoder(d) }
 
 	case CompressionZstd:
-		d, err := getZstdDecoder(inner)
+		d, err := getZstdDecoder(compressed)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create zstd decoder: %w", err)
 		}
@@ -86,17 +107,37 @@ func NewDecompressingReader(inner RangeReader, ct CompressionType) (RangeReader,
 
 	return &decompressReader{
 		inner:        inner,
-		dec:          dec,
+		meteredIn:    compressed,
+		meteredOut:   &meteredReader{inner: dec},
 		releaseCodec: releaseCodec,
+		ct:           ct,
+		source:       src,
+		objType:      ot,
 	}, nil
 }
 
 func (r *decompressReader) Read(p []byte) (int, error) {
-	return r.dec.Read(p)
+	n, err := r.meteredOut.Read(p)
+	if err != nil && !errors.Is(err, io.EOF) {
+		r.readErr = err
+	}
+
+	return n, err
 }
 
-func (r *decompressReader) Close(ctx context.Context) error {
+func (r *decompressReader) Close(ctx context.Context) (*ReadStats, error) {
 	r.releaseCodec()
 
-	return r.inner.Close(ctx)
+	stats := &ReadStats{
+		CompressedBytes:   r.meteredIn.bytes,
+		UncompressedBytes: r.meteredOut.bytes,
+		Read:              time.Duration(r.meteredIn.nanos),
+		Decompress:        max(0, time.Duration(r.meteredOut.nanos)-time.Duration(r.meteredIn.nanos)),
+	}
+
+	recordDecompressStep(ctx, r, stats, r.readErr)
+
+	_, innerErr := r.inner.Close(ctx)
+
+	return stats, innerErr
 }

@@ -188,10 +188,10 @@ func TestStorageDiff_NoRefreshOnFinalizedHeader(t *testing.T) {
 	uncompressedSeekable := storage.NewMockSeekable(t)
 	uncompressedSeekable.EXPECT().
 		OpenRangeReader(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (storage.RangeReader, error) {
+		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (storage.RangeReader, storage.Source, error) {
 			end := min(off+length, int64(len(payload)))
 
-			return storage.NewRangeReader(io.NopCloser(bytes.NewReader(payload[off:end]))), nil
+			return storage.NewRangeReader(io.NopCloser(bytes.NewReader(payload[off:end]))), storage.SourceFS, nil
 		})
 	provider.EXPECT().
 		OpenSeekable(mock.Anything, uncompressedPath, mock.Anything).
@@ -235,10 +235,10 @@ func TestStorageDiff_SkipsHeaderRefreshWhenPeerActive(t *testing.T) {
 		Return(int64(payloadSize), nil).Once()
 	uncompressedSeekable.EXPECT().
 		OpenRangeReader(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (storage.RangeReader, error) {
+		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (storage.RangeReader, storage.Source, error) {
 			end := min(off+length, int64(len(payload)))
 
-			return storage.NewRangeReader(io.NopCloser(bytes.NewReader(payload[off:end]))), nil
+			return storage.NewRangeReader(io.NopCloser(bytes.NewReader(payload[off:end]))), storage.SourceFS, nil
 		})
 	provider.EXPECT().
 		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone), mock.Anything).
@@ -299,10 +299,10 @@ func TestStorageDiff_V3AncestorFallsBackToUncompressed(t *testing.T) {
 		Return(int64(payloadSize), nil).Once()
 	rawSeekable.EXPECT().
 		OpenRangeReader(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (storage.RangeReader, error) {
+		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (storage.RangeReader, storage.Source, error) {
 			end := min(off+length, int64(len(payload)))
 
-			return storage.NewRangeReader(io.NopCloser(bytes.NewReader(payload[off:end]))), nil
+			return storage.NewRangeReader(io.NopCloser(bytes.NewReader(payload[off:end]))), storage.SourceFS, nil
 		})
 	provider.EXPECT().
 		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone), mock.Anything).
@@ -348,10 +348,10 @@ func TestStorageDiff_ReloadSourceLatchesV3AsUncompressed(t *testing.T) {
 	rawSeekable := storage.NewMockSeekable(t)
 	rawSeekable.EXPECT().
 		OpenRangeReader(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (storage.RangeReader, error) {
+		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (storage.RangeReader, storage.Source, error) {
 			end := min(off+length, int64(len(payload)))
 
-			return storage.NewRangeReader(io.NopCloser(bytes.NewReader(payload[off:end]))), nil
+			return storage.NewRangeReader(io.NopCloser(bytes.NewReader(payload[off:end]))), storage.SourceFS, nil
 		})
 	provider.EXPECT().
 		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone), mock.Anything).
@@ -434,14 +434,16 @@ func buildHeader(t *testing.T, selfID uuid.UUID, size int64, mapsTo uuid.UUID) *
 // requested U-offset in the caller's frame table, slices the compressed
 // payload, and streams it through a decompressor. Mirrors what a real
 // Seekable does over zstd-compressed data.
-func decompressingRangeReader(compressed []byte) func(context.Context, int64, int64, *storage.FrameTable) (storage.RangeReader, error) {
-	return func(_ context.Context, offsetU, _ int64, ft *storage.FrameTable) (storage.RangeReader, error) {
+func decompressingRangeReader(compressed []byte) func(context.Context, int64, int64, *storage.FrameTable) (storage.RangeReader, storage.Source, error) {
+	return func(_ context.Context, offsetU, _ int64, ft *storage.FrameTable) (storage.RangeReader, storage.Source, error) {
 		r, err := ft.LocateCompressed(offsetU)
 		if err != nil {
-			return nil, err
+			return nil, storage.SourceFS, err
 		}
 		end := min(r.Offset+int64(r.Length), int64(len(compressed)))
 
-		return storage.NewDecompressingReader(storage.NewRangeReader(io.NopCloser(bytes.NewReader(compressed[r.Offset:end]))), ft.CompressionType())
+		rc, err := storage.NewDecompressingReader(storage.NewRangeReader(io.NopCloser(bytes.NewReader(compressed[r.Offset:end]))), ft.CompressionType())
+
+		return rc, storage.SourceFS, err
 	}
 }
