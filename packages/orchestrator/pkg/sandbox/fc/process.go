@@ -758,6 +758,22 @@ func (p *Process) DrainBalloon(ctx context.Context) error {
 			outcome = "describe-failed"
 		}
 
+		// The round is still active: pausing the VM only stops vCPUs, FC's
+		// event loop keeps processing queued hint descriptors — each one a
+		// discard mutating guest memory after the pause, racing the snapshot.
+		// Stop the round so the backlog is acked without discards; FC applies
+		// the stop synchronously on the same thread that processes the queue,
+		// so no discard can land once this returns. Fresh context: ctx is
+		// typically already expired here.
+		stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+		defer cancel()
+		if stopErr := p.client.stopBalloonHinting(stopCtx); stopErr != nil {
+			outcome += "-stop-failed"
+
+			return errors.Join(err, fmt.Errorf("stop balloon hinting after failed drain: %w", stopErr))
+		}
+		outcome += "-stopped"
+
 		return err
 	}
 
