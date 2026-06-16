@@ -91,7 +91,7 @@ func TestSandboxResumeWithSecuredEnvd(t *testing.T) {
 	require.Equal(t, http.StatusCreated, sbxCreate.StatusCode())
 	require.NotNil(t, sbxCreate.JSON201)
 
-	_, err = c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbxCreate.JSON201.SandboxID, setup.WithAPIKey())
+	_, err = c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbxCreate.JSON201.SandboxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 	require.NoError(t, err)
 
 	sbxIdWithClient := sbxCreate.JSON201.SandboxID + "-" + sbxCreate.JSON201.ClientID
@@ -118,7 +118,7 @@ func TestSandboxPauseNonFound(t *testing.T) {
 
 	c := setup.GetAPIClient()
 
-	r, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, "not-found", setup.WithAPIKey())
+	r, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, "not-found", api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 	require.NoError(t, err)
 
 	require.Equal(t, http.StatusNotFound, r.StatusCode())

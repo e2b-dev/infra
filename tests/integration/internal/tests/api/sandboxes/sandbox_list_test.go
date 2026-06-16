@@ -21,7 +21,7 @@ import (
 func pauseSandbox(t *testing.T, c *api.ClientWithResponses, sandboxID string) {
 	t.Helper()
 
-	pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
+	pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNoContent, pauseSandboxResponse.StatusCode())
@@ -175,7 +175,7 @@ func TestSandboxListPausing(t *testing.T) {
 
 	wg := errgroup.Group{}
 	wg.Go(func() error {
-		pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
+		pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 		if err != nil {
 			return err
 		}

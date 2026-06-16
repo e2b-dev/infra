@@ -265,7 +265,7 @@ func TestSandboxWithTrafficAccessTokenAutoResumeViaProxy(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// Pause sandbox.
-	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
 
@@ -332,7 +332,7 @@ func TestEnvdAccessTokenAutoResumeViaProxy(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// Pause sandbox.
-	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
 

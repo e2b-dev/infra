@@ -22,7 +22,7 @@ func TestSandboxAutoPausePauseResume(t *testing.T) {
 	sbxId := sbx.SandboxID
 
 	// Pause the sandbox
-	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
 

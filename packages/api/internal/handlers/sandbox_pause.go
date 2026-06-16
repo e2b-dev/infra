@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -42,9 +43,25 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	traceID := span.SpanContext().TraceID().String()
 	c.Set("traceID", traceID)
 
+	// The request body is optional — existing callers send none. Default to a
+	// full memory snapshot; memory:false requests a filesystem-only snapshot.
+	filesystemOnly := false
+	if c.Request.ContentLength != 0 {
+		var body api.PostSandboxesSandboxIDPauseJSONRequestBody
+		if bindErr := c.ShouldBindJSON(&body); bindErr != nil && !errors.Is(bindErr, io.EOF) {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", bindErr))
+			telemetry.ReportCriticalError(ctx, "error when parsing pause request", bindErr)
+
+			return
+		}
+		if body.Memory != nil && !*body.Memory {
+			filesystemOnly = true
+		}
+	}
+
 	pause.LogInitiated(ctx, sandboxID, teamID.String(), pause.ReasonRequest)
 
-	err = a.orchestrator.RemoveSandbox(ctx, teamID, sandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+	err = a.orchestrator.RemoveSandbox(ctx, teamID, sandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause, FilesystemOnly: filesystemOnly})
 	var transErr *sandbox.InvalidStateTransitionError
 
 	switch {

@@ -95,7 +95,7 @@ echo "Used memory after tmpfs mount and file fill: ${USED_MEM_MB_AFTER} MB"
 		pauseIterations := 2
 
 		for i := range pauseIterations {
-			resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+			resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 			require.NoError(t, err)
 			require.Equal(t, http.StatusNoContent, resp.StatusCode())
 
@@ -134,7 +134,7 @@ echo "Used memory after tmpfs mount and file fill: ${USED_MEM_MB_AFTER} MB"
 		}
 		pause := func() {
 			t.Helper()
-			resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+			resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 			require.NoError(t, err)
 			require.Equal(t, http.StatusNoContent, resp.StatusCode())
 		}
