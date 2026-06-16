@@ -218,15 +218,35 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		SandboxType: sandbox.SandboxTypeSandbox,
 	}
 
-	sbx, err := s.sandboxFactory.ResumeSandbox(
-		ctx,
-		template,
-		config,
-		runtime,
-		req.GetStartTime().AsTime(),
-		req.GetEndTime().AsTime(),
-		req.GetSandbox(),
-	)
+	// A filesystem-only snapshot has no memory to restore; resume it by
+	// cold-booting (rebooting) from its rootfs. The snapshot's own metadata is
+	// the source of truth, so a memory snapshot can never be rebooted.
+	meta, err := template.Metadata()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read template metadata: %w", err)
+	}
+
+	var sbx *sandbox.Sandbox
+	if meta.IsFilesystemOnly() {
+		sbx, err = s.sandboxFactory.RebootSandbox(
+			ctx,
+			template,
+			config,
+			runtime,
+			req.GetEndTime().AsTime(),
+			req.GetSandbox(),
+		)
+	} else {
+		sbx, err = s.sandboxFactory.ResumeSandbox(
+			ctx,
+			template,
+			config,
+			runtime,
+			req.GetStartTime().AsTime(),
+			req.GetEndTime().AsTime(),
+			req.GetSandbox(),
+		)
+	}
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotExist) {
 			// Snapshot data not found, let the API know the data aren't probably upload yet

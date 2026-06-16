@@ -3,6 +3,7 @@
 package metadata
 
 import (
+	"encoding/json"
 	"io"
 	"strings"
 	"testing"
@@ -214,4 +215,37 @@ type errorReader struct {
 
 func (er *errorReader) Read([]byte) (n int, err error) {
 	return 0, er.err
+}
+
+func TestIsFilesystemOnly(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, Template{FilesystemOnly: true}.IsFilesystemOnly())
+	assert.False(t, Template{FilesystemOnly: false}.IsFilesystemOnly(), "memory snapshot")
+	assert.False(t, Template{}.IsFilesystemOnly(), "zero value is a memory snapshot")
+}
+
+// Pre-existing snapshots have no "filesystem_only" key in metadata.json; it must
+// decode to false (a memory snapshot) so they resume normally without migration.
+func TestFilesystemOnly_BackwardCompatAndOmitempty(t *testing.T) {
+	t.Parallel()
+
+	var legacy Template
+	require.NoError(t, json.Unmarshal([]byte(`{"version":1}`), &legacy))
+	assert.False(t, legacy.IsFilesystemOnly())
+
+	// A memory snapshot must not emit the key (omitempty), so its metadata.json
+	// stays identical to today's.
+	memJSON, err := json.Marshal(Template{Version: 1})
+	require.NoError(t, err)
+	assert.NotContains(t, string(memJSON), "filesystem_only")
+
+	// A filesystem-only snapshot round-trips to true.
+	fsJSON, err := json.Marshal(Template{Version: 1, FilesystemOnly: true})
+	require.NoError(t, err)
+	assert.Contains(t, string(fsJSON), `"filesystem_only":true`)
+
+	var back Template
+	require.NoError(t, json.Unmarshal(fsJSON, &back))
+	assert.True(t, back.IsFilesystemOnly())
 }

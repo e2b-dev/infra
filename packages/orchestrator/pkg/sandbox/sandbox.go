@@ -1215,6 +1215,12 @@ func (s *Sandbox) Pause(
 		m.Prefetch = nil
 	}
 
+	// Record the snapshot kind in metadata so the resume path picks reboot vs
+	// memory-resume from the snapshot's own metadata (see metadata.IsFilesystemOnly).
+	// Set unconditionally so a memory pause of a previously-rebooted (fs-only)
+	// sandbox correctly clears the flag.
+	m.FilesystemOnly = pauseOpts.filesystemSnapshot
+
 	// Drain free-page-hinting before pause so the snapshot doesn't capture
 	// pages the guest already considers free. Timeout per use case; 0 disables.
 	if t := featureflags.GetFreePageHintingTimeout(ctx, s.featureFlags, string(useCase), sandboxLDContext(s.Runtime, s.Config)); t > 0 {
