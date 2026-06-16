@@ -21,7 +21,8 @@ INSERT INTO public.agents (
     command,
     author,
     metadata,
-    public
+    public,
+    published_at
 )
 VALUES (
     $1::uuid,
@@ -31,7 +32,8 @@ VALUES (
     $5::text,
     $6::text,
     COALESCE($7::text::jsonb, '{}'::jsonb),
-    $8::boolean
+    $8::boolean,
+    $9::timestamptz
 )
 RETURNING
     id,
@@ -43,6 +45,7 @@ RETURNING
     author,
     metadata,
     public,
+    published_at,
     created_at,
     updated_at,
     deleted_at
@@ -57,6 +60,7 @@ type CreateAgentParams struct {
 	Author      *string
 	Metadata    *string
 	Public      bool
+	PublishedAt *time.Time
 }
 
 type CreateAgentRow struct {
@@ -69,6 +73,7 @@ type CreateAgentRow struct {
 	Author      *string
 	Metadata    []byte
 	Public      bool
+	PublishedAt *time.Time
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	DeletedAt   *time.Time
@@ -84,6 +89,7 @@ func (q *Queries) CreateAgent(ctx context.Context, arg CreateAgentParams) (Creat
 		arg.Author,
 		arg.Metadata,
 		arg.Public,
+		arg.PublishedAt,
 	)
 	var i CreateAgentRow
 	err := row.Scan(
@@ -96,6 +102,7 @@ func (q *Queries) CreateAgent(ctx context.Context, arg CreateAgentParams) (Creat
 		&i.Author,
 		&i.Metadata,
 		&i.Public,
+		&i.PublishedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,

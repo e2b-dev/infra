@@ -23,11 +23,13 @@ SELECT
     author,
     metadata,
     public,
+    published_at,
     created_at,
     updated_at,
     deleted_at
 FROM public.agents
 WHERE deleted_at IS NULL
+  AND published_at IS NOT NULL
   AND ((team_id IS NULL AND public = TRUE) OR team_id = $1::uuid)
 ORDER BY position ASC, name ASC, id ASC
 `
@@ -42,6 +44,7 @@ type ListAgentsRow struct {
 	Author      *string
 	Metadata    []byte
 	Public      bool
+	PublishedAt *time.Time
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	DeletedAt   *time.Time
@@ -66,6 +69,7 @@ func (q *Queries) ListAgents(ctx context.Context, teamID uuid.UUID) ([]ListAgent
 			&i.Author,
 			&i.Metadata,
 			&i.Public,
+			&i.PublishedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,

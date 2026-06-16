@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS public.agents (
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
     public BOOLEAN NOT NULL DEFAULT FALSE,
     position INTEGER NOT NULL DEFAULT 0,
+    published_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at TIMESTAMPTZ

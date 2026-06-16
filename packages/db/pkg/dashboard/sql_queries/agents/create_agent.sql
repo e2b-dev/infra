@@ -7,7 +7,8 @@ INSERT INTO public.agents (
     command,
     author,
     metadata,
-    public
+    public,
+    published_at
 )
 VALUES (
     sqlc.arg(team_id)::uuid,
@@ -17,7 +18,8 @@ VALUES (
     sqlc.narg(command)::text,
     sqlc.narg(author)::text,
     COALESCE(sqlc.narg(metadata)::text::jsonb, '{}'::jsonb),
-    sqlc.arg(public)::boolean
+    sqlc.arg(public)::boolean,
+    sqlc.narg(published_at)::timestamptz
 )
 RETURNING
     id,
@@ -29,6 +31,7 @@ RETURNING
     author,
     metadata,
     public,
+    published_at,
     created_at,
     updated_at,
     deleted_at;

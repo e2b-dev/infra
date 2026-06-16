@@ -48,6 +48,7 @@ func (s *APIStore) GetAgents(c *gin.Context) {
 			author:      row.Author,
 			metadata:    row.Metadata,
 			public:      row.Public,
+			publishedAt: row.PublishedAt,
 			createdAt:   row.CreatedAt,
 			updatedAt:   row.UpdatedAt,
 			deletedAt:   row.DeletedAt,
@@ -107,6 +108,7 @@ func (s *APIStore) PostAgents(c *gin.Context) {
 		Author:      body.Author,
 		Metadata:    metadata,
 		Public:      public,
+		PublishedAt: body.PublishedAt,
 	})
 	if err != nil {
 		if dberrors.IsUniqueConstraintViolation(err) {
@@ -131,6 +133,7 @@ func (s *APIStore) PostAgents(c *gin.Context) {
 		author:      row.Author,
 		metadata:    row.Metadata,
 		public:      row.Public,
+		publishedAt: row.PublishedAt,
 		createdAt:   row.CreatedAt,
 		updatedAt:   row.UpdatedAt,
 		deletedAt:   row.DeletedAt,
@@ -206,6 +209,8 @@ func (s *APIStore) PatchAgentsAgentID(c *gin.Context, agentID api.AgentID) {
 		Metadata:       metadata,
 		PublicSet:      body.PublicSet,
 		Public:         body.Public,
+		PublishedAtSet: body.PublishedAtSet,
+		PublishedAt:    body.PublishedAt,
 	})
 	if err != nil {
 		if dberrors.IsNotFoundError(err) {
@@ -236,6 +241,7 @@ func (s *APIStore) PatchAgentsAgentID(c *gin.Context, agentID api.AgentID) {
 		author:      row.Author,
 		metadata:    row.Metadata,
 		public:      row.Public,
+		publishedAt: row.PublishedAt,
 		createdAt:   row.CreatedAt,
 		updatedAt:   row.UpdatedAt,
 		deletedAt:   row.DeletedAt,
@@ -287,6 +293,7 @@ type agentFields struct {
 	author      *string
 	metadata    []byte
 	public      bool
+	publishedAt *time.Time
 	createdAt   time.Time
 	updatedAt   time.Time
 	deletedAt   *time.Time
@@ -308,6 +315,7 @@ func agentFromFields(fields agentFields) (api.Agent, error) {
 		Author:      fields.author,
 		Metadata:    metadata,
 		Public:      fields.public,
+		PublishedAt: fields.publishedAt,
 		CreatedAt:   fields.createdAt,
 		UpdatedAt:   fields.updatedAt,
 		DeletedAt:   fields.deletedAt,
@@ -360,6 +368,8 @@ type updateAgentBody struct {
 	Metadata       *api.AgentMetadata
 	PublicSet      bool
 	Public         bool
+	PublishedAtSet bool
+	PublishedAt    *time.Time
 }
 
 func (b updateAgentBody) hasUpdates() bool {
@@ -369,7 +379,8 @@ func (b updateAgentBody) hasUpdates() bool {
 		b.CommandSet ||
 		b.AuthorSet ||
 		b.MetadataSet ||
-		b.PublicSet
+		b.PublicSet ||
+		b.PublishedAtSet
 }
 
 func parseUpdateAgentBody(bodyReader io.Reader) (updateAgentBody, error) {
@@ -383,7 +394,7 @@ func parseUpdateAgentBody(bodyReader io.Reader) (updateAgentBody, error) {
 
 	for field := range payload {
 		switch field {
-		case "name", "template", "description", "command", "author", "metadata", "public":
+		case "name", "template", "description", "command", "author", "metadata", "public", "publishedAt":
 		default:
 			return body, errors.New("unknown field")
 		}
@@ -454,6 +465,19 @@ func parseUpdateAgentBody(bodyReader io.Reader) (updateAgentBody, error) {
 		}
 		if err := json.Unmarshal(raw, &body.Public); err != nil {
 			return body, err
+		}
+	}
+
+	if raw, ok := payload["publishedAt"]; ok {
+		body.PublishedAtSet = true
+		if bytes.Equal(raw, []byte("null")) {
+			body.PublishedAt = nil
+		} else {
+			var publishedAt time.Time
+			if err := json.Unmarshal(raw, &publishedAt); err != nil {
+				return body, err
+			}
+			body.PublishedAt = &publishedAt
 		}
 	}
 

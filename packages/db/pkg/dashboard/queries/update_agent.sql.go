@@ -22,9 +22,10 @@ SET
     author = CASE WHEN $9::boolean THEN $10::text ELSE author END,
     metadata = CASE WHEN $11::boolean THEN COALESCE($12::text::jsonb, '{}'::jsonb) ELSE metadata END,
     public = CASE WHEN $13::boolean THEN $14::boolean ELSE public END,
+    published_at = CASE WHEN $15::boolean THEN $16::timestamptz ELSE published_at END,
     updated_at = now()
-WHERE id = $15::uuid
-  AND team_id = $16::uuid
+WHERE id = $17::uuid
+  AND team_id = $18::uuid
   AND deleted_at IS NULL
 RETURNING
     id,
@@ -36,6 +37,7 @@ RETURNING
     author,
     metadata,
     public,
+    published_at,
     created_at,
     updated_at,
     deleted_at
@@ -56,6 +58,8 @@ type UpdateAgentParams struct {
 	Metadata       *string
 	PublicSet      bool
 	Public         bool
+	PublishedAtSet bool
+	PublishedAt    *time.Time
 	ID             uuid.UUID
 	TeamID         uuid.UUID
 }
@@ -70,6 +74,7 @@ type UpdateAgentRow struct {
 	Author      *string
 	Metadata    []byte
 	Public      bool
+	PublishedAt *time.Time
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	DeletedAt   *time.Time
@@ -91,6 +96,8 @@ func (q *Queries) UpdateAgent(ctx context.Context, arg UpdateAgentParams) (Updat
 		arg.Metadata,
 		arg.PublicSet,
 		arg.Public,
+		arg.PublishedAtSet,
+		arg.PublishedAt,
 		arg.ID,
 		arg.TeamID,
 	)
@@ -105,6 +112,7 @@ func (q *Queries) UpdateAgent(ctx context.Context, arg UpdateAgentParams) (Updat
 		&i.Author,
 		&i.Metadata,
 		&i.Public,
+		&i.PublishedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
