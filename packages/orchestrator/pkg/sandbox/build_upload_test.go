@@ -150,3 +150,39 @@ func TestAppendAncestorBuilds_NilDstSkipsSynthesis(t *testing.T) {
 	err := u.appendAncestorBuilds(t.Context(), nil, mappingTo(t, 4096, ancestorID, 4096), build.Memfile)
 	require.NoError(t, err)
 }
+
+// A filesystem-only snapshot has no memfile, so its MemorySnapshot.BlockSize is
+// 0. NewUpload must skip resolving the memfile compress config for it —
+// otherwise, with compression enabled, validateCompressConfig would reject the
+// zero block size and fail the upload. FrameSizeKB is a multiple of the 4 KiB
+// rootfs block so the rootfs config (which is always resolved) stays valid.
+func TestNewUpload_FilesystemSnapshotSkipsMemfileCompressConfig(t *testing.T) {
+	t.Parallel()
+
+	cfg := storage.CompressConfig{Enabled: true, Type: "zstd", FrameSizeKB: 256}
+
+	t.Run("filesystem-only snapshot with zero memfile block size succeeds", func(t *testing.T) {
+		t.Parallel()
+		snap := &Snapshot{
+			BuildID:            uuid.New(),
+			FilesystemSnapshot: true,
+			RootfsBlockSize:    4096,
+		}
+
+		u, err := NewUpload(t.Context(), nil, snap, nil, cfg, nil, storage.UseCaseBuild, storage.ObjectMetadata{})
+		require.NoError(t, err)
+		require.NotNil(t, u)
+	})
+
+	t.Run("memory snapshot with zero memfile block size still errors", func(t *testing.T) {
+		t.Parallel()
+		snap := &Snapshot{
+			BuildID:            uuid.New(),
+			FilesystemSnapshot: false,
+			RootfsBlockSize:    4096,
+		}
+
+		_, err := NewUpload(t.Context(), nil, snap, nil, cfg, nil, storage.UseCaseBuild, storage.ObjectMetadata{})
+		require.Error(t, err)
+	})
+}
