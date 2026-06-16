@@ -340,6 +340,12 @@ type ClientInterface interface {
 	// PostFreeze request
 	PostFreeze(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// PostFsfreeze request
+	PostFsfreeze(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostFsthaw request
+	PostFsthaw(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetHealth request
 	GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -429,6 +435,30 @@ func (c *Client) PostFilesCompose(ctx context.Context, body PostFilesComposeJSON
 
 func (c *Client) PostFreeze(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPostFreezeRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostFsfreeze(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostFsfreezeRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostFsthaw(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostFsthawRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -802,6 +832,60 @@ func NewPostFreezeRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewPostFsfreezeRequest generates requests for PostFsfreeze
+func NewPostFsfreezeRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/fsfreeze")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostFsthawRequest generates requests for PostFsthaw
+func NewPostFsthawRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/fsthaw")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetHealthRequest generates requests for GetHealth
 func NewGetHealthRequest(server string) (*http.Request, error) {
 	var err error
@@ -985,6 +1069,12 @@ type ClientWithResponsesInterface interface {
 
 	// PostFreezeWithResponse request
 	PostFreezeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*PostFreezeResponse, error)
+
+	// PostFsfreezeWithResponse request
+	PostFsfreezeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*PostFsfreezeResponse, error)
+
+	// PostFsthawWithResponse request
+	PostFsthawWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*PostFsthawResponse, error)
 
 	// GetHealthWithResponse request
 	GetHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthResponse, error)
@@ -1195,6 +1285,66 @@ func (r PostFreezeResponse) ContentType() string {
 	return ""
 }
 
+type PostFsfreezeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON500      *InternalServerError
+}
+
+// Status returns HTTPResponse.Status
+func (r PostFsfreezeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostFsfreezeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostFsfreezeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PostFsthawResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON500      *InternalServerError
+}
+
+// Status returns HTTPResponse.Status
+func (r PostFsthawResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostFsthawResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostFsthawResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetHealthResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -1373,6 +1523,24 @@ func (c *ClientWithResponses) PostFreezeWithResponse(ctx context.Context, reqEdi
 		return nil, err
 	}
 	return ParsePostFreezeResponse(rsp)
+}
+
+// PostFsfreezeWithResponse request returning *PostFsfreezeResponse
+func (c *ClientWithResponses) PostFsfreezeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*PostFsfreezeResponse, error) {
+	rsp, err := c.PostFsfreeze(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostFsfreezeResponse(rsp)
+}
+
+// PostFsthawWithResponse request returning *PostFsthawResponse
+func (c *ClientWithResponses) PostFsthawWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*PostFsthawResponse, error) {
+	rsp, err := c.PostFsthaw(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostFsthawResponse(rsp)
 }
 
 // GetHealthWithResponse request returning *GetHealthResponse
@@ -1656,6 +1824,58 @@ func ParsePostFreezeResponse(rsp *http.Response) (*PostFreezeResponse, error) {
 	}
 
 	response := &PostFreezeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostFsfreezeResponse parses an HTTP response from a PostFsfreezeWithResponse call
+func ParsePostFsfreezeResponse(rsp *http.Response) (*PostFsfreezeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostFsfreezeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostFsthawResponse parses an HTTP response from a PostFsthawWithResponse call
+func ParsePostFsthawResponse(rsp *http.Response) (*PostFsthawResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostFsthawResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
