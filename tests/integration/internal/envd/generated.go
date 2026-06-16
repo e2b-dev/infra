@@ -37,6 +37,24 @@ func (e EntryInfoType) Valid() bool {
 	}
 }
 
+// CollapseResult Per-call statistics from a heap collapse
+type CollapseResult struct {
+	// Chunks 2 MiB chunks attempted
+	Chunks *int `json:"chunks,omitempty"`
+
+	// Collapsed Chunks collapsed into a hugepage
+	Collapsed *int `json:"collapsed,omitempty"`
+
+	// ElapsedMs Wall-clock time spent collapsing, in milliseconds
+	ElapsedMs *int64 `json:"elapsedMs,omitempty"`
+
+	// Regions Anonymous read-write regions scanned
+	Regions *int `json:"regions,omitempty"`
+
+	// Skipped Chunks that could not be collapsed (empty or ineligible)
+	Skipped *int `json:"skipped,omitempty"`
+}
+
 // ComposeRequest defines model for ComposeRequest.
 type ComposeRequest struct {
 	// Destination Destination file path for the composed file
@@ -302,6 +320,9 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 
 // The interface specification for the client above.
 type ClientInterface interface {
+	// PostCollapse request
+	PostCollapse(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetEnvs request
 	GetEnvs(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -332,6 +353,18 @@ type ClientInterface interface {
 
 	// PostUnfreeze request
 	PostUnfreeze(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+}
+
+func (c *Client) PostCollapse(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostCollapseRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
 }
 
 func (c *Client) GetEnvs(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -464,6 +497,33 @@ func (c *Client) PostUnfreeze(ctx context.Context, reqEditors ...RequestEditorFn
 		return nil, err
 	}
 	return c.Client.Do(req)
+}
+
+// NewPostCollapseRequest generates requests for PostCollapse
+func NewPostCollapseRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/collapse")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
 }
 
 // NewGetEnvsRequest generates requests for GetEnvs
@@ -906,6 +966,9 @@ func WithBaseURL(baseURL string) ClientOption {
 
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
+	// PostCollapseWithResponse request
+	PostCollapseWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*PostCollapseResponse, error)
+
 	// GetEnvsWithResponse request
 	GetEnvsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetEnvsResponse, error)
 
@@ -936,6 +999,37 @@ type ClientWithResponsesInterface interface {
 
 	// PostUnfreezeWithResponse request
 	PostUnfreezeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*PostUnfreezeResponse, error)
+}
+
+type PostCollapseResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *CollapseResult
+	JSON500      *InternalServerError
+}
+
+// Status returns HTTPResponse.Status
+func (r PostCollapseResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostCollapseResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostCollapseResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
 }
 
 type GetEnvsResponse struct {
@@ -1219,6 +1313,15 @@ func (r PostUnfreezeResponse) ContentType() string {
 	return ""
 }
 
+// PostCollapseWithResponse request returning *PostCollapseResponse
+func (c *ClientWithResponses) PostCollapseWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*PostCollapseResponse, error) {
+	rsp, err := c.PostCollapse(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostCollapseResponse(rsp)
+}
+
 // GetEnvsWithResponse request returning *GetEnvsResponse
 func (c *ClientWithResponses) GetEnvsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetEnvsResponse, error) {
 	rsp, err := c.GetEnvs(ctx, reqEditors...)
@@ -1314,6 +1417,39 @@ func (c *ClientWithResponses) PostUnfreezeWithResponse(ctx context.Context, reqE
 		return nil, err
 	}
 	return ParsePostUnfreezeResponse(rsp)
+}
+
+// ParsePostCollapseResponse parses an HTTP response from a PostCollapseWithResponse call
+func ParsePostCollapseResponse(rsp *http.Response) (*PostCollapseResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostCollapseResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CollapseResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
 }
 
 // ParseGetEnvsResponse parses an HTTP response from a GetEnvsWithResponse call

@@ -26,6 +26,11 @@ const (
 	TeamSandboxCreated CounterType = "e2b.team.sandbox.created"
 
 	EnvdInitCalls CounterType = "orchestrator.sandbox.envd.init.calls"
+
+	// 2 MiB chunks the pre-pause envd heap collapse attempted, split by the
+	// result attribute (collapsed|skipped): attempts = total, successful =
+	// collapsed.
+	EnvdCollapseChunks CounterType = "orchestrator.sandbox.envd.collapse.chunks"
 	// Incremented by the balance_dirty_pages thread count at every 200 ms poll
 	// for the lifetime of the process. rate() shows dirty-page throttle
 	// intensity in real-time; 0 when no stalls are occurring.
@@ -79,6 +84,12 @@ const (
 	// Sandbox timing histograms
 	OrchestratorSandboxCreateDurationName HistogramType = "orchestrator.sandbox.create.duration"
 	WaitForEnvdDurationHistogramName      HistogramType = "orchestrator.sandbox.envd.init.duration"
+	GuestSyncDurationHistogramName        HistogramType = "orchestrator.sandbox.guest_sync.duration"
+
+	// Pre-pause envd heap collapse round-trip duration (the pause-path cost of
+	// POST /collapse: network plus envd's madvise work), recorded once per pause
+	// when the collapse-envd-heap flag is on.
+	EnvdCollapseDurationHistogramName HistogramType = "orchestrator.sandbox.envd.collapse.duration"
 
 	// Sandbox startup working-set histograms: demand-fault pages/bytes a guest
 	// needed to reach a successful envd init, recorded once per start. Sampled
@@ -191,6 +202,7 @@ var counterDesc = map[CounterType]string{
 	TeamSandboxCreated:                          "Counter of started sandboxes for the team in the interval",
 	OrchestratorHostBalanceDirtyPagesThreads:    "Cumulative stalled thread-polls during sandbox resume; rate() gives throttle intensity",
 	EnvdInitCalls:                               "Number of envd initialization calls",
+	EnvdCollapseChunks:                          "2 MiB chunks the pre-pause envd heap collapse attempted, by result",
 	OrchestratorSandboxKilledCounterName:        "Number of sandboxes killed, labeled by kill reason",
 	OrchestratorSnapshotUploadFailedCounterName: "Number of pause-snapshot uploads that never landed durably",
 	TCPFirewallConnectionsTotal:                 "Total number of TCP firewall connections processed",
@@ -219,6 +231,7 @@ var counterUnits = map[CounterType]string{
 	TeamSandboxCreated:                          "{sandbox}",
 	OrchestratorHostBalanceDirtyPagesThreads:    "{thread}",
 	EnvdInitCalls:                               "1",
+	EnvdCollapseChunks:                          "{chunk}",
 	OrchestratorSandboxKilledCounterName:        "{sandbox}",
 	OrchestratorSnapshotUploadFailedCounterName: "{snapshot}",
 	TCPFirewallConnectionsTotal:                 "{connection}",
@@ -396,6 +409,8 @@ var histogramDesc = map[HistogramType]string{
 	BuildRootfsSizeHistogramName:          "Size of the built template rootfs in bytes",
 	OrchestratorSandboxCreateDurationName: "Time taken to create a sandbox",
 	WaitForEnvdDurationHistogramName:      "Time taken for Envd to initialize successfully",
+	EnvdCollapseDurationHistogramName:     "Time taken for the pre-pause envd heap collapse round-trip",
+	GuestSyncDurationHistogramName:        "Time taken for the mandatory pre-pause guest sync (filesystem-only pause)",
 
 	UffdStartupPagesHistogramName:       "Demand-fault pages a guest needed to reach a successful envd init, per start",
 	UffdStartupSourcePagesHistogramName: "Subset of startup demand-fault pages pulled from the source (e.g. GCS), per start",
@@ -441,6 +456,8 @@ var histogramUnits = map[HistogramType]string{
 	BuildRootfsSizeHistogramName:                  "{By}",
 	OrchestratorSandboxCreateDurationName:         "ms",
 	WaitForEnvdDurationHistogramName:              "ms",
+	EnvdCollapseDurationHistogramName:             "ms",
+	GuestSyncDurationHistogramName:                "ms",
 	UffdStartupPagesHistogramName:                 "{page}",
 	UffdStartupSourcePagesHistogramName:           "{page}",
 	UffdStartupBytesHistogramName:                 "{By}",

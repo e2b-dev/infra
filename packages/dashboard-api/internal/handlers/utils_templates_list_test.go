@@ -133,6 +133,20 @@ func TestTemplatesSortValue(t *testing.T) {
 func TestCursorTypedParsers(t *testing.T) {
 	t.Parallel()
 
+	v := "42"
+	n, err := cursorInt64(&v)
+	require.NoError(t, err)
+	require.NotNil(t, n)
+	assert.Equal(t, int64(42), *n)
+
+	n, err = cursorInt64(nil)
+	require.NoError(t, err)
+	assert.Nil(t, n)
+
+	bad := "not-a-number"
+	_, err = cursorInt64(&bad)
+	require.ErrorIs(t, err, errInvalidCursor)
+
 	ts := "2026-05-30T12:34:56.123456789Z"
 	parsed, err := cursorTime(&ts)
 	require.NoError(t, err)
@@ -140,7 +154,7 @@ func TestCursorTypedParsers(t *testing.T) {
 
 	badTs := "nope"
 	_, err = cursorTime(&badTs)
-	require.ErrorIs(t, err, errInvalidTemplatesCursor)
+	require.ErrorIs(t, err, errInvalidCursor)
 
 	// Sanity: the sentinel errors are distinct.
 	assert.NotErrorIs(t, errInvalidTemplatesCursor, errTemplatesCursorSortMismatch)

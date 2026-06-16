@@ -132,12 +132,12 @@ var (
 	// UseMemFdFlag asks Firecracker to back guest memory with a memfd and
 	// pass the fd over the UFFD socket; the orchestrator then mmaps it
 	// directly instead of using process_vm_readv on pause.
-	UseMemFdFlag = NewBoolFlag("use-memfd", false)
+	UseMemFdFlag = NewBoolFlag("use-memfd", true)
 
 	// MemfdBackgroundCopyFlag streams the memfd into the snapshot cache on
 	// a goroutine so Pause returns as soon as the diff metadata is written.
 	// Only takes effect when UseMemFdFlag is also on.
-	MemfdBackgroundCopyFlag = NewBoolFlag("memfd-background-copy", false)
+	MemfdBackgroundCopyFlag = NewBoolFlag("memfd-background-copy", true)
 
 	// MemfileDiffDedupFlag enables 4 KiB-page dedup of the memfile diff
 	// against the base memfile. bestEffort skips uncached blocks; directIO
@@ -162,19 +162,31 @@ var (
 	// of synchronous. Only safe to enable after PeerToPeerChunkTransferFlag is ON.
 	PeerToPeerAsyncCheckpointFlag = NewBoolFlag("peer-to-peer-async-checkpoint", false)
 
-	PersistentVolumesFlag                 = NewBoolFlag("can-use-persistent-volumes", env.IsDevelopment())
-	ExecutionMetricsOnWebhooksFlag        = NewBoolFlag("execution-metrics-on-webhooks", false) // TODO: Remove NLT 20250315
-	SandboxLabelBasedSchedulingFlag       = NewBoolFlag("sandbox-label-based-scheduling", false)
-	SandboxVolumeLabelBasedSchedulingFlag = NewBoolFlag("sandbox-volume-label-based-scheduling", false)
+	PersistentVolumesFlag            = NewBoolFlag("can-use-persistent-volumes", env.IsDevelopment())
+	ExecutionMetricsOnWebhooksFlag   = NewBoolFlag("execution-metrics-on-webhooks", false) // TODO: Remove NLT 20250315
+	SandboxLabelBasedSchedulingFlag  = NewBoolFlag("sandbox-label-based-scheduling", false)
+	OptimisticResourceAccountingFlag = NewBoolFlag("sandbox-placement-optimistic-resource-accounting", false)
+	FreePageReportingFlag            = NewBoolFlag("free-page-reporting", false)
+	FreezeUserCgroupFlag             = NewBoolFlag("freeze-user-cgroup", env.IsDevelopment())
+	// CollapseEnvdHeapFlag makes the orchestrator ask envd to collapse its own
+	// anonymous heap into 2 MiB hugepages just before pause, reducing the number
+	// of distinct frames envd faults on resume. Off by default; rolled out via LD.
+	CollapseEnvdHeapFlag = NewBoolFlag("collapse-envd-heap", false)
+
+	// CollapseEnvdHeapTimeoutMsFlag bounds the pre-pause POST /collapse call, in
+	// milliseconds. Collapsing migrates envd's scattered heap pages into
+	// hugepages, which is heavier than the freeze sysfs write, so it gets a
+	// larger, independent budget. Collapse is best-effort: a cut-short run still
+	// helps, so this can be tuned per rollout without redeploying. The fallback
+	// (returned when LD is unavailable or the flag is unset) is the default.
+	CollapseEnvdHeapTimeoutMsFlag = NewIntFlag("collapse-envd-heap-timeout-ms", 10000) // 10s in milliseconds
+
 	// VolumeFallbackToUnmatchedNodesFlag allows volume operations to fall back to
 	// orchestrator nodes that don't advertise the volume's type label when every
 	// labeled node fails with a retryable error. This is a transitional flag for
 	// the volume-label migration: once every node is labeled, unlabeled nodes will
 	// fail 100% of the time, so this should be turned off and removed afterwards.
 	VolumeFallbackToUnmatchedNodesFlag = NewBoolFlag("volume-fallback-to-unmatched-nodes", true)
-	OptimisticResourceAccountingFlag   = NewBoolFlag("sandbox-placement-optimistic-resource-accounting", false)
-	FreePageReportingFlag              = NewBoolFlag("free-page-reporting", false)
-	FreezeUserCgroupFlag               = NewBoolFlag("freeze-user-cgroup", env.IsDevelopment())
 
 	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())
 
@@ -227,6 +239,10 @@ var (
 	BestOfKAlpha                  = NewIntFlag("best-of-k-alpha", 50)                        // Default Alpha=0.5 (stored as percentage for int flag, current usage weight)
 	EnvdInitTimeoutMilliseconds   = NewIntFlag("envd-init-request-timeout-milliseconds", 50) // Timeout for envd init request in milliseconds
 	HostStatsSamplingInterval     = NewIntFlag("host-stats-sampling-interval", 5000)         // Host stats sampling interval in milliseconds (default 5s)
+	// GuestSyncTimeoutMs overrides the mandatory pre-pause guest-sync deadline
+	// for filesystem-only snapshots, in milliseconds. 0 (default) derives the
+	// timeout from guest RAM; a positive value pins it.
+	GuestSyncTimeoutMs            = NewIntFlag("guest-sync-timeout-milliseconds", 0)
 	MaxCacheWriterConcurrencyFlag = NewIntFlag("max-cache-writer-concurrency", 10)
 
 	// BuildCacheMaxUsagePercentage the maximum percentage of the cache disk storage
@@ -378,8 +394,8 @@ const (
 const (
 	DefaultFirecackerV1_10Version = "v1.10.1_30cbb07"
 	DefaultFirecackerV1_12Version = "v1.12.1_210cbac"
-	DefaultFirecackerV1_14Version = "v1.14.1_bd85e43"
-	DefaultFirecrackerVersion     = DefaultFirecackerV1_12Version
+	DefaultFirecackerV1_14Version = "v1.14.1_431f1fc"
+	DefaultFirecrackerVersion     = DefaultFirecackerV1_14Version
 )
 
 var FirecrackerVersionMap = map[string]string{

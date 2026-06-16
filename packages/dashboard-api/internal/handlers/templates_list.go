@@ -59,7 +59,7 @@ func (s *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 
 	rows, err := s.listTemplates(ctx, sort, filter, cursorValue, cursorID, limit+1)
 	if err != nil {
-		if errors.Is(err, errInvalidTemplatesCursor) {
+		if errors.Is(err, errInvalidCursor) || errors.Is(err, errInvalidTemplatesCursor) {
 			s.sendAPIStoreError(c, http.StatusBadRequest, "Invalid cursor")
 
 			return

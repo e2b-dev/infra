@@ -27,8 +27,10 @@ func NewResolvedDiffHeader(h *header.Header) *DiffHeader {
 }
 
 type Snapshot struct {
-	MemfileDiff        build.Diff
-	MemfileDiffHeader  *DiffHeader
+	// MemorySnapshot bundles the memfile diff, its header, and block size. It is
+	// empty (NoDiff) for filesystem-only snapshots (see FilesystemSnapshot).
+	MemorySnapshot MemorySnapshot
+
 	RootfsDiff         build.Diff
 	RootfsDiffHeader   *DiffHeader
 	Snapfile           template.File
@@ -36,13 +38,17 @@ type Snapshot struct {
 	BuildID            uuid.UUID
 	SchedulingMetadata *orchestrator.SchedulingMetadata
 
-	// Template block sizes captured sync at Pause time. They equal
-	// MemfileDiffHeader.Metadata.BlockSize once that header resolves, but
-	// are needed sync by NewUpload's compression validation — the dedup
-	// memfile path produces a page-granular Diff.BlockSize() that doesn't
-	// match the chunker-read granularity on restore.
-	MemfileBlockSize uint64
-	RootfsBlockSize  uint64
+	// FilesystemSnapshot is true for filesystem-only snapshots: the memfile diff
+	// is empty (NoDiff) and the memfile, memfile header, and snapfile are not
+	// uploaded. It records the decision made at pause time, which can't be
+	// inferred from the diff shape — a memory snapshot with zero dirty pages also
+	// produces a NoDiff memfile but still needs its snapfile uploaded.
+	FilesystemSnapshot bool
+
+	// RootfsBlockSize is captured sync at Pause time — needed sync by NewUpload's
+	// compression validation. (The memfile block size lives in
+	// MemorySnapshot.BlockSize.)
+	RootfsBlockSize uint64
 
 	cleanup *Cleanup
 }
