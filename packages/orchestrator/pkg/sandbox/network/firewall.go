@@ -3,6 +3,7 @@
 package network
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -14,8 +15,10 @@ import (
 	"github.com/google/nftables/expr"
 	"github.com/ngrok/firewall_toolkit/pkg/expressions"
 	"github.com/ngrok/firewall_toolkit/pkg/set"
+	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
 
@@ -42,11 +45,17 @@ type Firewall struct {
 	allowedRanges []string
 }
 
-func NewFirewall(tapIf string, orchestratorInternalIP string, extraAllowedCIDRs []string) (*Firewall, error) {
+func NewFirewall(tapIf string, orchestratorInternalIP string, extraAllowedCIDRs []string) (_ *Firewall, err error) {
 	conn, err := nftables.New(nftables.AsLasting())
 	if err != nil {
 		return nil, fmt.Errorf("new nftables conn: %w", err)
 	}
+
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, conn.CloseLasting())
+		}
+	}()
 
 	table := conn.AddTable(&nftables.Table{
 		Name:   tableName,
@@ -125,6 +134,45 @@ func (fw *Firewall) Close() error {
 	}
 
 	return errors.Join(deleteErr, fw.conn.CloseLasting())
+}
+
+// resetConn replaces fw.conn with a fresh netlink connection, discarding
+// buffered messages and any sticky serialization error — nftables.Conn has no
+// API for that (see https://github.com/google/nftables/pull/324).
+func (fw *Firewall) resetConn(ctx context.Context) error {
+	closeErr := fw.conn.CloseLasting()
+
+	conn, err := nftables.New(nftables.AsLasting())
+	if err != nil {
+		err = fmt.Errorf("open new lasting nftables conn: %w", err)
+
+		// Fall back to a transient conn.
+		var transientErr error
+		conn, transientErr = nftables.New()
+		if transientErr != nil {
+			err = errors.Join(err, fmt.Errorf("open transient nftables conn: %w", transientErr))
+		}
+	}
+
+	resetErr := errors.Join(closeErr, err)
+	switch {
+	case conn == nil:
+		// Both the lasting and transient constructors failed. Keep the old
+		// (already closed, possibly poisoned) conn rather than storing nil and
+		// panicking on next use; the firewall is left in a degraded state.
+		logger.L().Error(ctx, "firewall nftables conn reset failed; reusing the old conn",
+			zap.String("tap_interface", fw.tapInterface), zap.Error(resetErr))
+	case resetErr != nil:
+		fw.conn = conn
+		logger.L().Error(ctx, "firewall nftables conn reset after apply failure encountered errors",
+			zap.String("tap_interface", fw.tapInterface), zap.Error(resetErr))
+	default:
+		fw.conn = conn
+		logger.L().Warn(ctx, "firewall nftables conn reset after apply failure",
+			zap.String("tap_interface", fw.tapInterface))
+	}
+
+	return resetErr
 }
 
 // tapIfaceMatch returns expressions that match packets from the tap interface.
@@ -293,9 +341,18 @@ func (fw *Firewall) bufferUserRules(allowedCIDRs, deniedCIDRs []string) error {
 // holds the new Rule 3 mode with stale user sets. The chain is always rebuilt
 // from scratch; on flush failure the kernel keeps the previous ruleset and no
 // in-memory state can desync from it.
-func (fw *Firewall) ApplyRules(byop bool, allowedCIDRs, deniedCIDRs []string) error {
+//
+// On any failure the conn is replaced via resetConn, so a poisoned batch can
+// never leak into a later flush.
+func (fw *Firewall) ApplyRules(ctx context.Context, byop bool, allowedCIDRs, deniedCIDRs []string) (err error) {
 	fw.mu.Lock()
 	defer fw.mu.Unlock()
+
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, fw.resetConn(ctx))
+		}
+	}()
 
 	fw.conn.FlushChain(fw.filterChain)
 	fw.installRules(byop)
