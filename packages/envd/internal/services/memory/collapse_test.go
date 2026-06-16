@@ -87,5 +87,39 @@ func TestCollapseSelf(t *testing.T) {
 	s, err := CollapseSelf(context.Background())
 	require.NoError(t, err)
 	assert.Positive(t, s.Regions)
-	assert.Equal(t, s.Chunks, s.Collapsed+s.Skipped)
+	assert.Equal(t, s.Chunks, s.Collapsed+s.AlreadyHuge+s.Skipped)
+}
+
+// TestSplitCollapsed covers the pure attribution of MADV_COLLAPSE successes into
+// real migrations vs already-huge no-ops from the AnonHugePages byte delta.
+func TestSplitCollapsed(t *testing.T) {
+	t.Parallel()
+
+	const hp = hugePageSize
+	cases := []struct {
+		name                           string
+		successes                      int
+		before, after                  uint64
+		measured                       bool
+		wantCollapsed, wantAlreadyHuge int
+	}{
+		{"all migrated", 10, 0, 10 * hp, true, 10, 0},
+		{"partial migrated", 10, 5 * hp, 8 * hp, true, 3, 7},
+		{"none migrated, all already huge", 10, 4 * hp, 4 * hp, true, 0, 10},
+		{"delta clamped to successes", 10, 0, 20 * hp, true, 10, 0},
+		{"unmeasured falls back to all collapsed", 10, 0, 0, false, 10, 0},
+		{"delta went backwards falls back", 10, 8 * hp, 4 * hp, true, 10, 0},
+		{"no successes", 0, 0, 4 * hp, true, 0, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			collapsed, alreadyHuge := splitCollapsed(tc.successes, tc.before, tc.after, tc.measured)
+			assert.Equal(t, tc.wantCollapsed, collapsed, "collapsed")
+			assert.Equal(t, tc.wantAlreadyHuge, alreadyHuge, "alreadyHuge")
+			// The split always partitions the successes.
+			assert.Equal(t, tc.successes, collapsed+alreadyHuge, "collapsed+alreadyHuge must equal successes")
+		})
+	}
 }

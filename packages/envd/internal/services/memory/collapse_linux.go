@@ -65,23 +65,33 @@ func CollapseSelf(ctx context.Context) (Stats, error) {
 	}
 	after, okAfter := anonHugePagesBytes()
 
-	// Attribute madvise successes to real migrations (AnonHugePages grew) vs
-	// already-huge no-ops. MADV_COLLAPSE is synchronous, so the delta reflects
-	// exactly the hugepages this run created. If smaps_rollup is unreadable, fall
-	// back to the pre-split meaning (all successes counted as Collapsed) rather
-	// than misreporting real work as no-ops.
-	if okBefore && okAfter && after >= before {
-		// Clamp: background THP activity could inflate the delta past what our
-		// madvise calls actually achieved.
-		migrated := min(int((after-before)/hugePageSize), successes)
-		s.Collapsed = migrated
-		s.AlreadyHuge = successes - migrated
-	} else {
-		s.Collapsed = successes
-	}
+	// Attribute madvise successes to real migrations vs already-huge no-ops
+	// using the AnonHugePages delta. MADV_COLLAPSE is synchronous, so the delta
+	// reflects exactly the hugepages this run created.
+	s.Collapsed, s.AlreadyHuge = splitCollapsed(successes, before, after, okBefore && okAfter)
 
 	// nil on a complete run; the cancellation error if the caller gave up.
 	return s, ctx.Err()
+}
+
+// splitCollapsed attributes MADV_COLLAPSE successes to real migrations vs
+// already-huge no-ops using the AnonHugePages byte delta across the collapse.
+// collapsed = windows whose pages were actually migrated this run (the delta in
+// 2 MiB hugepages), alreadyHuge = the rest.
+//
+// When the delta could not be measured (measured=false, e.g. smaps_rollup
+// unreadable) or AnonHugePages went backwards (after < before, e.g. concurrent
+// THP teardown), it falls back to the pre-split meaning — all successes counted
+// as collapsed — so a missing or noisy reading never misreports real work as a
+// no-op. The migrated count is clamped to successes, since background THP
+// activity could otherwise inflate the delta past what these madvise calls did.
+func splitCollapsed(successes int, before, after uint64, measured bool) (collapsed, alreadyHuge int) {
+	if !measured || after < before {
+		return successes, 0
+	}
+	migrated := min(int((after-before)/hugePageSize), successes)
+
+	return migrated, successes - migrated
 }
 
 // anonHugePagesBytes reads AnonHugePages from /proc/self/smaps_rollup. The bool
