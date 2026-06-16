@@ -22,8 +22,8 @@ inputs:
     description: "Memfile dedup mode"
     required: false
     default: "default"
-  use_memfd:
-    description: "Run sandboxes with memfd-backed guest memory"
+  disable_memfd:
+    description: "Disable memfd-backed guest memory (on by default)"
     required: false
     default: "false"
 
@@ -137,7 +137,7 @@ runs:
         COMPRESS_LEVEL: ${{ inputs.compress_level }}
         COMPRESS_FRAME_ENCODE_WORKERS: ${{ inputs.compress_workers }}
         TESTS_MEMFILE_DIFF_DEDUP_MODE: ${{ inputs.dedup_mode }}
-        TESTS_USE_MEMFD: ${{ inputs.use_memfd }}
+        TESTS_DISABLE_MEMFD: ${{ inputs.disable_memfd }}
         E2B_DEBUG: "true"
       run: |
         mkdir -p $SHARED_CHUNK_CACHE_PATH

@@ -132,12 +132,12 @@ var (
 	// UseMemFdFlag asks Firecracker to back guest memory with a memfd and
 	// pass the fd over the UFFD socket; the orchestrator then mmaps it
 	// directly instead of using process_vm_readv on pause.
-	UseMemFdFlag = NewBoolFlag("use-memfd", false)
+	UseMemFdFlag = NewBoolFlag("use-memfd", true)
 
 	// MemfdBackgroundCopyFlag streams the memfd into the snapshot cache on
 	// a goroutine so Pause returns as soon as the diff metadata is written.
 	// Only takes effect when UseMemFdFlag is also on.
-	MemfdBackgroundCopyFlag = NewBoolFlag("memfd-background-copy", false)
+	MemfdBackgroundCopyFlag = NewBoolFlag("memfd-background-copy", true)
 
 	// MemfileDiffDedupFlag enables 4 KiB-page dedup of the memfile diff
 	// against the base memfile. bestEffort skips uncached blocks; directIO
@@ -383,8 +383,8 @@ const (
 const (
 	DefaultFirecackerV1_10Version = "v1.10.1_30cbb07"
 	DefaultFirecackerV1_12Version = "v1.12.1_210cbac"
-	DefaultFirecackerV1_14Version = "v1.14.1_bd85e43"
-	DefaultFirecrackerVersion     = DefaultFirecackerV1_12Version
+	DefaultFirecackerV1_14Version = "v1.14.1_431f1fc"
+	DefaultFirecrackerVersion     = DefaultFirecackerV1_14Version
 )
 
 var FirecrackerVersionMap = map[string]string{
