@@ -7,7 +7,7 @@ variable "aws_profile" {
 }
 
 variable "source_ami_filter_name" {
-  type = string
+  type    = string
   default = "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"
 }
 

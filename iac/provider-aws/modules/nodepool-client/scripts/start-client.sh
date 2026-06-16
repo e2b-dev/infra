@@ -15,7 +15,68 @@ set -x
 # Inspired by https://alestic.com/2010/12/ec2-user-data-output/
 exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&1
 
-mkdir -p /orchestrator
+# Mount the dedicated cache EBS volume for orchestrator data.
+MOUNT_POINT="/orchestrator"
+root_source=$(findmnt -n -o SOURCE /)
+root_device=$(lsblk -no PKNAME "$root_source" 2>/dev/null | tr -d '[:space:]' || true)
+if [ -z "$root_device" ]; then
+  root_device=$(lsblk -rno PKNAME,MOUNTPOINT | while read -r pk mountpoint; do
+    if [ "$mountpoint" = "/" ]; then
+      echo "$pk"
+      break
+    fi
+  done)
+fi
+DISK=""
+
+for attempt in {1..60}; do
+  for candidate in /dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_* /dev/nvme*n1 /dev/xvd* /dev/sd*; do
+    if [ ! -b "$candidate" ]; then
+      continue
+    fi
+
+    candidate_type=$(lsblk -ndo TYPE "$candidate" || true)
+    if [ "$candidate_type" != "disk" ]; then
+      continue
+    fi
+
+    candidate_device=$(basename "$(readlink -f "$candidate")")
+    if [ "$candidate_device" = "$root_device" ]; then
+      continue
+    fi
+
+    if [ -n "$(lsblk -no MOUNTPOINT "$candidate" | tr -d '[:space:]')" ]; then
+      continue
+    fi
+
+    DISK="$candidate"
+    break
+  done
+
+  if [ -n "$DISK" ]; then
+    break
+  fi
+
+  echo "waiting for cache disk ($attempt/60)"
+  sleep 1
+done
+
+if [ -z "$DISK" ]; then
+  echo "failed to find cache disk"
+  lsblk
+  exit 1
+fi
+
+until mkfs.xfs -f -b size=4096 "$DISK"; do
+  echo "failed to make file system, trying again ... "
+  sleep 1
+done
+
+mkdir -p "$MOUNT_POINT"
+cache_disk_uuid=$(blkid -s UUID -o value "$DISK")
+echo "UUID=$cache_disk_uuid    $MOUNT_POINT    xfs noatime 0 0" | tee -a /etc/fstab
+mount "$MOUNT_POINT"
+
 mkdir -p /orchestrator/sandbox
 mkdir -p /orchestrator/template
 mkdir -p /orchestrator/build

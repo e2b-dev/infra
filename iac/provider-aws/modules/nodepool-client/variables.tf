@@ -86,6 +86,24 @@ variable "boot_disk_size_gb" {
   description = "Root volume size in GB"
 }
 
+variable "cache_disk_size_gb" {
+  type        = number
+  default     = 500
+  description = "Cache volume size in GB"
+}
+
+variable "cache_disk_type" {
+  type        = string
+  default     = "gp3"
+  description = "Cache volume type"
+}
+
+variable "cache_disk_device_name" {
+  type        = string
+  default     = "/dev/sdf"
+  description = "Requested device name for the cache volume"
+}
+
 variable "consul_acl_token" {
   type = string
 }

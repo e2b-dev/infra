@@ -148,6 +148,16 @@ resource "aws_launch_template" "client" {
     }
   }
 
+  block_device_mappings {
+    device_name = var.cache_disk_device_name
+
+    ebs {
+      volume_size           = var.cache_disk_size_gb
+      volume_type           = var.cache_disk_type
+      delete_on_termination = true
+    }
+  }
+
   cpu_options {
     nested_virtualization = var.nested_virtualization ? "enabled" : "disabled"
   }

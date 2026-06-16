@@ -85,7 +85,7 @@ build {
   provisioner "shell" {
     inline = [
       "sudo apt-get update",
-      "sudo apt-get install -y nvme-cli unzip jq net-tools qemu-utils make build-essential openssh-client openssh-server", # TODO: openssh-server is updated to prevent security vulnerabilities
+      "sudo apt-get install -y nvme-cli unzip jq net-tools qemu-utils xfsprogs make build-essential openssh-client openssh-server", # TODO: openssh-server is updated to prevent security vulnerabilities
     ]
   }
 
