@@ -112,16 +112,15 @@ Now, you should see the right quota options in `All Quotas` and be able to reque
     ```sh
     aws configure --profile <your-profile>
     ```
-- [gsutil](https://cloud.google.com/storage/docs/gsutil_install) (for copying public Firecracker builds)
 - AWS account
 
 ### Steps
 
-1. Create `.env.prod`, `.env.staging`, or `.env.dev` from [`.env.template`](.env.template). Make sure to fill in the AWS-specific values:
+1. Create `.env.prod`, `.env.staging`, or `.env.dev` from [`.env.aws.template`](.env.aws.template). Make sure to fill in the AWS-specific values:
     - `PROVIDER=aws`
     - `AWS_PROFILE` - your AWS CLI profile name
     - `AWS_ACCOUNT_ID` - your AWS account ID
-    - `AWS_REGION` - the AWS region to deploy to (must support bare metal instances for Firecracker)
+    - `AWS_REGION` - the AWS region to deploy to (must support nested virtualization for Firecracker)
     - `PREFIX` - name prefix for all resources (e.g. `e2b-`)
     - `DOMAIN_NAME` - your domain managed by Cloudflare
     - `TERRAFORM_ENVIRONMENT` - one of `prod`, `staging`, `dev`
