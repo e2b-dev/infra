@@ -21,6 +21,7 @@ SELECT
     description,
     command,
     author,
+    metadata,
     public,
     created_at,
     updated_at,
@@ -39,6 +40,7 @@ type ListAgentsRow struct {
 	Description string
 	Command     *string
 	Author      *string
+	Metadata    []byte
 	Public      bool
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
@@ -62,6 +64,7 @@ func (q *Queries) ListAgents(ctx context.Context, teamID uuid.UUID) ([]ListAgent
 			&i.Description,
 			&i.Command,
 			&i.Author,
+			&i.Metadata,
 			&i.Public,
 			&i.CreatedAt,
 			&i.UpdatedAt,

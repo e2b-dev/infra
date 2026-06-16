@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS public.agents (
     description TEXT NOT NULL,
     command TEXT,
     author TEXT,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
     public BOOLEAN NOT NULL DEFAULT FALSE,
     position INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

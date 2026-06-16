@@ -121,6 +121,14 @@ components:
       description: Team slug to resolve.
       schema:
         type: string
+    agentID:
+      name: agentID
+      in: path
+      required: true
+      description: Identifier of the agent.
+      schema:
+        type: string
+        format: uuid
     templates_limit:
       name: limit
       in: query
@@ -860,6 +868,10 @@ components:
           items:
             $ref: "#/components/schemas/DefaultTemplate"
 
+    AgentMetadata:
+      type: object
+      additionalProperties: true
+
     Agent:
       type: object
       required:
@@ -867,6 +879,7 @@ components:
         - name
         - template
         - description
+        - metadata
         - public
         - createdAt
         - updatedAt
@@ -890,6 +903,8 @@ components:
         author:
           type: string
           nullable: true
+        metadata:
+          $ref: "#/components/schemas/AgentMetadata"
         public:
           type: boolean
         createdAt:
@@ -912,6 +927,62 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Agent"
+
+    CreateAgentRequest:
+      type: object
+      required:
+        - name
+        - template
+        - description
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        template:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          minLength: 1
+        command:
+          type: string
+          nullable: true
+        author:
+          type: string
+          nullable: true
+        metadata:
+          $ref: "#/components/schemas/AgentMetadata"
+        public:
+          type: boolean
+          default: false
+
+    UpdateAgentRequest:
+      type: object
+      minProperties: 1
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        template:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          minLength: 1
+        command:
+          type: string
+          nullable: true
+        author:
+          type: string
+          nullable: true
+        metadata:
+          $ref: "#/components/schemas/AgentMetadata"
+        public:
+          type: boolean
 
     TeamTemplate:
       type: object
@@ -1244,6 +1315,92 @@ paths:
           $ref: "#/components/responses/401"
         "403":
           $ref: "#/components/responses/403"
+        "500":
+          $ref: "#/components/responses/500"
+    post:
+      summary: Create agent
+      description: Creates a team-owned agent launcher.
+      tags: [agents]
+      security:
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgentRequest"
+      responses:
+        "201":
+          description: Successfully created agent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "409":
+          $ref: "#/components/responses/409"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /agents/{agentID}:
+    patch:
+      summary: Update agent
+      description: Updates a team-owned agent launcher.
+      tags: [agents]
+      security:
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/agentID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAgentRequest"
+      responses:
+        "200":
+          description: Successfully updated agent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
+        "500":
+          $ref: "#/components/responses/500"
+    delete:
+      summary: Delete agent
+      description: Soft-deletes a team-owned agent launcher.
+      tags: [agents]
+      security:
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/agentID"
+      responses:
+        "204":
+          description: Successfully deleted agent.
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
         "500":
           $ref: "#/components/responses/500"
 

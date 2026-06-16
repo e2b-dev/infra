@@ -7,6 +7,7 @@ SELECT
     description,
     command,
     author,
+    metadata,
     public,
     created_at,
     updated_at,
