@@ -138,6 +138,15 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		return
 	}
 
+	// A filesystem-only snapshot can only be resumed by cold-booting (reboot),
+	// which loses in-memory state and breaks connect's "same sandbox" contract.
+	// Refuse it here with an actionable error; the caller must resume explicitly.
+	if lastSnapshot.Snapshot.Config != nil && lastSnapshot.Snapshot.Config.FilesystemOnly {
+		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox '%s' is a filesystem-only snapshot; connecting would reboot it and lose in-memory state. Resume it explicitly instead.", sandboxID))
+
+		return
+	}
+
 	sbxlogger.E(&sbxlogger.SandboxMetadata{
 		SandboxID:  sandboxID,
 		TemplateID: lastSnapshot.Snapshot.EnvID,
