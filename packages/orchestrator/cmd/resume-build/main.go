@@ -75,6 +75,7 @@ func main() {
 
 	fphTimeoutMs := flag.Int("fph-timeout-ms", 0, "override free-page-hinting-config pause timeout LD flag (0 = use LD default)")
 	reclaim := flag.Bool("reclaim", false, "enable pre-pause reclaim chain (fstrim 500ms, sync 500ms, drop_caches 200ms, compact 1s)")
+	collapseEnvdHeap := flag.Bool("collapse-envd-heap", false, "collapse envd's heap before pause (overrides the collapse-envd-heap flag)")
 
 	fphBench := flag.Bool("fph-bench", false, "compare pause memfile size with vs without FPH; requires -cmd-pause workload, uses -iterations (default 3), forces FPR on")
 	fphBenchDelay := flag.Duration("fph-bench-delay", 0, "wait this long between workload completion and pause (lets FPR settle)")
@@ -99,6 +100,10 @@ func main() {
 
 	if *useMemfd {
 		featureflags.OverrideBoolFlag(featureflags.UseMemFdFlag, true)
+	}
+
+	if *collapseEnvdHeap {
+		featureflags.OverrideBoolFlag(featureflags.CollapseEnvdHeapFlag, true)
 	}
 
 	if *memfileDiffDedup {

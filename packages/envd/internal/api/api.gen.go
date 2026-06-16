@@ -34,6 +34,24 @@ func (e EntryInfoType) Valid() bool {
 	}
 }
 
+// CollapseResult Per-call statistics from a heap collapse
+type CollapseResult struct {
+	// Chunks 2 MiB chunks attempted
+	Chunks *int `json:"chunks,omitempty"`
+
+	// Collapsed Chunks collapsed into a hugepage
+	Collapsed *int `json:"collapsed,omitempty"`
+
+	// ElapsedMs Wall-clock time spent collapsing, in milliseconds
+	ElapsedMs *int64 `json:"elapsedMs,omitempty"`
+
+	// Regions Anonymous read-write regions scanned
+	Regions *int `json:"regions,omitempty"`
+
+	// Skipped Chunks that could not be collapsed (empty or ineligible)
+	Skipped *int `json:"skipped,omitempty"`
+}
+
 // ComposeRequest defines model for ComposeRequest.
 type ComposeRequest struct {
 	// Destination Destination file path for the composed file
@@ -228,6 +246,9 @@ type PostInitJSONRequestBody PostInitJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Collapse envd's own anonymous heap into 2 MiB transparent hugepages before pause, so on resume envd touches fewer distinct guest-physical frames (each a cold fault). Best-effort.
+	// (POST /collapse)
+	PostCollapse(w http.ResponseWriter, r *http.Request)
 	// Get the environment variables
 	// (GET /envs)
 	GetEnvs(w http.ResponseWriter, r *http.Request)
@@ -260,6 +281,12 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// Collapse envd's own anonymous heap into 2 MiB transparent hugepages before pause, so on resume envd touches fewer distinct guest-physical frames (each a cold fault). Best-effort.
+// (POST /collapse)
+func (_ Unimplemented) PostCollapse(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // Get the environment variables
 // (GET /envs)
@@ -323,6 +350,26 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// PostCollapse operation middleware
+func (siw *ServerInterfaceWrapper) PostCollapse(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostCollapse(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetEnvs operation middleware
 func (siw *ServerInterfaceWrapper) GetEnvs(w http.ResponseWriter, r *http.Request) {
@@ -727,6 +774,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/collapse", wrapper.PostCollapse)
+	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/envs", wrapper.GetEnvs)
 	})
