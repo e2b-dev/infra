@@ -76,6 +76,17 @@ var sandboxHttpClient = http.Client{
 	Transport: SandboxHttpTransport,
 }
 
+// collapseHttpClient issues the pre-pause POST /collapse, whose deadline is the
+// per-call request context (the LD-configurable collapse-envd-heap-timeout-ms).
+// It deliberately has no http.Client.Timeout: a fixed client cap would silently
+// truncate any budget above it, which is exactly the value /collapse needs to be
+// able to raise. The context always bounds the call, including the body read, so
+// no client-level timeout is needed. The cgroup ops (/freeze, /unfreeze) keep the
+// shared sandboxHttpClient — their fixed 2s deadline is well under its cap.
+var collapseHttpClient = http.Client{
+	Transport: SandboxHttpTransport,
+}
+
 type Config struct {
 	// TODO: Remove when the rootfs path is constant.
 	// Only used for v1 rootfs paths format.

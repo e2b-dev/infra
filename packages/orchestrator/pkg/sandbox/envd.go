@@ -120,7 +120,9 @@ func (s *Sandbox) callEnvdCollapse(ctx context.Context, timeout time.Duration) (
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	resp, err := s.doEnvdPost(ctx, "collapse")
+	// Uncapped client: collapse's budget is the configurable timeout above,
+	// which may exceed sandboxHttpClient's fixed 10s cap.
+	resp, err := s.doEnvdPost(ctx, &collapseHttpClient, "collapse")
 	if err != nil {
 		return envd.CollapseResult{}, err
 	}
@@ -146,7 +148,9 @@ func (s *Sandbox) postEnvd(ctx context.Context, timeout time.Duration, path stri
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	resp, err := s.doEnvdPost(ctx, path)
+	// Shared client: the cgroup ops use a tight, fixed deadline well under the
+	// client's 10s cap, so they keep its backstop.
+	resp, err := s.doEnvdPost(ctx, &sandboxHttpClient, path)
 	if err != nil {
 		return err
 	}
@@ -161,13 +165,15 @@ func (s *Sandbox) postEnvd(ctx context.Context, timeout time.Duration, path stri
 	return nil
 }
 
-// doEnvdPost builds and sends an authenticated POST to envd's /<path> endpoint.
-// The caller owns the returned response and must close its body. Status handling
-// is left to the caller because the endpoints disagree on success: /collapse
-// returns 200 with a body, while the cgroup ops return 204 No Content. The
-// deadline must live on ctx (callers set it via context.WithTimeout) so it
-// stays in force while the caller reads the body.
-func (s *Sandbox) doEnvdPost(ctx context.Context, path string) (*http.Response, error) {
+// doEnvdPost builds and sends an authenticated POST to envd's /<path> endpoint
+// on the given client. The caller owns the returned response and must close its
+// body. Status handling is left to the caller because the endpoints disagree on
+// success: /collapse returns 200 with a body, while the cgroup ops return 204 No
+// Content. The deadline must live on ctx (callers set it via context.WithTimeout)
+// so it stays in force while the caller reads the body. The client is a
+// parameter so /collapse can use an uncapped client (its budget may exceed the
+// shared client's fixed timeout) while the cgroup ops keep the shared one.
+func (s *Sandbox) doEnvdPost(ctx context.Context, client *http.Client, path string) (*http.Response, error) {
 	address := fmt.Sprintf("http://%s:%d/%s", s.Slot.HostIPString(), consts.DefaultEnvdServerPort, path)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, address, nil)
 	if err != nil {
@@ -177,7 +183,7 @@ func (s *Sandbox) doEnvdPost(ctx context.Context, path string) (*http.Response, 
 		req.Header.Set("X-Access-Token", *s.Config.Envd.AccessToken)
 	}
 
-	resp, err := sandboxHttpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("%s request: %w", path, err)
 	}
