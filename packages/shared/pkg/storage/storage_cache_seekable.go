@@ -124,7 +124,6 @@ func (c *cachedSeekable) openReaderUncompressed(ctx context.Context, off, length
 	if err == nil {
 		recordCacheRead(ctx, true, length, cacheTypeSeekable, cacheOpOpenRangeReader)
 		timer.Success(ctx, length)
-		readCache.Add(ctx, 1, CacheHitAttrs(c.objType, SourceNFS, CompressionNone))
 
 		return withNFSGauge(ctx, newSectionReader(fp, 0, length)), SourceNFS, nil
 	}
@@ -134,7 +133,6 @@ func (c *cachedSeekable) openReaderUncompressed(ctx context.Context, off, length
 	}
 
 	timer.Failure(ctx, 0)
-	readCache.Add(ctx, 1, CacheMissAttrs(c.objType, SourceNFS, CompressionNone))
 
 	rc, innerSource, err := c.inner.OpenRangeReader(ctx, off, length, nil)
 	if err != nil {
@@ -185,6 +183,11 @@ func (c *cachedSeekable) uncompressedChunkWriteback(chunkPath string, off, expec
 
 			start := time.Now()
 			err := c.writeToCache(ctx, off, chunkPath, captured)
+			if errors.Is(err, lock.ErrLockAlreadyHeld) {
+				recordWritebackContended(ctx, c.objType, src, CompressionNone)
+
+				return
+			}
 			recordWriteback(ctx, time.Since(start), int64(len(captured)), c.objType, src, CompressionNone, err)
 
 			if err != nil {
@@ -366,15 +369,15 @@ func (c *cachedSeekable) validateReadParams(buffSize, offset int64) error {
 func (c *cachedSeekable) writeToCache(ctx context.Context, offset int64, finalPath string, bytes []byte) error {
 	writeTimer := cacheSlabWriteTimerFactory.Begin()
 
-	// Try to acquire lock for this chunk write to NFS cache
+	// Try to acquire lock for this chunk write to NFS cache.
+	// Lock contention propagates as ErrLockAlreadyHeld; callers treat that as
+	// "not our work" and skip writeback metrics — counting it as success would
+	// inflate writeback bytes by the chunk size on every contention event.
 	lockFile, err := lock.TryAcquireLock(ctx, finalPath)
 	if err != nil {
-		// failed to acquire lock, which is a different category of failure than "write failed"
-		recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpOpenRangeReader, err)
-
 		writeTimer.Failure(ctx, 0)
 
-		return nil
+		return err
 	}
 
 	// Release lock after write completes

@@ -166,7 +166,6 @@ type ReadStats struct {
 	Decompress        time.Duration
 }
 
-
 type RangeReader interface {
 	io.Reader
 	// Close returns stats from the reader's lifetime, or nil if the reader did

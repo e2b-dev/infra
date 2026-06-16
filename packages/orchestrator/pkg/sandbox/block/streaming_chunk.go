@@ -186,6 +186,15 @@ func (c *Chunker) fetch(ctx context.Context, off, length int64, upstream storage
 	startBlock := (off / blockSize) * blockSize
 	endBlock := ((off + length - 1) / blockSize) * blockSize
 	chunkEnd := chunkOff + chunkLen
+
+	// If the session has already streamed past every byte
+	// we need, the data is in the mmap and we never have to wait. Report
+	// source=mmap.
+	endByte := min(endBlock+blockSize, chunkEnd) - chunkOff
+	if session.bytesReady.Load() >= endByte {
+		return storage.SourceMmap, nil
+	}
+
 	for b := startBlock; b <= endBlock; b += blockSize {
 		if b >= chunkEnd {
 			break // tail belongs to the caller's next chunk fetch.

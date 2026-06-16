@@ -60,15 +60,15 @@ var (
 		"fetch / (open + read + decompress) — 1.0 = fetch wall fully explained by work, >1 = overhead", "1",
 	)
 
-	readCache = utils.Must(meter.Int64Counter(
-		"orchestrator.read.cache",
-		metric.WithDescription("NFS read-cache events (hit / miss / writeback). The mmap tier is orchestrator.chunk.cache."),
-		metric.WithUnit("1"),
-	))
-
 	readInflight = utils.Must(meter.Int64UpDownCounter(
 		"orchestrator.read.inflight",
 		metric.WithDescription("In-flight read-path fetches (cache miss → backend), by file_type"),
+		metric.WithUnit("1"),
+	))
+
+	readWritebackContended = utils.Must(meter.Int64Counter(
+		"orchestrator.read.writeback.contended",
+		metric.WithDescription("Writebacks skipped because the NFS chunk lock was already held — another goroutine is writing the same chunk (normal cache dedup, not an error)"),
 		metric.WithUnit("1"),
 	))
 )
@@ -102,7 +102,11 @@ func StartInflight(ctx context.Context, attrs metric.MeasurementOption) func() {
 }
 
 // Outcome maps a read-path error to the closed read.* outcome enum.
+// PeerTransitionedError is a routing signal — the peer told us to refresh
+// the header and reopen against storage — so it gets its own bucket
+// instead of polluting err_io with sub-ms "errors" at every transition.
 func Outcome(err error) string {
+	var transErr *PeerTransitionedError
 	switch {
 	case err == nil:
 		return OutcomeOK
@@ -110,6 +114,8 @@ func Outcome(err error) string {
 		return OutcomeErrCanceled
 	case errors.Is(err, context.DeadlineExceeded):
 		return OutcomeErrTimeout
+	case errors.As(err, &transErr):
+		return OutcomeTransitioned
 	default:
 		return OutcomeErrIO
 	}
@@ -136,16 +142,24 @@ func recordDecompressStep(ctx context.Context, r *decompressReader, stats *ReadS
 	readDecompress.Record(ctx, stats.Decompress, stats.UncompressedBytes, ErrAttrs(r.objType, r.source, r.ct, readErr))
 }
 
-// recordWriteback emits the read.writeback timer and its read.cache event.
-// src is the originating fetch source (kept for cross-correlation); writebacks
-// always target NFS.
+// recordWritebackContended emits the read.writeback.contended counter — a
+// writeback that didn't run because the NFS chunk lock was already held.
+// Cold path; attrs built inline.
+func recordWritebackContended(ctx context.Context, ot SeekableObjectType, src Source, ct CompressionType) {
+	readWritebackContended.Add(ctx, 1, metric.WithAttributes(
+		attribute.String(AttrFileType, ot.String()),
+		attribute.String(AttrSource, src.String()),
+		attribute.String(AttrCodec, ct.String()),
+	))
+}
+
+// recordWriteback emits the read.writeback timer. src is the originating
+// fetch source (kept for cross-correlation); writebacks always target NFS.
 func recordWriteback(ctx context.Context, dur time.Duration, bytes int64, ot SeekableObjectType, src Source, ct CompressionType, err error) {
 	if err == nil {
 		readWriteback.Record(ctx, dur, bytes, OKAttrs(ot, src, ct))
-		readCache.Add(ctx, 1, CacheWritebackOKAttrs(ot, SourceNFS, ct))
 
 		return
 	}
 	readWriteback.Record(ctx, dur, bytes, ErrAttrs(ot, src, ct, err))
-	readCache.Add(ctx, 1, CacheWritebackErrAttrs(ot, SourceNFS, ct))
 }

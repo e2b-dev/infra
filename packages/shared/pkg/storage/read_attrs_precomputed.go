@@ -44,11 +44,6 @@ const numCodecs = 3 // CompressionNone, Zstd, LZ4
 var (
 	tableOK [numSeekableObjectTypes][numSources][numCodecs]metric.MeasurementOption
 
-	tableCacheHit          [numSeekableObjectTypes][numSources][numCodecs]metric.MeasurementOption
-	tableCacheMiss         [numSeekableObjectTypes][numSources][numCodecs]metric.MeasurementOption
-	tableCacheWritebackOK  [numSeekableObjectTypes][numSources][numCodecs]metric.MeasurementOption
-	tableCacheWritebackErr [numSeekableObjectTypes][numSources][numCodecs]metric.MeasurementOption
-
 	// keyed by file_type only: inflight is incremented before the source is
 	// known (the OpenRangeReader call itself dominates GCS latency).
 	tableInflightFetch [numSeekableObjectTypes]metric.MeasurementOption
@@ -74,23 +69,6 @@ func init() {
 				tableOK[ot][s][ct] = set(
 					ftAttr, srcAttr, codecAttr, outcomeOK,
 				)
-
-				tableCacheHit[ot][s][ct] = set(
-					ftAttr, attribute.String(AttrEvent, CacheEventHit),
-					srcAttr, codecAttr,
-				)
-				tableCacheMiss[ot][s][ct] = set(
-					ftAttr, attribute.String(AttrEvent, CacheEventMiss),
-					srcAttr, codecAttr,
-				)
-				tableCacheWritebackOK[ot][s][ct] = set(
-					ftAttr, attribute.String(AttrEvent, CacheEventWritebackOK),
-					srcAttr, codecAttr,
-				)
-				tableCacheWritebackErr[ot][s][ct] = set(
-					ftAttr, attribute.String(AttrEvent, CacheEventWritebackErr),
-					srcAttr, codecAttr,
-				)
 			}
 		}
 	}
@@ -114,30 +92,6 @@ func OKAttrs(o SeekableObjectType, s Source, c CompressionType) metric.Measureme
 	o, s, c = safeAttrIdx(o, s, c)
 
 	return tableOK[o][s][c]
-}
-
-func CacheHitAttrs(o SeekableObjectType, s Source, c CompressionType) metric.MeasurementOption {
-	o, s, c = safeAttrIdx(o, s, c)
-
-	return tableCacheHit[o][s][c]
-}
-
-func CacheMissAttrs(o SeekableObjectType, s Source, c CompressionType) metric.MeasurementOption {
-	o, s, c = safeAttrIdx(o, s, c)
-
-	return tableCacheMiss[o][s][c]
-}
-
-func CacheWritebackOKAttrs(o SeekableObjectType, s Source, c CompressionType) metric.MeasurementOption {
-	o, s, c = safeAttrIdx(o, s, c)
-
-	return tableCacheWritebackOK[o][s][c]
-}
-
-func CacheWritebackErrAttrs(o SeekableObjectType, s Source, c CompressionType) metric.MeasurementOption {
-	o, s, c = safeAttrIdx(o, s, c)
-
-	return tableCacheWritebackErr[o][s][c]
 }
 
 func InflightFetchAttrs(o SeekableObjectType) metric.MeasurementOption {

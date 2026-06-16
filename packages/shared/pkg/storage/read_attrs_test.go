@@ -47,10 +47,6 @@ func TestPrecomputedAttrsPopulated(t *testing.T) {
 		for s := range numSources {
 			for c := range CompressionType(numCodecs) {
 				require.NotNil(t, OKAttrs(o, s, c))
-				require.NotNil(t, CacheHitAttrs(o, s, c))
-				require.NotNil(t, CacheMissAttrs(o, s, c))
-				require.NotNil(t, CacheWritebackOKAttrs(o, s, c))
-				require.NotNil(t, CacheWritebackErrAttrs(o, s, c))
 			}
 		}
 	}

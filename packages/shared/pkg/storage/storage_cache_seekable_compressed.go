@@ -2,11 +2,14 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/lock"
 )
 
 // Precomputed OTEL attributes for compressed cache reads (avoids per-read allocation).
@@ -43,7 +46,6 @@ func (c *cachedSeekable) openReaderCompressed(ctx context.Context, offsetU int64
 
 				return nil, SourceNFS, fmt.Errorf("decompress cached frame: %w", err)
 			}
-			readCache.Add(ctx, 1, CacheHitAttrs(c.objType, SourceNFS, ct))
 
 			return withNFSGauge(ctx, dec), SourceNFS, nil
 		case statErr == nil:
@@ -62,7 +64,6 @@ func (c *cachedSeekable) openReaderCompressed(ctx context.Context, offsetU int64
 	}
 
 	timer.Failure(ctx, 0)
-	readCache.Add(ctx, 1, CacheMissAttrs(c.objType, SourceNFS, ct))
 
 	// Cache miss: fetch raw compressed bytes via OpenRangeReader(nil frameTable).
 	raw, innerSource, err := c.inner.OpenRangeReader(ctx, r.Offset, int64(r.Length), nil)
@@ -107,6 +108,11 @@ func (c *cachedSeekable) compressedFrameWriteback(framePath string, offset int64
 
 			start := time.Now()
 			err := c.writeToCache(ctx, offset, framePath, frame)
+			if errors.Is(err, lock.ErrLockAlreadyHeld) {
+				recordWritebackContended(ctx, c.objType, src, codec)
+
+				return
+			}
 			recordWriteback(ctx, time.Since(start), int64(len(frame)), c.objType, src, codec, err)
 
 			if err != nil {
