@@ -188,6 +188,12 @@ var (
 	// fail 100% of the time, so this should be turned off and removed afterwards.
 	VolumeFallbackToUnmatchedNodesFlag = NewBoolFlag("volume-fallback-to-unmatched-nodes", true)
 
+	// SandboxVolumeLabelBasedSchedulingFlag enables filtering orchestrator nodes
+	// based on the volume types required by the sandbox. When enabled, labels
+	// like "persistent-volume-type=nfs" are added to the required node labels
+	// for sandbox placement.
+	SandboxVolumeLabelBasedSchedulingFlag = NewBoolFlag("sandbox-volume-label-based-scheduling", false)
+
 	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())
 
 	BYOPProxyEnabledFlag = NewBoolFlag("byop-proxy-enabled", env.IsDevelopment())
