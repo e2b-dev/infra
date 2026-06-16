@@ -286,15 +286,18 @@ func (s *Sandbox) bestEffortCollapse(ctx context.Context) {
 		return
 	}
 
-	// Chunk-level efficacy: attempts = collapsed + skipped, successful = collapsed.
-	// One counter split by result so attempts (sum) and successes (collapsed) are
-	// both queryable.
+	// Chunk-level efficacy split three ways so the dashboard can separate real
+	// work from no-ops: attempts = collapsed + already_huge + skipped, where
+	// collapsed = pages actually migrated this pause, already_huge = windows that
+	// were already hugepages (MADV_COLLAPSE succeeded but did nothing).
 	envdCollapseChunks.Add(ctx, int64(stats.Collapsed), metric.WithAttributes(attribute.String("result", "collapsed")))
+	envdCollapseChunks.Add(ctx, int64(stats.AlreadyHuge), metric.WithAttributes(attribute.String("result", "already_huge")))
 	envdCollapseChunks.Add(ctx, int64(stats.Skipped), metric.WithAttributes(attribute.String("result", "skipped")))
 	span.SetAttributes(
 		attribute.Int("collapse.regions", stats.Regions),
 		attribute.Int("collapse.chunks", stats.Chunks),
 		attribute.Int("collapse.collapsed", stats.Collapsed),
+		attribute.Int("collapse.already_huge", stats.AlreadyHuge),
 		attribute.Int("collapse.skipped", stats.Skipped),
 	)
 
@@ -303,6 +306,7 @@ func (s *Sandbox) bestEffortCollapse(ctx context.Context) {
 		zap.Int("regions", stats.Regions),
 		zap.Int("chunks", stats.Chunks),
 		zap.Int("collapsed", stats.Collapsed),
+		zap.Int("already_huge", stats.AlreadyHuge),
 		zap.Int("skipped", stats.Skipped),
 		zap.Int64("duration_ms", elapsedMs),
 	)

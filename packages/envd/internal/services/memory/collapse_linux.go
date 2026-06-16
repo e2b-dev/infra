@@ -3,8 +3,12 @@
 package memory
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"os"
+	"strconv"
+	"strings"
 
 	"github.com/prometheus/procfs"
 	"golang.org/x/sys/unix"
@@ -41,6 +45,11 @@ func CollapseSelf(ctx context.Context) (Stats, error) {
 	}
 
 	var s Stats
+	// successes = windows where MADV_COLLAPSE returned 0. That conflates real
+	// migrations with already-huge no-ops; we split them below via the
+	// AnonHugePages delta.
+	var successes int
+	before, okBefore := anonHugePagesBytes()
 	for _, r := range anonRWRegions(maps) {
 		// Caller gave up (timeout/disconnect): stop issuing madvise calls and
 		// return the progress made so far. Reported uniformly via ctx.Err()
@@ -51,12 +60,59 @@ func CollapseSelf(ctx context.Context) (Stats, error) {
 		s.Regions++
 		rs := collapseRange(ctx, r.start, r.end)
 		s.Chunks += rs.Chunks
-		s.Collapsed += rs.Collapsed
+		successes += rs.Collapsed
 		s.Skipped += rs.Skipped
+	}
+	after, okAfter := anonHugePagesBytes()
+
+	// Attribute madvise successes to real migrations (AnonHugePages grew) vs
+	// already-huge no-ops. MADV_COLLAPSE is synchronous, so the delta reflects
+	// exactly the hugepages this run created. If smaps_rollup is unreadable, fall
+	// back to the pre-split meaning (all successes counted as Collapsed) rather
+	// than misreporting real work as no-ops.
+	if okBefore && okAfter && after >= before {
+		// Clamp: background THP activity could inflate the delta past what our
+		// madvise calls actually achieved.
+		migrated := min(int((after-before)/hugePageSize), successes)
+		s.Collapsed = migrated
+		s.AlreadyHuge = successes - migrated
+	} else {
+		s.Collapsed = successes
 	}
 
 	// nil on a complete run; the cancellation error if the caller gave up.
 	return s, ctx.Err()
+}
+
+// anonHugePagesBytes reads AnonHugePages from /proc/self/smaps_rollup. The bool
+// is false when the field can't be read (no smaps_rollup / CONFIG_PROC_PAGE_MONITOR),
+// so callers can fall back instead of treating a missing read as zero hugepages.
+func anonHugePagesBytes() (uint64, bool) {
+	f, err := os.Open("/proc/self/smaps_rollup")
+	if err != nil {
+		return 0, false
+	}
+	defer f.Close()
+
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := sc.Text()
+		if !strings.HasPrefix(line, "AnonHugePages:") {
+			continue
+		}
+		fields := strings.Fields(line) // ["AnonHugePages:", "<kB>", "kB"]
+		if len(fields) < 2 {
+			return 0, false
+		}
+		kb, err := strconv.ParseUint(fields[1], 10, 64)
+		if err != nil {
+			return 0, false
+		}
+
+		return kb * 1024, true
+	}
+
+	return 0, false
 }
 
 // anonRWRegions selects the anonymous (no backing file) read-write mappings from
