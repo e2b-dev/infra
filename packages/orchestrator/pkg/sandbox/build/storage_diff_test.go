@@ -61,7 +61,13 @@ func TestStorageDiff_LoadsOwnHeaderWhenParentHasNoEntry(t *testing.T) {
 	aPaths := storage.Paths{BuildID: aID.String()}
 	provider := storage.NewMockStorageProvider(t)
 
-	// Init loads A's own header — no OpenSeekable at the uncompressed path.
+	// Peer-routing probe: non-PeerRouted result → fall through to refresh.
+	probeSeekable := storage.NewMockSeekable(t)
+	provider.EXPECT().
+		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone), mock.Anything).
+		Return(probeSeekable, nil).Once()
+
+	// Then load A's own header.
 	headerBlob := storage.NewMockBlob(t)
 	headerBlob.EXPECT().
 		WriteTo(mock.Anything, mock.Anything).
@@ -125,6 +131,12 @@ func TestStorageDiff_SwapsHeaderOnSelfMatch(t *testing.T) {
 	paths := storage.Paths{BuildID: selfID.String()}
 	provider := storage.NewMockStorageProvider(t)
 
+	// Peer-routing probe: non-PeerRouted result → fall through to refresh.
+	probeSeekable := storage.NewMockSeekable(t)
+	provider.EXPECT().
+		OpenSeekable(mock.Anything, paths.DataFile(storage.MemfileName, storage.CompressionNone), mock.Anything).
+		Return(probeSeekable, nil).Once()
+
 	headerBlob := storage.NewMockBlob(t)
 	headerBlob.EXPECT().
 		WriteTo(mock.Anything, mock.Anything).
@@ -150,57 +162,6 @@ func TestStorageDiff_SwapsHeaderOnSelfMatch(t *testing.T) {
 	require.Equal(t, selfID, swapped.Metadata.BuildId, "swapped header should retain self BuildId")
 	require.Contains(t, swapped.Builds, selfID, "swapped header should carry the loaded Builds entry")
 	require.Empty(t, staleHeader.Builds, "stale header's empty Builds map proves the swap was needed")
-}
-
-// A loaded header that matches self by BuildId but doesn't carry an
-// authoritative self entry (mid-P2P upload, V3 with no Builds map, or other
-// incomplete state) must NOT be promoted via SwapHeader, AND createDiff must
-// fail loudly rather than silently latching the zero-value bd as
-// authoritatively uncompressed.
-func TestStorageDiff_RejectsLoadedHeaderLackingSelfEntry(t *testing.T) {
-	t.Parallel()
-
-	const (
-		blockSize   = int64(4 << 10)
-		payloadSize = 8 << 10
-		readLen     = blockSize
-	)
-
-	selfID := uuid.New()
-
-	// Loaded header: self BuildId matches, but Builds map is empty —
-	// e.g. mid-P2P state where the peer hasn't populated its self entry.
-	incompleteHeader := buildHeader(t, selfID, payloadSize, selfID)
-	incompleteBytes, err := header.SerializeHeader(incompleteHeader)
-	require.NoError(t, err)
-
-	staleHeader := buildHeader(t, selfID, payloadSize, selfID)
-	paths := storage.Paths{BuildID: selfID.String()}
-	provider := storage.NewMockStorageProvider(t)
-
-	headerBlob := storage.NewMockBlob(t)
-	headerBlob.EXPECT().
-		WriteTo(mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, w io.Writer) (int64, error) {
-			return io.Copy(w, bytes.NewReader(incompleteBytes))
-		}).Once()
-	provider.EXPECT().
-		OpenBlob(mock.Anything, paths.HeaderFile(storage.MemfileName), mock.Anything).
-		Return(headerBlob, nil).Once()
-
-	// No OpenSeekable / Size / OpenRangeReader expectations: refresh must error
-	// out before any upstream is opened. If any of these fire the mock fails.
-
-	store, err := NewDiffStore(cfg.Config{}, &featureflags.Client{}, t.TempDir(), time.Hour, time.Minute, nil)
-	require.NoError(t, err)
-	m, err := blockmetrics.NewMetrics(noop.NewMeterProvider())
-	require.NoError(t, err)
-	f := NewFile(staleHeader, store, Memfile, provider, m)
-
-	_, err = f.ReadAt(t.Context(), make([]byte, readLen), 0)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "no self entry")
-	require.Same(t, staleHeader, f.Header(), "File.header must not be swapped to an incomplete loaded one")
 }
 
 // Finalized B + nil FrameData on A means "A is uncompressed and that's the
@@ -283,16 +244,12 @@ func TestStorageDiff_SkipsHeaderRefreshWhenPeerActive(t *testing.T) {
 		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone), mock.Anything).
 		Return(peerRoutedSeekable{Seekable: uncompressedSeekable}, nil).Once()
 
-	got, _ := runReadWithPeers(t, bHeader, provider, readLen, alwaysActivePeer)
+	got, _ := runReadOnFile(t, bHeader, provider, readLen)
 	require.Equal(t, payload[:readLen], got)
 }
 
-// A V4 snapshot header can map pages to a V3-era ancestor it carries no
-// Builds entry for (appendAncestorBuilds skips V3 ancestors). The proactive
-// refresh then loads the ancestor's own V3 header — which has no Builds map
-// at all — and must latch it as authoritatively uncompressed instead of
-// failing the self-entry lookup, which made every resume of a pre-V4
-// template EIO on its first uncached read.
+// V4+ self missing ancestor entry refreshes from storage; when the loaded
+// ancestor is V3, openFromLoadedHeader opens at the basic path.
 func TestStorageDiff_V3AncestorFallsBackToUncompressed(t *testing.T) {
 	t.Parallel()
 
@@ -302,8 +259,9 @@ func TestStorageDiff_V3AncestorFallsBackToUncompressed(t *testing.T) {
 	aID := uuid.New()
 	payload := bytes.Repeat([]byte("v3-ancestor-data-"), payloadSize/len("v3-ancestor-data-")+1)[:payloadSize]
 
-	// A's storage header is V3 (NewTemplateMetadata default): no Builds map.
+	// A's header on storage: V3 (no Builds map).
 	aMeta := header.NewTemplateMetadata(aID, uint64(testBlockSize), uint64(payloadSize))
+	aMeta.Version = 3
 	aHeader, err := header.NewHeader(aMeta, []header.BuildMap{{
 		Offset: 0, Length: uint64(payloadSize), BuildId: aID, BuildStorageOffset: 0,
 	}})
@@ -311,12 +269,20 @@ func TestStorageDiff_V3AncestorFallsBackToUncompressed(t *testing.T) {
 	aHeaderBytes, err := header.SerializeHeader(aHeader)
 	require.NoError(t, err)
 
-	// Current header: V4, maps to A, no Builds entry for A.
+	// Current header: complete V4, maps to A, no Builds entry for A.
 	bHeader := buildHeader(t, uuid.New(), payloadSize, aID)
 
 	aPaths := storage.Paths{BuildID: aID.String()}
 	provider := storage.NewMockStorageProvider(t)
 
+	// Probe open at basic path (peer-routing detection). Non-PeerRouted →
+	// initialSize falls through to refresh.
+	probeSeekable := storage.NewMockSeekable(t)
+	provider.EXPECT().
+		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone), mock.Anything).
+		Return(probeSeekable, nil).Once()
+
+	// Refresh A's header — V3, so openFromLoadedHeader opens at the basic path.
 	headerBlob := storage.NewMockBlob(t)
 	headerBlob.EXPECT().
 		WriteTo(mock.Anything, mock.Anything).
@@ -327,7 +293,6 @@ func TestStorageDiff_V3AncestorFallsBackToUncompressed(t *testing.T) {
 		OpenBlob(mock.Anything, aPaths.HeaderFile(storage.MemfileName), mock.Anything).
 		Return(headerBlob, nil).Once()
 
-	// The fallback must open the *uncompressed* data path and serve raw bytes.
 	rawSeekable := storage.NewMockSeekable(t)
 	rawSeekable.EXPECT().
 		Size(mock.Anything).
@@ -399,7 +364,7 @@ func TestStorageDiff_ReloadSourceLatchesV3AsUncompressed(t *testing.T) {
 	// caller FT must refresh and latch the V3 header as uncompressed.
 	bootstrap := storage.NewMockSeekable(t)
 	diff, err := newStorageDiff(t.TempDir(), aID.String(), Memfile, storage.MemfileObjectType,
-		testBlockSize, m, provider, nil, bootstrap, int64(payloadSize), nil, &featureflags.Client{})
+		testBlockSize, m, provider, bootstrap, int64(payloadSize), nil, &featureflags.Client{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = diff.Close() })
 
@@ -423,15 +388,7 @@ func runRead(t *testing.T, h *header.Header, provider storage.StorageProvider, n
 // inspect post-read state (e.g. SwapHeader fired).
 func runReadOnFile(t *testing.T, h *header.Header, provider storage.StorageProvider, n int64) ([]byte, *File) {
 	t.Helper()
-
-	return runReadWithPeers(t, h, provider, n, nil)
-}
-
-// runReadWithPeers wires up a File with the given IsActivePeer hook so tests
-// can drive the IsActive-true branch.
-func runReadWithPeers(t *testing.T, h *header.Header, provider storage.StorageProvider, n int64, isActivePeer IsActivePeer) ([]byte, *File) {
-	t.Helper()
-	store, err := NewDiffStore(cfg.Config{}, &featureflags.Client{}, t.TempDir(), time.Hour, time.Minute, isActivePeer)
+	store, err := NewDiffStore(cfg.Config{}, &featureflags.Client{}, t.TempDir(), time.Hour, time.Minute)
 	require.NoError(t, err)
 	m, err := blockmetrics.NewMetrics(noop.NewMeterProvider())
 	require.NoError(t, err)
@@ -444,9 +401,6 @@ func runReadWithPeers(t *testing.T, h *header.Header, provider storage.StoragePr
 
 	return buf, f
 }
-
-// alwaysActivePeer is an IsActivePeer that reports every build as P2P-active.
-func alwaysActivePeer(string) bool { return true }
 
 // peerRoutedSeekable wraps a Seekable to satisfy the peerclient.PeerRouted
 // marker — production peer routing wraps the base Seekable in peerSeekable,

@@ -137,8 +137,6 @@ func (b *localDiff) CacheKey() DiffStoreKey {
 	return b.cacheKey
 }
 
-func (b *localDiff) RefreshSource(_ context.Context) error { return nil }
-
 func (b *localDiff) BlockSize() int64 {
 	return b.cache.BlockSize()
 }
