@@ -480,7 +480,10 @@ components:
           description: 2 MiB chunks attempted
         collapsed:
           type: integer
-          description: Chunks collapsed into a hugepage
+          description: Chunks whose base pages were actually migrated into a new hugepage (real work)
+        alreadyHuge:
+          type: integer
+          description: Chunks MADV_COLLAPSE accepted but were already hugepages (no work)
         skipped:
           type: integer
           description: Chunks that could not be collapsed (empty or ineligible)

@@ -36,10 +36,13 @@ func (e EntryInfoType) Valid() bool {
 
 // CollapseResult Per-call statistics from a heap collapse
 type CollapseResult struct {
+	// AlreadyHuge Chunks MADV_COLLAPSE accepted but were already hugepages (no work)
+	AlreadyHuge *int `json:"alreadyHuge,omitempty"`
+
 	// Chunks 2 MiB chunks attempted
 	Chunks *int `json:"chunks,omitempty"`
 
-	// Collapsed Chunks collapsed into a hugepage
+	// Collapsed Chunks whose base pages were actually migrated into a new hugepage (real work)
 	Collapsed *int `json:"collapsed,omitempty"`
 
 	// ElapsedMs Wall-clock time spent collapsing, in milliseconds

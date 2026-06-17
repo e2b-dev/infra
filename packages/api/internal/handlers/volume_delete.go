@@ -53,7 +53,7 @@ func (a *APIStore) DeleteVolumesVolumeID(c *gin.Context, volumeID api.VolumeID) 
 }
 
 func (a *APIStore) deleteVolume(ctx context.Context, clusterID uuid.UUID, volume queries.Volume) error {
-	return a.executeOnOrchestratorByClusterID(ctx, clusterID, func(ctx context.Context, client *clusters.GRPCClient) error {
+	return a.executeOnOrchestratorByClusterID(ctx, clusterID, volume, func(ctx context.Context, client *clusters.GRPCClient) error {
 		_, err := client.Volumes.DeleteVolume(ctx, &orchestrator.DeleteVolumeRequest{
 			Volume: toVolumeKey(volume),
 		})
