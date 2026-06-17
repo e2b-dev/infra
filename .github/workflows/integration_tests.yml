@@ -32,21 +32,21 @@ jobs:
             compress_level: ""
             compress_workers: ""
             dedup_mode: "default"
-            use_memfd: "false"
+            disable_memfd: "true"
           - name: zstd1
             compress_enabled: "true"
             compress_type: "zstd"
             compress_level: "1"
             compress_workers: "8"
             dedup_mode: "best_effort"
-            use_memfd: "true"
+            disable_memfd: "false"
           - name: lz4
             compress_enabled: "true"
             compress_type: "lz4"
             compress_level: "0"
             compress_workers: "8"
             dedup_mode: "direct_io"
-            use_memfd: "true"
+            disable_memfd: "false"
     env:
       # Surfaced as env so upload steps can gate on presence (skipped on fork PRs).
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
@@ -77,7 +77,7 @@ jobs:
           compress_level: ${{ matrix.compress_level }}
           compress_workers: ${{ matrix.compress_workers }}
           dedup_mode: ${{ matrix.dedup_mode }}
-          use_memfd: ${{ matrix.use_memfd }}
+          disable_memfd: ${{ matrix.disable_memfd }}
 
       - name: Run Integration Tests
         env:

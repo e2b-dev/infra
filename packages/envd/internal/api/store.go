@@ -13,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
+	"github.com/e2b-dev/infra/packages/envd/internal/services/fsfreeze"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
 
@@ -50,6 +51,11 @@ type API struct {
 	freezeLock    *semaphore.Weighted
 	isMountingNFS atomic.Bool
 	mountedPaths  sync.Map // map[path]lifecycleID - tracks which lifecycle each path was mounted for
+
+	// fsFreezer freezes/thaws the guest rootfs for filesystem-only pauses;
+	// fsFreezeLock serializes /fsfreeze and /fsthaw.
+	fsFreezer    fsfreeze.Freezer
+	fsFreezeLock *semaphore.Weighted
 }
 
 func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.MMDSOpts, isNotFC bool, cgroupManager cgroups.Manager) *API {
@@ -65,6 +71,8 @@ func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.
 		cgroupManager:   cgroupManager,
 		initLock:        semaphore.NewWeighted(1),
 		freezeLock:      semaphore.NewWeighted(1),
+		fsFreezer:       fsfreeze.New(),
+		fsFreezeLock:    semaphore.NewWeighted(1),
 	}
 }
 

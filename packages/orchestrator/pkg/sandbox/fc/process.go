@@ -78,6 +78,13 @@ func (f *fcLogFilter) Write(p []byte) (n int, err error) {
 	return len(p), err
 }
 
+// ext4RootFlags are the ext4 mount flags passed on the kernel cmdline.
+// discard: ext4 issues TRIM on freed blocks so they are elided from the
+// snapshot diff. It must never include "noload": a filesystem-only snapshot
+// resume cold-boots from the snapshot rootfs and relies on ext4 replaying the
+// journal on mount.
+const ext4RootFlags = "discard"
+
 type ProcessOptions struct {
 	// IoEngine is the io engine to use for the rootfs drive.
 	IoEngine *string
@@ -94,6 +101,14 @@ type ProcessOptions struct {
 
 	// KvmClock is a flag to enable kvm-clock as the clocksource for the kernel.
 	KvmClock bool
+
+	// AccessToken, when non-nil, makes Create write the guest MMDS metadata
+	// (sandbox/template IDs, logs address, and the access-token hash) before the
+	// VM boots, so a cold-booted envd can authenticate /init the same way it does
+	// after a memory resume. An empty string hashes to the "no token" value,
+	// matching Resume. Template-build cold boots leave it nil and skip the write,
+	// preserving their existing behavior.
+	AccessToken *string
 
 	// Stdout is the writer to which the process stdout will be written.
 	Stdout io.Writer
@@ -374,8 +389,7 @@ func (p *Process) Create(
 		"i8042.noaux":      "",
 		"random.trust_cpu": "on",
 
-		// discard: ext4 issues TRIM on freed blocks so they are elided from the snapshot diff.
-		"rootflags": "discard",
+		"rootflags": ext4RootFlags,
 	}
 
 	if options.KvmClock {
@@ -461,6 +475,27 @@ func (p *Process) Create(
 			attribute.Bool("balloon.free_page_reporting", freePageReporting),
 			attribute.Bool("balloon.free_page_hinting", freePageHinting),
 		)
+	}
+
+	// Write MMDS metadata before boot when an access token is provided (the
+	// cold-boot/reboot user path) so the guest envd can authenticate /init the
+	// same way it does after a memory resume. The MMDS transport is already
+	// configured by setNetworkInterface above. Template-build cold boots leave
+	// AccessToken nil and skip this, preserving their existing behavior.
+	if options.AccessToken != nil {
+		md := sbxMetadata.LoggerMetadata()
+		meta := &MmdsMetadata{
+			SandboxID:            md.SandboxID,
+			TemplateID:           md.TemplateID,
+			LogsCollectorAddress: fmt.Sprintf("http://%s/logs", p.config.NetworkConfig.OrchestratorInSandboxIPAddress),
+			AccessTokenHash:      keys.HashAccessToken(*options.AccessToken),
+		}
+		if err := p.client.setMmds(ctx, meta); err != nil {
+			fcStopErr := p.Stop(ctx)
+
+			return errors.Join(fmt.Errorf("error setting mmds: %w", err), fcStopErr)
+		}
+		telemetry.ReportEvent(ctx, "set fc mmds metadata")
 	}
 
 	err = p.client.startVM(ctx)

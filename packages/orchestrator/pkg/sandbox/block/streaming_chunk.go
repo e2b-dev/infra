@@ -301,7 +301,7 @@ func (c *Chunker) progressiveRead(ctx context.Context, s *fetchSession, mmapSlic
 
 	defer func() {
 		var closeErr error
-		stats, closeErr = reader.Close(ctx)
+		stats, closeErr = reader.Close(context.WithoutCancel(ctx))
 		if closeErr != nil && err == nil {
 			err = closeErr
 		}
