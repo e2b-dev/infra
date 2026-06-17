@@ -152,12 +152,6 @@ type Blob interface {
 	Exists(ctx context.Context) (bool, error)
 }
 
-type SeekableReader interface {
-	// Random slice access, off and buffer length must be aligned to block size
-	ReadAt(ctx context.Context, buffer []byte, off int64, ft *FrameTable) (int, error)
-	Size(ctx context.Context) (int64, error)
-}
-
 // ReadStats is what a RangeReader did over its lifetime; returned from Close.
 type ReadStats struct {
 	CompressedBytes   int64
