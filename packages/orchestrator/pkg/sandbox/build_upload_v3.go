@@ -99,10 +99,6 @@ func (u *Upload) runV3(ctx context.Context) error {
 		return uploadBlobWithMetrics(egCtx, u.store, u.paths.Snapfile(), storage.SnapfileObjectType, u.snap.Snapfile.Path(), uploadFileSnap, meta)
 	})
 
-	eg.Go(func() error {
-		return uploadBlobWithMetrics(egCtx, u.store, u.paths.Metadata(), storage.MetadataObjectType, u.snap.Metafile.Path(), uploadFileMeta, meta)
-	})
-
 	if err := eg.Wait(); err != nil {
 		return err
 	}
@@ -140,7 +136,10 @@ func (u *Upload) runV3(ctx context.Context) error {
 		}
 	}
 
-	return nil
+	// metadata.json is the completion marker: upload it only after every other
+	// object (data, headers, snapfile) has landed, so its presence proves the
+	// build is fully uploaded.
+	return uploadBlobWithMetrics(ctx, u.store, u.paths.Metadata(), storage.MetadataObjectType, u.snap.Metafile.Path(), uploadFileMeta, meta)
 }
 
 // finalizeV3 returns a shallow copy of src with IncompletePendingUpload cleared,

@@ -64,11 +64,14 @@ func (u *Upload) runV4(ctx context.Context) error {
 		return uploadBlobWithMetrics(ctx, u.store, u.paths.Snapfile(), storage.SnapfileObjectType, u.snap.Snapfile.Path(), uploadFileSnap, meta)
 	})
 
-	eg.Go(func() error {
-		return uploadBlobWithMetrics(ctx, u.store, u.paths.Metadata(), storage.MetadataObjectType, u.snap.Metafile.Path(), uploadFileMeta, meta)
-	})
+	if err := eg.Wait(); err != nil {
+		return err
+	}
 
-	return eg.Wait()
+	// metadata.json is the completion marker: upload it only after every other
+	// object (data, headers, snapfile) has landed, so its presence proves the
+	// build is fully uploaded.
+	return uploadBlobWithMetrics(ctx, u.store, u.paths.Metadata(), storage.MetadataObjectType, u.snap.Metafile.Path(), uploadFileMeta, meta)
 }
 
 func (u *Upload) uploadFramed(
