@@ -303,4 +303,7 @@ Automatically set in local mode. Set before running to override:
 
 ## Limitations
 
-- Custom template builds require Debian/Ubuntu-based base images (images that provide the `apt` package manager). Non-Debian images such as Alpine, CentOS/RHEL, or other distributions without `apt` are not supported and will fail during the template build/provisioning process. The provisioning scripts used during template build call `apt` and expect Debian-specific package names and file locations.
+- Custom template builds require a **systemd-based** base image, because systemd is used as the runtime init. Supported families are Debian/Ubuntu (`apt`), Fedora/RHEL/CentOS Stream/Rocky/Alma (`dnf`/`yum`/`microdnf`), and Arch (`pacman`). The provisioning script detects the package manager and installs the required packages accordingly.
+- Non-systemd distributions such as **Alpine** (which uses OpenRC), and other families such as **openSUSE** (`zypper`), are **not** supported and will fail during the template build/provisioning process.
+- Minimal RHEL UBI images use restricted repositories and may not be able to install all required packages (e.g. `chrony`, `nfs-utils`); full-repo RPM distributions (Fedora, CentOS Stream, Rocky, Alma) are the reliable targets.
+- envd's custom CA-injection recovery path (rebuilding the bundle from `/usr/local/share/ca-certificates`) is Debian-specific; the primary injection (direct append to `/etc/ssl/certs/ca-certificates.crt`) works on all supported distros.

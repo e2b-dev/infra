@@ -247,8 +247,10 @@ func additionalOCILayers(
 		map[string]string{
 			// Enable envd service autostart
 			"etc/systemd/system/multi-user.target.wants/envd.service": "etc/systemd/system/envd.service",
-			// Enable chrony service autostart
-			"etc/systemd/system/multi-user.target.wants/chrony.service": "etc/systemd/system/chrony.service",
+			// Chrony autostart is enabled by provision.sh, which picks the
+			// correct unit name per distro (chrony on Debian, chronyd
+			// elsewhere). Baking a static chrony.service symlink here would
+			// dangle on non-Debian images, where the unit is chronyd.service.
 		},
 	)
 	if err != nil {

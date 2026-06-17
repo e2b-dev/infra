@@ -14,7 +14,7 @@ User=root
 Group=root
 Environment=GOTRACEBACK=all
 LimitCORE=infinity
-ExecStartPre=/bin/sh -c 'mountpoint -q /etc/ssl/certs || (mkdir -p /run/e2b/certs && mount --bind /run/e2b/certs /etc/ssl/certs) && ([ -s /etc/ssl/certs/ca-certificates.crt ] || update-ca-certificates)'
+ExecStartPre=/bin/sh -c 'mountpoint -q /etc/ssl/certs || (mkdir -p /run/e2b/certs && cp -aL /etc/ssl/certs/. /run/e2b/certs/ 2>/dev/null || true; mount --bind /run/e2b/certs /etc/ssl/certs) && ([ -s /etc/ssl/certs/ca-certificates.crt ] || update-ca-certificates 2>/dev/null || update-ca-trust extract 2>/dev/null || true)'
 ExecStart=/bin/bash -l -c "/usr/bin/envd"
 Nice=-20
 IOSchedulingClass=realtime
