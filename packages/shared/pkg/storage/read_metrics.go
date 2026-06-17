@@ -27,31 +27,26 @@ var (
 		"orchestrator.read.open",
 		"OpenRangeReader (open / TTFB) wall",
 		"Bytes (always 0 — open transfers no payload)",
-		"Number of opens",
 	))
 	readRead = utils.Must(telemetry.NewFloatTimerFactory(meter,
 		"orchestrator.read.read",
 		"Raw source-read wall (decompression excluded)",
 		"Compressed/stored bytes read from the source",
-		"Number of source reads",
 	))
 	readDecompress = utils.Must(telemetry.NewFloatTimerFactory(meter,
 		"orchestrator.read.decompress",
 		"Decompression CPU wall (decoder read time minus source transfer)",
 		"Uncompressed bytes produced",
-		"Number of decompress records",
 	))
 	readFetch = utils.Must(telemetry.NewFloatTimerFactory(meter,
 		"orchestrator.read.fetch",
 		"Total fetch wall — should ≈ open + read + decompress; any excess is overhead (see read.pipeline.efficiency)",
 		"Bytes delivered to the app",
-		"Number of fetches",
 	))
 	readWriteback = utils.Must(telemetry.NewFloatTimerFactory(meter,
 		"orchestrator.read.writeback",
 		"Async NFS cache writeback wall",
 		"Bytes written to NFS",
-		"Number of writebacks",
 	))
 
 	// fetch / (open + read + decompress); 1.0 = fully explained, >1 = overhead.

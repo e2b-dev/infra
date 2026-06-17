@@ -564,7 +564,7 @@ type FloatTimerFactory struct {
 
 func NewFloatTimerFactory(
 	meter metric.Meter,
-	metricName, durationDescription, bytesDescription, _ string,
+	metricName, durationDescription, bytesDescription string,
 ) (FloatTimerFactory, error) {
 	duration, err := meter.Float64Histogram(metricName,
 		metric.WithDescription(durationDescription),

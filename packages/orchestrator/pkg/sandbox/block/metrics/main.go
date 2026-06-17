@@ -65,7 +65,6 @@ func NewMetrics(meterProvider metric.MeterProvider) (Metrics, error) {
 		blocksMeter, orchestratorChunkSlice,
 		"Time taken by Chunker to serve a Slice() (source=mmap when served from cache)",
 		"Bytes returned",
-		"Slice call count",
 	); err != nil {
 		return m, fmt.Errorf("error creating chunk slice timer factory: %w", err)
 	}

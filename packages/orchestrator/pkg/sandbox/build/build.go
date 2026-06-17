@@ -49,7 +49,7 @@ var (
 
 var fileReadAtTimer = utils.Must(telemetry.NewFloatTimerFactory(meter, "orchestrator.file.read_at",
 	"Time to serve a build.File ReadAt across all source builds",
-	"Bytes read", "ReadAt call count"))
+	"Bytes read"))
 
 type File struct {
 	header      atomic.Pointer[header.Header]
