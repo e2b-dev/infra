@@ -2,7 +2,6 @@ package placement
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -133,14 +132,32 @@ func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, exclu
 	}
 
 	if bestNode == nil {
-		if filterByLabels && len(requiredLabels) > 0 {
-			return nil, fmt.Errorf("no node available with required metadata: labels=%v machine=%v", requiredLabels, buildMachineInfo)
+		return nil, FailedToPlaceSandboxError{
+			filterByLabels:   filterByLabels,
+			requiredLabels:   requiredLabels,
+			buildMachineInfo: buildMachineInfo,
 		}
-
-		return nil, errors.New("no node available")
 	}
 
 	return bestNode, nil
+}
+
+type FailedToPlaceSandboxError struct {
+	filterByLabels   bool
+	requiredLabels   []string
+	buildMachineInfo machineinfo.MachineInfo
+}
+
+var _ error = FailedToPlaceSandboxError{}
+
+func (e FailedToPlaceSandboxError) Error() string {
+	message := fmt.Sprintf("no node available with required metadata: machine=%v", e.buildMachineInfo)
+
+	if e.filterByLabels {
+		message += fmt.Sprintf(", labels=%v", e.requiredLabels)
+	}
+
+	return message
 }
 
 // sample returns up to k items chosen uniformly from those passing ok.
