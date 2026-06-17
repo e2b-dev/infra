@@ -87,7 +87,7 @@ func TestStorageDiff_LoadsOwnHeaderWhenParentHasNoEntry(t *testing.T) {
 		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionZstd), mock.Anything).
 		Return(compressedSeekable, nil).Once()
 
-	require.Equal(t, payload[:readLen], runRead(t, bHeader, provider, readLen))
+	require.Equal(t, payload[:readLen], runRead(t, bHeader, provider))
 }
 
 // When the proactive header load returns a header whose BuildId matches the
@@ -155,7 +155,7 @@ func TestStorageDiff_SwapsHeaderOnSelfMatch(t *testing.T) {
 		OpenSeekable(mock.Anything, paths.DataFile(storage.MemfileName, storage.CompressionZstd), mock.Anything).
 		Return(compressedSeekable, nil).Once()
 
-	got, f := runReadOnFile(t, staleHeader, provider, readLen)
+	got, f := runReadOnFile(t, staleHeader, provider)
 	require.Equal(t, payload[:readLen], got)
 	require.NotSame(t, staleHeader, f.Header(), "File.header should have been swapped")
 	swapped := f.Header()
@@ -198,7 +198,7 @@ func TestStorageDiff_NoRefreshOnFinalizedHeader(t *testing.T) {
 		Return(uncompressedSeekable, nil)
 	// No expectation on OpenBlob — any header fetch panics the test.
 
-	require.Equal(t, payload[:readLen], runRead(t, bHeader, provider, readLen))
+	require.Equal(t, payload[:readLen], runRead(t, bHeader, provider))
 }
 
 // When a peer is known to be P2P-serving the ancestor and our parent header
@@ -244,7 +244,7 @@ func TestStorageDiff_SkipsHeaderRefreshWhenPeerActive(t *testing.T) {
 		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone), mock.Anything).
 		Return(peerRoutedSeekable{Seekable: uncompressedSeekable}, nil).Once()
 
-	got, _ := runReadOnFile(t, bHeader, provider, readLen)
+	got, _ := runReadOnFile(t, bHeader, provider)
 	require.Equal(t, payload[:readLen], got)
 }
 
@@ -308,7 +308,7 @@ func TestStorageDiff_V3AncestorFallsBackToUncompressed(t *testing.T) {
 		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone), mock.Anything).
 		Return(rawSeekable, nil).Once()
 
-	require.Equal(t, payload[:readLen], runRead(t, bHeader, provider, readLen))
+	require.Equal(t, payload[:readLen], runRead(t, bHeader, provider))
 }
 
 // Same V3 fallback on the read-time refresh path: a StorageDiff with no
@@ -375,18 +375,107 @@ func TestStorageDiff_ReloadSourceLatchesV3AsUncompressed(t *testing.T) {
 	require.Equal(t, payload[:readLen], buf)
 }
 
+// Peer-served current header with no Builds entry for a legacy ancestor: the
+// ancestor's data file exists at the basic uncompressed path but no header
+// file was ever uploaded. createDiff must absorb the ErrObjectNotExist from
+// refreshHeader, latch the already-probed basic upstream as uncompressed, and
+// serve reads. Pre-fix this returned the wrapped ErrObjectNotExist, bricking
+// sandbox resume for any pre-header ancestor referenced from a peer-served
+// (Builds-less) header.
+func TestStorageDiff_MissingAncestorHeaderFallsBackToUncompressed(t *testing.T) {
+	t.Parallel()
+
+	const payloadSize = 256 * 1024
+	readLen := testBlockSize
+
+	aID := uuid.New()
+	payload := bytes.Repeat([]byte("legacy-ancestor-"), payloadSize/len("legacy-ancestor-")+1)[:payloadSize]
+
+	// Current header: V4, maps to A, no Builds entry for A (simulates a
+	// peer-served header where backfillMissingV3UncompressedBuilds was skipped).
+	bHeader := buildHeader(t, uuid.New(), payloadSize, aID)
+
+	aPaths := storage.Paths{BuildID: aID.String()}
+	provider := storage.NewMockStorageProvider(t)
+
+	// One open at the basic uncompressed path: the probe seekable doubles as
+	// the read upstream once the fallback latches it.
+	rawSeekable := storage.NewMockSeekable(t)
+	rawSeekable.EXPECT().
+		Size(mock.Anything).
+		Return(int64(payloadSize), nil).Once()
+	rawSeekable.EXPECT().
+		OpenRangeReader(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (io.ReadCloser, error) {
+			end := min(off+length, int64(len(payload)))
+
+			return io.NopCloser(bytes.NewReader(payload[off:end])), nil
+		})
+	provider.EXPECT().
+		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone), mock.Anything).
+		Return(rawSeekable, nil).Once()
+
+	// Header file is missing — the very-old-template case.
+	provider.EXPECT().
+		OpenBlob(mock.Anything, aPaths.HeaderFile(storage.MemfileName), mock.Anything).
+		Return(nil, storage.ErrObjectNotExist).Once()
+
+	require.Equal(t, payload[:readLen], runRead(t, bHeader, provider))
+}
+
+// Storage-loaded current header carrying a zero-valued Builds entry for an
+// ancestor (LoadHeader's backfillMissingV3UncompressedBuilds marker for a
+// V3-or-older ancestor). createDiff must latch UncompressedFullFrameTable at
+// construction so the runtime read path never refreshes — that ancestor's
+// header file may not exist, and a runtime ErrObjectNotExist would be
+// indistinguishable from a real-entry race.
+func TestStorageDiff_BackfillMarkerLatchesUncompressedAtConstruction(t *testing.T) {
+	t.Parallel()
+
+	const payloadSize = 256 * 1024
+	readLen := testBlockSize
+
+	aID := uuid.New()
+	payload := bytes.Repeat([]byte("backfill-marker-"), payloadSize/len("backfill-marker-")+1)[:payloadSize]
+
+	// Current header maps to A and has Builds[A] = zero (the backfill marker).
+	bHeader := buildHeader(t, uuid.New(), payloadSize, aID)
+	bHeader.SetBuild(aID, header.BuildData{})
+
+	aPaths := storage.Paths{BuildID: aID.String()}
+	provider := storage.NewMockStorageProvider(t)
+
+	rawSeekable := storage.NewMockSeekable(t)
+	rawSeekable.EXPECT().
+		Size(mock.Anything).
+		Return(int64(payloadSize), nil).Once()
+	rawSeekable.EXPECT().
+		OpenRangeReader(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (io.ReadCloser, error) {
+			end := min(off+length, int64(len(payload)))
+
+			return io.NopCloser(bytes.NewReader(payload[off:end])), nil
+		})
+	provider.EXPECT().
+		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone), mock.Anything).
+		Return(rawSeekable, nil).Once()
+	// No OpenBlob expectation: refresh path must NOT fire.
+
+	require.Equal(t, payload[:readLen], runRead(t, bHeader, provider))
+}
+
 // runRead wires up a File over a fresh DiffStore + noop metrics and returns
-// the first `n` bytes read from offset 0.
-func runRead(t *testing.T, h *header.Header, provider storage.StorageProvider, n int64) []byte {
+// the first testBlockSize bytes read from offset 0.
+func runRead(t *testing.T, h *header.Header, provider storage.StorageProvider) []byte {
 	t.Helper()
-	buf, _ := runReadOnFile(t, h, provider, n)
+	buf, _ := runReadOnFile(t, h, provider)
 
 	return buf
 }
 
 // runReadOnFile is runRead's variant that exposes the File so callers can
 // inspect post-read state (e.g. SwapHeader fired).
-func runReadOnFile(t *testing.T, h *header.Header, provider storage.StorageProvider, n int64) ([]byte, *File) {
+func runReadOnFile(t *testing.T, h *header.Header, provider storage.StorageProvider) ([]byte, *File) {
 	t.Helper()
 	store, err := NewDiffStore(cfg.Config{}, &featureflags.Client{}, t.TempDir(), time.Hour, time.Minute)
 	require.NoError(t, err)
@@ -394,10 +483,10 @@ func runReadOnFile(t *testing.T, h *header.Header, provider storage.StorageProvi
 	require.NoError(t, err)
 	f := NewFile(h, store, Memfile, provider, m)
 
-	buf := make([]byte, n)
+	buf := make([]byte, testBlockSize)
 	got, err := f.ReadAt(t.Context(), buf, 0)
 	require.NoError(t, err)
-	require.Equal(t, int(n), got)
+	require.Equal(t, int(testBlockSize), got)
 
 	return buf, f
 }
