@@ -65,7 +65,7 @@ func (b *peerBlob) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 			}
 
 			reader := newPeerStreamReader(recv, cancel)
-			defer reader.Close(ctx)
+			defer reader.Close(context.WithoutCancel(ctx))
 
 			n, err := io.Copy(dst, reader)
 			if err != nil {
