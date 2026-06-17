@@ -96,6 +96,12 @@ type Config struct {
 
 	FirecrackerConfig fc.Config
 
+	// SkipEnvdWait skips the post-resume wait for envd readiness. Used by the
+	// resume-build gdb debugging flow: the guest is held at a gdb entry
+	// breakpoint and never boots envd, so the readiness wait would otherwise
+	// time out and tear the sandbox down before a debugger can attach.
+	SkipEnvdWait bool
+
 	VolumeMounts []VolumeMountConfig
 
 	MaxSandboxLengthHours int64
@@ -1042,15 +1048,22 @@ func (f *Factory) ResumeSandbox(
 
 	telemetry.ReportEvent(ctx, "initialized FC")
 
-	telemetry.ReportEvent(execCtx, "waiting for envd")
+	if config.SkipEnvdWait {
+		// gdb debugging: the guest is frozen at the entry breakpoint and never
+		// boots envd, so skip the readiness wait (it would time out and tear the
+		// sandbox down). The caller drives the VM via the gdb stub instead.
+		telemetry.ReportEvent(execCtx, "skipping envd wait (gdb mode)")
+	} else {
+		telemetry.ReportEvent(execCtx, "waiting for envd")
 
-	err = sbx.WaitForEnvd(
-		ctx,
-		StartTypeResume,
-		f.GetEnvdTimeout(ctx),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
+		err = sbx.WaitForEnvd(
+			ctx,
+			StartTypeResume,
+			f.GetEnvdTimeout(ctx),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
+		}
 	}
 
 	// A throwaway (e.g. the pause-resume prefetch harvest) is never promoted to a
