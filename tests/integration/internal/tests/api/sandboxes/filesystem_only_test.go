@@ -74,8 +74,12 @@ func TestSandboxResume_FilesystemOnlyReboots(t *testing.T) {
 	// Pause filesystem-only, then resume explicitly (allowed; cold-boots).
 	pauseFilesystemOnly(t, c, sbx.SandboxID)
 
+	// Use a generous timeout: a cold boot goes through placement, and under
+	// parallel load that can take long enough that a short default timeout would
+	// expire the requested end time before RebootSandbox runs (it rejects an
+	// already-past end time), making the resume flaky.
 	resumeResp, err := c.PostSandboxesSandboxIDResumeWithResponse(ctx, sbx.SandboxID,
-		api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())
+		api.PostSandboxesSandboxIDResumeJSONRequestBody{Timeout: new(int32(120))}, setup.WithAPIKey())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusCreated, resumeResp.StatusCode(),
 		"explicit resume of a filesystem-only snapshot should succeed (cold boot)")
