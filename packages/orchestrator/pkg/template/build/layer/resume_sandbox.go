@@ -40,7 +40,7 @@ func (rs *ResumeSandbox) Sandbox(
 		sandbox.RuntimeMetadata{
 			TemplateID:  layerExecutor.Config.TemplateID,
 			SandboxID:   config.InstanceBuildPrefix + id.Generate(),
-			ExecutionID: uuid.NewString(),
+			ExecutionID: uuid.Must(uuid.NewV7()).String(),
 			TeamID:      layerExecutor.Config.TeamID,
 			BuildID:     layerExecutor.Template.BuildID,
 			SandboxType: sandbox.SandboxTypeBuild,

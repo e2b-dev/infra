@@ -99,7 +99,7 @@ func RegisterBuild(
 	}
 
 	// Generate a build id for the new build
-	buildID, err := uuid.NewRandom()
+	buildID, err := uuid.NewV7()
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when generating build id", err)
 

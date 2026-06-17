@@ -40,7 +40,7 @@ func (a *APIStore) PostAccessTokens(c *gin.Context) {
 	}
 
 	accessTokenDB, err := a.authDB.Write.CreateAccessToken(ctx, authqueries.CreateAccessTokenParams{
-		ID:                    uuid.New(),
+		ID:                    uuid.Must(uuid.NewV7()),
 		UserID:                userID,
 		AccessTokenHash:       accessToken.HashedValue,
 		AccessTokenPrefix:     accessToken.Masked.Prefix,

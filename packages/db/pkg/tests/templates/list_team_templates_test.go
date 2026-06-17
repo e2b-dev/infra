@@ -32,7 +32,7 @@ func setupDashboardSchema(t *testing.T, ctx context.Context, db *testutils.Datab
 // resources and a default-tag assignment created at the given offset from now.
 func createReadyBuildWithAssignment(t *testing.T, ctx context.Context, db *testutils.Database, templateID string, vcpu, ramMb int64, assignmentAge time.Duration) uuid.UUID {
 	t.Helper()
-	buildID := uuid.New()
+	buildID := uuid.Must(uuid.NewV7())
 
 	err := db.SqlcClient.TestsRawSQL(ctx,
 		`INSERT INTO public.env_builds

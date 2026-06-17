@@ -17,7 +17,7 @@ import (
 func fragmentedHeader(t *testing.T, n int) *Header {
 	t.Helper()
 	bs := uint64(4096)
-	a, b := uuid.New(), uuid.New()
+	a, b := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	mappings := make([]BuildMap, n)
 	var off, sa, sb uint64
 	for i := range mappings {
@@ -87,8 +87,8 @@ func mustMapping(t *testing.T, blockSize uint64, src []BuildMap) Mapping {
 func TestSerializeDeserialize_V3_RoundTrip(t *testing.T) {
 	t.Parallel()
 
-	buildID := uuid.New()
-	baseID := uuid.New()
+	buildID := uuid.Must(uuid.NewV7())
+	baseID := uuid.Must(uuid.NewV7())
 	metadata := &Metadata{
 		Version:     3,
 		BlockSize:   4096,
@@ -151,8 +151,8 @@ func TestSerializeDeserialize_EmptyMappings_Defaults(t *testing.T) {
 		BlockSize:   4096,
 		Size:        8192,
 		Generation:  0,
-		BuildId:     uuid.New(),
-		BaseBuildId: uuid.New(),
+		BuildId:     uuid.Must(uuid.NewV7()),
+		BaseBuildId: uuid.Must(uuid.NewV7()),
 	}
 
 	data, err := serializeV3(metadata, Mapping{})
@@ -176,8 +176,8 @@ func TestDeserialize_BlockSizeZero(t *testing.T) {
 		BlockSize:   0,
 		Size:        4096,
 		Generation:  0,
-		BuildId:     uuid.New(),
-		BaseBuildId: uuid.New(),
+		BuildId:     uuid.Must(uuid.NewV7()),
+		BaseBuildId: uuid.Must(uuid.NewV7()),
 	}
 
 	data, err := serializeV3(metadata, Mapping{})
@@ -191,8 +191,8 @@ func TestDeserialize_BlockSizeZero(t *testing.T) {
 func TestSerializeDeserialize_V4_WithFrameTable(t *testing.T) {
 	t.Parallel()
 
-	buildID := uuid.New()
-	baseID := uuid.New()
+	buildID := uuid.Must(uuid.NewV7())
+	baseID := uuid.Must(uuid.NewV7())
 	metadata := &Metadata{
 		Version:     4,
 		BlockSize:   4096,
@@ -272,7 +272,7 @@ func TestSerializeDeserialize_V4_WithFrameTable(t *testing.T) {
 func TestSerializeDeserialize_V4_Zstd(t *testing.T) {
 	t.Parallel()
 
-	buildID := uuid.New()
+	buildID := uuid.Must(uuid.NewV7())
 	metadata := &Metadata{
 		Version:     4,
 		BlockSize:   4096,
@@ -328,8 +328,8 @@ func TestSerializeDeserialize_V4_Zstd(t *testing.T) {
 func TestSerializeDeserialize_V4_NoFrames(t *testing.T) {
 	t.Parallel()
 
-	buildID := uuid.New()
-	baseID := uuid.New()
+	buildID := uuid.Must(uuid.NewV7())
+	baseID := uuid.Must(uuid.NewV7())
 	metadata := &Metadata{
 		Version:     4,
 		BlockSize:   4096,
@@ -370,7 +370,7 @@ func TestSerializeDeserialize_V4_NoFrames(t *testing.T) {
 func TestSerializeDeserialize_V4_ManyFrames(t *testing.T) {
 	t.Parallel()
 
-	buildID := uuid.New()
+	buildID := uuid.Must(uuid.NewV7())
 	const numFrames = 1000
 	frames := make([]storage.FrameSize, numFrames)
 	for i := range frames {
@@ -426,7 +426,7 @@ func TestSerializeDeserialize_V4_ManyFrames(t *testing.T) {
 func TestSerializeDeserialize_V4_NoBuilds(t *testing.T) {
 	t.Parallel()
 
-	buildID := uuid.New()
+	buildID := uuid.Must(uuid.NewV7())
 	metadata := &Metadata{
 		Version:     4,
 		BlockSize:   4096,
@@ -482,8 +482,8 @@ func TestDeserializeV4_RejectsOversizedMappingCount(t *testing.T) {
 		Version:     MetadataVersionV4,
 		BlockSize:   4096,
 		Size:        4096,
-		BuildId:     uuid.New(),
-		BaseBuildId: uuid.New(),
+		BuildId:     uuid.Must(uuid.NewV7()),
+		BaseBuildId: uuid.Must(uuid.NewV7()),
 	}
 	var meta bytes.Buffer
 	require.NoError(t, binary.Write(&meta, binary.LittleEndian, metadata))
@@ -499,8 +499,8 @@ func TestDeserializeV4_RejectsOversizedMappingCount(t *testing.T) {
 func TestSerializeDeserialize_V4_MultiBuild_LocateCompressed(t *testing.T) {
 	t.Parallel()
 
-	buildA := uuid.New()
-	buildB := uuid.New()
+	buildA := uuid.Must(uuid.NewV7())
+	buildB := uuid.Must(uuid.NewV7())
 
 	// Build A: 3 frames, each 4096 uncompressed.
 	//   Frame 0: U=[0,4096)   C=[0,1000)
@@ -615,7 +615,7 @@ func TestSerializeDeserialize_V4_MultiBuild_LocateCompressed(t *testing.T) {
 func TestSerializeDeserialize_V4_TrimmedOffsets_Error(t *testing.T) {
 	t.Parallel()
 
-	buildID := uuid.New()
+	buildID := uuid.Must(uuid.NewV7())
 
 	// 4 frames, each 4096 uncompressed.
 	ft := storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{
@@ -747,8 +747,8 @@ func TestFrameTable_LocateUncompressed(t *testing.T) {
 func TestSerializeDeserialize_V4_SparseTrimming(t *testing.T) {
 	t.Parallel()
 
-	buildID := uuid.New()
-	otherID := uuid.New()
+	buildID := uuid.Must(uuid.NewV7())
+	otherID := uuid.Must(uuid.NewV7())
 
 	ft := storage.NewFullFrameTable(storage.CompressionLZ4, []storage.FrameSize{
 		{U: 4096, C: 2000},
@@ -810,7 +810,7 @@ func TestSerializeDeserialize_V4_SparseTrimming(t *testing.T) {
 func TestSerializeDeserialize_V4_Uncompressed_SelfEntry(t *testing.T) {
 	t.Parallel()
 
-	buildID := uuid.New()
+	buildID := uuid.Must(uuid.NewV7())
 	metadata := &Metadata{
 		Version:     MetadataVersionV4,
 		BlockSize:   4096,
@@ -848,11 +848,11 @@ func TestSerializeDeserialize_V4_Uncompressed_SelfEntry(t *testing.T) {
 func TestSerializeDeserialize_V4_MixedChain(t *testing.T) {
 	t.Parallel()
 
-	selfID := uuid.New()
-	midID := uuid.New()
-	olderID := uuid.New()
-	v3aID := uuid.New()
-	v3bID := uuid.New()
+	selfID := uuid.Must(uuid.NewV7())
+	midID := uuid.Must(uuid.NewV7())
+	olderID := uuid.Must(uuid.NewV7())
+	v3aID := uuid.Must(uuid.NewV7())
+	v3bID := uuid.Must(uuid.NewV7())
 
 	midFT := storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{
 		{U: 4096, C: 1234},
@@ -920,11 +920,11 @@ func TestSerializeDeserialize_V4_MixedChain(t *testing.T) {
 func TestSerializeDeserialize_V4_CompressedSelfChain(t *testing.T) {
 	t.Parallel()
 
-	selfID := uuid.New()
-	midID := uuid.New()
-	olderID := uuid.New()
-	v3aID := uuid.New()
-	v3bID := uuid.New()
+	selfID := uuid.Must(uuid.NewV7())
+	midID := uuid.Must(uuid.NewV7())
+	olderID := uuid.Must(uuid.NewV7())
+	v3aID := uuid.Must(uuid.NewV7())
+	v3bID := uuid.Must(uuid.NewV7())
 
 	selfFT := storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{
 		{U: 4096, C: 1100},
@@ -1008,7 +1008,7 @@ func TestSerializeDeserialize_V4_CompressedSelfChain(t *testing.T) {
 func TestDeserialize_V3_StaysV3(t *testing.T) {
 	t.Parallel()
 
-	buildID := uuid.New()
+	buildID := uuid.Must(uuid.NewV7())
 	metadata := &Metadata{
 		Version:     3,
 		BlockSize:   4096,
@@ -1033,10 +1033,10 @@ func TestDeserialize_V3_StaysV3(t *testing.T) {
 func TestFillMissingBuildsAsSentinels(t *testing.T) {
 	t.Parallel()
 
-	selfID := uuid.New()
-	v3aID := uuid.New()
-	v3bID := uuid.New()
-	knownID := uuid.New()
+	selfID := uuid.Must(uuid.NewV7())
+	v3aID := uuid.Must(uuid.NewV7())
+	v3bID := uuid.Must(uuid.NewV7())
+	knownID := uuid.Must(uuid.NewV7())
 
 	knownFT := storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{{U: 4096, C: 1024}})
 
@@ -1067,7 +1067,7 @@ func TestFillMissingBuildsAsSentinels(t *testing.T) {
 func TestFillMissingBuildsAsSentinels_NilBuilds(t *testing.T) {
 	t.Parallel()
 
-	selfID := uuid.New()
+	selfID := uuid.Must(uuid.NewV7())
 	meta := &Metadata{
 		Version: MetadataVersionV5, BlockSize: 4096, Size: 4096,
 		BuildId: selfID, BaseBuildId: selfID,

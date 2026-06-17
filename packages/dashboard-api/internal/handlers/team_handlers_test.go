@@ -69,7 +69,7 @@ func TestRequireAuthedTeamMatchesPath_Success(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
 
-	teamID := uuid.New()
+	teamID := uuid.Must(uuid.NewV7())
 	auth.SetTeamInfoForTest(t, ctx, &authtypes.Team{
 		Team: &authqueries.Team{ID: teamID},
 	})
@@ -88,11 +88,11 @@ func TestRequireAuthedTeamMatchesPath_Mismatch(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(recorder)
 
 	auth.SetTeamInfoForTest(t, ctx, &authtypes.Team{
-		Team: &authqueries.Team{ID: uuid.New()},
+		Team: &authqueries.Team{ID: uuid.Must(uuid.NewV7())},
 	})
 
 	store := &APIStore{}
-	_, ok := store.requireAuthedTeamMatchesPath(ctx, uuid.New())
+	_, ok := store.requireAuthedTeamMatchesPath(ctx, uuid.Must(uuid.NewV7()))
 	if ok {
 		t.Fatalf("expected team parity check to fail")
 	}
@@ -147,7 +147,7 @@ func TestPostTeamsTeamIDMembers_CreatesPublicUserAnchorForInvitee(t *testing.T) 
 	ctx := t.Context()
 
 	teamID := testutils.CreateTestTeam(t, testDB)
-	inviteeID := uuid.New()
+	inviteeID := uuid.Must(uuid.NewV7())
 	addedByUserID := createHandlerTestUser(t, testDB)
 	inviteeEmail := handlerTestUserEmail(inviteeID)
 
@@ -210,7 +210,7 @@ func TestDeleteTeamsTeamIDMembersUserId_NonMemberReturnsBadRequest(t *testing.T)
 	})
 
 	store := &APIStore{db: testDB.SqlcClient}
-	store.DeleteTeamsTeamIDMembersUserId(ginCtx, teamID, uuid.New())
+	store.DeleteTeamsTeamIDMembersUserId(ginCtx, teamID, uuid.Must(uuid.NewV7()))
 
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400, got %d", recorder.Code)
@@ -345,7 +345,7 @@ func createHandlerTestUserAt(t *testing.T, db *testutils.Database, createdAt tim
 func createHandlerTestUserWithCreatedAt(t *testing.T, db *testutils.Database, createdAt *time.Time) uuid.UUID {
 	t.Helper()
 
-	userID := uuid.New()
+	userID := uuid.Must(uuid.NewV7())
 	email := handlerTestUserEmail(userID)
 
 	err := db.SupabaseDB.TestsRawSQL(t.Context(), `
@@ -573,7 +573,7 @@ func TestBootstrapAuthProviderUser_CreatesIdentityAndDefaultTeam(t *testing.T) {
 
 	input := oidcUserBootstrapInput{
 		OIDCIssuer:      "https://ory.example.test",
-		OIDCUserID:      uuid.NewString(),
+		OIDCUserID:      uuid.Must(uuid.NewV7()).String(),
 		OIDCUserEmail:   "ada@example.test",
 		OIDCUserName:    nil,
 		SignupIP:        "198.51.100.20",
@@ -655,7 +655,7 @@ func TestBootstrapOIDCUser_ConcurrentRequestsSingleIdentityAndTeam(t *testing.T)
 
 	input := oidcUserBootstrapInput{
 		OIDCIssuer:    "https://ory.example.test",
-		OIDCUserID:    uuid.NewString(),
+		OIDCUserID:    uuid.Must(uuid.NewV7()).String(),
 		OIDCUserEmail: "ada@example.test",
 		OIDCUserName:  nil,
 	}
@@ -768,7 +768,7 @@ func TestBootstrapOIDCUser_OryIssuerWithoutJWTConfigIsAccepted(t *testing.T) {
 
 	team, err := store.bootstrapOIDCUser(ctx, oidcUserBootstrapInput{
 		OIDCIssuer:    oryIssuer,
-		OIDCUserID:    uuid.NewString(),
+		OIDCUserID:    uuid.Must(uuid.NewV7()).String(),
 		OIDCUserEmail: "ada@example.test",
 		OIDCUserName:  nil,
 	})
@@ -808,7 +808,7 @@ func TestBootstrapOIDCUser_OryModeRejectsNonOryJWTIssuer(t *testing.T) {
 
 	_, err := store.bootstrapOIDCUser(ctx, oidcUserBootstrapInput{
 		OIDCIssuer:    otherIssuer,
-		OIDCUserID:    uuid.NewString(),
+		OIDCUserID:    uuid.Must(uuid.NewV7()).String(),
 		OIDCUserEmail: "ada@example.test",
 		OIDCUserName:  nil,
 	})
@@ -844,7 +844,7 @@ func TestBootstrapOIDCUser_UnknownIssuerReturnsBadRequest(t *testing.T) {
 
 	_, err := store.bootstrapOIDCUser(ctx, oidcUserBootstrapInput{
 		OIDCIssuer:    "https://attacker.example.test",
-		OIDCUserID:    uuid.NewString(),
+		OIDCUserID:    uuid.Must(uuid.NewV7()).String(),
 		OIDCUserEmail: "ada@example.test",
 		OIDCUserName:  nil,
 	})
@@ -886,7 +886,7 @@ func TestBootstrapOIDCUser_MultipleConfiguredIssuersIsolatesIdentities(t *testin
 		teamProvisionSink: sink,
 	}
 
-	sharedSubject := uuid.NewString()
+	sharedSubject := uuid.Must(uuid.NewV7()).String()
 
 	teamA, err := store.bootstrapOIDCUser(ctx, oidcUserBootstrapInput{
 		OIDCIssuer:    issuerA,
@@ -1000,7 +1000,7 @@ func TestPostUsersBootstrap_UnknownUserReturnsNotFound(t *testing.T) {
 
 	testDB := testutils.SetupDatabase(t)
 	ctx := t.Context()
-	userID := uuid.New()
+	userID := uuid.Must(uuid.NewV7())
 	sink := &fakeTeamProvisionSink{}
 
 	recorder := httptest.NewRecorder()

@@ -84,7 +84,7 @@ func TestVerifier_VerifyWithMultipleStrategies(t *testing.T) {
 
 	lookup := newStubIdentityLookup()
 	const jwksSub = "external-subject"
-	jwksUserID := uuid.New()
+	jwksUserID := uuid.Must(uuid.NewV7())
 	lookup.set(testIssuerURL, jwksSub, jwksUserID)
 
 	verifier, err := NewVerifier(t.Context(), ProviderConfig{
@@ -104,7 +104,7 @@ func TestVerifier_VerifyWithMultipleStrategies(t *testing.T) {
 	}, server.Client(), lookup)
 	require.NoError(t, err)
 
-	hmacUserID := uuid.New()
+	hmacUserID := uuid.Must(uuid.NewV7())
 	hmacToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub": hmacUserID.String(),
 		"exp": time.Now().Add(time.Hour).Unix(),
@@ -151,7 +151,7 @@ func TestVerifier_VerifyMultipleJWTIssuers(t *testing.T) {
 
 	lookup := newStubIdentityLookup()
 	const tokenSub = "external-subject"
-	userID := uuid.New()
+	userID := uuid.Must(uuid.NewV7())
 	lookup.set(issuer2URL, tokenSub, userID)
 
 	verifier, err := NewVerifier(t.Context(), ProviderConfig{

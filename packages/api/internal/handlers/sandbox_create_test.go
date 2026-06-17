@@ -764,7 +764,7 @@ func setTemplatePublic(ctx context.Context, t *testing.T, db *testutils.Database
 func createTestTemplate(ctx context.Context, t *testing.T, db *testutils.Database, teamID uuid.UUID) string {
 	t.Helper()
 
-	templateID := "base-env-" + uuid.New().String()
+	templateID := "base-env-" + uuid.Must(uuid.NewV7()).String()
 
 	err := db.SqlcClient.TestsRawSQL(
 		ctx,
@@ -811,7 +811,7 @@ func simpleRule(headers map[string]string) api.SandboxNetworkRule {
 func TestValidateNetworkRules(t *testing.T) {
 	t.Parallel()
 
-	teamID := uuid.New()
+	teamID := uuid.Must(uuid.NewV7())
 
 	tests := []struct {
 		name        string

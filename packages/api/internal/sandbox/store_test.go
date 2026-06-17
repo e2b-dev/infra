@@ -186,13 +186,13 @@ func (m *MockStorage) Add(ctx context.Context, sbx Sandbox) error {
 // createTestSandbox creates a test sandbox with default values
 func createTestSandbox() Sandbox {
 	return NewSandbox(
-		"test-sandbox-"+uuid.New().String()[:8],
+		"test-sandbox-"+uuid.Must(uuid.NewV7()).String()[28:],
 		"test-template",
 		consts.ClientID,
 		nil, // alias
 		"",  // executionID
-		uuid.New(),
-		uuid.New(),
+		uuid.Must(uuid.NewV7()),
+		uuid.Must(uuid.NewV7()),
 		map[string]string{"test": "metadata"},
 		time.Hour,                 // maxInstanceLength
 		time.Now(),                // startTime
@@ -204,7 +204,7 @@ func createTestSandbox() Sandbox {
 		"1.0",                     // firecracker
 		"1.0",                     // envd
 		"node-1",
-		uuid.New(),
+		uuid.Must(uuid.NewV7()),
 		false, // autoPause
 		nil,   // autoResume
 		nil,   // envdAccessToken
@@ -342,7 +342,7 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 		}
 		store := NewStore(storage, reservations, callbacks)
 
-		teamID := uuid.New()
+		teamID := uuid.Must(uuid.NewV7())
 		var wg sync.WaitGroup
 		errorsChan := make(chan error, numGoroutines)
 

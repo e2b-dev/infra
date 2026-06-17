@@ -22,7 +22,7 @@ func TestValidate(t *testing.T) {
 	accessToken, err := keys.GenerateKey(keys.AccessTokenPrefix)
 	require.NoError(t, err)
 
-	userID := uuid.New()
+	userID := uuid.Must(uuid.NewV7())
 	envID := "test-env-id"
 
 	testcases := []struct {
@@ -131,7 +131,7 @@ func setupValidateTest(tb testing.TB, db *testutils.Database, userID uuid.UUID, 
 
 	// Create access token
 	_, err = db.AuthDB.Write.CreateAccessToken(tb.Context(), authqueries.CreateAccessTokenParams{
-		ID:                    uuid.New(),
+		ID:                    uuid.Must(uuid.NewV7()),
 		UserID:                userID,
 		AccessTokenHash:       accessToken.HashedValue,
 		AccessTokenPrefix:     accessToken.Masked.Prefix,
@@ -150,7 +150,7 @@ func setupValidateTest(tb testing.TB, db *testutils.Database, userID uuid.UUID, 
 	require.NoError(tb, err)
 
 	// Create env_build
-	buildID := uuid.New()
+	buildID := uuid.Must(uuid.NewV7())
 	var finishedAt *string
 	if createdEnvStatus == "uploaded" || createdEnvStatus == "success" || createdEnvStatus == "ready" {
 		now := time.Now().Format(time.RFC3339)

@@ -22,12 +22,12 @@ func TestRedisTemplatesBuildCache_Get_CacheHit(t *testing.T) {
 
 	c := NewTemplateBuildCache(db.SqlcClient, redisClient)
 
-	buildID := uuid.New()
+	buildID := uuid.Must(uuid.NewV7())
 	info := TemplateBuildInfo{
-		TeamID:      uuid.New(),
+		TeamID:      uuid.Must(uuid.NewV7()),
 		TemplateID:  "test-template",
 		BuildStatus: types.BuildStatusGroupInProgress,
-		ClusterID:   uuid.New(),
+		ClusterID:   uuid.Must(uuid.NewV7()),
 	}
 
 	// Store in Redis via the cache's Set
@@ -50,12 +50,12 @@ func TestRedisTemplatesBuildCache_Get_L2Hit(t *testing.T) {
 
 	c := NewTemplateBuildCache(db.SqlcClient, redisClient)
 
-	buildID := uuid.New()
+	buildID := uuid.Must(uuid.NewV7())
 	info := TemplateBuildInfo{
-		TeamID:      uuid.New(),
+		TeamID:      uuid.Must(uuid.NewV7()),
 		TemplateID:  "test-template",
 		BuildStatus: types.BuildStatusGroupInProgress,
-		ClusterID:   uuid.New(),
+		ClusterID:   uuid.Must(uuid.NewV7()),
 	}
 
 	// Store directly in Redis
@@ -107,7 +107,7 @@ func TestRedisTemplatesBuildCache_Get_NotFound(t *testing.T) {
 	defer c.Close(t.Context())
 
 	// Try to get non-existent build
-	_, err := c.Get(ctx, uuid.New(), "non-existent-template")
+	_, err := c.Get(ctx, uuid.Must(uuid.NewV7()), "non-existent-template")
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrTemplateBuildInfoNotFound)
 }
@@ -122,12 +122,12 @@ func TestRedisTemplatesBuildCache_Invalidate(t *testing.T) {
 	c := NewTemplateBuildCache(db.SqlcClient, redisClient)
 	defer c.Close(t.Context())
 
-	buildID := uuid.New()
+	buildID := uuid.Must(uuid.NewV7())
 	info := TemplateBuildInfo{
-		TeamID:      uuid.New(),
+		TeamID:      uuid.Must(uuid.NewV7()),
 		TemplateID:  "test-template",
 		BuildStatus: types.BuildStatusGroupInProgress,
-		ClusterID:   uuid.New(),
+		ClusterID:   uuid.Must(uuid.NewV7()),
 	}
 
 	// Store in Redis via the cache

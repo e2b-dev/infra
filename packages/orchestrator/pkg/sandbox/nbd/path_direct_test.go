@@ -250,7 +250,7 @@ func setupNBDDevice(t *testing.T, featureFlags *featureflags.Client, size int64,
 	emptyDevice, err := testutils.NewZeroDevice(size, blockSize)
 	require.NoError(t, err, "failed to create zero device")
 
-	cowCachePath := filepath.Join(os.TempDir(), fmt.Sprintf("test-rootfs.ext4.cow.cache-%s", uuid.New().String()))
+	cowCachePath := filepath.Join(os.TempDir(), fmt.Sprintf("test-rootfs.ext4.cow.cache-%s", uuid.Must(uuid.NewV7()).String()))
 	t.Cleanup(func() {
 		os.RemoveAll(cowCachePath)
 	})

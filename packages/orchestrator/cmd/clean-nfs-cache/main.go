@@ -221,7 +221,7 @@ func preRun(ctx context.Context) (cleaner.Options, logger.Logger, telemetry.LogP
 
 func newOtelCore(ctx context.Context, endpoint string) (zapcore.Core, telemetry.LogProvider, error) {
 	nodeID := env.GetNodeID()
-	serviceInstanceID := uuid.NewString()
+	serviceInstanceID := uuid.Must(uuid.NewV7()).String()
 
 	resource, err := telemetry.GetResource(ctx, nodeID, serviceName, commitSHA, serviceVersion, serviceInstanceID)
 	if err != nil {

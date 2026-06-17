@@ -185,7 +185,7 @@ func TestMoveRelativePath(t *testing.T) {
 	require.NoError(t, err)
 
 	// Setup directory structure with unique name to avoid conflicts
-	testRelativePath := fmt.Sprintf("test-move-%s", uuid.New())
+	testRelativePath := fmt.Sprintf("test-move-%s", uuid.Must(uuid.NewV7()))
 	testFolderPath := filepath.Join(u.HomeDir, testRelativePath)
 	require.NoError(t, os.MkdirAll(testFolderPath, 0o755))
 
@@ -195,7 +195,7 @@ func TestMoveRelativePath(t *testing.T) {
 	require.NoError(t, os.WriteFile(sourceFile, testContent, 0o644))
 
 	// Destination file path (also relative)
-	destRelativePath := fmt.Sprintf("test-move-dest-%s", uuid.New())
+	destRelativePath := fmt.Sprintf("test-move-dest-%s", uuid.Must(uuid.NewV7()))
 	destFolderPath := filepath.Join(u.HomeDir, destRelativePath)
 	require.NoError(t, os.MkdirAll(destFolderPath, 0o755))
 	destFile := filepath.Join(destFolderPath, "moved-file.txt")

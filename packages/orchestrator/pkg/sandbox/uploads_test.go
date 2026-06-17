@@ -91,8 +91,8 @@ func TestUploads_BeginDistinctIDsAreIndependent(t *testing.T) {
 	t.Parallel()
 	c, _ := newUploads(t)
 
-	a := uuid.New()
-	b := uuid.New()
+	a := uuid.Must(uuid.NewV7())
+	b := uuid.Must(uuid.NewV7())
 
 	futA, err := c.Start(a)
 	require.NoError(t, err)
@@ -113,7 +113,7 @@ func TestUploads_Wait_BlocksUntilSet(t *testing.T) {
 	t.Parallel()
 	c, cache := newUploads(t)
 
-	id := uuid.New()
+	id := uuid.Must(uuid.NewV7())
 	// Pending header → Wait reaches the future-wait branch instead of
 	// short-circuiting on the cleared bit.
 	putPendingHeader(t, cache, id, build.Memfile)
@@ -145,7 +145,7 @@ func TestUploads_Wait_PropagatesUploadError(t *testing.T) {
 	t.Parallel()
 	c, cache := newUploads(t)
 
-	id := uuid.New()
+	id := uuid.Must(uuid.NewV7())
 	putPendingHeader(t, cache, id, build.Memfile)
 	fut, err := c.Start(id)
 	require.NoError(t, err)
@@ -161,7 +161,7 @@ func TestUploads_Wait_ContextCancellation(t *testing.T) {
 	t.Parallel()
 	c, _ := newUploads(t)
 
-	id := uuid.New()
+	id := uuid.Must(uuid.NewV7())
 	_, err := c.Start(id) // never signaled
 	require.NoError(t, err)
 
@@ -187,7 +187,7 @@ func TestUploads_Wait_NoFuture_ReadsFromCache(t *testing.T) {
 	t.Parallel()
 	c, cache := newUploads(t)
 
-	id := uuid.New()
+	id := uuid.Must(uuid.NewV7())
 	want := &headers.Header{
 		Metadata: &headers.Metadata{Version: headers.MetadataVersionV4},
 		Builds:   map[uuid.UUID]headers.BuildData{id: {}},
@@ -213,7 +213,7 @@ func TestUploads_ConcurrentBeginsAndWaits(t *testing.T) {
 	ids := make([]uuid.UUID, n)
 	futs := make([]*utils.ErrorOnce, n)
 	for i := range n {
-		ids[i] = uuid.New()
+		ids[i] = uuid.Must(uuid.NewV7())
 		putPendingHeader(t, cache, ids[i], build.Memfile)
 		fut, err := c.Start(ids[i])
 		require.NoError(t, err)

@@ -128,7 +128,7 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 	}
 
 	// Generate transition ID
-	transitionID := uuid.New().String()
+	transitionID := uuid.Must(uuid.NewV7()).String()
 	resultKey := getTransitionResultKey(teamID.String(), sandboxID, transitionID)
 
 	// Use atomic Lua script to update sandbox and set transition key with UUID

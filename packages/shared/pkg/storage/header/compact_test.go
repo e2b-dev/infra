@@ -17,8 +17,8 @@ func TestNewHeader_PageGranularMappingUnderHugepageBlockSize(t *testing.T) {
 	t.Parallel()
 
 	const hugepage = uint64(2 << 20) // 2 MiB memory block size
-	a := uuid.New()
-	b := uuid.New()
+	a := uuid.Must(uuid.NewV7())
+	b := uuid.Must(uuid.NewV7())
 
 	// Page-granular (4 KiB) mappings, NOT aligned to the 2 MiB block size.
 	mappings := []BuildMap{
@@ -42,8 +42,8 @@ func TestNewMapping_RoundTrip(t *testing.T) {
 	t.Parallel()
 
 	bs := uint64(4096)
-	a := uuid.New()
-	b := uuid.New()
+	a := uuid.Must(uuid.NewV7())
+	b := uuid.Must(uuid.NewV7())
 	src := []BuildMap{
 		{Offset: 0, Length: 2 * bs, BuildId: a, BuildStorageOffset: 0},
 		{Offset: 2 * bs, Length: bs, BuildId: b, BuildStorageOffset: 0},
@@ -67,7 +67,7 @@ func TestNewMapping_RejectsUnaligned(t *testing.T) {
 	t.Parallel()
 
 	bs := uint64(4096)
-	id := uuid.New()
+	id := uuid.Must(uuid.NewV7())
 
 	_, err := NewMapping(bs, []BuildMap{{Offset: 123, Length: bs, BuildId: id}})
 	require.ErrorContains(t, err, "offset")
@@ -86,7 +86,7 @@ func TestMapping_SearchOffset(t *testing.T) {
 	t.Parallel()
 
 	bs := uint64(4096)
-	id := uuid.New()
+	id := uuid.Must(uuid.NewV7())
 	src := []BuildMap{
 		{Offset: 0, Length: 2 * bs, BuildId: id},
 		{Offset: 2 * bs, Length: 2 * bs, BuildId: id, BuildStorageOffset: 2 * bs},
@@ -115,7 +115,7 @@ func TestMapping_Validate(t *testing.T) {
 	t.Parallel()
 
 	bs := uint64(4096)
-	id := uuid.New()
+	id := uuid.Must(uuid.NewV7())
 	size := 4 * bs
 	m, err := NewMapping(bs, []BuildMap{
 		{Offset: 0, Length: 2 * bs, BuildId: id},

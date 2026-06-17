@@ -401,7 +401,7 @@ func (f *Factory) CreateSandbox(
 		}
 	}()
 
-	lifecycleID := uuid.NewString()
+	lifecycleID := uuid.Must(uuid.NewV7()).String()
 
 	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network, f.Sandboxes.NetworkReleased)
 
@@ -655,7 +655,7 @@ func (f *Factory) ResumeSandbox(
 		}
 	}()
 
-	lifecycleID := uuid.NewString()
+	lifecycleID := uuid.Must(uuid.NewV7()).String()
 
 	sandboxFiles := t.Files().NewSandboxFiles(runtime.SandboxID)
 	cleanup.Add(ctx, cleanupFiles(f.config, sandboxFiles))
@@ -1088,7 +1088,7 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 
 	// This is required because the FC API doesn't support passing /dev/null
 	cachePaths, err := storage.Paths{
-		BuildID: uuid.New().String(),
+		BuildID: uuid.Must(uuid.NewV7()).String(),
 	}.Cache(s.config.StorageConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create cache paths: %w", err)

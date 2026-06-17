@@ -223,7 +223,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		sandbox.RuntimeMetadata{
 			TemplateID:  bb.Config.TemplateID,
 			SandboxID:   config.InstanceBuildPrefix + id.Generate(),
-			ExecutionID: uuid.NewString(),
+			ExecutionID: uuid.Must(uuid.NewV7()).String(),
 			TeamID:      bb.Config.TeamID,
 			BuildID:     bb.Template.BuildID,
 			SandboxType: sandbox.SandboxTypeBuild,
@@ -352,7 +352,7 @@ func (bb *BaseBuilder) Layer(
 		meta := metadata.Template{
 			Version: metadata.CurrentVersion,
 			Template: metadata.TemplateMetadata{
-				BuildID:            uuid.New().String(),
+				BuildID:            uuid.Must(uuid.NewV7()).String(),
 				KernelVersion:      bb.Config.KernelVersion,
 				FirecrackerVersion: bb.Config.FirecrackerVersion,
 			},

@@ -117,7 +117,7 @@ VALUES ($1, $2)
 	}
 
 	_, err = authdb.Write.CreateAccessToken(ctx, authqueries.CreateAccessTokenParams{
-		ID:                    uuid.New(),
+		ID:                    uuid.Must(uuid.NewV7()),
 		UserID:                data.UserID,
 		AccessTokenHash:       accessTokenHash,
 		AccessTokenPrefix:     accessTokenMask.Prefix,
@@ -204,7 +204,7 @@ VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, 'template')
 	builds := []buildData{
 		// An older build, so we have multiple builds - inserted FIRST
 		{
-			id:        uuid.New(),
+			id:        uuid.Must(uuid.NewV7()),
 			createdAt: &oldBuildTime,
 		},
 		// Primary build - inserted LAST so it has the latest assignment timestamp

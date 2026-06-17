@@ -40,7 +40,7 @@ func main() {
 		return
 	}
 
-	teamUUID := uuid.New()
+	teamUUID := uuid.Must(uuid.NewV7())
 
 	accessToken, err := keys.GenerateKey(keys.AccessTokenPrefix)
 	if err != nil {
@@ -131,7 +131,7 @@ DELETE FROM auth.users WHERE email = $1
 		panic(err)
 	}
 
-	userID := uuid.New()
+	userID := uuid.Must(uuid.NewV7())
 	err = authDb.TestsRawSQL(ctx, `
 INSERT INTO auth.users (id, email)
 VALUES ($1, $2)
@@ -176,7 +176,7 @@ VALUES ($1, $2, $3)
 	}
 	_, err = authDb.Write.CreateAccessToken(
 		ctx, authqueries.CreateAccessTokenParams{
-			ID:                    uuid.New(),
+			ID:                    uuid.Must(uuid.NewV7()),
 			UserID:                userID,
 			AccessTokenHash:       accessTokenHash,
 			AccessTokenPrefix:     accessTokenMask.Prefix,

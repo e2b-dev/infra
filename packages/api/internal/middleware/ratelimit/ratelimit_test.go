@@ -118,7 +118,7 @@ func TestMiddleware_FailOpen(t *testing.T) {
 	defer badClient.Close()
 
 	limiter := redis_rate.NewLimiter(badClient)
-	r := newRouterWithTeam(t, limiter, Config{FailOpen: true}, ff, uuid.New())
+	r := newRouterWithTeam(t, limiter, Config{FailOpen: true}, ff, uuid.Must(uuid.NewV7()))
 
 	w := doRequest(t, r)
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -135,7 +135,7 @@ func TestMiddleware_FailClosed(t *testing.T) {
 	defer badClient.Close()
 
 	limiter := redis_rate.NewLimiter(badClient)
-	r := newRouterWithTeam(t, limiter, Config{FailOpen: false}, ff, uuid.New())
+	r := newRouterWithTeam(t, limiter, Config{FailOpen: false}, ff, uuid.Must(uuid.NewV7()))
 
 	w := doRequest(t, r)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
@@ -150,7 +150,7 @@ func TestMiddleware_UnconfiguredRouteAllowsThrough(t *testing.T) {
 	defer badClient.Close()
 
 	limiter := redis_rate.NewLimiter(badClient)
-	r := newRouterWithTeam(t, limiter, Config{FailOpen: true}, ff, uuid.New())
+	r := newRouterWithTeam(t, limiter, Config{FailOpen: true}, ff, uuid.Must(uuid.NewV7()))
 
 	w := doRequest(t, r)
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -171,7 +171,7 @@ func TestIntegration_AllowedRequestSetsHeaders(t *testing.T) {
 	limiter := redis_rate.NewLimiter(redisClient)
 	ff := newTestFF(t, routeConfig(10, 20))
 
-	r := newRouterWithTeam(t, limiter, Config{FailOpen: true}, ff, uuid.New())
+	r := newRouterWithTeam(t, limiter, Config{FailOpen: true}, ff, uuid.Must(uuid.NewV7()))
 
 	w := doRequest(t, r)
 
@@ -192,7 +192,7 @@ func TestIntegration_BurstThenDeny(t *testing.T) {
 	limiter := redis_rate.NewLimiter(redisClient)
 	ff := newTestFF(t, routeConfig(1, 3))
 
-	r := newRouterWithTeam(t, limiter, Config{FailOpen: true}, ff, uuid.New())
+	r := newRouterWithTeam(t, limiter, Config{FailOpen: true}, ff, uuid.Must(uuid.NewV7()))
 
 	// First 3 requests should succeed (burst).
 	for i := range 3 {
@@ -226,7 +226,7 @@ func TestIntegration_Refill(t *testing.T) {
 	limiter := redis_rate.NewLimiter(redisClient)
 	ff := newTestFF(t, routeConfig(10, 2))
 
-	r := newRouterWithTeam(t, limiter, Config{FailOpen: true}, ff, uuid.New())
+	r := newRouterWithTeam(t, limiter, Config{FailOpen: true}, ff, uuid.Must(uuid.NewV7()))
 
 	// Exhaust burst.
 	for range 2 {
@@ -256,8 +256,8 @@ func TestIntegration_IndependentTeams(t *testing.T) {
 
 	cfg := Config{FailOpen: true}
 
-	teamA := uuid.New()
-	teamB := uuid.New()
+	teamA := uuid.Must(uuid.NewV7())
+	teamB := uuid.Must(uuid.NewV7())
 
 	rA := newRouterWithTeam(t, limiter, cfg, ff, teamA)
 	rB := newRouterWithTeam(t, limiter, cfg, ff, teamB)
@@ -287,7 +287,7 @@ func TestIntegration_ConcurrentAccess(t *testing.T) {
 	})
 
 	burst := 10
-	r := newRouterWithTeam(t, limiter, Config{FailOpen: true}, ff, uuid.New())
+	r := newRouterWithTeam(t, limiter, Config{FailOpen: true}, ff, uuid.Must(uuid.NewV7()))
 
 	// Fire 20 concurrent requests; only `burst` should be allowed.
 	total := 20

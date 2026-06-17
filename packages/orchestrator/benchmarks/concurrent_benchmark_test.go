@@ -359,7 +359,7 @@ func BenchmarkConcurrentResume(b *testing.B) {
 	b.Log("warming up: creating one sandbox to prime caches...")
 	warmupRuntime := sandbox.RuntimeMetadata{
 		TemplateID:  templateID,
-		SandboxID:   "warmup-" + uuid.NewString()[:8],
+		SandboxID:   "warmup-" + uuid.Must(uuid.NewV7()).String()[28:],
 		ExecutionID: "warmup-exec",
 		TeamID:      "bench-team",
 	}
@@ -429,7 +429,7 @@ func runConcurrentResume(
 		wg.Go(func() {
 			runtime := sandbox.RuntimeMetadata{
 				TemplateID:  templateID,
-				SandboxID:   fmt.Sprintf("bench-%d-%s", i, uuid.NewString()[:8]),
+				SandboxID:   fmt.Sprintf("bench-%d-%s", i, uuid.Must(uuid.NewV7()).String()[28:]),
 				ExecutionID: fmt.Sprintf("bench-exec-%d", i),
 				TeamID:      "bench-team",
 			}

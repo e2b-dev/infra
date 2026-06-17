@@ -1,9 +1,10 @@
 import Sandbox from "e2b";
 import { readFile, rm } from "fs/promises";
+import { v7 as uuidv7 } from "uuid";
 
 import { DEBUG_TIMEOUT_MS, log, runTestWithSandbox } from "../utils.ts";
 
-const uniqueID = crypto.randomUUID();
+const uniqueID = uuidv7();
 const templateName = `test-template-${uniqueID}`;
 
 console.log(`Building template ${templateName}...`);

@@ -111,7 +111,7 @@ func (s *APIStore) bootstrapOIDCUser(ctx context.Context, input oidcUserBootstra
 	}
 
 	profile := bootstrapUserProfile{
-		UserID:          uuid.New(),
+		UserID:          uuid.Must(uuid.NewV7()),
 		Email:           input.OIDCUserEmail,
 		DefaultTeamName: defaultTeamNameFromOIDCUserName(input.OIDCUserName),
 		CreatorContext:  creatorContextFromSignupMetadata(input.SignupIP, input.SignupUserAgent, teamprovision.AuthMethodSocial),

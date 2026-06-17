@@ -155,7 +155,7 @@ func (n *TestNode) SetSandboxClient(client orchestrator.SandboxServiceClient) {
 func NewTestNode(id string, status api.NodeStatus, cpuAllocated int64, cpuCount uint32, options ...TestOptions) *TestNode {
 	node := &Node{
 		ID:            id,
-		ClusterID:     uuid.New(),
+		ClusterID:     uuid.Must(uuid.NewV7()),
 		IPAddress:     "127.0.0.1",
 		SandboxDomain: nil,
 		PlacementMetrics: PlacementMetrics{

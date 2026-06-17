@@ -116,7 +116,7 @@ func (a *API) PostFilesCompose(w http.ResponseWriter, r *http.Request) {
 
 	// Write to a temporary file and rename on success to avoid destroying
 	// any pre-existing file at destPath if assembly fails midway.
-	tmpPath := destPath + ".e2b-compose." + uuid.New().String() + ".tmp"
+	tmpPath := destPath + ".e2b-compose." + uuid.Must(uuid.NewV7()).String() + ".tmp"
 
 	destFile, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o666)
 	if err != nil {

@@ -56,7 +56,7 @@ func run() int {
 	ctx, ctxCancel := context.WithCancel(context.Background())
 	defer ctxCancel()
 
-	instanceID := uuid.New().String()
+	instanceID := uuid.Must(uuid.NewV7()).String()
 	nodeID := env.GetNodeID()
 
 	// Setup telemetry

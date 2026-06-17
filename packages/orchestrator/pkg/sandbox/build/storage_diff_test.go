@@ -36,7 +36,7 @@ func TestStorageDiff_LoadsOwnHeaderWhenParentHasNoEntry(t *testing.T) {
 	)
 
 	ctx := t.Context()
-	aID := uuid.New()
+	aID := uuid.Must(uuid.NewV7())
 	payload := bytes.Repeat([]byte("ancestor-payload-"), payloadSize/len("ancestor-payload-")+1)[:payloadSize]
 
 	aFrameTable, compressed, _, err := storage.CompressBytes(ctx, payload, storage.CompressConfig{
@@ -55,7 +55,7 @@ func TestStorageDiff_LoadsOwnHeaderWhenParentHasNoEntry(t *testing.T) {
 	aHeaderBytes, err := header.SerializeHeader(aHeader)
 	require.NoError(t, err)
 
-	bHeader := buildHeader(t, uuid.New(), payloadSize, aID)
+	bHeader := buildHeader(t, uuid.Must(uuid.NewV7()), payloadSize, aID)
 	bHeader.IncompletePendingUpload = true
 
 	aPaths := storage.Paths{BuildID: aID.String()}
@@ -104,7 +104,7 @@ func TestStorageDiff_SwapsHeaderOnSelfMatch(t *testing.T) {
 	)
 
 	ctx := t.Context()
-	selfID := uuid.New()
+	selfID := uuid.Must(uuid.NewV7())
 	payload := bytes.Repeat([]byte("self-payload-"), payloadSize/len("self-payload-")+1)[:payloadSize]
 
 	frameTable, compressed, _, err := storage.CompressBytes(ctx, payload, storage.CompressConfig{
@@ -176,10 +176,10 @@ func TestStorageDiff_NoRefreshOnFinalizedHeader(t *testing.T) {
 		readLen     = blockSize
 	)
 
-	aID := uuid.New()
+	aID := uuid.Must(uuid.NewV7())
 	payload := bytes.Repeat([]byte("uncompressed-A-"), payloadSize/len("uncompressed-A-")+1)[:payloadSize]
 
-	bHeader := buildHeader(t, uuid.New(), payloadSize, aID)
+	bHeader := buildHeader(t, uuid.Must(uuid.NewV7()), payloadSize, aID)
 	bHeader.SetBuild(aID, header.BuildData{Size: int64(payloadSize), FrameData: nil})
 
 	uncompressedPath := storage.Paths{BuildID: aID.String()}.DataFile(storage.MemfileName, storage.CompressionNone)
@@ -216,12 +216,12 @@ func TestStorageDiff_SkipsHeaderRefreshWhenPeerActive(t *testing.T) {
 		readLen     = blockSize
 	)
 
-	aID := uuid.New()
+	aID := uuid.Must(uuid.NewV7())
 	payload := bytes.Repeat([]byte("p2p-served-"), payloadSize/len("p2p-served-")+1)[:payloadSize]
 
 	// Parent has no Builds[aID] entry — would normally trigger the proactive
 	// refresh path.
-	bHeader := buildHeader(t, uuid.New(), payloadSize, aID)
+	bHeader := buildHeader(t, uuid.Must(uuid.NewV7()), payloadSize, aID)
 
 	aPaths := storage.Paths{BuildID: aID.String()}
 	provider := storage.NewMockStorageProvider(t)
@@ -256,7 +256,7 @@ func TestStorageDiff_V3AncestorFallsBackToUncompressed(t *testing.T) {
 	const payloadSize = 256 * 1024
 	readLen := testBlockSize
 
-	aID := uuid.New()
+	aID := uuid.Must(uuid.NewV7())
 	payload := bytes.Repeat([]byte("v3-ancestor-data-"), payloadSize/len("v3-ancestor-data-")+1)[:payloadSize]
 
 	// A's header on storage: V3 (no Builds map).
@@ -270,7 +270,7 @@ func TestStorageDiff_V3AncestorFallsBackToUncompressed(t *testing.T) {
 	require.NoError(t, err)
 
 	// Current header: complete V4, maps to A, no Builds entry for A.
-	bHeader := buildHeader(t, uuid.New(), payloadSize, aID)
+	bHeader := buildHeader(t, uuid.Must(uuid.NewV7()), payloadSize, aID)
 
 	aPaths := storage.Paths{BuildID: aID.String()}
 	provider := storage.NewMockStorageProvider(t)
@@ -321,7 +321,7 @@ func TestStorageDiff_ReloadSourceLatchesV3AsUncompressed(t *testing.T) {
 	const payloadSize = 64 * 1024
 	readLen := testBlockSize
 
-	aID := uuid.New()
+	aID := uuid.Must(uuid.NewV7())
 	payload := bytes.Repeat([]byte("v3-reload-data-"), payloadSize/len("v3-reload-data-")+1)[:payloadSize]
 
 	aMeta := header.NewTemplateMetadata(aID, uint64(testBlockSize), uint64(payloadSize))

@@ -34,7 +34,7 @@ func OpenFile(ctx context.Context, filename string) (*AtomicImmutableFile, error
 		return nil, err
 	}
 
-	tempFilename := fmt.Sprintf("%s.temp.%s", filename, uuid.NewString())
+	tempFilename := fmt.Sprintf("%s.temp.%s", filename, uuid.Must(uuid.NewV7()).String())
 	tempFile, err := os.OpenFile(tempFilename, os.O_WRONLY|os.O_CREATE, 0o600)
 	if err != nil {
 		utils.Cleanup(ctx, "failed to release lock",

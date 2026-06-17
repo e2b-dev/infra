@@ -28,8 +28,8 @@ func TestUpsertSnapshot_NewSnapshot(t *testing.T) {
 	sourceBuildID := testutils.CreateTestBuild(t, ctx, client, baseTemplateID, "uploaded")
 
 	// Prepare test data for a new snapshot
-	templateID := "test-template-" + uuid.New().String()
-	sandboxID := "sandbox-" + uuid.New().String()
+	templateID := "test-template-" + uuid.Must(uuid.NewV7()).String()
+	sandboxID := "sandbox-" + uuid.Must(uuid.NewV7()).String()
 	originNodeID := "node-1"
 	envdVersion := "v1.0.0"
 	kernelVersion := "6.1.0"
@@ -115,8 +115,8 @@ func TestUpsertSnapshot_ExistingSnapshot(t *testing.T) {
 	sourceBuildID := testutils.CreateTestBuild(t, ctx, client, baseTemplateID, "uploaded")
 
 	// Prepare test data for the first snapshot creation
-	templateID := "test-template-" + uuid.New().String()
-	sandboxID := "sandbox-" + uuid.New().String()
+	templateID := "test-template-" + uuid.Must(uuid.NewV7()).String()
+	sandboxID := "sandbox-" + uuid.Must(uuid.NewV7()).String()
 	originNodeID := "node-1"
 	envdVersion := "v1.0.0"
 	kernelVersion := "6.1.0"

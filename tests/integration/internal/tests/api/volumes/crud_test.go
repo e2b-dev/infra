@@ -23,7 +23,7 @@ import (
 func TestVolumeRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	volumeName := uuid.NewString()
+	volumeName := uuid.Must(uuid.NewV7()).String()
 
 	client := setup.GetAPIClient()
 

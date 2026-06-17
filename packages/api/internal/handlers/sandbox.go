@@ -62,7 +62,7 @@ func (a *APIStore) startSandboxInternal(
 	endTime := startTime.Add(timeout)
 
 	// Unique ID for the execution (from start/resume to stop/pause)
-	executionID := uuid.New().String()
+	executionID := uuid.Must(uuid.NewV7()).String()
 
 	creationMeta := buildCreationMetadata(team, requestHeader, isResume, mcp)
 

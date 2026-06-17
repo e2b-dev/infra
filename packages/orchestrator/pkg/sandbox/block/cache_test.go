@@ -289,14 +289,14 @@ func TestCacheExportToDiff_ZeroBlockMapsToEmpty(t *testing.T) {
 	diffMetadata, err := cache.ExportToDiff(t.Context(), out)
 	require.NoError(t, err)
 
-	baseBuildID := uuid.New()
+	baseBuildID := uuid.Must(uuid.NewV7())
 	originalHeader, err := header.NewHeader(
 		header.NewTemplateMetadata(baseBuildID, uint64(blockSize), uint64(blockSize)),
 		nil,
 	)
 	require.NoError(t, err)
 
-	diffHeader, err := diffMetadata.ToDiffHeader(t.Context(), originalHeader, uuid.New())
+	diffHeader, err := diffMetadata.ToDiffHeader(t.Context(), originalHeader, uuid.Must(uuid.NewV7()))
 	require.NoError(t, err)
 
 	mapped, err := diffHeader.GetShiftedMapping(t.Context(), 0)
@@ -336,14 +336,14 @@ func TestCacheExportToDiff_MixedZeroBlockSplitsIntoEmptyAndDirty(t *testing.T) {
 	require.True(t, diffMetadata.Empty.Contains(0))
 	require.True(t, diffMetadata.Dirty.Contains(1))
 
-	baseBuildID := uuid.New()
+	baseBuildID := uuid.Must(uuid.NewV7())
 	originalHeader, err := header.NewHeader(
 		header.NewTemplateMetadata(baseBuildID, uint64(blockSize), uint64(size)),
 		nil,
 	)
 	require.NoError(t, err)
 
-	snapshotBuildID := uuid.New()
+	snapshotBuildID := uuid.Must(uuid.NewV7())
 	diffHeader, err := diffMetadata.ToDiffHeader(t.Context(), originalHeader, snapshotBuildID)
 	require.NoError(t, err)
 

@@ -66,7 +66,7 @@ func run() int {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	serviceInstanceID := uuid.New().String()
+	serviceInstanceID := uuid.Must(uuid.NewV7()).String()
 	nodeID := e2benv.GetNodeID()
 
 	tel, err := telemetry.New(ctx, nodeID, serviceName, commitSHA, serviceVersion, serviceInstanceID)

@@ -25,8 +25,8 @@ func CreateTeamWithUser(
 ) uuid.UUID {
 	t.Helper()
 
-	teamID := uuid.New()
-	slug := fmt.Sprintf("test-%s", teamID.String()[:8])
+	teamID := uuid.Must(uuid.NewV7())
+	slug := fmt.Sprintf("test-%s", teamID.String()[28:])
 
 	err := db.AuthDb.TestsRawSQL(t.Context(), `
 INSERT INTO teams (id, email, name, tier, is_blocked, slug)
@@ -70,7 +70,7 @@ func CreateAPIKey(t *testing.T, ctx context.Context, c *api.ClientWithResponses,
 	t.Helper()
 
 	apiKey, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
-		Name: uuid.New().String(),
+		Name: uuid.Must(uuid.NewV7()).String(),
 	}, setup.WithSupabaseToken(t, userID), setup.WithSupabaseTeam(t, teamID.String()))
 	require.NoError(t, err)
 	require.NotNil(t, apiKey.JSON201)

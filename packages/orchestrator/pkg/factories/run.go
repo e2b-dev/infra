@@ -214,7 +214,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 
 	nodeID := env.GetNodeID()
 	serviceName := cfg.GetServiceName(services)
-	serviceInstanceID := uuid.NewString()
+	serviceInstanceID := uuid.Must(uuid.NewV7()).String()
 
 	// Detect CPU platform for orchestrator pool matching
 	machineInfo, err := machineinfo.Detect()

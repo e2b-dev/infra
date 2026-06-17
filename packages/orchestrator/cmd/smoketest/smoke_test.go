@@ -74,7 +74,7 @@ func TestSmokeAllFCVersions(t *testing.T) { //nolint:paralleltest // subtests sh
 
 	for fcMajor, fcVersion := range featureflags.FirecrackerVersionMap { //nolint:paralleltest // sequential by design
 		t.Run("fc-"+fcMajor, func(t *testing.T) {
-			buildID := uuid.New().String()
+			buildID := uuid.Must(uuid.NewV7()).String()
 
 			// Phase 1: create build
 			t.Logf("creating build %s with FC %s", buildID, fcVersion)
@@ -131,7 +131,7 @@ func TestSmokeAllFCVersions(t *testing.T) { //nolint:paralleltest // subtests sh
 					TemplateID:  "smoke-" + fcMajor,
 					TeamID:      "smoke",
 					SandboxID:   fmt.Sprintf("sbx-smoke-%s-%d", fcMajor, time.Now().UnixNano()),
-					ExecutionID: uuid.NewString(),
+					ExecutionID: uuid.Must(uuid.NewV7()).String(),
 				},
 				t0,
 				t0.Add(10*time.Minute),

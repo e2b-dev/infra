@@ -32,11 +32,11 @@ func TestGenerateVolumeContentToken_SetsTokidHeader(t *testing.T) {
 	}
 
 	// Arrange a team and volume
-	teamID := uuid.New()
-	clusterID := uuid.New()
+	teamID := uuid.Must(uuid.NewV7())
+	clusterID := uuid.Must(uuid.NewV7())
 	team := &types.Team{Team: &authqueries.Team{ID: teamID, ClusterID: &clusterID}}
 
-	volID := uuid.New()
+	volID := uuid.Must(uuid.NewV7())
 	volume := queries.Volume{
 		ID:         volID,
 		TeamID:     teamID,

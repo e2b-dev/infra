@@ -29,7 +29,7 @@ func NewConnection(conn net.Conn, counter *atomic.Int64, m *smap.Map[*Connection
 	}
 
 	if m != nil {
-		c.key = uuid.New().String()
+		c.key = uuid.Must(uuid.NewV7()).String()
 
 		m.Insert(c.key, c)
 	}

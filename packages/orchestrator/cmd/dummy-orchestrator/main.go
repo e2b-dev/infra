@@ -76,7 +76,7 @@ func main() {
 	orchestrator.RegisterChunkServiceServer(srv, &orchestrator.UnimplementedChunkServiceServer{})
 	orchestrator.RegisterVolumeServiceServer(srv, &orchestrator.UnimplementedVolumeServiceServer{})
 
-	serviceID := uuid.NewString()
+	serviceID := uuid.Must(uuid.NewV7()).String()
 	orchestratorinfo.RegisterInfoServiceServer(srv, dummyserver.NewInfo(nodeID, serviceID, version, commit, labels))
 
 	healthSrv := health.NewServer()

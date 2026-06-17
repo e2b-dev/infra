@@ -113,7 +113,7 @@ func (r *runner) fphBenchOnce(ctx context.Context, opts fphBenchOptions, withFph
 		featureflags.NewJSONFlag("free-page-hinting-config", ldvalue.Null())
 	}
 
-	buildID := uuid.New().String()
+	buildID := uuid.Must(uuid.NewV7()).String()
 	defer cleanupLocalBuild(buildID)
 
 	runtime := sandbox.RuntimeMetadata{

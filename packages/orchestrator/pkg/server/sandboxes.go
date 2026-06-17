@@ -271,7 +271,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		teamID,
 		events.SandboxEvent{
 			Version:   events.StructureVersionV2,
-			ID:        uuid.New(),
+			ID:        uuid.Must(uuid.NewV7()),
 			Type:      eventType.Type,
 			Timestamp: time.Now().UTC(),
 
@@ -418,7 +418,7 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 			teamID,
 			events.SandboxEvent{
 				Version:   events.StructureVersionV2,
-				ID:        uuid.New(),
+				ID:        uuid.Must(uuid.NewV7()),
 				Type:      events.SandboxUpdatedEventPair.Type,
 				Timestamp: time.Now().UTC(),
 
@@ -540,7 +540,7 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 		teamID,
 		events.SandboxEvent{
 			Version:   events.StructureVersionV2,
-			ID:        uuid.New(),
+			ID:        uuid.Must(uuid.NewV7()),
 			Type:      eventType.Type,
 			Timestamp: time.Now().UTC(),
 
@@ -640,7 +640,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		teamID,
 		events.SandboxEvent{
 			Version:   events.StructureVersionV2,
-			ID:        uuid.New(),
+			ID:        uuid.Must(uuid.NewV7()),
 			Type:      eventType.Type,
 			Timestamp: time.Now().UTC(),
 
@@ -1026,7 +1026,7 @@ func (s *Server) publishSandboxEvent(ctx context.Context, sbx *sandbox.Sandbox, 
 		teamID,
 		events.SandboxEvent{
 			Version:   events.StructureVersionV2,
-			ID:        uuid.New(),
+			ID:        uuid.Must(uuid.NewV7()),
 			Type:      eventType,
 			Timestamp: time.Now().UTC(),
 

@@ -136,7 +136,7 @@ func (sb *StepBuilder) Layer(
 
 	finalMetadata := sourceLayer.Metadata
 	finalMetadata.Template = metadata.TemplateMetadata{
-		BuildID:            uuid.NewString(),
+		BuildID:            uuid.Must(uuid.NewV7()).String(),
 		KernelVersion:      sb.Config.KernelVersion,
 		FirecrackerVersion: sb.Config.FirecrackerVersion,
 	}

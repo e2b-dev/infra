@@ -13,7 +13,7 @@ import (
 func TestProfileFromOryIdentity(t *testing.T) {
 	t.Parallel()
 
-	userID := uuid.New()
+	userID := uuid.Must(uuid.NewV7())
 
 	tests := []struct {
 		name           string
@@ -111,7 +111,7 @@ func TestProfileFromOryIdentity(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			identity := ory.Identity{Id: uuid.NewString(), Traits: tt.traits, MetadataPublic: tt.metadataPublic, Credentials: tt.credentials}
+			identity := ory.Identity{Id: uuid.Must(uuid.NewV7()).String(), Traits: tt.traits, MetadataPublic: tt.metadataPublic, Credentials: tt.credentials}
 			got := profileFromOryIdentity(userID, identity)
 			if got.UserID != userID {
 				t.Fatalf("UserID = %s, want %s", got.UserID, userID)
@@ -143,7 +143,7 @@ func TestCreatorContextFromOryIdentityUsesMetadataAdmin(t *testing.T) {
 		},
 	}
 	identity := ory.Identity{
-		Id: uuid.NewString(),
+		Id: uuid.Must(uuid.NewV7()).String(),
 		MetadataAdmin: map[string]any{
 			"signup_ip":         "198.51.100.20",
 			"signup_user_agent": "Dashboard/1.0",

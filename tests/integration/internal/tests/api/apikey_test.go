@@ -105,7 +105,7 @@ func TestDeleteAPIKey(t *testing.T) {
 
 	t.Run("id does not exist", func(t *testing.T) {
 		t.Parallel()
-		respD, err := c.DeleteApiKeysApiKeyIDWithResponse(ctx, uuid.New().String(), setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
+		respD, err := c.DeleteApiKeysApiKeyIDWithResponse(ctx, uuid.Must(uuid.NewV7()).String(), setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -247,7 +247,7 @@ func TestPatchAPIKey(t *testing.T) {
 
 	t.Run("id does not exist", func(t *testing.T) {
 		t.Parallel()
-		respP, err := c.PatchApiKeysApiKeyIDWithResponse(ctx, uuid.New().String(), api.PatchApiKeysApiKeyIDJSONRequestBody{
+		respP, err := c.PatchApiKeysApiKeyIDWithResponse(ctx, uuid.Must(uuid.NewV7()).String(), api.PatchApiKeysApiKeyIDJSONRequestBody{
 			Name: "test-patch-3",
 		}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
 		if err != nil {

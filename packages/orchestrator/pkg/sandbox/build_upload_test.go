@@ -104,10 +104,10 @@ func TestAppendAncestorBuilds_V3AncestorSynthesizesEntry(t *testing.T) {
 	t.Parallel()
 
 	uploads, cache := newUploads(t)
-	ancestorID := uuid.New()
+	ancestorID := uuid.Must(uuid.NewV7())
 	putV3Header(t, cache, ancestorID, build.Memfile, 512*1024*1024)
 
-	u := &Upload{buildID: uuid.New(), uploads: uploads}
+	u := &Upload{buildID: uuid.Must(uuid.NewV7()), uploads: uploads}
 	dst := map[uuid.UUID]headers.BuildData{}
 
 	err := u.appendAncestorBuilds(t.Context(), dst, mappingTo(t, 4096, ancestorID, 4096), build.Memfile)
@@ -124,10 +124,10 @@ func TestAppendAncestorBuilds_V4AncestorCopiesEntry(t *testing.T) {
 	t.Parallel()
 
 	uploads, cache := newUploads(t)
-	ancestorID := uuid.New()
+	ancestorID := uuid.Must(uuid.NewV7())
 	putHeader(t, cache, ancestorID, build.Memfile, false)
 
-	u := &Upload{buildID: uuid.New(), uploads: uploads}
+	u := &Upload{buildID: uuid.Must(uuid.NewV7()), uploads: uploads}
 	dst := map[uuid.UUID]headers.BuildData{}
 
 	err := u.appendAncestorBuilds(t.Context(), dst, mappingTo(t, 4096, ancestorID, 4096), build.Memfile)
@@ -143,10 +143,10 @@ func TestAppendAncestorBuilds_NilDstSkipsSynthesis(t *testing.T) {
 	t.Parallel()
 
 	uploads, cache := newUploads(t)
-	ancestorID := uuid.New()
+	ancestorID := uuid.Must(uuid.NewV7())
 	putV3Header(t, cache, ancestorID, build.Memfile, 1024)
 
-	u := &Upload{buildID: uuid.New(), uploads: uploads}
+	u := &Upload{buildID: uuid.Must(uuid.NewV7()), uploads: uploads}
 	err := u.appendAncestorBuilds(t.Context(), nil, mappingTo(t, 4096, ancestorID, 4096), build.Memfile)
 	require.NoError(t, err)
 }
@@ -164,7 +164,7 @@ func TestNewUpload_FilesystemSnapshotSkipsMemfileCompressConfig(t *testing.T) {
 	t.Run("filesystem-only snapshot with zero memfile block size succeeds", func(t *testing.T) {
 		t.Parallel()
 		snap := &Snapshot{
-			BuildID:            uuid.New(),
+			BuildID:            uuid.Must(uuid.NewV7()),
 			FilesystemSnapshot: true,
 			RootfsBlockSize:    4096,
 		}
@@ -177,7 +177,7 @@ func TestNewUpload_FilesystemSnapshotSkipsMemfileCompressConfig(t *testing.T) {
 	t.Run("memory snapshot with zero memfile block size still errors", func(t *testing.T) {
 		t.Parallel()
 		snap := &Snapshot{
-			BuildID:            uuid.New(),
+			BuildID:            uuid.Must(uuid.NewV7()),
 			FilesystemSnapshot: false,
 			RootfsBlockSize:    4096,
 		}

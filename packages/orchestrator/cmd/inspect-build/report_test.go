@@ -26,7 +26,7 @@ func testMapping(t *testing.T, chunkSize uint64, maps []header.BuildMap) header.
 func TestRoleOf(t *testing.T) {
 	t.Parallel()
 
-	cur, par, anc := uuid.New(), uuid.New(), uuid.New()
+	cur, par, anc := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	meta := &header.Metadata{BuildId: cur, BaseBuildId: par}
 
 	require.Equal(t, roleCurrent, roleOf(cur, meta))
@@ -87,7 +87,7 @@ func TestFilteredFrames(t *testing.T) {
 func TestGatherMappings(t *testing.T) {
 	t.Parallel()
 
-	cur, anc := uuid.New(), uuid.New()
+	cur, anc := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	h := &header.Header{
 		Metadata: &header.Metadata{BuildId: cur, BaseBuildId: cur},
 		Mapping: testMapping(t, 50, []header.BuildMap{
@@ -121,7 +121,7 @@ func TestGatherMappings(t *testing.T) {
 func TestAncestorIDs(t *testing.T) {
 	t.Parallel()
 
-	self, par, anc := uuid.New(), uuid.New(), uuid.New()
+	self, par, anc := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	r := &report{
 		Image: imageInfo{BuildID: self, BaseBuildID: par},
 		Mappings: mappingsSection{ByBuild: []buildExtent{
@@ -144,7 +144,7 @@ func TestAncestorIDs(t *testing.T) {
 func TestBuildInfoFor(t *testing.T) {
 	t.Parallel()
 
-	a, b := uuid.New(), uuid.New()
+	a, b := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	r := &report{Builds: []buildInfo{{BuildID: a, Role: roleCurrent}}}
 
 	got, ok := r.buildInfoFor(a)
@@ -172,7 +172,7 @@ func TestJSONValue(t *testing.T) {
 func TestAncestorUsageOf(t *testing.T) {
 	t.Parallel()
 
-	anc := uuid.New()
+	anc := uuid.Must(uuid.NewV7())
 	ancestor := &report{
 		Image: imageInfo{BuildID: anc},
 		Data: dataSection{
@@ -186,7 +186,7 @@ func TestAncestorUsageOf(t *testing.T) {
 	}
 	head := &report{Mappings: mappingsSection{List: []mapping{
 		{Offset: 0, Length: 1 * miB, BuildID: anc, StorageOffset: 0},
-		{Offset: 1 * miB, Length: 1 * miB, BuildID: uuid.New()}, // a different build
+		{Offset: 1 * miB, Length: 1 * miB, BuildID: uuid.Must(uuid.NewV7())}, // a different build
 		{Offset: 2 * miB, Length: 0x1000, BuildID: anc, StorageOffset: 3 * miB},
 	}}}
 
@@ -213,7 +213,7 @@ func TestGatherFetchmap(t *testing.T) {
 		bs   = 2 * miB
 		page = 4096
 	)
-	buildA, buildB := uuid.New(), uuid.New()
+	buildA, buildB := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 
 	// frames(perFrameU): builds a FrameTable with consecutive frames of the
 	// given U-sizes, dummy 1 KiB compressed size each.
@@ -430,7 +430,7 @@ func TestCompressionPerChunk(t *testing.T) {
 		bs   = 2 * miB
 		page = 4096
 	)
-	selfID, ancestorID := uuid.New(), uuid.New()
+	selfID, ancestorID := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 
 	hdr := func(t *testing.T, size uint64, maps []header.BuildMap) *header.Header {
 		t.Helper()
@@ -523,7 +523,7 @@ func TestFramesInRange(t *testing.T) {
 	t.Parallel()
 
 	const bs = 2 * miB
-	selfID := uuid.New()
+	selfID := uuid.Must(uuid.NewV7())
 
 	frames := []frameInfo{
 		{StartU: 0, EndU: bs},

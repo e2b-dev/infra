@@ -38,7 +38,7 @@ type SandboxServer struct {
 // api side can route follow-up calls back to this orchestrator.
 func NewSandbox() *SandboxServer {
 	return &SandboxServer{
-		clientID:  uuid.NewString(),
+		clientID:  uuid.Must(uuid.NewV7()).String(),
 		sandboxes: make(map[string]*orchestrator.RunningSandbox),
 	}
 }

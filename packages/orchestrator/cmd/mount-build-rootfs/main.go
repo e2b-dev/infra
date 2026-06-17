@@ -95,7 +95,7 @@ func main() {
 }
 
 func runEmpty(ctx, nbdContext context.Context, featureFlags *featureflags.Client, size int64, blockSize int64) error {
-	cowCachePath := filepath.Join(os.TempDir(), fmt.Sprintf("rootfs.ext4.cow.cache-%s", uuid.New().String()))
+	cowCachePath := filepath.Join(os.TempDir(), fmt.Sprintf("rootfs.ext4.cow.cache-%s", uuid.Must(uuid.NewV7()).String()))
 
 	emptyDevice, err := testutils.NewZeroDevice(size, blockSize)
 	if err != nil {
@@ -141,7 +141,7 @@ func run(ctx, nbdContext context.Context, featureFlags *featureflags.Client, bui
 		return fmt.Errorf("failed to get template rootfs: %w", err)
 	}
 
-	cowCachePath := filepath.Join(os.TempDir(), fmt.Sprintf("%s-rootfs.ext4.cow.cache-%s", buildID, uuid.New().String()))
+	cowCachePath := filepath.Join(os.TempDir(), fmt.Sprintf("%s-rootfs.ext4.cow.cache-%s", buildID, uuid.Must(uuid.NewV7()).String()))
 
 	defer os.RemoveAll(cowCachePath)
 

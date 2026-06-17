@@ -434,7 +434,7 @@ func runSimChain(t *testing.T, cfg simConfig, s simScenario) simResult {
 		meta, _ := s.planner(t, mem, parent, hdr, dirty, cycle)
 		storedPages += int64(meta.Dirty.GetCardinality())
 
-		hdr, err = meta.ToDiffHeader(context.Background(), hdr, uuid.New())
+		hdr, err = meta.ToDiffHeader(context.Background(), hdr, uuid.Must(uuid.NewV7()))
 		require.NoError(t, err)
 		copy(parent, mem)
 	}
@@ -534,7 +534,7 @@ func TestDedupRandomChain_NoCorruption(t *testing.T) {
 			}
 			parent := slices.Clone(mem)
 
-			templateBuild := uuid.New()
+			templateBuild := uuid.Must(uuid.NewV7())
 			hdr, err := header.NewHeader(header.NewTemplateMetadata(templateBuild, uint64(simPageSize), uint64(cfg.size())), nil)
 			require.NoError(t, err)
 			layers := map[uuid.UUID][]byte{templateBuild: slices.Clone(mem)}
@@ -562,7 +562,7 @@ func TestDedupRandomChain_NoCorruption(t *testing.T) {
 					p := int64(it.Next())
 					payload = append(payload, mem[p*simPageSize:(p+1)*simPageSize]...)
 				}
-				build := uuid.New()
+				build := uuid.Must(uuid.NewV7())
 				layers[build] = payload
 
 				hdr, err = meta.ToDiffHeader(context.Background(), hdr, build)

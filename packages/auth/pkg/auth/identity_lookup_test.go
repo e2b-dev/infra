@@ -36,7 +36,7 @@ func (l *countingIdentityLookup) GetUserIdentity(_ context.Context, iss, sub str
 func TestCachingIdentityLookup_CachesSuccess(t *testing.T) {
 	t.Parallel()
 
-	userID := uuid.New()
+	userID := uuid.Must(uuid.NewV7())
 	base := &countingIdentityLookup{results: map[string]struct {
 		id  uuid.UUID
 		err error
@@ -108,7 +108,7 @@ func TestCachingIdentityLookup_DoesNotCacheError(t *testing.T) {
 func TestCachingIdentityLookup_SeparateKeysPerIssuerAndSubject(t *testing.T) {
 	t.Parallel()
 
-	a, b := uuid.New(), uuid.New()
+	a, b := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	base := &countingIdentityLookup{results: map[string]struct {
 		id  uuid.UUID
 		err error

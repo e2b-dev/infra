@@ -23,8 +23,8 @@ func TestGetVolumeRootPath(t *testing.T) {
 
 	const goodVolumeType = "good-vol"
 	const goodVolumeTypePath = "/mnt/shared"
-	teamID := uuid.NewString()
-	volumeID := uuid.NewString()
+	teamID := uuid.Must(uuid.NewV7()).String()
+	volumeID := uuid.Must(uuid.NewV7()).String()
 	goodVolumeBasePath := filepath.Join(
 		goodVolumeTypePath,
 		fmt.Sprintf("team-%s", teamID),

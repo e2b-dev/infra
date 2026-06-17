@@ -50,7 +50,7 @@ func TestWaitForStart_WokenByFinishStartPublish(t *testing.T) {
 	t.Parallel()
 
 	storage, _ := setupTestReservationStorage(t)
-	teamID := uuid.New()
+	teamID := uuid.Must(uuid.NewV7())
 	sbxID := "pubsub-finish"
 
 	finishStart, _, err := storage.Reserve(t.Context(), teamID, sbxID, 10)
@@ -91,7 +91,7 @@ func TestWaitForStart_WokenByReleasePublish(t *testing.T) {
 	t.Parallel()
 
 	storage, _ := setupTestReservationStorage(t)
-	teamID := uuid.New()
+	teamID := uuid.Must(uuid.NewV7())
 	sbxID := "pubsub-release"
 
 	finishStart, _, err := storage.Reserve(t.Context(), teamID, sbxID, 10)
@@ -127,7 +127,7 @@ func TestWaitForStart_FallbackTickerWhenPubSubMissed(t *testing.T) {
 	t.Parallel()
 
 	storage, _ := setupReservationStorageWithoutSubManager(t)
-	teamID := uuid.New()
+	teamID := uuid.Must(uuid.NewV7())
 	sbxID := "pubsub-fallback"
 
 	finishStart, _, err := storage.Reserve(t.Context(), teamID, sbxID, 10)
@@ -171,7 +171,7 @@ func TestWaitForStart_ResultLandedBeforeSubscribe(t *testing.T) {
 	t.Parallel()
 
 	storage, _ := setupTestReservationStorage(t)
-	teamID := uuid.New()
+	teamID := uuid.Must(uuid.NewV7())
 	sbxID := "pubsub-race"
 
 	finishStart, _, err := storage.Reserve(t.Context(), teamID, sbxID, 10)
@@ -211,7 +211,7 @@ func TestWaitForStart_ContextCancellation(t *testing.T) {
 	t.Parallel()
 
 	storage, _ := setupTestReservationStorage(t)
-	teamID := uuid.New()
+	teamID := uuid.Must(uuid.NewV7())
 	sbxID := "pubsub-cancel"
 
 	_, _, err := storage.Reserve(t.Context(), teamID, sbxID, 10)
@@ -237,7 +237,7 @@ func TestWaitForStart_MultipleWaitersOnePublish(t *testing.T) {
 	t.Parallel()
 
 	storage, _ := setupTestReservationStorage(t)
-	teamID := uuid.New()
+	teamID := uuid.Must(uuid.NewV7())
 	sbxID := "pubsub-multi"
 	const numWaiters = 10
 
@@ -291,7 +291,7 @@ func TestWaitForStart_FailedStartPropagatesPromptly(t *testing.T) {
 	t.Parallel()
 
 	storage, _ := setupTestReservationStorage(t)
-	teamID := uuid.New()
+	teamID := uuid.Must(uuid.NewV7())
 	sbxID := "pubsub-failed"
 
 	finishStart, _, err := storage.Reserve(t.Context(), teamID, sbxID, 10)
@@ -334,7 +334,7 @@ func TestWaitForStart_RedisOpsBounded(t *testing.T) {
 
 	storage := NewReservationStorage(client, storageInstance.Notifier())
 
-	teamID := uuid.New()
+	teamID := uuid.Must(uuid.NewV7())
 	sbxID := "pubsub-bounded"
 
 	finishStart, _, err := storage.Reserve(t.Context(), teamID, sbxID, 10)

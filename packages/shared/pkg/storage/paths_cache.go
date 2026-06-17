@@ -18,7 +18,7 @@ type CachePaths struct {
 }
 
 func (p Paths) Cache(config Config) (CachePaths, error) {
-	identifier, err := uuid.NewRandom()
+	identifier, err := uuid.NewV7()
 	if err != nil {
 		return CachePaths{}, fmt.Errorf("failed to generate identifier: %w", err)
 	}

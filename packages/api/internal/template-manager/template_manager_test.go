@@ -54,7 +54,7 @@ func TestPollBuildStatus_setStatus(t *testing.T) {
 				templateManagerClient: &fakeTemplateManagerClient{
 					getStatusResponse: nil,
 				},
-				buildID: uuid.New(),
+				buildID: uuid.Must(uuid.NewV7()),
 			},
 			wantErr: true,
 		},

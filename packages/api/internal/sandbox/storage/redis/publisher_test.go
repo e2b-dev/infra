@@ -216,7 +216,7 @@ func TestStorageLock_ReleaseUsesNotifier(t *testing.T) {
 	subManager := newSubscriptionManager(client, globalStorageNotifyChannel)
 	locker := newStorageLocker(client, subManager, fakeNot)
 
-	lockKey := redis_utils.GetLockKey(getSandboxKey(uuid.NewString(), "fake-notifier"))
+	lockKey := redis_utils.GetLockKey(getSandboxKey(uuid.Must(uuid.NewV7()).String(), "fake-notifier"))
 	lock, err := locker.Obtain(t.Context(), lockKey, testLockTimeout)
 	require.NoError(t, err)
 	require.NoError(t, lock.Release(context.WithoutCancel(t.Context())))

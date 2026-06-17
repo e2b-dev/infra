@@ -26,7 +26,7 @@ const (
 	testSandboxID = "test-sandbox-id"
 )
 
-var testTeamID = uuid.New()
+var testTeamID = uuid.Must(uuid.NewV7())
 
 func setupTestReservationStorage(t *testing.T) (*ReservationStorage, goredis.UniversalClient) {
 	t.Helper()
@@ -63,7 +63,7 @@ func TestReservation_Exceeded(t *testing.T) {
 	t.Parallel()
 	storage, _ := setupTestReservationStorage(t)
 
-	teamID := uuid.New()
+	teamID := uuid.Must(uuid.NewV7())
 	_, _, err := storage.Reserve(t.Context(), teamID, testSandboxID, 1)
 	require.NoError(t, err)
 	_, _, err = storage.Reserve(t.Context(), teamID, "sandbox-2", 1)
@@ -74,7 +74,7 @@ func TestReservation_SameSandbox(t *testing.T) {
 	t.Parallel()
 	storage, _ := setupTestReservationStorage(t)
 
-	teamID := uuid.New()
+	teamID := uuid.Must(uuid.NewV7())
 	_, _, err := storage.Reserve(t.Context(), teamID, testSandboxID, 1)
 	require.NoError(t, err)
 
@@ -87,7 +87,7 @@ func TestReservation_Release(t *testing.T) {
 	t.Parallel()
 	storage, _ := setupTestReservationStorage(t)
 
-	teamID := uuid.New()
+	teamID := uuid.Must(uuid.NewV7())
 	_, _, err := storage.Reserve(t.Context(), teamID, testSandboxID, 1)
 	require.NoError(t, err)
 	err = storage.Release(t.Context(), teamID, testSandboxID)
@@ -101,7 +101,7 @@ func TestReservation_MultipleWaiters(t *testing.T) {
 	t.Parallel()
 	storage, _ := setupTestReservationStorage(t)
 
-	teamID := uuid.New()
+	teamID := uuid.Must(uuid.NewV7())
 	finishStart, _, err := storage.Reserve(t.Context(), teamID, testSandboxID, 10)
 	require.NoError(t, err)
 	require.NotNil(t, finishStart)
@@ -141,7 +141,7 @@ func TestReservation_Remove(t *testing.T) {
 	t.Parallel()
 	storage, _ := setupTestReservationStorage(t)
 
-	teamID := uuid.New()
+	teamID := uuid.Must(uuid.NewV7())
 	finishStart, _, err := storage.Reserve(t.Context(), teamID, testSandboxID, 1)
 	require.NoError(t, err)
 	require.NotNil(t, finishStart)
@@ -171,8 +171,8 @@ func TestReservation_MultipleTeams(t *testing.T) {
 	t.Parallel()
 	storage, _ := setupTestReservationStorage(t)
 
-	team1 := uuid.New()
-	team2 := uuid.New()
+	team1 := uuid.Must(uuid.NewV7())
+	team2 := uuid.Must(uuid.NewV7())
 	sandbox1 := "sandbox-1"
 	sandbox2 := "sandbox-2"
 
@@ -197,7 +197,7 @@ func TestReservation_FailedStart(t *testing.T) {
 	t.Parallel()
 	storage, _ := setupTestReservationStorage(t)
 
-	teamID := uuid.New()
+	teamID := uuid.Must(uuid.NewV7())
 	sbxID := "failed-sandbox"
 
 	// Reserve sandbox
@@ -218,7 +218,7 @@ func TestReservation_FailedStartWithWaiters(t *testing.T) {
 	t.Parallel()
 	storage, _ := setupTestReservationStorage(t)
 
-	teamID := uuid.New()
+	teamID := uuid.Must(uuid.NewV7())
 	sbxID := "failed-with-waiters"
 	numWaiters := 10
 
@@ -275,7 +275,7 @@ func TestReservation_ConcurrentReservations(t *testing.T) {
 	t.Parallel()
 	storage, _ := setupTestReservationStorage(t)
 
-	teamID := uuid.New()
+	teamID := uuid.Must(uuid.NewV7())
 	concurrency := 100
 	limit := 50
 
@@ -311,7 +311,7 @@ func TestReservation_ConcurrentSameSandbox(t *testing.T) {
 	t.Parallel()
 	storage, _ := setupTestReservationStorage(t)
 
-	teamID := uuid.New()
+	teamID := uuid.Must(uuid.NewV7())
 	sbxID := "concurrent-sandbox"
 	concurrency := 50
 
@@ -350,7 +350,7 @@ func TestReservation_ConcurrentWaitAndFinish(t *testing.T) {
 	t.Parallel()
 	storage, _ := setupTestReservationStorage(t)
 
-	teamID := uuid.New()
+	teamID := uuid.Must(uuid.NewV7())
 	sbxID := "wait-finish-sandbox"
 	numWaiters := 20
 
@@ -416,7 +416,7 @@ func TestReservation_RaceConditionStressTest(t *testing.T) {
 	t.Parallel()
 	storage, _ := setupTestReservationStorage(t)
 
-	teamID := uuid.New()
+	teamID := uuid.Must(uuid.NewV7())
 	numOperations := 2000
 	numSandboxes := 100
 	limit := 5
@@ -473,7 +473,7 @@ func TestReservation_ResultKeyTTL(t *testing.T) {
 	t.Parallel()
 	storage, client := setupTestReservationStorage(t)
 
-	teamID := uuid.New()
+	teamID := uuid.Must(uuid.NewV7())
 	sbxID := "ttl-test"
 
 	finishStart, _, err := storage.Reserve(t.Context(), teamID, sbxID, 10)
@@ -494,7 +494,7 @@ func TestReservation_StalePendingCleanup(t *testing.T) {
 	t.Parallel()
 	_, client := setupTestReservationStorage(t)
 
-	teamID := uuid.New()
+	teamID := uuid.Must(uuid.NewV7())
 	pendingSetKey := getPendingSetKey(teamID.String())
 
 	// Simulate a crashed API instance by manually inserting a stale pending entry

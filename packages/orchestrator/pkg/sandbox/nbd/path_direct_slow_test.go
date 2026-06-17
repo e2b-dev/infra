@@ -90,7 +90,7 @@ func TestSlowBackend_ShortTimeout(t *testing.T) {
 	// Backend delays every read by 8 seconds — longer than the kernel timeout below.
 	slow := newSlowDevice(emptyDevice, 8*time.Second)
 
-	cowCachePath := filepath.Join(os.TempDir(), fmt.Sprintf("test-slow-timeout-%s", uuid.New().String()))
+	cowCachePath := filepath.Join(os.TempDir(), fmt.Sprintf("test-slow-timeout-%s", uuid.Must(uuid.NewV7()).String()))
 	t.Cleanup(func() { os.RemoveAll(cowCachePath) })
 
 	cache, err := block.NewCache(size, blockSize, cowCachePath, false)
@@ -143,7 +143,7 @@ func TestSlowBackend_SufficientTimeout(t *testing.T) {
 	// Backend delays every read by 3 seconds.
 	slow := newSlowDevice(emptyDevice, 3*time.Second)
 
-	cowCachePath := filepath.Join(os.TempDir(), fmt.Sprintf("test-slow-ok-%s", uuid.New().String()))
+	cowCachePath := filepath.Join(os.TempDir(), fmt.Sprintf("test-slow-ok-%s", uuid.Must(uuid.NewV7()).String()))
 	t.Cleanup(func() { os.RemoveAll(cowCachePath) })
 
 	cache, err := block.NewCache(size, blockSize, cowCachePath, false)

@@ -28,7 +28,7 @@ func TestV5_PageGranularUnderHugepage(t *testing.T) {
 	t.Parallel()
 
 	const hugepage = uint64(2 << 20)
-	a, b := uuid.New(), uuid.New()
+	a, b := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	mappings := []BuildMap{
 		{Offset: 0, Length: PageSize, BuildId: a, BuildStorageOffset: 0},
 		{Offset: PageSize, Length: PageSize, BuildId: b, BuildStorageOffset: 0},
@@ -50,8 +50,8 @@ func TestV5_RoundTrip(t *testing.T) {
 	t.Parallel()
 
 	bs := uint64(4096)
-	a := uuid.New()
-	b := uuid.New()
+	a := uuid.Must(uuid.NewV7())
+	b := uuid.Must(uuid.NewV7())
 	metadata := &Metadata{BlockSize: bs, Size: 6 * bs, Generation: 3, BuildId: a, BaseBuildId: b}
 	mappings := []BuildMap{
 		{Offset: 0, Length: 2 * bs, BuildId: a, BuildStorageOffset: 0},
@@ -88,7 +88,7 @@ func TestV5_RoundTripNonAlignedSize(t *testing.T) {
 	t.Parallel()
 
 	bs := uint64(4096)
-	id := uuid.New()
+	id := uuid.Must(uuid.NewV7())
 	metadata := &Metadata{BlockSize: bs, Size: bs + 1, BuildId: id, BaseBuildId: id}
 
 	h := v5Header(t, metadata, nil, nil)
@@ -107,9 +107,9 @@ func TestV5_MatchesV4Semantics(t *testing.T) {
 	t.Parallel()
 
 	bs := uint64(4096)
-	a := uuid.New()
-	b := uuid.New()
-	c := uuid.New()
+	a := uuid.Must(uuid.NewV7())
+	b := uuid.Must(uuid.NewV7())
+	c := uuid.Must(uuid.NewV7())
 	mappings := []BuildMap{
 		{Offset: 0, Length: bs, BuildId: a, BuildStorageOffset: 0},
 		{Offset: bs, Length: bs, BuildId: b, BuildStorageOffset: 0},
@@ -146,8 +146,8 @@ func TestV5_SmallerThanV4(t *testing.T) {
 	t.Parallel()
 
 	bs := uint64(4096)
-	a := uuid.New()
-	b := uuid.New()
+	a := uuid.Must(uuid.NewV7())
+	b := uuid.Must(uuid.NewV7())
 	const runs = 50_000
 	mappings := make([]BuildMap, 0, runs)
 	var off, sa, sb uint64
@@ -196,7 +196,7 @@ func TestV5_ReconstructedColumnsExactlySized(t *testing.T) {
 	t.Parallel()
 
 	bs := uint64(4096)
-	a := uuid.New()
+	a := uuid.Must(uuid.NewV7())
 	mappings := []BuildMap{
 		{Offset: 0, Length: bs, BuildId: uuid.Nil},
 		{Offset: bs, Length: bs, BuildId: a, BuildStorageOffset: 0},
@@ -222,7 +222,7 @@ func TestV5_RejectsOversizePrefix(t *testing.T) {
 	t.Parallel()
 
 	bs := uint64(4096)
-	id := uuid.New()
+	id := uuid.Must(uuid.NewV7())
 	meta := &Metadata{Version: MetadataVersionV5, BlockSize: bs, Size: bs, BuildId: id, BaseBuildId: id}
 	h, err := NewHeader(meta, nil)
 	require.NoError(t, err)

@@ -32,8 +32,8 @@ func createTestSandbox(sandboxID string) sandboxtypes.Sandbox {
 		SandboxID:         sandboxID,
 		TemplateID:        "test-template",
 		ClientID:          "test-client",
-		TeamID:            uuid.New(),
-		ExecutionID:       uuid.New().String(), // Add ExecutionID for transition tracking
+		TeamID:            uuid.Must(uuid.NewV7()),
+		ExecutionID:       uuid.Must(uuid.NewV7()).String(), // Add ExecutionID for transition tracking
 		StartTime:         time.Now(),
 		EndTime:           time.Now().Add(time.Hour),
 		MaxInstanceLength: time.Hour,
@@ -252,7 +252,7 @@ func TestStartRemoving_NotFound(t *testing.T) {
 	storage, _ := setupTestStorage(t)
 	ctx := t.Context()
 
-	teamID := uuid.New()
+	teamID := uuid.Must(uuid.NewV7())
 	_, alreadyDone, callback, err := storage.StartRemoving(ctx, teamID, "non-existent", sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionKill})
 	require.Error(t, err)
 	assert.False(t, alreadyDone)

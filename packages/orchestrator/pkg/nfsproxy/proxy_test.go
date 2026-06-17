@@ -56,13 +56,13 @@ func TestRoundTrip(t *testing.T) {
 	zap.ReplaceGlobals(log)
 
 	// setup data
-	sandboxID := uuid.NewString()
-	teamID := uuid.New()
+	sandboxID := uuid.Must(uuid.NewV7()).String()
+	teamID := uuid.Must(uuid.NewV7())
 	volPath1 := t.TempDir()
 	volType1 := "volume-type-1"
-	volID1 := uuid.New()
+	volID1 := uuid.Must(uuid.NewV7())
 	volName1 := "volume-1"
-	volID2 := uuid.New()
+	volID2 := uuid.Must(uuid.NewV7())
 	volName2 := "volume-2"
 	volType2 := "volume-type-2"
 
@@ -207,7 +207,7 @@ func TestRoundTrip(t *testing.T) {
 	t.Run("mkdir", func(t *testing.T) {
 		t.Parallel()
 
-		path := uuid.NewString()
+		path := uuid.Must(uuid.NewV7()).String()
 		fh, err := target.Mkdir(path, 0o755)
 		require.NoError(t, err)
 		assert.NotNil(t, fh)
@@ -217,7 +217,7 @@ func TestRoundTrip(t *testing.T) {
 		t.Parallel()
 
 		// setup root dir, to prevent collisions
-		path := uuid.NewString()
+		path := uuid.Must(uuid.NewV7()).String()
 		mkdir(t, target, path, 0o755)
 
 		// write files
@@ -243,7 +243,7 @@ func TestRoundTrip(t *testing.T) {
 	t.Run("access", func(t *testing.T) {
 		t.Parallel()
 
-		path := uuid.NewString()
+		path := uuid.Must(uuid.NewV7()).String()
 		mkdir(t, target, path, 0o755)
 		writeFile(t, target, filepath.Join(path, "file.txt"), "file.txt contents", 0o644)
 		mode, err := target.Access(filepath.Join(path, "file.txt"), 0o644)
@@ -255,7 +255,7 @@ func TestRoundTrip(t *testing.T) {
 		t.Parallel()
 
 		// verify that file can be read with getattr
-		path := uuid.NewString()
+		path := uuid.Must(uuid.NewV7()).String()
 		stat1, fh1, err := target.Lookup(path)
 		require.ErrorIs(t, err, os.ErrNotExist)
 		assert.Nil(t, fh1)

@@ -25,7 +25,7 @@ func TestStorageLocker_ObtainAfterReleaseNotification(t *testing.T) {
 
 	locker, subManager := setupTestLocker(t, true)
 
-	key := getSandboxKey(uuid.NewString(), "lock-notification")
+	key := getSandboxKey(uuid.Must(uuid.NewV7()).String(), "lock-notification")
 	lockKey := redis_utils.GetLockKey(key)
 	routingKey := getLockRoutingKey(lockKey)
 
@@ -54,7 +54,7 @@ func TestStorageLocker_ObtainTimesOutWhenHeld(t *testing.T) {
 	t.Parallel()
 
 	locker, _ := setupTestLocker(t, true)
-	lockKey := redis_utils.GetLockKey(getSandboxKey(uuid.NewString(), "lock-timeout"))
+	lockKey := redis_utils.GetLockKey(getSandboxKey(uuid.Must(uuid.NewV7()).String(), "lock-timeout"))
 
 	lock, err := locker.Obtain(t.Context(), lockKey, testLockTimeout)
 	require.NoError(t, err)
@@ -73,7 +73,7 @@ func TestStorageLocker_ObtainUsesProvidedContext(t *testing.T) {
 	t.Parallel()
 
 	locker, subManager := setupTestLocker(t, true)
-	lockKey := redis_utils.GetLockKey(getSandboxKey(uuid.NewString(), "lock-parent-deadline"))
+	lockKey := redis_utils.GetLockKey(getSandboxKey(uuid.Must(uuid.NewV7()).String(), "lock-parent-deadline"))
 	routingKey := getLockRoutingKey(lockKey)
 
 	lock, err := locker.Obtain(t.Context(), lockKey, testLockTimeout)
@@ -101,7 +101,7 @@ func TestStorageLocker_ObtainReturnsContextCancellation(t *testing.T) {
 	t.Parallel()
 
 	locker, _ := setupTestLocker(t, true)
-	lockKey := redis_utils.GetLockKey(getSandboxKey(uuid.NewString(), "lock-context-cancel"))
+	lockKey := redis_utils.GetLockKey(getSandboxKey(uuid.Must(uuid.NewV7()).String(), "lock-context-cancel"))
 
 	lock, err := locker.Obtain(t.Context(), lockKey, testLockTimeout)
 	require.NoError(t, err)
@@ -123,7 +123,7 @@ func TestStorageLocker_ObtainFallsBackWhenNotificationMissed(t *testing.T) {
 	// notification and verifies the exponential fallback still makes progress.
 	locker, subManager := setupTestLocker(t, false)
 
-	lockKey := redis_utils.GetLockKey(getSandboxKey(uuid.NewString(), "lock-fallback"))
+	lockKey := redis_utils.GetLockKey(getSandboxKey(uuid.Must(uuid.NewV7()).String(), "lock-fallback"))
 	routingKey := getLockRoutingKey(lockKey)
 
 	lock, err := locker.Obtain(t.Context(), lockKey, testLockTimeout)
@@ -150,7 +150,7 @@ func TestStorageLock_ReleaseUsesProvidedContext(t *testing.T) {
 	t.Parallel()
 
 	locker, _ := setupTestLocker(t, false)
-	lockKey := redis_utils.GetLockKey(getSandboxKey(uuid.NewString(), "lock-canceled-release"))
+	lockKey := redis_utils.GetLockKey(getSandboxKey(uuid.Must(uuid.NewV7()).String(), "lock-canceled-release"))
 	routingKey := getLockRoutingKey(lockKey)
 
 	pubsub := locker.redisClient.Subscribe(t.Context(), globalStorageNotifyChannel)
@@ -173,7 +173,7 @@ func TestStorageLock_ReleaseReturnsErrorWhenLockAlreadyReleased(t *testing.T) {
 	t.Parallel()
 
 	locker, _ := setupTestLocker(t, true)
-	lockKey := redis_utils.GetLockKey(getSandboxKey(uuid.NewString(), "lock-double-release"))
+	lockKey := redis_utils.GetLockKey(getSandboxKey(uuid.Must(uuid.NewV7()).String(), "lock-double-release"))
 
 	lock, err := locker.Obtain(t.Context(), lockKey, testLockTimeout)
 	require.NoError(t, err)
@@ -185,7 +185,7 @@ func TestStorageLocker_IgnoresUnrelatedNotification(t *testing.T) {
 	t.Parallel()
 
 	locker, subManager := setupTestLocker(t, true)
-	lockKey := redis_utils.GetLockKey(getSandboxKey(uuid.NewString(), "lock-unrelated-notification"))
+	lockKey := redis_utils.GetLockKey(getSandboxKey(uuid.Must(uuid.NewV7()).String(), "lock-unrelated-notification"))
 	routingKey := getLockRoutingKey(lockKey)
 
 	lock, err := locker.Obtain(t.Context(), lockKey, testLockTimeout)

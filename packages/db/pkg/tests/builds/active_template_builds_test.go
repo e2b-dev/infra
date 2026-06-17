@@ -22,7 +22,7 @@ func TestGetInProgressTemplateBuildsByTeam_ExcludesSameTemplateWithOverlappingTa
 	otherTemplateID := testutils.CreateTestTemplate(t, db, teamID)
 
 	err := db.SqlcClient.CreateActiveTemplateBuild(ctx, queries.CreateActiveTemplateBuildParams{
-		BuildID:    uuid.New(),
+		BuildID:    uuid.Must(uuid.NewV7()),
 		TeamID:     teamID,
 		TemplateID: templateID,
 		Tags:       []string{"latest", "prod"},
@@ -30,7 +30,7 @@ func TestGetInProgressTemplateBuildsByTeam_ExcludesSameTemplateWithOverlappingTa
 	require.NoError(t, err)
 
 	err = db.SqlcClient.CreateActiveTemplateBuild(ctx, queries.CreateActiveTemplateBuildParams{
-		BuildID:    uuid.New(),
+		BuildID:    uuid.Must(uuid.NewV7()),
 		TeamID:     teamID,
 		TemplateID: templateID,
 		Tags:       []string{"staging"},
@@ -38,7 +38,7 @@ func TestGetInProgressTemplateBuildsByTeam_ExcludesSameTemplateWithOverlappingTa
 	require.NoError(t, err)
 
 	err = db.SqlcClient.CreateActiveTemplateBuild(ctx, queries.CreateActiveTemplateBuildParams{
-		BuildID:    uuid.New(),
+		BuildID:    uuid.Must(uuid.NewV7()),
 		TeamID:     teamID,
 		TemplateID: otherTemplateID,
 		Tags:       []string{"latest"},
@@ -63,7 +63,7 @@ func TestGetInProgressTemplateBuildsByTeam_IgnoresRowsOlderThanDay(t *testing.T)
 
 	teamID := testutils.CreateTestTeam(t, db)
 	templateID := testutils.CreateTestTemplate(t, db, teamID)
-	buildID := uuid.New()
+	buildID := uuid.Must(uuid.NewV7())
 
 	err := db.SqlcClient.CreateActiveTemplateBuild(ctx, queries.CreateActiveTemplateBuildParams{
 		BuildID:    buildID,
@@ -99,7 +99,7 @@ func TestDeleteActiveTemplateBuild_RemovesActiveBuild(t *testing.T) {
 
 	teamID := testutils.CreateTestTeam(t, db)
 	templateID := testutils.CreateTestTemplate(t, db, teamID)
-	buildID := uuid.New()
+	buildID := uuid.Must(uuid.NewV7())
 
 	err := db.SqlcClient.CreateActiveTemplateBuild(ctx, queries.CreateActiveTemplateBuildParams{
 		BuildID:    buildID,

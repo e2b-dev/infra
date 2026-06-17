@@ -38,7 +38,7 @@ func generateVolumeContentToken(config cfg.VolumesTokenConfig, volume queries.Vo
 		"exp": jwt.NewNumericDate(expiration),
 		"iat": jwt.NewNumericDate(now),
 		"iss": config.Issuer,
-		"jti": uuid.NewString(),
+		"jti": uuid.Must(uuid.NewV7()).String(),
 		"nbf": jwt.NewNumericDate(now),
 		"sub": team.ID.String(),
 

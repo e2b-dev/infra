@@ -145,7 +145,7 @@ func TestGetTemplates_DefaultGatingByCluster(t *testing.T) {
 	}
 
 	// Dedicated cluster -> defaults are omitted.
-	clusterID := uuid.New()
+	clusterID := uuid.Must(uuid.NewV7())
 	_, clusterResp := callGetTemplates(t, store, teamInfo(teamID, &clusterID), api.GetTemplatesParams{})
 	clusterIDs := templateIDSet(clusterResp)
 	assert.True(t, clusterIDs[owned], "team-owned template should still be listed on a cluster")

@@ -10,8 +10,8 @@ import (
 
 var (
 	ignoreID = uuid.Nil
-	baseID   = uuid.New()
-	diffID   = uuid.New()
+	baseID   = uuid.Must(uuid.NewV7())
+	diffID   = uuid.Must(uuid.NewV7())
 )
 
 var blockSize = uint64(2 << 20)
@@ -325,9 +325,9 @@ func TestNormalizeMappingsSingleMapping(t *testing.T) {
 
 func TestNormalizeMappingsNoAdjacentSameBuildId(t *testing.T) {
 	t.Parallel()
-	id1 := uuid.New()
-	id2 := uuid.New()
-	id3 := uuid.New()
+	id1 := uuid.Must(uuid.NewV7())
+	id2 := uuid.Must(uuid.NewV7())
+	id3 := uuid.Must(uuid.NewV7())
 
 	input := []BuildMap{
 		{
@@ -433,8 +433,8 @@ func TestNormalizeMappingsAllSameBuildId(t *testing.T) {
 
 func TestNormalizeMappingsMultipleGroupsSameBuildId(t *testing.T) {
 	t.Parallel()
-	id1 := uuid.New()
-	id2 := uuid.New()
+	id1 := uuid.Must(uuid.NewV7())
+	id2 := uuid.Must(uuid.NewV7())
 
 	input := []BuildMap{
 		{
@@ -479,8 +479,8 @@ func TestNormalizeMappingsMultipleGroupsSameBuildId(t *testing.T) {
 
 func TestNormalizeMappingsAlternatingBuildIds(t *testing.T) {
 	t.Parallel()
-	id1 := uuid.New()
-	id2 := uuid.New()
+	id1 := uuid.Must(uuid.NewV7())
+	id2 := uuid.Must(uuid.NewV7())
 
 	input := []BuildMap{
 		{
@@ -559,9 +559,9 @@ func TestNormalizeMappingsThreeConsecutiveSameBuildId(t *testing.T) {
 
 func TestNormalizeMappingsMixedPattern(t *testing.T) {
 	t.Parallel()
-	id1 := uuid.New()
-	id2 := uuid.New()
-	id3 := uuid.New()
+	id1 := uuid.Must(uuid.NewV7())
+	id2 := uuid.Must(uuid.NewV7())
+	id3 := uuid.Must(uuid.NewV7())
 
 	input := []BuildMap{
 		{
@@ -715,9 +715,9 @@ func TestNormalizeMappingsDoesNotModifyInput(t *testing.T) {
 func TestMergeMappings_Splits(t *testing.T) {
 	t.Parallel()
 
-	compBaseID := uuid.New()
-	compDiffID := uuid.New()
-	plainID := uuid.New()
+	compBaseID := uuid.Must(uuid.NewV7())
+	compDiffID := uuid.Must(uuid.NewV7())
+	plainID := uuid.Must(uuid.NewV7())
 
 	tests := map[string]struct {
 		base     []BuildMap
@@ -829,9 +829,9 @@ func TestMergeMappings_Splits(t *testing.T) {
 
 		"multi-layer base — diff splits middle build": {
 			base: func() []BuildMap {
-				buildA := uuid.New()
+				buildA := uuid.Must(uuid.NewV7())
 				buildB := compBaseID
-				buildC := uuid.New()
+				buildC := uuid.Must(uuid.NewV7())
 
 				return []BuildMap{
 					{

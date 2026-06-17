@@ -30,8 +30,8 @@ func setupTestService(t *testing.T) (*Service, string, *orchestrator.VolumeInfo)
 	}
 
 	tmpDir := t.TempDir()
-	teamID := uuid.New()
-	volumeID := uuid.New()
+	teamID := uuid.Must(uuid.NewV7())
+	volumeID := uuid.Must(uuid.NewV7())
 
 	config := cfg.Config{
 		PersistentVolumeMounts: map[string]string{

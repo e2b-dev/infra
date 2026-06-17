@@ -26,8 +26,8 @@ func TestGetLastSnapshot_ReturnsLatestAssignment(t *testing.T) {
 	baseTemplateID := testutils.CreateTestTemplate(t, db, teamID)
 
 	// Create first snapshot (creates template, build, and assignment)
-	sandboxID := "sandbox-" + uuid.New().String()
-	snapshotTemplateID := "snapshot-template-" + uuid.New().String()
+	sandboxID := "sandbox-" + uuid.Must(uuid.NewV7()).String()
+	snapshotTemplateID := "snapshot-template-" + uuid.Must(uuid.NewV7()).String()
 
 	result1 := testutils.UpsertTestSnapshot(t, ctx, db, snapshotTemplateID, sandboxID, teamID, baseTemplateID)
 	build1ID := result1.BuildID
@@ -61,8 +61,8 @@ func TestGetLastSnapshot_OnlyReturnsSuccessBuilds(t *testing.T) {
 	teamID := testutils.CreateTestTeam(t, db)
 	baseTemplateID := testutils.CreateTestTemplate(t, db, teamID)
 
-	sandboxID := "sandbox-" + uuid.New().String()
-	snapshotTemplateID := "snapshot-template-" + uuid.New().String()
+	sandboxID := "sandbox-" + uuid.Must(uuid.NewV7()).String()
+	snapshotTemplateID := "snapshot-template-" + uuid.Must(uuid.NewV7()).String()
 
 	// Create first snapshot with success status
 	result1 := testutils.UpsertTestSnapshot(t, ctx, db, snapshotTemplateID, sandboxID, teamID, baseTemplateID)
@@ -92,8 +92,8 @@ func TestGetSnapshotsWithCursor_ReturnsLatestAssignment(t *testing.T) {
 	teamID := testutils.CreateTestTeam(t, db)
 	baseTemplateID := testutils.CreateTestTemplate(t, db, teamID)
 
-	sandboxID := "sandbox-" + uuid.New().String()
-	snapshotTemplateID := "snapshot-template-" + uuid.New().String()
+	sandboxID := "sandbox-" + uuid.Must(uuid.NewV7()).String()
+	snapshotTemplateID := "snapshot-template-" + uuid.Must(uuid.NewV7()).String()
 
 	// Create first snapshot
 	testutils.UpsertTestSnapshot(t, ctx, db, snapshotTemplateID, sandboxID, teamID, baseTemplateID)
@@ -131,8 +131,8 @@ func TestGetLastSnapshot_BuildSharedWithOtherTemplate(t *testing.T) {
 	baseTemplateID := testutils.CreateTestTemplate(t, db, teamID)
 
 	// Create snapshot with first build
-	sandboxID := "sandbox-" + uuid.New().String()
-	snapshotTemplateID := "snapshot-template-" + uuid.New().String()
+	sandboxID := "sandbox-" + uuid.Must(uuid.NewV7()).String()
+	snapshotTemplateID := "snapshot-template-" + uuid.Must(uuid.NewV7()).String()
 	result1 := testutils.UpsertTestSnapshot(t, ctx, db, snapshotTemplateID, sandboxID, teamID, baseTemplateID)
 	build1ID := result1.BuildID
 
@@ -168,8 +168,8 @@ func TestGetLastSnapshot_IgnoresNonDefaultTags(t *testing.T) {
 	baseTemplateID := testutils.CreateTestTemplate(t, db, teamID)
 
 	// Create snapshot (creates build with 'default' tag)
-	sandboxID := "sandbox-" + uuid.New().String()
-	snapshotTemplateID := "snapshot-template-" + uuid.New().String()
+	sandboxID := "sandbox-" + uuid.Must(uuid.NewV7()).String()
+	snapshotTemplateID := "snapshot-template-" + uuid.Must(uuid.NewV7()).String()
 	result1 := testutils.UpsertTestSnapshot(t, ctx, db, snapshotTemplateID, sandboxID, teamID, baseTemplateID)
 	defaultBuildID := result1.BuildID
 
@@ -215,7 +215,7 @@ func TestGetLastSnapshot_AssignmentOrderDifferentFromBuildOrder(t *testing.T) {
 	testutils.CreateTestBuildAssignment(t, ctx, db, snapshotTemplateID, build1ID, "default")
 
 	// Create snapshot record
-	sandboxID := "sandbox-" + uuid.New().String()
+	sandboxID := "sandbox-" + uuid.Must(uuid.NewV7()).String()
 	testutils.CreateSnapshotRecord(t, ctx, db, snapshotTemplateID, sandboxID, teamID, baseTemplateID)
 
 	// GetLastSnapshot should return build1 (latest assignment), not build2 (latest build)

@@ -61,7 +61,7 @@ func TestDeleteAccessToken(t *testing.T) {
 
 	t.Run("id does not exist", func(t *testing.T) {
 		t.Parallel()
-		respD, err := c.DeleteAccessTokensAccessTokenIDWithResponse(ctx, uuid.New().String(), setup.WithSupabaseToken(t))
+		respD, err := c.DeleteAccessTokensAccessTokenIDWithResponse(ctx, uuid.Must(uuid.NewV7()).String(), setup.WithSupabaseToken(t))
 		if err != nil {
 			t.Fatal(err)
 		}

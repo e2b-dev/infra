@@ -67,7 +67,7 @@ func TemplateRootfs(ctx context.Context, buildID string) (*BuildDevice, *Cleaner
 		}
 	}
 
-	diffCacheDir := filepath.Join(os.TempDir(), fmt.Sprintf("%s-rootfs.diff.cache-%s", buildID, uuid.New().String()))
+	diffCacheDir := filepath.Join(os.TempDir(), fmt.Sprintf("%s-rootfs.diff.cache-%s", buildID, uuid.Must(uuid.NewV7()).String()))
 
 	err = os.MkdirAll(diffCacheDir, 0o755)
 	if err != nil {

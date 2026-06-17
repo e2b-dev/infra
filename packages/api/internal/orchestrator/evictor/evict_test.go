@@ -34,7 +34,7 @@ func TestEvictSandbox_ReasonByAction(t *testing.T) {
 
 		e.evictSandbox(context.Background(), sandbox.Sandbox{
 			SandboxID: "sbx",
-			TeamID:    uuid.New(),
+			TeamID:    uuid.Must(uuid.NewV7()),
 			AutoPause: autoPause,
 			EndTime:   time.Now(),
 		})

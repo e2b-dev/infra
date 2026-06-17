@@ -121,7 +121,7 @@ func (e *fetcherError) Error() string { return e.msg }
 func fixedSandboxID(t *testing.T) string {
 	t.Helper()
 
-	return "sbx-" + uuid.New().String()[:8]
+	return "sbx-" + uuid.Must(uuid.NewV7()).String()[28:]
 }
 
 func TestCreateSandbox_FreshCreate_FiresCallbackOnce(t *testing.T) {
@@ -135,7 +135,7 @@ func TestCreateSandbox_FreshCreate_FiresCallbackOnce(t *testing.T) {
 	_, apiErr := o.CreateSandbox(
 		t.Context(),
 		sbxID,
-		uuid.New().String(),
+		uuid.Must(uuid.NewV7()).String(),
 		team,
 		successFetcher(),
 		now, now.Add(time.Hour), time.Hour,
@@ -163,7 +163,7 @@ func TestCreateSandbox_Resume_FiresCallbackOnceWithResumeFlag(t *testing.T) {
 	_, apiErr := o.CreateSandbox(
 		t.Context(),
 		sbxID,
-		uuid.New().String(),
+		uuid.Must(uuid.NewV7()).String(),
 		team,
 		successFetcher(),
 		now, now.Add(time.Hour), time.Hour,
@@ -214,7 +214,7 @@ func TestCreateSandbox_ConcurrentRace_LoserPathSkipsCallback(t *testing.T) {
 	wg.Go(func() {
 		_, winnerErr = o.CreateSandbox(
 			t.Context(),
-			sbxID, uuid.New().String(),
+			sbxID, uuid.Must(uuid.NewV7()).String(),
 			team, winnerFetcher,
 			now, now.Add(time.Hour), time.Hour,
 			false,
@@ -227,7 +227,7 @@ func TestCreateSandbox_ConcurrentRace_LoserPathSkipsCallback(t *testing.T) {
 	wg.Go(func() {
 		_, loserErr = o.CreateSandbox(
 			t.Context(),
-			sbxID, uuid.New().String(),
+			sbxID, uuid.Must(uuid.NewV7()).String(),
 			team, successFetcher(),
 			now, now.Add(time.Hour), time.Hour,
 			false,
@@ -285,7 +285,7 @@ func TestCreateSandbox_ManyConcurrentRacers_OnlyOneCallback(t *testing.T) {
 	wg.Go(func() {
 		_, apiErr := o.CreateSandbox(
 			t.Context(),
-			sbxID, uuid.New().String(),
+			sbxID, uuid.Must(uuid.NewV7()).String(),
 			team, fetcher,
 			now, now.Add(time.Hour), time.Hour,
 			false,
@@ -302,7 +302,7 @@ func TestCreateSandbox_ManyConcurrentRacers_OnlyOneCallback(t *testing.T) {
 		wg.Go(func() {
 			_, apiErr := o.CreateSandbox(
 				t.Context(),
-				sbxID, uuid.New().String(),
+				sbxID, uuid.Must(uuid.NewV7()).String(),
 				team, successFetcher(),
 				now, now.Add(time.Hour), time.Hour,
 				false,
@@ -338,7 +338,7 @@ func TestCreateSandbox_SequentialDuplicate_SecondCallSkipsCallback(t *testing.T)
 
 	_, apiErr := o.CreateSandbox(
 		t.Context(),
-		sbxID, uuid.New().String(),
+		sbxID, uuid.Must(uuid.NewV7()).String(),
 		team, successFetcher(),
 		now, now.Add(time.Hour), time.Hour,
 		false,
@@ -349,7 +349,7 @@ func TestCreateSandbox_SequentialDuplicate_SecondCallSkipsCallback(t *testing.T)
 
 	_, apiErr = o.CreateSandbox(
 		t.Context(),
-		sbxID, uuid.New().String(),
+		sbxID, uuid.Must(uuid.NewV7()).String(),
 		team, successFetcher(),
 		now, now.Add(time.Hour), time.Hour,
 		false,
@@ -370,7 +370,7 @@ func TestCreateSandbox_FetcherError_NoCallback(t *testing.T) {
 
 	_, apiErr := o.CreateSandbox(
 		t.Context(),
-		fixedSandboxID(t), uuid.New().String(),
+		fixedSandboxID(t), uuid.Must(uuid.NewV7()).String(),
 		team,
 		failingFetcher(http.StatusInternalServerError, "synthetic-fetcher-failure"),
 		now, now.Add(time.Hour), time.Hour,
@@ -394,7 +394,7 @@ func TestCreateSandbox_QuotaExceeded_NoCallback(t *testing.T) {
 
 	_, apiErr := o.CreateSandbox(
 		t.Context(),
-		fixedSandboxID(t), uuid.New().String(),
+		fixedSandboxID(t), uuid.Must(uuid.NewV7()).String(),
 		team, successFetcher(),
 		now, now.Add(time.Hour), time.Hour,
 		false,
@@ -405,7 +405,7 @@ func TestCreateSandbox_QuotaExceeded_NoCallback(t *testing.T) {
 
 	_, apiErr = o.CreateSandbox(
 		t.Context(),
-		fixedSandboxID(t), uuid.New().String(),
+		fixedSandboxID(t), uuid.Must(uuid.NewV7()).String(),
 		team, successFetcher(),
 		now, now.Add(time.Hour), time.Hour,
 		false,
@@ -424,11 +424,11 @@ func TestStoreReconcile_DoesNotFireCallback(t *testing.T) {
 	o, ec := newOrchestratorWithCounter(t)
 
 	sbx := sandbox.Sandbox{
-		SandboxID:         "reconcile-test-" + uuid.New().String()[:8],
+		SandboxID:         "reconcile-test-" + uuid.Must(uuid.NewV7()).String()[28:],
 		TemplateID:        "tpl-test",
 		BaseTemplateID:    "base-tpl",
-		TeamID:            uuid.New(),
-		BuildID:           uuid.New(),
+		TeamID:            uuid.Must(uuid.NewV7()),
+		BuildID:           uuid.Must(uuid.NewV7()),
 		StartTime:         time.Now(),
 		EndTime:           time.Now().Add(time.Hour),
 		MaxInstanceLength: time.Hour,

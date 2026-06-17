@@ -18,7 +18,7 @@ func TestVerifier_Verify(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	userID := uuid.New()
+	userID := uuid.Must(uuid.NewV7())
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub": userID.String(),
 		"exp": time.Now().Add(time.Hour).Unix(),

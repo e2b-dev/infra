@@ -21,7 +21,7 @@ func TestRouteNodeIPAddress(t *testing.T) {
 	}{
 		{
 			name:  "uses node ip when present",
-			node:  &nodemanager.Node{ClusterID: uuid.New(), IPAddress: "10.0.0.1"},
+			node:  &nodemanager.Node{ClusterID: uuid.Must(uuid.NewV7()), IPAddress: "10.0.0.1"},
 			local: false,
 			want:  "10.0.0.1",
 		},
@@ -39,7 +39,7 @@ func TestRouteNodeIPAddress(t *testing.T) {
 		},
 		{
 			name:  "remote cluster stays empty",
-			node:  &nodemanager.Node{ClusterID: uuid.New()},
+			node:  &nodemanager.Node{ClusterID: uuid.Must(uuid.NewV7())},
 			local: true,
 			want:  "",
 		},

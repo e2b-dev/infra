@@ -31,7 +31,7 @@ func testBuild() queries.EnvBuild {
 	envdVer := "0.1.0"
 
 	return queries.EnvBuild{
-		ID:                 uuid.New(),
+		ID:                 uuid.Must(uuid.NewV7()),
 		Vcpu:               2,
 		RamMb:              512,
 		TotalDiskSizeMb:    &diskSize,
@@ -88,7 +88,7 @@ func newCreateSandboxTestOrchestrator(t *testing.T) (*Orchestrator, *nodemanager
 func testTeam() *teamtypes.Team {
 	return &teamtypes.Team{
 		Team: &authqueries.Team{
-			ID:   uuid.New(),
+			ID:   uuid.Must(uuid.NewV7()),
 			Name: "test-team",
 		},
 		Limits: &teamtypes.TeamLimits{
@@ -112,7 +112,7 @@ func TestCreateSandbox_StaleDataAfterConcurrentPause(t *testing.T) {
 
 		o, _ := newCreateSandboxTestOrchestrator(t)
 		team := testTeam()
-		sandboxID := "sbx-race-" + uuid.New().String()[:8]
+		sandboxID := "sbx-race-" + uuid.Must(uuid.NewV7()).String()[28:]
 		build := testBuild()
 		now := time.Now()
 
@@ -144,7 +144,7 @@ func TestCreateSandbox_StaleDataAfterConcurrentPause(t *testing.T) {
 		sbx1, apiErr := o.CreateSandbox(
 			t.Context(),
 			sandboxID,
-			uuid.New().String(),
+			uuid.Must(uuid.NewV7()).String(),
 			team,
 			makeFetcher(),
 			now,
@@ -168,7 +168,7 @@ func TestCreateSandbox_StaleDataAfterConcurrentPause(t *testing.T) {
 		sbx2, apiErr := o.CreateSandbox(
 			t.Context(),
 			sandboxID,
-			uuid.New().String(),
+			uuid.Must(uuid.NewV7()).String(),
 			team,
 			makeFetcher(),
 			now,

@@ -140,7 +140,7 @@ func TestPostAdminTeamsTeamIDApiKeysRejectsMissingTeam(t *testing.T) {
 	t.Parallel()
 
 	testDB := testutils.SetupDatabase(t)
-	teamID := uuid.New()
+	teamID := uuid.Must(uuid.NewV7())
 
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
@@ -164,7 +164,7 @@ func TestPostAdminTeamsTeamIDApiKeysRejectsNilTeam(t *testing.T) {
 	t.Parallel()
 
 	testDB := testutils.SetupDatabase(t)
-	teamID := uuid.New()
+	teamID := uuid.Must(uuid.NewV7())
 
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
@@ -236,7 +236,7 @@ func TestDeleteAdminTeamsTeamIDApiKeysRejectsMissingKey(t *testing.T) {
 	store := &APIStore{authDB: testDB.AuthDB}
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
-	missingKeyID := uuid.New()
+	missingKeyID := uuid.Must(uuid.NewV7())
 	ctx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodDelete, "/admin/teams/"+teamID.String()+"/api-keys/"+missingKeyID.String(), nil)
 
 	store.DeleteAdminTeamsTeamIDApiKeysApiKeyID(ctx, teamID, missingKeyID.String())

@@ -285,7 +285,7 @@ func run() int {
 	flag.IntVar(&port, "port", defaultPort, "Port for test HTTP server")
 	flag.Parse()
 
-	serviceInstanceID := uuid.New().String()
+	serviceInstanceID := uuid.Must(uuid.NewV7()).String()
 	nodeID := env.GetNodeID()
 
 	tel, err := telemetry.New(ctx, nodeID, serviceName, commitSHA, serviceVersion, serviceInstanceID)

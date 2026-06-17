@@ -21,7 +21,7 @@ func TestProfileFromAuthUserNamePrecedence(t *testing.T) {
 		{
 			name: "first and last name",
 			user: supabasequeries.AuthUser{
-				ID:              uuid.New(),
+				ID:              uuid.Must(uuid.NewV7()),
 				Email:           "fallback@example.com",
 				RawUserMetaData: []byte(`{"first_name":"ada","last_name":"lovelace","username":"fallback user"}`),
 			},
@@ -30,7 +30,7 @@ func TestProfileFromAuthUserNamePrecedence(t *testing.T) {
 		{
 			name: "full name fallback",
 			user: supabasequeries.AuthUser{
-				ID:              uuid.New(),
+				ID:              uuid.Must(uuid.NewV7()),
 				Email:           "fallback@example.com",
 				RawUserMetaData: []byte(`{"full_name":"grace hopper"}`),
 			},
@@ -39,7 +39,7 @@ func TestProfileFromAuthUserNamePrecedence(t *testing.T) {
 		{
 			name: "username is not profile name",
 			user: supabasequeries.AuthUser{
-				ID:              uuid.New(),
+				ID:              uuid.Must(uuid.NewV7()),
 				Email:           "fallback@example.com",
 				RawUserMetaData: []byte(`{"username":"john doe"}`),
 			},
@@ -63,7 +63,7 @@ func TestProfileFromAuthUserProviders(t *testing.T) {
 	t.Parallel()
 
 	user := supabasequeries.AuthUser{
-		ID:             uuid.New(),
+		ID:             uuid.Must(uuid.NewV7()),
 		Email:          "ada@example.com",
 		RawAppMetaData: []byte(`{"providers":["github"," email ","GOOGLE","apple","github"],"provider":"google"}`),
 	}

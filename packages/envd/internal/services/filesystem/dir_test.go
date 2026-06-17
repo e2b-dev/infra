@@ -131,7 +131,7 @@ func TestListDirRelativePath(t *testing.T) {
 	require.NoError(t, err)
 
 	// Setup directory structure
-	testRelativePath := fmt.Sprintf("test-%s", uuid.New())
+	testRelativePath := fmt.Sprintf("test-%s", uuid.Must(uuid.NewV7()))
 	testFolderPath := filepath.Join(u.HomeDir, testRelativePath)
 	filePath := filepath.Join(testFolderPath, "file.txt")
 	require.NoError(t, os.MkdirAll(testFolderPath, 0o755))

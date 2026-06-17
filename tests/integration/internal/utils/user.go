@@ -17,7 +17,7 @@ import (
 func CreateUser(t *testing.T, db *setup.Database) uuid.UUID {
 	t.Helper()
 
-	userID := uuid.New()
+	userID := uuid.Must(uuid.NewV7())
 
 	err := db.AuthDb.TestsRawSQL(t.Context(), `
 INSERT INTO auth.users (id, email)
@@ -54,7 +54,7 @@ func CreateAccessToken(t *testing.T, db *setup.Database, userID uuid.UUID) strin
 	require.NoError(t, err)
 
 	_, err = db.AuthDb.Write.CreateAccessToken(t.Context(), authqueries.CreateAccessTokenParams{
-		ID:                    uuid.New(),
+		ID:                    uuid.Must(uuid.NewV7()),
 		UserID:                userID,
 		AccessTokenHash:       accessTokenHash,
 		AccessTokenPrefix:     accessTokenMask.Prefix,

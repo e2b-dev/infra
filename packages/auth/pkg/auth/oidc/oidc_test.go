@@ -43,7 +43,7 @@ func TestVerifier_Verify(t *testing.T) {
 	const keyID = "test-key"
 	server := NewTestServer(t, &privateKey.PublicKey, keyID, testIssuerURL)
 
-	internalUserID := uuid.New()
+	internalUserID := uuid.Must(uuid.NewV7())
 	lookup := &stubIdentityLookup{userID: internalUserID}
 
 	verifier, err := NewVerifier(t.Context(), Config{
@@ -160,7 +160,7 @@ func TestVerifier_RejectsWrongAudience(t *testing.T) {
 	const keyID = "test-key"
 	server := NewTestServer(t, &privateKey.PublicKey, keyID, testIssuerURL)
 
-	lookup := &stubIdentityLookup{userID: uuid.New()}
+	lookup := &stubIdentityLookup{userID: uuid.Must(uuid.NewV7())}
 	verifier, err := NewVerifier(t.Context(), Config{
 		Issuer: Issuer{
 			URL:          testIssuerURL,
@@ -173,7 +173,7 @@ func TestVerifier_RejectsWrongAudience(t *testing.T) {
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
 		"iss": testIssuerURL,
 		"aud": "other-audience",
-		"sub": uuid.NewString(),
+		"sub": uuid.Must(uuid.NewV7()).String(),
 		"exp": time.Now().Add(time.Hour).Unix(),
 	})
 	token.Header["kid"] = keyID

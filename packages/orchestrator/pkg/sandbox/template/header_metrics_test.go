@@ -29,8 +29,8 @@ func TestMaxEntriesPerBlock(t *testing.T) {
 		page  = uint64(header.PageSize)
 		block = uint64(header.HugepageSize)
 	)
-	buildA := uuid.New()
-	buildB := uuid.New()
+	buildA := uuid.Must(uuid.NewV7())
+	buildB := uuid.Must(uuid.NewV7())
 
 	tests := []struct {
 		name string

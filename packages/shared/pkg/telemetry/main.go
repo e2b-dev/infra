@@ -107,7 +107,7 @@ func NewAnonymous(ctx context.Context, serviceName string) (*Client, error) {
 		nodeID = "unknown"
 	}
 
-	return New(ctx, nodeID, serviceName, "unknown", "dev", uuid.NewString())
+	return New(ctx, nodeID, serviceName, "unknown", "dev", uuid.Must(uuid.NewV7()).String())
 }
 
 func (t *Client) Shutdown(ctx context.Context) error {

@@ -18,8 +18,8 @@ import (
 func createTestSnapshot(t *testing.T, db *testutils.Database, teamID uuid.UUID, baseEnvID string) (string, string, uuid.UUID) {
 	t.Helper()
 
-	sandboxID := "sandbox-" + uuid.New().String()
-	envID := "env-" + uuid.New().String()
+	sandboxID := "sandbox-" + uuid.Must(uuid.NewV7()).String()
+	envID := "env-" + uuid.Must(uuid.NewV7()).String()
 	kernelVersion := "6.1.0"
 	firecrackerVersion := "1.4.0"
 	envdVersion := "v1.0.0"
@@ -71,7 +71,7 @@ func createTestSnapshot(t *testing.T, db *testutils.Database, teamID uuid.UUID, 
 func createTestEnvBuild(t *testing.T, db *testutils.Database, envID string) uuid.UUID {
 	t.Helper()
 
-	buildID := uuid.New()
+	buildID := uuid.Must(uuid.NewV7())
 	vcpu := int32(2)
 	ramMb := int32(2048)
 	freeDisk := int64(512)

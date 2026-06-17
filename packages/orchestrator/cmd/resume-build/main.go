@@ -182,7 +182,7 @@ func main() {
 	// Generate new build ID if not specified and pause mode is enabled
 	outputBuildID := *toBuild
 	if isPauseMode && outputBuildID == "" {
-		outputBuildID = uuid.New().String()
+		outputBuildID = uuid.Must(uuid.NewV7()).String()
 	}
 
 	if err := setupEnv(*storagePath, *sandboxDir); err != nil {
@@ -787,7 +787,7 @@ func (r *runner) pauseBenchmark(ctx context.Context, opts pauseOptions) error {
 
 		// Generate unique build ID for each iteration (not saved)
 		iterOpts := opts
-		iterOpts.newBuildID = uuid.New().String()
+		iterOpts.newBuildID = uuid.Must(uuid.NewV7()).String()
 
 		fmt.Printf("\r[%d/%d] Running...    ", i+1, opts.iterations)
 		timings, _ := r.pauseOnce(ctx, iterOpts, false)

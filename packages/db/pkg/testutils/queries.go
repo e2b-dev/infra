@@ -19,9 +19,9 @@ import (
 // Uses the default tier 'base_v1' that is created in migrations.
 func CreateTestTeam(t *testing.T, db *Database) uuid.UUID {
 	t.Helper()
-	teamID := uuid.New()
-	// Generate a unique slug from the team ID (first 8 chars)
-	slug := "test-team-" + teamID.String()[:8]
+	teamID := uuid.Must(uuid.NewV7())
+	// Generate a unique slug from the team ID random suffix.
+	slug := "test-team-" + teamID.String()[28:]
 
 	err := db.TestQueries.InsertTestTeam(t.Context(), testqueries.InsertTestTeamParams{
 		ID:    teamID,
@@ -39,7 +39,7 @@ func CreateTestTeam(t *testing.T, db *Database) uuid.UUID {
 // (required by foreign key constraints in subsequent test inserts).
 func CreateTestTemplate(t *testing.T, db *Database, teamID uuid.UUID) string {
 	t.Helper()
-	envID := "base-env-" + uuid.New().String()
+	envID := "base-env-" + uuid.Must(uuid.NewV7()).String()
 
 	err := db.TestQueries.InsertTestEnv(t.Context(), testqueries.InsertTestEnvParams{
 		ID:     envID,
@@ -54,7 +54,7 @@ func CreateTestTemplate(t *testing.T, db *Database, teamID uuid.UUID) string {
 
 func CreateTestTemplateAlias(t *testing.T, db *Database, templateID string) string {
 	t.Helper()
-	alias := "alias-" + uuid.New().String()
+	alias := "alias-" + uuid.Must(uuid.NewV7()).String()
 
 	// Insert alias without namespace (legacy behavior / promoted templates)
 	err := db.SqlcClient.TestsRawSQL(t.Context(),
@@ -69,7 +69,7 @@ func CreateTestTemplateAlias(t *testing.T, db *Database, templateID string) stri
 // CreateTestTemplateAliasWithNamespace creates an alias with a specific namespace
 func CreateTestTemplateAliasWithNamespace(t *testing.T, db *Database, templateID string, namespace *string) string {
 	t.Helper()
-	alias := "alias-" + uuid.New().String()
+	alias := "alias-" + uuid.Must(uuid.NewV7()).String()
 
 	err := db.SqlcClient.TestsRawSQL(t.Context(),
 		"INSERT INTO public.env_aliases (alias, env_id, is_renamable, namespace) VALUES ($1, $2, $3, $4)",
@@ -124,7 +124,7 @@ func CreateTestTemplateWithAlias(t *testing.T, db *Database, teamID uuid.UUID) (
 // CreateTestBuild creates a build for a template with the given status
 func CreateTestBuild(t *testing.T, ctx context.Context, db *Database, templateID string, status string) uuid.UUID {
 	t.Helper()
-	buildID := uuid.New()
+	buildID := uuid.Must(uuid.NewV7())
 
 	err := db.SqlcClient.TestsRawSQL(ctx,
 		`INSERT INTO public.env_builds 

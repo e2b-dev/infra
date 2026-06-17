@@ -51,7 +51,7 @@ func TestCacheDedup_FetchRunBudgetPromotesSmallParentRun(t *testing.T) {
 func TestDedupPlanPromoteCheapFrames(t *testing.T) {
 	t.Parallel()
 
-	buildA, buildB := uuid.New(), uuid.New()
+	buildA, buildB := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	newPlan := func() *dedupPlan { return &dedupPlan{pageDirty: roaring.New(), pageEmpty: roaring.New()} }
 
 	t.Run("frames at or under the price threshold", func(t *testing.T) {
@@ -173,7 +173,7 @@ func TestCacheDedup_ExternallyReferencedFrameNotPromoted(t *testing.T) {
 	copy(srcData, baseData)
 	srcData[0] ^= 0xFF // page 0 differs; pages 1-3 match base
 
-	build := uuid.New()
+	build := uuid.Must(uuid.NewV7())
 	hdr, err := header.NewHeader(
 		header.NewTemplateMetadata(build, uint64(blockSize), uint64(size)),
 		nil,
@@ -199,7 +199,7 @@ func TestCacheDedup_ExternallyReferencedFrameNotPromoted(t *testing.T) {
 func TestParentFetchKey_UsesBuildFrameTable(t *testing.T) {
 	t.Parallel()
 
-	build := uuid.New()
+	build := uuid.Must(uuid.NewV7())
 	frameU := int32(1 << 20) // 1 MiB frames, half the default window
 	ft := storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{
 		{U: frameU, C: 100}, {U: frameU, C: 100}, {U: frameU, C: 100},
@@ -221,7 +221,7 @@ func TestParentFetchKey_UsesBuildFrameTable(t *testing.T) {
 	require.NotEqual(t, key(uint64(frameU)), key(uint64(2*frameU)))
 
 	// Builds without frame data fall back to configured-window bucketing.
-	other := uuid.New()
+	other := uuid.Must(uuid.NewV7())
 	fallback := func(storageOff uint64) dedupFetchKey {
 		return parentFetchKey(hdr, header.BuildMap{BuildId: other, Offset: storageOff}, true, 0, windowBytes)
 	}
@@ -240,7 +240,7 @@ func TestFetchWindowerCompact(t *testing.T) {
 	t.Parallel()
 
 	current := dedupPageInfo{kind: dedupPageCurrent}
-	buildA, buildB, buildC := uuid.New(), uuid.New(), uuid.New()
+	buildA, buildB, buildC := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 
 	t.Run("zero-benefit promotion is not committed", func(t *testing.T) {
 		t.Parallel()

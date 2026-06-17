@@ -105,7 +105,7 @@ func TestGetOrConnectNode_CacheHit(t *testing.T) {
 
 	o := newTestOrchestrator(t, nil)
 
-	clusterID := uuid.New()
+	clusterID := uuid.Must(uuid.NewV7())
 	testNode := nodemanager.NewTestNode("node-1", api.NodeStatusReady, 3, 4)
 	testNode.ClusterID = clusterID
 	o.nodes.Insert(o.scopedNodeID(clusterID, "node-1"), testNode)
@@ -320,7 +320,7 @@ func TestRegisterNode_NoDuplicates(t *testing.T) {
 
 	o := newTestOrchestrator(t, nil)
 
-	clusterID := uuid.New()
+	clusterID := uuid.Must(uuid.NewV7())
 	wg := sync.WaitGroup{}
 	for i := range 50 {
 		wg.Go(func() {

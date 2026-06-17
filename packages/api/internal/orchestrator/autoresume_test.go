@@ -44,13 +44,13 @@ func newTestAutoResumeOrchestrator(t *testing.T) *Orchestrator {
 func testSandboxForAutoResume(state sandbox.State) sandbox.Sandbox {
 	return sandbox.Sandbox{
 		SandboxID:         "test-sandbox",
-		TeamID:            uuid.New(),
+		TeamID:            uuid.Must(uuid.NewV7()),
 		StartTime:         time.Now(),
 		EndTime:           time.Now().Add(time.Hour),
 		MaxInstanceLength: time.Hour,
 		State:             state,
 		NodeID:            "node-1",
-		ClusterID:         uuid.New(),
+		ClusterID:         uuid.Must(uuid.NewV7()),
 	}
 }
 

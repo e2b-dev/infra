@@ -561,7 +561,7 @@ func TestFileIsCached_UninitializedChunkerReportsUncached(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	parentBuildID := uuid.New()
+	parentBuildID := uuid.Must(uuid.NewV7())
 	const size = 4096
 	hdr, err := header.NewHeader(
 		header.NewTemplateMetadata(parentBuildID, size, size),

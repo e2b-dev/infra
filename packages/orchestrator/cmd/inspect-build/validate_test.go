@@ -45,7 +45,7 @@ func TestIntersectsAny(t *testing.T) {
 func TestValidateFrameTable(t *testing.T) {
 	t.Parallel()
 
-	cur := uuid.New()
+	cur := uuid.Must(uuid.NewV7())
 	ft := storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{
 		{U: 2 * miB, C: 1},
 		{U: 2 * miB, C: 1},

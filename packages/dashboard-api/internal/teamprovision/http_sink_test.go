@@ -87,10 +87,10 @@ func TestHTTPProvisionSink_RetriesRequestTimeoutWithinOverallBudget(t *testing.T
 
 func testProvisionRequest() sharedteamprovision.TeamBillingProvisionRequestedV1 {
 	return sharedteamprovision.TeamBillingProvisionRequestedV1{
-		TeamID:        uuid.New(),
+		TeamID:        uuid.Must(uuid.NewV7()),
 		TeamName:      "Acme",
 		TeamEmail:     "acme@example.com",
-		CreatorUserID: uuid.New(),
+		CreatorUserID: uuid.Must(uuid.NewV7()),
 		Reason:        sharedteamprovision.ReasonAdditionalTeam,
 	}
 }

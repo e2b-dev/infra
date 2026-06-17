@@ -383,7 +383,7 @@ func (c *cachedSeekable) makeChunkFilename(offset int64) string {
 }
 
 func (c *cachedSeekable) makeTempFilename(path string) string {
-	return path + ".tmp." + uuid.NewString()
+	return path + ".tmp." + uuid.Must(uuid.NewV7()).String()
 }
 
 func (c *cachedSeekable) sizeFilename() string {
@@ -488,7 +488,7 @@ func (c *cachedSeekable) writeLocalSize(ctx context.Context, size int64) error {
 		}
 	}()
 
-	tempFilename := filepath.Join(c.path, fmt.Sprintf(".size.bin.%s", uuid.NewString()))
+	tempFilename := filepath.Join(c.path, fmt.Sprintf(".size.bin.%s", uuid.Must(uuid.NewV7()).String()))
 
 	if err := os.WriteFile(tempFilename, fmt.Appendf(nil, "%d", size), cacheFilePermissions); err != nil {
 		go safelyRemoveFile(ctx, tempFilename)
