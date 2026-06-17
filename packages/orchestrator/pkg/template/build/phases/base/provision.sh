@@ -112,15 +112,6 @@ echo "Disable slow boot units not needed in the sandbox"
 systemctl mask systemd-binfmt.service
 systemctl mask e2scrub_reap.service
 
-echo "Pre-packing CA certificates for fast boot"
-# Single contiguous file: seeding the /etc/ssl/certs tmpfs from one tar is one
-# sequential read instead of ~150 scattered small reads on the lazily-fetched
-# rootfs (see envd.service ExecStartPre). -h dereferences symlinks so the real
-# cert contents are packed: /etc/ssl/certs is mostly hash-named symlinks into
-# /usr/share/ca-certificates, which would otherwise still fault the rootfs.
-mkdir -p /usr/local/share/e2b
-tar -C /etc/ssl/certs -chf /usr/local/share/e2b/ssl-certs.tar .
-
 # Clean machine-id from Docker
 rm -rf /etc/machine-id
 

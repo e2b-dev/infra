@@ -22,12 +22,16 @@ User=root
 Group=root
 Environment=GOTRACEBACK=all
 LimitCORE=infinity
-# Seed the tmpfs from the tar packed at build time (one sequential read);
-# fall back to copying the cert dir, then to regenerating the bundle.
+# Seed the tmpfs from the tar packed as the build's last guest step — after all
+# build steps, start_cmd, and ready_cmd, with update-ca-certificates run first
+# (one sequential read); fall back to copying the cert dir, then to regenerating.
 #
-# Contract: seeding from the tar gives a complete ca-certificates.crt, so
-# update-ca-certificates is skipped (its scattered rootfs reads are the cost we
-# avoid). It therefore does NOT re-merge a persisted egress-proxy CA
+# Contract: the tar is the regenerated trust store captured at the end of the
+# build, so it equals what update-ca-certificates would produce at boot —
+# including CAs added in user layers or start/ready, registered or not. Seeding
+# from it gives a complete ca-certificates.crt, so update-ca-certificates is
+# skipped on cold boot (its scattered rootfs reads are the cost we avoid). It
+# therefore does NOT re-merge a persisted egress-proxy CA
 # (/usr/local/share/ca-certificates/e2b-ca.crt) into the bundle at boot. That CA
 # is (re)installed by envd's POST /init for the current proxy, which runs before
 # the orchestrator marks the sandbox running/routable — so the egress CA is
