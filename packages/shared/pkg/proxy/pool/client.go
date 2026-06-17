@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"go.uber.org/zap"
@@ -162,7 +163,16 @@ func newProxyClient(
 				return
 			}
 
-			http.Error(w, "Failed to route request to sandbox", http.StatusBadGateway)
+			statusCode := upstreamErrorStatus(err)
+			if statusCode == http.StatusServiceUnavailable {
+				t.RequestLogger.Warn(ctx, "sandbox upstream unavailable",
+					zap.Error(err),
+					zap.Int("status_code", statusCode),
+					zap.Uint64("sandbox_port", t.SandboxPort),
+				)
+			}
+
+			http.Error(w, "Failed to route request to sandbox", statusCode)
 		},
 		ModifyResponse: func(r *http.Response) error {
 			ctx := r.Request.Context()
@@ -190,6 +200,30 @@ func newProxyClient(
 	}
 
 	return pc
+}
+
+func upstreamErrorStatus(err error) int {
+	if err == nil {
+		return http.StatusBadGateway
+	}
+
+	if errors.Is(err, context.Canceled) {
+		return http.StatusBadGateway
+	}
+
+	if errors.Is(err, syscall.ECONNREFUSED) ||
+		errors.Is(err, syscall.ECONNRESET) ||
+		errors.Is(err, syscall.EHOSTUNREACH) ||
+		errors.Is(err, syscall.ENETUNREACH) {
+		return http.StatusServiceUnavailable
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return http.StatusServiceUnavailable
+	}
+
+	return http.StatusBadGateway
 }
 
 func (p *ProxyClient) getDestination(r *http.Request) (*Destination, bool) {

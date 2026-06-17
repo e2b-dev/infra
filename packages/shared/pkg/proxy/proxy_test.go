@@ -728,6 +728,40 @@ func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 	assert.Equal(t, http.StatusBadGateway, resp2.StatusCode, "status code should be 502")
 }
 
+func TestProxyReturnsServiceUnavailableForClosedUpstreamPort(t *testing.T) {
+	t.Parallel()
+
+	var lisCfg net.ListenConfig
+	listener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	backendURL, err := url.Parse(fmt.Sprintf("http://%s", listener.Addr().String()))
+	require.NoError(t, err)
+	require.NoError(t, listener.Close())
+
+	getDestination := func(*http.Request) (*pool.Destination, error) {
+		return &pool.Destination{
+			Url:           backendURL,
+			SandboxId:     "test-sandbox",
+			RequestLogger: logger.NewNopLogger(),
+			ConnectionKey: "closed-upstream",
+			SandboxPort:   49983,
+		}, nil
+	}
+
+	proxy, port, err := newTestProxy(t, getDestination)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		proxy.Close()
+	})
+
+	resp, err := httpGet(t, fmt.Sprintf("http://127.0.0.1:%d/hello", port))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode, "status code should be 503")
+}
+
 func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 	t.Parallel()
 	// Create first backend

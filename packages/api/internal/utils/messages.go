@@ -10,6 +10,10 @@ func SandboxNotFoundMsg(sandboxID string) string {
 	return fmt.Sprintf("Sandbox %q doesn't exist or you don't have access to it", sandboxID)
 }
 
+func SandboxSnapshotNotFoundMsg(sandboxID string) string {
+	return fmt.Sprintf("Snapshot for sandbox %q was not found", sandboxID)
+}
+
 func SandboxChangingStateMsg(sandboxID string, state sandbox.State) string {
 	switch state {
 	case sandbox.StateKilling:

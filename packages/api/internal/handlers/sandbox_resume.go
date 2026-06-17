@@ -124,8 +124,12 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	lastSnapshot, err := a.snapshotCache.Get(ctx, sandboxID)
 	if err != nil {
 		if errors.Is(err, snapshotcache.ErrSnapshotNotFound) {
-			logger.L().Debug(ctx, "Snapshot not found", logger.WithSandboxID(sandboxID))
-			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
+			logger.L().Warn(ctx, "snapshot not found while resuming sandbox",
+				logger.WithSandboxID(sandboxID),
+				logger.WithTeamID(teamID.String()),
+				zap.Error(err),
+			)
+			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxSnapshotNotFoundMsg(sandboxID))
 
 			return
 		}
@@ -193,6 +197,19 @@ func (a *APIStore) buildResumeSandboxData(sandboxID string, autoPauseOverride *b
 	return func(ctx context.Context) (orchestrator.SandboxMetadata, *api.APIError) {
 		lastSnapshot, err := a.snapshotCache.Get(ctx, sandboxID)
 		if err != nil {
+			if errors.Is(err, snapshotcache.ErrSnapshotNotFound) {
+				logger.L().Warn(ctx, "snapshot disappeared while starting resumed sandbox",
+					logger.WithSandboxID(sandboxID),
+					zap.Error(err),
+				)
+
+				return orchestrator.SandboxMetadata{}, &api.APIError{
+					Code:      http.StatusNotFound,
+					ClientMsg: utils.SandboxSnapshotNotFoundMsg(sandboxID),
+					Err:       fmt.Errorf("snapshot not found for sandbox '%s': %w", sandboxID, err),
+				}
+			}
+
 			return orchestrator.SandboxMetadata{}, &api.APIError{
 				Code:      http.StatusInternalServerError,
 				ClientMsg: "Error when getting snapshot",
