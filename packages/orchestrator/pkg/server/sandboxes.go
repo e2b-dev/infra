@@ -620,7 +620,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	defer s.stopSandboxAsync(context.WithoutCancel(ctx), sbx)
 
 	// Fire and forget - upload completes in the background
-	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId())
+	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId(), in.GetTemplateId(), storage.ObjectOriginPause)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error snapshotting sandbox", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
@@ -714,7 +714,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 	sbxlogger.E(sbx).Info(ctx, "Checkpointing sandbox")
 
-	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId())
+	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId(), in.GetTemplateId(), storage.ObjectOriginSnapshotTemplate)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error snapshotting sandbox for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
@@ -858,6 +858,8 @@ func (s *Server) snapshotAndCacheSandbox(
 	ctx context.Context,
 	sbx *sandbox.Sandbox,
 	buildID string,
+	templateID string,
+	buildOrigin storage.ObjectOrigin,
 ) (*snapshotResult, error) {
 	meta, err := sbx.Template.Metadata()
 	if err != nil {
@@ -890,7 +892,9 @@ func (s *Server) snapshotAndCacheSandbox(
 	}
 
 	objectMetadata := storage.ObjectMetadata{
-		storage.ObjectMetadataTeamID: sbx.Runtime.TeamID,
+		storage.ObjectMetadataTeamID:      sbx.Runtime.TeamID,
+		storage.ObjectMetadataTemplateID:  templateID,
+		storage.ObjectMetadataBuildOrigin: string(buildOrigin),
 	}
 
 	// Register the upload only after the snapshot is in the local cache, so a

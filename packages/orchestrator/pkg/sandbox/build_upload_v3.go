@@ -36,7 +36,7 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
-		return storeHeaderWithMetrics(egCtx, u.store, u.paths.MemfileHeader(), uploadFileMemfileHeader, finalizeV3(h))
+		return storeHeaderWithMetrics(egCtx, u.store, u.paths.MemfileHeader(), uploadFileMemfileHeader, finalizeV3(h), storage.WithMetadata(u.objectMetadata))
 	})
 
 	eg.Go(func() error {
@@ -48,7 +48,7 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
-		return storeHeaderWithMetrics(egCtx, u.store, u.paths.RootfsHeader(), uploadFileRootfsHeader, finalizeV3(h))
+		return storeHeaderWithMetrics(egCtx, u.store, u.paths.RootfsHeader(), uploadFileRootfsHeader, finalizeV3(h), storage.WithMetadata(u.objectMetadata))
 	})
 
 	meta := storage.WithMetadata(u.objectMetadata)

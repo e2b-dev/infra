@@ -159,6 +159,7 @@ message SandboxPauseResponse {
 
 message SandboxCheckpointRequest {
   string sandbox_id = 1;
+  string template_id = 2;
   string build_id = 3;
 }
 

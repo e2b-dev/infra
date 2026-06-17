@@ -86,8 +86,9 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 	// API-side state (store, routing, analytics).
 	client, childCtx := node.GetClient(ctx)
 	_, err = client.Sandbox.Checkpoint(childCtx, &orchestrator.SandboxCheckpointRequest{
-		SandboxId: sbx.SandboxID,
-		BuildId:   upsertResult.BuildID.String(),
+		SandboxId:  sbx.SandboxID,
+		TemplateId: snapshotTemplateEnvID,
+		BuildId:    upsertResult.BuildID.String(),
 	})
 	if err != nil {
 		o.failSnapshotBuild(ctx, upsertResult.BuildID, err)

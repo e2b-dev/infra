@@ -9,7 +9,23 @@ import (
 
 type ObjectMetadata map[string]string
 
-const ObjectMetadataTeamID = "team_id"
+// Custom object metadata keys for the storage index (immutable, set-once).
+const (
+	ObjectMetadataTeamID      = "team_id"
+	ObjectMetadataTemplateID  = "template_id"
+	ObjectMetadataBuildOrigin = "build_origin"
+)
+
+// ObjectOrigin is the immutable operation that created a build, stored as the
+// ObjectMetadataBuildOrigin value.
+type ObjectOrigin string
+
+const (
+	ObjectOriginPause              ObjectOrigin = "pause"
+	ObjectOriginTemplateBuild      ObjectOrigin = "template_build"
+	ObjectOriginTemplateBuildCache ObjectOrigin = "template_build_cache"
+	ObjectOriginSnapshotTemplate   ObjectOrigin = "snapshot_template"
+)
 
 // FrameSink fires once per compressed frame with its absolute C-space offset.
 // Best-effort; implementations should return quickly and bound their own I/O.

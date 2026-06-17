@@ -92,12 +92,22 @@ type StorageProvider interface {
 
 type (
 	ObjectMetadata = storageopts.ObjectMetadata
+	ObjectOrigin   = storageopts.ObjectOrigin
 	PutOptions     = storageopts.PutOptions
 	PutOption      = storageopts.PutOption
 	FrameSink      = storageopts.FrameSink
 )
 
-const ObjectMetadataTeamID = storageopts.ObjectMetadataTeamID
+const (
+	ObjectMetadataTeamID      = storageopts.ObjectMetadataTeamID
+	ObjectMetadataTemplateID  = storageopts.ObjectMetadataTemplateID
+	ObjectMetadataBuildOrigin = storageopts.ObjectMetadataBuildOrigin
+
+	ObjectOriginPause              = storageopts.ObjectOriginPause
+	ObjectOriginTemplateBuild      = storageopts.ObjectOriginTemplateBuild
+	ObjectOriginTemplateBuildCache = storageopts.ObjectOriginTemplateBuildCache
+	ObjectOriginSnapshotTemplate   = storageopts.ObjectOriginSnapshotTemplate
+)
 
 func WithMetadata(metadata ObjectMetadata) PutOption { return storageopts.WithMetadata(metadata) }
 
