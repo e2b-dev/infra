@@ -9,6 +9,11 @@ func (n *Node) setLabels(labels []string) {
 		labelsSet[l] = struct{}{}
 	}
 
+	// todo: remove this once orchestrator nodes all have labels (default or otherwise)
+	if len(labelsSet) == 0 {
+		labelsSet["default"] = struct{}{}
+	}
+
 	n.labels = labelsSet
 }
 
