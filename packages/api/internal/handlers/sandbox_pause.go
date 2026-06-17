@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -19,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -45,12 +45,13 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 
 	// The request body is optional — existing callers send none. Default to a
 	// full memory snapshot; memory:false requests a filesystem-only snapshot.
+	// Only parse when a body is present so the shared ParseBody helper isn't
+	// fed an empty body (which it would reject).
 	filesystemOnly := false
 	if c.Request.ContentLength != 0 {
-		var body api.PostSandboxesSandboxIDPauseJSONRequestBody
-		if bindErr := c.ShouldBindJSON(&body); bindErr != nil && !errors.Is(bindErr, io.EOF) {
+		body, bindErr := ginutils.ParseBody[api.PostSandboxesSandboxIDPauseJSONRequestBody](ctx, c)
+		if bindErr != nil {
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", bindErr))
-			telemetry.ReportCriticalError(ctx, "error when parsing pause request", bindErr)
 
 			return
 		}
