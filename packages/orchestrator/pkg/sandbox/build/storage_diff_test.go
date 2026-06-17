@@ -429,6 +429,15 @@ func TestStorageDiff_MissingAncestorHeaderFallsBackToUncompressed(t *testing.T) 
 // construction so the runtime read path never refreshes — that ancestor's
 // header file may not exist, and a runtime ErrObjectNotExist would be
 // indistinguishable from a real-entry race.
+//
+// Reads via diff.ReadAt(ctx, buf, 0, nil) — a nil callerFT, mirroring
+// peerserver/seekable.go's Slice(..., nil). File.ReadAt would defeat this
+// test by populating callerFT from h.GetBuildFrameData (returns the non-nil
+// storage.UncompressedFrameTable for a zero bd, short-circuiting resolve
+// before reloadProactive). Without the construction-time latch, this test's
+// path is: resolve(nil) → cur.fullDiffFrameTable nil ∧ callerFT nil ∧
+// !isPeerRouted → reloadProactive → refreshHeader → an unmocked OpenBlob →
+// mockery failure.
 func TestStorageDiff_BackfillMarkerLatchesUncompressedAtConstruction(t *testing.T) {
 	t.Parallel()
 
@@ -461,7 +470,20 @@ func TestStorageDiff_BackfillMarkerLatchesUncompressedAtConstruction(t *testing.
 		Return(rawSeekable, nil).Once()
 	// No OpenBlob expectation: refresh path must NOT fire.
 
-	require.Equal(t, payload[:readLen], runRead(t, bHeader, provider))
+	store, err := NewDiffStore(cfg.Config{}, &featureflags.Client{}, t.TempDir(), time.Hour, time.Minute)
+	require.NoError(t, err)
+	m, err := blockmetrics.NewMetrics(noop.NewMeterProvider())
+	require.NoError(t, err)
+	f := NewFile(bHeader, store, Memfile, provider, m)
+
+	diff, err := f.getBuild(t.Context(), aID)
+	require.NoError(t, err)
+
+	buf := make([]byte, readLen)
+	n, err := diff.ReadAt(t.Context(), buf, 0, nil)
+	require.NoError(t, err)
+	require.Equal(t, int(readLen), n)
+	require.Equal(t, payload[:readLen], buf)
 }
 
 // runRead wires up a File over a fresh DiffStore + noop metrics and returns
