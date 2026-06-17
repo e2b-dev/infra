@@ -35,6 +35,11 @@ func TestUpstreamErrorStatus(t *testing.T) {
 			want: http.StatusServiceUnavailable,
 		},
 		{
+			name: "timeout",
+			err:  &net.DNSError{Err: "i/o timeout", IsTimeout: true},
+			want: http.StatusGatewayTimeout,
+		},
+		{
 			name: "client canceled",
 			err:  context.Canceled,
 			want: http.StatusBadGateway,

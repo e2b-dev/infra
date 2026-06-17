@@ -220,6 +220,9 @@ func upstreamErrorStatus(err error) int {
 
 	var netErr net.Error
 	if errors.As(err, &netErr) {
+		if netErr.Timeout() {
+			return http.StatusGatewayTimeout
+		}
 		return http.StatusServiceUnavailable
 	}
 
