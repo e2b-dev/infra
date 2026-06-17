@@ -271,11 +271,11 @@ func (lb *LayerExecutor) PauseAndUpload(
 	err = lb.templateCache.AddSnapshot(
 		context.WithoutCancel(ctx),
 		meta.Template.BuildID,
-		snapshot.MemfileDiffHeader,
+		snapshot.MemorySnapshot.DiffHeader,
 		snapshot.RootfsDiffHeader,
 		snapshot.Snapfile,
 		snapshot.Metafile,
-		snapshot.MemfileDiff,
+		snapshot.MemorySnapshot.Diff,
 		snapshot.RootfsDiff,
 	)
 	if err != nil {
