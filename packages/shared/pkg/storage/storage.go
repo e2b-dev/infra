@@ -140,9 +140,14 @@ type Blob interface {
 	Exists(ctx context.Context) (bool, error)
 }
 
+type RangeReader interface {
+	io.Reader
+	Close(ctx context.Context) error
+}
+
 // RangeOpener supports progressive reads via a streaming range reader.
 type RangeOpener interface {
-	OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (io.ReadCloser, error)
+	OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (RangeReader, error)
 }
 
 type SeekableWriter interface {
