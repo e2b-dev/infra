@@ -28,11 +28,14 @@ const (
 	loopDelay = 5 * time.Millisecond
 )
 
-type envdCgroupOp string
+// envdOp is the path segment of a parameterless envd POST endpoint.
+type envdOp string
 
 const (
-	envdCgroupOpFreeze   envdCgroupOp = "freeze"
-	envdCgroupOpUnfreeze envdCgroupOp = "unfreeze"
+	envdOpFreeze   envdOp = "freeze"
+	envdOpUnfreeze envdOp = "unfreeze"
+	envdOpFsfreeze envdOp = "fsfreeze"
+	envdOpFsthaw   envdOp = "fsthaw"
 )
 
 // doRequestWithInfiniteRetries does a request with infinite retries until the context is done.
@@ -97,17 +100,31 @@ func (s *Sandbox) doRequestWithInfiniteRetries(
 // user/pty cgroups directly (no Process.Start, no shell). Used pre-pause
 // with a tight, freeze-only timeout.
 func (s *Sandbox) callEnvdFreeze(ctx context.Context, timeout time.Duration) error {
-	return s.callEnvdCgroupOp(ctx, timeout, envdCgroupOpFreeze)
+	return s.callEnvdPostOp(ctx, timeout, envdOpFreeze)
 }
 
 // callEnvdUnfreeze calls envd's native POST /unfreeze endpoint. Reserved for
 // the pause-failure rollback path; the resume thaw runs via /init's deferred
 // unfreeze and does not use this.
 func (s *Sandbox) callEnvdUnfreeze(ctx context.Context, timeout time.Duration) error {
-	return s.callEnvdCgroupOp(ctx, timeout, envdCgroupOpUnfreeze)
+	return s.callEnvdPostOp(ctx, timeout, envdOpUnfreeze)
 }
 
-func (s *Sandbox) callEnvdCgroupOp(ctx context.Context, timeout time.Duration, op envdCgroupOp) error {
+// callEnvdFsfreeze calls envd's native POST /fsfreeze endpoint to freeze the
+// guest rootfs before a filesystem-only pause, flushing it to a consistent
+// on-disk state.
+func (s *Sandbox) callEnvdFsfreeze(ctx context.Context, timeout time.Duration) error {
+	return s.callEnvdPostOp(ctx, timeout, envdOpFsfreeze)
+}
+
+// callEnvdFsthaw calls envd's native POST /fsthaw endpoint. Reserved for the
+// pause-failure rollback path so a frozen rootfs can't leave the live VM
+// deadlocked.
+func (s *Sandbox) callEnvdFsthaw(ctx context.Context, timeout time.Duration) error {
+	return s.callEnvdPostOp(ctx, timeout, envdOpFsthaw)
+}
+
+func (s *Sandbox) callEnvdPostOp(ctx context.Context, timeout time.Duration, op envdOp) error {
 	return s.postEnvd(ctx, timeout, string(op))
 }
 
