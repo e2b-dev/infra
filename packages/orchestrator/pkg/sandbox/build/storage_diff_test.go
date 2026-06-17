@@ -406,10 +406,10 @@ func TestStorageDiff_MissingAncestorHeaderFallsBackToUncompressed(t *testing.T) 
 		Return(int64(payloadSize), nil).Once()
 	rawSeekable.EXPECT().
 		OpenRangeReader(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (io.ReadCloser, error) {
+		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (storage.RangeReader, error) {
 			end := min(off+length, int64(len(payload)))
 
-			return io.NopCloser(bytes.NewReader(payload[off:end])), nil
+			return storage.NewRangeReader(io.NopCloser(bytes.NewReader(payload[off:end]))), nil
 		})
 	provider.EXPECT().
 		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone), mock.Anything).
@@ -460,10 +460,10 @@ func TestStorageDiff_BackfillMarkerLatchesUncompressedAtConstruction(t *testing.
 		Return(int64(payloadSize), nil).Once()
 	rawSeekable.EXPECT().
 		OpenRangeReader(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (io.ReadCloser, error) {
+		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (storage.RangeReader, error) {
 			end := min(off+length, int64(len(payload)))
 
-			return io.NopCloser(bytes.NewReader(payload[off:end])), nil
+			return storage.NewRangeReader(io.NopCloser(bytes.NewReader(payload[off:end]))), nil
 		})
 	provider.EXPECT().
 		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone), mock.Anything).
