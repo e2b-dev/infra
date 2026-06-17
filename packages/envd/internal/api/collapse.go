@@ -36,16 +36,18 @@ func (a *API) PostCollapse(w http.ResponseWriter, r *http.Request) {
 		Int("regions", stats.Regions).
 		Int("chunks", stats.Chunks).
 		Int("collapsed", stats.Collapsed).
+		Int("already_huge", stats.AlreadyHuge).
 		Int("skipped", stats.Skipped).
 		Int64("elapsed_ms", elapsedMs).
 		Msg("collapsed envd heap")
 
 	result := CollapseResult{
-		Regions:   &stats.Regions,
-		Chunks:    &stats.Chunks,
-		Collapsed: &stats.Collapsed,
-		Skipped:   &stats.Skipped,
-		ElapsedMs: &elapsedMs,
+		Regions:     &stats.Regions,
+		Chunks:      &stats.Chunks,
+		Collapsed:   &stats.Collapsed,
+		AlreadyHuge: &stats.AlreadyHuge,
+		Skipped:     &stats.Skipped,
+		ElapsedMs:   &elapsedMs,
 	}
 
 	w.Header().Set("Cache-Control", "no-store")
