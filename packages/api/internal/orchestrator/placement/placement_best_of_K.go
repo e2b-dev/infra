@@ -3,6 +3,7 @@ package placement
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"math/rand"
 	"sync"
@@ -132,6 +133,10 @@ func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, exclu
 	}
 
 	if bestNode == nil {
+		if filterByLabels && len(requiredLabels) > 0 {
+			return nil, fmt.Errorf("no node available with required labels: %v", requiredLabels)
+		}
+
 		return nil, errors.New("no node available")
 	}
 
