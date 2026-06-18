@@ -71,7 +71,7 @@ func CreateAPIKey(t *testing.T, ctx context.Context, c *api.ClientWithResponses,
 
 	apiKey, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
 		Name: uuid.New().String(),
-	}, setup.WithSupabaseToken(t, userID), setup.WithSupabaseTeam(t, teamID.String()))
+	}, setup.WithAccessToken(), setup.WithTeamID(teamID.String()))
 	require.NoError(t, err)
 	require.NotNil(t, apiKey.JSON201)
 
@@ -79,8 +79,8 @@ func CreateAPIKey(t *testing.T, ctx context.Context, c *api.ClientWithResponses,
 		_, _ = c.DeleteApiKeysApiKeyIDWithResponse(
 			ctx,
 			apiKey.JSON201.Id.String(),
-			setup.WithSupabaseToken(t, userID),
-			setup.WithSupabaseTeam(t, teamID.String()),
+			setup.WithAccessToken(),
+			setup.WithTeamID(teamID.String()),
 		)
 	})
 

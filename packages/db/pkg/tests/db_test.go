@@ -22,7 +22,6 @@ func TestNoRowLevelSecurity(t *testing.T) {
 	var checked int
 	for _, item := range results {
 		if item.NamespaceName != "public" {
-			// only the "public" namespace used to carry Supabase row level security.
 			continue
 		}
 		if item.Kind == "v" {

@@ -1,11 +1,9 @@
--- Manual cleanup for existing non-Supabase Postgres databases.
--- Do not run this on Supabase projects; new Supabase tables should use Supabase's RLS automation.
+-- Manual cleanup for existing Postgres databases with row-level security enabled.
 
 BEGIN;
 
 DROP POLICY IF EXISTS "Allow selection for users that are in the team" ON public.teams;
 DROP POLICY IF EXISTS "Allow to create a team to new user" ON public.teams;
-DROP POLICY IF EXISTS "Allow to select a team for supabase auth admin" ON public.teams;
 DROP POLICY IF EXISTS "Allow update for users that are in the team" ON public.teams;
 
 DROP POLICY IF EXISTS "Enable select for users in relevant team" ON public.users_teams;

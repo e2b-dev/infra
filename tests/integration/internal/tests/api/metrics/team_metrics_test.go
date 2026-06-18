@@ -110,8 +110,8 @@ func TestTeamMetricsEmpty(t *testing.T) {
 		t.Context(),
 		teamID.String(),
 		nil,
-		setup.WithSupabaseToken(t),
-		setup.WithSupabaseTeam(t, teamID.String()),
+		setup.WithAccessToken(),
+		setup.WithTeamID(teamID.String()),
 	)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, response.StatusCode())

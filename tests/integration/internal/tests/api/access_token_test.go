@@ -24,7 +24,7 @@ func TestCreateAccessToken(t *testing.T) {
 
 	resp, err := c.PostAccessTokensWithResponse(ctx, api.PostAccessTokensJSONRequestBody{
 		Name: "test",
-	}, setup.WithSupabaseToken(t))
+	}, setup.WithAccessToken())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,13 +46,13 @@ func TestDeleteAccessToken(t *testing.T) {
 		t.Parallel()
 		respC, err := c.PostAccessTokensWithResponse(ctx, api.PostAccessTokensJSONRequestBody{
 			Name: "test",
-		}, setup.WithSupabaseToken(t))
+		}, setup.WithAccessToken())
 		if err != nil {
 			t.Fatal(err)
 		}
 		require.Equal(t, http.StatusCreated, respC.StatusCode())
 
-		respD, err := c.DeleteAccessTokensAccessTokenIDWithResponse(ctx, respC.JSON201.Id.String(), setup.WithSupabaseToken(t))
+		respD, err := c.DeleteAccessTokensAccessTokenIDWithResponse(ctx, respC.JSON201.Id.String(), setup.WithAccessToken())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -61,7 +61,7 @@ func TestDeleteAccessToken(t *testing.T) {
 
 	t.Run("id does not exist", func(t *testing.T) {
 		t.Parallel()
-		respD, err := c.DeleteAccessTokensAccessTokenIDWithResponse(ctx, uuid.New().String(), setup.WithSupabaseToken(t))
+		respD, err := c.DeleteAccessTokensAccessTokenIDWithResponse(ctx, uuid.New().String(), setup.WithAccessToken())
 		if err != nil {
 			t.Fatal(err)
 		}

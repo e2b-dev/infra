@@ -9,10 +9,6 @@ data "google_secret_manager_secret_version" "ory_project_api_key" {
   version = "latest"
 }
 
-data "google_secret_manager_secret_version" "supabase_db_connection_string" {
-  secret = module.init.supabase_db_connection_string_secret_version.secret
-}
-
 data "google_secret_manager_secrets" "billing_server_url" {
   count   = local.dashboard_api_deployed ? 1 : 0
   project = var.gcp_project_id
@@ -52,7 +48,6 @@ locals {
   dashboard_api_ory_project_api_token = try(trimspace(data.google_secret_manager_secret_version.ory_project_api_key[0].secret_data), "")
 
   dashboard_api_ory_env_vars = {
-    USER_PROFILE_PROVIDER = var.user_profile_provider
     ORY_SDK_URL           = var.ory_sdk_url
     ORY_ISSUER_URL        = var.ory_issuer_url
     ORY_PROJECT_API_TOKEN = local.dashboard_api_ory_project_api_token
@@ -65,7 +60,6 @@ locals {
     POSTGRES_CONNECTION_STRING             = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
     AUTH_DB_CONNECTION_STRING              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
     AUTH_DB_READ_REPLICA_CONNECTION_STRING = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
-    SUPABASE_DB_CONNECTION_STRING          = trimspace(data.google_secret_manager_secret_version.supabase_db_connection_string.secret_data)
     CLICKHOUSE_CONNECTION_STRING           = local.clickhouse_connection_string
     # The Nomad jobspec template renders each entry as `${key} = "${value}"`,
     # so the embedded JSON's `"` characters must be pre-escaped to produce

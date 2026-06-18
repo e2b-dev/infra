@@ -28,7 +28,7 @@ func TestCreateAPIKey(t *testing.T) {
 	// Create the API key
 	resp, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
 		Name: "test",
-	}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
+	}, setup.WithAccessToken(), setup.WithTeamID())
 	require.NoError(t, err)
 
 	require.Equal(t, http.StatusCreated, resp.StatusCode())
@@ -50,7 +50,7 @@ func TestCreateAPIKeyForeignTeam(t *testing.T) {
 	// Create the API key
 	resp, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
 		Name: "foreign",
-	}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t, foreignTeamID.String()))
+	}, setup.WithAccessToken(), setup.WithTeamID(foreignTeamID.String()))
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode(), "Expected 401 Unauthorized when creating API key for a foreign team")
 }
@@ -72,7 +72,7 @@ func TestCreateAPIKeyForeignTeamWithCache(t *testing.T) {
 	// Create the API key in foreign team
 	resp, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
 		Name: "foreign-cached",
-	}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t, foreignTeamID.String()))
+	}, setup.WithAccessToken(), setup.WithTeamID(foreignTeamID.String()))
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode(), "Expected 401 Unauthorized when creating API key for a foreign team")
 }
@@ -89,14 +89,14 @@ func TestDeleteAPIKey(t *testing.T) {
 		// Create the API key
 		respC, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
 			Name: "test",
-		}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
+		}, setup.WithAccessToken(), setup.WithTeamID())
 		if err != nil {
 			t.Fatal(err)
 		}
 		require.Equal(t, http.StatusCreated, respC.StatusCode())
 
 		// Delete the API key
-		respD, err := c.DeleteApiKeysApiKeyIDWithResponse(ctx, respC.JSON201.Id.String(), setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
+		respD, err := c.DeleteApiKeysApiKeyIDWithResponse(ctx, respC.JSON201.Id.String(), setup.WithAccessToken(), setup.WithTeamID())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -105,7 +105,7 @@ func TestDeleteAPIKey(t *testing.T) {
 
 	t.Run("id does not exist", func(t *testing.T) {
 		t.Parallel()
-		respD, err := c.DeleteApiKeysApiKeyIDWithResponse(ctx, uuid.New().String(), setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
+		respD, err := c.DeleteApiKeysApiKeyIDWithResponse(ctx, uuid.New().String(), setup.WithAccessToken(), setup.WithTeamID())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -127,18 +127,18 @@ func TestDeleteAPIKey(t *testing.T) {
 		// Create an additional API key for team1
 		resp, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
 			Name: fmt.Sprintf("test-delete-%s", teamID1),
-		}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t, teamID1.String()))
+		}, setup.WithAccessToken(), setup.WithTeamID(teamID1.String()))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusCreated, resp.StatusCode())
 		apiKeyID := resp.JSON201.Id
 
 		// Try to delete team1's API key using team2's API key - should fail
-		deleteResp, err := c.DeleteApiKeysApiKeyIDWithResponse(ctx, apiKeyID.String(), setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t, teamID2.String()))
+		deleteResp, err := c.DeleteApiKeysApiKeyIDWithResponse(ctx, apiKeyID.String(), setup.WithAccessToken(), setup.WithTeamID(teamID2.String()))
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusNotFound, deleteResp.StatusCode())
 
 		// Verify the API key still exists for team1
-		listResp, err := c.GetApiKeysWithResponse(ctx, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t, teamID1.String()))
+		listResp, err := c.GetApiKeysWithResponse(ctx, setup.WithAccessToken(), setup.WithTeamID(teamID1.String()))
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, listResp.StatusCode())
 
@@ -153,12 +153,12 @@ func TestDeleteAPIKey(t *testing.T) {
 		assert.True(t, found, "API key should still exist for team1")
 
 		// Verify that team1 can delete their own API key
-		deleteResp2, err := c.DeleteApiKeysApiKeyIDWithResponse(ctx, apiKeyID.String(), setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t, teamID1.String()))
+		deleteResp2, err := c.DeleteApiKeysApiKeyIDWithResponse(ctx, apiKeyID.String(), setup.WithAccessToken(), setup.WithTeamID(teamID1.String()))
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusNoContent, deleteResp2.StatusCode())
 
 		// Verify the API key was deleted
-		listResp2, err := c.GetApiKeysWithResponse(ctx, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t, teamID1.String()))
+		listResp2, err := c.GetApiKeysWithResponse(ctx, setup.WithAccessToken(), setup.WithTeamID(teamID1.String()))
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, listResp2.StatusCode())
 
@@ -181,7 +181,7 @@ func TestListAPIKeys(t *testing.T) {
 
 	c := setup.GetAPIClient()
 
-	resp, err := c.GetApiKeysWithResponse(ctx, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
+	resp, err := c.GetApiKeysWithResponse(ctx, setup.WithAccessToken(), setup.WithTeamID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,13 +200,13 @@ func TestPatchAPIKey(t *testing.T) {
 	// Create the first API key
 	respC, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
 		Name: "test-patch-1",
-	}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
+	}, setup.WithAccessToken(), setup.WithTeamID())
 	if err != nil {
 		t.Fatal(err)
 	}
 	require.Equal(t, http.StatusCreated, respC.StatusCode())
 
-	respList1, err := c.GetApiKeysWithResponse(ctx, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
+	respList1, err := c.GetApiKeysWithResponse(ctx, setup.WithAccessToken(), setup.WithTeamID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,14 +224,14 @@ func TestPatchAPIKey(t *testing.T) {
 		// Rename the API key
 		respP, err := c.PatchApiKeysApiKeyIDWithResponse(ctx, respC.JSON201.Id.String(), api.PatchApiKeysApiKeyIDJSONRequestBody{
 			Name: "test-patch-2",
-		}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
+		}, setup.WithAccessToken(), setup.WithTeamID())
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		assert.Equal(t, http.StatusAccepted, respP.StatusCode())
 
-		respList2, err := c.GetApiKeysWithResponse(ctx, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
+		respList2, err := c.GetApiKeysWithResponse(ctx, setup.WithAccessToken(), setup.WithTeamID())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -249,7 +249,7 @@ func TestPatchAPIKey(t *testing.T) {
 		t.Parallel()
 		respP, err := c.PatchApiKeysApiKeyIDWithResponse(ctx, uuid.New().String(), api.PatchApiKeysApiKeyIDJSONRequestBody{
 			Name: "test-patch-3",
-		}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
+		}, setup.WithAccessToken(), setup.WithTeamID())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -271,7 +271,7 @@ func TestPatchAPIKey(t *testing.T) {
 		// Create an additional API key for team1
 		resp, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
 			Name: fmt.Sprintf("test-patch-%s", teamID1),
-		}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t, teamID1.String()))
+		}, setup.WithAccessToken(), setup.WithTeamID(teamID1.String()))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -281,7 +281,7 @@ func TestPatchAPIKey(t *testing.T) {
 		// Try to patch team1's API key using team2's API key - should fail
 		patchResp, err := c.PatchApiKeysApiKeyIDWithResponse(ctx, apiKeyID.String(), api.PatchApiKeysApiKeyIDJSONRequestBody{
 			Name: "hacked-name",
-		}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t, teamID2.String()))
+		}, setup.WithAccessToken(), setup.WithTeamID(teamID2.String()))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -290,14 +290,14 @@ func TestPatchAPIKey(t *testing.T) {
 		// Verify that team1 can still patch their own API key
 		patchResp2, err := c.PatchApiKeysApiKeyIDWithResponse(ctx, apiKeyID.String(), api.PatchApiKeysApiKeyIDJSONRequestBody{
 			Name: "legitimate-update",
-		}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t, teamID1.String()))
+		}, setup.WithAccessToken(), setup.WithTeamID(teamID1.String()))
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, http.StatusAccepted, patchResp2.StatusCode())
 
 		// Verify the API key was updated correctly
-		listResp, err := c.GetApiKeysWithResponse(ctx, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t, teamID1.String()))
+		listResp, err := c.GetApiKeysWithResponse(ctx, setup.WithAccessToken(), setup.WithTeamID(teamID1.String()))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -327,7 +327,7 @@ func TestAPIKeyLastUsedUpdated(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Eventually(t, func() bool {
-		resp, err := c.GetApiKeysWithResponse(t.Context(), setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
+		resp, err := c.GetApiKeysWithResponse(t.Context(), setup.WithAccessToken(), setup.WithTeamID())
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, resp.StatusCode())
 		require.NotNil(t, resp.JSON200)

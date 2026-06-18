@@ -89,25 +89,6 @@ func TestListTemplatesWithInvalidAPIKey(t *testing.T) {
 	require.NotNil(t, response.JSON401)
 }
 
-func TestListTemplatesWithSupabaseToken(t *testing.T) {
-	t.Parallel()
-	// Test backward compatibility with Supabase token authentication
-	c := setup.GetAPIClient()
-
-	response, err := c.GetTemplatesWithResponse(
-		t.Context(),
-		nil,
-		setup.WithSupabaseToken(t),
-		setup.WithSupabaseTeam(t),
-	)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, response.StatusCode())
-	require.NotNil(t, response.JSON200)
-
-	templates := *response.JSON200
-	assert.NotNil(t, templates, "Expected templates list to not be nil")
-}
-
 func TestListTemplatesWithAccessToken(t *testing.T) {
 	t.Parallel()
 

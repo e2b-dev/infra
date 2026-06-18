@@ -123,8 +123,8 @@ func TestTeamMetricsMaxEmpty(t *testing.T) {
 				&api.GetTeamsTeamIDMetricsMaxParams{
 					Metric: test.metric,
 				},
-				setup.WithSupabaseToken(t),
-				setup.WithSupabaseTeam(t, teamID.String()),
+				setup.WithAccessToken(),
+				setup.WithTeamID(teamID.String()),
 			)
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, response.StatusCode())
