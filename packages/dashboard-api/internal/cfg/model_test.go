@@ -90,7 +90,7 @@ func TestParseRequiresOryEnv(t *testing.T) {
 	}
 }
 
-func TestParseOryHappyPathIsIndependentOfAuthProvider(t *testing.T) {
+func TestParseOryHappyPathIsIndependentOfAuthProvider(t *testing.T) { //nolint:paralleltest // t.Setenv cannot be used with t.Parallel.
 	setBaseEnv(t)
 
 	config, err := Parse()

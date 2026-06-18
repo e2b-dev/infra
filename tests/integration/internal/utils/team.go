@@ -66,7 +66,7 @@ DELETE FROM users_teams WHERE user_id = $1 and team_id = $2
 	})
 }
 
-func CreateAPIKey(t *testing.T, ctx context.Context, c *api.ClientWithResponses, userID string, teamID uuid.UUID) string {
+func CreateAPIKey(t *testing.T, ctx context.Context, c *api.ClientWithResponses, _ string, teamID uuid.UUID) string {
 	t.Helper()
 
 	apiKey, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{

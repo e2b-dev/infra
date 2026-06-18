@@ -394,8 +394,8 @@ func (handlerTestUserProfiles) GetProfilesByUserID(_ context.Context, userIDs []
 
 func (handlerTestUserProfiles) FindProfilesByEmail(_ context.Context, email string) ([]userprofile.Profile, error) {
 	userIDText := strings.TrimSuffix(strings.TrimPrefix(email, "user-"), "@example.com")
-	userID, err := uuid.Parse(userIDText)
-	if err != nil {
+	userID, _ := uuid.Parse(userIDText)
+	if userID == uuid.Nil {
 		return []userprofile.Profile{}, nil
 	}
 

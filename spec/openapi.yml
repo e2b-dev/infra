@@ -1962,6 +1962,8 @@ paths:
       tags: [auth]
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2006,6 +2008,8 @@ paths:
       tags: [auth]
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2055,6 +2059,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2086,6 +2092,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2116,6 +2124,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2161,6 +2171,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2198,6 +2210,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2239,6 +2253,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2297,6 +2313,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2322,6 +2340,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2344,6 +2364,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2390,6 +2412,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2415,6 +2439,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2449,6 +2475,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2488,6 +2516,8 @@ paths:
       description: Set the timeout for the sandbox. The sandbox will expire x seconds from the time of the request. Calling this method multiple times overwrites the TTL, each time using the current timestamp as the starting point to measure the timeout duration.
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2515,6 +2545,8 @@ paths:
       description: Update the network configuration for a running sandbox. Replaces the current egress rules with the provided configuration. Omitting field clears it.
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2545,6 +2577,8 @@ paths:
       description: Refresh the sandbox extending its time to live
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2571,6 +2605,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2605,6 +2641,8 @@ paths:
       tags: [snapshots]
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2638,6 +2676,8 @@ paths:
       tags: [templates]
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2672,6 +2712,8 @@ paths:
       tags: [templates]
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2704,6 +2746,8 @@ paths:
       security:
         - AccessTokenAuth: []
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2799,6 +2843,8 @@ paths:
       tags: [templates]
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2920,6 +2966,8 @@ paths:
       tags: [templates]
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2981,6 +3029,8 @@ paths:
       security:
         - AccessTokenAuth: []
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3030,6 +3080,8 @@ paths:
       security:
         - AccessTokenAuth: []
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3086,6 +3138,8 @@ paths:
       tags: [tags]
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3116,6 +3170,8 @@ paths:
       tags: [tags]
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3144,6 +3200,8 @@ paths:
       tags: [tags]
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3174,6 +3232,8 @@ paths:
       tags: [templates]
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3409,6 +3469,7 @@ paths:
       description: Create a new access token
       tags: [access-tokens]
       security:
+        - AccessTokenAuth: []
         - AuthProviderBearerAuth: []
       requestBody:
         required: true
@@ -3433,6 +3494,7 @@ paths:
       description: Delete an access token
       tags: [access-tokens]
       security:
+        - AccessTokenAuth: []
         - AuthProviderBearerAuth: []
       parameters:
         - $ref: "#/components/parameters/accessTokenID"
@@ -3451,6 +3513,8 @@ paths:
       description: List all team API keys
       tags: [api-keys]
       security:
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3472,6 +3536,8 @@ paths:
       description: Create a new team API key
       tags: [api-keys]
       security:
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
       requestBody:
@@ -3497,6 +3563,8 @@ paths:
       description: Update a team API key
       tags: [api-keys]
       security:
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3522,6 +3590,8 @@ paths:
       description: Delete a team API key
       tags: [api-keys]
       security:
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3544,6 +3614,8 @@ paths:
       tags: [volumes]
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3567,6 +3639,8 @@ paths:
       tags: [volumes]
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3597,6 +3671,8 @@ paths:
       tags: [volumes]
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3622,6 +3698,8 @@ paths:
       tags: [volumes]
       security:
         - ApiKeyAuth: []
+        - AccessTokenAuth: []
+          AuthProviderTeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
