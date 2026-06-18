@@ -31,6 +31,19 @@ var ErrObjectNotExist = errors.New("object does not exist")
 // multiple concurrent writers racing to write the same content-addressed object.
 var ErrObjectRateLimited = errors.New("object access rate limited")
 
+// ErrObjectSoftDeleted means the storage index has marked this object for
+// deletion (soft-delete tombstone in custom metadata) and enforcement is on.
+var ErrObjectSoftDeleted = errors.New("object soft-deleted by storage index")
+
+// ErrMetadataUnsupported means the blob's backend cannot read custom metadata
+// (no MetadataReader). It is distinct from "read succeeded, no metadata" so
+// callers (e.g. soft-delete enforcement) can fail closed on an unverifiable
+// backend instead of assuming there is no tombstone.
+var ErrMetadataUnsupported = errors.New("blob does not support reading custom metadata")
+
+// ObjectMetadataSoftDeleted is the storage-index soft-delete tombstone key.
+const ObjectMetadataSoftDeleted = storageopts.ObjectMetadataSoftDeleted
+
 type Provider string
 
 const (
@@ -148,6 +161,24 @@ type Blob interface {
 	WriteTo(ctx context.Context, dst io.Writer) (int64, error)
 	Put(ctx context.Context, data []byte, opts ...storageopts.PutOption) error
 	Exists(ctx context.Context) (bool, error)
+}
+
+// MetadataReader is an optional Blob capability: read the object's custom
+// metadata without downloading it. Backends that can't answer cheaply omit it.
+type MetadataReader interface {
+	Metadata(ctx context.Context) (ObjectMetadata, error)
+}
+
+// BlobCustomMetadata returns the blob's custom metadata, or ErrMetadataUnsupported
+// when the backend can't read it — so callers can distinguish "no tombstone"
+// from "couldn't check" and fail closed under enforcement.
+func BlobCustomMetadata(ctx context.Context, b Blob) (ObjectMetadata, error) {
+	mr, ok := b.(MetadataReader)
+	if !ok {
+		return nil, ErrMetadataUnsupported
+	}
+
+	return mr.Metadata(ctx)
 }
 
 type RangeReader interface {

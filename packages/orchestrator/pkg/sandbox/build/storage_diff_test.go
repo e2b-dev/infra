@@ -364,7 +364,7 @@ func TestStorageDiff_ReloadSourceLatchesV3AsUncompressed(t *testing.T) {
 	// caller FT must refresh and latch the V3 header as uncompressed.
 	bootstrap := storage.NewMockSeekable(t)
 	diff, err := newStorageDiff(t.TempDir(), aID.String(), Memfile, storage.MemfileObjectType,
-		testBlockSize, m, provider, bootstrap, int64(payloadSize), nil, &featureflags.Client{})
+		testBlockSize, m, provider, bootstrap, int64(payloadSize), nil, "", &featureflags.Client{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = diff.Close() })
 
