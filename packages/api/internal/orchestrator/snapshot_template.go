@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/storageopts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -88,6 +89,7 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 	_, err = client.Sandbox.Checkpoint(childCtx, &orchestrator.SandboxCheckpointRequest{
 		SandboxId: sbx.SandboxID,
 		BuildId:   upsertResult.BuildID.String(),
+		Metadata:  map[string]string{storageopts.ObjectMetadataTemplateID: snapshotTemplateEnvID},
 	})
 	if err != nil {
 		o.failSnapshotBuild(ctx, upsertResult.BuildID, err)

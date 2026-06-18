@@ -153,6 +153,7 @@ func (lb *LayerExecutor) BuildLayer(
 		sbx,
 		cmd.Hash,
 		meta,
+		cmd.BuildOrigin,
 	)
 	if err != nil {
 		return metadata.Template{}, fmt.Errorf("pause and upload: %w", err)
@@ -255,6 +256,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 	sbx *sandbox.Sandbox,
 	hash string,
 	meta metadata.Template,
+	buildOrigin storage.ObjectOrigin,
 ) (e error) {
 	ctx, childSpan := tracer.Start(ctx, "pause-and-upload")
 	defer childSpan.End()
@@ -291,9 +293,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 	// Upload snapshot async, it's added to the template cache immediately
 	userLogger.Debug(ctx, fmt.Sprintf("Saving: %s", meta.Template.BuildID))
 
-	objectMetadata := storage.ObjectMetadata{
-		storage.ObjectMetadataTeamID: lb.BuildContext.Config.TeamID,
-	}
+	objectMetadata := lb.BuildContext.Config.ObjectMetadata(buildOrigin)
 
 	upload, err := sandbox.NewUpload(ctx, lb.uploads, snapshot, lb.templateStorage, lb.compressConfig, lb.ff, storage.UseCaseBuild, objectMetadata)
 	if err != nil {

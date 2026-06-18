@@ -106,7 +106,7 @@ func LoadHeader(ctx context.Context, s storage.StorageProvider, path string) (*H
 // compression config plus the stored and pre-compression byte counts. V3 has
 // no inner compression so the counts match and cfg is the zero value. Refuses
 // to persist a header still flagged as in-flight.
-func StoreHeader(ctx context.Context, s storage.StorageProvider, path string, h *Header) (cfg storage.CompressConfig, stored, uncompressed int64, err error) {
+func StoreHeader(ctx context.Context, s storage.StorageProvider, path string, h *Header, opts ...storage.PutOption) (cfg storage.CompressConfig, stored, uncompressed int64, err error) {
 	if h == nil {
 		return storage.CompressConfig{}, 0, 0, errors.New("header is nil")
 	}
@@ -153,7 +153,7 @@ func StoreHeader(ctx context.Context, s storage.StorageProvider, path string, h 
 		return storage.CompressConfig{}, 0, 0, fmt.Errorf("open blob %s: %w", path, err)
 	}
 
-	if err := blob.Put(ctx, data); err != nil {
+	if err := blob.Put(ctx, data, opts...); err != nil {
 		return storage.CompressConfig{}, 0, 0, fmt.Errorf("put blob %s: %w", path, err)
 	}
 
