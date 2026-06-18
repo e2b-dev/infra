@@ -7,7 +7,7 @@
 - [Packer](https://developer.hashicorp.com/packer/tutorials/docker-get-started/get-started-install-cli#installing-packer)
   - Used for building the disk image of the orchestrator client and server
 
-- [Terraform](https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli) (v1.5.x)
+- [Terraform](https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli) (v1.7.5)
     - Binaries are available [here](https://developer.hashicorp.com/terraform/install/versions#binary-downloads)
   - You can also install it via [tfenv](https://github.com/tfutils/tfenv)
     ```sh
