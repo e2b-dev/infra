@@ -4,9 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"testing"
 
-	"github.com/e2b-dev/infra/packages/auth/pkg/tests"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 )
 
@@ -55,48 +53,14 @@ func WithAccessToken() func(ctx context.Context, req *http.Request) error {
 	}
 }
 
-func WithCustomAccessToken(accessToken string) func(ctx context.Context, req *http.Request) error {
-	return func(_ context.Context, req *http.Request) error {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", accessToken))
-
-		return nil
-	}
-}
-
-func WithSupabaseToken(t *testing.T, userID ...string) func(ctx context.Context, req *http.Request) error {
-	t.Helper()
-
-	if SupabaseJWTSecret == "" {
-		t.Skip("Supabase JWT secret is not set")
-	}
-
-	userID_ := UserID
-	if len(userID) > 0 {
-		userID_ = userID[0]
-	}
-
-	token := tests.SignTestToken(t, SupabaseJWTSecret, userID_)
-
-	return func(_ context.Context, req *http.Request) error {
-		req.Header.Set("X-Supabase-Token", token)
-
-		return nil
-	}
-}
-
-func WithSupabaseTeam(t *testing.T, teamID ...string) func(ctx context.Context, req *http.Request) error {
-	t.Helper()
-
+func WithTeamID(teamID ...string) func(ctx context.Context, req *http.Request) error {
 	teamID_ := TeamID
 	if len(teamID) > 0 {
 		teamID_ = teamID[0]
 	}
-	if teamID_ == "" {
-		t.Skip("Supabase team ID is not set")
-	}
 
 	return func(_ context.Context, req *http.Request) error {
-		req.Header.Set("X-Supabase-Team", teamID_)
+		req.Header.Set("X-Team-ID", teamID_)
 
 		return nil
 	}

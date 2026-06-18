@@ -3,7 +3,7 @@ package userprofile
 import (
 	"context"
 	"errors"
-	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -38,21 +38,35 @@ type DeleteUserHandle interface {
 	Execute(ctx context.Context) error
 }
 
-func NewProvider(mode Mode, supa Provider, ory Provider) (Provider, error) {
-	switch mode {
-	case ModeSupabase:
-		if supa == nil {
-			return nil, fmt.Errorf("mode %q requires a supabase provider", mode)
-		}
-
-		return supa, nil
-	case ModeOry:
-		if ory == nil {
-			return nil, fmt.Errorf("mode %q requires an ory provider", mode)
-		}
-
-		return ory, nil
-	default:
-		return nil, fmt.Errorf("unknown user profile provider mode %q", mode)
+func metadataString(metadata map[string]any, key string) string {
+	if metadata == nil {
+		return ""
 	}
+
+	value, ok := metadata[key].(string)
+	if !ok {
+		return ""
+	}
+
+	return strings.TrimSpace(value)
+}
+
+func uniqueUUIDs(ids []uuid.UUID) []uuid.UUID {
+	seen := make(map[uuid.UUID]struct{}, len(ids))
+	unique := make([]uuid.UUID, 0, len(ids))
+
+	for _, id := range ids {
+		if id == uuid.Nil {
+			continue
+		}
+
+		if _, ok := seen[id]; ok {
+			continue
+		}
+
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+
+	return unique
 }

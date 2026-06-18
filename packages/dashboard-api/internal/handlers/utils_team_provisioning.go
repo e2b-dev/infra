@@ -63,31 +63,8 @@ type oidcUserBootstrapInput struct {
 	SignupUserAgent string
 }
 
-func (s *APIStore) bootstrapSupabaseUser(ctx context.Context, userID uuid.UUID) (provisionedTeam, error) {
-	profile, err := s.bootstrapUserProfileFromSupabase(ctx, userID)
-	if err != nil {
-		return provisionedTeam{}, err
-	}
-
-	return s.bootstrapUser(ctx, profile)
-}
-
-func (s *APIStore) bootstrapUserProfileFromSupabase(ctx context.Context, userID uuid.UUID) (bootstrapUserProfile, error) {
-	profile, err := s.resolveProfile(ctx, userID)
-	if err != nil {
-		return bootstrapUserProfile{}, err
-	}
-
-	return bootstrapUserProfile{
-		UserID:          userID,
-		Email:           profile.Email,
-		DefaultTeamName: defaultTeamNameFromProfile(profile),
-	}, nil
-}
-
 // resolveProfile fetches a single user's profile through the configured profile
-// provider, returning a 404 ProvisionError when the user is unknown. This keeps
-// provisioning independent of which backend (Supabase or Ory) owns the user.
+// provider, returning a 404 ProvisionError when the user is unknown.
 func (s *APIStore) resolveProfile(ctx context.Context, userID uuid.UUID) (userprofile.Profile, error) {
 	profiles, err := s.userProfiles.GetProfilesByUserID(ctx, []uuid.UUID{userID})
 	if err != nil {
@@ -123,38 +100,18 @@ func (s *APIStore) bootstrapOIDCUser(ctx context.Context, input oidcUserBootstra
 	})
 }
 
-// requireConfiguredOIDCIssuer rejects bootstrap requests whose issuer is not in
-// the configured provider list. Without this an admin-token holder could plant
-// an identity under any arbitrary iss string. When the user-profile provider
-// requires Ory, only ORY_ISSUER_URL is accepted: the Ory resolver looks up
-// public.user_identities by exactly that issuer, so any other configured JWT
-// issuer would create rows that profile/membership lookups never read.
+// requireConfiguredOIDCIssuer rejects bootstrap requests whose issuer is not the
+// configured Ory issuer.
 func (s *APIStore) requireConfiguredOIDCIssuer(issuer string) error {
 	oryIssuer := strings.TrimSpace(s.config.OryIssuerURL)
 
-	if s.config.UserProfileProvider.RequiresOry() {
-		if oryIssuer != "" && oryIssuer == issuer {
-			return nil
-		}
-
-		return &internalteamprovision.ProvisionError{
-			StatusCode: http.StatusBadRequest,
-			Message:    "oidc_issuer must equal the configured ORY_ISSUER_URL",
-		}
-	}
-
-	for _, jwt := range s.config.AuthProvider.JWT {
-		if strings.TrimSpace(jwt.Issuer.URL) == issuer {
-			return nil
-		}
-	}
 	if oryIssuer != "" && oryIssuer == issuer {
 		return nil
 	}
 
 	return &internalteamprovision.ProvisionError{
 		StatusCode: http.StatusBadRequest,
-		Message:    "oidc_issuer is not a configured auth provider",
+		Message:    "oidc_issuer must equal the configured ORY_ISSUER_URL",
 	}
 }
 

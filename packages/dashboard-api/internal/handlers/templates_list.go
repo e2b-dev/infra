@@ -259,8 +259,6 @@ func (f templateRowFields) toAPI() api.TeamTemplate {
 		Id    openapi_types.UUID `json:"id"`
 	}
 	if f.CreatorID != nil {
-		// Email is intentionally left unset while the Supabase auth migration is
-		// in progress; we only expose the creator id for now.
 		createdBy = &struct {
 			Email *string            `json:"email,omitempty"`
 			Id    openapi_types.UUID `json:"id"`

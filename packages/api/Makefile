@@ -35,7 +35,7 @@ build-debug:
 run:
 	make build-debug
 	POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) \
-	AUTH_PROVIDER_CONFIG='{"legacy":{"hmac":{"secrets":["$(SUPABASE_JWT_SECRETS)"]}}}' \
+	AUTH_PROVIDER_CONFIG='{"jwt":[]}' \
 	GOTRACEBACK=crash \
 	GODEBUG=madvdontneed=1 \
 	SANDBOX_ACCESS_TOKEN_HASH_SEED=$(SANDBOX_ACCESS_TOKEN_HASH_SEED) \
