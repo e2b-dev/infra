@@ -8,7 +8,10 @@ Description=Env Daemon Service
 # userspace. Default dependencies would gate it on sysinit/basic.target
 # (~0.5s), and the previous After=multi-user.target on chrony-wait (~8s).
 DefaultDependencies=no
-After=systemd-journald.socket systemd-remount-fs.service
+# local-fs.target keeps envd from answering /init before /tmp (a systemd-managed
+# tmpfs) is mounted: updateEnvd stages an update binary in /tmp during early
+# boot, and without this ordering the upload can race tmp.mount and fail ENOENT.
+After=systemd-journald.socket systemd-remount-fs.service local-fs.target
 Wants=systemd-journald.socket
 Conflicts=shutdown.target
 Before=shutdown.target

@@ -178,6 +178,17 @@ func (s *Sandbox) postEnvd(ctx context.Context, timeout time.Duration, path stri
 	return nil
 }
 
+// envdServerURL returns the base URL (scheme://host:port) of the sandbox's envd
+// HTTP server. A non-empty internalConfig.envdServerURLOverride redirects it
+// (test-only; production always uses the slot IP and the default envd port).
+func (s *Sandbox) envdServerURL() string {
+	if s.internalConfig.envdServerURLOverride != "" {
+		return s.internalConfig.envdServerURLOverride
+	}
+
+	return fmt.Sprintf("http://%s:%d", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
+}
+
 // doEnvdPost builds and sends an authenticated POST to envd's /<path> endpoint.
 // The caller owns the returned response and must close its body. Status handling
 // is left to the caller because the endpoints disagree on success: /collapse
@@ -185,7 +196,7 @@ func (s *Sandbox) postEnvd(ctx context.Context, timeout time.Duration, path stri
 // deadline must live on ctx (callers set it via context.WithTimeout) so it
 // stays in force while the caller reads the body.
 func (s *Sandbox) doEnvdPost(ctx context.Context, path string) (*http.Response, error) {
-	address := fmt.Sprintf("http://%s:%d/%s", s.Slot.HostIPString(), consts.DefaultEnvdServerPort, path)
+	address := s.envdServerURL() + "/" + path
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, address, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build %s request: %w", path, err)

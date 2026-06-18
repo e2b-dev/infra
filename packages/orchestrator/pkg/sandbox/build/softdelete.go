@@ -79,7 +79,12 @@ func (b *StorageDiff) softDeleteCheck(ctx context.Context, ff *featureflags.Clie
 		zap.Bool("enforce", enforce),
 	)
 
+	// Only fail closed if dataPath still points at the object we checked: a
+	// peer transition may have repointed it, in which case a fresh check for
+	// the new object is authoritative and this (stale) one must not latch.
 	if failed {
-		b.softDeleted.Store(true)
+		if cur := b.dataPath.Load(); cur == path {
+			b.softDeleted.Store(true)
+		}
 	}
 }
