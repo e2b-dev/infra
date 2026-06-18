@@ -4,6 +4,7 @@ package build
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -16,9 +17,39 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+// soft-delete check outcomes, the metric's "result" dimension. They are
+// mutually exclusive: a tombstone hit (checked + soft_deleted) is distinct from
+// the object being unreadable (not_found / error), so a missing object never
+// masquerades as "not soft-deleted".
+const (
+	checkResultChecked  = "checked"   // metadata read; soft_deleted tells the verdict
+	checkResultNotFound = "not_found" // object does not exist (e.g. peer-only or already gone)
+	checkResultError    = "error"     // metadata could not be read (transient/permission)
+)
+
 var softDeleteCheckMetric = utils.Must(meter.Int64Counter(
 	"orchestrator.build.soft_delete_check",
 	metric.WithDescription("Storage-index soft-delete checks on data-layer open")))
+
+// recordCheck emits one metric point per check. result distinguishes a read
+// (checked) from an unreadable object (not_found/error); soft_deleted/failed
+// are only meaningful when result==checked.
+func (b *StorageDiff) recordCheck(ctx context.Context, result string, softDeleted, failed bool) {
+	softDeleteCheckMetric.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("artifact", string(b.diffType)),
+		attribute.String("result", result),
+		attribute.Bool("soft_deleted", softDeleted),
+		attribute.Bool("failed", failed),
+	))
+}
+
+func classifyCheckError(err error) string {
+	if errors.Is(err, storage.ErrObjectNotExist) {
+		return checkResultNotFound
+	}
+
+	return checkResultError
+}
 
 func (b *StorageDiff) softDeleteErr() error {
 	if b.softDeleted.Load() {
@@ -49,11 +80,21 @@ func (b *StorageDiff) softDeleteCheck(ctx context.Context, ff *featureflags.Clie
 	}
 	blob, err := b.persistence.OpenBlob(ctx, *path, storage.MetadataObjectType)
 	if err != nil {
+		b.recordCheck(ctx, classifyCheckError(err), false, false)
+		logger.L().Warn(ctx, "storage-index soft-delete check could not open object",
+			logger.WithBuildID(b.buildID), zap.String("artifact", string(b.diffType)),
+			zap.String("object", *path), zap.Error(err))
+
 		return
 	}
 
 	md, err := storage.BlobCustomMetadata(ctx, blob)
 	if err != nil {
+		b.recordCheck(ctx, classifyCheckError(err), false, false)
+		logger.L().Warn(ctx, "storage-index soft-delete check could not read object metadata",
+			logger.WithBuildID(b.buildID), zap.String("artifact", string(b.diffType)),
+			zap.String("object", *path), zap.Error(err))
+
 		return
 	}
 
@@ -62,11 +103,7 @@ func (b *StorageDiff) softDeleteCheck(ctx context.Context, ff *featureflags.Clie
 	enforce := ff.BoolFlag(ctx, featureflags.StorageSoftDeleteEnforceFlag)
 	failed := softDeleted && enforce
 
-	softDeleteCheckMetric.Add(ctx, 1, metric.WithAttributes(
-		attribute.String("artifact", string(b.diffType)),
-		attribute.Bool("soft_deleted", softDeleted),
-		attribute.Bool("failed", failed),
-	))
+	b.recordCheck(ctx, checkResultChecked, softDeleted, failed)
 
 	if !softDeleted {
 		return
