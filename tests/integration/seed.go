@@ -21,12 +21,11 @@ import (
 )
 
 type SeedData struct {
-	AccessToken string
-	APIKey      string
-	EnvID       string
-	BuildID     uuid.UUID
-	TeamID      uuid.UUID
-	UserID      uuid.UUID
+	APIKey  string
+	EnvID   string
+	BuildID uuid.UUID
+	TeamID  uuid.UUID
+	UserID  uuid.UUID
 }
 
 func main() {
@@ -65,12 +64,11 @@ func run(ctx context.Context) int {
 	defer authDb.Close()
 
 	data := SeedData{
-		AccessToken: os.Getenv("TESTS_E2B_ACCESS_TOKEN"),
-		APIKey:      os.Getenv("TESTS_E2B_API_KEY"),
-		EnvID:       os.Getenv("TESTS_SANDBOX_TEMPLATE_ID"),
-		BuildID:     uuid.MustParse(os.Getenv("TESTS_SANDBOX_BUILD_ID")),
-		TeamID:      uuid.MustParse(os.Getenv("TESTS_SANDBOX_TEAM_ID")),
-		UserID:      uuid.MustParse(os.Getenv("TESTS_SANDBOX_USER_ID")),
+		APIKey:  os.Getenv("TESTS_E2B_API_KEY"),
+		EnvID:   os.Getenv("TESTS_SANDBOX_TEMPLATE_ID"),
+		BuildID: uuid.MustParse(os.Getenv("TESTS_SANDBOX_BUILD_ID")),
+		TeamID:  uuid.MustParse(os.Getenv("TESTS_SANDBOX_TEAM_ID")),
+		UserID:  uuid.MustParse(os.Getenv("TESTS_SANDBOX_USER_ID")),
 	}
 
 	err = seed(ctx, db, authDb, data)
@@ -100,34 +98,6 @@ VALUES ($1, $2)
 	err = authdb.Write.UpsertPublicUser(ctx, data.UserID)
 	if err != nil {
 		return fmt.Errorf("failed to create public user: %w", err)
-	}
-
-	// Access token
-	tokenWithoutPrefix := strings.TrimPrefix(data.AccessToken, keys.AccessTokenPrefix)
-	accessTokenBytes, err := hex.DecodeString(tokenWithoutPrefix)
-	if err != nil {
-		return fmt.Errorf("failed to decode access token: %w", err)
-	}
-
-	accessTokenHash := hasher.Hash(accessTokenBytes)
-
-	accessTokenMask, err := keys.MaskKey(keys.AccessTokenPrefix, tokenWithoutPrefix)
-	if err != nil {
-		return fmt.Errorf("failed to mask access token: %w", err)
-	}
-
-	_, err = authdb.Write.CreateAccessToken(ctx, authqueries.CreateAccessTokenParams{
-		ID:                    uuid.New(),
-		UserID:                data.UserID,
-		AccessTokenHash:       accessTokenHash,
-		AccessTokenPrefix:     accessTokenMask.Prefix,
-		AccessTokenLength:     int32(accessTokenMask.ValueLength),
-		AccessTokenMaskPrefix: accessTokenMask.MaskedValuePrefix,
-		AccessTokenMaskSuffix: accessTokenMask.MaskedValueSuffix,
-		Name:                  "Integration Tests Access Token",
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create access token: %w", err)
 	}
 
 	// Team

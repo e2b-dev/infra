@@ -39,44 +39,6 @@ func TestDeleteTemplate(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, deleteRes.StatusCode())
 }
 
-func TestDeleteTemplateWithAccessToken(t *testing.T) {
-	t.Parallel()
-
-	// Build template and get the template ID
-	template := testutils.BuildSimpleTemplate(t, "test-to-delete-access-token", setup.WithAPIKey())
-
-	c := setup.GetAPIClient()
-	// Access token auth requires template ID (not alias)
-	deleteRes, err := c.DeleteTemplatesTemplateIDWithResponse(
-		t.Context(),
-		template.TemplateID,
-		setup.WithAccessToken(),
-	)
-	require.NoError(t, err)
-	assert.Equal(t, http.StatusNoContent, deleteRes.StatusCode())
-}
-
-func TestDeleteTemplateFromAnotherTeamAccessToken(t *testing.T) {
-	t.Parallel()
-
-	db := setup.GetTestDBClient(t)
-	userID := testutils.CreateUser(t, db)
-	accessToken := testutils.CreateAccessToken(t, db, userID)
-
-	// Build template with default API key (belongs to default team)
-	template := testutils.BuildSimpleTemplate(t, "test-to-delete-another-team-access-token", setup.WithAPIKey())
-
-	c := setup.GetAPIClient()
-	// Access token auth requires template ID; this user has no teams so should get 403
-	deleteRes, err := c.DeleteTemplatesTemplateIDWithResponse(
-		t.Context(),
-		template.TemplateID,
-		setup.WithCustomAccessToken(accessToken),
-	)
-	require.NoError(t, err)
-	assert.Equal(t, http.StatusForbidden, deleteRes.StatusCode())
-}
-
 func TestDeleteTemplateFromAnotherTeamAPIKey(t *testing.T) {
 	t.Parallel()
 	alias := "test-to-delete-another-team-api-key"

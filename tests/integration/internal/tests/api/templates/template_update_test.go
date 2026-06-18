@@ -142,21 +142,21 @@ func TestUpdateNonExistentTemplateWithAPIKey(t *testing.T) {
 		"Expected 404, got %d", updateResp.StatusCode())
 }
 
-func TestUpdateTemplateWithAccessToken(t *testing.T) {
+func TestUpdateTemplateWithAPIKey(t *testing.T) {
 	t.Parallel()
 	// Create a test template with API key first
-	template := testutils.BuildSimpleTemplate(t, "test-update-access-token", setup.WithAPIKey())
+	template := testutils.BuildSimpleTemplate(t, "test-update-api-key", setup.WithAPIKey())
 
 	c := setup.GetAPIClient()
 
-	// Update template using access token authentication.
+	// Update template using API key authentication.
 	updateResp, err := c.PatchV2TemplatesTemplateIDWithResponse(
 		t.Context(),
 		template.TemplateID,
 		api.TemplateUpdateRequest{
 			Public: new(true),
 		},
-		setup.WithAccessToken(),
+		setup.WithAPIKey(),
 		setup.WithTeamID(),
 	)
 	require.NoError(t, err)
@@ -168,7 +168,7 @@ func TestUpdateTemplateWithAccessToken(t *testing.T) {
 		&api.GetTemplatesParams{
 			TeamID: new(setup.TeamID),
 		},
-		setup.WithAccessToken(),
+		setup.WithAPIKey(),
 		setup.WithTeamID(),
 	)
 	require.NoError(t, err)

@@ -88,22 +88,3 @@ func TestListTemplatesWithInvalidAPIKey(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, response.StatusCode())
 	require.NotNil(t, response.JSON401)
 }
-
-func TestListTemplatesWithAccessToken(t *testing.T) {
-	t.Parallel()
-
-	// Test backward compatibility with Access Token authentication
-	c := setup.GetAPIClient()
-
-	response, err := c.GetTemplatesWithResponse(
-		t.Context(),
-		nil,
-		setup.WithAccessToken(),
-	)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, response.StatusCode())
-	require.NotNil(t, response.JSON200)
-
-	templates := *response.JSON200
-	assert.NotNil(t, templates, "Expected templates list to not be nil")
-}

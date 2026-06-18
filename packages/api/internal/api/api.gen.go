@@ -11275,8 +11275,6 @@ type MiddlewareFunc func(c *gin.Context)
 // PostAccessTokens operation middleware
 func (siw *ServerInterfaceWrapper) PostAccessTokens(c *gin.Context) {
 
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -11303,8 +11301,6 @@ func (siw *ServerInterfaceWrapper) DeleteAccessTokensAccessTokenID(c *gin.Contex
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter accessTokenID: %w", err), http.StatusBadRequest)
 		return
 	}
-
-	c.Set(string(AccessTokenAuthScopes), []string{})
 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
@@ -11438,10 +11434,6 @@ func (siw *ServerInterfaceWrapper) PostAdminTeamsTeamIDSandboxesKill(c *gin.Cont
 // GetApiKeys operation middleware
 func (siw *ServerInterfaceWrapper) GetApiKeys(c *gin.Context) {
 
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
@@ -11462,10 +11454,6 @@ func (siw *ServerInterfaceWrapper) GetApiKeys(c *gin.Context) {
 
 // PostApiKeys operation middleware
 func (siw *ServerInterfaceWrapper) PostApiKeys(c *gin.Context) {
-
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
@@ -11495,10 +11483,6 @@ func (siw *ServerInterfaceWrapper) DeleteApiKeysApiKeyID(c *gin.Context) {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apiKeyID: %w", err), http.StatusBadRequest)
 		return
 	}
-
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
@@ -11532,10 +11516,6 @@ func (siw *ServerInterfaceWrapper) PatchApiKeysApiKeyID(c *gin.Context) {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apiKeyID: %w", err), http.StatusBadRequest)
 		return
 	}
-
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
@@ -11670,10 +11650,6 @@ func (siw *ServerInterfaceWrapper) GetSandboxes(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
@@ -11708,10 +11684,6 @@ func (siw *ServerInterfaceWrapper) PostSandboxes(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
@@ -11737,10 +11709,6 @@ func (siw *ServerInterfaceWrapper) GetSandboxesMetrics(c *gin.Context) {
 	_ = err
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
-
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
@@ -11788,10 +11756,6 @@ func (siw *ServerInterfaceWrapper) DeleteSandboxesSandboxID(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
@@ -11826,10 +11790,6 @@ func (siw *ServerInterfaceWrapper) GetSandboxesSandboxID(c *gin.Context) {
 	}
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
-
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
@@ -11866,10 +11826,6 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDConnect(c *gin.Context)
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
@@ -11904,10 +11860,6 @@ func (siw *ServerInterfaceWrapper) GetSandboxesSandboxIDLogs(c *gin.Context) {
 	}
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
-
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
@@ -11963,10 +11915,6 @@ func (siw *ServerInterfaceWrapper) GetSandboxesSandboxIDMetrics(c *gin.Context) 
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
@@ -12021,10 +11969,6 @@ func (siw *ServerInterfaceWrapper) PutSandboxesSandboxIDNetwork(c *gin.Context) 
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
@@ -12059,10 +12003,6 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDPause(c *gin.Context) {
 	}
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
-
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
@@ -12099,10 +12039,6 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDRefreshes(c *gin.Contex
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
@@ -12137,10 +12073,6 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDResume(c *gin.Context) 
 	}
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
-
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
@@ -12177,10 +12109,6 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDSnapshots(c *gin.Contex
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
@@ -12216,10 +12144,6 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDTimeout(c *gin.Context)
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
@@ -12245,10 +12169,6 @@ func (siw *ServerInterfaceWrapper) GetSnapshots(c *gin.Context) {
 	_ = err
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
-
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
@@ -12329,10 +12249,6 @@ func (siw *ServerInterfaceWrapper) GetTeamsTeamIDMetrics(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
@@ -12386,10 +12302,6 @@ func (siw *ServerInterfaceWrapper) GetTeamsTeamIDMetricsMax(c *gin.Context) {
 	}
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
-
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
@@ -12511,10 +12423,6 @@ func (siw *ServerInterfaceWrapper) GetTemplatesAliasesAlias(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
@@ -12538,10 +12446,6 @@ func (siw *ServerInterfaceWrapper) DeleteTemplatesTags(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
@@ -12564,10 +12468,6 @@ func (siw *ServerInterfaceWrapper) DeleteTemplatesTags(c *gin.Context) {
 func (siw *ServerInterfaceWrapper) PostTemplatesTags(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
-
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
@@ -12640,10 +12540,6 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateID(c *gin.Context) {
 	}
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
-
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
@@ -12818,10 +12714,6 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDBuildsBuildIDLogs(c *gi
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
@@ -12911,10 +12803,6 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDBuildsBuildIDStatus(c *
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
@@ -12988,10 +12876,6 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDFilesHash(c *gin.Contex
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
@@ -13027,10 +12911,6 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDTags(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
@@ -13056,10 +12936,6 @@ func (siw *ServerInterfaceWrapper) GetV2Sandboxes(c *gin.Context) {
 	_ = err
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
-
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
@@ -13131,10 +13007,6 @@ func (siw *ServerInterfaceWrapper) GetV2SandboxesSandboxIDLogs(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
@@ -13200,10 +13072,6 @@ func (siw *ServerInterfaceWrapper) GetV2SandboxesSandboxIDLogs(c *gin.Context) {
 func (siw *ServerInterfaceWrapper) PostV2Templates(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
-
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
@@ -13286,10 +13154,6 @@ func (siw *ServerInterfaceWrapper) PostV2TemplatesTemplateIDBuildsBuildID(c *gin
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
@@ -13312,10 +13176,6 @@ func (siw *ServerInterfaceWrapper) PostV2TemplatesTemplateIDBuildsBuildID(c *gin
 func (siw *ServerInterfaceWrapper) PostV3Templates(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
-
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
@@ -13340,10 +13200,6 @@ func (siw *ServerInterfaceWrapper) GetVolumes(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
@@ -13366,10 +13222,6 @@ func (siw *ServerInterfaceWrapper) GetVolumes(c *gin.Context) {
 func (siw *ServerInterfaceWrapper) PostVolumes(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
-
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
@@ -13406,10 +13258,6 @@ func (siw *ServerInterfaceWrapper) DeleteVolumesVolumeID(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
@@ -13444,10 +13292,6 @@ func (siw *ServerInterfaceWrapper) GetVolumesVolumeID(c *gin.Context) {
 	}
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
-
-	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
@@ -13672,63 +13516,63 @@ var swaggerSpec = []string{
 	"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",
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
