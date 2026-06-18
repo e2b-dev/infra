@@ -184,7 +184,10 @@ func (b *Builder) Build(ctx context.Context, paths storage.Paths, cfg config.Tem
 	// Wrap context as a user error if no user error already exists
 	defer func() {
 		if ctx.Err() != nil {
-			childSpan.AddEvent("build context done", trace.WithAttributes(contextTraceAttributes(ctx, startTime)...))
+			childSpan.AddEvent("build context done", trace.WithAttributes(
+				attribute.String("context.err", ctx.Err().Error()),
+				attribute.String("context.cause", context.Cause(ctx).Error()),
+			))
 			e = errors.Join(e, ctx.Err())
 		}
 
@@ -237,46 +240,46 @@ func (b *Builder) Build(ctx context.Context, paths storage.Paths, cfg config.Tem
 		waitStart := time.Now()
 
 		if ctx.Err() != nil {
-			attrs := contextTraceAttributes(ctx, startTime)
-			waitSpan.AddEvent("build context done before upload wait", trace.WithAttributes(attrs...))
+			waitSpan.AddEvent("build context done before upload wait", trace.WithAttributes(
+				attribute.String("context.err", ctx.Err().Error()),
+				attribute.String("context.cause", context.Cause(ctx).Error()),
+			))
 			b.logger.Warn(waitCtx, "build context done before waiting for template layer uploads",
-				append(contextLogFields(ctx, startTime),
-					logger.WithTemplateID(cfg.TemplateID),
-					logger.WithBuildID(paths.BuildID),
-					logger.WithTeamID(cfg.TeamID),
-				)...,
+				logger.WithTemplateID(cfg.TemplateID),
+				logger.WithBuildID(paths.BuildID),
+				logger.WithTeamID(cfg.TeamID),
+				zap.String("context_err", ctx.Err().Error()),
+				zap.String("context_cause", context.Cause(ctx).Error()),
 			)
 		}
 
 		err := uploadErrGroup.Wait()
 		waitDuration := time.Since(waitStart)
-		waitAttrs := append(contextTraceAttributes(ctx, startTime),
+		waitAttrs := []attribute.KeyValue{
 			attribute.Bool("upload_wait_error", err != nil),
 			attribute.Bool("build_context_done_after_upload_wait", ctx.Err() != nil),
-		)
+		}
 		waitSpan.SetAttributes(waitAttrs...)
 		if err != nil {
 			waitSpan.RecordError(err, trace.WithAttributes(waitAttrs...))
 			waitSpan.SetStatus(codes.Error, err.Error())
 			b.logger.Error(waitCtx, "template layer upload wait failed",
-				append(contextLogFields(ctx, startTime),
-					logger.WithTemplateID(cfg.TemplateID),
-					logger.WithBuildID(paths.BuildID),
-					logger.WithTeamID(cfg.TeamID),
-					zap.Duration("upload_wait_duration", waitDuration),
-					zap.Error(err),
-				)...,
+				logger.WithTemplateID(cfg.TemplateID),
+				logger.WithBuildID(paths.BuildID),
+				logger.WithTeamID(cfg.TeamID),
+				zap.Duration("upload_wait_duration", waitDuration),
+				zap.Error(err),
 			)
 			e = errors.Join(e, fmt.Errorf("error uploading template layers: %w", err))
 		} else if ctx.Err() != nil {
 			waitSpan.AddEvent("upload wait completed after build context done", trace.WithAttributes(waitAttrs...))
 			b.logger.Warn(waitCtx, "template layer upload wait completed after build context was done",
-				append(contextLogFields(ctx, startTime),
-					logger.WithTemplateID(cfg.TemplateID),
-					logger.WithBuildID(paths.BuildID),
-					logger.WithTeamID(cfg.TeamID),
-					zap.Duration("upload_wait_duration", waitDuration),
-				)...,
+				logger.WithTemplateID(cfg.TemplateID),
+				logger.WithBuildID(paths.BuildID),
+				logger.WithTeamID(cfg.TeamID),
+				zap.Duration("upload_wait_duration", waitDuration),
+				zap.String("context_err", ctx.Err().Error()),
+				zap.String("context_cause", context.Cause(ctx).Error()),
 			)
 		}
 
@@ -508,45 +511,4 @@ func getRootfsSize(
 	}
 
 	return h.Metadata.Size, nil
-}
-
-func contextTraceAttributes(ctx context.Context, startTime time.Time, extra ...attribute.KeyValue) []attribute.KeyValue {
-	attrs := []attribute.KeyValue{
-		attribute.Int64("build.elapsed_ms", time.Since(startTime).Milliseconds()),
-		attribute.Bool("build.context_done", ctx.Err() != nil),
-	}
-	if err := ctx.Err(); err != nil {
-		attrs = append(attrs, attribute.String("build.context_err", err.Error()))
-	}
-	if cause := context.Cause(ctx); cause != nil {
-		attrs = append(attrs, attribute.String("build.context_cause", cause.Error()))
-	}
-	if deadline, ok := ctx.Deadline(); ok {
-		attrs = append(attrs,
-			attribute.String("build.context_deadline", deadline.Format(time.RFC3339Nano)),
-			attribute.Int64("build.context_deadline_remaining_ms", time.Until(deadline).Milliseconds()),
-		)
-	}
-
-	return append(attrs, extra...)
-}
-
-func contextLogFields(ctx context.Context, startTime time.Time) []zap.Field {
-	fields := []zap.Field{
-		zap.Duration("build_elapsed", time.Since(startTime)),
-	}
-	if err := ctx.Err(); err != nil {
-		fields = append(fields, zap.String("context_err", err.Error()))
-	}
-	if cause := context.Cause(ctx); cause != nil {
-		fields = append(fields, zap.String("context_cause", cause.Error()))
-	}
-	if deadline, ok := ctx.Deadline(); ok {
-		fields = append(fields,
-			zap.Time("context_deadline", deadline),
-			zap.Duration("context_deadline_remaining", time.Until(deadline)),
-		)
-	}
-
-	return fields
 }
