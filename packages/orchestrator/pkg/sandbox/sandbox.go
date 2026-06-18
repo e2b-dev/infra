@@ -208,6 +208,12 @@ type Resources struct {
 
 type internalConfig struct {
 	EnvdInitRequestTimeout time.Duration
+
+	// envdServerURLOverride, when non-empty, replaces the default
+	// http://<slot-ip>:<envd-port> base address used for envd HTTP calls.
+	// Test-only: it lets unit tests point envd ops (e.g. fsfreeze/fsthaw) at an
+	// httptest server.
+	envdServerURLOverride string
 }
 
 type Metadata struct {
