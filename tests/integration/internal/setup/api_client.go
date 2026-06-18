@@ -2,6 +2,7 @@ package setup
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
@@ -39,6 +40,14 @@ func WithTestsUserAgent() api.RequestEditorFn {
 func WithUserAgent(userAgent string) api.RequestEditorFn {
 	return func(_ context.Context, req *http.Request) error {
 		req.Header.Set("User-Agent", userAgent)
+
+		return nil
+	}
+}
+
+func WithAccessToken() func(ctx context.Context, req *http.Request) error {
+	return func(_ context.Context, req *http.Request) error {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", AccessToken))
 
 		return nil
 	}

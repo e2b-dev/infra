@@ -19,7 +19,7 @@ func TestRequestTemplateBuild(t *testing.T) {
 	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
 		CpuCount: new(api.CPUCount(2)),
 		MemoryMB: new(api.MemoryMB(1024)),
-	}, setup.WithAPIKey())
+	}, setup.WithAccessToken())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusAccepted, resp.StatusCode())
 }
@@ -31,7 +31,7 @@ func TestRequestTemplateTooLowCPU(t *testing.T) {
 	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
 		CpuCount: new(api.CPUCount(0)),
 		MemoryMB: new(api.MemoryMB(1024)),
-	}, setup.WithAPIKey())
+	}, setup.WithAccessToken())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode())
 	require.NotNil(t, resp.JSON400)
@@ -45,7 +45,7 @@ func TestRequestTemplateTooLowRAM(t *testing.T) {
 	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
 		CpuCount: new(api.CPUCount(2)),
 		MemoryMB: new(api.MemoryMB(32)),
-	}, setup.WithAPIKey())
+	}, setup.WithAccessToken())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode())
 	require.NotNil(t, resp.JSON400)
@@ -59,7 +59,7 @@ func TestRequestTemplateTooHighCPU(t *testing.T) {
 	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
 		CpuCount: new(api.CPUCount(1024)),
 		MemoryMB: new(api.MemoryMB(1024)),
-	}, setup.WithAPIKey())
+	}, setup.WithAccessToken())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode())
 	require.NotNil(t, resp.JSON400)
@@ -73,7 +73,7 @@ func TestRequestTemplateOddCPU(t *testing.T) {
 	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
 		CpuCount: new(api.CPUCount(3)),
 		MemoryMB: new(api.MemoryMB(1024)),
-	}, setup.WithAPIKey())
+	}, setup.WithAccessToken())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode())
 	require.NotNil(t, resp.JSON400)
@@ -87,7 +87,7 @@ func TestRequestTemplateTooHighMemory(t *testing.T) {
 	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
 		CpuCount: new(api.CPUCount(2)),
 		MemoryMB: new(api.MemoryMB(1024 * 1024)),
-	}, setup.WithAPIKey())
+	}, setup.WithAccessToken())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode())
 	require.NotNil(t, resp.JSON400)
@@ -101,7 +101,7 @@ func TestRequestTemplateMemoryNonDivisibleBy2(t *testing.T) {
 	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
 		CpuCount: new(api.CPUCount(2)),
 		MemoryMB: new(api.MemoryMB(1001)),
-	}, setup.WithAPIKey())
+	}, setup.WithAccessToken())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode())
 	require.NotNil(t, resp.JSON400)
