@@ -144,9 +144,9 @@ func TestStartScriptBuilder_Build(t *testing.T) {
 	}
 }
 
-// TestStartScriptBuilder_NoIpNetnsExec 验证优化后脚本中不再包含旧的 ip netns exec 命令。
-// 这是性能优化的核心保证：ip netns exec 内部会额外调用 unshare(CLONE_NEWNS)，
-// 导致第二次挂载树拷贝，在高并发下争抢 namespace_sem 全局内核锁。
+// TestStartScriptBuilder_NoIpNetnsExec verifies that the optimized script no longer contains the legacy ip netns exec command.
+// This is the core regression guard for the perf fix: ip netns exec internally calls unshare(CLONE_NEWNS),
+// triggering a second mount tree copy that contends on the namespace_sem global kernel lock under high concurrency.
 func TestStartScriptBuilder_NoIpNetnsExec(t *testing.T) {
 	t.Parallel()
 	config, err := cfg.ParseBuilder()
@@ -166,17 +166,17 @@ func TestStartScriptBuilder_NoIpNetnsExec(t *testing.T) {
 			)
 			require.NoError(t, err)
 
-			// 核心断言：旧命令必须完全消失
+			// Core assertion: the legacy command must be completely absent
 			assert.NotContains(t, result.Value, "ip netns exec",
-				"脚本不应再包含 ip netns exec（会触发第二次 mount namespace 拷贝）")
+				"script must not contain ip netns exec (triggers a second mount namespace copy)")
 		})
 	}
 }
 
-// TestStartScriptBuilder_NsenterFormat 验证 nsenter 命令格式的正确性：
-//  1. 必须使用完整路径 /var/run/netns/<id>
-//  2. 必须包含 -- 分隔符，防止 firecracker 参数被 nsenter 误解析
-//  3. nsenter 必须紧接 firecracker 二进制路径
+// TestStartScriptBuilder_NsenterFormat verifies the correctness of the nsenter command format:
+//  1. Must use the full path /var/run/netns/<id>
+//  2. Must include the -- separator to prevent firecracker args from being parsed by nsenter
+//  3. nsenter must be immediately followed by the firecracker binary path
 func TestStartScriptBuilder_NsenterFormat(t *testing.T) {
 	t.Parallel()
 	config, err := cfg.ParseBuilder()
@@ -206,20 +206,20 @@ func TestStartScriptBuilder_NsenterFormat(t *testing.T) {
 			)
 			require.NoError(t, err)
 
-			// 验证完整路径格式
+			// Verify full path format
 			assert.Contains(t, result.Value, fmt.Sprintf("nsenter --net=%s --", tt.wantNetPath),
-				"nsenter 必须使用 /var/run/netns/ 前缀的完整路径，并带 -- 分隔符")
+				"nsenter must use full /var/run/netns/ prefix path with -- separator")
 
-			// 验证 -- 分隔符存在（防止 firecracker 参数被 nsenter 吞掉）
+			// Verify -- separator is present (prevents firecracker args from being consumed by nsenter)
 			assert.Contains(t, result.Value, "nsenter --net="+tt.wantNetPath+" --",
-				"nsenter 和 firecracker 之间必须有 -- 分隔符")
+				"nsenter and firecracker must be separated by --")
 		})
 	}
 }
 
-// TestStartScriptBuilder_NetNamespacePath 直接验证 buildArgs 中 NetNamespacePath 的路径拼接逻辑。
-// filepath.Join("/var/run/netns", namespaceID) 必须产生正确路径，
-// 不能出现双斜杠或路径截断。
+// TestStartScriptBuilder_NetNamespacePath directly verifies the NetNamespacePath construction logic in buildArgs.
+// filepath.Join("/var/run/netns", namespaceID) must produce the correct path
+// without double slashes or path truncation.
 func TestStartScriptBuilder_NetNamespacePath(t *testing.T) {
 	t.Parallel()
 	config, err := cfg.ParseBuilder()
@@ -246,14 +246,14 @@ func TestStartScriptBuilder_NetNamespacePath(t *testing.T) {
 				c.namespaceID,
 			)
 			assert.Equal(t, c.expectedPath, args.NetNamespacePath,
-				"NetNamespacePath 必须是 /var/run/netns/<namespaceID>")
+				"NetNamespacePath must be /var/run/netns/<namespaceID>")
 		})
 	}
 }
 
-// TestStartScriptBuilder_TemplateVersionBoundary 验证模板版本边界：
-// TemplateVersion <= 1 使用 V1 模板（兼容旧路径），>= 2 使用 V2 模板。
-// 两个模板都必须使用 nsenter 而非 ip netns exec。
+// TestStartScriptBuilder_TemplateVersionBoundary verifies template version boundary behavior:
+// TemplateVersion <= 1 uses the V1 template (legacy path compatibility), >= 2 uses the V2 template.
+// Both templates must use nsenter instead of ip netns exec.
 func TestStartScriptBuilder_TemplateVersionBoundary(t *testing.T) {
 	t.Parallel()
 	config, err := cfg.ParseBuilder()
@@ -261,7 +261,7 @@ func TestStartScriptBuilder_TemplateVersionBoundary(t *testing.T) {
 
 	builder := NewStartScriptBuilder(config)
 
-	// TemplateVersion=0 应走 V1 分支（<= 1）
+	// TemplateVersion=0 should take the V1 branch (<= 1)
 	t.Run("version_0_uses_v1_template", func(t *testing.T) {
 		t.Parallel()
 		result, err := builder.Build(
@@ -271,15 +271,15 @@ func TestStartScriptBuilder_TemplateVersionBoundary(t *testing.T) {
 			"ns-5",
 		)
 		require.NoError(t, err)
-		// V1 模板挂载 DeprecatedSandboxRootfsDir
+		// V1 template mounts DeprecatedSandboxRootfsDir
 		assert.Contains(t, result.Value, "mount -t tmpfs tmpfs /mnt/disks/fc-envs/v1/tmpl/builds/bld",
-			"TemplateVersion=0 应使用 V1 模板（旧路径）")
+			"TemplateVersion=0 should use V1 template (legacy path)")
 		assert.Contains(t, result.Value, "nsenter --net=/var/run/netns/ns-5 --",
-			"V1 模板也必须使用 nsenter")
+			"V1 template must also use nsenter")
 		assert.NotContains(t, result.Value, "ip netns exec")
 	})
 
-	// TemplateVersion=1 应走 V1 分支
+	// TemplateVersion=1 should take the V1 branch
 	t.Run("version_1_uses_v1_template", func(t *testing.T) {
 		t.Parallel()
 		result, err := builder.Build(
@@ -293,7 +293,7 @@ func TestStartScriptBuilder_TemplateVersionBoundary(t *testing.T) {
 		assert.NotContains(t, result.Value, "ip netns exec")
 	})
 
-	// TemplateVersion=2 应走 V2 分支
+	// TemplateVersion=2 should take the V2 branch
 	t.Run("version_2_uses_v2_template", func(t *testing.T) {
 		t.Parallel()
 		result, err := builder.Build(
@@ -303,17 +303,17 @@ func TestStartScriptBuilder_TemplateVersionBoundary(t *testing.T) {
 			"ns-5",
 		)
 		require.NoError(t, err)
-		// V2 模板直接挂载 SandboxDir
+		// V2 template mounts SandboxDir directly
 		assert.Contains(t, result.Value, "mount -t tmpfs tmpfs /fc-vm -o X-mount.mkdir",
-			"TemplateVersion=2 应使用 V2 模板（新路径）")
+			"TemplateVersion=2 should use V2 template (new path)")
 		assert.Contains(t, result.Value, "nsenter --net=/var/run/netns/ns-5 --")
 		assert.NotContains(t, result.Value, "ip netns exec")
 	})
 }
 
-// TestStartScriptBuilder_ScriptStructureOrder 验证脚本命令的执行顺序：
-// 必须先完成所有挂载操作，最后才执行 nsenter 进入网络命名空间启动 firecracker。
-// 顺序错误会导致 firecracker 在挂载完成前启动，找不到 rootfs/kernel 文件。
+// TestStartScriptBuilder_ScriptStructureOrder verifies the execution order of script commands:
+// all mount operations must complete before nsenter enters the network namespace to launch firecracker.
+// Wrong ordering would cause firecracker to start before mounts are ready, failing to find rootfs/kernel files.
 func TestStartScriptBuilder_ScriptStructureOrder(t *testing.T) {
 	t.Parallel()
 	config, err := cfg.ParseBuilder()
@@ -332,15 +332,15 @@ func TestStartScriptBuilder_ScriptStructureOrder(t *testing.T) {
 	mountPos := strings.Index(result.Value, "mount --make-rprivate /")
 	nsenterPos := strings.Index(result.Value, "nsenter --net=")
 
-	assert.Greater(t, mountPos, -1, "脚本必须包含 mount --make-rprivate /")
-	assert.Greater(t, nsenterPos, -1, "脚本必须包含 nsenter --net=")
+	assert.Greater(t, mountPos, -1, "script must contain mount --make-rprivate /")
+	assert.Greater(t, nsenterPos, -1, "script must contain nsenter --net=")
 	assert.Greater(t, nsenterPos, mountPos,
-		"nsenter 必须在所有 mount 操作之后执行，确保挂载点就绪后再启动 firecracker")
+		"nsenter must execute after all mount operations to ensure mount points are ready before firecracker starts")
 
-	// nsenter 必须是脚本的最后一条命令（之后不应有其他 && 链接的命令）
+	// nsenter must be the last command in the script (no further && chained commands after it)
 	nsenterLine := result.Value[nsenterPos:]
 	assert.NotContains(t, nsenterLine, " &&\n",
-		"nsenter 启动 firecracker 后不应再有其他命令")
+		"no commands should follow nsenter after firecracker is launched")
 }
 
 // createTestSandboxFiles creates a SandboxFiles instance for testing
