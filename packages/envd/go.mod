@@ -14,7 +14,7 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/e2b-dev/fsnotify v0.0.1
 	github.com/e2b-dev/infra/packages/shared v0.0.0
-	github.com/go-chi/chi/v5 v5.2.2
+	github.com/go-chi/chi/v5 v5.2.4
 	github.com/google/uuid v1.6.0
 	github.com/oapi-codegen/runtime v1.4.0
 	github.com/prometheus/procfs v0.17.0
