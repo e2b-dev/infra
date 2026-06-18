@@ -62,9 +62,13 @@ type StorageDiff struct {
 	source    atomic.Pointer[source]
 	refreshMu sync.Mutex
 
-	// softDeleted is set once the background check fails the layer (only under
-	// enforcement); when true, reads fail closed.
-	softDeleted atomic.Bool
+	// softDeletedPath holds the dataPath pointer the background check found
+	// tombstoned (only under enforcement); reads fail closed while it equals the
+	// current dataPath. Keying on the path pointer (not a bool) makes the latch
+	// race-free: a stale check that stored a superseded probe path can never
+	// match the current dataPath, and a peer-transition repoint auto-disables
+	// the old verdict without a separate clear.
+	softDeletedPath atomic.Pointer[string]
 }
 
 var _ Diff = (*StorageDiff)(nil)
@@ -468,13 +472,13 @@ func (b *StorageDiff) reloadSourceLocked(ctx context.Context, cause string) erro
 	}
 	b.source.Store(&source{upstream: upstream, fullDiffFrameTable: ft})
 
-	// The authoritative object can differ from the one first opened (e.g. a
-	// peer probe resolving to a compressed object); re-point, clear any verdict
-	// from the old object, and recheck so a soft-delete on the real object is
-	// caught while a stale tombstone on the probe object can't fail us closed.
+	// The authoritative object can differ from the one first opened (e.g. a peer
+	// probe resolving to a compressed object); re-point to the new pointer and
+	// recheck. Enforcement keys on the path pointer, so the old object's verdict
+	// (softDeletedPath) stops matching automatically — no explicit clear, and no
+	// race with a stale check still about to store the superseded path.
 	if old := b.dataPath.Load(); old == nil || *old != dataPath {
 		b.dataPath.Store(&dataPath)
-		b.softDeleted.Store(false)
 		b.startSoftDeleteCheck(context.WithoutCancel(ctx))
 	}
 

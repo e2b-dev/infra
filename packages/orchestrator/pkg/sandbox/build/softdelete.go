@@ -52,7 +52,9 @@ func classifyCheckError(err error) string {
 }
 
 func (b *StorageDiff) softDeleteErr() error {
-	if b.softDeleted.Load() {
+	// Fail closed only while the tombstoned path is still the active one: a peer
+	// transition that repointed dataPath makes the old verdict stop matching.
+	if sp := b.softDeletedPath.Load(); sp != nil && sp == b.dataPath.Load() {
 		return fmt.Errorf("%s %s: %w", b.buildID, b.diffType, storage.ErrObjectSoftDeleted)
 	}
 
@@ -119,12 +121,10 @@ func (b *StorageDiff) softDeleteCheck(ctx context.Context, ff *featureflags.Clie
 		zap.Bool("enforce", enforce),
 	)
 
-	// Only fail closed if dataPath still points at the object we checked: a
-	// peer transition may have repointed it, in which case a fresh check for
-	// the new object is authoritative and this (stale) one must not latch.
+	// Record the tombstoned path; softDeleteErr enforces only while it is still
+	// the active dataPath, so storing a superseded path here is harmless (it can
+	// never match the current pointer) — no check-then-store race.
 	if failed {
-		if cur := b.dataPath.Load(); cur == path {
-			b.softDeleted.Store(true)
-		}
+		b.softDeletedPath.Store(path)
 	}
 }
