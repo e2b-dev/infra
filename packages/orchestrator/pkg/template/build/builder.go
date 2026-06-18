@@ -230,8 +230,7 @@ func (b *Builder) Build(ctx context.Context, paths storage.Paths, cfg config.Tem
 	uploadErrGroup := &errgroup.Group{}
 	defer func() {
 		// Wait for all template layers to be uploaded even if the build fails
-		waitCtx := context.WithoutCancel(ctx)
-		waitCtx, waitSpan := tracer.Start(waitCtx, "wait-for-template-layer-uploads", trace.WithAttributes(
+		_, waitSpan := tracer.Start(ctx, "wait-for-template-layer-uploads", trace.WithAttributes(
 			telemetry.WithTemplateID(cfg.TemplateID),
 			telemetry.WithBuildID(paths.BuildID),
 			telemetry.WithTeamID(cfg.TeamID),
@@ -242,7 +241,7 @@ func (b *Builder) Build(ctx context.Context, paths storage.Paths, cfg config.Tem
 		if err != nil {
 			waitSpan.RecordError(err)
 			waitSpan.SetStatus(codes.Error, err.Error())
-			b.logger.Error(waitCtx, "template layer upload wait failed",
+			b.logger.Error(ctx, "template layer upload wait failed",
 				logger.WithTemplateID(cfg.TemplateID),
 				logger.WithBuildID(paths.BuildID),
 				logger.WithTeamID(cfg.TeamID),
