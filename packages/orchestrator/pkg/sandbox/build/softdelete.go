@@ -80,19 +80,22 @@ func (b *StorageDiff) softDeleteCheck(ctx context.Context, ff *featureflags.Clie
 	}
 	blob, err := b.persistence.OpenBlob(ctx, *path, storage.MetadataObjectType)
 	if err != nil {
-		b.recordCheck(ctx, classifyCheckError(err), false, false)
+		result := classifyCheckError(err)
+		b.recordCheck(ctx, result, false, false)
 		logger.L().Warn(ctx, "storage-index soft-delete check could not open object",
 			logger.WithBuildID(b.buildID), zap.String("artifact", string(b.diffType)),
-			zap.String("object", *path), zap.Error(err))
+			zap.String("result", result), zap.String("object", *path), zap.Error(err))
 
 		return
 	}
 
 	md, err := storage.BlobCustomMetadata(ctx, blob)
 	if err != nil {
-		b.recordCheck(ctx, classifyCheckError(err), false, false)
+		result := classifyCheckError(err)
+		b.recordCheck(ctx, result, false, false)
 		logger.L().Warn(ctx, "storage-index soft-delete check could not read object metadata",
 			logger.WithBuildID(b.buildID), zap.String("artifact", string(b.diffType)),
+			zap.String("result", result),
 			zap.String("object", *path), zap.Error(err))
 
 		return
