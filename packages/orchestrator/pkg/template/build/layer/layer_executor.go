@@ -8,6 +8,9 @@ import (
 	"fmt"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy"
@@ -21,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/layer")
@@ -298,8 +302,29 @@ func (lb *LayerExecutor) PauseAndUpload(
 
 	lb.UploadErrGroup.Go(func() (uploadErr error) {
 		ctx := context.WithoutCancel(ctx)
-		ctx, span := tracer.Start(ctx, "upload snapshot")
-		defer span.End()
+		ctx, span := tracer.Start(ctx, "upload snapshot", trace.WithAttributes(
+			telemetry.WithTemplateID(lb.Config.TemplateID),
+			telemetry.WithBuildID(lb.Template.BuildID),
+			telemetry.WithTeamID(lb.Config.TeamID),
+			attribute.String("layer.build_id", meta.Template.BuildID),
+			attribute.String("layer.hash", hash),
+		))
+		defer func() {
+			if uploadErr != nil {
+				span.RecordError(uploadErr)
+				span.SetStatus(codes.Error, uploadErr.Error())
+				lb.logger.Error(ctx, "template layer snapshot upload failed",
+					logger.WithTemplateID(lb.Config.TemplateID),
+					logger.WithBuildID(lb.Template.BuildID),
+					logger.WithTeamID(lb.Config.TeamID),
+					zap.String("layer_build_id", meta.Template.BuildID),
+					zap.String("layer_hash", hash),
+					zap.Error(uploadErr),
+				)
+			}
+
+			span.End()
+		}()
 
 		// Signal even on error so child layers waiting on this build can abort.
 		defer func() { upload.Finish(ctx, uploadErr) }()
