@@ -179,16 +179,14 @@ func NewProcess(
 	}
 
 	cmd := exec.CommandContext(execCtx,
-		"unshare",
-		"-m",
-		"--",
 		"bash",
 		"-c",
 		startScript.Value,
 	)
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setsid: true, // Create a new session
+		Setsid:     true,              // Create a new session
+		Cloneflags: syscall.CLONE_NEWNS, // Create a new mount namespace (replaces external unshare -m)
 	}
 
 	return &Process{

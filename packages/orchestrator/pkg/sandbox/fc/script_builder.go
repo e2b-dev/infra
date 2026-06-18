@@ -24,7 +24,7 @@ type startScriptArgs struct {
 	DeprecatedSandboxRootfsDir string
 	SandboxRootfsFile          string
 
-	NamespaceID       string
+	NetNamespacePath  string
 	FirecrackerPath   string
 	FirecrackerSocket string
 }
@@ -49,7 +49,7 @@ ln -s {{ .HostRootfsPath }} {{ .DeprecatedSandboxRootfsDir }}/{{ .SandboxRootfsF
 mount -t tmpfs tmpfs {{ .SandboxDir }}/{{ .SandboxKernelDir }} -o X-mount.mkdir &&
 ln -s {{ .HostKernelPath }} {{ .SandboxDir }}/{{ .SandboxKernelDir }}/{{ .SandboxKernelFile }} &&
 
-ip netns exec {{ .NamespaceID }} {{ .FirecrackerPath }} --api-sock {{ .FirecrackerSocket }}`
+nsenter --net={{ .NetNamespacePath }} -- {{ .FirecrackerPath }} --api-sock {{ .FirecrackerSocket }}`
 
 const startScriptV2 = `mount --make-rprivate / &&
 mount -t tmpfs tmpfs {{ .SandboxDir }} -o X-mount.mkdir &&
@@ -59,7 +59,7 @@ ln -s {{ .HostRootfsPath }} {{ .SandboxDir }}/{{ .SandboxRootfsFile }} &&
 mkdir -p {{ .SandboxDir }}/{{ .SandboxKernelDir }} &&
 ln -s {{ .HostKernelPath }} {{ .SandboxDir }}/{{ .SandboxKernelDir }}/{{ .SandboxKernelFile }} &&
 
-ip netns exec {{ .NamespaceID }} {{ .FirecrackerPath }} --api-sock {{ .FirecrackerSocket }}`
+nsenter --net={{ .NetNamespacePath }} -- {{ .FirecrackerPath }} --api-sock {{ .FirecrackerSocket }}`
 
 // StartScriptBuilder handles the creation and execution of firecracker start scripts
 type StartScriptBuilder struct {
@@ -102,7 +102,7 @@ func (sb *StartScriptBuilder) buildArgs(
 		SandboxRootfsFile:          SandboxRootfsFile,
 
 		// FC
-		NamespaceID:       namespaceID,
+		NetNamespacePath:  filepath.Join("/var/run/netns", namespaceID),
 		FirecrackerPath:   versions.FirecrackerPath(sb.builderConfig),
 		FirecrackerSocket: files.SandboxFirecrackerSocketPath(),
 	}
