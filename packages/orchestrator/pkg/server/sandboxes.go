@@ -858,7 +858,7 @@ func (s *Server) snapshotAndCacheSandbox(
 	ctx context.Context,
 	sbx *sandbox.Sandbox,
 	buildID string,
-	metadata map[string]string,
+	provenance map[string]string,
 	buildOrigin storage.ObjectOrigin,
 ) (*snapshotResult, error) {
 	meta, err := sbx.Template.Metadata()
@@ -894,7 +894,7 @@ func (s *Server) snapshotAndCacheSandbox(
 	// Caller-supplied provenance (e.g. template_id) is forwarded as-is; team and
 	// origin are orchestrator-authoritative and set last so they always win.
 	objectMetadata := storage.ObjectMetadata{}
-	maps.Copy(objectMetadata, metadata)
+	maps.Copy(objectMetadata, provenance)
 	objectMetadata[storage.ObjectMetadataTeamID] = sbx.Runtime.TeamID
 	objectMetadata[storage.ObjectMetadataBuildOrigin] = string(buildOrigin)
 
