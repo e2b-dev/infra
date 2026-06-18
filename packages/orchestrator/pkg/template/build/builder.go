@@ -186,7 +186,6 @@ func (b *Builder) Build(ctx context.Context, paths storage.Paths, cfg config.Tem
 		if ctx.Err() != nil {
 			childSpan.AddEvent("build context done", trace.WithAttributes(
 				attribute.String("context.err", ctx.Err().Error()),
-				attribute.String("context.cause", context.Cause(ctx).Error()),
 			))
 			e = errors.Join(e, ctx.Err())
 		}
@@ -253,7 +252,6 @@ func (b *Builder) Build(ctx context.Context, paths storage.Paths, cfg config.Tem
 		if ctx.Err() != nil {
 			waitSpan.AddEvent("build context done while waiting for uploads", trace.WithAttributes(
 				attribute.String("context.err", ctx.Err().Error()),
-				attribute.String("context.cause", context.Cause(ctx).Error()),
 			))
 		}
 	}()
