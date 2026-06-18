@@ -2769,7 +2769,6 @@ paths:
       deprecated: true
       tags: [templates]
       security:
-        - ApiKeyAuth: []
         - AccessTokenAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
