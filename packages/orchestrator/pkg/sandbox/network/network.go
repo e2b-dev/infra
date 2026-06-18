@@ -250,6 +250,15 @@ func (s *Slot) CreateNetwork(ctx context.Context) (retErr error) {
 		return fmt.Errorf("error creating postrouting rule from vpeer: %w", err)
 	}
 
+	// Tag every packet leaving the sandbox netns with a DSCP marker so downstream
+	// firewalls can distinguish sandbox traffic at L3 regardless of protocol.
+	// Rule lives inside the sandbox netns so it auto-disappears with the namespace
+	// and cannot be flushed from inside the guest (the FC VM only sees virtio-net).
+	err = tables.Append("mangle", "POSTROUTING", "-o", s.VpeerName(), "-j", "DSCP", "--set-dscp", sandboxEgressDSCP)
+	if err != nil {
+		return fmt.Errorf("error creating DSCP mangle rule on vpeer: %w", err)
+	}
+
 	err = s.InitializeFirewall()
 	if err != nil {
 		return fmt.Errorf("error initializing slot firewall: %w", err)

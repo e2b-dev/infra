@@ -17,6 +17,13 @@ import (
 // Host loopback interface name
 const loopbackInterface = "lo"
 
+// DSCP value applied to all packets egressing a sandbox netns.
+// CS1 (8) is the standardized "Scavenger" / lower-than-best-effort class
+// (RFC 3662) — signals untrusted, low-priority traffic, and gives operators
+// a stable L3 marker that survives across protocols (TCP/UDP/ICMP/etc.) so
+// downstream firewalls can identify sandbox traffic without relying on L7.
+const sandboxEgressDSCP = "8"
+
 // Host default gateway name
 var defaultGateway = utils.Must(getDefaultGateway(context.Background()))
 
