@@ -1,6 +1,7 @@
 package placement
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -206,6 +207,130 @@ func TestBestOfK_ChooseNode_NoAvailableNodes(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, selected)
 	assert.Contains(t, err.Error(), "no node available")
+}
+
+func TestFailedToPlaceSandboxError_Error(t *testing.T) {
+	t.Parallel()
+
+	machine := machineinfo.MachineInfo{
+		CPUArchitecture: "x86_64",
+		CPUFamily:       "6",
+		CPUModel:        machineinfo.IceLakeModel,
+		CPUModelName:    "Intel Ice Lake",
+	}
+
+	tests := []struct {
+		name           string
+		filterByLabels bool
+		requiredLabels []string
+		wantContains   []string
+		wantNotContain string
+	}{
+		{
+			name:           "without label filtering",
+			filterByLabels: false,
+			requiredLabels: nil,
+			wantContains: []string{
+				"no node available with required metadata",
+				fmt.Sprintf("machine=%v", machine),
+			},
+			wantNotContain: "labels=",
+		},
+		{
+			name:           "with label filtering",
+			filterByLabels: true,
+			requiredLabels: []string{"gpu", "fast-disk"},
+			wantContains: []string{
+				"no node available with required metadata",
+				fmt.Sprintf("machine=%v", machine),
+				"labels=[gpu fast-disk]",
+			},
+		},
+		{
+			name:           "label filtering enabled with no labels",
+			filterByLabels: true,
+			requiredLabels: nil,
+			wantContains: []string{
+				"no node available with required metadata",
+				"labels=[]",
+			},
+		},
+		{
+			name:           "labels present but filtering disabled",
+			filterByLabels: false,
+			requiredLabels: []string{"gpu"},
+			wantContains: []string{
+				"no node available with required metadata",
+			},
+			wantNotContain: "labels=",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := FailedToPlaceSandboxError{
+				filterByLabels:   tt.filterByLabels,
+				requiredLabels:   tt.requiredLabels,
+				buildMachineInfo: machine,
+			}
+
+			msg := err.Error()
+
+			for _, want := range tt.wantContains {
+				assert.Contains(t, msg, want)
+			}
+
+			if tt.wantNotContain != "" {
+				assert.NotContains(t, msg, tt.wantNotContain)
+			}
+		})
+	}
+}
+
+func TestFailedToPlaceSandboxError_IsError(t *testing.T) {
+	t.Parallel()
+
+	// The error returned by chooseNode when no node is available should be a
+	// FailedToPlaceSandboxError carrying the placement constraints.
+	var err error = FailedToPlaceSandboxError{
+		filterByLabels:   true,
+		requiredLabels:   []string{"gpu"},
+		buildMachineInfo: machineinfo.MachineInfo{CPUModelName: "Intel Ice Lake"},
+	}
+
+	var placeErr FailedToPlaceSandboxError
+	require.ErrorAs(t, err, &placeErr)
+	assert.True(t, placeErr.filterByLabels)
+	assert.Equal(t, []string{"gpu"}, placeErr.requiredLabels)
+	assert.Equal(t, "Intel Ice Lake", placeErr.buildMachineInfo.CPUModelName)
+}
+
+func TestBestOfK_ChooseNode_ReturnsPlacementError(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	config := DefaultBestOfKConfig()
+	algo := NewBestOfK(config).(*BestOfK)
+
+	// Unhealthy nodes cannot be placed on, forcing the error path.
+	node := nodemanager.NewTestNode("node1", api.NodeStatusUnhealthy, 2, 4)
+	nodes := []*nodemanager.Node{node}
+	resources := nodemanager.SandboxResources{CPUs: 1, MiBMemory: 512}
+	machine := machineinfo.MachineInfo{CPUModelName: "Intel Ice Lake"}
+	requiredLabels := []string{"gpu"}
+
+	selected, err := algo.chooseNode(ctx, nodes, make(map[string]struct{}), resources, machine, true, requiredLabels)
+	require.Error(t, err)
+	assert.Nil(t, selected)
+
+	// The error should be a FailedToPlaceSandboxError with the constraints that
+	// were requested, and its message should surface them.
+	var placeErr FailedToPlaceSandboxError
+	require.ErrorAs(t, err, &placeErr)
+	assert.Equal(t, requiredLabels, placeErr.requiredLabels)
+	assert.Contains(t, err.Error(), "labels=[gpu]")
+	assert.Contains(t, err.Error(), fmt.Sprintf("machine=%v", machine))
 }
 
 func TestBestOfK_Sample(t *testing.T) {
