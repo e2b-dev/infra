@@ -17,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	orchestratorgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -28,14 +29,20 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 	deniedEntries []string,
 	rules map[string][]types.SandboxNetworkRule,
 	allowInternetAccess *bool,
+	egressProxy *sandbox_network.EgressProxyConfig,
 ) *api.APIError {
-	network := &types.SandboxNetworkConfig{
-		Egress: &types.SandboxNetworkEgressConfig{
-			AllowedAddresses: allowedEntries,
-			DeniedAddresses:  deniedEntries,
-			Rules:            rules,
-		},
+	// PUT is full-replace: omitting egressProxy clears BYOP.
+	egressConfig := &types.SandboxNetworkEgressConfig{
+		AllowedAddresses: allowedEntries,
+		DeniedAddresses:  deniedEntries,
+		Rules:            rules,
 	}
+	if egressProxy != nil {
+		egressConfig.EgressProxyAddress = egressProxy.Address
+		egressConfig.EgressProxyUsername = egressProxy.Username
+		egressConfig.EgressProxyPassword = egressProxy.Password
+	}
+	network := &types.SandboxNetworkConfig{Egress: egressConfig}
 	orchNetwork := buildNetworkConfig(network, allowInternetAccess, nil)
 	egress := orchNetwork.GetEgress()
 
@@ -48,11 +55,7 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 			sbx.Network = &types.SandboxNetworkConfig{}
 		}
 
-		sbx.Network.Egress = &types.SandboxNetworkEgressConfig{
-			AllowedAddresses: allowedEntries,
-			DeniedAddresses:  deniedEntries,
-			Rules:            rules,
-		}
+		sbx.Network.Egress = egressConfig
 
 		if allowInternetAccess != nil {
 			sbx.AllowInternetAccess = allowInternetAccess

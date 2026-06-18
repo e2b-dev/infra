@@ -13,6 +13,7 @@ import (
 	ory "github.com/ory/client-go"
 
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
+	sharedteamprovision "github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -154,6 +155,73 @@ func (p *oryProvider) FindProfilesByEmail(ctx context.Context, email string) ([]
 	return profiles, nil
 }
 
+func (p *oryProvider) GetTeamCreatorContext(ctx context.Context, userID uuid.UUID) (*sharedteamprovision.CreatorContextV1, error) {
+	if userID == uuid.Nil {
+		return nil, nil
+	}
+
+	userIDBySubject, err := p.subjectsForUserIDs(ctx, []uuid.UUID{userID})
+	if err != nil {
+		return nil, err
+	}
+	if len(userIDBySubject) == 0 {
+		return nil, nil
+	}
+
+	identities, err := p.listIdentitiesByIDs(ctx, slices.Collect(maps.Keys(userIDBySubject)))
+	if err != nil {
+		return nil, err
+	}
+	if len(identities) == 0 {
+		return nil, nil
+	}
+
+	return creatorContextFromOryIdentity(identities[0]), nil
+}
+
+func (p *oryProvider) PrepareDeleteUser(ctx context.Context, userID uuid.UUID) (DeleteUserHandle, error) {
+	if userID == uuid.Nil {
+		return nil, errors.New("user id is required")
+	}
+
+	subjectsByUser, err := p.subjectsForUserIDs(ctx, []uuid.UUID{userID})
+	if err != nil {
+		return nil, fmt.Errorf("lookup ory subject for user: %w", err)
+	}
+
+	if len(subjectsByUser) == 0 {
+		return nil, fmt.Errorf("%w: no identity mapping for user %s", ErrUserNotFound, userID)
+	}
+
+	subjects := make([]string, 0, len(subjectsByUser))
+	for s := range subjectsByUser {
+		subjects = append(subjects, s)
+	}
+
+	return &oryDeleteHandle{provider: p, subjects: subjects}, nil
+}
+
+type oryDeleteHandle struct {
+	provider *oryProvider
+	subjects []string
+}
+
+func (h *oryDeleteHandle) Execute(ctx context.Context) error {
+	for _, subject := range h.subjects {
+		resp, err := h.provider.identities.DeleteIdentityExecute(
+			h.provider.identities.DeleteIdentity(h.provider.authCtx(ctx), subject),
+		)
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+		if err != nil {
+			return fmt.Errorf("delete ory identity %s: %w", subject, err)
+		}
+	}
+
+	return nil
+}
+
 func (p *oryProvider) subjectsForUserIDs(ctx context.Context, userIDs []uuid.UUID) (map[string]uuid.UUID, error) {
 	rows, err := p.resolver.GetUserIdentitiesByUserIDs(ctx, authqueries.GetUserIdentitiesByUserIDsParams{
 		OidcIss: p.issuer,
@@ -223,6 +291,54 @@ func profileFromOryIdentity(userID uuid.UUID, identity ory.Identity) Profile {
 		ProfilePictureURL: metadataString(identity.MetadataPublic, "picture"),
 		Providers:         oryLinkedProviders(identity),
 	}
+}
+
+func creatorContextFromOryIdentity(identity ory.Identity) *sharedteamprovision.CreatorContextV1 {
+	return creatorContextFromMetadata(identity.MetadataAdmin, providerNamesFromOryIdentity(identity))
+}
+
+func providerNamesFromOryIdentity(identity ory.Identity) []string {
+	if identity.Credentials == nil {
+		return nil
+	}
+
+	credentials := *identity.Credentials
+	providers := make([]string, 0, 3)
+	if _, ok := credentials[oryCredentialPassword]; ok {
+		providers = append(providers, authProviderEmail)
+	}
+
+	oidc, ok := credentials[oryCredentialOIDC]
+	if !ok {
+		return providers
+	}
+	oidcProviderCount := 0
+
+	if entries, ok := oidc.Config["providers"].([]any); ok {
+		for _, entry := range entries {
+			obj, ok := entry.(map[string]any)
+			if !ok {
+				continue
+			}
+			if name, ok := obj["provider"].(string); ok {
+				providers = append(providers, name)
+				oidcProviderCount++
+			}
+		}
+	}
+
+	for _, identifier := range oidc.Identifiers {
+		if provider, _, found := strings.Cut(identifier, ":"); found {
+			providers = append(providers, provider)
+			oidcProviderCount++
+		}
+	}
+
+	if oidcProviderCount == 0 {
+		providers = append(providers, oryCredentialOIDC)
+	}
+
+	return providers
 }
 
 // OIDC provider names can appear either in config.providers or as the

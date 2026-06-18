@@ -6,7 +6,7 @@ info:
 
 components:
   securitySchemes:
-    AdminTokenAuth:
+    AdminApiKeyAuth:
       type: apiKey
       in: header
       name: X-Admin-Token
@@ -121,6 +121,141 @@ components:
       description: Team slug to resolve.
       schema:
         type: string
+    templates_limit:
+      name: limit
+      in: query
+      required: false
+      description: Maximum number of items to return per page.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 100
+        default: 50
+    templateID:
+      name: templateID
+      in: path
+      required: true
+      description: Identifier of the template.
+      schema:
+        type: string
+    tag:
+      name: tag
+      in: query
+      required: true
+      description: Template tag name to check.
+      schema:
+        type: string
+        minLength: 1
+    tag_assignment_limit:
+      name: assignmentLimit
+      in: query
+      required: false
+      description: Maximum number of ready assignment rows to return per tag.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 25
+        default: 6
+    tag_path:
+      name: tag
+      in: path
+      required: true
+      description: Template tag name.
+      schema:
+        type: string
+        minLength: 1
+    tag_assignments_limit:
+      name: limit
+      in: query
+      required: false
+      description: Maximum number of assignment rows to return per page.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 100
+        default: 50
+    templates_cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Cursor returned by the previous list response in `{sort}|{value}|{templateID}` format. Rejected if its sort does not match the request.
+      schema:
+        type: string
+    templates_public:
+      name: public
+      in: query
+      required: false
+      description: Filter templates by visibility (true = public, false = internal).
+      schema:
+        type: boolean
+    templates_search:
+      name: search
+      in: query
+      required: false
+      description: Case-insensitive substring match on template names, aliases, and template id.
+      schema:
+        type: string
+    templates_sort:
+      name: sort
+      in: query
+      required: false
+      description: Sort column and direction.
+      schema:
+        type: string
+        enum:
+          [
+            created_at_asc,
+            created_at_desc,
+            updated_at_asc,
+            updated_at_desc,
+          ]
+        default: created_at_desc
+    tag_assignments_cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Cursor returned by the previous list response in `assigned_at|assignment_id` format.
+      schema:
+        type: string
+    tag_groups_limit:
+      name: tagsLimit
+      in: query
+      required: false
+      description: Maximum number of distinct tags to return per page.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 100
+        default: 25
+    tag_groups_cursor:
+      name: tagsCursor
+      in: query
+      required: false
+      description: Cursor returned by the previous list response in `{sort}|{latest_assigned_at}|{tag}` format (sort-tagged, RFC3339Nano).
+      schema:
+        type: string
+    tag_groups_search:
+      name: search
+      in: query
+      required: false
+      description: Case-insensitive substring filter on tag name. Allowed characters are `a-z`, `0-9`, `.`, `_`, `-`.
+      schema:
+        type: string
+        maxLength: 64
+        pattern: "^[a-z0-9._-]*$"
+    tag_groups_sort:
+      name: sort
+      in: query
+      required: false
+      description: Sort order for the returned tag groups.
+      schema:
+        type: string
+        enum: [latest_desc, latest_asc, name_asc, name_desc]
+        default: latest_desc
 
   responses:
     "400":
@@ -143,6 +278,12 @@ components:
             $ref: "#/components/schemas/Error"
     "404":
       description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    "409":
+      description: Conflict
       content:
         application/json:
           schema:
@@ -242,6 +383,10 @@ components:
         oidc_user_name:
           type: string
           nullable: true
+        signup_ip:
+          type: string
+        signup_user_agent:
+          type: string
 
     AdminTeamBootstrapRequest:
       type: object
@@ -276,6 +421,10 @@ components:
         - statusMessage
         - createdAt
         - finishedAt
+        - cpuCount
+        - memoryMB
+        - diskSizeMB
+        - envdVersion
       properties:
         id:
           type: string
@@ -302,6 +451,23 @@ components:
           format: date-time
           nullable: true
           description: Build completion timestamp in RFC3339 format, if finished.
+        cpuCount:
+          type: integer
+          format: int64
+          description: CPU cores configured for the build.
+        memoryMB:
+          type: integer
+          format: int64
+          description: Memory in MiB configured for the build.
+        diskSizeMB:
+          type: integer
+          format: int64
+          nullable: true
+          description: Disk size in MiB configured for the build, if recorded.
+        envdVersion:
+          type: string
+          nullable: true
+          description: envd version the build was created with, if recorded.
 
     BuildsListResponse:
       type: object
@@ -694,6 +860,287 @@ components:
           items:
             $ref: "#/components/schemas/DefaultTemplate"
 
+    TeamTemplate:
+      type: object
+      required:
+        - templateID
+        - buildID
+        - cpuCount
+        - memoryMB
+        - diskSizeMB
+        - public
+        - aliases
+        - names
+        - createdAt
+        - updatedAt
+        - createdBy
+        - lastSpawnedAt
+        - spawnCount
+        - buildCount
+        - envdVersion
+        - isDefault
+      properties:
+        templateID:
+          type: string
+        buildID:
+          type: string
+          format: uuid
+        cpuCount:
+          type: integer
+          format: int64
+        memoryMB:
+          type: integer
+          format: int64
+        diskSizeMB:
+          type: integer
+          format: int64
+          nullable: true
+        public:
+          type: boolean
+        aliases:
+          type: array
+          items:
+            type: string
+        names:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        createdBy:
+          nullable: true
+          type: object
+          required:
+            - id
+          properties:
+            id:
+              type: string
+              format: uuid
+            email:
+              type: string
+              nullable: true
+        lastSpawnedAt:
+          type: string
+          format: date-time
+          nullable: true
+        spawnCount:
+          type: integer
+          format: int64
+        buildCount:
+          type: integer
+          format: int32
+        envdVersion:
+          type: string
+          nullable: true
+        isDefault:
+          type: boolean
+        defaultDescription:
+          type: string
+          nullable: true
+
+    TeamTemplatesResponse:
+      type: object
+      required:
+        - data
+        - nextCursor
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeamTemplate"
+        nextCursor:
+          type: string
+          nullable: true
+          description: Cursor to pass to the next list request, or `null` if there is no next page.
+
+    TemplateDetail:
+      type: object
+      description: Dashboard-shaped single-template read. Mirrors the infra-api `Template` schema fields the dashboard renders.
+      required:
+        - templateID
+        - buildID
+        - cpuCount
+        - memoryMB
+        - diskSizeMB
+        - public
+        - aliases
+        - names
+        - createdAt
+        - updatedAt
+        - lastSpawnedAt
+        - spawnCount
+        - buildCount
+        - envdVersion
+      properties:
+        templateID:
+          type: string
+          description: Identifier of the template.
+        buildID:
+          type: string
+          description: Identifier of the latest ready build for the template, or the zero UUID when none.
+        cpuCount:
+          allOf:
+            - $ref: "#/components/schemas/CPUCount"
+          nullable: true
+          description: vCPU count of the latest ready default build, or `null` when none.
+        memoryMB:
+          allOf:
+            - $ref: "#/components/schemas/MemoryMB"
+          nullable: true
+          description: Memory in MiB of the latest ready default build, or `null` when none.
+        diskSizeMB:
+          allOf:
+            - $ref: "#/components/schemas/DiskSizeMB"
+          nullable: true
+          description: Disk size in MiB of the latest ready default build, or `null` when none.
+        public:
+          type: boolean
+          description: Whether the template is public or only accessible by the team.
+        aliases:
+          type: array
+          description: Aliases of the template.
+          deprecated: true
+          items:
+            type: string
+        names:
+          type: array
+          description: Names of the template (namespace/alias format when namespaced).
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+          description: Time when the template was created.
+        updatedAt:
+          type: string
+          format: date-time
+          description: Time when the template was last updated.
+        lastSpawnedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Time when the template was last used.
+        spawnCount:
+          type: integer
+          format: int64
+          description: Number of times the template was used.
+        buildCount:
+          type: integer
+          format: int32
+          description: Number of times the template was built.
+        envdVersion:
+          type: string
+          nullable: true
+          description: envd version of the latest ready default build, or `null` when none.
+
+    TemplateTagAssignment:
+      type: object
+      required:
+        - assignmentId
+        - buildId
+        - assignedAt
+        - buildCreatedAt
+        - buildFinishedAt
+      properties:
+        assignmentId:
+          type: string
+          format: uuid
+          description: Identifier of the tag assignment event.
+        buildId:
+          type: string
+          format: uuid
+          description: Identifier of the assigned build.
+        assignedAt:
+          type: string
+          format: date-time
+          description: Time when the tag was assigned to the build.
+        buildCreatedAt:
+          type: string
+          format: date-time
+          description: Time when the assigned build was created.
+        buildFinishedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Time when the assigned build finished.
+
+    TemplateTagGroup:
+      type: object
+      required:
+        - tag
+        - assignments
+        - hasMore
+      properties:
+        tag:
+          type: string
+          description: Template tag name.
+        assignments:
+          type: array
+          description: Ready assignment events for this tag, sorted latest first.
+          items:
+            $ref: "#/components/schemas/TemplateTagAssignment"
+        hasMore:
+          type: boolean
+          description: Whether more ready assignment events exist beyond the requested assignment limit.
+
+    TemplateTagGroupsResponse:
+      type: object
+      required:
+        - tags
+        - nextCursor
+      properties:
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/TemplateTagGroup"
+        nextCursor:
+          type: string
+          nullable: true
+          description: Cursor to pass as `tagsCursor` for the next page, or `null` if there is no next page.
+
+    TemplateTagsCountResponse:
+      type: object
+      required:
+        - total
+      properties:
+        total:
+          type: integer
+          format: int64
+          description: Total distinct ready tags for the template.
+
+    TemplateTagExistsResponse:
+      type: object
+      required:
+        - exists
+        - normalizedTag
+      properties:
+        exists:
+          type: boolean
+          description: Whether the template tag has at least one ready assignment.
+        normalizedTag:
+          type: string
+          description: Normalized template tag name.
+
+    TemplateTagAssignmentsResponse:
+      type: object
+      required:
+        - data
+        - nextCursor
+      properties:
+        data:
+          type: array
+          description: Ready assignment events for the tag, sorted latest first.
+          items:
+            $ref: "#/components/schemas/TemplateTagAssignment"
+        nextCursor:
+          type: string
+          nullable: true
+          description: Cursor to pass to the next list request, or `null` if there is no next page.
+
     TeamResolveResponse:
       type: object
       required:
@@ -886,7 +1333,7 @@ paths:
       summary: Bootstrap user
       tags: [teams]
       security:
-        - AdminTokenAuth: []
+        - AdminApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/userId"
       responses:
@@ -906,7 +1353,7 @@ paths:
       summary: Bootstrap auth provider user
       tags: [teams]
       security:
-        - AdminTokenAuth: []
+        - AdminApiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -933,7 +1380,7 @@ paths:
       description: Creates and provisions a team for an admin-authenticated bootstrap workflow.
       tags: [admin]
       security:
-        - AdminTokenAuth: []
+        - AdminApiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -961,7 +1408,7 @@ paths:
       summary: Resolve user profiles
       tags: [admin]
       security:
-        - AdminTokenAuth: []
+        - AdminApiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -987,7 +1434,7 @@ paths:
       summary: Lookup user profiles by email
       tags: [admin]
       security:
-        - AdminTokenAuth: []
+        - AdminApiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -1013,7 +1460,7 @@ paths:
       summary: Get user profile
       tags: [admin]
       security:
-        - AdminTokenAuth: []
+        - AdminApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/userId"
       responses:
@@ -1027,6 +1474,29 @@ paths:
           $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/users/{userId}:
+    delete:
+      summary: Delete user
+      description: Deletes a user by removing the identity provider record, user_identities mapping, and public.users row.
+      tags: [admin]
+      security:
+        - AdminApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      responses:
+        "204":
+          description: Successfully deleted user.
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
         "500":
           $ref: "#/components/responses/500"
 
@@ -1167,6 +1637,38 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
+  /templates:
+    get:
+      summary: List team templates
+      description: Returns a paginated list of the team's templates (and default templates inline, unless the team is on a dedicated cluster), with filtering, search, and column sorting via keyset cursor pagination.
+      tags: [templates]
+      security:
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templates_public"
+        - $ref: "#/components/parameters/templates_search"
+        - $ref: "#/components/parameters/templates_sort"
+        - $ref: "#/components/parameters/templates_limit"
+        - $ref: "#/components/parameters/templates_cursor"
+      responses:
+        "200":
+          description: Successfully returned paginated templates.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamTemplatesResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "500":
+          $ref: "#/components/responses/500"
+
   /templates/defaults:
     get:
       summary: List default templates
@@ -1184,5 +1686,160 @@ paths:
                 $ref: "#/components/schemas/DefaultTemplatesResponse"
         "401":
           $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /templates/{templateID}:
+    get:
+      summary: Get template
+      description: Returns a single template owned by the current team. Dashboard-shaped read, indexed by template ID.
+      tags: [templates]
+      security:
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templateID"
+      responses:
+        "200":
+          description: Successfully returned the template.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateDetail"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /templates/{templateID}/tags/groups:
+    get:
+      summary: List template tag groups
+      description: Returns ready template tag assignment groups with bounded per-tag history, paginated over tags with keyset cursor.
+      tags: [templates]
+      security:
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templateID"
+        - $ref: "#/components/parameters/tag_assignment_limit"
+        - $ref: "#/components/parameters/tag_groups_limit"
+        - $ref: "#/components/parameters/tag_groups_cursor"
+        - $ref: "#/components/parameters/tag_groups_search"
+        - $ref: "#/components/parameters/tag_groups_sort"
+      responses:
+        "200":
+          description: Successfully returned template tag groups.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateTagGroupsResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /templates/{templateID}/tags/count:
+    get:
+      summary: Count template tags
+      description: Returns the total number of distinct ready tags for the template.
+      tags: [templates]
+      security:
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templateID"
+      responses:
+        "200":
+          description: Successfully returned tag count.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateTagsCountResponse"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /templates/{templateID}/tags/exists:
+    get:
+      summary: Check ready template tag existence
+      description: Checks whether a template tag has at least one ready assignment.
+      tags: [templates]
+      security:
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templateID"
+        - $ref: "#/components/parameters/tag"
+      responses:
+        "200":
+          description: Successfully checked template tag existence.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateTagExistsResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /templates/{templateID}/tags/{tag}/assignments:
+    get:
+      summary: List ready assignments for a single template tag
+      description: Returns ready tag assignment events for a single tag, ordered newest first, with keyset cursor pagination.
+      tags: [templates]
+      security:
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templateID"
+        - $ref: "#/components/parameters/tag_path"
+        - $ref: "#/components/parameters/tag_assignments_cursor"
+        - $ref: "#/components/parameters/tag_assignments_limit"
+      responses:
+        "200":
+          description: Successfully returned tag assignment page.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateTagAssignmentsResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
         "500":
           $ref: "#/components/responses/500"

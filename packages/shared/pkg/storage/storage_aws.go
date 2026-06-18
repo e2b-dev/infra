@@ -162,7 +162,7 @@ func (o *awsObject) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 	return io.Copy(dst, resp.Body)
 }
 
-func (o *awsObject) StoreFile(ctx context.Context, path string, opts ...PutOption) (*FrameTable, [32]byte, error) {
+func (o *awsObject) StoreFile(ctx context.Context, path string, opts ...PutOption) (*FullFrameTable, [32]byte, error) {
 	p := ApplyPutOptions(opts)
 	if CompressConfigFromOpts(p).IsCompressionEnabled() {
 		return nil, [32]byte{}, errors.New("compressed uploads are not supported on AWS (builds target GCP only)")
@@ -233,7 +233,7 @@ func (o *awsObject) Put(ctx context.Context, data []byte, opts ...PutOption) err
 	return nil
 }
 
-func (o *awsObject) OpenRangeReader(ctx context.Context, off, length int64, frameTable *FrameTable) (io.ReadCloser, error) {
+func (o *awsObject) OpenRangeReader(ctx context.Context, off, length int64, frameTable *FrameTable) (RangeReader, error) {
 	if frameTable.IsCompressed() {
 		return nil, errors.New("compressed reads are not supported on AWS")
 	}
@@ -253,7 +253,7 @@ func (o *awsObject) OpenRangeReader(ctx context.Context, off, length int64, fram
 		return nil, fmt.Errorf("failed to create S3 range reader for %q: %w", o.path, err)
 	}
 
-	return resp.Body, nil
+	return NewRangeReader(resp.Body), nil
 }
 
 func (o *awsObject) Size(ctx context.Context) (int64, error) {

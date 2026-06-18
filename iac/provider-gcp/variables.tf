@@ -246,7 +246,7 @@ variable "auth_provider_config" {
 variable "user_profile_provider" {
   type        = string
   default     = ""
-  description = "Source for dashboard-api user profile lookups. One of: supabase, ory, supabase-ory-fallback. Empty leaves the binary default (supabase)."
+  description = "Source for dashboard-api user profile lookups. One of: supabase, ory. Empty leaves the binary default (supabase)."
 }
 
 variable "ory_sdk_url" {
@@ -854,6 +854,30 @@ variable "api_db_migrator_env_vars" {
 }
 
 variable "client_proxy_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "dashboard_api_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "template_manager_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "docker_reverse_proxy_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "filestore_cleanup_env_vars" {
   type      = map(string)
   default   = {}
   sensitive = true

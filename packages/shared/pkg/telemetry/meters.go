@@ -26,12 +26,22 @@ const (
 	TeamSandboxCreated CounterType = "e2b.team.sandbox.created"
 
 	EnvdInitCalls CounterType = "orchestrator.sandbox.envd.init.calls"
+
+	// 2 MiB chunks the pre-pause envd heap collapse attempted, split by the
+	// result attribute (collapsed|skipped): attempts = total, successful =
+	// collapsed.
+	EnvdCollapseChunks CounterType = "orchestrator.sandbox.envd.collapse.chunks"
 	// Incremented by the balance_dirty_pages thread count at every 200 ms poll
 	// for the lifetime of the process. rate() shows dirty-page throttle
 	// intensity in real-time; 0 when no stalls are occurring.
 	OrchestratorHostBalanceDirtyPagesThreads CounterType = "orchestrator.host.balance_dirty_pages.threads"
 
 	OrchestratorSandboxKilledCounterName CounterType = "orchestrator.sandbox.killed"
+
+	// OrchestratorSnapshotUploadFailedCounterName counts pause-snapshot uploads
+	// that never landed durably (budget exhausted or a non-retryable error).
+	// A non-zero rate means lost snapshots.
+	OrchestratorSnapshotUploadFailedCounterName CounterType = "orchestrator.snapshot.upload.failed"
 
 	ApiRedisStoragePublisherPublished CounterType = "api.redis_storage.publisher.published"
 	ApiRedisStoragePublisherDropped   CounterType = "api.redis_storage.publisher.dropped"
@@ -74,6 +84,20 @@ const (
 	// Sandbox timing histograms
 	OrchestratorSandboxCreateDurationName HistogramType = "orchestrator.sandbox.create.duration"
 	WaitForEnvdDurationHistogramName      HistogramType = "orchestrator.sandbox.envd.init.duration"
+	GuestSyncDurationHistogramName        HistogramType = "orchestrator.sandbox.guest_sync.duration"
+
+	// Pre-pause envd heap collapse round-trip duration (the pause-path cost of
+	// POST /collapse: network plus envd's madvise work), recorded once per pause
+	// when the collapse-envd-heap flag is on.
+	EnvdCollapseDurationHistogramName HistogramType = "orchestrator.sandbox.envd.collapse.duration"
+
+	// Sandbox startup working-set histograms: demand-fault pages/bytes a guest
+	// needed to reach a successful envd init, recorded once per start. Sampled
+	// per start (not per fault), so histogram_quantile yields per-sandbox
+	// percentiles.
+	UffdStartupPagesHistogramName       HistogramType = "orchestrator.sandbox.uffd.startup.pages"
+	UffdStartupSourcePagesHistogramName HistogramType = "orchestrator.sandbox.uffd.startup.source_pages"
+	UffdStartupBytesHistogramName       HistogramType = "orchestrator.sandbox.uffd.startup.bytes"
 
 	// TCP Firewall histograms
 	TCPFirewallConnectionDurationHistogramName    HistogramType = "orchestrator.tcpfirewall.connection.duration"
@@ -148,6 +172,11 @@ const (
 	ApiOrchestratorCountMeterName GaugeIntType = "api.orchestrator.status"
 	OrchestratorStatusGaugeName   GaugeIntType = "orchestrator.status"
 
+	// Orchestrator node resources allocated to running sandboxes (sum across running sandboxes)
+	OrchestratorCpuAllocatedGaugeName    GaugeIntType = "orchestrator.sandbox.cpu.allocated"
+	OrchestratorMemoryAllocatedGaugeName GaugeIntType = "orchestrator.sandbox.memory.allocated"
+	OrchestratorDiskAllocatedGaugeName   GaugeIntType = "orchestrator.sandbox.disk.allocated"
+
 	// Sandbox metrics
 	SandboxRamUsedGaugeName   GaugeIntType = "e2b.sandbox.ram.used"
 	SandboxRamTotalGaugeName  GaugeIntType = "e2b.sandbox.ram.total"
@@ -166,17 +195,19 @@ const (
 )
 
 var counterDesc = map[CounterType]string{
-	SandboxCreateMeterName:                   "Number of currently waiting requests to create a new sandbox",
-	ApiOrchestratorCreatedSandboxes:          "Number of successfully created sandboxes",
-	BuildResultCounterName:                   "Number of template build results",
-	BuildCacheResultCounterName:              "Number of build cache results",
-	TeamSandboxCreated:                       "Counter of started sandboxes for the team in the interval",
-	OrchestratorHostBalanceDirtyPagesThreads: "Cumulative stalled thread-polls during sandbox resume; rate() gives throttle intensity",
-	EnvdInitCalls:                            "Number of envd initialization calls",
-	OrchestratorSandboxKilledCounterName:     "Number of sandboxes killed, labeled by kill reason",
-	TCPFirewallConnectionsTotal:              "Total number of TCP firewall connections processed",
-	TCPFirewallErrorsTotal:                   "Total number of TCP firewall errors",
-	TCPFirewallDecisionsTotal:                "Total number of TCP firewall allow/block decisions",
+	SandboxCreateMeterName:                      "Number of currently waiting requests to create a new sandbox",
+	ApiOrchestratorCreatedSandboxes:             "Number of successfully created sandboxes",
+	BuildResultCounterName:                      "Number of template build results",
+	BuildCacheResultCounterName:                 "Number of build cache results",
+	TeamSandboxCreated:                          "Counter of started sandboxes for the team in the interval",
+	OrchestratorHostBalanceDirtyPagesThreads:    "Cumulative stalled thread-polls during sandbox resume; rate() gives throttle intensity",
+	EnvdInitCalls:                               "Number of envd initialization calls",
+	EnvdCollapseChunks:                          "2 MiB chunks the pre-pause envd heap collapse attempted, by result",
+	OrchestratorSandboxKilledCounterName:        "Number of sandboxes killed, labeled by kill reason",
+	OrchestratorSnapshotUploadFailedCounterName: "Number of pause-snapshot uploads that never landed durably",
+	TCPFirewallConnectionsTotal:                 "Total number of TCP firewall connections processed",
+	TCPFirewallErrorsTotal:                      "Total number of TCP firewall errors",
+	TCPFirewallDecisionsTotal:                   "Total number of TCP firewall allow/block decisions",
 
 	IngressProxyConnectionsBlockedTotal: "Total number of ingress proxy connections blocked by connection limit",
 	CmuxErrorsTotal:                     "Total number of cmux connection multiplexer errors",
@@ -193,17 +224,19 @@ var counterDesc = map[CounterType]string{
 }
 
 var counterUnits = map[CounterType]string{
-	SandboxCreateMeterName:                   "{sandbox}",
-	ApiOrchestratorCreatedSandboxes:          "{sandbox}",
-	BuildResultCounterName:                   "{build}",
-	BuildCacheResultCounterName:              "{layer}",
-	TeamSandboxCreated:                       "{sandbox}",
-	OrchestratorHostBalanceDirtyPagesThreads: "{thread}",
-	EnvdInitCalls:                            "1",
-	OrchestratorSandboxKilledCounterName:     "{sandbox}",
-	TCPFirewallConnectionsTotal:              "{connection}",
-	TCPFirewallErrorsTotal:                   "{error}",
-	TCPFirewallDecisionsTotal:                "{decision}",
+	SandboxCreateMeterName:                      "{sandbox}",
+	ApiOrchestratorCreatedSandboxes:             "{sandbox}",
+	BuildResultCounterName:                      "{build}",
+	BuildCacheResultCounterName:                 "{layer}",
+	TeamSandboxCreated:                          "{sandbox}",
+	OrchestratorHostBalanceDirtyPagesThreads:    "{thread}",
+	EnvdInitCalls:                               "1",
+	EnvdCollapseChunks:                          "{chunk}",
+	OrchestratorSandboxKilledCounterName:        "{sandbox}",
+	OrchestratorSnapshotUploadFailedCounterName: "{snapshot}",
+	TCPFirewallConnectionsTotal:                 "{connection}",
+	TCPFirewallErrorsTotal:                      "{error}",
+	TCPFirewallDecisionsTotal:                   "{decision}",
 
 	IngressProxyConnectionsBlockedTotal: "{connection}",
 	CmuxErrorsTotal:                     "{error}",
@@ -274,29 +307,35 @@ var gaugeFloatUnits = map[GaugeFloatType]string{
 }
 
 var gaugeIntDesc = map[GaugeIntType]string{
-	ApiOrchestratorCountMeterName: "Counter of running orchestrators.",
-	OrchestratorStatusGaugeName:   "Self-reported orchestrator status (always 1, labelled with status and version).",
-	SandboxRamUsedGaugeName:       "Amount of RAM used by the sandbox.",
-	SandboxRamTotalGaugeName:      "Amount of RAM available to the sandbox.",
-	SandboxRamCacheGaugeName:      "Amount of RAM used by the page cache in the sandbox.",
-	SandboxCpuTotalGaugeName:      "Amount of CPU available to the sandbox.",
-	SandboxDiskUsedGaugeName:      "Amount of disk space used by the sandbox.",
-	SandboxDiskTotalGaugeName:     "Amount of disk space available to the sandbox.",
-	TeamSandboxRunningGaugeName:   "The number of sandboxes running for the team in the interval.",
-	SandboxCountGaugeName:         "Number of running sandbox instances per team.",
+	ApiOrchestratorCountMeterName:        "Counter of running orchestrators.",
+	OrchestratorStatusGaugeName:          "Self-reported orchestrator status (always 1, labelled with status and version).",
+	OrchestratorCpuAllocatedGaugeName:    "Total vCPUs allocated to running sandboxes on the orchestrator node.",
+	OrchestratorMemoryAllocatedGaugeName: "Total memory allocated to running sandboxes on the orchestrator node.",
+	OrchestratorDiskAllocatedGaugeName:   "Total disk space allocated to running sandboxes on the orchestrator node.",
+	SandboxRamUsedGaugeName:              "Amount of RAM used by the sandbox.",
+	SandboxRamTotalGaugeName:             "Amount of RAM available to the sandbox.",
+	SandboxRamCacheGaugeName:             "Amount of RAM used by the page cache in the sandbox.",
+	SandboxCpuTotalGaugeName:             "Amount of CPU available to the sandbox.",
+	SandboxDiskUsedGaugeName:             "Amount of disk space used by the sandbox.",
+	SandboxDiskTotalGaugeName:            "Amount of disk space available to the sandbox.",
+	TeamSandboxRunningGaugeName:          "The number of sandboxes running for the team in the interval.",
+	SandboxCountGaugeName:                "Number of running sandbox instances per team.",
 }
 
 var gaugeIntUnits = map[GaugeIntType]string{
-	ApiOrchestratorCountMeterName: "{orchestrator}",
-	OrchestratorStatusGaugeName:   "{orchestrator}",
-	SandboxRamUsedGaugeName:       "{By}",
-	SandboxRamTotalGaugeName:      "{By}",
-	SandboxRamCacheGaugeName:      "{By}",
-	SandboxCpuTotalGaugeName:      "{count}",
-	SandboxDiskUsedGaugeName:      "{By}",
-	SandboxDiskTotalGaugeName:     "{By}",
-	TeamSandboxRunningGaugeName:   "{sandbox}",
-	SandboxCountGaugeName:         "{sandbox}",
+	ApiOrchestratorCountMeterName:        "{orchestrator}",
+	OrchestratorStatusGaugeName:          "{orchestrator}",
+	OrchestratorCpuAllocatedGaugeName:    "{count}",
+	OrchestratorMemoryAllocatedGaugeName: "{By}",
+	OrchestratorDiskAllocatedGaugeName:   "{By}",
+	SandboxRamUsedGaugeName:              "{By}",
+	SandboxRamTotalGaugeName:             "{By}",
+	SandboxRamCacheGaugeName:             "{By}",
+	SandboxCpuTotalGaugeName:             "{count}",
+	SandboxDiskUsedGaugeName:             "{By}",
+	SandboxDiskTotalGaugeName:            "{By}",
+	TeamSandboxRunningGaugeName:          "{sandbox}",
+	SandboxCountGaugeName:                "{sandbox}",
 }
 
 func GetCounter(meter metric.Meter, name CounterType) (metric.Int64Counter, error) {
@@ -370,6 +409,12 @@ var histogramDesc = map[HistogramType]string{
 	BuildRootfsSizeHistogramName:          "Size of the built template rootfs in bytes",
 	OrchestratorSandboxCreateDurationName: "Time taken to create a sandbox",
 	WaitForEnvdDurationHistogramName:      "Time taken for Envd to initialize successfully",
+	EnvdCollapseDurationHistogramName:     "Time taken for the pre-pause envd heap collapse round-trip",
+	GuestSyncDurationHistogramName:        "Time taken for the mandatory pre-pause guest sync (filesystem-only pause)",
+
+	UffdStartupPagesHistogramName:       "Demand-fault pages a guest needed to reach a successful envd init, per start",
+	UffdStartupSourcePagesHistogramName: "Subset of startup demand-fault pages pulled from the source (e.g. GCS), per start",
+	UffdStartupBytesHistogramName:       "Bytes faulted into a guest to reach a successful envd init, per start",
 
 	TCPFirewallConnectionDurationHistogramName:    "Duration of TCP firewall proxied connections",
 	TCPFirewallConnectionsPerSandboxHistogramName: "Number of active TCP firewall connections per sandbox",
@@ -411,6 +456,11 @@ var histogramUnits = map[HistogramType]string{
 	BuildRootfsSizeHistogramName:                  "{By}",
 	OrchestratorSandboxCreateDurationName:         "ms",
 	WaitForEnvdDurationHistogramName:              "ms",
+	EnvdCollapseDurationHistogramName:             "ms",
+	GuestSyncDurationHistogramName:                "ms",
+	UffdStartupPagesHistogramName:                 "{page}",
+	UffdStartupSourcePagesHistogramName:           "{page}",
+	UffdStartupBytesHistogramName:                 "{By}",
 	TCPFirewallConnectionDurationHistogramName:    "ms",
 	TCPFirewallConnectionsPerSandboxHistogramName: "{connection}",
 

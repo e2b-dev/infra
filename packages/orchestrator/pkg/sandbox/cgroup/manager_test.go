@@ -16,6 +16,32 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func requireWritableCgroup(t *testing.T) {
+	t.Helper()
+
+	if os.Geteuid() != 0 {
+		t.Skip("test requires root privileges")
+	}
+
+	probePath := filepath.Join(cgroupV2MountPoint, fmt.Sprintf("e2b-probe-%d-%d", os.Getpid(), time.Now().UnixNano()))
+	if err := os.Mkdir(probePath, 0o755); err != nil {
+		t.Skipf("test requires writable cgroup v2 filesystem: %v", err)
+	}
+
+	subtreeControlPath := filepath.Join(probePath, "cgroup.subtree_control")
+	if _, err := os.Stat(subtreeControlPath); err != nil {
+		_ = os.Remove(probePath)
+		t.Skipf("test requires usable cgroup v2 control files: %v", err)
+	}
+	if err := os.WriteFile(subtreeControlPath, []byte("+cpu +memory"), 0); err != nil {
+		_ = os.Remove(probePath)
+		t.Skipf("test requires writable cgroup v2 subtree control: %v", err)
+	}
+	if err := os.Remove(probePath); err != nil {
+		t.Skipf("test requires removable cgroup v2 filesystem: %v", err)
+	}
+}
+
 func TestNewManager(t *testing.T) {
 	t.Parallel()
 
@@ -31,9 +57,7 @@ func TestNewManager(t *testing.T) {
 func TestManagerInitialize(t *testing.T) {
 	t.Parallel()
 
-	if os.Geteuid() != 0 {
-		t.Skip("test requires root privileges")
-	}
+	requireWritableCgroup(t)
 
 	ctx := t.Context()
 
@@ -58,9 +82,7 @@ func TestManagerInitialize(t *testing.T) {
 func TestCgroupHandleLifecycle(t *testing.T) {
 	t.Parallel()
 
-	if os.Geteuid() != 0 {
-		t.Skip("test requires root privileges")
-	}
+	requireWritableCgroup(t)
 
 	ctx := t.Context()
 	mgr, err := NewManager()
@@ -96,9 +118,7 @@ func TestCgroupHandleLifecycle(t *testing.T) {
 func TestCgroupHandleWithProcessCreation(t *testing.T) {
 	t.Parallel()
 
-	if os.Geteuid() != 0 {
-		t.Skip("test requires root privileges")
-	}
+	requireWritableCgroup(t)
 
 	ctx := t.Context()
 	mgr, err := NewManager()
@@ -151,9 +171,7 @@ func TestCgroupHandleWithProcessCreation(t *testing.T) {
 func TestCgroupHandleNoRaceOnQuickExit(t *testing.T) {
 	t.Parallel()
 
-	if os.Geteuid() != 0 {
-		t.Skip("test requires root privileges")
-	}
+	requireWritableCgroup(t)
 
 	ctx := t.Context()
 	mgr, err := NewManager()
@@ -188,9 +206,7 @@ func TestCgroupHandleNoRaceOnQuickExit(t *testing.T) {
 func TestCgroupHandleGetStats(t *testing.T) {
 	t.Parallel()
 
-	if os.Geteuid() != 0 {
-		t.Skip("test requires root privileges")
-	}
+	requireWritableCgroup(t)
 
 	ctx := t.Context()
 	mgr, err := NewManager()
@@ -237,9 +253,7 @@ func TestCgroupHandleGetStats(t *testing.T) {
 func TestCgroupHandleGetStatsNonExistent(t *testing.T) {
 	t.Parallel()
 
-	if os.Geteuid() != 0 {
-		t.Skip("test requires root privileges")
-	}
+	requireWritableCgroup(t)
 
 	ctx := t.Context()
 	mgr, err := NewManager()
@@ -262,12 +276,99 @@ func TestCgroupHandleGetStatsNonExistent(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to read cpu.stat")
 }
 
+func TestCgroupHandleKillNoProcesses(t *testing.T) {
+	t.Parallel()
+
+	cgroupPath := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(cgroupPath, "cgroup.events"), []byte("populated 0\n"), 0o644))
+
+	handle := &CgroupHandle{
+		cgroupName: "test-empty-kill",
+		path:       cgroupPath,
+	}
+
+	require.NoError(t, handle.Kill(t.Context()))
+}
+
+func TestCgroupHandlePopulated(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name    string
+		content string
+		write   bool
+		want    bool
+	}{
+		{
+			name:    "populated",
+			content: "populated 1\n",
+			write:   true,
+			want:    true,
+		},
+		{
+			name:    "empty",
+			content: "populated 0\n",
+			write:   true,
+		},
+		{
+			name: "missing file",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			cgroupPath := t.TempDir()
+			if tc.write {
+				require.NoError(t, os.WriteFile(filepath.Join(cgroupPath, "cgroup.events"), []byte(tc.content), 0o644))
+			}
+
+			handle := &CgroupHandle{path: cgroupPath}
+
+			got, err := handle.populated()
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestCgroupHandleKillTerminatesProcesses(t *testing.T) {
+	t.Parallel()
+
+	requireWritableCgroup(t)
+
+	ctx := t.Context()
+	mgr, err := NewManager()
+	require.NoError(t, err)
+
+	err = mgr.Initialize(ctx)
+	require.NoError(t, err)
+
+	handle, err := mgr.Create(ctx, "test-cgroup-kill")
+	require.NoError(t, err)
+	defer handle.Remove(ctx)
+	defer handle.ReleaseCgroupFD()
+
+	cmd := exec.CommandContext(ctx, "sleep", "60")
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		UseCgroupFD: true,
+		CgroupFD:    handle.GetFD(),
+	}
+
+	require.NoError(t, cmd.Start())
+	t.Cleanup(func() {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+	})
+
+	require.NoError(t, handle.ReleaseCgroupFD())
+	require.NoError(t, handle.Kill(ctx))
+	require.Error(t, cmd.Wait())
+}
+
 func TestCgroupHandleRemoveNonExistent(t *testing.T) {
 	t.Parallel()
 
-	if os.Geteuid() != 0 {
-		t.Skip("test requires root privileges")
-	}
+	requireWritableCgroup(t)
 
 	ctx := t.Context()
 	mgr, err := NewManager()
@@ -329,9 +430,7 @@ burst_usec 0`
 func TestCgroupHandlePeakReset(t *testing.T) {
 	t.Parallel()
 
-	if os.Geteuid() != 0 {
-		t.Skip("test requires root privileges")
-	}
+	requireWritableCgroup(t)
 
 	ctx := t.Context()
 	mgr, err := NewManager()

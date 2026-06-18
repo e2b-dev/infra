@@ -140,29 +140,28 @@ type Blob interface {
 	Exists(ctx context.Context) (bool, error)
 }
 
-type SeekableReader interface {
-	// Random slice access, off and buffer length must be aligned to block size
-	ReadAt(ctx context.Context, buffer []byte, off int64, ft *FrameTable) (int, error)
-	Size(ctx context.Context) (int64, error)
+type RangeReader interface {
+	io.Reader
+	Close(ctx context.Context) error
 }
 
-// StreamingReader supports progressive reads via a streaming range reader.
-type StreamingReader interface {
-	OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (io.ReadCloser, error)
+// RangeOpener supports progressive reads via a streaming range reader.
+type RangeOpener interface {
+	OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (RangeReader, error)
 }
 
 type SeekableWriter interface {
 	// Store entire file. Compression is opt-in via WithCompressConfig.
-	StoreFile(ctx context.Context, path string, opts ...PutOption) (*FrameTable, [32]byte, error)
+	StoreFile(ctx context.Context, path string, opts ...PutOption) (*FullFrameTable, [32]byte, error)
 }
 
 type Seekable interface {
-	StreamingReader
+	RangeOpener
 	SeekableWriter
 	Size(ctx context.Context) (int64, error)
 }
 
-func UploadFramed(ctx context.Context, provider StorageProvider, remotePath string, objType SeekableObjectType, localPath string, opts ...PutOption) (*FrameTable, [32]byte, error) {
+func UploadFramed(ctx context.Context, provider StorageProvider, remotePath string, objType SeekableObjectType, localPath string, opts ...PutOption) (*FullFrameTable, [32]byte, error) {
 	object, err := provider.OpenSeekable(ctx, remotePath, objType)
 	if err != nil {
 		return nil, [32]byte{}, err

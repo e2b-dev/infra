@@ -98,7 +98,11 @@ func run() int {
 
 	config, err := cfg.Parse()
 	if err != nil {
-		l.Error(ctx, "failed to parse config", zap.Error(err))
+		fields := []zap.Field{zap.Error(err)}
+		if condition, ok := cfg.ParseFailureCondition(err); ok {
+			fields = append(fields, zap.String("config_failure_condition", string(condition)))
+		}
+		l.Error(ctx, "failed to parse config", fields...)
 
 		return 1
 	}
@@ -199,7 +203,6 @@ func run() int {
 		ctx,
 		config.BillingServerURL,
 		config.BillingServerAPIToken,
-		supabaseDB,
 	)
 	if err != nil {
 		l.Error(ctx, "initializing team provision sink", zap.Error(err))
@@ -226,7 +229,7 @@ func run() int {
 
 	authenticationFunc := sharedauth.CreateAuthenticationFunc(
 		[]sharedauth.Authenticator{
-			sharedauth.NewAdminTokenAuthenticator(config.AdminToken),
+			sharedauth.NewAdminApiKeyAuthenticator(config.AdminToken),
 			sharedauth.NewAuthProviderBearerAuthenticator(apiStore.GetUserIDFromAuthProviderToken),
 			sharedauth.NewSupabaseTokenAuthenticator(apiStore.GetUserIDFromAuthProviderToken),
 			sharedauth.NewSupabaseTeamAuthenticator(apiStore.GetTeamFromSupabaseToken),

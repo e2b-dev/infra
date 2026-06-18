@@ -46,6 +46,19 @@ var (
 	attrPeerHitFalse = attribute.Bool("peer_hit", false)
 )
 
+// PeerRouted marks a Seekable that resolveProvider actually routed through a
+// peer at open time. Callers that need to distinguish "the routing provider
+// gave me a peer wrapper" from "the routing provider fell through to base"
+// type-assert against this marker; presence is the signal — the method body
+// is intentionally empty.
+type PeerRouted interface {
+	IsPeerRouted()
+}
+
+func (*peerSeekable) IsPeerRouted() {}
+
+var _ PeerRouted = (*peerSeekable)(nil)
+
 var _ storage.StorageProvider = (*routingProvider)(nil)
 
 // routingProvider wraps a base StorageProvider and, for each Open call,
@@ -260,9 +273,9 @@ func tryPeer[T any](
 	return peerAttempt[T]{}, nil
 }
 
-var _ io.ReadCloser = (*peerStreamReader)(nil)
+var _ storage.RangeReader = (*peerStreamReader)(nil)
 
-// peerStreamReader wraps a gRPC streaming recv function as an io.ReadCloser.
+// peerStreamReader wraps a gRPC streaming recv function as a storage.RangeReader.
 // cancel is called on Close to signal the server to terminate the stream.
 type peerStreamReader struct {
 	recv    func() ([]byte, error)
@@ -304,7 +317,7 @@ func (r *peerStreamReader) Read(p []byte) (int, error) {
 	}
 }
 
-func (r *peerStreamReader) Close() error {
+func (r *peerStreamReader) Close(context.Context) error {
 	r.cancel()
 
 	return nil

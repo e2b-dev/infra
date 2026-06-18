@@ -3,6 +3,7 @@
 package nfsproxy
 
 import (
+	"errors"
 	"io"
 	"net"
 	"os"
@@ -142,7 +143,9 @@ func TestRoundTrip(t *testing.T) {
 	auth := rpc.NewAuthUnix("", 100, 101)
 
 	// dial portmap server
-	portmapperTCPClient, err := rpc.DialTCP("tcp", pmListener.Addr().String(), false)
+	portmapperTCPClient, err := dialRetry(func() (*rpc.Client, error) {
+		return rpc.DialTCP("tcp", pmListener.Addr().String(), false)
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		portmapperTCPClient.Close()
@@ -159,7 +162,9 @@ func TestRoundTrip(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	nfsClient, err := nfs.DialServiceAtPort(host, retrievedPort)
+	nfsClient, err := dialRetry(func() (*rpc.Client, error) {
+		return nfs.DialServiceAtPort(host, retrievedPort)
+	})
 	require.NoError(t, err)
 
 	// request mount
@@ -256,6 +261,19 @@ func TestRoundTrip(t *testing.T) {
 		assert.Nil(t, fh1)
 		assert.Nil(t, stat1)
 	})
+}
+
+// dialRetry retries on EADDRINUSE: the nfs client library binds a random
+// ephemeral local port and doesn't retry collisions for non-privileged dials.
+func dialRetry[T any](dial func() (T, error)) (ret T, err error) {
+	for range 5 {
+		ret, err = dial()
+		if !errors.Is(err, syscall.EADDRINUSE) {
+			return ret, err
+		}
+	}
+
+	return ret, err
 }
 
 func writeFile(t *testing.T, target *nfs.Target, path string, content string, perm os.FileMode) {

@@ -1,7 +1,7 @@
 openapi: 3.0.0
 info:
   title: envd
-  version: 0.1.1
+  version: 0.1.3
   description: API for managing files' content and controlling envd
 
 tags:
@@ -77,7 +77,7 @@ paths:
 
   /freeze:
     post:
-      summary: Freeze user/pty/socat cgroups before pause. Written directly by envd to avoid Process.Start / shell overhead under load.
+      summary: Freeze user/pty cgroups before pause. Written directly by envd to avoid Process.Start / shell overhead under load.
       security:
         - AccessTokenAuth: []
         - {}
@@ -91,13 +91,57 @@ paths:
 
   /unfreeze:
     post:
-      summary: Unfreeze user/pty/socat cgroups. Intended ONLY for the orchestrator's pause-failure rollback path; the normal resume thaw happens via /init's deferred unfreeze, not here.
+      summary: Unfreeze user/pty cgroups. Intended ONLY for the orchestrator's pause-failure rollback path; the normal resume thaw happens via /init's deferred unfreeze, not here.
       security:
         - AccessTokenAuth: []
         - {}
       responses:
         "204":
           description: Cgroups unfrozen
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          description: Freeze lock is held by another operation
+
+  /collapse:
+    post:
+      summary: Collapse envd's own anonymous heap into 2 MiB transparent hugepages before pause, so on resume envd touches fewer distinct guest-physical frames (each a cold fault). Best-effort.
+      security:
+        - AccessTokenAuth: []
+        - {}
+      responses:
+        "200":
+          description: Heap collapsed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollapseResult"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /fsfreeze:
+    post:
+      summary: Freeze the guest rootfs (FIFREEZE) before a filesystem-only pause so it is flushed to a consistent on-disk state, closing the sync->pause race. Idempotent. On a successful filesystem-only pause the VM is rebooted, so no thaw is needed; the orchestrator thaws only on the pause-failure path.
+      security:
+        - AccessTokenAuth: []
+        - {}
+      responses:
+        "204":
+          description: Rootfs frozen
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          description: Freeze lock is held by another operation
+
+  /fsthaw:
+    post:
+      summary: Thaw the guest rootfs (FITHAW). Intended ONLY for the orchestrator's pause-failure rollback path, so a frozen filesystem cannot leave the live VM deadlocked. Idempotent.
+      security:
+        - AccessTokenAuth: []
+        - {}
+      responses:
+        "204":
+          description: Rootfs thawed
         "500":
           $ref: "#/components/responses/InternalServerError"
         "503":
@@ -144,6 +188,27 @@ paths:
           $ref: "#/components/responses/InternalServerError"
     post:
       summary: Upload a file and ensure the parent directories exist. If the file exists, it will be overwritten.
+      description: |
+        Any request header of the form `X-Metadata-<key>: <value>` is persisted
+        as a user-defined extended attribute on the uploaded file. The
+        `X-Metadata-` prefix is stripped and the remaining header name is
+        lowercased to form the metadata key; the resulting map is returned on
+        `EntryInfo` lookups (e.g. `Stat`, `ListDir`).
+
+        Each upload replaces the file's metadata with the keys provided in
+        that request: keys previously stored but absent from the new request
+        are removed, and an upload that sends no `X-Metadata-*` header clears
+        all existing metadata.
+
+        Both keys and values must be printable US-ASCII (bytes `0x20`-`0x7E`)
+        and are rejected with HTTP 400 otherwise. Each key is capped at 246
+        bytes (the Linux VFS xattr-name limit minus the namespace prefix), and
+        the combined size of all metadata on a file (keys plus values, with the
+        namespace prefix counted per key) is capped at 4096 bytes to stay within
+        the filesystem's per-inode xattr budget. Multiple files in a single
+        multipart upload receive the same metadata. If the same
+        `X-Metadata-<key>` header is sent more than once, only the first
+        value is used.
       tags: [files]
       security:
         - AccessTokenAuth: []
@@ -234,7 +299,6 @@ components:
       description: Unix timestamp (seconds) after which the signature expires. Only used with the signature parameter.
       schema:
         type: integer
-
   requestBodies:
     File:
       required: true
@@ -358,6 +422,11 @@ components:
           description: Type of the file
           enum:
             - file
+        metadata:
+          type: object
+          description: User-defined metadata stored as extended attributes on the file.
+          additionalProperties:
+            type: string
     EnvVars:
       type: object
       description: Environment variables to set
@@ -399,6 +468,29 @@ components:
         disk_total:
           type: integer
           description: Total disk space in bytes
+    CollapseResult:
+      type: object
+      description: Per-call statistics from a heap collapse
+      properties:
+        regions:
+          type: integer
+          description: Anonymous read-write regions scanned
+        chunks:
+          type: integer
+          description: 2 MiB chunks attempted
+        collapsed:
+          type: integer
+          description: Chunks whose base pages were actually migrated into a new hugepage (real work)
+        alreadyHuge:
+          type: integer
+          description: Chunks MADV_COLLAPSE accepted but were already hugepages (no work)
+        skipped:
+          type: integer
+          description: Chunks that could not be collapsed (empty or ineligible)
+        elapsedMs:
+          type: integer
+          format: int64
+          description: Wall-clock time spent collapsing, in milliseconds
     ComposeRequest:
       type: object
       required:
