@@ -235,55 +235,28 @@ func (b *Builder) Build(ctx context.Context, paths storage.Paths, cfg config.Tem
 			telemetry.WithTemplateID(cfg.TemplateID),
 			telemetry.WithBuildID(paths.BuildID),
 			telemetry.WithTeamID(cfg.TeamID),
-			attribute.Bool("build_context_done_at_wait_start", ctx.Err() != nil),
 		))
-		waitStart := time.Now()
-
-		if ctx.Err() != nil {
-			waitSpan.AddEvent("build context done before upload wait", trace.WithAttributes(
-				attribute.String("context.err", ctx.Err().Error()),
-				attribute.String("context.cause", context.Cause(ctx).Error()),
-			))
-			b.logger.Warn(waitCtx, "build context done before waiting for template layer uploads",
-				logger.WithTemplateID(cfg.TemplateID),
-				logger.WithBuildID(paths.BuildID),
-				logger.WithTeamID(cfg.TeamID),
-				zap.String("context_err", ctx.Err().Error()),
-				zap.String("context_cause", context.Cause(ctx).Error()),
-			)
-		}
+		defer waitSpan.End()
 
 		err := uploadErrGroup.Wait()
-		waitDuration := time.Since(waitStart)
-		waitAttrs := []attribute.KeyValue{
-			attribute.Bool("upload_wait_error", err != nil),
-			attribute.Bool("build_context_done_after_upload_wait", ctx.Err() != nil),
-		}
-		waitSpan.SetAttributes(waitAttrs...)
 		if err != nil {
-			waitSpan.RecordError(err, trace.WithAttributes(waitAttrs...))
+			waitSpan.RecordError(err)
 			waitSpan.SetStatus(codes.Error, err.Error())
 			b.logger.Error(waitCtx, "template layer upload wait failed",
 				logger.WithTemplateID(cfg.TemplateID),
 				logger.WithBuildID(paths.BuildID),
 				logger.WithTeamID(cfg.TeamID),
-				zap.Duration("upload_wait_duration", waitDuration),
 				zap.Error(err),
 			)
 			e = errors.Join(e, fmt.Errorf("error uploading template layers: %w", err))
-		} else if ctx.Err() != nil {
-			waitSpan.AddEvent("upload wait completed after build context done", trace.WithAttributes(waitAttrs...))
-			b.logger.Warn(waitCtx, "template layer upload wait completed after build context was done",
-				logger.WithTemplateID(cfg.TemplateID),
-				logger.WithBuildID(paths.BuildID),
-				logger.WithTeamID(cfg.TeamID),
-				zap.Duration("upload_wait_duration", waitDuration),
-				zap.String("context_err", ctx.Err().Error()),
-				zap.String("context_cause", context.Cause(ctx).Error()),
-			)
 		}
 
-		waitSpan.End()
+		if ctx.Err() != nil {
+			waitSpan.AddEvent("build context done while waiting for uploads", trace.WithAttributes(
+				attribute.String("context.err", ctx.Err().Error()),
+				attribute.String("context.cause", context.Cause(ctx).Error()),
+			))
+		}
 	}()
 
 	buildContext := buildcontext.BuildContext{
