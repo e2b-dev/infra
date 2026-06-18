@@ -197,7 +197,13 @@ func run() int {
 		return 1
 	}
 
-	userProfiles, err := buildUserProfileProvider(config, authDB, authClient)
+	userProfiles, err := userprofile.NewOryProvider(userprofile.OryConfig{
+		HTTPClient: authClient,
+		SDKURL:     config.OrySDKURL,
+		Token:      config.OryProjectAPIToken,
+		Issuer:     config.OryIssuerURL,
+		Resolver:   authDB.Write,
+	})
 	if err != nil {
 		l.Error(ctx, "Initializing user profile provider", zap.Error(err))
 
@@ -386,19 +392,4 @@ func shutdownService(ctx context.Context, s *http.Server) error {
 	}
 
 	return nil
-}
-
-func buildUserProfileProvider(config cfg.Config, authDB *authdb.Client, httpClient *http.Client) (userprofile.Provider, error) {
-	provider, err := userprofile.NewOryProvider(userprofile.OryConfig{
-		HTTPClient: httpClient,
-		SDKURL:     config.OrySDKURL,
-		Token:      config.OryProjectAPIToken,
-		Issuer:     config.OryIssuerURL,
-		Resolver:   authDB.Write,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("build ory user profile provider: %w", err)
-	}
-
-	return provider, nil
 }
