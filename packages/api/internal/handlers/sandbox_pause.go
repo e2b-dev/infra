@@ -45,10 +45,10 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 
 	// The request body is optional — existing callers send none. Default to a
 	// full memory snapshot; memory:false requests a filesystem-only snapshot.
-	// Only parse when a body is present so the shared ParseBody helper isn't
-	// fed an empty body (which it would reject).
+	// Only parse when a body is actually present (ContentLength > 0): a zero or
+	// unknown (-1) length means no body, and ParseBody would reject an empty one.
 	filesystemOnly := false
-	if c.Request.ContentLength != 0 {
+	if c.Request.ContentLength > 0 {
 		body, bindErr := ginutils.ParseBody[api.PostSandboxesSandboxIDPauseJSONRequestBody](ctx, c)
 		if bindErr != nil {
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", bindErr))
