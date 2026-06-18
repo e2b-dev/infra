@@ -204,7 +204,6 @@ func NewProcess(
 	}
 
 	return &Process{
-	p := &Process{
 		Versions:              versions,
 		Exit:                  utils.NewErrorOnce(),
 		cmd:                   cmd,
@@ -218,13 +217,7 @@ func NewProcess(
 
 		kernelPath: startScript.KernelPath,
 		rootfsPath: startScript.RootfsPath,
-	}
-
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setsid: true, // Create a new session
-	}
-
-	return p, nil
+	}, nil
 }
 
 func (p *Process) configure(
