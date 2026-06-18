@@ -35,6 +35,12 @@ var ErrObjectRateLimited = errors.New("object access rate limited")
 // deletion (soft-delete tombstone in custom metadata) and enforcement is on.
 var ErrObjectSoftDeleted = errors.New("object soft-deleted by storage index")
 
+// ErrMetadataUnsupported means the blob's backend cannot read custom metadata
+// (no MetadataReader). It is distinct from "read succeeded, no metadata" so
+// callers (e.g. soft-delete enforcement) can fail closed on an unverifiable
+// backend instead of assuming there is no tombstone.
+var ErrMetadataUnsupported = errors.New("blob does not support reading custom metadata")
+
 // ObjectMetadataSoftDeleted is the storage-index soft-delete tombstone key.
 const ObjectMetadataSoftDeleted = storageopts.ObjectMetadataSoftDeleted
 
@@ -153,12 +159,13 @@ type MetadataReader interface {
 	Metadata(ctx context.Context) (ObjectMetadata, error)
 }
 
-// BlobCustomMetadata returns the blob's custom metadata, or (nil, nil) when the
-// backend doesn't support reading it.
+// BlobCustomMetadata returns the blob's custom metadata, or ErrMetadataUnsupported
+// when the backend can't read it — so callers can distinguish "no tombstone"
+// from "couldn't check" and fail closed under enforcement.
 func BlobCustomMetadata(ctx context.Context, b Blob) (ObjectMetadata, error) {
 	mr, ok := b.(MetadataReader)
 	if !ok {
-		return nil, nil
+		return nil, ErrMetadataUnsupported
 	}
 
 	return mr.Metadata(ctx)

@@ -22,9 +22,10 @@ import (
 // the object being unreadable (not_found / error), so a missing object never
 // masquerades as "not soft-deleted".
 const (
-	checkResultChecked  = "checked"   // metadata read; soft_deleted tells the verdict
-	checkResultNotFound = "not_found" // object does not exist (e.g. peer-only or already gone)
-	checkResultError    = "error"     // metadata could not be read (transient/permission)
+	checkResultChecked     = "checked"     // metadata read; soft_deleted tells the verdict
+	checkResultNotFound    = "not_found"   // object does not exist (e.g. peer-only or already gone)
+	checkResultError       = "error"       // metadata could not be read (transient/permission)
+	checkResultUnsupported = "unsupported" // backend cannot read custom metadata
 )
 
 var softDeleteCheckMetric = utils.Must(meter.Int64Counter(
@@ -44,11 +45,14 @@ func (b *StorageDiff) recordCheck(ctx context.Context, result string, softDelete
 }
 
 func classifyCheckError(err error) string {
-	if errors.Is(err, storage.ErrObjectNotExist) {
+	switch {
+	case errors.Is(err, storage.ErrObjectNotExist):
 		return checkResultNotFound
+	case errors.Is(err, storage.ErrMetadataUnsupported):
+		return checkResultUnsupported
+	default:
+		return checkResultError
 	}
-
-	return checkResultError
 }
 
 func (b *StorageDiff) softDeleteErr() error {
@@ -94,6 +98,19 @@ func (b *StorageDiff) softDeleteCheck(ctx context.Context, ff *featureflags.Clie
 	md, err := storage.BlobCustomMetadata(ctx, blob)
 	if err != nil {
 		result := classifyCheckError(err)
+		// A backend that can't read metadata is a deterministic gap, not a
+		// transient one: under enforce, fail closed rather than serve a
+		// possibly-tombstoned layer (BlobCustomMetadata used to return no error
+		// here, which silently failed open).
+		if result == checkResultUnsupported && ff.BoolFlag(ctx, featureflags.StorageSoftDeleteEnforceFlag) {
+			b.recordCheck(ctx, result, false, true)
+			b.softDeletedPath.Store(path)
+			logger.L().Error(ctx, "storage-index soft-delete unverifiable; failing closed",
+				logger.WithBuildID(b.buildID), zap.String("artifact", string(b.diffType)),
+				zap.String("result", result), zap.String("object", *path), zap.Error(err))
+
+			return
+		}
 		b.recordCheck(ctx, result, false, false)
 		logger.L().Warn(ctx, "storage-index soft-delete check could not read object metadata",
 			logger.WithBuildID(b.buildID), zap.String("artifact", string(b.diffType)),
