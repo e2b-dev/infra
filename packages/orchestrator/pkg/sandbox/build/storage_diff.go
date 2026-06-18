@@ -472,13 +472,20 @@ func (b *StorageDiff) reloadSourceLocked(ctx context.Context, cause string) erro
 	}
 	b.source.Store(&source{upstream: upstream, fullDiffFrameTable: ft})
 
-	// The authoritative object can differ from the one first opened (e.g. a peer
-	// probe resolving to a compressed object); re-point to the new pointer and
-	// recheck. Enforcement keys on the path pointer, so the old object's verdict
-	// (softDeletedPath) stops matching automatically — no explicit clear, and no
-	// race with a stale check still about to store the superseded path.
-	if old := b.dataPath.Load(); old == nil || *old != dataPath {
+	// Re-point to the new pointer when the authoritative object differs from the
+	// one first opened (e.g. a peer probe resolving to a compressed object).
+	// Enforcement keys on the path pointer, so the old object's verdict
+	// (softDeletedPath) stops matching automatically — no explicit clear, no
+	// race with a stale check about to store the superseded path.
+	old := b.dataPath.Load()
+	pathChanged := old == nil || *old != dataPath
+	if pathChanged {
 		b.dataPath.Store(&dataPath)
+	}
+	// Recheck on any path change, and also on a peer transition even if the path
+	// is unchanged: a peer-served object that wasn't in storage at first open
+	// (not_found) may now exist and carry a tombstone the initial check missed.
+	if pathChanged || cause == refreshCausePeerTransitioned {
 		b.startSoftDeleteCheck(context.WithoutCancel(ctx))
 	}
 
