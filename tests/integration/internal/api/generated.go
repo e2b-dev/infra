@@ -950,7 +950,7 @@ type SandboxOnTimeout string
 
 // SandboxPauseRequest defines model for SandboxPauseRequest.
 type SandboxPauseRequest struct {
-	// Memory Whether to capture a full memory snapshot. When false, only the filesystem is persisted and resuming the sandbox cold-boots (reboots) it from disk, losing in-memory state, running processes, and open connections. Such a sandbox must be resumed explicitly; auto-resume and connect refuse it. Defaults to true.
+	// Memory Whether to capture a full memory snapshot. When false, only the filesystem is persisted and resuming the sandbox cold-boots (reboots) it from disk, losing in-memory state, running processes, and open connections. Resume it with an explicit request (connect or resume); auto-resume, which can be triggered by arbitrary traffic, refuses such a sandbox. Defaults to true.
 	Memory *bool `json:"memory,omitempty"`
 }
 

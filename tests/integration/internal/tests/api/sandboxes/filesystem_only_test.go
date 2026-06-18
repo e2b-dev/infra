@@ -26,12 +26,12 @@ func pauseFilesystemOnly(t *testing.T, c *api.ClientWithResponses, sandboxID str
 	require.Equal(t, http.StatusNoContent, resp.StatusCode(), "filesystem-only pause should succeed")
 }
 
-// TestSandboxConnect_FilesystemOnlyRefused verifies that POST /connect refuses a
-// filesystem-only snapshot. Connecting implicitly resumes, which for a disk-only
-// snapshot means a cold boot that loses in-memory state — breaking connect's
-// "same sandbox" contract — so the API must return 409 and require an explicit
-// resume instead.
-func TestSandboxConnect_FilesystemOnlyRefused(t *testing.T) {
+// TestSandboxConnect_FilesystemOnlyResumes verifies that POST /connect resumes a
+// paused filesystem-only snapshot by cold-booting (reboot) it — connect is the
+// intended way to bring such a sandbox back (in-memory state was already
+// discarded at pause time via memory:false). Auto-resume, by contrast, still
+// refuses it (see TestSandboxNoAutoResumeFilesystemOnly).
+func TestSandboxConnect_FilesystemOnlyResumes(t *testing.T) {
 	t.Parallel()
 	c := setup.GetAPIClient()
 
@@ -39,11 +39,21 @@ func TestSandboxConnect_FilesystemOnlyRefused(t *testing.T) {
 
 	pauseFilesystemOnly(t, c, sbx.SandboxID)
 
+	// Generous timeout so a slow placement under load can't expire the end time
+	// before the reboot runs (see TestSandboxResume_FilesystemOnlyReboots).
 	connectResp, err := c.PostSandboxesSandboxIDConnectWithResponse(t.Context(), sbx.SandboxID,
-		api.PostSandboxesSandboxIDConnectJSONRequestBody{Timeout: 30}, setup.WithAPIKey())
+		api.PostSandboxesSandboxIDConnectJSONRequestBody{Timeout: 120}, setup.WithAPIKey())
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusConflict, connectResp.StatusCode(),
-		"connecting to a filesystem-only snapshot must be refused with 409")
+	require.Equal(t, http.StatusCreated, connectResp.StatusCode(),
+		"connecting to a paused filesystem-only snapshot should resume it (cold boot)")
+	require.NotNil(t, connectResp.JSON201)
+	assert.Equal(t, sbx.SandboxID, connectResp.JSON201.SandboxID)
+
+	// It must be running after the reboot.
+	res, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbx.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.NotNil(t, res.JSON200)
+	assert.Equal(t, api.Running, res.JSON200.State)
 }
 
 // TestSandboxResume_FilesystemOnlyReboots verifies the filesystem-only happy
