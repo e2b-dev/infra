@@ -8,9 +8,17 @@
 package memory
 
 // Stats summarizes a CollapseSelf run.
+//
+// MADV_COLLAPSE returns success both when it migrates scattered base pages into
+// a new hugepage and when the window was already a hugepage (a no-op), so the
+// raw success count overstates real work. We split it with the process's
+// AnonHugePages delta: Collapsed counts windows actually migrated this run,
+// AlreadyHuge counts windows that were already huge. Invariant:
+// Chunks = Collapsed + AlreadyHuge + Skipped.
 type Stats struct {
-	Regions   int // anonymous read-write regions scanned
-	Chunks    int // 2 MiB chunks attempted
-	Collapsed int // chunks collapsed into a hugepage
-	Skipped   int // chunks that could not be collapsed (empty or ineligible)
+	Regions     int // anonymous read-write regions scanned
+	Chunks      int // 2 MiB chunks attempted = Collapsed + AlreadyHuge + Skipped
+	Collapsed   int // chunks whose base pages were actually migrated into a new hugepage (real work)
+	AlreadyHuge int // chunks MADV_COLLAPSE accepted but were already hugepages (no work)
+	Skipped     int // chunks that could not be collapsed (empty or ineligible)
 }

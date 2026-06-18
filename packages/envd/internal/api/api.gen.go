@@ -36,10 +36,13 @@ func (e EntryInfoType) Valid() bool {
 
 // CollapseResult Per-call statistics from a heap collapse
 type CollapseResult struct {
+	// AlreadyHuge Chunks MADV_COLLAPSE accepted but were already hugepages (no work)
+	AlreadyHuge *int `json:"alreadyHuge,omitempty"`
+
 	// Chunks 2 MiB chunks attempted
 	Chunks *int `json:"chunks,omitempty"`
 
-	// Collapsed Chunks collapsed into a hugepage
+	// Collapsed Chunks whose base pages were actually migrated into a new hugepage (real work)
 	Collapsed *int `json:"collapsed,omitempty"`
 
 	// ElapsedMs Wall-clock time spent collapsing, in milliseconds
@@ -264,6 +267,12 @@ type ServerInterface interface {
 	// Freeze user/pty cgroups before pause. Written directly by envd to avoid Process.Start / shell overhead under load.
 	// (POST /freeze)
 	PostFreeze(w http.ResponseWriter, r *http.Request)
+	// Freeze the guest rootfs (FIFREEZE) before a filesystem-only pause so it is flushed to a consistent on-disk state, closing the sync->pause race. Idempotent. On a successful filesystem-only pause the VM is rebooted, so no thaw is needed; the orchestrator thaws only on the pause-failure path.
+	// (POST /fsfreeze)
+	PostFsfreeze(w http.ResponseWriter, r *http.Request)
+	// Thaw the guest rootfs (FITHAW). Intended ONLY for the orchestrator's pause-failure rollback path, so a frozen filesystem cannot leave the live VM deadlocked. Idempotent.
+	// (POST /fsthaw)
+	PostFsthaw(w http.ResponseWriter, r *http.Request)
 	// Check the health of the service
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -315,6 +324,18 @@ func (_ Unimplemented) PostFilesCompose(w http.ResponseWriter, r *http.Request) 
 // Freeze user/pty cgroups before pause. Written directly by envd to avoid Process.Start / shell overhead under load.
 // (POST /freeze)
 func (_ Unimplemented) PostFreeze(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Freeze the guest rootfs (FIFREEZE) before a filesystem-only pause so it is flushed to a consistent on-disk state, closing the sync->pause race. Idempotent. On a successful filesystem-only pause the VM is rebooted, so no thaw is needed; the orchestrator thaws only on the pause-failure path.
+// (POST /fsfreeze)
+func (_ Unimplemented) PostFsfreeze(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Thaw the guest rootfs (FITHAW). Intended ONLY for the orchestrator's pause-failure rollback path, so a frozen filesystem cannot leave the live VM deadlocked. Idempotent.
+// (POST /fsthaw)
+func (_ Unimplemented) PostFsthaw(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -587,6 +608,46 @@ func (siw *ServerInterfaceWrapper) PostFreeze(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// PostFsfreeze operation middleware
+func (siw *ServerInterfaceWrapper) PostFsfreeze(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostFsfreeze(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostFsthaw operation middleware
+func (siw *ServerInterfaceWrapper) PostFsthaw(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostFsthaw(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetHealth operation middleware
 func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
 
@@ -791,6 +852,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/freeze", wrapper.PostFreeze)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/fsfreeze", wrapper.PostFsfreeze)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/fsthaw", wrapper.PostFsthaw)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/health", wrapper.GetHealth)

@@ -119,6 +119,34 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
+  /fsfreeze:
+    post:
+      summary: Freeze the guest rootfs (FIFREEZE) before a filesystem-only pause so it is flushed to a consistent on-disk state, closing the sync->pause race. Idempotent. On a successful filesystem-only pause the VM is rebooted, so no thaw is needed; the orchestrator thaws only on the pause-failure path.
+      security:
+        - AccessTokenAuth: []
+        - {}
+      responses:
+        "204":
+          description: Rootfs frozen
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          description: Freeze lock is held by another operation
+
+  /fsthaw:
+    post:
+      summary: Thaw the guest rootfs (FITHAW). Intended ONLY for the orchestrator's pause-failure rollback path, so a frozen filesystem cannot leave the live VM deadlocked. Idempotent.
+      security:
+        - AccessTokenAuth: []
+        - {}
+      responses:
+        "204":
+          description: Rootfs thawed
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          description: Freeze lock is held by another operation
+
   /envs:
     get:
       summary: Get the environment variables
@@ -452,7 +480,10 @@ components:
           description: 2 MiB chunks attempted
         collapsed:
           type: integer
-          description: Chunks collapsed into a hugepage
+          description: Chunks whose base pages were actually migrated into a new hugepage (real work)
+        alreadyHuge:
+          type: integer
+          description: Chunks MADV_COLLAPSE accepted but were already hugepages (no work)
         skipped:
           type: integer
           description: Chunks that could not be collapsed (empty or ineligible)

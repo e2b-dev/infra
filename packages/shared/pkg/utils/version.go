@@ -22,6 +22,11 @@ const MinEnvdVersionForCgroupFreeze = "0.6.0"
 // envd that 404s.
 const MinEnvdVersionForHeapCollapse = "0.6.5"
 
+// MinEnvdVersionForFsFreeze is the first envd that exposes the native
+// POST /fsfreeze and /fsthaw endpoints, which quiesce the guest rootfs before a
+// filesystem-only pause. Older envds fall back to a plain guest sync.
+const MinEnvdVersionForFsFreeze = "0.6.6"
+
 func sanitizeVersion(version string) string {
 	if len(version) > 0 && version[0] != 'v' {
 		version = "v" + version
