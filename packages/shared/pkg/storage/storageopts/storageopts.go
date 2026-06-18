@@ -11,6 +11,11 @@ type ObjectMetadata map[string]string
 
 const ObjectMetadataTeamID = "team_id"
 
+// ObjectMetadataSoftDeleted is a mutable tombstone written by the storage index
+// (not at upload time) to mark a layer for deletion. Value is
+// "<reason>:<action_id>". Consumers fail closed on it behind a feature flag.
+const ObjectMetadataSoftDeleted = "storage-index-soft-deleted"
+
 // FrameSink fires once per compressed frame with its absolute C-space offset.
 // Best-effort; implementations should return quickly and bound their own I/O.
 type FrameSink func(ctx context.Context, cOffset int64, compressed []byte)

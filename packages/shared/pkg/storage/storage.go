@@ -31,6 +31,13 @@ var ErrObjectNotExist = errors.New("object does not exist")
 // multiple concurrent writers racing to write the same content-addressed object.
 var ErrObjectRateLimited = errors.New("object access rate limited")
 
+// ErrObjectSoftDeleted means the storage index has marked this object for
+// deletion (soft-delete tombstone in custom metadata) and enforcement is on.
+var ErrObjectSoftDeleted = errors.New("object soft-deleted by storage index")
+
+// ObjectMetadataSoftDeleted is the storage-index soft-delete tombstone key.
+const ObjectMetadataSoftDeleted = storageopts.ObjectMetadataSoftDeleted
+
 type Provider string
 
 const (
@@ -138,6 +145,23 @@ type Blob interface {
 	WriteTo(ctx context.Context, dst io.Writer) (int64, error)
 	Put(ctx context.Context, data []byte, opts ...storageopts.PutOption) error
 	Exists(ctx context.Context) (bool, error)
+}
+
+// MetadataReader is an optional Blob capability: read the object's custom
+// metadata without downloading it. Backends that can't answer cheaply omit it.
+type MetadataReader interface {
+	Metadata(ctx context.Context) (ObjectMetadata, error)
+}
+
+// BlobCustomMetadata returns the blob's custom metadata, or (nil, nil) when the
+// backend doesn't support reading it.
+func BlobCustomMetadata(ctx context.Context, b Blob) (ObjectMetadata, error) {
+	mr, ok := b.(MetadataReader)
+	if !ok {
+		return nil, nil
+	}
+
+	return mr.Metadata(ctx)
 }
 
 type RangeReader interface {

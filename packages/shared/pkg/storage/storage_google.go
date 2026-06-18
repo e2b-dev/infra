@@ -264,6 +264,23 @@ func (o *gcpObject) Size(ctx context.Context) (int64, error) {
 	return attrs.Size, nil
 }
 
+// Metadata implements MetadataReader via Attrs (always hits GCS).
+func (o *gcpObject) Metadata(ctx context.Context) (ObjectMetadata, error) {
+	ctx, cancel := context.WithTimeout(ctx, googleOperationTimeout)
+	defer cancel()
+
+	attrs, err := o.handle.Attrs(ctx)
+	if err != nil {
+		if errors.Is(err, storage.ErrObjectNotExist) {
+			return nil, fmt.Errorf("failed to get GCS object (%q) attributes: %w", o.path, ErrObjectNotExist)
+		}
+
+		return nil, fmt.Errorf("failed to get GCS object (%q) attributes: %w", o.path, err)
+	}
+
+	return ObjectMetadata(attrs.Metadata), nil
+}
+
 func (o *gcpObject) openRangeReader(ctx context.Context, off, length int64) (RangeReader, error) {
 	readCtx, cancel := context.WithCancel(ctx)
 

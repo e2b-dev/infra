@@ -129,6 +129,13 @@ var (
 	SandboxAutoResumeFlag               = NewBoolFlag("sandbox-auto-resume", env.IsDevelopment())
 	OrchAcceptsCombinedHostFlag         = NewBoolFlag("orch-accepts-combined-host", false)
 
+	// StorageSoftDeleteCheckFlag enables reading the storage-index soft-delete
+	// tombstone on header load (one extra GCS Attrs on cold load). Off = no overhead.
+	StorageSoftDeleteCheckFlag = NewBoolFlag("storage-soft-delete-check", false)
+	// StorageSoftDeleteEnforceFlag makes a soft-deleted object fail the read
+	// (fail closed) instead of only emitting a metric + log. Requires the check flag.
+	StorageSoftDeleteEnforceFlag = NewBoolFlag("storage-soft-delete-enforce", false)
+
 	// UseMemFdFlag asks Firecracker to back guest memory with a memfd and
 	// pass the fd over the UFFD socket; the orchestrator then mmaps it
 	// directly instead of using process_vm_readv on pause.
