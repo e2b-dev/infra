@@ -156,8 +156,13 @@ func (e *Evictor) evictSandbox(ctx context.Context, sbx sandbox.Sandbox) {
 	}
 
 	opts := sandbox.RemoveOpts{Action: action, Eviction: true}
-	if action == sandbox.StateActionKill {
+	switch action {
+	case sandbox.StateActionKill:
 		opts.Reason = sandbox.KillReasonTimeout
+	case sandbox.StateActionPause:
+		// Honor the sandbox's auto-pause snapshot kind: filesystem-only drops
+		// memory (cold-boots on resume); otherwise a full memory snapshot.
+		opts.FilesystemOnly = sbx.AutoPauseFilesystemOnly
 	}
 
 	if err := e.removeSandbox(context.WithoutCancel(ctx), sbx.TeamID, sbx.SandboxID, opts); err != nil {
