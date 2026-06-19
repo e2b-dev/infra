@@ -266,6 +266,14 @@ var (
 	// NBDConnectionsPerDevice the number of NBD socket connections per device
 	NBDConnectionsPerDevice = NewIntFlag("nbd-connections-per-device", 1)
 
+	// NBDAsyncWriteZeroesFlag, when enabled, handles NBD WRITE_ZEROES/TRIM
+	// commands in a goroutine instead of inline on the dispatch read loop.
+	// Inline handling can stall the read loop via head-of-line blocking on the
+	// shared write lock (when a reply writer is blocked on a full socket send
+	// buffer), which makes the kernel time out the NBD connection and surfaces
+	// as guest I/O errors. Disabled by default.
+	NBDAsyncWriteZeroesFlag = NewBoolFlag("nbd-async-write-zeroes", false)
+
 	// MemoryPrefetchMaxFetchWorkers is the maximum number of parallel fetch workers per sandbox for memory prefetching.
 	// Fetching is I/O bound so we can have more parallelism.
 	MemoryPrefetchMaxFetchWorkers = NewIntFlag("memory-prefetch-max-fetch-workers", 16)
