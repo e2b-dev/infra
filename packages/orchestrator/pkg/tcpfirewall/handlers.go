@@ -24,7 +24,30 @@ const (
 	upstreamDialTimeout = 30 * time.Second
 
 	noHostnameValue = ""
+
+	// sandboxEgressTOS is the IP TOS-byte form of the DSCP CS1 marker applied
+	// to sandbox netns egress by pkg/sandbox/network (--set-dscp 8). DSCP
+	// occupies the top 6 bits of the TOS byte, so 8 << 2 = 32. We set it on
+	// the proxy's upstream sockets so host-originated TCP carries the same
+	// marker as direct (non-proxied) sandbox egress — without this, the
+	// REDIRECT-to-local-proxy hop strips the L3 marker for all TCP traffic.
+	sandboxEgressTOS = 32
 )
+
+// markDSCP sets IP_TOS on the upstream socket so packets the proxy sends to
+// the destination carry the sandbox egress DSCP marker.
+func markDSCP(c syscall.RawConn) error {
+	var sockErr error
+
+	err := c.Control(func(fd uintptr) {
+		sockErr = syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IP, syscall.IP_TOS, sandboxEgressTOS)
+	})
+	if err != nil {
+		return err
+	}
+
+	return sockErr
+}
 
 // domainHandler handles connections with hostname information (HTTP Host header or TLS SNI).
 func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol) {
@@ -104,6 +127,16 @@ func proxy(ctx context.Context, conn net.Conn, upstreamAddr string, metrics *Met
 	dp := &tcpproxy.DialProxy{
 		Addr:        upstreamAddr,
 		DialTimeout: upstreamDialTimeout,
+		DialContext: func(dialCtx context.Context, network, addr string) (net.Conn, error) {
+			dialer := &net.Dialer{
+				Timeout: upstreamDialTimeout,
+				Control: func(_, _ string, c syscall.RawConn) error {
+					return markDSCP(c)
+				},
+			}
+
+			return dialer.DialContext(dialCtx, network, addr)
+		},
 	}
 	dp.HandleConn(conn)
 }
@@ -131,7 +164,7 @@ func proxyWithIPVerification(ctx context.Context, conn net.Conn, upstreamAddr st
 				// ControlContext is called after DNS resolution but BEFORE the TCP connect() syscall.
 				// The 'address' parameter contains the resolved IP:port, allowing us to block
 				// connections to internal IPs before any TCP handshake occurs.
-				ControlContext: func(_ context.Context, _, address string, _ syscall.RawConn) error {
+				ControlContext: func(_ context.Context, _, address string, c syscall.RawConn) error {
 					host, _, err := net.SplitHostPort(address)
 					if err != nil {
 						return fmt.Errorf("failed to parse resolved address %q: %w", address, err)
@@ -151,7 +184,7 @@ func proxyWithIPVerification(ctx context.Context, conn net.Conn, upstreamAddr st
 						return fmt.Errorf("hostname resolved to internal IP %s", resolvedIP)
 					}
 
-					return nil
+					return markDSCP(c)
 				},
 			}
 
