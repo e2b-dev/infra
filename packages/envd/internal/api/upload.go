@@ -13,17 +13,25 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/rs/zerolog"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
+	"github.com/e2b-dev/infra/packages/envd/internal/netlimit"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/filesystem"
 )
 
 var ErrNoDiskSpace = errors.New("not enough disk space available")
+
+// uploadIdleTimeout bounds a stalled upload: if the client stops sending body
+// bytes for this long, the read fails so envd doesn't hold the open file (and the
+// handler behind it) forever. Scoped to file upload — process/filesystem RPC
+// streams, where a long quiet gap is normal, are unaffected.
+const uploadIdleTimeout = 60 * time.Second
 
 // metadataHeaderPrefix is the request-header prefix used to attach
 // user-defined metadata to file uploads. Each `<metadataHeaderPrefix><key>:
@@ -240,6 +248,11 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 	// Capture original body to ensure it's always closed
 	originalBody := r.Body
 	defer originalBody.Close()
+
+	// Bound a stalled upload at the raw-body layer (before decompression) so the
+	// deadline tracks actual network reads. A client that stops sending mid-upload
+	// can't pin the open file and handler indefinitely.
+	r.Body = netlimit.IdleReadCloser(r.Body, http.NewResponseController(w).SetReadDeadline, uploadIdleTimeout)
 
 	var errorCode int
 	var errMsg error
