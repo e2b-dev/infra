@@ -21,7 +21,7 @@ import (
 // It exercises the real CreateNetwork path, so it needs root (netns, iptables)
 // and the xt_DSCP kernel module; it skips otherwise — same gating as the other
 // privileged integration tests in the orchestrator (see cmd/smoketest).
-func TestCreateNetwork_TagsEgressWithDSCP(t *testing.T) {
+func TestCreateNetwork_TagsEgressWithDSCP(t *testing.T) { //nolint:paralleltest // mutates the caller's netns via LockOSThread + netns.Set; cannot run in parallel
 	if os.Geteuid() != 0 {
 		t.Skip("requires root for netns + iptables")
 	}
@@ -76,5 +76,6 @@ func dscpMangleRules(t *testing.T, nsName string) []string {
 			dscp = append(dscp, r)
 		}
 	}
+
 	return dscp
 }
