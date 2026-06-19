@@ -34,13 +34,21 @@ const (
 	sandboxEgressTOS = 32
 )
 
-// markDSCP sets IP_TOS on the upstream socket so packets the proxy sends to
-// the destination carry the sandbox egress DSCP marker.
+// markDSCP sets the IPv4 IP_TOS and IPv6 IPV6_TCLASS socket options so
+// packets the proxy sends to the destination carry the sandbox egress DSCP
+// marker regardless of the socket's address family. The dialer (notably
+// Happy Eyeballs in proxyWithIPVerification) may choose either family, so we
+// set both and tolerate ENOPROTOOPT from the non-matching one — only a
+// failure on both legs is a real error.
 func markDSCP(c syscall.RawConn) error {
 	var sockErr error
 
 	err := c.Control(func(fd uintptr) {
-		sockErr = syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IP, syscall.IP_TOS, sandboxEgressTOS)
+		v4Err := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IP, syscall.IP_TOS, sandboxEgressTOS)
+		v6Err := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IPV6, syscall.IPV6_TCLASS, sandboxEgressTOS)
+		if v4Err != nil && v6Err != nil {
+			sockErr = fmt.Errorf("setsockopt IP_TOS (%v) and IPV6_TCLASS (%v) both failed", v4Err, v6Err)
+		}
 	})
 	if err != nil {
 		return err
