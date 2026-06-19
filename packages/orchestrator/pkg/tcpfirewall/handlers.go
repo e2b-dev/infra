@@ -4,6 +4,7 @@ package tcpfirewall
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -47,7 +48,7 @@ func markDSCP(c syscall.RawConn) error {
 		v4Err := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IP, syscall.IP_TOS, sandboxEgressTOS)
 		v6Err := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IPV6, syscall.IPV6_TCLASS, sandboxEgressTOS)
 		if v4Err != nil && v6Err != nil {
-			sockErr = fmt.Errorf("setsockopt IP_TOS (%v) and IPV6_TCLASS (%v) both failed", v4Err, v6Err)
+			sockErr = fmt.Errorf("setsockopt IP_TOS / IPV6_TCLASS both failed: %w", errors.Join(v4Err, v6Err))
 		}
 	})
 	if err != nil {
