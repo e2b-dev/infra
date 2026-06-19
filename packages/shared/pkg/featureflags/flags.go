@@ -129,6 +129,13 @@ var (
 	SandboxAutoResumeFlag               = NewBoolFlag("sandbox-auto-resume", env.IsDevelopment())
 	OrchAcceptsCombinedHostFlag         = NewBoolFlag("orch-accepts-combined-host", false)
 
+	// StorageSoftDeleteCheckFlag enables reading the storage-index soft-delete
+	// tombstone on header load (one extra GCS Attrs on cold load). Off = no overhead.
+	StorageSoftDeleteCheckFlag = NewBoolFlag("storage-soft-delete-check", false)
+	// StorageSoftDeleteEnforceFlag makes a soft-deleted object fail the read
+	// (fail closed) instead of only emitting a metric + log. Requires the check flag.
+	StorageSoftDeleteEnforceFlag = NewBoolFlag("storage-soft-delete-enforce", false)
+
 	// UseMemFdFlag asks Firecracker to back guest memory with a memfd and
 	// pass the fd over the UFFD socket; the orchestrator then mmaps it
 	// directly instead of using process_vm_readv on pause.
@@ -180,6 +187,19 @@ var (
 	// helps, so this can be tuned per rollout without redeploying. The fallback
 	// (returned when LD is unavailable or the flag is unset) is the default.
 	CollapseEnvdHeapTimeoutMsFlag = NewIntFlag("collapse-envd-heap-timeout-ms", 10000) // 10s in milliseconds
+
+	// VolumeFallbackToUnmatchedNodesFlag allows volume operations to fall back to
+	// orchestrator nodes that don't advertise the volume's type label when every
+	// labeled node fails with a retryable error. This is a transitional flag for
+	// the volume-label migration: once every node is labeled, unlabeled nodes will
+	// fail 100% of the time, so this should be turned off and removed afterwards.
+	VolumeFallbackToUnmatchedNodesFlag = NewBoolFlag("volume-fallback-to-unmatched-nodes", true)
+
+	// SandboxVolumeLabelBasedSchedulingFlag enables filtering orchestrator nodes
+	// based on the volume types required by the sandbox. When enabled, labels
+	// like "persistent-volume-type=nfs" are added to the required node labels
+	// for sandbox placement.
+	SandboxVolumeLabelBasedSchedulingFlag = NewBoolFlag("sandbox-volume-label-based-scheduling", false)
 
 	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())
 

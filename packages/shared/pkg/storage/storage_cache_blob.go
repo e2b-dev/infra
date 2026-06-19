@@ -36,6 +36,12 @@ func (b *cachedBlob) Exists(ctx context.Context) (bool, error) {
 	return b.inner.Exists(ctx)
 }
 
+// Metadata delegates to the inner (backend) blob so custom metadata is read
+// from the authoritative backend, never the local byte cache.
+func (b *cachedBlob) Metadata(ctx context.Context) (ObjectMetadata, error) {
+	return BlobCustomMetadata(ctx, b.inner)
+}
+
 func (b *cachedBlob) WriteTo(ctx context.Context, dst io.Writer) (n int64, e error) {
 	ctx, span := b.tracer.Start(ctx, "read object into writer")
 	defer func() {

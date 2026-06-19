@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
@@ -170,17 +171,17 @@ func (s *Sandbox) guestSyncTimeout(ctx context.Context) time.Duration {
 	return ramScaledSyncTimeout(s.Config.RamMB)
 }
 
-// guestSync runs sync in the guest via envd so ext4 flushes dirty pages to the
-// virtio disk. Mandatory before a filesystem-only pause: without a memory
-// snapshot the guest page cache is lost, so callers must fail the pause on
-// error instead of persisting a rootfs missing acknowledged writes. Unlike
-// bestEffortReclaim's sync step (LD-flag gated, best-effort), this always runs
-// and always reports failure.
-func (s *Sandbox) guestSync(ctx context.Context) (e error) {
-	syncTimeout := s.guestSyncTimeout(ctx)
+func (s *Sandbox) guestPrepareFsForPause(ctx context.Context, cleanup *Cleanup) (e error) {
+	supportsFsFreeze := s.envdSupportsFsFreeze(ctx)
+	// Use guestSyncTimeout here, as fsfreeze also syncs the disk
+	timeout := s.guestSyncTimeout(ctx)
 	start := time.Now()
 
-	ctx, span := tracer.Start(ctx, "envd-guest-sync")
+	ctx, span := tracer.Start(
+		ctx,
+		"envd-guest-fs-pause",
+		trace.WithAttributes(attribute.Bool("fsfreeze", supportsFsFreeze)),
+	)
 	defer span.End()
 
 	// Record on every exit so slow and timed-out syncs are captured too.
@@ -188,11 +189,44 @@ func (s *Sandbox) guestSync(ctx context.Context) (e error) {
 		guestSyncDurationHistogram.Record(ctx, time.Since(start).Milliseconds(),
 			metric.WithAttributes(
 				attribute.Bool("success", e == nil),
-				attribute.Int64("timeout_ms", syncTimeout.Milliseconds()),
+				attribute.Bool("fsfreeze", supportsFsFreeze),
+				attribute.Int64("timeout_ms", timeout.Milliseconds()),
 			),
 		)
 	}()
 
+	if supportsFsFreeze {
+		// fsfreeze flushes the rootfs AND blocks further writes until thaw,
+		// closing the sync->pause race. FIFREEZE already syncs as part of
+		// freezing, so a separate guest sync would be redundant.
+		// If freezing aborted, thaw so we don't leave the live VM's
+		// filesystem frozen; on success the VM is stopped during rootfs
+		// export, so the frozen state is discarded with it and the thaw is a
+		// harmless no-op.
+		cleanup.Add(ctx, func(ctx context.Context) error {
+			s.bestEffortFsthaw(ctx)
+
+			return nil
+		})
+		if err := s.callEnvdFsfreeze(ctx, timeout); err != nil {
+			return fmt.Errorf("fsfreeze before filesystem-only pause: %w", err)
+		}
+	} else {
+		if err := s.guestSync(ctx, timeout); err != nil {
+			return fmt.Errorf("guest sync before filesystem-only pause: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// guestSync runs sync in the guest via envd so ext4 flushes dirty pages to the
+// virtio disk. Mandatory before a filesystem-only pause: without a memory
+// snapshot the guest page cache is lost, so callers must fail the pause on
+// error instead of persisting a rootfs missing acknowledged writes. Unlike
+// bestEffortReclaim's sync step (LD-flag gated, best-effort), this always runs
+// and always reports failure.
+func (s *Sandbox) guestSync(ctx context.Context, syncTimeout time.Duration) (e error) {
 	rcCtx, cancel := context.WithTimeout(ctx, syncTimeout+reclaimOuterSlack)
 	defer cancel()
 
@@ -225,6 +259,20 @@ func (s *Sandbox) envdSupportsCgroupFreeze(ctx context.Context) bool {
 	ok, err := utils.IsGTEVersion(s.Config.Envd.Version, utils.MinEnvdVersionForCgroupFreeze)
 	if err != nil {
 		logger.L().Warn(ctx, "cgroup freeze version gate: bad envd version", logger.WithSandboxID(s.Runtime.SandboxID), zap.String("envd_version", s.Config.Envd.Version), zap.Error(err))
+
+		return false
+	}
+
+	return ok
+}
+
+// envdSupportsFsFreeze reports whether the sandbox's envd exposes the native
+// /fsfreeze and /fsthaw endpoints. Bad version strings log and return false so
+// the filesystem-only pause falls back to a plain guest sync.
+func (s *Sandbox) envdSupportsFsFreeze(ctx context.Context) bool {
+	ok, err := utils.IsGTEVersion(s.Config.Envd.Version, utils.MinEnvdVersionForFsFreeze)
+	if err != nil {
+		logger.L().Warn(ctx, "fsfreeze version gate: bad envd version", logger.WithSandboxID(s.Runtime.SandboxID), zap.String("envd_version", s.Config.Envd.Version), zap.Error(err))
 
 		return false
 	}
@@ -286,15 +334,18 @@ func (s *Sandbox) bestEffortCollapse(ctx context.Context) {
 		return
 	}
 
-	// Chunk-level efficacy: attempts = collapsed + skipped, successful = collapsed.
-	// One counter split by result so attempts (sum) and successes (collapsed) are
-	// both queryable.
+	// Chunk-level efficacy split three ways so the dashboard can separate real
+	// work from no-ops: attempts = collapsed + already_huge + skipped, where
+	// collapsed = pages actually migrated this pause, already_huge = windows that
+	// were already hugepages (MADV_COLLAPSE succeeded but did nothing).
 	envdCollapseChunks.Add(ctx, int64(stats.Collapsed), metric.WithAttributes(attribute.String("result", "collapsed")))
+	envdCollapseChunks.Add(ctx, int64(stats.AlreadyHuge), metric.WithAttributes(attribute.String("result", "already_huge")))
 	envdCollapseChunks.Add(ctx, int64(stats.Skipped), metric.WithAttributes(attribute.String("result", "skipped")))
 	span.SetAttributes(
 		attribute.Int("collapse.regions", stats.Regions),
 		attribute.Int("collapse.chunks", stats.Chunks),
 		attribute.Int("collapse.collapsed", stats.Collapsed),
+		attribute.Int("collapse.already_huge", stats.AlreadyHuge),
 		attribute.Int("collapse.skipped", stats.Skipped),
 	)
 
@@ -303,6 +354,7 @@ func (s *Sandbox) bestEffortCollapse(ctx context.Context) {
 		zap.Int("regions", stats.Regions),
 		zap.Int("chunks", stats.Chunks),
 		zap.Int("collapsed", stats.Collapsed),
+		zap.Int("already_huge", stats.AlreadyHuge),
 		zap.Int("skipped", stats.Skipped),
 		zap.Int64("duration_ms", elapsedMs),
 	)
@@ -334,5 +386,20 @@ func (s *Sandbox) bestEffortUnfreeze(ctx context.Context) {
 
 	if err := s.callEnvdUnfreeze(context.WithoutCancel(ctx), freezeTimeout); err != nil {
 		logger.L().Warn(ctx, "envd unfreeze failed", logger.WithSandboxID(s.Runtime.SandboxID), zap.Error(err))
+	}
+}
+
+// bestEffortFsthaw thaws the guest rootfs via envd's native /fsthaw endpoint.
+// Reserved for the filesystem-only pause error path so an aborted pause can't
+// leave the live VM's filesystem frozen. Gated on envd version; failures are
+// logged. Uses context.WithoutCancel because it runs from cleanup paths whose
+// parent ctx may already be done.
+func (s *Sandbox) bestEffortFsthaw(ctx context.Context) {
+	if !s.envdSupportsFsFreeze(ctx) {
+		return
+	}
+
+	if err := s.callEnvdFsthaw(context.WithoutCancel(ctx), s.guestSyncTimeout(ctx)); err != nil {
+		logger.L().Warn(ctx, "envd fsthaw failed", logger.WithSandboxID(s.Runtime.SandboxID), zap.Error(err))
 	}
 }

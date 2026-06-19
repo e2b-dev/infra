@@ -7,13 +7,21 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth/oidc"
-	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
 )
 
-func TestParseAuthProviderConfig(t *testing.T) {
+func setBaseEnv(t *testing.T) {
+	t.Helper()
+
 	t.Setenv("POSTGRES_CONNECTION_STRING", "postgres://example")
 	t.Setenv("ADMIN_TOKEN", "admin-token")
 	t.Setenv("REDIS_URL", "redis://example")
+	t.Setenv("ORY_SDK_URL", "https://tenant.projects.oryapis.com")
+	t.Setenv("ORY_PROJECT_API_TOKEN", "pat")
+	t.Setenv("ORY_ISSUER_URL", "https://auth.example.com")
+}
+
+func TestParseAuthProviderConfig(t *testing.T) {
+	setBaseEnv(t)
 	t.Setenv("AUTH_PROVIDER_CONFIG", `{
 		"jwt": [
 			{
@@ -38,60 +46,31 @@ func TestParseAuthProviderConfig(t *testing.T) {
 	require.Equal(t, 30*time.Minute, entry.CacheDuration)
 }
 
-func TestParseAuthProviderConfigLegacy(t *testing.T) {
-	t.Setenv("POSTGRES_CONNECTION_STRING", "postgres://example")
-	t.Setenv("ADMIN_TOKEN", "admin-token")
-	t.Setenv("REDIS_URL", "redis://example")
-	t.Setenv("AUTH_PROVIDER_CONFIG", `{
-		"legacy": {
-			"hmac": { "secrets": ["secret-1", "secret-2"] }
-		}
-	}`)
-
-	config, err := Parse()
-	require.NoError(t, err)
-	require.NotNil(t, config.AuthProvider.Legacy)
-	require.Equal(t, []string{"secret-1", "secret-2"}, config.AuthProvider.Legacy.HMAC.Secrets)
-}
-
-func TestParseUserProfileProviderDefaultsToSupabase(t *testing.T) {
-	t.Setenv("POSTGRES_CONNECTION_STRING", "postgres://example")
-	t.Setenv("ADMIN_TOKEN", "admin-token")
-	t.Setenv("REDIS_URL", "redis://example")
-
-	config, err := Parse()
-	require.NoError(t, err)
-	require.Equal(t, userprofile.ModeSupabase, config.UserProfileProvider)
-}
-
-func TestParseUserProfileProviderOryRequiresOryEnv(t *testing.T) {
+func TestParseRequiresOryEnv(t *testing.T) {
 	tests := []struct {
 		name          string
-		mode          string
 		sdkURL        string
 		token         string
 		issuer        string
 		wantErrSubstr string
 	}{
 		{
-			name:          "ory mode without sdk url errors",
-			mode:          "ory",
+			name:          "without sdk url errors",
 			token:         "pat",
-			issuer:        "https://ory.example.test",
+			issuer:        "https://auth.example.com",
 			wantErrSubstr: "ORY_SDK_URL",
 		},
 		{
-			name:          "ory mode without token errors",
-			mode:          "ory",
-			sdkURL:        "https://ory.example.test",
-			issuer:        "https://ory.example.test",
+			name:          "without token errors",
+			sdkURL:        "https://tenant.projects.oryapis.com",
+			issuer:        "https://auth.example.com",
 			wantErrSubstr: "ORY_PROJECT_API_TOKEN",
 		},
 		{
-			name:          "ory mode without sdk url or issuer errors on sdk url",
-			mode:          "ory",
+			name:          "without issuer errors",
+			sdkURL:        "https://tenant.projects.oryapis.com",
 			token:         "pat",
-			wantErrSubstr: "ORY_SDK_URL",
+			wantErrSubstr: "ORY_ISSUER_URL",
 		},
 	}
 
@@ -100,7 +79,6 @@ func TestParseUserProfileProviderOryRequiresOryEnv(t *testing.T) {
 			t.Setenv("POSTGRES_CONNECTION_STRING", "postgres://example")
 			t.Setenv("ADMIN_TOKEN", "admin-token")
 			t.Setenv("REDIS_URL", "redis://example")
-			t.Setenv("USER_PROFILE_PROVIDER", tt.mode)
 			t.Setenv("ORY_SDK_URL", tt.sdkURL)
 			t.Setenv("ORY_PROJECT_API_TOKEN", tt.token)
 			t.Setenv("ORY_ISSUER_URL", tt.issuer)
@@ -112,42 +90,21 @@ func TestParseUserProfileProviderOryRequiresOryEnv(t *testing.T) {
 	}
 }
 
-func TestParseUserProfileProviderOryHappyPathIsIndependentOfAuthProvider(t *testing.T) {
-	t.Setenv("POSTGRES_CONNECTION_STRING", "postgres://example")
-	t.Setenv("ADMIN_TOKEN", "admin-token")
-	t.Setenv("REDIS_URL", "redis://example")
-	t.Setenv("USER_PROFILE_PROVIDER", "ory")
-	t.Setenv("ORY_SDK_URL", "https://ory.example.test")
-	t.Setenv("ORY_PROJECT_API_TOKEN", "pat")
-	t.Setenv("ORY_ISSUER_URL", "https://ory.example.test")
+func TestParseOryHappyPathIsIndependentOfAuthProvider(t *testing.T) { //nolint:paralleltest // t.Setenv cannot be used with t.Parallel.
+	setBaseEnv(t)
 
 	config, err := Parse()
 	require.NoError(t, err)
-	require.Equal(t, userprofile.ModeOry, config.UserProfileProvider)
-	require.Equal(t, "https://ory.example.test", config.OrySDKURL)
+	require.Equal(t, "https://tenant.projects.oryapis.com", config.OrySDKURL)
 	require.Equal(t, "pat", config.OryProjectAPIToken)
-	require.Equal(t, "https://ory.example.test", config.OryIssuerURL)
+	require.Equal(t, "https://auth.example.com", config.OryIssuerURL)
 	require.Empty(t, config.AuthProvider.JWT)
 }
 
-func TestParseUserProfileProviderOryIssuerRequiredWhenAuthProviderEmpty(t *testing.T) {
+func TestParseOryIssuerDefaultsFromSingleAuthProviderJWT(t *testing.T) {
 	t.Setenv("POSTGRES_CONNECTION_STRING", "postgres://example")
 	t.Setenv("ADMIN_TOKEN", "admin-token")
 	t.Setenv("REDIS_URL", "redis://example")
-	t.Setenv("USER_PROFILE_PROVIDER", "ory")
-	t.Setenv("ORY_SDK_URL", "https://tenant.projects.oryapis.com")
-	t.Setenv("ORY_PROJECT_API_TOKEN", "pat")
-
-	_, err := Parse()
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "ORY_ISSUER_URL")
-}
-
-func TestParseUserProfileProviderOryIssuerDefaultsFromSingleAuthProviderJWT(t *testing.T) {
-	t.Setenv("POSTGRES_CONNECTION_STRING", "postgres://example")
-	t.Setenv("ADMIN_TOKEN", "admin-token")
-	t.Setenv("REDIS_URL", "redis://example")
-	t.Setenv("USER_PROFILE_PROVIDER", "ory")
 	t.Setenv("ORY_SDK_URL", "https://tenant.projects.oryapis.com")
 	t.Setenv("ORY_PROJECT_API_TOKEN", "pat")
 	t.Setenv("AUTH_PROVIDER_CONFIG", `{
@@ -161,13 +118,8 @@ func TestParseUserProfileProviderOryIssuerDefaultsFromSingleAuthProviderJWT(t *t
 	require.Equal(t, "https://auth.mycompany.com", config.OryIssuerURL)
 }
 
-func TestParseUserProfileProviderOryIssuerRejectsMismatchAgainstAuthProvider(t *testing.T) {
-	t.Setenv("POSTGRES_CONNECTION_STRING", "postgres://example")
-	t.Setenv("ADMIN_TOKEN", "admin-token")
-	t.Setenv("REDIS_URL", "redis://example")
-	t.Setenv("USER_PROFILE_PROVIDER", "ory")
-	t.Setenv("ORY_SDK_URL", "https://tenant.projects.oryapis.com")
-	t.Setenv("ORY_PROJECT_API_TOKEN", "pat")
+func TestParseOryIssuerRejectsMismatchAgainstAuthProvider(t *testing.T) {
+	setBaseEnv(t)
 	t.Setenv("ORY_ISSUER_URL", "https://tenant.projects.oryapis.com")
 	t.Setenv("AUTH_PROVIDER_CONFIG", `{
 		"jwt": [
@@ -178,33 +130,6 @@ func TestParseUserProfileProviderOryIssuerRejectsMismatchAgainstAuthProvider(t *
 	_, err := Parse()
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "does not match any AUTH_PROVIDER_CONFIG")
-	require.NotContains(t, err.Error(), "https://tenant.projects.oryapis.com")
-}
-
-func TestParseUserProfileProviderOryIssuerOverrideWithoutAuthProvider(t *testing.T) {
-	t.Setenv("POSTGRES_CONNECTION_STRING", "postgres://example")
-	t.Setenv("ADMIN_TOKEN", "admin-token")
-	t.Setenv("REDIS_URL", "redis://example")
-	t.Setenv("USER_PROFILE_PROVIDER", "ory")
-	t.Setenv("ORY_SDK_URL", "https://tenant.projects.oryapis.com")
-	t.Setenv("ORY_PROJECT_API_TOKEN", "pat")
-	t.Setenv("ORY_ISSUER_URL", "https://auth.mycompany.com")
-
-	config, err := Parse()
-	require.NoError(t, err)
-	require.Equal(t, "https://tenant.projects.oryapis.com", config.OrySDKURL)
-	require.Equal(t, "https://auth.mycompany.com", config.OryIssuerURL)
-}
-
-func TestParseUserProfileProviderInvalidModeErrors(t *testing.T) {
-	t.Setenv("POSTGRES_CONNECTION_STRING", "postgres://example")
-	t.Setenv("ADMIN_TOKEN", "admin-token")
-	t.Setenv("REDIS_URL", "redis://example")
-	t.Setenv("USER_PROFILE_PROVIDER", "totally-invalid")
-
-	_, err := Parse()
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "invalid user profile provider")
 }
 
 func TestParseFailureCondition(t *testing.T) {
@@ -227,7 +152,6 @@ func TestParseFailureCondition(t *testing.T) {
 				"POSTGRES_CONNECTION_STRING": "postgres://example",
 				"ADMIN_TOKEN":                "admin-token",
 				"REDIS_URL":                  "redis://example",
-				"USER_PROFILE_PROVIDER":      "ory",
 				"ORY_PROJECT_API_TOKEN":      "pat",
 				"ORY_ISSUER_URL":             "https://auth.example.com",
 			},
@@ -239,7 +163,6 @@ func TestParseFailureCondition(t *testing.T) {
 				"POSTGRES_CONNECTION_STRING": "postgres://example",
 				"ADMIN_TOKEN":                "admin-token",
 				"REDIS_URL":                  "redis://example",
-				"USER_PROFILE_PROVIDER":      "ory",
 				"ORY_SDK_URL":                "https://tenant.projects.oryapis.com",
 				"ORY_ISSUER_URL":             "https://auth.example.com",
 			},
@@ -251,7 +174,6 @@ func TestParseFailureCondition(t *testing.T) {
 				"POSTGRES_CONNECTION_STRING": "postgres://example",
 				"ADMIN_TOKEN":                "admin-token",
 				"REDIS_URL":                  "redis://example",
-				"USER_PROFILE_PROVIDER":      "ory",
 				"ORY_SDK_URL":                "https://tenant.projects.oryapis.com",
 				"ORY_PROJECT_API_TOKEN":      "pat",
 			},
@@ -263,7 +185,6 @@ func TestParseFailureCondition(t *testing.T) {
 				"POSTGRES_CONNECTION_STRING": "postgres://example",
 				"ADMIN_TOKEN":                "admin-token",
 				"REDIS_URL":                  "redis://example",
-				"USER_PROFILE_PROVIDER":      "ory",
 				"ORY_SDK_URL":                "https://tenant.projects.oryapis.com",
 				"ORY_PROJECT_API_TOKEN":      "pat",
 				"ORY_ISSUER_URL":             "https://tenant.projects.oryapis.com",

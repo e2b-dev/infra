@@ -88,7 +88,10 @@ func (ppb *PostProcessingBuilder) Metadata() phases.PhaseMeta {
 }
 
 func (ppb *PostProcessingBuilder) Hash(_ context.Context, sourceLayer phases.LayerResult) (string, error) {
-	return cache.HashKeys(sourceLayer.Hash, "config-run-cmd"), nil
+	// Include the configure script and the cert-bundle command so changes to
+	// either invalidate the cached finalize layer, mirroring how the base layer
+	// hashes provision.sh.
+	return cache.HashKeys(sourceLayer.Hash, "config-run-cmd", configureScriptFile, packCertBundleCmd), nil
 }
 
 func (ppb *PostProcessingBuilder) Layer(
@@ -208,6 +211,7 @@ func (ppb *PostProcessingBuilder) Build(
 			UpdateEnvd:     sourceLayer.Cached,
 			SandboxCreator: sandboxCreator,
 			ActionExecutor: actionExecutor,
+			BuildOrigin:    storage.ObjectOriginTemplateBuild,
 		},
 	)
 	if err != nil {
@@ -228,6 +232,16 @@ func (ppb *PostProcessingBuilder) postProcessingFn(userLogger logger.Logger) lay
 
 		defer func() {
 			if e != nil {
+				return
+			}
+
+			// Pack the CA cert bundle as the build's final guest step — after the
+			// configuration script, start_cmd, and ready_cmd have all run — so the
+			// tar that envd.service seeds the boot-time cert tmpfs from reflects the
+			// final trust store. Runs before the sync below so it is flushed to disk.
+			if err := packCertBundle(ctx, userLogger, ppb.proxy, sbx.Runtime.SandboxID); err != nil {
+				e = err
+
 				return
 			}
 

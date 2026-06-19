@@ -53,8 +53,8 @@ func uploadRatio(compressed, uncompressed int64) float64 {
 	return float64(compressed) / float64(uncompressed)
 }
 
-func storeHeaderWithMetrics(ctx context.Context, store storage.StorageProvider, path, fileType string, h *headers.Header) error {
-	cfg, stored, uncompressed, err := headers.StoreHeader(ctx, store, path, h)
+func storeHeaderWithMetrics(ctx context.Context, store storage.StorageProvider, path, fileType string, h *headers.Header, opts ...storage.PutOption) error {
+	cfg, stored, uncompressed, err := headers.StoreHeader(ctx, store, path, h, opts...)
 	if err != nil {
 		return err
 	}

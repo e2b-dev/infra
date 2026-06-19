@@ -7,7 +7,7 @@
 - [Packer](https://developer.hashicorp.com/packer/tutorials/docker-get-started/get-started-install-cli#installing-packer)
   - Used for building the disk image of the orchestrator client and server
 
-- [Terraform](https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli) (v1.5.x)
+- [Terraform](https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli) (v1.7.5)
     - Binaries are available [here](https://developer.hashicorp.com/terraform/install/versions#binary-downloads)
   - You can also install it via [tfenv](https://github.com/tfutils/tfenv)
     ```sh
@@ -30,7 +30,7 @@
 
 - Cloudflare account
 - Domain on Cloudflare
-- PostgreSQL database (Supabase's DB only supported for now)
+- PostgreSQL database
 
 **Optional**
 
@@ -59,8 +59,7 @@ Check if you can use config for terraform state management
 1. Go to `console.cloud.google.com` and create a new GCP project
     > Make sure your Quota allows you to have at least 2500G for `Persistent Disk SSD (GB)` and at least 24 for `CPUs`
 2. Create `.env.prod`, `.env.staging`, or `.env.dev` from [`.env.gcp.template`](.env.gcp.template). You can pick any of them. Make sure to fill in the values. All are required if not specified otherwise.
-    > Get Postgres database connection string from your database, e.g. [from Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres#direct-connection): Create a new project in Supabase and go to your project in Supabase -> Settings -> Database -> Connection Strings -> Postgres -> Direct or Shared
-    > The variant needs to be IPv4 compatible. You can either use Shared or use the IPv4 add-on in Connect screen
+    > Get the Postgres database connection string from your database. It needs to be IPv4 compatible.
 3. Run `make set-env ENV={prod,staging,dev}` to start using your env
 4. Run `make provider-login` to login to `gcloud`
 5. Run `make init`. If this errors, run it a second time--it's due to a race condition on Terraform enabling API access for the various GCP services; this can take several seconds. A full list of services that will be enabled for API access:
@@ -78,8 +77,6 @@ Check if you can use config for terraform state management
   - e2b-cloudflare-api-token
       > Get Cloudflare API Token: go to the [Cloudflare dashboard](https://dash.cloudflare.com/) -> Manage Account -> Account API Tokens -> Create Token -> Edit Zone DNS -> in "Zone Resources" select your domain and generate the token
   - e2b-postgres-connection-string (**required**)
-  - e2b-supabase-jwt-secrets (optional / required to self-host the [E2B dashboard](https://github.com/e2b-dev/dashboard))
-      > Get Supabase JWT Secret: go to the [Supabase dashboard](https://supabase.com/dashboard) -> Select your Project -> Project Settings -> Data API -> JWT Settings
   - e2b-posthog-api-key (optional, for monitoring)
 9. Run `make plan-without-jobs` and then `make apply`
 10. Run `make plan` and then `make apply`. Note: This will work after the TLS certificates was issued. It can take some time; you can check the status in the Google Cloud Console. Database migrations run automatically via the API's db-migrator task.
@@ -138,7 +135,6 @@ Now, you should see the right quota options in `All Quotas` and be able to reque
     - `{prefix}cloudflare` - JSON with `TOKEN` key
         > Get Cloudflare API Token: go to the [Cloudflare dashboard](https://dash.cloudflare.com/) -> Manage Account -> Account API Tokens -> Create Token -> Edit Zone DNS -> in "Zone Resources" select your domain and generate the token
     - `{prefix}postgres-connection-string` - your PostgreSQL connection string (**required**)
-    - `{prefix}supabase-jwt-secrets` - Supabase JWT secret (optional / required for the [E2B dashboard](https://github.com/e2b-dev/dashboard))
     - `{prefix}grafana` - JSON with `API_KEY`, `OTLP_URL`, `OTEL_COLLECTOR_TOKEN`, `USERNAME` keys (optional, for monitoring)
     - `{prefix}launch-darkly-api-key` - LaunchDarkly SDK key (optional, for feature flags)
 6. Build the Packer AMI for cluster nodes (a single shared AMI used by all node types):

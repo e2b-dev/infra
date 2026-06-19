@@ -123,7 +123,7 @@ func (u *Upload) uploadFramed(
 	if fileType == build.Rootfs {
 		headerFileType = uploadFileRootfsHeader
 	}
-	if err := storeHeaderWithMetrics(ctx, u.store, u.paths.HeaderFile(string(fileType)), headerFileType, h); err != nil {
+	if err := storeHeaderWithMetrics(ctx, u.store, u.paths.HeaderFile(string(fileType)), headerFileType, h, storage.WithMetadata(u.objectMetadata)); err != nil {
 		return fmt.Errorf("store %s header: %w", fileType, err)
 	}
 

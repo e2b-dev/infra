@@ -48,6 +48,12 @@ type StorageDiff struct {
 	buildID           string
 	diffType          DiffType
 	storageObjectType storage.SeekableObjectType
+	// dataPath is the storage object this diff reads from; the soft-delete
+	// check reads the tombstone off it directly (the object that gets pruned),
+	// not the header. It can change on a peer transition (uncompressed probe ->
+	// authoritative compressed object), so it is atomic and the check reruns.
+	dataPath atomic.Pointer[string]
+	flags    *featureflags.Client
 
 	blockSize   int64
 	metrics     blockmetrics.Metrics
@@ -55,6 +61,14 @@ type StorageDiff struct {
 
 	source    atomic.Pointer[source]
 	refreshMu sync.Mutex
+
+	// softDeletedPath holds the dataPath pointer the background check found
+	// tombstoned (only under enforcement); reads fail closed while it equals the
+	// current dataPath. Keying on the path pointer (not a bool) makes the latch
+	// race-free: a stale check that stored a superseded probe path can never
+	// match the current dataPath, and a peer-transition repoint auto-disables
+	// the old verdict without a separate clear.
+	softDeletedPath atomic.Pointer[string]
 }
 
 var _ Diff = (*StorageDiff)(nil)
@@ -82,6 +96,7 @@ func newStorageDiff(
 	upstream storage.Seekable,
 	uncompressedSize int64,
 	initialFT *storage.FullFrameTable,
+	dataPath string,
 	ff *featureflags.Client,
 ) (*StorageDiff, error) {
 	cachePath := GenerateDiffCachePath(basePath, buildID, diffType)
@@ -94,6 +109,7 @@ func newStorageDiff(
 		buildID:           buildID,
 		diffType:          diffType,
 		storageObjectType: storageObjectType,
+		flags:             ff,
 		cachePath:         cachePath,
 		blockSize:         blockSize,
 		metrics:           metrics,
@@ -101,6 +117,7 @@ func newStorageDiff(
 		chunker:           c,
 		cacheKey:          GetDiffStoreKey(buildID, diffType),
 	}
+	d.dataPath.Store(&dataPath)
 	d.source.Store(&source{upstream: upstream, fullDiffFrameTable: initialFT})
 
 	return d, nil
@@ -121,25 +138,31 @@ func (b *File) createDiff(ctx context.Context, buildID uuid.UUID) (Diff, error) 
 		upstream  storage.Seekable
 		size      int64
 		initialFT *storage.FullFrameTable
+		dataPath  string
 		err       error
 	)
 	switch {
 	case hasEntry:
-		// Open at the entry's CT. Do NOT latch bd.FrameData as the
-		// authoritative full-file FT — it carries only the frames our header
-		// references, not the ancestor's full table.
-		upstream, err = b.openDataFile(ctx, buildID, objType, bd.FrameData.CompressionType())
+		// bd.FrameData is per-mapping trimmed, not the ancestor's full table —
+		// don't latch it; first read will refresh. Exception: a zero bd is the
+		// LoadHeader backfill marker for an uncompressed V3-or-older ancestor;
+		// UncompressedFullFrameTable IS that ancestor's full table, latch it
+		// to skip a refresh whose header file may not exist.
+		upstream, dataPath, err = b.openDataFile(ctx, buildID, objType, bd.FrameData.CompressionType())
 		if err != nil {
 			return nil, err
 		}
 		size = bd.Size
+		if bd == (header.BuildData{}) {
+			initialFT = storage.UncompressedFullFrameTable
+		}
 
 	default:
 		// hasEntry=false implies a peer-served header (LoadHeader backfills
-		// sentinels for storage-loaded headers, so storage paths always hit
-		// CASE=hasEntry). Probe basic-name to detect peer routing; on
-		// miss/transition refresh from storage.
-		upstream, err = b.openDataFile(ctx, buildID, objType, storage.CompressionNone)
+		// missing entries for storage-loaded headers, so storage paths always
+		// hit one of the hasEntry cases). Probe basic-name to detect peer
+		// routing; on miss/transition refresh from storage.
+		upstream, dataPath, err = b.openDataFile(ctx, buildID, objType, storage.CompressionNone)
 		if err != nil {
 			return nil, err
 		}
@@ -157,6 +180,15 @@ func (b *File) createDiff(ctx context.Context, buildID uuid.UUID) (Diff, error) 
 		}
 		loaded, lerr := refreshHeader(ctx, b.persistence, buildID, b.fileType, refreshCauseProactive)
 		if lerr != nil {
+			if errors.Is(lerr, storage.ErrObjectNotExist) {
+				// Legacy template: data file exists at the basic uncompressed
+				// path but no header file was ever uploaded; keep the upstream
+				// we already opened at the basic path and latch as uncompressed.
+				initialFT = storage.UncompressedFullFrameTable
+
+				break
+			}
+
 			return nil, fmt.Errorf("createDiff: proactive header load for build %s: %w", buildID, lerr)
 		}
 		// Promote loaded header on self-match so future pauses inherit the
@@ -166,7 +198,7 @@ func (b *File) createDiff(ctx context.Context, buildID uuid.UUID) (Diff, error) 
 				b.SwapHeader(loaded)
 			}
 		}
-		upstream, size, initialFT, err = openFromLoadedHeader(ctx, b.persistence, loaded, b.fileType, objType)
+		upstream, size, initialFT, dataPath, err = openFromLoadedHeader(ctx, b.persistence, loaded, b.fileType, objType)
 		if err != nil {
 			return nil, err
 		}
@@ -183,7 +215,7 @@ func (b *File) createDiff(ctx context.Context, buildID uuid.UUID) (Diff, error) 
 		initialFT = nil
 	}
 
-	return newStorageDiff(
+	d, err := newStorageDiff(
 		b.store.cachePath,
 		buildID.String(),
 		b.fileType,
@@ -194,18 +226,26 @@ func (b *File) createDiff(ctx context.Context, buildID uuid.UUID) (Diff, error) 
 		upstream,
 		size,
 		initialFT,
+		dataPath,
 		b.store.flags,
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	d.startSoftDeleteCheck(context.WithoutCancel(ctx))
+
+	return d, nil
 }
 
-func (b *File) openDataFile(ctx context.Context, buildID uuid.UUID, objType storage.SeekableObjectType, ct storage.CompressionType) (storage.Seekable, error) {
+func (b *File) openDataFile(ctx context.Context, buildID uuid.UUID, objType storage.SeekableObjectType, ct storage.CompressionType) (storage.Seekable, string, error) {
 	path := storage.Paths{BuildID: buildID.String()}.DataFile(string(b.fileType), ct)
 	upstream, err := b.persistence.OpenSeekable(ctx, path, objType)
 	if err != nil {
-		return nil, fmt.Errorf("createDiff: open data file for build %s at %s: %w", buildID, path, err)
+		return nil, "", fmt.Errorf("createDiff: open data file for build %s at %s: %w", buildID, path, err)
 	}
 
-	return upstream, nil
+	return upstream, path, nil
 }
 
 func openFromLoadedHeader(
@@ -214,29 +254,29 @@ func openFromLoadedHeader(
 	loaded *header.Header,
 	fileType DiffType,
 	objType storage.SeekableObjectType,
-) (storage.Seekable, int64, *storage.FullFrameTable, error) {
+) (storage.Seekable, int64, *storage.FullFrameTable, string, error) {
 	buildID := loaded.Metadata.BuildId
 	paths := storage.Paths{BuildID: buildID.String()}
 	if loaded.Metadata.Version < header.MetadataVersionV4 {
 		path := paths.DataFile(string(fileType), storage.CompressionNone)
 		upstream, err := persistence.OpenSeekable(ctx, path, objType)
 		if err != nil {
-			return nil, 0, nil, fmt.Errorf("reopen uncompressed upstream for pre-V4 build %s at %s: %w", buildID, path, err)
+			return nil, 0, nil, "", fmt.Errorf("reopen uncompressed upstream for pre-V4 build %s at %s: %w", buildID, path, err)
 		}
 
-		return upstream, 0, storage.UncompressedFullFrameTable, nil
+		return upstream, 0, storage.UncompressedFullFrameTable, path, nil
 	}
 	size, ft, err := loaded.SelfBuildData()
 	if err != nil {
-		return nil, 0, nil, err
+		return nil, 0, nil, "", err
 	}
 	path := paths.DataFile(string(fileType), ft.Table().CompressionType())
 	upstream, err := persistence.OpenSeekable(ctx, path, objType)
 	if err != nil {
-		return nil, 0, nil, fmt.Errorf("reopen upstream for build %s at %s: %w", buildID, path, err)
+		return nil, 0, nil, "", fmt.Errorf("reopen upstream for build %s at %s: %w", buildID, path, err)
 	}
 
-	return upstream, size, ft, nil
+	return upstream, size, ft, path, nil
 }
 
 func storageObjectType(diffType DiffType) (storage.SeekableObjectType, bool) {
@@ -259,6 +299,9 @@ func (b *StorageDiff) Close() error {
 }
 
 func (b *StorageDiff) ReadAt(ctx context.Context, p []byte, off int64, callerFT *storage.FrameTable) (int, error) {
+	if err := b.softDeleteErr(); err != nil {
+		return 0, err
+	}
 	up, ft, err := b.resolve(ctx, callerFT)
 	if err != nil {
 		return 0, err
@@ -274,6 +317,9 @@ func (b *StorageDiff) ReadAt(ctx context.Context, p []byte, off int64, callerFT 
 	if err := b.reloadAfterPeerTransition(ctx); err != nil {
 		return 0, fmt.Errorf("refresh after peer transition: %w", err)
 	}
+	if err := b.softDeleteErr(); err != nil {
+		return 0, err
+	}
 	up, ft, err = b.resolve(ctx, callerFT)
 	if err != nil {
 		return 0, err
@@ -283,6 +329,9 @@ func (b *StorageDiff) ReadAt(ctx context.Context, p []byte, off int64, callerFT 
 }
 
 func (b *StorageDiff) Slice(ctx context.Context, off, length int64, callerFT *storage.FrameTable) ([]byte, error) {
+	if err := b.softDeleteErr(); err != nil {
+		return nil, err
+	}
 	up, ft, err := b.resolve(ctx, callerFT)
 	if err != nil {
 		return nil, err
@@ -297,6 +346,9 @@ func (b *StorageDiff) Slice(ctx context.Context, off, length int64, callerFT *st
 	}
 	if err := b.reloadAfterPeerTransition(ctx); err != nil {
 		return nil, fmt.Errorf("refresh after peer transition: %w", err)
+	}
+	if err := b.softDeleteErr(); err != nil {
+		return nil, err
 	}
 	up, ft, err = b.resolve(ctx, callerFT)
 	if err != nil {
@@ -400,6 +452,11 @@ func (b *StorageDiff) reloadProactive(ctx context.Context) error {
 
 // reloadSourceLocked re-fetches the header and reopens upstream. Caller must
 // hold refreshMu. The cause is propagated to refreshHeader's telemetry label.
+//
+// A missing header here is always a real error: legacy ancestors are caught
+// at createDiff time (backfill-marker or !hasEntry branches), so any runtime
+// ErrObjectNotExist is a race or genuine miss — propagate, do not assume
+// uncompressed (would serve compressed bytes raw for any modern build).
 func (b *StorageDiff) reloadSourceLocked(ctx context.Context, cause string) error {
 	bid, err := uuid.Parse(b.buildID)
 	if err != nil {
@@ -409,11 +466,28 @@ func (b *StorageDiff) reloadSourceLocked(ctx context.Context, cause string) erro
 	if err != nil {
 		return fmt.Errorf("reloadSourceLocked: load header for build %s: %w", b.buildID, err)
 	}
-	upstream, _, ft, err := openFromLoadedHeader(ctx, b.persistence, loaded, b.diffType, b.storageObjectType)
+	upstream, _, ft, dataPath, err := openFromLoadedHeader(ctx, b.persistence, loaded, b.diffType, b.storageObjectType)
 	if err != nil {
 		return fmt.Errorf("reloadSourceLocked: build %s: %w", b.buildID, err)
 	}
 	b.source.Store(&source{upstream: upstream, fullDiffFrameTable: ft})
+
+	// Re-point to the new pointer when the authoritative object differs from the
+	// one first opened (e.g. a peer probe resolving to a compressed object).
+	// Enforcement keys on the path pointer, so the old object's verdict
+	// (softDeletedPath) stops matching automatically — no explicit clear, no
+	// race with a stale check about to store the superseded path.
+	old := b.dataPath.Load()
+	pathChanged := old == nil || *old != dataPath
+	if pathChanged {
+		b.dataPath.Store(&dataPath)
+	}
+	// Recheck on any path change, and also on a peer transition even if the path
+	// is unchanged: a peer-served object that wasn't in storage at first open
+	// (not_found) may now exist and carry a tombstone the initial check missed.
+	if pathChanged || cause == refreshCausePeerTransitioned {
+		b.startSoftDeleteCheck(context.WithoutCancel(ctx))
+	}
 
 	return nil
 }
