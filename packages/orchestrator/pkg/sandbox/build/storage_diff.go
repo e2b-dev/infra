@@ -311,21 +311,29 @@ func (b *StorageDiff) ReadAt(ctx context.Context, p []byte, off int64, callerFT 
 	if !errors.As(err, &transErr) {
 		return n, err
 	}
-	if err := waitTransitionBackoff(ctx, transErr); err != nil {
-		return 0, err
-	}
-	if err := b.reloadAfterPeerTransition(ctx); err != nil {
-		return 0, fmt.Errorf("refresh after peer transition: %w", err)
-	}
-	if err := b.softDeleteErr(); err != nil {
-		return 0, err
-	}
-	up, ft, err = b.resolve(ctx, callerFT)
+	up, ft, err = b.recoverFromPeerTransition(ctx, transErr, callerFT)
 	if err != nil {
 		return 0, err
 	}
 
 	return b.chunker.ReadAt(ctx, p, off, up, ft)
+}
+
+// recoverFromPeerTransition handles a PeerTransitionedError surfaced by a read:
+// back off, reload the source, re-check the soft-delete latch (the source's
+// dataPath may have changed during the reload), and re-resolve the upstream/FT.
+func (b *StorageDiff) recoverFromPeerTransition(ctx context.Context, transErr *storage.PeerTransitionedError, callerFT *storage.FrameTable) (storage.RangeOpener, *storage.FrameTable, error) {
+	if err := waitTransitionBackoff(ctx, transErr); err != nil {
+		return nil, nil, err
+	}
+	if err := b.reloadAfterPeerTransition(ctx); err != nil {
+		return nil, nil, fmt.Errorf("refresh after peer transition: %w", err)
+	}
+	if err := b.softDeleteErr(); err != nil {
+		return nil, nil, err
+	}
+
+	return b.resolve(ctx, callerFT)
 }
 
 func (b *StorageDiff) Slice(ctx context.Context, off, length int64, callerFT *storage.FrameTable) ([]byte, error) {
@@ -341,16 +349,7 @@ func (b *StorageDiff) Slice(ctx context.Context, off, length int64, callerFT *st
 	if !errors.As(err, &transErr) {
 		return out, err
 	}
-	if err := waitTransitionBackoff(ctx, transErr); err != nil {
-		return nil, err
-	}
-	if err := b.reloadAfterPeerTransition(ctx); err != nil {
-		return nil, fmt.Errorf("refresh after peer transition: %w", err)
-	}
-	if err := b.softDeleteErr(); err != nil {
-		return nil, err
-	}
-	up, ft, err = b.resolve(ctx, callerFT)
+	up, ft, err = b.recoverFromPeerTransition(ctx, transErr, callerFT)
 	if err != nil {
 		return nil, err
 	}
