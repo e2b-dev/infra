@@ -1,6 +1,7 @@
 package netlimit
 
 import (
+	"errors"
 	"io"
 	"net"
 	"testing"
@@ -8,6 +9,44 @@ import (
 
 	"github.com/stretchr/testify/require"
 )
+
+// closeWriteConn is a net.Conn that records CloseWrite calls, standing in for a
+// *net.TCPConn (which net.Pipe conns don't provide).
+type closeWriteConn struct {
+	net.Conn
+
+	called bool
+}
+
+func (c *closeWriteConn) CloseWrite() error {
+	c.called = true
+
+	return nil
+}
+
+func TestWriteTimeoutConn_ForwardsCloseWrite(t *testing.T) {
+	t.Parallel()
+
+	_, server := net.Pipe()
+	defer server.Close()
+
+	underlying := &closeWriteConn{Conn: server}
+	c := &writeTimeoutConn{Conn: underlying, timeout: time.Second}
+
+	require.NoError(t, c.CloseWrite())
+	require.True(t, underlying.called, "CloseWrite must forward to the underlying conn")
+}
+
+func TestWriteTimeoutConn_CloseWriteUnsupported(t *testing.T) {
+	t.Parallel()
+
+	_, server := net.Pipe() // net.Pipe conns have no CloseWrite
+	defer server.Close()
+
+	c := &writeTimeoutConn{Conn: server, timeout: time.Second}
+
+	require.ErrorIs(t, c.CloseWrite(), errors.ErrUnsupported)
+}
 
 // net.Pipe is synchronous and unbuffered: a write blocks until the peer reads,
 // which is exactly the TCP-backpressure situation we want the deadline to bound.

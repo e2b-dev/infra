@@ -6,6 +6,7 @@
 package netlimit
 
 import (
+	"errors"
 	"net"
 	"time"
 )
@@ -53,4 +54,17 @@ func (c *writeTimeoutConn) Write(b []byte) (int, error) {
 	}
 
 	return c.Conn.Write(b)
+}
+
+// CloseWrite forwards the underlying connection's half-close. net/http calls it
+// (via the closeWriter interface) to send a FIN and keep reading before a full
+// close — e.g. when replying with an error while the client is still uploading.
+// Embedding net.Conn hides *net.TCPConn.CloseWrite, so without this the server
+// falls back to a full close/RST that can truncate the response.
+func (c *writeTimeoutConn) CloseWrite() error {
+	if cw, ok := c.Conn.(interface{ CloseWrite() error }); ok {
+		return cw.CloseWrite()
+	}
+
+	return errors.ErrUnsupported
 }

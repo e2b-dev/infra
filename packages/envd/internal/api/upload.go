@@ -252,7 +252,17 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 	// Bound a stalled upload at the raw-body layer (before decompression) so the
 	// deadline tracks actual network reads. A client that stops sending mid-upload
 	// can't pin the open file and handler indefinitely.
-	r.Body = netlimit.IdleReadCloser(r.Body, http.NewResponseController(w).SetReadDeadline, uploadIdleTimeout)
+	rc := http.NewResponseController(w)
+	r.Body = netlimit.IdleReadCloser(r.Body, rc.SetReadDeadline, uploadIdleTimeout)
+
+	// Restore net/http's native body and clear our deadline before returning. The
+	// server type-asserts r.Body to *body for keep-alive reuse / early-close
+	// accounting; leaving a wrapper in place defeats that and can let leftover
+	// upload bytes be parsed as the next request (smuggling) on a reused conn.
+	defer func() {
+		_ = rc.SetReadDeadline(time.Time{})
+		r.Body = originalBody
+	}()
 
 	var errorCode int
 	var errMsg error
