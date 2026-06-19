@@ -255,10 +255,11 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 	rc := http.NewResponseController(w)
 	r.Body = netlimit.IdleReadCloser(r.Body, rc.SetReadDeadline, uploadIdleTimeout)
 
-	// Restore net/http's native body and clear our deadline before returning. The
-	// server type-asserts r.Body to *body for keep-alive reuse / early-close
-	// accounting; leaving a wrapper in place defeats that and can let leftover
-	// upload bytes be parsed as the next request (smuggling) on a reused conn.
+	// Restore net/http's native *body before returning: shouldReuseConnection ->
+	// closedRequestBodyEarly type-asserts r.Body to *body, so a leftover wrapper
+	// makes the server miss an early-closed (undrained) upload and reuse the conn —
+	// risking request smuggling. Clearing the deadline is just hygiene so ours
+	// can't linger onto net/http's post-handler drain.
 	defer func() {
 		_ = rc.SetReadDeadline(time.Time{})
 		r.Body = originalBody
