@@ -151,7 +151,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			}
 			server.Close()
 
-			dispatch := NewDispatch(serverc, d.Backend)
+			dispatch := NewDispatch(serverc, d.Backend, false)
 			// Capture deviceIndex for the goroutine closure — it's reassigned on
 			// each retry iteration of the outer for-loop (not a range loop, so
 			// Go 1.22+ loop variable fix doesn't apply).
