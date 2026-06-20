@@ -138,6 +138,13 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		return
 	}
 
+	// A paused filesystem-only snapshot resumes by cold-booting (reboot) from its
+	// rootfs; the orchestrator selects reboot-vs-memory-resume from the snapshot
+	// metadata, so the generic resume path below handles it. In-memory state was
+	// already discarded at pause time (memory:false), so the reboot is expected —
+	// connect is the intended way to bring such a sandbox back. (Auto-resume,
+	// which can be triggered by arbitrary traffic, still refuses it.)
+
 	sbxlogger.E(&sbxlogger.SandboxMetadata{
 		SandboxID:  sandboxID,
 		TemplateID: lastSnapshot.Snapshot.EnvID,

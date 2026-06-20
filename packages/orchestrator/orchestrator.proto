@@ -130,6 +130,11 @@ message SandboxPauseRequest {
   string sandbox_id = 1;
   string template_id = 2;
   string build_id = 3;
+
+  // When true, persist only the filesystem (no memory snapshot); resuming such
+  // a snapshot cold-boots (reboots) from the rootfs. Default false = full memory
+  // snapshot, so existing callers are unaffected.
+  bool filesystem_only = 4;
 }
 
 message SchedulingMetadata {
