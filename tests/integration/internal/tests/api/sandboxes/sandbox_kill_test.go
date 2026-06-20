@@ -72,7 +72,7 @@ func TestSandboxKill(t *testing.T) {
 		sandboxID := createSandboxResponse.JSON201.SandboxID
 
 		// pause the sandbox
-		pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
+		pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 
 		require.NoError(t, err)
 		require.Equal(t, http.StatusNoContent, pauseSandboxResponse.StatusCode())
@@ -110,7 +110,7 @@ func TestSandboxKill(t *testing.T) {
 		sandboxID := createSandboxResponse.JSON201.SandboxID
 
 		// pause the sandbox
-		pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
+		pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 
 		require.NoError(t, err)
 		require.Equal(t, http.StatusNoContent, pauseSandboxResponse.StatusCode())

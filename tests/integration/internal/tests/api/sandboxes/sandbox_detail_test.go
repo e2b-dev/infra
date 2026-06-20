@@ -115,7 +115,7 @@ func TestSandboxDetailPausingSandbox(t *testing.T) {
 
 	wg := errgroup.Group{}
 	wg.Go(func() error {
-		pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
+		pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 		if err != nil {
 			return err
 		}

@@ -383,6 +383,7 @@ func (o *Orchestrator) CreateSandbox(
 				sbxToRemove,
 				sandbox.StateActionKill,
 				sandbox.KillReasonUnknown,
+				false, // kill: no snapshot
 			)
 			if killErr != nil {
 				logger.L().Error(ctx, "Error removing sandbox",
