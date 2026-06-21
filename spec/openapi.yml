@@ -16,19 +16,8 @@ components:
       type: http
       scheme: bearer
       bearerFormat: access_token
-    # Generated code uses security schemas in the alphabetical order.
-    # In order to check first the token, and then the team (so we can already use the user),
-    # there is a 1 and 2 present in the names of the security schemas.
-    Supabase1TokenAuth:
-      type: apiKey
-      in: header
-      name: X-Supabase-Token
-    Supabase2TeamAuth:
-      type: apiKey
-      in: header
-      name: X-Supabase-Team
     # AuthProviderBearerAuth / AuthProviderTeamAuth: B before T in the name
-    # so Bearer is validated before Team (same reason as Supabase1/2 above).
+    # so Bearer is validated before Team.
     AuthProviderBearerAuth:
       type: http
       scheme: bearer
@@ -797,6 +786,20 @@ components:
         name:
           type: string
           description: Optional name for the snapshot template. If a snapshot template with this name already exists, a new build will be assigned to the existing template instead of creating a new one.
+
+    SandboxPauseRequest:
+      type: object
+      properties:
+        memory:
+          type: boolean
+          default: true
+          description: >-
+            Whether to capture a full memory snapshot. When false, only the
+            filesystem is persisted and resuming the sandbox cold-boots
+            (reboots) it from disk, losing in-memory state, running processes,
+            and open connections. Resume it with an explicit request (connect or
+            resume); auto-resume, which can be triggered by arbitrary traffic,
+            refuses such a sandbox. Defaults to true.
 
     TeamMetric:
       description: Team metric with timestamp
@@ -1952,7 +1955,6 @@ paths:
       tags: [auth]
       security:
         - AccessTokenAuth: []
-        - Supabase1TokenAuth: []
         - AuthProviderBearerAuth: []
       responses:
         "200":
@@ -1974,8 +1976,6 @@ paths:
       tags: [auth]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2020,8 +2020,6 @@ paths:
       tags: [auth]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2071,8 +2069,6 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2104,8 +2100,6 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2136,8 +2130,6 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2183,8 +2175,6 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2222,8 +2212,6 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2265,8 +2253,6 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2325,8 +2311,6 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2352,8 +2336,6 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2376,8 +2358,6 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2424,14 +2404,18 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
           AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SandboxPauseRequest"
       responses:
         "204":
           description: The sandbox was paused successfully and can be resumed
@@ -2451,8 +2435,6 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2487,8 +2469,6 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2528,8 +2508,6 @@ paths:
       description: Set the timeout for the sandbox. The sandbox will expire x seconds from the time of the request. Calling this method multiple times overwrites the TTL, each time using the current timestamp as the starting point to measure the timeout duration.
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2557,8 +2535,6 @@ paths:
       description: Update the network configuration for a running sandbox. Replaces the current egress rules with the provided configuration. Omitting field clears it.
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2589,8 +2565,6 @@ paths:
       description: Refresh the sandbox extending its time to live
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2617,8 +2591,6 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2653,8 +2625,6 @@ paths:
       tags: [snapshots]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2688,8 +2658,6 @@ paths:
       tags: [templates]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2724,8 +2692,6 @@ paths:
       tags: [templates]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2758,8 +2724,6 @@ paths:
       security:
         - AccessTokenAuth: []
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2796,8 +2760,6 @@ paths:
       security:
         - ApiKeyAuth: []
         - AccessTokenAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2828,8 +2790,6 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
       requestBody:
@@ -2859,8 +2819,6 @@ paths:
       tags: [templates]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2886,8 +2844,6 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
       parameters:
@@ -2916,8 +2872,6 @@ paths:
       security:
         - ApiKeyAuth: []
         - AccessTokenAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2938,8 +2892,6 @@ paths:
       security:
         - ApiKeyAuth: []
         - AccessTokenAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2969,8 +2921,6 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
       parameters:
@@ -2990,8 +2940,6 @@ paths:
       tags: [templates]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3020,8 +2968,6 @@ paths:
       security:
         - ApiKeyAuth: []
         - AccessTokenAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3055,8 +3001,6 @@ paths:
       security:
         - AccessTokenAuth: []
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3106,8 +3050,6 @@ paths:
       security:
         - AccessTokenAuth: []
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3164,8 +3106,6 @@ paths:
       tags: [tags]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3196,8 +3136,6 @@ paths:
       tags: [tags]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3226,8 +3164,6 @@ paths:
       tags: [tags]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3258,8 +3194,6 @@ paths:
       tags: [templates]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3495,7 +3429,6 @@ paths:
       description: Create a new access token
       tags: [access-tokens]
       security:
-        - Supabase1TokenAuth: []
         - AuthProviderBearerAuth: []
       requestBody:
         required: true
@@ -3520,7 +3453,6 @@ paths:
       description: Delete an access token
       tags: [access-tokens]
       security:
-        - Supabase1TokenAuth: []
         - AuthProviderBearerAuth: []
       parameters:
         - $ref: "#/components/parameters/accessTokenID"
@@ -3539,8 +3471,6 @@ paths:
       description: List all team API keys
       tags: [api-keys]
       security:
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3562,8 +3492,6 @@ paths:
       description: Create a new team API key
       tags: [api-keys]
       security:
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
       requestBody:
@@ -3589,8 +3517,6 @@ paths:
       description: Update a team API key
       tags: [api-keys]
       security:
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3616,8 +3542,6 @@ paths:
       description: Delete a team API key
       tags: [api-keys]
       security:
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3640,8 +3564,6 @@ paths:
       tags: [volumes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3665,8 +3587,6 @@ paths:
       tags: [volumes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3697,8 +3617,6 @@ paths:
       tags: [volumes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3724,8 +3642,6 @@ paths:
       tags: [volumes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []

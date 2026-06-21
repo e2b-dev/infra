@@ -130,6 +130,11 @@ message SandboxPauseRequest {
   string sandbox_id = 1;
   string template_id = 2;
   string build_id = 3;
+
+  // When true, persist only the filesystem (no memory snapshot); resuming such
+  // a snapshot cold-boots (reboots) from the rootfs. Default false = full memory
+  // snapshot, so existing callers are unaffected.
+  bool filesystem_only = 4;
 }
 
 message SchedulingMetadata {
@@ -160,6 +165,10 @@ message SandboxPauseResponse {
 message SandboxCheckpointRequest {
   string sandbox_id = 1;
   string build_id = 3;
+  // Provenance stamped onto the snapshot's storage objects for the storage
+  // index (e.g. template_id). Opaque to the orchestrator, which just forwards
+  // it to object metadata.
+  map<string, string> metadata = 4;
 }
 
 message SandboxCheckpointResponse {

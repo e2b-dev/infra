@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/e2b-dev/infra/packages/api/internal"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
@@ -311,9 +312,9 @@ func (o *Orchestrator) CreateSandbox(
 	nodeClusterID := clusters.WithClusterFallback(team.ClusterID)
 	clusterNodes := o.GetClusterNodes(nodeClusterID)
 
-	labelFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx, featureflags.SandboxLabelBasedSchedulingFlag, featureflags.TeamContext(team.ID.String()), featureflags.SandboxContext(sandboxID))
+	allLabels, labelFilteringEnabled := o.generateRequiredNodeLabels(ctx, sandboxID, team, sbxData)
 
-	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, team.SandboxSchedulingLabels)
+	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, allLabels)
 	if err != nil {
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,
@@ -382,6 +383,7 @@ func (o *Orchestrator) CreateSandbox(
 				sbxToRemove,
 				sandbox.StateActionKill,
 				sandbox.KillReasonUnknown,
+				false, // kill: no snapshot
 			)
 			if killErr != nil {
 				logger.L().Error(ctx, "Error removing sandbox",
@@ -400,4 +402,36 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	return sbx, nil
+}
+
+func (o *Orchestrator) generateRequiredNodeLabels(ctx context.Context, sandboxID string, team *teamtypes.Team, sbxData SandboxMetadata) ([]string, bool) {
+	labelFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx, featureflags.SandboxLabelBasedSchedulingFlag, featureflags.TeamContext(team.ID.String()), featureflags.SandboxContext(sandboxID))
+	if !labelFilteringEnabled {
+		return nil, false
+	}
+
+	// if the team doesn't require a specific label, we default to "default",
+	// which corresponds to all unoptimized nodes (nodes that don't expect
+	// high cpu, high memory, long lifespan, etc)
+	allLabels := append([]string{}, team.SandboxSchedulingLabels...)
+	if len(allLabels) == 0 {
+		allLabels = append(allLabels, "default")
+	}
+
+	clusterID := clusters.WithClusterFallback(team.ClusterID)
+	volumeFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx,
+		featureflags.SandboxVolumeLabelBasedSchedulingFlag,
+		featureflags.TeamContext(team.ID.String()),
+		featureflags.ClusterContext(clusterID),
+		featureflags.SandboxContext(sandboxID),
+	)
+
+	if volumeFilteringEnabled {
+		for _, mount := range sbxData.VolumeMounts {
+			label := internal.MakeVolumeTypeLabel(mount.GetType())
+			allLabels = append(allLabels, label)
+		}
+	}
+
+	return allLabels, labelFilteringEnabled
 }

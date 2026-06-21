@@ -114,6 +114,13 @@ func (s *SandboxService) getAutoResumeSnapshot(ctx context.Context, sandboxID st
 		return nil, nil, status.Error(codes.NotFound, "sandbox auto-resume disabled")
 	}
 
+	// A filesystem-only snapshot can only be resumed by cold-booting (reboot),
+	// which loses in-memory state. Refuse to do that implicitly on an incoming
+	// request — the caller must resume it explicitly.
+	if snap.Snapshot.Config != nil && snap.Snapshot.Config.FilesystemOnly {
+		return nil, nil, status.Error(codes.FailedPrecondition, "filesystem-only snapshot must be resumed explicitly")
+	}
+
 	return snap, autoResume, nil
 }
 

@@ -111,6 +111,21 @@ type Template struct {
 	FromImage    *string          `json:"from_image,omitempty"`
 	FromTemplate *FromTemplate    `json:"from_template,omitempty"`
 	Prefetch     *Prefetch        `json:"prefetch,omitempty"`
+
+	// FilesystemOnly marks a snapshot that persists only the filesystem (no
+	// memory snapshot); resuming it must cold-boot (reboot) from the rootfs. The
+	// zero value (false) is a full memory snapshot, so pre-existing snapshots
+	// (no field) are correctly treated as memory without a migration. Stamped at
+	// pause time; it is the resume path's source of truth for
+	// reboot-vs-memory-resume. Deliberately NOT carried by the
+	// With*/SameVersionTemplate copy-constructors — Sandbox.Pause re-stamps it.
+	FilesystemOnly bool `json:"filesystem_only,omitempty"`
+}
+
+// IsFilesystemOnly reports whether this snapshot persists only the filesystem
+// (no memory snapshot), so resuming it must cold-boot (reboot) from the rootfs.
+func (t Template) IsFilesystemOnly() bool {
+	return t.FilesystemOnly
 }
 
 func V1TemplateVersion() Template {

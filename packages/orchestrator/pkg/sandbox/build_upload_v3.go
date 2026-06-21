@@ -15,7 +15,7 @@ import (
 )
 
 func (u *Upload) runV3(ctx context.Context) error {
-	memfilePath, err := u.snap.MemfileDiff.CachePath(ctx)
+	memfilePath, err := u.snap.MemorySnapshot.Diff.CachePath(ctx)
 	if err != nil {
 		return fmt.Errorf("error getting memfile diff path: %w", err)
 	}
@@ -28,7 +28,7 @@ func (u *Upload) runV3(ctx context.Context) error {
 	eg, egCtx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
-		h, err := u.snap.MemfileDiffHeader.WaitWithContext(egCtx)
+		h, err := u.snap.MemorySnapshot.DiffHeader.WaitWithContext(egCtx)
 		if err != nil {
 			return fmt.Errorf("wait memfile diff header: %w", err)
 		}
@@ -36,7 +36,7 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
-		return storeHeaderWithMetrics(egCtx, u.store, u.paths.MemfileHeader(), uploadFileMemfileHeader, finalizeV3(h))
+		return storeHeaderWithMetrics(egCtx, u.store, u.paths.MemfileHeader(), uploadFileMemfileHeader, finalizeV3(h), storage.WithMetadata(u.objectMetadata))
 	})
 
 	eg.Go(func() error {
@@ -48,7 +48,7 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
-		return storeHeaderWithMetrics(egCtx, u.store, u.paths.RootfsHeader(), uploadFileRootfsHeader, finalizeV3(h))
+		return storeHeaderWithMetrics(egCtx, u.store, u.paths.RootfsHeader(), uploadFileRootfsHeader, finalizeV3(h), storage.WithMetadata(u.objectMetadata))
 	})
 
 	meta := storage.WithMetadata(u.objectMetadata)
@@ -90,6 +90,12 @@ func (u *Upload) runV3(ctx context.Context) error {
 	})
 
 	eg.Go(func() error {
+		// Filesystem-only snapshots resume by reboot, not snapfile restore, so
+		// the snapfile (created only for its disk-flush side effect) is not uploaded.
+		if u.snap.FilesystemSnapshot {
+			return nil
+		}
+
 		return uploadBlobWithMetrics(egCtx, u.store, u.paths.Snapfile(), storage.SnapfileObjectType, u.snap.Snapfile.Path(), uploadFileSnap, meta)
 	})
 
@@ -103,7 +109,7 @@ func (u *Upload) runV3(ctx context.Context) error {
 
 	// Body uploads done; headers must be ready by now (the per-file Goroutines
 	// above already Wait-ed). Wait() is a fast lookup here.
-	memfileDiffHeader, err := u.snap.MemfileDiffHeader.WaitWithContext(ctx)
+	memfileDiffHeader, err := u.snap.MemorySnapshot.DiffHeader.WaitWithContext(ctx)
 	if err != nil {
 		return fmt.Errorf("wait memfile diff header: %w", err)
 	}

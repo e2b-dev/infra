@@ -113,7 +113,7 @@ UPDATE teams SET is_blocked = $1, blocked_reason = $2 WHERE id = $3
 	t.Run("mutate is denied (POST /sandboxes/:sandboxID/pause)", func(t *testing.T) {
 		t.Parallel()
 
-		resp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, "nonexistent-sandbox", setup.WithAPIKey(apiKey))
+		resp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, "nonexistent-sandbox", api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey(apiKey))
 		require.NoError(t, err)
 		assertBlocked(t, resp.Body, resp.StatusCode())
 	})

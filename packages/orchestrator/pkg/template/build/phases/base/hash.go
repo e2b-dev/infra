@@ -9,6 +9,7 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/phases"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
@@ -56,5 +57,9 @@ func (bb *BaseBuilder) Hash(ctx context.Context, _ phases.LayerResult) (string, 
 		provisionVersion,
 		strconv.FormatInt(bb.Config.DiskSizeMB, 10),
 		baseSource,
+		// Invalidate when a baked rootfs file (e.g. envd.service) changes; the
+		// keys above don't otherwise reflect file content, so stale base layers
+		// would keep old units.
+		rootfs.FilesHash(),
 	), nil
 }

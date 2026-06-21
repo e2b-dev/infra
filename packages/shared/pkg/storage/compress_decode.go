@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"sync"
@@ -8,6 +9,8 @@ import (
 	"github.com/klauspost/compress/zstd"
 	lz4 "github.com/pierrec/lz4/v4"
 )
+
+var _ RangeReader = (*decompressReader)(nil)
 
 var lz4DecoderPool sync.Pool
 
@@ -53,78 +56,47 @@ func putZstdDecoder(dec *zstd.Decoder) {
 	zstdDecoderPool.Put(dec)
 }
 
-// NewDecompressingReader wraps a reader with the appropriate decompressor.
-// Close releases the decompressor back to its pool but does NOT close the
-// underlying reader — the caller is responsible for closing it.
-func NewDecompressingReader(raw io.Reader, ct CompressionType) (io.ReadCloser, error) {
+// decompressReader decompresses inner on Read; Close releases the codec back
+// to its pool and closes inner.
+type decompressReader struct {
+	inner        RangeReader
+	dec          io.Reader
+	releaseCodec func()
+}
+
+func NewDecompressingReader(inner RangeReader, ct CompressionType) (RangeReader, error) {
+	var dec io.Reader
+	var releaseCodec func()
+
 	switch ct {
 	case CompressionLZ4:
-		dec := getLZ4Decoder(raw)
-
-		return &pooledDecoder{
-			Reader: dec,
-			close:  func() { putLZ4Decoder(dec) },
-		}, nil
+		d := getLZ4Decoder(inner)
+		dec, releaseCodec = d, func() { putLZ4Decoder(d) }
 
 	case CompressionZstd:
-		dec, err := getZstdDecoder(raw)
+		d, err := getZstdDecoder(inner)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create zstd decoder: %w", err)
 		}
-
-		return &pooledDecoder{
-			Reader: dec,
-			close:  func() { putZstdDecoder(dec) },
-		}, nil
+		dec, releaseCodec = d, func() { putZstdDecoder(d) }
 
 	default:
 		return nil, fmt.Errorf("unsupported compression type: %s", ct)
 	}
+
+	return &decompressReader{
+		inner:        inner,
+		dec:          dec,
+		releaseCodec: releaseCodec,
+	}, nil
 }
 
-// pooledDecoder wraps a decompressor from a sync.Pool.
-// Close returns the decompressor to the pool.
-type pooledDecoder struct {
-	io.Reader
-
-	close func()
+func (r *decompressReader) Read(p []byte) (int, error) {
+	return r.dec.Read(p)
 }
 
-func (r *pooledDecoder) Close() error {
-	r.close()
+func (r *decompressReader) Close(ctx context.Context) error {
+	r.releaseCodec()
 
-	return nil
-}
-
-// newDecompressingReadCloser wraps raw with the appropriate decompressor and
-// takes ownership: Close releases the decompressor back to the pool AND closes raw.
-func newDecompressingReadCloser(raw io.ReadCloser, ct CompressionType) (io.ReadCloser, error) {
-	dec, err := NewDecompressingReader(raw, ct)
-	if err != nil {
-		return nil, err
-	}
-
-	return &decompressingReadCloser{dec: dec, raw: raw}, nil
-}
-
-// decompressingReadCloser reads from the decompressor and closes both the
-// decompressor (returning it to the pool) and the underlying raw stream.
-type decompressingReadCloser struct {
-	dec io.ReadCloser // decompressor — reads from raw
-	raw io.Closer     // underlying stream
-}
-
-func (c *decompressingReadCloser) Read(p []byte) (int, error) {
-	return c.dec.Read(p)
-}
-
-func (c *decompressingReadCloser) Close() error {
-	decErr := c.dec.Close()
-	rawErr := c.raw.Close()
-
-	if decErr != nil {
-		return decErr
-	}
-
-	return rawErr
+	return r.inner.Close(ctx)
 }

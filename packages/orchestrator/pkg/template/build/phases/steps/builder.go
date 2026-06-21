@@ -29,6 +29,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 const layerTimeout = time.Hour
@@ -234,6 +235,7 @@ func (sb *StepBuilder) Build(
 			UpdateEnvd:     sourceLayer.Cached,
 			SandboxCreator: sandboxCreator,
 			ActionExecutor: actionExecutor,
+			BuildOrigin:    storage.ObjectOriginTemplateBuildCache,
 		},
 	)
 	if err != nil {

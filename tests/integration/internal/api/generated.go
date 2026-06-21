@@ -26,8 +26,6 @@ const (
 	ApiKeyAuthScopes             apiKeyAuthContextKey             = "ApiKeyAuth.Scopes"
 	AuthProviderBearerAuthScopes authProviderBearerAuthContextKey = "AuthProviderBearerAuth.Scopes"
 	AuthProviderTeamAuthScopes   authProviderTeamAuthContextKey   = "AuthProviderTeamAuth.Scopes"
-	Supabase1TokenAuthScopes     supabase1TokenAuthContextKey     = "Supabase1TokenAuth.Scopes"
-	Supabase2TeamAuthScopes      supabase2TeamAuthContextKey      = "Supabase2TeamAuth.Scopes"
 )
 
 // Defines values for AWSRegistryType.
@@ -950,6 +948,12 @@ type SandboxNetworkUpdateConfig struct {
 // SandboxOnTimeout Action taken when the sandbox times out.
 type SandboxOnTimeout string
 
+// SandboxPauseRequest defines model for SandboxPauseRequest.
+type SandboxPauseRequest struct {
+	// Memory Whether to capture a full memory snapshot. When false, only the filesystem is persisted and resuming the sandbox cold-boots (reboots) it from disk, losing in-memory state, running processes, and open connections. Resume it with an explicit request (connect or resume); auto-resume, which can be triggered by arbitrary traffic, refuses such a sandbox. Defaults to true.
+	Memory *bool `json:"memory,omitempty"`
+}
+
 // SandboxRefreshRequest defines model for SandboxRefreshRequest.
 type SandboxRefreshRequest struct {
 	// Duration Duration for which the sandbox should be kept alive in seconds
@@ -1491,12 +1495,6 @@ type authProviderBearerAuthContextKey string
 // authProviderTeamAuthContextKey is the context key for AuthProviderTeamAuth security scheme
 type authProviderTeamAuthContextKey string
 
-// supabase1TokenAuthContextKey is the context key for Supabase1TokenAuth security scheme
-type supabase1TokenAuthContextKey string
-
-// supabase2TeamAuthContextKey is the context key for Supabase2TeamAuth security scheme
-type supabase2TeamAuthContextKey string
-
 // GetNodesParams defines parameters for GetNodes.
 type GetNodesParams struct {
 	// ClusterID Identifier of the cluster
@@ -1662,6 +1660,9 @@ type PostSandboxesSandboxIDConnectJSONRequestBody = ConnectSandbox
 
 // PutSandboxesSandboxIDNetworkJSONRequestBody defines body for PutSandboxesSandboxIDNetwork for application/json ContentType.
 type PutSandboxesSandboxIDNetworkJSONRequestBody = SandboxNetworkUpdateConfig
+
+// PostSandboxesSandboxIDPauseJSONRequestBody defines body for PostSandboxesSandboxIDPause for application/json ContentType.
+type PostSandboxesSandboxIDPauseJSONRequestBody = SandboxPauseRequest
 
 // PostSandboxesSandboxIDRefreshesJSONRequestBody defines body for PostSandboxesSandboxIDRefreshes for application/json ContentType.
 type PostSandboxesSandboxIDRefreshesJSONRequestBody = SandboxRefreshRequest
@@ -1982,8 +1983,10 @@ type ClientInterface interface {
 
 	PutSandboxesSandboxIDNetwork(ctx context.Context, sandboxID SandboxID, body PutSandboxesSandboxIDNetworkJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// PostSandboxesSandboxIDPause request
-	PostSandboxesSandboxIDPause(ctx context.Context, sandboxID SandboxID, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// PostSandboxesSandboxIDPauseWithBody request with any body
+	PostSandboxesSandboxIDPauseWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PostSandboxesSandboxIDPause(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDPauseJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PostSandboxesSandboxIDRefreshesWithBody request with any body
 	PostSandboxesSandboxIDRefreshesWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2482,8 +2485,20 @@ func (c *Client) PutSandboxesSandboxIDNetwork(ctx context.Context, sandboxID San
 	return c.Client.Do(req)
 }
 
-func (c *Client) PostSandboxesSandboxIDPause(ctx context.Context, sandboxID SandboxID, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPostSandboxesSandboxIDPauseRequest(c.Server, sandboxID)
+func (c *Client) PostSandboxesSandboxIDPauseWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostSandboxesSandboxIDPauseRequestWithBody(c.Server, sandboxID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostSandboxesSandboxIDPause(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDPauseJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostSandboxesSandboxIDPauseRequest(c.Server, sandboxID, body)
 	if err != nil {
 		return nil, err
 	}
@@ -4069,8 +4084,19 @@ func NewPutSandboxesSandboxIDNetworkRequestWithBody(server string, sandboxID San
 	return req, nil
 }
 
-// NewPostSandboxesSandboxIDPauseRequest generates requests for PostSandboxesSandboxIDPause
-func NewPostSandboxesSandboxIDPauseRequest(server string, sandboxID SandboxID) (*http.Request, error) {
+// NewPostSandboxesSandboxIDPauseRequest calls the generic PostSandboxesSandboxIDPause builder with application/json body
+func NewPostSandboxesSandboxIDPauseRequest(server string, sandboxID SandboxID, body PostSandboxesSandboxIDPauseJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostSandboxesSandboxIDPauseRequestWithBody(server, sandboxID, "application/json", bodyReader)
+}
+
+// NewPostSandboxesSandboxIDPauseRequestWithBody generates requests for PostSandboxesSandboxIDPause with any type of body
+func NewPostSandboxesSandboxIDPauseRequestWithBody(server string, sandboxID SandboxID, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -4095,10 +4121,12 @@ func NewPostSandboxesSandboxIDPauseRequest(server string, sandboxID SandboxID) (
 		return nil, err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -5926,8 +5954,10 @@ type ClientWithResponsesInterface interface {
 
 	PutSandboxesSandboxIDNetworkWithResponse(ctx context.Context, sandboxID SandboxID, body PutSandboxesSandboxIDNetworkJSONRequestBody, reqEditors ...RequestEditorFn) (*PutSandboxesSandboxIDNetworkResponse, error)
 
-	// PostSandboxesSandboxIDPauseWithResponse request
-	PostSandboxesSandboxIDPauseWithResponse(ctx context.Context, sandboxID SandboxID, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDPauseResponse, error)
+	// PostSandboxesSandboxIDPauseWithBodyWithResponse request with any body
+	PostSandboxesSandboxIDPauseWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDPauseResponse, error)
+
+	PostSandboxesSandboxIDPauseWithResponse(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDPauseJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDPauseResponse, error)
 
 	// PostSandboxesSandboxIDRefreshesWithBodyWithResponse request with any body
 	PostSandboxesSandboxIDRefreshesWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDRefreshesResponse, error)
@@ -8158,9 +8188,17 @@ func (c *ClientWithResponses) PutSandboxesSandboxIDNetworkWithResponse(ctx conte
 	return ParsePutSandboxesSandboxIDNetworkResponse(rsp)
 }
 
-// PostSandboxesSandboxIDPauseWithResponse request returning *PostSandboxesSandboxIDPauseResponse
-func (c *ClientWithResponses) PostSandboxesSandboxIDPauseWithResponse(ctx context.Context, sandboxID SandboxID, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDPauseResponse, error) {
-	rsp, err := c.PostSandboxesSandboxIDPause(ctx, sandboxID, reqEditors...)
+// PostSandboxesSandboxIDPauseWithBodyWithResponse request with arbitrary body returning *PostSandboxesSandboxIDPauseResponse
+func (c *ClientWithResponses) PostSandboxesSandboxIDPauseWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDPauseResponse, error) {
+	rsp, err := c.PostSandboxesSandboxIDPauseWithBody(ctx, sandboxID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostSandboxesSandboxIDPauseResponse(rsp)
+}
+
+func (c *ClientWithResponses) PostSandboxesSandboxIDPauseWithResponse(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDPauseJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDPauseResponse, error) {
+	rsp, err := c.PostSandboxesSandboxIDPause(ctx, sandboxID, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}

@@ -263,7 +263,7 @@ func (f fakeAPIKeyAuthService) ValidateAuthProviderToken(context.Context, *gin.C
 	return uuid.Nil, nil
 }
 
-func (f fakeAPIKeyAuthService) ValidateSupabaseTeam(context.Context, *gin.Context, string) (*authtypes.Team, *sharedauth.APIError) {
+func (f fakeAPIKeyAuthService) ValidateAuthProviderTeam(context.Context, *gin.Context, string) (*authtypes.Team, *sharedauth.APIError) {
 	return nil, nil
 }
 
