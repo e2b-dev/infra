@@ -101,7 +101,7 @@ func (s *Sandbox) bestEffortReclaim(ctx context.Context) {
 	}
 
 	if s.featureFlags.BoolFlag(ctx, featureflags.CollapseEnvdHeapFlag,
-		featureflags.SandboxContext(s.Runtime.SandboxID),
+		sbxCtx,
 		featureflags.TeamContext(s.Runtime.TeamID),
 		featureflags.TemplateContext(s.Runtime.TemplateID),
 	) {
