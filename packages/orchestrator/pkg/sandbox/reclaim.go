@@ -62,14 +62,16 @@ func (s *Sandbox) bestEffortReclaim(ctx context.Context) {
 	ctx, span := tracer.Start(ctx, "envd-reclaim")
 	defer span.End()
 
+	sbxCtx := sandboxLDContext(s.Runtime, s.Config)
+
 	cfg := featureflags.GetReclaimConfig(ctx, s.featureFlags,
-		featureflags.SandboxContext(s.Runtime.SandboxID),
+		sbxCtx,
 		featureflags.TeamContext(s.Runtime.TeamID),
 		featureflags.TemplateContext(s.Runtime.TemplateID),
 	)
 
 	if s.featureFlags.BoolFlag(ctx, featureflags.FreezeUserCgroupFlag,
-		featureflags.SandboxContext(s.Runtime.SandboxID),
+		sbxCtx,
 		featureflags.TeamContext(s.Runtime.TeamID),
 		featureflags.TemplateContext(s.Runtime.TemplateID),
 	) {
