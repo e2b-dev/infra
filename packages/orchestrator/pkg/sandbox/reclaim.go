@@ -84,30 +84,22 @@ func (s *Sandbox) bestEffortReclaim(ctx context.Context) {
 	ctx, span := tracer.Start(ctx, "envd-reclaim")
 	defer span.End()
 
-	sbxCtx := sandboxLDContext(s.Runtime, s.Config)
-
-	cfg := featureflags.GetReclaimConfig(ctx, s.featureFlags,
-		sbxCtx,
+	ctx = featureflags.AddToContext(
+		ctx,
+		sandboxLDContext(s.Runtime, s.Config),
 		featureflags.TeamContext(s.Runtime.TeamID),
 		featureflags.TemplateContext(s.Runtime.TemplateID),
 	)
 
-	if s.featureFlags.BoolFlag(ctx, featureflags.FreezeUserCgroupFlag,
-		sbxCtx,
-		featureflags.TeamContext(s.Runtime.TeamID),
-		featureflags.TemplateContext(s.Runtime.TemplateID),
-	) {
+	if s.featureFlags.BoolFlag(ctx, featureflags.FreezeUserCgroupFlag) {
 		s.bestEffortFreeze(ctx)
 	}
 
-	if s.featureFlags.BoolFlag(ctx, featureflags.CollapseEnvdHeapFlag,
-		sbxCtx,
-		featureflags.TeamContext(s.Runtime.TeamID),
-		featureflags.TemplateContext(s.Runtime.TemplateID),
-	) {
+	if s.featureFlags.BoolFlag(ctx, featureflags.CollapseEnvdHeapFlag) {
 		s.bestEffortCollapse(ctx)
 	}
 
+	cfg := featureflags.GetReclaimConfig(ctx, s.featureFlags)
 	script, timeout := s.buildReclaimScript(cfg)
 	if script == "" {
 		return
@@ -310,11 +302,7 @@ func (s *Sandbox) bestEffortCollapse(ctx context.Context) {
 	// Timeout comes straight from the flag, whose fallback (10s) is returned
 	// whenever LD is unavailable or the flag is unset — so there is no separate
 	// local default to keep in sync.
-	timeout := time.Duration(s.featureFlags.IntFlag(ctx, featureflags.CollapseEnvdHeapTimeoutMsFlag,
-		featureflags.SandboxContext(s.Runtime.SandboxID),
-		featureflags.TeamContext(s.Runtime.TeamID),
-		featureflags.TemplateContext(s.Runtime.TemplateID),
-	)) * time.Millisecond
+	timeout := time.Duration(s.featureFlags.IntFlag(ctx, featureflags.CollapseEnvdHeapTimeoutMsFlag)) * time.Millisecond
 
 	start := time.Now()
 	stats, err := s.callEnvdCollapse(ctx, timeout)
