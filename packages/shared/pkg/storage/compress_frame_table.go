@@ -14,7 +14,11 @@ const (
 	CompressionNone = CompressionType(iota)
 	CompressionZstd
 	CompressionLZ4
+	// numCompressionTypes counts the codecs above; keep last so it auto-updates.
+	numCompressionTypes
+)
 
+const (
 	// maxDeserializedFrames caps the number of frames read from a serialized
 	// FrameTable to prevent OOM from corrupted headers. 1M frames = 2 TiB
 	// uncompressed at 2 MiB frame size.

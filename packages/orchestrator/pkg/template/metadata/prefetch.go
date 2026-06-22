@@ -53,7 +53,7 @@ func UploadMetadata(ctx context.Context, persistence storage.StorageProvider, t 
 
 	metadataPath := storage.Paths{BuildID: t.Template.BuildID}.Metadata()
 
-	object, err := persistence.OpenBlob(ctx, metadataPath, storage.MetadataObjectType)
+	object, err := persistence.OpenBlob(ctx, metadataPath)
 	if err != nil {
 		return fmt.Errorf("failed to open metadata object: %w", err)
 	}

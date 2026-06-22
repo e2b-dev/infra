@@ -60,7 +60,7 @@ func TestPeerBlob_WriteTo_PeerNotAvailable_FallsBackToBase(t *testing.T) {
 		return int64(n), err
 	})
 	base := storage.NewMockStorageProvider(t)
-	base.EXPECT().OpenBlob(mock.Anything, "build-1/snapfile", storage.SnapfileObjectType).Return(baseBlob, nil)
+	base.EXPECT().OpenBlob(mock.Anything, "build-1/snapfile").Return(baseBlob, nil)
 
 	blob := &peerBlob{
 		peerHandle: peerHandle{
@@ -70,7 +70,7 @@ func TestPeerBlob_WriteTo_PeerNotAvailable_FallsBackToBase(t *testing.T) {
 			uploaded: &atomic.Bool{},
 		},
 		openBase: func(ctx context.Context) (storage.Blob, error) {
-			return base.OpenBlob(ctx, "build-1/snapfile", storage.SnapfileObjectType)
+			return base.OpenBlob(ctx, "build-1/snapfile")
 		},
 	}
 
@@ -94,7 +94,7 @@ func TestPeerBlob_WriteTo_PeerError_FallsBackToBase(t *testing.T) {
 		return int64(n), err
 	})
 	base := storage.NewMockStorageProvider(t)
-	base.EXPECT().OpenBlob(mock.Anything, "build-1/snapfile", storage.SnapfileObjectType).Return(baseBlob, nil)
+	base.EXPECT().OpenBlob(mock.Anything, "build-1/snapfile").Return(baseBlob, nil)
 
 	blob := &peerBlob{
 		peerHandle: peerHandle{
@@ -104,7 +104,7 @@ func TestPeerBlob_WriteTo_PeerError_FallsBackToBase(t *testing.T) {
 			uploaded: &atomic.Bool{},
 		},
 		openBase: func(ctx context.Context) (storage.Blob, error) {
-			return base.OpenBlob(ctx, "build-1/snapfile", storage.SnapfileObjectType)
+			return base.OpenBlob(ctx, "build-1/snapfile")
 		},
 	}
 
@@ -141,7 +141,7 @@ func TestPeerBlob_WriteTo_UploadedSetMidStream_CompletesFromPeerThenFallsBack(t 
 		return int64(n), err
 	})
 	base := storage.NewMockStorageProvider(t)
-	base.EXPECT().OpenBlob(mock.Anything, "build-1/snapfile", storage.SnapfileObjectType).Return(baseBlob, nil)
+	base.EXPECT().OpenBlob(mock.Anything, "build-1/snapfile").Return(baseBlob, nil)
 
 	blob := &peerBlob{
 		peerHandle: peerHandle{
@@ -151,7 +151,7 @@ func TestPeerBlob_WriteTo_UploadedSetMidStream_CompletesFromPeerThenFallsBack(t 
 			uploaded: uploaded,
 		},
 		openBase: func(ctx context.Context) (storage.Blob, error) {
-			return base.OpenBlob(ctx, "build-1/snapfile", storage.SnapfileObjectType)
+			return base.OpenBlob(ctx, "build-1/snapfile")
 		},
 	}
 
@@ -194,7 +194,7 @@ func TestPeerBlob_Exists_PeerNotAvailable_FallsBackToBase(t *testing.T) {
 	baseBlob := storage.NewMockBlob(t)
 	baseBlob.EXPECT().Exists(mock.Anything).Return(true, nil)
 	base := storage.NewMockStorageProvider(t)
-	base.EXPECT().OpenBlob(mock.Anything, "build-1/snapfile", storage.SnapfileObjectType).Return(baseBlob, nil)
+	base.EXPECT().OpenBlob(mock.Anything, "build-1/snapfile").Return(baseBlob, nil)
 
 	blob := &peerBlob{
 		peerHandle: peerHandle{
@@ -204,7 +204,7 @@ func TestPeerBlob_Exists_PeerNotAvailable_FallsBackToBase(t *testing.T) {
 			uploaded: &atomic.Bool{},
 		},
 		openBase: func(ctx context.Context) (storage.Blob, error) {
-			return base.OpenBlob(ctx, "build-1/snapfile", storage.SnapfileObjectType)
+			return base.OpenBlob(ctx, "build-1/snapfile")
 		},
 	}
 
@@ -222,7 +222,7 @@ func TestPeerBlob_Exists_UseStorage_FallsBackToBase(t *testing.T) {
 	baseBlob := storage.NewMockBlob(t)
 	baseBlob.EXPECT().Exists(mock.Anything).Return(true, nil)
 	base := storage.NewMockStorageProvider(t)
-	base.EXPECT().OpenBlob(mock.Anything, "build-1/snapfile", storage.SnapfileObjectType).Return(baseBlob, nil)
+	base.EXPECT().OpenBlob(mock.Anything, "build-1/snapfile").Return(baseBlob, nil)
 
 	uploaded := &atomic.Bool{}
 	blob := &peerBlob{
@@ -233,7 +233,7 @@ func TestPeerBlob_Exists_UseStorage_FallsBackToBase(t *testing.T) {
 			uploaded: uploaded,
 		},
 		openBase: func(ctx context.Context) (storage.Blob, error) {
-			return base.OpenBlob(ctx, "build-1/snapfile", storage.SnapfileObjectType)
+			return base.OpenBlob(ctx, "build-1/snapfile")
 		},
 	}
 
