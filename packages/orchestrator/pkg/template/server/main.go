@@ -56,6 +56,7 @@ type ServerStore struct {
 	artifactsregistry artifactsregistry.ArtifactsRegistry
 	templateStorage   storage.StorageProvider
 	buildStorage      storage.StorageProvider
+	sandboxFactory    *sandbox.Factory
 
 	wg           *sync.WaitGroup // wait group for running builds
 	activeBuilds atomic.Int64    // counter for active builds (for debugging)
@@ -135,6 +136,7 @@ func New(
 		artifactsregistry: artifactsRegistry,
 		templateStorage:   templatePersistence,
 		buildStorage:      buildPersistence,
+		sandboxFactory:    sandboxFactory,
 		wg:                &sync.WaitGroup{},
 		closers:           closers,
 	}

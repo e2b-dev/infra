@@ -10,8 +10,11 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/builderrors"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/buildlogger"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/config"
@@ -112,8 +115,19 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	}
 	defer releaseTemplateOperationStart()
 
+	// Hold the shared factory start gate for the whole build (propagated via
+	// WithHeldStartGate below) so an in-flight build's per-layer sandbox starts
+	// aren't rejected with ErrFactoryDraining mid-drain, and new builds are
+	// rejected once the factory is draining.
+	releaseSandboxStart, err := s.sandboxFactory.EnterSandboxStart(ctx)
+	if err != nil {
+		return nil, status.Error(codes.Unavailable, "orchestrator is draining")
+	}
+
 	buildInfo, err := s.buildCache.Create(template.TeamID, metadata.BuildID, logs)
 	if err != nil {
+		releaseSandboxStart()
+
 		return nil, fmt.Errorf("error while creating build cache: %w", err)
 	}
 
@@ -133,6 +147,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	go func(ctx context.Context) {
 		defer s.wg.Done()
 		defer s.activeBuilds.Add(-1)
+		defer releaseSandboxStart()
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -192,7 +207,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 			})
 			telemetry.ReportEvent(ctx, "Environment built")
 		}
-	}(context.WithoutCancel(ctx))
+	}(sandbox.WithHeldStartGate(context.WithoutCancel(ctx)))
 
 	return nil, nil
 }
