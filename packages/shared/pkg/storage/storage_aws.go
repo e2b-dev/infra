@@ -17,6 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -24,12 +25,20 @@ const (
 	awsOperationTimeout = 5 * time.Second
 	awsWriteTimeout     = 30 * time.Second
 	awsReadTimeout      = 15 * time.Second
+
+	// Multipart upload throughput: uploadConcurrency parts in flight, each
+	// uploadPartSizeMB MB. Bytes in flight = part size * concurrency.
+	awsDefaultUploadPartSizeMB  = 10
+	awsDefaultUploadConcurrency = 8
 )
 
 type awsStorage struct {
 	client        *s3.Client
 	presignClient *s3.PresignClient
 	bucketName    string
+
+	uploadPartSize    int64
+	uploadConcurrency int
 }
 
 var _ StorageProvider = (*awsStorage)(nil)
@@ -38,6 +47,9 @@ type awsObject struct {
 	client     *s3.Client
 	path       string
 	bucketName string
+
+	uploadPartSize    int64
+	uploadConcurrency int
 }
 
 var (
@@ -51,13 +63,25 @@ func newAWSStorage(ctx context.Context, bucketName string) (*awsStorage, error) 
 		return nil, err
 	}
 
+	partSizeMB, err := env.GetEnvAsInt("AWS_UPLOAD_PART_SIZE_MB", awsDefaultUploadPartSizeMB)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse AWS_UPLOAD_PART_SIZE_MB: %w", err)
+	}
+
+	concurrency, err := env.GetEnvAsInt("AWS_UPLOAD_CONCURRENCY", awsDefaultUploadConcurrency)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse AWS_UPLOAD_CONCURRENCY: %w", err)
+	}
+
 	client := s3.NewFromConfig(cfg)
 	presignClient := s3.NewPresignClient(client)
 
 	return &awsStorage{
-		client:        client,
-		presignClient: presignClient,
-		bucketName:    bucketName,
+		client:            client,
+		presignClient:     presignClient,
+		bucketName:        bucketName,
+		uploadPartSize:    int64(partSizeMB) * 1024 * 1024,
+		uploadConcurrency: concurrency,
 	}, nil
 }
 
@@ -129,17 +153,21 @@ func (s *awsStorage) UploadSignedURL(ctx context.Context, path string, ttl time.
 
 func (s *awsStorage) OpenSeekable(_ context.Context, path string, _ SeekableObjectType) (Seekable, error) {
 	return &awsObject{
-		client:     s.client,
-		bucketName: s.bucketName,
-		path:       path,
+		client:            s.client,
+		bucketName:        s.bucketName,
+		path:              path,
+		uploadPartSize:    s.uploadPartSize,
+		uploadConcurrency: s.uploadConcurrency,
 	}, nil
 }
 
 func (s *awsStorage) OpenBlob(_ context.Context, path string, _ ObjectType) (Blob, error) {
 	return &awsObject{
-		client:     s.client,
-		bucketName: s.bucketName,
-		path:       path,
+		client:            s.client,
+		bucketName:        s.bucketName,
+		path:              path,
+		uploadPartSize:    s.uploadPartSize,
+		uploadConcurrency: s.uploadConcurrency,
 	}, nil
 }
 
@@ -170,12 +198,13 @@ func (o *awsObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 
 	// Inherit the caller's context for the multipart upload. The AWS SDK's
 	// manager.Uploader reuses the same ctx for CreateMultipartUpload, every
-	// UploadPart (Concurrency=8, PartSize=10MB), and the final Complete/Abort —
-	// a tight static timeout here would cancel an in-flight multi-GB snapshot
-	// upload and surface as "S3: UploadPart ... StatusCode: 0, canceled,
-	// context deadline exceeded". The caller (pkg/server/sandboxes.go) already
-	// scopes a per-attempt deadline (uploadTimeout = 20m) with retry budget on
-	// top, matching the GCP path which also inherits the caller's ctx.
+	// UploadPart (Concurrency/PartSize from env, see newAWSStorage), and the
+	// final Complete/Abort — a tight static timeout here would cancel an
+	// in-flight multi-GB snapshot upload and surface as "S3: UploadPart ...
+	// StatusCode: 0, canceled, context deadline exceeded". The caller
+	// (pkg/server/sandboxes.go) already scopes a per-attempt deadline
+	// (uploadTimeout = 20m) with retry budget on top, matching the GCP path
+	// which also inherits the caller's ctx.
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, [32]byte{}, fmt.Errorf("failed to open file %s: %w", path, err)
@@ -185,8 +214,11 @@ func (o *awsObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 	uploader := manager.NewUploader(
 		o.client,
 		func(u *manager.Uploader) {
-			u.PartSize = 10 * 1024 * 1024 // 10 MB
-			u.Concurrency = 8             // eight parts in flight
+			// The SDK floors PartSize at manager.MinUploadPartSize (5 MB) and
+			// caps total parts at manager.MaxUploadParts (10000), so values
+			// outside the valid range are clamped rather than rejected.
+			u.PartSize = o.uploadPartSize
+			u.Concurrency = o.uploadConcurrency
 		},
 	)
 
