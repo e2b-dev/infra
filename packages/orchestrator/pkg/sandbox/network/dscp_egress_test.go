@@ -27,13 +27,9 @@ func TestCreateNetwork_TagsEgressWithDSCP(t *testing.T) { //nolint:paralleltest 
 
 	config, err := ParseConfig()
 	require.NoError(t, err)
-	// Enable the marker explicitly: SANDBOX_EGRESS_DSCP defaults to 0
-	// (disabled) so deployments that don't opt in stay unaffected.
-	config.SandboxEgressDSCP = 8
+	config.SandboxEgressDSCP = 8 // env default is 0 (disabled)
 
-	// High, fixed index: Populate fills the pool from low indices, so this is
-	// unlikely to collide with a running orchestrator or other tests.
-	const idx = 30000
+	const idx = 30000 // high, fixed: avoid collision with the pool's low-index Populate
 	slot, err := NewSlot("dscp-egress-test", idx, config, NewNoopEgressProxy())
 	require.NoError(t, err)
 

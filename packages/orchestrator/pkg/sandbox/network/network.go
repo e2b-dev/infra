@@ -250,10 +250,7 @@ func (s *Slot) CreateNetwork(ctx context.Context) (retErr error) {
 		return fmt.Errorf("error creating postrouting rule from vpeer: %w", err)
 	}
 
-	// Tag every packet leaving the sandbox netns with a DSCP marker so downstream
-	// firewalls can distinguish sandbox traffic at L3 regardless of protocol.
-	// Gated on SANDBOX_EGRESS_DSCP (default 0 = disabled) — deployments that
-	// don't need it stay untouched and avoid the xt_DSCP kernel-module dependency.
+	// Marker for downstream L3 firewalls. 0 disables; see SANDBOX_EGRESS_DSCP.
 	if s.config.SandboxEgressDSCP > 0 {
 		err = tables.Append("mangle", "POSTROUTING", "-o", s.VpeerName(), "-j", "DSCP", "--set-dscp", strconv.Itoa(int(s.config.SandboxEgressDSCP)))
 		if err != nil {

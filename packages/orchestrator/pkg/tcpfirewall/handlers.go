@@ -27,18 +27,11 @@ const (
 	noHostnameValue = ""
 )
 
-// sandboxEgressTOS is the IP TOS-byte form of network.Config.SandboxEgressDSCP
-// (top 6 bits of the TOS byte, i.e. DSCP << 2). Set once by Proxy.New() so the
-// per-connection markDSCP path doesn't need to thread the value through every
-// handler signature. 0 = disabled (no setsockopt), matching the env default.
+// Set by Proxy.New() from network.Config.SandboxEgressDSCP << 2. 0 = disabled.
 var sandboxEgressTOS uint8
 
-// markDSCP sets the IPv4 IP_TOS and IPv6 IPV6_TCLASS socket options so
-// packets the proxy sends to the destination carry the sandbox egress DSCP
-// marker regardless of the socket's address family. The dialer (notably
-// Happy Eyeballs in proxyWithIPVerification) may choose either family, so we
-// set both and tolerate ENOPROTOOPT from the non-matching one — only a
-// failure on both legs is a real error. No-op when the marker is disabled.
+// Sets both IP_TOS and IPV6_TCLASS because Happy Eyeballs may pick either family.
+// Tolerates ENOPROTOOPT from the non-matching one.
 func markDSCP(c syscall.RawConn) error {
 	tos := int(sandboxEgressTOS)
 	if tos == 0 {

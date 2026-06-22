@@ -82,23 +82,13 @@ type Config struct {
 	SandboxTCPFirewallTLSPort   uint16 `env:"SANDBOX_TCP_FIREWALL_TLS_PORT"   envDefault:"5017"`
 	SandboxTCPFirewallOtherPort uint16 `env:"SANDBOX_TCP_FIREWALL_OTHER_PORT" envDefault:"5018"`
 
-	// DSCP value to stamp on every packet leaving a sandbox netns and on the
-	// tcpfirewall proxy's upstream sockets. Gives downstream firewalls a
-	// protocol-agnostic L3 marker for sandbox traffic. 0 (default) disables
-	// the marker entirely so deployments that don't need it stay untouched.
-	// Valid range is 0..63 (DSCP is a 6-bit field); CS1 = 8 is the canonical
-	// "Scavenger" / lower-than-best-effort class per RFC 3662.
+	// 0 disables; valid range 0..63 (DSCP is 6 bits). CS1=8 is the canonical Scavenger class (RFC 3662).
 	SandboxEgressDSCP uint8 `env:"SANDBOX_EGRESS_DSCP" envDefault:"0"`
 }
 
-// Validate checks invariants that env tags can't express. Must be called by
-// every code path that constructs a Config from the environment — both the
-// standalone ParseConfig() entry point used by tests and the orchestrator's
-// embedded-config path in pkg/cfg.Parse — so misconfiguration fails loud at
-// startup instead of at first sandbox create.
 func (c Config) Validate() error {
 	if c.SandboxEgressDSCP > 63 {
-		return fmt.Errorf("SANDBOX_EGRESS_DSCP=%d out of range; DSCP is 6 bits (0..63)", c.SandboxEgressDSCP)
+		return fmt.Errorf("SANDBOX_EGRESS_DSCP=%d out of range (0..63)", c.SandboxEgressDSCP)
 	}
 
 	return nil
