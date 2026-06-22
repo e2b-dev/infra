@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type Cleanup struct {
@@ -23,12 +24,19 @@ type Cleanup struct {
 	error           error
 	once            sync.Once
 
-	hasRun atomic.Bool
-	mu     sync.Mutex
+	hasRun            atomic.Bool
+	contextForLateAdd cleanupContextFunc
+	mu                sync.Mutex
 }
 
+type cleanupContextFunc func(context.Context) (context.Context, context.CancelFunc)
+
 func NewCleanup() *Cleanup {
-	return &Cleanup{}
+	return &Cleanup{contextForLateAdd: utils.WithoutCancelPreservingDeadline}
+}
+
+func withoutCancelDiscardingDeadline(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithoutCancel(ctx), func() {}
 }
 
 func (c *Cleanup) AddNoContext(ctx context.Context, f func() error) {
@@ -36,43 +44,72 @@ func (c *Cleanup) AddNoContext(ctx context.Context, f func() error) {
 }
 
 func (c *Cleanup) Add(ctx context.Context, f func(ctx context.Context) error) {
+	c.mu.Lock()
 	if c.hasRun.Load() == true {
-		err := f(context.WithoutCancel(ctx))
-		if err != nil {
-			logger.L().Error(ctx, "failed to run function after cleanup has run", zap.Error(err))
+		contextForLateAdd := c.contextForLateAdd
+		if contextForLateAdd == nil {
+			contextForLateAdd = utils.WithoutCancelPreservingDeadline
 		}
+		c.mu.Unlock()
+
+		c.runLateAdd(ctx, f, contextForLateAdd, "failed to run function after cleanup has run")
 
 		return
 	}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.cleanup = append(c.cleanup, f)
+	c.mu.Unlock()
 }
 
 func (c *Cleanup) AddPriority(ctx context.Context, f func(ctx context.Context) error) {
+	c.mu.Lock()
 	if c.hasRun.Load() == true {
-		err := f(context.WithoutCancel(ctx))
-		if err != nil {
-			logger.L().Error(ctx, "failed to run priority function after cleanup has run", zap.Error(err))
+		contextForLateAdd := c.contextForLateAdd
+		if contextForLateAdd == nil {
+			contextForLateAdd = utils.WithoutCancelPreservingDeadline
 		}
+		c.mu.Unlock()
+
+		c.runLateAdd(ctx, f, contextForLateAdd, "failed to run priority function after cleanup has run")
 
 		return
 	}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.priorityCleanup = append(c.priorityCleanup, f)
+	c.mu.Unlock()
 }
 
 func (c *Cleanup) Run(ctx context.Context) error {
+	return c.runWithContext(ctx, utils.WithoutCancelPreservingDeadline)
+}
+
+func (c *Cleanup) RunRollback(ctx context.Context) error {
+	return c.runWithContext(ctx, withoutCancelDiscardingDeadline)
+}
+
+func (c *Cleanup) runWithContext(ctx context.Context, contextForRun cleanupContextFunc) error {
 	c.once.Do(func() {
-		c.run(context.WithoutCancel(ctx))
+		c.mu.Lock()
+		c.contextForLateAdd = contextForRun
+		c.mu.Unlock()
+
+		cleanupCtx, cleanupCancel := contextForRun(ctx)
+		defer cleanupCancel()
+
+		c.run(cleanupCtx)
 	})
 
 	return c.error
+}
+
+func (c *Cleanup) runLateAdd(ctx context.Context, f func(context.Context) error, contextForRun cleanupContextFunc, logMessage string) {
+	cleanupCtx, cleanupCancel := contextForRun(ctx)
+	defer cleanupCancel()
+
+	err := f(cleanupCtx)
+	if err != nil {
+		logger.L().Error(ctx, logMessage, zap.Error(err))
+	}
 }
 
 func (c *Cleanup) run(ctx context.Context) {

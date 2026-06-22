@@ -341,7 +341,8 @@ func (s *Server) ForceStopSandboxes(ctx context.Context) error {
 	stopped := make(map[string]struct{})
 	var errs []error
 
-	cleanupCtx := context.WithoutCancel(ctx)
+	cleanupCtx, cleanupCancel := utils.WithoutCancelPreservingDeadline(ctx)
+	defer cleanupCancel()
 	forceStop := func(sandboxes []*sandbox.Sandbox) error {
 		var wg sync.WaitGroup
 		errCh := make(chan error, len(sandboxes))
