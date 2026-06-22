@@ -199,5 +199,9 @@ func ParseBuilder() (BuilderConfig, error) {
 		return BuilderConfig{}, err
 	}
 
+	if err = model.NetworkConfig.Validate(); err != nil {
+		return BuilderConfig{}, err
+	}
+
 	return model, nil
 }
