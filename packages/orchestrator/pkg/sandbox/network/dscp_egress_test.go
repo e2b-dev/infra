@@ -3,7 +3,6 @@
 package network
 
 import (
-	"context"
 	"os"
 	"runtime"
 	"strings"
