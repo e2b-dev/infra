@@ -91,13 +91,26 @@ type Config struct {
 	SandboxEgressDSCP uint8 `env:"SANDBOX_EGRESS_DSCP" envDefault:"0"`
 }
 
+// Validate checks invariants that env tags can't express. Must be called by
+// every code path that constructs a Config from the environment — both the
+// standalone ParseConfig() entry point used by tests and the orchestrator's
+// embedded-config path in pkg/cfg.Parse — so misconfiguration fails loud at
+// startup instead of at first sandbox create.
+func (c Config) Validate() error {
+	if c.SandboxEgressDSCP > 63 {
+		return fmt.Errorf("SANDBOX_EGRESS_DSCP=%d out of range; DSCP is 6 bits (0..63)", c.SandboxEgressDSCP)
+	}
+
+	return nil
+}
+
 func ParseConfig() (Config, error) {
 	cfg, err := env.ParseAs[Config]()
 	if err != nil {
 		return Config{}, err
 	}
-	if cfg.SandboxEgressDSCP > 63 {
-		return Config{}, fmt.Errorf("SANDBOX_EGRESS_DSCP=%d out of range; DSCP is 6 bits (0..63)", cfg.SandboxEgressDSCP)
+	if err := cfg.Validate(); err != nil {
+		return Config{}, err
 	}
 
 	return cfg, nil
