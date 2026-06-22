@@ -81,29 +81,58 @@ func makePathsAbsolute(c *BuilderConfig) error {
 type Config struct {
 	BuilderConfig
 
-	ClickhouseConnectionString string            `env:"CLICKHOUSE_CONNECTION_STRING"`
-	ForceStop                  bool              `env:"FORCE_STOP"`
-	GRPCPort                   uint16            `env:"GRPC_PORT"                     envDefault:"5008"`
-	LaunchDarklyAPIKey         string            `env:"LAUNCH_DARKLY_API_KEY"`
-	LocalUploadBaseURL         string            `env:"LOCAL_UPLOAD_BASE_URL"`
-	NodeIP                     string            `env:"NODE_IP"                       envDefault:"localhost"`
-	NodeLabels                 []string          `env:"NODE_LABELS"                   envSeparator:","`
-	OrchestratorLockPath       string            `env:"ORCHESTRATOR_LOCK_PATH"        envDefault:"/orchestrator.lock"`
-	NFSProxyLogging            bool              `env:"NFS_PROXY_LOGGING"             envDefault:"false"`
-	NFSProxyTracing            bool              `env:"NFS_PROXY_TRACING"             envDefault:"false"`
-	NFSProxyMetrics            bool              `env:"NFS_PROXY_METRICS"             envDefault:"true"`
-	NFSProxyRecordHandleCalls  bool              `env:"NFS_PROXY_RECORD_HANDLE_CALLS" envDefault:"false"`
-	NFSProxyRecordStatCalls    bool              `env:"NFS_PROXY_RECORD_STAT_CALLS"   envDefault:"false"`
-	NFSProxyLogLevel           nfs.LogLevel      `env:"NFS_PROXY_LOG_LEVEL"           envDefault:"info"`
-	ProxyPort                  uint16            `env:"PROXY_PORT"                    envDefault:"5007"`
-	RedisClusterURL            string            `env:"REDIS_CLUSTER_URL"`
-	RedisTLSCABase64           string            `env:"REDIS_TLS_CA_BASE64"`
-	RedisURL                   string            `env:"REDIS_URL"`
-	RedisPoolSize              int               `env:"REDIS_POOL_SIZE"               envDefault:"5"`
-	RedisMinIdleConns          int               `env:"REDIS_MIN_IDLE_CONNS"          envDefault:"2"`
-	NBDPoolSize                int               `env:"NBD_POOL_SIZE"                 envDefault:"64"`
-	Services                   []string          `env:"ORCHESTRATOR_SERVICES"         envDefault:"orchestrator"`
-	PersistentVolumeMounts     map[string]string `env:"PERSISTENT_VOLUME_MOUNTS"`
+	ClickhouseConnectionString  string            `env:"CLICKHOUSE_CONNECTION_STRING"`
+	ClickhouseConnectionStrings []string          `env:"CLICKHOUSE_CONNECTION_STRINGS" envSeparator:";"`
+	ForceStop                   bool              `env:"FORCE_STOP"`
+	GRPCPort                    uint16            `env:"GRPC_PORT"                     envDefault:"5008"`
+	LaunchDarklyAPIKey          string            `env:"LAUNCH_DARKLY_API_KEY"`
+	LocalUploadBaseURL          string            `env:"LOCAL_UPLOAD_BASE_URL"`
+	NodeIP                      string            `env:"NODE_IP"                       envDefault:"localhost"`
+	NodeLabels                  []string          `env:"NODE_LABELS"                   envSeparator:","`
+	OrchestratorLockPath        string            `env:"ORCHESTRATOR_LOCK_PATH"        envDefault:"/orchestrator.lock"`
+	NFSProxyLogging             bool              `env:"NFS_PROXY_LOGGING"             envDefault:"false"`
+	NFSProxyTracing             bool              `env:"NFS_PROXY_TRACING"             envDefault:"false"`
+	NFSProxyMetrics             bool              `env:"NFS_PROXY_METRICS"             envDefault:"true"`
+	NFSProxyRecordHandleCalls   bool              `env:"NFS_PROXY_RECORD_HANDLE_CALLS" envDefault:"false"`
+	NFSProxyRecordStatCalls     bool              `env:"NFS_PROXY_RECORD_STAT_CALLS"   envDefault:"false"`
+	NFSProxyLogLevel            nfs.LogLevel      `env:"NFS_PROXY_LOG_LEVEL"           envDefault:"info"`
+	ProxyPort                   uint16            `env:"PROXY_PORT"                    envDefault:"5007"`
+	RedisClusterURL             string            `env:"REDIS_CLUSTER_URL"`
+	RedisTLSCABase64            string            `env:"REDIS_TLS_CA_BASE64"`
+	RedisURL                    string            `env:"REDIS_URL"`
+	RedisPoolSize               int               `env:"REDIS_POOL_SIZE"               envDefault:"5"`
+	RedisMinIdleConns           int               `env:"REDIS_MIN_IDLE_CONNS"          envDefault:"2"`
+	NBDPoolSize                 int               `env:"NBD_POOL_SIZE"                 envDefault:"64"`
+	Services                    []string          `env:"ORCHESTRATOR_SERVICES"         envDefault:"orchestrator"`
+	PersistentVolumeMounts      map[string]string `env:"PERSISTENT_VOLUME_MOUNTS"`
+}
+
+// AdditionalClickhouseEndpoints returns the non-blank entries from
+// CLICKHOUSE_CONNECTION_STRINGS that are *in addition to* the singular
+// CLICKHOUSE_CONNECTION_STRING. Order is preserved; first occurrence wins on
+// dedup. Returns nil endpoints if nothing remains.
+func (c Config) AdditionalClickhouseEndpoints() (endpoints, droppedDuplicates []string) {
+	singular := strings.TrimSpace(c.ClickhouseConnectionString)
+	seen := make(map[string]struct{}, len(c.ClickhouseConnectionStrings))
+	if singular != "" {
+		seen[singular] = struct{}{}
+	}
+
+	for _, raw := range c.ClickhouseConnectionStrings {
+		s := strings.TrimSpace(raw)
+		if s == "" {
+			continue
+		}
+		if _, dup := seen[s]; dup {
+			droppedDuplicates = append(droppedDuplicates, s)
+
+			continue
+		}
+		seen[s] = struct{}{}
+		endpoints = append(endpoints, s)
+	}
+
+	return endpoints, droppedDuplicates
 }
 
 func (c Config) NodeAddress() *string {

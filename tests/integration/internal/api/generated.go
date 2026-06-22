@@ -21,12 +21,11 @@ import (
 
 const (
 	AccessTokenAuthScopes        accessTokenAuthContextKey        = "AccessTokenAuth.Scopes"
-	AdminTokenAuthScopes         adminTokenAuthContextKey         = "AdminTokenAuth.Scopes"
+	AdminApiKeyAuthScopes        adminApiKeyAuthContextKey        = "AdminApiKeyAuth.Scopes"
+	AdminTeamAuthScopes          adminTeamAuthContextKey          = "AdminTeamAuth.Scopes"
 	ApiKeyAuthScopes             apiKeyAuthContextKey             = "ApiKeyAuth.Scopes"
 	AuthProviderBearerAuthScopes authProviderBearerAuthContextKey = "AuthProviderBearerAuth.Scopes"
 	AuthProviderTeamAuthScopes   authProviderTeamAuthContextKey   = "AuthProviderTeamAuth.Scopes"
-	Supabase1TokenAuthScopes     supabase1TokenAuthContextKey     = "Supabase1TokenAuth.Scopes"
-	Supabase2TeamAuthScopes      supabase2TeamAuthContextKey      = "Supabase2TeamAuth.Scopes"
 )
 
 // Defines values for AWSRegistryType.
@@ -620,6 +619,9 @@ type Node struct {
 	// - standby: the node is not actively used, but it can return to ready and continue serving traffic.
 	Status NodeStatus `json:"status"`
 
+	// StatusChangedAt Time when the node status was last changed
+	StatusChangedAt time.Time `json:"statusChangedAt"`
+
 	// Version Version of the orchestrator
 	Version string `json:"version"`
 }
@@ -658,6 +660,9 @@ type NodeDetail struct {
 	// - draining: the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
 	// - standby: the node is not actively used, but it can return to ready and continue serving traffic.
 	Status NodeStatus `json:"status"`
+
+	// StatusChangedAt Time when the node status was last changed
+	StatusChangedAt time.Time `json:"statusChangedAt"`
 
 	// Version Version of the orchestrator
 	Version string `json:"version"`
@@ -802,6 +807,18 @@ type SandboxDetail struct {
 	VolumeMounts *[]SandboxVolumeMount `json:"volumeMounts,omitempty"`
 }
 
+// SandboxEgressProxyConfig SOCKS5 proxy for sandbox egress. Outbound TCP is tunneled through the proxy after allow/deny filtering; the sandbox is unaware. Domain-matched flows use remote DNS (ATYP=domain).
+type SandboxEgressProxyConfig struct {
+	// Address SOCKS5 proxy address in host:port format (e.g. "proxy.example.com:1080").
+	Address string `json:"address"`
+
+	// Password Optional SOCKS5 password (RFC 1929), max 255 bytes.
+	Password *string `json:"password,omitempty"`
+
+	// Username Optional SOCKS5 username (RFC 1929), max 255 bytes.
+	Username *string `json:"username,omitempty"`
+}
+
 // SandboxLifecycle Sandbox lifecycle policy returned by sandbox info.
 type SandboxLifecycle struct {
 	// AutoResume Whether the sandbox can auto-resume.
@@ -894,6 +911,9 @@ type SandboxNetworkConfig struct {
 	// DenyOut List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
 	DenyOut *[]string `json:"denyOut,omitempty"`
 
+	// EgressProxy SOCKS5 proxy for sandbox egress. Outbound TCP is tunneled through the proxy after allow/deny filtering; the sandbox is unaware. Domain-matched flows use remote DNS (ATYP=domain).
+	EgressProxy *SandboxEgressProxyConfig `json:"egressProxy,omitempty"`
+
 	// MaskRequestHost Specify host mask which will be used for all sandbox requests
 	MaskRequestHost *string `json:"maskRequestHost,omitempty"`
 
@@ -924,6 +944,9 @@ type SandboxNetworkUpdateConfig struct {
 	// DenyOut List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
 	DenyOut *[]string `json:"denyOut,omitempty"`
 
+	// EgressProxy SOCKS5 proxy for sandbox egress. Outbound TCP is tunneled through the proxy after allow/deny filtering; the sandbox is unaware. Domain-matched flows use remote DNS (ATYP=domain).
+	EgressProxy *SandboxEgressProxyConfig `json:"egressProxy,omitempty"`
+
 	// Rules Per-domain transform rules. Replaces all existing rules when provided.
 	Rules *map[string][]SandboxNetworkRule `json:"rules,omitempty"`
 }
@@ -931,8 +954,32 @@ type SandboxNetworkUpdateConfig struct {
 // SandboxOnTimeout Action taken when the sandbox times out.
 type SandboxOnTimeout string
 
+// SandboxPauseRequest defines model for SandboxPauseRequest.
+type SandboxPauseRequest struct {
+	// Memory Whether to capture a full memory snapshot. When false, only the filesystem is persisted and resuming the sandbox cold-boots (reboots) it from disk, losing in-memory state, running processes, and open connections. Resume it with an explicit request (connect or resume); auto-resume, which can be triggered by arbitrary traffic, refuses such a sandbox. Defaults to true.
+	Memory *bool `json:"memory,omitempty"`
+}
+
+// SandboxRefreshRequest defines model for SandboxRefreshRequest.
+type SandboxRefreshRequest struct {
+	// Duration Duration for which the sandbox should be kept alive in seconds
+	Duration *int `json:"duration,omitempty"`
+}
+
+// SandboxSnapshotRequest defines model for SandboxSnapshotRequest.
+type SandboxSnapshotRequest struct {
+	// Name Optional name for the snapshot template. If a snapshot template with this name already exists, a new build will be assigned to the existing template instead of creating a new one.
+	Name *string `json:"name,omitempty"`
+}
+
 // SandboxState State of the sandbox
 type SandboxState string
+
+// SandboxTimeoutRequest defines model for SandboxTimeoutRequest.
+type SandboxTimeoutRequest struct {
+	// Timeout Timeout in seconds from the current time after which the sandbox should expire
+	Timeout int32 `json:"timeout"`
+}
 
 // SandboxVolumeMount defines model for SandboxVolumeMount.
 type SandboxVolumeMount struct {
@@ -1439,8 +1486,11 @@ type N500 = Error
 // accessTokenAuthContextKey is the context key for AccessTokenAuth security scheme
 type accessTokenAuthContextKey string
 
-// adminTokenAuthContextKey is the context key for AdminTokenAuth security scheme
-type adminTokenAuthContextKey string
+// adminApiKeyAuthContextKey is the context key for AdminApiKeyAuth security scheme
+type adminApiKeyAuthContextKey string
+
+// adminTeamAuthContextKey is the context key for AdminTeamAuth security scheme
+type adminTeamAuthContextKey string
 
 // apiKeyAuthContextKey is the context key for ApiKeyAuth security scheme
 type apiKeyAuthContextKey string
@@ -1450,12 +1500,6 @@ type authProviderBearerAuthContextKey string
 
 // authProviderTeamAuthContextKey is the context key for AuthProviderTeamAuth security scheme
 type authProviderTeamAuthContextKey string
-
-// supabase1TokenAuthContextKey is the context key for Supabase1TokenAuth security scheme
-type supabase1TokenAuthContextKey string
-
-// supabase2TeamAuthContextKey is the context key for Supabase2TeamAuth security scheme
-type supabase2TeamAuthContextKey string
 
 // GetNodesParams defines parameters for GetNodes.
 type GetNodesParams struct {
@@ -1495,24 +1539,6 @@ type GetSandboxesSandboxIDMetricsParams struct {
 	// Start Unix timestamp for the start of the interval, in seconds, for which the metrics
 	Start *int64 `form:"start,omitempty" json:"start,omitempty"`
 	End   *int64 `form:"end,omitempty" json:"end,omitempty"`
-}
-
-// PostSandboxesSandboxIDRefreshesJSONBody defines parameters for PostSandboxesSandboxIDRefreshes.
-type PostSandboxesSandboxIDRefreshesJSONBody struct {
-	// Duration Duration for which the sandbox should be kept alive in seconds
-	Duration *int `json:"duration,omitempty"`
-}
-
-// PostSandboxesSandboxIDSnapshotsJSONBody defines parameters for PostSandboxesSandboxIDSnapshots.
-type PostSandboxesSandboxIDSnapshotsJSONBody struct {
-	// Name Optional name for the snapshot template. If a snapshot template with this name already exists, a new build will be assigned to the existing template instead of creating a new one.
-	Name *string `json:"name,omitempty"`
-}
-
-// PostSandboxesSandboxIDTimeoutJSONBody defines parameters for PostSandboxesSandboxIDTimeout.
-type PostSandboxesSandboxIDTimeoutJSONBody struct {
-	// Timeout Timeout in seconds from the current time after which the sandbox should expire
-	Timeout int32 `json:"timeout"`
 }
 
 // GetSnapshotsParams defines parameters for GetSnapshots.
@@ -1641,17 +1667,20 @@ type PostSandboxesSandboxIDConnectJSONRequestBody = ConnectSandbox
 // PutSandboxesSandboxIDNetworkJSONRequestBody defines body for PutSandboxesSandboxIDNetwork for application/json ContentType.
 type PutSandboxesSandboxIDNetworkJSONRequestBody = SandboxNetworkUpdateConfig
 
+// PostSandboxesSandboxIDPauseJSONRequestBody defines body for PostSandboxesSandboxIDPause for application/json ContentType.
+type PostSandboxesSandboxIDPauseJSONRequestBody = SandboxPauseRequest
+
 // PostSandboxesSandboxIDRefreshesJSONRequestBody defines body for PostSandboxesSandboxIDRefreshes for application/json ContentType.
-type PostSandboxesSandboxIDRefreshesJSONRequestBody PostSandboxesSandboxIDRefreshesJSONBody
+type PostSandboxesSandboxIDRefreshesJSONRequestBody = SandboxRefreshRequest
 
 // PostSandboxesSandboxIDResumeJSONRequestBody defines body for PostSandboxesSandboxIDResume for application/json ContentType.
 type PostSandboxesSandboxIDResumeJSONRequestBody = ResumedSandbox
 
 // PostSandboxesSandboxIDSnapshotsJSONRequestBody defines body for PostSandboxesSandboxIDSnapshots for application/json ContentType.
-type PostSandboxesSandboxIDSnapshotsJSONRequestBody PostSandboxesSandboxIDSnapshotsJSONBody
+type PostSandboxesSandboxIDSnapshotsJSONRequestBody = SandboxSnapshotRequest
 
 // PostSandboxesSandboxIDTimeoutJSONRequestBody defines body for PostSandboxesSandboxIDTimeout for application/json ContentType.
-type PostSandboxesSandboxIDTimeoutJSONRequestBody PostSandboxesSandboxIDTimeoutJSONBody
+type PostSandboxesSandboxIDTimeoutJSONRequestBody = SandboxTimeoutRequest
 
 // PostTemplatesJSONRequestBody defines body for PostTemplates for application/json ContentType.
 type PostTemplatesJSONRequestBody = TemplateBuildRequest
@@ -1960,8 +1989,10 @@ type ClientInterface interface {
 
 	PutSandboxesSandboxIDNetwork(ctx context.Context, sandboxID SandboxID, body PutSandboxesSandboxIDNetworkJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// PostSandboxesSandboxIDPause request
-	PostSandboxesSandboxIDPause(ctx context.Context, sandboxID SandboxID, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// PostSandboxesSandboxIDPauseWithBody request with any body
+	PostSandboxesSandboxIDPauseWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PostSandboxesSandboxIDPause(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDPauseJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PostSandboxesSandboxIDRefreshesWithBody request with any body
 	PostSandboxesSandboxIDRefreshesWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2460,8 +2491,20 @@ func (c *Client) PutSandboxesSandboxIDNetwork(ctx context.Context, sandboxID San
 	return c.Client.Do(req)
 }
 
-func (c *Client) PostSandboxesSandboxIDPause(ctx context.Context, sandboxID SandboxID, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPostSandboxesSandboxIDPauseRequest(c.Server, sandboxID)
+func (c *Client) PostSandboxesSandboxIDPauseWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostSandboxesSandboxIDPauseRequestWithBody(c.Server, sandboxID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostSandboxesSandboxIDPause(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDPauseJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostSandboxesSandboxIDPauseRequest(c.Server, sandboxID, body)
 	if err != nil {
 		return nil, err
 	}
@@ -4047,8 +4090,19 @@ func NewPutSandboxesSandboxIDNetworkRequestWithBody(server string, sandboxID San
 	return req, nil
 }
 
-// NewPostSandboxesSandboxIDPauseRequest generates requests for PostSandboxesSandboxIDPause
-func NewPostSandboxesSandboxIDPauseRequest(server string, sandboxID SandboxID) (*http.Request, error) {
+// NewPostSandboxesSandboxIDPauseRequest calls the generic PostSandboxesSandboxIDPause builder with application/json body
+func NewPostSandboxesSandboxIDPauseRequest(server string, sandboxID SandboxID, body PostSandboxesSandboxIDPauseJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostSandboxesSandboxIDPauseRequestWithBody(server, sandboxID, "application/json", bodyReader)
+}
+
+// NewPostSandboxesSandboxIDPauseRequestWithBody generates requests for PostSandboxesSandboxIDPause with any type of body
+func NewPostSandboxesSandboxIDPauseRequestWithBody(server string, sandboxID SandboxID, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -4073,10 +4127,12 @@ func NewPostSandboxesSandboxIDPauseRequest(server string, sandboxID SandboxID) (
 		return nil, err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -5904,8 +5960,10 @@ type ClientWithResponsesInterface interface {
 
 	PutSandboxesSandboxIDNetworkWithResponse(ctx context.Context, sandboxID SandboxID, body PutSandboxesSandboxIDNetworkJSONRequestBody, reqEditors ...RequestEditorFn) (*PutSandboxesSandboxIDNetworkResponse, error)
 
-	// PostSandboxesSandboxIDPauseWithResponse request
-	PostSandboxesSandboxIDPauseWithResponse(ctx context.Context, sandboxID SandboxID, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDPauseResponse, error)
+	// PostSandboxesSandboxIDPauseWithBodyWithResponse request with any body
+	PostSandboxesSandboxIDPauseWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDPauseResponse, error)
+
+	PostSandboxesSandboxIDPauseWithResponse(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDPauseJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDPauseResponse, error)
 
 	// PostSandboxesSandboxIDRefreshesWithBodyWithResponse request with any body
 	PostSandboxesSandboxIDRefreshesWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDRefreshesResponse, error)
@@ -8136,9 +8194,17 @@ func (c *ClientWithResponses) PutSandboxesSandboxIDNetworkWithResponse(ctx conte
 	return ParsePutSandboxesSandboxIDNetworkResponse(rsp)
 }
 
-// PostSandboxesSandboxIDPauseWithResponse request returning *PostSandboxesSandboxIDPauseResponse
-func (c *ClientWithResponses) PostSandboxesSandboxIDPauseWithResponse(ctx context.Context, sandboxID SandboxID, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDPauseResponse, error) {
-	rsp, err := c.PostSandboxesSandboxIDPause(ctx, sandboxID, reqEditors...)
+// PostSandboxesSandboxIDPauseWithBodyWithResponse request with arbitrary body returning *PostSandboxesSandboxIDPauseResponse
+func (c *ClientWithResponses) PostSandboxesSandboxIDPauseWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDPauseResponse, error) {
+	rsp, err := c.PostSandboxesSandboxIDPauseWithBody(ctx, sandboxID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostSandboxesSandboxIDPauseResponse(rsp)
+}
+
+func (c *ClientWithResponses) PostSandboxesSandboxIDPauseWithResponse(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDPauseJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDPauseResponse, error) {
+	rsp, err := c.PostSandboxesSandboxIDPause(ctx, sandboxID, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}

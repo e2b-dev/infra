@@ -17,7 +17,10 @@ const (
 
 	// caExtraPath is where the injected cert is persisted on the NBD-backed
 	// filesystem so that running update-ca-certificates later re-includes it
-	// when rebuilding the bundle.
+	// when rebuilding the bundle. Note: a fast cold boot (filesystem-only
+	// reboot) seeds the tmpfs bundle from a build-time tar and skips
+	// update-ca-certificates, so this persisted cert is NOT auto-merged at boot;
+	// /init re-installs the current proxy CA before the sandbox is routable.
 	caExtraPath = "/usr/local/share/ca-certificates/e2b-ca.crt"
 )
 

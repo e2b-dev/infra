@@ -171,11 +171,12 @@ func TestPublisher_CloseDrainsPending(t *testing.T) {
 		pub.Publish(t.Context(), fmt.Sprintf("drain:%d", i))
 	}
 
-	// Start the drainer and close immediately. The shutdown drain should
-	// flush whatever is left within publishShutdownBudget.
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	go pub.run(ctx)
+	// close() without a running drainer takes the stateInit->stateClosed
+	// path and drains all pending items synchronously within
+	// publishShutdownBudget. Starting run() concurrently would race the
+	// worker pool's context cancellation against the queue: a worker can
+	// dequeue a key and then fail to publish once close() cancels pubCtx,
+	// dropping an unpredictable subset (best-effort by design, not assertable).
 	pub.close(t.Context())
 
 	messages := pubsub.Channel()
@@ -186,12 +187,8 @@ func TestPublisher_CloseDrainsPending(t *testing.T) {
 		case <-messages:
 			seen++
 		case <-deadline:
-			// We accept partial drain (some may have raced past), but at
-			// least a majority should have made it through.
-			require.GreaterOrEqual(t, seen, n/2,
-				"expected most messages to drain, got %d/%d", seen, n)
-
-			return
+			require.FailNowf(t, "shutdown drain did not flush all pending",
+				"got %d/%d", seen, n)
 		}
 	}
 }

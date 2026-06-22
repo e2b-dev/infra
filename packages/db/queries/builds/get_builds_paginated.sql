@@ -5,6 +5,10 @@ SELECT
   b.reason,
   b.created_at,
   b.finished_at,
+  b.vcpu,
+  b.ram_mb,
+  b.total_disk_size_mb,
+  b.envd_version,
   eba.env_id AS template_id,
   COALESCE(ea.alias, '') AS template_alias
 FROM public.env_builds b
@@ -38,6 +42,10 @@ SELECT
   b.reason,
   b.created_at,
   b.finished_at,
+  b.vcpu,
+  b.ram_mb,
+  b.total_disk_size_mb,
+  b.envd_version,
   eba.env_id AS template_id,
   COALESCE(ea.alias, '') AS template_alias
 FROM public.env_builds b
@@ -72,6 +80,10 @@ SELECT
   b.reason,
   b.created_at,
   b.finished_at,
+  b.vcpu,
+  b.ram_mb,
+  b.total_disk_size_mb,
+  b.envd_version,
   eba.env_id AS template_id,
   COALESCE(ea.alias, '') AS template_alias
 FROM public.env_builds b
@@ -106,6 +118,10 @@ SELECT
   b.reason,
   b.created_at,
   b.finished_at,
+  b.vcpu,
+  b.ram_mb,
+  b.total_disk_size_mb,
+  b.envd_version,
   eba.env_id AS template_id,
   COALESCE(ea.alias, '') AS template_alias
 FROM public.env_builds b

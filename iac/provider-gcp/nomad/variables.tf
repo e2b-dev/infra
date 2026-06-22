@@ -1,7 +1,3 @@
-variable "envd_timeout" {
-  type = string
-}
-
 variable "prefix" {
   type = string
 }
@@ -102,33 +98,6 @@ variable "api_resources_cpu_count" {
 
 variable "api_resources_memory_mb" {
   type = number
-}
-
-variable "api_secret" {
-  type = string
-}
-
-variable "dashboard_api_admin_token_secret_name" {
-  type = string
-}
-
-variable "user_profile_provider" {
-  type    = string
-  default = ""
-}
-
-variable "ory_sdk_url" {
-  type    = string
-  default = ""
-}
-
-variable "ory_issuer_url" {
-  type    = string
-  default = ""
-}
-
-variable "ory_project_api_token_secret_name" {
-  type = string
 }
 
 variable "environment" {
@@ -270,14 +239,6 @@ variable "loki_service_port" {
   })
 }
 
-variable "redis_cluster_url_secret_version" {
-  type = any
-}
-
-variable "redis_tls_ca_base64_secret_version" {
-  type = any
-}
-
 # Docker reverse proxy
 variable "docker_reverse_proxy_port" {
   type = object({
@@ -287,8 +248,10 @@ variable "docker_reverse_proxy_port" {
   })
 }
 
-variable "docker_reverse_proxy_service_account_key" {
-  type = string
+variable "docker_reverse_proxy_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 # Orchestrator
@@ -304,15 +267,15 @@ variable "fc_env_pipeline_bucket_name" {
   type = string
 }
 
-variable "allow_sandbox_internal_cidrs" {
-  type        = string
-  description = "Comma-separated CIDRs to allow through the sandbox firewall deny list"
-  default     = ""
-}
-
 # Template manager
 variable "template_manager_port" {
   type = number
+}
+
+variable "template_manager_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "template_manages_clusters_size_gt_1" {
@@ -482,12 +445,14 @@ variable "filestore_cache_cleanup_max_retries" {
   description = "Maximum number of continuous error or miss retries before giving up"
 }
 
-variable "dockerhub_remote_repository_url" {
-  type = string
+variable "filestore_cleanup_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
-variable "persistent_volume_mounts" {
-  type = map(string)
+variable "dockerhub_remote_repository_url" {
+  type = string
 }
 
 variable "default_persistent_volume_type" {
@@ -501,29 +466,10 @@ variable "dashboard_api_count" {
   default = 0
 }
 
-variable "supabase_db_connection_string_secret_version" {
-  type = any
-}
-
-variable "auth_provider_config" {
-  type = object({
-    jwt = optional(list(object({
-      issuer = object({
-        url                 = string
-        discoveryURL        = optional(string)
-        audiences           = list(string)
-        audienceMatchPolicy = optional(string)
-      })
-      cacheDuration = optional(string)
-    })))
-    legacy = optional(object({
-      hmac = object({
-        secrets = list(string)
-      })
-    }))
-  })
+variable "dashboard_api_env_vars" {
+  type      = map(string)
+  default   = {}
   sensitive = true
-  default   = null
 }
 
 variable "volume_token_issuer" {

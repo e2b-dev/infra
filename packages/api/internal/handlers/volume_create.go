@@ -43,6 +43,15 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 		return
 	}
 
+	// Fail fast before allocating any resources if token signing is not configured,
+	// otherwise we would persist a volume that we cannot mint a content token for.
+	if !a.config.VolumesToken.IsConfigured() {
+		a.sendAPIStoreError(c, http.StatusNotImplemented, ErrVolumesTokenNotConfigured.Error())
+		telemetry.ReportError(ctx, "volumes content token signing is not configured", ErrVolumesTokenNotConfigured)
+
+		return
+	}
+
 	// parse body
 	body, err := ginutils.ParseBody[api.PostVolumesJSONRequestBody](ctx, c)
 	if err != nil {
@@ -148,10 +157,10 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 		Set("volume_type", volumeType),
 	)
 
-	token, err := generateVolumeContentToken(a.config.VolumesToken, volume, team)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Volume created, but failed to generate volume content token")
-		telemetry.ReportCriticalError(ctx, "Failed to generate volume content token", err)
+	token, apiErr := generateVolumeContentToken(a.config.VolumesToken, volume, team)
+	if apiErr != nil {
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportCriticalError(ctx, apiErr.ClientMsg, apiErr.Err)
 
 		return
 	}
@@ -181,7 +190,7 @@ func isValidVolumeName(name string) bool {
 }
 
 func (a *APIStore) createVolume(ctx context.Context, clusterID uuid.UUID, volume queries.Volume) error {
-	return a.executeOnOrchestratorByClusterID(ctx, clusterID, func(ctx context.Context, client *clusters.GRPCClient) error {
+	return a.executeOnOrchestratorByClusterID(ctx, clusterID, volume, func(ctx context.Context, client *clusters.GRPCClient) error {
 		_, err := client.Volumes.CreateVolume(ctx, &orchestrator.CreateVolumeRequest{
 			Volume: toVolumeKey(volume),
 		})

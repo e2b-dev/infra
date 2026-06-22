@@ -25,16 +25,6 @@ moved {
 }
 
 moved {
-  from = google_secret_manager_secret.supabase_jwt_secrets
-  to   = module.init.google_secret_manager_secret.supabase_jwt_secrets
-}
-
-moved {
-  from = google_secret_manager_secret_version.supabase_jwt_secrets
-  to   = module.init.google_secret_manager_secret_version.supabase_jwt_secrets
-}
-
-moved {
   from = module.nomad.random_password.clickhouse_password
   to   = random_password.clickhouse_password
 }

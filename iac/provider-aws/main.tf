@@ -80,23 +80,8 @@ locals {
   logs_proxy_port       = 30006
   otel_collector_port   = 4317
 
-  # Filter out empty / too-short HMAC secrets so that placeholder values left in
-  # AWS Secrets Manager on a fresh deploy don't get fed to legacy.NewVerifier,
-  # which rejects secrets shorter than 16 bytes and would fatal the api job.
-  legacy_hmac_secrets = [
-    for s in split(",", trimspace(module.init.supabase_jwt_secrets)) : s
-    if length(s) >= 16
-  ]
-  auth_provider_config = length(local.legacy_hmac_secrets) > 0 ? {
+  auth_provider_config = {
     jwt = []
-    legacy = {
-      hmac = {
-        secrets = local.legacy_hmac_secrets
-      }
-    }
-    } : {
-    jwt    = []
-    legacy = null
   }
 
   api_pool_name          = "api"
@@ -173,6 +158,52 @@ locals {
     API_INTERNAL_GRPC_ADDRESS = "api-internal-grpc.service.consul:${var.api_internal_grpc_port}"
     LAUNCH_DARKLY_API_KEY     = module.init.launch_darkly_api_key
   }, var.client_proxy_env_vars)
+
+  orchestrator_env_vars = merge({
+    LOGS_COLLECTOR_ADDRESS       = "http://localhost:${local.logs_proxy_port}"
+    ENVIRONMENT                  = var.environment
+    ENVD_TIMEOUT                 = var.envd_timeout
+    TEMPLATE_BUCKET_NAME         = module.init.fc_template_bucket_name
+    OTEL_COLLECTOR_GRPC_ENDPOINT = "localhost:${local.otel_collector_port}"
+    ALLOW_SANDBOX_INTERNAL_CIDRS = var.allow_sandbox_internal_cidrs
+    CLICKHOUSE_CONNECTION_STRING = local.clickhouse_connection_string
+    REDIS_POOL_SIZE              = "10"
+    REDIS_CLUSTER_URL            = local.redis_cluster_url
+    REDIS_TLS_CA_BASE64          = local.redis_tls_ca_base64
+    REDIS_URL                    = local.redis_url
+    GIN_MODE                     = "release"
+    CONSUL_TOKEN                 = module.init.cluster.consul_acl_token
+    DOMAIN_NAME                  = var.domain_name
+    SHARED_CHUNK_CACHE_PATH      = ""
+    ORCHESTRATOR_SERVICES        = "orchestrator"
+    PROVIDER                     = "aws"
+    BUILD_CACHE_BUCKET_NAME      = module.init.fc_template_build_cache_bucket_name
+    LAUNCH_DARKLY_API_KEY        = module.init.launch_darkly_api_key
+    ARTIFACTS_REGISTRY_PROVIDER  = "AWS_ECR"
+    STORAGE_PROVIDER             = "AWSBucket"
+    AWS_REGION                   = data.aws_region.current.id
+    AWS_DOCKER_REPOSITORY_NAME   = module.init.custom_environments_repository_name
+  }, var.orchestrator_env_vars)
+
+  template_manager_env_vars = merge({
+    CONSUL_TOKEN                 = module.init.cluster.consul_acl_token
+    ARTIFACTS_REGISTRY_PROVIDER  = "AWS_ECR"
+    STORAGE_PROVIDER             = "AWSBucket"
+    AWS_REGION                   = data.aws_region.current.id
+    AWS_DOCKER_REPOSITORY_NAME   = module.init.custom_environments_repository_name
+    API_SECRET                   = module.init.api_secret
+    ENVIRONMENT                  = var.environment
+    DOMAIN_NAME                  = var.domain_name
+    TEMPLATE_BUCKET_NAME         = module.init.fc_template_bucket_name
+    BUILD_CACHE_BUCKET_NAME      = module.init.fc_template_build_cache_bucket_name
+    OTEL_COLLECTOR_GRPC_ENDPOINT = "localhost:${local.otel_collector_port}"
+    LOGS_COLLECTOR_ADDRESS       = "http://localhost:${local.logs_proxy_port}"
+    ORCHESTRATOR_SERVICES        = "template-manager"
+    REDIS_POOL_SIZE              = "10"
+    CLICKHOUSE_CONNECTION_STRING = local.clickhouse_connection_string
+    GIN_MODE                     = "release"
+    LAUNCH_DARKLY_API_KEY        = module.init.launch_darkly_api_key
+  }, var.template_manager_env_vars)
 }
 
 module "redis" {
@@ -296,24 +327,19 @@ module "nomad" {
   client_proxy_env_vars        = local.client_proxy_env_vars
 
   orchestrator_node_pool              = local.client_pool_name
-  allow_sandbox_internal_cidrs        = var.allow_sandbox_internal_cidrs
   orchestrator_port                   = var.orchestrator_port
   orchestrator_proxy_port             = var.orchestrator_proxy_port
-  envd_timeout                        = var.envd_timeout
   fc_env_pipeline_bucket_name         = module.init.fc_env_pipeline_bucket_name
   template_bucket_name                = module.init.fc_template_bucket_name
   build_cache_bucket_name             = module.init.fc_template_build_cache_bucket_name
   custom_environments_repository_name = module.init.custom_environments_repository_name
+  orchestrator_env_vars               = local.orchestrator_env_vars
+  template_manager_env_vars           = local.template_manager_env_vars
 
   build_node_pool    = local.build_pool_name
   build_cluster_size = var.build_cluster_size
-  api_secret         = module.init.api_secret
-
-  redis_managed       = var.redis_managed
-  redis_port          = local.redis_port
-  redis_url           = local.redis_url
-  redis_cluster_url   = local.redis_cluster_url
-  redis_tls_ca_base64 = local.redis_tls_ca_base64
+  redis_managed      = var.redis_managed
+  redis_port         = local.redis_port
 
   loki_bucket_name = module.init.loki_bucket_name
   loki_port        = local.loki_port

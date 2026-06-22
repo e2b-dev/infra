@@ -111,7 +111,7 @@ func (p *part) addFrame(ctx context.Context, buf inputBuf, n int, pool *sync.Poo
 	})
 }
 
-func compressStream(ctx context.Context, in io.Reader, cfg CompressConfig, uploader partUploader, maxUploadConcurrency int, sink FrameSink) (*FrameTable, [32]byte, error) {
+func compressStream(ctx context.Context, in io.Reader, cfg CompressConfig, uploader partUploader, maxUploadConcurrency int, sink FrameSink) (*FullFrameTable, [32]byte, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -179,7 +179,7 @@ func compressStream(ctx context.Context, in io.Reader, cfg CompressConfig, uploa
 		return nil, [32]byte{}, fmt.Errorf("complete upload: %w", err)
 	}
 
-	ft := NewFrameTable(cfg.CompressionType(), frameSizes)
+	ft := NewFullFrameTable(cfg.CompressionType(), frameSizes)
 
 	return ft, sum256(hasher), nil
 }

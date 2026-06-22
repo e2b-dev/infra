@@ -75,6 +75,11 @@ type SandboxNetworkEgressConfig struct {
 	AllowedAddresses []string                        `json:"allowedAddresses,omitempty"`
 	DeniedAddresses  []string                        `json:"deniedAddresses,omitempty"`
 	Rules            map[string][]SandboxNetworkRule `json:"rules,omitempty"`
+
+	// SOCKS5 BYOP egress proxy configuration.
+	EgressProxyAddress  string `json:"egressProxyAddress,omitempty"`
+	EgressProxyUsername string `json:"egressProxyUsername,omitempty"`
+	EgressProxyPassword string `json:"egressProxyPassword,omitempty"`
 }
 
 const AllowPublicAccessDefault = true
@@ -113,6 +118,13 @@ type PausedSandboxConfig struct {
 	Network      *SandboxNetworkConfig       `json:"network,omitempty"`
 	AutoResume   *SandboxAutoResumeConfig    `json:"autoResume,omitempty"`
 	VolumeMounts []*SandboxVolumeMountConfig `json:"volumeMounts,omitempty"`
+
+	// FilesystemOnly marks a snapshot that persists only the rootfs (no memory
+	// snapshot); resuming it cold-boots from disk. The orchestrator decides
+	// reboot-vs-resume from the snapshot's own metadata.json; this flag lets the
+	// API gate implicit-resume paths (auto-resume, /connect) without a round-trip.
+	// Pre-existing rows omit the key and decode to false (a memory snapshot).
+	FilesystemOnly bool `json:"filesystemOnly,omitempty"`
 }
 
 func (c PausedSandboxConfig) Value() (driver.Value, error) {

@@ -2,6 +2,12 @@ name: Run tests on PRs
 
 on:
   workflow_call:
+    inputs:
+      run-tests:
+        type: boolean
+        description: "Whether to run unit tests"
+        required: false
+        default: true
     secrets:
       CODECOV_TOKEN: { required: false }
 
@@ -10,7 +16,8 @@ permissions:
 
 jobs:
   run-tests:
-    name: Run tests for ${{ matrix.package }}
+    name: Run unit test shards
+    if: ${{ inputs.run-tests == true }}
     runs-on: infra-tests
     env:
       GIN_MODE: test
@@ -154,23 +161,22 @@ jobs:
           disable_search: true
           report_type: test_results
 
-  validate-iac:
-    name: Validate terraform
-    runs-on: ubuntu-24.04
+  unit_tests:
+    needs: run-tests
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: Parse .tool-versions
-        uses: wistia/parse-tool-versions@v2.1.1
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "${{ env.TERRAFORM }}"
-
-      - name: Validate terraform
-        working-directory: ./iac/provider-gcp
+      - name: Aggregate unit test result
         run: |
-          terraform init -backend=false
-          terraform validate
+          if [[ "${{ inputs.run-tests }}" != "true" ]]; then
+            echo "unit tests skipped because test inputs did not change"
+            exit 0
+          fi
+
+          if [[ "${{ needs.run-tests.result }}" != "success" ]]; then
+            echo "unit tests result: ${{ needs.run-tests.result }}"
+            exit 1
+          fi
+
+          echo "all unit test shards succeeded"

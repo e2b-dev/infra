@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/e2b-dev/infra/packages/api/internal"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
@@ -89,6 +90,16 @@ func buildEgressConfig(allowedEntries, deniedEntries []string, rules map[string]
 	}
 }
 
+// applyEgressProxy copies BYOP SOCKS5 fields from src to dst. No-op on nil.
+func applyEgressProxy(dst *orchestrator.SandboxNetworkEgressConfig, src *types.SandboxNetworkEgressConfig) {
+	if dst == nil || src == nil {
+		return
+	}
+	dst.EgressProxyAddress = src.EgressProxyAddress
+	dst.EgressProxyUsername = src.EgressProxyUsername
+	dst.EgressProxyPassword = src.EgressProxyPassword
+}
+
 // buildNetworkConfig constructs the orchestrator network configuration from the input parameters
 func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess *bool, trafficAccessToken *string) *orchestrator.SandboxNetworkConfig {
 	orchNetwork := &orchestrator.SandboxNetworkConfig{
@@ -99,7 +110,9 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 	}
 
 	if network != nil && network.Egress != nil {
-		orchNetwork.Egress = buildEgressConfig(network.Egress.AllowedAddresses, network.Egress.DeniedAddresses, network.Egress.Rules)
+		egress := buildEgressConfig(network.Egress.AllowedAddresses, network.Egress.DeniedAddresses, network.Egress.Rules)
+		applyEgressProxy(egress, network.Egress)
+		orchNetwork.Egress = egress
 	}
 
 	if network != nil && network.Ingress != nil {
@@ -299,9 +312,9 @@ func (o *Orchestrator) CreateSandbox(
 	nodeClusterID := clusters.WithClusterFallback(team.ClusterID)
 	clusterNodes := o.GetClusterNodes(nodeClusterID)
 
-	labelFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx, featureflags.SandboxLabelBasedSchedulingFlag, featureflags.TeamContext(team.ID.String()), featureflags.SandboxContext(sandboxID))
+	allLabels, labelFilteringEnabled := o.generateRequiredNodeLabels(ctx, sandboxID, team, sbxData)
 
-	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, team.SandboxSchedulingLabels)
+	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, allLabels)
 	if err != nil {
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,
@@ -370,6 +383,7 @@ func (o *Orchestrator) CreateSandbox(
 				sbxToRemove,
 				sandbox.StateActionKill,
 				sandbox.KillReasonUnknown,
+				false, // kill: no snapshot
 			)
 			if killErr != nil {
 				logger.L().Error(ctx, "Error removing sandbox",
@@ -388,4 +402,36 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	return sbx, nil
+}
+
+func (o *Orchestrator) generateRequiredNodeLabels(ctx context.Context, sandboxID string, team *teamtypes.Team, sbxData SandboxMetadata) ([]string, bool) {
+	labelFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx, featureflags.SandboxLabelBasedSchedulingFlag, featureflags.TeamContext(team.ID.String()), featureflags.SandboxContext(sandboxID))
+	if !labelFilteringEnabled {
+		return nil, false
+	}
+
+	// if the team doesn't require a specific label, we default to "default",
+	// which corresponds to all unoptimized nodes (nodes that don't expect
+	// high cpu, high memory, long lifespan, etc)
+	allLabels := append([]string{}, team.SandboxSchedulingLabels...)
+	if len(allLabels) == 0 {
+		allLabels = append(allLabels, "default")
+	}
+
+	clusterID := clusters.WithClusterFallback(team.ClusterID)
+	volumeFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx,
+		featureflags.SandboxVolumeLabelBasedSchedulingFlag,
+		featureflags.TeamContext(team.ID.String()),
+		featureflags.ClusterContext(clusterID),
+		featureflags.SandboxContext(sandboxID),
+	)
+
+	if volumeFilteringEnabled {
+		for _, mount := range sbxData.VolumeMounts {
+			label := internal.MakeVolumeTypeLabel(mount.GetType())
+			allLabels = append(allLabels, label)
+		}
+	}
+
+	return allLabels, labelFilteringEnabled
 }

@@ -111,7 +111,7 @@ Client → Client-Proxy → API (REST) ⟷ PostgreSQL
 **API (`packages/api/`)** - REST API using Gin framework
 - Entry point: `main.go`
 - Core logic: `internal/handlers/store.go` (APIStore)
-- Authentication: JWT via Supabase in `internal/auth/`
+- Authentication: API keys, access tokens, and OIDC auth provider JWTs
 - OpenAPI code generation: `internal/api/*.gen.go`
 - Port: 80
 

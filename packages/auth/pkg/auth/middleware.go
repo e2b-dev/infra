@@ -98,7 +98,7 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, ginCtx *gin.C
 			return validationError.Err
 		}
 
-		return fmt.Errorf("%s\n%s (%w)", a.errorMessage, validationError.ClientMsg, validationError.Err)
+		return fmt.Errorf("%s\n%s", a.errorMessage, validationError.ClientMsg)
 	}
 
 	telemetry.ReportEvent(ctx, "api key validated")
@@ -172,32 +172,6 @@ func NewAuthProviderBearerAuthenticator(validationFunc func(ctx context.Context,
 	}
 }
 
-// NewSupabaseTokenAuthenticator creates an authenticator for the Supabase1TokenAuth security scheme (X-Supabase-Token header).
-func NewSupabaseTokenAuthenticator(validationFunc func(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *APIError)) Authenticator {
-	return &commonAuthenticator[uuid.UUID]{
-		schemeName: "Supabase1TokenAuth",
-		header: headerKey{
-			name: HeaderSupabaseToken,
-		},
-		validationFunc: validationFunc,
-		setContextFunc: setUserID,
-		errorMessage:   "Invalid Supabase token.",
-	}
-}
-
-// NewSupabaseTeamAuthenticator creates an authenticator for the Supabase2TeamAuth security scheme (X-Supabase-Team header).
-func NewSupabaseTeamAuthenticator(validationFunc func(ctx context.Context, ginCtx *gin.Context, token string) (*types.Team, *APIError)) Authenticator {
-	return &commonAuthenticator[*types.Team]{
-		schemeName: "Supabase2TeamAuth",
-		header: headerKey{
-			name: HeaderSupabaseTeam,
-		},
-		validationFunc: validationFunc,
-		setContextFunc: setTeamInfo,
-		errorMessage:   "Invalid Supabase token teamID.",
-	}
-}
-
 // NewAuthProviderTeamAuthenticator creates an authenticator for the AuthProviderTeamAuth security scheme (X-Team-Id header).
 func NewAuthProviderTeamAuthenticator(validationFunc func(ctx context.Context, ginCtx *gin.Context, token string) (*types.Team, *APIError)) Authenticator {
 	return &commonAuthenticator[*types.Team]{
@@ -211,15 +185,39 @@ func NewAuthProviderTeamAuthenticator(validationFunc func(ctx context.Context, g
 	}
 }
 
-// NewAdminTokenAuthenticator creates an authenticator for the AdminTokenAuth security scheme (X-Admin-Token header).
-func NewAdminTokenAuthenticator(adminToken string) Authenticator {
+// NewAdminApiKeyAuthenticator creates an authenticator for the AdminApiKeyAuth security scheme (X-Admin-Token header).
+func NewAdminApiKeyAuthenticator(adminToken string) Authenticator {
+	return newAdminApiKeyAuthenticator("AdminApiKeyAuth", adminToken)
+}
+
+func newAdminApiKeyAuthenticator(schemeName, adminToken string) Authenticator {
 	return &commonAuthenticator[struct{}]{
-		schemeName: "AdminTokenAuth",
+		schemeName: schemeName,
 		header: headerKey{
 			name: HeaderAdminToken,
 		},
 		validationFunc: adminValidationFunction(adminToken),
 		errorMessage:   "Invalid Access token.",
+	}
+}
+
+// NewAdminTeamAuthenticator creates an authenticator for AdminTeamAuth (X-Team-ID header).
+func NewAdminTeamAuthenticator(validationFunc func(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *APIError)) Authenticator {
+	return newAdminTeamAuthenticator("AdminTeamAuth", validationFunc)
+}
+
+func newAdminTeamAuthenticator(
+	schemeName string,
+	validationFunc func(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *APIError),
+) Authenticator {
+	return &commonAuthenticator[*types.Team]{
+		schemeName: schemeName,
+		header: headerKey{
+			name: HeaderTeamID,
+		},
+		validationFunc: validationFunc,
+		setContextFunc: setTeamInfo,
+		errorMessage:   "Invalid admin token teamID.",
 	}
 }
 

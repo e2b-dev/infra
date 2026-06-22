@@ -3,11 +3,14 @@ package utils
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
+	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 )
@@ -66,23 +69,42 @@ DELETE FROM users_teams WHERE user_id = $1 and team_id = $2
 	})
 }
 
-func CreateAPIKey(t *testing.T, ctx context.Context, c *api.ClientWithResponses, userID string, teamID uuid.UUID) string {
+func CreateAPIKey(t *testing.T, ctx context.Context, _ *api.ClientWithResponses, userID string, teamID uuid.UUID) string {
 	t.Helper()
 
-	apiKey, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
-		Name: uuid.New().String(),
-	}, setup.WithSupabaseToken(t, userID), setup.WithSupabaseTeam(t, teamID.String()))
+	db := setup.GetTestDBClient(t) //nolint:contextcheck // Test DB setup is bound to t.Context; request ctx is for the API key row lifecycle.
+	apiKey, err := keys.GenerateKey(keys.ApiKeyPrefix)
 	require.NoError(t, err)
-	require.NotNil(t, apiKey.JSON201)
+
+	var createdBy *uuid.UUID
+	if userID != "" {
+		parsedUserID, err := uuid.Parse(userID)
+		require.NoError(t, err)
+		createdBy = &parsedUserID
+	}
+
+	created, err := db.AuthDb.Write.CreateTeamAPIKey(ctx, authqueries.CreateTeamAPIKeyParams{
+		TeamID:           teamID,
+		CreatedBy:        createdBy,
+		ApiKeyHash:       apiKey.HashedValue,
+		ApiKeyPrefix:     apiKey.Masked.Prefix,
+		ApiKeyLength:     int32(apiKey.Masked.ValueLength),
+		ApiKeyMaskPrefix: apiKey.Masked.MaskedValuePrefix,
+		ApiKeyMaskSuffix: apiKey.Masked.MaskedValueSuffix,
+		Name:             uuid.New().String(),
+	})
+	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		_, _ = c.DeleteApiKeysApiKeyIDWithResponse(
-			ctx,
-			apiKey.JSON201.Id.String(),
-			setup.WithSupabaseToken(t, userID),
-			setup.WithSupabaseTeam(t, teamID.String()),
-		)
+		_, _ = db.AuthDb.Write.DeleteTeamAPIKey(ctx, authqueries.DeleteTeamAPIKeyParams{
+			ID:     created.ID,
+			TeamID: teamID,
+		})
 	})
 
-	return apiKey.JSON201.Key
+	return apiKey.PrefixedRawValue
+}
+
+func MatchesAPIKeyMask(apiKey string, prefix string, maskPrefix string, maskSuffix string) bool {
+	return strings.HasPrefix(apiKey, prefix+maskPrefix) && strings.HasSuffix(apiKey, maskSuffix)
 }
