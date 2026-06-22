@@ -33,6 +33,12 @@ const (
 type source struct {
 	upstream           storage.RangeOpener
 	fullDiffFrameTable *storage.FullFrameTable
+	// dataPath is the storage object upstream reads from; the soft-delete check
+	// reads the tombstone off it directly (the object that gets pruned), not the
+	// header. Empty when there is no storage path to check. It travels with the
+	// upstream it was opened from, so a peer transition (uncompressed probe ->
+	// authoritative compressed object) swaps both atomically.
+	dataPath string
 }
 
 func isPeerRouted(v any) bool {
@@ -48,12 +54,7 @@ type StorageDiff struct {
 	buildID           string
 	diffType          DiffType
 	storageObjectType storage.SeekableObjectType
-	// dataPath is the storage object this diff reads from; the soft-delete
-	// check reads the tombstone off it directly (the object that gets pruned),
-	// not the header. It can change on a peer transition (uncompressed probe ->
-	// authoritative compressed object), so it is atomic and the check reruns.
-	dataPath atomic.Pointer[string]
-	flags    *featureflags.Client
+	flags             *featureflags.Client
 
 	blockSize   int64
 	metrics     blockmetrics.Metrics
@@ -62,12 +63,12 @@ type StorageDiff struct {
 	source    atomic.Pointer[source]
 	refreshMu sync.Mutex
 
-	// softDeletedPath holds the dataPath pointer the background check found
+	// softDeletedPath holds the storage path the background check found
 	// tombstoned (only under enforcement); reads fail closed while it equals the
-	// current dataPath. Keying on the path pointer (not a bool) makes the latch
-	// race-free: a stale check that stored a superseded probe path can never
-	// match the current dataPath, and a peer-transition repoint auto-disables
-	// the old verdict without a separate clear.
+	// current source's dataPath. Comparing by path value (not a bool) makes the
+	// latch race-free: a stale check that recorded a superseded probe path can
+	// never match the live dataPath, and a peer-transition repoint to a different
+	// object auto-disables the old verdict without a separate clear.
 	softDeletedPath atomic.Pointer[string]
 }
 
@@ -117,8 +118,7 @@ func newStorageDiff(
 		chunker:           c,
 		cacheKey:          GetDiffStoreKey(buildID, diffType),
 	}
-	d.dataPath.Store(&dataPath)
-	d.source.Store(&source{upstream: upstream, fullDiffFrameTable: initialFT})
+	d.source.Store(&source{upstream: upstream, fullDiffFrameTable: initialFT, dataPath: dataPath})
 
 	return d, nil
 }
@@ -311,21 +311,29 @@ func (b *StorageDiff) ReadAt(ctx context.Context, p []byte, off int64, callerFT 
 	if !errors.As(err, &transErr) {
 		return n, err
 	}
-	if err := waitTransitionBackoff(ctx, transErr); err != nil {
-		return 0, err
-	}
-	if err := b.reloadAfterPeerTransition(ctx); err != nil {
-		return 0, fmt.Errorf("refresh after peer transition: %w", err)
-	}
-	if err := b.softDeleteErr(); err != nil {
-		return 0, err
-	}
-	up, ft, err = b.resolve(ctx, callerFT)
+	up, ft, err = b.recoverFromPeerTransition(ctx, transErr, callerFT)
 	if err != nil {
 		return 0, err
 	}
 
 	return b.chunker.ReadAt(ctx, p, off, up, ft)
+}
+
+// recoverFromPeerTransition handles a PeerTransitionedError surfaced by a read:
+// back off, reload the source, re-check the soft-delete latch (the source's
+// dataPath may have changed during the reload), and re-resolve the upstream/FT.
+func (b *StorageDiff) recoverFromPeerTransition(ctx context.Context, transErr *storage.PeerTransitionedError, callerFT *storage.FrameTable) (storage.RangeOpener, *storage.FrameTable, error) {
+	if err := waitTransitionBackoff(ctx, transErr); err != nil {
+		return nil, nil, err
+	}
+	if err := b.reloadAfterPeerTransition(ctx); err != nil {
+		return nil, nil, fmt.Errorf("refresh after peer transition: %w", err)
+	}
+	if err := b.softDeleteErr(); err != nil {
+		return nil, nil, err
+	}
+
+	return b.resolve(ctx, callerFT)
 }
 
 func (b *StorageDiff) Slice(ctx context.Context, off, length int64, callerFT *storage.FrameTable) ([]byte, error) {
@@ -341,16 +349,7 @@ func (b *StorageDiff) Slice(ctx context.Context, off, length int64, callerFT *st
 	if !errors.As(err, &transErr) {
 		return out, err
 	}
-	if err := waitTransitionBackoff(ctx, transErr); err != nil {
-		return nil, err
-	}
-	if err := b.reloadAfterPeerTransition(ctx); err != nil {
-		return nil, fmt.Errorf("refresh after peer transition: %w", err)
-	}
-	if err := b.softDeleteErr(); err != nil {
-		return nil, err
-	}
-	up, ft, err = b.resolve(ctx, callerFT)
+	up, ft, err = b.recoverFromPeerTransition(ctx, transErr, callerFT)
 	if err != nil {
 		return nil, err
 	}
@@ -470,18 +469,9 @@ func (b *StorageDiff) reloadSourceLocked(ctx context.Context, cause string) erro
 	if err != nil {
 		return fmt.Errorf("reloadSourceLocked: build %s: %w", b.buildID, err)
 	}
-	b.source.Store(&source{upstream: upstream, fullDiffFrameTable: ft})
+	pathChanged := b.source.Load().dataPath != dataPath
+	b.source.Store(&source{upstream: upstream, fullDiffFrameTable: ft, dataPath: dataPath})
 
-	// Re-point to the new pointer when the authoritative object differs from the
-	// one first opened (e.g. a peer probe resolving to a compressed object).
-	// Enforcement keys on the path pointer, so the old object's verdict
-	// (softDeletedPath) stops matching automatically — no explicit clear, no
-	// race with a stale check about to store the superseded path.
-	old := b.dataPath.Load()
-	pathChanged := old == nil || *old != dataPath
-	if pathChanged {
-		b.dataPath.Store(&dataPath)
-	}
 	// Recheck on any path change, and also on a peer transition even if the path
 	// is unchanged: a peer-served object that wasn't in storage at first open
 	// (not_found) may now exist and carry a tombstone the initial check missed.
