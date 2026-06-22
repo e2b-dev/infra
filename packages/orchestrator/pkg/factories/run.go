@@ -113,6 +113,48 @@ type closer struct {
 
 const forceShutdownTimeout = 30 * time.Second
 
+// forceStopWithTimeout runs fn with a context detached from ctx's cancellation
+// (so a cancelled shutdown context doesn't abort the forced stop) but bounded by
+// forceShutdownTimeout.
+func forceStopWithTimeout(ctx context.Context, fn func(context.Context) error) error {
+	forceCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), forceShutdownTimeout)
+	defer cancel()
+
+	return fn(forceCtx)
+}
+
+type orchestratorDrainController struct {
+	orchestrator *server.Server
+	template     *tmplserver.ServerStore
+}
+
+func (d *orchestratorDrainController) StartDraining(ctx context.Context) {
+	if d.orchestrator != nil {
+		d.orchestrator.StartDraining(ctx)
+	}
+	if d.template != nil {
+		d.template.StartDraining(ctx)
+	}
+}
+
+func (d *orchestratorDrainController) ForceStop(ctx context.Context) error {
+	var errs []error
+
+	if d.template != nil {
+		if err := forceStopWithTimeout(ctx, d.template.ForceStop); err != nil {
+			errs = append(errs, fmt.Errorf("force stopping template builds: %w", err))
+		}
+	}
+
+	if d.orchestrator != nil {
+		if err := forceStopWithTimeout(ctx, d.orchestrator.ForceStopSandboxes); err != nil {
+			errs = append(errs, fmt.Errorf("force stopping sandboxes: %w", err))
+		}
+	}
+
+	return errors.Join(errs...)
+}
+
 func isIgnorableSyncError(err error) bool {
 	return errors.Is(err, syscall.EINVAL)
 }
@@ -765,7 +807,10 @@ func run(config cfg.Config, opts Options) (success bool) {
 		closers = append(closers, closer{"template server", tmpl.Close})
 	}
 
-	infoService := service.NewInfoService(serviceInfo, sandboxes, hostMetrics)
+	infoService := service.NewInfoService(serviceInfo, sandboxes, hostMetrics, &orchestratorDrainController{
+		orchestrator: orchestratorService,
+		template:     tmpl,
+	})
 	orchestratorinfo.RegisterInfoServiceServer(grpcServer, infoService)
 
 	grpcHealth := health.NewServer()
@@ -885,10 +930,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	// Wait for services to be drained before closing them
 	if tmpl != nil {
 		forceStopTemplateBuilds := func() error {
-			forceCtx, forceCancel := context.WithTimeout(context.WithoutCancel(ctx), forceShutdownTimeout)
-			defer forceCancel()
-
-			return tmpl.ForceStop(forceCtx)
+			return forceStopWithTimeout(ctx, tmpl.ForceStop)
 		}
 
 		var err error
@@ -909,10 +951,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	}
 
 	forceStopSandboxes := func() {
-		forceCtx, forceCancel := context.WithTimeout(context.WithoutCancel(ctx), forceShutdownTimeout)
-		defer forceCancel()
-
-		forceErr := orchestratorService.ForceStopSandboxes(forceCtx)
+		forceErr := forceStopWithTimeout(ctx, orchestratorService.ForceStopSandboxes)
 		if forceErr != nil {
 			logger.L().Error(ctx, "forced sandbox shutdown failed", zap.Error(forceErr))
 			success = false

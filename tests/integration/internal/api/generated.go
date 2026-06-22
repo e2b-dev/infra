@@ -705,6 +705,9 @@ type NodeStatusChange struct {
 	// ClusterID Identifier of the cluster
 	ClusterID *openapi_types.UUID `json:"clusterID,omitempty"`
 
+	// ForceStop Force stop existing sandboxes and template builds when setting the node status to draining.
+	ForceStop *bool `json:"forceStop,omitempty"`
+
 	// Status Status of the node.
 	// - draining: the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
 	// - standby: the node is not actively used, but it can return to ready and continue serving traffic.
@@ -6624,8 +6627,10 @@ func (r GetNodesNodeIDResponse) ContentType() string {
 type PostNodesNodeIDResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	JSON400      *N400
 	JSON401      *N401
 	JSON404      *N404
+	JSON409      *N409
 	JSON500      *N500
 }
 
@@ -9333,6 +9338,13 @@ func ParsePostNodesNodeIDResponse(rsp *http.Response) (*PostNodesNodeIDResponse,
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest N401
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -9346,6 +9358,13 @@ func ParsePostNodesNodeIDResponse(rsp *http.Response) (*PostNodesNodeIDResponse,
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500
