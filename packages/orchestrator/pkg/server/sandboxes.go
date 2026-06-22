@@ -104,6 +104,12 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		telemetry.WithEnvdVersion(req.GetSandbox().GetEnvdVersion()),
 	)
 
+	releaseSandboxStart, err := s.enterSandboxStart(ctx, "sandbox-create")
+	if err != nil {
+		return nil, err
+	}
+	defer releaseSandboxStart()
+
 	// setup launch darkly
 	ctx = featureflags.AddToContext(
 		ctx,
@@ -686,6 +692,12 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		telemetry.WithSandboxID(in.GetSandboxId()),
 		telemetry.WithBuildID(in.GetBuildId()),
 	)
+
+	releaseSandboxStart, err := s.enterSandboxStart(ctx, "sandbox-checkpoint")
+	if err != nil {
+		return nil, err
+	}
+	defer releaseSandboxStart()
 
 	sbx, ok := s.sandboxFactory.Sandboxes.Get(in.GetSandboxId())
 	if !ok {

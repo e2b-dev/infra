@@ -22,6 +22,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/draingate"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
@@ -64,6 +65,9 @@ const (
 	StartTypeResume = "resume" // resume from a snapshot (the common runtime path)
 	StartTypeReboot = "reboot" // cold boot from a snapshot rootfs (filesystem-only resume)
 )
+
+// ErrFactoryDraining is returned when a sandbox start is attempted after the factory entered drain mode.
+var ErrFactoryDraining = errors.New("sandbox factory is draining")
 
 var SandboxHttpTransport = otelhttp.NewTransport(
 	&http.Transport{
@@ -323,6 +327,8 @@ type Factory struct {
 	hostStatsDelivery hoststats.Delivery
 	cgroupManager     cgroup.Manager
 	egressProxy       network.EgressProxy
+
+	startGate draingate.Gate
 }
 
 func NewFactory(
@@ -349,6 +355,50 @@ func NewFactory(
 
 func (f *Factory) EgressProxy() network.EgressProxy {
 	return f.egressProxy
+}
+
+func (f *Factory) StartDraining(ctx context.Context) {
+	if f == nil {
+		return
+	}
+
+	if f.startGate.StartDraining() {
+		trackedSandboxes := 0
+		if f.Sandboxes != nil {
+			trackedSandboxes = len(f.Sandboxes.LifecycleItems())
+		}
+
+		logger.L().Info(ctx, "sandbox factory entering drain mode", zap.Int("tracked_sandboxes", trackedSandboxes))
+	}
+}
+
+func (f *Factory) Draining() bool {
+	if f == nil {
+		return false
+	}
+
+	return f.startGate.Draining()
+}
+
+func (f *Factory) enterSandboxStart() (func(), error) {
+	release, err := f.startGate.Enter()
+	if errors.Is(err, draingate.ErrDraining) {
+		return nil, ErrFactoryDraining
+	}
+
+	return release, err
+}
+
+func (f *Factory) WaitSandboxStarts(ctx context.Context) error {
+	logger.L().Info(ctx, "waiting for in-flight sandbox factory start operations to finish")
+
+	if err := f.startGate.Wait(ctx); err != nil {
+		return fmt.Errorf("waiting for in-flight sandbox factory start operations: %w", err)
+	}
+
+	logger.L().Info(ctx, "in-flight sandbox factory start operations finished")
+
+	return nil
 }
 
 // PreBootFn is an optional callback invoked after the rootfs is ready but before
@@ -388,6 +438,11 @@ func (f *Factory) CreateSandbox(
 	ctx, span := tracer.Start(ctx, "create sandbox")
 	defer span.End()
 	defer handleSpanError(span, &e)
+	releaseSandboxStart, err := f.enterSandboxStart()
+	if err != nil {
+		return nil, err
+	}
+	defer releaseSandboxStart()
 
 	var createOpts createOptions
 	for _, opt := range opts {
@@ -647,6 +702,11 @@ func (f *Factory) ResumeSandbox(
 	ctx, span := tracer.Start(ctx, "resume sandbox")
 	defer span.End()
 	defer handleSpanError(span, &e)
+	releaseSandboxStart, err := f.enterSandboxStart()
+	if err != nil {
+		return nil, err
+	}
+	defer releaseSandboxStart()
 
 	execCtx, execSpan := startExecutionSpan(ctx)
 
