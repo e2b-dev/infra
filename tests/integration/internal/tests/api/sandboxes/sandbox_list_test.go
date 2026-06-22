@@ -77,6 +77,58 @@ func TestSandboxListWithFilter(t *testing.T) {
 	assert.Equal(t, sbx.SandboxID, (*listResponse.JSON200)[0].SandboxID)
 }
 
+func TestSandboxListFilterByTemplate(t *testing.T) {
+	t.Parallel()
+	c := setup.GetAPIClient()
+
+	// Scope the test to our own sandboxes via unique metadata.
+	metadataKey := "uniqueIdentifier"
+	metadataValue := id.Generate()
+	metadataString := fmt.Sprintf("%s=%s", metadataKey, metadataValue)
+
+	// One running and one paused sandbox, both from the default template.
+	running := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
+	paused := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
+	pauseSandbox(t, c, paused.SandboxID)
+
+	templateID := setup.SandboxTemplateID
+
+	// Filter by the real template: both sandboxes are returned.
+	listResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
+		State:      &[]api.SandboxState{api.Running, api.Paused},
+		Metadata:   &metadataString,
+		TemplateID: &templateID,
+	}, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, listResponse.StatusCode(), string(listResponse.Body))
+
+	sandboxIds := sharedUtils.Map(*listResponse.JSON200, func(s api.ListedSandbox) string {
+		return s.SandboxID
+	})
+	assert.Contains(t, sandboxIds, running.SandboxID)
+	assert.Contains(t, sandboxIds, paused.SandboxID)
+	for _, s := range *listResponse.JSON200 {
+		assert.Equal(t, templateID, s.TemplateID)
+	}
+
+	// X-Total-Running counts only the running sandbox for this template.
+	totalHeader := listResponse.HTTPResponse.Header.Get("X-Total-Running")
+	total, err := strconv.Atoi(totalHeader)
+	require.NoError(t, err)
+	assert.Equal(t, 1, total)
+
+	// Filter by a non-existent template: nothing matches.
+	bogusTemplateID := "template-does-not-exist-" + id.Generate()
+	emptyResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
+		State:      &[]api.SandboxState{api.Running, api.Paused},
+		Metadata:   &metadataString,
+		TemplateID: &bogusTemplateID,
+	}, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, emptyResponse.StatusCode())
+	assert.Empty(t, *emptyResponse.JSON200)
+}
+
 func TestSandboxListRunning(t *testing.T) {
 	t.Parallel()
 	c := setup.GetAPIClient()

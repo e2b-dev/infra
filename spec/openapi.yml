@@ -2161,6 +2161,12 @@ paths:
               $ref: "#/components/schemas/SandboxState"
           style: form
           explode: false
+        - name: templateID
+          in: query
+          description: Filter sandboxes by the template ID they were created from
+          required: false
+          schema:
+            type: string
         - $ref: "#/components/parameters/paginationNextToken"
         - $ref: "#/components/parameters/paginationLimit"
       responses:

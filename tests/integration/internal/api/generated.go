@@ -1618,6 +1618,9 @@ type GetV2SandboxesParams struct {
 	// State Filter sandboxes by one or more states
 	State *[]SandboxState `form:"state,omitempty" json:"state,omitempty"`
 
+	// TemplateID Filter sandboxes by the template ID they were created from
+	TemplateID *string `form:"templateID,omitempty" json:"templateID,omitempty"`
+
 	// NextToken Cursor to start the list from
 	NextToken *PaginationNextToken `form:"nextToken,omitempty" json:"nextToken,omitempty"`
 
@@ -5360,6 +5363,18 @@ func NewGetV2SandboxesRequest(server string, params *GetV2SandboxesParams) (*htt
 		if params.State != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "state", *params.State, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "array", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.TemplateID != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "templateID", *params.TemplateID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {

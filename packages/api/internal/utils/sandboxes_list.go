@@ -137,6 +137,26 @@ func FilterSandboxesOnMetadata(sandboxes []PaginatedSandbox, metadata *map[strin
 	return sandboxes
 }
 
+func FilterSandboxesOnTemplate(sandboxes []PaginatedSandbox, templateID *string) []PaginatedSandbox {
+	if templateID == nil || *templateID == "" {
+		return sandboxes
+	}
+
+	// Filter instances to match the template ID
+	n := 0
+	for _, sbx := range sandboxes {
+		if sbx.TemplateID == *templateID {
+			sandboxes[n] = sbx
+			n++
+		}
+	}
+
+	// Trim slice
+	sandboxes = sandboxes[:n]
+
+	return sandboxes
+}
+
 func parseFilters(query string) (map[string]string, error) {
 	query, err := url.QueryUnescape(query)
 	if err != nil {

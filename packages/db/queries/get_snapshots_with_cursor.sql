@@ -30,6 +30,7 @@ WHERE
     s.team_id = @team_id
     -- The order here is important, we want started_at descending, but sandbox_id ascending
     AND s.metadata @> @metadata
+    AND (sqlc.narg('base_env_id')::text IS NULL OR s.base_env_id = sqlc.narg('base_env_id'))
     AND (s.sandbox_started_at, @cursor_id::text) < (@cursor_time, s.sandbox_id)
 ORDER BY s.sandbox_started_at DESC, s.sandbox_id ASC
 LIMIT $1;
