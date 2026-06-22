@@ -45,20 +45,15 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 
 	// The request body is optional — existing callers send none. Default to a
 	// full memory snapshot; memory:false requests a filesystem-only snapshot.
-	// Only parse when a body is actually present (ContentLength > 0): a zero or
-	// unknown (-1) length means no body, and ParseBody would reject an empty one.
-	filesystemOnly := false
-	if c.Request.ContentLength > 0 {
-		body, bindErr := ginutils.ParseBody[api.PostSandboxesSandboxIDPauseJSONRequestBody](ctx, c)
-		if bindErr != nil {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", bindErr))
+	// ParseOptionalBody tolerates an absent/empty body and parses a present one
+	// regardless of Content-Length (chunked requests report -1 even with a body).
+	body, bindErr := ginutils.ParseOptionalBody[api.PostSandboxesSandboxIDPauseJSONRequestBody](ctx, c)
+	if bindErr != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", bindErr))
 
-			return
-		}
-		if body.Memory != nil && !*body.Memory {
-			filesystemOnly = true
-		}
+		return
 	}
+	filesystemOnly := body.Memory != nil && !*body.Memory
 
 	pause.LogInitiated(ctx, sandboxID, teamID.String(), pause.ReasonRequest)
 
