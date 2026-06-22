@@ -8,12 +8,13 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 )
 
 type fakeResource struct {
@@ -303,7 +304,7 @@ func TestSwitcher_WithMeter(t *testing.T) {
 	ff, source := newTestFeatureFlags(t)
 	flag := featureflags.NewStringFlag("test", "")
 
-	meter := noop.NewMeterProvider().Meter("test")
+	meter := noop.NewMeterProvider().Meter("github.com/e2b-dev/infra/packages/shared/pkg/utils/switching")
 	s, err := New[*fakeResource](t.Context(), ff, flag, "default", nil, func(dsn string) (*fakeResource, error) {
 		return &fakeResource{id: dsn}, nil
 	}, WithMeter[*fakeResource](meter))
