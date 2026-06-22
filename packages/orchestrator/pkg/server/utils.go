@@ -5,7 +5,6 @@ package server
 import (
 	"context"
 	"errors"
-	"time"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -15,8 +14,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
-
-const sandboxStartWaitPollInterval = 50 * time.Millisecond
 
 // enterSandboxStart admits a sandbox start operation through the single factory
 // drain gate and returns a context marked as holding the gate, so the nested

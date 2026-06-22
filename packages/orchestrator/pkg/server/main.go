@@ -336,6 +336,8 @@ func (s *Server) DrainSandboxes(ctx context.Context) error {
 func (s *Server) ForceStopSandboxes(ctx context.Context) error {
 	// Drain the shared factory gate so no new starts can enter while shutdown proceeds.
 	s.StartDraining(ctx)
+	// stopped dedups across the loop's repeated passes so a lifecycle that is
+	// still present in successive snapshots is only force-closed once.
 	stopped := make(map[string]struct{})
 	var errs []error
 
@@ -392,12 +394,21 @@ func (s *Server) ForceStopSandboxes(ctx context.Context) error {
 		zap.Int("sandbox_count", len(s.sandboxFactory.Sandboxes.LifecycleItems())),
 	)
 
-	errs = append(errs, forceStopSandboxesUntilStartsFinish(
-		ctx,
-		s.sandboxFactory.Sandboxes.LifecycleItems,
-		forceStop,
-		s.sandboxFactory.WaitSandboxStarts,
-	)...)
+	// Forced shutdown must make progress immediately: close already-running
+	// sandboxes right away rather than first blocking on in-flight starts, so one
+	// slow or stuck start cannot starve cleanup of live workloads. Then wait for
+	// in-flight starts to finish and do a final pass for any sandbox that became
+	// visible during the wait. forceStop dedups by sandbox/lifecycle so each is
+	// closed only once. forceStop returns a non-nil error only on context
+	// cancellation (close failures are accumulated into errs), so short-circuit
+	// the wait and final pass in that case.
+	if err := forceStop(s.sandboxFactory.Sandboxes.LifecycleItems()); err != nil {
+		errs = append(errs, err)
+	} else if err := s.sandboxFactory.WaitSandboxStarts(ctx); err != nil {
+		errs = append(errs, err)
+	} else if err := forceStop(s.sandboxFactory.Sandboxes.LifecycleItems()); err != nil {
+		errs = append(errs, err)
+	}
 
 	if err := s.waitSandboxLifecycles(ctx); err != nil {
 		errs = append(errs, err)
@@ -435,52 +446,6 @@ func drainForceStopSandboxCloseErrors(errCh <-chan error) []error {
 			errs = append(errs, err)
 		default:
 			return errs
-		}
-	}
-}
-
-func forceStopSandboxesUntilStartsFinish(
-	ctx context.Context,
-	lifecycleItems func() []*sandbox.Sandbox,
-	forceStop func([]*sandbox.Sandbox) error,
-	waitSandboxStarts func(context.Context) error,
-) []error {
-	var errs []error
-	waitDone := make(chan error, 1)
-	go func() {
-		waitDone <- waitSandboxStarts(ctx)
-	}()
-
-	ticker := time.NewTicker(sandboxStartWaitPollInterval)
-	defer ticker.Stop()
-
-	for {
-		if err := forceStop(lifecycleItems()); err != nil {
-			errs = append(errs, err)
-
-			select {
-			case waitErr := <-waitDone:
-				if waitErr != nil {
-					errs = append(errs, waitErr)
-				}
-			default:
-			}
-
-			return errs
-		}
-
-		select {
-		case err := <-waitDone:
-			if err != nil {
-				errs = append(errs, err)
-			}
-
-			if err := forceStop(lifecycleItems()); err != nil {
-				errs = append(errs, err)
-			}
-
-			return errs
-		case <-ticker.C:
 		}
 	}
 }

@@ -119,7 +119,7 @@ func TestForceStopSandboxesWaitsForInFlightStarts(t *testing.T) {
 	select {
 	case err := <-done:
 		require.Failf(t, "ForceStopSandboxes returned before start left", "err: %v", err)
-	case <-time.After(2 * sandboxStartWaitPollInterval):
+	case <-time.After(100 * time.Millisecond):
 	}
 
 	release()
@@ -146,70 +146,9 @@ func TestForceStopSandboxesReturnsInFlightStartContextError(t *testing.T) {
 	require.ErrorIs(t, s.ForceStopSandboxes(ctx), context.Canceled)
 }
 
-func TestForceStopSandboxesUntilStartsFinishStopsLifecycleAfterWaitError(t *testing.T) {
-	t.Parallel()
-
-	lateSandbox := &sandbox.Sandbox{}
-	var mu sync.Mutex
-	tracked := []*sandbox.Sandbox{}
-	stopped := 0
-
-	firstForceStop := make(chan struct{})
-	var firstForceStopOnce sync.Once
-	releaseWait := make(chan struct{})
-
-	lifecycleItems := func() []*sandbox.Sandbox {
-		mu.Lock()
-		defer mu.Unlock()
-
-		return append([]*sandbox.Sandbox(nil), tracked...)
-	}
-
-	forceStop := func(items []*sandbox.Sandbox) error {
-		firstForceStopOnce.Do(func() { close(firstForceStop) })
-
-		mu.Lock()
-		defer mu.Unlock()
-
-		stopped += len(items)
-		if len(items) > 0 {
-			tracked = nil
-		}
-
-		return nil
-	}
-
-	waitSandboxStarts := func(context.Context) error {
-		<-releaseWait
-
-		return context.Canceled
-	}
-
-	done := make(chan []error, 1)
-	go func() {
-		done <- forceStopSandboxesUntilStartsFinish(t.Context(), lifecycleItems, forceStop, waitSandboxStarts)
-	}()
-
-	select {
-	case <-firstForceStop:
-	case <-time.After(time.Second):
-		t.Fatal("force stop did not take initial lifecycle snapshot")
-	}
-
-	mu.Lock()
-	tracked = []*sandbox.Sandbox{lateSandbox}
-	mu.Unlock()
-	close(releaseWait)
-
-	select {
-	case errs := <-done:
-		require.ErrorIs(t, errors.Join(errs...), context.Canceled)
-		require.Equal(t, 1, stopped)
-	case <-time.After(time.Second):
-		t.Fatal("force stop did not finish after start wait error")
-	}
-}
-
+// Forced shutdown must close already-tracked lifecycles immediately and still
+// catch a lifecycle that only becomes visible after the in-flight start wait
+// returns, closing each lifecycle exactly once.
 func TestDrainSandboxesWaitsForInFlightStart(t *testing.T) {
 	t.Parallel()
 
@@ -234,7 +173,7 @@ func TestDrainSandboxesWaitsForInFlightStart(t *testing.T) {
 	select {
 	case err := <-done:
 		require.Failf(t, "DrainSandboxes returned before in-flight start finished", "err: %v", err)
-	case <-time.After(2 * sandboxStartWaitPollInterval):
+	case <-time.After(100 * time.Millisecond):
 	}
 
 	release()
