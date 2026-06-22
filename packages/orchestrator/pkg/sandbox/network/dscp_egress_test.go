@@ -35,7 +35,7 @@ func TestCreateNetwork_TagsEgressWithDSCP(t *testing.T) { //nolint:paralleltest 
 	slot, err := NewSlot("dscp-egress-test", idx, config, NewNoopEgressProxy())
 	require.NoError(t, err)
 
-	require.NoError(t, slot.CreateNetwork(context.Background()))
+	require.NoError(t, slot.CreateNetwork(t.Context()))
 	t.Cleanup(func() { _ = slot.RemoveNetwork() })
 
 	rules := dscpMangleRules(t, slot.NamespaceID())
