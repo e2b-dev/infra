@@ -18,6 +18,7 @@ const (
 	SandboxTemplateAttribute           string         = "template-id"
 	SandboxKernelVersionAttribute      string         = "kernel-version"
 	SandboxFirecrackerVersionAttribute string         = "firecracker-version"
+	SandboxEnvdVersionAttribute        string         = "envd-version"
 	// SandboxTypeAttribute distinguishes "sandbox" from "build" runs.
 	SandboxTypeAttribute string = "sandbox-type"
 

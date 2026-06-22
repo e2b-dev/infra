@@ -187,7 +187,7 @@ type RuntimeMetadata struct {
 	SandboxType SandboxType
 }
 
-// sandboxLDContext builds an LD context with kernel/FC-version attributes for
+// sandboxLDContext builds an LD context with envd/kernel/FC-version attributes for
 // per-sandbox flag targeting. Team/template targeting comes from the team and
 // template contexts the caller embeds in ctx.
 func sandboxLDContext(runtime RuntimeMetadata, config *Config) ldcontext.Context {
@@ -196,6 +196,7 @@ func sandboxLDContext(runtime RuntimeMetadata, config *Config) ldcontext.Context
 		SetString(featureflags.SandboxTemplateAttribute, runtime.TemplateID).
 		SetString(featureflags.SandboxKernelVersionAttribute, config.FirecrackerConfig.KernelVersion).
 		SetString(featureflags.SandboxFirecrackerVersionAttribute, config.FirecrackerConfig.FirecrackerVersion).
+		SetString(featureflags.SandboxEnvdVersionAttribute, config.Envd.Version).
 		SetString(featureflags.SandboxTypeAttribute, runtime.SandboxType.String()).
 		Build()
 }
