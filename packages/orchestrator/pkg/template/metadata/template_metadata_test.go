@@ -225,6 +225,45 @@ func TestIsFilesystemOnly(t *testing.T) {
 	assert.False(t, Template{}.IsFilesystemOnly(), "zero value is a memory snapshot")
 }
 
+// A filesystem-only snapshot taken from a V1 template must survive a metadata
+// round-trip with the flag intact. deserialize() strips every field from a
+// version<=DeprecatedVersion snapshot, so MarkFilesystemOnly upgrades the
+// version; without it the flag is lost and the orchestrator wrongly dispatches
+// to a memory resume that hard-fails (the fs-only pause uploaded no memfile).
+func TestMarkFilesystemOnly_V1SnapshotRoundTrips(t *testing.T) {
+	t.Parallel()
+
+	v1 := V1TemplateVersion()
+	require.Equal(t, uint64(DeprecatedVersion), v1.Version, "V1 fallback starts at the deprecated version")
+
+	fsOnly := v1.MarkFilesystemOnly(true)
+	assert.True(t, fsOnly.FilesystemOnly)
+	assert.Equal(t, uint64(CurrentVersion), fsOnly.Version,
+		"a filesystem-only snapshot must be upgraded past DeprecatedVersion")
+
+	// The flag survives serialize -> deserialize.
+	reader, err := serialize(fsOnly)
+	require.NoError(t, err)
+	got, err := deserialize(reader)
+	require.NoError(t, err)
+	assert.True(t, got.IsFilesystemOnly(),
+		"filesystem-only flag must survive a V1-derived snapshot round-trip")
+
+	// Guard documenting the hazard the upgrade avoids: a version<=Deprecated
+	// snapshot still loses the flag on deserialize.
+	rawReader, err := serialize(Template{Version: DeprecatedVersion, FilesystemOnly: true})
+	require.NoError(t, err)
+	raw, err := deserialize(rawReader)
+	require.NoError(t, err)
+	assert.False(t, raw.IsFilesystemOnly(),
+		"version<=DeprecatedVersion strips filesystem_only — exactly why MarkFilesystemOnly upgrades")
+
+	// Clearing the flag must not change the version.
+	cleared := V1TemplateVersion().MarkFilesystemOnly(false)
+	assert.False(t, cleared.FilesystemOnly)
+	assert.Equal(t, uint64(DeprecatedVersion), cleared.Version, "clearing must not upgrade the version")
+}
+
 // Pre-existing snapshots have no "filesystem_only" key in metadata.json; it must
 // decode to false (a memory snapshot) so they resume normally without migration.
 func TestFilesystemOnly_BackwardCompatAndOmitempty(t *testing.T) {

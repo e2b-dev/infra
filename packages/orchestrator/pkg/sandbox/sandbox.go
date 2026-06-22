@@ -1219,8 +1219,10 @@ func (s *Sandbox) Pause(
 	// Record the snapshot kind in metadata so the resume path picks reboot vs
 	// memory-resume from the snapshot's own metadata (see metadata.IsFilesystemOnly).
 	// Set unconditionally so a memory pause of a previously-rebooted (fs-only)
-	// sandbox correctly clears the flag.
-	m.FilesystemOnly = pauseOpts.filesystemSnapshot
+	// sandbox correctly clears the flag. MarkFilesystemOnly also upgrades the
+	// metadata version when needed so the flag survives deserialize for snapshots
+	// taken from a V1 template.
+	m = m.MarkFilesystemOnly(pauseOpts.filesystemSnapshot)
 
 	// Drain free-page-hinting before pause so the snapshot doesn't capture
 	// pages the guest already considers free. Timeout per use case; 0 disables.

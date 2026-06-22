@@ -128,6 +128,24 @@ func (t Template) IsFilesystemOnly() bool {
 	return t.FilesystemOnly
 }
 
+// MarkFilesystemOnly records whether this snapshot persists only the filesystem.
+//
+// When marking it filesystem-only, the metadata version is upgraded to at least
+// CurrentVersion if needed: deserialize() strips every field (including
+// filesystem_only) from a snapshot whose version is <= DeprecatedVersion, so a
+// snapshot taken from a V1 template would otherwise lose the flag on resume and
+// be wrongly memory-resumed — and since the filesystem-only pause uploaded no
+// memory snapshot, that resume hard-fails. Clearing the flag never changes the
+// version.
+func (t Template) MarkFilesystemOnly(filesystemOnly bool) Template {
+	t.FilesystemOnly = filesystemOnly
+	if filesystemOnly && t.Version < CurrentVersion {
+		t.Version = CurrentVersion
+	}
+
+	return t
+}
+
 func V1TemplateVersion() Template {
 	return Template{
 		Version: 1,
