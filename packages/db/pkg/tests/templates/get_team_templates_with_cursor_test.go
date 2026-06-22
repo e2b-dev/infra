@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
@@ -126,4 +127,40 @@ func TestGetTeamTemplatesWithCursor_IncludeDefaults(t *testing.T) {
 	require.True(t, byID[defaultTemplate].IsDefault)
 	require.NotNil(t, byID[defaultTemplate].DefaultDescription)
 	require.Equal(t, "a default template", *byID[defaultTemplate].DefaultDescription)
+}
+
+// TestEnvDefaults_CascadesOnTemplateDelete guards the ON DELETE CASCADE on the
+// env_defaults FK: templates are hard-deleted from public.envs, so a default
+// template must be deletable without a foreign-key violation.
+func TestEnvDefaults_CascadesOnTemplateDelete(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, db)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
+	err := db.SqlcClient.TestsRawSQL(ctx,
+		"INSERT INTO public.env_defaults (env_id, description) VALUES ($1, $2)",
+		templateID, "a default template",
+	)
+	require.NoError(t, err)
+
+	// Hard-deleting the template must succeed and remove the env_defaults row.
+	err = db.SqlcClient.TestsRawSQL(ctx, "DELETE FROM public.envs WHERE id = $1", templateID)
+	require.NoError(t, err)
+
+	var count int
+	err = db.SqlcClient.TestsRawSQLQuery(ctx,
+		"SELECT COUNT(*) FROM public.env_defaults WHERE env_id = $1",
+		func(rows pgx.Rows) error {
+			if rows.Next() {
+				return rows.Scan(&count)
+			}
+
+			return nil
+		},
+		templateID,
+	)
+	require.NoError(t, err)
+	require.Zero(t, count, "env_defaults row should be cascade-deleted with the template")
 }
