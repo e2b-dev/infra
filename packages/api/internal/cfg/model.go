@@ -32,7 +32,8 @@ type Config struct {
 	AnalyticsCollectorAPIToken string `env:"ANALYTICS_COLLECTOR_API_TOKEN"`
 	AnalyticsCollectorHost     string `env:"ANALYTICS_COLLECTOR_HOST"`
 
-	ClickhouseConnectionString string `env:"CLICKHOUSE_CONNECTION_STRING"`
+	ClickhouseConnectionString  string   `env:"CLICKHOUSE_CONNECTION_STRING"`
+	ClickhouseConnectionStrings []string `env:"CLICKHOUSE_CONNECTION_STRINGS" envSeparator:";"`
 
 	LokiPassword string `env:"LOKI_PASSWORD"`
 	LokiURL      string `env:"LOKI_URL,required"`
