@@ -111,15 +111,21 @@ type Dispatch struct {
 	shuttingDown     bool
 	shuttingDownLock sync.Mutex
 	fatal            chan error
+	// asyncWriteZeroes controls whether WRITE_ZEROES/TRIM commands are handled
+	// in a goroutine (true) instead of inline on the read loop (false). Handling
+	// them inline lets a blocked reply writer holding writeLock stall the whole
+	// read loop; see cmdWriteZeroes.
+	asyncWriteZeroes bool
 }
 
-func NewDispatch(fp io.ReadWriter, prov Provider) *Dispatch {
+func NewDispatch(fp io.ReadWriter, prov Provider, asyncWriteZeroes bool) *Dispatch {
 	d := &Dispatch{
-		responseHeader: make([]byte, 16),
-		fp:             fp,
-		prov:           prov,
-		provName:       fmt.Sprintf("%T", prov),
-		fatal:          make(chan error, 1),
+		responseHeader:   make([]byte, 16),
+		fp:               fp,
+		prov:             prov,
+		provName:         fmt.Sprintf("%T", prov),
+		fatal:            make(chan error, 1),
+		asyncWriteZeroes: asyncWriteZeroes,
 	}
 
 	binary.BigEndian.PutUint32(d.responseHeader, NBDResponseMagic)
@@ -432,19 +438,81 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 	return nil
 }
 
-// cmdWriteZeroes runs synchronously since WriteZeroesAt is cheap (mmap + bitmap).
+// cmdWriteZeroes handles NBD WRITE_ZEROES and TRIM. The backend WriteZeroesAt
+// call is cheap (mmap + bitmap), but the following writeResponse takes the
+// shared writeLock and writes to the socket. Running this inline on the read
+// loop (asyncWriteZeroes == false) means that if a concurrent reply writer is
+// blocked inside writeResponse while holding writeLock (e.g. its socket write
+// is blocked on a full send buffer), this command blocks the read loop on
+// writeLock, the loop stops draining the socket, and the kernel eventually
+// times out the connection (EIO). When asyncWriteZeroes is true the work runs
+// in a goroutine like cmdRead/cmdWrite, so the read loop is never blocked.
 func (d *Dispatch) cmdWriteZeroes(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdLength int64) error {
-	var respErr uint32
-	if _, err := d.prov.WriteZeroesAt(int64(cmdFrom), cmdLength); err != nil {
-		respErr = 1
-		logger.L().Error(ctx, "nbd backend write-zeroes failed",
-			zap.Error(err),
-			zap.String("nbd_provider", d.provName),
-			zap.Uint64("nbd_handle", cmdHandle),
-			zap.Uint64("nbd_offset", cmdFrom),
-			zap.Int64("nbd_length", cmdLength),
-		)
+	performWriteZeroes := func() error {
+		// Run the backend call in a goroutine and select on ctx, mirroring
+		// cmdRead/cmdWrite, so a WriteZeroesAt that blocks cannot hang this
+		// goroutine (and the pendingResponses drain) during shutdown. The
+		// channel is buffered so the goroutine never leaks on the ctx.Done path.
+		errchan := make(chan error, 1)
+		go func() {
+			_, err := d.prov.WriteZeroesAt(int64(cmdFrom), cmdLength)
+			errchan <- err
+		}()
+
+		var zeroErr error
+		select {
+		case <-ctx.Done():
+			zeroErr = ctx.Err()
+		case zeroErr = <-errchan:
+		}
+
+		var respErr uint32
+		if zeroErr != nil {
+			respErr = 1
+			logger.L().Error(ctx, "nbd backend write-zeroes failed",
+				zap.Error(zeroErr),
+				zap.String("nbd_provider", d.provName),
+				zap.Uint64("nbd_handle", cmdHandle),
+				zap.Uint64("nbd_offset", cmdFrom),
+				zap.Int64("nbd_length", cmdLength),
+			)
+		}
+
+		return d.writeResponse(respErr, cmdHandle, nil)
 	}
 
-	return d.writeResponse(respErr, cmdHandle, nil)
+	if !d.asyncWriteZeroes {
+		return performWriteZeroes()
+	}
+
+	d.shuttingDownLock.Lock()
+	if d.shuttingDown {
+		d.shuttingDownLock.Unlock()
+
+		return ErrShuttingDown
+	}
+
+	d.pendingResponses.Add(1)
+	d.shuttingDownLock.Unlock()
+
+	go func() {
+		if err := performWriteZeroes(); err != nil {
+			select {
+			case d.fatal <- err:
+			default:
+				logger.L().Error(ctx, "nbd error cmd write-zeroes",
+					zap.Error(err),
+					zap.String("nbd_op", "write-zeroes"),
+					zap.String("nbd_provider", d.provName),
+					zap.Uint64("nbd_handle", cmdHandle),
+					zap.Uint64("nbd_offset", cmdFrom),
+					zap.Int64("nbd_length", cmdLength),
+				)
+			}
+		}
+
+		d.pendingResponses.Done()
+	}()
+
+	return nil
 }
