@@ -1,14 +1,93 @@
 package userprofile
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"testing"
 
 	"github.com/google/uuid"
 	ory "github.com/ory/client-go"
 
+	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	sharedteamprovision "github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 )
+
+type stubIdentityResolver struct{}
+
+func (stubIdentityResolver) GetUserIdentitiesByUserIDs(context.Context, authqueries.GetUserIdentitiesByUserIDsParams) ([]authqueries.GetUserIdentitiesByUserIDsRow, error) {
+	return nil, nil
+}
+
+func (stubIdentityResolver) GetUserIdentitiesBySubjects(context.Context, authqueries.GetUserIdentitiesBySubjectsParams) ([]authqueries.GetUserIdentitiesBySubjectsRow, error) {
+	return nil, nil
+}
+
+func TestOryProvider_SetIdentityExternalID(t *testing.T) {
+	t.Parallel()
+
+	subject := uuid.NewString()
+	externalID := uuid.New()
+
+	var gotPatch []ory.JsonPatch
+	var gotPath, gotMethod string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		_ = json.NewDecoder(r.Body).Decode(&gotPatch)
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"` + subject + `","schema_id":"default","schema_url":"","state":"active","traits":{}}`))
+	}))
+	defer server.Close()
+
+	provider, err := NewOryProvider(OryConfig{
+		HTTPClient: server.Client(),
+		SDKURL:     server.URL,
+		Token:      "test-token",
+		Issuer:     "https://ory.example.test",
+		Resolver:   stubIdentityResolver{},
+	})
+	if err != nil {
+		t.Fatalf("failed to build ory provider: %v", err)
+	}
+
+	if err := provider.SetIdentityExternalID(t.Context(), subject, externalID); err != nil {
+		t.Fatalf("SetIdentityExternalID returned error: %v", err)
+	}
+
+	if gotMethod != http.MethodPatch {
+		t.Fatalf("expected PATCH, got %s", gotMethod)
+	}
+	if want := "/admin/identities/" + subject; gotPath != want {
+		t.Fatalf("expected path %q, got %q", want, gotPath)
+	}
+	if len(gotPatch) != 1 {
+		t.Fatalf("expected one json patch op, got %d", len(gotPatch))
+	}
+	if gotPatch[0].Op != "add" || gotPatch[0].Path != "/external_id" {
+		t.Fatalf("unexpected patch op/path: %+v", gotPatch[0])
+	}
+	if value, _ := gotPatch[0].Value.(string); value != externalID.String() {
+		t.Fatalf("expected external id %q, got %v", externalID.String(), gotPatch[0].Value)
+	}
+}
+
+func TestOryProvider_SetIdentityExternalIDValidatesInput(t *testing.T) {
+	t.Parallel()
+
+	provider := &oryProvider{}
+
+	if err := provider.SetIdentityExternalID(t.Context(), "  ", uuid.New()); err == nil {
+		t.Fatal("expected error for blank subject")
+	}
+	if err := provider.SetIdentityExternalID(t.Context(), uuid.NewString(), uuid.Nil); err == nil {
+		t.Fatal("expected error for nil external id")
+	}
+}
 
 func TestProfileFromOryIdentity(t *testing.T) {
 	t.Parallel()

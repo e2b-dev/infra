@@ -409,6 +409,10 @@ func (handlerTestUserProfiles) GetTeamCreatorContext(context.Context, uuid.UUID)
 	return nil, nil
 }
 
+func (handlerTestUserProfiles) SetIdentityExternalID(context.Context, string, uuid.UUID) error {
+	return nil
+}
+
 func (handlerTestUserProfiles) PrepareDeleteUser(context.Context, uuid.UUID) (userprofile.DeleteUserHandle, error) {
 	return nil, nil
 }
@@ -509,6 +513,7 @@ func TestBootstrapAuthProviderUser_CreatesIdentityAndDefaultTeam(t *testing.T) {
 		db:                testDB.SqlcClient,
 		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
+		userProfiles:      newHandlerTestUserProfiles(),
 	}
 
 	input := oidcUserBootstrapInput{
@@ -567,6 +572,69 @@ func TestBootstrapAuthProviderUser_CreatesIdentityAndDefaultTeam(t *testing.T) {
 	}
 }
 
+type recordingUserProfiles struct {
+	handlerTestUserProfiles
+
+	externalIDSubject string
+	externalID        uuid.UUID
+	externalIDCalls   int
+}
+
+func (r *recordingUserProfiles) SetIdentityExternalID(_ context.Context, subject string, externalID uuid.UUID) error {
+	r.externalIDSubject = subject
+	r.externalID = externalID
+	r.externalIDCalls++
+
+	return nil
+}
+
+func TestBootstrapOIDCUser_PopulatesOryExternalID(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	sink := &fakeTeamProvisionSink{}
+	profiles := &recordingUserProfiles{}
+
+	store := &APIStore{
+		config: cfg.Config{
+			OryIssuerURL: "https://ory.example.test",
+		},
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDB,
+		teamProvisionSink: sink,
+		userProfiles:      profiles,
+	}
+
+	input := oidcUserBootstrapInput{
+		OIDCIssuer:    "https://ory.example.test",
+		OIDCUserID:    uuid.NewString(),
+		OIDCUserEmail: "ada@example.test",
+	}
+
+	if _, err := store.bootstrapOIDCUser(ctx, input); err != nil {
+		t.Fatalf("expected bootstrap to succeed: %v", err)
+	}
+
+	userIdentity, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+		OidcIss: input.OIDCIssuer,
+		OidcSub: input.OIDCUserID,
+	})
+	if err != nil {
+		t.Fatalf("expected user identity to be created: %v", err)
+	}
+
+	if profiles.externalIDCalls != 1 {
+		t.Fatalf("expected one external id update, got %d", profiles.externalIDCalls)
+	}
+	if profiles.externalIDSubject != input.OIDCUserID {
+		t.Fatalf("expected external id set on subject %q, got %q", input.OIDCUserID, profiles.externalIDSubject)
+	}
+	if profiles.externalID != userIdentity.UserID {
+		t.Fatalf("expected external id %s, got %s", userIdentity.UserID, profiles.externalID)
+	}
+}
+
 func TestBootstrapOIDCUser_ConcurrentRequestsSingleIdentityAndTeam(t *testing.T) {
 	t.Parallel()
 
@@ -591,6 +659,7 @@ func TestBootstrapOIDCUser_ConcurrentRequestsSingleIdentityAndTeam(t *testing.T)
 		db:                testDB.SqlcClient,
 		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
+		userProfiles:      newHandlerTestUserProfiles(),
 	}
 
 	input := oidcUserBootstrapInput{
@@ -703,6 +772,7 @@ func TestBootstrapOIDCUser_OryIssuerWithoutJWTConfigIsAccepted(t *testing.T) {
 		db:                testDB.SqlcClient,
 		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
+		userProfiles:      newHandlerTestUserProfiles(),
 	}
 
 	team, err := store.bootstrapOIDCUser(ctx, oidcUserBootstrapInput{
@@ -741,6 +811,7 @@ func TestBootstrapOIDCUser_OryModeRejectsNonOryJWTIssuer(t *testing.T) {
 		db:                testDB.SqlcClient,
 		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
+		userProfiles:      newHandlerTestUserProfiles(),
 	}
 
 	_, err := store.bootstrapOIDCUser(ctx, oidcUserBootstrapInput{
@@ -777,6 +848,7 @@ func TestBootstrapOIDCUser_UnknownIssuerReturnsBadRequest(t *testing.T) {
 		db:                testDB.SqlcClient,
 		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
+		userProfiles:      newHandlerTestUserProfiles(),
 	}
 
 	_, err := store.bootstrapOIDCUser(ctx, oidcUserBootstrapInput{
