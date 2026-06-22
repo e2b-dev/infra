@@ -16,7 +16,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/draingate"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
@@ -85,8 +84,6 @@ type Server struct {
 	// the live count, used to log drain progress during shutdown.
 	uploadsWG       sync.WaitGroup
 	uploadsInFlight atomic.Int64
-
-	drainGate draingate.Gate
 }
 
 type ServiceConfig struct {
@@ -280,27 +277,19 @@ func (s *Server) drainUploads(ctx context.Context, uploadsDone <-chan struct{}) 
 }
 
 func (s *Server) StartDraining(ctx context.Context) {
-	if s.drainGate.StartDraining() {
-		logger.L().Info(ctx, "orchestrator server entering sandbox drain mode",
-			zap.Int("live_sandboxes", s.sandboxFactory.Sandboxes.Count()),
-		)
-	}
+	// A single factory drain gate is shared by API sandboxes and template-build
+	// sandboxes. The server's Create/Checkpoint handlers hold this gate across
+	// the whole operation, so there is no separate server-level gate.
+	s.sandboxFactory.StartDraining(ctx)
 }
 
 func (s *Server) DrainSandboxes(ctx context.Context) error {
 	s.StartDraining(ctx)
-	// Let already-admitted API starts finish before draining the shared factory.
-	// Checkpoint removes the old sandbox before calling ResumeSandbox, which
-	// enters the factory gate; draining the factory first would reject that
-	// resume and leave the old sandbox to be stopped by the checkpoint cleanup.
-	if err := s.waitServerSandboxStarts(ctx); err != nil {
-		return err
-	}
 
-	// The sandbox factory is shared by API sandboxes and template-build sandboxes.
-	// Drain and wait for it before taking the lifecycle snapshot so no factory
-	// start can be missed by graceful shutdown.
-	s.sandboxFactory.StartDraining(ctx)
+	// Create/Checkpoint hold the factory gate for their whole operation —
+	// including the checkpoint's internal resume that runs after the old sandbox
+	// is removed — so waiting for the gate to drain is enough before snapshotting
+	// the live set: no admitted start can still be mid-flight afterward.
 	if err := s.sandboxFactory.WaitSandboxStarts(ctx); err != nil {
 		return err
 	}
@@ -345,10 +334,8 @@ func (s *Server) DrainSandboxes(ctx context.Context) error {
 }
 
 func (s *Server) ForceStopSandboxes(ctx context.Context) error {
+	// Drain the shared factory gate so no new starts can enter while shutdown proceeds.
 	s.StartDraining(ctx)
-	// The sandbox factory is shared by API sandboxes and template-build sandboxes.
-	// Drain it before waiting so no new starts can enter while shutdown proceeds.
-	s.sandboxFactory.StartDraining(ctx)
 	stopped := make(map[string]struct{})
 	var errs []error
 
@@ -409,7 +396,7 @@ func (s *Server) ForceStopSandboxes(ctx context.Context) error {
 		ctx,
 		s.sandboxFactory.Sandboxes.LifecycleItems,
 		forceStop,
-		s.waitSandboxStarts,
+		s.sandboxFactory.WaitSandboxStarts,
 	)...)
 
 	if err := s.waitSandboxLifecycles(ctx); err != nil {
@@ -508,7 +495,7 @@ func (s *Server) refreshStartingSandboxesLimit(ctx context.Context) {
 
 	for {
 		select {
-		case <-s.drainGate.Done():
+		case <-s.sandboxFactory.Done():
 			return
 		case <-ticker.C:
 			limit := s.featureFlags.IntFlag(ctx, featureflags.MaxStartingInstancesPerNode)

@@ -21,15 +21,15 @@ import (
 func TestWaitSandboxStartsCanceledDoesNotBlockDrainingRejection(t *testing.T) {
 	t.Parallel()
 
-	s := &Server{}
-	release, err := s.drainGate.Enter()
+	s := drainOrderTestServer()
+	release, err := s.sandboxFactory.EnterSandboxStart(t.Context())
 	require.NoError(t, err)
 	defer release()
 
 	waitCtx, cancel := context.WithCancel(t.Context())
 	waitErr := make(chan error, 1)
 	go func() {
-		waitErr <- s.waitSandboxStarts(waitCtx)
+		waitErr <- s.sandboxFactory.WaitSandboxStarts(waitCtx)
 	}()
 
 	cancel()
@@ -38,14 +38,14 @@ func TestWaitSandboxStartsCanceledDoesNotBlockDrainingRejection(t *testing.T) {
 	case err := <-waitErr:
 		require.ErrorIs(t, err, context.Canceled)
 	case <-time.After(time.Second):
-		t.Fatal("waitSandboxStarts did not return after cancellation")
+		t.Fatal("WaitSandboxStarts did not return after cancellation")
 	}
 
-	s.drainGate.StartDraining()
+	s.sandboxFactory.StartDraining(t.Context())
 
 	enterErr := make(chan error, 1)
 	go func() {
-		release, err := s.enterSandboxStart(t.Context(), "test")
+		_, release, err := s.enterSandboxStart(t.Context(), "test")
 		if err == nil {
 			release()
 		}
@@ -61,20 +61,46 @@ func TestWaitSandboxStartsCanceledDoesNotBlockDrainingRejection(t *testing.T) {
 	}
 }
 
+// TestEnterSandboxStartReentrantWhileDraining covers the single-gate collapse:
+// an operation that already holds the gate (Checkpoint) can run its nested
+// factory start even after drain begins, while a fresh start is rejected.
+func TestEnterSandboxStartReentrantWhileDraining(t *testing.T) {
+	t.Parallel()
+
+	s := drainOrderTestServer()
+	ctx, release, err := s.enterSandboxStart(t.Context(), "checkpoint")
+	require.NoError(t, err)
+	defer release()
+
+	s.sandboxFactory.StartDraining(t.Context())
+
+	// The checkpoint's internal resume runs on the held context and must not be
+	// rejected mid-drain.
+	nestedRelease, err := s.sandboxFactory.EnterSandboxStart(ctx)
+	require.NoError(t, err)
+	nestedRelease()
+
+	// A fresh, unmarked start is still rejected.
+	_, err = s.sandboxFactory.EnterSandboxStart(t.Context())
+	require.ErrorIs(t, err, sandbox.ErrFactoryDraining)
+}
+
 func TestWaitForAcquireAllowsAdmittedStartAfterDraining(t *testing.T) {
 	t.Parallel()
 
 	startingSandboxes, err := sharedutils.NewAdjustableSemaphore(1)
 	require.NoError(t, err)
 
-	s := &Server{startingSandboxes: startingSandboxes}
-	release, err := s.enterSandboxStart(t.Context(), "test")
+	s := drainOrderTestServer()
+	s.startingSandboxes = startingSandboxes
+
+	ctx, release, err := s.enterSandboxStart(t.Context(), "test")
 	require.NoError(t, err)
 	defer release()
 
-	s.drainGate.StartDraining()
+	s.sandboxFactory.StartDraining(t.Context())
 
-	require.NoError(t, s.waitForAcquire(t.Context()))
+	require.NoError(t, s.waitForAcquire(ctx))
 	s.startingSandboxes.Release(1)
 }
 
@@ -82,7 +108,7 @@ func TestForceStopSandboxesWaitsForInFlightStarts(t *testing.T) {
 	t.Parallel()
 
 	s := forceStopTestServer()
-	release, err := s.drainGate.Enter()
+	release, err := s.sandboxFactory.EnterSandboxStart(t.Context())
 	require.NoError(t, err)
 
 	done := make(chan error, 1)
@@ -110,7 +136,7 @@ func TestForceStopSandboxesReturnsInFlightStartContextError(t *testing.T) {
 	t.Parallel()
 
 	s := forceStopTestServer()
-	release, err := s.drainGate.Enter()
+	release, err := s.sandboxFactory.EnterSandboxStart(t.Context())
 	require.NoError(t, err)
 	defer release()
 
@@ -184,11 +210,11 @@ func TestForceStopSandboxesUntilStartsFinishStopsLifecycleAfterWaitError(t *test
 	}
 }
 
-func TestDrainSandboxesDrainsFactoryAfterServerStartsFinish(t *testing.T) {
+func TestDrainSandboxesWaitsForInFlightStart(t *testing.T) {
 	t.Parallel()
 
 	s := drainOrderTestServer()
-	release, err := s.drainGate.Enter()
+	release, err := s.sandboxFactory.EnterSandboxStart(t.Context())
 	require.NoError(t, err)
 
 	done := make(chan error, 1)
@@ -196,13 +222,20 @@ func TestDrainSandboxesDrainsFactoryAfterServerStartsFinish(t *testing.T) {
 		done <- s.DrainSandboxes(t.Context())
 	}()
 
+	// Drain begins immediately, before the in-flight start finishes.
 	select {
-	case <-s.drainGate.Done():
+	case <-s.sandboxFactory.Done():
 	case <-time.After(time.Second):
 		t.Fatal("DrainSandboxes did not start draining")
 	}
+	require.True(t, s.sandboxFactory.Draining())
 
-	require.False(t, s.sandboxFactory.Draining())
+	// But it must not complete while a start is still in flight.
+	select {
+	case err := <-done:
+		require.Failf(t, "DrainSandboxes returned before in-flight start finished", "err: %v", err)
+	case <-time.After(2 * sandboxStartWaitPollInterval):
+	}
 
 	release()
 
@@ -210,10 +243,8 @@ func TestDrainSandboxesDrainsFactoryAfterServerStartsFinish(t *testing.T) {
 	case err := <-done:
 		require.NoError(t, err)
 	case <-time.After(time.Second):
-		t.Fatal("DrainSandboxes did not return after server starts finished")
+		t.Fatal("DrainSandboxes did not return after in-flight start finished")
 	}
-
-	require.True(t, s.sandboxFactory.Draining())
 }
 
 func TestCollectForceStopSandboxCloseErrorsDrainsBufferedErrorsOnContextError(t *testing.T) {

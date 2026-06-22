@@ -104,7 +104,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		telemetry.WithEnvdVersion(req.GetSandbox().GetEnvdVersion()),
 	)
 
-	releaseSandboxStart, err := s.enterSandboxStart(ctx, "sandbox-create")
+	ctx, releaseSandboxStart, err := s.enterSandboxStart(ctx, "sandbox-create")
 	if err != nil {
 		return nil, err
 	}
@@ -693,7 +693,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		telemetry.WithBuildID(in.GetBuildId()),
 	)
 
-	releaseSandboxStart, err := s.enterSandboxStart(ctx, "sandbox-checkpoint")
+	ctx, releaseSandboxStart, err := s.enterSandboxStart(ctx, "sandbox-checkpoint")
 	if err != nil {
 		return nil, err
 	}

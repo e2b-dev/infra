@@ -380,13 +380,55 @@ func (f *Factory) Draining() bool {
 	return f.startGate.Draining()
 }
 
-func (f *Factory) enterSandboxStart() (func(), error) {
+type startGateHeldKey struct{}
+
+// WithHeldStartGate marks ctx as already holding the factory start gate so a
+// nested CreateSandbox/ResumeSandbox call from the same admitted operation does
+// not re-enter (and cannot be rejected by) the gate. The server's Create and
+// Checkpoint handlers hold the gate across the whole operation — including the
+// checkpoint's internal resume, which runs after the old sandbox is removed —
+// so the gate must not reject that nested resume mid-drain.
+func WithHeldStartGate(ctx context.Context) context.Context {
+	return context.WithValue(ctx, startGateHeldKey{}, struct{}{})
+}
+
+func startGateHeld(ctx context.Context) bool {
+	return ctx.Value(startGateHeldKey{}) != nil
+}
+
+// EnterSandboxStart admits a sandbox start through the factory drain gate,
+// returning a release func, or ErrFactoryDraining if the factory is draining.
+// Callers that hold the gate across a larger operation should mark the
+// downstream context with WithHeldStartGate so nested factory starts do not
+// re-enter the gate.
+func (f *Factory) EnterSandboxStart(ctx context.Context) (func(), error) {
+	if f == nil {
+		return func() {}, nil
+	}
+
+	return f.enterSandboxStart(ctx)
+}
+
+func (f *Factory) enterSandboxStart(ctx context.Context) (func(), error) {
+	if startGateHeld(ctx) {
+		return func() {}, nil
+	}
+
 	release, err := f.startGate.Enter()
 	if errors.Is(err, draingate.ErrDraining) {
 		return nil, ErrFactoryDraining
 	}
 
 	return release, err
+}
+
+// Done is closed once the factory has entered drain mode.
+func (f *Factory) Done() <-chan struct{} {
+	if f == nil {
+		return nil
+	}
+
+	return f.startGate.Done()
 }
 
 func (f *Factory) WaitSandboxStarts(ctx context.Context) error {
@@ -438,7 +480,7 @@ func (f *Factory) CreateSandbox(
 	ctx, span := tracer.Start(ctx, "create sandbox")
 	defer span.End()
 	defer handleSpanError(span, &e)
-	releaseSandboxStart, err := f.enterSandboxStart()
+	releaseSandboxStart, err := f.enterSandboxStart(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -702,7 +744,7 @@ func (f *Factory) ResumeSandbox(
 	ctx, span := tracer.Start(ctx, "resume sandbox")
 	defer span.End()
 	defer handleSpanError(span, &e)
-	releaseSandboxStart, err := f.enterSandboxStart()
+	releaseSandboxStart, err := f.enterSandboxStart(ctx)
 	if err != nil {
 		return nil, err
 	}

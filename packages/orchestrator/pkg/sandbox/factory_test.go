@@ -16,15 +16,31 @@ func TestFactoryStartDrainingRejectsNewStarts(t *testing.T) {
 	factory := testFactory()
 	factory.StartDraining(t.Context())
 
-	_, err := factory.enterSandboxStart()
+	_, err := factory.enterSandboxStart(t.Context())
 	require.ErrorIs(t, err, ErrFactoryDraining)
+}
+
+func TestFactoryHeldStartGateBypassesDrainRejection(t *testing.T) {
+	t.Parallel()
+
+	factory := testFactory()
+	factory.StartDraining(t.Context())
+
+	// A start on a context that already holds the gate is admitted even while
+	// draining (the nested checkpoint resume), without re-entering the counter.
+	release, err := factory.enterSandboxStart(WithHeldStartGate(t.Context()))
+	require.NoError(t, err)
+	release()
+
+	// The held marker does not increment the gate, so nothing is in flight.
+	require.NoError(t, factory.WaitSandboxStarts(t.Context()))
 }
 
 func TestFactoryWaitSandboxStartsWaitsUntilStartLeaves(t *testing.T) {
 	t.Parallel()
 
 	factory := testFactory()
-	release, err := factory.enterSandboxStart()
+	release, err := factory.enterSandboxStart(t.Context())
 	require.NoError(t, err)
 
 	waitCtx, cancel := context.WithTimeout(t.Context(), time.Second)
@@ -49,7 +65,7 @@ func TestFactoryWaitSandboxStartsReturnsContextError(t *testing.T) {
 	t.Parallel()
 
 	factory := testFactory()
-	release, err := factory.enterSandboxStart()
+	release, err := factory.enterSandboxStart(t.Context())
 	require.NoError(t, err)
 	defer release()
 

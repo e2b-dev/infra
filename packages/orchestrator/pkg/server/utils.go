@@ -5,53 +5,36 @@ package server
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/draingate"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const sandboxStartWaitPollInterval = 50 * time.Millisecond
 
-func (s *Server) enterSandboxStart(ctx context.Context, operation string) (func(), error) {
-	release, err := s.drainGate.Enter()
-	if errors.Is(err, draingate.ErrDraining) {
+// enterSandboxStart admits a sandbox start operation through the single factory
+// drain gate and returns a context marked as holding the gate, so the nested
+// ResumeSandbox does not re-enter it. The gate is held for the whole handler
+// (Create/Checkpoint), which keeps the checkpoint's remove-then-resume atomic
+// with respect to drain. Returns Unavailable while the factory is draining.
+func (s *Server) enterSandboxStart(ctx context.Context, operation string) (context.Context, func(), error) {
+	release, err := s.sandboxFactory.EnterSandboxStart(ctx)
+	if errors.Is(err, sandbox.ErrFactoryDraining) {
 		logger.L().Info(ctx, "rejecting sandbox operation during orchestrator drain", zap.String("operation", operation))
 
-		return nil, status.Error(codes.Unavailable, "orchestrator is draining")
+		return ctx, nil, status.Error(codes.Unavailable, "orchestrator is draining")
+	}
+	if err != nil {
+		return ctx, nil, err
 	}
 
-	return release, err
-}
-
-func (s *Server) waitServerSandboxStarts(ctx context.Context) error {
-	logger.L().Info(ctx, "waiting for in-flight sandbox start operations to finish")
-
-	if err := s.drainGate.Wait(ctx); err != nil {
-		return fmt.Errorf("waiting for in-flight sandbox start operations: %w", err)
-	}
-
-	logger.L().Info(ctx, "in-flight sandbox start operations finished")
-
-	return nil
-}
-
-func (s *Server) waitSandboxStarts(ctx context.Context) error {
-	if err := s.waitServerSandboxStarts(ctx); err != nil {
-		return err
-	}
-
-	if s.sandboxFactory != nil {
-		return s.sandboxFactory.WaitSandboxStarts(ctx)
-	}
-
-	return nil
+	return sandbox.WithHeldStartGate(ctx), release, nil
 }
 
 func (s *Server) waitForAcquire(ctx context.Context) error {
