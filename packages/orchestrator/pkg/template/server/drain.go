@@ -21,16 +21,6 @@ func (s *ServerStore) StartDraining(ctx context.Context) {
 	}
 }
 
-func (s *ServerStore) rejectIfDraining(ctx context.Context, operation string) error {
-	if s.drainGate.Draining() {
-		s.log().Info(ctx, "rejecting template operation during orchestrator drain", zap.String("operation", operation))
-
-		return status.Error(codes.Unavailable, "orchestrator is draining")
-	}
-
-	return nil
-}
-
 func (s *ServerStore) enterTemplateOperationStart(ctx context.Context, operation string) (func(), error) {
 	release, err := s.drainGate.Enter()
 	if errors.Is(err, draingate.ErrDraining) {
