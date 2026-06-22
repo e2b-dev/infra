@@ -17,6 +17,9 @@ const signedUrlExpiration = time.Minute * 30
 func (s *ServerStore) InitLayerFileUpload(ctx context.Context, in *templatemanager.InitLayerFileUploadRequest) (*templatemanager.InitLayerFileUploadResponse, error) {
 	ctx, childSpan := tracer.Start(ctx, "template-create")
 	defer childSpan.End()
+	if err := s.rejectIfDraining(ctx, "template-layer-file-upload"); err != nil {
+		return nil, err
+	}
 
 	// default to scope by template ID
 	cacheScope := in.GetTemplateID()

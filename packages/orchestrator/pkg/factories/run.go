@@ -884,7 +884,24 @@ func run(config cfg.Config, opts Options) (success bool) {
 
 	// Wait for services to be drained before closing them
 	if tmpl != nil {
-		err := tmpl.Wait(closeCtx)
+		forceStopTemplateBuilds := func() error {
+			forceCtx, forceCancel := context.WithTimeout(context.WithoutCancel(ctx), forceShutdownTimeout)
+			defer forceCancel()
+
+			return tmpl.ForceStop(forceCtx)
+		}
+
+		var err error
+		if config.ForceStop {
+			err = forceStopTemplateBuilds()
+		} else {
+			err = tmpl.Wait(closeCtx)
+			if err != nil {
+				logger.L().Warn(ctx, "template build drain did not complete gracefully; forcing template build shutdown", zap.Error(err))
+
+				err = forceStopTemplateBuilds()
+			}
+		}
 		if err != nil {
 			logger.L().Error(ctx, "error while waiting for template manager to drain", zap.Error(err))
 			success = false
