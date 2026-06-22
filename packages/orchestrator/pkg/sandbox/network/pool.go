@@ -81,10 +81,26 @@ type Config struct {
 	SandboxTCPFirewallHTTPPort  uint16 `env:"SANDBOX_TCP_FIREWALL_HTTP_PORT"  envDefault:"5016"`
 	SandboxTCPFirewallTLSPort   uint16 `env:"SANDBOX_TCP_FIREWALL_TLS_PORT"   envDefault:"5017"`
 	SandboxTCPFirewallOtherPort uint16 `env:"SANDBOX_TCP_FIREWALL_OTHER_PORT" envDefault:"5018"`
+
+	// DSCP value to stamp on every packet leaving a sandbox netns and on the
+	// tcpfirewall proxy's upstream sockets. Gives downstream firewalls a
+	// protocol-agnostic L3 marker for sandbox traffic. 0 (default) disables
+	// the marker entirely so deployments that don't need it stay untouched.
+	// Valid range is 0..63 (DSCP is a 6-bit field); CS1 = 8 is the canonical
+	// "Scavenger" / lower-than-best-effort class per RFC 3662.
+	SandboxEgressDSCP uint8 `env:"SANDBOX_EGRESS_DSCP" envDefault:"0"`
 }
 
 func ParseConfig() (Config, error) {
-	return env.ParseAs[Config]()
+	cfg, err := env.ParseAs[Config]()
+	if err != nil {
+		return Config{}, err
+	}
+	if cfg.SandboxEgressDSCP > 63 {
+		return Config{}, fmt.Errorf("SANDBOX_EGRESS_DSCP=%d out of range; DSCP is 6 bits (0..63)", cfg.SandboxEgressDSCP)
+	}
+
+	return cfg, nil
 }
 
 type Pool struct {

@@ -25,28 +25,31 @@ const (
 	upstreamDialTimeout = 30 * time.Second
 
 	noHostnameValue = ""
-
-	// sandboxEgressTOS is the IP TOS-byte form of the DSCP CS1 marker applied
-	// to sandbox netns egress by pkg/sandbox/network (--set-dscp 8). DSCP
-	// occupies the top 6 bits of the TOS byte, so 8 << 2 = 32. We set it on
-	// the proxy's upstream sockets so host-originated TCP carries the same
-	// marker as direct (non-proxied) sandbox egress — without this, the
-	// REDIRECT-to-local-proxy hop strips the L3 marker for all TCP traffic.
-	sandboxEgressTOS = 32
 )
+
+// sandboxEgressTOS is the IP TOS-byte form of network.Config.SandboxEgressDSCP
+// (top 6 bits of the TOS byte, i.e. DSCP << 2). Set once by Proxy.New() so the
+// per-connection markDSCP path doesn't need to thread the value through every
+// handler signature. 0 = disabled (no setsockopt), matching the env default.
+var sandboxEgressTOS uint8
 
 // markDSCP sets the IPv4 IP_TOS and IPv6 IPV6_TCLASS socket options so
 // packets the proxy sends to the destination carry the sandbox egress DSCP
 // marker regardless of the socket's address family. The dialer (notably
 // Happy Eyeballs in proxyWithIPVerification) may choose either family, so we
 // set both and tolerate ENOPROTOOPT from the non-matching one — only a
-// failure on both legs is a real error.
+// failure on both legs is a real error. No-op when the marker is disabled.
 func markDSCP(c syscall.RawConn) error {
+	tos := int(sandboxEgressTOS)
+	if tos == 0 {
+		return nil
+	}
+
 	var sockErr error
 
 	err := c.Control(func(fd uintptr) {
-		v4Err := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IP, syscall.IP_TOS, sandboxEgressTOS)
-		v6Err := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IPV6, syscall.IPV6_TCLASS, sandboxEgressTOS)
+		v4Err := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IP, syscall.IP_TOS, tos)
+		v6Err := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IPV6, syscall.IPV6_TCLASS, tos)
 		if v4Err != nil && v6Err != nil {
 			sockErr = fmt.Errorf("setsockopt IP_TOS / IPV6_TCLASS both failed: %w", errors.Join(v4Err, v6Err))
 		}

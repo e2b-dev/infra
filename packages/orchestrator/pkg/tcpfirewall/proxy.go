@@ -43,6 +43,12 @@ type Proxy struct {
 }
 
 func New(logger logger.Logger, networkConfig network.Config, sandboxes *sandbox.Map, meterProvider metric.MeterProvider, featureFlags *featureflags.Client) *Proxy {
+	// Cache the TOS byte form of the DSCP marker so per-connection markDSCP
+	// can read it without threading the value through every handler signature.
+	// DSCP occupies the top 6 bits of the TOS byte (DSCP << 2). Zero means
+	// disabled and markDSCP becomes a no-op.
+	sandboxEgressTOS = networkConfig.SandboxEgressDSCP << 2
+
 	p := &Proxy{
 		httpPort:     networkConfig.SandboxTCPFirewallHTTPPort,
 		tlsPort:      networkConfig.SandboxTCPFirewallTLSPort,
