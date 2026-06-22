@@ -43,7 +43,7 @@ type Proxy struct {
 }
 
 func New(logger logger.Logger, networkConfig network.Config, sandboxes *sandbox.Map, meterProvider metric.MeterProvider, featureFlags *featureflags.Client) *Proxy {
-	sandboxEgressTOS = networkConfig.SandboxEgressDSCP << 2
+	sandboxEgressTOS.Store(uint32(networkConfig.SandboxEgressDSCP) << 2)
 
 	p := &Proxy{
 		httpPort:     networkConfig.SandboxTCPFirewallHTTPPort,

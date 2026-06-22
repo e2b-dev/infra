@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -28,12 +29,12 @@ const (
 )
 
 // Set by Proxy.New() from network.Config.SandboxEgressDSCP << 2. 0 = disabled.
-var sandboxEgressTOS uint8
+var sandboxEgressTOS atomic.Uint32
 
 // Sets both IP_TOS and IPV6_TCLASS because Happy Eyeballs may pick either family.
 // Tolerates ENOPROTOOPT from the non-matching one.
 func markDSCP(c syscall.RawConn) error {
-	tos := int(sandboxEgressTOS)
+	tos := int(sandboxEgressTOS.Load())
 	if tos == 0 {
 		return nil
 	}
