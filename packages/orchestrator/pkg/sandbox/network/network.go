@@ -250,6 +250,14 @@ func (s *Slot) CreateNetwork(ctx context.Context) (retErr error) {
 		return fmt.Errorf("error creating postrouting rule from vpeer: %w", err)
 	}
 
+	// Marker for downstream L3 firewalls. 0 disables; see SANDBOX_EGRESS_DSCP.
+	if s.config.SandboxEgressDSCP > 0 {
+		err = tables.Append("mangle", "POSTROUTING", "-o", s.VpeerName(), "-j", "DSCP", "--set-dscp", strconv.Itoa(int(s.config.SandboxEgressDSCP)))
+		if err != nil {
+			return fmt.Errorf("error creating DSCP mangle rule on vpeer: %w", err)
+		}
+	}
+
 	err = s.InitializeFirewall()
 	if err != nil {
 		return fmt.Errorf("error initializing slot firewall: %w", err)
