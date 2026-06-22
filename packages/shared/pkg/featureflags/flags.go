@@ -433,6 +433,11 @@ var (
 	DefaultPersistentVolumeType = NewStringFlag("default-persistent-volume-type", "")
 	BuildNodeInfo               = NewJSONFlag("preferred-build-node", ldvalue.Null())
 	FirecrackerVersions         = NewJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(FirecrackerVersionMap))
+
+	// ClickhouseReadEndpointFlag selects which ClickHouse DSN to use for reads.
+	// "" (empty) → singular CLICKHOUSE_CONNECTION_STRING (self-managed default).
+	// "0", "1", ... → index into CLICKHOUSE_CONNECTION_STRINGS
+	ClickhouseReadEndpointFlag = NewStringFlag("clickhouse-read-endpoint", "")
 )
 
 // ResolveFirecrackerVersion resolves the firecracker version using the FirecrackerVersions feature flag.
