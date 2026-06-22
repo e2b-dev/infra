@@ -163,6 +163,14 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 		}
 	}
 
+	// Populate the Ory identity's external_id with the canonical public.users id
+	// now that the user row exists. Runs before any team is created and before
+	// the user lock is taken, so an Ory failure rolls the user/identity back and
+	// no orphan team is left behind.
+	if err := s.setOIDCIdentityExternalID(ctx, identity, profile.UserID); err != nil {
+		return provisionedTeam{}, err
+	}
+
 	// Serialize bootstrap for a user even when they have no team memberships yet.
 	if _, err := authTxDB.LockPublicUserForUpdate(ctx, profile.UserID); err != nil {
 		return provisionedTeam{}, fmt.Errorf("lock public user: %w", err)
@@ -241,6 +249,20 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 		IsBlocked:     team.IsBlocked,
 		BlockedReason: team.BlockedReason,
 	}, nil
+}
+
+// setOIDCIdentityExternalID stores the canonical public.users id on the Ory
+// identity. It is a no-op for non-OIDC bootstrap (identity == nil).
+func (s *APIStore) setOIDCIdentityExternalID(ctx context.Context, identity *bootstrapUserIdentity, userID uuid.UUID) error {
+	if identity == nil {
+		return nil
+	}
+
+	if err := s.userProfiles.SetIdentityExternalID(ctx, identity.Subject, userID); err != nil {
+		return fmt.Errorf("set ory identity external id: %w", err)
+	}
+
+	return nil
 }
 
 func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string) (provisionedTeam, error) {
