@@ -26,16 +26,11 @@ func (s *ServerStore) TemplateBuildDelete(ctx context.Context, in *templatemanag
 	))
 	defer childSpan.End()
 
-	releaseTemplateOperationStart, err := s.enterTemplateOperationStart(ctx, "template-delete")
-	if err != nil {
-		return nil, err
-	}
-	defer releaseTemplateOperationStart()
-
-	s.wg.Add(1)
-	releaseTemplateOperationStart()
-	defer s.wg.Done()
-
+	// Deletes are a cancel/kill path: they must keep working while the server is
+	// draining so in-flight builds can still be canceled. They are intentionally
+	// not gated by the drain gate and not tracked on the build wait group (adding
+	// to s.wg after a drain Wait has started would race the WaitGroup). In-flight
+	// delete RPCs are drained by grpcServer.GracefulStop during shutdown instead.
 	if in.GetTemplateID() == "" || in.GetBuildID() == "" {
 		return nil, errors.New("template id and build id are required fields")
 	}
