@@ -908,6 +908,7 @@ components:
         - aliases
         - names
         - buildStatus
+        - isDefault
       properties:
         templateID:
           type: string
@@ -964,6 +965,13 @@ components:
           $ref: "#/components/schemas/EnvdVersion"
         buildStatus:
           $ref: "#/components/schemas/TemplateBuildStatus"
+        isDefault:
+          type: boolean
+          description: Whether the template is a globally shared E2B default template
+        defaultDescription:
+          type: string
+          nullable: true
+          description: Description of the default template (only set for default templates)
 
     TemplateRequestResponseV3:
       required:
@@ -2707,6 +2715,43 @@ paths:
           $ref: "#/components/responses/500"
 
   /v2/templates:
+    get:
+      description: List all templates
+      tags: [templates]
+      security:
+        - ApiKeyAuth: []
+        - AccessTokenAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+        - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+      parameters:
+        - in: query
+          required: false
+          name: teamID
+          schema:
+            type: string
+            description: Identifier of the team
+        - $ref: "#/components/parameters/paginationNextToken"
+        - $ref: "#/components/parameters/paginationLimit"
+      responses:
+        "200":
+          description: Successfully returned all templates
+          headers:
+            X-Next-Token:
+              description: Cursor to fetch the next page of results, if more exist
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Template"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
     post:
       description: Create a new template
       deprecated: true
@@ -2777,6 +2822,7 @@ paths:
   /templates:
     get:
       description: List all templates
+      deprecated: true
       tags: [templates]
       security:
         - ApiKeyAuth: []

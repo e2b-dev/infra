@@ -140,6 +140,11 @@ type EnvBuildAssignment struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type EnvDefault struct {
+	EnvID       string
+	Description pgtype.Text
+}
+
 type Snapshot struct {
 	CreatedAt           pgtype.Timestamptz
 	EnvID               string
