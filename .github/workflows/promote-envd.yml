@@ -31,6 +31,8 @@ jobs:
   validate-inputs:
     name: Validate inputs
     runs-on: ubuntu-24.04
+    outputs:
+      environments: ${{ steps.environments.outputs.environments }}
     steps:
       - name: Validate commit SHA
         env:
@@ -47,14 +49,32 @@ jobs:
           echo "Select at least one environment to promote envd."
           exit 1
 
-  promote-staging:
-    name: Promote envd to staging
+      - name: Build environment matrix
+        id: environments
+        env:
+          STAGING: ${{ inputs.staging }}
+          FOXTROT: ${{ inputs.foxtrot }}
+          JULIETT: ${{ inputs.juliett }}
+        run: |
+          envs=()
+          [[ "$STAGING" == "true" ]] && envs+=("staging")
+          [[ "$FOXTROT" == "true" ]] && envs+=("foxtrot")
+          [[ "$JULIETT" == "true" ]] && envs+=("juliett")
+
+          json="$(printf '%s\n' "${envs[@]}" | jq -R . | jq -cs .)"
+          echo "environments=${json}" >> "$GITHUB_OUTPUT"
+
+  promote:
+    name: Promote envd to ${{ matrix.environment }}
     needs: validate-inputs
-    if: ${{ inputs.staging == true }}
     runs-on: ci-builder
-    environment: staging
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJSON(needs.validate-inputs.outputs.environments) }}
+    environment: ${{ matrix.environment }}
     concurrency:
-      group: promote-envd-staging
+      group: promote-envd-${{ matrix.environment }}
       cancel-in-progress: false
     permissions:
       contents: read
@@ -67,186 +87,9 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
 
-      - name: Pull deployment secrets into temporary file
-        uses: Infisical/secrets-action@v1.0.16
-        with:
-          method: "oidc"
-          identity-id: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
-          project-slug: "infra-deployment"
-          env-slug: "staging"
-          export-type: "file"
-          file-output-path: "/.env.infisical"
-
-      - name: Load deployment environment
-        env:
-          ENVIRONMENT: staging
-        run: |
-          echo "${ENVIRONMENT}" > .last_used_env
-          cat .env.infisical | sed "s/='\(.*\)'$/=\1/g" > ".env.${ENVIRONMENT}"
-
-          set -a
-          . ".env.${ENVIRONMENT}"
-          set +a
-
-          echo "GCP_REGION=${GCP_REGION}" >> "$GITHUB_ENV"
-          echo "GCP_PROJECT_ID=${GCP_PROJECT_ID}" >> "$GITHUB_ENV"
-          echo "GH_WORKLOAD_IDENTITY_PROVIDER=${GH_WORKLOAD_IDENTITY_PROVIDER}" >> "$GITHUB_ENV"
-
-      - name: Load runtime environment
-        uses: Infisical/secrets-action@v1.0.16
-        with:
-          method: "oidc"
-          identity-id: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
-          project-slug: "infra-deployment-env"
-          env-slug: "staging"
-          export-type: "env"
-
-      - name: Setup Service Account
-        uses: google-github-actions/auth@v3
-        with:
-          project_id: ${{ env.GCP_PROJECT_ID }}
-          workload_identity_provider: ${{ env.GH_WORKLOAD_IDENTITY_PROVIDER }}
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v3
-
       - name: Promote envd
-        env:
-          ENVD_COMMIT_SHA: ${{ inputs.commit_sha }}
-        run: make -C packages/envd promote
-
-  promote-foxtrot:
-    name: Promote envd to foxtrot
-    needs: validate-inputs
-    if: ${{ inputs.foxtrot == true }}
-    runs-on: ci-builder
-    environment: foxtrot
-    concurrency:
-      group: promote-envd-foxtrot
-      cancel-in-progress: false
-    permissions:
-      contents: read
-      id-token: write
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: ./.github/actions/promote-envd
         with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-
-      - name: Pull deployment secrets into temporary file
-        uses: Infisical/secrets-action@v1.0.16
-        with:
-          method: "oidc"
-          identity-id: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
-          project-slug: "infra-deployment"
-          env-slug: "foxtrot"
-          export-type: "file"
-          file-output-path: "/.env.infisical"
-
-      - name: Load deployment environment
-        env:
-          ENVIRONMENT: foxtrot
-        run: |
-          echo "${ENVIRONMENT}" > .last_used_env
-          cat .env.infisical | sed "s/='\(.*\)'$/=\1/g" > ".env.${ENVIRONMENT}"
-
-          set -a
-          . ".env.${ENVIRONMENT}"
-          set +a
-
-          echo "GCP_REGION=${GCP_REGION}" >> "$GITHUB_ENV"
-          echo "GCP_PROJECT_ID=${GCP_PROJECT_ID}" >> "$GITHUB_ENV"
-          echo "GH_WORKLOAD_IDENTITY_PROVIDER=${GH_WORKLOAD_IDENTITY_PROVIDER}" >> "$GITHUB_ENV"
-
-      - name: Load runtime environment
-        uses: Infisical/secrets-action@v1.0.16
-        with:
-          method: "oidc"
-          identity-id: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
-          project-slug: "infra-deployment-env"
-          env-slug: "foxtrot"
-          export-type: "env"
-
-      - name: Setup Service Account
-        uses: google-github-actions/auth@v3
-        with:
-          project_id: ${{ env.GCP_PROJECT_ID }}
-          workload_identity_provider: ${{ env.GH_WORKLOAD_IDENTITY_PROVIDER }}
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v3
-
-      - name: Promote envd
-        env:
-          ENVD_COMMIT_SHA: ${{ inputs.commit_sha }}
-        run: make -C packages/envd promote
-
-  promote-juliett:
-    name: Promote envd to juliett
-    needs: validate-inputs
-    if: ${{ inputs.juliett == true }}
-    runs-on: ci-builder
-    environment: juliett
-    concurrency:
-      group: promote-envd-juliett
-      cancel-in-progress: false
-    permissions:
-      contents: read
-      id-token: write
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-
-      - name: Pull deployment secrets into temporary file
-        uses: Infisical/secrets-action@v1.0.16
-        with:
-          method: "oidc"
-          identity-id: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
-          project-slug: "infra-deployment"
-          env-slug: "juliett"
-          export-type: "file"
-          file-output-path: "/.env.infisical"
-
-      - name: Load deployment environment
-        env:
-          ENVIRONMENT: juliett
-        run: |
-          echo "${ENVIRONMENT}" > .last_used_env
-          cat .env.infisical | sed "s/='\(.*\)'$/=\1/g" > ".env.${ENVIRONMENT}"
-
-          set -a
-          . ".env.${ENVIRONMENT}"
-          set +a
-
-          echo "GCP_REGION=${GCP_REGION}" >> "$GITHUB_ENV"
-          echo "GCP_PROJECT_ID=${GCP_PROJECT_ID}" >> "$GITHUB_ENV"
-          echo "GH_WORKLOAD_IDENTITY_PROVIDER=${GH_WORKLOAD_IDENTITY_PROVIDER}" >> "$GITHUB_ENV"
-
-      - name: Load runtime environment
-        uses: Infisical/secrets-action@v1.0.16
-        with:
-          method: "oidc"
-          identity-id: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
-          project-slug: "infra-deployment-env"
-          env-slug: "juliett"
-          export-type: "env"
-
-      - name: Setup Service Account
-        uses: google-github-actions/auth@v3
-        with:
-          project_id: ${{ env.GCP_PROJECT_ID }}
-          workload_identity_provider: ${{ env.GH_WORKLOAD_IDENTITY_PROVIDER }}
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v3
-
-      - name: Promote envd
-        env:
-          ENVD_COMMIT_SHA: ${{ inputs.commit_sha }}
-        run: make -C packages/envd promote
+          environment: ${{ matrix.environment }}
+          commit_sha: ${{ inputs.commit_sha }}
+          infisical_machine_identity_id: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}

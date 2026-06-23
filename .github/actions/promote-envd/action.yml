@@ -1,0 +1,65 @@
+name: "Promote envd"
+description: "Loads deployment/runtime secrets, authenticates to GCP, and promotes a versioned envd build to latest."
+inputs:
+  environment:
+    description: "Target environment to promote envd in, e.g. staging"
+    required: true
+  commit_sha:
+    description: "Commit SHA suffix of the versioned envd build to promote"
+    required: true
+  infisical_machine_identity_id:
+    description: "Infisical machine identity ID for accessing secrets"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Pull deployment secrets into temporary file
+      uses: Infisical/secrets-action@v1.0.16
+      with:
+        method: "oidc"
+        identity-id: ${{ inputs.infisical_machine_identity_id }}
+        project-slug: "infra-deployment"
+        env-slug: ${{ inputs.environment }}
+        export-type: "file"
+        file-output-path: "/.env.infisical"
+
+    - name: Load deployment environment
+      env:
+        ENVIRONMENT: ${{ inputs.environment }}
+      shell: bash
+      run: |
+        echo "${ENVIRONMENT}" > .last_used_env
+        cat .env.infisical | sed "s/='\(.*\)'$/=\1/g" > ".env.${ENVIRONMENT}"
+
+        set -a
+        . ".env.${ENVIRONMENT}"
+        set +a
+
+        echo "GCP_REGION=${GCP_REGION}" >> "$GITHUB_ENV"
+        echo "GCP_PROJECT_ID=${GCP_PROJECT_ID}" >> "$GITHUB_ENV"
+        echo "GH_WORKLOAD_IDENTITY_PROVIDER=${GH_WORKLOAD_IDENTITY_PROVIDER}" >> "$GITHUB_ENV"
+
+    - name: Load runtime environment
+      uses: Infisical/secrets-action@v1.0.16
+      with:
+        method: "oidc"
+        identity-id: ${{ inputs.infisical_machine_identity_id }}
+        project-slug: "infra-deployment-env"
+        env-slug: ${{ inputs.environment }}
+        export-type: "env"
+
+    - name: Setup Service Account
+      uses: google-github-actions/auth@v3
+      with:
+        project_id: ${{ env.GCP_PROJECT_ID }}
+        workload_identity_provider: ${{ env.GH_WORKLOAD_IDENTITY_PROVIDER }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v3
+
+    - name: Promote envd
+      env:
+        ENVD_COMMIT_SHA: ${{ inputs.commit_sha }}
+      shell: bash
+      run: make -C packages/envd promote
