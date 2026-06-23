@@ -49,6 +49,7 @@ type Addon struct {
 }
 
 type Agent struct {
+	ID               uuid.UUID
 	AliasID          uuid.UUID
 	Command          string
 	AgentName        pgtype.Text

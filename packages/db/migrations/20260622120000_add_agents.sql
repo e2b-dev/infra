@@ -2,7 +2,8 @@
 
 -- +goose StatementBegin
 CREATE TABLE IF NOT EXISTS public.agents (
-    alias_id UUID PRIMARY KEY REFERENCES public.env_aliases(id) ON DELETE CASCADE,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    alias_id UUID NOT NULL REFERENCES public.env_aliases(id) ON DELETE CASCADE,
     command TEXT NOT NULL,
     agent_name TEXT NULL,
     agent_description TEXT NULL,
@@ -29,7 +30,10 @@ CREATE TRIGGER set_agents_updated_at
     EXECUTE FUNCTION public.set_agents_updated_at();
 
 CREATE INDEX IF NOT EXISTS agents_sort_idx
-    ON public.agents (sort_order, alias_id);
+    ON public.agents (sort_order, alias_id, id);
+
+CREATE INDEX IF NOT EXISTS agents_alias_id_idx
+    ON public.agents (alias_id);
 -- +goose StatementEnd
 
 -- +goose Down
