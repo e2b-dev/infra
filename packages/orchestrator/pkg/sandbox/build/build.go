@@ -18,7 +18,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
-	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -55,8 +54,8 @@ type File struct {
 	header      atomic.Pointer[header.Header]
 	store       *DiffStore
 	fileType    DiffType
+	objType     storage.SeekableObjectType
 	persistence storage.StorageProvider
-	metrics     blockmetrics.Metrics
 
 	okAttrs metric.MeasurementOption
 }
@@ -66,15 +65,17 @@ func NewFile(
 	store *DiffStore,
 	fileType DiffType,
 	persistence storage.StorageProvider,
-	metrics blockmetrics.Metrics,
 ) *File {
+	// file_type uses the SeekableObjectType label (memfile/rootfs) so it matches
+	// the chunker's read.* metrics; fileType (DiffType) is the filename-based key.
+	objType, _ := storageObjectType(fileType)
 	f := &File{
 		store:       store,
 		fileType:    fileType,
+		objType:     objType,
 		persistence: persistence,
-		metrics:     metrics,
 		okAttrs: metric.WithAttributes(
-			attribute.String(storage.AttrFileType, string(fileType)),
+			attribute.String(storage.AttrFileType, objType.String()),
 			attribute.String(storage.AttrOutcome, storage.OutcomeOK),
 		),
 	}
@@ -99,7 +100,7 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 	// io.EOF is a normal short-read outcome (io.ReaderAt), not an I/O error.
 	if err != nil && !errors.Is(err, io.EOF) {
 		fileReadAtTimer.Record(ctx, time.Since(start), int64(n), metric.WithAttributes(
-			attribute.String(storage.AttrFileType, string(b.fileType)),
+			attribute.String(storage.AttrFileType, b.objType.String()),
 			attribute.String(storage.AttrOutcome, storage.Outcome(err)),
 		))
 

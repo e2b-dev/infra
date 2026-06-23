@@ -25,10 +25,8 @@ import (
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/metric/noop"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
-	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -541,9 +539,7 @@ func TestFileIsCached_UUIDNilMappingReportsCached(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	m, err := blockmetrics.NewMetrics(noop.NewMeterProvider())
-	require.NoError(t, err)
-	f := NewFile(hdr, store, Memfile, nil, m)
+	f := NewFile(hdr, store, Memfile, nil)
 
 	require.True(t, f.IsCached(t.Context(), 0, size))
 }
@@ -569,9 +565,7 @@ func TestFileIsCached_UninitializedChunkerReportsUncached(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	m, err := blockmetrics.NewMetrics(noop.NewMeterProvider())
-	require.NoError(t, err)
-	f := NewFile(hdr, store, Memfile, nil, m)
+	f := NewFile(hdr, store, Memfile, nil)
 
 	require.False(t, f.IsCached(t.Context(), 0, size))
 }

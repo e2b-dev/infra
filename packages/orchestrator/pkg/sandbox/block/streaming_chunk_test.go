@@ -12,10 +12,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/metric/noop"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -26,15 +24,6 @@ const (
 	testFrameSize = 256 * 1024      // 256 KB per frame for fast tests
 	testFileSize  = testFrameSize * 4
 )
-
-func newTestMetrics(tb testing.TB) metrics.Metrics {
-	tb.Helper()
-
-	m, err := metrics.NewMetrics(noop.NewMeterProvider())
-	require.NoError(tb, err)
-
-	return m
-}
 
 func makeTestData(size int) []byte {
 	rng := rand.New(rand.NewPCG(42, 0)) //nolint:gosec // deterministic test data
@@ -68,7 +57,7 @@ type testControl struct {
 
 func newTestChunker(t *testing.T, size int64) *Chunker {
 	t.Helper()
-	c, err := NewChunker(&featureflags.Client{}, size, testBlockSize, t.TempDir()+"/cache", newTestMetrics(t), storage.MemfileObjectType)
+	c, err := NewChunker(&featureflags.Client{}, size, testBlockSize, t.TempDir()+"/cache", storage.MemfileObjectType)
 	require.NoError(t, err)
 
 	return c

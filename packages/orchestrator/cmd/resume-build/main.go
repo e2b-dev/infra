@@ -30,7 +30,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
-	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
@@ -1156,15 +1155,11 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Creating block metrics...")
 	}
-	blockMetrics, err := blockmetrics.NewMetrics(tel.MeterProvider)
-	if err != nil {
-		return fmt.Errorf("block metrics: %w", err)
-	}
 
 	if verbose {
 		fmt.Println("🔧 Creating template cache...")
 	}
-	cache, err := template.NewCache(config, flags, persistence, blockMetrics, peerclient.NopResolver())
+	cache, err := template.NewCache(config, flags, persistence, peerclient.NopResolver())
 	if err != nil {
 		return fmt.Errorf("template cache: %w", err)
 	}

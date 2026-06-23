@@ -13,7 +13,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
-	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerclient"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -57,7 +56,6 @@ type StorageDiff struct {
 	flags             *featureflags.Client
 
 	blockSize   int64
-	metrics     blockmetrics.Metrics
 	persistence storage.StorageProvider
 
 	source    atomic.Pointer[source]
@@ -92,7 +90,6 @@ func newStorageDiff(
 	diffType DiffType,
 	storageObjectType storage.SeekableObjectType,
 	blockSize int64,
-	metrics blockmetrics.Metrics,
 	persistence storage.StorageProvider,
 	upstream storage.Seekable,
 	uncompressedSize int64,
@@ -101,7 +98,7 @@ func newStorageDiff(
 	ff *featureflags.Client,
 ) (*StorageDiff, error) {
 	cachePath := GenerateDiffCachePath(basePath, buildID, diffType)
-	c, err := block.NewChunker(ff, uncompressedSize, blockSize, cachePath, metrics, storageObjectType)
+	c, err := block.NewChunker(ff, uncompressedSize, blockSize, cachePath, storageObjectType)
 	if err != nil {
 		return nil, fmt.Errorf("create chunker for build %s: %w", buildID, err)
 	}
@@ -113,7 +110,6 @@ func newStorageDiff(
 		flags:             ff,
 		cachePath:         cachePath,
 		blockSize:         blockSize,
-		metrics:           metrics,
 		persistence:       persistence,
 		chunker:           c,
 		cacheKey:          GetDiffStoreKey(buildID, diffType),
@@ -221,7 +217,6 @@ func (b *File) createDiff(ctx context.Context, buildID uuid.UUID) (Diff, error) 
 		b.fileType,
 		objType,
 		blockSize,
-		b.metrics,
 		b.persistence,
 		upstream,
 		size,
@@ -380,9 +375,10 @@ func (b *StorageDiff) IsCached(ctx context.Context, off, length int64) bool {
 }
 
 func refreshHeader(ctx context.Context, persistence storage.StorageProvider, buildID uuid.UUID, diffType DiffType, cause string) (*header.Header, error) {
+	objType, _ := storageObjectType(diffType)
 	timer := frameTableRefreshTimer.Begin(
 		attribute.String("cause", cause),
-		attribute.String("file_type", string(diffType)),
+		attribute.String(storage.AttrFileType, objType.String()),
 	)
 
 	headerPath := storage.Paths{BuildID: buildID.String()}.HeaderFile(string(diffType))

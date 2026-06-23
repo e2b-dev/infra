@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/uuid"
 
-	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -31,7 +30,6 @@ func NewStorage(
 	fileType build.DiffType,
 	h *header.Header,
 	persistence storage.StorageProvider,
-	metrics blockmetrics.Metrics,
 ) (*Storage, error) {
 	paths := storage.Paths{BuildID: buildId}
 
@@ -108,7 +106,7 @@ func NewStorage(
 
 	recordHeaderShape(ctx, fileType, h)
 
-	b := build.NewFile(h, store, fileType, persistence, metrics)
+	b := build.NewFile(h, store, fileType, persistence)
 
 	return &Storage{
 		source: b,

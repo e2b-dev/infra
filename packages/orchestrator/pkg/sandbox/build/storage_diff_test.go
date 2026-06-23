@@ -12,10 +12,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/metric/noop"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
-	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -357,14 +355,11 @@ func TestStorageDiff_ReloadSourceLatchesV3AsUncompressed(t *testing.T) {
 		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone)).
 		Return(rawSeekable, nil).Once()
 
-	m, err := blockmetrics.NewMetrics(noop.NewMeterProvider())
-	require.NoError(t, err)
-
 	// Bootstrap with no latched FT (initialFT nil) — the first read with a nil
 	// caller FT must refresh and latch the V3 header as uncompressed.
 	bootstrap := storage.NewMockSeekable(t)
 	diff, err := newStorageDiff(t.TempDir(), aID.String(), Memfile, storage.MemfileObjectType,
-		testBlockSize, m, provider, bootstrap, int64(payloadSize), nil, "", &featureflags.Client{})
+		testBlockSize, provider, bootstrap, int64(payloadSize), nil, "", &featureflags.Client{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = diff.Close() })
 
@@ -472,9 +467,7 @@ func TestStorageDiff_BackfillMarkerLatchesUncompressedAtConstruction(t *testing.
 
 	store, err := NewDiffStore(cfg.Config{}, &featureflags.Client{}, t.TempDir(), time.Hour, time.Minute)
 	require.NoError(t, err)
-	m, err := blockmetrics.NewMetrics(noop.NewMeterProvider())
-	require.NoError(t, err)
-	f := NewFile(bHeader, store, Memfile, provider, m)
+	f := NewFile(bHeader, store, Memfile, provider)
 
 	diff, err := f.getBuild(t.Context(), aID)
 	require.NoError(t, err)
@@ -501,9 +494,7 @@ func runReadOnFile(t *testing.T, h *header.Header, provider storage.StorageProvi
 	t.Helper()
 	store, err := NewDiffStore(cfg.Config{}, &featureflags.Client{}, t.TempDir(), time.Hour, time.Minute)
 	require.NoError(t, err)
-	m, err := blockmetrics.NewMetrics(noop.NewMeterProvider())
-	require.NoError(t, err)
-	f := NewFile(h, store, Memfile, provider, m)
+	f := NewFile(h, store, Memfile, provider)
 
 	buf := make([]byte, testBlockSize)
 	got, err := f.ReadAt(t.Context(), buf, 0)

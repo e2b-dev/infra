@@ -26,7 +26,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
-	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
@@ -173,15 +172,12 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	persistence, err := storage.GetStorageProvider(b.Context(), storage.TemplateStorageConfig.WithLimiter(limiter))
 	require.NoError(b, err)
 
-	blockMetrics, err := blockmetrics.NewMetrics(&noop.MeterProvider{})
-	require.NoError(b, err)
-
 	c, err := cfg.Parse()
 	if err != nil {
 		b.Fatalf("error parsing config: %v", err)
 	}
 
-	templateCache, err := template.NewCache(c, featureFlags, persistence, blockMetrics, peerclient.NopResolver())
+	templateCache, err := template.NewCache(c, featureFlags, persistence, peerclient.NopResolver())
 	require.NoError(b, err)
 	templateCache.Start(b.Context())
 	b.Cleanup(templateCache.Stop)

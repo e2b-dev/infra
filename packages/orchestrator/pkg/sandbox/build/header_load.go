@@ -55,8 +55,9 @@ func PollRemoteStorageForHeader(
 	start := time.Now()
 	result := "ok"
 	defer func() {
+		objType, _ := storageObjectType(t)
 		uploadHeaderPollWait.Record(ctx, time.Since(start).Milliseconds(), metric.WithAttributes(
-			attribute.String("file_type", string(t)),
+			attribute.String(storage.AttrFileType, objType.String()),
 			attribute.String("result", result),
 		))
 	}()

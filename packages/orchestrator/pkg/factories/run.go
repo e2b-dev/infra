@@ -42,7 +42,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/portmap"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
-	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
@@ -373,11 +372,6 @@ func run(config cfg.Config, opts Options) (success bool) {
 		logger.L().Fatal(ctx, "failed to create template storage provider", zap.Error(err))
 	}
 
-	blockMetrics, err := blockmetrics.NewMetrics(tel.MeterProvider)
-	if err != nil {
-		logger.L().Fatal(ctx, "failed to create metrics provider", zap.Error(err))
-	}
-
 	// redis (initialized before template cache so the peer registry can be passed to NewCache)
 	redisClient, err := sharedFactories.NewRedisClient(ctx, sharedFactories.RedisConfig{
 		RedisURL:         config.RedisURL,
@@ -401,7 +395,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 		peerResolver = peerclient.NewResolver(peerRegistry, *nodeAddress)
 	}
 
-	templateCache, err := template.NewCache(config, featureFlags, persistence, blockMetrics, peerResolver)
+	templateCache, err := template.NewCache(config, featureFlags, persistence, peerResolver)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create template cache", zap.Error(err))
 	}

@@ -12,12 +12,10 @@ import (
 	"sync/atomic"
 
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/metric/noop"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/cmd/internal/cmdutil"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -181,16 +179,12 @@ func openChunker(ctx context.Context, storagePath, buildID, artifact string, h *
 	if err != nil {
 		return nil, nil, 0, nil, fmt.Errorf("feature flags: %w", err)
 	}
-	m, err := metrics.NewMetrics(noop.NewMeterProvider())
-	if err != nil {
-		return nil, nil, 0, nil, fmt.Errorf("metrics: %w", err)
-	}
 	cacheDir, err := os.MkdirTemp("", "inspect-build-validate-")
 	if err != nil {
 		return nil, nil, 0, nil, err
 	}
 
-	chunker, err := block.NewChunker(flags, size, int64(h.Metadata.BlockSize), filepath.Join(cacheDir, "cache"), m, seekableType(artifact))
+	chunker, err := block.NewChunker(flags, size, int64(h.Metadata.BlockSize), filepath.Join(cacheDir, "cache"), seekableType(artifact))
 	if err != nil {
 		os.RemoveAll(cacheDir)
 

@@ -10,11 +10,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/metric/noop"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
-	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -67,7 +65,7 @@ func fanoutSums(t *testing.T, reader *sdkmetric.ManualReader, name string) map[s
 // type, for both the precomputed and the fallback attribute paths.
 //
 //nolint:paralleltest // swaps the package-level fan-out histograms
-func TestRecordReadFanout(t *testing.T) {
+func TestRecordReadFanout_LabelsByFileType(t *testing.T) {
 	reader := swapReadFanoutMetrics(t)
 	ctx := context.Background()
 
@@ -76,14 +74,16 @@ func TestRecordReadFanout(t *testing.T) {
 	recordReadFanout(ctx, Rootfs, 2, 2)
 	recordReadFanout(ctx, DiffType("other"), 5, 5) // fallback attr path
 
+	// file_type uses the SeekableObjectType label: "rootfs" (not the "rootfs.ext4"
+	// filename), and an unrecognized DiffType falls back to "unknown".
 	segments := fanoutSums(t, reader, "orchestrator.build.read.segments")
-	assert.Equal(t, [2]int64{14, 2}, segments[string(Memfile)], "memfile segments sum/count")
-	assert.Equal(t, [2]int64{2, 1}, segments[string(Rootfs)], "rootfs segments sum/count")
-	assert.Equal(t, [2]int64{5, 1}, segments["other"], "fallback segments sum/count")
+	assert.Equal(t, [2]int64{14, 2}, segments["memfile"], "memfile segments sum/count")
+	assert.Equal(t, [2]int64{2, 1}, segments["rootfs"], "rootfs segments sum/count")
+	assert.Equal(t, [2]int64{5, 1}, segments["unknown"], "fallback segments sum/count")
 
 	builds := fanoutSums(t, reader, "orchestrator.build.read.builds")
-	assert.Equal(t, [2]int64{5, 2}, builds[string(Memfile)], "memfile builds sum/count")
-	assert.Equal(t, [2]int64{2, 1}, builds[string(Rootfs)], "rootfs builds sum/count")
+	assert.Equal(t, [2]int64{5, 2}, builds["memfile"], "memfile builds sum/count")
+	assert.Equal(t, [2]int64{2, 1}, builds["rootfs"], "rootfs builds sum/count")
 }
 
 // A ReadAt resolved entirely from uuid.Nil (zero-fill) mappings records one
@@ -110,9 +110,7 @@ func TestFileReadAt_RecordsZeroFanoutForNilMapping(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	m, err := blockmetrics.NewMetrics(noop.NewMeterProvider())
-	require.NoError(t, err)
-	f := NewFile(hdr, store, Memfile, nil, m)
+	f := NewFile(hdr, store, Memfile, nil)
 
 	buf := make([]byte, size)
 	n, err := f.ReadAt(t.Context(), buf, 0)

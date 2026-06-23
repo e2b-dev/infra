@@ -8,6 +8,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -29,16 +30,23 @@ var (
 
 // readFanoutAttrs precomputes the per-file-type attribute sets so the
 // per-read hot path allocates nothing (mirrors uffd/userfaultfd/metrics.go).
+// file_type uses the SeekableObjectType label (memfile/rootfs) to match read.*.
 var readFanoutAttrs = map[DiffType]metric.MeasurementOption{
-	Memfile: telemetry.PrecomputeAttrs(attribute.String("file_type", string(Memfile))),
-	Rootfs:  telemetry.PrecomputeAttrs(attribute.String("file_type", string(Rootfs))),
+	Memfile: fanoutAttrs(Memfile),
+	Rootfs:  fanoutAttrs(Rootfs),
+}
+
+func fanoutAttrs(t DiffType) metric.MeasurementOption {
+	objType, _ := storageObjectType(t)
+
+	return telemetry.PrecomputeAttrs(attribute.String(storage.AttrFileType, objType.String()))
 }
 
 // recordReadFanout records the fan-out of one completed File.ReadAt.
 func recordReadFanout(ctx context.Context, fileType DiffType, segments, builds int) {
 	attrs, ok := readFanoutAttrs[fileType]
 	if !ok {
-		attrs = telemetry.PrecomputeAttrs(attribute.String("file_type", string(fileType)))
+		attrs = fanoutAttrs(fileType)
 	}
 	readSegmentsMetric.Record(ctx, int64(segments), attrs)
 	readBuildsMetric.Record(ctx, int64(builds), attrs)

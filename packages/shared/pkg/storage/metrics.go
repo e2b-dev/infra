@@ -155,6 +155,9 @@ func mustFloatHist(name, desc, unit string) metric.Float64Histogram {
 	))
 }
 
+// metricReadSize names both the duration histogram and its event counter.
+const metricReadSize = "orchestrator.read.size"
+
 var (
 	readOpen = utils.Must(telemetry.NewFloatTimerFactory(meter,
 		"orchestrator.read.open",
@@ -191,13 +194,13 @@ var (
 
 	// Size() transfers nothing, so duration + count only (no bytes counter).
 	readSize = utils.Must(meter.Float64Histogram(
-		"orchestrator.read.size",
+		metricReadSize,
 		metric.WithDescription("Size() metadata-lookup wall"),
 		metric.WithUnit("ms"),
 		metric.WithExplicitBucketBoundaries(telemetry.SubMillisecondMsBuckets...),
 	))
 	readSizeCount = utils.Must(meter.Int64Counter(
-		"orchestrator.read.size",
+		metricReadSize,
 		metric.WithDescription("Total orchestrator.read.size events recorded"),
 	))
 

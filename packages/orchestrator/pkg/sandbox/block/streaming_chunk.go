@@ -10,11 +10,13 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -23,9 +25,17 @@ const (
 	defaultFetchTimeout = 60 * time.Second
 )
 
+var meter = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block")
+
+// chunkSliceTimerFactory times Chunker.Slice() (source=mmap when served from cache).
+var chunkSliceTimerFactory = utils.Must(telemetry.NewFloatTimerFactory(
+	meter, "orchestrator.chunk.slice",
+	"Time taken by Chunker to serve a Slice() (source=mmap when served from cache)",
+	"Bytes returned",
+))
+
 type Chunker struct {
 	cache        *Cache
-	metrics      metrics.Metrics
 	fetchTimeout time.Duration
 	featureFlags *featureflags.Client
 	objType      storage.SeekableObjectType
@@ -40,7 +50,6 @@ func NewChunker(
 	ff *featureflags.Client,
 	size, blockSize int64,
 	cachePath string,
-	metrics metrics.Metrics,
 	objType storage.SeekableObjectType,
 ) (*Chunker, error) {
 	cache, err := NewCache(size, blockSize, cachePath, false)
@@ -51,7 +60,6 @@ func NewChunker(
 	return &Chunker{
 		size:         size,
 		cache:        cache,
-		metrics:      metrics,
 		featureFlags: ff,
 		fetchTimeout: defaultFetchTimeout,
 		objType:      objType,
@@ -76,13 +84,13 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64, upstream storage
 	// Fast path: already cached.
 	b, err := c.cache.Slice(off, length)
 	if err == nil {
-		c.metrics.ChunkSliceTimerFactory.Record(ctx, time.Since(sliceStart), length, storage.OKAttrs(c.objType, storage.SourceMmap, ct))
+		chunkSliceTimerFactory.Record(ctx, time.Since(sliceStart), length, storage.OKAttrs(c.objType, storage.SourceMmap, ct))
 
 		return b, nil
 	}
 
 	if !errors.As(err, &BytesNotAvailableError{}) {
-		c.metrics.ChunkSliceTimerFactory.Record(ctx, time.Since(sliceStart), 0, storage.ErrAttrs(c.objType, storage.SourceMmap, ct, err))
+		chunkSliceTimerFactory.Record(ctx, time.Since(sliceStart), 0, storage.ErrAttrs(c.objType, storage.SourceMmap, ct, err))
 
 		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
 	}
@@ -93,7 +101,7 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64, upstream storage
 	for cur := off; cur < end; {
 		chunkOff, chunkLen, lerr := c.locateChunk(cur, ft)
 		if lerr != nil {
-			c.metrics.ChunkSliceTimerFactory.Record(ctx, time.Since(sliceStart), 0, storage.ErrAttrs(c.objType, src, ct, lerr))
+			chunkSliceTimerFactory.Record(ctx, time.Since(sliceStart), 0, storage.ErrAttrs(c.objType, src, ct, lerr))
 
 			return nil, fmt.Errorf("failed to locate chunk for offset %d: %w", cur, lerr)
 		}
@@ -101,7 +109,7 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64, upstream storage
 		rangeEnd := min(end, chunkEnd)
 		s, err := c.fetch(ctx, cur, rangeEnd-cur, upstream, ft)
 		if err != nil {
-			c.metrics.ChunkSliceTimerFactory.Record(ctx, time.Since(sliceStart), 0, storage.ErrAttrs(c.objType, s, ct, err))
+			chunkSliceTimerFactory.Record(ctx, time.Since(sliceStart), 0, storage.ErrAttrs(c.objType, s, ct, err))
 
 			return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", cur, rangeEnd, err)
 		}
@@ -112,12 +120,12 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64, upstream storage
 	// sliceDirect skips isCached — the waiter already confirmed the data is in the mmap.
 	b, cacheErr := c.cache.sliceDirect(off, length)
 	if cacheErr != nil {
-		c.metrics.ChunkSliceTimerFactory.Record(ctx, time.Since(sliceStart), 0, storage.ErrAttrs(c.objType, src, ct, cacheErr))
+		chunkSliceTimerFactory.Record(ctx, time.Since(sliceStart), 0, storage.ErrAttrs(c.objType, src, ct, cacheErr))
 
 		return nil, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
 	}
 
-	c.metrics.ChunkSliceTimerFactory.Record(ctx, time.Since(sliceStart), length, storage.OKAttrs(c.objType, src, ct))
+	chunkSliceTimerFactory.Record(ctx, time.Since(sliceStart), length, storage.OKAttrs(c.objType, src, ct))
 
 	return b, nil
 }

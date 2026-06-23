@@ -18,7 +18,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
-	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerclient"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
@@ -54,7 +53,6 @@ type Cache struct {
 	cache         *ttlcache.Cache[string, Template]
 	persistence   storage.StorageProvider
 	buildStore    *build.DiffStore
-	blockMetrics  blockmetrics.Metrics
 	rootCachePath string
 	peers         peerclient.Resolver
 	extendMu      sync.Mutex
@@ -67,7 +65,6 @@ func NewCache(
 	config cfg.Config,
 	flags *featureflags.Client,
 	persistence storage.StorageProvider,
-	metrics blockmetrics.Metrics,
 	peers peerclient.Resolver,
 ) (*Cache, error) {
 	cache := ttlcache.New(
@@ -103,7 +100,6 @@ func NewCache(
 	}
 
 	return &Cache{
-		blockMetrics:  metrics,
 		config:        config,
 		persistence:   persistence,
 		buildStore:    buildStore,
@@ -192,7 +188,6 @@ func (c *Cache) GetTemplate(
 		resolvedHeader(nil),
 		resolvedHeader(nil),
 		persistence,
-		c.blockMetrics,
 		nil,
 		nil,
 	)
@@ -243,7 +238,6 @@ func (c *Cache) AddSnapshot(
 		memfileHeader,
 		rootfsHeader,
 		c.persistence,
-		c.blockMetrics,
 		localSnapfile,
 		localMetafile,
 	)

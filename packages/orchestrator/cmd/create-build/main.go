@@ -28,7 +28,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
-	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
@@ -294,8 +293,6 @@ func doBuild(
 		return fmt.Errorf("build storage: %w", err)
 	}
 
-	blockMetrics, _ := blockmetrics.NewMetrics(noop.NewMeterProvider())
-
 	if os.Getenv("NODE_IP") == "" {
 		os.Setenv("NODE_IP", "127.0.0.1")
 	}
@@ -331,7 +328,7 @@ func doBuild(
 	}
 	defer dockerhubRepo.Close()
 
-	templateCache, err := sbxtemplate.NewCache(c, featureFlags, persistenceTemplate, blockMetrics, peerclient.NopResolver())
+	templateCache, err := sbxtemplate.NewCache(c, featureFlags, persistenceTemplate, peerclient.NopResolver())
 	if err != nil {
 		return fmt.Errorf("template cache: %w", err)
 	}

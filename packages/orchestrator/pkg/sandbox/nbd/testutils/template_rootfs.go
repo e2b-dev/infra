@@ -10,10 +10,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/metric/noop"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -108,13 +106,8 @@ func TemplateRootfs(ctx context.Context, buildID string) (*BuildDevice, *Cleaner
 		return nil
 	})
 
-	m, err := metrics.NewMetrics(noop.NewMeterProvider())
-	if err != nil {
-		return nil, &cleaner, fmt.Errorf("failed to create metrics: %w", err)
-	}
-
 	buildDevice := NewBuildDevice(
-		build.NewFile(h, store, build.Rootfs, s, m),
+		build.NewFile(h, store, build.Rootfs, s),
 		h,
 		int64(h.Metadata.BlockSize),
 	)

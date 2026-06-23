@@ -552,9 +552,9 @@ func NewTimerFactory(
 }
 
 // FloatTimerFactory records duration as fractional milliseconds so sub-ms
-// operations aren't truncated to 0. The duration histogram and event counter
-// share <metricName> (rate()-friendly); only the bytes counter splits out to
-// <metricName>.size so Grafana's unit detection doesn't conflate ms with By.
+// operations aren't truncated to 0. Like TimerFactory, all three series share
+// <metricName>; the Prometheus exporter disambiguates them by unit suffix
+// (_milliseconds / _bytes_total / _total).
 type FloatTimerFactory struct {
 	duration metric.Float64Histogram
 	bytes    metric.Int64Counter
@@ -581,7 +581,7 @@ func NewFloatTimerFactory(
 		return FloatTimerFactory{}, fmt.Errorf("failed to create duration histogram: %w", err)
 	}
 
-	bytes, err := meter.Int64Counter(metricName+".size",
+	bytes, err := meter.Int64Counter(metricName,
 		metric.WithDescription(bytesDescription),
 		metric.WithUnit("By"),
 	)
