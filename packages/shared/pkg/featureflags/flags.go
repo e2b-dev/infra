@@ -299,7 +299,7 @@ var (
 
 	// BuildReservedDiskSpaceMB is the amount of disk space in MB reserved for root on the guest filesystem.
 	// Reserved blocks are only usable by root (uid 0), protecting the guest OS from disk-full conditions.
-	BuildReservedDiskSpaceMB = NewIntFlag("build-reserved-disk-space-mb", 0)
+	BuildReservedDiskSpaceMB = NewIntFlag("build-reserved-disk-space-mb", 256)
 
 	// MaxStartingInstancesPerNode limits concurrent sandbox start/resume operations on a single orchestrator node.
 	// Must be > 0.
