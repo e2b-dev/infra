@@ -282,6 +282,30 @@ var (
 	// Copy uses uffd syscalls, so we limit parallelism to avoid overwhelming the system.
 	MemoryPrefetchMaxCopyWorkers = NewIntFlag("memory-prefetch-max-copy-workers", 8)
 
+	// PauseResumePrefetchHarvestFlag makes the orchestrator, after a pause
+	// snapshot is durable, run a throwaway warm resume of the just-written
+	// artifact (driven by envd /init, workload frozen, egress denied) to record
+	// the resume page-fault trace and turn it into a prefetch mapping. Off by
+	// default; the harvest is best-effort and never affects the pause result.
+	PauseResumePrefetchHarvestFlag = NewBoolFlag("pause-resume-prefetch-harvest", false)
+
+	// PauseResumePrefetchConsumeFlag controls whether a harvested mapping is
+	// persisted into the pause artifact metadata (and therefore replayed on the
+	// customer's next resume). When off, the harvest still runs and emits its
+	// trace-size metrics but does NOT write the mapping, so resumes are
+	// unaffected — letting us validate harvest behaviour with no customer-visible
+	// change before enabling prefetch on resume. Off by default.
+	PauseResumePrefetchConsumeFlag = NewBoolFlag("pause-resume-prefetch-consume", false)
+
+	// PauseResumePrefetchHarvestTimeoutMsFlag bounds the throwaway harvest resume
+	// (slot-hold cap), in milliseconds. The harvest is best-effort: a cut-short
+	// run is discarded (the build is simply re-harvested on its next pause), so
+	// erring short is cheap. A normal warm harvest completes in a few seconds; the
+	// default leaves headroom for a large warm resume to fully drain while keeping
+	// the worst-case slot hold modest. Tunable per rollout via LD; the fallback
+	// (returned when LD is unavailable or the flag is unset) is the default.
+	PauseResumePrefetchHarvestTimeoutMsFlag = NewIntFlag("pause-resume-prefetch-harvest-timeout-ms", 15000) // 15s
+
 	// TCPFirewallMaxConnectionsPerSandbox is the maximum number of concurrent TCP firewall
 	// connections allowed per sandbox. Negative means no limit.
 	TCPFirewallMaxConnectionsPerSandbox = NewIntFlag("tcpfirewall-max-connections-per-sandbox", -1)
