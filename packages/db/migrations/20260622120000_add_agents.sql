@@ -1,5 +1,4 @@
 -- +goose Up
--- +goose NO TRANSACTION
 
 -- +goose StatementBegin
 CREATE TABLE IF NOT EXISTS public.agents (
@@ -28,15 +27,12 @@ CREATE TRIGGER set_agents_updated_at
     BEFORE UPDATE ON public.agents
     FOR EACH ROW
     EXECUTE FUNCTION public.set_agents_updated_at();
+
+CREATE INDEX IF NOT EXISTS agents_sort_idx
+    ON public.agents (sort_order, alias_id);
 -- +goose StatementEnd
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS agents_sort_idx
-    ON public.agents (sort_order, alias_id);
-
 -- +goose Down
--- +goose NO TRANSACTION
-
-DROP INDEX CONCURRENTLY IF EXISTS public.agents_sort_idx;
 
 -- +goose StatementBegin
 DROP TRIGGER IF EXISTS set_agents_updated_at ON public.agents;
