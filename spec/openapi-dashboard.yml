@@ -856,6 +856,8 @@ components:
         - name
         - command
         - template
+        - aliasId
+        - aliasName
         - icon
         - description
       properties:
@@ -867,6 +869,11 @@ components:
         command:
           type: string
         template:
+          type: string
+        aliasId:
+          type: string
+          format: uuid
+        aliasName:
           type: string
         icon:
           type: string

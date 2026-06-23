@@ -52,6 +52,8 @@ func mapAgent(row dashboardqueries.ListAgentsRow) api.Agent {
 
 	return api.Agent{
 		Id:          row.ID,
+		AliasId:     row.AliasID,
+		AliasName:   row.AliasName,
 		Name:        name,
 		Command:     row.Command,
 		Template:    row.Template,
