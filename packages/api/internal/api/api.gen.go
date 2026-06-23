@@ -7781,7 +7781,9 @@ type GetV2TemplatesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON200      *[]Template
+	JSON400      *N400
 	JSON401      *N401
+	JSON403      *N403
 	JSON500      *N500
 }
 
@@ -10960,12 +10962,26 @@ func ParseGetV2TemplatesResponse(rsp *http.Response) (*GetV2TemplatesResponse, e
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest N401
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest N403
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500
@@ -13876,13 +13892,13 @@ var swaggerSpec = []string{
 	"M3/roOyQbepGh4480QyvT1Jt2Pcw3Rm75kL5NwSyLUu+E7VjDZR6E6CQgGeziW7JeTpFqjeakZhd6ewF",
 	"ugHmBJHrMM6jdtjemRrzAAuyJUgqqKSXBIl8pnkQSrAMl4ilsPKECIEX+hWmSGoLWyGYh8vKshJ8fUzS",
 	"hbrguz/9ZbN+tk7i3i+76+kvn1P4jiTS/nCZ8cExX3YfLDzmB5Nb7joQJ5gsCY7gKL5P/rmlILClQdAM",
-	"BgDGBKI2kSZWMCXXEmWKlrA5ZNiKpQgQnWspFmIDOgXjm2c3kfsLBKreuk35eHzZfexeHgYSz8XURqqq",
-	"XIbQcAnurjne7XLnIOqP7XR3L4tol4Sevfoe5Dr0uFWNdaLy3o6Hc6O6Zy4CEBnFQx6XF9djotevqwJ8",
-	"T/LNfnni9YPIE68fSp4wC7AU1i7kcYkWP376hgZaszhPyMC8Ysi29r1Ki0/3/27Tc41+tcWgpm7u5k9B",
-	"z+xmBxSU1rSrAJCffDnHfS9FpO0ZbzZeUs+6n0ZGc9GDUTazbhNmz++fVvxzyM72d/2P4ZGQ7VipGxm8",
-	"/GKGHS3M2fUMDIOsYIMNgcRNTHhWjfopUYcbZgHBVh/M+zzrnYciKTa71zMaDScosCx+aY895/Fkb7KU",
-	"MhN729s4o1OyO5viLJs4/b+X2vEyj9L3WnLf6o+Q+sr9G45tS6pzrTbM6NYFWVV+M74yxd+F8PHt5v8H",
-	"AAD//w==",
+	"BgDGBKI2kSZWMCXXEmWKlrA5ZNiKpQgQnWspFmIDOgXjmx8xsO1HDzCq3uZN+Y582X3s3iMGEs9F2kaq",
+	"wFxG03A17q5l3u3K5yDqj+3Mdy+LaJewnr0FH+Q69LhrjXXO8t6Oh3PPumcuAhAZxUMel3fYY6LXr6sP",
+	"g56knv3yxOsHkSdeP5Q8YRZgKaxdyOMSLX78tBANtGZxnpCB+cqQbe177Raf7v89qOca/RqMQf3d3M2f",
+	"gp7ZzQ4oVK1pVwEgP/lyjvteilPbM95sHKaedT+NjEakB6Nsxt4mzJ7fP63455Cd7e/6H8MjLNuxUjcy",
+	"ePnFDDtamLPrGRheWcEGG1qJm5jwrHL1U6IO984Cgq2+nfd51jsPRVJs1rBnNBpOUGBZ/NIee87jyd5k",
+	"KWUm9ra3cUanZHc2xVk2cfp/L7XuZX6m77WkwdUfIaWW+zcc25ZU51ptmNGtC7Kq/GZ8cIq/C+Hj283/",
+	"DwAA//8=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
