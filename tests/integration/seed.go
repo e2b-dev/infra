@@ -223,7 +223,7 @@ INSERT INTO env_builds (
 	cluster_node_id, version, created_at, updated_at
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP)
 `, build.id, "FROM e2bdev/base:latest", dbtypes.BuildStatusUploaded,
-				2, 512, 1024, 2494, "vmlinux-6.1.158-c1a568c", "v1.14.1_431f1fc", pkg.Version,
+				2, 512, 2048, 3727, "vmlinux-6.1.158-c1a568c", "v1.14.1_431f1fc", pkg.Version,
 				"integration-test-node", templates.TemplateV1Version, build.createdAt)
 		} else {
 			err = db.TestsRawSQL(ctx, `
@@ -233,7 +233,7 @@ INSERT INTO env_builds (
 	cluster_node_id, version, updated_at
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP)
 `, build.id, "FROM e2bdev/base:latest", dbtypes.BuildStatusUploaded,
-				2, 512, 1024, 2494, "vmlinux-6.1.158-c1a568c", "v1.14.1_431f1fc", pkg.Version,
+				2, 512, 2048, 3727, "vmlinux-6.1.158-c1a568c", "v1.14.1_431f1fc", pkg.Version,
 				"integration-test-node", templates.TemplateV1Version)
 		}
 		if err != nil {
