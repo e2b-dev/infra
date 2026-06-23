@@ -95,7 +95,7 @@ func TestPlaceSandbox_TimeoutPinsFirstTriedNode(t *testing.T) {
 	)
 
 	var timeoutErr *PlacementTimeoutError
-	require.True(t, errors.As(err, &timeoutErr), "expected a *PlacementTimeoutError, got %v", err)
+	require.ErrorAs(t, err, &timeoutErr, "expected a *PlacementTimeoutError, got %v", err)
 	require.NotNil(t, timeoutErr.Node)
 	assert.Equal(t, node.ID, timeoutErr.Node.ID)
 }
@@ -132,7 +132,7 @@ func TestPlaceSandbox_PinsFirstTriedNodeNotLater(t *testing.T) {
 	)
 
 	var timeoutErr *PlacementTimeoutError
-	require.True(t, errors.As(err, &timeoutErr))
+	require.ErrorAs(t, err, &timeoutErr)
 	require.NotNil(t, timeoutErr.Node)
 	assert.Equal(t, first.ID, timeoutErr.Node.ID, "must pin the first node tried, not a later one")
 }
@@ -160,7 +160,7 @@ func TestPlaceSandbox_HardFailureNotWrapped(t *testing.T) {
 	require.Error(t, err)
 
 	var timeoutErr *PlacementTimeoutError
-	assert.False(t, errors.As(err, &timeoutErr), "a live-context failure must not be wrapped as a timeout")
+	assert.NotErrorAs(t, err, &timeoutErr, "a live-context failure must not be wrapped as a timeout")
 }
 
 // TestPlaceSandbox_ResourceExhaustedNotPinned verifies that a node which refused
@@ -187,7 +187,7 @@ func TestPlaceSandbox_ResourceExhaustedNotPinned(t *testing.T) {
 	require.Error(t, err)
 
 	var timeoutErr *PlacementTimeoutError
-	assert.False(t, errors.As(err, &timeoutErr), "a node that refused fast must not be pinned")
+	assert.NotErrorAs(t, err, &timeoutErr, "a node that refused fast must not be pinned")
 }
 
 // TestPlaceSandbox_TimeoutBeforeAnyAttemptNotWrapped verifies that when the
@@ -214,7 +214,7 @@ func TestPlaceSandbox_TimeoutBeforeAnyAttemptNotWrapped(t *testing.T) {
 	require.Error(t, err)
 
 	var timeoutErr *PlacementTimeoutError
-	assert.False(t, errors.As(err, &timeoutErr), "no node was tried, so there is nothing to pin")
+	assert.NotErrorAs(t, err, &timeoutErr, "no node was tried, so there is nothing to pin")
 }
 
 func TestPlaceSandbox_SuccessReturnsNode(t *testing.T) {
