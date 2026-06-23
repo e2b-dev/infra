@@ -1,0 +1,21 @@
+[Unit]
+Description=E2B minimal init agent (envd-init)
+# Minimal deps: kernel ip= networking and cgroup2 are up before this runs.
+DefaultDependencies=no
+After=systemd-remount-fs.service
+Conflicts=shutdown.target
+Before=shutdown.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/envd-init
+Restart=always
+# No journald: discarding output keeps logging from faulting extra pages on resume.
+StandardOutput=null
+StandardError=null
+LimitMEMLOCK=infinity
+OOMScoreAdjust=-1000
+
+[Install]
+WantedBy=multi-user.target

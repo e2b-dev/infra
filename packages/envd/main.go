@@ -201,6 +201,8 @@ func run() error {
 
 	service := api.New(&envLogger, defaults, mmdsChan, isNotFC, cgroupManager)
 	handler := api.HandlerFromMux(service, m)
+	// No-op unless built with -tags e2bfragment (debug heap fragmenter).
+	api.RegisterDebugRoutes(m, &envLogger)
 	middleware := authn.NewMiddleware(permissions.AuthenticateUsername)
 
 	s := &http.Server{

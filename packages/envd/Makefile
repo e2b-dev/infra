@@ -52,6 +52,10 @@ endif
 build:
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(BUILD_ARCH) go build -trimpath -buildvcs=false -a -o bin/envd ${PROD_LDFLAGS}
 
+# Debug build with the /debug/fragment endpoint (init-fragmentation harness). Not for prod.
+build-fragment:
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(BUILD_ARCH) go build -trimpath -buildvcs=false -a -tags e2bfragment -o bin/envd ${PROD_LDFLAGS}
+
 build-debug:
 	CGO_ENABLED=1 go build -race -gcflags=all="-N -l" -o bin/debug/envd ${LDFLAGS}
 
