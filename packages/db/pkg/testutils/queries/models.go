@@ -145,34 +145,16 @@ type EnvDefault struct {
 	Description pgtype.Text
 }
 
-type PublishedTemplate struct {
-	ID            string
-	EnvID         string
-	IsAgent       bool
-	Name          string
-	Description   pgtype.Text
-	Icon          pgtype.Text
-	TemplateRef   pgtype.Text
-	BuildPinType  string
-	BuildTag      pgtype.Text
-	BuildID       *uuid.UUID
-	SortOrder     int32
-	Metadata      []byte
-	UnpublishedAt *time.Time
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-}
-
-type PublishedTemplateAgent struct {
-	PublishedTemplateID string
-	Command             string
-	AgentName           pgtype.Text
-	AgentDescription    pgtype.Text
-	AgentIcon           pgtype.Text
-	SortOrder           int32
-	Metadata            []byte
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
+type Agent struct {
+	AliasID          uuid.UUID
+	Command          string
+	AgentName        pgtype.Text
+	AgentDescription pgtype.Text
+	AgentIcon        pgtype.Text
+	SortOrder        int32
+	Metadata         []byte
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 type Snapshot struct {
