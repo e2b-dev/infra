@@ -82,7 +82,7 @@ func TestPlaceSandbox_TimeoutPinsFirstTriedNode(t *testing.T) {
 	node := nodemanager.NewTestNode("node-test", api.NodeStatusReady, 0, 8)
 	node.SetSandboxClient(erroringClient(cancel, status.Error(codes.Internal, "failed to create sandbox: request timed out")))
 
-	_, err := PlaceSandbox(
+	result, err := PlaceSandbox(
 		ctx,
 		failIfCalled(t),
 		[]*nodemanager.Node{node},
@@ -93,10 +93,10 @@ func TestPlaceSandbox_TimeoutPinsFirstTriedNode(t *testing.T) {
 		nil,
 	)
 
-	var timeoutErr *PlacementTimeoutError
-	require.ErrorAs(t, err, &timeoutErr, "expected a *PlacementTimeoutError, got %v", err)
-	require.NotNil(t, timeoutErr.Node)
-	assert.Equal(t, node.ID, timeoutErr.Node.ID)
+	require.Error(t, err)
+	assert.True(t, result.TimedOut, "expected the failure to be reported as a timeout")
+	require.NotNil(t, result.WarmedNode)
+	assert.Equal(t, node.ID, result.WarmedNode.ID)
 }
 
 // TestPlaceSandbox_PinsFirstTriedNodeNotLater verifies that across multiple
@@ -119,7 +119,7 @@ func TestPlaceSandbox_PinsFirstTriedNodeNotLater(t *testing.T) {
 		return second, nil
 	}}
 
-	_, err := PlaceSandbox(
+	result, err := PlaceSandbox(
 		ctx,
 		algo,
 		[]*nodemanager.Node{first, second},
@@ -130,10 +130,10 @@ func TestPlaceSandbox_PinsFirstTriedNodeNotLater(t *testing.T) {
 		nil,
 	)
 
-	var timeoutErr *PlacementTimeoutError
-	require.ErrorAs(t, err, &timeoutErr)
-	require.NotNil(t, timeoutErr.Node)
-	assert.Equal(t, first.ID, timeoutErr.Node.ID, "must pin the first node tried, not a later one")
+	require.Error(t, err)
+	assert.True(t, result.TimedOut)
+	require.NotNil(t, result.WarmedNode)
+	assert.Equal(t, first.ID, result.WarmedNode.ID, "must pin the first node tried, not a later one")
 }
 
 // TestPlaceSandbox_HardFailureNotWrapped verifies a failure where the context is
@@ -145,7 +145,7 @@ func TestPlaceSandbox_HardFailureNotWrapped(t *testing.T) {
 	node := nodemanager.NewTestNode("node-internal", api.NodeStatusReady, 0, 8)
 	node.SetSandboxClient(erroringClient(nil, status.Error(codes.Internal, "boom")))
 
-	_, err := PlaceSandbox(
+	result, err := PlaceSandbox(
 		t.Context(),
 		failIfCalled(t),
 		[]*nodemanager.Node{node},
@@ -157,9 +157,8 @@ func TestPlaceSandbox_HardFailureNotWrapped(t *testing.T) {
 	)
 
 	require.Error(t, err)
-
-	var timeoutErr *PlacementTimeoutError
-	assert.NotErrorAs(t, err, &timeoutErr, "a live-context failure must not be wrapped as a timeout")
+	assert.False(t, result.TimedOut, "a live-context failure must not be reported as a timeout")
+	assert.Nil(t, result.WarmedNode, "a live-context failure must not surface a warming node")
 }
 
 // TestPlaceSandbox_ResourceExhaustedNotPinned verifies that a node which refused
@@ -172,7 +171,7 @@ func TestPlaceSandbox_ResourceExhaustedNotPinned(t *testing.T) {
 	node := nodemanager.NewTestNode("node-exhausted", api.NodeStatusReady, 0, 8)
 	node.SetSandboxClient(erroringClient(cancel, status.Error(codes.ResourceExhausted, "no capacity")))
 
-	_, err := PlaceSandbox(
+	result, err := PlaceSandbox(
 		ctx,
 		failIfCalled(t),
 		[]*nodemanager.Node{node},
@@ -184,9 +183,7 @@ func TestPlaceSandbox_ResourceExhaustedNotPinned(t *testing.T) {
 	)
 
 	require.Error(t, err)
-
-	var timeoutErr *PlacementTimeoutError
-	assert.NotErrorAs(t, err, &timeoutErr, "a node that refused fast must not be pinned")
+	assert.Nil(t, result.WarmedNode, "a node that refused fast must not be pinned")
 }
 
 // TestPlaceSandbox_TimeoutBeforeAnyAttemptNotWrapped verifies that when the
@@ -199,7 +196,7 @@ func TestPlaceSandbox_TimeoutBeforeAnyAttemptNotWrapped(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel() // already past deadline before the first attempt
 
-	_, err := PlaceSandbox(
+	result, err := PlaceSandbox(
 		ctx,
 		failIfCalled(t),
 		[]*nodemanager.Node{node},
@@ -211,9 +208,7 @@ func TestPlaceSandbox_TimeoutBeforeAnyAttemptNotWrapped(t *testing.T) {
 	)
 
 	require.Error(t, err)
-
-	var timeoutErr *PlacementTimeoutError
-	assert.NotErrorAs(t, err, &timeoutErr, "no node was tried, so there is nothing to pin")
+	assert.Nil(t, result.WarmedNode, "no node was tried, so there is nothing to pin")
 }
 
 func TestPlaceSandbox_SuccessReturnsNode(t *testing.T) {
@@ -221,7 +216,7 @@ func TestPlaceSandbox_SuccessReturnsNode(t *testing.T) {
 
 	node := nodemanager.NewTestNode("node-ok", api.NodeStatusReady, 0, 8)
 
-	placed, err := PlaceSandbox(
+	result, err := PlaceSandbox(
 		t.Context(),
 		failIfCalled(t),
 		[]*nodemanager.Node{node},
@@ -233,6 +228,6 @@ func TestPlaceSandbox_SuccessReturnsNode(t *testing.T) {
 	)
 
 	require.NoError(t, err)
-	require.NotNil(t, placed)
-	assert.Equal(t, node.ID, placed.ID)
+	require.NotNil(t, result.Node)
+	assert.Equal(t, node.ID, result.Node.ID)
 }

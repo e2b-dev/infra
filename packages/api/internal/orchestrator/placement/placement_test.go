@@ -60,8 +60,8 @@ func TestPlaceSandbox_SuccessfulPlacement(t *testing.T) {
 	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil)
 
 	require.NoError(t, err)
-	assert.NotNil(t, resultNode)
-	assert.Equal(t, node2, resultNode)
+	assert.NotNil(t, resultNode.Node)
+	assert.Equal(t, node2, resultNode.Node)
 	algorithm.AssertExpectations(t)
 }
 
@@ -90,15 +90,15 @@ func TestPlaceSandbox_WithPreferredNode(t *testing.T) {
 
 	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil)
 	require.NoError(t, err)
-	assert.NotNil(t, resultNode)
-	assert.Equal(t, node1, resultNode)
+	assert.NotNil(t, resultNode.Node)
+	assert.Equal(t, node1, resultNode.Node)
 	algorithm.AssertExpectations(t)
 
 	// Test with preferred node - should use the preferred node directly without calling algorithm
 	resultNode, err = PlaceSandbox(ctx, algorithm, nodes, node2, sbxRequest, machineinfo.MachineInfo{}, false, nil)
 	require.NoError(t, err)
-	assert.NotNil(t, resultNode)
-	assert.Equal(t, node2, resultNode)
+	assert.NotNil(t, resultNode.Node)
+	assert.Equal(t, node2, resultNode.Node)
 	// Algorithm should not be called when preferred node is provided
 	algorithm.AssertNotCalled(t, "chooseNode")
 }
@@ -129,7 +129,7 @@ func TestPlaceSandbox_ContextTimeout(t *testing.T) {
 	}, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil)
 
 	require.Error(t, err)
-	assert.Nil(t, resultNode)
+	assert.Nil(t, resultNode.Node)
 	// The error could be either "timeout" from the algorithm or "request timed out" from ctx.Done()
 	assert.True(t, err.Error() == "timeout" || strings.Contains(err.Error(), "request timed out"))
 }
@@ -150,7 +150,7 @@ func TestPlaceSandbox_NoNodes(t *testing.T) {
 	resultNode, err := PlaceSandbox(ctx, algorithm, []*nodemanager.Node{}, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil)
 
 	require.Error(t, err)
-	assert.Nil(t, resultNode)
+	assert.Nil(t, resultNode.Node)
 	assert.Contains(t, err.Error(), "no nodes available")
 }
 
@@ -175,7 +175,7 @@ func TestPlaceSandbox_AllNodesExcluded(t *testing.T) {
 	}, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil)
 
 	require.Error(t, err)
-	assert.Nil(t, resultNode)
+	assert.Nil(t, resultNode.Node)
 	assert.Contains(t, err.Error(), "no nodes available")
 	algorithm.AssertExpectations(t)
 }
@@ -208,8 +208,8 @@ func TestPlaceSandbox_ResourceExhausted(t *testing.T) {
 	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil)
 
 	require.NoError(t, err)
-	assert.NotNil(t, resultNode)
-	assert.Equal(t, node2, resultNode, "should succeed on node2 after node1 was exhausted")
+	assert.NotNil(t, resultNode.Node)
+	assert.Equal(t, node2, resultNode.Node, "should succeed on node2 after node1 was exhausted")
 	algorithm.AssertExpectations(t)
 
 	// Verify node1 was NOT excluded (ResourceExhausted nodes should be retried)
@@ -249,9 +249,9 @@ func TestPlaceSandbox_TriggersOptimisticUpdate(t *testing.T) {
 	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil)
 
 	require.NoError(t, err)
-	assert.NotNil(t, resultNode)
+	assert.NotNil(t, resultNode.Node)
 
 	// Verify: After successful placement, the node's CpuAllocated should be increased by 2 from the base
-	updatedCpuAllocated := resultNode.Metrics().CpuAllocated
+	updatedCpuAllocated := resultNode.Node.Metrics().CpuAllocated
 	assert.Equal(t, initialCpuAllocated+2, updatedCpuAllocated, "Node metrics should be optimistically updated after placement")
 }

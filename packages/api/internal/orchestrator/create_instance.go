@@ -318,10 +318,10 @@ func (o *Orchestrator) CreateSandbox(
 
 	allLabels, labelFilteringEnabled := o.generateRequiredNodeLabels(ctx, sandboxID, team, sbxData)
 
-	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, allLabels)
+	placed, err := placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, allLabels)
 	if err != nil {
-		if isResume {
-			o.maybeRemapResumeOriginNode(ctx, sandboxID, team, sbxData.NodeID, err)
+		if isResume && placed.TimedOut {
+			o.maybeRemapResumeOriginNode(ctx, sandboxID, team, sbxData.NodeID, placed.WarmedNode)
 		}
 
 		return sandbox.Sandbox{}, &api.APIError{
@@ -330,6 +330,8 @@ func (o *Orchestrator) CreateSandbox(
 			Err:       fmt.Errorf("failed to place sandbox: %w", err),
 		}
 	}
+
+	node = placed.Node
 
 	// The sandbox was created successfully
 	attributes := []attribute.KeyValue{
@@ -417,17 +419,16 @@ func (o *Orchestrator) CreateSandbox(
 // fallback node a resume timed out on. Pinning the next resume attempt to avoid
 // re-pulling the snapshot onto another node and spraying load across the cluster
 //
-// It only acts on placement timeouts (not resource-exhaustion or hard errors),
-// and only when the warming node differs from the origin we already tried. The
-// write runs on a detached context because the request context is already past
-// its deadline (that is why placement timed out).
-func (o *Orchestrator) maybeRemapResumeOriginNode(ctx context.Context, sandboxID string, team *teamtypes.Team, originNodeID *string, placeErr error) {
-	var timeoutErr *placement.PlacementTimeoutError
-	if !errors.As(placeErr, &timeoutErr) || timeoutErr.Node == nil {
+// It only acts on placement timeouts (warmedNode is nil otherwise), and only
+// when the warming node differs from the origin we already tried. The write runs
+// on a detached context because the request context is already past its deadline
+// (that is why placement timed out).
+func (o *Orchestrator) maybeRemapResumeOriginNode(ctx context.Context, sandboxID string, team *teamtypes.Team, originNodeID *string, warmedNode *nodemanager.Node) {
+	if warmedNode == nil {
 		return
 	}
 
-	newNode := timeoutErr.Node
+	newNode := warmedNode
 	if originNodeID != nil && *originNodeID == newNode.ID {
 		return
 	}
