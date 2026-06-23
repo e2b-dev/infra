@@ -47,10 +47,13 @@ type SandboxMetadata struct {
 	TemplateID          string
 	BaseTemplateID      string
 	AutoPause           bool
-	AutoResume          *types.SandboxAutoResumeConfig
-	VolumeMounts        []*orchestrator.SandboxVolumeMount
-	EnvdAccessToken     *string
-	NodeID              *string
+	// AutoPauseFilesystemOnly makes a timeout auto-pause take a filesystem-only
+	// snapshot instead of a full memory one. Only meaningful when AutoPause.
+	AutoPauseFilesystemOnly bool
+	AutoResume              *types.SandboxAutoResumeConfig
+	VolumeMounts            []*orchestrator.SandboxVolumeMount
+	EnvdAccessToken         *string
+	NodeID                  *string
 }
 
 // buildEgressConfig constructs the orchestrator egress configuration from
@@ -268,30 +271,31 @@ func (o *Orchestrator) CreateSandbox(
 
 	sbxRequest := &orchestrator.SandboxCreateRequest{
 		Sandbox: &orchestrator.SandboxConfig{
-			BaseTemplateId:      sbxData.BaseTemplateID,
-			TemplateId:          sbxData.TemplateID,
-			Alias:               &sbxData.Alias,
-			TeamId:              team.ID.String(),
-			BuildId:             sbxData.Build.ID.String(),
-			SandboxId:           sandboxID,
-			ExecutionId:         executionID,
-			KernelVersion:       sbxData.Build.KernelVersion,
-			FirecrackerVersion:  sbxData.Build.FirecrackerVersion,
-			EnvdVersion:         *sbxData.Build.EnvdVersion,
-			Metadata:            sbxData.Metadata,
-			EnvVars:             sbxData.EnvVars,
-			EnvdAccessToken:     sbxData.EnvdAccessToken,
-			MaxSandboxLength:    team.Limits.MaxLengthHours,
-			HugePages:           hasHugePages,
-			RamMb:               sbxData.Build.RamMb,
-			Vcpu:                sbxData.Build.Vcpu,
-			Snapshot:            isResume,
-			AutoPause:           sbxData.AutoPause,
-			AutoResume:          orchAutoResume,
-			AllowInternetAccess: sbxData.AllowInternetAccess,
-			Network:             sbxNetwork,
-			TotalDiskSizeMb:     ut.FromPtr(sbxData.Build.TotalDiskSizeMb),
-			VolumeMounts:        sbxData.VolumeMounts,
+			BaseTemplateId:          sbxData.BaseTemplateID,
+			TemplateId:              sbxData.TemplateID,
+			Alias:                   &sbxData.Alias,
+			TeamId:                  team.ID.String(),
+			BuildId:                 sbxData.Build.ID.String(),
+			SandboxId:               sandboxID,
+			ExecutionId:             executionID,
+			KernelVersion:           sbxData.Build.KernelVersion,
+			FirecrackerVersion:      sbxData.Build.FirecrackerVersion,
+			EnvdVersion:             *sbxData.Build.EnvdVersion,
+			Metadata:                sbxData.Metadata,
+			EnvVars:                 sbxData.EnvVars,
+			EnvdAccessToken:         sbxData.EnvdAccessToken,
+			MaxSandboxLength:        team.Limits.MaxLengthHours,
+			HugePages:               hasHugePages,
+			RamMb:                   sbxData.Build.RamMb,
+			Vcpu:                    sbxData.Build.Vcpu,
+			Snapshot:                isResume,
+			AutoPause:               sbxData.AutoPause,
+			AutoPauseFilesystemOnly: sbxData.AutoPauseFilesystemOnly,
+			AutoResume:              orchAutoResume,
+			AllowInternetAccess:     sbxData.AllowInternetAccess,
+			Network:                 sbxNetwork,
+			TotalDiskSizeMb:         ut.FromPtr(sbxData.Build.TotalDiskSizeMb),
+			VolumeMounts:            sbxData.VolumeMounts,
 		},
 		StartTime: timestamppb.New(startTime),
 		EndTime:   timestamppb.New(endTime),
@@ -360,6 +364,7 @@ func (o *Orchestrator) CreateSandbox(
 		node.ID,
 		node.ClusterID,
 		sbxData.AutoPause,
+		sbxData.AutoPauseFilesystemOnly,
 		sbxData.AutoResume,
 		sbxData.EnvdAccessToken,
 		sbxData.AllowInternetAccess,
