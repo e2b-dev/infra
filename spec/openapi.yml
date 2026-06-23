@@ -908,7 +908,6 @@ components:
         - aliases
         - names
         - buildStatus
-        - isDefault
       properties:
         templateID:
           type: string
@@ -965,13 +964,6 @@ components:
           $ref: "#/components/schemas/EnvdVersion"
         buildStatus:
           $ref: "#/components/schemas/TemplateBuildStatus"
-        isDefault:
-          type: boolean
-          description: Whether the template is a globally shared E2B default template
-        defaultDescription:
-          type: string
-          nullable: true
-          description: Description of the default template (only set for default templates)
 
     TemplateRequestResponseV3:
       required:

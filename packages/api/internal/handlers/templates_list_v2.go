@@ -17,9 +17,7 @@ const (
 	templatesMaxLimit     = int32(100)
 )
 
-// GetV2Templates lists templates with cursor pagination (e.g. in the CLI). For
-// teams without a dedicated cluster it also includes the E2B-wide default
-// templates, marked with isDefault.
+// GetV2Templates lists a team's templates with cursor pagination (e.g. in the CLI).
 func (a *APIStore) GetV2Templates(c *gin.Context, params api.GetV2TemplatesParams) {
 	ctx := c.Request.Context()
 
@@ -61,9 +59,7 @@ func (a *APIStore) GetV2Templates(c *gin.Context, params api.GetV2TemplatesParam
 	}
 
 	rows, err := a.sqlcDB.GetTeamTemplatesWithCursor(ctx, queries.GetTeamTemplatesWithCursorParams{
-		TeamID: team.ID,
-		// Default templates are E2B-wide and don't belong on a dedicated cluster.
-		IncludeDefaults: team.ClusterID == nil,
+		TeamID:          team.ID,
 		CursorCreatedAt: pagination.CursorTime(),
 		CursorID:        pagination.CursorID(),
 		LimitPlusOne:    pagination.QueryLimit(),
@@ -102,24 +98,22 @@ func (a *APIStore) GetV2Templates(c *gin.Context, params api.GetV2TemplatesParam
 		}
 
 		templates = append(templates, &api.Template{
-			TemplateID:         item.TemplateID,
-			BuildID:            item.BuildID.String(),
-			CpuCount:           api.CPUCount(item.BuildVcpu),
-			MemoryMB:           api.MemoryMB(item.BuildRamMb),
-			DiskSizeMB:         api.DiskSizeMB(diskMB),
-			Public:             item.Public,
-			Aliases:            item.Aliases,
-			Names:              item.Names,
-			CreatedAt:          item.CreatedAt,
-			UpdatedAt:          item.UpdatedAt,
-			LastSpawnedAt:      item.LastSpawnedAt,
-			SpawnCount:         item.SpawnCount,
-			BuildCount:         item.BuildCount,
-			BuildStatus:        getCorrespondingTemplateBuildStatus(ctx, item.BuildStatus),
-			CreatedBy:          createdBy,
-			EnvdVersion:        envdVersion,
-			IsDefault:          item.IsDefault,
-			DefaultDescription: item.DefaultDescription,
+			TemplateID:    item.TemplateID,
+			BuildID:       item.BuildID.String(),
+			CpuCount:      api.CPUCount(item.BuildVcpu),
+			MemoryMB:      api.MemoryMB(item.BuildRamMb),
+			DiskSizeMB:    api.DiskSizeMB(diskMB),
+			Public:        item.Public,
+			Aliases:       item.Aliases,
+			Names:         item.Names,
+			CreatedAt:     item.CreatedAt,
+			UpdatedAt:     item.UpdatedAt,
+			LastSpawnedAt: item.LastSpawnedAt,
+			SpawnCount:    item.SpawnCount,
+			BuildCount:    item.BuildCount,
+			BuildStatus:   getCorrespondingTemplateBuildStatus(ctx, item.BuildStatus),
+			CreatedBy:     createdBy,
+			EnvdVersion:   envdVersion,
 		})
 	}
 

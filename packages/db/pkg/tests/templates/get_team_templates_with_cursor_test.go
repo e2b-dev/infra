@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
@@ -38,7 +37,6 @@ func TestGetTeamTemplatesWithCursor_OrdersDescAndPaginates(t *testing.T) {
 	cursorTime, cursorID := firstPageCursor()
 	rows, err := db.SqlcClient.GetTeamTemplatesWithCursor(ctx, queries.GetTeamTemplatesWithCursorParams{
 		TeamID:          teamID,
-		IncludeDefaults: false,
 		CursorCreatedAt: cursorTime,
 		CursorID:        cursorID,
 		LimitPlusOne:    10,
@@ -53,7 +51,6 @@ func TestGetTeamTemplatesWithCursor_OrdersDescAndPaginates(t *testing.T) {
 	// continue from the last returned row's cursor.
 	firstPage, err := db.SqlcClient.GetTeamTemplatesWithCursor(ctx, queries.GetTeamTemplatesWithCursorParams{
 		TeamID:          teamID,
-		IncludeDefaults: false,
 		CursorCreatedAt: cursorTime,
 		CursorID:        cursorID,
 		LimitPlusOne:    3,
@@ -64,7 +61,6 @@ func TestGetTeamTemplatesWithCursor_OrdersDescAndPaginates(t *testing.T) {
 
 	secondPage, err := db.SqlcClient.GetTeamTemplatesWithCursor(ctx, queries.GetTeamTemplatesWithCursorParams{
 		TeamID:          teamID,
-		IncludeDefaults: false,
 		CursorCreatedAt: last.CreatedAt,
 		CursorID:        last.TemplateID,
 		LimitPlusOne:    10,
@@ -72,95 +68,4 @@ func TestGetTeamTemplatesWithCursor_OrdersDescAndPaginates(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, secondPage, 1)
 	require.Equal(t, templateIDs[0], secondPage[0].TemplateID)
-}
-
-func TestGetTeamTemplatesWithCursor_IncludeDefaults(t *testing.T) {
-	t.Parallel()
-	db := testutils.SetupDatabase(t)
-	ctx := t.Context()
-
-	teamID := testutils.CreateTestTeam(t, db)
-	ownTemplate := testutils.CreateTestTemplate(t, db, teamID)
-
-	// A default template owned by a different team — only reachable via the
-	// defaults branch.
-	otherTeamID := testutils.CreateTestTeam(t, db)
-	defaultTemplate := testutils.CreateTestTemplate(t, db, otherTeamID)
-	err := db.SqlcClient.TestsRawSQL(ctx,
-		"INSERT INTO public.env_defaults (env_id, description) VALUES ($1, $2)",
-		defaultTemplate, "a default template",
-	)
-	require.NoError(t, err)
-
-	cursorTime, cursorID := firstPageCursor()
-
-	// Without defaults: only the team's own template.
-	withoutDefaults, err := db.SqlcClient.GetTeamTemplatesWithCursor(ctx, queries.GetTeamTemplatesWithCursorParams{
-		TeamID:          teamID,
-		IncludeDefaults: false,
-		CursorCreatedAt: cursorTime,
-		CursorID:        cursorID,
-		LimitPlusOne:    10,
-	})
-	require.NoError(t, err)
-	require.Len(t, withoutDefaults, 1)
-	require.Equal(t, ownTemplate, withoutDefaults[0].TemplateID)
-	require.False(t, withoutDefaults[0].IsDefault)
-
-	// With defaults: own template + the default one, flagged and described.
-	withDefaults, err := db.SqlcClient.GetTeamTemplatesWithCursor(ctx, queries.GetTeamTemplatesWithCursorParams{
-		TeamID:          teamID,
-		IncludeDefaults: true,
-		CursorCreatedAt: cursorTime,
-		CursorID:        cursorID,
-		LimitPlusOne:    10,
-	})
-	require.NoError(t, err)
-
-	byID := make(map[string]queries.GetTeamTemplatesWithCursorRow, len(withDefaults))
-	for _, r := range withDefaults {
-		byID[r.TemplateID] = r
-	}
-	require.Contains(t, byID, ownTemplate)
-	require.Contains(t, byID, defaultTemplate)
-	require.False(t, byID[ownTemplate].IsDefault)
-	require.True(t, byID[defaultTemplate].IsDefault)
-	require.NotNil(t, byID[defaultTemplate].DefaultDescription)
-	require.Equal(t, "a default template", *byID[defaultTemplate].DefaultDescription)
-}
-
-// TestEnvDefaults_CascadesOnTemplateDelete guards the ON DELETE CASCADE on the
-// env_defaults FK: templates are hard-deleted from public.envs, so a default
-// template must be deletable without a foreign-key violation.
-func TestEnvDefaults_CascadesOnTemplateDelete(t *testing.T) {
-	t.Parallel()
-	db := testutils.SetupDatabase(t)
-	ctx := t.Context()
-
-	teamID := testutils.CreateTestTeam(t, db)
-	templateID := testutils.CreateTestTemplate(t, db, teamID)
-	err := db.SqlcClient.TestsRawSQL(ctx,
-		"INSERT INTO public.env_defaults (env_id, description) VALUES ($1, $2)",
-		templateID, "a default template",
-	)
-	require.NoError(t, err)
-
-	// Hard-deleting the template must succeed and remove the env_defaults row.
-	err = db.SqlcClient.TestsRawSQL(ctx, "DELETE FROM public.envs WHERE id = $1", templateID)
-	require.NoError(t, err)
-
-	var count int
-	err = db.SqlcClient.TestsRawSQLQuery(ctx,
-		"SELECT COUNT(*) FROM public.env_defaults WHERE env_id = $1",
-		func(rows pgx.Rows) error {
-			if rows.Next() {
-				return rows.Scan(&count)
-			}
-
-			return nil
-		},
-		templateID,
-	)
-	require.NoError(t, err)
-	require.Zero(t, count, "env_defaults row should be cascade-deleted with the template")
 }

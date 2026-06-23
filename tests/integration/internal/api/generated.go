@@ -1087,17 +1087,11 @@ type Template struct {
 	CreatedAt time.Time `json:"createdAt"`
 	CreatedBy *TeamUser `json:"createdBy"`
 
-	// DefaultDescription Description of the default template (only set for default templates)
-	DefaultDescription *string `json:"defaultDescription,omitempty"`
-
 	// DiskSizeMB Disk size for the sandbox in MiB
 	DiskSizeMB DiskSizeMB `json:"diskSizeMB"`
 
 	// EnvdVersion Version of the envd running in the sandbox
 	EnvdVersion EnvdVersion `json:"envdVersion"`
-
-	// IsDefault Whether the template is a globally shared E2B default template
-	IsDefault bool `json:"isDefault"`
 
 	// LastSpawnedAt Time when the template was last used
 	LastSpawnedAt *time.Time `json:"lastSpawnedAt"`
