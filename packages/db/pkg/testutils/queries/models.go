@@ -48,6 +48,18 @@ type Addon struct {
 	IdempotencyKey                pgtype.Text
 }
 
+type Agent struct {
+	AliasID          uuid.UUID
+	Command          string
+	AgentName        pgtype.Text
+	AgentDescription pgtype.Text
+	AgentIcon        pgtype.Text
+	SortOrder        int32
+	Metadata         []byte
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
 type AuthUser struct {
 	ID              uuid.UUID
 	Email           string
@@ -138,18 +150,6 @@ type EnvBuildAssignment struct {
 	Tag       string
 	Source    string
 	CreatedAt pgtype.Timestamptz
-}
-
-type Agent struct {
-	AliasID          uuid.UUID
-	Command          string
-	AgentName        pgtype.Text
-	AgentDescription pgtype.Text
-	AgentIcon        pgtype.Text
-	SortOrder        int32
-	Metadata         []byte
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
 }
 
 type Snapshot struct {
