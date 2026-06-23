@@ -39,6 +39,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy"
 	nfscfg "github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/orphan"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/portmap"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
@@ -648,6 +649,13 @@ func run(config cfg.Config, opts Options) (success bool) {
 
 	// sandbox factory
 	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, hostStatsDelivery, cgroupManager, egressSetup.Proxy, sandboxes)
+
+	// orphan reconciler — daily 03:00 sweep of PPID-1 Firecracker processes
+	orphanReconciler := orphan.NewReconciler(orphan.Config{}, sandboxes)
+	startService("orphan reconciler", func() error {
+		return orphanReconciler.Start(ctx)
+	})
+	closers = append(closers, closer{"orphan reconciler", orphanReconciler.Close})
 
 	// isolated filesystems cache (for nfs proxy)
 	builder := chrooted.NewBuilder(config)
