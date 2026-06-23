@@ -36,18 +36,18 @@ func (s *APIStore) GetAgents(c *gin.Context) {
 
 func mapAgent(row dashboardqueries.ListAgentsRow) api.Agent {
 	name := row.Command
-	if row.AgentName != nil && *row.AgentName != "" {
-		name = *row.AgentName
+	if row.Name != nil && *row.Name != "" {
+		name = *row.Name
 	}
 
 	description := row.Command + " coding agent."
-	if row.AgentDescription != nil && *row.AgentDescription != "" {
-		description = *row.AgentDescription
+	if row.Description != nil && *row.Description != "" {
+		description = *row.Description
 	}
 
 	icon := "open"
-	if row.AgentIcon != nil && *row.AgentIcon != "" {
-		icon = *row.AgentIcon
+	if row.Icon != nil && *row.Icon != "" {
+		icon = *row.Icon
 	}
 
 	return api.Agent{

@@ -15,14 +15,14 @@ const listAgents = `-- name: ListAgents :many
 SELECT
     a.id,
     a.command,
-    a.agent_name,
-    a.agent_description,
-    a.agent_icon,
+    a.name,
+    a.description,
+    a.icon,
     CASE
         WHEN ea.namespace IS NOT NULL THEN ea.namespace || '/' || ea.alias
         ELSE ea.alias
     END::text AS template
-FROM public.agents a
+FROM public.agent_definitions a
 JOIN public.env_aliases ea ON ea.id = a.alias_id
 JOIN public.envs e ON e.id = ea.env_id
 WHERE e.source IN ('template', 'snapshot_template')
@@ -30,12 +30,12 @@ ORDER BY a.sort_order ASC, a.created_at ASC, a.id ASC
 `
 
 type ListAgentsRow struct {
-	ID               uuid.UUID
-	Command          string
-	AgentName        *string
-	AgentDescription *string
-	AgentIcon        *string
-	Template         string
+	ID          uuid.UUID
+	Command     string
+	Name        *string
+	Description *string
+	Icon        *string
+	Template    string
 }
 
 func (q *Queries) ListAgents(ctx context.Context) ([]ListAgentsRow, error) {
@@ -50,9 +50,9 @@ func (q *Queries) ListAgents(ctx context.Context) ([]ListAgentsRow, error) {
 		if err := rows.Scan(
 			&i.ID,
 			&i.Command,
-			&i.AgentName,
-			&i.AgentDescription,
-			&i.AgentIcon,
+			&i.Name,
+			&i.Description,
+			&i.Icon,
 			&i.Template,
 		); err != nil {
 			return nil, err

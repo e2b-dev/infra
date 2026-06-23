@@ -2,14 +2,14 @@
 SELECT
     a.id,
     a.command,
-    a.agent_name,
-    a.agent_description,
-    a.agent_icon,
+    a.name,
+    a.description,
+    a.icon,
     CASE
         WHEN ea.namespace IS NOT NULL THEN ea.namespace || '/' || ea.alias
         ELSE ea.alias
     END::text AS template
-FROM public.agents a
+FROM public.agent_definitions a
 JOIN public.env_aliases ea ON ea.id = a.alias_id
 JOIN public.envs e ON e.id = ea.env_id
 WHERE e.source IN ('template', 'snapshot_template')
