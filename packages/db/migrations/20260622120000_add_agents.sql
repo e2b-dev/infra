@@ -2,11 +2,6 @@
 -- +goose NO TRANSACTION
 
 -- +goose StatementBegin
-CREATE TABLE IF NOT EXISTS public.env_defaults (
-    env_id TEXT PRIMARY KEY REFERENCES public.envs(id),
-    description TEXT
-);
-
 CREATE TABLE IF NOT EXISTS public.agents (
     alias_id UUID PRIMARY KEY REFERENCES public.env_aliases(id) ON DELETE CASCADE,
     command TEXT NOT NULL,

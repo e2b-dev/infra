@@ -140,11 +140,6 @@ type EnvBuildAssignment struct {
 	CreatedAt pgtype.Timestamptz
 }
 
-type EnvDefault struct {
-	EnvID       string
-	Description pgtype.Text
-}
-
 type Agent struct {
 	AliasID          uuid.UUID
 	Command          string
