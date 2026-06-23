@@ -432,19 +432,22 @@ func (o *Orchestrator) maybeRemapResumeOriginNode(ctx context.Context, sandboxID
 		return
 	}
 
-	if !o.featureFlagsClient.BoolFlag(ctx, featureflags.ResumeOriginNodeRemapFlag, featureflags.TeamContext(team.ID.String()), featureflags.SandboxContext(sandboxID)) {
-		return
-	}
-
-	// The request context is already past its deadline, so detach for the write.
+	// The request context is already past its deadline (that is why placement
+	// timed out), so detach it for everything below: the feature-flag read, the
+	// DB write, cache invalidation, the counter, and logging would all otherwise
+	// observe a cancelled context.
 	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
+
+	if !o.featureFlagsClient.BoolFlag(wctx, featureflags.ResumeOriginNodeRemapFlag, featureflags.TeamContext(team.ID.String()), featureflags.SandboxContext(sandboxID)) {
+		return
+	}
 
 	if err := o.sqlcDB.UpdateSnapshotOriginNode(wctx, queries.UpdateSnapshotOriginNodeParams{
 		OriginNodeID: newNode.ID,
 		SandboxID:    sandboxID,
 	}); err != nil {
-		logger.L().Warn(ctx, "failed to remap resume origin node",
+		logger.L().Warn(wctx, "failed to remap resume origin node",
 			zap.Error(err),
 			logger.WithSandboxID(sandboxID),
 		)
@@ -461,7 +464,7 @@ func (o *Orchestrator) maybeRemapResumeOriginNode(ctx context.Context, sandboxID
 		oldNodeID = *originNodeID
 	}
 
-	logger.L().Info(ctx, "remapped resume origin node to the node a previous resume timed out on",
+	logger.L().Info(wctx, "remapped resume origin node to the node a previous resume timed out on",
 		logger.WithSandboxID(sandboxID),
 		zap.String("old_origin_node_id", oldNodeID),
 		zap.String("new_origin_node_id", newNode.ID),

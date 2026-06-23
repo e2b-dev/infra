@@ -22,9 +22,10 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/orchest
 
 var errSandboxCreateFailed = errors.New("failed to create a new sandbox, if the problem persists, contact us")
 
-// PlacementTimeoutError wraps a placement failure that happened after the
-// request deadline was hit while a node was creating the sandbox. Node is the
-// first node tried before the timeout
+// PlacementTimeoutError wraps a placement failure caused by the request context
+// being cancelled or hitting its deadline. Node is the first node tried before
+// the timeout; that node had the longest to pull the snapshot, so its local
+// cache is the warmest, and callers can unwrap this error to pin a retry to it.
 type PlacementTimeoutError struct {
 	Node *nodemanager.Node
 	err  error
@@ -38,8 +39,22 @@ func (e *PlacementTimeoutError) Unwrap() error {
 	return e.err
 }
 
-func wrapTimeout(err error, node *nodemanager.Node) error {
-	if node == nil {
+// wrapTimeout wraps err in a *PlacementTimeoutError carrying node only when the
+// failure was caused by the request context being cancelled or timing out
+// (ctx.Err() != nil) and a node was actually tried. Hard failures (where the
+// context is still live) are returned unchanged so callers never pin a retry to
+// a node that genuinely refused the sandbox.
+//
+// TODO: We key off ctx.Err() rather than the gRPC status code because the orchestrator
+// currently collapses a timed-out resume into codes.Internal (it folds the
+// deadline cause into the message, not the code), so the code alone cannot tell
+// a timeout apart from a hard failure.
+//
+// Have the orchestrator return codes.DeadlineExceeded when a create fails
+// due to its context deadline, so timeouts can be detected by status code
+// directly instead of relying on the API-side request context.
+func wrapTimeout(ctx context.Context, err error, node *nodemanager.Node) error {
+	if node == nil || ctx.Err() == nil {
 		return err
 	}
 
@@ -80,7 +95,7 @@ func PlaceSandbox(
 	for attempt < maxRetries {
 		select {
 		case <-ctx.Done():
-			return nil, wrapTimeout(fmt.Errorf("request timed out during %d. attempt", attempt+1), firstTriedNode)
+			return nil, wrapTimeout(ctx, fmt.Errorf("request timed out during %d. attempt", attempt+1), firstTriedNode)
 		default:
 			// Continue
 		}
@@ -89,12 +104,12 @@ func PlaceSandbox(
 			telemetry.ReportEvent(ctx, "Placing sandbox on the preferred node", telemetry.WithNodeID(node.ID))
 		} else {
 			if len(nodesExcluded) >= len(clusterNodes) {
-				return nil, wrapTimeout(errors.New("no nodes available"), firstTriedNode)
+				return nil, wrapTimeout(ctx, errors.New("no nodes available"), firstTriedNode)
 			}
 
 			node, err = algorithm.chooseNode(ctx, clusterNodes, nodesExcluded, nodemanager.SandboxResources{CPUs: sbxRequest.GetSandbox().GetVcpu(), MiBMemory: sbxRequest.GetSandbox().GetRamMb()}, buildMachineInfo, labelFilteringEnabled, requiredLabels)
 			if err != nil {
-				return nil, wrapTimeout(err, firstTriedNode)
+				return nil, wrapTimeout(ctx, err, firstTriedNode)
 			}
 
 			telemetry.ReportEvent(ctx, "Placing sandbox on the node", telemetry.WithNodeID(node.ID))
@@ -135,8 +150,12 @@ func PlaceSandbox(
 			statusCode = st.Code()
 		}
 
-		// The request deadline was hit while this node was creating the sandbox.
-		if (statusCode == codes.DeadlineExceeded || statusCode == codes.Canceled) && firstTriedNode == nil {
+		// Remember the first node that got far enough to actually attempt the
+		// sandbox (i.e. did not refuse with ResourceExhausted). On a timeout this
+		// node had the longest to pull the snapshot, so its local cache is the
+		// warmest and a retry should be pinned to it. Whether the failure was a
+		// timeout is decided at the return points via wrapTimeout(ctx, ...).
+		if statusCode != codes.ResourceExhausted && firstTriedNode == nil {
 			firstTriedNode = failedNode
 		}
 
@@ -152,5 +171,5 @@ func PlaceSandbox(
 		}
 	}
 
-	return nil, wrapTimeout(errSandboxCreateFailed, firstTriedNode)
+	return nil, wrapTimeout(ctx, errSandboxCreateFailed, firstTriedNode)
 }
