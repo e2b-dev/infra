@@ -22,10 +22,15 @@ import (
 type fakeDrainController struct {
 	starts    atomic.Int64
 	forces    atomic.Int64
+	onStart   func()
 	forceStop func(context.Context) error
 }
 
 func (f *fakeDrainController) StartDraining(context.Context) {
+	if f.onStart != nil {
+		f.onStart()
+	}
+
 	f.starts.Add(1)
 }
 
@@ -39,11 +44,13 @@ func (f *fakeDrainController) ForceStop(ctx context.Context) error {
 }
 
 func newTestInfoServer(controller DrainController) *Server {
+	info := NewInfoContainer("node-id", "version", "commit", "service-id", machineinfo.MachineInfo{}, cfg.Config{})
+
 	return NewInfoService(
-		NewInfoContainer("node-id", "version", "commit", "service-id", machineinfo.MachineInfo{}, cfg.Config{}),
+		info,
 		nil,
 		nil,
-		controller,
+		NewDrainCoordinator(info, controller),
 	)
 }
 
@@ -59,6 +66,46 @@ func TestServiceStatusOverrideDrainingStartsDrain(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(1), controller.starts.Load())
 	require.Equal(t, orchestratorinfo.ServiceInfoStatus_Draining, s.info.GetStatus().Status)
+}
+
+func TestServiceStatusOverrideStartsDrainBeforePublishingStatus(t *testing.T) {
+	t.Parallel()
+
+	info := NewInfoContainer("node-id", "version", "commit", "service-id", machineinfo.MachineInfo{}, cfg.Config{})
+	controller := &fakeDrainController{
+		onStart: func() {
+			require.NotEqual(t, orchestratorinfo.ServiceInfoStatus_Draining, info.status.Status)
+		},
+	}
+	s := NewInfoService(info, nil, nil, NewDrainCoordinator(info, controller))
+
+	_, err := s.ServiceStatusOverride(t.Context(), &orchestratorinfo.ServiceStatusChangeRequest{
+		ServiceStatus: orchestratorinfo.ServiceInfoStatus_Draining,
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), controller.starts.Load())
+	require.Equal(t, orchestratorinfo.ServiceInfoStatus_Draining, info.GetStatus().Status)
+}
+
+func TestBeginDrainingClosesAdmissionWithoutOverridingStatus(t *testing.T) {
+	t.Parallel()
+
+	info := NewInfoContainer("node-id", "version", "commit", "service-id", machineinfo.MachineInfo{}, cfg.Config{})
+	info.SetStatus(t.Context(), orchestratorinfo.ServiceInfoStatus_Unhealthy)
+	controller := &fakeDrainController{}
+	drainCoordinator := NewDrainCoordinator(info, controller)
+
+	transitioned, err := drainCoordinator.BeginDraining(
+		t.Context(),
+		nil,
+		orchestratorinfo.ServiceInfoStatus_Healthy,
+		orchestratorinfo.ServiceInfoStatus_Standby,
+	)
+
+	require.NoError(t, err)
+	require.False(t, transitioned)
+	require.Equal(t, int64(1), controller.starts.Load())
+	require.Equal(t, orchestratorinfo.ServiceInfoStatus_Unhealthy, info.GetStatus().Status)
 }
 
 func TestServiceStatusOverrideForcedDrainingStartsForceStop(t *testing.T) {

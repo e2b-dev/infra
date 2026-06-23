@@ -807,10 +807,11 @@ func run(config cfg.Config, opts Options) (success bool) {
 		closers = append(closers, closer{"template server", tmpl.Close})
 	}
 
-	infoService := service.NewInfoService(serviceInfo, sandboxes, hostMetrics, &orchestratorDrainController{
+	drainCoordinator := service.NewDrainCoordinator(serviceInfo, &orchestratorDrainController{
 		orchestrator: orchestratorService,
 		template:     tmpl,
 	})
+	infoService := service.NewInfoService(serviceInfo, sandboxes, hostMetrics, drainCoordinator)
 	orchestratorinfo.RegisterInfoServiceServer(grpcServer, infoService)
 
 	grpcHealth := health.NewServer()
@@ -910,9 +911,12 @@ func run(config cfg.Config, opts Options) (success bool) {
 	// Mark service draining if not already.
 	// If service stats was previously changed via API, we don't want to override it.
 	logger.L().Info(ctx, "Starting drain phase", zap.Int("sandbox_count", sandboxes.Count()))
-	if status := serviceInfo.GetStatus().Status; status == orchestratorinfo.ServiceInfoStatus_Healthy || status == orchestratorinfo.ServiceInfoStatus_Standby {
-		serviceInfo.SetStatus(ctx, orchestratorinfo.ServiceInfoStatus_Draining)
-
+	if transitionedToDraining, _ := drainCoordinator.BeginDraining(
+		ctx,
+		nil,
+		orchestratorinfo.ServiceInfoStatus_Healthy,
+		orchestratorinfo.ServiceInfoStatus_Standby,
+	); transitionedToDraining {
 		// Wait for draining state to propagate to all consumers
 		if !env.IsLocal() {
 			time.Sleep(15 * time.Second)
@@ -924,8 +928,6 @@ func run(config cfg.Config, opts Options) (success bool) {
 	if config.ForceStop {
 		cancelCloseCtx()
 	}
-
-	orchestratorService.StartDraining(ctx)
 
 	// Wait for services to be drained before closing them
 	if tmpl != nil {

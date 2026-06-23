@@ -23,10 +23,10 @@ import (
 type Server struct {
 	orchestratorinfo.UnimplementedInfoServiceServer
 
-	info            *ServiceInfo
-	sandboxes       *sandbox.Map
-	hostMetrics     *metrics.HostMetrics
-	drainController DrainController
+	info             *ServiceInfo
+	sandboxes        *sandbox.Map
+	hostMetrics      *metrics.HostMetrics
+	drainCoordinator *DrainCoordinator
 
 	forceStopMu         sync.Mutex
 	forceStopModeActive bool
@@ -38,12 +38,16 @@ type DrainController interface {
 	ForceStop(ctx context.Context) error
 }
 
-func NewInfoService(info *ServiceInfo, sandboxes *sandbox.Map, hostMetrics *metrics.HostMetrics, drainController DrainController) *Server {
+func NewInfoService(info *ServiceInfo, sandboxes *sandbox.Map, hostMetrics *metrics.HostMetrics, drainCoordinator *DrainCoordinator) *Server {
+	if drainCoordinator == nil {
+		drainCoordinator = NewDrainCoordinator(info, nil)
+	}
+
 	return &Server{
 		info:                info,
 		sandboxes:           sandboxes,
 		hostMetrics:         hostMetrics,
-		drainController:     drainController,
+		drainCoordinator:    drainCoordinator,
 		forceStopRetryDelay: time.Second,
 	}
 }
@@ -159,28 +163,27 @@ func (s *Server) ServiceStatusOverride(ctx context.Context, req *orchestratorinf
 		return nil, status.Error(codes.InvalidArgument, "force_stop is only supported when setting status to draining")
 	}
 
-	transitionedToDraining, err := s.info.TransitionStatus(ctx, requestedStatus, func(currentStatus ServiceStatus) error {
+	validateTransition := func(currentStatus ServiceStatus) error {
 		if currentStatus.Status == orchestratorinfo.ServiceInfoStatus_Draining &&
 			requestedStatus != orchestratorinfo.ServiceInfoStatus_Draining {
 			return status.Error(codes.FailedPrecondition, "service drain cannot be reversed")
 		}
 
 		return nil
-	})
+	}
+
+	var err error
+	if requestedStatus == orchestratorinfo.ServiceInfoStatus_Draining {
+		_, err = s.drainCoordinator.BeginDraining(ctx, validateTransition)
+	} else {
+		_, err = s.info.TransitionStatus(ctx, requestedStatus, validateTransition)
+	}
 	if err != nil {
 		return nil, err
 	}
 
-	if requestedStatus == orchestratorinfo.ServiceInfoStatus_Draining {
-		if s.drainController != nil {
-			if transitionedToDraining {
-				s.drainController.StartDraining(ctx)
-			}
-
-			if req.GetForceStop() {
-				s.startForceStopMode(ctx)
-			}
-		}
+	if requestedStatus == orchestratorinfo.ServiceInfoStatus_Draining && req.GetForceStop() {
+		s.startForceStopMode(ctx)
 	}
 
 	return &emptypb.Empty{}, nil
@@ -202,7 +205,7 @@ func (s *Server) startForceStopMode(ctx context.Context) {
 
 func (s *Server) runForceStopMode(ctx context.Context) {
 	for {
-		if err := s.drainController.ForceStop(ctx); err != nil {
+		if err := s.drainCoordinator.ForceStop(ctx); err != nil {
 			logger.L().Error(ctx, "forced drain failed", zap.Error(err))
 			time.Sleep(s.forceStopRetryDelay)
 
