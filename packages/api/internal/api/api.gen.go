@@ -1623,6 +1623,9 @@ type GetV2SandboxesParams struct {
 	// State Filter sandboxes by one or more states
 	State *[]SandboxState `form:"state,omitempty" json:"state,omitempty"`
 
+	// TemplateID Filter sandboxes by the template ID they were created from
+	TemplateID *string `form:"templateID,omitempty" json:"templateID,omitempty"`
+
 	// NextToken Cursor to start the list from
 	NextToken *PaginationNextToken `form:"nextToken,omitempty" json:"nextToken,omitempty"`
 
@@ -5365,6 +5368,18 @@ func NewGetV2SandboxesRequest(server string, params *GetV2SandboxesParams) (*htt
 		if params.State != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "state", *params.State, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "array", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.TemplateID != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "templateID", *params.TemplateID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -13016,6 +13031,14 @@ func (siw *ServerInterfaceWrapper) GetV2Sandboxes(c *gin.Context) {
 		return
 	}
 
+	// ------------- Optional query parameter "templateID" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "templateID", c.Request.URL.Query(), &params.TemplateID, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter templateID: %w", err), http.StatusBadRequest)
+		return
+	}
+
 	// ------------- Optional query parameter "nextToken" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "nextToken", c.Request.URL.Query(), &params.NextToken, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -13620,15 +13643,15 @@ var swaggerSpec = []string{
 	"CywW7aUScIKyNGI4RBFNrqydEHOkRoBK9pgmDoXjJdHf+mqRH1XbX7BY3JdjeRzQCz1sX/+zWoXlXHYL",
 	"3S7o1w9DKwouXwDyTfdd91xuFoTDY3fzI9COOaUfwJHybOnMuqs7ItLASb2KCd54EtfpcnnAsLMLPL9v",
 	"XLhRkQCuz79+9NNwELpJF3s8YmtLnP5190eubjFuelOXL3S6RCwhiHEUM65LowAkeuV5l5ruV8uHdi69",
-	"cZ3jkZDLSP2gNM7n5HZ7KQXy5J++tmZr7ZULssnc6PCRZ5rP9VmaDbsupjtD15wb//pAtmHJazE7VkCp",
-	"NwEGCbg2m7csGU8mSPVGUxKxG52rQDfAnCByG0RZ2AzbtZkxD7AgW4Ikgkp6TZDIploGoRjLYIFYAiuP",
-	"iRB4rm9hiqU2iBWCebAoLSvGt8ckmSsC3333l83G2Tpper/urma/fEnYO5BJlx7HrP+lwtfdx3ir8HX3",
-	"qbuhDSReajsNvEu7GFuLWWwvgdweE+Qg6o8dFfQgi2hm1S9hR49CDh1xH0OjPLzU8XhxHg8sRQAig2TI",
-	"0wozeUr8+k2ThrGiPvHmUfSJN4+lT5gFWA5rF/K0VIsf/zV5Da1ZlMWkZ5ojZFv7jBn5p4c3iOm5BlvC",
-	"IrCj1Xfzp+BndrM96ttq3pUDyM++nON+kJq29ow3+6BLz7qfhMYk3IFRNtFnHWYv959G/HPYzvZ3/Y/+",
-	"T7WasVI3Mnj51Qw7WJmz6+n5TquEDfaNFq5jwovtxs+JWuLEcgg2Bok95FnvPBZLscmGXtCoP0OBZfFr",
-	"e+wZj0Z7o4WUqdjb3sYpnZDd6QSn6cjp/73IblMkevleyTVa/hEy8bh/w7FtSXWu5YYp3boiy9Jvxpmf",
-	"/50rH5d3/x0AAP//",
+	"cZ3jkZDLSP2gNM5Rvy2USO3oUP29RDdKwtjn2y2XZ+mas1th+Uz8fy81SZ78G9zWtLG9klI22T0dhvZM",
+	"E8s+S/tl1w15Z+iacytkH8g2LHkt9s8KKPUmwDIC93fzqCbjyQSp3mhKInajkyboBpgTRG6DKAubYbs2",
+	"e+oBFmRLkERQSa8JEtlUM3AUYxksEEtg5TERAs/1dVCx1Ab5RjAPFqVlxfj2mCRzReC77/6y2YBfJ1/w",
+	"193VDKkvmYMHMunSK531P5n4uvsYjya+7j51f7iBxEuRqYGXehdja8GT7bWY24OTHET9scOTHmQRzaz6",
+	"Jf7pUcihIwBlaLiJlzoeL+DkgaUIQGSQDHla8S5PiV+/adIwVtQn3jyKPvHmsfQJswDLYe1CnpZq8eM/",
+	"a6+hNYuymPTMt4Rsa58xI//08AYxPddgS1gEdrT6bv4U/MxutkehXc27cgD52Zdz3A9SXNee8WZflulZ",
+	"95PQmIQ7MMqarOswe7n/NOKfw3a2v+t/9H8z1oyVupHBy69m2MHKnF1PzwdjJWywj8VwHRNebDd+TtQS",
+	"sJZDsDFa7SHPeuexWIrNevSCRv0ZCiyLX9tjz3g02hstpEzF3vY2TumE7E4nOE1HTv/vVZ+igNtbOelp",
+	"+UdICeT+Dce2JdW5lhumdOuKLEu/maiC/O9c+bi8++8AAAD//w==",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

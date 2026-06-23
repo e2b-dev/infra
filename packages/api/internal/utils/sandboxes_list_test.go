@@ -5,7 +5,65 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/api/internal/api"
 )
+
+func sandboxWithTemplate(sandboxID, templateID string) PaginatedSandbox {
+	return PaginatedSandbox{
+		ListedSandbox: api.ListedSandbox{
+			SandboxID:  sandboxID,
+			TemplateID: templateID,
+		},
+	}
+}
+
+func TestFilterSandboxesOnTemplate(t *testing.T) {
+	t.Parallel()
+
+	sandboxes := []PaginatedSandbox{
+		sandboxWithTemplate("sbx-1", "tmpl-a"),
+		sandboxWithTemplate("sbx-2", "tmpl-b"),
+		sandboxWithTemplate("sbx-3", "tmpl-a"),
+	}
+
+	t.Run("nil filter returns all", func(t *testing.T) {
+		t.Parallel()
+
+		input := append([]PaginatedSandbox(nil), sandboxes...)
+		actual := FilterSandboxesOnTemplate(input, nil)
+		assert.Len(t, actual, 3)
+	})
+
+	t.Run("empty string filter returns all", func(t *testing.T) {
+		t.Parallel()
+
+		empty := ""
+		input := append([]PaginatedSandbox(nil), sandboxes...)
+		actual := FilterSandboxesOnTemplate(input, &empty)
+		assert.Len(t, actual, 3)
+	})
+
+	t.Run("matching template returns subset", func(t *testing.T) {
+		t.Parallel()
+
+		templateID := "tmpl-a"
+		input := append([]PaginatedSandbox(nil), sandboxes...)
+		actual := FilterSandboxesOnTemplate(input, &templateID)
+		require.Len(t, actual, 2)
+		assert.Equal(t, "sbx-1", actual[0].SandboxID)
+		assert.Equal(t, "sbx-3", actual[1].SandboxID)
+	})
+
+	t.Run("no match returns empty", func(t *testing.T) {
+		t.Parallel()
+
+		templateID := "tmpl-missing"
+		input := append([]PaginatedSandbox(nil), sandboxes...)
+		actual := FilterSandboxesOnTemplate(input, &templateID)
+		assert.Empty(t, actual)
+	})
+}
 
 func TestParseFilters(t *testing.T) {
 	t.Parallel()

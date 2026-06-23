@@ -35,6 +35,7 @@ func (a *APIStore) getPausedSandboxes(
 	teamID uuid.UUID,
 	runningSandboxesIDs []string,
 	metadataFilter *map[string]string,
+	templateID *string,
 	queryLimit int32,
 	cursorTime time.Time,
 	cursorID string,
@@ -53,6 +54,7 @@ func (a *APIStore) getPausedSandboxes(
 		Limit:      dbLimit,
 		TeamID:     teamID,
 		Metadata:   queryMetadata,
+		BaseEnvID:  templateID,
 		CursorTime: pgtype.Timestamptz{Time: cursorTime, Valid: true},
 		CursorID:   cursorID,
 	})
@@ -176,6 +178,12 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		return
 	}
 
+	// Normalize the template filter: treat an empty string the same as no filter
+	templateFilter := params.TemplateID
+	if templateFilter != nil && *templateFilter == "" {
+		templateFilter = nil
+	}
+
 	// Get sandboxes with pagination
 	sandboxes := make([]utils.PaginatedSandbox, 0)
 
@@ -200,6 +208,9 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		// Filter based on metadata
 		runningSandboxList = utils.FilterSandboxesOnMetadata(runningSandboxList, metadataFilter)
 
+		// Filter based on template
+		runningSandboxList = utils.FilterSandboxesOnTemplate(runningSandboxList, templateFilter)
+
 		// Set the total (before we apply the limit, but already with all filters)
 		c.Header("X-Total-Running", strconv.Itoa(len(runningSandboxList)))
 
@@ -219,7 +230,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 			runningSandboxesIDs = append(runningSandboxesIDs, info.SandboxID)
 		}
 
-		pausedSandboxList, err := a.getPausedSandboxes(ctx, team.ID, runningSandboxesIDs, metadataFilter, pagination.QueryLimit(), pagination.CursorTime(), pagination.CursorID())
+		pausedSandboxList, err := a.getPausedSandboxes(ctx, team.ID, runningSandboxesIDs, metadataFilter, templateFilter, pagination.QueryLimit(), pagination.CursorTime(), pagination.CursorID())
 		if err != nil {
 			logger.L().Error(ctx, "Error getting paused sandboxes", zap.Error(err))
 			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error getting paused sandboxes")
@@ -229,6 +240,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 
 		pausingSandboxList := instanceInfoToPaginatedSandboxes(pausingSandboxes)
 		pausingSandboxList = utils.FilterSandboxesOnMetadata(pausingSandboxList, metadataFilter)
+		pausingSandboxList = utils.FilterSandboxesOnTemplate(pausingSandboxList, templateFilter)
 		pausingSandboxList = utils.FilterBasedOnCursor(pausingSandboxList, pagination.CursorTime(), pagination.CursorID())
 
 		sandboxes = append(sandboxes, pausedSandboxList...)

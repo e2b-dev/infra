@@ -46,7 +46,8 @@ WHERE
     s.team_id = $2
     -- The order here is important, we want started_at descending, but sandbox_id ascending
     AND s.metadata @> $3
-    AND (s.sandbox_started_at, $4::text) < ($5, s.sandbox_id)
+    AND ($4::text IS NULL OR s.base_env_id = $4)
+    AND (s.sandbox_started_at, $5::text) < ($6, s.sandbox_id)
 ORDER BY s.sandbox_started_at DESC, s.sandbox_id ASC
 LIMIT $1
 `
@@ -55,6 +56,7 @@ type GetSnapshotsWithCursorParams struct {
 	Limit      int32
 	TeamID     uuid.UUID
 	Metadata   types.JSONBStringMap
+	BaseEnvID  *string
 	CursorID   string
 	CursorTime pgtype.Timestamptz
 }
@@ -76,6 +78,7 @@ func (q *Queries) GetSnapshotsWithCursor(ctx context.Context, arg GetSnapshotsWi
 		arg.Limit,
 		arg.TeamID,
 		arg.Metadata,
+		arg.BaseEnvID,
 		arg.CursorID,
 		arg.CursorTime,
 	)

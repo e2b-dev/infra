@@ -119,6 +119,52 @@ func TestGetSnapshotsWithCursor_ReturnsLatestAssignment(t *testing.T) {
 		"GetSnapshotsWithCursor should return the build from the latest assignment")
 }
 
+// TestGetSnapshotsWithCursor_FiltersByBaseEnvID verifies that passing BaseEnvID filters
+// snapshots to only those created from that base template, and that a nil filter returns all.
+func TestGetSnapshotsWithCursor_FiltersByBaseEnvID(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, db)
+	baseTemplateA := testutils.CreateTestTemplate(t, db, teamID)
+	baseTemplateB := testutils.CreateTestTemplate(t, db, teamID)
+
+	// One snapshot from base template A, one from base template B
+	sandboxA := "sandbox-" + uuid.New().String()
+	testutils.UpsertTestSnapshot(t, ctx, db, "snapshot-template-"+uuid.New().String(), sandboxA, teamID, baseTemplateA)
+
+	sandboxB := "sandbox-" + uuid.New().String()
+	testutils.UpsertTestSnapshot(t, ctx, db, "snapshot-template-"+uuid.New().String(), sandboxB, teamID, baseTemplateB)
+
+	cursorTime := pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true}
+
+	// No filter: both snapshots are returned
+	all, err := db.SqlcClient.GetSnapshotsWithCursor(ctx, queries.GetSnapshotsWithCursorParams{
+		TeamID:     teamID,
+		Metadata:   types.JSONBStringMap{},
+		CursorID:   "",
+		CursorTime: cursorTime,
+		Limit:      10,
+	})
+	require.NoError(t, err)
+	require.Len(t, all, 2, "nil BaseEnvID filter should return all snapshots")
+
+	// Filter by base template A: only sandboxA is returned
+	filtered, err := db.SqlcClient.GetSnapshotsWithCursor(ctx, queries.GetSnapshotsWithCursorParams{
+		TeamID:     teamID,
+		Metadata:   types.JSONBStringMap{},
+		BaseEnvID:  &baseTemplateA,
+		CursorID:   "",
+		CursorTime: cursorTime,
+		Limit:      10,
+	})
+	require.NoError(t, err)
+	require.Len(t, filtered, 1, "BaseEnvID filter should return only matching snapshots")
+	assert.Equal(t, sandboxA, filtered[0].Snapshot.SandboxID)
+	assert.Equal(t, baseTemplateA, filtered[0].Snapshot.BaseEnvID)
+}
+
 // TestGetLastSnapshot_BuildSharedWithOtherTemplate verifies that when a build is assigned
 // to multiple templates, GetLastSnapshot still returns the correct build for this template.
 func TestGetLastSnapshot_BuildSharedWithOtherTemplate(t *testing.T) {
