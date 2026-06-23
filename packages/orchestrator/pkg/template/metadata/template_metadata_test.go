@@ -238,8 +238,10 @@ func TestMarkFilesystemOnly_V1SnapshotRoundTrips(t *testing.T) {
 
 	fsOnly := v1.MarkFilesystemOnly(true)
 	assert.True(t, fsOnly.FilesystemOnly)
-	assert.Equal(t, uint64(CurrentVersion), fsOnly.Version,
-		"a filesystem-only snapshot must be upgraded past DeprecatedVersion")
+	assert.Equal(t, uint64(FilesystemOnlyVersion), fsOnly.Version,
+		"a filesystem-only snapshot must be upgraded to the pinned FilesystemOnlyVersion, past DeprecatedVersion")
+	assert.Greater(t, uint64(FilesystemOnlyVersion), uint64(DeprecatedVersion),
+		"FilesystemOnlyVersion must clear the deserialize() strip threshold")
 
 	// The flag survives serialize -> deserialize.
 	reader, err := serialize(fsOnly)
