@@ -80,7 +80,7 @@ func TestPlaceSandbox_TimeoutPinsFirstTriedNode(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 
-	node := nodemanager.NewTestNode("node-warm", api.NodeStatusReady, 0, 8)
+	node := nodemanager.NewTestNode("node-test", api.NodeStatusReady, 0, 8)
 	node.SetSandboxClient(erroringClient(cancel, status.Error(codes.Internal, "failed to create sandbox: request timed out")))
 
 	_, err := PlaceSandbox(
@@ -101,8 +101,7 @@ func TestPlaceSandbox_TimeoutPinsFirstTriedNode(t *testing.T) {
 }
 
 // TestPlaceSandbox_PinsFirstTriedNodeNotLater verifies that across multiple
-// attempts the FIRST node tried (the one that had the longest to warm its cache)
-// is the one surfaced, not a later one.
+// attempts the FIRST node tried is the one surfaced, not a later one.
 func TestPlaceSandbox_PinsFirstTriedNodeNotLater(t *testing.T) {
 	t.Parallel()
 
@@ -165,8 +164,7 @@ func TestPlaceSandbox_HardFailureNotWrapped(t *testing.T) {
 }
 
 // TestPlaceSandbox_ResourceExhaustedNotPinned verifies that a node which refused
-// fast with ResourceExhausted (no snapshot pull, nothing warming) is not pinned
-// even if the request then times out.
+// fast with ResourceExhausted is not pinned even if the request then times out.
 func TestPlaceSandbox_ResourceExhaustedNotPinned(t *testing.T) {
 	t.Parallel()
 

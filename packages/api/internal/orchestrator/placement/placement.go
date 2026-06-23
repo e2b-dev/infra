@@ -24,8 +24,7 @@ var errSandboxCreateFailed = errors.New("failed to create a new sandbox, if the 
 
 // PlacementTimeoutError wraps a placement failure caused by the request context
 // being cancelled or hitting its deadline. Node is the first node tried before
-// the timeout; that node had the longest to pull the snapshot, so its local
-// cache is the warmest, and callers can unwrap this error to pin a retry to it.
+// the timeout
 type PlacementTimeoutError struct {
 	Node *nodemanager.Node
 	err  error
@@ -45,14 +44,10 @@ func (e *PlacementTimeoutError) Unwrap() error {
 // context is still live) are returned unchanged so callers never pin a retry to
 // a node that genuinely refused the sandbox.
 //
-// TODO: We key off ctx.Err() rather than the gRPC status code because the orchestrator
-// currently collapses a timed-out resume into codes.Internal (it folds the
-// deadline cause into the message, not the code), so the code alone cannot tell
-// a timeout apart from a hard failure.
-//
-// Have the orchestrator return codes.DeadlineExceeded when a create fails
-// due to its context deadline, so timeouts can be detected by status code
-// directly instead of relying on the API-side request context.
+// TODO [EN-1099]: We key off ctx.Err() rather than the gRPC status code because
+// the orchestrator currently collapses a timed-out resume into codes.Internal
+// (it folds the deadline cause into the message, not the code),
+// so the code alone cannot tell a timeout apart from a hard failure.
 func wrapTimeout(ctx context.Context, err error, node *nodemanager.Node) error {
 	if node == nil || ctx.Err() == nil {
 		return err
@@ -151,10 +146,7 @@ func PlaceSandbox(
 		}
 
 		// Remember the first node that got far enough to actually attempt the
-		// sandbox (i.e. did not refuse with ResourceExhausted). On a timeout this
-		// node had the longest to pull the snapshot, so its local cache is the
-		// warmest and a retry should be pinned to it. Whether the failure was a
-		// timeout is decided at the return points via wrapTimeout(ctx, ...).
+		// sandbox (i.e. did not refuse with ResourceExhausted).
 		if statusCode != codes.ResourceExhausted && firstTriedNode == nil {
 			firstTriedNode = failedNode
 		}
