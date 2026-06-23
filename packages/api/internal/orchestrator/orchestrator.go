@@ -58,6 +58,7 @@ type Orchestrator struct {
 	metricsRegistration           metric.Registration
 	sandboxCountGaugeRegistration metric.Registration
 	createdSandboxesCounter       metric.Int64Counter
+	resumeOriginNodeRemapCounter  metric.Int64Counter
 	teamMetricsObserver           *metrics.TeamObserver
 	accessTokenGenerator          *sandbox.AccessTokenGenerator
 	createdCounter                metric.Int64Counter

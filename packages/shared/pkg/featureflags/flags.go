@@ -213,6 +213,12 @@ var (
 	// HeaderV5WriteFlag makes Pause emit V5 headers. When enabled it also
 	// supersedes V4HeaderForUncompressedFlag for uncompressed uploads.
 	HeaderV5WriteFlag = NewBoolFlag("header-v5-write", false)
+
+	// ResumeOriginNodeRemapFlag enables repointing a snapshot's origin_node_id to
+	// the fallback node a resume timed out on. The node's local cache is warming
+	// from the in-progress snapshot pull, so pinning the retry to it avoids
+	// re-pulling the snapshot onto yet another node.
+	ResumeOriginNodeRemapFlag = NewBoolFlag("resume-origin-node-remap", false)
 )
 
 type IntFlag struct {
