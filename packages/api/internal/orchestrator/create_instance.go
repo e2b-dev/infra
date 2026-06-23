@@ -320,6 +320,10 @@ func (o *Orchestrator) CreateSandbox(
 
 	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, allLabels)
 	if err != nil {
+		if isResume {
+			o.maybeRemapResumeOriginNode(ctx, sandboxID, team, sbxData.NodeID, err)
+		}
+
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,
 			ClientMsg: "Failed to place sandbox",
@@ -407,6 +411,61 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	return sbx, nil
+}
+
+// maybeRemapResumeOriginNode repoints the snapshot's origin_node_id to the
+// fallback node a resume timed out on. Pinning the next resume attempt to avoid
+// re-pulling the snapshot onto another node and spraying load across the cluster
+//
+// It only acts on placement timeouts (not resource-exhaustion or hard errors),
+// and only when the warming node differs from the origin we already tried. The
+// write runs on a detached context because the request context is already past
+// its deadline (that is why placement timed out).
+func (o *Orchestrator) maybeRemapResumeOriginNode(ctx context.Context, sandboxID string, team *teamtypes.Team, originNodeID *string, placeErr error) {
+	var timeoutErr *placement.PlacementTimeoutError
+	if !errors.As(placeErr, &timeoutErr) || timeoutErr.Node == nil {
+		return
+	}
+
+	newNode := timeoutErr.Node
+	if originNodeID != nil && *originNodeID == newNode.ID {
+		return
+	}
+
+	if !o.featureFlagsClient.BoolFlag(ctx, featureflags.ResumeOriginNodeRemapFlag, featureflags.TeamContext(team.ID.String()), featureflags.SandboxContext(sandboxID)) {
+		return
+	}
+
+	// The request context is already past its deadline, so detach for the write.
+	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+
+	if err := o.sqlcDB.UpdateSnapshotOriginNode(wctx, queries.UpdateSnapshotOriginNodeParams{
+		OriginNodeID: newNode.ID,
+		SandboxID:    sandboxID,
+	}); err != nil {
+		logger.L().Warn(ctx, "failed to remap resume origin node",
+			zap.Error(err),
+			logger.WithSandboxID(sandboxID),
+		)
+
+		return
+	}
+
+	// Drop the cached snapshot so the next resume reads the new origin node.
+	o.snapshotCache.Invalidate(wctx, sandboxID)
+	o.resumeOriginNodeRemapCounter.Add(wctx, 1)
+
+	oldNodeID := ""
+	if originNodeID != nil {
+		oldNodeID = *originNodeID
+	}
+
+	logger.L().Info(ctx, "remapped resume origin node to the node a previous resume timed out on",
+		logger.WithSandboxID(sandboxID),
+		zap.String("old_origin_node_id", oldNodeID),
+		zap.String("new_origin_node_id", newNode.ID),
+	)
 }
 
 func (o *Orchestrator) generateRequiredNodeLabels(ctx context.Context, sandboxID string, team *teamtypes.Team, sbxData SandboxMetadata) ([]string, bool) {

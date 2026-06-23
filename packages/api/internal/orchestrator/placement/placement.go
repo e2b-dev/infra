@@ -22,6 +22,30 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/orchest
 
 var errSandboxCreateFailed = errors.New("failed to create a new sandbox, if the problem persists, contact us")
 
+// PlacementTimeoutError wraps a placement failure that happened after the
+// request deadline was hit while a node was creating the sandbox. Node is the
+// first node tried before the timeout
+type PlacementTimeoutError struct {
+	Node *nodemanager.Node
+	err  error
+}
+
+func (e *PlacementTimeoutError) Error() string {
+	return e.err.Error()
+}
+
+func (e *PlacementTimeoutError) Unwrap() error {
+	return e.err
+}
+
+func wrapTimeout(err error, node *nodemanager.Node) error {
+	if node == nil {
+		return err
+	}
+
+	return &PlacementTimeoutError{Node: node, err: err}
+}
+
 // Algorithm defines the interface for sandbox placement strategies.
 // Implementations should choose an optimal node based on available resources
 // and current load distribution.
@@ -50,11 +74,13 @@ func PlaceSandbox(
 		node = preferredNode
 	}
 
+	var firstTriedNode *nodemanager.Node
+
 	attempt := 0
 	for attempt < maxRetries {
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("request timed out during %d. attempt", attempt+1)
+			return nil, wrapTimeout(fmt.Errorf("request timed out during %d. attempt", attempt+1), firstTriedNode)
 		default:
 			// Continue
 		}
@@ -63,12 +89,12 @@ func PlaceSandbox(
 			telemetry.ReportEvent(ctx, "Placing sandbox on the preferred node", telemetry.WithNodeID(node.ID))
 		} else {
 			if len(nodesExcluded) >= len(clusterNodes) {
-				return nil, errors.New("no nodes available")
+				return nil, wrapTimeout(errors.New("no nodes available"), firstTriedNode)
 			}
 
 			node, err = algorithm.chooseNode(ctx, clusterNodes, nodesExcluded, nodemanager.SandboxResources{CPUs: sbxRequest.GetSandbox().GetVcpu(), MiBMemory: sbxRequest.GetSandbox().GetRamMb()}, buildMachineInfo, labelFilteringEnabled, requiredLabels)
 			if err != nil {
-				return nil, err
+				return nil, wrapTimeout(err, firstTriedNode)
 			}
 
 			telemetry.ReportEvent(ctx, "Placing sandbox on the node", telemetry.WithNodeID(node.ID))
@@ -109,6 +135,11 @@ func PlaceSandbox(
 			statusCode = st.Code()
 		}
 
+		// The request deadline was hit while this node was creating the sandbox.
+		if (statusCode == codes.DeadlineExceeded || statusCode == codes.Canceled) && firstTriedNode == nil {
+			firstTriedNode = failedNode
+		}
+
 		switch statusCode {
 		case codes.ResourceExhausted:
 			failedNode.PlacementMetrics.Skip(sbxRequest.GetSandbox().GetSandboxId())
@@ -121,5 +152,5 @@ func PlaceSandbox(
 		}
 	}
 
-	return nil, errSandboxCreateFailed
+	return nil, wrapTimeout(errSandboxCreateFailed, firstTriedNode)
 }
