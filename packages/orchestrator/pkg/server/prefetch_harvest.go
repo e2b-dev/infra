@@ -8,8 +8,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -20,6 +22,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // minHarvestTimeoutMs is the floor applied to the harvest-timeout flag, so a
@@ -35,6 +39,23 @@ const harvestReapTimeout = 60 * time.Second
 func clampHarvestTimeoutMs(ms int) int {
 	return max(ms, minHarvestTimeoutMs)
 }
+
+// harvestOutcome classifies a harvest attempt for the attempts/duration metrics.
+type harvestOutcome string
+
+const (
+	harvestSuccess       harvestOutcome = "success"        // trace harvested (persist, if any, is best-effort)
+	harvestResumeFailed  harvestOutcome = "resume_failed"  // couldn't bring the throwaway up
+	harvestCollectFailed harvestOutcome = "collect_failed" // throwaway up but the trace couldn't be read
+	harvestSkipped       harvestOutcome = "skipped"        // couldn't acquire a start slot
+)
+
+var (
+	harvestMeter             = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/server")
+	harvestAttemptsCounter   = utils.Must(telemetry.GetCounter(harvestMeter, telemetry.PauseResumePrefetchHarvestAttempts))
+	harvestDurationHistogram = utils.Must(telemetry.GetHistogram(harvestMeter, telemetry.PauseResumePrefetchHarvestDurationName))
+	harvestPagesHistogram    = utils.Must(telemetry.GetHistogram(harvestMeter, telemetry.PauseResumePrefetchHarvestPagesName))
+)
 
 // harvestResumer resumes the throwaway instance the harvest records its trace
 // from. It is an interface so the orchestration can be unit-tested with a fake.
@@ -168,10 +189,22 @@ func (s *Server) harvestResumePrefetchAsync(
 		)
 
 		start := time.Now()
-		pages, err := harvester.run(hCtx, sbx, res.meta, res.upload, buildID, objectMetadata, consume)
+		pages, outcome, err := harvester.run(hCtx, sbx, res.meta, res.upload, buildID, objectMetadata, consume)
+		durationMs := time.Since(start).Milliseconds()
+
+		resultAttr := metric.WithAttributes(attribute.String("result", string(outcome)))
+		harvestAttemptsCounter.Add(hCtx, 1, resultAttr)
+		harvestDurationHistogram.Record(hCtx, durationMs, resultAttr)
+		if outcome == harvestSuccess {
+			// pages is meaningful only when a trace was harvested; its bottom
+			// bucket then surfaces the empty-trace (idle-at-pause) rate.
+			harvestPagesHistogram.Record(hCtx, int64(pages))
+		}
+
 		span.SetAttributes(
-			attribute.Int64("harvest.duration_ms", time.Since(start).Milliseconds()),
+			attribute.Int64("harvest.duration_ms", durationMs),
 			attribute.Int("harvest.pages", pages),
+			attribute.String("harvest.result", string(outcome)),
 		)
 		if err != nil {
 			span.RecordError(err)
@@ -187,7 +220,9 @@ func (s *Server) harvestResumePrefetchAsync(
 
 // run performs the throwaway warm resume, collects the fault trace, and (when
 // consume is set) persists the mapping into the pause artifact metadata locally
-// and remotely. Returns the harvested page count.
+// and remotely. Returns the harvested page count and the attempt outcome. Once
+// the trace is harvested the outcome is success even if a (best-effort) persist
+// step then fails — the error is still returned for logging.
 func (h *prefetchHarvester) run(
 	ctx context.Context,
 	sbx *sandbox.Sandbox,
@@ -196,12 +231,12 @@ func (h *prefetchHarvester) run(
 	buildID string,
 	objectMetadata storage.ObjectMetadata,
 	consume bool,
-) (int, error) {
+) (int, harvestOutcome, error) {
 	// The throwaway resume and its start slot are confined to resumeMapping, so
 	// they are released before we wait on the upload below.
-	mapping, err := h.resumeMapping(ctx, sbx, buildID)
+	mapping, outcome, err := h.resumeMapping(ctx, sbx, buildID)
 	if err != nil {
-		return 0, err
+		return 0, outcome, err
 	}
 
 	pages := mapping.Count() // nil-safe
@@ -209,7 +244,7 @@ func (h *prefetchHarvester) run(
 	if !consume || mapping == nil {
 		// Harvest-only: trace measured (page count returned/logged), persist
 		// nothing, so the customer's resume is unaffected.
-		return pages, nil
+		return pages, harvestSuccess, nil
 	}
 
 	// The async snapshot upload (uploadSnapshotAsync) is still in flight: it reads
@@ -221,7 +256,7 @@ func (h *prefetchHarvester) run(
 	// fired we must leave them untouched.
 	uploadErr := upload.Wait(ctx)
 	if ctx.Err() != nil {
-		return pages, nil //nolint:nilerr // harvest deadline fired while the upload was still running; leave its metadata untouched
+		return pages, harvestSuccess, nil //nolint:nilerr // harvest deadline fired while the upload was still running; leave its metadata untouched
 	}
 
 	// Carry the mapping through the same-version pause metadata. The local cache
@@ -229,20 +264,20 @@ func (h *prefetchHarvester) run(
 	// remote upload succeeded.
 	meta = meta.WithPrefetch(&metadata.Prefetch{Memory: mapping})
 	if err := h.templates.UpdateMetadata(buildID, meta); err != nil {
-		return pages, fmt.Errorf("update local metadata: %w", err)
+		return pages, harvestSuccess, fmt.Errorf("update local metadata: %w", err)
 	}
 
 	// Only enrich the remote metadata if the snapshot actually landed; on upload
 	// failure the remote build is incomplete, so there is nothing to enrich (the
 	// local update above still lets a same-node resume prefetch).
 	if uploadErr != nil {
-		return pages, nil //nolint:nilerr // remote snapshot did not land; the local update is the most we can do
+		return pages, harvestSuccess, nil //nolint:nilerr // remote snapshot did not land; the local update is the most we can do
 	}
 	if err := h.uploadMetadata(ctx, meta, objectMetadata); err != nil {
-		return pages, fmt.Errorf("re-upload metadata: %w", err)
+		return pages, harvestSuccess, fmt.Errorf("re-upload metadata: %w", err)
 	}
 
-	return pages, nil
+	return pages, harvestSuccess, nil
 }
 
 // resumeMapping resumes a throwaway warm copy of the just-paused snapshot,
@@ -254,12 +289,12 @@ func (h *prefetchHarvester) resumeMapping(
 	ctx context.Context,
 	sbx *sandbox.Sandbox,
 	buildID string,
-) (*metadata.MemoryPrefetchMapping, error) {
+) (*metadata.MemoryPrefetchMapping, harvestOutcome, error) {
 	// Bound concurrent harvests the same way real starts are bounded, so a burst
 	// of pauses can't overcommit the node. If we can't acquire within the
 	// harvest deadline the run is simply skipped (best-effort).
 	if err := h.acquire(ctx); err != nil {
-		return nil, fmt.Errorf("acquire start slot: %w", err)
+		return nil, harvestSkipped, fmt.Errorf("acquire start slot: %w", err)
 	}
 	defer h.release()
 
@@ -270,7 +305,7 @@ func (h *prefetchHarvester) resumeMapping(
 	tmpl, err := h.templates.GetTemplate(ctx, buildID, true, false,
 		sbxtemplate.GetTemplateOpts{MaxSandboxLengthHours: sbx.Config.MaxSandboxLengthHours})
 	if err != nil {
-		return nil, fmt.Errorf("get template: %w", err)
+		return nil, harvestResumeFailed, fmt.Errorf("get template: %w", err)
 	}
 
 	// Throwaway identity: distinct SandboxID/ExecutionID from the (being-stopped)
@@ -307,7 +342,7 @@ func (h *prefetchHarvester) resumeMapping(
 	// unfrozen workload) must not reach the network.
 	resumedSbx, err := h.resumer.ResumeForHarvest(ctx, tmpl, &harvestConfig, runtime, sbx.GetStartedAt(), sbx.GetEndAt())
 	if err != nil {
-		return nil, fmt.Errorf("resume throwaway: %w", err)
+		return nil, harvestResumeFailed, fmt.Errorf("resume throwaway: %w", err)
 	}
 
 	// Reap the throwaway on every path — it is never promoted to a live sandbox.
@@ -329,11 +364,11 @@ func (h *prefetchHarvester) resumeMapping(
 	// covers the full resume-through-envd-init working set.
 	prefetchData, err := resumedSbx.MemoryPrefetchData(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("collect prefetch data: %w", err)
+		return nil, harvestCollectFailed, fmt.Errorf("collect prefetch data: %w", err)
 	}
 
 	return metadata.PrefetchEntriesToMapping(
 		slices.Collect(maps.Values(prefetchData.BlockEntries)),
 		prefetchData.BlockSize,
-	), nil
+	), harvestSuccess, nil
 }
