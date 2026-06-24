@@ -3,6 +3,7 @@ package featureflags
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -215,6 +216,22 @@ var (
 	HeaderV5WriteFlag = NewBoolFlag("header-v5-write", false)
 )
 
+// envdTimeoutFallbackMs reads ENVD_TIMEOUT (Go duration string, e.g. "10s")
+// and returns milliseconds. Falls back to 10 000 ms when unset or unparseable.
+func envdTimeoutFallbackMs() int {
+	raw := os.Getenv("ENVD_TIMEOUT")
+	if raw == "" {
+		return 10_000
+	}
+
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return 10_000
+	}
+
+	return int(d.Milliseconds())
+}
+
 type IntFlag struct {
 	name     string
 	fallback int
@@ -251,7 +268,7 @@ var (
 	BestOfKMaxOvercommit          = NewIntFlag("best-of-k-max-overcommit", 400)              // Default R=4 (stored as percentage, max over-commit ratio)
 	BestOfKAlpha                  = NewIntFlag("best-of-k-alpha", 50)                        // Default Alpha=0.5 (stored as percentage for int flag, current usage weight)
 	EnvdInitTimeoutMilliseconds   = NewIntFlag("envd-init-request-timeout-milliseconds", 50) // Timeout for envd init request in milliseconds
-	EnvdTimeoutMilliseconds       = NewIntFlag("envd-timeout-milliseconds", 40000)           // Timeout for waiting for envd on resume, in milliseconds (default 40s)
+	EnvdTimeoutMilliseconds       = NewIntFlag("envd-timeout-milliseconds", envdTimeoutFallbackMs()) // Timeout for waiting for envd on resume; falls back to ENVD_TIMEOUT env var (default 10s)
 	HostStatsSamplingInterval     = NewIntFlag("host-stats-sampling-interval", 5000)         // Host stats sampling interval in milliseconds (default 5s)
 	// GuestSyncTimeoutMs overrides the mandatory pre-pause guest-sync deadline
 	// for filesystem-only snapshots, in milliseconds. 0 (default) derives the
