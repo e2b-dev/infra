@@ -51,7 +51,18 @@ func newAWSStorage(ctx context.Context, bucketName string) (*awsStorage, error) 
 		return nil, err
 	}
 
-	client := s3.NewFromConfig(cfg)
+	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
+		// S3_USE_PATH_STYLE controls the addressing style:
+		//   "true"  → path-style:         https://host/bucket/key
+		//   "false" → virtual-host-style: https://bucket.host/key  (SDK default)
+		//
+		// Path-style is required for S3-compatible backends (MinIO, Ceph, etc.)
+		// that don't support virtual-host addressing. Set this explicitly when
+		// using a custom endpoint via AWS_ENDPOINT_URL.
+		if strings.EqualFold(os.Getenv("S3_USE_PATH_STYLE"), "true") {
+			o.UsePathStyle = true
+		}
+	})
 	presignClient := s3.NewPresignClient(client)
 
 	return &awsStorage{

@@ -181,6 +181,7 @@ locals {
     LAUNCH_DARKLY_API_KEY        = module.init.launch_darkly_api_key
     ARTIFACTS_REGISTRY_PROVIDER  = "AWS_ECR"
     STORAGE_PROVIDER             = "AWSBucket"
+    S3_USE_PATH_STYLE            = tostring(var.s3_use_path_style)
     AWS_REGION                   = data.aws_region.current.id
     AWS_DOCKER_REPOSITORY_NAME   = module.init.custom_environments_repository_name
   }, var.orchestrator_env_vars)
@@ -189,6 +190,7 @@ locals {
     CONSUL_TOKEN                 = module.init.cluster.consul_acl_token
     ARTIFACTS_REGISTRY_PROVIDER  = "AWS_ECR"
     STORAGE_PROVIDER             = "AWSBucket"
+    S3_USE_PATH_STYLE            = tostring(var.s3_use_path_style)
     AWS_REGION                   = data.aws_region.current.id
     AWS_DOCKER_REPOSITORY_NAME   = module.init.custom_environments_repository_name
     API_SECRET                   = module.init.api_secret
