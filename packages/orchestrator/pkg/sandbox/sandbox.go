@@ -187,7 +187,7 @@ type RuntimeMetadata struct {
 	SandboxType SandboxType
 }
 
-// sandboxLDContext builds an LD context with kernel/FC-version attributes for
+// sandboxLDContext builds an LD context with envd/kernel/FC-version attributes for
 // per-sandbox flag targeting. Team/template targeting comes from the team and
 // template contexts the caller embeds in ctx.
 func sandboxLDContext(runtime RuntimeMetadata, config *Config) ldcontext.Context {
@@ -196,6 +196,7 @@ func sandboxLDContext(runtime RuntimeMetadata, config *Config) ldcontext.Context
 		SetString(featureflags.SandboxTemplateAttribute, runtime.TemplateID).
 		SetString(featureflags.SandboxKernelVersionAttribute, config.FirecrackerConfig.KernelVersion).
 		SetString(featureflags.SandboxFirecrackerVersionAttribute, config.FirecrackerConfig.FirecrackerVersion).
+		SetString(featureflags.SandboxEnvdVersionAttribute, config.Envd.Version).
 		SetString(featureflags.SandboxTypeAttribute, runtime.SandboxType.String()).
 		Build()
 }
@@ -971,7 +972,7 @@ func (f *Factory) ResumeSandbox(
 	err = sbx.WaitForEnvd(
 		ctx,
 		StartTypeResume,
-		f.config.EnvdTimeout,
+		f.GetEnvdTimeout(ctx),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
@@ -1214,6 +1215,14 @@ func (s *Sandbox) Pause(
 		// Memory prefetch refers to the memfile, which is not persisted.
 		m.Prefetch = nil
 	}
+
+	// Record the snapshot kind in metadata so the resume path picks reboot vs
+	// memory-resume from the snapshot's own metadata (see metadata.IsFilesystemOnly).
+	// Set unconditionally so a memory pause of a previously-rebooted (fs-only)
+	// sandbox correctly clears the flag. MarkFilesystemOnly also upgrades the
+	// metadata version when needed so the flag survives deserialize for snapshots
+	// taken from a V1 template.
+	m = m.MarkFilesystemOnly(pauseOpts.filesystemSnapshot)
 
 	// Drain free-page-hinting before pause so the snapshot doesn't capture
 	// pages the guest already considers free. Timeout per use case; 0 disables.
@@ -1709,4 +1718,10 @@ func (f *Factory) GetEnvdInitRequestTimeout(ctx context.Context) time.Duration {
 	envdInitRequestTimeoutMs := f.featureFlags.IntFlag(ctx, featureflags.EnvdInitTimeoutMilliseconds)
 
 	return time.Duration(envdInitRequestTimeoutMs) * time.Millisecond
+}
+
+func (f *Factory) GetEnvdTimeout(ctx context.Context) time.Duration {
+	envdTimeoutMs := f.featureFlags.IntFlag(ctx, featureflags.EnvdTimeoutMilliseconds)
+
+	return time.Duration(envdTimeoutMs) * time.Millisecond
 }

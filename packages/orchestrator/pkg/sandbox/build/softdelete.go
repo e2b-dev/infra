@@ -58,7 +58,7 @@ func classifyCheckError(err error) string {
 func (b *StorageDiff) softDeleteErr() error {
 	// Fail closed only while the tombstoned path is still the active one: a peer
 	// transition that repointed dataPath makes the old verdict stop matching.
-	if sp := b.softDeletedPath.Load(); sp != nil && sp == b.dataPath.Load() {
+	if sp := b.softDeletedPath.Load(); sp != nil && *sp == b.source.Load().dataPath {
 		return fmt.Errorf("%s %s: %w", b.buildID, b.diffType, storage.ErrObjectSoftDeleted)
 	}
 
@@ -80,17 +80,17 @@ func (b *StorageDiff) softDeleteCheck(ctx context.Context, ff *featureflags.Clie
 	// Read the tombstone off the data object this diff actually serves — the
 	// object the storage index prunes — not the header, which a deduped
 	// ancestor layer is never read from.
-	path := b.dataPath.Load()
-	if path == nil {
+	path := b.source.Load().dataPath
+	if path == "" {
 		return
 	}
-	blob, err := b.persistence.OpenBlob(ctx, *path, storage.MetadataObjectType)
+	blob, err := b.persistence.OpenBlob(ctx, path, storage.MetadataObjectType)
 	if err != nil {
 		result := classifyCheckError(err)
 		b.recordCheck(ctx, result, false, false)
 		logger.L().Warn(ctx, "storage-index soft-delete check could not open object",
 			logger.WithBuildID(b.buildID), zap.String("artifact", string(b.diffType)),
-			zap.String("result", result), zap.String("object", *path), zap.Error(err))
+			zap.String("result", result), zap.String("object", path), zap.Error(err))
 
 		return
 	}
@@ -104,10 +104,10 @@ func (b *StorageDiff) softDeleteCheck(ctx context.Context, ff *featureflags.Clie
 		// here, which silently failed open).
 		if result == checkResultUnsupported && ff.BoolFlag(ctx, featureflags.StorageSoftDeleteEnforceFlag) {
 			b.recordCheck(ctx, result, false, true)
-			b.softDeletedPath.Store(path)
+			b.softDeletedPath.Store(&path)
 			logger.L().Error(ctx, "storage-index soft-delete unverifiable; failing closed",
 				logger.WithBuildID(b.buildID), zap.String("artifact", string(b.diffType)),
-				zap.String("result", result), zap.String("object", *path), zap.Error(err))
+				zap.String("result", result), zap.String("object", path), zap.Error(err))
 
 			return
 		}
@@ -115,7 +115,7 @@ func (b *StorageDiff) softDeleteCheck(ctx context.Context, ff *featureflags.Clie
 		logger.L().Warn(ctx, "storage-index soft-delete check could not read object metadata",
 			logger.WithBuildID(b.buildID), zap.String("artifact", string(b.diffType)),
 			zap.String("result", result),
-			zap.String("object", *path), zap.Error(err))
+			zap.String("object", path), zap.Error(err))
 
 		return
 	}
@@ -138,10 +138,10 @@ func (b *StorageDiff) softDeleteCheck(ctx context.Context, ff *featureflags.Clie
 		zap.Bool("enforce", enforce),
 	)
 
-	// Record the tombstoned path; softDeleteErr enforces only while it is still
-	// the active dataPath, so storing a superseded path here is harmless (it can
-	// never match the current pointer) — no check-then-store race.
+	// Record the tombstoned path; softDeleteErr enforces only while it still
+	// equals the active source's dataPath, so recording a superseded path here is
+	// harmless (it can never match the live value) — no check-then-store race.
 	if failed {
-		b.softDeletedPath.Store(path)
+		b.softDeletedPath.Store(&path)
 	}
 }

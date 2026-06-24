@@ -78,7 +78,7 @@ func TestInternetAccessResumedSbx(t *testing.T) {
 			sbx := utils.SetupSandboxWithCleanup(t, client, utils.WithTimeout(sbxTimeout), utils.WithAllowInternetAccess(tc.internetAccess))
 
 			// Pause and resume the sandbox
-			respPause, err := client.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+			respPause, err := client.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 			require.NoError(t, err, "Expected to pause sandbox without error")
 			require.Equal(t, http.StatusNoContent, respPause.StatusCode(), "Expected status code 204 No Content, got %d", respPause.StatusCode())
 

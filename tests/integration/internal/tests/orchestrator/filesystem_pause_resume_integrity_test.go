@@ -117,7 +117,7 @@ func runFilesystemPauseResumeIntegrityCase(t *testing.T, tc filesystemPauseResum
 	}
 	pause := func() {
 		t.Helper()
-		resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxID, setup.WithAPIKey())
+		resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 		require.NoError(t, err)
 		require.Equal(t, http.StatusNoContent, resp.StatusCode())
 	}
@@ -158,7 +158,7 @@ func runFilesystemPauseResumeTruncateCase(t *testing.T) {
 	}
 	pause := func() {
 		t.Helper()
-		resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxID, setup.WithAPIKey())
+		resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 		require.NoError(t, err)
 		require.Equal(t, http.StatusNoContent, resp.StatusCode())
 	}

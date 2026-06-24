@@ -1,7 +1,10 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 
-BUILD := $(shell git rev-parse --short HEAD)
+# Always a fixed 7-char prefix so versioned upload names match `promote`,
+# which truncates ENVD_COMMIT_SHA to 7 chars (`git rev-parse --short` can
+# emit more than 7 when 7 is ambiguous).
+BUILD := $(shell git rev-parse HEAD | cut -c1-7)
 LDFLAGS=-ldflags "-X=main.commitSHA=$(BUILD)"
 PROD_LDFLAGS=-ldflags "-X=main.commitSHA=$(BUILD) -s -w -buildid="
 

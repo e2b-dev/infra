@@ -165,7 +165,7 @@ func NewTestNode(id string, status api.NodeStatus, cpuAllocated int64, cpuCount 
 		},
 
 		client: newMockGRPCClient(),
-		status: status,
+		status: StatusInfo{Status: status, ChangedAt: time.Now()},
 		metrics: Metrics{
 			CpuAllocated: uint32(cpuAllocated),
 			CpuCount:     cpuCount,

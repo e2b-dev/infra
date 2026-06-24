@@ -109,16 +109,19 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 
 	logger.L().Info(ctx, "Created database client")
 
-	var clickhouseStore clickhouse.Clickhouse
-
-	clickhouseConnectionString := config.ClickhouseConnectionString
-	if clickhouseConnectionString == "" {
-		clickhouseStore = clickhouse.NewNoopClient()
-	} else {
-		clickhouseStore, err = clickhouse.New(clickhouseConnectionString)
-		if err != nil {
-			logger.L().Fatal(ctx, "initializing ClickHouse store", zap.Error(err))
-		}
+	// LD-gated switcher: empty flag → singular DSN (self-managed); "0", "1", …
+	// → alternates from CLICKHOUSE_CONNECTION_STRINGS. Lets reads shift between
+	// clusters per-query without restarts. Empty singular DSN falls back to a
+	// noop client.
+	clickhouseStore, err := clickhouse.NewSwitchingClient(
+		ctx,
+		featureFlags,
+		config.ClickhouseConnectionString,
+		config.ClickhouseConnectionStrings,
+		clickhouse.WithAllowNoopDefault(true),
+	)
+	if err != nil {
+		logger.L().Fatal(ctx, "initializing ClickHouse switching client", zap.Error(err))
 	}
 
 	posthogClient, posthogErr := analyticscollector.NewPosthogClient(ctx, config.PosthogAPIKey)
@@ -316,6 +319,12 @@ func (a *APIStore) Close(ctx context.Context) error {
 
 	if err := a.snapshotCache.Close(ctx); err != nil {
 		errs = append(errs, fmt.Errorf("closing snapshot cache: %w", err))
+	}
+
+	if a.clickhouseStore != nil {
+		if err := a.clickhouseStore.Close(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("closing ClickHouse store: %w", err))
+		}
 	}
 
 	return errors.Join(errs...)

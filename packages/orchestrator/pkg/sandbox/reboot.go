@@ -52,6 +52,34 @@ func (f *Factory) RebootSandbox(
 		return nil, fmt.Errorf("parse build ID: %w", err)
 	}
 
+	// Safety gate: only filesystem-only snapshots are safe to cold-boot from. A
+	// memory snapshot's rootfs may be missing writes that lived only in the
+	// guest page cache (restored on a memory resume), so rebooting it would
+	// serve an inconsistent disk. Refuse unless the snapshot is marked fs-only.
+	meta, err := t.Metadata()
+	if err != nil {
+		return nil, fmt.Errorf("get template metadata: %w", err)
+	}
+	if !meta.IsFilesystemOnly() {
+		return nil, fmt.Errorf("refusing to reboot build %s: not a filesystem-only snapshot", buildID)
+	}
+
+	// A cold boot starts envd with no prior state, so unlike a memory resume it
+	// can't inherit the template's default user/workdir from restored RAM — they
+	// must be re-sent via /init, or envd falls back to root and /root. Mirror
+	// finalize's build-time logic (Context.User, with a "user" fallback for
+	// pre-V2 builds that didn't record one).
+	if config.Envd.DefaultUser == nil {
+		defaultUser := meta.Context.User
+		if defaultUser == "" {
+			defaultUser = "user"
+		}
+		config.Envd.DefaultUser = &defaultUser
+	}
+	if config.Envd.DefaultWorkdir == nil {
+		config.Envd.DefaultWorkdir = meta.Context.WorkDir
+	}
+
 	// The masked empty memfile is used only for sizing NoopMemory — guest RAM
 	// is FC's own fresh anonymous memory.
 	pageSize := int64(header.PageSize)
