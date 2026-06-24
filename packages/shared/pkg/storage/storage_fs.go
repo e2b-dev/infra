@@ -34,20 +34,10 @@ type fsObject struct {
 }
 
 var (
-	_ Seekable        = (*fsObject)(nil)
-	_ Blob            = (*fsObject)(nil)
-	_ StreamingReader = (*fsObject)(nil)
+	_ Seekable    = (*fsObject)(nil)
+	_ Blob        = (*fsObject)(nil)
+	_ RangeOpener = (*fsObject)(nil)
 )
-
-type fsRangeReadCloser struct {
-	io.Reader
-
-	file *os.File
-}
-
-func (r *fsRangeReadCloser) Close() error {
-	return r.file.Close()
-}
 
 func newFileSystemStorage(cfg StorageConfig) *fsStorage {
 	return &fsStorage{
@@ -206,16 +196,13 @@ func (o *fsObject) storeFileCompressed(ctx context.Context, localPath string, cf
 	return ft, checksum, nil
 }
 
-func (o *fsObject) openRangeReader(_ context.Context, off, length int64) (io.ReadCloser, error) {
+func (o *fsObject) openRangeReader(_ context.Context, off, length int64) (RangeReader, error) {
 	f, err := o.getHandle(true)
 	if err != nil {
 		return nil, err
 	}
 
-	return &fsRangeReadCloser{
-		Reader: io.NewSectionReader(f, off, length),
-		file:   f,
-	}, nil
+	return newSectionReader(f, off, length), nil
 }
 
 func (o *fsObject) Exists(_ context.Context) (bool, error) {
@@ -316,7 +303,7 @@ func (u *fsPartUploader) Complete(_ context.Context) error {
 	return os.WriteFile(u.fullPath, u.Assemble(), 0o644)
 }
 
-func (o *fsObject) OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (io.ReadCloser, error) {
+func (o *fsObject) OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (RangeReader, error) {
 	if frameTable.IsCompressed() {
 		r, err := frameTable.LocateCompressed(offsetU)
 		if err != nil {
@@ -328,14 +315,14 @@ func (o *fsObject) OpenRangeReader(ctx context.Context, offsetU int64, length in
 			return nil, err
 		}
 
-		decompressed, err := newDecompressingReadCloser(raw, frameTable.CompressionType())
+		dec, err := NewDecompressingReader(raw, frameTable.CompressionType())
 		if err != nil {
-			raw.Close()
+			raw.Close(ctx)
 
 			return nil, err
 		}
 
-		return decompressed, nil
+		return dec, nil
 	}
 
 	return o.openRangeReader(ctx, offsetU, length)

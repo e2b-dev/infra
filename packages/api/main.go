@@ -169,9 +169,6 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 		// API Key header
 		"Authorization",
 		"X-API-Key",
-		// Supabase headers
-		auth.HeaderSupabaseToken,
-		auth.HeaderSupabaseTeam,
 		auth.HeaderTeamID,
 		// Custom headers sent from SDK
 		"browser",
@@ -194,8 +191,6 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 			auth.NewApiKeyAuthenticator(apiStore.GetTeamFromAPIKey),
 			auth.NewAccessTokenAuthenticator(apiStore.GetUserFromAccessToken),
 			auth.NewAuthProviderBearerAuthenticator(apiStore.GetUserIDFromAuthProviderToken),
-			auth.NewSupabaseTokenAuthenticator(apiStore.GetUserIDFromAuthProviderToken),
-			auth.NewSupabaseTeamAuthenticator(apiStore.GetTeamFromSupabaseToken),
 			auth.NewAuthProviderTeamAuthenticator(apiStore.GetTeamFromAuthProviderToken),
 			auth.NewAdminApiKeyAuthenticator(config.AdminToken),
 			auth.NewAdminTeamAuthenticator(apiStore.GetTeamFromAdminToken),

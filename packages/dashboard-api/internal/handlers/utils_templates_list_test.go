@@ -13,8 +13,8 @@ import (
 func TestParseTemplatesSort(t *testing.T) {
 	t.Parallel()
 
-	nameAsc := api.GetTemplatesParamsSortNameAsc
-	cpuDesc := api.GetTemplatesParamsSortCpuCountDesc
+	createdAsc := api.GetTemplatesParamsSortCreatedAtAsc
+	updatedDesc := api.GetTemplatesParamsSortUpdatedAtDesc
 	bogus := api.GetTemplatesParamsSort("bogus")
 
 	tests := []struct {
@@ -24,8 +24,8 @@ func TestParseTemplatesSort(t *testing.T) {
 		wantErr bool
 	}{
 		{"defaults to created_at_desc", nil, templatesSortCreatedAtDesc, false},
-		{"name_asc", &nameAsc, templatesSortNameAsc, false},
-		{"cpu_count_desc", &cpuDesc, templatesSortCpuCountDesc, false},
+		{"created_at_asc", &createdAsc, templatesSortCreatedAtAsc, false},
+		{"updated_at_desc", &updatedDesc, templatesSortUpdatedAtDesc, false},
 		{"invalid", &bogus, "", true},
 	}
 
@@ -48,13 +48,13 @@ func TestParseTemplatesSort(t *testing.T) {
 func TestTemplatesCursorRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	token := formatTemplatesCursor(templatesSortNameAsc, "org/my-template", "env-abc")
+	token := formatTemplatesCursor(templatesSortCreatedAtAsc, "2026-05-30T12:34:56Z", "env-abc")
 
-	value, id, err := parseTemplatesCursor(&token, templatesSortNameAsc)
+	value, id, err := parseTemplatesCursor(&token, templatesSortCreatedAtAsc)
 	require.NoError(t, err)
 	require.NotNil(t, value)
 	require.NotNil(t, id)
-	assert.Equal(t, "org/my-template", *value)
+	assert.Equal(t, "2026-05-30T12:34:56Z", *value)
 	assert.Equal(t, "env-abc", *id)
 }
 
@@ -73,7 +73,7 @@ func TestParseTemplatesCursor(t *testing.T) {
 	assert.Nil(t, id)
 
 	// Sort mismatch is rejected with a dedicated error.
-	mismatched := formatTemplatesCursor(templatesSortNameAsc, "x", "env-1")
+	mismatched := formatTemplatesCursor(templatesSortCreatedAtAsc, "x", "env-1")
 	_, _, err = parseTemplatesCursor(&mismatched, templatesSortUpdatedAtDesc)
 	require.ErrorIs(t, err, errTemplatesCursorSortMismatch)
 
@@ -121,18 +121,11 @@ func TestTemplatesSortValue(t *testing.T) {
 	updated := time.Date(2026, 5, 29, 1, 2, 3, 0, time.UTC)
 
 	row := templateRowFields{
-		TemplateID:  "env-abc",
-		CreatedAt:   created,
-		UpdatedAt:   updated,
-		CpuCount:    4,
-		MemoryMb:    2048,
-		NameSortKey: "org/my-template",
+		TemplateID: "env-abc",
+		CreatedAt:  created,
+		UpdatedAt:  updated,
 	}
 
-	assert.Equal(t, "org/my-template", templatesSortValue(templatesSortNameAsc, row))
-	assert.Equal(t, "org/my-template", templatesSortValue(templatesSortNameDesc, row))
-	assert.Equal(t, "4", templatesSortValue(templatesSortCpuCountAsc, row))
-	assert.Equal(t, "2048", templatesSortValue(templatesSortMemoryMbDesc, row))
 	assert.Equal(t, created.Format(time.RFC3339Nano), templatesSortValue(templatesSortCreatedAtAsc, row))
 	assert.Equal(t, updated.Format(time.RFC3339Nano), templatesSortValue(templatesSortUpdatedAtDesc, row))
 }
@@ -152,7 +145,7 @@ func TestCursorTypedParsers(t *testing.T) {
 
 	bad := "not-a-number"
 	_, err = cursorInt64(&bad)
-	require.ErrorIs(t, err, errInvalidTemplatesCursor)
+	require.ErrorIs(t, err, errInvalidCursor)
 
 	ts := "2026-05-30T12:34:56.123456789Z"
 	parsed, err := cursorTime(&ts)
@@ -161,7 +154,7 @@ func TestCursorTypedParsers(t *testing.T) {
 
 	badTs := "nope"
 	_, err = cursorTime(&badTs)
-	require.ErrorIs(t, err, errInvalidTemplatesCursor)
+	require.ErrorIs(t, err, errInvalidCursor)
 
 	// Sanity: the sentinel errors are distinct.
 	assert.NotErrorIs(t, errInvalidTemplatesCursor, errTemplatesCursorSortMismatch)

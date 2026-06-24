@@ -24,8 +24,6 @@ const (
 	AdminApiKeyAuthScopes        adminApiKeyAuthContextKey        = "AdminApiKeyAuth.Scopes"
 	AuthProviderBearerAuthScopes authProviderBearerAuthContextKey = "AuthProviderBearerAuth.Scopes"
 	AuthProviderTeamAuthScopes   authProviderTeamAuthContextKey   = "AuthProviderTeamAuth.Scopes"
-	Supabase1TokenAuthScopes     supabase1TokenAuthContextKey     = "Supabase1TokenAuth.Scopes"
-	Supabase2TeamAuthScopes      supabase2TeamAuthContextKey      = "Supabase2TeamAuth.Scopes"
 )
 
 // Defines values for BuildStatus.
@@ -49,16 +47,34 @@ func (e BuildStatus) Valid() bool {
 	}
 }
 
+// Defines values for TagGroupsSort.
+const (
+	TagGroupsSortLatestAsc  TagGroupsSort = "latest_asc"
+	TagGroupsSortLatestDesc TagGroupsSort = "latest_desc"
+	TagGroupsSortNameAsc    TagGroupsSort = "name_asc"
+	TagGroupsSortNameDesc   TagGroupsSort = "name_desc"
+)
+
+// Valid indicates whether the value is a known member of the TagGroupsSort enum.
+func (e TagGroupsSort) Valid() bool {
+	switch e {
+	case TagGroupsSortLatestAsc:
+		return true
+	case TagGroupsSortLatestDesc:
+		return true
+	case TagGroupsSortNameAsc:
+		return true
+	case TagGroupsSortNameDesc:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TemplatesSort.
 const (
-	TemplatesSortCpuCountAsc   TemplatesSort = "cpu_count_asc"
-	TemplatesSortCpuCountDesc  TemplatesSort = "cpu_count_desc"
 	TemplatesSortCreatedAtAsc  TemplatesSort = "created_at_asc"
 	TemplatesSortCreatedAtDesc TemplatesSort = "created_at_desc"
-	TemplatesSortMemoryMbAsc   TemplatesSort = "memory_mb_asc"
-	TemplatesSortMemoryMbDesc  TemplatesSort = "memory_mb_desc"
-	TemplatesSortNameAsc       TemplatesSort = "name_asc"
-	TemplatesSortNameDesc      TemplatesSort = "name_desc"
 	TemplatesSortUpdatedAtAsc  TemplatesSort = "updated_at_asc"
 	TemplatesSortUpdatedAtDesc TemplatesSort = "updated_at_desc"
 )
@@ -66,21 +82,9 @@ const (
 // Valid indicates whether the value is a known member of the TemplatesSort enum.
 func (e TemplatesSort) Valid() bool {
 	switch e {
-	case TemplatesSortCpuCountAsc:
-		return true
-	case TemplatesSortCpuCountDesc:
-		return true
 	case TemplatesSortCreatedAtAsc:
 		return true
 	case TemplatesSortCreatedAtDesc:
-		return true
-	case TemplatesSortMemoryMbAsc:
-		return true
-	case TemplatesSortMemoryMbDesc:
-		return true
-	case TemplatesSortNameAsc:
-		return true
-	case TemplatesSortNameDesc:
 		return true
 	case TemplatesSortUpdatedAtAsc:
 		return true
@@ -93,14 +97,8 @@ func (e TemplatesSort) Valid() bool {
 
 // Defines values for GetTemplatesParamsSort.
 const (
-	GetTemplatesParamsSortCpuCountAsc   GetTemplatesParamsSort = "cpu_count_asc"
-	GetTemplatesParamsSortCpuCountDesc  GetTemplatesParamsSort = "cpu_count_desc"
 	GetTemplatesParamsSortCreatedAtAsc  GetTemplatesParamsSort = "created_at_asc"
 	GetTemplatesParamsSortCreatedAtDesc GetTemplatesParamsSort = "created_at_desc"
-	GetTemplatesParamsSortMemoryMbAsc   GetTemplatesParamsSort = "memory_mb_asc"
-	GetTemplatesParamsSortMemoryMbDesc  GetTemplatesParamsSort = "memory_mb_desc"
-	GetTemplatesParamsSortNameAsc       GetTemplatesParamsSort = "name_asc"
-	GetTemplatesParamsSortNameDesc      GetTemplatesParamsSort = "name_desc"
 	GetTemplatesParamsSortUpdatedAtAsc  GetTemplatesParamsSort = "updated_at_asc"
 	GetTemplatesParamsSortUpdatedAtDesc GetTemplatesParamsSort = "updated_at_desc"
 )
@@ -108,25 +106,37 @@ const (
 // Valid indicates whether the value is a known member of the GetTemplatesParamsSort enum.
 func (e GetTemplatesParamsSort) Valid() bool {
 	switch e {
-	case GetTemplatesParamsSortCpuCountAsc:
-		return true
-	case GetTemplatesParamsSortCpuCountDesc:
-		return true
 	case GetTemplatesParamsSortCreatedAtAsc:
 		return true
 	case GetTemplatesParamsSortCreatedAtDesc:
 		return true
-	case GetTemplatesParamsSortMemoryMbAsc:
-		return true
-	case GetTemplatesParamsSortMemoryMbDesc:
-		return true
-	case GetTemplatesParamsSortNameAsc:
-		return true
-	case GetTemplatesParamsSortNameDesc:
-		return true
 	case GetTemplatesParamsSortUpdatedAtAsc:
 		return true
 	case GetTemplatesParamsSortUpdatedAtDesc:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetTemplatesTemplateIDTagsGroupsParamsSort.
+const (
+	GetTemplatesTemplateIDTagsGroupsParamsSortLatestAsc  GetTemplatesTemplateIDTagsGroupsParamsSort = "latest_asc"
+	GetTemplatesTemplateIDTagsGroupsParamsSortLatestDesc GetTemplatesTemplateIDTagsGroupsParamsSort = "latest_desc"
+	GetTemplatesTemplateIDTagsGroupsParamsSortNameAsc    GetTemplatesTemplateIDTagsGroupsParamsSort = "name_asc"
+	GetTemplatesTemplateIDTagsGroupsParamsSortNameDesc   GetTemplatesTemplateIDTagsGroupsParamsSort = "name_desc"
+)
+
+// Valid indicates whether the value is a known member of the GetTemplatesTemplateIDTagsGroupsParamsSort enum.
+func (e GetTemplatesTemplateIDTagsGroupsParamsSort) Valid() bool {
+	switch e {
+	case GetTemplatesTemplateIDTagsGroupsParamsSortLatestAsc:
+		return true
+	case GetTemplatesTemplateIDTagsGroupsParamsSortLatestDesc:
+		return true
+	case GetTemplatesTemplateIDTagsGroupsParamsSortNameAsc:
+		return true
+	case GetTemplatesTemplateIDTagsGroupsParamsSortNameDesc:
 		return true
 	default:
 		return false
@@ -285,14 +295,26 @@ type HealthResponse struct {
 
 // ListedBuild defines model for ListedBuild.
 type ListedBuild struct {
+	// CpuCount CPU cores configured for the build.
+	CpuCount int64 `json:"cpuCount"`
+
 	// CreatedAt Build creation timestamp in RFC3339 format.
 	CreatedAt time.Time `json:"createdAt"`
+
+	// DiskSizeMB Disk size in MiB configured for the build, if recorded.
+	DiskSizeMB *int64 `json:"diskSizeMB"`
+
+	// EnvdVersion envd version the build was created with, if recorded.
+	EnvdVersion *string `json:"envdVersion"`
 
 	// FinishedAt Build completion timestamp in RFC3339 format, if finished.
 	FinishedAt *time.Time `json:"finishedAt"`
 
 	// Id Identifier of the build.
 	Id openapi_types.UUID `json:"id"`
+
+	// MemoryMB Memory in MiB configured for the build.
+	MemoryMB int64 `json:"memoryMB"`
 
 	// Status Build status mapped for dashboard clients.
 	Status BuildStatus `json:"status"`
@@ -395,6 +417,113 @@ type TeamTemplatesResponse struct {
 	NextCursor *string `json:"nextCursor"`
 }
 
+// TemplateDetail Dashboard-shaped single-template read. Mirrors the infra-api `Template` schema fields the dashboard renders.
+type TemplateDetail struct {
+	// Aliases Aliases of the template.
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	Aliases []string `json:"aliases"`
+
+	// BuildCount Number of times the template was built.
+	BuildCount int32 `json:"buildCount"`
+
+	// BuildID Identifier of the latest ready build for the template, or the zero UUID when none.
+	BuildID string `json:"buildID"`
+
+	// CpuCount vCPU count of the latest ready default build, or `null` when none.
+	CpuCount *CPUCount `json:"cpuCount"`
+
+	// CreatedAt Time when the template was created.
+	CreatedAt time.Time `json:"createdAt"`
+
+	// DiskSizeMB Disk size in MiB of the latest ready default build, or `null` when none.
+	DiskSizeMB *DiskSizeMB `json:"diskSizeMB"`
+
+	// EnvdVersion envd version of the latest ready default build, or `null` when none.
+	EnvdVersion *string `json:"envdVersion"`
+
+	// LastSpawnedAt Time when the template was last used.
+	LastSpawnedAt *time.Time `json:"lastSpawnedAt"`
+
+	// MemoryMB Memory in MiB of the latest ready default build, or `null` when none.
+	MemoryMB *MemoryMB `json:"memoryMB"`
+
+	// Names Names of the template (namespace/alias format when namespaced).
+	Names []string `json:"names"`
+
+	// Public Whether the template is public or only accessible by the team.
+	Public bool `json:"public"`
+
+	// SpawnCount Number of times the template was used.
+	SpawnCount int64 `json:"spawnCount"`
+
+	// TemplateID Identifier of the template.
+	TemplateID string `json:"templateID"`
+
+	// UpdatedAt Time when the template was last updated.
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// TemplateTagAssignment defines model for TemplateTagAssignment.
+type TemplateTagAssignment struct {
+	// AssignedAt Time when the tag was assigned to the build.
+	AssignedAt time.Time `json:"assignedAt"`
+
+	// AssignmentId Identifier of the tag assignment event.
+	AssignmentId openapi_types.UUID `json:"assignmentId"`
+
+	// BuildCreatedAt Time when the assigned build was created.
+	BuildCreatedAt time.Time `json:"buildCreatedAt"`
+
+	// BuildFinishedAt Time when the assigned build finished.
+	BuildFinishedAt *time.Time `json:"buildFinishedAt"`
+
+	// BuildId Identifier of the assigned build.
+	BuildId openapi_types.UUID `json:"buildId"`
+}
+
+// TemplateTagAssignmentsResponse defines model for TemplateTagAssignmentsResponse.
+type TemplateTagAssignmentsResponse struct {
+	// Data Ready assignment events for the tag, sorted latest first.
+	Data []TemplateTagAssignment `json:"data"`
+
+	// NextCursor Cursor to pass to the next list request, or `null` if there is no next page.
+	NextCursor *string `json:"nextCursor"`
+}
+
+// TemplateTagExistsResponse defines model for TemplateTagExistsResponse.
+type TemplateTagExistsResponse struct {
+	// Exists Whether the template tag has at least one ready assignment.
+	Exists bool `json:"exists"`
+
+	// NormalizedTag Normalized template tag name.
+	NormalizedTag string `json:"normalizedTag"`
+}
+
+// TemplateTagGroup defines model for TemplateTagGroup.
+type TemplateTagGroup struct {
+	// Assignments Ready assignment events for this tag, sorted latest first.
+	Assignments []TemplateTagAssignment `json:"assignments"`
+
+	// HasMore Whether more ready assignment events exist beyond the requested assignment limit.
+	HasMore bool `json:"hasMore"`
+
+	// Tag Template tag name.
+	Tag string `json:"tag"`
+}
+
+// TemplateTagGroupsResponse defines model for TemplateTagGroupsResponse.
+type TemplateTagGroupsResponse struct {
+	// NextCursor Cursor to pass as `tagsCursor` for the next page, or `null` if there is no next page.
+	NextCursor *string            `json:"nextCursor"`
+	Tags       []TemplateTagGroup `json:"tags"`
+}
+
+// TemplateTagsCountResponse defines model for TemplateTagsCountResponse.
+type TemplateTagsCountResponse struct {
+	// Total Total distinct ready tags for the template.
+	Total int64 `json:"total"`
+}
+
 // UpdateTeamRequest defines model for UpdateTeamRequest.
 type UpdateTeamRequest struct {
 	Name              *string `json:"name,omitempty"`
@@ -460,23 +589,47 @@ type BuildsLimit = int32
 // SandboxID defines model for sandboxID.
 type SandboxID = string
 
+// Tag defines model for tag.
+type Tag = string
+
+// TagAssignmentLimit defines model for tag_assignment_limit.
+type TagAssignmentLimit = int32
+
+// TagAssignmentsCursor defines model for tag_assignments_cursor.
+type TagAssignmentsCursor = string
+
+// TagAssignmentsLimit defines model for tag_assignments_limit.
+type TagAssignmentsLimit = int32
+
+// TagGroupsCursor defines model for tag_groups_cursor.
+type TagGroupsCursor = string
+
+// TagGroupsLimit defines model for tag_groups_limit.
+type TagGroupsLimit = int32
+
+// TagGroupsSearch defines model for tag_groups_search.
+type TagGroupsSearch = string
+
+// TagGroupsSort defines model for tag_groups_sort.
+type TagGroupsSort string
+
+// TagPath defines model for tag_path.
+type TagPath = string
+
 // TeamID defines model for teamID.
 type TeamID = openapi_types.UUID
 
 // TeamSlug defines model for teamSlug.
 type TeamSlug = string
 
-// TemplatesCpuCount defines model for templates_cpu_count.
-type TemplatesCpuCount = int32
+// TemplateID defines model for templateID.
+type TemplateID = string
 
 // TemplatesCursor defines model for templates_cursor.
 type TemplatesCursor = string
 
 // TemplatesLimit defines model for templates_limit.
 type TemplatesLimit = int32
-
-// TemplatesMemoryMb defines model for templates_memory_mb.
-type TemplatesMemoryMb = int32
 
 // TemplatesPublic defines model for templates_public.
 type TemplatesPublic = bool
@@ -502,6 +655,9 @@ type N403 = Error
 // N404 defines model for 404.
 type N404 = Error
 
+// N409 defines model for 409.
+type N409 = Error
+
 // N500 defines model for 500.
 type N500 = Error
 
@@ -516,12 +672,6 @@ type authProviderBearerAuthContextKey string
 
 // authProviderTeamAuthContextKey is the context key for AuthProviderTeamAuth security scheme
 type authProviderTeamAuthContextKey string
-
-// supabase1TokenAuthContextKey is the context key for Supabase1TokenAuth security scheme
-type supabase1TokenAuthContextKey string
-
-// supabase2TeamAuthContextKey is the context key for Supabase2TeamAuth security scheme
-type supabase2TeamAuthContextKey string
 
 // GetBuildsParams defines parameters for GetBuilds.
 type GetBuildsParams struct {
@@ -552,12 +702,6 @@ type GetTeamsResolveParams struct {
 
 // GetTemplatesParams defines parameters for GetTemplates.
 type GetTemplatesParams struct {
-	// CpuCount Filter templates by exact vCPU count.
-	CpuCount *TemplatesCpuCount `form:"cpuCount,omitempty" json:"cpuCount,omitempty"`
-
-	// MemoryMB Filter templates by exact memory size in MB.
-	MemoryMB *TemplatesMemoryMb `form:"memoryMB,omitempty" json:"memoryMB,omitempty"`
-
 	// Public Filter templates by visibility (true = public, false = internal).
 	Public *TemplatesPublic `form:"public,omitempty" json:"public,omitempty"`
 
@@ -576,6 +720,42 @@ type GetTemplatesParams struct {
 
 // GetTemplatesParamsSort defines parameters for GetTemplates.
 type GetTemplatesParamsSort string
+
+// GetTemplatesTemplateIDTagsExistsParams defines parameters for GetTemplatesTemplateIDTagsExists.
+type GetTemplatesTemplateIDTagsExistsParams struct {
+	// Tag Template tag name to check.
+	Tag Tag `form:"tag" json:"tag"`
+}
+
+// GetTemplatesTemplateIDTagsGroupsParams defines parameters for GetTemplatesTemplateIDTagsGroups.
+type GetTemplatesTemplateIDTagsGroupsParams struct {
+	// AssignmentLimit Maximum number of ready assignment rows to return per tag.
+	AssignmentLimit *TagAssignmentLimit `form:"assignmentLimit,omitempty" json:"assignmentLimit,omitempty"`
+
+	// TagsLimit Maximum number of distinct tags to return per page.
+	TagsLimit *TagGroupsLimit `form:"tagsLimit,omitempty" json:"tagsLimit,omitempty"`
+
+	// TagsCursor Cursor returned by the previous list response in `{sort}|{latest_assigned_at}|{tag}` format (sort-tagged, RFC3339Nano).
+	TagsCursor *TagGroupsCursor `form:"tagsCursor,omitempty" json:"tagsCursor,omitempty"`
+
+	// Search Case-insensitive substring filter on tag name. Allowed characters are `a-z`, `0-9`, `.`, `_`, `-`.
+	Search *TagGroupsSearch `form:"search,omitempty" json:"search,omitempty"`
+
+	// Sort Sort order for the returned tag groups.
+	Sort *GetTemplatesTemplateIDTagsGroupsParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+}
+
+// GetTemplatesTemplateIDTagsGroupsParamsSort defines parameters for GetTemplatesTemplateIDTagsGroups.
+type GetTemplatesTemplateIDTagsGroupsParamsSort string
+
+// GetTemplatesTemplateIDTagsTagAssignmentsParams defines parameters for GetTemplatesTemplateIDTagsTagAssignments.
+type GetTemplatesTemplateIDTagsTagAssignmentsParams struct {
+	// Cursor Cursor returned by the previous list response in `assigned_at|assignment_id` format.
+	Cursor *TagAssignmentsCursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Maximum number of assignment rows to return per page.
+	Limit *TagAssignmentsLimit `form:"limit,omitempty" json:"limit,omitempty"`
+}
 
 // PostAdminTeamsBootstrapJSONRequestBody defines body for PostAdminTeamsBootstrap for application/json ContentType.
 type PostAdminTeamsBootstrapJSONRequestBody = AdminTeamBootstrapRequest
@@ -615,9 +795,9 @@ type ServerInterface interface {
 	// Bootstrap auth provider user
 	// (POST /admin/users/bootstrap)
 	PostAdminUsersBootstrap(c *gin.Context)
-	// Bootstrap user
-	// (POST /admin/users/{userId}/bootstrap)
-	PostAdminUsersUserIdBootstrap(c *gin.Context, userId UserId)
+	// Delete user
+	// (DELETE /admin/users/{userId})
+	DeleteAdminUsersUserId(c *gin.Context, userId UserId)
 	// List team builds
 	// (GET /builds)
 	GetBuilds(c *gin.Context, params GetBuildsParams)
@@ -660,6 +840,21 @@ type ServerInterface interface {
 	// List default templates
 	// (GET /templates/defaults)
 	GetTemplatesDefaults(c *gin.Context)
+	// Get template
+	// (GET /templates/{templateID})
+	GetTemplatesTemplateID(c *gin.Context, templateID TemplateID)
+	// Count template tags
+	// (GET /templates/{templateID}/tags/count)
+	GetTemplatesTemplateIDTagsCount(c *gin.Context, templateID TemplateID)
+	// Check ready template tag existence
+	// (GET /templates/{templateID}/tags/exists)
+	GetTemplatesTemplateIDTagsExists(c *gin.Context, templateID TemplateID, params GetTemplatesTemplateIDTagsExistsParams)
+	// List template tag groups
+	// (GET /templates/{templateID}/tags/groups)
+	GetTemplatesTemplateIDTagsGroups(c *gin.Context, templateID TemplateID, params GetTemplatesTemplateIDTagsGroupsParams)
+	// List ready assignments for a single template tag
+	// (GET /templates/{templateID}/tags/{tag}/assignments)
+	GetTemplatesTemplateIDTagsTagAssignments(c *gin.Context, templateID TemplateID, tag TagPath, params GetTemplatesTemplateIDTagsTagAssignmentsParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -758,8 +953,8 @@ func (siw *ServerInterfaceWrapper) PostAdminUsersBootstrap(c *gin.Context) {
 	siw.Handler.PostAdminUsersBootstrap(c)
 }
 
-// PostAdminUsersUserIdBootstrap operation middleware
-func (siw *ServerInterfaceWrapper) PostAdminUsersUserIdBootstrap(c *gin.Context) {
+// DeleteAdminUsersUserId operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAdminUsersUserId(c *gin.Context) {
 
 	var err error
 	_ = err
@@ -782,7 +977,7 @@ func (siw *ServerInterfaceWrapper) PostAdminUsersUserIdBootstrap(c *gin.Context)
 		}
 	}
 
-	siw.Handler.PostAdminUsersUserIdBootstrap(c, userId)
+	siw.Handler.DeleteAdminUsersUserId(c, userId)
 }
 
 // GetBuilds operation middleware
@@ -790,10 +985,6 @@ func (siw *ServerInterfaceWrapper) GetBuilds(c *gin.Context) {
 
 	var err error
 	_ = err
-
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
@@ -850,10 +1041,6 @@ func (siw *ServerInterfaceWrapper) GetBuildsStatuses(c *gin.Context) {
 	var err error
 	_ = err
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
@@ -893,10 +1080,6 @@ func (siw *ServerInterfaceWrapper) GetBuildsBuildId(c *gin.Context) {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter build_id: %w", err), http.StatusBadRequest)
 		return
 	}
-
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
@@ -940,10 +1123,6 @@ func (siw *ServerInterfaceWrapper) GetSandboxesSandboxIDRecord(c *gin.Context) {
 		return
 	}
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
@@ -961,8 +1140,6 @@ func (siw *ServerInterfaceWrapper) GetSandboxesSandboxIDRecord(c *gin.Context) {
 // GetTeams operation middleware
 func (siw *ServerInterfaceWrapper) GetTeams(c *gin.Context) {
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -977,8 +1154,6 @@ func (siw *ServerInterfaceWrapper) GetTeams(c *gin.Context) {
 
 // PostTeams operation middleware
 func (siw *ServerInterfaceWrapper) PostTeams(c *gin.Context) {
-
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
@@ -997,8 +1172,6 @@ func (siw *ServerInterfaceWrapper) GetTeamsResolve(c *gin.Context) {
 
 	var err error
 	_ = err
-
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
@@ -1038,10 +1211,6 @@ func (siw *ServerInterfaceWrapper) PatchTeamsTeamID(c *gin.Context) {
 		return
 	}
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
@@ -1071,10 +1240,6 @@ func (siw *ServerInterfaceWrapper) GetTeamsTeamIDMembers(c *gin.Context) {
 		return
 	}
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
@@ -1103,10 +1268,6 @@ func (siw *ServerInterfaceWrapper) PostTeamsTeamIDMembers(c *gin.Context) {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter teamID: %w", err), http.StatusBadRequest)
 		return
 	}
-
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
@@ -1146,10 +1307,6 @@ func (siw *ServerInterfaceWrapper) DeleteTeamsTeamIDMembersUserId(c *gin.Context
 		return
 	}
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
@@ -1170,32 +1327,12 @@ func (siw *ServerInterfaceWrapper) GetTemplates(c *gin.Context) {
 	var err error
 	_ = err
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetTemplatesParams
-
-	// ------------- Optional query parameter "cpuCount" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "cpuCount", c.Request.URL.Query(), &params.CpuCount, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter cpuCount: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "memoryMB" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "memoryMB", c.Request.URL.Query(), &params.MemoryMB, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter memoryMB: %w", err), http.StatusBadRequest)
-		return
-	}
 
 	// ------------- Optional query parameter "public" -------------
 
@@ -1250,8 +1387,6 @@ func (siw *ServerInterfaceWrapper) GetTemplates(c *gin.Context) {
 // GetTemplatesDefaults operation middleware
 func (siw *ServerInterfaceWrapper) GetTemplatesDefaults(c *gin.Context) {
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1262,6 +1397,233 @@ func (siw *ServerInterfaceWrapper) GetTemplatesDefaults(c *gin.Context) {
 	}
 
 	siw.Handler.GetTemplatesDefaults(c)
+}
+
+// GetTemplatesTemplateID operation middleware
+func (siw *ServerInterfaceWrapper) GetTemplatesTemplateID(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "templateID" -------------
+	var templateID TemplateID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "templateID", c.Param("templateID"), &templateID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter templateID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(string(AuthProviderBearerAuthScopes), []string{})
+
+	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetTemplatesTemplateID(c, templateID)
+}
+
+// GetTemplatesTemplateIDTagsCount operation middleware
+func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDTagsCount(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "templateID" -------------
+	var templateID TemplateID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "templateID", c.Param("templateID"), &templateID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter templateID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(string(AuthProviderBearerAuthScopes), []string{})
+
+	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetTemplatesTemplateIDTagsCount(c, templateID)
+}
+
+// GetTemplatesTemplateIDTagsExists operation middleware
+func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDTagsExists(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "templateID" -------------
+	var templateID TemplateID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "templateID", c.Param("templateID"), &templateID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter templateID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(string(AuthProviderBearerAuthScopes), []string{})
+
+	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTemplatesTemplateIDTagsExistsParams
+
+	// ------------- Required query parameter "tag" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "tag", c.Request.URL.Query(), &params.Tag, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tag: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetTemplatesTemplateIDTagsExists(c, templateID, params)
+}
+
+// GetTemplatesTemplateIDTagsGroups operation middleware
+func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDTagsGroups(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "templateID" -------------
+	var templateID TemplateID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "templateID", c.Param("templateID"), &templateID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter templateID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(string(AuthProviderBearerAuthScopes), []string{})
+
+	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTemplatesTemplateIDTagsGroupsParams
+
+	// ------------- Optional query parameter "assignmentLimit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "assignmentLimit", c.Request.URL.Query(), &params.AssignmentLimit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter assignmentLimit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "tagsLimit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tagsLimit", c.Request.URL.Query(), &params.TagsLimit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tagsLimit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "tagsCursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tagsCursor", c.Request.URL.Query(), &params.TagsCursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tagsCursor: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "search" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "search", c.Request.URL.Query(), &params.Search, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter search: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", c.Request.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter sort: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetTemplatesTemplateIDTagsGroups(c, templateID, params)
+}
+
+// GetTemplatesTemplateIDTagsTagAssignments operation middleware
+func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDTagsTagAssignments(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "templateID" -------------
+	var templateID TemplateID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "templateID", c.Param("templateID"), &templateID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter templateID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "tag" -------------
+	var tag TagPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tag", c.Param("tag"), &tag, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tag: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(string(AuthProviderBearerAuthScopes), []string{})
+
+	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTemplatesTemplateIDTagsTagAssignmentsParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", c.Request.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter cursor: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", c.Request.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetTemplatesTemplateIDTagsTagAssignments(c, templateID, tag, params)
 }
 
 // GinServerOptions provides options for the Gin server.
@@ -1296,7 +1658,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/admin/user-profiles/resolve", wrapper.PostAdminUserProfilesResolve)
 	router.GET(options.BaseURL+"/admin/user-profiles/:userId", wrapper.GetAdminUserProfilesUserId)
 	router.POST(options.BaseURL+"/admin/users/bootstrap", wrapper.PostAdminUsersBootstrap)
-	router.POST(options.BaseURL+"/admin/users/:userId/bootstrap", wrapper.PostAdminUsersUserIdBootstrap)
+	router.DELETE(options.BaseURL+"/admin/users/:userId", wrapper.DeleteAdminUsersUserId)
 	router.GET(options.BaseURL+"/builds", wrapper.GetBuilds)
 	router.GET(options.BaseURL+"/builds/statuses", wrapper.GetBuildsStatuses)
 	router.GET(options.BaseURL+"/builds/:build_id", wrapper.GetBuildsBuildId)
@@ -1311,6 +1673,11 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.DELETE(options.BaseURL+"/teams/:teamID/members/:userId", wrapper.DeleteTeamsTeamIDMembersUserId)
 	router.GET(options.BaseURL+"/templates", wrapper.GetTemplates)
 	router.GET(options.BaseURL+"/templates/defaults", wrapper.GetTemplatesDefaults)
+	router.GET(options.BaseURL+"/templates/:templateID", wrapper.GetTemplatesTemplateID)
+	router.GET(options.BaseURL+"/templates/:templateID/tags/count", wrapper.GetTemplatesTemplateIDTagsCount)
+	router.GET(options.BaseURL+"/templates/:templateID/tags/exists", wrapper.GetTemplatesTemplateIDTagsExists)
+	router.GET(options.BaseURL+"/templates/:templateID/tags/groups", wrapper.GetTemplatesTemplateIDTagsGroups)
+	router.GET(options.BaseURL+"/templates/:templateID/tags/:tag/assignments", wrapper.GetTemplatesTemplateIDTagsTagAssignments)
 }
 
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
@@ -1318,75 +1685,97 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

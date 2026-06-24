@@ -20,7 +20,6 @@ import (
 	db "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
-	supabasedb "github.com/e2b-dev/infra/packages/db/pkg/supabase"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils/queries"
 )
 
@@ -40,7 +39,6 @@ type Database struct {
 	SqlcClient  *db.Client
 	AuthDb      *authdb.Client
 	AuthDB      *authdb.Client
-	SupabaseDB  *supabasedb.Client
 	TestQueries *queries.Queries
 	connStr     string
 }
@@ -110,18 +108,10 @@ func SetupDatabase(t *testing.T) *Database {
 		assert.NoError(t, err)
 	})
 
-	supabaseDB, err := supabasedb.NewClient(t.Context(), connStr)
-	require.NoError(t, err, "Failed to create supabase db client")
-	t.Cleanup(func() {
-		err := supabaseDB.Close()
-		assert.NoError(t, err)
-	})
-
 	return &Database{
 		SqlcClient:  sqlcClient,
 		AuthDb:      authDB,
 		AuthDB:      authDB,
-		SupabaseDB:  supabaseDB,
 		TestQueries: testQueries,
 		connStr:     connStr,
 	}

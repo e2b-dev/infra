@@ -18,6 +18,7 @@ const (
 	SandboxTemplateAttribute           string         = "template-id"
 	SandboxKernelVersionAttribute      string         = "kernel-version"
 	SandboxFirecrackerVersionAttribute string         = "firecracker-version"
+	SandboxEnvdVersionAttribute        string         = "envd-version"
 	// SandboxTypeAttribute distinguishes "sandbox" from "build" runs.
 	SandboxTypeAttribute string = "sandbox-type"
 
@@ -129,23 +130,38 @@ var (
 	SandboxAutoResumeFlag               = NewBoolFlag("sandbox-auto-resume", env.IsDevelopment())
 	OrchAcceptsCombinedHostFlag         = NewBoolFlag("orch-accepts-combined-host", false)
 
+	// StorageSoftDeleteCheckFlag enables reading the storage-index soft-delete
+	// tombstone on header load (one extra GCS Attrs on cold load). Off = no overhead.
+	StorageSoftDeleteCheckFlag = NewBoolFlag("storage-soft-delete-check", false)
+	// StorageSoftDeleteEnforceFlag makes a soft-deleted object fail the read
+	// (fail closed) instead of only emitting a metric + log. Requires the check flag.
+	StorageSoftDeleteEnforceFlag = NewBoolFlag("storage-soft-delete-enforce", false)
+
 	// UseMemFdFlag asks Firecracker to back guest memory with a memfd and
 	// pass the fd over the UFFD socket; the orchestrator then mmaps it
 	// directly instead of using process_vm_readv on pause.
-	UseMemFdFlag = NewBoolFlag("use-memfd", false)
+	UseMemFdFlag = NewBoolFlag("use-memfd", true)
 
 	// MemfdBackgroundCopyFlag streams the memfd into the snapshot cache on
 	// a goroutine so Pause returns as soon as the diff metadata is written.
 	// Only takes effect when UseMemFdFlag is also on.
-	MemfdBackgroundCopyFlag = NewBoolFlag("memfd-background-copy", false)
+	MemfdBackgroundCopyFlag = NewBoolFlag("memfd-background-copy", true)
 
 	// MemfileDiffDedupFlag enables 4 KiB-page dedup of the memfile diff
-	// against the base memfile. bestEffort skips uncached blocks;
-	// directIO opens the dedup output with O_DIRECT.
+	// against the base memfile. bestEffort skips uncached blocks; directIO
+	// opens the dedup output with O_DIRECT. The remaining keys budget fetch
+	// defragmentation of the deduped diff — fetchRunWindowPages is the
+	// uncompressed frame/window size served per backing fetch — see
+	// orchestrator block.DedupBudget for semantics (0 = disabled/default).
 	MemfileDiffDedupFlag = NewJSONFlag("memfile-diff-dedup", ldvalue.FromJSONMarshal(map[string]any{
-		"enabled":    false,
-		"bestEffort": false,
-		"directIO":   false,
+		"enabled":                        false,
+		"bestEffort":                     false,
+		"directIO":                       false,
+		"maxFetchWindowsPerBlock":        0,
+		"maxPromotedParentPagesPerBlock": 0,
+		"maxPagesPerPromotedFrame":       0,
+		"blockFaultPct":                  0,
+		"fetchRunWindowPages":            0,
 	}))
 
 	// PeerToPeerChunkTransferFlag enables peer-to-peer chunk routing.
@@ -155,13 +171,39 @@ var (
 	PeerToPeerAsyncCheckpointFlag = NewBoolFlag("peer-to-peer-async-checkpoint", false)
 
 	PersistentVolumesFlag            = NewBoolFlag("can-use-persistent-volumes", env.IsDevelopment())
-	ExecutionMetricsOnWebhooksFlag   = NewBoolFlag("execution-metrics-on-webhooks", false) // TODO: Remove NLT 20250315
 	SandboxLabelBasedSchedulingFlag  = NewBoolFlag("sandbox-label-based-scheduling", false)
 	OptimisticResourceAccountingFlag = NewBoolFlag("sandbox-placement-optimistic-resource-accounting", false)
 	FreePageReportingFlag            = NewBoolFlag("free-page-reporting", false)
 	FreezeUserCgroupFlag             = NewBoolFlag("freeze-user-cgroup", env.IsDevelopment())
+	// CollapseEnvdHeapFlag makes the orchestrator ask envd to collapse its own
+	// anonymous heap into 2 MiB hugepages just before pause, reducing the number
+	// of distinct frames envd faults on resume. Off by default; rolled out via LD.
+	CollapseEnvdHeapFlag = NewBoolFlag("collapse-envd-heap", false)
+
+	// CollapseEnvdHeapTimeoutMsFlag bounds the pre-pause POST /collapse call, in
+	// milliseconds. Collapsing migrates envd's scattered heap pages into
+	// hugepages, which is heavier than the freeze sysfs write, so it gets a
+	// larger, independent budget. Collapse is best-effort: a cut-short run still
+	// helps, so this can be tuned per rollout without redeploying. The fallback
+	// (returned when LD is unavailable or the flag is unset) is the default.
+	CollapseEnvdHeapTimeoutMsFlag = NewIntFlag("collapse-envd-heap-timeout-ms", 10000) // 10s in milliseconds
+
+	// VolumeFallbackToUnmatchedNodesFlag allows volume operations to fall back to
+	// orchestrator nodes that don't advertise the volume's type label when every
+	// labeled node fails with a retryable error. This is a transitional flag for
+	// the volume-label migration: once every node is labeled, unlabeled nodes will
+	// fail 100% of the time, so this should be turned off and removed afterwards.
+	VolumeFallbackToUnmatchedNodesFlag = NewBoolFlag("volume-fallback-to-unmatched-nodes", true)
+
+	// SandboxVolumeLabelBasedSchedulingFlag enables filtering orchestrator nodes
+	// based on the volume types required by the sandbox. When enabled, labels
+	// like "persistent-volume-type=nfs" are added to the required node labels
+	// for sandbox placement.
+	SandboxVolumeLabelBasedSchedulingFlag = NewBoolFlag("sandbox-volume-label-based-scheduling", false)
 
 	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())
+
+	BYOPProxyEnabledFlag = NewBoolFlag("byop-proxy-enabled", env.IsDevelopment())
 
 	// V4HeaderForUncompressedFlag forces the V4 header layout on uncompressed
 	// uploads. Independent of compress-config: it changes the header format,
@@ -171,6 +213,12 @@ var (
 	// HeaderV5WriteFlag makes Pause emit V5 headers. When enabled it also
 	// supersedes V4HeaderForUncompressedFlag for uncompressed uploads.
 	HeaderV5WriteFlag = NewBoolFlag("header-v5-write", false)
+
+	// ResumeOriginNodeRemapFlag enables repointing a snapshot's origin_node_id to
+	// the fallback node a resume timed out on. The node's local cache is warming
+	// from the in-progress snapshot pull, so pinning the retry to it avoids
+	// re-pulling the snapshot onto yet another node.
+	ResumeOriginNodeRemapFlag = NewBoolFlag("resume-origin-node-remap", false)
 )
 
 type IntFlag struct {
@@ -210,6 +258,10 @@ var (
 	BestOfKAlpha                  = NewIntFlag("best-of-k-alpha", 50)                        // Default Alpha=0.5 (stored as percentage for int flag, current usage weight)
 	EnvdInitTimeoutMilliseconds   = NewIntFlag("envd-init-request-timeout-milliseconds", 50) // Timeout for envd init request in milliseconds
 	HostStatsSamplingInterval     = NewIntFlag("host-stats-sampling-interval", 5000)         // Host stats sampling interval in milliseconds (default 5s)
+	// GuestSyncTimeoutMs overrides the mandatory pre-pause guest-sync deadline
+	// for filesystem-only snapshots, in milliseconds. 0 (default) derives the
+	// timeout from guest RAM; a positive value pins it.
+	GuestSyncTimeoutMs            = NewIntFlag("guest-sync-timeout-milliseconds", 0)
 	MaxCacheWriterConcurrencyFlag = NewIntFlag("max-cache-writer-concurrency", 10)
 
 	// BuildCacheMaxUsagePercentage the maximum percentage of the cache disk storage
@@ -219,6 +271,14 @@ var (
 
 	// NBDConnectionsPerDevice the number of NBD socket connections per device
 	NBDConnectionsPerDevice = NewIntFlag("nbd-connections-per-device", 1)
+
+	// NBDAsyncWriteZeroesFlag, when enabled, handles NBD WRITE_ZEROES/TRIM
+	// commands in a goroutine instead of inline on the dispatch read loop.
+	// Inline handling can stall the read loop via head-of-line blocking on the
+	// shared write lock (when a reply writer is blocked on a full socket send
+	// buffer), which makes the kernel time out the NBD connection and surfaces
+	// as guest I/O errors. Disabled by default.
+	NBDAsyncWriteZeroesFlag = NewBoolFlag("nbd-async-write-zeroes", false)
 
 	// MemoryPrefetchMaxFetchWorkers is the maximum number of parallel fetch workers per sandbox for memory prefetching.
 	// Fetching is I/O bound so we can have more parallelism.
@@ -361,8 +421,8 @@ const (
 const (
 	DefaultFirecackerV1_10Version = "v1.10.1_30cbb07"
 	DefaultFirecackerV1_12Version = "v1.12.1_210cbac"
-	DefaultFirecackerV1_14Version = "v1.14.1_bd85e43"
-	DefaultFirecrackerVersion     = DefaultFirecackerV1_12Version
+	DefaultFirecackerV1_14Version = "v1.14.1_431f1fc"
+	DefaultFirecrackerVersion     = DefaultFirecackerV1_14Version
 )
 
 var FirecrackerVersionMap = map[string]string{
@@ -379,6 +439,11 @@ var (
 	DefaultPersistentVolumeType = NewStringFlag("default-persistent-volume-type", "")
 	BuildNodeInfo               = NewJSONFlag("preferred-build-node", ldvalue.Null())
 	FirecrackerVersions         = NewJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(FirecrackerVersionMap))
+
+	// ClickhouseReadEndpointFlag selects which ClickHouse DSN to use for reads.
+	// "" (empty) → singular CLICKHOUSE_CONNECTION_STRING (self-managed default).
+	// "0", "1", ... → index into CLICKHOUSE_CONNECTION_STRINGS
+	ClickhouseReadEndpointFlag = NewStringFlag("clickhouse-read-endpoint", "")
 )
 
 // ResolveFirecrackerVersion resolves the firecracker version using the FirecrackerVersions feature flag.

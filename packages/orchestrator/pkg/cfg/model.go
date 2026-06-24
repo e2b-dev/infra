@@ -166,6 +166,10 @@ func Parse() (Config, error) {
 
 	config.BuilderConfig = bc
 
+	if err = config.BuilderConfig.NetworkConfig.Validate(); err != nil {
+		return config, err
+	}
+
 	if config.PersistentVolumeMounts != nil {
 		for name, path := range config.PersistentVolumeMounts {
 			path = filepath.Clean(path)
@@ -192,6 +196,10 @@ func ParseBuilder() (BuilderConfig, error) {
 	}
 
 	if err = makePathsAbsolute(&model); err != nil {
+		return BuilderConfig{}, err
+	}
+
+	if err = model.NetworkConfig.Validate(); err != nil {
 		return BuilderConfig{}, err
 	}
 

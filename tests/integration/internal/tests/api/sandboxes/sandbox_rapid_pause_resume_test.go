@@ -149,7 +149,7 @@ func verifyChecksum(t *testing.T, ctx context.Context, persistence storage.Stora
 
 	rc, err := obj.OpenRangeReader(ctx, 0, bd.Size, bd.FrameData)
 	require.NoErrorf(t, err, "%s/%s: open range reader", node.name, fileName)
-	defer rc.Close()
+	defer rc.Close(context.WithoutCancel(ctx))
 
 	hasher := sha256.New()
 	n, err := io.Copy(hasher, rc)
@@ -170,7 +170,7 @@ func loadHeaderWithPolling(t *testing.T, ctx context.Context, persistence storag
 	var h *header.Header
 	require.Eventually(t, func() bool {
 		var err error
-		h, err = header.LoadHeader(ctx, persistence, path)
+		h, _, err = header.LoadHeader(ctx, persistence, path)
 
 		return err == nil && h != nil
 	}, 2*time.Minute, 500*time.Millisecond, "%s/%s: %s never appeared in storage", name, fileLabel, path)

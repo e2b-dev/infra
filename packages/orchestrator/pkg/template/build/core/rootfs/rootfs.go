@@ -4,10 +4,13 @@ package rootfs
 
 import (
 	"context"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -37,6 +40,25 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/tem
 //go:embed files
 var files embed.FS
 var fileTemplates = template.Must(template.ParseFS(files, "files/*"))
+
+// filesHash is a stable hash of the embedded rootfs file templates. Folded into
+// the base-layer cache key so a change to any baked unit (e.g. envd.service.tpl)
+// invalidates cached base layers — without it the base hash ignores file content
+// and stale layers keep the old units. Reads on an embed.FS can't fail at runtime
+// (content is baked at compile time), so the errors are safely ignored.
+var filesHash = func() string {
+	entries, _ := fs.ReadDir(files, "files") // sorted by name
+	h := sha256.New()
+	for _, e := range entries {
+		data, _ := files.ReadFile("files/" + e.Name())
+		fmt.Fprintf(h, "%s\x00%x\x00", e.Name(), data)
+	}
+
+	return hex.EncodeToString(h.Sum(nil))
+}()
+
+// FilesHash returns a stable hash over the embedded rootfs file templates.
+func FilesHash() string { return filesHash }
 
 const (
 	BusyBoxPath     = "usr/bin/busybox"

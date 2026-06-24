@@ -58,7 +58,7 @@ func main() {
 	coldStart := flag.Bool("cold", false, "clear cache between iterations (cold start each time)")
 	noPrefetch := flag.Bool("no-prefetch", false, "disable memory prefetching")
 	noEgress := flag.Bool("no-egress", false, "block all guest internet egress")
-	useMemfd := flag.Bool("use-memfd", false, "enable memfd-backed guest memory (passes use_memfd on snapshot load)")
+	disableMemfd := flag.Bool("disable-memfd", false, "disable memfd-backed guest memory")
 	memfileDiffDedup := flag.Bool("memfile-diff-dedup", false, "enable 4KiB-page deduplication of memfile diff against the base template")
 	verbose := flag.Bool("v", false, "verbose logging")
 
@@ -71,10 +71,13 @@ func main() {
 	cmdPause := flag.String("cmd-pause", "", "execute command in sandbox, then pause on success")
 	cmdSignalPause := flag.String("cmd-signal-pause", "", "execute command in sandbox, then wait for SIGUSR1 before pausing")
 	optimize := flag.Bool("optimize", false, "collect fresh prefetch mapping after pause (resumes snapshot to record page faults)")
+	fsOnly := flag.Bool("fs-only", false, "pause without a memory snapshot (filesystem-only; resume reboots the guest)")
+	reboot := flag.Bool("reboot", false, "cold-boot from the build's rootfs instead of resuming from memory")
 	shell := flag.Bool("shell", false, "attach an interactive PTY shell via envd (no sshd required in the sandbox)")
 
 	fphTimeoutMs := flag.Int("fph-timeout-ms", 0, "override free-page-hinting-config pause timeout LD flag (0 = use LD default)")
 	reclaim := flag.Bool("reclaim", false, "enable pre-pause reclaim chain (fstrim 500ms, sync 500ms, drop_caches 200ms, compact 1s)")
+	collapseEnvdHeap := flag.Bool("collapse-envd-heap", false, "collapse envd's heap before pause (overrides the collapse-envd-heap flag)")
 
 	fphBench := flag.Bool("fph-bench", false, "compare pause memfile size with vs without FPH; requires -cmd-pause workload, uses -iterations (default 3), forces FPR on")
 	fphBenchDelay := flag.Duration("fph-bench-delay", 0, "wait this long between workload completion and pause (lets FPR settle)")
@@ -97,8 +100,12 @@ func main() {
 		}))
 	}
 
-	if *useMemfd {
-		featureflags.OverrideBoolFlag(featureflags.UseMemFdFlag, true)
+	if *disableMemfd {
+		featureflags.OverrideBoolFlag(featureflags.UseMemFdFlag, false)
+	}
+
+	if *collapseEnvdHeap {
+		featureflags.OverrideBoolFlag(featureflags.CollapseEnvdHeapFlag, true)
 	}
 
 	if *memfileDiffDedup {
@@ -157,6 +164,12 @@ func main() {
 	if *optimize && *iterations > 0 {
 		log.Fatal("-optimize is incompatible with -iterations (benchmarking doesn't upload)")
 	}
+	if *fsOnly && !isPauseMode {
+		log.Fatal("-fs-only requires a pause flag (-pause, -signal-pause, -cmd-pause, or -cmd-signal-pause)")
+	}
+	if *fsOnly && (*optimize || *fphBench) {
+		log.Fatal("-fs-only is incompatible with -optimize and -fph-bench (no memory snapshot)")
+	}
 
 	if *shell && (isCmdMode || isPauseMode || *iterations > 0) {
 		log.Fatal("-shell can only be used in interactive mode (no -cmd, no pause flags, no -iterations)")
@@ -193,6 +206,7 @@ func main() {
 		newBuildID:      outputBuildID,
 		iterations:      *iterations,
 		optimize:        *optimize,
+		fsOnly:          *fsOnly,
 	}
 
 	runOpts := runOptions{
@@ -206,7 +220,7 @@ func main() {
 	}
 	fphBenchOpts := fphBenchOptions{enabled: *fphBench, workload: *cmdPause, iterations: benchIters, delay: *fphBenchDelay}
 
-	err := run(ctx, *fromBuild, *iterations, *coldStart, *noPrefetch, *noEgress, *verbose, *shell, pauseOpts, runOpts, fphBenchOpts)
+	err := run(ctx, *fromBuild, *iterations, *coldStart, *noPrefetch, *noEgress, *verbose, *shell, *reboot, pauseOpts, runOpts, fphBenchOpts)
 	cancel()
 
 	if err != nil {
@@ -228,6 +242,7 @@ type pauseOptions struct {
 	newBuildID      string
 	iterations      int // for benchmarking pause (only with immediate)
 	optimize        bool
+	fsOnly          bool
 }
 
 func (p pauseOptions) enabled() bool {
@@ -322,8 +337,19 @@ type runner struct {
 	coldStart  bool
 	noPrefetch bool
 	shell      bool
+	reboot     bool
 	config     cfg.BuilderConfig
 	storage    storage.StorageProvider
+}
+
+// startSandbox starts a sandbox from the build, either resuming from its memory
+// snapshot or cold-booting (rebooting) from its rootfs when -reboot is set.
+func (r *runner) startSandbox(ctx context.Context, runtime sandbox.RuntimeMetadata, start, end time.Time) (*sandbox.Sandbox, error) {
+	if r.reboot {
+		return r.factory.RebootSandbox(ctx, r.tmpl, r.sbxConfig, runtime, end, nil)
+	}
+
+	return r.factory.ResumeSandbox(ctx, r.tmpl, r.sbxConfig, runtime, start, end, nil)
 }
 
 func (r *runner) resumeOnce(ctx context.Context, iter int) (time.Duration, error) {
@@ -335,7 +361,7 @@ func (r *runner) resumeOnce(ctx context.Context, iter int) (time.Duration, error
 	}
 
 	t0 := time.Now()
-	sbx, err := r.factory.ResumeSandbox(ctx, r.tmpl, r.sbxConfig, runtime, t0, t0.Add(24*time.Hour), nil)
+	sbx, err := r.startSandbox(ctx, runtime, t0, t0.Add(24*time.Hour))
 	dur := time.Since(t0)
 
 	if sbx != nil {
@@ -355,7 +381,7 @@ func (r *runner) interactive(ctx context.Context) error {
 
 	fmt.Println("🚀 Starting...")
 	t0 := time.Now()
-	sbx, err := r.factory.ResumeSandbox(ctx, r.tmpl, r.sbxConfig, runtime, t0, t0.Add(24*time.Hour), nil)
+	sbx, err := r.startSandbox(ctx, runtime, t0, t0.Add(24*time.Hour))
 	if err != nil {
 		return err
 	}
@@ -405,7 +431,7 @@ func (r *runner) cmdOnce(ctx context.Context, opts runOptions, verbose bool) (cm
 		fmt.Println("🚀 Starting sandbox...")
 	}
 	t0 := time.Now()
-	sbx, err := r.factory.ResumeSandbox(ctx, r.tmpl, r.sbxConfig, runtime, t0, t0.Add(24*time.Hour), nil)
+	sbx, err := r.startSandbox(ctx, runtime, t0, t0.Add(24*time.Hour))
 	resumeDur := time.Since(t0)
 	if err != nil {
 		return cmdTimings{resume: resumeDur, err: err}, err
@@ -608,7 +634,7 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 		fmt.Println("🚀 Starting sandbox...")
 	}
 	t0 := time.Now()
-	sbx, err := r.factory.ResumeSandbox(ctx, r.tmpl, r.sbxConfig, runtime, t0, t0.Add(24*time.Hour), nil)
+	sbx, err := r.startSandbox(ctx, runtime, t0, t0.Add(24*time.Hour))
 	resumeDur := time.Since(t0)
 	if err != nil {
 		return pauseTimings{resume: resumeDur, err: err}, err
@@ -671,8 +697,12 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 	}
 
 	// Pause and create snapshot
+	var pauseSnapshotOpts []sandbox.PauseOption
+	if opts.fsOnly {
+		pauseSnapshotOpts = append(pauseSnapshotOpts, sandbox.WithFilesystemSnapshot())
+	}
 	pauseStart := time.Now()
-	snapshot, err := sbx.Pause(ctx, newMeta, sandbox.SnapshotUseCasePause)
+	snapshot, err := sbx.Pause(ctx, newMeta, sandbox.SnapshotUseCasePause, pauseSnapshotOpts...)
 	pauseDur := time.Since(pauseStart)
 	totalDur := time.Since(t0)
 
@@ -1021,7 +1051,7 @@ func (r *runner) benchmark(ctx context.Context, n int) error {
 	return lastErr
 }
 
-func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefetch, noEgress, verbose, shell bool, pauseOpts pauseOptions, runOpts runOptions, fphBenchOpts fphBenchOptions) error {
+func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefetch, noEgress, verbose, shell, reboot bool, pauseOpts pauseOptions, runOpts runOptions, fphBenchOpts fphBenchOptions) error {
 	// Silence other loggers unless verbose mode
 	var l logger.Logger
 	if !verbose {
@@ -1186,6 +1216,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 		coldStart:  coldStart,
 		noPrefetch: noPrefetch,
 		shell:      shell,
+		reboot:     reboot,
 		config:     config.BuilderConfig,
 		storage:    persistence,
 		sbxConfig:  sbxCfg,

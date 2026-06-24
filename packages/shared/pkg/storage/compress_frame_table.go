@@ -70,11 +70,22 @@ type FrameTable struct {
 	entries         []frameEntry // sorted by StartU
 }
 
+// UncompressedFrameTable is the canonical sentinel for "data is stored
+// uncompressed" — an empty FrameTable has no frames to decompress, so a reader
+// handed this back skips the U→C translation entirely. Shared across callers
+// to avoid per-call allocation; read-only and must never be mutated.
+var UncompressedFrameTable = &FrameTable{}
+
 // FullFrameTable marks a FrameTable that covers an entire file with no gaps.
 // Produced by compressStream / CompressBytes / StoreFile / UploadFramed.
 // The inner FrameTable is unexported and unembedded so methods are not
 // promoted; consumers must reach functionality through nil-safe Table().
 type FullFrameTable struct{ ft FrameTable }
+
+// UncompressedFullFrameTable is the Full counterpart of UncompressedFrameTable:
+// the canonical sentinel an authoritative source latches when a build is known
+// to be stored uncompressed end-to-end. Shared across callers; read-only.
+var UncompressedFullFrameTable = &FullFrameTable{}
 
 // Table returns the underlying *FrameTable, nil-safely.
 func (ft *FullFrameTable) Table() *FrameTable {
@@ -83,6 +94,19 @@ func (ft *FullFrameTable) Table() *FrameTable {
 	}
 
 	return &ft.ft
+}
+
+// FullFromTable promotes a *FrameTable to a *FullFrameTable. The caller MUST
+// guarantee ft describes the entire file with no gaps — the only legitimate
+// promotion is from a self-build's loaded.Builds[self].FrameData entry, which
+// build_upload_v4 unconditionally populates from the full upload. Returns the
+// UncompressedFullFrameTable sentinel for nil or empty inputs.
+func FullFromTable(ft *FrameTable) *FullFrameTable {
+	if ft == nil || len(ft.entries) == 0 {
+		return UncompressedFullFrameTable
+	}
+
+	return &FullFrameTable{ft: *ft}
 }
 
 // newFrameTableFromEntries creates a FrameTable from pre-computed absolute-offset entries.

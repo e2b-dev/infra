@@ -72,6 +72,10 @@ func (s *APIStore) GetBuilds(c *gin.Context, params api.GetBuildsParams) {
 			StatusMessage: dashboardutils.MapBuildStatusMessageFromDBStatusGroup(row.StatusGroup, row.Reason),
 			CreatedAt:     row.CreatedAt,
 			FinishedAt:    row.FinishedAt,
+			CpuCount:      row.Vcpu,
+			MemoryMB:      row.RamMb,
+			DiskSizeMB:    row.TotalDiskSizeMb,
+			EnvdVersion:   row.EnvdVersion,
 		})
 	}
 
@@ -89,13 +93,17 @@ func (s *APIStore) GetBuilds(c *gin.Context, params api.GetBuildsParams) {
 }
 
 type listBuildRow struct {
-	ID            uuid.UUID
-	StatusGroup   dbtypes.BuildStatusGroup
-	Reason        dbtypes.BuildReason
-	CreatedAt     time.Time
-	FinishedAt    *time.Time
-	TemplateID    string
-	TemplateAlias string
+	ID              uuid.UUID
+	StatusGroup     dbtypes.BuildStatusGroup
+	Reason          dbtypes.BuildReason
+	CreatedAt       time.Time
+	FinishedAt      *time.Time
+	Vcpu            int64
+	RamMb           int64
+	TotalDiskSizeMb *int64
+	EnvdVersion     *string
+	TemplateID      string
+	TemplateAlias   string
 }
 
 func (s *APIStore) listBuildRows(
@@ -238,13 +246,17 @@ func mapBuildRows(rows []queries.GetTeamBuildsPageRow) []listBuildRow {
 	out := make([]listBuildRow, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, listBuildRow{
-			ID:            row.ID,
-			StatusGroup:   row.StatusGroup,
-			Reason:        row.Reason,
-			CreatedAt:     row.CreatedAt,
-			FinishedAt:    row.FinishedAt,
-			TemplateID:    row.TemplateID,
-			TemplateAlias: row.TemplateAlias,
+			ID:              row.ID,
+			StatusGroup:     row.StatusGroup,
+			Reason:          row.Reason,
+			CreatedAt:       row.CreatedAt,
+			FinishedAt:      row.FinishedAt,
+			Vcpu:            row.Vcpu,
+			RamMb:           row.RamMb,
+			TotalDiskSizeMb: row.TotalDiskSizeMb,
+			EnvdVersion:     row.EnvdVersion,
+			TemplateID:      row.TemplateID,
+			TemplateAlias:   row.TemplateAlias,
 		})
 	}
 
@@ -255,13 +267,17 @@ func mapBuildRowsByBuildID(rows []queries.GetTeamBuildsPageByBuildIDRow) []listB
 	out := make([]listBuildRow, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, listBuildRow{
-			ID:            row.ID,
-			StatusGroup:   row.StatusGroup,
-			Reason:        row.Reason,
-			CreatedAt:     row.CreatedAt,
-			FinishedAt:    row.FinishedAt,
-			TemplateID:    row.TemplateID,
-			TemplateAlias: row.TemplateAlias,
+			ID:              row.ID,
+			StatusGroup:     row.StatusGroup,
+			Reason:          row.Reason,
+			CreatedAt:       row.CreatedAt,
+			FinishedAt:      row.FinishedAt,
+			Vcpu:            row.Vcpu,
+			RamMb:           row.RamMb,
+			TotalDiskSizeMb: row.TotalDiskSizeMb,
+			EnvdVersion:     row.EnvdVersion,
+			TemplateID:      row.TemplateID,
+			TemplateAlias:   row.TemplateAlias,
 		})
 	}
 
@@ -272,13 +288,17 @@ func mapBuildRowsByTemplateID(rows []queries.GetTeamBuildsPageByTemplateIDRow) [
 	out := make([]listBuildRow, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, listBuildRow{
-			ID:            row.ID,
-			StatusGroup:   row.StatusGroup,
-			Reason:        row.Reason,
-			CreatedAt:     row.CreatedAt,
-			FinishedAt:    row.FinishedAt,
-			TemplateID:    row.TemplateID,
-			TemplateAlias: row.TemplateAlias,
+			ID:              row.ID,
+			StatusGroup:     row.StatusGroup,
+			Reason:          row.Reason,
+			CreatedAt:       row.CreatedAt,
+			FinishedAt:      row.FinishedAt,
+			Vcpu:            row.Vcpu,
+			RamMb:           row.RamMb,
+			TotalDiskSizeMb: row.TotalDiskSizeMb,
+			EnvdVersion:     row.EnvdVersion,
+			TemplateID:      row.TemplateID,
+			TemplateAlias:   row.TemplateAlias,
 		})
 	}
 
@@ -289,13 +309,17 @@ func mapBuildRowsByTemplateAlias(rows []queries.GetTeamBuildsPageByTemplateAlias
 	out := make([]listBuildRow, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, listBuildRow{
-			ID:            row.ID,
-			StatusGroup:   row.StatusGroup,
-			Reason:        row.Reason,
-			CreatedAt:     row.CreatedAt,
-			FinishedAt:    row.FinishedAt,
-			TemplateID:    row.TemplateID,
-			TemplateAlias: row.TemplateAlias,
+			ID:              row.ID,
+			StatusGroup:     row.StatusGroup,
+			Reason:          row.Reason,
+			CreatedAt:       row.CreatedAt,
+			FinishedAt:      row.FinishedAt,
+			Vcpu:            row.Vcpu,
+			RamMb:           row.RamMb,
+			TotalDiskSizeMb: row.TotalDiskSizeMb,
+			EnvdVersion:     row.EnvdVersion,
+			TemplateID:      row.TemplateID,
+			TemplateAlias:   row.TemplateAlias,
 		})
 	}
 

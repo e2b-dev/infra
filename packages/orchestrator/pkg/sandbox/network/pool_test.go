@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -41,8 +42,8 @@ func newTestSlot(idx int) *Slot {
 	return &Slot{Idx: idx + testSlotIdxOffset, egressProxy: NoopEgressProxy{}}
 }
 
-// noopRelease satisfies Pool.Return's ReleaseNotify parameter without doing
-// anything. Tests cover Return's cleanup path and don't care about the
+// noopRelease satisfies returnSlot's ReleaseNotify parameter without doing
+// anything. Tests cover the cleanup path and don't care about the
 // network-release notification.
 func noopRelease(context.Context, string) {}
 
@@ -74,7 +75,7 @@ func TestReturn_NoPanicDuringClose(t *testing.T) {
 				<-start
 
 				for i := range iters {
-					_ = pool.Return(t.Context(), newTestSlot(w*iters+i+1), noopRelease, 0)
+					_ = pool.returnSlot(t.Context(), newTestSlot(w*iters+i+1), noopRelease, 0)
 				}
 			})
 		}
@@ -106,11 +107,75 @@ func TestReturn_AfterCloseCleansUpLocally(t *testing.T) {
 	require.NoError(t, pool.Close(t.Context()))
 
 	before := storage.released.Load()
-	err := pool.Return(t.Context(), newTestSlot(1), noopRelease, 0)
+	err := pool.returnSlot(t.Context(), newTestSlot(1), noopRelease, 0)
 	after := storage.released.Load()
 
 	assert.Equal(t, int64(1), after-before, "Return after Close must invoke Storage.Release via cleanup")
 	require.ErrorIs(t, err, ErrClosed)
+}
+
+func TestReturnAsync_DoesNotBlockOnReturnDelay(t *testing.T) {
+	t.Parallel()
+
+	storage := &fakeStorage{}
+	pool := NewPool(2, 4, storage, Config{})
+	close(pool.newSlots)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+
+		_ = pool.ReturnAsync(t.Context(), newTestSlot(1), noopRelease, time.Hour)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("ReturnAsync blocked on the return delay")
+	}
+
+	// Close short-circuits the hour-long delay into the cleanup path and
+	// must not return before the slot is released.
+	require.NoError(t, pool.Close(t.Context()))
+	assert.Equal(t, int64(1), storage.released.Load(), "Close returned before the in-flight return released the slot")
+}
+
+// Every slot handed to ReturnAsync must be released by the time Close
+// returns, whether cleaned up in flight or drained from reusedSlots.
+func TestClose_WaitsForInFlightAsyncReturns(t *testing.T) {
+	t.Parallel()
+
+	const slots = 8
+
+	storage := &fakeStorage{}
+	pool := NewPool(2, slots, storage, Config{})
+	close(pool.newSlots)
+
+	for i := range slots {
+		require.NoError(t, pool.ReturnAsync(t.Context(), newTestSlot(i+1), noopRelease, 10*time.Millisecond))
+	}
+
+	// Close error ignored: cleanup()'s netlink/iptables teardown may fail
+	// in the test environment; the release count is the leak signal.
+	_ = pool.Close(t.Context())
+
+	assert.Equal(t, int64(slots), storage.released.Load(), "Close returned before all in-flight returns released their slots")
+}
+
+// After Close, ReturnAsync cannot register with Close's wait, so it must
+// clean the slot up inline before returning.
+func TestReturnAsync_AfterCloseCleansUpSynchronously(t *testing.T) {
+	t.Parallel()
+
+	storage := &fakeStorage{}
+	pool := NewPool(2, 4, storage, Config{})
+	close(pool.newSlots)
+
+	require.NoError(t, pool.Close(t.Context()))
+
+	err := pool.ReturnAsync(t.Context(), newTestSlot(1), noopRelease, time.Hour)
+	require.ErrorIs(t, err, ErrClosed)
+	assert.Equal(t, int64(1), storage.released.Load(), "ReturnAsync after Close must release the slot before returning")
 }
 
 func TestReturn_AfterClose_CleanupFailure_PreservesErrClosed(t *testing.T) {
@@ -123,7 +188,7 @@ func TestReturn_AfterClose_CleanupFailure_PreservesErrClosed(t *testing.T) {
 
 	require.NoError(t, pool.Close(t.Context()))
 
-	err := pool.Return(t.Context(), newTestSlot(1), noopRelease, 0)
+	err := pool.returnSlot(t.Context(), newTestSlot(1), noopRelease, 0)
 	require.ErrorIs(t, err, ErrClosed)
 	require.ErrorIs(t, err, boom)
 }

@@ -20,18 +20,29 @@ type (
 )
 
 const (
-	ApiOrchestratorCreatedSandboxes CounterType = "api.orchestrator.created_sandboxes"
-	SandboxCreateMeterName          CounterType = "api.env.instance.started"
+	ApiOrchestratorCreatedSandboxes      CounterType = "api.orchestrator.created_sandboxes"
+	ApiOrchestratorResumeOriginNodeRemap CounterType = "api.orchestrator.resume_origin_node_remapped"
+	SandboxCreateMeterName               CounterType = "api.env.instance.started"
 
 	TeamSandboxCreated CounterType = "e2b.team.sandbox.created"
 
 	EnvdInitCalls CounterType = "orchestrator.sandbox.envd.init.calls"
+
+	// 2 MiB chunks the pre-pause envd heap collapse attempted, split by the
+	// result attribute (collapsed|skipped): attempts = total, successful =
+	// collapsed.
+	EnvdCollapseChunks CounterType = "orchestrator.sandbox.envd.collapse.chunks"
 	// Incremented by the balance_dirty_pages thread count at every 200 ms poll
 	// for the lifetime of the process. rate() shows dirty-page throttle
 	// intensity in real-time; 0 when no stalls are occurring.
 	OrchestratorHostBalanceDirtyPagesThreads CounterType = "orchestrator.host.balance_dirty_pages.threads"
 
 	OrchestratorSandboxKilledCounterName CounterType = "orchestrator.sandbox.killed"
+
+	// OrchestratorSnapshotUploadFailedCounterName counts pause-snapshot uploads
+	// that never landed durably (budget exhausted or a non-retryable error).
+	// A non-zero rate means lost snapshots.
+	OrchestratorSnapshotUploadFailedCounterName CounterType = "orchestrator.snapshot.upload.failed"
 
 	ApiRedisStoragePublisherPublished CounterType = "api.redis_storage.publisher.published"
 	ApiRedisStoragePublisherDropped   CounterType = "api.redis_storage.publisher.dropped"
@@ -74,6 +85,12 @@ const (
 	// Sandbox timing histograms
 	OrchestratorSandboxCreateDurationName HistogramType = "orchestrator.sandbox.create.duration"
 	WaitForEnvdDurationHistogramName      HistogramType = "orchestrator.sandbox.envd.init.duration"
+	GuestSyncDurationHistogramName        HistogramType = "orchestrator.sandbox.guest_sync.duration"
+
+	// Pre-pause envd heap collapse round-trip duration (the pause-path cost of
+	// POST /collapse: network plus envd's madvise work), recorded once per pause
+	// when the collapse-envd-heap flag is on.
+	EnvdCollapseDurationHistogramName HistogramType = "orchestrator.sandbox.envd.collapse.duration"
 
 	// Sandbox startup working-set histograms: demand-fault pages/bytes a guest
 	// needed to reach a successful envd init, recorded once per start. Sampled
@@ -179,17 +196,20 @@ const (
 )
 
 var counterDesc = map[CounterType]string{
-	SandboxCreateMeterName:                   "Number of currently waiting requests to create a new sandbox",
-	ApiOrchestratorCreatedSandboxes:          "Number of successfully created sandboxes",
-	BuildResultCounterName:                   "Number of template build results",
-	BuildCacheResultCounterName:              "Number of build cache results",
-	TeamSandboxCreated:                       "Counter of started sandboxes for the team in the interval",
-	OrchestratorHostBalanceDirtyPagesThreads: "Cumulative stalled thread-polls during sandbox resume; rate() gives throttle intensity",
-	EnvdInitCalls:                            "Number of envd initialization calls",
-	OrchestratorSandboxKilledCounterName:     "Number of sandboxes killed, labeled by kill reason",
-	TCPFirewallConnectionsTotal:              "Total number of TCP firewall connections processed",
-	TCPFirewallErrorsTotal:                   "Total number of TCP firewall errors",
-	TCPFirewallDecisionsTotal:                "Total number of TCP firewall allow/block decisions",
+	SandboxCreateMeterName:                      "Number of currently waiting requests to create a new sandbox",
+	ApiOrchestratorCreatedSandboxes:             "Number of successfully created sandboxes",
+	ApiOrchestratorResumeOriginNodeRemap:        "Number of resume snapshots repointed to the fallback node a previous resume timed out on",
+	BuildResultCounterName:                      "Number of template build results",
+	BuildCacheResultCounterName:                 "Number of build cache results",
+	TeamSandboxCreated:                          "Counter of started sandboxes for the team in the interval",
+	OrchestratorHostBalanceDirtyPagesThreads:    "Cumulative stalled thread-polls during sandbox resume; rate() gives throttle intensity",
+	EnvdInitCalls:                               "Number of envd initialization calls",
+	EnvdCollapseChunks:                          "2 MiB chunks the pre-pause envd heap collapse attempted, by result",
+	OrchestratorSandboxKilledCounterName:        "Number of sandboxes killed, labeled by kill reason",
+	OrchestratorSnapshotUploadFailedCounterName: "Number of pause-snapshot uploads that never landed durably",
+	TCPFirewallConnectionsTotal:                 "Total number of TCP firewall connections processed",
+	TCPFirewallErrorsTotal:                      "Total number of TCP firewall errors",
+	TCPFirewallDecisionsTotal:                   "Total number of TCP firewall allow/block decisions",
 
 	IngressProxyConnectionsBlockedTotal: "Total number of ingress proxy connections blocked by connection limit",
 	CmuxErrorsTotal:                     "Total number of cmux connection multiplexer errors",
@@ -206,17 +226,20 @@ var counterDesc = map[CounterType]string{
 }
 
 var counterUnits = map[CounterType]string{
-	SandboxCreateMeterName:                   "{sandbox}",
-	ApiOrchestratorCreatedSandboxes:          "{sandbox}",
-	BuildResultCounterName:                   "{build}",
-	BuildCacheResultCounterName:              "{layer}",
-	TeamSandboxCreated:                       "{sandbox}",
-	OrchestratorHostBalanceDirtyPagesThreads: "{thread}",
-	EnvdInitCalls:                            "1",
-	OrchestratorSandboxKilledCounterName:     "{sandbox}",
-	TCPFirewallConnectionsTotal:              "{connection}",
-	TCPFirewallErrorsTotal:                   "{error}",
-	TCPFirewallDecisionsTotal:                "{decision}",
+	SandboxCreateMeterName:                      "{sandbox}",
+	ApiOrchestratorCreatedSandboxes:             "{sandbox}",
+	ApiOrchestratorResumeOriginNodeRemap:        "{snapshot}",
+	BuildResultCounterName:                      "{build}",
+	BuildCacheResultCounterName:                 "{layer}",
+	TeamSandboxCreated:                          "{sandbox}",
+	OrchestratorHostBalanceDirtyPagesThreads:    "{thread}",
+	EnvdInitCalls:                               "1",
+	EnvdCollapseChunks:                          "{chunk}",
+	OrchestratorSandboxKilledCounterName:        "{sandbox}",
+	OrchestratorSnapshotUploadFailedCounterName: "{snapshot}",
+	TCPFirewallConnectionsTotal:                 "{connection}",
+	TCPFirewallErrorsTotal:                      "{error}",
+	TCPFirewallDecisionsTotal:                   "{decision}",
 
 	IngressProxyConnectionsBlockedTotal: "{connection}",
 	CmuxErrorsTotal:                     "{error}",
@@ -389,6 +412,8 @@ var histogramDesc = map[HistogramType]string{
 	BuildRootfsSizeHistogramName:          "Size of the built template rootfs in bytes",
 	OrchestratorSandboxCreateDurationName: "Time taken to create a sandbox",
 	WaitForEnvdDurationHistogramName:      "Time taken for Envd to initialize successfully",
+	EnvdCollapseDurationHistogramName:     "Time taken for the pre-pause envd heap collapse round-trip",
+	GuestSyncDurationHistogramName:        "Time taken for the mandatory pre-pause guest sync (filesystem-only pause)",
 
 	UffdStartupPagesHistogramName:       "Demand-fault pages a guest needed to reach a successful envd init, per start",
 	UffdStartupSourcePagesHistogramName: "Subset of startup demand-fault pages pulled from the source (e.g. GCS), per start",
@@ -434,6 +459,8 @@ var histogramUnits = map[HistogramType]string{
 	BuildRootfsSizeHistogramName:                  "{By}",
 	OrchestratorSandboxCreateDurationName:         "ms",
 	WaitForEnvdDurationHistogramName:              "ms",
+	EnvdCollapseDurationHistogramName:             "ms",
+	GuestSyncDurationHistogramName:                "ms",
 	UffdStartupPagesHistogramName:                 "{page}",
 	UffdStartupSourcePagesHistogramName:           "{page}",
 	UffdStartupBytesHistogramName:                 "{By}",

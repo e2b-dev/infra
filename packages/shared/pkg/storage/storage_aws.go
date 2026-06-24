@@ -168,9 +168,14 @@ func (o *awsObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 		return nil, [32]byte{}, errors.New("compressed uploads are not supported on AWS (builds target GCP only)")
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, awsWriteTimeout)
-	defer cancel()
-
+	// Inherit the caller's context for the multipart upload. The AWS SDK's
+	// manager.Uploader reuses the same ctx for CreateMultipartUpload, every
+	// UploadPart (Concurrency=8, PartSize=10MB), and the final Complete/Abort —
+	// a tight static timeout here would cancel an in-flight multi-GB snapshot
+	// upload and surface as "S3: UploadPart ... StatusCode: 0, canceled,
+	// context deadline exceeded". The caller (pkg/server/sandboxes.go) already
+	// scopes a per-attempt deadline (uploadTimeout = 20m) with retry budget on
+	// top, matching the GCP path which also inherits the caller's ctx.
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, [32]byte{}, fmt.Errorf("failed to open file %s: %w", path, err)
@@ -233,7 +238,7 @@ func (o *awsObject) Put(ctx context.Context, data []byte, opts ...PutOption) err
 	return nil
 }
 
-func (o *awsObject) OpenRangeReader(ctx context.Context, off, length int64, frameTable *FrameTable) (io.ReadCloser, error) {
+func (o *awsObject) OpenRangeReader(ctx context.Context, off, length int64, frameTable *FrameTable) (RangeReader, error) {
 	if frameTable.IsCompressed() {
 		return nil, errors.New("compressed reads are not supported on AWS")
 	}
@@ -253,7 +258,7 @@ func (o *awsObject) OpenRangeReader(ctx context.Context, off, length int64, fram
 		return nil, fmt.Errorf("failed to create S3 range reader for %q: %w", o.path, err)
 	}
 
-	return resp.Body, nil
+	return NewRangeReader(resp.Body), nil
 }
 
 func (o *awsObject) Size(ctx context.Context) (int64, error) {

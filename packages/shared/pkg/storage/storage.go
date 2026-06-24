@@ -31,6 +31,19 @@ var ErrObjectNotExist = errors.New("object does not exist")
 // multiple concurrent writers racing to write the same content-addressed object.
 var ErrObjectRateLimited = errors.New("object access rate limited")
 
+// ErrObjectSoftDeleted means the storage index has marked this object for
+// deletion (soft-delete tombstone in custom metadata) and enforcement is on.
+var ErrObjectSoftDeleted = errors.New("object soft-deleted by storage index")
+
+// ErrMetadataUnsupported means the blob's backend cannot read custom metadata
+// (no MetadataReader). It is distinct from "read succeeded, no metadata" so
+// callers (e.g. soft-delete enforcement) can fail closed on an unverifiable
+// backend instead of assuming there is no tombstone.
+var ErrMetadataUnsupported = errors.New("blob does not support reading custom metadata")
+
+// ObjectMetadataSoftDeleted is the storage-index soft-delete tombstone key.
+const ObjectMetadataSoftDeleted = storageopts.ObjectMetadataSoftDeleted
+
 type Provider string
 
 const (
@@ -92,12 +105,22 @@ type StorageProvider interface {
 
 type (
 	ObjectMetadata = storageopts.ObjectMetadata
+	ObjectOrigin   = storageopts.ObjectOrigin
 	PutOptions     = storageopts.PutOptions
 	PutOption      = storageopts.PutOption
 	FrameSink      = storageopts.FrameSink
 )
 
-const ObjectMetadataTeamID = storageopts.ObjectMetadataTeamID
+const (
+	ObjectMetadataTeamID      = storageopts.ObjectMetadataTeamID
+	ObjectMetadataTemplateID  = storageopts.ObjectMetadataTemplateID
+	ObjectMetadataBuildOrigin = storageopts.ObjectMetadataBuildOrigin
+
+	ObjectOriginPause              = storageopts.ObjectOriginPause
+	ObjectOriginTemplateBuild      = storageopts.ObjectOriginTemplateBuild
+	ObjectOriginTemplateBuildCache = storageopts.ObjectOriginTemplateBuildCache
+	ObjectOriginSnapshotTemplate   = storageopts.ObjectOriginSnapshotTemplate
+)
 
 func WithMetadata(metadata ObjectMetadata) PutOption { return storageopts.WithMetadata(metadata) }
 
@@ -140,15 +163,32 @@ type Blob interface {
 	Exists(ctx context.Context) (bool, error)
 }
 
-type SeekableReader interface {
-	// Random slice access, off and buffer length must be aligned to block size
-	ReadAt(ctx context.Context, buffer []byte, off int64, ft *FrameTable) (int, error)
-	Size(ctx context.Context) (int64, error)
+// MetadataReader is an optional Blob capability: read the object's custom
+// metadata without downloading it. Backends that can't answer cheaply omit it.
+type MetadataReader interface {
+	Metadata(ctx context.Context) (ObjectMetadata, error)
 }
 
-// StreamingReader supports progressive reads via a streaming range reader.
-type StreamingReader interface {
-	OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (io.ReadCloser, error)
+// BlobCustomMetadata returns the blob's custom metadata, or ErrMetadataUnsupported
+// when the backend can't read it — so callers can distinguish "no tombstone"
+// from "couldn't check" and fail closed under enforcement.
+func BlobCustomMetadata(ctx context.Context, b Blob) (ObjectMetadata, error) {
+	mr, ok := b.(MetadataReader)
+	if !ok {
+		return nil, ErrMetadataUnsupported
+	}
+
+	return mr.Metadata(ctx)
+}
+
+type RangeReader interface {
+	io.Reader
+	Close(ctx context.Context) error
+}
+
+// RangeOpener supports progressive reads via a streaming range reader.
+type RangeOpener interface {
+	OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (RangeReader, error)
 }
 
 type SeekableWriter interface {
@@ -157,7 +197,7 @@ type SeekableWriter interface {
 }
 
 type Seekable interface {
-	StreamingReader
+	RangeOpener
 	SeekableWriter
 	Size(ctx context.Context) (int64, error)
 }

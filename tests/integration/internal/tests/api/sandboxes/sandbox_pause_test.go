@@ -24,7 +24,7 @@ func TestSandboxPause(t *testing.T) {
 		sbxId := sbx.SandboxID
 
 		// Set timeout to 0 to force sandbox to be stopped
-		resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+		resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 		require.NoError(t, err)
 		require.Equal(t, http.StatusNoContent, resp.StatusCode())
 
@@ -51,7 +51,7 @@ func TestSandboxPause(t *testing.T) {
 		wg := errgroup.Group{}
 		for range 5 {
 			wg.Go(func() error {
-				pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+				pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 				require.NoError(t, err)
 				require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
 
@@ -80,7 +80,7 @@ func TestSandboxPause(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, http.StatusNoContent, killResp.StatusCode())
 
-		pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+		pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 		require.NoError(t, err)
 		require.Equal(t, http.StatusNotFound, pauseResp.StatusCode())
 	})
@@ -91,12 +91,12 @@ func TestSandboxPause(t *testing.T) {
 		sbxId := sbx.SandboxID
 
 		// Pause the sandbox
-		resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+		resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 		require.NoError(t, err)
 		require.Equal(t, http.StatusNoContent, resp.StatusCode())
 
 		// Try to pause the sandbox again
-		resp, err = c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+		resp, err = c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 		require.NoError(t, err)
 		require.Equal(t, http.StatusConflict, resp.StatusCode())
 	})

@@ -57,7 +57,7 @@ func TestSandboxAutoResumeViaExec(t *testing.T) {
 	require.NoError(t, err)
 
 	// Pause the sandbox.
-	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
 
@@ -99,7 +99,7 @@ func TestSandboxAutoResumeViaProxy(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// Pause the sandbox.
-	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
 
@@ -109,8 +109,9 @@ func TestSandboxAutoResumeViaProxy(t *testing.T) {
 	require.NotNil(t, res.JSON200, "expected 200 response, got status %d", res.StatusCode())
 	require.Equal(t, api.Paused, res.JSON200.State)
 
-	// Make a proxy request to trigger auto-resume.
-	resumeClient := &http.Client{Timeout: 10 * time.Second}
+	// Make a proxy request to trigger auto-resume. The single request must
+	// cover the whole snapshot resume, which can take a while under load.
+	resumeClient := &http.Client{Timeout: 60 * time.Second}
 	req := utils.NewRequest(sbx, proxyURL, port, nil)
 	resp, err = resumeClient.Do(req)
 	require.NoError(t, err)
@@ -147,7 +148,7 @@ func TestSandboxNoAutoResumeViaProxyWithoutFlag(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// Pause the sandbox.
-	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
 
@@ -204,7 +205,7 @@ func TestSandboxAutoResumeWithoutExplicitTimeoutUsesMinimumTimeout(t *testing.T)
 	require.NoError(t, err)
 
 	// Pause the sandbox.
-	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
 
@@ -255,7 +256,7 @@ func TestSandboxAutoResumeUsesInitialTimeoutNotUpdatedTimeout(t *testing.T) {
 	require.NoError(t, err)
 
 	// Pause the sandbox.
-	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
 
@@ -287,7 +288,7 @@ func TestSandboxNoAutoResumeWithoutFlag(t *testing.T) {
 	require.NoError(t, err)
 
 	// Pause the sandbox.
-	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
 

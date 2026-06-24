@@ -94,7 +94,7 @@ func TestSandboxSetTimeoutPausingSandbox(t *testing.T) {
 		// Pause the sandbox
 		wg := errgroup.Group{}
 		wg.Go(func() error {
-			pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+			pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 			if err != nil {
 				return err
 			}
