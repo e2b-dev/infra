@@ -73,7 +73,7 @@ func clientProxyMaskRequestHost(ctx context.Context, featureFlags *featureflags.
 	return &orchestratorHost
 }
 
-func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer, featureFlags *featureflags.Client) (string, error) {
+func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer) (string, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
 		if errors.Is(err, catalog.ErrSandboxNotFound) {
@@ -153,7 +153,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 
 			trafficAccessToken := r.Header.Get(proxygrpc.MetadataTrafficAccessToken)
 			envdAccessToken := r.Header.Get(proxygrpc.MetadataEnvdHTTPAccessToken)
-			nodeIP, err := catalogResolution(ctx, sandboxId, port, trafficAccessToken, envdAccessToken, catalog, pausedSandboxResumer, featureFlagsClient)
+			nodeIP, err := catalogResolution(ctx, sandboxId, port, trafficAccessToken, envdAccessToken, catalog, pausedSandboxResumer)
 			if err != nil {
 				var resumeDeniedErr *reverseproxy.SandboxResumePermissionDeniedError
 				if errors.As(err, &resumeDeniedErr) {

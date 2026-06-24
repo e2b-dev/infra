@@ -79,7 +79,6 @@ func TestCatalogResolution_CatalogHit(t *testing.T) {
 	t.Parallel()
 
 	c := catalog.NewRedisSandboxCatalog(redis_utils.SetupInstance(t))
-	ff := newFF(t)
 
 	err := c.StoreSandbox(t.Context(), "sbx", &catalog.SandboxInfo{
 		OrchestratorIP: "10.0.0.1",
@@ -88,7 +87,7 @@ func TestCatalogResolution_CatalogHit(t *testing.T) {
 	}, time.Minute)
 	require.NoError(t, err)
 
-	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil, ff)
+	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil)
 	require.NoError(t, err)
 	require.Equal(t, "10.0.0.1", nodeIP)
 }
@@ -155,7 +154,6 @@ func TestCatalogResolution_CatalogHit_EmptyIPReturnsRouteUnavailable(t *testing.
 	t.Parallel()
 
 	c := catalog.NewRedisSandboxCatalog(redis_utils.SetupInstance(t))
-	ff := newFF(t)
 
 	err := c.StoreSandbox(t.Context(), "sbx", &catalog.SandboxInfo{
 		OrchestratorIP: "",
@@ -164,7 +162,7 @@ func TestCatalogResolution_CatalogHit_EmptyIPReturnsRouteUnavailable(t *testing.
 	}, time.Minute)
 	require.NoError(t, err)
 
-	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil, ff)
+	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil)
 	require.ErrorIs(t, err, ErrNodeRouteUnavailable)
 	require.Empty(t, nodeIP)
 }
@@ -173,9 +171,8 @@ func TestCatalogResolution_CatalogMiss(t *testing.T) {
 	t.Parallel()
 
 	c := catalog.NewRedisSandboxCatalog(redis_utils.SetupInstance(t))
-	ff := newFF(t)
 
-	_, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil, ff)
+	_, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil)
 	require.ErrorIs(t, err, ErrNodeNotFound)
 }
 
@@ -202,10 +199,9 @@ func (e errorCatalog) Close(_ context.Context) error {
 func TestCatalogResolution_CatalogReturnsGenericError(t *testing.T) {
 	t.Parallel()
 
-	ff := newFF(t)
 	c := errorCatalog{err: errors.New("catalog unavailable")}
 
-	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil, ff)
+	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil)
 	require.Error(t, err)
 	require.NotErrorIs(t, err, ErrNodeNotFound)
 	require.NotErrorIs(t, err, ErrNodeRouteUnavailable)
@@ -217,9 +213,8 @@ func TestCatalogResolution_CatalogMiss_ResumeEmptyIPReturnsRouteUnavailable(t *t
 	t.Parallel()
 
 	c := catalog.NewRedisSandboxCatalog(redis_utils.SetupInstance(t))
-	ff := newFF(t)
 
-	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, stubResumer{nodeIP: ""}, ff)
+	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, stubResumer{nodeIP: ""})
 	require.ErrorIs(t, err, ErrNodeRouteUnavailable)
 	require.Empty(t, nodeIP)
 }
