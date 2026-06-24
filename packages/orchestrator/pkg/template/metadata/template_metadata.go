@@ -21,6 +21,15 @@ const (
 	CurrentVersion = 2
 
 	DeprecatedVersion = 1
+
+	// FilesystemOnlyVersion is the metadata version that introduced the
+	// filesystem_only field. A filesystem-only snapshot must be stamped at least
+	// this version so deserialize() (which strips every field from a version <=
+	// DeprecatedVersion snapshot) keeps the flag. It is pinned rather than
+	// CurrentVersion: CurrentVersion advances as the format grows, and stamping a
+	// minimal V1-derived snapshot with a newer version would falsely imply it
+	// carries later-version fields.
+	FilesystemOnlyVersion = DeprecatedVersion + 1
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata")
@@ -126,6 +135,24 @@ type Template struct {
 // (no memory snapshot), so resuming it must cold-boot (reboot) from the rootfs.
 func (t Template) IsFilesystemOnly() bool {
 	return t.FilesystemOnly
+}
+
+// MarkFilesystemOnly records whether this snapshot persists only the filesystem.
+//
+// When marking it filesystem-only, the metadata version is upgraded to at least
+// FilesystemOnlyVersion if needed: deserialize() strips every field (including
+// filesystem_only) from a snapshot whose version is <= DeprecatedVersion, so a
+// snapshot taken from a V1 template would otherwise lose the flag on resume and
+// be wrongly memory-resumed — and since the filesystem-only pause uploaded no
+// memory snapshot, that resume hard-fails. Clearing the flag never changes the
+// version.
+func (t Template) MarkFilesystemOnly(filesystemOnly bool) Template {
+	t.FilesystemOnly = filesystemOnly
+	if filesystemOnly && t.Version < FilesystemOnlyVersion {
+		t.Version = FilesystemOnlyVersion
+	}
+
+	return t
 }
 
 func V1TemplateVersion() Template {
