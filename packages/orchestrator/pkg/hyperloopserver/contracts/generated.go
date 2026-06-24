@@ -39,10 +39,10 @@ type N500 = Error
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-
+	// Submit sandbox logs
 	// (POST /logs)
 	Logs(c *gin.Context)
-
+	// Sandbox information
 	// (GET /me)
 	Me(c *gin.Context)
 }
@@ -118,13 +118,14 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"vFPBjtMwEP0Va+AYNaELlxxXuxJFFCR6RHtwnUnWKPGYGaewqvLvaJxAtbSFCyIX25mZN/Oen4/gaIgU",
-	"MCSB+giMEikI5sPrqtLFUUgYkm5tjL13NnkK5RehoP/EPeJgdfeSsYUaXpQnzHKOSnnPTAzTNBXQoDj2",
-	"UUGghlvbGMavI0qCqYA3/6PnDvmAbHCJFwteJj0X1UeITBE5+VkLRw3q+hwoJ5scK6AlHmyCGnxIN2so",
-	"ID1FnI/YISu7AUVsdw3oVCKJfejyaKqNZ2yg/gxLo58oD1MBWzyfVWxo9vR9c3feZzeHzObur81OKA9Z",
-	"Qh9aUsDkU69l9+tb8/YpIvdEEQo4IMvcpFq9WlVKlyIGGz3UcLOqVhUUEG16zDOWPXV5E0nS+Zyf0KE/",
-	"oJh3u48fzN4KNkYrzMJdIKNztsWmgRreK17x3MDr2Uy/Q2ezmW9WjIzOoUg79jru4vdLlvoFW2rSyad/",
-	"ztWkKYtXDvmeOrzINY0cxKjA6iBPwdg9jcksV2B8EuzbM8pbvEL4n7yeLV56OtfUy9+PAAAA//8=",
+	"vJNBj9NMDIb/ysjfd4ya0IVLjqtdiSIKEj2iPUwTJzsoGQ/2pFBV+e/IkyxRaQsXxCmT2H5sv3nnBBX1",
+	"gTz6KFCegFECecH08roo9FGRj+ijHm0InatsdOTzL0Jev0n1jL3V0/+MDZTwX74w8ykq+SMzMYzjmEGN",
+	"UrELCoES7m1tGL8OKBHGDN78i5475AOywTmezby09FRUniAwBeToJi0qqlGf56CUbFIsg4a4txFKcD7e",
+	"rSGDeAw4vWKLrNv1KGLbW6ClRCI736bRVBvHWEP5GeZGL5SnMYMtXs4q1td7+r55uOyzm0Jm8/DHZgvl",
+	"KUnofEMKjC52Wva4vjdvjwG5IwqQwQFZpibF6tWq0HUpoLfBQQl3q2JVQAbBxuc0Y95Rmw6BJF7O+Qkr",
+	"dAcU82738YPZW8HaaIWZdxdIdE622NRQwnvlZecGXk9m+hWdzGa+WTEyVBWKNEOn485+v2apn9hckxaf",
+	"/j5Xk5K9hr63fFT9h33vopm1TSuljLxP/7HFq1rEgb0Y/QHqMEfe2D0NC8ZFwa65kGSLNwT5K7dri9eu",
+	"1i11z1V4mXvZSFnjjwAAAP//",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
