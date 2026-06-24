@@ -3,7 +3,28 @@ function versionFromPath(path) {
   return match?.[1];
 }
 
+function decodePointerPath(encodedPath) {
+  return encodedPath.replace(/~1/g, '/').replace(/~0/g, '~');
+}
+
+function pathFromPointer(pointer) {
+  if (typeof pointer !== 'string') {
+    return undefined;
+  }
+
+  const match = pointer.match(/(?:^|#)\/paths\/([^/]+)(?:\/|$)/);
+  if (!match) {
+    return undefined;
+  }
+
+  return decodePointerPath(match[1]);
+}
+
 function operationPath(ctx) {
+  if (typeof ctx.parent?.key === 'string' && ctx.parent.key.startsWith('/')) {
+    return ctx.parent.key;
+  }
+
   const location = ctx.location;
   const serializedLocation = typeof location?.toJSON === 'function'
     ? location.toJSON()
@@ -16,19 +37,9 @@ function operationPath(ctx) {
     location?.sourcePointer ??
     serializedLocation?.sourcePointer ??
     location?.pointerBase ??
-    serializedLocation?.pointerBase;
+      serializedLocation?.pointerBase;
 
-  if (typeof pointer !== 'string') {
-    return undefined;
-  }
-
-  const match = pointer.match(/#\/paths\/([^/]+)\//);
-  if (!match) {
-    return undefined;
-  }
-
-  const path = match[1].replace(/~1/g, '/').replace(/~0/g, '~');
-  return path;
+  return pathFromPointer(pointer);
 }
 
 function VersionedOperationSummary() {
