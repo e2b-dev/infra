@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
+	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
@@ -20,15 +21,28 @@ func TestCommandKillNextApp(t *testing.T) {
 	defer cancel()
 
 	client := setup.GetAPIClient()
-	sbx := utils.SetupSandboxWithCleanup(t, client, utils.WithTimeout(300))
 
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	// Run `npx create-next-app`
+	// Pre-bake create-next-app into a template build (fresh-boot VM) instead of
+	// running the page-fault-heavy npm install in the restored sandbox, where
+	// host load has caused guest soft lockups and envd stream EOFs.
 	// Pinned to the latest known-good stable release; `@latest` currently resolves
 	// to a 16.3.0 pre-release that ships a broken SWC binary and 404s on preview.
-	err := utils.ExecCommand(t, ctx, sbx, envdClient, "npx", "create-next-app@16.2.8", "nextapp", "--yes")
-	require.NoError(t, err)
+	tmpl := utils.BuildTemplate(t, utils.TemplateBuildOptions{
+		Name:    "kill-next-app",
+		Timeout: 10 * time.Minute,
+		BuildData: api.TemplateBuildStartV2{
+			FromTemplate: &setup.SandboxTemplateID,
+			Steps: &[]api.TemplateStep{{
+				Type: "RUN",
+				Args: &[]string{"cd /home/user && npx create-next-app@16.2.8 nextapp --yes", "user"},
+			}},
+		},
+		ReqEditors: []api.RequestEditorFn{setup.WithAPIKey()},
+	})
+
+	sbx := utils.SetupSandboxWithCleanup(t, client, utils.WithTimeout(300), utils.WithTemplateID(tmpl.TemplateID))
+
+	envdClient := setup.GetEnvdClient(t, ctx)
 
 	// Run `npm run dev` in background
 	cwd := "~/nextapp"

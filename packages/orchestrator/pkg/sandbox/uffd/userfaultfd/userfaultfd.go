@@ -108,6 +108,19 @@ type Userfaultfd struct {
 	// that has already been closed (and potentially recycled by the OS).
 	closed bool
 
+	// Cumulative demand-fault serve counters, read via ServeStats(). They
+	// mirror the orchestrator.sandbox.uffd.serve metric but as a per-handler
+	// snapshot, so a caller can sample "how many pages did this guest need so
+	// far" at a point in time (e.g. the moment envd init returns). Prefaults
+	// bypass the serve loop and are not counted here. See recordServeStats.
+	servedPages       atomic.Int64 // faults resolved (installed or already-present)
+	servedSourcePages atomic.Int64 // subset installed from the source (page_class=new)
+	servedBytes       atomic.Int64 // bytes installed into the guest (new + zero)
+
+	// genBucket tags this sandbox's serve/prefault metrics with its snapshot
+	// generation range, so fault latency can be cut by chain depth.
+	genBucket generationBucket
+
 	logger logger.Logger
 }
 
@@ -141,8 +154,10 @@ const (
 )
 
 // NewUserfaultfdFromFd creates a new userfaultfd instance. Page size is
-// taken from the FC-registered regions; all regions must agree.
-func NewUserfaultfdFromFd(fd uintptr, src PageReader, m *memory.Mapping, logger logger.Logger) (*Userfaultfd, error) {
+// taken from the FC-registered regions; all regions must agree. generation is
+// the snapshot's pause/resume cycle count (Metadata.Generation), used only to
+// tag this instance's metrics.
+func NewUserfaultfdFromFd(fd uintptr, src PageReader, m *memory.Mapping, generation uint64, logger logger.Logger) (*Userfaultfd, error) {
 	if len(m.Regions) == 0 {
 		return nil, errors.New("memory mapping has no regions")
 	}
@@ -169,6 +184,7 @@ func NewUserfaultfdFromFd(fd uintptr, src PageReader, m *memory.Mapping, logger 
 		prefetchTracker: block.NewPrefetchTracker(int64(pageSize)),
 		ma:              m,
 		wakeupPipe:      wakeupPipe,
+		genBucket:       bucketForGeneration(generation),
 		logger:          logger,
 	}
 	u.wg.SetLimit(maxRequestsInProgress)
@@ -417,7 +433,10 @@ func (u *Userfaultfd) Serve(
 				pclass := pageClassUnknown
 				result := faultResultInstalled
 				var servedBytes int64
-				defer func() { sw.RecordRaw(ctx, servedBytes, serveAttrs[pclass][result]) }()
+				defer func() {
+					sw.RecordRaw(ctx, servedBytes, serveAttrs[u.genBucket][pclass][result])
+					u.recordServeStats(pclass, result, servedBytes)
+				}()
 
 				if h := u.testFaultHook.Load(); h != nil {
 					(*h)(addr, faultPhaseBeforeRLock)

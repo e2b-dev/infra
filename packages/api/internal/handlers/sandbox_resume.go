@@ -227,25 +227,32 @@ func (a *APIStore) buildResumeSandboxData(sandboxID string, autoPauseOverride *b
 		var network *types.SandboxNetworkConfig
 		var autoResume *types.SandboxAutoResumeConfig
 		var volumes []*types.SandboxVolumeMountConfig
+		// Unlike auto_pause (which resume can override via the request body), the
+		// auto-pause snapshot kind is intentionally always inherited from the
+		// snapshot: there is no resume-time override for it. Changing the kind
+		// requires creating a new sandbox with the desired autoPauseMemory.
+		var autoPauseFilesystemOnly bool
 		if snap.Config != nil {
 			network = snap.Config.Network
 			autoResume = snap.Config.AutoResume
 			volumes = snap.Config.VolumeMounts
+			autoPauseFilesystemOnly = snap.Config.AutoPauseFilesystemOnly
 		}
 
 		return orchestrator.SandboxMetadata{
-			Metadata:            snap.Metadata,
-			Build:               build,
-			AllowInternetAccess: snap.AllowInternetAccess,
-			Network:             network,
-			Alias:               alias,
-			TemplateID:          snap.EnvID,
-			BaseTemplateID:      snap.BaseEnvID,
-			AutoPause:           autoPause,
-			AutoResume:          autoResume,
-			VolumeMounts:        convertDatabaseMountsToOrchestratorMounts(volumes),
-			EnvdAccessToken:     envdAccessToken,
-			NodeID:              &nodeID,
+			Metadata:                snap.Metadata,
+			Build:                   build,
+			AllowInternetAccess:     snap.AllowInternetAccess,
+			Network:                 network,
+			Alias:                   alias,
+			TemplateID:              snap.EnvID,
+			BaseTemplateID:          snap.BaseEnvID,
+			AutoPause:               autoPause,
+			AutoPauseFilesystemOnly: autoPauseFilesystemOnly,
+			AutoResume:              autoResume,
+			VolumeMounts:            convertDatabaseMountsToOrchestratorMounts(volumes),
+			EnvdAccessToken:         envdAccessToken,
+			NodeID:                  &nodeID,
 		}, nil
 	}
 }

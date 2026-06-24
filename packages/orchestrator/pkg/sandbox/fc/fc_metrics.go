@@ -122,9 +122,10 @@ func monitorDirtyPageThrottle() {
 	ticker := time.NewTicker(dirtyPollInterval)
 	defer ticker.Stop()
 	for range ticker.C {
-		if n := countBalanceDirtyThreads(); n > 0 {
-			balanceDirtyPageThreads.Add(context.Background(), int64(n))
-		}
+		// Add even when 0 so the counter exports from process start —
+		// otherwise a node that never stalls has no series at all and
+		// dashboards can't tell "no stalls" from "no metric".
+		balanceDirtyPageThreads.Add(context.Background(), int64(countBalanceDirtyThreads()))
 	}
 }
 

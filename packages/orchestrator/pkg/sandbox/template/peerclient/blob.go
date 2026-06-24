@@ -48,6 +48,17 @@ func (b *peerBlob) getBase(ctx context.Context) (storage.Blob, error) {
 	return base, nil
 }
 
+// Metadata reads custom metadata from the base (GCS-backed) blob, never the
+// peer, so the soft-delete marker reflects authoritative storage state.
+func (b *peerBlob) Metadata(ctx context.Context) (storage.ObjectMetadata, error) {
+	base, err := b.getBase(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return storage.BlobCustomMetadata(ctx, base)
+}
+
 func (b *peerBlob) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 	res, err := tryPeer(ctx, &b.peerHandle, "peer-blob-write-to", attrOpWriteTo,
 		func(ctx context.Context) (peerAttempt[int64], error) {
@@ -65,7 +76,7 @@ func (b *peerBlob) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 			}
 
 			reader := newPeerStreamReader(recv, cancel)
-			defer reader.Close()
+			defer reader.Close(context.WithoutCancel(ctx))
 
 			n, err := io.Copy(dst, reader)
 			if err != nil {

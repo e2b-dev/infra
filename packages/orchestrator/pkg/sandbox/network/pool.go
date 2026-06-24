@@ -81,10 +81,29 @@ type Config struct {
 	SandboxTCPFirewallHTTPPort  uint16 `env:"SANDBOX_TCP_FIREWALL_HTTP_PORT"  envDefault:"5016"`
 	SandboxTCPFirewallTLSPort   uint16 `env:"SANDBOX_TCP_FIREWALL_TLS_PORT"   envDefault:"5017"`
 	SandboxTCPFirewallOtherPort uint16 `env:"SANDBOX_TCP_FIREWALL_OTHER_PORT" envDefault:"5018"`
+
+	// 0 disables; valid range 0..63 (DSCP is 6 bits). CS1=8 is the canonical Scavenger class (RFC 3662).
+	SandboxEgressDSCP uint8 `env:"SANDBOX_EGRESS_DSCP" envDefault:"0"`
+}
+
+func (c Config) Validate() error {
+	if c.SandboxEgressDSCP > 63 {
+		return fmt.Errorf("SANDBOX_EGRESS_DSCP=%d out of range (0..63)", c.SandboxEgressDSCP)
+	}
+
+	return nil
 }
 
 func ParseConfig() (Config, error) {
-	return env.ParseAs[Config]()
+	cfg, err := env.ParseAs[Config]()
+	if err != nil {
+		return Config{}, err
+	}
+	if err := cfg.Validate(); err != nil {
+		return Config{}, err
+	}
+
+	return cfg, nil
 }
 
 type Pool struct {
@@ -99,6 +118,10 @@ type Pool struct {
 	newSlots    chan *Slot
 	reusedSlots chan *Slot
 
+	// returnsWG tracks in-flight asynchronous slot returns; Close waits for
+	// it before draining the pool.
+	returnsWG sync.WaitGroup
+
 	slotStorage Storage
 }
 
@@ -108,15 +131,13 @@ func NewPool(newSlotsPoolSize, reusedSlotsPoolSize int, slotStorage Storage, con
 	newSlots := make(chan *Slot, newSlotsPoolSize-1)
 	reusedSlots := make(chan *Slot, reusedSlotsPoolSize)
 
-	pool := &Pool{
+	return &Pool{
 		config:      config,
 		done:        make(chan struct{}),
 		newSlots:    newSlots,
 		reusedSlots: reusedSlots,
 		slotStorage: slotStorage,
 	}
-
-	return pool
 }
 
 func (p *Pool) createNetworkSlot(ctx context.Context) (*Slot, error) {
@@ -153,8 +174,20 @@ func (p *Pool) Populate(ctx context.Context) {
 				continue
 			}
 
-			newSlotsAvailableCounter.Add(ctx, 1)
-			p.newSlots <- slot
+			select {
+			case p.newSlots <- slot:
+				newSlotsAvailableCounter.Add(ctx, 1)
+
+				continue
+			case <-p.done:
+			case <-ctx.Done():
+			}
+
+			if err := p.cleanup(context.WithoutCancel(ctx), slot); err != nil {
+				logger.L().Error(ctx, "[network slot pool]: failed to cleanup created slot while closing", zap.Error(err), zap.Int("slot_index", slot.Idx))
+			}
+
+			return
 		}
 	}
 }
@@ -188,12 +221,11 @@ func (p *Pool) Get(ctx context.Context, network *orchestrator.SandboxNetworkConf
 
 	err := slot.ConfigureInternet(ctx, network)
 	if err != nil {
-		// Return the slot to the pool if configuring internet fails
-		go func() {
-			if returnErr := p.recycle(context.WithoutCancel(ctx), slot); returnErr != nil {
-				logger.L().Error(ctx, "failed to return slot to the pool", zap.Error(returnErr), zap.Int("slot_index", slot.Idx))
-			}
-		}()
+		// Return the slot to the pool if configuring internet fails. The slot
+		// was never handed out, so nobody listens for its release notification.
+		if rerr := p.ReturnAsync(context.WithoutCancel(ctx), slot, func(context.Context, string) {}, 0); rerr != nil {
+			logger.L().Error(ctx, "failed to return slot to the pool", zap.Error(rerr), zap.Int("slot_index", slot.Idx))
+		}
 
 		return nil, fmt.Errorf("error setting slot internet access: %w", err)
 	}
@@ -201,10 +233,10 @@ func (p *Pool) Get(ctx context.Context, network *orchestrator.SandboxNetworkConf
 	return slot, nil
 }
 
-// Return recycles a slot that was used by a sandbox. It waits returnDelay
+// returnSlot recycles a slot that was used by a sandbox. It waits returnDelay
 // before making the slot reusable to let inflight requests on the previous
 // sandbox drain.
-func (p *Pool) Return(ctx context.Context, slot *Slot, releasedFn ReleaseNotify, returnDelay time.Duration) error {
+func (p *Pool) returnSlot(ctx context.Context, slot *Slot, releasedFn ReleaseNotify, returnDelay time.Duration) error {
 	notifyNetworkRelease := sync.OnceFunc(func() {
 		releasedFn(ctx, slot.HostIPString())
 	})
@@ -215,17 +247,9 @@ func (p *Pool) Return(ctx context.Context, slot *Slot, releasedFn ReleaseNotify,
 	// still fall through and clean up the slot to avoid leaking it.
 	select {
 	case <-ctx.Done():
-		if cerr := p.cleanup(ctx, slot); cerr != nil {
-			return errors.Join(ctx.Err(), fmt.Errorf("cleanup slot '%d' on cancelled context: %w", slot.Idx, cerr))
-		}
-
-		return ctx.Err()
+		return p.cleanupWith(ctx, slot, ctx.Err())
 	case <-p.done:
-		if cerr := p.cleanup(ctx, slot); cerr != nil {
-			return errors.Join(ErrClosed, fmt.Errorf("cleanup slot '%d' on closed pool: %w", slot.Idx, cerr))
-		}
-
-		return ErrClosed
+		return p.cleanupWith(ctx, slot, ErrClosed)
 	case <-time.After(returnDelay):
 	}
 
@@ -235,66 +259,97 @@ func (p *Pool) Return(ctx context.Context, slot *Slot, releasedFn ReleaseNotify,
 	return p.recycle(ctx, slot)
 }
 
+// tryTrackReturn registers an in-flight slot return so Close can wait for
+// it. It reports false when the pool is already closed and the caller must
+// process the slot inline.
+func (p *Pool) tryTrackReturn() bool {
+	p.closeMu.RLock()
+	defer p.closeMu.RUnlock()
+
+	if p.closed {
+		return false
+	}
+
+	p.returnsWG.Add(1)
+
+	return true
+}
+
+// ReturnAsync recycles a slot in the background, logging errors instead of
+// returning them. Close waits for all in-flight returns before draining the
+// pool. If the pool is already closed the slot is cleaned up synchronously.
+func (p *Pool) ReturnAsync(ctx context.Context, slot *Slot, releasedFn ReleaseNotify, returnDelay time.Duration) error {
+	if !p.tryTrackReturn() {
+		return p.returnSlot(ctx, slot, releasedFn, returnDelay)
+	}
+
+	go func() {
+		defer p.returnsWG.Done()
+
+		err := p.returnSlot(ctx, slot, releasedFn, returnDelay)
+		switch {
+		case err == nil:
+		case errors.Is(err, ErrClosed), errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+			// Expected when the pool closes or the context ends mid-return.
+			logger.L().Warn(ctx, "network slot returned during pool shutdown", zap.Error(err), zap.Int("slot_index", slot.Idx))
+		default:
+			logger.L().Error(ctx, "failed to return network slot to pool", zap.Error(err), zap.Int("slot_index", slot.Idx))
+		}
+	}()
+
+	return nil
+}
+
 // recycle resets the slot's internet configuration and puts it back into the
 // reused pool, or cleans it up if the pool is full or closed.
 func (p *Pool) recycle(ctx context.Context, slot *Slot) error {
-	err := slot.ResetInternet(ctx)
-	if err != nil {
-		if cerr := p.cleanup(ctx, slot); cerr != nil {
-			return fmt.Errorf("reset internet: %w; cleanup: %w", err, cerr)
-		}
-
-		return fmt.Errorf("error resetting slot internet access: %w", err)
+	if err := slot.ResetInternet(ctx); err != nil {
+		return p.cleanupWith(ctx, slot, fmt.Errorf("error resetting slot internet access: %w", err))
 	}
 
-	// RLock only guards the closed flag and the reusedSlots send. It is
-	// released before cleanup() so Close()'s Lock() is never pinned by a
-	// slow RemoveNetwork syscall (iptables, netlink) running in a
-	// concurrent Return.
+	reused, cause := p.tryReuse(ctx, slot)
+	if reused {
+		return nil
+	}
+
+	// cause is nil when the pool is simply full.
+	return p.cleanupWith(ctx, slot, cause)
+}
+
+// tryReuse attempts to push the slot into the reused pool. The RLock pairs
+// with Close's Lock so a send can never race the drain; cleanup stays
+// outside the lock so Close is never pinned by slow iptables/netlink
+// teardown.
+func (p *Pool) tryReuse(ctx context.Context, slot *Slot) (reused bool, cause error) {
 	p.closeMu.RLock()
+	defer p.closeMu.RUnlock()
 
 	if p.closed {
-		p.closeMu.RUnlock()
-
-		if cerr := p.cleanup(ctx, slot); cerr != nil {
-			return errors.Join(ErrClosed, fmt.Errorf("cleanup slot '%d' on closed pool: %w", slot.Idx, cerr))
-		}
-
-		return ErrClosed
+		return false, ErrClosed
 	}
 
 	select {
 	case <-ctx.Done():
-		p.closeMu.RUnlock()
-
-		if cerr := p.cleanup(ctx, slot); cerr != nil {
-			return errors.Join(ctx.Err(), fmt.Errorf("cleanup slot '%d' on cancelled context: %w", slot.Idx, cerr))
-		}
-
-		return ctx.Err()
+		return false, ctx.Err()
 	case <-p.done:
-		p.closeMu.RUnlock()
-
-		if cerr := p.cleanup(ctx, slot); cerr != nil {
-			return errors.Join(ErrClosed, fmt.Errorf("cleanup slot '%d' on closing pool: %w", slot.Idx, cerr))
-		}
-
-		return ErrClosed
+		return false, ErrClosed
 	case p.reusedSlots <- slot:
 		returnedSlotCounter.Add(ctx, 1)
 		reusableSlotsAvailableCounter.Add(ctx, 1)
-		p.closeMu.RUnlock()
 
-		return nil
+		return true, nil
 	default:
-		p.closeMu.RUnlock()
-
-		if cerr := p.cleanup(ctx, slot); cerr != nil {
-			return fmt.Errorf("failed to return slot '%d': %w", slot.Idx, cerr)
-		}
-
-		return nil
+		return false, nil
 	}
+}
+
+// cleanupWith tears the slot down and attaches any cleanup error to cause.
+func (p *Pool) cleanupWith(ctx context.Context, slot *Slot, cause error) error {
+	if cerr := p.cleanup(ctx, slot); cerr != nil {
+		return errors.Join(cause, fmt.Errorf("cleanup slot '%d': %w", slot.Idx, cerr))
+	}
+
+	return cause
 }
 
 func (p *Pool) cleanup(ctx context.Context, slot *Slot) error {
@@ -325,6 +380,10 @@ func (p *Pool) Close(ctx context.Context) error {
 	p.closeMu.Lock()
 	p.closed = true
 	p.closeMu.Unlock()
+
+	// Wait for in-flight asynchronous returns: each either cleans its slot
+	// up itself or has already pushed it into reusedSlots, drained below.
+	p.returnsWG.Wait()
 
 	var errs []error
 

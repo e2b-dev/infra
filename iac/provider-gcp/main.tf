@@ -60,24 +60,8 @@ locals {
   logs_proxy_port              = 30006
   otel_collector_grpc_port     = 4317
 
-  # Filter out empty / too-short HMAC secrets so that placeholder values left in
-  # Secret Manager on a fresh deploy don't get fed to legacy.NewVerifier, which
-  # rejects secrets shorter than 16 bytes and would fatal the api/dashboard-api
-  # jobs at startup.
-  default_legacy_hmac_secrets = [
-    for s in split(",", trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)) : s
-    if length(s) >= 16
-  ]
-  default_auth_provider_config = length(local.default_legacy_hmac_secrets) > 0 ? {
+  default_auth_provider_config = {
     jwt = []
-    legacy = {
-      hmac = {
-        secrets = local.default_legacy_hmac_secrets
-      }
-    }
-    } : {
-    jwt    = []
-    legacy = null
   }
   # jsonencode/jsondecode strips Terraform's static type info from
   # var.auth_provider_config so that the conditional below does not fail with

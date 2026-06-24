@@ -28,11 +28,14 @@ const (
 	loopDelay = 5 * time.Millisecond
 )
 
-type envdCgroupOp string
+// envdOp is the path segment of a parameterless envd POST endpoint.
+type envdOp string
 
 const (
-	envdCgroupOpFreeze   envdCgroupOp = "freeze"
-	envdCgroupOpUnfreeze envdCgroupOp = "unfreeze"
+	envdOpFreeze   envdOp = "freeze"
+	envdOpUnfreeze envdOp = "unfreeze"
+	envdOpFsfreeze envdOp = "fsfreeze"
+	envdOpFsthaw   envdOp = "fsthaw"
 )
 
 // doRequestWithInfiniteRetries does a request with infinite retries until the context is done.
@@ -97,24 +100,106 @@ func (s *Sandbox) doRequestWithInfiniteRetries(
 // user/pty cgroups directly (no Process.Start, no shell). Used pre-pause
 // with a tight, freeze-only timeout.
 func (s *Sandbox) callEnvdFreeze(ctx context.Context, timeout time.Duration) error {
-	return s.callEnvdCgroupOp(ctx, timeout, envdCgroupOpFreeze)
+	return s.callEnvdPostOp(ctx, timeout, envdOpFreeze)
 }
 
 // callEnvdUnfreeze calls envd's native POST /unfreeze endpoint. Reserved for
 // the pause-failure rollback path; the resume thaw runs via /init's deferred
 // unfreeze and does not use this.
 func (s *Sandbox) callEnvdUnfreeze(ctx context.Context, timeout time.Duration) error {
-	return s.callEnvdCgroupOp(ctx, timeout, envdCgroupOpUnfreeze)
+	return s.callEnvdPostOp(ctx, timeout, envdOpUnfreeze)
 }
 
-func (s *Sandbox) callEnvdCgroupOp(ctx context.Context, timeout time.Duration, op envdCgroupOp) error {
+// callEnvdFsfreeze calls envd's native POST /fsfreeze endpoint to freeze the
+// guest rootfs before a filesystem-only pause, flushing it to a consistent
+// on-disk state.
+func (s *Sandbox) callEnvdFsfreeze(ctx context.Context, timeout time.Duration) error {
+	return s.callEnvdPostOp(ctx, timeout, envdOpFsfreeze)
+}
+
+// callEnvdFsthaw calls envd's native POST /fsthaw endpoint. Reserved for the
+// pause-failure rollback path so a frozen rootfs can't leave the live VM
+// deadlocked.
+func (s *Sandbox) callEnvdFsthaw(ctx context.Context, timeout time.Duration) error {
+	return s.callEnvdPostOp(ctx, timeout, envdOpFsthaw)
+}
+
+func (s *Sandbox) callEnvdPostOp(ctx context.Context, timeout time.Duration, op envdOp) error {
+	return s.postEnvd(ctx, timeout, string(op))
+}
+
+// callEnvdCollapse calls envd's native POST /collapse endpoint, which compacts
+// envd's own anonymous heap into 2 MiB hugepages before pause so it faults
+// fewer distinct frames on resume. Unlike freeze/unfreeze it returns a body:
+// the per-call collapse stats, which the caller records as metrics and span
+// attributes.
+func (s *Sandbox) callEnvdCollapse(ctx context.Context, timeout time.Duration) (envd.CollapseResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	address := fmt.Sprintf("http://%s:%d/%s", s.Slot.HostIPString(), consts.DefaultEnvdServerPort, op)
+	resp, err := s.doEnvdPost(ctx, "collapse")
+	if err != nil {
+		return envd.CollapseResult{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+
+		return envd.CollapseResult{}, fmt.Errorf("collapse returned %d: %s", resp.StatusCode, utils.Truncate(string(body), 100))
+	}
+
+	var result envd.CollapseResult
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return envd.CollapseResult{}, fmt.Errorf("decode collapse result: %w", err)
+	}
+
+	return result, nil
+}
+
+// postEnvd issues an authenticated POST to envd's /<path> endpoint with a tight,
+// dedicated deadline and expects 204 No Content.
+func (s *Sandbox) postEnvd(ctx context.Context, timeout time.Duration, path string) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	resp, err := s.doEnvdPost(ctx, path)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+
+		return fmt.Errorf("%s returned %d: %s", path, resp.StatusCode, utils.Truncate(string(body), 100))
+	}
+
+	return nil
+}
+
+// envdServerURL returns the base URL (scheme://host:port) of the sandbox's envd
+// HTTP server. A non-empty internalConfig.envdServerURLOverride redirects it
+// (test-only; production always uses the slot IP and the default envd port).
+func (s *Sandbox) envdServerURL() string {
+	if s.internalConfig.envdServerURLOverride != "" {
+		return s.internalConfig.envdServerURLOverride
+	}
+
+	return fmt.Sprintf("http://%s:%d", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
+}
+
+// doEnvdPost builds and sends an authenticated POST to envd's /<path> endpoint.
+// The caller owns the returned response and must close its body. Status handling
+// is left to the caller because the endpoints disagree on success: /collapse
+// returns 200 with a body, while the cgroup ops return 204 No Content. The
+// deadline must live on ctx (callers set it via context.WithTimeout) so it
+// stays in force while the caller reads the body.
+func (s *Sandbox) doEnvdPost(ctx context.Context, path string) (*http.Response, error) {
+	address := s.envdServerURL() + "/" + path
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, address, nil)
 	if err != nil {
-		return fmt.Errorf("build %s request: %w", op, err)
+		return nil, fmt.Errorf("build %s request: %w", path, err)
 	}
 	if s.Config.Envd.AccessToken != nil {
 		req.Header.Set("X-Access-Token", *s.Config.Envd.AccessToken)
@@ -122,17 +207,10 @@ func (s *Sandbox) callEnvdCgroupOp(ctx context.Context, timeout time.Duration, o
 
 	resp, err := sandboxHttpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("%s request: %w", op, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNoContent {
-		body, _ := io.ReadAll(resp.Body)
-
-		return fmt.Errorf("%s returned %d: %s", op, resp.StatusCode, utils.Truncate(string(body), 100))
+		return nil, fmt.Errorf("%s request: %w", path, err)
 	}
 
-	return nil
+	return resp, nil
 }
 
 func (s *Sandbox) convertMounts(mounts []VolumeMountConfig) []envd.VolumeMount {

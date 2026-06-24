@@ -43,6 +43,8 @@ type Proxy struct {
 }
 
 func New(logger logger.Logger, networkConfig network.Config, sandboxes *sandbox.Map, meterProvider metric.MeterProvider, featureFlags *featureflags.Client) *Proxy {
+	sandboxEgressTOS.Store(uint32(networkConfig.SandboxEgressDSCP) << 2)
+
 	p := &Proxy{
 		httpPort:     networkConfig.SandboxTCPFirewallHTTPPort,
 		tlsPort:      networkConfig.SandboxTCPFirewallTLSPort,
@@ -179,6 +181,10 @@ func (p *Proxy) Close(_ context.Context) error {
 
 func (p *Proxy) CABundle() string {
 	return ""
+}
+
+func (p *Proxy) SupportsBYOP() bool {
+	return false
 }
 
 // handlerFunc is the signature for connection handlers.

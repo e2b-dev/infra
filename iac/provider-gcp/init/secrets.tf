@@ -200,44 +200,6 @@ resource "google_secret_manager_secret" "postgres_connection_string" {
   depends_on = [time_sleep.secrets_api_wait_60_seconds]
 }
 
-resource "google_secret_manager_secret" "supabase_jwt_secrets" {
-  secret_id = "${var.prefix}supabase-jwt-secrets"
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-resource "google_secret_manager_secret" "supabase_db_connection_string" {
-  secret_id = "${var.prefix}supabase-db-connection-string"
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-resource "google_secret_manager_secret_version" "supabase_db_connection_string" {
-  secret      = google_secret_manager_secret.supabase_db_connection_string.name
-  secret_data = " "
-
-  lifecycle {
-    ignore_changes = [secret_data]
-  }
-}
-
-resource "google_secret_manager_secret_version" "supabase_jwt_secrets" {
-  secret      = google_secret_manager_secret.supabase_jwt_secrets.name
-  secret_data = " "
-
-  lifecycle {
-    ignore_changes = [secret_data]
-  }
-}
-
 
 resource "google_secret_manager_secret" "posthog_api_key" {
   secret_id = "${var.prefix}posthog-api-key"

@@ -30,8 +30,6 @@ func TestSpecSecuritySchemeHeaderNames(t *testing.T) {
 		expectedHeader string
 	}{
 		{"ApiKeyAuth", auth.HeaderAPIKey},
-		{"Supabase1TokenAuth", auth.HeaderSupabaseToken},
-		{"Supabase2TeamAuth", auth.HeaderSupabaseTeam},
 		{"AuthProviderTeamAuth", auth.HeaderTeamID},
 		{"AdminApiKeyAuth", auth.HeaderAdminToken},
 		{"AdminTeamAuth", auth.HeaderTeamID},
@@ -74,8 +72,6 @@ func TestAuthProviderTeamAuthHeaderRoutes(t *testing.T) {
 	schemeHeaders := map[string]string{
 		"ApiKeyAuth":             auth.HeaderAPIKey,
 		"AccessTokenAuth":        auth.HeaderAuthorization,
-		"Supabase1TokenAuth":     auth.HeaderSupabaseToken,
-		"Supabase2TeamAuth":      auth.HeaderSupabaseTeam,
 		"AuthProviderBearerAuth": auth.HeaderAuthorization,
 		"AuthProviderTeamAuth":   auth.HeaderTeamID,
 		"AdminApiKeyAuth":        auth.HeaderAdminToken,
@@ -163,8 +159,6 @@ func TestAdminTeamAuthSchemeOrder(t *testing.T) {
 	schemeHeaders := map[string]string{
 		"ApiKeyAuth":             auth.HeaderAPIKey,
 		"AccessTokenAuth":        auth.HeaderAuthorization,
-		"Supabase1TokenAuth":     auth.HeaderSupabaseToken,
-		"Supabase2TeamAuth":      auth.HeaderSupabaseTeam,
 		"AuthProviderBearerAuth": auth.HeaderAuthorization,
 		"AuthProviderTeamAuth":   auth.HeaderTeamID,
 		"AdminApiKeyAuth":        auth.HeaderAdminToken,

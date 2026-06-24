@@ -18,6 +18,10 @@ inputs:
     description: "Number of frame encode workers"
     required: false
     default: ""
+  disk_size_mb:
+    description: "Base template rootfs disk size in MB. Larger than the create-build default to leave headroom for disk-heavy build steps after the build-reserved-disk-space-mb reservation."
+    required: false
+    default: "2048"
 
 runs:
   using: "composite"
@@ -26,7 +30,8 @@ runs:
       env:
         TEMPLATE_ID: "2j6ly824owf4awgai1xo"
         KERNEL_VERSION: "vmlinux-6.1.158-c1a568c"
-        FIRECRACKER_VERSION: "v1.14.1_bd85e43"
+        FIRECRACKER_VERSION: "v1.14.1_431f1fc"
+        DISK_SIZE_MB: ${{ inputs.disk_size_mb }}
         COMPRESS_ENABLED: ${{ inputs.compress_enabled }}
         COMPRESS_TYPE: ${{ inputs.compress_type }}
         COMPRESS_LEVEL: ${{ inputs.compress_level }}
@@ -50,5 +55,6 @@ runs:
           TEMPLATE_ID=${TEMPLATE_ID} \
           BUILD_ID=${BUILD_ID} \
           KERNEL_VERSION=${KERNEL_VERSION} \
-          FC_VERSION=${FC_VERSION}
+          FC_VERSION=${FC_VERSION} \
+          DISK_SIZE_MB=${DISK_SIZE_MB}
       shell: bash

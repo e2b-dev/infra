@@ -88,17 +88,6 @@ sql:
         sql_package: "pgx/v5"
 
   - engine: "postgresql"
-    queries: "pkg/supabase/sql_queries/**"
-    schema:
-      - "pkg/supabase/schema"
-    gen:
-      go:
-        emit_pointers_for_null_types: true
-        package: "supabasequeries"
-        out: "pkg/supabase/queries/"
-        sql_package: "pgx/v5"
-
-  - engine: "postgresql"
     queries: "pkg/testutils/*.sql"
     schema:
       - "migrations"

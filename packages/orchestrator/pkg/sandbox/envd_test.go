@@ -26,6 +26,7 @@ type mockEgressProxy struct {
 func (m *mockEgressProxy) OnSlotCreate(_ *network.Slot, _ *iptables.IPTables) error { return nil }
 func (m *mockEgressProxy) OnSlotDelete(_ *network.Slot, _ *iptables.IPTables) error { return nil }
 func (m *mockEgressProxy) CABundle() string                                         { return m.bundle }
+func (m *mockEgressProxy) SupportsBYOP() bool                                       { return false }
 
 // newTestSandboxWithBundle builds a minimal Sandbox with CABundle set —
 // mirroring what Factory.CreateSandbox does with f.egressProxy.CABundle().

@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
@@ -38,6 +39,10 @@ const uploadedBuildsTTL = 1 * time.Hour
 // MaxStartingInstancesPerNode feature flag and resize the semaphore.
 const startingSandboxesLimitRefreshInterval = 30 * time.Second
 
+// uploadDrainLogInterval is how often Close logs progress while waiting for
+// in-flight snapshot uploads to finish during shutdown.
+const uploadDrainLogInterval = 10 * time.Second
+
 type Server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 	orchestrator.UnimplementedChunkServiceServer
@@ -58,6 +63,13 @@ type Server struct {
 	uploads               *sandbox.Uploads
 	sandboxCreateDuration metric.Int64Histogram
 	sandboxKilledCounter  metric.Int64Counter
+	uploadFailedCounter   metric.Int64Counter
+
+	// uploadsWG tracks in-flight async snapshot uploads so a graceful shutdown
+	// can wait for them to finish instead of dropping them. uploadsInFlight is
+	// the live count, used to log drain progress during shutdown.
+	uploadsWG       sync.WaitGroup
+	uploadsInFlight atomic.Int64
 
 	done      chan struct{}
 	closeOnce sync.Once
@@ -123,6 +135,12 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 	}
 	server.sandboxKilledCounter = sandboxKilledCounter
 
+	uploadFailedCounter, err := telemetry.GetCounter(meter, telemetry.OrchestratorSnapshotUploadFailedCounterName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register snapshot upload failed counter: %w", err)
+	}
+	server.uploadFailedCounter = uploadFailedCounter
+
 	_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(_ context.Context, observer metric.Int64Observer) error {
 		observer.Observe(int64(server.sandboxFactory.Sandboxes.Count()))
 
@@ -140,7 +158,7 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 	_, err = meter.RegisterCallback(
 		func(_ context.Context, obs metric.Observer) error {
 			obs.ObserveInt64(statusGauge, 1, metric.WithAttributes(
-				attribute.String("status", server.info.GetStatus().String()),
+				attribute.String("status", server.info.GetStatus().Status.String()),
 				attribute.String("version", server.info.SourceVersion),
 				attribute.String("commit", server.info.SourceCommit),
 			))
@@ -195,14 +213,59 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 	return server, nil
 }
 
-func (s *Server) Close() error {
+func (s *Server) Close(ctx context.Context) error {
 	s.closeOnce.Do(func() {
 		close(s.done)
 	})
 
+	// Wait for in-flight snapshot uploads to finish so a graceful shutdown
+	// doesn't drop a snapshot that is still uploading. ctx is cancelled on a
+	// forced stop, in which case we stop waiting and let the process exit.
+	uploadsDone := make(chan struct{})
+	go func() {
+		s.uploadsWG.Wait()
+		close(uploadsDone)
+	}()
+
+	s.drainUploads(ctx, uploadsDone)
+
 	s.uploadedBuilds.Stop()
 
 	return nil
+}
+
+// drainUploads waits for in-flight snapshot uploads to finish, logging progress
+// periodically, until they complete or ctx is cancelled (forced stop).
+func (s *Server) drainUploads(ctx context.Context, uploadsDone <-chan struct{}) {
+	inFlight := s.uploadsInFlight.Load()
+	if inFlight == 0 {
+		return
+	}
+
+	logger.L().Info(ctx, "waiting for in-flight snapshot uploads to finish", zap.Int64("uploads", inFlight))
+
+	ticker := time.NewTicker(uploadDrainLogInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-uploadsDone:
+			logger.L().Info(ctx, "all in-flight snapshot uploads finished")
+
+			return
+		case <-ctx.Done():
+			logger.L().Warn(ctx, "shutting down with snapshot uploads still in flight",
+				zap.Int64("uploads", s.uploadsInFlight.Load()),
+				zap.Error(context.Cause(ctx)),
+			)
+
+			return
+		case <-ticker.C:
+			logger.L().Info(ctx, "still waiting for in-flight snapshot uploads",
+				zap.Int64("uploads", s.uploadsInFlight.Load()),
+			)
+		}
+	}
 }
 
 func (s *Server) refreshStartingSandboxesLimit(ctx context.Context) {

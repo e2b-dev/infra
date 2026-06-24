@@ -109,14 +109,23 @@ func newDiffHeader(metadata *Metadata, mapping []BuildMap, sourceBuilds map[uuid
 		return nil, err
 	}
 
-	if sourceBuilds != nil {
-		// h.Mapping.Builds() is already deduped at NewMapping construction;
-		// no need for an oversized temp set keyed by len(mapping).
-		h.Builds = make(map[uuid.UUID]BuildData, len(sourceBuilds))
-		for _, id := range h.Mapping.Builds() {
-			if bd, ok := sourceBuilds[id]; ok {
-				h.Builds[id] = bd
-			}
+	// Carry every still-referenced ancestor forward, backfilling the uncompressed
+	// sentinel (zero BuildData) for the ones the source lacks — the same gap
+	// LoadHeader closes for stored headers. Without it a legacy (pre-header)
+	// ancestor is absent from Builds, so the read path issues a doomed proactive
+	// header load for it before falling back to uncompressed. Self is left out: a
+	// pending header carries no self entry by design (its data is still local and
+	// served from the cache), and the finalized header swapped in at upload
+	// carries the real self entry — never a zero sentinel.
+	h.Builds = make(map[uuid.UUID]BuildData, len(h.Mapping.Builds()))
+	for _, id := range h.Mapping.Builds() {
+		if id == metadata.BuildId || id == uuid.Nil {
+			continue
+		}
+		if bd, ok := sourceBuilds[id]; ok {
+			h.Builds[id] = bd
+		} else {
+			h.Builds[id] = BuildData{}
 		}
 	}
 
@@ -178,14 +187,38 @@ func (t *Header) GetShiftedMapping(ctx context.Context, offset int64) (BuildMap,
 	return b, nil
 }
 
-// GetBuildFrameData returns the FrameTable for a build, or nil.
-// nil means the build is uncompressed — the caller reads raw bytes instead.
+// GetBuildFrameData returns the FrameTable for a build: nil = no entry,
+// storage.UncompressedFrameTable = authoritatively uncompressed, else
+// compressed.
 func (t *Header) GetBuildFrameData(buildID uuid.UUID) *storage.FrameTable {
-	if t.Builds == nil {
+	bd, ok := t.Builds[buildID]
+	if !ok {
 		return nil
 	}
+	if bd.FrameData == nil {
+		return storage.UncompressedFrameTable
+	}
 
-	return t.Builds[buildID].FrameData
+	return bd.FrameData
+}
+
+// SelfBuildData returns the size and full FrameTable for the header's own
+// build (t.Metadata.BuildId). Errors when the self entry is missing — only
+// possible with peer-served incomplete headers, never with storage-uploaded
+// ones (build_upload_v4 always populates self before publish).
+//
+// This is the *only* place the FullFrameTable upcast happens in production:
+// Builds[id].FrameData is typed *FrameTable to match the trimmed-FT case
+// where our header carries only the frames we mapped from an ancestor. For
+// the self entry, build_upload_v4 always stores the complete table, so the
+// upcast via storage.FullFromTable is sound.
+func (t *Header) SelfBuildData() (int64, *storage.FullFrameTable, error) {
+	bd, hasSelf := t.Builds[t.Metadata.BuildId]
+	if !hasSelf {
+		return 0, nil, fmt.Errorf("header for build %s has no self entry (peer-served incomplete?)", t.Metadata.BuildId)
+	}
+
+	return bd.Size, storage.FullFromTable(bd.FrameData), nil
 }
 
 func (t *Header) getMapping(ctx context.Context, offset int64) (BuildMap, int64, error) {

@@ -58,7 +58,7 @@ func NewStorage(
 		}
 
 		var err error
-		h, err = header.LoadHeader(ctx, persistence, hdrPath)
+		h, _, err = header.LoadHeader(ctx, persistence, hdrPath)
 		if err != nil && !errors.Is(err, storage.ErrObjectNotExist) {
 			return nil, err
 		}
@@ -121,6 +121,8 @@ func NewStorage(
 			return nil, fmt.Errorf("failed to create header for old style template: %w", err)
 		}
 	}
+
+	recordHeaderShape(ctx, fileType, h)
 
 	b := build.NewFile(h, store, fileType, persistence, metrics)
 

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -61,27 +63,50 @@ func DeserializeBytes(data []byte) (*Header, error) {
 	}
 }
 
+func backfillMissingV3UncompressedBuilds(h *Header) {
+	for _, bid := range h.Mapping.Builds() {
+		if _, ok := h.Builds[bid]; ok {
+			continue
+		}
+		if h.Builds == nil {
+			h.Builds = make(map[uuid.UUID]BuildData)
+		}
+		h.Builds[bid] = BuildData{}
+	}
+}
+
 // LoadHeader fetches a serialized header from storage and deserializes it.
-// Errors (including storage.ErrObjectNotExist) are returned as-is.
-func LoadHeader(ctx context.Context, s storage.StorageProvider, path string) (*Header, error) {
+// Returns the on-wire byte count alongside the header so callers can attribute
+// it to throughput telemetry. Errors (including storage.ErrObjectNotExist) are
+// returned as-is.
+func LoadHeader(ctx context.Context, s storage.StorageProvider, path string) (*Header, int, error) {
 	blob, err := s.OpenBlob(ctx, path, storage.MetadataObjectType)
 	if err != nil {
-		return nil, fmt.Errorf("open blob %s: %w", path, err)
+		return nil, 0, fmt.Errorf("open blob %s: %w", path, err)
 	}
 
 	data, err := storage.GetBlob(ctx, blob)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return DeserializeBytes(data)
+	h, err := DeserializeBytes(data)
+	if err != nil {
+		return nil, len(data), err
+	}
+
+	if !h.IncompletePendingUpload {
+		backfillMissingV3UncompressedBuilds(h)
+	}
+
+	return h, len(data), nil
 }
 
 // StoreHeader serializes a header, uploads it, and returns the effective
 // compression config plus the stored and pre-compression byte counts. V3 has
 // no inner compression so the counts match and cfg is the zero value. Refuses
 // to persist a header still flagged as in-flight.
-func StoreHeader(ctx context.Context, s storage.StorageProvider, path string, h *Header) (cfg storage.CompressConfig, stored, uncompressed int64, err error) {
+func StoreHeader(ctx context.Context, s storage.StorageProvider, path string, h *Header, opts ...storage.PutOption) (cfg storage.CompressConfig, stored, uncompressed int64, err error) {
 	if h == nil {
 		return storage.CompressConfig{}, 0, 0, errors.New("header is nil")
 	}
@@ -128,7 +153,7 @@ func StoreHeader(ctx context.Context, s storage.StorageProvider, path string, h 
 		return storage.CompressConfig{}, 0, 0, fmt.Errorf("open blob %s: %w", path, err)
 	}
 
-	if err := blob.Put(ctx, data); err != nil {
+	if err := blob.Put(ctx, data, opts...); err != nil {
 		return storage.CompressConfig{}, 0, 0, fmt.Errorf("put blob %s: %w", path, err)
 	}
 

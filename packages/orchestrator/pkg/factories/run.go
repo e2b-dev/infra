@@ -224,7 +224,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 		return false
 	}
 
-	serviceInfo := service.NewInfoContainer(ctx, nodeID, version, commitSHA, serviceInstanceID, machineInfo, config)
+	serviceInfo := service.NewInfoContainer(nodeID, version, commitSHA, serviceInstanceID, machineInfo, config)
 
 	serviceError := make(chan error)
 	defer close(serviceError)
@@ -678,8 +678,8 @@ func run(config cfg.Config, opts Options) (success bool) {
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create orchestrator server", zap.Error(err))
 	}
-	closers = append(closers, closer{"orchestrator server", func(context.Context) error {
-		return orchestratorService.Close()
+	closers = append(closers, closer{"orchestrator server", func(ctx context.Context) error {
+		return orchestratorService.Close(ctx)
 	}})
 
 	// template manager sandbox logger
@@ -867,7 +867,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	// Mark service draining if not already.
 	// If service stats was previously changed via API, we don't want to override it.
 	logger.L().Info(ctx, "Starting drain phase", zap.Int("sandbox_count", sandboxes.Count()))
-	if status := serviceInfo.GetStatus(); status == orchestratorinfo.ServiceInfoStatus_Healthy || status == orchestratorinfo.ServiceInfoStatus_Standby {
+	if status := serviceInfo.GetStatus().Status; status == orchestratorinfo.ServiceInfoStatus_Healthy || status == orchestratorinfo.ServiceInfoStatus_Standby {
 		serviceInfo.SetStatus(ctx, orchestratorinfo.ServiceInfoStatus_Draining)
 
 		// Wait for draining state to propagate to all consumers

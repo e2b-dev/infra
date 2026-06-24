@@ -45,6 +45,7 @@ type SandboxConfig struct {
 	metadata            api.SandboxMetadata
 	timeout             int32
 	autoPause           bool
+	autoPauseMemory     *bool
 	autoResume          *api.SandboxAutoResumeConfig
 	network             *api.SandboxNetworkConfig
 	allowInternetAccess *bool
@@ -74,6 +75,14 @@ func WithTimeout(timeout int32) SandboxOption {
 func WithAutoPause(autoPause bool) SandboxOption {
 	return func(config *SandboxConfig) {
 		config.autoPause = autoPause
+	}
+}
+
+// WithAutoPauseMemory controls the snapshot kind taken when the sandbox
+// auto-pauses on timeout. false requests a filesystem-only auto-pause.
+func WithAutoPauseMemory(memory bool) SandboxOption {
+	return func(config *SandboxConfig) {
+		config.autoPauseMemory = &memory
 	}
 }
 
@@ -141,6 +150,7 @@ func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options .
 			Timeout:             &config.timeout,
 			Metadata:            &config.metadata,
 			AutoPause:           &config.autoPause,
+			AutoPauseMemory:     config.autoPauseMemory,
 			AutoResume:          config.autoResume,
 			Network:             config.network,
 			AllowInternetAccess: config.allowInternetAccess,

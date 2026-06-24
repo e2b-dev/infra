@@ -94,4 +94,11 @@ jobs:
       - name: Build and upload images
         env:
           AUTO_CONFIRM_DEPLOY: true
+          ENVD_UPLOAD_MODE: versioned
         run: make build-and-upload
+
+      - name: Promote envd in staging
+        if: ${{ matrix.environment == 'staging' }}
+        env:
+          ENVD_COMMIT_SHA: ${{ github.sha }}
+        run: make -C packages/envd promote

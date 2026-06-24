@@ -62,6 +62,10 @@ func (o *Orchestrator) setupMetrics(meterProvider metric.MeterProvider) error {
 		return fmt.Errorf("failed to create sandboxes counter: %w", err)
 	}
 
+	if o.resumeOriginNodeRemapCounter, err = telemetry.GetCounter(meter, telemetry.ApiOrchestratorResumeOriginNodeRemap); err != nil {
+		return fmt.Errorf("failed to create resume origin node remap counter: %w", err)
+	}
+
 	// Observable gauge that reads sandbox counts from Redis on each collection interval.
 	// This replaces the old UpDownCounter which drifted across multiple API instances.
 	sandboxCountGauge, err := telemetry.GetGaugeInt(meter, telemetry.SandboxCountGaugeName)

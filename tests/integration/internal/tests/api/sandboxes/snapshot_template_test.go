@@ -419,7 +419,7 @@ func TestSnapshotTemplateConcurrentOperations(t *testing.T) {
 		snapshotDone := startSnapshotInBackground(t, c, sbx.SandboxID)
 		waitForSnapshotting(t, db, sbx.SandboxID)
 
-		pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbx.SandboxID, setup.WithAPIKey())
+		pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbx.SandboxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusNoContent, pauseResp.StatusCode(),
 			"pause during snapshotting should wait and succeed, body: %s", string(pauseResp.Body))
