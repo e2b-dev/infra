@@ -47,6 +47,10 @@ func GetNodeID() string {
 	return utils.RequiredEnv("NODE_ID", "Node ID of the instance node is required")
 }
 
+func GetTelemetryGroupName() string {
+	return os.Getenv("TELEMETRY_GROUP_NAME")
+}
+
 func LogsCollectorAddress() string {
 	return os.Getenv("LOGS_COLLECTOR_ADDRESS")
 }

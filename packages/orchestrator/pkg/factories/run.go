@@ -249,6 +249,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 		version,
 		serviceInstanceID,
 		attribute.Key("host.labels").StringSlice(config.NodeLabels),
+		attribute.String("group.name", env.GetTelemetryGroupName()),
 	)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to init telemetry", zap.Error(err))
