@@ -18,6 +18,13 @@ func (s *ServerStore) InitLayerFileUpload(ctx context.Context, in *templatemanag
 	ctx, childSpan := tracer.Start(ctx, "template-create")
 	defer childSpan.End()
 
+	// Intentionally not gated on drain. This only mints a signed upload URL and
+	// checks existence in shared, content-addressed build storage; the
+	// orchestrator is not in the upload data path, so the client's upload to
+	// storage is unaffected by this node draining, and the cached layer is
+	// usable by a build on any node. Any in-flight RPC is drained by the gRPC
+	// server's GracefulStop during shutdown.
+
 	// default to scope by template ID
 	cacheScope := in.GetTemplateID()
 	if in.CacheScope != nil {

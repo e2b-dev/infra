@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/draingate"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
@@ -53,6 +54,7 @@ type ServerStore struct {
 
 	wg           *sync.WaitGroup // wait group for running builds
 	activeBuilds atomic.Int64    // counter for active builds (for debugging)
+	drainGate    draingate.Gate
 
 	closers []closeable
 }
@@ -135,24 +137,25 @@ func New(
 	return store, nil
 }
 
+// Close releases resources held by the template server, such as remote
+// repository clients. Waiting for builds to drain is handled separately by
+// Wait, so closers always run even if ctx is already canceled (for example
+// during a timed-out shutdown).
 func (s *ServerStore) Close(ctx context.Context) error {
-	select {
-	case <-ctx.Done():
-		return errors.New("force exit, not waiting for builds to finish")
-	default:
-		var closersErr error
-		for _, closer := range s.closers {
-			err := closer.Close()
-			if err != nil {
-				closersErr = errors.Join(closersErr, err)
-			}
-		}
-		if closersErr != nil {
-			return fmt.Errorf("failed to close services: %w", closersErr)
-		}
+	s.StartDraining(ctx)
 
-		return nil
+	var closersErr error
+	for _, closer := range s.closers {
+		err := closer.Close()
+		if err != nil {
+			closersErr = errors.Join(closersErr, err)
+		}
 	}
+	if closersErr != nil {
+		return fmt.Errorf("failed to close services: %w", closersErr)
+	}
+
+	return nil
 }
 
 // Wait gracefully drains in-flight template builds during shutdown. It waits
@@ -160,13 +163,19 @@ func (s *ServerStore) Close(ctx context.Context) error {
 // period to read the final build status. It returns ctx.Err() if ctx is
 // cancelled before the drain completes.
 func (s *ServerStore) Wait(ctx context.Context) error {
-	s.logger.Info(ctx, "Waiting for all build jobs to finish", zap.Int64("active_builds", s.activeBuilds.Load()))
+	s.StartDraining(ctx)
+
+	if err := s.waitTemplateOperationStarts(ctx); err != nil {
+		return err
+	}
+
+	s.log().Info(ctx, "Waiting for all build jobs to finish", zap.Int64("active_builds", s.activeBuilds.Load()))
 	if err := utils.WaitGroupWait(ctx, s.wg); err != nil {
 		return fmt.Errorf("waiting for template builds: %w", err)
 	}
 
 	if !env.IsLocal() {
-		s.logger.Info(ctx, "Waiting for consumers to check build status")
+		s.log().Info(ctx, "Waiting for consumers to check build status")
 		select {
 		case <-time.After(consumerStatusCheckGracePeriod):
 		case <-ctx.Done():
@@ -174,7 +183,7 @@ func (s *ServerStore) Wait(ctx context.Context) error {
 		}
 	}
 
-	s.logger.Info(ctx, "Template build queue cleaned")
+	s.log().Info(ctx, "Template build queue cleaned")
 
 	return nil
 }

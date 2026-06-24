@@ -104,6 +104,12 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		telemetry.WithEnvdVersion(req.GetSandbox().GetEnvdVersion()),
 	)
 
+	releaseSandboxStart, err := s.enterSandboxStart(ctx, "sandbox-create")
+	if err != nil {
+		return nil, err
+	}
+	defer releaseSandboxStart()
+
 	// setup launch darkly
 	ctx = featureflags.AddToContext(
 		ctx,
@@ -686,6 +692,10 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		telemetry.WithSandboxID(in.GetSandboxId()),
 		telemetry.WithBuildID(in.GetBuildId()),
 	)
+
+	// Checkpoint is a user-initiated snapshot, so it is intentionally not gated by
+	// the drain gate and must keep working while the node is draining. It never
+	// enters the start gate, so its internal resume is not rejected mid-drain.
 
 	sbx, ok := s.sandboxFactory.Sandboxes.Get(in.GetSandboxId())
 	if !ok {
