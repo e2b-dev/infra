@@ -77,7 +77,7 @@ func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
 		if errors.Is(err, catalog.ErrSandboxNotFound) {
-			nodeIP, res, pausedErr := handlePausedSandbox(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken, pausedChecker, featureFlags)
+			nodeIP, res, pausedErr := handlePausedSandbox(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken, pausedChecker)
 			if pausedErr != nil {
 				return "", pausedErr
 			}
@@ -101,15 +101,8 @@ func handlePausedSandbox(
 	trafficAccessToken string,
 	envdAccessToken string,
 	pausedChecker PausedSandboxResumer,
-	featureFlags *featureflags.Client,
 ) (string, autoResumeResult, error) {
 	if pausedChecker == nil {
-		return "", autoResumeNotAllowed, nil
-	}
-
-	if !featureFlags.BoolFlag(ctx, featureflags.SandboxAutoResumeFlag, featureflags.SandboxContext(sandboxId)) {
-		logger.L().Debug(ctx, "sandbox auto-resume disabled; skipping api resume", logger.WithSandboxID(sandboxId))
-
 		return "", autoResumeNotAllowed, nil
 	}
 

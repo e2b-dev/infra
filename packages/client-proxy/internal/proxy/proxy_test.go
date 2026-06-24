@@ -50,11 +50,10 @@ func (r *recordingResumer) Resume(_ context.Context, sandboxID string, sandboxPo
 	return "10.0.0.1", nil
 }
 
-func newFF(t *testing.T, autoResumeEnabled bool) *featureflags.Client {
+func newFF(t *testing.T) *featureflags.Client {
 	t.Helper()
 
 	source := ldtestdata.DataSource()
-	source.Update(source.Flag(featureflags.SandboxAutoResumeFlag.Key()).VariationForAll(autoResumeEnabled))
 
 	ff, err := featureflags.NewClientWithDatasource(source)
 	require.NoError(t, err)
@@ -80,7 +79,7 @@ func TestCatalogResolution_CatalogHit(t *testing.T) {
 	t.Parallel()
 
 	c := catalog.NewRedisSandboxCatalog(redis_utils.SetupInstance(t))
-	ff := newFF(t, true)
+	ff := newFF(t)
 
 	err := c.StoreSandbox(t.Context(), "sbx", &catalog.SandboxInfo{
 		OrchestratorIP: "10.0.0.1",
@@ -156,7 +155,7 @@ func TestCatalogResolution_CatalogHit_EmptyIPReturnsRouteUnavailable(t *testing.
 	t.Parallel()
 
 	c := catalog.NewRedisSandboxCatalog(redis_utils.SetupInstance(t))
-	ff := newFF(t, true)
+	ff := newFF(t)
 
 	err := c.StoreSandbox(t.Context(), "sbx", &catalog.SandboxInfo{
 		OrchestratorIP: "",
@@ -174,7 +173,7 @@ func TestCatalogResolution_CatalogMiss(t *testing.T) {
 	t.Parallel()
 
 	c := catalog.NewRedisSandboxCatalog(redis_utils.SetupInstance(t))
-	ff := newFF(t, true)
+	ff := newFF(t)
 
 	_, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil, ff)
 	require.ErrorIs(t, err, ErrNodeNotFound)
@@ -203,7 +202,7 @@ func (e errorCatalog) Close(_ context.Context) error {
 func TestCatalogResolution_CatalogReturnsGenericError(t *testing.T) {
 	t.Parallel()
 
-	ff := newFF(t, true)
+	ff := newFF(t)
 	c := errorCatalog{err: errors.New("catalog unavailable")}
 
 	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil, ff)
@@ -218,7 +217,7 @@ func TestCatalogResolution_CatalogMiss_ResumeEmptyIPReturnsRouteUnavailable(t *t
 	t.Parallel()
 
 	c := catalog.NewRedisSandboxCatalog(redis_utils.SetupInstance(t))
-	ff := newFF(t, true)
+	ff := newFF(t)
 
 	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, stubResumer{nodeIP: ""}, ff)
 	require.ErrorIs(t, err, ErrNodeRouteUnavailable)
@@ -233,7 +232,6 @@ func TestHandlePausedSandbox(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		autoResume bool
 		resumer    PausedSandboxResumer
 		trafficTok string
 		envdTok    string
@@ -244,42 +242,30 @@ func TestHandlePausedSandbox(t *testing.T) {
 	}{
 		{
 			name:       "no resumer",
-			autoResume: true,
 			resumer:    nil,
 			wantResult: autoResumeNotAllowed,
 		},
 		{
 			name:       "no resumer ignores tokens",
-			autoResume: true,
 			resumer:    nil,
 			trafficTok: "wrong-token",
 			envdTok:    "envd-token",
 			wantResult: autoResumeNotAllowed,
 		},
 		{
-			name:       "flag disabled",
-			autoResume: false,
-			resumer:    stubResumer{nodeIP: "10.0.0.1"},
-			trafficTok: "token",
-			wantResult: autoResumeNotAllowed,
-		},
-		{
 			name:       "resume returns not found",
-			autoResume: true,
 			resumer:    stubResumer{err: status.Error(codes.NotFound, "not allowed")},
 			trafficTok: "token",
 			wantResult: autoResumeNotAllowed,
 		},
 		{
 			name:       "resume returns snapshot not found",
-			autoResume: true,
 			resumer:    stubResumer{err: status.Error(codes.NotFound, "snapshot not found")},
 			trafficTok: "token",
 			wantResult: autoResumeNotAllowed,
 		},
 		{
 			name:       "resume permission denied",
-			autoResume: true,
 			resumer:    stubResumer{err: status.Error(codes.PermissionDenied, "permission denied")},
 			trafficTok: "token",
 			wantResult: autoResumePermissionDenied,
@@ -293,7 +279,6 @@ func TestHandlePausedSandbox(t *testing.T) {
 		},
 		{
 			name:       "resume resource exhausted",
-			autoResume: true,
 			resumer:    stubResumer{err: status.Error(codes.ResourceExhausted, "rate limit hit")},
 			trafficTok: "token",
 			wantResult: autoResumeResourceExhausted,
@@ -308,7 +293,6 @@ func TestHandlePausedSandbox(t *testing.T) {
 		},
 		{
 			name:       "resume still transitioning",
-			autoResume: true,
 			resumer:    stubResumer{err: status.Error(codes.FailedPrecondition, proxygrpc.SandboxStillTransitioningMessage)},
 			trafficTok: "token",
 			wantResult: autoResumeErrored,
@@ -322,7 +306,6 @@ func TestHandlePausedSandbox(t *testing.T) {
 		},
 		{
 			name:       "failed precondition with other message stays generic",
-			autoResume: true,
 			resumer:    stubResumer{err: failedPreconditionErr},
 			trafficTok: "token",
 			wantResult: autoResumeErrored,
@@ -336,7 +319,6 @@ func TestHandlePausedSandbox(t *testing.T) {
 		},
 		{
 			name:       "resume returns generic grpc error",
-			autoResume: true,
 			resumer:    stubResumer{err: unavailableErr},
 			trafficTok: "token",
 			wantResult: autoResumeErrored,
@@ -344,7 +326,6 @@ func TestHandlePausedSandbox(t *testing.T) {
 		},
 		{
 			name:       "resume succeeds",
-			autoResume: true,
 			resumer:    stubResumer{nodeIP: "10.0.0.1"},
 			trafficTok: "token",
 			wantNodeIP: "10.0.0.1",
@@ -352,7 +333,6 @@ func TestHandlePausedSandbox(t *testing.T) {
 		},
 		{
 			name:       "resume succeeds with empty ip",
-			autoResume: true,
 			resumer:    stubResumer{nodeIP: ""},
 			trafficTok: "token",
 			wantResult: autoResumeErrored,
@@ -364,8 +344,7 @@ func TestHandlePausedSandbox(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			ff := newFF(t, tt.autoResume)
-			nodeIP, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, tt.trafficTok, tt.envdTok, tt.resumer, ff)
+			nodeIP, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, tt.trafficTok, tt.envdTok, tt.resumer)
 
 			require.Equal(t, tt.wantResult, res)
 			require.Equal(t, tt.wantNodeIP, nodeIP)
@@ -385,10 +364,9 @@ func TestHandlePausedSandbox(t *testing.T) {
 func TestHandlePausedSandbox_PassesPortAndTokenToResumer(t *testing.T) {
 	t.Parallel()
 
-	ff := newFF(t, true)
 	resumer := &recordingResumer{}
 
-	nodeIP, res, err := handlePausedSandbox(t.Context(), "sbx", 49983, "token", "envd-token", resumer, ff)
+	nodeIP, res, err := handlePausedSandbox(t.Context(), "sbx", 49983, "token", "envd-token", resumer)
 	require.NoError(t, err)
 	require.Equal(t, autoResumeSucceeded, res)
 	require.Equal(t, "10.0.0.1", nodeIP)
@@ -402,7 +380,7 @@ func TestNewClientProxy_Construction(t *testing.T) {
 	t.Parallel()
 
 	c := catalog.NewRedisSandboxCatalog(redis_utils.SetupInstance(t))
-	ff := newFF(t, true)
+	ff := newFF(t)
 
 	p, err := NewClientProxy(noopmetric.NewMeterProvider(), "test-service", 0, c, nil, ff)
 	require.NoError(t, err)
@@ -475,7 +453,7 @@ func TestNewClientProxy_HandlerErrors(t *testing.T) {
 			t.Parallel()
 
 			c := catalog.NewRedisSandboxCatalog(redis_utils.SetupInstance(t))
-			ff := newFF(t, true)
+			ff := newFF(t)
 			p, err := NewClientProxy(noopmetric.NewMeterProvider(), "handler-errors-"+tt.name, uint16(i), c, tt.resumer, ff)
 			require.NoError(t, err)
 
@@ -495,7 +473,7 @@ func TestNewClientProxy_DuplicateMetricsRegistrationReturnsErrors(t *testing.T) 
 	t.Parallel()
 
 	c := catalog.NewRedisSandboxCatalog(redis_utils.SetupInstance(t))
-	ff := newFF(t, true)
+	ff := newFF(t)
 
 	// noop meter provider should not error; this is a sanity test that NewClientProxy
 	// works repeatedly for separate service names without leaking metric registrations.
@@ -510,7 +488,7 @@ func TestNewClientProxy_HasIdleTimeout(t *testing.T) {
 	t.Parallel()
 
 	c := catalog.NewRedisSandboxCatalog(redis_utils.SetupInstance(t))
-	ff := newFF(t, true)
+	ff := newFF(t)
 
 	p, err := NewClientProxy(noopmetric.NewMeterProvider(), "service-idle", 0, c, nil, ff)
 	require.NoError(t, err)
@@ -523,7 +501,7 @@ func TestNewClientProxy_PoolAccessors(t *testing.T) {
 	t.Parallel()
 
 	c := catalog.NewRedisSandboxCatalog(redis_utils.SetupInstance(t))
-	ff := newFF(t, true)
+	ff := newFF(t)
 
 	p, err := NewClientProxy(noopmetric.NewMeterProvider(), "service-pool", 0, c, nil, ff)
 	require.NoError(t, err)
