@@ -20,8 +20,9 @@ type (
 )
 
 const (
-	ApiOrchestratorCreatedSandboxes CounterType = "api.orchestrator.created_sandboxes"
-	SandboxCreateMeterName          CounterType = "api.env.instance.started"
+	ApiOrchestratorCreatedSandboxes      CounterType = "api.orchestrator.created_sandboxes"
+	ApiOrchestratorResumeOriginNodeRemap CounterType = "api.orchestrator.resume_origin_node_remapped"
+	SandboxCreateMeterName               CounterType = "api.env.instance.started"
 
 	TeamSandboxCreated CounterType = "e2b.team.sandbox.created"
 
@@ -197,6 +198,7 @@ const (
 var counterDesc = map[CounterType]string{
 	SandboxCreateMeterName:                      "Number of currently waiting requests to create a new sandbox",
 	ApiOrchestratorCreatedSandboxes:             "Number of successfully created sandboxes",
+	ApiOrchestratorResumeOriginNodeRemap:        "Number of resume snapshots repointed to the fallback node a previous resume timed out on",
 	BuildResultCounterName:                      "Number of template build results",
 	BuildCacheResultCounterName:                 "Number of build cache results",
 	TeamSandboxCreated:                          "Counter of started sandboxes for the team in the interval",
@@ -226,6 +228,7 @@ var counterDesc = map[CounterType]string{
 var counterUnits = map[CounterType]string{
 	SandboxCreateMeterName:                      "{sandbox}",
 	ApiOrchestratorCreatedSandboxes:             "{sandbox}",
+	ApiOrchestratorResumeOriginNodeRemap:        "{snapshot}",
 	BuildResultCounterName:                      "{build}",
 	BuildCacheResultCounterName:                 "{layer}",
 	TeamSandboxCreated:                          "{sandbox}",
