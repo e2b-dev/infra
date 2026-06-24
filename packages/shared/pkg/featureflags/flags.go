@@ -128,7 +128,6 @@ var (
 	BestOfKTooManyStartingFlag          = NewBoolFlag("best-of-k-too-many-starting", false)
 	EdgeProvidedSandboxMetricsFlag      = NewBoolFlag("edge-provided-sandbox-metrics", false)
 	CreateStorageCacheSpansFlag         = NewBoolFlag("create-storage-cache-spans", env.IsDevelopment())
-	SandboxAutoResumeFlag               = NewBoolFlag("sandbox-auto-resume", true)
 	OrchAcceptsCombinedHostFlag         = NewBoolFlag("orch-accepts-combined-host", false)
 
 	// StorageSoftDeleteCheckFlag enables reading the storage-index soft-delete
