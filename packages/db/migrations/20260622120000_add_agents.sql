@@ -1,0 +1,48 @@
+-- +goose Up
+
+-- +goose StatementBegin
+CREATE TABLE public.agent_definitions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    team_id UUID NULL REFERENCES public.teams(id) ON DELETE SET NULL,
+    alias_id UUID NOT NULL REFERENCES public.env_aliases(id) ON DELETE CASCADE,
+    command TEXT NOT NULL,
+    name TEXT NULL,
+    description TEXT NULL,
+    icon TEXT NULL,
+    public_at TIMESTAMPTZ NULL,
+    published_at TIMESTAMPTZ NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE FUNCTION public.set_agent_definitions_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER set_agent_definitions_updated_at
+    BEFORE UPDATE ON public.agent_definitions
+    FOR EACH ROW
+    EXECUTE FUNCTION public.set_agent_definitions_updated_at();
+
+CREATE INDEX agent_definitions_sort_idx
+    ON public.agent_definitions (sort_order, alias_id, id);
+
+CREATE INDEX agent_definitions_alias_id_idx
+    ON public.agent_definitions (alias_id);
+
+CREATE INDEX agent_definitions_team_id_idx
+    ON public.agent_definitions (team_id);
+-- +goose StatementEnd
+
+-- +goose Down
+
+-- +goose StatementBegin
+DROP TABLE public.agent_definitions;
+DROP FUNCTION public.set_agent_definitions_updated_at();
+-- +goose StatementEnd

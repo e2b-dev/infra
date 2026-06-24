@@ -849,6 +849,47 @@ components:
           items:
             $ref: "#/components/schemas/DefaultTemplate"
 
+    Agent:
+      type: object
+      required:
+        - id
+        - name
+        - command
+        - template
+        - aliasId
+        - aliasName
+        - icon
+        - description
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        command:
+          type: string
+        template:
+          type: string
+        aliasId:
+          type: string
+          format: uuid
+        aliasName:
+          type: string
+        icon:
+          type: string
+        description:
+          type: string
+
+    AgentsResponse:
+      type: object
+      required:
+        - agents
+      properties:
+        agents:
+          type: array
+          items:
+            $ref: "#/components/schemas/Agent"
+
     TeamTemplate:
       type: object
       required:
@@ -1143,12 +1184,34 @@ components:
           type: string
 
 tags:
+  - name: agents
   - name: builds
   - name: sandboxes
   - name: teams
   - name: templates
 
 paths:
+  /agents:
+    get:
+      summary: List configured dashboard agents
+      tags: [agents]
+      security:
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+      responses:
+        "200":
+          description: Successfully returned configured agents.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentsResponse"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "500":
+          $ref: "#/components/responses/500"
+
   /health:
     get:
       summary: Health check

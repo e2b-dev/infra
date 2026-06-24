@@ -48,6 +48,22 @@ type Addon struct {
 	IdempotencyKey                pgtype.Text
 }
 
+type AgentDefinition struct {
+	ID          uuid.UUID
+	TeamID      *uuid.UUID
+	AliasID     uuid.UUID
+	Command     string
+	Name        pgtype.Text
+	Description pgtype.Text
+	Icon        pgtype.Text
+	PublicAt    *time.Time
+	PublishedAt *time.Time
+	SortOrder   int32
+	Metadata    []byte
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 type AuthUser struct {
 	ID              uuid.UUID
 	Email           string
