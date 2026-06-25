@@ -470,7 +470,7 @@ func getRootfsSize(
 	s storage.StorageProvider,
 	paths storage.Paths,
 ) (uint64, error) {
-	obj, err := s.OpenBlob(ctx, paths.RootfsHeader(), storage.RootFSHeaderObjectType)
+	obj, err := s.OpenBlob(ctx, paths.RootfsHeader())
 	if err != nil {
 		return 0, fmt.Errorf("error opening rootfs header object: %w", err)
 	}

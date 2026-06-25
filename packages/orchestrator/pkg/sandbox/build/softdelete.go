@@ -84,7 +84,7 @@ func (b *StorageDiff) softDeleteCheck(ctx context.Context, ff *featureflags.Clie
 	if path == "" {
 		return
 	}
-	blob, err := b.persistence.OpenBlob(ctx, path, storage.MetadataObjectType)
+	blob, err := b.persistence.OpenBlob(ctx, path)
 	if err != nil {
 		result := classifyCheckError(err)
 		b.recordCheck(ctx, result, false, false)

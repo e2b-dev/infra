@@ -101,7 +101,7 @@ func newStorageDiff(
 	ff *featureflags.Client,
 ) (*StorageDiff, error) {
 	cachePath := GenerateDiffCachePath(basePath, buildID, diffType)
-	c, err := block.NewChunker(ff, uncompressedSize, blockSize, cachePath, metrics)
+	c, err := block.NewChunker(ff, uncompressedSize, blockSize, cachePath, metrics, storageObjectType)
 	if err != nil {
 		return nil, fmt.Errorf("create chunker for build %s: %w", buildID, err)
 	}
@@ -148,7 +148,7 @@ func (b *File) createDiff(ctx context.Context, buildID uuid.UUID) (Diff, error) 
 		// LoadHeader backfill marker for an uncompressed V3-or-older ancestor;
 		// UncompressedFullFrameTable IS that ancestor's full table, latch it
 		// to skip a refresh whose header file may not exist.
-		upstream, dataPath, err = b.openDataFile(ctx, buildID, objType, bd.FrameData.CompressionType())
+		upstream, dataPath, err = b.openDataFile(ctx, buildID, bd.FrameData.CompressionType())
 		if err != nil {
 			return nil, err
 		}
@@ -162,7 +162,7 @@ func (b *File) createDiff(ctx context.Context, buildID uuid.UUID) (Diff, error) 
 		// missing entries for storage-loaded headers, so storage paths always
 		// hit one of the hasEntry cases). Probe basic-name to detect peer
 		// routing; on miss/transition refresh from storage.
-		upstream, dataPath, err = b.openDataFile(ctx, buildID, objType, storage.CompressionNone)
+		upstream, dataPath, err = b.openDataFile(ctx, buildID, storage.CompressionNone)
 		if err != nil {
 			return nil, err
 		}
@@ -198,7 +198,7 @@ func (b *File) createDiff(ctx context.Context, buildID uuid.UUID) (Diff, error) 
 				b.SwapHeader(loaded)
 			}
 		}
-		upstream, size, initialFT, dataPath, err = openFromLoadedHeader(ctx, b.persistence, loaded, b.fileType, objType)
+		upstream, size, initialFT, dataPath, err = openFromLoadedHeader(ctx, b.persistence, loaded, b.fileType)
 		if err != nil {
 			return nil, err
 		}
@@ -238,9 +238,9 @@ func (b *File) createDiff(ctx context.Context, buildID uuid.UUID) (Diff, error) 
 	return d, nil
 }
 
-func (b *File) openDataFile(ctx context.Context, buildID uuid.UUID, objType storage.SeekableObjectType, ct storage.CompressionType) (storage.Seekable, string, error) {
+func (b *File) openDataFile(ctx context.Context, buildID uuid.UUID, ct storage.CompressionType) (storage.Seekable, string, error) {
 	path := storage.Paths{BuildID: buildID.String()}.DataFile(string(b.fileType), ct)
-	upstream, err := b.persistence.OpenSeekable(ctx, path, objType)
+	upstream, err := b.persistence.OpenSeekable(ctx, path)
 	if err != nil {
 		return nil, "", fmt.Errorf("createDiff: open data file for build %s at %s: %w", buildID, path, err)
 	}
@@ -253,13 +253,12 @@ func openFromLoadedHeader(
 	persistence storage.StorageProvider,
 	loaded *header.Header,
 	fileType DiffType,
-	objType storage.SeekableObjectType,
 ) (storage.Seekable, int64, *storage.FullFrameTable, string, error) {
 	buildID := loaded.Metadata.BuildId
 	paths := storage.Paths{BuildID: buildID.String()}
 	if loaded.Metadata.Version < header.MetadataVersionV4 {
 		path := paths.DataFile(string(fileType), storage.CompressionNone)
-		upstream, err := persistence.OpenSeekable(ctx, path, objType)
+		upstream, err := persistence.OpenSeekable(ctx, path)
 		if err != nil {
 			return nil, 0, nil, "", fmt.Errorf("reopen uncompressed upstream for pre-V4 build %s at %s: %w", buildID, path, err)
 		}
@@ -271,7 +270,7 @@ func openFromLoadedHeader(
 		return nil, 0, nil, "", err
 	}
 	path := paths.DataFile(string(fileType), ft.Table().CompressionType())
-	upstream, err := persistence.OpenSeekable(ctx, path, objType)
+	upstream, err := persistence.OpenSeekable(ctx, path)
 	if err != nil {
 		return nil, 0, nil, "", fmt.Errorf("reopen upstream for build %s at %s: %w", buildID, path, err)
 	}
@@ -465,7 +464,7 @@ func (b *StorageDiff) reloadSourceLocked(ctx context.Context, cause string) erro
 	if err != nil {
 		return fmt.Errorf("reloadSourceLocked: load header for build %s: %w", b.buildID, err)
 	}
-	upstream, _, ft, dataPath, err := openFromLoadedHeader(ctx, b.persistence, loaded, b.diffType, b.storageObjectType)
+	upstream, _, ft, dataPath, err := openFromLoadedHeader(ctx, b.persistence, loaded, b.diffType)
 	if err != nil {
 		return fmt.Errorf("reloadSourceLocked: build %s: %w", b.buildID, err)
 	}
