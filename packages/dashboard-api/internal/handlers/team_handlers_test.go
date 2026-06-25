@@ -552,23 +552,24 @@ func TestBootstrapAuthProviderUser_CreatesIdentityAndDefaultTeam(t *testing.T) {
 		t.Fatalf("expected team email %q, got %q", "ada@example.test", defaultTeam.Email)
 	}
 
-	if len(sink.requests) != 1 {
-		t.Fatalf("expected one billing provisioning call, got %d", len(sink.requests))
+	reqs := sink.waitForRequests(t, 1)
+	if len(reqs) != 1 {
+		t.Fatalf("expected one billing provisioning call, got %d", len(reqs))
 	}
-	if sink.requests[0].CreatorUserID != userIdentity.UserID {
-		t.Fatalf("expected sink creator %s, got %s", userIdentity.UserID, sink.requests[0].CreatorUserID)
+	if reqs[0].CreatorUserID != userIdentity.UserID {
+		t.Fatalf("expected sink creator %s, got %s", userIdentity.UserID, reqs[0].CreatorUserID)
 	}
-	if sink.requests[0].CreatorContext == nil {
+	if reqs[0].CreatorContext == nil {
 		t.Fatal("expected sink creator context")
 	}
-	if sink.requests[0].CreatorContext.IPAddress != "198.51.100.20" {
-		t.Fatalf("expected sink creator ip %q, got %q", "198.51.100.20", sink.requests[0].CreatorContext.IPAddress)
+	if reqs[0].CreatorContext.IPAddress != "198.51.100.20" {
+		t.Fatalf("expected sink creator ip %q, got %q", "198.51.100.20", reqs[0].CreatorContext.IPAddress)
 	}
-	if sink.requests[0].CreatorContext.UserAgent != "Mozilla/5.0" {
-		t.Fatalf("expected sink creator user agent %q, got %q", "Mozilla/5.0", sink.requests[0].CreatorContext.UserAgent)
+	if reqs[0].CreatorContext.UserAgent != "Mozilla/5.0" {
+		t.Fatalf("expected sink creator user agent %q, got %q", "Mozilla/5.0", reqs[0].CreatorContext.UserAgent)
 	}
-	if sink.requests[0].CreatorContext.AuthMethod != teamprovision.AuthMethodSocial {
-		t.Fatalf("expected sink creator auth method %q, got %q", teamprovision.AuthMethodSocial, sink.requests[0].CreatorContext.AuthMethod)
+	if reqs[0].CreatorContext.AuthMethod != teamprovision.AuthMethodSocial {
+		t.Fatalf("expected sink creator auth method %q, got %q", teamprovision.AuthMethodSocial, reqs[0].CreatorContext.AuthMethod)
 	}
 }
 
@@ -615,6 +616,9 @@ func TestBootstrapOIDCUser_PopulatesOryExternalID(t *testing.T) {
 	if _, err := store.bootstrapOIDCUser(ctx, input); err != nil {
 		t.Fatalf("expected bootstrap to succeed: %v", err)
 	}
+
+	// Drain the background provisioning goroutine before asserting / teardown.
+	sink.waitForRequests(t, 1)
 
 	userIdentity, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
 		OidcIss: input.OIDCIssuer,
@@ -696,6 +700,9 @@ func TestBootstrapOIDCUser_ConcurrentRequestsSingleIdentityAndTeam(t *testing.T)
 			t.Fatalf("expected bootstrap to succeed, got %v", err)
 		}
 	}
+
+	// All successful bootstraps provision in the background; drain them.
+	sink.waitForRequests(t, concurrency)
 
 	var teamIDs []uuid.UUID
 	for team := range results {
@@ -787,6 +794,9 @@ func TestBootstrapOIDCUser_OryIssuerWithoutJWTConfigIsAccepted(t *testing.T) {
 	if team.ID == uuid.Nil {
 		t.Fatal("expected provisioned team")
 	}
+
+	// Drain the background provisioning goroutine before teardown.
+	sink.waitForRequests(t, 1)
 }
 
 func TestBootstrapOIDCUser_OryModeRejectsNonOryJWTIssuer(t *testing.T) {
@@ -924,6 +934,9 @@ func TestBootstrapUser_ConcurrentRequestsCreateSingleDefaultTeam(t *testing.T) {
 			t.Fatalf("expected bootstrap to succeed, got %v", err)
 		}
 	}
+
+	// Both successful bootstraps provision in the background; drain them.
+	sink.waitForRequests(t, 2)
 
 	var teamIDs []uuid.UUID
 	for team := range results {
@@ -1361,6 +1374,32 @@ func (s *fakeTeamProvisionSink) ProvisionTeam(_ context.Context, req teamprovisi
 	s.requests = append(s.requests, req)
 
 	return s.err
+}
+
+// waitForRequests blocks until at least n provisioning calls have been recorded,
+// failing the test on timeout. The signup path provisions in a background
+// goroutine, so tests must wait for it before asserting or tearing down.
+func (s *fakeTeamProvisionSink) waitForRequests(t *testing.T, n int) []teamprovision.TeamBillingProvisionRequestedV1 {
+	t.Helper()
+
+	deadline := time.After(5 * time.Second)
+	for {
+		s.mu.Lock()
+		count := len(s.requests)
+		if count >= n {
+			out := append([]teamprovision.TeamBillingProvisionRequestedV1(nil), s.requests...)
+			s.mu.Unlock()
+
+			return out
+		}
+		s.mu.Unlock()
+
+		select {
+		case <-deadline:
+			t.Fatalf("expected at least %d provisioning calls, got %d", n, count)
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
 }
 
 type noopAuthService struct{}

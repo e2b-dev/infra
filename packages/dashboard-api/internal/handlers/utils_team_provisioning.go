@@ -183,15 +183,13 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 		}
 
 		if time.Since(existingTeam.CreatedAt) < bootstrapProvisionRetryAge {
-			req := teamprovision.TeamBillingProvisionRequestedV1{
-				TeamID:         existingTeam.ID,
-				TeamName:       existingTeam.Name,
-				TeamEmail:      existingTeam.Email,
-				CreatorUserID:  profile.UserID,
-				CreatorContext: s.teamCreatorContextForProvisioning(ctx, profile),
-				Reason:         teamprovision.ReasonDefaultSignupTeam,
-			}
-			_ = s.teamProvisionSink.ProvisionTeam(ctx, req)
+			s.provisionTeamInBackground(ctx, profile, teamprovision.TeamBillingProvisionRequestedV1{
+				TeamID:        existingTeam.ID,
+				TeamName:      existingTeam.Name,
+				TeamEmail:     existingTeam.Email,
+				CreatorUserID: profile.UserID,
+				Reason:        teamprovision.ReasonDefaultSignupTeam,
+			})
 		}
 
 		return provisionedTeam{
@@ -231,15 +229,13 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 		return provisionedTeam{}, fmt.Errorf("commit user bootstrap transaction: %w", err)
 	}
 
-	req := teamprovision.TeamBillingProvisionRequestedV1{
-		TeamID:         team.ID,
-		TeamName:       team.Name,
-		TeamEmail:      team.Email,
-		CreatorUserID:  profile.UserID,
-		CreatorContext: s.teamCreatorContextForProvisioning(ctx, profile),
-		Reason:         teamprovision.ReasonDefaultSignupTeam,
-	}
-	_ = s.teamProvisionSink.ProvisionTeam(ctx, req)
+	s.provisionTeamInBackground(ctx, profile, teamprovision.TeamBillingProvisionRequestedV1{
+		TeamID:        team.ID,
+		TeamName:      team.Name,
+		TeamEmail:     team.Email,
+		CreatorUserID: profile.UserID,
+		Reason:        teamprovision.ReasonDefaultSignupTeam,
+	})
 
 	return provisionedTeam{
 		ID:            team.ID,
@@ -249,6 +245,39 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 		IsBlocked:     team.IsBlocked,
 		BlockedReason: team.BlockedReason,
 	}, nil
+}
+
+// provisionTeamInBackground resolves the billing creator context and provisions
+// the team out of band. Both are slow Ory/billing round-trips the signup
+// response must not wait for, and the result was always discarded by the caller,
+// so a failure is logged rather than propagated. WithoutCancel detaches the
+// request's cancellation while keeping its trace context, so the provision spans
+// stay on the same trace — the same pattern as the IdP cleanup in
+// admin_users_delete.go.
+func (s *APIStore) provisionTeamInBackground(ctx context.Context, profile bootstrapUserProfile, req teamprovision.TeamBillingProvisionRequestedV1) {
+	bgCtx := context.WithoutCancel(ctx)
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.L().Error(bgCtx, "panic while provisioning team in background",
+					logger.WithTeamID(req.TeamID.String()),
+					logger.WithUserID(req.CreatorUserID.String()),
+					zap.Any("panic", r),
+				)
+			}
+		}()
+
+		req.CreatorContext = s.teamCreatorContextForProvisioning(bgCtx, profile)
+
+		if err := s.teamProvisionSink.ProvisionTeam(bgCtx, req); err != nil {
+			logger.L().Error(bgCtx, "background team provisioning failed",
+				logger.WithTeamID(req.TeamID.String()),
+				logger.WithUserID(req.CreatorUserID.String()),
+				zap.Error(err),
+			)
+		}
+	}()
 }
 
 // setOIDCIdentityExternalID stores the canonical public.users id on the Ory
