@@ -8,8 +8,8 @@ option go_package = "github.com/e2b-dev/infra/packages/shared/pkg/grpc/storage-a
 // is defined here; other RPCs are added when needed.
 service Storage {
   // IngestBuild records one build: its attribution plus the artifacts present in
-  // this delivery (already-parsed header info — size, refs, block size,
-  // compression). At-least-once safe: re-sending is a no-op, so callers may retry.
+  // this delivery (already-parsed header info — size, refs, compression).
+  // At-least-once safe: re-sending is a no-op, so callers may retry.
   rpc IngestBuild(IngestBuildRequest) returns (IngestBuildResponse);
 }
 

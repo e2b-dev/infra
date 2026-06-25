@@ -30,8 +30,8 @@ const (
 // is defined here; other RPCs are added when needed.
 type StorageClient interface {
 	// IngestBuild records one build: its attribution plus the artifacts present in
-	// this delivery (already-parsed header info — size, refs, block size,
-	// compression). At-least-once safe: re-sending is a no-op, so callers may retry.
+	// this delivery (already-parsed header info — size, refs, compression).
+	// At-least-once safe: re-sending is a no-op, so callers may retry.
 	IngestBuild(ctx context.Context, in *IngestBuildRequest, opts ...grpc.CallOption) (*IngestBuildResponse, error)
 }
 
@@ -61,8 +61,8 @@ func (c *storageClient) IngestBuild(ctx context.Context, in *IngestBuildRequest,
 // is defined here; other RPCs are added when needed.
 type StorageServer interface {
 	// IngestBuild records one build: its attribution plus the artifacts present in
-	// this delivery (already-parsed header info — size, refs, block size,
-	// compression). At-least-once safe: re-sending is a no-op, so callers may retry.
+	// this delivery (already-parsed header info — size, refs, compression).
+	// At-least-once safe: re-sending is a no-op, so callers may retry.
 	IngestBuild(context.Context, *IngestBuildRequest) (*IngestBuildResponse, error)
 	mustEmbedUnimplementedStorageServer()
 }
