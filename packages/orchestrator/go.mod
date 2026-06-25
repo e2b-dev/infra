@@ -38,6 +38,7 @@ require (
 	github.com/go-git/go-billy/v5 v5.9.0
 	github.com/go-openapi/runtime v0.29.2
 	github.com/go-openapi/strfmt v0.26.1
+	github.com/gofrs/flock v0.13.0
 	github.com/google/go-containerregistry v0.21.7
 	github.com/google/nftables v0.3.0
 	github.com/google/uuid v1.6.0
