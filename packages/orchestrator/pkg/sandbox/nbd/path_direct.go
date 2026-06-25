@@ -331,6 +331,10 @@ func disconnectNBDWithTimeout(ctx context.Context, deviceIndex uint32, timeout t
 	return nil
 }
 
+func DisconnectDevice(ctx context.Context, deviceIndex DeviceSlot) error {
+	return disconnectNBDWithTimeout(ctx, deviceIndex, disconnectTimeout)
+}
+
 func closeSocketPairs(socksClient []*os.File, socksServer []io.Closer) error {
 	var errs []error
 	for _, sock := range socksClient {

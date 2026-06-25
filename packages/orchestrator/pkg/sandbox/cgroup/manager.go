@@ -428,8 +428,7 @@ func (m *managerImpl) Destroy(ctx context.Context, cgroupName string) error {
 		return err
 	}
 
-	// Remove kills any remaining processes internally and returns nil once the
-	// cgroup is gone, so it is the authoritative teardown signal.
+	// Remove kills any remaining processes and deletes the cgroup.
 	return handle.Remove(ctx)
 }
 
