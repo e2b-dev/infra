@@ -1397,7 +1397,8 @@ func (s *fakeTeamProvisionSink) waitForRequests(t *testing.T, n int) []teamprovi
 		select {
 		case <-deadline:
 			t.Fatalf("expected at least %d provisioning calls, got %d", n, count)
-		case <-time.After(5 * time.Millisecond):
+		default:
+			time.Sleep(5 * time.Millisecond)
 		}
 	}
 }

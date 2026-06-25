@@ -31,6 +31,7 @@ const (
 	bootstrapProvisionRetryAge   = 30 * time.Second
 	teamProvisionRollbackTimeout = 5 * time.Second
 	creatorContextResolveTimeout = 2 * time.Second
+	backgroundProvisionTimeout = 45 * time.Second
 )
 
 type provisionedTeam struct {
@@ -255,9 +256,10 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 // stay on the same trace — the same pattern as the IdP cleanup in
 // admin_users_delete.go.
 func (s *APIStore) provisionTeamInBackground(ctx context.Context, profile bootstrapUserProfile, req teamprovision.TeamBillingProvisionRequestedV1) {
-	bgCtx := context.WithoutCancel(ctx)
+	bgCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), backgroundProvisionTimeout)
 
 	go func() {
+		defer cancel()
 		defer func() {
 			if r := recover(); r != nil {
 				logger.L().Error(bgCtx, "panic while provisioning team in background",
