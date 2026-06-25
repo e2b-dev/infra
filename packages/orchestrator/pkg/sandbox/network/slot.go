@@ -267,7 +267,7 @@ func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.Sand
 
 	s.firewallCustomRules.Store(true)
 
-	n, err := ns.GetNS(filepath.Join(netNamespacesDir, s.NamespaceID()))
+	n, err := ns.GetNS(filepath.Join(NetNamespacesDir, s.NamespaceID()))
 	if err != nil {
 		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
 	}
@@ -294,7 +294,7 @@ func (s *Slot) UpdateInternet(ctx context.Context, egress *orchestrator.SandboxN
 	deniedCIDRs := egress.GetDeniedCidrs()
 	hasBYOP := egress.GetEgressProxyAddress() != ""
 
-	n, err := ns.GetNS(filepath.Join(netNamespacesDir, s.NamespaceID()))
+	n, err := ns.GetNS(filepath.Join(NetNamespacesDir, s.NamespaceID()))
 	if err != nil {
 		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
 	}
@@ -329,7 +329,7 @@ func (s *Slot) DenyEgress(ctx context.Context) error {
 		return fmt.Errorf("firewall is not initialized for slot '%s'", s.NamespaceID())
 	}
 
-	n, err := ns.GetNS(filepath.Join(netNamespacesDir, s.NamespaceID()))
+	n, err := ns.GetNS(filepath.Join(NetNamespacesDir, s.NamespaceID()))
 	if err != nil {
 		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
 	}
@@ -358,7 +358,7 @@ func (s *Slot) ResetInternet(ctx context.Context) error {
 		return nil
 	}
 
-	n, err := ns.GetNS(filepath.Join(netNamespacesDir, s.NamespaceID()))
+	n, err := ns.GetNS(filepath.Join(NetNamespacesDir, s.NamespaceID()))
 	if err != nil {
 		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
 	}
