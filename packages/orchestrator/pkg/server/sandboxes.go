@@ -651,6 +651,21 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 	s.uploadSnapshotAsync(ctx, sbx, res)
 
+	// Best-effort: the local snapshot is now in the cache and the remote upload
+	// has been kicked off above (still in flight). Harvest a resume page-fault
+	// trace from a throwaway warm resume of the local snapshot and (when enabled)
+	// persist it as a prefetch mapping for the next resume. Runs in the
+	// background; never affects the pause result, and waits for the upload before
+	// touching metadata. No-op unless the harvest flag is on. Reuse the object
+	// metadata the snapshot was uploaded with so the re-upload can't drift.
+	//
+	// Skip it for a filesystem-only pause: that snapshot has no memory diff, so a
+	// memory resume of it would just fail (the resume is reserved for memory
+	// snapshots; fs-only is a reboot) — there is no memory working set to harvest.
+	if !in.GetFilesystemOnly() {
+		s.harvestResumePrefetchAsync(ctx, sbx, res, in.GetBuildId(), res.objectMetadata)
+	}
+
 	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
 	eventData[executionEventDataKey] = s.getSandboxExecutionData(sbx)
 
@@ -875,6 +890,10 @@ type snapshotResult struct {
 	schedulingMetadata *orchestrator.SchedulingMetadata
 	upload             *sandbox.Upload
 	completeUpload     func(ctx context.Context, uploadErr error)
+	// objectMetadata is the storage object metadata the snapshot was uploaded
+	// with. The prefetch harvest reuses it verbatim when re-uploading the
+	// metadata object, so the two can never drift.
+	objectMetadata storage.ObjectMetadata
 }
 
 // snapshotAndCacheSandbox creates a snapshot of a sandbox and adds it to the
@@ -973,6 +992,7 @@ func (s *Server) snapshotAndCacheSandbox(
 		schedulingMetadata: snapshot.SchedulingMetadata,
 		upload:             upload,
 		completeUpload:     completeUpload,
+		objectMetadata:     objectMetadata,
 	}, nil
 }
 

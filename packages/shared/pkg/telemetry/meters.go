@@ -44,6 +44,12 @@ const (
 	// A non-zero rate means lost snapshots.
 	OrchestratorSnapshotUploadFailedCounterName CounterType = "orchestrator.snapshot.upload.failed"
 
+	// PauseResumePrefetchHarvestAttempts counts pause-resume prefetch harvest
+	// attempts, by result (success|resume_failed|collect_failed|skipped). The
+	// throwaway is absent from Prometheus otherwise (registration-skip), so this
+	// is the harvest-activity / failure-rate signal.
+	PauseResumePrefetchHarvestAttempts CounterType = "orchestrator.sandbox.pause_resume_prefetch.harvest.attempts"
+
 	ApiRedisStoragePublisherPublished CounterType = "api.redis_storage.publisher.published"
 	ApiRedisStoragePublisherDropped   CounterType = "api.redis_storage.publisher.dropped"
 )
@@ -91,6 +97,13 @@ const (
 	// POST /collapse: network plus envd's madvise work), recorded once per pause
 	// when the collapse-envd-heap flag is on.
 	EnvdCollapseDurationHistogramName HistogramType = "orchestrator.sandbox.envd.collapse.duration"
+
+	// Pause-resume prefetch harvest cost, recorded once per harvest attempt:
+	// duration is the whole throwaway resume-and-persist run (slot-hold cost);
+	// pages is the harvested trace size (distinct 2 MiB blocks), recorded only on
+	// success, so its bottom bucket surfaces the empty-trace (idle-at-pause) rate.
+	PauseResumePrefetchHarvestDurationName HistogramType = "orchestrator.sandbox.pause_resume_prefetch.harvest.duration"
+	PauseResumePrefetchHarvestPagesName    HistogramType = "orchestrator.sandbox.pause_resume_prefetch.harvest.pages"
 
 	// Sandbox startup working-set histograms: demand-fault pages/bytes a guest
 	// needed to reach a successful envd init, recorded once per start. Sampled
@@ -207,6 +220,7 @@ var counterDesc = map[CounterType]string{
 	EnvdCollapseChunks:                          "2 MiB chunks the pre-pause envd heap collapse attempted, by result",
 	OrchestratorSandboxKilledCounterName:        "Number of sandboxes killed, labeled by kill reason",
 	OrchestratorSnapshotUploadFailedCounterName: "Number of pause-snapshot uploads that never landed durably",
+	PauseResumePrefetchHarvestAttempts:          "Pause-resume prefetch harvest attempts, by result",
 	TCPFirewallConnectionsTotal:                 "Total number of TCP firewall connections processed",
 	TCPFirewallErrorsTotal:                      "Total number of TCP firewall errors",
 	TCPFirewallDecisionsTotal:                   "Total number of TCP firewall allow/block decisions",
@@ -237,6 +251,7 @@ var counterUnits = map[CounterType]string{
 	EnvdCollapseChunks:                          "{chunk}",
 	OrchestratorSandboxKilledCounterName:        "{sandbox}",
 	OrchestratorSnapshotUploadFailedCounterName: "{snapshot}",
+	PauseResumePrefetchHarvestAttempts:          "{attempt}",
 	TCPFirewallConnectionsTotal:                 "{connection}",
 	TCPFirewallErrorsTotal:                      "{error}",
 	TCPFirewallDecisionsTotal:                   "{decision}",
@@ -415,6 +430,9 @@ var histogramDesc = map[HistogramType]string{
 	EnvdCollapseDurationHistogramName:     "Time taken for the pre-pause envd heap collapse round-trip",
 	GuestSyncDurationHistogramName:        "Time taken for the mandatory pre-pause guest sync (filesystem-only pause)",
 
+	PauseResumePrefetchHarvestDurationName: "Time taken for a pause-resume prefetch harvest run (slot-hold cost)",
+	PauseResumePrefetchHarvestPagesName:    "Harvested resume-prefetch trace size in 2 MiB blocks, per successful harvest",
+
 	UffdStartupPagesHistogramName:       "Demand-fault pages a guest needed to reach a successful envd init, per start",
 	UffdStartupSourcePagesHistogramName: "Subset of startup demand-fault pages pulled from the source (e.g. GCS), per start",
 	UffdStartupBytesHistogramName:       "Bytes faulted into a guest to reach a successful envd init, per start",
@@ -461,6 +479,8 @@ var histogramUnits = map[HistogramType]string{
 	WaitForEnvdDurationHistogramName:              "ms",
 	EnvdCollapseDurationHistogramName:             "ms",
 	GuestSyncDurationHistogramName:                "ms",
+	PauseResumePrefetchHarvestDurationName:        "ms",
+	PauseResumePrefetchHarvestPagesName:           "{page}",
 	UffdStartupPagesHistogramName:                 "{page}",
 	UffdStartupSourcePagesHistogramName:           "{page}",
 	UffdStartupBytesHistogramName:                 "{By}",
