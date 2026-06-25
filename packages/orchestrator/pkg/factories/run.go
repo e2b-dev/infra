@@ -51,6 +51,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/server"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/service"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/service/machineinfo"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/startupreclaim"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/constants"
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/pkg/template/server"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/volumes"
@@ -619,6 +620,15 @@ func run(config cfg.Config, opts Options) (success bool) {
 	}
 	if egressSetup.Close != nil {
 		closers = append(closers, closer{"egress proxy", egressSetup.Close})
+	}
+
+	if slices.Contains(services, cfg.Orchestrator) && !config.DisableStartupReclaim {
+		startupreclaim.Run(ctx, startupreclaim.Config{
+			NetworkConfig: config.NetworkConfig,
+			EgressProxy:   egressSetup.Proxy,
+			CgroupManager: cgroupManager,
+			StorageConfig: config.StorageConfig,
+		})
 	}
 
 	// device pool
