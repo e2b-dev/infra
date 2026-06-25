@@ -4,8 +4,12 @@ package service
 
 import (
 	"context"
+	"sync"
+	"time"
 
 	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -19,16 +23,32 @@ import (
 type Server struct {
 	orchestratorinfo.UnimplementedInfoServiceServer
 
-	info        *ServiceInfo
-	sandboxes   *sandbox.Map
-	hostMetrics *metrics.HostMetrics
+	info             *ServiceInfo
+	sandboxes        *sandbox.Map
+	hostMetrics      *metrics.HostMetrics
+	drainCoordinator *DrainCoordinator
+
+	forceStopMu         sync.Mutex
+	forceStopModeActive bool
+	forceStopRetryDelay time.Duration
 }
 
-func NewInfoService(info *ServiceInfo, sandboxes *sandbox.Map, hostMetrics *metrics.HostMetrics) *Server {
+type DrainController interface {
+	StartDraining(ctx context.Context)
+	ForceStop(ctx context.Context) error
+}
+
+func NewInfoService(info *ServiceInfo, sandboxes *sandbox.Map, hostMetrics *metrics.HostMetrics, drainCoordinator *DrainCoordinator) *Server {
+	if drainCoordinator == nil {
+		drainCoordinator = NewDrainCoordinator(info, nil)
+	}
+
 	return &Server{
-		info:        info,
-		sandboxes:   sandboxes,
-		hostMetrics: hostMetrics,
+		info:                info,
+		sandboxes:           sandboxes,
+		hostMetrics:         hostMetrics,
+		drainCoordinator:    drainCoordinator,
+		forceStopRetryDelay: time.Second,
 	}
 }
 
@@ -133,8 +153,67 @@ func convertMachineInfo(machineInfo machineinfo.MachineInfo) *orchestratorinfo.M
 }
 
 func (s *Server) ServiceStatusOverride(ctx context.Context, req *orchestratorinfo.ServiceStatusChangeRequest) (*emptypb.Empty, error) {
-	logger.L().Info(ctx, "service status override request received", zap.String("status", req.GetServiceStatus().String()))
-	s.info.SetStatus(ctx, req.GetServiceStatus())
+	requestedStatus := req.GetServiceStatus()
+	logger.L().Info(ctx, "service status override request received",
+		zap.String("status", requestedStatus.String()),
+		zap.Bool("force_stop", req.GetForceStop()),
+	)
+
+	if req.GetForceStop() && requestedStatus != orchestratorinfo.ServiceInfoStatus_Draining {
+		return nil, status.Error(codes.InvalidArgument, "force_stop is only supported when setting status to draining")
+	}
+
+	validateTransition := func(currentStatus ServiceStatus) error {
+		if currentStatus.Status == orchestratorinfo.ServiceInfoStatus_Draining &&
+			requestedStatus != orchestratorinfo.ServiceInfoStatus_Draining {
+			return status.Error(codes.FailedPrecondition, "service drain cannot be reversed")
+		}
+
+		return nil
+	}
+
+	var err error
+	if requestedStatus == orchestratorinfo.ServiceInfoStatus_Draining {
+		_, err = s.drainCoordinator.BeginDraining(ctx, validateTransition)
+	} else {
+		_, err = s.info.TransitionStatus(ctx, requestedStatus, validateTransition)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if requestedStatus == orchestratorinfo.ServiceInfoStatus_Draining && req.GetForceStop() {
+		s.startForceStopMode(ctx)
+	}
 
 	return &emptypb.Empty{}, nil
+}
+
+func (s *Server) startForceStopMode(ctx context.Context) {
+	s.forceStopMu.Lock()
+	if s.forceStopModeActive {
+		s.forceStopMu.Unlock()
+
+		return
+	}
+	s.forceStopModeActive = true
+	s.forceStopMu.Unlock()
+
+	forceCtx := context.WithoutCancel(ctx)
+	go s.runForceStopMode(forceCtx)
+}
+
+func (s *Server) runForceStopMode(ctx context.Context) {
+	for {
+		if err := s.drainCoordinator.ForceStop(ctx); err != nil {
+			logger.L().Error(ctx, "forced drain failed", zap.Error(err))
+			time.Sleep(s.forceStopRetryDelay)
+
+			continue
+		}
+
+		logger.L().Info(ctx, "forced drain complete")
+
+		return
+	}
 }

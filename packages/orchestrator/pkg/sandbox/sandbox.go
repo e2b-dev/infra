@@ -401,7 +401,7 @@ func (f *Factory) CreateSandbox(
 	cleanup := NewCleanup()
 	defer func() {
 		if e != nil {
-			cleanupErr := cleanup.Run(ctx)
+			cleanupErr := cleanup.RunRollback(ctx)
 			e = errors.Join(e, cleanupErr)
 			handleSpanError(execSpan, &e)
 			execSpan.End()
@@ -655,7 +655,7 @@ func (f *Factory) ResumeSandbox(
 	cleanup := NewCleanup()
 	defer func() {
 		if e != nil {
-			cleanupErr := cleanup.Run(ctx)
+			cleanupErr := cleanup.RunRollback(ctx)
 			e = errors.Join(e, cleanupErr)
 			handleSpanError(execSpan, &e)
 			execSpan.End()
@@ -1170,7 +1170,7 @@ func (s *Sandbox) Pause(
 	defer func() {
 		// Cleanup the snapshot if an error occurs
 		if e != nil {
-			err := cleanup.Run(ctx)
+			err := cleanup.RunRollback(ctx)
 			e = errors.Join(e, err)
 		}
 	}()

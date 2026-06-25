@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/caarlos0/env/v11"
 	"github.com/willscott/go-nfs"
@@ -103,6 +104,10 @@ type Config struct {
 	NBDPoolSize                 int               `env:"NBD_POOL_SIZE"                 envDefault:"64"`
 	Services                    []string          `env:"ORCHESTRATOR_SERVICES"         envDefault:"orchestrator"`
 	PersistentVolumeMounts      map[string]string `env:"PERSISTENT_VOLUME_MOUNTS"`
+	// ShutdownDrainTimeout bounds the graceful drain phase during shutdown.
+	// Zero (the default) drains forever: shutdown waits until sandboxes exit
+	// on their own or a force-stop API call empties the node.
+	ShutdownDrainTimeout time.Duration `env:"SHUTDOWN_DRAIN_TIMEOUT"`
 }
 
 // AdditionalClickhouseEndpoints returns the non-blank entries from

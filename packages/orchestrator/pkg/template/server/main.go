@@ -14,10 +14,12 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/draingate"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/builderrors"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/cache"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
@@ -34,9 +36,13 @@ type closeable interface {
 	Close() error
 }
 
-// consumerStatusCheckGracePeriod is how long the graceful drain waits, after
-// in-flight builds finish, for consumers to read the final build status before
-// the server shuts down.
+type drainMode int
+
+const (
+	drainModeGraceful drainMode = iota
+	drainModeForced
+)
+
 const consumerStatusCheckGracePeriod = 15 * time.Second
 
 type ServerStore struct {
@@ -53,6 +59,7 @@ type ServerStore struct {
 
 	wg           *sync.WaitGroup // wait group for running builds
 	activeBuilds atomic.Int64    // counter for active builds (for debugging)
+	drainGate    draingate.Gate
 
 	closers []closeable
 }
@@ -135,38 +142,57 @@ func New(
 	return store, nil
 }
 
+// Close releases resources held by the template server, such as remote
+// repository clients. Waiting for builds to drain is handled separately by
+// Wait or ForceStop, so closers always run even if ctx is already canceled
+// (for example during a forced or timed-out shutdown).
 func (s *ServerStore) Close(ctx context.Context) error {
-	select {
-	case <-ctx.Done():
-		return errors.New("force exit, not waiting for builds to finish")
-	default:
-		var closersErr error
-		for _, closer := range s.closers {
-			err := closer.Close()
-			if err != nil {
-				closersErr = errors.Join(closersErr, err)
-			}
-		}
-		if closersErr != nil {
-			return fmt.Errorf("failed to close services: %w", closersErr)
-		}
+	s.StartDraining(ctx)
 
-		return nil
+	var closersErr error
+	for _, closer := range s.closers {
+		err := closer.Close()
+		if err != nil {
+			closersErr = errors.Join(closersErr, err)
+		}
 	}
+	if closersErr != nil {
+		return fmt.Errorf("failed to close services: %w", closersErr)
+	}
+
+	return nil
 }
 
-// Wait gracefully drains in-flight template builds during shutdown. It waits
-// for running builds to finish, bounded by ctx, then gives consumers a grace
-// period to read the final build status. It returns ctx.Err() if ctx is
-// cancelled before the drain completes.
 func (s *ServerStore) Wait(ctx context.Context) error {
-	s.logger.Info(ctx, "Waiting for all build jobs to finish", zap.Int64("active_builds", s.activeBuilds.Load()))
+	return s.wait(ctx, drainModeGraceful)
+}
+
+func (s *ServerStore) ForceStop(ctx context.Context) error {
+	return s.wait(ctx, drainModeForced)
+}
+
+func (s *ServerStore) wait(ctx context.Context, mode drainMode) error {
+	s.StartDraining(ctx)
+	logCtx := ctx
+	if mode == drainModeForced {
+		logCtx = context.WithoutCancel(ctx)
+		s.cancelRunningBuilds(logCtx)
+	}
+
+	if err := s.waitTemplateOperationStarts(ctx); err != nil {
+		return err
+	}
+	if mode == drainModeForced {
+		s.cancelRunningBuilds(logCtx)
+	}
+
+	s.log().Info(logCtx, "Waiting for all build jobs to finish", zap.Int64("active_builds", s.activeBuilds.Load()))
 	if err := utils.WaitGroupWait(ctx, s.wg); err != nil {
 		return fmt.Errorf("waiting for template builds: %w", err)
 	}
 
-	if !env.IsLocal() {
-		s.logger.Info(ctx, "Waiting for consumers to check build status")
+	if mode == drainModeGraceful && !env.IsLocal() {
+		s.log().Info(logCtx, "Waiting for consumers to check build status")
 		select {
 		case <-time.After(consumerStatusCheckGracePeriod):
 		case <-ctx.Done():
@@ -174,7 +200,22 @@ func (s *ServerStore) Wait(ctx context.Context) error {
 		}
 	}
 
-	s.logger.Info(ctx, "Template build queue cleaned")
+	s.log().Info(logCtx, "Template build queue cleaned")
 
 	return nil
+}
+
+func (s *ServerStore) cancelRunningBuilds(ctx context.Context) {
+	if s.buildCache == nil {
+		return
+	}
+
+	canceled := s.buildCache.FailRunning(&templatemanager.TemplateBuildStatusReason{
+		Message: builderrors.ErrCanceled.Error(),
+	})
+	if canceled == 0 {
+		return
+	}
+
+	s.log().Info(ctx, "canceled running template builds during forced drain", zap.Int("canceled_builds", canceled))
 }

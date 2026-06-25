@@ -4,6 +4,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -15,6 +16,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/draingate"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
@@ -88,8 +90,10 @@ type Server struct {
 	uploadsWG       sync.WaitGroup
 	uploadsInFlight atomic.Int64
 
-	done      chan struct{}
-	closeOnce sync.Once
+	// startGate admits new sandbox Create operations and is closed once the
+	// node starts draining, so a draining node rejects new sandboxes while
+	// in-flight Creates finish. Checkpoint is intentionally not gated.
+	startGate draingate.Gate
 }
 
 type ServiceConfig struct {
@@ -135,7 +139,6 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 		peerRegistry:      cfg.PeerRegistry,
 		uploadedBuilds:    uploadedBuilds,
 		uploads:           cfg.Uploads,
-		done:              make(chan struct{}),
 	}
 
 	meter := cfg.Tel.MeterProvider.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/server")
@@ -231,9 +234,7 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 }
 
 func (s *Server) Close(ctx context.Context) error {
-	s.closeOnce.Do(func() {
-		close(s.done)
-	})
+	s.StartDraining(ctx)
 
 	// Wait for in-flight snapshot uploads to finish so a graceful shutdown
 	// doesn't drop a snapshot that is still uploading. ctx is cancelled on a
@@ -285,11 +286,49 @@ func (s *Server) drainUploads(ctx context.Context, uploadsDone <-chan struct{}) 
 	}
 }
 
-// DrainSandboxes waits for the live sandboxes on this node to exit on their own
-// during a graceful shutdown, then waits for their lifecycle cleanup to finish.
-// It does not reject new sandbox starts; that admission gating is layered in
-// separately. It returns ctx.Err() if ctx is cancelled before the node empties.
+// StartDraining closes the sandbox start gate so the node rejects new Create
+// operations. Template builds are drained separately by the template server's
+// own gate. It is idempotent.
+func (s *Server) StartDraining(ctx context.Context) {
+	if s.startGate.StartDraining() {
+		live := 0
+		if s.sandboxFactory != nil && s.sandboxFactory.Sandboxes != nil {
+			live = s.sandboxFactory.Sandboxes.Count()
+		}
+
+		logger.L().Info(ctx, "sandbox server entering drain mode", zap.Int("live_sandboxes", live))
+	}
+}
+
+// waitSandboxStarts blocks until every in-flight Create admitted through the
+// start gate has finished, so a drain snapshot of the live set cannot miss a
+// sandbox that is still mid-start.
+func (s *Server) waitSandboxStarts(ctx context.Context) error {
+	logger.L().Info(ctx, "waiting for in-flight sandbox start operations to finish")
+
+	if err := s.startGate.Wait(ctx); err != nil {
+		return fmt.Errorf("waiting for in-flight sandbox start operations: %w", err)
+	}
+
+	logger.L().Info(ctx, "in-flight sandbox start operations finished")
+
+	return nil
+}
+
+// DrainSandboxes rejects new sandbox starts, waits for in-flight starts to
+// finish, then waits for the live sandboxes on this node to exit on their own
+// during a graceful shutdown and for their lifecycle cleanup to finish. It
+// returns ctx.Err() if ctx is cancelled before the node empties.
 func (s *Server) DrainSandboxes(ctx context.Context) error {
+	s.StartDraining(ctx)
+
+	// Create holds the start gate for its whole operation, so waiting for the
+	// gate to drain is enough before snapshotting the live set: no admitted start
+	// can still be mid-flight afterward.
+	if err := s.waitSandboxStarts(ctx); err != nil {
+		return err
+	}
+
 	live := s.sandboxFactory.Sandboxes.Count()
 	logger.L().Info(ctx, "starting graceful sandbox drain", zap.Int("live_sandboxes", live))
 
@@ -329,6 +368,92 @@ func (s *Server) DrainSandboxes(ctx context.Context) error {
 	}
 }
 
+func (s *Server) ForceStopSandboxes(ctx context.Context) error {
+	// Close the start gate so no new starts can enter while shutdown proceeds.
+	s.StartDraining(ctx)
+	// stopped dedups across the loop's repeated passes so a lifecycle that is
+	// still present in successive snapshots is only force-closed once.
+	stopped := make(map[string]struct{})
+	var errs []error
+
+	cleanupCtx, cleanupCancel := utils.WithoutCancelPreservingDeadline(ctx)
+	defer cleanupCancel()
+	forceStop := func(sandboxes []*sandbox.Sandbox) {
+		// Closes run concurrently and all errors are collected (not short-circuited
+		// on the first failure). cleanupCtx is detached from ctx's cancellation but
+		// preserves its deadline, so closes always run to completion or the deadline.
+		ec := utils.NewErrorCollector(max(len(sandboxes), 1))
+
+		for _, sbx := range sandboxes {
+			key := fmt.Sprintf("%s/%s", sbx.Runtime.SandboxID, sbx.LifecycleID)
+			if _, ok := stopped[key]; ok {
+				continue
+			}
+			stopped[key] = struct{}{}
+
+			ec.Go(cleanupCtx, func() error {
+				sbxLog := logger.L().With(
+					logger.WithSandboxID(sbx.Runtime.SandboxID),
+					logger.WithLifecycleID(sbx.LifecycleID),
+					logger.WithSandboxIP(sbx.Slot.HostIPString()),
+				)
+				sbxLog.Warn(cleanupCtx, "force stopping sandbox during orchestrator shutdown")
+
+				marked := s.sandboxFactory.Sandboxes.MarkStopping(cleanupCtx, sbx.Runtime.SandboxID, sbx.LifecycleID)
+				if !marked {
+					sbxLog.Info(cleanupCtx, "sandbox was already removed from live map before force stop")
+				}
+
+				if err := sbx.Close(cleanupCtx); err != nil {
+					sbxLog.Error(cleanupCtx, "failed to force close sandbox", zap.Error(err))
+
+					return fmt.Errorf("close sandbox %s/%s: %w", sbx.Runtime.SandboxID, sbx.LifecycleID, err)
+				}
+
+				sbxLog.Info(cleanupCtx, "forced sandbox cleanup complete")
+
+				return nil
+			})
+		}
+
+		if err := ec.Wait(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	logger.L().Warn(ctx, "starting forced sandbox shutdown",
+		zap.Int("sandbox_count", len(s.sandboxFactory.Sandboxes.LifecycleItems())),
+	)
+
+	// Forced shutdown must make progress immediately: close already-running
+	// sandboxes right away rather than first blocking on in-flight starts, so one
+	// slow or stuck start cannot starve cleanup of live workloads. Then wait for
+	// in-flight starts to finish and do a final pass for any sandbox that became
+	// visible during the wait. forceStop dedups by sandbox/lifecycle so each is
+	// closed only once and accumulates close failures into errs. Skip the final
+	// pass if waiting for in-flight starts fails (e.g. context cancellation).
+	forceStop(s.sandboxFactory.Sandboxes.LifecycleItems())
+	if err := s.waitSandboxStarts(ctx); err != nil {
+		errs = append(errs, err)
+	} else {
+		forceStop(s.sandboxFactory.Sandboxes.LifecycleItems())
+	}
+
+	if err := s.waitSandboxLifecycles(ctx); err != nil {
+		errs = append(errs, err)
+	}
+
+	if err := errors.Join(errs...); err != nil {
+		logger.L().Error(ctx, "forced sandbox shutdown finished with errors", zap.Error(err))
+
+		return err
+	}
+
+	logger.L().Info(ctx, "forced sandbox shutdown complete")
+
+	return nil
+}
+
 func (s *Server) waitSandboxLifecycles(ctx context.Context) error {
 	return s.sandboxFactory.Sandboxes.WaitLifecycles(ctx)
 }
@@ -339,7 +464,7 @@ func (s *Server) refreshStartingSandboxesLimit(ctx context.Context) {
 
 	for {
 		select {
-		case <-s.done:
+		case <-s.startGate.Done():
 			return
 		case <-ticker.C:
 			limit := s.featureFlags.IntFlag(ctx, featureflags.MaxStartingInstancesPerNode)
