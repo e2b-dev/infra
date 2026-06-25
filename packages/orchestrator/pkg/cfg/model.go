@@ -33,6 +33,7 @@ type BuilderConfig struct {
 	SandboxDir             string        `env:"SANDBOX_DIR"              envDefault:"/fc-vm"`
 	SharedChunkCacheDir    string        `env:"SHARED_CHUNK_CACHE_PATH"`
 	TemplatesDir           string        `env:"TEMPLATES_DIR,expand"     envDefault:"${ORCHESTRATOR_BASE_PATH}/build-templates"`
+	StorageAPIHost         string        `env:"STORAGE_API_HOST"         envDefault:""`
 
 	DefaultCacheDir string `env:"DEFAULT_CACHE_DIR,expand" envDefault:"${ORCHESTRATOR_BASE_PATH}/build"`
 

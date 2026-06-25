@@ -137,6 +137,13 @@ var (
 	// (fail closed) instead of only emitting a metric + log. Requires the check flag.
 	StorageSoftDeleteEnforceFlag = NewBoolFlag("storage-soft-delete-enforce", false)
 
+	// StorageAPIIngestFlag enables IngestBuild calls after a build's headers are
+	// ready (before upload finishes). Off = no calls.
+	StorageAPIIngestFlag = NewBoolFlag("storage-api-ingest-build", false)
+	// StorageAPIIngestHardErrorFlag makes a failed IngestBuild fail the build
+	// instead of only logging. Default off = soft error (log and continue).
+	StorageAPIIngestHardErrorFlag = NewBoolFlag("storage-api-ingest-hard-error", false)
+
 	// UseMemFdFlag asks Firecracker to back guest memory with a memfd and
 	// pass the fd over the UFFD socket; the orchestrator then mmaps it
 	// directly instead of using process_vm_readv on pause.

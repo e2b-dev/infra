@@ -40,6 +40,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	orchestratorgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	storageapi "github.com/e2b-dev/infra/packages/shared/pkg/grpc/storage-api"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -67,6 +68,7 @@ type Builder struct {
 	metrics             *metrics.BuildMetrics
 	featureFlags        *featureflags.Client
 	uploads             *sandbox.Uploads
+	storageClient       *storageapi.Client
 }
 
 func NewBuilder(
@@ -84,6 +86,11 @@ func NewBuilder(
 	buildMetrics *metrics.BuildMetrics,
 	uploads *sandbox.Uploads,
 ) *Builder {
+	storageClient, err := storageapi.NewClient(config.StorageAPIHost)
+	if err != nil {
+		logger.Warn(context.Background(), "failed to create storage-api client; build indexing disabled", zap.Error(err))
+	}
+
 	return &Builder{
 		config:              config,
 		logger:              logger,
@@ -98,6 +105,7 @@ func NewBuilder(
 		templateCache:       templateCache,
 		metrics:             buildMetrics,
 		uploads:             uploads,
+		storageClient:       storageClient,
 	}
 }
 
@@ -313,6 +321,7 @@ func runBuild(
 		builder.uploads,
 		builder.config.StorageConfig.CompressConfig,
 		builder.featureFlags,
+		builder.storageClient,
 	)
 
 	baseBuilder := base.New(

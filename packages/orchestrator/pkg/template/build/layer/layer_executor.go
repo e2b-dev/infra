@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -16,12 +17,14 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/storageindex"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/envd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	storageapi "github.com/e2b-dev/infra/packages/shared/pkg/grpc/storage-api"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -43,6 +46,7 @@ type LayerExecutor struct {
 	uploads         *sandbox.Uploads
 	compressConfig  storage.CompressConfig
 	ff              *featureflags.Client
+	storageClient   *storageapi.Client
 }
 
 func NewLayerExecutor(
@@ -57,6 +61,7 @@ func NewLayerExecutor(
 	uploads *sandbox.Uploads,
 	compressConfig storage.CompressConfig,
 	ff *featureflags.Client,
+	storageClient *storageapi.Client,
 ) *LayerExecutor {
 	return &LayerExecutor{
 		BuildContext: buildContext,
@@ -72,6 +77,7 @@ func NewLayerExecutor(
 		uploads:         uploads,
 		compressConfig:  compressConfig,
 		ff:              ff,
+		storageClient:   storageClient,
 	}
 }
 
@@ -288,6 +294,19 @@ func (lb *LayerExecutor) PauseAndUpload(
 		err = errors.Join(err, snapshot.Close(context.WithoutCancel(ctx)))
 
 		return fmt.Errorf("error adding snapshot to template cache: %w", err)
+	}
+
+	// Index the build now that headers are ready (before the upload finishes).
+	if err := storageindex.Ingest(ctx, lb.storageClient, lb.ff, lb.logger, storageindex.Build{
+		BuildID:   meta.Template.BuildID,
+		TeamID:    lb.Config.TeamID,
+		BuildType: string(buildOrigin),
+		CreatedAt: time.Now().UnixNano(),
+	},
+		storageindex.Artifact{Name: storage.MemfileName, Header: snapshot.MemorySnapshot.DiffHeader},
+		storageindex.Artifact{Name: storage.RootfsName, Header: snapshot.RootfsDiffHeader},
+	); err != nil {
+		return fmt.Errorf("error indexing build: %w", err)
 	}
 
 	// Upload snapshot async, it's added to the template cache immediately

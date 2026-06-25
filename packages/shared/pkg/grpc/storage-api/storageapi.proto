@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package storage.v1;
+
+option go_package = "github.com/e2b-dev/infra/packages/shared/pkg/grpc/storage-api;storageapi";
+
+// Storage indexes builds for storage lifecycle management. Only the ingestion RPC
+// is defined here; other RPCs are added when needed.
+service Storage {
+  // IngestBuild records one build: its attribution plus the artifacts present in
+  // this delivery (already-parsed header info — size, refs, block size,
+  // compression). At-least-once safe: re-sending is a no-op, so callers may retry.
+  rpc IngestBuild(IngestBuildRequest) returns (IngestBuildResponse);
+}
+
+// Ref is a build this artifact dedups against (its same-artifact layer). A message,
+// not a bare id, so chunk-level detail can be added later without a wire change.
+message Ref {
+  string build_id = 1;
+}
+
+// Artifact is one deduped artifact's header info. name is the opaque artifact key
+// (also its storage path component, e.g. "memfile" / "rootfs.ext4").
+message Artifact {
+  string name = 1;
+  int64 size = 2;            // virtual (VM) size, bytes
+  bool compressed = 3;       // whether the stored artifact is compressed
+  repeated Ref refs = 4;     // builds this artifact dedups against
+}
+
+// IngestBuildRequest records one whole build: attribution plus the artifacts
+// present in this delivery (any combination).
+message IngestBuildRequest {
+  string build_id = 1;
+  string team_id = 2;
+  string build_type = 3; // pause | template_build | template_build_cache | snapshot_template
+  repeated Artifact artifacts = 4;
+  int64 created_at = 5;  // build creation time, unix nanos (for age cutoffs)
+}
+
+message IngestBuildResponse {
+  int64 recorded = 1; // layers recorded
+}
