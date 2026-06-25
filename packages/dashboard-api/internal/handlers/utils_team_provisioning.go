@@ -31,7 +31,7 @@ const (
 	bootstrapProvisionRetryAge   = 30 * time.Second
 	teamProvisionRollbackTimeout = 5 * time.Second
 	creatorContextResolveTimeout = 2 * time.Second
-	backgroundProvisionTimeout = 45 * time.Second
+	backgroundProvisionTimeout   = 45 * time.Second
 )
 
 type provisionedTeam struct {
