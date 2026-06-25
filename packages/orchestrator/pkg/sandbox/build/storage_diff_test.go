@@ -64,7 +64,7 @@ func TestStorageDiff_LoadsOwnHeaderWhenParentHasNoEntry(t *testing.T) {
 	// Peer-routing probe: non-PeerRouted result → fall through to refresh.
 	probeSeekable := storage.NewMockSeekable(t)
 	provider.EXPECT().
-		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone), mock.Anything).
+		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone)).
 		Return(probeSeekable, nil).Once()
 
 	// Then load A's own header.
@@ -75,7 +75,7 @@ func TestStorageDiff_LoadsOwnHeaderWhenParentHasNoEntry(t *testing.T) {
 			return io.Copy(w, bytes.NewReader(aHeaderBytes))
 		}).Once()
 	provider.EXPECT().
-		OpenBlob(mock.Anything, aPaths.HeaderFile(storage.MemfileName), mock.Anything).
+		OpenBlob(mock.Anything, aPaths.HeaderFile(storage.MemfileName)).
 		Return(headerBlob, nil).Once()
 
 	// Then open upstream at the compressed path; the read decompresses cleanly.
@@ -84,7 +84,7 @@ func TestStorageDiff_LoadsOwnHeaderWhenParentHasNoEntry(t *testing.T) {
 		OpenRangeReader(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		RunAndReturn(decompressingRangeReader(compressed))
 	provider.EXPECT().
-		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionZstd), mock.Anything).
+		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionZstd)).
 		Return(compressedSeekable, nil).Once()
 
 	require.Equal(t, payload[:readLen], runRead(t, bHeader, provider))
@@ -134,7 +134,7 @@ func TestStorageDiff_SwapsHeaderOnSelfMatch(t *testing.T) {
 	// Peer-routing probe: non-PeerRouted result → fall through to refresh.
 	probeSeekable := storage.NewMockSeekable(t)
 	provider.EXPECT().
-		OpenSeekable(mock.Anything, paths.DataFile(storage.MemfileName, storage.CompressionNone), mock.Anything).
+		OpenSeekable(mock.Anything, paths.DataFile(storage.MemfileName, storage.CompressionNone)).
 		Return(probeSeekable, nil).Once()
 
 	headerBlob := storage.NewMockBlob(t)
@@ -144,7 +144,7 @@ func TestStorageDiff_SwapsHeaderOnSelfMatch(t *testing.T) {
 			return io.Copy(w, bytes.NewReader(fullHeaderBytes))
 		}).Once()
 	provider.EXPECT().
-		OpenBlob(mock.Anything, paths.HeaderFile(storage.MemfileName), mock.Anything).
+		OpenBlob(mock.Anything, paths.HeaderFile(storage.MemfileName)).
 		Return(headerBlob, nil).Once()
 
 	compressedSeekable := storage.NewMockSeekable(t)
@@ -152,7 +152,7 @@ func TestStorageDiff_SwapsHeaderOnSelfMatch(t *testing.T) {
 		OpenRangeReader(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		RunAndReturn(decompressingRangeReader(compressed))
 	provider.EXPECT().
-		OpenSeekable(mock.Anything, paths.DataFile(storage.MemfileName, storage.CompressionZstd), mock.Anything).
+		OpenSeekable(mock.Anything, paths.DataFile(storage.MemfileName, storage.CompressionZstd)).
 		Return(compressedSeekable, nil).Once()
 
 	got, f := runReadOnFile(t, staleHeader, provider)
@@ -188,13 +188,13 @@ func TestStorageDiff_NoRefreshOnFinalizedHeader(t *testing.T) {
 	uncompressedSeekable := storage.NewMockSeekable(t)
 	uncompressedSeekable.EXPECT().
 		OpenRangeReader(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (storage.RangeReader, error) {
+		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (storage.RangeReader, storage.Source, error) {
 			end := min(off+length, int64(len(payload)))
 
-			return storage.NewRangeReader(io.NopCloser(bytes.NewReader(payload[off:end]))), nil
+			return storage.NewRangeReader(io.NopCloser(bytes.NewReader(payload[off:end]))), storage.SourceFS, nil
 		})
 	provider.EXPECT().
-		OpenSeekable(mock.Anything, uncompressedPath, mock.Anything).
+		OpenSeekable(mock.Anything, uncompressedPath).
 		Return(uncompressedSeekable, nil)
 	// No expectation on OpenBlob — any header fetch panics the test.
 
@@ -235,13 +235,13 @@ func TestStorageDiff_SkipsHeaderRefreshWhenPeerActive(t *testing.T) {
 		Return(int64(payloadSize), nil).Once()
 	uncompressedSeekable.EXPECT().
 		OpenRangeReader(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (storage.RangeReader, error) {
+		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (storage.RangeReader, storage.Source, error) {
 			end := min(off+length, int64(len(payload)))
 
-			return storage.NewRangeReader(io.NopCloser(bytes.NewReader(payload[off:end]))), nil
+			return storage.NewRangeReader(io.NopCloser(bytes.NewReader(payload[off:end]))), storage.SourceFS, nil
 		})
 	provider.EXPECT().
-		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone), mock.Anything).
+		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone)).
 		Return(peerRoutedSeekable{Seekable: uncompressedSeekable}, nil).Once()
 
 	got, _ := runReadOnFile(t, bHeader, provider)
@@ -279,7 +279,7 @@ func TestStorageDiff_V3AncestorFallsBackToUncompressed(t *testing.T) {
 	// initialSize falls through to refresh.
 	probeSeekable := storage.NewMockSeekable(t)
 	provider.EXPECT().
-		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone), mock.Anything).
+		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone)).
 		Return(probeSeekable, nil).Once()
 
 	// Refresh A's header — V3, so openFromLoadedHeader opens at the basic path.
@@ -290,7 +290,7 @@ func TestStorageDiff_V3AncestorFallsBackToUncompressed(t *testing.T) {
 			return io.Copy(w, bytes.NewReader(aHeaderBytes))
 		}).Once()
 	provider.EXPECT().
-		OpenBlob(mock.Anything, aPaths.HeaderFile(storage.MemfileName), mock.Anything).
+		OpenBlob(mock.Anything, aPaths.HeaderFile(storage.MemfileName)).
 		Return(headerBlob, nil).Once()
 
 	rawSeekable := storage.NewMockSeekable(t)
@@ -299,13 +299,13 @@ func TestStorageDiff_V3AncestorFallsBackToUncompressed(t *testing.T) {
 		Return(int64(payloadSize), nil).Once()
 	rawSeekable.EXPECT().
 		OpenRangeReader(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (storage.RangeReader, error) {
+		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (storage.RangeReader, storage.Source, error) {
 			end := min(off+length, int64(len(payload)))
 
-			return storage.NewRangeReader(io.NopCloser(bytes.NewReader(payload[off:end]))), nil
+			return storage.NewRangeReader(io.NopCloser(bytes.NewReader(payload[off:end]))), storage.SourceFS, nil
 		})
 	provider.EXPECT().
-		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone), mock.Anything).
+		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone)).
 		Return(rawSeekable, nil).Once()
 
 	require.Equal(t, payload[:readLen], runRead(t, bHeader, provider))
@@ -342,19 +342,19 @@ func TestStorageDiff_ReloadSourceLatchesV3AsUncompressed(t *testing.T) {
 			return io.Copy(w, bytes.NewReader(aHeaderBytes))
 		}).Once()
 	provider.EXPECT().
-		OpenBlob(mock.Anything, aPaths.HeaderFile(storage.MemfileName), mock.Anything).
+		OpenBlob(mock.Anything, aPaths.HeaderFile(storage.MemfileName)).
 		Return(headerBlob, nil).Once()
 
 	rawSeekable := storage.NewMockSeekable(t)
 	rawSeekable.EXPECT().
 		OpenRangeReader(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (storage.RangeReader, error) {
+		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (storage.RangeReader, storage.Source, error) {
 			end := min(off+length, int64(len(payload)))
 
-			return storage.NewRangeReader(io.NopCloser(bytes.NewReader(payload[off:end]))), nil
+			return storage.NewRangeReader(io.NopCloser(bytes.NewReader(payload[off:end]))), storage.SourceFS, nil
 		})
 	provider.EXPECT().
-		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone), mock.Anything).
+		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone)).
 		Return(rawSeekable, nil).Once()
 
 	m, err := blockmetrics.NewMetrics(noop.NewMeterProvider())
@@ -406,18 +406,18 @@ func TestStorageDiff_MissingAncestorHeaderFallsBackToUncompressed(t *testing.T) 
 		Return(int64(payloadSize), nil).Once()
 	rawSeekable.EXPECT().
 		OpenRangeReader(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (storage.RangeReader, error) {
+		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (storage.RangeReader, storage.Source, error) {
 			end := min(off+length, int64(len(payload)))
 
-			return storage.NewRangeReader(io.NopCloser(bytes.NewReader(payload[off:end]))), nil
+			return storage.NewRangeReader(io.NopCloser(bytes.NewReader(payload[off:end]))), storage.SourceFS, nil
 		})
 	provider.EXPECT().
-		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone), mock.Anything).
+		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone)).
 		Return(rawSeekable, nil).Once()
 
 	// Header file is missing — the very-old-template case.
 	provider.EXPECT().
-		OpenBlob(mock.Anything, aPaths.HeaderFile(storage.MemfileName), mock.Anything).
+		OpenBlob(mock.Anything, aPaths.HeaderFile(storage.MemfileName)).
 		Return(nil, storage.ErrObjectNotExist).Once()
 
 	require.Equal(t, payload[:readLen], runRead(t, bHeader, provider))
@@ -460,13 +460,13 @@ func TestStorageDiff_BackfillMarkerLatchesUncompressedAtConstruction(t *testing.
 		Return(int64(payloadSize), nil).Once()
 	rawSeekable.EXPECT().
 		OpenRangeReader(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (storage.RangeReader, error) {
+		RunAndReturn(func(_ context.Context, off, length int64, _ *storage.FrameTable) (storage.RangeReader, storage.Source, error) {
 			end := min(off+length, int64(len(payload)))
 
-			return storage.NewRangeReader(io.NopCloser(bytes.NewReader(payload[off:end]))), nil
+			return storage.NewRangeReader(io.NopCloser(bytes.NewReader(payload[off:end]))), storage.SourceFS, nil
 		})
 	provider.EXPECT().
-		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone), mock.Anything).
+		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone)).
 		Return(rawSeekable, nil).Once()
 	// No OpenBlob expectation: refresh path must NOT fire.
 
@@ -545,14 +545,16 @@ func buildHeader(t *testing.T, selfID uuid.UUID, size int64, mapsTo uuid.UUID) *
 // requested U-offset in the caller's frame table, slices the compressed
 // payload, and streams it through a decompressor. Mirrors what a real
 // Seekable does over zstd-compressed data.
-func decompressingRangeReader(compressed []byte) func(context.Context, int64, int64, *storage.FrameTable) (storage.RangeReader, error) {
-	return func(_ context.Context, offsetU, _ int64, ft *storage.FrameTable) (storage.RangeReader, error) {
+func decompressingRangeReader(compressed []byte) func(context.Context, int64, int64, *storage.FrameTable) (storage.RangeReader, storage.Source, error) {
+	return func(_ context.Context, offsetU, _ int64, ft *storage.FrameTable) (storage.RangeReader, storage.Source, error) {
 		r, err := ft.LocateCompressed(offsetU)
 		if err != nil {
-			return nil, err
+			return nil, storage.SourceFS, err
 		}
 		end := min(r.Offset+int64(r.Length), int64(len(compressed)))
 
-		return storage.NewDecompressingReader(storage.NewRangeReader(io.NopCloser(bytes.NewReader(compressed[r.Offset:end]))), ft.CompressionType())
+		rc, err := storage.NewDecompressReader(storage.NewRangeReader(io.NopCloser(bytes.NewReader(compressed[r.Offset:end]))), ft.CompressionType(), storage.UnknownSource, storage.UnknownSeekableObjectType)
+
+		return rc, storage.SourceFS, err
 	}
 }

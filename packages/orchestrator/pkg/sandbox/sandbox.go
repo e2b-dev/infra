@@ -972,7 +972,7 @@ func (f *Factory) ResumeSandbox(
 	err = sbx.WaitForEnvd(
 		ctx,
 		StartTypeResume,
-		f.config.EnvdTimeout,
+		f.GetEnvdTimeout(ctx),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
@@ -1718,4 +1718,10 @@ func (f *Factory) GetEnvdInitRequestTimeout(ctx context.Context) time.Duration {
 	envdInitRequestTimeoutMs := f.featureFlags.IntFlag(ctx, featureflags.EnvdInitTimeoutMilliseconds)
 
 	return time.Duration(envdInitRequestTimeoutMs) * time.Millisecond
+}
+
+func (f *Factory) GetEnvdTimeout(ctx context.Context) time.Duration {
+	envdTimeoutMs := f.featureFlags.IntFlag(ctx, featureflags.EnvdTimeoutMilliseconds)
+
+	return time.Duration(envdTimeoutMs) * time.Millisecond
 }

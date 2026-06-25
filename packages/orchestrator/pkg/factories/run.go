@@ -885,6 +885,16 @@ func run(config cfg.Config, opts Options) (success bool) {
 		}
 	}
 
+	// Gracefully wait for live sandboxes to exit before closing the services they
+	// depend on. The forced-stop path skips this and tears sandboxes down later.
+	if !config.ForceStop {
+		logger.L().Info(ctx, "Starting sandbox drain phase", zap.Int("sandbox_count", sandboxes.Count()))
+		if err := orchestratorService.DrainSandboxes(closeCtx); err != nil {
+			logger.L().Error(ctx, "error while draining sandboxes", zap.Error(err))
+			success = false
+		}
+	}
+
 	slices.Reverse(closers)
 	for _, closer := range closers {
 		clog := globalLogger.With(zap.String("service", closer.name), zap.Bool("forced", config.ForceStop))

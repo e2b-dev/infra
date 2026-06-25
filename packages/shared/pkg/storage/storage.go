@@ -20,10 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-var (
-	tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/storage")
-	meter  = otel.Meter("github.com/e2b-dev/infra/packages/shared/pkg/storage")
-)
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/storage")
 
 var ErrObjectNotExist = errors.New("object does not exist")
 
@@ -81,7 +78,19 @@ const (
 	UnknownSeekableObjectType SeekableObjectType = iota
 	MemfileObjectType
 	RootFSObjectType
+	numSeekableObjectTypes
 )
+
+func (t SeekableObjectType) String() string {
+	switch t {
+	case MemfileObjectType:
+		return "memfile"
+	case RootFSObjectType:
+		return "rootfs"
+	default:
+		return "unknown"
+	}
+}
 
 type ObjectType int
 
@@ -98,8 +107,8 @@ const (
 type StorageProvider interface {
 	DeleteObjectsWithPrefix(ctx context.Context, prefix string) error
 	UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error)
-	OpenBlob(ctx context.Context, path string, objectType ObjectType) (Blob, error)
-	OpenSeekable(ctx context.Context, path string, seekableObjectType SeekableObjectType) (Seekable, error)
+	OpenBlob(ctx context.Context, path string) (Blob, error)
+	OpenSeekable(ctx context.Context, path string) (Seekable, error)
 	GetDetails() string
 }
 
@@ -181,14 +190,24 @@ func BlobCustomMetadata(ctx context.Context, b Blob) (ObjectMetadata, error) {
 	return mr.Metadata(ctx)
 }
 
+// ReadStats is what a RangeReader did over its lifetime; returned from Close.
+type ReadStats struct {
+	StoredBytes    int64
+	DeliveredBytes int64
+	Read           time.Duration // source I/O wall, excluding open and decompression
+	Decompress     time.Duration
+}
+
 type RangeReader interface {
 	io.Reader
-	Close(ctx context.Context) error
+	// Close returns the reader's lifetime stats, or nil if it doesn't meter.
+	Close(ctx context.Context) (*ReadStats, error)
 }
 
 // RangeOpener supports progressive reads via a streaming range reader.
+// OpenRangeReader returns the Source that served the bytes.
 type RangeOpener interface {
-	OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (RangeReader, error)
+	OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (RangeReader, Source, error)
 }
 
 type SeekableWriter interface {
@@ -202,8 +221,8 @@ type Seekable interface {
 	Size(ctx context.Context) (int64, error)
 }
 
-func UploadFramed(ctx context.Context, provider StorageProvider, remotePath string, objType SeekableObjectType, localPath string, opts ...PutOption) (*FullFrameTable, [32]byte, error) {
-	object, err := provider.OpenSeekable(ctx, remotePath, objType)
+func UploadFramed(ctx context.Context, provider StorageProvider, remotePath string, localPath string, opts ...PutOption) (*FullFrameTable, [32]byte, error) {
+	object, err := provider.OpenSeekable(ctx, remotePath)
 	if err != nil {
 		return nil, [32]byte{}, err
 	}
@@ -211,8 +230,8 @@ func UploadFramed(ctx context.Context, provider StorageProvider, remotePath stri
 	return object.StoreFile(ctx, localPath, opts...)
 }
 
-func UploadBlob(ctx context.Context, provider StorageProvider, remotePath string, objType ObjectType, localPath string, opts ...PutOption) error {
-	blob, err := provider.OpenBlob(ctx, remotePath, objType)
+func UploadBlob(ctx context.Context, provider StorageProvider, remotePath string, localPath string, opts ...PutOption) error {
+	blob, err := provider.OpenBlob(ctx, remotePath)
 	if err != nil {
 		return err
 	}
