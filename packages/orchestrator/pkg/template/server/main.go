@@ -27,11 +27,17 @@ import (
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type closeable interface {
 	Close() error
 }
+
+// consumerStatusCheckGracePeriod is how long the graceful drain waits, after
+// in-flight builds finish, for consumers to read the final build status before
+// the server shuts down.
+const consumerStatusCheckGracePeriod = 15 * time.Second
 
 type ServerStore struct {
 	templatemanager.UnimplementedTemplateServiceServer
@@ -149,21 +155,26 @@ func (s *ServerStore) Close(ctx context.Context) error {
 	}
 }
 
+// Wait gracefully drains in-flight template builds during shutdown. It waits
+// for running builds to finish, bounded by ctx, then gives consumers a grace
+// period to read the final build status. It returns ctx.Err() if ctx is
+// cancelled before the drain completes.
 func (s *ServerStore) Wait(ctx context.Context) error {
-	select {
-	case <-ctx.Done():
-		return errors.New("force exit, not waiting for builds to finish")
-	default:
-		s.logger.Info(ctx, "Waiting for all build jobs to finish", zap.Int64("active_builds", s.activeBuilds.Load()))
-		s.wg.Wait()
-
-		if !env.IsLocal() {
-			s.logger.Info(ctx, "Waiting for consumers to check build status")
-			time.Sleep(15 * time.Second)
-		}
-
-		s.logger.Info(ctx, "Template build queue cleaned")
-
-		return nil
+	s.logger.Info(ctx, "Waiting for all build jobs to finish", zap.Int64("active_builds", s.activeBuilds.Load()))
+	if err := utils.WaitGroupWait(ctx, s.wg); err != nil {
+		return fmt.Errorf("waiting for template builds: %w", err)
 	}
+
+	if !env.IsLocal() {
+		s.logger.Info(ctx, "Waiting for consumers to check build status")
+		select {
+		case <-time.After(consumerStatusCheckGracePeriod):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
+	s.logger.Info(ctx, "Template build queue cleaned")
+
+	return nil
 }

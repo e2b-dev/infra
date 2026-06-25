@@ -125,6 +125,13 @@ type PausedSandboxConfig struct {
 	// API gate implicit-resume paths (auto-resume, /connect) without a round-trip.
 	// Pre-existing rows omit the key and decode to false (a memory snapshot).
 	FilesystemOnly bool `json:"filesystemOnly,omitempty"`
+
+	// AutoPauseFilesystemOnly is the sandbox's policy for the *next* auto-pause:
+	// when true, an auto-pause on timeout takes a filesystem-only snapshot rather
+	// than a full memory one. It is restored on resume so the policy survives a
+	// pause/resume cycle. Distinct from FilesystemOnly, which records the kind of
+	// *this* snapshot. Pre-existing rows omit the key and decode to false.
+	AutoPauseFilesystemOnly bool `json:"autoPauseFilesystemOnly,omitempty"`
 }
 
 func (c PausedSandboxConfig) Value() (driver.Value, error) {

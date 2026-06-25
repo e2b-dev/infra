@@ -160,7 +160,7 @@ func openChunker(ctx context.Context, storagePath, buildID, artifact string, h *
 	if ft.IsCompressed() {
 		dataPath += ft.CompressionType().Suffix()
 	}
-	obj, err := provider.OpenSeekable(ctx, dataPath, seekableType(artifact))
+	obj, err := provider.OpenSeekable(ctx, dataPath)
 	if err != nil {
 		return nil, nil, 0, nil, fmt.Errorf("open data: %w", err)
 	}
@@ -190,7 +190,7 @@ func openChunker(ctx context.Context, storagePath, buildID, artifact string, h *
 		return nil, nil, 0, nil, err
 	}
 
-	chunker, err := block.NewChunker(flags, size, int64(h.Metadata.BlockSize), filepath.Join(cacheDir, "cache"), m)
+	chunker, err := block.NewChunker(flags, size, int64(h.Metadata.BlockSize), filepath.Join(cacheDir, "cache"), m, seekableType(artifact))
 	if err != nil {
 		os.RemoveAll(cacheDir)
 

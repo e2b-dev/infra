@@ -64,12 +64,12 @@ func storeHeaderWithMetrics(ctx context.Context, store storage.StorageProvider, 
 	return nil
 }
 
-func uploadBlobWithMetrics(ctx context.Context, store storage.StorageProvider, path string, objectType storage.ObjectType, sourcePath, fileType string, opts ...storage.PutOption) error {
+func uploadBlobWithMetrics(ctx context.Context, store storage.StorageProvider, path string, sourcePath, fileType string, opts ...storage.PutOption) error {
 	info, err := os.Stat(sourcePath)
 	if err != nil {
 		return fmt.Errorf("%s stat: %w", fileType, err)
 	}
-	if err := storage.UploadBlob(ctx, store, path, objectType, sourcePath, opts...); err != nil {
+	if err := storage.UploadBlob(ctx, store, path, sourcePath, opts...); err != nil {
 		return err
 	}
 	recordUploadCompression(ctx, fileType, storage.CompressConfig{}, info.Size(), info.Size())

@@ -100,6 +100,14 @@ UPDATE teams SET is_blocked = $1, blocked_reason = $2 WHERE id = $3
 		assertNotBlocked(t, resp.Body, resp.StatusCode())
 	})
 
+	t.Run("view is allowed (GET /v2/templates)", func(t *testing.T) {
+		t.Parallel()
+
+		resp, err := c.GetV2TemplatesWithResponse(ctx, &api.GetV2TemplatesParams{}, setup.WithAPIKey(apiKey))
+		require.NoError(t, err)
+		assertNotBlocked(t, resp.Body, resp.StatusCode())
+	})
+
 	t.Run("create is denied (POST /sandboxes)", func(t *testing.T) {
 		t.Parallel()
 

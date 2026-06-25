@@ -3,6 +3,7 @@ package featureflags
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -127,7 +128,6 @@ var (
 	BestOfKTooManyStartingFlag          = NewBoolFlag("best-of-k-too-many-starting", false)
 	EdgeProvidedSandboxMetricsFlag      = NewBoolFlag("edge-provided-sandbox-metrics", false)
 	CreateStorageCacheSpansFlag         = NewBoolFlag("create-storage-cache-spans", env.IsDevelopment())
-	SandboxAutoResumeFlag               = NewBoolFlag("sandbox-auto-resume", env.IsDevelopment())
 	OrchAcceptsCombinedHostFlag         = NewBoolFlag("orch-accepts-combined-host", false)
 
 	// StorageSoftDeleteCheckFlag enables reading the storage-index soft-delete
@@ -213,7 +213,29 @@ var (
 	// HeaderV5WriteFlag makes Pause emit V5 headers. When enabled it also
 	// supersedes V4HeaderForUncompressedFlag for uncompressed uploads.
 	HeaderV5WriteFlag = NewBoolFlag("header-v5-write", false)
+
+	// ResumeOriginNodeRemapFlag enables repointing a snapshot's origin_node_id to
+	// the fallback node a resume timed out on. The node's local cache is warming
+	// from the in-progress snapshot pull, so pinning the retry to it avoids
+	// re-pulling the snapshot onto yet another node.
+	ResumeOriginNodeRemapFlag = NewBoolFlag("resume-origin-node-remap", false)
 )
+
+// envdTimeoutFallbackMs reads ENVD_TIMEOUT (Go duration string, e.g. "10s")
+// and returns milliseconds. Falls back to 10 000 ms when unset or unparseable.
+func envdTimeoutFallbackMs() int {
+	raw := os.Getenv("ENVD_TIMEOUT")
+	if raw == "" {
+		return 10_000
+	}
+
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return 10_000
+	}
+
+	return int(d.Milliseconds())
+}
 
 type IntFlag struct {
 	name     string
@@ -247,11 +269,12 @@ var (
 	ClickhouseBatcherMaxBatchSize = NewIntFlag("clickhouse-batcher-max-batch-size", 100)
 	ClickhouseBatcherMaxDelay     = NewIntFlag("clickhouse-batcher-max-delay", 1000) // 1s in milliseconds
 	ClickhouseBatcherQueueSize    = NewIntFlag("clickhouse-batcher-queue-size", 1000)
-	BestOfKSampleSize             = NewIntFlag("best-of-k-sample-size", 3)                   // Default K=3
-	BestOfKMaxOvercommit          = NewIntFlag("best-of-k-max-overcommit", 400)              // Default R=4 (stored as percentage, max over-commit ratio)
-	BestOfKAlpha                  = NewIntFlag("best-of-k-alpha", 50)                        // Default Alpha=0.5 (stored as percentage for int flag, current usage weight)
-	EnvdInitTimeoutMilliseconds   = NewIntFlag("envd-init-request-timeout-milliseconds", 50) // Timeout for envd init request in milliseconds
-	HostStatsSamplingInterval     = NewIntFlag("host-stats-sampling-interval", 5000)         // Host stats sampling interval in milliseconds (default 5s)
+	BestOfKSampleSize             = NewIntFlag("best-of-k-sample-size", 3)                           // Default K=3
+	BestOfKMaxOvercommit          = NewIntFlag("best-of-k-max-overcommit", 400)                      // Default R=4 (stored as percentage, max over-commit ratio)
+	BestOfKAlpha                  = NewIntFlag("best-of-k-alpha", 50)                                // Default Alpha=0.5 (stored as percentage for int flag, current usage weight)
+	EnvdInitTimeoutMilliseconds   = NewIntFlag("envd-init-request-timeout-milliseconds", 50)         // Timeout for envd init request in milliseconds
+	EnvdTimeoutMilliseconds       = NewIntFlag("envd-timeout-milliseconds", envdTimeoutFallbackMs()) // Timeout for waiting for envd on resume; falls back to ENVD_TIMEOUT env var (default 10s)
+	HostStatsSamplingInterval     = NewIntFlag("host-stats-sampling-interval", 5000)                 // Host stats sampling interval in milliseconds (default 5s)
 	// GuestSyncTimeoutMs overrides the mandatory pre-pause guest-sync deadline
 	// for filesystem-only snapshots, in milliseconds. 0 (default) derives the
 	// timeout from guest RAM; a positive value pins it.
@@ -323,7 +346,7 @@ var (
 
 	// BuildReservedDiskSpaceMB is the amount of disk space in MB reserved for root on the guest filesystem.
 	// Reserved blocks are only usable by root (uid 0), protecting the guest OS from disk-full conditions.
-	BuildReservedDiskSpaceMB = NewIntFlag("build-reserved-disk-space-mb", 0)
+	BuildReservedDiskSpaceMB = NewIntFlag("build-reserved-disk-space-mb", 256)
 
 	// MaxStartingInstancesPerNode limits concurrent sandbox start/resume operations on a single orchestrator node.
 	// Must be > 0.
