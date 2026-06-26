@@ -565,6 +565,7 @@ components:
         - cpuCount
         - memoryMB
         - diskSizeMB
+        - retentionExpired
       properties:
         templateID:
           type: string
@@ -594,6 +595,9 @@ components:
           $ref: "#/components/schemas/MemoryMB"
         diskSizeMB:
           $ref: "#/components/schemas/DiskSizeMB"
+        retentionExpired:
+          type: boolean
+          description: Whether the sandbox ended more than the retention window ago, so its monitoring, events, and logs data is no longer available
 
     HealthResponse:
       type: object
