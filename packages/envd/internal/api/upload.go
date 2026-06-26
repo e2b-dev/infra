@@ -136,6 +136,7 @@ func processFile(r *http.Request, path string, part io.Reader, uid, gid int, met
 	// overwriting a file replaces its full metadata set: keys absent from
 	// this request are cleared (O_TRUNC truncates the body but preserves
 	// xattrs from a prior upload).
+	persisted := metadata
 	if err := filesystem.WriteMetadataFile(file, metadata); err != nil {
 		switch {
 		case filesystem.IsXattrUnsupported(err):
@@ -143,19 +144,14 @@ func processFile(r *http.Request, path string, part io.Reader, uid, gid int, met
 			// always supports them; this branch only triggers for virtual
 			// filesystems such as /sys and /proc that the upload API also
 			// supports. The file body was already persisted, so we log and
-			// continue; the response EntryInfo reads xattrs back from disk
-			// so it won't falsely claim metadata was persisted.
+			// continue without response metadata.
 			logger.Warn().Str("path", path).Err(err).Msg("filesystem does not support xattrs; metadata not persisted")
+			persisted = nil
 		case errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT):
 			return http.StatusInsufficientStorage, nil, fmt.Errorf("not enough space for file metadata: %w", err)
 		default:
 			return http.StatusInternalServerError, nil, fmt.Errorf("error writing file metadata: %w", err)
 		}
-	}
-
-	persisted, err := filesystem.ReadMetadataFile(file)
-	if err != nil {
-		logger.Warn().Str("path", path).Err(err).Msg("failed to read back file metadata for upload response")
 	}
 
 	return http.StatusNoContent, persisted, nil
