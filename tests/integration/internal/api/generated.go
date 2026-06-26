@@ -6205,6 +6205,7 @@ type PostAccessTokensResponse struct {
 	HTTPResponse *http.Response
 	JSON201      *CreatedAccessToken
 	JSON401      *N401
+	JSON403      *N403
 	JSON500      *N500
 }
 
@@ -8791,6 +8792,13 @@ func ParsePostAccessTokensResponse(rsp *http.Response) (*PostAccessTokensRespons
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest N403
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500

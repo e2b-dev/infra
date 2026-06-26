@@ -3534,7 +3534,8 @@ paths:
   /access-tokens:
     post:
       summary: Create access token
-      description: Create a new access token
+      description: Create a new access token. Deprecated; use an API key (E2B_API_KEY) instead.
+      deprecated: true
       tags: [access-tokens]
       security:
         - AuthProviderBearerAuth: []
@@ -3553,6 +3554,8 @@ paths:
                 $ref: "#/components/schemas/CreatedAccessToken"
         "401":
           $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
         "500":
           $ref: "#/components/responses/500"
 
