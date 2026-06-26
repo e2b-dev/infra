@@ -748,6 +748,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 	defer s.stopSandboxAsync(context.WithoutCancel(ctx), sbx)
 
 	sbxlogger.E(sbx).Info(ctx, "Checkpointing sandbox")
+	sbx.SetStopReason(sandbox.StopReasonCheckpointing)
 
 	// Checkpoint always takes a full memory snapshot; filesystem-only checkpoint
 	// (resume-in-place would need to reboot) is not supported yet.
@@ -792,12 +793,6 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 		return nil, status.Errorf(codes.Internal, "error resuming sandbox after checkpoint: %s", err)
 	}
-
-	// The resume succeeded and resumedSbx now carries this execution. Mark the
-	// old sandbox as a checkpoint hand-off so its impending stop is recorded as
-	// checkpointing rather than a crash. On checkpoint failure we return before
-	// this point, so the old sandbox's abnormal stop is recorded as a crash.
-	sbx.SetStopReason(sandbox.StopReasonCheckpointing)
 
 	// Collect prefetch data immediately after resume while it's most accurate
 	prefetchData, prefetchErr := resumedSbx.MemoryPrefetchData(ctx)
