@@ -216,3 +216,11 @@ func TestWriteMetadataFileRejectsNilFile(t *testing.T) {
 		t.Fatal("expected nil file error")
 	}
 }
+
+func TestReadMetadataFileRejectsNilFile(t *testing.T) {
+	t.Parallel()
+
+	if _, err := ReadMetadataFile(nil); err == nil {
+		t.Fatal("expected nil file error")
+	}
+}

@@ -80,7 +80,26 @@ func validatePrintableASCII(label, s string) error {
 // MetadataXattrPrefix namespace. Returns nil (not an error) when the
 // filesystem does not support xattrs or the file has no metadata set.
 func ReadMetadata(path string) (map[string]string, error) {
-	names, err := xattr.List(path)
+	return readMetadata(path, nil)
+}
+
+// ReadMetadataFile is like ReadMetadata but operates on an open file.
+func ReadMetadataFile(file *os.File) (map[string]string, error) {
+	if file == nil {
+		return nil, errors.New("file is nil")
+	}
+
+	return readMetadata(file.Name(), file)
+}
+
+func readMetadata(path string, file *os.File) (map[string]string, error) {
+	var names []string
+	var err error
+	if file != nil {
+		names, err = xattr.FList(file)
+	} else {
+		names, err = xattr.List(path)
+	}
 	if err != nil {
 		if IsXattrUnsupported(err) {
 			return nil, nil
@@ -95,7 +114,12 @@ func ReadMetadata(path string) (map[string]string, error) {
 			continue
 		}
 
-		value, err := xattr.Get(path, name)
+		var value []byte
+		if file != nil {
+			value, err = xattr.FGet(file, name)
+		} else {
+			value, err = xattr.Get(path, name)
+		}
 		if err != nil {
 			if errors.Is(err, xattr.ENOATTR) {
 				continue
@@ -139,9 +163,9 @@ func WriteMetadata(path string, metadata map[string]string) error {
 	return writeMetadata(path, nil, metadata)
 }
 
-// WriteMetadataFile is like WriteMetadata but operates on an already-open file
-// descriptor. This avoids path races for callers that have just written the
-// file and still hold it open.
+// WriteMetadataFile is like WriteMetadata but operates on an open file. This
+// avoids path races for callers that have just written the file and still hold
+// it open.
 func WriteMetadataFile(file *os.File, metadata map[string]string) error {
 	if file == nil {
 		return errors.New("file is nil")
