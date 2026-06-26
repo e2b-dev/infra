@@ -131,7 +131,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 	var img containerregistry.Image
 	var err error
 	if template.FromImage != "" {
-		img, err = oci.GetPublicImage(childCtx, r.dockerhubRepository, template.FromImage, template.RegistryAuthProvider)
+		img, err = oci.GetPublicImage(childCtx, r.dockerhubRepository, template.FromImage, template.RegistryAuthProvider, r.buildContext.BuilderConfig.ImagePullEgressAllowlist)
 	} else {
 		img, err = oci.GetImage(childCtx, r.artifactRegistry, template.TemplateID, r.buildContext.Template.BuildID)
 	}

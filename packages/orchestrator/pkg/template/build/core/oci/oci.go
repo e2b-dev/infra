@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,6 +27,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/filesystem"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/oci/auth"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/oci/egress"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/units"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
@@ -34,6 +37,19 @@ import (
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/oci")
+
+// guardedImagePullTransport returns the registry transport with a dialer that
+// rejects connections to internal/private IPs (unless allowlisted).
+func guardedImagePullTransport(ctx context.Context, tag, registryHost string, egressAllowlist []string) *http.Transport {
+	base, _ := remote.DefaultTransport.(*http.Transport)
+
+	return egress.NewTransport(base, registryHost, egress.ParseAllowlist(egressAllowlist), func(ip netip.Addr) {
+		telemetry.ReportEvent(ctx, "blocked image pull egress to internal IP",
+			attribute.String("image.ref", tag),
+			attribute.String("blocked_ip", ip.String()),
+		)
+	})
+}
 
 // ImageTooLargeError is returned when the uncompressed Docker image exceeds the maximum filesystem size.
 type ImageTooLargeError struct {
@@ -67,9 +83,17 @@ func DefaultPlatform() containerregistry.Platform {
 }
 
 // wrapImagePullError converts technical Docker registry errors into user-friendly messages.
-func wrapImagePullError(err error, imageRef string) error {
+func wrapImagePullError(ctx context.Context, err error, imageRef string) error {
 	if err == nil {
 		return nil
+	}
+
+	// The registry host resolved to a disallowed internal/private address.
+	// Return a clean message; the underlying error is intentionally not wrapped.
+	if errors.Is(err, egress.ErrBlocked) {
+		logger.L().Warn(ctx, "image pull blocked due to disallowed internal address", zap.String("image_ref", imageRef), zap.Error(err))
+
+		return fmt.Errorf("cannot pull image '%s': its registry host resolved to a disallowed internal address", imageRef)
 	}
 
 	// Check for transport errors with specific error codes from the registry API
@@ -92,7 +116,7 @@ func wrapImagePullError(err error, imageRef string) error {
 	return fmt.Errorf("failed to pull image '%s': %w", imageRef, err)
 }
 
-func GetPublicImage(ctx context.Context, dockerhubRepository dockerhub.RemoteRepository, tag string, authProvider auth.RegistryAuthProvider) (containerregistry.Image, error) {
+func GetPublicImage(ctx context.Context, dockerhubRepository dockerhub.RemoteRepository, tag string, authProvider auth.RegistryAuthProvider, egressAllowlist []string) (containerregistry.Image, error) {
 	ctx, span := tracer.Start(ctx, "pull-public-docker-image")
 	defer span.End()
 
@@ -108,7 +132,7 @@ func GetPublicImage(ctx context.Context, dockerhubRepository dockerhub.RemoteRep
 	if authProvider == nil && ref.Context().RegistryStr() == name.DefaultRegistry {
 		img, err := dockerhubRepository.GetImage(ctx, tag, platform)
 		if err != nil {
-			return nil, wrapImagePullError(err, tag)
+			return nil, wrapImagePullError(ctx, err, tag)
 		}
 
 		telemetry.ReportEvent(ctx, "pulled public image through docker remote repository proxy")
@@ -121,8 +145,13 @@ func GetPublicImage(ctx context.Context, dockerhubRepository dockerhub.RemoteRep
 		return img, nil
 	}
 
-	// Build options
-	opts := []remote.Option{remote.WithPlatform(platform)}
+	// Build options.
+	// The custom transport applies the egress guard configured via
+	// cfg.BuilderConfig.ImagePullEgressAllowlist.
+	opts := []remote.Option{
+		remote.WithPlatform(platform),
+		remote.WithTransport(guardedImagePullTransport(ctx, tag, ref.Context().RegistryStr(), egressAllowlist)),
+	}
 
 	// Use the auth provider if provided
 	if authProvider != nil {
@@ -137,7 +166,7 @@ func GetPublicImage(ctx context.Context, dockerhubRepository dockerhub.RemoteRep
 
 	img, err := remote.Image(ref, opts...)
 	if err != nil {
-		return nil, wrapImagePullError(err, tag)
+		return nil, wrapImagePullError(ctx, err, tag)
 	}
 
 	telemetry.ReportEvent(ctx, "pulled public image")

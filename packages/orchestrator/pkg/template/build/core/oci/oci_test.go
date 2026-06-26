@@ -31,6 +31,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+// loopbackEgressAllowlist permits loopback so the test registries (served over
+// 127.0.0.1) are not blocked by the image-pull egress guard, mirroring what a
+// local dev deployment sets via IMAGE_PULL_EGRESS_ALLOWLIST.
+var loopbackEgressAllowlist = []string{"127.0.0.0/8", "::1/128"}
+
 func createFileTar(t *testing.T, fileName string) *bytes.Buffer {
 	t.Helper()
 
@@ -277,7 +282,7 @@ func TestGetPublicImageWithGeneralAuth(t *testing.T) {
 		require.NotNil(t, authOption)
 
 		// Now test GetPublicImage
-		img, err := GetPublicImage(ctx, dockerhubRepository, imageRef, authProvider)
+		img, err := GetPublicImage(ctx, dockerhubRepository, imageRef, authProvider, loopbackEgressAllowlist)
 		require.NoError(t, err)
 		require.NotNil(t, img)
 
@@ -328,7 +333,7 @@ func TestGetPublicImageWithGeneralAuth(t *testing.T) {
 		require.NotNil(t, authOption)
 
 		// Now test GetPublicImage
-		img, err := GetPublicImage(ctx, dockerhubRepository, imageRef, authProvider)
+		img, err := GetPublicImage(ctx, dockerhubRepository, imageRef, authProvider, loopbackEgressAllowlist)
 		require.Error(t, err)
 		require.Nil(t, img)
 	})
@@ -354,7 +359,7 @@ func TestGetPublicImageWithGeneralAuth(t *testing.T) {
 		require.NoError(t, err)
 
 		// Get image without auth provider (nil)
-		img, err := GetPublicImage(ctx, dockerhubRepository, imageRef, nil)
+		img, err := GetPublicImage(ctx, dockerhubRepository, imageRef, nil, loopbackEgressAllowlist)
 		require.NoError(t, err)
 		require.NotNil(t, img)
 
@@ -363,4 +368,23 @@ func TestGetPublicImageWithGeneralAuth(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, layers, 1)
 	})
+}
+
+func TestGetPublicImageBlocksInternalEgress(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	dockerhubRepository := dockerhub.NewNoopRemoteRepository()
+	t.Cleanup(func() {
+		require.NoError(t, dockerhubRepository.Close())
+	})
+
+	// A reference whose registry host is an internal/private IP not present in
+	// the test allowlist (which only permits loopback).
+	imageRef := "10.255.255.1:5000/test/image:latest"
+
+	img, err := GetPublicImage(ctx, dockerhubRepository, imageRef, nil, nil)
+	require.Error(t, err)
+	require.Nil(t, img)
+	assert.Contains(t, err.Error(), "disallowed internal address")
 }

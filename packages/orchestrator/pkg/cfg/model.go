@@ -36,6 +36,13 @@ type BuilderConfig struct {
 
 	Provider string `env:"PROVIDER" envDefault:"gcp"`
 
+	// ImagePullEgressAllowlist lists IPs/CIDRs and/or domain patterns that are
+	// exempt from the internal-egress denylist applied to base image pulls.
+	// Domain patterns support exact, "*", and "*.suffix" forms. If an HTTP(S)
+	// proxy is configured for the builder, pulls go through it and it takes
+	// precedence over this allowlist.
+	ImagePullEgressAllowlist []string `env:"IMAGE_PULL_EGRESS_ALLOWLIST" envSeparator:","`
+
 	StorageConfig storage.Config
 	NetworkConfig network.Config
 }
