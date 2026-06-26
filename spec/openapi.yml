@@ -150,6 +150,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    "410":
+      description: Gone
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     "500":
       description: Server error
       content:
@@ -3554,8 +3560,8 @@ paths:
                 $ref: "#/components/schemas/CreatedAccessToken"
         "401":
           $ref: "#/components/responses/401"
-        "403":
-          $ref: "#/components/responses/403"
+        "410":
+          $ref: "#/components/responses/410"
         "500":
           $ref: "#/components/responses/500"
 

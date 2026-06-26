@@ -33,6 +33,6 @@ func TestPostAccessTokensRejectsWhenIssuanceDisabled(t *testing.T) {
 	store := &APIStore{featureFlags: ff}
 	store.PostAccessTokens(ginCtx)
 
-	require.Equal(t, http.StatusForbidden, recorder.Code)
+	require.Equal(t, http.StatusGone, recorder.Code)
 	require.Contains(t, recorder.Body.String(), "E2B_API_KEY")
 }

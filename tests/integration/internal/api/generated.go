@@ -1483,6 +1483,9 @@ type N404 = Error
 // N409 defines model for 409.
 type N409 = Error
 
+// N410 defines model for 410.
+type N410 = Error
+
 // N500 defines model for 500.
 type N500 = Error
 
@@ -6205,7 +6208,7 @@ type PostAccessTokensResponse struct {
 	HTTPResponse *http.Response
 	JSON201      *CreatedAccessToken
 	JSON401      *N401
-	JSON403      *N403
+	JSON410      *N410
 	JSON500      *N500
 }
 
@@ -8793,12 +8796,12 @@ func ParsePostAccessTokensResponse(rsp *http.Response) (*PostAccessTokensRespons
 		}
 		response.JSON401 = &dest
 
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest N403
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 410:
+		var dest N410
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSON403 = &dest
+		response.JSON410 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500
