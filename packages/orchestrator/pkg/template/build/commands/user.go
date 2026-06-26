@@ -54,10 +54,7 @@ func (u *User) Execute(
 	// Only create user if it doesn't exist
 	if !userExists {
 		// Try Debian-style adduser first, fall back to useradd for RHEL/CentOS/Alpine
-		createUserCmd := fmt.Sprintf(
-			"adduser --disabled-password --gecos \"\" %s 2>/dev/null || useradd -m %s 2>/dev/null || adduser -D %s",
-			userArg, userArg, userArg,
-		)
+		createUserCmd := buildCreateUserCmd(userArg)
 		err = sandboxtools.RunCommandWithLogger(
 			ctx,
 			proxy,
@@ -104,7 +101,7 @@ func addToSudoers(
 		lvl,
 		prefix,
 		sandboxID,
-		fmt.Sprintf("usermod -aG sudo %s 2>/dev/null || usermod -aG wheel %s 2>/dev/null || true", userArg, userArg),
+		buildAddToGroupCmd(userArg),
 		metadata.Context{
 			User:    "root",
 			EnvVars: cmdMetadata.EnvVars,
@@ -122,7 +119,7 @@ func addToSudoers(
 		lvl,
 		prefix,
 		sandboxID,
-		fmt.Sprintf("passwd -d %s 2>/dev/null || true", userArg),
+		buildRemovePasswordCmd(userArg),
 		metadata.Context{
 			User:    "root",
 			EnvVars: cmdMetadata.EnvVars,
@@ -140,7 +137,7 @@ func addToSudoers(
 		lvl,
 		prefix,
 		sandboxID,
-		fmt.Sprintf("touch /etc/sudoers && (grep -q '^%s ALL=(ALL:ALL) NOPASSWD: ALL' /etc/sudoers || echo '%s ALL=(ALL:ALL) NOPASSWD: ALL' >>/etc/sudoers)", userArg, userArg),
+		buildSudoersCmd(userArg),
 		metadata.Context{
 			User:    "root",
 			EnvVars: cmdMetadata.EnvVars,
@@ -176,4 +173,33 @@ func saveUserMeta(
 	cmdMetadata.User = user
 
 	return cmdMetadata, err
+}
+
+// buildCreateUserCmd returns the shell command that creates a user, trying
+// Debian-style adduser first, then useradd (RHEL/CentOS), then Alpine adduser.
+func buildCreateUserCmd(username string) string {
+	return fmt.Sprintf(
+		"adduser --disabled-password --gecos \"\" %s 2>/dev/null || useradd -m %s 2>/dev/null || adduser -D %s",
+		username, username, username,
+	)
+}
+
+// buildAddToGroupCmd returns the shell command that adds a user to the sudo or
+// wheel group, depending on the distro.
+func buildAddToGroupCmd(username string) string {
+	return fmt.Sprintf("usermod -aG sudo %s 2>/dev/null || usermod -aG wheel %s 2>/dev/null || true", username, username)
+}
+
+// buildRemovePasswordCmd returns the shell command that removes a user's password.
+func buildRemovePasswordCmd(username string) string {
+	return fmt.Sprintf("passwd -d %s 2>/dev/null || true", username)
+}
+
+// buildSudoersCmd returns the shell command that appends a NOPASSWD sudoers
+// entry for the given user if it is not already present.
+func buildSudoersCmd(username string) string {
+	return fmt.Sprintf(
+		"touch /etc/sudoers && (grep -q '^%s ALL=(ALL:ALL) NOPASSWD: ALL' /etc/sudoers || echo '%s ALL=(ALL:ALL) NOPASSWD: ALL' >>/etc/sudoers)",
+		username, username,
+	)
 }

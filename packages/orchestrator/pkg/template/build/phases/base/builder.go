@@ -426,31 +426,35 @@ func (bb *BaseBuilder) fixEnvdPresetFiles(ctx context.Context, rootfsPath string
 	}
 	defer filesystem.Unmount(ctx, mountPoint)
 
+	return applyEnvdPresetFiles(mountPoint)
+}
+
+// applyEnvdPresetFiles writes systemd preset files and re-creates service
+// symlinks inside an already-mounted rootfs at mountPoint.
+// It is a pure filesystem operation with no mount/unmount side-effects, which
+// makes it straightforward to unit-test against a temporary directory.
+func applyEnvdPresetFiles(mountPoint string) error {
 	// Create /etc/systemd/system-preset directory if it doesn't exist
 	presetDir := filepath.Join(mountPoint, "etc/systemd/system-preset")
-	err = os.MkdirAll(presetDir, 0o755)
-	if err != nil {
+	if err := os.MkdirAll(presetDir, 0o755); err != nil {
 		return fmt.Errorf("error creating preset directory: %w", err)
 	}
 
 	// Write the preset file
 	presetContent := "enable envd.service\n"
 	presetFile := filepath.Join(presetDir, "80-envd.preset")
-	err = os.WriteFile(presetFile, []byte(presetContent), 0o644)
-	if err != nil {
+	if err := os.WriteFile(presetFile, []byte(presetContent), 0o644); err != nil {
 		return fmt.Errorf("error writing preset file: %w", err)
 	}
 
 	// Also ensure /usr/lib/systemd/system-preset/80-envd.preset exists
 	usrPresetDir := filepath.Join(mountPoint, "usr/lib/systemd/system-preset")
-	err = os.MkdirAll(usrPresetDir, 0o755)
-	if err != nil {
+	if err := os.MkdirAll(usrPresetDir, 0o755); err != nil {
 		return fmt.Errorf("error creating usr preset directory: %w", err)
 	}
 
 	usrPresetFile := filepath.Join(usrPresetDir, "80-envd.preset")
-	err = os.WriteFile(usrPresetFile, []byte(presetContent), 0o644)
-	if err != nil {
+	if err := os.WriteFile(usrPresetFile, []byte(presetContent), 0o644); err != nil {
 		return fmt.Errorf("error writing usr preset file: %w", err)
 	}
 
@@ -459,8 +463,7 @@ func (bb *BaseBuilder) fixEnvdPresetFiles(ctx context.Context, rootfsPath string
 	// removed or overwritten the symlink, and systemd's preset-based re-creation
 	// on first boot is unreliable.
 	wantsDir := filepath.Join(mountPoint, "etc/systemd/system/multi-user.target.wants")
-	err = os.MkdirAll(wantsDir, 0o755)
-	if err != nil {
+	if err := os.MkdirAll(wantsDir, 0o755); err != nil {
 		return fmt.Errorf("error creating wants directory: %w", err)
 	}
 
@@ -476,8 +479,7 @@ func (bb *BaseBuilder) fixEnvdPresetFiles(ctx context.Context, rootfsPath string
 			envdServicePath = "/usr/lib/systemd/system/envd.service"
 		}
 	}
-	err = os.Symlink(envdServicePath, envdSymlink)
-	if err != nil {
+	if err := os.Symlink(envdServicePath, envdSymlink); err != nil {
 		return fmt.Errorf("error creating envd.service symlink: %w", err)
 	}
 
