@@ -83,8 +83,8 @@ func main() {
 	fphBenchDelay := flag.Duration("fph-bench-delay", 0, "wait this long between workload completion and pause (lets FPR settle)")
 
 	gdbDebug := flag.Bool("gdb", false, "resume under gdb: hold the guest at the kernel entry breakpoint with a gdb-enabled FC and hand over a ready gdb session for source-level guest-kernel debugging")
-	gdbFC := flag.String("gdb-fc", "", "path to a firecracker built --features gdb (default: fetch firecracker-debug by version; set E2B_GDB_ARTIFACTS_URL to override the source)")
-	gdbSymbols := flag.String("gdb-symbols", "", "path to the guest kernel's DWARF symbols, vmlinux.debug (default: fetch vmlinux.debug by version; set E2B_GDB_ARTIFACTS_URL to override the source)")
+	gdbFC := flag.String("gdb-fc", "", "path to a firecracker built --features gdb (default: firecracker-debug resolved next to the snapshot's firecracker)")
+	gdbSymbols := flag.String("gdb-symbols", "", "path to the guest kernel's DWARF symbols, vmlinux.debug (default: resolved next to the snapshot's vmlinux.bin)")
 	gdbSocket := flag.String("gdb-socket", "", "gdb unix socket path (default: a temp path)")
 	gdbExec := flag.String("gdb-exec", "", "scripted mode: run these gdb commands in batch (newline/';'-separated) instead of an interactive prompt")
 	gdbScript := flag.String("gdb-script", "", "scripted mode: run this gdb command file in batch")
