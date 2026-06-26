@@ -36,6 +36,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
 	e2benv "github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/httpserver"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
@@ -146,18 +147,30 @@ func run() int {
 	}
 	defer authDB.Close()
 
-	var clickhouseClient clickhouse.Clickhouse
-	if config.ClickhouseConnectionString == "" {
-		clickhouseClient = clickhouse.NewNoopClient()
-	} else {
-		clickhouseClient, err = clickhouse.New(config.ClickhouseConnectionString)
-		if err != nil {
-			l.Error(ctx, "Initializing ClickHouse client", zap.Error(err))
+	// Initialize feature flags client for ClickHouse endpoint switching
+	featureFlags, err := featureflags.NewClient()
+	if err != nil {
+		l.Error(ctx, "Initializing feature flags client", zap.Error(err))
 
-			return 1
-		}
-		defer clickhouseClient.Close(ctx)
+		return 1
 	}
+	defer featureFlags.Close(ctx)
+	featureFlags.SetServiceName(serviceName)
+	featureFlags.SetDeploymentName(config.DomainName)
+
+	clickhouseClient, err := clickhouse.NewSwitchingClient(
+		ctx,
+		featureFlags,
+		config.ClickhouseConnectionString,
+		config.ClickhouseConnectionStrings,
+		clickhouse.WithAllowNoopDefault(true),
+	)
+	if err != nil {
+		l.Error(ctx, "initializing ClickHouse switching client", zap.Error(err))
+
+		return 1
+	}
+	defer clickhouseClient.Close(ctx)
 
 	redisClient, err := factories.NewRedisClient(ctx, factories.RedisConfig{
 		RedisURL:         config.RedisURL,
