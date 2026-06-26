@@ -45,12 +45,14 @@ func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.Watc
 	}
 
 	// Check if path is on a network filesystem mount
-	isNetworkMount, err := IsPathOnNetworkMount(watchPath)
-	if err != nil {
-		return connect.NewError(connect.CodeInternal, fmt.Errorf("error checking mount status: %w", err))
-	}
-	if isNetworkMount {
-		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cannot watch path on network filesystem: %s", watchPath))
+	if !req.Msg.GetAllowNetworkMounts() {
+		isNetworkMount, err := IsPathOnNetworkMount(watchPath)
+		if err != nil {
+			return connect.NewError(connect.CodeInternal, fmt.Errorf("error checking mount status: %w", err))
+		}
+		if isNetworkMount {
+			return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cannot watch path on network filesystem: %s", watchPath))
+		}
 	}
 
 	w, err := fsnotify.NewWatcher()
@@ -129,15 +131,19 @@ func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.Watc
 					return connect.NewError(connect.CodeInternal, fmt.Errorf("error getting relative path: %w", nameErr))
 				}
 
-				filesystemEvent := &rpc.WatchDirResponse_Filesystem{
-					Filesystem: &rpc.FilesystemEvent{
-						Name: name,
-						Type: op,
-					},
+				filesystemEvent := &rpc.FilesystemEvent{
+					Name: name,
+					Type: op,
+				}
+
+				if req.Msg.GetIncludeEntry() && opCarriesEntry(op) {
+					filesystemEvent.Entry = eventEntryInfo(s.logger, e.Name)
 				}
 
 				event := &rpc.WatchDirResponse{
-					Event: filesystemEvent,
+					Event: &rpc.WatchDirResponse_Filesystem{
+						Filesystem: filesystemEvent,
+					},
 				}
 
 				if streamErr := stream.Send(event); streamErr != nil {

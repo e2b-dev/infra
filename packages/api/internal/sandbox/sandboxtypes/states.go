@@ -73,6 +73,11 @@ type RemoveOpts struct {
 	Action   StateAction
 	Eviction bool
 	Reason   KillReason
+
+	// FilesystemOnly requests a filesystem-only snapshot on pause (no memory
+	// snapshot); resuming it cold-boots from disk. Ignored unless Action is a
+	// pause. Default false = full memory snapshot.
+	FilesystemOnly bool
 }
 
 var AllowedTransitions = map[State]map[State]bool{

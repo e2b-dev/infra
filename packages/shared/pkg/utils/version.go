@@ -8,11 +8,24 @@ import (
 
 const MinEnvdVersionForSnapshot = "0.5.0"
 
-// MinEnvdVersionForCgroupFreeze is the first envd that exposes a native
-// POST /freeze endpoint and thaws cgroups on /init. We require both so the
-// orchestrator can avoid shell-based freezes (slow under load) and so the
-// sandbox doesn't end up permanently frozen after resume on older envds.
-const MinEnvdVersionForCgroupFreeze = "0.6.0"
+// MinEnvdVersionForCgroupFreeze is the first envd we trust to freeze user
+// cgroups across pause/resume. /freeze plus /init thaw landed in 0.6.0, but
+// 0.6.0-0.6.2 also froze the socat cgroup, breaking port forwarding (fixed
+// in 0.6.3 by #2923), so we gate on 0.6.3.
+const MinEnvdVersionForCgroupFreeze = "0.6.3"
+
+// MinEnvdVersionForHeapCollapse is the first envd that exposes a native
+// POST /collapse endpoint, which compacts envd's own anonymous heap into 2 MiB
+// hugepages before pause to reduce the frames it faults on resume. 0.6.4
+// already exists in the fleet without /collapse, so the gate must be 0.6.5 (the
+// version that introduces the endpoint) to avoid POSTing /collapse at a 0.6.4
+// envd that 404s.
+const MinEnvdVersionForHeapCollapse = "0.6.5"
+
+// MinEnvdVersionForFsFreeze is the first envd that exposes the native
+// POST /fsfreeze and /fsthaw endpoints, which quiesce the guest rootfs before a
+// filesystem-only pause. Older envds fall back to a plain guest sync.
+const MinEnvdVersionForFsFreeze = "0.6.6"
 
 func sanitizeVersion(version string) string {
 	if len(version) > 0 && version[0] != 'v' {

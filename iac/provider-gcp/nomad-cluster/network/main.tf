@@ -64,7 +64,10 @@ locals {
         timeout_sec        = 3
         check_interval_sec = 3
       }
-      groups = [{ group = var.api_instance_group }]
+      groups = concat(
+        [{ group = var.api_instance_group }],
+        [for g in var.extra_api_instance_groups : { group = g }],
+      )
     }
     docker-reverse-proxy = {
       protocol                        = "HTTP"

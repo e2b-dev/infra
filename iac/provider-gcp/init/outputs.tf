@@ -66,16 +66,12 @@ output "posthog_api_key_secret_name" {
   value = google_secret_manager_secret_version.posthog_api_key.secret
 }
 
-output "ory_project_api_token_secret_name" {
-  value = google_secret_manager_secret_version.ory_project_api_token.secret
+output "ory_project_api_key_secret_name" {
+  value = local.ory_project_api_key_secret_id
 }
 
-output "supabase_jwt_secret_name" {
-  value = google_secret_manager_secret_version.supabase_jwt_secrets.secret
-}
-
-output "supabase_db_connection_string_secret_version" {
-  value = google_secret_manager_secret_version.supabase_db_connection_string
+output "ory_project_api_key_secret_exists" {
+  value = local.ory_project_api_key_secret_exists
 }
 
 output "postgres_connection_string_secret_name" {

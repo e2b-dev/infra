@@ -12,32 +12,21 @@ data "external" "template_manager_count" {
   }
 }
 
+locals {
+  job_env_vars = {
+    for key, value in var.job_env_vars : key => trimspace(value)
+    if value != null && try(trimspace(value), "") != ""
+  }
+}
+
 resource "nomad_job" "template_manager" {
   jobspec = templatefile("${path.module}/jobs/template-manager.hcl", {
     update_stanza = var.update_stanza
     node_pool     = var.node_pool
     current_count = tonumber(data.external.template_manager_count.result.count)
 
-    provider            = var.provider_name
-    provider_gcp_config = var.provider_gcp_config
-    provider_aws_config = var.provider_aws_config
-
-    port             = var.port
-    environment      = var.environment
-    consul_acl_token = var.consul_acl_token
-    domain_name      = var.domain_name
-
-    api_secret                      = var.api_secret
-    artifact_source                 = var.artifact_source
-    template_bucket_name            = var.template_bucket_name
-    build_cache_bucket_name         = var.build_cache_bucket_name
-    otel_collector_grpc_endpoint    = var.otel_collector_grpc_endpoint
-    logs_collector_address          = var.logs_collector_address
-    orchestrator_services           = var.orchestrator_services
-    clickhouse_connection_string    = var.clickhouse_connection_string
-    dockerhub_remote_repository_url = var.dockerhub_remote_repository_url
-    redis_pool_size                 = var.redis_pool_size
-    launch_darkly_api_key           = trimspace(var.launch_darkly_api_key)
-    shared_chunk_cache_path         = var.shared_chunk_cache_path
+    port            = var.port
+    artifact_source = var.artifact_source
+    job_env_vars    = local.job_env_vars
   })
 }

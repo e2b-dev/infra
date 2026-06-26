@@ -17,6 +17,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -246,6 +247,7 @@ func NewCacheFromMemfdDeduped(
 	dirty *roaring.Bitmap,
 	bestEffort bool,
 	directIO bool,
+	budget DedupBudget,
 	inputEmpty *roaring.Bitmap,
 	metaOut *utils.SetOnce[*header.DiffMetadata],
 ) (*DedupedMemfdCache, error) {
@@ -258,7 +260,7 @@ func NewCacheFromMemfdDeduped(
 		cancel:  cancel,
 		done:    utils.NewSetOnce[*Cache](),
 	}
-	go d.runDedup(drainCtx, base, blockSize, memfd, dirty, bestEffort, directIO, inputEmpty, metaOut)
+	go d.runDedup(drainCtx, base, blockSize, memfd, dirty, bestEffort, directIO, budget, inputEmpty, metaOut)
 
 	return d, nil
 }
@@ -270,6 +272,7 @@ func (d *DedupedMemfdCache) runDedup(
 	memfd *Memfd,
 	dirty *roaring.Bitmap,
 	bestEffort, directIO bool,
+	budget DedupBudget,
 	inputEmpty *roaring.Bitmap,
 	metaOut *utils.SetOnce[*header.DiffMetadata],
 ) {
@@ -279,7 +282,7 @@ func (d *DedupedMemfdCache) runDedup(
 	src := func(absOff int64) ([]byte, error) { return memfd.Slice(absOff, blockSize) }
 
 	compareStart := time.Now()
-	plan, err := dedupCompare(ctx, src, base, dirty, blockSize, bestEffort)
+	plan, err := dedupCompare(ctx, src, base, dirty, blockSize, bestEffort, budget)
 	compareDur := time.Since(compareStart)
 	if err != nil {
 		logSetOnceErr(ctx, "dedup metaOut", metaOut.SetError(err))
@@ -288,13 +291,20 @@ func (d *DedupedMemfdCache) runDedup(
 		return
 	}
 
-	meta := &header.DiffMetadata{Dirty: plan.pageDirty, Empty: plan.pageEmpty, BlockSize: header.PageSize}
+	// Capture the scan-only zero count before inputEmpty is merged in place:
+	// dedup.empty_pages must report content-detected zeros, not whole-VM
+	// empties (cloning the bitmap to preserve it would be too expensive).
+	scanEmptyPages := int64(plan.pageEmpty.GetCardinality())
 	if inputEmpty != nil {
 		ratio := uint64(blockSize / header.PageSize)
 		for start, end := range inputEmpty.Ranges() {
-			meta.Empty.AddRange(uint64(start)*ratio, end*ratio)
+			plan.pageEmpty.AddRange(uint64(start)*ratio, end*ratio)
 		}
 	}
+	meta := &header.DiffMetadata{Dirty: plan.pageDirty, Empty: plan.pageEmpty, BlockSize: header.PageSize}
+	// Whole-VM empty set recorded in the header (scan zeros + inputEmpty).
+	telemetry.SetAttributes(ctx,
+		attribute.Int64("dedup.header_empty_pages", int64(plan.pageEmpty.GetCardinality())))
 	logSetOnceErr(ctx, "dedup metaOut", metaOut.SetValue(meta))
 
 	writeStart := time.Now()
@@ -304,12 +314,7 @@ func (d *DedupedMemfdCache) runDedup(
 		logger.L().Warn(ctx, "close memfd after dedup drain", zap.Error(closeErr))
 	}
 
-	recordDedupAttrs(ctx,
-		plan.exportedSize/header.PageSize,
-		int64(plan.pageDirty.GetCardinality()),
-		int64(plan.pageEmpty.GetCardinality()),
-		compareDur, writeDur,
-	)
+	recordDedupAttrs(ctx, plan, scanEmptyPages, compareDur, writeDur)
 	logSetOnceErr(ctx, "dedup done", d.done.SetResult(cache, err))
 }
 

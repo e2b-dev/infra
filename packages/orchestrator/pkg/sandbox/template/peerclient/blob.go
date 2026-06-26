@@ -7,6 +7,7 @@ import (
 	"io"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -48,8 +49,20 @@ func (b *peerBlob) getBase(ctx context.Context) (storage.Blob, error) {
 	return base, nil
 }
 
+// Metadata reads custom metadata from the base (GCS-backed) blob, never the
+// peer, so the soft-delete marker reflects authoritative storage state.
+func (b *peerBlob) Metadata(ctx context.Context) (storage.ObjectMetadata, error) {
+	base, err := b.getBase(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return storage.BlobCustomMetadata(ctx, base)
+}
+
 func (b *peerBlob) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
-	res, err := tryPeer(ctx, &b.peerHandle, "peer-blob-write-to", attrOpWriteTo,
+	start := time.Now()
+	res, err := tryPeer(ctx, &b.peerHandle, "peer-blob-write-to",
 		func(ctx context.Context) (peerAttempt[int64], error) {
 			streamCtx, cancel := context.WithCancel(ctx)
 
@@ -65,7 +78,7 @@ func (b *peerBlob) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 			}
 
 			reader := newPeerStreamReader(recv, cancel)
-			defer reader.Close()
+			defer reader.Close(context.WithoutCancel(ctx))
 
 			n, err := io.Copy(dst, reader)
 			if err != nil {
@@ -76,6 +89,8 @@ func (b *peerBlob) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 			return peerAttempt[int64]{value: n, bytes: n, hit: true}, nil
 		})
 	if res.hit {
+		storage.RecordReadBlob(ctx, time.Since(start), res.value, b.name, storage.SourcePeer, err)
+
 		return res.value, err
 	}
 
@@ -88,7 +103,7 @@ func (b *peerBlob) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 }
 
 func (b *peerBlob) Exists(ctx context.Context) (bool, error) {
-	res, err := tryPeer(ctx, &b.peerHandle, "peer-blob-exists", attrOpExists,
+	res, err := tryPeer(ctx, &b.peerHandle, "peer-blob-exists",
 		func(ctx context.Context) (peerAttempt[bool], error) {
 			resp, err := b.client.GetBuildFileExists(ctx, &orchestrator.GetBuildFileExistsRequest{
 				BuildId: b.buildID,

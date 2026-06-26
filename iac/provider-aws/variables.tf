@@ -62,6 +62,24 @@ variable "client_proxy_env_vars" {
   sensitive = true
 }
 
+variable "orchestrator_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "template_manager_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "s3_use_path_style" {
+  type        = bool
+  default     = false
+  description = "When true, use path-style S3 addressing (https://host/bucket/key). When false (default), use virtual-host-style (https://bucket.host/key). Set to true for S3-compatible backends (MinIO, Ceph, etc.) that don't support virtual-host addressing."
+}
+
 variable "api_server_machine_type" {
   type    = string
   default = "t3.xlarge"

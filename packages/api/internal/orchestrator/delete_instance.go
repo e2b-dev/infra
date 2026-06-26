@@ -104,7 +104,7 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 	defer func() { go o.analyticsRemove(context.WithoutCancel(ctx), sbx, opts.Action) }()
 	// Once we start the removal process, we want to make sure it gets removed from the store
 	defer o.sandboxStore.Remove(context.WithoutCancel(ctx), teamID, sandboxID)
-	err = o.removeSandboxFromNode(ctx, sbx, opts.Action, opts.Reason)
+	err = o.removeSandboxFromNode(ctx, sbx, opts.Action, opts.Reason, opts.FilesystemOnly)
 	if err != nil {
 		fields := []zap.Field{
 			zap.String("state_action", opts.Action.Name),
@@ -128,6 +128,7 @@ func (o *Orchestrator) removeSandboxFromNode(
 	sbx sandbox.Sandbox,
 	stateAction sandbox.StateAction,
 	reason sandbox.KillReason,
+	filesystemOnly bool,
 ) error {
 	ctx, span := tracer.Start(ctx, "remove-sandbox-from-node")
 	defer span.End()
@@ -171,7 +172,7 @@ func (o *Orchestrator) removeSandboxFromNode(
 
 	switch stateAction {
 	case sandbox.StateActionPause:
-		err := o.pauseSandbox(ctx, node, sbx)
+		err := o.pauseSandbox(ctx, node, sbx, filesystemOnly)
 		if err != nil {
 			if dberrors.IsForeignKeyViolation(err) {
 				killErr := o.killSandboxOnNode(ctx, node, sbx, sandbox.KillReasonBaseTemplateMissing)

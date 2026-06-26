@@ -419,7 +419,7 @@ func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig, nod
 				wg.Go(func(sbx *LiveSandbox) func() {
 					return func() {
 						placementStart := time.Now()
-						node, err := PlaceSandbox(ctx, algorithm, nodes, nil, &orchestratorgrpc.SandboxCreateRequest{Sandbox: &orchestratorgrpc.SandboxConfig{
+						result, err := PlaceSandbox(ctx, algorithm, nodes, nil, &orchestratorgrpc.SandboxCreateRequest{Sandbox: &orchestratorgrpc.SandboxConfig{
 							SandboxId: sbx.ID,
 							Vcpu:      sbx.RequestedCPU,
 							RamMb:     sbx.RequestedMemory,
@@ -441,10 +441,10 @@ func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig, nod
 						}
 
 						success := false
-						if err == nil && node != nil {
+						if err == nil && result.Node != nil {
 							// Find the simulated node and place the sandbox
-							if simNode, exists := nodeMap[node.ID]; exists {
-								sbx.NodeID = node.ID
+							if simNode, exists := nodeMap[result.Node.ID]; exists {
+								sbx.NodeID = result.Node.ID
 								if simNode.PlaceSandbox(sbx) {
 									activeSandboxes.Store(sbx.ID, sbx)
 									metrics.SuccessfulPlacements++
@@ -717,7 +717,7 @@ func BenchmarkPlacementDistribution(b *testing.B) {
 						wg.Add(1)
 						go func(s *LiveSandbox) {
 							// Execute placement algorithm
-							node, err := PlaceSandbox(ctx, alg.algo, nodes, nil, &orchestratorgrpc.SandboxCreateRequest{
+							result, err := PlaceSandbox(ctx, alg.algo, nodes, nil, &orchestratorgrpc.SandboxCreateRequest{
 								Sandbox: &orchestratorgrpc.SandboxConfig{
 									SandboxId: s.ID,
 									Vcpu:      s.RequestedCPU,
@@ -725,8 +725,8 @@ func BenchmarkPlacementDistribution(b *testing.B) {
 								},
 							}, machineinfo.MachineInfo{}, false, nil)
 
-							if err == nil && node != nil {
-								if simNode, ok := nodeMap[node.ID]; ok {
+							if err == nil && result.Node != nil {
+								if simNode, ok := nodeMap[result.Node.ID]; ok {
 									// Placement successful, but Metrics won't update immediately (LaggyNode feature)
 									simNode.PlaceSandbox(s)
 								}

@@ -34,7 +34,6 @@ import (
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
-	supabasedb "github.com/e2b-dev/infra/packages/db/pkg/supabase"
 	e2benv "github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
 	"github.com/e2b-dev/infra/packages/shared/pkg/httpserver"
@@ -98,7 +97,11 @@ func run() int {
 
 	config, err := cfg.Parse()
 	if err != nil {
-		l.Error(ctx, "failed to parse config", zap.Error(err))
+		fields := []zap.Field{zap.Error(err)}
+		if condition, ok := cfg.ParseFailureCondition(err); ok {
+			fields = append(fields, zap.String("config_failure_condition", string(condition)))
+		}
+		l.Error(ctx, "failed to parse config", fields...)
 
 		return 1
 	}
@@ -142,18 +145,6 @@ func run() int {
 		return 1
 	}
 	defer authDB.Close()
-
-	supabaseDB, err := supabasedb.NewClient(
-		ctx,
-		config.SupabaseDBConnectionString,
-		pool.WithMaxConnections(3),
-	)
-	if err != nil {
-		l.Error(ctx, "Initializing supabase database client", zap.Error(err))
-
-		return 1
-	}
-	defer supabaseDB.Close()
 
 	var clickhouseClient clickhouse.Clickhouse
 	if config.ClickhouseConnectionString == "" {
@@ -199,7 +190,6 @@ func run() int {
 		ctx,
 		config.BillingServerURL,
 		config.BillingServerAPIToken,
-		supabaseDB,
 	)
 	if err != nil {
 		l.Error(ctx, "initializing team provision sink", zap.Error(err))
@@ -207,14 +197,20 @@ func run() int {
 		return 1
 	}
 
-	userProfiles, err := buildUserProfileProvider(config, supabaseDB, authDB, authClient)
+	userProfiles, err := userprofile.NewOryProvider(userprofile.OryConfig{
+		HTTPClient: authClient,
+		SDKURL:     config.OrySDKURL,
+		Token:      config.OryProjectAPIToken,
+		Issuer:     config.OryIssuerURL,
+		Resolver:   authDB.Write,
+	})
 	if err != nil {
 		l.Error(ctx, "Initializing user profile provider", zap.Error(err))
 
 		return 1
 	}
 
-	apiStore := handlers.NewAPIStore(config, db, authDB, supabaseDB, clickhouseClient, authService, teamProvisionSink, userProfiles)
+	apiStore := handlers.NewAPIStore(config, db, authDB, clickhouseClient, authService, teamProvisionSink, userProfiles)
 
 	swagger, err := api.GetSwagger()
 	if err != nil {
@@ -226,11 +222,9 @@ func run() int {
 
 	authenticationFunc := sharedauth.CreateAuthenticationFunc(
 		[]sharedauth.Authenticator{
-			sharedauth.NewAdminTokenAuthenticator(config.AdminToken),
+			sharedauth.NewAdminApiKeyAuthenticator(config.AdminToken),
 			sharedauth.NewAuthProviderBearerAuthenticator(apiStore.GetUserIDFromAuthProviderToken),
-			sharedauth.NewSupabaseTokenAuthenticator(apiStore.GetUserIDFromAuthProviderToken),
-			sharedauth.NewSupabaseTeamAuthenticator(apiStore.GetTeamFromSupabaseToken),
-			sharedauth.NewAuthProviderTeamAuthenticator(apiStore.GetTeamFromSupabaseToken),
+			sharedauth.NewAuthProviderTeamAuthenticator(apiStore.GetTeamFromAuthProviderToken),
 		},
 		nil,
 	)
@@ -289,8 +283,6 @@ func newHTTPServer(
 		"Content-Type",
 		sharedauth.HeaderAuthorization,
 		sharedauth.HeaderAdminToken,
-		sharedauth.HeaderSupabaseToken,
-		sharedauth.HeaderSupabaseTeam,
 		sharedauth.HeaderTeamID,
 	}
 	r.Use(cors.New(corsConfig))
@@ -400,28 +392,4 @@ func shutdownService(ctx context.Context, s *http.Server) error {
 	}
 
 	return nil
-}
-
-func buildUserProfileProvider(config cfg.Config, supabaseDB *supabasedb.Client, authDB *authdb.Client, httpClient *http.Client) (userprofile.Provider, error) {
-	supaProvider := userprofile.NewSupabaseProvider(supabaseDB)
-
-	var oryProvider userprofile.Provider
-	if config.UserProfileProvider.RequiresOry() {
-		// identity rows are written on the primary inside the bootstrap tx;
-		// reading them from the read replica races replication lag, so resolve
-		// (issuer, subject) <-> user_id mappings on the primary.
-		provider, err := userprofile.NewOryProvider(userprofile.OryConfig{
-			HTTPClient: httpClient,
-			SDKURL:     config.OrySDKURL,
-			Token:      config.OryProjectAPIToken,
-			Issuer:     config.OryIssuerURL,
-			Resolver:   authDB.Write,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("build ory user profile provider: %w", err)
-		}
-		oryProvider = provider
-	}
-
-	return userprofile.NewProvider(config.UserProfileProvider, supaProvider, oryProvider)
 }

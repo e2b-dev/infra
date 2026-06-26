@@ -35,6 +35,7 @@ import (
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
+	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
 	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -108,16 +109,19 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 
 	logger.L().Info(ctx, "Created database client")
 
-	var clickhouseStore clickhouse.Clickhouse
-
-	clickhouseConnectionString := config.ClickhouseConnectionString
-	if clickhouseConnectionString == "" {
-		clickhouseStore = clickhouse.NewNoopClient()
-	} else {
-		clickhouseStore, err = clickhouse.New(clickhouseConnectionString)
-		if err != nil {
-			logger.L().Fatal(ctx, "initializing ClickHouse store", zap.Error(err))
-		}
+	// LD-gated switcher: empty flag → singular DSN (self-managed); "0", "1", …
+	// → alternates from CLICKHOUSE_CONNECTION_STRINGS. Lets reads shift between
+	// clusters per-query without restarts. Empty singular DSN falls back to a
+	// noop client.
+	clickhouseStore, err := clickhouse.NewSwitchingClient(
+		ctx,
+		featureFlags,
+		config.ClickhouseConnectionString,
+		config.ClickhouseConnectionStrings,
+		clickhouse.WithAllowNoopDefault(true),
+	)
+	if err != nil {
+		logger.L().Fatal(ctx, "initializing ClickHouse switching client", zap.Error(err))
 	}
 
 	posthogClient, posthogErr := analyticscollector.NewPosthogClient(ctx, config.PosthogAPIKey)
@@ -317,6 +321,12 @@ func (a *APIStore) Close(ctx context.Context) error {
 		errs = append(errs, fmt.Errorf("closing snapshot cache: %w", err))
 	}
 
+	if a.clickhouseStore != nil {
+		if err := a.clickhouseStore.Close(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("closing ClickHouse store: %w", err))
+		}
+	}
+
 	return errors.Join(errs...)
 }
 
@@ -383,16 +393,58 @@ func (a *APIStore) GetUserIDFromAuthProviderToken(ctx context.Context, ginCtx *g
 	return a.authService.ValidateAuthProviderToken(ctx, ginCtx, token)
 }
 
-func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *api.APIError) {
-	ctx, span := tracer.Start(ctx, "get team from supabase token")
-	defer span.End()
-
-	return a.authService.ValidateSupabaseTeam(ctx, ginCtx, teamID)
-}
-
 func (a *APIStore) GetTeamFromAuthProviderToken(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *api.APIError) {
 	ctx, span := tracer.Start(ctx, "get team from auth provider token")
 	defer span.End()
 
-	return a.authService.ValidateSupabaseTeam(ctx, ginCtx, teamID)
+	return a.authService.ValidateAuthProviderTeam(ctx, ginCtx, teamID)
+}
+
+func (a *APIStore) GetTeamFromAdminToken(ctx context.Context, _ *gin.Context, teamID string) (*types.Team, *api.APIError) {
+	ctx, span := tracer.Start(ctx, "get team from admin token")
+	defer span.End()
+
+	teamUUID, err := uuid.Parse(teamID)
+	if err != nil {
+		return nil, &api.APIError{
+			Code:      http.StatusBadRequest,
+			ClientMsg: "Invalid team ID",
+			Err:       fmt.Errorf("failed to parse team ID: %w", err),
+		}
+	}
+
+	team, err := a.authService.GetTeamByID(ctx, teamUUID)
+	if err != nil {
+		var forbiddenErr *sharedauth.TeamForbiddenError
+		if errors.As(err, &forbiddenErr) {
+			return nil, &api.APIError{
+				Code:      http.StatusForbidden,
+				ClientMsg: err.Error(),
+				Err:       fmt.Errorf("failed getting team: %w", err),
+			}
+		}
+
+		if dberrors.IsNotFoundError(err) {
+			return nil, &api.APIError{
+				Code:      http.StatusNotFound,
+				ClientMsg: "Team not found",
+				Err:       fmt.Errorf("failed getting team: %w", err),
+			}
+		}
+
+		return nil, &api.APIError{
+			Code:      http.StatusInternalServerError,
+			ClientMsg: "Backend authentication failed",
+			Err:       fmt.Errorf("failed getting team: %w", err),
+		}
+	}
+	if team == nil {
+		return nil, &api.APIError{
+			Code:      http.StatusNotFound,
+			ClientMsg: "Team not found",
+			Err:       errors.New("team not found"),
+		}
+	}
+
+	return team, nil
 }

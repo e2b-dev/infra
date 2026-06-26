@@ -22,10 +22,6 @@ data "google_secret_manager_secret_version" "postgres_read_replica_connection_st
   ]
 }
 
-data "google_secret_manager_secret_version" "supabase_jwt_secrets" {
-  secret = module.init.supabase_jwt_secret_name
-}
-
 data "google_secret_manager_secret_version" "posthog_api_key" {
   secret = module.init.posthog_api_key_secret_name
 }

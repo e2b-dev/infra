@@ -10,7 +10,6 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/caarlos0/env/v11"
 	"github.com/willscott/go-nfs"
@@ -22,17 +21,16 @@ import (
 const DefaultBusyboxVersion = "1.36.1"
 
 type BuilderConfig struct {
-	DomainName             string        `env:"DOMAIN_NAME"              envDefault:""`
-	EnvdTimeout            time.Duration `env:"ENVD_TIMEOUT"             envDefault:"10s"`
-	FirecrackerVersionsDir string        `env:"FIRECRACKER_VERSIONS_DIR" envDefault:"/fc-versions"`
-	BusyboxVersion         string        `env:"BUSYBOX_VERSION"          envDefault:"1.36.1"`
-	HostBusyboxDir         string        `env:"HOST_BUSYBOX_DIR"         envDefault:"/fc-busybox"`
-	HostEnvdPath           string        `env:"HOST_ENVD_PATH"           envDefault:"/fc-envd/envd"`
-	HostKernelsDir         string        `env:"HOST_KERNELS_DIR"         envDefault:"/fc-kernels"`
-	OrchestratorBaseDir    string        `env:"ORCHESTRATOR_BASE_PATH"   envDefault:"/orchestrator"`
-	SandboxDir             string        `env:"SANDBOX_DIR"              envDefault:"/fc-vm"`
-	SharedChunkCacheDir    string        `env:"SHARED_CHUNK_CACHE_PATH"`
-	TemplatesDir           string        `env:"TEMPLATES_DIR,expand"     envDefault:"${ORCHESTRATOR_BASE_PATH}/build-templates"`
+	DomainName             string `env:"DOMAIN_NAME"              envDefault:""`
+	FirecrackerVersionsDir string `env:"FIRECRACKER_VERSIONS_DIR" envDefault:"/fc-versions"`
+	BusyboxVersion         string `env:"BUSYBOX_VERSION"          envDefault:"1.36.1"`
+	HostBusyboxDir         string `env:"HOST_BUSYBOX_DIR"         envDefault:"/fc-busybox"`
+	HostEnvdPath           string `env:"HOST_ENVD_PATH"           envDefault:"/fc-envd/envd"`
+	HostKernelsDir         string `env:"HOST_KERNELS_DIR"         envDefault:"/fc-kernels"`
+	OrchestratorBaseDir    string `env:"ORCHESTRATOR_BASE_PATH"   envDefault:"/orchestrator"`
+	SandboxDir             string `env:"SANDBOX_DIR"              envDefault:"/fc-vm"`
+	SharedChunkCacheDir    string `env:"SHARED_CHUNK_CACHE_PATH"`
+	TemplatesDir           string `env:"TEMPLATES_DIR,expand"     envDefault:"${ORCHESTRATOR_BASE_PATH}/build-templates"`
 
 	DefaultCacheDir string `env:"DEFAULT_CACHE_DIR,expand" envDefault:"${ORCHESTRATOR_BASE_PATH}/build"`
 
@@ -91,29 +89,59 @@ func makePathsAbsolute(c *BuilderConfig) error {
 type Config struct {
 	BuilderConfig
 
-	ClickhouseConnectionString string            `env:"CLICKHOUSE_CONNECTION_STRING"`
-	ForceStop                  bool              `env:"FORCE_STOP"`
-	GRPCPort                   uint16            `env:"GRPC_PORT"                     envDefault:"5008"`
-	LaunchDarklyAPIKey         string            `env:"LAUNCH_DARKLY_API_KEY"`
-	LocalUploadBaseURL         string            `env:"LOCAL_UPLOAD_BASE_URL"`
-	NodeIP                     string            `env:"NODE_IP"                       envDefault:"localhost"`
-	NodeLabels                 []string          `env:"NODE_LABELS"                   envSeparator:","`
-	OrchestratorLockPath       string            `env:"ORCHESTRATOR_LOCK_PATH"        envDefault:"/orchestrator.lock"`
-	NFSProxyLogging            bool              `env:"NFS_PROXY_LOGGING"             envDefault:"false"`
-	NFSProxyTracing            bool              `env:"NFS_PROXY_TRACING"             envDefault:"false"`
-	NFSProxyMetrics            bool              `env:"NFS_PROXY_METRICS"             envDefault:"true"`
-	NFSProxyRecordHandleCalls  bool              `env:"NFS_PROXY_RECORD_HANDLE_CALLS" envDefault:"false"`
-	NFSProxyRecordStatCalls    bool              `env:"NFS_PROXY_RECORD_STAT_CALLS"   envDefault:"false"`
-	NFSProxyLogLevel           nfs.LogLevel      `env:"NFS_PROXY_LOG_LEVEL"           envDefault:"info"`
-	ProxyPort                  uint16            `env:"PROXY_PORT"                    envDefault:"5007"`
-	RedisClusterURL            string            `env:"REDIS_CLUSTER_URL"`
-	RedisTLSCABase64           string            `env:"REDIS_TLS_CA_BASE64"`
-	RedisURL                   string            `env:"REDIS_URL"`
-	RedisPoolSize              int               `env:"REDIS_POOL_SIZE"               envDefault:"5"`
-	RedisMinIdleConns          int               `env:"REDIS_MIN_IDLE_CONNS"          envDefault:"2"`
-	NBDPoolSize                int               `env:"NBD_POOL_SIZE"                 envDefault:"64"`
-	Services                   []string          `env:"ORCHESTRATOR_SERVICES"         envDefault:"orchestrator"`
-	PersistentVolumeMounts     map[string]string `env:"PERSISTENT_VOLUME_MOUNTS"`
+	ClickhouseConnectionString  string            `env:"CLICKHOUSE_CONNECTION_STRING"`
+	ClickhouseConnectionStrings []string          `env:"CLICKHOUSE_CONNECTION_STRINGS" envSeparator:";"`
+	DisableStartupReclaim       bool              `env:"DISABLE_STARTUP_RECLAIM"`
+	ForceStop                   bool              `env:"FORCE_STOP"`
+	GRPCPort                    uint16            `env:"GRPC_PORT"                     envDefault:"5008"`
+	LaunchDarklyAPIKey          string            `env:"LAUNCH_DARKLY_API_KEY"`
+	LocalUploadBaseURL          string            `env:"LOCAL_UPLOAD_BASE_URL"`
+	NodeIP                      string            `env:"NODE_IP"                       envDefault:"localhost"`
+	NodeLabels                  []string          `env:"NODE_LABELS"                   envSeparator:","`
+	OrchestratorLockPath        string            `env:"ORCHESTRATOR_LOCK_PATH"        envDefault:"/orchestrator.lock"`
+	NFSProxyLogging             bool              `env:"NFS_PROXY_LOGGING"             envDefault:"false"`
+	NFSProxyTracing             bool              `env:"NFS_PROXY_TRACING"             envDefault:"false"`
+	NFSProxyMetrics             bool              `env:"NFS_PROXY_METRICS"             envDefault:"true"`
+	NFSProxyRecordHandleCalls   bool              `env:"NFS_PROXY_RECORD_HANDLE_CALLS" envDefault:"false"`
+	NFSProxyRecordStatCalls     bool              `env:"NFS_PROXY_RECORD_STAT_CALLS"   envDefault:"false"`
+	NFSProxyLogLevel            nfs.LogLevel      `env:"NFS_PROXY_LOG_LEVEL"           envDefault:"info"`
+	ProxyPort                   uint16            `env:"PROXY_PORT"                    envDefault:"5007"`
+	RedisClusterURL             string            `env:"REDIS_CLUSTER_URL"`
+	RedisTLSCABase64            string            `env:"REDIS_TLS_CA_BASE64"`
+	RedisURL                    string            `env:"REDIS_URL"`
+	RedisPoolSize               int               `env:"REDIS_POOL_SIZE"               envDefault:"5"`
+	RedisMinIdleConns           int               `env:"REDIS_MIN_IDLE_CONNS"          envDefault:"2"`
+	NBDPoolSize                 int               `env:"NBD_POOL_SIZE"                 envDefault:"64"`
+	Services                    []string          `env:"ORCHESTRATOR_SERVICES"         envDefault:"orchestrator"`
+	PersistentVolumeMounts      map[string]string `env:"PERSISTENT_VOLUME_MOUNTS"`
+}
+
+// AdditionalClickhouseEndpoints returns the non-blank entries from
+// CLICKHOUSE_CONNECTION_STRINGS that are *in addition to* the singular
+// CLICKHOUSE_CONNECTION_STRING. Order is preserved; first occurrence wins on
+// dedup. Returns nil endpoints if nothing remains.
+func (c Config) AdditionalClickhouseEndpoints() (endpoints, droppedDuplicates []string) {
+	singular := strings.TrimSpace(c.ClickhouseConnectionString)
+	seen := make(map[string]struct{}, len(c.ClickhouseConnectionStrings))
+	if singular != "" {
+		seen[singular] = struct{}{}
+	}
+
+	for _, raw := range c.ClickhouseConnectionStrings {
+		s := strings.TrimSpace(raw)
+		if s == "" {
+			continue
+		}
+		if _, dup := seen[s]; dup {
+			droppedDuplicates = append(droppedDuplicates, s)
+
+			continue
+		}
+		seen[s] = struct{}{}
+		endpoints = append(endpoints, s)
+	}
+
+	return endpoints, droppedDuplicates
 }
 
 func (c Config) NodeAddress() *string {
@@ -147,6 +175,10 @@ func Parse() (Config, error) {
 
 	config.BuilderConfig = bc
 
+	if err = config.BuilderConfig.NetworkConfig.Validate(); err != nil {
+		return config, err
+	}
+
 	if config.PersistentVolumeMounts != nil {
 		for name, path := range config.PersistentVolumeMounts {
 			path = filepath.Clean(path)
@@ -173,6 +205,10 @@ func ParseBuilder() (BuilderConfig, error) {
 	}
 
 	if err = makePathsAbsolute(&model); err != nil {
+		return BuilderConfig{}, err
+	}
+
+	if err = model.NetworkConfig.Validate(); err != nil {
 		return BuilderConfig{}, err
 	}
 

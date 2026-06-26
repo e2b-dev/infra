@@ -30,24 +30,15 @@ type fsStorage struct {
 var _ StorageProvider = (*fsStorage)(nil)
 
 type fsObject struct {
-	path string
+	path    string
+	objType SeekableObjectType
 }
 
 var (
-	_ Seekable        = (*fsObject)(nil)
-	_ Blob            = (*fsObject)(nil)
-	_ StreamingReader = (*fsObject)(nil)
+	_ Seekable    = (*fsObject)(nil)
+	_ Blob        = (*fsObject)(nil)
+	_ RangeOpener = (*fsObject)(nil)
 )
-
-type fsRangeReadCloser struct {
-	io.Reader
-
-	file *os.File
-}
-
-func (r *fsRangeReadCloser) Close() error {
-	return r.file.Close()
-}
 
 func newFileSystemStorage(cfg StorageConfig) *fsStorage {
 	return &fsStorage{
@@ -81,18 +72,21 @@ func (s *fsStorage) UploadSignedURL(_ context.Context, path string, ttl time.Dur
 	return u, nil
 }
 
-func (s *fsStorage) OpenSeekable(_ context.Context, path string, _ SeekableObjectType) (Seekable, error) {
+func (s *fsStorage) OpenSeekable(_ context.Context, path string) (Seekable, error) {
 	dir := filepath.Dir(s.getPath(path))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
 
+	objType, _ := seekableObjectType(path)
+
 	return &fsObject{
-		path: s.getPath(path),
+		path:    s.getPath(path),
+		objType: objType,
 	}, nil
 }
 
-func (s *fsStorage) OpenBlob(_ context.Context, path string, _ ObjectType) (Blob, error) {
+func (s *fsStorage) OpenBlob(_ context.Context, path string) (Blob, error) {
 	dir := filepath.Dir(s.getPath(path))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
@@ -107,7 +101,10 @@ func (s *fsStorage) getPath(path string) string {
 	return filepath.Join(s.basePath, path)
 }
 
-func (o *fsObject) WriteTo(_ context.Context, dst io.Writer) (int64, error) {
+func (o *fsObject) WriteTo(ctx context.Context, dst io.Writer) (n int64, err error) {
+	start := time.Now()
+	defer func() { RecordReadBlob(ctx, time.Since(start), n, o.path, SourceFS, err) }()
+
 	handle, err := o.getHandle(true)
 	if err != nil {
 		return 0, err
@@ -115,7 +112,9 @@ func (o *fsObject) WriteTo(_ context.Context, dst io.Writer) (int64, error) {
 
 	defer handle.Close()
 
-	return io.Copy(dst, handle)
+	n, err = io.Copy(dst, handle)
+
+	return n, err
 }
 
 func (o *fsObject) Put(_ context.Context, data []byte, _ ...PutOption) error {
@@ -130,19 +129,20 @@ func (o *fsObject) Put(_ context.Context, data []byte, _ ...PutOption) error {
 	return err
 }
 
-func (o *fsObject) StoreFile(ctx context.Context, path string, opts ...PutOption) (*FrameTable, [32]byte, error) {
+func (o *fsObject) StoreFile(ctx context.Context, path string, opts ...PutOption) (*FullFrameTable, [32]byte, error) {
 	putOpts := ApplyPutOptions(opts)
 	cfg := CompressConfigFromOpts(putOpts)
 	if cfg.IsCompressionEnabled() {
 		ft, checksum, err := o.storeFileCompressed(ctx, path, cfg, putOpts.FrameSink)
 		if err == nil {
+			t := ft.Table()
 			logger.L().Debug(ctx, "Stored file to filesystem",
 				zap.String("object", o.path),
 				zap.String("source", path),
-				zap.Int64("size_uncompressed", ft.UncompressedSize()),
-				zap.Int64("size_compressed", ft.CompressedSize()),
+				zap.Int64("size_uncompressed", t.UncompressedSize()),
+				zap.Int64("size_compressed", t.CompressedSize()),
 				zap.String("compression", cfg.CompressionType().String()),
-				zap.Int("frames", ft.NumFrames()),
+				zap.Int("frames", t.NumFrames()),
 			)
 		}
 
@@ -174,7 +174,7 @@ func (o *fsObject) StoreFile(ctx context.Context, path string, opts ...PutOption
 	return nil, [32]byte{}, err
 }
 
-func (o *fsObject) storeFileCompressed(ctx context.Context, localPath string, cfg CompressConfig, sink FrameSink) (*FrameTable, [32]byte, error) {
+func (o *fsObject) storeFileCompressed(ctx context.Context, localPath string, cfg CompressConfig, sink FrameSink) (*FullFrameTable, [32]byte, error) {
 	file, err := os.Open(localPath)
 	if err != nil {
 		return nil, [32]byte{}, fmt.Errorf("failed to open local file %s: %w", localPath, err)
@@ -205,16 +205,13 @@ func (o *fsObject) storeFileCompressed(ctx context.Context, localPath string, cf
 	return ft, checksum, nil
 }
 
-func (o *fsObject) openRangeReader(_ context.Context, off, length int64) (io.ReadCloser, error) {
+func (o *fsObject) openRangeReader(_ context.Context, off, length int64) (RangeReader, error) {
 	f, err := o.getHandle(true)
 	if err != nil {
 		return nil, err
 	}
 
-	return &fsRangeReadCloser{
-		Reader: io.NewSectionReader(f, off, length),
-		file:   f,
-	}, nil
+	return newSectionReader(f, off, length), nil
 }
 
 func (o *fsObject) Exists(_ context.Context) (bool, error) {
@@ -226,7 +223,10 @@ func (o *fsObject) Exists(_ context.Context) (bool, error) {
 	return err == nil, err
 }
 
-func (o *fsObject) Size(_ context.Context) (int64, error) {
+func (o *fsObject) Size(ctx context.Context) (_ int64, err error) {
+	start := time.Now()
+	defer func() { RecordReadSize(ctx, time.Since(start), o.objType, SourceFS, err) }()
+
 	handle, err := o.getHandle(true)
 	if err != nil {
 		return 0, err
@@ -315,27 +315,35 @@ func (u *fsPartUploader) Complete(_ context.Context) error {
 	return os.WriteFile(u.fullPath, u.Assemble(), 0o644)
 }
 
-func (o *fsObject) OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (io.ReadCloser, error) {
+func (o *fsObject) OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (_ RangeReader, _ Source, err error) {
+	start := time.Now()
+	defer func() { RecordReadOpen(ctx, time.Since(start), o.objType, SourceFS, frameTable.CompressionType(), err) }()
+
 	if frameTable.IsCompressed() {
 		r, err := frameTable.LocateCompressed(offsetU)
 		if err != nil {
-			return nil, fmt.Errorf("get frame for offset %d, FS:%s: %w", offsetU, o.path, err)
+			return nil, SourceFS, fmt.Errorf("get frame for offset %d, FS:%s: %w", offsetU, o.path, err)
 		}
 
 		raw, err := o.openRangeReader(ctx, r.Offset, int64(r.Length))
 		if err != nil {
-			return nil, err
+			return nil, SourceFS, err
 		}
 
-		decompressed, err := newDecompressingReadCloser(raw, frameTable.CompressionType())
+		dec, err := NewDecompressReader(raw, frameTable.CompressionType(), SourceFS, o.objType)
 		if err != nil {
-			raw.Close()
+			raw.Close(ctx)
 
-			return nil, err
+			return nil, SourceFS, err
 		}
 
-		return decompressed, nil
+		return dec, SourceFS, nil
 	}
 
-	return o.openRangeReader(ctx, offsetU, length)
+	raw, err := o.openRangeReader(ctx, offsetU, length)
+	if err != nil {
+		return nil, SourceFS, err
+	}
+
+	return raw, SourceFS, nil
 }

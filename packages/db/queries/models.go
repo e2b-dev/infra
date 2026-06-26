@@ -19,6 +19,7 @@ type Cluster struct {
 	Token              string
 	SandboxProxyDomain *string
 	AuthOrgID          *string
+	Name               string
 }
 
 type Env struct {

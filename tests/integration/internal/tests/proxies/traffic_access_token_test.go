@@ -265,7 +265,7 @@ func TestSandboxWithTrafficAccessTokenAutoResumeViaProxy(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// Pause sandbox.
-	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
 
@@ -317,7 +317,9 @@ func TestEnvdAccessTokenAutoResumeViaProxy(t *testing.T) {
 	envdHealthURL := *proxyURL
 	envdHealthURL.Path = "/health"
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	// The auto-resume request below must cover the whole snapshot resume,
+	// which can take longer than 10s under load.
+	client := &http.Client{Timeout: 60 * time.Second}
 	envdPort := int(consts.DefaultEnvdServerPort)
 
 	// Verify envd is reachable with valid access token while running.
@@ -330,7 +332,7 @@ func TestEnvdAccessTokenAutoResumeViaProxy(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// Pause sandbox.
-	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
 
