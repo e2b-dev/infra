@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -178,7 +179,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 	userLogger.Debug(ctx, fmt.Sprintf("Updating envd to version v%s", envdVersion))
 
 	// Step 1: Copy the updated envd binary from host to /tmp in sandbox
-	tmpEnvdPath := "/tmp/envd_updated"
+	tmpEnvdPath := fmt.Sprintf("/tmp/envd_updated_%s", uuid.NewString())
 	err = sandboxtools.CopyFile(
 		ctx,
 		lb.proxy,
