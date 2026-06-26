@@ -51,7 +51,7 @@ func extractMetadataHeaders(h http.Header) map[string]string {
 	return metadata
 }
 
-func processFile(r *http.Request, path string, part io.Reader, uid, gid int, metadata map[string]string, logger zerolog.Logger) (int, map[string]string, error) {
+func processFile(r *http.Request, path string, part io.Reader, uid, gid int, metadata map[string]string, logger zerolog.Logger) (int, error) {
 	logger.Debug().
 		Str("path", path).
 		Msg("File processing")
@@ -60,7 +60,7 @@ func processFile(r *http.Request, path string, part io.Reader, uid, gid int, met
 	if err != nil {
 		err := fmt.Errorf("error ensuring directories: %w", err)
 
-		return http.StatusInternalServerError, nil, err
+		return http.StatusInternalServerError, err
 	}
 
 	canBePreChowned := false
@@ -68,12 +68,12 @@ func processFile(r *http.Request, path string, part io.Reader, uid, gid int, met
 	if err != nil && !os.IsNotExist(err) {
 		errMsg := fmt.Errorf("error getting file info: %w", err)
 
-		return http.StatusInternalServerError, nil, errMsg
+		return http.StatusInternalServerError, errMsg
 	} else if err == nil {
 		if stat.IsDir() {
 			err := fmt.Errorf("path is a directory: %s", path)
 
-			return http.StatusBadRequest, nil, err
+			return http.StatusBadRequest, err
 		}
 		canBePreChowned = true
 	}
@@ -85,7 +85,7 @@ func processFile(r *http.Request, path string, part io.Reader, uid, gid int, met
 			if !os.IsNotExist(err) {
 				err = fmt.Errorf("error changing file ownership: %w", err)
 
-				return http.StatusInternalServerError, nil, err
+				return http.StatusInternalServerError, err
 			}
 		} else {
 			hasBeenChowned = true
@@ -97,12 +97,12 @@ func processFile(r *http.Request, path string, part io.Reader, uid, gid int, met
 		if errors.Is(err, syscall.ENOSPC) {
 			err = fmt.Errorf("not enough inodes available: %w", err)
 
-			return http.StatusInsufficientStorage, nil, err
+			return http.StatusInsufficientStorage, err
 		}
 
 		err := fmt.Errorf("error opening file: %w", err)
 
-		return http.StatusInternalServerError, nil, err
+		return http.StatusInternalServerError, err
 	}
 
 	defer file.Close()
@@ -112,7 +112,7 @@ func processFile(r *http.Request, path string, part io.Reader, uid, gid int, met
 		if err != nil {
 			err := fmt.Errorf("error changing file ownership: %w", err)
 
-			return http.StatusInternalServerError, nil, err
+			return http.StatusInternalServerError, err
 		}
 	}
 
@@ -124,19 +124,18 @@ func processFile(r *http.Request, path string, part io.Reader, uid, gid int, met
 				err = fmt.Errorf("attempted to write %d bytes: %w", r.ContentLength, err)
 			}
 
-			return http.StatusInsufficientStorage, nil, err
+			return http.StatusInsufficientStorage, err
 		}
 
 		err = fmt.Errorf("error writing file: %w", err)
 
-		return http.StatusInternalServerError, nil, err
+		return http.StatusInternalServerError, err
 	}
 
 	// Always (re)write metadata, even with an empty/nil map, so that
 	// overwriting a file replaces its full metadata set: keys absent from
 	// this request are cleared (O_TRUNC truncates the body but preserves
 	// xattrs from a prior upload).
-	persisted := metadata
 	if err := filesystem.WriteMetadataFile(file, metadata); err != nil {
 		switch {
 		case filesystem.IsXattrUnsupported(err):
@@ -144,17 +143,17 @@ func processFile(r *http.Request, path string, part io.Reader, uid, gid int, met
 			// always supports them; this branch only triggers for virtual
 			// filesystems such as /sys and /proc that the upload API also
 			// supports. The file body was already persisted, so we log and
-			// continue without response metadata.
+			// continue; the response EntryInfo reads xattrs back from disk
+			// so it won't falsely claim metadata was persisted.
 			logger.Warn().Str("path", path).Err(err).Msg("filesystem does not support xattrs; metadata not persisted")
-			persisted = nil
 		case errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT):
-			return http.StatusInsufficientStorage, nil, fmt.Errorf("not enough space for file metadata: %w", err)
+			return http.StatusInsufficientStorage, fmt.Errorf("not enough space for file metadata: %w", err)
 		default:
-			return http.StatusInternalServerError, nil, fmt.Errorf("error writing file metadata: %w", err)
+			return http.StatusInternalServerError, fmt.Errorf("error writing file metadata: %w", err)
 		}
 	}
 
-	return http.StatusNoContent, persisted, nil
+	return http.StatusNoContent, nil
 }
 
 func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, defaultPath *string, params PostFilesParams) (string, error) {
@@ -216,7 +215,7 @@ func (a *API) handlePart(r *http.Request, part *multipart.Part, paths UploadSucc
 		Str("event_type", "file_processing").
 		Logger()
 
-	status, persisted, err := processFile(r, filePath, part, uid, gid, metadata, logger)
+	status, err := processFile(r, filePath, part, uid, gid, metadata, logger)
 	if err != nil {
 		return nil, status, err
 	}
@@ -225,6 +224,10 @@ func (a *API) handlePart(r *http.Request, part *multipart.Part, paths UploadSucc
 		Path: filePath,
 		Name: filepath.Base(filePath),
 		Type: File,
+	}
+	persisted, err := filesystem.ReadMetadata(filePath)
+	if err != nil {
+		logger.Warn().Str("path", filePath).Err(err).Msg("failed to read back file metadata for upload response")
 	}
 	if len(persisted) > 0 {
 		entry.Metadata = &persisted
@@ -401,7 +404,7 @@ func (a *API) handleRawUpload(r *http.Request, u *user.User, uid, gid int, metad
 		Str("event_type", "file_processing").
 		Logger()
 
-	status, persisted, err := processFile(r, filePath, r.Body, uid, gid, metadata, logger)
+	status, err := processFile(r, filePath, r.Body, uid, gid, metadata, logger)
 	if err != nil {
 		return nil, status, err
 	}
@@ -410,6 +413,10 @@ func (a *API) handleRawUpload(r *http.Request, u *user.User, uid, gid int, metad
 		Path: filePath,
 		Name: filepath.Base(filePath),
 		Type: File,
+	}
+	persisted, err := filesystem.ReadMetadata(filePath)
+	if err != nil {
+		logger.Warn().Str("path", filePath).Err(err).Msg("failed to read back file metadata for upload response")
 	}
 	if len(persisted) > 0 {
 		entry.Metadata = &persisted

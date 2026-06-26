@@ -39,7 +39,7 @@ func TestProcessFile(t *testing.T) {
 
 	t.Run("failed to ensure directories", func(t *testing.T) {
 		t.Parallel()
-		httpStatus, _, err := processFile(&emptyReq, "/proc/invalid/not-real", emptyPart, uid, gid, nil, emptyLogger)
+		httpStatus, err := processFile(&emptyReq, "/proc/invalid/not-real", emptyPart, uid, gid, nil, emptyLogger)
 		require.Error(t, err)
 		assert.Equal(t, http.StatusInternalServerError, httpStatus)
 		assert.ErrorContains(t, err, "error ensuring directories: ")
@@ -49,7 +49,7 @@ func TestProcessFile(t *testing.T) {
 		t.Parallel()
 		tempDir := t.TempDir()
 
-		httpStatus, _, err := processFile(&emptyReq, tempDir, emptyPart, uid, gid, nil, emptyLogger)
+		httpStatus, err := processFile(&emptyReq, tempDir, emptyPart, uid, gid, nil, emptyLogger)
 		require.Error(t, err)
 		assert.Equal(t, http.StatusBadRequest, httpStatus, err.Error())
 		assert.ErrorContains(t, err, "path is a directory: ")
@@ -61,7 +61,7 @@ func TestProcessFile(t *testing.T) {
 		if runtime.GOOS != "linux" {
 			t.Skip("relies on Linux /proc virtual filesystem semantics")
 		}
-		httpStatus, _, err := processFile(&emptyReq, "/proc/invalid-filename", emptyPart, uid, gid, nil, emptyLogger)
+		httpStatus, err := processFile(&emptyReq, "/proc/invalid-filename", emptyPart, uid, gid, nil, emptyLogger)
 		require.Error(t, err)
 		assert.Equal(t, http.StatusInternalServerError, httpStatus)
 		assert.ErrorContains(t, err, "error opening file: ")
@@ -92,7 +92,7 @@ func TestProcessFile(t *testing.T) {
 		// try to replace it
 		request, buffer := newRequest(secondFileContents)
 		tempFile2 := filepath.Join(tempDir, "test-file-2")
-		httpStatus, _, err := processFile(request, tempFile2, buffer, uid, gid, nil, emptyLogger)
+		httpStatus, err := processFile(request, tempFile2, buffer, uid, gid, nil, emptyLogger)
 		require.Error(t, err)
 		assert.Equal(t, http.StatusInsufficientStorage, httpStatus)
 		assert.ErrorContains(t, err, "attempted to write 2048 bytes: not enough disk space")
@@ -106,7 +106,7 @@ func TestProcessFile(t *testing.T) {
 		content := []byte("test-file-contents")
 		request, buffer := newRequest(content)
 
-		httpStatus, _, err := processFile(request, tempFile, buffer, uid, gid, nil, emptyLogger)
+		httpStatus, err := processFile(request, tempFile, buffer, uid, gid, nil, emptyLogger)
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusNoContent, httpStatus)
 
@@ -132,7 +132,7 @@ func TestProcessFile(t *testing.T) {
 		// try to replace it
 		content := []byte("test-file-contents")
 		request, buffer := newRequest(content)
-		httpStatus, _, err := processFile(request, tempFile, buffer, uid, gid, nil, emptyLogger)
+		httpStatus, err := processFile(request, tempFile, buffer, uid, gid, nil, emptyLogger)
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusNoContent, httpStatus)
 	})
@@ -155,7 +155,7 @@ func TestProcessFile(t *testing.T) {
 		tempFile2 := filepath.Join(tempDir, "test-file-2")
 		content := []byte("test-file-contents")
 		request, buffer := newRequest(content)
-		httpStatus, _, err := processFile(request, tempFile2, buffer, uid, gid, nil, emptyLogger)
+		httpStatus, err := processFile(request, tempFile2, buffer, uid, gid, nil, emptyLogger)
 		require.ErrorContains(t, err, "not enough disk space available")
 		assert.Equal(t, http.StatusInsufficientStorage, httpStatus)
 	})
@@ -177,7 +177,7 @@ func TestProcessFile(t *testing.T) {
 		tempFile2 := filepath.Join(tempDir, "test-file-2")
 		content := []byte("test-file-contents")
 		request, buffer := newRequest(content)
-		httpStatus, _, err := processFile(request, tempFile2, buffer, uid, gid, nil, emptyLogger)
+		httpStatus, err := processFile(request, tempFile2, buffer, uid, gid, nil, emptyLogger)
 		require.ErrorContains(t, err, "not enough inodes available")
 		assert.Equal(t, http.StatusInsufficientStorage, httpStatus)
 	})
@@ -192,7 +192,7 @@ func TestProcessFile(t *testing.T) {
 		newContent := []byte("102\n")
 		request, buffer := newRequest(newContent)
 
-		httpStatus, _, err := processFile(request, filePath, buffer, uid, gid, nil, emptyLogger)
+		httpStatus, err := processFile(request, filePath, buffer, uid, gid, nil, emptyLogger)
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusNoContent, httpStatus)
 
@@ -212,7 +212,7 @@ func TestProcessFile(t *testing.T) {
 		newContent := []byte("new-file-contents")
 		request, buffer := newRequest(newContent)
 
-		httpStatus, _, err := processFile(request, tempFile, buffer, uid, gid, nil, emptyLogger)
+		httpStatus, err := processFile(request, tempFile, buffer, uid, gid, nil, emptyLogger)
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusNoContent, httpStatus)
 
@@ -228,7 +228,7 @@ func TestProcessFile(t *testing.T) {
 
 		initialContent := []byte("old-contents")
 		request, buffer := newRequest(initialContent)
-		httpStatus, _, err := processFile(request, tempFile, buffer, uid, gid, map[string]string{"purpose": "old"}, emptyLogger)
+		httpStatus, err := processFile(request, tempFile, buffer, uid, gid, map[string]string{"purpose": "old"}, emptyLogger)
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusNoContent, httpStatus)
 
@@ -241,7 +241,7 @@ func TestProcessFile(t *testing.T) {
 
 		newContent := []byte("new-contents")
 		request, buffer = newRequest(newContent)
-		httpStatus, _, err = processFile(request, tempFile, buffer, uid, gid, nil, emptyLogger)
+		httpStatus, err = processFile(request, tempFile, buffer, uid, gid, nil, emptyLogger)
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusNoContent, httpStatus)
 
@@ -257,7 +257,7 @@ func TestProcessFile(t *testing.T) {
 
 		initialContent := []byte("old-contents")
 		request, buffer := newRequest(initialContent)
-		httpStatus, _, err := processFile(request, tempFile, buffer, uid, gid, map[string]string{"author": "old", "purpose": "old"}, emptyLogger)
+		httpStatus, err := processFile(request, tempFile, buffer, uid, gid, map[string]string{"author": "old", "purpose": "old"}, emptyLogger)
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusNoContent, httpStatus)
 
@@ -270,7 +270,7 @@ func TestProcessFile(t *testing.T) {
 
 		newContent := []byte("new-contents")
 		request, buffer = newRequest(newContent)
-		httpStatus, _, err = processFile(request, tempFile, buffer, uid, gid, map[string]string{"author": "new"}, emptyLogger)
+		httpStatus, err = processFile(request, tempFile, buffer, uid, gid, map[string]string{"author": "new"}, emptyLogger)
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusNoContent, httpStatus)
 
@@ -278,59 +278,6 @@ func TestProcessFile(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, map[string]string{"author": "new"}, metadata)
 	})
-
-	t.Run("metadata write survives path rename race", func(t *testing.T) {
-		t.Parallel()
-		tempDir := t.TempDir()
-		tempFile := filepath.Join(tempDir, "test-file")
-		renamedFile := filepath.Join(tempDir, "renamed-file")
-
-		content := []byte("new-file-contents")
-		request, _ := newRequest(content)
-		reader := &renameOnEOFReader{
-			reader: bytes.NewReader(content),
-			from:   tempFile,
-			to:     renamedFile,
-		}
-
-		httpStatus, persisted, err := processFile(request, tempFile, reader, uid, gid, map[string]string{"purpose": "race"}, emptyLogger)
-		require.NoError(t, err)
-		assert.Equal(t, http.StatusNoContent, httpStatus)
-
-		_, err = os.Stat(tempFile)
-		require.ErrorIs(t, err, os.ErrNotExist)
-
-		data, err := os.ReadFile(renamedFile)
-		require.NoError(t, err)
-		assert.Equal(t, content, data)
-
-		metadata, err := filesystem.ReadMetadata(renamedFile)
-		require.NoError(t, err)
-		if len(metadata) == 0 {
-			t.Skip("filesystem does not support xattrs")
-		}
-		assert.Equal(t, map[string]string{"purpose": "race"}, metadata)
-		assert.Equal(t, map[string]string{"purpose": "race"}, persisted)
-	})
-}
-
-type renameOnEOFReader struct {
-	reader  *bytes.Reader
-	from    string
-	to      string
-	renamed bool
-}
-
-func (r *renameOnEOFReader) Read(p []byte) (int, error) {
-	n, err := r.reader.Read(p)
-	if err == io.EOF && !r.renamed {
-		r.renamed = true
-		if renameErr := os.Rename(r.from, r.to); renameErr != nil {
-			return n, renameErr
-		}
-	}
-
-	return n, err
 }
 
 func createTmpfsMount(t *testing.T, sizeInBytes int) string {

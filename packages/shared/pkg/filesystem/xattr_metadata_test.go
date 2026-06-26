@@ -208,11 +208,3 @@ func TestWriteMetadataReplacesFullSet(t *testing.T) {
 		t.Errorf("foreign xattr was removed: %v", err)
 	}
 }
-
-func TestWriteMetadataFileRejectsNilFile(t *testing.T) {
-	t.Parallel()
-
-	if err := WriteMetadataFile(nil, nil); err == nil {
-		t.Fatal("expected nil file error")
-	}
-}

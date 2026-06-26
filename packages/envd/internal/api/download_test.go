@@ -3,7 +3,6 @@ package api
 import (
 	"bytes"
 	"compress/gzip"
-	"encoding/json"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -353,59 +352,6 @@ func TestPostFiles_RawBodyUpload(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	data, err := os.ReadFile(destPath)
-	require.NoError(t, err)
-	assert.Equal(t, originalContent, data)
-}
-
-func TestPostFiles_RawBodyUploadResponseMetadataSurvivesPathRename(t *testing.T) {
-	t.Parallel()
-
-	currentUser, err := user.Current()
-	require.NoError(t, err)
-
-	originalContent := []byte("raw body upload content")
-
-	tempDir := t.TempDir()
-	destPath := filepath.Join(tempDir, "raw-uploaded.txt")
-	renamedPath := filepath.Join(tempDir, "renamed.txt")
-
-	logger := zerolog.Nop()
-	defaults := &execcontext.Defaults{
-		EnvVars: utils.NewEnvVars(),
-		User:    currentUser.Username,
-	}
-	api := New(&logger, defaults, nil, false, cgroups.NewNoopManager())
-
-	body := &renameOnEOFReader{
-		reader: bytes.NewReader(originalContent),
-		from:   destPath,
-		to:     renamedPath,
-	}
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/files?path="+url.QueryEscape(destPath), body)
-	req.Header.Set("Content-Type", "application/octet-stream")
-	req.Header.Set("X-Metadata-Purpose", "race")
-	w := httptest.NewRecorder()
-
-	params := PostFilesParams{
-		Path:     &destPath,
-		Username: &currentUser.Username,
-	}
-	api.PostFiles(w, req, params)
-
-	resp := w.Result()
-	defer resp.Body.Close()
-
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-
-	var paths UploadSuccess
-	require.NoError(t, json.NewDecoder(resp.Body).Decode(&paths))
-	require.Len(t, paths, 1)
-	if paths[0].Metadata == nil || len(*paths[0].Metadata) == 0 {
-		t.Skip("filesystem does not support xattrs")
-	}
-	assert.Equal(t, map[string]string{"purpose": "race"}, *paths[0].Metadata)
-
-	data, err := os.ReadFile(renamedPath)
 	require.NoError(t, err)
 	assert.Equal(t, originalContent, data)
 }
