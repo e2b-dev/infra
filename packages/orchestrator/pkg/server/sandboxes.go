@@ -117,7 +117,6 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		ldcontext.NewBuilder(req.GetSandbox().GetTeamId()).
 			Kind(featureflags.TeamKind).
 			Build(),
-		featureflags.VersionContext(s.info.ClientId, s.info.SourceCommit),
 	)
 
 	// BYOP egress proxy kill-switch; mirrors the API gate for direct gRPC

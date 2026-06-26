@@ -174,10 +174,3 @@ func CompressFileTypeContext(fileType string) ldcontext.Context {
 func CompressUseCaseContext(useCase string) ldcontext.Context {
 	return ldcontext.NewWithKind(CompressUseCaseKind, useCase)
 }
-
-func VersionContext(orchestratorID, commit string) ldcontext.Context {
-	return ldcontext.NewBuilder(orchestratorID).
-		Kind(OrchestratorKind).
-		SetString(OrchestratorCommitAttribute, commit).
-		Build()
-}

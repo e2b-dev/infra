@@ -360,6 +360,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	closers = append(closers, closer{"feature flags", featureFlags.Close})
 
 	featureFlags.SetDeploymentName(config.DomainName)
+	featureFlags.RegisterContextProvider(orchestratorContextProvider(nodeID, commitSHA))
 
 	// gcp concurrent upload limiter
 	limiter, err := limit.New(ctx, featureFlags)
