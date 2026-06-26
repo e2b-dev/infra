@@ -150,6 +150,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    "410":
+      description: Gone
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     "500":
       description: Server error
       content:
@@ -3536,7 +3542,8 @@ paths:
   /access-tokens:
     post:
       summary: Create access token
-      description: Create a new access token
+      description: Create a new access token. Deprecated; use an API key (E2B_API_KEY) instead.
+      deprecated: true
       tags: [access-tokens]
       security:
         - AuthProviderBearerAuth: []
@@ -3555,6 +3562,8 @@ paths:
                 $ref: "#/components/schemas/CreatedAccessToken"
         "401":
           $ref: "#/components/responses/401"
+        "410":
+          $ref: "#/components/responses/410"
         "500":
           $ref: "#/components/responses/500"
 
