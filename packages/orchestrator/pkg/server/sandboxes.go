@@ -532,6 +532,8 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 
 	sbxlogger.E(sbx).Info(ctx, "Killing sandbox", zap.String("kill_reason", killReason))
 
+	sbx.SetStopReason(sandbox.StopReasonKilled)
+
 	// Check health metrics before stopping the sandbox
 	sbx.Checks.Healthcheck(ctx, true)
 
@@ -594,6 +596,14 @@ func recordSandboxKill(ctx context.Context, counter metric.Int64Counter, killRea
 	counter.Add(ctx, 1, metric.WithAttributes(attribute.String("kill_reason", killReason)))
 }
 
+// recordExecutionDuration records the duration of a single sandbox execution
+func (s *Server) recordExecutionDuration(ctx context.Context, sbx *sandbox.Sandbox, stopReason sandbox.StopReason) {
+	startedAt := sbx.GetStartedAt()
+
+	s.sandboxExecutionDuration.Record(ctx, time.Since(startedAt).Milliseconds(),
+		metric.WithAttributes(attribute.String("stop_reason", string(stopReason))))
+}
+
 func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest) (*orchestrator.SandboxPauseResponse, error) {
 	ctx, childSpan := tracer.Start(ctx, "sandbox-pause")
 	defer childSpan.End()
@@ -637,6 +647,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	}
 
 	sbxlogger.E(sbx).Info(ctx, "Pausing sandbox")
+	sbx.SetStopReason(sandbox.StopReasonPaused)
 
 	// Stop the old sandbox in background after we're done
 	defer s.stopSandboxAsync(context.WithoutCancel(ctx), sbx)
@@ -781,6 +792,12 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 		return nil, status.Errorf(codes.Internal, "error resuming sandbox after checkpoint: %s", err)
 	}
+
+	// The resume succeeded and resumedSbx now carries this execution. Mark the
+	// old sandbox as a checkpoint hand-off so its impending stop is recorded as
+	// checkpointing rather than a crash. On checkpoint failure we return before
+	// this point, so the old sandbox's abnormal stop is recorded as a crash.
+	sbx.SetStopReason(sandbox.StopReasonCheckpointing)
 
 	// Collect prefetch data immediately after resume while it's most accurate
 	prefetchData, prefetchErr := resumedSbx.MemoryPrefetchData(ctx)
@@ -1026,6 +1043,8 @@ func (s *Server) setupSandboxLifecycle(ctx context.Context, sbx *sandbox.Sandbox
 		if waitErr != nil {
 			sbxlogger.I(sbx).Error(ctx, "failed to wait for sandbox, cleaning up", zap.Error(waitErr))
 		}
+
+		s.recordExecutionDuration(ctx, sbx, sbx.GetStopReason())
 
 		cleanupErr := sbx.Close(ctx)
 		if cleanupErr != nil {

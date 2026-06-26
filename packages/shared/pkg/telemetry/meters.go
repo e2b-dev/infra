@@ -83,9 +83,10 @@ const (
 	BuildStepDurationHistogramName  HistogramType = "template.build.step.duration"
 
 	// Sandbox timing histograms
-	OrchestratorSandboxCreateDurationName HistogramType = "orchestrator.sandbox.create.duration"
-	WaitForEnvdDurationHistogramName      HistogramType = "orchestrator.sandbox.envd.init.duration"
-	GuestSyncDurationHistogramName        HistogramType = "orchestrator.sandbox.guest_sync.duration"
+	OrchestratorSandboxCreateDurationName    HistogramType = "orchestrator.sandbox.create.duration"
+	OrchestratorSandboxExecutionDurationName HistogramType = "orchestrator.sandbox.execution.duration"
+	WaitForEnvdDurationHistogramName         HistogramType = "orchestrator.sandbox.envd.init.duration"
+	GuestSyncDurationHistogramName           HistogramType = "orchestrator.sandbox.guest_sync.duration"
 
 	// Pre-pause envd heap collapse round-trip duration (the pause-path cost of
 	// POST /collapse: network plus envd's madvise work), recorded once per pause
@@ -406,14 +407,15 @@ func GetGaugeInt(meter metric.Meter, name GaugeIntType) (metric.Int64ObservableG
 var histogramDesc = map[HistogramType]string{
 	ApiRedisStoragePublisherPublishDuration: "Duration of a single Redis PUBLISH round-trip from the storage publisher",
 
-	BuildDurationHistogramName:            "Time taken to build a template",
-	BuildPhaseDurationHistogramName:       "Time taken to build each phase of a template",
-	BuildStepDurationHistogramName:        "Time taken to build each step of a template",
-	BuildRootfsSizeHistogramName:          "Size of the built template rootfs in bytes",
-	OrchestratorSandboxCreateDurationName: "Time taken to create a sandbox",
-	WaitForEnvdDurationHistogramName:      "Time taken for Envd to initialize successfully",
-	EnvdCollapseDurationHistogramName:     "Time taken for the pre-pause envd heap collapse round-trip",
-	GuestSyncDurationHistogramName:        "Time taken for the mandatory pre-pause guest sync (filesystem-only pause)",
+	BuildDurationHistogramName:               "Time taken to build a template",
+	BuildPhaseDurationHistogramName:          "Time taken to build each phase of a template",
+	BuildStepDurationHistogramName:           "Time taken to build each step of a template",
+	BuildRootfsSizeHistogramName:             "Size of the built template rootfs in bytes",
+	OrchestratorSandboxCreateDurationName:    "Time taken to create a sandbox",
+	OrchestratorSandboxExecutionDurationName: "Duration of a single sandbox execution, from start/resume until it ends; tagged with stop_reason (killed, paused, crashed, or checkpointing)",
+	WaitForEnvdDurationHistogramName:         "Time taken for Envd to initialize successfully",
+	EnvdCollapseDurationHistogramName:        "Time taken for the pre-pause envd heap collapse round-trip",
+	GuestSyncDurationHistogramName:           "Time taken for the mandatory pre-pause guest sync (filesystem-only pause)",
 
 	UffdStartupPagesHistogramName:       "Demand-fault pages a guest needed to reach a successful envd init, per start",
 	UffdStartupSourcePagesHistogramName: "Subset of startup demand-fault pages pulled from the source (e.g. GCS), per start",
@@ -458,6 +460,7 @@ var histogramUnits = map[HistogramType]string{
 	BuildStepDurationHistogramName:                "ms",
 	BuildRootfsSizeHistogramName:                  "{By}",
 	OrchestratorSandboxCreateDurationName:         "ms",
+	OrchestratorSandboxExecutionDurationName:      "ms",
 	WaitForEnvdDurationHistogramName:              "ms",
 	EnvdCollapseDurationHistogramName:             "ms",
 	GuestSyncDurationHistogramName:                "ms",

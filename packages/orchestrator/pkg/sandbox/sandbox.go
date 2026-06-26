@@ -165,6 +165,15 @@ const (
 	SandboxTypeBuild   SandboxType = "build"
 )
 
+type StopReason string
+
+const (
+	StopReasonKilled        StopReason = "killed"
+	StopReasonPaused        StopReason = "paused"
+	StopReasonCrashed       StopReason = "crashed"
+	StopReasonCheckpointing StopReason = "checkpointing"
+)
+
 // String returns the sandbox type as a string, defaulting to "sandbox" if empty.
 func (t SandboxType) String() string {
 	if t == "" {
@@ -222,9 +231,34 @@ type Metadata struct {
 	Config         *Config
 	Runtime        RuntimeMetadata
 
-	rwmu      sync.RWMutex // protects startedAt, endAt
-	startedAt time.Time
-	endAt     time.Time
+	rwmu       sync.RWMutex // protects startedAt, endAt, endReason
+	startedAt  time.Time
+	endAt      time.Time
+	stopReason *StopReason
+}
+
+// GetStopReason returns stop reason, in case of sandbox exiting sooner, the reason is returned as crashed
+func (m *Metadata) GetStopReason() StopReason {
+	m.rwmu.RLock()
+	defer m.rwmu.RUnlock()
+
+	if m.stopReason == nil {
+		return StopReasonCrashed
+	}
+
+	return *m.stopReason
+}
+
+// SetStopReason records why the execution ended. The first call wins
+func (m *Metadata) SetStopReason(reason StopReason) {
+	m.rwmu.Lock()
+	defer m.rwmu.Unlock()
+
+	if m.stopReason != nil {
+		return
+	}
+
+	m.stopReason = &reason
 }
 
 // GetEndAt returns the sandbox end time in a thread-safe manner.
