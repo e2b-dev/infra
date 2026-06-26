@@ -12,20 +12,33 @@ kernel state) beyond what host/UFFD telemetry exposes.
 
 `gdb` on PATH. The two debug artifacts — `firecracker-debug` (Firecracker built
 `--features gdb`) and `vmlinux.debug` (the guest kernel's split DWARF symbols) — are
-**fetched automatically by version**, matched to the snapshot's `FirecrackerVersion`
-/ `KernelVersion` (which `resume-build` prints when it loads the build), from
-`https://storage.googleapis.com/e2b-prod-public-builds`. In the common case you pass
-nothing.
+resolved **locally**, by version (matched to the snapshot's `FirecrackerVersion` /
+`KernelVersion`, which `resume-build` prints when it loads the build): `firecracker-debug`
+next to the snapshot's `firecracker`, and `vmlinux.debug` next to its `vmlinux.bin`. The
+fc-versions / fc-kernels releases publish them into those version dirs (and `copy-build
+-gdb` stages them when bridging a snapshot — see step 1), so in the common case they are
+already present and you pass nothing.
 
-Supplying them yourself is only needed when the fetch can't find them — before the
-fc-versions / fc-kernels pipelines publish them, or for a locally-built kernel/FC.
-Then point `E2B_GDB_ARTIFACTS_URL` at a base that serves them, or pass explicit paths
+They are **not** fetched over the network. If they aren't present, pass explicit paths
 with `-gdb-fc` / `-gdb-symbols` (see *Preparing the artifacts*).
 
 ## Steps
 
 1. **Copy the build chain** to the dev node's local storage (`copy-build`), as for
-   `resume-prod-snapshot`.
+   `resume-prod-snapshot` — or resume straight from a bucket with `-storage gs://…`.
+
+   To make the debug artifacts resolvable when the snapshot comes from another
+   environment, stage them with a **separate `gs://`→`gs://` bridge** (not part of the
+   local copy above):
+
+   ```bash
+   copy-build -gdb -from gs://<src>-fc-templates -to gs://<dst>-fc-templates
+   ```
+
+   `-gdb` copies `firecracker-debug` / `vmlinux.debug` (plus the runtime FC/kernel) into
+   the destination's `-fc-versions` / `-fc-kernels` buckets, so they sit next to the
+   FC/kernel on the node's mounts and resolve locally. It requires `gs://` for both
+   `-from` and `-to`; it does not write to local paths.
 
 2. **Resume under gdb** (interactive) — the common case needs no extra flags:
 
@@ -51,10 +64,10 @@ connected.)
 
 ## Preparing the artifacts
 
-Normally you don't — `resume-build` fetches `firecracker-debug` and `vmlinux.debug`
-automatically (see *Prerequisites*). Build them by hand only when the release
-pipelines haven't published them for your version, or to debug a locally-built
-kernel/FC:
+Normally you don't — the fc-versions / fc-kernels releases publish `firecracker-debug`
+and `vmlinux.debug` into the FC-version / kernel-version dirs, and `copy-build -gdb`
+stages them next to a bridged snapshot (see *Prerequisites*). Build them by hand only to
+debug a locally-built kernel/FC, or a version the releases predate:
 
 - **`firecracker-debug`** — Firecracker built `--features gdb` (release profile):
   `cargo build --release --features gdb -p firecracker`. Pass with `-gdb-fc`.
@@ -63,10 +76,9 @@ kernel/FC:
   toolchain as the deployed kernel (gcc 13.x / Ubuntu 24.04) so the symbol addresses
   match the snapshot. Pass with `-gdb-symbols`.
 
-Then either pass `-gdb-fc` / `-gdb-symbols` explicitly, stage them at the conventional
-local paths (`firecracker-debug` in the FC-version dir, `vmlinux.debug` in the
-kernel-version dir), or set `E2B_GDB_ARTIFACTS_URL` to a base that serves them at
-`firecrackers/<fcver>/<arch>/firecracker-debug` and `kernels/<kver>/<arch>/vmlinux.debug`.
+Then pass `-gdb-fc` / `-gdb-symbols` explicitly, or stage them at the conventional local
+paths (`firecracker-debug` in the FC-version dir, `vmlinux.debug` in the kernel-version
+dir).
 
 ## Macros (`fc-debug.gdb`)
 
