@@ -124,9 +124,9 @@ install_packages_rhel() {
     fi
     echo "Installing packages (yum/dnf): $PACKAGES"
     if command -v dnf >/dev/null 2>&1; then
-        dnf install -y --allowerasing $PACKAGES || true
+        dnf install -y --allowerasing $PACKAGES
     elif command -v yum >/dev/null 2>&1; then
-        yum install -y $PACKAGES || true
+        yum install -y $PACKAGES
     fi
 }
 
@@ -140,7 +140,7 @@ install_packages_alpine() {
     fi
     echo "Installing packages (apk): $PACKAGES"
     apk update
-    apk add --no-cache $PACKAGES || true
+    apk add --no-cache $PACKAGES
 }
 
 case "$DISTRO" in

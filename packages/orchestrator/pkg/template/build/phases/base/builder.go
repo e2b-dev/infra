@@ -411,7 +411,8 @@ func (bb *BaseBuilder) Layer(
 // on first boot when /etc is unpopulated, so we need to ensure the preset file is present.
 func (bb *BaseBuilder) fixEnvdPresetFiles(ctx context.Context, rootfsPath string) error {
 	// Mount the rootfs to access it
-	mountPoint := filepath.Join(bb.BuilderConfig.TemplatesDir, "preset-fix-mount")
+	// Use a build-specific directory name to avoid conflicts when multiple builds run concurrently.
+	mountPoint := filepath.Join(bb.BuilderConfig.TemplatesDir, "preset-fix-mount-"+bb.Template.BuildID)
 	err := os.MkdirAll(mountPoint, 0o755)
 	if err != nil {
 		return fmt.Errorf("error creating mount point: %w", err)
