@@ -85,7 +85,9 @@ install_packages_debian() {
     fi
 
     # fuse3 is not available on older distros (e.g. Ubuntu 18.04, Debian 9), fall back to fuse
-    if apt-cache show fuse3 >/dev/null 2>&1; then
+    # Use apt-cache policy to check if fuse3 has an installable candidate (not just metadata).
+    if apt-cache policy fuse3 2>/dev/null | grep -q "Candidate:" && \
+       ! apt-cache policy fuse3 2>/dev/null | grep -q "Candidate: (none)"; then
         if ! is_pkg_installed "fuse3"; then
             echo "Package fuse3 is missing, will install it."
             MISSING="$MISSING fuse3"
