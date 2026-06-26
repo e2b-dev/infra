@@ -7,8 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -50,7 +48,7 @@ func (r *runner) gdbMode(ctx context.Context, opts gdbOptions) error {
 	if _, err := exec.LookPath("gdb"); err != nil {
 		return fmt.Errorf("gdb not found on PATH: %w", err)
 	}
-	fcBinary, symbols, err := r.gdbResolveArtifacts(ctx, opts)
+	fcBinary, symbols, err := r.gdbResolveArtifacts(opts)
 	if err != nil {
 		return err
 	}
@@ -172,53 +170,26 @@ func (r *runner) gdbMode(ctx context.Context, opts gdbOptions) error {
 	return runGdb(ctx, initScript, opts)
 }
 
-// defaultDebugArtifactsBaseURL is where the fc-versions / fc-kernels release pipelines
-// publish the debug artifacts (firecracker-debug, vmlinux.debug), alongside the prod
-// firecracker/vmlinux that create-build already fetches from here.
-const defaultDebugArtifactsBaseURL = "https://storage.googleapis.com/e2b-prod-public-builds"
-
-// debugArtifactsBaseURL is the base URL to fetch firecracker-debug / vmlinux.debug from.
-// Overridable via E2B_GDB_ARTIFACTS_URL (e.g. to point at a bucket you can read before
-// the artifacts are published to the public one).
-func debugArtifactsBaseURL() string {
-	if u := os.Getenv("E2B_GDB_ARTIFACTS_URL"); u != "" {
-		return strings.TrimRight(u, "/")
-	}
-
-	return defaultDebugArtifactsBaseURL
-}
-
 // gdbResolveArtifacts resolves the debug FC binary and the vmlinux.debug symbols. Each
-// is taken from its -gdb-* override if set, else a local staged copy if present, else
-// fetched by version from the release buckets (see debugArtifactsBaseURL) — mirroring
-// how create-build fetches the prod kernel/FC.
-func (r *runner) gdbResolveArtifacts(ctx context.Context, opts gdbOptions) (fcBinary, symbols string, err error) {
-	arch := utils.TargetArch()
+// is taken from its -gdb-* override if set, else a local copy next to the snapshot's FC /
+// kernel — where the fc-versions/fc-kernels buckets, and copy-build -gdb, place them. The
+// artifacts are not fetched over the network.
+func (r *runner) gdbResolveArtifacts(opts gdbOptions) (fcBinary, symbols string, err error) {
 	fcVer := r.sbxConfig.FirecrackerConfig.FirecrackerVersion
 	kernelVer := r.sbxConfig.FirecrackerConfig.KernelVersion
-	// Resolve the debug binary from the ORIGINAL versions dir: in gdb mode run() points
-	// the runner's FirecrackerVersionsDir at a writable temp staging dir, but the
-	// published firecracker-debug lives in the original (read-only) dir next to the prod
-	// binary. The kernel dir is not overridden.
-	origConfig := r.config
+	// Resolve the debug artifacts from the ORIGINAL versions dir: in gdb mode run() points
+	// the runner's FirecrackerVersionsDir at a writable temp staging dir, but the published
+	// firecracker-debug lives in the original (read-only) dir. The kernel dir is not
+	// overridden.
+	fcVersionsDir := r.config.FirecrackerVersionsDir
 	if r.gdbOrigVersionsDir != "" {
-		origConfig.FirecrackerVersionsDir = r.gdbOrigVersionsDir
+		fcVersionsDir = r.gdbOrigVersionsDir
 	}
-	fcDir := filepath.Dir(r.sbxConfig.FirecrackerConfig.FirecrackerPath(origConfig))
-	kernelDir := filepath.Dir(r.sbxConfig.FirecrackerConfig.HostKernelPath(r.config))
-	base := debugArtifactsBaseURL()
-
-	fcURL, err := url.JoinPath(base, "firecrackers", fcVer, arch, "firecracker-debug")
-	if err != nil {
-		return "", "", fmt.Errorf("firecracker-debug URL: %w", err)
-	}
-	symURL, err := url.JoinPath(base, "kernels", kernelVer, arch, "vmlinux.debug")
-	if err != nil {
-		return "", "", fmt.Errorf("vmlinux.debug URL: %w", err)
-	}
-
-	fcBinary, fcErr := resolveOrFetch(ctx, opts.fcBinary, filepath.Join(fcDir, "firecracker-debug"), fcURL, 0o755)
-	symbols, symErr := resolveOrFetch(ctx, opts.symbols, filepath.Join(kernelDir, "vmlinux.debug"), symURL, 0o644)
+	// Prefer the arch-prefixed layout (where releases and copy-build -gdb publish), falling
+	// back to the legacy flat layout — independently of FirecrackerPath/HostKernelPath,
+	// which resolve the prod binary and may sit in a different layout on un-migrated nodes.
+	fcBinary, fcErr := resolveLocal(opts.fcBinary, archOrLegacyArtifact(fcVersionsDir, fcVer, "firecracker-debug"))
+	symbols, symErr := resolveLocal(opts.symbols, archOrLegacyArtifact(r.config.HostKernelsDir, kernelVer, "vmlinux.debug"))
 
 	var missing []string
 	if fcErr != nil {
@@ -229,20 +200,30 @@ func (r *runner) gdbResolveArtifacts(ctx context.Context, opts gdbOptions) (fcBi
 	}
 	if len(missing) > 0 {
 		return "", "", fmt.Errorf(
-			"could not obtain gdb debug artifacts:\n  - %s\n"+
-				"They are fetched by version from %s. Until the fc-versions/fc-kernels release\n"+
-				"pipelines publish them there, build them (a --features gdb firecracker and a DWARF\n"+
-				"kernel) and pass -gdb-fc / -gdb-symbols, or set E2B_GDB_ARTIFACTS_URL to a base URL\n"+
-				"that serves them",
-			strings.Join(missing, "\n  - "), base)
+			"could not find gdb debug artifacts locally:\n  - %s\n"+
+				"firecracker-debug must sit next to the snapshot's firecracker, and vmlinux.debug\n"+
+				"next to its vmlinux.bin (the fc-versions/fc-kernels buckets; copy-build -gdb stages\n"+
+				"them). Otherwise pass -gdb-fc / -gdb-symbols explicitly",
+			strings.Join(missing, "\n  - "))
 	}
 
 	return fcBinary, symbols, nil
 }
 
-// resolveOrFetch returns the override if it is set (erroring if it does not exist),
-// otherwise the local staged path if it already exists, otherwise downloads url to it.
-func resolveOrFetch(ctx context.Context, override, localPath, srcURL string, perm os.FileMode) (string, error) {
+// archOrLegacyArtifact returns <base>/<ver>/<arch>/<file> when it exists, else the legacy
+// flat <base>/<ver>/<file>, mirroring FirecrackerPath/HostKernelPath so a debug artifact
+// resolves under either layout (releases and copy-build -gdb publish it arch-prefixed).
+func archOrLegacyArtifact(base, ver, file string) string {
+	if archPath := filepath.Join(base, ver, utils.TargetArch(), file); fileExists(archPath) {
+		return archPath
+	}
+
+	return filepath.Join(base, ver, file)
+}
+
+// resolveLocal returns the -gdb-* override if set (erroring if it does not exist),
+// otherwise the local copy if present, else an error. Artifacts are not fetched.
+func resolveLocal(override, localPath string) (string, error) {
 	if override != "" {
 		if fileExists(override) {
 			return override, nil
@@ -253,60 +234,8 @@ func resolveOrFetch(ctx context.Context, override, localPath, srcURL string, per
 	if fileExists(localPath) {
 		return localPath, nil
 	}
-	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
-		return "", err
-	}
-	fmt.Printf("⬇ fetching %s from %s ...\n", filepath.Base(localPath), srcURL)
-	if err := download(ctx, srcURL, localPath, perm); err != nil {
-		return "", err
-	}
 
-	return localPath, nil
-}
-
-// download GETs rawURL to path (atomic rename via a .tmp). Mirrors create-build's
-// helper; the debug artifacts live in the same public release buckets.
-func download(ctx context.Context, rawURL, path string, perm os.FileMode) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return fmt.Errorf("invalid download URL %s: %w", rawURL, err)
-	}
-	resp, err := (&http.Client{Timeout: 10 * time.Minute}).Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
-		return fmt.Errorf("not found (HTTP 404): %s", rawURL)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, rawURL)
-	}
-
-	tmpPath := path + ".tmp"
-	f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(f, resp.Body); err != nil {
-		f.Close()
-		os.Remove(tmpPath)
-
-		return err
-	}
-	if err := f.Close(); err != nil {
-		os.Remove(tmpPath)
-
-		return err
-	}
-	if err := os.Rename(tmpPath, path); err != nil {
-		os.Remove(tmpPath)
-
-		return err
-	}
-
-	return nil
+	return "", fmt.Errorf("not present at %s", localPath)
 }
 
 // writeInitScript generates the parameterized gdb init script: load the versioned
