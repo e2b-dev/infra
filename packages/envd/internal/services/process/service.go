@@ -62,9 +62,6 @@ func (s *Service) getProcess(selector *rpc.ProcessSelector) (*handler.Handler, e
 			if value.Tag != nil && *value.Tag == tag {
 				proc = value
 
-				// Stop iterating once we find the match. Returning false
-				// here is required: Map.Range stops on false and continues
-				// on true, so a non-matching entry must not abort the scan.
 				return false
 			}
 
