@@ -126,6 +126,7 @@ var (
 	UseNFSCacheForBuildingTemplatesFlag = NewBoolFlag("use-nfs-for-building-templates", env.IsDevelopment())
 	BestOfKCanFitFlag                   = NewBoolFlag("best-of-k-can-fit", true)
 	BestOfKTooManyStartingFlag          = NewBoolFlag("best-of-k-too-many-starting", false)
+	BestOfKBinPackFlag                  = NewBoolFlag("best-of-k-bin-pack", false)
 	EdgeProvidedSandboxMetricsFlag      = NewBoolFlag("edge-provided-sandbox-metrics", false)
 	CreateStorageCacheSpansFlag         = NewBoolFlag("create-storage-cache-spans", env.IsDevelopment())
 	OrchAcceptsCombinedHostFlag         = NewBoolFlag("orch-accepts-combined-host", false)

@@ -24,6 +24,9 @@ type BestOfKConfig struct {
 	TooManyStarting bool
 	// CanFit determines whether to skip the node CanFit check
 	CanFit bool
+	// BinPack enables bin-packing mode: fill one node before using the next.
+	// When false (default), sandboxes are spread evenly across nodes.
+	BinPack bool
 }
 
 // DefaultBestOfKConfig returns the default placement configuration
@@ -61,7 +64,15 @@ func (b *BestOfK) Score(node *nodemanager.Node, resources nodemanager.SandboxRes
 
 	cpuRequested := float64(resources.CPUs)
 
-	return (cpuRequested + float64(reserved) + config.Alpha*usageAvg) / totalCapacity
+	spreadScore := (cpuRequested + float64(reserved) + config.Alpha*usageAvg) / totalCapacity
+
+	if config.BinPack {
+		// Invert: prefer nodes with higher load (lower score = better).
+		// A node at 90% capacity scores lower (better) than one at 10%.
+		return 1.0 - spreadScore
+	}
+
+	return spreadScore
 }
 
 // CanFit checks if the node can fit a new VM with the given quota
