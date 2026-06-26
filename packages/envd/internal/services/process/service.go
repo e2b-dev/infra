@@ -59,17 +59,16 @@ func (s *Service) getProcess(selector *rpc.ProcessSelector) (*handler.Handler, e
 		tag := selector.GetTag()
 
 		s.processes.Range(func(_ uint32, value *handler.Handler) bool {
-			if value.Tag == nil {
-				return true
-			}
-
-			if *value.Tag == tag {
+			if value.Tag != nil && *value.Tag == tag {
 				proc = value
 
-				return true
+				// Stop iterating once we find the match. Returning false
+				// here is required: Map.Range stops on false and continues
+				// on true, so a non-matching entry must not abort the scan.
+				return false
 			}
 
-			return false
+			return true
 		})
 
 		if proc == nil {
