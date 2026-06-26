@@ -19,7 +19,7 @@ func TestPostAccessTokensRejectsWhenIssuanceDisabled(t *testing.T) {
 	t.Parallel()
 
 	td := ldtestdata.DataSource()
-	td.Update(td.Flag(featureflags.DisableAccessTokenIssuanceFlag.Key()).VariationForAll(true))
+	td.Update(td.Flag(featureflags.DisableE2BAccessTokenProvisioningFlag.Key()).VariationForAll(true))
 	ff, err := featureflags.NewClientWithDatasource(td)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = ff.Close(t.Context()) })

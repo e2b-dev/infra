@@ -22,7 +22,7 @@ func (a *APIStore) PostAccessTokens(c *gin.Context) {
 
 	userID := auth.MustGetUserID(c)
 
-	if a.featureFlags.BoolFlag(ctx, featureflags.DisableAccessTokenIssuanceFlag, featureflags.UserContext(userID.String())) {
+	if a.featureFlags.BoolFlag(ctx, featureflags.DisableE2BAccessTokenProvisioningFlag, featureflags.UserContext(userID.String())) {
 		a.sendAPIStoreError(c, http.StatusGone, "Creating new access tokens is disabled. E2B_ACCESS_TOKEN is deprecated; use an API key (E2B_API_KEY) instead. See https://e2b.dev/docs/migration/access-token-deprecation")
 
 		return
