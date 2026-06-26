@@ -261,7 +261,7 @@ func TestEgressFirewallPersistsAfterResume(t *testing.T) {
 	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to non-allowed IP (1.1.1.1) to fail before pause")
 
 	// Pause the sandbox
-	respPause, err := client.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	respPause, err := client.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 	require.NoError(t, err, "Expected to pause sandbox without error")
 	require.Equal(t, http.StatusNoContent, respPause.StatusCode(), "Expected status code 204 No Content, got %d", respPause.StatusCode())
 
@@ -735,7 +735,7 @@ func TestEgressFirewallDomainPersistsAfterResume(t *testing.T) {
 	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", "Expected curl to non-allowed domain (cloudflare.com) to fail before pause")
 
 	// Pause the sandbox
-	respPause, err := client.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	respPause, err := client.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 	require.NoError(t, err, "Expected to pause sandbox without error")
 	require.Equal(t, http.StatusNoContent, respPause.StatusCode(), "Expected status code 204 No Content, got %d", respPause.StatusCode())
 

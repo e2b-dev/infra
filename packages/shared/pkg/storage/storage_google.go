@@ -19,7 +19,6 @@ import (
 	"cloud.google.com/go/storage"
 	"github.com/googleapis/gax-go/v2"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
@@ -32,8 +31,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -51,31 +48,6 @@ const (
 	gcsOperationAttr                    = "operation"
 	gcsOperationAttrWrite               = "Write"
 	gcsOperationAttrWriteFromFileSystem = "WriteFromFileSystem"
-	gcsOperationAttrWriteTo             = "WriteTo"
-	gcsOperationAttrSize                = "Size"
-	// gcsOperationAttrReadAt tags GCS read timer metrics for OpenRangeReader
-	// (the method was renamed from ReadAt; value kept for dashboard compatibility).
-	gcsOperationAttrReadAt = "ReadAt"
-)
-
-var (
-	googleReadTimerFactory = utils.Must(telemetry.NewTimerFactory(meter,
-		"orchestrator.storage.gcs.read",
-		"Duration of GCS reads",
-		"Total GCS bytes read",
-		"Total GCS reads",
-	))
-	googleWriteTimerFactory = utils.Must(telemetry.NewTimerFactory(meter,
-		"orchestrator.storage.gcs.write",
-		"Duration of GCS writes",
-		"Total bytes written to GCS",
-		"Total writes to GCS",
-	))
-	gcsConcurrentReads = utils.Must(meter.Int64UpDownCounter(
-		"orchestrator.storage.gcs.read.concurrent",
-		metric.WithDescription("Number of GCS range readers currently open"),
-		metric.WithUnit("{read}"),
-	))
 )
 
 type gcpStorage struct {
@@ -91,6 +63,7 @@ type gcpObject struct {
 	storage *gcpStorage
 	path    string
 	handle  *storage.ObjectHandle
+	objType SeekableObjectType
 
 	limiter *limit.Limiter
 }
@@ -173,7 +146,7 @@ func (s *gcpStorage) UploadSignedURL(_ context.Context, path string, ttl time.Du
 	return url, nil
 }
 
-func (s *gcpStorage) OpenSeekable(_ context.Context, path string, _ SeekableObjectType) (Seekable, error) {
+func (s *gcpStorage) OpenSeekable(_ context.Context, path string) (Seekable, error) {
 	handle := s.bucket.Object(path).Retryer(
 		storage.WithMaxAttempts(googleMaxAttempts),
 		storage.WithPolicy(storage.RetryAlways),
@@ -186,16 +159,19 @@ func (s *gcpStorage) OpenSeekable(_ context.Context, path string, _ SeekableObje
 		),
 	)
 
+	objType, _ := seekableObjectType(path)
+
 	return &gcpObject{
 		storage: s,
 		path:    path,
 		handle:  handle,
+		objType: objType,
 
 		limiter: s.limiter,
 	}, nil
 }
 
-func (s *gcpStorage) OpenBlob(_ context.Context, path string, _ ObjectType) (Blob, error) {
+func (s *gcpStorage) OpenBlob(_ context.Context, path string) (Blob, error) {
 	handle := s.bucket.Object(path).Retryer(
 		storage.WithMaxAttempts(googleMaxAttempts),
 		storage.WithPolicy(storage.RetryAlways),
@@ -234,16 +210,15 @@ func (o *gcpObject) Exists(ctx context.Context) (bool, error) {
 	return err == nil, ignoreNotExists(err)
 }
 
-func (o *gcpObject) Size(ctx context.Context) (int64, error) {
-	timer := googleReadTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrSize))
+func (o *gcpObject) Size(ctx context.Context) (_ int64, err error) {
+	start := time.Now()
+	defer func() { RecordReadSize(ctx, time.Since(start), o.objType, SourceGCS, err) }()
 
 	ctx, cancel := context.WithTimeout(ctx, googleOperationTimeout)
 	defer cancel()
 
 	attrs, err := o.handle.Attrs(ctx)
 	if err != nil {
-		timer.Failure(ctx, 0)
-
 		if errors.Is(err, storage.ErrObjectNotExist) {
 			// use ours instead of theirs
 			return 0, fmt.Errorf("failed to get GCS object (%q) attributes: %w", o.path, ErrObjectNotExist)
@@ -251,8 +226,6 @@ func (o *gcpObject) Size(ctx context.Context) (int64, error) {
 
 		return 0, fmt.Errorf("failed to get GCS object (%q) attributes: %w", o.path, err)
 	}
-
-	timer.Success(ctx, 0)
 
 	if v, ok := attrs.Metadata[MetadataKeyUncompressedSize]; ok {
 		parsed, parseErr := strconv.ParseInt(v, 10, 64)
@@ -262,6 +235,23 @@ func (o *gcpObject) Size(ctx context.Context) (int64, error) {
 	}
 
 	return attrs.Size, nil
+}
+
+// Metadata implements MetadataReader via Attrs (always hits GCS).
+func (o *gcpObject) Metadata(ctx context.Context) (ObjectMetadata, error) {
+	ctx, cancel := context.WithTimeout(ctx, googleOperationTimeout)
+	defer cancel()
+
+	attrs, err := o.handle.Attrs(ctx)
+	if err != nil {
+		if errors.Is(err, storage.ErrObjectNotExist) {
+			return nil, fmt.Errorf("failed to get GCS object (%q) attributes: %w", o.path, ErrObjectNotExist)
+		}
+
+		return nil, fmt.Errorf("failed to get GCS object (%q) attributes: %w", o.path, err)
+	}
+
+	return ObjectMetadata(attrs.Metadata), nil
 }
 
 func (o *gcpObject) openRangeReader(ctx context.Context, off, length int64) (RangeReader, error) {
@@ -285,8 +275,6 @@ func (o *gcpObject) openRangeReader(ctx context.Context, off, length int64) (Ran
 		return nil, fmt.Errorf("failed to create GCS range reader for %q at %d+%d: %w", o.path, off, length, err)
 	}
 
-	gcsConcurrentReads.Add(ctx, 1)
-
 	return &idleTimeoutReader{
 		ReadCloser: reader,
 		cancel:     cancel,
@@ -297,6 +285,7 @@ func (o *gcpObject) openRangeReader(ctx context.Context, off, length int64) (Ran
 // idleTimeoutReader fires cancel() after googleReadTimeout with no Read
 // activity (in-flight Read with no progress, or no Read called).
 type idleTimeoutReader struct {
+	readMeter
 	io.ReadCloser
 
 	cancel context.CancelFunc
@@ -306,7 +295,9 @@ type idleTimeoutReader struct {
 func (r *idleTimeoutReader) Read(p []byte) (int, error) {
 	r.timer.Reset(googleReadTimeout)
 
+	t0 := time.Now()
 	n, err := r.ReadCloser.Read(p)
+	r.observe(n, t0)
 	if err != nil {
 		r.timer.Stop()
 	} else {
@@ -316,12 +307,11 @@ func (r *idleTimeoutReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-func (r *idleTimeoutReader) Close(ctx context.Context) error {
+func (r *idleTimeoutReader) Close(_ context.Context) (*ReadStats, error) {
 	r.timer.Stop()
 	defer r.cancel()
-	gcsConcurrentReads.Add(ctx, -1)
 
-	return r.ReadCloser.Close()
+	return r.stats(), r.ReadCloser.Close()
 }
 
 func (o *gcpObject) Put(ctx context.Context, data []byte, opts ...PutOption) error {
@@ -372,16 +362,15 @@ func (o *gcpObject) Put(ctx context.Context, data []byte, opts ...PutOption) err
 	return nil
 }
 
-func (o *gcpObject) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
-	timer := googleReadTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrWriteTo))
+func (o *gcpObject) WriteTo(ctx context.Context, dst io.Writer) (n int64, err error) {
+	start := time.Now()
+	defer func() { RecordReadBlob(ctx, time.Since(start), n, o.path, SourceGCS, err) }()
 
 	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
 	defer cancel()
 
 	reader, err := o.handle.NewReader(ctx)
 	if err != nil {
-		timer.Failure(ctx, 0)
-
 		if errors.Is(err, storage.ErrObjectNotExist) {
 			return 0, fmt.Errorf("failed to create reader for %q: %w", o.path, ErrObjectNotExist)
 		}
@@ -392,14 +381,10 @@ func (o *gcpObject) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 	defer reader.Close()
 
 	buff := make([]byte, googleBufferSize)
-	n, err := io.CopyBuffer(dst, reader, buff)
+	n, err = io.CopyBuffer(dst, reader, buff)
 	if err != nil {
-		timer.Failure(ctx, n)
-
 		return n, fmt.Errorf("failed to copy %q to buffer: %w", o.path, err)
 	}
-
-	timer.Success(ctx, n)
 
 	return n, nil
 }
@@ -602,43 +587,39 @@ func parseServiceAccountBase64(serviceAccount string) (*gcpServiceToken, error) 
 	return &sa, nil
 }
 
-func (o *gcpObject) OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (RangeReader, error) {
-	timer := googleReadTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrReadAt))
+func (o *gcpObject) OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (_ RangeReader, _ Source, err error) {
+	start := time.Now()
+	defer func() {
+		RecordReadOpen(ctx, time.Since(start), o.objType, SourceGCS, frameTable.CompressionType(), err)
+	}()
 
 	if !frameTable.IsCompressed() {
 		rc, err := o.openRangeReader(ctx, offsetU, length)
 		if err != nil {
-			timer.Failure(ctx, 0)
-
-			return nil, err
+			return nil, SourceGCS, err
 		}
 
-		return newObservableReader(rc, timer, nil), nil
+		return rc, SourceGCS, nil
 	}
 
 	r, err := frameTable.LocateCompressed(offsetU)
 	if err != nil {
-		timer.Failure(ctx, 0)
-
-		return nil, fmt.Errorf("get frame for offset %d, GCS:%s: %w", offsetU, o.path, err)
+		return nil, SourceGCS, fmt.Errorf("get frame for offset %d, GCS:%s: %w", offsetU, o.path, err)
 	}
 
 	raw, err := o.openRangeReader(ctx, r.Offset, int64(r.Length))
 	if err != nil {
-		timer.Failure(ctx, 0)
-
-		return nil, err
+		return nil, SourceGCS, err
 	}
 
-	dec, err := NewDecompressingReader(raw, frameTable.CompressionType())
+	dec, err := NewDecompressReader(raw, frameTable.CompressionType(), SourceGCS, o.objType)
 	if err != nil {
 		raw.Close(ctx)
-		timer.Failure(ctx, 0)
 
-		return nil, err
+		return nil, SourceGCS, err
 	}
 
-	return newObservableReader(dec, timer, nil), nil
+	return dec, SourceGCS, nil
 }
 
 func isResourceExhausted(err error) bool {

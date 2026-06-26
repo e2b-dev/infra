@@ -67,10 +67,12 @@ func DefaultPlatform() containerregistry.Platform {
 }
 
 // wrapImagePullError converts technical Docker registry errors into user-friendly messages.
-func wrapImagePullError(err error, imageRef string) error {
+func wrapImagePullError(ctx context.Context, err error, imageRef string) error {
 	if err == nil {
 		return nil
 	}
+
+	logger.L().Warn(ctx, "failed to pull image", zap.String("image_ref", imageRef), zap.Error(err))
 
 	// Check for transport errors with specific error codes from the registry API
 	var transportErr *transport.Error
@@ -87,9 +89,13 @@ func wrapImagePullError(err error, imageRef string) error {
 				return fmt.Errorf("access denied to '%s': you don't have permission to pull this image", imageRef)
 			}
 		}
+
+		if transportErr.StatusCode != 0 {
+			return fmt.Errorf("failed to pull image '%s': registry returned status code %d", imageRef, transportErr.StatusCode)
+		}
 	}
 
-	return fmt.Errorf("failed to pull image '%s': %w", imageRef, err)
+	return fmt.Errorf("failed to pull image '%s': unable to retrieve image from registry", imageRef)
 }
 
 func GetPublicImage(ctx context.Context, dockerhubRepository dockerhub.RemoteRepository, tag string, authProvider auth.RegistryAuthProvider) (containerregistry.Image, error) {
@@ -108,12 +114,12 @@ func GetPublicImage(ctx context.Context, dockerhubRepository dockerhub.RemoteRep
 	if authProvider == nil && ref.Context().RegistryStr() == name.DefaultRegistry {
 		img, err := dockerhubRepository.GetImage(ctx, tag, platform)
 		if err != nil {
-			return nil, wrapImagePullError(err, tag)
+			return nil, wrapImagePullError(ctx, err, tag)
 		}
 
 		telemetry.ReportEvent(ctx, "pulled public image through docker remote repository proxy")
 
-		err = verifyImagePlatform(img, platform)
+		err = verifyImagePlatform(ctx, img, platform, tag)
 		if err != nil {
 			return nil, err
 		}
@@ -137,12 +143,12 @@ func GetPublicImage(ctx context.Context, dockerhubRepository dockerhub.RemoteRep
 
 	img, err := remote.Image(ref, opts...)
 	if err != nil {
-		return nil, wrapImagePullError(err, tag)
+		return nil, wrapImagePullError(ctx, err, tag)
 	}
 
 	telemetry.ReportEvent(ctx, "pulled public image")
 
-	err = verifyImagePlatform(img, platform)
+	err = verifyImagePlatform(ctx, img, platform, tag)
 	if err != nil {
 		return nil, err
 	}
@@ -158,12 +164,14 @@ func GetImage(ctx context.Context, artifactRegistry artifactsregistry.ArtifactsR
 
 	img, err := artifactRegistry.GetImage(childCtx, templateId, buildId, platform)
 	if err != nil {
-		return nil, fmt.Errorf("error pulling image: %w", err)
+		logger.L().Warn(childCtx, "failed to pull build image", logger.WithTemplateID(templateId), logger.WithBuildID(buildId), zap.Error(err))
+
+		return nil, errors.New("failed to pull build image from registry")
 	}
 
 	telemetry.ReportEvent(childCtx, "pulled image")
 
-	err = verifyImagePlatform(img, platform)
+	err = verifyImagePlatform(childCtx, img, platform, fmt.Sprintf("%s/%s", templateId, buildId))
 	if err != nil {
 		return nil, err
 	}
@@ -475,10 +483,12 @@ func getDirSize(ctx context.Context, dir string) (int64, error) {
 	return size, nil
 }
 
-func verifyImagePlatform(img containerregistry.Image, platform containerregistry.Platform) error {
+func verifyImagePlatform(ctx context.Context, img containerregistry.Image, platform containerregistry.Platform, imageRef string) error {
 	config, err := img.ConfigFile()
 	if err != nil {
-		return fmt.Errorf("error getting image config file: %w", err)
+		logger.L().Warn(ctx, "failed to get image config file", zap.String("image_ref", imageRef), zap.Error(err))
+
+		return fmt.Errorf("failed to inspect image '%s': unable to retrieve image metadata from registry", imageRef)
 	}
 	if config.Architecture != platform.Architecture {
 		return fmt.Errorf("image architecture %q does not match expected %q", config.Architecture, platform.Architecture)

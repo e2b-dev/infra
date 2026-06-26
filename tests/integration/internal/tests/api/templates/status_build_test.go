@@ -18,7 +18,7 @@ func TestInvalidBuildStatus(t *testing.T) {
 		"non-existing",
 		"also-non-existing",
 		nil,
-		setup.WithAccessToken(),
+		setup.WithAPIKey(),
 	)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode())

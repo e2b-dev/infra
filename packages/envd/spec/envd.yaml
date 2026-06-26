@@ -17,7 +17,7 @@ paths:
 
   /metrics:
     get:
-      summary: Get the stats of the service
+      summary: Service stats
       security:
         - AccessTokenAuth: []
         - {}
@@ -149,7 +149,7 @@ paths:
 
   /envs:
     get:
-      summary: Get the environment variables
+      summary: Environment variables
       security:
         - AccessTokenAuth: []
         - {}

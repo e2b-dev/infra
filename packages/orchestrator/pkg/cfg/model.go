@@ -10,7 +10,6 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/caarlos0/env/v11"
 	"github.com/willscott/go-nfs"
@@ -22,17 +21,16 @@ import (
 const DefaultBusyboxVersion = "1.36.1"
 
 type BuilderConfig struct {
-	DomainName             string        `env:"DOMAIN_NAME"              envDefault:""`
-	EnvdTimeout            time.Duration `env:"ENVD_TIMEOUT"             envDefault:"10s"`
-	FirecrackerVersionsDir string        `env:"FIRECRACKER_VERSIONS_DIR" envDefault:"/fc-versions"`
-	BusyboxVersion         string        `env:"BUSYBOX_VERSION"          envDefault:"1.36.1"`
-	HostBusyboxDir         string        `env:"HOST_BUSYBOX_DIR"         envDefault:"/fc-busybox"`
-	HostEnvdPath           string        `env:"HOST_ENVD_PATH"           envDefault:"/fc-envd/envd"`
-	HostKernelsDir         string        `env:"HOST_KERNELS_DIR"         envDefault:"/fc-kernels"`
-	OrchestratorBaseDir    string        `env:"ORCHESTRATOR_BASE_PATH"   envDefault:"/orchestrator"`
-	SandboxDir             string        `env:"SANDBOX_DIR"              envDefault:"/fc-vm"`
-	SharedChunkCacheDir    string        `env:"SHARED_CHUNK_CACHE_PATH"`
-	TemplatesDir           string        `env:"TEMPLATES_DIR,expand"     envDefault:"${ORCHESTRATOR_BASE_PATH}/build-templates"`
+	DomainName             string `env:"DOMAIN_NAME"              envDefault:""`
+	FirecrackerVersionsDir string `env:"FIRECRACKER_VERSIONS_DIR" envDefault:"/fc-versions"`
+	BusyboxVersion         string `env:"BUSYBOX_VERSION"          envDefault:"1.36.1"`
+	HostBusyboxDir         string `env:"HOST_BUSYBOX_DIR"         envDefault:"/fc-busybox"`
+	HostEnvdPath           string `env:"HOST_ENVD_PATH"           envDefault:"/fc-envd/envd"`
+	HostKernelsDir         string `env:"HOST_KERNELS_DIR"         envDefault:"/fc-kernels"`
+	OrchestratorBaseDir    string `env:"ORCHESTRATOR_BASE_PATH"   envDefault:"/orchestrator"`
+	SandboxDir             string `env:"SANDBOX_DIR"              envDefault:"/fc-vm"`
+	SharedChunkCacheDir    string `env:"SHARED_CHUNK_CACHE_PATH"`
+	TemplatesDir           string `env:"TEMPLATES_DIR,expand"     envDefault:"${ORCHESTRATOR_BASE_PATH}/build-templates"`
 
 	DefaultCacheDir string `env:"DEFAULT_CACHE_DIR,expand" envDefault:"${ORCHESTRATOR_BASE_PATH}/build"`
 
@@ -83,6 +81,7 @@ type Config struct {
 
 	ClickhouseConnectionString  string            `env:"CLICKHOUSE_CONNECTION_STRING"`
 	ClickhouseConnectionStrings []string          `env:"CLICKHOUSE_CONNECTION_STRINGS" envSeparator:";"`
+	DisableStartupReclaim       bool              `env:"DISABLE_STARTUP_RECLAIM"`
 	ForceStop                   bool              `env:"FORCE_STOP"`
 	GRPCPort                    uint16            `env:"GRPC_PORT"                     envDefault:"5008"`
 	LaunchDarklyAPIKey          string            `env:"LAUNCH_DARKLY_API_KEY"`
@@ -166,6 +165,10 @@ func Parse() (Config, error) {
 
 	config.BuilderConfig = bc
 
+	if err = config.BuilderConfig.NetworkConfig.Validate(); err != nil {
+		return config, err
+	}
+
 	if config.PersistentVolumeMounts != nil {
 		for name, path := range config.PersistentVolumeMounts {
 			path = filepath.Clean(path)
@@ -192,6 +195,10 @@ func ParseBuilder() (BuilderConfig, error) {
 	}
 
 	if err = makePathsAbsolute(&model); err != nil {
+		return BuilderConfig{}, err
+	}
+
+	if err = model.NetworkConfig.Validate(); err != nil {
 		return BuilderConfig{}, err
 	}
 

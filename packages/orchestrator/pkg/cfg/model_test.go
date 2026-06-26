@@ -79,6 +79,14 @@ func TestParse(t *testing.T) {
 		require.NoError(t, err)
 		assert.False(t, config.NFSProxyMetrics)
 	})
+
+	t.Run("startup reclaim can be disabled", func(t *testing.T) {
+		t.Setenv("DISABLE_STARTUP_RECLAIM", "true")
+
+		config, err := Parse()
+		require.NoError(t, err)
+		assert.True(t, config.DisableStartupReclaim)
+	})
 }
 
 func TestAdditionalClickhouseEndpoints(t *testing.T) {

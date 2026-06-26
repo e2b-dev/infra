@@ -16,7 +16,6 @@ import (
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
-	supabasedb "github.com/e2b-dev/infra/packages/db/pkg/supabase"
 	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 )
 
@@ -26,7 +25,6 @@ type APIStore struct {
 	config            cfg.Config
 	db                *sqlcdb.Client
 	authDB            *authdb.Client
-	supabaseDB        *supabasedb.Client
 	clickhouse        clickhouse.Clickhouse
 	authService       sharedauth.Service
 	teamProvisionSink internalteamprovision.TeamProvisionSink
@@ -37,7 +35,6 @@ func NewAPIStore(
 	config cfg.Config,
 	db *sqlcdb.Client,
 	authDB *authdb.Client,
-	supabaseDB *supabasedb.Client,
 	ch clickhouse.Clickhouse,
 	authService sharedauth.Service,
 	teamProvisionSink internalteamprovision.TeamProvisionSink,
@@ -47,7 +44,6 @@ func NewAPIStore(
 		config:            config,
 		db:                db,
 		authDB:            authDB,
-		supabaseDB:        supabaseDB,
 		clickhouse:        ch,
 		authService:       authService,
 		teamProvisionSink: teamProvisionSink,
@@ -69,6 +65,6 @@ func (s *APIStore) GetUserIDFromAuthProviderToken(ctx context.Context, ginCtx *g
 	return s.authService.ValidateAuthProviderToken(ctx, ginCtx, token)
 }
 
-func (s *APIStore) GetTeamFromSupabaseToken(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *sharedauth.APIError) {
-	return s.authService.ValidateSupabaseTeam(ctx, ginCtx, teamID)
+func (s *APIStore) GetTeamFromAuthProviderToken(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *sharedauth.APIError) {
+	return s.authService.ValidateAuthProviderTeam(ctx, ginCtx, teamID)
 }

@@ -252,7 +252,7 @@ type ServerInterface interface {
 	// Collapse envd's own anonymous heap into 2 MiB transparent hugepages before pause, so on resume envd touches fewer distinct guest-physical frames (each a cold fault). Best-effort.
 	// (POST /collapse)
 	PostCollapse(w http.ResponseWriter, r *http.Request)
-	// Get the environment variables
+	// Environment variables
 	// (GET /envs)
 	GetEnvs(w http.ResponseWriter, r *http.Request)
 	// Download a file
@@ -279,7 +279,7 @@ type ServerInterface interface {
 	// Set initial vars, ensure the time and metadata is synced with the host
 	// (POST /init)
 	PostInit(w http.ResponseWriter, r *http.Request)
-	// Get the stats of the service
+	// Service stats
 	// (GET /metrics)
 	GetMetrics(w http.ResponseWriter, r *http.Request)
 	// Unfreeze user/pty cgroups. Intended ONLY for the orchestrator's pause-failure rollback path; the normal resume thaw happens via /init's deferred unfreeze, not here.
@@ -297,7 +297,7 @@ func (_ Unimplemented) PostCollapse(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Get the environment variables
+// Environment variables
 // (GET /envs)
 func (_ Unimplemented) GetEnvs(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -351,7 +351,7 @@ func (_ Unimplemented) PostInit(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Get the stats of the service
+// Service stats
 // (GET /metrics)
 func (_ Unimplemented) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)

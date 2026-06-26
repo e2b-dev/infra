@@ -61,11 +61,11 @@ func (u *Upload) runV4(ctx context.Context) error {
 			return nil
 		}
 
-		return uploadBlobWithMetrics(ctx, u.store, u.paths.Snapfile(), storage.SnapfileObjectType, u.snap.Snapfile.Path(), uploadFileSnap, meta)
+		return uploadBlobWithMetrics(ctx, u.store, u.paths.Snapfile(), u.snap.Snapfile.Path(), uploadFileSnap, meta)
 	})
 
 	eg.Go(func() error {
-		return uploadBlobWithMetrics(ctx, u.store, u.paths.Metadata(), storage.MetadataObjectType, u.snap.Metafile.Path(), uploadFileMeta, meta)
+		return uploadBlobWithMetrics(ctx, u.store, u.paths.Metadata(), u.snap.Metafile.Path(), uploadFileMeta, meta)
 	})
 
 	return eg.Wait()
@@ -81,7 +81,7 @@ func (u *Upload) uploadFramed(
 	var selfBuild headers.BuildData
 
 	if srcPath != "" {
-		fullFT, checksum, err := storage.UploadFramed(ctx, u.store, u.paths.DataFile(string(fileType), cfg.CompressionType()), seekableTypeFor(fileType), srcPath, storage.WithCompressConfig(cfg), storage.WithMetadata(u.objectMetadata), storage.WithChecksumSHA256())
+		fullFT, checksum, err := storage.UploadFramed(ctx, u.store, u.paths.DataFile(string(fileType), cfg.CompressionType()), srcPath, storage.WithCompressConfig(cfg), storage.WithMetadata(u.objectMetadata), storage.WithChecksumSHA256())
 		if err != nil {
 			return fmt.Errorf("%s upload: %w", fileType, err)
 		}
@@ -123,7 +123,7 @@ func (u *Upload) uploadFramed(
 	if fileType == build.Rootfs {
 		headerFileType = uploadFileRootfsHeader
 	}
-	if err := storeHeaderWithMetrics(ctx, u.store, u.paths.HeaderFile(string(fileType)), headerFileType, h); err != nil {
+	if err := storeHeaderWithMetrics(ctx, u.store, u.paths.HeaderFile(string(fileType)), headerFileType, h, storage.WithMetadata(u.objectMetadata)); err != nil {
 		return fmt.Errorf("store %s header: %w", fileType, err)
 	}
 
@@ -186,15 +186,4 @@ func (u *Upload) appendAncestorBuilds(
 	}
 
 	return nil
-}
-
-func seekableTypeFor(fileType build.DiffType) storage.SeekableObjectType {
-	switch fileType {
-	case build.Memfile:
-		return storage.MemfileObjectType
-	case build.Rootfs:
-		return storage.RootFSObjectType
-	}
-
-	return storage.UnknownSeekableObjectType
 }

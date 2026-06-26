@@ -101,6 +101,7 @@ func TestTeamMetricsMaxEmpty(t *testing.T) {
 	db := setup.GetTestDBClient(t)
 
 	teamID := utils.CreateTeamWithUser(t, db, "metric-test", setup.UserID)
+	apiKey := utils.CreateAPIKey(t, t.Context(), c, setup.UserID, teamID)
 
 	tests := []struct {
 		metric api.GetTeamsTeamIDMetricsMaxParamsMetric
@@ -123,8 +124,7 @@ func TestTeamMetricsMaxEmpty(t *testing.T) {
 				&api.GetTeamsTeamIDMetricsMaxParams{
 					Metric: test.metric,
 				},
-				setup.WithSupabaseToken(t),
-				setup.WithSupabaseTeam(t, teamID.String()),
+				setup.WithAPIKey(apiKey),
 			)
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, response.StatusCode())

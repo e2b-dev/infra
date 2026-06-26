@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -50,10 +51,21 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-const (
-	baseImage = "e2bdev/base:latest"
-	proxyPort = 5007
-)
+const baseImage = "e2bdev/base:latest"
+
+// proxyPort is the sandbox proxy listen port. It defaults to 5007 but can be
+// overridden via PROXY_PORT so create-build can run alongside a live
+// orchestrator (which already holds the default port).
+func proxyPort() uint16 {
+	if v := os.Getenv("PROXY_PORT"); v != "" {
+		if p, err := strconv.ParseUint(v, 10, 16); err == nil {
+			return uint16(p)
+		}
+		log.Printf("warning: ignoring invalid PROXY_PORT=%q, using default 5007", v)
+	}
+
+	return 5007
+}
 
 func main() {
 	templateID := flag.String("template", "local-template", "template id")
@@ -270,7 +282,7 @@ func doBuild(
 
 	sandboxes := sandbox.NewSandboxesMap()
 
-	sandboxProxy, err := proxy.NewSandboxProxy(noop.MeterProvider{}, proxyPort, sandboxes, featureFlags)
+	sandboxProxy, err := proxy.NewSandboxProxy(noop.MeterProvider{}, proxyPort(), sandboxes, featureFlags)
 	if err != nil {
 		return fmt.Errorf("proxy: %w", err)
 	}
@@ -432,7 +444,7 @@ func printArtifactSizes(ctx context.Context, persistence storage.StorageProvider
 		printLocalFileSizes(basePath, buildID)
 	} else {
 		// For remote storage, get sizes from storage provider
-		if memfile, err := persistence.OpenSeekable(ctx, paths.Memfile(), storage.MemfileObjectType); err == nil {
+		if memfile, err := persistence.OpenSeekable(ctx, paths.Memfile()); err == nil {
 			if size, err := memfile.Size(ctx); err == nil {
 				fmt.Printf("   Memfile: %d MB\n", size>>20)
 			}
