@@ -5,6 +5,7 @@ package oci
 import (
 	"archive/tar"
 	"bytes"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -20,6 +21,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/empty"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -363,4 +365,48 @@ func TestGetPublicImageWithGeneralAuth(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, layers, 1)
 	})
+}
+
+func TestWrapImagePullErrorSanitizesOriginalError(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	imageRef := "registry.example.com/test/image:latest"
+
+	remoteErr := &transport.Error{
+		StatusCode: http.StatusTeapot,
+		Errors: []transport.Diagnostic{
+			{
+				Code:    transport.UnknownErrorCode,
+				Message: "registry-controlled message",
+				Detail:  "registry-controlled detail",
+			},
+		},
+	}
+
+	err := wrapImagePullError(ctx, remoteErr, imageRef)
+	require.EqualError(t, err, "failed to pull image 'registry.example.com/test/image:latest': registry returned status code 418")
+	assert.NotContains(t, err.Error(), "registry-controlled message")
+	assert.NotContains(t, err.Error(), "registry-controlled detail")
+	assert.False(t, errors.Is(err, remoteErr))
+}
+
+func TestWrapImagePullErrorUsesPredefinedRegistryCodeMessage(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	imageRef := "registry.example.com/test/image:latest"
+
+	remoteErr := &transport.Error{
+		StatusCode: http.StatusUnauthorized,
+		Errors: []transport.Diagnostic{
+			{
+				Code:    transport.UnauthorizedErrorCode,
+				Message: "registry-controlled message",
+			},
+		},
+	}
+
+	err := wrapImagePullError(ctx, remoteErr, imageRef)
+	require.EqualError(t, err, "access denied to 'registry.example.com/test/image:latest': authentication required or insufficient permissions")
+	assert.NotContains(t, err.Error(), "registry-controlled message")
+	assert.False(t, errors.Is(err, remoteErr))
 }
