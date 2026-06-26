@@ -119,6 +119,68 @@ func TestGetSnapshotsWithCursor_ReturnsLatestAssignment(t *testing.T) {
 		"GetSnapshotsWithCursor should return the build from the latest assignment")
 }
 
+// TestGetSnapshotsWithCursorAsc_OrdersOldestFirstAndPaginates verifies the ascending
+// keyset query returns snapshots oldest-first and that its cursor predicate walks the
+// pages without gaps or overlaps.
+func TestGetSnapshotsWithCursorAsc_OrdersOldestFirstAndPaginates(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, db)
+	baseTemplateID := testutils.CreateTestTemplate(t, db, teamID)
+
+	// Create three snapshots with strictly increasing sandbox_started_at.
+	oldestToNewest := make([]string, 0, 3)
+	for range 3 {
+		sandboxID := "sandbox-" + uuid.New().String()
+		snapshotTemplateID := "snapshot-template-" + uuid.New().String()
+		testutils.UpsertTestSnapshot(t, ctx, db, snapshotTemplateID, sandboxID, teamID, baseTemplateID)
+		oldestToNewest = append(oldestToNewest, sandboxID)
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// First page (zero-time / MaxSandboxID cursor) mirrors the handler's first-page
+	// defaults for ascending order.
+	firstPageCursor := queries.GetSnapshotsWithCursorAscParams{
+		TeamID:     teamID,
+		Metadata:   types.JSONBStringMap{},
+		CursorID:   "zzzzzzzzzzzzzzzzzzzz",
+		CursorTime: pgtype.Timestamptz{Time: time.Time{}, Valid: true},
+		Limit:      10,
+	}
+
+	all, err := db.SqlcClient.GetSnapshotsWithCursorAsc(ctx, firstPageCursor)
+	require.NoError(t, err)
+	require.Len(t, all, 3)
+	assert.Equal(t, []string{
+		all[0].Snapshot.SandboxID,
+		all[1].Snapshot.SandboxID,
+		all[2].Snapshot.SandboxID,
+	}, oldestToNewest, "ascending query should return oldest sandbox first")
+
+	// Walk the pages with limit 2: page one is the two oldest...
+	page1Cursor := firstPageCursor
+	page1Cursor.Limit = 2
+	page1, err := db.SqlcClient.GetSnapshotsWithCursorAsc(ctx, page1Cursor)
+	require.NoError(t, err)
+	require.Len(t, page1, 2)
+	assert.Equal(t, []string{page1[0].Snapshot.SandboxID, page1[1].Snapshot.SandboxID}, oldestToNewest[:2])
+
+	// ...and the next page (cursor = last returned row) is the newest, with no overlap.
+	last := page1[1].Snapshot
+	page2, err := db.SqlcClient.GetSnapshotsWithCursorAsc(ctx, queries.GetSnapshotsWithCursorAscParams{
+		TeamID:     teamID,
+		Metadata:   types.JSONBStringMap{},
+		CursorID:   last.SandboxID,
+		CursorTime: last.SandboxStartedAt,
+		Limit:      2,
+	})
+	require.NoError(t, err)
+	require.Len(t, page2, 1)
+	assert.Equal(t, oldestToNewest[2], page2[0].Snapshot.SandboxID)
+}
+
 // TestGetLastSnapshot_BuildSharedWithOtherTemplate verifies that when a build is assigned
 // to multiple templates, GetLastSnapshot still returns the correct build for this template.
 func TestGetLastSnapshot_BuildSharedWithOtherTemplate(t *testing.T) {
