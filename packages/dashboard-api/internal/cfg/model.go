@@ -14,7 +14,7 @@ type Config struct {
 	Port                        int                 `env:"PORT"                                         envDefault:"3010"`
 	PostgresConnectionString    string              `env:"POSTGRES_CONNECTION_STRING,required,notEmpty"`
 	ClickhouseConnectionString  string              `env:"CLICKHOUSE_CONNECTION_STRING"`
-	ClickhouseConnectionStrings []string            `env:"CLICKHOUSE_CONNECTION_STRINGS" envSeparator:";"`
+	ClickhouseConnectionStrings []string            `env:"CLICKHOUSE_CONNECTION_STRINGS"                envSeparator:";"`
 	AdminToken                  string              `env:"ADMIN_TOKEN,required,notEmpty"`
 	AuthProvider                auth.ProviderConfig `env:"AUTH_PROVIDER_CONFIG"`
 
