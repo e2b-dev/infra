@@ -220,9 +220,7 @@ func (s *Sandbox) convertMounts(mounts []VolumeMountConfig) []envd.VolumeMount {
 		vm := envd.VolumeMount{
 			NfsTarget: fmt.Sprintf("%s:/%s", s.config.NetworkConfig.OrchestratorInSandboxIPAddress, mount.Name),
 			Path:      mount.Path,
-		}
-		if mount.Sync {
-			vm.Sync = &mount.Sync
+			Sync:      &mount.Sync,
 		}
 		results = append(results, vm)
 	}
