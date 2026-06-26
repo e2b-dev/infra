@@ -5,7 +5,6 @@ package oci
 import (
 	"archive/tar"
 	"bytes"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -387,7 +386,7 @@ func TestWrapImagePullErrorSanitizesOriginalError(t *testing.T) {
 	require.EqualError(t, err, "failed to pull image 'registry.example.com/test/image:latest': registry returned status code 418")
 	assert.NotContains(t, err.Error(), "registry-controlled message")
 	assert.NotContains(t, err.Error(), "registry-controlled detail")
-	assert.False(t, errors.Is(err, remoteErr))
+	assert.NotErrorIs(t, err, remoteErr)
 }
 
 func TestWrapImagePullErrorUsesPredefinedRegistryCodeMessage(t *testing.T) {
@@ -408,5 +407,5 @@ func TestWrapImagePullErrorUsesPredefinedRegistryCodeMessage(t *testing.T) {
 	err := wrapImagePullError(ctx, remoteErr, imageRef)
 	require.EqualError(t, err, "access denied to 'registry.example.com/test/image:latest': authentication required or insufficient permissions")
 	assert.NotContains(t, err.Error(), "registry-controlled message")
-	assert.False(t, errors.Is(err, remoteErr))
+	assert.NotErrorIs(t, err, remoteErr)
 }
