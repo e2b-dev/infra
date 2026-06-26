@@ -109,6 +109,22 @@ install_packages_debian() {
 
 install_packages_rhel() {
     PACKAGES="systemd openssh-server sudo chrony socat curl ca-certificates iptables git nfs-utils less nftables iputils jq passwd"
+
+    # Handle EOL CentOS releases by switching mirrorlist to vault.centos.org
+    # CentOS 7 EOL: 2024-06-30, CentOS 8 EOL: 2021-12-31
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        if [ "$ID" = "centos" ]; then
+            case "$VERSION_ID" in
+                7*|8*)
+                    echo "CentOS $VERSION_ID is EOL, switching repos to vault.centos.org"
+                    sed -i 's/^mirrorlist=/#mirrorlist=/g' /etc/yum.repos.d/CentOS-*.repo 2>/dev/null || true
+                    sed -i 's|^#\s*baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*.repo 2>/dev/null || true
+                    ;;
+            esac
+        fi
+    fi
+
     # fuse3 is not available on older RHEL/CentOS (e.g. CentOS 7), fall back to fuse
     if command -v dnf >/dev/null 2>&1; then
         if dnf info fuse3 >/dev/null 2>&1; then
