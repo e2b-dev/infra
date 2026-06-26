@@ -143,6 +143,10 @@ func WriteMetadata(path string, metadata map[string]string) error {
 // descriptor. This avoids path races for callers that have just written the
 // file and still hold it open.
 func WriteMetadataFile(file *os.File, metadata map[string]string) error {
+	if file == nil {
+		return errors.New("file is nil")
+	}
+
 	return writeMetadata(file.Name(), file, metadata)
 }
 
