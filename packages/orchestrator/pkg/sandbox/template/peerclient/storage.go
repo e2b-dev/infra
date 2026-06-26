@@ -16,24 +16,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 var (
 	tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerclient")
-	meter  = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerclient")
-
-	peerReadTimerFactory = utils.Must(telemetry.NewTimerFactory(meter,
-		"orchestrator.storage.peer.read",
-		"Duration of peer orchestrator reads",
-		"Total bytes read from peer orchestrator",
-		"Total peer orchestrator reads",
-	))
-
-	attrOpWriteTo     = attribute.String("operation", "WriteTo")
-	attrOpExists      = attribute.String("operation", "Exists")
-	attrOpSize        = attribute.String("operation", "Size")
-	attrOpRangeReader = attribute.String("operation", "OpenRangeReader")
 
 	attrResolveRedisError = attribute.String("peer_resolve", "redis_error")
 	attrResolveNoPeer     = attribute.String("peer_resolve", "no_peer")
@@ -92,16 +78,16 @@ func (p *routingProvider) resolveProvider(ctx context.Context, buildID string) s
 	return newPeerStorageProvider(p.base, res.client, res.uploaded)
 }
 
-func (p *routingProvider) OpenBlob(ctx context.Context, path string, objType storage.ObjectType) (storage.Blob, error) {
+func (p *routingProvider) OpenBlob(ctx context.Context, path string) (storage.Blob, error) {
 	buildID, _ := storage.SplitPath(path)
 
-	return p.resolveProvider(ctx, buildID).OpenBlob(ctx, path, objType)
+	return p.resolveProvider(ctx, buildID).OpenBlob(ctx, path)
 }
 
-func (p *routingProvider) OpenSeekable(ctx context.Context, path string, objType storage.SeekableObjectType) (storage.Seekable, error) {
+func (p *routingProvider) OpenSeekable(ctx context.Context, path string) (storage.Seekable, error) {
 	buildID, _ := storage.SplitPath(path)
 
-	return p.resolveProvider(ctx, buildID).OpenSeekable(ctx, path, objType)
+	return p.resolveProvider(ctx, buildID).OpenSeekable(ctx, path)
 }
 
 func (p *routingProvider) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
@@ -139,7 +125,7 @@ func newPeerStorageProvider(
 	}
 }
 
-func (p *peerStorageProvider) OpenBlob(_ context.Context, path string, objType storage.ObjectType) (storage.Blob, error) {
+func (p *peerStorageProvider) OpenBlob(_ context.Context, path string) (storage.Blob, error) {
 	buildID, t := storage.SplitPath(path)
 
 	return &peerBlob{
@@ -150,12 +136,12 @@ func (p *peerStorageProvider) OpenBlob(_ context.Context, path string, objType s
 			uploaded: p.uploaded,
 		},
 		openBase: func(ctx context.Context) (storage.Blob, error) {
-			return p.base.OpenBlob(ctx, path, objType)
+			return p.base.OpenBlob(ctx, path)
 		},
 	}, nil
 }
 
-func (p *peerStorageProvider) OpenSeekable(_ context.Context, path string, objType storage.SeekableObjectType) (storage.Seekable, error) {
+func (p *peerStorageProvider) OpenSeekable(_ context.Context, path string) (storage.Seekable, error) {
 	// Strip any compression suffix so peerSeekable holds the basic name. The
 	// base fallthrough path composes the actual storage path from
 	// (buildID, name, ct) per-call. Peer routing usually engages only
@@ -175,7 +161,6 @@ func (p *peerStorageProvider) OpenSeekable(_ context.Context, path string, objTy
 			uploaded: p.uploaded,
 		},
 		basePersistence: p.base,
-		objType:         objType,
 	}, nil
 }
 
@@ -232,7 +217,6 @@ func tryPeer[T any](
 	ctx context.Context,
 	h *peerHandle,
 	spanName string,
-	opAttr attribute.KeyValue,
 	peerFn func(ctx context.Context) (peerAttempt[T], error),
 ) (peerAttempt[T], error) {
 	ctx, span := tracer.Start(ctx, spanName, trace.WithAttributes(
@@ -246,19 +230,15 @@ func tryPeer[T any](
 		return peerAttempt[T]{}, nil
 	}
 
-	timer := peerReadTimerFactory.Begin(opAttr)
-
 	res, err := peerFn(ctx)
 	if res.hit {
 		if err != nil {
 			span.RecordError(err)
-			timer.Failure(ctx, res.bytes)
 
 			return res, err
 		}
 
 		span.SetAttributes(attrPeerHitTrue)
-		timer.Success(ctx, res.bytes)
 
 		return res, nil
 	}
@@ -267,21 +247,23 @@ func tryPeer[T any](
 		span.RecordError(err)
 	}
 
-	timer.Failure(ctx, 0)
 	span.SetAttributes(attrPeerHitFalse)
 
 	return peerAttempt[T]{}, nil
 }
 
-var _ io.ReadCloser = (*peerStreamReader)(nil)
+var _ storage.RangeReader = (*peerStreamReader)(nil)
 
-// peerStreamReader wraps a gRPC streaming recv function as an io.ReadCloser.
+// peerStreamReader wraps a gRPC streaming recv function as a storage.RangeReader.
 // cancel is called on Close to signal the server to terminate the stream.
 type peerStreamReader struct {
 	recv    func() ([]byte, error)
 	current *bytes.Reader
 	done    bool
 	cancel  context.CancelFunc
+
+	bytes int64
+	read  time.Duration
 }
 
 func newPeerStreamReader(recv func() ([]byte, error), cancel context.CancelFunc) *peerStreamReader {
@@ -291,7 +273,13 @@ func newPeerStreamReader(recv func() ([]byte, error), cancel context.CancelFunc)
 	}
 }
 
-func (r *peerStreamReader) Read(p []byte) (int, error) {
+func (r *peerStreamReader) Read(p []byte) (n int, err error) {
+	t0 := time.Now()
+	defer func() {
+		r.read += time.Since(t0)
+		r.bytes += int64(n)
+	}()
+
 	for {
 		if r.current != nil && r.current.Len() > 0 {
 			return r.current.Read(p)
@@ -303,11 +291,12 @@ func (r *peerStreamReader) Read(p []byte) (int, error) {
 
 		// gRPC Recv returns (nil, io.EOF) separately from the last data message,
 		// so no data is lost here.
-		data, err := r.recv()
+		var data []byte
+		data, err = r.recv()
 		if errors.Is(err, io.EOF) {
 			r.done = true
 
-			return 0, io.EOF
+			continue
 		}
 		if err != nil {
 			return 0, fmt.Errorf("failed to receive chunk from peer: %w", err)
@@ -317,8 +306,12 @@ func (r *peerStreamReader) Read(p []byte) (int, error) {
 	}
 }
 
-func (r *peerStreamReader) Close() error {
+func (r *peerStreamReader) Close(context.Context) (*storage.ReadStats, error) {
 	r.cancel()
 
-	return nil
+	return &storage.ReadStats{
+		StoredBytes:    r.bytes,
+		DeliveredBytes: r.bytes,
+		Read:           r.read,
+	}, nil
 }

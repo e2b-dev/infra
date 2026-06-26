@@ -68,19 +68,16 @@ func TestDecompressingCacheReader(t *testing.T) {
 		c := newTestCache(t)
 		framePath := makeFrameFilename(c.path, Range{Offset: 0, Length: len(compressed)})
 
-		rc, err := newDecompressingCacheReader(
-			io.NopCloser(bytes.NewReader(compressed)),
-			CompressionLZ4,
-			len(compressed),
-			&c, t.Context(), framePath, 0,
-		)
+		capturing := newCaptureReader(bytesRangeReader(compressed), len(compressed), true,
+			c.compressedFrameWriteback(framePath, 0, len(compressed), SourceFS, CompressionLZ4))
+		rc, err := NewDecompressReader(capturing, CompressionLZ4, SourceFS, c.objType)
 		require.NoError(t, err)
 
 		got, err := io.ReadAll(rc)
 		require.NoError(t, err)
 		require.Equal(t, original, got)
 
-		require.NoError(t, rc.Close())
+		mustClose(t, rc)
 		c.wg.Wait()
 
 		cached, err := os.ReadFile(framePath)
@@ -91,7 +88,7 @@ func TestDecompressingCacheReader(t *testing.T) {
 	t.Run("io.ReadFull at exact uncompressed size still populates cache (production LZ4 options)", func(t *testing.T) {
 		t.Parallel()
 
-		// Mirror the chunker's progressiveRead: io.ReadFull with the EXACT
+		// Mirror the chunker's progressiveFetch: io.ReadFull with the EXACT
 		// uncompressed byte count, against an encoder configured the way prod
 		// configures it. With BlockChecksumOption(true)+ChecksumOption(false),
 		// the trailing 4-byte EndMark is part of the encoded frame but lz4.Reader
@@ -104,12 +101,9 @@ func TestDecompressingCacheReader(t *testing.T) {
 		compressedProd := lz4CompressProd(t, original)
 		framePath := makeFrameFilename(c.path, Range{Offset: 0, Length: len(compressedProd)})
 
-		rc, err := newDecompressingCacheReader(
-			io.NopCloser(bytes.NewReader(compressedProd)),
-			CompressionLZ4,
-			len(compressedProd),
-			&c, t.Context(), framePath, 0,
-		)
+		capturing := newCaptureReader(bytesRangeReader(compressedProd), len(compressedProd), true,
+			c.compressedFrameWriteback(framePath, 0, len(compressedProd), SourceFS, CompressionLZ4))
+		rc, err := NewDecompressReader(capturing, CompressionLZ4, SourceFS, c.objType)
 		require.NoError(t, err)
 
 		out := make([]byte, len(original))
@@ -118,7 +112,8 @@ func TestDecompressingCacheReader(t *testing.T) {
 		require.Equal(t, len(original), n)
 		require.Equal(t, original, out)
 
-		require.NoError(t, rc.Close(), "writeback failure must not surface as a read error")
+		_, closeErr := rc.Close(t.Context())
+		require.NoError(t, closeErr, "writeback failure must not surface as a read error")
 		c.wg.Wait()
 
 		_, err = os.Stat(framePath)
@@ -131,19 +126,17 @@ func TestDecompressingCacheReader(t *testing.T) {
 		c := newTestCache(t)
 		framePath := makeFrameFilename(c.path, Range{Offset: 0, Length: len(compressed)})
 
-		rc, err := newDecompressingCacheReader(
-			io.NopCloser(bytes.NewReader(compressed)),
-			CompressionLZ4,
-			len(compressed)+100, // wrong size
-			&c, t.Context(), framePath, 0,
-		)
+		capturing := newCaptureReader(bytesRangeReader(compressed), len(compressed)+100, true,
+			c.compressedFrameWriteback(framePath, 0, len(compressed)+100, SourceFS, CompressionLZ4)) // wrong expected size
+		rc, err := NewDecompressReader(capturing, CompressionLZ4, SourceFS, c.objType)
 		require.NoError(t, err)
 
 		got, err := io.ReadAll(rc)
 		require.NoError(t, err)
 		require.Equal(t, original, got, "decompressed data should be correct regardless")
 
-		require.NoError(t, rc.Close(), "writeback failure must not surface as a read error")
+		_, closeErr := rc.Close(t.Context())
+		require.NoError(t, closeErr, "writeback failure must not surface as a read error")
 
 		c.wg.Wait()
 

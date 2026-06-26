@@ -2,6 +2,7 @@ package nodemanager
 
 import (
 	"context"
+	"time"
 
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -32,7 +33,12 @@ func (n *Node) Sync(ctx context.Context, store *sandbox.Store) {
 			nodeStatus = api.NodeStatusUnhealthy
 		}
 
-		n.setStatus(ctx, nodeStatus)
+		var statusChangedAt time.Time
+		if ts := nodeInfo.GetServiceStatusChangedAt(); ts.IsValid() {
+			statusChangedAt = ts.AsTime()
+		}
+
+		n.setStatus(ctx, nodeStatus, statusChangedAt)
 		n.setMachineInfo(nodeInfo.GetMachineInfo())
 		n.setLabels(nodeInfo.GetLabels())
 		n.setMetadata(
@@ -61,7 +67,8 @@ func (n *Node) Sync(ctx context.Context, store *sandbox.Store) {
 
 	if !syncRetrySuccess {
 		logger.L().Error(ctx, "Failed to sync node after max retries, temporarily marking as unhealthy", logger.WithNodeID(n.ID))
-		n.setStatus(ctx, api.NodeStatusUnhealthy)
+		// Local status change, the timestamp is the time of the first unhealthy observation.
+		n.markUnhealthyLocal(ctx)
 
 		return
 	}

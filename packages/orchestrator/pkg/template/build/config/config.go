@@ -3,6 +3,7 @@ package config
 import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/oci/auth"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
@@ -70,6 +71,17 @@ type TemplateConfig struct {
 
 	// Kernel version to use
 	KernelVersion string
+}
+
+// ObjectMetadata is the provenance stamped on a build's uploaded objects.
+// buildOrigin distinguishes the final template build from intermediate
+// build-cache layers.
+func (e TemplateConfig) ObjectMetadata(buildOrigin storage.ObjectOrigin) storage.ObjectMetadata {
+	return storage.ObjectMetadata{
+		storage.ObjectMetadataTeamID:      e.TeamID,
+		storage.ObjectMetadataTemplateID:  e.TemplateID,
+		storage.ObjectMetadataBuildOrigin: string(buildOrigin),
+	}
 }
 
 func MemfilePageSize(hugePages bool) int64 {

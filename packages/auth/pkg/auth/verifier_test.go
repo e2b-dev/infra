@@ -15,7 +15,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/auth/pkg/auth/legacy"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth/oidc"
 )
 
@@ -70,16 +69,13 @@ func TestNewVerifier_DisabledConfigReturnsNil(t *testing.T) {
 	require.Nil(t, verifier)
 }
 
-func TestVerifier_VerifyWithMultipleStrategies(t *testing.T) {
+func TestVerifier_VerifyJWT(t *testing.T) {
 	t.Parallel()
 
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 
-	const (
-		keyID      = "test-key"
-		hmacSecret = "supabasejwtsecretsupabasejwtsecret"
-	)
+	const keyID = "test-key"
 	server := oidc.NewTestServer(t, &privateKey.PublicKey, keyID, testIssuerURL)
 
 	lookup := newStubIdentityLookup()
@@ -98,23 +94,8 @@ func TestVerifier_VerifyWithMultipleStrategies(t *testing.T) {
 				CacheDuration: time.Minute,
 			},
 		},
-		Legacy: &legacy.Config{
-			HMAC: &legacy.HMACConfig{Secrets: []string{hmacSecret}},
-		},
 	}, server.Client(), lookup)
 	require.NoError(t, err)
-
-	hmacUserID := uuid.New()
-	hmacToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": hmacUserID.String(),
-		"exp": time.Now().Add(time.Hour).Unix(),
-	})
-	signedHMACToken, err := hmacToken.SignedString([]byte(hmacSecret))
-	require.NoError(t, err)
-
-	gotHMACUserID, _, err := verifier.Verify(t.Context(), signedHMACToken)
-	require.NoError(t, err)
-	require.Equal(t, hmacUserID, gotHMACUserID)
 
 	jwksToken := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
 		"iss": testIssuerURL,

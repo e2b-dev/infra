@@ -63,31 +63,8 @@ type oidcUserBootstrapInput struct {
 	SignupUserAgent string
 }
 
-func (s *APIStore) bootstrapSupabaseUser(ctx context.Context, userID uuid.UUID) (provisionedTeam, error) {
-	profile, err := s.bootstrapUserProfileFromSupabase(ctx, userID)
-	if err != nil {
-		return provisionedTeam{}, err
-	}
-
-	return s.bootstrapUser(ctx, profile)
-}
-
-func (s *APIStore) bootstrapUserProfileFromSupabase(ctx context.Context, userID uuid.UUID) (bootstrapUserProfile, error) {
-	profile, err := s.resolveProfile(ctx, userID)
-	if err != nil {
-		return bootstrapUserProfile{}, err
-	}
-
-	return bootstrapUserProfile{
-		UserID:          userID,
-		Email:           profile.Email,
-		DefaultTeamName: defaultTeamNameFromProfile(profile),
-	}, nil
-}
-
 // resolveProfile fetches a single user's profile through the configured profile
-// provider, returning a 404 ProvisionError when the user is unknown. This keeps
-// provisioning independent of which backend (Supabase or Ory) owns the user.
+// provider, returning a 404 ProvisionError when the user is unknown.
 func (s *APIStore) resolveProfile(ctx context.Context, userID uuid.UUID) (userprofile.Profile, error) {
 	profiles, err := s.userProfiles.GetProfilesByUserID(ctx, []uuid.UUID{userID})
 	if err != nil {
@@ -123,38 +100,18 @@ func (s *APIStore) bootstrapOIDCUser(ctx context.Context, input oidcUserBootstra
 	})
 }
 
-// requireConfiguredOIDCIssuer rejects bootstrap requests whose issuer is not in
-// the configured provider list. Without this an admin-token holder could plant
-// an identity under any arbitrary iss string. When the user-profile provider
-// requires Ory, only ORY_ISSUER_URL is accepted: the Ory resolver looks up
-// public.user_identities by exactly that issuer, so any other configured JWT
-// issuer would create rows that profile/membership lookups never read.
+// requireConfiguredOIDCIssuer rejects bootstrap requests whose issuer is not the
+// configured Ory issuer.
 func (s *APIStore) requireConfiguredOIDCIssuer(issuer string) error {
 	oryIssuer := strings.TrimSpace(s.config.OryIssuerURL)
 
-	if s.config.UserProfileProvider.RequiresOry() {
-		if oryIssuer != "" && oryIssuer == issuer {
-			return nil
-		}
-
-		return &internalteamprovision.ProvisionError{
-			StatusCode: http.StatusBadRequest,
-			Message:    "oidc_issuer must equal the configured ORY_ISSUER_URL",
-		}
-	}
-
-	for _, jwt := range s.config.AuthProvider.JWT {
-		if strings.TrimSpace(jwt.Issuer.URL) == issuer {
-			return nil
-		}
-	}
 	if oryIssuer != "" && oryIssuer == issuer {
 		return nil
 	}
 
 	return &internalteamprovision.ProvisionError{
 		StatusCode: http.StatusBadRequest,
-		Message:    "oidc_issuer is not a configured auth provider",
+		Message:    "oidc_issuer must equal the configured ORY_ISSUER_URL",
 	}
 }
 
@@ -204,6 +161,14 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 			}
 			profile.UserID = canonicalUserID
 		}
+	}
+
+	// Populate the Ory identity's external_id with the canonical public.users id
+	// now that the user row exists. Runs before any team is created and before
+	// the user lock is taken, so an Ory failure rolls the user/identity back and
+	// no orphan team is left behind.
+	if err := s.setOIDCIdentityExternalID(ctx, identity, profile.UserID); err != nil {
+		return provisionedTeam{}, err
 	}
 
 	// Serialize bootstrap for a user even when they have no team memberships yet.
@@ -284,6 +249,20 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 		IsBlocked:     team.IsBlocked,
 		BlockedReason: team.BlockedReason,
 	}, nil
+}
+
+// setOIDCIdentityExternalID stores the canonical public.users id on the Ory
+// identity. It is a no-op for non-OIDC bootstrap (identity == nil).
+func (s *APIStore) setOIDCIdentityExternalID(ctx context.Context, identity *bootstrapUserIdentity, userID uuid.UUID) error {
+	if identity == nil {
+		return nil
+	}
+
+	if err := s.userProfiles.SetIdentityExternalID(ctx, identity.Subject, userID); err != nil {
+		return fmt.Errorf("set ory identity external id: %w", err)
+	}
+
+	return nil
 }
 
 func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string) (provisionedTeam, error) {

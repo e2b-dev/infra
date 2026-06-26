@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -51,10 +52,21 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-const (
-	baseImage = "e2bdev/base:latest"
-	proxyPort = 5007
-)
+const baseImage = "e2bdev/base:latest"
+
+// proxyPort is the sandbox proxy listen port. It defaults to 5007 but can be
+// overridden via PROXY_PORT so create-build can run alongside a live
+// orchestrator (which already holds the default port).
+func proxyPort() uint16 {
+	if v := os.Getenv("PROXY_PORT"); v != "" {
+		if p, err := strconv.ParseUint(v, 10, 16); err == nil {
+			return uint16(p)
+		}
+		log.Printf("warning: ignoring invalid PROXY_PORT=%q, using default 5007", v)
+	}
+
+	return 5007
+}
 
 func main() {
 	templateID := flag.String("template", "local-template", "template id")
@@ -68,7 +80,7 @@ func main() {
 	memory := flag.Int("memory", 1024, "memory MB")
 	disk := flag.Int("disk", 1024, "disk MB")
 	hugePages := flag.Bool("hugepages", true, "use 2MB huge pages for memory (false = 4KB pages)")
-	useMemfd := flag.Bool("use-memfd", false, "enable memfd-backed guest memory (passes use_memfd on snapshot load)")
+	disableMemfd := flag.Bool("disable-memfd", false, "disable memfd-backed guest memory")
 	memfileDiffDedup := flag.Bool("memfile-diff-dedup", false, "enable 4KiB-page deduplication of memfile diff against the base template")
 	startCmd := flag.String("start-cmd", "", "start command")
 	setupCmd := flag.String("setup-cmd", "", "setup command to run during build (e.g., install deps)")
@@ -77,8 +89,8 @@ func main() {
 	verbose := flag.Bool("v", false, "verbose output")
 	flag.Parse()
 
-	if *useMemfd {
-		featureflags.OverrideBoolFlag(featureflags.UseMemFdFlag, true)
+	if *disableMemfd {
+		featureflags.OverrideBoolFlag(featureflags.UseMemFdFlag, false)
 	}
 
 	if *memfileDiffDedup {
@@ -271,7 +283,7 @@ func doBuild(
 
 	sandboxes := sandbox.NewSandboxesMap()
 
-	sandboxProxy, err := proxy.NewSandboxProxy(noop.MeterProvider{}, proxyPort, sandboxes, featureFlags)
+	sandboxProxy, err := proxy.NewSandboxProxy(noop.MeterProvider{}, proxyPort(), sandboxes, featureFlags)
 	if err != nil {
 		return fmt.Errorf("proxy: %w", err)
 	}
@@ -433,7 +445,7 @@ func printArtifactSizes(ctx context.Context, persistence storage.StorageProvider
 		printLocalFileSizes(basePath, buildID)
 	} else {
 		// For remote storage, get sizes from storage provider
-		if memfile, err := persistence.OpenSeekable(ctx, paths.Memfile(), storage.MemfileObjectType); err == nil {
+		if memfile, err := persistence.OpenSeekable(ctx, paths.Memfile()); err == nil {
 			if size, err := memfile.Size(ctx); err == nil {
 				fmt.Printf("   Memfile: %d MB\n", size>>20)
 			}

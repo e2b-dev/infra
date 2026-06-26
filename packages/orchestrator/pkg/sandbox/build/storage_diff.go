@@ -4,6 +4,7 @@ package build
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerclient"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -24,22 +26,25 @@ const (
 )
 
 // source carries the StorageDiff's current routing state. upstream is always
-// non-nil after construction but may be switched once over the lifetime; the ft
-// pointer's nil/empty/non-empty state encodes the lifecycle:
-//
-//	ft == nil                                  not authoritative. may trigger refresh logic.
-//	ft == storage.UncompressedFullFrameTable   authoritatively uncompressed (only set by refresh)
-//	ft non-empty                               authoritatively compressed with the bound full-file FT
-//
-// fullDiffFrameTable is *FullFrameTable rather than *FrameTable: this is the
-// one place in the read path where we hold an upcasted full table. The
-// invariant — builds[self] for an ancestor we just refreshed is a complete
-// table, never a trimmed one — is documented at (*header.Header).SelfBuildData.
-// Everywhere else, FrameTables are treated as potentially partial
-// (per-mapping, trimmed).
+// non-nil after construction but may be switched once over the lifetime; ft
+// nil = not authoritative, non-nil = authoritative and immutable.
+// ft is *FullFrameTable rather than *FrameTable — see
+// (*header.Header).SelfBuildData for the invariant justifying the upcast.
 type source struct {
 	upstream           storage.RangeOpener
 	fullDiffFrameTable *storage.FullFrameTable
+	// dataPath is the storage object upstream reads from; the soft-delete check
+	// reads the tombstone off it directly (the object that gets pruned), not the
+	// header. Empty when there is no storage path to check. It travels with the
+	// upstream it was opened from, so a peer transition (uncompressed probe ->
+	// authoritative compressed object) swaps both atomically.
+	dataPath string
+}
+
+func isPeerRouted(v any) bool {
+	_, ok := v.(peerclient.PeerRouted)
+
+	return ok
 }
 
 type StorageDiff struct {
@@ -49,14 +54,22 @@ type StorageDiff struct {
 	buildID           string
 	diffType          DiffType
 	storageObjectType storage.SeekableObjectType
+	flags             *featureflags.Client
 
-	blockSize    int64
-	metrics      blockmetrics.Metrics
-	persistence  storage.StorageProvider
-	isActivePeer IsActivePeer
+	blockSize   int64
+	metrics     blockmetrics.Metrics
+	persistence storage.StorageProvider
 
 	source    atomic.Pointer[source]
 	refreshMu sync.Mutex
+
+	// softDeletedPath holds the storage path the background check found
+	// tombstoned (only under enforcement); reads fail closed while it equals the
+	// current source's dataPath. Comparing by path value (not a bool) makes the
+	// latch race-free: a stale check that recorded a superseded probe path can
+	// never match the live dataPath, and a peer-transition repoint to a different
+	// object auto-disables the old verdict without a separate clear.
+	softDeletedPath atomic.Pointer[string]
 }
 
 var _ Diff = (*StorageDiff)(nil)
@@ -81,14 +94,14 @@ func newStorageDiff(
 	blockSize int64,
 	metrics blockmetrics.Metrics,
 	persistence storage.StorageProvider,
-	isActivePeer IsActivePeer,
 	upstream storage.Seekable,
 	uncompressedSize int64,
 	initialFT *storage.FullFrameTable,
+	dataPath string,
 	ff *featureflags.Client,
 ) (*StorageDiff, error) {
 	cachePath := GenerateDiffCachePath(basePath, buildID, diffType)
-	c, err := block.NewChunker(ff, uncompressedSize, blockSize, cachePath, metrics)
+	c, err := block.NewChunker(ff, uncompressedSize, blockSize, cachePath, metrics, storageObjectType)
 	if err != nil {
 		return nil, fmt.Errorf("create chunker for build %s: %w", buildID, err)
 	}
@@ -97,17 +110,172 @@ func newStorageDiff(
 		buildID:           buildID,
 		diffType:          diffType,
 		storageObjectType: storageObjectType,
+		flags:             ff,
 		cachePath:         cachePath,
 		blockSize:         blockSize,
 		metrics:           metrics,
 		persistence:       persistence,
-		isActivePeer:      isActivePeer,
 		chunker:           c,
 		cacheKey:          GetDiffStoreKey(buildID, diffType),
 	}
-	d.source.Store(&source{upstream: upstream, fullDiffFrameTable: initialFT})
+	d.source.Store(&source{upstream: upstream, fullDiffFrameTable: initialFT, dataPath: dataPath})
 
 	return d, nil
+}
+
+func (b *File) createDiff(ctx context.Context, buildID uuid.UUID) (Diff, error) {
+	h := b.Header()
+	blockSize := int64(h.Metadata.BlockSize)
+
+	objType, ok := storageObjectType(b.fileType)
+	if !ok {
+		return nil, UnknownDiffTypeError{b.fileType}
+	}
+
+	bd, hasEntry := h.Builds[buildID]
+
+	var (
+		upstream  storage.Seekable
+		size      int64
+		initialFT *storage.FullFrameTable
+		dataPath  string
+		err       error
+	)
+	switch {
+	case hasEntry:
+		// bd.FrameData is per-mapping trimmed, not the ancestor's full table —
+		// don't latch it; first read will refresh. Exception: a zero bd is the
+		// LoadHeader backfill marker for an uncompressed V3-or-older ancestor;
+		// UncompressedFullFrameTable IS that ancestor's full table, latch it
+		// to skip a refresh whose header file may not exist.
+		upstream, dataPath, err = b.openDataFile(ctx, buildID, bd.FrameData.CompressionType())
+		if err != nil {
+			return nil, err
+		}
+		size = bd.Size
+		if bd == (header.BuildData{}) {
+			initialFT = storage.UncompressedFullFrameTable
+		}
+
+	default:
+		// hasEntry=false implies a peer-served header (LoadHeader backfills
+		// missing entries for storage-loaded headers, so storage paths always
+		// hit one of the hasEntry cases). Probe basic-name to detect peer
+		// routing; on miss/transition refresh from storage.
+		upstream, dataPath, err = b.openDataFile(ctx, buildID, storage.CompressionNone)
+		if err != nil {
+			return nil, err
+		}
+		if isPeerRouted(upstream) {
+			peerSize, peerErr := upstream.Size(ctx)
+			if peerErr == nil {
+				size = peerSize
+
+				break
+			}
+			var transErr *storage.PeerTransitionedError
+			if !errors.As(peerErr, &transErr) {
+				return nil, fmt.Errorf("createDiff: peer Size for build %s: %w", buildID, peerErr)
+			}
+		}
+		loaded, lerr := refreshHeader(ctx, b.persistence, buildID, b.fileType, refreshCauseProactive)
+		if lerr != nil {
+			if errors.Is(lerr, storage.ErrObjectNotExist) {
+				// Legacy template: data file exists at the basic uncompressed
+				// path but no header file was ever uploaded; keep the upstream
+				// we already opened at the basic path and latch as uncompressed.
+				initialFT = storage.UncompressedFullFrameTable
+
+				break
+			}
+
+			return nil, fmt.Errorf("createDiff: proactive header load for build %s: %w", buildID, lerr)
+		}
+		// Promote loaded header on self-match so future pauses inherit the
+		// populated Builds map.
+		if loaded.Metadata.BuildId == h.Metadata.BuildId {
+			if _, hasSelf := loaded.Builds[loaded.Metadata.BuildId]; hasSelf {
+				b.SwapHeader(loaded)
+			}
+		}
+		upstream, size, initialFT, dataPath, err = openFromLoadedHeader(ctx, b.persistence, loaded, b.fileType)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if size == 0 {
+		size, err = upstream.Size(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("createDiff: size lookup for build %s: %w", buildID, err)
+		}
+	}
+
+	if isPeerRouted(upstream) {
+		initialFT = nil
+	}
+
+	d, err := newStorageDiff(
+		b.store.cachePath,
+		buildID.String(),
+		b.fileType,
+		objType,
+		blockSize,
+		b.metrics,
+		b.persistence,
+		upstream,
+		size,
+		initialFT,
+		dataPath,
+		b.store.flags,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	d.startSoftDeleteCheck(context.WithoutCancel(ctx))
+
+	return d, nil
+}
+
+func (b *File) openDataFile(ctx context.Context, buildID uuid.UUID, ct storage.CompressionType) (storage.Seekable, string, error) {
+	path := storage.Paths{BuildID: buildID.String()}.DataFile(string(b.fileType), ct)
+	upstream, err := b.persistence.OpenSeekable(ctx, path)
+	if err != nil {
+		return nil, "", fmt.Errorf("createDiff: open data file for build %s at %s: %w", buildID, path, err)
+	}
+
+	return upstream, path, nil
+}
+
+func openFromLoadedHeader(
+	ctx context.Context,
+	persistence storage.StorageProvider,
+	loaded *header.Header,
+	fileType DiffType,
+) (storage.Seekable, int64, *storage.FullFrameTable, string, error) {
+	buildID := loaded.Metadata.BuildId
+	paths := storage.Paths{BuildID: buildID.String()}
+	if loaded.Metadata.Version < header.MetadataVersionV4 {
+		path := paths.DataFile(string(fileType), storage.CompressionNone)
+		upstream, err := persistence.OpenSeekable(ctx, path)
+		if err != nil {
+			return nil, 0, nil, "", fmt.Errorf("reopen uncompressed upstream for pre-V4 build %s at %s: %w", buildID, path, err)
+		}
+
+		return upstream, 0, storage.UncompressedFullFrameTable, path, nil
+	}
+	size, ft, err := loaded.SelfBuildData()
+	if err != nil {
+		return nil, 0, nil, "", err
+	}
+	path := paths.DataFile(string(fileType), ft.Table().CompressionType())
+	upstream, err := persistence.OpenSeekable(ctx, path)
+	if err != nil {
+		return nil, 0, nil, "", fmt.Errorf("reopen upstream for build %s at %s: %w", buildID, path, err)
+	}
+
+	return upstream, size, ft, path, nil
 }
 
 func storageObjectType(diffType DiffType) (storage.SeekableObjectType, bool) {
@@ -130,7 +298,19 @@ func (b *StorageDiff) Close() error {
 }
 
 func (b *StorageDiff) ReadAt(ctx context.Context, p []byte, off int64, callerFT *storage.FrameTable) (int, error) {
+	if err := b.softDeleteErr(); err != nil {
+		return 0, err
+	}
 	up, ft, err := b.resolve(ctx, callerFT)
+	if err != nil {
+		return 0, err
+	}
+	n, err := b.chunker.ReadAt(ctx, p, off, up, ft)
+	var transErr *storage.PeerTransitionedError
+	if !errors.As(err, &transErr) {
+		return n, err
+	}
+	up, ft, err = b.recoverFromPeerTransition(ctx, transErr, callerFT)
 	if err != nil {
 		return 0, err
 	}
@@ -138,8 +318,37 @@ func (b *StorageDiff) ReadAt(ctx context.Context, p []byte, off int64, callerFT 
 	return b.chunker.ReadAt(ctx, p, off, up, ft)
 }
 
+// recoverFromPeerTransition handles a PeerTransitionedError surfaced by a read:
+// back off, reload the source, re-check the soft-delete latch (the source's
+// dataPath may have changed during the reload), and re-resolve the upstream/FT.
+func (b *StorageDiff) recoverFromPeerTransition(ctx context.Context, transErr *storage.PeerTransitionedError, callerFT *storage.FrameTable) (storage.RangeOpener, *storage.FrameTable, error) {
+	if err := waitTransitionBackoff(ctx, transErr); err != nil {
+		return nil, nil, err
+	}
+	if err := b.reloadAfterPeerTransition(ctx); err != nil {
+		return nil, nil, fmt.Errorf("refresh after peer transition: %w", err)
+	}
+	if err := b.softDeleteErr(); err != nil {
+		return nil, nil, err
+	}
+
+	return b.resolve(ctx, callerFT)
+}
+
 func (b *StorageDiff) Slice(ctx context.Context, off, length int64, callerFT *storage.FrameTable) ([]byte, error) {
+	if err := b.softDeleteErr(); err != nil {
+		return nil, err
+	}
 	up, ft, err := b.resolve(ctx, callerFT)
+	if err != nil {
+		return nil, err
+	}
+	out, err := b.chunker.Slice(ctx, off, length, up, ft)
+	var transErr *storage.PeerTransitionedError
+	if !errors.As(err, &transErr) {
+		return out, err
+	}
+	up, ft, err = b.recoverFromPeerTransition(ctx, transErr, callerFT)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +379,7 @@ func (b *StorageDiff) IsCached(ctx context.Context, off, length int64) bool {
 	return b.chunker.IsCached(ctx, off, length)
 }
 
-func refreshBuildHeader(ctx context.Context, persistence storage.StorageProvider, buildID uuid.UUID, diffType DiffType, cause string) (*header.Header, error) {
+func refreshHeader(ctx context.Context, persistence storage.StorageProvider, buildID uuid.UUID, diffType DiffType, cause string) (*header.Header, error) {
 	timer := frameTableRefreshTimer.Begin(
 		attribute.String("cause", cause),
 		attribute.String("file_type", string(diffType)),
@@ -202,13 +411,10 @@ func (b *StorageDiff) resolve(ctx context.Context, callerFT *storage.FrameTable)
 	if callerFT != nil {
 		return cur.upstream, callerFT, nil
 	}
-	if b.isActivePeer != nil && b.isActivePeer(b.buildID) {
-		// Peer-active regime: upstream is peer-routed and serves uncompressed
-		// by basic name. We deliberately do NOT refresh here — the storage
-		// header may not exist yet and we do not handle ErrNotFound.
+	if isPeerRouted(cur.upstream) {
 		return cur.upstream, storage.UncompressedFrameTable, nil
 	}
-	if err := b.reloadSource(ctx, refreshCauseProactive); err != nil {
+	if err := b.reloadProactive(ctx); err != nil {
 		return nil, nil, fmt.Errorf("resolve: %w", err)
 	}
 	cur = b.source.Load()
@@ -216,65 +422,61 @@ func (b *StorageDiff) resolve(ctx context.Context, callerFT *storage.FrameTable)
 	return cur.upstream, cur.fullDiffFrameTable.Table(), nil
 }
 
-// RefreshSource reloads the build's header, latches the authoritative FT, and
-// reopens upstream at the resulting CT path. Called by readSegment after a
-// PeerTransitionedError. Idempotent: once the source latch is populated, the
-// post-refresh upstream is base-routed (no peer wrapper) and cannot emit
-// further PeerTransitionedErrors, so a second call is a no-op.
-func (b *StorageDiff) RefreshSource(ctx context.Context) error {
-	return b.reloadSource(ctx, refreshCausePeerTransitioned)
+// reloadAfterPeerTransition refreshes the source after a peerSeekable signaled
+// PeerTransitionedError. Short-circuits if a concurrent goroutine already
+// swapped the upstream to non-peer.
+func (b *StorageDiff) reloadAfterPeerTransition(ctx context.Context) error {
+	b.refreshMu.Lock()
+	defer b.refreshMu.Unlock()
+	if !isPeerRouted(b.source.Load().upstream) {
+		return nil
+	}
+
+	return b.reloadSourceLocked(ctx, refreshCausePeerTransitioned)
 }
 
-// reloadSource is the idempotent ensure-latched entry. Both RefreshSource
-// (PeerTransitionedError) and resolve (read-time peer-left fallback) funnel
-// through it; the cause attribute distinguishes them in telemetry. A concurrent
-// caller that wins the mutex short-circuits when the latch is already
-// populated, so parallel segment reads on a fresh StorageDiff pay only one
-// header fetch.
-func (b *StorageDiff) reloadSource(ctx context.Context, cause string) error {
+// reloadProactive refreshes the source when resolve has no authoritative FT
+// and no peer to ask. Short-circuits if a concurrent goroutine already latched
+// an FT.
+func (b *StorageDiff) reloadProactive(ctx context.Context) error {
 	b.refreshMu.Lock()
 	defer b.refreshMu.Unlock()
 	if b.source.Load().fullDiffFrameTable != nil {
 		return nil
 	}
 
-	return b.reloadSourceLocked(ctx, cause)
+	return b.reloadSourceLocked(ctx, refreshCauseProactive)
 }
 
 // reloadSourceLocked re-fetches the header and reopens upstream. Caller must
-// hold refreshMu.
+// hold refreshMu. The cause is propagated to refreshHeader's telemetry label.
 //
-// V4+ headers on storage always carry a self entry — set unconditionally
-// before publish. A missing self entry here can only come from P2P routing
-// returning a still-uploading peer's incomplete header. Treating it as "no
-// FrameData = uncompressed" would silently corrupt reads of a compressed file.
-// Fail loudly; the read path will retry when the peer transitions and the
-// storage-authoritative header is available.
-//
-// V3 never reaches reloadSourceLocked: getBuild's V3 branch latches an
-// authoritative empty &{} FT at construction, so resolve short-circuits and
-// reloadSource is never called; V3 builds aren't peer-routed so
-// PeerTransitionedError never fires against them either.
+// A missing header here is always a real error: legacy ancestors are caught
+// at createDiff time (backfill-marker or !hasEntry branches), so any runtime
+// ErrObjectNotExist is a race or genuine miss — propagate, do not assume
+// uncompressed (would serve compressed bytes raw for any modern build).
 func (b *StorageDiff) reloadSourceLocked(ctx context.Context, cause string) error {
 	bid, err := uuid.Parse(b.buildID)
 	if err != nil {
 		return fmt.Errorf("parse build id %s: %w", b.buildID, err)
 	}
-	loaded, err := refreshBuildHeader(ctx, b.persistence, bid, b.diffType, cause)
+	loaded, err := refreshHeader(ctx, b.persistence, bid, b.diffType, cause)
 	if err != nil {
-		return fmt.Errorf("reloadSourceLocked: load header for build %s (cause=%s): %w", b.buildID, cause, err)
+		return fmt.Errorf("reloadSourceLocked: load header for build %s: %w", b.buildID, err)
 	}
-	_, ft, err := loaded.SelfBuildData()
+	upstream, _, ft, dataPath, err := openFromLoadedHeader(ctx, b.persistence, loaded, b.diffType)
 	if err != nil {
-		return fmt.Errorf("reloadSourceLocked: build %s (cause=%s): %w", b.buildID, cause, err)
+		return fmt.Errorf("reloadSourceLocked: build %s: %w", b.buildID, err)
 	}
-	newPath := storage.Paths{BuildID: b.buildID}.DataFile(string(b.diffType), ft.Table().CompressionType())
-	newObj, err := b.persistence.OpenSeekable(ctx, newPath, b.storageObjectType)
-	if err != nil {
-		return fmt.Errorf("reloadSourceLocked: reopen upstream for build %s at %s (cause=%s): %w", b.buildID, newPath, cause, err)
-	}
+	pathChanged := b.source.Load().dataPath != dataPath
+	b.source.Store(&source{upstream: upstream, fullDiffFrameTable: ft, dataPath: dataPath})
 
-	b.source.Store(&source{upstream: newObj, fullDiffFrameTable: ft})
+	// Recheck on any path change, and also on a peer transition even if the path
+	// is unchanged: a peer-served object that wasn't in storage at first open
+	// (not_found) may now exist and carry a tombstone the initial check missed.
+	if pathChanged || cause == refreshCausePeerTransitioned {
+		b.startSoftDeleteCheck(context.WithoutCancel(ctx))
+	}
 
 	return nil
 }

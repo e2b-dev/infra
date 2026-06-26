@@ -92,7 +92,6 @@ func TestNewDiffStore(t *testing.T) {
 		cachePath,
 		25*time.Hour,
 		60*time.Second,
-		nil,
 	)
 	require.NoError(t, err)
 	assert.NotNil(t, store)
@@ -115,7 +114,6 @@ func TestDiffStoreTTLEviction(t *testing.T) {
 		cachePath,
 		ttl,
 		delay,
-		nil,
 	)
 	require.NoError(t, err)
 
@@ -152,7 +150,6 @@ func TestDiffStoreRefreshTTLEviction(t *testing.T) {
 		cachePath,
 		ttl,
 		delay,
-		nil,
 	)
 	require.NoError(t, err)
 
@@ -191,7 +188,6 @@ func TestDiffStoreDelayEviction(t *testing.T) { //nolint:paralleltest // very ti
 		cachePath,
 		ttl,
 		delay,
-		nil,
 	)
 	require.NoError(t, err)
 
@@ -238,7 +234,6 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) { //nolint:paralleltest // ve
 		cachePath,
 		ttl,
 		delay,
-		nil,
 	)
 	require.NoError(t, err)
 
@@ -293,7 +288,6 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 		cachePath,
 		ttl,
 		delay,
-		nil,
 	)
 	require.NoError(t, err)
 
@@ -365,7 +359,6 @@ func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 		cachePath,
 		ttl,
 		delay,
-		nil,
 	)
 	require.NoError(t, err)
 
@@ -454,7 +447,6 @@ func TestDiffStoreResetDeleteRace(t *testing.T) {
 		cachePath,
 		ttl,
 		delay,
-		nil,
 	)
 	require.NoError(t, err)
 
@@ -539,7 +531,6 @@ func TestFileIsCached_UUIDNilMappingReportsCached(t *testing.T) {
 		t.TempDir(),
 		time.Hour,
 		time.Minute,
-		nil,
 	)
 	require.NoError(t, err)
 
@@ -567,7 +558,6 @@ func TestFileIsCached_UninitializedChunkerReportsUncached(t *testing.T) {
 		t.TempDir(),
 		time.Hour,
 		time.Minute,
-		nil,
 	)
 	require.NoError(t, err)
 

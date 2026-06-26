@@ -28,6 +28,27 @@ func (e EntryInfoType) Valid() bool {
 	}
 }
 
+// CollapseResult Per-call statistics from a heap collapse
+type CollapseResult struct {
+	// AlreadyHuge Chunks MADV_COLLAPSE accepted but were already hugepages (no work)
+	AlreadyHuge int `json:"alreadyHuge,omitempty"`
+
+	// Chunks 2 MiB chunks attempted
+	Chunks int `json:"chunks,omitempty"`
+
+	// Collapsed Chunks whose base pages were actually migrated into a new hugepage (real work)
+	Collapsed int `json:"collapsed,omitempty"`
+
+	// ElapsedMs Wall-clock time spent collapsing, in milliseconds
+	ElapsedMs int64 `json:"elapsedMs,omitempty"`
+
+	// Regions Anonymous read-write regions scanned
+	Regions int `json:"regions,omitempty"`
+
+	// Skipped Chunks that could not be collapsed (empty or ineligible)
+	Skipped int `json:"skipped,omitempty"`
+}
+
 // ComposeRequest defines model for ComposeRequest.
 type ComposeRequest struct {
 	// Destination Destination file path for the composed file

@@ -20,18 +20,35 @@ type (
 )
 
 const (
-	ApiOrchestratorCreatedSandboxes CounterType = "api.orchestrator.created_sandboxes"
-	SandboxCreateMeterName          CounterType = "api.env.instance.started"
+	ApiOrchestratorCreatedSandboxes      CounterType = "api.orchestrator.created_sandboxes"
+	ApiOrchestratorResumeOriginNodeRemap CounterType = "api.orchestrator.resume_origin_node_remapped"
+	SandboxCreateMeterName               CounterType = "api.env.instance.started"
 
 	TeamSandboxCreated CounterType = "e2b.team.sandbox.created"
 
 	EnvdInitCalls CounterType = "orchestrator.sandbox.envd.init.calls"
+
+	// 2 MiB chunks the pre-pause envd heap collapse attempted, split by the
+	// result attribute (collapsed|skipped): attempts = total, successful =
+	// collapsed.
+	EnvdCollapseChunks CounterType = "orchestrator.sandbox.envd.collapse.chunks"
 	// Incremented by the balance_dirty_pages thread count at every 200 ms poll
 	// for the lifetime of the process. rate() shows dirty-page throttle
 	// intensity in real-time; 0 when no stalls are occurring.
 	OrchestratorHostBalanceDirtyPagesThreads CounterType = "orchestrator.host.balance_dirty_pages.threads"
 
 	OrchestratorSandboxKilledCounterName CounterType = "orchestrator.sandbox.killed"
+
+	// OrchestratorSnapshotUploadFailedCounterName counts pause-snapshot uploads
+	// that never landed durably (budget exhausted or a non-retryable error).
+	// A non-zero rate means lost snapshots.
+	OrchestratorSnapshotUploadFailedCounterName CounterType = "orchestrator.snapshot.upload.failed"
+
+	// PauseResumePrefetchHarvestAttempts counts pause-resume prefetch harvest
+	// attempts, by result (success|resume_failed|collect_failed|skipped). The
+	// throwaway is absent from Prometheus otherwise (registration-skip), so this
+	// is the harvest-activity / failure-rate signal.
+	PauseResumePrefetchHarvestAttempts CounterType = "orchestrator.sandbox.pause_resume_prefetch.harvest.attempts"
 
 	ApiRedisStoragePublisherPublished CounterType = "api.redis_storage.publisher.published"
 	ApiRedisStoragePublisherDropped   CounterType = "api.redis_storage.publisher.dropped"
@@ -74,6 +91,19 @@ const (
 	// Sandbox timing histograms
 	OrchestratorSandboxCreateDurationName HistogramType = "orchestrator.sandbox.create.duration"
 	WaitForEnvdDurationHistogramName      HistogramType = "orchestrator.sandbox.envd.init.duration"
+	GuestSyncDurationHistogramName        HistogramType = "orchestrator.sandbox.guest_sync.duration"
+
+	// Pre-pause envd heap collapse round-trip duration (the pause-path cost of
+	// POST /collapse: network plus envd's madvise work), recorded once per pause
+	// when the collapse-envd-heap flag is on.
+	EnvdCollapseDurationHistogramName HistogramType = "orchestrator.sandbox.envd.collapse.duration"
+
+	// Pause-resume prefetch harvest cost, recorded once per harvest attempt:
+	// duration is the whole throwaway resume-and-persist run (slot-hold cost);
+	// pages is the harvested trace size (distinct 2 MiB blocks), recorded only on
+	// success, so its bottom bucket surfaces the empty-trace (idle-at-pause) rate.
+	PauseResumePrefetchHarvestDurationName HistogramType = "orchestrator.sandbox.pause_resume_prefetch.harvest.duration"
+	PauseResumePrefetchHarvestPagesName    HistogramType = "orchestrator.sandbox.pause_resume_prefetch.harvest.pages"
 
 	// Sandbox startup working-set histograms: demand-fault pages/bytes a guest
 	// needed to reach a successful envd init, recorded once per start. Sampled
@@ -179,17 +209,21 @@ const (
 )
 
 var counterDesc = map[CounterType]string{
-	SandboxCreateMeterName:                   "Number of currently waiting requests to create a new sandbox",
-	ApiOrchestratorCreatedSandboxes:          "Number of successfully created sandboxes",
-	BuildResultCounterName:                   "Number of template build results",
-	BuildCacheResultCounterName:              "Number of build cache results",
-	TeamSandboxCreated:                       "Counter of started sandboxes for the team in the interval",
-	OrchestratorHostBalanceDirtyPagesThreads: "Cumulative stalled thread-polls during sandbox resume; rate() gives throttle intensity",
-	EnvdInitCalls:                            "Number of envd initialization calls",
-	OrchestratorSandboxKilledCounterName:     "Number of sandboxes killed, labeled by kill reason",
-	TCPFirewallConnectionsTotal:              "Total number of TCP firewall connections processed",
-	TCPFirewallErrorsTotal:                   "Total number of TCP firewall errors",
-	TCPFirewallDecisionsTotal:                "Total number of TCP firewall allow/block decisions",
+	SandboxCreateMeterName:                      "Number of currently waiting requests to create a new sandbox",
+	ApiOrchestratorCreatedSandboxes:             "Number of successfully created sandboxes",
+	ApiOrchestratorResumeOriginNodeRemap:        "Number of resume snapshots repointed to the fallback node a previous resume timed out on",
+	BuildResultCounterName:                      "Number of template build results",
+	BuildCacheResultCounterName:                 "Number of build cache results",
+	TeamSandboxCreated:                          "Counter of started sandboxes for the team in the interval",
+	OrchestratorHostBalanceDirtyPagesThreads:    "Cumulative stalled thread-polls during sandbox resume; rate() gives throttle intensity",
+	EnvdInitCalls:                               "Number of envd initialization calls",
+	EnvdCollapseChunks:                          "2 MiB chunks the pre-pause envd heap collapse attempted, by result",
+	OrchestratorSandboxKilledCounterName:        "Number of sandboxes killed, labeled by kill reason",
+	OrchestratorSnapshotUploadFailedCounterName: "Number of pause-snapshot uploads that never landed durably",
+	PauseResumePrefetchHarvestAttempts:          "Pause-resume prefetch harvest attempts, by result",
+	TCPFirewallConnectionsTotal:                 "Total number of TCP firewall connections processed",
+	TCPFirewallErrorsTotal:                      "Total number of TCP firewall errors",
+	TCPFirewallDecisionsTotal:                   "Total number of TCP firewall allow/block decisions",
 
 	IngressProxyConnectionsBlockedTotal: "Total number of ingress proxy connections blocked by connection limit",
 	CmuxErrorsTotal:                     "Total number of cmux connection multiplexer errors",
@@ -206,17 +240,21 @@ var counterDesc = map[CounterType]string{
 }
 
 var counterUnits = map[CounterType]string{
-	SandboxCreateMeterName:                   "{sandbox}",
-	ApiOrchestratorCreatedSandboxes:          "{sandbox}",
-	BuildResultCounterName:                   "{build}",
-	BuildCacheResultCounterName:              "{layer}",
-	TeamSandboxCreated:                       "{sandbox}",
-	OrchestratorHostBalanceDirtyPagesThreads: "{thread}",
-	EnvdInitCalls:                            "1",
-	OrchestratorSandboxKilledCounterName:     "{sandbox}",
-	TCPFirewallConnectionsTotal:              "{connection}",
-	TCPFirewallErrorsTotal:                   "{error}",
-	TCPFirewallDecisionsTotal:                "{decision}",
+	SandboxCreateMeterName:                      "{sandbox}",
+	ApiOrchestratorCreatedSandboxes:             "{sandbox}",
+	ApiOrchestratorResumeOriginNodeRemap:        "{snapshot}",
+	BuildResultCounterName:                      "{build}",
+	BuildCacheResultCounterName:                 "{layer}",
+	TeamSandboxCreated:                          "{sandbox}",
+	OrchestratorHostBalanceDirtyPagesThreads:    "{thread}",
+	EnvdInitCalls:                               "1",
+	EnvdCollapseChunks:                          "{chunk}",
+	OrchestratorSandboxKilledCounterName:        "{sandbox}",
+	OrchestratorSnapshotUploadFailedCounterName: "{snapshot}",
+	PauseResumePrefetchHarvestAttempts:          "{attempt}",
+	TCPFirewallConnectionsTotal:                 "{connection}",
+	TCPFirewallErrorsTotal:                      "{error}",
+	TCPFirewallDecisionsTotal:                   "{decision}",
 
 	IngressProxyConnectionsBlockedTotal: "{connection}",
 	CmuxErrorsTotal:                     "{error}",
@@ -389,6 +427,11 @@ var histogramDesc = map[HistogramType]string{
 	BuildRootfsSizeHistogramName:          "Size of the built template rootfs in bytes",
 	OrchestratorSandboxCreateDurationName: "Time taken to create a sandbox",
 	WaitForEnvdDurationHistogramName:      "Time taken for Envd to initialize successfully",
+	EnvdCollapseDurationHistogramName:     "Time taken for the pre-pause envd heap collapse round-trip",
+	GuestSyncDurationHistogramName:        "Time taken for the mandatory pre-pause guest sync (filesystem-only pause)",
+
+	PauseResumePrefetchHarvestDurationName: "Time taken for a pause-resume prefetch harvest run (slot-hold cost)",
+	PauseResumePrefetchHarvestPagesName:    "Harvested resume-prefetch trace size in 2 MiB blocks, per successful harvest",
 
 	UffdStartupPagesHistogramName:       "Demand-fault pages a guest needed to reach a successful envd init, per start",
 	UffdStartupSourcePagesHistogramName: "Subset of startup demand-fault pages pulled from the source (e.g. GCS), per start",
@@ -434,6 +477,10 @@ var histogramUnits = map[HistogramType]string{
 	BuildRootfsSizeHistogramName:                  "{By}",
 	OrchestratorSandboxCreateDurationName:         "ms",
 	WaitForEnvdDurationHistogramName:              "ms",
+	EnvdCollapseDurationHistogramName:             "ms",
+	GuestSyncDurationHistogramName:                "ms",
+	PauseResumePrefetchHarvestDurationName:        "ms",
+	PauseResumePrefetchHarvestPagesName:           "{page}",
 	UffdStartupPagesHistogramName:                 "{page}",
 	UffdStartupSourcePagesHistogramName:           "{page}",
 	UffdStartupBytesHistogramName:                 "{By}",
@@ -524,6 +571,60 @@ func NewTimerFactory(
 	return TimerFactory{duration, bytes, count}, nil
 }
 
+// FloatTimerFactory records duration as fractional milliseconds so sub-ms
+// operations aren't truncated to 0. The duration histogram and event counter
+// share <metricName> (rate()-friendly); only the bytes counter splits out to
+// <metricName>.size so Grafana's unit detection doesn't conflate ms with By.
+type FloatTimerFactory struct {
+	duration metric.Float64Histogram
+	bytes    metric.Int64Counter
+	count    metric.Int64Counter
+}
+
+// SubMillisecondMsBuckets resolve sub-ms operations (mmap / cache hits) that the
+// default OTEL buckets (first boundary 5ms) collapse into one, while still
+// covering remote reads to ~10s.
+var SubMillisecondMsBuckets = []float64{
+	0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000,
+}
+
+func NewFloatTimerFactory(
+	meter metric.Meter,
+	metricName, durationDescription, bytesDescription string,
+) (FloatTimerFactory, error) {
+	duration, err := meter.Float64Histogram(metricName,
+		metric.WithDescription(durationDescription),
+		metric.WithUnit("ms"),
+		metric.WithExplicitBucketBoundaries(SubMillisecondMsBuckets...),
+	)
+	if err != nil {
+		return FloatTimerFactory{}, fmt.Errorf("failed to create duration histogram: %w", err)
+	}
+
+	bytes, err := meter.Int64Counter(metricName+".size",
+		metric.WithDescription(bytesDescription),
+		metric.WithUnit("By"),
+	)
+	if err != nil {
+		return FloatTimerFactory{}, fmt.Errorf("failed to create bytes counter: %w", err)
+	}
+
+	count, err := meter.Int64Counter(metricName,
+		metric.WithDescription("Total "+metricName+" events recorded"),
+	)
+	if err != nil {
+		return FloatTimerFactory{}, fmt.Errorf("failed to create count counter: %w", err)
+	}
+
+	return FloatTimerFactory{duration, bytes, count}, nil
+}
+
+func (f *FloatTimerFactory) Record(ctx context.Context, dur time.Duration, total int64, attrs metric.MeasurementOption) {
+	f.duration.Record(ctx, float64(dur)/float64(time.Millisecond), attrs)
+	f.bytes.Add(ctx, total, attrs)
+	f.count.Add(ctx, 1, attrs)
+}
+
 func (f *TimerFactory) Begin(kv ...attribute.KeyValue) *Stopwatch {
 	return &Stopwatch{
 		histogram: f.duration,
@@ -578,9 +679,9 @@ func PrecomputeAttrs(kv ...attribute.KeyValue) metric.MeasurementOption {
 // RecordRaw records an operation using a precomputed attribute option, it does
 // not include any previous attributes passed at Begin(). Zero-allocation
 // alternative to Success/Failure for hot paths.
-func (t Stopwatch) RecordRaw(ctx context.Context, total int64, precomputedAttrs metric.MeasurementOption) {
+func (t Stopwatch) RecordRaw(ctx context.Context, total int64, allAttrs metric.MeasurementOption) {
 	amount := time.Since(t.start).Milliseconds()
-	t.histogram.Record(ctx, amount, precomputedAttrs)
-	t.sum.Add(ctx, total, precomputedAttrs)
-	t.count.Add(ctx, 1, precomputedAttrs)
+	t.histogram.Record(ctx, amount, allAttrs)
+	t.sum.Add(ctx, total, allAttrs)
+	t.count.Add(ctx, 1, allAttrs)
 }

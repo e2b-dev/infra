@@ -30,6 +30,7 @@ var blockedTeamAllowlist = auth.BlockedTeamAllowlist{
 		"/templates/:templateID/builds/:buildID/logs":   {},
 		"/templates/:templateID/builds/:buildID/status": {},
 		"/v2/sandboxes":                                 {},
+		"/v2/templates":                                 {},
 		"/v2/sandboxes/:sandboxID/logs":                 {},
 		"/volumes":                                      {},
 		"/volumes/:volumeID":                            {},

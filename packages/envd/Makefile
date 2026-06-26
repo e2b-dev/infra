@@ -1,7 +1,10 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 
-BUILD := $(shell git rev-parse --short HEAD)
+# Always a fixed 7-char prefix so versioned upload names match `promote`,
+# which truncates ENVD_COMMIT_SHA to 7 chars (`git rev-parse --short` can
+# emit more than 7 when 7 is ambiguous).
+BUILD := $(shell git rev-parse HEAD | cut -c1-7)
 LDFLAGS=-ldflags "-X=main.commitSHA=$(BUILD)"
 PROD_LDFLAGS=-ldflags "-X=main.commitSHA=$(BUILD) -s -w -buildid="
 
@@ -39,10 +42,11 @@ endif
 .PHONY: promote
 promote:
 	$(if $(ENVD_COMMIT_SHA),,$(error ENVD_COMMIT_SHA is required))
+	$(eval ENVD_COMMIT_SHA_SHORT := $(shell printf '%.7s' "$(ENVD_COMMIT_SHA)"))
 ifeq ($(PROVIDER),aws)
-	aws s3 cp "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/envd.$(ENVD_COMMIT_SHA)" "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/envd" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
+	aws s3 cp "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/envd.$(ENVD_COMMIT_SHA_SHORT)" "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/envd" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
 else
-	gsutil -h "Cache-Control:no-cache, max-age=0" cp "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/envd.$(ENVD_COMMIT_SHA)" "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/envd"
+	gsutil -h "Cache-Control:no-cache, max-age=0" cp "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/envd.$(ENVD_COMMIT_SHA_SHORT)" "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/envd"
 endif
 
 build:

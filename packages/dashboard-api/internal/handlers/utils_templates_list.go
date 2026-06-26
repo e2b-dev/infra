@@ -3,11 +3,11 @@ package handlers
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // templatesSort is the combined sort column + direction. Its values match the
@@ -16,12 +16,6 @@ import (
 type templatesSort string
 
 const (
-	templatesSortNameAsc       templatesSort = "name_asc"
-	templatesSortNameDesc      templatesSort = "name_desc"
-	templatesSortCpuCountAsc   templatesSort = "cpu_count_asc"
-	templatesSortCpuCountDesc  templatesSort = "cpu_count_desc"
-	templatesSortMemoryMbAsc   templatesSort = "memory_mb_asc"
-	templatesSortMemoryMbDesc  templatesSort = "memory_mb_desc"
 	templatesSortCreatedAtAsc  templatesSort = "created_at_asc"
 	templatesSortCreatedAtDesc templatesSort = "created_at_desc"
 	templatesSortUpdatedAtAsc  templatesSort = "updated_at_asc"
@@ -45,10 +39,7 @@ func parseTemplatesSort(value *api.GetTemplatesParamsSort) (templatesSort, error
 	}
 
 	switch templatesSort(*value) {
-	case templatesSortNameAsc, templatesSortNameDesc,
-		templatesSortCpuCountAsc, templatesSortCpuCountDesc,
-		templatesSortMemoryMbAsc, templatesSortMemoryMbDesc,
-		templatesSortCreatedAtAsc, templatesSortCreatedAtDesc,
+	case templatesSortCreatedAtAsc, templatesSortCreatedAtDesc,
 		templatesSortUpdatedAtAsc, templatesSortUpdatedAtDesc:
 		return templatesSort(*value), nil
 	default:
@@ -57,17 +48,15 @@ func parseTemplatesSort(value *api.GetTemplatesParamsSort) (templatesSort, error
 }
 
 func normalizeTemplatesLimit(limit *api.TemplatesLimit) int32 {
-	if limit == nil {
-		return defaultTemplatesLimit
-	}
-	if *limit < 1 {
+	v := utils.DerefOrDefault(limit, defaultTemplatesLimit)
+	if v < 1 {
 		return 1
 	}
-	if *limit > maxTemplatesLimit {
+	if v > maxTemplatesLimit {
 		return maxTemplatesLimit
 	}
 
-	return *limit
+	return v
 }
 
 // templatesPublicFilter encodes the optional visibility filter for the query:
@@ -115,37 +104,6 @@ func parseTemplatesCursor(cursor *api.TemplatesCursor, sort templatesSort) (*str
 func formatTemplatesCursor(sort templatesSort, value, id string) string {
 	return fmt.Sprintf("%s|%s|%s", sort, value, id)
 }
-
-func cursorInt64(v *string) (*int64, error) {
-	if v == nil {
-		return nil, nil
-	}
-
-	n, err := strconv.ParseInt(*v, 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", errInvalidTemplatesCursor, err)
-	}
-
-	return &n, nil
-}
-
-func cursorTime(v *string) (*time.Time, error) {
-	if v == nil {
-		return nil, nil
-	}
-
-	t, err := time.Parse(time.RFC3339Nano, *v)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", errInvalidTemplatesCursor, err)
-	}
-
-	return &t, nil
-}
-
-var (
-	maxCursorTime = time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
-	minCursorTime = time.Time{}
-)
 
 func timeCursor(ts *time.Time, id *string, desc bool) (time.Time, string) {
 	if ts != nil && id != nil {

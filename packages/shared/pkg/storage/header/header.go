@@ -109,14 +109,23 @@ func newDiffHeader(metadata *Metadata, mapping []BuildMap, sourceBuilds map[uuid
 		return nil, err
 	}
 
-	if sourceBuilds != nil {
-		// h.Mapping.Builds() is already deduped at NewMapping construction;
-		// no need for an oversized temp set keyed by len(mapping).
-		h.Builds = make(map[uuid.UUID]BuildData, len(sourceBuilds))
-		for _, id := range h.Mapping.Builds() {
-			if bd, ok := sourceBuilds[id]; ok {
-				h.Builds[id] = bd
-			}
+	// Carry every still-referenced ancestor forward, backfilling the uncompressed
+	// sentinel (zero BuildData) for the ones the source lacks — the same gap
+	// LoadHeader closes for stored headers. Without it a legacy (pre-header)
+	// ancestor is absent from Builds, so the read path issues a doomed proactive
+	// header load for it before falling back to uncompressed. Self is left out: a
+	// pending header carries no self entry by design (its data is still local and
+	// served from the cache), and the finalized header swapped in at upload
+	// carries the real self entry — never a zero sentinel.
+	h.Builds = make(map[uuid.UUID]BuildData, len(h.Mapping.Builds()))
+	for _, id := range h.Mapping.Builds() {
+		if id == metadata.BuildId || id == uuid.Nil {
+			continue
+		}
+		if bd, ok := sourceBuilds[id]; ok {
+			h.Builds[id] = bd
+		} else {
+			h.Builds[id] = BuildData{}
 		}
 	}
 

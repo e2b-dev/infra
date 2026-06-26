@@ -51,7 +51,6 @@ func TestPeerSeekable_Size_PeerNotAvailable_EmitsPeerTransitionedError(t *testin
 			uploaded: &atomic.Bool{},
 		},
 		basePersistence: base,
-		objType:         storage.MemfileObjectType,
 	}
 	_, err := s.Size(t.Context())
 	var transErr *storage.PeerTransitionedError
@@ -73,9 +72,9 @@ func TestPeerSeekable_OpenRangeReader_PeerSucceeds(t *testing.T) {
 	})).Return(stream, nil)
 
 	s := &peerSeekable{peerHandle: peerHandle{client: client, buildID: "build-1", name: storage.MemfileName, uploaded: &atomic.Bool{}}}
-	rc, err := s.OpenRangeReader(t.Context(), 10, int64(len(data)), nil)
+	rc, _, err := s.OpenRangeReader(t.Context(), 10, int64(len(data)), nil)
 	require.NoError(t, err)
-	defer rc.Close()
+	defer rc.Close(t.Context())
 
 	got, err := io.ReadAll(rc)
 	require.NoError(t, err)
@@ -90,10 +89,10 @@ func TestPeerSeekable_OpenRangeReader_PeerError_FallsBackToBase(t *testing.T) {
 	client.EXPECT().ReadAtBuildSeekable(mock.Anything, mock.Anything).Return(nil, errors.New("peer unavailable"))
 
 	baseSeekable := storage.NewMockSeekable(t)
-	baseSeekable.EXPECT().OpenRangeReader(mock.Anything, int64(0), int64(len(baseData)), (*storage.FrameTable)(nil)).Return(io.NopCloser(bytes.NewReader(baseData)), nil)
+	baseSeekable.EXPECT().OpenRangeReader(mock.Anything, int64(0), int64(len(baseData)), (*storage.FrameTable)(nil)).Return(storage.NewRangeReader(io.NopCloser(bytes.NewReader(baseData))), storage.SourceFS, nil)
 
 	base := storage.NewMockStorageProvider(t)
-	base.EXPECT().OpenSeekable(mock.Anything, "build-1/memfile", storage.MemfileObjectType).Return(baseSeekable, nil)
+	base.EXPECT().OpenSeekable(mock.Anything, "build-1/memfile").Return(baseSeekable, nil)
 
 	s := &peerSeekable{
 		peerHandle: peerHandle{
@@ -103,11 +102,10 @@ func TestPeerSeekable_OpenRangeReader_PeerError_FallsBackToBase(t *testing.T) {
 			uploaded: &atomic.Bool{},
 		},
 		basePersistence: base,
-		objType:         storage.MemfileObjectType,
 	}
-	rc, err := s.OpenRangeReader(t.Context(), 0, int64(len(baseData)), nil)
+	rc, _, err := s.OpenRangeReader(t.Context(), 0, int64(len(baseData)), nil)
 	require.NoError(t, err)
-	defer rc.Close()
+	defer rc.Close(t.Context())
 
 	got, err := io.ReadAll(rc)
 	require.NoError(t, err)
@@ -134,10 +132,9 @@ func TestPeerSeekable_OpenRangeReader_Uploaded_ReturnsPeerTransitionedError(t *t
 			uploaded: uploaded,
 		},
 		basePersistence: base,
-		objType:         storage.MemfileObjectType,
 	}
 
-	_, err := s.OpenRangeReader(t.Context(), 0, 100, nil)
+	_, _, err := s.OpenRangeReader(t.Context(), 0, 100, nil)
 	require.Error(t, err)
 
 	var transErr *storage.PeerTransitionedError
@@ -177,19 +174,20 @@ func TestPeerStorageProvider_TransitionEmitsError(t *testing.T) {
 	base := storage.NewMockStorageProvider(t)
 
 	p := newPeerStorageProvider(base, client, uploaded)
-	seekable, err := p.OpenSeekable(t.Context(), "build-1/memfile", storage.MemfileObjectType)
+	seekable, err := p.OpenSeekable(t.Context(), "build-1/memfile")
 	require.NoError(t, err)
 
-	rc, err := seekable.OpenRangeReader(t.Context(), 0, int64(len(prePeerBytes)),
+	rc, _, err := seekable.OpenRangeReader(t.Context(), 0, int64(len(prePeerBytes)),
 		storage.NewFullFrameTable(storage.CompressionNone, nil).Table())
 	require.NoError(t, err)
 	got, err := io.ReadAll(rc)
 	require.NoError(t, err)
-	require.NoError(t, rc.Close())
+	_, err = rc.Close(t.Context())
+	require.NoError(t, err)
 	assert.Equal(t, prePeerBytes, got)
 	require.True(t, uploaded.Load(), "uploaded flag should be set after peer EOF with UseStorage")
 
-	_, err = seekable.OpenRangeReader(t.Context(), 0, 1,
+	_, _, err = seekable.OpenRangeReader(t.Context(), 0, 1,
 		storage.NewFullFrameTable(storage.CompressionNone, nil).Table())
 	var transErr *storage.PeerTransitionedError
 	require.ErrorAs(t, err, &transErr)

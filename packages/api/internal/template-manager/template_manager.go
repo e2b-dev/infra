@@ -115,7 +115,7 @@ func (tm *TemplateManager) GetAvailableBuildClient(ctx context.Context, clusterI
 	}
 
 	// Set feature flags context for cluster
-	ctx = featureflags.AddToContext(ctx, featureflags.ClusterContext(clusterID.String()))
+	ctx = featureflags.AddToContext(ctx, featureflags.ClusterContext(clusterID))
 
 	nodeInfoJSON := tm.featureFlags.JSONFlag(ctx, featureflags.BuildNodeInfo)
 	nodeInfo := machineinfo.FromLDValue(ctx, nodeInfoJSON)

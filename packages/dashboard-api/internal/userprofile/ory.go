@@ -179,6 +179,77 @@ func (p *oryProvider) GetTeamCreatorContext(ctx context.Context, userID uuid.UUI
 	return creatorContextFromOryIdentity(identities[0]), nil
 }
 
+func (p *oryProvider) SetIdentityExternalID(ctx context.Context, subject string, externalID uuid.UUID) error {
+	subject = strings.TrimSpace(subject)
+	if subject == "" {
+		return errors.New("ory identity subject is required")
+	}
+	if externalID == uuid.Nil {
+		return errors.New("external id is required")
+	}
+
+	// "add" (not "replace") so the patch succeeds even when the identity has no
+	// external_id yet: Ory serializes external_id with omitempty, so an unset
+	// value is absent from the document and RFC 6902 "replace" would fail with a
+	// path-not-found error. "add" creates the member if missing and replaces it
+	// if present, making the operation idempotent across re-bootstraps.
+	patch := []ory.JsonPatch{{Op: "add", Path: "/external_id", Value: externalID.String()}}
+	_, resp, err := p.identities.PatchIdentityExecute(
+		p.identities.PatchIdentity(p.authCtx(ctx), subject).JsonPatch(patch),
+	)
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	if err != nil {
+		return fmt.Errorf("ory patch identity external id: %w", err)
+	}
+
+	return nil
+}
+
+func (p *oryProvider) PrepareDeleteUser(ctx context.Context, userID uuid.UUID) (DeleteUserHandle, error) {
+	if userID == uuid.Nil {
+		return nil, errors.New("user id is required")
+	}
+
+	subjectsByUser, err := p.subjectsForUserIDs(ctx, []uuid.UUID{userID})
+	if err != nil {
+		return nil, fmt.Errorf("lookup ory subject for user: %w", err)
+	}
+
+	if len(subjectsByUser) == 0 {
+		return nil, fmt.Errorf("%w: no identity mapping for user %s", ErrUserNotFound, userID)
+	}
+
+	subjects := make([]string, 0, len(subjectsByUser))
+	for s := range subjectsByUser {
+		subjects = append(subjects, s)
+	}
+
+	return &oryDeleteHandle{provider: p, subjects: subjects}, nil
+}
+
+type oryDeleteHandle struct {
+	provider *oryProvider
+	subjects []string
+}
+
+func (h *oryDeleteHandle) Execute(ctx context.Context) error {
+	for _, subject := range h.subjects {
+		resp, err := h.provider.identities.DeleteIdentityExecute(
+			h.provider.identities.DeleteIdentity(h.provider.authCtx(ctx), subject),
+		)
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+		if err != nil {
+			return fmt.Errorf("delete ory identity %s: %w", subject, err)
+		}
+	}
+
+	return nil
+}
+
 func (p *oryProvider) subjectsForUserIDs(ctx context.Context, userIDs []uuid.UUID) (map[string]uuid.UUID, error) {
 	rows, err := p.resolver.GetUserIdentitiesByUserIDs(ctx, authqueries.GetUserIdentitiesByUserIDsParams{
 		OidcIss: p.issuer,

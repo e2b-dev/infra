@@ -6,7 +6,6 @@ package storage
 
 import (
 	"context"
-	"io"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -39,31 +38,37 @@ func (_m *MockSeekable) EXPECT() *MockSeekable_Expecter {
 }
 
 // OpenRangeReader provides a mock function for the type MockSeekable
-func (_mock *MockSeekable) OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (io.ReadCloser, error) {
+func (_mock *MockSeekable) OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (RangeReader, Source, error) {
 	ret := _mock.Called(ctx, offsetU, length, frameTable)
 
 	if len(ret) == 0 {
 		panic("no return value specified for OpenRangeReader")
 	}
 
-	var r0 io.ReadCloser
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int64, int64, *FrameTable) (io.ReadCloser, error)); ok {
+	var r0 RangeReader
+	var r1 Source
+	var r2 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int64, int64, *FrameTable) (RangeReader, Source, error)); ok {
 		return returnFunc(ctx, offsetU, length, frameTable)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int64, int64, *FrameTable) io.ReadCloser); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int64, int64, *FrameTable) RangeReader); ok {
 		r0 = returnFunc(ctx, offsetU, length, frameTable)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(io.ReadCloser)
+			r0 = ret.Get(0).(RangeReader)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, int64, int64, *FrameTable) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int64, int64, *FrameTable) Source); ok {
 		r1 = returnFunc(ctx, offsetU, length, frameTable)
 	} else {
-		r1 = ret.Error(1)
+		r1 = ret.Get(1).(Source)
 	}
-	return r0, r1
+	if returnFunc, ok := ret.Get(2).(func(context.Context, int64, int64, *FrameTable) error); ok {
+		r2 = returnFunc(ctx, offsetU, length, frameTable)
+	} else {
+		r2 = ret.Error(2)
+	}
+	return r0, r1, r2
 }
 
 // MockSeekable_OpenRangeReader_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'OpenRangeReader'
@@ -108,12 +113,12 @@ func (_c *MockSeekable_OpenRangeReader_Call) Run(run func(ctx context.Context, o
 	return _c
 }
 
-func (_c *MockSeekable_OpenRangeReader_Call) Return(readCloser io.ReadCloser, err error) *MockSeekable_OpenRangeReader_Call {
-	_c.Call.Return(readCloser, err)
+func (_c *MockSeekable_OpenRangeReader_Call) Return(rangeReader RangeReader, source Source, err error) *MockSeekable_OpenRangeReader_Call {
+	_c.Call.Return(rangeReader, source, err)
 	return _c
 }
 
-func (_c *MockSeekable_OpenRangeReader_Call) RunAndReturn(run func(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (io.ReadCloser, error)) *MockSeekable_OpenRangeReader_Call {
+func (_c *MockSeekable_OpenRangeReader_Call) RunAndReturn(run func(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (RangeReader, Source, error)) *MockSeekable_OpenRangeReader_Call {
 	_c.Call.Return(run)
 	return _c
 }

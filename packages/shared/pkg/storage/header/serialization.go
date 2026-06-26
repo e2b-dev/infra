@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -61,34 +64,68 @@ func DeserializeBytes(data []byte) (*Header, error) {
 	}
 }
 
+func backfillMissingV3UncompressedBuilds(h *Header) {
+	for _, bid := range h.Mapping.Builds() {
+		if _, ok := h.Builds[bid]; ok {
+			continue
+		}
+		if h.Builds == nil {
+			h.Builds = make(map[uuid.UUID]BuildData)
+		}
+		h.Builds[bid] = BuildData{}
+	}
+}
+
 // LoadHeader fetches a serialized header from storage and deserializes it.
 // Returns the on-wire byte count alongside the header so callers can attribute
 // it to throughput telemetry. Errors (including storage.ErrObjectNotExist) are
 // returned as-is.
 func LoadHeader(ctx context.Context, s storage.StorageProvider, path string) (*Header, int, error) {
-	blob, err := s.OpenBlob(ctx, path, storage.MetadataObjectType)
+	blob, err := s.OpenBlob(ctx, path)
 	if err != nil {
 		return nil, 0, fmt.Errorf("open blob %s: %w", path, err)
 	}
 
+	// read.blob (the transfer) is emitted per-layer inside each backend WriteTo;
+	// only the deserialize/decompress phase below is single-layer.
 	data, err := storage.GetBlob(ctx, blob)
 	if err != nil {
 		return nil, 0, err
 	}
 
+	decStart := time.Now()
 	h, err := DeserializeBytes(data)
+	storage.RecordReadBlobDecompress(ctx, time.Since(decStart), int64(len(data)), path, headerCodec(h), err)
 	if err != nil {
 		return nil, len(data), err
 	}
 
+	if !h.IncompletePendingUpload {
+		backfillMissingV3UncompressedBuilds(h)
+	}
+
 	return h, len(data), nil
+}
+
+// headerCodec reports a header format's inner compression (V4/V5 use LZ4).
+// Nil-safe for the failed-deserialize path.
+func headerCodec(h *Header) storage.CompressionType {
+	if h == nil {
+		return storage.CompressionNone
+	}
+	switch metadataFormatVersion(h.Metadata.Version) {
+	case MetadataVersionV4, MetadataVersionV5:
+		return storage.CompressionLZ4
+	default:
+		return storage.CompressionNone
+	}
 }
 
 // StoreHeader serializes a header, uploads it, and returns the effective
 // compression config plus the stored and pre-compression byte counts. V3 has
 // no inner compression so the counts match and cfg is the zero value. Refuses
 // to persist a header still flagged as in-flight.
-func StoreHeader(ctx context.Context, s storage.StorageProvider, path string, h *Header) (cfg storage.CompressConfig, stored, uncompressed int64, err error) {
+func StoreHeader(ctx context.Context, s storage.StorageProvider, path string, h *Header, opts ...storage.PutOption) (cfg storage.CompressConfig, stored, uncompressed int64, err error) {
 	if h == nil {
 		return storage.CompressConfig{}, 0, 0, errors.New("header is nil")
 	}
@@ -130,12 +167,12 @@ func StoreHeader(ctx context.Context, s storage.StorageProvider, path string, h 
 		return storage.CompressConfig{}, 0, 0, fmt.Errorf("unsupported header version %d", h.Metadata.Version)
 	}
 
-	blob, err := s.OpenBlob(ctx, path, storage.MetadataObjectType)
+	blob, err := s.OpenBlob(ctx, path)
 	if err != nil {
 		return storage.CompressConfig{}, 0, 0, fmt.Errorf("open blob %s: %w", path, err)
 	}
 
-	if err := blob.Put(ctx, data); err != nil {
+	if err := blob.Put(ctx, data, opts...); err != nil {
 		return storage.CompressConfig{}, 0, 0, fmt.Errorf("put blob %s: %w", path, err)
 	}
 

@@ -17,6 +17,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -290,13 +291,20 @@ func (d *DedupedMemfdCache) runDedup(
 		return
 	}
 
-	meta := &header.DiffMetadata{Dirty: plan.pageDirty, Empty: plan.pageEmpty, BlockSize: header.PageSize}
+	// Capture the scan-only zero count before inputEmpty is merged in place:
+	// dedup.empty_pages must report content-detected zeros, not whole-VM
+	// empties (cloning the bitmap to preserve it would be too expensive).
+	scanEmptyPages := int64(plan.pageEmpty.GetCardinality())
 	if inputEmpty != nil {
 		ratio := uint64(blockSize / header.PageSize)
 		for start, end := range inputEmpty.Ranges() {
-			meta.Empty.AddRange(uint64(start)*ratio, end*ratio)
+			plan.pageEmpty.AddRange(uint64(start)*ratio, end*ratio)
 		}
 	}
+	meta := &header.DiffMetadata{Dirty: plan.pageDirty, Empty: plan.pageEmpty, BlockSize: header.PageSize}
+	// Whole-VM empty set recorded in the header (scan zeros + inputEmpty).
+	telemetry.SetAttributes(ctx,
+		attribute.Int64("dedup.header_empty_pages", int64(plan.pageEmpty.GetCardinality())))
 	logSetOnceErr(ctx, "dedup metaOut", metaOut.SetValue(meta))
 
 	writeStart := time.Now()
@@ -306,7 +314,7 @@ func (d *DedupedMemfdCache) runDedup(
 		logger.L().Warn(ctx, "close memfd after dedup drain", zap.Error(closeErr))
 	}
 
-	recordDedupAttrs(ctx, plan, compareDur, writeDur)
+	recordDedupAttrs(ctx, plan, scanEmptyPages, compareDur, writeDur)
 	logSetOnceErr(ctx, "dedup done", d.done.SetResult(cache, err))
 }
 

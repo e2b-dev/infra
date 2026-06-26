@@ -172,32 +172,6 @@ func NewAuthProviderBearerAuthenticator(validationFunc func(ctx context.Context,
 	}
 }
 
-// NewSupabaseTokenAuthenticator creates an authenticator for the Supabase1TokenAuth security scheme (X-Supabase-Token header).
-func NewSupabaseTokenAuthenticator(validationFunc func(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *APIError)) Authenticator {
-	return &commonAuthenticator[uuid.UUID]{
-		schemeName: "Supabase1TokenAuth",
-		header: headerKey{
-			name: HeaderSupabaseToken,
-		},
-		validationFunc: validationFunc,
-		setContextFunc: setUserID,
-		errorMessage:   "Invalid Supabase token.",
-	}
-}
-
-// NewSupabaseTeamAuthenticator creates an authenticator for the Supabase2TeamAuth security scheme (X-Supabase-Team header).
-func NewSupabaseTeamAuthenticator(validationFunc func(ctx context.Context, ginCtx *gin.Context, token string) (*types.Team, *APIError)) Authenticator {
-	return &commonAuthenticator[*types.Team]{
-		schemeName: "Supabase2TeamAuth",
-		header: headerKey{
-			name: HeaderSupabaseTeam,
-		},
-		validationFunc: validationFunc,
-		setContextFunc: setTeamInfo,
-		errorMessage:   "Invalid Supabase token teamID.",
-	}
-}
-
 // NewAuthProviderTeamAuthenticator creates an authenticator for the AuthProviderTeamAuth security scheme (X-Team-Id header).
 func NewAuthProviderTeamAuthenticator(validationFunc func(ctx context.Context, ginCtx *gin.Context, token string) (*types.Team, *APIError)) Authenticator {
 	return &commonAuthenticator[*types.Team]{

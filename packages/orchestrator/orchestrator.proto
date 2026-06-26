@@ -51,6 +51,13 @@ message SandboxConfig {
 
   // Auto-resume policy for paused sandboxes.
   optional SandboxAutoResumeConfig auto_resume = 24;
+
+  // When true, a timeout auto-pause takes a filesystem-only snapshot (no
+  // memory) instead of a full memory snapshot. Only meaningful when auto_pause
+  // is set. Passed through so the policy survives an API re-sync from the
+  // orchestrator's sandbox list (mirrors auto_pause); the orchestrator itself
+  // does not act on it — the API evictor does.
+  bool auto_pause_filesystem_only = 25;
 }
 
 message SandboxAutoResumeConfig {
@@ -89,6 +96,11 @@ message SandboxNetworkEgressConfig {
   repeated string denied_cidrs = 2;
   repeated string allowed_domains = 3;
   map<string, SandboxNetworkDomainRules> rules = 4;
+
+  // BYOP SOCKS5 egress proxy.
+  string egress_proxy_address = 5;
+  string egress_proxy_username = 6;
+  string egress_proxy_password = 7;
 }
 
 message SandboxNetworkIngressConfig {
@@ -125,6 +137,11 @@ message SandboxPauseRequest {
   string sandbox_id = 1;
   string template_id = 2;
   string build_id = 3;
+
+  // When true, persist only the filesystem (no memory snapshot); resuming such
+  // a snapshot cold-boots (reboots) from the rootfs. Default false = full memory
+  // snapshot, so existing callers are unaffected.
+  bool filesystem_only = 4;
 }
 
 message SchedulingMetadata {
@@ -155,6 +172,10 @@ message SandboxPauseResponse {
 message SandboxCheckpointRequest {
   string sandbox_id = 1;
   string build_id = 3;
+  // Provenance stamped onto the snapshot's storage objects for the storage
+  // index (e.g. template_id). Opaque to the orchestrator, which just forwards
+  // it to object metadata.
+  map<string, string> metadata = 4;
 }
 
 message SandboxCheckpointResponse {

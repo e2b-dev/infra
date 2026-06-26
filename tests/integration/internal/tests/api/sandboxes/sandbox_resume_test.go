@@ -26,7 +26,7 @@ func TestSandboxResume(t *testing.T) {
 		sbxId := sbx.SandboxID
 
 		// Set timeout to 0 to force sandbox to be stopped
-		resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+		resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 		require.NoError(t, err)
 		require.Equal(t, http.StatusNoContent, resp.StatusCode())
 
@@ -108,7 +108,7 @@ func TestSandboxResume(t *testing.T) {
 		sbxId := sbx.SandboxID
 
 		// Pause the sandbox
-		resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+		resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 		require.NoError(t, err)
 		require.Equal(t, http.StatusNoContent, resp.StatusCode())
 
@@ -132,7 +132,7 @@ func TestSandboxResume(t *testing.T) {
 		sbxId := sbx.SandboxID
 
 		// Pause the sandbox
-		resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+		resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 		require.NoError(t, err)
 		require.Equal(t, http.StatusNoContent, resp.StatusCode())
 

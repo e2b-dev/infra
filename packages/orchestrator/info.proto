@@ -48,6 +48,7 @@ message ServiceInfoResponse {
   google.protobuf.Timestamp service_startup = 53;
   MachineInfo machine_info = 54;
   repeated string labels = 55;
+  google.protobuf.Timestamp service_status_changed_at = 56;
 
   int64 metric_vcpu_used = 101 [deprecated = true];
   int64 metric_memory_used_mb = 102 [deprecated = true];

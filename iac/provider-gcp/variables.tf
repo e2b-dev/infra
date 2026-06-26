@@ -233,26 +233,15 @@ variable "auth_provider_config" {
       })
       cacheDuration = optional(string)
     })))
-    legacy = optional(object({
-      hmac = object({
-        secrets = list(string)
-      })
-    }))
   })
   sensitive = true
   default   = null
 }
 
-variable "user_profile_provider" {
-  type        = string
-  default     = ""
-  description = "Source for dashboard-api user profile lookups. One of: supabase, ory. Empty leaves the binary default (supabase)."
-}
-
 variable "ory_sdk_url" {
   type        = string
   default     = ""
-  description = "Ory Network admin SDK URL (e.g. https://<slug>.projects.oryapis.com). Required when user_profile_provider uses ory."
+  description = "Ory Network admin SDK URL (e.g. https://<slug>.projects.oryapis.com)."
 }
 
 variable "ory_issuer_url" {

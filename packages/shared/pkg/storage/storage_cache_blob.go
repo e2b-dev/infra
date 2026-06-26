@@ -7,10 +7,13 @@ import (
 	"io"
 	"os"
 	"sync"
+	"time"
 
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/lock"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -36,6 +39,12 @@ func (b *cachedBlob) Exists(ctx context.Context) (bool, error) {
 	return b.inner.Exists(ctx)
 }
 
+// Metadata delegates to the inner (backend) blob so custom metadata is read
+// from the authoritative backend, never the local byte cache.
+func (b *cachedBlob) Metadata(ctx context.Context) (ObjectMetadata, error) {
+	return BlobCustomMetadata(ctx, b.inner)
+}
+
 func (b *cachedBlob) WriteTo(ctx context.Context, dst io.Writer) (n int64, e error) {
 	ctx, span := b.tracer.Start(ctx, "read object into writer")
 	defer func() {
@@ -43,14 +52,14 @@ func (b *cachedBlob) WriteTo(ctx context.Context, dst io.Writer) (n int64, e err
 		span.End()
 	}()
 
+	blobStart := time.Now()
 	bytesRead, err := b.copyFullFileFromCache(ctx, dst)
+	// Records the NFS attempt (hit, or not_found/err); a miss falls through to
+	// inner.WriteTo, which records its own source.
+	RecordReadBlob(ctx, time.Since(blobStart), bytesRead, b.path, SourceNFS, err)
 	if err == nil {
-		recordCacheRead(ctx, true, bytesRead, cacheTypeObject, cacheOpWriteTo)
-
 		return bytesRead, nil
 	}
-
-	recordCacheReadError(ctx, cacheTypeObject, cacheOpWriteTo, err)
 
 	// This is semi-arbitrary. this code path is called for files that tend to be less than 1 MB (headers, metadata, etc),
 	// so 2 MB allows us to read the file without needing to allocate more memory, with some room for growth. If the
@@ -71,15 +80,10 @@ func (b *cachedBlob) WriteTo(ctx context.Context, dst io.Writer) (n int64, e err
 			ctx, span := b.tracer.Start(ctx, "write file back to cache")
 			defer span.End()
 
-			count, err := b.writeFileToCache(ctx, buffer)
-			if err != nil {
-				recordCacheWriteError(ctx, cacheTypeObject, cacheOpWriteTo, err)
+			if _, err := b.writeFileToCache(ctx, buffer); err != nil {
 				recordError(span, err)
-
-				return
+				logger.L().Warn(ctx, "failed to write object back to cache", zap.Error(err))
 			}
-
-			recordCacheWrite(ctx, count, cacheTypeObject, cacheOpWriteTo)
 		})
 	}
 
@@ -87,8 +91,6 @@ func (b *cachedBlob) WriteTo(ctx context.Context, dst io.Writer) (n int64, e err
 	if ignoreEOF(err) != nil {
 		return int64(written), fmt.Errorf("failed to write object: %w", err)
 	}
-
-	recordCacheRead(ctx, false, int64(written), cacheTypeObject, cacheOpWriteTo)
 
 	return int64(written), err // in case  err == EOF
 }
@@ -107,12 +109,9 @@ func (b *cachedBlob) Put(ctx context.Context, data []byte, opts ...PutOption) (e
 			ctx, span := b.tracer.Start(ctx, "write data to cache")
 			defer span.End()
 
-			count, err := b.writeFileToCache(ctx, bytes.NewReader(data))
-			if err != nil {
+			if _, err := b.writeFileToCache(ctx, bytes.NewReader(data)); err != nil {
 				recordError(span, err)
-				recordCacheWriteError(ctx, cacheTypeObject, cacheOpWrite, err)
-			} else {
-				recordCacheWrite(ctx, count, cacheTypeObject, cacheOpWrite)
+				logger.L().Warn(ctx, "failed to write object to cache", zap.Error(err))
 			}
 		})
 	}

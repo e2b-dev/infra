@@ -16,19 +16,8 @@ components:
       type: http
       scheme: bearer
       bearerFormat: access_token
-    # Generated code uses security schemas in the alphabetical order.
-    # In order to check first the token, and then the team (so we can already use the user),
-    # there is a 1 and 2 present in the names of the security schemas.
-    Supabase1TokenAuth:
-      type: apiKey
-      in: header
-      name: X-Supabase-Token
-    Supabase2TeamAuth:
-      type: apiKey
-      in: header
-      name: X-Supabase-Team
     # AuthProviderBearerAuth / AuthProviderTeamAuth: B before T in the name
-    # so Bearer is validated before Team (same reason as Supabase1/2 above).
+    # so Bearer is validated before Team.
     AuthProviderBearerAuth:
       type: http
       scheme: bearer
@@ -298,6 +287,8 @@ components:
           description: List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
           items:
             type: string
+        egressProxy:
+          $ref: "#/components/schemas/SandboxEgressProxyConfig"
         maskRequestHost:
           type: string
           description: Specify host mask which will be used for all sandbox requests
@@ -326,6 +317,8 @@ components:
           description: List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
           items:
             type: string
+        egressProxy:
+          $ref: "#/components/schemas/SandboxEgressProxyConfig"
         rules:
           type: object
           description: Per-domain transform rules. Replaces all existing rules when provided.
@@ -358,6 +351,31 @@ components:
             secret resolution happens client-side before sending to the API.
           additionalProperties:
             type: string
+
+    SandboxEgressProxyConfig:
+      type: object
+      nullable: true
+      description: >-
+        SOCKS5 proxy for sandbox egress. Outbound TCP is tunneled through the
+        proxy after allow/deny filtering; the sandbox is unaware. Domain-matched
+        flows use remote DNS (ATYP=domain).
+      required:
+        - address
+      properties:
+        address:
+          type: string
+          description: >-
+            SOCKS5 proxy address in host:port format (e.g. "proxy.example.com:1080").
+        username:
+          type: string
+          maxLength: 255
+          description: >-
+            Optional SOCKS5 username (RFC 1929), max 255 bytes.
+        password:
+          type: string
+          maxLength: 255
+          description: >-
+            Optional SOCKS5 password (RFC 1929), max 255 bytes.
 
     SandboxAutoResumeEnabled:
       type: boolean
@@ -695,6 +713,17 @@ components:
           type: boolean
           default: false
           description: Automatically pauses the sandbox after the timeout
+        autoPauseMemory:
+          type: boolean
+          default: true
+          description: >-
+            Controls the snapshot kind taken when the sandbox auto-pauses on
+            timeout (only relevant when autoPause is true). When false, the
+            auto-pause drops the in-memory state and persists only the
+            filesystem (a filesystem-only snapshot); resuming it cold-boots
+            (reboots) the sandbox from disk. Such a snapshot cannot be
+            auto-resumed by traffic and must be resumed explicitly, so it cannot
+            be combined with autoResume. Defaults to true (full memory snapshot).
         autoResume:
           $ref: "#/components/schemas/SandboxAutoResumeConfig"
         secure:
@@ -768,6 +797,20 @@ components:
         name:
           type: string
           description: Optional name for the snapshot template. If a snapshot template with this name already exists, a new build will be assigned to the existing template instead of creating a new one.
+
+    SandboxPauseRequest:
+      type: object
+      properties:
+        memory:
+          type: boolean
+          default: true
+          description: >-
+            Whether to capture a full memory snapshot. When false, only the
+            filesystem is persisted and resuming the sandbox cold-boots
+            (reboots) it from disk, losing in-memory state, running processes,
+            and open connections. Resume it with an explicit request (connect or
+            resume); auto-resume, which can be triggered by arbitrary traffic,
+            refuses such a sandbox. Defaults to true.
 
     TeamMetric:
       description: Team metric with timestamp
@@ -1550,6 +1593,7 @@ components:
         - serviceInstanceID
         - clusterID
         - status
+        - statusChangedAt
         - sandboxCount
         - metrics
         - createSuccesses
@@ -1578,6 +1622,10 @@ components:
           $ref: "#/components/schemas/MachineInfo"
         status:
           $ref: "#/components/schemas/NodeStatus"
+        statusChangedAt:
+          type: string
+          format: date-time
+          description: Time when the node status was last changed
         sandboxCount:
           type: integer
           format: uint32
@@ -1603,6 +1651,7 @@ components:
         - serviceInstanceID
         - clusterID
         - status
+        - statusChangedAt
         - sandboxCount
         - cachedBuilds
         - createSuccesses
@@ -1631,6 +1680,10 @@ components:
           $ref: "#/components/schemas/MachineInfo"
         status:
           $ref: "#/components/schemas/NodeStatus"
+        statusChangedAt:
+          type: string
+          format: date-time
+          description: Time when the node status was last changed
         sandboxCount:
           type: integer
           format: uint32
@@ -1910,6 +1963,7 @@ tags:
 paths:
   /health:
     get:
+      summary: Health check
       description: Health check
       responses:
         "204":
@@ -1919,11 +1973,11 @@ paths:
 
   /teams:
     get:
+      summary: List teams
       description: List all teams
       tags: [auth]
       security:
         - AccessTokenAuth: []
-        - Supabase1TokenAuth: []
         - AuthProviderBearerAuth: []
       responses:
         "200":
@@ -1941,12 +1995,11 @@ paths:
 
   /teams/{teamID}/metrics:
     get:
+      summary: Team metrics
       description: Get metrics for the team
       tags: [auth]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -1987,12 +2040,11 @@ paths:
 
   /teams/{teamID}/metrics/max:
     get:
+      summary: Maximum team metrics
       description: Get the maximum metrics for the team in the given interval
       tags: [auth]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2038,12 +2090,12 @@ paths:
 
   /sandboxes:
     get:
-      description: List all running sandboxes
+      summary: List running sandboxes
+      description: List all running sandboxes. Use GET /v2/sandboxes instead.
+      deprecated: true
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2071,12 +2123,11 @@ paths:
         "500":
           $ref: "#/components/responses/500"
     post:
+      summary: Create sandbox
       description: Create a sandbox from the template
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2103,12 +2154,11 @@ paths:
 
   /v2/sandboxes:
     get:
+      summary: List sandboxes (v2)
       description: List all sandboxes
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2150,12 +2200,11 @@ paths:
 
   /sandboxes/metrics:
     get:
+      summary: List sandbox metrics
       description: List metrics for given sandboxes
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2188,13 +2237,12 @@ paths:
 
   /sandboxes/{sandboxID}/logs:
     get:
+      summary: Sandbox logs
       description: Get sandbox logs. Use /v2/sandboxes/{sandboxID}/logs instead.
       deprecated: true
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2232,12 +2280,11 @@ paths:
 
   /v2/sandboxes/{sandboxID}/logs:
     get:
+      summary: Sandbox logs (v2)
       description: Get sandbox logs
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2292,12 +2339,11 @@ paths:
 
   /sandboxes/{sandboxID}:
     get:
+      summary: Sandbox
       description: Get a sandbox by id
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2319,12 +2365,11 @@ paths:
           $ref: "#/components/responses/500"
 
     delete:
+      summary: Kill sandbox
       description: Kill a sandbox
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2343,12 +2388,11 @@ paths:
 
   /sandboxes/{sandboxID}/metrics:
     get:
+      summary: Sandbox metrics
       description: Get sandbox metrics
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2391,18 +2435,23 @@ paths:
   # TODO: Pause and resume might be exposed as POST /sandboxes/{sandboxID}/snapshot and then POST /sandboxes with specified snapshotting setup
   /sandboxes/{sandboxID}/pause:
     post:
+      summary: Pause sandbox
       description: Pause the sandbox
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
           AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SandboxPauseRequest"
       responses:
         "204":
           description: The sandbox was paused successfully and can be resumed
@@ -2417,13 +2466,12 @@ paths:
 
   /sandboxes/{sandboxID}/resume:
     post:
+      summary: Resume sandbox
       deprecated: true
       description: Resume the sandbox
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2454,12 +2502,11 @@ paths:
 
   /sandboxes/{sandboxID}/connect:
     post:
+      summary: Connect sandbox
       description: Returns sandbox details. If the sandbox is paused, it will be resumed. TTL is only extended.
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2496,11 +2543,10 @@ paths:
 
   /sandboxes/{sandboxID}/timeout:
     post:
+      summary: Set sandbox timeout
       description: Set the timeout for the sandbox. The sandbox will expire x seconds from the time of the request. Calling this method multiple times overwrites the TTL, each time using the current timestamp as the starting point to measure the timeout duration.
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2525,11 +2571,10 @@ paths:
 
   /sandboxes/{sandboxID}/network:
     put:
+      summary: Update sandbox network
       description: Update the network configuration for a running sandbox. Replaces the current egress rules with the provided configuration. Omitting field clears it.
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2557,11 +2602,10 @@ paths:
 
   /sandboxes/{sandboxID}/refreshes:
     post:
+      summary: Refresh sandbox
       description: Refresh the sandbox extending its time to live
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2584,12 +2628,11 @@ paths:
 
   /sandboxes/{sandboxID}/snapshots:
     post:
+      summary: Create snapshot
       description: Create a persistent snapshot from the sandbox's current state. Snapshots can be used to create new sandboxes and persist beyond the original sandbox's lifetime.
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2620,12 +2663,11 @@ paths:
 
   /snapshots:
     get:
+      summary: List snapshots
       description: List all snapshots for the team
       tags: [snapshots]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2655,12 +2697,11 @@ paths:
 
   /v3/templates:
     post:
+      summary: Create template (v3)
       description: Create a new template
       tags: [templates]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2689,14 +2730,55 @@ paths:
           $ref: "#/components/responses/500"
 
   /v2/templates:
+    get:
+      summary: List templates (v2)
+      description: List all templates
+      tags: [templates]
+      security:
+        - ApiKeyAuth: []
+        - AccessTokenAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+        - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+      parameters:
+        - in: query
+          required: false
+          name: teamID
+          schema:
+            type: string
+            description: Identifier of the team
+        - $ref: "#/components/parameters/paginationNextToken"
+        - $ref: "#/components/parameters/paginationLimit"
+      responses:
+        "200":
+          description: Successfully returned all templates
+          headers:
+            X-Next-Token:
+              description: Cursor to fetch the next page of results, if more exist
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Template"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "500":
+          $ref: "#/components/responses/500"
     post:
+      summary: Create template (v2)
       description: Create a new template
       deprecated: true
       tags: [templates]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2724,13 +2806,12 @@ paths:
 
   /templates/{templateID}/files/{hash}:
     get:
+      summary: Template build file upload URL
       description: Get an upload link for a tar file containing build layer files
       tags: [templates]
       security:
         - AccessTokenAuth: []
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2762,13 +2843,13 @@ paths:
 
   /templates:
     get:
+      summary: List templates
       description: List all templates
+      deprecated: true
       tags: [templates]
       security:
         - ApiKeyAuth: []
         - AccessTokenAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2794,13 +2875,12 @@ paths:
         "500":
           $ref: "#/components/responses/500"
     post:
+      summary: Create template
       description: Create a new template
       deprecated: true
       tags: [templates]
       security:
         - AccessTokenAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
       requestBody:
@@ -2826,12 +2906,11 @@ paths:
 
   /templates/{templateID}:
     get:
+      summary: List template builds
       description: List all builds for a template
       tags: [templates]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2852,13 +2931,12 @@ paths:
         "500":
           $ref: "#/components/responses/500"
     post:
+      summary: Rebuild template
       description: Rebuild an template
       deprecated: true
       tags: [templates]
       security:
         - AccessTokenAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
       parameters:
@@ -2882,13 +2960,12 @@ paths:
         "500":
           $ref: "#/components/responses/500"
     delete:
+      summary: Delete template
       description: Delete a template
       tags: [templates]
       security:
         - ApiKeyAuth: []
         - AccessTokenAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2903,14 +2980,13 @@ paths:
         "500":
           $ref: "#/components/responses/500"
     patch:
+      summary: Update template
       description: Update template
       deprecated: true
       tags: [templates]
       security:
         - ApiKeyAuth: []
         - AccessTokenAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2935,13 +3011,12 @@ paths:
 
   /templates/{templateID}/builds/{buildID}:
     post:
+      summary: Start template build
       description: Start the build
       deprecated: true
       tags: [templates]
       security:
         - AccessTokenAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
       parameters:
@@ -2957,12 +3032,11 @@ paths:
 
   /v2/templates/{templateID}/builds/{buildID}:
     post:
+      summary: Start template build (v2)
       description: Start the build
       tags: [templates]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -2986,13 +3060,12 @@ paths:
 
   /v2/templates/{templateID}:
     patch:
+      summary: Update template (v2)
       description: Update template
       tags: [templates]
       security:
         - ApiKeyAuth: []
         - AccessTokenAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3021,13 +3094,12 @@ paths:
 
   /templates/{templateID}/builds/{buildID}/status:
     get:
+      summary: Template build status
       description: Get template build info
       tags: [templates]
       security:
         - AccessTokenAuth: []
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3072,13 +3144,12 @@ paths:
 
   /templates/{templateID}/builds/{buildID}/logs:
     get:
+      summary: Template build logs
       description: Get template build logs
       tags: [templates]
       security:
         - AccessTokenAuth: []
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3131,12 +3202,11 @@ paths:
 
   /templates/tags:
     post:
+      summary: Assign template tags
       description: Assign tag(s) to a template build
       tags: [tags]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3163,12 +3233,11 @@ paths:
         "500":
           $ref: "#/components/responses/500"
     delete:
+      summary: Delete template tags
       description: Delete multiple tags from templates
       tags: [tags]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3193,12 +3262,11 @@ paths:
 
   /templates/{templateID}/tags:
     get:
+      summary: List template tags
       description: List all tags for a template
       tags: [tags]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3225,12 +3293,11 @@ paths:
 
   /templates/aliases/{alias}:
     get:
+      summary: Check template alias
       description: Check if template with given alias exists
       tags: [templates]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3260,6 +3327,7 @@ paths:
 
   /nodes:
     get:
+      summary: List nodes
       description: List all nodes
       tags: [admin]
       security:
@@ -3288,6 +3356,7 @@ paths:
 
   /nodes/{nodeID}:
     get:
+      summary: Node info
       description: Get node info
       tags: [admin]
       security:
@@ -3315,6 +3384,7 @@ paths:
         "500":
           $ref: "#/components/responses/500"
     post:
+      summary: Change node status
       description: Change status of a node
       tags: [admin]
       security:
@@ -3463,10 +3533,10 @@ paths:
 
   /access-tokens:
     post:
+      summary: Create access token
       description: Create a new access token
       tags: [access-tokens]
       security:
-        - Supabase1TokenAuth: []
         - AuthProviderBearerAuth: []
       requestBody:
         required: true
@@ -3488,10 +3558,10 @@ paths:
 
   /access-tokens/{accessTokenID}:
     delete:
+      summary: Delete access token
       description: Delete an access token
       tags: [access-tokens]
       security:
-        - Supabase1TokenAuth: []
         - AuthProviderBearerAuth: []
       parameters:
         - $ref: "#/components/parameters/accessTokenID"
@@ -3507,11 +3577,10 @@ paths:
 
   /api-keys:
     get:
+      summary: List team API keys
       description: List all team API keys
       tags: [api-keys]
       security:
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3530,11 +3599,10 @@ paths:
         "500":
           $ref: "#/components/responses/500"
     post:
+      summary: Create team API key
       description: Create a new team API key
       tags: [api-keys]
       security:
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
       requestBody:
@@ -3557,11 +3625,10 @@ paths:
 
   /api-keys/{apiKeyID}:
     patch:
+      summary: Update team API key
       description: Update a team API key
       tags: [api-keys]
       security:
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3584,11 +3651,10 @@ paths:
         "500":
           $ref: "#/components/responses/500"
     delete:
+      summary: Delete team API key
       description: Delete a team API key
       tags: [api-keys]
       security:
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3607,12 +3673,11 @@ paths:
 
   /volumes:
     get:
+      summary: List team volumes
       description: List all team volumes
       tags: [volumes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3632,12 +3697,11 @@ paths:
           $ref: "#/components/responses/500"
 
     post:
+      summary: Create team volume
       description: Create a new team volume
       tags: [volumes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3664,12 +3728,11 @@ paths:
 
   /volumes/{volumeID}:
     get:
+      summary: Team volume
       description: Get team volume info
       tags: [volumes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3691,12 +3754,11 @@ paths:
           $ref: "#/components/responses/500"
 
     delete:
+      summary: Delete team volume
       description: Delete a team volume
       tags: [volumes]
       security:
         - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []

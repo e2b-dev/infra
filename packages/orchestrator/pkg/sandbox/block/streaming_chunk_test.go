@@ -68,7 +68,7 @@ type testControl struct {
 
 func newTestChunker(t *testing.T, size int64) *Chunker {
 	t.Helper()
-	c, err := NewChunker(&featureflags.Client{}, size, testBlockSize, t.TempDir()+"/cache", newTestMetrics(t))
+	c, err := NewChunker(&featureflags.Client{}, size, testBlockSize, t.TempDir()+"/cache", newTestMetrics(t), storage.MemfileObjectType)
 	require.NoError(t, err)
 
 	return c
@@ -82,7 +82,7 @@ func (s *fakeSeekable) StoreFile(context.Context, string, ...storage.PutOption) 
 	panic("not used")
 }
 
-func (s *fakeSeekable) OpenRangeReader(_ context.Context, offsetU int64, length int64, frameTable *storage.FrameTable) (io.ReadCloser, error) {
+func (s *fakeSeekable) OpenRangeReader(_ context.Context, offsetU int64, length int64, frameTable *storage.FrameTable) (storage.RangeReader, storage.Source, error) {
 	s.fetchCount.Add(1)
 
 	if s.ctrl != nil {
@@ -103,14 +103,14 @@ func (s *fakeSeekable) OpenRangeReader(_ context.Context, offsetU int64, length 
 			advance:  s.ctrl.advance,
 			consumed: s.ctrl.consumed,
 			closed:   s.ctrl.closed,
-		}, nil
+		}, storage.SourceFS, nil
 	}
 
 	var fetchOff, fetchLen int64
 	if frameTable.IsCompressed() {
 		r, err := frameTable.LocateCompressed(offsetU)
 		if err != nil {
-			return nil, fmt.Errorf("frame lookup: %w", err)
+			return nil, storage.UnknownSource, fmt.Errorf("frame lookup: %w", err)
 		}
 
 		fetchOff = r.Offset
@@ -127,10 +127,12 @@ func (s *fakeSeekable) OpenRangeReader(_ context.Context, offsetU int64, length 
 
 	r := io.Reader(bytes.NewReader(s.data[fetchOff:end]))
 	if frameTable.IsCompressed() {
-		return storage.NewDecompressingReader(r, frameTable.CompressionType())
+		dec, err := storage.NewDecompressReader(storage.NewRangeReader(io.NopCloser(r)), frameTable.CompressionType(), storage.UnknownSource, storage.UnknownSeekableObjectType)
+
+		return dec, storage.SourceFS, err
 	}
 
-	return io.NopCloser(r), nil
+	return storage.NewRangeReader(io.NopCloser(r)), storage.SourceFS, nil
 }
 
 func makeCompressedTestData(tb testing.TB, data []byte) (*storage.FrameTable, *fakeSeekable) {
@@ -429,13 +431,13 @@ func (s *panicSeekable) StoreFile(context.Context, string, ...storage.PutOption)
 	panic("not used")
 }
 
-func (s *panicSeekable) OpenRangeReader(_ context.Context, off int64, length int64, _ *storage.FrameTable) (io.ReadCloser, error) {
+func (s *panicSeekable) OpenRangeReader(_ context.Context, off int64, length int64, _ *storage.FrameTable) (storage.RangeReader, storage.Source, error) {
 	end := min(off+length, int64(len(s.data)))
 
 	return &panicReader{
 		data:       s.data[off:end],
 		panicAfter: int(s.panicAfter - off),
-	}, nil
+	}, storage.SourceFS, nil
 }
 
 type panicReader struct {
@@ -460,8 +462,8 @@ func (r *panicReader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-func (r *panicReader) Close() error {
-	return nil
+func (r *panicReader) Close(context.Context) (*storage.ReadStats, error) {
+	return nil, nil
 }
 
 func TestChunker_PanicRecovery(t *testing.T) {
@@ -587,11 +589,11 @@ func (r *controlledReader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-func (r *controlledReader) Close() error {
+func (r *controlledReader) Close(context.Context) (*storage.ReadStats, error) {
 	select {
 	case r.closed <- struct{}{}:
 	default:
 	}
 
-	return nil
+	return nil, nil
 }

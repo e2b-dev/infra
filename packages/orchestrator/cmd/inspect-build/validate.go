@@ -92,7 +92,7 @@ func validateBuild(ctx context.Context, storagePath, buildID, artifact string, e
 	// fetch still runs and reportValidation shows the checksum as n/a.
 	expected := h.Builds[h.Metadata.BuildId].Checksum
 
-	chunker, obj, size, cleanup, err := openChunker(ctx, storagePath, buildID, artifact, h, ft)
+	chunker, upstream, size, cleanup, err := openChunker(ctx, storagePath, buildID, artifact, h, ft)
 	if err != nil {
 		return err
 	}
@@ -119,7 +119,7 @@ func validateBuild(ctx context.Context, storagePath, buildID, artifact string, e
 				}
 				c := chunks[ci]
 				for off := c.lo; off < c.hi; off += blockSize {
-					if _, err := chunker.Slice(egCtx, off, min(blockSize, c.hi-off), obj, ft); err != nil {
+					if _, err := chunker.Slice(egCtx, off, min(blockSize, c.hi-off), upstream, ft); err != nil {
 						return fmt.Errorf("fetch block at %d: %w", off, err)
 					}
 				}
@@ -133,7 +133,7 @@ func validateBuild(ctx context.Context, storagePath, buildID, artifact string, e
 	// The cache is warm — sweep it one block at a time to hash the image.
 	hasher := sha256.New()
 	for off := int64(0); off < size; off += blockSize {
-		b, err := chunker.Slice(ctx, off, min(blockSize, size-off), obj, ft)
+		b, err := chunker.Slice(ctx, off, min(blockSize, size-off), upstream, ft)
 		if err != nil {
 			return fmt.Errorf("read block at %d: %w", off, err)
 		}
@@ -146,9 +146,8 @@ func validateBuild(ctx context.Context, storagePath, buildID, artifact string, e
 }
 
 // openChunker wires a production block.Chunker over the build's data file,
-// returning the chunker, the upstream storage object, the image's uncompressed
-// size, and a cleanup function.
-func openChunker(ctx context.Context, storagePath, buildID, artifact string, h *header.Header, ft *storage.FrameTable) (*block.Chunker, storage.Seekable, int64, func(), error) {
+// returning the chunker, the image's uncompressed size, and a cleanup function.
+func openChunker(ctx context.Context, storagePath, buildID, artifact string, h *header.Header, ft *storage.FrameTable) (*block.Chunker, storage.RangeOpener, int64, func(), error) {
 	if err := cmdutil.SetupStorage(storagePath); err != nil {
 		return nil, nil, 0, nil, err
 	}
@@ -161,7 +160,7 @@ func openChunker(ctx context.Context, storagePath, buildID, artifact string, h *
 	if ft.IsCompressed() {
 		dataPath += ft.CompressionType().Suffix()
 	}
-	obj, err := provider.OpenSeekable(ctx, dataPath, seekableType(artifact))
+	obj, err := provider.OpenSeekable(ctx, dataPath)
 	if err != nil {
 		return nil, nil, 0, nil, fmt.Errorf("open data: %w", err)
 	}
@@ -191,7 +190,7 @@ func openChunker(ctx context.Context, storagePath, buildID, artifact string, h *
 		return nil, nil, 0, nil, err
 	}
 
-	chunker, err := block.NewChunker(flags, size, int64(h.Metadata.BlockSize), filepath.Join(cacheDir, "cache"), m)
+	chunker, err := block.NewChunker(flags, size, int64(h.Metadata.BlockSize), filepath.Join(cacheDir, "cache"), m, seekableType(artifact))
 	if err != nil {
 		os.RemoveAll(cacheDir)
 

@@ -3,8 +3,10 @@ package filesystem
 import (
 	"context"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -163,4 +165,53 @@ func TestWatcherIncludeEntryInfo_RemoveDoesNotCarryReplacement(t *testing.T) {
 	// because the path happens to be empty.
 	require.NotNil(t, replacementEvent, "expected a create/write event for the replacement")
 	assert.NotNil(t, replacementEvent.GetEntry(), "event for the existing replacement should carry entry info")
+}
+
+func TestCreateWatcherOnNetworkMount(t *testing.T) {
+	t.Parallel()
+
+	// FUSE mounts via bindfs are exercised on Linux only.
+	if runtime.GOOS != "linux" {
+		t.Skip("FUSE bindfs mount test runs only on Linux")
+	}
+
+	_, err := exec.LookPath("bindfs")
+	require.NoError(t, err, "bindfs must be installed for this test")
+	_, err = exec.LookPath("fusermount")
+	require.NoError(t, err, "fusermount must be installed for this test")
+
+	u, err := user.Current()
+	require.NoError(t, err)
+
+	sourceDir := t.TempDir()
+	mountDir := t.TempDir()
+
+	require.NoError(t, exec.CommandContext(t.Context(), "bindfs", sourceDir, mountDir).Run(), "failed to mount bindfs")
+	t.Cleanup(func() {
+		_ = exec.CommandContext(context.Background(), "fusermount", "-u", mountDir).Run()
+	})
+
+	svc := mockService()
+	ctx := authn.SetInfo(t.Context(), u)
+
+	// Without the flag, watching a network mount is rejected.
+	_, err = svc.CreateWatcher(ctx, connect.NewRequest(&filesystem.CreateWatcherRequest{
+		Path: mountDir,
+	}))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
+	// With allow_network_mounts, the watcher is created.
+	created, err := svc.CreateWatcher(ctx, connect.NewRequest(&filesystem.CreateWatcherRequest{
+		Path:               mountDir,
+		AllowNetworkMounts: true,
+	}))
+	require.NoError(t, err)
+	watcherID := created.Msg.GetWatcherId()
+	t.Cleanup(func() {
+		_, _ = svc.RemoveWatcher(ctx, connect.NewRequest(&filesystem.RemoveWatcherRequest{
+			WatcherId: watcherID,
+		}))
+	})
+	assert.NotEmpty(t, watcherID)
 }

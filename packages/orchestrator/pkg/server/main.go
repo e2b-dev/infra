@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
@@ -38,6 +39,27 @@ const uploadedBuildsTTL = 1 * time.Hour
 // MaxStartingInstancesPerNode feature flag and resize the semaphore.
 const startingSandboxesLimitRefreshInterval = 30 * time.Second
 
+// uploadDrainLogInterval is how often Close logs progress while waiting for
+// in-flight snapshot uploads to finish during shutdown.
+const uploadDrainLogInterval = 10 * time.Second
+
+// sandboxDrainPollInterval is how often the graceful sandbox drain re-checks
+// the live sandbox count during shutdown.
+const sandboxDrainPollInterval = 5 * time.Second
+
+// sandboxDrainLogInterval backs off how often the graceful sandbox drain logs
+// progress so a long-lived node draining for hours does not spam the logs.
+func sandboxDrainLogInterval(elapsed time.Duration) time.Duration {
+	switch {
+	case elapsed < time.Minute:
+		return 5 * time.Second
+	case elapsed < time.Hour:
+		return time.Minute
+	default:
+		return 15 * time.Minute
+	}
+}
+
 type Server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 	orchestrator.UnimplementedChunkServiceServer
@@ -58,6 +80,13 @@ type Server struct {
 	uploads               *sandbox.Uploads
 	sandboxCreateDuration metric.Int64Histogram
 	sandboxKilledCounter  metric.Int64Counter
+	uploadFailedCounter   metric.Int64Counter
+
+	// uploadsWG tracks in-flight async snapshot uploads so a graceful shutdown
+	// can wait for them to finish instead of dropping them. uploadsInFlight is
+	// the live count, used to log drain progress during shutdown.
+	uploadsWG       sync.WaitGroup
+	uploadsInFlight atomic.Int64
 
 	done      chan struct{}
 	closeOnce sync.Once
@@ -123,6 +152,12 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 	}
 	server.sandboxKilledCounter = sandboxKilledCounter
 
+	uploadFailedCounter, err := telemetry.GetCounter(meter, telemetry.OrchestratorSnapshotUploadFailedCounterName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register snapshot upload failed counter: %w", err)
+	}
+	server.uploadFailedCounter = uploadFailedCounter
+
 	_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(_ context.Context, observer metric.Int64Observer) error {
 		observer.Observe(int64(server.sandboxFactory.Sandboxes.Count()))
 
@@ -140,7 +175,7 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 	_, err = meter.RegisterCallback(
 		func(_ context.Context, obs metric.Observer) error {
 			obs.ObserveInt64(statusGauge, 1, metric.WithAttributes(
-				attribute.String("status", server.info.GetStatus().String()),
+				attribute.String("status", server.info.GetStatus().Status.String()),
 				attribute.String("version", server.info.SourceVersion),
 				attribute.String("commit", server.info.SourceCommit),
 			))
@@ -195,14 +230,107 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 	return server, nil
 }
 
-func (s *Server) Close() error {
+func (s *Server) Close(ctx context.Context) error {
 	s.closeOnce.Do(func() {
 		close(s.done)
 	})
 
+	// Wait for in-flight snapshot uploads to finish so a graceful shutdown
+	// doesn't drop a snapshot that is still uploading. ctx is cancelled on a
+	// forced stop, in which case we stop waiting and let the process exit.
+	uploadsDone := make(chan struct{})
+	go func() {
+		s.uploadsWG.Wait()
+		close(uploadsDone)
+	}()
+
+	s.drainUploads(ctx, uploadsDone)
+
 	s.uploadedBuilds.Stop()
 
 	return nil
+}
+
+// drainUploads waits for in-flight snapshot uploads to finish, logging progress
+// periodically, until they complete or ctx is cancelled (forced stop).
+func (s *Server) drainUploads(ctx context.Context, uploadsDone <-chan struct{}) {
+	inFlight := s.uploadsInFlight.Load()
+	if inFlight == 0 {
+		return
+	}
+
+	logger.L().Info(ctx, "waiting for in-flight snapshot uploads to finish", zap.Int64("uploads", inFlight))
+
+	ticker := time.NewTicker(uploadDrainLogInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-uploadsDone:
+			logger.L().Info(ctx, "all in-flight snapshot uploads finished")
+
+			return
+		case <-ctx.Done():
+			logger.L().Warn(ctx, "shutting down with snapshot uploads still in flight",
+				zap.Int64("uploads", s.uploadsInFlight.Load()),
+				zap.Error(context.Cause(ctx)),
+			)
+
+			return
+		case <-ticker.C:
+			logger.L().Info(ctx, "still waiting for in-flight snapshot uploads",
+				zap.Int64("uploads", s.uploadsInFlight.Load()),
+			)
+		}
+	}
+}
+
+// DrainSandboxes waits for the live sandboxes on this node to exit on their own
+// during a graceful shutdown, then waits for their lifecycle cleanup to finish.
+// It does not reject new sandbox starts; that admission gating is layered in
+// separately. It returns ctx.Err() if ctx is cancelled before the node empties.
+func (s *Server) DrainSandboxes(ctx context.Context) error {
+	live := s.sandboxFactory.Sandboxes.Count()
+	logger.L().Info(ctx, "starting graceful sandbox drain", zap.Int("live_sandboxes", live))
+
+	ticker := time.NewTicker(sandboxDrainPollInterval)
+	defer ticker.Stop()
+	startedAt := time.Now()
+	lastLoggedAt := startedAt
+
+	for {
+		remaining := s.sandboxFactory.Sandboxes.Count()
+		if remaining == 0 {
+			logger.L().Info(ctx, "graceful sandbox drain complete", zap.Int("live_sandboxes", remaining))
+
+			return s.waitSandboxLifecycles(ctx)
+		}
+
+		select {
+		case <-ctx.Done():
+			logger.L().Warn(ctx, "graceful sandbox drain timed out",
+				zap.Int("remaining_sandboxes", remaining),
+				zap.Error(ctx.Err()),
+			)
+
+			return ctx.Err()
+		case <-ticker.C:
+			now := time.Now()
+			remaining = s.sandboxFactory.Sandboxes.Count()
+			elapsed := now.Sub(startedAt)
+			if remaining > 0 && now.Sub(lastLoggedAt) >= sandboxDrainLogInterval(elapsed) {
+				logger.L().Info(ctx, "waiting for sandbox drain",
+					zap.Int("remaining_sandboxes", remaining),
+					zap.Duration("elapsed", elapsed),
+				)
+				lastLoggedAt = now
+			}
+		}
+	}
+}
+
+func (s *Server) waitSandboxLifecycles(ctx context.Context) error {
+	return s.sandboxFactory.Sandboxes.WaitLifecycles(ctx)
 }
 
 func (s *Server) refreshStartingSandboxesLimit(ctx context.Context) {

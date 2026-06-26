@@ -112,3 +112,45 @@ func StripCompression(name string) string {
 func SizeSidecar(objectPath string) string {
 	return objectPath + "." + MetadataKeyUncompressedSize
 }
+
+// seekableObjectType derives the metric file_type and codec from a data-file
+// path (e.g. "{buildID}/memfile.zstd"), so they need not be threaded through the
+// read path.
+func seekableObjectType(path string) (SeekableObjectType, CompressionType) {
+	_, name := SplitPath(path)
+	ct := compressionType(name)
+
+	switch StripCompression(name) {
+	case MemfileName:
+		return MemfileObjectType, ct
+	case RootfsName:
+		return RootFSObjectType, ct
+	default:
+		return UnknownSeekableObjectType, ct
+	}
+}
+
+// blobType derives the metric file_type from a blob's last path segment,
+// stripping .header so read.blob shares read.read's file_type vocabulary.
+func blobType(path string) string {
+	name := path
+	if i := strings.LastIndex(name, "/"); i >= 0 {
+		name = name[i+1:]
+	}
+	if base, ok := strings.CutSuffix(name, HeaderSuffix); ok {
+		return base
+	}
+
+	return name
+}
+
+func compressionType(name string) CompressionType {
+	switch {
+	case strings.HasSuffix(name, CompressionLZ4.Suffix()):
+		return CompressionLZ4
+	case strings.HasSuffix(name, CompressionZstd.Suffix()):
+		return CompressionZstd
+	default:
+		return CompressionNone
+	}
+}

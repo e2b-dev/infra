@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -26,7 +26,6 @@ type peerSeekable struct {
 	peerHandle
 
 	basePersistence storage.StorageProvider
-	objType         storage.SeekableObjectType
 
 	mu     sync.Mutex
 	base   storage.Seekable
@@ -47,7 +46,7 @@ func (s *peerSeekable) getBase(ctx context.Context, ct storage.CompressionType) 
 
 	path := storage.Paths{BuildID: s.buildID}.DataFile(s.name, ct)
 
-	base, err := s.basePersistence.OpenSeekable(ctx, path, s.objType)
+	base, err := s.basePersistence.OpenSeekable(ctx, path)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +68,8 @@ func (s *peerSeekable) getBase(ctx context.Context, ct storage.CompressionType) 
 // no wrapper involved.
 
 func (s *peerSeekable) Size(ctx context.Context) (int64, error) {
-	res, err := tryPeer(ctx, &s.peerHandle, "size peer-seekable", attrOpSize,
+	start := time.Now()
+	res, err := tryPeer(ctx, &s.peerHandle, "size peer-seekable",
 		func(ctx context.Context) (peerAttempt[int64], error) {
 			resp, err := s.client.GetBuildFileSize(ctx, &orchestrator.GetBuildFileSizeRequest{
 				BuildId: s.buildID,
@@ -85,22 +85,21 @@ func (s *peerSeekable) Size(ctx context.Context) (int64, error) {
 
 			return peerAttempt[int64]{}, nil
 		})
-	if res.hit {
-		return res.value, err
+	// On a miss, Size can't resolve the compression type from a caller frame
+	// table (the basic-name fall-through would 404 on compressed V4 builds), so
+	// transition to the authoritative header — and record that same transition.
+	if !res.hit {
+		err = &storage.PeerTransitionedError{}
 	}
+	storage.RecordReadSize(ctx, time.Since(start), storage.UnknownSeekableObjectType, storage.SourcePeer, err)
 
-	// Size has no caller-provided frame table to source the compression type
-	// from, and the basic-name fall-through would 404 on compressed V4 builds
-	// (data lives at .zstd). Surface PeerTransitionedError unconditionally on
-	// miss so the caller refreshes against the authoritative header — which
-	// knows the compression type — and either recovers or surfaces a clean "not
-	// yet on storage" error.
-	return 0, &storage.PeerTransitionedError{}
+	return res.value, err
 }
 
-func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length int64, frameTable *storage.FrameTable) (io.ReadCloser, error) {
-	res, err := tryPeer(ctx, &s.peerHandle, "peer-seekable-open-range-reader", attrOpRangeReader,
-		func(ctx context.Context) (peerAttempt[io.ReadCloser], error) {
+func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length int64, frameTable *storage.FrameTable) (storage.RangeReader, storage.Source, error) {
+	start := time.Now()
+	res, err := tryPeer(ctx, &s.peerHandle, "peer-seekable-open-range-reader",
+		func(ctx context.Context) (peerAttempt[storage.RangeReader], error) {
 			streamCtx, cancel := context.WithCancel(ctx)
 
 			recv, err := openPeerSeekableStream(streamCtx, s.client, &orchestrator.ReadAtBuildSeekableRequest{
@@ -113,24 +112,35 @@ func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length in
 				logger.L().Warn(ctx, "failed to open range reader from peer", logger.WithBuildID(s.buildID), zap.Int64("off", off), zap.Int64("length", length), zap.Error(err))
 				cancel()
 
-				return peerAttempt[io.ReadCloser]{}, nil
+				return peerAttempt[storage.RangeReader]{}, nil
 			}
 
-			return peerAttempt[io.ReadCloser]{
+			return peerAttempt[storage.RangeReader]{
 				value: newPeerStreamReader(recv, cancel),
 				hit:   true,
 			}, nil
 		})
 	if res.hit {
-		return res.value, err
+		storage.RecordReadOpen(ctx, time.Since(start), storage.UnknownSeekableObjectType, storage.SourcePeer, frameTable.CompressionType(), err)
+
+		return res.value, storage.SourcePeer, err
 	}
+	// Record the peer attempt under source=peer so its latency isn't folded into
+	// the source that ultimately serves the read. file_type is unknown — peer
+	// routing keys on the build, not the artifact. The outcome must match what we
+	// return: a transition when uploaded, else a not_found miss that falls to base.
+	ct := frameTable.CompressionType()
 	if s.uploaded.Load() {
-		return nil, &storage.PeerTransitionedError{}
+		err = &storage.PeerTransitionedError{}
+		storage.RecordReadOpen(ctx, time.Since(start), storage.UnknownSeekableObjectType, storage.SourcePeer, ct, err)
+
+		return nil, storage.SourcePeer, err
 	}
+	storage.RecordReadOpen(ctx, time.Since(start), storage.UnknownSeekableObjectType, storage.SourcePeer, ct, storage.ErrObjectNotExist)
 
 	base, err := s.getBase(ctx, frameTable.CompressionType())
 	if err != nil {
-		return nil, err
+		return nil, storage.SourcePeer, err
 	}
 
 	return base.OpenRangeReader(ctx, off, length, frameTable)

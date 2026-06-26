@@ -108,12 +108,12 @@ func verifyChainOnStorage(t *testing.T, ctx context.Context, chain []chainNode) 
 		ancestors[node.buildID] = chainAncestors
 
 		paths := storage.Paths{BuildID: node.buildID}
-		verifyHeader(t, ctx, persistence, node, paths, storage.MemfileName, paths.MemfileHeader(), storage.MemfileObjectType, chainAncestors)
-		verifyHeader(t, ctx, persistence, node, paths, storage.RootfsName, paths.RootfsHeader(), storage.RootFSObjectType, chainAncestors)
+		verifyHeader(t, ctx, persistence, node, paths, storage.MemfileName, paths.MemfileHeader(), chainAncestors)
+		verifyHeader(t, ctx, persistence, node, paths, storage.RootfsName, paths.RootfsHeader(), chainAncestors)
 	}
 }
 
-func verifyHeader(t *testing.T, ctx context.Context, persistence storage.StorageProvider, node chainNode, paths storage.Paths, fileName, headerPath string, objType storage.SeekableObjectType, ancestors []string) {
+func verifyHeader(t *testing.T, ctx context.Context, persistence storage.StorageProvider, node chainNode, paths storage.Paths, fileName, headerPath string, ancestors []string) {
 	t.Helper()
 
 	h := loadHeaderWithPolling(t, ctx, persistence, headerPath, node.name, fileName)
@@ -129,13 +129,13 @@ func verifyHeader(t *testing.T, ctx context.Context, persistence storage.Storage
 		assert.Truef(t, ok, "%s/%s: Builds map missing ancestor %s — child finalized before parent's SwapHeader", node.name, fileName, ancestor)
 	}
 
-	verifyChecksum(t, ctx, persistence, node, paths, fileName, objType, bd)
+	verifyChecksum(t, ctx, persistence, node, paths, fileName, bd)
 }
 
 // verifyChecksum streams self's data file through SHA-256 and compares to
 // BuildData.Checksum. For unchanged files (empty diff) the entry has zero
 // values and this is a no-op.
-func verifyChecksum(t *testing.T, ctx context.Context, persistence storage.StorageProvider, node chainNode, paths storage.Paths, fileName string, objType storage.SeekableObjectType, bd header.BuildData) {
+func verifyChecksum(t *testing.T, ctx context.Context, persistence storage.StorageProvider, node chainNode, paths storage.Paths, fileName string, bd header.BuildData) {
 	t.Helper()
 
 	if bd.Size == 0 {
@@ -144,12 +144,12 @@ func verifyChecksum(t *testing.T, ctx context.Context, persistence storage.Stora
 
 	dataPath := paths.DataFile(fileName, bd.FrameData.CompressionType())
 
-	obj, err := persistence.OpenSeekable(ctx, dataPath, objType)
+	obj, err := persistence.OpenSeekable(ctx, dataPath)
 	require.NoErrorf(t, err, "%s/%s: open data file %s", node.name, fileName, dataPath)
 
-	rc, err := obj.OpenRangeReader(ctx, 0, bd.Size, bd.FrameData)
+	rc, _, err := obj.OpenRangeReader(ctx, 0, bd.Size, bd.FrameData)
 	require.NoErrorf(t, err, "%s/%s: open range reader", node.name, fileName)
-	defer rc.Close()
+	defer rc.Close(context.WithoutCancel(ctx))
 
 	hasher := sha256.New()
 	n, err := io.Copy(hasher, rc)
