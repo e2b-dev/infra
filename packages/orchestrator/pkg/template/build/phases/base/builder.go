@@ -255,6 +255,16 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		return metadata.Template{}, fmt.Errorf("error enlarging disk after provisioning: %w", err)
 	}
 
+	// Fix envd preset files after provisioning
+	// systemd 219 (CentOS 7) re-creates .wants/ symlinks from preset files on first boot
+	// when /etc is unpopulated. We need to ensure the preset file exists in /etc/systemd/system-preset/
+	// which has higher priority than /usr/lib/systemd/system-preset/
+	err = bb.fixEnvdPresetFiles(ctx, rootfsPath)
+	if err != nil {
+		userLogger.Warn(ctx, "Warning: failed to fix envd preset files", zap.Error(err))
+		// Don't fail the build, just warn
+	}
+
 	// Create sandbox for building template
 	userLogger.Debug(ctx, "Creating base sandbox template layer")
 
@@ -394,4 +404,94 @@ func (bb *BaseBuilder) Layer(
 			Hash:     hash,
 		}, nil
 	}
+}
+
+// fixEnvdPresetFiles ensures the envd preset file exists in /etc/systemd/system-preset/
+// after provisioning. systemd 219 (CentOS 7) re-creates .wants/ symlinks from preset files
+// on first boot when /etc is unpopulated, so we need to ensure the preset file is present.
+func (bb *BaseBuilder) fixEnvdPresetFiles(ctx context.Context, rootfsPath string) error {
+	// Mount the rootfs to access it
+	mountPoint := filepath.Join(bb.BuilderConfig.TemplatesDir, "preset-fix-mount")
+	err := os.MkdirAll(mountPoint, 0o755)
+	if err != nil {
+		return fmt.Errorf("error creating mount point: %w", err)
+	}
+	defer os.RemoveAll(mountPoint)
+
+	// Mount the rootfs
+	err = filesystem.Mount(ctx, rootfsPath, mountPoint)
+	if err != nil {
+		return fmt.Errorf("error mounting rootfs: %w", err)
+	}
+	defer filesystem.Unmount(ctx, mountPoint)
+
+	// Create /etc/systemd/system-preset directory if it doesn't exist
+	presetDir := filepath.Join(mountPoint, "etc/systemd/system-preset")
+	err = os.MkdirAll(presetDir, 0o755)
+	if err != nil {
+		return fmt.Errorf("error creating preset directory: %w", err)
+	}
+
+	// Write the preset file
+	presetContent := "enable envd.service\n"
+	presetFile := filepath.Join(presetDir, "80-envd.preset")
+	err = os.WriteFile(presetFile, []byte(presetContent), 0o644)
+	if err != nil {
+		return fmt.Errorf("error writing preset file: %w", err)
+	}
+
+	// Also ensure /usr/lib/systemd/system-preset/80-envd.preset exists
+	usrPresetDir := filepath.Join(mountPoint, "usr/lib/systemd/system-preset")
+	err = os.MkdirAll(usrPresetDir, 0o755)
+	if err != nil {
+		return fmt.Errorf("error creating usr preset directory: %w", err)
+	}
+
+	usrPresetFile := filepath.Join(usrPresetDir, "80-envd.preset")
+	err = os.WriteFile(usrPresetFile, []byte(presetContent), 0o644)
+	if err != nil {
+		return fmt.Errorf("error writing usr preset file: %w", err)
+	}
+
+	// Directly re-create the envd.service symlink in multi-user.target.wants
+	// This is critical for CentOS 7 (systemd 219) where provisioning may have
+	// removed or overwritten the symlink, and systemd's preset-based re-creation
+	// on first boot is unreliable.
+	wantsDir := filepath.Join(mountPoint, "etc/systemd/system/multi-user.target.wants")
+	err = os.MkdirAll(wantsDir, 0o755)
+	if err != nil {
+		return fmt.Errorf("error creating wants directory: %w", err)
+	}
+
+	envdSymlink := filepath.Join(wantsDir, "envd.service")
+	// Remove existing (possibly broken) symlink
+	os.Remove(envdSymlink)
+	// Create symlink pointing to the envd.service unit file
+	// Try /etc/systemd/system/envd.service first (where rootfs layer puts it)
+	envdServicePath := "/etc/systemd/system/envd.service"
+	if _, statErr := os.Lstat(filepath.Join(mountPoint, "etc/systemd/system/envd.service")); statErr != nil {
+		// Fallback: maybe it's in /usr/lib/systemd/system/
+		if _, statErr2 := os.Lstat(filepath.Join(mountPoint, "usr/lib/systemd/system/envd.service")); statErr2 == nil {
+			envdServicePath = "/usr/lib/systemd/system/envd.service"
+		}
+	}
+	err = os.Symlink(envdServicePath, envdSymlink)
+	if err != nil {
+		return fmt.Errorf("error creating envd.service symlink: %w", err)
+	}
+
+	// Also re-create chrony.service symlink
+	chronySymlink := filepath.Join(wantsDir, "chrony.service")
+	os.Remove(chronySymlink)
+	chronyServicePath := "/etc/systemd/system/chrony.service"
+	if _, statErr := os.Lstat(filepath.Join(mountPoint, "etc/systemd/system/chrony.service")); statErr != nil {
+		if _, statErr2 := os.Lstat(filepath.Join(mountPoint, "usr/lib/systemd/system/chronyd.service")); statErr2 == nil {
+			chronyServicePath = "/usr/lib/systemd/system/chronyd.service"
+		} else if _, statErr3 := os.Lstat(filepath.Join(mountPoint, "usr/lib/systemd/system/chrony.service")); statErr3 == nil {
+			chronyServicePath = "/usr/lib/systemd/system/chrony.service"
+		}
+	}
+	os.Symlink(chronyServicePath, chronySymlink)
+
+	return nil
 }

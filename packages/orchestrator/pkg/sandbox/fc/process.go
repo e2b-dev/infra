@@ -405,6 +405,9 @@ func (p *Process) Create(
 		delete(args, "quiet")
 		args["console"] = "ttyS0"
 		args["loglevel"] = "5" // KERN_NOTICE
+		// Add systemd debug logging for troubleshooting
+		args["systemd.log_level"] = "debug"
+		args["systemd.log_target"] = "console"
 	}
 
 	kernelArgs := args.String()

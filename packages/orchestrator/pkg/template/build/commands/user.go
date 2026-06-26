@@ -53,6 +53,11 @@ func (u *User) Execute(
 
 	// Only create user if it doesn't exist
 	if !userExists {
+		// Try Debian-style adduser first, fall back to useradd for RHEL/CentOS/Alpine
+		createUserCmd := fmt.Sprintf(
+			"adduser --disabled-password --gecos \"\" %s 2>/dev/null || useradd -m %s 2>/dev/null || adduser -D %s",
+			userArg, userArg, userArg,
+		)
 		err = sandboxtools.RunCommandWithLogger(
 			ctx,
 			proxy,
@@ -60,7 +65,7 @@ func (u *User) Execute(
 			lvl,
 			prefix,
 			sandboxID,
-			fmt.Sprintf("adduser --disabled-password --gecos \"\" %s", userArg),
+			createUserCmd,
 			metadata.Context{
 				User:    "root",
 				EnvVars: cmdMetadata.EnvVars,
@@ -91,7 +96,7 @@ func addToSudoers(
 	cmdMetadata metadata.Context,
 	userArg string,
 ) (metadata.Context, error) {
-	// Add user to sudo group
+	// Add user to sudo/wheel group (sudo for Debian/Ubuntu, wheel for RHEL/CentOS/Alpine)
 	err := sandboxtools.RunCommandWithLogger(
 		ctx,
 		proxy,
@@ -99,7 +104,7 @@ func addToSudoers(
 		lvl,
 		prefix,
 		sandboxID,
-		fmt.Sprintf("usermod -aG sudo %s", userArg),
+		fmt.Sprintf("usermod -aG sudo %s 2>/dev/null || usermod -aG wheel %s 2>/dev/null || true", userArg, userArg),
 		metadata.Context{
 			User:    "root",
 			EnvVars: cmdMetadata.EnvVars,
@@ -109,7 +114,7 @@ func addToSudoers(
 		return metadata.Context{}, fmt.Errorf("failed to add user to sudo group: %w", err)
 	}
 
-	// Remove password
+	// Remove password (passwd may not exist on minimal images)
 	err = sandboxtools.RunCommandWithLogger(
 		ctx,
 		proxy,
@@ -117,7 +122,7 @@ func addToSudoers(
 		lvl,
 		prefix,
 		sandboxID,
-		fmt.Sprintf("passwd -d %s", userArg),
+		fmt.Sprintf("passwd -d %s 2>/dev/null || true", userArg),
 		metadata.Context{
 			User:    "root",
 			EnvVars: cmdMetadata.EnvVars,
@@ -135,7 +140,7 @@ func addToSudoers(
 		lvl,
 		prefix,
 		sandboxID,
-		fmt.Sprintf("grep -q '^%s ALL=(ALL:ALL) NOPASSWD: ALL' /etc/sudoers || echo '%s ALL=(ALL:ALL) NOPASSWD: ALL' >>/etc/sudoers", userArg, userArg),
+		fmt.Sprintf("touch /etc/sudoers && (grep -q '^%s ALL=(ALL:ALL) NOPASSWD: ALL' /etc/sudoers || echo '%s ALL=(ALL:ALL) NOPASSWD: ALL' >>/etc/sudoers)", userArg, userArg),
 		metadata.Context{
 			User:    "root",
 			EnvVars: cmdMetadata.EnvVars,
