@@ -278,6 +278,58 @@ func TestProcessFile(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, map[string]string{"author": "new"}, metadata)
 	})
+
+	t.Run("metadata write survives path rename race", func(t *testing.T) {
+		t.Parallel()
+		tempDir := t.TempDir()
+		tempFile := filepath.Join(tempDir, "test-file")
+		renamedFile := filepath.Join(tempDir, "renamed-file")
+
+		content := []byte("new-file-contents")
+		request, _ := newRequest(content)
+		reader := &renameOnEOFReader{
+			reader: bytes.NewReader(content),
+			from:   tempFile,
+			to:     renamedFile,
+		}
+
+		httpStatus, err := processFile(request, tempFile, reader, uid, gid, map[string]string{"purpose": "race"}, emptyLogger)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusNoContent, httpStatus)
+
+		_, err = os.Stat(tempFile)
+		require.ErrorIs(t, err, os.ErrNotExist)
+
+		data, err := os.ReadFile(renamedFile)
+		require.NoError(t, err)
+		assert.Equal(t, content, data)
+
+		metadata, err := filesystem.ReadMetadata(renamedFile)
+		require.NoError(t, err)
+		if len(metadata) == 0 {
+			t.Skip("filesystem does not support xattrs")
+		}
+		assert.Equal(t, map[string]string{"purpose": "race"}, metadata)
+	})
+}
+
+type renameOnEOFReader struct {
+	reader  *bytes.Reader
+	from    string
+	to      string
+	renamed bool
+}
+
+func (r *renameOnEOFReader) Read(p []byte) (int, error) {
+	n, err := r.reader.Read(p)
+	if err == io.EOF && !r.renamed {
+		r.renamed = true
+		if renameErr := os.Rename(r.from, r.to); renameErr != nil {
+			return n, renameErr
+		}
+	}
+
+	return n, err
 }
 
 func createTmpfsMount(t *testing.T, sizeInBytes int) string {

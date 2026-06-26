@@ -3,6 +3,7 @@ package filesystem
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"syscall"
 	"unicode/utf8"
@@ -135,11 +136,28 @@ func ReadMetadata(path string) (map[string]string, error) {
 // ownership changes, and envd runs as root inside the VM so the kernel
 // write-permission check is satisfied regardless of file ownership.
 func WriteMetadata(path string, metadata map[string]string) error {
+	return writeMetadata(path, nil, metadata)
+}
+
+// WriteMetadataFile is like WriteMetadata but operates on an already-open file
+// descriptor. This avoids path races for callers that have just written the
+// file and still hold it open.
+func WriteMetadataFile(file *os.File, metadata map[string]string) error {
+	return writeMetadata(file.Name(), file, metadata)
+}
+
+func writeMetadata(path string, file *os.File, metadata map[string]string) error {
 	if err := ValidateMetadata(metadata); err != nil {
 		return err
 	}
 
-	existing, err := xattr.List(path)
+	var existing []string
+	var err error
+	if file != nil {
+		existing, err = xattr.FList(file)
+	} else {
+		existing, err = xattr.List(path)
+	}
 	if err != nil {
 		return err
 	}
@@ -152,13 +170,23 @@ func WriteMetadata(path string, metadata map[string]string) error {
 		if _, keep := metadata[key]; keep {
 			continue
 		}
-		if err := xattr.Remove(path, name); err != nil && !errors.Is(err, xattr.ENOATTR) {
+		if file != nil {
+			err = xattr.FRemove(file, name)
+		} else {
+			err = xattr.Remove(path, name)
+		}
+		if err != nil && !errors.Is(err, xattr.ENOATTR) {
 			return err
 		}
 	}
 
 	for k, v := range metadata {
-		if err := xattr.Set(path, MetadataXattrPrefix+k, []byte(v)); err != nil {
+		if file != nil {
+			err = xattr.FSet(file, MetadataXattrPrefix+k, []byte(v))
+		} else {
+			err = xattr.Set(path, MetadataXattrPrefix+k, []byte(v))
+		}
+		if err != nil {
 			return err
 		}
 	}
