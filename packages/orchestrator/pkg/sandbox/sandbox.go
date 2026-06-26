@@ -153,6 +153,7 @@ type VolumeMountConfig struct {
 	Name string
 	Path string
 	Type string
+	Sync bool
 }
 
 type EnvdMetadata struct {

@@ -131,6 +131,9 @@ type VolumeMount struct {
 
 	// Path Mount path inside the sandbox
 	Path string `json:"path"`
+
+	// Sync Use synchronous NFS mount options for data safety (pause/resume). Defaults to false (async for throughput).
+	Sync *bool `json:"sync,omitempty"`
 }
 
 // FilePath defines model for FilePath.

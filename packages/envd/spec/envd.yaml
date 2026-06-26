@@ -519,6 +519,9 @@ components:
         path:
           type: string
           description: Mount path inside the sandbox
+        sync:
+          type: boolean
+          description: Use synchronous NFS mount options for data safety (pause/resume). Defaults to false (async for throughput).
       required:
         - nfs_target
         - path

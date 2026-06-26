@@ -341,11 +341,8 @@ func writeInitError(w http.ResponseWriter, logger zerolog.Logger, err error) {
 	w.Write([]byte(err.Error()))
 }
 
-var nfsOptions = strings.Join([]string{
-	// wait for data to be sent to proxy server before returning.
-	// async might cause issues if the sandbox is shut down suddenly.
-	"sync",
-
+// nfsBaseOptions are shared by both sync and async NFS mount profiles.
+var nfsBaseOptions = []string{
 	"rsize=1048576",  // 1 MB read buffer
 	"wsize=1048576",  // 1 MB write buffer
 	"mountproto=tcp", // nfs proxy only supports tcp
@@ -354,11 +351,24 @@ var nfsOptions = strings.Join([]string{
 	"port=2049",      // nfs proxy only supports mounting on port 2049
 	"nfsvers=3",      // nfs proxy is nfs version 3
 	"noacl",          // no reason for acl in the sandbox
+}
 
-	// disable caching so that pause/resume works correctly
-	"noac",
-	"lookupcache=none",
-}, ",")
+// nfsAsyncOptions is used when sync=false (default). Prioritises throughput.
+var nfsAsyncOptions = strings.Join(append([]string{
+	"rw",
+	"async",
+	"noatime",
+	"nodiratime",
+	"actimeo=3600", // cache file/dir attributes for 1 hour
+}, nfsBaseOptions...), ",")
+
+// nfsSyncOptions is used when sync=true. Prioritises data safety for pause/resume.
+var nfsSyncOptions = strings.Join(append([]string{
+	"rw",
+	"sync",            // wait for data to reach proxy before returning
+	"noac",             // disable attribute caching for pause/resume correctness
+	"lookupcache=none", // disable directory lookup caching
+}, nfsBaseOptions...), ",")
 
 const nfsMountTimeout = 10 * time.Second
 
@@ -403,7 +413,7 @@ func (a *API) setupNFS(ctx context.Context, logger zerolog.Logger, lifecycleID *
 				return fmt.Errorf("failed to unmount stale NFS mount at %q: %w", volume.Path, err)
 			}
 
-			if err := a.mountNFS(wgCtx, volume.NfsTarget, volume.Path); err != nil {
+			if err := a.mountNFS(wgCtx, volume.NfsTarget, volume.Path, volume.Sync != nil && *volume.Sync); err != nil {
 				return fmt.Errorf("failed to mount NFS at %q: %w", volume.Path, err)
 			}
 
@@ -452,10 +462,15 @@ func (a *API) unmountNFS(ctx context.Context, logger zerolog.Logger, path string
 	return nil
 }
 
-func (a *API) mountNFS(ctx context.Context, nfsTarget, path string) error {
+func (a *API) mountNFS(ctx context.Context, nfsTarget, path string, syncMount bool) error {
+	opts := nfsAsyncOptions
+	if syncMount {
+		opts = nfsSyncOptions
+	}
+
 	commands := [][]string{
 		{"mkdir", "-p", path},
-		{"mount", "-v", "-t", "nfs", "-o", "fg,hard," + nfsOptions, nfsTarget, path},
+		{"mount", "-v", "-t", "nfs", "-o", "fg,hard," + opts, nfsTarget, path},
 	}
 
 	for _, command := range commands {
