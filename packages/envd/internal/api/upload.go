@@ -108,7 +108,7 @@ func processFile(r *http.Request, path string, part io.Reader, uid, gid int, met
 	defer file.Close()
 
 	if !hasBeenChowned {
-		err = os.Chown(path, uid, gid)
+		err = file.Chown(uid, gid)
 		if err != nil {
 			err := fmt.Errorf("error changing file ownership: %w", err)
 
