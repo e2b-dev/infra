@@ -50,7 +50,7 @@ func newMeterProvider(ctx context.Context, endpoint string) (*sdkmetric.MeterPro
 		return nil, nil, fmt.Errorf("meter provider was not *sdkmetric.MeterProvider: %T", mp)
 	}
 
-	m, err := cleaner.NewMetrics(sdkmp.Meter("github.com/e2b-dev/infra/packages/orchestrator/cmd/clean-nfs-cache/cleaner"))
+	m, err := cleaner.NewMetrics(sdkmp.Meter("github.com/e2b-dev/infra/packages/orchestrator/cmd/clean-nfs-cache"))
 	if err != nil {
 		sdkmp.Shutdown(ctx)
 
