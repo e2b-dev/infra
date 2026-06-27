@@ -14,6 +14,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/artifact"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -100,10 +101,6 @@ func processCmdline(procDir string, pid int) ([]string, error) {
 	return cmdline, nil
 }
 
-// firecrackerBinaryName mirrors fc.FirecrackerBinaryName; it is duplicated here
-// to avoid importing the cgo-heavy fc package.
-const firecrackerBinaryName = "firecracker"
-
 func isFirecrackerCmdline(cmdline []string) bool {
 	if len(cmdline) == 0 {
 		return false
@@ -111,5 +108,5 @@ func isFirecrackerCmdline(cmdline []string) bool {
 
 	// Exact basename match so versioned paths match but "firecracker-monitor"
 	// and similar do not.
-	return filepath.Base(cmdline[0]) == firecrackerBinaryName
+	return filepath.Base(cmdline[0]) == artifact.FirecrackerBinaryName
 }
