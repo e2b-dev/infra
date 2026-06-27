@@ -24,11 +24,10 @@ import (
 )
 
 const (
-	awsOperationTimeout           = 5 * time.Second
-	awsWriteTimeout               = 30 * time.Second
-	awsReadTimeout                = 15 * time.Second
-	awsMultipartUploadPartSize    = 10 * 1024 * 1024
-	awsMultipartUploadConcurrency = 8
+	awsOperationTimeout        = 5 * time.Second
+	awsWriteTimeout            = 30 * time.Second
+	awsReadTimeout             = 15 * time.Second
+	awsMultipartUploadPartSize = 10 * 1024 * 1024
 )
 
 type awsStorage struct {
@@ -211,7 +210,7 @@ func (o *awsObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 
 	// Inherit the caller's context for the multipart upload. The AWS SDK's
 	// manager.Uploader reuses the same ctx for CreateMultipartUpload, every
-	// UploadPart (Concurrency=8, PartSize=10MB), and the final Complete/Abort —
+	// UploadPart, and the final Complete/Abort —
 	// a tight static timeout here would cancel an in-flight multi-GB snapshot
 	// upload and surface as "S3: UploadPart ... StatusCode: 0, canceled,
 	// context deadline exceeded". The caller (pkg/server/sandboxes.go) already
@@ -227,7 +226,7 @@ func (o *awsObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 		o.client,
 		func(u *manager.Uploader) {
 			u.PartSize = awsMultipartUploadPartSize
-			u.Concurrency = awsMultipartUploadConcurrency
+			u.Concurrency = o.maxUploadConcurrency(ctx)
 		},
 	)
 
@@ -272,7 +271,7 @@ func (o *awsObject) storeFileCompressed(ctx context.Context, localPath string, c
 		objectName: o.path,
 		metadata:   putOpts.Metadata,
 	}
-	maxConcurrency := limit.StorageMaxUploadTasksDefault()
+	maxConcurrency := o.maxUploadConcurrency(ctx)
 	if o.limiter != nil {
 		uploadLimiter := o.limiter.StorageUploadLimiter()
 		if uploadLimiter != nil {
@@ -282,11 +281,17 @@ func (o *awsObject) storeFileCompressed(ctx context.Context, localPath string, c
 			}
 			defer uploadLimiter.Release(1)
 		}
-
-		maxConcurrency = o.limiter.StorageMaxUploadTasks(ctx)
 	}
 
 	return compressStream(ctx, file, cfg, uploader, maxConcurrency, putOpts.FrameSink)
+}
+
+func (o *awsObject) maxUploadConcurrency(ctx context.Context) int {
+	if o.limiter == nil {
+		return limit.StorageMaxUploadTasksDefault()
+	}
+
+	return o.limiter.StorageMaxUploadTasks(ctx)
 }
 
 func (o *awsObject) Put(ctx context.Context, data []byte, opts ...PutOption) error {
