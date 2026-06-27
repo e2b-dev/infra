@@ -136,7 +136,7 @@ func processFile(r *http.Request, path string, part io.Reader, uid, gid int, met
 	// overwriting a file replaces its full metadata set: keys absent from
 	// this request are cleared (O_TRUNC truncates the body but preserves
 	// xattrs from a prior upload).
-	if err := filesystem.WriteMetadata(path, metadata); err != nil {
+	if err := filesystem.WriteMetadata(file, metadata); err != nil {
 		switch {
 		case filesystem.IsXattrUnsupported(err):
 			// Filesystem doesn't support xattrs. ext4 (the sandbox rootfs)
