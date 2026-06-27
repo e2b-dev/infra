@@ -219,6 +219,12 @@ var (
 	// from the in-progress snapshot pull, so pinning the retry to it avoids
 	// re-pulling the snapshot onto yet another node.
 	ResumeOriginNodeRemapFlag = NewBoolFlag("resume-origin-node-remap", false)
+
+	// DisableE2BAccessTokenProvisioningFlag stops POST /access-tokens from issuing
+	// new E2B access tokens (sk_e2b_) once enabled. E2B_ACCESS_TOKEN is deprecated
+	// in favor of E2B_API_KEY; the CLI now authenticates via Hydra JWTs. Off by
+	// default so issuance keeps working until the deprecation cutover.
+	DisableE2BAccessTokenProvisioningFlag = NewBoolFlag("disable-e2b-access-token-provisioning", false)
 )
 
 // envdTimeoutFallbackMs reads ENVD_TIMEOUT (Go duration string, e.g. "10s")

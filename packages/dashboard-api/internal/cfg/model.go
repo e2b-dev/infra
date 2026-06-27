@@ -11,11 +11,12 @@ import (
 )
 
 type Config struct {
-	Port                       int                 `env:"PORT"                                         envDefault:"3010"`
-	PostgresConnectionString   string              `env:"POSTGRES_CONNECTION_STRING,required,notEmpty"`
-	ClickhouseConnectionString string              `env:"CLICKHOUSE_CONNECTION_STRING"`
-	AdminToken                 string              `env:"ADMIN_TOKEN,required,notEmpty"`
-	AuthProvider               auth.ProviderConfig `env:"AUTH_PROVIDER_CONFIG"`
+	Port                        int                 `env:"PORT"                                         envDefault:"3010"`
+	PostgresConnectionString    string              `env:"POSTGRES_CONNECTION_STRING,required,notEmpty"`
+	ClickhouseConnectionString  string              `env:"CLICKHOUSE_CONNECTION_STRING"`
+	ClickhouseConnectionStrings []string            `env:"CLICKHOUSE_CONNECTION_STRINGS"                envSeparator:";"`
+	AdminToken                  string              `env:"ADMIN_TOKEN,required,notEmpty"`
+	AuthProvider                auth.ProviderConfig `env:"AUTH_PROVIDER_CONFIG"`
 
 	AuthDBConnectionString            string `env:"AUTH_DB_CONNECTION_STRING"`
 	AuthDBReadReplicaConnectionString string `env:"AUTH_DB_READ_REPLICA_CONNECTION_STRING"`
@@ -30,6 +31,8 @@ type Config struct {
 	OrySDKURL          string `env:"ORY_SDK_URL"`
 	OryProjectAPIToken string `env:"ORY_PROJECT_API_TOKEN,unset"`
 	OryIssuerURL       string `env:"ORY_ISSUER_URL"`
+
+	DomainName string `env:"DOMAIN_NAME" envDefault:""`
 }
 
 type FailureCondition string

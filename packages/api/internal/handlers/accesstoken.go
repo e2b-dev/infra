@@ -11,6 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -20,6 +21,12 @@ func (a *APIStore) PostAccessTokens(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	userID := auth.MustGetUserID(c)
+
+	if a.featureFlags.BoolFlag(ctx, featureflags.DisableE2BAccessTokenProvisioningFlag, featureflags.UserContext(userID.String())) {
+		a.sendAPIStoreError(c, http.StatusGone, "Creating new access tokens is disabled. E2B_ACCESS_TOKEN is deprecated; use an API key (E2B_API_KEY) instead. See https://e2b.dev/docs/migration/access-token-deprecation")
+
+		return
+	}
 
 	body, err := ginutils.ParseBody[api.NewAccessToken](ctx, c)
 	if err != nil {
