@@ -314,7 +314,7 @@ func GetStorageProvider(ctx context.Context, cfg StorageConfig) (StorageProvider
 	// cloud bucket-based storage
 	switch provider {
 	case AWSStorageProvider:
-		return newAWSStorage(ctx, bucketName)
+		return newAWSStorage(ctx, bucketName, cfg.limiter)
 	case GCPStorageProvider:
 		return NewGCP(ctx, bucketName, cfg.limiter)
 	}

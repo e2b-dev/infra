@@ -17,10 +17,10 @@ func (l *Limiter) UpdateUploadLimitSemaphore(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
-			uploadLimitFlag := l.featureFlags.IntFlag(ctx, featureflags.GcloudConcurrentUploadLimit)
+			uploadLimitFlag := l.featureFlags.IntFlag(ctx, featureflags.StorageConcurrentUploadLimit)
 
 			// Update the semaphore with the new value
-			if err := l.gCloudUploadLimiter.SetLimit(int64(uploadLimitFlag)); err != nil {
+			if err := l.storageUploadLimiter.SetLimit(int64(uploadLimitFlag)); err != nil {
 				logger.L().Error(ctx, "failed to adjust upload semaphore", zap.Error(err))
 			}
 		case <-l.done:

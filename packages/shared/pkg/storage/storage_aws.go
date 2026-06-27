@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -17,19 +19,23 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const (
-	awsOperationTimeout = 5 * time.Second
-	awsWriteTimeout     = 30 * time.Second
-	awsReadTimeout      = 15 * time.Second
+	awsOperationTimeout           = 5 * time.Second
+	awsWriteTimeout               = 30 * time.Second
+	awsReadTimeout                = 15 * time.Second
+	awsMultipartUploadPartSize    = 10 * 1024 * 1024
+	awsMultipartUploadConcurrency = 8
 )
 
 type awsStorage struct {
 	client        *s3.Client
 	presignClient *s3.PresignClient
 	bucketName    string
+	limiter       *limit.Limiter
 }
 
 var _ StorageProvider = (*awsStorage)(nil)
@@ -38,6 +44,7 @@ type awsObject struct {
 	client     *s3.Client
 	path       string
 	bucketName string
+	limiter    *limit.Limiter
 }
 
 var (
@@ -45,7 +52,7 @@ var (
 	_ Blob     = (*awsObject)(nil)
 )
 
-func newAWSStorage(ctx context.Context, bucketName string) (*awsStorage, error) {
+func newAWSStorage(ctx context.Context, bucketName string, limiter *limit.Limiter) (*awsStorage, error) {
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return nil, err
@@ -69,6 +76,7 @@ func newAWSStorage(ctx context.Context, bucketName string) (*awsStorage, error) 
 		client:        client,
 		presignClient: presignClient,
 		bucketName:    bucketName,
+		limiter:       limiter,
 	}, nil
 }
 
@@ -143,6 +151,7 @@ func (s *awsStorage) OpenSeekable(_ context.Context, path string) (Seekable, err
 		client:     s.client,
 		bucketName: s.bucketName,
 		path:       path,
+		limiter:    s.limiter,
 	}, nil
 }
 
@@ -151,6 +160,7 @@ func (s *awsStorage) OpenBlob(_ context.Context, path string) (Blob, error) {
 		client:     s.client,
 		bucketName: s.bucketName,
 		path:       path,
+		limiter:    s.limiter,
 	}, nil
 }
 
@@ -180,8 +190,23 @@ func (o *awsObject) WriteTo(ctx context.Context, dst io.Writer) (n int64, err er
 
 func (o *awsObject) StoreFile(ctx context.Context, path string, opts ...PutOption) (*FullFrameTable, [32]byte, error) {
 	p := ApplyPutOptions(opts)
-	if CompressConfigFromOpts(p).IsCompressionEnabled() {
-		return nil, [32]byte{}, errors.New("compressed uploads are not supported on AWS (builds target GCP only)")
+	cfg := CompressConfigFromOpts(p)
+	if cfg.IsCompressionEnabled() {
+		ft, checksum, err := o.storeFileCompressed(ctx, path, cfg, p)
+		if err == nil {
+			t := ft.Table()
+			logger.L().Debug(ctx, "Uploaded file to S3",
+				zap.String("bucket", o.bucketName),
+				zap.String("object", o.path),
+				zap.String("source", path),
+				zap.Int64("size_uncompressed", t.UncompressedSize()),
+				zap.Int64("size_compressed", t.CompressedSize()),
+				zap.String("compression", cfg.CompressionType().String()),
+				zap.Int("frames", t.NumFrames()),
+			)
+		}
+
+		return ft, checksum, err
 	}
 
 	// Inherit the caller's context for the multipart upload. The AWS SDK's
@@ -201,8 +226,8 @@ func (o *awsObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 	uploader := manager.NewUploader(
 		o.client,
 		func(u *manager.Uploader) {
-			u.PartSize = 10 * 1024 * 1024 // 10 MB
-			u.Concurrency = 8             // eight parts in flight
+			u.PartSize = awsMultipartUploadPartSize
+			u.Concurrency = awsMultipartUploadConcurrency
 		},
 	)
 
@@ -232,6 +257,36 @@ func (o *awsObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 	}
 
 	return nil, [32]byte{}, err
+}
+
+func (o *awsObject) storeFileCompressed(ctx context.Context, localPath string, cfg CompressConfig, putOpts PutOptions) (*FullFrameTable, [32]byte, error) {
+	file, err := os.Open(localPath)
+	if err != nil {
+		return nil, [32]byte{}, fmt.Errorf("failed to open local file %s: %w", localPath, err)
+	}
+	defer file.Close()
+
+	uploader := &awsPartUploader{
+		client:     o.client,
+		bucketName: o.bucketName,
+		objectName: o.path,
+		metadata:   putOpts.Metadata,
+	}
+	maxConcurrency := limit.StorageMaxUploadTasksDefault()
+	if o.limiter != nil {
+		uploadLimiter := o.limiter.StorageUploadLimiter()
+		if uploadLimiter != nil {
+			semaphoreErr := uploadLimiter.Acquire(ctx, 1)
+			if semaphoreErr != nil {
+				return nil, [32]byte{}, fmt.Errorf("failed to acquire semaphore: %w", semaphoreErr)
+			}
+			defer uploadLimiter.Release(1)
+		}
+
+		maxConcurrency = o.limiter.StorageMaxUploadTasks(ctx)
+	}
+
+	return compressStream(ctx, file, cfg, uploader, maxConcurrency, putOpts.FrameSink)
 }
 
 func (o *awsObject) Put(ctx context.Context, data []byte, opts ...PutOption) error {
@@ -329,6 +384,106 @@ func ignoreNotExists(err error) error {
 	if errors.Is(err, ErrObjectNotExist) {
 		return nil
 	}
+
+	return err
+}
+
+type awsPartUploader struct {
+	client     *s3.Client
+	bucketName string
+	objectName string
+	metadata   ObjectMetadata
+
+	mu        sync.Mutex
+	uploadID  string
+	parts     []types.CompletedPart
+	completed bool
+}
+
+var _ partUploader = (*awsPartUploader)(nil)
+
+func (m *awsPartUploader) Start(ctx context.Context) error {
+	out, err := m.client.CreateMultipartUpload(ctx, &s3.CreateMultipartUploadInput{
+		Bucket:   aws.String(m.bucketName),
+		Key:      aws.String(m.objectName),
+		Metadata: m.metadata,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to initiate multipart upload: %w", err)
+	}
+
+	m.uploadID = aws.ToString(out.UploadId)
+
+	return nil
+}
+
+func (m *awsPartUploader) UploadPart(ctx context.Context, partIndex int, data ...[]byte) error {
+	var buf bytes.Buffer
+	for _, d := range data {
+		buf.Write(d)
+	}
+
+	out, err := m.client.UploadPart(ctx, &s3.UploadPartInput{
+		Bucket:     aws.String(m.bucketName),
+		Key:        aws.String(m.objectName),
+		UploadId:   aws.String(m.uploadID),
+		PartNumber: aws.Int32(int32(partIndex)),
+		Body:       bytes.NewReader(buf.Bytes()),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to upload part %d: %w", partIndex, err)
+	}
+
+	m.mu.Lock()
+	m.parts = append(m.parts, types.CompletedPart{
+		ETag:       out.ETag,
+		PartNumber: aws.Int32(int32(partIndex)),
+	})
+	m.mu.Unlock()
+
+	return nil
+}
+
+func (m *awsPartUploader) Complete(ctx context.Context) error {
+	m.mu.Lock()
+	parts := make([]types.CompletedPart, len(m.parts))
+	copy(parts, m.parts)
+	m.mu.Unlock()
+
+	slices.SortFunc(parts, func(a, b types.CompletedPart) int {
+		return int(aws.ToInt32(a.PartNumber) - aws.ToInt32(b.PartNumber))
+	})
+
+	_, err := m.client.CompleteMultipartUpload(ctx, &s3.CompleteMultipartUploadInput{
+		Bucket:   aws.String(m.bucketName),
+		Key:      aws.String(m.objectName),
+		UploadId: aws.String(m.uploadID),
+		MultipartUpload: &types.CompletedMultipartUpload{
+			Parts: parts,
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	m.completed = true
+
+	return nil
+}
+
+func (m *awsPartUploader) Close() error {
+	if m.completed || m.uploadID == "" {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), awsOperationTimeout)
+	defer cancel()
+
+	_, err := m.client.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{
+		Bucket:   aws.String(m.bucketName),
+		Key:      aws.String(m.objectName),
+		UploadId: aws.String(m.uploadID),
+	})
 
 	return err
 }
