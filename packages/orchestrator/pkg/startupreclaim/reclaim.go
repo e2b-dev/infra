@@ -84,6 +84,16 @@ type reclaimer struct {
 
 func Run(ctx context.Context, config Config) Summary {
 	config = config.withDefaults()
+
+	// No egress proxy wired: slots are still torn down, but the egress firewall
+	// cleanup (OnSlotDelete) is skipped and those iptables rules may leak. Log it
+	// instead of substituting silently; callers with no egress firewall can pass
+	// network.NewNoopEgressProxy() to opt in quietly.
+	if config.EgressProxy == nil {
+		logger.L().Error(ctx, "startup reclaim: no egress proxy provided; egress firewall cleanup will be skipped for reclaimed slots")
+		config.EgressProxy = network.NewNoopEgressProxy()
+	}
+
 	summary := Summary{Reclaimed: map[string]int{}, Failed: map[string]int{}}
 
 	// Order matters: firecracker runs first so the VMMs are killed before the
@@ -136,9 +146,6 @@ func (c Config) withDefaults() Config {
 	}
 	if c.CgroupRoot == "" {
 		c.CgroupRoot = cgroup.RootCgroupPath
-	}
-	if c.EgressProxy == nil {
-		c.EgressProxy = network.NewNoopEgressProxy()
 	}
 
 	return c
