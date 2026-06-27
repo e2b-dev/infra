@@ -44,9 +44,8 @@ func (c *Cleaner) statInDir(df *os.File, filename string) (*Stat, error) {
 		unix.STATX_ATIME,
 		&statx,
 	)
-	fullPath := filepath.Join(df.Name(), filename)
 	if err != nil {
-		return nil, fmt.Errorf("failed to statx %q: %w", fullPath, err)
+		return nil, fmt.Errorf("failed to statx %q: %w", filepath.Join(df.Name(), filename), err)
 	}
 
 	return &Stat{

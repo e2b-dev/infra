@@ -341,12 +341,9 @@ func (c *Cleaner) deleteColdest(ctx context.Context, builds []build) {
 
 	var queued uint64
 	var queuedBuilds int
-	met := false
 queueLoop:
 	for _, b := range builds {
 		if queued >= c.TargetBytesToDelete {
-			met = true
-
 			break
 		}
 		if floorSec != 0 && b.timestamp > floorSec {
@@ -369,6 +366,8 @@ queueLoop:
 
 	close(deleteCh)
 	deleters.Wait()
+
+	met := queued >= c.TargetBytesToDelete
 
 	// Emit only when the run came up short: it deleted everything it was allowed to
 	// (blocked by the grace floor or simply out of builds — same actionable fact)

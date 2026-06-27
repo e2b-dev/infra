@@ -179,6 +179,11 @@ func (c *Cleaner) sampleDataDir(ctx context.Context, df *os.File, reqs chan<- *s
 	// Hand the sample to the stat pool (independent statx concurrency); df stays
 	// open until every response is drained below.
 	k := clampSample(chunks, c.SampleMinFiles, c.SamplePercent, c.SampleMaxFiles)
+	// Algorithm R leaves the reservoir uniform but not order-uniform, so shuffle
+	// before taking the positional prefix of k to stat — same reasoning as list().
+	if k < len(reservoir) {
+		rand.Shuffle(len(reservoir), func(i, j int) { reservoir[i], reservoir[j] = reservoir[j], reservoir[i] })
+	}
 	responseCh := make(chan *statReq, k)
 	submitted := 0
 submit:
@@ -355,13 +360,15 @@ func VerifyChunksCacheRoot(path string) error {
 	}
 	defer df.Close()
 
+	sawAnyDir := false
 	sawAnyUUIDDir := false
 	for {
 		entries, readErr := df.ReadDir(128)
 		for _, e := range entries {
-			if !e.IsDir() {
+			if !e.IsDir() || e.Name() == "lost+found" {
 				continue
 			}
+			sawAnyDir = true
 			if _, parseErr := uuid.Parse(e.Name()); parseErr != nil {
 				continue
 			}
@@ -382,7 +389,13 @@ func VerifyChunksCacheRoot(path string) error {
 		break
 	}
 
+	// No UUID build dir with a data dir. An empty root is fine, but a root holding
+	// other subdirs is almost certainly the wrong path — refuse to reap it.
 	if !sawAnyUUIDDir {
+		if sawAnyDir {
+			return fmt.Errorf("%q contains subdirectories but none are UUID-named; refusing to risk a wrong-path reap", path)
+		}
+
 		return nil
 	}
 
