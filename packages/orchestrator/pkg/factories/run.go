@@ -622,6 +622,10 @@ func run(config cfg.Config, opts Options) (success bool) {
 		closers = append(closers, closer{"egress proxy", egressSetup.Close})
 	}
 
+	// Must run before newStorage below: reclaim deletes leaked ns-* from
+	// /run/netns, and NewStorageLocal snapshots the remaining namespaces as
+	// foreign at construction. Running it after would mark reclaimed indices
+	// foreign and leave them unusable for this process.
 	if slices.Contains(services, cfg.Orchestrator) && !config.DisableStartupReclaim {
 		startupreclaim.Run(ctx, startupreclaim.Config{
 			NetworkConfig: config.NetworkConfig,
