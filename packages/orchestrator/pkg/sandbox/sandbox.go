@@ -57,8 +57,8 @@ var (
 	uffdStartupBytesHistogram       = utils.Must(telemetry.GetHistogram(meter, telemetry.UffdStartupBytesHistogramName))
 )
 
-// Sandbox start types recorded on the orchestrator.sandbox.uffd.startup.*
-// metrics via the start_type attribute.
+// Sandbox start types recorded on sandbox start/init metrics via the
+// start_type attribute.
 type StartType string
 
 const (
