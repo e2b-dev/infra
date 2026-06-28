@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
@@ -26,7 +27,7 @@ func (f fakeTemplateManagerClient) SetStatus(context.Context, uuid.UUID, types.B
 	return f.setStatusError
 }
 
-func (f fakeTemplateManagerClient) SetFinished(context.Context, uuid.UUID, int64, string, string, string) error {
+func (f fakeTemplateManagerClient) SetFinished(context.Context, uuid.UUID, int64, string, string, string, *orchestrator.LayerSizes) error {
 	return f.setFinishedError
 }
 

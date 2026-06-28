@@ -165,8 +165,19 @@ message SchedulingMetadata {
   string rootfs_base_build_id = 9;
 }
 
+// LayerSizes carries layer sizes that are available synchronously at snapshot
+// time, i.e. without waiting on the async memfile dedup header. The memfile
+// mapped/diff sizes are intentionally excluded (they would require that wait);
+// they are written to the memfile data object's custom metadata instead.
+message LayerSizes {
+  uint64 rootfs_mapped_size = 1;   // rootfs bytes mapped to non-empty builds
+  uint64 rootfs_diff_size = 2;     // rootfs bytes contributed by this build's layer
+  uint64 memfile_logical_size = 3; // memfile logical (virtual device) size
+}
+
 message SandboxPauseResponse {
   SchedulingMetadata scheduling_metadata = 1;
+  LayerSizes layer_sizes = 2;
 }
 
 message SandboxCheckpointRequest {
@@ -180,6 +191,7 @@ message SandboxCheckpointRequest {
 
 message SandboxCheckpointResponse {
   SchedulingMetadata scheduling_metadata = 1;
+  LayerSizes layer_sizes = 2;
 }
 
 message RunningSandbox {

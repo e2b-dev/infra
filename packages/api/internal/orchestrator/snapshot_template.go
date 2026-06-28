@@ -7,13 +7,16 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
+	apidb "github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/storageopts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -88,7 +91,7 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 	// kills the sandbox itself; RemoveSandbox is still needed to clean up
 	// API-side state (store, routing, analytics).
 	client, childCtx := node.GetClient(ctx)
-	_, err = client.Sandbox.Checkpoint(childCtx, &orchestrator.SandboxCheckpointRequest{
+	checkpointResp, err := client.Sandbox.Checkpoint(childCtx, &orchestrator.SandboxCheckpointRequest{
 		SandboxId: sbx.SandboxID,
 		BuildId:   upsertResult.BuildID.String(),
 		Metadata:  map[string]string{storageopts.ObjectMetadataTemplateID: snapshotTemplateEnvID},
@@ -117,6 +120,12 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 	})
 	if err != nil {
 		return SnapshotTemplateResult{}, fmt.Errorf("error updating build status: %w", err)
+	}
+
+	// Best-effort: the checkpoint already succeeded, so don't fail it over
+	// layer-size bookkeeping.
+	if err := o.sqlcDB.SetEnvBuildLayerSizes(ctx, apidb.LayerSizesParams(upsertResult.BuildID, checkpointResp.GetLayerSizes())); err != nil {
+		logger.L().Warn(ctx, "failed to persist build layer sizes", logger.WithBuildID(upsertResult.BuildID.String()), zap.Error(err))
 	}
 
 	o.snapshotCache.Invalidate(context.WithoutCancel(ctx), sandboxID)

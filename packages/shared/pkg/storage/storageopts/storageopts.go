@@ -32,18 +32,6 @@ const (
 // "<reason>:<action_id>". Consumers fail closed on it behind a feature flag.
 const ObjectMetadataSoftDeleted = "storage-index-soft-deleted"
 
-// Layer-size metadata keys, set at upload time on the data object so the
-// storage index can read sizes without parsing the binary header. Values are
-// decimal byte counts.
-const (
-	// ObjectMetadataLogicalSize is the logical (virtual) size of the block
-	// device the layer belongs to (Header.Metadata.Size).
-	ObjectMetadataLogicalSize = "logical-size"
-	// ObjectMetadataMappedSize is the number of bytes mapped to non-empty
-	// (non-nil) builds in this layer's mapping.
-	ObjectMetadataMappedSize = "mapped-size"
-)
-
 // FrameSink fires once per compressed frame with its absolute C-space offset.
 // Best-effort; implementations should return quickly and bound their own I/O.
 type FrameSink func(ctx context.Context, cOffset int64, compressed []byte)

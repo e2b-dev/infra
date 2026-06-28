@@ -107,6 +107,7 @@ type Result struct {
 	FirecrackerVersion string
 	RootfsSizeMB       int64
 	SchedulingMetadata *orchestratorgrpc.SchedulingMetadata
+	LayerSizes         *orchestratorgrpc.LayerSizes
 }
 
 // Build builds the template, uploads it to storage and returns the result metadata.
@@ -410,12 +411,13 @@ func runBuild(
 		return nil, fmt.Errorf("error waiting for layers upload: %w", err)
 	}
 
-	// Get the base rootfs size from the template files
-	// This is the size of the rootfs after provisioning and before building the layers
-	// (as they don't change the rootfs size)
-	rootfsSize, err := getRootfsSize(ctx, builder.templateStorage, storage.Paths{BuildID: lastLayerResult.Metadata.Template.BuildID})
+	// Read the final layer's headers from storage to get the rootfs size and the
+	// synchronously-available layer sizes. The rootfs logical size is the size
+	// after provisioning and before building the layers (they don't change it).
+	paths := storage.Paths{BuildID: lastLayerResult.Metadata.Template.BuildID}
+	rootfsSize, layerSizes, err := getLayerSizes(ctx, builder.templateStorage, paths)
 	if err != nil {
-		return nil, fmt.Errorf("error getting rootfs size: %w", err)
+		return nil, fmt.Errorf("error getting layer sizes: %w", err)
 	}
 	logger.L().Info(ctx, "rootfs size", zap.Uint64("size", rootfsSize))
 
@@ -425,6 +427,7 @@ func runBuild(
 		FirecrackerVersion: bc.Config.FirecrackerVersion,
 		RootfsSizeMB:       units.BytesToMB(int64(rootfsSize)),
 		SchedulingMetadata: templateSchedulingMetadata(ctx, builder.templateCache, lastLayerResult.Metadata.Template.BuildID),
+		LayerSizes:         layerSizes,
 	}, nil
 }
 
@@ -465,20 +468,44 @@ func forceSteps(template config.TemplateConfig) config.TemplateConfig {
 	return template
 }
 
-func getRootfsSize(
+// getLayerSizes reads the final layer's rootfs and memfile headers from storage
+// and returns the rootfs logical size plus the synchronously-available layer
+// sizes (rootfs mapped/diff and memfile logical). For template builds the
+// headers are already uploaded, so there is no extra wait. Memfile mapped/diff
+// are intentionally excluded; they are written to the memfile data metadata.
+func getLayerSizes(
 	ctx context.Context,
 	s storage.StorageProvider,
 	paths storage.Paths,
-) (uint64, error) {
-	obj, err := s.OpenBlob(ctx, paths.RootfsHeader())
+) (uint64, *orchestratorgrpc.LayerSizes, error) {
+	rootfsHeader, err := loadBuildHeader(ctx, s, paths.RootfsHeader())
 	if err != nil {
-		return 0, fmt.Errorf("error opening rootfs header object: %w", err)
+		return 0, nil, fmt.Errorf("error loading rootfs header: %w", err)
+	}
+
+	layerSizes := &orchestratorgrpc.LayerSizes{
+		RootfsMappedSize: rootfsHeader.Mapping.MappedBytes(),
+		RootfsDiffSize:   rootfsHeader.Mapping.BytesByBuild()[rootfsHeader.Metadata.BuildId],
+	}
+
+	// The memfile header is absent for filesystem-only templates; that's fine.
+	if memfileHeader, memErr := loadBuildHeader(ctx, s, paths.MemfileHeader()); memErr == nil {
+		layerSizes.MemfileLogicalSize = memfileHeader.Metadata.Size
+	}
+
+	return rootfsHeader.Metadata.Size, layerSizes, nil
+}
+
+func loadBuildHeader(ctx context.Context, s storage.StorageProvider, path string) (*header.Header, error) {
+	obj, err := s.OpenBlob(ctx, path)
+	if err != nil {
+		return nil, fmt.Errorf("error opening header object: %w", err)
 	}
 
 	h, err := header.Deserialize(ctx, obj)
 	if err != nil {
-		return 0, fmt.Errorf("error deserializing rootfs header: %w", err)
+		return nil, fmt.Errorf("error deserializing header: %w", err)
 	}
 
-	return h.Metadata.Size, nil
+	return h, nil
 }

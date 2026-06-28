@@ -675,6 +675,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 	return &orchestrator.SandboxPauseResponse{
 		SchedulingMetadata: res.schedulingMetadata,
+		LayerSizes:         res.layerSizes,
 	}, nil
 }
 
@@ -834,6 +835,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 	return &orchestrator.SandboxCheckpointResponse{
 		SchedulingMetadata: res.schedulingMetadata,
+		LayerSizes:         res.layerSizes,
 	}, nil
 }
 
@@ -873,6 +875,7 @@ func (s *Server) getSandboxExecutionData(sbx *sandbox.Sandbox) map[string]any {
 type snapshotResult struct {
 	meta               metadata.Template
 	schedulingMetadata *orchestrator.SchedulingMetadata
+	layerSizes         *orchestrator.LayerSizes
 	upload             *sandbox.Upload
 	completeUpload     func(ctx context.Context, uploadErr error)
 }
@@ -937,6 +940,14 @@ func (s *Server) snapshotAndCacheSandbox(
 		return nil, fmt.Errorf("register upload: %w", err)
 	}
 
+	// Synchronously-available layer sizes (no wait on the async memfile dedup
+	// header). Persisted by the API; the async memfile mapped/diff sizes are
+	// written to the memfile data object metadata during upload instead.
+	layerSizes, err := snapshot.SyncLayerSizes(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("compute layer sizes: %w", err)
+	}
+
 	telemetry.ReportEvent(ctx, "added snapshot to template cache")
 
 	// Capture once so Register and the symmetric Unregister inside
@@ -971,6 +982,7 @@ func (s *Server) snapshotAndCacheSandbox(
 	return &snapshotResult{
 		meta:               meta,
 		schedulingMetadata: snapshot.SchedulingMetadata,
+		layerSizes:         layerSizes,
 		upload:             upload,
 		completeUpload:     completeUpload,
 	}, nil

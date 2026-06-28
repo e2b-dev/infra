@@ -47,32 +47,35 @@ type EnvAlias struct {
 }
 
 type EnvBuild struct {
-	ID                 uuid.UUID
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
-	FinishedAt         *time.Time
-	Status             types.BuildStatus
-	Dockerfile         *string
-	StartCmd           *string
-	Vcpu               int64
-	RamMb              int64
-	FreeDiskSizeMb     int64
-	TotalDiskSizeMb    *int64
-	KernelVersion      string
-	FirecrackerVersion string
-	EnvID              *string
-	EnvdVersion        *string
-	ReadyCmd           *string
-	ClusterNodeID      *string
-	Reason             types.BuildReason
-	Version            *string
-	CpuArchitecture    *string
-	CpuFamily          *string
-	CpuModel           *string
-	CpuModelName       *string
-	CpuFlags           []string
-	StatusGroup        types.BuildStatusGroup
-	TeamID             *uuid.UUID
+	ID                      uuid.UUID
+	CreatedAt               time.Time
+	UpdatedAt               time.Time
+	FinishedAt              *time.Time
+	Status                  types.BuildStatus
+	Dockerfile              *string
+	StartCmd                *string
+	Vcpu                    int64
+	RamMb                   int64
+	FreeDiskSizeMb          int64
+	TotalDiskSizeMb         *int64
+	KernelVersion           string
+	FirecrackerVersion      string
+	EnvID                   *string
+	EnvdVersion             *string
+	ReadyCmd                *string
+	ClusterNodeID           *string
+	Reason                  types.BuildReason
+	Version                 *string
+	CpuArchitecture         *string
+	CpuFamily               *string
+	CpuModel                *string
+	CpuModelName            *string
+	CpuFlags                []string
+	StatusGroup             types.BuildStatusGroup
+	TeamID                  *uuid.UUID
+	RootfsMappedSizeBytes   *int64
+	RootfsDiffSizeBytes     *int64
+	MemfileLogicalSizeBytes *int64
 }
 
 type Snapshot struct {

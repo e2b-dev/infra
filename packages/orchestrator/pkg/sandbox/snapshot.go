@@ -61,3 +61,40 @@ func (s *Snapshot) Close(ctx context.Context) error {
 
 	return nil
 }
+
+// SyncLayerSizes returns the layer sizes available without waiting on the async
+// memfile dedup header: the synchronously-built rootfs mapped/diff sizes and the
+// memfile logical size. The memfile mapped/diff sizes are intentionally excluded
+// because deriving them would block on the dedup header (potentially tens of
+// seconds); they are written to the memfile data object's metadata instead.
+func (s *Snapshot) SyncLayerSizes(ctx context.Context) (*orchestrator.LayerSizes, error) {
+	ls := &orchestrator.LayerSizes{}
+
+	// The rootfs diff header is resolved synchronously at Pause time, so this
+	// Wait returns immediately.
+	rootfsHeader, err := s.RootfsDiffHeader.WaitWithContext(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("wait rootfs diff header: %w", err)
+	}
+	if rootfsHeader != nil {
+		ls.RootfsMappedSize = rootfsHeader.Mapping.MappedBytes()
+		ls.RootfsDiffSize = rootfsHeader.Mapping.BytesByBuild()[rootfsHeader.Metadata.BuildId]
+	}
+
+	if !s.FilesystemSnapshot {
+		ls.MemfileLogicalSize = s.MemorySnapshot.LogicalSize()
+	}
+
+	return ls, nil
+}
+
+// LogicalSize returns the memfile's logical (virtual device) size from its base
+// header, available synchronously at Pause time. Returns 0 for a filesystem-only
+// snapshot, which has no memfile.
+func (m MemorySnapshot) LogicalSize() uint64 {
+	if m.header == nil {
+		return 0
+	}
+
+	return m.header.Metadata.Size
+}

@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 
+	apidb "github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
@@ -55,7 +56,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 		zap.String("source_build_id", sbx.BuildID.String()),
 	)
 
-	err = snapshotInstance(ctx, node, sbx, result.TemplateID, result.BuildID.String(), filesystemOnly)
+	pauseResp, err := snapshotInstance(ctx, node, sbx, result.TemplateID, result.BuildID.String(), filesystemOnly)
 	if errors.Is(err, PauseQueueExhaustedError{}) {
 		telemetry.ReportCriticalError(ctx, "pause queue exhausted", err)
 
@@ -81,17 +82,23 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 		return fmt.Errorf("error pausing sandbox: %w", err)
 	}
 
+	// Best-effort: the pause already succeeded, so don't fail it over layer-size
+	// bookkeeping.
+	if err := o.sqlcDB.SetEnvBuildLayerSizes(ctx, apidb.LayerSizesParams(result.BuildID, pauseResp.GetLayerSizes())); err != nil {
+		logger.L().Warn(ctx, "failed to persist build layer sizes", logger.WithBuildID(result.BuildID.String()), zap.Error(err))
+	}
+
 	o.snapshotCache.Invalidate(context.WithoutCancel(ctx), sbx.SandboxID)
 
 	return nil
 }
 
-func snapshotInstance(ctx context.Context, node *nodemanager.Node, sbx sandbox.Sandbox, templateID, buildID string, filesystemOnly bool) error {
+func snapshotInstance(ctx context.Context, node *nodemanager.Node, sbx sandbox.Sandbox, templateID, buildID string, filesystemOnly bool) (*orchestrator.SandboxPauseResponse, error) {
 	childCtx, childSpan := tracer.Start(ctx, "snapshot-instance")
 	defer childSpan.End()
 
 	client, childCtx := node.GetSandboxDeleteCtx(childCtx, sbx.SandboxID, sbx.ExecutionID)
-	_, err := client.Sandbox.Pause(
+	resp, err := client.Sandbox.Pause(
 		childCtx, &orchestrator.SandboxPauseRequest{
 			SandboxId:      sbx.SandboxID,
 			TemplateId:     templateID,
@@ -103,19 +110,19 @@ func snapshotInstance(ctx context.Context, node *nodemanager.Node, sbx sandbox.S
 	if err == nil {
 		telemetry.ReportEvent(ctx, "Paused sandbox")
 
-		return nil
+		return resp, nil
 	}
 
 	st, ok := status.FromError(err)
 	if !ok {
-		return err
+		return nil, err
 	}
 
 	if st.Code() == codes.ResourceExhausted {
-		return PauseQueueExhaustedError{}
+		return nil, PauseQueueExhaustedError{}
 	}
 
-	return fmt.Errorf("failed to pause sandbox '%s': %w", sbx.SandboxID, err)
+	return nil, fmt.Errorf("failed to pause sandbox '%s': %w", sbx.SandboxID, err)
 }
 
 func (o *Orchestrator) WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandboxID string) error {

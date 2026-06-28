@@ -10,8 +10,10 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	apidb "github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
@@ -84,7 +86,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 
 type templateManagerClient interface {
 	SetStatus(ctx context.Context, buildID uuid.UUID, statusGroup types.BuildStatusGroup, reason *templatemanagergrpc.TemplateBuildStatusReason) error
-	SetFinished(ctx context.Context, buildID uuid.UUID, rootfsSize int64, envdVersion, kernelVersion, firecrackerVersion string) error
+	SetFinished(ctx context.Context, buildID uuid.UUID, rootfsSize int64, envdVersion, kernelVersion, firecrackerVersion string, layerSizes *orchestrator.LayerSizes) error
 	GetStatus(ctx context.Context, buildId uuid.UUID, templateID string, clusterID uuid.UUID, nodeID string) (*templatemanagergrpc.TemplateBuildStatusResponse, error)
 }
 
@@ -207,6 +209,7 @@ func (c *PollBuildStatus) dispatchBasedOnStatus(ctx context.Context, status *tem
 			meta.GetEnvdVersionKey(),
 			meta.GetKernelVersion(),
 			meta.GetFirecrackerVersion(),
+			meta.GetLayerSizes(),
 		)
 		if err != nil {
 			return false, fmt.Errorf("error when finishing build: %w", err)
@@ -307,7 +310,7 @@ func (tm *TemplateManager) SetStatus(ctx context.Context, buildID uuid.UUID, sta
 	return err
 }
 
-func (tm *TemplateManager) SetFinished(ctx context.Context, buildID uuid.UUID, rootfsSize int64, envdVersion, kernelVersion, firecrackerVersion string) error {
+func (tm *TemplateManager) SetFinished(ctx context.Context, buildID uuid.UUID, rootfsSize int64, envdVersion, kernelVersion, firecrackerVersion string, layerSizes *orchestrator.LayerSizes) error {
 	// first do database update to prevent race condition while calling status
 	// TODO(ENG-3469): Switch to types.BuildStatusReady once all consumers are migrated.
 	err := tm.sqlcDB.FinishTemplateBuild(ctx, queries.FinishTemplateBuildParams{
@@ -318,6 +321,9 @@ func (tm *TemplateManager) SetFinished(ctx context.Context, buildID uuid.UUID, r
 		FirecrackerVersion: firecrackerVersion,
 		BuildID:            buildID,
 	})
+	if err == nil {
+		err = tm.sqlcDB.SetEnvBuildLayerSizes(ctx, apidb.LayerSizesParams(buildID, layerSizes))
+	}
 
 	tm.buildCache.Invalidate(ctx, buildID)
 
