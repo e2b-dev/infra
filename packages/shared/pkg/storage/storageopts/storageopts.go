@@ -34,9 +34,11 @@ const ObjectMetadataSoftDeleted = "storage-index-soft-deleted"
 
 // Layer-size metadata keys, written at upload time on each data object (memfile
 // and rootfs). These sizes derive from the diff header (for memfile, the async
-// dedup header), so they are not persisted on the build row (which is finalized
-// before the upload). Values are decimal byte counts.
+// dedup header), so they live on the data object rather than the build row.
+// Values are decimal byte counts.
 const (
+	// ObjectMetadataLogicalSize is the layer's logical (virtual device) size.
+	ObjectMetadataLogicalSize = "logical-size"
 	// ObjectMetadataMappedSize is the number of bytes mapped to non-empty
 	// (non-nil) builds across the layer's mapping.
 	ObjectMetadataMappedSize = "mapped-size"
