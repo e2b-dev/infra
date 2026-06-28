@@ -25,10 +25,16 @@ var launchDarklyApiKey = os.Getenv("LAUNCH_DARKLY_API_KEY")
 const waitForInit = 5 * time.Second
 
 type Client struct {
-	ld             *ldclient.LDClient
-	deploymentName string
-	serviceName    string
+	ld               *ldclient.LDClient
+	deploymentName   string
+	serviceName      string
+	contextProviders []ContextProvider
 }
+
+// ContextProvider supplies an additional LD context on every flag evaluation.
+// Services register providers to inject specific contexts without leaking that
+// specificity into the shared client.
+type ContextProvider func(ctx context.Context) ldcontext.Context
 
 func NewClientWithDatasource(source *ldtestdata.TestDataSource) (*Client, error) {
 	ldClient, err := ldclient.MakeCustomClient(
@@ -98,12 +104,18 @@ func (c *Client) SetServiceName(serviceName string) {
 	c.serviceName = serviceName
 }
 
+// RegisterContextProvider registers a provider whose contexts are appended to
+// every flag evaluation.
+func (c *Client) RegisterContextProvider(provider ContextProvider) {
+	c.contextProviders = append(c.contextProviders, provider)
+}
+
 func (c *Client) BoolFlag(ctx context.Context, flag BoolFlag, contexts ...ldcontext.Context) bool {
-	return getFlag(ctx, c.ld, c.ld.BoolVariationCtx, flag, c.allContexts(contexts))
+	return getFlag(ctx, c.ld, c.ld.BoolVariationCtx, flag, c.allContexts(ctx, contexts))
 }
 
 func (c *Client) JSONFlag(ctx context.Context, flag JSONFlag, contexts ...ldcontext.Context) ldvalue.Value {
-	return getFlag(ctx, c.ld, c.ld.JSONVariationCtx, flag, c.allContexts(contexts))
+	return getFlag(ctx, c.ld, c.ld.JSONVariationCtx, flag, c.allContexts(ctx, contexts))
 }
 
 func (c *Client) WatchJSONFlag(ctx context.Context, flag JSONFlag, contexts ...ldcontext.Context) (<-chan interfaces.FlagValueChangeEvent, func()) {
@@ -116,7 +128,7 @@ func (c *Client) WatchJSONFlag(ctx context.Context, flag JSONFlag, contexts ...l
 
 	listener := c.ld.GetFlagTracker().AddFlagValueChangeListener(
 		flag.Key(),
-		mergeContexts(ctx, c.allContexts(contexts)),
+		mergeContexts(ctx, c.allContexts(ctx, contexts)),
 		flag.Fallback(),
 	)
 
@@ -126,11 +138,11 @@ func (c *Client) WatchJSONFlag(ctx context.Context, flag JSONFlag, contexts ...l
 }
 
 func (c *Client) IntFlag(ctx context.Context, flag IntFlag, contexts ...ldcontext.Context) int {
-	return getFlag(ctx, c.ld, c.ld.IntVariationCtx, flag, c.allContexts(contexts))
+	return getFlag(ctx, c.ld, c.ld.IntVariationCtx, flag, c.allContexts(ctx, contexts))
 }
 
 func (c *Client) StringFlag(ctx context.Context, flag StringFlag, contexts ...ldcontext.Context) string {
-	return getFlag(ctx, c.ld, c.ld.StringVariationCtx, flag, c.allContexts(contexts))
+	return getFlag(ctx, c.ld, c.ld.StringVariationCtx, flag, c.allContexts(ctx, contexts))
 }
 
 type typedFlag[T any] interface {
@@ -174,12 +186,15 @@ func (c *Client) Close(ctx context.Context) error {
 	return nil
 }
 
-func (c *Client) allContexts(contexts []ldcontext.Context) []ldcontext.Context {
+func (c *Client) allContexts(ctx context.Context, contexts []ldcontext.Context) []ldcontext.Context {
 	if c.deploymentName != "" {
 		contexts = append(contexts, deploymentContext(c.deploymentName))
 	}
 	if c.serviceName != "" {
 		contexts = append(contexts, ServiceContext(c.serviceName))
+	}
+	for _, provider := range c.contextProviders {
+		contexts = append(contexts, provider(ctx))
 	}
 
 	return contexts

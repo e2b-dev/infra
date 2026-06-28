@@ -33,9 +33,6 @@ const (
 	VolumeKind           ldcontext.Kind = "volume"
 	CompressFileTypeKind ldcontext.Kind = "compress-file-type"
 	CompressUseCaseKind  ldcontext.Kind = "compress-use-case"
-
-	OrchestratorKind            ldcontext.Kind = "orchestrator"
-	OrchestratorCommitAttribute string         = "commit"
 )
 
 // All flags must be defined here: https://app.launchdarkly.com/projects/default/flags/
