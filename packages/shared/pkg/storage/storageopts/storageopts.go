@@ -32,9 +32,9 @@ const (
 // "<reason>:<action_id>". Consumers fail closed on it behind a feature flag.
 const ObjectMetadataSoftDeleted = "storage-index-soft-deleted"
 
-// Memfile layer-size metadata keys, written at upload time on the memfile data
-// object. These sizes derive from the memfile dedup header, which resolves
-// asynchronously, so they are not persisted on the build row (which is finalized
+// Layer-size metadata keys, written at upload time on each data object (memfile
+// and rootfs). These sizes derive from the diff header (for memfile, the async
+// dedup header), so they are not persisted on the build row (which is finalized
 // before the upload). Values are decimal byte counts.
 const (
 	// ObjectMetadataMappedSize is the number of bytes mapped to non-empty

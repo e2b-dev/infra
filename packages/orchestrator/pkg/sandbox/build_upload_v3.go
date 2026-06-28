@@ -70,7 +70,7 @@ func (u *Upload) runV3(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("memfile stat: %w", err)
 		}
-		_, _, err = storage.UploadFramed(egCtx, u.store, u.paths.Memfile(), memfilePath, storage.WithMetadata(u.memfileLayerMetadata(h)))
+		_, _, err = storage.UploadFramed(egCtx, u.store, u.paths.Memfile(), memfilePath, storage.WithMetadata(u.layerSizeMetadata(h)))
 		if err != nil {
 			return err
 		}
@@ -84,11 +84,19 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
+		// Resolve the rootfs diff header to attach the layer's mapped/diff sizes
+		// to the data object, mirroring the memfile path so both artifacts'
+		// mapped/diff sizes live in object metadata.
+		h, err := u.snap.RootfsDiffHeader.WaitWithContext(egCtx)
+		if err != nil {
+			return fmt.Errorf("wait rootfs diff header: %w", err)
+		}
+
 		info, err := os.Stat(rootfsPath)
 		if err != nil {
 			return fmt.Errorf("rootfs stat: %w", err)
 		}
-		_, _, err = storage.UploadFramed(egCtx, u.store, u.paths.Rootfs(), rootfsPath, meta)
+		_, _, err = storage.UploadFramed(egCtx, u.store, u.paths.Rootfs(), rootfsPath, storage.WithMetadata(u.layerSizeMetadata(h)))
 		if err != nil {
 			return err
 		}

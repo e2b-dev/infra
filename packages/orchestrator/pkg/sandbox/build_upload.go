@@ -94,12 +94,13 @@ func NewUpload(
 	return u, nil
 }
 
-// memfileLayerMetadata augments the base object metadata with the memfile
-// layer's mapped and diff sizes, derived from the resolved diff header. These
-// are written on the memfile data object (not the build row) because they depend
-// on the async memfile dedup header, which resolves after the build row is
-// finalized. Both are derived from the header, so no upload result is needed.
-func (u *Upload) memfileLayerMetadata(h *headers.Header) storage.ObjectMetadata {
+// layerSizeMetadata augments the base object metadata with the layer's mapped
+// and diff sizes, derived from the resolved diff header. These are written on
+// the data object (not the build row) so that both artifacts' mapped/diff sizes
+// live in one place: the memfile values in particular depend on the async dedup
+// header, which resolves after the build row is finalized. Both sizes derive
+// from the header, so no upload result is needed.
+func (u *Upload) layerSizeMetadata(h *headers.Header) storage.ObjectMetadata {
 	md := make(storage.ObjectMetadata, len(u.objectMetadata)+2)
 	maps.Copy(md, u.objectMetadata)
 	if h != nil && h.Metadata != nil {
