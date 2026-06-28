@@ -441,6 +441,15 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 		ft, checksum, err := o.storeFileCompressed(ctx, path, cfg, maxConcurrency, putOpts)
 		if err != nil {
 			timer.Failure(ctx, fileInfo.Size())
+			logger.L().Error(ctx, "Failed to upload file to GCS",
+				zap.String("bucket", bucketName),
+				zap.String("object", objectName),
+				zap.String("source", path),
+				zap.Int64("size_uncompressed", fileInfo.Size()),
+				zap.String("compression", cfg.CompressionType().String()),
+				zap.Int64("duration_ms", time.Since(start).Milliseconds()),
+				zap.Error(err),
+			)
 		} else {
 			timer.Success(ctx, fileInfo.Size())
 
