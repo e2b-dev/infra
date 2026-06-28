@@ -37,8 +37,11 @@ func NewStorage(
 ) (*Storage, error) {
 	paths := storage.Paths{BuildID: buildId}
 
+	var (
+		hdrPath   string
+		headerErr error
+	)
 	if h == nil {
-		var hdrPath string
 		switch fileType {
 		case build.Memfile:
 			hdrPath = paths.MemfileHeader()
@@ -48,10 +51,9 @@ func NewStorage(
 			return nil, build.UnknownDiffTypeError{DiffType: fileType}
 		}
 
-		var err error
-		h, _, err = header.LoadHeader(ctx, persistence, hdrPath)
-		if err != nil && !errors.Is(err, storage.ErrObjectNotExist) {
-			return nil, err
+		h, _, headerErr = header.LoadHeader(ctx, persistence, hdrPath)
+		if headerErr != nil && !errors.Is(headerErr, storage.ErrObjectNotExist) {
+			return nil, headerErr
 		}
 	}
 
@@ -69,17 +71,19 @@ func NewStorage(
 
 		object, err := persistence.OpenSeekable(ctx, dataPath)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("headerless fallback: header %q not loadable (%v), data %q open failed: %w", hdrPath, headerErr, dataPath, err)
 		}
 
 		size, err := object.Size(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get object size: %w", err)
+			return nil, fmt.Errorf("headerless fallback: header %q not loadable (%v), data %q size failed: %w", hdrPath, headerErr, dataPath, err)
 		}
 
 		logger.L().Debug(ctx, "template header not found; using legacy headerless fallback",
 			logger.WithBuildID(buildId),
 			zap.String("file_type", string(fileType)),
+			zap.String("header_path", hdrPath),
+			zap.NamedError("header_error", headerErr),
 		)
 
 		id, err := uuid.Parse(buildId)
