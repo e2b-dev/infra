@@ -57,8 +57,8 @@ var (
 	uffdStartupBytesHistogram       = utils.Must(telemetry.GetHistogram(meter, telemetry.UffdStartupBytesHistogramName))
 )
 
-// Sandbox start types recorded on the orchestrator.sandbox.uffd.startup.*
-// metrics via the start_type attribute.
+// Sandbox start types recorded on sandbox start/init metrics via the
+// start_type attribute.
 type StartType string
 
 const (
@@ -1757,6 +1757,7 @@ func (s *Sandbox) WaitForEnvd(
 				telemetry.WithEnvdVersion(s.Config.Envd.Version),
 				attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
 				attribute.Bool("success", e == nil),
+				attribute.String("start_type", string(startType)),
 			))
 
 			// Record the demand-fault working set the guest needed to reach this
@@ -1803,7 +1804,7 @@ func (s *Sandbox) WaitForEnvd(
 		}
 	}()
 
-	if err := s.initEnvd(ctx); err != nil {
+	if err := s.initEnvd(ctx, startType); err != nil {
 		return fmt.Errorf("failed to init new envd: %w", err)
 	}
 
