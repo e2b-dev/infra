@@ -82,6 +82,29 @@ func TestNewMapping_RejectsUnaligned(t *testing.T) {
 	require.ErrorContains(t, err, "block size")
 }
 
+func TestMapping_MappedBytes(t *testing.T) {
+	t.Parallel()
+
+	a := uuid.New()
+	b := uuid.New()
+
+	// Two non-empty regions (a, b) and one empty (nil-build) region that must be
+	// excluded from the mapped-bytes total.
+	mappings := []BuildMap{
+		{Offset: 0, Length: PageSize, BuildId: a, BuildStorageOffset: 0},
+		{Offset: PageSize, Length: 2 * PageSize, BuildId: uuid.Nil, BuildStorageOffset: 0},
+		{Offset: 3 * PageSize, Length: PageSize, BuildId: b, BuildStorageOffset: 0},
+	}
+
+	m, err := NewMapping(PageSize, mappings)
+	require.NoError(t, err)
+
+	require.Equal(t, uint64(2*PageSize), m.MappedBytes())
+
+	// Empty mapping has no mapped bytes.
+	require.Equal(t, uint64(0), Mapping{}.MappedBytes())
+}
+
 func TestMapping_SearchOffset(t *testing.T) {
 	t.Parallel()
 

@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"strconv"
 
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
@@ -90,6 +92,21 @@ func NewUpload(
 	}
 
 	return u, nil
+}
+
+// dataObjectMetadata returns the base object metadata plus the layer's logical
+// and non-zero mapped sizes, so the storage index can read sizes off the data
+// object without parsing the binary header. The uncompressed (diff) size is
+// added by the storage backend (MetadataKeyUncompressedSize).
+func (u *Upload) dataObjectMetadata(h *headers.Header) storage.ObjectMetadata {
+	md := make(storage.ObjectMetadata, len(u.objectMetadata)+2)
+	maps.Copy(md, u.objectMetadata)
+	if h != nil && h.Metadata != nil {
+		md[storage.ObjectMetadataLogicalSize] = strconv.FormatUint(h.Metadata.Size, 10)
+		md[storage.ObjectMetadataMappedSize] = strconv.FormatUint(h.Mapping.MappedBytes(), 10)
+	}
+
+	return md
 }
 
 func (u *Upload) Run(ctx context.Context) error {

@@ -188,6 +188,21 @@ func (m Mapping) BytesByBuild() map[uuid.UUID]uint64 {
 	return out
 }
 
+// MappedBytes sums the bytes mapped to non-empty (non-nil) builds. Empty
+// (nil-build) regions are skipped, so this is the "non-zero" mapped size. It
+// scans the length and buildIdx columns directly, staying cheap for large
+// mappings.
+func (m Mapping) MappedBytes() uint64 {
+	var blocks uint64
+	for i, bi := range m.buildIdx {
+		if bi != nilBuildIdx {
+			blocks += uint64(m.lengths[i])
+		}
+	}
+
+	return blocks * m.blockSize
+}
+
 // Slice materializes the full mapping as []BuildMap (~40 bytes/entry). Use
 // sparingly — for serialization fallbacks, CLI inspection, and tests. Hot
 // paths and the cached form should use At / All instead.

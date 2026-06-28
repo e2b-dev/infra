@@ -81,7 +81,7 @@ func (u *Upload) uploadFramed(
 	var selfBuild headers.BuildData
 
 	if srcPath != "" {
-		fullFT, checksum, err := storage.UploadFramed(ctx, u.store, u.paths.DataFile(string(fileType), cfg.CompressionType()), srcPath, storage.WithCompressConfig(cfg), storage.WithMetadata(u.objectMetadata), storage.WithChecksumSHA256())
+		fullFT, checksum, err := storage.UploadFramed(ctx, u.store, u.paths.DataFile(string(fileType), cfg.CompressionType()), srcPath, storage.WithCompressConfig(cfg), storage.WithMetadata(u.dataObjectMetadata(srcHeader)), storage.WithChecksumSHA256())
 		if err != nil {
 			return fmt.Errorf("%s upload: %w", fileType, err)
 		}

@@ -58,11 +58,16 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
+		h, err := u.snap.MemorySnapshot.DiffHeader.WaitWithContext(egCtx)
+		if err != nil {
+			return fmt.Errorf("wait memfile diff header: %w", err)
+		}
+
 		info, err := os.Stat(memfilePath)
 		if err != nil {
 			return fmt.Errorf("memfile stat: %w", err)
 		}
-		_, _, err = storage.UploadFramed(egCtx, u.store, u.paths.Memfile(), memfilePath, meta)
+		_, _, err = storage.UploadFramed(egCtx, u.store, u.paths.Memfile(), memfilePath, storage.WithMetadata(u.dataObjectMetadata(h)))
 		if err != nil {
 			return err
 		}
@@ -76,11 +81,16 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
+		h, err := u.snap.RootfsDiffHeader.WaitWithContext(egCtx)
+		if err != nil {
+			return fmt.Errorf("wait rootfs diff header: %w", err)
+		}
+
 		info, err := os.Stat(rootfsPath)
 		if err != nil {
 			return fmt.Errorf("rootfs stat: %w", err)
 		}
-		_, _, err = storage.UploadFramed(egCtx, u.store, u.paths.Rootfs(), rootfsPath, meta)
+		_, _, err = storage.UploadFramed(egCtx, u.store, u.paths.Rootfs(), rootfsPath, storage.WithMetadata(u.dataObjectMetadata(h)))
 		if err != nil {
 			return err
 		}
