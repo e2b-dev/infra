@@ -150,6 +150,9 @@ const (
 	BuildStatusUploaded     BuildStatus = "uploaded"
 	BuildStatusSuccess      BuildStatus = "success"
 	BuildStatusFailed       BuildStatus = "failed"
+	// BuildStatusDeleted marks a build whose layers were soft-deleted on user
+	// delete. The env_builds row (and its team/env attribution) is preserved.
+	BuildStatusDeleted BuildStatus = "deleted"
 )
 
 // BuildStatusGroup represents the normalized status from the status_group
@@ -161,8 +164,9 @@ const (
 	BuildStatusGroupInProgress BuildStatusGroup = "in_progress"
 	BuildStatusGroupReady      BuildStatusGroup = "ready"
 	BuildStatusGroupFailed     BuildStatusGroup = "failed"
+	BuildStatusGroupDeleted    BuildStatusGroup = "deleted"
 )
 
 func (g BuildStatusGroup) IsTerminal() bool {
-	return g == BuildStatusGroupReady || g == BuildStatusGroupFailed
+	return g == BuildStatusGroupReady || g == BuildStatusGroupFailed || g == BuildStatusGroupDeleted
 }
