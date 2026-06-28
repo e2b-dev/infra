@@ -124,6 +124,8 @@ const (
 	ObjectMetadataTeamID      = storageopts.ObjectMetadataTeamID
 	ObjectMetadataTemplateID  = storageopts.ObjectMetadataTemplateID
 	ObjectMetadataBuildOrigin = storageopts.ObjectMetadataBuildOrigin
+	ObjectMetadataMappedSize  = storageopts.ObjectMetadataMappedSize
+	ObjectMetadataDiffSize    = storageopts.ObjectMetadataDiffSize
 
 	ObjectOriginPause              = storageopts.ObjectOriginPause
 	ObjectOriginTemplateBuild      = storageopts.ObjectOriginTemplateBuild

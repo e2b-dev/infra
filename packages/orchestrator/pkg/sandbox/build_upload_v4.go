@@ -81,7 +81,14 @@ func (u *Upload) uploadFramed(
 	var selfBuild headers.BuildData
 
 	if srcPath != "" {
-		fullFT, checksum, err := storage.UploadFramed(ctx, u.store, u.paths.DataFile(string(fileType), cfg.CompressionType()), srcPath, storage.WithCompressConfig(cfg), storage.WithMetadata(u.objectMetadata), storage.WithChecksumSHA256())
+		// The memfile data object carries the layer's mapped/diff sizes; they
+		// derive from the async dedup header so they aren't on the build row.
+		objectMetadata := u.objectMetadata
+		if fileType == build.Memfile {
+			objectMetadata = u.memfileLayerMetadata(srcHeader)
+		}
+
+		fullFT, checksum, err := storage.UploadFramed(ctx, u.store, u.paths.DataFile(string(fileType), cfg.CompressionType()), srcPath, storage.WithCompressConfig(cfg), storage.WithMetadata(objectMetadata), storage.WithChecksumSHA256())
 		if err != nil {
 			return fmt.Errorf("%s upload: %w", fileType, err)
 		}

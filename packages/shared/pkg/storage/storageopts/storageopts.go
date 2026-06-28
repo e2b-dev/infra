@@ -32,6 +32,19 @@ const (
 // "<reason>:<action_id>". Consumers fail closed on it behind a feature flag.
 const ObjectMetadataSoftDeleted = "storage-index-soft-deleted"
 
+// Memfile layer-size metadata keys, written at upload time on the memfile data
+// object. These sizes derive from the memfile dedup header, which resolves
+// asynchronously, so they are not persisted on the build row (which is finalized
+// before the upload). Values are decimal byte counts.
+const (
+	// ObjectMetadataMappedSize is the number of bytes mapped to non-empty
+	// (non-nil) builds across the layer's mapping.
+	ObjectMetadataMappedSize = "mapped-size"
+	// ObjectMetadataDiffSize is the number of bytes this build's own layer
+	// contributes (bytes mapped to the self build).
+	ObjectMetadataDiffSize = "diff-size"
+)
+
 // FrameSink fires once per compressed frame with its absolute C-space offset.
 // Best-effort; implementations should return quickly and bound their own I/O.
 type FrameSink func(ctx context.Context, cOffset int64, compressed []byte)

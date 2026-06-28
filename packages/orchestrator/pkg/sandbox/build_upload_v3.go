@@ -58,11 +58,19 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
+		// Resolve the memfile diff header to attach the layer's mapped/diff sizes
+		// to the data object. This runs in the background upload path, so it adds
+		// no latency to the pause/checkpoint response.
+		h, err := u.snap.MemorySnapshot.DiffHeader.WaitWithContext(egCtx)
+		if err != nil {
+			return fmt.Errorf("wait memfile diff header: %w", err)
+		}
+
 		info, err := os.Stat(memfilePath)
 		if err != nil {
 			return fmt.Errorf("memfile stat: %w", err)
 		}
-		_, _, err = storage.UploadFramed(egCtx, u.store, u.paths.Memfile(), memfilePath, meta)
+		_, _, err = storage.UploadFramed(egCtx, u.store, u.paths.Memfile(), memfilePath, storage.WithMetadata(u.memfileLayerMetadata(h)))
 		if err != nil {
 			return err
 		}

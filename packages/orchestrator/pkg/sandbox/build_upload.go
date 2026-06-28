@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"strconv"
 
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
@@ -90,6 +92,29 @@ func NewUpload(
 	}
 
 	return u, nil
+}
+
+// memfileLayerMetadata augments the base object metadata with the memfile
+// layer's mapped and diff sizes, derived from the resolved diff header. These
+// are written on the memfile data object (not the build row) because they depend
+// on the async memfile dedup header, which resolves after the build row is
+// finalized. Both are derived from the header, so no upload result is needed.
+func (u *Upload) memfileLayerMetadata(h *headers.Header) storage.ObjectMetadata {
+	md := make(storage.ObjectMetadata, len(u.objectMetadata)+2)
+	maps.Copy(md, u.objectMetadata)
+	if h != nil && h.Metadata != nil {
+		// BytesByBuild excludes empty (nil-build) regions, so summing it gives the
+		// non-zero mapped bytes; the self build's entry is this layer's diff size.
+		bytesByBuild := h.Mapping.BytesByBuild()
+		var mapped uint64
+		for _, b := range bytesByBuild {
+			mapped += b
+		}
+		md[storage.ObjectMetadataMappedSize] = strconv.FormatUint(mapped, 10)
+		md[storage.ObjectMetadataDiffSize] = strconv.FormatUint(bytesByBuild[h.Metadata.BuildId], 10)
+	}
+
+	return md
 }
 
 func (u *Upload) Run(ctx context.Context) error {
