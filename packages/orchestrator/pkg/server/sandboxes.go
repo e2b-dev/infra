@@ -940,13 +940,10 @@ func (s *Server) snapshotAndCacheSandbox(
 		return nil, fmt.Errorf("register upload: %w", err)
 	}
 
-	// Synchronously-available layer sizes (no wait on the async memfile dedup
-	// header). Persisted by the API; the async memfile mapped/diff sizes are
-	// written to the memfile data object metadata during upload instead.
-	layerSizes, err := snapshot.SyncLayerSizes(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("compute layer sizes: %w", err)
-	}
+	// Synchronously-available logical layer sizes (no wait on the async memfile
+	// dedup header). Persisted by the API; the mapped/diff sizes for both
+	// artifacts are written to the data objects' metadata during upload instead.
+	layerSizes := snapshot.SyncLayerSizes()
 
 	telemetry.ReportEvent(ctx, "added snapshot to template cache")
 

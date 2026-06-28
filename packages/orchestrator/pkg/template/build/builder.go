@@ -469,10 +469,9 @@ func forceSteps(template config.TemplateConfig) config.TemplateConfig {
 }
 
 // getLayerSizes reads the final layer's rootfs and memfile headers from storage
-// and returns the rootfs logical size plus the synchronously-available layer
-// sizes (rootfs mapped/diff and memfile logical). For template builds the
-// headers are already uploaded, so there is no extra wait. Memfile mapped/diff
-// are intentionally excluded; they are written to the memfile data metadata.
+// and returns the rootfs logical size (persisted as total_disk_size_mb) plus the
+// logical layer sizes carried over gRPC (memfile logical). The mapped/diff sizes
+// for both artifacts are written to the data objects' metadata instead.
 func getLayerSizes(
 	ctx context.Context,
 	s storage.StorageProvider,
@@ -483,10 +482,7 @@ func getLayerSizes(
 		return 0, nil, fmt.Errorf("error loading rootfs header: %w", err)
 	}
 
-	layerSizes := &orchestratorgrpc.LayerSizes{
-		RootfsMappedSize: rootfsHeader.Mapping.MappedBytes(),
-		RootfsDiffSize:   rootfsHeader.Mapping.BytesByBuild()[rootfsHeader.Metadata.BuildId],
-	}
+	layerSizes := &orchestratorgrpc.LayerSizes{}
 
 	// The memfile header is absent for filesystem-only templates; that's fine.
 	if memfileHeader, memErr := loadBuildHeader(ctx, s, paths.MemfileHeader()); memErr == nil {

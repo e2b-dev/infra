@@ -13,28 +13,18 @@ import (
 
 const setEnvBuildLayerSizes = `-- name: SetEnvBuildLayerSizes :exec
 UPDATE "public"."env_builds"
-SET rootfs_mapped_size_bytes   = $1,
-    rootfs_diff_size_bytes     = $2,
-    memfile_logical_size_bytes = $3
-WHERE id = $4
+SET memfile_logical_size_bytes = $1
+WHERE id = $2
 `
 
 type SetEnvBuildLayerSizesParams struct {
-	RootfsMappedSizeBytes   *int64
-	RootfsDiffSizeBytes     *int64
 	MemfileLogicalSizeBytes *int64
 	BuildID                 uuid.UUID
 }
 
-// Persists the synchronously-available per-artifact layer sizes for a build.
-// Each value is nullable so partial data (e.g. filesystem-only snapshots with no
-// memfile) can be written.
+// Persists the synchronously-available memfile logical size for a build. Nullable
+// so a filesystem-only snapshot (no memfile) can be written as NULL.
 func (q *Queries) SetEnvBuildLayerSizes(ctx context.Context, arg SetEnvBuildLayerSizesParams) error {
-	_, err := q.db.Exec(ctx, setEnvBuildLayerSizes,
-		arg.RootfsMappedSizeBytes,
-		arg.RootfsDiffSizeBytes,
-		arg.MemfileLogicalSizeBytes,
-		arg.BuildID,
-	)
+	_, err := q.db.Exec(ctx, setEnvBuildLayerSizes, arg.MemfileLogicalSizeBytes, arg.BuildID)
 	return err
 }

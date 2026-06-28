@@ -1,9 +1,6 @@
 -- name: SetEnvBuildLayerSizes :exec
--- Persists the synchronously-available per-artifact layer sizes for a build.
--- Each value is nullable so partial data (e.g. filesystem-only snapshots with no
--- memfile) can be written.
+-- Persists the synchronously-available memfile logical size for a build. Nullable
+-- so a filesystem-only snapshot (no memfile) can be written as NULL.
 UPDATE "public"."env_builds"
-SET rootfs_mapped_size_bytes   = sqlc.narg(rootfs_mapped_size_bytes),
-    rootfs_diff_size_bytes     = sqlc.narg(rootfs_diff_size_bytes),
-    memfile_logical_size_bytes = sqlc.narg(memfile_logical_size_bytes)
+SET memfile_logical_size_bytes = sqlc.narg(memfile_logical_size_bytes)
 WHERE id = @build_id;

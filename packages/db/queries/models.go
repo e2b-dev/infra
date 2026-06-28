@@ -73,8 +73,6 @@ type EnvBuild struct {
 	CpuFlags                []string
 	StatusGroup             types.BuildStatusGroup
 	TeamID                  *uuid.UUID
-	RootfsMappedSizeBytes   *int64
-	RootfsDiffSizeBytes     *int64
 	MemfileLogicalSizeBytes *int64
 }
 

@@ -165,14 +165,13 @@ message SchedulingMetadata {
   string rootfs_base_build_id = 9;
 }
 
-// LayerSizes carries layer sizes that are available synchronously at snapshot
-// time, i.e. without waiting on the async memfile dedup header. The memfile
-// mapped/diff sizes are intentionally excluded (they would require that wait);
-// they are written to the memfile data object's custom metadata instead.
+// LayerSizes carries the logical (virtual device) sizes available synchronously
+// at snapshot time. The mapped and diff sizes (for both rootfs and memfile) are
+// written to the data objects' custom metadata instead, so that each size
+// category lives entirely in one place: logical here, mapped/diff in metadata.
+// The rootfs logical size is already persisted as env_builds.total_disk_size_mb.
 message LayerSizes {
-  uint64 rootfs_mapped_size = 1;   // rootfs bytes mapped to non-empty builds
-  uint64 rootfs_diff_size = 2;     // rootfs bytes contributed by this build's layer
-  uint64 memfile_logical_size = 3; // memfile logical (virtual device) size
+  uint64 memfile_logical_size = 1; // memfile logical (virtual device) size
 }
 
 message SandboxPauseResponse {
