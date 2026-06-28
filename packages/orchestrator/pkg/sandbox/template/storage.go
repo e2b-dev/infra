@@ -8,9 +8,11 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -74,6 +76,11 @@ func NewStorage(
 		if err != nil {
 			return nil, fmt.Errorf("failed to get object size: %w", err)
 		}
+
+		logger.L().Debug(ctx, "template header not found; using legacy headerless fallback",
+			logger.WithBuildID(buildId),
+			zap.String("file_type", string(fileType)),
+		)
 
 		id, err := uuid.Parse(buildId)
 		if err != nil {
