@@ -5,6 +5,8 @@ package storageopts
 import (
 	"context"
 	"maps"
+	"regexp"
+	"strings"
 )
 
 type ObjectMetadata map[string]string
@@ -31,6 +33,36 @@ const (
 // (not at upload time) to mark a layer for deletion. Value is
 // "<reason>:<action_id>". Consumers fail closed on it behind a feature flag.
 const ObjectMetadataSoftDeleted = "storage-index-soft-deleted"
+
+// SoftDeleteReasonOther is the fallback group used when a tombstone reason is
+// empty or not a simple low-cardinality token.
+const SoftDeleteReasonOther = "other"
+
+// softDeleteReasonPattern bounds what is emitted as a metric dimension so a
+// malformed or high-cardinality reason cannot explode metric series.
+var softDeleteReasonPattern = regexp.MustCompile(`^[a-z0-9_-]{1,32}$`)
+
+// ParseSoftDeleteMarker splits an ObjectMetadataSoftDeleted value of the form
+// "<reason>:<action_id>" into its parts. A marker without a ":" is treated as a
+// bare reason with an empty action ID; either part may be empty.
+func ParseSoftDeleteMarker(marker string) (reason, actionID string) {
+	reason, actionID, found := strings.Cut(marker, ":")
+	if !found {
+		return marker, ""
+	}
+
+	return reason, actionID
+}
+
+// SoftDeleteReasonGroup normalizes a parsed reason into a low-cardinality
+// metric dimension, collapsing empty or unexpected values to SoftDeleteReasonOther.
+func SoftDeleteReasonGroup(reason string) string {
+	if softDeleteReasonPattern.MatchString(reason) {
+		return reason
+	}
+
+	return SoftDeleteReasonOther
+}
 
 // FrameSink fires once per compressed frame with its absolute C-space offset.
 // Best-effort; implementations should return quickly and bound their own I/O.

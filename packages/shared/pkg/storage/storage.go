@@ -41,6 +41,19 @@ var ErrMetadataUnsupported = errors.New("blob does not support reading custom me
 // ObjectMetadataSoftDeleted is the storage-index soft-delete tombstone key.
 const ObjectMetadataSoftDeleted = storageopts.ObjectMetadataSoftDeleted
 
+// SoftDeleteReasonOther is the fallback soft-delete reason group.
+const SoftDeleteReasonOther = storageopts.SoftDeleteReasonOther
+
+// ParseSoftDeleteMarker splits a soft-delete tombstone value into reason and action ID.
+func ParseSoftDeleteMarker(marker string) (reason, actionID string) {
+	return storageopts.ParseSoftDeleteMarker(marker)
+}
+
+// SoftDeleteReasonGroup normalizes a tombstone reason into a low-cardinality metric dimension.
+func SoftDeleteReasonGroup(reason string) string {
+	return storageopts.SoftDeleteReasonGroup(reason)
+}
+
 type Provider string
 
 const (
