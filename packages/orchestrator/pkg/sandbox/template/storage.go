@@ -71,12 +71,12 @@ func NewStorage(
 
 		object, err := persistence.OpenSeekable(ctx, dataPath)
 		if err != nil {
-			return nil, fmt.Errorf("headerless fallback: header %q not loadable (%v), data %q open failed: %w", hdrPath, headerErr, dataPath, err)
+			return nil, fmt.Errorf("headerless fallback: header %q not loadable (%w), data %q open failed: %w", hdrPath, headerErr, dataPath, err)
 		}
 
 		size, err := object.Size(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("headerless fallback: header %q not loadable (%v), data %q size failed: %w", hdrPath, headerErr, dataPath, err)
+			return nil, fmt.Errorf("headerless fallback: header %q not loadable (%w), data %q size failed: %w", hdrPath, headerErr, dataPath, err)
 		}
 
 		logger.L().Debug(ctx, "template header not found; using legacy headerless fallback",
