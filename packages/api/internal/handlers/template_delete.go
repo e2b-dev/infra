@@ -80,8 +80,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		return
 	}
 
-	// Soft-deletes the env (keeps build assignments/snapshots for lineage) and
-	// releases aliases. [ENG-3477] orphan storage GC is future work.
+	// Soft-deletes the env and releases aliases. [ENG-3477] storage GC is future work.
 	aliasKeys, err := a.sqlcDB.DeleteTemplate(ctx, queries.DeleteTemplateParams{
 		TemplateID: templateID,
 		TeamID:     team.ID,

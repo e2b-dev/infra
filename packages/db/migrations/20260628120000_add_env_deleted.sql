@@ -1,7 +1,6 @@
 -- +goose Up
--- Soft-delete marker for envs (templates, snapshots, snapshot_templates). On
--- user delete the env is flagged deleted instead of being removed, so its build
--- assignments and snapshot rows survive and the build lineage stays traceable.
+-- Soft-delete marker for envs, so deleting a template/snapshot keeps its build
+-- assignments and snapshot rows for lineage instead of cascading them away.
 ALTER TABLE "public"."envs" ADD COLUMN IF NOT EXISTS deleted boolean NOT NULL DEFAULT false;
 
 -- +goose Down

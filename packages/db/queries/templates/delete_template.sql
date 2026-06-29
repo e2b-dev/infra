@@ -1,8 +1,6 @@
 -- name: DeleteTemplate :many
--- Soft-deletes a template: flags its env deleted instead of removing the row, so
--- env_builds, env_build_assignments, and snapshot rows survive for lineage and a
--- future storage GC. Aliases are released and active_template_builds cleared
--- (mirroring the old env cascade). Returns released alias cache keys.
+-- Soft-deletes the env (keeps env_builds/assignments/snapshots for lineage),
+-- releases aliases, and clears active_template_builds. Returns alias cache keys.
 WITH alias_keys AS (
   SELECT CASE
     WHEN ea.namespace IS NOT NULL THEN ea.namespace || '/' || ea.alias

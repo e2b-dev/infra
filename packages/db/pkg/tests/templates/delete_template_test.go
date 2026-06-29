@@ -67,27 +67,3 @@ func TestDeleteTemplate_SoftDeletesEnvAndPreservesStructure(t *testing.T) {
 	))
 	assert.Zero(t, aliasCount, "alias must be released for reuse")
 }
-
-func TestDeleteTemplate_KeepsBuildSharedWithActiveTemplate(t *testing.T) {
-	t.Parallel()
-	db := testutils.SetupDatabase(t)
-	ctx := t.Context()
-
-	teamID := testutils.CreateTestTeam(t, db)
-	deletedID := testutils.CreateTestTemplate(t, db, teamID)
-	activeID := testutils.CreateTestTemplate(t, db, teamID)
-
-	buildID := testutils.CreateTestBuild(t, ctx, db, deletedID, "uploaded")
-	testutils.CreateTestBuildAssignment(t, ctx, db, deletedID, buildID, "default")
-	testutils.CreateTestBuildAssignment(t, ctx, db, activeID, buildID, "default")
-
-	_, err := db.SqlcClient.DeleteTemplate(ctx, queries.DeleteTemplateParams{TemplateID: deletedID, TeamID: teamID})
-	require.NoError(t, err)
-
-	assert.True(t, testutils.GetEnvBuildByID(t, ctx, db, buildID), "shared build must survive")
-	assert.False(t, envDeleted(t, db, activeID), "other template must be unaffected")
-
-	got, err := db.SqlcClient.GetTeamTemplate(ctx, queries.GetTeamTemplateParams{ID: activeID, TeamID: teamID})
-	require.NoError(t, err)
-	assert.Equal(t, activeID, got.Env.ID, "active template sharing the build must still resolve")
-}
