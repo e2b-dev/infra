@@ -24,7 +24,7 @@ func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID 
 		return err
 	}
 
-	aliasKeys, dbErr := a.deleteTemplateAndSoftDeleteBuilds(ctx, teamID, snapshot.TemplateID, "Snapshot deleted by user")
+	aliasKeys, dbErr := a.softDeleteTemplate(ctx, teamID, snapshot.TemplateID)
 	if dbErr != nil {
 		return fmt.Errorf("error deleting template from db: %w", dbErr)
 	}

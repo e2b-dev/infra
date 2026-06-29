@@ -32,6 +32,7 @@ WITH team_templates AS (
     LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
         e.team_id = sqlc.arg(team_id)::uuid AND e.source = 'template'
+        AND e.status <> 'deleted'
         AND (sqlc.arg(filter_public)::smallint = -1 OR e.public = (sqlc.arg(filter_public)::smallint = 1))
         AND (
             sqlc.arg(search)::text = ''
@@ -65,6 +66,7 @@ default_templates AS (
     JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
         sqlc.arg(include_defaults)::boolean
+        AND e.status <> 'deleted'
         AND (sqlc.arg(filter_public)::smallint = -1 OR e.public = (sqlc.arg(filter_public)::smallint = 1))
         AND (
             sqlc.arg(search)::text = ''
@@ -150,6 +152,7 @@ WITH team_templates AS (
     LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
         e.team_id = sqlc.arg(team_id)::uuid AND e.source = 'template'
+        AND e.status <> 'deleted'
         AND (sqlc.arg(filter_public)::smallint = -1 OR e.public = (sqlc.arg(filter_public)::smallint = 1))
         AND (
             sqlc.arg(search)::text = ''
@@ -183,6 +186,7 @@ default_templates AS (
     JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
         sqlc.arg(include_defaults)::boolean
+        AND e.status <> 'deleted'
         AND (sqlc.arg(filter_public)::smallint = -1 OR e.public = (sqlc.arg(filter_public)::smallint = 1))
         AND (
             sqlc.arg(search)::text = ''
@@ -268,6 +272,7 @@ WITH team_templates AS (
     LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
         e.team_id = sqlc.arg(team_id)::uuid AND e.source = 'template'
+        AND e.status <> 'deleted'
         AND (sqlc.arg(filter_public)::smallint = -1 OR e.public = (sqlc.arg(filter_public)::smallint = 1))
         AND (
             sqlc.arg(search)::text = ''
@@ -301,6 +306,7 @@ default_templates AS (
     JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
         sqlc.arg(include_defaults)::boolean
+        AND e.status <> 'deleted'
         AND (sqlc.arg(filter_public)::smallint = -1 OR e.public = (sqlc.arg(filter_public)::smallint = 1))
         AND (
             sqlc.arg(search)::text = ''
@@ -386,6 +392,7 @@ WITH team_templates AS (
     LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
         e.team_id = sqlc.arg(team_id)::uuid AND e.source = 'template'
+        AND e.status <> 'deleted'
         AND (sqlc.arg(filter_public)::smallint = -1 OR e.public = (sqlc.arg(filter_public)::smallint = 1))
         AND (
             sqlc.arg(search)::text = ''
@@ -419,6 +426,7 @@ default_templates AS (
     JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
         sqlc.arg(include_defaults)::boolean
+        AND e.status <> 'deleted'
         AND (sqlc.arg(filter_public)::smallint = -1 OR e.public = (sqlc.arg(filter_public)::smallint = 1))
         AND (
             sqlc.arg(search)::text = ''

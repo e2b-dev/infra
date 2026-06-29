@@ -18,6 +18,7 @@ JOIN public.envs AS e ON e.id = ea.env_id
 WHERE ea.alias = $1
   AND ea.namespace IS NOT DISTINCT FROM $2::text
   AND e.source IN ('template', 'snapshot_template')
+  AND e.status <> 'deleted'
 `
 
 type GetTemplateByAliasParams struct {
@@ -46,6 +47,7 @@ SELECT e.id, e.team_id, e.public, e.cluster_id
 FROM public.envs AS e
 WHERE e.id = $1
   AND e.source IN ('template', 'snapshot_template')
+  AND e.status <> 'deleted'
 `
 
 type GetTemplateByIdRow struct {

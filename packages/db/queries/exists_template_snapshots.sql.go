@@ -12,8 +12,10 @@ import (
 const existsTemplateSnapshots = `-- name: ExistsTemplateSnapshots :one
 SELECT EXISTS(
     SELECT 1
-    FROM "public"."snapshots"
-    WHERE base_env_id = $1
+    FROM "public"."snapshots" s
+    JOIN "public"."envs" e ON e.id = s.env_id
+    WHERE s.base_env_id = $1
+    AND e.status <> 'deleted'
 )
 `
 

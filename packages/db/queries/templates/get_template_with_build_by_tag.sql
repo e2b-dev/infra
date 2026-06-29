@@ -23,5 +23,6 @@ CROSS JOIN LATERAL (
 ) AS al
 WHERE e.id = @template_id
   AND e.source IN ('template', 'snapshot_template')
+  AND e.status <> 'deleted'
 ORDER BY eba.created_at DESC
 LIMIT 1;

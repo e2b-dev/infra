@@ -11,44 +11,23 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
-	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-// deleteTemplateAndSoftDeleteBuilds soft-deletes the template's exclusive build
-// layers (status='deleted', preserving the env_builds rows and their
-// team/env attribution for later storage GC) and then deletes the template, in
-// a single transaction. Returns the alias cache keys captured before cascade
-// deletion. Build artifacts are intentionally NOT removed from storage here.
-func (a *APIStore) deleteTemplateAndSoftDeleteBuilds(ctx context.Context, teamID uuid.UUID, templateID, reason string) ([]string, error) {
-	txDB, tx, err := a.sqlcDB.WithTx(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-
-	// Must run before DeleteTemplate: the exclusivity check reads
-	// env_build_assignments, which DeleteTemplate cascades away.
-	if err := txDB.MarkExclusiveTemplateBuildsDeleted(ctx, queries.MarkExclusiveTemplateBuildsDeletedParams{
-		TemplateID: templateID,
-		Reason:     dbtypes.BuildReason{Message: reason},
-	}); err != nil {
-		return nil, fmt.Errorf("mark builds deleted: %w", err)
-	}
-
-	aliasKeys, err := txDB.DeleteTemplate(ctx, queries.DeleteTemplateParams{
+// softDeleteTemplate marks the template's env status='deleted', preserving the
+// env row, its build assignments, and any snapshot rows so the build lineage
+// stays traceable for a later storage GC. Aliases are released so the name can
+// be reused. Returns the released alias cache keys for cache invalidation.
+func (a *APIStore) softDeleteTemplate(ctx context.Context, teamID uuid.UUID, templateID string) ([]string, error) {
+	aliasKeys, err := a.sqlcDB.DeleteTemplate(ctx, queries.DeleteTemplateParams{
 		TemplateID: templateID,
 		TeamID:     teamID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("delete template: %w", err)
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("commit: %w", err)
 	}
 
 	return aliasKeys, nil
@@ -118,13 +97,11 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		return
 	}
 
-	// Soft-delete the template's exclusive build layers and delete the template
-	// (cascades to env_build_assignments, env_aliases, snapshot_templates).
-	// Returns alias cache keys captured before cascade deletion for cache invalidation.
-	// Build artifacts are intentionally NOT deleted from storage here because builds are layered diffs
-	// that may be referenced by other builds' header mappings.
+	// Soft-delete the template: mark its env deleted and release aliases, keeping
+	// the env_builds rows, assignments, and snapshot rows for lineage and a later
+	// storage GC. Returns alias cache keys for cache invalidation.
 	// [ENG-3477] a future GC mechanism will handle orphaned storage.
-	aliasKeys, err := a.deleteTemplateAndSoftDeleteBuilds(ctx, team.ID, templateID, "Template deleted by user")
+	aliasKeys, err := a.softDeleteTemplate(ctx, team.ID, templateID)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when deleting template from db", err)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting template")

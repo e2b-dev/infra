@@ -36,6 +36,7 @@ type Env struct {
 	CreatedBy     *uuid.UUID
 	ClusterID     *uuid.UUID
 	Source        string
+	Status        string
 }
 
 type EnvAlias struct {

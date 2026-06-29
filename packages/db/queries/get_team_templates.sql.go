@@ -13,7 +13,7 @@ import (
 )
 
 const getTeamTemplates = `-- name: GetTeamTemplates :many
-SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, e.source,
+SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, e.source, e.status,
        COALESCE(eb.id, '00000000-0000-0000-0000-000000000000'::uuid) as build_id,
        COALESCE(eb.vcpu, 0) as build_vcpu,
        COALESCE(eb.ram_mb, 0) as build_ram_mb,
@@ -51,6 +51,7 @@ LEFT JOIN LATERAL (
 WHERE
   e.team_id = $1
   AND e.source = 'template'
+  AND e.status <> 'deleted'
 ORDER BY e.created_at ASC
 `
 
@@ -89,6 +90,7 @@ func (q *Queries) GetTeamTemplates(ctx context.Context, teamID uuid.UUID) ([]Get
 			&i.Env.CreatedBy,
 			&i.Env.ClusterID,
 			&i.Env.Source,
+			&i.Env.Status,
 			&i.BuildID,
 			&i.BuildVcpu,
 			&i.BuildRamMb,

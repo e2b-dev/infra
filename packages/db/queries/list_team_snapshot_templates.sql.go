@@ -46,6 +46,7 @@ LEFT JOIN LATERAL (
 ) ea ON TRUE
 WHERE e.team_id = $1
 AND e.source = 'snapshot_template'
+AND e.status <> 'deleted'
 AND (
     $2::text IS NULL 
     OR st.sandbox_id = $2::text

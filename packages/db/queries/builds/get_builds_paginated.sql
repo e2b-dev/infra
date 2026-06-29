@@ -15,6 +15,7 @@ FROM public.env_builds b
 JOIN LATERAL (
   SELECT a.env_id
   FROM public.env_build_assignments a
+  JOIN public.envs e ON e.id = a.env_id AND e.status <> 'deleted'
   WHERE a.build_id = b.id
   ORDER BY a.created_at DESC, a.id DESC
   LIMIT 1
@@ -52,6 +53,7 @@ FROM public.env_builds b
 JOIN LATERAL (
   SELECT a.env_id
   FROM public.env_build_assignments a
+  JOIN public.envs e ON e.id = a.env_id AND e.status <> 'deleted'
   WHERE a.build_id = b.id
   ORDER BY a.created_at DESC, a.id DESC
   LIMIT 1
@@ -90,6 +92,7 @@ FROM public.env_builds b
 JOIN LATERAL (
   SELECT a.env_id
   FROM public.env_build_assignments a
+  JOIN public.envs e ON e.id = a.env_id AND e.status <> 'deleted'
   WHERE a.build_id = b.id
     AND a.env_id = sqlc.arg(template_id)::text
   ORDER BY a.created_at DESC, a.id DESC
@@ -128,6 +131,7 @@ FROM public.env_builds b
 JOIN LATERAL (
   SELECT a.env_id
   FROM public.env_build_assignments a
+  JOIN public.envs e ON e.id = a.env_id AND e.status <> 'deleted'
   WHERE a.build_id = b.id
     AND EXISTS (
       SELECT 1

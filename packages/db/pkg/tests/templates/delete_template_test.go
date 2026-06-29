@@ -1,0 +1,93 @@
+package templates
+
+import (
+	"testing"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
+	"github.com/e2b-dev/infra/packages/db/queries"
+)
+
+func envStatus(t *testing.T, db *testutils.Database, envID string) string {
+	t.Helper()
+	var status string
+	err := db.SqlcClient.TestsRawSQLQuery(t.Context(),
+		"SELECT status FROM public.envs WHERE id = $1",
+		func(rows pgx.Rows) error {
+			if rows.Next() {
+				return rows.Scan(&status)
+			}
+
+			return nil
+		},
+		envID,
+	)
+	require.NoError(t, err)
+
+	return status
+}
+
+func TestDeleteTemplate_SoftDeletesEnvAndPreservesStructure(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, db)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
+	buildID := testutils.CreateTestBuild(t, ctx, db, templateID, "uploaded")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, buildID, "default")
+	alias := testutils.CreateTestTemplateAlias(t, db, templateID)
+
+	_, err := db.SqlcClient.DeleteTemplate(ctx, queries.DeleteTemplateParams{TemplateID: templateID, TeamID: teamID})
+	require.NoError(t, err)
+
+	assert.True(t, testutils.GetEnvByID(t, ctx, db, templateID), "env row must be preserved")
+	assert.Equal(t, "deleted", envStatus(t, db, templateID), "env must be soft-deleted")
+	assert.True(t, testutils.GetEnvBuildByID(t, ctx, db, buildID), "build row must be preserved")
+	assert.NotEmpty(t, testutils.GetBuildAssignments(t, ctx, db, templateID), "build assignment must be preserved")
+
+	templates, err := db.SqlcClient.GetTeamTemplates(ctx, teamID)
+	require.NoError(t, err)
+	assert.Empty(t, templates, "soft-deleted template must not be listed")
+
+	var aliasCount int
+	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(ctx,
+		"SELECT COUNT(*) FROM public.env_aliases WHERE alias = $1",
+		func(rows pgx.Rows) error {
+			if rows.Next() {
+				return rows.Scan(&aliasCount)
+			}
+
+			return nil
+		},
+		alias,
+	))
+	assert.Zero(t, aliasCount, "alias must be released for reuse")
+}
+
+func TestDeleteTemplate_KeepsBuildSharedWithActiveTemplate(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, db)
+	deletedID := testutils.CreateTestTemplate(t, db, teamID)
+	activeID := testutils.CreateTestTemplate(t, db, teamID)
+
+	buildID := testutils.CreateTestBuild(t, ctx, db, deletedID, "uploaded")
+	testutils.CreateTestBuildAssignment(t, ctx, db, deletedID, buildID, "default")
+	testutils.CreateTestBuildAssignment(t, ctx, db, activeID, buildID, "default")
+
+	_, err := db.SqlcClient.DeleteTemplate(ctx, queries.DeleteTemplateParams{TemplateID: deletedID, TeamID: teamID})
+	require.NoError(t, err)
+
+	assert.True(t, testutils.GetEnvBuildByID(t, ctx, db, buildID), "shared build must survive")
+	assert.Equal(t, "active", envStatus(t, db, activeID), "other template must be unaffected")
+
+	got, err := db.SqlcClient.GetTeamTemplate(ctx, queries.GetTeamTemplateParams{ID: activeID, TeamID: teamID})
+	require.NoError(t, err)
+	assert.Equal(t, activeID, got.Env.ID, "active template sharing the build must still resolve")
+}

@@ -34,6 +34,7 @@ LEFT JOIN LATERAL (
 ) ea ON TRUE
 WHERE e.team_id = @team_id
 AND e.source = 'snapshot_template'
+AND e.status <> 'deleted'
 AND (
     sqlc.narg(sandbox_id)::text IS NULL 
     OR st.sandbox_id = sqlc.narg(sandbox_id)::text
