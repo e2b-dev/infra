@@ -379,9 +379,11 @@ func TestMultipartUploader_HighConcurrency_StressTest(t *testing.T) {
 			if arrivedParts.Add(1) == wantConcurrent {
 				releaseOnce.Do(func() { close(allPartsInFlight) })
 			}
+			timer := time.NewTimer(10 * time.Second)
+			defer timer.Stop()
 			select {
 			case <-allPartsInFlight:
-			case <-time.After(10 * time.Second):
+			case <-timer.C:
 				// require/FailNow can't be called from this non-test goroutine.
 				barrierTimedOut.Store(true)
 			}
