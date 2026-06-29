@@ -17,7 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-// softDeleteTemplate marks the template's env status='deleted', preserving the
+// softDeleteTemplate flags the template's env deleted=true, preserving the
 // env row, its build assignments, and any snapshot rows so the build lineage
 // stays traceable for a later storage GC. Aliases are released so the name can
 // be reused. Returns the released alias cache keys for cache invalidation.
