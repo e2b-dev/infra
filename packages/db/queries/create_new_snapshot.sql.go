@@ -64,6 +64,12 @@ snapshot as (
     RETURNING env_id as template_id
 ),
 
+reactivate as (
+    UPDATE "public"."envs"
+    SET deleted = false
+    WHERE id = (SELECT template_id FROM snapshot) AND deleted = true
+),
+
 new_build as (
     INSERT INTO "public"."env_builds" (
         vcpu,
@@ -145,6 +151,8 @@ type UpsertSnapshotRow struct {
 }
 
 // Create a new snapshot or update an existing one
+// Reusing an existing snapshot env (ON CONFLICT) may hit one that was
+// soft-deleted by a prior delete; re-pausing makes it live again.
 // Create a new build for the snapshot, copying CPU info from the source build so
 // a pause keeps the snapshot's CPU compatibility pinned to the original build
 // instead of the node the pause happened to run on. Scalar subqueries are used so
