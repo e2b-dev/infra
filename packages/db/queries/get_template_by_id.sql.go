@@ -12,36 +12,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const getTemplateByIDIncludingDeleted = `-- name: GetTemplateByIDIncludingDeleted :one
-SELECT t.id, t.created_at, t.updated_at, t.public, t.build_count, t.spawn_count, t.last_spawned_at, t.team_id, t.created_by, t.cluster_id, t.source, t.deleted_at
-FROM "public"."envs" t
-WHERE t.id = $1
-  AND t.source IN ('template', 'snapshot_template')
-`
-
-// No deleted filter (distinct from GetTemplateById): the rebuild path resolves
-// by id here and must find a soft-deleted env so CreateOrUpdateTemplate can
-// reactivate it.
-func (q *Queries) GetTemplateByIDIncludingDeleted(ctx context.Context, id string) (Env, error) {
-	row := q.db.QueryRow(ctx, getTemplateByIDIncludingDeleted, id)
-	var i Env
-	err := row.Scan(
-		&i.ID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.Public,
-		&i.BuildCount,
-		&i.SpawnCount,
-		&i.LastSpawnedAt,
-		&i.TeamID,
-		&i.CreatedBy,
-		&i.ClusterID,
-		&i.Source,
-		&i.DeletedAt,
-	)
-	return i, err
-}
-
 const getTemplateByIDWithAliases = `-- name: GetTemplateByIDWithAliases :one
 SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, e.source, al.aliases, al.names
 FROM "public"."active_envs" e

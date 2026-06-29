@@ -36,23 +36,6 @@ type Cluster struct {
 	Name               string
 }
 
-type Env struct {
-	ID         string
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
-	Public     bool
-	BuildCount int32
-	// Number of times the env was spawned
-	SpawnCount int64
-	// Timestamp of the last time the env was spawned
-	LastSpawnedAt *time.Time
-	TeamID        uuid.UUID
-	CreatedBy     *uuid.UUID
-	ClusterID     *uuid.UUID
-	Source        string
-	DeletedAt     *time.Time
-}
-
 type EnvAlias struct {
 	Alias       string
 	IsRenamable bool
