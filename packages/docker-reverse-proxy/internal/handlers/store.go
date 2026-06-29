@@ -49,12 +49,16 @@ func NewStore(ctx context.Context) *APIStore {
 	// Custom ModifyResponse function
 	proxy.ModifyResponse = func(resp *http.Response) error {
 		if resp.StatusCode == http.StatusUnauthorized {
-			respBody, _ := io.ReadAll(resp.Body)
+			respBody, err := io.ReadAll(resp.Body)
 			resp.Body.Close()
+			if err != nil {
+				return err
+			}
 			log.Printf("Unauthorized request:[%s] %s\n", resp.Request.Method, respBody)
 			// Restore the body so the reverse proxy can forward it to the client.
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
 			resp.ContentLength = int64(len(respBody))
+			resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(respBody)))
 		}
 
 		return nil
