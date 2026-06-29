@@ -463,16 +463,16 @@ const (
 // The Firecracker version the last tag + the short SHA (so we can build our dev previews)
 // TODO: The short tag here has only 7 characters — the one from our build pipeline will likely have exactly 8 so this will break.
 const (
-	DefaultFirecackerV1_10Version = "v1.10.1_30cbb07"
-	DefaultFirecackerV1_12Version = "v1.12.1_210cbac"
-	DefaultFirecackerV1_14Version = "v1.14.1_431f1fc"
-	DefaultFirecrackerVersion     = DefaultFirecackerV1_14Version
+	DefaultFirecrackerV1_10Version = "v1.10.1_30cbb07"
+	DefaultFirecrackerV1_12Version = "v1.12.1_210cbac"
+	DefaultFirecrackerV1_14Version = "v1.14.1_431f1fc"
+	DefaultFirecrackerVersion      = DefaultFirecrackerV1_14Version
 )
 
 var FirecrackerVersionMap = map[string]string{
-	"v1.10": DefaultFirecackerV1_10Version,
-	"v1.12": DefaultFirecackerV1_12Version,
-	"v1.14": DefaultFirecackerV1_14Version,
+	"v1.10": DefaultFirecrackerV1_10Version,
+	"v1.12": DefaultFirecrackerV1_12Version,
+	"v1.14": DefaultFirecrackerV1_14Version,
 }
 
 // BuildIoEngine Sync is used by default as there seems to be a bad interaction between Async and a lot of io operations.
