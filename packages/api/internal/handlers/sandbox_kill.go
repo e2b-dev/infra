@@ -29,6 +29,12 @@ func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID 
 		return fmt.Errorf("error deleting template from db: %w", dbErr)
 	}
 
+	// Delete the snapshot row to prevent orphaned rows after soft-delete.
+	// Soft-delete on envs no longer triggers ON DELETE CASCADE, so explicit cleanup is needed.
+	if err := db.DeleteSnapshot(ctx, a.sqlcDB, teamID, sandboxID); err != nil {
+		return fmt.Errorf("error deleting snapshot row: %w", err)
+	}
+
 	a.templateCache.InvalidateAllTags(context.WithoutCancel(ctx), snapshot.TemplateID)
 	a.templateCache.InvalidateAliasesByTemplateID(context.WithoutCancel(ctx), snapshot.TemplateID, aliasKeys)
 	a.snapshotCache.Invalidate(context.WithoutCancel(ctx), sandboxID)

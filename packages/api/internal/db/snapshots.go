@@ -47,3 +47,10 @@ func GetSnapshotBuilds(ctx context.Context, db *sqlcdb.Client, teamID uuid.UUID,
 
 	return snapshot, nil
 }
+
+func DeleteSnapshot(ctx context.Context, db *sqlcdb.Client, teamID uuid.UUID, sandboxID string) error {
+	return db.DeleteSnapshot(ctx, queries.DeleteSnapshotParams{
+		SandboxID: sandboxID,
+		TeamID:    teamID,
+	})
+}
