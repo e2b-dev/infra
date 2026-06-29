@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -24,7 +25,10 @@ func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID 
 		return err
 	}
 
-	aliasKeys, dbErr := a.softDeleteTemplate(ctx, teamID, snapshot.TemplateID)
+	aliasKeys, dbErr := a.sqlcDB.DeleteTemplate(ctx, queries.DeleteTemplateParams{
+		TeamID:     teamID,
+		TemplateID: snapshot.TemplateID,
+	})
 	if dbErr != nil {
 		return fmt.Errorf("error deleting template from db: %w", dbErr)
 	}

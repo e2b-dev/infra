@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -16,22 +15,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
-
-// softDeleteTemplate flags the template's env deleted=true, preserving the
-// env row, its build assignments, and any snapshot rows so the build lineage
-// stays traceable for a later storage GC. Aliases are released so the name can
-// be reused. Returns the released alias cache keys for cache invalidation.
-func (a *APIStore) softDeleteTemplate(ctx context.Context, teamID uuid.UUID, templateID string) ([]string, error) {
-	aliasKeys, err := a.sqlcDB.DeleteTemplate(ctx, queries.DeleteTemplateParams{
-		TemplateID: templateID,
-		TeamID:     teamID,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("delete template: %w", err)
-	}
-
-	return aliasKeys, nil
-}
 
 // DeleteTemplatesTemplateID serves to delete a template (e.g. in CLI)
 func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID api.TemplateID) {
@@ -97,11 +80,12 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		return
 	}
 
-	// Soft-delete the template: mark its env deleted and release aliases, keeping
-	// the env_builds rows, assignments, and snapshot rows for lineage and a later
-	// storage GC. Returns alias cache keys for cache invalidation.
-	// [ENG-3477] a future GC mechanism will handle orphaned storage.
-	aliasKeys, err := a.softDeleteTemplate(ctx, team.ID, templateID)
+	// Soft-deletes the env (keeps build assignments/snapshots for lineage) and
+	// releases aliases. [ENG-3477] orphan storage GC is future work.
+	aliasKeys, err := a.sqlcDB.DeleteTemplate(ctx, queries.DeleteTemplateParams{
+		TemplateID: templateID,
+		TeamID:     team.ID,
+	})
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when deleting template from db", err)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting template")
