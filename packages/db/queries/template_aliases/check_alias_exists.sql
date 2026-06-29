@@ -3,6 +3,7 @@ SELECT EXISTS(
     SELECT 1
     FROM "public"."envs"
     WHERE id = @alias
+      AND status <> 'deleted'
 );
 
 -- name: CheckAliasExistsInNamespace :one

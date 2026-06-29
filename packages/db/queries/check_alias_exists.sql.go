@@ -14,6 +14,7 @@ SELECT EXISTS(
     SELECT 1
     FROM "public"."envs"
     WHERE id = $1
+      AND status <> 'deleted'
 )
 `
 
