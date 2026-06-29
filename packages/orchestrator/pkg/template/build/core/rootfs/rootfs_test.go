@@ -107,9 +107,10 @@ func TestAdditionalOCILayers(t *testing.T) {
 		// envd can answer the build's upload before the wipe, and the staged
 		// /tmp/envd_updated is deleted, so the follow-up chmod/mv fails with ENOENT.
 		envdAfter := ""
-		for _, line := range strings.Split(actualFiles["etc/systemd/system/envd.service"], "\n") {
+		for line := range strings.SplitSeq(actualFiles["etc/systemd/system/envd.service"], "\n") {
 			if strings.HasPrefix(line, "After=") {
 				envdAfter = line
+
 				break
 			}
 		}
