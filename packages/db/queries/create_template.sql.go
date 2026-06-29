@@ -19,7 +19,7 @@ ON CONFLICT (id) DO UPDATE
 SET updated_at  = NOW(),
     deleted_at  = NULL,
     build_count = envs.build_count + 1
-WHERE envs.source = 'template'
+WHERE envs.source IN ('template', 'snapshot_template')
 `
 
 type CreateOrUpdateTemplateParams struct {
@@ -29,7 +29,8 @@ type CreateOrUpdateTemplateParams struct {
 	ClusterID  *uuid.UUID
 }
 
-// Only reactivate template envs; never resurrect a soft-deleted snapshot env.
+// Reactivate only rebuildable envs (template / snapshot_template); never
+// resurrect a paused-sandbox 'snapshot' env.
 func (q *Queries) CreateOrUpdateTemplate(ctx context.Context, arg CreateOrUpdateTemplateParams) error {
 	_, err := q.db.Exec(ctx, createOrUpdateTemplate,
 		arg.TemplateID,
