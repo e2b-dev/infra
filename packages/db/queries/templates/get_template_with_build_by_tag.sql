@@ -3,7 +3,7 @@
 -- @template_id: the template ID to look up
 -- @tag: defaults to 'default' if not provided
 SELECT sqlc.embed(e), sqlc.embed(eb), aliases, names
-FROM public.envs AS e
+FROM public.active_envs AS e
 JOIN public.env_build_assignments AS eba ON eba.env_id = e.id
     AND (
         -- Match by tag
@@ -23,6 +23,5 @@ CROSS JOIN LATERAL (
 ) AS al
 WHERE e.id = @template_id
   AND e.source IN ('template', 'snapshot_template')
-  AND e.deleted_at IS NULL
 ORDER BY eba.created_at DESC
 LIMIT 1;

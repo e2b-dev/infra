@@ -103,7 +103,7 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 		return
 	}
 
-	template := result.Env
+	template := result.ActiveEnv
 	buildID := result.EnvBuild.ID
 
 	telemetry.SetAttributes(ctx,
