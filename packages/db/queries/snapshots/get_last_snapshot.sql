@@ -1,7 +1,7 @@
 -- name: GetLastSnapshot :one
 SELECT COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases, COALESCE(ea.names, ARRAY[]::text[])::text[] AS names, sqlc.embed(s), sqlc.embed(eb)
 FROM "public"."snapshots" s
-JOIN "public"."envs" e ON e.id = s.env_id AND e.status <> 'deleted'
+JOIN "public"."envs" e ON e.id = s.env_id AND e.deleted = false
 JOIN LATERAL (
     SELECT eba.build_id
     FROM "public"."env_build_assignments" eba

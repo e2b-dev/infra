@@ -1,10 +1,8 @@
 -- name: DeleteTemplate :many
--- Soft-deletes a template by marking its env status='deleted'. The env row, its
--- build assignments, and any snapshot rows are preserved so the build lineage
--- stays traceable for a future storage GC. Aliases are released (deleted) so the
--- name can be reused, and active_template_builds rows are cleared (mirroring the
--- old env cascade) so in-flight build tracking and concurrency counts don't
--- linger. Returns the released alias cache keys for cache invalidation.
+-- Soft-deletes a template: flags its env deleted instead of removing the row, so
+-- env_builds, env_build_assignments, and snapshot rows survive for lineage and a
+-- future storage GC. Aliases are released and active_template_builds cleared
+-- (mirroring the old env cascade). Returns released alias cache keys.
 WITH alias_keys AS (
   SELECT CASE
     WHEN ea.namespace IS NOT NULL THEN ea.namespace || '/' || ea.alias
@@ -14,10 +12,10 @@ WITH alias_keys AS (
   WHERE ea.env_id = @template_id
 ), updated AS (
   UPDATE public.envs e
-  SET status = 'deleted', updated_at = NOW()
+  SET deleted = true, updated_at = NOW()
   WHERE e.id = @template_id
   AND e.team_id = @team_id
-  AND e.status <> 'deleted'
+  AND e.deleted = false
   RETURNING e.id
 ), released AS (
   DELETE FROM public.env_aliases ea

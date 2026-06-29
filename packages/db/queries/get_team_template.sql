@@ -37,4 +37,4 @@ WHERE
   e.id = $1
   AND e.team_id = $2
   AND e.source = 'template'
-  AND e.status <> 'deleted';
+  AND e.deleted = false;

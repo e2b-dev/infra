@@ -11,14 +11,14 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 )
 
-func envStatus(t *testing.T, db *testutils.Database, envID string) string {
+func envDeleted(t *testing.T, db *testutils.Database, envID string) bool {
 	t.Helper()
-	var status string
+	var deleted bool
 	err := db.SqlcClient.TestsRawSQLQuery(t.Context(),
-		"SELECT status FROM public.envs WHERE id = $1",
+		"SELECT deleted FROM public.envs WHERE id = $1",
 		func(rows pgx.Rows) error {
 			if rows.Next() {
-				return rows.Scan(&status)
+				return rows.Scan(&deleted)
 			}
 
 			return nil
@@ -27,7 +27,7 @@ func envStatus(t *testing.T, db *testutils.Database, envID string) string {
 	)
 	require.NoError(t, err)
 
-	return status
+	return deleted
 }
 
 func TestDeleteTemplate_SoftDeletesEnvAndPreservesStructure(t *testing.T) {
@@ -45,7 +45,7 @@ func TestDeleteTemplate_SoftDeletesEnvAndPreservesStructure(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.True(t, testutils.GetEnvByID(t, ctx, db, templateID), "env row must be preserved")
-	assert.Equal(t, "deleted", envStatus(t, db, templateID), "env must be soft-deleted")
+	assert.True(t, envDeleted(t, db, templateID), "env must be soft-deleted")
 	assert.True(t, testutils.GetEnvBuildByID(t, ctx, db, buildID), "build row must be preserved")
 	assert.NotEmpty(t, testutils.GetBuildAssignments(t, ctx, db, templateID), "build assignment must be preserved")
 
@@ -85,7 +85,7 @@ func TestDeleteTemplate_KeepsBuildSharedWithActiveTemplate(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.True(t, testutils.GetEnvBuildByID(t, ctx, db, buildID), "shared build must survive")
-	assert.Equal(t, "active", envStatus(t, db, activeID), "other template must be unaffected")
+	assert.False(t, envDeleted(t, db, activeID), "other template must be unaffected")
 
 	got, err := db.SqlcClient.GetTeamTemplate(ctx, queries.GetTeamTemplateParams{ID: activeID, TeamID: teamID})
 	require.NoError(t, err)

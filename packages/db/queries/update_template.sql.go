@@ -19,7 +19,7 @@ WHERE id IN (
     LEFT JOIN "public"."env_aliases" ea ON ea.env_id = e.id
     WHERE e.team_id = $2
     AND e.source = 'template'
-    AND e.status <> 'deleted'
+    AND e.deleted = false
     AND (e.id = $3 OR ea.alias = $3)
 )
 RETURNING e.id

@@ -30,7 +30,7 @@ WITH team_templates AS (
     LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
         e.team_id = $1::uuid AND e.source = 'template'
-        AND e.status <> 'deleted'
+        AND e.deleted = false
         AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
         AND (
             $3::text = ''
@@ -64,7 +64,7 @@ default_templates AS (
     JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
         $7::boolean
-        AND e.status <> 'deleted'
+        AND e.deleted = false
         AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
         AND (
             $3::text = ''
@@ -245,7 +245,7 @@ WITH team_templates AS (
     LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
         e.team_id = $1::uuid AND e.source = 'template'
-        AND e.status <> 'deleted'
+        AND e.deleted = false
         AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
         AND (
             $3::text = ''
@@ -279,7 +279,7 @@ default_templates AS (
     JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
         $7::boolean
-        AND e.status <> 'deleted'
+        AND e.deleted = false
         AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
         AND (
             $3::text = ''
@@ -444,7 +444,7 @@ WITH team_templates AS (
     LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
         e.team_id = $1::uuid AND e.source = 'template'
-        AND e.status <> 'deleted'
+        AND e.deleted = false
         AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
         AND (
             $3::text = ''
@@ -478,7 +478,7 @@ default_templates AS (
     JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
         $7::boolean
-        AND e.status <> 'deleted'
+        AND e.deleted = false
         AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
         AND (
             $3::text = ''
@@ -643,7 +643,7 @@ WITH team_templates AS (
     LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
         e.team_id = $1::uuid AND e.source = 'template'
-        AND e.status <> 'deleted'
+        AND e.deleted = false
         AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
         AND (
             $3::text = ''
@@ -677,7 +677,7 @@ default_templates AS (
     JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
         $7::boolean
-        AND e.status <> 'deleted'
+        AND e.deleted = false
         AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
         AND (
             $3::text = ''

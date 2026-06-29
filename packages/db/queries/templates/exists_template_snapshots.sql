@@ -4,5 +4,5 @@ SELECT EXISTS(
     FROM "public"."snapshots" s
     JOIN "public"."envs" e ON e.id = s.env_id
     WHERE s.base_env_id = @env_id
-    AND e.status <> 'deleted'
+    AND e.deleted = false
 );

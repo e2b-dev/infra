@@ -8,7 +8,7 @@ JOIN public.envs AS e ON e.id = ea.env_id
 WHERE ea.alias = @alias
   AND ea.namespace IS NOT DISTINCT FROM sqlc.narg(namespace)::text
   AND e.source IN ('template', 'snapshot_template')
-  AND e.status <> 'deleted';
+  AND e.deleted = false;
 
 -- name: GetTemplateById :one
 -- Looks up a template by its ID directly
@@ -17,4 +17,4 @@ SELECT e.id, e.team_id, e.public, e.cluster_id
 FROM public.envs AS e
 WHERE e.id = @template_id
   AND e.source IN ('template', 'snapshot_template')
-  AND e.status <> 'deleted';
+  AND e.deleted = false;

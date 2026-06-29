@@ -17,7 +17,7 @@ INSERT INTO "public"."envs"(id, team_id, created_by, updated_at, public, cluster
 VALUES ($1, $2, $3, NOW(), FALSE, $4, 'template')
 ON CONFLICT (id) DO UPDATE
 SET updated_at  = NOW(),
-    status      = 'active',
+    deleted     = false,
     build_count = envs.build_count + 1
 `
 

@@ -3,7 +3,7 @@ SELECT t.*
 FROM "public"."envs" t
 WHERE t.id = $1
   AND t.source IN ('template', 'snapshot_template')
-  AND t.status <> 'deleted';
+  AND t.deleted = false;
 
 -- name: GetTemplateByIDWithAliases :one
 SELECT e.*, al.aliases, al.names
@@ -17,4 +17,4 @@ CROSS JOIN LATERAL (
 ) AS al
 WHERE e.id = $1
   AND e.source IN ('template', 'snapshot_template')
-  AND e.status <> 'deleted';
+  AND e.deleted = false;

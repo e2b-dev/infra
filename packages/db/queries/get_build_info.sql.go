@@ -27,7 +27,7 @@ JOIN LATERAL (
   JOIN public.envs e ON e.id = a.env_id
   WHERE a.build_id = b.id
     AND e.team_id = $1::uuid
-    AND e.status <> 'deleted'
+    AND e.deleted = false
   ORDER BY a.created_at DESC, a.id DESC
   LIMIT 1
 ) assignment ON TRUE
