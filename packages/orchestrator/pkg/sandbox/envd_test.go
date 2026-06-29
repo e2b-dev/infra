@@ -5,6 +5,8 @@ package sandbox
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -17,6 +19,39 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/envd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
 )
+
+func TestClassifyEnvdInitExit(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want envdInitExitType
+	}{
+		{"nil", nil, envdInitExitSuccess},
+		{"deadline_exceeded", context.DeadlineExceeded, envdInitExitTimeout},
+		{"wrapped_deadline", fmt.Errorf("init: %w", context.DeadlineExceeded), envdInitExitTimeout},
+		{"wait_for_envd_timeout", ErrWaitForEnvdTimeout, envdInitExitTimeout},
+		{
+			"wrapped_wait_for_envd_timeout",
+			// Mirrors doRequestWithInfiniteRetries: ctx.Err() is Canceled, the
+			// cause is the timeout sentinel, both wrapped together.
+			fmt.Errorf("%w with cause: %w", context.Canceled, ErrWaitForEnvdTimeout),
+			envdInitExitTimeout,
+		},
+		{"canceled", context.Canceled, envdInitExitCanceled},
+		{"wrapped_canceled", fmt.Errorf("init: %w", context.Canceled), envdInitExitCanceled},
+		{"other", errors.New("connection refused"), envdInitExitOther},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.want, classifyEnvdInitExit(tt.err))
+		})
+	}
+}
 
 // mockEgressProxy is a test EgressProxy that returns a fixed CA bundle string.
 type mockEgressProxy struct {
