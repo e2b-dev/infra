@@ -15,6 +15,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/draingate"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
@@ -88,8 +89,10 @@ type Server struct {
 	uploadsWG       sync.WaitGroup
 	uploadsInFlight atomic.Int64
 
-	done      chan struct{}
-	closeOnce sync.Once
+	// startGate admits new sandbox Create operations and is closed once the
+	// node starts draining, so a draining node rejects new sandboxes while
+	// in-flight Creates finish. Checkpoint is intentionally not gated.
+	startGate draingate.Gate
 }
 
 type ServiceConfig struct {
@@ -135,7 +138,6 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 		peerRegistry:      cfg.PeerRegistry,
 		uploadedBuilds:    uploadedBuilds,
 		uploads:           cfg.Uploads,
-		done:              make(chan struct{}),
 	}
 
 	meter := cfg.Tel.MeterProvider.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/server")
@@ -231,9 +233,7 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 }
 
 func (s *Server) Close(ctx context.Context) error {
-	s.closeOnce.Do(func() {
-		close(s.done)
-	})
+	s.StartDraining(ctx)
 
 	// Wait for in-flight snapshot uploads to finish so a graceful shutdown
 	// doesn't drop a snapshot that is still uploading. ctx is cancelled on a
@@ -285,11 +285,49 @@ func (s *Server) drainUploads(ctx context.Context, uploadsDone <-chan struct{}) 
 	}
 }
 
-// DrainSandboxes waits for the live sandboxes on this node to exit on their own
-// during a graceful shutdown, then waits for their lifecycle cleanup to finish.
-// It does not reject new sandbox starts; that admission gating is layered in
-// separately. It returns ctx.Err() if ctx is cancelled before the node empties.
+// StartDraining closes the sandbox start gate so the node rejects new Create
+// operations. Template builds are drained separately by the template server's
+// own gate. It is idempotent.
+func (s *Server) StartDraining(ctx context.Context) {
+	if s.startGate.StartDraining() {
+		live := 0
+		if s.sandboxFactory != nil && s.sandboxFactory.Sandboxes != nil {
+			live = s.sandboxFactory.Sandboxes.Count()
+		}
+
+		logger.L().Info(ctx, "sandbox server entering drain mode", zap.Int("live_sandboxes", live))
+	}
+}
+
+// waitSandboxStarts blocks until every in-flight Create admitted through the
+// start gate has finished, so a drain snapshot of the live set cannot miss a
+// sandbox that is still mid-start.
+func (s *Server) waitSandboxStarts(ctx context.Context) error {
+	logger.L().Info(ctx, "waiting for in-flight sandbox start operations to finish")
+
+	if err := s.startGate.Wait(ctx); err != nil {
+		return fmt.Errorf("waiting for in-flight sandbox start operations: %w", err)
+	}
+
+	logger.L().Info(ctx, "in-flight sandbox start operations finished")
+
+	return nil
+}
+
+// DrainSandboxes rejects new sandbox starts, waits for in-flight starts to
+// finish, then waits for the live sandboxes on this node to exit on their own
+// during a graceful shutdown and for their lifecycle cleanup to finish. It
+// returns ctx.Err() if ctx is cancelled before the node empties.
 func (s *Server) DrainSandboxes(ctx context.Context) error {
+	s.StartDraining(ctx)
+
+	// Create holds the start gate for its whole operation, so waiting for the
+	// gate to drain is enough before snapshotting the live set: no admitted start
+	// can still be mid-flight afterward.
+	if err := s.waitSandboxStarts(ctx); err != nil {
+		return err
+	}
+
 	live := s.sandboxFactory.Sandboxes.Count()
 	logger.L().Info(ctx, "starting graceful sandbox drain", zap.Int("live_sandboxes", live))
 
@@ -339,7 +377,7 @@ func (s *Server) refreshStartingSandboxesLimit(ctx context.Context) {
 
 	for {
 		select {
-		case <-s.done:
+		case <-s.startGate.Done():
 			return
 		case <-ticker.C:
 			limit := s.featureFlags.IntFlag(ctx, featureflags.MaxStartingInstancesPerNode)

@@ -106,6 +106,17 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	}
 
 	logs := buildlogger.NewLogEntryLogger()
+	// Admit the build through the template drain gate, which rejects new builds
+	// once the server is draining. The gate is released after the build is
+	// registered on s.wg below, so Wait's gate barrier guarantees every admitted
+	// build is tracked before it reads s.wg. In-flight builds (already on s.wg)
+	// run to completion; their per-layer sandbox starts are not separately gated.
+	releaseTemplateOperationStart, err := s.enterTemplateOperationStart(ctx, "template-create")
+	if err != nil {
+		return nil, err
+	}
+	defer releaseTemplateOperationStart()
+
 	buildInfo, err := s.buildCache.Create(template.TeamID, metadata.BuildID, logs)
 	if err != nil {
 		return nil, fmt.Errorf("error while creating build cache: %w", err)
@@ -123,6 +134,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 
 	s.wg.Add(1)
 	s.activeBuilds.Add(1)
+	releaseTemplateOperationStart()
 	go func(ctx context.Context) {
 		defer s.wg.Done()
 		defer s.activeBuilds.Add(-1)
