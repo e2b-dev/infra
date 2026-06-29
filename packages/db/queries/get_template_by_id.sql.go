@@ -17,9 +17,10 @@ SELECT t.id, t.created_at, t.updated_at, t.public, t.build_count, t.spawn_count,
 FROM "public"."envs" t
 WHERE t.id = $1
   AND t.source IN ('template', 'snapshot_template')
-  AND t.deleted = false
 `
 
+// No deleted filter: the build/rebuild path resolves by id here and must find a
+// soft-deleted env so CreateOrUpdateTemplate can reactivate it.
 func (q *Queries) GetTemplateByID(ctx context.Context, id string) (Env, error) {
 	row := q.db.QueryRow(ctx, getTemplateByID, id)
 	var i Env

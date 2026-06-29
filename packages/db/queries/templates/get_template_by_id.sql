@@ -1,9 +1,10 @@
 -- name: GetTemplateByID :one
+-- No deleted filter: the build/rebuild path resolves by id here and must find a
+-- soft-deleted env so CreateOrUpdateTemplate can reactivate it.
 SELECT t.*
 FROM "public"."envs" t
 WHERE t.id = $1
-  AND t.source IN ('template', 'snapshot_template')
-  AND t.deleted = false;
+  AND t.source IN ('template', 'snapshot_template');
 
 -- name: GetTemplateByIDWithAliases :one
 SELECT e.*, al.aliases, al.names
