@@ -35,6 +35,14 @@ func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID ap
 		return
 	}
 
+	// GetTemplateByID intentionally returns soft-deleted envs (for rebuild
+	// reactivation); layer uploads must not be served for a deleted template.
+	if templateDB.Deleted {
+		a.sendAPIStoreError(c, http.StatusNotFound, "Template not found")
+
+		return
+	}
+
 	dbTeamID := templateDB.TeamID.String()
 	team, apiErr := a.GetTeam(ctx, c, &dbTeamID)
 	if apiErr != nil {
