@@ -12,17 +12,18 @@ import (
 	"github.com/google/uuid"
 )
 
-const getTemplateByID = `-- name: GetTemplateByID :one
+const getTemplateByIDIncludingDeleted = `-- name: GetTemplateByIDIncludingDeleted :one
 SELECT t.id, t.created_at, t.updated_at, t.public, t.build_count, t.spawn_count, t.last_spawned_at, t.team_id, t.created_by, t.cluster_id, t.source, t.deleted_at
 FROM "public"."envs" t
 WHERE t.id = $1
   AND t.source IN ('template', 'snapshot_template')
 `
 
-// No deleted filter: the build/rebuild path resolves by id here and must find a
-// soft-deleted env so CreateOrUpdateTemplate can reactivate it.
-func (q *Queries) GetTemplateByID(ctx context.Context, id string) (Env, error) {
-	row := q.db.QueryRow(ctx, getTemplateByID, id)
+// No deleted filter (distinct from GetTemplateById): the rebuild path resolves
+// by id here and must find a soft-deleted env so CreateOrUpdateTemplate can
+// reactivate it.
+func (q *Queries) GetTemplateByIDIncludingDeleted(ctx context.Context, id string) (Env, error) {
+	row := q.db.QueryRow(ctx, getTemplateByIDIncludingDeleted, id)
 	var i Env
 	err := row.Scan(
 		&i.ID,

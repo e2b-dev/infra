@@ -27,7 +27,7 @@ func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID ap
 	}
 
 	// Resolve via the active-envs view so a soft-deleted template is simply not
-	// found (rebuild uses the unfiltered GetTemplateByID instead).
+	// found (rebuild uses GetTemplateByIDIncludingDeleted instead).
 	templateDB, err := a.sqlcDB.GetTemplateById(ctx, templateID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting template: %s", err))

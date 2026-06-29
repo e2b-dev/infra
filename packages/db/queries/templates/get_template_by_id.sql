@@ -1,6 +1,7 @@
--- name: GetTemplateByID :one
--- No deleted filter: the build/rebuild path resolves by id here and must find a
--- soft-deleted env so CreateOrUpdateTemplate can reactivate it.
+-- name: GetTemplateByIDIncludingDeleted :one
+-- No deleted filter (distinct from GetTemplateById): the rebuild path resolves
+-- by id here and must find a soft-deleted env so CreateOrUpdateTemplate can
+-- reactivate it.
 SELECT t.*
 FROM "public"."envs" t
 WHERE t.id = $1
