@@ -35,6 +35,13 @@ func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID ap
 		return
 	}
 
+	if templateDB.Deleted {
+		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found", templateID))
+		telemetry.ReportError(ctx, "template is deleted", nil, telemetry.WithTemplateID(templateID))
+
+		return
+	}
+
 	dbTeamID := templateDB.TeamID.String()
 	team, apiErr := a.GetTeam(ctx, c, &dbTeamID)
 	if apiErr != nil {
