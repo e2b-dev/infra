@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3filter"
@@ -95,6 +96,38 @@ func TestProcessCustomErrors_AllNoAuthHeader(t *testing.T) {
 
 	got := processCustomErrors(e)
 	want := securityErrPrefix + sharedauth.ErrNoAuthHeader.Error()
+
+	if got.Error() != want {
+		t.Errorf("got %q, want %q", got.Error(), want)
+	}
+}
+
+func TestProcessCustomErrors_WrappedTeamForbidden(t *testing.T) {
+	inner := &sharedauth.TeamForbiddenError{Message: "team is banned"}
+	wrapped := fmt.Errorf("failed getting team: %w", inner)
+
+	e := &openapi3filter.SecurityRequirementsError{
+		Errors: []error{wrapped},
+	}
+
+	got := processCustomErrors(e)
+	want := forbiddenErrPrefix + "team is banned"
+
+	if got.Error() != want {
+		t.Errorf("got %q, want %q", got.Error(), want)
+	}
+}
+
+func TestProcessCustomErrors_WrappedTeamBlocked(t *testing.T) {
+	inner := &sharedauth.TeamBlockedError{Message: "team is blocked: payment overdue"}
+	wrapped := fmt.Errorf("failed getting team: %w", inner)
+
+	e := &openapi3filter.SecurityRequirementsError{
+		Errors: []error{wrapped},
+	}
+
+	got := processCustomErrors(e)
+	want := blockedErrPrefix + "team is blocked: payment overdue"
 
 	if got.Error() != want {
 		t.Errorf("got %q, want %q", got.Error(), want)
