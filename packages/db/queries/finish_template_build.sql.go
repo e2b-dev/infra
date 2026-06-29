@@ -26,6 +26,7 @@ SET
     firecracker_version = COALESCE(NULLIF($5::text, ''), firecracker_version)
 WHERE
     id = $6
+    AND status_group <> 'deleted'
 `
 
 type FinishTemplateBuildParams struct {

@@ -4,7 +4,8 @@ SET status = @status,
     finished_at = @finished_at,
     reason = sqlc.narg(reason),
     version = @version
-WHERE id = @build_id;
+WHERE id = @build_id
+    AND status_group <> 'deleted';
 
 -- name: FailTemplateBuildAndDeactivate :exec
 WITH deactivated AS (
@@ -15,4 +16,5 @@ SET status = @status,
     finished_at = @finished_at,
     reason = sqlc.narg(reason),
     version = @version
-WHERE id = @build_id;
+WHERE id = @build_id
+    AND status_group <> 'deleted';

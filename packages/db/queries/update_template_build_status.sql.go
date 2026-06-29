@@ -23,6 +23,7 @@ SET status = $1,
     reason = $3,
     version = $4
 WHERE id = $5
+    AND status_group <> 'deleted'
 `
 
 type FailTemplateBuildAndDeactivateParams struct {
@@ -51,6 +52,7 @@ SET status = $1,
     reason = $3,
     version = $4
 WHERE id = $5
+    AND status_group <> 'deleted'
 `
 
 type UpdateEnvBuildStatusParams struct {

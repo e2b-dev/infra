@@ -14,9 +14,9 @@ import (
 const markExclusiveTemplateBuildsDeleted = `-- name: MarkExclusiveTemplateBuildsDeleted :exec
 UPDATE "public"."env_builds" eb
 SET status = 'deleted',
-    reason = $1,
+    reason = COALESCE(NULLIF(eb.reason, '{}'::jsonb), $1),
     updated_at = NOW(),
-    finished_at = NOW()
+    finished_at = COALESCE(eb.finished_at, NOW())
 FROM "public"."env_build_assignments" eba
 WHERE eba.build_id = eb.id
     AND eba.env_id = $2

@@ -16,4 +16,5 @@ SET
     kernel_version = COALESCE(NULLIF(@kernel_version::text, ''), kernel_version),
     firecracker_version = COALESCE(NULLIF(@firecracker_version::text, ''), firecracker_version)
 WHERE
-    id = @build_id;
+    id = @build_id
+    AND status_group <> 'deleted';

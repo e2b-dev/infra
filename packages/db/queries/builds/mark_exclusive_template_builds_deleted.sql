@@ -5,9 +5,9 @@
 -- templates, and builds already marked deleted, are left untouched.
 UPDATE "public"."env_builds" eb
 SET status = 'deleted',
-    reason = @reason,
+    reason = COALESCE(NULLIF(eb.reason, '{}'::jsonb), @reason),
     updated_at = NOW(),
-    finished_at = NOW()
+    finished_at = COALESCE(eb.finished_at, NOW())
 FROM "public"."env_build_assignments" eba
 WHERE eba.build_id = eb.id
     AND eba.env_id = @template_id
