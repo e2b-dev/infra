@@ -70,6 +70,9 @@ const (
 // ErrWaitForEnvdTimeout is the cancel cause used when WaitForEnvd exceeds its timeout.
 var ErrWaitForEnvdTimeout = errors.New("syncing took too long")
 
+// ErrFcProcessExited is the cancel cause used when the Firecracker process exits during WaitForEnvd.
+var ErrFcProcessExited = errors.New("fc process exited prematurely")
+
 var SandboxHttpTransport = otelhttp.NewTransport(
 	&http.Transport{
 		DisableKeepAlives: true,
@@ -1805,7 +1808,7 @@ func (s *Sandbox) WaitForEnvd(
 		case <-s.process.Exit.Done():
 			err := s.process.Exit.Error()
 
-			cancel(fmt.Errorf("fc process exited prematurely: %w", err))
+			cancel(fmt.Errorf("%w: %w", ErrFcProcessExited, err))
 		}
 	}()
 

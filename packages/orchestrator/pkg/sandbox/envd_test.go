@@ -41,6 +41,15 @@ func TestClassifyEnvdInitExit(t *testing.T) {
 		},
 		{"canceled", context.Canceled, envdInitExitCanceled},
 		{"wrapped_canceled", fmt.Errorf("init: %w", context.Canceled), envdInitExitCanceled},
+		{"fc_process_exited", ErrFcProcessExited, envdInitExitOther},
+		{
+			"wrapped_fc_process_exited",
+			// Mirrors doRequestWithInfiniteRetries: ctx.Err() is Canceled, the
+			// cause is the fc-exit sentinel, both wrapped together. Must not be
+			// misclassified as canceled.
+			fmt.Errorf("%w with cause: %w", context.Canceled, ErrFcProcessExited),
+			envdInitExitOther,
+		},
 		{"other", errors.New("connection refused"), envdInitExitOther},
 	}
 
