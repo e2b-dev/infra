@@ -34,6 +34,9 @@ func (bb *BaseBuilder) Hash(ctx context.Context, _ phases.LayerResult) (string, 
 		baseSource = bb.Config.FromImage
 	}
 
+	// For fallback/dev environments, include baked rootfs file contents in the
+	// provision version. In production, BuildProvisionVersion controls rollout
+	// invalidation explicitly.
 	provisionVersion := cache.HashKeys(provisionScriptFile, rootfs.FilesHash())
 	if val := bb.featureFlags.IntFlag(
 		ctx,
