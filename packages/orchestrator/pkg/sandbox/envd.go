@@ -261,7 +261,11 @@ func (s *Sandbox) initEnvd(ctx context.Context, startType StartType) (e error) {
 		span.End()
 	}()
 
-	attributes := []attribute.KeyValue{telemetry.WithEnvdVersion(s.Config.Envd.Version), attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()), attribute.String("start_type", string(startType))}
+	attributes := []attribute.KeyValue{
+		telemetry.WithEnvdVersion(s.Config.Envd.Version),
+		attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
+		attribute.String("start_type", string(startType)),
+	}
 
 	// success is kept for backward compatibility until consumers move to exit_type.
 	callAttributes := func(exit envdInitExitType) []attribute.KeyValue {
