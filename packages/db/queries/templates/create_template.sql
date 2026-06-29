@@ -4,7 +4,9 @@ VALUES (@template_id, @team_id, @created_by, NOW(), FALSE, @cluster_id, 'templat
 ON CONFLICT (id) DO UPDATE
 SET updated_at  = NOW(),
     deleted_at  = NULL,
-    build_count = envs.build_count + 1;
+    build_count = envs.build_count + 1
+-- Only reactivate template envs; never resurrect a soft-deleted snapshot env.
+WHERE envs.source = 'template';
 
 -- name: InvalidateUnstartedTemplateBuilds :exec
 WITH invalidated AS (
