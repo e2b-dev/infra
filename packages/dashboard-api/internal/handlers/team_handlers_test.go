@@ -635,6 +635,122 @@ func TestBootstrapOIDCUser_PopulatesOryExternalID(t *testing.T) {
 	}
 }
 
+// failingUserProfiles fails the Ory external_id PATCH to simulate the IdP being
+// unavailable after the bootstrap transaction has already committed.
+type failingUserProfiles struct {
+	handlerTestUserProfiles
+
+	externalIDCalls int
+}
+
+func (f *failingUserProfiles) SetIdentityExternalID(context.Context, string, uuid.UUID) error {
+	f.externalIDCalls++
+
+	return errors.New("ory unavailable")
+}
+
+// A failed external_id PATCH must not roll back the committed user/identity/team.
+// The PATCH now runs after the transaction commits, so the user stays provisioned
+// and the next login can backfill external_id rather than being stranded.
+func TestBootstrapOIDCUser_ExternalIDFailureKeepsUserProvisioned(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	sink := &fakeTeamProvisionSink{}
+	profiles := &failingUserProfiles{}
+
+	store := &APIStore{
+		config:            cfg.Config{OryIssuerURL: "https://ory.example.test"},
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDB,
+		teamProvisionSink: sink,
+		userProfiles:      profiles,
+	}
+
+	input := oidcUserBootstrapInput{
+		OIDCIssuer:    "https://ory.example.test",
+		OIDCUserID:    uuid.NewString(),
+		OIDCUserEmail: "ada@example.test",
+	}
+
+	if _, err := store.bootstrapOIDCUser(ctx, input); err == nil {
+		t.Fatal("expected bootstrap to fail when external_id patch fails")
+	}
+	if profiles.externalIDCalls != 1 {
+		t.Fatalf("expected one external id attempt, got %d", profiles.externalIDCalls)
+	}
+
+	userIdentity, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+		OidcIss: input.OIDCIssuer,
+		OidcSub: input.OIDCUserID,
+	})
+	if err != nil {
+		t.Fatalf("expected user identity to survive external_id failure: %v", err)
+	}
+	if _, err := testDB.AuthDB.Read.GetDefaultTeamByUserID(ctx, userIdentity.UserID); err != nil {
+		t.Fatalf("expected default team to survive external_id failure: %v", err)
+	}
+}
+
+// A user provisioned by a prior bootstrap whose external_id PATCH failed re-runs
+// here on the next login; the existing-team path re-asserts the PATCH and
+// backfills external_id without creating a duplicate team.
+func TestBootstrapOIDCUser_ReRunBackfillsExternalID(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	sink := &fakeTeamProvisionSink{}
+
+	store := &APIStore{
+		config:            cfg.Config{OryIssuerURL: "https://ory.example.test"},
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDB,
+		teamProvisionSink: sink,
+		userProfiles:      &failingUserProfiles{},
+	}
+
+	input := oidcUserBootstrapInput{
+		OIDCIssuer:    "https://ory.example.test",
+		OIDCUserID:    uuid.NewString(),
+		OIDCUserEmail: "ada@example.test",
+	}
+
+	if _, err := store.bootstrapOIDCUser(ctx, input); err == nil {
+		t.Fatal("expected first bootstrap to fail on external_id patch")
+	}
+
+	userIdentity, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+		OidcIss: input.OIDCIssuer,
+		OidcSub: input.OIDCUserID,
+	})
+	if err != nil {
+		t.Fatalf("expected user identity from first bootstrap: %v", err)
+	}
+	existingTeam, err := testDB.AuthDB.Read.GetDefaultTeamByUserID(ctx, userIdentity.UserID)
+	if err != nil {
+		t.Fatalf("expected default team from first bootstrap: %v", err)
+	}
+
+	recording := &recordingUserProfiles{}
+	store.userProfiles = recording
+
+	secondTeam, err := store.bootstrapOIDCUser(ctx, input)
+	if err != nil {
+		t.Fatalf("expected re-run bootstrap to succeed: %v", err)
+	}
+	if secondTeam.ID != existingTeam.ID {
+		t.Fatalf("expected re-run to reuse existing team %s, got %s", existingTeam.ID, secondTeam.ID)
+	}
+	if recording.externalIDCalls != 1 {
+		t.Fatalf("expected re-run to backfill external_id once, got %d", recording.externalIDCalls)
+	}
+	if recording.externalID != userIdentity.UserID {
+		t.Fatalf("expected external id %s, got %s", userIdentity.UserID, recording.externalID)
+	}
+}
+
 func TestBootstrapOIDCUser_ConcurrentRequestsSingleIdentityAndTeam(t *testing.T) {
 	t.Parallel()
 
