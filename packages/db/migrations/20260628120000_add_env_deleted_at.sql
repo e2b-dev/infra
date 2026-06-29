@@ -16,8 +16,7 @@ SELECT
     team_id,
     created_by,
     cluster_id,
-    source,
-    deleted_at
+    source
 FROM "public"."envs"
 WHERE deleted_at IS NULL;
 

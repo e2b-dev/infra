@@ -36,7 +36,6 @@ type ActiveEnv struct {
 	CreatedBy     *uuid.UUID
 	ClusterID     *uuid.UUID
 	Source        string
-	DeletedAt     *time.Time
 }
 
 type ActiveTemplateBuild struct {

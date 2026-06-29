@@ -26,19 +26,12 @@ func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID ap
 		return
 	}
 
-	// Check if the user has access to the template
-	templateDB, err := a.sqlcDB.GetTemplateByID(ctx, templateID)
+	// Resolve via the active-envs view so a soft-deleted template is simply not
+	// found (rebuild uses the unfiltered GetTemplateByID instead).
+	templateDB, err := a.sqlcDB.GetTemplateById(ctx, templateID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting template: %s", err))
 		telemetry.ReportCriticalError(ctx, "error when getting env", err, telemetry.WithTemplateID(templateID))
-
-		return
-	}
-
-	// GetTemplateByID intentionally returns soft-deleted envs (for rebuild
-	// reactivation); layer uploads must not be served for a deleted template.
-	if templateDB.DeletedAt != nil {
-		a.sendAPIStoreError(c, http.StatusNotFound, "Template not found")
 
 		return
 	}
