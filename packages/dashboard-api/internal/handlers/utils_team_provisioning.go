@@ -163,14 +163,6 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 		}
 	}
 
-	// Populate the Ory identity's external_id with the canonical public.users id
-	// now that the user row exists. Runs before any team is created and before
-	// the user lock is taken, so an Ory failure rolls the user/identity back and
-	// no orphan team is left behind.
-	if err := s.setOIDCIdentityExternalID(ctx, identity, profile.UserID); err != nil {
-		return provisionedTeam{}, err
-	}
-
 	// Serialize bootstrap for a user even when they have no team memberships yet.
 	if _, err := authTxDB.LockPublicUserForUpdate(ctx, profile.UserID); err != nil {
 		return provisionedTeam{}, fmt.Errorf("lock public user: %w", err)
@@ -192,6 +184,15 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 				Reason:         teamprovision.ReasonDefaultSignupTeam,
 			}
 			_ = s.teamProvisionSink.ProvisionTeam(ctx, req)
+		}
+
+		// Backfill the Ory identity's external_id only after the user/identity/team
+		// are durably committed, so a failed PATCH never outlives a rolled-back
+		// transaction. This is also the recovery path: a user whose external_id was
+		// never set (e.g. a prior bootstrap whose PATCH failed after commit) re-runs
+		// here and the PATCH is re-asserted. setOIDCIdentityExternalID is idempotent.
+		if err := s.setOIDCIdentityExternalID(ctx, identity, profile.UserID); err != nil {
+			return provisionedTeam{}, err
 		}
 
 		return provisionedTeam{
@@ -231,6 +232,11 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 		return provisionedTeam{}, fmt.Errorf("commit user bootstrap transaction: %w", err)
 	}
 
+	// Emit the billing event before the external_id backfill: ProvisionTeam is
+	// fire-and-forget, but setOIDCIdentityExternalID returns early on failure, and
+	// the existing-team recovery path only re-fires ProvisionTeam within
+	// bootstrapProvisionRetryAge of team creation. Provisioning first guarantees the
+	// freshly committed team is never left billing-orphaned by an Ory PATCH failure.
 	req := teamprovision.TeamBillingProvisionRequestedV1{
 		TeamID:         team.ID,
 		TeamName:       team.Name,
@@ -240,6 +246,14 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 		Reason:         teamprovision.ReasonDefaultSignupTeam,
 	}
 	_ = s.teamProvisionSink.ProvisionTeam(ctx, req)
+
+	// Backfill external_id only after the user/identity/team are durably committed.
+	// A PATCH failure here is recoverable: external_id stays unset, the dashboard
+	// re-runs bootstrap on the next login and re-asserts it via the existing-team
+	// path above.
+	if err := s.setOIDCIdentityExternalID(ctx, identity, profile.UserID); err != nil {
+		return provisionedTeam{}, err
+	}
 
 	return provisionedTeam{
 		ID:            team.ID,

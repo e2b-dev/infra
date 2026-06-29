@@ -57,12 +57,14 @@ var (
 	uffdStartupBytesHistogram       = utils.Must(telemetry.GetHistogram(meter, telemetry.UffdStartupBytesHistogramName))
 )
 
-// Sandbox start types recorded on the orchestrator.sandbox.uffd.startup.*
-// metrics via the start_type attribute.
+// Sandbox start types recorded on sandbox start/init metrics via the
+// start_type attribute.
+type StartType string
+
 const (
-	StartTypeCreate = "create" // cold boot (template build)
-	StartTypeResume = "resume" // resume from a snapshot (the common runtime path)
-	StartTypeReboot = "reboot" // cold boot from a snapshot rootfs (filesystem-only resume)
+	StartTypeCreate StartType = "create" // cold boot (template build)
+	StartTypeResume StartType = "resume" // resume from a snapshot (the common runtime path)
+	StartTypeReboot StartType = "reboot" // cold boot from a snapshot rootfs (filesystem-only resume)
 )
 
 var SandboxHttpTransport = otelhttp.NewTransport(
@@ -1735,7 +1737,7 @@ func (s *Sandbox) WaitForExit(ctx context.Context) error {
 
 func (s *Sandbox) WaitForEnvd(
 	ctx context.Context,
-	startType string,
+	startType StartType,
 	timeout time.Duration,
 ) (e error) {
 	start := time.Now()
@@ -1755,6 +1757,7 @@ func (s *Sandbox) WaitForEnvd(
 				telemetry.WithEnvdVersion(s.Config.Envd.Version),
 				attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
 				attribute.Bool("success", e == nil),
+				attribute.String("start_type", string(startType)),
 			))
 
 			// Record the demand-fault working set the guest needed to reach this
@@ -1768,7 +1771,7 @@ func (s *Sandbox) WaitForEnvd(
 			s.startupStatsOnce.Do(func() {
 				stats := s.memory.ServeStats()
 				startupAttrs := metric.WithAttributes(
-					attribute.String("start_type", startType),
+					attribute.String("start_type", string(startType)),
 					attribute.Bool("success", e == nil),
 				)
 				uffdStartupPagesHistogram.Record(ctx, stats.Pages, startupAttrs)
@@ -1801,7 +1804,7 @@ func (s *Sandbox) WaitForEnvd(
 		}
 	}()
 
-	if err := s.initEnvd(ctx); err != nil {
+	if err := s.initEnvd(ctx, startType); err != nil {
 		return fmt.Errorf("failed to init new envd: %w", err)
 	}
 

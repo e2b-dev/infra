@@ -33,9 +33,6 @@ const (
 	VolumeKind           ldcontext.Kind = "volume"
 	CompressFileTypeKind ldcontext.Kind = "compress-file-type"
 	CompressUseCaseKind  ldcontext.Kind = "compress-use-case"
-
-	OrchestratorKind            ldcontext.Kind = "orchestrator"
-	OrchestratorCommitAttribute string         = "commit"
 )
 
 // All flags must be defined here: https://app.launchdarkly.com/projects/default/flags/
@@ -219,6 +216,12 @@ var (
 	// from the in-progress snapshot pull, so pinning the retry to it avoids
 	// re-pulling the snapshot onto yet another node.
 	ResumeOriginNodeRemapFlag = NewBoolFlag("resume-origin-node-remap", false)
+
+	// DisableE2BAccessTokenProvisioningFlag stops POST /access-tokens from issuing
+	// new E2B access tokens (sk_e2b_) once enabled. E2B_ACCESS_TOKEN is deprecated
+	// in favor of E2B_API_KEY; the CLI now authenticates via Hydra JWTs. Off by
+	// default so issuance keeps working until the deprecation cutover.
+	DisableE2BAccessTokenProvisioningFlag = NewBoolFlag("disable-e2b-access-token-provisioning", false)
 )
 
 // envdTimeoutFallbackMs reads ENVD_TIMEOUT (Go duration string, e.g. "10s")
@@ -460,16 +463,16 @@ const (
 // The Firecracker version the last tag + the short SHA (so we can build our dev previews)
 // TODO: The short tag here has only 7 characters — the one from our build pipeline will likely have exactly 8 so this will break.
 const (
-	DefaultFirecackerV1_10Version = "v1.10.1_30cbb07"
-	DefaultFirecackerV1_12Version = "v1.12.1_210cbac"
-	DefaultFirecackerV1_14Version = "v1.14.1_431f1fc"
-	DefaultFirecrackerVersion     = DefaultFirecackerV1_14Version
+	DefaultFirecrackerV1_10Version = "v1.10.1_30cbb07"
+	DefaultFirecrackerV1_12Version = "v1.12.1_210cbac"
+	DefaultFirecrackerV1_14Version = "v1.14.1_431f1fc"
+	DefaultFirecrackerVersion      = DefaultFirecrackerV1_14Version
 )
 
 var FirecrackerVersionMap = map[string]string{
-	"v1.10": DefaultFirecackerV1_10Version,
-	"v1.12": DefaultFirecackerV1_12Version,
-	"v1.14": DefaultFirecackerV1_14Version,
+	"v1.10": DefaultFirecrackerV1_10Version,
+	"v1.12": DefaultFirecrackerV1_12Version,
+	"v1.14": DefaultFirecrackerV1_14Version,
 }
 
 // BuildIoEngine Sync is used by default as there seems to be a bad interaction between Async and a lot of io operations.
