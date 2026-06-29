@@ -13,7 +13,7 @@ import (
 )
 
 const getTemplateByID = `-- name: GetTemplateByID :one
-SELECT t.id, t.created_at, t.updated_at, t.public, t.build_count, t.spawn_count, t.last_spawned_at, t.team_id, t.created_by, t.cluster_id, t.source, t.deleted
+SELECT t.id, t.created_at, t.updated_at, t.public, t.build_count, t.spawn_count, t.last_spawned_at, t.team_id, t.created_by, t.cluster_id, t.source, t.deleted_at
 FROM "public"."envs" t
 WHERE t.id = $1
   AND t.source IN ('template', 'snapshot_template')
@@ -36,14 +36,14 @@ func (q *Queries) GetTemplateByID(ctx context.Context, id string) (Env, error) {
 		&i.CreatedBy,
 		&i.ClusterID,
 		&i.Source,
-		&i.Deleted,
+		&i.DeletedAt,
 	)
 	return i, err
 }
 
 const getTemplateByIDWithAliases = `-- name: GetTemplateByIDWithAliases :one
-SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, e.source, e.deleted, al.aliases, al.names
-FROM "public"."envs" e
+SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, e.source, e.deleted_at, al.aliases, al.names
+FROM "public"."active_envs" e
 CROSS JOIN LATERAL (
     SELECT 
         COALESCE(array_agg(alias), '{}')::text[] AS aliases,
@@ -53,7 +53,6 @@ CROSS JOIN LATERAL (
 ) AS al
 WHERE e.id = $1
   AND e.source IN ('template', 'snapshot_template')
-  AND e.deleted = false
 `
 
 type GetTemplateByIDWithAliasesRow struct {
@@ -68,7 +67,7 @@ type GetTemplateByIDWithAliasesRow struct {
 	CreatedBy     *uuid.UUID
 	ClusterID     *uuid.UUID
 	Source        string
-	Deleted       bool
+	DeletedAt     *time.Time
 	Aliases       []string
 	Names         []string
 }
@@ -88,7 +87,7 @@ func (q *Queries) GetTemplateByIDWithAliases(ctx context.Context, id string) (Ge
 		&i.CreatedBy,
 		&i.ClusterID,
 		&i.Source,
-		&i.Deleted,
+		&i.DeletedAt,
 		&i.Aliases,
 		&i.Names,
 	)

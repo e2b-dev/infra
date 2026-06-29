@@ -36,7 +36,7 @@ type Env struct {
 	CreatedBy     *uuid.UUID
 	ClusterID     *uuid.UUID
 	Source        string
-	Deleted       bool
+	DeletedAt     *time.Time
 }
 
 type EnvAlias struct {

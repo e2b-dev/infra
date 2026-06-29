@@ -1,9 +1,8 @@
 -- name: CheckAliasConflictsWithTemplateID :one
 SELECT EXISTS(
     SELECT 1
-    FROM "public"."envs"
+    FROM "public"."active_envs"
     WHERE id = @alias
-      AND deleted = false
 );
 
 -- name: CheckAliasExistsInNamespace :one

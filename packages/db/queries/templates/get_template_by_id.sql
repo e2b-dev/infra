@@ -8,7 +8,7 @@ WHERE t.id = $1
 
 -- name: GetTemplateByIDWithAliases :one
 SELECT e.*, al.aliases, al.names
-FROM "public"."envs" e
+FROM "public"."active_envs" e
 CROSS JOIN LATERAL (
     SELECT 
         COALESCE(array_agg(alias), '{}')::text[] AS aliases,
@@ -17,5 +17,4 @@ CROSS JOIN LATERAL (
     WHERE env_id = e.id
 ) AS al
 WHERE e.id = $1
-  AND e.source IN ('template', 'snapshot_template')
-  AND e.deleted = false;
+  AND e.source IN ('template', 'snapshot_template');

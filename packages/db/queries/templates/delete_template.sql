@@ -10,10 +10,10 @@ WITH alias_keys AS (
   WHERE ea.env_id = @template_id
 ), updated AS (
   UPDATE public.envs e
-  SET deleted = true, updated_at = NOW()
+  SET deleted_at = NOW(), updated_at = NOW()
   WHERE e.id = @template_id
   AND e.team_id = @team_id
-  AND e.deleted = false
+  AND e.deleted_at IS NULL
   RETURNING e.id
 ), released AS (
   DELETE FROM public.env_aliases ea

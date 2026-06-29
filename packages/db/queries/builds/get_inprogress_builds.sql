@@ -6,7 +6,7 @@ JOIN public.envs e ON e.id = eba.env_id
 JOIN public.teams t ON e.team_id = t.id
 WHERE b.status_group IN ('pending', 'in_progress')
   AND e.source = 'template'
-  AND e.deleted = false
+  AND e.deleted_at IS NULL
 ORDER BY b.id, b.created_at DESC;
 
 -- name: GetInProgressTemplateBuildsByTeam :one

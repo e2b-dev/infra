@@ -26,12 +26,10 @@ WITH team_templates AS (
         e.created_by,
         d.env_id AS default_env_id,
         d.description AS default_description
-    FROM public.envs AS e
+    FROM public.active_envs AS e
     LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
-        e.team_id = $1::uuid AND e.source = 'template'
-        AND e.deleted = false
-        AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
+        e.team_id = $1::uuid AND e.source = 'template'        AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
         AND (
             $3::text = ''
             OR e.id ILIKE '%' || $3::text || '%'
@@ -60,12 +58,10 @@ default_templates AS (
         e.created_by,
         d.env_id AS default_env_id,
         d.description AS default_description
-    FROM public.envs AS e
+    FROM public.active_envs AS e
     JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
-        $7::boolean
-        AND e.deleted = false
-        AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
+        $7::boolean        AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
         AND (
             $3::text = ''
             OR e.id ILIKE '%' || $3::text || '%'
@@ -241,12 +237,10 @@ WITH team_templates AS (
         e.created_by,
         d.env_id AS default_env_id,
         d.description AS default_description
-    FROM public.envs AS e
+    FROM public.active_envs AS e
     LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
-        e.team_id = $1::uuid AND e.source = 'template'
-        AND e.deleted = false
-        AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
+        e.team_id = $1::uuid AND e.source = 'template'        AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
         AND (
             $3::text = ''
             OR e.id ILIKE '%' || $3::text || '%'
@@ -275,12 +269,10 @@ default_templates AS (
         e.created_by,
         d.env_id AS default_env_id,
         d.description AS default_description
-    FROM public.envs AS e
+    FROM public.active_envs AS e
     JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
-        $7::boolean
-        AND e.deleted = false
-        AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
+        $7::boolean        AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
         AND (
             $3::text = ''
             OR e.id ILIKE '%' || $3::text || '%'
@@ -440,12 +432,10 @@ WITH team_templates AS (
         e.created_by,
         d.env_id AS default_env_id,
         d.description AS default_description
-    FROM public.envs AS e
+    FROM public.active_envs AS e
     LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
-        e.team_id = $1::uuid AND e.source = 'template'
-        AND e.deleted = false
-        AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
+        e.team_id = $1::uuid AND e.source = 'template'        AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
         AND (
             $3::text = ''
             OR e.id ILIKE '%' || $3::text || '%'
@@ -474,12 +464,10 @@ default_templates AS (
         e.created_by,
         d.env_id AS default_env_id,
         d.description AS default_description
-    FROM public.envs AS e
+    FROM public.active_envs AS e
     JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
-        $7::boolean
-        AND e.deleted = false
-        AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
+        $7::boolean        AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
         AND (
             $3::text = ''
             OR e.id ILIKE '%' || $3::text || '%'
@@ -639,12 +627,10 @@ WITH team_templates AS (
         e.created_by,
         d.env_id AS default_env_id,
         d.description AS default_description
-    FROM public.envs AS e
+    FROM public.active_envs AS e
     LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
-        e.team_id = $1::uuid AND e.source = 'template'
-        AND e.deleted = false
-        AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
+        e.team_id = $1::uuid AND e.source = 'template'        AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
         AND (
             $3::text = ''
             OR e.id ILIKE '%' || $3::text || '%'
@@ -673,12 +659,10 @@ default_templates AS (
         e.created_by,
         d.env_id AS default_env_id,
         d.description AS default_description
-    FROM public.envs AS e
+    FROM public.active_envs AS e
     JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
-        $7::boolean
-        AND e.deleted = false
-        AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
+        $7::boolean        AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
         AND (
             $3::text = ''
             OR e.id ILIKE '%' || $3::text || '%'

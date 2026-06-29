@@ -32,7 +32,7 @@ SELECT
     COALESCE(latest_build.status_group, 'pending') AS build_status,
     COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases,
     COALESCE(ea.names, ARRAY[]::text[])::text[] AS names
-FROM public.envs AS e
+FROM public.active_envs AS e
 LEFT JOIN LATERAL (
     SELECT
         ARRAY_AGG(alias ORDER BY alias) AS aliases,
@@ -58,7 +58,6 @@ LEFT JOIN LATERAL (
 ) eb ON TRUE
 WHERE
     e.team_id = $1::uuid AND e.source = 'template'
-    AND e.deleted = false
     AND (e.created_at, e.id) < ($2::timestamptz, $3::text)
 ORDER BY e.created_at DESC, e.id DESC
 LIMIT $4::int

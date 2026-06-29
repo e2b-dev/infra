@@ -5,4 +5,4 @@ JOIN "public"."env_build_assignments" eba ON eba.env_id = e.id
 JOIN "public"."env_builds" eb ON eb.id = eba.build_id
 WHERE e.id = sqlc.arg(template_id) AND eb.id = sqlc.arg(build_id)
   AND e.source = 'template'
-  AND e.deleted = false;
+  AND e.deleted_at IS NULL;

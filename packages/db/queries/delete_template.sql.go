@@ -21,10 +21,10 @@ WITH alias_keys AS (
   WHERE ea.env_id = $1
 ), updated AS (
   UPDATE public.envs e
-  SET deleted = true, updated_at = NOW()
+  SET deleted_at = NOW(), updated_at = NOW()
   WHERE e.id = $1
   AND e.team_id = $2
-  AND e.deleted = false
+  AND e.deleted_at IS NULL
   RETURNING e.id
 ), released AS (
   DELETE FROM public.env_aliases ea

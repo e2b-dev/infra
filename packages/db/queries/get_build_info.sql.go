@@ -24,10 +24,9 @@ FROM public.env_builds b
 JOIN LATERAL (
   SELECT a.env_id
   FROM public.env_build_assignments a
-  JOIN public.envs e ON e.id = a.env_id
+  JOIN public.active_envs e ON e.id = a.env_id
   WHERE a.build_id = b.id
     AND e.team_id = $1::uuid
-    AND e.deleted = false
   ORDER BY a.created_at DESC, a.id DESC
   LIMIT 1
 ) assignment ON TRUE

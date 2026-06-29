@@ -13,7 +13,7 @@ import (
 )
 
 const getTeamTemplate = `-- name: GetTeamTemplate :one
-SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, e.source, e.deleted,
+SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, e.source, e.deleted_at,
        COALESCE(eb.id, '00000000-0000-0000-0000-000000000000'::uuid) as build_id,
        COALESCE(eb.vcpu, 0) as build_vcpu,
        COALESCE(eb.ram_mb, 0) as build_ram_mb,
@@ -51,7 +51,7 @@ WHERE
   e.id = $1
   AND e.team_id = $2
   AND e.source = 'template'
-  AND e.deleted = false
+  AND e.deleted_at IS NULL
 `
 
 type GetTeamTemplateParams struct {
@@ -87,7 +87,7 @@ func (q *Queries) GetTeamTemplate(ctx context.Context, arg GetTeamTemplateParams
 		&i.Env.CreatedBy,
 		&i.Env.ClusterID,
 		&i.Env.Source,
-		&i.Env.Deleted,
+		&i.Env.DeletedAt,
 		&i.BuildID,
 		&i.BuildVcpu,
 		&i.BuildRamMb,

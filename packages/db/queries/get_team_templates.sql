@@ -37,5 +37,5 @@ LEFT JOIN LATERAL (
 WHERE
   e.team_id = $1
   AND e.source = 'template'
-  AND e.deleted = false
+  AND e.deleted_at IS NULL
 ORDER BY e.created_at ASC;

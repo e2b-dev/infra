@@ -15,7 +15,7 @@ func envDeleted(t *testing.T, db *testutils.Database, envID string) bool {
 	t.Helper()
 	var deleted bool
 	err := db.SqlcClient.TestsRawSQLQuery(t.Context(),
-		"SELECT deleted FROM public.envs WHERE id = $1",
+		"SELECT deleted_at IS NOT NULL FROM public.envs WHERE id = $1",
 		func(rows pgx.Rows) error {
 			if rows.Next() {
 				return rows.Scan(&deleted)
