@@ -24,6 +24,11 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/storage")
 
 var ErrObjectNotExist = errors.New("object does not exist")
 
+// ErrObjectArchived means the object exists but is stored in an archived
+// storage class (e.g. GLACIER, ARCHIVE, COLD_ARCHIVE) that does not allow
+// direct reads. The object must be restored or rebuilt before it can be used.
+var ErrObjectArchived = errors.New("object is archived and not accessible")
+
 // ErrObjectRateLimited means per-object mutation rate limiting —
 // multiple concurrent writers racing to write the same content-addressed object.
 var ErrObjectRateLimited = errors.New("object access rate limited")
