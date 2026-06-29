@@ -1,6 +1,6 @@
 -- name: DeleteTemplate :many
--- Soft-deletes the env (keeps env_builds/assignments/snapshots for lineage),
--- releases aliases, and clears active_template_builds. Returns alias cache keys.
+-- Soft-deletes the env (keeps env_builds/assignments/snapshots), releases
+-- aliases, and clears active_template_builds. Returns alias cache keys.
 WITH alias_keys AS (
   SELECT CASE
     WHEN ea.namespace IS NOT NULL THEN ea.namespace || '/' || ea.alias
