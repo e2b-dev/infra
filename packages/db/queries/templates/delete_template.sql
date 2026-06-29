@@ -13,6 +13,9 @@ WITH alias_keys AS (
 ), released AS (
   DELETE FROM public.env_aliases ea
   WHERE ea.env_id = @template_id
+), active_builds_cleanup AS (
+  DELETE FROM public.active_template_builds atb
+  WHERE atb.template_id = @template_id
 ), updated AS (
   UPDATE public.envs e
   SET status = 'deleted', updated_at = NOW()
