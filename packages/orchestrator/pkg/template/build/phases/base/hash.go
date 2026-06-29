@@ -34,7 +34,10 @@ func (bb *BaseBuilder) Hash(ctx context.Context, _ phases.LayerResult) (string, 
 		baseSource = bb.Config.FromImage
 	}
 
-	provisionVersion := provisionScriptFile
+	// For fallback/dev environments, include baked rootfs file contents in the
+	// provision version. In production, BuildProvisionVersion controls rollout
+	// invalidation explicitly.
+	provisionVersion := cache.HashKeys(provisionScriptFile, rootfs.FilesHash())
 	if val := bb.featureFlags.IntFlag(
 		ctx,
 		featureflags.BuildProvisionVersion,
@@ -57,9 +60,5 @@ func (bb *BaseBuilder) Hash(ctx context.Context, _ phases.LayerResult) (string, 
 		provisionVersion,
 		strconv.FormatInt(bb.Config.DiskSizeMB, 10),
 		baseSource,
-		// Invalidate when a baked rootfs file (e.g. envd.service) changes; the
-		// keys above don't otherwise reflect file content, so stale base layers
-		// would keep old units.
-		rootfs.FilesHash(),
 	), nil
 }
