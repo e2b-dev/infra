@@ -19,6 +19,7 @@ ON CONFLICT (id) DO UPDATE
 SET updated_at  = NOW(),
     deleted_at  = NULL,
     build_count = envs.build_count + 1
+WHERE envs.source = 'template'
 `
 
 type CreateOrUpdateTemplateParams struct {
