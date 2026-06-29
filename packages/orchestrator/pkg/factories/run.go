@@ -51,6 +51,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/server"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/service"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/service/machineinfo"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/startupreclaim"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/constants"
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/pkg/template/server"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/volumes"
@@ -180,7 +181,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	// Check if the orchestrator crashed and restarted
 	// Skip this check in development mode
 	// We don't want to lock if the service is running with force stop; the subsequent start would fail.
-	if !env.IsDevelopment() && !config.ForceStop && slices.Contains(services, cfg.Orchestrator) {
+	if !env.IsDevelopment() && !config.ForceStop && services.RunsOrchestrator() {
 		fileLockName := config.OrchestratorLockPath
 		info, err := os.Stat(fileLockName)
 		if err == nil {
@@ -622,6 +623,18 @@ func run(config cfg.Config, opts Options) (success bool) {
 		closers = append(closers, closer{"egress proxy", egressSetup.Close})
 	}
 
+	// Sandbox-runtime reclaim must run before newStorage below: reclaim deletes
+	// leaked ns-* from /run/netns, and NewStorageLocal snapshots the remaining
+	// namespaces as foreign at construction.
+	if services.UsesSandboxRuntime() && !config.DisableStartupReclaim {
+		startupreclaim.Run(ctx, startupreclaim.Config{
+			NetworkConfig: config.NetworkConfig,
+			EgressProxy:   egressSetup.Proxy,
+			CgroupManager: cgroupManager,
+			StorageConfig: config.StorageConfig,
+		})
+	}
+
 	// device pool
 	devicePool, err := nbd.NewDevicePool(config.NBDPoolSize)
 	if err != nil {
@@ -736,7 +749,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	// template manager
 	var tmpl *tmplserver.ServerStore
 	var localUploadHandler *localupload.Handler
-	if slices.Contains(services, cfg.TemplateManager) {
+	if services.RunsTemplateManager() {
 		buildPersistence, uploadHandler, err := setupBuildStorage(ctx, limiter, config)
 		if err != nil {
 			logger.L().Fatal(ctx, "failed to setup build storage", zap.Error(err))
