@@ -1,7 +1,7 @@
 -- name: CheckAliasConflictsWithTemplateID :one
 SELECT EXISTS(
     SELECT 1
-    FROM "public"."active_envs"
+    FROM "public"."envs"
     WHERE id = @alias
 );
 
