@@ -691,6 +691,12 @@ func TestBootstrapOIDCUser_ExternalIDFailureKeepsUserProvisioned(t *testing.T) {
 	if _, err := testDB.AuthDB.Read.GetDefaultTeamByUserID(ctx, userIdentity.UserID); err != nil {
 		t.Fatalf("expected default team to survive external_id failure: %v", err)
 	}
+
+	// The billing event must be emitted before the external_id backfill, otherwise
+	// a PATCH failure leaves the committed team billing-orphaned.
+	if len(sink.requests) != 1 {
+		t.Fatalf("expected one billing provisioning call despite external_id failure, got %d", len(sink.requests))
+	}
 }
 
 // A user provisioned by a prior bootstrap whose external_id PATCH failed re-runs
