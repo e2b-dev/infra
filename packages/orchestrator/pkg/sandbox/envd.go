@@ -37,6 +37,9 @@ const (
 	envdInitExitTimeout  envdInitExitType = "timeout"
 	envdInitExitCanceled envdInitExitType = "canceled"
 	envdInitExitOther    envdInitExitType = "other"
+	// envdInitExitTransient marks a retried attempt that failed but was not the
+	// terminal outcome of the init episode.
+	envdInitExitTransient envdInitExitType = "transient"
 )
 
 // classifyEnvdInitExit maps an init error to an exit_type.
@@ -296,8 +299,8 @@ func (s *Sandbox) initEnvd(ctx context.Context, startType StartType) (e error) {
 	}
 
 	if count > 1 {
-		// Retried attempts were transient per-request failures, classify as other.
-		envdInitCalls.Add(ctx, count-1, metric.WithAttributes(callAttributes(envdInitExitOther)...))
+		// Retried attempts were transient per-request failures that preceded the success.
+		envdInitCalls.Add(ctx, count-1, metric.WithAttributes(callAttributes(envdInitExitTransient)...))
 	}
 
 	// Track successful envd init
