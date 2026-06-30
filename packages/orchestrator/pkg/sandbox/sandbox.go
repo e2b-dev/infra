@@ -172,6 +172,7 @@ const (
 	StopReasonPaused        StopReason = "paused"
 	StopReasonCrashed       StopReason = "crashed"
 	StopReasonCheckpointing StopReason = "checkpointing"
+	StopReasonUnknown       StopReason = "unknown"
 )
 
 // String returns the sandbox type as a string, defaulting to "sandbox" if empty.
@@ -237,30 +238,6 @@ type Metadata struct {
 	stopReason *StopReason
 }
 
-// GetStopReason returns stop reason, in case of sandbox exiting sooner, the reason is returned as crashed
-func (m *Metadata) GetStopReason() StopReason {
-	m.rwmu.RLock()
-	defer m.rwmu.RUnlock()
-
-	if m.stopReason == nil {
-		return StopReasonCrashed
-	}
-
-	return *m.stopReason
-}
-
-// SetStopReason records why the execution ended. The first call wins
-func (m *Metadata) SetStopReason(reason StopReason) {
-	m.rwmu.Lock()
-	defer m.rwmu.Unlock()
-
-	if m.stopReason != nil {
-		return
-	}
-
-	m.stopReason = &reason
-}
-
 // GetEndAt returns the sandbox end time in a thread-safe manner.
 func (m *Metadata) GetEndAt() time.Time {
 	m.rwmu.RLock()
@@ -322,6 +299,43 @@ type Sandbox struct {
 	// template build) would otherwise emit a sample inflated with post-startup
 	// faults rather than that init's working set.
 	startupStatsOnce sync.Once
+}
+
+// GetStopReason returns stop reason, in case of sandbox exiting sooner, the reason is returned as crashed
+func (s *Sandbox) GetStopReason(ctx context.Context) StopReason {
+	s.Metadata.rwmu.RLock()
+	defer s.Metadata.rwmu.RUnlock()
+
+	if s.Metadata.stopReason == nil {
+		select {
+		case <-s.process.Exit.Done():
+			// The Firecracker process already exited but no reason was recorded,
+			// so the sandbox went down on its own rather than via an explicit
+			// pause/checkpoint/kill.
+
+			logger.L().Error(ctx, "sandbox crashed", logger.WithSandboxID(s.Runtime.SandboxID), logger.WithExecutionID(s.Runtime.ExecutionID), logger.WithTemplateID(s.Runtime.TemplateID))
+
+			return StopReasonCrashed
+		default:
+			logger.L().Warn(ctx, "unknown sandbox stop reason", logger.WithSandboxID(s.Runtime.SandboxID), logger.WithExecutionID(s.Runtime.ExecutionID), logger.WithTemplateID(s.Runtime.TemplateID))
+
+			return StopReasonUnknown
+		}
+	}
+
+	return *s.Metadata.stopReason
+}
+
+// SetStopReason records why the execution ended. The first call wins
+func (m *Metadata) SetStopReason(reason StopReason) {
+	m.rwmu.Lock()
+	defer m.rwmu.Unlock()
+
+	if m.stopReason != nil {
+		return
+	}
+
+	m.stopReason = &reason
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {

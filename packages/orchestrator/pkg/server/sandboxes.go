@@ -1039,7 +1039,7 @@ func (s *Server) setupSandboxLifecycle(ctx context.Context, sbx *sandbox.Sandbox
 			sbxlogger.I(sbx).Error(ctx, "failed to wait for sandbox, cleaning up", zap.Error(waitErr))
 		}
 
-		s.recordExecutionDuration(ctx, sbx, sbx.GetStopReason())
+		s.recordExecutionDuration(ctx, sbx, sbx.GetStopReason(ctx))
 
 		cleanupErr := sbx.Close(ctx)
 		if cleanupErr != nil {

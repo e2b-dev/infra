@@ -412,7 +412,7 @@ var histogramDesc = map[HistogramType]string{
 	BuildStepDurationHistogramName:           "Time taken to build each step of a template",
 	BuildRootfsSizeHistogramName:             "Size of the built template rootfs in bytes",
 	OrchestratorSandboxCreateDurationName:    "Time taken to create a sandbox",
-	OrchestratorSandboxExecutionDurationName: "Duration of a single sandbox execution, from start/resume until it ends; tagged with stop_reason (killed, paused, crashed, or checkpointing)",
+	OrchestratorSandboxExecutionDurationName: "Duration of a single sandbox execution, from start/resume until it ends",
 	WaitForEnvdDurationHistogramName:         "Time taken for Envd to initialize successfully",
 	EnvdCollapseDurationHistogramName:        "Time taken for the pre-pause envd heap collapse round-trip",
 	GuestSyncDurationHistogramName:           "Time taken for the mandatory pre-pause guest sync (filesystem-only pause)",
