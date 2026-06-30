@@ -565,6 +565,7 @@ components:
         - cpuCount
         - memoryMB
         - diskSizeMB
+        - retentionExpired
       properties:
         templateID:
           type: string
@@ -594,6 +595,9 @@ components:
           $ref: "#/components/schemas/MemoryMB"
         diskSizeMB:
           $ref: "#/components/schemas/DiskSizeMB"
+        retentionExpired:
+          type: boolean
+          description: Whether the sandbox ended more than the retention window ago, so its monitoring, events, and logs data is no longer available
 
     HealthResponse:
       type: object
@@ -1190,7 +1194,7 @@ paths:
 
   /builds/statuses:
     get:
-      summary: Get build statuses
+      summary: Build statuses
       tags: [builds]
       security:
         - AuthProviderBearerAuth: []
@@ -1216,7 +1220,7 @@ paths:
 
   /builds/{build_id}:
     get:
-      summary: Get build details
+      summary: Build details
       tags: [builds]
       security:
         - AuthProviderBearerAuth: []
@@ -1241,7 +1245,7 @@ paths:
 
   /sandboxes/{sandboxID}/record:
     get:
-      summary: Get sandbox record
+      summary: Sandbox record
       tags: [sandboxes]
       security:
         - AuthProviderBearerAuth: []
@@ -1416,7 +1420,7 @@ paths:
 
   /admin/user-profiles/{userId}:
     get:
-      summary: Get user profile
+      summary: User profile
       tags: [admin]
       security:
         - AdminApiKeyAuth: []
@@ -1638,7 +1642,7 @@ paths:
 
   /templates/{templateID}:
     get:
-      summary: Get template
+      summary: Template
       description: Returns a single template owned by the current team. Dashboard-shaped read, indexed by template ID.
       tags: [templates]
       security:

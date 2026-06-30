@@ -81,6 +81,7 @@ type Config struct {
 
 	ClickhouseConnectionString  string            `env:"CLICKHOUSE_CONNECTION_STRING"`
 	ClickhouseConnectionStrings []string          `env:"CLICKHOUSE_CONNECTION_STRINGS" envSeparator:";"`
+	DisableStartupReclaim       bool              `env:"DISABLE_STARTUP_RECLAIM"`
 	ForceStop                   bool              `env:"FORCE_STOP"`
 	GRPCPort                    uint16            `env:"GRPC_PORT"                     envDefault:"5008"`
 	LaunchDarklyAPIKey          string            `env:"LAUNCH_DARKLY_API_KEY"`

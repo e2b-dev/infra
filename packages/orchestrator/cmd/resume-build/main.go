@@ -82,6 +82,13 @@ func main() {
 	fphBench := flag.Bool("fph-bench", false, "compare pause memfile size with vs without FPH; requires -cmd-pause workload, uses -iterations (default 3), forces FPR on")
 	fphBenchDelay := flag.Duration("fph-bench-delay", 0, "wait this long between workload completion and pause (lets FPR settle)")
 
+	gdbDebug := flag.Bool("gdb", false, "resume under gdb: hold the guest at the kernel entry breakpoint with a gdb-enabled FC and hand over a ready gdb session for source-level guest-kernel debugging")
+	gdbFC := flag.String("gdb-fc", "", "path to a firecracker built --features gdb (default: fetch firecracker-debug by version; set E2B_GDB_ARTIFACTS_URL to override the source)")
+	gdbSymbols := flag.String("gdb-symbols", "", "path to the guest kernel's DWARF symbols, vmlinux.debug (default: fetch vmlinux.debug by version; set E2B_GDB_ARTIFACTS_URL to override the source)")
+	gdbSocket := flag.String("gdb-socket", "", "gdb unix socket path (default: a temp path)")
+	gdbExec := flag.String("gdb-exec", "", "scripted mode: run these gdb commands in batch (newline/';'-separated) instead of an interactive prompt")
+	gdbScript := flag.String("gdb-script", "", "scripted mode: run this gdb command file in batch")
+
 	flag.Parse()
 
 	if *fphTimeoutMs > 0 {
@@ -220,7 +227,16 @@ func main() {
 	}
 	fphBenchOpts := fphBenchOptions{enabled: *fphBench, workload: *cmdPause, iterations: benchIters, delay: *fphBenchDelay}
 
-	err := run(ctx, *fromBuild, *iterations, *coldStart, *noPrefetch, *noEgress, *verbose, *shell, *reboot, pauseOpts, runOpts, fphBenchOpts)
+	gdbOpts := gdbOptions{
+		enabled:  *gdbDebug,
+		fcBinary: *gdbFC,
+		symbols:  *gdbSymbols,
+		socket:   *gdbSocket,
+		execCmds: *gdbExec,
+		script:   *gdbScript,
+	}
+
+	err := run(ctx, *fromBuild, *iterations, *coldStart, *noPrefetch, *noEgress, *verbose, *shell, *reboot, pauseOpts, runOpts, fphBenchOpts, gdbOpts)
 	cancel()
 
 	if err != nil {
@@ -1051,7 +1067,7 @@ func (r *runner) benchmark(ctx context.Context, n int) error {
 	return lastErr
 }
 
-func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefetch, noEgress, verbose, shell, reboot bool, pauseOpts pauseOptions, runOpts runOptions, fphBenchOpts fphBenchOptions) error {
+func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefetch, noEgress, verbose, shell, reboot bool, pauseOpts pauseOptions, runOpts runOptions, fphBenchOpts fphBenchOptions, gdbOpts gdbOptions) error {
 	// Silence other loggers unless verbose mode
 	var l logger.Logger
 	if !verbose {
@@ -1108,6 +1124,15 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	tcpFw := tcpfirewall.New(l, config.NetworkConfig, sandboxes, tel.MeterProvider, flags)
 	go tcpFw.Start(ctx)
 	defer tcpFw.Close(context.WithoutCancel(ctx))
+
+	// gdb mode debugs real customer snapshots. The guest is frozen at the entry
+	// breakpoint and never boots, so it cannot itself open a connection — but force
+	// egress off regardless, so a debugging run can never leave an exfiltration path
+	// open. This makes the runbook's "always -no-egress" mechanical rather than a
+	// manual step the operator can forget.
+	if gdbOpts.enabled {
+		noEgress = true
+	}
 
 	var egressProxy network.EgressProxy = network.NoopEgressProxy{}
 	if noEgress {
@@ -1220,6 +1245,17 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 		config:     config.BuilderConfig,
 		storage:    persistence,
 		sbxConfig:  sbxCfg,
+	}
+
+	if gdbOpts.enabled {
+		// gdb mode holds the guest at the entry breakpoint and never runs a
+		// workload, so it is mutually exclusive with the pause/cmd/bench modes —
+		// reject the combination rather than silently ignoring the other flags.
+		if fphBenchOpts.enabled || runOpts.enabled() || pauseOpts.enabled() || iterations > 0 || reboot || shell {
+			return errors.New("-gdb cannot be combined with -pause/-cmd/-iterations/-reboot/-shell/-fph-bench")
+		}
+
+		return r.gdbMode(ctx, gdbOpts)
 	}
 
 	if fphBenchOpts.enabled {

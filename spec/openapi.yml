@@ -16,6 +16,10 @@ components:
       type: http
       scheme: bearer
       bearerFormat: access_token
+      description: |
+        **Deprecated.** Access token authentication is deprecated and will be
+        removed in a future release. Use API key authentication (`X-API-Key`)
+        instead.
     # AuthProviderBearerAuth / AuthProviderTeamAuth: B before T in the name
     # so Bearer is validated before Team.
     AuthProviderBearerAuth:
@@ -146,6 +150,12 @@ components:
             $ref: "#/components/schemas/Error"
     "409":
       description: Conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    "410":
+      description: Gone
       content:
         application/json:
           schema:
@@ -1216,6 +1226,7 @@ components:
         name:
           description: Name of the template. Can include a tag with colon separator (e.g. "my-template" or "my-template:v1"). If tag is included, it will be treated as if the tag was provided in the tags array.
           type: string
+          maxLength: 128
         tags:
           type: array
           description: Tags to assign to the template build
@@ -1224,6 +1235,7 @@ components:
         alias:
           description: Alias of the template. Deprecated, use name instead.
           type: string
+          maxLength: 128
           deprecated: true
         teamID:
           deprecated: true
@@ -1963,6 +1975,7 @@ tags:
 paths:
   /health:
     get:
+      summary: Health check
       description: Health check
       responses:
         "204":
@@ -1972,6 +1985,7 @@ paths:
 
   /teams:
     get:
+      summary: List teams
       description: List all teams
       tags: [auth]
       security:
@@ -1993,6 +2007,7 @@ paths:
 
   /teams/{teamID}/metrics:
     get:
+      summary: Team metrics
       description: Get metrics for the team
       tags: [auth]
       security:
@@ -2037,6 +2052,7 @@ paths:
 
   /teams/{teamID}/metrics/max:
     get:
+      summary: Maximum team metrics
       description: Get the maximum metrics for the team in the given interval
       tags: [auth]
       security:
@@ -2086,7 +2102,9 @@ paths:
 
   /sandboxes:
     get:
-      description: List all running sandboxes
+      summary: List running sandboxes
+      description: List all running sandboxes. Use GET /v2/sandboxes instead.
+      deprecated: true
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
@@ -2117,6 +2135,7 @@ paths:
         "500":
           $ref: "#/components/responses/500"
     post:
+      summary: Create sandbox
       description: Create a sandbox from the template
       tags: [sandboxes]
       security:
@@ -2147,6 +2166,7 @@ paths:
 
   /v2/sandboxes:
     get:
+      summary: List sandboxes (v2)
       description: List all sandboxes
       tags: [sandboxes]
       security:
@@ -2192,6 +2212,7 @@ paths:
 
   /sandboxes/metrics:
     get:
+      summary: List sandbox metrics
       description: List metrics for given sandboxes
       tags: [sandboxes]
       security:
@@ -2228,6 +2249,7 @@ paths:
 
   /sandboxes/{sandboxID}/logs:
     get:
+      summary: Sandbox logs
       description: Get sandbox logs. Use /v2/sandboxes/{sandboxID}/logs instead.
       deprecated: true
       tags: [sandboxes]
@@ -2270,6 +2292,7 @@ paths:
 
   /v2/sandboxes/{sandboxID}/logs:
     get:
+      summary: Sandbox logs (v2)
       description: Get sandbox logs
       tags: [sandboxes]
       security:
@@ -2328,6 +2351,7 @@ paths:
 
   /sandboxes/{sandboxID}:
     get:
+      summary: Sandbox
       description: Get a sandbox by id
       tags: [sandboxes]
       security:
@@ -2353,6 +2377,7 @@ paths:
           $ref: "#/components/responses/500"
 
     delete:
+      summary: Kill sandbox
       description: Kill a sandbox
       tags: [sandboxes]
       security:
@@ -2375,6 +2400,7 @@ paths:
 
   /sandboxes/{sandboxID}/metrics:
     get:
+      summary: Sandbox metrics
       description: Get sandbox metrics
       tags: [sandboxes]
       security:
@@ -2421,6 +2447,7 @@ paths:
   # TODO: Pause and resume might be exposed as POST /sandboxes/{sandboxID}/snapshot and then POST /sandboxes with specified snapshotting setup
   /sandboxes/{sandboxID}/pause:
     post:
+      summary: Pause sandbox
       description: Pause the sandbox
       tags: [sandboxes]
       security:
@@ -2451,6 +2478,7 @@ paths:
 
   /sandboxes/{sandboxID}/resume:
     post:
+      summary: Resume sandbox
       deprecated: true
       description: Resume the sandbox
       tags: [sandboxes]
@@ -2486,6 +2514,7 @@ paths:
 
   /sandboxes/{sandboxID}/connect:
     post:
+      summary: Connect sandbox
       description: Returns sandbox details. If the sandbox is paused, it will be resumed. TTL is only extended.
       tags: [sandboxes]
       security:
@@ -2526,6 +2555,7 @@ paths:
 
   /sandboxes/{sandboxID}/timeout:
     post:
+      summary: Set sandbox timeout
       description: Set the timeout for the sandbox. The sandbox will expire x seconds from the time of the request. Calling this method multiple times overwrites the TTL, each time using the current timestamp as the starting point to measure the timeout duration.
       security:
         - ApiKeyAuth: []
@@ -2553,6 +2583,7 @@ paths:
 
   /sandboxes/{sandboxID}/network:
     put:
+      summary: Update sandbox network
       description: Update the network configuration for a running sandbox. Replaces the current egress rules with the provided configuration. Omitting field clears it.
       security:
         - ApiKeyAuth: []
@@ -2583,6 +2614,7 @@ paths:
 
   /sandboxes/{sandboxID}/refreshes:
     post:
+      summary: Refresh sandbox
       description: Refresh the sandbox extending its time to live
       security:
         - ApiKeyAuth: []
@@ -2608,6 +2640,7 @@ paths:
 
   /sandboxes/{sandboxID}/snapshots:
     post:
+      summary: Create snapshot
       description: Create a persistent snapshot from the sandbox's current state. Snapshots can be used to create new sandboxes and persist beyond the original sandbox's lifetime.
       tags: [sandboxes]
       security:
@@ -2642,6 +2675,7 @@ paths:
 
   /snapshots:
     get:
+      summary: List snapshots
       description: List all snapshots for the team
       tags: [snapshots]
       security:
@@ -2675,6 +2709,7 @@ paths:
 
   /v3/templates:
     post:
+      summary: Create template (v3)
       description: Create a new template
       tags: [templates]
       security:
@@ -2708,6 +2743,7 @@ paths:
 
   /v2/templates:
     get:
+      summary: List templates (v2)
       description: List all templates
       tags: [templates]
       security:
@@ -2749,6 +2785,7 @@ paths:
         "500":
           $ref: "#/components/responses/500"
     post:
+      summary: Create template (v2)
       description: Create a new template
       deprecated: true
       tags: [templates]
@@ -2781,6 +2818,7 @@ paths:
 
   /templates/{templateID}/files/{hash}:
     get:
+      summary: Template build file upload URL
       description: Get an upload link for a tar file containing build layer files
       tags: [templates]
       security:
@@ -2817,6 +2855,7 @@ paths:
 
   /templates:
     get:
+      summary: List templates
       description: List all templates
       deprecated: true
       tags: [templates]
@@ -2848,6 +2887,7 @@ paths:
         "500":
           $ref: "#/components/responses/500"
     post:
+      summary: Create template
       description: Create a new template
       deprecated: true
       tags: [templates]
@@ -2878,6 +2918,7 @@ paths:
 
   /templates/{templateID}:
     get:
+      summary: List template builds
       description: List all builds for a template
       tags: [templates]
       security:
@@ -2902,6 +2943,7 @@ paths:
         "500":
           $ref: "#/components/responses/500"
     post:
+      summary: Rebuild template
       description: Rebuild an template
       deprecated: true
       tags: [templates]
@@ -2930,6 +2972,7 @@ paths:
         "500":
           $ref: "#/components/responses/500"
     delete:
+      summary: Delete template
       description: Delete a template
       tags: [templates]
       security:
@@ -2949,6 +2992,7 @@ paths:
         "500":
           $ref: "#/components/responses/500"
     patch:
+      summary: Update template
       description: Update template
       deprecated: true
       tags: [templates]
@@ -2979,6 +3023,7 @@ paths:
 
   /templates/{templateID}/builds/{buildID}:
     post:
+      summary: Start template build
       description: Start the build
       deprecated: true
       tags: [templates]
@@ -2999,6 +3044,7 @@ paths:
 
   /v2/templates/{templateID}/builds/{buildID}:
     post:
+      summary: Start template build (v2)
       description: Start the build
       tags: [templates]
       security:
@@ -3026,6 +3072,7 @@ paths:
 
   /v2/templates/{templateID}:
     patch:
+      summary: Update template (v2)
       description: Update template
       tags: [templates]
       security:
@@ -3059,6 +3106,7 @@ paths:
 
   /templates/{templateID}/builds/{buildID}/status:
     get:
+      summary: Template build status
       description: Get template build info
       tags: [templates]
       security:
@@ -3108,6 +3156,7 @@ paths:
 
   /templates/{templateID}/builds/{buildID}/logs:
     get:
+      summary: Template build logs
       description: Get template build logs
       tags: [templates]
       security:
@@ -3165,6 +3214,7 @@ paths:
 
   /templates/tags:
     post:
+      summary: Assign template tags
       description: Assign tag(s) to a template build
       tags: [tags]
       security:
@@ -3195,6 +3245,7 @@ paths:
         "500":
           $ref: "#/components/responses/500"
     delete:
+      summary: Delete template tags
       description: Delete multiple tags from templates
       tags: [tags]
       security:
@@ -3223,6 +3274,7 @@ paths:
 
   /templates/{templateID}/tags:
     get:
+      summary: List template tags
       description: List all tags for a template
       tags: [tags]
       security:
@@ -3253,6 +3305,7 @@ paths:
 
   /templates/aliases/{alias}:
     get:
+      summary: Check template alias
       description: Check if template with given alias exists
       tags: [templates]
       security:
@@ -3286,6 +3339,7 @@ paths:
 
   /nodes:
     get:
+      summary: List nodes
       description: List all nodes
       tags: [admin]
       security:
@@ -3314,6 +3368,7 @@ paths:
 
   /nodes/{nodeID}:
     get:
+      summary: Node info
       description: Get node info
       tags: [admin]
       security:
@@ -3341,6 +3396,7 @@ paths:
         "500":
           $ref: "#/components/responses/500"
     post:
+      summary: Change node status
       description: Change status of a node
       tags: [admin]
       security:
@@ -3489,7 +3545,9 @@ paths:
 
   /access-tokens:
     post:
-      description: Create a new access token
+      summary: Create access token
+      description: Create a new access token. Deprecated; use an API key (E2B_API_KEY) instead.
+      deprecated: true
       tags: [access-tokens]
       security:
         - AuthProviderBearerAuth: []
@@ -3508,11 +3566,14 @@ paths:
                 $ref: "#/components/schemas/CreatedAccessToken"
         "401":
           $ref: "#/components/responses/401"
+        "410":
+          $ref: "#/components/responses/410"
         "500":
           $ref: "#/components/responses/500"
 
   /access-tokens/{accessTokenID}:
     delete:
+      summary: Delete access token
       description: Delete an access token
       tags: [access-tokens]
       security:
@@ -3531,6 +3592,7 @@ paths:
 
   /api-keys:
     get:
+      summary: List team API keys
       description: List all team API keys
       tags: [api-keys]
       security:
@@ -3552,6 +3614,7 @@ paths:
         "500":
           $ref: "#/components/responses/500"
     post:
+      summary: Create team API key
       description: Create a new team API key
       tags: [api-keys]
       security:
@@ -3577,6 +3640,7 @@ paths:
 
   /api-keys/{apiKeyID}:
     patch:
+      summary: Update team API key
       description: Update a team API key
       tags: [api-keys]
       security:
@@ -3602,6 +3666,7 @@ paths:
         "500":
           $ref: "#/components/responses/500"
     delete:
+      summary: Delete team API key
       description: Delete a team API key
       tags: [api-keys]
       security:
@@ -3623,6 +3688,7 @@ paths:
 
   /volumes:
     get:
+      summary: List team volumes
       description: List all team volumes
       tags: [volumes]
       security:
@@ -3646,6 +3712,7 @@ paths:
           $ref: "#/components/responses/500"
 
     post:
+      summary: Create team volume
       description: Create a new team volume
       tags: [volumes]
       security:
@@ -3676,6 +3743,7 @@ paths:
 
   /volumes/{volumeID}:
     get:
+      summary: Team volume
       description: Get team volume info
       tags: [volumes]
       security:
@@ -3701,6 +3769,7 @@ paths:
           $ref: "#/components/responses/500"
 
     delete:
+      summary: Delete team volume
       description: Delete a team volume
       tags: [volumes]
       security:

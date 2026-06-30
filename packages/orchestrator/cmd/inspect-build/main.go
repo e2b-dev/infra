@@ -11,6 +11,7 @@ import (
 	"unsafe"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/cmd/internal/cmdutil"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/artifact"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
@@ -72,7 +73,7 @@ func main() {
 	if *memfile {
 		artifactName = "memfile"
 	} else {
-		artifactName = "rootfs.ext4"
+		artifactName = artifact.RootfsFileName
 	}
 
 	ctx := context.Background()

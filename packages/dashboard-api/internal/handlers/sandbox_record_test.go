@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -40,7 +41,45 @@ func (r noRowsRow) Scan(...any) error {
 	return pgx.ErrNoRows
 }
 
-func TestGetSandboxesSandboxIDRecordReturns404WhenRecordRetentionNotMet(t *testing.T) {
+// recordDB returns a single sandbox record row whose stopped_at is configurable,
+// so we can exercise the retentionExpired computation in the handler.
+type recordDB struct {
+	stoppedAt *time.Time
+}
+
+func (d recordDB) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
+	return pgconn.CommandTag{}, nil
+}
+
+func (d recordDB) Query(context.Context, string, ...any) (pgx.Rows, error) {
+	return nil, nil
+}
+
+func (d recordDB) QueryRow(context.Context, string, ...any) pgx.Row {
+	return recordRow(d)
+}
+
+type recordRow struct {
+	stoppedAt *time.Time
+}
+
+// Scan fills the destinations in the exact order produced by the generated
+// GetSandboxRecordByTeamAndSandboxID query.
+func (r recordRow) Scan(dest ...any) error {
+	*(dest[0].(*string)) = "sbx_1"         // sandbox_id
+	*(dest[1].(*string)) = "tmpl_1"        // template_id
+	*(dest[2].(*int64)) = 1                // vcpu
+	*(dest[3].(*int64)) = 512              // ram_mb
+	*(dest[4].(*int64)) = 1024             // total_disk_size_mb
+	*(dest[5].(*time.Time)) = time.Now()   // started_at
+	*(dest[6].(**time.Time)) = r.stoppedAt // stopped_at
+	*(dest[7].(**string)) = nil            // domain
+	*(dest[8].(*string)) = ""              // alias
+
+	return nil
+}
+
+func TestGetSandboxesSandboxIDRecordReturns404WhenNotFound(t *testing.T) {
 	t.Parallel()
 
 	recorder := httptest.NewRecorder()
@@ -77,5 +116,59 @@ func TestGetSandboxesSandboxIDRecordReturns404WhenRecordRetentionNotMet(t *testi
 
 	if response.Code != int32(http.StatusNotFound) {
 		t.Fatalf("expected code %d, got %d", http.StatusNotFound, response.Code)
+	}
+}
+
+func TestGetSandboxesSandboxIDRecordRetentionExpired(t *testing.T) {
+	t.Parallel()
+
+	stoppedLongAgo := time.Now().Add(-8 * 24 * time.Hour)
+	stoppedRecently := time.Now().Add(-24 * time.Hour)
+
+	testCases := []struct {
+		name             string
+		stoppedAt        *time.Time
+		retentionExpired bool
+	}{
+		{name: "ended more than retention ago", stoppedAt: &stoppedLongAgo, retentionExpired: true},
+		{name: "ended within retention", stoppedAt: &stoppedRecently, retentionExpired: false},
+		{name: "still running", stoppedAt: nil, retentionExpired: false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			recorder := httptest.NewRecorder()
+			ctx, _ := gin.CreateTestContext(recorder)
+			ctx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/sandboxes/sbx_1/record", nil)
+
+			auth.SetTeamInfoForTest(t, ctx, &authtypes.Team{
+				Team: &authqueries.Team{
+					ID: uuid.New(),
+				},
+			})
+
+			store := &APIStore{
+				db: &sqlcdb.Client{
+					Queries: queries.New(recordDB{stoppedAt: tc.stoppedAt}),
+				},
+			}
+
+			store.GetSandboxesSandboxIDRecord(ctx, api.SandboxID("sbx_1"))
+
+			if recorder.Code != http.StatusOK {
+				t.Fatalf("expected status %d, got %d (body: %s)", http.StatusOK, recorder.Code, recorder.Body.String())
+			}
+
+			var record api.SandboxRecord
+			if err := json.Unmarshal(recorder.Body.Bytes(), &record); err != nil {
+				t.Fatalf("failed to parse response body: %v", err)
+			}
+
+			if record.RetentionExpired != tc.retentionExpired {
+				t.Fatalf("expected retentionExpired=%v, got %v", tc.retentionExpired, record.RetentionExpired)
+			}
+		})
 	}
 }

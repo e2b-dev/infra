@@ -33,9 +33,6 @@ const (
 	VolumeKind           ldcontext.Kind = "volume"
 	CompressFileTypeKind ldcontext.Kind = "compress-file-type"
 	CompressUseCaseKind  ldcontext.Kind = "compress-use-case"
-
-	OrchestratorKind            ldcontext.Kind = "orchestrator"
-	OrchestratorCommitAttribute string         = "commit"
 )
 
 // All flags must be defined here: https://app.launchdarkly.com/projects/default/flags/
@@ -219,6 +216,12 @@ var (
 	// from the in-progress snapshot pull, so pinning the retry to it avoids
 	// re-pulling the snapshot onto yet another node.
 	ResumeOriginNodeRemapFlag = NewBoolFlag("resume-origin-node-remap", false)
+
+	// DisableE2BAccessTokenProvisioningFlag stops POST /access-tokens from issuing
+	// new E2B access tokens (sk_e2b_) once enabled. E2B_ACCESS_TOKEN is deprecated
+	// in favor of E2B_API_KEY; the CLI now authenticates via Hydra JWTs. Off by
+	// default so issuance keeps working until the deprecation cutover.
+	DisableE2BAccessTokenProvisioningFlag = NewBoolFlag("disable-e2b-access-token-provisioning", false)
 )
 
 // envdTimeoutFallbackMs reads ENVD_TIMEOUT (Go duration string, e.g. "10s")
@@ -304,6 +307,30 @@ var (
 	// MemoryPrefetchMaxCopyWorkers is the maximum number of parallel copy workers per sandbox for memory prefetching.
 	// Copy uses uffd syscalls, so we limit parallelism to avoid overwhelming the system.
 	MemoryPrefetchMaxCopyWorkers = NewIntFlag("memory-prefetch-max-copy-workers", 8)
+
+	// PauseResumePrefetchHarvestFlag makes the orchestrator, after a pause
+	// snapshot is durable, run a throwaway warm resume of the just-written
+	// artifact (driven by envd /init, workload frozen, egress denied) to record
+	// the resume page-fault trace and turn it into a prefetch mapping. Off by
+	// default; the harvest is best-effort and never affects the pause result.
+	PauseResumePrefetchHarvestFlag = NewBoolFlag("pause-resume-prefetch-harvest", false)
+
+	// PauseResumePrefetchConsumeFlag controls whether a harvested mapping is
+	// persisted into the pause artifact metadata (and therefore replayed on the
+	// customer's next resume). When off, the harvest still runs and emits its
+	// trace-size metrics but does NOT write the mapping, so resumes are
+	// unaffected — letting us validate harvest behaviour with no customer-visible
+	// change before enabling prefetch on resume. Off by default.
+	PauseResumePrefetchConsumeFlag = NewBoolFlag("pause-resume-prefetch-consume", false)
+
+	// PauseResumePrefetchHarvestTimeoutMsFlag bounds the throwaway harvest resume
+	// (slot-hold cap), in milliseconds. The harvest is best-effort: a cut-short
+	// run is discarded (the build is simply re-harvested on its next pause), so
+	// erring short is cheap. A normal warm harvest completes in a few seconds; the
+	// default leaves headroom for a large warm resume to fully drain while keeping
+	// the worst-case slot hold modest. Tunable per rollout via LD; the fallback
+	// (returned when LD is unavailable or the flag is unset) is the default.
+	PauseResumePrefetchHarvestTimeoutMsFlag = NewIntFlag("pause-resume-prefetch-harvest-timeout-ms", 15000) // 15s
 
 	// TCPFirewallMaxConnectionsPerSandbox is the maximum number of concurrent TCP firewall
 	// connections allowed per sandbox. Negative means no limit.
@@ -436,16 +463,16 @@ const (
 // The Firecracker version the last tag + the short SHA (so we can build our dev previews)
 // TODO: The short tag here has only 7 characters — the one from our build pipeline will likely have exactly 8 so this will break.
 const (
-	DefaultFirecackerV1_10Version = "v1.10.1_30cbb07"
-	DefaultFirecackerV1_12Version = "v1.12.1_210cbac"
-	DefaultFirecackerV1_14Version = "v1.14.1_431f1fc"
-	DefaultFirecrackerVersion     = DefaultFirecackerV1_14Version
+	DefaultFirecrackerV1_10Version = "v1.10.1_30cbb07"
+	DefaultFirecrackerV1_12Version = "v1.12.1_210cbac"
+	DefaultFirecrackerV1_14Version = "v1.14.1_431f1fc"
+	DefaultFirecrackerVersion      = DefaultFirecrackerV1_14Version
 )
 
 var FirecrackerVersionMap = map[string]string{
-	"v1.10": DefaultFirecackerV1_10Version,
-	"v1.12": DefaultFirecackerV1_12Version,
-	"v1.14": DefaultFirecackerV1_14Version,
+	"v1.10": DefaultFirecrackerV1_10Version,
+	"v1.12": DefaultFirecrackerV1_12Version,
+	"v1.14": DefaultFirecrackerV1_14Version,
 }
 
 // BuildIoEngine Sync is used by default as there seems to be a bad interaction between Async and a lot of io operations.

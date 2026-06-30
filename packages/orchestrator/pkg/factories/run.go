@@ -13,10 +13,12 @@ import (
 	"os"
 	"os/signal"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/gofrs/flock"
 	"github.com/google/uuid"
 	"github.com/soheilhy/cmux"
 	"go.opentelemetry.io/otel/attribute"
@@ -51,6 +53,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/server"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/service"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/service/machineinfo"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/startupreclaim"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/constants"
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/pkg/template/server"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/volumes"
@@ -169,6 +172,61 @@ func ensureDirs(c cfg.Config) error {
 	return nil
 }
 
+func acquireOrchestratorLock(path string) (*flock.Flock, error) {
+	fileLock := flock.New(path, flock.SetPermissions(0o644))
+	locked, err := fileLock.TryLock()
+	if err != nil {
+		return nil, fmt.Errorf("lock file: %w", err)
+	}
+	if !locked {
+		// flock(2) is released by the kernel on crash, so reaching here means a
+		// live process holds the lock. Surface the PID it recorded, if any.
+		if pid, perr := readLockHolderPID(path); perr == nil && pid > 0 {
+			return nil, fmt.Errorf("another instance is running with pid %d", pid)
+		}
+
+		return nil, errors.New("another instance is running")
+	}
+
+	// Record our PID so a future conflicting instance can report it. We hold the
+	// exclusive advisory lock, so no other process writes this file concurrently.
+	if err := writeLockHolderPID(path); err != nil {
+		_ = fileLock.Unlock()
+
+		return nil, fmt.Errorf("write lock holder pid: %w", err)
+	}
+
+	return fileLock, nil
+}
+
+func writeLockHolderPID(path string) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return fmt.Errorf("open lock file: %w", err)
+	}
+	defer f.Close()
+
+	if _, err := fmt.Fprintf(f, "%d\n", os.Getpid()); err != nil {
+		return fmt.Errorf("write pid: %w", err)
+	}
+
+	return nil
+}
+
+func readLockHolderPID(path string) (int, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, fmt.Errorf("read lock file: %w", err)
+	}
+
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		return 0, fmt.Errorf("parse pid: %w", err)
+	}
+
+	return pid, nil
+}
+
 func run(config cfg.Config, opts Options) (success bool) {
 	success = true
 
@@ -177,31 +235,27 @@ func run(config cfg.Config, opts Options) (success bool) {
 
 	services := cfg.GetServices(config)
 
-	// Check if the orchestrator crashed and restarted
-	// Skip this check in development mode
-	// We don't want to lock if the service is running with force stop; the subsequent start would fail.
-	if !env.IsDevelopment() && !config.ForceStop && slices.Contains(services, cfg.Orchestrator) {
-		fileLockName := config.OrchestratorLockPath
-		info, err := os.Stat(fileLockName)
-		if err == nil {
-			log.Fatalf("Orchestrator was already started at %s, exiting", info.ModTime())
-		}
+	usesSandboxRuntime := services.UsesSandboxRuntime()
 
-		f, err := os.Create(fileLockName)
+	// Enforce a single host-level sandbox runtime instance.
+	// Skip this check in development mode.
+	if !env.IsDevelopment() && usesSandboxRuntime {
+		f, err := acquireOrchestratorLock(config.OrchestratorLockPath)
 		if err != nil {
-			log.Fatalf("Failed to create lock file %s: %v", fileLockName, err)
+			log.Fatalf("Failed to acquire orchestrator lock %s: %v", config.OrchestratorLockPath, err)
 		}
 		defer func() {
 			fileErr := f.Close()
 			if fileErr != nil {
-				log.Printf("Failed to close lock file %s: %v", fileLockName, fileErr)
+				log.Printf("Failed to close lock file %s: %v", config.OrchestratorLockPath, fileErr)
 			}
-
-			// Remove the lock file on graceful shutdown
-			if success == true {
-				if fileErr = os.Remove(fileLockName); fileErr != nil {
-					log.Printf("Failed to remove lock file %s: %v", fileLockName, fileErr)
-				}
+			// Remove the lock file on clean shutdown so a rollback to the older
+			// stat-based release can start: that guard exits whenever the lock
+			// file exists and cannot tell that this process is already gone.
+			// TODO: Remove this os.Remove once all hosts run a flock-based
+			// release and rollback to the stat-based guard is no longer possible.
+			if rmErr := os.Remove(config.OrchestratorLockPath); rmErr != nil && !os.IsNotExist(rmErr) {
+				log.Printf("Failed to remove lock file %s: %v", config.OrchestratorLockPath, rmErr)
 			}
 		}()
 	}
@@ -360,6 +414,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	closers = append(closers, closer{"feature flags", featureFlags.Close})
 
 	featureFlags.SetDeploymentName(config.DomainName)
+	featureFlags.RegisterContextProvider(orchestratorContextProvider(nodeID, commitSHA))
 
 	// gcp concurrent upload limiter
 	limiter, err := limit.New(ctx, featureFlags)
@@ -621,6 +676,18 @@ func run(config cfg.Config, opts Options) (success bool) {
 		closers = append(closers, closer{"egress proxy", egressSetup.Close})
 	}
 
+	// Sandbox-runtime reclaim must run before newStorage below: reclaim deletes
+	// leaked ns-* from /run/netns, and NewStorageLocal snapshots the remaining
+	// namespaces as foreign at construction.
+	if usesSandboxRuntime && !config.DisableStartupReclaim {
+		startupreclaim.Run(ctx, startupreclaim.Config{
+			NetworkConfig: config.NetworkConfig,
+			EgressProxy:   egressSetup.Proxy,
+			CgroupManager: cgroupManager,
+			StorageConfig: config.StorageConfig,
+		})
+	}
+
 	// device pool
 	devicePool, err := nbd.NewDevicePool(config.NBDPoolSize)
 	if err != nil {
@@ -735,7 +802,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	// template manager
 	var tmpl *tmplserver.ServerStore
 	var localUploadHandler *localupload.Handler
-	if slices.Contains(services, cfg.TemplateManager) {
+	if services.RunsTemplateManager() {
 		buildPersistence, uploadHandler, err := setupBuildStorage(ctx, limiter, config)
 		if err != nil {
 			logger.L().Fatal(ctx, "failed to setup build storage", zap.Error(err))
