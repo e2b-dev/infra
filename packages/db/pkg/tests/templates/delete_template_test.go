@@ -41,7 +41,9 @@ func TestDeleteTemplate_SoftDeletesEnvAndPreservesStructure(t *testing.T) {
 	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, buildID, "default")
 	alias := testutils.CreateTestTemplateAlias(t, db, templateID)
 
-	_, err := db.SqlcClient.DeleteTemplate(ctx, queries.DeleteTemplateParams{TemplateID: templateID, TeamID: teamID})
+	_, err := db.SqlcClient.SoftDeleteTemplate(ctx, queries.SoftDeleteTemplateParams{TemplateID: templateID, TeamID: teamID})
+	require.NoError(t, err)
+	_, err = db.SqlcClient.ReleaseTemplateAliases(ctx, templateID)
 	require.NoError(t, err)
 
 	assert.True(t, testutils.GetEnvByID(t, ctx, db, templateID), "env row must be preserved")
