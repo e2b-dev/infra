@@ -30,6 +30,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/e2b-dev/infra/packages/clickhouse v0.0.0
 	github.com/e2b-dev/infra/packages/shared v0.0.0
+	github.com/e2b-dev/ublk-go v0.1.3
 	github.com/edsrzf/mmap-go v1.2.1-0.20241212181136-fad1cd13edbd
 	github.com/firecracker-microvm/firecracker-go-sdk v1.0.0
 	github.com/getkin/kin-openapi v0.137.0
