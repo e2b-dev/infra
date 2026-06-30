@@ -17,7 +17,7 @@ func TestWriteAndReadMetadata(t *testing.T) {
 	}
 
 	want := map[string]string{"author": "mish", "purpose": "upload"}
-	if err := WriteMetadata(path, want); err != nil {
+	if err := writeMetadataForTest(path, want); err != nil {
 		if IsXattrUnsupported(err) {
 			t.Skipf("filesystem does not support xattrs: %v", err)
 		}
@@ -166,7 +166,7 @@ func TestWriteMetadataReplacesFullSet(t *testing.T) {
 		t.Fatalf("write file: %v", err)
 	}
 
-	if err := WriteMetadata(path, map[string]string{"author": "mish", "purpose": "upload"}); err != nil {
+	if err := writeMetadataForTest(path, map[string]string{"author": "mish", "purpose": "upload"}); err != nil {
 		if IsXattrUnsupported(err) {
 			t.Skipf("filesystem does not support xattrs: %v", err)
 		}
@@ -180,7 +180,7 @@ func TestWriteMetadataReplacesFullSet(t *testing.T) {
 
 	// Non-empty call replaces the full set: "purpose" is dropped because
 	// it's not in the new map.
-	if err := WriteMetadata(path, map[string]string{"author": "alice"}); err != nil {
+	if err := writeMetadataForTest(path, map[string]string{"author": "alice"}); err != nil {
 		t.Fatalf("WriteMetadata replace: %v", err)
 	}
 	got, err := ReadMetadata(path)
@@ -192,7 +192,7 @@ func TestWriteMetadataReplacesFullSet(t *testing.T) {
 	}
 
 	// Empty/nil call clears all e2b metadata.
-	if err := WriteMetadata(path, nil); err != nil {
+	if err := writeMetadataForTest(path, nil); err != nil {
 		t.Fatalf("WriteMetadata nil: %v", err)
 	}
 	got, err = ReadMetadata(path)
@@ -207,4 +207,47 @@ func TestWriteMetadataReplacesFullSet(t *testing.T) {
 	if _, err := xattr.Get(path, "user.foreign"); err != nil {
 		t.Errorf("foreign xattr was removed: %v", err)
 	}
+}
+
+func TestWriteMetadataSurvivesRename(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "f")
+	renamed := filepath.Join(dir, "renamed")
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatalf("open file: %v", err)
+	}
+	defer file.Close()
+
+	if err := os.Rename(path, renamed); err != nil {
+		t.Fatalf("rename file: %v", err)
+	}
+
+	want := map[string]string{"author": "mish"}
+	if err := WriteMetadata(file, want); err != nil {
+		if IsXattrUnsupported(err) {
+			t.Skipf("filesystem does not support xattrs: %v", err)
+		}
+		t.Fatalf("WriteMetadata: %v", err)
+	}
+
+	got, err := ReadMetadata(renamed)
+	if err != nil {
+		t.Fatalf("ReadMetadata: %v", err)
+	}
+	if got["author"] != want["author"] {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+func writeMetadataForTest(path string, metadata map[string]string) error {
+	file, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	return WriteMetadata(file, metadata)
 }

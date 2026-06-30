@@ -9,6 +9,7 @@ import (
 	txtTemplate "text/template"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/artifact"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -94,12 +95,12 @@ func (sb *StartScriptBuilder) buildArgs(
 		// Kernel
 		HostKernelPath:    versions.HostKernelPath(sb.builderConfig),
 		SandboxKernelDir:  versions.SandboxKernelDir(),
-		SandboxKernelFile: SandboxKernelFile,
+		SandboxKernelFile: artifact.KernelFileName,
 
 		// Rootfs
 		HostRootfsPath:             files.SandboxCacheRootfsLinkPath(sb.builderConfig.StorageConfig),
 		DeprecatedSandboxRootfsDir: rootfsPaths.DeprecatedSandboxRootfsDir(),
-		SandboxRootfsFile:          SandboxRootfsFile,
+		SandboxRootfsFile:          artifact.RootfsFileName,
 
 		// FC
 		NamespaceID:       namespaceID,

@@ -34,13 +34,16 @@ var softDeleteCheckMetric = utils.Must(meter.Int64Counter(
 
 // recordCheck emits one metric point per check. result distinguishes a read
 // (checked) from an unreadable object (not_found/error); soft_deleted/failed
-// are only meaningful when result==checked.
-func (b *StorageDiff) recordCheck(ctx context.Context, result string, softDeleted, failed bool) {
+// are only meaningful when result==checked. marker carries the tombstone value
+// (matching the log), set only on a hit so its action_id doesn't inflate
+// cardinality on the common no-tombstone path.
+func (b *StorageDiff) recordCheck(ctx context.Context, result string, softDeleted, failed bool, marker string) {
 	softDeleteCheckMetric.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("artifact", string(b.diffType)),
 		attribute.String("result", result),
 		attribute.Bool("soft_deleted", softDeleted),
 		attribute.Bool("failed", failed),
+		attribute.String("marker", marker),
 	))
 }
 
@@ -87,7 +90,7 @@ func (b *StorageDiff) softDeleteCheck(ctx context.Context, ff *featureflags.Clie
 	blob, err := b.persistence.OpenBlob(ctx, path)
 	if err != nil {
 		result := classifyCheckError(err)
-		b.recordCheck(ctx, result, false, false)
+		b.recordCheck(ctx, result, false, false, "")
 		logger.L().Warn(ctx, "storage-index soft-delete check could not open object",
 			logger.WithBuildID(b.buildID), zap.String("artifact", string(b.diffType)),
 			zap.String("result", result), zap.String("object", path), zap.Error(err))
@@ -103,7 +106,7 @@ func (b *StorageDiff) softDeleteCheck(ctx context.Context, ff *featureflags.Clie
 		// possibly-tombstoned layer (BlobCustomMetadata used to return no error
 		// here, which silently failed open).
 		if result == checkResultUnsupported && ff.BoolFlag(ctx, featureflags.StorageSoftDeleteEnforceFlag) {
-			b.recordCheck(ctx, result, false, true)
+			b.recordCheck(ctx, result, false, true, "")
 			b.softDeletedPath.Store(&path)
 			logger.L().Error(ctx, "storage-index soft-delete unverifiable; failing closed",
 				logger.WithBuildID(b.buildID), zap.String("artifact", string(b.diffType)),
@@ -111,7 +114,7 @@ func (b *StorageDiff) softDeleteCheck(ctx context.Context, ff *featureflags.Clie
 
 			return
 		}
-		b.recordCheck(ctx, result, false, false)
+		b.recordCheck(ctx, result, false, false, "")
 		logger.L().Warn(ctx, "storage-index soft-delete check could not read object metadata",
 			logger.WithBuildID(b.buildID), zap.String("artifact", string(b.diffType)),
 			zap.String("result", result),
@@ -125,7 +128,7 @@ func (b *StorageDiff) softDeleteCheck(ctx context.Context, ff *featureflags.Clie
 	enforce := ff.BoolFlag(ctx, featureflags.StorageSoftDeleteEnforceFlag)
 	failed := softDeleted && enforce
 
-	b.recordCheck(ctx, checkResultChecked, softDeleted, failed)
+	b.recordCheck(ctx, checkResultChecked, softDeleted, failed, marker)
 
 	if !softDeleted {
 		return

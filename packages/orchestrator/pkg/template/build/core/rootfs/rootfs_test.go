@@ -100,6 +100,24 @@ func TestAdditionalOCILayers(t *testing.T) {
 		// verify that systemd is configured to retry envd forever
 		assert.Contains(t, actualFiles["etc/systemd/system/envd.service"], "StartLimitIntervalSec=0")
 
+		// Regression guard: envd must be ordered after systemd-tmpfiles-setup.service.
+		// updateEnvd stages its replacement binary in /tmp during early boot, and on
+		// our Ubuntu/Debian base images systemd-tmpfiles-setup.service wipes /tmp's
+		// contents at boot (`D /tmp` rule run with --remove). Without this ordering
+		// envd can answer the build's upload before the wipe, and the staged
+		// /tmp/envd_updated is deleted, so the follow-up chmod/mv fails with ENOENT.
+		envdAfter := ""
+		for line := range strings.SplitSeq(actualFiles["etc/systemd/system/envd.service"], "\n") {
+			if strings.HasPrefix(line, "After=") {
+				envdAfter = line
+
+				break
+			}
+		}
+		require.NotEmpty(t, envdAfter, "envd.service must declare an After= ordering")
+		assert.Contains(t, envdAfter, "systemd-tmpfiles-setup.service",
+			"envd.service After= must order envd after the boot-time /tmp wipe")
+
 		// ensure that both files have identical content
 		disabledContent := strings.TrimSpace(`
 [Service]

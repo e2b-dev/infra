@@ -267,7 +267,7 @@ func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.Sand
 
 	s.firewallCustomRules.Store(true)
 
-	n, err := ns.GetNS(filepath.Join(netNamespacesDir, s.NamespaceID()))
+	n, err := ns.GetNS(filepath.Join(NetNamespacesDir, s.NamespaceID()))
 	if err != nil {
 		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
 	}
@@ -294,7 +294,7 @@ func (s *Slot) UpdateInternet(ctx context.Context, egress *orchestrator.SandboxN
 	deniedCIDRs := egress.GetDeniedCidrs()
 	hasBYOP := egress.GetEgressProxyAddress() != ""
 
-	n, err := ns.GetNS(filepath.Join(netNamespacesDir, s.NamespaceID()))
+	n, err := ns.GetNS(filepath.Join(NetNamespacesDir, s.NamespaceID()))
 	if err != nil {
 		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
 	}
@@ -313,6 +313,41 @@ func (s *Slot) UpdateInternet(ctx context.Context, egress *orchestrator.SandboxN
 	return nil
 }
 
+// DenyEgress drops all guest-originated traffic except the orchestrator control
+// path, isolating a throwaway sandbox (the pause-resume prefetch harvest) so its
+// envd init cannot reach the network. Like UpdateInternet it marks custom rules
+// so the slot's cleanup resets the firewall before reuse.
+func (s *Slot) DenyEgress(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "slot-internet-deny-egress", trace.WithAttributes(
+		attribute.String("namespace_id", s.NamespaceID()),
+	))
+	defer span.End()
+
+	// Guard against an uninitialized firewall before marking custom rules: a
+	// stored flag with a nil firewall would also panic the cleanup (ResetInternet).
+	if s.Firewall == nil {
+		return fmt.Errorf("firewall is not initialized for slot '%s'", s.NamespaceID())
+	}
+
+	n, err := ns.GetNS(filepath.Join(NetNamespacesDir, s.NamespaceID()))
+	if err != nil {
+		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
+	}
+	defer n.Close()
+
+	// Set before mutating: a partial failure must still trigger cleanup.
+	s.firewallCustomRules.Store(true)
+
+	err = n.Do(func(_ ns.NetNS) error {
+		return s.Firewall.DenyEgress(ctx)
+	})
+	if err != nil {
+		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
+	}
+
+	return nil
+}
+
 func (s *Slot) ResetInternet(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "slot-internet-reset", trace.WithAttributes(
 		attribute.String("namespace_id", s.NamespaceID()),
@@ -323,7 +358,7 @@ func (s *Slot) ResetInternet(ctx context.Context) error {
 		return nil
 	}
 
-	n, err := ns.GetNS(filepath.Join(netNamespacesDir, s.NamespaceID()))
+	n, err := ns.GetNS(filepath.Join(NetNamespacesDir, s.NamespaceID()))
 	if err != nil {
 		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
 	}
