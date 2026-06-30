@@ -31,9 +31,8 @@ func (s *APIStore) GetSandboxesSandboxIDRecord(c *gin.Context, sandboxID api.San
 	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamID.String()), telemetry.WithSandboxID(sandboxID))
 
 	row, err := s.db.GetSandboxRecordByTeamAndSandboxID(ctx, queries.GetSandboxRecordByTeamAndSandboxIDParams{
-		TeamID:       teamID,
-		SandboxID:    sandboxID,
-		CreatedAfter: time.Now().UTC().Add(-sandboxRecordRetention),
+		TeamID:    teamID,
+		SandboxID: sandboxID,
 	})
 	if err != nil {
 		if dberrors.IsNotFoundError(err) || isUndefinedTableError(err) {
@@ -53,16 +52,21 @@ func (s *APIStore) GetSandboxesSandboxIDRecord(c *gin.Context, sandboxID api.San
 		alias = &row.Alias
 	}
 
+	// The sandbox's monitoring, events, and logs data is purged once the
+	// sandbox ended more than the retention window ago.
+	retentionExpired := row.StoppedAt != nil && time.Since(*row.StoppedAt) > sandboxRecordRetention
+
 	c.JSON(http.StatusOK, api.SandboxRecord{
-		TemplateID: row.TemplateID,
-		Alias:      alias,
-		SandboxID:  row.SandboxID,
-		StartedAt:  row.StartedAt,
-		StoppedAt:  row.StoppedAt,
-		Domain:     row.Domain,
-		CpuCount:   row.Vcpu,
-		MemoryMB:   row.RamMb,
-		DiskSizeMB: row.TotalDiskSizeMb,
+		TemplateID:       row.TemplateID,
+		Alias:            alias,
+		SandboxID:        row.SandboxID,
+		StartedAt:        row.StartedAt,
+		StoppedAt:        row.StoppedAt,
+		Domain:           row.Domain,
+		CpuCount:         row.Vcpu,
+		MemoryMB:         row.RamMb,
+		DiskSizeMB:       row.TotalDiskSizeMb,
+		RetentionExpired: retentionExpired,
 	})
 }
 
