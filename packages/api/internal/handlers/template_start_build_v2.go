@@ -208,7 +208,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 func userAgentToTemplateVersion(ctx context.Context, logger logger.Logger, userAgent string) (string, error) {
 	version := templates.TemplateV2LatestVersion
 
-	for _, agent := range strings.Fields(userAgent) {
+	for agent := range strings.FieldsSeq(userAgent) {
 		switch {
 		case strings.HasPrefix(agent, jsSDKPrefix):
 			sdk := strings.TrimPrefix(agent, jsSDKPrefix)
