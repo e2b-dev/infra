@@ -833,6 +833,11 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
+			// Orchestrator-initiated teardown: the snapshot upload failed so the
+			// resumed sandbox is unusable and we stop it ourselves. Record the
+			// reason so the lifecycle doesn't mislabel this as a crash.
+			resumedSbx.SetStopReason(sandbox.StopReasonKilled)
+
 			s.sandboxFactory.Sandboxes.MarkStopping(ctx, resumedSbx.Runtime.SandboxID, resumedSbx.LifecycleID)
 			s.stopSandboxAsync(context.WithoutCancel(ctx), resumedSbx)
 
