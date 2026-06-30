@@ -336,7 +336,9 @@ func RegisterBuild(
 	}
 
 	for _, tag := range tags {
-		err = client.CreateTemplateBuildAssignment(ctx, queries.CreateTemplateBuildAssignmentParams{
+		// Env is active in this tx (CreateOrUpdateTemplate succeeded above), so
+		// the active_envs guard always matches here; rows is ignored.
+		_, err = client.CreateTemplateBuildAssignment(ctx, queries.CreateTemplateBuildAssignmentParams{
 			TemplateID: data.TemplateID,
 			BuildID:    buildID,
 			Tag:        tag,

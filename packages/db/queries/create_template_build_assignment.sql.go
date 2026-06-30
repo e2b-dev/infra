@@ -11,9 +11,10 @@ import (
 	"github.com/google/uuid"
 )
 
-const createTemplateBuildAssignment = `-- name: CreateTemplateBuildAssignment :exec
+const createTemplateBuildAssignment = `-- name: CreateTemplateBuildAssignment :execrows
 INSERT INTO "public"."env_build_assignments" (env_id, build_id, tag)
-VALUES ($1, $2, $3::text)
+SELECT $1, $2, $3::text
+WHERE EXISTS (SELECT 1 FROM "public"."active_envs" WHERE id = $1)
 `
 
 type CreateTemplateBuildAssignmentParams struct {
@@ -22,8 +23,13 @@ type CreateTemplateBuildAssignmentParams struct {
 	Tag        string
 }
 
-// Creates a build assignment to associate a build with a custom tag
-func (q *Queries) CreateTemplateBuildAssignment(ctx context.Context, arg CreateTemplateBuildAssignmentParams) error {
-	_, err := q.db.Exec(ctx, createTemplateBuildAssignment, arg.TemplateID, arg.BuildID, arg.Tag)
-	return err
+// Associates a build with a tag. Guarded on active_envs so a build can't be
+// attached to a soft-deleted env (the FK no longer rejects that since the row is
+// kept); 0 rows affected means the template is gone.
+func (q *Queries) CreateTemplateBuildAssignment(ctx context.Context, arg CreateTemplateBuildAssignmentParams) (int64, error) {
+	result, err := q.db.Exec(ctx, createTemplateBuildAssignment, arg.TemplateID, arg.BuildID, arg.Tag)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
