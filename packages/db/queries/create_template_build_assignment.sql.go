@@ -12,9 +12,15 @@ import (
 )
 
 const createTemplateBuildAssignment = `-- name: CreateTemplateBuildAssignment :execrows
+WITH active AS (
+    SELECT id
+    FROM "public"."envs"
+    WHERE id = $1 AND deleted_at IS NULL
+    FOR SHARE
+)
 INSERT INTO "public"."env_build_assignments" (env_id, build_id, tag)
 SELECT $1, $2, $3::text
-WHERE EXISTS (SELECT 1 FROM "public"."active_envs" WHERE id = $1)
+WHERE EXISTS (SELECT 1 FROM active)
 `
 
 type CreateTemplateBuildAssignmentParams struct {
@@ -23,9 +29,11 @@ type CreateTemplateBuildAssignmentParams struct {
 	Tag        string
 }
 
-// Associates a build with a tag. Guarded on active_envs so a build can't be
-// attached to a soft-deleted env (the FK no longer rejects that since the row is
-// kept); 0 rows affected means the template is gone.
+// Associates a build with a tag. Locks the env row (FOR SHARE) and re-checks
+// deleted_at so a build can't be attached to a template being soft-deleted
+// concurrently: a racing DeleteTemplate's UPDATE conflicts with the lock, so the
+// check sees the committed deleted_at and inserts nothing (the kept envs row
+// means the FK alone no longer blocks this). 0 rows affected means it's gone.
 func (q *Queries) CreateTemplateBuildAssignment(ctx context.Context, arg CreateTemplateBuildAssignmentParams) (int64, error) {
 	result, err := q.db.Exec(ctx, createTemplateBuildAssignment, arg.TemplateID, arg.BuildID, arg.Tag)
 	if err != nil {
