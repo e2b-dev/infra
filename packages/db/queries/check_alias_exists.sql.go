@@ -11,6 +11,8 @@ import (
 
 const checkAliasConflictsWithTemplateID = `-- name: CheckAliasConflictsWithTemplateID :one
 SELECT EXISTS(
+    -- envs, not active_envs: an id stays reserved while its env row exists
+    -- (even soft-deleted), so an alias must not shadow it.
     SELECT 1
     FROM "public"."envs"
     WHERE id = $1

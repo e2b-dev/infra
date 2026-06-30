@@ -9,7 +9,7 @@ SELECT sqlc.embed(e),
        COALESCE(latest_build.status_group, 'pending') as build_status,
        COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases,
        COALESCE(ea.names, ARRAY[]::text[])::text[] AS names
-FROM public.envs AS e
+FROM public.active_envs AS e
 LEFT JOIN LATERAL (
     SELECT
         ARRAY_AGG(alias ORDER BY alias) AS aliases,

@@ -47,16 +47,16 @@ func (s *APIStore) GetTemplatesTemplateID(c *gin.Context, templateID api.Templat
 	}
 
 	resp := api.TemplateDetail{
-		TemplateID:    row.Env.ID,
+		TemplateID:    row.ActiveEnv.ID,
 		BuildID:       row.BuildID.String(),
-		Public:        row.Env.Public,
+		Public:        row.ActiveEnv.Public,
 		Aliases:       row.Aliases,
 		Names:         row.Names,
-		CreatedAt:     row.Env.CreatedAt,
-		UpdatedAt:     row.Env.UpdatedAt,
-		LastSpawnedAt: row.Env.LastSpawnedAt,
-		SpawnCount:    row.Env.SpawnCount,
-		BuildCount:    row.Env.BuildCount,
+		CreatedAt:     row.ActiveEnv.CreatedAt,
+		UpdatedAt:     row.ActiveEnv.UpdatedAt,
+		LastSpawnedAt: row.ActiveEnv.LastSpawnedAt,
+		SpawnCount:    row.ActiveEnv.SpawnCount,
+		BuildCount:    row.ActiveEnv.BuildCount,
 	}
 
 	if row.BuildID != uuid.Nil {

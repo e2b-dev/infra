@@ -24,6 +24,20 @@ type AccessToken struct {
 	AccessTokenMaskSuffix string
 }
 
+type ActiveEnv struct {
+	ID            string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	Public        bool
+	BuildCount    int32
+	SpawnCount    int64
+	LastSpawnedAt *time.Time
+	TeamID        uuid.UUID
+	CreatedBy     *uuid.UUID
+	ClusterID     *uuid.UUID
+	Source        string
+}
+
 type ActiveTemplateBuild struct {
 	BuildID    uuid.UUID
 	TeamID     uuid.UUID
@@ -92,6 +106,7 @@ type Env struct {
 	CreatedBy     *uuid.UUID
 	ClusterID     *uuid.UUID
 	Source        string
+	DeletedAt     *time.Time
 }
 
 type EnvAlias struct {
