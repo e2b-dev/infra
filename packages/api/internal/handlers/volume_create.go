@@ -84,6 +84,28 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 
 	clusterID := clustershared.WithClusterFallback(team.ClusterID)
 
+	// Check volume quota before creating.
+	if team.Limits.MaxVolumes > 0 {
+		volumeCount, err := a.sqlcDB.CountVolumesByTeamID(ctx, team.ID)
+		if err != nil {
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when checking volume quota")
+			telemetry.ReportCriticalError(ctx, "error when counting volumes", err)
+
+			return
+		}
+
+		if volumeCount >= team.Limits.MaxVolumes {
+			a.sendAPIStoreError(c, http.StatusTooManyRequests,
+				fmt.Sprintf("you have reached the maximum number of volumes (%d). Please delete unused volumes or contact support if you need more.",
+					team.Limits.MaxVolumes))
+			telemetry.ReportError(ctx, "team has reached max volumes", nil,
+				telemetry.WithTeamID(team.ID.String()),
+			)
+
+			return
+		}
+	}
+
 	client, tx, err := a.sqlcDB.WithTx(ctx)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to create transaction")
