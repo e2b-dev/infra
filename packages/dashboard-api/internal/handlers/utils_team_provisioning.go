@@ -120,6 +120,17 @@ func (s *APIStore) bootstrapUser(ctx context.Context, profile bootstrapUserProfi
 }
 
 func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootstrapUserProfile, identity *bootstrapUserIdentity) (provisionedTeam, error) {
+	// Resolve the identity's SSO organization before opening the transaction: the
+	// Kratos lookup is a network call that must not run under the per-user lock.
+	var ssoOrgID uuid.UUID
+	if identity != nil {
+		orgID, err := s.userProfiles.GetIdentityOrganizationID(ctx, identity.Subject)
+		if err != nil {
+			return provisionedTeam{}, fmt.Errorf("resolve sso organization: %w", err)
+		}
+		ssoOrgID = orgID
+	}
+
 	authTxDB, tx, err := s.authDB.WithTx(ctx)
 	if err != nil {
 		return provisionedTeam{}, fmt.Errorf("start transaction: %w", err)
@@ -208,6 +219,25 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 		return provisionedTeam{}, fmt.Errorf("get default team: %w", err)
 	}
 
+	// Also reached by returning SSO members, who never have a default team.
+	if ssoOrgID != uuid.Nil {
+		landing, err := s.enrollSSOMember(ctx, authTxDB, profile.UserID, ssoOrgID)
+		if err != nil {
+			return provisionedTeam{}, err
+		}
+
+		if err := tx.Commit(ctx); err != nil {
+			return provisionedTeam{}, fmt.Errorf("commit sso bootstrap transaction: %w", err)
+		}
+
+		// No billing: SSO teams are provisioned out of band.
+		if err := s.setOIDCIdentityExternalID(ctx, identity, profile.UserID); err != nil {
+			return provisionedTeam{}, err
+		}
+
+		return landing, nil
+	}
+
 	team, err := authTxDB.CreateTeam(ctx, authqueries.CreateTeamParams{
 		Name:          profile.DefaultTeamName,
 		Tier:          baseTierID,
@@ -279,7 +309,69 @@ func (s *APIStore) setOIDCIdentityExternalID(ctx context.Context, identity *boot
 	return nil
 }
 
+// enrollSSOMember adds the user to their SSO organization's auto-join teams and
+// returns the team the response lands on. It fails closed when the org has no
+// auto-join team, since every SSO org must have at least one — that state is a
+// misconfiguration. No billing is emitted; SSO teams are provisioned out of band.
+// The caller must hold the per-user lock.
+func (s *APIStore) enrollSSOMember(ctx context.Context, authTxDB *authqueries.Queries, userID, orgID uuid.UUID) (provisionedTeam, error) {
+	autoTeams, err := authTxDB.GetAutoJoinTeamsBySSOOrganizationID(ctx, orgID)
+	if err != nil {
+		return provisionedTeam{}, fmt.Errorf("get auto-join teams for sso organization: %w", err)
+	}
+	if len(autoTeams) == 0 {
+		return provisionedTeam{}, &internalteamprovision.ProvisionError{
+			StatusCode: http.StatusForbidden,
+			Message:    "Your organization's SSO is not fully set up yet. Please contact support.",
+		}
+	}
+
+	for _, row := range autoTeams {
+		if err := authTxDB.CreateTeamMembership(ctx, authqueries.CreateTeamMembershipParams{
+			UserID:    userID,
+			TeamID:    row.Team.ID,
+			IsDefault: false,
+			AddedBy:   nil,
+		}); err != nil {
+			return provisionedTeam{}, fmt.Errorf("create sso team membership: %w", err)
+		}
+	}
+
+	// Land on the earliest auto-join team (the query orders by created_at).
+	landing := autoTeams[0].Team
+
+	return provisionedTeam{
+		ID:            landing.ID,
+		Name:          landing.Name,
+		Email:         landing.Email,
+		Slug:          landing.Slug,
+		IsBlocked:     landing.IsBlocked,
+		BlockedReason: landing.BlockedReason,
+	}, nil
+}
+
+// ensureNotSSOManaged blocks team creation for SSO-managed users; their team
+// membership is driven entirely by their identity provider.
+func (s *APIStore) ensureNotSSOManaged(ctx context.Context, userID uuid.UUID) error {
+	orgID, err := s.userProfiles.GetUserOrganizationID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("resolve sso organization: %w", err)
+	}
+	if orgID != uuid.Nil {
+		return &internalteamprovision.ProvisionError{
+			StatusCode: http.StatusForbidden,
+			Message:    "SSO-managed accounts can't create teams. Contact your organization admin.",
+		}
+	}
+
+	return nil
+}
+
 func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string) (provisionedTeam, error) {
+	if err := s.ensureNotSSOManaged(ctx, userID); err != nil {
+		return provisionedTeam{}, err
+	}
+
 	profile, err := s.resolveProfile(ctx, userID)
 	if err != nil {
 		return provisionedTeam{}, err

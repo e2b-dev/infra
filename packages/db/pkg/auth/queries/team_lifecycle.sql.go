@@ -7,6 +7,7 @@ package authqueries
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -42,7 +43,21 @@ type CreateTeamParams struct {
 	BlockedReason *string
 }
 
-func (q *Queries) CreateTeam(ctx context.Context, arg CreateTeamParams) (Team, error) {
+type CreateTeamRow struct {
+	ID                      uuid.UUID
+	CreatedAt               time.Time
+	IsBlocked               bool
+	Name                    string
+	Tier                    string
+	Email                   string
+	IsBanned                bool
+	BlockedReason           *string
+	ClusterID               *uuid.UUID
+	SandboxSchedulingLabels []string
+	Slug                    string
+}
+
+func (q *Queries) CreateTeam(ctx context.Context, arg CreateTeamParams) (CreateTeamRow, error) {
 	row := q.db.QueryRow(ctx, createTeam,
 		arg.Name,
 		arg.Tier,
@@ -50,7 +65,7 @@ func (q *Queries) CreateTeam(ctx context.Context, arg CreateTeamParams) (Team, e
 		arg.IsBlocked,
 		arg.BlockedReason,
 	)
-	var i Team
+	var i CreateTeamRow
 	err := row.Scan(
 		&i.ID,
 		&i.CreatedAt,
@@ -75,6 +90,7 @@ VALUES (
     $3::boolean,
     $4::uuid
 )
+ON CONFLICT (user_id, team_id) DO NOTHING
 `
 
 type CreateTeamMembershipParams struct {
@@ -123,9 +139,23 @@ WHERE ut.user_id = $1::uuid
   AND ut.is_default = true
 `
 
-func (q *Queries) GetDefaultTeamByUserID(ctx context.Context, userID uuid.UUID) (Team, error) {
+type GetDefaultTeamByUserIDRow struct {
+	ID                      uuid.UUID
+	CreatedAt               time.Time
+	IsBlocked               bool
+	Name                    string
+	Tier                    string
+	Email                   string
+	IsBanned                bool
+	BlockedReason           *string
+	ClusterID               *uuid.UUID
+	SandboxSchedulingLabels []string
+	Slug                    string
+}
+
+func (q *Queries) GetDefaultTeamByUserID(ctx context.Context, userID uuid.UUID) (GetDefaultTeamByUserIDRow, error) {
 	row := q.db.QueryRow(ctx, getDefaultTeamByUserID, userID)
-	var i Team
+	var i GetDefaultTeamByUserIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.CreatedAt,

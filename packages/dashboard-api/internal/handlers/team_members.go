@@ -87,6 +87,34 @@ func (s *APIStore) GetTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 	})
 }
 
+// rejectInviteOutsideSSOOrg blocks adding a user to an SSO-managed team unless
+// the invitee's Ory identity belongs to that team's organization (i.e. an
+// org-domain account). Non-SSO teams are unaffected. Returns true when the
+// request was already answered with an error.
+func (s *APIStore) rejectInviteOutsideSSOOrg(c *gin.Context, inviteeUserID uuid.UUID) bool {
+	teamInfo, ok := auth.GetTeamInfo(c)
+	if !ok || teamInfo == nil || teamInfo.Team == nil || teamInfo.Team.SsoOrganizationID == nil {
+		return false
+	}
+
+	ctx := c.Request.Context()
+	inviteeOrgID, err := s.userProfiles.GetUserOrganizationID(ctx, inviteeUserID)
+	if err != nil {
+		logger.L().Error(ctx, "failed to resolve invitee sso organization", zap.Error(err), logger.WithUserID(inviteeUserID.String()))
+		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to add team member")
+
+		return true
+	}
+
+	if inviteeOrgID != *teamInfo.Team.SsoOrganizationID {
+		s.sendAPIStoreError(c, http.StatusForbidden, "Only accounts from your organization can be added to this team.")
+
+		return true
+	}
+
+	return false
+}
+
 func (s *APIStore) PostTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "add team member")
@@ -128,6 +156,11 @@ func (s *APIStore) PostTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 	}
 
 	user := profiles[0]
+
+	if s.rejectInviteOutsideSSOOrg(c, user.UserID) {
+		return
+	}
+
 	if err := s.authDB.Write.UpsertPublicUser(ctx, user.UserID); err != nil {
 		logger.L().Error(ctx, "failed to create public user anchor", zap.Error(err), logger.WithUserID(user.UserID.String()))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to add team member")
