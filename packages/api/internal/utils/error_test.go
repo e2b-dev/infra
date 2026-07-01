@@ -10,6 +10,8 @@ import (
 )
 
 func TestProcessCustomErrors_TeamForbiddenAfterNoAuthHeader(t *testing.T) {
+	t.Parallel()
+
 	e := &openapi3filter.SecurityRequirementsError{
 		Errors: []error{
 			sharedauth.ErrNoAuthHeader,
@@ -26,6 +28,8 @@ func TestProcessCustomErrors_TeamForbiddenAfterNoAuthHeader(t *testing.T) {
 }
 
 func TestProcessCustomErrors_TeamBlockedAfterNoAuthHeader(t *testing.T) {
+	t.Parallel()
+
 	e := &openapi3filter.SecurityRequirementsError{
 		Errors: []error{
 			sharedauth.ErrNoAuthHeader,
@@ -42,6 +46,8 @@ func TestProcessCustomErrors_TeamBlockedAfterNoAuthHeader(t *testing.T) {
 }
 
 func TestProcessCustomErrors_TeamForbiddenOnly(t *testing.T) {
+	t.Parallel()
+
 	e := &openapi3filter.SecurityRequirementsError{
 		Errors: []error{
 			&sharedauth.TeamForbiddenError{Message: "team is banned"},
@@ -57,6 +63,8 @@ func TestProcessCustomErrors_TeamForbiddenOnly(t *testing.T) {
 }
 
 func TestProcessCustomErrors_TeamBlockedOnly(t *testing.T) {
+	t.Parallel()
+
 	e := &openapi3filter.SecurityRequirementsError{
 		Errors: []error{
 			&sharedauth.TeamBlockedError{Message: "team is blocked"},
@@ -72,6 +80,8 @@ func TestProcessCustomErrors_TeamBlockedOnly(t *testing.T) {
 }
 
 func TestProcessCustomErrors_GenericErrorAfterNoAuthHeader(t *testing.T) {
+	t.Parallel()
+
 	genericErr := &openapi3filter.SecurityRequirementsError{
 		Errors: []error{
 			sharedauth.ErrNoAuthHeader,
@@ -87,6 +97,8 @@ func TestProcessCustomErrors_GenericErrorAfterNoAuthHeader(t *testing.T) {
 }
 
 func TestProcessCustomErrors_AllNoAuthHeader(t *testing.T) {
+	t.Parallel()
+
 	e := &openapi3filter.SecurityRequirementsError{
 		Errors: []error{
 			sharedauth.ErrNoAuthHeader,
@@ -103,6 +115,8 @@ func TestProcessCustomErrors_AllNoAuthHeader(t *testing.T) {
 }
 
 func TestProcessCustomErrors_WrappedTeamForbidden(t *testing.T) {
+	t.Parallel()
+
 	inner := &sharedauth.TeamForbiddenError{Message: "team is banned"}
 	wrapped := fmt.Errorf("failed getting team: %w", inner)
 
@@ -119,6 +133,8 @@ func TestProcessCustomErrors_WrappedTeamForbidden(t *testing.T) {
 }
 
 func TestProcessCustomErrors_WrappedTeamBlocked(t *testing.T) {
+	t.Parallel()
+
 	inner := &sharedauth.TeamBlockedError{Message: "team is blocked: payment overdue"}
 	wrapped := fmt.Errorf("failed getting team: %w", inner)
 
