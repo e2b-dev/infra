@@ -42,6 +42,8 @@ func (m *mockMemfile) Header() *header.Header {
 func (m *mockMemfile) SwapHeader(_ *header.Header) {}
 
 func TestHandleFailureSetsExitError(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	socketPath := filepath.Join(dir, "test.sock")
 
@@ -72,6 +74,8 @@ func TestHandleFailureSetsExitError(t *testing.T) {
 }
 
 func TestHandleFailureClosesReadyChannel(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	socketPath := filepath.Join(dir, "test.sock")
 
@@ -94,6 +98,8 @@ func TestHandleFailureClosesReadyChannel(t *testing.T) {
 }
 
 func TestHandleFailureSetsHandlerError(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	socketPath := filepath.Join(dir, "test.sock")
 
@@ -127,6 +133,8 @@ func TestHandleFailureSetsHandlerError(t *testing.T) {
 }
 
 func TestStartFailsOnInvalidSocketPath(t *testing.T) {
+	t.Parallel()
+
 	// Use a path that cannot be created.
 	socketPath := filepath.Join("/nonexistent-dir-xxx", "test.sock")
 
@@ -142,6 +150,8 @@ func TestStartFailsOnInvalidSocketPath(t *testing.T) {
 }
 
 func TestNewUffdInitialState(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	socketPath := filepath.Join(dir, "test.sock")
 
@@ -163,6 +173,8 @@ func TestNewUffdInitialState(t *testing.T) {
 }
 
 func TestSocketFileCreatedOnStart(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	socketPath := filepath.Join(dir, "test.sock")
 
