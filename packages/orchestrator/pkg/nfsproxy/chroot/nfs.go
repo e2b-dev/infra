@@ -109,7 +109,10 @@ func (h *NFSHandler) OnNetworkRelease(ctx context.Context, sbx *sandbox.Sandbox)
 				zap.String("path", chroot.Root()),
 				zap.Error(err),
 			)
+
+			continue
 		}
+
 		h.chrootUnmountsCounter.Add(ctx, 1)
 	}
 }
