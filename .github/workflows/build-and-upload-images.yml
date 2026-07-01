@@ -22,6 +22,7 @@ jobs:
           - staging
           - foxtrot
           - juliett
+          - tango
     environment: ${{ matrix.environment }}
     concurrency:
       group: build-images-${{ matrix.environment }}
