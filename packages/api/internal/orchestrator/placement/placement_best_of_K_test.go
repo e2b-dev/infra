@@ -424,3 +424,69 @@ func TestBestOfK_PowerOfKChoices(t *testing.T) {
 		assert.GreaterOrEqual(t, earlyNodeCount, lateNodeCount)
 	}
 }
+
+func TestBestOfK_Score_BinPackPrefersLoadedNodes(t *testing.T) {
+	t.Parallel()
+	config := DefaultBestOfKConfig()
+	config.BinPack = true
+	algo := NewBestOfK(config).(*BestOfK)
+
+	// nodeLight has low load, nodeHeavy has high load
+	nodeLight := nodemanager.NewTestNode("light", api.NodeStatusReady, 1, 8)
+	nodeHeavy := nodemanager.NewTestNode("heavy", api.NodeStatusReady, 6, 8)
+
+	resources := nodemanager.SandboxResources{CPUs: 1, MiBMemory: 512}
+
+	scoreLight := algo.Score(nodeLight, resources, config)
+	scoreHeavy := algo.Score(nodeHeavy, resources, config)
+
+	// In bin-pack mode, the heavier node should get a LOWER score (= better)
+	assert.Less(t, scoreHeavy, scoreLight,
+		"bin-pack mode should prefer the more loaded node (lower score)")
+}
+
+func TestBestOfK_Score_SpreadPrefersLightNodes(t *testing.T) {
+	t.Parallel()
+	config := DefaultBestOfKConfig()
+	config.BinPack = false // explicit spread (default)
+	algo := NewBestOfK(config).(*BestOfK)
+
+	nodeLight := nodemanager.NewTestNode("light", api.NodeStatusReady, 1, 8)
+	nodeHeavy := nodemanager.NewTestNode("heavy", api.NodeStatusReady, 6, 8)
+
+	resources := nodemanager.SandboxResources{CPUs: 1, MiBMemory: 512}
+
+	scoreLight := algo.Score(nodeLight, resources, config)
+	scoreHeavy := algo.Score(nodeHeavy, resources, config)
+
+	// In spread mode, the lighter node should get a LOWER score (= better)
+	assert.Less(t, scoreLight, scoreHeavy,
+		"spread mode should prefer the less loaded node (lower score)")
+}
+
+func TestBestOfK_ChooseNode_BinPackFillsOneFirst(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	config := BestOfKConfig{
+		R:       10,
+		Alpha:   0.5,
+		K:       100, // sample all nodes to make the test deterministic
+		BinPack: true,
+	}
+	algo := NewBestOfK(config).(*BestOfK)
+
+	// Three nodes: empty, half-full, almost-full
+	nodeEmpty := nodemanager.NewTestNode("empty", api.NodeStatusReady, 0, 8)
+	nodeHalf := nodemanager.NewTestNode("half", api.NodeStatusReady, 4, 8)
+	nodeAlmost := nodemanager.NewTestNode("almost", api.NodeStatusReady, 7, 8)
+
+	nodes := []*nodemanager.Node{nodeEmpty, nodeHalf, nodeAlmost}
+	resources := nodemanager.SandboxResources{CPUs: 1, MiBMemory: 512}
+
+	selected, err := algo.chooseNode(ctx, nodes, nil, resources, machineinfo.MachineInfo{}, false, nil)
+	require.NoError(t, err)
+
+	// Should pick the most loaded node that can still fit
+	assert.Equal(t, "almost", selected.ID,
+		"bin-pack should choose the most loaded node")
+}
