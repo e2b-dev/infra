@@ -570,8 +570,7 @@ func (f *Factory) CreateSandbox(
 		return nil
 	})
 
-	samplingInterval := time.Duration(f.featureFlags.IntFlag(execCtx, featureflags.HostStatsSamplingInterval)) * time.Millisecond
-	initializeHostStatsCollector(execCtx, sbx, runtime, config, f.hostStatsDelivery, samplingInterval)
+	initializeHostStatsCollector(execCtx, sbx, runtime, config, f.hostStatsDelivery)
 
 	// Collect a final stats sample on cleanup while the cgroup is still alive.
 	cleanup.Add(ctx, func(ctx context.Context) error {
@@ -1001,8 +1000,7 @@ func (f *Factory) ResumeSandbox(
 	// host stats under its (unregistered) identity — consistent with not being in
 	// the live registry. The cleanup below is nil-safe when the collector is unset.
 	if !ropts.skipLiveRegistration {
-		samplingInterval := time.Duration(f.featureFlags.IntFlag(execCtx, featureflags.HostStatsSamplingInterval)) * time.Millisecond
-		initializeHostStatsCollector(execCtx, sbx, runtime, config, f.hostStatsDelivery, samplingInterval)
+		initializeHostStatsCollector(execCtx, sbx, runtime, config, f.hostStatsDelivery)
 	}
 
 	// Collect a final stats sample on cleanup while the cgroup is still alive.
