@@ -6,12 +6,14 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"runtime"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/stretchr/testify/require"
@@ -328,6 +330,54 @@ func TestDedupedMemfdCache_InflightServesFromMemfd(t *testing.T) {
 // under -race the drain's memfd close must never unmap beneath an in-flight
 // reader. Base is all zeros so every (random) source page stays in the diff:
 // the deduped dirty set is the full range and packed offsets equal absolute.
+// TestDedupedMemfdCache_MemfdHeldUntilSwap covers the swap/release ordering: with
+// inflight serving active, the memfd stays mapped past the drain — past the point
+// the drained cache resolves — until MarkSwapped fires, so a provisional read
+// served via ServeMemfd never hits a released memfd during the compare→swap
+// window (which outlives the drain for a small dirty set + fragmented parent).
+// Before the fix the memfd was closed immediately after the drain.
+func TestDedupedMemfdCache_MemfdHeldUntilSwap(t *testing.T) {
+	t.Parallel()
+
+	ps := int64(header.PageSize)
+	const numPages = 64
+	size := ps * numPages
+
+	memfd, srcData := newTestMemfd(t, size)
+	base := &fakeOriginalDevice{data: make([]byte, size)} // all-zero base → every dirty page kept
+	dirty := roaring.New()
+	dirty.AddRange(0, numPages)
+
+	metaOut := utils.NewSetOnce[*header.DiffMetadata]()
+	cache, err := NewCacheFromMemfdDeduped(
+		t.Context(), base, ps, t.TempDir()+"/dedup-held", memfd, dirty,
+		false, false, DedupBudget{}, nil, metaOut, true,
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cache.Close() })
+
+	// The drained cache resolves once the drain completes...
+	_, err = cache.Wait(t.Context())
+	require.NoError(t, err)
+
+	// ...but the memfd is still mapped (held for a pending provisional swap), so a
+	// provisional identity read still returns the page bytes.
+	buf := make([]byte, ps)
+	n, err := cache.ServeMemfd(buf, 3*ps)
+	require.NoError(t, err)
+	require.Equal(t, int(ps), n)
+	require.Equal(t, srcData[3*ps:4*ps], buf)
+
+	// Once the swap is signaled the memfd is released and provisional reads fail.
+	cache.MarkSwapped()
+	require.Eventually(t, func() bool {
+		_, e := cache.ServeMemfd(buf, 3*ps)
+		var bna BytesNotAvailableError
+
+		return errors.As(e, &bna)
+	}, time.Second, time.Millisecond)
+}
+
 func TestDedupedMemfdCache_InflightConcurrentDrainRace(t *testing.T) {
 	t.Parallel()
 
@@ -394,4 +444,32 @@ func TestDedupedMemfdCache_InflightConcurrentDrainRace(t *testing.T) {
 		t.Fatal(e)
 	default:
 	}
+}
+
+// MemfdIdentitySource serves dirty pages from the memfd at identity offsets
+// while it is mapped, and reports BytesNotAvailableError once it is released so
+// the caller falls back to the drained cache (via the swapped-in deduped header).
+func TestMemfdIdentitySource_ServesThenReleases(t *testing.T) {
+	t.Parallel()
+
+	ps := int64(header.PageSize)
+	memfd, data := newTestMemfd(t, ps*4)
+	d := &DedupedMemfdCache{done: utils.NewSetOnce[*Cache](), memfd: memfd}
+	src := NewMemfdIdentitySource(d, ps*4)
+
+	for _, page := range []int64{0, 2, 3} {
+		b := make([]byte, ps)
+		n, err := src.ReadAt(b, page*ps)
+		require.NoError(t, err)
+		require.Equal(t, int(ps), n)
+		require.Equal(t, data[page*ps:(page+1)*ps], b)
+	}
+	require.True(t, src.IsCached(t.Context(), 0, ps*4))
+
+	require.NoError(t, d.releaseMemfd())
+
+	_, err := src.ReadAt(make([]byte, ps), 0)
+	var bna BytesNotAvailableError
+	require.ErrorAs(t, err, &bna)
+	require.False(t, src.IsCached(t.Context(), 0, ps))
 }
