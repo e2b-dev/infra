@@ -1,0 +1,105 @@
+//go:build linux
+
+package builderrors
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"testing"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/phases"
+)
+
+func TestWrapContextAsUserError_NilError(t *testing.T) {
+	ctx := context.Background()
+	if got := WrapContextAsUserError(ctx, nil); got != nil {
+		t.Errorf("expected nil, got %v", got)
+	}
+}
+
+func TestWrapContextAsUserError_AlreadyUserError(t *testing.T) {
+	ctx := context.Background()
+	userErr := phases.NewPhaseBuildError(phases.PhaseMeta{}, errors.New("user mistake"))
+	got := WrapContextAsUserError(ctx, userErr)
+	if got != userErr {
+		t.Errorf("expected original user error returned as-is, got %v", got)
+	}
+}
+
+func TestWrapContextAsUserError_InternalTimeout_NotMisclassified(t *testing.T) {
+	// Simulate: build context is still active, but error contains context.Canceled
+	// from an internal child-context timeout (e.g., WaitForEnvd).
+	buildCtx := context.Background() // not canceled
+
+	// This is what doRequestWithInfiniteRetries returns when a child context is canceled
+	internalErr := fmt.Errorf("%w with cause: %w", context.Canceled, errors.New("syncing took too long"))
+
+	got := WrapContextAsUserError(buildCtx, internalErr)
+
+	// Should NOT be classified as user error — the build context is still alive
+	if IsUserError(got) {
+		t.Errorf("internal timeout should not be classified as user error, got: %v", got)
+	}
+	// Should preserve the original error
+	if got != internalErr {
+		t.Errorf("expected original error preserved, got: %v", got)
+	}
+}
+
+func TestWrapContextAsUserError_UserCancellation(t *testing.T) {
+	// Simulate: user cancels the build → build context is canceled
+	buildCtx, cancel := context.WithCancel(context.Background())
+	cancel() // user canceled
+
+	someErr := errors.New("some operation failed")
+	got := WrapContextAsUserError(buildCtx, someErr)
+
+	if !IsUserError(got) {
+		t.Errorf("expected user error when build context is canceled, got: %v", got)
+	}
+	if !errors.Is(got, ErrCanceled) {
+		t.Errorf("expected ErrCanceled, got: %v", got)
+	}
+}
+
+func TestWrapContextAsUserError_BuildDeadlineExceeded(t *testing.T) {
+	// Simulate: build context deadline exceeded
+	buildCtx, cancel := context.WithTimeout(context.Background(), 0)
+	defer cancel()
+	<-buildCtx.Done() // ensure it's expired
+
+	someErr := errors.New("some operation failed")
+	got := WrapContextAsUserError(buildCtx, someErr)
+
+	if !IsUserError(got) {
+		t.Errorf("expected user error when build context timed out, got: %v", got)
+	}
+	if !errors.Is(got, ErrTimeout) {
+		t.Errorf("expected ErrTimeout, got: %v", got)
+	}
+}
+
+func TestWrapContextAsUserError_InternalCanceledError_BuildContextAlive(t *testing.T) {
+	// The key regression test: error chain contains context.Canceled from a child
+	// context, but the build context is NOT canceled. Must NOT be treated as user error.
+	buildCtx := context.Background()
+
+	// Simulate WaitForEnvd timeout chain:
+	// child context canceled → doRequestWithInfiniteRetries wraps ctx.Err()
+	childCtx, childCancel := context.WithCancelCause(buildCtx)
+	childCancel(errors.New("syncing took too long"))
+
+	err := fmt.Errorf("failed to init new envd: %w",
+		fmt.Errorf("%w with cause: %w", childCtx.Err(), context.Cause(childCtx)))
+
+	got := WrapContextAsUserError(buildCtx, err)
+
+	if IsUserError(got) {
+		t.Errorf("internal child-context cancellation must not be classified as user error, got: %v", got)
+	}
+	// The original error should be preserved
+	if !errors.Is(got, context.Canceled) {
+		t.Errorf("original error chain should be preserved, got: %v", got)
+	}
+}

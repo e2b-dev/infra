@@ -26,9 +26,10 @@ func IsUserError(err error) bool {
 	return phases.UnwrapPhaseBuildError(err) != nil
 }
 
-// WrapContextAsUserError wraps context.Canceled as a user error if no user error already exists.
-// This ensures that user-initiated cancellations are tracked as user errors in metrics.
-func WrapContextAsUserError(err error) error {
+// WrapContextAsUserError wraps context errors as user errors only when the build-level
+// context itself was canceled or timed out. This prevents internal child-context
+// cancellations (e.g., envd init timeout) from being misclassified as user cancellations.
+func WrapContextAsUserError(buildCtx context.Context, err error) error {
 	if err == nil {
 		return nil
 	}
@@ -38,13 +39,19 @@ func WrapContextAsUserError(err error) error {
 		return err
 	}
 
-	// If it's a canceled context, wrap it as a user error
-	if errors.Is(err, context.Canceled) {
+	// Only classify as user cancellation/timeout if the build-level context was actually done.
+	// Internal child-context cancellations should not be treated as user errors.
+	if buildCtx.Err() == nil {
+		return err
+	}
+
+	// If the build context was canceled, wrap it as a user cancellation
+	if buildCtx.Err() == context.Canceled {
 		return phases.NewPhaseBuildError(phases.PhaseMeta{}, ErrCanceled)
 	}
 
-	// If it's a timeout context, wrap it as a user error
-	if errors.Is(err, context.DeadlineExceeded) {
+	// If the build context deadline was exceeded, wrap it as a user timeout
+	if buildCtx.Err() == context.DeadlineExceeded {
 		return phases.NewPhaseBuildError(phases.PhaseMeta{}, ErrTimeout)
 	}
 
