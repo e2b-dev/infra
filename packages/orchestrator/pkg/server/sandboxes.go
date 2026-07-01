@@ -112,11 +112,11 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			SetString(featureflags.SandboxTemplateAttribute, req.GetSandbox().GetTemplateId()).
 			SetString(featureflags.SandboxKernelVersionAttribute, req.GetSandbox().GetKernelVersion()).
 			SetString(featureflags.SandboxFirecrackerVersionAttribute, req.GetSandbox().GetFirecrackerVersion()).
+			SetString(featureflags.SandboxEnvdVersionAttribute, req.GetSandbox().GetEnvdVersion()).
 			Build(),
 		ldcontext.NewBuilder(req.GetSandbox().GetTeamId()).
 			Kind(featureflags.TeamKind).
 			Build(),
-		featureflags.VersionContext(s.info.ClientId, s.info.SourceCommit),
 	)
 
 	// BYOP egress proxy kill-switch; mirrors the API gate for direct gRPC
@@ -218,15 +218,35 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		SandboxType: sandbox.SandboxTypeSandbox,
 	}
 
-	sbx, err := s.sandboxFactory.ResumeSandbox(
-		ctx,
-		template,
-		config,
-		runtime,
-		req.GetStartTime().AsTime(),
-		req.GetEndTime().AsTime(),
-		req.GetSandbox(),
-	)
+	// A filesystem-only snapshot has no memory to restore; resume it by
+	// cold-booting (rebooting) from its rootfs. The snapshot's own metadata is
+	// the source of truth, so a memory snapshot can never be rebooted.
+	meta, err := template.Metadata()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read template metadata: %w", err)
+	}
+
+	var sbx *sandbox.Sandbox
+	if meta.IsFilesystemOnly() {
+		sbx, err = s.sandboxFactory.RebootSandbox(
+			ctx,
+			template,
+			config,
+			runtime,
+			req.GetEndTime().AsTime(),
+			req.GetSandbox(),
+		)
+	} else {
+		sbx, err = s.sandboxFactory.ResumeSandbox(
+			ctx,
+			template,
+			config,
+			runtime,
+			req.GetStartTime().AsTime(),
+			req.GetEndTime().AsTime(),
+			req.GetSandbox(),
+		)
+	}
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotExist) {
 			// Snapshot data not found, let the API know the data aren't probably upload yet
@@ -528,9 +548,7 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	}()
 
 	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
-	if s.featureFlags.BoolFlag(ctx, featureflags.ExecutionMetricsOnWebhooksFlag) {
-		eventData[executionEventDataKey] = s.getSandboxExecutionData(sbx)
-	}
+	eventData[executionEventDataKey] = s.getSandboxExecutionData(sbx)
 	addKillReason(eventData, killReason)
 	recordSandboxKill(ctx, s.sandboxKilledCounter, killReason)
 
@@ -585,20 +603,23 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		telemetry.WithBuildID(in.GetBuildId()),
 	)
 
-	ctx = featureflags.AddToContext(
-		ctx,
-		ldcontext.NewBuilder(in.GetSandboxId()).
-			Kind(featureflags.SandboxKind).
-			SetString(featureflags.SandboxTemplateAttribute, in.GetTemplateId()).
-			Build(),
-	)
-
 	sbx, ok := s.sandboxFactory.Sandboxes.Get(in.GetSandboxId())
 	if !ok {
 		telemetry.ReportCriticalError(ctx, "sandbox not found", nil, telemetry.WithSandboxID(in.GetSandboxId()))
 
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
+
+	ctx = featureflags.AddToContext(
+		ctx,
+		ldcontext.NewBuilder(in.GetSandboxId()).
+			Kind(featureflags.SandboxKind).
+			SetString(featureflags.SandboxTemplateAttribute, sbx.Runtime.TemplateID).
+			SetString(featureflags.SandboxKernelVersionAttribute, sbx.Config.FirecrackerConfig.KernelVersion).
+			SetString(featureflags.SandboxFirecrackerVersionAttribute, sbx.Config.FirecrackerConfig.FirecrackerVersion).
+			SetString(featureflags.SandboxEnvdVersionAttribute, sbx.Config.Envd.Version).
+			Build(),
+	)
 
 	childSpan.SetAttributes(
 		telemetry.WithTeamID(sbx.Runtime.TeamID),
@@ -620,7 +641,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	defer s.stopSandboxAsync(context.WithoutCancel(ctx), sbx)
 
 	// Fire and forget - upload completes in the background
-	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId())
+	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId(), map[string]string{storage.ObjectMetadataTemplateID: in.GetTemplateId()}, storage.ObjectOriginPause, in.GetFilesystemOnly())
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error snapshotting sandbox", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
@@ -629,10 +650,23 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 	s.uploadSnapshotAsync(ctx, sbx, res)
 
-	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
-	if s.featureFlags.BoolFlag(ctx, featureflags.ExecutionMetricsOnWebhooksFlag) {
-		eventData[executionEventDataKey] = s.getSandboxExecutionData(sbx)
+	// Best-effort: the local snapshot is now in the cache and the remote upload
+	// has been kicked off above (still in flight). Harvest a resume page-fault
+	// trace from a throwaway warm resume of the local snapshot and (when enabled)
+	// persist it as a prefetch mapping for the next resume. Runs in the
+	// background; never affects the pause result, and waits for the upload before
+	// touching metadata. No-op unless the harvest flag is on. Reuse the object
+	// metadata the snapshot was uploaded with so the re-upload can't drift.
+	//
+	// Skip it for a filesystem-only pause: that snapshot has no memory diff, so a
+	// memory resume of it would just fail (the resume is reserved for memory
+	// snapshots; fs-only is a reboot) — there is no memory working set to harvest.
+	if !in.GetFilesystemOnly() {
+		s.harvestResumePrefetchAsync(ctx, sbx, res, in.GetBuildId(), res.objectMetadata)
 	}
+
+	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
+	eventData[executionEventDataKey] = s.getSandboxExecutionData(sbx)
 
 	eventType := events.SandboxPausedEventPair
 	go s.sbxEventsService.Publish(
@@ -667,19 +701,23 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		telemetry.WithBuildID(in.GetBuildId()),
 	)
 
-	ctx = featureflags.AddToContext(
-		ctx,
-		ldcontext.NewBuilder(in.GetSandboxId()).
-			Kind(featureflags.SandboxKind).
-			Build(),
-	)
-
 	sbx, ok := s.sandboxFactory.Sandboxes.Get(in.GetSandboxId())
 	if !ok {
 		telemetry.ReportCriticalError(ctx, "sandbox not found", nil, telemetry.WithSandboxID(in.GetSandboxId()))
 
 		return nil, status.Errorf(codes.NotFound, "sandbox '%s' not found", in.GetSandboxId())
 	}
+
+	ctx = featureflags.AddToContext(
+		ctx,
+		ldcontext.NewBuilder(in.GetSandboxId()).
+			Kind(featureflags.SandboxKind).
+			SetString(featureflags.SandboxTemplateAttribute, sbx.Runtime.TemplateID).
+			SetString(featureflags.SandboxKernelVersionAttribute, sbx.Config.FirecrackerConfig.KernelVersion).
+			SetString(featureflags.SandboxFirecrackerVersionAttribute, sbx.Config.FirecrackerConfig.FirecrackerVersion).
+			SetString(featureflags.SandboxEnvdVersionAttribute, sbx.Config.Envd.Version).
+			Build(),
+	)
 
 	childSpan.SetAttributes(
 		telemetry.WithTeamID(sbx.Runtime.TeamID),
@@ -714,7 +752,9 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 	sbxlogger.E(sbx).Info(ctx, "Checkpointing sandbox")
 
-	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId())
+	// Checkpoint always takes a full memory snapshot; filesystem-only checkpoint
+	// (resume-in-place would need to reboot) is not supported yet.
+	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId(), in.GetMetadata(), storage.ObjectOriginSnapshotTemplate, false)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error snapshotting sandbox for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
@@ -849,6 +889,10 @@ type snapshotResult struct {
 	schedulingMetadata *orchestrator.SchedulingMetadata
 	upload             *sandbox.Upload
 	completeUpload     func(ctx context.Context, uploadErr error)
+	// objectMetadata is the storage object metadata the snapshot was uploaded
+	// with. The prefetch harvest reuses it verbatim when re-uploading the
+	// metadata object, so the two can never drift.
+	objectMetadata storage.ObjectMetadata
 }
 
 // snapshotAndCacheSandbox creates a snapshot of a sandbox and adds it to the
@@ -858,6 +902,9 @@ func (s *Server) snapshotAndCacheSandbox(
 	ctx context.Context,
 	sbx *sandbox.Sandbox,
 	buildID string,
+	provenance map[string]string,
+	buildOrigin storage.ObjectOrigin,
+	filesystemOnly bool,
 ) (*snapshotResult, error) {
 	meta, err := sbx.Template.Metadata()
 	if err != nil {
@@ -870,7 +917,12 @@ func (s *Server) snapshotAndCacheSandbox(
 		FirecrackerVersion: sbx.Config.FirecrackerConfig.FirecrackerVersion,
 	})
 
-	snapshot, err := sbx.Pause(ctx, meta, sandbox.SnapshotUseCasePause)
+	var pauseOpts []sandbox.PauseOption
+	if filesystemOnly {
+		pauseOpts = append(pauseOpts, sandbox.WithFilesystemSnapshot())
+	}
+
+	snapshot, err := sbx.Pause(ctx, meta, sandbox.SnapshotUseCasePause, pauseOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("error snapshotting sandbox: %w", err)
 	}
@@ -889,9 +941,12 @@ func (s *Server) snapshotAndCacheSandbox(
 		return nil, fmt.Errorf("error adding snapshot to template cache: %w", err)
 	}
 
-	objectMetadata := storage.ObjectMetadata{
-		storage.ObjectMetadataTeamID: sbx.Runtime.TeamID,
-	}
+	// Caller-supplied provenance (e.g. template_id) is forwarded as-is; team and
+	// origin are orchestrator-authoritative and set last so they always win.
+	objectMetadata := storage.ObjectMetadata{}
+	maps.Copy(objectMetadata, provenance)
+	objectMetadata[storage.ObjectMetadataTeamID] = sbx.Runtime.TeamID
+	objectMetadata[storage.ObjectMetadataBuildOrigin] = string(buildOrigin)
 
 	// Register the upload only after the snapshot is in the local cache, so a
 	// failed AddSnapshot doesn't leave an orphan future blocking re-registration.
@@ -936,6 +991,7 @@ func (s *Server) snapshotAndCacheSandbox(
 		schedulingMetadata: snapshot.SchedulingMetadata,
 		upload:             upload,
 		completeUpload:     completeUpload,
+		objectMetadata:     objectMetadata,
 	}, nil
 }
 

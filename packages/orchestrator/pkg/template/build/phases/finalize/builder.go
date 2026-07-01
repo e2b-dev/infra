@@ -211,6 +211,7 @@ func (ppb *PostProcessingBuilder) Build(
 			UpdateEnvd:     sourceLayer.Cached,
 			SandboxCreator: sandboxCreator,
 			ActionExecutor: actionExecutor,
+			BuildOrigin:    storage.ObjectOriginTemplateBuild,
 		},
 	)
 	if err != nil {

@@ -24,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/artifact"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
@@ -362,8 +363,8 @@ func setupEnvVars(t *testing.T, dataDir, envdPath string) {
 
 func downloadKernel(t *testing.T, dataDir string) {
 	t.Helper()
-	dst := filepath.Join(dataDir, "kernels", featureflags.DefaultKernelVersion, "vmlinux.bin")
-	url := fmt.Sprintf("https://storage.googleapis.com/e2b-prod-public-builds/kernels/%s/vmlinux.bin", featureflags.DefaultKernelVersion)
+	dst := filepath.Join(dataDir, "kernels", featureflags.DefaultKernelVersion, artifact.KernelFileName)
+	url := fmt.Sprintf("https://storage.googleapis.com/e2b-prod-public-builds/kernels/%s/%s", featureflags.DefaultKernelVersion, artifact.KernelFileName)
 	downloadFile(t, url, dst, 0o644)
 }
 
@@ -376,10 +377,10 @@ func downloadFC(t *testing.T, dataDir, version string) {
 	// TODO: Drop this work-around once we remove support for Firecracker v1.10
 	assetName := "firecracker-amd64"
 	if strings.HasPrefix(version, "v1.10") {
-		assetName = "firecracker"
+		assetName = artifact.FirecrackerBinaryName
 	}
 
-	dst := filepath.Join(dataDir, "fc-versions", version, "firecracker")
+	dst := filepath.Join(dataDir, "fc-versions", version, artifact.FirecrackerBinaryName)
 	url := fmt.Sprintf("https://github.com/e2b-dev/fc-versions/releases/download/%s/%s", version, assetName)
 	downloadFile(t, url, dst, 0o755)
 }

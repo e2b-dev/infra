@@ -2,16 +2,13 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
-	"math"
 	"os"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
-	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -31,121 +28,95 @@ const (
 
 func main() {
 	ctx := context.Background()
-	var log logger.Logger
-	var err error
-	var opts cleaner.Options
 
-	var lp telemetry.LogProvider
-	opts, log, lp, err = preRun(ctx)
+	opts, log, tel, metrics, meterProvider, err := configure(ctx)
 	if err != nil {
 		fmt.Println("NFS cache cleaner failed:", err)
-		if lp != nil {
-			lp.Shutdown(ctx)
+		if tel != nil {
+			tel.Shutdown(ctx)
 		}
 		os.Exit(1)
 	}
 
-	defer func() {
-		if err != nil {
-			log.Error(ctx, "NFS cache cleaner failed", zap.Error(err))
-			defer os.Exit(1)
-		}
-		log.Sync()
-		lp.Shutdown(ctx)
-	}()
+	err = run(ctx, opts, log, metrics)
+	if err != nil {
+		log.Error(ctx, "NFS cache cleaner failed", zap.Error(err))
+	}
 
-	start := time.Now()
-	log.Info(ctx, "starting",
-		zap.Bool("dry_run", opts.DryRun),
-		zap.Uint64("target_files_to_delete", opts.TargetFilesToDelete),
-		zap.Uint64("target_bytes_to_delete", opts.TargetBytesToDelete),
-		zap.Float64("target_disk_usage_percent", opts.TargetDiskUsagePercent),
-		zap.Int("batch_n", opts.BatchN),
-		zap.Int("delete_n", opts.DeleteN),
-		zap.Int("max_retries", opts.MaxErrorRetries),
-		zap.String("path", opts.Path),
-		zap.String("otel_collector_endpoint", opts.OtelCollectorEndpoint),
-		zap.Int("max_concurrent_stat", opts.MaxConcurrentStat),
-		zap.Int("max_concurrent_scan", opts.MaxConcurrentScan),
-		zap.Int("max_concurrent_delete", opts.MaxConcurrentDelete),
-	)
+	// Bounded shutdown so a slow/unreachable collector can't hang the job. Shutdown
+	// flushes the final metrics/logs (no separate ForceFlush needed).
+	log.Sync()
+	shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	if meterProvider != nil {
+		_ = meterProvider.Shutdown(shutdownCtx)
+	}
+	tel.Shutdown(shutdownCtx)
+	cancel()
 
-	// preRun leaves both targets at 0 when disk usage is already at or
-	// below disk-usage-target-percent. Short-circuit here so we don't spin
-	// up workers just to immediately drain (which also produced a misleading
-	// "target bytes deleted reached" log).
-	if opts.TargetBytesToDelete == 0 && opts.TargetFilesToDelete == 0 {
+	if err != nil {
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context, opts cleaner.Options, log logger.Logger, metrics *cleaner.Metrics) error {
+	if opts.TargetBytesToDelete == 0 {
 		log.Info(ctx, "disk already at or below target, nothing to do",
 			zap.Float64("target_disk_usage_percent", opts.TargetDiskUsagePercent))
 
-		return
+		return nil
 	}
 
-	c := cleaner.NewCleaner(opts, log)
-	if err = c.Clean(ctx); err != nil {
-		return
+	if err := cleaner.VerifyChunksCacheRoot(opts.Path); err != nil {
+		return err
 	}
 
-	if c.RemoveC.Load() == 0 {
-		log.Info(ctx, "no files deleted")
+	c := cleaner.NewCleaner(opts, log, metrics)
 
-		return
+	if err := c.Clean(ctx); err != nil {
+		return err
 	}
 
-	mean, sd := standardDeviation(c.DeletedAge)
-	dur := time.Since(start)
-	filesPerSec := float64(c.RemoveC.Load()) / dur.Seconds()
-	bytesPerSec := float64(c.DeletedBytes.Load()) / dur.Seconds()
-	log.Info(ctx, "summary",
-		zap.Bool("dry_run", opts.DryRun),
-		zap.Int64("del_submitted", c.DeleteSubmittedC.Load()),
-		zap.Int64("del_attempted", c.DeleteAttemptC.Load()),
-		zap.Int64("del_already_gone", c.DeleteAlreadyGoneC.Load()),
-		zap.Int64("del_err", c.DeleteErrC.Load()),
-		zap.Int64("del_skip_changed", c.DeleteSkipC.Load()),
-		zap.Int64("del_files", c.RemoveC.Load()),
-		zap.Int64("empty_dirs", c.RemoveDirC.Load()),
-		zap.Uint64("bytes", c.DeletedBytes.Load()),
-		zap.Duration("most_recently_used", minDuration(c.DeletedAge).Round(time.Second)),
-		zap.Duration("least_recently_used", maxDuration(c.DeletedAge).Round(time.Second)),
-		zap.Duration("mean_age", mean.Round(time.Second)),
-		zap.Float64("files_per_second", filesPerSec),
-		zap.Float64("bytes_per_second", bytesPerSec),
-		zap.Duration("duration", dur.Round(time.Second)),
-		zap.Duration("std_deviation", sd.Round(time.Second)))
+	if c.Deleted.Load() == 0 {
+		log.Info(ctx, "no builds removed")
+	}
+
+	return nil
 }
 
-func preRun(ctx context.Context) (cleaner.Options, logger.Logger, telemetry.LogProvider, error) {
+func configure(ctx context.Context) (cleaner.Options, logger.Logger, *telemetry.Client, *cleaner.Metrics, *sdkmetric.MeterProvider, error) {
 	var opts cleaner.Options
 	var featureFlagPresent bool
 
 	flags := flag.NewFlagSet("clean-nfs-cache", flag.ExitOnError)
-	flags.Uint64Var(&opts.TargetFilesToDelete, "target-files-to-delete", 0, "target number of files to delete (overrides disk-usage-target-percent and target-bytes-to-delete)")
 	flags.Uint64Var(&opts.TargetBytesToDelete, "target-bytes-to-delete", 0, "target number of bytes to delete (overrides disk-usage-target-percent)")
 	flags.Float64Var(&opts.TargetDiskUsagePercent, "disk-usage-target-percent", 90, "disk usage target as a % (0-100)")
 	flags.BoolVar(&opts.DryRun, "dry-run", true, "dry run")
-	flags.IntVar(&opts.BatchN, "files-per-loop", 10000, "number of files to gather metadata for per loop")
-	flags.IntVar(&opts.DeleteN, "deletions-per-loop", 100, "maximum number of files to delete per loop")
-	flags.StringVar(&opts.OtelCollectorEndpoint, "otel-collector-endpoint", "", "endpoint of the otel collector")
-	flags.IntVar(&opts.MaxConcurrentStat, "max-concurrent-stat", 1, "number of concurrent stat goroutines")
-	flags.IntVar(&opts.MaxConcurrentScan, "max-concurrent-scan", 1, "number of concurrent scanner goroutines")
-	flags.IntVar(&opts.MaxConcurrentDelete, "max-concurrent-delete", 1, "number of concurrent deleter goroutines")
-	flags.IntVar(&opts.MaxErrorRetries, "max-retries", 10, "maximum number of continuous error or miss retries before giving up")
+	flags.IntVar(&opts.MaxConcurrentStat, "max-concurrent-stat", 32, "number of concurrent statx goroutines (the NFS-latency-bound step — keep many RPCs in flight)")
+	flags.IntVar(&opts.MaxConcurrentScan, "max-concurrent-scan", 32, "number of concurrent build readdir goroutines")
+	flags.IntVar(&opts.MaxConcurrentDelete, "max-concurrent-delete", 16, "number of concurrent RemoveAll goroutines")
+	flags.IntVar(&opts.SampleMinFiles, "sample-min", 8, "minimum chunk-atime samples per build")
+	flags.IntVar(&opts.SamplePercent, "sample-pct", 10, "target chunk-atime samples per build as a percent of its chunk count")
+	flags.IntVar(&opts.SampleMaxFiles, "sample-max", 64, "maximum chunk-atime samples per build (caps cost on huge builds)")
+	flags.IntVar(&opts.BuildSampleMin, "build-sample-min", 0, "floor of the per-run survey sample (0 = no floor); only applies when build-sample-max > 0")
+	flags.IntVar(&opts.BuildSamplePercent, "build-sample-pct", 100, "target build dirs to scan per run, as a percent of the root's build count; only applies when build-sample-max > 0")
+	flags.IntVar(&opts.BuildSampleMax, "build-sample-max", 0, "cap on build dirs scanned per run; 0 (default) = no limit (scan every build). Set > 0 to bound readdir/stat at huge caches, then min/pct apply")
+	flags.DurationVar(&opts.Grace, "grace", cleaner.GracePeriod, "never delete a build that has been warm within this window — warmth is the most-recent sampled chunk access (atime), or create time (btime) for a build with no chunks yet. Skips new and recently-used builds; 0 = no floor")
+	flags.BoolVar(&opts.Verify, "verify", false, "before each cold delete, stat the build's non-chunk files and record their size vs the flat estimate (chunk sizes are trusted from filenames); off by default")
 
 	args := os.Args[1:] // skip the command name
 	if err := flags.Parse(args); err != nil {
-		return opts, nil, nil, fmt.Errorf("could not parse flags: %w", err)
+		return opts, nil, nil, nil, nil, fmt.Errorf("could not parse flags: %w", err)
 	}
 
 	args = flags.Args()
 	if len(args) != 1 {
-		return opts, nil, nil, ErrUsage
+		return opts, nil, nil, nil, nil, cleaner.ErrUsage
 	}
 	opts.Path = args[0]
 
 	ffc, err := featureflags.NewClient()
 	if err != nil {
-		return opts, nil, nil, err
+		return opts, nil, nil, nil, nil, err
 	}
 	defer ffc.Close(ctx)
 
@@ -162,27 +133,59 @@ func preRun(ctx context.Context) (cleaner.Options, logger.Logger, telemetry.LogP
 		if m.Get("maxConcurrentStat").IsNumber() {
 			opts.MaxConcurrentStat = m.Get("maxConcurrentStat").IntValue()
 		}
-		if m.Get("maxRetries").IsNumber() {
-			opts.MaxErrorRetries = m.Get("maxRetries").IntValue()
+		if m.Get("sampleMin").IsNumber() {
+			opts.SampleMinFiles = m.Get("sampleMin").IntValue()
+		}
+		if m.Get("samplePct").IsNumber() {
+			opts.SamplePercent = m.Get("samplePct").IntValue()
+		}
+		if m.Get("sampleMax").IsNumber() {
+			opts.SampleMaxFiles = m.Get("sampleMax").IntValue()
+		}
+		if m.Get("buildSampleMin").IsNumber() {
+			opts.BuildSampleMin = m.Get("buildSampleMin").IntValue()
+		}
+		if m.Get("buildSamplePct").IsNumber() {
+			opts.BuildSamplePercent = m.Get("buildSamplePct").IntValue()
+		}
+		if m.Get("buildSampleMax").IsNumber() {
+			opts.BuildSampleMax = m.Get("buildSampleMax").IntValue()
+		}
+		if m.Get("graceSeconds").IsNumber() {
+			opts.Grace = time.Duration(m.Get("graceSeconds").IntValue()) * time.Second
 		}
 		if m.Get("targetBytesToDelete").IsNumber() {
 			opts.TargetBytesToDelete = uint64(m.Get("targetBytesToDelete").Float64Value())
 		}
-		if m.Get("targetFilesToDelete").IsNumber() {
-			opts.TargetFilesToDelete = uint64(m.Get("targetFilesToDelete").Float64Value())
+		if m.Get("verify").IsBool() {
+			opts.Verify = m.Get("verify").BoolValue()
 		}
 	}
 
+	tel, err := telemetry.New(ctx, env.GetNodeID(), serviceName, commitSHA, serviceVersion, "")
+	if err != nil {
+		return opts, nil, nil, nil, nil, fmt.Errorf("failed to set up telemetry: %w", err)
+	}
+
+	endpoint := os.Getenv("OTEL_COLLECTOR_GRPC_ENDPOINT")
 	var cores []zapcore.Core
-	logProvider := telemetry.NewNoopLogProvider()
-	if opts.OtelCollectorEndpoint != "" {
-		var otelCore zapcore.Core
-		var err error
-		otelCore, logProvider, err = newOtelCore(ctx, opts.OtelCollectorEndpoint)
-		if err != nil {
-			return opts, nil, nil, fmt.Errorf("failed to create otel logger: %w", err)
+	if endpoint != "" {
+		cores = append(cores, logger.GetOTELCore(tel.LogsProvider, serviceName))
+	}
+
+	// Build the cleaner's own meter provider (short export period) and hand its
+	// meter to the instruments; telemetry.New's default provider exports too
+	// rarely for this short-lived job (see meterExportPeriod).
+	metrics := cleaner.NoopMetrics()
+	var meterProvider *sdkmetric.MeterProvider
+	if endpoint != "" {
+		mp, m, merr := newMeterProvider(ctx, endpoint)
+		if merr != nil {
+			tel.Shutdown(ctx)
+
+			return opts, nil, nil, nil, nil, fmt.Errorf("failed to set up cleaner metrics: %w", merr)
 		}
-		cores = append(cores, otelCore)
+		meterProvider, metrics = mp, m
 	}
 
 	l := utils.Must(logger.NewLogger(logger.LoggerConfig{
@@ -197,18 +200,12 @@ func preRun(ctx context.Context) (cleaner.Options, logger.Logger, telemetry.LogP
 		l.Info(ctx, "feature flag present", zap.String("flag", featureflags.CleanNFSCache.String()))
 	}
 
-	if opts.TargetBytesToDelete == 0 && opts.TargetFilesToDelete == 0 && opts.TargetDiskUsagePercent > 0 {
-		var diskInfo cleaner.DiskInfo
-		var err error
-		timeit(ctx, fmt.Sprintf("getting disk info for %q", opts.Path), func() {
-			diskInfo, err = cleaner.GetDiskInfo(ctx, opts.Path)
-		})
-		if err != nil {
-			if logProvider != nil {
-				logProvider.Shutdown(ctx)
-			}
+	if opts.TargetBytesToDelete == 0 && opts.TargetDiskUsagePercent > 0 {
+		diskInfo, derr := cleaner.GetDiskInfo(ctx, opts.Path)
+		if derr != nil {
+			tel.Shutdown(ctx)
 
-			return opts, nil, nil, fmt.Errorf("could not get disk info: %w", err)
+			return opts, nil, nil, nil, nil, fmt.Errorf("could not get disk info: %w", derr)
 		}
 		targetDiskUsage := uint64(opts.TargetDiskUsagePercent / 100 * float64(diskInfo.Total))
 		if uint64(diskInfo.Used) > targetDiskUsage {
@@ -216,87 +213,22 @@ func preRun(ctx context.Context) (cleaner.Options, logger.Logger, telemetry.LogP
 		}
 	}
 
-	return opts, l, logProvider, nil
-}
+	l.Info(ctx, "configured",
+		zap.Bool("dry_run", opts.DryRun),
+		zap.Uint64("target_bytes_to_delete", opts.TargetBytesToDelete),
+		zap.Float64("target_disk_usage_percent", opts.TargetDiskUsagePercent),
+		zap.Int("sample_min", opts.SampleMinFiles),
+		zap.Int("sample_pct", opts.SamplePercent),
+		zap.Int("sample_max", opts.SampleMaxFiles),
+		zap.Int("build_sample_min", opts.BuildSampleMin),
+		zap.Int("build_sample_pct", opts.BuildSamplePercent),
+		zap.Int("build_sample_max", opts.BuildSampleMax),
+		zap.Duration("grace", opts.Grace),
+		zap.String("path", opts.Path),
+		zap.Int("max_concurrent_stat", opts.MaxConcurrentStat),
+		zap.Int("max_concurrent_scan", opts.MaxConcurrentScan),
+		zap.Int("max_concurrent_delete", opts.MaxConcurrentDelete),
+	)
 
-func newOtelCore(ctx context.Context, endpoint string) (zapcore.Core, telemetry.LogProvider, error) {
-	nodeID := env.GetNodeID()
-	serviceInstanceID := uuid.NewString()
-
-	resource, err := telemetry.GetResource(ctx, nodeID, serviceName, commitSHA, serviceVersion, serviceInstanceID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create resource: %w", err)
-	}
-
-	logProvider, err := telemetry.NewLogProvider(ctx, resource, otlploggrpc.WithEndpoint(endpoint))
-	if err != nil {
-		return nil, nil, err
-	}
-	otelCore := logger.GetOTELCore(logProvider, serviceName)
-
-	return otelCore, logProvider, nil
-}
-
-func standardDeviation(accessed []time.Duration) (mean, stddev time.Duration) {
-	if len(accessed) == 0 {
-		return 0, 0
-	}
-
-	var sum float64
-	for i := range accessed {
-		sum += float64(accessed[i])
-	}
-	mean = time.Duration(sum / float64(len(accessed)))
-
-	var sd float64
-	for i := range accessed {
-		sd += math.Pow(float64(accessed[i]-mean), 2)
-	}
-
-	sd = math.Sqrt(sd / float64(len(accessed)))
-
-	return mean, time.Duration(sd)
-}
-
-func maxDuration(durations []time.Duration) time.Duration {
-	return loop(durations, func(one, two time.Duration) bool {
-		return one > two
-	})
-}
-
-func minDuration(durations []time.Duration) time.Duration {
-	return loop(durations, func(one, two time.Duration) bool {
-		return one < two
-	})
-}
-
-func loop[T any](items []T, betterThan func(one, two T) bool) T {
-	if len(items) == 0 {
-		var t T
-
-		return t
-	}
-
-	if len(items) == 1 {
-		return items[0]
-	}
-
-	var best int
-	for current := 1; current < len(items); current++ {
-		if betterThan(items[current], items[best]) {
-			best = current
-		}
-	}
-
-	return items[best]
-}
-
-var ErrUsage = errors.New("usage: clean-nfs-cache <path> [<options>]")
-
-func timeit(ctx context.Context, message string, fn func()) {
-	start := time.Now()
-	fn()
-	done := time.Since(start).Round(time.Millisecond)
-
-	logger.L().Debug(ctx, message, zap.Duration("duration", done))
+	return opts, l, tel, metrics, meterProvider, nil
 }

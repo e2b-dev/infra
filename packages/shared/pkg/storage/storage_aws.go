@@ -51,7 +51,18 @@ func newAWSStorage(ctx context.Context, bucketName string) (*awsStorage, error) 
 		return nil, err
 	}
 
-	client := s3.NewFromConfig(cfg)
+	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
+		// S3_USE_PATH_STYLE controls the addressing style:
+		//   "true"  → path-style:         https://host/bucket/key
+		//   "false" → virtual-host-style: https://bucket.host/key  (SDK default)
+		//
+		// Path-style is required for S3-compatible backends (MinIO, Ceph, etc.)
+		// that don't support virtual-host addressing. Set this explicitly when
+		// using a custom endpoint via AWS_ENDPOINT_URL.
+		if strings.EqualFold(os.Getenv("S3_USE_PATH_STYLE"), "true") {
+			o.UsePathStyle = true
+		}
+	})
 	presignClient := s3.NewPresignClient(client)
 
 	return &awsStorage{
@@ -127,7 +138,7 @@ func (s *awsStorage) UploadSignedURL(ctx context.Context, path string, ttl time.
 	return resp.URL, nil
 }
 
-func (s *awsStorage) OpenSeekable(_ context.Context, path string, _ SeekableObjectType) (Seekable, error) {
+func (s *awsStorage) OpenSeekable(_ context.Context, path string) (Seekable, error) {
 	return &awsObject{
 		client:     s.client,
 		bucketName: s.bucketName,
@@ -135,7 +146,7 @@ func (s *awsStorage) OpenSeekable(_ context.Context, path string, _ SeekableObje
 	}, nil
 }
 
-func (s *awsStorage) OpenBlob(_ context.Context, path string, _ ObjectType) (Blob, error) {
+func (s *awsStorage) OpenBlob(_ context.Context, path string) (Blob, error) {
 	return &awsObject{
 		client:     s.client,
 		bucketName: s.bucketName,
@@ -143,7 +154,10 @@ func (s *awsStorage) OpenBlob(_ context.Context, path string, _ ObjectType) (Blo
 	}, nil
 }
 
-func (o *awsObject) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
+func (o *awsObject) WriteTo(ctx context.Context, dst io.Writer) (n int64, err error) {
+	start := time.Now()
+	defer func() { RecordReadBlob(ctx, time.Since(start), n, o.path, SourceAWS, err) }()
+
 	ctx, cancel := context.WithTimeout(ctx, awsReadTimeout)
 	defer cancel()
 
@@ -159,7 +173,9 @@ func (o *awsObject) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 
 	defer resp.Body.Close()
 
-	return io.Copy(dst, resp.Body)
+	n, err = io.Copy(dst, resp.Body)
+
+	return n, err
 }
 
 func (o *awsObject) StoreFile(ctx context.Context, path string, opts ...PutOption) (*FullFrameTable, [32]byte, error) {
@@ -168,9 +184,14 @@ func (o *awsObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 		return nil, [32]byte{}, errors.New("compressed uploads are not supported on AWS (builds target GCP only)")
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, awsWriteTimeout)
-	defer cancel()
-
+	// Inherit the caller's context for the multipart upload. The AWS SDK's
+	// manager.Uploader reuses the same ctx for CreateMultipartUpload, every
+	// UploadPart (Concurrency=8, PartSize=10MB), and the final Complete/Abort —
+	// a tight static timeout here would cancel an in-flight multi-GB snapshot
+	// upload and surface as "S3: UploadPart ... StatusCode: 0, canceled,
+	// context deadline exceeded". The caller (pkg/server/sandboxes.go) already
+	// scopes a per-attempt deadline (uploadTimeout = 20m) with retry budget on
+	// top, matching the GCP path which also inherits the caller's ctx.
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, [32]byte{}, fmt.Errorf("failed to open file %s: %w", path, err)
@@ -233,9 +254,15 @@ func (o *awsObject) Put(ctx context.Context, data []byte, opts ...PutOption) err
 	return nil
 }
 
-func (o *awsObject) OpenRangeReader(ctx context.Context, off, length int64, frameTable *FrameTable) (RangeReader, error) {
+func (o *awsObject) OpenRangeReader(ctx context.Context, off, length int64, frameTable *FrameTable) (_ RangeReader, _ Source, err error) {
+	start := time.Now()
+	objType, _ := seekableObjectType(o.path)
+	defer func() {
+		RecordReadOpen(ctx, time.Since(start), objType, SourceAWS, frameTable.CompressionType(), err)
+	}()
+
 	if frameTable.IsCompressed() {
-		return nil, errors.New("compressed reads are not supported on AWS")
+		return nil, SourceAWS, errors.New("compressed reads are not supported on AWS")
 	}
 
 	readRange := aws.String(fmt.Sprintf("bytes=%d-%d", off, off+length-1))
@@ -247,16 +274,20 @@ func (o *awsObject) OpenRangeReader(ctx context.Context, off, length int64, fram
 	if err != nil {
 		var nsk *types.NoSuchKey
 		if errors.As(err, &nsk) {
-			return nil, ErrObjectNotExist
+			return nil, SourceAWS, ErrObjectNotExist
 		}
 
-		return nil, fmt.Errorf("failed to create S3 range reader for %q: %w", o.path, err)
+		return nil, SourceAWS, fmt.Errorf("failed to create S3 range reader for %q: %w", o.path, err)
 	}
 
-	return NewRangeReader(resp.Body), nil
+	return NewRangeReader(resp.Body), SourceAWS, nil
 }
 
-func (o *awsObject) Size(ctx context.Context) (int64, error) {
+func (o *awsObject) Size(ctx context.Context) (_ int64, err error) {
+	start := time.Now()
+	objType, _ := seekableObjectType(o.path)
+	defer func() { RecordReadSize(ctx, time.Since(start), objType, SourceAWS, err) }()
+
 	ctx, cancel := context.WithTimeout(ctx, awsOperationTimeout)
 	defer cancel()
 

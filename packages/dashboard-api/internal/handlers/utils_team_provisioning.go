@@ -63,31 +63,8 @@ type oidcUserBootstrapInput struct {
 	SignupUserAgent string
 }
 
-func (s *APIStore) bootstrapSupabaseUser(ctx context.Context, userID uuid.UUID) (provisionedTeam, error) {
-	profile, err := s.bootstrapUserProfileFromSupabase(ctx, userID)
-	if err != nil {
-		return provisionedTeam{}, err
-	}
-
-	return s.bootstrapUser(ctx, profile)
-}
-
-func (s *APIStore) bootstrapUserProfileFromSupabase(ctx context.Context, userID uuid.UUID) (bootstrapUserProfile, error) {
-	profile, err := s.resolveProfile(ctx, userID)
-	if err != nil {
-		return bootstrapUserProfile{}, err
-	}
-
-	return bootstrapUserProfile{
-		UserID:          userID,
-		Email:           profile.Email,
-		DefaultTeamName: defaultTeamNameFromProfile(profile),
-	}, nil
-}
-
 // resolveProfile fetches a single user's profile through the configured profile
-// provider, returning a 404 ProvisionError when the user is unknown. This keeps
-// provisioning independent of which backend (Supabase or Ory) owns the user.
+// provider, returning a 404 ProvisionError when the user is unknown.
 func (s *APIStore) resolveProfile(ctx context.Context, userID uuid.UUID) (userprofile.Profile, error) {
 	profiles, err := s.userProfiles.GetProfilesByUserID(ctx, []uuid.UUID{userID})
 	if err != nil {
@@ -123,38 +100,18 @@ func (s *APIStore) bootstrapOIDCUser(ctx context.Context, input oidcUserBootstra
 	})
 }
 
-// requireConfiguredOIDCIssuer rejects bootstrap requests whose issuer is not in
-// the configured provider list. Without this an admin-token holder could plant
-// an identity under any arbitrary iss string. When the user-profile provider
-// requires Ory, only ORY_ISSUER_URL is accepted: the Ory resolver looks up
-// public.user_identities by exactly that issuer, so any other configured JWT
-// issuer would create rows that profile/membership lookups never read.
+// requireConfiguredOIDCIssuer rejects bootstrap requests whose issuer is not the
+// configured Ory issuer.
 func (s *APIStore) requireConfiguredOIDCIssuer(issuer string) error {
 	oryIssuer := strings.TrimSpace(s.config.OryIssuerURL)
 
-	if s.config.UserProfileProvider.RequiresOry() {
-		if oryIssuer != "" && oryIssuer == issuer {
-			return nil
-		}
-
-		return &internalteamprovision.ProvisionError{
-			StatusCode: http.StatusBadRequest,
-			Message:    "oidc_issuer must equal the configured ORY_ISSUER_URL",
-		}
-	}
-
-	for _, jwt := range s.config.AuthProvider.JWT {
-		if strings.TrimSpace(jwt.Issuer.URL) == issuer {
-			return nil
-		}
-	}
 	if oryIssuer != "" && oryIssuer == issuer {
 		return nil
 	}
 
 	return &internalteamprovision.ProvisionError{
 		StatusCode: http.StatusBadRequest,
-		Message:    "oidc_issuer is not a configured auth provider",
+		Message:    "oidc_issuer must equal the configured ORY_ISSUER_URL",
 	}
 }
 
@@ -229,6 +186,15 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 			_ = s.teamProvisionSink.ProvisionTeam(ctx, req)
 		}
 
+		// Backfill the Ory identity's external_id only after the user/identity/team
+		// are durably committed, so a failed PATCH never outlives a rolled-back
+		// transaction. This is also the recovery path: a user whose external_id was
+		// never set (e.g. a prior bootstrap whose PATCH failed after commit) re-runs
+		// here and the PATCH is re-asserted. setOIDCIdentityExternalID is idempotent.
+		if err := s.setOIDCIdentityExternalID(ctx, identity, profile.UserID); err != nil {
+			return provisionedTeam{}, err
+		}
+
 		return provisionedTeam{
 			ID:            existingTeam.ID,
 			Name:          existingTeam.Name,
@@ -266,6 +232,11 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 		return provisionedTeam{}, fmt.Errorf("commit user bootstrap transaction: %w", err)
 	}
 
+	// Emit the billing event before the external_id backfill: ProvisionTeam is
+	// fire-and-forget, but setOIDCIdentityExternalID returns early on failure, and
+	// the existing-team recovery path only re-fires ProvisionTeam within
+	// bootstrapProvisionRetryAge of team creation. Provisioning first guarantees the
+	// freshly committed team is never left billing-orphaned by an Ory PATCH failure.
 	req := teamprovision.TeamBillingProvisionRequestedV1{
 		TeamID:         team.ID,
 		TeamName:       team.Name,
@@ -276,6 +247,14 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 	}
 	_ = s.teamProvisionSink.ProvisionTeam(ctx, req)
 
+	// Backfill external_id only after the user/identity/team are durably committed.
+	// A PATCH failure here is recoverable: external_id stays unset, the dashboard
+	// re-runs bootstrap on the next login and re-asserts it via the existing-team
+	// path above.
+	if err := s.setOIDCIdentityExternalID(ctx, identity, profile.UserID); err != nil {
+		return provisionedTeam{}, err
+	}
+
 	return provisionedTeam{
 		ID:            team.ID,
 		Name:          team.Name,
@@ -284,6 +263,20 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 		IsBlocked:     team.IsBlocked,
 		BlockedReason: team.BlockedReason,
 	}, nil
+}
+
+// setOIDCIdentityExternalID stores the canonical public.users id on the Ory
+// identity. It is a no-op for non-OIDC bootstrap (identity == nil).
+func (s *APIStore) setOIDCIdentityExternalID(ctx context.Context, identity *bootstrapUserIdentity, userID uuid.UUID) error {
+	if identity == nil {
+		return nil
+	}
+
+	if err := s.userProfiles.SetIdentityExternalID(ctx, identity.Subject, userID); err != nil {
+		return fmt.Errorf("set ory identity external id: %w", err)
+	}
+
+	return nil
 }
 
 func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string) (provisionedTeam, error) {

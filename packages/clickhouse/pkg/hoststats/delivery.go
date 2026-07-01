@@ -45,6 +45,12 @@ type ClickhouseDelivery struct {
 	conn    driver.Conn
 }
 
+type GatedClickhouseDelivery struct {
+	*ClickhouseDelivery
+
+	ff *featureflags.Client
+}
+
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats")
 
 const DefaultBatcherName = "sandbox-host-stats"
@@ -72,6 +78,10 @@ func NewDefaultClickhouseHostStatsDelivery(
 	)
 }
 
+func NewGatedDelivery(inner *ClickhouseDelivery, featureFlags *featureflags.Client) *GatedClickhouseDelivery {
+	return &GatedClickhouseDelivery{ClickhouseDelivery: inner, ff: featureFlags}
+}
+
 func NewClickhouseHostStatsDelivery(
 	ctx context.Context,
 	conn driver.Conn,
@@ -96,9 +106,15 @@ func (c *ClickhouseDelivery) Push(stat SandboxHostStat) error {
 	return c.batcher.Push(stat)
 }
 
-// Close waits for queued items to flush. ctx is ignored: honoring it would
-// leak the flush goroutine onto a connection the caller is about to tear
-// down. Real deadlines require plumbing ctx through batcher.Stop.
+func (c *GatedClickhouseDelivery) Push(stat SandboxHostStat) error {
+	if c.ff != nil && c.ff.BoolFlag(context.Background(), featureflags.ClickhouseWriteFanoutFlag) {
+		return c.ClickhouseDelivery.Push(stat)
+	}
+
+	return nil
+}
+
+// Close drains the batcher. ctx is ignored to avoid leaking the flush goroutine.
 func (c *ClickhouseDelivery) Close(_ context.Context) error {
 	return c.batcher.Stop()
 }

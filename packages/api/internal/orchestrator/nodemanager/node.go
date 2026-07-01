@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/metric"
@@ -40,7 +41,7 @@ type Node struct {
 	SandboxDomain *string
 
 	client *clusters.GRPCClient
-	status api.NodeStatus
+	status StatusInfo
 
 	metrics   Metrics
 	metricsMu sync.RWMutex
@@ -83,6 +84,11 @@ func New(
 		nodeStatus = api.NodeStatusUnhealthy
 	}
 
+	var nodeStatusChangedAt time.Time
+	if ts := nodeInfo.GetServiceStatusChangedAt(); ts.IsValid() {
+		nodeStatusChangedAt = ts.AsTime()
+	}
+
 	nodeMetadata := NodeMetadata{
 		ServiceInstanceID: nodeInfo.GetServiceId(),
 		Commit:            nodeInfo.GetServiceCommit(),
@@ -97,7 +103,7 @@ func New(
 		SandboxDomain:    nil,
 
 		client: client,
-		status: nodeStatus,
+		status: StatusInfo{Status: nodeStatus, ChangedAt: nodeStatusChangedAt},
 		meta:   nodeMetadata,
 
 		PlacementMetrics: PlacementMetrics{
@@ -145,7 +151,7 @@ func NewClusterNode(ctx context.Context, client *clusters.GRPCClient, clusterID 
 		},
 
 		client:       client,
-		status:       status,
+		status:       StatusInfo{Status: status, ChangedAt: info.StatusChangedAt},
 		meta:         nodeMetadata,
 		featureflags: ff,
 	}

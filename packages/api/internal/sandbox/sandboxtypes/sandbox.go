@@ -31,6 +31,7 @@ func NewSandbox(
 	nodeID string,
 	clusterID uuid.UUID,
 	autoPause bool,
+	autoPauseFilesystemOnly bool,
 	autoResume *types.SandboxAutoResumeConfig,
 	envdAccessToken *string,
 	allowInternetAccess *bool,
@@ -47,30 +48,31 @@ func NewSandbox(
 		Alias:      alias,
 		Domain:     domain,
 
-		ExecutionID:         executionID,
-		TeamID:              teamID,
-		BuildID:             buildID,
-		Metadata:            metadata,
-		MaxInstanceLength:   maxInstanceLength,
-		StartTime:           startTime,
-		EndTime:             endTime,
-		VCpu:                vcpu,
-		TotalDiskSizeMB:     totalDiskSizeMB,
-		RamMB:               ramMB,
-		KernelVersion:       kernelVersion,
-		FirecrackerVersion:  firecrackerVersion,
-		EnvdVersion:         envdVersion,
-		EnvdAccessToken:     envdAccessToken,
-		TrafficAccessToken:  trafficAccessToken,
-		AllowInternetAccess: allowInternetAccess,
-		NodeID:              nodeID,
-		ClusterID:           clusterID,
-		AutoPause:           autoPause,
-		AutoResume:          autoResume,
-		State:               StateRunning,
-		BaseTemplateID:      baseTemplateID,
-		Network:             network,
-		VolumeMounts:        mounts,
+		ExecutionID:             executionID,
+		TeamID:                  teamID,
+		BuildID:                 buildID,
+		Metadata:                metadata,
+		MaxInstanceLength:       maxInstanceLength,
+		StartTime:               startTime,
+		EndTime:                 endTime,
+		VCpu:                    vcpu,
+		TotalDiskSizeMB:         totalDiskSizeMB,
+		RamMB:                   ramMB,
+		KernelVersion:           kernelVersion,
+		FirecrackerVersion:      firecrackerVersion,
+		EnvdVersion:             envdVersion,
+		EnvdAccessToken:         envdAccessToken,
+		TrafficAccessToken:      trafficAccessToken,
+		AllowInternetAccess:     allowInternetAccess,
+		NodeID:                  nodeID,
+		ClusterID:               clusterID,
+		AutoPause:               autoPause,
+		AutoPauseFilesystemOnly: autoPauseFilesystemOnly,
+		AutoResume:              autoResume,
+		State:                   StateRunning,
+		BaseTemplateID:          baseTemplateID,
+		Network:                 network,
+		VolumeMounts:            mounts,
 	}
 }
 
@@ -81,29 +83,33 @@ type Sandbox struct {
 	Alias      *string `json:"alias,omitempty"`
 	Domain     *string `json:"domain,omitempty"`
 
-	ExecutionID         string                            `json:"executionID"`
-	TeamID              uuid.UUID                         `json:"teamID"`
-	BuildID             uuid.UUID                         `json:"buildID"`
-	BaseTemplateID      string                            `json:"baseTemplateID"`
-	Metadata            map[string]string                 `json:"metadata"`
-	MaxInstanceLength   time.Duration                     `json:"maxInstanceLength"`
-	StartTime           time.Time                         `json:"startTime"`
-	EndTime             time.Time                         `json:"endTime"`
-	VCpu                int64                             `json:"vCpu"`
-	TotalDiskSizeMB     int64                             `json:"totalDiskSizeMB"`
-	RamMB               int64                             `json:"ramMB"`
-	KernelVersion       string                            `json:"kernelVersion"`
-	FirecrackerVersion  string                            `json:"firecrackerVersion"`
-	EnvdVersion         string                            `json:"envdVersion"`
-	EnvdAccessToken     *string                           `json:"envdAccessToken,omitempty"`
-	TrafficAccessToken  *string                           `json:"trafficAccessToken"`
-	AllowInternetAccess *bool                             `json:"allowInternetAccess,omitempty"`
-	NodeID              string                            `json:"nodeID"`
-	ClusterID           uuid.UUID                         `json:"clusterID"`
-	AutoPause           bool                              `json:"autoPause"`
-	AutoResume          *types.SandboxAutoResumeConfig    `json:"autoResume,omitempty"`
-	Network             *types.SandboxNetworkConfig       `json:"network"`
-	VolumeMounts        []*types.SandboxVolumeMountConfig `json:"volumeMounts"`
+	ExecutionID         string            `json:"executionID"`
+	TeamID              uuid.UUID         `json:"teamID"`
+	BuildID             uuid.UUID         `json:"buildID"`
+	BaseTemplateID      string            `json:"baseTemplateID"`
+	Metadata            map[string]string `json:"metadata"`
+	MaxInstanceLength   time.Duration     `json:"maxInstanceLength"`
+	StartTime           time.Time         `json:"startTime"`
+	EndTime             time.Time         `json:"endTime"`
+	VCpu                int64             `json:"vCpu"`
+	TotalDiskSizeMB     int64             `json:"totalDiskSizeMB"`
+	RamMB               int64             `json:"ramMB"`
+	KernelVersion       string            `json:"kernelVersion"`
+	FirecrackerVersion  string            `json:"firecrackerVersion"`
+	EnvdVersion         string            `json:"envdVersion"`
+	EnvdAccessToken     *string           `json:"envdAccessToken,omitempty"`
+	TrafficAccessToken  *string           `json:"trafficAccessToken"`
+	AllowInternetAccess *bool             `json:"allowInternetAccess,omitempty"`
+	NodeID              string            `json:"nodeID"`
+	ClusterID           uuid.UUID         `json:"clusterID"`
+	AutoPause           bool              `json:"autoPause"`
+	// AutoPauseFilesystemOnly makes a timeout auto-pause take a filesystem-only
+	// snapshot (no memory) instead of a full memory snapshot. Only consulted when
+	// AutoPause is true; read by the evictor at pause time.
+	AutoPauseFilesystemOnly bool                              `json:"autoPauseFilesystemOnly,omitempty"`
+	AutoResume              *types.SandboxAutoResumeConfig    `json:"autoResume,omitempty"`
+	Network                 *types.SandboxNetworkConfig       `json:"network"`
+	VolumeMounts            []*types.SandboxVolumeMountConfig `json:"volumeMounts"`
 
 	State State `json:"state"`
 }

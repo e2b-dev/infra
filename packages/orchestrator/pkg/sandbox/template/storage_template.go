@@ -97,7 +97,6 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			t.persistence,
 			t.paths.Snapfile(),
 			t.paths.CacheSnapfile(),
-			storage.SnapfileObjectType,
 		)
 		if snapfileErr != nil {
 			errMsg := fmt.Errorf("failed to fetch snapfile: %w", snapfileErr)
@@ -130,7 +129,6 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			t.persistence,
 			t.paths.Metadata(),
 			t.paths.CacheMetadata(),
-			storage.MetadataObjectType,
 		)
 		if err != nil && !errors.Is(err, storage.ErrObjectNotExist) {
 			sourceErr := fmt.Errorf("failed to fetch metafile: %w", err)
@@ -199,6 +197,12 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		if memfileErr != nil {
 			errMsg := fmt.Errorf("failed to create memfile storage: %w", memfileErr)
 
+			logger.L().Warn(ctx, "caching template with failed memfile resolution; reused until cache eviction",
+				logger.WithBuildID(t.paths.BuildID),
+				zap.Duration("min_cache_ttl", templateExpiration),
+				zap.Error(memfileErr),
+			)
+
 			if err := t.memfile.SetError(errMsg); err != nil {
 				return fmt.Errorf("failed to set memfile error: %w", errors.Join(errMsg, err))
 			}
@@ -235,6 +239,12 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		)
 		if rootfsErr != nil {
 			errMsg := fmt.Errorf("failed to create rootfs storage: %w", rootfsErr)
+
+			logger.L().Warn(ctx, "caching template with failed rootfs resolution; reused until cache eviction",
+				logger.WithBuildID(t.paths.BuildID),
+				zap.Duration("min_cache_ttl", templateExpiration),
+				zap.Error(rootfsErr),
+			)
 
 			if err := t.rootfs.SetError(errMsg); err != nil {
 				return fmt.Errorf("failed to set rootfs error: %w", errors.Join(errMsg, err))

@@ -107,3 +107,62 @@ func StripCompression(name string) string {
 func SizeSidecar(objectPath string) string {
 	return objectPath + "." + MetadataKeyUncompressedSize
 }
+
+// seekableObjectType derives the metric file_type and codec from a data-file
+// path (e.g. "{buildID}/memfile.zstd"), so they need not be threaded through the
+// read path.
+func seekableObjectType(path string) (SeekableObjectType, CompressionType) {
+	_, name := SplitPath(path)
+	ct := compressionType(name)
+
+	switch StripCompression(name) {
+	case MemfileName:
+		return MemfileObjectType, ct
+	case RootfsName:
+		return RootFSObjectType, ct
+	default:
+		return UnknownSeekableObjectType, ct
+	}
+}
+
+// Blob file_type values. The read.blob* metrics cover whole-object (WriteTo)
+// reads only — a small, fixed set. The seekable data files (memfile,
+// rootfs.ext4) are NOT blobs: they are range-read and recorded under read.read
+// with their own vocabulary, so they never appear here. Everything that isn't a
+// known type collapses to "other": content-addressed cache blobs are keyed by
+// hash, and letting those (or any per-build path) into the label is what blew
+// file_type up to ~10^5 distinct values.
+const (
+	blobTypeHeader   = "header"   // memfile/rootfs header sidecar (*.header)
+	blobTypeSnapfile = "snapfile" // VM snapshot file
+	blobTypeMetadata = "metadata" // metadata.json
+	blobTypeOther    = "other"    // anything else — never a raw hash/ID
+)
+
+// blobType classifies a whole-object blob read into the fixed file_type set
+// above; anything unrecognized collapses to "other" to keep the label bounded.
+func blobType(path string) string {
+	name := StripCompression(path[strings.LastIndex(path, "/")+1:])
+
+	switch {
+	case strings.HasSuffix(name, HeaderSuffix):
+		return blobTypeHeader
+	case name == SnapfileName:
+		return blobTypeSnapfile
+	case name == MetadataName:
+		return blobTypeMetadata
+	default:
+		return blobTypeOther
+	}
+}
+
+func compressionType(name string) CompressionType {
+	switch {
+	case strings.HasSuffix(name, CompressionLZ4.Suffix()):
+		return CompressionLZ4
+	case strings.HasSuffix(name, CompressionZstd.Suffix()):
+		return CompressionZstd
+	default:
+		return CompressionNone
+	}
+}

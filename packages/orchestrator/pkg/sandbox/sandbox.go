@@ -57,12 +57,14 @@ var (
 	uffdStartupBytesHistogram       = utils.Must(telemetry.GetHistogram(meter, telemetry.UffdStartupBytesHistogramName))
 )
 
-// Sandbox start types recorded on the orchestrator.sandbox.uffd.startup.*
-// metrics via the start_type attribute.
+// Sandbox start types recorded on sandbox start/init metrics via the
+// start_type attribute.
+type StartType string
+
 const (
-	StartTypeCreate = "create" // cold boot (template build)
-	StartTypeResume = "resume" // resume from a snapshot (the common runtime path)
-	StartTypeReboot = "reboot" // cold boot from a snapshot rootfs (filesystem-only resume)
+	StartTypeCreate StartType = "create" // cold boot (template build)
+	StartTypeResume StartType = "resume" // resume from a snapshot (the common runtime path)
+	StartTypeReboot StartType = "reboot" // cold boot from a snapshot rootfs (filesystem-only resume)
 )
 
 var SandboxHttpTransport = otelhttp.NewTransport(
@@ -95,6 +97,12 @@ type Config struct {
 	Envd EnvdMetadata
 
 	FirecrackerConfig fc.Config
+
+	// SkipEnvdWait skips the post-resume wait for envd readiness. Used by the
+	// resume-build gdb debugging flow: the guest is held at a gdb entry
+	// breakpoint and never boots envd, so the readiness wait would otherwise
+	// time out and tear the sandbox down before a debugger can attach.
+	SkipEnvdWait bool
 
 	VolumeMounts []VolumeMountConfig
 
@@ -187,7 +195,7 @@ type RuntimeMetadata struct {
 	SandboxType SandboxType
 }
 
-// sandboxLDContext builds an LD context with kernel/FC-version attributes for
+// sandboxLDContext builds an LD context with envd/kernel/FC-version attributes for
 // per-sandbox flag targeting. Team/template targeting comes from the team and
 // template contexts the caller embeds in ctx.
 func sandboxLDContext(runtime RuntimeMetadata, config *Config) ldcontext.Context {
@@ -196,6 +204,7 @@ func sandboxLDContext(runtime RuntimeMetadata, config *Config) ldcontext.Context
 		SetString(featureflags.SandboxTemplateAttribute, runtime.TemplateID).
 		SetString(featureflags.SandboxKernelVersionAttribute, config.FirecrackerConfig.KernelVersion).
 		SetString(featureflags.SandboxFirecrackerVersionAttribute, config.FirecrackerConfig.FirecrackerVersion).
+		SetString(featureflags.SandboxEnvdVersionAttribute, config.Envd.Version).
 		SetString(featureflags.SandboxTypeAttribute, runtime.SandboxType.String()).
 		Build()
 }
@@ -287,6 +296,12 @@ type Sandbox struct {
 	// template build) would otherwise emit a sample inflated with post-startup
 	// faults rather than that init's working set.
 	startupStatsOnce sync.Once
+
+	// skipStartupMetrics suppresses the per-start KPI histograms (envd-init
+	// duration, uffd startup pages/source-pages/bytes) for a throwaway resume,
+	// so the warm harvest never pollutes the customer resume distributions. Set
+	// from the WithoutLiveRegistration resume option.
+	skipStartupMetrics bool
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -632,6 +647,48 @@ func handleSpanError(span trace.Span, err *error) {
 	}
 }
 
+// resumeOptions carries the optional knobs of ResumeSandbox.
+type resumeOptions struct {
+	// denyEgress isolates the resumed sandbox from the network (except the
+	// orchestrator control path) before it is resumed.
+	denyEgress bool
+	// skipLiveRegistration keeps the resumed sandbox out of the live registry
+	// (not addressable, not counted, no health checks) for throwaways the caller
+	// reaps itself.
+	skipLiveRegistration bool
+}
+
+// ResumeOption customizes a ResumeSandbox call.
+type ResumeOption func(*resumeOptions)
+
+// WithDenyEgress denies all network egress for the resumed sandbox — except the
+// orchestrator control path — before Firecracker is resumed, so neither envd
+// init nor any briefly unfrozen workload can reach the network. It is used for
+// the throwaway pause-resume prefetch harvest sandbox, which is reaped as soon
+// as its resume working set has been recorded.
+func WithDenyEgress() ResumeOption {
+	return func(o *resumeOptions) { o.denyEgress = true }
+}
+
+// WithoutLiveRegistration resumes the sandbox without adding it to the live
+// registry and without starting health checks. The sandbox is not addressable
+// via the sandbox map, is not counted in the node's reported allocation, and
+// emits no per-sandbox metrics — for throwaways (e.g. the pause-resume prefetch
+// harvest) that the caller reaps itself rather than promoting to a live
+// sandbox. The network IP mapping is still assigned so the resume's own
+// teardown stays symmetric.
+func WithoutLiveRegistration() ResumeOption {
+	return func(o *resumeOptions) { o.skipLiveRegistration = true }
+}
+
+// ThrowawayResumeOptions are the resume options for a caller-reaped throwaway
+// (e.g. the pause-resume prefetch harvest): network-isolated and kept out of the
+// live registry. It is the single source of truth for that option set so callers
+// can't drift, and so the set can be asserted in one place.
+func ThrowawayResumeOptions() []ResumeOption {
+	return []ResumeOption{WithDenyEgress(), WithoutLiveRegistration()}
+}
+
 // ResumeSandbox resumes the sandbox from already saved template or snapshot.
 // IMPORTANT: You must Close() the sandbox after you are done with it.
 func (f *Factory) ResumeSandbox(
@@ -642,10 +699,16 @@ func (f *Factory) ResumeSandbox(
 	startedAt time.Time,
 	endAt time.Time,
 	apiConfigToStore *orchestrator.SandboxConfig,
+	opts ...ResumeOption,
 ) (s *Sandbox, e error) {
 	ctx, span := tracer.Start(ctx, "resume sandbox")
 	defer span.End()
 	defer handleSpanError(span, &e)
+
+	var ropts resumeOptions
+	for _, opt := range opts {
+		opt(&ropts)
+	}
 
 	execCtx, execSpan := startExecutionSpan(ctx)
 
@@ -789,6 +852,18 @@ func (f *Factory) ResumeSandbox(
 
 	telemetry.ReportEvent(ctx, "got network slot")
 
+	// Isolate the sandbox from the network before it is resumed, so that neither
+	// envd init nor any briefly unfrozen workload can egress while it runs. This
+	// must happen before fcHandle.Resume below — denying on the returned handle
+	// would be too late, as ResumeSandbox blocks until envd init has completed.
+	if ropts.denyEgress {
+		if err := ips.DenyEgress(ctx); err != nil {
+			return nil, fmt.Errorf("failed to deny egress for resumed sandbox: %w", err)
+		}
+
+		telemetry.ReportEvent(ctx, "denied egress for resumed sandbox")
+	}
+
 	overlay, err := overlayPromise.Wait(ctx)
 	if err != nil {
 		return nil, err
@@ -893,6 +968,10 @@ func (f *Factory) ResumeSandbox(
 		CABundle:        f.egressProxy.CABundle(),
 
 		exit: exit,
+
+		// A throwaway resume keeps its warm, customer-indistinguishable start out
+		// of the per-resume KPI histograms (see WaitForEnvd).
+		skipStartupMetrics: ropts.skipLiveRegistration,
 	}
 
 	useClickhouseMetrics := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlag)
@@ -918,8 +997,13 @@ func (f *Factory) ResumeSandbox(
 		return nil
 	})
 
-	samplingInterval := time.Duration(f.featureFlags.IntFlag(execCtx, featureflags.HostStatsSamplingInterval)) * time.Millisecond
-	initializeHostStatsCollector(execCtx, sbx, runtime, config, f.hostStatsDelivery, samplingInterval)
+	// A throwaway also skips host-stats collection, so it emits no per-sandbox
+	// host stats under its (unregistered) identity — consistent with not being in
+	// the live registry. The cleanup below is nil-safe when the collector is unset.
+	if !ropts.skipLiveRegistration {
+		samplingInterval := time.Duration(f.featureFlags.IntFlag(execCtx, featureflags.HostStatsSamplingInterval)) * time.Millisecond
+		initializeHostStatsCollector(execCtx, sbx, runtime, config, f.hostStatsDelivery, samplingInterval)
+	}
 
 	// Collect a final stats sample on cleanup while the cgroup is still alive.
 	cleanup.Add(ctx, func(ctx context.Context) error {
@@ -966,22 +1050,37 @@ func (f *Factory) ResumeSandbox(
 
 	telemetry.ReportEvent(ctx, "initialized FC")
 
-	telemetry.ReportEvent(execCtx, "waiting for envd")
+	if config.SkipEnvdWait {
+		// gdb debugging: the guest is frozen at the entry breakpoint and never
+		// boots envd, so skip the readiness wait (it would time out and tear the
+		// sandbox down). The caller drives the VM via the gdb stub instead.
+		telemetry.ReportEvent(execCtx, "skipping envd wait (gdb mode)")
+	} else {
+		telemetry.ReportEvent(execCtx, "waiting for envd")
 
-	err = sbx.WaitForEnvd(
-		ctx,
-		StartTypeResume,
-		f.config.EnvdTimeout,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
+		err = sbx.WaitForEnvd(
+			ctx,
+			StartTypeResume,
+			f.GetEnvdTimeout(ctx),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
+		}
 	}
 
-	f.Sandboxes.MarkRunning(ctx, sbx)
+	// A throwaway (e.g. the pause-resume prefetch harvest) is never promoted to a
+	// live sandbox: keep it out of the live registry so it is not addressable and
+	// does not inflate the node's reported allocation or emit per-sandbox metrics,
+	// and skip health checks it would never need.
+	if !ropts.skipLiveRegistration {
+		f.Sandboxes.MarkRunning(ctx, sbx)
+	}
 
 	telemetry.ReportEvent(execCtx, "envd initialized")
 
-	go sbx.Checks.Start(execCtx)
+	if !ropts.skipLiveRegistration {
+		go sbx.Checks.Start(execCtx)
+	}
 
 	go func() {
 		defer execSpan.End()
@@ -1214,6 +1313,14 @@ func (s *Sandbox) Pause(
 		// Memory prefetch refers to the memfile, which is not persisted.
 		m.Prefetch = nil
 	}
+
+	// Record the snapshot kind in metadata so the resume path picks reboot vs
+	// memory-resume from the snapshot's own metadata (see metadata.IsFilesystemOnly).
+	// Set unconditionally so a memory pause of a previously-rebooted (fs-only)
+	// sandbox correctly clears the flag. MarkFilesystemOnly also upgrades the
+	// metadata version when needed so the flag survives deserialize for snapshots
+	// taken from a V1 template.
+	m = m.MarkFilesystemOnly(pauseOpts.filesystemSnapshot)
 
 	// Drain free-page-hinting before pause so the snapshot doesn't capture
 	// pages the guest already considers free. Timeout per use case; 0 disables.
@@ -1630,7 +1737,7 @@ func (s *Sandbox) WaitForExit(ctx context.Context) error {
 
 func (s *Sandbox) WaitForEnvd(
 	ctx context.Context,
-	startType string,
+	startType StartType,
 	timeout time.Duration,
 ) (e error) {
 	start := time.Now()
@@ -1638,31 +1745,40 @@ func (s *Sandbox) WaitForEnvd(
 	defer span.End()
 
 	defer func() {
-		duration := time.Since(start).Milliseconds()
-		waitForEnvdDurationHistogram.Record(ctx, duration, metric.WithAttributes(
-			telemetry.WithEnvdVersion(s.Config.Envd.Version),
-			attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
-			attribute.Bool("success", e == nil),
-		))
-
-		// Record the demand-fault working set the guest needed to reach this
-		// point. Only on the first WaitForEnvd: it is the actual start, and
-		// ServeStats() is cumulative since resume, so at this instant it equals
-		// the startup counts. A later WaitForEnvd on the same handler (e.g. the
-		// envd-binary swap + restart during a template build) would otherwise
-		// re-report a cumulative total polluted with intervening faults.
-		// Recorded for both outcomes (success label) so slow/failed starts can
-		// be correlated with page volume.
-		s.startupStatsOnce.Do(func() {
-			stats := s.memory.ServeStats()
-			startupAttrs := metric.WithAttributes(
-				attribute.String("start_type", startType),
+		// A throwaway (the pause-resume prefetch harvest) is warm by construction
+		// and must not pollute the customer resume KPIs (envd-init duration,
+		// startup pages/source-pages — the consume-side payoff signals) or even be
+		// distinguishable in them, so it records none of these. It is otherwise
+		// kept out of Prometheus (registration-skip); the harvest's own metrics
+		// cover its timing/size.
+		if !s.skipStartupMetrics {
+			duration := time.Since(start).Milliseconds()
+			waitForEnvdDurationHistogram.Record(ctx, duration, metric.WithAttributes(
+				telemetry.WithEnvdVersion(s.Config.Envd.Version),
+				attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
 				attribute.Bool("success", e == nil),
-			)
-			uffdStartupPagesHistogram.Record(ctx, stats.Pages, startupAttrs)
-			uffdStartupSourcePagesHistogram.Record(ctx, stats.SourcePages, startupAttrs)
-			uffdStartupBytesHistogram.Record(ctx, stats.Bytes, startupAttrs)
-		})
+				attribute.String("start_type", string(startType)),
+			))
+
+			// Record the demand-fault working set the guest needed to reach this
+			// point. Only on the first WaitForEnvd: it is the actual start, and
+			// ServeStats() is cumulative since resume, so at this instant it equals
+			// the startup counts. A later WaitForEnvd on the same handler (e.g. the
+			// envd-binary swap + restart during a template build) would otherwise
+			// re-report a cumulative total polluted with intervening faults.
+			// Recorded for both outcomes (success label) so slow/failed starts can
+			// be correlated with page volume.
+			s.startupStatsOnce.Do(func() {
+				stats := s.memory.ServeStats()
+				startupAttrs := metric.WithAttributes(
+					attribute.String("start_type", string(startType)),
+					attribute.Bool("success", e == nil),
+				)
+				uffdStartupPagesHistogram.Record(ctx, stats.Pages, startupAttrs)
+				uffdStartupSourcePagesHistogram.Record(ctx, stats.SourcePages, startupAttrs)
+				uffdStartupBytesHistogram.Record(ctx, stats.Bytes, startupAttrs)
+			})
+		}
 
 		if e != nil {
 			return
@@ -1688,7 +1804,7 @@ func (s *Sandbox) WaitForEnvd(
 		}
 	}()
 
-	if err := s.initEnvd(ctx); err != nil {
+	if err := s.initEnvd(ctx, startType); err != nil {
 		return fmt.Errorf("failed to init new envd: %w", err)
 	}
 
@@ -1709,4 +1825,10 @@ func (f *Factory) GetEnvdInitRequestTimeout(ctx context.Context) time.Duration {
 	envdInitRequestTimeoutMs := f.featureFlags.IntFlag(ctx, featureflags.EnvdInitTimeoutMilliseconds)
 
 	return time.Duration(envdInitRequestTimeoutMs) * time.Millisecond
+}
+
+func (f *Factory) GetEnvdTimeout(ctx context.Context) time.Duration {
+	envdTimeoutMs := f.featureFlags.IntFlag(ctx, featureflags.EnvdTimeoutMilliseconds)
+
+	return time.Duration(envdTimeoutMs) * time.Millisecond
 }

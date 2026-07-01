@@ -120,7 +120,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	var team *types.Team
 	// Check if the user has access to the template
 	for _, t := range teams {
-		if t.Team.ID == templateBuildDB.Env.TeamID {
+		if t.Team.ID == templateBuildDB.ActiveEnv.TeamID {
 			team = t.Team
 
 			break

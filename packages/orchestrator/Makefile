@@ -147,6 +147,10 @@ test-docker:
 	@echo "Done"
 
 .PHONY: build-template
+# Disk size (MB) of the base template rootfs. Matches create-build's own
+# default; callers (e.g. integration-test CI) can override to leave headroom
+# for disk-heavy build steps after the build-reserved-disk-space-mb reservation.
+DISK_SIZE_MB ?= 1024
 build-template: fetch-busybox
 	TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) \
 	GOOGLE_SERVICE_ACCOUNT_BASE64=$(GOOGLE_SERVICE_ACCOUNT_BASE64) \
@@ -163,7 +167,8 @@ build-template: fetch-busybox
 	-template $(TEMPLATE_ID) \
 	-to-build $(BUILD_ID) \
 	-kernel $(KERNEL_VERSION) \
-	-firecracker $(FIRECRACKER_VERSION)
+	-firecracker $(FIRECRACKER_VERSION) \
+	-disk $(DISK_SIZE_MB)
 
 .PHONY: migrate
 migrate:

@@ -30,7 +30,7 @@ func TestPeerStorageProvider_OpenBlob_ExtractsFileName(t *testing.T) {
 	base := storage.NewMockStorageProvider(t)
 
 	p := newPeerStorageProvider(base, client, &atomic.Bool{})
-	blob, err := p.OpenBlob(t.Context(), "build-1/snapfile", storage.SnapfileObjectType)
+	blob, err := p.OpenBlob(t.Context(), "build-1/snapfile")
 	require.NoError(t, err)
 
 	var buf bytes.Buffer
@@ -50,7 +50,7 @@ func TestPeerStorageProvider_OpenSeekable_ExtractsFileName(t *testing.T) {
 	base := storage.NewMockStorageProvider(t)
 
 	p := newPeerStorageProvider(base, client, &atomic.Bool{})
-	ff, err := p.OpenSeekable(t.Context(), "build-1/memfile", storage.MemfileObjectType)
+	ff, err := p.OpenSeekable(t.Context(), "build-1/memfile")
 	require.NoError(t, err)
 
 	size, err := ff.Size(t.Context())

@@ -3,7 +3,7 @@ package userprofile
 import (
 	"context"
 	"errors"
-	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -25,6 +25,9 @@ type Provider interface {
 	GetProfilesByUserID(ctx context.Context, userIDs []uuid.UUID) (map[uuid.UUID]Profile, error)
 	FindProfilesByEmail(ctx context.Context, email string) ([]Profile, error)
 	GetTeamCreatorContext(ctx context.Context, userID uuid.UUID) (*sharedteamprovision.CreatorContextV1, error)
+	// SetIdentityExternalID stores the canonical user UUID on the external
+	// identity (Ory external_id) so the IdP can back-reference our user.
+	SetIdentityExternalID(ctx context.Context, subject string, externalID uuid.UUID) error
 	// PrepareDeleteUser resolves the external identity references for the
 	// given user so they can be removed after the database rows are gone.
 	PrepareDeleteUser(ctx context.Context, userID uuid.UUID) (DeleteUserHandle, error)
@@ -38,21 +41,35 @@ type DeleteUserHandle interface {
 	Execute(ctx context.Context) error
 }
 
-func NewProvider(mode Mode, supa Provider, ory Provider) (Provider, error) {
-	switch mode {
-	case ModeSupabase:
-		if supa == nil {
-			return nil, fmt.Errorf("mode %q requires a supabase provider", mode)
-		}
-
-		return supa, nil
-	case ModeOry:
-		if ory == nil {
-			return nil, fmt.Errorf("mode %q requires an ory provider", mode)
-		}
-
-		return ory, nil
-	default:
-		return nil, fmt.Errorf("unknown user profile provider mode %q", mode)
+func metadataString(metadata map[string]any, key string) string {
+	if metadata == nil {
+		return ""
 	}
+
+	value, ok := metadata[key].(string)
+	if !ok {
+		return ""
+	}
+
+	return strings.TrimSpace(value)
+}
+
+func uniqueUUIDs(ids []uuid.UUID) []uuid.UUID {
+	seen := make(map[uuid.UUID]struct{}, len(ids))
+	unique := make([]uuid.UUID, 0, len(ids))
+
+	for _, id := range ids {
+		if id == uuid.Nil {
+			continue
+		}
+
+		if _, ok := seen[id]; ok {
+			continue
+		}
+
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+
+	return unique
 }

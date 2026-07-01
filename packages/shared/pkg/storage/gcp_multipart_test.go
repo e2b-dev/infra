@@ -331,16 +331,22 @@ func TestMultipartUploader_InitiateUpload_WithRetries(t *testing.T) {
 
 func TestMultipartUploader_HighConcurrency_StressTest(t *testing.T) {
 	t.Parallel()
-	// Create a large test file (200MB - enough for 4 parts)
 	tempDir := t.TempDir()
 	testFile := filepath.Join(tempDir, "large.txt")
-	testContent := strings.Repeat("0123456789abcdef", 6553600) // 100MB file
+	fileSize := 2 * gcpMultipartUploadChunkSize
+	testContent := strings.Repeat("0123456789abcdef", fileSize/16)
 	err := os.WriteFile(testFile, []byte(testContent), 0o644)
 	require.NoError(t, err)
+
+	const wantConcurrent = int32(2) // == numParts (fileSize / chunk size)
 
 	var initiateCalls, partCalls, completeCalls int32
 	var maxConcurrentParts atomic.Int32
 	var currentConcurrentParts atomic.Int32
+	var arrivedParts atomic.Int32
+	allPartsInFlight := make(chan struct{})
+	var releaseOnce sync.Once
+	var barrierTimedOut atomic.Bool
 	receivedParts := sync.Map{}
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -369,8 +375,18 @@ func TestMultipartUploader_HighConcurrency_StressTest(t *testing.T) {
 				}
 			}
 
-			// Simulate some processing time to increase chance of concurrency
-			time.Sleep(50 * time.Millisecond) // Increased delay to ensure overlap
+			// Hold every part until all are concurrently in flight, then release.
+			if arrivedParts.Add(1) == wantConcurrent {
+				releaseOnce.Do(func() { close(allPartsInFlight) })
+			}
+			timer := time.NewTimer(10 * time.Second)
+			defer timer.Stop()
+			select {
+			case <-allPartsInFlight:
+			case <-timer.C:
+				// require/FailNow can't be called from this non-test goroutine.
+				barrierTimedOut.Store(true)
+			}
 
 			partNum := atomic.AddInt32(&partCalls, 1)
 			body, _ := io.ReadAll(r.Body)
@@ -395,6 +411,8 @@ func TestMultipartUploader_HighConcurrency_StressTest(t *testing.T) {
 	require.Equal(t, int32(1), atomic.LoadInt32(&initiateCalls))
 	require.Equal(t, int32(1), atomic.LoadInt32(&completeCalls))
 	require.Positive(t, atomic.LoadInt32(&partCalls))
+	require.False(t, barrierTimedOut.Load(),
+		"parts did not upload concurrently: barrier timed out waiting for all parts to be in flight")
 	require.Greater(t, maxConcurrentParts.Load(), int32(1), "Should have concurrent uploads")
 
 	// Verify content integrity

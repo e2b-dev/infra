@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/storageopts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -68,7 +69,9 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 		return SnapshotTemplateResult{}, fmt.Errorf("node '%s' not found", sbx.NodeID)
 	}
 
-	upsertResult, err := o.throttledUpsertSnapshot(ctx, buildUpsertSnapshotParams(sbx, node))
+	// Snapshot templates are always memory snapshots; filesystem-only checkpoint
+	// (resume-in-place would need a reboot) is not supported yet.
+	upsertResult, err := o.throttledUpsertSnapshot(ctx, buildUpsertSnapshotParams(sbx, node, false))
 	if err != nil {
 		return SnapshotTemplateResult{}, fmt.Errorf("error upserting snapshot: %w", err)
 	}
@@ -88,6 +91,7 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 	_, err = client.Sandbox.Checkpoint(childCtx, &orchestrator.SandboxCheckpointRequest{
 		SandboxId: sbx.SandboxID,
 		BuildId:   upsertResult.BuildID.String(),
+		Metadata:  map[string]string{storageopts.ObjectMetadataTemplateID: snapshotTemplateEnvID},
 	})
 	if err != nil {
 		o.failSnapshotBuild(ctx, upsertResult.BuildID, err)
@@ -148,13 +152,16 @@ func (o *Orchestrator) resolveOrCreateSnapshotTemplate(
 ) (string, error) {
 	// Existing template — just assign the build
 	if opts.ExistingTemplateID != nil {
-		err := o.sqlcDB.CreateTemplateBuildAssignment(ctx, queries.CreateTemplateBuildAssignmentParams{
+		rows, err := o.sqlcDB.CreateTemplateBuildAssignment(ctx, queries.CreateTemplateBuildAssignmentParams{
 			TemplateID: *opts.ExistingTemplateID,
 			BuildID:    buildID,
 			Tag:        opts.Tag,
 		})
 		if err != nil {
 			return "", fmt.Errorf("error assigning build to existing template: %w", err)
+		}
+		if rows == 0 {
+			return "", fmt.Errorf("template '%s' not found", *opts.ExistingTemplateID)
 		}
 
 		return *opts.ExistingTemplateID, nil

@@ -102,7 +102,7 @@ VALUES ($1, $2)
 		return fmt.Errorf("failed to create public user: %w", err)
 	}
 
-	// Access token
+	// Access token for legacy template build endpoints that do not support API key auth.
 	tokenWithoutPrefix := strings.TrimPrefix(data.AccessToken, keys.AccessTokenPrefix)
 	accessTokenBytes, err := hex.DecodeString(tokenWithoutPrefix)
 	if err != nil {

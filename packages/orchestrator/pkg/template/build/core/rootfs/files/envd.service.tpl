@@ -8,7 +8,15 @@ Description=Env Daemon Service
 # userspace. Default dependencies would gate it on sysinit/basic.target
 # (~0.5s), and the previous After=multi-user.target on chrony-wait (~8s).
 DefaultDependencies=no
-After=systemd-journald.socket systemd-remount-fs.service
+# Order after /tmp is finalized so envd doesn't answer before it's safe to stage
+# files there: updateEnvd uploads an update binary to /tmp during early boot.
+# On our base images (Ubuntu/Debian) /tmp is a plain rootfs dir, not a tmpfs
+# mount, and systemd-tmpfiles-setup.service runs `systemd-tmpfiles --remove`
+# with a `D /tmp` rule that wipes /tmp's contents at boot. That service is only
+# ordered After=local-fs.target, so gating envd on local-fs.target alone leaves
+# them unordered and the upload races the wipe (chmod/mv then fail ENOENT).
+# Ordering after systemd-tmpfiles-setup.service closes that race.
+After=systemd-journald.socket systemd-remount-fs.service local-fs.target systemd-tmpfiles-setup.service
 Wants=systemd-journald.socket
 Conflicts=shutdown.target
 Before=shutdown.target

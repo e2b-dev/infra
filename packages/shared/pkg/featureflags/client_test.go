@@ -1,6 +1,7 @@
 package featureflags
 
 import (
+	"context"
 	"testing"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
@@ -43,7 +44,7 @@ func TestAllContextsIncludesServiceAndDeployment(t *testing.T) {
 	client.SetDeploymentName("dev")
 	client.SetServiceName("orchestration-api")
 
-	merged := mergeContexts(t.Context(), client.allContexts(nil))
+	merged := mergeContexts(t.Context(), client.allContexts(t.Context(), nil))
 	contexts := merged.GetAllIndividualContexts(nil)
 
 	seen := map[ldcontext.Kind]string{}
@@ -53,4 +54,23 @@ func TestAllContextsIncludesServiceAndDeployment(t *testing.T) {
 
 	require.Equal(t, "dev", seen[deploymentKind])
 	require.Equal(t, "orchestration-api", seen[ServiceKind])
+}
+
+func TestAllContextsIncludesRegisteredProviders(t *testing.T) {
+	t.Parallel()
+
+	client := &Client{}
+	client.RegisterContextProvider(func(context.Context) ldcontext.Context {
+		return ldcontext.NewWithKind("node", "node-1")
+	})
+
+	merged := mergeContexts(t.Context(), client.allContexts(t.Context(), nil))
+	contexts := merged.GetAllIndividualContexts(nil)
+
+	seen := map[ldcontext.Kind]string{}
+	for _, item := range contexts {
+		seen[item.Kind()] = item.Key()
+	}
+
+	require.Equal(t, "node-1", seen["node"])
 }

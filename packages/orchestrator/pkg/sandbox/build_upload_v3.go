@@ -36,7 +36,7 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
-		return storeHeaderWithMetrics(egCtx, u.store, u.paths.MemfileHeader(), uploadFileMemfileHeader, finalizeV3(h))
+		return storeHeaderWithMetrics(egCtx, u.store, u.paths.MemfileHeader(), uploadFileMemfileHeader, finalizeV3(h), storage.WithMetadata(u.objectMetadata))
 	})
 
 	eg.Go(func() error {
@@ -48,7 +48,7 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
-		return storeHeaderWithMetrics(egCtx, u.store, u.paths.RootfsHeader(), uploadFileRootfsHeader, finalizeV3(h))
+		return storeHeaderWithMetrics(egCtx, u.store, u.paths.RootfsHeader(), uploadFileRootfsHeader, finalizeV3(h), storage.WithMetadata(u.objectMetadata))
 	})
 
 	meta := storage.WithMetadata(u.objectMetadata)
@@ -58,11 +58,16 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
+		h, err := u.snap.MemorySnapshot.DiffHeader.WaitWithContext(egCtx)
+		if err != nil {
+			return fmt.Errorf("wait memfile diff header: %w", err)
+		}
+
 		info, err := os.Stat(memfilePath)
 		if err != nil {
 			return fmt.Errorf("memfile stat: %w", err)
 		}
-		_, _, err = storage.UploadFramed(egCtx, u.store, u.paths.Memfile(), storage.MemfileObjectType, memfilePath, meta)
+		_, _, err = storage.UploadFramed(egCtx, u.store, u.paths.Memfile(), memfilePath, storage.WithMetadata(u.layerSizeMetadata(h)))
 		if err != nil {
 			return err
 		}
@@ -76,11 +81,16 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
+		h, err := u.snap.RootfsDiffHeader.WaitWithContext(egCtx)
+		if err != nil {
+			return fmt.Errorf("wait rootfs diff header: %w", err)
+		}
+
 		info, err := os.Stat(rootfsPath)
 		if err != nil {
 			return fmt.Errorf("rootfs stat: %w", err)
 		}
-		_, _, err = storage.UploadFramed(egCtx, u.store, u.paths.Rootfs(), storage.RootFSObjectType, rootfsPath, meta)
+		_, _, err = storage.UploadFramed(egCtx, u.store, u.paths.Rootfs(), rootfsPath, storage.WithMetadata(u.layerSizeMetadata(h)))
 		if err != nil {
 			return err
 		}
@@ -96,11 +106,11 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
-		return uploadBlobWithMetrics(egCtx, u.store, u.paths.Snapfile(), storage.SnapfileObjectType, u.snap.Snapfile.Path(), uploadFileSnap, meta)
+		return uploadBlobWithMetrics(egCtx, u.store, u.paths.Snapfile(), u.snap.Snapfile.Path(), uploadFileSnap, meta)
 	})
 
 	eg.Go(func() error {
-		return uploadBlobWithMetrics(egCtx, u.store, u.paths.Metadata(), storage.MetadataObjectType, u.snap.Metafile.Path(), uploadFileMeta, meta)
+		return uploadBlobWithMetrics(egCtx, u.store, u.paths.Metadata(), u.snap.Metafile.Path(), uploadFileMeta, meta)
 	})
 
 	if err := eg.Wait(); err != nil {

@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -341,6 +342,11 @@ type Manager interface {
 	// The handle provides access to the cgroup's FD, stats, and cleanup
 	// Returns error if cgroup creation fails
 	Create(ctx context.Context, cgroupName string) (*CgroupHandle, error)
+
+	// Destroy kills any remaining processes in an already-created sandbox
+	// cgroup and removes it. Intended for reclaiming cgroups leaked by
+	// sandboxes that did not shut down cleanly.
+	Destroy(ctx context.Context, cgroupName string) error
 }
 
 type managerImpl struct{}
@@ -412,6 +418,43 @@ func (m *managerImpl) Create(ctx context.Context, cgroupName string) (*CgroupHan
 		zap.Bool("peak_reset_available", memoryPeakFile != nil))
 
 	return handle, nil
+}
+
+// Destroy kills any remaining processes in an existing sandbox cgroup and
+// removes it.
+func (m *managerImpl) Destroy(ctx context.Context, cgroupName string) error {
+	handle, err := m.openExisting(ctx, cgroupName)
+	if err != nil {
+		return err
+	}
+
+	// Remove kills any remaining processes and deletes the cgroup.
+	return handle.Remove(ctx)
+}
+
+// openExisting returns a handle for an already-created sandbox cgroup, intended
+// for teardown of leaked cgroups. It deliberately does not open memory.peak
+// (unlike Create), since callers only Kill/Remove the cgroup and never read peak
+// memory.
+func (m *managerImpl) openExisting(ctx context.Context, cgroupName string) (*CgroupHandle, error) {
+	cgroupPath := m.cgroupPath(cgroupName)
+	info, err := os.Stat(cgroupPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat cgroup directory: %w", err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("cgroup path is not a directory: %s", cgroupPath)
+	}
+
+	logger.L().Debug(ctx, "opened existing cgroup for sandbox",
+		zap.String("cgroup_name", cgroupName),
+		zap.String("path", cgroupPath))
+
+	return &CgroupHandle{
+		cgroupName: cgroupName,
+		path:       cgroupPath,
+		manager:    m,
+	}, nil
 }
 
 func (m *managerImpl) getStatsForPath(ctx context.Context, cgroupPath string, memoryPeakFile *os.File) (*Stats, error) {
@@ -495,4 +538,32 @@ func (m *managerImpl) readAndResetMemoryPeak(ctx context.Context, memoryPeakFile
 // cgroupPath returns the filesystem path for a sandbox's cgroup
 func (m *managerImpl) cgroupPath(cgroupName string) string {
 	return filepath.Join(RootCgroupPath, cgroupName)
+}
+
+func IsSandboxCgroupName(name string) bool {
+	return strings.HasPrefix(name, "sbx-") && len(name) > len("sbx-")
+}
+
+func ListSandboxCgroups(root string) ([]string, error) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf("failed to read cgroup root: %w", err)
+	}
+
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() || !IsSandboxCgroupName(entry.Name()) {
+			continue
+		}
+
+		names = append(names, entry.Name())
+	}
+
+	slices.Sort(names)
+
+	return names, nil
 }

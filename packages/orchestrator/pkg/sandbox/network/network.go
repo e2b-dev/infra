@@ -107,6 +107,21 @@ func (s *Slot) CreateNetwork(ctx context.Context) (retErr error) {
 		}
 	}()
 
+	// An existing namespace for this index is a stale reclaim anchor from a
+	// failed teardown whose iptables rules, routes and veth may still exist. Run
+	// a full (idempotent) RemoveNetwork to reclaim them; deleting only the
+	// namespace would orphan those rules. On failure the anchor is kept and we
+	// abort so the slot is retried later instead of leaking.
+	available, err := isNamespaceAvailable(s.NamespaceID())
+	if err != nil {
+		return fmt.Errorf("cannot check for stale namespace: %w", err)
+	}
+	if !available {
+		if err = s.RemoveNetwork(); err != nil {
+			return fmt.Errorf("cannot reclaim stale network slot: %w", err)
+		}
+	}
+
 	// Create NS for the sandbox
 	ns, err := netns.NewNamed(s.NamespaceID())
 	if err != nil {
@@ -248,6 +263,14 @@ func (s *Slot) CreateNetwork(ctx context.Context) (retErr error) {
 	err = tables.Append("nat", "PREROUTING", "-i", s.VpeerName(), "-d", s.HostIPString(), "-j", "DNAT", "--to", s.NamespaceIP())
 	if err != nil {
 		return fmt.Errorf("error creating postrouting rule from vpeer: %w", err)
+	}
+
+	// Marker for downstream L3 firewalls. 0 disables; see SANDBOX_EGRESS_DSCP.
+	if s.config.SandboxEgressDSCP > 0 {
+		err = tables.Append("mangle", "POSTROUTING", "-o", s.VpeerName(), "-j", "DSCP", "--set-dscp", strconv.Itoa(int(s.config.SandboxEgressDSCP)))
+		if err != nil {
+			return fmt.Errorf("error creating DSCP mangle rule on vpeer: %w", err)
+		}
 	}
 
 	err = s.InitializeFirewall()
@@ -397,6 +420,18 @@ func (s *Slot) RemoveNetwork() error {
 			"--jump", "REDIRECT", "--to-port", strconv.Itoa(int(s.config.PortmapperPort)),
 		)
 		appendUnlessExpectedAbsentf(&errs, err, isIPTablesNotExist, "error deleting sandbox portmapper redirect rule: %w")
+	}
+
+	// Delete the named namespace only after every host-side (root namespace)
+	// teardown above has succeeded. The /run/netns entry is the anchor that
+	// startup reclaim uses to rediscover a leaked slot, and the host-side
+	// iptables/route/veth state removed above is keyed by the slot index. If any
+	// of that teardown failed, deleting the namespace now would orphan the
+	// remaining state with no way to rediscover and retry it. Preserving the
+	// anchor lets the next teardown attempt (including startup reclaim) finish
+	// the job. CreateNetwork removes a stale anchor before reusing the slot.
+	if len(errs) > 0 {
+		return errors.Join(errs...)
 	}
 
 	err = netns.DeleteNamed(s.NamespaceID())

@@ -8,9 +8,11 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -24,17 +26,6 @@ type Storage struct {
 	source *build.File
 }
 
-func objectType(diffType build.DiffType) (storage.SeekableObjectType, bool) {
-	switch diffType {
-	case build.Memfile:
-		return storage.MemfileObjectType, true
-	case build.Rootfs:
-		return storage.RootFSObjectType, true
-	default:
-		return storage.UnknownSeekableObjectType, false
-	}
-}
-
 func NewStorage(
 	ctx context.Context,
 	store *build.DiffStore,
@@ -46,8 +37,11 @@ func NewStorage(
 ) (*Storage, error) {
 	paths := storage.Paths{BuildID: buildId}
 
+	var (
+		hdrPath   string
+		headerErr error
+	)
 	if h == nil {
-		var hdrPath string
 		switch fileType {
 		case build.Memfile:
 			hdrPath = paths.MemfileHeader()
@@ -57,20 +51,14 @@ func NewStorage(
 			return nil, build.UnknownDiffTypeError{DiffType: fileType}
 		}
 
-		var err error
-		h, _, err = header.LoadHeader(ctx, persistence, hdrPath)
-		if err != nil && !errors.Is(err, storage.ErrObjectNotExist) {
-			return nil, err
+		h, _, headerErr = header.LoadHeader(ctx, persistence, hdrPath)
+		if headerErr != nil && !errors.Is(headerErr, storage.ErrObjectNotExist) {
+			return nil, headerErr
 		}
 	}
 
 	// If we can't find the diff header in storage, we try to find the "old" style template without a header as a fallback.
 	if h == nil {
-		objectType, ok := objectType(fileType)
-		if !ok {
-			return nil, build.UnknownDiffTypeError{DiffType: fileType}
-		}
-
 		var dataPath string
 		switch fileType {
 		case build.Memfile:
@@ -81,15 +69,22 @@ func NewStorage(
 			return nil, build.UnknownDiffTypeError{DiffType: fileType}
 		}
 
-		object, err := persistence.OpenSeekable(ctx, dataPath, objectType)
+		object, err := persistence.OpenSeekable(ctx, dataPath)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("headerless fallback: header %q not loadable (%w), data %q open failed: %w", hdrPath, headerErr, dataPath, err)
 		}
 
 		size, err := object.Size(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get object size: %w", err)
+			return nil, fmt.Errorf("headerless fallback: header %q not loadable (%w), data %q size failed: %w", hdrPath, headerErr, dataPath, err)
 		}
+
+		logger.L().Debug(ctx, "template header not found; using legacy headerless fallback",
+			logger.WithBuildID(buildId),
+			zap.String("file_type", string(fileType)),
+			zap.String("header_path", hdrPath),
+			zap.NamedError("header_error", headerErr),
+		)
 
 		id, err := uuid.Parse(buildId)
 		if err != nil {

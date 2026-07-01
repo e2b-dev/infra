@@ -43,6 +43,23 @@ const startingSandboxesLimitRefreshInterval = 30 * time.Second
 // in-flight snapshot uploads to finish during shutdown.
 const uploadDrainLogInterval = 10 * time.Second
 
+// sandboxDrainPollInterval is how often the graceful sandbox drain re-checks
+// the live sandbox count during shutdown.
+const sandboxDrainPollInterval = 5 * time.Second
+
+// sandboxDrainLogInterval backs off how often the graceful sandbox drain logs
+// progress so a long-lived node draining for hours does not spam the logs.
+func sandboxDrainLogInterval(elapsed time.Duration) time.Duration {
+	switch {
+	case elapsed < time.Minute:
+		return 5 * time.Second
+	case elapsed < time.Hour:
+		return time.Minute
+	default:
+		return 15 * time.Minute
+	}
+}
+
 type Server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 	orchestrator.UnimplementedChunkServiceServer
@@ -158,7 +175,7 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 	_, err = meter.RegisterCallback(
 		func(_ context.Context, obs metric.Observer) error {
 			obs.ObserveInt64(statusGauge, 1, metric.WithAttributes(
-				attribute.String("status", server.info.GetStatus().String()),
+				attribute.String("status", server.info.GetStatus().Status.String()),
 				attribute.String("version", server.info.SourceVersion),
 				attribute.String("commit", server.info.SourceCommit),
 			))
@@ -266,6 +283,54 @@ func (s *Server) drainUploads(ctx context.Context, uploadsDone <-chan struct{}) 
 			)
 		}
 	}
+}
+
+// DrainSandboxes waits for the live sandboxes on this node to exit on their own
+// during a graceful shutdown, then waits for their lifecycle cleanup to finish.
+// It does not reject new sandbox starts; that admission gating is layered in
+// separately. It returns ctx.Err() if ctx is cancelled before the node empties.
+func (s *Server) DrainSandboxes(ctx context.Context) error {
+	live := s.sandboxFactory.Sandboxes.Count()
+	logger.L().Info(ctx, "starting graceful sandbox drain", zap.Int("live_sandboxes", live))
+
+	ticker := time.NewTicker(sandboxDrainPollInterval)
+	defer ticker.Stop()
+	startedAt := time.Now()
+	lastLoggedAt := startedAt
+
+	for {
+		remaining := s.sandboxFactory.Sandboxes.Count()
+		if remaining == 0 {
+			logger.L().Info(ctx, "graceful sandbox drain complete", zap.Int("live_sandboxes", remaining))
+
+			return s.waitSandboxLifecycles(ctx)
+		}
+
+		select {
+		case <-ctx.Done():
+			logger.L().Warn(ctx, "graceful sandbox drain timed out",
+				zap.Int("remaining_sandboxes", remaining),
+				zap.Error(ctx.Err()),
+			)
+
+			return ctx.Err()
+		case <-ticker.C:
+			now := time.Now()
+			remaining = s.sandboxFactory.Sandboxes.Count()
+			elapsed := now.Sub(startedAt)
+			if remaining > 0 && now.Sub(lastLoggedAt) >= sandboxDrainLogInterval(elapsed) {
+				logger.L().Info(ctx, "waiting for sandbox drain",
+					zap.Int("remaining_sandboxes", remaining),
+					zap.Duration("elapsed", elapsed),
+				)
+				lastLoggedAt = now
+			}
+		}
+	}
+}
+
+func (s *Server) waitSandboxLifecycles(ctx context.Context) error {
+	return s.sandboxFactory.Sandboxes.WaitLifecycles(ctx)
 }
 
 func (s *Server) refreshStartingSandboxesLimit(ctx context.Context) {

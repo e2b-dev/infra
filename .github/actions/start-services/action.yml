@@ -36,7 +36,6 @@ runs:
         TESTS_E2B_ACCESS_TOKEN: "sk_e2b_17bd3933af21f80dc10bba686691c4fcd7057123"
         TESTS_SANDBOX_TEAM_ID: "834777bd-9956-45ca-b088-9bac9290e2ac"
         TESTS_SANDBOX_USER_ID: "2a5a9fc5-db8d-4af7-ac9e-d0f9272463bc"
-        SUPABASE_JWT_SECRET: "supabasejwtsecretsupabasejwtsecret"
       run: |
         docker run -d --name postgres \
                       -e POSTGRES_USER=postgres \
@@ -59,8 +58,6 @@ runs:
         echo "TESTS_E2B_ACCESS_TOKEN=${TESTS_E2B_ACCESS_TOKEN}" >> .env.test
         echo "TESTS_SANDBOX_TEAM_ID=${TESTS_SANDBOX_TEAM_ID}" >> .env.test
         echo "TESTS_SANDBOX_USER_ID=${TESTS_SANDBOX_USER_ID}" >> .env.test
-        echo "TESTS_SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}" >> .env.test
-        echo "SUPABASE_JWT_SECRETS=${SUPABASE_JWT_SECRET}" >> .env.test
         set -x
         make migrate
         make -C tests/integration seed
