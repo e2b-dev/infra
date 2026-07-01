@@ -218,7 +218,7 @@ type TeamLimit struct {
 	MaxVcpu                  int32
 	MaxRamMb                 int32
 	DiskMb                   int32
-	MaxVolumes               int32
+	MaxVolumes               int64
 }
 
 type Tier struct {

@@ -21,7 +21,7 @@ SELECT
     (tier.max_vcpu + a.extra_max_vcpu) as max_vcpu,
     (tier.max_ram_mb + a.extra_max_ram_mb) as max_ram_mb,
     (tier.disk_mb + a.extra_disk_mb) as disk_mb,
-    (tier.max_volumes + a.extra_max_volumes) as max_volumes
+    (CASE WHEN tier.max_volumes = 0 THEN 0 ELSE tier.max_volumes + a.extra_max_volumes END)::bigint as max_volumes
 FROM "public".teams t
 JOIN "public"."tiers" tier on t.tier = tier.id
 LEFT JOIN LATERAL (
