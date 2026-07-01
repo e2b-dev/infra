@@ -28,19 +28,19 @@ jobs:
       # `pull_request` workflows, so the release PR would be unmergeable.
       #
       # Requires a GitHub App (Contents: write, Pull requests: write) installed on
-      # this repo, with its App ID in the RELEASE_APP_ID variable and private key
-      # in the RELEASE_APP_PRIVATE_KEY secret.
+      # this repo, with its App ID in the RELEASE_PLEASE_APP_ID variable and
+      # private key in the RELEASE_PLEASE_APP_SECRET secret.
       #
       # Falls back to GITHUB_TOKEN if the App isn't configured yet, so the
       # workflow still runs (the release PR just won't trigger required checks
       # until the App is set up).
       - name: Generate GitHub App token
         id: app-token
-        if: ${{ vars.RELEASE_APP_ID != '' }}
+        if: ${{ vars.RELEASE_PLEASE_APP_ID != '' }}
         uses: actions/create-github-app-token@v2
         with:
-          app-id: ${{ vars.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          app-id: ${{ vars.RELEASE_PLEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PLEASE_APP_SECRET }}
 
       - name: Run release-please
         id: release
