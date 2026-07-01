@@ -22,6 +22,11 @@ on:
         required: false
         type: boolean
         default: false
+      tango:
+        description: Promote to tango
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -44,7 +49,7 @@ jobs:
           fi
 
       - name: Require an environment
-        if: ${{ inputs.staging != true && inputs.foxtrot != true && inputs.juliett != true }}
+        if: ${{ inputs.staging != true && inputs.foxtrot != true && inputs.juliett != true && inputs.tango != true }}
         run: |
           echo "Select at least one environment to promote envd."
           exit 1
@@ -55,11 +60,13 @@ jobs:
           STAGING: ${{ inputs.staging }}
           FOXTROT: ${{ inputs.foxtrot }}
           JULIETT: ${{ inputs.juliett }}
+          TANGO: ${{ inputs.tango }}
         run: |
           envs=()
           [[ "$STAGING" == "true" ]] && envs+=("staging")
           [[ "$FOXTROT" == "true" ]] && envs+=("foxtrot")
           [[ "$JULIETT" == "true" ]] && envs+=("juliett")
+          [[ "$TANGO" == "true" ]] && envs+=("tango")
 
           json="$(printf '%s\n' "${envs[@]}" | jq -R . | jq -cs .)"
           echo "environments=${json}" >> "$GITHUB_OUTPUT"
