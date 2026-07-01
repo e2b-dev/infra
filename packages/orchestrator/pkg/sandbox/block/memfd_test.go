@@ -6,8 +6,11 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"fmt"
 	"io"
 	"os"
+	"runtime"
+	"sync"
 	"testing"
 
 	"github.com/RoaringBitmap/roaring/v2"
@@ -317,4 +320,78 @@ func TestDedupedMemfdCache_InflightServesFromMemfd(t *testing.T) {
 	require.NoError(t, d.done.SetValue(nil))
 	_, ok := d.tryInflightRead(make([]byte, ps), 0)
 	require.False(t, ok)
+}
+
+// End-to-end: drive a real dedup goroutine with inflight serving on and hammer
+// tryInflightRead from many goroutines across the drain window and the
+// memfd->cache handover. Every served read must return the correct bytes, and
+// under -race the drain's memfd close must never unmap beneath an in-flight
+// reader. Base is all zeros so every (random) source page stays in the diff:
+// the deduped dirty set is the full range and packed offsets equal absolute.
+func TestDedupedMemfdCache_InflightConcurrentDrainRace(t *testing.T) {
+	t.Parallel()
+
+	ps := int64(header.PageSize)
+	const numPages = 4096
+	size := ps * numPages
+
+	memfd, srcData := newTestMemfd(t, size)
+	base := &fakeOriginalDevice{data: make([]byte, size)}
+
+	dirty := roaring.New()
+	dirty.AddRange(0, numPages)
+
+	metaOut := utils.NewSetOnce[*header.DiffMetadata]()
+	cache, err := NewCacheFromMemfdDeduped(
+		t.Context(), base, ps, t.TempDir()+"/dedup-concurrent", memfd, dirty,
+		false, false, DedupBudget{}, nil, metaOut, true,
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cache.Close() })
+
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
+	errCh := make(chan error, 16)
+	for g := range 8 {
+		wg.Add(1)
+		go func(seed int) {
+			defer wg.Done()
+			buf := make([]byte, ps)
+			for i := seed; ; i++ {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				page := int64(i % numPages)
+				n, ok := cache.tryInflightRead(buf, page*ps)
+				if ok && (n != int(ps) || !bytes.Equal(buf, srcData[page*ps:(page+1)*ps])) {
+					errCh <- fmt.Errorf("inflight page %d mismatch", page)
+
+					return
+				}
+				runtime.Gosched()
+			}
+		}(g)
+	}
+
+	// Let compare+drain complete (memfd closes, done resolves) under reader load.
+	_, err = cache.Wait(t.Context())
+	require.NoError(t, err)
+
+	// Post-handover: every page reads correctly from the drained cache.
+	buf := make([]byte, ps)
+	for page := range int64(numPages) {
+		_, rErr := cache.ReadAt(buf, page*ps)
+		require.NoError(t, rErr)
+		require.Equal(t, srcData[page*ps:(page+1)*ps], buf)
+	}
+
+	close(stop)
+	wg.Wait()
+	select {
+	case e := <-errCh:
+		t.Fatal(e)
+	default:
+	}
 }
