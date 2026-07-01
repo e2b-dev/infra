@@ -111,11 +111,7 @@ locals {
     TEMPLATE_BUCKET_NAME           = "skip"
     DEFAULT_PERSISTENT_VOLUME_TYPE = var.default_persistent_volume_type
 
-    VOLUME_TOKEN_ISSUER           = local.volume_token_issuer
-    VOLUME_TOKEN_SIGNING_KEY      = local.volume_token_signing_key
-    VOLUME_TOKEN_SIGNING_KEY_NAME = local.volume_token_signature_name
-    VOLUME_TOKEN_DURATION         = var.volume_token_valid_for
-    VOLUME_TOKEN_SIGNING_METHOD   = local.volume_token_signature_method
+    VOLUME_TOKEN_ISSUER           = var.domain_name
     CLIENT_PROXY_OIDC_ISSUER_URL  = var.client_proxy_oidc_issuer_url
   }, var.api_env_vars)
 
@@ -507,12 +503,6 @@ module "nomad" {
   filestore_cache_cleanup_max_concurrent_scan   = var.filestore_cache_cleanup_max_concurrent_scan
   filestore_cache_cleanup_max_concurrent_delete = var.filestore_cache_cleanup_max_concurrent_delete
   filestore_cleanup_env_vars                    = local.filestore_cleanup_env_vars
-
-  volume_token_issuer           = local.volume_token_issuer
-  volume_token_signing_key      = local.volume_token_signing_key
-  volume_token_signing_key_name = local.volume_token_signature_name
-  volume_token_signing_method   = local.volume_token_signature_method
-  volume_token_duration         = var.volume_token_valid_for
 
   gcs_grpc_connection_pool_size = var.gcs_grpc_connection_pool_size
 }
