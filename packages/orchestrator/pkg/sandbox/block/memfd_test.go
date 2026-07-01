@@ -248,3 +248,73 @@ func TestNewCacheFromMemfdDeduped_DetachesCompareAndDrain(t *testing.T) {
 	expected = append(expected, srcData[pageSize*4:pageSize*5]...)
 	require.Equal(t, expected, got)
 }
+
+// buildPackedIndex.translate maps a packed diff offset back to the absolute
+// memfd offset for the dirty run it belongs to, and refuses ranges that cross
+// a run boundary or fall outside any run.
+func TestPackedIndexTranslate(t *testing.T) {
+	t.Parallel()
+
+	ps := int64(header.PageSize)
+	// Dirty pages 0, 2, 5 pack contiguously as seg0=[0,ps)->abs 0,
+	// seg1=[ps,2ps)->abs 2ps, seg2=[2ps,3ps)->abs 5ps.
+	dirty := roaring.New()
+	dirty.AddMany([]uint32{0, 2, 5})
+	idx := buildPackedIndex(dirty)
+
+	for _, tc := range []struct{ packed, abs int64 }{{0, 0}, {ps, 2 * ps}, {2 * ps, 5 * ps}} {
+		abs, ok := idx.translate(tc.packed, ps)
+		require.True(t, ok)
+		require.Equal(t, tc.abs, abs)
+	}
+
+	// A range spanning two runs can't be served from one contiguous memfd span.
+	_, ok := idx.translate(0, 2*ps)
+	require.False(t, ok)
+	// Past the last run.
+	_, ok = idx.translate(3*ps, ps)
+	require.False(t, ok)
+}
+
+// While the drain is in progress (done unresolved), reads are served from the
+// still-mapped memfd via the packed→absolute index; once done resolves the
+// inflight path is bypassed in favor of the drained cache.
+func TestDedupedMemfdCache_InflightServesFromMemfd(t *testing.T) {
+	t.Parallel()
+
+	ps := int64(header.PageSize)
+	memfd, data := newTestMemfd(t, ps*6)
+	t.Cleanup(func() { _ = memfd.Close() })
+
+	// Non-adjacent dirty set so packed offsets differ from absolute offsets.
+	dirty := roaring.New()
+	dirty.AddMany([]uint32{0, 2, 5})
+
+	// Construct the post-compare, pre-drain state directly (no goroutine): the
+	// memfd + index are published and done is unresolved.
+	d := &DedupedMemfdCache{
+		done:     utils.NewSetOnce[*Cache](),
+		inflight: true,
+		memfd:    memfd,
+		index:    buildPackedIndex(dirty),
+	}
+
+	// ReadAt at packed offsets resolves to the right absolute memfd pages.
+	for i, srcPage := range []int64{0, 2, 5} {
+		got := make([]byte, ps)
+		n, err := d.ReadAt(got, int64(i)*ps)
+		require.NoError(t, err)
+		require.Equal(t, int(ps), n)
+		require.Equal(t, data[srcPage*ps:(srcPage+1)*ps], got)
+	}
+
+	// Slice takes the same path and returns a copy of the memfd bytes.
+	s, err := d.Slice(ps, ps) // packed page 1 -> absolute page 2
+	require.NoError(t, err)
+	require.Equal(t, data[2*ps:3*ps], s)
+
+	// Once the drain resolves done, the inflight path is bypassed.
+	require.NoError(t, d.done.SetValue(nil))
+	_, ok := d.tryInflightRead(make([]byte, ps), 0)
+	require.False(t, ok)
+}
