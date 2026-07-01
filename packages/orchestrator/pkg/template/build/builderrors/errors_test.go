@@ -52,7 +52,8 @@ func TestWrapContextAsUserError_UserCancellation(t *testing.T) {
 	buildCtx, cancel := context.WithCancel(context.Background())
 	cancel() // user canceled
 
-	someErr := errors.New("some operation failed")
+	// Error must contain context.Canceled (as it would in real code via errors.Join or wrapping)
+	someErr := fmt.Errorf("some operation failed: %w", buildCtx.Err())
 	got := WrapContextAsUserError(buildCtx, someErr)
 
 	if !IsUserError(got) {
@@ -63,13 +64,31 @@ func TestWrapContextAsUserError_UserCancellation(t *testing.T) {
 	}
 }
 
+func TestWrapContextAsUserError_BuildContextCanceled_ErrorUnrelated(t *testing.T) {
+	// Build context is canceled, but the error is unrelated (e.g., disk error).
+	// Should NOT be wrapped as user error.
+	buildCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	diskErr := errors.New("disk I/O error")
+	got := WrapContextAsUserError(buildCtx, diskErr)
+
+	if IsUserError(got) {
+		t.Errorf("unrelated error should not be classified as user error when build context is canceled, got: %v", got)
+	}
+	if got != diskErr {
+		t.Errorf("expected original error preserved, got: %v", got)
+	}
+}
+
 func TestWrapContextAsUserError_BuildDeadlineExceeded(t *testing.T) {
 	// Simulate: build context deadline exceeded
 	buildCtx, cancel := context.WithTimeout(context.Background(), 0)
 	defer cancel()
 	<-buildCtx.Done() // ensure it's expired
 
-	someErr := errors.New("some operation failed")
+	// Error must contain context.DeadlineExceeded (as it would in real code)
+	someErr := fmt.Errorf("some operation failed: %w", buildCtx.Err())
 	got := WrapContextAsUserError(buildCtx, someErr)
 
 	if !IsUserError(got) {

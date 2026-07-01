@@ -45,13 +45,16 @@ func WrapContextAsUserError(buildCtx context.Context, err error) error {
 		return err
 	}
 
-	// If the build context was canceled, wrap it as a user cancellation
-	if buildCtx.Err() == context.Canceled {
+	// If the build context was canceled AND the error chain contains context.Canceled,
+	// wrap it as a user cancellation. The double check ensures we don't discard
+	// unrelated errors (e.g., disk errors) that happen to coincide with context cancellation.
+	if buildCtx.Err() == context.Canceled && errors.Is(err, context.Canceled) {
 		return phases.NewPhaseBuildError(phases.PhaseMeta{}, ErrCanceled)
 	}
 
-	// If the build context deadline was exceeded, wrap it as a user timeout
-	if buildCtx.Err() == context.DeadlineExceeded {
+	// If the build context deadline was exceeded AND the error chain contains
+	// context.DeadlineExceeded, wrap it as a user timeout.
+	if buildCtx.Err() == context.DeadlineExceeded && errors.Is(err, context.DeadlineExceeded) {
 		return phases.NewPhaseBuildError(phases.PhaseMeta{}, ErrTimeout)
 	}
 
