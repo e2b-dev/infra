@@ -7,7 +7,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
@@ -15,7 +14,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
-	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -50,14 +48,6 @@ func (a *APIStore) getSandboxesMetrics(
 	)
 
 	// Get metrics for all sandboxes
-	metricsReadFlag := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlag)
-	if !metricsReadFlag {
-		logger.L().Debug(ctx, "sandbox metrics read feature flag is disabled")
-		// If we are not reading from ClickHouse, we can return an empty map
-		// This is here just to have the possibility to turn off ClickHouse metrics reading
-		return make(map[string]api.SandboxMetric), nil
-	}
-
 	cluster, found := a.clusters.GetClusterById(clusterID)
 	if !found {
 		return nil, &api.APIError{
@@ -92,14 +82,6 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "listed running instances with metrics", properties)
-
-	// Build the context for feature flags
-	ctx = featureflags.AddToContext(
-		ctx,
-		ldcontext.NewBuilder(team.ID.String()).
-			Kind(featureflags.TeamKind).
-			Build(),
-	)
 
 	sandboxesWithMetrics, apiErr := a.getSandboxesMetrics(ctx, team.ID, clusters.WithClusterFallback(team.ClusterID), params.SandboxIds)
 	if apiErr != nil {

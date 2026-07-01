@@ -115,8 +115,6 @@ func OverrideJSONFlag(flag JSONFlag, value ldvalue.Value) {
 }
 
 var (
-	MetricsWriteFlag                    = NewBoolFlag("sandbox-metrics-write", true)
-	MetricsReadFlag                     = NewBoolFlag("sandbox-metrics-read", true)
 	SnapshotFeatureFlag                 = NewBoolFlag("use-nfs-for-snapshots", env.IsDevelopment())
 	TemplateFeatureFlag                 = NewBoolFlag("use-nfs-for-templates", env.IsDevelopment())
 	EnableWriteThroughCacheFlag         = NewBoolFlag("write-to-cache-on-writes", false)

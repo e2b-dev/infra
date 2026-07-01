@@ -4,13 +4,11 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
-	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -28,28 +26,6 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 	}
 
 	team := auth.MustGetTeamInfo(c)
-
-	// Build the context for feature flags
-	ctx = featureflags.AddToContext(
-		ctx,
-		ldcontext.NewBuilder(sandboxID).
-			Kind(featureflags.SandboxKind).
-			Build(),
-		ldcontext.NewBuilder(team.ID.String()).
-			Kind(featureflags.TeamKind).
-			Build(),
-	)
-
-	metricsReadFlag := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlag)
-	if !metricsReadFlag {
-		logger.L().Debug(ctx, "sandbox metrics read feature flag is disabled")
-		// If we are not reading from ClickHouse, we can return an empty map
-		// This is here just to have the possibility to turn off ClickHouse metrics reading
-
-		c.JSON(http.StatusOK, []api.SandboxMetric{})
-
-		return
-	}
 
 	clusterID := clusters.WithClusterFallback(team.ClusterID)
 	cluster, found := a.clusters.GetClusterById(clusterID)
