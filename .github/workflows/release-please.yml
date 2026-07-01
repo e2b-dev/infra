@@ -22,14 +22,31 @@ jobs:
       reverse_proxy_tag: ${{ steps.release.outputs['packages/docker-reverse-proxy--tag_name'] }}
       reverse_proxy_version: ${{ steps.release.outputs['packages/docker-reverse-proxy--version'] }}
     steps:
+      # Mint a short-lived token from a GitHub App so the release PR is opened as
+      # the App (not the default GITHUB_TOKEN). This is required when `main` has
+      # required status checks: PRs opened by GITHUB_TOKEN don't trigger
+      # `pull_request` workflows, so the release PR would be unmergeable.
+      #
+      # Requires a GitHub App (Contents: write, Pull requests: write) installed on
+      # this repo, with its App ID in the RELEASE_APP_ID variable and private key
+      # in the RELEASE_APP_PRIVATE_KEY secret.
+      #
+      # Falls back to GITHUB_TOKEN if the App isn't configured yet, so the
+      # workflow still runs (the release PR just won't trigger required checks
+      # until the App is set up).
+      - name: Generate GitHub App token
+        id: app-token
+        if: ${{ vars.RELEASE_APP_ID != '' }}
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - name: Run release-please
         id: release
         uses: googleapis/release-please-action@v4
         with:
-          # Uses the default GITHUB_TOKEN. Because the publish job lives in this
-          # same workflow run, we don't need a PAT/app token to re-trigger on the
-          # release event.
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
