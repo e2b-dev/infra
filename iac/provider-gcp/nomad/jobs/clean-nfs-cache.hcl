@@ -23,6 +23,7 @@ job "filestore-cleanup" {
 
           env {
             NODE_ID = "$${node.unique.name}"
+            OTEL_COLLECTOR_GRPC_ENDPOINT = "${otel_collector_grpc_endpoint}"
 %{ for key, value in job_env_vars ~}
             ${key} = "${value}"
 %{ endfor ~}
@@ -30,16 +31,14 @@ job "filestore-cleanup" {
 
           config {
                 command = "local/clean-nfs-cache"
+                // Remaining knobs (grace, sampling, verify) use their built-in
+                // defaults and are tuned live via the LaunchDarkly clean-nfs-cache flag.
                 args = [
                     "--dry-run=${dry_run}",
                     "--disk-usage-target-percent=${max_disk_usage_target}",
-                    "--files-per-loop=${files_per_loop}",
-                    "--deletions-per-loop=${deletions_per_loop}",
                     "--max-concurrent-stat=${max_concurrent_stat}",
                     "--max-concurrent-scan=${max_concurrent_scan}",
                     "--max-concurrent-delete=${max_concurrent_delete}",
-                    "--max-retries=${max_retries}",
-                    "--otel-collector-endpoint=${otel_collector_grpc_endpoint}",
                     "${nfs_cache_mount_path}",
                 ]
             }

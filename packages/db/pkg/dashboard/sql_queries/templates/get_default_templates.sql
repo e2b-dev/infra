@@ -11,7 +11,7 @@ SELECT
     b.total_disk_size_mb,
     b.envd_version
 FROM public.env_defaults ed
-JOIN public.envs e ON e.id = ed.env_id
+JOIN public.active_envs e ON e.id = ed.env_id
 JOIN LATERAL (
     SELECT a.build_id
     FROM public.env_build_assignments a

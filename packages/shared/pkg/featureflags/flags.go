@@ -123,7 +123,6 @@ var (
 	UseNFSCacheForBuildingTemplatesFlag = NewBoolFlag("use-nfs-for-building-templates", env.IsDevelopment())
 	BestOfKCanFitFlag                   = NewBoolFlag("best-of-k-can-fit", true)
 	BestOfKTooManyStartingFlag          = NewBoolFlag("best-of-k-too-many-starting", false)
-	EdgeProvidedSandboxMetricsFlag      = NewBoolFlag("edge-provided-sandbox-metrics", false)
 	CreateStorageCacheSpansFlag         = NewBoolFlag("create-storage-cache-spans", env.IsDevelopment())
 	OrchAcceptsCombinedHostFlag         = NewBoolFlag("orch-accepts-combined-host", false)
 
@@ -488,6 +487,11 @@ var (
 	// "" (empty) → singular CLICKHOUSE_CONNECTION_STRING (self-managed default).
 	// "0", "1", ... → index into CLICKHOUSE_CONNECTION_STRINGS
 	ClickhouseReadEndpointFlag = NewStringFlag("clickhouse-read-endpoint", "")
+
+	// ClickhouseWriteFanoutFlag: when false, drop writes to alternate
+	// ClickHouse endpoints (CLICKHOUSE_CONNECTION_STRINGS). Default DSN
+	// is unaffected.
+	ClickhouseWriteFanoutFlag = NewBoolFlag("clickhouse-write-fanout", false)
 )
 
 // ResolveFirecrackerVersion resolves the firecracker version using the FirecrackerVersions feature flag.

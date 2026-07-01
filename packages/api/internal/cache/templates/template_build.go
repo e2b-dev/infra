@@ -84,12 +84,12 @@ func (c *TemplatesBuildCache) fetchFromDB(templateID string, buildID uuid.UUID) 
 		}
 
 		return TemplateBuildInfo{
-			TeamID:      result.Env.TeamID,
-			TemplateID:  result.Env.ID,
+			TeamID:      result.ActiveEnv.TeamID,
+			TemplateID:  result.ActiveEnv.ID,
 			BuildStatus: result.EnvBuild.StatusGroup,
 			Reason:      result.EnvBuild.Reason,
 			Version:     result.EnvBuild.Version,
-			ClusterID:   clusters.WithClusterFallback(result.Env.ClusterID),
+			ClusterID:   clusters.WithClusterFallback(result.ActiveEnv.ClusterID),
 			NodeID:      result.EnvBuild.ClusterNodeID,
 		}, nil
 	}

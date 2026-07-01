@@ -107,7 +107,7 @@ func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, rawTemplateID api.Tem
 		return
 	}
 
-	templateDB, err := a.sqlcDB.GetTemplateByID(ctx, templateID)
+	templateDB, err := a.sqlcDB.GetTemplateById(ctx, templateID)
 	switch {
 	case err == nil:
 		if templateDB.TeamID != team.ID {

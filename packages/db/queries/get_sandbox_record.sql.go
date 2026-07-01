@@ -38,15 +38,13 @@ LEFT JOIN LATERAL (
 ) template_alias ON TRUE
 WHERE sl.team_id = $1::uuid
   AND sl.sandbox_id = $2::text
-  AND sl.created_at >= $3::timestamptz
 ORDER BY sl.created_at DESC
 LIMIT 1
 `
 
 type GetSandboxRecordByTeamAndSandboxIDParams struct {
-	TeamID       uuid.UUID
-	SandboxID    string
-	CreatedAfter time.Time
+	TeamID    uuid.UUID
+	SandboxID string
 }
 
 type GetSandboxRecordByTeamAndSandboxIDRow struct {
@@ -62,7 +60,7 @@ type GetSandboxRecordByTeamAndSandboxIDRow struct {
 }
 
 func (q *Queries) GetSandboxRecordByTeamAndSandboxID(ctx context.Context, arg GetSandboxRecordByTeamAndSandboxIDParams) (GetSandboxRecordByTeamAndSandboxIDRow, error) {
-	row := q.db.QueryRow(ctx, getSandboxRecordByTeamAndSandboxID, arg.TeamID, arg.SandboxID, arg.CreatedAfter)
+	row := q.db.QueryRow(ctx, getSandboxRecordByTeamAndSandboxID, arg.TeamID, arg.SandboxID)
 	var i GetSandboxRecordByTeamAndSandboxIDRow
 	err := row.Scan(
 		&i.SandboxID,

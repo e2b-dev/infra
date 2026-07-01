@@ -11,9 +11,16 @@ import (
 	"github.com/google/uuid"
 )
 
-const createTemplateBuildAssignment = `-- name: CreateTemplateBuildAssignment :exec
+const createTemplateBuildAssignment = `-- name: CreateTemplateBuildAssignment :execrows
+WITH active AS (
+    SELECT id
+    FROM "public"."envs"
+    WHERE id = $1 AND deleted_at IS NULL
+    FOR SHARE
+)
 INSERT INTO "public"."env_build_assignments" (env_id, build_id, tag)
-VALUES ($1, $2, $3::text)
+SELECT $1, $2, $3::text
+WHERE EXISTS (SELECT 1 FROM active)
 `
 
 type CreateTemplateBuildAssignmentParams struct {
@@ -22,8 +29,12 @@ type CreateTemplateBuildAssignmentParams struct {
 	Tag        string
 }
 
-// Creates a build assignment to associate a build with a custom tag
-func (q *Queries) CreateTemplateBuildAssignment(ctx context.Context, arg CreateTemplateBuildAssignmentParams) error {
-	_, err := q.db.Exec(ctx, createTemplateBuildAssignment, arg.TemplateID, arg.BuildID, arg.Tag)
-	return err
+// FOR SHARE serializes against a concurrent DeleteTemplate so a build can't be
+// attached to a soft-deleted env. 0 rows affected means the template is gone.
+func (q *Queries) CreateTemplateBuildAssignment(ctx context.Context, arg CreateTemplateBuildAssignmentParams) (int64, error) {
+	result, err := q.db.Exec(ctx, createTemplateBuildAssignment, arg.TemplateID, arg.BuildID, arg.Tag)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

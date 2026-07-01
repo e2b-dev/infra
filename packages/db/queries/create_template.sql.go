@@ -12,12 +12,14 @@ import (
 	"github.com/google/uuid"
 )
 
-const createOrUpdateTemplate = `-- name: CreateOrUpdateTemplate :exec
+const createOrUpdateTemplate = `-- name: CreateOrUpdateTemplate :one
 INSERT INTO "public"."envs"(id, team_id, created_by, updated_at, public, cluster_id, source)
 VALUES ($1, $2, $3, NOW(), FALSE, $4, 'template')
 ON CONFLICT (id) DO UPDATE
 SET updated_at  = NOW(),
     build_count = envs.build_count + 1
+WHERE envs.deleted_at IS NULL
+RETURNING id
 `
 
 type CreateOrUpdateTemplateParams struct {
@@ -27,14 +29,18 @@ type CreateOrUpdateTemplateParams struct {
 	ClusterID  *uuid.UUID
 }
 
-func (q *Queries) CreateOrUpdateTemplate(ctx context.Context, arg CreateOrUpdateTemplateParams) error {
-	_, err := q.db.Exec(ctx, createOrUpdateTemplate,
+// Soft-delete is permanent: skip the update for a deleted env so no row is
+// returned and the build registration fails instead of resurrecting it.
+func (q *Queries) CreateOrUpdateTemplate(ctx context.Context, arg CreateOrUpdateTemplateParams) (string, error) {
+	row := q.db.QueryRow(ctx, createOrUpdateTemplate,
 		arg.TemplateID,
 		arg.TeamID,
 		arg.CreatedBy,
 		arg.ClusterID,
 	)
-	return err
+	var id string
+	err := row.Scan(&id)
+	return id, err
 }
 
 const createTemplateBuild = `-- name: CreateTemplateBuild :exec

@@ -24,6 +24,5 @@ LEFT JOIN LATERAL (
 ) template_alias ON TRUE
 WHERE sl.team_id = sqlc.arg(team_id)::uuid
   AND sl.sandbox_id = sqlc.arg(sandbox_id)::text
-  AND sl.created_at >= sqlc.arg(created_after)::timestamptz
 ORDER BY sl.created_at DESC
 LIMIT 1;
