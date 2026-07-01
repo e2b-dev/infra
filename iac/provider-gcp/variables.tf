@@ -131,6 +131,18 @@ variable "ingress_count" {
   default = 1
 }
 
+variable "ingress_cpu_count" {
+  type        = number
+  default     = null
+  description = "CPU count for each ingress instance"
+}
+
+variable "ingress_memory_mb" {
+  type        = number
+  default     = null
+  description = "Memory in MB for each ingress instance"
+}
+
 variable "additional_api_paths_handled_by_ingress" {
   type        = any
   description = <<-EOT
@@ -142,6 +154,12 @@ variable "additional_api_paths_handled_by_ingress" {
     Per-route timeout_sec overrides the ingress backend default.
   EOT
   default     = []
+}
+
+variable "ingress_sandbox_traffic_weight" {
+  type        = number
+  description = "Weight (out of 100) of sandbox traffic routed to the ingress backend. The remainder goes to the session backend."
+  default     = 0
 }
 
 variable "client_proxy_resources_memory_mb" {

@@ -319,6 +319,8 @@ module "nomad" {
   db_migrator_repository_name = module.init.db_migrator_repository_name
 
   ingress_count         = var.ingress_count
+  ingress_cpu_count     = var.ingress_cpu_count
+  ingress_memory_mb     = var.ingress_memory_mb
   ingress_port          = local.ingress_port
   ingress_internal_port = local.ingress_internal_port
 
