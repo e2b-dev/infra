@@ -103,7 +103,7 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 		return
 	}
 
-	template := result.Env
+	template := result.ActiveEnv
 	buildID := result.EnvBuild.ID
 
 	telemetry.SetAttributes(ctx,
@@ -129,7 +129,7 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 
 	// Create the tag assignments
 	for _, tag := range tags {
-		err = client.CreateTemplateBuildAssignment(ctx, queries.CreateTemplateBuildAssignmentParams{
+		rows, err := client.CreateTemplateBuildAssignment(ctx, queries.CreateTemplateBuildAssignmentParams{
 			TemplateID: template.ID,
 			BuildID:    buildID,
 			Tag:        tag,
@@ -137,6 +137,11 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, "error when creating tag assignment", err)
 			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error creating tag assignment")
+
+			return
+		}
+		if rows == 0 {
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found", template.ID))
 
 			return
 		}

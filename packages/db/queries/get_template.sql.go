@@ -14,7 +14,7 @@ import (
 const getTemplateByAlias = `-- name: GetTemplateByAlias :one
 SELECT e.id, e.team_id, e.public
 FROM public.env_aliases AS ea
-JOIN public.envs AS e ON e.id = ea.env_id
+JOIN public.active_envs AS e ON e.id = ea.env_id
 WHERE ea.alias = $1
   AND ea.namespace IS NOT DISTINCT FROM $2::text
   AND e.source IN ('template', 'snapshot_template')
@@ -43,7 +43,7 @@ func (q *Queries) GetTemplateByAlias(ctx context.Context, arg GetTemplateByAlias
 
 const getTemplateById = `-- name: GetTemplateById :one
 SELECT e.id, e.team_id, e.public, e.cluster_id
-FROM public.envs AS e
+FROM public.active_envs AS e
 WHERE e.id = $1
   AND e.source IN ('template', 'snapshot_template')
 `

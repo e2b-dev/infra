@@ -24,6 +24,7 @@ SELECT COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases, COALESCE(ea.nam
     eb.envd_version AS build_envd_version,
     eb.created_at AS build_created_at
 FROM "public"."snapshots" s
+JOIN "public"."active_envs" e ON e.id = s.env_id
 LEFT JOIN LATERAL (
     SELECT
         ARRAY_AGG(alias ORDER BY alias) AS aliases,

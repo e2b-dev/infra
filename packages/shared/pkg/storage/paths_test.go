@@ -36,3 +36,40 @@ func TestSeekableKindFromPath(t *testing.T) {
 		})
 	}
 }
+
+// TestBlobType pins blobType to its fixed vocabulary: the known whole-object
+// blobs (header, snapfile, metadata) and "other" for everything else. The
+// seekable data files memfile/rootfs.ext4 are NOT blobs and must never be
+// returned, and no per-hash/per-build path may leak — the cardinality blowup
+// from #3063.
+func TestBlobType(t *testing.T) {
+	t.Parallel()
+
+	p := Paths{BuildID: "11111111-1111-1111-1111-111111111111"}
+	const hash = "deadbeefcafef00ddeadbeefcafef00ddeadbeefcafef00ddeadbeefcafef00d"
+
+	cases := []struct {
+		name string
+		path string
+		want string
+	}{
+		{"memfile header", p.MemfileHeader(), blobTypeHeader},
+		{"rootfs header", p.RootfsHeader(), blobTypeHeader},
+		{"snapfile", p.Snapfile(), blobTypeSnapfile},
+		{"metadata", p.Metadata(), blobTypeMetadata},
+		// Not known blobs — bounded "other", never the raw name or hash.
+		{"memfile data file is not a blob", p.Memfile(), blobTypeOther},
+		{"rootfs data file is not a blob", p.RootfsCompressed(CompressionZstd), blobTypeOther},
+		{"layer files keyed by hash", "scope-abc/files/" + hash + ".tar", blobTypeOther},
+		{"unknown collapses to other", p.BuildID + "/something-else", blobTypeOther},
+		{"bare hash never leaks", hash, blobTypeOther},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, c.want, blobType(c.path))
+		})
+	}
+}

@@ -563,6 +563,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 
 				continue
 			}
+			sbxGatedEventsDeliveryClickhouse := clickhouseevents.NewGatedDelivery(sbxEventsDeliveryClickhouse, featureFlags)
 
 			hostStatsDeliveryClickhouse, err := clickhousehoststats.NewDefaultClickhouseHostStatsDelivery(
 				ctx,
@@ -585,13 +586,14 @@ func run(config cfg.Config, opts Options) (success bool) {
 
 				continue
 			}
+			hostStatsGatedDeliveryClickhouse := clickhousehoststats.NewGatedDelivery(hostStatsDeliveryClickhouse, featureFlags)
 
-			sbxEventsDeliveryTargets = append(sbxEventsDeliveryTargets, sbxEventsDeliveryClickhouse)
+			sbxEventsDeliveryTargets = append(sbxEventsDeliveryTargets, sbxGatedEventsDeliveryClickhouse)
 			closers = append(closers, closer{"clickhouse connection " + label, func(context.Context) error {
 				return clickhouseConn.Close()
 			}})
 
-			hostStatsTargets = append(hostStatsTargets, hostStatsDeliveryClickhouse)
+			hostStatsTargets = append(hostStatsTargets, hostStatsGatedDeliveryClickhouse)
 		}
 	}
 

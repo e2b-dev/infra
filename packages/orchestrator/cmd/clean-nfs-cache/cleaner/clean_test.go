@@ -1,177 +1,105 @@
 package cleaner
 
 import (
-	"os"
 	"path/filepath"
-	"strconv"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-func TestDirSort(t *testing.T) {
-	t.Parallel()
-	d := &Dir{
-		Name: "testdir",
-		Dirs: []*Dir{
-			{Name: "subdirB"},
-			{Name: "subdirA"},
-			{Name: "subdirC"},
-		},
-		Files: []File{
-			{Name: "file3.txt", ATimeUnix: 300},
-			{Name: "file1.txt", ATimeUnix: 100},
-			{Name: "file2.txt", ATimeUnix: 200},
-		},
-	}
-
-	d.sort()
-
-	require.Equal(t, "subdirA", d.Dirs[0].Name)
-	require.Equal(t, "subdirB", d.Dirs[1].Name)
-	require.Equal(t, "subdirC", d.Dirs[2].Name)
-
-	require.Equal(t, "file3.txt", d.Files[0].Name)
-	require.Equal(t, int64(300), d.Files[0].ATimeUnix)
-	require.Equal(t, "file2.txt", d.Files[1].Name)
-	require.Equal(t, int64(200), d.Files[1].ATimeUnix)
-	require.Equal(t, "file1.txt", d.Files[2].Name)
-	require.Equal(t, int64(100), d.Files[2].ATimeUnix)
-}
-
-func TestCleanDeletesOldestFiles(t *testing.T) {
+func TestCleanDeletesColdestBuilds(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	defer os.RemoveAll(root)
-
-	// create root path used by Cleaner
-	rootPath := filepath.Join(root, "root")
-	err := os.MkdirAll(rootPath, 0o755)
-	require.NoError(t, err)
-
-	subdirs := []string{"subA", "subB"}
-	origFiles := map[string][]string{}
-
 	now := time.Now()
 
-	// Create 2 subdirs each with 9 files: file0 (newest) ... file8 (oldest)
-	for _, sd := range subdirs {
-		dirPath := filepath.Join(rootPath, sd)
-		err = os.MkdirAll(dirPath, 0o755)
-		require.NoError(t, err)
-
-		names := []string{}
-		for i := range 9 {
-			name := filepath.Join(dirPath, "file"+strconv.Itoa(i)+".txt")
-			names = append(names, filepath.Base(name))
-			// write 512 bytes to ensure non-zero size
-			err = os.WriteFile(name, make([]byte, 512), 0o644)
-			require.NoError(t, err)
-
-			// file0 should be newest
-			ageMinutes := time.Duration(10*i) * time.Minute // ensure clear ordering
-			mtime := now.Add(-ageMinutes)
-			err = os.Chtimes(name, mtime, mtime)
-			require.NoError(t, err)
-		}
-		origFiles[sd] = names
+	// Four builds, each 4 chunks of 4 MiB (16 MiB). warmest atime per build:
+	//   cold-a: 40d, cold-b: 30d, warm-a: 2d, warm-b: 1d.
+	builds := map[string]time.Duration{
+		"cold-a": 40 * 24 * time.Hour,
+		"cold-b": 30 * 24 * time.Hour,
+		"warm-a": 2 * 24 * time.Hour,
+		"warm-b": 1 * 24 * time.Hour,
 	}
-
-	// Configure Cleaner to delete 2 files (target bytes equal to 2 files).
-	// BatchN must equal DeleteN here: with BatchN > DeleteN, splitBatch
-	// reinserts the "younger" half of each batch, and this can race with the
-	// scanner's next pop (which happens before the reinsert runs), allowing a
-	// younger file to be deleted while an older sibling reinserted into the
-	// same subdir is never popped again.
-	opts := Options{
-		Path:                rootPath,
-		BatchN:              2,
-		DeleteN:             2,
-		TargetBytesToDelete: 1024, // 2 * 512
-		DryRun:              false,
-		MaxConcurrentStat:   1,
-		MaxConcurrentScan:   1,
-		MaxConcurrentDelete: 1,
-	}
-
-	c := NewCleaner(opts, logger.NewNopLogger())
-
-	err = c.Clean(t.Context())
-	require.NoError(t, err)
-
-	// Collect which files remain and which were deleted, per subdir.
-	deletedCount := 0
-	remaining := map[string]map[string]bool{}
-	for _, sd := range subdirs {
-		dirPath := filepath.Join(rootPath, sd)
-		entries, err := os.ReadDir(dirPath)
-		require.NoError(t, err)
-		remaining[sd] = map[string]bool{}
-		for _, e := range entries {
-			if !e.IsDir() {
-				remaining[sd][e.Name()] = true
+	for name, age := range builds {
+		// Split chunks across memfile/ and rootfs.ext4/ so sizing and the warmest
+		// sample span both data dirs.
+		for i := range 4 {
+			dataDir := storage.MemfileName
+			if i%2 == 1 {
+				dataDir = storage.RootfsName
 			}
-		}
-		for _, fn := range origFiles[sd] {
-			if !remaining[sd][fn] {
-				deletedCount++
-			}
+			writeChunk(t, root, name, dataDir, i, 4<<20, now.Add(-age))
 		}
 	}
 
-	// Expect at least 2 deletions (target = 1024 bytes = 2 * 512). Concurrency
-	// can cause additional batches to complete before the byte target is
-	// observed, so we don't assert an upper bound.
-	require.GreaterOrEqual(t, deletedCount, 2)
+	// Target ~24 MiB → deletes the two coldest whole builds (cold-a, cold-b =
+	// 32 MiB) and stops; the two warm builds survive.
+	c := NewCleaner(Options{
+		Path:                root,
+		TargetBytesToDelete: 24 << 20,
+		SampleMinFiles:      8,
+		SamplePercent:       10,
+		SampleMaxFiles:      64,
+		MaxConcurrentScan:   4,
+		MaxConcurrentStat:   4,
+		MaxConcurrentDelete: 4,
+	}, logger.NewNopLogger(), nil)
 
-	// The cleaner pops the oldest file from each subdir; with BatchN==DeleteN
-	// nothing is reinserted, so per subdir the deleted indices must form a
-	// contiguous suffix [N..8]: if fileN was deleted then fileN+1 ... file8
-	// must also be deleted.
-	for _, sd := range subdirs {
-		maxRemaining, minDeleted := -1, len(origFiles[sd])
-		for i, fn := range origFiles[sd] {
-			if remaining[sd][fn] {
-				if i > maxRemaining {
-					maxRemaining = i
-				}
-			} else if i < minDeleted {
-				minDeleted = i
-			}
-		}
-		require.Lessf(t, maxRemaining, minDeleted,
-			"subdir %s: file%d.txt remained but file%d.txt was deleted (expected oldest-first deletion)",
-			sd, maxRemaining, minDeleted)
-	}
+	require.NoError(t, c.Clean(t.Context()))
+
+	require.NoDirExists(t, filepath.Join(root, "cold-a"))
+	require.NoDirExists(t, filepath.Join(root, "cold-b"))
+	require.DirExists(t, filepath.Join(root, "warm-a"))
+	require.DirExists(t, filepath.Join(root, "warm-b"))
+	require.Equal(t, int64(2), c.Deleted.Load())
 }
 
-func TestSplitBatch(t *testing.T) {
+// TestDeleteColdestRespectsGraceFloor exercises the atime floor directly on
+// deleteColdest (the create-time filter that skips fresh-btime builds runs
+// earlier in the scan, so an end-to-end fixture can't reach the floor — btime
+// can't be backdated). A build whose warmest chunk was accessed within Grace is
+// never queued, even with an unbounded byte target.
+func TestDeleteColdestRespectsGraceFloor(t *testing.T) {
 	t.Parallel()
+	now := time.Now()
+	c := NewCleaner(Options{
+		TargetBytesToDelete: 1 << 40, // huge: only the Grace floor limits deletion
+		Grace:               24 * time.Hour,
+		DryRun:              true, // count selections without touching the filesystem
+		MaxConcurrentDelete: 2,
+	}, logger.NewNopLogger(), nil)
 
-	c := &Cleaner{
-		Options: Options{DeleteN: 3},
+	builds := []build{
+		{uuid: "cold", timestamp: now.Add(-30 * 24 * time.Hour).Unix(), size: 1 << 20},
+		{uuid: "hot", timestamp: now.Add(-1 * time.Hour).Unix(), size: 1 << 20},
 	}
 
-	batch := []*Candidate{
-		{FullPath: "file0.txt", ATimeUnix: 100},
-		{FullPath: "file1.txt", ATimeUnix: 200},
-		{FullPath: "file2.txt", ATimeUnix: 300},
-		{FullPath: "file3.txt", ATimeUnix: 400},
-		{FullPath: "file4.txt", ATimeUnix: 500},
-	}
+	c.deleteColdest(t.Context(), builds)
 
-	toDelete, toReinsert := c.splitBatch(batch)
+	require.Equal(t, int64(1), c.Deleted.Load(), "cold build past the floor is deleted; hot build within Grace is not")
+}
 
-	require.Len(t, toDelete, 3)
-	require.Equal(t, "file0.txt", toDelete[0].FullPath)
-	require.Equal(t, "file1.txt", toDelete[1].FullPath)
-	require.Equal(t, "file2.txt", toDelete[2].FullPath)
+func TestClampSample(t *testing.T) {
+	t.Parallel()
+	// min 8, pct 10, max 64
+	require.Equal(t, 3, clampSample(3, 8, 10, 64))     // fewer chunks than min → all
+	require.Equal(t, 8, clampSample(50, 8, 10, 64))    // 10% = 5 < min → min
+	require.Equal(t, 50, clampSample(500, 8, 10, 64))  // 10% = 50
+	require.Equal(t, 64, clampSample(5000, 8, 10, 64)) // 10% = 500 > max → max
+}
 
-	require.Len(t, toReinsert, 2)
-	require.Equal(t, "file3.txt", toReinsert[0].FullPath)
-	require.Equal(t, "file4.txt", toReinsert[1].FullPath)
+func TestChunkOnDiskBytes(t *testing.T) {
+	t.Parallel()
+	// uncompressed .bin: decimal on-disk size
+	require.Equal(t, uint64(4194304), chunkOnDiskBytes("000000000905-4194304.bin"))
+	// compressed .frm: hex on-disk frame length (0x100000 = 1 MiB)
+	require.Equal(t, uint64(0x100000), chunkOnDiskBytes("0000000003c00000-100000.frm"))
+	// non-chunk and unparseable files contribute nothing
+	require.Equal(t, uint64(0), chunkOnDiskBytes("size.txt"))
+	require.Equal(t, uint64(0), chunkOnDiskBytes("garbage"))
 }

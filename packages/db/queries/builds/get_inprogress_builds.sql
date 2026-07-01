@@ -2,7 +2,7 @@
 SELECT DISTINCT ON (b.id) t.cluster_id AS team_cluster_id, sqlc.embed(e), sqlc.embed(b)
 FROM public.env_builds b
 JOIN public.env_build_assignments eba ON eba.build_id = b.id
-JOIN public.envs e ON e.id = eba.env_id
+JOIN public.active_envs e ON e.id = eba.env_id
 JOIN public.teams t ON e.team_id = t.id
 WHERE b.status_group IN ('pending', 'in_progress')
   AND e.source = 'template'
