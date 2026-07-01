@@ -32,18 +32,14 @@ const (
 // "<reason>:<action_id>". Consumers fail closed on it behind a feature flag.
 const ObjectMetadataSoftDeleted = "storage-index-soft-deleted"
 
-// Layer-size metadata keys, written at upload time on each data object (memfile
-// and rootfs). These sizes derive from the diff header (for memfile, the async
-// dedup header), so they live on the data object rather than the build row.
-// Values are decimal byte counts.
+// Layer-size metadata keys, written on each data object as decimal byte counts
+// (all uncompressed, from the diff header).
 const (
 	// ObjectMetadataLogicalSize is the layer's logical (virtual device) size.
 	ObjectMetadataLogicalSize = "logical-size"
-	// ObjectMetadataMappedSize is the number of bytes mapped to non-empty
-	// (non-nil) builds across the layer's mapping.
+	// ObjectMetadataMappedSize is the bytes mapped to non-empty builds.
 	ObjectMetadataMappedSize = "mapped-size"
-	// ObjectMetadataDiffSize is the number of bytes this build's own layer
-	// contributes (bytes mapped to the self build).
+	// ObjectMetadataDiffSize is the bytes this build itself contributes.
 	ObjectMetadataDiffSize = "diff-size"
 )
 

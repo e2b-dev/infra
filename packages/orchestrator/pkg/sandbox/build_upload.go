@@ -94,26 +94,24 @@ func NewUpload(
 	return u, nil
 }
 
-// layerSizeMetadata augments the base object metadata with the layer's logical,
-// mapped, and diff sizes, derived from the resolved diff header. All layer sizes
-// live on the data object (not the build row): the memfile values in particular
-// depend on the async dedup header, which resolves after the build row is
-// finalized. Every size derives from the header, so no upload result is needed.
+// layerSizeMetadata adds the layer's logical, mapped, and diff sizes (all
+// uncompressed, from the diff header) to the base object metadata. They live on
+// the data object because the memfile values depend on the async dedup header.
 func (u *Upload) layerSizeMetadata(h *headers.Header) storage.ObjectMetadata {
 	md := make(storage.ObjectMetadata, len(u.objectMetadata)+3)
 	maps.Copy(md, u.objectMetadata)
-	if h != nil && h.Metadata != nil {
-		// BytesByBuild excludes empty (nil-build) regions, so summing it gives the
-		// non-zero mapped bytes; the self build's entry is this layer's diff size.
-		bytesByBuild := h.Mapping.BytesByBuild()
-		var mapped uint64
-		for _, b := range bytesByBuild {
-			mapped += b
-		}
-		md[storage.ObjectMetadataLogicalSize] = strconv.FormatUint(h.Metadata.Size, 10)
-		md[storage.ObjectMetadataMappedSize] = strconv.FormatUint(mapped, 10)
-		md[storage.ObjectMetadataDiffSize] = strconv.FormatUint(bytesByBuild[h.Metadata.BuildId], 10)
+	if h == nil || h.Metadata == nil {
+		return md
 	}
+
+	bytesByBuild := h.Mapping.BytesByBuild()
+	var mapped uint64
+	for _, b := range bytesByBuild {
+		mapped += b
+	}
+	md[storage.ObjectMetadataLogicalSize] = strconv.FormatUint(h.Metadata.Size, 10)
+	md[storage.ObjectMetadataMappedSize] = strconv.FormatUint(mapped, 10)
+	md[storage.ObjectMetadataDiffSize] = strconv.FormatUint(bytesByBuild[h.Metadata.BuildId], 10)
 
 	return md
 }

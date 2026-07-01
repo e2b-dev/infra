@@ -58,9 +58,6 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
-		// Resolve the memfile diff header to attach the layer's mapped/diff sizes
-		// to the data object. This runs in the background upload path, so it adds
-		// no latency to the pause/checkpoint response.
 		h, err := u.snap.MemorySnapshot.DiffHeader.WaitWithContext(egCtx)
 		if err != nil {
 			return fmt.Errorf("wait memfile diff header: %w", err)
@@ -84,9 +81,6 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
-		// Resolve the rootfs diff header to attach the layer's mapped/diff sizes
-		// to the data object, mirroring the memfile path so both artifacts'
-		// mapped/diff sizes live in object metadata.
 		h, err := u.snap.RootfsDiffHeader.WaitWithContext(egCtx)
 		if err != nil {
 			return fmt.Errorf("wait rootfs diff header: %w", err)
