@@ -455,8 +455,17 @@ func (p *Handler) Wait() {
 	var errMsg *string
 
 	if err != nil {
-		msg := err.Error()
-		errMsg = &msg
+		// Distinguish normal non-zero exits from runtime/infrastructure errors.
+		// exec.Cmd.Wait() returns *exec.ExitError for processes that started
+		// successfully but exited with a non-zero status. These are normal
+		// process results represented by exit_code/exited/status fields.
+		// Only populate the error field for actual runtime failures
+		// (e.g., failure to wait for the process).
+		var exitErr *exec.ExitError
+		if !(errors.As(err, &exitErr) && p.cmd.ProcessState != nil && p.cmd.ProcessState.Exited()) {
+			msg := err.Error()
+			errMsg = &msg
+		}
 	}
 
 	endEvent := &rpc.ProcessEvent_EndEvent{
