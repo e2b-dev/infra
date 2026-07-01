@@ -93,7 +93,7 @@ jobs:
         #
         # Notes:
         #  - Tag is v-prefixed (v${VERSION}) to match what customers pin via
-        #    REVERSE_PROXY_VERSION and the manual publish convention.
+        #    DOCKER_REVERSE_PROXY_VERSION and the manual publish convention.
         #  - No :latest tag: the e2b-artifacts repo has immutableTags=true, so a
         #    reused tag would fail on the second release. Customers pin exact
         #    versions anyway.
