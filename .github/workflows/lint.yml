@@ -51,6 +51,11 @@ jobs:
           version: "v${{ env.GOLANGCI_LINT }}"
           working-directory: ${{ matrix.modules }}
 
+          # Only report issues introduced by this PR (on changed lines), not
+          # pre-existing issues in files the PR didn't touch. Uses the PR patch
+          # from the GitHub API, so no extra git history is needed.
+          only-new-issues: true
+
           # disable, as it randomly fails with the following error:
           # The command is terminated due to an error: [../../.golangci.yml] validate: compile schema: failing loading "https://golangci-lint.run/jsonschema/golangci.v2.11.jsonschema.json": Get "https://golangci-lint.run/jsonschema/golangci.v2.11.jsonschema.json": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
           verify: 'false'
