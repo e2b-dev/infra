@@ -1494,6 +1494,7 @@ func (s *Sandbox) processMemorySnapshot(ctx context.Context, buildID uuid.UUID) 
 		dedupBestEffort,
 		dedupDirectIO,
 		dedupBudget,
+		s.featureFlags.BoolFlag(ctx, featureflags.MemfdDedupInflightServeFlag, sandboxLDContext(s.Runtime, s.Config)),
 	)
 	if err != nil {
 		return MemorySnapshot{}, fmt.Errorf("error while post processing: %w", err)
@@ -1537,6 +1538,7 @@ func pauseProcessMemory(
 	dedupBestEffort bool,
 	dedupDirectIO bool,
 	dedupBudget block.DedupBudget,
+	dedupInflightServe bool,
 ) (d build.Diff, h *DiffHeader, e error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
@@ -1547,6 +1549,7 @@ func pauseProcessMemory(
 	cache, err := fc.ExportMemory(
 		ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd, bgCopy,
 		originalMemfile, dedupBestEffort, dedupDirectIO, dedupBudget, diffMetadata.Empty, metaOut,
+		dedupInflightServe,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to export memory: %w", err)

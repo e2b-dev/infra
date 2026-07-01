@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/RoaringBitmap/roaring/v2"
@@ -232,10 +233,23 @@ func (m *MemfdCache) Size() (int64, error) { return m.cache.Size() }
 
 // DedupedMemfdCache runs compare+drain on a goroutine; metaOut resolves
 // after compare, reads against the cache block on done until drain finishes.
+//
+// When inflight serving is enabled, reads are served directly from the
+// still-mapped memfd during the drain window instead of blocking on done, so a
+// resume overlapping the pause is not delayed by the dedup drain.
 type DedupedMemfdCache struct {
 	outPath string
 	cancel  context.CancelFunc
 	done    *utils.SetOnce[*Cache]
+
+	inflight bool
+	// mu guards memfd + index. memfd is non-nil only between "compare done"
+	// (published in runDedup) and "drain done" (closed under the write lock so
+	// it can't be unmapped under an in-flight reader). index translates a
+	// packed diff-storage offset back to the absolute memfd offset.
+	mu    sync.RWMutex
+	memfd *Memfd
+	index packedIndex
 }
 
 func NewCacheFromMemfdDeduped(
@@ -250,19 +264,72 @@ func NewCacheFromMemfdDeduped(
 	budget DedupBudget,
 	inputEmpty *roaring.Bitmap,
 	metaOut *utils.SetOnce[*header.DiffMetadata],
+	inflightServe bool,
 ) (*DedupedMemfdCache, error) {
 	if blockSize%header.PageSize != 0 {
 		return nil, fmt.Errorf("diff block size %d not a multiple of dedup page size %d", blockSize, header.PageSize)
 	}
 	drainCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	d := &DedupedMemfdCache{
-		outPath: outPath,
-		cancel:  cancel,
-		done:    utils.NewSetOnce[*Cache](),
+		outPath:  outPath,
+		cancel:   cancel,
+		done:     utils.NewSetOnce[*Cache](),
+		inflight: inflightServe,
 	}
 	go d.runDedup(drainCtx, base, blockSize, memfd, dirty, bestEffort, directIO, budget, inputEmpty, metaOut)
 
 	return d, nil
+}
+
+// packedSeg maps a contiguous run of the packed diff artifact back to its
+// absolute (device) memfd offset. absStart+delta is the memfd offset for a
+// read at packedStart+delta.
+type packedSeg struct {
+	packedStart int64
+	absStart    int64
+	length      int64
+}
+
+// packedIndex is the ascending-by-packedStart list of dirty runs. It mirrors
+// the packing done by dedupDrain (BitsetRanges over pageDirty at PageSize) and
+// the BuildStorageOffset assignment in header.CreateMapping, so a packed
+// offset resolves to the same absolute offset the deduped header would map to.
+type packedIndex []packedSeg
+
+func buildPackedIndex(pageDirty *roaring.Bitmap) packedIndex {
+	var idx packedIndex
+	var packed int64
+	for r := range BitsetRanges(pageDirty, header.PageSize) {
+		idx = append(idx, packedSeg{packedStart: packed, absStart: r.Start, length: r.Size})
+		packed += r.Size
+	}
+
+	return idx
+}
+
+// translate maps [off, off+length) in packed space to an absolute memfd offset.
+// It only succeeds when the whole range lies in a single dirty run (which is
+// always the case for a single build.File read segment); otherwise the caller
+// falls back to waiting for the drained cache.
+func (idx packedIndex) translate(off, length int64) (int64, bool) {
+	lo, hi := 0, len(idx)
+	for lo < hi {
+		mid := (lo + hi) / 2
+		if idx[mid].packedStart+idx[mid].length <= off {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	if lo >= len(idx) {
+		return 0, false
+	}
+	seg := idx[lo]
+	if off < seg.packedStart || off+length > seg.packedStart+seg.length {
+		return 0, false
+	}
+
+	return seg.absStart + (off - seg.packedStart), true
 }
 
 func (d *DedupedMemfdCache) runDedup(
@@ -307,10 +374,25 @@ func (d *DedupedMemfdCache) runDedup(
 		attribute.Int64("dedup.header_empty_pages", int64(plan.pageEmpty.GetCardinality())))
 	logSetOnceErr(ctx, "dedup metaOut", metaOut.SetValue(meta))
 
+	// Publish the memfd + packed→absolute index so a resume overlapping this
+	// pause serves dirty pages straight from the memfd during the drain window
+	// instead of blocking on done. Reads take mu.RLock; the close below takes
+	// mu.Lock, so the memfd is never unmapped under an in-flight reader.
+	if d.inflight {
+		d.mu.Lock()
+		d.index = buildPackedIndex(plan.pageDirty)
+		d.memfd = memfd
+		d.mu.Unlock()
+	}
+
 	writeStart := time.Now()
 	cache, err := dedupDrain(ctx, src, plan.pageDirty, blockSize, d.outPath, directIO)
 	writeDur := time.Since(writeStart)
-	if closeErr := memfd.Close(); closeErr != nil {
+	d.mu.Lock()
+	closeErr := memfd.Close()
+	d.memfd = nil
+	d.mu.Unlock()
+	if closeErr != nil {
 		logger.L().Warn(ctx, "close memfd after dedup drain", zap.Error(closeErr))
 	}
 
@@ -331,7 +413,44 @@ func (d *DedupedMemfdCache) Wait(ctx context.Context) (*Cache, error) {
 	return d.done.WaitWithContext(ctx)
 }
 
+// tryInflightRead fills b from the memfd if inflight serving is active and the
+// drain has not yet finished. Returns ok=false to fall back to the drained
+// cache (inflight disabled, drain done, memfd already closed, or the range
+// can't be resolved from a single dirty run).
+func (d *DedupedMemfdCache) tryInflightRead(b []byte, off int64) (int, bool) {
+	if !d.inflight {
+		return 0, false
+	}
+	// Drain finished: the cache is authoritative, use it.
+	select {
+	case <-d.done.Done:
+		return 0, false
+	default:
+	}
+
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	if d.memfd == nil || d.index == nil {
+		return 0, false
+	}
+	absOff, ok := d.index.translate(off, int64(len(b)))
+	if !ok {
+		return 0, false
+	}
+	src, err := d.memfd.Slice(absOff, int64(len(b)))
+	if err != nil {
+		return 0, false
+	}
+	copy(b, src)
+
+	return len(b), true
+}
+
 func (d *DedupedMemfdCache) ReadAt(b []byte, off int64) (int, error) {
+	if n, ok := d.tryInflightRead(b, off); ok {
+		return n, nil
+	}
+
 	c, err := d.Wait(context.Background())
 	if err != nil {
 		return 0, err
@@ -341,6 +460,13 @@ func (d *DedupedMemfdCache) ReadAt(b []byte, off int64) (int, error) {
 }
 
 func (d *DedupedMemfdCache) Slice(off, length int64) ([]byte, error) {
+	if d.inflight {
+		buf := make([]byte, length)
+		if _, ok := d.tryInflightRead(buf, off); ok {
+			return buf, nil
+		}
+	}
+
 	c, err := d.Wait(context.Background())
 	if err != nil {
 		return nil, err
