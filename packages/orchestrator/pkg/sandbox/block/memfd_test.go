@@ -227,7 +227,7 @@ func TestNewCacheFromMemfdDeduped_DetachesCompareAndDrain(t *testing.T) {
 	metaOut := utils.NewSetOnce[*header.DiffMetadata]()
 	cache, err := NewCacheFromMemfdDeduped(
 		ctx, &fakeOriginalDevice{data: baseData}, pageSize, cachePath, memfd, dirty, false, false,
-		DedupBudget{}, nil, metaOut,
+		DedupBudget{}, nil, metaOut, false,
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })

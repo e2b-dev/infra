@@ -161,6 +161,12 @@ var (
 		"fetchRunWindowPages":            0,
 	}))
 
+	// MemfdDedupInflightServeFlag lets a resume that overlaps an in-flight
+	// memfile dedup serve dirty pages straight from the still-mapped memfd
+	// instead of blocking on the dedup drain. Only affects the memfd-dedup
+	// path; off restores the prior wait-for-drain behavior.
+	MemfdDedupInflightServeFlag = NewBoolFlag("memfd-dedup-inflight-serve", false)
+
 	// PeerToPeerChunkTransferFlag enables peer-to-peer chunk routing.
 	PeerToPeerChunkTransferFlag = NewBoolFlag("peer-to-peer-chunk-transfer", false)
 	// PeerToPeerAsyncCheckpointFlag makes Checkpoint upload fire-and-forget instead
