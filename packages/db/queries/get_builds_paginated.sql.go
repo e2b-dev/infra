@@ -30,6 +30,8 @@ FROM public.env_builds b
 JOIN LATERAL (
   SELECT a.env_id
   FROM public.env_build_assignments a
+  -- active_envs (not envs): the build's env must exist and not be soft-deleted
+  JOIN public.active_envs e ON e.id = a.env_id
   WHERE a.build_id = b.id
   ORDER BY a.created_at DESC, a.id DESC
   LIMIT 1
@@ -128,6 +130,8 @@ FROM public.env_builds b
 JOIN LATERAL (
   SELECT a.env_id
   FROM public.env_build_assignments a
+  -- active_envs (not envs): the build's env must exist and not be soft-deleted
+  JOIN public.active_envs e ON e.id = a.env_id
   WHERE a.build_id = b.id
   ORDER BY a.created_at DESC, a.id DESC
   LIMIT 1
@@ -229,6 +233,8 @@ FROM public.env_builds b
 JOIN LATERAL (
   SELECT a.env_id
   FROM public.env_build_assignments a
+  -- active_envs (not envs): the build's env must exist and not be soft-deleted
+  JOIN public.active_envs e ON e.id = a.env_id
   WHERE a.build_id = b.id
     AND EXISTS (
       SELECT 1
@@ -335,6 +341,8 @@ FROM public.env_builds b
 JOIN LATERAL (
   SELECT a.env_id
   FROM public.env_build_assignments a
+  -- active_envs (not envs): the build's env must exist and not be soft-deleted
+  JOIN public.active_envs e ON e.id = a.env_id
   WHERE a.build_id = b.id
     AND a.env_id = $1::text
   ORDER BY a.created_at DESC, a.id DESC

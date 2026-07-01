@@ -503,12 +503,9 @@ module "nomad" {
   shared_chunk_cache_path                       = module.cluster.shared_chunk_cache_path
   filestore_cache_cleanup_disk_usage_target     = var.filestore_cache_cleanup_disk_usage_target
   filestore_cache_cleanup_dry_run               = var.filestore_cache_cleanup_dry_run
-  filestore_cache_cleanup_deletions_per_loop    = var.filestore_cache_cleanup_deletions_per_loop
-  filestore_cache_cleanup_files_per_loop        = var.filestore_cache_cleanup_files_per_loop
   filestore_cache_cleanup_max_concurrent_stat   = var.filestore_cache_cleanup_max_concurrent_stat
   filestore_cache_cleanup_max_concurrent_scan   = var.filestore_cache_cleanup_max_concurrent_scan
   filestore_cache_cleanup_max_concurrent_delete = var.filestore_cache_cleanup_max_concurrent_delete
-  filestore_cache_cleanup_max_retries           = var.filestore_cache_cleanup_max_retries
   filestore_cleanup_env_vars                    = local.filestore_cleanup_env_vars
 
   volume_token_issuer           = local.volume_token_issuer

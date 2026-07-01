@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"strconv"
 
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
@@ -90,6 +92,30 @@ func NewUpload(
 	}
 
 	return u, nil
+}
+
+// layerSizeMetadata adds the layer's logical, mapped, and diff sizes (all
+// uncompressed, from the diff header) to the base object metadata. They live on
+// the data object because the memfile values depend on the async dedup header.
+func (u *Upload) layerSizeMetadata(h *headers.Header) storage.ObjectMetadata {
+	md := maps.Clone(u.objectMetadata)
+	if md == nil {
+		md = make(storage.ObjectMetadata)
+	}
+	if h == nil || h.Metadata == nil {
+		return md
+	}
+
+	bytesByBuild := h.Mapping.BytesByBuild()
+	var mapped uint64
+	for _, b := range bytesByBuild {
+		mapped += b
+	}
+	md[storage.ObjectMetadataLogicalSize] = strconv.FormatUint(h.Metadata.Size, 10)
+	md[storage.ObjectMetadataMappedSize] = strconv.FormatUint(mapped, 10)
+	md[storage.ObjectMetadataDiffSize] = strconv.FormatUint(bytesByBuild[h.Metadata.BuildId], 10)
+
+	return md
 }
 
 func (u *Upload) Run(ctx context.Context) error {

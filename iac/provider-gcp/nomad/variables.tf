@@ -413,18 +413,6 @@ variable "filestore_cache_cleanup_dry_run" {
   type = bool
 }
 
-variable "filestore_cache_cleanup_deletions_per_loop" {
-  type = number
-  validation {
-    condition     = var.filestore_cache_cleanup_deletions_per_loop > 0
-    error_message = "Must be greater than 0"
-  }
-}
-
-variable "filestore_cache_cleanup_files_per_loop" {
-  type = number
-}
-
 variable "filestore_cache_cleanup_max_concurrent_stat" {
   type        = number
   description = "Number of concurrent stat goroutines"
@@ -438,11 +426,6 @@ variable "filestore_cache_cleanup_max_concurrent_scan" {
 variable "filestore_cache_cleanup_max_concurrent_delete" {
   type        = number
   description = "Number of concurrent deleter goroutines"
-}
-
-variable "filestore_cache_cleanup_max_retries" {
-  type        = number
-  description = "Maximum number of continuous error or miss retries before giving up"
 }
 
 variable "filestore_cleanup_env_vars" {

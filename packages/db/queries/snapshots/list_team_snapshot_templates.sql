@@ -16,7 +16,7 @@ SELECT
     eb.cluster_node_id,
     eb.tag,
     COALESCE(ea.names, ARRAY[]::text[])::text[] AS names
-FROM "public"."envs" e
+FROM "public"."active_envs" e
 JOIN "public"."snapshot_templates" st ON st.env_id = e.id
 JOIN LATERAL (
     SELECT b.*, ba.tag

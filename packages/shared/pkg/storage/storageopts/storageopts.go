@@ -32,6 +32,17 @@ const (
 // "<reason>:<action_id>". Consumers fail closed on it behind a feature flag.
 const ObjectMetadataSoftDeleted = "storage-index-soft-deleted"
 
+// Layer-size metadata keys, written on each data object as decimal byte counts
+// (all uncompressed, from the diff header).
+const (
+	// ObjectMetadataLogicalSize is the layer's logical (virtual device) size.
+	ObjectMetadataLogicalSize = "logical-size"
+	// ObjectMetadataMappedSize is the bytes mapped to non-empty builds.
+	ObjectMetadataMappedSize = "mapped-size"
+	// ObjectMetadataDiffSize is the bytes this build itself contributes.
+	ObjectMetadataDiffSize = "diff-size"
+)
+
 // FrameSink fires once per compressed frame with its absolute C-space offset.
 // Best-effort; implementations should return quickly and bound their own I/O.
 type FrameSink func(ctx context.Context, cOffset int64, compressed []byte)

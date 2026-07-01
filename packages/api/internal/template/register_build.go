@@ -165,14 +165,23 @@ func RegisterBuild(
 		clusterID = &data.ClusterID
 	}
 
-	// Create the template / or update the build count
-	err = client.CreateOrUpdateTemplate(ctx, queries.CreateOrUpdateTemplateParams{
+	// Create the template / or update the build count. A soft-deleted template
+	// is not reactivated: the query returns no row, so the rebuild fails.
+	_, err = client.CreateOrUpdateTemplate(ctx, queries.CreateOrUpdateTemplateParams{
 		TemplateID: data.TemplateID,
 		TeamID:     data.Team.ID,
 		CreatedBy:  data.UserID,
 		ClusterID:  clusterID,
 	})
 	if err != nil {
+		if dberrors.IsNotFoundError(err) {
+			return nil, &api.APIError{
+				Err:       err,
+				ClientMsg: fmt.Sprintf("Template '%s' has been deleted and cannot be rebuilt", data.TemplateID),
+				Code:      http.StatusNotFound,
+			}
+		}
+
 		telemetry.ReportCriticalError(ctx, "error when updating env", err)
 
 		return nil, &api.APIError{
@@ -327,7 +336,9 @@ func RegisterBuild(
 	}
 
 	for _, tag := range tags {
-		err = client.CreateTemplateBuildAssignment(ctx, queries.CreateTemplateBuildAssignmentParams{
+		// Env is active in this tx (CreateOrUpdateTemplate succeeded above), so
+		// the active_envs guard always matches here; rows is ignored.
+		_, err = client.CreateTemplateBuildAssignment(ctx, queries.CreateTemplateBuildAssignmentParams{
 			TemplateID: data.TemplateID,
 			BuildID:    buildID,
 			Tag:        tag,

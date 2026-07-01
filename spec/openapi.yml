@@ -16,6 +16,10 @@ components:
       type: http
       scheme: bearer
       bearerFormat: access_token
+      description: |
+        **Deprecated.** Access token authentication is deprecated and will be
+        removed in a future release. Use API key authentication (`X-API-Key`)
+        instead.
     # AuthProviderBearerAuth / AuthProviderTeamAuth: B before T in the name
     # so Bearer is validated before Team.
     AuthProviderBearerAuth:
