@@ -10,6 +10,8 @@ import (
 )
 
 func TestCleanupRunAndAddRace(t *testing.T) {
+	t.Parallel()
+
 	// This test verifies that a cleanup function added concurrently with Run()
 	// is always executed exactly once — either by Run() or inline by Add().
 	// Before the fix, there was a race window where hasRun was set before
@@ -54,6 +56,8 @@ func TestCleanupRunAndAddRace(t *testing.T) {
 }
 
 func TestCleanupAddAfterRun(t *testing.T) {
+	t.Parallel()
+
 	c := NewCleanup()
 	ctx := context.Background()
 
@@ -71,6 +75,8 @@ func TestCleanupAddAfterRun(t *testing.T) {
 }
 
 func TestCleanupPriorityRunAndAddRace(t *testing.T) {
+	t.Parallel()
+
 	for i := 0; i < 1000; i++ {
 		c := NewCleanup()
 		ctx := context.Background()
