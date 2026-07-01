@@ -129,6 +129,7 @@ func TestPostTeamsTeamIDMembers_DuplicateMemberReturnsBadRequest(t *testing.T) {
 		db:           testDB.SqlcClient,
 		authDB:       testDB.AuthDB,
 		userProfiles: newHandlerTestUserProfiles(),
+		idps:         userprofile.Registry{"https://ory.example.test": newHandlerTestUserProfiles()},
 	}
 	store.PostTeamsTeamIDMembers(ginCtx, teamID)
 
@@ -168,6 +169,7 @@ func TestPostTeamsTeamIDMembers_CreatesPublicUserAnchorForInvitee(t *testing.T) 
 		authDB:       testDB.AuthDB,
 		authService:  noopAuthService{},
 		userProfiles: newHandlerTestUserProfiles(),
+		idps:         userprofile.Registry{"https://ory.example.test": newHandlerTestUserProfiles()},
 	}
 	store.PostTeamsTeamIDMembers(ginCtx, teamID)
 
@@ -409,6 +411,14 @@ func (handlerTestUserProfiles) GetTeamCreatorContext(context.Context, uuid.UUID)
 	return nil, nil
 }
 
+func (handlerTestUserProfiles) GetIdentityOrganizationID(context.Context, string) (uuid.UUID, error) {
+	return uuid.Nil, nil
+}
+
+func (handlerTestUserProfiles) GetUserOrganizationID(context.Context, uuid.UUID) (uuid.UUID, error) {
+	return uuid.Nil, nil
+}
+
 func (handlerTestUserProfiles) SetIdentityExternalID(context.Context, string, uuid.UUID) error {
 	return nil
 }
@@ -514,6 +524,7 @@ func TestBootstrapAuthProviderUser_CreatesIdentityAndDefaultTeam(t *testing.T) {
 		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
 		userProfiles:      newHandlerTestUserProfiles(),
+		idps:              userprofile.Registry{"https://ory.example.test": newHandlerTestUserProfiles()},
 	}
 
 	input := oidcUserBootstrapInput{
@@ -604,6 +615,7 @@ func TestBootstrapOIDCUser_PopulatesOryExternalID(t *testing.T) {
 		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
 		userProfiles:      profiles,
+		idps:              userprofile.Registry{"https://ory.example.test": profiles},
 	}
 
 	input := oidcUserBootstrapInput{
@@ -666,6 +678,7 @@ func TestBootstrapOIDCUser_ExternalIDFailureKeepsUserProvisioned(t *testing.T) {
 		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
 		userProfiles:      profiles,
+		idps:              userprofile.Registry{"https://ory.example.test": profiles},
 	}
 
 	input := oidcUserBootstrapInput{
@@ -715,6 +728,7 @@ func TestBootstrapOIDCUser_ReRunBackfillsExternalID(t *testing.T) {
 		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
 		userProfiles:      &failingUserProfiles{},
+		idps:              userprofile.Registry{"https://ory.example.test": &failingUserProfiles{}},
 	}
 
 	input := oidcUserBootstrapInput{
@@ -782,6 +796,7 @@ func TestBootstrapOIDCUser_ConcurrentRequestsSingleIdentityAndTeam(t *testing.T)
 		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
 		userProfiles:      newHandlerTestUserProfiles(),
+		idps:              userprofile.Registry{"https://ory.example.test": newHandlerTestUserProfiles()},
 	}
 
 	input := oidcUserBootstrapInput{
@@ -895,6 +910,7 @@ func TestBootstrapOIDCUser_OryIssuerWithoutJWTConfigIsAccepted(t *testing.T) {
 		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
 		userProfiles:      newHandlerTestUserProfiles(),
+		idps:              userprofile.Registry{"https://ory.example.test": newHandlerTestUserProfiles()},
 	}
 
 	team, err := store.bootstrapOIDCUser(ctx, oidcUserBootstrapInput{
@@ -934,6 +950,7 @@ func TestBootstrapOIDCUser_OryModeRejectsNonOryJWTIssuer(t *testing.T) {
 		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
 		userProfiles:      newHandlerTestUserProfiles(),
+		idps:              userprofile.Registry{"https://ory.example.test": newHandlerTestUserProfiles()},
 	}
 
 	_, err := store.bootstrapOIDCUser(ctx, oidcUserBootstrapInput{
@@ -971,6 +988,7 @@ func TestBootstrapOIDCUser_UnknownIssuerReturnsBadRequest(t *testing.T) {
 		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
 		userProfiles:      newHandlerTestUserProfiles(),
+		idps:              userprofile.Registry{"https://ory.example.test": newHandlerTestUserProfiles()},
 	}
 
 	_, err := store.bootstrapOIDCUser(ctx, oidcUserBootstrapInput{
@@ -1013,6 +1031,7 @@ func TestBootstrapUser_ConcurrentRequestsCreateSingleDefaultTeam(t *testing.T) {
 		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
 		userProfiles:      newHandlerTestUserProfiles(),
+		idps:              userprofile.Registry{"https://ory.example.test": newHandlerTestUserProfiles()},
 	}
 	profile := bootstrapUserProfile{
 		UserID:          userID,
@@ -1092,6 +1111,7 @@ func TestCreateTeam_RecentUserCreatesUnblockedTeam(t *testing.T) {
 		authDB:            testDB.AuthDB,
 		teamProvisionSink: &fakeTeamProvisionSink{},
 		userProfiles:      newHandlerTestUserProfiles(),
+		idps:              userprofile.Registry{"https://ory.example.test": newHandlerTestUserProfiles()},
 	}
 
 	team, err := store.createTeam(ctx, userID, "Acme")
@@ -1144,6 +1164,7 @@ func TestPostTeams_LocalPolicyDeniedReturnsBadRequestWithoutCreatingTeam(t *test
 		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
 		userProfiles:      newHandlerTestUserProfiles(),
+		idps:              userprofile.Registry{"https://ory.example.test": newHandlerTestUserProfiles()},
 	}
 	store.PostTeams(ginCtx)
 
@@ -1183,6 +1204,7 @@ func TestPostTeams_InvalidNameReturnsBadRequest(t *testing.T) {
 			authDB:            testDB.AuthDB,
 			teamProvisionSink: sink,
 			userProfiles:      newHandlerTestUserProfiles(),
+			idps:              userprofile.Registry{"https://ory.example.test": newHandlerTestUserProfiles()},
 		}
 		store.PostTeams(ginCtx)
 
@@ -1214,6 +1236,7 @@ func TestPostTeams_InvalidRequestBodyReturnsBadRequest(t *testing.T) {
 		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
 		userProfiles:      newHandlerTestUserProfiles(),
+		idps:              userprofile.Registry{"https://ory.example.test": newHandlerTestUserProfiles()},
 	}
 	store.PostTeams(ginCtx)
 
@@ -1247,6 +1270,7 @@ func TestPostTeams_TrimsNameBeforeCreate(t *testing.T) {
 		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
 		userProfiles:      newHandlerTestUserProfiles(),
+		idps:              userprofile.Registry{"https://ory.example.test": newHandlerTestUserProfiles()},
 	}
 	store.PostTeams(ginCtx)
 
@@ -1299,6 +1323,7 @@ func TestPostTeams_ProvisioningFailureRollsBackCreatedTeam(t *testing.T) {
 		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
 		userProfiles:      newHandlerTestUserProfiles(),
+		idps:              userprofile.Registry{"https://ory.example.test": newHandlerTestUserProfiles()},
 	}
 	store.PostTeams(ginCtx)
 
@@ -1358,6 +1383,7 @@ func TestPostTeams_ProvisioningFailurePreservesProvisionErrorStatus(t *testing.T
 				authDB:            testDB.AuthDB,
 				teamProvisionSink: sink,
 				userProfiles:      newHandlerTestUserProfiles(),
+				idps:              userprofile.Registry{"https://ory.example.test": newHandlerTestUserProfiles()},
 			}
 			store.PostTeams(ginCtx)
 
@@ -1423,6 +1449,7 @@ func TestCreateTeam_ConcurrentRequestsRespectLocalPolicyWithZeroMemberships(t *t
 		authDB:            testDB.AuthDB,
 		teamProvisionSink: &fakeTeamProvisionSink{},
 		userProfiles:      newHandlerTestUserProfiles(),
+		idps:              userprofile.Registry{"https://ory.example.test": newHandlerTestUserProfiles()},
 	}
 
 	var wg sync.WaitGroup

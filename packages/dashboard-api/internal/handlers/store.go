@@ -29,6 +29,7 @@ type APIStore struct {
 	authService       sharedauth.Service
 	teamProvisionSink internalteamprovision.TeamProvisionSink
 	userProfiles      userprofile.Provider
+	idps              userprofile.Registry
 }
 
 func NewAPIStore(
@@ -48,6 +49,7 @@ func NewAPIStore(
 		authService:       authService,
 		teamProvisionSink: teamProvisionSink,
 		userProfiles:      userProfiles,
+		idps:              userprofile.Registry{config.OryIssuerURL: userProfiles},
 	}
 }
 
