@@ -128,7 +128,7 @@ These commands launch each service in the foreground. You need multiple terminal
    ```bash
    make -C packages/client-proxy run-local
    ```
-   Verify: `curl -s http://localhost:3003/health` returns a response.
+   Verify: `curl -s http://localhost:3001/health` returns a response.
 
 ## Build the base template
 
