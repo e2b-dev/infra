@@ -3,6 +3,7 @@ package filesystem
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"syscall"
 	"unicode/utf8"
@@ -127,19 +128,18 @@ func ReadMetadata(path string) (map[string]string, error) {
 // WriteMetadata replaces the file's user-defined metadata with the given
 // key/value pairs. Any existing xattrs under MetadataXattrPrefix that are
 // absent from metadata are removed, and the supplied keys are written via
-// xattr.Set. Passing a nil/empty map therefore clears all metadata, so that
+// xattr.FSet. Passing a nil/empty map therefore clears all metadata, so that
 // overwriting a file (which preserves xattrs across O_TRUNC) does not leak
 // stale metadata from a previous upload.
 //
-// Safe to call before or after chown — `user.*` xattrs are preserved across
-// ownership changes, and envd runs as root inside the VM so the kernel
-// write-permission check is satisfied regardless of file ownership.
-func WriteMetadata(path string, metadata map[string]string) error {
+// It addresses the file through an already-open descriptor, avoiding path races
+// with concurrent renames.
+func WriteMetadata(file *os.File, metadata map[string]string) error {
 	if err := ValidateMetadata(metadata); err != nil {
 		return err
 	}
 
-	existing, err := xattr.List(path)
+	existing, err := xattr.FList(file)
 	if err != nil {
 		return err
 	}
@@ -152,13 +152,13 @@ func WriteMetadata(path string, metadata map[string]string) error {
 		if _, keep := metadata[key]; keep {
 			continue
 		}
-		if err := xattr.Remove(path, name); err != nil && !errors.Is(err, xattr.ENOATTR) {
+		if err := xattr.FRemove(file, name); err != nil && !errors.Is(err, xattr.ENOATTR) {
 			return err
 		}
 	}
 
 	for k, v := range metadata {
-		if err := xattr.Set(path, MetadataXattrPrefix+k, []byte(v)); err != nil {
+		if err := xattr.FSet(file, MetadataXattrPrefix+k, []byte(v)); err != nil {
 			return err
 		}
 	}

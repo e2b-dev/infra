@@ -28,7 +28,7 @@ WITH team_templates AS (
         e.created_by,
         d.env_id AS default_env_id,
         d.description AS default_description
-    FROM public.envs AS e
+    FROM public.active_envs AS e
     LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
         e.team_id = sqlc.arg(team_id)::uuid AND e.source = 'template'
@@ -61,7 +61,7 @@ default_templates AS (
         e.created_by,
         d.env_id AS default_env_id,
         d.description AS default_description
-    FROM public.envs AS e
+    FROM public.active_envs AS e
     JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
         sqlc.arg(include_defaults)::boolean
@@ -146,7 +146,7 @@ WITH team_templates AS (
         e.created_by,
         d.env_id AS default_env_id,
         d.description AS default_description
-    FROM public.envs AS e
+    FROM public.active_envs AS e
     LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
         e.team_id = sqlc.arg(team_id)::uuid AND e.source = 'template'
@@ -179,7 +179,7 @@ default_templates AS (
         e.created_by,
         d.env_id AS default_env_id,
         d.description AS default_description
-    FROM public.envs AS e
+    FROM public.active_envs AS e
     JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
         sqlc.arg(include_defaults)::boolean
@@ -264,7 +264,7 @@ WITH team_templates AS (
         e.created_by,
         d.env_id AS default_env_id,
         d.description AS default_description
-    FROM public.envs AS e
+    FROM public.active_envs AS e
     LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
         e.team_id = sqlc.arg(team_id)::uuid AND e.source = 'template'
@@ -297,7 +297,7 @@ default_templates AS (
         e.created_by,
         d.env_id AS default_env_id,
         d.description AS default_description
-    FROM public.envs AS e
+    FROM public.active_envs AS e
     JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
         sqlc.arg(include_defaults)::boolean
@@ -382,7 +382,7 @@ WITH team_templates AS (
         e.created_by,
         d.env_id AS default_env_id,
         d.description AS default_description
-    FROM public.envs AS e
+    FROM public.active_envs AS e
     LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
         e.team_id = sqlc.arg(team_id)::uuid AND e.source = 'template'
@@ -415,7 +415,7 @@ default_templates AS (
         e.created_by,
         d.env_id AS default_env_id,
         d.description AS default_description
-    FROM public.envs AS e
+    FROM public.active_envs AS e
     JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
         sqlc.arg(include_defaults)::boolean

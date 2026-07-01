@@ -226,7 +226,7 @@ func (s *Sandbox) convertMounts(mounts []VolumeMountConfig) []envd.VolumeMount {
 	return results
 }
 
-func (s *Sandbox) initEnvd(ctx context.Context) (e error) {
+func (s *Sandbox) initEnvd(ctx context.Context, startType StartType) (e error) {
 	ctx, span := tracer.Start(ctx, "envd-init", trace.WithAttributes(telemetry.WithEnvdVersion(s.Config.Envd.Version)))
 	defer func() {
 		if e != nil {
@@ -236,7 +236,7 @@ func (s *Sandbox) initEnvd(ctx context.Context) (e error) {
 		span.End()
 	}()
 
-	attributes := []attribute.KeyValue{telemetry.WithEnvdVersion(s.Config.Envd.Version), attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds())}
+	attributes := []attribute.KeyValue{telemetry.WithEnvdVersion(s.Config.Envd.Version), attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()), attribute.String("start_type", string(startType))}
 	attributesFail := append(attributes, attribute.Bool("success", false))
 	attributesSuccess := append(attributes, attribute.Bool("success", true))
 

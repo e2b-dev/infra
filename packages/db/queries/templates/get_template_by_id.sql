@@ -1,12 +1,6 @@
--- name: GetTemplateByID :one
-SELECT t.*
-FROM "public"."envs" t
-WHERE t.id = $1
-  AND t.source IN ('template', 'snapshot_template');
-
 -- name: GetTemplateByIDWithAliases :one
 SELECT e.*, al.aliases, al.names
-FROM "public"."envs" e
+FROM "public"."active_envs" e
 CROSS JOIN LATERAL (
     SELECT 
         COALESCE(array_agg(alias), '{}')::text[] AS aliases,

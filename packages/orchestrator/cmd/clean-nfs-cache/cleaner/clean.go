@@ -5,10 +5,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"math/rand"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -21,108 +21,109 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
+// otherFilesBytesEstimate is the flat size charged for a build's non-chunk data
+// (headers, snapfile, metadata). They are KB–MB next to GB of memfile/rootfs
+// chunks, so a flat estimate keeps the byte-target math honest without statting
+// them; the FF-gated verify pass measures the real error.
+const otherFilesBytesEstimate = 1 << 20 // 1 MiB
+
 type Cleaner struct {
 	Options
 	Counters
 	logger.Logger
 
-	base          string
-	root          *Dir
-	statRequestCh chan *statReq
-}
-
-type Options struct {
-	Path    string
-	BatchN  int
-	DeleteN int
-
-	// TargetFilesToDelete overrides TargetBytesToDelete, and TargetBytesToDelete
-	// overrides TargetDiskUsagePercent
-	TargetFilesToDelete    uint64
-	TargetBytesToDelete    uint64
-	TargetDiskUsagePercent float64
-
-	DryRun                bool
-	MaxConcurrentStat     int
-	MaxConcurrentScan     int
-	MaxConcurrentDelete   int
-	MaxErrorRetries       int
-	OtelCollectorEndpoint string
-}
-
-type Counters struct {
-	FileC atomic.Int64
-	DirC  atomic.Int64
-
-	DeleteSubmittedC   atomic.Int64
-	DeleteAttemptC     atomic.Int64
-	DeleteErrC         atomic.Int64
-	DeleteAlreadyGoneC atomic.Int64
-	DeleteSkipC        atomic.Int64
-	DeletedBytes       atomic.Uint64
-	DeletedAge         []time.Duration
-
-	// Syscalls
-	ReadDirC    atomic.Int64
-	StatxInDirC atomic.Int64
-	StatxC      atomic.Int64
-	RemoveC     atomic.Int64
-	RemoveDirC  atomic.Int64
-}
-
-const (
-	dirStateInitial = iota
-	dirStateScanning
-	dirStatScanned
-)
-
-type Dir struct {
-	mu    sync.Mutex
-	state int
-
-	Name  string
-	Dirs  []*Dir
-	Files []File
-}
-
-type File struct {
-	Name      string // short name
-	ATimeUnix int64  // atime in unix seconds
-	Size      uint64
-}
-
-type Candidate struct {
-	Parent    *Dir
-	FullPath  string
-	ATimeUnix int64
-	BTimeUnix int64
-	Size      uint64
+	metrics *Metrics
 }
 
 type statReq struct {
-	df       *os.File
+	dirf     *os.File
 	name     string
 	response chan *statReq
-	f        *File
+	atime    int64
 	err      error
 }
 
-var (
-	ErrNoFiles    = errors.New("no files found to clean")
-	ErrMaxRetries = errors.New("maximum error retries reached")
-	ErrBusy       = errors.New("directory is in use by another scanner")
-	ErrUsage      = errors.New("usage: clean-nfs-cache <path> [<options>]")
-)
+type Options struct {
+	Path string
 
-func NewCleaner(opts Options, log logger.Logger) *Cleaner {
-	c := &Cleaner{
-		Options: opts,
-		Logger:  log,
-		base:    filepath.Dir(opts.Path),
-		root:    NewDir(filepath.Base(opts.Path)),
+	// Deletion stops once builds totalling TargetBytesToDelete have been queued.
+	// TargetDiskUsagePercent is resolved to TargetBytesToDelete via df before the
+	// run (in main); the cleaner itself only reads TargetBytesToDelete.
+	TargetBytesToDelete    uint64
+	TargetDiskUsagePercent float64
+
+	SampleMinFiles int
+	SamplePercent  int
+	SampleMaxFiles int
+
+	// Build-survey cap. When BuildSampleMax > 0, only a uniform random sample of
+	// the root's build dirs is scanned each run — clamp(BuildSampleMin,
+	// BuildSamplePercent%·rootCount, BuildSampleMax) of them, reservoir-sampled
+	// during the (unavoidable) full root readdir. This bounds per-run readdir/stat
+	// to O(sample) instead of O(builds), which matters at millions of builds. The
+	// sample converges to full coverage over successive runs. 0 = scan every build.
+	BuildSampleMin     int
+	BuildSamplePercent int
+	BuildSampleMax     int
+
+	// Grace is one age threshold used as two clocks against a single value.
+	// First, a build whose folder was created less than Grace ago (btime) is
+	// filtered out entirely up front — protecting new, in-progress builds. Second,
+	// among the builds that remain, one is never deleted if its warmest sampled
+	// chunk was accessed less than Grace ago (atime) — the anti-churn floor for an
+	// old build that was recently resumed. Tests set it to 0 to disable both.
+	Grace time.Duration
+
+	DryRun bool
+	// MaxConcurrentScan bounds parallel build readdirs; MaxConcurrentStat bounds
+	// in-flight statx (the NFS-latency-bound part); MaxConcurrentDelete bounds
+	// parallel RemoveAll. Tuned independently.
+	MaxConcurrentScan   int
+	MaxConcurrentStat   int
+	MaxConcurrentDelete int
+
+	// Verify (FF-gated, off by default): before each cold deletion, full-stat the
+	// build and log/record its actual on-disk size and age vs the estimate, to
+	// validate the filename-size and atime-sample heuristics.
+	Verify bool
+}
+
+type Counters struct {
+	BuildsScanned atomic.Int64
+	Deleted       atomic.Int64 // builds deleted to hit the byte target (coldest first)
+	BytesFreed    atomic.Uint64
+
+	OpenC    atomic.Int64
+	ReadDirC atomic.Int64
+	StatxC   atomic.Int64
+}
+
+// build is the compact record kept for every build: its coldness (the warmest —
+// most recent — sampled chunk atime) and its on-disk size. ~tens of bytes;
+// builds are orders of magnitude fewer than chunks, so the whole set fits in
+// memory.
+type build struct {
+	uuid      string
+	timestamp int64
+	size      uint64
+}
+
+// Stat is the metadata from one statx — built, read, and discarded (we no longer
+// keep these for the duration of the run). BTimeUnix is 0 for fd-relative chunk
+// stats, which don't request btime.
+type Stat struct {
+	ATimeUnix int64
+	BTimeUnix int64
+}
+
+var ErrUsage = errors.New("usage: clean-nfs-cache <path> [<options>]")
+
+func NewCleaner(opts Options, log logger.Logger, metrics *Metrics) *Cleaner {
+	if metrics == nil {
+		metrics = NoopMetrics()
 	}
 
-	return c
+	return &Cleaner{Options: opts, Logger: log, metrics: metrics}
 }
 
 func (c *Cleaner) validateOptions() error {
@@ -130,23 +131,29 @@ func (c *Cleaner) validateOptions() error {
 		return ErrUsage
 	}
 	var errs []error
-	if c.DeleteN <= 0 {
-		errs = append(errs, errors.New("deletions-per-loop must be > 0"))
+	if c.TargetBytesToDelete == 0 && c.TargetDiskUsagePercent == 0 {
+		errs = append(errs, errors.New("either target-bytes-to-delete or disk-usage-target-percent must be set"))
 	}
-	if c.BatchN <= 0 {
-		errs = append(errs, errors.New("files-per-loop must be > 0"))
+	if c.SampleMinFiles <= 0 {
+		errs = append(errs, errors.New("sample-min must be > 0"))
 	}
-	if c.BatchN < c.DeleteN {
-		errs = append(errs, errors.New("files-per-loop must be >= deletions-per-loop"))
+	if c.SampleMaxFiles < c.SampleMinFiles {
+		errs = append(errs, errors.New("sample-max must be >= sample-min"))
 	}
-	if c.TargetFilesToDelete == 0 && c.TargetBytesToDelete == 0 && c.TargetDiskUsagePercent == 0 {
-		errs = append(errs, errors.New("either target-files-to-delete, target-bytes-to-delete or disk-usage-target-percent must be set"))
+	if c.SamplePercent < 0 || c.SamplePercent > 100 {
+		errs = append(errs, errors.New("sample-pct must be in [0, 100]"))
 	}
-	if c.MaxConcurrentStat <= 0 {
-		errs = append(errs, errors.New("max-concurrent-stat must be > 0"))
+	if c.BuildSamplePercent < 0 || c.BuildSamplePercent > 100 {
+		errs = append(errs, errors.New("build-sample-pct must be in [0, 100]"))
+	}
+	if c.TargetDiskUsagePercent < 0 || c.TargetDiskUsagePercent > 100 {
+		errs = append(errs, errors.New("disk-usage-target-percent must be in [0, 100]"))
 	}
 	if c.MaxConcurrentScan <= 0 {
 		errs = append(errs, errors.New("max-concurrent-scan must be > 0"))
+	}
+	if c.MaxConcurrentStat <= 0 {
+		errs = append(errs, errors.New("max-concurrent-stat must be > 0"))
 	}
 	if c.MaxConcurrentDelete <= 0 {
 		errs = append(errs, errors.New("max-concurrent-delete must be > 0"))
@@ -160,311 +167,264 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 		return err
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-
-	errCh := make(chan error)
-	defer close(errCh)
-	candidateCh := make(chan *Candidate)
-	defer close(candidateCh)
-	deleteCh := make(chan *Candidate)
-	defer close(deleteCh)
-	c.statRequestCh = make(chan *statReq)
-	defer close(c.statRequestCh)
-
-	drainedCh := make(chan struct{})
-	running := &sync.WaitGroup{}
-
-	batch := make([]*Candidate, 0, c.DeleteN)
-	n := 0
-
-	draining := false
-	var result error
-	drain := func(err error) {
-		if draining {
-			return
-		}
-
-		cancel()
-		draining = true
-		result = err
-
-		go func() {
-			// wait for the running goroutines to finish
-			running.Wait()
-			close(drainedCh)
-		}()
+	c.OpenC.Add(1)
+	c.metrics.recordOpen(ctx)
+	root, err := os.Open(c.Path)
+	if err != nil {
+		return fmt.Errorf("open cache root %s: %w", c.Path, err)
 	}
+	defer root.Close()
 
-	// Obtain the base level for memory usage
-	baseMem := runtime.MemStats{}
-	runtime.ReadMemStats(&baseMem)
-	batchNumber := 0
-
-	for range c.MaxConcurrentStat {
-		running.Add(1)
-		go c.Statter(ctx, running)
-	}
-	for range c.MaxConcurrentScan {
-		running.Add(1)
-		go c.Scanner(ctx, candidateCh, errCh, running)
-	}
-	for range c.MaxConcurrentDelete {
-		running.Add(1)
-		go c.Deleter(ctx, deleteCh, running)
-	}
-
-	for {
-		if !draining {
-			if c.TargetFilesToDelete > 0 {
-				if c.RemoveC.Load() >= int64(c.TargetFilesToDelete) {
-					c.Info(ctx, "target files deleted reached, draining remaining candidates")
-					drain(nil)
-				}
-			} else {
-				if c.DeletedBytes.Load() >= c.TargetBytesToDelete {
-					c.Info(ctx, "target bytes deleted reached, draining remaining candidates")
-					drain(nil)
-				}
-			}
-		}
-
-		select {
-		case <-drainedCh:
-			return result
-
-		case <-ctx.Done():
-			drain(ctx.Err())
-
-		case candidate := <-candidateCh:
-			if draining {
-				continue
-			}
-
-			n++
-			batch = append(batch, candidate)
-			if n < c.BatchN {
-				continue
-			}
-
-			// reinsert the "younger" candidates back into the directory tree
-			del, reinsertBackToCache := c.splitBatch(batch)
-
-			now := time.Now()
-			if len(del) > 0 {
-				c.Info(ctx, "delete",
-					zap.Int("count", len(del)),
-					zap.Duration("oldest", now.Sub(time.Unix(del[0].ATimeUnix, 0))),
-					zap.Duration("newest", now.Sub(time.Unix(del[len(del)-1].ATimeUnix, 0))),
-					zap.Ints("histogram", c.histogram(del)),
-				)
-			}
-			if len(reinsertBackToCache) > 0 {
-				c.Info(ctx, "reinsert",
-					zap.Int("count", len(reinsertBackToCache)),
-					zap.Duration("oldest", now.Sub(time.Unix(reinsertBackToCache[0].ATimeUnix, 0))),
-					zap.Duration("newest", now.Sub(time.Unix(reinsertBackToCache[len(reinsertBackToCache)-1].ATimeUnix, 0))),
-					zap.Ints("histogram", c.histogram(reinsertBackToCache)),
-				)
-			}
-
-			c.reinsertCandidates(reinsertBackToCache)
-
-			total := uint64(0)
-			for _, toDelete := range del {
-				deleteCh <- toDelete
-				c.DeleteSubmittedC.Add(1)
-				total += toDelete.Size
-			}
-
-			var mem runtime.MemStats
-			runtime.ReadMemStats(&mem)
-			c.Info(ctx, "memory usage",
-				zap.Int("batch", batchNumber),
-				zap.Int64("files", c.FileC.Load()),
-				zap.Int64("dirs", c.DirC.Load()),
-				zap.Uint64("total_alloc", mem.TotalAlloc),
-				zap.Uint64("num_gc", uint64(mem.NumGC)),
-				zap.Uint64("sys_bytes", mem.Sys-baseMem.Sys),
-				zap.Uint64("alloc_bytes", mem.Alloc-baseMem.Alloc),
-			)
-			c.Info(ctx, "deleting files",
-				zap.Int("count", c.DeleteN),
-				zap.Uint64("bytes", total))
-			batch = batch[:0]
-			n = 0
-			batchNumber++
-
-		case err := <-errCh:
-			if !draining && errors.Is(err, ErrMaxRetries) {
-				drain(err)
-			}
-		}
-	}
-}
-
-func (c *Cleaner) splitBatch(batch []*Candidate) (toDelete []*Candidate, toReinsert []*Candidate) {
-	slices.SortFunc(batch, func(a, b *Candidate) int {
-		return cmp.Compare(a.ATimeUnix, b.ATimeUnix)
-	})
-
-	del := min(c.DeleteN, len(batch))
-	toDelete = batch[:del]
-	toReinsert = batch[del:]
-
-	return toDelete, toReinsert
-}
-
-func (c *Cleaner) reinsertCandidates(candidates []*Candidate) {
-	// sort the candidates by their parent directory so we lock and re-sort each directory only once.
-	slices.SortFunc(candidates, func(a, b *Candidate) int {
-		return cmp.Compare(a.Parent.Name, b.Parent.Name)
-	})
-	var prevParent *Dir
-	var files []File
-	for _, candidate := range candidates {
-		parent := candidate.Parent // not nil
-		newParent := parent != prevParent
-		if newParent {
-			if prevParent != nil {
-				prevParent.reinsertFiles(files)
-				c.FileC.Add(int64(len(files)))
-			}
-			prevParent = parent
-			files = files[:0]
-		}
-
-		f := File{
-			Name:      filepath.Base(candidate.FullPath),
-			ATimeUnix: candidate.ATimeUnix,
-			Size:      candidate.Size,
-		}
-		files = append(files, f)
-	}
-	if prevParent != nil {
-		prevParent.reinsertFiles(files)
-		c.FileC.Add(int64(len(files)))
-	}
-}
-
-func (c *Cleaner) abs(path []*Dir, name string) string {
-	join := c.base
-	for _, p := range path {
-		join = filepath.Join(join, p.Name)
-	}
-	if name != "" {
-		join = filepath.Join(join, name)
-	}
-
-	return join
-}
-
-func NewDir(name string) *Dir {
-	return &Dir{
-		Name: name,
-		mu:   sync.Mutex{},
-	}
-}
-
-func (d *Dir) reinsertFiles(files []File) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	d.Files = append(d.Files, files...)
-	d.sort()
-}
-
-func (d *Dir) sort() {
-	// sort the dirs by name
-	slices.SortFunc(d.Dirs, func(a, b *Dir) int {
-		return cmp.Compare(a.Name, b.Name)
-	})
-
-	slices.SortFunc(d.Files, func(a, b File) int {
-		return cmp.Compare(b.ATimeUnix, a.ATimeUnix)
-	})
-}
-
-func (d *Dir) IsScanned() bool {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	return d.state == dirStatScanned
-}
-
-func (d *Dir) isEmpty() bool {
-	return d.state == dirStatScanned && len(d.Files) == 0 && len(d.Dirs) == 0
-}
-
-func (d *Dir) IsEmpty() bool {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	return d.isEmpty()
-}
-
-func (c *Cleaner) timeit(ctx context.Context, message string, fn func()) {
 	start := time.Now()
-	fn()
-	done := time.Since(start).Round(time.Millisecond)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-	c.Debug(ctx, message, zap.Duration("duration", done))
+	picks, err := c.list(ctx, root)
+	if err != nil {
+		return err
+	}
+	builds := c.scan(ctx, picks)
+	c.deleteColdest(ctx, builds)
+
+	dur := time.Since(start)
+	c.metrics.recordLastRunDuration(ctx, dur)
+	c.Info(ctx, "clean complete",
+		zap.Int64("deleted_builds", c.Deleted.Load()),
+		zap.Uint64("bytes_freed_estimate", c.BytesFreed.Load()),
+		zap.Duration("duration", dur))
+
+	return nil
 }
 
-func CreateTestDir(path string, nDirs int, nFiles int, fsize int) {
-	os.MkdirAll(path, 0o755)
-
-	for i := range nDirs {
-		dirPath := filepath.Join(path, fmt.Sprintf("dir%d", i))
-		err := os.Mkdir(dirPath, 0o755)
-		if err != nil {
-			panic(err)
-		}
+// list reads the whole cache root — the one unavoidable full readdir — and
+// returns the build dirs to scan this run (the list phase). With BuildSampleMax > 0
+// it keeps only a uniform random sample, clamp(BuildSampleMin,
+// BuildSamplePercent%·rootCount, BuildSampleMax) builds, reservoir-sampled as names
+// stream by so memory stays O(sample) not O(rootCount); the per-build work
+// downstream is then bounded too. A fixed prefix would starve the tail (NFS readdir
+// order is server-hash, not stable), so the sample is random. BuildSampleMax == 0
+// returns every build. A genuine readdir error aborts the run (returns the error)
+// rather than cleaning off a truncated view of the root.
+func (c *Cleaner) list(ctx context.Context, df *os.File) ([]string, error) {
+	start := time.Now()
+	capN := c.BuildSampleMax
+	var reservoir []string
+	if capN > 0 {
+		reservoir = make([]string, 0, capN)
 	}
-
-	for i := range nFiles {
-		dirPath := filepath.Join(path, fmt.Sprintf("dir%d", i%nDirs))
-		filePath := filepath.Join(dirPath, fmt.Sprintf("file%d.txt", i))
-		err := os.WriteFile(filePath, []byte(""), 0o644)
-		if err == nil {
-			err = os.Truncate(filePath, int64(fsize))
-		}
-		if err != nil {
-			panic(err)
-		}
-		tt := time.Now().Add(-1 * time.Duration(i) * time.Minute)
-		err = os.Chtimes(filePath, tt, tt)
-		if err != nil {
-			panic(err)
-		}
-	}
-}
-
-func (c *Cleaner) histogram(candidates []*Candidate) []int {
-	if len(candidates) == 0 {
-		return nil
-	}
-
-	buckets := []int64{10, 100, 1000, 10_000, 100_000, 1_000_000, 10_000_000} // seconds
-	hist := make([]int, len(buckets)+1)
-
-	nowSec := time.Now().Unix()
-	for _, candidate := range candidates {
-		age := nowSec - candidate.ATimeUnix
-		bucketed := false
-		for i, b := range buckets {
-			if age <= b {
-				hist[i]++
-				bucketed = true
-
-				break
+	total := 0
+	for ctx.Err() == nil {
+		entries, err := df.ReadDir(readdirPage)
+		c.ReadDirC.Add(1)
+		c.metrics.recordRead(ctx, len(entries))
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			total++
+			if capN <= 0 || len(reservoir) < capN {
+				reservoir = append(reservoir, e.Name())
+			} else if j := rand.Intn(total); j < capN { // Algorithm R: replace with prob capN/total
+				reservoir[j] = e.Name()
 			}
 		}
-		if !bucketed {
-			hist[len(buckets)]++
+		switch {
+		case err == io.EOF:
+		case err != nil:
+			c.metrics.recordError(ctx, ValOpRootReaddir)
+
+			return nil, fmt.Errorf("read cache root %s: %w", c.Path, err)
+		case len(entries) < readdirPage:
+			// EOF: no more entries, exit the loop
+		default:
+			continue
+		}
+
+		break
+	}
+
+	// Reservoir holds a uniform sample of size min(total, capN); narrow it to the
+	// banded target. The reservoir is uniform but not order-uniform, so shuffle
+	// before taking a positional prefix.
+	picks := reservoir
+	if capN > 0 {
+		x := clampSample(total, c.BuildSampleMin, c.BuildSamplePercent, capN)
+		if x < len(picks) {
+			rand.Shuffle(len(picks), func(i, j int) { picks[i], picks[j] = picks[j], picks[i] })
+			picks = picks[:x]
 		}
 	}
 
-	return hist
+	dur := time.Since(start)
+	c.metrics.recordPhase(ctx, ValPhaseList, dur)
+	c.metrics.recordLastListBuilds(ctx, total)
+	c.Info(ctx, "root listing complete",
+		zap.Int("builds", total), zap.Int("picked", len(picks)), zap.Duration("duration", dur))
+
+	return picks, nil
+}
+
+// scan classifies the picked build dirs concurrently, returning the records
+// eligible for deletion (chunkless builds sort coldest; their leftover dirs are
+// reaped first).
+func (c *Cleaner) scan(ctx context.Context, picks []string) []build {
+	start := time.Now()
+
+	// reqs carries fd-relative stat requests from the scanners to the Statter pool.
+	// Unbuffered: a successful send means a Statter has taken it.
+	reqs := make(chan *statReq)
+	var statters sync.WaitGroup
+	for range c.MaxConcurrentStat {
+		statters.Add(1)
+		go c.Statter(ctx, &statters, reqs)
+	}
+
+	// Partition the picks across scanners; each appends to its own shard (no lock).
+	shards := make([][]build, c.MaxConcurrentScan)
+	var scanners sync.WaitGroup
+	for w := range c.MaxConcurrentScan {
+		lo := w * len(picks) / c.MaxConcurrentScan
+		hi := (w + 1) * len(picks) / c.MaxConcurrentScan
+		scanners.Add(1)
+		go c.scanWorker(ctx, picks[lo:hi], &shards[w], &scanners, reqs)
+	}
+
+	scanners.Wait() // every picked build classified; scanners were the only Statter clients
+	close(reqs)     // so the Statters drain and exit
+	statters.Wait()
+
+	var builds []build
+	for _, s := range shards {
+		builds = append(builds, s...)
+	}
+
+	dur := time.Since(start)
+	c.metrics.recordPhase(ctx, ValPhaseScan, dur)
+	c.Info(ctx, "scan complete",
+		zap.Int64("builds_scanned", c.BuildsScanned.Load()),
+		zap.Int("live_builds", len(builds)),
+		zap.Int64("open_ops", c.OpenC.Load()),
+		zap.Int64("readdir_ops", c.ReadDirC.Load()),
+		zap.Int64("statx_ops", c.StatxC.Load()),
+		zap.Duration("duration", dur))
+
+	return builds
+}
+
+// deleteColdest runs the delete phase: it spawns the delete pool and feeds it the
+// coldest builds, coldest-first, until the byte target is reached or the Grace
+// floor is crossed, then waits for the pool to drain.
+func (c *Cleaner) deleteColdest(ctx context.Context, builds []build) {
+	if c.TargetBytesToDelete == 0 {
+		c.Info(ctx, "no byte target, nothing to delete")
+
+		return
+	}
+	start := time.Now()
+
+	deleteCh := make(chan build, 1024)
+	var deleters sync.WaitGroup
+	for range c.MaxConcurrentDelete {
+		deleters.Add(1)
+		go c.deleteWorker(ctx, deleteCh, &deleters)
+	}
+
+	// coldest first = lowest warmest-atime first.
+	slices.SortFunc(builds, func(a, b build) int {
+		return cmp.Compare(a.timestamp, b.timestamp)
+	})
+
+	var floorSec int64
+	if c.Grace > 0 {
+		floorSec = time.Now().Add(-c.Grace).Unix()
+	}
+
+	var queued uint64
+	var queuedBuilds int
+queueLoop:
+	for _, b := range builds {
+		if queued >= c.TargetBytesToDelete {
+			break
+		}
+		if floorSec != 0 && b.timestamp > floorSec {
+			// Sorted coldest-first, so everything remaining is warmer than the
+			// floor — stop rather than delete an active build.
+			c.Info(ctx, "reached age floor before target; under-deleting",
+				zap.Uint64("queued_bytes", queued),
+				zap.Uint64("target_bytes", c.TargetBytesToDelete))
+
+			break
+		}
+		select {
+		case deleteCh <- b:
+			queued += b.size
+			queuedBuilds++
+		case <-ctx.Done():
+			break queueLoop
+		}
+	}
+
+	close(deleteCh)
+	deleters.Wait()
+
+	met := queued >= c.TargetBytesToDelete
+
+	// Emit only when the run came up short: it deleted everything it was allowed to
+	// (blocked by the grace floor or simply out of builds — same actionable fact)
+	// and still didn't hit the target. Any non-zero value is the signal.
+	if !met {
+		c.metrics.recordUnderTarget(ctx)
+	}
+	c.metrics.recordPhase(ctx, ValPhaseDelete, time.Since(start))
+	c.Info(ctx, "deletion selected",
+		zap.Bool("target_met", met),
+		zap.Int("num_builds", queuedBuilds),
+		zap.Uint64("queued_bytes", queued),
+		zap.Uint64("target_bytes", c.TargetBytesToDelete))
+}
+
+// clampSample returns the per-build sample size for n chunks.
+func clampSample(n, sampleMin, samplePct, sampleMax int) int {
+	k := (n*samplePct + 99) / 100 // ceil(n·pct/100)
+	k = max(k, sampleMin)
+	k = min(k, sampleMax)
+	k = min(k, n)
+
+	return k
+}
+
+// chunkOnDiskBytes returns a cache chunk's on-disk byte size, parsed from its
+// filename's size field. Two formats (see storage_cache_seekable.go and
+// storage_cache_seekable_compressed.go):
+//
+//	uncompressed: "{offset}-{size}.bin"   size is decimal (= on-disk, uncompressed)
+//	compressed:   "{offset}-{size}.frm"   size is hex (= on-disk frame length)
+//
+// The compressed cache asserts the frame file's size equals that length, so for
+// both formats the name gives the exact on-disk size. Non-chunk files (size.txt,
+// temp files) return 0 — negligible next to GB of chunks.
+func chunkOnDiskBytes(name string) uint64 {
+	var base string
+	radix := 10
+	switch {
+	case strings.HasSuffix(name, ".bin"):
+		base = strings.TrimSuffix(name, ".bin")
+	case strings.HasSuffix(name, ".frm"):
+		base = strings.TrimSuffix(name, ".frm")
+		radix = 16
+	default:
+		return 0
+	}
+	i := strings.LastIndexByte(base, '-')
+	if i < 0 {
+		return 0
+	}
+	n, err := strconv.ParseUint(base[i+1:], radix, 64)
+	if err != nil {
+		return 0
+	}
+
+	return n
 }
 
 type DiskInfo struct {
@@ -483,7 +443,6 @@ func GetDiskInfo(ctx context.Context, path string) (DiskInfo, error) {
 		return DiskInfo{}, fmt.Errorf("unexpected df output: %q", strings.TrimSpace(string(out)))
 	}
 
-	// Skip header (line 0) and parse the first data line
 	for i := 1; i < len(lines); i++ {
 		line := strings.TrimSpace(lines[i])
 		if line == "" {

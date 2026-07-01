@@ -2,57 +2,61 @@ package cleaner
 
 import (
 	"context"
-	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"go.uber.org/zap"
 )
 
-func (c *Cleaner) Deleter(ctx context.Context, toDelete <-chan *Candidate, done *sync.WaitGroup) {
+// deleteWorker drains the builds selected for deletion and RemoveAll's each one
+// whole.
+func (c *Cleaner) deleteWorker(ctx context.Context, deleteCh <-chan build, done *sync.WaitGroup) {
 	defer done.Done()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case d := <-toDelete:
-			c.deleteFile(ctx, d)
+		case b, ok := <-deleteCh:
+			if !ok {
+				return
+			}
+			// A deletion can be verified (FF-gated) against the estimate before
+			// removal, while the files still exist.
+			if c.Verify {
+				c.verifyBuild(ctx, b)
+			}
+
+			dur, ok := c.deleteBuild(ctx, b.uuid)
+			if ok {
+				c.Deleted.Add(1)
+				c.BytesFreed.Add(b.size)
+				c.metrics.recordDelete(ctx, dur, b.size, b.timestamp)
+			} else {
+				c.metrics.recordError(ctx, ValOpDelete)
+			}
 		}
 	}
 }
 
-func (c *Cleaner) deleteFile(ctx context.Context, candidate *Candidate) {
-	// Best-effort: get current metadata to detect atime changes or if file is gone
-	meta, err := c.stat(candidate.FullPath)
-	c.DeleteAttemptC.Add(1)
+// deleteBuild RemoveAll's a build dir, returning the call's wall time and whether
+// it succeeded. Honors DryRun (logs, doesn't remove).
+func (c *Cleaner) deleteBuild(ctx context.Context, buildID string) (time.Duration, bool) {
+	buildPath := filepath.Join(c.Path, buildID)
+	if c.DryRun {
+		c.Info(ctx, "would remove build dir (dry run)", zap.String("dir", buildPath))
 
-	switch {
-	case err != nil:
-		if !os.IsNotExist(err) {
-			c.Info(ctx, "error stating file before delete", zap.Error(err))
-			c.DeleteAlreadyGoneC.Add(1)
-		} else {
-			c.DeleteErrC.Add(1)
-		}
-
-	case meta.ATimeUnix == candidate.ATimeUnix:
-		c.RemoveC.Add(1)
-		if !c.DryRun {
-			c.timeit(ctx,
-				fmt.Sprintf("delete file aged %v: %s", time.Since(time.Unix(candidate.ATimeUnix, 0)), candidate.FullPath),
-				func() {
-					err = os.Remove(candidate.FullPath)
-				})
-		}
-		if err == nil {
-			c.DeletedBytes.Add(candidate.Size)
-			c.root.mu.Lock()
-			c.DeletedAge = append(c.DeletedAge, time.Since(time.Unix(candidate.ATimeUnix, 0)))
-			c.root.mu.Unlock()
-		}
-
-	default:
-		c.DeleteSkipC.Add(1)
+		return 0, true
 	}
+	start := time.Now()
+	err := os.RemoveAll(buildPath)
+	dur := time.Since(start)
+	if err != nil {
+		c.Info(ctx, "failed to remove build dir", zap.String("dir", buildPath), zap.Error(err))
+
+		return dur, false
+	}
+
+	return dur, true
 }

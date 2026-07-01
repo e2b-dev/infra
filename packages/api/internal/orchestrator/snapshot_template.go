@@ -152,13 +152,16 @@ func (o *Orchestrator) resolveOrCreateSnapshotTemplate(
 ) (string, error) {
 	// Existing template — just assign the build
 	if opts.ExistingTemplateID != nil {
-		err := o.sqlcDB.CreateTemplateBuildAssignment(ctx, queries.CreateTemplateBuildAssignmentParams{
+		rows, err := o.sqlcDB.CreateTemplateBuildAssignment(ctx, queries.CreateTemplateBuildAssignmentParams{
 			TemplateID: *opts.ExistingTemplateID,
 			BuildID:    buildID,
 			Tag:        opts.Tag,
 		})
 		if err != nil {
 			return "", fmt.Errorf("error assigning build to existing template: %w", err)
+		}
+		if rows == 0 {
+			return "", fmt.Errorf("template '%s' not found", *opts.ExistingTemplateID)
 		}
 
 		return *opts.ExistingTemplateID, nil

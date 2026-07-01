@@ -129,6 +129,18 @@ func (u *Upload) Run(ctx context.Context) error {
 	return u.runV4(ctx)
 }
 
+// Wait blocks until the upload has reached its terminal outcome (the future set
+// by Finish) or ctx is done, returning the upload error. It lets a caller order
+// work after the snapshot has durably landed — e.g. re-uploading the metadata
+// object without racing the upload's own metadata write.
+func (u *Upload) Wait(ctx context.Context) error {
+	if u.future == nil {
+		return nil
+	}
+
+	return u.future.WaitWithContext(ctx)
+}
+
 // Finish signals the upload's terminal outcome. Same-orch waiters wake on the
 // future; cross-orch waiters wake on the Redis hint published here.
 func (u *Upload) Finish(ctx context.Context, uploadErr error) {

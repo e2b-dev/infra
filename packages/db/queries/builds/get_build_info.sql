@@ -9,7 +9,8 @@ FROM public.env_builds b
 JOIN LATERAL (
   SELECT a.env_id
   FROM public.env_build_assignments a
-  JOIN public.envs e ON e.id = a.env_id
+  -- active_envs (not envs): the build's env must exist and not be soft-deleted
+  JOIN public.active_envs e ON e.id = a.env_id
   WHERE a.build_id = b.id
     AND e.team_id = sqlc.arg(team_id)::uuid
   ORDER BY a.created_at DESC, a.id DESC

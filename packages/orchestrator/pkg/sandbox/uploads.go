@@ -114,6 +114,12 @@ func (u *Uploads) Wait(ctx context.Context, buildID uuid.UUID, t build.DiffType)
 
 	d, err := u.find(ctx, buildID, t)
 	if err != nil && !errors.Is(err, ErrBuildNotInCache) {
+		logger.L().Warn(ctx, "ancestor resolution failed from cached template",
+			logger.WithBuildID(buildID.String()),
+			zap.String("file_type", string(t)),
+			zap.Error(err),
+		)
+
 		return nil, err
 	}
 

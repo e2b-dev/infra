@@ -12,6 +12,20 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type ActiveEnv struct {
+	ID            string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	Public        bool
+	BuildCount    int32
+	SpawnCount    int64
+	LastSpawnedAt *time.Time
+	TeamID        uuid.UUID
+	CreatedBy     *uuid.UUID
+	ClusterID     *uuid.UUID
+	Source        string
+}
+
 type Cluster struct {
 	ID                 uuid.UUID
 	Endpoint           string
@@ -20,22 +34,6 @@ type Cluster struct {
 	SandboxProxyDomain *string
 	AuthOrgID          *string
 	Name               string
-}
-
-type Env struct {
-	ID         string
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
-	Public     bool
-	BuildCount int32
-	// Number of times the env was spawned
-	SpawnCount int64
-	// Timestamp of the last time the env was spawned
-	LastSpawnedAt *time.Time
-	TeamID        uuid.UUID
-	CreatedBy     *uuid.UUID
-	ClusterID     *uuid.UUID
-	Source        string
 }
 
 type EnvAlias struct {

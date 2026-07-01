@@ -41,13 +41,11 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/tem
 var files embed.FS
 var fileTemplates = template.Must(template.ParseFS(files, "files/*"))
 
-// filesHash is a stable hash of the embedded rootfs file templates. Folded into
-// the base-layer cache key so a change to any baked unit (e.g. envd.service.tpl)
-// invalidates cached base layers — without it the base hash ignores file content
-// and stale layers keep the old units. Reads on an embed.FS can't fail at runtime
-// (content is baked at compile time), so the errors are safely ignored.
+// filesHash is a stable hash of the embedded rootfs file templates. It is used
+// only as part of the fallback provision version; explicit provision versions
+// remain the rollout control.
 var filesHash = func() string {
-	entries, _ := fs.ReadDir(files, "files") // sorted by name
+	entries, _ := fs.ReadDir(files, "files")
 	h := sha256.New()
 	for _, e := range entries {
 		data, _ := files.ReadFile("files/" + e.Name())
