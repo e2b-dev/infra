@@ -243,14 +243,27 @@ type DedupedMemfdCache struct {
 	done    *utils.SetOnce[*Cache]
 
 	inflight bool
-	// mu guards memfd + index. memfd is non-nil only between "compare done"
-	// (published in runDedup) and "drain done" (closed under the write lock so
-	// it can't be unmapped under an in-flight reader). index translates a
+	// swapped is resolved by MarkSwapped once the local template has swapped
+	// off the provisional header onto the deduped one. runDedup waits on it
+	// (bounded) before releasing the memfd, so a provisional read can't hit a
+	// released memfd during the compare→swap window (which outlives the drain
+	// when the dirty set is small and the parent header is fragmented).
+	swapped *utils.SetOnce[struct{}]
+	// mu guards memfd + index. memfd is non-nil from construction until it is
+	// released — after the drain, or, when a provisional header serves from it,
+	// after the swap (MarkSwapped) or a grace timeout — closed under the write
+	// lock so it can't be unmapped under an in-flight reader. index translates a
 	// packed diff-storage offset back to the absolute memfd offset.
 	mu    sync.RWMutex
 	memfd *Memfd
 	index packedIndex
 }
+
+// memfdSwapGrace bounds how long runDedup keeps the memfd mapped waiting for the
+// provisional→deduped header swap, so a failed or absent swap can't leak the
+// mapping. The swap normally completes before the drain does (it only waits on
+// the compare), so this grace is a backstop, not the common path.
+const memfdSwapGrace = 30 * time.Second
 
 func NewCacheFromMemfdDeduped(
 	ctx context.Context,
@@ -274,7 +287,13 @@ func NewCacheFromMemfdDeduped(
 		outPath:  outPath,
 		cancel:   cancel,
 		done:     utils.NewSetOnce[*Cache](),
+		swapped:  utils.NewSetOnce[struct{}](),
 		inflight: inflightServe,
+		// Publish the memfd up front (guarded by mu) so a provisional-header
+		// resume can serve dirty pages via ServeMemfd during the compare window,
+		// before metaOut/the deduped header resolves. runDedup frees it under mu
+		// after the drain.
+		memfd: memfd,
 	}
 	go d.runDedup(drainCtx, base, blockSize, memfd, dirty, bestEffort, directIO, budget, inputEmpty, metaOut)
 
@@ -353,7 +372,7 @@ func (d *DedupedMemfdCache) runDedup(
 	compareDur := time.Since(compareStart)
 	if err != nil {
 		logSetOnceErr(ctx, "dedup metaOut", metaOut.SetError(err))
-		logSetOnceErr(ctx, "dedup done", d.done.SetError(errors.Join(err, memfd.Close())))
+		logSetOnceErr(ctx, "dedup done", d.done.SetError(errors.Join(err, d.releaseMemfd())))
 
 		return
 	}
@@ -372,12 +391,13 @@ func (d *DedupedMemfdCache) runDedup(
 	// Whole-VM empty set recorded in the header (scan zeros + inputEmpty).
 	telemetry.SetAttributes(ctx,
 		attribute.Int64("dedup.header_empty_pages", int64(plan.pageEmpty.GetCardinality())))
-	logSetOnceErr(ctx, "dedup metaOut", metaOut.SetValue(meta))
 
-	// Publish the memfd + packed→absolute index so a resume overlapping this
-	// pause serves dirty pages straight from the memfd during the drain window
-	// instead of blocking on done. Reads take mu.RLock; the close below takes
-	// mu.Lock, so the memfd is never unmapped under an in-flight reader.
+	// Publish the packed→absolute index BEFORE resolving metaOut. metaOut
+	// resolving unblocks the deduped-header build and the subsequent SwapHeader,
+	// after which reads route to this diff and rely on the index; installing it
+	// first guarantees tryInflightRead never sees a nil index post-swap. Reads
+	// take mu.RLock; the drain's close below takes mu.Lock, so the memfd is never
+	// unmapped under an in-flight reader.
 	if d.inflight {
 		d.mu.Lock()
 		d.index = buildPackedIndex(plan.pageDirty)
@@ -385,19 +405,38 @@ func (d *DedupedMemfdCache) runDedup(
 		d.mu.Unlock()
 	}
 
+	logSetOnceErr(ctx, "dedup metaOut", metaOut.SetValue(meta))
+
 	writeStart := time.Now()
 	cache, err := dedupDrain(ctx, src, plan.pageDirty, blockSize, d.outPath, directIO)
 	writeDur := time.Since(writeStart)
-	d.mu.Lock()
-	closeErr := memfd.Close()
-	d.memfd = nil
-	d.mu.Unlock()
-	if closeErr != nil {
-		logger.L().Warn(ctx, "close memfd after dedup drain", zap.Error(closeErr))
-	}
 
 	recordDedupAttrs(ctx, plan, scanEmptyPages, compareDur, writeDur)
+	// Resolve the drained cache immediately so upload and post-swap reads don't
+	// wait. Then, when inflight serving is active, keep the memfd mapped until
+	// the local template swaps off the provisional header (MarkSwapped) so a
+	// provisional read never hits a released memfd. The swap only waits on the
+	// compare, so it has usually already fired by now; ctx and the grace bound
+	// the wait so a failed or absent swap can't leak the mapping.
 	logSetOnceErr(ctx, "dedup done", d.done.SetResult(cache, err))
+	if d.inflight {
+		select {
+		case <-d.swapped.Done:
+		case <-ctx.Done():
+		case <-time.After(memfdSwapGrace):
+			logger.L().Warn(ctx, "memfd swap grace elapsed; releasing memfd without a swap signal")
+		}
+	}
+	if closeErr := d.releaseMemfd(); closeErr != nil {
+		logger.L().Warn(ctx, "close memfd after dedup drain", zap.Error(closeErr))
+	}
+}
+
+// MarkSwapped signals that the local template has swapped off the provisional
+// header, so runDedup can release the memfd it was serving provisional reads
+// from. Idempotent; safe to call when no provisional header was ever built.
+func (d *DedupedMemfdCache) MarkSwapped() {
+	_ = d.swapped.SetValue(struct{}{})
 }
 
 // logSetOnceErr warns on a SetOnce.SetValue/SetError failure (i.e. a
@@ -475,6 +514,40 @@ func (d *DedupedMemfdCache) Slice(off, length int64) ([]byte, error) {
 	return c.Slice(off, length)
 }
 
+// releaseMemfd closes the memfd exactly once, under the write lock so it can't
+// be unmapped beneath an in-flight ServeMemfd/tryInflightRead reader.
+func (d *DedupedMemfdCache) releaseMemfd() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.memfd == nil {
+		return nil
+	}
+	err := d.memfd.Close()
+	d.memfd = nil
+
+	return err
+}
+
+// ServeMemfd copies [off, off+len(b)) from the still-mapped memfd using
+// identity (device) addressing, for a provisional local header that attributes
+// dirty pages to the memfd at their device offset. Returns BytesNotAvailableError
+// once the memfd has been released (drain finished), so the caller falls back to
+// the drained cache via the swapped-in deduped header.
+func (d *DedupedMemfdCache) ServeMemfd(b []byte, off int64) (int, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	if d.memfd == nil {
+		return 0, BytesNotAvailableError{}
+	}
+	src, err := d.memfd.Slice(off, int64(len(b)))
+	if err != nil {
+		return 0, err
+	}
+	copy(b, src)
+
+	return len(b), nil
+}
+
 func (d *DedupedMemfdCache) Close() error {
 	d.cancel()
 	c, _ := d.done.Wait()
@@ -484,6 +557,58 @@ func (d *DedupedMemfdCache) Close() error {
 	_ = os.Remove(d.outPath)
 
 	return nil
+}
+
+// MemfdIdentitySource is the provisional local diff source: it serves dirty
+// pages from a DedupedMemfdCache's still-mapped memfd at identity (device)
+// offsets while dedup runs. It backs a distinct provisional build id; once the
+// deduped header is swapped in, reads route to the real build id instead and
+// this source is dropped. It is never uploaded.
+type MemfdIdentitySource struct {
+	d    *DedupedMemfdCache
+	size int64
+}
+
+func NewMemfdIdentitySource(d *DedupedMemfdCache, size int64) *MemfdIdentitySource {
+	return &MemfdIdentitySource{d: d, size: size}
+}
+
+func (s *MemfdIdentitySource) ReadAt(b []byte, off int64) (int, error) { return s.d.ServeMemfd(b, off) }
+
+func (s *MemfdIdentitySource) Slice(off, length int64) ([]byte, error) {
+	b := make([]byte, length)
+	if _, err := s.d.ServeMemfd(b, off); err != nil {
+		return nil, err
+	}
+
+	return b, nil
+}
+
+// IsCached reports the range as resident while the memfd is mapped. It satisfies
+// the CachePeeker contract for callers that hold a *MemfdIdentitySource directly
+// (e.g. the block-level tests). Note the wrapping *build.localDiff does not
+// promote this method, so build.File.IsCached does not reach it today.
+func (s *MemfdIdentitySource) IsCached(_ context.Context, off, length int64) bool {
+	s.d.mu.RLock()
+	defer s.d.mu.RUnlock()
+
+	return s.d.memfd != nil && off >= 0 && off+length <= s.size
+}
+
+func (s *MemfdIdentitySource) Size() (int64, error) { return s.size, nil }
+func (s *MemfdIdentitySource) BlockSize() int64     { return header.PageSize }
+func (s *MemfdIdentitySource) Close() error         { return nil }
+
+// FileSize reports the on-disk cache footprint, which is zero: this source wraps
+// a still-mapped memfd, not a file in the cache directory, and evicting it frees
+// no disk bytes. Returning the logical size here would inflate the DiffStore's
+// disk-eviction accounting by ~guest-RAM bytes for a phantom entry.
+func (s *MemfdIdentitySource) FileSize(context.Context) (int64, error) { return 0, nil }
+
+// Path has no meaning for a memfd-backed source; it is local-only and never
+// uploaded, so the upload path (which needs a file path) must never reach it.
+func (s *MemfdIdentitySource) Path(context.Context) (string, error) {
+	return "", errors.New("provisional memfd source has no path")
 }
 
 func (d *DedupedMemfdCache) Path(ctx context.Context) (string, error) {
