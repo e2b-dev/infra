@@ -469,10 +469,13 @@ func (p *Handler) Wait() {
 	}
 
 	endEvent := &rpc.ProcessEvent_EndEvent{
-		Error:    errMsg,
-		ExitCode: int32(p.cmd.ProcessState.ExitCode()),
-		Exited:   p.cmd.ProcessState.Exited(),
-		Status:   p.cmd.ProcessState.String(),
+		Error: errMsg,
+	}
+
+	if p.cmd.ProcessState != nil {
+		endEvent.ExitCode = int32(p.cmd.ProcessState.ExitCode())
+		endEvent.Exited = p.cmd.ProcessState.Exited()
+		endEvent.Status = p.cmd.ProcessState.String()
 	}
 
 	event := rpc.ProcessEvent_End{
