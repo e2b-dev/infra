@@ -98,15 +98,13 @@ func NewUpload(
 // uncompressed, from the diff header) to the base object metadata. They live on
 // the data object because the memfile values depend on the async dedup header.
 func (u *Upload) layerSizeMetadata(h *headers.Header) storage.ObjectMetadata {
+	md := maps.Clone(u.objectMetadata)
+	if md == nil {
+		md = make(storage.ObjectMetadata)
+	}
 	if h == nil || h.Metadata == nil {
-		md := make(storage.ObjectMetadata, len(u.objectMetadata))
-		maps.Copy(md, u.objectMetadata)
 		return md
 	}
-
-	// Always adds exactly the three size keys below.
-	md := make(storage.ObjectMetadata, len(u.objectMetadata)+3)
-	maps.Copy(md, u.objectMetadata)
 
 	bytesByBuild := h.Mapping.BytesByBuild()
 	var mapped uint64
