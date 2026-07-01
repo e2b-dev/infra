@@ -55,6 +55,8 @@ jobs:
               - 'go.work.sum'
               - 'Makefile'
               - '.tool-versions'
+              # invoked by the start-services action to launch each service
+              - 'scripts/start-service.sh'
               - '.github/workflows/integration_tests.yml'
               - '.github/actions/build-packages/**'
               - '.github/actions/build-sandbox-template/**'
