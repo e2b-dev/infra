@@ -75,6 +75,26 @@ func Run(
 
 	sourceLayer := LayerResult{}
 
+	// wrapContextErr annotates a context cancellation/timeout error with the
+	// phase metadata that was active when the error occurred, so that the
+	// user-facing message includes which build step was interrupted.
+	wrapContextErr := func(err error, meta PhaseMeta) error {
+		if err == nil {
+			return nil
+		}
+
+		// Already a PhaseBuildError — keep it as-is.
+		if UnwrapPhaseBuildError(err) != nil {
+			return err
+		}
+
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return NewPhaseBuildError(meta, err)
+		}
+
+		return err
+	}
+
 	for _, builder := range builders {
 		meta := builder.Metadata()
 
@@ -91,19 +111,19 @@ func Run(
 		phaseStartTime := time.Now()
 		hash, err := builder.Hash(ctx, sourceLayer)
 		if err != nil {
-			return LayerResult{}, fmt.Errorf("getting hash: %w", err)
+			return LayerResult{}, wrapContextErr(fmt.Errorf("getting hash: %w", err), meta)
 		}
 
 		currentLayer, err := builder.Layer(ctx, sourceLayer, hash)
 		if err != nil {
-			return LayerResult{}, fmt.Errorf("getting layer: %w", err)
+			return LayerResult{}, wrapContextErr(fmt.Errorf("getting layer: %w", err), meta)
 		}
 		metrics.RecordCacheResult(ctx, meta.Phase, meta.StepType, currentLayer.Cached)
 
 		prefix := builder.Prefix()
 		source, err := builder.String(ctx)
 		if err != nil {
-			return LayerResult{}, fmt.Errorf("getting source: %w", err)
+			return LayerResult{}, wrapContextErr(fmt.Errorf("getting source: %w", err), meta)
 		}
 		stepUserLogger.Info(ctx, layerInfo(currentLayer.Cached, prefix, source, currentLayer.Hash))
 
@@ -127,7 +147,7 @@ func Run(
 		metrics.RecordPhaseDuration(ctx, phaseDuration, meta.Phase, meta.StepType, false)
 
 		if err != nil {
-			return LayerResult{}, err
+			return LayerResult{}, wrapContextErr(err, meta)
 		}
 
 		sourceLayer = res
