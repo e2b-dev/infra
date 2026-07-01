@@ -39,6 +39,24 @@ jobs:
               - 'Makefile'
               - '.github/**'
               - '.tool-versions'
+            # Like test-inputs, but scoped to only the .github paths that affect
+            # the integration harness (its workflow + composite actions) instead
+            # of all of .github/**. This keeps unrelated CI edits (e.g. other
+            # workflows) from triggering the ~20-min integration suite.
+            integration-inputs:
+              - 'packages/**'
+              - 'tests/**'
+              - 'spec/**'
+              - 'go.work'
+              - 'go.work.sum'
+              - 'Makefile'
+              - '.tool-versions'
+              - '.github/workflows/integration_tests.yml'
+              - '.github/actions/build-packages/**'
+              - '.github/actions/build-sandbox-template/**'
+              - '.github/actions/host-init/**'
+              - '.github/actions/start-services/**'
+              - '.github/actions/go-setup-cache/**'
             lint-inputs:
               - 'packages/**'
               - 'tests/**'
@@ -115,7 +133,7 @@ jobs:
     with:
       # Only publish the results for same-repo PRs
       publish: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
-      run-tests: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') }}
+      run-tests: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'integration-inputs') }}
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
   publish-test-results:
