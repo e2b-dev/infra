@@ -199,8 +199,8 @@ func NewProcess(
 	)
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setsid:     true,              // Create a new session
-		Cloneflags: syscall.CLONE_NEWNS, // Create a new mount namespace (replaces external unshare -m)
+		Setsid:       true,                // Create a new session
+		Unshareflags: syscall.CLONE_NEWNS, // Create a new mount namespace with MS_REC|MS_PRIVATE propagation (replaces external unshare -m)
 	}
 
 	return &Process{
