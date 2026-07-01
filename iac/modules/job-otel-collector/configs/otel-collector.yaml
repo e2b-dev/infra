@@ -225,6 +225,7 @@ processors:
         match_type: regexp
         metric_names:
           - "orchestrator.*"
+          - "nfsclean.*"
           - "template.*"
           - "api.*"
           - "batcher.*"
