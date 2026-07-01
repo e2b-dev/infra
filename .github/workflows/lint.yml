@@ -57,7 +57,9 @@ jobs:
 
   golangci-lint:
     needs: detect-modules
-    if: ${{ inputs.run-lint == true }}
+    # Skip cleanly when no Go modules changed. An empty matrix would otherwise
+    # make this job's result 'failure' (not 'skipped') for the aggregate below.
+    if: ${{ inputs.run-lint == true && needs.detect-modules.outputs.modules != '[]' }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
