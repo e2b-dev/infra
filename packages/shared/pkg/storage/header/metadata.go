@@ -99,6 +99,38 @@ func NewDiffMetadata(blockSize int64, dirty, empty *roaring.Bitmap) *DiffMetadat
 	}
 }
 
+// ToProvisionalDiffHeader builds a local-only header that describes the memfd
+// directly — all dirty pages attributed to buildID with identity storage
+// offsets (see createIdentityMapping), composed over originalHeader. Unlike
+// ToDiffHeader it needs no dedup metadata, so it is available at pause time and
+// lets a resume serve immediately. It must never be uploaded (the uploaded
+// artifact always uses the deduped ToDiffHeader output).
+func (d *DiffMetadata) ToProvisionalDiffHeader(
+	ctx context.Context,
+	originalHeader *Header,
+	buildID uuid.UUID,
+) (*Header, error) {
+	_, span := tracer.Start(ctx, "to provisional diff-header")
+	defer span.End()
+
+	dirtyMappings := createIdentityMapping(&buildID, d.Dirty, d.BlockSize)
+	emptyMappings := CreateMapping(&ignoreBuildID, d.Empty, d.BlockSize)
+	diffMapping := MergeMappings(dirtyMappings, emptyMappings)
+
+	m := NormalizeMappings(MergeMappings(originalHeader.Mapping.Slice(), diffMapping))
+	metadata := originalHeader.Metadata.NextGeneration(buildID)
+
+	h, err := newDiffHeader(metadata, m, originalHeader.Builds)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create provisional header: %w", err)
+	}
+	if err := h.Mapping.Validate(h.Metadata.Size, PageSize); err != nil {
+		return nil, fmt.Errorf("invalid provisional header mappings: %w", err)
+	}
+
+	return h, nil
+}
+
 func (d *DiffMetadata) toDiffMapping(
 	ctx context.Context,
 	buildID uuid.UUID,
