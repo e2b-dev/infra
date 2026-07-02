@@ -12,8 +12,7 @@ const (
 )
 
 // DefaultEventsTTLDays is the fallback event retention used when an event
-// doesn't carry a team-specific TTL (legacy publishers). Matches the
-// historical fixed 7-day retention of the events store.
+// doesn't carry a team-specific TTL
 const DefaultEventsTTLDays int64 = 7
 
 const (
@@ -52,7 +51,6 @@ type SandboxEvent struct {
 	SandboxBuildID     string    `json:"sandbox_build_id"`
 	SandboxTeamID      uuid.UUID `json:"sandbox_team_id"`
 
-	// Retention of the event in days, from the team's limits (tier + addons).
-	// Eviction is handled downstream; 0 means "not set" (legacy default applies).
+	// Retention of the event in days
 	EventsTTLDays int64 `json:"events_ttl_days,omitempty"`
 }

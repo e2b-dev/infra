@@ -6,9 +6,7 @@ ALTER TABLE sandbox_events_local
 ALTER TABLE sandbox_events
     ADD COLUMN IF NOT EXISTS events_ttl_days Int64 DEFAULT 7;
 
--- Switch the fixed 7-day table TTL to a per-row TTL driven by the team's
--- retention. Existing rows use the column DEFAULT (7), so nothing expires
--- earlier than before.
+-- Switch the fixed 7-day table TTL to a per-row TTL driven by the team's retention
 ALTER TABLE sandbox_events_local
     MODIFY TTL toDateTime(timestamp) + toIntervalDay(events_ttl_days);
 
