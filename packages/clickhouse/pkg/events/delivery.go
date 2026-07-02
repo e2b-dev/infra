@@ -115,6 +115,9 @@ func (c *ClickhouseDelivery) Publish(_ context.Context, _ string, event events.S
 	if ttlDays <= 0 {
 		ttlDays = events.DefaultEventsTTLDays
 	}
+	if ttlDays > 365 {
+		ttlDays = 365
+	}
 
 	return c.batcher.Push(SandboxEvent{
 		Version:   event.Version,
