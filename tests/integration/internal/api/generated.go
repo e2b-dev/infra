@@ -688,6 +688,18 @@ type NodeMetrics struct {
 	// Disks Detailed metrics for each disk/mount point
 	Disks []DiskMetrics `json:"disks"`
 
+	// HugePageSizeBytes Size of a single hugepage in bytes
+	HugePageSizeBytes uint64 `json:"hugePageSizeBytes"`
+
+	// HugePagesReserved Number of reserved hugepages (committed but not yet faulted)
+	HugePagesReserved uint64 `json:"hugePagesReserved"`
+
+	// HugePagesTotal Total number of preallocated hugepages on the node
+	HugePagesTotal uint64 `json:"hugePagesTotal"`
+
+	// HugePagesUsed Number of hugepages in use (total - free)
+	HugePagesUsed uint64 `json:"hugePagesUsed"`
+
 	// MemoryTotalBytes Total node memory in bytes
 	MemoryTotalBytes uint64 `json:"memoryTotalBytes"`
 
