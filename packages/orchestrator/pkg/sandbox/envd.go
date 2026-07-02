@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,6 +28,35 @@ import (
 const (
 	loopDelay = 5 * time.Millisecond
 )
+
+// envdInitExitType classifies the outcome of an envd init call.
+type envdInitExitType string
+
+const (
+	envdInitExitSuccess  envdInitExitType = "success"
+	envdInitExitTimeout  envdInitExitType = "timeout"
+	envdInitExitCanceled envdInitExitType = "canceled"
+	envdInitExitOther    envdInitExitType = "other"
+	// envdInitExitTransient marks a retried attempt that failed but was not the
+	// terminal outcome of the init episode.
+	envdInitExitTransient envdInitExitType = "transient"
+)
+
+// classifyEnvdInitExit maps an init error to an exit_type.
+func classifyEnvdInitExit(err error) envdInitExitType {
+	switch {
+	case err == nil:
+		return envdInitExitSuccess
+	case errors.Is(err, ErrWaitForEnvdTimeout), errors.Is(err, context.DeadlineExceeded):
+		return envdInitExitTimeout
+	case errors.Is(err, ErrFcProcessExited):
+		return envdInitExitOther
+	case errors.Is(err, context.Canceled):
+		return envdInitExitCanceled
+	default:
+		return envdInitExitOther
+	}
+}
 
 // envdOp is the path segment of a parameterless envd POST endpoint.
 type envdOp string
@@ -236,9 +266,19 @@ func (s *Sandbox) initEnvd(ctx context.Context, startType StartType) (e error) {
 		span.End()
 	}()
 
-	attributes := []attribute.KeyValue{telemetry.WithEnvdVersion(s.Config.Envd.Version), attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()), attribute.String("start_type", string(startType))}
-	attributesFail := append(attributes, attribute.Bool("success", false))
-	attributesSuccess := append(attributes, attribute.Bool("success", true))
+	attributes := []attribute.KeyValue{
+		telemetry.WithEnvdVersion(s.Config.Envd.Version),
+		attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
+		attribute.String("start_type", string(startType)),
+	}
+
+	// success is kept for backward compatibility until consumers move to exit_type.
+	callAttributes := func(exit envdInitExitType) []attribute.KeyValue {
+		return append(attributes,
+			attribute.Bool("success", exit == envdInitExitSuccess),
+			attribute.String("exit_type", string(exit)),
+		)
+	}
 
 	address := fmt.Sprintf("http://%s:%d/init", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
 
@@ -252,18 +292,19 @@ func (s *Sandbox) initEnvd(ctx context.Context, startType StartType) (e error) {
 			zap.Error(err),
 		)
 
-		envdInitCalls.Add(ctx, count, metric.WithAttributes(attributesFail...))
+		exit := classifyEnvdInitExit(err)
+		envdInitCalls.Add(ctx, count, metric.WithAttributes(callAttributes(exit)...))
 
 		return fmt.Errorf("failed to init envd: %w", err)
 	}
 
 	if count > 1 {
-		// Track failed envd init calls
-		envdInitCalls.Add(ctx, count-1, metric.WithAttributes(attributesFail...))
+		// Retried attempts were transient per-request failures that preceded the success.
+		envdInitCalls.Add(ctx, count-1, metric.WithAttributes(callAttributes(envdInitExitTransient)...))
 	}
 
 	// Track successful envd init
-	envdInitCalls.Add(ctx, 1, metric.WithAttributes(attributesSuccess...))
+	envdInitCalls.Add(ctx, 1, metric.WithAttributes(callAttributes(envdInitExitSuccess)...))
 
 	defer response.Body.Close()
 	body, err := io.ReadAll(response.Body)

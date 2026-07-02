@@ -67,6 +67,12 @@ const (
 	StartTypeReboot StartType = "reboot" // cold boot from a snapshot rootfs (filesystem-only resume)
 )
 
+// ErrWaitForEnvdTimeout is the cancel cause used when WaitForEnvd exceeds its timeout.
+var ErrWaitForEnvdTimeout = errors.New("syncing took too long")
+
+// ErrFcProcessExited is the cancel cause used when the Firecracker process exits during WaitForEnvd.
+var ErrFcProcessExited = errors.New("fc process exited prematurely")
+
 var SandboxHttpTransport = otelhttp.NewTransport(
 	&http.Transport{
 		DisableKeepAlives: true,
@@ -1749,11 +1755,13 @@ func (s *Sandbox) WaitForEnvd(
 		// cover its timing/size.
 		if !s.skipStartupMetrics {
 			duration := time.Since(start).Milliseconds()
+			// success is kept for backward compatibility until consumers move to exit_type.
 			waitForEnvdDurationHistogram.Record(ctx, duration, metric.WithAttributes(
 				telemetry.WithEnvdVersion(s.Config.Envd.Version),
 				attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
 				attribute.Bool("success", e == nil),
 				attribute.String("start_type", string(startType)),
+				attribute.String("exit_type", string(classifyEnvdInitExit(e))),
 			))
 
 			// Record the demand-fault working set the guest needed to reach this
@@ -1790,13 +1798,13 @@ func (s *Sandbox) WaitForEnvd(
 		select {
 		// Ensure the syncing takes at most timeout seconds.
 		case <-time.After(timeout):
-			cancel(errors.New("syncing took too long"))
+			cancel(ErrWaitForEnvdTimeout)
 		case <-ctx.Done():
 			return
 		case <-s.process.Exit.Done():
 			err := s.process.Exit.Error()
 
-			cancel(fmt.Errorf("fc process exited prematurely: %w", err))
+			cancel(fmt.Errorf("%w: %w", ErrFcProcessExited, err))
 		}
 	}()
 
