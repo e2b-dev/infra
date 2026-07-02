@@ -224,7 +224,7 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) { //nolint:paralleltest // ve
 	c, err := cfg.Parse()
 	require.NoError(t, err)
 
-	flags := flagsWithMaxBuildCachePercentage(t, 0)
+	flags := flagsWithMaxBuildCachePercentage(t, 100)
 
 	ttl := 60 * time.Second
 	delay := 4 * time.Second
@@ -237,8 +237,11 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) { //nolint:paralleltest // ve
 	)
 	require.NoError(t, err)
 
-	store.Start(t.Context())
-	t.Cleanup(store.Close)
+	// The store is deliberately not Start()ed: the disk-space eviction loop
+	// would otherwise re-schedule a deletion of the diff (depending on the
+	// host's actual disk usage) and race with the abort below. The delayed
+	// deletion is instead scheduled explicitly via deleteOldestFromCache,
+	// the same code path the eviction loop uses.
 
 	// Add an item to the cache
 	diff := newRootFSDiff(t, cachePath, "build-test-id")
@@ -246,7 +249,12 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) { //nolint:paralleltest // ve
 	// Add an item to the cache
 	store.Add(diff)
 
-	// Wait for removal trigger of diff
+	// Schedule delayed deletion of the diff
+	scheduled, err := store.deleteOldestFromCache(t.Context())
+	require.NoError(t, err)
+	require.True(t, scheduled)
+
+	// Wait a part of the delay period before aborting the removal
 	time.Sleep(delay / 2)
 
 	// Verify still in cache
