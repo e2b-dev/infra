@@ -192,8 +192,18 @@ func (s *azureStorage) GetDetails() string {
 func (s *azureStorage) UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error) {
 	now := time.Now().UTC()
 	permissions := sas.BlobPermissions{Create: true, Write: true}
+
+	// Production endpoints are HTTPS, so the SAS stays https-only there; a
+	// plain-HTTP endpoint (Azurite emulator, custom BlobEndpoint) must also
+	// admit HTTP or the service rejects the SAS with
+	// AuthorizationProtocolMismatch.
+	protocol := sas.ProtocolHTTPS
+	if strings.HasPrefix(s.container.URL(), "http://") {
+		protocol = sas.ProtocolHTTPSandHTTP
+	}
+
 	values := sas.BlobSignatureValues{
-		Protocol:      sas.ProtocolHTTPS,
+		Protocol:      protocol,
 		StartTime:     now.Add(-azureSASClockSkew),
 		ExpiryTime:    now.Add(ttl),
 		Permissions:   permissions.String(),
