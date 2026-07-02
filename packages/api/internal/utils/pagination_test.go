@@ -191,6 +191,42 @@ func TestPagination_CursorTime(t *testing.T) {
 	assert.Equal(t, timestamp, p.CursorTime())
 }
 
+func TestPagination_DefaultCursorByDirection(t *testing.T) {
+	t.Parallel()
+
+	t.Run("descending defaults to now", func(t *testing.T) {
+		t.Parallel()
+
+		before := time.Now()
+		p, err := NewPagination[testItem](PaginationParams{}, PaginationConfig{
+			DefaultLimit: 10,
+			MaxLimit:     100,
+			DefaultID:    "default-id",
+		})
+		require.NoError(t, err)
+		after := time.Now()
+
+		assert.False(t, p.CursorTime().Before(before), "default cursor time should be ~now")
+		assert.False(t, p.CursorTime().After(after), "default cursor time should be ~now")
+		assert.Equal(t, "default-id", p.CursorID())
+	})
+
+	t.Run("ascending defaults to zero time", func(t *testing.T) {
+		t.Parallel()
+
+		p, err := NewPagination[testItem](PaginationParams{}, PaginationConfig{
+			DefaultLimit: 10,
+			MaxLimit:     100,
+			DefaultID:    "default-id",
+			Order:        SortAsc,
+		})
+		require.NoError(t, err)
+
+		assert.True(t, p.CursorTime().IsZero(), "ascending default cursor time should be the zero time")
+		assert.Equal(t, "default-id", p.CursorID())
+	})
+}
+
 func TestPagination_CursorID(t *testing.T) {
 	t.Parallel()
 	config := PaginationConfig{
