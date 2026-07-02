@@ -171,7 +171,21 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		if nomadErr != nil {
 			logger.L().Fatal(ctx, "Initializing Nomad client", zap.Error(nomadErr))
 		}
-		nodeDiscovery = orchdiscovery.NewNomad(nomadClient, "default")
+		nodeDiscovery = orchdiscovery.NewNomad(nomadClient, config.NomadOrchestratorServiceNames)
+		// Migration fallback: orchestrator jobs deployed from jobspecs that
+		// predate the service port-label fix register their service with an
+		// empty Address, so service discovery alone would miss them until
+		// they are redeployed. Union in the legacy node-pool listing (service
+		// entries win on conflict) so the API flip has no rollout ordering
+		// constraint. Disable via NOMAD_ORCHESTRATOR_LEGACY_DISCOVERY_ENABLED
+		// once no legacy jobs remain. The pool is hardcoded: legacy jobs only
+		// ever ran on the "default" pool.
+		if config.NomadOrchestratorLegacyDiscoveryEnabled {
+			nodeDiscovery = orchdiscovery.NewMerged(
+				nodeDiscovery,
+				orchdiscovery.NewNomadNodePool(nomadClient, "default"),
+			)
+		}
 		templateBuilderDiscovery = clustersdiscovery.NewLocalDiscovery(consts.LocalClusterID, nomadClient)
 	}
 
