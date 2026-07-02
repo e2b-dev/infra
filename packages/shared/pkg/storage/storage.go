@@ -46,6 +46,7 @@ type Provider string
 const (
 	GCPStorageProvider   Provider = "GCPBucket"
 	AWSStorageProvider   Provider = "AWSBucket"
+	AzureStorageProvider Provider = "AzureBucket"
 	LocalStorageProvider Provider = "Local"
 
 	DefaultStorageProvider Provider = GCPStorageProvider
@@ -318,6 +319,8 @@ func GetStorageProvider(ctx context.Context, cfg StorageConfig) (StorageProvider
 	switch provider {
 	case AWSStorageProvider:
 		return newAWSStorage(ctx, bucketName)
+	case AzureStorageProvider:
+		return newAzureStorage(ctx, bucketName)
 	case GCPStorageProvider:
 		return NewGCP(ctx, bucketName, cfg.limiter)
 	}

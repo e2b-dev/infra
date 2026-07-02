@@ -17,6 +17,7 @@ type RemoteRepositoryProvider string
 const (
 	GCPStorageProvider   RemoteRepositoryProvider = "GCP_REMOTE_REPOSITORY"
 	AWSStorageProvider   RemoteRepositoryProvider = "AWS_ECR"
+	AzureStorageProvider RemoteRepositoryProvider = "AZURE_ACR"
 	LocalStorageProvider RemoteRepositoryProvider = "Local"
 
 	DefaultRegistryProvider RemoteRepositoryProvider = GCPStorageProvider
@@ -46,6 +47,8 @@ func GetRemoteRepository(ctx context.Context) (RemoteRepository, error) {
 	switch provider {
 	case AWSStorageProvider:
 		return NewAWSRemoteRepository(setupCtx, dockerRemoteRepositoryURL)
+	case AzureStorageProvider:
+		return NewAzureRemoteRepository(setupCtx, dockerRemoteRepositoryURL)
 	case GCPStorageProvider:
 		return NewGCPRemoteRepository(setupCtx, dockerRemoteRepositoryURL)
 	case LocalStorageProvider:
