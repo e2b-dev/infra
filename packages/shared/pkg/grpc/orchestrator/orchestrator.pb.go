@@ -64,8 +64,7 @@ type SandboxConfig struct {
 	// orchestrator's sandbox list (mirrors auto_pause); the orchestrator itself
 	// does not act on it — the API evictor does.
 	AutoPauseFilesystemOnly bool `protobuf:"varint,25,opt,name=auto_pause_filesystem_only,json=autoPauseFilesystemOnly,proto3" json:"auto_pause_filesystem_only,omitempty"`
-	// Retention of sandbox events in days (team limit, from tier + addons).
-	// Pushed alongside each sandbox event; eviction is handled downstream.
+	// Retention of sandbox events in days
 	EventsTtlDays int64 `protobuf:"varint,26,opt,name=events_ttl_days,json=eventsTtlDays,proto3" json:"events_ttl_days,omitempty"`
 }
 

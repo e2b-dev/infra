@@ -37,8 +37,6 @@ LEFT JOIN LATERAL (
 
 -- +goose Down
 -- +goose StatementBegin
-
--- CREATE OR REPLACE VIEW cannot drop columns, so recreate the view
 DROP VIEW IF EXISTS "team_limits";
 
 CREATE VIEW "team_limits"
