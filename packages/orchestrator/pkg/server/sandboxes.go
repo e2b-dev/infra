@@ -531,6 +531,8 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 
 	sbxlogger.E(sbx).Info(ctx, "Killing sandbox", zap.String("kill_reason", killReason))
 
+	sbx.SetStopReason(sandbox.StopReasonKilled)
+
 	// Check health metrics before stopping the sandbox
 	sbx.Checks.Healthcheck(ctx, true)
 
@@ -593,6 +595,14 @@ func recordSandboxKill(ctx context.Context, counter metric.Int64Counter, killRea
 	counter.Add(ctx, 1, metric.WithAttributes(attribute.String("kill_reason", killReason)))
 }
 
+// recordExecutionDuration records the duration of a single sandbox execution
+func (s *Server) recordExecutionDuration(ctx context.Context, sbx *sandbox.Sandbox, stopReason sandbox.StopReason) {
+	startedAt := sbx.GetStartedAt()
+
+	s.sandboxExecutionDuration.Record(ctx, time.Since(startedAt).Milliseconds(),
+		metric.WithAttributes(attribute.String("stop_reason", string(stopReason))))
+}
+
 func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest) (*orchestrator.SandboxPauseResponse, error) {
 	ctx, childSpan := tracer.Start(ctx, "sandbox-pause")
 	defer childSpan.End()
@@ -636,6 +646,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	}
 
 	sbxlogger.E(sbx).Info(ctx, "Pausing sandbox")
+	sbx.SetStopReason(sandbox.StopReasonPaused)
 
 	// Stop the old sandbox in background after we're done
 	defer s.stopSandboxAsync(context.WithoutCancel(ctx), sbx)
@@ -751,6 +762,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 	defer s.stopSandboxAsync(context.WithoutCancel(ctx), sbx)
 
 	sbxlogger.E(sbx).Info(ctx, "Checkpointing sandbox")
+	sbx.SetStopReason(sandbox.StopReasonCheckpointing)
 
 	// Checkpoint always takes a full memory snapshot; filesystem-only checkpoint
 	// (resume-in-place would need to reboot) is not supported yet.
@@ -834,6 +846,11 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
+
+			// Orchestrator-initiated teardown: the snapshot upload failed so the
+			// resumed sandbox is unusable and we stop it ourselves. Record the
+			// reason so the lifecycle doesn't mislabel this as a crash.
+			resumedSbx.SetStopReason(sandbox.StopReasonKilled)
 
 			s.sandboxFactory.Sandboxes.MarkStopping(ctx, resumedSbx.Runtime.SandboxID, resumedSbx.LifecycleID)
 			s.stopSandboxAsync(context.WithoutCancel(ctx), resumedSbx)
@@ -1045,6 +1062,8 @@ func (s *Server) setupSandboxLifecycle(ctx context.Context, sbx *sandbox.Sandbox
 		if waitErr != nil {
 			sbxlogger.I(sbx).Error(ctx, "failed to wait for sandbox, cleaning up", zap.Error(waitErr))
 		}
+
+		s.recordExecutionDuration(ctx, sbx, sbx.GetStopReason(ctx))
 
 		cleanupErr := sbx.Close(ctx)
 		if cleanupErr != nil {
