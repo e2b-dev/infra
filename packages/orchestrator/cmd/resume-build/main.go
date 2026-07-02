@@ -83,8 +83,8 @@ func main() {
 	fphBenchDelay := flag.Duration("fph-bench-delay", 0, "wait this long between workload completion and pause (lets FPR settle)")
 
 	gdbDebug := flag.Bool("gdb", false, "resume under gdb: hold the guest at the kernel entry breakpoint with a gdb-enabled FC and hand over a ready gdb session for source-level guest-kernel debugging")
-	gdbFC := flag.String("gdb-fc", "", "path to a firecracker built --features gdb (default: fetch firecracker-debug by version; set E2B_GDB_ARTIFACTS_URL to override the source)")
-	gdbSymbols := flag.String("gdb-symbols", "", "path to the guest kernel's DWARF symbols, vmlinux.debug (default: fetch vmlinux.debug by version; set E2B_GDB_ARTIFACTS_URL to override the source)")
+	gdbFC := flag.String("gdb-fc", "", "path to a firecracker built --features gdb (default: firecracker-debug resolved next to the snapshot's firecracker)")
+	gdbSymbols := flag.String("gdb-symbols", "", "path to the guest kernel's DWARF symbols, vmlinux.debug (default: resolved next to the snapshot's vmlinux.bin)")
 	gdbSocket := flag.String("gdb-socket", "", "gdb unix socket path (default: a temp path)")
 	gdbExec := flag.String("gdb-exec", "", "scripted mode: run these gdb commands in batch (newline/';'-separated) instead of an interactive prompt")
 	gdbScript := flag.String("gdb-script", "", "scripted mode: run this gdb command file in batch")
@@ -356,6 +356,10 @@ type runner struct {
 	reboot     bool
 	config     cfg.BuilderConfig
 	storage    storage.StorageProvider
+	// gdbOrigVersionsDir preserves the original FirecrackerVersionsDir in gdb mode, where
+	// config.FirecrackerVersionsDir is redirected to a writable staging dir; the published
+	// firecracker-debug is resolved from this original (read-only) dir.
+	gdbOrigVersionsDir string
 }
 
 // startSandbox starts a sandbox from the build, either resuming from its memory
@@ -1196,6 +1200,27 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	cache.Start(ctx)
 	defer cache.Stop()
 
+	// In gdb mode the launch must run the gdb-enabled Firecracker, but the factory
+	// resolves the FC binary from FirecrackerVersionsDir, which on cluster nodes is a
+	// read-only gcsfuse mount. Redirect it to a writable temp dir (populated by gdbMode)
+	// before the factory captures the config; the original dir is preserved for resolving
+	// the published firecracker-debug. Only the FC dir is affected — the kernel dir stays.
+	//
+	// INVARIANT: this must run before anything resolves the FC binary from
+	// FirecrackerVersionsDir. Today only the factory (created just below) does; the
+	// template cache above does not. gdbMode also verifies the binary it is about to
+	// launch is gdb-enabled, as a backstop against this assumption drifting.
+	gdbOrigVersionsDir := ""
+	if gdbOpts.enabled {
+		gdbOrigVersionsDir = config.BuilderConfig.FirecrackerVersionsDir
+		stageDir, mkErr := os.MkdirTemp("", "fc-gdb-versions-")
+		if mkErr != nil {
+			return fmt.Errorf("gdb fc staging dir: %w", mkErr)
+		}
+		defer os.RemoveAll(stageDir)
+		config.BuilderConfig.FirecrackerVersionsDir = stageDir
+	}
+
 	if verbose {
 		fmt.Println("🔧 Creating sandbox factory...")
 	}
@@ -1245,6 +1270,8 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 		config:     config.BuilderConfig,
 		storage:    persistence,
 		sbxConfig:  sbxCfg,
+
+		gdbOrigVersionsDir: gdbOrigVersionsDir,
 	}
 
 	if gdbOpts.enabled {
