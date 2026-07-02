@@ -617,6 +617,7 @@ components:
         - maxVcpu
         - maxRamMb
         - diskMb
+        - eventsTtlDays
       properties:
         maxLengthHours:
           type: integer
@@ -634,6 +635,9 @@ components:
           type: integer
           format: int32
         diskMb:
+          type: integer
+          format: int32
+        eventsTtlDays:
           type: integer
           format: int32
 

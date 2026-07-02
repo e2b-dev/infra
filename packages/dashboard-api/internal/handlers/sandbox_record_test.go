@@ -128,11 +128,14 @@ func TestGetSandboxesSandboxIDRecordRetentionExpired(t *testing.T) {
 	testCases := []struct {
 		name             string
 		stoppedAt        *time.Time
+		limits           *authtypes.TeamLimits
 		retentionExpired bool
 	}{
 		{name: "ended more than retention ago", stoppedAt: &stoppedLongAgo, retentionExpired: true},
 		{name: "ended within retention", stoppedAt: &stoppedRecently, retentionExpired: false},
 		{name: "still running", stoppedAt: nil, retentionExpired: false},
+		{name: "extended team retention keeps record", stoppedAt: &stoppedLongAgo, limits: &authtypes.TeamLimits{EventsTTLDays: 30}, retentionExpired: false},
+		{name: "team retention from limits expires record", stoppedAt: &stoppedLongAgo, limits: &authtypes.TeamLimits{EventsTTLDays: 7}, retentionExpired: true},
 	}
 
 	for _, tc := range testCases {
@@ -147,6 +150,7 @@ func TestGetSandboxesSandboxIDRecordRetentionExpired(t *testing.T) {
 				Team: &authqueries.Team{
 					ID: uuid.New(),
 				},
+				Limits: tc.limits,
 			})
 
 			store := &APIStore{
