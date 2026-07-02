@@ -1563,6 +1563,9 @@ type GetSandboxesSandboxIDMetricsParams struct {
 type GetSnapshotsParams struct {
 	SandboxID *string `form:"sandboxID,omitempty" json:"sandboxID,omitempty"`
 
+	// Name Filter snapshots by name or ID, optionally tag-qualified (e.g. "my-snapshot", "my-team/my-snapshot" or "my-snapshot:v1").
+	Name *string `form:"name,omitempty" json:"name,omitempty"`
+
 	// Limit Maximum number of items to return per page
 	Limit *PaginationLimit `form:"limit,omitempty" json:"limit,omitempty"`
 
@@ -4400,6 +4403,18 @@ func NewGetSnapshotsRequest(server string, params *GetSnapshotsParams) (*http.Re
 		if params.SandboxID != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "sandboxID", *params.SandboxID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Name != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "name", *params.Name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {

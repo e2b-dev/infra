@@ -10,7 +10,7 @@ endif
 
 # E2B-hosted registry that holds released, prebuilt reverse-proxy images.
 # Published to by the release-please workflow on tagging a release.
-E2B_ARTIFACTS_REGISTRY ?= us-docker.pkg.dev/e2b-artifacts/reverse-proxy/docker-reverse-proxy
+E2B_ARTIFACTS_REGISTRY ?= us-docker.pkg.dev/e2b-artifacts/docker-reverse-proxy/docker-reverse-proxy
 
 # Optional version "hook" for the released-image flow.
 # When empty (default), build-and-upload builds from source and pushes to the
