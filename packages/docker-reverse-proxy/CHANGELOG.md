@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/e2b-dev/infra/compare/docker-reverse-proxy-v0.2.0...docker-reverse-proxy-v0.2.1) (2026-07-02)
+
+
+### Bug Fixes
+
+* forgot to add docker- to the docker repository ([#3186](https://github.com/e2b-dev/infra/issues/3186)) ([b04225b](https://github.com/e2b-dev/infra/commit/b04225ba2e89881029ef8ddc9d2d168d250ae90b))
+
 ## [0.2.0](https://github.com/e2b-dev/infra/compare/docker-reverse-proxy-v0.1.0...docker-reverse-proxy-v0.2.0) (2026-07-02)
 
 
