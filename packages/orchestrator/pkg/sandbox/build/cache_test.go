@@ -508,6 +508,59 @@ func TestDiffStoreResetDeleteRace(t *testing.T) {
 	time.Sleep(delay * 2)
 }
 
+func TestEvictionThreshold(t *testing.T) {
+	t.Parallel()
+
+	t.Run("no services falls back", func(t *testing.T) {
+		t.Parallel()
+
+		flags := flagsWithMaxBuildCachePercentage(t, 95)
+
+		got := evictionThreshold(t.Context(), flags, nil)
+		assert.Equal(t, featureflags.BuildCacheMaxUsagePercentage.Fallback(), got)
+	})
+
+	t.Run("flag can raise threshold above fallback", func(t *testing.T) {
+		t.Parallel()
+
+		flags := flagsWithMaxBuildCachePercentage(t, 95)
+
+		got := evictionThreshold(t.Context(), flags, cfg.Services{cfg.Orchestrator})
+		assert.Equal(t, 95, got)
+	})
+
+	t.Run("flag can lower threshold below fallback", func(t *testing.T) {
+		t.Parallel()
+
+		flags := flagsWithMaxBuildCachePercentage(t, 10)
+
+		got := evictionThreshold(t.Context(), flags, cfg.Services{cfg.Orchestrator})
+		assert.Equal(t, 10, got)
+	})
+
+	t.Run("lowest service threshold wins", func(t *testing.T) {
+		t.Parallel()
+
+		datastore := ldtestdata.DataSource()
+		datastore.Update(
+			datastore.Flag(featureflags.BuildCacheMaxUsagePercentage.String()).
+				Variations(ldvalue.Int(95), ldvalue.Int(40)).
+				VariationIndexForKey(featureflags.ServiceKind, string(cfg.Orchestrator), 0).
+				VariationIndexForKey(featureflags.ServiceKind, string(cfg.TemplateManager), 1).
+				FallthroughVariationIndex(0),
+		)
+
+		flags, err := featureflags.NewClientWithDatasource(datastore)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			assert.NoError(t, flags.Close(t.Context()))
+		})
+
+		got := evictionThreshold(t.Context(), flags, cfg.Services{cfg.Orchestrator, cfg.TemplateManager})
+		assert.Equal(t, 40, got)
+	})
+}
+
 func flagsWithMaxBuildCachePercentage(tb testing.TB, maxBuildCachePercentage int) *featureflags.Client {
 	tb.Helper()
 
