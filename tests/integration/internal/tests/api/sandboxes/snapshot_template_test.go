@@ -197,6 +197,30 @@ func TestSnapshotTemplateList(t *testing.T) {
 		assert.Equal(t, snapshot.SnapshotID, snapshots[0].SnapshotID)
 	})
 
+	t.Run("list snapshots filtered by older tag shows that tag", func(t *testing.T) {
+		t.Parallel()
+		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
+
+		base := "list-by-tag-" + sbx.SandboxID
+		nameV1 := base + ":v1"
+		snapV1 := createSnapshotTemplateWithCleanup(t, c, sbx.SandboxID, &nameV1)
+
+		nameV2 := base + ":v2"
+		resp2 := createSnapshotTemplate(t, c, sbx.SandboxID, &nameV2)
+		require.Equal(t, http.StatusCreated, resp2.StatusCode())
+		require.NotNil(t, resp2.JSON201)
+
+		// Filtering by the older tag must match and show that tag, not the newest
+		listResp, err := c.GetSnapshotsWithResponse(t.Context(), &api.GetSnapshotsParams{
+			Name: &nameV1,
+		}, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, listResp.StatusCode())
+		require.NotNil(t, listResp.JSON200)
+		require.Len(t, *listResp.JSON200, 1)
+		assert.Equal(t, snapV1.SnapshotID, (*listResp.JSON200)[0].SnapshotID)
+	})
+
 	t.Run("list unnamed snapshot filtered by its ID", func(t *testing.T) {
 		t.Parallel()
 		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
