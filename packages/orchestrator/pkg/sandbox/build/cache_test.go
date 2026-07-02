@@ -279,6 +279,37 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) { //nolint:paralleltest // ve
 	assert.True(t, found)
 }
 
+// A pinned entry must be skipped by disk-pressure eviction (the next-oldest is
+// chosen instead), and become eligible again once unpinned.
+func TestDiffStorePinnedSkippedByEviction(t *testing.T) {
+	t.Parallel()
+	cachePath := t.TempDir()
+
+	c, err := cfg.Parse()
+	require.NoError(t, err)
+	flags := flagsWithMaxBuildCachePercentage(t, 100)
+	store, err := NewDiffStore(c, flags, cachePath, 60*time.Second, 4*time.Second)
+	require.NoError(t, err)
+
+	oldest := newRootFSDiff(t, cachePath, "pin-oldest")
+	store.Add(oldest)
+	newer := newRootFSDiff(t, cachePath, "pin-newer")
+	store.Add(newer)
+
+	// Pin the oldest → eviction skips it and schedules the next-oldest.
+	store.Pin(oldest.CacheKey())
+	_, err = store.deleteOldestFromCache(t.Context())
+	require.NoError(t, err)
+	assert.False(t, store.isBeingDeleted(oldest.CacheKey()))
+	assert.True(t, store.isBeingDeleted(newer.CacheKey()))
+
+	// Unpin → the oldest is eligible again.
+	store.Unpin(oldest.CacheKey())
+	_, err = store.deleteOldestFromCache(t.Context())
+	require.NoError(t, err)
+	assert.True(t, store.isBeingDeleted(oldest.CacheKey()))
+}
+
 func TestDiffStoreOldestFromCache(t *testing.T) {
 	t.Parallel()
 	cachePath := t.TempDir()
