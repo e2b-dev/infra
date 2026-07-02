@@ -133,7 +133,7 @@ func NewMetrics(meter metric.Meter) (*Metrics, error) {
 		{&m.ScanChunks, "nfsclean.scan.chunks", "Chunk count of each live build (drives sample size and size estimate)", "{chunk}"},
 		{&m.ScanReadEntries, "nfsclean.scan.read.entries", "Entries returned per readdir page — the size of the directory as read (root build dirs, or a data dir's chunks); sum is total entries enumerated, count is read pages", "{file}"},
 		{&m.DeleteSize, "nfsclean.delete.size", "On-disk size of each deleted build — the size distribution of deletions", "By"},
-		{&m.DeleteAge, "nfsclean.delete.age", "Warmest-sample age of each cold-deleted build — high percentiles are the oldest/coldest; query histogram_quantile(0.01,…) for the youngest (worst) deletion", "s"},
+		{&m.DeleteAge, "nfsclean.delete.age", "Warmest-sample age of each cold-deleted build with chunks — high percentiles are the oldest/coldest; query histogram_quantile(0.01,…) for the youngest (worst) deletion. Chunkless zombies are excluded (no sampled atime), so they don't pin this at the epoch-0 sentinel.", "s"},
 		{&m.DeleteVerifySize, "nfsclean.delete.verify.size", "FF-gated size-estimate error: a build's actual statted non-chunk bytes (headers/snapfile/metadata) minus the flat otherFilesBytes estimate. Chunk sizes are exact from filenames, so they're not statted; this is the only uncertain part. ≈0 means the estimate is good; large negative means we over-charge.", "By"},
 		{&m.DeleteVerifyAge, "nfsclean.delete.verify.age", "FF-gated coldness-sample error: the scan's sampled warmest age minus the true warmest age from a full stat of every chunk. ≥0 means the sample overestimated coldness (missed a warmer chunk); large values flag churn risk (we may delete builds that were recently touched).", "s"},
 	}
@@ -233,7 +233,13 @@ func (m *Metrics) recordDelete(ctx context.Context, d time.Duration, size uint64
 	m.DeleteBytes.Add(ctx, int64(size))
 	m.DeleteCount.Add(ctx, 1)
 	m.DeleteSize.Record(ctx, int64(size))
-	m.DeleteAge.Record(ctx, ageSeconds(warmest))
+	// A chunkless "zombie" build never had a sampled atime — warmest stays at the
+	// epoch-0 sentinel, so ageSeconds(0) would pin delete_age at a bogus ~56-year
+	// value. Skip the age for it (it still counts in delete/size/bytes). Real builds
+	// always have a positive warmest atime.
+	if warmest > 0 {
+		m.DeleteAge.Record(ctx, ageSeconds(warmest))
+	}
 }
 
 // recordVerified records the verify deltas: the non-chunk size estimate error
