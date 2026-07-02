@@ -420,7 +420,7 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 
 	maxConcurrency := gcloudDefaultUploadConcurrency
 	if o.limiter != nil {
-		uploadLimiter := o.limiter.GCloudUploadLimiter()
+		uploadLimiter := o.limiter.StorageUploadLimiter()
 		if uploadLimiter != nil {
 			semaphoreErr := uploadLimiter.Acquire(ctx, 1)
 			if semaphoreErr != nil {
@@ -431,7 +431,7 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 			defer uploadLimiter.Release(1)
 		}
 
-		maxConcurrency = o.limiter.GCloudMaxTasks(ctx)
+		maxConcurrency = o.limiter.StorageMaxUploadTasks(ctx)
 	}
 
 	// Compressed uploads always go through the multipart compressed path,
