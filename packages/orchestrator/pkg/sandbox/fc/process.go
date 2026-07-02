@@ -193,15 +193,17 @@ func NewProcess(
 	}
 
 	cmd := exec.CommandContext(execCtx,
-		"unshare",
-		"-m",
-		"--",
 		"bash",
 		"-c",
 		startScript.Value,
 	)
 
-	p := &Process{
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setsid:       true,                // Create a new session
+		Unshareflags: syscall.CLONE_NEWNS, // Create a new mount namespace with MS_REC|MS_PRIVATE propagation (replaces external unshare -m)
+	}
+
+	return &Process{
 		Versions:              versions,
 		Exit:                  utils.NewErrorOnce(),
 		cmd:                   cmd,
@@ -215,13 +217,7 @@ func NewProcess(
 
 		kernelPath: startScript.KernelPath,
 		rootfsPath: startScript.RootfsPath,
-	}
-
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setsid: true, // Create a new session
-	}
-
-	return p, nil
+	}, nil
 }
 
 func (p *Process) configure(
