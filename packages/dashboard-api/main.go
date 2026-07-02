@@ -28,9 +28,9 @@ import (
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/handlers"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/identity"
 	dashboardmiddleware "github.com/e2b-dev/infra/packages/dashboard-api/internal/middleware"
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
-	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
@@ -210,7 +210,7 @@ func run() int {
 		return 1
 	}
 
-	userProfiles, err := userprofile.NewOryProvider(userprofile.OryConfig{
+	idp, err := identity.NewOryProvider(identity.OryConfig{
 		HTTPClient: authClient,
 		SDKURL:     config.OrySDKURL,
 		Token:      config.OryProjectAPIToken,
@@ -223,7 +223,7 @@ func run() int {
 		return 1
 	}
 
-	apiStore := handlers.NewAPIStore(config, db, authDB, clickhouseClient, authService, teamProvisionSink, userProfiles)
+	apiStore := handlers.NewAPIStore(config, db, authDB, clickhouseClient, authService, teamProvisionSink, idp)
 
 	swagger, err := api.GetSwagger()
 	if err != nil {

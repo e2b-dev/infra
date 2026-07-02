@@ -12,8 +12,9 @@ import (
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/identity"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/provisioning"
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
-	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
@@ -22,13 +23,13 @@ import (
 var _ api.ServerInterface = (*APIStore)(nil)
 
 type APIStore struct {
-	config            cfg.Config
-	db                *sqlcdb.Client
-	authDB            *authdb.Client
-	clickhouse        clickhouse.Clickhouse
-	authService       sharedauth.Service
-	teamProvisionSink internalteamprovision.TeamProvisionSink
-	userProfiles      userprofile.Provider
+	config       cfg.Config
+	db           *sqlcdb.Client
+	authDB       *authdb.Client
+	clickhouse   clickhouse.Clickhouse
+	authService  sharedauth.Service
+	idp          identity.Provider
+	provisioning *provisioning.Service
 }
 
 func NewAPIStore(
@@ -38,16 +39,16 @@ func NewAPIStore(
 	ch clickhouse.Clickhouse,
 	authService sharedauth.Service,
 	teamProvisionSink internalteamprovision.TeamProvisionSink,
-	userProfiles userprofile.Provider,
+	idp identity.Provider,
 ) *APIStore {
 	return &APIStore{
-		config:            config,
-		db:                db,
-		authDB:            authDB,
-		clickhouse:        ch,
-		authService:       authService,
-		teamProvisionSink: teamProvisionSink,
-		userProfiles:      userProfiles,
+		config:       config,
+		db:           db,
+		authDB:       authDB,
+		clickhouse:   ch,
+		authService:  authService,
+		idp:          idp,
+		provisioning: provisioning.New(authDB, idp, teamProvisionSink, config.OryIssuerURL),
 	}
 }
 
