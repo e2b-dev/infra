@@ -208,32 +208,38 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 func userAgentToTemplateVersion(ctx context.Context, logger logger.Logger, userAgent string) (string, error) {
 	version := templates.TemplateV2LatestVersion
 
-	switch {
-	case strings.HasPrefix(userAgent, jsSDKPrefix):
-		sdk := strings.TrimPrefix(userAgent, jsSDKPrefix)
+	for agent := range strings.FieldsSeq(userAgent) {
+		switch {
+		case strings.HasPrefix(agent, jsSDKPrefix):
+			sdk := strings.TrimPrefix(agent, jsSDKPrefix)
 
-		// Check if the SDK version supports the latest template version
-		ok, err := utils.IsGTEVersion(sdk, templates.SDKTemplateReleaseVersion)
-		if err != nil {
-			return "", fmt.Errorf("parsing JS SDK version: %w", err)
-		}
-		if !ok {
-			version = templates.TemplateV2BetaVersion
-		}
-	case strings.HasPrefix(userAgent, pythonSDKPrefix):
-		sdk := strings.TrimPrefix(userAgent, pythonSDKPrefix)
+			// Check if the SDK version supports the latest template version
+			ok, err := utils.IsGTEVersion(sdk, templates.SDKTemplateReleaseVersion)
+			if err != nil {
+				return "", fmt.Errorf("parsing JS SDK version: %w", err)
+			}
+			if !ok {
+				version = templates.TemplateV2BetaVersion
+			}
 
-		// Check if the SDK version supports the latest template version
-		ok, err := utils.IsGTEVersion(sdk, templates.SDKTemplateReleaseVersion)
-		if err != nil {
-			return "", fmt.Errorf("parsing Python SDK version: %w", err)
+			return version, nil
+		case strings.HasPrefix(agent, pythonSDKPrefix):
+			sdk := strings.TrimPrefix(agent, pythonSDKPrefix)
+
+			// Check if the SDK version supports the latest template version
+			ok, err := utils.IsGTEVersion(sdk, templates.SDKTemplateReleaseVersion)
+			if err != nil {
+				return "", fmt.Errorf("parsing Python SDK version: %w", err)
+			}
+			if !ok {
+				version = templates.TemplateV2BetaVersion
+			}
+
+			return version, nil
 		}
-		if !ok {
-			version = templates.TemplateV2BetaVersion
-		}
-	default:
-		logger.Debug(ctx, "Unrecognized user agent, defaulting to the latest template version", zap.String("user_agent", userAgent), zap.String("version", version))
 	}
+
+	logger.Debug(ctx, "Unrecognized user agent, defaulting to the latest template version", zap.String("user_agent", userAgent), zap.String("version", version))
 
 	return version, nil
 }
