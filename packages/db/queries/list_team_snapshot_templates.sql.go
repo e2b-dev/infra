@@ -47,17 +47,25 @@ LEFT JOIN LATERAL (
 WHERE e.team_id = $1
 AND e.source = 'snapshot_template'
 AND (
-    $2::text IS NULL 
+    $2::text IS NULL
     OR st.sandbox_id = $2::text
 )
-AND (e.created_at, e.id) < ($3, $4::text)
+AND (
+    $3::text IS NULL
+    OR EXISTS (
+        SELECT 1 FROM "public"."env_aliases" af
+        WHERE af.env_id = e.id AND af.alias = $3::text
+    )
+)
+AND (e.created_at, e.id) < ($4, $5::text)
 ORDER BY e.created_at DESC, e.id DESC
-LIMIT $5
+LIMIT $6
 `
 
 type ListTeamSnapshotTemplatesParams struct {
 	TeamID     uuid.UUID
 	SandboxID  *string
+	Alias      *string
 	CursorTime time.Time
 	CursorID   string
 	PageLimit  int32
@@ -86,6 +94,7 @@ func (q *Queries) ListTeamSnapshotTemplates(ctx context.Context, arg ListTeamSna
 	rows, err := q.db.Query(ctx, listTeamSnapshotTemplates,
 		arg.TeamID,
 		arg.SandboxID,
+		arg.Alias,
 		arg.CursorTime,
 		arg.CursorID,
 		arg.PageLimit,

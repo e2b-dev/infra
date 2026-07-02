@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -25,7 +26,8 @@ const (
 func (a *APIStore) GetSnapshots(c *gin.Context, params api.GetSnapshotsParams) {
 	ctx := c.Request.Context()
 
-	teamID := auth.MustGetTeamID(c)
+	teamInfo := auth.MustGetTeamInfo(c)
+	teamID := teamInfo.Team.ID
 
 	span := trace.SpanFromContext(ctx)
 	traceID := span.SpanContext().TraceID().String()
@@ -64,9 +66,29 @@ func (a *APIStore) GetSnapshots(c *gin.Context, params api.GetSnapshotsParams) {
 		sandboxIDFilter = &short
 	}
 
+	var aliasFilter *string
+	if params.Name != nil {
+		identifier, _, err := id.ParseName(*params.Name)
+		if err != nil {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid name: %s", err))
+
+			return
+		}
+
+		if err := id.ValidateNamespaceMatchesTeam(identifier, teamInfo.Slug); err != nil {
+			a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
+
+			return
+		}
+
+		alias := id.ExtractAlias(identifier)
+		aliasFilter = &alias
+	}
+
 	snapshots, err := a.sqlcDB.ListTeamSnapshotTemplates(ctx, queries.ListTeamSnapshotTemplatesParams{
 		TeamID:     teamID,
 		SandboxID:  sandboxIDFilter,
+		Alias:      aliasFilter,
 		CursorTime: pagination.CursorTime(),
 		CursorID:   pagination.CursorID(),
 		PageLimit:  pagination.QueryLimit(),

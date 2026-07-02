@@ -35,8 +35,15 @@ LEFT JOIN LATERAL (
 WHERE e.team_id = @team_id
 AND e.source = 'snapshot_template'
 AND (
-    sqlc.narg(sandbox_id)::text IS NULL 
+    sqlc.narg(sandbox_id)::text IS NULL
     OR st.sandbox_id = sqlc.narg(sandbox_id)::text
+)
+AND (
+    sqlc.narg(alias)::text IS NULL
+    OR EXISTS (
+        SELECT 1 FROM "public"."env_aliases" af
+        WHERE af.env_id = e.id AND af.alias = sqlc.narg(alias)::text
+    )
 )
 AND (e.created_at, e.id) < (@cursor_time, @cursor_id::text)
 ORDER BY e.created_at DESC, e.id DESC
