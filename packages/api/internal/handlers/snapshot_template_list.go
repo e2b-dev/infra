@@ -67,6 +67,11 @@ func (a *APIStore) GetSnapshots(c *gin.Context, params api.GetSnapshotsParams) {
 	}
 
 	var aliasFilter *string
+	// Namespace matching mirrors alias resolution (see AliasCache.Resolve): a bare
+	// alias matches the team namespace and falls back to promoted (NULL) aliases,
+	// while an explicit "team/alias" matches only the team namespace.
+	aliasNamespace := teamInfo.Slug
+	matchNullNamespace := false
 	if params.Name != nil {
 		identifier, _, err := id.ParseName(*params.Name)
 		if err != nil {
@@ -81,17 +86,20 @@ func (a *APIStore) GetSnapshots(c *gin.Context, params api.GetSnapshotsParams) {
 			return
 		}
 
-		alias := id.ExtractAlias(identifier)
+		namespace, alias := id.SplitIdentifier(identifier)
 		aliasFilter = &alias
+		matchNullNamespace = namespace == nil
 	}
 
 	snapshots, err := a.sqlcDB.ListTeamSnapshotTemplates(ctx, queries.ListTeamSnapshotTemplatesParams{
-		TeamID:     teamID,
-		SandboxID:  sandboxIDFilter,
-		Alias:      aliasFilter,
-		CursorTime: pagination.CursorTime(),
-		CursorID:   pagination.CursorID(),
-		PageLimit:  pagination.QueryLimit(),
+		TeamID:             teamID,
+		SandboxID:          sandboxIDFilter,
+		Alias:              aliasFilter,
+		AliasNamespace:     aliasNamespace,
+		MatchNullNamespace: matchNullNamespace,
+		CursorTime:         pagination.CursorTime(),
+		CursorID:           pagination.CursorID(),
+		PageLimit:          pagination.QueryLimit(),
 	})
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "Error listing snapshot templates", err, telemetry.WithTeamID(teamID.String()))
