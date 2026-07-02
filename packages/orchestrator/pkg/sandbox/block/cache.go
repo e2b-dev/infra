@@ -398,7 +398,7 @@ func (c *Cache) Close() (e error) {
 		e = errors.Join(e, fmt.Errorf("error unmapping mmap: %w", err))
 	}
 
-	// TODO: Move to to the scope of the caller
+	// TODO: Move to the scope of the caller
 	e = errors.Join(e, os.RemoveAll(c.filePath))
 
 	return e
