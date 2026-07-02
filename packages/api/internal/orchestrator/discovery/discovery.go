@@ -3,9 +3,9 @@
 //
 // The Discovery interface has two implementations:
 //
-//   - NomadDiscovery: queries the local Nomad agent's HTTP /v1/nodes endpoint.
-//     Used by the original Nomad-based deploy where every Nomad client node
-//     also runs an orchestrator process.
+//   - NomadDiscovery: lists registrations of the orchestrator's Nomad-native
+//     service via the local Nomad agent's HTTP /v1/service/<name> endpoint.
+//     Used by the Nomad-based deploy; node-pool- and job-agnostic.
 //
 //   - KubernetesDiscovery: lists pods of the orchestrator DaemonSet via the
 //     in-cluster K8s API. Used by the K8s deploy.
