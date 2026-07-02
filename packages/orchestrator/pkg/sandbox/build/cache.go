@@ -5,6 +5,7 @@ package build
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"sync"
 	"time"
@@ -222,15 +223,7 @@ func (s *DiffStore) startDiskSpaceEviction(
 			used := int64(dUsed) - pUsed
 			percentage := float64(used) / float64(dTotal) * 100
 
-			threshold := featureflags.BuildCacheMaxUsagePercentage.Fallback()
-			// When multiple services (template manager, orchestrator) are defined, take the lowest threshold
-			// to ensure we don't exceed any of the set limits
-			for _, s := range services {
-				st := flags.IntFlag(ctx, featureflags.BuildCacheMaxUsagePercentage, featureflags.ServiceContext(string(s)))
-				if st < threshold {
-					threshold = st
-				}
-			}
+			threshold := evictionThreshold(ctx, flags, services)
 
 			if percentage <= float64(threshold) {
 				timer.Reset(getDelay(false))
@@ -250,6 +243,28 @@ func (s *DiffStore) startDiskSpaceEviction(
 			timer.Reset(getDelay(succ))
 		}
 	}
+}
+
+// evictionThreshold returns the maximum allowed disk usage percentage for the
+// build cache. When multiple services (template manager, orchestrator) are
+// defined, the lowest of their configured thresholds wins to ensure none of
+// the set limits is exceeded. Flag evaluation already falls back per service
+// inside IntFlag, so the flag fallback is only used directly when no services
+// are configured; a flag value above the fallback is honored.
+func evictionThreshold(ctx context.Context, flags *featureflags.Client, services cfg.Services) int {
+	if len(services) == 0 {
+		return featureflags.BuildCacheMaxUsagePercentage.Fallback()
+	}
+
+	threshold := math.MaxInt
+	for _, svc := range services {
+		st := flags.IntFlag(ctx, featureflags.BuildCacheMaxUsagePercentage, featureflags.ServiceContext(string(svc)))
+		if st < threshold {
+			threshold = st
+		}
+	}
+
+	return threshold
 }
 
 func (s *DiffStore) getPendingDeletesSize() int64 {

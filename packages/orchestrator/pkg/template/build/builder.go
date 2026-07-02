@@ -190,7 +190,7 @@ func (b *Builder) Build(ctx context.Context, paths storage.Paths, cfg config.Tem
 			e = errors.Join(e, ctx.Err())
 		}
 
-		e = builderrors.WrapContextAsUserError(e)
+		e = builderrors.WrapContextAsUserError(ctx, e)
 		if e != nil {
 			childSpan.RecordError(e, trace.WithAttributes(
 				telemetry.WithTemplateID(cfg.TemplateID),
