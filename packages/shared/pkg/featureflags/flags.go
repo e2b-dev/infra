@@ -115,14 +115,10 @@ func OverrideJSONFlag(flag JSONFlag, value ldvalue.Value) {
 }
 
 var (
-	MetricsWriteFlag                    = NewBoolFlag("sandbox-metrics-write", true)
-	MetricsReadFlag                     = NewBoolFlag("sandbox-metrics-read", true)
 	SnapshotFeatureFlag                 = NewBoolFlag("use-nfs-for-snapshots", env.IsDevelopment())
 	TemplateFeatureFlag                 = NewBoolFlag("use-nfs-for-templates", env.IsDevelopment())
 	EnableWriteThroughCacheFlag         = NewBoolFlag("write-to-cache-on-writes", false)
 	UseNFSCacheForBuildingTemplatesFlag = NewBoolFlag("use-nfs-for-building-templates", env.IsDevelopment())
-	BestOfKCanFitFlag                   = NewBoolFlag("best-of-k-can-fit", true)
-	BestOfKTooManyStartingFlag          = NewBoolFlag("best-of-k-too-many-starting", false)
 	CreateStorageCacheSpansFlag         = NewBoolFlag("create-storage-cache-spans", env.IsDevelopment())
 	OrchAcceptsCombinedHostFlag         = NewBoolFlag("orch-accepts-combined-host", false)
 
@@ -276,7 +272,6 @@ var (
 	BestOfKAlpha                  = NewIntFlag("best-of-k-alpha", 50)                                // Default Alpha=0.5 (stored as percentage for int flag, current usage weight)
 	EnvdInitTimeoutMilliseconds   = NewIntFlag("envd-init-request-timeout-milliseconds", 50)         // Timeout for envd init request in milliseconds
 	EnvdTimeoutMilliseconds       = NewIntFlag("envd-timeout-milliseconds", envdTimeoutFallbackMs()) // Timeout for waiting for envd on resume; falls back to ENVD_TIMEOUT env var (default 10s)
-	HostStatsSamplingInterval     = NewIntFlag("host-stats-sampling-interval", 5000)                 // Host stats sampling interval in milliseconds (default 5s)
 	// GuestSyncTimeoutMs overrides the mandatory pre-pause guest-sync deadline
 	// for filesystem-only snapshots, in milliseconds. 0 (default) derives the
 	// timeout from guest RAM; a positive value pins it.

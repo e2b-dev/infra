@@ -95,6 +95,12 @@ func (s *Server) ServiceInfo(ctx context.Context, _ *emptypb.Empty) (*orchestrat
 		MetricCpuCount:         cpuMetrics.Count,
 		MetricMemoryTotalBytes: memoryMetrics.TotalBytes,
 
+		// Hugepage pool metrics (page counts)
+		MetricHugepagesTotal:    memoryMetrics.HugePagesTotal,
+		MetricHugepagesUsed:     memoryMetrics.HugePagesUsed,
+		MetricHugepagesReserved: memoryMetrics.HugePagesReserved,
+		MetricHugepageSizeBytes: memoryMetrics.HugePageSizeBytes,
+
 		// Detailed disk metrics
 		MetricDisks: convertDiskMetrics(diskMetrics),
 

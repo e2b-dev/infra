@@ -20,6 +20,7 @@ jobs:
       pull-requests: read
     outputs:
       changed-scopes: ${{ steps.changed-paths.outputs.changes }}
+      docs-only: ${{ steps.docs-only.outputs.docs_only }}
     steps:
       - id: changed-paths
         name: Detect CI-relevant changes
@@ -92,11 +93,34 @@ jobs:
               - '.github/**'
               - '.tool-versions'
 
+      # dorny/paths-filter can't express "packages but not CHANGELOG" (it OR's
+      # patterns; a '!' pattern would match every non-CHANGELOG file). So detect
+      # docs-only changes (release-please PRs) separately and gate on it below.
+      - name: Checkout for docs-only detection
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - id: docs-only
+        name: Detect docs-only (CHANGELOG / release-please) changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          changed=$(git diff --name-only "${BASE_SHA}...HEAD")
+          # docs_only=true when every changed file is a CHANGELOG.md or the
+          # release-please manifest, i.e. a release PR that shouldn't run CI.
+          if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -qvE '(^|/)CHANGELOG\.md$|^\.release-please-manifest\.json$'; then
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          fi
+
   lint:
     needs: [detect-changes]
     uses: ./.github/workflows/lint.yml
     with:
-      run-lint: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'lint-inputs') }}
+      run-lint: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'lint-inputs') && needs.detect-changes.outputs.docs-only != 'true' }}
   validate-openapi:
     needs: [detect-changes]
     uses: ./.github/workflows/validate-openapi.yml
@@ -106,7 +130,7 @@ jobs:
     needs: [detect-changes]
     uses: ./.github/workflows/pr-no-generated-changes.yml
     with:
-      run-check: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'generated-inputs') }}
+      run-check: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'generated-inputs') && needs.detect-changes.outputs.docs-only != 'true' }}
       # Only auto-commit for same-repo PRs (secrets aren't available for forks)
       commit: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
     secrets:
@@ -118,7 +142,7 @@ jobs:
     needs: [detect-changes]
     uses: ./.github/workflows/pr-tests.yml
     with:
-      run-tests: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') }}
+      run-tests: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') && needs.detect-changes.outputs.docs-only != 'true' }}
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
   terraform-validation:
@@ -130,7 +154,7 @@ jobs:
     needs: [detect-changes]
     uses: ./.github/workflows/pr-tests-arm64.yml
     with:
-      run-tests: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') }}
+      run-tests: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') && needs.detect-changes.outputs.docs-only != 'true' }}
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
   integration-tests:
@@ -139,7 +163,7 @@ jobs:
     with:
       # Only publish the results for same-repo PRs
       publish: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
-      run-tests: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'integration-inputs') }}
+      run-tests: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'integration-inputs') && needs.detect-changes.outputs.docs-only != 'true' }}
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
   publish-test-results:
@@ -157,11 +181,11 @@ jobs:
 
     steps:
       - name: Skip publishing when tests did not run
-        if: ${{ !contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') && !contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'integration-inputs') }}
+        if: ${{ (!contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') && !contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'integration-inputs')) || needs.detect-changes.outputs.docs-only == 'true' }}
         run: echo "test result publishing skipped because test inputs did not change"
 
       - name: Download Artifacts
-        if: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') || contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'integration-inputs') }}
+        if: ${{ (contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') || contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'integration-inputs')) && needs.detect-changes.outputs.docs-only != 'true' }}
         uses: actions/download-artifact@v7
         with:
           path: artifacts
@@ -170,7 +194,7 @@ jobs:
           pattern: "!*.dockerbuild"
 
       - name: Publish Test Results
-        if: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') || contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'integration-inputs') }}
+        if: ${{ (contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') || contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'integration-inputs')) && needs.detect-changes.outputs.docs-only != 'true' }}
         uses: EnricoMi/publish-unit-test-result-action@v2
         with:
           comment_mode: off
