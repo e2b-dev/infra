@@ -156,6 +156,26 @@ func (s *awsStorage) OpenBlob(_ context.Context, path string) (Blob, error) {
 	}, nil
 }
 
+// mapAWSError translates well-known AWS S3 errors into storage-layer sentinels.
+func mapAWSError(err error, path string) error {
+	if err == nil {
+		return nil
+	}
+
+	var nsk *types.NoSuchKey
+	var nfd *types.NotFound
+	var ios *types.InvalidObjectState
+
+	switch {
+	case errors.As(err, &nsk), errors.As(err, &nfd):
+		return fmt.Errorf("%q: %w", path, ErrObjectNotExist)
+	case errors.As(err, &ios):
+		return fmt.Errorf("%q: %w", path, ErrObjectArchived)
+	default:
+		return err
+	}
+}
+
 func (o *awsObject) WriteTo(ctx context.Context, dst io.Writer) (n int64, err error) {
 	start := time.Now()
 	defer func() { RecordReadBlob(ctx, time.Since(start), n, o.path, SourceAWS, err) }()
@@ -165,12 +185,7 @@ func (o *awsObject) WriteTo(ctx context.Context, dst io.Writer) (n int64, err er
 
 	resp, err := o.client.GetObject(ctx, &s3.GetObjectInput{Bucket: &o.bucketName, Key: &o.path})
 	if err != nil {
-		var nsk *types.NoSuchKey
-		if errors.As(err, &nsk) {
-			return 0, ErrObjectNotExist
-		}
-
-		return 0, err
+		return 0, mapAWSError(err, o.path)
 	}
 
 	defer resp.Body.Close()
@@ -274,12 +289,7 @@ func (o *awsObject) OpenRangeReader(ctx context.Context, off, length int64, fram
 		Range:  readRange,
 	})
 	if err != nil {
-		var nsk *types.NoSuchKey
-		if errors.As(err, &nsk) {
-			return nil, SourceAWS, ErrObjectNotExist
-		}
-
-		return nil, SourceAWS, fmt.Errorf("failed to create S3 range reader for %q: %w", o.path, err)
+		return nil, SourceAWS, mapAWSError(err, o.path)
 	}
 
 	return NewRangeReader(resp.Body), SourceAWS, nil
@@ -295,13 +305,7 @@ func (o *awsObject) Size(ctx context.Context) (_ int64, err error) {
 
 	resp, err := o.client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: &o.bucketName, Key: &o.path})
 	if err != nil {
-		var nsk *types.NoSuchKey
-		var nfd *types.NotFound
-		if errors.As(err, &nsk) || errors.As(err, &nfd) {
-			return 0, ErrObjectNotExist
-		}
-
-		return 0, err
+		return 0, mapAWSError(err, o.path)
 	}
 
 	return *resp.ContentLength, nil
