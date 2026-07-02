@@ -55,7 +55,7 @@ func (s *Service) enrollSSOMember(ctx context.Context, authTxDB *authqueries.Que
 // ensureNotSSOManaged blocks team creation for SSO-managed users; their team
 // membership is driven entirely by their identity provider.
 func (s *Service) ensureNotSSOManaged(ctx context.Context, userID uuid.UUID) error {
-	orgID, err := s.profiles.GetUserOrganizationID(ctx, userID)
+	orgID, err := s.idp.GetUserOrganizationID(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("resolve sso organization: %w", err)
 	}
@@ -72,7 +72,7 @@ func (s *Service) ensureNotSSOManaged(ctx context.Context, userID uuid.UUID) err
 // ValidateInviteeOrganization rejects adding a user to an SSO-managed team when
 // the invitee's Ory identity belongs to a different organization.
 func (s *Service) ValidateInviteeOrganization(ctx context.Context, teamOrgID, inviteeUserID uuid.UUID) error {
-	inviteeOrgID, err := s.profiles.GetUserOrganizationID(ctx, inviteeUserID)
+	inviteeOrgID, err := s.idp.GetUserOrganizationID(ctx, inviteeUserID)
 	if err != nil {
 		return fmt.Errorf("resolve invitee organization: %w", err)
 	}

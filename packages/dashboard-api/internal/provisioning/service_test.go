@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/identity"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
@@ -67,19 +67,19 @@ func testUserEmail(userID uuid.UUID) string {
 	return "user-" + userID.String() + "@example.com"
 }
 
-type testUserProfiles struct{}
+type testIdentityProvider struct{}
 
-func newTestUserProfiles() userprofile.Provider {
-	return testUserProfiles{}
+func newTestIdentityProvider() identity.Provider {
+	return testIdentityProvider{}
 }
 
-func (testUserProfiles) GetProfilesByUserID(_ context.Context, userIDs []uuid.UUID) (map[uuid.UUID]userprofile.Profile, error) {
-	profiles := make(map[uuid.UUID]userprofile.Profile, len(userIDs))
+func (testIdentityProvider) GetProfilesByUserID(_ context.Context, userIDs []uuid.UUID) (map[uuid.UUID]identity.Profile, error) {
+	profiles := make(map[uuid.UUID]identity.Profile, len(userIDs))
 	for _, userID := range userIDs {
 		if userID == uuid.Nil {
 			continue
 		}
-		profiles[userID] = userprofile.Profile{
+		profiles[userID] = identity.Profile{
 			UserID: userID,
 			Email:  testUserEmail(userID),
 		}
@@ -88,36 +88,36 @@ func (testUserProfiles) GetProfilesByUserID(_ context.Context, userIDs []uuid.UU
 	return profiles, nil
 }
 
-func (testUserProfiles) FindProfilesByEmail(_ context.Context, email string) ([]userprofile.Profile, error) {
+func (testIdentityProvider) FindProfilesByEmail(_ context.Context, email string) ([]identity.Profile, error) {
 	userIDText := strings.TrimSuffix(strings.TrimPrefix(email, "user-"), "@example.com")
 	userID, _ := uuid.Parse(userIDText)
 	if userID == uuid.Nil {
-		return []userprofile.Profile{}, nil
+		return []identity.Profile{}, nil
 	}
 
-	return []userprofile.Profile{{
+	return []identity.Profile{{
 		UserID: userID,
 		Email:  email,
 	}}, nil
 }
 
-func (testUserProfiles) GetTeamCreatorContext(context.Context, uuid.UUID) (*teamprovision.CreatorContextV1, error) {
+func (testIdentityProvider) GetTeamCreatorContext(context.Context, uuid.UUID) (*teamprovision.CreatorContextV1, error) {
 	return nil, nil
 }
 
-func (testUserProfiles) GetIdentityOrganizationID(context.Context, string) (uuid.UUID, error) {
+func (testIdentityProvider) GetIdentityOrganizationID(context.Context, string) (uuid.UUID, error) {
 	return uuid.Nil, nil
 }
 
-func (testUserProfiles) GetUserOrganizationID(context.Context, uuid.UUID) (uuid.UUID, error) {
+func (testIdentityProvider) GetUserOrganizationID(context.Context, uuid.UUID) (uuid.UUID, error) {
 	return uuid.Nil, nil
 }
 
-func (testUserProfiles) SetIdentityExternalID(context.Context, string, uuid.UUID) error {
+func (testIdentityProvider) SetIdentityExternalID(context.Context, string, uuid.UUID) error {
 	return nil
 }
 
-func (testUserProfiles) PrepareDeleteUser(context.Context, uuid.UUID) (userprofile.DeleteUserHandle, error) {
+func (testIdentityProvider) PrepareDeleteUser(context.Context, uuid.UUID) (identity.DeleteUserHandle, error) {
 	return nil, nil
 }
 

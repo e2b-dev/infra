@@ -53,7 +53,7 @@ func (s *Service) bootstrapUserWithIdentity(ctx context.Context, profile bootstr
 	// Kratos lookup is a network call that must not run under the per-user lock.
 	var ssoOrgID uuid.UUID
 	if identity != nil {
-		orgID, err := s.profiles.GetIdentityOrganizationID(ctx, identity.Subject)
+		orgID, err := s.idp.GetIdentityOrganizationID(ctx, identity.Subject)
 		if err != nil {
 			return ProvisionedTeam{}, fmt.Errorf("resolve sso organization: %w", err)
 		}
@@ -231,7 +231,7 @@ func (s *Service) setOIDCIdentityExternalID(ctx context.Context, identity *boots
 		return nil
 	}
 
-	if err := s.profiles.SetIdentityExternalID(ctx, identity.Subject, userID); err != nil {
+	if err := s.idp.SetIdentityExternalID(ctx, identity.Subject, userID); err != nil {
 		return fmt.Errorf("set ory identity external id: %w", err)
 	}
 

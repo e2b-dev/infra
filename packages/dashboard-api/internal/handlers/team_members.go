@@ -40,7 +40,7 @@ func (s *APIStore) GetTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 		userIDs = append(userIDs, row.UserID)
 	}
 
-	profiles, err := s.userProfiles.GetProfilesByUserID(ctx, userIDs)
+	profiles, err := s.idp.GetProfilesByUserID(ctx, userIDs)
 	if err != nil {
 		logger.L().Error(ctx, "failed to get member profiles", zap.Error(err), logger.WithTeamID(authTeamID.String()))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to get team member profiles")
@@ -106,7 +106,7 @@ func (s *APIStore) PostTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 		return
 	}
 
-	profiles, err := s.userProfiles.FindProfilesByEmail(ctx, string(body.Email))
+	profiles, err := s.idp.FindProfilesByEmail(ctx, string(body.Email))
 	if err != nil {
 		logger.L().Error(ctx, "failed to look up user by email", zap.Error(err))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to look up user")
