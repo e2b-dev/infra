@@ -26,6 +26,12 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+// errFilesystemOnlyNoMemfile resolves the memfile promise for a filesystem-only
+// snapshot, which persists no memfile. Consumers that tolerate a missing memfile
+// (reboot resume, scheduling metadata) get a clear, expected error instead of a
+// spurious peer/storage failure.
+var errFilesystemOnlyNoMemfile = errors.New("filesystem-only snapshot: no memfile to resolve")
+
 type storageTemplate struct {
 	paths storage.CachePaths
 
@@ -195,6 +201,17 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		)
 
 		if memfileErr != nil {
+			// A filesystem-only snapshot persists no memfile, so resolution is
+			// expected to fail; record the error consumers already tolerate
+			// (reboot resume, scheduling metadata) without the warn.
+			if t.isFilesystemOnly(ctx) {
+				if err := t.memfile.SetError(errFilesystemOnlyNoMemfile); err != nil {
+					return fmt.Errorf("failed to set memfile error: %w", err)
+				}
+
+				return nil
+			}
+
 			errMsg := fmt.Errorf("failed to create memfile storage: %w", memfileErr)
 
 			logger.L().Warn(ctx, "caching template with failed memfile resolution; reused until cache eviction",
@@ -272,6 +289,25 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 
 		return
 	}
+}
+
+// isFilesystemOnly reports whether this template is a filesystem-only snapshot,
+// which persists no memfile. It reads the metadata resolved by the metafile
+// goroutine; on any error (metadata unresolved or unreadable) it returns false
+// so memfile resolution proceeds normally and a genuine failure is still
+// surfaced.
+func (t *storageTemplate) isFilesystemOnly(ctx context.Context) bool {
+	metafile, err := t.metafile.WaitWithContext(ctx)
+	if err != nil {
+		return false
+	}
+
+	meta, err := metadata.FromFile(metafile.Path())
+	if err != nil {
+		return false
+	}
+
+	return meta.IsFilesystemOnly()
 }
 
 func (t *storageTemplate) Close(ctx context.Context) error {
