@@ -23,11 +23,7 @@ paths:
         - {}
       responses:
         "200":
-          description: The resource usage metrics of the service
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Metrics"
+          $ref: "#/components/responses/Metrics"
 
   /init:
     post:
@@ -36,41 +32,7 @@ paths:
         - AccessTokenAuth: []
         - {}
       requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                volumeMounts:
-                  type: array
-                  items:
-                    $ref: "#/components/schemas/VolumeMount"
-                hyperloopIP:
-                  type: string
-                  description: IP address of the hyperloop server to connect to
-                lifecycleID:
-                  type: string
-                  description: Lifecycle ID of the sandbox
-                envVars:
-                  $ref: "#/components/schemas/EnvVars"
-                accessToken:
-                  type: string
-                  description: Access token for secure access to envd service
-                  x-go-type: SecureToken
-                timestamp:
-                  type: string
-                  format: date-time
-                  description: The current timestamp in RFC3339 format
-                defaultUser:
-                  type: string
-                  description: The default user to use for operations
-                defaultWorkdir:
-                  type: string
-                  description: The default working directory to use for operations
-                caBundle:
-                  type: string
-                  description: PEM-encoded CA certificates to install into the system trust store (may contain multiple concatenated PEM blocks)
-
+        $ref: "#/components/requestBodies/Init"
       responses:
         "204":
           description: Env vars set, the time and metadata is synced with the host
@@ -155,11 +117,7 @@ paths:
         - {}
       responses:
         "200":
-          description: Environment variables
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/EnvVars"
+          $ref: "#/components/responses/EnvVars"
 
   /files:
     get:
@@ -240,18 +198,10 @@ paths:
         - AccessTokenAuth: []
         - {}
       requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ComposeRequest"
+        $ref: "#/components/requestBodies/Compose"
       responses:
         "200":
-          description: Files composed successfully
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/EntryInfo"
+          $ref: "#/components/responses/ComposeSuccess"
         "400":
           $ref: "#/components/responses/InvalidPath"
         "401":
@@ -315,8 +265,67 @@ components:
             type: string
             format: binary
             description: Raw file content. The 'path' query parameter is required when using this content type.
+    Init:
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              volumeMounts:
+                type: array
+                items:
+                  $ref: "#/components/schemas/VolumeMount"
+              hyperloopIP:
+                type: string
+                description: IP address of the hyperloop server to connect to
+              lifecycleID:
+                type: string
+                description: Lifecycle ID of the sandbox
+              envVars:
+                $ref: "#/components/schemas/EnvVars"
+              accessToken:
+                type: string
+                description: Access token for secure access to envd service
+                x-go-type: SecureToken
+              timestamp:
+                type: string
+                format: date-time
+                description: The current timestamp in RFC3339 format
+              defaultUser:
+                type: string
+                description: The default user to use for operations
+              defaultWorkdir:
+                type: string
+                description: The default working directory to use for operations
+              caBundle:
+                type: string
+                description: PEM-encoded CA certificates to install into the system trust store (may contain multiple concatenated PEM blocks)
+    Compose:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ComposeRequest"
 
   responses:
+    Metrics:
+      description: The resource usage metrics of the service
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Metrics"
+    EnvVars:
+      description: Environment variables
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/EnvVars"
+    ComposeSuccess:
+      description: Files composed successfully
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/EntryInfo"
     UploadSuccess:
       description: The file was uploaded successfully.
       content:

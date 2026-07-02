@@ -396,7 +396,7 @@ func TestSetData(t *testing.T) {
 				mmdsClient := &mockMMDSClient{}
 				api := newTestAPI(tt.existingToken, mmdsClient)
 
-				data := PostInitJSONBody{
+				data := Init{
 					AccessToken: tt.requestToken,
 				}
 
@@ -419,7 +419,7 @@ func TestSetData(t *testing.T) {
 		api := newTestAPI(nil, mmdsClient)
 
 		envVars := EnvVars{"FOO": "bar", "BAZ": "qux"}
-		data := PostInitJSONBody{
+		data := Init{
 			EnvVars: &envVars,
 		}
 
@@ -439,7 +439,7 @@ func TestSetData(t *testing.T) {
 		mmdsClient := &mockMMDSClient{hash: "", err: assert.AnError}
 		api := newTestAPI(nil, mmdsClient)
 
-		data := PostInitJSONBody{
+		data := Init{
 			DefaultUser: new("testuser"),
 		}
 
@@ -455,7 +455,7 @@ func TestSetData(t *testing.T) {
 		api := newTestAPI(nil, mmdsClient)
 		api.defaults.User = "original"
 
-		data := PostInitJSONBody{
+		data := Init{
 			DefaultUser: new(""),
 		}
 
@@ -470,7 +470,7 @@ func TestSetData(t *testing.T) {
 		mmdsClient := &mockMMDSClient{hash: "", err: assert.AnError}
 		api := newTestAPI(nil, mmdsClient)
 
-		data := PostInitJSONBody{
+		data := Init{
 			DefaultWorkdir: new("/home/user"),
 		}
 
@@ -488,7 +488,7 @@ func TestSetData(t *testing.T) {
 		originalWorkdir := "/original"
 		api.defaults.Workdir = &originalWorkdir
 
-		data := PostInitJSONBody{
+		data := Init{
 			DefaultWorkdir: new(""),
 		}
 
@@ -505,7 +505,7 @@ func TestSetData(t *testing.T) {
 		api := newTestAPI(nil, mmdsClient)
 
 		envVars := EnvVars{"KEY": "value"}
-		data := PostInitJSONBody{
+		data := Init{
 			AccessToken:    secureTokenPtr("token"),
 			DefaultUser:    new("user"),
 			DefaultWorkdir: new("/workdir"),
@@ -718,7 +718,7 @@ func TestPostInit_UnfreezeOnStaleTimestamp(t *testing.T) {
 	require.True(t, api.lastSetTime.SetToGreater(now.UnixNano()))
 
 	stale := now.Add(-1 * time.Minute)
-	body, err := json.Marshal(PostInitJSONBody{
+	body, err := json.Marshal(Init{
 		Timestamp: &stale,
 		EnvVars:   &EnvVars{"SHOULD_NOT_BE_SET": "x"},
 	})

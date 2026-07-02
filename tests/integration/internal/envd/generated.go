@@ -154,6 +154,9 @@ type SignatureExpiration = int
 // User defines model for User.
 type User = string
 
+// ComposeSuccess defines model for ComposeSuccess.
+type ComposeSuccess = EntryInfo
+
 // FileNotFound defines model for FileNotFound.
 type FileNotFound = Error
 
@@ -174,6 +177,37 @@ type NotEnoughDiskSpace = Error
 
 // UploadSuccess defines model for UploadSuccess.
 type UploadSuccess = []EntryInfo
+
+// Compose defines model for Compose.
+type Compose = ComposeRequest
+
+// Init defines model for Init.
+type Init struct {
+	// AccessToken Access token for secure access to envd service
+	AccessToken *SecureToken `json:"accessToken,omitempty"`
+
+	// CaBundle PEM-encoded CA certificates to install into the system trust store (may contain multiple concatenated PEM blocks)
+	CaBundle *string `json:"caBundle,omitempty"`
+
+	// DefaultUser The default user to use for operations
+	DefaultUser *string `json:"defaultUser,omitempty"`
+
+	// DefaultWorkdir The default working directory to use for operations
+	DefaultWorkdir *string `json:"defaultWorkdir,omitempty"`
+
+	// EnvVars Environment variables to set
+	EnvVars *EnvVars `json:"envVars,omitempty"`
+
+	// HyperloopIP IP address of the hyperloop server to connect to
+	HyperloopIP *string `json:"hyperloopIP,omitempty"`
+
+	// LifecycleID Lifecycle ID of the sandbox
+	LifecycleID *string `json:"lifecycleID,omitempty"`
+
+	// Timestamp The current timestamp in RFC3339 format
+	Timestamp    *time.Time     `json:"timestamp,omitempty"`
+	VolumeMounts *[]VolumeMount `json:"volumeMounts,omitempty"`
+}
 
 // accessTokenAuthContextKey is the context key for AccessTokenAuth security scheme
 type accessTokenAuthContextKey string
@@ -1226,7 +1260,7 @@ func (r PostFilesResponse) ContentType() string {
 type PostFilesComposeResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *EntryInfo
+	JSON200      *ComposeSuccess
 	JSON400      *InvalidPath
 	JSON401      *InvalidUser
 	JSON404      *FileNotFound
@@ -1772,7 +1806,7 @@ func ParsePostFilesComposeResponse(rsp *http.Response) (*PostFilesComposeRespons
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest EntryInfo
+		var dest ComposeSuccess
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
