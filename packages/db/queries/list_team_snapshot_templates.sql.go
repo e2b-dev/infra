@@ -31,10 +31,14 @@ SELECT
 FROM "public"."active_envs" e
 JOIN "public"."snapshot_templates" st ON st.env_id = e.id
 JOIN LATERAL (
+    -- When a tag filter is set, pick the newest build with that tag; the inner
+    -- join then also drops snapshots with no successful build for the tag.
     SELECT b.id, b.created_at, b.updated_at, b.finished_at, b.status, b.dockerfile, b.start_cmd, b.vcpu, b.ram_mb, b.free_disk_size_mb, b.total_disk_size_mb, b.kernel_version, b.firecracker_version, b.env_id, b.envd_version, b.ready_cmd, b.cluster_node_id, b.reason, b.version, b.cpu_architecture, b.cpu_family, b.cpu_model, b.cpu_model_name, b.cpu_flags, b.status_group, b.team_id, ba.tag
     FROM "public"."env_build_assignments" ba
     JOIN "public"."env_builds" b ON b.id = ba.build_id
-    WHERE ba.env_id = e.id AND b.status IN ('success', 'uploaded', 'ready')
+    WHERE ba.env_id = e.id
+      AND b.status IN ('success', 'uploaded', 'ready')
+      AND ($1::text IS NULL OR ba.tag = $1::text)
     ORDER BY ba.created_at DESC
     LIMIT 1
 ) eb ON TRUE
@@ -44,20 +48,26 @@ LEFT JOIN LATERAL (
     FROM "public"."env_aliases"
     WHERE env_id = e.id
 ) ea ON TRUE
-WHERE e.team_id = $1
+WHERE e.team_id = $2
 AND e.source = 'snapshot_template'
 AND (
-    $2::text IS NULL 
-    OR st.sandbox_id = $2::text
+    $3::text IS NULL
+    OR st.sandbox_id = $3::text
 )
-AND (e.created_at, e.id) < ($3, $4::text)
+AND (
+    $4::text IS NULL
+    OR e.id = $4::text
+)
+AND (e.created_at, e.id) < ($5, $6::text)
 ORDER BY e.created_at DESC, e.id DESC
-LIMIT $5
+LIMIT $7
 `
 
 type ListTeamSnapshotTemplatesParams struct {
+	Tag        *string
 	TeamID     uuid.UUID
 	SandboxID  *string
+	EnvID      *string
 	CursorTime time.Time
 	CursorID   string
 	PageLimit  int32
@@ -84,8 +94,10 @@ type ListTeamSnapshotTemplatesRow struct {
 // Snapshot templates are envs with source='snapshot_template'.
 func (q *Queries) ListTeamSnapshotTemplates(ctx context.Context, arg ListTeamSnapshotTemplatesParams) ([]ListTeamSnapshotTemplatesRow, error) {
 	rows, err := q.db.Query(ctx, listTeamSnapshotTemplates,
+		arg.Tag,
 		arg.TeamID,
 		arg.SandboxID,
+		arg.EnvID,
 		arg.CursorTime,
 		arg.CursorID,
 		arg.PageLimit,

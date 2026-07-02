@@ -156,6 +156,103 @@ func TestSnapshotTemplateList(t *testing.T) {
 			assert.NotEmpty(t, snap.SnapshotID)
 		}
 	})
+
+	t.Run("list snapshots filtered by name", func(t *testing.T) {
+		t.Parallel()
+		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
+
+		name := "list-by-name-" + sbx.SandboxID
+		snapshot := createSnapshotTemplateWithCleanup(t, c, sbx.SandboxID, &name)
+
+		listSnapshots := func(filter string) []api.SnapshotInfo {
+			listResp, err := c.GetSnapshotsWithResponse(t.Context(), &api.GetSnapshotsParams{
+				Name: &filter,
+			}, setup.WithAPIKey())
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, listResp.StatusCode())
+			require.NotNil(t, listResp.JSON200)
+
+			return *listResp.JSON200
+		}
+
+		snapshots := listSnapshots(name)
+		require.Len(t, snapshots, 1)
+		assert.Equal(t, snapshot.SnapshotID, snapshots[0].SnapshotID)
+
+		// The namespaced form returned in Names should also match
+		require.NotEmpty(t, snapshot.Names)
+		snapshots = listSnapshots(snapshot.Names[0])
+		require.Len(t, snapshots, 1)
+		assert.Equal(t, snapshot.SnapshotID, snapshots[0].SnapshotID)
+
+		// A name that doesn't resolve returns an empty list
+		assert.Empty(t, listSnapshots("missing-"+sbx.SandboxID))
+
+		// A tag that has no build on the snapshot returns an empty list
+		assert.Empty(t, listSnapshots(name+":missing-tag"))
+
+		// The default tag has a build, so it matches
+		snapshots = listSnapshots(name + ":default")
+		require.Len(t, snapshots, 1)
+		assert.Equal(t, snapshot.SnapshotID, snapshots[0].SnapshotID)
+	})
+
+	t.Run("list snapshots filtered by older tag shows that tag", func(t *testing.T) {
+		t.Parallel()
+		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
+
+		base := "list-by-tag-" + sbx.SandboxID
+		snapDefault := createSnapshotTemplateWithCleanup(t, c, sbx.SandboxID, &base)
+		require.Contains(t, snapDefault.SnapshotID, ":default")
+
+		nameV2 := base + ":v2"
+		resp2 := createSnapshotTemplate(t, c, sbx.SandboxID, &nameV2)
+		require.Equal(t, http.StatusCreated, resp2.StatusCode())
+		require.NotNil(t, resp2.JSON201)
+
+		listSnapshots := func(filter string) []api.SnapshotInfo {
+			listResp, err := c.GetSnapshotsWithResponse(t.Context(), &api.GetSnapshotsParams{
+				Name: &filter,
+			}, setup.WithAPIKey())
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, listResp.StatusCode())
+			require.NotNil(t, listResp.JSON200)
+
+			return *listResp.JSON200
+		}
+
+		// Filtering by an older tag (here the explicit default) must match and
+		// show that tag's build, not the newest one
+		snapshots := listSnapshots(base + ":default")
+		require.Len(t, snapshots, 1)
+		assert.Equal(t, snapDefault.SnapshotID, snapshots[0].SnapshotID)
+
+		snapshots = listSnapshots(nameV2)
+		require.Len(t, snapshots, 1)
+		assert.Equal(t, resp2.JSON201.SnapshotID, snapshots[0].SnapshotID)
+
+		// A bare name matches builds of any tag and shows the newest
+		snapshots = listSnapshots(base)
+		require.Len(t, snapshots, 1)
+		assert.Equal(t, resp2.JSON201.SnapshotID, snapshots[0].SnapshotID)
+	})
+
+	t.Run("list unnamed snapshot filtered by its ID", func(t *testing.T) {
+		t.Parallel()
+		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
+
+		snapshot := createSnapshotTemplateWithCleanup(t, c, sbx.SandboxID, nil)
+		templateID, _, _ := strings.Cut(snapshot.SnapshotID, ":")
+
+		listResp, err := c.GetSnapshotsWithResponse(t.Context(), &api.GetSnapshotsParams{
+			Name: &templateID,
+		}, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, listResp.StatusCode())
+		require.NotNil(t, listResp.JSON200)
+		require.Len(t, *listResp.JSON200, 1)
+		assert.Equal(t, snapshot.SnapshotID, (*listResp.JSON200)[0].SnapshotID)
+	})
 }
 
 func TestSnapshotTemplateDelete(t *testing.T) {
