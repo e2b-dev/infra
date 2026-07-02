@@ -1,6 +1,7 @@
 package api
 
 import (
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"net/http"
@@ -113,7 +114,8 @@ func (a *API) validateSigning(r *http.Request, signature *string, signatureExpir
 	}
 
 	// signature validation
-	if expectedSignature != *signature {
+	// Use constant-time comparison to prevent timing attacks.
+	if subtle.ConstantTimeCompare([]byte(expectedSignature), []byte(*signature)) != 1 {
 		return errors.New("invalid signature")
 	}
 
