@@ -1,0 +1,73 @@
+name: Ensure envd changes include a changeset
+
+on:
+  workflow_call:
+    inputs:
+      run-check:
+        type: boolean
+        description: 'Whether to run the envd changeset check'
+        required: false
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  run-check:
+    if: ${{ inputs.run-check == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          # Full history so the merge base with the target branch is available.
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check for a changeset
+        # base_ref is attacker-controlled (branch name); pass via env to avoid
+        # shell injection in the inline script.
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if ! npx changeset status --since="origin/$BASE_REF"; then
+            echo ""
+            echo "❌ envd changed without a changeset."
+            echo ""
+            echo "Describe the change for the envd changelog:"
+            echo "    npx changeset"
+            echo ""
+            echo "If the change cannot affect the compiled envd binary"
+            echo "(docs, comments, dev tooling), add an empty changeset:"
+            echo "    npx changeset --empty"
+            exit 1
+          fi
+
+  envd_changeset_check:
+    needs: run-check
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Aggregate envd-changeset result
+        run: |
+          if [[ "${{ inputs.run-check }}" != "true" ]]; then
+            echo "envd changeset check skipped because envd files did not change"
+            exit 0
+          fi
+
+          if [[ "${{ needs.run-check.result }}" != "success" ]]; then
+            echo "envd changeset check result: ${{ needs.run-check.result }}"
+            exit 1
+          fi
+
+          echo "envd changeset check succeeded"
