@@ -156,6 +156,63 @@ func TestSnapshotTemplateList(t *testing.T) {
 			assert.NotEmpty(t, snap.SnapshotID)
 		}
 	})
+
+	t.Run("list snapshots filtered by name", func(t *testing.T) {
+		t.Parallel()
+		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
+
+		name := "list-by-name-" + sbx.SandboxID
+		snapshot := createSnapshotTemplateWithCleanup(t, c, sbx.SandboxID, &name)
+
+		listSnapshots := func(filter string) []api.SnapshotInfo {
+			listResp, err := c.GetSnapshotsWithResponse(t.Context(), &api.GetSnapshotsParams{
+				Name: &filter,
+			}, setup.WithAPIKey())
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, listResp.StatusCode())
+			require.NotNil(t, listResp.JSON200)
+
+			return *listResp.JSON200
+		}
+
+		snapshots := listSnapshots(name)
+		require.Len(t, snapshots, 1)
+		assert.Equal(t, snapshot.SnapshotID, snapshots[0].SnapshotID)
+
+		// The namespaced form returned in Names should also match
+		require.NotEmpty(t, snapshot.Names)
+		snapshots = listSnapshots(snapshot.Names[0])
+		require.Len(t, snapshots, 1)
+		assert.Equal(t, snapshot.SnapshotID, snapshots[0].SnapshotID)
+
+		// A name that doesn't resolve returns an empty list
+		assert.Empty(t, listSnapshots("missing-"+sbx.SandboxID))
+
+		// A tag that has no build on the snapshot returns an empty list
+		assert.Empty(t, listSnapshots(name+":missing-tag"))
+
+		// The default tag has a build, so it matches
+		snapshots = listSnapshots(name + ":default")
+		require.Len(t, snapshots, 1)
+		assert.Equal(t, snapshot.SnapshotID, snapshots[0].SnapshotID)
+	})
+
+	t.Run("list unnamed snapshot filtered by its ID", func(t *testing.T) {
+		t.Parallel()
+		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
+
+		snapshot := createSnapshotTemplateWithCleanup(t, c, sbx.SandboxID, nil)
+		templateID, _, _ := strings.Cut(snapshot.SnapshotID, ":")
+
+		listResp, err := c.GetSnapshotsWithResponse(t.Context(), &api.GetSnapshotsParams{
+			Name: &templateID,
+		}, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, listResp.StatusCode())
+		require.NotNil(t, listResp.JSON200)
+		require.Len(t, *listResp.JSON200, 1)
+		assert.Equal(t, snapshot.SnapshotID, (*listResp.JSON200)[0].SnapshotID)
+	})
 }
 
 func TestSnapshotTemplateDelete(t *testing.T) {
