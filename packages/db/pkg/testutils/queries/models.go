@@ -190,6 +190,8 @@ type Team struct {
 	BlockedReason           pgtype.Text
 	ClusterID               *uuid.UUID
 	SandboxSchedulingLabels []string
+	SsoOrganizationID       *uuid.UUID
+	SsoAutoJoin             bool
 	Slug                    string
 }
 

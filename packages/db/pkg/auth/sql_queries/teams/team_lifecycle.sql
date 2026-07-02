@@ -27,7 +27,8 @@ VALUES (
     sqlc.arg(team_id)::uuid,
     sqlc.arg(is_default)::boolean,
     sqlc.narg(added_by)::uuid
-);
+)
+ON CONFLICT (user_id, team_id) DO NOTHING;
 
 -- name: GetDefaultTeamByUserID :one
 SELECT
