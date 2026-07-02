@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -83,7 +84,14 @@ func (a *APIStore) GetSnapshots(c *gin.Context, params api.GetSnapshotsParams) {
 			return
 		}
 
+		// ParseName normalizes an explicit ":default" tag to nil; re-check the raw
+		// input so "name:default" filters by the default tag, while a bare "name"
+		// matches builds of any tag.
 		tagFilter = tag
+		if _, _, hasTag := strings.Cut(*params.Name, id.TagSeparator); hasTag && tagFilter == nil {
+			defaultTag := id.DefaultTag
+			tagFilter = &defaultTag
+		}
 
 		// Resolve alias using the cache — same pattern as template builds. Team
 		// ownership is enforced by the query's team_id predicate, so a name that
