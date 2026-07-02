@@ -1,0 +1,113 @@
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    name: Create / update release PRs
+    runs-on: ubuntu-24.04
+    outputs:
+      # Per-package outputs are keyed by the package path. Add more here as more
+      # packages are onboarded to release-please.
+      reverse_proxy_released: ${{ steps.release.outputs['packages/docker-reverse-proxy--release_created'] }}
+      reverse_proxy_tag: ${{ steps.release.outputs['packages/docker-reverse-proxy--tag_name'] }}
+      reverse_proxy_version: ${{ steps.release.outputs['packages/docker-reverse-proxy--version'] }}
+    steps:
+      # Mint a short-lived token from a GitHub App so the release PR is opened as
+      # the App (not the default GITHUB_TOKEN). This is required when `main` has
+      # required status checks: PRs opened by GITHUB_TOKEN don't trigger
+      # `pull_request` workflows, so the release PR would be unmergeable.
+      #
+      # Requires a GitHub App (Contents: write, Pull requests: write) installed on
+      # this repo, with its App ID in the RELEASE_PLEASE_APP_ID variable and
+      # private key in the RELEASE_PLEASE_APP_SECRET secret.
+      #
+      # Falls back to GITHUB_TOKEN if the App isn't configured yet, so the
+      # workflow still runs (the release PR just won't trigger required checks
+      # until the App is set up).
+      - name: Generate GitHub App token
+        id: app-token
+        if: ${{ vars.RELEASE_PLEASE_APP_ID != '' }}
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.RELEASE_PLEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PLEASE_APP_SECRET }}
+
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish-reverse-proxy:
+    name: Publish docker-reverse-proxy to e2b-artifacts
+    needs: release-please
+    if: ${{ needs.release-please.outputs.reverse_proxy_released == 'true' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      # <host>/<project>/<repository>/<image>
+      IMAGE: us-docker.pkg.dev/e2b-artifacts/reverse-proxy/docker-reverse-proxy
+      VERSION: ${{ needs.release-please.outputs.reverse_proxy_version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Authenticate to the e2b-artifacts project
+        uses: google-github-actions/auth@v3
+        with:
+          # Workload Identity Federation provider + service account for the
+          # e2b-artifacts project. Provisioned out-of-repo (separate Terraform
+          # modules / live repo); wired here via GitHub repo variables.
+          workload_identity_provider: ${{ vars.E2B_ARTIFACTS_WIF_PROVIDER }}
+          service_account: ${{ vars.E2B_ARTIFACTS_PUBLISH_SA }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Configure Docker auth
+        run: gcloud auth configure-docker us-docker.pkg.dev --quiet
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push released image
+        # The Dockerfile lives in packages/docker-reverse-proxy but its build
+        # context is the packages/ directory (it needs shared/ and db/).
+        #
+        # Notes:
+        #  - Tag is v-prefixed (v${VERSION}) to match what customers pin via
+        #    DOCKER_REVERSE_PROXY_VERSION and the manual publish convention.
+        #  - No :latest tag: the e2b-artifacts repo has immutableTags=true, so a
+        #    reused tag would fail on the second release. Customers pin exact
+        #    versions anyway.
+        #  - --provenance=false --sbom=false: Artifact Registry rejects buildx's
+        #    default OCI attestation manifest list (HTTP 400).
+        run: |
+          IMAGE_TAG="v${VERSION}"
+          docker buildx build \
+            --platform linux/amd64 \
+            --provenance=false \
+            --sbom=false \
+            --build-arg COMMIT_SHA="${GITHUB_SHA::7}" \
+            --build-arg VERSION="${IMAGE_TAG}" \
+            --tag "${IMAGE}:${IMAGE_TAG}" \
+            --push \
+            -f packages/docker-reverse-proxy/Dockerfile \
+            packages

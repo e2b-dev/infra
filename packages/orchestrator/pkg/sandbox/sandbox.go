@@ -67,6 +67,12 @@ const (
 	StartTypeReboot StartType = "reboot" // cold boot from a snapshot rootfs (filesystem-only resume)
 )
 
+// ErrWaitForEnvdTimeout is the cancel cause used when WaitForEnvd exceeds its timeout.
+var ErrWaitForEnvdTimeout = errors.New("syncing took too long")
+
+// ErrFcProcessExited is the cancel cause used when the Firecracker process exits during WaitForEnvd.
+var ErrFcProcessExited = errors.New("fc process exited prematurely")
+
 var SandboxHttpTransport = otelhttp.NewTransport(
 	&http.Transport{
 		DisableKeepAlives: true,
@@ -570,8 +576,7 @@ func (f *Factory) CreateSandbox(
 		return nil
 	})
 
-	samplingInterval := time.Duration(f.featureFlags.IntFlag(execCtx, featureflags.HostStatsSamplingInterval)) * time.Millisecond
-	initializeHostStatsCollector(execCtx, sbx, runtime, config, f.hostStatsDelivery, samplingInterval)
+	initializeHostStatsCollector(execCtx, sbx, runtime, config, f.hostStatsDelivery)
 
 	// Collect a final stats sample on cleanup while the cgroup is still alive.
 	cleanup.Add(ctx, func(ctx context.Context) error {
@@ -612,8 +617,7 @@ func (f *Factory) CreateSandbox(
 	}
 	telemetry.ReportEvent(ctx, "created fc process")
 
-	useClickhouseMetrics := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlag)
-	sbx.Checks = NewChecks(sbx, useClickhouseMetrics)
+	sbx.Checks = NewChecks(sbx)
 
 	// Stop the sandbox first if it is still running, otherwise do nothing
 	cleanup.AddPriority(ctx, sbx.Stop)
@@ -974,13 +978,12 @@ func (f *Factory) ResumeSandbox(
 		skipStartupMetrics: ropts.skipLiveRegistration,
 	}
 
-	useClickhouseMetrics := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlag)
 	useMemfd := fc.FCSupportsMemfd(config.FirecrackerConfig.FirecrackerVersion) &&
 		f.featureFlags.BoolFlag(ctx, featureflags.UseMemFdFlag, sandboxLDContext(runtime, config))
 
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
 	// This is to prevent race condition of reporting unhealthy sandbox
-	sbx.Checks = NewChecks(sbx, useClickhouseMetrics)
+	sbx.Checks = NewChecks(sbx)
 
 	cleanup.AddPriority(ctx, func(ctx context.Context) error {
 		// Stop the sandbox first if it is still running, otherwise do nothing
@@ -1001,8 +1004,7 @@ func (f *Factory) ResumeSandbox(
 	// host stats under its (unregistered) identity — consistent with not being in
 	// the live registry. The cleanup below is nil-safe when the collector is unset.
 	if !ropts.skipLiveRegistration {
-		samplingInterval := time.Duration(f.featureFlags.IntFlag(execCtx, featureflags.HostStatsSamplingInterval)) * time.Millisecond
-		initializeHostStatsCollector(execCtx, sbx, runtime, config, f.hostStatsDelivery, samplingInterval)
+		initializeHostStatsCollector(execCtx, sbx, runtime, config, f.hostStatsDelivery)
 	}
 
 	// Collect a final stats sample on cleanup while the cgroup is still alive.
@@ -1753,11 +1755,13 @@ func (s *Sandbox) WaitForEnvd(
 		// cover its timing/size.
 		if !s.skipStartupMetrics {
 			duration := time.Since(start).Milliseconds()
+			// success is kept for backward compatibility until consumers move to exit_type.
 			waitForEnvdDurationHistogram.Record(ctx, duration, metric.WithAttributes(
 				telemetry.WithEnvdVersion(s.Config.Envd.Version),
 				attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
 				attribute.Bool("success", e == nil),
 				attribute.String("start_type", string(startType)),
+				attribute.String("exit_type", string(classifyEnvdInitExit(e))),
 			))
 
 			// Record the demand-fault working set the guest needed to reach this
@@ -1794,13 +1798,13 @@ func (s *Sandbox) WaitForEnvd(
 		select {
 		// Ensure the syncing takes at most timeout seconds.
 		case <-time.After(timeout):
-			cancel(errors.New("syncing took too long"))
+			cancel(ErrWaitForEnvdTimeout)
 		case <-ctx.Done():
 			return
 		case <-s.process.Exit.Done():
 			err := s.process.Exit.Error()
 
-			cancel(fmt.Errorf("fc process exited prematurely: %w", err))
+			cancel(fmt.Errorf("%w: %w", ErrFcProcessExited, err))
 		}
 	}()
 

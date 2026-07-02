@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-sdk-go-v2/otelaws"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -50,6 +51,7 @@ func newAWSStorage(ctx context.Context, bucketName string) (*awsStorage, error) 
 	if err != nil {
 		return nil, err
 	}
+	otelaws.AppendMiddlewares(&cfg.APIOptions)
 
 	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
 		// S3_USE_PATH_STYLE controls the addressing style:
