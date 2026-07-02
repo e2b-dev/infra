@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/e2b-dev/infra/compare/docker-reverse-proxy-v0.2.1...docker-reverse-proxy-v0.2.2) (2026-07-02)
+
+
+### Bug Fixes
+
+* update go to 1.26.4 for CVE-2026-42504 ([#3188](https://github.com/e2b-dev/infra/issues/3188)) ([a5cc1ff](https://github.com/e2b-dev/infra/commit/a5cc1ff0726f18edb505b4b776f0f40756323e25))
+
 ## [0.2.1](https://github.com/e2b-dev/infra/compare/docker-reverse-proxy-v0.2.0...docker-reverse-proxy-v0.2.1) (2026-07-02)
 
 
