@@ -15,9 +15,9 @@ import (
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	authtypes "github.com/e2b-dev/infra/packages/auth/pkg/types"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/identity"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/provisioning"
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
-	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -125,9 +125,9 @@ func TestPostTeamsTeamIDMembers_DuplicateMemberReturnsBadRequest(t *testing.T) {
 	})
 
 	store := &APIStore{
-		db:           testDB.SqlcClient,
-		authDB:       testDB.AuthDB,
-		userProfiles: newHandlerTestUserProfiles(),
+		db:     testDB.SqlcClient,
+		authDB: testDB.AuthDB,
+		idp:    newHandlerTestIdentityProvider(),
 	}
 	store.PostTeamsTeamIDMembers(ginCtx, teamID)
 
@@ -163,10 +163,10 @@ func TestPostTeamsTeamIDMembers_CreatesPublicUserAnchorForInvitee(t *testing.T) 
 	})
 
 	store := &APIStore{
-		db:           testDB.SqlcClient,
-		authDB:       testDB.AuthDB,
-		authService:  noopAuthService{},
-		userProfiles: newHandlerTestUserProfiles(),
+		db:          testDB.SqlcClient,
+		authDB:      testDB.AuthDB,
+		authService: noopAuthService{},
+		idp:         newHandlerTestIdentityProvider(),
 	}
 	store.PostTeamsTeamIDMembers(ginCtx, teamID)
 
@@ -355,19 +355,19 @@ func handlerTestUserEmail(userID uuid.UUID) string {
 	return "user-" + userID.String() + "@example.com"
 }
 
-type handlerTestUserProfiles struct{}
+type handlerTestIdentityProvider struct{}
 
-func newHandlerTestUserProfiles() userprofile.Provider {
-	return handlerTestUserProfiles{}
+func newHandlerTestIdentityProvider() identity.Provider {
+	return handlerTestIdentityProvider{}
 }
 
-func (handlerTestUserProfiles) GetProfilesByUserID(_ context.Context, userIDs []uuid.UUID) (map[uuid.UUID]userprofile.Profile, error) {
-	profiles := make(map[uuid.UUID]userprofile.Profile, len(userIDs))
+func (handlerTestIdentityProvider) GetProfilesByUserID(_ context.Context, userIDs []uuid.UUID) (map[uuid.UUID]identity.Profile, error) {
+	profiles := make(map[uuid.UUID]identity.Profile, len(userIDs))
 	for _, userID := range userIDs {
 		if userID == uuid.Nil {
 			continue
 		}
-		profiles[userID] = userprofile.Profile{
+		profiles[userID] = identity.Profile{
 			UserID: userID,
 			Email:  handlerTestUserEmail(userID),
 		}
@@ -376,36 +376,36 @@ func (handlerTestUserProfiles) GetProfilesByUserID(_ context.Context, userIDs []
 	return profiles, nil
 }
 
-func (handlerTestUserProfiles) FindProfilesByEmail(_ context.Context, email string) ([]userprofile.Profile, error) {
+func (handlerTestIdentityProvider) FindProfilesByEmail(_ context.Context, email string) ([]identity.Profile, error) {
 	userIDText := strings.TrimSuffix(strings.TrimPrefix(email, "user-"), "@example.com")
 	userID, _ := uuid.Parse(userIDText)
 	if userID == uuid.Nil {
-		return []userprofile.Profile{}, nil
+		return []identity.Profile{}, nil
 	}
 
-	return []userprofile.Profile{{
+	return []identity.Profile{{
 		UserID: userID,
 		Email:  email,
 	}}, nil
 }
 
-func (handlerTestUserProfiles) GetTeamCreatorContext(context.Context, uuid.UUID) (*teamprovision.CreatorContextV1, error) {
+func (handlerTestIdentityProvider) GetTeamCreatorContext(context.Context, uuid.UUID) (*teamprovision.CreatorContextV1, error) {
 	return nil, nil
 }
 
-func (handlerTestUserProfiles) GetIdentityOrganizationID(context.Context, string) (uuid.UUID, error) {
+func (handlerTestIdentityProvider) GetIdentityOrganizationID(context.Context, string) (uuid.UUID, error) {
 	return uuid.Nil, nil
 }
 
-func (handlerTestUserProfiles) GetUserOrganizationID(context.Context, uuid.UUID) (uuid.UUID, error) {
+func (handlerTestIdentityProvider) GetUserOrganizationID(context.Context, uuid.UUID) (uuid.UUID, error) {
 	return uuid.Nil, nil
 }
 
-func (handlerTestUserProfiles) SetIdentityExternalID(context.Context, string, uuid.UUID) error {
+func (handlerTestIdentityProvider) SetIdentityExternalID(context.Context, string, uuid.UUID) error {
 	return nil
 }
 
-func (handlerTestUserProfiles) PrepareDeleteUser(context.Context, uuid.UUID) (userprofile.DeleteUserHandle, error) {
+func (handlerTestIdentityProvider) PrepareDeleteUser(context.Context, uuid.UUID) (identity.DeleteUserHandle, error) {
 	return nil, nil
 }
 
@@ -483,7 +483,7 @@ func TestPostTeams_LocalPolicyDeniedReturnsBadRequestWithoutCreatingTeam(t *test
 	store := &APIStore{
 		db:           testDB.SqlcClient,
 		authDB:       testDB.AuthDB,
-		provisioning: provisioning.New(testDB.AuthDB, newHandlerTestUserProfiles(), sink, ""),
+		provisioning: provisioning.New(testDB.AuthDB, newHandlerTestIdentityProvider(), sink, ""),
 	}
 	store.PostTeams(ginCtx)
 
@@ -521,7 +521,7 @@ func TestPostTeams_InvalidNameReturnsBadRequest(t *testing.T) {
 		store := &APIStore{
 			db:           testDB.SqlcClient,
 			authDB:       testDB.AuthDB,
-			provisioning: provisioning.New(testDB.AuthDB, newHandlerTestUserProfiles(), sink, ""),
+			provisioning: provisioning.New(testDB.AuthDB, newHandlerTestIdentityProvider(), sink, ""),
 		}
 		store.PostTeams(ginCtx)
 
@@ -551,7 +551,7 @@ func TestPostTeams_InvalidRequestBodyReturnsBadRequest(t *testing.T) {
 	store := &APIStore{
 		db:           testDB.SqlcClient,
 		authDB:       testDB.AuthDB,
-		provisioning: provisioning.New(testDB.AuthDB, newHandlerTestUserProfiles(), sink, ""),
+		provisioning: provisioning.New(testDB.AuthDB, newHandlerTestIdentityProvider(), sink, ""),
 	}
 	store.PostTeams(ginCtx)
 
@@ -583,7 +583,7 @@ func TestPostTeams_TrimsNameBeforeCreate(t *testing.T) {
 	store := &APIStore{
 		db:           testDB.SqlcClient,
 		authDB:       testDB.AuthDB,
-		provisioning: provisioning.New(testDB.AuthDB, newHandlerTestUserProfiles(), sink, ""),
+		provisioning: provisioning.New(testDB.AuthDB, newHandlerTestIdentityProvider(), sink, ""),
 	}
 	store.PostTeams(ginCtx)
 
@@ -634,7 +634,7 @@ func TestPostTeams_ProvisioningFailureRollsBackCreatedTeam(t *testing.T) {
 	store := &APIStore{
 		db:           testDB.SqlcClient,
 		authDB:       testDB.AuthDB,
-		provisioning: provisioning.New(testDB.AuthDB, newHandlerTestUserProfiles(), sink, ""),
+		provisioning: provisioning.New(testDB.AuthDB, newHandlerTestIdentityProvider(), sink, ""),
 	}
 	store.PostTeams(ginCtx)
 
@@ -692,7 +692,7 @@ func TestPostTeams_ProvisioningFailurePreservesProvisionErrorStatus(t *testing.T
 			store := &APIStore{
 				db:           testDB.SqlcClient,
 				authDB:       testDB.AuthDB,
-				provisioning: provisioning.New(testDB.AuthDB, newHandlerTestUserProfiles(), sink, ""),
+				provisioning: provisioning.New(testDB.AuthDB, newHandlerTestIdentityProvider(), sink, ""),
 			}
 			store.PostTeams(ginCtx)
 

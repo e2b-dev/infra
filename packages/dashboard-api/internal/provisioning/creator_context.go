@@ -12,14 +12,14 @@ import (
 )
 
 func (s *Service) resolveTeamCreatorContext(ctx context.Context, userID uuid.UUID) *teamprovision.CreatorContextV1 {
-	if userID == uuid.Nil || s.profiles == nil {
+	if userID == uuid.Nil || s.idp == nil {
 		return nil
 	}
 
 	resolveCtx, cancel := context.WithTimeout(ctx, creatorContextResolveTimeout)
 	defer cancel()
 
-	creatorContext, err := s.profiles.GetTeamCreatorContext(resolveCtx, userID)
+	creatorContext, err := s.idp.GetTeamCreatorContext(resolveCtx, userID)
 	if err != nil {
 		logger.L().Warn(ctx, "failed to resolve creator context for team provisioning",
 			zap.String("user_id", userID.String()),

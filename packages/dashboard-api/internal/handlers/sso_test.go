@@ -17,15 +17,15 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 )
 
-// ssoUserProfiles is a Provider whose organization lookups are configurable, so
+// ssoIdentityProvider is a Provider whose organization lookups are configurable, so
 // tests can simulate identities that belong to an Ory organization.
-type ssoUserProfiles struct {
-	handlerTestUserProfiles
+type ssoIdentityProvider struct {
+	handlerTestIdentityProvider
 
 	orgByUser map[uuid.UUID]uuid.UUID
 }
 
-func (p ssoUserProfiles) GetUserOrganizationID(_ context.Context, userID uuid.UUID) (uuid.UUID, error) {
+func (p ssoIdentityProvider) GetUserOrganizationID(_ context.Context, userID uuid.UUID) (uuid.UUID, error) {
 	return p.orgByUser[userID], nil
 }
 
@@ -49,8 +49,8 @@ func TestPostTeamsTeamIDMembers_RejectsInviteOutsideSSOOrg(t *testing.T) {
 
 	// invitee belongs to no org (orgByUser empty) → outside the team's org.
 	store := &APIStore{
-		userProfiles: ssoUserProfiles{},
-		provisioning: provisioning.New(nil, ssoUserProfiles{}, nil, ""),
+		idp:          ssoIdentityProvider{},
+		provisioning: provisioning.New(nil, ssoIdentityProvider{}, nil, ""),
 	}
 	store.PostTeamsTeamIDMembers(ginCtx, teamID)
 
@@ -80,12 +80,12 @@ func TestPostTeamsTeamIDMembers_AllowsInviteFromSSOOrg(t *testing.T) {
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 
 	// invitee belongs to the same org as the team → allowed.
-	profiles := ssoUserProfiles{orgByUser: map[uuid.UUID]uuid.UUID{inviteeID: orgID}}
+	profiles := ssoIdentityProvider{orgByUser: map[uuid.UUID]uuid.UUID{inviteeID: orgID}}
 	store := &APIStore{
 		db:           testDB.SqlcClient,
 		authDB:       testDB.AuthDB,
 		authService:  noopAuthService{},
-		userProfiles: profiles,
+		idp:          profiles,
 		provisioning: provisioning.New(testDB.AuthDB, profiles, nil, ""),
 	}
 	store.PostTeamsTeamIDMembers(ginCtx, teamID)

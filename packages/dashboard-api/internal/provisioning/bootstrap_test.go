@@ -23,7 +23,7 @@ func TestBootstrapAuthProviderUser_CreatesIdentityAndDefaultTeam(t *testing.T) {
 	ctx := t.Context()
 	sink := &fakeTeamProvisionSink{}
 
-	svc := New(testDB.AuthDB, newTestUserProfiles(), sink, testIssuer)
+	svc := New(testDB.AuthDB, newTestIdentityProvider(), sink, testIssuer)
 
 	input := OIDCUserBootstrapInput{
 		OIDCIssuer:      testIssuer,
@@ -81,15 +81,15 @@ func TestBootstrapAuthProviderUser_CreatesIdentityAndDefaultTeam(t *testing.T) {
 	}
 }
 
-type recordingUserProfiles struct {
-	testUserProfiles
+type recordingIdentityProvider struct {
+	testIdentityProvider
 
 	externalIDSubject string
 	externalID        uuid.UUID
 	externalIDCalls   int
 }
 
-func (r *recordingUserProfiles) SetIdentityExternalID(_ context.Context, subject string, externalID uuid.UUID) error {
+func (r *recordingIdentityProvider) SetIdentityExternalID(_ context.Context, subject string, externalID uuid.UUID) error {
 	r.externalIDSubject = subject
 	r.externalID = externalID
 	r.externalIDCalls++
@@ -103,7 +103,7 @@ func TestBootstrapOIDCUser_PopulatesOryExternalID(t *testing.T) {
 	testDB := testutils.SetupDatabase(t)
 	ctx := t.Context()
 	sink := &fakeTeamProvisionSink{}
-	profiles := &recordingUserProfiles{}
+	profiles := &recordingIdentityProvider{}
 
 	svc := New(testDB.AuthDB, profiles, sink, testIssuer)
 
@@ -136,15 +136,15 @@ func TestBootstrapOIDCUser_PopulatesOryExternalID(t *testing.T) {
 	}
 }
 
-// failingUserProfiles fails the Ory external_id PATCH to simulate the IdP being
+// failingIdentityProvider fails the Ory external_id PATCH to simulate the IdP being
 // unavailable after the bootstrap transaction has already committed.
-type failingUserProfiles struct {
-	testUserProfiles
+type failingIdentityProvider struct {
+	testIdentityProvider
 
 	externalIDCalls int
 }
 
-func (f *failingUserProfiles) SetIdentityExternalID(context.Context, string, uuid.UUID) error {
+func (f *failingIdentityProvider) SetIdentityExternalID(context.Context, string, uuid.UUID) error {
 	f.externalIDCalls++
 
 	return errors.New("ory unavailable")
@@ -159,7 +159,7 @@ func TestBootstrapOIDCUser_ExternalIDFailureKeepsUserProvisioned(t *testing.T) {
 	testDB := testutils.SetupDatabase(t)
 	ctx := t.Context()
 	sink := &fakeTeamProvisionSink{}
-	profiles := &failingUserProfiles{}
+	profiles := &failingIdentityProvider{}
 
 	svc := New(testDB.AuthDB, profiles, sink, testIssuer)
 
@@ -204,7 +204,7 @@ func TestBootstrapOIDCUser_ReRunBackfillsExternalID(t *testing.T) {
 	ctx := t.Context()
 	sink := &fakeTeamProvisionSink{}
 
-	svc := New(testDB.AuthDB, &failingUserProfiles{}, sink, testIssuer)
+	svc := New(testDB.AuthDB, &failingIdentityProvider{}, sink, testIssuer)
 
 	input := OIDCUserBootstrapInput{
 		OIDCIssuer:    testIssuer,
@@ -228,7 +228,7 @@ func TestBootstrapOIDCUser_ReRunBackfillsExternalID(t *testing.T) {
 		t.Fatalf("expected default team from first bootstrap: %v", err)
 	}
 
-	recording := &recordingUserProfiles{}
+	recording := &recordingIdentityProvider{}
 	svc = New(testDB.AuthDB, recording, sink, testIssuer)
 
 	secondTeam, err := svc.BootstrapOIDCUser(ctx, input)
@@ -253,7 +253,7 @@ func TestBootstrapOIDCUser_ConcurrentRequestsSingleIdentityAndTeam(t *testing.T)
 	ctx := t.Context()
 	sink := &fakeTeamProvisionSink{}
 
-	svc := New(testDB.AuthDB, newTestUserProfiles(), sink, testIssuer)
+	svc := New(testDB.AuthDB, newTestIdentityProvider(), sink, testIssuer)
 
 	input := OIDCUserBootstrapInput{
 		OIDCIssuer:    testIssuer,
@@ -340,7 +340,7 @@ func TestBootstrapOIDCUser_AcceptsConfiguredIssuer(t *testing.T) {
 	ctx := t.Context()
 	sink := &fakeTeamProvisionSink{}
 
-	svc := New(testDB.AuthDB, newTestUserProfiles(), sink, testIssuer)
+	svc := New(testDB.AuthDB, newTestIdentityProvider(), sink, testIssuer)
 
 	team, err := svc.BootstrapOIDCUser(ctx, OIDCUserBootstrapInput{
 		OIDCIssuer:    testIssuer,
@@ -363,7 +363,7 @@ func TestBootstrapOIDCUser_UnknownIssuerReturnsBadRequest(t *testing.T) {
 	ctx := t.Context()
 	sink := &fakeTeamProvisionSink{}
 
-	svc := New(testDB.AuthDB, newTestUserProfiles(), sink, testIssuer)
+	svc := New(testDB.AuthDB, newTestIdentityProvider(), sink, testIssuer)
 
 	_, err := svc.BootstrapOIDCUser(ctx, OIDCUserBootstrapInput{
 		OIDCIssuer:    "https://attacker.example.test",
@@ -400,7 +400,7 @@ func TestBootstrapUser_ConcurrentRequestsCreateSingleDefaultTeam(t *testing.T) {
 		t.Fatalf("failed to remove default team: %v", err)
 	}
 
-	svc := New(testDB.AuthDB, newTestUserProfiles(), sink, testIssuer)
+	svc := New(testDB.AuthDB, newTestIdentityProvider(), sink, testIssuer)
 	profile := bootstrapUserProfile{
 		UserID:          userID,
 		Email:           testUserEmail(userID),

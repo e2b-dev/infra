@@ -1,4 +1,6 @@
-package userprofile
+// Package identity abstracts the external identity provider (Ory): profile
+// lookup, organization membership, and identity lifecycle.
+package identity
 
 import (
 	"context"

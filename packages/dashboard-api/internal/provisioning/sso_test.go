@@ -14,20 +14,20 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 )
 
-// ssoUserProfiles is a Provider whose organization lookups are configurable, so
+// ssoIdentityProvider is a Provider whose organization lookups are configurable, so
 // tests can simulate identities that belong to an Ory organization.
-type ssoUserProfiles struct {
-	testUserProfiles
+type ssoIdentityProvider struct {
+	testIdentityProvider
 
 	orgBySubject map[string]uuid.UUID
 	orgByUser    map[uuid.UUID]uuid.UUID
 }
 
-func (p ssoUserProfiles) GetIdentityOrganizationID(_ context.Context, subject string) (uuid.UUID, error) {
+func (p ssoIdentityProvider) GetIdentityOrganizationID(_ context.Context, subject string) (uuid.UUID, error) {
 	return p.orgBySubject[subject], nil
 }
 
-func (p ssoUserProfiles) GetUserOrganizationID(_ context.Context, userID uuid.UUID) (uuid.UUID, error) {
+func (p ssoIdentityProvider) GetUserOrganizationID(_ context.Context, userID uuid.UUID) (uuid.UUID, error) {
 	return p.orgByUser[userID], nil
 }
 
@@ -58,7 +58,7 @@ func TestBootstrapOIDCUser_SSOJoinsMappedTeams(t *testing.T) {
 	setTeamSSOOrg(t, testDB, teamNewer, orgID, true, time.Now().Add(-1*time.Hour))
 	setTeamSSOOrg(t, testDB, teamOlder, orgID, true, time.Now().Add(-2*time.Hour))
 
-	svc := New(testDB.AuthDB, ssoUserProfiles{orgBySubject: map[string]uuid.UUID{subject: orgID}}, sink, testIssuer)
+	svc := New(testDB.AuthDB, ssoIdentityProvider{orgBySubject: map[string]uuid.UUID{subject: orgID}}, sink, testIssuer)
 
 	input := OIDCUserBootstrapInput{
 		OIDCIssuer:    testIssuer,
@@ -120,7 +120,7 @@ func TestBootstrapOIDCUser_SSOFailsClosedWhenNoTeamMapped(t *testing.T) {
 	orgID := uuid.New()
 	subject := uuid.NewString()
 
-	svc := New(testDB.AuthDB, ssoUserProfiles{orgBySubject: map[string]uuid.UUID{subject: orgID}}, sink, testIssuer)
+	svc := New(testDB.AuthDB, ssoIdentityProvider{orgBySubject: map[string]uuid.UUID{subject: orgID}}, sink, testIssuer)
 
 	input := OIDCUserBootstrapInput{
 		OIDCIssuer:    testIssuer,
@@ -166,7 +166,7 @@ func TestBootstrapOIDCUser_SSOSkipsManualTeams(t *testing.T) {
 	manualTeam := testutils.CreateTestTeam(t, testDB)
 	setTeamSSOOrg(t, testDB, manualTeam, orgID, false, time.Now().Add(-1*time.Hour))
 
-	svc := New(testDB.AuthDB, ssoUserProfiles{orgBySubject: map[string]uuid.UUID{subject: orgID}}, sink, testIssuer)
+	svc := New(testDB.AuthDB, ssoIdentityProvider{orgBySubject: map[string]uuid.UUID{subject: orgID}}, sink, testIssuer)
 
 	input := OIDCUserBootstrapInput{
 		OIDCIssuer:    testIssuer,
@@ -187,7 +187,7 @@ func TestCreateTeam_SSOUserRejected(t *testing.T) {
 	ctx := t.Context()
 	userID := uuid.New()
 
-	svc := New(nil, ssoUserProfiles{orgByUser: map[uuid.UUID]uuid.UUID{userID: uuid.New()}}, nil, testIssuer)
+	svc := New(nil, ssoIdentityProvider{orgByUser: map[uuid.UUID]uuid.UUID{userID: uuid.New()}}, nil, testIssuer)
 
 	_, err := svc.CreateTeam(ctx, userID, "My Team")
 	if err == nil {

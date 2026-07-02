@@ -12,9 +12,9 @@ import (
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/identity"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/provisioning"
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
-	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
@@ -28,7 +28,7 @@ type APIStore struct {
 	authDB       *authdb.Client
 	clickhouse   clickhouse.Clickhouse
 	authService  sharedauth.Service
-	userProfiles userprofile.Provider
+	idp          identity.Provider
 	provisioning *provisioning.Service
 }
 
@@ -39,7 +39,7 @@ func NewAPIStore(
 	ch clickhouse.Clickhouse,
 	authService sharedauth.Service,
 	teamProvisionSink internalteamprovision.TeamProvisionSink,
-	userProfiles userprofile.Provider,
+	idp identity.Provider,
 ) *APIStore {
 	return &APIStore{
 		config:       config,
@@ -47,8 +47,8 @@ func NewAPIStore(
 		authDB:       authDB,
 		clickhouse:   ch,
 		authService:  authService,
-		userProfiles: userProfiles,
-		provisioning: provisioning.New(authDB, userProfiles, teamProvisionSink, config.OryIssuerURL),
+		idp:          idp,
+		provisioning: provisioning.New(authDB, idp, teamProvisionSink, config.OryIssuerURL),
 	}
 }
 
