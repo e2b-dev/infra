@@ -11,6 +11,10 @@ const (
 	StructureVersionV2 = "v2"
 )
 
+// DefaultEventsTTLDays is the fallback event retention used when an event
+// doesn't carry a team-specific TTL
+const DefaultEventsTTLDays int64 = 7
+
 const (
 	SandboxCreatedEvent      = "sandbox.lifecycle.created"
 	SandboxKilledEvent       = "sandbox.lifecycle.killed"
@@ -46,4 +50,7 @@ type SandboxEvent struct {
 	SandboxTemplateID  string    `json:"sandbox_template_id"`
 	SandboxBuildID     string    `json:"sandbox_build_id"`
 	SandboxTeamID      uuid.UUID `json:"sandbox_team_id"`
+
+	// Retention of the event in days
+	EventsTTLDays int64 `json:"events_ttl_days,omitempty"`
 }
