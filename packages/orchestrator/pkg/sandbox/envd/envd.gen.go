@@ -232,6 +232,15 @@ type PostInitJSONBody struct {
 	VolumeMounts []VolumeMount `json:"volumeMounts,omitempty"`
 }
 
+// GetTunnelParams defines parameters for GetTunnel.
+type GetTunnelParams struct {
+	// Host Target host to connect to inside the sandbox. Defaults to "localhost".
+	Host string `form:"host,omitempty" json:"host,omitempty"`
+
+	// Port Target TCP port to connect to inside the sandbox.
+	Port int `form:"port" json:"port"`
+}
+
 // PostFilesMultipartRequestBody defines body for PostFiles for multipart/form-data ContentType.
 type PostFilesMultipartRequestBody PostFilesMultipartBody
 

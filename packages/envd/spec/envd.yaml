@@ -263,6 +263,47 @@ paths:
         "507":
           $ref: "#/components/responses/NotEnoughDiskSpace"
 
+  /tunnel:
+    get:
+      summary: Open a raw TCP tunnel to a target reachable inside the sandbox over a WebSocket
+      description: >
+        Upgrades the connection to a WebSocket (HTTP 101) and relays raw TCP bytes
+        verbatim between the client and the target host:port inside the sandbox.
+        The target is supplied via the host/port query parameters, so invalid
+        parameters (400) and connection failures (502) are returned as ordinary
+        HTTP responses before the upgrade. After the upgrade, binary frames carry
+        raw bytes with no framing or prefixes.
+      security:
+        - AccessTokenAuth: []
+      parameters:
+        - name: host
+          in: query
+          required: false
+          description: Target host to connect to inside the sandbox. Defaults to "localhost".
+          schema:
+            type: string
+        - name: port
+          in: query
+          required: true
+          description: Target TCP port to connect to inside the sandbox.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 65535
+      responses:
+        "101":
+          description: The WebSocket tunnel was established and is relaying raw TCP bytes.
+        "400":
+          $ref: "#/components/responses/InvalidPath"
+        "401":
+          $ref: "#/components/responses/InvalidUser"
+        "502":
+          description: Failed to connect to the target host:port inside the sandbox.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
   securitySchemes:
     AccessTokenAuth:
