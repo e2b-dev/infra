@@ -28,7 +28,6 @@ const (
 	metricsReaderBufSize = 1 * 1024 * 1024 // 1 MB
 
 	// metricsFlushInterval controls how often we trigger a Firecracker metrics flush.
-	// Matches the host stats sampling interval (HostStatsSamplingInterval, default 5 s).
 	metricsFlushInterval = 5 * time.Second
 )
 
