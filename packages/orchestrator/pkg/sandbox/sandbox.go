@@ -612,8 +612,7 @@ func (f *Factory) CreateSandbox(
 	}
 	telemetry.ReportEvent(ctx, "created fc process")
 
-	useClickhouseMetrics := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlag)
-	sbx.Checks = NewChecks(sbx, useClickhouseMetrics)
+	sbx.Checks = NewChecks(sbx)
 
 	// Stop the sandbox first if it is still running, otherwise do nothing
 	cleanup.AddPriority(ctx, sbx.Stop)
@@ -974,13 +973,12 @@ func (f *Factory) ResumeSandbox(
 		skipStartupMetrics: ropts.skipLiveRegistration,
 	}
 
-	useClickhouseMetrics := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlag)
 	useMemfd := fc.FCSupportsMemfd(config.FirecrackerConfig.FirecrackerVersion) &&
 		f.featureFlags.BoolFlag(ctx, featureflags.UseMemFdFlag, sandboxLDContext(runtime, config))
 
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
 	// This is to prevent race condition of reporting unhealthy sandbox
-	sbx.Checks = NewChecks(sbx, useClickhouseMetrics)
+	sbx.Checks = NewChecks(sbx)
 
 	cleanup.AddPriority(ctx, func(ctx context.Context) error {
 		// Stop the sandbox first if it is still running, otherwise do nothing

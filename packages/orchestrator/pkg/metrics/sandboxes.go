@@ -172,10 +172,6 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 					continue
 				}
 
-				if !sbx.Checks.UseClickhouseMetrics {
-					continue
-				}
-
 				wg.Go(func() error {
 					// Make sure the sandbox doesn't change while we are getting metrics (the slot could be assigned to another sandbox)
 					sbxMetrics, err := sbx.Checks.GetMetrics(ctx, timeoutGetMetrics)
