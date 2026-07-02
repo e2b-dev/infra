@@ -3,7 +3,7 @@ package cfg
 import "github.com/caarlos0/env/v11"
 
 type Config struct {
-	HealthPort uint16 `env:"HEALTH_PORT" envDefault:"3003"`
+	HealthPort uint16 `env:"HEALTH_PORT" envDefault:"3001"`
 	ProxyPort  uint16 `env:"PROXY_PORT"  envDefault:"3002"`
 
 	RedisURL         string `env:"REDIS_URL"`

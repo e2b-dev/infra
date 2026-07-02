@@ -21,7 +21,7 @@ func TestParse_Defaults(t *testing.T) {
 
 	cfg, err := Parse()
 	require.NoError(t, err)
-	require.EqualValues(t, 3003, cfg.HealthPort)
+	require.EqualValues(t, 3001, cfg.HealthPort)
 	require.EqualValues(t, 3002, cfg.ProxyPort)
 	require.Equal(t, 40, cfg.RedisPoolSize)
 	require.Empty(t, cfg.RedisURL)
