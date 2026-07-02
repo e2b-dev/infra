@@ -19,6 +19,10 @@ import (
 )
 
 const (
+	// Monitoring (metrics) and logs data has a fixed retention window,
+	// independent of the team's events retention limit.
+	monitoringRetention = 7 * 24 * time.Hour
+
 	undefinedTableErrorCode = "42P01"
 )
 
@@ -52,29 +56,27 @@ func (s *APIStore) GetSandboxesSandboxIDRecord(c *gin.Context, sandboxID api.San
 		alias = &row.Alias
 	}
 
-	// The sandbox's monitoring, events, and logs data is purged once the
-	// sandbox ended more than the retention window ago. The window comes from
-	// the team's limits (tier + addons); fall back to the historical default
-	// for stale cached teams that don't carry the limit yet.
-	retentionDays := events.DefaultEventsTTLDays
-	if team.Limits != nil && team.Limits.EventsTTLDays > 0 {
-		retentionDays = team.Limits.EventsTTLDays
-	}
+	// Monitoring and logs data is purged once the sandbox ended more than the
+	// fixed retention window ago.
+	retentionExpired := row.StoppedAt != nil && time.Since(*row.StoppedAt) > monitoringRetention
 
-	retention := time.Duration(retentionDays) * 24 * time.Hour
-	retentionExpired := row.StoppedAt != nil && time.Since(*row.StoppedAt) > retention
+	// Events retention comes from the team's limits (tier + addons)
+	eventsRetentionDays := min(team.Limits.EventsTTLDays, events.MaxEventsTTLDays)
+	eventsRetention := time.Duration(eventsRetentionDays) * 24 * time.Hour
+	eventsRetentionExpired := row.StoppedAt != nil && time.Since(*row.StoppedAt) > eventsRetention
 
 	c.JSON(http.StatusOK, api.SandboxRecord{
-		TemplateID:       row.TemplateID,
-		Alias:            alias,
-		SandboxID:        row.SandboxID,
-		StartedAt:        row.StartedAt,
-		StoppedAt:        row.StoppedAt,
-		Domain:           row.Domain,
-		CpuCount:         row.Vcpu,
-		MemoryMB:         row.RamMb,
-		DiskSizeMB:       row.TotalDiskSizeMb,
-		RetentionExpired: retentionExpired,
+		TemplateID:             row.TemplateID,
+		Alias:                  alias,
+		SandboxID:              row.SandboxID,
+		StartedAt:              row.StartedAt,
+		StoppedAt:              row.StoppedAt,
+		Domain:                 row.Domain,
+		CpuCount:               row.Vcpu,
+		MemoryMB:               row.RamMb,
+		DiskSizeMB:             row.TotalDiskSizeMb,
+		RetentionExpired:       retentionExpired,
+		EventsRetentionExpired: eventsRetentionExpired,
 	})
 }
 
