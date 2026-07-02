@@ -283,6 +283,9 @@ func (lb *LayerExecutor) PauseAndUpload(
 		snapshot.Metafile,
 		snapshot.MemorySnapshot.Diff,
 		snapshot.RootfsDiff,
+		snapshot.MemorySnapshot.ProvisionalDiffHeader,
+		snapshot.MemorySnapshot.ProvisionalDiff,
+		snapshot.MemorySnapshot.ProvisionalSwapDone,
 	)
 	if err != nil {
 		err = errors.Join(err, snapshot.Close(context.WithoutCancel(ctx)))

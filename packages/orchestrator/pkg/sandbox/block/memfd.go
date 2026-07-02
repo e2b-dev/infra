@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"github.com/RoaringBitmap/roaring/v2"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
@@ -265,6 +267,15 @@ type DedupedMemfdCache struct {
 // the compare), so this grace is a backstop, not the common path.
 const memfdSwapGrace = 30 * time.Second
 
+// swapGraceElapsedCounter counts memfd releases that fell back to the grace
+// timeout because no swap signal arrived. Expected to be ~0 (the swap normally
+// signals before the drain finishes); a nonzero rate means swaps are being lost
+// — e.g. pauses aborting before AddSnapshot spawns the swap goroutine — and the
+// memfd (guest-RAM-sized) is being held the full grace on those pauses.
+var swapGraceElapsedCounter = utils.Must(otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block").
+	Int64Counter("orchestrator.memfd.swap_grace_elapsed",
+		metric.WithDescription("Dedup memfd releases that timed out on the swap grace without a swap signal")))
+
 func NewCacheFromMemfdDeduped(
 	ctx context.Context,
 	base ReadonlyDevice,
@@ -413,17 +424,20 @@ func (d *DedupedMemfdCache) runDedup(
 
 	recordDedupAttrs(ctx, plan, scanEmptyPages, compareDur, writeDur)
 	// Resolve the drained cache immediately so upload and post-swap reads don't
-	// wait. Then, when inflight serving is active, keep the memfd mapped until
-	// the local template swaps off the provisional header (MarkSwapped) so a
+	// wait. Then, when inflight serving is active, keep the memfd mapped until the
+	// local template swaps off the provisional header (MarkSwapped) so a
 	// provisional read never hits a released memfd. The swap only waits on the
-	// compare, so it has usually already fired by now; ctx and the grace bound
-	// the wait so a failed or absent swap can't leak the mapping.
+	// compare, so it has usually already fired by now; ctx and the grace bound the
+	// wait so a failed or absent swap can't leak the mapping. When no provisional
+	// source is built, buildProvisionalMemfile calls MarkSwapped up front, so this
+	// returns immediately and releases at drain-time like the non-inflight path.
 	logSetOnceErr(ctx, "dedup done", d.done.SetResult(cache, err))
 	if d.inflight {
 		select {
 		case <-d.swapped.Done:
 		case <-ctx.Done():
 		case <-time.After(memfdSwapGrace):
+			swapGraceElapsedCounter.Add(ctx, 1)
 			logger.L().Warn(ctx, "memfd swap grace elapsed; releasing memfd without a swap signal")
 		}
 	}
