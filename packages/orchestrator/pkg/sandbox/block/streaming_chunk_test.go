@@ -5,6 +5,7 @@ package block
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand/v2"
@@ -335,6 +336,53 @@ func TestChunker_EarlyReturn(t *testing.T) {
 	r = <-lateDone
 	require.NoError(t, r.err)
 	require.Equal(t, data[lastOff:lastOff+testBlockSize], r.data)
+}
+
+// TestChunker_SessionOriginMismatch reproduces a corruption bug in fetch's
+// readiness fast path. A fetch session created on one frame geometry (an
+// uncompressed whole-file chunk) is reused by a later read that locates a
+// different origin — as happens when a peer→storage transition swaps 4MB
+// uncompressed peer chunks for smaller compressed frames, so getOrCreateSession
+// returns a session framed on the old geometry. bytesReady counts from the
+// session's chunkOff; the readiness check must use the same origin. The buggy
+// code computed the threshold from the freshly located chunkOff, so a session
+// that filled only its first block reported a not-yet-written deeper block as
+// ready — serving stale (zero) mmap to the guest instead of fetching it.
+//
+// The scenario is built synchronously: a partially filled, then terminated,
+// session stands in for the aborted peer fetch. With the fix, the shifted-origin
+// read finds the block unready and falls through to the terminated session's
+// error; with the bug, it short-circuits to SourceMmap and returns no error.
+func TestChunker_SessionOriginMismatch(t *testing.T) {
+	t.Parallel()
+
+	data := makeTestData(testFileSize)
+	// A compressed frame table with testFrameSize-aligned uncompressed frames:
+	// locateChunk for the second frame yields chunkOff=testFrameSize, an origin
+	// different from the uncompressed session's chunkOff of 0.
+	compFT, upstream := makeCompressedTestData(t, data)
+	shiftedOff := int64(testFrameSize)
+
+	chunker := newTestChunker(t, int64(len(data)))
+	defer chunker.Close()
+
+	// An in-flight session on the uncompressed whole-file geometry that filled
+	// only its first block, then terminated (as a peer fetch does when the peer
+	// goes away mid-transition). bytesReady covers block 0 but not shiftedOff.
+	sess := newFetchSession(0, int64(len(data)), chunker.cache)
+	sess.advance(testBlockSize)
+	sess.fail(errors.New("peer gone"))
+
+	chunker.fetchMu.Lock()
+	chunker.fetchSessions = append(chunker.fetchSessions, sess)
+	chunker.fetchMu.Unlock()
+
+	// The shifted-origin read reuses the session. shiftedOff is not ready, so
+	// fetch must consult the (terminated) session and surface its error rather
+	// than report the block ready and serve stale mmap.
+	_, err := chunker.fetch(t.Context(), shiftedOff, testBlockSize, upstream, compFT)
+	require.Error(t, err, "fetch reported an unfilled shifted-origin block as ready (served stale mmap)")
+	require.ErrorContains(t, err, "peer gone")
 }
 
 // TestChunker_ErrorKeepsPartialData verifies that an upstream error at the
