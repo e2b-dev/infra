@@ -227,8 +227,13 @@ locals {
     "local_lock=none", // all locks are network locks
 
     // caching
-    "noac",             // disable attribute caching. slower, but more reliable
-    "lookupcache=none", // disable lookup caching
+    // Bound cross-host staleness to ~1s while avoiding a Filestore RPC on every
+    // metadata op. Sandboxes mounting the same volume on different hosts still see
+    // peer writes within the attribute timer; strict coherency for shared mutable
+    // state should use NLM locks (already enabled via lock,local_lock=none) or an
+    // out-of-band signal.
+    "actimeo=1",            // cap all attribute caches at 1 second
+    "lookupcache=positive", // cache hits; negative lookups still hit the server so new files appear promptly
 
     // security
     "noacl",   // do not use an acl

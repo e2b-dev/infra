@@ -83,6 +83,19 @@ echo "$SWAPFILE none swap sw 0 0" | tee -a /etc/fstab
 sysctl vm.swappiness=10
 sysctl vm.vfs_cache_pressure=50
 
+# Increase RPC slot table so nconnect can actually parallelize. Default of 2 in-flight
+# RPCs per TCP connection bottlenecks metadata-heavy NFS workloads (uncached lookups,
+# many concurrent sandboxes). Modprobe options apply when sunrpc loads (first NFS mount);
+# the runtime sysctl handles the case where the module is already loaded.
+mkdir -p /etc/modprobe.d
+cat <<'EOF' >/etc/modprobe.d/sunrpc.conf
+options sunrpc tcp_slot_table_entries=128 tcp_max_slot_table_entries=128
+EOF
+if [ -d /proc/sys/sunrpc ]; then
+  sysctl -w sunrpc.tcp_slot_table_entries=128
+  sysctl -w sunrpc.tcp_max_slot_table_entries=128
+fi
+
 # TODO: Optimize the mount more according to https://cloud.google.com/filestore/docs/mounting-fileshares
 %{ if USE_FILESTORE_CACHE }
 # Configure NFS read ahead
