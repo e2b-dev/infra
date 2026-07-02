@@ -39,18 +39,18 @@ AND (
     OR st.sandbox_id = sqlc.narg(sandbox_id)::text
 )
 AND (
-    sqlc.narg(alias)::text IS NULL
+    sqlc.narg(env_id)::text IS NULL
+    OR e.id = sqlc.narg(env_id)::text
+)
+AND (
+    sqlc.narg(tag)::text IS NULL
     OR EXISTS (
-        -- Mirror alias resolution: match the team namespace, and for bare aliases
-        -- also match promoted (NULL namespace) aliases. Explicit "team/alias" only
-        -- matches the team namespace.
-        SELECT 1 FROM "public"."env_aliases" af
-        WHERE af.env_id = e.id
-          AND af.alias = sqlc.narg(alias)::text
-          AND (
-              af.namespace = @alias_namespace::text
-              OR (@match_null_namespace::bool AND af.namespace IS NULL)
-          )
+        SELECT 1
+        FROM "public"."env_build_assignments" tba
+        JOIN "public"."env_builds" tb ON tb.id = tba.build_id
+        WHERE tba.env_id = e.id
+          AND tba.tag = sqlc.narg(tag)::text
+          AND tb.status IN ('success', 'uploaded', 'ready')
     )
 )
 AND (e.created_at, e.id) < (@cursor_time, @cursor_id::text)

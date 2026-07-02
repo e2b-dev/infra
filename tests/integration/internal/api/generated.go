@@ -1563,7 +1563,7 @@ type GetSandboxesSandboxIDMetricsParams struct {
 type GetSnapshotsParams struct {
 	SandboxID *string `form:"sandboxID,omitempty" json:"sandboxID,omitempty"`
 
-	// Name Filter snapshots by name (e.g. "my-snapshot" or "my-team/my-snapshot").
+	// Name Filter snapshots by name or ID, optionally tag-qualified (e.g. "my-snapshot", "my-team/my-snapshot" or "my-snapshot:v1").
 	Name *string `form:"name,omitempty" json:"name,omitempty"`
 
 	// Limit Maximum number of items to return per page

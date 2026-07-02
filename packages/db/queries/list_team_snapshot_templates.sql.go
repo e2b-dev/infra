@@ -52,33 +52,32 @@ AND (
 )
 AND (
     $3::text IS NULL
+    OR e.id = $3::text
+)
+AND (
+    $4::text IS NULL
     OR EXISTS (
-        -- Mirror alias resolution: match the team namespace, and for bare aliases
-        -- also match promoted (NULL namespace) aliases. Explicit "team/alias" only
-        -- matches the team namespace.
-        SELECT 1 FROM "public"."env_aliases" af
-        WHERE af.env_id = e.id
-          AND af.alias = $3::text
-          AND (
-              af.namespace = $4::text
-              OR ($5::bool AND af.namespace IS NULL)
-          )
+        SELECT 1
+        FROM "public"."env_build_assignments" tba
+        JOIN "public"."env_builds" tb ON tb.id = tba.build_id
+        WHERE tba.env_id = e.id
+          AND tba.tag = $4::text
+          AND tb.status IN ('success', 'uploaded', 'ready')
     )
 )
-AND (e.created_at, e.id) < ($6, $7::text)
+AND (e.created_at, e.id) < ($5, $6::text)
 ORDER BY e.created_at DESC, e.id DESC
-LIMIT $8
+LIMIT $7
 `
 
 type ListTeamSnapshotTemplatesParams struct {
-	TeamID             uuid.UUID
-	SandboxID          *string
-	Alias              *string
-	AliasNamespace     string
-	MatchNullNamespace bool
-	CursorTime         time.Time
-	CursorID           string
-	PageLimit          int32
+	TeamID     uuid.UUID
+	SandboxID  *string
+	EnvID      *string
+	Tag        *string
+	CursorTime time.Time
+	CursorID   string
+	PageLimit  int32
 }
 
 type ListTeamSnapshotTemplatesRow struct {
@@ -104,9 +103,8 @@ func (q *Queries) ListTeamSnapshotTemplates(ctx context.Context, arg ListTeamSna
 	rows, err := q.db.Query(ctx, listTeamSnapshotTemplates,
 		arg.TeamID,
 		arg.SandboxID,
-		arg.Alias,
-		arg.AliasNamespace,
-		arg.MatchNullNamespace,
+		arg.EnvID,
+		arg.Tag,
 		arg.CursorTime,
 		arg.CursorID,
 		arg.PageLimit,

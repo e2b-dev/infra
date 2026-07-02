@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -66,14 +68,9 @@ func (a *APIStore) GetSnapshots(c *gin.Context, params api.GetSnapshotsParams) {
 		sandboxIDFilter = &short
 	}
 
-	var aliasFilter *string
-	// Namespace matching mirrors alias resolution (see AliasCache.Resolve): a bare
-	// alias matches the team namespace and falls back to promoted (NULL) aliases,
-	// while an explicit "team/alias" matches only the team namespace.
-	aliasNamespace := teamInfo.Slug
-	matchNullNamespace := false
+	var envIDFilter, tagFilter *string
 	if params.Name != nil {
-		identifier, _, err := id.ParseName(*params.Name)
+		identifier, tag, err := id.ParseName(*params.Name)
 		if err != nil {
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid name: %s", err))
 
@@ -86,20 +83,36 @@ func (a *APIStore) GetSnapshots(c *gin.Context, params api.GetSnapshotsParams) {
 			return
 		}
 
-		namespace, alias := id.SplitIdentifier(identifier)
-		aliasFilter = &alias
-		matchNullNamespace = namespace == nil
+		tagFilter = tag
+
+		// Resolve alias using the cache — same pattern as template builds. Team
+		// ownership is enforced by the query's team_id predicate, so a name that
+		// resolves to another team's template yields an empty list.
+		aliasInfo, err := a.templateCache.ResolveAlias(ctx, identifier, teamInfo.Slug)
+		switch {
+		case err == nil:
+			envIDFilter = &aliasInfo.TemplateID
+		case errors.Is(err, templatecache.ErrTemplateNotFound):
+			c.JSON(http.StatusOK, []api.SnapshotInfo{})
+
+			return
+		default:
+			apiErr := templatecache.ErrorToAPIError(err, identifier)
+			a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+			telemetry.ReportCriticalError(ctx, "error resolving snapshot template alias", apiErr.Err)
+
+			return
+		}
 	}
 
 	snapshots, err := a.sqlcDB.ListTeamSnapshotTemplates(ctx, queries.ListTeamSnapshotTemplatesParams{
-		TeamID:             teamID,
-		SandboxID:          sandboxIDFilter,
-		Alias:              aliasFilter,
-		AliasNamespace:     aliasNamespace,
-		MatchNullNamespace: matchNullNamespace,
-		CursorTime:         pagination.CursorTime(),
-		CursorID:           pagination.CursorID(),
-		PageLimit:          pagination.QueryLimit(),
+		TeamID:     teamID,
+		SandboxID:  sandboxIDFilter,
+		EnvID:      envIDFilter,
+		Tag:        tagFilter,
+		CursorTime: pagination.CursorTime(),
+		CursorID:   pagination.CursorID(),
+		PageLimit:  pagination.QueryLimit(),
 	})
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "Error listing snapshot templates", err, telemetry.WithTeamID(teamID.String()))
