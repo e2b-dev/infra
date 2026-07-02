@@ -48,6 +48,13 @@ type Config struct {
 	NomadAddress string `env:"NOMAD_ADDRESS" envDefault:"http://localhost:4646"`
 	NomadToken   string `env:"NOMAD_TOKEN"`
 
+	// NomadOrchestratorServiceName is the Nomad-native service name whose
+	// registrations enumerate orchestrator instances
+	// (GET /v1/service/<name>). Every orchestrator jobspec registers this
+	// service, regardless of job type or node pool. Used when
+	// ServiceDiscoveryProvider=nomad.
+	NomadOrchestratorServiceName string `env:"NOMAD_ORCHESTRATOR_SERVICE_NAME" envDefault:"orchestrator"`
+
 	// LocalOrchestratorAddress is the "host:port" address of a statically
 	// configured orchestrator instance. Required when
 	// ServiceDiscoveryProvider=local. Used for local dev against the darwin

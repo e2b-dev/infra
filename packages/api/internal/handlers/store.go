@@ -171,7 +171,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		if nomadErr != nil {
 			logger.L().Fatal(ctx, "Initializing Nomad client", zap.Error(nomadErr))
 		}
-		nodeDiscovery = orchdiscovery.NewNomad(nomadClient, "default")
+		nodeDiscovery = orchdiscovery.NewNomad(nomadClient, config.NomadOrchestratorServiceName)
 		templateBuilderDiscovery = clustersdiscovery.NewLocalDiscovery(consts.LocalClusterID, nomadClient)
 	}
 
