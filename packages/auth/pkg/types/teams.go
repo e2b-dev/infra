@@ -24,6 +24,7 @@ func newTeamLimits(
 		MaxVcpu:            int64(teamLimits.MaxVcpu),
 		MaxRamMb:           int64(teamLimits.MaxRamMb),
 		DiskMb:             int64(teamLimits.DiskMb),
+		MaxVolumes:         int64(teamLimits.MaxVolumes),
 	}
 }
 

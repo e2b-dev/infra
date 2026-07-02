@@ -11,6 +11,17 @@ import (
 	"github.com/google/uuid"
 )
 
+const countVolumesByTeamID = `-- name: CountVolumesByTeamID :one
+SELECT COUNT(*) FROM volumes WHERE team_id = $1
+`
+
+func (q *Queries) CountVolumesByTeamID(ctx context.Context, teamID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countVolumesByTeamID, teamID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createVolume = `-- name: CreateVolume :one
 INSERT INTO volumes (team_id, volume_type, name)
 VALUES ($1, $2, $3)

@@ -5,7 +5,8 @@ type TeamLimits struct {
 	BuildConcurrency   int64
 	MaxLengthHours     int64
 
-	MaxVcpu  int64
-	MaxRamMb int64
-	DiskMb   int64
+	MaxVcpu    int64
+	MaxRamMb   int64
+	DiskMb     int64
+	MaxVolumes int64
 }
