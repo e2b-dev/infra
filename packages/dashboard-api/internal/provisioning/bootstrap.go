@@ -38,13 +38,13 @@ func (s *Service) BootstrapOIDCUser(ctx context.Context, input OIDCUserBootstrap
 func (s *Service) requireConfiguredOIDCIssuer(issuer string) error {
 	oryIssuer := strings.TrimSpace(s.issuerURL)
 
-	if oryIssuer != "" && oryIssuer == issuer {
+	if oryIssuer != "" && oryIssuer == strings.TrimSpace(issuer) {
 		return nil
 	}
 
 	return &internalteamprovision.ProvisionError{
 		StatusCode: http.StatusBadRequest,
-		Message:    "oidc_issuer must equal the configured ORY_ISSUER_URL",
+		Message:    "oidc_issuer does not match a configured identity provider",
 	}
 }
 

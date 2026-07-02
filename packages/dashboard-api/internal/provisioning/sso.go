@@ -29,7 +29,7 @@ func (s *Service) enrollSSOMember(ctx context.Context, authTxDB *authqueries.Que
 	}
 
 	for _, row := range autoTeams {
-		if err := authTxDB.CreateTeamMembership(ctx, authqueries.CreateTeamMembershipParams{
+		if err := authTxDB.CreateTeamMembershipIfMissing(ctx, authqueries.CreateTeamMembershipIfMissingParams{
 			UserID:    userID,
 			TeamID:    row.Team.ID,
 			IsDefault: false,
