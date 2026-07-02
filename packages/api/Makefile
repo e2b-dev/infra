@@ -10,6 +10,8 @@ expectedMigration := $(shell ./../../scripts/get-latest-migration.sh)
 
 ifeq ($(PROVIDER),aws)
 	REGISTRY_PREFIX := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(PREFIX)core
+else ifeq ($(PROVIDER),azure)
+	REGISTRY_PREFIX := $(AZURE_REGISTRY_NAME).azurecr.io/$(PREFIX)core
 else
 	REGISTRY_PREFIX := $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(PREFIX)core
 endif

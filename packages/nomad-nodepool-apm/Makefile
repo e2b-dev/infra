@@ -28,6 +28,9 @@ upload:
 ifeq ($(PROVIDER),aws)
 	aws s3 cp $(BINARY) "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/nomad-nodepool-apm" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
 	aws s3 cp $(BINARY) "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/nomad-nodepool-apm.$(COMMIT_SHA)" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
+else ifeq ($(PROVIDER),azure)
+	az storage blob upload --auth-mode login --account-name $(AZURE_STORAGE_ACCOUNT_NAME) --container-name $(AZURE_BUCKET_PREFIX)fc-env-pipeline --name nomad-nodepool-apm --file $(BINARY) --overwrite --content-md5 $$(openssl md5 -binary $(BINARY) | base64)
+	az storage blob upload --auth-mode login --account-name $(AZURE_STORAGE_ACCOUNT_NAME) --container-name $(AZURE_BUCKET_PREFIX)fc-env-pipeline --name nomad-nodepool-apm.$(COMMIT_SHA) --file $(BINARY) --overwrite --content-md5 $$(openssl md5 -binary $(BINARY) | base64)
 else
 	gcloud storage cp --cache-control="no-cache, max-age=0" $(BINARY) "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/nomad-nodepool-apm"
 	gcloud storage cp --cache-control="no-cache, max-age=0" $(BINARY) "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/nomad-nodepool-apm.$(COMMIT_SHA)"

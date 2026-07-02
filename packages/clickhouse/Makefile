@@ -6,6 +6,8 @@ CLICKHOUSE_HOST ?= clickhouse
 
 ifeq ($(PROVIDER),aws)
 	CLICKHOUSE_MIGRATOR_IMAGE ?= $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(PREFIX)core/clickhouse-migrator
+else ifeq ($(PROVIDER),azure)
+	CLICKHOUSE_MIGRATOR_IMAGE ?= $(AZURE_REGISTRY_NAME).azurecr.io/$(PREFIX)core/clickhouse-migrator
 else
 	CLICKHOUSE_MIGRATOR_IMAGE ?= $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(PREFIX)core/clickhouse-migrator
 endif

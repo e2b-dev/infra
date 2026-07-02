@@ -6,6 +6,8 @@ expectedMigration := $(shell ./../../scripts/get-latest-migration.sh)
 
 ifeq ($(PROVIDER),aws)
 	IMAGE_REGISTRY := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(PREFIX)core/dashboard-api
+else ifeq ($(PROVIDER),azure)
+	IMAGE_REGISTRY := $(AZURE_REGISTRY_NAME).azurecr.io/$(PREFIX)core/dashboard-api
 else
 	IMAGE_REGISTRY := $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(PREFIX)core/dashboard-api
 endif
