@@ -119,8 +119,6 @@ var (
 	TemplateFeatureFlag                 = NewBoolFlag("use-nfs-for-templates", env.IsDevelopment())
 	EnableWriteThroughCacheFlag         = NewBoolFlag("write-to-cache-on-writes", false)
 	UseNFSCacheForBuildingTemplatesFlag = NewBoolFlag("use-nfs-for-building-templates", env.IsDevelopment())
-	BestOfKCanFitFlag                   = NewBoolFlag("best-of-k-can-fit", true)
-	BestOfKTooManyStartingFlag          = NewBoolFlag("best-of-k-too-many-starting", false)
 	CreateStorageCacheSpansFlag         = NewBoolFlag("create-storage-cache-spans", env.IsDevelopment())
 	OrchAcceptsCombinedHostFlag         = NewBoolFlag("orch-accepts-combined-host", false)
 

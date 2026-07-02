@@ -96,33 +96,6 @@ func TestBestOfK_Score_WithPendingResources(t *testing.T) {
 	assert.Greater(t, scorePending, scoreNormal, "Node with pending resources should receive a higher (worse) score")
 }
 
-func TestBestOfK_CanFit(t *testing.T) {
-	t.Parallel()
-	config := DefaultBestOfKConfig()
-	algo := NewBestOfK(config).(*BestOfK)
-
-	// Create a test node with moderate CPU usage
-	node := nodemanager.NewTestNode("test-node", api.NodeStatusReady, 5, 4)
-
-	// Test can fit small resource request
-	resources := nodemanager.SandboxResources{
-		CPUs:      2,
-		MiBMemory: 1024,
-	}
-	// Note: CanFit depends on the node's actual metrics which we can't directly control
-	// But we can test the logic works
-	canFit := algo.CanFit(node, resources, config)
-	assert.IsType(t, true, canFit) // Should return a boolean
-
-	// Test with very large resource request - likely won't fit
-	largeResources := nodemanager.SandboxResources{
-		CPUs:      1000,
-		MiBMemory: 8192,
-	}
-	canFitLarge := algo.CanFit(node, largeResources, config)
-	assert.False(t, canFitLarge) // Very large request should not fit
-}
-
 func TestBestOfK_ChooseNode(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
@@ -346,13 +319,9 @@ func TestBestOfK_Sample(t *testing.T) {
 	}
 
 	excludedNodes := make(map[string]struct{})
-	resources := nodemanager.SandboxResources{
-		CPUs:      2,
-		MiBMemory: 1024,
-	}
 
 	// Test sampling fewer nodes than available
-	sampled := algo.sample(nodes, config, excludedNodes, resources, machineinfo.MachineInfo{}, false, nil)
+	sampled := algo.sample(nodes, config, excludedNodes, machineinfo.MachineInfo{}, false, nil)
 	assert.LessOrEqual(t, len(sampled), 3)
 
 	// Check all sampled nodes are unique
@@ -365,7 +334,7 @@ func TestBestOfK_Sample(t *testing.T) {
 	// Test sampling with exclusions
 	excludedNodes["a"] = struct{}{}
 	excludedNodes["b"] = struct{}{}
-	sampled = algo.sample(nodes, config, excludedNodes, resources, machineinfo.MachineInfo{}, false, nil)
+	sampled = algo.sample(nodes, config, excludedNodes, machineinfo.MachineInfo{}, false, nil)
 
 	for _, n := range sampled {
 		assert.NotEqual(t, "a", n.ID)
