@@ -174,8 +174,19 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 				telemetry.ReportError(ctx, "error while building template", err, attrs...)
 			}
 
+			s.buildLogger.Detach(ctx).Warn("build goroutine setting FAIL",
+				zap.String("template.id", cfg.GetTemplateID()),
+				zap.String("build.id", cfg.GetBuildID()),
+				zap.Error(err),
+				zap.String("user_error", userError.GetMessage()),
+			)
 			buildInfo.SetFail(userError)
 		} else {
+			s.buildLogger.Detach(ctx).Info("build goroutine setting SUCCESS",
+				zap.String("template.id", cfg.GetTemplateID()),
+				zap.String("build.id", cfg.GetBuildID()),
+				zap.Int64("rootfs_size_mb", int64(res.RootfsSizeMB)),
+			)
 			buildInfo.SetSuccess(&templatemanager.TemplateBuildMetadata{
 				RootfsSizeKey:      int32(res.RootfsSizeMB),
 				EnvdVersionKey:     res.EnvdVersion,

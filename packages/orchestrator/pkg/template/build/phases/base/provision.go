@@ -36,7 +36,7 @@ import (
 )
 
 const (
-	provisionTimeout = 5 * time.Minute
+	provisionTimeout = 15 * time.Minute
 )
 
 //go:embed provision.sh

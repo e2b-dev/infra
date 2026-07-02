@@ -46,7 +46,7 @@ LimitCORE=infinity
 # guaranteed present for the sandbox's routable lifetime. The only gap is guest
 # units that auto-start and egress over TLS before /init; that is accepted
 # (revisit if a template needs boot-time egress).
-ExecStartPre=/bin/sh -c 'mountpoint -q /etc/ssl/certs || { mkdir -p /run/e2b/certs && { tar -C /run/e2b/certs -xf /usr/local/share/e2b/ssl-certs.tar 2>/dev/null || cp -a /etc/ssl/certs/. /run/e2b/certs/ 2>/dev/null; }; mount --bind /run/e2b/certs /etc/ssl/certs; } && ([ -s /etc/ssl/certs/ca-certificates.crt ] || update-ca-certificates)'
+ExecStartPre=-/bin/sh -c 'mountpoint -q /etc/ssl/certs || { mkdir -p /run/e2b/certs && { tar -C /run/e2b/certs -xf /usr/local/share/e2b/ssl-certs.tar 2>/dev/null || cp -a /etc/ssl/certs/. /run/e2b/certs/ 2>/dev/null; }; mount --bind /run/e2b/certs /etc/ssl/certs; } && ([ -s /etc/ssl/certs/ca-certificates.crt ] || update-ca-certificates 2>/dev/null || update-ca-trust extract 2>/dev/null || true)'
 ExecStart=/usr/bin/envd
 Nice=-20
 IOSchedulingClass=realtime

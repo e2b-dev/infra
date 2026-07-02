@@ -89,6 +89,17 @@ func currentNice() int {
 	return 20 - prio
 }
 
+// findBinary returns the first existing path from candidates, falling back to
+// the bare name (relying on PATH lookup at exec time) if none exist on disk.
+func findBinary(name string, candidates ...string) string {
+	for _, p := range candidates {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return name
+}
+
 func New(
 	ctx context.Context,
 	user *user.User,
@@ -102,8 +113,12 @@ func New(
 	userCmd := strings.Join(append([]string{req.GetProcess().GetCmd()}, req.GetProcess().GetArgs()...), " ")
 
 	// Wrap in a shell that resets oom_score_adj, ioprio (ionice best-effort/4), and nice.
+	// Use PATH-based lookup for ionice/nice to support Alpine (busybox applets at /bin/)
+	// in addition to standard distros (binaries at /usr/bin/).
 	niceDelta := defaultNice - currentNice()
-	oomWrapperScript := fmt.Sprintf(`echo %d > /proc/$$/oom_score_adj && exec /usr/bin/ionice -c 2 -n 4 /usr/bin/nice -n %d "${@}"`, defaultOomScore, niceDelta)
+	ionicePath := findBinary("ionice", "/usr/bin/ionice", "/bin/ionice")
+	nicePath := findBinary("nice", "/usr/bin/nice", "/bin/nice")
+	oomWrapperScript := fmt.Sprintf(`echo %d > /proc/$$/oom_score_adj && exec %s -c 2 -n 4 %s -n %d "${@}"`, defaultOomScore, ionicePath, nicePath, niceDelta)
 	wrapperArgs := append([]string{"-c", oomWrapperScript, "--", req.GetProcess().GetCmd()}, req.GetProcess().GetArgs()...)
 	cmd := exec.CommandContext(ctx, "/bin/sh", wrapperArgs...)
 

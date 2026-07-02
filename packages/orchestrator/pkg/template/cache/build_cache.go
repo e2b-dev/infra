@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	buildInfoExpiration = time.Minute * 10 // 10 minutes
+        buildInfoExpiration = time.Minute * 70 // Must exceed the API-side buildTimeout (1 hour)
 )
 
 type BuildInfoResult struct {
@@ -57,6 +57,9 @@ func (b *BuildInfo) GetResult() *BuildInfoResult {
 }
 
 func (b *BuildInfo) SetSuccess(metadata *template_manager.TemplateBuildMetadata) {
+	logger.L().Info(context.Background(), "build marked as SUCCESS in cache",
+		zap.String("team.id", b.TeamID),
+	)
 	_ = b.Result.SetValue(BuildInfoResult{
 		Status:   template_manager.TemplateBuildState_Completed,
 		Metadata: metadata,
@@ -65,6 +68,14 @@ func (b *BuildInfo) SetSuccess(metadata *template_manager.TemplateBuildMetadata)
 }
 
 func (b *BuildInfo) SetFail(reason *template_manager.TemplateBuildStatusReason) {
+	var msg string
+	if reason != nil {
+		msg = reason.GetMessage()
+	}
+	logger.L().Warn(context.Background(), "build marked as FAILED in cache",
+		zap.String("team.id", b.TeamID),
+		zap.String("reason", msg),
+	)
 	_ = b.Result.SetValue(BuildInfoResult{
 		Status:   template_manager.TemplateBuildState_Failed,
 		Reason:   reason,
@@ -83,7 +94,27 @@ type BuildCache struct {
 func NewBuildCache(ctx context.Context, meterProvider metric.MeterProvider) *BuildCache {
 	meter := meterProvider.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/template/cache")
 
+	logger.L().Info(ctx, "creating build cache", zap.Duration("ttl", buildInfoExpiration))
+
 	cache := ttlcache.New(ttlcache.WithTTL[string, *BuildInfo](buildInfoExpiration))
+
+	// Log when cache entries are evicted so we can diagnose premature expiry.
+	cache.OnEviction(func(_ context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[string, *BuildInfo]) {
+		buildID := item.Key()
+		info := item.Value()
+		var status string
+		if info != nil {
+			status = info.GetStatus().String()
+		} else {
+			status = "nil"
+		}
+		logger.L().Warn(ctx, "build cache entry evicted",
+			zap.String("build.id", buildID),
+			zap.Int("eviction_reason", int(reason)),
+			zap.String("build_status", status),
+			zap.Duration("ttl", buildInfoExpiration),
+		)
+	})
 	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.BuildCounterMeterName, func(_ context.Context, observer metric.Int64Observer) error {
 		items := utils.MapValues(cache.Items())
 
@@ -133,12 +164,25 @@ func NewBuildCache(ctx context.Context, meterProvider metric.MeterProvider) *Bui
 func (c *BuildCache) Get(buildID string) (*BuildInfo, error) {
 	item := c.cache.Get(buildID)
 	if item == nil {
-		return nil, fmt.Errorf("build %s not found in cache", buildID)
+		// Log all current cache keys to help diagnose missing entries.
+		var keys []string
+		for k := range c.cache.Items() {
+			keys = append(keys, k)
+		}
+		logger.L().Warn(context.Background(), "build cache miss",
+			zap.String("build.id", buildID),
+			zap.Int("cache_size", len(keys)),
+			zap.Strings("cached_builds", keys),
+		)
+		return nil, fmt.Errorf("build %s not found in cache (cache has %d entries)", buildID, len(keys))
 	}
 
 	value := item.Value()
 	if value == nil {
-		return nil, fmt.Errorf("build %s not found in cache", buildID)
+		logger.L().Warn(context.Background(), "build cache hit but nil value",
+			zap.String("build.id", buildID),
+		)
+		return nil, fmt.Errorf("build %s not found in cache (nil value)", buildID)
 	}
 
 	return value, nil
@@ -154,15 +198,24 @@ func (c *BuildCache) Create(teamID string, buildID string, logs *buildlogger.Log
 
 	_, found := c.cache.GetOrSet(buildID, info,
 		ttlcache.WithTTL[string, *BuildInfo](buildInfoExpiration),
-		ttlcache.WithDisableTouchOnHit[string, *BuildInfo](),
 	)
 	if found {
 		return nil, fmt.Errorf("build %s already exists in cache", buildID)
 	}
 
+	logger.L().Info(context.Background(), "build cache entry created",
+		zap.String("build.id", buildID),
+		zap.String("team.id", teamID),
+		zap.Duration("ttl", buildInfoExpiration),
+		zap.Int("cache_size", c.cache.Len()),
+	)
+
 	return info, nil
 }
 
 func (c *BuildCache) Delete(buildID string) {
+	logger.L().Info(context.Background(), "build cache entry explicitly deleted",
+		zap.String("build.id", buildID),
+	)
 	c.cache.Delete(buildID)
 }
