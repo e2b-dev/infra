@@ -124,15 +124,21 @@ func TestGetSandboxesSandboxIDRecordRetentionExpired(t *testing.T) {
 
 	stoppedLongAgo := time.Now().Add(-8 * 24 * time.Hour)
 	stoppedRecently := time.Now().Add(-24 * time.Hour)
+	stoppedOverAYearAgo := time.Now().Add(-366 * 24 * time.Hour)
 
 	testCases := []struct {
-		name             string
-		stoppedAt        *time.Time
-		retentionExpired bool
+		name                   string
+		stoppedAt              *time.Time
+		limits                 *authtypes.TeamLimits
+		retentionExpired       bool
+		eventsRetentionExpired bool
 	}{
-		{name: "ended more than retention ago", stoppedAt: &stoppedLongAgo, retentionExpired: true},
-		{name: "ended within retention", stoppedAt: &stoppedRecently, retentionExpired: false},
-		{name: "still running", stoppedAt: nil, retentionExpired: false},
+		{name: "ended more than retention ago", stoppedAt: &stoppedLongAgo, retentionExpired: true, eventsRetentionExpired: true},
+		{name: "ended within retention", stoppedAt: &stoppedRecently, retentionExpired: false, eventsRetentionExpired: false},
+		{name: "still running", stoppedAt: nil, retentionExpired: false, eventsRetentionExpired: false},
+		{name: "extended team retention keeps events, monitoring expired", stoppedAt: &stoppedLongAgo, limits: &authtypes.TeamLimits{EventsTTLDays: 30}, retentionExpired: true, eventsRetentionExpired: false},
+		{name: "team retention from limits expires events", stoppedAt: &stoppedLongAgo, limits: &authtypes.TeamLimits{EventsTTLDays: 7}, retentionExpired: true, eventsRetentionExpired: true},
+		{name: "events retention capped at max", stoppedAt: &stoppedOverAYearAgo, limits: &authtypes.TeamLimits{EventsTTLDays: 1000}, retentionExpired: true, eventsRetentionExpired: true},
 	}
 
 	for _, tc := range testCases {
@@ -147,6 +153,7 @@ func TestGetSandboxesSandboxIDRecordRetentionExpired(t *testing.T) {
 				Team: &authqueries.Team{
 					ID: uuid.New(),
 				},
+				Limits: tc.limits,
 			})
 
 			store := &APIStore{
@@ -168,6 +175,10 @@ func TestGetSandboxesSandboxIDRecordRetentionExpired(t *testing.T) {
 
 			if record.RetentionExpired != tc.retentionExpired {
 				t.Fatalf("expected retentionExpired=%v, got %v", tc.retentionExpired, record.RetentionExpired)
+			}
+
+			if record.EventsRetentionExpired != tc.eventsRetentionExpired {
+				t.Fatalf("expected eventsRetentionExpired=%v, got %v", tc.eventsRetentionExpired, record.EventsRetentionExpired)
 			}
 		})
 	}

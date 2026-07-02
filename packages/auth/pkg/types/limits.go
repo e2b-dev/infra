@@ -8,4 +8,6 @@ type TeamLimits struct {
 	MaxVcpu  int64
 	MaxRamMb int64
 	DiskMb   int64
+
+	EventsTTLDays int64
 }
