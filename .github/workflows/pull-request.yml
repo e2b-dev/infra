@@ -37,8 +37,32 @@ jobs:
               - 'go.work'
               - 'go.work.sum'
               - 'Makefile'
-              - '.github/**'
               - '.tool-versions'
+              # only the .github paths that affect the Go unit/arm64 test suites,
+              # so unrelated CI edits (e.g. other workflows) don't trigger them
+              - '.github/workflows/pr-tests.yml'
+              - '.github/workflows/pr-tests-arm64.yml'
+              - '.github/actions/go-setup-cache/**'
+            # Like test-inputs, but scoped to only the .github paths that affect
+            # the integration harness (its workflow + composite actions) instead
+            # of all of .github/**. This keeps unrelated CI edits (e.g. other
+            # workflows) from triggering the ~20-min integration suite.
+            integration-inputs:
+              - 'packages/**'
+              - 'tests/**'
+              - 'spec/**'
+              - 'go.work'
+              - 'go.work.sum'
+              - 'Makefile'
+              - '.tool-versions'
+              # invoked by the start-services action to launch each service
+              - 'scripts/start-service.sh'
+              - '.github/workflows/integration_tests.yml'
+              - '.github/actions/build-packages/**'
+              - '.github/actions/build-sandbox-template/**'
+              - '.github/actions/host-init/**'
+              - '.github/actions/start-services/**'
+              - '.github/actions/go-setup-cache/**'
             lint-inputs:
               - 'packages/**'
               - 'tests/**'
@@ -115,7 +139,7 @@ jobs:
     with:
       # Only publish the results for same-repo PRs
       publish: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
-      run-tests: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') }}
+      run-tests: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'integration-inputs') }}
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
   publish-test-results:
@@ -133,11 +157,11 @@ jobs:
 
     steps:
       - name: Skip publishing when tests did not run
-        if: ${{ !contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') }}
+        if: ${{ !contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') && !contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'integration-inputs') }}
         run: echo "test result publishing skipped because test inputs did not change"
 
       - name: Download Artifacts
-        if: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') }}
+        if: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') || contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'integration-inputs') }}
         uses: actions/download-artifact@v7
         with:
           path: artifacts
@@ -146,7 +170,7 @@ jobs:
           pattern: "!*.dockerbuild"
 
       - name: Publish Test Results
-        if: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') }}
+        if: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') || contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'integration-inputs') }}
         uses: EnricoMi/publish-unit-test-result-action@v2
         with:
           comment_mode: off
