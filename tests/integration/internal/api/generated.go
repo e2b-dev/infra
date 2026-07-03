@@ -836,9 +836,6 @@ type SandboxEgressProxyConfig struct {
 
 // SandboxForkRequest defines model for SandboxForkRequest.
 type SandboxForkRequest struct {
-	// Memory Whether to capture a full memory snapshot of the sandbox being forked. When false, only the filesystem is persisted: the original sandbox and the new forked sandbox both cold-boot (reboot) from disk, losing in-memory state, running processes, and open connections. Defaults to true.
-	Memory *bool `json:"memory,omitempty"`
-
 	// Timeout Time to live for the new forked sandbox in seconds.
 	Timeout *int32 `json:"timeout,omitempty"`
 }
