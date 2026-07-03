@@ -200,7 +200,10 @@ func NewProcess(
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setsid:       true,                // Create a new session
-		Unshareflags: syscall.CLONE_NEWNS, // Create a new mount namespace with MS_REC|MS_PRIVATE propagation (replaces external unshare -m)
+		Unshareflags: syscall.CLONE_NEWNS, // Create a new mount namespace.
+		// Note: unlike `unshare -m` (util-linux >= 2.27), CLONE_NEWNS does NOT automatically
+		// set MS_PRIVATE propagation. Private isolation is ensured by `mount --make-rprivate /`
+		// as the first command in both startScriptV1 and startScriptV2.
 	}
 
 	return &Process{
