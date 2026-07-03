@@ -13,6 +13,7 @@ type Reason string
 const (
 	ReasonRequest Reason = "request"
 	ReasonTimeout Reason = "timeout"
+	ReasonFork    Reason = "fork"
 )
 
 type SkipReason string

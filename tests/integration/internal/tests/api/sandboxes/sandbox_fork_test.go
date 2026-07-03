@@ -1,0 +1,91 @@
+package sandboxes
+
+import (
+	"net/http"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/tests/integration/internal/api"
+	"github.com/e2b-dev/infra/tests/integration/internal/setup"
+	"github.com/e2b-dev/infra/tests/integration/internal/utils"
+)
+
+func TestSandboxFork(t *testing.T) {
+	t.Parallel()
+	c := setup.GetAPIClient()
+
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
+	sbxID := sbx.SandboxID
+
+	forkResp, err := c.PostSandboxesSandboxIDForkWithResponse(t.Context(), sbxID, api.PostSandboxesSandboxIDForkJSONRequestBody{}, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, forkResp.StatusCode())
+	require.NotNil(t, forkResp.JSON201)
+
+	forked := forkResp.JSON201
+	t.Cleanup(func() {
+		utils.TeardownSandbox(t, c, forked.SandboxID)
+	})
+
+	assert.NotEqual(t, sbxID, forked.SandboxID)
+	assert.Equal(t, sbx.TemplateID, forked.TemplateID)
+
+	// The original sandbox should keep running under its original ID.
+	origRes, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, origRes.StatusCode())
+	require.NotNil(t, origRes.JSON200)
+	assert.Equal(t, api.Running, origRes.JSON200.State)
+
+	// The forked sandbox should also be running.
+	forkedRes, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), forked.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, forkedRes.StatusCode())
+	require.NotNil(t, forkedRes.JSON200)
+	assert.Equal(t, api.Running, forkedRes.JSON200.State)
+}
+
+func TestSandboxFork_AlreadyPaused(t *testing.T) {
+	t.Parallel()
+	c := setup.GetAPIClient()
+
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
+	pauseSandbox(t, c, sbx.SandboxID)
+
+	forkResp, err := c.PostSandboxesSandboxIDForkWithResponse(t.Context(), sbx.SandboxID, api.PostSandboxesSandboxIDForkJSONRequestBody{}, setup.WithAPIKey())
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusConflict, forkResp.StatusCode())
+}
+
+func TestSandboxFork_NotFound(t *testing.T) {
+	t.Parallel()
+	c := setup.GetAPIClient()
+
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
+
+	killResp, err := c.DeleteSandboxesSandboxIDWithResponse(t.Context(), sbx.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, killResp.StatusCode())
+
+	forkResp, err := c.PostSandboxesSandboxIDForkWithResponse(t.Context(), sbx.SandboxID, api.PostSandboxesSandboxIDForkJSONRequestBody{}, setup.WithAPIKey())
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, forkResp.StatusCode())
+}
+
+func TestSandboxFork_CrossTeamAccess(t *testing.T) {
+	t.Parallel()
+	c := setup.GetAPIClient()
+	db := setup.GetTestDBClient(t)
+
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
+
+	foreignUserID := utils.CreateUser(t, db)
+	foreignTeamID := utils.CreateTeamWithUser(t, db, "foreign-team-fork", foreignUserID.String())
+	foreignAPIKey := utils.CreateAPIKey(t, t.Context(), c, foreignUserID.String(), foreignTeamID)
+
+	forkResp, err := c.PostSandboxesSandboxIDForkWithResponse(t.Context(), sbx.SandboxID, api.PostSandboxesSandboxIDForkJSONRequestBody{}, setup.WithAPIKey(foreignAPIKey))
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, forkResp.StatusCode(), "Should return 404 Not Found when trying to fork a sandbox owned by a different team")
+}

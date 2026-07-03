@@ -822,6 +822,25 @@ components:
             resume); auto-resume, which can be triggered by arbitrary traffic,
             refuses such a sandbox. Defaults to true.
 
+    SandboxForkRequest:
+      type: object
+      properties:
+        timeout:
+          type: integer
+          format: int32
+          minimum: 0
+          default: 15
+          description: Time to live for the new forked sandbox in seconds.
+        memory:
+          type: boolean
+          default: true
+          description: >-
+            Whether to capture a full memory snapshot of the sandbox being
+            forked. When false, only the filesystem is persisted: the original
+            sandbox and the new forked sandbox both cold-boot (reboot) from
+            disk, losing in-memory state, running processes, and open
+            connections. Defaults to true.
+
     TeamMetric:
       description: Team metric with timestamp
       required:
@@ -2519,6 +2538,45 @@ paths:
       responses:
         "201":
           description: The sandbox was resumed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sandbox"
+        "409":
+          $ref: "#/components/responses/409"
+        "404":
+          $ref: "#/components/responses/404"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /sandboxes/{sandboxID}/fork:
+    post:
+      summary: Fork sandbox
+      description: >-
+        Fork the sandbox: pause the sandbox to a snapshot, resume the original
+        sandbox from that snapshot so it keeps running under its original ID,
+        and create a new sandbox from the same snapshot. Returns the newly
+        created sandbox.
+      tags: [sandboxes]
+      security:
+        - ApiKeyAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+        - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/sandboxID"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SandboxForkRequest"
+      responses:
+        "201":
+          description: The sandbox was forked successfully
           content:
             application/json:
               schema:
