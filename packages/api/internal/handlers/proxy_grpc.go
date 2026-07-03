@@ -261,7 +261,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		sandboxID,
 		timeout,
 		team,
-		s.api.buildResumeSandboxData(sandboxID, nil),
+		s.api.buildResumeSandboxData(sandboxID, sandboxID, nil),
 		&headers,
 		true,
 		nil, // mcp

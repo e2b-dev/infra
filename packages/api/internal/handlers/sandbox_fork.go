@@ -65,18 +65,38 @@ func (a *APIStore) PostSandboxesSandboxIDFork(c *gin.Context, sandboxID api.Sand
 	}
 	filesystemOnly := body.Memory != nil && !*body.Memory
 
-	// Capture the original sandbox's remaining time to live before pausing it,
-	// so resuming it afterwards doesn't change its expiration.
+	// Capture the original sandbox's expiration before pausing it, so resuming
+	// it afterwards doesn't change its expiration.
 	original, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
 	if err != nil {
-		apiErr := pauseHandleNotRunningSandbox(ctx, a.snapshotCache, sandboxID, teamID)
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		if errors.Is(err, sandbox.ErrNotFound) {
+			apiErr := pauseHandleNotRunningSandbox(ctx, a.snapshotCache, sandboxID, teamID)
+			a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+
+			return
+		}
+
+		telemetry.ReportError(ctx, "error getting sandbox for fork", err, telemetry.WithSandboxID(sandboxID))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error forking sandbox")
 
 		return
 	}
-	originalTimeout := time.Until(original.EndTime)
-	if originalTimeout <= 0 {
-		originalTimeout = sandbox.SandboxTimeoutDefault
+	originalEndTime := original.EndTime
+
+	// Fork ends with two running sandboxes, but the authoritative concurrency
+	// check at sandbox creation runs only after the original was paused. Check
+	// the limit up front (best-effort; creation still enforces it) so we don't
+	// pause the original only to fail creating the fork.
+	teamSandboxes, err := a.orchestrator.GetSandboxes(ctx, teamID, nil)
+	switch {
+	case err != nil:
+		telemetry.ReportError(ctx, "error listing team sandboxes before fork", err)
+	case int64(len(teamSandboxes))+1 > teamInfo.Limits.SandboxConcurrency:
+		a.sendAPIStoreError(c, http.StatusTooManyRequests, fmt.Sprintf(
+			"forking would exceed the maximum number of concurrent E2B sandboxes (%d). If you need more, "+
+				"please visit 'https://e2b.dev/docs/billing'", teamInfo.Limits.SandboxConcurrency))
+
+		return
 	}
 
 	pause.LogInitiated(ctx, sandboxID, teamID.String(), pause.ReasonFork)
@@ -135,12 +155,19 @@ func (a *APIStore) PostSandboxesSandboxIDFork(c *gin.Context, sandboxID api.Sand
 
 	wg.Go(func() error {
 		// Resume the original sandbox under its original ID so it keeps running.
+		// Compute the remaining time to live only now, after the pause, so the
+		// resumed sandbox keeps the expiration captured before pausing.
+		originalTimeout := time.Until(originalEndTime)
+		if originalTimeout <= 0 {
+			originalTimeout = sandbox.SandboxTimeoutDefault
+		}
+
 		_, createErr := a.startSandbox(
 			ctx,
 			sandboxID,
 			originalTimeout,
 			teamInfo,
-			a.buildResumeSandboxData(sandboxID, nil),
+			a.buildResumeSandboxData(sandboxID, sandboxID, nil),
 			&c.Request.Header,
 			true,
 			nil, // mcp
@@ -157,7 +184,7 @@ func (a *APIStore) PostSandboxesSandboxIDFork(c *gin.Context, sandboxID api.Sand
 			forkedSandboxID,
 			forkTimeout,
 			teamInfo,
-			a.buildResumeSandboxData(sandboxID, nil),
+			a.buildResumeSandboxData(sandboxID, forkedSandboxID, nil),
 			&c.Request.Header,
 			true,
 			nil, // mcp
@@ -182,7 +209,9 @@ func (a *APIStore) PostSandboxesSandboxIDFork(c *gin.Context, sandboxID api.Sand
 			}
 		}
 
-		a.sendAPIStoreError(c, originalErr.Code, fmt.Sprintf("Sandbox was forked but the original sandbox failed to resume: %s", originalErr.ClientMsg))
+		a.sendAPIStoreError(c, originalErr.Code, fmt.Sprintf(
+			"Fork failed: the original sandbox was paused but could not be resumed; it can be restored with POST /sandboxes/%s/resume: %s",
+			sandboxID, originalErr.ClientMsg))
 
 		return
 	}

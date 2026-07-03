@@ -156,7 +156,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		sandboxID,
 		timeout,
 		teamInfo,
-		a.buildResumeSandboxData(sandboxID, nil),
+		a.buildResumeSandboxData(sandboxID, sandboxID, nil),
 		&c.Request.Header,
 		true,
 		nil, // mcp
