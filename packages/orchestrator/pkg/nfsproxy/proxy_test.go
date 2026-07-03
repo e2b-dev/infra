@@ -73,7 +73,8 @@ func TestRoundTrip(t *testing.T) {
 		},
 	}
 
-	builder := chrooted.NewBuilder(config)
+	builder, err := chrooted.NewBuilder(config)
+	require.NoError(t, err)
 
 	createVolumeDir(t, builder, volType1, teamID, volID1)
 	createVolumeDir(t, builder, volType1, teamID, volID2)

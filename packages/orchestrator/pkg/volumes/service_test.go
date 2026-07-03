@@ -35,10 +35,13 @@ func TestGetVolumeRootPath(t *testing.T) {
 		PersistentVolumeMounts: map[string]string{
 			goodVolumeType: goodVolumeTypePath,
 		},
+		VolumeBackendType: "local",
 	}
 
+	builder, err := chrooted.NewBuilder(config)
+	require.NoError(t, err)
 	v := Service{
-		builder: chrooted.NewBuilder(config),
+		builder: builder,
 		config:  config,
 	}
 

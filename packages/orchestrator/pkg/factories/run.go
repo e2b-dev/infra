@@ -719,7 +719,10 @@ func run(config cfg.Config, opts Options) (success bool) {
 	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, hostStatsDelivery, cgroupManager, egressSetup.Proxy, sandboxes)
 
 	// isolated filesystems cache (for nfs proxy)
-	builder := chrooted.NewBuilder(config)
+	builder, err := chrooted.NewBuilder(config)
+	if err != nil {
+		logger.L().Fatal(ctx, "failed to initialise volume builder", zap.Error(err))
+	}
 	volumeService := volumes.New(config, builder)
 
 	uploads := sandbox.NewUploads(templateCache, persistence, peerResolver, redisClient)

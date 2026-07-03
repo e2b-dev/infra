@@ -37,9 +37,11 @@ func setupTestService(t *testing.T) (*Service, string, *orchestrator.VolumeInfo)
 		PersistentVolumeMounts: map[string]string{
 			volumeType: tmpDir,
 		},
+		VolumeBackendType: "local",
 	}
 
-	builder := chrooted.NewBuilder(config)
+	builder, err := chrooted.NewBuilder(config)
+	require.NoError(t, err)
 	s := New(config, builder)
 
 	volumeInfo := &orchestrator.VolumeInfo{

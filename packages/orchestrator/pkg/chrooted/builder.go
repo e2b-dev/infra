@@ -6,21 +6,42 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/volumes/backend"
 )
 
 var ErrVolumeTypeNotFound = errors.New("volume type not found")
 
+// Builder holds one Backend per named volume type and delegates volume
+// lifecycle operations to it.
 type Builder struct {
-	config cfg.Config
+	backends map[string]backend.Backend
 }
 
-func NewBuilder(config cfg.Config) *Builder {
-	return &Builder{config: config}
+// NewBuilder initialises a Backend for each entry in
+// config.PersistentVolumeMounts, all using the same backend type
+// (config.VolumeBackendType, e.g. "local", "juicefs", "cephfs").
+func NewBuilder(config cfg.Config) (*Builder, error) {
+	backends := make(map[string]backend.Backend, len(config.PersistentVolumeMounts))
+	for name, root := range config.PersistentVolumeMounts {
+		b, err := backend.NewBackend(config.VolumeBackendType, root)
+		if err != nil {
+			return nil, fmt.Errorf("volume type %q: %w", name, err)
+		}
+		backends[name] = b
+	}
+	return &Builder{backends: backends}, nil
+}
+
+func (b *Builder) backend(volumeType string) (backend.Backend, error) {
+	be, ok := b.backends[volumeType]
+	if !ok {
+		return nil, fmt.Errorf("%w: %q", ErrVolumeTypeNotFound, volumeType)
+	}
+	return be, nil
 }
 
 func (b *Builder) Chroot(ctx context.Context, volumeType string, teamID, volumeID uuid.UUID) (*Chrooted, error) {
@@ -38,14 +59,27 @@ func (b *Builder) Chroot(ctx context.Context, volumeType string, teamID, volumeI
 }
 
 func (b *Builder) BuildVolumePath(volumeType string, teamID, volumeID uuid.UUID) (string, error) {
-	volumeTypeRoot, ok := b.config.PersistentVolumeMounts[volumeType]
-	if !ok {
-		return "", fmt.Errorf("%w: %q", ErrVolumeTypeNotFound, volumeType)
+	be, err := b.backend(volumeType)
+	if err != nil {
+		return "", err
 	}
+	return be.RootPath(teamID, volumeID), nil
+}
 
-	return filepath.Join(
-		volumeTypeRoot,
-		fmt.Sprintf("team-%s", teamID),
-		fmt.Sprintf("vol-%s", volumeID),
-	), nil
+// CreateVolume creates the directory tree for the given volume via the backend.
+func (b *Builder) CreateVolume(ctx context.Context, volumeType string, teamID, volumeID uuid.UUID) error {
+	be, err := b.backend(volumeType)
+	if err != nil {
+		return err
+	}
+	return be.CreateVolume(ctx, teamID, volumeID)
+}
+
+// DeleteVolume removes the directory tree for the given volume via the backend.
+func (b *Builder) DeleteVolume(ctx context.Context, volumeType string, teamID, volumeID uuid.UUID) error {
+	be, err := b.backend(volumeType)
+	if err != nil {
+		return err
+	}
+	return be.DeleteVolume(ctx, teamID, volumeID)
 }
