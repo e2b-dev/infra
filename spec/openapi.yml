@@ -2558,7 +2558,8 @@ paths:
         Fork the sandbox: pause the sandbox to a snapshot, resume the original
         sandbox from that snapshot so it keeps running under its original ID,
         and create a new sandbox from the same snapshot. Returns the newly
-        created sandbox.
+        created sandbox. If the original sandbox's time to live expires during
+        the fork, it stays paused instead of being resumed.
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []

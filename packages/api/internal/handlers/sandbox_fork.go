@@ -19,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -26,7 +27,8 @@ import (
 // PostSandboxesSandboxIDFork forks a running sandbox: it pauses the sandbox to
 // a snapshot, resumes the original sandbox from that snapshot so it keeps
 // running under its original ID and remaining time to live, and creates a new
-// sandbox from the same snapshot. It returns the newly created sandbox.
+// sandbox from the same snapshot. It returns the newly created sandbox. If the
+// original's time to live expires during the fork, it stays paused.
 func (a *APIStore) PostSandboxesSandboxIDFork(c *gin.Context, sandboxID api.SandboxID) {
 	ctx := c.Request.Context()
 
@@ -157,11 +159,13 @@ func (a *APIStore) PostSandboxesSandboxIDFork(c *gin.Context, sandboxID api.Sand
 		// Resume the original sandbox under its original ID so it keeps running.
 		// Compute the remaining time to live only now, after the pause, so the
 		// resumed sandbox keeps the expiration captured before pausing. If the
-		// TTL ran out during the pause, resume with the short default timeout so
-		// the sandbox still goes through its normal expiration (auto-pause/kill).
+		// TTL ran out during the pause, the sandbox is expired: skip the resume
+		// and leave it paused instead of extending its lifetime.
 		originalTimeout := time.Until(originalEndTime)
 		if originalTimeout <= 0 {
-			originalTimeout = sandbox.SandboxTimeoutDefault
+			logger.L().Debug(ctx, "Skipping resume of original sandbox after fork: TTL expired during pause", logger.WithSandboxID(sandboxID))
+
+			return nil
 		}
 
 		_, createErr := a.startSandbox(
