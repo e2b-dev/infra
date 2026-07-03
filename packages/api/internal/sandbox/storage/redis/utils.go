@@ -3,6 +3,9 @@ package redis
 import (
 	"strings"
 
+	"github.com/google/uuid"
+
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
 
@@ -25,14 +28,50 @@ var (
 	globalExpirationSet = redis_utils.CreateKey(sandboxKeyPrefix, "global:expiration")
 )
 
-func expirationMember(teamID, sandboxID string) string {
+// expirationMember identifies one *execution* (incarnation) of a sandbox in
+// the global expiration ZSET. Scoping the member to the execution makes every
+// ZREM structurally safe: removing a dead execution's member can never
+// unindex a live one, even when a lockless Add for the same sandbox ID races
+// a Remove or the evictor's stale sweep.
+func expirationMember(teamID, sandboxID, executionID string) string {
+	return redis_utils.CreateKey(teamID, sandboxID, executionID)
+}
+
+// legacyExpirationMember is the pre-executionID member format still present
+// in live data (and written by old pods during a rolling deploy). It drains
+// via Remove's dual ZREM and the lazy upgrade in ExpiredItems.
+func legacyExpirationMember(teamID, sandboxID string) string {
 	return redis_utils.CreateKey(teamID, sandboxID)
 }
 
-func parseExpirationMember(member string) (teamID, sandboxID string, ok bool) {
-	teamID, sandboxID, ok = strings.Cut(member, ":")
+// sandboxExpirationMember returns the expiration index member for a stored
+// sandbox, falling back to the legacy format when ExecutionID is absent.
+func sandboxExpirationMember(sbx sandboxtypes.Sandbox) string {
+	if sbx.ExecutionID == "" {
+		return legacyExpirationMember(sbx.TeamID.String(), sbx.SandboxID)
+	}
 
-	return
+	return expirationMember(sbx.TeamID.String(), sbx.SandboxID, sbx.ExecutionID)
+}
+
+// parseExpirationMember parses both member formats:
+// "teamID:sandboxID:executionID" (current) and "teamID:sandboxID" (legacy).
+// executionID == "" marks a legacy member. Sandbox IDs never contain ':';
+// execution IDs are always UUIDs, so the tail is an execution tag iff it
+// parses as one.
+func parseExpirationMember(member string) (teamID, sandboxID, executionID string, ok bool) {
+	teamID, rest, ok := strings.Cut(member, ":")
+	if !ok || rest == "" {
+		return "", "", "", false
+	}
+
+	if i := strings.LastIndexByte(rest, ':'); i > 0 {
+		if _, err := uuid.Parse(rest[i+1:]); err == nil {
+			return teamID, rest[:i], rest[i+1:], true
+		}
+	}
+
+	return teamID, rest, "", true
 }
 
 // GetTeamPrefix returns the storage team prefix for external packages (e.g. reservations).

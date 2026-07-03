@@ -60,13 +60,16 @@ func NewStorage(
 }
 
 // Start subscribes to the global PubSub channel and launches the publish
-// worker. Blocks until the context is cancelled or Close is called.
+// worker and the expiration index healer. Blocks until the context is
+// cancelled or Close is called.
 func (s *Storage) Start(ctx context.Context) {
 	pubDone := make(chan struct{})
 	go func() {
 		defer close(pubDone)
 		s.publisher.run(ctx)
 	}()
+
+	go s.startHealer(ctx)
 
 	s.subManager.start(ctx)
 	<-pubDone

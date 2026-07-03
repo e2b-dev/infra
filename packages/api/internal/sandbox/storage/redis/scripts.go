@@ -15,12 +15,16 @@ var (
 	`)
 
 	// removeSandboxScript atomically removes a sandbox and its team index entry.
+	// It returns the stored JSON (or nil if the key was already gone) so the
+	// caller knows exactly which execution it removed and can scope the
+	// expiration-index cleanup to that execution.
 	// KEYS[1] = sandbox key, KEYS[2] = team index key
 	// ARGV[1] = sandbox ID
 	removeSandboxScript = redis.NewScript(`
+		local data = redis.call('GET', KEYS[1])
 		redis.call('DEL', KEYS[1])
 		redis.call('SREM', KEYS[2], ARGV[1])
-		return 1
+		return data
 	`)
 
 	// startTransitionScript atomically updates sandbox and sets transition key with UUID.
