@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -20,6 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
+	"github.com/e2b-dev/infra/packages/envd/internal/netlimit"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	publicport "github.com/e2b-dev/infra/packages/envd/internal/port"
 	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
@@ -33,6 +35,19 @@ const (
 	// Downstream timeout should be greater than upstream (in orchestrator proxy).
 	idleTimeout = 640 * time.Second
 	maxAge      = 2 * time.Hour
+
+	// writeTimeout bounds a single stalled write: a client that stops reading
+	// applies TCP backpressure that would otherwise block the write — and the
+	// process/stream behind it — forever. Set as a fresh deadline before every
+	// write (see netlimit) so it fires only on a stuck write, never a healthy idle
+	// stream. envd self-bounds because its upstream HTTP/1.1 hop has no such timeout.
+	writeTimeout = 60 * time.Second
+
+	// readHeaderTimeout bounds how long a client may take to send the complete
+	// request headers (slowloris protection). It covers only the header read, so
+	// it never touches request bodies or long-lived streams — unlike ReadTimeout,
+	// which we leave at 0 on purpose.
+	readHeaderTimeout = 60 * time.Second
 
 	defaultPort = 49983
 
@@ -211,9 +226,13 @@ func run() error {
 		),
 		Addr: fmt.Sprintf("0.0.0.0:%d", port),
 		// We remove the timeouts as the connection is terminated by closing of the sandbox and keepalive close.
-		ReadTimeout:  0,
-		WriteTimeout: 0,
-		IdleTimeout:  idleTimeout,
+		// WriteTimeout stays 0 on purpose: it's an absolute deadline that would kill long-lived
+		// streams. Stalled writes (client stops reading) are bounded per-write by writeTimeout below.
+		// ReadHeaderTimeout is safe to set: it bounds only the header read, not bodies or streams.
+		ReadTimeout:       0,
+		ReadHeaderTimeout: readHeaderTimeout,
+		WriteTimeout:      0,
+		IdleTimeout:       idleTimeout,
 	}
 
 	// Bind all open ports on 127.0.0.1 and localhost to the eth0 interface
@@ -226,7 +245,15 @@ func run() error {
 
 	go portScanner.ScanAndBroadcast()
 
-	err := s.ListenAndServe()
+	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", s.Addr)
+	if err != nil {
+		return fmt.Errorf("failed to listen on %s: %w", s.Addr, err)
+	}
+
+	// Enforce a per-write idle timeout so a client that stops reading (TCP
+	// backpressure) can't block a streaming handler — and the process/stream
+	// behind it — indefinitely.
+	err = s.Serve(netlimit.WriteTimeoutListener(ln, writeTimeout))
 	// Signal goroutines to stop before deferred cleanup closes their resources.
 	// TODO: shutdown synchronization needs to be revisited.
 	cancel()
