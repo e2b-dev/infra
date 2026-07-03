@@ -55,6 +55,12 @@ func TestSandboxStopTime(t *testing.T) {
 			endTime:   time.Time{},
 			want:      now,
 		},
+		{
+			name:      "now before start time",
+			startTime: now.Add(time.Second),
+			endTime:   now.Add(time.Hour),
+			want:      now.Add(time.Second),
+		},
 	}
 
 	for _, tt := range tests {

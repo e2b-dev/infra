@@ -29,6 +29,10 @@ func sbxStopTime(sbx sandbox.Sandbox, now time.Time) time.Time {
 		return sbx.EndTime
 	}
 
+	if now.Before(sbx.StartTime) {
+		return sbx.StartTime
+	}
+
 	return now
 }
 
