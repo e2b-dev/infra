@@ -14,6 +14,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
@@ -132,6 +133,10 @@ func (a *APIStore) PostSandboxesSandboxIDFork(c *gin.Context, sandboxID api.Sand
 		return
 	case errors.As(err, &transErr):
 		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox '%s' cannot be forked while in '%s' state", sandboxID, transErr.CurrentState))
+
+		return
+	case errors.Is(err, orchestrator.PauseQueueExhaustedError{}):
+		a.sendAPIStoreError(c, http.StatusServiceUnavailable, fmt.Sprintf("Sandbox '%s' cannot be forked right now because its node is busy, please retry", sandboxID))
 
 		return
 	default:

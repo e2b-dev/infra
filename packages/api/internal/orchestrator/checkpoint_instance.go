@@ -6,7 +6,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gogo/status"
 	"github.com/google/uuid"
+	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
@@ -65,9 +67,9 @@ func (o *Orchestrator) CheckpointSandbox(ctx context.Context, teamID uuid.UUID, 
 	}
 
 	// Checkpoint pauses the sandbox, snapshots it, and resumes it on the
-	// orchestrator with the same ExecutionID. On error the orchestrator
-	// kills the sandbox itself; RemoveSandbox is still needed to clean up
-	// API-side state (store, routing, analytics).
+	// orchestrator with the same ExecutionID. Once the pause has started, the
+	// orchestrator stops the old sandbox itself on error; RemoveSandbox is
+	// still needed to clean up API-side state (store, routing, analytics).
 	client, childCtx := node.GetClient(ctx)
 	_, err = client.Sandbox.Checkpoint(childCtx, &orchestrator.SandboxCheckpointRequest{
 		SandboxId: sbx.SandboxID,
@@ -75,15 +77,35 @@ func (o *Orchestrator) CheckpointSandbox(ctx context.Context, teamID uuid.UUID, 
 		Metadata:  map[string]string{storageopts.ObjectMetadataTemplateID: upsertResult.TemplateID},
 	})
 	if err != nil {
-		o.failSnapshotBuild(ctx, upsertResult.BuildID, err)
+		// Cleanup must run even when the checkpoint failed because this
+		// request's context was cancelled (e.g. client disconnect mid-fork).
+		cleanupCtx := context.WithoutCancel(ctx)
+
+		o.failSnapshotBuild(cleanupCtx, upsertResult.BuildID, err)
+
+		// The orchestrator rejects these before pausing the VM (envd too old,
+		// starting-sandboxes queue full), so the sandbox is still running
+		// healthy on its node: restore it to Running instead of killing it.
+		if st, ok := status.FromError(err); ok {
+			switch st.Code() {
+			case codes.FailedPrecondition:
+				finish(nil)
+
+				return fmt.Errorf("checkpoint rejected: %w", err)
+			case codes.ResourceExhausted:
+				finish(nil)
+
+				return PauseQueueExhaustedError{}
+			}
+		}
 
 		// Complete the snapshotting transition with error — leaves state as
 		// Snapshotting (no restore to Running) and clears the transition key
 		// so RemoveSandbox can proceed without deadlock.
 		finish(err)
 
-		if killErr := o.RemoveSandbox(ctx, teamID, sandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill}); killErr != nil {
-			telemetry.ReportError(ctx, "error killing sandbox after failed checkpoint", killErr)
+		if killErr := o.RemoveSandbox(cleanupCtx, teamID, sandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill}); killErr != nil {
+			telemetry.ReportError(cleanupCtx, "error killing sandbox after failed checkpoint", killErr)
 		}
 
 		return fmt.Errorf("checkpoint failed: %w", err)
