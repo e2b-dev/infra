@@ -97,6 +97,34 @@ type Error struct {
 	Message string `json:"message"`
 }
 
+// InitRequest Initial configuration synced from the host on sandbox start/resume
+type InitRequest struct {
+	// AccessToken Access token for secure access to envd service
+	AccessToken *SecureToken `json:"accessToken,omitempty"`
+
+	// CaBundle PEM-encoded CA certificates to install into the system trust store (may contain multiple concatenated PEM blocks)
+	CaBundle *string `json:"caBundle,omitempty"`
+
+	// DefaultUser The default user to use for operations
+	DefaultUser *string `json:"defaultUser,omitempty"`
+
+	// DefaultWorkdir The default working directory to use for operations
+	DefaultWorkdir *string `json:"defaultWorkdir,omitempty"`
+
+	// EnvVars Environment variables to set
+	EnvVars *EnvVars `json:"envVars,omitempty"`
+
+	// HyperloopIP IP address of the hyperloop server to connect to
+	HyperloopIP *string `json:"hyperloopIP,omitempty"`
+
+	// LifecycleID Lifecycle ID of the sandbox
+	LifecycleID *string `json:"lifecycleID,omitempty"`
+
+	// Timestamp The current timestamp in RFC3339 format
+	Timestamp    *time.Time     `json:"timestamp,omitempty"`
+	VolumeMounts *[]VolumeMount `json:"volumeMounts,omitempty"`
+}
+
 // Metrics Resource usage metrics
 type Metrics struct {
 	// CpuCount Number of CPU cores
@@ -151,6 +179,9 @@ type SignatureExpiration = int
 // User defines model for User.
 type User = string
 
+// CollapseSuccess Per-call statistics from a heap collapse
+type CollapseSuccess = CollapseResult
+
 // ComposeSuccess defines model for ComposeSuccess.
 type ComposeSuccess = EntryInfo
 
@@ -178,33 +209,8 @@ type UploadSuccess = []EntryInfo
 // Compose defines model for Compose.
 type Compose = ComposeRequest
 
-// Init defines model for Init.
-type Init struct {
-	// AccessToken Access token for secure access to envd service
-	AccessToken *SecureToken `json:"accessToken,omitempty"`
-
-	// CaBundle PEM-encoded CA certificates to install into the system trust store (may contain multiple concatenated PEM blocks)
-	CaBundle *string `json:"caBundle,omitempty"`
-
-	// DefaultUser The default user to use for operations
-	DefaultUser *string `json:"defaultUser,omitempty"`
-
-	// DefaultWorkdir The default working directory to use for operations
-	DefaultWorkdir *string `json:"defaultWorkdir,omitempty"`
-
-	// EnvVars Environment variables to set
-	EnvVars *EnvVars `json:"envVars,omitempty"`
-
-	// HyperloopIP IP address of the hyperloop server to connect to
-	HyperloopIP *string `json:"hyperloopIP,omitempty"`
-
-	// LifecycleID Lifecycle ID of the sandbox
-	LifecycleID *string `json:"lifecycleID,omitempty"`
-
-	// Timestamp The current timestamp in RFC3339 format
-	Timestamp    *time.Time     `json:"timestamp,omitempty"`
-	VolumeMounts *[]VolumeMount `json:"volumeMounts,omitempty"`
-}
+// Init Initial configuration synced from the host on sandbox start/resume
+type Init = InitRequest
 
 // accessTokenAuthContextKey is the context key for AccessTokenAuth security scheme
 type accessTokenAuthContextKey string
@@ -244,34 +250,6 @@ type PostFilesParams struct {
 	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
 }
 
-// PostInitJSONBody defines parameters for PostInit.
-type PostInitJSONBody struct {
-	// AccessToken Access token for secure access to envd service
-	AccessToken *SecureToken `json:"accessToken,omitempty"`
-
-	// CaBundle PEM-encoded CA certificates to install into the system trust store (may contain multiple concatenated PEM blocks)
-	CaBundle *string `json:"caBundle,omitempty"`
-
-	// DefaultUser The default user to use for operations
-	DefaultUser *string `json:"defaultUser,omitempty"`
-
-	// DefaultWorkdir The default working directory to use for operations
-	DefaultWorkdir *string `json:"defaultWorkdir,omitempty"`
-
-	// EnvVars Environment variables to set
-	EnvVars *EnvVars `json:"envVars,omitempty"`
-
-	// HyperloopIP IP address of the hyperloop server to connect to
-	HyperloopIP *string `json:"hyperloopIP,omitempty"`
-
-	// LifecycleID Lifecycle ID of the sandbox
-	LifecycleID *string `json:"lifecycleID,omitempty"`
-
-	// Timestamp The current timestamp in RFC3339 format
-	Timestamp    *time.Time     `json:"timestamp,omitempty"`
-	VolumeMounts *[]VolumeMount `json:"volumeMounts,omitempty"`
-}
-
 // PostFilesMultipartRequestBody defines body for PostFiles for multipart/form-data ContentType.
 type PostFilesMultipartRequestBody PostFilesMultipartBody
 
@@ -279,7 +257,7 @@ type PostFilesMultipartRequestBody PostFilesMultipartBody
 type PostFilesComposeJSONRequestBody = ComposeRequest
 
 // PostInitJSONRequestBody defines body for PostInit for application/json ContentType.
-type PostInitJSONRequestBody PostInitJSONBody
+type PostInitJSONRequestBody = InitRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {

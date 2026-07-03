@@ -41,7 +41,7 @@ func (a *API) PostCollapse(w http.ResponseWriter, r *http.Request) {
 		Int64("elapsed_ms", elapsedMs).
 		Msg("collapsed envd heap")
 
-	result := CollapseResult{
+	result := CollapseSuccess{
 		Regions:     &stats.Regions,
 		Chunks:      &stats.Chunks,
 		Collapsed:   &stats.Collapsed,

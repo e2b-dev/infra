@@ -73,11 +73,7 @@ paths:
         - {}
       responses:
         "200":
-          description: Heap collapsed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CollapseResult"
+          $ref: "#/components/responses/CollapseSuccess"
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -269,37 +265,7 @@ components:
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              volumeMounts:
-                type: array
-                items:
-                  $ref: "#/components/schemas/VolumeMount"
-              hyperloopIP:
-                type: string
-                description: IP address of the hyperloop server to connect to
-              lifecycleID:
-                type: string
-                description: Lifecycle ID of the sandbox
-              envVars:
-                $ref: "#/components/schemas/EnvVars"
-              accessToken:
-                type: string
-                description: Access token for secure access to envd service
-                x-go-type: SecureToken
-              timestamp:
-                type: string
-                format: date-time
-                description: The current timestamp in RFC3339 format
-              defaultUser:
-                type: string
-                description: The default user to use for operations
-              defaultWorkdir:
-                type: string
-                description: The default working directory to use for operations
-              caBundle:
-                type: string
-                description: PEM-encoded CA certificates to install into the system trust store (may contain multiple concatenated PEM blocks)
+            $ref: "#/components/schemas/InitRequest"
     Compose:
       required: true
       content:
@@ -308,6 +274,12 @@ components:
             $ref: "#/components/schemas/ComposeRequest"
 
   responses:
+    CollapseSuccess:
+      description: Heap collapsed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/CollapseResult"
     Metrics:
       description: The resource usage metrics of the service
       content:
@@ -500,6 +472,39 @@ components:
           type: integer
           format: int64
           description: Wall-clock time spent collapsing, in milliseconds
+    InitRequest:
+      type: object
+      description: Initial configuration synced from the host on sandbox start/resume
+      properties:
+        volumeMounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/VolumeMount"
+        hyperloopIP:
+          type: string
+          description: IP address of the hyperloop server to connect to
+        lifecycleID:
+          type: string
+          description: Lifecycle ID of the sandbox
+        envVars:
+          $ref: "#/components/schemas/EnvVars"
+        accessToken:
+          type: string
+          description: Access token for secure access to envd service
+          x-go-type: SecureToken
+        timestamp:
+          type: string
+          format: date-time
+          description: The current timestamp in RFC3339 format
+        defaultUser:
+          type: string
+          description: The default user to use for operations
+        defaultWorkdir:
+          type: string
+          description: The default working directory to use for operations
+        caBundle:
+          type: string
+          description: PEM-encoded CA certificates to install into the system trust store (may contain multiple concatenated PEM blocks)
     ComposeRequest:
       type: object
       required:

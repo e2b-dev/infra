@@ -96,7 +96,7 @@ func TestEnvdInitSendsCaBundle(t *testing.T) { //nolint:paralleltest
 	proxy := &mockEgressProxy{bundle: pemBundle}
 	sbx := newTestSandboxWithBundle(proxy.CABundle())
 
-	var captured envd.PostInitJSONBody
+	var captured envd.InitRequest
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "/init", r.URL.Path)
@@ -127,7 +127,7 @@ func TestEnvdInitSendsCaBundle(t *testing.T) { //nolint:paralleltest
 func TestEnvdInitEmptyCaBundle(t *testing.T) { //nolint:paralleltest
 	sbx := newTestSandboxWithBundle("")
 
-	var captured envd.PostInitJSONBody
+	var captured envd.InitRequest
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&captured)
 		w.WriteHeader(http.StatusNoContent)
