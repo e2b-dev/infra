@@ -25,7 +25,11 @@ func TestSandboxFork(t *testing.T) {
 	require.NotNil(t, forkResp.JSON201)
 	require.Len(t, *forkResp.JSON201, 1)
 
-	forked := (*forkResp.JSON201)[0]
+	result := (*forkResp.JSON201)[0]
+	require.Nil(t, result.Error)
+	require.NotNil(t, result.Sandbox)
+
+	forked := result.Sandbox
 	t.Cleanup(func() {
 		utils.TeardownSandbox(t, c, forked.SandboxID)
 	})
@@ -64,7 +68,11 @@ func TestSandboxFork_Multiple(t *testing.T) {
 	require.Len(t, forks, 2)
 
 	seen := map[string]bool{sbx.SandboxID: true}
-	for _, forked := range forks {
+	for _, result := range forks {
+		require.Nil(t, result.Error)
+		require.NotNil(t, result.Sandbox)
+
+		forked := result.Sandbox
 		t.Cleanup(func() {
 			utils.TeardownSandbox(t, c, forked.SandboxID)
 		})

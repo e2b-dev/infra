@@ -836,11 +836,17 @@ type SandboxEgressProxyConfig struct {
 
 // SandboxForkRequest defines model for SandboxForkRequest.
 type SandboxForkRequest struct {
-	// Count Number of forked sandboxes to create. All forks boot from the same snapshot, so the snapshot is captured once regardless of count. If any fork fails to start, all of them are killed and an error is returned.
+	// Count Number of forked sandboxes to create. All forks boot from the same snapshot, so the snapshot is captured once regardless of count. Each fork succeeds or fails independently; the outcome of each is reported in its entry of the response list.
 	Count *int32 `json:"count,omitempty"`
 
 	// Timeout Time to live for the new forked sandboxes in seconds.
 	Timeout *int32 `json:"timeout,omitempty"`
+}
+
+// SandboxForkResult Result of one requested fork. Exactly one of sandbox or error is set: sandbox when the fork started successfully, error when it failed to start.
+type SandboxForkResult struct {
+	Error   *Error   `json:"error,omitempty"`
+	Sandbox *Sandbox `json:"sandbox,omitempty"`
 }
 
 // SandboxLifecycle Sandbox lifecycle policy returned by sandbox info.
@@ -6979,7 +6985,7 @@ func (r PostSandboxesSandboxIDConnectResponse) ContentType() string {
 type PostSandboxesSandboxIDForkResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON201      *[]Sandbox
+	JSON201      *[]SandboxForkResult
 	JSON401      *N401
 	JSON404      *N404
 	JSON409      *N409
@@ -9845,7 +9851,7 @@ func ParsePostSandboxesSandboxIDForkResponse(rsp *http.Response) (*PostSandboxes
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
-		var dest []Sandbox
+		var dest []SandboxForkResult
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
