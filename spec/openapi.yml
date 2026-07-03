@@ -835,6 +835,7 @@ components:
           type: integer
           format: int32
           minimum: 1
+          maximum: 100
           default: 1
           description: >-
             Number of forked sandboxes to create. All forks boot from the same

@@ -24,6 +24,10 @@ import (
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+// maxForkCount caps how many sandboxes a single fork request can create,
+// bounding the parallel boots (and the result allocation) per request.
+const maxForkCount = 100
+
 // PostSandboxesSandboxIDFork forks a running sandbox: it checkpoints the
 // sandbox in place (snapshot it and resume it on its node, so the original
 // keeps running with its ID and expiration untouched) and creates count new
@@ -70,20 +74,26 @@ func (a *APIStore) PostSandboxesSandboxIDFork(c *gin.Context, sandboxID api.Sand
 	forkCount := 1
 	if body.Count != nil {
 		forkCount = int(*body.Count)
+	}
 
-		if forkCount < 1 {
-			a.sendAPIStoreError(c, http.StatusBadRequest, "Count must be at least 1")
+	if forkCount < 1 {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Count must be at least 1")
 
-			return
-		}
+		return
+	}
 
-		// The original sandbox keeps running and holds one slot, so more forks
-		// than the concurrency limit can never succeed.
-		if int64(forkCount) >= teamInfo.Limits.SandboxConcurrency {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Count must be lower than the maximum number of concurrent sandboxes (%d)", teamInfo.Limits.SandboxConcurrency))
+	if forkCount > maxForkCount {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Count cannot be greater than %d", maxForkCount))
 
-			return
-		}
+		return
+	}
+
+	// The original sandbox keeps running and holds one slot, so more forks
+	// than the concurrency limit can never succeed.
+	if int64(forkCount) >= teamInfo.Limits.SandboxConcurrency {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Count must be lower than the maximum number of concurrent sandboxes (%d)", teamInfo.Limits.SandboxConcurrency))
+
+		return
 	}
 
 	original, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
