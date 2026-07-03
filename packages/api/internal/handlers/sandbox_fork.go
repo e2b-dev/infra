@@ -10,6 +10,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -24,9 +26,10 @@ import (
 
 // PostSandboxesSandboxIDFork forks a running sandbox: it checkpoints the
 // sandbox in place (snapshot it and resume it on its node, so the original
-// keeps running with its ID and expiration untouched) and creates a new
-// sandbox from that snapshot under a fresh ID. It returns the newly created
-// sandbox.
+// keeps running with its ID and expiration untouched) and creates count new
+// sandboxes from that snapshot under fresh IDs. It returns the newly created
+// sandboxes; if any of them fail to start, all of them are killed and an
+// error is returned.
 func (a *APIStore) PostSandboxesSandboxIDFork(c *gin.Context, sandboxID api.SandboxID) {
 	ctx := c.Request.Context()
 
@@ -59,6 +62,25 @@ func (a *APIStore) PostSandboxesSandboxIDFork(c *gin.Context, sandboxID api.Sand
 
 		if forkTimeout > time.Duration(teamInfo.Limits.MaxLengthHours)*time.Hour {
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Timeout cannot be greater than %d hours", teamInfo.Limits.MaxLengthHours))
+
+			return
+		}
+	}
+
+	forkCount := 1
+	if body.Count != nil {
+		forkCount = int(*body.Count)
+
+		if forkCount < 1 {
+			a.sendAPIStoreError(c, http.StatusBadRequest, "Count must be at least 1")
+
+			return
+		}
+
+		// The original sandbox keeps running and holds one slot, so more forks
+		// than the concurrency limit can never succeed.
+		if int64(forkCount) >= teamInfo.Limits.SandboxConcurrency {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Count must be lower than the maximum number of concurrent sandboxes (%d)", teamInfo.Limits.SandboxConcurrency))
 
 			return
 		}
@@ -109,31 +131,71 @@ func (a *APIStore) PostSandboxesSandboxIDFork(c *gin.Context, sandboxID api.Sand
 		return
 	}
 
-	forkedSandboxID := InstanceIDPrefix + id.Generate()
-
 	sbxlogger.E(&sbxlogger.SandboxMetadata{
 		SandboxID:  sandboxID,
 		TemplateID: original.TemplateID,
 		TeamID:     teamID.String(),
-	}).Debug(ctx, "Creating forked sandbox from snapshot")
+	}).Debug(ctx, "Creating forked sandboxes from snapshot", zap.Int("count", forkCount))
 
-	forkedSbx, createErr := a.startSandbox(
-		ctx,
-		forkedSandboxID,
-		forkTimeout,
-		teamInfo,
-		a.buildResumeSandboxDataFromSnapshot(sandboxID, forkedSandboxID, nil),
-		&c.Request.Header,
-		true,
-		nil, // mcp
-	)
-	if createErr != nil {
-		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)
+	// All forks boot in parallel from the same immutable snapshot.
+	forkedSbxs := make([]*api.Sandbox, forkCount)
+	forkedErrs := make([]*api.APIError, forkCount)
+
+	wg := errgroup.Group{}
+	for i := range forkCount {
+		wg.Go(func() error {
+			forkedSandboxID := InstanceIDPrefix + id.Generate()
+
+			forkedSbxs[i], forkedErrs[i] = a.startSandbox(
+				ctx,
+				forkedSandboxID,
+				forkTimeout,
+				teamInfo,
+				a.buildResumeSandboxDataFromSnapshot(sandboxID, forkedSandboxID, nil),
+				&c.Request.Header,
+				true,
+				nil, // mcp
+			)
+
+			return nil
+		})
+	}
+	_ = wg.Wait()
+
+	var firstErr *api.APIError
+	for _, createErr := range forkedErrs {
+		if createErr != nil {
+			firstErr = createErr
+
+			break
+		}
+	}
+
+	if firstErr != nil {
+		// All-or-nothing: kill the forks that did start so the caller never
+		// has to reconcile a partial result.
+		killWg := errgroup.Group{}
+		for _, sbx := range forkedSbxs {
+			if sbx == nil {
+				continue
+			}
+			killWg.Go(func() error {
+				killErr := a.orchestrator.RemoveSandbox(context.WithoutCancel(ctx), teamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill, Reason: sandbox.KillReasonOrphaned})
+				if killErr != nil {
+					telemetry.ReportError(ctx, "error cleaning up forked sandbox after partial fork failure", killErr, telemetry.WithSandboxID(sbx.SandboxID))
+				}
+
+				return nil
+			})
+		}
+		_ = killWg.Wait()
+
+		a.sendAPIStoreError(c, firstErr.Code, firstErr.ClientMsg)
 
 		return
 	}
 
-	c.JSON(http.StatusCreated, forkedSbx)
+	c.JSON(http.StatusCreated, forkedSbxs)
 }
 
 // forkHandleNotRunningSandbox classifies a fork request for a sandbox that is

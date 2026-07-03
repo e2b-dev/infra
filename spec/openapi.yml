@@ -830,7 +830,17 @@ components:
           format: int32
           minimum: 0
           default: 15
-          description: Time to live for the new forked sandbox in seconds.
+          description: Time to live for the new forked sandboxes in seconds.
+        count:
+          type: integer
+          format: int32
+          minimum: 1
+          default: 1
+          description: >-
+            Number of forked sandboxes to create. All forks boot from the same
+            snapshot, so the snapshot is captured once regardless of count. If
+            any fork fails to start, all of them are killed and an error is
+            returned.
 
     TeamMetric:
       description: Team metric with timestamp
@@ -2548,8 +2558,8 @@ paths:
       description: >-
         Fork the sandbox: checkpoint the running sandbox in place (it is
         briefly paused, snapshotted with its full memory state, and resumed on
-        its node, keeping its ID and expiration untouched) and create a new
-        sandbox from that snapshot. Returns the newly created sandbox.
+        its node, keeping its ID and expiration untouched) and create count
+        new sandboxes from that snapshot. Returns the newly created sandboxes.
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
@@ -2571,7 +2581,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Sandbox"
+                type: array
+                items:
+                  $ref: "#/components/schemas/Sandbox"
         "409":
           $ref: "#/components/responses/409"
         "404":
