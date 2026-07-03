@@ -93,7 +93,7 @@ func TestSbxStopTime_CorruptEndTime(t *testing.T) {
 			sbx := sandbox.Sandbox{StartTime: start, EndTime: tt.endTime}
 			got := sbxStopTime(sbx, now)
 
-			// Corrupt record must bZ zero: stop time collapses to StartTime.
+			// Corrupt record must be zero: stop time collapses to StartTime.
 			require.True(t, start.Equal(got), "want StartTime %v, got %v", start, got)
 			require.Zero(t, got.Sub(sbx.StartTime), "duration must be zero for corrupt records")
 		})
