@@ -156,7 +156,9 @@ func (a *APIStore) PostSandboxesSandboxIDFork(c *gin.Context, sandboxID api.Sand
 	wg.Go(func() error {
 		// Resume the original sandbox under its original ID so it keeps running.
 		// Compute the remaining time to live only now, after the pause, so the
-		// resumed sandbox keeps the expiration captured before pausing.
+		// resumed sandbox keeps the expiration captured before pausing. If the
+		// TTL ran out during the pause, resume with the short default timeout so
+		// the sandbox still goes through its normal expiration (auto-pause/kill).
 		originalTimeout := time.Until(originalEndTime)
 		if originalTimeout <= 0 {
 			originalTimeout = sandbox.SandboxTimeoutDefault
