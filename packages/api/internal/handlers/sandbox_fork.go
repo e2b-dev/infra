@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
@@ -112,54 +114,84 @@ func (a *APIStore) PostSandboxesSandboxIDFork(c *gin.Context, sandboxID api.Sand
 		return
 	}
 
+	forkedSandboxID := InstanceIDPrefix + id.Generate()
+
 	sbxlogger.E(&sbxlogger.SandboxMetadata{
 		SandboxID:  sandboxID,
 		TemplateID: original.TemplateID,
 		TeamID:     teamID.String(),
-	}).Debug(ctx, "Resuming original sandbox after fork snapshot")
+	}).Debug(ctx, "Resuming original sandbox and creating forked sandbox from snapshot")
 
-	// Resume the original sandbox under its original ID so it keeps running.
-	_, createErr := a.startSandbox(
-		ctx,
-		sandboxID,
-		originalTimeout,
-		teamInfo,
-		a.buildResumeSandboxData(sandboxID, nil),
-		&c.Request.Header,
-		true,
-		nil, // mcp
+	// Resume the original sandbox and create the forked sandbox concurrently:
+	// both boot independently from the same immutable snapshot, so neither
+	// depends on the other's completion.
+	var (
+		originalErr *api.APIError
+		forkedSbx   *api.Sandbox
+		forkedErr   *api.APIError
 	)
-	if createErr != nil {
-		telemetry.ReportError(ctx, "error resuming original sandbox after fork", createErr.Err, telemetry.WithSandboxID(sandboxID))
-		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)
+
+	wg := errgroup.Group{}
+
+	wg.Go(func() error {
+		// Resume the original sandbox under its original ID so it keeps running.
+		_, createErr := a.startSandbox(
+			ctx,
+			sandboxID,
+			originalTimeout,
+			teamInfo,
+			a.buildResumeSandboxData(sandboxID, nil),
+			&c.Request.Header,
+			true,
+			nil, // mcp
+		)
+		originalErr = createErr
+
+		return nil
+	})
+
+	wg.Go(func() error {
+		// Create the new forked sandbox from the same snapshot, under a new ID.
+		sbx, createErr := a.startSandbox(
+			ctx,
+			forkedSandboxID,
+			forkTimeout,
+			teamInfo,
+			a.buildResumeSandboxData(sandboxID, nil),
+			&c.Request.Header,
+			true,
+			nil, // mcp
+		)
+		forkedSbx = sbx
+		forkedErr = createErr
+
+		return nil
+	})
+
+	_ = wg.Wait()
+
+	if originalErr != nil {
+		telemetry.ReportError(ctx, "error resuming original sandbox after fork", originalErr.Err, telemetry.WithSandboxID(sandboxID))
+
+		// The caller never learns the forked sandbox's ID, so it can't manage
+		// it; clean it up rather than leaving it running unaccounted for.
+		if forkedErr == nil {
+			killErr := a.orchestrator.RemoveSandbox(context.WithoutCancel(ctx), teamID, forkedSandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill, Reason: sandbox.KillReasonOrphaned})
+			if killErr != nil {
+				telemetry.ReportError(ctx, "error cleaning up forked sandbox after original resume failure", killErr, telemetry.WithSandboxID(forkedSandboxID))
+			}
+		}
+
+		a.sendAPIStoreError(c, originalErr.Code, fmt.Sprintf("Sandbox was forked but the original sandbox failed to resume: %s", originalErr.ClientMsg))
 
 		return
 	}
 
-	forkedSandboxID := InstanceIDPrefix + id.Generate()
-
-	sbxlogger.E(&sbxlogger.SandboxMetadata{
-		SandboxID:  forkedSandboxID,
-		TemplateID: original.TemplateID,
-		TeamID:     teamID.String(),
-	}).Debug(ctx, "Creating forked sandbox from snapshot")
-
-	// Create the new forked sandbox from the same snapshot, under a new ID.
-	forkedSbx, createErr := a.startSandbox(
-		ctx,
-		forkedSandboxID,
-		forkTimeout,
-		teamInfo,
-		a.buildResumeSandboxData(sandboxID, nil),
-		&c.Request.Header,
-		true,
-		nil, // mcp
-	)
-	if createErr != nil {
-		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)
+	if forkedErr != nil {
+		a.sendAPIStoreError(c, forkedErr.Code, forkedErr.ClientMsg)
 
 		return
 	}
 
-	c.JSON(http.StatusCreated, &forkedSbx)
+	c.JSON(http.StatusCreated, forkedSbx)
 }
