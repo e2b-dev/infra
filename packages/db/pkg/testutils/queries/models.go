@@ -24,6 +24,20 @@ type AccessToken struct {
 	AccessTokenMaskSuffix string
 }
 
+type ActiveEnv struct {
+	ID            string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	Public        bool
+	BuildCount    int32
+	SpawnCount    int64
+	LastSpawnedAt *time.Time
+	TeamID        uuid.UUID
+	CreatedBy     *uuid.UUID
+	ClusterID     *uuid.UUID
+	Source        string
+}
+
 type ActiveTemplateBuild struct {
 	BuildID    uuid.UUID
 	TeamID     uuid.UUID
@@ -46,6 +60,7 @@ type Addon struct {
 	ValidTo                       *time.Time
 	AddedBy                       uuid.UUID
 	IdempotencyKey                pgtype.Text
+	ExtraEventsTtlDays            int64
 }
 
 type AuthUser struct {
@@ -75,6 +90,7 @@ type Cluster struct {
 	Token              string
 	SandboxProxyDomain pgtype.Text
 	AuthOrgID          pgtype.Text
+	Name               string
 }
 
 type Env struct {
@@ -91,6 +107,7 @@ type Env struct {
 	CreatedBy     *uuid.UUID
 	ClusterID     *uuid.UUID
 	Source        string
+	DeletedAt     *time.Time
 }
 
 type EnvAlias struct {
@@ -201,6 +218,7 @@ type TeamLimit struct {
 	MaxVcpu                  int32
 	MaxRamMb                 int32
 	DiskMb                   int32
+	EventsTtlDays            int32
 }
 
 type Tier struct {
@@ -214,6 +232,7 @@ type Tier struct {
 	MaxRamMb            int64
 	// The number of concurrent template builds the team can run
 	ConcurrentTemplateBuilds int64
+	EventsTtlDays            int64
 }
 
 type User struct {

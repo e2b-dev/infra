@@ -1,16 +1,16 @@
 job "redis" {
   node_pool = "${node_pool}"
-  type = "service"
-  priority = 95
+  type      = "service"
+  priority  = 95
 
   group "redis" {
     // Try to restart the task indefinitely
     // Tries to restart every 5 seconds
     restart {
-      interval         = "5s"
-      attempts         = 1
-      delay            = "5s"
-      mode             = "delay"
+      interval = "5s"
+      attempts = 1
+      delay    = "5s"
+      mode     = "delay"
     }
 
     network {
@@ -43,7 +43,7 @@ job "redis" {
 
       config {
         network_mode = "host"
-        image        = "redis:7.4.2-alpine"
+        image        = "redis:7.4.6-alpine"
         ports        = ["${port_name}"]
         args = [
         ]

@@ -11,6 +11,10 @@ type EgressProxy interface {
 	OnSlotDelete(s *Slot, tables *iptables.IPTables) error
 
 	CABundle() string
+
+	// SupportsBYOP reports whether this build can tunnel TCP egress
+	// through a user-supplied SOCKS5 proxy.
+	SupportsBYOP() bool
 }
 
 // NoopEgressProxy is a no-op implementation of EgressProxy.
@@ -32,4 +36,8 @@ func (NoopEgressProxy) OnSlotDelete(_ *Slot, _ *iptables.IPTables) error {
 
 func (NoopEgressProxy) CABundle() string {
 	return ""
+}
+
+func (NoopEgressProxy) SupportsBYOP() bool {
+	return false
 }

@@ -1,4 +1,4 @@
-ARG GOLANG_VERSION=1.26.3
+ARG GOLANG_VERSION=1.26.4
 ARG ALPINE_VERSION=3.22
 
 FROM golang:${GOLANG_VERSION}-alpine${ALPINE_VERSION} AS builder
@@ -33,7 +33,8 @@ COPY ./docker-reverse-proxy/Makefile ./docker-reverse-proxy/Makefile
 WORKDIR /build/docker-reverse-proxy
 
 ARG COMMIT_SHA
-RUN --mount=type=cache,target=/root/.cache/go-build make build COMMIT_SHA=${COMMIT_SHA}
+ARG VERSION=dev
+RUN --mount=type=cache,target=/root/.cache/go-build make build COMMIT_SHA=${COMMIT_SHA} VERSION=${VERSION}
 
 RUN chmod +x /build/docker-reverse-proxy/bin/docker-reverse-proxy
 

@@ -142,22 +142,22 @@ func TestUpdateNonExistentTemplateWithAPIKey(t *testing.T) {
 		"Expected 404, got %d", updateResp.StatusCode())
 }
 
-func TestUpdateTemplateWithSupabaseToken(t *testing.T) {
+func TestUpdateTemplateWithAPIKey(t *testing.T) {
 	t.Parallel()
 	// Create a test template with API key first
-	template := testutils.BuildSimpleTemplate(t, "test-update-supabase-token", setup.WithAPIKey())
+	template := testutils.BuildSimpleTemplate(t, "test-update-api-key", setup.WithAPIKey())
 
 	c := setup.GetAPIClient()
 
-	// Update template using Supabase token
+	// Update template using API key authentication.
 	updateResp, err := c.PatchV2TemplatesTemplateIDWithResponse(
 		t.Context(),
 		template.TemplateID,
 		api.TemplateUpdateRequest{
 			Public: new(true),
 		},
-		setup.WithSupabaseToken(t),
-		setup.WithSupabaseTeam(t),
+		setup.WithAPIKey(),
+		setup.WithTeamID(),
 	)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, updateResp.StatusCode())
@@ -168,8 +168,8 @@ func TestUpdateTemplateWithSupabaseToken(t *testing.T) {
 		&api.GetTemplatesParams{
 			TeamID: new(setup.TeamID),
 		},
-		setup.WithSupabaseToken(t),
-		setup.WithSupabaseTeam(t),
+		setup.WithAPIKey(),
+		setup.WithTeamID(),
 	)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, getResp.StatusCode())

@@ -21,12 +21,45 @@ jobs:
       modules: ${{ steps.set-modules.outputs.modules }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          # Full history so we can diff against the PR base to find changed modules.
+          fetch-depth: 0
       - id: set-modules
-        run: echo "modules=$(go list -m -json | jq -s '.' | jq -c '[.[].Dir]')" >> $GITHUB_OUTPUT
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+
+          all_modules=$(go list -m -json | jq -s -c '[.[].Dir]')
+
+          # Files changed by this PR (repo-relative paths), vs the base merge-base.
+          changed=$(git diff --name-only "${BASE_SHA}...HEAD")
+
+          # Changes to workspace-wide inputs affect linting of every module,
+          # so lint them all in that case.
+          if printf '%s\n' "$changed" | grep -qE '^(go\.work|go\.work\.sum|\.golangci\.yml|\.tool-versions)$'; then
+            echo "Workspace-wide change detected; linting all modules."
+            echo "modules=${all_modules}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Otherwise, select only the modules that contain a changed file.
+          root="$(pwd)"
+          selected=$(go list -m -json | jq -r '.Dir' | while read -r dir; do
+            rel="${dir#"$root"/}"
+            while IFS= read -r f; do
+              if [[ "$f" == "$rel"/* ]]; then printf '%s\n' "$dir"; break; fi
+            done <<< "$changed"
+          done | jq -R . | jq -s -c 'map(select(length > 0)) | unique')
+
+          echo "Changed modules: ${selected}"
+          echo "modules=${selected}" >> "$GITHUB_OUTPUT"
 
   golangci-lint:
     needs: detect-modules
-    if: ${{ inputs.run-lint == true }}
+    # Skip cleanly when no Go modules changed. An empty matrix would otherwise
+    # make this job's result 'failure' (not 'skipped') for the aggregate below.
+    if: ${{ inputs.run-lint == true && needs.detect-modules.outputs.modules != '[]' }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -50,6 +83,11 @@ jobs:
         with:
           version: "v${{ env.GOLANGCI_LINT }}"
           working-directory: ${{ matrix.modules }}
+
+          # Only report issues introduced by this PR (on changed lines), not
+          # pre-existing issues in files the PR didn't touch. Uses the PR patch
+          # from the GitHub API, so no extra git history is needed.
+          only-new-issues: true
 
           # disable, as it randomly fails with the following error:
           # The command is terminated due to an error: [../../.golangci.yml] validate: compile schema: failing loading "https://golangci-lint.run/jsonschema/golangci.v2.11.jsonschema.json": Get "https://golangci-lint.run/jsonschema/golangci.v2.11.jsonschema.json": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
@@ -75,7 +113,8 @@ jobs:
             exit 1
           fi
 
-          if [[ "${{ needs.golangci-lint.result }}" != "success" ]]; then
+          # "skipped" is expected when no Go modules changed (empty matrix).
+          if [[ "${{ needs.golangci-lint.result }}" != "success" && "${{ needs.golangci-lint.result }}" != "skipped" ]]; then
             echo "golangci-lint result: ${{ needs.golangci-lint.result }}"
             exit 1
           fi

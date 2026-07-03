@@ -162,10 +162,11 @@ func setupValidateTest(tb testing.TB, db *testutils.Database, userID uuid.UUID, 
 	`, buildID, createdEnvStatus, finishedAt)
 	require.NoError(tb, err)
 
-	err = db.SqlcClient.CreateTemplateBuildAssignment(tb.Context(), dbqueries.CreateTemplateBuildAssignmentParams{
+	rows, err := db.SqlcClient.CreateTemplateBuildAssignment(tb.Context(), dbqueries.CreateTemplateBuildAssignmentParams{
 		TemplateID: envID,
 		BuildID:    buildID,
 		Tag:        "default",
 	})
 	require.NoError(tb, err)
+	require.EqualValues(tb, 1, rows)
 }

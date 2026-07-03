@@ -313,6 +313,7 @@ paths:
   /health:
     get:
       operationId: healthCheck
+      summary: Health check
       description: Health check
       responses:
         "200":
@@ -321,6 +322,7 @@ paths:
   /health/machine:
     get:
       operationId: healthCheckMachine
+      summary: Health check machine
       description: Health check for machine status
       responses:
         "200":
@@ -329,6 +331,7 @@ paths:
   /v1/info:
     get:
       operationId: v1Info
+      summary: Edge service information (v1)
       description: Edge service information
       responses:
         "200":
@@ -346,6 +349,7 @@ paths:
   /v1/service-discovery/nodes/orchestrators:
     get:
       operationId: v1ServiceDiscoveryGetOrchestrators
+      summary: List orchestrators (v1)
       description: Deprecated way how to get the orchestrators, use v2 endpoint instead.
       deprecated: true
       security:
@@ -368,7 +372,7 @@ paths:
   /v1/service-discovery:
     get:
       operationId: v1ServiceDiscovery
-      summary: Get the service discovery information
+      summary: Service discovery information (v1)
       security:
         - ApiKeyAuth: []
       tags: [service-discovery]
@@ -387,7 +391,7 @@ paths:
   /v1/sandboxes/{sandboxID}/logs:
     get:
       operationId: v1SandboxLogs
-      summary: List structured sandbox logs
+      summary: List structured sandbox logs (v1)
       security:
         - ApiKeyAuth: []
       tags: [sandboxes]
@@ -460,7 +464,7 @@ paths:
   /v1/sandboxes/{sandboxID}/metrics:
     get:
       operationId: v1SandboxMetrics
-      summary: Get time-series metrics for a sandbox
+      summary: Time-series metrics for a sandbox (v1)
       security:
         - ApiKeyAuth: []
       tags: [sandboxes]
@@ -510,7 +514,7 @@ paths:
   /v1/sandboxes/metrics:
     get:
       operationId: v1SandboxesMetrics
-      summary: Get latest metrics for multiple sandboxes
+      summary: Latest metrics for multiple sandboxes (v1)
       security:
         - ApiKeyAuth: []
       tags: [sandboxes]
@@ -546,7 +550,7 @@ paths:
   /v1/templates/builds/{buildID}/logs:
     get:
       operationId: v1TemplateBuildLogs
-      summary: Template build logs
+      summary: Template build logs (v1)
       security:
         - ApiKeyAuth: []
       tags: [templates]

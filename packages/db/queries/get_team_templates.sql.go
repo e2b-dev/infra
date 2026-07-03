@@ -24,7 +24,7 @@ SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count,
        e.created_by as creator_id,
        COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases,
        COALESCE(ea.names, ARRAY[]::text[])::text[] AS names
-FROM public.envs AS e
+FROM public.active_envs AS e
 LEFT JOIN LATERAL (
     SELECT 
         ARRAY_AGG(alias ORDER BY alias) AS aliases,
@@ -55,7 +55,7 @@ ORDER BY e.created_at ASC
 `
 
 type GetTeamTemplatesRow struct {
-	Env                     Env
+	ActiveEnv               ActiveEnv
 	BuildID                 uuid.UUID
 	BuildVcpu               int64
 	BuildRamMb              int64
@@ -78,17 +78,17 @@ func (q *Queries) GetTeamTemplates(ctx context.Context, teamID uuid.UUID) ([]Get
 	for rows.Next() {
 		var i GetTeamTemplatesRow
 		if err := rows.Scan(
-			&i.Env.ID,
-			&i.Env.CreatedAt,
-			&i.Env.UpdatedAt,
-			&i.Env.Public,
-			&i.Env.BuildCount,
-			&i.Env.SpawnCount,
-			&i.Env.LastSpawnedAt,
-			&i.Env.TeamID,
-			&i.Env.CreatedBy,
-			&i.Env.ClusterID,
-			&i.Env.Source,
+			&i.ActiveEnv.ID,
+			&i.ActiveEnv.CreatedAt,
+			&i.ActiveEnv.UpdatedAt,
+			&i.ActiveEnv.Public,
+			&i.ActiveEnv.BuildCount,
+			&i.ActiveEnv.SpawnCount,
+			&i.ActiveEnv.LastSpawnedAt,
+			&i.ActiveEnv.TeamID,
+			&i.ActiveEnv.CreatedBy,
+			&i.ActiveEnv.ClusterID,
+			&i.ActiveEnv.Source,
 			&i.BuildID,
 			&i.BuildVcpu,
 			&i.BuildRamMb,

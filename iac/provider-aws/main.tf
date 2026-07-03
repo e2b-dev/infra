@@ -80,23 +80,8 @@ locals {
   logs_proxy_port       = 30006
   otel_collector_port   = 4317
 
-  # Filter out empty / too-short HMAC secrets so that placeholder values left in
-  # AWS Secrets Manager on a fresh deploy don't get fed to legacy.NewVerifier,
-  # which rejects secrets shorter than 16 bytes and would fatal the api job.
-  legacy_hmac_secrets = [
-    for s in split(",", trimspace(module.init.supabase_jwt_secrets)) : s
-    if length(s) >= 16
-  ]
-  auth_provider_config = length(local.legacy_hmac_secrets) > 0 ? {
+  auth_provider_config = {
     jwt = []
-    legacy = {
-      hmac = {
-        secrets = local.legacy_hmac_secrets
-      }
-    }
-    } : {
-    jwt    = []
-    legacy = null
   }
 
   api_pool_name          = "api"
@@ -196,6 +181,7 @@ locals {
     LAUNCH_DARKLY_API_KEY        = module.init.launch_darkly_api_key
     ARTIFACTS_REGISTRY_PROVIDER  = "AWS_ECR"
     STORAGE_PROVIDER             = "AWSBucket"
+    S3_USE_PATH_STYLE            = tostring(var.s3_use_path_style)
     AWS_REGION                   = data.aws_region.current.id
     AWS_DOCKER_REPOSITORY_NAME   = module.init.custom_environments_repository_name
   }, var.orchestrator_env_vars)
@@ -204,6 +190,7 @@ locals {
     CONSUL_TOKEN                 = module.init.cluster.consul_acl_token
     ARTIFACTS_REGISTRY_PROVIDER  = "AWS_ECR"
     STORAGE_PROVIDER             = "AWSBucket"
+    S3_USE_PATH_STYLE            = tostring(var.s3_use_path_style)
     AWS_REGION                   = data.aws_region.current.id
     AWS_DOCKER_REPOSITORY_NAME   = module.init.custom_environments_repository_name
     API_SECRET                   = module.init.api_secret

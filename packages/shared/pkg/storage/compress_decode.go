@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -8,6 +10,8 @@ import (
 	"github.com/klauspost/compress/zstd"
 	lz4 "github.com/pierrec/lz4/v4"
 )
+
+var _ RangeReader = (*decompressReader)(nil)
 
 var lz4DecoderPool sync.Pool
 
@@ -53,78 +57,78 @@ func putZstdDecoder(dec *zstd.Decoder) {
 	zstdDecoderPool.Put(dec)
 }
 
-// NewDecompressingReader wraps a reader with the appropriate decompressor.
-// Close releases the decompressor back to its pool but does NOT close the
-// underlying reader — the caller is responsible for closing it.
-func NewDecompressingReader(raw io.Reader, ct CompressionType) (io.ReadCloser, error) {
+// decompressReader meters raw source pulls (meteredIn) separately from decoded
+// output (meteredOut) so read.decompress can split source-read wall from
+// decompression CPU on Close.
+type decompressReader struct {
+	inner        RangeReader
+	meteredIn    *meteredReader
+	meteredOut   *meteredReader
+	releaseCodec func()
+	ct           CompressionType
+	source       Source
+	objType      SeekableObjectType
+	readErr      error
+}
+
+// NewDecompressReader wraps inner with a decoder for ct, attributing
+// read.decompress to src/ot. Callers without that context (tests) pass
+// UnknownSource / UnknownSeekableObjectType.
+func NewDecompressReader(inner RangeReader, ct CompressionType, src Source, ot SeekableObjectType) (RangeReader, error) {
+	metered := &meteredReader{inner: inner}
+
+	var dec io.Reader
+	var releaseCodec func()
+
 	switch ct {
 	case CompressionLZ4:
-		dec := getLZ4Decoder(raw)
-
-		return &pooledDecoder{
-			Reader: dec,
-			close:  func() { putLZ4Decoder(dec) },
-		}, nil
+		d := getLZ4Decoder(metered)
+		dec, releaseCodec = d, func() { putLZ4Decoder(d) }
 
 	case CompressionZstd:
-		dec, err := getZstdDecoder(raw)
+		d, err := getZstdDecoder(metered)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create zstd decoder: %w", err)
 		}
-
-		return &pooledDecoder{
-			Reader: dec,
-			close:  func() { putZstdDecoder(dec) },
-		}, nil
+		dec, releaseCodec = d, func() { putZstdDecoder(d) }
 
 	default:
 		return nil, fmt.Errorf("unsupported compression type: %s", ct)
 	}
+
+	return &decompressReader{
+		inner:        inner,
+		meteredIn:    metered,
+		meteredOut:   &meteredReader{inner: dec},
+		releaseCodec: releaseCodec,
+		ct:           ct,
+		source:       src,
+		objType:      ot,
+	}, nil
 }
 
-// pooledDecoder wraps a decompressor from a sync.Pool.
-// Close returns the decompressor to the pool.
-type pooledDecoder struct {
-	io.Reader
-
-	close func()
-}
-
-func (r *pooledDecoder) Close() error {
-	r.close()
-
-	return nil
-}
-
-// newDecompressingReadCloser wraps raw with the appropriate decompressor and
-// takes ownership: Close releases the decompressor back to the pool AND closes raw.
-func newDecompressingReadCloser(raw io.ReadCloser, ct CompressionType) (io.ReadCloser, error) {
-	dec, err := NewDecompressingReader(raw, ct)
-	if err != nil {
-		return nil, err
+func (r *decompressReader) Read(p []byte) (int, error) {
+	n, err := r.meteredOut.Read(p)
+	if err != nil && !errors.Is(err, io.EOF) {
+		r.readErr = err
 	}
 
-	return &decompressingReadCloser{dec: dec, raw: raw}, nil
+	return n, err
 }
 
-// decompressingReadCloser reads from the decompressor and closes both the
-// decompressor (returning it to the pool) and the underlying raw stream.
-type decompressingReadCloser struct {
-	dec io.ReadCloser // decompressor — reads from raw
-	raw io.Closer     // underlying stream
-}
+func (r *decompressReader) Close(ctx context.Context) (*ReadStats, error) {
+	r.releaseCodec()
 
-func (c *decompressingReadCloser) Read(p []byte) (int, error) {
-	return c.dec.Read(p)
-}
-
-func (c *decompressingReadCloser) Close() error {
-	decErr := c.dec.Close()
-	rawErr := c.raw.Close()
-
-	if decErr != nil {
-		return decErr
+	stats := &ReadStats{
+		StoredBytes:    r.meteredIn.bytes,
+		DeliveredBytes: r.meteredOut.bytes,
+		Read:           r.meteredIn.read,
+		Decompress:     max(0, r.meteredOut.read-r.meteredIn.read),
 	}
 
-	return rawErr
+	recordDecompressStep(ctx, r, stats, r.readErr)
+
+	_, innerErr := r.inner.Close(ctx)
+
+	return stats, innerErr
 }

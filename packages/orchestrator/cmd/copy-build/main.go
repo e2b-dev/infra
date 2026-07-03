@@ -77,13 +77,13 @@ func NewDestinationFromPath(prefix, file string) (*Destination, error) {
 	}, nil
 }
 
-func NewHeaderFromObject(ctx context.Context, bucketName string, headerPath string, objectType storage.ObjectType) (*header.Header, error) {
+func NewHeaderFromObject(ctx context.Context, bucketName string, headerPath string) (*header.Header, error) {
 	b, err := storage.NewGCP(ctx, bucketName, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS bucket storage provider: %w", err)
 	}
 
-	obj, err := b.OpenBlob(ctx, headerPath, objectType)
+	obj, err := b.OpenBlob(ctx, headerPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open object: %w", err)
 	}
@@ -228,7 +228,7 @@ func main() {
 	if strings.HasPrefix(*from, "gs://") {
 		bucketName, _ := strings.CutPrefix(*from, "gs://")
 
-		h, err := NewHeaderFromObject(ctx, bucketName, buildMemfileHeaderPath, storage.MemfileHeaderObjectType)
+		h, err := NewHeaderFromObject(ctx, bucketName, buildMemfileHeaderPath)
 		if err != nil {
 			log.Fatalf("failed to create header from object: %s", err)
 		}
@@ -254,7 +254,7 @@ func main() {
 	var rootfsHeader *header.Header
 	if strings.HasPrefix(*from, "gs://") {
 		bucketName, _ := strings.CutPrefix(*from, "gs://")
-		h, err := NewHeaderFromObject(ctx, bucketName, buildRootfsHeaderPath, storage.RootFSHeaderObjectType)
+		h, err := NewHeaderFromObject(ctx, bucketName, buildRootfsHeaderPath)
 		if err != nil {
 			log.Fatalf("failed to create header from object: %s", err)
 		}

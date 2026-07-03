@@ -12,345 +12,8 @@ import (
 	"github.com/google/uuid"
 )
 
-const listTeamTemplatesByCpuCountAsc = `-- name: ListTeamTemplatesByCpuCountAsc :many
-WITH ranked AS (
-    SELECT
-        e.id,
-        e.created_at,
-        e.updated_at,
-        e.public,
-        e.build_count,
-        e.spawn_count,
-        e.last_spawned_at,
-        e.created_by,
-        d.env_id AS default_env_id,
-        d.description AS default_description,
-        eb.id AS build_id,
-        eb.vcpu,
-        eb.ram_mb,
-        eb.total_disk_size_mb,
-        eb.envd_version
-    FROM public.envs AS e
-    LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
-    LEFT JOIN LATERAL (
-        SELECT b.id, b.vcpu, b.ram_mb, b.total_disk_size_mb, b.envd_version
-        FROM public.env_build_assignments AS ba
-        JOIN public.env_builds AS b ON b.id = ba.build_id
-        WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
-        ORDER BY ba.created_at DESC
-        LIMIT 1
-    ) eb ON TRUE
-    WHERE
-        (
-            (e.team_id = $1::uuid AND e.source = 'template')
-            OR ($2::boolean AND d.env_id IS NOT NULL)
-        )
-        AND ($3::bigint = 0 OR COALESCE(eb.vcpu, 0) = $3::bigint)
-        AND ($4::bigint = 0 OR COALESCE(eb.ram_mb, 0) = $4::bigint)
-        AND ($5::smallint = -1 OR e.public = ($5::smallint = 1))
-        AND (
-            $6::text = ''
-            OR e.id ILIKE '%' || $6::text || '%'
-            OR EXISTS (
-                SELECT 1 FROM public.env_aliases sa
-                WHERE sa.env_id = e.id
-                  AND (
-                    sa.alias ILIKE '%' || $6::text || '%'
-                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $6::text || '%'
-                  )
-            )
-        )
-        AND (
-            $7::bigint IS NULL
-            OR COALESCE(eb.vcpu, 0) > $7::bigint
-            OR (COALESCE(eb.vcpu, 0) = $7::bigint AND e.id > $8::text)
-        )
-    ORDER BY COALESCE(eb.vcpu, 0) ASC, e.id ASC
-    LIMIT $9::int
-)
-SELECT
-        r.id AS template_id,
-        r.created_at,
-        r.updated_at,
-        r.public,
-        r.build_count,
-        r.spawn_count,
-        r.last_spawned_at,
-        r.created_by AS creator_id,
-        COALESCE(r.build_id, '00000000-0000-0000-0000-000000000000'::uuid) AS build_id,
-        COALESCE(r.vcpu, 0)::bigint AS cpu_count,
-        COALESCE(r.ram_mb, 0)::bigint AS memory_mb,
-        r.total_disk_size_mb AS disk_size_mb,
-        r.envd_version AS envd_version,
-        COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases,
-        COALESCE(ea.names, ARRAY[]::text[])::text[] AS names,
-        (r.default_env_id IS NOT NULL)::boolean AS is_default,
-        r.default_description,
-        COALESCE(ea.name_sort_key, '')::text AS name_sort_key
-FROM ranked r
-LEFT JOIN LATERAL (
-    SELECT
-        ARRAY_AGG(alias ORDER BY alias) AS aliases,
-        ARRAY_AGG(CASE WHEN namespace IS NOT NULL THEN namespace || '/' || alias ELSE alias END ORDER BY alias) AS names,
-        MIN(CASE WHEN namespace IS NOT NULL THEN namespace || '/' || alias ELSE alias END) AS name_sort_key
-    FROM public.env_aliases
-    WHERE env_id = r.id
-) ea ON TRUE
-ORDER BY COALESCE(r.vcpu, 0) ASC, r.id ASC
-`
-
-type ListTeamTemplatesByCpuCountAscParams struct {
-	TeamID          uuid.UUID
-	IncludeDefaults bool
-	CpuCount        int64
-	MemoryMb        int64
-	FilterPublic    int16
-	Search          string
-	CursorCpuCount  *int64
-	CursorID        *string
-	LimitPlusOne    int32
-}
-
-type ListTeamTemplatesByCpuCountAscRow struct {
-	TemplateID         string
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
-	Public             bool
-	BuildCount         int32
-	SpawnCount         int64
-	LastSpawnedAt      *time.Time
-	CreatorID          *uuid.UUID
-	BuildID            uuid.UUID
-	CpuCount           int64
-	MemoryMb           int64
-	DiskSizeMb         *int64
-	EnvdVersion        *string
-	Aliases            []string
-	Names              []string
-	IsDefault          bool
-	DefaultDescription *string
-	NameSortKey        string
-}
-
-func (q *Queries) ListTeamTemplatesByCpuCountAsc(ctx context.Context, arg ListTeamTemplatesByCpuCountAscParams) ([]ListTeamTemplatesByCpuCountAscRow, error) {
-	rows, err := q.db.Query(ctx, listTeamTemplatesByCpuCountAsc,
-		arg.TeamID,
-		arg.IncludeDefaults,
-		arg.CpuCount,
-		arg.MemoryMb,
-		arg.FilterPublic,
-		arg.Search,
-		arg.CursorCpuCount,
-		arg.CursorID,
-		arg.LimitPlusOne,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListTeamTemplatesByCpuCountAscRow
-	for rows.Next() {
-		var i ListTeamTemplatesByCpuCountAscRow
-		if err := rows.Scan(
-			&i.TemplateID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.Public,
-			&i.BuildCount,
-			&i.SpawnCount,
-			&i.LastSpawnedAt,
-			&i.CreatorID,
-			&i.BuildID,
-			&i.CpuCount,
-			&i.MemoryMb,
-			&i.DiskSizeMb,
-			&i.EnvdVersion,
-			&i.Aliases,
-			&i.Names,
-			&i.IsDefault,
-			&i.DefaultDescription,
-			&i.NameSortKey,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listTeamTemplatesByCpuCountDesc = `-- name: ListTeamTemplatesByCpuCountDesc :many
-WITH ranked AS (
-    SELECT
-        e.id,
-        e.created_at,
-        e.updated_at,
-        e.public,
-        e.build_count,
-        e.spawn_count,
-        e.last_spawned_at,
-        e.created_by,
-        d.env_id AS default_env_id,
-        d.description AS default_description,
-        eb.id AS build_id,
-        eb.vcpu,
-        eb.ram_mb,
-        eb.total_disk_size_mb,
-        eb.envd_version
-    FROM public.envs AS e
-    LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
-    LEFT JOIN LATERAL (
-        SELECT b.id, b.vcpu, b.ram_mb, b.total_disk_size_mb, b.envd_version
-        FROM public.env_build_assignments AS ba
-        JOIN public.env_builds AS b ON b.id = ba.build_id
-        WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
-        ORDER BY ba.created_at DESC
-        LIMIT 1
-    ) eb ON TRUE
-    WHERE
-        (
-            (e.team_id = $1::uuid AND e.source = 'template')
-            OR ($2::boolean AND d.env_id IS NOT NULL)
-        )
-        AND ($3::bigint = 0 OR COALESCE(eb.vcpu, 0) = $3::bigint)
-        AND ($4::bigint = 0 OR COALESCE(eb.ram_mb, 0) = $4::bigint)
-        AND ($5::smallint = -1 OR e.public = ($5::smallint = 1))
-        AND (
-            $6::text = ''
-            OR e.id ILIKE '%' || $6::text || '%'
-            OR EXISTS (
-                SELECT 1 FROM public.env_aliases sa
-                WHERE sa.env_id = e.id
-                  AND (
-                    sa.alias ILIKE '%' || $6::text || '%'
-                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $6::text || '%'
-                  )
-            )
-        )
-        AND (
-            $7::bigint IS NULL
-            OR COALESCE(eb.vcpu, 0) < $7::bigint
-            OR (COALESCE(eb.vcpu, 0) = $7::bigint AND e.id > $8::text)
-        )
-    ORDER BY COALESCE(eb.vcpu, 0) DESC, e.id ASC
-    LIMIT $9::int
-)
-SELECT
-        r.id AS template_id,
-        r.created_at,
-        r.updated_at,
-        r.public,
-        r.build_count,
-        r.spawn_count,
-        r.last_spawned_at,
-        r.created_by AS creator_id,
-        COALESCE(r.build_id, '00000000-0000-0000-0000-000000000000'::uuid) AS build_id,
-        COALESCE(r.vcpu, 0)::bigint AS cpu_count,
-        COALESCE(r.ram_mb, 0)::bigint AS memory_mb,
-        r.total_disk_size_mb AS disk_size_mb,
-        r.envd_version AS envd_version,
-        COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases,
-        COALESCE(ea.names, ARRAY[]::text[])::text[] AS names,
-        (r.default_env_id IS NOT NULL)::boolean AS is_default,
-        r.default_description,
-        COALESCE(ea.name_sort_key, '')::text AS name_sort_key
-FROM ranked r
-LEFT JOIN LATERAL (
-    SELECT
-        ARRAY_AGG(alias ORDER BY alias) AS aliases,
-        ARRAY_AGG(CASE WHEN namespace IS NOT NULL THEN namespace || '/' || alias ELSE alias END ORDER BY alias) AS names,
-        MIN(CASE WHEN namespace IS NOT NULL THEN namespace || '/' || alias ELSE alias END) AS name_sort_key
-    FROM public.env_aliases
-    WHERE env_id = r.id
-) ea ON TRUE
-ORDER BY COALESCE(r.vcpu, 0) DESC, r.id ASC
-`
-
-type ListTeamTemplatesByCpuCountDescParams struct {
-	TeamID          uuid.UUID
-	IncludeDefaults bool
-	CpuCount        int64
-	MemoryMb        int64
-	FilterPublic    int16
-	Search          string
-	CursorCpuCount  *int64
-	CursorID        *string
-	LimitPlusOne    int32
-}
-
-type ListTeamTemplatesByCpuCountDescRow struct {
-	TemplateID         string
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
-	Public             bool
-	BuildCount         int32
-	SpawnCount         int64
-	LastSpawnedAt      *time.Time
-	CreatorID          *uuid.UUID
-	BuildID            uuid.UUID
-	CpuCount           int64
-	MemoryMb           int64
-	DiskSizeMb         *int64
-	EnvdVersion        *string
-	Aliases            []string
-	Names              []string
-	IsDefault          bool
-	DefaultDescription *string
-	NameSortKey        string
-}
-
-func (q *Queries) ListTeamTemplatesByCpuCountDesc(ctx context.Context, arg ListTeamTemplatesByCpuCountDescParams) ([]ListTeamTemplatesByCpuCountDescRow, error) {
-	rows, err := q.db.Query(ctx, listTeamTemplatesByCpuCountDesc,
-		arg.TeamID,
-		arg.IncludeDefaults,
-		arg.CpuCount,
-		arg.MemoryMb,
-		arg.FilterPublic,
-		arg.Search,
-		arg.CursorCpuCount,
-		arg.CursorID,
-		arg.LimitPlusOne,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListTeamTemplatesByCpuCountDescRow
-	for rows.Next() {
-		var i ListTeamTemplatesByCpuCountDescRow
-		if err := rows.Scan(
-			&i.TemplateID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.Public,
-			&i.BuildCount,
-			&i.SpawnCount,
-			&i.LastSpawnedAt,
-			&i.CreatorID,
-			&i.BuildID,
-			&i.CpuCount,
-			&i.MemoryMb,
-			&i.DiskSizeMb,
-			&i.EnvdVersion,
-			&i.Aliases,
-			&i.Names,
-			&i.IsDefault,
-			&i.DefaultDescription,
-			&i.NameSortKey,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listTeamTemplatesByCreatedAtAsc = `-- name: ListTeamTemplatesByCreatedAtAsc :many
+
 WITH team_templates AS (
     SELECT
         e.id,
@@ -363,40 +26,26 @@ WITH team_templates AS (
         e.created_by,
         d.env_id AS default_env_id,
         d.description AS default_description
-    FROM public.envs AS e
+    FROM public.active_envs AS e
     LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
         e.team_id = $1::uuid AND e.source = 'template'
-        AND ($2::bigint = 0 OR (
-            SELECT b.vcpu FROM public.env_build_assignments AS ba
-            JOIN public.env_builds AS b ON b.id = ba.build_id
-            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
-            ORDER BY ba.created_at DESC
-            LIMIT 1
-        ) = $2::bigint)
-        AND ($3::bigint = 0 OR (
-            SELECT b.ram_mb FROM public.env_build_assignments AS ba
-            JOIN public.env_builds AS b ON b.id = ba.build_id
-            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
-            ORDER BY ba.created_at DESC
-            LIMIT 1
-        ) = $3::bigint)
-        AND ($4::smallint = -1 OR e.public = ($4::smallint = 1))
+        AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
         AND (
-            $5::text = ''
-            OR e.id ILIKE '%' || $5::text || '%'
+            $3::text = ''
+            OR e.id ILIKE '%' || $3::text || '%'
             OR EXISTS (
                 SELECT 1 FROM public.env_aliases sa
                 WHERE sa.env_id = e.id
                   AND (
-                    sa.alias ILIKE '%' || $5::text || '%'
-                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $5::text || '%'
+                    sa.alias ILIKE '%' || $3::text || '%'
+                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $3::text || '%'
                   )
             )
         )
-        AND (e.created_at, e.id) > ($6::timestamptz, $7::text)
+        AND (e.created_at, e.id) > ($4::timestamptz, $5::text)
     ORDER BY e.created_at ASC, e.id ASC
-    LIMIT $8::int
+    LIMIT $6::int
 ),
 default_templates AS (
     SELECT
@@ -410,40 +59,26 @@ default_templates AS (
         e.created_by,
         d.env_id AS default_env_id,
         d.description AS default_description
-    FROM public.envs AS e
+    FROM public.active_envs AS e
     JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
-        $9::boolean
-        AND ($2::bigint = 0 OR (
-            SELECT b.vcpu FROM public.env_build_assignments AS ba
-            JOIN public.env_builds AS b ON b.id = ba.build_id
-            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
-            ORDER BY ba.created_at DESC
-            LIMIT 1
-        ) = $2::bigint)
-        AND ($3::bigint = 0 OR (
-            SELECT b.ram_mb FROM public.env_build_assignments AS ba
-            JOIN public.env_builds AS b ON b.id = ba.build_id
-            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
-            ORDER BY ba.created_at DESC
-            LIMIT 1
-        ) = $3::bigint)
-        AND ($4::smallint = -1 OR e.public = ($4::smallint = 1))
+        $7::boolean
+        AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
         AND (
-            $5::text = ''
-            OR e.id ILIKE '%' || $5::text || '%'
+            $3::text = ''
+            OR e.id ILIKE '%' || $3::text || '%'
             OR EXISTS (
                 SELECT 1 FROM public.env_aliases sa
                 WHERE sa.env_id = e.id
                   AND (
-                    sa.alias ILIKE '%' || $5::text || '%'
-                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $5::text || '%'
+                    sa.alias ILIKE '%' || $3::text || '%'
+                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $3::text || '%'
                   )
             )
         )
-        AND (e.created_at, e.id) > ($6::timestamptz, $7::text)
+        AND (e.created_at, e.id) > ($4::timestamptz, $5::text)
     ORDER BY e.created_at ASC, e.id ASC
-    LIMIT $8::int
+    LIMIT $6::int
 ),
 ranked AS (
     SELECT
@@ -456,7 +91,7 @@ ranked AS (
         last_spawned_at, created_by, default_env_id, default_description
     FROM default_templates
     ORDER BY created_at ASC, id ASC
-    LIMIT $8::int
+    LIMIT $6::int
 )
 SELECT
         r.id AS template_id,
@@ -499,8 +134,6 @@ ORDER BY r.created_at ASC, r.id ASC
 
 type ListTeamTemplatesByCreatedAtAscParams struct {
 	TeamID          uuid.UUID
-	CpuCount        int64
-	MemoryMb        int64
 	FilterPublic    int16
 	Search          string
 	CursorCreatedAt time.Time
@@ -530,11 +163,25 @@ type ListTeamTemplatesByCreatedAtAscRow struct {
 	NameSortKey        string
 }
 
+// Team template listing, one query per (sort field, direction) pair.
+//
+// Each query merges two keyset-paginated branches: the team's own templates
+// and the globally shared default templates (env_defaults, included when
+// include_defaults is set). Both branches compute identical sort keys and
+// cursor predicates and carry their own ORDER BY + LIMIT, so each is an
+// index-driven top-N scan and UNION dedups a team's own template that is
+// also a global default.
+//
+// The list intentionally supports no sorting or filtering by build fields
+// (cpu, memory): a template can have many tagged builds, so a single build
+// value per template is ambiguous. Build columns in the result are display
+// only, resolved for the returned page via the eb lateral below. Name
+// sorting is also unsupported: the sort key lives in env_aliases, costing a
+// per-template lateral (seconds per page for 100k+-template teams even
+// warm); finding templates by name is served by the search filter instead.
 func (q *Queries) ListTeamTemplatesByCreatedAtAsc(ctx context.Context, arg ListTeamTemplatesByCreatedAtAscParams) ([]ListTeamTemplatesByCreatedAtAscRow, error) {
 	rows, err := q.db.Query(ctx, listTeamTemplatesByCreatedAtAsc,
 		arg.TeamID,
-		arg.CpuCount,
-		arg.MemoryMb,
 		arg.FilterPublic,
 		arg.Search,
 		arg.CursorCreatedAt,
@@ -592,40 +239,26 @@ WITH team_templates AS (
         e.created_by,
         d.env_id AS default_env_id,
         d.description AS default_description
-    FROM public.envs AS e
+    FROM public.active_envs AS e
     LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
         e.team_id = $1::uuid AND e.source = 'template'
-        AND ($2::bigint = 0 OR (
-            SELECT b.vcpu FROM public.env_build_assignments AS ba
-            JOIN public.env_builds AS b ON b.id = ba.build_id
-            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
-            ORDER BY ba.created_at DESC
-            LIMIT 1
-        ) = $2::bigint)
-        AND ($3::bigint = 0 OR (
-            SELECT b.ram_mb FROM public.env_build_assignments AS ba
-            JOIN public.env_builds AS b ON b.id = ba.build_id
-            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
-            ORDER BY ba.created_at DESC
-            LIMIT 1
-        ) = $3::bigint)
-        AND ($4::smallint = -1 OR e.public = ($4::smallint = 1))
+        AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
         AND (
-            $5::text = ''
-            OR e.id ILIKE '%' || $5::text || '%'
+            $3::text = ''
+            OR e.id ILIKE '%' || $3::text || '%'
             OR EXISTS (
                 SELECT 1 FROM public.env_aliases sa
                 WHERE sa.env_id = e.id
                   AND (
-                    sa.alias ILIKE '%' || $5::text || '%'
-                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $5::text || '%'
+                    sa.alias ILIKE '%' || $3::text || '%'
+                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $3::text || '%'
                   )
             )
         )
-        AND (e.created_at, e.id) < ($6::timestamptz, $7::text)
+        AND (e.created_at, e.id) < ($4::timestamptz, $5::text)
     ORDER BY e.created_at DESC, e.id DESC
-    LIMIT $8::int
+    LIMIT $6::int
 ),
 default_templates AS (
     SELECT
@@ -639,40 +272,26 @@ default_templates AS (
         e.created_by,
         d.env_id AS default_env_id,
         d.description AS default_description
-    FROM public.envs AS e
+    FROM public.active_envs AS e
     JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
-        $9::boolean
-        AND ($2::bigint = 0 OR (
-            SELECT b.vcpu FROM public.env_build_assignments AS ba
-            JOIN public.env_builds AS b ON b.id = ba.build_id
-            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
-            ORDER BY ba.created_at DESC
-            LIMIT 1
-        ) = $2::bigint)
-        AND ($3::bigint = 0 OR (
-            SELECT b.ram_mb FROM public.env_build_assignments AS ba
-            JOIN public.env_builds AS b ON b.id = ba.build_id
-            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
-            ORDER BY ba.created_at DESC
-            LIMIT 1
-        ) = $3::bigint)
-        AND ($4::smallint = -1 OR e.public = ($4::smallint = 1))
+        $7::boolean
+        AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
         AND (
-            $5::text = ''
-            OR e.id ILIKE '%' || $5::text || '%'
+            $3::text = ''
+            OR e.id ILIKE '%' || $3::text || '%'
             OR EXISTS (
                 SELECT 1 FROM public.env_aliases sa
                 WHERE sa.env_id = e.id
                   AND (
-                    sa.alias ILIKE '%' || $5::text || '%'
-                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $5::text || '%'
+                    sa.alias ILIKE '%' || $3::text || '%'
+                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $3::text || '%'
                   )
             )
         )
-        AND (e.created_at, e.id) < ($6::timestamptz, $7::text)
+        AND (e.created_at, e.id) < ($4::timestamptz, $5::text)
     ORDER BY e.created_at DESC, e.id DESC
-    LIMIT $8::int
+    LIMIT $6::int
 ),
 ranked AS (
     SELECT
@@ -685,7 +304,7 @@ ranked AS (
         last_spawned_at, created_by, default_env_id, default_description
     FROM default_templates
     ORDER BY created_at DESC, id DESC
-    LIMIT $8::int
+    LIMIT $6::int
 )
 SELECT
         r.id AS template_id,
@@ -728,8 +347,6 @@ ORDER BY r.created_at DESC, r.id DESC
 
 type ListTeamTemplatesByCreatedAtDescParams struct {
 	TeamID          uuid.UUID
-	CpuCount        int64
-	MemoryMb        int64
 	FilterPublic    int16
 	Search          string
 	CursorCreatedAt time.Time
@@ -762,8 +379,6 @@ type ListTeamTemplatesByCreatedAtDescRow struct {
 func (q *Queries) ListTeamTemplatesByCreatedAtDesc(ctx context.Context, arg ListTeamTemplatesByCreatedAtDescParams) ([]ListTeamTemplatesByCreatedAtDescRow, error) {
 	rows, err := q.db.Query(ctx, listTeamTemplatesByCreatedAtDesc,
 		arg.TeamID,
-		arg.CpuCount,
-		arg.MemoryMb,
 		arg.FilterPublic,
 		arg.Search,
 		arg.CursorCreatedAt,
@@ -808,708 +423,6 @@ func (q *Queries) ListTeamTemplatesByCreatedAtDesc(ctx context.Context, arg List
 	return items, nil
 }
 
-const listTeamTemplatesByMemoryMbAsc = `-- name: ListTeamTemplatesByMemoryMbAsc :many
-WITH ranked AS (
-    SELECT
-        e.id,
-        e.created_at,
-        e.updated_at,
-        e.public,
-        e.build_count,
-        e.spawn_count,
-        e.last_spawned_at,
-        e.created_by,
-        d.env_id AS default_env_id,
-        d.description AS default_description,
-        eb.id AS build_id,
-        eb.vcpu,
-        eb.ram_mb,
-        eb.total_disk_size_mb,
-        eb.envd_version
-    FROM public.envs AS e
-    LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
-    LEFT JOIN LATERAL (
-        SELECT b.id, b.vcpu, b.ram_mb, b.total_disk_size_mb, b.envd_version
-        FROM public.env_build_assignments AS ba
-        JOIN public.env_builds AS b ON b.id = ba.build_id
-        WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
-        ORDER BY ba.created_at DESC
-        LIMIT 1
-    ) eb ON TRUE
-    WHERE
-        (
-            (e.team_id = $1::uuid AND e.source = 'template')
-            OR ($2::boolean AND d.env_id IS NOT NULL)
-        )
-        AND ($3::bigint = 0 OR COALESCE(eb.vcpu, 0) = $3::bigint)
-        AND ($4::bigint = 0 OR COALESCE(eb.ram_mb, 0) = $4::bigint)
-        AND ($5::smallint = -1 OR e.public = ($5::smallint = 1))
-        AND (
-            $6::text = ''
-            OR e.id ILIKE '%' || $6::text || '%'
-            OR EXISTS (
-                SELECT 1 FROM public.env_aliases sa
-                WHERE sa.env_id = e.id
-                  AND (
-                    sa.alias ILIKE '%' || $6::text || '%'
-                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $6::text || '%'
-                  )
-            )
-        )
-        AND (
-            $7::bigint IS NULL
-            OR COALESCE(eb.ram_mb, 0) > $7::bigint
-            OR (COALESCE(eb.ram_mb, 0) = $7::bigint AND e.id > $8::text)
-        )
-    ORDER BY COALESCE(eb.ram_mb, 0) ASC, e.id ASC
-    LIMIT $9::int
-)
-SELECT
-        r.id AS template_id,
-        r.created_at,
-        r.updated_at,
-        r.public,
-        r.build_count,
-        r.spawn_count,
-        r.last_spawned_at,
-        r.created_by AS creator_id,
-        COALESCE(r.build_id, '00000000-0000-0000-0000-000000000000'::uuid) AS build_id,
-        COALESCE(r.vcpu, 0)::bigint AS cpu_count,
-        COALESCE(r.ram_mb, 0)::bigint AS memory_mb,
-        r.total_disk_size_mb AS disk_size_mb,
-        r.envd_version AS envd_version,
-        COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases,
-        COALESCE(ea.names, ARRAY[]::text[])::text[] AS names,
-        (r.default_env_id IS NOT NULL)::boolean AS is_default,
-        r.default_description,
-        COALESCE(ea.name_sort_key, '')::text AS name_sort_key
-FROM ranked r
-LEFT JOIN LATERAL (
-    SELECT
-        ARRAY_AGG(alias ORDER BY alias) AS aliases,
-        ARRAY_AGG(CASE WHEN namespace IS NOT NULL THEN namespace || '/' || alias ELSE alias END ORDER BY alias) AS names,
-        MIN(CASE WHEN namespace IS NOT NULL THEN namespace || '/' || alias ELSE alias END) AS name_sort_key
-    FROM public.env_aliases
-    WHERE env_id = r.id
-) ea ON TRUE
-ORDER BY COALESCE(r.ram_mb, 0) ASC, r.id ASC
-`
-
-type ListTeamTemplatesByMemoryMbAscParams struct {
-	TeamID          uuid.UUID
-	IncludeDefaults bool
-	CpuCount        int64
-	MemoryMb        int64
-	FilterPublic    int16
-	Search          string
-	CursorMemoryMb  *int64
-	CursorID        *string
-	LimitPlusOne    int32
-}
-
-type ListTeamTemplatesByMemoryMbAscRow struct {
-	TemplateID         string
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
-	Public             bool
-	BuildCount         int32
-	SpawnCount         int64
-	LastSpawnedAt      *time.Time
-	CreatorID          *uuid.UUID
-	BuildID            uuid.UUID
-	CpuCount           int64
-	MemoryMb           int64
-	DiskSizeMb         *int64
-	EnvdVersion        *string
-	Aliases            []string
-	Names              []string
-	IsDefault          bool
-	DefaultDescription *string
-	NameSortKey        string
-}
-
-func (q *Queries) ListTeamTemplatesByMemoryMbAsc(ctx context.Context, arg ListTeamTemplatesByMemoryMbAscParams) ([]ListTeamTemplatesByMemoryMbAscRow, error) {
-	rows, err := q.db.Query(ctx, listTeamTemplatesByMemoryMbAsc,
-		arg.TeamID,
-		arg.IncludeDefaults,
-		arg.CpuCount,
-		arg.MemoryMb,
-		arg.FilterPublic,
-		arg.Search,
-		arg.CursorMemoryMb,
-		arg.CursorID,
-		arg.LimitPlusOne,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListTeamTemplatesByMemoryMbAscRow
-	for rows.Next() {
-		var i ListTeamTemplatesByMemoryMbAscRow
-		if err := rows.Scan(
-			&i.TemplateID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.Public,
-			&i.BuildCount,
-			&i.SpawnCount,
-			&i.LastSpawnedAt,
-			&i.CreatorID,
-			&i.BuildID,
-			&i.CpuCount,
-			&i.MemoryMb,
-			&i.DiskSizeMb,
-			&i.EnvdVersion,
-			&i.Aliases,
-			&i.Names,
-			&i.IsDefault,
-			&i.DefaultDescription,
-			&i.NameSortKey,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listTeamTemplatesByMemoryMbDesc = `-- name: ListTeamTemplatesByMemoryMbDesc :many
-WITH ranked AS (
-    SELECT
-        e.id,
-        e.created_at,
-        e.updated_at,
-        e.public,
-        e.build_count,
-        e.spawn_count,
-        e.last_spawned_at,
-        e.created_by,
-        d.env_id AS default_env_id,
-        d.description AS default_description,
-        eb.id AS build_id,
-        eb.vcpu,
-        eb.ram_mb,
-        eb.total_disk_size_mb,
-        eb.envd_version
-    FROM public.envs AS e
-    LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
-    LEFT JOIN LATERAL (
-        SELECT b.id, b.vcpu, b.ram_mb, b.total_disk_size_mb, b.envd_version
-        FROM public.env_build_assignments AS ba
-        JOIN public.env_builds AS b ON b.id = ba.build_id
-        WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
-        ORDER BY ba.created_at DESC
-        LIMIT 1
-    ) eb ON TRUE
-    WHERE
-        (
-            (e.team_id = $1::uuid AND e.source = 'template')
-            OR ($2::boolean AND d.env_id IS NOT NULL)
-        )
-        AND ($3::bigint = 0 OR COALESCE(eb.vcpu, 0) = $3::bigint)
-        AND ($4::bigint = 0 OR COALESCE(eb.ram_mb, 0) = $4::bigint)
-        AND ($5::smallint = -1 OR e.public = ($5::smallint = 1))
-        AND (
-            $6::text = ''
-            OR e.id ILIKE '%' || $6::text || '%'
-            OR EXISTS (
-                SELECT 1 FROM public.env_aliases sa
-                WHERE sa.env_id = e.id
-                  AND (
-                    sa.alias ILIKE '%' || $6::text || '%'
-                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $6::text || '%'
-                  )
-            )
-        )
-        AND (
-            $7::bigint IS NULL
-            OR COALESCE(eb.ram_mb, 0) < $7::bigint
-            OR (COALESCE(eb.ram_mb, 0) = $7::bigint AND e.id > $8::text)
-        )
-    ORDER BY COALESCE(eb.ram_mb, 0) DESC, e.id ASC
-    LIMIT $9::int
-)
-SELECT
-        r.id AS template_id,
-        r.created_at,
-        r.updated_at,
-        r.public,
-        r.build_count,
-        r.spawn_count,
-        r.last_spawned_at,
-        r.created_by AS creator_id,
-        COALESCE(r.build_id, '00000000-0000-0000-0000-000000000000'::uuid) AS build_id,
-        COALESCE(r.vcpu, 0)::bigint AS cpu_count,
-        COALESCE(r.ram_mb, 0)::bigint AS memory_mb,
-        r.total_disk_size_mb AS disk_size_mb,
-        r.envd_version AS envd_version,
-        COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases,
-        COALESCE(ea.names, ARRAY[]::text[])::text[] AS names,
-        (r.default_env_id IS NOT NULL)::boolean AS is_default,
-        r.default_description,
-        COALESCE(ea.name_sort_key, '')::text AS name_sort_key
-FROM ranked r
-LEFT JOIN LATERAL (
-    SELECT
-        ARRAY_AGG(alias ORDER BY alias) AS aliases,
-        ARRAY_AGG(CASE WHEN namespace IS NOT NULL THEN namespace || '/' || alias ELSE alias END ORDER BY alias) AS names,
-        MIN(CASE WHEN namespace IS NOT NULL THEN namespace || '/' || alias ELSE alias END) AS name_sort_key
-    FROM public.env_aliases
-    WHERE env_id = r.id
-) ea ON TRUE
-ORDER BY COALESCE(r.ram_mb, 0) DESC, r.id ASC
-`
-
-type ListTeamTemplatesByMemoryMbDescParams struct {
-	TeamID          uuid.UUID
-	IncludeDefaults bool
-	CpuCount        int64
-	MemoryMb        int64
-	FilterPublic    int16
-	Search          string
-	CursorMemoryMb  *int64
-	CursorID        *string
-	LimitPlusOne    int32
-}
-
-type ListTeamTemplatesByMemoryMbDescRow struct {
-	TemplateID         string
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
-	Public             bool
-	BuildCount         int32
-	SpawnCount         int64
-	LastSpawnedAt      *time.Time
-	CreatorID          *uuid.UUID
-	BuildID            uuid.UUID
-	CpuCount           int64
-	MemoryMb           int64
-	DiskSizeMb         *int64
-	EnvdVersion        *string
-	Aliases            []string
-	Names              []string
-	IsDefault          bool
-	DefaultDescription *string
-	NameSortKey        string
-}
-
-func (q *Queries) ListTeamTemplatesByMemoryMbDesc(ctx context.Context, arg ListTeamTemplatesByMemoryMbDescParams) ([]ListTeamTemplatesByMemoryMbDescRow, error) {
-	rows, err := q.db.Query(ctx, listTeamTemplatesByMemoryMbDesc,
-		arg.TeamID,
-		arg.IncludeDefaults,
-		arg.CpuCount,
-		arg.MemoryMb,
-		arg.FilterPublic,
-		arg.Search,
-		arg.CursorMemoryMb,
-		arg.CursorID,
-		arg.LimitPlusOne,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListTeamTemplatesByMemoryMbDescRow
-	for rows.Next() {
-		var i ListTeamTemplatesByMemoryMbDescRow
-		if err := rows.Scan(
-			&i.TemplateID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.Public,
-			&i.BuildCount,
-			&i.SpawnCount,
-			&i.LastSpawnedAt,
-			&i.CreatorID,
-			&i.BuildID,
-			&i.CpuCount,
-			&i.MemoryMb,
-			&i.DiskSizeMb,
-			&i.EnvdVersion,
-			&i.Aliases,
-			&i.Names,
-			&i.IsDefault,
-			&i.DefaultDescription,
-			&i.NameSortKey,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listTeamTemplatesByNameAsc = `-- name: ListTeamTemplatesByNameAsc :many
-WITH ranked AS (
-    SELECT
-        e.id,
-        e.created_at,
-        e.updated_at,
-        e.public,
-        e.build_count,
-        e.spawn_count,
-        e.last_spawned_at,
-        e.created_by,
-        d.env_id AS default_env_id,
-        d.description AS default_description,
-        ea_sort.name_sort_key
-    FROM public.envs AS e
-    LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
-    LEFT JOIN LATERAL (
-        SELECT MIN(CASE WHEN namespace IS NOT NULL THEN namespace || '/' || alias ELSE alias END) AS name_sort_key
-        FROM public.env_aliases
-        WHERE env_id = e.id
-    ) ea_sort ON TRUE
-    WHERE
-        (
-            (e.team_id = $1::uuid AND e.source = 'template')
-            OR ($2::boolean AND d.env_id IS NOT NULL)
-        )
-        AND ($3::bigint = 0 OR (
-            SELECT b.vcpu FROM public.env_build_assignments AS ba
-            JOIN public.env_builds AS b ON b.id = ba.build_id
-            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
-            ORDER BY ba.created_at DESC
-            LIMIT 1
-        ) = $3::bigint)
-        AND ($4::bigint = 0 OR (
-            SELECT b.ram_mb FROM public.env_build_assignments AS ba
-            JOIN public.env_builds AS b ON b.id = ba.build_id
-            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
-            ORDER BY ba.created_at DESC
-            LIMIT 1
-        ) = $4::bigint)
-        AND ($5::smallint = -1 OR e.public = ($5::smallint = 1))
-        AND (
-            $6::text = ''
-            OR e.id ILIKE '%' || $6::text || '%'
-            OR EXISTS (
-                SELECT 1 FROM public.env_aliases sa
-                WHERE sa.env_id = e.id
-                  AND (
-                    sa.alias ILIKE '%' || $6::text || '%'
-                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $6::text || '%'
-                  )
-            )
-        )
-        AND (
-            $7::text IS NULL
-            OR COALESCE(ea_sort.name_sort_key, '') > $7::text
-            OR (COALESCE(ea_sort.name_sort_key, '') = $7::text AND e.id > $8::text)
-        )
-    ORDER BY COALESCE(ea_sort.name_sort_key, '') ASC, e.id ASC
-    LIMIT $9::int
-)
-SELECT
-        r.id AS template_id,
-        r.created_at,
-        r.updated_at,
-        r.public,
-        r.build_count,
-        r.spawn_count,
-        r.last_spawned_at,
-        r.created_by AS creator_id,
-        COALESCE(eb.id, '00000000-0000-0000-0000-000000000000'::uuid) AS build_id,
-        COALESCE(eb.vcpu, 0)::bigint AS cpu_count,
-        COALESCE(eb.ram_mb, 0)::bigint AS memory_mb,
-        eb.total_disk_size_mb AS disk_size_mb,
-        eb.envd_version AS envd_version,
-        COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases,
-        COALESCE(ea.names, ARRAY[]::text[])::text[] AS names,
-        (r.default_env_id IS NOT NULL)::boolean AS is_default,
-        r.default_description,
-        COALESCE(ea.name_sort_key, '')::text AS name_sort_key
-FROM ranked r
-LEFT JOIN LATERAL (
-    SELECT
-        ARRAY_AGG(alias ORDER BY alias) AS aliases,
-        ARRAY_AGG(CASE WHEN namespace IS NOT NULL THEN namespace || '/' || alias ELSE alias END ORDER BY alias) AS names,
-        MIN(CASE WHEN namespace IS NOT NULL THEN namespace || '/' || alias ELSE alias END) AS name_sort_key
-    FROM public.env_aliases
-    WHERE env_id = r.id
-) ea ON TRUE
-LEFT JOIN LATERAL (
-    SELECT b.id, b.vcpu, b.ram_mb, b.total_disk_size_mb, b.envd_version
-    FROM public.env_build_assignments AS ba
-    JOIN public.env_builds AS b ON b.id = ba.build_id
-    WHERE ba.env_id = r.id AND ba.tag = 'default' AND b.status_group = 'ready'
-    ORDER BY ba.created_at DESC
-    LIMIT 1
-) eb ON TRUE
-ORDER BY COALESCE(r.name_sort_key, '') ASC, r.id ASC
-`
-
-type ListTeamTemplatesByNameAscParams struct {
-	TeamID          uuid.UUID
-	IncludeDefaults bool
-	CpuCount        int64
-	MemoryMb        int64
-	FilterPublic    int16
-	Search          string
-	CursorName      *string
-	CursorID        *string
-	LimitPlusOne    int32
-}
-
-type ListTeamTemplatesByNameAscRow struct {
-	TemplateID         string
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
-	Public             bool
-	BuildCount         int32
-	SpawnCount         int64
-	LastSpawnedAt      *time.Time
-	CreatorID          *uuid.UUID
-	BuildID            uuid.UUID
-	CpuCount           int64
-	MemoryMb           int64
-	DiskSizeMb         *int64
-	EnvdVersion        *string
-	Aliases            []string
-	Names              []string
-	IsDefault          bool
-	DefaultDescription *string
-	NameSortKey        string
-}
-
-func (q *Queries) ListTeamTemplatesByNameAsc(ctx context.Context, arg ListTeamTemplatesByNameAscParams) ([]ListTeamTemplatesByNameAscRow, error) {
-	rows, err := q.db.Query(ctx, listTeamTemplatesByNameAsc,
-		arg.TeamID,
-		arg.IncludeDefaults,
-		arg.CpuCount,
-		arg.MemoryMb,
-		arg.FilterPublic,
-		arg.Search,
-		arg.CursorName,
-		arg.CursorID,
-		arg.LimitPlusOne,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListTeamTemplatesByNameAscRow
-	for rows.Next() {
-		var i ListTeamTemplatesByNameAscRow
-		if err := rows.Scan(
-			&i.TemplateID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.Public,
-			&i.BuildCount,
-			&i.SpawnCount,
-			&i.LastSpawnedAt,
-			&i.CreatorID,
-			&i.BuildID,
-			&i.CpuCount,
-			&i.MemoryMb,
-			&i.DiskSizeMb,
-			&i.EnvdVersion,
-			&i.Aliases,
-			&i.Names,
-			&i.IsDefault,
-			&i.DefaultDescription,
-			&i.NameSortKey,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listTeamTemplatesByNameDesc = `-- name: ListTeamTemplatesByNameDesc :many
-WITH ranked AS (
-    SELECT
-        e.id,
-        e.created_at,
-        e.updated_at,
-        e.public,
-        e.build_count,
-        e.spawn_count,
-        e.last_spawned_at,
-        e.created_by,
-        d.env_id AS default_env_id,
-        d.description AS default_description,
-        ea_sort.name_sort_key
-    FROM public.envs AS e
-    LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
-    LEFT JOIN LATERAL (
-        SELECT MIN(CASE WHEN namespace IS NOT NULL THEN namespace || '/' || alias ELSE alias END) AS name_sort_key
-        FROM public.env_aliases
-        WHERE env_id = e.id
-    ) ea_sort ON TRUE
-    WHERE
-        (
-            (e.team_id = $1::uuid AND e.source = 'template')
-            OR ($2::boolean AND d.env_id IS NOT NULL)
-        )
-        AND ($3::bigint = 0 OR (
-            SELECT b.vcpu FROM public.env_build_assignments AS ba
-            JOIN public.env_builds AS b ON b.id = ba.build_id
-            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
-            ORDER BY ba.created_at DESC
-            LIMIT 1
-        ) = $3::bigint)
-        AND ($4::bigint = 0 OR (
-            SELECT b.ram_mb FROM public.env_build_assignments AS ba
-            JOIN public.env_builds AS b ON b.id = ba.build_id
-            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
-            ORDER BY ba.created_at DESC
-            LIMIT 1
-        ) = $4::bigint)
-        AND ($5::smallint = -1 OR e.public = ($5::smallint = 1))
-        AND (
-            $6::text = ''
-            OR e.id ILIKE '%' || $6::text || '%'
-            OR EXISTS (
-                SELECT 1 FROM public.env_aliases sa
-                WHERE sa.env_id = e.id
-                  AND (
-                    sa.alias ILIKE '%' || $6::text || '%'
-                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $6::text || '%'
-                  )
-            )
-        )
-        AND (
-            $7::text IS NULL
-            OR COALESCE(ea_sort.name_sort_key, '') < $7::text
-            OR (COALESCE(ea_sort.name_sort_key, '') = $7::text AND e.id > $8::text)
-        )
-    ORDER BY COALESCE(ea_sort.name_sort_key, '') DESC, e.id ASC
-    LIMIT $9::int
-)
-SELECT
-        r.id AS template_id,
-        r.created_at,
-        r.updated_at,
-        r.public,
-        r.build_count,
-        r.spawn_count,
-        r.last_spawned_at,
-        r.created_by AS creator_id,
-        COALESCE(eb.id, '00000000-0000-0000-0000-000000000000'::uuid) AS build_id,
-        COALESCE(eb.vcpu, 0)::bigint AS cpu_count,
-        COALESCE(eb.ram_mb, 0)::bigint AS memory_mb,
-        eb.total_disk_size_mb AS disk_size_mb,
-        eb.envd_version AS envd_version,
-        COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases,
-        COALESCE(ea.names, ARRAY[]::text[])::text[] AS names,
-        (r.default_env_id IS NOT NULL)::boolean AS is_default,
-        r.default_description,
-        COALESCE(ea.name_sort_key, '')::text AS name_sort_key
-FROM ranked r
-LEFT JOIN LATERAL (
-    SELECT
-        ARRAY_AGG(alias ORDER BY alias) AS aliases,
-        ARRAY_AGG(CASE WHEN namespace IS NOT NULL THEN namespace || '/' || alias ELSE alias END ORDER BY alias) AS names,
-        MIN(CASE WHEN namespace IS NOT NULL THEN namespace || '/' || alias ELSE alias END) AS name_sort_key
-    FROM public.env_aliases
-    WHERE env_id = r.id
-) ea ON TRUE
-LEFT JOIN LATERAL (
-    SELECT b.id, b.vcpu, b.ram_mb, b.total_disk_size_mb, b.envd_version
-    FROM public.env_build_assignments AS ba
-    JOIN public.env_builds AS b ON b.id = ba.build_id
-    WHERE ba.env_id = r.id AND ba.tag = 'default' AND b.status_group = 'ready'
-    ORDER BY ba.created_at DESC
-    LIMIT 1
-) eb ON TRUE
-ORDER BY COALESCE(r.name_sort_key, '') DESC, r.id ASC
-`
-
-type ListTeamTemplatesByNameDescParams struct {
-	TeamID          uuid.UUID
-	IncludeDefaults bool
-	CpuCount        int64
-	MemoryMb        int64
-	FilterPublic    int16
-	Search          string
-	CursorName      *string
-	CursorID        *string
-	LimitPlusOne    int32
-}
-
-type ListTeamTemplatesByNameDescRow struct {
-	TemplateID         string
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
-	Public             bool
-	BuildCount         int32
-	SpawnCount         int64
-	LastSpawnedAt      *time.Time
-	CreatorID          *uuid.UUID
-	BuildID            uuid.UUID
-	CpuCount           int64
-	MemoryMb           int64
-	DiskSizeMb         *int64
-	EnvdVersion        *string
-	Aliases            []string
-	Names              []string
-	IsDefault          bool
-	DefaultDescription *string
-	NameSortKey        string
-}
-
-func (q *Queries) ListTeamTemplatesByNameDesc(ctx context.Context, arg ListTeamTemplatesByNameDescParams) ([]ListTeamTemplatesByNameDescRow, error) {
-	rows, err := q.db.Query(ctx, listTeamTemplatesByNameDesc,
-		arg.TeamID,
-		arg.IncludeDefaults,
-		arg.CpuCount,
-		arg.MemoryMb,
-		arg.FilterPublic,
-		arg.Search,
-		arg.CursorName,
-		arg.CursorID,
-		arg.LimitPlusOne,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListTeamTemplatesByNameDescRow
-	for rows.Next() {
-		var i ListTeamTemplatesByNameDescRow
-		if err := rows.Scan(
-			&i.TemplateID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.Public,
-			&i.BuildCount,
-			&i.SpawnCount,
-			&i.LastSpawnedAt,
-			&i.CreatorID,
-			&i.BuildID,
-			&i.CpuCount,
-			&i.MemoryMb,
-			&i.DiskSizeMb,
-			&i.EnvdVersion,
-			&i.Aliases,
-			&i.Names,
-			&i.IsDefault,
-			&i.DefaultDescription,
-			&i.NameSortKey,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listTeamTemplatesByUpdatedAtAsc = `-- name: ListTeamTemplatesByUpdatedAtAsc :many
 WITH team_templates AS (
     SELECT
@@ -1523,40 +436,26 @@ WITH team_templates AS (
         e.created_by,
         d.env_id AS default_env_id,
         d.description AS default_description
-    FROM public.envs AS e
+    FROM public.active_envs AS e
     LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
         e.team_id = $1::uuid AND e.source = 'template'
-        AND ($2::bigint = 0 OR (
-            SELECT b.vcpu FROM public.env_build_assignments AS ba
-            JOIN public.env_builds AS b ON b.id = ba.build_id
-            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
-            ORDER BY ba.created_at DESC
-            LIMIT 1
-        ) = $2::bigint)
-        AND ($3::bigint = 0 OR (
-            SELECT b.ram_mb FROM public.env_build_assignments AS ba
-            JOIN public.env_builds AS b ON b.id = ba.build_id
-            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
-            ORDER BY ba.created_at DESC
-            LIMIT 1
-        ) = $3::bigint)
-        AND ($4::smallint = -1 OR e.public = ($4::smallint = 1))
+        AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
         AND (
-            $5::text = ''
-            OR e.id ILIKE '%' || $5::text || '%'
+            $3::text = ''
+            OR e.id ILIKE '%' || $3::text || '%'
             OR EXISTS (
                 SELECT 1 FROM public.env_aliases sa
                 WHERE sa.env_id = e.id
                   AND (
-                    sa.alias ILIKE '%' || $5::text || '%'
-                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $5::text || '%'
+                    sa.alias ILIKE '%' || $3::text || '%'
+                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $3::text || '%'
                   )
             )
         )
-        AND (e.updated_at, e.id) > ($6::timestamptz, $7::text)
+        AND (e.updated_at, e.id) > ($4::timestamptz, $5::text)
     ORDER BY e.updated_at ASC, e.id ASC
-    LIMIT $8::int
+    LIMIT $6::int
 ),
 default_templates AS (
     SELECT
@@ -1570,40 +469,26 @@ default_templates AS (
         e.created_by,
         d.env_id AS default_env_id,
         d.description AS default_description
-    FROM public.envs AS e
+    FROM public.active_envs AS e
     JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
-        $9::boolean
-        AND ($2::bigint = 0 OR (
-            SELECT b.vcpu FROM public.env_build_assignments AS ba
-            JOIN public.env_builds AS b ON b.id = ba.build_id
-            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
-            ORDER BY ba.created_at DESC
-            LIMIT 1
-        ) = $2::bigint)
-        AND ($3::bigint = 0 OR (
-            SELECT b.ram_mb FROM public.env_build_assignments AS ba
-            JOIN public.env_builds AS b ON b.id = ba.build_id
-            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
-            ORDER BY ba.created_at DESC
-            LIMIT 1
-        ) = $3::bigint)
-        AND ($4::smallint = -1 OR e.public = ($4::smallint = 1))
+        $7::boolean
+        AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
         AND (
-            $5::text = ''
-            OR e.id ILIKE '%' || $5::text || '%'
+            $3::text = ''
+            OR e.id ILIKE '%' || $3::text || '%'
             OR EXISTS (
                 SELECT 1 FROM public.env_aliases sa
                 WHERE sa.env_id = e.id
                   AND (
-                    sa.alias ILIKE '%' || $5::text || '%'
-                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $5::text || '%'
+                    sa.alias ILIKE '%' || $3::text || '%'
+                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $3::text || '%'
                   )
             )
         )
-        AND (e.updated_at, e.id) > ($6::timestamptz, $7::text)
+        AND (e.updated_at, e.id) > ($4::timestamptz, $5::text)
     ORDER BY e.updated_at ASC, e.id ASC
-    LIMIT $8::int
+    LIMIT $6::int
 ),
 ranked AS (
     SELECT
@@ -1616,7 +501,7 @@ ranked AS (
         last_spawned_at, created_by, default_env_id, default_description
     FROM default_templates
     ORDER BY updated_at ASC, id ASC
-    LIMIT $8::int
+    LIMIT $6::int
 )
 SELECT
         r.id AS template_id,
@@ -1659,8 +544,6 @@ ORDER BY r.updated_at ASC, r.id ASC
 
 type ListTeamTemplatesByUpdatedAtAscParams struct {
 	TeamID          uuid.UUID
-	CpuCount        int64
-	MemoryMb        int64
 	FilterPublic    int16
 	Search          string
 	CursorUpdatedAt time.Time
@@ -1693,8 +576,6 @@ type ListTeamTemplatesByUpdatedAtAscRow struct {
 func (q *Queries) ListTeamTemplatesByUpdatedAtAsc(ctx context.Context, arg ListTeamTemplatesByUpdatedAtAscParams) ([]ListTeamTemplatesByUpdatedAtAscRow, error) {
 	rows, err := q.db.Query(ctx, listTeamTemplatesByUpdatedAtAsc,
 		arg.TeamID,
-		arg.CpuCount,
-		arg.MemoryMb,
 		arg.FilterPublic,
 		arg.Search,
 		arg.CursorUpdatedAt,
@@ -1752,40 +633,26 @@ WITH team_templates AS (
         e.created_by,
         d.env_id AS default_env_id,
         d.description AS default_description
-    FROM public.envs AS e
+    FROM public.active_envs AS e
     LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
         e.team_id = $1::uuid AND e.source = 'template'
-        AND ($2::bigint = 0 OR (
-            SELECT b.vcpu FROM public.env_build_assignments AS ba
-            JOIN public.env_builds AS b ON b.id = ba.build_id
-            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
-            ORDER BY ba.created_at DESC
-            LIMIT 1
-        ) = $2::bigint)
-        AND ($3::bigint = 0 OR (
-            SELECT b.ram_mb FROM public.env_build_assignments AS ba
-            JOIN public.env_builds AS b ON b.id = ba.build_id
-            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
-            ORDER BY ba.created_at DESC
-            LIMIT 1
-        ) = $3::bigint)
-        AND ($4::smallint = -1 OR e.public = ($4::smallint = 1))
+        AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
         AND (
-            $5::text = ''
-            OR e.id ILIKE '%' || $5::text || '%'
+            $3::text = ''
+            OR e.id ILIKE '%' || $3::text || '%'
             OR EXISTS (
                 SELECT 1 FROM public.env_aliases sa
                 WHERE sa.env_id = e.id
                   AND (
-                    sa.alias ILIKE '%' || $5::text || '%'
-                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $5::text || '%'
+                    sa.alias ILIKE '%' || $3::text || '%'
+                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $3::text || '%'
                   )
             )
         )
-        AND (e.updated_at, e.id) < ($6::timestamptz, $7::text)
+        AND (e.updated_at, e.id) < ($4::timestamptz, $5::text)
     ORDER BY e.updated_at DESC, e.id DESC
-    LIMIT $8::int
+    LIMIT $6::int
 ),
 default_templates AS (
     SELECT
@@ -1799,40 +666,26 @@ default_templates AS (
         e.created_by,
         d.env_id AS default_env_id,
         d.description AS default_description
-    FROM public.envs AS e
+    FROM public.active_envs AS e
     JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
-        $9::boolean
-        AND ($2::bigint = 0 OR (
-            SELECT b.vcpu FROM public.env_build_assignments AS ba
-            JOIN public.env_builds AS b ON b.id = ba.build_id
-            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
-            ORDER BY ba.created_at DESC
-            LIMIT 1
-        ) = $2::bigint)
-        AND ($3::bigint = 0 OR (
-            SELECT b.ram_mb FROM public.env_build_assignments AS ba
-            JOIN public.env_builds AS b ON b.id = ba.build_id
-            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
-            ORDER BY ba.created_at DESC
-            LIMIT 1
-        ) = $3::bigint)
-        AND ($4::smallint = -1 OR e.public = ($4::smallint = 1))
+        $7::boolean
+        AND ($2::smallint = -1 OR e.public = ($2::smallint = 1))
         AND (
-            $5::text = ''
-            OR e.id ILIKE '%' || $5::text || '%'
+            $3::text = ''
+            OR e.id ILIKE '%' || $3::text || '%'
             OR EXISTS (
                 SELECT 1 FROM public.env_aliases sa
                 WHERE sa.env_id = e.id
                   AND (
-                    sa.alias ILIKE '%' || $5::text || '%'
-                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $5::text || '%'
+                    sa.alias ILIKE '%' || $3::text || '%'
+                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $3::text || '%'
                   )
             )
         )
-        AND (e.updated_at, e.id) < ($6::timestamptz, $7::text)
+        AND (e.updated_at, e.id) < ($4::timestamptz, $5::text)
     ORDER BY e.updated_at DESC, e.id DESC
-    LIMIT $8::int
+    LIMIT $6::int
 ),
 ranked AS (
     SELECT
@@ -1845,7 +698,7 @@ ranked AS (
         last_spawned_at, created_by, default_env_id, default_description
     FROM default_templates
     ORDER BY updated_at DESC, id DESC
-    LIMIT $8::int
+    LIMIT $6::int
 )
 SELECT
         r.id AS template_id,
@@ -1888,8 +741,6 @@ ORDER BY r.updated_at DESC, r.id DESC
 
 type ListTeamTemplatesByUpdatedAtDescParams struct {
 	TeamID          uuid.UUID
-	CpuCount        int64
-	MemoryMb        int64
 	FilterPublic    int16
 	Search          string
 	CursorUpdatedAt time.Time
@@ -1922,8 +773,6 @@ type ListTeamTemplatesByUpdatedAtDescRow struct {
 func (q *Queries) ListTeamTemplatesByUpdatedAtDesc(ctx context.Context, arg ListTeamTemplatesByUpdatedAtDescParams) ([]ListTeamTemplatesByUpdatedAtDescRow, error) {
 	rows, err := q.db.Query(ctx, listTeamTemplatesByUpdatedAtDesc,
 		arg.TeamID,
-		arg.CpuCount,
-		arg.MemoryMb,
 		arg.FilterPublic,
 		arg.Search,
 		arg.CursorUpdatedAt,

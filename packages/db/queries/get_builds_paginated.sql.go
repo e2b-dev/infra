@@ -20,12 +20,18 @@ SELECT
   b.reason,
   b.created_at,
   b.finished_at,
+  b.vcpu,
+  b.ram_mb,
+  b.total_disk_size_mb,
+  b.envd_version,
   eba.env_id AS template_id,
   COALESCE(ea.alias, '') AS template_alias
 FROM public.env_builds b
 JOIN LATERAL (
   SELECT a.env_id
   FROM public.env_build_assignments a
+  -- active_envs (not envs): the build's env must exist and not be soft-deleted
+  JOIN public.active_envs e ON e.id = a.env_id
   WHERE a.build_id = b.id
   ORDER BY a.created_at DESC, a.id DESC
   LIMIT 1
@@ -56,13 +62,17 @@ type GetTeamBuildsPageParams struct {
 }
 
 type GetTeamBuildsPageRow struct {
-	ID            uuid.UUID
-	StatusGroup   types.BuildStatusGroup
-	Reason        types.BuildReason
-	CreatedAt     time.Time
-	FinishedAt    *time.Time
-	TemplateID    string
-	TemplateAlias string
+	ID              uuid.UUID
+	StatusGroup     types.BuildStatusGroup
+	Reason          types.BuildReason
+	CreatedAt       time.Time
+	FinishedAt      *time.Time
+	Vcpu            int64
+	RamMb           int64
+	TotalDiskSizeMb *int64
+	EnvdVersion     *string
+	TemplateID      string
+	TemplateAlias   string
 }
 
 func (q *Queries) GetTeamBuildsPage(ctx context.Context, arg GetTeamBuildsPageParams) ([]GetTeamBuildsPageRow, error) {
@@ -86,6 +96,10 @@ func (q *Queries) GetTeamBuildsPage(ctx context.Context, arg GetTeamBuildsPagePa
 			&i.Reason,
 			&i.CreatedAt,
 			&i.FinishedAt,
+			&i.Vcpu,
+			&i.RamMb,
+			&i.TotalDiskSizeMb,
+			&i.EnvdVersion,
 			&i.TemplateID,
 			&i.TemplateAlias,
 		); err != nil {
@@ -106,12 +120,18 @@ SELECT
   b.reason,
   b.created_at,
   b.finished_at,
+  b.vcpu,
+  b.ram_mb,
+  b.total_disk_size_mb,
+  b.envd_version,
   eba.env_id AS template_id,
   COALESCE(ea.alias, '') AS template_alias
 FROM public.env_builds b
 JOIN LATERAL (
   SELECT a.env_id
   FROM public.env_build_assignments a
+  -- active_envs (not envs): the build's env must exist and not be soft-deleted
+  JOIN public.active_envs e ON e.id = a.env_id
   WHERE a.build_id = b.id
   ORDER BY a.created_at DESC, a.id DESC
   LIMIT 1
@@ -144,13 +164,17 @@ type GetTeamBuildsPageByBuildIDParams struct {
 }
 
 type GetTeamBuildsPageByBuildIDRow struct {
-	ID            uuid.UUID
-	StatusGroup   types.BuildStatusGroup
-	Reason        types.BuildReason
-	CreatedAt     time.Time
-	FinishedAt    *time.Time
-	TemplateID    string
-	TemplateAlias string
+	ID              uuid.UUID
+	StatusGroup     types.BuildStatusGroup
+	Reason          types.BuildReason
+	CreatedAt       time.Time
+	FinishedAt      *time.Time
+	Vcpu            int64
+	RamMb           int64
+	TotalDiskSizeMb *int64
+	EnvdVersion     *string
+	TemplateID      string
+	TemplateAlias   string
 }
 
 func (q *Queries) GetTeamBuildsPageByBuildID(ctx context.Context, arg GetTeamBuildsPageByBuildIDParams) ([]GetTeamBuildsPageByBuildIDRow, error) {
@@ -175,6 +199,10 @@ func (q *Queries) GetTeamBuildsPageByBuildID(ctx context.Context, arg GetTeamBui
 			&i.Reason,
 			&i.CreatedAt,
 			&i.FinishedAt,
+			&i.Vcpu,
+			&i.RamMb,
+			&i.TotalDiskSizeMb,
+			&i.EnvdVersion,
 			&i.TemplateID,
 			&i.TemplateAlias,
 		); err != nil {
@@ -195,12 +223,18 @@ SELECT
   b.reason,
   b.created_at,
   b.finished_at,
+  b.vcpu,
+  b.ram_mb,
+  b.total_disk_size_mb,
+  b.envd_version,
   eba.env_id AS template_id,
   COALESCE(ea.alias, '') AS template_alias
 FROM public.env_builds b
 JOIN LATERAL (
   SELECT a.env_id
   FROM public.env_build_assignments a
+  -- active_envs (not envs): the build's env must exist and not be soft-deleted
+  JOIN public.active_envs e ON e.id = a.env_id
   WHERE a.build_id = b.id
     AND EXISTS (
       SELECT 1
@@ -238,13 +272,17 @@ type GetTeamBuildsPageByTemplateAliasParams struct {
 }
 
 type GetTeamBuildsPageByTemplateAliasRow struct {
-	ID            uuid.UUID
-	StatusGroup   types.BuildStatusGroup
-	Reason        types.BuildReason
-	CreatedAt     time.Time
-	FinishedAt    *time.Time
-	TemplateID    string
-	TemplateAlias string
+	ID              uuid.UUID
+	StatusGroup     types.BuildStatusGroup
+	Reason          types.BuildReason
+	CreatedAt       time.Time
+	FinishedAt      *time.Time
+	Vcpu            int64
+	RamMb           int64
+	TotalDiskSizeMb *int64
+	EnvdVersion     *string
+	TemplateID      string
+	TemplateAlias   string
 }
 
 func (q *Queries) GetTeamBuildsPageByTemplateAlias(ctx context.Context, arg GetTeamBuildsPageByTemplateAliasParams) ([]GetTeamBuildsPageByTemplateAliasRow, error) {
@@ -269,6 +307,10 @@ func (q *Queries) GetTeamBuildsPageByTemplateAlias(ctx context.Context, arg GetT
 			&i.Reason,
 			&i.CreatedAt,
 			&i.FinishedAt,
+			&i.Vcpu,
+			&i.RamMb,
+			&i.TotalDiskSizeMb,
+			&i.EnvdVersion,
 			&i.TemplateID,
 			&i.TemplateAlias,
 		); err != nil {
@@ -289,12 +331,18 @@ SELECT
   b.reason,
   b.created_at,
   b.finished_at,
+  b.vcpu,
+  b.ram_mb,
+  b.total_disk_size_mb,
+  b.envd_version,
   eba.env_id AS template_id,
   COALESCE(ea.alias, '') AS template_alias
 FROM public.env_builds b
 JOIN LATERAL (
   SELECT a.env_id
   FROM public.env_build_assignments a
+  -- active_envs (not envs): the build's env must exist and not be soft-deleted
+  JOIN public.active_envs e ON e.id = a.env_id
   WHERE a.build_id = b.id
     AND a.env_id = $1::text
   ORDER BY a.created_at DESC, a.id DESC
@@ -327,13 +375,17 @@ type GetTeamBuildsPageByTemplateIDParams struct {
 }
 
 type GetTeamBuildsPageByTemplateIDRow struct {
-	ID            uuid.UUID
-	StatusGroup   types.BuildStatusGroup
-	Reason        types.BuildReason
-	CreatedAt     time.Time
-	FinishedAt    *time.Time
-	TemplateID    string
-	TemplateAlias string
+	ID              uuid.UUID
+	StatusGroup     types.BuildStatusGroup
+	Reason          types.BuildReason
+	CreatedAt       time.Time
+	FinishedAt      *time.Time
+	Vcpu            int64
+	RamMb           int64
+	TotalDiskSizeMb *int64
+	EnvdVersion     *string
+	TemplateID      string
+	TemplateAlias   string
 }
 
 func (q *Queries) GetTeamBuildsPageByTemplateID(ctx context.Context, arg GetTeamBuildsPageByTemplateIDParams) ([]GetTeamBuildsPageByTemplateIDRow, error) {
@@ -358,6 +410,10 @@ func (q *Queries) GetTeamBuildsPageByTemplateID(ctx context.Context, arg GetTeam
 			&i.Reason,
 			&i.CreatedAt,
 			&i.FinishedAt,
+			&i.Vcpu,
+			&i.RamMb,
+			&i.TotalDiskSizeMb,
+			&i.EnvdVersion,
 			&i.TemplateID,
 			&i.TemplateAlias,
 		); err != nil {

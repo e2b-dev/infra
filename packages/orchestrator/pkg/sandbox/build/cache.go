@@ -5,6 +5,7 @@ package build
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"sync"
 	"time"
@@ -118,8 +119,23 @@ func (s *DiffStore) Close() {
 	s.cache.Stop()
 }
 
-func (s *DiffStore) Get(ctx context.Context, diff Diff) (Diff, error) {
-	key := diff.CacheKey()
+// Get returns the cached Diff for key, refreshing TTL and cancelling any
+// pending eviction. Returns (nil, false) if the key isn't present.
+func (s *DiffStore) Get(key DiffStoreKey) (Diff, bool) {
+	s.resetDelete(key)
+	item := s.cache.Get(key)
+	if item == nil {
+		return nil, false
+	}
+
+	return item.Value(), true
+}
+
+// GetOrCreate returns the cached Diff for key, or calls create inside a
+// singleflight to construct + cache a new one. The create closure is invoked
+// at most once per key across concurrent callers; on success the returned Diff
+// is cached and its insertion time recorded.
+func (s *DiffStore) GetOrCreate(ctx context.Context, key DiffStoreKey, create func(context.Context) (Diff, error)) (Diff, error) {
 	s.resetDelete(key)
 
 	if item := s.cache.Get(key); item != nil {
@@ -134,7 +150,8 @@ func (s *DiffStore) Get(ctx context.Context, diff Diff) (Diff, error) {
 
 		insertTime := time.Now()
 
-		if err := diff.Init(ctx); err != nil {
+		diff, err := create(ctx)
+		if err != nil {
 			return nil, err
 		}
 
@@ -144,7 +161,7 @@ func (s *DiffStore) Get(ctx context.Context, diff Diff) (Diff, error) {
 		return diff, nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to init source: %w", err)
+		return nil, fmt.Errorf("failed to create diff: %w", err)
 	}
 
 	return v.(Diff), nil
@@ -206,15 +223,7 @@ func (s *DiffStore) startDiskSpaceEviction(
 			used := int64(dUsed) - pUsed
 			percentage := float64(used) / float64(dTotal) * 100
 
-			threshold := featureflags.BuildCacheMaxUsagePercentage.Fallback()
-			// When multiple services (template manager, orchestrator) are defined, take the lowest threshold
-			// to ensure we don't exceed any of the set limits
-			for _, s := range services {
-				st := flags.IntFlag(ctx, featureflags.BuildCacheMaxUsagePercentage, featureflags.ServiceContext(string(s)))
-				if st < threshold {
-					threshold = st
-				}
-			}
+			threshold := evictionThreshold(ctx, flags, services)
 
 			if percentage <= float64(threshold) {
 				timer.Reset(getDelay(false))
@@ -234,6 +243,28 @@ func (s *DiffStore) startDiskSpaceEviction(
 			timer.Reset(getDelay(succ))
 		}
 	}
+}
+
+// evictionThreshold returns the maximum allowed disk usage percentage for the
+// build cache. When multiple services (template manager, orchestrator) are
+// defined, the lowest of their configured thresholds wins to ensure none of
+// the set limits is exceeded. Flag evaluation already falls back per service
+// inside IntFlag, so the flag fallback is only used directly when no services
+// are configured; a flag value above the fallback is honored.
+func evictionThreshold(ctx context.Context, flags *featureflags.Client, services cfg.Services) int {
+	if len(services) == 0 {
+		return featureflags.BuildCacheMaxUsagePercentage.Fallback()
+	}
+
+	threshold := math.MaxInt
+	for _, svc := range services {
+		st := flags.IntFlag(ctx, featureflags.BuildCacheMaxUsagePercentage, featureflags.ServiceContext(string(svc)))
+		if st < threshold {
+			threshold = st
+		}
+	}
+
+	return threshold
 }
 
 func (s *DiffStore) getPendingDeletesSize() int64 {

@@ -71,7 +71,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		return
 	}
 
-	dbTeamID := templateBuildDB.Env.TeamID.String()
+	dbTeamID := templateBuildDB.ActiveEnv.TeamID.String()
 	team, apiErr := a.GetTeam(ctx, c, &dbTeamID)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
@@ -80,7 +80,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		return
 	}
 
-	if team.ID != templateBuildDB.Env.TeamID {
+	if team.ID != templateBuildDB.ActiveEnv.TeamID {
 		a.sendAPIStoreError(c, http.StatusForbidden, "User does not have access to the template")
 
 		telemetry.ReportCriticalError(ctx, "user does not have access to the template", err, telemetry.WithTemplateID(templateID))

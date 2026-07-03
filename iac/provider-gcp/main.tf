@@ -60,24 +60,8 @@ locals {
   logs_proxy_port              = 30006
   otel_collector_grpc_port     = 4317
 
-  # Filter out empty / too-short HMAC secrets so that placeholder values left in
-  # Secret Manager on a fresh deploy don't get fed to legacy.NewVerifier, which
-  # rejects secrets shorter than 16 bytes and would fatal the api/dashboard-api
-  # jobs at startup.
-  default_legacy_hmac_secrets = [
-    for s in split(",", trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)) : s
-    if length(s) >= 16
-  ]
-  default_auth_provider_config = length(local.default_legacy_hmac_secrets) > 0 ? {
+  default_auth_provider_config = {
     jwt = []
-    legacy = {
-      hmac = {
-        secrets = local.default_legacy_hmac_secrets
-      }
-    }
-    } : {
-    jwt    = []
-    legacy = null
   }
   # jsonencode/jsondecode strips Terraform's static type info from
   # var.auth_provider_config so that the conditional below does not fail with
@@ -519,12 +503,9 @@ module "nomad" {
   shared_chunk_cache_path                       = module.cluster.shared_chunk_cache_path
   filestore_cache_cleanup_disk_usage_target     = var.filestore_cache_cleanup_disk_usage_target
   filestore_cache_cleanup_dry_run               = var.filestore_cache_cleanup_dry_run
-  filestore_cache_cleanup_deletions_per_loop    = var.filestore_cache_cleanup_deletions_per_loop
-  filestore_cache_cleanup_files_per_loop        = var.filestore_cache_cleanup_files_per_loop
   filestore_cache_cleanup_max_concurrent_stat   = var.filestore_cache_cleanup_max_concurrent_stat
   filestore_cache_cleanup_max_concurrent_scan   = var.filestore_cache_cleanup_max_concurrent_scan
   filestore_cache_cleanup_max_concurrent_delete = var.filestore_cache_cleanup_max_concurrent_delete
-  filestore_cache_cleanup_max_retries           = var.filestore_cache_cleanup_max_retries
   filestore_cleanup_env_vars                    = local.filestore_cleanup_env_vars
 
   volume_token_issuer           = local.volume_token_issuer

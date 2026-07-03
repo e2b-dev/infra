@@ -5,6 +5,7 @@ package block
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand/v2"
@@ -66,9 +67,9 @@ type testControl struct {
 	onOpen   func()        // optional callback on OpenRangeReader
 }
 
-func newTestChunker(t *testing.T, file storage.Seekable, size int64) *Chunker {
+func newTestChunker(t *testing.T, size int64) *Chunker {
 	t.Helper()
-	c, err := NewChunker(&featureflags.Client{}, size, testBlockSize, file, t.TempDir()+"/cache", newTestMetrics(t))
+	c, err := NewChunker(&featureflags.Client{}, size, testBlockSize, t.TempDir()+"/cache", newTestMetrics(t), storage.MemfileObjectType)
 	require.NoError(t, err)
 
 	return c
@@ -78,11 +79,11 @@ func (s *fakeSeekable) Size(_ context.Context) (int64, error) {
 	return int64(len(s.data)), nil
 }
 
-func (s *fakeSeekable) StoreFile(context.Context, string, ...storage.PutOption) (*storage.FrameTable, [32]byte, error) {
+func (s *fakeSeekable) StoreFile(context.Context, string, ...storage.PutOption) (*storage.FullFrameTable, [32]byte, error) {
 	panic("not used")
 }
 
-func (s *fakeSeekable) OpenRangeReader(_ context.Context, offsetU int64, length int64, frameTable *storage.FrameTable) (io.ReadCloser, error) {
+func (s *fakeSeekable) OpenRangeReader(_ context.Context, offsetU int64, length int64, frameTable *storage.FrameTable) (storage.RangeReader, storage.Source, error) {
 	s.fetchCount.Add(1)
 
 	if s.ctrl != nil {
@@ -103,14 +104,14 @@ func (s *fakeSeekable) OpenRangeReader(_ context.Context, offsetU int64, length 
 			advance:  s.ctrl.advance,
 			consumed: s.ctrl.consumed,
 			closed:   s.ctrl.closed,
-		}, nil
+		}, storage.SourceFS, nil
 	}
 
 	var fetchOff, fetchLen int64
 	if frameTable.IsCompressed() {
 		r, err := frameTable.LocateCompressed(offsetU)
 		if err != nil {
-			return nil, fmt.Errorf("frame lookup: %w", err)
+			return nil, storage.UnknownSource, fmt.Errorf("frame lookup: %w", err)
 		}
 
 		fetchOff = r.Offset
@@ -127,10 +128,12 @@ func (s *fakeSeekable) OpenRangeReader(_ context.Context, offsetU int64, length 
 
 	r := io.Reader(bytes.NewReader(s.data[fetchOff:end]))
 	if frameTable.IsCompressed() {
-		return storage.NewDecompressingReader(r, frameTable.CompressionType())
+		dec, err := storage.NewDecompressReader(storage.NewRangeReader(io.NopCloser(r)), frameTable.CompressionType(), storage.UnknownSource, storage.UnknownSeekableObjectType)
+
+		return dec, storage.SourceFS, err
 	}
 
-	return io.NopCloser(r), nil
+	return storage.NewRangeReader(io.NopCloser(r)), storage.SourceFS, nil
 }
 
 func makeCompressedTestData(tb testing.TB, data []byte) (*storage.FrameTable, *fakeSeekable) {
@@ -146,30 +149,30 @@ func makeCompressedTestData(tb testing.TB, data []byte) (*storage.FrameTable, *f
 	})
 	require.NoError(tb, err)
 
-	return ft, &fakeSeekable{data: compressed}
+	return ft.Table(), &fakeSeekable{data: compressed}
 }
 
 type chunkerTestCase struct {
 	name       string
-	newChunker func(t *testing.T, data []byte) (*Chunker, *storage.FrameTable)
+	newChunker func(t *testing.T, data []byte) (*Chunker, storage.RangeOpener, *storage.FrameTable)
 }
 
 var allChunkerTestCases = []chunkerTestCase{
 	{
 		name: "Compressed",
-		newChunker: func(t *testing.T, data []byte) (*Chunker, *storage.FrameTable) {
+		newChunker: func(t *testing.T, data []byte) (*Chunker, storage.RangeOpener, *storage.FrameTable) {
 			t.Helper()
 			ft, getter := makeCompressedTestData(t, data)
 
-			return newTestChunker(t, getter, int64(len(data))), ft
+			return newTestChunker(t, int64(len(data))), getter, ft
 		},
 	},
 	{
 		name: "Uncompressed",
-		newChunker: func(t *testing.T, data []byte) (*Chunker, *storage.FrameTable) {
+		newChunker: func(t *testing.T, data []byte) (*Chunker, storage.RangeOpener, *storage.FrameTable) {
 			t.Helper()
 
-			return newTestChunker(t, &fakeSeekable{data: data}, int64(len(data))), nil
+			return newTestChunker(t, int64(len(data))), &fakeSeekable{data: data}, nil
 		},
 	},
 }
@@ -182,10 +185,10 @@ func TestChunker_BasicSlice(t *testing.T) {
 			t.Parallel()
 
 			data := makeTestData(testFileSize)
-			chunker, ft := tc.newChunker(t, data)
+			chunker, file, ft := tc.newChunker(t, data)
 			defer chunker.Close()
 
-			slice, err := chunker.Slice(t.Context(), 0, testBlockSize, ft)
+			slice, err := chunker.Slice(t.Context(), 0, testBlockSize, file, ft)
 			require.NoError(t, err)
 			require.Equal(t, data[:testBlockSize], slice)
 		})
@@ -201,11 +204,11 @@ func TestChunker_CacheHit(t *testing.T) {
 
 	// Uncompressed only — we need direct access to the fakeSeekable to count fetches.
 	file := &fakeSeekable{data: data}
-	chunker := newTestChunker(t, file, int64(len(data)))
+	chunker := newTestChunker(t, int64(len(data)))
 	defer chunker.Close()
 
 	// First read triggers a fetch.
-	slice1, err := chunker.Slice(t.Context(), 0, testBlockSize, nil)
+	slice1, err := chunker.Slice(t.Context(), 0, testBlockSize, file, nil)
 	require.NoError(t, err)
 	require.Equal(t, data[:testBlockSize], slice1)
 
@@ -213,7 +216,7 @@ func TestChunker_CacheHit(t *testing.T) {
 	require.Positive(t, firstFetches)
 
 	// Second read of the same block — should hit cache.
-	slice2, err := chunker.Slice(t.Context(), 0, testBlockSize, nil)
+	slice2, err := chunker.Slice(t.Context(), 0, testBlockSize, file, nil)
 	require.NoError(t, err)
 	require.Equal(t, data[:testBlockSize], slice2)
 	require.Equal(t, firstFetches, file.fetchCount.Load(), "expected no additional upstream fetch")
@@ -230,17 +233,17 @@ func TestChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
 			t.Parallel()
 
 			data := makeTestData(testFileSize)
-			chunker, ft := tc.newChunker(t, data)
+			chunker, file, ft := tc.newChunker(t, data)
 			defer chunker.Close()
 
-			_, err := chunker.Slice(t.Context(), 0, testBlockSize, ft)
+			_, err := chunker.Slice(t.Context(), 0, testBlockSize, file, ft)
 			require.NoError(t, err)
 
 			// The second Slice joins the in-flight session (or hits
 			// cache if the fetch already completed). Either way it blocks
 			// until the data is available — no polling needed.
 			lastOff := int64(testFileSize) - testBlockSize
-			slice, err := chunker.Slice(t.Context(), lastOff, testBlockSize, ft)
+			slice, err := chunker.Slice(t.Context(), lastOff, testBlockSize, file, ft)
 			require.NoError(t, err)
 			require.Equal(t, data[lastOff:lastOff+testBlockSize], slice)
 		})
@@ -335,6 +338,53 @@ func TestChunker_EarlyReturn(t *testing.T) {
 	require.Equal(t, data[lastOff:lastOff+testBlockSize], r.data)
 }
 
+// TestChunker_SessionOriginMismatch reproduces a corruption bug in fetch's
+// readiness fast path. A fetch session created on one frame geometry (an
+// uncompressed whole-file chunk) is reused by a later read that locates a
+// different origin — as happens when a peer→storage transition swaps 4MB
+// uncompressed peer chunks for smaller compressed frames, so getOrCreateSession
+// returns a session framed on the old geometry. bytesReady counts from the
+// session's chunkOff; the readiness check must use the same origin. The buggy
+// code computed the threshold from the freshly located chunkOff, so a session
+// that filled only its first block reported a not-yet-written deeper block as
+// ready — serving stale (zero) mmap to the guest instead of fetching it.
+//
+// The scenario is built synchronously: a partially filled, then terminated,
+// session stands in for the aborted peer fetch. With the fix, the shifted-origin
+// read finds the block unready and falls through to the terminated session's
+// error; with the bug, it short-circuits to SourceMmap and returns no error.
+func TestChunker_SessionOriginMismatch(t *testing.T) {
+	t.Parallel()
+
+	data := makeTestData(testFileSize)
+	// A compressed frame table with testFrameSize-aligned uncompressed frames:
+	// locateChunk for the second frame yields chunkOff=testFrameSize, an origin
+	// different from the uncompressed session's chunkOff of 0.
+	compFT, upstream := makeCompressedTestData(t, data)
+	shiftedOff := int64(testFrameSize)
+
+	chunker := newTestChunker(t, int64(len(data)))
+	defer chunker.Close()
+
+	// An in-flight session on the uncompressed whole-file geometry that filled
+	// only its first block, then terminated (as a peer fetch does when the peer
+	// goes away mid-transition). bytesReady covers block 0 but not shiftedOff.
+	sess := newFetchSession(0, int64(len(data)), chunker.cache)
+	sess.advance(testBlockSize)
+	sess.fail(errors.New("peer gone"))
+
+	chunker.fetchMu.Lock()
+	chunker.fetchSessions = append(chunker.fetchSessions, sess)
+	chunker.fetchMu.Unlock()
+
+	// The shifted-origin read reuses the session. shiftedOff is not ready, so
+	// fetch must consult the (terminated) session and surface its error rather
+	// than report the block ready and serve stale mmap.
+	_, err := chunker.fetch(t.Context(), shiftedOff, testBlockSize, upstream, compFT)
+	require.Error(t, err, "fetch reported an unfilled shifted-origin block as ready (served stale mmap)")
+	require.ErrorContains(t, err, "peer gone")
+}
+
 // TestChunker_ErrorKeepsPartialData verifies that an upstream error at the
 // midpoint of a chunk still allows data before the error to be served.
 func TestChunker_ErrorKeepsPartialData(t *testing.T) {
@@ -342,14 +392,15 @@ func TestChunker_ErrorKeepsPartialData(t *testing.T) {
 
 	data := makeTestData(testFileSize)
 
-	chunker := newTestChunker(t, &fakeSeekable{data: data, failAfter: int64(testFileSize / 2)}, int64(len(data)))
+	file := &fakeSeekable{data: data, failAfter: int64(testFileSize / 2)}
+	chunker := newTestChunker(t, int64(len(data)))
 	defer chunker.Close()
 
 	lastOff := int64(testFileSize) - testBlockSize
-	_, err := chunker.Slice(t.Context(), lastOff, testBlockSize, nil)
+	_, err := chunker.Slice(t.Context(), lastOff, testBlockSize, file, nil)
 	require.Error(t, err)
 
-	slice, err := chunker.Slice(t.Context(), 0, testBlockSize, nil)
+	slice, err := chunker.Slice(t.Context(), 0, testBlockSize, file, nil)
 	require.NoError(t, err)
 	require.Equal(t, data[:testBlockSize], slice)
 }
@@ -399,13 +450,13 @@ func TestChunker_LastBlockPartial(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			chunker, ft := tc.newChunker(t, data)
+			chunker, file, ft := tc.newChunker(t, data)
 			defer chunker.Close()
 
 			lastBlockOff := (int64(size) / testBlockSize) * testBlockSize
 			remaining := int64(size) - lastBlockOff
 
-			slice, err := chunker.Slice(t.Context(), lastBlockOff, remaining, ft)
+			slice, err := chunker.Slice(t.Context(), lastBlockOff, remaining, file, ft)
 			require.NoError(t, err)
 			require.Equal(t, data[lastBlockOff:], slice)
 		})
@@ -424,17 +475,17 @@ func (s *panicSeekable) Size(_ context.Context) (int64, error) {
 	return int64(len(s.data)), nil
 }
 
-func (s *panicSeekable) StoreFile(context.Context, string, ...storage.PutOption) (*storage.FrameTable, [32]byte, error) {
+func (s *panicSeekable) StoreFile(context.Context, string, ...storage.PutOption) (*storage.FullFrameTable, [32]byte, error) {
 	panic("not used")
 }
 
-func (s *panicSeekable) OpenRangeReader(_ context.Context, off int64, length int64, _ *storage.FrameTable) (io.ReadCloser, error) {
+func (s *panicSeekable) OpenRangeReader(_ context.Context, off int64, length int64, _ *storage.FrameTable) (storage.RangeReader, storage.Source, error) {
 	end := min(off+length, int64(len(s.data)))
 
 	return &panicReader{
 		data:       s.data[off:end],
 		panicAfter: int(s.panicAfter - off),
-	}, nil
+	}, storage.SourceFS, nil
 }
 
 type panicReader struct {
@@ -459,8 +510,8 @@ func (r *panicReader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-func (r *panicReader) Close() error {
-	return nil
+func (r *panicReader) Close(context.Context) (*storage.ReadStats, error) {
+	return nil, nil
 }
 
 func TestChunker_PanicRecovery(t *testing.T) {
@@ -469,16 +520,17 @@ func TestChunker_PanicRecovery(t *testing.T) {
 	data := makeTestData(testFileSize)
 	panicAt := int64(testFileSize / 2)
 
-	chunker := newTestChunker(t, &panicSeekable{data: data, panicAfter: panicAt}, int64(len(data)))
+	file := &panicSeekable{data: data, panicAfter: panicAt}
+	chunker := newTestChunker(t, int64(len(data)))
 	defer chunker.Close()
 
 	// Request data past the panic point — should get an error, not hang or crash
 	lastOff := int64(testFileSize) - testBlockSize
-	_, err := chunker.Slice(t.Context(), lastOff, testBlockSize, nil)
+	_, err := chunker.Slice(t.Context(), lastOff, testBlockSize, file, nil)
 	require.Error(t, err)
 
 	// Data before the panic point should still be cached
-	slice, err := chunker.Slice(t.Context(), 0, testBlockSize, nil)
+	slice, err := chunker.Slice(t.Context(), 0, testBlockSize, file, nil)
 	require.NoError(t, err)
 	require.Equal(t, data[:testBlockSize], slice)
 }
@@ -491,7 +543,7 @@ func TestChunker_ConcurrentStress(t *testing.T) {
 			t.Parallel()
 
 			data := makeTestData(testFileSize)
-			chunker, ft := tc.newChunker(t, data)
+			chunker, file, ft := tc.newChunker(t, data)
 			defer chunker.Close()
 
 			const numGoroutines = 50
@@ -504,7 +556,7 @@ func TestChunker_ConcurrentStress(t *testing.T) {
 				eg.Go(func() error {
 					for j := range opsPerGoroutine {
 						off := int64(((i*opsPerGoroutine)+j)%(len(data)/int(readLen))) * readLen
-						slice, err := chunker.Slice(t.Context(), off, readLen, ft)
+						slice, err := chunker.Slice(t.Context(), off, readLen, file, ft)
 						if err != nil {
 							return fmt.Errorf("goroutine %d op %d: %w", i, j, err)
 						}
@@ -522,11 +574,19 @@ func TestChunker_ConcurrentStress(t *testing.T) {
 	}
 }
 
-// controlledChunker wraps a Chunker with channel-based flow control for tests.
-// advance gates reads; opened/consumed/closed signal fetch lifecycle events.
+// controlledChunker bundles a Chunker, its upstream, and the channels
+// gating reads through that upstream.
 type controlledChunker struct {
 	*Chunker
 	*testControl
+
+	file *fakeSeekable
+}
+
+// Slice forwards to the embedded Chunker with the bundled upstream — saves
+// each test from passing cc.file by hand.
+func (cc *controlledChunker) Slice(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error) {
+	return cc.Chunker.Slice(ctx, off, length, cc.file, ft)
 }
 
 func newControlledChunker(t *testing.T, data []byte) *controlledChunker {
@@ -538,12 +598,12 @@ func newControlledChunker(t *testing.T, data []byte) *controlledChunker {
 		opened:   make(chan struct{}, 10),
 		closed:   make(chan struct{}, 10),
 	}
-
 	file := &fakeSeekable{data: data, ctrl: ctrl}
 
 	return &controlledChunker{
-		Chunker:     newTestChunker(t, file, int64(len(data))),
+		Chunker:     newTestChunker(t, int64(len(data))),
 		testControl: ctrl,
+		file:        file,
 	}
 }
 
@@ -577,11 +637,11 @@ func (r *controlledReader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-func (r *controlledReader) Close() error {
+func (r *controlledReader) Close(context.Context) (*storage.ReadStats, error) {
 	select {
 	case r.closed <- struct{}{}:
 	default:
 	}
 
-	return nil
+	return nil, nil
 }

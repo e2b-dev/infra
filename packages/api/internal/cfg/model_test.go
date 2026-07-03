@@ -33,15 +33,6 @@ func TestParse(t *testing.T) {
 		assert.ErrorContains(t, err, `environment variable "POSTGRES_CONNECTION_STRING" should not be empty`)
 	})
 
-	t.Run("hmac secrets are parsed from auth provider config", func(t *testing.T) {
-		t.Setenv("AUTH_PROVIDER_CONFIG", `{"legacy":{"hmac":{"secrets":["aaa","bbb"]}}}`)
-		result, err := Parse()
-		require.NoError(t, err)
-		require.NotNil(t, result.AuthProvider.Legacy)
-		require.NotNil(t, result.AuthProvider.Legacy.HMAC)
-		assert.Equal(t, []string{"aaa", "bbb"}, result.AuthProvider.Legacy.HMAC.Secrets)
-	})
-
 	t.Run("base64 signing key can be parsed", func(t *testing.T) {
 		content := []byte{1, 2, 3, 4, 5, 6}
 		encoded := base64.StdEncoding.EncodeToString(content)
@@ -50,6 +41,17 @@ func TestParse(t *testing.T) {
 		result, err := Parse()
 		require.NoError(t, err)
 		assert.Equal(t, content, result.VolumesToken.SigningKey)
+	})
+
+	t.Run("invalid service discovery provider exposes failure condition", func(t *testing.T) {
+		t.Setenv("SERVICE_DISCOVERY_PROVIDER", "invalid")
+
+		_, err := Parse()
+		require.Error(t, err)
+
+		condition, ok := ParseFailureCondition(err)
+		require.True(t, ok)
+		assert.Equal(t, FailureConditionInvalidServiceDiscoveryProvider, condition)
 	})
 }
 

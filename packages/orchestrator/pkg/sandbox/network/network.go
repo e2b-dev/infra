@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"runtime"
 	"strconv"
 
@@ -14,11 +15,67 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"go.uber.org/zap"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-func (s *Slot) CreateNetwork(ctx context.Context) error {
+type notExistError interface {
+	IsNotExist() bool
+}
+
+type multiUnwrapError interface {
+	Unwrap() []error
+}
+
+func ignoreExpectedAbsent(err error, isExpected func(error) bool) bool {
+	if err == nil {
+		return true
+	}
+
+	var joined multiUnwrapError
+	if errors.As(err, &joined) {
+		for _, child := range joined.Unwrap() {
+			if !ignoreExpectedAbsent(child, isExpected) {
+				return false
+			}
+		}
+
+		return true
+	}
+
+	return isExpected(err)
+}
+
+func isIPTablesNotExist(err error) bool {
+	var notExist notExistError
+
+	return errors.As(err, &notExist) && notExist.IsNotExist()
+}
+
+func isRouteNotExist(err error) bool {
+	return errors.Is(err, unix.ESRCH) || errors.Is(err, unix.ENOENT)
+}
+
+func isLinkNotExist(err error) bool {
+	var linkNotFound netlink.LinkNotFoundError
+
+	return errors.As(err, &linkNotFound) || errors.Is(err, unix.ENODEV) || errors.Is(err, unix.ENOENT)
+}
+
+func isNamespaceNotExist(err error) bool {
+	return os.IsNotExist(err) || errors.Is(err, unix.ENOENT)
+}
+
+func appendUnlessExpectedAbsentf(errs *[]error, err error, isExpected func(error) bool, format string) {
+	if ignoreExpectedAbsent(err, isExpected) {
+		return
+	}
+
+	*errs = append(*errs, fmt.Errorf(format, err))
+}
+
+func (s *Slot) CreateNetwork(ctx context.Context) (retErr error) {
 	// Prevent thread changes so we can safely manipulate with namespaces
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -29,10 +86,19 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 		return fmt.Errorf("cannot get current (host) namespace: %w", err)
 	}
 
+	cleanupNeeded := false
 	defer func() {
-		err = netns.Set(hostNS)
-		if err != nil {
-			logger.L().Error(ctx, "error resetting network namespace back to the host namespace", zap.Error(err))
+		restoreErr := netns.Set(hostNS)
+		if restoreErr != nil {
+			logger.L().Error(ctx, "error resetting network namespace back to the host namespace", zap.Error(restoreErr))
+		}
+
+		if retErr != nil && cleanupNeeded {
+			if restoreErr != nil {
+				retErr = errors.Join(retErr, fmt.Errorf("error resetting network namespace back to the host namespace before cleanup: %w", restoreErr))
+			} else if cleanupErr := s.RemoveNetwork(); cleanupErr != nil {
+				retErr = errors.Join(retErr, fmt.Errorf("error cleaning up partially created network: %w", cleanupErr))
+			}
 		}
 
 		err = hostNS.Close()
@@ -41,11 +107,27 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 		}
 	}()
 
+	// An existing namespace for this index is a stale reclaim anchor from a
+	// failed teardown whose iptables rules, routes and veth may still exist. Run
+	// a full (idempotent) RemoveNetwork to reclaim them; deleting only the
+	// namespace would orphan those rules. On failure the anchor is kept and we
+	// abort so the slot is retried later instead of leaking.
+	available, err := isNamespaceAvailable(s.NamespaceID())
+	if err != nil {
+		return fmt.Errorf("cannot check for stale namespace: %w", err)
+	}
+	if !available {
+		if err = s.RemoveNetwork(); err != nil {
+			return fmt.Errorf("cannot reclaim stale network slot: %w", err)
+		}
+	}
+
 	// Create NS for the sandbox
 	ns, err := netns.NewNamed(s.NamespaceID())
 	if err != nil {
 		return fmt.Errorf("cannot create new namespace: %w", err)
 	}
+	cleanupNeeded = true
 
 	defer ns.Close()
 
@@ -183,6 +265,14 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 		return fmt.Errorf("error creating postrouting rule from vpeer: %w", err)
 	}
 
+	// Marker for downstream L3 firewalls. 0 disables; see SANDBOX_EGRESS_DSCP.
+	if s.config.SandboxEgressDSCP > 0 {
+		err = tables.Append("mangle", "POSTROUTING", "-o", s.VpeerName(), "-j", "DSCP", "--set-dscp", strconv.Itoa(int(s.config.SandboxEgressDSCP)))
+		if err != nil {
+			return fmt.Errorf("error creating DSCP mangle rule on vpeer: %w", err)
+		}
+	}
+
 	err = s.InitializeFirewall()
 	if err != nil {
 		return fmt.Errorf("error initializing slot firewall: %w", err)
@@ -273,20 +363,14 @@ func (s *Slot) RemoveNetwork() error {
 	} else {
 		// Delete host forwarding rules
 		err = tables.Delete("filter", "FORWARD", "-i", s.VethName(), "-o", defaultGateway, "-j", "ACCEPT")
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error deleting host forwarding rule to default gateway: %w", err))
-		}
+		appendUnlessExpectedAbsentf(&errs, err, isIPTablesNotExist, "error deleting host forwarding rule to default gateway: %w")
 
 		err = tables.Delete("filter", "FORWARD", "-i", defaultGateway, "-o", s.VethName(), "-j", "ACCEPT")
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error deleting host forwarding rule from default gateway: %w", err))
-		}
+		appendUnlessExpectedAbsentf(&errs, err, isIPTablesNotExist, "error deleting host forwarding rule from default gateway: %w")
 
 		// Delete host postrouting rules
 		err = tables.Delete("nat", "POSTROUTING", "-s", s.HostCIDR(), "-o", defaultGateway, "-j", "MASQUERADE")
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error deleting host postrouting rule: %w", err))
-		}
+		appendUnlessExpectedAbsentf(&errs, err, isIPTablesNotExist, "error deleting host postrouting rule: %w")
 
 		// Delete hyperloop proxy redirect rule
 		err = tables.Delete(
@@ -294,15 +378,11 @@ func (s *Slot) RemoveNetwork() error {
 			"-p", "tcp", "-d", s.config.OrchestratorInSandboxIPAddress, "--dport", "80",
 			"-j", "REDIRECT", "--to-port", s.hyperloopPort,
 		)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error deleting sandbox hyperloop proxy redirect rule: %w", err))
-		}
+		appendUnlessExpectedAbsentf(&errs, err, isIPTablesNotExist, "error deleting sandbox hyperloop proxy redirect rule: %w")
 
 		// Delete changes made by egress proxy
 		err = s.egressProxy.OnSlotDelete(s, tables)
-		if err != nil {
-			errs = append(errs, err)
-		}
+		appendUnlessExpectedAbsentf(&errs, err, isIPTablesNotExist, "%w")
 	}
 
 	// Delete routing from host to FC namespace
@@ -310,9 +390,7 @@ func (s *Slot) RemoveNetwork() error {
 		Gw:  s.VpeerIP(),
 		Dst: s.HostNet(),
 	})
-	if err != nil {
-		errs = append(errs, fmt.Errorf("error deleting route from host to FC: %w", err))
-	}
+	appendUnlessExpectedAbsentf(&errs, err, isRouteNotExist, "error deleting route from host to FC: %w")
 
 	// Delete veth device
 	// We explicitly delete the veth device from the host namespace because even though deleting
@@ -320,38 +398,44 @@ func (s *Slot) RemoveNetwork() error {
 	// the same name immediately after deleting the namespace.
 	veth, err := netlink.LinkByName(s.VethName())
 	if err != nil {
-		errs = append(errs, fmt.Errorf("error finding veth: %w", err))
+		appendUnlessExpectedAbsentf(&errs, err, isLinkNotExist, "error finding veth: %w")
 	} else {
 		err = netlink.LinkDel(veth)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error deleting veth device: %w", err))
-		}
+		appendUnlessExpectedAbsentf(&errs, err, isLinkNotExist, "error deleting veth device: %w")
 	}
 
-	// Delete NFS proxy redirect rule
-	err = tables.Delete("nat", "PREROUTING",
-		"--in-interface", s.VethName(), "--protocol", "tcp",
-		"--destination", s.config.OrchestratorInSandboxIPAddress, "--dport", "2049",
-		"--jump", "REDIRECT", "--to-port", strconv.Itoa(int(s.config.NFSProxyPort)),
-	)
-	if err != nil {
-		errs = append(errs, fmt.Errorf("error deleting sandbox NFS proxy redirect rule: %w", err))
+	if tables != nil {
+		// Delete NFS proxy redirect rule
+		err = tables.Delete("nat", "PREROUTING",
+			"--in-interface", s.VethName(), "--protocol", "tcp",
+			"--destination", s.config.OrchestratorInSandboxIPAddress, "--dport", "2049",
+			"--jump", "REDIRECT", "--to-port", strconv.Itoa(int(s.config.NFSProxyPort)),
+		)
+		appendUnlessExpectedAbsentf(&errs, err, isIPTablesNotExist, "error deleting sandbox NFS proxy redirect rule: %w")
+
+		// Delete portmapper redirect rule
+		err = tables.Delete("nat", "PREROUTING",
+			"--in-interface", s.VethName(), "--protocol", "tcp",
+			"--destination", s.config.OrchestratorInSandboxIPAddress, "--dport", "111",
+			"--jump", "REDIRECT", "--to-port", strconv.Itoa(int(s.config.PortmapperPort)),
+		)
+		appendUnlessExpectedAbsentf(&errs, err, isIPTablesNotExist, "error deleting sandbox portmapper redirect rule: %w")
 	}
 
-	// Delete portmapper redirect rule
-	err = tables.Delete("nat", "PREROUTING",
-		"--in-interface", s.VethName(), "--protocol", "tcp",
-		"--destination", s.config.OrchestratorInSandboxIPAddress, "--dport", "111",
-		"--jump", "REDIRECT", "--to-port", strconv.Itoa(int(s.config.PortmapperPort)),
-	)
-	if err != nil {
-		errs = append(errs, fmt.Errorf("error deleting sandbox portmapper redirect rule: %w", err))
+	// Delete the named namespace only after every host-side (root namespace)
+	// teardown above has succeeded. The /run/netns entry is the anchor that
+	// startup reclaim uses to rediscover a leaked slot, and the host-side
+	// iptables/route/veth state removed above is keyed by the slot index. If any
+	// of that teardown failed, deleting the namespace now would orphan the
+	// remaining state with no way to rediscover and retry it. Preserving the
+	// anchor lets the next teardown attempt (including startup reclaim) finish
+	// the job. CreateNetwork removes a stale anchor before reusing the slot.
+	if len(errs) > 0 {
+		return errors.Join(errs...)
 	}
 
 	err = netns.DeleteNamed(s.NamespaceID())
-	if err != nil {
-		errs = append(errs, fmt.Errorf("error deleting namespace: %w", err))
-	}
+	appendUnlessExpectedAbsentf(&errs, err, isNamespaceNotExist, "error deleting namespace: %w")
 
 	return errors.Join(errs...)
 }

@@ -11,7 +11,7 @@ import (
 
 const getTemplateWithBuildByTag = `-- name: GetTemplateWithBuildByTag :one
 SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, e.source, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id, eb.reason, eb.version, eb.cpu_architecture, eb.cpu_family, eb.cpu_model, eb.cpu_model_name, eb.cpu_flags, eb.status_group, eb.team_id, aliases, names
-FROM public.envs AS e
+FROM public.active_envs AS e
 JOIN public.env_build_assignments AS eba ON eba.env_id = e.id
     AND (
         -- Match by tag
@@ -41,10 +41,10 @@ type GetTemplateWithBuildByTagParams struct {
 }
 
 type GetTemplateWithBuildByTagRow struct {
-	Env      Env
-	EnvBuild EnvBuild
-	Aliases  []string
-	Names    []string
+	ActiveEnv ActiveEnv
+	EnvBuild  EnvBuild
+	Aliases   []string
+	Names     []string
 }
 
 // Fetches a template with its build by template ID and tag.
@@ -54,17 +54,17 @@ func (q *Queries) GetTemplateWithBuildByTag(ctx context.Context, arg GetTemplate
 	row := q.db.QueryRow(ctx, getTemplateWithBuildByTag, arg.Tag, arg.TemplateID)
 	var i GetTemplateWithBuildByTagRow
 	err := row.Scan(
-		&i.Env.ID,
-		&i.Env.CreatedAt,
-		&i.Env.UpdatedAt,
-		&i.Env.Public,
-		&i.Env.BuildCount,
-		&i.Env.SpawnCount,
-		&i.Env.LastSpawnedAt,
-		&i.Env.TeamID,
-		&i.Env.CreatedBy,
-		&i.Env.ClusterID,
-		&i.Env.Source,
+		&i.ActiveEnv.ID,
+		&i.ActiveEnv.CreatedAt,
+		&i.ActiveEnv.UpdatedAt,
+		&i.ActiveEnv.Public,
+		&i.ActiveEnv.BuildCount,
+		&i.ActiveEnv.SpawnCount,
+		&i.ActiveEnv.LastSpawnedAt,
+		&i.ActiveEnv.TeamID,
+		&i.ActiveEnv.CreatedBy,
+		&i.ActiveEnv.ClusterID,
+		&i.ActiveEnv.Source,
 		&i.EnvBuild.ID,
 		&i.EnvBuild.CreatedAt,
 		&i.EnvBuild.UpdatedAt,

@@ -37,6 +37,16 @@ func ExecCommandAsRootWithOutput(tb testing.TB, ctx context.Context, sbx *api.Sa
 	return ExecCommandWithOutput(tb, ctx, sbx, envdClient, nil, "root", command, args...)
 }
 
+// ExecCommandAsDefaultUserWithOutput runs a command without sending a user
+// header, so envd falls back to the default user set at /init time. This is the
+// path that exercises the template's default user/workdir (it differs from
+// passing an explicit "user").
+func ExecCommandAsDefaultUserWithOutput(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, command string, args ...string) (string, error) {
+	tb.Helper()
+
+	return ExecCommandWithOutput(tb, ctx, sbx, envdClient, nil, "", command, args...)
+}
+
 func ExecCommandWithOptions(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, cwd *string, user string, command string, args ...string) error {
 	tb.Helper()
 
@@ -59,7 +69,10 @@ func ExecCommandWithOutput(tb testing.TB, ctx context.Context, sbx *api.Sandbox,
 	})
 
 	setup.SetSandboxHeader(tb, req.Header(), sbx.SandboxID)
-	setup.SetUserHeader(tb, req.Header(), user)
+	// An empty user omits the auth header so envd uses its default user.
+	if user != "" {
+		setup.SetUserHeader(tb, req.Header(), user)
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 

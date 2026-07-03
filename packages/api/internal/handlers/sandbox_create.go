@@ -142,6 +142,9 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	)
 
 	autoPause := sharedUtils.DerefOrDefault(body.AutoPause, sandbox.AutoPauseDefault)
+	// autoPauseMemory defaults to true (full memory snapshot). When false, a
+	// timeout auto-pause takes a filesystem-only snapshot (cold-boots on resume).
+	autoPauseFilesystemOnly := !sharedUtils.DerefOrDefault(body.AutoPauseMemory, true)
 	envVars := sharedUtils.DerefOrDefault(body.EnvVars, nil)
 	mcp := sharedUtils.DerefOrDefault(body.Mcp, nil)
 	metadata := sharedUtils.DerefOrDefault(body.Metadata, nil)
@@ -162,6 +165,23 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	if autoResume != nil {
 		minAutoResumeTimeout := time.Duration(a.featureFlags.IntFlag(ctx, featureflags.MinAutoResumeTimeoutSeconds)) * time.Second
 		autoResume.Timeout = calculateTimeoutSeconds(timeout, minAutoResumeTimeout, teamInfo)
+	}
+
+	// autoPauseMemory only controls the snapshot kind of a timeout auto-pause, so
+	// it is meaningless without autoPause; reject it rather than silently storing
+	// a no-op policy.
+	if autoPauseFilesystemOnly && !autoPause {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "autoPauseMemory=false only applies when autoPause is true.")
+
+		return
+	}
+
+	// A filesystem-only auto-pause produces a snapshot that traffic cannot
+	// auto-resume (it must be resumed explicitly), so the two are incompatible.
+	if autoPauseFilesystemOnly && autoResume != nil && autoResume.Policy == types.SandboxAutoResumeAny {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "autoPauseMemory=false (filesystem-only auto-pause) cannot be combined with autoResume: a filesystem-only snapshot cannot be auto-resumed by traffic and must be resumed explicitly.")
+
+		return
 	}
 
 	var envdAccessToken *string = nil
@@ -198,6 +218,32 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 				DeniedAddresses:  sharedUtils.DerefOrDefault(n.DenyOut, nil),
 				Rules:            apiRulesToDBRules(n.Rules),
 			},
+		}
+
+		if ep := n.EgressProxy; ep != nil {
+			if !a.featureFlags.BoolFlag(ctx, featureflags.BYOPProxyEnabledFlag) {
+				telemetry.ReportEvent(ctx, "egressProxy rejected by BYOPProxyEnabledFlag")
+				a.sendAPIStoreError(c, http.StatusForbidden,
+					"Egress proxy (network.egressProxy) is not enabled for this team.")
+
+				return
+			}
+
+			canonical, err := sandbox_network.ValidateEgressProxy(ctx, &sandbox_network.EgressProxyConfig{
+				Address:  ep.Address,
+				Username: sharedUtils.DerefOrDefault(ep.Username, ""),
+				Password: sharedUtils.DerefOrDefault(ep.Password, ""),
+			}, nil)
+			if err != nil {
+				telemetry.ReportError(ctx, "invalid egress proxy config", err, telemetry.WithSandboxID(sandboxID))
+				a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid egress proxy config: %s", err))
+
+				return
+			}
+
+			network.Egress.EgressProxyAddress = canonical.Address
+			network.Egress.EgressProxyUsername = canonical.Username
+			network.Egress.EgressProxyPassword = canonical.Password
 		}
 
 		// Make sure envd seucre access is enforced when public access is disabled,
@@ -242,18 +288,19 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		// The data can't be influenced by action on the same sandbox as other operations,
 		// so it's safe to reuse the data
 		return apiorch.SandboxMetadata{
-			Metadata:            metadata,
-			EnvVars:             envVars,
-			Build:               *build,
-			AllowInternetAccess: allowInternetAccess,
-			Network:             network,
-			Alias:               alias,
-			TemplateID:          env.TemplateID,
-			BaseTemplateID:      env.TemplateID,
-			AutoPause:           autoPause,
-			AutoResume:          autoResume,
-			VolumeMounts:        sbxVolumeMounts,
-			EnvdAccessToken:     envdAccessToken,
+			Metadata:                metadata,
+			EnvVars:                 envVars,
+			Build:                   *build,
+			AllowInternetAccess:     allowInternetAccess,
+			Network:                 network,
+			Alias:                   alias,
+			TemplateID:              env.TemplateID,
+			BaseTemplateID:          env.TemplateID,
+			AutoPause:               autoPause,
+			AutoPauseFilesystemOnly: autoPauseFilesystemOnly,
+			AutoResume:              autoResume,
+			VolumeMounts:            sbxVolumeMounts,
+			EnvdAccessToken:         envdAccessToken,
 		}, nil
 	}
 

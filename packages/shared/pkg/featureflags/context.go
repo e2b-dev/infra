@@ -3,6 +3,7 @@ package featureflags
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 )
 
@@ -118,8 +119,8 @@ func mergeContexts(ctx context.Context, contexts []ldcontext.Context) ldcontext.
 	return ldcontext.NewMulti(contexts...)
 }
 
-func ClusterContext(clusterID string) ldcontext.Context {
-	return ldcontext.NewWithKind(ClusterKind, clusterID)
+func ClusterContext(clusterID uuid.UUID) ldcontext.Context {
+	return ldcontext.NewWithKind(ClusterKind, clusterID.String())
 }
 
 func deploymentContext(deploymentName string) ldcontext.Context {
@@ -172,11 +173,4 @@ func CompressFileTypeContext(fileType string) ldcontext.Context {
 
 func CompressUseCaseContext(useCase string) ldcontext.Context {
 	return ldcontext.NewWithKind(CompressUseCaseKind, useCase)
-}
-
-func VersionContext(orchestratorID, commit string) ldcontext.Context {
-	return ldcontext.NewBuilder(orchestratorID).
-		Kind(OrchestratorKind).
-		SetString(OrchestratorCommitAttribute, commit).
-		Build()
 }

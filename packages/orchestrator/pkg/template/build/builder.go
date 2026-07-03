@@ -10,6 +10,8 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
@@ -182,9 +184,21 @@ func (b *Builder) Build(ctx context.Context, paths storage.Paths, cfg config.Tem
 	// Wrap context as a user error if no user error already exists
 	defer func() {
 		if ctx.Err() != nil {
+			childSpan.AddEvent("build context done", trace.WithAttributes(
+				attribute.String("context.err", ctx.Err().Error()),
+			))
 			e = errors.Join(e, ctx.Err())
 		}
-		e = builderrors.WrapContextAsUserError(e)
+
+		e = builderrors.WrapContextAsUserError(ctx, e)
+		if e != nil {
+			childSpan.RecordError(e, trace.WithAttributes(
+				telemetry.WithTemplateID(cfg.TemplateID),
+				telemetry.WithBuildID(paths.BuildID),
+				telemetry.WithTeamID(cfg.TeamID),
+			))
+			childSpan.SetStatus(codes.Error, e.Error())
+		}
 	}()
 
 	if isV1Build {
@@ -215,9 +229,30 @@ func (b *Builder) Build(ctx context.Context, paths storage.Paths, cfg config.Tem
 	uploadErrGroup := &errgroup.Group{}
 	defer func() {
 		// Wait for all template layers to be uploaded even if the build fails
+		_, waitSpan := tracer.Start(ctx, "wait-for-template-layer-uploads", trace.WithAttributes(
+			telemetry.WithTemplateID(cfg.TemplateID),
+			telemetry.WithBuildID(paths.BuildID),
+			telemetry.WithTeamID(cfg.TeamID),
+		))
+		defer waitSpan.End()
+
 		err := uploadErrGroup.Wait()
 		if err != nil {
+			waitSpan.RecordError(err)
+			waitSpan.SetStatus(codes.Error, err.Error())
+			b.logger.Error(ctx, "template layer upload wait failed",
+				logger.WithTemplateID(cfg.TemplateID),
+				logger.WithBuildID(paths.BuildID),
+				logger.WithTeamID(cfg.TeamID),
+				zap.Error(err),
+			)
 			e = errors.Join(e, fmt.Errorf("error uploading template layers: %w", err))
+		}
+
+		if ctx.Err() != nil {
+			waitSpan.AddEvent("build context done while waiting for uploads", trace.WithAttributes(
+				attribute.String("context.err", ctx.Err().Error()),
+			))
 		}
 	}()
 
@@ -435,7 +470,7 @@ func getRootfsSize(
 	s storage.StorageProvider,
 	paths storage.Paths,
 ) (uint64, error) {
-	obj, err := s.OpenBlob(ctx, paths.RootfsHeader(), storage.RootFSHeaderObjectType)
+	obj, err := s.OpenBlob(ctx, paths.RootfsHeader())
 	if err != nil {
 		return 0, fmt.Errorf("error opening rootfs header object: %w", err)
 	}

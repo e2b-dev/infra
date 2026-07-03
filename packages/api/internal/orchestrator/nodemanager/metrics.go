@@ -22,6 +22,12 @@ type Metrics struct {
 	MemoryTotalBytes     uint64
 	SandboxCount         uint32
 
+	// Hugepage pool metrics (page counts)
+	HugePagesTotal    uint64
+	HugePagesUsed     uint64
+	HugePagesReserved uint64
+	HugePageSizeBytes uint64
+
 	// Detailed disk metrics
 	HostDisks []DiskMetrics
 }
@@ -44,6 +50,12 @@ func (n *Node) UpdateMetricsFromServiceInfoResponse(info *orchestratorinfo.Servi
 
 	// Update total sandbox count
 	n.metrics.SandboxCount = info.GetMetricSandboxesRunning()
+
+	// Update hugepage metrics
+	n.metrics.HugePagesTotal = info.GetMetricHugepagesTotal()
+	n.metrics.HugePagesUsed = info.GetMetricHugepagesUsed()
+	n.metrics.HugePagesReserved = info.GetMetricHugepagesReserved()
+	n.metrics.HugePageSizeBytes = info.GetMetricHugepageSizeBytes()
 
 	// Update detailed disk metrics
 	disks := info.GetMetricDisks()
@@ -71,6 +83,11 @@ func (n *Node) Metrics() Metrics {
 		MemoryUsedBytes:      n.metrics.MemoryUsedBytes,
 		MemoryTotalBytes:     n.metrics.MemoryTotalBytes,
 		SandboxCount:         n.metrics.SandboxCount,
+
+		HugePagesTotal:    n.metrics.HugePagesTotal,
+		HugePagesUsed:     n.metrics.HugePagesUsed,
+		HugePagesReserved: n.metrics.HugePagesReserved,
+		HugePageSizeBytes: n.metrics.HugePageSizeBytes,
 
 		HostDisks: make([]DiskMetrics, len(n.metrics.HostDisks)),
 	}
@@ -103,6 +120,10 @@ func (n *Node) GetAPIMetric() api.NodeMetrics {
 		AllocatedCPU:         metrics.CpuAllocated,
 		CpuPercent:           metrics.CpuPercent,
 		CpuCount:             metrics.CpuCount,
+		HugePagesTotal:       metrics.HugePagesTotal,
+		HugePagesUsed:        metrics.HugePagesUsed,
+		HugePagesReserved:    metrics.HugePagesReserved,
+		HugePageSizeBytes:    metrics.HugePageSizeBytes,
 		Disks:                diskMetrics,
 	}
 }

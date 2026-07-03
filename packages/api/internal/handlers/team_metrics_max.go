@@ -12,8 +12,6 @@ import (
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	clickhouseUtils "github.com/e2b-dev/infra/packages/clickhouse/pkg/utils"
-	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -27,18 +25,6 @@ func (a *APIStore) GetTeamsTeamIDMetricsMax(c *gin.Context, teamID string, param
 	if teamID != authTeamID.String() {
 		telemetry.ReportError(ctx, "team ids mismatch", fmt.Errorf("you (%s) are not authorized to access this team's (%s) metrics", authTeamID, teamID), telemetry.WithTeamID(authTeamID.String()))
 		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You (%s) are not authorized to access this team's (%s) metrics", authTeamID, teamID))
-
-		return
-	}
-
-	metricsReadFlag := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlag)
-
-	if !metricsReadFlag {
-		logger.L().Debug(ctx, "sandbox metrics read feature flag is disabled")
-		// If we are not reading from ClickHouse, we can return an empty map
-		// This is here just to have the possibility to turn off ClickHouse metrics reading
-
-		c.JSON(http.StatusOK, api.MaxTeamMetric{})
 
 		return
 	}

@@ -96,7 +96,7 @@ func (tm *TemplateManager) BuildsStatusPeriodicalSync(ctx context.Context) {
 			logger.L().Info(ctx, "Running periodical sync of builds statuses", zap.Int("count", len(buildsRunning)))
 			for _, b := range buildsRunning {
 				go func(b queries.GetInProgressTemplateBuildsRow) {
-					err := tm.BuildStatusSync(ctx, b.EnvBuild.ID, b.Env.ID, clustersshared.WithClusterFallback(b.TeamClusterID), b.EnvBuild.ClusterNodeID)
+					err := tm.BuildStatusSync(ctx, b.EnvBuild.ID, b.ActiveEnv.ID, clustersshared.WithClusterFallback(b.TeamClusterID), b.EnvBuild.ClusterNodeID)
 					if err != nil {
 						logger.L().Error(ctx, "Error syncing build status", zap.Error(err), zap.String("buildID", b.EnvBuild.ID.String()))
 					}
@@ -115,7 +115,7 @@ func (tm *TemplateManager) GetAvailableBuildClient(ctx context.Context, clusterI
 	}
 
 	// Set feature flags context for cluster
-	ctx = featureflags.AddToContext(ctx, featureflags.ClusterContext(clusterID.String()))
+	ctx = featureflags.AddToContext(ctx, featureflags.ClusterContext(clusterID))
 
 	nodeInfoJSON := tm.featureFlags.JSONFlag(ctx, featureflags.BuildNodeInfo)
 	nodeInfo := machineinfo.FromLDValue(ctx, nodeInfoJSON)

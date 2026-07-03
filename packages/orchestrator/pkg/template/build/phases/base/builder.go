@@ -295,6 +295,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 			UpdateEnvd:     false,
 			SandboxCreator: sandboxCreator,
 			ActionExecutor: actionExecutor,
+			BuildOrigin:    storage.ObjectOriginTemplateBuildCache,
 		},
 	)
 	if err != nil {
