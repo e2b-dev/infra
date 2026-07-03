@@ -169,18 +169,17 @@ func TestSandboxResume_FilesystemOnlyReboots(t *testing.T) {
 }
 
 // TestSnapshotTemplate_FilesystemOnly verifies the filesystem-only variant of
-// the snapshot endpoint (memory:false): the snapshot template persists only the
-// rootfs, and taking it reboots the source sandbox in place — its rootfs and
-// identity survive while a fresh kernel boot id proves the cold boot. A sandbox
-// created from the template then cold-boots from the captured filesystem.
+// the snapshot endpoint (memory:false): the returned template persists only the
+// rootfs, so a sandbox created from it cold-boots from the captured filesystem,
+// while the source sandbox is memory-checkpointed and resumes with its memory
+// intact — an unchanged kernel boot id proves it was not rebooted.
 func TestSnapshotTemplate_FilesystemOnly(t *testing.T) {
 	t.Parallel()
 	c := setup.GetAPIClient()
 	ctx := t.Context()
 
-	// Generous timeout: the checkpoint reboots the source sandbox in place, and
-	// RebootSandbox rejects an already-past end time; under parallel load a
-	// short timeout would make this flaky.
+	// Generous timeout: the checkpoint resume goes through placement, and under
+	// parallel load a short timeout could expire the end time before it runs.
 	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false), utils.WithTimeout(300))
 	envdClient := setup.GetEnvdClient(t, ctx)
 
@@ -216,14 +215,15 @@ func TestSnapshotTemplate_FilesystemOnly(t *testing.T) {
 	got, err := utils.ExecCommandAsRootWithOutput(t, ctx, sbx, envdClient,
 		"cat", "/home/user/fs-only-snapshot-marker.txt")
 	require.NoError(t, err)
-	assert.Equal(t, marker, strings.TrimSpace(got), "rootfs marker must survive the in-place reboot")
+	assert.Equal(t, marker, strings.TrimSpace(got), "rootfs marker must survive the checkpoint")
 
-	// A fresh boot id proves the source sandbox was cold-booted, not memory-resumed.
+	// An unchanged boot id proves the source sandbox was memory-resumed, not
+	// rebooted: only the returned template is filesystem-only.
 	bootAfter, err := utils.ExecCommandAsRootWithOutput(t, ctx, sbx, envdClient,
 		"cat", "/proc/sys/kernel/random/boot_id")
 	require.NoError(t, err)
-	assert.NotEqual(t, bootBefore, strings.TrimSpace(bootAfter),
-		"boot id should change — a filesystem-only snapshot reboots the source sandbox")
+	assert.Equal(t, bootBefore, strings.TrimSpace(bootAfter),
+		"boot id must not change — a filesystem-only snapshot memory-resumes the source sandbox")
 
 	// A sandbox created from the filesystem-only template cold-boots from the
 	// captured rootfs, so the marker must be there.
@@ -239,6 +239,14 @@ func TestSnapshotTemplate_FilesystemOnly(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, marker, strings.TrimSpace(gotNew),
 		"marker must be present in a sandbox created from the filesystem-only snapshot")
+
+	// A fresh boot id in the new sandbox proves it cold-booted from disk rather
+	// than restoring the source's memory state.
+	newBoot, err := utils.ExecCommandAsRootWithOutput(t, ctx, newSbx, envdClient,
+		"cat", "/proc/sys/kernel/random/boot_id")
+	require.NoError(t, err)
+	assert.NotEqual(t, bootBefore, strings.TrimSpace(newBoot),
+		"a sandbox created from a filesystem-only snapshot must cold-boot")
 }
 
 // TestSandboxAutoPause_FilesystemOnly verifies the auto-pause filesystem-only

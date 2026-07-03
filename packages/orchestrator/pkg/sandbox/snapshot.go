@@ -45,6 +45,12 @@ type Snapshot struct {
 	// produces a NoDiff memfile but still needs its snapfile uploaded.
 	FilesystemSnapshot bool
 
+	// FilesystemSibling is the filesystem-only sibling snapshot derived from
+	// this memory pause when requested via WithFilesystemSibling: a separate
+	// build sharing this snapshot's rootfs data via header references. Its
+	// upload must run after this snapshot's upload has finished.
+	FilesystemSibling *Snapshot
+
 	// RootfsBlockSize is captured sync at Pause time — needed sync by NewUpload's
 	// compression validation. (The memfile block size lives in
 	// MemorySnapshot.BlockSize.)

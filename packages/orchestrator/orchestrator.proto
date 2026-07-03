@@ -180,11 +180,16 @@ message SandboxCheckpointRequest {
   // it to object metadata.
   map<string, string> metadata = 4;
 
-  // When true, persist only the filesystem (no memory snapshot); sandboxes
-  // created from such a snapshot cold-boot (reboot) from the rootfs, and the
-  // source sandbox is rebooted in place instead of memory-resumed. Default
-  // false = full memory snapshot, so existing callers are unaffected.
-  bool filesystem_only = 5;
+  // When set, the checkpoint additionally derives a filesystem-only sibling
+  // build under this ID: it shares the checkpoint's rootfs data via header
+  // references but carries no memory snapshot, so sandboxes created from it
+  // cold-boot (reboot) from the rootfs. The main build_id snapshot stays a
+  // full memory snapshot that the source sandbox is resumed from, exactly
+  // like a plain checkpoint. Unset = no derived build (existing behavior).
+  string filesystem_build_id = 5;
+
+  // Provenance for the sibling build's storage objects, analogous to metadata.
+  map<string, string> filesystem_metadata = 6;
 }
 
 message SandboxCheckpointResponse {

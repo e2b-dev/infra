@@ -811,13 +811,12 @@ components:
           type: boolean
           default: true
           description: >-
-            Whether the snapshot captures a full memory snapshot. When false,
-            only the filesystem is persisted (a filesystem-only snapshot):
-            sandboxes created from it cold-boot (reboot) from disk instead of
-            restoring in-memory state. Taking a filesystem-only snapshot also
-            reboots the source sandbox — its in-memory state, running processes,
-            and open connections are lost while the filesystem and sandbox
-            identity are preserved. Defaults to true.
+            Whether the snapshot template captures the sandbox's memory. When
+            false, the template persists only the filesystem (a filesystem-only
+            snapshot): sandboxes created from it cold-boot (reboot) from disk
+            instead of restoring in-memory state. The source sandbox itself is
+            unaffected either way — it is checkpointed with memory and resumes
+            with its processes and memory intact. Defaults to true.
 
     SandboxPauseRequest:
       type: object

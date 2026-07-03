@@ -56,8 +56,8 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 	}
 
 	// Build opts from the optional name. memory defaults to true (full memory
-	// snapshot); memory:false requests a filesystem-only snapshot, which also
-	// reboots the source sandbox (resume-in-place needs a cold boot).
+	// snapshot); memory:false requests a filesystem-only snapshot template,
+	// derived from the memory checkpoint the source sandbox resumes from.
 	opts := orchestrator.SnapshotTemplateOpts{
 		Tag:            id.DefaultTag,
 		FilesystemOnly: body.Memory != nil && !*body.Memory,
