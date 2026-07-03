@@ -1720,20 +1720,33 @@ func (s *Sandbox) WaitForExit(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "sandbox-wait-for-exit")
 	defer span.End()
 
-	timeout := time.Until(s.GetEndAt())
-
-	select {
-	case <-time.After(timeout):
-		return errors.New("waiting for exit took too long")
-	case <-ctx.Done():
-		return nil
-	case <-s.exit.Done():
-		err := s.exit.Error()
-		if err == nil {
-			return nil
+	for {
+		endAt := s.GetEndAt()
+		timeout := time.Until(endAt)
+		if timeout <= 0 {
+			return errors.New("sandbox TTL expired")
 		}
 
-		return fmt.Errorf("fc process exited prematurely: %w", err)
+		timer := time.NewTimer(timeout)
+		select {
+		case <-timer.C:
+			// Re-check in case SetEndAt extended the deadline (e.g. via KeepAlive).
+			if s.GetEndAt().After(endAt) {
+				continue
+			}
+			return errors.New("waiting for exit took too long")
+		case <-ctx.Done():
+			timer.Stop()
+			return nil
+		case <-s.exit.Done():
+			timer.Stop()
+			err := s.exit.Error()
+			if err == nil {
+				return nil
+			}
+
+			return fmt.Errorf("fc process exited prematurely: %w", err)
+		}
 	}
 }
 
