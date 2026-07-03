@@ -19,10 +19,14 @@ SELECT
 FROM "public"."active_envs" e
 JOIN "public"."snapshot_templates" st ON st.env_id = e.id
 JOIN LATERAL (
+    -- When a tag filter is set, pick the newest build with that tag; the inner
+    -- join then also drops snapshots with no successful build for the tag.
     SELECT b.*, ba.tag
     FROM "public"."env_build_assignments" ba
     JOIN "public"."env_builds" b ON b.id = ba.build_id
-    WHERE ba.env_id = e.id AND b.status IN ('success', 'uploaded', 'ready')
+    WHERE ba.env_id = e.id
+      AND b.status IN ('success', 'uploaded', 'ready')
+      AND (sqlc.narg(tag)::text IS NULL OR ba.tag = sqlc.narg(tag)::text)
     ORDER BY ba.created_at DESC
     LIMIT 1
 ) eb ON TRUE
@@ -35,8 +39,12 @@ LEFT JOIN LATERAL (
 WHERE e.team_id = @team_id
 AND e.source = 'snapshot_template'
 AND (
-    sqlc.narg(sandbox_id)::text IS NULL 
+    sqlc.narg(sandbox_id)::text IS NULL
     OR st.sandbox_id = sqlc.narg(sandbox_id)::text
+)
+AND (
+    sqlc.narg(env_id)::text IS NULL
+    OR e.id = sqlc.narg(env_id)::text
 )
 AND (e.created_at, e.id) < (@cursor_time, @cursor_id::text)
 ORDER BY e.created_at DESC, e.id DESC

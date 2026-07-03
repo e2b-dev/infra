@@ -158,6 +158,11 @@ func (c *Chunker) getOrCreateSession(ctx context.Context, off, length int64, ups
 // for every block the range spans (a span can cross block boundaries
 // after dedup; waiting only on the start block leaves the tail unfetched).
 func (c *Chunker) fetch(ctx context.Context, off, length int64, upstream storage.RangeOpener, ft *storage.FrameTable) (storage.Source, error) {
+	// (upstream, ft) is a per-call snapshot, so this read can be served by a
+	// session created before a peer→storage switch and framed on a different
+	// geometry (4MB uncompressed peer chunks vs smaller compressed frames).
+	// bytesReady counts from the session's chunkOff, so all readiness math
+	// below is in the session's frame.
 	chunkOff, chunkLen, err := c.locateChunk(off, ft)
 	if err != nil {
 		return storage.UnknownSource, fmt.Errorf("failed to locate chunk for offset %d: %w", off, err)
@@ -171,10 +176,11 @@ func (c *Chunker) fetch(ctx context.Context, off, length int64, upstream storage
 	blockSize := c.cache.BlockSize()
 	startBlock := (off / blockSize) * blockSize
 	endBlock := ((off + length - 1) / blockSize) * blockSize
-	chunkEnd := chunkOff + chunkLen
+
+	chunkEnd := session.chunkOff + session.chunkLen
 
 	// Already streamed past every byte we need: it's in the mmap, source=mmap.
-	endByte := min(endBlock+blockSize, chunkEnd) - chunkOff
+	endByte := min(endBlock+blockSize, chunkEnd) - session.chunkOff
 	if session.bytesReady.Load() >= endByte {
 		return storage.SourceMmap, nil
 	}

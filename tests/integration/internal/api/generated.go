@@ -688,6 +688,18 @@ type NodeMetrics struct {
 	// Disks Detailed metrics for each disk/mount point
 	Disks []DiskMetrics `json:"disks"`
 
+	// HugePageSizeBytes Size of a single hugepage in bytes
+	HugePageSizeBytes uint64 `json:"hugePageSizeBytes"`
+
+	// HugePagesReserved Number of reserved hugepages (committed but not yet faulted)
+	HugePagesReserved uint64 `json:"hugePagesReserved"`
+
+	// HugePagesTotal Total number of preallocated hugepages on the node
+	HugePagesTotal uint64 `json:"hugePagesTotal"`
+
+	// HugePagesUsed Number of hugepages in use (total - free)
+	HugePagesUsed uint64 `json:"hugePagesUsed"`
+
 	// MemoryTotalBytes Total node memory in bytes
 	MemoryTotalBytes uint64 `json:"memoryTotalBytes"`
 
@@ -1550,6 +1562,9 @@ type GetSandboxesSandboxIDMetricsParams struct {
 // GetSnapshotsParams defines parameters for GetSnapshots.
 type GetSnapshotsParams struct {
 	SandboxID *string `form:"sandboxID,omitempty" json:"sandboxID,omitempty"`
+
+	// Name Filter snapshots by name or ID, optionally tag-qualified (e.g. "my-snapshot", "my-team/my-snapshot" or "my-snapshot:v1").
+	Name *string `form:"name,omitempty" json:"name,omitempty"`
 
 	// Limit Maximum number of items to return per page
 	Limit *PaginationLimit `form:"limit,omitempty" json:"limit,omitempty"`
@@ -4388,6 +4403,18 @@ func NewGetSnapshotsRequest(server string, params *GetSnapshotsParams) (*http.Re
 		if params.SandboxID != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "sandboxID", *params.SandboxID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Name != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "name", *params.Name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {

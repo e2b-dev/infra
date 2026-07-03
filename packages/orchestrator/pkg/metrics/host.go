@@ -31,6 +31,11 @@ type CPUMetrics struct {
 type MemoryMetrics struct {
 	UsedBytes  uint64
 	TotalBytes uint64
+	// Hugepage pool metrics from /proc/meminfo, in page counts.
+	HugePagesTotal    uint64 // HugePages_Total: preallocated pool size
+	HugePagesUsed     uint64 // HugePages_Total - HugePages_Free
+	HugePagesReserved uint64 // HugePages_Rsvd: committed but not yet faulted
+	HugePageSizeBytes uint64 // Hugepagesize
 }
 
 type DiskInfo struct {
@@ -178,9 +183,18 @@ func readMemory() (*MemoryMetrics, error) {
 		return nil, err
 	}
 
+	hugePagesUsed := uint64(0)
+	if memInfo.HugePagesTotal > memInfo.HugePagesFree {
+		hugePagesUsed = memInfo.HugePagesTotal - memInfo.HugePagesFree
+	}
+
 	return &MemoryMetrics{
-		UsedBytes:  memInfo.Used,
-		TotalBytes: memInfo.Total,
+		UsedBytes:         memInfo.Used,
+		TotalBytes:        memInfo.Total,
+		HugePagesTotal:    memInfo.HugePagesTotal,
+		HugePagesUsed:     hugePagesUsed,
+		HugePagesReserved: memInfo.HugePagesRsvd,
+		HugePageSizeBytes: memInfo.HugePageSize,
 	}, nil
 }
 

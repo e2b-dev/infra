@@ -1549,6 +1549,10 @@ components:
         - cpuCount
         - memoryTotalBytes
         - disks
+        - hugePagesTotal
+        - hugePagesUsed
+        - hugePagesReserved
+        - hugePageSizeBytes
       properties:
         allocatedCPU:
           type: integer
@@ -1574,6 +1578,22 @@ components:
           type: integer
           format: uint64
           description: Total node memory in bytes
+        hugePagesTotal:
+          type: integer
+          format: uint64
+          description: Total number of preallocated hugepages on the node
+        hugePagesUsed:
+          type: integer
+          format: uint64
+          description: Number of hugepages in use (total - free)
+        hugePagesReserved:
+          type: integer
+          format: uint64
+          description: Number of reserved hugepages (committed but not yet faulted)
+        hugePageSizeBytes:
+          type: integer
+          format: uint64
+          description: Size of a single hugepage in bytes
         disks:
           type: array
           description: Detailed metrics for each disk/mount point
@@ -2691,6 +2711,12 @@ paths:
           schema:
             type: string
             description: Filter snapshots by source sandbox ID
+        - name: name
+          in: query
+          description: Filter snapshots by name or ID, optionally tag-qualified (e.g. "my-snapshot", "my-team/my-snapshot" or "my-snapshot:v1").
+          required: false
+          schema:
+            type: string
         - $ref: "#/components/parameters/paginationLimit"
         - $ref: "#/components/parameters/paginationNextToken"
       responses:
