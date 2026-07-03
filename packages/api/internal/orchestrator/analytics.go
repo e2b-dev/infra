@@ -25,7 +25,11 @@ const (
 
 // sbxStopTime returns the effective stop time, prevents stale record evicted late reporting incorrect data
 func sbxStopTime(sbx sandbox.Sandbox, now time.Time) time.Time {
-	if sbx.EndTime.After(sbx.StartTime) && sbx.EndTime.Before(now) {
+	if !sbx.EndTime.After(sbx.StartTime) {
+		return sbx.StartTime
+	}
+
+	if sbx.EndTime.Before(now) {
 		return sbx.EndTime
 	}
 
