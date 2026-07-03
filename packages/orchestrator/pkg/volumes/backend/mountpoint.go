@@ -12,21 +12,17 @@ import (
 	"github.com/google/uuid"
 )
 
+// procMountsPath is the path to the kernel mount table.
+// Tests override this to inject a fake /proc/mounts without requiring root.
+var procMountsPath = "/proc/mounts"
+
 // MountpointBackend is the generic backend for any POSIX-compliant distributed
 // filesystem that the operator has already mounted on the host.  It verifies
 // that the configured root is an active mount point (not just a plain
 // directory) so misconfiguration is caught at startup rather than at runtime.
-//
-// Supported filesystems (mount once on host, point root here):
-//   - JuiceFS   (fuse.juicefs)
-//   - CephFS    (ceph, fuse.ceph)
-//   - GlusterFS (fuse.glusterfs)
-//   - SeaweedFS (fuse.seaweedfs)
-//   - BeeGFS    (beegfs)
-//   - Any other POSIX-compliant FS
 type MountpointBackend struct {
 	root       string
-	backendTyp string // for Type() labelling when embedded
+	backendTyp string
 }
 
 func NewMountpointBackend(root, typ string) *MountpointBackend {
@@ -73,9 +69,9 @@ func (b *MountpointBackend) Healthy(_ context.Context) error {
 
 func (b *MountpointBackend) Type() string { return b.backendTyp }
 
-// isMountPoint parses /proc/mounts to determine whether path is a mount point.
+// isMountPoint reports whether path appears as a mount point in procMountsPath.
 func isMountPoint(path string) (bool, error) {
-	f, err := os.Open("/proc/mounts")
+	f, err := os.Open(procMountsPath)
 	if err != nil {
 		return false, err
 	}
@@ -90,4 +86,25 @@ func isMountPoint(path string) (bool, error) {
 	}
 
 	return false, scanner.Err()
+}
+
+// mountFSType returns the filesystem type for path from procMountsPath.
+// Returns ("", nil) when no entry is found.
+func mountFSType(path string) (string, error) {
+	f, err := os.Open(procMountsPath)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		// /proc/mounts: device mountpoint fstype options dump pass
+		fields := strings.Fields(scanner.Text())
+		if len(fields) >= 3 && fields[1] == path {
+			return fields[2], nil
+		}
+	}
+
+	return "", scanner.Err()
 }
