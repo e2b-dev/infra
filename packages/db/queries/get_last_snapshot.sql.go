@@ -7,6 +7,8 @@ package queries
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
 
 const getLastSnapshot = `-- name: GetLastSnapshot :one
@@ -29,8 +31,13 @@ LEFT JOIN LATERAL (
     FROM "public"."env_aliases"
     WHERE env_id = s.base_env_id
 ) ea ON TRUE
-WHERE s.sandbox_id = $1
+WHERE s.sandbox_id = $1 AND ($2::uuid IS NULL OR s.team_id = $2::uuid)
 `
+
+type GetLastSnapshotParams struct {
+	SandboxID string
+	TeamID    *uuid.UUID
+}
 
 type GetLastSnapshotRow struct {
 	Aliases  []string
@@ -39,8 +46,8 @@ type GetLastSnapshotRow struct {
 	EnvBuild EnvBuild
 }
 
-func (q *Queries) GetLastSnapshot(ctx context.Context, sandboxID string) (GetLastSnapshotRow, error) {
-	row := q.db.QueryRow(ctx, getLastSnapshot, sandboxID)
+func (q *Queries) GetLastSnapshot(ctx context.Context, arg GetLastSnapshotParams) (GetLastSnapshotRow, error) {
+	row := q.db.QueryRow(ctx, getLastSnapshot, arg.SandboxID, arg.TeamID)
 	var i GetLastSnapshotRow
 	err := row.Scan(
 		&i.Aliases,
