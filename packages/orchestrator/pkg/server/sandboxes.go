@@ -25,6 +25,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
@@ -756,9 +757,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 	sbxlogger.E(sbx).Info(ctx, "Checkpointing sandbox")
 
-	// Checkpoint always takes a full memory snapshot; filesystem-only checkpoint
-	// (resume-in-place would need to reboot) is not supported yet.
-	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId(), in.GetMetadata(), storage.ObjectOriginSnapshotTemplate, false)
+	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId(), in.GetMetadata(), storage.ObjectOriginSnapshotTemplate, in.GetFilesystemOnly())
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error snapshotting sandbox for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
@@ -774,43 +773,66 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		return nil, status.Errorf(codes.Internal, "error getting template for resume: %s", err)
 	}
 
-	// Resume the sandbox keeping the same ExecutionID (stable identity for
+	// Bring the sandbox back keeping the same ExecutionID (stable identity for
 	// the API, routing catalog, and analytics) but with a fresh LifecycleID
 	// so the old sandbox's cleanup goroutine won't
 	// accidentally evict the resumed sandbox from the map.
-	resumedSbx, err := s.sandboxFactory.ResumeSandbox(
-		ctx,
-		template,
-		sbx.Config,
-		sandbox.RuntimeMetadata{
-			TemplateID:  sbx.Runtime.TemplateID,
-			SandboxID:   sbx.Runtime.SandboxID,
-			ExecutionID: sbx.Runtime.ExecutionID,
-			TeamID:      sbx.Runtime.TeamID,
-			BuildID:     sbx.Runtime.BuildID,
-			SandboxType: sbx.Runtime.SandboxType,
-		},
-		sbx.GetStartedAt(),
-		sbx.GetEndAt(),
-		sbx.APIStoredConfig,
-	)
+	runtime := sandbox.RuntimeMetadata{
+		TemplateID:  sbx.Runtime.TemplateID,
+		SandboxID:   sbx.Runtime.SandboxID,
+		ExecutionID: sbx.Runtime.ExecutionID,
+		TeamID:      sbx.Runtime.TeamID,
+		BuildID:     sbx.Runtime.BuildID,
+		SandboxType: sbx.Runtime.SandboxType,
+	}
+
+	var resumedSbx *sandbox.Sandbox
+	if in.GetFilesystemOnly() {
+		// A filesystem-only snapshot has no memory to restore, so the only way
+		// to bring the sandbox back is a cold boot (reboot) from the sealed
+		// rootfs — guest RAM, processes, and connections are lost by design.
+		resumedSbx, err = s.sandboxFactory.RebootSandbox(
+			ctx,
+			template,
+			sbx.Config,
+			runtime,
+			sbx.GetEndAt(),
+			sbx.APIStoredConfig,
+		)
+	} else {
+		resumedSbx, err = s.sandboxFactory.ResumeSandbox(
+			ctx,
+			template,
+			sbx.Config,
+			runtime,
+			sbx.GetStartedAt(),
+			sbx.GetEndAt(),
+			sbx.APIStoredConfig,
+		)
+	}
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error resuming sandbox after checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
 		return nil, status.Errorf(codes.Internal, "error resuming sandbox after checkpoint: %s", err)
 	}
 
-	// Collect prefetch data immediately after resume while it's most accurate
-	prefetchData, prefetchErr := resumedSbx.MemoryPrefetchData(ctx)
-	if prefetchErr != nil {
-		sbxlogger.I(resumedSbx).Warn(ctx, "failed to get prefetch data for checkpoint", zap.Error(prefetchErr))
+	// Collect prefetch data immediately after resume while it's most accurate.
+	// A filesystem-only snapshot has no memfile, so there is no memory working
+	// set to prefetch on a cold boot.
+	var prefetchData block.PrefetchData
+	var prefetchErr error
+	if !in.GetFilesystemOnly() {
+		prefetchData, prefetchErr = resumedSbx.MemoryPrefetchData(ctx)
+		if prefetchErr != nil {
+			sbxlogger.I(resumedSbx).Warn(ctx, "failed to get prefetch data for checkpoint", zap.Error(prefetchErr))
+		}
 	}
 
 	// Setup lifecycle for the resumed sandbox
 	s.setupSandboxLifecycle(ctx, resumedSbx)
 
 	// Embed prefetch data into the metadata so it's uploaded with the snapshot files in a single pass.
-	if prefetchErr == nil {
+	if !in.GetFilesystemOnly() && prefetchErr == nil {
 		prefetchMapping := metadata.PrefetchEntriesToMapping(slices.Collect(maps.Values(prefetchData.BlockEntries)), prefetchData.BlockSize)
 		if prefetchMapping != nil {
 			res.meta = res.meta.WithPrefetch(&metadata.Prefetch{

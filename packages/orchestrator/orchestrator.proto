@@ -179,6 +179,12 @@ message SandboxCheckpointRequest {
   // index (e.g. template_id). Opaque to the orchestrator, which just forwards
   // it to object metadata.
   map<string, string> metadata = 4;
+
+  // When true, persist only the filesystem (no memory snapshot); sandboxes
+  // created from such a snapshot cold-boot (reboot) from the rootfs, and the
+  // source sandbox is rebooted in place instead of memory-resumed. Default
+  // false = full memory snapshot, so existing callers are unaffected.
+  bool filesystem_only = 5;
 }
 
 message SandboxCheckpointResponse {

@@ -32,6 +32,10 @@ type SnapshotTemplateOpts struct {
 	Namespace *string
 	// Tag is the build tag parsed from the name, defaults to "default".
 	Tag string
+	// FilesystemOnly makes the snapshot persist only the filesystem (no memory);
+	// sandboxes created from it cold-boot, and the source sandbox is rebooted
+	// in place instead of memory-resumed.
+	FilesystemOnly bool
 }
 
 // CreateSnapshotTemplate creates a persistent snapshot template from a running sandbox and immediately resumes it.
@@ -69,9 +73,7 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 		return SnapshotTemplateResult{}, fmt.Errorf("node '%s' not found", sbx.NodeID)
 	}
 
-	// Snapshot templates are always memory snapshots; filesystem-only checkpoint
-	// (resume-in-place would need a reboot) is not supported yet.
-	upsertResult, err := o.throttledUpsertSnapshot(ctx, buildUpsertSnapshotParams(sbx, node, false))
+	upsertResult, err := o.throttledUpsertSnapshot(ctx, buildUpsertSnapshotParams(sbx, node, opts.FilesystemOnly))
 	if err != nil {
 		return SnapshotTemplateResult{}, fmt.Errorf("error upserting snapshot: %w", err)
 	}
@@ -84,14 +86,16 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 	}
 
 	// Checkpoint pauses the sandbox, snapshots it, and resumes it on the
-	// orchestrator with the same ExecutionID. On error the orchestrator
-	// kills the sandbox itself; RemoveSandbox is still needed to clean up
-	// API-side state (store, routing, analytics).
+	// orchestrator with the same ExecutionID (a filesystem-only checkpoint
+	// reboots it instead). On error the orchestrator kills the sandbox itself;
+	// RemoveSandbox is still needed to clean up API-side state (store, routing,
+	// analytics).
 	client, childCtx := node.GetClient(ctx)
 	_, err = client.Sandbox.Checkpoint(childCtx, &orchestrator.SandboxCheckpointRequest{
-		SandboxId: sbx.SandboxID,
-		BuildId:   upsertResult.BuildID.String(),
-		Metadata:  map[string]string{storageopts.ObjectMetadataTemplateID: snapshotTemplateEnvID},
+		SandboxId:      sbx.SandboxID,
+		BuildId:        upsertResult.BuildID.String(),
+		Metadata:       map[string]string{storageopts.ObjectMetadataTemplateID: snapshotTemplateEnvID},
+		FilesystemOnly: opts.FilesystemOnly,
 	})
 	if err != nil {
 		o.failSnapshotBuild(ctx, upsertResult.BuildID, err)
