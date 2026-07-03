@@ -145,23 +145,16 @@ func New(
 	}
 	applyCgroupFD(cmd.SysProcAttr, cgroupFD, ok)
 
-	// Non-PTY commands run in their own process group so that SendSignal can
-	// reach the command's entire process tree (the leader plus any children it
-	// spawned), not just the single process envd manages. envd's per-process
-	// handle could not otherwise terminate those children, leaving them running
-	// — and consuming resources — after the command was killed.
+	// Non-PTY commands run in their own process group so that a SendSignal with
+	// child_processes set can reach the command's entire process tree (the
+	// leader plus any children it spawned), not just the single process envd
+	// manages. Starting in a dedicated group is harmless when the caller does
+	// not opt in — SendSignal then still targets only the leader.
 	// PTY processes are left alone: the pty package starts them in their own
 	// session already, and we keep their existing signal behavior.
 	isPTY := req.GetPty() != nil
 	if !isPTY {
 		cmd.SysProcAttr.Setpgid = true
-
-		// exec.CommandContext kills only the leader when the context (e.g. the
-		// command timeout) fires. Override the canceller to signal the whole
-		// process group instead, matching SendSignal's behavior.
-		cmd.Cancel = func() error {
-			return signalProcessGroup(cmd, syscall.SIGKILL)
-		}
 	}
 
 	resolvedPath, err := permissions.ExpandAndResolve(req.GetProcess().GetCwd(), user, defaults.Workdir)
@@ -380,7 +373,11 @@ func getProcType(req *rpc.StartRequest) cgroups.ProcessType {
 	return cgroups.ProcessTypeUser
 }
 
-func (p *Handler) SendSignal(signal syscall.Signal) error {
+// SendSignal delivers signal to the process. When childProcesses is true and
+// the command runs in its own process group (non-PTY), the signal is delivered
+// to the whole process group so the command's children are terminated together
+// with the leader; otherwise only the leader itself is signaled.
+func (p *Handler) SendSignal(signal syscall.Signal, childProcesses bool) error {
 	if p.cmd.Process == nil {
 		return errors.New("process not started")
 	}
@@ -389,10 +386,7 @@ func (p *Handler) SendSignal(signal syscall.Signal) error {
 		p.outCancel()
 	}
 
-	// For non-PTY commands the signal is delivered to the whole process group so
-	// the command's children are terminated together with the leader. PTY
-	// processes keep the original single-process behavior.
-	if p.processGroup {
+	if childProcesses && p.processGroup {
 		// Once the leader has been reaped the kernel is free to recycle its pid,
 		// and a raw kill(-pid) could then land on an unrelated command that
 		// reused the pid as its own process group leader. Bail out here just as
@@ -415,8 +409,6 @@ func (p *Handler) SendSignal(signal syscall.Signal) error {
 //
 // Callers must ensure the leader has not been reaped before calling this (the
 // pid may otherwise have been recycled); see the p.reaped guard in SendSignal.
-// The timeout-driven cmd.Cancel callback is safe because exec stops invoking it
-// once the process exits.
 func signalProcessGroup(cmd *exec.Cmd, signal syscall.Signal) error {
 	if cmd.Process == nil {
 		return errors.New("process not started")

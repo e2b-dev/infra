@@ -149,6 +149,12 @@ message SendSignalRequest {
     ProcessSelector process = 1;
 
     Signal signal = 2;
+
+    // When true, the signal is delivered to the process together with the
+    // whole tree of child processes it spawned, instead of just the process
+    // itself. Defaults to false to preserve the original single-process
+    // behavior. Ignored for PTY processes.
+    bool child_processes = 3;
 }
 
 message SendSignalResponse {}

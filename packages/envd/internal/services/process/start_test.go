@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -87,10 +88,11 @@ func TestStart_ShortCommand(t *testing.T) {
 	assert.NotNil(t, events[len(events)-1].GetEnd(), "last event should be End")
 }
 
-// TestSendSignal_KillsProcessTree verifies that killing a command also
-// terminates the child processes it spawned. envd's per-process handle only
-// signaled the leader, so children kept running after a kill; non-PTY commands
-// now run in their own process group and SIGKILL reaches the whole tree.
+// TestSendSignal_KillsProcessTree verifies that with child_processes set,
+// killing a command also terminates the child processes it spawned. envd's
+// per-process handle only signaled the leader, so children kept running after a
+// kill; non-PTY commands now run in their own process group and an opted-in
+// SIGKILL reaches the whole tree.
 func TestSendSignal_KillsProcessTree(t *testing.T) {
 	t.Parallel()
 
@@ -122,12 +124,13 @@ func TestSendSignal_KillsProcessTree(t *testing.T) {
 		return len(childPids) == 2
 	}, 5*time.Second, 50*time.Millisecond, "expected leader to spawn two children")
 
-	// Kill the command — this should take down the whole process group.
+	// Kill the command with child_processes set — takes down the whole group.
 	_, err = client.SendSignal(ctx, connect.NewRequest(&rpc.SendSignalRequest{
 		Process: &rpc.ProcessSelector{
 			Selector: &rpc.ProcessSelector_Pid{Pid: pid},
 		},
-		Signal: rpc.Signal_SIGNAL_SIGKILL,
+		Signal:         rpc.Signal_SIGNAL_SIGKILL,
+		ChildProcesses: true,
 	}))
 	require.NoError(t, err)
 
@@ -140,6 +143,67 @@ func TestSendSignal_KillsProcessTree(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return !slices.ContainsFunc(childPids, processAlive)
 	}, 5*time.Second, 50*time.Millisecond, "child processes should be killed with the leader")
+}
+
+// TestSendSignal_LeaderOnlyByDefault verifies that without child_processes the
+// signal targets only the leader, leaving the children it spawned running (the
+// original, opt-out behavior).
+func TestSendSignal_LeaderOnlyByDefault(t *testing.T) {
+	t.Parallel()
+
+	client, cleanup := newTestService(t)
+	defer cleanup()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+
+	// The leader spawns two children that outlive it (no wait), so killing only
+	// the leader leaves them reparented but alive.
+	stream, err := client.Start(ctx, connect.NewRequest(&rpc.StartRequest{
+		Process: &rpc.ProcessConfig{
+			Cmd:  "/bin/sh",
+			Args: []string{"-c", "sleep 120 & sleep 120 & wait"},
+		},
+	}))
+	require.NoError(t, err)
+
+	require.True(t, stream.Receive(), "expected a start event")
+	pid := stream.Msg().GetEvent().GetStart().GetPid()
+	require.NotZero(t, pid)
+
+	var childPids []int
+	require.Eventually(t, func() bool {
+		childPids = childrenOf(t, int(pid))
+
+		return len(childPids) == 2
+	}, 5*time.Second, 50*time.Millisecond, "expected leader to spawn two children")
+
+	// Kill without child_processes — only the leader should be signaled.
+	_, err = client.SendSignal(ctx, connect.NewRequest(&rpc.SendSignalRequest{
+		Process: &rpc.ProcessSelector{
+			Selector: &rpc.ProcessSelector_Pid{Pid: pid},
+		},
+		Signal: rpc.Signal_SIGNAL_SIGKILL,
+	}))
+	require.NoError(t, err)
+
+	for stream.Receive() {
+	}
+	_ = stream.Close()
+
+	// The leader is gone but its children keep running; clean them up after.
+	require.Eventually(t, func() bool {
+		return !processAlive(int(pid))
+	}, 5*time.Second, 50*time.Millisecond, "leader should be killed")
+
+	for _, cp := range childPids {
+		assert.True(t, processAlive(cp), "child %d should still be alive after a leader-only kill", cp)
+	}
+
+	// Clean up the orphaned children the test intentionally left running.
+	for _, cp := range childPids {
+		_ = syscall.Kill(cp, syscall.SIGKILL)
+	}
 }
 
 // childrenOf returns the pids whose parent is ppid, read from /proc.
