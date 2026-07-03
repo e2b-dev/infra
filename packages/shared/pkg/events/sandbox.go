@@ -15,6 +15,10 @@ const (
 // doesn't carry a team-specific TTL
 const DefaultEventsTTLDays int64 = 7
 
+// MaxEventsTTLDays caps the per-team event retention; the events writer
+// clamps to this value, so readers must use the same bound.
+const MaxEventsTTLDays int64 = 365
+
 const (
 	SandboxCreatedEvent      = "sandbox.lifecycle.created"
 	SandboxKilledEvent       = "sandbox.lifecycle.killed"

@@ -33,4 +33,5 @@ type TeamLimit struct {
 	MaxVcpu                  int32
 	MaxRamMb                 int32
 	DiskMb                   int32
+	EventsTtlDays            int32
 }

@@ -285,6 +285,7 @@ func (o *Orchestrator) CreateSandbox(
 			EnvVars:                 sbxData.EnvVars,
 			EnvdAccessToken:         sbxData.EnvdAccessToken,
 			MaxSandboxLength:        team.Limits.MaxLengthHours,
+			EventsTtlDays:           team.Limits.EventsTTLDays,
 			HugePages:               hasHugePages,
 			RamMb:                   sbxData.Build.RamMb,
 			Vcpu:                    sbxData.Build.Vcpu,

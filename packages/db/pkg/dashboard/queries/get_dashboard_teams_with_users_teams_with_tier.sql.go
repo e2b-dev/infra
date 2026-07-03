@@ -12,7 +12,7 @@ import (
 )
 
 const getDashboardTeamsWithUsersTeamsWithTier = `-- name: GetDashboardTeamsWithUsersTeamsWithTier :many
-SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, t.sandbox_scheduling_labels, t.slug, t.profile_picture_url, ut.is_default, tl.id, tl.max_length_hours, tl.concurrent_sandboxes, tl.concurrent_template_builds, tl.max_vcpu, tl.max_ram_mb, tl.disk_mb
+SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, t.sandbox_scheduling_labels, t.slug, t.profile_picture_url, ut.is_default, tl.id, tl.max_length_hours, tl.concurrent_sandboxes, tl.concurrent_template_builds, tl.max_vcpu, tl.max_ram_mb, tl.disk_mb, tl.events_ttl_days
 FROM "public"."teams" t
 JOIN "public"."users_teams" ut ON ut.team_id = t.id
 JOIN "public"."team_limits" tl ON tl.id = t.id
@@ -55,6 +55,7 @@ func (q *Queries) GetDashboardTeamsWithUsersTeamsWithTier(ctx context.Context, u
 			&i.TeamLimit.MaxVcpu,
 			&i.TeamLimit.MaxRamMb,
 			&i.TeamLimit.DiskMb,
+			&i.TeamLimit.EventsTtlDays,
 		); err != nil {
 			return nil, err
 		}
