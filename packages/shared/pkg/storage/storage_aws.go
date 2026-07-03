@@ -75,25 +75,67 @@ func newAWSStorage(ctx context.Context, bucketName string) (*awsStorage, error) 
 }
 
 func (s *awsStorage) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
+	// An empty prefix matches every key in the bucket; refuse it so a caller
+	// bug can't wipe the whole bucket.
+	if prefix == "" {
+		return errors.New("refusing to delete objects with an empty prefix")
+	}
+
+	// Inherit the caller's ctx for the overall walk: a prefix can hold far more
+	// than one page (ListObjectsV2 caps at 1000 keys) and the total work is
+	// unbounded, so a single awsOperationTimeout would truncate large prefixes.
+	// Each network round-trip is instead scoped to awsOperationTimeout below.
+	paginator := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{Bucket: &s.bucketName, Prefix: &prefix})
+
+	deleted := false
+	for paginator.HasMorePages() {
+		objects, err := func() ([]types.ObjectIdentifier, error) {
+			pageCtx, cancel := context.WithTimeout(ctx, awsOperationTimeout)
+			defer cancel()
+
+			list, err := paginator.NextPage(pageCtx)
+			if err != nil {
+				return nil, err
+			}
+
+			objects := make([]types.ObjectIdentifier, 0, len(list.Contents))
+			for _, obj := range list.Contents {
+				objects = append(objects, types.ObjectIdentifier{Key: obj.Key})
+			}
+
+			return objects, nil
+		}()
+		if err != nil {
+			return err
+		}
+
+		// A page can be empty (e.g. the last page after a truncated one), and
+		// DeleteObjects requires at least one object.
+		if len(objects) == 0 {
+			continue
+		}
+
+		// ListObjectsV2 returns at most 1000 keys per page, which matches the
+		// DeleteObjects per-call limit, so each page deletes in one request.
+		if err := s.deleteObjects(ctx, objects); err != nil {
+			return err
+		}
+
+		deleted = true
+	}
+
+	if !deleted {
+		logger.L().Warn(ctx, "No objects found to delete with the given prefix", zap.String("prefix", prefix), zap.String("bucket", s.bucketName))
+	}
+
+	return nil
+}
+
+// deleteObjects deletes a single batch of at most 1000 objects and surfaces any
+// per-object failures reported in the DeleteObjects output.
+func (s *awsStorage) deleteObjects(ctx context.Context, objects []types.ObjectIdentifier) error {
 	ctx, cancel := context.WithTimeout(ctx, awsOperationTimeout)
 	defer cancel()
-
-	list, err := s.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{Bucket: &s.bucketName, Prefix: &prefix})
-	if err != nil {
-		return err
-	}
-
-	objects := make([]types.ObjectIdentifier, 0, len(list.Contents))
-	for _, obj := range list.Contents {
-		objects = append(objects, types.ObjectIdentifier{Key: obj.Key})
-	}
-
-	// AWS S3 delete operation requires at least one object to delete.
-	if len(objects) == 0 {
-		logger.L().Warn(ctx, "No objects found to delete with the given prefix", zap.String("prefix", prefix), zap.String("bucket", s.bucketName))
-
-		return nil
-	}
 
 	output, err := s.client.DeleteObjects(
 		ctx, &s3.DeleteObjectsInput{
