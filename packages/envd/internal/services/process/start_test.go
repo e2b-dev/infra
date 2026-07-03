@@ -206,6 +206,52 @@ func TestSendSignal_LeaderOnlyByDefault(t *testing.T) {
 	}
 }
 
+// TestStart_TimeoutKillsProcessTreeWhenOptedIn verifies that when a command is
+// started with child_processes set, a request timeout tears down its whole
+// process tree, not just the leader.
+func TestStart_TimeoutKillsProcessTreeWhenOptedIn(t *testing.T) {
+	t.Parallel()
+
+	client, cleanup := newTestService(t)
+	defer cleanup()
+
+	// The context deadline is propagated as Connect-Timeout-Ms, which envd uses
+	// as the process timeout. Keep it short so the test doesn't drag.
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+
+	stream, err := client.Start(ctx, connect.NewRequest(&rpc.StartRequest{
+		Process: &rpc.ProcessConfig{
+			Cmd:  "/bin/sh",
+			Args: []string{"-c", "sleep 120 & sleep 120 & wait"},
+		},
+		ChildProcesses: true,
+	}))
+	require.NoError(t, err)
+
+	require.True(t, stream.Receive(), "expected a start event")
+	pid := stream.Msg().GetEvent().GetStart().GetPid()
+	require.NotZero(t, pid)
+
+	// Capture the children before the timeout fires.
+	var childPids []int
+	require.Eventually(t, func() bool {
+		childPids = childrenOf(t, int(pid))
+
+		return len(childPids) == 2
+	}, 2*time.Second, 50*time.Millisecond, "expected leader to spawn two children")
+
+	// Drain until the request times out and the stream ends.
+	for stream.Receive() {
+	}
+	_ = stream.Close()
+
+	// The timeout must take down the whole tree because child_processes was set.
+	require.Eventually(t, func() bool {
+		return !processAlive(int(pid)) && !slices.ContainsFunc(childPids, processAlive)
+	}, 5*time.Second, 50*time.Millisecond, "timeout should kill the whole process tree when opted in")
+}
+
 // childrenOf returns the pids whose parent is ppid, read from /proc.
 func childrenOf(t *testing.T, ppid int) []int {
 	t.Helper()

@@ -155,6 +155,18 @@ func New(
 	isPTY := req.GetPty() != nil
 	if !isPTY {
 		cmd.SysProcAttr.Setpgid = true
+
+		// exec.CommandContext kills only the leader when the context (a request
+		// timeout) fires. When the caller opted into child_processes at start,
+		// override the canceller to take down the whole group instead, keeping
+		// the timeout path consistent with an opted-in SendSignal. exec never
+		// invokes Cancel after the process has exited, so no reaped guard is
+		// needed here.
+		if req.GetChildProcesses() {
+			cmd.Cancel = func() error {
+				return signalProcessGroup(cmd, syscall.SIGKILL)
+			}
+		}
 	}
 
 	resolvedPath, err := permissions.ExpandAndResolve(req.GetProcess().GetCwd(), user, defaults.Workdir)

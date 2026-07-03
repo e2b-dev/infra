@@ -49,13 +49,17 @@ message ListResponse {
     repeated ProcessInfo processes = 1;
 }
 
-message StartRequest {    
+message StartRequest {
     ProcessConfig process = 1;
     optional PTY pty = 2;
     optional string tag = 3;
     // This is optional for backwards compatibility.
     // We default to true. New SDK versions will set this to false by default.
     optional bool stdin = 4;
+    // When true, terminating the process because of a request timeout also
+    // kills the whole tree of child processes it spawned. Defaults to false to
+    // preserve the original single-process behavior. Ignored for PTY processes.
+    bool child_processes = 5;
 }
 
 message UpdateRequest {
