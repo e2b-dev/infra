@@ -91,6 +91,7 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandboxtypes.Sandbox, err
 	var upgrades []redis.Z   // legacy members re-added in execution-scoped format
 	var upgradedLegacy []any // legacy members to retire once upgrades land
 	var rescores []redis.Z   // live members whose score drifted from EndTime
+	var orphanCount, deadExecutionCount, upgradedCount int64
 
 	for _, batch := range batches {
 		for i, raw := range batch.cmd.Val() {
@@ -101,6 +102,7 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandboxtypes.Sandbox, err
 			// execution concurrently re-added under the same sandbox ID.
 			if raw == nil {
 				staleMembers = append(staleMembers, ref.member)
+				orphanCount++
 
 				continue
 			}
@@ -120,6 +122,7 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandboxtypes.Sandbox, err
 			// Member names a dead execution; the live execution has its own member.
 			if ref.executionID != "" && ref.executionID != sbx.ExecutionID {
 				staleMembers = append(staleMembers, ref.member)
+				deadExecutionCount++
 
 				continue
 			}
@@ -176,6 +179,7 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandboxtypes.Sandbox, err
 			logger.L().Warn(ctx, "Failed to upgrade legacy expiration index entries", zap.Error(err), zap.Int("count", len(upgrades)))
 		} else {
 			staleMembers = append(staleMembers, upgradedLegacy...)
+			upgradedCount = int64(len(upgradedLegacy))
 		}
 	}
 
@@ -183,12 +187,24 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandboxtypes.Sandbox, err
 	if len(staleMembers) > 0 {
 		if err := s.redisClient.ZRem(ctx, globalExpirationSet, staleMembers...).Err(); err != nil {
 			logger.L().Warn(ctx, "Failed to clean up stale expiration index entries", zap.Error(err), zap.Int("count", len(staleMembers)))
+		} else {
+			if orphanCount > 0 {
+				s.metrics.indexSwept.Add(ctx, orphanCount, s.metrics.sweptOrphan)
+			}
+			if deadExecutionCount > 0 {
+				s.metrics.indexSwept.Add(ctx, deadExecutionCount, s.metrics.sweptDeadExecution)
+			}
+			if upgradedCount > 0 {
+				s.metrics.indexSwept.Add(ctx, upgradedCount, s.metrics.sweptLegacyUpgraded)
+			}
 		}
 	}
 
 	if len(rescores) > 0 {
 		if err := s.redisClient.ZAddXX(ctx, globalExpirationSet, rescores...).Err(); err != nil {
 			logger.L().Warn(ctx, "Failed to re-score drifted expiration index entries", zap.Error(err), zap.Int("count", len(rescores)))
+		} else {
+			s.metrics.indexRescored.Add(ctx, int64(len(rescores)))
 		}
 	}
 

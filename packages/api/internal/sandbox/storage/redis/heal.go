@@ -156,5 +156,7 @@ func (s *Storage) healTeamExpirationIndex(ctx context.Context, teamID string) (i
 		return 0, fmt.Errorf("ZADD NX failed: %w", err)
 	}
 
+	s.metrics.indexHealed.Add(ctx, int64(len(missing)))
+
 	return len(missing), nil
 }
