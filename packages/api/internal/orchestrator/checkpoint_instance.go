@@ -30,6 +30,11 @@ func (o *Orchestrator) CheckpointSandbox(ctx context.Context, teamID uuid.UUID, 
 		return fmt.Errorf("failed to start snapshotting: %w", err)
 	}
 
+	// alreadyDone conflates joining a concurrent checkpoint that just
+	// succeeded with finding the sandbox stuck in Snapshotting after a failed
+	// one, where no fresh snapshot exists. Treating it as success could fork
+	// stale state, so report a conflict and let the caller retry (same
+	// behavior as CreateSnapshotTemplate).
 	if alreadyDone {
 		return &sandbox.InvalidStateTransitionError{
 			CurrentState: sandbox.StateSnapshotting,
