@@ -140,8 +140,11 @@ func (a *APIStore) PostSandboxesSandboxIDFork(c *gin.Context, sandboxID api.Sand
 // not running: 409 if it is paused (a snapshot exists), 404 otherwise.
 func forkHandleNotRunningSandbox(ctx context.Context, a *APIStore, sandboxID string, teamID uuid.UUID) api.APIError {
 	apiErr := pauseHandleNotRunningSandbox(ctx, a.snapshotCache, sandboxID, teamID)
-	if apiErr.Code == http.StatusConflict {
+	switch apiErr.Code {
+	case http.StatusConflict:
 		apiErr.ClientMsg = fmt.Sprintf("Sandbox '%s' is paused and cannot be forked; resume it first", sandboxID)
+	case http.StatusInternalServerError:
+		apiErr.ClientMsg = "Error forking sandbox"
 	}
 
 	return apiErr
