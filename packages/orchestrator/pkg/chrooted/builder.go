@@ -23,13 +23,17 @@ type Builder struct {
 
 // NewBuilder initialises a Backend for each entry in
 // config.PersistentVolumeMounts, all using the same backend type
-// (config.VolumeBackendType, e.g. "local", "juicefs", "cephfs").
-func NewBuilder(config cfg.Config) (*Builder, error) {
+// (config.VolumeBackendType), and runs a health check on each one so the
+// orchestrator fails fast at startup if a distributed filesystem is not mounted.
+func NewBuilder(ctx context.Context, config cfg.Config) (*Builder, error) {
 	backends := make(map[string]backend.Backend, len(config.PersistentVolumeMounts))
 	for name, root := range config.PersistentVolumeMounts {
 		b, err := backend.NewBackend(config.VolumeBackendType, root)
 		if err != nil {
 			return nil, fmt.Errorf("volume type %q: %w", name, err)
+		}
+		if err := b.Healthy(ctx); err != nil {
+			return nil, fmt.Errorf("volume type %q health check failed: %w", name, err)
 		}
 		backends[name] = b
 	}
