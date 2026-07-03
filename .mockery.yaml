@@ -92,3 +92,9 @@ packages:
           filename: mockfeatureflagsclient.go
           pkgname: handlersmocks
           structname: MockFeatureFlagsClient
+      sandboxOrchestrator:
+        config:
+          dir: packages/api/internal/handlers/mocks
+          filename: mocksandboxorchestrator.go
+          pkgname: handlersmocks
+          structname: MockSandboxOrchestrator
