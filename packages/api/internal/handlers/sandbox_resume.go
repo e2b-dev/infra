@@ -255,6 +255,7 @@ func (a *APIStore) buildResumeSandboxData(snapshotSandboxID, sandboxID string, a
 			VolumeMounts:            convertDatabaseMountsToOrchestratorMounts(volumes),
 			EnvdAccessToken:         envdAccessToken,
 			NodeID:                  &nodeID,
+			SnapshotSandboxID:       snapshotSandboxID,
 		}, nil
 	}
 }

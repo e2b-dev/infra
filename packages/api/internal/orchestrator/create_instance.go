@@ -54,6 +54,9 @@ type SandboxMetadata struct {
 	VolumeMounts            []*orchestrator.SandboxVolumeMount
 	EnvdAccessToken         *string
 	NodeID                  *string
+	// SnapshotSandboxID is the sandbox ID the resume snapshot is stored under.
+	// It differs from the ID of the sandbox being started when forking.
+	SnapshotSandboxID string
 }
 
 // buildEgressConfig constructs the orchestrator egress configuration from
@@ -322,7 +325,13 @@ func (o *Orchestrator) CreateSandbox(
 	placed, err := placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, allLabels)
 	if err != nil {
 		if isResume && placed.TimedOut {
-			o.maybeRemapResumeOriginNode(ctx, sandboxID, team, sbxData.NodeID, placed.WarmedNode)
+			// Remap by the snapshot's own sandbox ID: when forking, the started
+			// sandbox ID has no snapshot row and the remap would silently no-op.
+			snapshotSandboxID := sandboxID
+			if sbxData.SnapshotSandboxID != "" {
+				snapshotSandboxID = sbxData.SnapshotSandboxID
+			}
+			o.maybeRemapResumeOriginNode(ctx, snapshotSandboxID, team, sbxData.NodeID, placed.WarmedNode)
 		}
 
 		return sandbox.Sandbox{}, &api.APIError{
