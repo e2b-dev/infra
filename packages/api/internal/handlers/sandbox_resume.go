@@ -157,7 +157,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		sandboxID,
 		timeout,
 		teamInfo,
-		a.buildResumeSandboxData(sandboxID, sandboxID, body.AutoPause),
+		a.buildResumeSandboxData(sandboxID, body.AutoPause),
 		&c.Request.Header,
 		true,
 		nil, // mcp
@@ -186,12 +186,18 @@ func convertDatabaseMountsToOrchestratorMounts(volumes []*types.SandboxVolumeMou
 	return results
 }
 
-// buildResumeSandboxData returns a SandboxDataFetcher that fetches snapshot data
-// for snapshotSandboxID from the cache and builds SandboxMetadata for resume
-// operations. sandboxID is the ID the sandbox will run under — it differs from
-// snapshotSandboxID when forking — and scopes the envd access token.
+// buildResumeSandboxData returns a SandboxDataFetcher for resuming a sandbox
+// from its own snapshot.
+func (a *APIStore) buildResumeSandboxData(sandboxID string, autoPauseOverride *bool) orchestrator.SandboxDataFetcher {
+	return a.buildResumeSandboxDataFromSnapshot(sandboxID, sandboxID, autoPauseOverride)
+}
+
+// buildResumeSandboxDataFromSnapshot returns a SandboxDataFetcher that fetches
+// snapshot data for snapshotSandboxID from the cache and builds SandboxMetadata
+// for resume operations. sandboxID is the ID the sandbox will run under — it
+// differs from snapshotSandboxID when forking — and scopes the envd access token.
 // The returned callback is called inside the sandbox lock to prevent race conditions.
-func (a *APIStore) buildResumeSandboxData(snapshotSandboxID, sandboxID string, autoPauseOverride *bool) orchestrator.SandboxDataFetcher {
+func (a *APIStore) buildResumeSandboxDataFromSnapshot(snapshotSandboxID, sandboxID string, autoPauseOverride *bool) orchestrator.SandboxDataFetcher {
 	return func(ctx context.Context) (orchestrator.SandboxMetadata, *api.APIError) {
 		lastSnapshot, err := a.snapshotCache.Get(ctx, snapshotSandboxID)
 		if err != nil {

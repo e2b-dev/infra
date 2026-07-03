@@ -167,7 +167,7 @@ func (a *APIStore) PostSandboxesSandboxIDFork(c *gin.Context, sandboxID api.Sand
 			sandboxID,
 			originalTimeout,
 			teamInfo,
-			a.buildResumeSandboxData(sandboxID, sandboxID, nil),
+			a.buildResumeSandboxData(sandboxID, nil),
 			&c.Request.Header,
 			true,
 			nil, // mcp
@@ -184,7 +184,7 @@ func (a *APIStore) PostSandboxesSandboxIDFork(c *gin.Context, sandboxID api.Sand
 			forkedSandboxID,
 			forkTimeout,
 			teamInfo,
-			a.buildResumeSandboxData(sandboxID, forkedSandboxID, nil),
+			a.buildResumeSandboxDataFromSnapshot(sandboxID, forkedSandboxID, nil),
 			&c.Request.Header,
 			true,
 			nil, // mcp
