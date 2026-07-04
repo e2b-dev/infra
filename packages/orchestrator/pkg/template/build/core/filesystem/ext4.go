@@ -81,7 +81,12 @@ func Mount(ctx context.Context, rootfsPath string, mountPoint string) error {
 	ctx, mountSpan := tracer.Start(ctx, "mount-ext4")
 	defer mountSpan.End()
 
-	cmd := exec.CommandContext(ctx, "mount", "-o", "loop", rootfsPath, mountPoint)
+	loopDevice, err := attachLoopDevice(ctx, rootfsPath)
+	if err != nil {
+		return fmt.Errorf("error attaching loop device: %w", err)
+	}
+
+	cmd := exec.CommandContext(ctx, "mount", loopDevice, mountPoint)
 
 	mountStdoutWriter := telemetry.NewEventWriter(ctx, "stdout")
 	cmd.Stdout = mountStdoutWriter
@@ -89,12 +94,20 @@ func Mount(ctx context.Context, rootfsPath string, mountPoint string) error {
 	mountStderrWriter := telemetry.NewEventWriter(ctx, "stderr")
 	cmd.Stderr = mountStderrWriter
 
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		detachLoopDevice(context.WithoutCancel(ctx), loopDevice)
+
+		return err
+	}
+
+	return nil
 }
 
 func Unmount(ctx context.Context, rootfsPath string) error {
 	ctx, unmountSpan := tracer.Start(ctx, "unmount-ext4")
 	defer unmountSpan.End()
+
+	loopDevice := findMountSource(ctx, rootfsPath)
 
 	cmd := exec.CommandContext(ctx, "umount", rootfsPath)
 
@@ -108,7 +121,64 @@ func Unmount(ctx context.Context, rootfsPath string) error {
 		return fmt.Errorf("error unmounting ext4 filesystem: %w", err)
 	}
 
+	if loopDevice != "" {
+		detachLoopDevice(ctx, loopDevice)
+	}
+
 	return nil
+}
+
+func attachLoopDevice(ctx context.Context, rootfsPath string) (string, error) {
+	cmd := exec.CommandContext(ctx, "losetup", "--find", "--show", rootfsPath)
+
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+
+	stderrWriter := telemetry.NewEventWriter(ctx, "stderr")
+	cmd.Stderr = stderrWriter
+
+	if err := cmd.Run(); err != nil {
+		return "", err
+	}
+
+	loopDevice := strings.TrimSpace(stdout.String())
+	if loopDevice == "" {
+		return "", errors.New("losetup did not return a loop device")
+	}
+
+	return loopDevice, nil
+}
+
+func detachLoopDevice(ctx context.Context, loopDevice string) {
+	cmd := exec.CommandContext(ctx, "losetup", "--detach", loopDevice)
+
+	stderrWriter := telemetry.NewEventWriter(ctx, "stderr")
+	cmd.Stderr = stderrWriter
+
+	if err := cmd.Run(); err != nil {
+		logger.L().Error(ctx, "error detaching loop device",
+			zap.String("loop_device", loopDevice),
+			zap.Error(err),
+		)
+	}
+}
+
+func findMountSource(ctx context.Context, mountPoint string) string {
+	cmd := exec.CommandContext(ctx, "findmnt", "--noheadings", "--output", "SOURCE", "--target", mountPoint)
+
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+
+	if err := cmd.Run(); err != nil {
+		return ""
+	}
+
+	source := strings.TrimSpace(stdout.String())
+	if !strings.HasPrefix(source, "/dev/loop") {
+		return ""
+	}
+
+	return source
 }
 
 func MakeWritable(ctx context.Context, rootfsPath string) error {

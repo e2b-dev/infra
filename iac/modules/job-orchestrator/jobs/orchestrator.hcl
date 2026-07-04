@@ -62,7 +62,7 @@ job "orchestrator-${latest_orchestrator_job_id}" {
 
       resources {
         memory     = 1024
-        memory_max = -1
+        memory_max = 30720
       }
 
       env {
