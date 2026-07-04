@@ -73,6 +73,7 @@ func main() {
 	optimize := flag.Bool("optimize", false, "collect fresh prefetch mapping after pause (resumes snapshot to record page faults)")
 	fsOnly := flag.Bool("fs-only", false, "pause without a memory snapshot (filesystem-only; resume reboots the guest)")
 	reboot := flag.Bool("reboot", false, "cold-boot from the build's rootfs instead of resuming from memory")
+	forceReboot := flag.Bool("force-reboot", false, "cold-boot like -reboot, but bypass the filesystem-only safety gate for memory-snapshot builds (the disk is only crash-consistent)")
 	shell := flag.Bool("shell", false, "attach an interactive PTY shell via envd (no sshd required in the sandbox)")
 
 	fphTimeoutMs := flag.Int("fph-timeout-ms", 0, "override free-page-hinting-config pause timeout LD flag (0 = use LD default)")
@@ -236,7 +237,7 @@ func main() {
 		script:   *gdbScript,
 	}
 
-	err := run(ctx, *fromBuild, *iterations, *coldStart, *noPrefetch, *noEgress, *verbose, *shell, *reboot, pauseOpts, runOpts, fphBenchOpts, gdbOpts)
+	err := run(ctx, *fromBuild, *iterations, *coldStart, *noPrefetch, *noEgress, *verbose, *shell, *reboot, *forceReboot, pauseOpts, runOpts, fphBenchOpts, gdbOpts)
 	cancel()
 
 	if err != nil {
@@ -345,23 +346,39 @@ func setupEnv(from string, sandboxDir string) error {
 }
 
 type runner struct {
-	factory    *sandbox.Factory
-	tmpl       template.Template
-	sbxConfig  *sandbox.Config
-	buildID    string
-	cache      *template.Cache
-	coldStart  bool
-	noPrefetch bool
-	shell      bool
-	reboot     bool
-	config     cfg.BuilderConfig
-	storage    storage.StorageProvider
+	factory     *sandbox.Factory
+	tmpl        template.Template
+	sbxConfig   *sandbox.Config
+	buildID     string
+	cache       *template.Cache
+	coldStart   bool
+	noPrefetch  bool
+	shell       bool
+	reboot      bool
+	forceReboot bool
+	config      cfg.BuilderConfig
+	storage     storage.StorageProvider
+}
+
+// wrapTemplate applies the CLI's template masks: -no-prefetch drops the
+// prefetch mapping and -force-reboot masks the metadata as filesystem-only so
+// RebootSandbox's safety gate accepts a memory-snapshot build.
+func wrapTemplate(tmpl template.Template, noPrefetch, forceFsOnly bool) template.Template {
+	if noPrefetch {
+		tmpl = &noPrefetchTemplate{tmpl}
+	}
+	if forceFsOnly {
+		tmpl = &forceFsOnlyTemplate{tmpl}
+	}
+
+	return tmpl
 }
 
 // startSandbox starts a sandbox from the build, either resuming from its memory
-// snapshot or cold-booting (rebooting) from its rootfs when -reboot is set.
+// snapshot or cold-booting (rebooting) from its rootfs when -reboot or
+// -force-reboot is set.
 func (r *runner) startSandbox(ctx context.Context, runtime sandbox.RuntimeMetadata, start, end time.Time) (*sandbox.Sandbox, error) {
-	if r.reboot {
+	if r.reboot || r.forceReboot {
 		return r.factory.RebootSandbox(ctx, r.tmpl, r.sbxConfig, runtime, end, nil)
 	}
 
@@ -507,10 +524,7 @@ func (r *runner) cmdBenchmark(ctx context.Context, opts runOptions) error {
 			if err != nil {
 				return fmt.Errorf("reload template: %w", err)
 			}
-			if r.noPrefetch {
-				tmpl = &noPrefetchTemplate{tmpl}
-			}
-			r.tmpl = tmpl
+			r.tmpl = wrapTemplate(tmpl, r.noPrefetch, r.forceReboot)
 		}
 
 		fmt.Printf("\r[%d/%d] Running...    ", i+1, opts.iterations)
@@ -795,10 +809,7 @@ func (r *runner) pauseBenchmark(ctx context.Context, opts pauseOptions) error {
 			if err != nil {
 				return fmt.Errorf("reload template: %w", err)
 			}
-			if r.noPrefetch {
-				tmpl = &noPrefetchTemplate{tmpl}
-			}
-			r.tmpl = tmpl
+			r.tmpl = wrapTemplate(tmpl, r.noPrefetch, r.forceReboot)
 		}
 
 		// Generate unique build ID for each iteration (not saved)
@@ -1043,10 +1054,7 @@ func (r *runner) benchmark(ctx context.Context, n int) error {
 			if err != nil {
 				return fmt.Errorf("reload template: %w", err)
 			}
-			if r.noPrefetch {
-				tmpl = &noPrefetchTemplate{tmpl}
-			}
-			r.tmpl = tmpl
+			r.tmpl = wrapTemplate(tmpl, r.noPrefetch, r.forceReboot)
 		}
 
 		fmt.Printf("\r[%d/%d] Running...    ", i+1, n)
@@ -1067,7 +1075,7 @@ func (r *runner) benchmark(ctx context.Context, n int) error {
 	return lastErr
 }
 
-func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefetch, noEgress, verbose, shell, reboot bool, pauseOpts pauseOptions, runOpts runOptions, fphBenchOpts fphBenchOptions, gdbOpts gdbOptions) error {
+func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefetch, noEgress, verbose, shell, reboot, forceReboot bool, pauseOpts pauseOptions, runOpts runOptions, fphBenchOpts fphBenchOptions, gdbOpts gdbOptions) error {
 	// Silence other loggers unless verbose mode
 	var l logger.Logger
 	if !verbose {
@@ -1214,11 +1222,13 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 
 	printTemplateInfo(ctx, tmpl, meta)
 
-	// Wrap template to disable prefetching if requested
 	if noPrefetch {
-		tmpl = &noPrefetchTemplate{tmpl}
 		fmt.Println("   Prefetch: disabled")
 	}
+	if forceReboot && !meta.IsFilesystemOnly() {
+		fmt.Println("⚠️  Forcing reboot of a memory-snapshot build: the disk is only crash-consistent — writes that lived in the guest page cache at pause time may be missing.")
+	}
+	tmpl = wrapTemplate(tmpl, noPrefetch, forceReboot)
 
 	token := "local"
 	sbxCfg := sandbox.NewConfig(sandbox.Config{
@@ -1234,25 +1244,26 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	})
 
 	r := &runner{
-		factory:    factory,
-		tmpl:       tmpl,
-		buildID:    buildID,
-		cache:      cache,
-		coldStart:  coldStart,
-		noPrefetch: noPrefetch,
-		shell:      shell,
-		reboot:     reboot,
-		config:     config.BuilderConfig,
-		storage:    persistence,
-		sbxConfig:  sbxCfg,
+		factory:     factory,
+		tmpl:        tmpl,
+		buildID:     buildID,
+		cache:       cache,
+		coldStart:   coldStart,
+		noPrefetch:  noPrefetch,
+		shell:       shell,
+		reboot:      reboot,
+		forceReboot: forceReboot,
+		config:      config.BuilderConfig,
+		storage:     persistence,
+		sbxConfig:   sbxCfg,
 	}
 
 	if gdbOpts.enabled {
 		// gdb mode holds the guest at the entry breakpoint and never runs a
 		// workload, so it is mutually exclusive with the pause/cmd/bench modes —
 		// reject the combination rather than silently ignoring the other flags.
-		if fphBenchOpts.enabled || runOpts.enabled() || pauseOpts.enabled() || iterations > 0 || reboot || shell {
-			return errors.New("-gdb cannot be combined with -pause/-cmd/-iterations/-reboot/-shell/-fph-bench")
+		if fphBenchOpts.enabled || runOpts.enabled() || pauseOpts.enabled() || iterations > 0 || reboot || forceReboot || shell {
+			return errors.New("-gdb cannot be combined with -pause/-cmd/-iterations/-reboot/-force-reboot/-shell/-fph-bench")
 		}
 
 		return r.gdbMode(ctx, gdbOpts)
@@ -1591,6 +1602,23 @@ func (t *noPrefetchTemplate) Metadata() (metadata.Template, error) {
 	meta.Prefetch = nil
 
 	return meta, nil
+}
+
+// forceFsOnlyTemplate wraps a template to mask its metadata as filesystem-only
+// so RebootSandbox's safety gate accepts a memory-snapshot build (-force-reboot).
+// The mask never touches the stored metadata; a memory snapshot's disk is only
+// crash-consistent, so writes cached in guest RAM at pause time may be missing.
+type forceFsOnlyTemplate struct {
+	template.Template
+}
+
+func (t *forceFsOnlyTemplate) Metadata() (metadata.Template, error) {
+	meta, err := t.Template.Metadata()
+	if err != nil {
+		return meta, err
+	}
+
+	return meta.MarkFilesystemOnly(true), nil
 }
 
 // noEgressProxy is an EgressProxy that removes the default route from the
