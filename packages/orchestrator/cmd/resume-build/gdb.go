@@ -1,12 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	_ "embed"
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/artifact"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -47,7 +48,7 @@ func (r *runner) gdbMode(ctx context.Context, opts gdbOptions) error {
 	if _, err := exec.LookPath("gdb"); err != nil {
 		return fmt.Errorf("gdb not found on PATH: %w", err)
 	}
-	fcBinary, symbols, err := r.gdbResolveArtifacts(ctx, opts)
+	fcBinary, symbols, err := r.gdbResolveArtifacts(opts)
 	if err != nil {
 		return err
 	}
@@ -58,15 +59,30 @@ func (r *runner) gdbMode(ctx context.Context, opts gdbOptions) error {
 	//    CONFIG_RANDOMIZE_BASE and CONFIG_RANDOMIZE_MEMORY stay inert (gated on a flag
 	//    only the decompressor sets). So we load symbols at offset 0.
 
-	// 3. Stage the gdb-enabled Firecracker binary at the path resume-build resolves
-	//    for this snapshot's FC version, backing up whatever is there and restoring
-	//    it on exit (so the local prod binary is left untouched).
-	fcPath := r.sbxConfig.FirecrackerConfig.FirecrackerPath(r.config)
-	restore, err := stageBinary(fcBinary, fcPath)
-	if err != nil {
+	// 3. Stage the gdb-enabled Firecracker into the writable temp FirecrackerVersionsDir
+	//    that run() points the factory at for gdb mode. The factory (and thus the launch)
+	//    resolves FC from this dir at resume, so we never overwrite the prod binary in the
+	//    real versions dir — which on cluster nodes is a read-only gcsfuse mount where the
+	//    old in-place swap failed. The kernel dir is untouched.
+	stagedFC := filepath.Join(r.config.FirecrackerVersionsDir, r.sbxConfig.FirecrackerConfig.FirecrackerVersion, utils.TargetArch(), artifact.FirecrackerBinaryName)
+	if err := os.MkdirAll(filepath.Dir(stagedFC), 0o755); err != nil {
+		return fmt.Errorf("gdb fc staging dir: %w", err)
+	}
+	if err := copyFile(fcBinary, stagedFC, 0o755); err != nil {
 		return fmt.Errorf("stage debug firecracker: %w", err)
 	}
-	defer restore()
+	fcPath := r.sbxConfig.FirecrackerConfig.FirecrackerPath(r.config)
+
+	// Backstop: confirm the binary we are about to launch is actually gdb-enabled. This
+	// guards both a stale/wrong firecracker-debug and any future regression that resolves
+	// FC from somewhere other than the staging dir — otherwise FC starts but never opens
+	// the stub, surfacing only as an opaque "gdb socket never bound" later.
+	if ok, gdbErr := fileContainsGdbStub(fcPath); gdbErr != nil {
+		return fmt.Errorf("check staged firecracker: %w", gdbErr)
+	} else if !ok {
+		return fmt.Errorf("firecracker to launch (%s) is not gdb-enabled (no FIRECRACKER_GDB_SOCKET); "+
+			"it must be built with --features gdb (see fc-versions build.sh)", fcPath)
+	}
 
 	// 4. Arm the stub via the env var (FC inherits resume-build's env; no jailer
 	//    here), and tell the resume path not to wait for envd — the guest never
@@ -154,45 +170,26 @@ func (r *runner) gdbMode(ctx context.Context, opts gdbOptions) error {
 	return runGdb(ctx, initScript, opts)
 }
 
-// defaultDebugArtifactsBaseURL is where the fc-versions / fc-kernels release pipelines
-// publish the debug artifacts (firecracker-debug, vmlinux.debug), alongside the prod
-// firecracker/vmlinux that create-build already fetches from here.
-const defaultDebugArtifactsBaseURL = "https://storage.googleapis.com/e2b-prod-public-builds"
-
-// debugArtifactsBaseURL is the base URL to fetch firecracker-debug / vmlinux.debug from.
-// Overridable via E2B_GDB_ARTIFACTS_URL (e.g. to point at a bucket you can read before
-// the artifacts are published to the public one).
-func debugArtifactsBaseURL() string {
-	if u := os.Getenv("E2B_GDB_ARTIFACTS_URL"); u != "" {
-		return strings.TrimRight(u, "/")
-	}
-
-	return defaultDebugArtifactsBaseURL
-}
-
 // gdbResolveArtifacts resolves the debug FC binary and the vmlinux.debug symbols. Each
-// is taken from its -gdb-* override if set, else a local staged copy if present, else
-// fetched by version from the release buckets (see debugArtifactsBaseURL) — mirroring
-// how create-build fetches the prod kernel/FC.
-func (r *runner) gdbResolveArtifacts(ctx context.Context, opts gdbOptions) (fcBinary, symbols string, err error) {
-	arch := utils.TargetArch()
+// is taken from its -gdb-* override if set, else a local copy next to the snapshot's FC /
+// kernel — where the fc-versions/fc-kernels buckets, and copy-build -gdb, place them. The
+// artifacts are not fetched over the network.
+func (r *runner) gdbResolveArtifacts(opts gdbOptions) (fcBinary, symbols string, err error) {
 	fcVer := r.sbxConfig.FirecrackerConfig.FirecrackerVersion
 	kernelVer := r.sbxConfig.FirecrackerConfig.KernelVersion
-	fcDir := filepath.Dir(r.sbxConfig.FirecrackerConfig.FirecrackerPath(r.config))
-	kernelDir := filepath.Dir(r.sbxConfig.FirecrackerConfig.HostKernelPath(r.config))
-	base := debugArtifactsBaseURL()
-
-	fcURL, err := url.JoinPath(base, "firecrackers", fcVer, arch, "firecracker-debug")
-	if err != nil {
-		return "", "", fmt.Errorf("firecracker-debug URL: %w", err)
+	// Resolve the debug artifacts from the ORIGINAL versions dir: in gdb mode run() points
+	// the runner's FirecrackerVersionsDir at a writable temp staging dir, but the published
+	// firecracker-debug lives in the original (read-only) dir. The kernel dir is not
+	// overridden.
+	fcVersionsDir := r.config.FirecrackerVersionsDir
+	if r.gdbOrigVersionsDir != "" {
+		fcVersionsDir = r.gdbOrigVersionsDir
 	}
-	symURL, err := url.JoinPath(base, "kernels", kernelVer, arch, "vmlinux.debug")
-	if err != nil {
-		return "", "", fmt.Errorf("vmlinux.debug URL: %w", err)
-	}
-
-	fcBinary, fcErr := resolveOrFetch(ctx, opts.fcBinary, filepath.Join(fcDir, "firecracker-debug"), fcURL, 0o755)
-	symbols, symErr := resolveOrFetch(ctx, opts.symbols, filepath.Join(kernelDir, "vmlinux.debug"), symURL, 0o644)
+	// Prefer the arch-prefixed layout (where releases and copy-build -gdb publish), falling
+	// back to the legacy flat layout — independently of FirecrackerPath/HostKernelPath,
+	// which resolve the prod binary and may sit in a different layout on un-migrated nodes.
+	fcBinary, fcErr := resolveLocal(opts.fcBinary, archOrLegacyArtifact(fcVersionsDir, fcVer, "firecracker-debug"))
+	symbols, symErr := resolveLocal(opts.symbols, archOrLegacyArtifact(r.config.HostKernelsDir, kernelVer, "vmlinux.debug"))
 
 	var missing []string
 	if fcErr != nil {
@@ -203,20 +200,30 @@ func (r *runner) gdbResolveArtifacts(ctx context.Context, opts gdbOptions) (fcBi
 	}
 	if len(missing) > 0 {
 		return "", "", fmt.Errorf(
-			"could not obtain gdb debug artifacts:\n  - %s\n"+
-				"They are fetched by version from %s. Until the fc-versions/fc-kernels release\n"+
-				"pipelines publish them there, build them (a --features gdb firecracker and a DWARF\n"+
-				"kernel) and pass -gdb-fc / -gdb-symbols, or set E2B_GDB_ARTIFACTS_URL to a base URL\n"+
-				"that serves them",
-			strings.Join(missing, "\n  - "), base)
+			"could not find gdb debug artifacts locally:\n  - %s\n"+
+				"firecracker-debug must sit next to the snapshot's firecracker, and vmlinux.debug\n"+
+				"next to its vmlinux.bin (the fc-versions/fc-kernels buckets; copy-build -gdb stages\n"+
+				"them). Otherwise pass -gdb-fc / -gdb-symbols explicitly",
+			strings.Join(missing, "\n  - "))
 	}
 
 	return fcBinary, symbols, nil
 }
 
-// resolveOrFetch returns the override if it is set (erroring if it does not exist),
-// otherwise the local staged path if it already exists, otherwise downloads url to it.
-func resolveOrFetch(ctx context.Context, override, localPath, srcURL string, perm os.FileMode) (string, error) {
+// archOrLegacyArtifact returns <base>/<ver>/<arch>/<file> when it exists, else the legacy
+// flat <base>/<ver>/<file>, mirroring FirecrackerPath/HostKernelPath so a debug artifact
+// resolves under either layout (releases and copy-build -gdb publish it arch-prefixed).
+func archOrLegacyArtifact(base, ver, file string) string {
+	if archPath := filepath.Join(base, ver, utils.TargetArch(), file); fileExists(archPath) {
+		return archPath
+	}
+
+	return filepath.Join(base, ver, file)
+}
+
+// resolveLocal returns the -gdb-* override if set (erroring if it does not exist),
+// otherwise the local copy if present, else an error. Artifacts are not fetched.
+func resolveLocal(override, localPath string) (string, error) {
 	if override != "" {
 		if fileExists(override) {
 			return override, nil
@@ -227,67 +234,15 @@ func resolveOrFetch(ctx context.Context, override, localPath, srcURL string, per
 	if fileExists(localPath) {
 		return localPath, nil
 	}
-	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
-		return "", err
-	}
-	fmt.Printf("⬇ fetching %s from %s ...\n", filepath.Base(localPath), srcURL)
-	if err := download(ctx, srcURL, localPath, perm); err != nil {
-		return "", err
-	}
 
-	return localPath, nil
-}
-
-// download GETs rawURL to path (atomic rename via a .tmp). Mirrors create-build's
-// helper; the debug artifacts live in the same public release buckets.
-func download(ctx context.Context, rawURL, path string, perm os.FileMode) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return fmt.Errorf("invalid download URL %s: %w", rawURL, err)
-	}
-	resp, err := (&http.Client{Timeout: 10 * time.Minute}).Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
-		return fmt.Errorf("not found (HTTP 404): %s", rawURL)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, rawURL)
-	}
-
-	tmpPath := path + ".tmp"
-	f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(f, resp.Body); err != nil {
-		f.Close()
-		os.Remove(tmpPath)
-
-		return err
-	}
-	if err := f.Close(); err != nil {
-		os.Remove(tmpPath)
-
-		return err
-	}
-	if err := os.Rename(tmpPath, path); err != nil {
-		os.Remove(tmpPath)
-
-		return err
-	}
-
-	return nil
+	return "", fmt.Errorf("not present at %s", localPath)
 }
 
 // writeInitScript generates the parameterized gdb init script: load the versioned
 // macro library, the symbols (at their link-time addresses — see gdbMode: FC boots the
 // vmlinux ELF directly, so there is no KASLR image slide), and connect to the stub.
 func writeInitScript(symbols, socket string) (string, error) {
-	macroLib, err := macroLibPath()
+	macros, err := macroLibContent()
 	if err != nil {
 		return "", err
 	}
@@ -295,14 +250,22 @@ func writeInitScript(symbols, socket string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// Inline the macros rather than `source`-ing a separate file: the init script is the
+	// only temp file, and it is removed on exit (see gdbMode), so nothing leaks.
 	if _, err := fmt.Fprintf(f, `set pagination off
 set confirm off
-source %s
+%s
 # FC boots the uncompressed vmlinux ELF directly, so KASLR never relocates the image:
 # symbols sit at their link-time addresses (offset 0).
 add-symbol-file %s -o 0x0
+# FC binds the gdb socket while still loading the snapshot, so its first packet
+# ack can lag past gdb's 2s default. That makes gdb retransmit qSupported, the
+# stub double-replies, and the reply stream desyncs (gdb aborts with
+# "Remote replied unexpectedly to 'vMustReplyEmpty'"). Raise the timeout so gdb
+# does not prematurely retransmit during connect.
+set remotetimeout 120
 target remote %s
-`, macroLib, symbols, socket); err != nil {
+`, macros, symbols, socket); err != nil {
 		f.Close()
 		_ = os.Remove(f.Name())
 
@@ -317,27 +280,28 @@ target remote %s
 	return f.Name(), nil
 }
 
-// macroLibPath locates the checked-in fc-debug.gdb macro library next to this binary's
-// source. resume-build is run via `go run`/built from cmd/resume-build, so the library
-// sits beside main.go.
-func macroLibPath() (string, error) {
-	exe, err := os.Executable()
-	if err == nil {
+// fcDebugMacros is the checked-in gdb macro library, embedded so a standalone binary
+// is self-contained (resume-build is typically scp'd to a node away from its source).
+//
+//go:embed fc-debug.gdb
+var fcDebugMacros string
+
+// macroLibContent returns the fc-debug.gdb macro definitions: a copy colocated with the
+// binary if present (lets you iterate on macros without rebuilding), otherwise the
+// embedded copy. The caller inlines this into the init script, so no temp file is made.
+func macroLibContent() (string, error) {
+	if exe, err := os.Executable(); err == nil {
 		if p := filepath.Join(filepath.Dir(exe), "fc-debug.gdb"); fileExists(p) {
-			return p, nil
-		}
-	}
-	// Fall back to the source tree (the common `go run ./cmd/resume-build` case).
-	for _, p := range []string{
-		"cmd/resume-build/fc-debug.gdb",
-		"packages/orchestrator/cmd/resume-build/fc-debug.gdb",
-	} {
-		if abs, err := filepath.Abs(p); err == nil && fileExists(abs) {
-			return abs, nil
+			b, err := os.ReadFile(p)
+			if err != nil {
+				return "", err
+			}
+
+			return string(b), nil
 		}
 	}
 
-	return "", errors.New("fc-debug.gdb macro library not found (next to the binary or under cmd/resume-build/)")
+	return fcDebugMacros, nil
 }
 
 // printGdbContext prints the debug-context block so the session is drivable any way
@@ -389,6 +353,18 @@ func fileExists(p string) bool {
 	return err == nil && !info.IsDir()
 }
 
+// fileContainsGdbStub reports whether the binary at path was built with the gdb feature,
+// detected by the FIRECRACKER_GDB_SOCKET env-var literal — present iff the
+// #[cfg(feature = "gdb")] code is compiled in, and it survives stripping.
+func fileContainsGdbStub(path string) (bool, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+
+	return bytes.Contains(b, []byte("FIRECRACKER_GDB_SOCKET")), nil
+}
+
 func waitForSocket(ctx context.Context, path string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	ticker := time.NewTicker(50 * time.Millisecond)
@@ -406,44 +382,6 @@ func waitForSocket(ctx context.Context, path string, timeout time.Duration) erro
 		case <-ticker.C:
 		}
 	}
-}
-
-// stageBinary copies src to dst (preserving any existing dst as a backup) and returns
-// a restore func that puts the original back (or removes the staged copy if there was
-// none). The running FC keeps its loaded binary, so restoring after launch is safe.
-func stageBinary(src, dst string) (restore func(), err error) {
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return nil, err
-	}
-	bak := dst + ".prodbak"
-	// If a backup already exists, a previous run was interrupted before it could
-	// restore — that backup is the real binary, so keep it and overwrite dst (which
-	// currently holds the staged debug binary) rather than backing dst up over it.
-	hadOriginal := fileExists(bak)
-	if !hadOriginal && fileExists(dst) {
-		if err := os.Rename(dst, bak); err != nil {
-			return nil, fmt.Errorf("back up %s: %w", dst, err)
-		}
-		hadOriginal = true
-	}
-	if err := copyFile(src, dst, 0o755); err != nil {
-		if hadOriginal {
-			_ = os.Rename(bak, dst)
-		} else {
-			// No original to restore: drop the partial/truncated copy so a later
-			// run can't resolve and execute a corrupt binary at dst.
-			_ = os.Remove(dst)
-		}
-
-		return nil, err
-	}
-
-	return func() {
-		_ = os.Remove(dst)
-		if hadOriginal {
-			_ = os.Rename(bak, dst)
-		}
-	}, nil
 }
 
 func copyFile(src, dst string, mode os.FileMode) error {
