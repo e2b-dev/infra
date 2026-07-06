@@ -69,10 +69,6 @@ func testUserEmail(userID uuid.UUID) string {
 
 type testIdentityProvider struct{}
 
-func newTestIdentityProvider() identity.Provider {
-	return testIdentityProvider{}
-}
-
 func (testIdentityProvider) GetProfilesByUserID(_ context.Context, userIDs []uuid.UUID) (map[uuid.UUID]identity.Profile, error) {
 	profiles := make(map[uuid.UUID]identity.Profile, len(userIDs))
 	for _, userID := range userIDs {

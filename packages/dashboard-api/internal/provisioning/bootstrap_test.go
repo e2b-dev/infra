@@ -23,7 +23,7 @@ func TestBootstrapAuthProviderUser_CreatesIdentityAndDefaultTeam(t *testing.T) {
 	ctx := t.Context()
 	sink := &fakeTeamProvisionSink{}
 
-	svc := New(testDB.AuthDB, newTestIdentityProvider(), sink, testIssuer)
+	svc := New(testDB.AuthDB, testIdentityProvider{}, sink, testIssuer)
 
 	input := OIDCUserBootstrapInput{
 		OIDCIssuer:      testIssuer,
@@ -253,7 +253,7 @@ func TestBootstrapOIDCUser_ConcurrentRequestsSingleIdentityAndTeam(t *testing.T)
 	ctx := t.Context()
 	sink := &fakeTeamProvisionSink{}
 
-	svc := New(testDB.AuthDB, newTestIdentityProvider(), sink, testIssuer)
+	svc := New(testDB.AuthDB, testIdentityProvider{}, sink, testIssuer)
 
 	input := OIDCUserBootstrapInput{
 		OIDCIssuer:    testIssuer,
@@ -340,7 +340,7 @@ func TestBootstrapOIDCUser_AcceptsConfiguredIssuer(t *testing.T) {
 	ctx := t.Context()
 	sink := &fakeTeamProvisionSink{}
 
-	svc := New(testDB.AuthDB, newTestIdentityProvider(), sink, testIssuer)
+	svc := New(testDB.AuthDB, testIdentityProvider{}, sink, testIssuer)
 
 	team, err := svc.BootstrapOIDCUser(ctx, OIDCUserBootstrapInput{
 		OIDCIssuer:    testIssuer,
@@ -363,7 +363,7 @@ func TestBootstrapOIDCUser_UnknownIssuerReturnsBadRequest(t *testing.T) {
 	ctx := t.Context()
 	sink := &fakeTeamProvisionSink{}
 
-	svc := New(testDB.AuthDB, newTestIdentityProvider(), sink, testIssuer)
+	svc := New(testDB.AuthDB, testIdentityProvider{}, sink, testIssuer)
 
 	_, err := svc.BootstrapOIDCUser(ctx, OIDCUserBootstrapInput{
 		OIDCIssuer:    "https://attacker.example.test",
@@ -381,88 +381,5 @@ func TestBootstrapOIDCUser_UnknownIssuerReturnsBadRequest(t *testing.T) {
 	}
 	if len(sink.requests) != 0 {
 		t.Fatalf("expected no provisioning calls, got %d", len(sink.requests))
-	}
-}
-
-func TestBootstrapUser_ConcurrentRequestsCreateSingleDefaultTeam(t *testing.T) {
-	t.Parallel()
-
-	testDB := testutils.SetupDatabase(t)
-	ctx := t.Context()
-	userID := createTestUser(t, testDB)
-	sink := &fakeTeamProvisionSink{}
-
-	existingTeam, err := testDB.AuthDB.Write.GetDefaultTeamByUserID(ctx, userID)
-	if err != nil {
-		t.Fatalf("expected default team: %v", err)
-	}
-	if err := testDB.AuthDB.Write.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
-		t.Fatalf("failed to remove default team: %v", err)
-	}
-
-	svc := New(testDB.AuthDB, newTestIdentityProvider(), sink, testIssuer)
-	profile := bootstrapUserProfile{
-		UserID:          userID,
-		Email:           testUserEmail(userID),
-		DefaultTeamName: "Default Team",
-	}
-
-	var wg sync.WaitGroup
-	results := make(chan ProvisionedTeam, 2)
-	errs := make(chan error, 2)
-
-	for range 2 {
-		wg.Go(func() {
-			team, err := svc.bootstrapUserWithIdentity(ctx, profile, nil)
-			if err != nil {
-				errs <- err
-
-				return
-			}
-
-			results <- team
-		})
-	}
-
-	wg.Wait()
-	close(results)
-	close(errs)
-
-	for err := range errs {
-		if err != nil {
-			t.Fatalf("expected bootstrap to succeed, got %v", err)
-		}
-	}
-
-	var teamIDs []uuid.UUID
-	for team := range results {
-		teamIDs = append(teamIDs, team.ID)
-	}
-	if len(teamIDs) != 2 {
-		t.Fatalf("expected two bootstrap results, got %d", len(teamIDs))
-	}
-	if teamIDs[0] != teamIDs[1] {
-		t.Fatalf("expected both bootstrap requests to resolve to the same team, got %s and %s", teamIDs[0], teamIDs[1])
-	}
-
-	var defaultTeamCount int
-	err = testDB.AuthDB.TestsRawSQLQuery(ctx,
-		`SELECT count(*)
-		FROM public.users_teams
-		WHERE user_id = $1 AND is_default = true`,
-		func(rows pgx.Rows) error {
-			if !rows.Next() {
-				return errors.New("missing default team count row")
-			}
-
-			return rows.Scan(&defaultTeamCount)
-		},
-		userID,
-	)
-	if err != nil {
-		t.Fatalf("failed to count default team memberships: %v", err)
-	}
-	if defaultTeamCount != 1 {
-		t.Fatalf("expected exactly one default team membership, got %d", defaultTeamCount)
 	}
 }

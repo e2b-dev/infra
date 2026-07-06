@@ -18,7 +18,7 @@ func TestCreateTeam_RecentUserCreatesUnblockedTeam(t *testing.T) {
 	ctx := t.Context()
 	userID := createTestUserAt(t, testDB, time.Now().Add(-time.Hour))
 
-	svc := New(testDB.AuthDB, newTestIdentityProvider(), &fakeTeamProvisionSink{}, testIssuer)
+	svc := New(testDB.AuthDB, testIdentityProvider{}, &fakeTeamProvisionSink{}, testIssuer)
 
 	team, err := svc.CreateTeam(ctx, userID, "Acme")
 	if err != nil {
@@ -47,7 +47,7 @@ func TestCreateTeam_ConcurrentRequestsRespectLocalPolicyWithZeroMemberships(t *t
 		t.Fatalf("failed to remove default team: %v", err)
 	}
 
-	svc := New(testDB.AuthDB, newTestIdentityProvider(), &fakeTeamProvisionSink{}, testIssuer)
+	svc := New(testDB.AuthDB, testIdentityProvider{}, &fakeTeamProvisionSink{}, testIssuer)
 
 	var wg sync.WaitGroup
 	results := make(chan error, 4)

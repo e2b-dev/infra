@@ -40,14 +40,6 @@ func (s *Service) teamCreatorContextForProvisioning(ctx context.Context, profile
 	return s.resolveTeamCreatorContext(ctx, profile.UserID)
 }
 
-func creatorContextFromSignupMetadata(signupIP, signupUserAgent, authMethod string) *teamprovision.CreatorContextV1 {
-	return normalizeCreatorContext(&teamprovision.CreatorContextV1{
-		IPAddress:  signupIP,
-		UserAgent:  signupUserAgent,
-		AuthMethod: authMethod,
-	})
-}
-
 func normalizeCreatorContext(creatorContext *teamprovision.CreatorContextV1) *teamprovision.CreatorContextV1 {
 	if creatorContext == nil {
 		return nil
