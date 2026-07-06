@@ -42,7 +42,7 @@ const (
 	googleBackoffMultiplier        = 2
 	googleMaxAttempts              = 10
 	defaultGRPCConnectionPoolSize  = 8
-	defaultGCSEnableDirectPath     = false
+	defaultGCSEnableDirectPath     = "false"
 	gcloudDefaultUploadConcurrency = 16
 
 	gcsOperationAttr                    = "operation"
@@ -80,11 +80,14 @@ func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (Sto
 		return nil, fmt.Errorf("failed to parse GCS_GRPC_CONNECTION_POOL_SIZE: %w", err)
 	}
 
+	// Off by default (#2149); opt-in for bulk readers where Direct Connectivity pays off.
+	enableDirectPath := env.GetEnv("GCS_ENABLE_DIRECT_PATH", defaultGCSEnableDirectPath) == "true"
+
 	opts := []option.ClientOption{
 		option.WithGRPCConnectionPool(grpcPoolSize),
 		option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(32 * megabyte)),
 		option.WithGRPCDialOption(grpc.WithInitialWindowSize(4 * megabyte)),
-		internaloption.EnableDirectPath(defaultGCSEnableDirectPath),
+		internaloption.EnableDirectPath(enableDirectPath),
 	}
 
 	client, err := storage.NewGRPCClient(ctx, opts...)
