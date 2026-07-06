@@ -85,25 +85,53 @@ func newAWSStorage(ctx context.Context, spec Spec, limiter *limit.Limiter) (*aws
 }
 
 func (s *awsStorage) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
+	if prefix == "" {
+		return errors.New("refusing to delete objects with an empty prefix")
+	}
+
+	// A large prefix spans many pages, so scope the timeout per round-trip
+	// below instead of wrapping the whole walk.
+	paginator := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{
+		Bucket: aws.String(s.bucketName),
+		Prefix: aws.String(prefix),
+	})
+
+	deleted := false
+	for paginator.HasMorePages() {
+		pageCtx, cancel := context.WithTimeout(ctx, awsOperationTimeout)
+		list, err := paginator.NextPage(pageCtx)
+		cancel()
+		if err != nil {
+			return err
+		}
+
+		objects := make([]types.ObjectIdentifier, 0, len(list.Contents))
+		for _, obj := range list.Contents {
+			objects = append(objects, types.ObjectIdentifier{Key: obj.Key})
+		}
+
+		// AWS S3 delete operation requires at least one object to delete.
+		if len(objects) == 0 {
+			continue
+		}
+
+		if err := s.deleteObjects(ctx, objects); err != nil {
+			return err
+		}
+
+		deleted = true
+	}
+
+	if !deleted {
+		logger.L().Warn(ctx, "No objects found to delete with the given prefix", zap.String("prefix", prefix), zap.String("bucket", s.bucketName))
+	}
+
+	return nil
+}
+
+func (s *awsStorage) deleteObjects(ctx context.Context, objects []types.ObjectIdentifier) error {
 	ctx, cancel := context.WithTimeout(ctx, awsOperationTimeout)
 	defer cancel()
-
-	list, err := s.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{Bucket: &s.bucketName, Prefix: &prefix})
-	if err != nil {
-		return err
-	}
-
-	objects := make([]types.ObjectIdentifier, 0, len(list.Contents))
-	for _, obj := range list.Contents {
-		objects = append(objects, types.ObjectIdentifier{Key: obj.Key})
-	}
-
-	// AWS S3 delete operation requires at least one object to delete.
-	if len(objects) == 0 {
-		logger.L().Warn(ctx, "No objects found to delete with the given prefix", zap.String("prefix", prefix), zap.String("bucket", s.bucketName))
-
-		return nil
-	}
 
 	output, err := s.client.DeleteObjects(
 		ctx, &s3.DeleteObjectsInput{
