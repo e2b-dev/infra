@@ -10,6 +10,24 @@ else
 	CLICKHOUSE_MIGRATOR_IMAGE ?= $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(PREFIX)core/clickhouse-migrator
 endif
 
+# E2B-hosted registry that holds released, prebuilt clickhouse-migrator images.
+# Published to by the release-please workflow on tagging a release.
+E2B_ARTIFACTS_REGISTRY ?= us-docker.pkg.dev/e2b-artifacts/clickhouse-migrator/clickhouse-migrator
+
+# Optional version "hook" for the released-image flow.
+# When empty (default), build-and-upload builds from source and pushes to the
+# client's own core repo (the existing flow, unchanged).
+# When set (e.g. CLICKHOUSE_MIGRATOR_VERSION=v0.1.0), skip building: pull the
+# released image from $(E2B_ARTIFACTS_REGISTRY) and retag/push it into the
+# client's core repo, so the Terraform `clickhouse-migrator:latest` lookup
+# keeps working.
+#
+# Set it either on the command line (make ... CLICKHOUSE_MIGRATOR_VERSION=v0.1.0)
+# or in the active .env.${ENV} file (CLICKHOUSE_MIGRATOR_VERSION=v0.1.0), which
+# is included above. Quotes are stripped so both `=v0.1.0` and `="v0.1.0"` work;
+# a command-line value always wins over the env file.
+CLICKHOUSE_MIGRATOR_VERSION := $(strip $(subst ",,$(CLICKHOUSE_MIGRATOR_VERSION)))
+
 .PHONY: migrate
 migrate: build migrate-without-build
 
@@ -37,10 +55,23 @@ build:
 	@docker build --platform linux/amd64 --tag "$(CLICKHOUSE_MIGRATOR_IMAGE)" --tag "$(CLICKHOUSE_MIGRATOR_IMAGE):$(COMMIT_SHA)" .
 
 .PHONY: build-and-upload
+ifeq ($(strip $(CLICKHOUSE_MIGRATOR_VERSION)),)
+# Existing flow: build from source and push to the client's own core repo.
 build-and-upload:build
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
 	@docker push "$(CLICKHOUSE_MIGRATOR_IMAGE)"
 	@docker push "$(CLICKHOUSE_MIGRATOR_IMAGE):$(COMMIT_SHA)"
+else
+# Released-image flow: pull the prebuilt, versioned image from the E2B
+# artifacts registry and retag/push it into the client's own core repo.
+build-and-upload:
+	@echo "Using released clickhouse-migrator $(CLICKHOUSE_MIGRATOR_VERSION) from $(E2B_ARTIFACTS_REGISTRY)"
+	docker pull --platform linux/amd64 $(E2B_ARTIFACTS_REGISTRY):$(CLICKHOUSE_MIGRATOR_VERSION)
+	docker tag $(E2B_ARTIFACTS_REGISTRY):$(CLICKHOUSE_MIGRATOR_VERSION) $(CLICKHOUSE_MIGRATOR_IMAGE):latest
+	docker tag $(E2B_ARTIFACTS_REGISTRY):$(CLICKHOUSE_MIGRATOR_VERSION) $(CLICKHOUSE_MIGRATOR_IMAGE):$(CLICKHOUSE_MIGRATOR_VERSION)
+	docker push $(CLICKHOUSE_MIGRATOR_IMAGE):latest
+	docker push $(CLICKHOUSE_MIGRATOR_IMAGE):$(CLICKHOUSE_MIGRATOR_VERSION)
+endif
 
 .PHONY: connect-clickhouse
 connect-clickhouse:

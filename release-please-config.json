@@ -9,6 +9,18 @@
       "component": "docker-reverse-proxy",
       "include-v-in-tag": true,
       "changelog-path": "CHANGELOG.md"
+    },
+    "packages/client-proxy": {
+      "release-type": "go",
+      "component": "client-proxy",
+      "include-v-in-tag": true,
+      "changelog-path": "CHANGELOG.md"
+    },
+    "packages/clickhouse": {
+      "release-type": "go",
+      "component": "clickhouse-migrator",
+      "include-v-in-tag": true,
+      "changelog-path": "CHANGELOG.md"
     }
   }
 }

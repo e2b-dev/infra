@@ -21,6 +21,12 @@ jobs:
       reverse_proxy_released: ${{ steps.release.outputs['packages/docker-reverse-proxy--release_created'] }}
       reverse_proxy_tag: ${{ steps.release.outputs['packages/docker-reverse-proxy--tag_name'] }}
       reverse_proxy_version: ${{ steps.release.outputs['packages/docker-reverse-proxy--version'] }}
+      client_proxy_released: ${{ steps.release.outputs['packages/client-proxy--release_created'] }}
+      client_proxy_tag: ${{ steps.release.outputs['packages/client-proxy--tag_name'] }}
+      client_proxy_version: ${{ steps.release.outputs['packages/client-proxy--version'] }}
+      clickhouse_migrator_released: ${{ steps.release.outputs['packages/clickhouse--release_created'] }}
+      clickhouse_migrator_tag: ${{ steps.release.outputs['packages/clickhouse--tag_name'] }}
+      clickhouse_migrator_version: ${{ steps.release.outputs['packages/clickhouse--version'] }}
     steps:
       # Mint a short-lived token from a GitHub App so the release PR is opened as
       # the App (not the default GITHUB_TOKEN). This is required when `main` has
@@ -111,3 +117,107 @@ jobs:
             --push \
             -f packages/docker-reverse-proxy/Dockerfile \
             packages
+
+  publish-client-proxy:
+    name: Publish client-proxy to e2b-artifacts
+    needs: release-please
+    if: ${{ needs.release-please.outputs.client_proxy_released == 'true' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      # <host>/<project>/<repository>/<image>
+      IMAGE: us-docker.pkg.dev/e2b-artifacts/client-proxy/client-proxy
+      VERSION: ${{ needs.release-please.outputs.client_proxy_version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Authenticate to the e2b-artifacts project
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.E2B_ARTIFACTS_WIF_PROVIDER }}
+          service_account: ${{ vars.E2B_ARTIFACTS_PUBLISH_SA }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Configure Docker auth
+        run: gcloud auth configure-docker us-docker.pkg.dev --quiet
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push released image
+        # The Dockerfile lives in packages/client-proxy but its build context is
+        # the packages/ directory (it needs shared/ and clickhouse/). Same
+        # tagging conventions as docker-reverse-proxy: v-prefixed tag, no
+        # :latest (immutableTags=true on the e2b-artifacts repo), and
+        # --provenance=false --sbom=false for Artifact Registry compatibility.
+        run: |
+          IMAGE_TAG="v${VERSION}"
+          docker buildx build \
+            --platform linux/amd64 \
+            --provenance=false \
+            --sbom=false \
+            --build-arg COMMIT_SHA="${GITHUB_SHA::7}" \
+            --tag "${IMAGE}:${IMAGE_TAG}" \
+            --push \
+            -f packages/client-proxy/Dockerfile \
+            packages
+
+  publish-clickhouse-migrator:
+    name: Publish clickhouse-migrator to e2b-artifacts
+    needs: release-please
+    if: ${{ needs.release-please.outputs.clickhouse_migrator_released == 'true' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      # <host>/<project>/<repository>/<image>
+      IMAGE: us-docker.pkg.dev/e2b-artifacts/clickhouse-migrator/clickhouse-migrator
+      VERSION: ${{ needs.release-please.outputs.clickhouse_migrator_version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Authenticate to the e2b-artifacts project
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.E2B_ARTIFACTS_WIF_PROVIDER }}
+          service_account: ${{ vars.E2B_ARTIFACTS_PUBLISH_SA }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Configure Docker auth
+        run: gcloud auth configure-docker us-docker.pkg.dev --quiet
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push released image
+        # The clickhouse-migrator image is self-contained: its Dockerfile and
+        # build context both live in packages/clickhouse (matching the package
+        # Makefile's `docker build .`). Same tagging conventions as
+        # docker-reverse-proxy: v-prefixed tag, no :latest (immutableTags=true
+        # on the e2b-artifacts repo), and --provenance=false --sbom=false for
+        # Artifact Registry compatibility.
+        run: |
+          IMAGE_TAG="v${VERSION}"
+          docker buildx build \
+            --platform linux/amd64 \
+            --provenance=false \
+            --sbom=false \
+            --tag "${IMAGE}:${IMAGE_TAG}" \
+            --push \
+            -f packages/clickhouse/Dockerfile \
+            packages/clickhouse
