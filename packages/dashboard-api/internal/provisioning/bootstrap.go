@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/identity"
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
@@ -16,7 +17,8 @@ import (
 )
 
 func (s *Service) BootstrapOIDCUser(ctx context.Context, input OIDCUserBootstrapInput) (ProvisionedTeam, error) {
-	if err := s.requireConfiguredOIDCIssuer(input.OIDCIssuer); err != nil {
+	idp, err := s.providerForIssuer(input.OIDCIssuer)
+	if err != nil {
 		return ProvisionedTeam{}, err
 	}
 
@@ -31,31 +33,29 @@ func (s *Service) BootstrapOIDCUser(ctx context.Context, input OIDCUserBootstrap
 		}),
 	}
 
-	return s.bootstrapUser(ctx, profile, bootstrapUserIdentity{
+	return s.bootstrapUser(ctx, idp, profile, bootstrapUserIdentity{
 		Issuer:  input.OIDCIssuer,
 		Subject: input.OIDCUserID,
 	})
 }
 
-// requireConfiguredOIDCIssuer rejects bootstrap requests whose issuer is not the
-// configured Ory issuer.
-func (s *Service) requireConfiguredOIDCIssuer(issuer string) error {
+func (s *Service) providerForIssuer(issuer string) (identity.Provider, error) {
 	oryIssuer := strings.TrimSpace(s.issuerURL)
 
-	if oryIssuer != "" && oryIssuer == strings.TrimSpace(issuer) {
-		return nil
+	if s.idp != nil && oryIssuer != "" && oryIssuer == strings.TrimSpace(issuer) {
+		return s.idp, nil
 	}
 
-	return &internalteamprovision.ProvisionError{
+	return nil, &internalteamprovision.ProvisionError{
 		StatusCode: http.StatusBadRequest,
 		Message:    "oidc_issuer does not match a configured identity provider",
 	}
 }
 
-func (s *Service) bootstrapUser(ctx context.Context, profile bootstrapUserProfile, identity bootstrapUserIdentity) (ProvisionedTeam, error) {
+func (s *Service) bootstrapUser(ctx context.Context, idp identity.Provider, profile bootstrapUserProfile, oidcIdentity bootstrapUserIdentity) (ProvisionedTeam, error) {
 	// Resolve the identity's SSO organization before opening the transaction: the
 	// Kratos lookup is a network call that must not run under the per-user lock.
-	ssoOrgID, err := s.idp.GetIdentityOrganizationID(ctx, identity.Subject)
+	ssoOrgID, err := idp.GetIdentityOrganizationID(ctx, oidcIdentity.Subject)
 	if err != nil {
 		return ProvisionedTeam{}, fmt.Errorf("resolve sso organization: %w", err)
 	}
@@ -69,8 +69,8 @@ func (s *Service) bootstrapUser(ctx context.Context, profile bootstrapUserProfil
 	}()
 
 	existing, err := authTxDB.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
-		OidcIss: identity.Issuer,
-		OidcSub: identity.Subject,
+		OidcIss: oidcIdentity.Issuer,
+		OidcSub: oidcIdentity.Subject,
 	})
 	switch {
 	case err == nil:
@@ -84,8 +84,8 @@ func (s *Service) bootstrapUser(ctx context.Context, profile bootstrapUserProfil
 		return ProvisionedTeam{}, fmt.Errorf("upsert public user: %w", err)
 	}
 	canonicalUserID, err := authTxDB.UpsertPublicIdentity(ctx, authqueries.UpsertPublicIdentityParams{
-		OidcIss: identity.Issuer,
-		OidcSub: identity.Subject,
+		OidcIss: oidcIdentity.Issuer,
+		OidcSub: oidcIdentity.Subject,
 		UserID:  candidateUserID,
 	})
 	if err != nil {
@@ -127,7 +127,7 @@ func (s *Service) bootstrapUser(ctx context.Context, profile bootstrapUserProfil
 		// transaction. This is also the recovery path: a user whose external_id was
 		// never set (e.g. a prior bootstrap whose PATCH failed after commit) re-runs
 		// here and the idempotent PATCH is re-asserted.
-		if err := s.idp.SetIdentityExternalID(ctx, identity.Subject, profile.UserID); err != nil {
+		if err := idp.SetIdentityExternalID(ctx, oidcIdentity.Subject, profile.UserID); err != nil {
 			return ProvisionedTeam{}, fmt.Errorf("set ory identity external id: %w", err)
 		}
 
@@ -156,7 +156,7 @@ func (s *Service) bootstrapUser(ctx context.Context, profile bootstrapUserProfil
 		}
 
 		// No billing: SSO teams are provisioned out of band.
-		if err := s.idp.SetIdentityExternalID(ctx, identity.Subject, profile.UserID); err != nil {
+		if err := idp.SetIdentityExternalID(ctx, oidcIdentity.Subject, profile.UserID); err != nil {
 			return ProvisionedTeam{}, fmt.Errorf("set ory identity external id: %w", err)
 		}
 
@@ -206,7 +206,7 @@ func (s *Service) bootstrapUser(ctx context.Context, profile bootstrapUserProfil
 	// A PATCH failure here is recoverable: external_id stays unset, the dashboard
 	// re-runs bootstrap on the next login and re-asserts it via the existing-team
 	// path above.
-	if err := s.idp.SetIdentityExternalID(ctx, identity.Subject, profile.UserID); err != nil {
+	if err := idp.SetIdentityExternalID(ctx, oidcIdentity.Subject, profile.UserID); err != nil {
 		return ProvisionedTeam{}, fmt.Errorf("set ory identity external id: %w", err)
 	}
 

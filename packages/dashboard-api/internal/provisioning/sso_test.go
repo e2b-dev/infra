@@ -58,7 +58,8 @@ func TestBootstrapOIDCUser_SSOJoinsMappedTeams(t *testing.T) {
 	setTeamSSOOrg(t, testDB, teamNewer, orgID, true, time.Now().Add(-1*time.Hour))
 	setTeamSSOOrg(t, testDB, teamOlder, orgID, true, time.Now().Add(-2*time.Hour))
 
-	svc := New(testDB.AuthDB, ssoIdentityProvider{orgBySubject: map[string]uuid.UUID{subject: orgID}}, sink, testIssuer)
+	provider := ssoIdentityProvider{orgBySubject: map[string]uuid.UUID{subject: orgID}}
+	svc := New(testDB.AuthDB, provider, sink, testIssuer)
 
 	input := OIDCUserBootstrapInput{
 		OIDCIssuer:    testIssuer,
@@ -120,7 +121,8 @@ func TestBootstrapOIDCUser_SSOFailsClosedWhenNoTeamMapped(t *testing.T) {
 	orgID := uuid.New()
 	subject := uuid.NewString()
 
-	svc := New(testDB.AuthDB, ssoIdentityProvider{orgBySubject: map[string]uuid.UUID{subject: orgID}}, sink, testIssuer)
+	provider := ssoIdentityProvider{orgBySubject: map[string]uuid.UUID{subject: orgID}}
+	svc := New(testDB.AuthDB, provider, sink, testIssuer)
 
 	input := OIDCUserBootstrapInput{
 		OIDCIssuer:    testIssuer,
@@ -166,7 +168,8 @@ func TestBootstrapOIDCUser_SSOSkipsManualTeams(t *testing.T) {
 	manualTeam := testutils.CreateTestTeam(t, testDB)
 	setTeamSSOOrg(t, testDB, manualTeam, orgID, false, time.Now().Add(-1*time.Hour))
 
-	svc := New(testDB.AuthDB, ssoIdentityProvider{orgBySubject: map[string]uuid.UUID{subject: orgID}}, sink, testIssuer)
+	provider := ssoIdentityProvider{orgBySubject: map[string]uuid.UUID{subject: orgID}}
+	svc := New(testDB.AuthDB, provider, sink, testIssuer)
 
 	input := OIDCUserBootstrapInput{
 		OIDCIssuer:    testIssuer,
@@ -187,7 +190,8 @@ func TestCreateTeam_SSOUserRejected(t *testing.T) {
 	ctx := t.Context()
 	userID := uuid.New()
 
-	svc := New(nil, ssoIdentityProvider{orgByUser: map[uuid.UUID]uuid.UUID{userID: uuid.New()}}, nil, testIssuer)
+	provider := ssoIdentityProvider{orgByUser: map[uuid.UUID]uuid.UUID{userID: uuid.New()}}
+	svc := New(nil, provider, nil, testIssuer)
 
 	_, err := svc.CreateTeam(ctx, userID, "My Team")
 	if err == nil {
