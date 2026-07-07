@@ -7,12 +7,14 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/moby/go-archive"
 	"github.com/moby/go-archive/chrootarchive"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/unix"
 )
 
 // untarLayerToDir runs the same unpack call used by createExport in oci.go.
@@ -36,6 +38,20 @@ func requireRoot(t *testing.T) {
 
 	if os.Geteuid() != 0 {
 		t.Skip("chrootarchive requires root (unshare + chroot)")
+	}
+
+	// euid 0 alone is not enough: rootful containers may lack CAP_SYS_ADMIN,
+	// making unshare(CLONE_NEWNS) fail with EPERM. Probe the actual
+	// capability the same way chrootarchive uses it: on a locked OS thread
+	// that is discarded afterwards (goroutine exits without UnlockOSThread,
+	// so the runtime destroys the thread and the unshared state with it).
+	errCh := make(chan error, 1)
+	go func() {
+		runtime.LockOSThread()
+		errCh <- unix.Unshare(unix.CLONE_FS | unix.CLONE_NEWNS)
+	}()
+	if err := <-errCh; err != nil {
+		t.Skipf("chrootarchive requires unshare(CLONE_FS|CLONE_NEWNS): %v", err)
 	}
 }
 
