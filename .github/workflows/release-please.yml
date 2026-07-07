@@ -99,7 +99,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           # On manual publish, build from the release tag instead of main's head.
-          ref: ${{ github.event_name == 'workflow_dispatch' && format('docker-reverse-proxy-v{0}', inputs.publish_version) || github.sha }}
+          ref: ${{ inputs.publish_version != '' && format('docker-reverse-proxy-v{0}', inputs.publish_version) || github.sha }}
           persist-credentials: false
 
       - name: Authenticate to the e2b-artifacts project
@@ -164,7 +164,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           # On manual publish, build from the release tag instead of main's head.
-          ref: ${{ github.event_name == 'workflow_dispatch' && format('client-proxy-v{0}', inputs.publish_version) || github.sha }}
+          ref: ${{ inputs.publish_version != '' && format('client-proxy-v{0}', inputs.publish_version) || github.sha }}
           persist-credentials: false
 
       - name: Authenticate to the e2b-artifacts project
@@ -219,7 +219,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           # On manual publish, build from the release tag instead of main's head.
-          ref: ${{ github.event_name == 'workflow_dispatch' && format('clickhouse-migrator-v{0}', inputs.publish_version) || github.sha }}
+          ref: ${{ inputs.publish_version != '' && format('clickhouse-migrator-v{0}', inputs.publish_version) || github.sha }}
           persist-credentials: false
 
       - name: Authenticate to the e2b-artifacts project
