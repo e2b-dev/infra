@@ -63,6 +63,8 @@ func TestParseExpirationMember(t *testing.T) {
 		{"legacy with uuid sandbox id", teamID + ":" + execID, teamID, execID, "", true},
 		{"no separator", "garbage", "", "", "", false},
 		{"empty rest", teamID + ":", "", "", "", false},
+		{"non-uuid execution tag", teamID + ":sbx-1:not-a-uuid", "", "", "", false},
+		{"too many parts", teamID + ":sbx-1:x:" + execID, "", "", "", false},
 	}
 
 	for _, tt := range tests {

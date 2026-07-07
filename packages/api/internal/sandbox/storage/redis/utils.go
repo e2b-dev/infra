@@ -69,22 +69,26 @@ func sandboxExpirationMember(sbx sandboxtypes.Sandbox) string {
 
 // parseExpirationMember parses both member formats:
 // "teamID:sandboxID:executionID" (current) and "teamID:sandboxID" (legacy).
-// executionID == "" marks a legacy member. Sandbox IDs never contain ':';
-// execution IDs are always UUIDs, so the tail is an execution tag iff it
-// parses as one.
+// executionID == "" marks a legacy member. Sandbox IDs never contain ':'
+// and execution IDs are always UUIDs.
 func parseExpirationMember(member string) (teamID, sandboxID, executionID string, ok bool) {
-	teamID, rest, ok := strings.Cut(member, ":")
-	if !ok || rest == "" {
+	parts := strings.Split(member, ":")
+	switch len(parts) {
+	case 2: // legacy
+		if parts[1] == "" {
+			return "", "", "", false
+		}
+
+		return parts[0], parts[1], "", true
+	case 3:
+		if _, err := uuid.Parse(parts[2]); err != nil {
+			return "", "", "", false
+		}
+
+		return parts[0], parts[1], parts[2], true
+	default:
 		return "", "", "", false
 	}
-
-	if i := strings.LastIndexByte(rest, ':'); i > 0 {
-		if _, err := uuid.Parse(rest[i+1:]); err == nil {
-			return teamID, rest[:i], rest[i+1:], true
-		}
-	}
-
-	return teamID, rest, "", true
 }
 
 // GetTeamPrefix returns the storage team prefix for external packages (e.g. reservations).
