@@ -17,17 +17,23 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// untarLayerToDir runs the same unpack call used by createExport in oci.go.
-func untarLayerToDir(t *testing.T, layer *bytes.Buffer) string {
+// untarLayer runs the same unpack call used by createExport in oci.go.
+func untarLayer(t *testing.T, layer *bytes.Buffer) (string, error) {
 	t.Helper()
 
 	layerPath := t.TempDir()
-	filtered := dropRedundantWhiteouts(layer)
-	defer filtered.Close()
-
-	err := chrootarchive.UntarUncompressed(filtered, layerPath, &archive.TarOptions{
+	err := chrootarchive.UntarUncompressed(layer, layerPath, &archive.TarOptions{
 		WhiteoutFormat: archive.OverlayWhiteoutFormat,
 	})
+
+	return layerPath, err
+}
+
+// untarLayerToDir is untarLayer for layers that must unpack successfully.
+func untarLayerToDir(t *testing.T, layer *bytes.Buffer) string {
+	t.Helper()
+
+	layerPath, err := untarLayer(t, layer)
 	require.NoError(t, err)
 
 	return layerPath
@@ -120,13 +126,14 @@ func TestUntarLayerWithEscapingRelativeSymlink(t *testing.T) {
 	assert.Equal(t, fileContent, content)
 }
 
-// TestUntarLayerWithRedundantNestedWhiteout reproduces layers emitted for
-// `rm -rf /foo`-style deletes by some builders (e.g. kaniko): the layer
-// contains both a whiteout for a directory (.wh.foo) and a redundant nested
-// whiteout below it (foo/.wh.bar). Converting the first whiteout to overlay
+// TestUntarLayerNestedWhiteoutsUnsupported documents that layers containing
+// redundant nested whiteouts (.wh.foo + foo/.wh.bar, emitted by some builders
+// for rm -rf-style deletes) are not supported: converting .wh.foo to overlay
 // format creates a 0:0 char device at foo, so the nested mknod at foo/bar
-// fails with ENOTDIR.
-func TestUntarLayerWithRedundantNestedWhiteout(t *testing.T) {
+// fails with ENOTDIR. Stock Docker rejects such images the same way (both the
+// overlay2 graphdriver and the containerd snapshotter); only the
+// containers/storage stack (podman/buildah) tolerates them.
+func TestUntarLayerNestedWhiteoutsUnsupported(t *testing.T) {
 	t.Parallel()
 	requireRoot(t)
 
@@ -145,31 +152,10 @@ func TestUntarLayerWithRedundantNestedWhiteout(t *testing.T) {
 		Mode:     0o644,
 		Size:     0,
 	}))
-
-	// An unrelated file that must survive the unpack.
-	keptContent := []byte("kept")
-	require.NoError(t, tw.WriteHeader(&tar.Header{
-		Name:     "kept.txt",
-		Typeflag: tar.TypeReg,
-		Mode:     0o644,
-		Size:     int64(len(keptContent)),
-	}))
-	_, err := tw.Write(keptContent)
-	require.NoError(t, err)
-
 	require.NoError(t, tw.Close())
 
-	layerPath := untarLayerToDir(t, &buf)
-
-	// The directory whiteout must be converted to an overlay whiteout
-	// (a 0:0 character device named foo).
-	fi, err := os.Lstat(filepath.Join(layerPath, "foo"))
-	require.NoError(t, err)
-	assert.NotZero(t, fi.Mode()&os.ModeCharDevice, "foo must be an overlay whiteout char device")
-
-	content, err := os.ReadFile(filepath.Join(layerPath, "kept.txt"))
-	require.NoError(t, err)
-	assert.Equal(t, keptContent, content)
+	_, err := untarLayer(t, &buf)
+	require.ErrorContains(t, err, "not a directory")
 }
 
 // TestUntarLayerBlocksTraversalThroughSymlink verifies the chroot-based

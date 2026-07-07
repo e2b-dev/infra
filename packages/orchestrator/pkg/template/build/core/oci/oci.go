@@ -442,10 +442,10 @@ func createExport(ctx context.Context, logger logger.Logger, srcImage containerr
 			}
 			defer rc.Close()
 			// Use chrootarchive (same mechanism as the Docker daemon's layer unpacking).
-			filtered := dropRedundantWhiteouts(rc)
-			defer filtered.Close()
-
-			err = chrootarchive.UntarUncompressed(filtered, layerPath, &archive.TarOptions{
+			// Note: layers with redundant nested whiteouts (.wh.foo + foo/.wh.bar)
+			// are not supported and fail here with ENOTDIR — same as stock Docker
+			// (both overlay2 and containerd snapshotter reject such images).
+			err = chrootarchive.UntarUncompressed(rc, layerPath, &archive.TarOptions{
 				WhiteoutFormat: archive.OverlayWhiteoutFormat,
 			})
 			if err != nil {
