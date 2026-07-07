@@ -215,7 +215,6 @@ func (n *Node) OptimisticRemove(ctx context.Context, res SandboxResources) {
 	n.metricsMu.Lock()
 	defer n.metricsMu.Unlock()
 
-	// Directly subtract from the current metrics view.
 	cpu := uint32(res.CPUs)
 	memory := uint64(res.MiBMemory) * 1024 * 1024
 
