@@ -127,6 +127,13 @@ func WithFeatureFlags(ff *featureflags.Client) TestOptions {
 	}
 }
 
+// WithAllocatedMemoryBytes sets the initial allocated memory metric for the test node
+func WithAllocatedMemoryBytes(bytes uint64) TestOptions {
+	return func(node *TestNode) {
+		node.metrics.MemoryAllocatedBytes = bytes
+	}
+}
+
 // MockSandboxClientCustom allows custom error logic per call
 type MockSandboxClientCustom struct {
 	orchestrator.SandboxServiceClient

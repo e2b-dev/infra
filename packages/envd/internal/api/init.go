@@ -334,6 +334,10 @@ func writeInitError(w http.ResponseWriter, logger zerolog.Logger, err error) {
 	switch {
 	case errors.Is(err, ErrAccessTokenMismatch), errors.Is(err, ErrAccessTokenResetNotAuthorized):
 		w.WriteHeader(http.StatusUnauthorized)
+	case errors.Is(err, host.ErrCAInstallInProgress):
+		// Not a failure, a concurrent install still holds the CA lock.
+		logger.Warn().Err(err).Msg("CA initialization still in progress, retrying")
+		w.WriteHeader(http.StatusServiceUnavailable)
 	default:
 		logger.Error().Msgf("Failed to set data: %v", err)
 		w.WriteHeader(http.StatusBadRequest)
