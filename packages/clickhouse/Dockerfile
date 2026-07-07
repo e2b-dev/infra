@@ -1,11 +1,11 @@
-ARG GOLANG_VERSION=1.26.3
+ARG GOLANG_VERSION=1.26.4
 ARG ALPINE_VERSION=3.22
 
 # Builder stage
 FROM golang:${GOLANG_VERSION}-alpine${ALPINE_VERSION} AS builder
 
 RUN apk add --no-cache git
-RUN go install github.com/pressly/goose/v3/cmd/goose@v3.24.2
+RUN go install github.com/pressly/goose/v3/cmd/goose@v3.27.2
 
 # Final stage
 FROM alpine:${ALPINE_VERSION}
