@@ -90,7 +90,6 @@ VALUES (
     $3::boolean,
     $4::uuid
 )
-ON CONFLICT (user_id, team_id) DO NOTHING
 `
 
 type CreateTeamMembershipParams struct {
@@ -102,6 +101,34 @@ type CreateTeamMembershipParams struct {
 
 func (q *Queries) CreateTeamMembership(ctx context.Context, arg CreateTeamMembershipParams) error {
 	_, err := q.db.Exec(ctx, createTeamMembership,
+		arg.UserID,
+		arg.TeamID,
+		arg.IsDefault,
+		arg.AddedBy,
+	)
+	return err
+}
+
+const createTeamMembershipIfMissing = `-- name: CreateTeamMembershipIfMissing :exec
+INSERT INTO public.users_teams (user_id, team_id, is_default, added_by)
+VALUES (
+    $1::uuid,
+    $2::uuid,
+    $3::boolean,
+    $4::uuid
+)
+ON CONFLICT (user_id, team_id) DO NOTHING
+`
+
+type CreateTeamMembershipIfMissingParams struct {
+	UserID    uuid.UUID
+	TeamID    uuid.UUID
+	IsDefault bool
+	AddedBy   *uuid.UUID
+}
+
+func (q *Queries) CreateTeamMembershipIfMissing(ctx context.Context, arg CreateTeamMembershipIfMissingParams) error {
+	_, err := q.db.Exec(ctx, createTeamMembershipIfMissing,
 		arg.UserID,
 		arg.TeamID,
 		arg.IsDefault,

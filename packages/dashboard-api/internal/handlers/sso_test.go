@@ -16,7 +16,6 @@ import (
 	authtypes "github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
-	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 )
@@ -71,7 +70,6 @@ func TestBootstrapOIDCUser_SSOJoinsMappedTeams(t *testing.T) {
 		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
 		userProfiles:      ssoUserProfiles{orgBySubject: map[string]uuid.UUID{subject: orgID}},
-		idps:              userprofile.Registry{"https://ory.example.test": ssoUserProfiles{orgBySubject: map[string]uuid.UUID{subject: orgID}}},
 	}
 
 	input := oidcUserBootstrapInput{
@@ -140,7 +138,6 @@ func TestBootstrapOIDCUser_SSOFailsClosedWhenNoTeamMapped(t *testing.T) {
 		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
 		userProfiles:      ssoUserProfiles{orgBySubject: map[string]uuid.UUID{subject: orgID}},
-		idps:              userprofile.Registry{"https://ory.example.test": ssoUserProfiles{orgBySubject: map[string]uuid.UUID{subject: orgID}}},
 	}
 
 	input := oidcUserBootstrapInput{
@@ -193,7 +190,6 @@ func TestBootstrapOIDCUser_SSOSkipsManualTeams(t *testing.T) {
 		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
 		userProfiles:      ssoUserProfiles{orgBySubject: map[string]uuid.UUID{subject: orgID}},
-		idps:              userprofile.Registry{"https://ory.example.test": ssoUserProfiles{orgBySubject: map[string]uuid.UUID{subject: orgID}}},
 	}
 
 	input := oidcUserBootstrapInput{
@@ -217,7 +213,6 @@ func TestCreateTeam_SSOUserRejected(t *testing.T) {
 
 	store := &APIStore{
 		userProfiles: ssoUserProfiles{orgByUser: map[uuid.UUID]uuid.UUID{userID: uuid.New()}},
-		idps:         userprofile.Registry{"https://ory.example.test": ssoUserProfiles{orgByUser: map[uuid.UUID]uuid.UUID{userID: uuid.New()}}},
 	}
 
 	_, err := store.createTeam(ctx, userID, "My Team")
@@ -250,7 +245,7 @@ func TestPostTeamsTeamIDMembers_RejectsInviteOutsideSSOOrg(t *testing.T) {
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 
 	// invitee belongs to no org (orgByUser empty) → outside the team's org.
-	store := &APIStore{userProfiles: ssoUserProfiles{}, idps: userprofile.Registry{"https://ory.example.test": ssoUserProfiles{}}}
+	store := &APIStore{userProfiles: ssoUserProfiles{}}
 	store.PostTeamsTeamIDMembers(ginCtx, teamID)
 
 	if recorder.Code != http.StatusForbidden {
@@ -284,7 +279,6 @@ func TestPostTeamsTeamIDMembers_AllowsInviteFromSSOOrg(t *testing.T) {
 		authDB:       testDB.AuthDB,
 		authService:  noopAuthService{},
 		userProfiles: ssoUserProfiles{orgByUser: map[uuid.UUID]uuid.UUID{inviteeID: orgID}},
-		idps:         userprofile.Registry{"https://ory.example.test": ssoUserProfiles{orgByUser: map[uuid.UUID]uuid.UUID{inviteeID: orgID}}},
 	}
 	store.PostTeamsTeamIDMembers(ginCtx, teamID)
 

@@ -104,15 +104,14 @@ func (s *APIStore) bootstrapOIDCUser(ctx context.Context, input oidcUserBootstra
 // providerForIssuer resolves the identity provider responsible for the issuer,
 // rejecting bootstrap requests from issuers no provider is registered for.
 func (s *APIStore) providerForIssuer(issuer string) (userprofile.Provider, error) {
-	idp, ok := s.idps.ForIssuer(strings.TrimSpace(issuer))
-	if !ok {
+	if s.userProfiles == nil || strings.TrimSpace(issuer) != strings.TrimSpace(s.config.OryIssuerURL) {
 		return nil, &internalteamprovision.ProvisionError{
 			StatusCode: http.StatusBadRequest,
 			Message:    "oidc_issuer does not match a configured identity provider",
 		}
 	}
 
-	return idp, nil
+	return s.userProfiles, nil
 }
 
 func (s *APIStore) bootstrapUser(ctx context.Context, profile bootstrapUserProfile) (provisionedTeam, error) {
@@ -327,7 +326,7 @@ func (s *APIStore) enrollSSOMember(ctx context.Context, authTxDB *authqueries.Qu
 	}
 
 	for _, row := range autoTeams {
-		if err := authTxDB.CreateTeamMembership(ctx, authqueries.CreateTeamMembershipParams{
+		if err := authTxDB.CreateTeamMembershipIfMissing(ctx, authqueries.CreateTeamMembershipIfMissingParams{
 			UserID:    userID,
 			TeamID:    row.Team.ID,
 			IsDefault: false,
@@ -353,7 +352,11 @@ func (s *APIStore) enrollSSOMember(ctx context.Context, authTxDB *authqueries.Qu
 // ensureNotSSOManaged blocks team creation for SSO-managed users; their team
 // membership is driven entirely by their identity provider.
 func (s *APIStore) ensureNotSSOManaged(ctx context.Context, userID uuid.UUID) error {
-	orgID, err := s.idps.GetUserOrganizationID(ctx, userID)
+	if s.userProfiles == nil {
+		return errors.New("user profile provider is not configured")
+	}
+
+	orgID, err := s.userProfiles.GetUserOrganizationID(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("resolve sso organization: %w", err)
 	}

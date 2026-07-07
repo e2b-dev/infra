@@ -220,18 +220,12 @@ func (p *oryProvider) GetUserOrganizationID(ctx context.Context, userID uuid.UUI
 	if err != nil {
 		return uuid.Nil, err
 	}
+	if len(userIDBySubject) > 1 {
+		return uuid.Nil, fmt.Errorf("multiple ory identity mappings for user %s", userID)
+	}
 
-	// Nothing forbids multiple identities per user for one issuer, so check every
-	// subject (sorted, for a deterministic result): the user is SSO-managed if any
-	// of their identities belongs to an organization.
-	for _, subject := range slices.Sorted(maps.Keys(userIDBySubject)) {
-		orgID, err := p.GetIdentityOrganizationID(ctx, subject)
-		if err != nil {
-			return uuid.Nil, err
-		}
-		if orgID != uuid.Nil {
-			return orgID, nil
-		}
+	for subject := range userIDBySubject {
+		return p.GetIdentityOrganizationID(ctx, subject)
 	}
 
 	return uuid.Nil, nil

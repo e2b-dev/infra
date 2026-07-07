@@ -264,22 +264,16 @@ func (r multiSubjectResolver) GetUserIdentitiesByUserIDs(context.Context, authqu
 	return rows, nil
 }
 
-// A user with several identities for the issuer is SSO-managed if any of them
-// belongs to an organization — even when a subject without one sorts first.
-func TestOryProvider_GetUserOrganizationIDChecksAllSubjects(t *testing.T) {
+func TestOryProvider_GetUserOrganizationID(t *testing.T) {
 	t.Parallel()
 
 	userID := uuid.New()
 	orgID := uuid.New()
-	plainSubject := "a-" + uuid.NewString()
-	orgSubject := "b-" + uuid.NewString()
+	subject := uuid.NewString()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		body := `{"id":"` + plainSubject + `","schema_id":"default","schema_url":"","state":"active","traits":{}}`
-		if r.URL.Path == "/admin/identities/"+orgSubject {
-			body = `{"id":"` + orgSubject + `","schema_id":"default","schema_url":"","state":"active","traits":{},"organization_id":"` + orgID.String() + `"}`
-		}
+		body := `{"id":"` + subject + `","schema_id":"default","schema_url":"","state":"active","traits":{},"organization_id":"` + orgID.String() + `"}`
 		_, _ = w.Write([]byte(body))
 	}))
 	defer server.Close()
@@ -289,7 +283,7 @@ func TestOryProvider_GetUserOrganizationIDChecksAllSubjects(t *testing.T) {
 		SDKURL:     server.URL,
 		Token:      "test-token",
 		Issuer:     "https://ory.example.test",
-		Resolver:   multiSubjectResolver{userID: userID, subjects: []string{plainSubject, orgSubject}},
+		Resolver:   multiSubjectResolver{userID: userID, subjects: []string{subject}},
 	})
 	if err != nil {
 		t.Fatalf("failed to build ory provider: %v", err)
@@ -301,5 +295,28 @@ func TestOryProvider_GetUserOrganizationIDChecksAllSubjects(t *testing.T) {
 	}
 	if got != orgID {
 		t.Fatalf("expected organization %s, got %s", orgID, got)
+	}
+}
+
+func TestOryProvider_GetUserOrganizationIDRejectsMultipleLinkedIdentities(t *testing.T) {
+	t.Parallel()
+
+	userID := uuid.New()
+	subjectA := uuid.NewString()
+	subjectB := uuid.NewString()
+
+	provider, err := NewOryProvider(OryConfig{
+		HTTPClient: http.DefaultClient,
+		SDKURL:     "https://ory.example.test",
+		Token:      "test-token",
+		Issuer:     "https://ory.example.test",
+		Resolver:   multiSubjectResolver{userID: userID, subjects: []string{subjectA, subjectB}},
+	})
+	if err != nil {
+		t.Fatalf("failed to build ory provider: %v", err)
+	}
+
+	if _, err := provider.GetUserOrganizationID(t.Context(), userID); err == nil {
+		t.Fatal("expected multiple linked identities to return an error")
 	}
 }
