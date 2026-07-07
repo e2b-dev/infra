@@ -166,6 +166,82 @@ func TestCreateExportHandlesOCIWhiteout(t *testing.T) {
 	assert.NotEqual(t, os.FileMode(0), info.Mode()&os.ModeCharDevice, "stale-file.txt in upper layer must be a character device (OCI whiteout), got %s", info.Mode())
 }
 
+// TestCreateExportPreservesEscapingRelativeSymlink reproduces layers produced
+// by `nix store optimise`: /nix/store/.links contains symlinks whose relative
+// targets (e.g. ../../../../../etc/environment) lexically escape the layer
+// directory but are clamped at / by the kernel at runtime
+func TestCreateExportPreservesEscapingRelativeSymlink(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	logger := logger.NewNopLogger()
+
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+
+	for _, dir := range []string{"nix", "nix/store", "nix/store/.links", "etc"} {
+		require.NoError(t, tw.WriteHeader(&tar.Header{
+			Name:     dir + "/",
+			Typeflag: tar.TypeDir,
+			Mode:     0o755,
+		}))
+	}
+
+	fileContent := []byte("PATH=/usr/bin\n")
+	require.NoError(t, tw.WriteHeader(&tar.Header{
+		Name:     "etc/environment",
+		Typeflag: tar.TypeReg,
+		Mode:     0o644,
+		Size:     int64(len(fileContent)),
+	}))
+	_, err := tw.Write(fileContent)
+	require.NoError(t, err)
+
+	// The problematic entry: 5 levels up from a directory only 3 levels deep.
+	escapingTarget := "../../../../../etc/environment"
+	require.NoError(t, tw.WriteHeader(&tar.Header{
+		Name:     "nix/store/.links/abc",
+		Typeflag: tar.TypeSymlink,
+		Linkname: escapingTarget,
+		Mode:     0o777,
+	}))
+
+	// A regular relative symlink that stays inside the layer.
+	require.NoError(t, tw.WriteHeader(&tar.Header{
+		Name:     "nix/store/link-within",
+		Typeflag: tar.TypeSymlink,
+		Linkname: "../../etc/environment",
+		Mode:     0o777,
+	}))
+
+	require.NoError(t, tw.Close())
+
+	img := empty.Image
+	layer, err := tarball.LayerFromOpener(func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(buf.Bytes())), nil
+	})
+	require.NoError(t, err)
+	img, err = mutate.AppendLayers(img, layer)
+	require.NoError(t, err)
+
+	layerPaths, err := createExport(ctx, logger, img, t.TempDir())
+	require.NoError(t, err)
+	require.Len(t, layerPaths, 1)
+	layerPath := layerPaths[0]
+
+	target, err := os.Readlink(filepath.Join(layerPath, "nix/store/.links/abc"))
+	require.NoError(t, err)
+	assert.Equal(t, escapingTarget, target, "symlink target must be preserved verbatim")
+
+	target, err = os.Readlink(filepath.Join(layerPath, "nix/store/link-within"))
+	require.NoError(t, err)
+	assert.Equal(t, "../../etc/environment", target)
+
+	content, err := os.ReadFile(filepath.Join(layerPath, "etc/environment"))
+	require.NoError(t, err)
+	assert.Equal(t, fileContent, content)
+}
+
 // authHandler wraps a registry handler with basic authentication
 func authHandler(handler http.Handler, username, password string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
