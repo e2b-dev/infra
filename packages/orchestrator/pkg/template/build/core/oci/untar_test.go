@@ -101,6 +101,58 @@ func TestUntarLayerWithEscapingRelativeSymlink(t *testing.T) {
 	assert.Equal(t, fileContent, content)
 }
 
+// TestUntarLayerWithRedundantNestedWhiteout reproduces layers emitted for
+// `rm -rf /foo`-style deletes by some builders (e.g. kaniko): the layer
+// contains both a whiteout for a directory (.wh.foo) and a redundant nested
+// whiteout below it (foo/.wh.bar). Converting the first whiteout to overlay
+// format creates a 0:0 char device at foo, so the nested mknod at foo/bar
+// fails with ENOTDIR.
+func TestUntarLayerWithRedundantNestedWhiteout(t *testing.T) {
+	t.Parallel()
+	requireRoot(t)
+
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+
+	require.NoError(t, tw.WriteHeader(&tar.Header{
+		Name:     ".wh.foo",
+		Typeflag: tar.TypeReg,
+		Mode:     0o644,
+		Size:     0,
+	}))
+	require.NoError(t, tw.WriteHeader(&tar.Header{
+		Name:     "foo/.wh.bar",
+		Typeflag: tar.TypeReg,
+		Mode:     0o644,
+		Size:     0,
+	}))
+
+	// An unrelated file that must survive the unpack.
+	keptContent := []byte("kept")
+	require.NoError(t, tw.WriteHeader(&tar.Header{
+		Name:     "kept.txt",
+		Typeflag: tar.TypeReg,
+		Mode:     0o644,
+		Size:     int64(len(keptContent)),
+	}))
+	_, err := tw.Write(keptContent)
+	require.NoError(t, err)
+
+	require.NoError(t, tw.Close())
+
+	layerPath := untarLayerToDir(t, &buf)
+
+	// The directory whiteout must be converted to an overlay whiteout
+	// (a 0:0 character device named foo).
+	fi, err := os.Lstat(filepath.Join(layerPath, "foo"))
+	require.NoError(t, err)
+	assert.NotZero(t, fi.Mode()&os.ModeCharDevice, "foo must be an overlay whiteout char device")
+
+	content, err := os.ReadFile(filepath.Join(layerPath, "kept.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, keptContent, content)
+}
+
 // TestUntarLayerBlocksTraversalThroughSymlink verifies the chroot-based
 // unpack still prevents actual path traversal: a later tar entry whose path
 // goes through a previously created symlink must not write outside the layer
