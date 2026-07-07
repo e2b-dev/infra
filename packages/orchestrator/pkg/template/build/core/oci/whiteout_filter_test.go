@@ -16,7 +16,10 @@ import (
 func filterTarEntries(t *testing.T, in *bytes.Buffer) map[string]string {
 	t.Helper()
 
-	tr := tar.NewReader(dropRedundantWhiteouts(in))
+	filtered := dropRedundantWhiteouts(in)
+	defer filtered.Close()
+
+	tr := tar.NewReader(filtered)
 	entries := map[string]string{}
 	for {
 		hdr, err := tr.Next()

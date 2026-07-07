@@ -20,7 +20,9 @@ import (
 // nested entries below it (foo/.wh.bar). When unpacking with the overlay
 // whiteout format, .wh.foo is converted to a 0:0 character device at foo, so
 // any subsequent mknod/create below foo fails with ENOTDIR.
-func dropRedundantWhiteouts(r io.Reader) io.Reader {
+//
+// The caller must Close the returned reader
+func dropRedundantWhiteouts(r io.Reader) io.ReadCloser {
 	pr, pw := io.Pipe()
 
 	go func() {
