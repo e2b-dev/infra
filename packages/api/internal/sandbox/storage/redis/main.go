@@ -113,6 +113,9 @@ func NewStorage(
 // worker and the expiration index healer. Blocks until the context is
 // cancelled or Close is called.
 func (s *Storage) Start(ctx context.Context) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	pubDone := make(chan struct{})
 	go func() {
 		defer close(pubDone)
