@@ -20,6 +20,11 @@ const (
 	// healGracePeriod skips recently started sandboxes:
 	// this prevents the healer from clearing in-flight Add/Remove
 	healGracePeriod = time.Minute
+
+	// healScanBatchSize bounds per-command work (SSCAN page, MGET keys,
+	// ZMSCORE members, ZADD members) so teams with many sandboxes can't
+	// produce huge single commands/replies that stall Redis or explode service memory
+	healScanBatchSize = 256
 )
 
 // startHealer restores "sandbox key exists => expiration index member exists".
@@ -74,10 +79,38 @@ func (s *Storage) healExpirationIndex(ctx context.Context) (int, error) {
 }
 
 func (s *Storage) healTeamExpirationIndex(ctx context.Context, teamID string) (int, error) {
-	sandboxIDs, err := s.redisClient.SMembers(ctx, GetSandboxStorageTeamIndexKey(teamID)).Result()
-	if err != nil {
-		return 0, fmt.Errorf("failed to read team index: %w", err)
+	healed := 0
+	var cursor uint64
+
+	for {
+		sandboxIDs, next, err := s.redisClient.SScan(ctx, GetSandboxStorageTeamIndexKey(teamID), cursor, "", healScanBatchSize).Result()
+		if err != nil {
+			return healed, fmt.Errorf("failed to scan team index: %w", err)
+		}
+
+		// SSCAN COUNT is a hint, not a cap: split oversized pages so
+		// downstream commands stay bounded.
+		for start := 0; start < len(sandboxIDs); start += healScanBatchSize {
+			end := min(start+healScanBatchSize, len(sandboxIDs))
+
+			n, err := s.healSandboxBatch(ctx, teamID, sandboxIDs[start:end])
+			if err != nil {
+				return healed, err
+			}
+
+			healed += n
+		}
+
+		cursor = next
+		if cursor == 0 {
+			return healed, nil
+		}
 	}
+}
+
+// healSandboxBatch re-adds missing expiration index members for one bounded
+// batch of sandbox IDs. Returns the number of healed members.
+func (s *Storage) healSandboxBatch(ctx context.Context, teamID string, sandboxIDs []string) (int, error) {
 	if len(sandboxIDs) == 0 {
 		return 0, nil
 	}

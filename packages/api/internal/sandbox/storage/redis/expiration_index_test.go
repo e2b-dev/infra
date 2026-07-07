@@ -1,6 +1,8 @@
 package redis
 
 import (
+	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -310,6 +312,56 @@ func TestHeal_SkipsYoungSandbox(t *testing.T) {
 	require.NoError(t, err)
 	require.Zero(t, healed)
 	requireMemberAbsent(t, client, member)
+}
+
+// TestHeal_ManySandboxesMultipleBatches exercises the SSCAN pagination in
+// healTeamExpirationIndex: more sandboxes than healScanBatchSize, with holes
+// spread across the whole ID range.
+func TestHeal_ManySandboxesMultipleBatches(t *testing.T) {
+	t.Parallel()
+
+	storage, client := setupTestStorage(t)
+
+	teamID := uuid.New()
+	total := healScanBatchSize*2 + 37 // force >2 batches with a partial tail
+
+	pipe := client.Pipeline()
+	var missingMembers []string
+	for i := range total {
+		sbx := makeIndexedSandbox(teamID, fmt.Sprintf("sbx-batch-%04d", i), uuid.NewString(), time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+		data, err := json.Marshal(sbx)
+		require.NoError(t, err)
+
+		pipe.Set(t.Context(), getSandboxKey(teamID.String(), sbx.SandboxID), data, 0)
+		pipe.SAdd(t.Context(), GetSandboxStorageTeamIndexKey(teamID.String()), sbx.SandboxID)
+
+		member := expirationMember(teamID.String(), sbx.SandboxID, sbx.ExecutionID)
+		if i%2 == 0 {
+			pipe.ZAdd(t.Context(), globalExpirationSet, redis.Z{
+				Score:  float64(sbx.EndTime.UnixMilli()),
+				Member: member,
+			})
+		} else {
+			missingMembers = append(missingMembers, member)
+		}
+	}
+	_, err := pipe.Exec(t.Context())
+	require.NoError(t, err)
+
+	healed, err := storage.healTeamExpirationIndex(t.Context(), teamID.String())
+	require.NoError(t, err)
+	require.Equal(t, len(missingMembers), healed)
+
+	scores, err := client.ZMScore(t.Context(), globalExpirationSet, missingMembers...).Result()
+	require.NoError(t, err)
+	for i, score := range scores {
+		require.NotZero(t, score, "member %s not healed", missingMembers[i])
+	}
+
+	// Idempotent: a second pass heals nothing.
+	healed, err = storage.healTeamExpirationIndex(t.Context(), teamID.String())
+	require.NoError(t, err)
+	require.Zero(t, healed)
 }
 
 func TestHeal_DoesNotClobberExistingScore(t *testing.T) {
