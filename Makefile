@@ -114,6 +114,19 @@ ifeq ($(PROVIDER),aws)
 	rm -rf ./.kernels
 	rm -rf ./.firecrackers
 	rm -rf ./.busybox
+else ifeq ($(PROVIDER),azure)
+	mkdir -p ./.kernels
+	mkdir -p ./.firecrackers
+	mkdir -p ./.busybox
+	gcloud storage cp -r "gs://e2b-prod-public-builds/kernels/*" ./.kernels/
+	gcloud storage cp -r "gs://e2b-prod-public-builds/firecrackers/*" ./.firecrackers/
+	gcloud storage cp -r "gs://e2b-prod-public-builds/busybox/*" ./.busybox/
+	az storage blob upload-batch --auth-mode login --account-name $(AZURE_STORAGE_ACCOUNT_NAME) --destination fc-kernels --source ./.kernels
+	az storage blob upload-batch --auth-mode login --account-name $(AZURE_STORAGE_ACCOUNT_NAME) --destination fc-versions --source ./.firecrackers
+	az storage blob upload-batch --auth-mode login --account-name $(AZURE_STORAGE_ACCOUNT_NAME) --destination fc-busybox --source ./.busybox
+	rm -rf ./.kernels
+	rm -rf ./.firecrackers
+	rm -rf ./.busybox
 else
 	gsutil cp -r gs://e2b-prod-public-builds/kernels/* gs://$(GCP_BUCKET_PREFIX)fc-kernels/
 	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_BUCKET_PREFIX)fc-versions/
