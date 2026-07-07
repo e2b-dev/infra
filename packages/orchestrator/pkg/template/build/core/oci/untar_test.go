@@ -20,7 +20,7 @@ func untarLayerToDir(t *testing.T, layer *bytes.Buffer) string {
 	t.Helper()
 
 	layerPath := t.TempDir()
-	err := chrootarchive.UntarUncompressed(layer, layerPath, &archive.TarOptions{
+	err := chrootarchive.UntarUncompressed(dropRedundantWhiteouts(layer), layerPath, &archive.TarOptions{
 		WhiteoutFormat: archive.OverlayWhiteoutFormat,
 	})
 	require.NoError(t, err)

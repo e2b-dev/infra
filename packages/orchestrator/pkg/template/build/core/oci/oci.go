@@ -441,8 +441,8 @@ func createExport(ctx context.Context, logger logger.Logger, srcImage containerr
 				return fmt.Errorf("failed to get uncompressed layer %d: %w", i, err)
 			}
 			defer rc.Close()
-			//  Use chrootarchive (same mechanism as the Docker daemon's layer unpacking)
-			err = chrootarchive.UntarUncompressed(rc, layerPath, &archive.TarOptions{
+			// Use chrootarchive (same mechanism as the Docker daemon's layer unpacking)
+			err = chrootarchive.UntarUncompressed(dropRedundantWhiteouts(rc), layerPath, &archive.TarOptions{
 				WhiteoutFormat: archive.OverlayWhiteoutFormat,
 			})
 			if err != nil {
