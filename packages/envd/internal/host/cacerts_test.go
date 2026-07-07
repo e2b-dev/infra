@@ -1,6 +1,7 @@
 package host
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -233,6 +234,25 @@ func TestInstallCACert_ConcurrentResume(t *testing.T) {
 
 	normalized := strings.TrimRight(certA, "\n") + "\n"
 	assert.Equal(t, 1, strings.Count(string(bundle), normalized), "cert should appear exactly once")
+}
+
+// A canceled acquire while a previous install's cleanup still holds mu must
+// return ErrCAInstallInProgress, not a raw context error.
+func TestInstallCACert_CanceledCtxUnderContention(t *testing.T) {
+	t.Parallel()
+	bundlePath, extraPath := testPaths(t)
+	c := newTestInstaller(t)
+
+	// Simulate the background cleanup goroutine still holding mu.
+	require.NoError(t, c.mu.Acquire(t.Context(), 1))
+	defer c.mu.Release(1)
+
+	canceledCtx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	err := c.install(canceledCtx, certA, bundlePath, extraPath)
+	require.ErrorIs(t, err, ErrCAInstallInProgress)
+	require.ErrorIs(t, err, context.Canceled)
 }
 
 func TestRemoveCertFromBundle(t *testing.T) {
