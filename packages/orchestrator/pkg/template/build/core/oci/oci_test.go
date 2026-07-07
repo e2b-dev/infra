@@ -57,7 +57,6 @@ func createFileTar(t *testing.T, fileName string) *bytes.Buffer {
 }
 
 func TestCreateExportLayersOrder(t *testing.T) {
-	requireRoot(t)
 	t.Parallel()
 	ctx := t.Context()
 
@@ -118,7 +117,6 @@ func createLayerWithWhiteout(t *testing.T, whiteoutPath string) *bytes.Buffer {
 }
 
 func TestCreateExportHandlesOCIWhiteout(t *testing.T) {
-	requireRoot(t)
 	t.Parallel()
 	ctx := t.Context()
 	logger := logger.NewNopLogger()
