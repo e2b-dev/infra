@@ -6,6 +6,27 @@ on:
       - main
 
   workflow_dispatch:
+    inputs:
+      publish_package:
+        description: >-
+          Manually (re-)publish an already-released package to e2b-artifacts.
+          Recovery path for when a release was created but its publish job
+          failed (a re-run can't recover it: release-please only emits
+          release_created on the attempt that cut the release). Leave empty to
+          just run release-please.
+        type: choice
+        default: ''
+        options:
+          - ''
+          - docker-reverse-proxy
+          - client-proxy
+          - clickhouse-migrator
+      publish_version:
+        description: >-
+          Version to publish, without the leading v (e.g. 1.0.0). Must match an
+          existing <package>-v<version> release tag.
+        type: string
+        default: ''
 
 permissions:
   contents: write
@@ -14,6 +35,9 @@ permissions:
 jobs:
   release-please:
     name: Create / update release PRs
+    # Skipped on a manual publish dispatch: the release already exists, we only
+    # want the publish job below.
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.publish_package == '' }}
     runs-on: ubuntu-24.04
     outputs:
       # Per-package outputs are keyed by the package path. Add more here as more
@@ -59,7 +83,9 @@ jobs:
   publish-reverse-proxy:
     name: Publish docker-reverse-proxy to e2b-artifacts
     needs: release-please
-    if: ${{ needs.release-please.outputs.reverse_proxy_released == 'true' }}
+    # Runs when release-please just cut this package's release, or on a manual
+    # publish dispatch for it (release-please job skipped, hence !cancelled()).
+    if: ${{ !cancelled() && (needs.release-please.outputs.reverse_proxy_released == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish_package == 'docker-reverse-proxy' && inputs.publish_version != '')) }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -67,12 +93,13 @@ jobs:
     env:
       # <host>/<project>/<repository>/<image>
       IMAGE: us-docker.pkg.dev/e2b-artifacts/docker-reverse-proxy/docker-reverse-proxy
-      VERSION: ${{ needs.release-please.outputs.reverse_proxy_version }}
+      VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_version || needs.release-please.outputs.reverse_proxy_version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.sha }}
+          # On manual publish, build from the release tag instead of main's head.
+          ref: ${{ inputs.publish_version != '' && format('docker-reverse-proxy-v{0}', inputs.publish_version) || github.sha }}
           persist-credentials: false
 
       - name: Authenticate to the e2b-artifacts project
@@ -111,7 +138,7 @@ jobs:
             --platform linux/amd64 \
             --provenance=false \
             --sbom=false \
-            --build-arg COMMIT_SHA="${GITHUB_SHA::7}" \
+            --build-arg COMMIT_SHA="$(git rev-parse --short HEAD)" \
             --build-arg VERSION="${IMAGE_TAG}" \
             --tag "${IMAGE}:${IMAGE_TAG}" \
             --push \
@@ -121,7 +148,9 @@ jobs:
   publish-client-proxy:
     name: Publish client-proxy to e2b-artifacts
     needs: release-please
-    if: ${{ needs.release-please.outputs.client_proxy_released == 'true' }}
+    # Runs when release-please just cut this package's release, or on a manual
+    # publish dispatch for it (release-please job skipped, hence !cancelled()).
+    if: ${{ !cancelled() && (needs.release-please.outputs.client_proxy_released == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish_package == 'client-proxy' && inputs.publish_version != '')) }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -129,12 +158,13 @@ jobs:
     env:
       # <host>/<project>/<repository>/<image>
       IMAGE: us-docker.pkg.dev/e2b-artifacts/client-proxy/client-proxy
-      VERSION: ${{ needs.release-please.outputs.client_proxy_version }}
+      VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_version || needs.release-please.outputs.client_proxy_version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.sha }}
+          # On manual publish, build from the release tag instead of main's head.
+          ref: ${{ inputs.publish_version != '' && format('client-proxy-v{0}', inputs.publish_version) || github.sha }}
           persist-credentials: false
 
       - name: Authenticate to the e2b-artifacts project
@@ -164,7 +194,7 @@ jobs:
             --platform linux/amd64 \
             --provenance=false \
             --sbom=false \
-            --build-arg COMMIT_SHA="${GITHUB_SHA::7}" \
+            --build-arg COMMIT_SHA="$(git rev-parse --short HEAD)" \
             --tag "${IMAGE}:${IMAGE_TAG}" \
             --push \
             -f packages/client-proxy/Dockerfile \
@@ -173,7 +203,9 @@ jobs:
   publish-clickhouse-migrator:
     name: Publish clickhouse-migrator to e2b-artifacts
     needs: release-please
-    if: ${{ needs.release-please.outputs.clickhouse_migrator_released == 'true' }}
+    # Runs when release-please just cut this package's release, or on a manual
+    # publish dispatch for it (release-please job skipped, hence !cancelled()).
+    if: ${{ !cancelled() && (needs.release-please.outputs.clickhouse_migrator_released == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish_package == 'clickhouse-migrator' && inputs.publish_version != '')) }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -181,12 +213,13 @@ jobs:
     env:
       # <host>/<project>/<repository>/<image>
       IMAGE: us-docker.pkg.dev/e2b-artifacts/clickhouse-migrator/clickhouse-migrator
-      VERSION: ${{ needs.release-please.outputs.clickhouse_migrator_version }}
+      VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_version || needs.release-please.outputs.clickhouse_migrator_version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.sha }}
+          # On manual publish, build from the release tag instead of main's head.
+          ref: ${{ inputs.publish_version != '' && format('clickhouse-migrator-v{0}', inputs.publish_version) || github.sha }}
           persist-credentials: false
 
       - name: Authenticate to the e2b-artifacts project
