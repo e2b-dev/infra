@@ -42,7 +42,7 @@ func newTestOrchestrator(t *testing.T, nomad *nomadapi.Client) *Orchestrator {
 
 	return &Orchestrator{
 		nodes:         smap.New[*nodemanager.Node](),
-		nodeDiscovery: discovery.NewNomad(nomad, "default"),
+		nodeDiscovery: discovery.NewNomad(nomad, []string{"orchestrator"}),
 		tel:           telemetry.NewNoopClient(),
 	}
 }
@@ -139,18 +139,19 @@ func TestGetOrConnectNode_CacheMiss_TriggersNomadDiscovery(t *testing.T) {
 	var discoveryAttempts atomic.Int32
 
 	nomadClient := newNomadMock(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/nodes" {
+		if r.URL.Path == "/v1/service/orchestrator" {
 			discoveryAttempts.Add(1)
 
-			// Return a node stub. connectToNode will fail at the gRPC level
-			// (nodemanager.New dials the fake address), but the important thing
-			// is that discovery WAS attempted.
-			resp := []*nomadapi.NodeListStub{
+			// Return a service registration. connectToNode will fail at the
+			// gRPC level (nodemanager.New dials the fake address), but the
+			// important thing is that discovery WAS attempted.
+			resp := []*nomadapi.ServiceRegistration{
 				{
-					ID:       "abcdef1234567890abcdef1234567890abcdef12",
-					Address:  "127.0.0.1",
-					Status:   "ready",
-					NodePool: "default",
+					ID:          "_nomad-task-abc-orchestrator",
+					ServiceName: "orchestrator",
+					NodeID:      "abcdef1234567890abcdef1234567890abcdef12",
+					Address:     "127.0.0.1",
+					Port:        int(consts.OrchestratorAPIPort),
 				},
 			}
 			w.Header().Set("Content-Type", "application/json")
@@ -184,13 +185,13 @@ func TestGetOrConnectNode_ConcurrentCacheMiss_SharesDiscovery(t *testing.T) {
 	var discoveryAttempts atomic.Int32
 
 	nomadClient := newNomadMock(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/nodes" {
+		if r.URL.Path == "/v1/service/orchestrator" {
 			discoveryAttempts.Add(1)
 			// Slow response to ensure concurrent callers overlap.
 			time.Sleep(100 * time.Millisecond)
 
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode([]*nomadapi.NodeListStub{})
+			json.NewEncoder(w).Encode([]*nomadapi.ServiceRegistration{})
 
 			return
 		}
@@ -266,8 +267,8 @@ func TestConnectToNode_SingleflightDedup(t *testing.T) {
 //  3. This API instance has NOT yet synced (node is absent from o.nodes).
 //  4. A handler calls getOrConnectNode for a sandbox on that node.
 //
-// The fake gRPC server listens on consts.OrchestratorAPIPort so that
-// listNomadNodes builds the correct address (ip:OrchestratorAPIPort).
+// The fake gRPC server listens on consts.OrchestratorAPIPort, matching the
+// port carried by the mocked service registration.
 func TestGetOrConnectNode_CacheMiss_DiscoversAndConnects(t *testing.T) {
 	t.Parallel()
 
@@ -279,15 +280,17 @@ func TestGetOrConnectNode_CacheMiss_DiscoversAndConnects(t *testing.T) {
 	listenAddr := fmt.Sprintf("127.0.0.1:%d", consts.OrchestratorAPIPort)
 	startFakeOrchestratorGRPC(t, orchestratorNodeID, listenAddr)
 
-	// 2. Mock Nomad HTTP API returning a single ready node at 127.0.0.1.
+	// 2. Mock Nomad HTTP API returning a single service registration at
+	//    127.0.0.1.
 	nomadClient := newNomadMock(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/nodes" {
-			resp := []*nomadapi.NodeListStub{
+		if r.URL.Path == "/v1/service/orchestrator" {
+			resp := []*nomadapi.ServiceRegistration{
 				{
-					ID:       nomadFullID,
-					Address:  "127.0.0.1",
-					Status:   "ready",
-					NodePool: "default",
+					ID:          "_nomad-task-def-orchestrator",
+					ServiceName: "orchestrator",
+					NodeID:      nomadFullID,
+					Address:     "127.0.0.1",
+					Port:        int(consts.OrchestratorAPIPort),
 				},
 			}
 			w.Header().Set("Content-Type", "application/json")

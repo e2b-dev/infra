@@ -48,6 +48,24 @@ type Config struct {
 	NomadAddress string `env:"NOMAD_ADDRESS" envDefault:"http://localhost:4646"`
 	NomadToken   string `env:"NOMAD_TOKEN"`
 
+	// NomadOrchestratorServiceNames is the comma-separated list of
+	// Nomad-native service names whose registrations enumerate orchestrator
+	// instances (GET /v1/service/<name> per name, results unioned). Every
+	// orchestrator jobspec registers one of these services, regardless of
+	// job type or node pool. Used when ServiceDiscoveryProvider=nomad.
+	NomadOrchestratorServiceNames []string `env:"NOMAD_ORCHESTRATOR_SERVICE_NAMES" envDefault:"orchestrator" envSeparator:","`
+
+	// NomadOrchestratorLegacyDiscoveryEnabled enables a node-pool-based
+	// discovery FALLBACK unioned with the service-based discovery above: all
+	// ready Nomad nodes in the "default" pool are assumed to run an
+	// orchestrator on the well-known port. It covers orchestrator jobs
+	// deployed from jobspecs that register their service with an empty
+	// Address (pre-port-label-fix), which service discovery skips as
+	// unroutable, and removes any rollout ordering constraint between the
+	// API and orchestrator releases. Set to false once no legacy orchestrator
+	// jobs remain. Used when ServiceDiscoveryProvider=nomad.
+	NomadOrchestratorLegacyDiscoveryEnabled bool `env:"NOMAD_ORCHESTRATOR_LEGACY_DISCOVERY_ENABLED" envDefault:"true"`
+
 	// LocalOrchestratorAddress is the "host:port" address of a statically
 	// configured orchestrator instance. Required when
 	// ServiceDiscoveryProvider=local. Used for local dev against the darwin
