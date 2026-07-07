@@ -215,7 +215,15 @@ func (n *Node) OptimisticRemove(ctx context.Context, res SandboxResources) {
 	n.metricsMu.Lock()
 	defer n.metricsMu.Unlock()
 
-	// Directly subtract from the current metrics view
-	n.metrics.CpuAllocated -= uint32(res.CPUs)
-	n.metrics.MemoryAllocatedBytes -= uint64(res.MiBMemory) * 1024 * 1024
+	// Directly subtract from the current metrics view.
+	cpu := uint32(res.CPUs)
+	memory := uint64(res.MiBMemory) * 1024 * 1024
+
+	// Prevent underflow due to race condition (the sandbox was most likely already removed by the node sync)
+	if cpu <= n.metrics.CpuAllocated {
+		n.metrics.CpuAllocated -= cpu
+	}
+	if memory <= n.metrics.MemoryAllocatedBytes {
+		n.metrics.MemoryAllocatedBytes -= memory
+	}
 }
