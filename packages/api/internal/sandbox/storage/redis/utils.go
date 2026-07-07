@@ -40,6 +40,19 @@ func expirationMember(teamID, sandboxID, executionID string) string {
 // legacyExpirationMember is the pre-executionID member format still present
 // in live data (and written by old pods during a rolling deploy). It drains
 // via Remove's dual ZREM and the lazy upgrade in ExpiredItems.
+//
+// TODO [EN-1602]: remove the legacy member format once the migration is complete
+// Then delete:
+//   - legacyExpirationMember and the ExecutionID == "" fallback in
+//     sandboxExpirationMember (utils.go)
+//   - the executionID == "" legacy branch in parseExpirationMember (utils.go)
+//   - the legacy member in Remove's dual ZREM (operations.go)
+//   - the migrate-on-write ZRem in Update (operations.go)
+//   - the legacy upgrade path in ExpiredItems: upgrades/upgradedLegacy and
+//     the sweptLegacyUpgraded metric attribute (items.go, main.go)
+//   - the legacyMember half of the ZMSCORE existence check in
+//     healTeamExpirationIndex (heal.go)
+//   - the legacy cases in expiration_index_test.go
 func legacyExpirationMember(teamID, sandboxID string) string {
 	return redis_utils.CreateKey(teamID, sandboxID)
 }
