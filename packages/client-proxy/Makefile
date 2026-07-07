@@ -57,7 +57,7 @@ else
 	# Released-image flow: pull the prebuilt, versioned image from the E2B
 	# artifacts registry and retag/push it into the client's own core repo.
 	@echo "Using released client-proxy $(CLIENT_PROXY_VERSION) from $(E2B_ARTIFACTS_REGISTRY)"
-	docker pull --platform linux/amd64 $(E2B_ARTIFACTS_REGISTRY):$(CLIENT_PROXY_VERSION)
+	docker pull --platform $(BUILD_PLATFORM) $(E2B_ARTIFACTS_REGISTRY):$(CLIENT_PROXY_VERSION)
 	docker tag $(E2B_ARTIFACTS_REGISTRY):$(CLIENT_PROXY_VERSION) $(IMAGE_REGISTRY):latest
 	docker tag $(E2B_ARTIFACTS_REGISTRY):$(CLIENT_PROXY_VERSION) $(IMAGE_REGISTRY):$(CLIENT_PROXY_VERSION)
 	docker push $(IMAGE_REGISTRY):latest
