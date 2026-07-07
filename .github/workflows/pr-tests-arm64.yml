@@ -45,7 +45,13 @@ jobs:
           restore-keys: go-arm64-cross-
 
       - name: Install ARM64 cross-compiler
-        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+        # packages.microsoft.com (preinstalled on runner images) intermittently
+        # serves invalid clearsigned InRelease files, failing apt-get update.
+        # It's not needed here — gcc comes from the Ubuntu archive — so drop
+        # those sources instead of letting a bad MS mirror fail the job.
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.* /etc/apt/sources.list.d/azure-cli.*
+          sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Build and vet packages (pure Go)
         run: |
