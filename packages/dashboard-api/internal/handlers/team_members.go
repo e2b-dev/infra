@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"context"
-	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -17,19 +15,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
-
-func (s *APIStore) userBelongsToSSOOrganization(ctx context.Context, userID, orgID uuid.UUID) (bool, error) {
-	if s.userProfiles == nil {
-		return false, errors.New("user profile provider is not configured")
-	}
-
-	userOrgID, err := s.userProfiles.GetUserOrganizationID(ctx, userID)
-	if err != nil {
-		return false, err
-	}
-
-	return userOrgID == orgID, nil
-}
 
 func (s *APIStore) GetTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 	ctx := c.Request.Context()
@@ -113,7 +98,14 @@ func (s *APIStore) rejectInviteOutsideSSOOrg(c *gin.Context, inviteeUserID uuid.
 	}
 
 	ctx := c.Request.Context()
-	belongs, err := s.userBelongsToSSOOrganization(ctx, inviteeUserID, *teamInfo.Team.SsoOrganizationID)
+	if s.userProfiles == nil {
+		logger.L().Error(ctx, "user profile provider is not configured", logger.WithUserID(inviteeUserID.String()))
+		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to add team member")
+
+		return true
+	}
+
+	userOrgID, err := s.userProfiles.GetUserOrganizationID(ctx, inviteeUserID)
 	if err != nil {
 		logger.L().Error(ctx, "failed to resolve invitee sso organization", zap.Error(err), logger.WithUserID(inviteeUserID.String()))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to add team member")
@@ -121,7 +113,7 @@ func (s *APIStore) rejectInviteOutsideSSOOrg(c *gin.Context, inviteeUserID uuid.
 		return true
 	}
 
-	if !belongs {
+	if userOrgID != *teamInfo.Team.SsoOrganizationID {
 		s.sendAPIStoreError(c, http.StatusForbidden, "Only accounts from your organization can be added to this team.")
 
 		return true
