@@ -42,13 +42,6 @@ func (s *Storage) startHealer(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-timer.C:
-			// Re-evaluated every tick: acts as a kill switch without redeploy.
-			if !s.healerEnabled(ctx) {
-				timer.Reset(jitterBackoff(healInterval))
-
-				continue
-			}
-
 			healed, err := s.healExpirationIndex(ctx)
 			if err != nil {
 				logger.L().Warn(ctx, "Expiration index heal pass failed", zap.Error(err))
@@ -76,6 +69,11 @@ func (s *Storage) healerEnabled(ctx context.Context) bool {
 // healExpirationIndex scans all stored sandboxes and re-adds expiration index
 // members missing for live sandbox keys. Returns the number of healed members.
 func (s *Storage) healExpirationIndex(ctx context.Context) (int, error) {
+	// Re-evaluated every tick: acts as a kill switch without redeploy.
+	if !s.healerEnabled(ctx) {
+		return 0, nil
+	}
+
 	teams, err := s.redisClient.ZRange(ctx, globalTeamsSet, 0, -1).Result()
 	if err != nil {
 		return 0, fmt.Errorf("failed to list teams from global index: %w", err)
