@@ -83,16 +83,18 @@ func TestCommandKillNextApp(t *testing.T) {
 		}
 	}()
 
-	// Wait for the next dev to start and list processes
-	time.Sleep(10 * time.Second)
-
+	// Wait for the next dev to show up in the process list
 	listReq := connect.NewRequest(&process.ListRequest{})
 	setup.SetSandboxHeader(t, listReq.Header(), sbx.SandboxID)
 	setup.SetUserHeader(t, listReq.Header(), "user")
-	listResp, err := envdClient.ProcessClient.List(ctx, listReq)
-	require.NoError(t, err)
 
-	assert.Len(t, listResp.Msg.GetProcesses(), 1, "Expected one process (next dev) running")
+	var listResp *connect.Response[process.ListResponse]
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		var err error
+		listResp, err = envdClient.ProcessClient.List(ctx, listReq)
+		require.NoError(c, err)
+		assert.Len(c, listResp.Msg.GetProcesses(), 1, "Expected one process (next dev) running")
+	}, 30*time.Second, 500*time.Millisecond)
 
 	// Kill all processes
 	for _, proc := range listResp.Msg.GetProcesses() {
@@ -160,16 +162,18 @@ func TestCommandKillWithAnd(t *testing.T) {
 		}
 	}()
 
-	// Step 2: Wait for the command to start
-	time.Sleep(5 * time.Second)
-
+	// Step 2: Wait for the command to show up in the process list
 	listReq := connect.NewRequest(&process.ListRequest{})
 	setup.SetSandboxHeader(t, listReq.Header(), sbx.SandboxID)
 	setup.SetUserHeader(t, listReq.Header(), "user")
-	listResp, err := envdClient.ProcessClient.List(ctx, listReq)
-	require.NoError(t, err)
 
-	assert.Len(t, listResp.Msg.GetProcesses(), 1, "Expected one process running")
+	var listResp *connect.Response[process.ListResponse]
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		var err error
+		listResp, err = envdClient.ProcessClient.List(ctx, listReq)
+		require.NoError(c, err)
+		assert.Len(c, listResp.Msg.GetProcesses(), 1, "Expected one process running")
+	}, 30*time.Second, 500*time.Millisecond)
 
 	// Kill all processes
 	for _, proc := range listResp.Msg.GetProcesses() {

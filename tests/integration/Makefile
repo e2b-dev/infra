@@ -1,6 +1,12 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 
+# Max in-flight parallel tests per package (go test -parallel). The harness
+# itself allows up to 100 concurrent sandboxes (utils.MaxConcurrentSandboxes),
+# so this is usually the throughput bottleneck. CI overrides this to a higher
+# value; the default stays conservative for local runs.
+TEST_PARALLELISM ?= 4
+
 .PHONY: generate
 generate:
 	go generate ./...
@@ -39,9 +45,9 @@ test/%:
 		*.go:*) \
 			BASE=$${TEST_PATH%%:*}; \
 			TEST_FN=$${TEST_PATH#*:}; \
-			go tool gotestsum --rerun-fails=1 --packages="$$BASE" --format standard-verbose --junitfile=test-results.xml -- -count=1 -parallel=4 -timeout=20m -run "$${TEST_FN}" ;; \
-		*.go) go tool gotestsum --rerun-fails=1 --packages="$$TEST_PATH" --format standard-verbose --junitfile=test-results.xml -- -count=1 -parallel=4 -timeout=20m ;; \
-		*) go tool gotestsum --rerun-fails=1 --packages="$$TEST_PATH/..." --format standard-verbose --junitfile=test-results.xml -- -count=1 -parallel=4 -timeout=20m ;; \
+			go tool gotestsum --rerun-fails=1 --packages="$$BASE" --format standard-verbose --junitfile=test-results.xml -- -count=1 -parallel=$(TEST_PARALLELISM) -timeout=20m -run "$${TEST_FN}" ;; \
+		*.go) go tool gotestsum --rerun-fails=1 --packages="$$TEST_PATH" --format standard-verbose --junitfile=test-results.xml -- -count=1 -parallel=$(TEST_PARALLELISM) -timeout=20m ;; \
+		*) go tool gotestsum --rerun-fails=1 --packages="$$TEST_PATH/..." --format standard-verbose --junitfile=test-results.xml -- -count=1 -parallel=$(TEST_PARALLELISM) -timeout=20m ;; \
 	esac
 
 .PHONY: connect-orchestrator

@@ -52,8 +52,14 @@ endif
 build:
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(BUILD_ARCH) go build -trimpath -buildvcs=false -a -o bin/envd ${PROD_LDFLAGS}
 
+# Compiler flags for debug builds. The default disables optimizations and
+# inlining so binaries are debugger-friendly. CI overrides this with an empty
+# value: race-instrumented but optimized binaries compile faster and speed up
+# every integration test at runtime (this binary runs inside every sandbox).
+DEBUG_GCFLAGS ?= -gcflags=all="-N -l"
+
 build-debug:
-	CGO_ENABLED=1 go build -race -gcflags=all="-N -l" -o bin/debug/envd ${LDFLAGS}
+	CGO_ENABLED=1 go build -race $(DEBUG_GCFLAGS) -o bin/debug/envd ${LDFLAGS}
 
 start-docker:
 	make build

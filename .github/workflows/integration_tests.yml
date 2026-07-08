@@ -12,6 +12,11 @@ on:
         description: "Whether to run integration tests"
         required: false
         default: true
+      full-matrix:
+        type: boolean
+        description: "Run all compression configs. When false, only the production-like zstd1 config runs (used on PRs to save ~2/3 of runner time; the full matrix still runs on main)."
+        required: false
+        default: true
     secrets:
       CODECOV_TOKEN: { required: false }
 jobs:
@@ -25,31 +30,29 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: uncompressed
-            compress_enabled: "false"
-            compress_type: ""
-            compress_level: ""
-            compress_workers: ""
-            dedup_mode: "default"
-            disable_memfd: "true"
-          - name: zstd1
-            compress_enabled: "true"
-            compress_type: "zstd"
-            compress_level: "1"
-            compress_workers: "8"
-            dedup_mode: "best_effort"
-            disable_memfd: "false"
-          - name: lz4
-            compress_enabled: "true"
-            compress_type: "lz4"
-            compress_level: "0"
-            compress_workers: "8"
-            dedup_mode: "direct_io"
-            disable_memfd: "false"
+        # The full 3-config matrix (uncompressed/zstd1/lz4) runs on push to
+        # main. PRs run only zstd1 (the production-like config) since most
+        # tests don't depend on compression/dedup/memfd settings, and each
+        # shard repeats the whole build+services+suite pipeline (~20 min).
+        include: >-
+          ${{ fromJSON(inputs.full-matrix
+            && '[
+                  {"name": "uncompressed", "compress_enabled": "false", "compress_type": "", "compress_level": "", "compress_workers": "", "dedup_mode": "default", "disable_memfd": "true"},
+                  {"name": "zstd1", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"},
+                  {"name": "lz4", "compress_enabled": "true", "compress_type": "lz4", "compress_level": "0", "compress_workers": "8", "dedup_mode": "direct_io", "disable_memfd": "false"}
+                ]'
+            || '[
+                  {"name": "zstd1", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"}
+                ]') }}
     env:
       # Surfaced as env so upload steps can gate on presence (skipped on fork PRs).
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      # Build race-instrumented but optimized binaries: nobody attaches a
+      # debugger in CI, and -N -l slows both compilation and every test at
+      # runtime. Set at the job level so the build-packages step and the
+      # rebuilds inside the run/run-debug targets use identical flags (the
+      # second build is then a Go build cache no-op).
+      DEBUG_GCFLAGS: ""
 
     steps:
       - name: Checkout Code
@@ -86,6 +89,11 @@ jobs:
           TESTS_ORCHESTRATOR_HOST: "localhost:5008"
           TESTS_ENVD_PROXY: "http://localhost:3002"
           TESTS_CLIENT_PROXY: "http://localhost:3002"
+          # Nearly all tests are t.Parallel() and gated by a 100-slot sandbox
+          # semaphore in the harness; the go test default of -parallel=4 was
+          # the throughput bottleneck (e.g. api/sandboxes is ~1250s of test
+          # time squeezed through 4 slots). Tune down if flakiness increases.
+          TEST_PARALLELISM: "12"
         run: |
           # Run the integration tests
           make test-integration
