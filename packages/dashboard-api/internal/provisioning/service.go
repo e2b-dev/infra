@@ -1,15 +1,6 @@
-// Package provisioning owns the user/team bootstrap and creation sagas: turning
-// an authenticated identity into a user with team memberships, self-serve team
-// creation, and the SSO organization rules that constrain both. It orchestrates
-// the auth DB, the identity provider (identity), and the billing sink
-// (teamprovision — the outbound port this package drives, not to be confused
-// with this package); it never touches HTTP.
 package provisioning
 
 import (
-	"context"
-	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/google/uuid"
@@ -75,21 +66,13 @@ type OIDCUserBootstrapInput struct {
 	SignupUserAgent string
 }
 
-// resolveProfile fetches a single user's profile through the configured profile
-// provider, returning a 404 ProvisionError when the user is unknown.
-func (s *Service) resolveProfile(ctx context.Context, userID uuid.UUID) (identity.Profile, error) {
-	profiles, err := s.idp.GetProfilesByUserID(ctx, []uuid.UUID{userID})
-	if err != nil {
-		return identity.Profile{}, fmt.Errorf("get user profile: %w", err)
+func newProvisionedTeam(id uuid.UUID, name, email, slug string, isBlocked bool, blockedReason *string) ProvisionedTeam {
+	return ProvisionedTeam{
+		ID:            id,
+		Name:          name,
+		Email:         email,
+		Slug:          slug,
+		IsBlocked:     isBlocked,
+		BlockedReason: blockedReason,
 	}
-
-	profile, ok := profiles[userID]
-	if !ok {
-		return identity.Profile{}, &internalteamprovision.ProvisionError{
-			StatusCode: http.StatusNotFound,
-			Message:    "User not found",
-		}
-	}
-
-	return profile, nil
 }

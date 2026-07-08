@@ -45,7 +45,7 @@ func (s *APIStore) PostAdminUsersBootstrap(c *gin.Context) {
 		SignupUserAgent: strings.TrimSpace(valueOrEmpty(body.SignupUserAgent)),
 	})
 	if err != nil {
-		s.handleProvisioningError(ctx, c, "bootstrap auth provider user", err)
+		s.sendProvisioningError(ctx, c, "bootstrap auth provider user", err)
 
 		return
 	}

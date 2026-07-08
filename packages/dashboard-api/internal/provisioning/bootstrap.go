@@ -53,8 +53,6 @@ func (s *Service) providerForIssuer(issuer string) (identity.Provider, error) {
 }
 
 func (s *Service) bootstrapUser(ctx context.Context, idp identity.Provider, profile bootstrapUserProfile, oidcIdentity bootstrapUserIdentity) (ProvisionedTeam, error) {
-	// Resolve the identity's SSO organization before opening the transaction: the
-	// Kratos lookup is a network call that must not run under the per-user lock.
 	ssoOrgID, err := idp.GetIdentityOrganizationID(ctx, oidcIdentity.Subject)
 	if err != nil {
 		return ProvisionedTeam{}, fmt.Errorf("resolve sso organization: %w", err)
@@ -92,14 +90,12 @@ func (s *Service) bootstrapUser(ctx context.Context, idp identity.Provider, prof
 		return ProvisionedTeam{}, fmt.Errorf("upsert public identity: %w", err)
 	}
 	if canonicalUserID != candidateUserID {
-		// concurrent bootstrap claimed the identity first; drop the orphan candidate row
 		if err := authTxDB.DeletePublicUser(ctx, candidateUserID); err != nil {
 			return ProvisionedTeam{}, fmt.Errorf("delete orphan public user: %w", err)
 		}
 		profile.UserID = canonicalUserID
 	}
 
-	// Serialize bootstrap for a user even when they have no team memberships yet.
 	if _, err := authTxDB.LockPublicUserForUpdate(ctx, profile.UserID); err != nil {
 		return ProvisionedTeam{}, fmt.Errorf("lock public user: %w", err)
 	}
@@ -122,29 +118,16 @@ func (s *Service) bootstrapUser(ctx context.Context, idp identity.Provider, prof
 			_ = s.billing.ProvisionTeam(ctx, req)
 		}
 
-		// Backfill the Ory identity's external_id only after the user/identity/team
-		// are durably committed, so a failed PATCH never outlives a rolled-back
-		// transaction. This is also the recovery path: a user whose external_id was
-		// never set (e.g. a prior bootstrap whose PATCH failed after commit) re-runs
-		// here and the idempotent PATCH is re-asserted.
-		if err := idp.SetIdentityExternalID(ctx, oidcIdentity.Subject, profile.UserID); err != nil {
-			return ProvisionedTeam{}, fmt.Errorf("set ory identity external id: %w", err)
+		if err := backfillIdentityExternalID(ctx, idp, oidcIdentity.Subject, profile.UserID); err != nil {
+			return ProvisionedTeam{}, err
 		}
 
-		return ProvisionedTeam{
-			ID:            existingTeam.ID,
-			Name:          existingTeam.Name,
-			Email:         existingTeam.Email,
-			Slug:          existingTeam.Slug,
-			IsBlocked:     existingTeam.IsBlocked,
-			BlockedReason: existingTeam.BlockedReason,
-		}, nil
+		return newProvisionedTeam(existingTeam.ID, existingTeam.Name, existingTeam.Email, existingTeam.Slug, existingTeam.IsBlocked, existingTeam.BlockedReason), nil
 	}
 	if !dberrors.IsNotFoundError(err) {
 		return ProvisionedTeam{}, fmt.Errorf("get default team: %w", err)
 	}
 
-	// Also reached by returning SSO members, who never have a default team.
 	if ssoOrgID != uuid.Nil {
 		landing, err := s.enrollSSOMember(ctx, authTxDB, profile.UserID, ssoOrgID)
 		if err != nil {
@@ -155,9 +138,8 @@ func (s *Service) bootstrapUser(ctx context.Context, idp identity.Provider, prof
 			return ProvisionedTeam{}, fmt.Errorf("commit sso bootstrap transaction: %w", err)
 		}
 
-		// No billing: SSO teams are provisioned out of band.
-		if err := idp.SetIdentityExternalID(ctx, oidcIdentity.Subject, profile.UserID); err != nil {
-			return ProvisionedTeam{}, fmt.Errorf("set ory identity external id: %w", err)
+		if err := backfillIdentityExternalID(ctx, idp, oidcIdentity.Subject, profile.UserID); err != nil {
+			return ProvisionedTeam{}, err
 		}
 
 		return landing, nil
@@ -202,20 +184,17 @@ func (s *Service) bootstrapUser(ctx context.Context, idp identity.Provider, prof
 	}
 	_ = s.billing.ProvisionTeam(ctx, req)
 
-	// Backfill external_id only after the user/identity/team are durably committed.
-	// A PATCH failure here is recoverable: external_id stays unset, the dashboard
-	// re-runs bootstrap on the next login and re-asserts it via the existing-team
-	// path above.
-	if err := idp.SetIdentityExternalID(ctx, oidcIdentity.Subject, profile.UserID); err != nil {
-		return ProvisionedTeam{}, fmt.Errorf("set ory identity external id: %w", err)
+	if err := backfillIdentityExternalID(ctx, idp, oidcIdentity.Subject, profile.UserID); err != nil {
+		return ProvisionedTeam{}, err
 	}
 
-	return ProvisionedTeam{
-		ID:            team.ID,
-		Name:          team.Name,
-		Email:         team.Email,
-		Slug:          team.Slug,
-		IsBlocked:     team.IsBlocked,
-		BlockedReason: team.BlockedReason,
-	}, nil
+	return newProvisionedTeam(team.ID, team.Name, team.Email, team.Slug, team.IsBlocked, team.BlockedReason), nil
+}
+
+func backfillIdentityExternalID(ctx context.Context, idp identity.Provider, subject string, userID uuid.UUID) error {
+	if err := idp.SetIdentityExternalID(ctx, subject, userID); err != nil {
+		return fmt.Errorf("set ory identity external id: %w", err)
+	}
+
+	return nil
 }

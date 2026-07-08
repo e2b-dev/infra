@@ -12,7 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func (s *APIStore) handleProvisioningError(ctx context.Context, c *gin.Context, operation string, err error) {
+func (s *APIStore) sendProvisioningError(ctx context.Context, c *gin.Context, operation string, err error) {
 	attrs := []attribute.KeyValue{
 		attribute.String("team.provision.operation", operation),
 	}

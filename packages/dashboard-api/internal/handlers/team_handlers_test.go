@@ -186,8 +186,6 @@ func TestPostTeamsTeamIDMembers_CreatesPublicUserAnchorForInvitee(t *testing.T) 
 	}
 }
 
-// ssoIdentityProvider is a Provider whose organization lookups are configurable, so
-// tests can simulate identities that belong to an Ory organization.
 type ssoIdentityProvider struct {
 	handlerTestIdentityProvider
 
@@ -216,7 +214,6 @@ func TestPostTeamsTeamIDMembers_RejectsInviteOutsideSSOOrg(t *testing.T) {
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(`{"email":"`+handlerTestUserEmail(inviteeID)+`"}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 
-	// invitee belongs to no org (orgByUser empty) → outside the team's org.
 	store := &APIStore{
 		idp:          ssoIdentityProvider{},
 		provisioning: provisioning.New(nil, ssoIdentityProvider{}, nil, ""),
@@ -248,7 +245,6 @@ func TestPostTeamsTeamIDMembers_AllowsInviteFromSSOOrg(t *testing.T) {
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(`{"email":"`+handlerTestUserEmail(inviteeID)+`"}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 
-	// invitee belongs to the same org as the team → allowed.
 	profiles := ssoIdentityProvider{orgByUser: map[uuid.UUID]uuid.UUID{inviteeID: orgID}}
 	store := &APIStore{
 		db:           testDB.SqlcClient,
@@ -441,6 +437,16 @@ func handlerTestUserEmail(userID uuid.UUID) string {
 	return "user-" + userID.String() + "@example.com"
 }
 
+func newPostTeamsTestStore(t *testing.T, db *testutils.Database, sink *fakeTeamProvisionSink) *APIStore {
+	t.Helper()
+
+	return &APIStore{
+		db:           db.SqlcClient,
+		authDB:       db.AuthDB,
+		provisioning: provisioning.New(db.AuthDB, handlerTestIdentityProvider{}, sink, ""),
+	}
+}
+
 type handlerTestIdentityProvider struct{}
 
 func (handlerTestIdentityProvider) GetProfilesByUserID(_ context.Context, userIDs []uuid.UUID) (map[uuid.UUID]identity.Profile, error) {
@@ -562,11 +568,7 @@ func TestPostTeams_LocalPolicyDeniedReturnsBadRequestWithoutCreatingTeam(t *test
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 	auth.SetUserIDForTest(t, ginCtx, userID)
 
-	store := &APIStore{
-		db:           testDB.SqlcClient,
-		authDB:       testDB.AuthDB,
-		provisioning: provisioning.New(testDB.AuthDB, handlerTestIdentityProvider{}, sink, ""),
-	}
+	store := newPostTeamsTestStore(t, testDB, sink)
 	store.PostTeams(ginCtx)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -600,11 +602,7 @@ func TestPostTeams_InvalidNameReturnsBadRequest(t *testing.T) {
 		auth.SetUserIDForTest(t, ginCtx, userID)
 
 		sink := &fakeTeamProvisionSink{}
-		store := &APIStore{
-			db:           testDB.SqlcClient,
-			authDB:       testDB.AuthDB,
-			provisioning: provisioning.New(testDB.AuthDB, handlerTestIdentityProvider{}, sink, ""),
-		}
+		store := newPostTeamsTestStore(t, testDB, sink)
 		store.PostTeams(ginCtx)
 
 		if recorder.Code != http.StatusBadRequest {
@@ -630,11 +628,7 @@ func TestPostTeams_InvalidRequestBodyReturnsBadRequest(t *testing.T) {
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 	auth.SetUserIDForTest(t, ginCtx, userID)
 
-	store := &APIStore{
-		db:           testDB.SqlcClient,
-		authDB:       testDB.AuthDB,
-		provisioning: provisioning.New(testDB.AuthDB, handlerTestIdentityProvider{}, sink, ""),
-	}
+	store := newPostTeamsTestStore(t, testDB, sink)
 	store.PostTeams(ginCtx)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -662,11 +656,7 @@ func TestPostTeams_TrimsNameBeforeCreate(t *testing.T) {
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 	auth.SetUserIDForTest(t, ginCtx, userID)
 
-	store := &APIStore{
-		db:           testDB.SqlcClient,
-		authDB:       testDB.AuthDB,
-		provisioning: provisioning.New(testDB.AuthDB, handlerTestIdentityProvider{}, sink, ""),
-	}
+	store := newPostTeamsTestStore(t, testDB, sink)
 	store.PostTeams(ginCtx)
 
 	if recorder.Code != http.StatusOK {
@@ -713,11 +703,7 @@ func TestPostTeams_ProvisioningFailureRollsBackCreatedTeam(t *testing.T) {
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 	auth.SetUserIDForTest(t, ginCtx, userID)
 
-	store := &APIStore{
-		db:           testDB.SqlcClient,
-		authDB:       testDB.AuthDB,
-		provisioning: provisioning.New(testDB.AuthDB, handlerTestIdentityProvider{}, sink, ""),
-	}
+	store := newPostTeamsTestStore(t, testDB, sink)
 	store.PostTeams(ginCtx)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -771,11 +757,7 @@ func TestPostTeams_ProvisioningFailurePreservesProvisionErrorStatus(t *testing.T
 			ginCtx.Request.Header.Set("Content-Type", "application/json")
 			auth.SetUserIDForTest(t, ginCtx, userID)
 
-			store := &APIStore{
-				db:           testDB.SqlcClient,
-				authDB:       testDB.AuthDB,
-				provisioning: provisioning.New(testDB.AuthDB, handlerTestIdentityProvider{}, sink, ""),
-			}
+			store := newPostTeamsTestStore(t, testDB, sink)
 			store.PostTeams(ginCtx)
 
 			if recorder.Code != tt.status {

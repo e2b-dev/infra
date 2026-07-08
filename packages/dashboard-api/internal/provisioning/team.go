@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/identity"
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
@@ -34,7 +35,6 @@ func (s *Service) CreateTeam(ctx context.Context, userID uuid.UUID, name string)
 		return ProvisionedTeam{}, fmt.Errorf("upsert public user: %w", err)
 	}
 
-	// Serialize team creation even when the user currently has no team memberships.
 	if _, err := authTxDB.LockPublicUserForUpdate(ctx, userID); err != nil {
 		return ProvisionedTeam{}, fmt.Errorf("lock public user: %w", err)
 	}
@@ -75,25 +75,11 @@ func (s *Service) CreateTeam(ctx context.Context, userID uuid.UUID, name string)
 		CreatorContext: s.resolveTeamCreatorContext(ctx, userID),
 		Reason:         teamprovision.ReasonAdditionalTeam,
 	}
-	if err := s.billing.ProvisionTeam(ctx, req); err != nil {
-		rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), teamProvisionRollbackTimeout)
-		defer cancel()
-
-		if deleteErr := s.authDB.Write.DeleteTeamByID(rollbackCtx, team.ID); deleteErr != nil {
-			return ProvisionedTeam{}, fmt.Errorf("delete team after provisioning failure: provision=%s delete=%w", err.Error(), deleteErr)
-		}
-
+	if err := s.provisionBillingOrDeleteTeam(ctx, team.ID, req); err != nil {
 		return ProvisionedTeam{}, err
 	}
 
-	return ProvisionedTeam{
-		ID:            team.ID,
-		Name:          team.Name,
-		Email:         team.Email,
-		Slug:          team.Slug,
-		IsBlocked:     team.IsBlocked,
-		BlockedReason: team.BlockedReason,
-	}, nil
+	return newProvisionedTeam(team.ID, team.Name, team.Email, team.Slug, team.IsBlocked, team.BlockedReason), nil
 }
 
 func (s *Service) BootstrapTeam(ctx context.Context, name string, email string) (ProvisionedTeam, error) {
@@ -115,25 +101,43 @@ func (s *Service) BootstrapTeam(ctx context.Context, name string, email string) 
 		CreatorUserID: uuid.Nil,
 		Reason:        teamprovision.ReasonAdditionalTeam,
 	}
+	if err := s.provisionBillingOrDeleteTeam(ctx, team.ID, req); err != nil {
+		return ProvisionedTeam{}, err
+	}
+
+	return newProvisionedTeam(team.ID, team.Name, team.Email, team.Slug, team.IsBlocked, team.BlockedReason), nil
+}
+
+func (s *Service) resolveProfile(ctx context.Context, userID uuid.UUID) (identity.Profile, error) {
+	profiles, err := s.idp.GetProfilesByUserID(ctx, []uuid.UUID{userID})
+	if err != nil {
+		return identity.Profile{}, fmt.Errorf("get user profile: %w", err)
+	}
+
+	profile, ok := profiles[userID]
+	if !ok {
+		return identity.Profile{}, &internalteamprovision.ProvisionError{
+			StatusCode: http.StatusNotFound,
+			Message:    "User not found",
+		}
+	}
+
+	return profile, nil
+}
+
+func (s *Service) provisionBillingOrDeleteTeam(ctx context.Context, teamID uuid.UUID, req teamprovision.TeamBillingProvisionRequestedV1) error {
 	if err := s.billing.ProvisionTeam(ctx, req); err != nil {
 		rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), teamProvisionRollbackTimeout)
 		defer cancel()
 
-		if deleteErr := s.authDB.Write.DeleteTeamByID(rollbackCtx, team.ID); deleteErr != nil {
-			return ProvisionedTeam{}, fmt.Errorf("delete team after provisioning failure: provision=%s delete=%w", err.Error(), deleteErr)
+		if deleteErr := s.authDB.Write.DeleteTeamByID(rollbackCtx, teamID); deleteErr != nil {
+			return fmt.Errorf("delete team after provisioning failure: provision=%s delete=%w", err.Error(), deleteErr)
 		}
 
-		return ProvisionedTeam{}, err
+		return err
 	}
 
-	return ProvisionedTeam{
-		ID:            team.ID,
-		Name:          team.Name,
-		Email:         team.Email,
-		Slug:          team.Slug,
-		IsBlocked:     team.IsBlocked,
-		BlockedReason: team.BlockedReason,
-	}, nil
+	return nil
 }
 
 func validateTeamCreationAllowed(ctx context.Context, authTxDB *authqueries.Queries, ownerUserID uuid.UUID) error {
@@ -155,23 +159,21 @@ func validateTeamCreationAllowed(ctx context.Context, authTxDB *authqueries.Quer
 		}
 	}
 
+	teamLimit := maxTeamsPerUser
+	limitMessage := fmt.Sprintf(
+		"You can't create more than %d teams, you can upgrade to Pro tier to create up to %d teams",
+		maxTeamsPerUser,
+		maxTeamsPerUserWithProTier,
+	)
 	if hasProTier {
-		if len(teams) >= maxTeamsPerUserWithProTier {
-			return &internalteamprovision.ProvisionError{
-				StatusCode: http.StatusBadRequest,
-				Message:    fmt.Sprintf("You can't create more than %d teams", maxTeamsPerUserWithProTier),
-			}
-		}
-	} else {
-		if len(teams) >= maxTeamsPerUser {
-			return &internalteamprovision.ProvisionError{
-				StatusCode: http.StatusBadRequest,
-				Message: fmt.Sprintf(
-					"You can't create more than %d teams, you can upgrade to Pro tier to create up to %d teams",
-					maxTeamsPerUser,
-					maxTeamsPerUserWithProTier,
-				),
-			}
+		teamLimit = maxTeamsPerUserWithProTier
+		limitMessage = fmt.Sprintf("You can't create more than %d teams", maxTeamsPerUserWithProTier)
+	}
+
+	if len(teams) >= teamLimit {
+		return &internalteamprovision.ProvisionError{
+			StatusCode: http.StatusBadRequest,
+			Message:    limitMessage,
 		}
 	}
 

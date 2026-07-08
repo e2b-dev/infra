@@ -11,11 +11,6 @@ import (
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 )
 
-// enrollSSOMember adds the user to their SSO organization's auto-join teams and
-// returns the team the response lands on. It fails closed when the org has no
-// auto-join team, since every SSO org must have at least one — that state is a
-// misconfiguration. No billing is emitted; SSO teams are provisioned out of band.
-// The caller must hold the per-user lock.
 func (s *Service) enrollSSOMember(ctx context.Context, authTxDB *authqueries.Queries, userID, orgID uuid.UUID) (ProvisionedTeam, error) {
 	autoTeams, err := authTxDB.GetAutoJoinTeamsBySSOOrganizationID(ctx, orgID)
 	if err != nil {
@@ -39,21 +34,11 @@ func (s *Service) enrollSSOMember(ctx context.Context, authTxDB *authqueries.Que
 		}
 	}
 
-	// Land on the earliest auto-join team (the query orders by created_at).
 	landing := autoTeams[0].Team
 
-	return ProvisionedTeam{
-		ID:            landing.ID,
-		Name:          landing.Name,
-		Email:         landing.Email,
-		Slug:          landing.Slug,
-		IsBlocked:     landing.IsBlocked,
-		BlockedReason: landing.BlockedReason,
-	}, nil
+	return newProvisionedTeam(landing.ID, landing.Name, landing.Email, landing.Slug, landing.IsBlocked, landing.BlockedReason), nil
 }
 
-// ensureNotSSOManaged blocks team creation for SSO-managed users; their team
-// membership is driven entirely by their identity provider.
 func (s *Service) ensureNotSSOManaged(ctx context.Context, userID uuid.UUID) error {
 	orgID, err := s.idp.GetUserOrganizationID(ctx, userID)
 	if err != nil {
@@ -69,8 +54,6 @@ func (s *Service) ensureNotSSOManaged(ctx context.Context, userID uuid.UUID) err
 	return nil
 }
 
-// ValidateInviteeOrganization rejects adding a user to an SSO-managed team when
-// the invitee's Ory identity belongs to a different organization.
 func (s *Service) ValidateInviteeOrganization(ctx context.Context, teamOrgID, inviteeUserID uuid.UUID) error {
 	inviteeOrgID, err := s.idp.GetUserOrganizationID(ctx, inviteeUserID)
 	if err != nil {

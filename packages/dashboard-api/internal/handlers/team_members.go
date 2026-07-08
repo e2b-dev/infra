@@ -129,10 +129,9 @@ func (s *APIStore) PostTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 
 	user := profiles[0]
 
-	// SSO-managed teams only accept accounts from their own organization.
 	if teamInfo, ok := auth.GetTeamInfo(c); ok && teamInfo != nil && teamInfo.Team != nil && teamInfo.Team.SsoOrganizationID != nil {
 		if err := s.provisioning.ValidateInviteeOrganization(ctx, *teamInfo.Team.SsoOrganizationID, user.UserID); err != nil {
-			s.handleProvisioningError(ctx, c, "add team member", err)
+			s.sendProvisioningError(ctx, c, "add team member", err)
 
 			return
 		}
