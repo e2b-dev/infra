@@ -50,10 +50,12 @@ func makeTestData(size int) []byte {
 // fakeSeekable implements storage.Seekable backed by in-memory data.
 // When ctrl is non-nil, reads are gated through its channels for concurrency tests.
 type fakeSeekable struct {
-	data       []byte
-	failAfter  int64 // >0: truncate reads at this offset; 0 = disabled
-	fetchCount atomic.Int64
-	ctrl       *testControl // nil = ungated immediate reads
+	data        []byte
+	failAfter   int64 // >0: truncate reads at this offset; 0 = disabled
+	corrupt     bool  // enable corruptByte injection
+	corruptByte int64 // absolute offset to XOR 0xFF in served bytes (requires corrupt=true)
+	fetchCount  atomic.Int64
+	ctrl        *testControl // nil = ungated immediate reads
 }
 
 var _ storage.Seekable = (*fakeSeekable)(nil)
@@ -126,7 +128,13 @@ func (s *fakeSeekable) OpenRangeReader(_ context.Context, offsetU int64, length 
 		end = min(end, s.failAfter)
 	}
 
-	r := io.Reader(bytes.NewReader(s.data[fetchOff:end]))
+	served := s.data[fetchOff:end]
+	if s.corrupt && s.corruptByte >= fetchOff && s.corruptByte < end {
+		served = bytes.Clone(served)
+		served[s.corruptByte-fetchOff] ^= 0xFF
+	}
+
+	r := io.Reader(bytes.NewReader(served))
 	if frameTable.IsCompressed() {
 		dec, err := storage.NewDecompressReader(storage.NewRangeReader(io.NopCloser(r)), frameTable.CompressionType(), storage.UnknownSource, storage.UnknownSeekableObjectType)
 
@@ -644,4 +652,37 @@ func (r *controlledReader) Close(context.Context) (*storage.ReadStats, error) {
 	}
 
 	return nil, nil
+}
+
+// TestChunker_CorruptCompressedFrameNotServedOrCached verifies the integrity
+// gap fix: a compressed frame whose CRC only fails at the footer (content
+// decodes to plausible bytes) must not be released to waiters or marked
+// cached. Without the fix, an exact-size read never triggers the codec's
+// footer CRC, the Close error was ignored, and the frame was advanced to
+// waiters and cached. Corrupts the final byte of the first compressed frame.
+func TestChunker_CorruptCompressedFrameNotServedOrCached(t *testing.T) {
+	t.Parallel()
+
+	data := makeTestData(testFileSize)
+	ft, file := makeCompressedTestData(t, data)
+
+	// Corrupt the last byte of the first frame's compressed range (footer).
+	r, err := ft.LocateCompressed(0)
+	require.NoError(t, err)
+	file.corrupt = true
+	file.corruptByte = r.Offset + int64(r.Length) - 1
+
+	chunker := newTestChunker(t, int64(len(data)))
+	defer chunker.Close()
+
+	_, err = chunker.Slice(t.Context(), 0, testBlockSize, file, ft)
+	require.Error(t, err, "corrupt compressed frame must surface an error, not serve unverified bytes")
+	require.False(t, chunker.IsCached(t.Context(), 0, testBlockSize),
+		"corrupt compressed frame must not be marked cached")
+
+	// A later read of a clean frame still works (chunker remains usable).
+	lastOff := int64(testFileSize) - testBlockSize
+	slice, err := chunker.Slice(t.Context(), lastOff, testBlockSize, file, ft)
+	require.NoError(t, err)
+	require.Equal(t, data[lastOff:], slice)
 }
