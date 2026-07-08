@@ -7,11 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"slices"
 	"sync"
 	"sync/atomic"
 
 	"golang.org/x/sync/errgroup"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/units"
 )
 
 type partUploader interface {
@@ -19,6 +22,55 @@ type partUploader interface {
 	UploadPart(ctx context.Context, partIndex int, data ...[]byte) error
 	Complete(ctx context.Context) error
 	Close() error
+}
+
+const (
+	// cloudMinPartSizeMB is the smallest non-final multipart part both S3 and
+	// the GCS XML API accept (5 MiB). Smaller configured values would fail with
+	// EntityTooSmall at CompleteMultipartUpload, after all bytes are shipped.
+	cloudMinPartSizeMB = 5
+	// cloudMaxParts bounds the part count; S3 and the GCS XML API cap multipart
+	// uploads at 10,000 parts. Kept below the hard cap because parts are sized
+	// by *compressed* bytes and incompressible frames can expand slightly past
+	// the uncompressed file size this bound is computed from.
+	cloudMaxParts = 9000
+)
+
+// clampCloudMinPartSize resolves the configured minimum part size against the
+// multipart limits shared by S3 and the GCS XML API: at least 5 MiB per
+// non-final part, and large enough that even an incompressible file of
+// fileSize bytes stays under the 10,000-part cap.
+func clampCloudMinPartSize(cfg CompressConfig, fileSize int64) CompressConfig {
+	minMB := units.BytesToMB(cfg.MinPartSize()) // resolves the <= 0 default (50 MB)
+	cfg.MinPartSizeMB = int(max(minMB, cloudMinPartSizeMB, units.BytesToMB(fileSize)/cloudMaxParts+1))
+
+	return cfg
+}
+
+// storeFileCompressed streams localPath through compressStream into a
+// provider-specific multipart upload. It owns the shared recipe — open, stat,
+// stamp the uncompressed size into the object metadata (multipart APIs only
+// accept metadata at initiate time) — so providers supply just the uploader.
+func storeFileCompressed(ctx context.Context, localPath string, cfg CompressConfig, maxUploadConcurrency int, putOpts PutOptions, newUploader func(metadata ObjectMetadata) (partUploader, error)) (*FullFrameTable, [32]byte, error) {
+	file, err := os.Open(localPath)
+	if err != nil {
+		return nil, [32]byte{}, fmt.Errorf("failed to open local file %s: %w", localPath, err)
+	}
+	defer file.Close()
+
+	fi, err := file.Stat()
+	if err != nil {
+		return nil, [32]byte{}, fmt.Errorf("failed to stat local file %s: %w", localPath, err)
+	}
+
+	cfg = clampCloudMinPartSize(cfg, fi.Size())
+
+	uploader, err := newUploader(putOpts.Metadata.WithUncompressedSize(fi.Size()))
+	if err != nil {
+		return nil, [32]byte{}, fmt.Errorf("failed to create multipart uploader: %w", err)
+	}
+
+	return compressStream(ctx, file, cfg, uploader, maxUploadConcurrency, putOpts.FrameSink)
 }
 
 type memPartUploader struct {
@@ -173,6 +225,15 @@ func compressStream(ctx context.Context, in io.Reader, cfg CompressConfig, uploa
 
 	if err := errors.Join(loopErr, workErr); err != nil {
 		return nil, [32]byte{}, err
+	}
+
+	// Zero-byte input produces no parts, but S3 and the GCS XML API both
+	// refuse to complete a multipart upload with zero parts — ship a single
+	// empty final part so empty files still store successfully.
+	if len(frameSizes) == 0 {
+		if err := uploader.UploadPart(ctx, 1); err != nil {
+			return nil, [32]byte{}, fmt.Errorf("upload empty part: %w", err)
+		}
 	}
 
 	if err := uploader.Complete(ctx); err != nil {

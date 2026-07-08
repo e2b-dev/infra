@@ -287,44 +287,6 @@ func (m *MultipartUploader) uploadPart(ctx context.Context, uploadID string, par
 	return etag, nil
 }
 
-type multiSliceReader struct {
-	slices [][]byte
-	idx    int
-	off    int
-}
-
-func (r *multiSliceReader) Read(p []byte) (int, error) {
-	if len(p) == 0 {
-		if r.idx >= len(r.slices) {
-			return 0, io.EOF
-		}
-
-		return 0, nil
-	}
-
-	var n int
-	for len(p) > 0 && r.idx < len(r.slices) {
-		current := r.slices[r.idx]
-		if r.off >= len(current) {
-			r.idx++
-			r.off = 0
-
-			continue
-		}
-
-		copied := copy(p, current[r.off:])
-		n += copied
-		r.off += copied
-		p = p[copied:]
-	}
-
-	if n > 0 {
-		return n, nil
-	}
-
-	return 0, io.EOF
-}
-
 // uploadPartSlices uploads a part from multiple byte slices without concatenating them.
 func (m *MultipartUploader) uploadPartSlices(ctx context.Context, uploadID string, partNumber int, slices [][]byte) (string, error) {
 	totalLen := 0
@@ -337,7 +299,7 @@ func (m *MultipartUploader) uploadPartSlices(ctx context.Context, uploadID strin
 
 	// Use a ReaderFunc so the retryable client can replay the body on retries
 	bodyFn := func() (io.Reader, error) {
-		return &multiSliceReader{slices: slices}, nil
+		return newMultiSliceReader(slices), nil
 	}
 
 	req, err := retryablehttp.NewRequestWithContext(ctx, "PUT", url, retryablehttp.ReaderFunc(bodyFn))
