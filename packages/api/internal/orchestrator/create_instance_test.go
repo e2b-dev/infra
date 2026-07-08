@@ -47,7 +47,7 @@ func newCreateSandboxTestOrchestrator(t *testing.T) (*Orchestrator, *nodemanager
 	t.Helper()
 
 	client := redis_utils.SetupInstance(t)
-	storage, err := sandboxredis.NewStorage(client, noop.NewMeterProvider())
+	storage, err := sandboxredis.NewStorage(client, noop.NewMeterProvider(), nil)
 	require.NoError(t, err)
 	go storage.Start(t.Context())
 	t.Cleanup(func() { storage.Close(context.WithoutCancel(t.Context())) })

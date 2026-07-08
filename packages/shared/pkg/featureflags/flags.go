@@ -212,6 +212,13 @@ var (
 	// re-pulling the snapshot onto yet another node.
 	ResumeOriginNodeRemapFlag = NewBoolFlag("resume-origin-node-remap", false)
 
+	// ExpirationIndexHealerFlag enables the API's Redis expiration index healer
+	// loop, which re-adds sandboxes missing from the global expiration ZSET
+	// (a missing member is never seen by the evictor and would live forever).
+	// Checked on every heal tick, so it can be toggled without a redeploy.
+	// On by default; acts as a kill switch if a heal pass misbehaves.
+	ExpirationIndexHealerFlag = NewBoolFlag("expiration-index-healer", true)
+
 	// DisableE2BAccessTokenProvisioningFlag stops POST /access-tokens from issuing
 	// new E2B access tokens (sk_e2b_) once enabled. E2B_ACCESS_TOKEN is deprecated
 	// in favor of E2B_API_KEY; the CLI now authenticates via Hydra JWTs. Off by

@@ -30,9 +30,11 @@ func (s *Storage) Add(ctx context.Context, sbx sandboxtypes.Sandbox) error {
 
 	// Add to the index before adding to the cache, so there's no possibility of leaking
 	// Index by EndTime so ExpiredItems can use ZRANGEBYSCORE instead of scanning all sandboxes.
+	// The member is scoped to this execution: concurrent removals of older
+	// executions of the same sandbox ID can never unindex this one.
 	if err := s.redisClient.ZAdd(ctx, globalExpirationSet, redis.Z{
 		Score:  float64(sbx.EndTime.UnixMilli()),
-		Member: expirationMember(sbx.TeamID.String(), sbx.SandboxID),
+		Member: sandboxExpirationMember(sbx),
 	}).Err(); err != nil {
 		return fmt.Errorf("failed to add sandbox to global expiration index: %w", err)
 	}
@@ -92,15 +94,30 @@ func (s *Storage) Remove(ctx context.Context, teamID uuid.UUID, sandboxID string
 		}
 	}()
 
-	// Execute Lua script for atomic DEL + SREM
-	err = removeSandboxScript.Run(ctx, s.redisClient, []string{key, teamKey}, sandboxID).Err()
-	if err != nil {
+	// Execute Lua script for atomic DEL + SREM; it returns the deleted JSON
+	// so the expiration-index cleanup below is scoped to the execution we
+	// actually removed.
+	raw, err := removeSandboxScript.Run(ctx, s.redisClient, []string{key, teamKey}, sandboxID).Text()
+	if err != nil && !errors.Is(err, redis.Nil) {
 		return fmt.Errorf("failed to remove sandbox from Redis: %w", err)
 	}
 
 	// Clean up from the global expiration index.
 	// Do it after the removal to prevent leaking expired sandboxes.
-	if err := s.redisClient.ZRem(ctx, globalExpirationSet, expirationMember(teamID.String(), sandboxID)).Err(); err != nil {
+	// Always drop the legacy (execution-less) member; drop the execution
+	// member only for the execution we deleted. A concurrent lockless Add for
+	// a newer execution wrote a different member, so it can never be
+	// unindexed here. If the key was already gone, any leftover execution
+	// member is swept by ExpiredItems once its score passes.
+	members := []any{legacyExpirationMember(teamID.String(), sandboxID)}
+	if raw != "" {
+		var sbx sandboxtypes.Sandbox
+		if unmarshalErr := json.Unmarshal([]byte(raw), &sbx); unmarshalErr == nil && sbx.ExecutionID != "" {
+			members = append(members, expirationMember(teamID.String(), sandboxID, sbx.ExecutionID))
+		}
+	}
+
+	if err := s.redisClient.ZRem(ctx, globalExpirationSet, members...).Err(); err != nil {
 		logger.L().Warn(ctx, "Failed to remove sandbox from global expiration index", zap.Error(err), logger.WithSandboxID(sandboxID))
 	}
 
@@ -217,9 +234,18 @@ func (s *Storage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string
 	if !updatedSbx.EndTime.Equal(sbx.EndTime) {
 		if err := s.redisClient.ZAdd(ctx, globalExpirationSet, redis.Z{
 			Score:  float64(updatedSbx.EndTime.UnixMilli()),
-			Member: expirationMember(teamID.String(), sandboxID),
+			Member: sandboxExpirationMember(updatedSbx),
 		}).Err(); err != nil {
 			return sandboxtypes.Sandbox{}, fmt.Errorf("failed to update sandbox in global expiration index: %w", err)
+		}
+
+		// Migrate-on-write: retire the legacy (execution-less) member so a
+		// stale-scored duplicate can't shadow the fresh score. Warn-only —
+		// the lazy upgrade in ExpiredItems covers failures.
+		if updatedSbx.ExecutionID != "" {
+			if err := s.redisClient.ZRem(ctx, globalExpirationSet, legacyExpirationMember(teamID.String(), sandboxID)).Err(); err != nil {
+				logger.L().Warn(ctx, "Failed to remove legacy expiration index member", zap.Error(err), logger.WithSandboxID(sandboxID))
+			}
 		}
 	}
 
