@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -41,6 +42,13 @@ func (s *Storage) startHealer(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-timer.C:
+			// Re-evaluated every tick: acts as a kill switch without redeploy.
+			if !s.healerEnabled(ctx) {
+				timer.Reset(jitterBackoff(healInterval))
+
+				continue
+			}
+
 			healed, err := s.healExpirationIndex(ctx)
 			if err != nil {
 				logger.L().Warn(ctx, "Expiration index heal pass failed", zap.Error(err))
@@ -52,6 +60,17 @@ func (s *Storage) startHealer(ctx context.Context) {
 			timer.Reset(jitterBackoff(healInterval))
 		}
 	}
+}
+
+// TODO: remove after migration
+// healerEnabled reports whether the heal pass should run. A nil feature flag
+// client (tests) falls back to the flag's default.
+func (s *Storage) healerEnabled(ctx context.Context) bool {
+	if s.featureFlags == nil {
+		return featureflags.ExpirationIndexHealerFlag.Fallback()
+	}
+
+	return s.featureFlags.BoolFlag(ctx, featureflags.ExpirationIndexHealerFlag)
 }
 
 // healExpirationIndex scans all stored sandboxes and re-adds expiration index

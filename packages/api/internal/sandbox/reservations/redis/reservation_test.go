@@ -44,7 +44,7 @@ func setupTestReservationStorage(t *testing.T) (*ReservationStorage, goredis.Uni
 func newTestSandboxStorage(t *testing.T, client goredis.UniversalClient) *storage_redis.Storage {
 	t.Helper()
 
-	storageInstance, err := storage_redis.NewStorage(client, noop.NewMeterProvider())
+	storageInstance, err := storage_redis.NewStorage(client, noop.NewMeterProvider(), nil)
 	require.NoError(t, err)
 
 	return storageInstance
