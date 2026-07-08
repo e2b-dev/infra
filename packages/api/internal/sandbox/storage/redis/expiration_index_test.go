@@ -59,8 +59,7 @@ func TestParseExpirationMember(t *testing.T) {
 		wantParsed bool
 	}{
 		{"execution scoped", teamID + ":sbx-1:" + execID, teamID, "sbx-1", execID, true},
-		{"legacy", teamID + ":sbx-1", teamID, "sbx-1", "", true},
-		{"legacy with uuid sandbox id", teamID + ":" + execID, teamID, execID, "", true},
+		{"legacy two-part member", teamID + ":sbx-1", "", "", "", false},
 		{"no separator", "garbage", "", "", "", false},
 		{"empty rest", teamID + ":", "", "", "", false},
 		{"non-uuid execution tag", teamID + ":sbx-1:not-a-uuid", "", "", "", false},
@@ -179,33 +178,6 @@ func TestExpiredItems_RemovesOrphanMember(t *testing.T) {
 	requireMemberAbsent(t, client, member)
 }
 
-func TestExpiredItems_UpgradesLegacyMember(t *testing.T) {
-	t.Parallel()
-
-	storage, client := setupTestStorage(t)
-
-	teamID := uuid.New()
-	sbx := makeIndexedSandbox(teamID, "sbx-legacy", uuid.NewString(), time.Now(), time.Now().Add(time.Hour))
-	require.NoError(t, storage.Add(t.Context(), sbx))
-
-	// Rewrite the index entry into the legacy format with a drifted (past)
-	// score, simulating pre-deploy data.
-	execMember := expirationMember(teamID.String(), sbx.SandboxID, sbx.ExecutionID)
-	legacyMember := legacyExpirationMember(teamID.String(), sbx.SandboxID)
-	require.NoError(t, client.ZRem(t.Context(), globalExpirationSet, execMember).Err())
-	require.NoError(t, client.ZAdd(t.Context(), globalExpirationSet, redis.Z{
-		Score:  float64(time.Now().Add(-time.Minute).UnixMilli()),
-		Member: legacyMember,
-	}).Err())
-
-	items, err := storage.ExpiredItems(t.Context())
-	require.NoError(t, err)
-	require.Empty(t, items) // sandbox is not expired
-
-	requireMemberAbsent(t, client, legacyMember)
-	requireMemberScore(t, client, execMember, float64(sbx.EndTime.UnixMilli()))
-}
-
 func TestExpiredItems_RescoresDriftedMember(t *testing.T) {
 	t.Parallel()
 
@@ -275,27 +247,6 @@ func TestHeal_RestoresMissingMember(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	require.Equal(t, sbx.SandboxID, items[0].SandboxID)
-}
-
-func TestHeal_SkipsLegacyIndexedSandbox(t *testing.T) {
-	t.Parallel()
-
-	storage, client := setupTestStorage(t)
-
-	teamID := uuid.New()
-	sbx := makeIndexedSandbox(teamID, "sbx-legacy-indexed", uuid.NewString(), time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
-	require.NoError(t, storage.Add(t.Context(), sbx))
-
-	// Sandbox indexed only via the legacy member (written by an old pod).
-	require.NoError(t, client.ZRem(t.Context(), globalExpirationSet, expirationMember(teamID.String(), sbx.SandboxID, sbx.ExecutionID)).Err())
-	require.NoError(t, client.ZAdd(t.Context(), globalExpirationSet, redis.Z{
-		Score:  float64(sbx.EndTime.UnixMilli()),
-		Member: legacyExpirationMember(teamID.String(), sbx.SandboxID),
-	}).Err())
-
-	healed, err := storage.healExpirationIndex(t.Context())
-	require.NoError(t, err)
-	require.Zero(t, healed)
 }
 
 func TestHeal_SkipsYoungSandbox(t *testing.T) {
@@ -386,7 +337,7 @@ func TestHeal_DoesNotClobberExistingScore(t *testing.T) {
 	requireMemberScore(t, client, member, freshScore)
 }
 
-func TestUpdate_RescoresExecutionMemberAndRetiresLegacy(t *testing.T) {
+func TestUpdate_RescoresExecutionMember(t *testing.T) {
 	t.Parallel()
 
 	storage, client := setupTestStorage(t)
@@ -394,13 +345,6 @@ func TestUpdate_RescoresExecutionMemberAndRetiresLegacy(t *testing.T) {
 	teamID := uuid.New()
 	sbx := makeIndexedSandbox(teamID, "sbx-update", uuid.NewString(), time.Now(), time.Now().Add(time.Hour))
 	require.NoError(t, storage.Add(t.Context(), sbx))
-
-	// Seed a leftover legacy member (pre-deploy data).
-	legacyMember := legacyExpirationMember(teamID.String(), sbx.SandboxID)
-	require.NoError(t, client.ZAdd(t.Context(), globalExpirationSet, redis.Z{
-		Score:  float64(sbx.EndTime.UnixMilli()),
-		Member: legacyMember,
-	}).Err())
 
 	newEndTime := time.Now().Add(2 * time.Hour)
 	updated, err := storage.Update(t.Context(), teamID, sbx.SandboxID, func(cur sandboxtypes.Sandbox) (sandboxtypes.Sandbox, error) {
@@ -411,5 +355,4 @@ func TestUpdate_RescoresExecutionMemberAndRetiresLegacy(t *testing.T) {
 	require.NoError(t, err)
 
 	requireMemberScore(t, client, expirationMember(teamID.String(), sbx.SandboxID, updated.ExecutionID), float64(newEndTime.UnixMilli()))
-	requireMemberAbsent(t, client, legacyMember)
 }
