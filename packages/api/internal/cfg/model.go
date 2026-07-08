@@ -1,7 +1,14 @@
 package cfg
 
 import (
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"reflect"
@@ -10,6 +17,7 @@ import (
 	"time"
 
 	"github.com/caarlos0/env/v11"
+	jose "github.com/go-jose/go-jose/v4"
 	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
@@ -146,6 +154,26 @@ func newFailureError(condition FailureCondition, message string) error {
 
 type JWTSigningKey any
 
+// PublicSigningKey is a public verification key published in the JWKS. During
+// rotation the deployment configures several: the currently-active signing key
+// plus any recently-retired keys whose already-issued tokens have not yet
+// expired and must still verify.
+type PublicSigningKey struct {
+	// Name is the key id (JWKS `kid`); it matches the `kid`/`tokid` header set
+	// on tokens signed with this key.
+	Name string
+	// Method is the JWT signing algorithm this key verifies (e.g. "EdDSA",
+	// "RS256"), published as the JWK `alg`.
+	Method string
+	// Key is the parsed public half of the key pair.
+	Key crypto.PublicKey
+}
+
+// PublicSigningKeys is the full rotation set of public verification keys. It is
+// parsed from a single JSON-array env var so the whole set can be supplied at
+// once (see the VOLUME_TOKEN_SIGNING_PUBLIC_KEYS parser below).
+type PublicSigningKeys []PublicSigningKey
+
 type VolumesTokenConfig struct {
 	// Enabled explicitly toggles volume content token signing. When true (the
 	// default), all signing env vars are required. Set to false when volumes are
@@ -157,11 +185,99 @@ type VolumesTokenConfig struct {
 	SigningKey     JWTSigningKey     `env:"VOLUME_TOKEN_SIGNING_KEY"`
 	SigningKeyName string            `env:"VOLUME_TOKEN_SIGNING_KEY_NAME"`
 	Duration       time.Duration     `env:"VOLUME_TOKEN_DURATION"         envDefault:"1h"`
+
+	// SigningPublicKeys is the set of public verification keys to publish at
+	// /.well-known/jwks.json. It carries every key valid for verification during
+	// rotation, including retired keys whose issued tokens have not yet expired.
+	// New tokens are always signed with the single active key above; this set is
+	// verification-only. When unset, the JWKS falls back to the public half of
+	// the active signing key alone.
+	SigningPublicKeys PublicSigningKeys `env:"VOLUME_TOKEN_SIGNING_PUBLIC_KEYS"`
 }
 
 // IsConfigured reports whether volume content token signing is enabled.
 func (c VolumesTokenConfig) IsConfigured() bool {
 	return c.Enabled
+}
+
+// PublicJWKS returns the JSON Web Key Set exposing the public verification keys
+// for volume token signing, suitable for publishing at .well-known/jwks.json.
+//
+// It publishes the full rotation set (SigningPublicKeys) unioned with the public
+// half of the active signing key, deduplicated by key id, so tokens signed by
+// either the active key or a recently-retired key still verify. When the
+// rotation set is unset it falls back to the active key alone.
+//
+// It returns ok=false when signing is disabled or when there is nothing safe to
+// publish — notably when the only key is symmetric (HMAC): a symmetric secret IS
+// the signing key, so publishing it would let anyone forge tokens. Only
+// asymmetric keys (RSA/ECDSA/Ed25519) are ever published.
+func (c VolumesTokenConfig) PublicJWKS() (jose.JSONWebKeySet, bool) {
+	if !c.Enabled {
+		return jose.JSONWebKeySet{}, false
+	}
+
+	keys := make([]jose.JSONWebKey, 0, len(c.SigningPublicKeys)+1)
+	seen := make(map[string]struct{}, len(c.SigningPublicKeys)+1)
+
+	// Explicitly configured rotation set (active + retired-but-unexpired keys).
+	for _, k := range c.SigningPublicKeys {
+		if _, ok := seen[k.Name]; ok {
+			continue
+		}
+		seen[k.Name] = struct{}{}
+		keys = append(keys, jose.JSONWebKey{
+			Key:       k.Key,
+			KeyID:     k.Name,
+			Algorithm: k.Method,
+			Use:       "sig",
+		})
+	}
+
+	// Always publish the active key derived from its private half, so it is
+	// present even when the rotation set env var is unset (e.g. local dev) or
+	// happens to omit it. Skipped for symmetric (HMAC) keys, which have no
+	// publishable public half.
+	if _, ok := seen[c.SigningKeyName]; !ok {
+		if pub, alg, ok := c.activePublicKey(); ok {
+			keys = append(keys, jose.JSONWebKey{
+				Key:       pub,
+				KeyID:     c.SigningKeyName,
+				Algorithm: alg,
+				Use:       "sig",
+			})
+		}
+	}
+
+	if len(keys) == 0 {
+		return jose.JSONWebKeySet{}, false
+	}
+
+	return jose.JSONWebKeySet{Keys: keys}, true
+}
+
+// activePublicKey derives the public half of the active signing key. It returns
+// ok=false for symmetric (HMAC) or unknown key types, which must never be
+// published.
+func (c VolumesTokenConfig) activePublicKey() (crypto.PublicKey, string, bool) {
+	var pub crypto.PublicKey
+	switch k := c.SigningKey.(type) {
+	case *rsa.PrivateKey:
+		pub = k.Public()
+	case *ecdsa.PrivateKey:
+		pub = k.Public()
+	case ed25519.PrivateKey:
+		pub = k.Public()
+	default:
+		return nil, "", false
+	}
+
+	alg := ""
+	if c.SigningMethod != nil {
+		alg = c.SigningMethod.Alg()
+	}
+
+	return pub, alg, true
 }
 
 // validate ensures that when signing is enabled all required signing env vars
@@ -234,8 +350,60 @@ var (
 
 			return method, nil
 		},
+		reflect.TypeFor[PublicSigningKeys](): parsePublicSigningKeys,
 	}
 )
+
+// parsePublicSigningKeys parses the VOLUME_TOKEN_SIGNING_PUBLIC_KEYS env var: a
+// JSON array whose shape matches the Terraform `signing_public_keys` output, so
+// it can be wired straight through with `jsonencode`. Each entry's PEM public
+// key is parsed here so a malformed key fails fast at startup rather than when
+// the JWKS is first served.
+func parsePublicSigningKeys(v string) (any, error) {
+	if strings.TrimSpace(v) == "" {
+		return PublicSigningKeys(nil), nil
+	}
+
+	var raw []struct {
+		Name      string `json:"name"`
+		Method    string `json:"method"`
+		Algorithm string `json:"algorithm"`
+		PublicKey string `json:"public_key"`
+	}
+	if err := json.Unmarshal([]byte(v), &raw); err != nil {
+		return nil, fmt.Errorf("VOLUME_TOKEN_SIGNING_PUBLIC_KEYS must be a JSON array: %w", err)
+	}
+
+	keys := make(PublicSigningKeys, 0, len(raw))
+	for _, r := range raw {
+		if r.Name == "" {
+			return nil, errors.New("VOLUME_TOKEN_SIGNING_PUBLIC_KEYS entry is missing a name")
+		}
+
+		pub, err := parsePKIXPublicKeyPEM(r.PublicKey)
+		if err != nil {
+			return nil, fmt.Errorf("public signing key %q: %w", r.Name, err)
+		}
+
+		keys = append(keys, PublicSigningKey{Name: r.Name, Method: r.Method, Key: pub})
+	}
+
+	return keys, nil
+}
+
+func parsePKIXPublicKeyPEM(pemStr string) (crypto.PublicKey, error) {
+	block, _ := pem.Decode([]byte(pemStr))
+	if block == nil {
+		return nil, errors.New("no PEM data found")
+	}
+
+	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("parse PKIX public key: %w", err)
+	}
+
+	return pub, nil
+}
 
 func Parse() (Config, error) {
 	config, err := env.ParseAsWithOptions[Config](env.Options{

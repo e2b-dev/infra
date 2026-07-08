@@ -29,6 +29,7 @@ require (
 	github.com/gin-contrib/cors v1.7.6
 	github.com/gin-contrib/size v1.0.2
 	github.com/gin-gonic/gin v1.12.0
+	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/go-redis/redis_rate/v10 v10.0.1
 	github.com/gogo/status v1.1.1
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -154,7 +155,6 @@ require (
 	github.com/gin-contrib/sse v1.1.1 // indirect
 	github.com/go-faster/city v1.0.1 // indirect
 	github.com/go-faster/errors v0.7.1 // indirect
-	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/go-kit/log v0.2.1 // indirect
 	github.com/go-logfmt/logfmt v0.6.1 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
