@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -55,6 +56,7 @@ func createRetryableClient(ctx context.Context, config RetryConfig) *retryableht
 	client.RetryMax = config.MaxAttempts - 1 // go-retryablehttp counts retries, not total attempts
 	client.RetryWaitMin = config.InitialBackoff
 	client.RetryWaitMax = config.MaxBackoff
+	client.CheckRetry = retryOnCompleteError
 
 	// Custom backoff function with full jitter to avoid thundering herd
 	client.Backoff = func(start, maxBackoff time.Duration, attemptNum int, _ *http.Response) time.Duration {
@@ -95,6 +97,40 @@ func createRetryableClient(ctx context.Context, config RetryConfig) *retryableht
 	return client
 }
 
+// retryOnCompleteError extends the default retry policy so a transient
+// CompleteMultipartUpload failure is retried like a 5xx. S3 and the GCS XML
+// API can return HTTP 200 with an <Error> body (e.g. InternalError) for a
+// commit that didn't happen; the default policy only looks at the status code,
+// so without this such a response fails on the first attempt and ignores the
+// configured retry budget. Only the complete request (URL query "uploadId=…",
+// small XML body) is inspected, so buffering the body to peek + restore it is
+// cheap.
+func retryOnCompleteError(ctx context.Context, resp *http.Response, err error) (bool, error) {
+	if retry, rerr := retryablehttp.DefaultRetryPolicy(ctx, resp, err); retry || rerr != nil {
+		return retry, rerr
+	}
+
+	if resp == nil || resp.StatusCode != http.StatusOK || resp.Request == nil ||
+		!strings.HasPrefix(resp.Request.URL.RawQuery, "uploadId=") || resp.Body == nil {
+		return false, nil
+	}
+
+	body, readErr := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	// Restore the body so the caller (or a retry) can read it.
+	resp.Body = io.NopCloser(bytes.NewReader(body))
+
+	// Retry when the body couldn't be fully read (transient truncation/reset
+	// after the headers) or when it carries a transient <Error> (e.g.
+	// InternalError). Crucially, a read failure must not fall through as
+	// no-retry: that would hand completeUpload a clean, buffered partial body
+	// and let it commit on a truncated response.
+	var apiErr completeMultipartError
+	retry := readErr != nil || (xml.Unmarshal(body, &apiErr) == nil && apiErr.Code != "")
+
+	return retry, nil //nolint:nilerr // decision is carried by the bool; returning readErr would abort the retry loop instead of retrying
+}
+
 // zapLogger adapts zap.Logger to retryablehttp.LeveledLogger interface
 var _ retryablehttp.LeveledLogger = &leveledLogger{}
 
@@ -132,6 +168,15 @@ type CompleteMultipartUpload struct {
 type Part struct {
 	PartNumber int    `xml:"PartNumber"`
 	ETag       string `xml:"ETag"`
+}
+
+// completeMultipartError matches the S3/GCS XML error payload that can arrive
+// with an HTTP 200 status on CompleteMultipartUpload. Unmarshal only succeeds
+// (Code populated) when the response root is <Error>.
+type completeMultipartError struct {
+	XMLName xml.Name `xml:"Error"`
+	Code    string   `xml:"Code"`
+	Message string   `xml:"Message"`
 }
 
 type MultipartUploader struct {
@@ -373,10 +418,22 @@ func (m *MultipartUploader) completeUpload(ctx context.Context, uploadID string,
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+	body, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return fmt.Errorf("read complete upload response (status %d): %w", resp.StatusCode, readErr)
+	}
 
+	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to complete upload (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	// S3 and the GCS XML API can return HTTP 200 with an <Error> body when the
+	// commit fails server-side (documented for internal errors/timeouts).
+	// Treating that as success would record a frame table for an object that
+	// was never committed, so reject any response whose root is an Error.
+	var apiErr completeMultipartError
+	if xml.Unmarshal(body, &apiErr) == nil && apiErr.Code != "" {
+		return fmt.Errorf("failed to complete upload (status %d, code %s): %s", resp.StatusCode, apiErr.Code, apiErr.Message)
 	}
 
 	return nil

@@ -1098,3 +1098,99 @@ func TestRetryableClient_ActualRetryBehavior(t *testing.T) {
 	totalTime := time.Since(startTime)
 	t.Logf("Total time: %v, Retry delays: %v", totalTime, retryDelays)
 }
+
+// TestGCPCompleteRejects200WithErrorBody verifies CompleteMultipartUpload
+// treats an HTTP 200 carrying an <Error> body as a failure. S3-dialect
+// servers (including the GCS XML API) can return 200 with an error payload on
+// internal timeouts; accepting it would record a frame table for an object
+// that was never committed.
+// fastRetryConfig retries a few times with negligible backoff so retry-path
+// tests stay fast.
+func fastRetryConfig() RetryConfig {
+	return RetryConfig{MaxAttempts: 3, InitialBackoff: time.Millisecond, MaxBackoff: 2 * time.Millisecond, BackoffMultiplier: 2}
+}
+
+func newCompleteErrorUploader(t *testing.T, completeAttempts *atomic.Int32, complete http.HandlerFunc) *MultipartUploader {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.RawQuery == "uploads":
+			w.Write([]byte(`<InitiateMultipartUploadResult><UploadId>id-1</UploadId></InitiateMultipartUploadResult>`))
+		case r.Method == http.MethodPut && r.URL.Query().Get("partNumber") != "":
+			io.Copy(io.Discard, r.Body)
+			w.Header().Set("ETag", `"e1"`)
+		case r.Method == http.MethodPost && r.URL.Query().Get("uploadId") != "":
+			completeAttempts.Add(1)
+			complete(w, r)
+		default:
+			t.Errorf("unexpected request %s %s", r.Method, r.URL)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	return &MultipartUploader{
+		bucketName: "b", objectName: "o", token: "t",
+		client:  createRetryableClient(t.Context(), fastRetryConfig()),
+		baseURL: server.URL + "/b",
+	}
+}
+
+func TestGCPCompleteRejects200WithErrorBody(t *testing.T) {
+	t.Parallel()
+
+	// Persistent 200-with-<Error>: retried up to the budget, then reported as
+	// a failed commit (never treated as success).
+	var attempts atomic.Int32
+	up := newCompleteErrorUploader(t, &attempts, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK) // 200 OK, but the body is an error — commit did NOT happen.
+		w.Write([]byte(`<?xml version="1.0"?><Error><Code>InternalError</Code><Message>please try again</Message></Error>`))
+	})
+	require.NoError(t, up.Start(t.Context()))
+	require.NoError(t, up.UploadPart(t.Context(), 1, []byte("data")))
+
+	err := up.Complete(t.Context())
+	require.Error(t, err, "200-with-<Error>-body must be treated as a failed commit, never as success")
+	require.Equal(t, int32(3), attempts.Load(), "a transient 200-error must be retried up to the configured budget")
+}
+
+func TestGCPCompleteRetriesTransient200Error(t *testing.T) {
+	t.Parallel()
+
+	// First complete attempt returns a 200-with-<Error>; the retry succeeds.
+	var attempts atomic.Int32
+	up := newCompleteErrorUploader(t, &attempts, func(w http.ResponseWriter, _ *http.Request) {
+		if attempts.Load() == 1 {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`<?xml version="1.0"?><Error><Code>InternalError</Code><Message>please try again</Message></Error>`))
+
+			return
+		}
+		w.Write([]byte(`<CompleteMultipartUploadResult><ETag>"final"</ETag></CompleteMultipartUploadResult>`))
+	})
+	require.NoError(t, up.Start(t.Context()))
+	require.NoError(t, up.UploadPart(t.Context(), 1, []byte("data")))
+
+	require.NoError(t, up.Complete(t.Context()), "a transient 200-error should be retried to success")
+	require.Equal(t, int32(2), attempts.Load())
+}
+
+func TestGCPCompleteRetriesTruncatedBody(t *testing.T) {
+	t.Parallel()
+
+	// 200 headers, but the body is truncated (declared Content-Length exceeds
+	// what's written), so reading it fails after the headers. This must be
+	// retried and ultimately fail — never masked as a clean commit.
+	var attempts atomic.Int32
+	up := newCompleteErrorUploader(t, &attempts, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", "4096")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("<partial"))
+	})
+	require.NoError(t, up.Start(t.Context()))
+	require.NoError(t, up.UploadPart(t.Context(), 1, []byte("data")))
+
+	err := up.Complete(t.Context())
+	require.Error(t, err, "a truncated complete response must fail, not commit")
+	require.Equal(t, int32(3), attempts.Load(), "a failed body read must be retried to the budget")
+}
