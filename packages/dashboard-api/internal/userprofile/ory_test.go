@@ -271,7 +271,7 @@ func TestOryProvider_GetUserOrganizationID(t *testing.T) {
 	orgID := uuid.New()
 	subject := uuid.NewString()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		body := `{"id":"` + subject + `","schema_id":"default","schema_url":"","state":"active","traits":{},"organization_id":"` + orgID.String() + `"}`
 		_, _ = w.Write([]byte(body))
