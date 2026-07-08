@@ -302,13 +302,20 @@ func (m *MultipartUploader) uploadPart(ctx context.Context, uploadID string, par
 	url := fmt.Sprintf("%s/%s?partNumber=%d&uploadId=%s",
 		m.baseURL, m.objectName, partNumber, uploadID)
 
-	req, err := retryablehttp.NewRequestWithContext(ctx, "PUT", url, bytes.NewReader(data))
+	// A non-nil zero-length body counts as "unknown length" to net/http and
+	// is sent chunked, which S3-compatible XML backends reject with 411. Pass
+	// no body for empty parts so Content-Length: 0 is sent instead.
+	var body any
+	if len(data) > 0 {
+		body = bytes.NewReader(data)
+	}
+
+	req, err := retryablehttp.NewRequestWithContext(ctx, "PUT", url, body)
 	if err != nil {
 		return "", err
 	}
 
 	req.Header.Set("Authorization", "Bearer "+m.token)
-	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(data)))
 	sum := md5.Sum(data) //nolint:gosec // GCS multipart uses Content-MD5 for transport integrity.
 	req.Header.Set("Content-MD5", base64.StdEncoding.EncodeToString(sum[:]))
 
