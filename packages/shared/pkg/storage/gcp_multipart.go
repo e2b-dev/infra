@@ -297,18 +297,26 @@ func (m *MultipartUploader) uploadPartSlices(ctx context.Context, uploadID strin
 	url := fmt.Sprintf("%s/%s?partNumber=%d&uploadId=%s",
 		m.baseURL, m.objectName, partNumber, uploadID)
 
-	// Use a ReaderFunc so the retryable client can replay the body on retries
-	bodyFn := func() (io.Reader, error) {
-		return newMultiSliceReader(slices), nil
+	// Use a ReaderFunc so the retryable client can replay the body on
+	// retries. The multiSliceReader's Len makes retryablehttp set the
+	// request's ContentLength, so parts are sent with an explicit
+	// Content-Length rather than chunked transfer encoding (which GCS
+	// tolerates but S3-compatible XML backends reject with 411). Empty parts
+	// send no body at all for the same reason: a zero-length reader still
+	// counts as "unknown length" to net/http and would be chunked.
+	var body any
+	if totalLen > 0 {
+		body = retryablehttp.ReaderFunc(func() (io.Reader, error) {
+			return newMultiSliceReader(slices), nil
+		})
 	}
 
-	req, err := retryablehttp.NewRequestWithContext(ctx, "PUT", url, retryablehttp.ReaderFunc(bodyFn))
+	req, err := retryablehttp.NewRequestWithContext(ctx, "PUT", url, body)
 	if err != nil {
 		return "", err
 	}
 
 	req.Header.Set("Authorization", "Bearer "+m.token)
-	req.Header.Set("Content-Length", fmt.Sprintf("%d", totalLen))
 	h := md5.New() //nolint:gosec // GCS multipart uses Content-MD5 for transport integrity.
 	for _, s := range slices {
 		_, _ = h.Write(s)
