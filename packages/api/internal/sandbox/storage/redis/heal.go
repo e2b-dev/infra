@@ -55,7 +55,6 @@ func (s *Storage) startHealer(ctx context.Context) {
 	}
 }
 
-// TODO: remove after migration
 // healerEnabled reports whether the heal pass should run. A nil feature flag
 // client (tests) falls back to the flag's default.
 func (s *Storage) healerEnabled(ctx context.Context) bool {
@@ -141,9 +140,8 @@ func (s *Storage) healSandboxBatch(ctx context.Context, teamID string, sandboxID
 
 	now := time.Now()
 	type candidate struct {
-		member       string
-		legacyMember string
-		score        float64
+		member string
+		score  float64
 	}
 	var candidates []candidate
 	for _, raw := range vals {
@@ -162,22 +160,19 @@ func (s *Storage) healSandboxBatch(ctx context.Context, teamID string, sandboxID
 		}
 
 		candidates = append(candidates, candidate{
-			member:       sandboxExpirationMember(sbx),
-			legacyMember: legacyExpirationMember(teamID, sbx.SandboxID),
-			score:        float64(sbx.EndTime.UnixMilli()),
+			member: sandboxExpirationMember(sbx),
+			score:  float64(sbx.EndTime.UnixMilli()),
 		})
 	}
 	if len(candidates) == 0 {
 		return 0, nil
 	}
 
-	// A sandbox is indexed if either its execution-scoped member or the
-	// legacy member (written by old pods during rolling deploys) exists.
 	// ZMSCORE returns 0 for absent members; legitimate scores are unix
 	// milliseconds and can never be 0.
-	members := make([]string, 0, len(candidates)*2)
+	members := make([]string, 0, len(candidates))
 	for _, c := range candidates {
-		members = append(members, c.member, c.legacyMember)
+		members = append(members, c.member)
 	}
 
 	scores, err := s.redisClient.ZMScore(ctx, globalExpirationSet, members...).Result()
@@ -187,7 +182,7 @@ func (s *Storage) healSandboxBatch(ctx context.Context, teamID string, sandboxID
 
 	var missing []redis.Z
 	for i, c := range candidates {
-		if scores[2*i] != 0 || scores[2*i+1] != 0 {
+		if scores[i] != 0 {
 			continue
 		}
 

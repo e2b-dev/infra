@@ -104,21 +104,18 @@ func (s *Storage) Remove(ctx context.Context, teamID uuid.UUID, sandboxID string
 
 	// Clean up from the global expiration index.
 	// Do it after the removal to prevent leaking expired sandboxes.
-	// Always drop the legacy (execution-less) member; drop the execution
-	// member only for the execution we deleted. A concurrent lockless Add for
-	// a newer execution wrote a different member, so it can never be
+	// Drop only the member of the execution we deleted. A concurrent lockless
+	// Add for a newer execution wrote a different member, so it can never be
 	// unindexed here. If the key was already gone, any leftover execution
 	// member is swept by ExpiredItems once its score passes.
-	members := []any{legacyExpirationMember(teamID.String(), sandboxID)}
 	if raw != "" {
 		var sbx sandboxtypes.Sandbox
 		if unmarshalErr := json.Unmarshal([]byte(raw), &sbx); unmarshalErr == nil && sbx.ExecutionID != "" {
-			members = append(members, expirationMember(teamID.String(), sandboxID, sbx.ExecutionID))
+			member := expirationMember(teamID.String(), sandboxID, sbx.ExecutionID)
+			if err := s.redisClient.ZRem(ctx, globalExpirationSet, member).Err(); err != nil {
+				logger.L().Warn(ctx, "Failed to remove sandbox from global expiration index", zap.Error(err), logger.WithSandboxID(sandboxID))
+			}
 		}
-	}
-
-	if err := s.redisClient.ZRem(ctx, globalExpirationSet, members...).Err(); err != nil {
-		logger.L().Warn(ctx, "Failed to remove sandbox from global expiration index", zap.Error(err), logger.WithSandboxID(sandboxID))
 	}
 
 	return nil
@@ -237,15 +234,6 @@ func (s *Storage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string
 			Member: sandboxExpirationMember(updatedSbx),
 		}).Err(); err != nil {
 			return sandboxtypes.Sandbox{}, fmt.Errorf("failed to update sandbox in global expiration index: %w", err)
-		}
-
-		// Migrate-on-write: retire the legacy (execution-less) member so a
-		// stale-scored duplicate can't shadow the fresh score. Warn-only —
-		// the lazy upgrade in ExpiredItems covers failures.
-		if updatedSbx.ExecutionID != "" {
-			if err := s.redisClient.ZRem(ctx, globalExpirationSet, legacyExpirationMember(teamID.String(), sandboxID)).Err(); err != nil {
-				logger.L().Warn(ctx, "Failed to remove legacy expiration index member", zap.Error(err), logger.WithSandboxID(sandboxID))
-			}
 		}
 	}
 
