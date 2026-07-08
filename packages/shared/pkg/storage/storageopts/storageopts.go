@@ -5,6 +5,7 @@ package storageopts
 import (
 	"context"
 	"maps"
+	"strconv"
 )
 
 type ObjectMetadata map[string]string
@@ -14,7 +15,29 @@ const (
 	ObjectMetadataTeamID      = "team_id"
 	ObjectMetadataTemplateID  = "template_id"
 	ObjectMetadataBuildOrigin = "build_origin"
+
+	// ObjectMetadataUncompressedSize stores the original size of a compressed
+	// object so that Size() can report it without fetching the frame table.
+	ObjectMetadataUncompressedSize = "uncompressed-size"
 )
+
+// WithUncompressedSize returns a copy of the metadata with the original
+// (uncompressed) size recorded. Internal key wins on collision.
+func (m ObjectMetadata) WithUncompressedSize(size int64) ObjectMetadata {
+	out := make(ObjectMetadata, len(m)+1)
+	maps.Copy(out, m)
+	out[ObjectMetadataUncompressedSize] = strconv.FormatInt(size, 10)
+
+	return out
+}
+
+// UncompressedSize reports the original size of a compressed object, or false
+// if absent (uncompressed object) or malformed.
+func (m ObjectMetadata) UncompressedSize() (int64, bool) {
+	n, err := strconv.ParseInt(m[ObjectMetadataUncompressedSize], 10, 64)
+
+	return n, err == nil
+}
 
 // ObjectOrigin is the immutable operation that created a build, stored as the
 // ObjectMetadataBuildOrigin value.

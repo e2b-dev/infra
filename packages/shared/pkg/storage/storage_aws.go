@@ -18,6 +18,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-sdk-go-v2/otelaws"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -31,6 +32,7 @@ type awsStorage struct {
 	client        *s3.Client
 	presignClient *s3.PresignClient
 	bucketName    string
+	limiter       *limit.Limiter
 }
 
 var _ StorageProvider = (*awsStorage)(nil)
@@ -39,6 +41,7 @@ type awsObject struct {
 	client     *s3.Client
 	path       string
 	bucketName string
+	limiter    *limit.Limiter
 }
 
 var (
@@ -46,7 +49,7 @@ var (
 	_ Blob     = (*awsObject)(nil)
 )
 
-func newAWSStorage(ctx context.Context, bucketName string) (*awsStorage, error) {
+func newAWSStorage(ctx context.Context, bucketName string, limiter *limit.Limiter) (*awsStorage, error) {
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return nil, err
@@ -71,6 +74,7 @@ func newAWSStorage(ctx context.Context, bucketName string) (*awsStorage, error) 
 		client:        client,
 		presignClient: presignClient,
 		bucketName:    bucketName,
+		limiter:       limiter,
 	}, nil
 }
 
@@ -145,6 +149,7 @@ func (s *awsStorage) OpenSeekable(_ context.Context, path string) (Seekable, err
 		client:     s.client,
 		bucketName: s.bucketName,
 		path:       path,
+		limiter:    s.limiter,
 	}, nil
 }
 
@@ -153,6 +158,7 @@ func (s *awsStorage) OpenBlob(_ context.Context, path string) (Blob, error) {
 		client:     s.client,
 		bucketName: s.bucketName,
 		path:       path,
+		limiter:    s.limiter,
 	}, nil
 }
 
@@ -186,6 +192,12 @@ func (o *awsObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 		return nil, [32]byte{}, errors.New("compressed uploads are not supported on AWS (builds target GCP only)")
 	}
 
+	release, err := o.limiter.AcquireUploadSlot(ctx)
+	if err != nil {
+		return nil, [32]byte{}, err
+	}
+	defer release()
+
 	// Inherit the caller's context for the multipart upload. The AWS SDK's
 	// manager.Uploader reuses the same ctx for CreateMultipartUpload, every
 	// UploadPart (Concurrency=8, PartSize=10MB), and the final Complete/Abort —
@@ -204,7 +216,7 @@ func (o *awsObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 		o.client,
 		func(u *manager.Uploader) {
 			u.PartSize = 10 * 1024 * 1024 // 10 MB
-			u.Concurrency = 8             // eight parts in flight
+			u.Concurrency = o.limiter.MaxUploadTasks(ctx)
 		},
 	)
 

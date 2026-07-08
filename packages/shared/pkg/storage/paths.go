@@ -105,7 +105,7 @@ func StripCompression(name string) string {
 // "/data/memfile.zstd.uncompressed-size"). Used by the FS backend where
 // GCS-style object metadata is unavailable.
 func SizeSidecar(objectPath string) string {
-	return objectPath + "." + MetadataKeyUncompressedSize
+	return objectPath + "." + ObjectMetadataUncompressedSize
 }
 
 // seekableObjectType derives the metric file_type and codec from a data-file

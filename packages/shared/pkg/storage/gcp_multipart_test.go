@@ -60,6 +60,37 @@ func createTestMultipartUploader(t *testing.T, handler http.HandlerFunc, retryCo
 	return uploader
 }
 
+func TestMultipartUploader_PartUploaderContract(t *testing.T) {
+	t.Parallel()
+
+	testPartUploaderContract(t, partUploaderTestAdapter{
+		new: func(t *testing.T, recorder *partUploaderRecorder) partUploader {
+			t.Helper()
+
+			return createTestMultipartUploader(t, func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.Method == http.MethodPost && r.URL.RawQuery == uploadsPath:
+					recorder.started = true
+					response := InitiateMultipartUploadResult{Bucket: testBucketName, Key: testObjectName, UploadID: "contract-upload-id"}
+					xmlData, _ := xml.Marshal(response)
+					w.WriteHeader(http.StatusOK)
+					w.Write(xmlData)
+				case r.Method == http.MethodPut:
+					recordUploadedPart(t, recorder, w, r)
+				case r.Method == http.MethodPost && strings.Contains(r.URL.RawQuery, "uploadId=contract-upload-id"):
+					recorder.completed = true
+					w.WriteHeader(http.StatusOK)
+				case r.Method == http.MethodDelete && strings.Contains(r.URL.RawQuery, "uploadId=contract-upload-id"):
+					recorder.aborted = true
+					w.WriteHeader(http.StatusNoContent)
+				default:
+					t.Fatalf("unexpected GCP multipart request: %s %s", r.Method, r.URL.String())
+				}
+			})
+		},
+	})
+}
+
 func TestMultipartUploader_InitiateUpload_Success(t *testing.T) {
 	t.Parallel()
 	expectedUploadID := "test-upload-id-123"
