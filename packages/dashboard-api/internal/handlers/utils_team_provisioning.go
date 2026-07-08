@@ -40,6 +40,7 @@ type provisionedTeam struct {
 	Slug          string
 	IsBlocked     bool
 	BlockedReason *string
+	UserID        uuid.UUID
 }
 
 type bootstrapUserProfile struct {
@@ -65,10 +66,23 @@ type oidcUserBootstrapInput struct {
 
 // resolveProfile fetches a single user's profile through the configured profile
 // provider, returning a 404 ProvisionError when the user is unknown.
+// Falls back to the auth DB (default-team email) when the Ory admin API is unavailable.
 func (s *APIStore) resolveProfile(ctx context.Context, userID uuid.UUID) (userprofile.Profile, error) {
 	profiles, err := s.userProfiles.GetProfilesByUserID(ctx, []uuid.UUID{userID})
 	if err != nil {
-		return userprofile.Profile{}, fmt.Errorf("get user profile: %w", err)
+		// Ory admin API unavailable — fall back to DB email.
+		emails, dbErr := s.authDB.GetUserEmailsByUserIDs(ctx, []uuid.UUID{userID})
+		if dbErr != nil {
+			return userprofile.Profile{}, fmt.Errorf("get user profile (Ory failed: %v, DB also failed): %w", err, dbErr)
+		}
+		email, ok := emails[userID]
+		if !ok || email == "" {
+			return userprofile.Profile{}, &internalteamprovision.ProvisionError{
+				StatusCode: http.StatusNotFound,
+				Message:    "User not found",
+			}
+		}
+		return userprofile.Profile{UserID: userID, Email: email}, nil
 	}
 
 	profile, ok := profiles[userID]
@@ -138,6 +152,21 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 			profile.UserID = existing.UserID
 		case !dberrors.IsNotFoundError(err):
 			return provisionedTeam{}, fmt.Errorf("get user identity: %w", err)
+		default:
+			// No identity found: check if a pre-Ory user with this email exists and
+			// has not yet been linked to any Ory identity. If so, reuse their user_id
+			// so their existing teams and data are preserved on first Ory login.
+			if profile.Email != "" {
+				if linkedUserID, found, emailErr := s.authDB.FindUserIDByEmail(ctx, profile.Email); emailErr == nil && found {
+					rows, idErr := authTxDB.GetUserIdentitiesByUserIDs(ctx, authqueries.GetUserIdentitiesByUserIDsParams{
+						OidcIss: identity.Issuer,
+						UserIds: []uuid.UUID{linkedUserID},
+					})
+					if idErr == nil && len(rows) == 0 {
+						profile.UserID = linkedUserID
+					}
+				}
+			}
 		}
 	}
 
@@ -192,7 +221,10 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 		// never set (e.g. a prior bootstrap whose PATCH failed after commit) re-runs
 		// here and the PATCH is re-asserted. setOIDCIdentityExternalID is idempotent.
 		if err := s.setOIDCIdentityExternalID(ctx, identity, profile.UserID); err != nil {
-			return provisionedTeam{}, err
+			logger.L().Warn(ctx, "failed to backfill ory identity external_id (recoverable)",
+				zap.String("user_id", profile.UserID.String()),
+				zap.Error(err),
+			)
 		}
 
 		return provisionedTeam{
@@ -202,6 +234,7 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 			Slug:          existingTeam.Slug,
 			IsBlocked:     existingTeam.IsBlocked,
 			BlockedReason: existingTeam.BlockedReason,
+			UserID:        profile.UserID,
 		}, nil
 	}
 	if !dberrors.IsNotFoundError(err) {
@@ -252,7 +285,10 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 	// re-runs bootstrap on the next login and re-asserts it via the existing-team
 	// path above.
 	if err := s.setOIDCIdentityExternalID(ctx, identity, profile.UserID); err != nil {
-		return provisionedTeam{}, err
+		logger.L().Warn(ctx, "failed to backfill ory identity external_id (recoverable)",
+			zap.String("user_id", profile.UserID.String()),
+			zap.Error(err),
+		)
 	}
 
 	return provisionedTeam{
@@ -262,6 +298,7 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 		Slug:          team.Slug,
 		IsBlocked:     team.IsBlocked,
 		BlockedReason: team.BlockedReason,
+		UserID:        profile.UserID,
 	}, nil
 }
 

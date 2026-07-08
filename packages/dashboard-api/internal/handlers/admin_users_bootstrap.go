@@ -49,9 +49,10 @@ func (s *APIStore) PostAdminUsersBootstrap(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, api.TeamResolveResponse{
-		Id:   team.ID,
-		Slug: team.Slug,
+	c.JSON(http.StatusOK, gin.H{
+		"id":      team.ID,
+		"slug":    team.Slug,
+		"user_id": team.UserID,
 	})
 }
 
