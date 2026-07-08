@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -316,5 +317,63 @@ func TestPostTeamsTeamIDMembers_OryUnavailableUnknownEmailReturns404(t *testing.
 
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 for unknown email with Ory unavailable, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+}
+
+// Two concurrent bootstraps with different OIDC subs but the same email must
+// not both claim the pre-Ory user_id. The user-row lock taken before the
+// identity recheck serializes the race: the first bootstrap merges, the second
+// sees the now-populated user_identities row and creates a new account instead.
+func TestBootstrapOIDCUser_ConcurrentEmailMatchOnlyFirstSubMerges(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	const oryIssuer = "https://ory.example.test"
+	existingUserID := createHandlerTestUser(t, testDB)
+
+	store := &APIStore{
+		config:            cfg.Config{OryIssuerURL: oryIssuer},
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDB,
+		teamProvisionSink: &fakeTeamProvisionSink{},
+		userProfiles:      newHandlerTestUserProfiles(),
+	}
+
+	const concurrency = 4
+	type result struct {
+		team provisionedTeam
+		err  error
+	}
+
+	results := make(chan result, concurrency)
+	var wg sync.WaitGroup
+	for range concurrency {
+		wg.Go(func() {
+			team, err := store.bootstrapOIDCUser(ctx, oidcUserBootstrapInput{
+				OIDCIssuer:    oryIssuer,
+				OIDCUserID:    uuid.NewString(), // each goroutine uses a unique sub
+				OIDCUserEmail: handlerTestUserEmail(existingUserID),
+			})
+			results <- result{team, err}
+		})
+	}
+	wg.Wait()
+	close(results)
+
+	var mergedCount int
+	for r := range results {
+		if r.err != nil {
+			t.Fatalf("expected bootstrap to succeed: %v", r.err)
+		}
+		if r.team.UserID == existingUserID {
+			mergedCount++
+		}
+	}
+
+	// Only one bootstrap must reuse the existing account; the rest create new users.
+	if mergedCount != 1 {
+		t.Fatalf("expected exactly 1 bootstrap to merge into existing account, got %d", mergedCount)
 	}
 }

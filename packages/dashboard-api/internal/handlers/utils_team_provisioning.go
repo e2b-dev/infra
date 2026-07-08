@@ -157,12 +157,26 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 			// has not yet been linked to any Ory identity. If so, reuse their user_id
 			// so their existing teams and data are preserved on first Ory login.
 			if profile.Email != "" {
-				if linkedUserID, found, emailErr := s.authDB.FindUserIDByEmail(ctx, profile.Email); emailErr == nil && found {
+				linkedUserID, found, emailErr := s.authDB.FindUserIDByEmail(ctx, profile.Email)
+				if emailErr != nil {
+					return provisionedTeam{}, fmt.Errorf("find pre-Ory user by email: %w", emailErr)
+				}
+				if found {
+					// Lock the candidate user row before re-checking identities. Without the
+					// lock, two concurrent bootstraps with different OIDC subs but the same
+					// email can both observe zero identities and both claim linkedUserID,
+					// giving unrelated subs access to the existing account.
+					if _, lockErr := authTxDB.LockPublicUserForUpdate(ctx, linkedUserID); lockErr != nil {
+						return provisionedTeam{}, fmt.Errorf("lock pre-Ory user for migration: %w", lockErr)
+					}
 					rows, idErr := authTxDB.GetUserIdentitiesByUserIDs(ctx, authqueries.GetUserIdentitiesByUserIDsParams{
 						OidcIss: identity.Issuer,
 						UserIds: []uuid.UUID{linkedUserID},
 					})
-					if idErr == nil && len(rows) == 0 {
+					if idErr != nil {
+						return provisionedTeam{}, fmt.Errorf("check existing identities for pre-Ory user: %w", idErr)
+					}
+					if len(rows) == 0 {
 						profile.UserID = linkedUserID
 					}
 				}
