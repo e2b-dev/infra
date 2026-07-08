@@ -236,6 +236,14 @@ func (ft *FrameTable) LocateCompressed(offset int64) (Range, error) {
 		return Range{}, err
 	}
 
+	// The compressed range covers a whole frame; a mid-frame uncompressed
+	// offset would fetch and decode that frame from its start, silently
+	// returning data for the wrong position. Callers must frame-align via
+	// LocateUncompressed, so reject anything else rather than mis-serve.
+	if offset != e.StartU {
+		return Range{}, fmt.Errorf("offset %d is not frame-aligned (frame starts at %d); align via LocateUncompressed", offset, e.StartU)
+	}
+
 	return Range{Offset: e.StartC, Length: int(e.SizeC)}, nil
 }
 
