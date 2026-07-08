@@ -92,8 +92,10 @@ jobs:
           # Nearly all tests are t.Parallel() and gated by a 100-slot sandbox
           # semaphore in the harness; the go test default of -parallel=4 was
           # the throughput bottleneck (e.g. api/sandboxes is ~1250s of test
-          # time squeezed through 4 slots). Tune down if flakiness increases.
-          TEST_PARALLELISM: "12"
+          # time squeezed through 4 slots). 12 starved the host: concurrent
+          # FC template builds (x8 zstd workers each) starved envd inits into
+          # "syncing took too long" failures. Tune down if flakiness returns.
+          TEST_PARALLELISM: "8"
         run: |
           # Run the integration tests
           make test-integration
