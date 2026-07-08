@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/e2b-dev/infra/compare/clickhouse-migrator-v1.0.0...clickhouse-migrator-v1.0.1) (2026-07-08)
+
+
+### Bug Fixes
+
+* correct 3 CVES ([#3218](https://github.com/e2b-dev/infra/issues/3218)) ([076823b](https://github.com/e2b-dev/infra/commit/076823bc5cbffb9f8c04670c886562445e50ead7))
+
 ## 1.0.0 (2026-07-07)
 
 

@@ -1,5 +1,5 @@
 {
   "packages/docker-reverse-proxy": "0.2.2",
   "packages/client-proxy": "1.0.0",
-  "packages/clickhouse": "1.0.0"
+  "packages/clickhouse": "1.0.1"
 }
