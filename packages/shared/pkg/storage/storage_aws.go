@@ -170,6 +170,11 @@ func (o *awsObject) WriteTo(ctx context.Context, dst io.Writer) (n int64, err er
 			return 0, ErrObjectNotExist
 		}
 
+		var ios *types.InvalidObjectState
+		if errors.As(err, &ios) {
+			return 0, fmt.Errorf("object %q is in storage class that does not allow direct reads: %w", o.path, ErrObjectArchived)
+		}
+
 		return 0, err
 	}
 
@@ -279,6 +284,11 @@ func (o *awsObject) OpenRangeReader(ctx context.Context, off, length int64, fram
 			return nil, SourceAWS, ErrObjectNotExist
 		}
 
+		var ios *types.InvalidObjectState
+		if errors.As(err, &ios) {
+			return nil, SourceAWS, fmt.Errorf("object %q is in storage class that does not allow direct reads: %w", o.path, ErrObjectArchived)
+		}
+
 		return nil, SourceAWS, fmt.Errorf("failed to create S3 range reader for %q: %w", o.path, err)
 	}
 
@@ -299,6 +309,11 @@ func (o *awsObject) Size(ctx context.Context) (_ int64, err error) {
 		var nfd *types.NotFound
 		if errors.As(err, &nsk) || errors.As(err, &nfd) {
 			return 0, ErrObjectNotExist
+		}
+
+		var ios *types.InvalidObjectState
+		if errors.As(err, &ios) {
+			return 0, fmt.Errorf("object %q is in storage class that does not allow direct reads: %w", o.path, ErrObjectArchived)
 		}
 
 		return 0, err

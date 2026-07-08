@@ -255,6 +255,12 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			return nil, status.Errorf(codes.FailedPrecondition, "sandbox files for '%s' not found", req.GetSandbox().GetSandboxId())
 		}
 
+		if errors.Is(err, storage.ErrObjectArchived) {
+			telemetry.ReportError(ctx, "sandbox files archived", err, telemetry.WithSandboxID(req.GetSandbox().GetSandboxId()))
+
+			return nil, status.Errorf(codes.FailedPrecondition, "sandbox files for '%s' are archived and not directly accessible, please rebuild the template", req.GetSandbox().GetSandboxId())
+		}
+
 		err = errors.Join(err, context.Cause(ctx))
 		telemetry.ReportCriticalError(ctx, "failed to create sandbox", err)
 		logger.L().Error(ctx, "failed to create sandbox", zap.Error(err),
