@@ -178,6 +178,42 @@ func TestExpiredItems_RemovesOrphanMember(t *testing.T) {
 	requireMemberAbsent(t, client, member)
 }
 
+// TestExpiredItems_SweepsInvalidMember: unparseable members must be removed, not skipped,
+// otherwise they permanently occupy the batch-limited expired scan window and starve
+// eviction of valid sandboxes. A live sandbox indexed only by such a member
+// is re-indexed in the current format by the healer.
+func TestExpiredItems_SweepsInvalidMember(t *testing.T) {
+	t.Parallel()
+
+	storage, client := setupTestStorage(t)
+
+	teamID := uuid.New()
+	sbx := makeIndexedSandbox(teamID, "sbx-legacy-leftover", uuid.NewString(), time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	require.NoError(t, storage.Add(t.Context(), sbx))
+
+	// Sandbox indexed only via an expired legacy two-part member.
+	execMember := expirationMember(teamID.String(), sbx.SandboxID, sbx.ExecutionID)
+	legacyMember := teamID.String() + ":" + sbx.SandboxID
+	require.NoError(t, client.ZRem(t.Context(), globalExpirationSet, execMember).Err())
+	require.NoError(t, client.ZAdd(t.Context(), globalExpirationSet, redis.Z{
+		Score:  float64(time.Now().Add(-time.Minute).UnixMilli()),
+		Member: legacyMember,
+	}).Err())
+
+	items, err := storage.ExpiredItems(t.Context())
+	require.NoError(t, err)
+	require.Empty(t, items)
+
+	// Invalid member swept: it no longer occupies the scan window.
+	requireMemberAbsent(t, client, legacyMember)
+
+	// Healer restores eviction coverage in the current member format.
+	healed, err := storage.healExpirationIndex(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, 1, healed)
+	requireMemberScore(t, client, execMember, float64(sbx.EndTime.UnixMilli()))
+}
+
 func TestExpiredItems_RescoresDriftedMember(t *testing.T) {
 	t.Parallel()
 

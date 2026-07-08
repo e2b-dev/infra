@@ -60,7 +60,7 @@ const (
 	ApiRedisStorageExpirationIndexHealed CounterType = "api.redis_storage.expiration_index.healed"
 	// ApiRedisStorageExpirationIndexSwept counts members removed from the
 	// global expiration index by the evictor scan
-	// (reason=orphan|dead_execution).
+	// (reason=orphan|dead_execution|invalid).
 	ApiRedisStorageExpirationIndexSwept CounterType = "api.redis_storage.expiration_index.swept"
 	// ApiRedisStorageExpirationIndexRescored counts live members whose index
 	// score drifted from the stored EndTime and were re-scored by the evictor
@@ -253,7 +253,7 @@ var counterDesc = map[CounterType]string{
 	ApiRedisStoragePublisherDropped:   "Total storage notifications dropped before reaching Redis (reason=queue_full|closed)",
 
 	ApiRedisStorageExpirationIndexHealed:   "Sandboxes re-added to the global expiration index by the healer; sustained non-zero rate means index writes are being lost",
-	ApiRedisStorageExpirationIndexSwept:    "Members removed from the global expiration index by the evictor scan (reason=orphan|dead_execution)",
+	ApiRedisStorageExpirationIndexSwept:    "Members removed from the global expiration index by the evictor scan (reason=orphan|dead_execution|invalid)",
 	ApiRedisStorageExpirationIndexRescored: "Live expiration index members re-scored after drifting from the stored EndTime",
 }
 

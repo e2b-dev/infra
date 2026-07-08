@@ -52,6 +52,7 @@ type expirationIndexMetrics struct {
 	indexSwept         metric.Int64Counter
 	sweptOrphan        metric.MeasurementOption
 	sweptDeadExecution metric.MeasurementOption
+	sweptInvalid       metric.MeasurementOption
 }
 
 const sweptReasonAttr = "reason"
@@ -78,6 +79,7 @@ func newExpirationIndexMetrics(meter metric.Meter) (expirationIndexMetrics, erro
 		indexSwept:         swept,
 		sweptOrphan:        metric.WithAttributeSet(attribute.NewSet(attribute.String(sweptReasonAttr, "orphan"))),
 		sweptDeadExecution: metric.WithAttributeSet(attribute.NewSet(attribute.String(sweptReasonAttr, "dead_execution"))),
+		sweptInvalid:       metric.WithAttributeSet(attribute.NewSet(attribute.String(sweptReasonAttr, "invalid"))),
 	}, nil
 }
 

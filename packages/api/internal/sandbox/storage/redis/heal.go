@@ -55,7 +55,6 @@ func (s *Storage) startHealer(ctx context.Context) {
 	}
 }
 
-// TODO: remove after migration
 // healerEnabled reports whether the heal pass should run. A nil feature flag
 // client (tests) falls back to the flag's default.
 func (s *Storage) healerEnabled(ctx context.Context) bool {

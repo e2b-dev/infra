@@ -45,11 +45,18 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandboxtypes.Sandbox, err
 		teamID string
 		refs   []memberRef
 	}
+	// staleMembers collects ZSET entries to remove: unparseable members, orphans, and dead executions
+	var staleMembers []any
+	var invalidCount int64
+
 	teamSandboxes := make(map[string]*teamEntry)
 	for _, member := range expiredMembers {
 		teamID, sandboxID, executionID, ok := parseExpirationMember(member)
 		if !ok {
-			logger.L().Warn(ctx, "Invalid expiration index member", zap.String("member", member))
+			// Unparseable: sweep it so it stops consuming the scan window on every tick
+			logger.L().Warn(ctx, "Removing invalid expiration index member", zap.String("member", member))
+			staleMembers = append(staleMembers, member)
+			invalidCount++
 
 			continue
 		}
@@ -85,9 +92,8 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandboxtypes.Sandbox, err
 		return nil, fmt.Errorf("MGET pipeline failed: %w", err)
 	}
 
-	// Deserialize and filter; collect stale ZSET members for cleanup.
+	// Deserialize and filter.
 	var result []sandboxtypes.Sandbox
-	var staleMembers []any
 	var rescores []redis.Z // live members whose score drifted from EndTime
 	var orphanCount, deadExecutionCount int64
 
@@ -166,6 +172,9 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandboxtypes.Sandbox, err
 			}
 			if deadExecutionCount > 0 {
 				s.metrics.indexSwept.Add(ctx, deadExecutionCount, s.metrics.sweptDeadExecution)
+			}
+			if invalidCount > 0 {
+				s.metrics.indexSwept.Add(ctx, invalidCount, s.metrics.sweptInvalid)
 			}
 		}
 	}
