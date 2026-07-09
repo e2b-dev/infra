@@ -39,6 +39,7 @@ jobs:
         id: pkg
         env:
           TAG: ${{ inputs.tag || github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           # Map the tag's component prefix to its build inputs. build_args
           # lists which --build-arg values the build step passes (their values
@@ -70,6 +71,12 @@ jobs:
               build_args=""
               ;;
             *)
+              # A stray tag caught by the loose glob is a no-op; an explicit
+              # dispatch for one is a mistake and should fail loudly.
+              if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+                echo "::error::tag '${TAG}' does not match a known component"
+                exit 1
+              fi
               echo "::notice::tag '${TAG}' does not match a known component; nothing to publish"
               exit 0
               ;;
@@ -77,6 +84,13 @@ jobs:
           version="${TAG#"${component}"-v}"
           if [ -z "${version}" ]; then
             echo "::error::tag '${TAG}' has an empty version"
+            exit 1
+          fi
+          # On manual dispatch the tag is free text — fail here with a clear
+          # message instead of an opaque git error at the checkout step.
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && \
+             ! gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" --silent 2>/dev/null; then
+            echo "::error::tag '${TAG}' does not exist in this repository"
             exit 1
           fi
           {
