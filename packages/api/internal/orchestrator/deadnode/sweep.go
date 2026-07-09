@@ -35,7 +35,7 @@ const (
 	killTimeout = 30 * time.Second
 
 	// killConcurrency bounds parallel removals per sweep cycle.
-	killConcurrency = 16
+	killConcurrency = 32
 
 	// discoveryFreshnessMax is how stale the last successful node discovery may
 	// be before the sweep refuses to run
