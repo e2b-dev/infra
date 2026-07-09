@@ -16,11 +16,13 @@ TEST_PARALLELISM ?= 4
 #     prefix: (ENV|COPY|RUN|W)* = ~680s vs the rest = ~740s. New
 #     TestTemplateBuild* tests fall into shard 2 unless they match the
 #     shard 1 prefix.
-#   - api/sandboxes gets its own runner.
+#   - api/sandboxes gets its own runner, topped up with the light packages
+#     (proxies, api/metrics, api/volumes) to balance against the rest shard.
 #   - Everything else (including the non-build template tests) shares the
 #     last runner; the -skip only affects the templates package since no
 #     other package has TestTemplateBuild* tests.
 TEMPLATE_BUILDS_SHARD1_RE := ^TestTemplateBuild(ENV|COPY|RUN|W)
+SANDBOXES_SHARD_PACKAGES := ./internal/tests/api/sandboxes/... ./internal/tests/api/metrics/... ./internal/tests/api/volumes/... ./internal/tests/proxies/...
 TEST_SHARD ?= all
 TEST_RUN_FLAGS :=
 ifeq ($(TEST_SHARD),templates)
@@ -32,11 +34,11 @@ else ifeq ($(TEST_SHARD),templates-builds-2)
 TEST_PACKAGES := ./internal/tests/api/templates/...
 TEST_RUN_FLAGS := -run '^TestTemplateBuild' -skip '$(TEMPLATE_BUILDS_SHARD1_RE)'
 else ifeq ($(TEST_SHARD),sandboxes)
-TEST_PACKAGES := ./internal/tests/api/sandboxes/...
+TEST_PACKAGES := $(SANDBOXES_SHARD_PACKAGES)
 else ifeq ($(TEST_SHARD),rest)
-# Everything except the dedicated shards; computed via go list so new
-# packages are picked up automatically.
-TEST_PACKAGES = $(shell go list ./internal/tests/... | grep -v -e '/tests/api/sandboxes')
+# Everything not covered by the dedicated shards; computed via go list so
+# new packages are picked up automatically.
+TEST_PACKAGES = $(shell go list ./internal/tests/... | grep -v -e '/tests/api/sandboxes' -e '/tests/api/metrics' -e '/tests/api/volumes' -e '/tests/proxies')
 TEST_RUN_FLAGS := -skip '^TestTemplateBuild'
 else
 TEST_PACKAGES := ./internal/tests/...
