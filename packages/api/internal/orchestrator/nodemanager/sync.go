@@ -60,6 +60,9 @@ func (n *Node) Sync(ctx context.Context, store *sandbox.Store) {
 
 		store.Reconcile(ctx, activeInstances, n.ID)
 
+		// Full sync cycle succeeded: the node is reachable.
+		n.markReachable()
+
 		syncRetrySuccess = true
 
 		break

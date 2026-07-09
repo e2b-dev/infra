@@ -219,6 +219,13 @@ var (
 	// On by default; acts as a kill switch if a heal pass misbehaves.
 	ExpirationIndexHealerFlag = NewBoolFlag("expiration-index-healer", true)
 
+	// DeadNodeSweepEnabledFlag gates the API's dead-node sweep, which purges
+	// sandbox records from the store when the node they ran on has been gone
+	// from the pool past a grace period. Checked on every sweep tick, so it can
+	// be toggled without a redeploy. Off by default: this is a destructive
+	// background loop and the flag doubles as its fleet-wide kill switch.
+	DeadNodeSweepEnabledFlag = NewBoolFlag("dead-node-sweep-enabled", false)
+
 	// DisableE2BAccessTokenProvisioningFlag stops POST /access-tokens from issuing
 	// new E2B access tokens (sk_e2b_) once enabled. E2B_ACCESS_TOKEN is deprecated
 	// in favor of E2B_API_KEY; the CLI now authenticates via Hydra JWTs. Off by

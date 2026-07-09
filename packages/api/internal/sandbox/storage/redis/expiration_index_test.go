@@ -304,15 +304,15 @@ func TestHeal_SkipsYoungSandbox(t *testing.T) {
 }
 
 // TestHeal_ManySandboxesMultipleBatches exercises the SSCAN pagination in
-// healTeamExpirationIndex: more sandboxes than healScanBatchSize, with holes
-// spread across the whole ID range.
+// the shared sandbox scanner: more sandboxes than sandboxScanBatchSize, with
+// holes spread across the whole ID range.
 func TestHeal_ManySandboxesMultipleBatches(t *testing.T) {
 	t.Parallel()
 
 	storage, client := setupTestStorage(t)
 
 	teamID := uuid.New()
-	total := healScanBatchSize*2 + 37 // force >2 batches with a partial tail
+	total := sandboxScanBatchSize*2 + 37 // force >2 batches with a partial tail
 
 	pipe := client.Pipeline()
 	var missingMembers []string
@@ -334,10 +334,11 @@ func TestHeal_ManySandboxesMultipleBatches(t *testing.T) {
 			missingMembers = append(missingMembers, member)
 		}
 	}
+	pipe.ZAdd(t.Context(), globalTeamsSet, redis.Z{Score: float64(time.Now().Unix()), Member: teamID.String()})
 	_, err := pipe.Exec(t.Context())
 	require.NoError(t, err)
 
-	healed, err := storage.healTeamExpirationIndex(t.Context(), teamID.String())
+	healed, err := storage.healExpirationIndex(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, len(missingMembers), healed)
 
@@ -348,7 +349,7 @@ func TestHeal_ManySandboxesMultipleBatches(t *testing.T) {
 	}
 
 	// Idempotent: a second pass heals nothing.
-	healed, err = storage.healTeamExpirationIndex(t.Context(), teamID.String())
+	healed, err = storage.healExpirationIndex(t.Context())
 	require.NoError(t, err)
 	require.Zero(t, healed)
 }

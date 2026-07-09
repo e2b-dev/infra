@@ -55,6 +55,9 @@ const (
 	KillReasonAdmin               KillReason = "admin"
 	KillReasonOrphaned            KillReason = "orphaned"
 	KillReasonBaseTemplateMissing KillReason = "base_template_missing"
+	// KillReasonNodeGone marks sandboxes removed from the store because the
+	// node they were running on disappeared from the pool (crashed or was removed)
+	KillReasonNodeGone KillReason = "node_gone"
 )
 
 // String returns the reason as a string, normalizing the empty value to

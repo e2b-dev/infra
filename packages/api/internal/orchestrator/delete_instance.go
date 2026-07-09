@@ -135,6 +135,16 @@ func (o *Orchestrator) removeSandboxFromNode(
 
 	node := o.getOrConnectNode(ctx, sbx.ClusterID, sbx.NodeID)
 	if node == nil {
+		// For a node-gone kill, this is expected
+		if stateAction == sandbox.StateActionKill && reason == sandbox.KillReasonNodeGone {
+			logger.L().Warn(ctx, "Node gone, removed sandbox from store without node kill",
+				logger.WithSandboxID(sbx.SandboxID),
+				logger.WithNodeID(sbx.NodeID),
+			)
+
+			return nil
+		}
+
 		fields := []zap.Field{
 			logger.WithNodeID(sbx.NodeID),
 		}
@@ -192,7 +202,18 @@ func (o *Orchestrator) removeSandboxFromNode(
 
 		return nil
 	case sandbox.StateActionKill:
-		return o.killSandboxOnNode(ctx, node, sbx, reason)
+		err := o.killSandboxOnNode(ctx, node, sbx, reason)
+		if err != nil && reason == sandbox.KillReasonNodeGone {
+			logger.L().Warn(ctx, "Node unreachable, removed sandbox from store without node kill",
+				logger.WithSandboxID(sbx.SandboxID),
+				logger.WithNodeID(sbx.NodeID),
+				zap.Error(err),
+			)
+
+			return nil
+		}
+
+		return err
 	}
 
 	return nil

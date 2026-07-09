@@ -2,7 +2,6 @@ package redis
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -12,7 +11,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -21,11 +19,6 @@ const (
 	// healGracePeriod skips recently started sandboxes:
 	// this prevents the healer from clearing in-flight Add/Remove
 	healGracePeriod = time.Minute
-
-	// healScanBatchSize bounds per-command work (SSCAN page, MGET keys,
-	// ZMSCORE members, ZADD members) so teams with many sandboxes can't
-	// produce huge single commands/replies that stall Redis or explode service memory
-	healScanBatchSize = 256
 )
 
 // startHealer restores "sandbox key exists => expiration index member exists".
@@ -67,94 +60,42 @@ func (s *Storage) healerEnabled(ctx context.Context) bool {
 
 // healExpirationIndex scans all stored sandboxes and re-adds expiration index
 // members missing for live sandbox keys. Returns the number of healed members.
+// Per-team failures are isolated by the shared scanner; other teams still get
+// healed.
 func (s *Storage) healExpirationIndex(ctx context.Context) (int, error) {
 	// Re-evaluated every tick: acts as a kill switch without redeploy.
 	if !s.healerEnabled(ctx) {
 		return 0, nil
 	}
 
-	teams, err := s.redisClient.ZRange(ctx, globalTeamsSet, 0, -1).Result()
-	if err != nil {
-		return 0, fmt.Errorf("failed to list teams from global index: %w", err)
-	}
-
 	healed := 0
-	for _, teamID := range teams {
-		n, err := s.healTeamExpirationIndex(ctx, teamID)
+	err := s.forEachSandboxBatch(ctx, func(_ string, batch []sandboxtypes.Sandbox) error {
+		n, err := s.healSandboxBatch(ctx, batch)
 		if err != nil {
-			// Isolate per-team failures; other teams still get healed.
-			logger.L().Warn(ctx, "Failed to heal team expiration index", zap.Error(err), zap.String("team_id", teamID))
-
-			continue
+			return err
 		}
 
 		healed += n
+
+		return nil
+	})
+	if err != nil {
+		return healed, err
 	}
 
 	return healed, nil
 }
 
-func (s *Storage) healTeamExpirationIndex(ctx context.Context, teamID string) (int, error) {
-	healed := 0
-	var cursor uint64
-
-	for {
-		sandboxIDs, next, err := s.redisClient.SScan(ctx, GetSandboxStorageTeamIndexKey(teamID), cursor, "", healScanBatchSize).Result()
-		if err != nil {
-			return healed, fmt.Errorf("failed to scan team index: %w", err)
-		}
-
-		// SSCAN COUNT is a hint, not a cap: split oversized pages so
-		// downstream commands stay bounded.
-		for start := 0; start < len(sandboxIDs); start += healScanBatchSize {
-			end := min(start+healScanBatchSize, len(sandboxIDs))
-
-			n, err := s.healSandboxBatch(ctx, teamID, sandboxIDs[start:end])
-			if err != nil {
-				return healed, err
-			}
-
-			healed += n
-		}
-
-		cursor = next
-		if cursor == 0 {
-			return healed, nil
-		}
-	}
-}
-
 // healSandboxBatch re-adds missing expiration index members for one bounded
-// batch of sandbox IDs. Returns the number of healed members.
-func (s *Storage) healSandboxBatch(ctx context.Context, teamID string, sandboxIDs []string) (int, error) {
-	if len(sandboxIDs) == 0 {
-		return 0, nil
-	}
-
-	// Per-team MGET: all keys share the team hash tag (cluster slot safe).
-	keys := utils.Map(sandboxIDs, func(id string) string { return getSandboxKey(teamID, id) })
-	vals, err := s.redisClient.MGet(ctx, keys...).Result()
-	if err != nil {
-		return 0, fmt.Errorf("MGET failed: %w", err)
-	}
-
+// batch of sandbox records. Returns the number of healed members.
+func (s *Storage) healSandboxBatch(ctx context.Context, batch []sandboxtypes.Sandbox) (int, error) {
 	now := time.Now()
 	type candidate struct {
 		member string
 		score  float64
 	}
 	var candidates []candidate
-	for _, raw := range vals {
-		str, ok := raw.(string)
-		if !ok {
-			continue // stale team index entry; TeamItems tolerates these too
-		}
-
-		var sbx sandboxtypes.Sandbox
-		if err := json.Unmarshal([]byte(str), &sbx); err != nil {
-			continue
-		}
-
+	for _, sbx := range batch {
 		if now.Sub(sbx.StartTime) < healGracePeriod {
 			continue
 		}

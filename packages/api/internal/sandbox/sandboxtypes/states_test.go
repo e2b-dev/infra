@@ -12,6 +12,7 @@ func TestKillReasonValues(t *testing.T) {
 		KillReasonAdmin:               "admin",
 		KillReasonOrphaned:            "orphaned",
 		KillReasonBaseTemplateMissing: "base_template_missing",
+		KillReasonNodeGone:            "node_gone",
 	} {
 		if string(reason) != want {
 			t.Errorf("KillReason = %q, want %q", string(reason), want)
@@ -61,6 +62,11 @@ func TestKillReasonString(t *testing.T) {
 			name: "base template missing",
 			in:   KillReasonBaseTemplateMissing,
 			want: "base_template_missing",
+		},
+		{
+			name: "node gone",
+			in:   KillReasonNodeGone,
+			want: "node_gone",
 		},
 	}
 
