@@ -22,16 +22,14 @@ inputs:
     description: "Base template rootfs disk size in MB. Larger than the create-build default to leave headroom for disk-heavy build steps after the build-reserved-disk-space-mb reservation."
     required: false
     default: "2048"
-  mode:
-    description: "sync (default): build and wait. start: kick off the build in the background so it overlaps with later steps (e.g. service startup). wait: block until a previously started background build finishes and fail if it failed."
-    required: false
-    default: "sync"
 
 runs:
   using: "composite"
   steps:
+    # Note: this cannot run concurrently with a running orchestrator -
+    # create-build manages its own sandbox network state (slot pools,
+    # namespaces) and the two processes conflict, wedging the provisioning VM.
     - name: Build Sandbox Template
-      if: ${{ inputs.mode == 'sync' || inputs.mode == 'start' }}
       env:
         TEMPLATE_ID: "2j6ly824owf4awgai1xo"
         KERNEL_VERSION: "vmlinux-6.1.158-c1a568c"
@@ -54,55 +52,12 @@ runs:
         echo "COMPRESS_LEVEL=${COMPRESS_LEVEL}" >> .env.test
         echo "COMPRESS_FRAME_ENCODE_WORKERS=${COMPRESS_FRAME_ENCODE_WORKERS}" >> .env.test
 
-        build_template() {
-          sudo -E make -C packages/orchestrator build-template \
-            ARTIFACTS_REGISTRY_PROVIDER=Local \
-            STORAGE_PROVIDER=Local \
-            TEMPLATE_ID=${TEMPLATE_ID} \
-            BUILD_ID=${BUILD_ID} \
-            KERNEL_VERSION=${KERNEL_VERSION} \
-            FC_VERSION=${FC_VERSION} \
-            DISK_SIZE_MB=${DISK_SIZE_MB}
-        }
-
-        if [ "${{ inputs.mode }}" = "start" ]; then
-          # Run the build in the background so it overlaps with later steps.
-          # The .env.test entries above are written synchronously, so steps
-          # that only need the IDs (e.g. seeding) can proceed immediately;
-          # a later mode=wait invocation gates on the template artifacts.
-          mkdir -p ~/logs
-          rm -f /tmp/template-build.done /tmp/template-build.ok
-          (
-            if build_template > ~/logs/template-build.log 2>&1; then
-              touch /tmp/template-build.ok
-            fi
-            touch /tmp/template-build.done
-          ) &
-          echo "Template build started in the background"
-        else
-          build_template
-        fi
-      shell: bash
-
-    - name: Wait for Sandbox Template Build
-      if: ${{ inputs.mode == 'wait' }}
-      run: |
-        echo "Waiting for the background template build to finish..."
-        for ((i = 0; i < 600; i++)); do
-          [ -f /tmp/template-build.done ] && break
-          sleep 1
-        done
-
-        echo "===== template build log ====="
-        cat ~/logs/template-build.log || true
-
-        if [ ! -f /tmp/template-build.done ]; then
-          echo "::error::template build did not finish within 10 minutes"
-          exit 1
-        fi
-        if [ ! -f /tmp/template-build.ok ]; then
-          echo "::error::template build failed, see log above"
-          exit 1
-        fi
-        echo "Template build finished successfully"
+        sudo -E make -C packages/orchestrator build-template \
+          ARTIFACTS_REGISTRY_PROVIDER=Local \
+          STORAGE_PROVIDER=Local \
+          TEMPLATE_ID=${TEMPLATE_ID} \
+          BUILD_ID=${BUILD_ID} \
+          KERNEL_VERSION=${KERNEL_VERSION} \
+          FC_VERSION=${FC_VERSION} \
+          DISK_SIZE_MB=${DISK_SIZE_MB}
       shell: bash

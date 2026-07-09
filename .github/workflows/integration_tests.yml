@@ -79,13 +79,13 @@ jobs:
       - name: Initialize Host
         uses: ./.github/actions/host-init
 
-      # Kick off the template build in the background: it doesn't need the
-      # services, and the services don't need the template, so it overlaps
-      # with service startup below. Tests gate on the wait step.
-      - name: Build Template (background)
+      # Must run before Start Services: create-build manages its own sandbox
+      # network state (slot pools, namespaces) and conflicts with a running
+      # orchestrator doing the same - overlapping them wedges the
+      # provisioning VM until its deadline.
+      - name: Build Template
         uses: ./.github/actions/build-sandbox-template
         with:
-          mode: start
           compress_enabled: ${{ matrix.compress_enabled }}
           compress_type: ${{ matrix.compress_type }}
           compress_level: ${{ matrix.compress_level }}
@@ -100,11 +100,6 @@ jobs:
           compress_workers: ${{ matrix.compress_workers }}
           dedup_mode: ${{ matrix.dedup_mode }}
           disable_memfd: ${{ matrix.disable_memfd }}
-
-      - name: Wait for Template Build
-        uses: ./.github/actions/build-sandbox-template
-        with:
-          mode: wait
 
       - name: Run Integration Tests
         env:
