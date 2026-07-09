@@ -1,0 +1,156 @@
+name: Publish release
+
+on:
+  push:
+    tags:
+      # Component release tags: <component>-v<version>. Created by the Release
+      # Please workflow when a release PR merges, or pushed by hand to publish
+      # a release candidate (e.g. client-proxy-v1.2.3-rc1). The glob is a
+      # loose net on purpose; the resolve step below ignores tags whose
+      # component prefix isn't a known package.
+      - '*-v*'
+
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: >-
+          Existing <component>-v<version> tag to (re-)publish, e.g.
+          docker-reverse-proxy-v0.2.3. Recovery path for older tags — the run
+          of the tag itself can also simply be re-run.
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+# One publish per tag at a time. The e2b-artifacts registry has
+# immutableTags=true, so a concurrent duplicate would fail anyway; this just
+# keeps it from racing.
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.tag || github.ref_name }}
+
+jobs:
+  publish:
+    name: Publish to e2b-artifacts
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Resolve package from tag
+        id: pkg
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          # Map the tag's component prefix to its build inputs. build_args
+          # lists which --build-arg values the build step passes (their values
+          # are computed there, after checkout). Unknown components are
+          # skipped, not failed: the '*-v*' trigger can match unrelated tags.
+          case "${TAG}" in
+            docker-reverse-proxy-v*)
+              component=docker-reverse-proxy
+              # Build context is packages/ (the Dockerfile needs shared/ and db/).
+              dockerfile=packages/docker-reverse-proxy/Dockerfile
+              context=packages
+              build_args="COMMIT_SHA VERSION"
+              ;;
+            client-proxy-v*)
+              component=client-proxy
+              # Build context is packages/ (the Dockerfile needs shared/ and
+              # clickhouse/).
+              dockerfile=packages/client-proxy/Dockerfile
+              context=packages
+              build_args="COMMIT_SHA"
+              ;;
+            clickhouse-migrator-v*)
+              component=clickhouse-migrator
+              # Self-contained: Dockerfile and build context both live in
+              # packages/clickhouse (matching the package Makefile's
+              # `docker build .`).
+              dockerfile=packages/clickhouse/Dockerfile
+              context=packages/clickhouse
+              build_args=""
+              ;;
+            *)
+              echo "::notice::tag '${TAG}' does not match a known component; nothing to publish"
+              exit 0
+              ;;
+          esac
+          version="${TAG#"${component}"-v}"
+          if [ -z "${version}" ]; then
+            echo "::error::tag '${TAG}' has an empty version"
+            exit 1
+          fi
+          {
+            echo "component=${component}"
+            echo "version=${version}"
+            # <host>/<project>/<repository>/<image>
+            echo "image=us-docker.pkg.dev/e2b-artifacts/${component}/${component}"
+            echo "dockerfile=${dockerfile}"
+            echo "context=${context}"
+            echo "build_args=${build_args}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Checkout repository
+        if: ${{ steps.pkg.outputs.component != '' }}
+        uses: actions/checkout@v5
+        with:
+          # Build exactly what the tag points at (on a manual dispatch,
+          # github.sha would be main's head instead).
+          ref: ${{ inputs.tag || github.ref_name }}
+          persist-credentials: false
+
+      - name: Authenticate to the e2b-artifacts project
+        if: ${{ steps.pkg.outputs.component != '' }}
+        uses: google-github-actions/auth@v3
+        with:
+          # Workload Identity Federation provider + service account for the
+          # e2b-artifacts project. Provisioned out-of-repo (separate Terraform
+          # modules / live repo); wired here via GitHub repo variables.
+          workload_identity_provider: ${{ vars.E2B_ARTIFACTS_WIF_PROVIDER }}
+          service_account: ${{ vars.E2B_ARTIFACTS_PUBLISH_SA }}
+
+      - name: Set up Cloud SDK
+        if: ${{ steps.pkg.outputs.component != '' }}
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Configure Docker auth
+        if: ${{ steps.pkg.outputs.component != '' }}
+        run: gcloud auth configure-docker us-docker.pkg.dev --quiet
+
+      - name: Set up Docker Buildx
+        if: ${{ steps.pkg.outputs.component != '' }}
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push released image
+        if: ${{ steps.pkg.outputs.component != '' }}
+        env:
+          IMAGE: ${{ steps.pkg.outputs.image }}
+          VERSION: ${{ steps.pkg.outputs.version }}
+          DOCKERFILE: ${{ steps.pkg.outputs.dockerfile }}
+          CONTEXT: ${{ steps.pkg.outputs.context }}
+          BUILD_ARGS: ${{ steps.pkg.outputs.build_args }}
+        # Notes:
+        #  - Image tag is v-prefixed (v${VERSION}) to match what customers pin
+        #    via <COMPONENT>_VERSION and the release tag convention.
+        #  - No :latest tag: the e2b-artifacts repo has immutableTags=true, so
+        #    a reused tag would fail on the second release. Customers pin
+        #    exact versions anyway.
+        #  - --provenance=false --sbom=false: Artifact Registry rejects
+        #    buildx's default OCI attestation manifest list (HTTP 400).
+        run: |
+          IMAGE_TAG="v${VERSION}"
+          args=()
+          for arg in ${BUILD_ARGS}; do
+            case "${arg}" in
+              COMMIT_SHA) args+=( --build-arg COMMIT_SHA="$(git rev-parse --short HEAD)" ) ;;
+              VERSION)    args+=( --build-arg VERSION="${IMAGE_TAG}" ) ;;
+            esac
+          done
+          docker buildx build \
+            --platform linux/amd64 \
+            --provenance=false \
+            --sbom=false \
+            "${args[@]}" \
+            --tag "${IMAGE}:${IMAGE_TAG}" \
+            --push \
+            -f "${DOCKERFILE}" \
+            "${CONTEXT}"
