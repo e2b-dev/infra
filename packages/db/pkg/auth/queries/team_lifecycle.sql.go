@@ -7,6 +7,7 @@ package authqueries
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -42,7 +43,21 @@ type CreateTeamParams struct {
 	BlockedReason *string
 }
 
-func (q *Queries) CreateTeam(ctx context.Context, arg CreateTeamParams) (Team, error) {
+type CreateTeamRow struct {
+	ID                      uuid.UUID
+	CreatedAt               time.Time
+	IsBlocked               bool
+	Name                    string
+	Tier                    string
+	Email                   string
+	IsBanned                bool
+	BlockedReason           *string
+	ClusterID               *uuid.UUID
+	SandboxSchedulingLabels []string
+	Slug                    string
+}
+
+func (q *Queries) CreateTeam(ctx context.Context, arg CreateTeamParams) (CreateTeamRow, error) {
 	row := q.db.QueryRow(ctx, createTeam,
 		arg.Name,
 		arg.Tier,
@@ -50,7 +65,7 @@ func (q *Queries) CreateTeam(ctx context.Context, arg CreateTeamParams) (Team, e
 		arg.IsBlocked,
 		arg.BlockedReason,
 	)
-	var i Team
+	var i CreateTeamRow
 	err := row.Scan(
 		&i.ID,
 		&i.CreatedAt,
@@ -94,6 +109,34 @@ func (q *Queries) CreateTeamMembership(ctx context.Context, arg CreateTeamMember
 	return err
 }
 
+const createTeamMembershipIfMissing = `-- name: CreateTeamMembershipIfMissing :exec
+INSERT INTO public.users_teams (user_id, team_id, is_default, added_by)
+VALUES (
+    $1::uuid,
+    $2::uuid,
+    $3::boolean,
+    $4::uuid
+)
+ON CONFLICT (user_id, team_id) DO NOTHING
+`
+
+type CreateTeamMembershipIfMissingParams struct {
+	UserID    uuid.UUID
+	TeamID    uuid.UUID
+	IsDefault bool
+	AddedBy   *uuid.UUID
+}
+
+func (q *Queries) CreateTeamMembershipIfMissing(ctx context.Context, arg CreateTeamMembershipIfMissingParams) error {
+	_, err := q.db.Exec(ctx, createTeamMembershipIfMissing,
+		arg.UserID,
+		arg.TeamID,
+		arg.IsDefault,
+		arg.AddedBy,
+	)
+	return err
+}
+
 const deleteTeamByID = `-- name: DeleteTeamByID :exec
 DELETE FROM public.teams
 WHERE id = $1::uuid
@@ -123,9 +166,23 @@ WHERE ut.user_id = $1::uuid
   AND ut.is_default = true
 `
 
-func (q *Queries) GetDefaultTeamByUserID(ctx context.Context, userID uuid.UUID) (Team, error) {
+type GetDefaultTeamByUserIDRow struct {
+	ID                      uuid.UUID
+	CreatedAt               time.Time
+	IsBlocked               bool
+	Name                    string
+	Tier                    string
+	Email                   string
+	IsBanned                bool
+	BlockedReason           *string
+	ClusterID               *uuid.UUID
+	SandboxSchedulingLabels []string
+	Slug                    string
+}
+
+func (q *Queries) GetDefaultTeamByUserID(ctx context.Context, userID uuid.UUID) (GetDefaultTeamByUserIDRow, error) {
 	row := q.db.QueryRow(ctx, getDefaultTeamByUserID, userID)
-	var i Team
+	var i GetDefaultTeamByUserIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.CreatedAt,

@@ -179,6 +179,58 @@ func (p *oryProvider) GetTeamCreatorContext(ctx context.Context, userID uuid.UUI
 	return creatorContextFromOryIdentity(identities[0]), nil
 }
 
+// GetIdentityOrganizationID returns the identity's organization_id — a
+// first-class Ory field (not a trait) set when the identity signed in through an
+// organization's SSO connection — or uuid.Nil when it belongs to no organization.
+func (p *oryProvider) GetIdentityOrganizationID(ctx context.Context, subject string) (uuid.UUID, error) {
+	subject = strings.TrimSpace(subject)
+	if subject == "" {
+		return uuid.Nil, errors.New("ory identity subject is required")
+	}
+
+	identity, resp, err := p.identities.GetIdentityExecute(
+		p.identities.GetIdentity(p.authCtx(ctx), subject),
+	)
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("ory get identity: %w", err)
+	}
+
+	orgID := strings.TrimSpace(identity.GetOrganizationId())
+	if orgID == "" {
+		return uuid.Nil, nil
+	}
+
+	orgUUID, err := uuid.Parse(orgID)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("parse ory organization_id %q: %w", orgID, err)
+	}
+
+	return orgUUID, nil
+}
+
+func (p *oryProvider) GetUserOrganizationID(ctx context.Context, userID uuid.UUID) (uuid.UUID, error) {
+	if userID == uuid.Nil {
+		return uuid.Nil, nil
+	}
+
+	userIDBySubject, err := p.subjectsForUserIDs(ctx, []uuid.UUID{userID})
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if len(userIDBySubject) > 1 {
+		return uuid.Nil, fmt.Errorf("multiple ory identity mappings for user %s", userID)
+	}
+
+	for subject := range userIDBySubject {
+		return p.GetIdentityOrganizationID(ctx, subject)
+	}
+
+	return uuid.Nil, nil
+}
+
 func (p *oryProvider) SetIdentityExternalID(ctx context.Context, subject string, externalID uuid.UUID) error {
 	subject = strings.TrimSpace(subject)
 	if subject == "" {

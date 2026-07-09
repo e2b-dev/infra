@@ -247,3 +247,76 @@ func TestCreatorContextFromOryIdentityUsesMetadataAdmin(t *testing.T) {
 		t.Fatalf("AuthMethod = %q, want %q", got.AuthMethod, sharedteamprovision.AuthMethodSocial)
 	}
 }
+
+type multiSubjectResolver struct {
+	stubIdentityResolver
+
+	userID   uuid.UUID
+	subjects []string
+}
+
+func (r multiSubjectResolver) GetUserIdentitiesByUserIDs(context.Context, authqueries.GetUserIdentitiesByUserIDsParams) ([]authqueries.GetUserIdentitiesByUserIDsRow, error) {
+	rows := make([]authqueries.GetUserIdentitiesByUserIDsRow, 0, len(r.subjects))
+	for _, subject := range r.subjects {
+		rows = append(rows, authqueries.GetUserIdentitiesByUserIDsRow{OidcSub: subject, UserID: r.userID})
+	}
+
+	return rows, nil
+}
+
+func TestOryProvider_GetUserOrganizationID(t *testing.T) {
+	t.Parallel()
+
+	userID := uuid.New()
+	orgID := uuid.New()
+	subject := uuid.NewString()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		body := `{"id":"` + subject + `","schema_id":"default","schema_url":"","state":"active","traits":{},"organization_id":"` + orgID.String() + `"}`
+		_, _ = w.Write([]byte(body))
+	}))
+	defer server.Close()
+
+	provider, err := NewOryProvider(OryConfig{
+		HTTPClient: server.Client(),
+		SDKURL:     server.URL,
+		Token:      "test-token",
+		Issuer:     "https://ory.example.test",
+		Resolver:   multiSubjectResolver{userID: userID, subjects: []string{subject}},
+	})
+	if err != nil {
+		t.Fatalf("failed to build ory provider: %v", err)
+	}
+
+	got, err := provider.GetUserOrganizationID(t.Context(), userID)
+	if err != nil {
+		t.Fatalf("GetUserOrganizationID returned error: %v", err)
+	}
+	if got != orgID {
+		t.Fatalf("expected organization %s, got %s", orgID, got)
+	}
+}
+
+func TestOryProvider_GetUserOrganizationIDRejectsMultipleLinkedIdentities(t *testing.T) {
+	t.Parallel()
+
+	userID := uuid.New()
+	subjectA := uuid.NewString()
+	subjectB := uuid.NewString()
+
+	provider, err := NewOryProvider(OryConfig{
+		HTTPClient: http.DefaultClient,
+		SDKURL:     "https://ory.example.test",
+		Token:      "test-token",
+		Issuer:     "https://ory.example.test",
+		Resolver:   multiSubjectResolver{userID: userID, subjects: []string{subjectA, subjectB}},
+	})
+	if err != nil {
+		t.Fatalf("failed to build ory provider: %v", err)
+	}
+
+	if _, err := provider.GetUserOrganizationID(t.Context(), userID); err == nil {
+		t.Fatal("expected multiple linked identities to return an error")
+	}
+}

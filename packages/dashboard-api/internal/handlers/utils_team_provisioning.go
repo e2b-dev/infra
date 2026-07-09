@@ -83,7 +83,8 @@ func (s *APIStore) resolveProfile(ctx context.Context, userID uuid.UUID) (userpr
 }
 
 func (s *APIStore) bootstrapOIDCUser(ctx context.Context, input oidcUserBootstrapInput) (provisionedTeam, error) {
-	if err := s.requireConfiguredOIDCIssuer(input.OIDCIssuer); err != nil {
+	idp, err := s.providerForIssuer(input.OIDCIssuer)
+	if err != nil {
 		return provisionedTeam{}, err
 	}
 
@@ -94,32 +95,41 @@ func (s *APIStore) bootstrapOIDCUser(ctx context.Context, input oidcUserBootstra
 		CreatorContext:  creatorContextFromSignupMetadata(input.SignupIP, input.SignupUserAgent, teamprovision.AuthMethodSocial),
 	}
 
-	return s.bootstrapUserWithIdentity(ctx, profile, &bootstrapUserIdentity{
+	return s.bootstrapUserWithIdentity(ctx, idp, profile, &bootstrapUserIdentity{
 		Issuer:  input.OIDCIssuer,
 		Subject: input.OIDCUserID,
 	})
 }
 
-// requireConfiguredOIDCIssuer rejects bootstrap requests whose issuer is not the
-// configured Ory issuer.
-func (s *APIStore) requireConfiguredOIDCIssuer(issuer string) error {
-	oryIssuer := strings.TrimSpace(s.config.OryIssuerURL)
-
-	if oryIssuer != "" && oryIssuer == issuer {
-		return nil
+// providerForIssuer resolves the identity provider responsible for the issuer,
+// rejecting bootstrap requests from issuers no provider is registered for.
+func (s *APIStore) providerForIssuer(issuer string) (userprofile.Provider, error) {
+	if s.userProfiles == nil || strings.TrimSpace(issuer) != strings.TrimSpace(s.config.OryIssuerURL) {
+		return nil, &internalteamprovision.ProvisionError{
+			StatusCode: http.StatusBadRequest,
+			Message:    "oidc_issuer does not match a configured identity provider",
+		}
 	}
 
-	return &internalteamprovision.ProvisionError{
-		StatusCode: http.StatusBadRequest,
-		Message:    "oidc_issuer must equal the configured ORY_ISSUER_URL",
-	}
+	return s.userProfiles, nil
 }
 
 func (s *APIStore) bootstrapUser(ctx context.Context, profile bootstrapUserProfile) (provisionedTeam, error) {
-	return s.bootstrapUserWithIdentity(ctx, profile, nil)
+	return s.bootstrapUserWithIdentity(ctx, s.userProfiles, profile, nil)
 }
 
-func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootstrapUserProfile, identity *bootstrapUserIdentity) (provisionedTeam, error) {
+func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, idp userprofile.Provider, profile bootstrapUserProfile, identity *bootstrapUserIdentity) (provisionedTeam, error) {
+	// Resolve the identity's SSO organization before opening the transaction: the
+	// Kratos lookup is a network call that must not run under the per-user lock.
+	var ssoOrgID uuid.UUID
+	if identity != nil {
+		orgID, err := idp.GetIdentityOrganizationID(ctx, identity.Subject)
+		if err != nil {
+			return provisionedTeam{}, fmt.Errorf("resolve sso organization: %w", err)
+		}
+		ssoOrgID = orgID
+	}
+
 	authTxDB, tx, err := s.authDB.WithTx(ctx)
 	if err != nil {
 		return provisionedTeam{}, fmt.Errorf("start transaction: %w", err)
@@ -191,7 +201,7 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 		// transaction. This is also the recovery path: a user whose external_id was
 		// never set (e.g. a prior bootstrap whose PATCH failed after commit) re-runs
 		// here and the PATCH is re-asserted. setOIDCIdentityExternalID is idempotent.
-		if err := s.setOIDCIdentityExternalID(ctx, identity, profile.UserID); err != nil {
+		if err := s.setOIDCIdentityExternalID(ctx, idp, identity, profile.UserID); err != nil {
 			return provisionedTeam{}, err
 		}
 
@@ -206,6 +216,25 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 	}
 	if !dberrors.IsNotFoundError(err) {
 		return provisionedTeam{}, fmt.Errorf("get default team: %w", err)
+	}
+
+	// Also reached by returning SSO members, who never have a default team.
+	if ssoOrgID != uuid.Nil {
+		landing, err := s.enrollSSOMember(ctx, authTxDB, profile.UserID, ssoOrgID)
+		if err != nil {
+			return provisionedTeam{}, err
+		}
+
+		if err := tx.Commit(ctx); err != nil {
+			return provisionedTeam{}, fmt.Errorf("commit sso bootstrap transaction: %w", err)
+		}
+
+		// No billing: SSO teams are provisioned out of band.
+		if err := s.setOIDCIdentityExternalID(ctx, idp, identity, profile.UserID); err != nil {
+			return provisionedTeam{}, err
+		}
+
+		return landing, nil
 	}
 
 	team, err := authTxDB.CreateTeam(ctx, authqueries.CreateTeamParams{
@@ -251,7 +280,7 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 	// A PATCH failure here is recoverable: external_id stays unset, the dashboard
 	// re-runs bootstrap on the next login and re-asserts it via the existing-team
 	// path above.
-	if err := s.setOIDCIdentityExternalID(ctx, identity, profile.UserID); err != nil {
+	if err := s.setOIDCIdentityExternalID(ctx, idp, identity, profile.UserID); err != nil {
 		return provisionedTeam{}, err
 	}
 
@@ -267,19 +296,85 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 
 // setOIDCIdentityExternalID stores the canonical public.users id on the Ory
 // identity. It is a no-op for non-OIDC bootstrap (identity == nil).
-func (s *APIStore) setOIDCIdentityExternalID(ctx context.Context, identity *bootstrapUserIdentity, userID uuid.UUID) error {
+func (s *APIStore) setOIDCIdentityExternalID(ctx context.Context, idp userprofile.Provider, identity *bootstrapUserIdentity, userID uuid.UUID) error {
 	if identity == nil {
 		return nil
 	}
 
-	if err := s.userProfiles.SetIdentityExternalID(ctx, identity.Subject, userID); err != nil {
+	if err := idp.SetIdentityExternalID(ctx, identity.Subject, userID); err != nil {
 		return fmt.Errorf("set ory identity external id: %w", err)
 	}
 
 	return nil
 }
 
+// enrollSSOMember adds the user to their SSO organization's auto-join teams and
+// returns the team the response lands on. It fails closed when the org has no
+// auto-join team, since every SSO org must have at least one — that state is a
+// misconfiguration. No billing is emitted; SSO teams are provisioned out of band.
+// The caller must hold the per-user lock.
+func (s *APIStore) enrollSSOMember(ctx context.Context, authTxDB *authqueries.Queries, userID, orgID uuid.UUID) (provisionedTeam, error) {
+	autoTeams, err := authTxDB.GetAutoJoinTeamsBySSOOrganizationID(ctx, orgID)
+	if err != nil {
+		return provisionedTeam{}, fmt.Errorf("get auto-join teams for sso organization: %w", err)
+	}
+	if len(autoTeams) == 0 {
+		return provisionedTeam{}, &internalteamprovision.ProvisionError{
+			StatusCode: http.StatusForbidden,
+			Message:    "Your organization's SSO is not fully set up yet. Please contact support.",
+		}
+	}
+
+	for _, row := range autoTeams {
+		if err := authTxDB.CreateTeamMembershipIfMissing(ctx, authqueries.CreateTeamMembershipIfMissingParams{
+			UserID:    userID,
+			TeamID:    row.Team.ID,
+			IsDefault: false,
+			AddedBy:   nil,
+		}); err != nil {
+			return provisionedTeam{}, fmt.Errorf("create sso team membership: %w", err)
+		}
+	}
+
+	// Land on the earliest auto-join team (the query orders by created_at).
+	landing := autoTeams[0].Team
+
+	return provisionedTeam{
+		ID:            landing.ID,
+		Name:          landing.Name,
+		Email:         landing.Email,
+		Slug:          landing.Slug,
+		IsBlocked:     landing.IsBlocked,
+		BlockedReason: landing.BlockedReason,
+	}, nil
+}
+
+// ensureNotSSOManaged blocks team creation for SSO-managed users; their team
+// membership is driven entirely by their identity provider.
+func (s *APIStore) ensureNotSSOManaged(ctx context.Context, userID uuid.UUID) error {
+	if s.userProfiles == nil {
+		return errors.New("user profile provider is not configured")
+	}
+
+	orgID, err := s.userProfiles.GetUserOrganizationID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("resolve sso organization: %w", err)
+	}
+	if orgID != uuid.Nil {
+		return &internalteamprovision.ProvisionError{
+			StatusCode: http.StatusForbidden,
+			Message:    "SSO-managed accounts can't create teams. Contact your organization admin.",
+		}
+	}
+
+	return nil
+}
+
 func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string) (provisionedTeam, error) {
+	if err := s.ensureNotSSOManaged(ctx, userID); err != nil {
+		return provisionedTeam{}, err
+	}
+
 	profile, err := s.resolveProfile(ctx, userID)
 	if err != nil {
 		return provisionedTeam{}, err

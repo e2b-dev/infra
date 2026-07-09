@@ -25,11 +25,9 @@ type Provider interface {
 	GetProfilesByUserID(ctx context.Context, userIDs []uuid.UUID) (map[uuid.UUID]Profile, error)
 	FindProfilesByEmail(ctx context.Context, email string) ([]Profile, error)
 	GetTeamCreatorContext(ctx context.Context, userID uuid.UUID) (*sharedteamprovision.CreatorContextV1, error)
-	// SetIdentityExternalID stores the canonical user UUID on the external
-	// identity (Ory external_id) so the IdP can back-reference our user.
+	GetIdentityOrganizationID(ctx context.Context, subject string) (uuid.UUID, error)
+	GetUserOrganizationID(ctx context.Context, userID uuid.UUID) (uuid.UUID, error)
 	SetIdentityExternalID(ctx context.Context, subject string, externalID uuid.UUID) error
-	// PrepareDeleteUser resolves the external identity references for the
-	// given user so they can be removed after the database rows are gone.
 	PrepareDeleteUser(ctx context.Context, userID uuid.UUID) (DeleteUserHandle, error)
 }
 
