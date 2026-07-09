@@ -40,7 +40,7 @@ func (s *APIStore) GetTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 		userIDs = append(userIDs, row.UserID)
 	}
 
-	profiles, err := s.idp.GetProfilesByUserID(ctx, userIDs)
+	profiles, err := s.identityService.ProfilesByUserID(ctx, userIDs)
 	if err != nil {
 		logger.L().Error(ctx, "failed to get member profiles", zap.Error(err), logger.WithTeamID(authTeamID.String()))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to get team member profiles")
@@ -106,7 +106,7 @@ func (s *APIStore) PostTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 		return
 	}
 
-	profiles, err := s.idp.FindProfilesByEmail(ctx, string(body.Email))
+	profiles, err := s.identityService.FindProfilesByEmail(ctx, string(body.Email))
 	if err != nil {
 		logger.L().Error(ctx, "failed to look up user by email", zap.Error(err))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to look up user")
@@ -130,7 +130,7 @@ func (s *APIStore) PostTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 	user := profiles[0]
 
 	if teamInfo, ok := auth.GetTeamInfo(c); ok && teamInfo != nil && teamInfo.Team != nil && teamInfo.Team.SsoOrganizationID != nil {
-		if err := s.provisioning.ValidateInviteeOrganization(ctx, *teamInfo.Team.SsoOrganizationID, user.UserID); err != nil {
+		if err := s.provisioningService.ValidateInviteeOrganization(ctx, *teamInfo.Team.SsoOrganizationID, user.UserID); err != nil {
 			s.sendProvisioningError(ctx, c, "add team member", err)
 
 			return

@@ -125,9 +125,9 @@ func TestPostTeamsTeamIDMembers_DuplicateMemberReturnsBadRequest(t *testing.T) {
 	})
 
 	store := &APIStore{
-		db:     testDB.SqlcClient,
-		authDB: testDB.AuthDB,
-		idp:    handlerTestIdentityProvider{},
+		db:              testDB.SqlcClient,
+		authDB:          testDB.AuthDB,
+		identityService: handlerTestIdentityProvider{},
 	}
 	store.PostTeamsTeamIDMembers(ginCtx, teamID)
 
@@ -163,10 +163,10 @@ func TestPostTeamsTeamIDMembers_CreatesPublicUserAnchorForInvitee(t *testing.T) 
 	})
 
 	store := &APIStore{
-		db:          testDB.SqlcClient,
-		authDB:      testDB.AuthDB,
-		authService: noopAuthService{},
-		idp:         handlerTestIdentityProvider{},
+		db:              testDB.SqlcClient,
+		authDB:          testDB.AuthDB,
+		authService:     noopAuthService{},
+		identityService: handlerTestIdentityProvider{},
 	}
 	store.PostTeamsTeamIDMembers(ginCtx, teamID)
 
@@ -192,7 +192,7 @@ type ssoIdentityProvider struct {
 	orgByUser map[uuid.UUID]uuid.UUID
 }
 
-func (p ssoIdentityProvider) GetUserOrganizationID(_ context.Context, userID uuid.UUID) (uuid.UUID, error) {
+func (p ssoIdentityProvider) UserOrganizationID(_ context.Context, userID uuid.UUID) (uuid.UUID, error) {
 	return p.orgByUser[userID], nil
 }
 
@@ -214,9 +214,11 @@ func TestPostTeamsTeamIDMembers_RejectsInviteOutsideSSOOrg(t *testing.T) {
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(`{"email":"`+handlerTestUserEmail(inviteeID)+`"}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 
+	provisioningService := provisioning.New(nil, ssoIdentityProvider{}, &fakeTeamProvisionSink{})
+
 	store := &APIStore{
-		idp:          ssoIdentityProvider{},
-		provisioning: provisioning.New(nil, ssoIdentityProvider{}, nil, ""),
+		identityService:     ssoIdentityProvider{},
+		provisioningService: provisioningService,
 	}
 	store.PostTeamsTeamIDMembers(ginCtx, teamID)
 
@@ -246,12 +248,14 @@ func TestPostTeamsTeamIDMembers_AllowsInviteFromSSOOrg(t *testing.T) {
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 
 	profiles := ssoIdentityProvider{orgByUser: map[uuid.UUID]uuid.UUID{inviteeID: orgID}}
+	provisioningService := provisioning.New(testDB.AuthDB, profiles, &fakeTeamProvisionSink{})
+
 	store := &APIStore{
-		db:           testDB.SqlcClient,
-		authDB:       testDB.AuthDB,
-		authService:  noopAuthService{},
-		idp:          profiles,
-		provisioning: provisioning.New(testDB.AuthDB, profiles, nil, ""),
+		db:                  testDB.SqlcClient,
+		authDB:              testDB.AuthDB,
+		authService:         noopAuthService{},
+		identityService:     profiles,
+		provisioningService: provisioningService,
 	}
 	store.PostTeamsTeamIDMembers(ginCtx, teamID)
 
@@ -440,16 +444,18 @@ func handlerTestUserEmail(userID uuid.UUID) string {
 func newPostTeamsTestStore(t *testing.T, db *testutils.Database, sink *fakeTeamProvisionSink) *APIStore {
 	t.Helper()
 
+	provisioningService := provisioning.New(db.AuthDB, handlerTestIdentityProvider{}, sink)
+
 	return &APIStore{
-		db:           db.SqlcClient,
-		authDB:       db.AuthDB,
-		provisioning: provisioning.New(db.AuthDB, handlerTestIdentityProvider{}, sink, ""),
+		db:                  db.SqlcClient,
+		authDB:              db.AuthDB,
+		provisioningService: provisioningService,
 	}
 }
 
 type handlerTestIdentityProvider struct{}
 
-func (handlerTestIdentityProvider) GetProfilesByUserID(_ context.Context, userIDs []uuid.UUID) (map[uuid.UUID]identity.Profile, error) {
+func (handlerTestIdentityProvider) ProfilesByUserID(_ context.Context, userIDs []uuid.UUID) (map[uuid.UUID]identity.Profile, error) {
 	profiles := make(map[uuid.UUID]identity.Profile, len(userIDs))
 	for _, userID := range userIDs {
 		if userID == uuid.Nil {
@@ -477,19 +483,19 @@ func (handlerTestIdentityProvider) FindProfilesByEmail(_ context.Context, email 
 	}}, nil
 }
 
-func (handlerTestIdentityProvider) GetTeamCreatorContext(context.Context, uuid.UUID) (*teamprovision.CreatorContextV1, error) {
+func (handlerTestIdentityProvider) TeamCreatorContext(context.Context, uuid.UUID) (*teamprovision.CreatorContextV1, error) {
 	return nil, nil
 }
 
-func (handlerTestIdentityProvider) GetIdentityOrganizationID(context.Context, string) (uuid.UUID, error) {
+func (handlerTestIdentityProvider) IdentityOrganizationID(context.Context, string, string) (uuid.UUID, error) {
 	return uuid.Nil, nil
 }
 
-func (handlerTestIdentityProvider) GetUserOrganizationID(context.Context, uuid.UUID) (uuid.UUID, error) {
+func (handlerTestIdentityProvider) UserOrganizationID(context.Context, uuid.UUID) (uuid.UUID, error) {
 	return uuid.Nil, nil
 }
 
-func (handlerTestIdentityProvider) SetIdentityExternalID(context.Context, string, uuid.UUID) error {
+func (handlerTestIdentityProvider) SetIdentityExternalID(context.Context, string, string, uuid.UUID) error {
 	return nil
 }
 

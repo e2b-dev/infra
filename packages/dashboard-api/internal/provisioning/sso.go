@@ -40,7 +40,7 @@ func (s *Service) enrollSSOMember(ctx context.Context, authTxDB *authqueries.Que
 }
 
 func (s *Service) ensureNotSSOManaged(ctx context.Context, userID uuid.UUID) error {
-	orgID, err := s.idp.GetUserOrganizationID(ctx, userID)
+	orgID, err := s.identityService.UserOrganizationID(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("resolve sso organization: %w", err)
 	}
@@ -55,7 +55,7 @@ func (s *Service) ensureNotSSOManaged(ctx context.Context, userID uuid.UUID) err
 }
 
 func (s *Service) ValidateInviteeOrganization(ctx context.Context, teamOrgID, inviteeUserID uuid.UUID) error {
-	inviteeOrgID, err := s.idp.GetUserOrganizationID(ctx, inviteeUserID)
+	inviteeOrgID, err := s.identityService.UserOrganizationID(ctx, inviteeUserID)
 	if err != nil {
 		return fmt.Errorf("resolve invitee organization: %w", err)
 	}

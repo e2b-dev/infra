@@ -21,18 +21,16 @@ const (
 )
 
 type Service struct {
-	authDB    *authdb.Client
-	idp       identity.Provider
-	billing   internalteamprovision.TeamProvisionSink
-	issuerURL string
+	authDB          *authdb.Client
+	identityService identity.Service
+	billing         internalteamprovision.TeamProvisionSink
 }
 
-func New(authDB *authdb.Client, idp identity.Provider, billing internalteamprovision.TeamProvisionSink, issuerURL string) *Service {
+func New(authDB *authdb.Client, identityService identity.Service, billing internalteamprovision.TeamProvisionSink) *Service {
 	return &Service{
-		authDB:    authDB,
-		idp:       idp,
-		billing:   billing,
-		issuerURL: issuerURL,
+		authDB:          authDB,
+		identityService: identityService,
+		billing:         billing,
 	}
 }
 

@@ -29,7 +29,7 @@ func (s *APIStore) PostAdminTeamsBootstrap(c *gin.Context) {
 		return
 	}
 
-	team, err := s.provisioning.BootstrapTeam(ctx, name, email)
+	team, err := s.provisioningService.BootstrapTeam(ctx, name, email)
 	if err != nil {
 		s.sendProvisioningError(ctx, c, "provision team", err)
 

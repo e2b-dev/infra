@@ -23,13 +23,13 @@ import (
 var _ api.ServerInterface = (*APIStore)(nil)
 
 type APIStore struct {
-	config       cfg.Config
-	db           *sqlcdb.Client
-	authDB       *authdb.Client
-	clickhouse   clickhouse.Clickhouse
-	authService  sharedauth.Service
-	idp          identity.Provider
-	provisioning *provisioning.Service
+	config              cfg.Config
+	db                  *sqlcdb.Client
+	authDB              *authdb.Client
+	clickhouse          clickhouse.Clickhouse
+	authService         sharedauth.Service
+	identityService     identity.Service
+	provisioningService *provisioning.Service
 }
 
 func NewAPIStore(
@@ -38,17 +38,17 @@ func NewAPIStore(
 	authDB *authdb.Client,
 	ch clickhouse.Clickhouse,
 	authService sharedauth.Service,
+	identityService identity.Service,
 	teamProvisionSink internalteamprovision.TeamProvisionSink,
-	idp identity.Provider,
 ) *APIStore {
 	return &APIStore{
-		config:       config,
-		db:           db,
-		authDB:       authDB,
-		clickhouse:   ch,
-		authService:  authService,
-		idp:          idp,
-		provisioning: provisioning.New(authDB, idp, teamProvisionSink, config.OryIssuerURL),
+		config:              config,
+		db:                  db,
+		authDB:              authDB,
+		clickhouse:          ch,
+		authService:         authService,
+		identityService:     identityService,
+		provisioningService: provisioning.New(authDB, identityService, teamProvisionSink),
 	}
 }
 

@@ -2,6 +2,7 @@ package provisioning
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -17,11 +18,6 @@ import (
 )
 
 func (s *Service) BootstrapOIDCUser(ctx context.Context, input OIDCUserBootstrapInput) (ProvisionedTeam, error) {
-	idp, err := s.providerForIssuer(input.OIDCIssuer)
-	if err != nil {
-		return ProvisionedTeam{}, err
-	}
-
 	profile := bootstrapUserProfile{
 		UserID:          uuid.New(),
 		Email:           input.OIDCUserEmail,
@@ -33,28 +29,22 @@ func (s *Service) BootstrapOIDCUser(ctx context.Context, input OIDCUserBootstrap
 		}),
 	}
 
-	return s.bootstrapUser(ctx, idp, profile, bootstrapUserIdentity{
-		Issuer:  input.OIDCIssuer,
+	return s.bootstrapUser(ctx, profile, bootstrapUserIdentity{
+		Issuer:  strings.TrimSpace(input.OIDCIssuer),
 		Subject: input.OIDCUserID,
 	})
 }
 
-func (s *Service) providerForIssuer(issuer string) (identity.Provider, error) {
-	oryIssuer := strings.TrimSpace(s.issuerURL)
-
-	if s.idp != nil && oryIssuer != "" && oryIssuer == strings.TrimSpace(issuer) {
-		return s.idp, nil
-	}
-
-	return nil, &internalteamprovision.ProvisionError{
-		StatusCode: http.StatusBadRequest,
-		Message:    "oidc_issuer does not match a configured identity provider",
-	}
-}
-
-func (s *Service) bootstrapUser(ctx context.Context, idp identity.Provider, profile bootstrapUserProfile, oidcIdentity bootstrapUserIdentity) (ProvisionedTeam, error) {
-	ssoOrgID, err := idp.GetIdentityOrganizationID(ctx, oidcIdentity.Subject)
+func (s *Service) bootstrapUser(ctx context.Context, profile bootstrapUserProfile, oidcIdentity bootstrapUserIdentity) (ProvisionedTeam, error) {
+	ssoOrgID, err := s.identityService.IdentityOrganizationID(ctx, oidcIdentity.Issuer, oidcIdentity.Subject)
 	if err != nil {
+		if errors.Is(err, identity.ErrUnknownIssuer) {
+			return ProvisionedTeam{}, &internalteamprovision.ProvisionError{
+				StatusCode: http.StatusBadRequest,
+				Message:    "oidc_issuer does not match a configured identity provider",
+			}
+		}
+
 		return ProvisionedTeam{}, fmt.Errorf("resolve sso organization: %w", err)
 	}
 
@@ -118,7 +108,7 @@ func (s *Service) bootstrapUser(ctx context.Context, idp identity.Provider, prof
 			_ = s.billing.ProvisionTeam(ctx, req)
 		}
 
-		if err := backfillIdentityExternalID(ctx, idp, oidcIdentity.Subject, profile.UserID); err != nil {
+		if err := backfillIdentityExternalID(ctx, s.identityService, oidcIdentity, profile.UserID); err != nil {
 			return ProvisionedTeam{}, err
 		}
 
@@ -138,7 +128,7 @@ func (s *Service) bootstrapUser(ctx context.Context, idp identity.Provider, prof
 			return ProvisionedTeam{}, fmt.Errorf("commit sso bootstrap transaction: %w", err)
 		}
 
-		if err := backfillIdentityExternalID(ctx, idp, oidcIdentity.Subject, profile.UserID); err != nil {
+		if err := backfillIdentityExternalID(ctx, s.identityService, oidcIdentity, profile.UserID); err != nil {
 			return ProvisionedTeam{}, err
 		}
 
@@ -184,16 +174,16 @@ func (s *Service) bootstrapUser(ctx context.Context, idp identity.Provider, prof
 	}
 	_ = s.billing.ProvisionTeam(ctx, req)
 
-	if err := backfillIdentityExternalID(ctx, idp, oidcIdentity.Subject, profile.UserID); err != nil {
+	if err := backfillIdentityExternalID(ctx, s.identityService, oidcIdentity, profile.UserID); err != nil {
 		return ProvisionedTeam{}, err
 	}
 
 	return newProvisionedTeam(team.ID, team.Name, team.Email, team.Slug, team.IsBlocked, team.BlockedReason), nil
 }
 
-func backfillIdentityExternalID(ctx context.Context, idp identity.Provider, subject string, userID uuid.UUID) error {
-	if err := idp.SetIdentityExternalID(ctx, subject, userID); err != nil {
-		return fmt.Errorf("set ory identity external id: %w", err)
+func backfillIdentityExternalID(ctx context.Context, identityService identity.Service, oidcIdentity bootstrapUserIdentity, userID uuid.UUID) error {
+	if err := identityService.SetIdentityExternalID(ctx, oidcIdentity.Issuer, oidcIdentity.Subject, userID); err != nil {
+		return fmt.Errorf("set identity external id: %w", err)
 	}
 
 	return nil

@@ -14,8 +14,6 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 )
 
-// ssoIdentityProvider is a Provider whose organization lookups are configurable, so
-// tests can simulate identities that belong to an Ory organization.
 type ssoIdentityProvider struct {
 	testIdentityProvider
 
@@ -23,11 +21,11 @@ type ssoIdentityProvider struct {
 	orgByUser    map[uuid.UUID]uuid.UUID
 }
 
-func (p ssoIdentityProvider) GetIdentityOrganizationID(_ context.Context, subject string) (uuid.UUID, error) {
-	return p.orgBySubject[subject], nil
+func (p ssoIdentityProvider) IdentityOrganizationID(_ context.Context, issuer, subject string) (uuid.UUID, error) {
+	return p.orgBySubject[subject], testIssuerRegistered(issuer)
 }
 
-func (p ssoIdentityProvider) GetUserOrganizationID(_ context.Context, userID uuid.UUID) (uuid.UUID, error) {
+func (p ssoIdentityProvider) UserOrganizationID(_ context.Context, userID uuid.UUID) (uuid.UUID, error) {
 	return p.orgByUser[userID], nil
 }
 
@@ -52,14 +50,13 @@ func TestBootstrapOIDCUser_SSOJoinsMappedTeams(t *testing.T) {
 	orgID := uuid.New()
 	subject := uuid.NewString()
 
-	// teamOlder is given an earlier created_at, so it is returned as the landing team.
 	teamNewer := testutils.CreateTestTeam(t, testDB)
 	teamOlder := testutils.CreateTestTeam(t, testDB)
 	setTeamSSOOrg(t, testDB, teamNewer, orgID, true, time.Now().Add(-1*time.Hour))
 	setTeamSSOOrg(t, testDB, teamOlder, orgID, true, time.Now().Add(-2*time.Hour))
 
 	provider := ssoIdentityProvider{orgBySubject: map[string]uuid.UUID{subject: orgID}}
-	svc := New(testDB.AuthDB, provider, sink, testIssuer)
+	svc := New(testDB.AuthDB, provider, sink)
 
 	input := OIDCUserBootstrapInput{
 		OIDCIssuer:    testIssuer,
@@ -83,7 +80,6 @@ func TestBootstrapOIDCUser_SSOJoinsMappedTeams(t *testing.T) {
 		t.Fatalf("expected user identity to be created: %v", err)
 	}
 
-	// SSO members never get a default team; selection is not pinned.
 	if _, err := testDB.AuthDB.Read.GetDefaultTeamByUserID(ctx, userIdentity.UserID); err == nil {
 		t.Fatal("expected no default team for an SSO member")
 	}
@@ -122,7 +118,7 @@ func TestBootstrapOIDCUser_SSOFailsClosedWhenNoTeamMapped(t *testing.T) {
 	subject := uuid.NewString()
 
 	provider := ssoIdentityProvider{orgBySubject: map[string]uuid.UUID{subject: orgID}}
-	svc := New(testDB.AuthDB, provider, sink, testIssuer)
+	svc := New(testDB.AuthDB, provider, sink)
 
 	input := OIDCUserBootstrapInput{
 		OIDCIssuer:    testIssuer,
@@ -140,7 +136,6 @@ func TestBootstrapOIDCUser_SSOFailsClosedWhenNoTeamMapped(t *testing.T) {
 		t.Fatalf("expected 403 ProvisionError, got %v", err)
 	}
 
-	// The transaction must roll back: no identity or personal team is left behind.
 	if _, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
 		OidcIss: input.OIDCIssuer,
 		OidcSub: input.OIDCUserID,
@@ -163,13 +158,11 @@ func TestBootstrapOIDCUser_SSOSkipsManualTeams(t *testing.T) {
 	orgID := uuid.New()
 	subject := uuid.NewString()
 
-	// The org's only team is manual (sso_auto_join = false): it must not be
-	// auto-joined, so bootstrap fails closed rather than enrolling the user.
 	manualTeam := testutils.CreateTestTeam(t, testDB)
 	setTeamSSOOrg(t, testDB, manualTeam, orgID, false, time.Now().Add(-1*time.Hour))
 
 	provider := ssoIdentityProvider{orgBySubject: map[string]uuid.UUID{subject: orgID}}
-	svc := New(testDB.AuthDB, provider, sink, testIssuer)
+	svc := New(testDB.AuthDB, provider, sink)
 
 	input := OIDCUserBootstrapInput{
 		OIDCIssuer:    testIssuer,
@@ -191,7 +184,7 @@ func TestCreateTeam_SSOUserRejected(t *testing.T) {
 	userID := uuid.New()
 
 	provider := ssoIdentityProvider{orgByUser: map[uuid.UUID]uuid.UUID{userID: uuid.New()}}
-	svc := New(nil, provider, nil, testIssuer)
+	svc := New(nil, provider, &fakeTeamProvisionSink{})
 
 	_, err := svc.CreateTeam(ctx, userID, "My Team")
 	if err == nil {

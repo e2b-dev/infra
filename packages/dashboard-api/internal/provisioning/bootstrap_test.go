@@ -23,7 +23,7 @@ func TestBootstrapAuthProviderUser_CreatesIdentityAndDefaultTeam(t *testing.T) {
 	ctx := t.Context()
 	sink := &fakeTeamProvisionSink{}
 
-	svc := New(testDB.AuthDB, testIdentityProvider{}, sink, testIssuer)
+	svc := New(testDB.AuthDB, testIdentityProvider{}, sink)
 
 	input := OIDCUserBootstrapInput{
 		OIDCIssuer:      testIssuer,
@@ -89,12 +89,12 @@ type recordingIdentityProvider struct {
 	externalIDCalls   int
 }
 
-func (r *recordingIdentityProvider) SetIdentityExternalID(_ context.Context, subject string, externalID uuid.UUID) error {
+func (r *recordingIdentityProvider) SetIdentityExternalID(_ context.Context, issuer, subject string, externalID uuid.UUID) error {
 	r.externalIDSubject = subject
 	r.externalID = externalID
 	r.externalIDCalls++
 
-	return nil
+	return testIssuerRegistered(issuer)
 }
 
 func TestBootstrapOIDCUser_PopulatesOryExternalID(t *testing.T) {
@@ -105,7 +105,7 @@ func TestBootstrapOIDCUser_PopulatesOryExternalID(t *testing.T) {
 	sink := &fakeTeamProvisionSink{}
 	profiles := &recordingIdentityProvider{}
 
-	svc := New(testDB.AuthDB, profiles, sink, testIssuer)
+	svc := New(testDB.AuthDB, profiles, sink)
 
 	input := OIDCUserBootstrapInput{
 		OIDCIssuer:    testIssuer,
@@ -136,23 +136,51 @@ func TestBootstrapOIDCUser_PopulatesOryExternalID(t *testing.T) {
 	}
 }
 
-// failingIdentityProvider fails the Ory external_id PATCH to simulate the IdP being
-// unavailable after the bootstrap transaction has already committed.
+func TestBootstrapOIDCUser_RoutesConfiguredSecondaryIssuer(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	sink := &fakeTeamProvisionSink{}
+	profiles := &recordingIdentityProvider{}
+	svc := New(testDB.AuthDB, profiles, sink)
+
+	input := OIDCUserBootstrapInput{
+		OIDCIssuer:    secondTestIssuer,
+		OIDCUserID:    uuid.NewString(),
+		OIDCUserEmail: "ada@example.test",
+	}
+
+	if _, err := svc.BootstrapOIDCUser(ctx, input); err != nil {
+		t.Fatalf("expected bootstrap to succeed: %v", err)
+	}
+
+	if _, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+		OidcIss: secondTestIssuer,
+		OidcSub: input.OIDCUserID,
+	}); err != nil {
+		t.Fatalf("expected secondary issuer identity to be created: %v", err)
+	}
+	if profiles.externalIDSubject != input.OIDCUserID {
+		t.Fatalf("expected external id set on secondary issuer subject %q, got %q", input.OIDCUserID, profiles.externalIDSubject)
+	}
+}
+
 type failingIdentityProvider struct {
 	testIdentityProvider
 
 	externalIDCalls int
 }
 
-func (f *failingIdentityProvider) SetIdentityExternalID(context.Context, string, uuid.UUID) error {
+func (f *failingIdentityProvider) SetIdentityExternalID(_ context.Context, issuer, _ string, _ uuid.UUID) error {
 	f.externalIDCalls++
+	if err := testIssuerRegistered(issuer); err != nil {
+		return err
+	}
 
 	return errors.New("ory unavailable")
 }
 
-// A failed external_id PATCH must not roll back the committed user/identity/team.
-// The PATCH now runs after the transaction commits, so the user stays provisioned
-// and the next login can backfill external_id rather than being stranded.
 func TestBootstrapOIDCUser_ExternalIDFailureKeepsUserProvisioned(t *testing.T) {
 	t.Parallel()
 
@@ -161,7 +189,7 @@ func TestBootstrapOIDCUser_ExternalIDFailureKeepsUserProvisioned(t *testing.T) {
 	sink := &fakeTeamProvisionSink{}
 	profiles := &failingIdentityProvider{}
 
-	svc := New(testDB.AuthDB, profiles, sink, testIssuer)
+	svc := New(testDB.AuthDB, profiles, sink)
 
 	input := OIDCUserBootstrapInput{
 		OIDCIssuer:    testIssuer,
@@ -187,16 +215,11 @@ func TestBootstrapOIDCUser_ExternalIDFailureKeepsUserProvisioned(t *testing.T) {
 		t.Fatalf("expected default team to survive external_id failure: %v", err)
 	}
 
-	// The billing event must be emitted before the external_id backfill, otherwise
-	// a PATCH failure leaves the committed team billing-orphaned.
 	if len(sink.requests) != 1 {
 		t.Fatalf("expected one billing provisioning call despite external_id failure, got %d", len(sink.requests))
 	}
 }
 
-// A user provisioned by a prior bootstrap whose external_id PATCH failed re-runs
-// here on the next login; the existing-team path re-asserts the PATCH and
-// backfills external_id without creating a duplicate team.
 func TestBootstrapOIDCUser_ReRunBackfillsExternalID(t *testing.T) {
 	t.Parallel()
 
@@ -204,7 +227,7 @@ func TestBootstrapOIDCUser_ReRunBackfillsExternalID(t *testing.T) {
 	ctx := t.Context()
 	sink := &fakeTeamProvisionSink{}
 
-	svc := New(testDB.AuthDB, &failingIdentityProvider{}, sink, testIssuer)
+	svc := New(testDB.AuthDB, &failingIdentityProvider{}, sink)
 
 	input := OIDCUserBootstrapInput{
 		OIDCIssuer:    testIssuer,
@@ -229,7 +252,7 @@ func TestBootstrapOIDCUser_ReRunBackfillsExternalID(t *testing.T) {
 	}
 
 	recording := &recordingIdentityProvider{}
-	svc = New(testDB.AuthDB, recording, sink, testIssuer)
+	svc = New(testDB.AuthDB, recording, sink)
 
 	secondTeam, err := svc.BootstrapOIDCUser(ctx, input)
 	if err != nil {
@@ -253,7 +276,7 @@ func TestBootstrapOIDCUser_ConcurrentRequestsSingleIdentityAndTeam(t *testing.T)
 	ctx := t.Context()
 	sink := &fakeTeamProvisionSink{}
 
-	svc := New(testDB.AuthDB, testIdentityProvider{}, sink, testIssuer)
+	svc := New(testDB.AuthDB, testIdentityProvider{}, sink)
 
 	input := OIDCUserBootstrapInput{
 		OIDCIssuer:    testIssuer,
@@ -340,7 +363,7 @@ func TestBootstrapOIDCUser_AcceptsConfiguredIssuer(t *testing.T) {
 	ctx := t.Context()
 	sink := &fakeTeamProvisionSink{}
 
-	svc := New(testDB.AuthDB, testIdentityProvider{}, sink, testIssuer)
+	svc := New(testDB.AuthDB, testIdentityProvider{}, sink)
 
 	team, err := svc.BootstrapOIDCUser(ctx, OIDCUserBootstrapInput{
 		OIDCIssuer:    testIssuer,
@@ -363,7 +386,7 @@ func TestBootstrapOIDCUser_UnknownIssuerReturnsBadRequest(t *testing.T) {
 	ctx := t.Context()
 	sink := &fakeTeamProvisionSink{}
 
-	svc := New(testDB.AuthDB, testIdentityProvider{}, sink, testIssuer)
+	svc := New(testDB.AuthDB, testIdentityProvider{}, sink)
 
 	_, err := svc.BootstrapOIDCUser(ctx, OIDCUserBootstrapInput{
 		OIDCIssuer:    "https://attacker.example.test",

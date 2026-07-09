@@ -41,7 +41,7 @@ func (s *APIStore) PostAdminUserProfilesResolve(c *gin.Context) {
 		seen[userID] = struct{}{}
 	}
 
-	profiles, err := s.idp.GetProfilesByUserID(ctx, body.UserIds)
+	profiles, err := s.identityService.ProfilesByUserID(ctx, body.UserIds)
 	if err != nil {
 		logger.L().Error(ctx, "failed to resolve auth provider profiles", zap.Error(err))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to resolve auth provider profiles")
@@ -64,7 +64,7 @@ func (s *APIStore) PostAdminUserProfilesByEmail(c *gin.Context) {
 		return
 	}
 
-	profiles, err := s.idp.FindProfilesByEmail(ctx, string(body.Email))
+	profiles, err := s.identityService.FindProfilesByEmail(ctx, string(body.Email))
 	if err != nil {
 		logger.L().Error(ctx, "failed to look up auth provider profiles by email", zap.Error(err))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to look up auth provider profiles")
@@ -79,7 +79,7 @@ func (s *APIStore) PostAdminUserProfilesByEmail(c *gin.Context) {
 
 func (s *APIStore) GetAdminUserProfilesUserId(c *gin.Context, userId api.UserId) {
 	ctx := c.Request.Context()
-	profiles, err := s.idp.GetProfilesByUserID(ctx, []uuid.UUID{userId})
+	profiles, err := s.identityService.ProfilesByUserID(ctx, []uuid.UUID{userId})
 	if err != nil {
 		logger.L().Error(ctx, "failed to resolve auth provider profile", zap.Error(err))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to resolve auth provider profile")

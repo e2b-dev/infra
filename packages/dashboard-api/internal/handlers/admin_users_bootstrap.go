@@ -36,7 +36,7 @@ func (s *APIStore) PostAdminUsersBootstrap(c *gin.Context) {
 		return
 	}
 
-	team, err := s.provisioning.BootstrapOIDCUser(ctx, provisioning.OIDCUserBootstrapInput{
+	team, err := s.provisioningService.BootstrapOIDCUser(ctx, provisioning.OIDCUserBootstrapInput{
 		OIDCIssuer:      oidcIssuer,
 		OIDCUserID:      oidcUserID,
 		OIDCUserEmail:   oidcUserEmail,

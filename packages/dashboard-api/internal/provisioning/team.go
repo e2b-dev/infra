@@ -109,7 +109,7 @@ func (s *Service) BootstrapTeam(ctx context.Context, name string, email string) 
 }
 
 func (s *Service) resolveProfile(ctx context.Context, userID uuid.UUID) (identity.Profile, error) {
-	profiles, err := s.idp.GetProfilesByUserID(ctx, []uuid.UUID{userID})
+	profiles, err := s.identityService.ProfilesByUserID(ctx, []uuid.UUID{userID})
 	if err != nil {
 		return identity.Profile{}, fmt.Errorf("get user profile: %w", err)
 	}

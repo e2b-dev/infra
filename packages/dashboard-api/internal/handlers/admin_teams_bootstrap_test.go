@@ -33,8 +33,10 @@ func TestPostAdminTeamsBootstrapCreatesTeam(t *testing.T) {
 	}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 
+	provisioningService := provisioning.New(testDB.AuthDB, nil, sink)
+
 	store := &APIStore{
-		provisioning: provisioning.New(testDB.AuthDB, nil, sink, ""),
+		provisioningService: provisioningService,
 	}
 	store.PostAdminTeamsBootstrap(ginCtx)
 
@@ -108,8 +110,10 @@ func TestPostAdminTeamsBootstrapRollsBackOnProvisioningFailure(t *testing.T) {
 	}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 
+	provisioningService := provisioning.New(testDB.AuthDB, nil, sink)
+
 	store := &APIStore{
-		provisioning: provisioning.New(testDB.AuthDB, nil, sink, ""),
+		provisioningService: provisioningService,
 	}
 	store.PostAdminTeamsBootstrap(ginCtx)
 
@@ -147,8 +151,10 @@ func TestPostAdminTeamsBootstrapRejectsMissingFields(t *testing.T) {
 	}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 
+	provisioningService := provisioning.New(testDB.AuthDB, nil, &fakeTeamProvisionSink{err: errors.New("should not provision")})
+
 	store := &APIStore{
-		provisioning: provisioning.New(testDB.AuthDB, nil, &fakeTeamProvisionSink{err: errors.New("should not provision")}, ""),
+		provisioningService: provisioningService,
 	}
 	store.PostAdminTeamsBootstrap(ginCtx)
 

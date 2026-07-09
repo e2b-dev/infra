@@ -15,7 +15,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 )
 
-const testIssuer = "https://ory.example.test"
+const (
+	testIssuer       = "https://ory.example.test"
+	secondTestIssuer = "https://ory-secondary.example.test"
+)
 
 func createTestUser(t *testing.T, db *testutils.Database) uuid.UUID {
 	t.Helper()
@@ -69,7 +72,15 @@ func testUserEmail(userID uuid.UUID) string {
 
 type testIdentityProvider struct{}
 
-func (testIdentityProvider) GetProfilesByUserID(_ context.Context, userIDs []uuid.UUID) (map[uuid.UUID]identity.Profile, error) {
+func testIssuerRegistered(issuer string) error {
+	if issuer != testIssuer && issuer != secondTestIssuer {
+		return identity.ErrUnknownIssuer
+	}
+
+	return nil
+}
+
+func (testIdentityProvider) ProfilesByUserID(_ context.Context, userIDs []uuid.UUID) (map[uuid.UUID]identity.Profile, error) {
 	profiles := make(map[uuid.UUID]identity.Profile, len(userIDs))
 	for _, userID := range userIDs {
 		if userID == uuid.Nil {
@@ -97,20 +108,20 @@ func (testIdentityProvider) FindProfilesByEmail(_ context.Context, email string)
 	}}, nil
 }
 
-func (testIdentityProvider) GetTeamCreatorContext(context.Context, uuid.UUID) (*teamprovision.CreatorContextV1, error) {
+func (testIdentityProvider) TeamCreatorContext(context.Context, uuid.UUID) (*teamprovision.CreatorContextV1, error) {
 	return nil, nil
 }
 
-func (testIdentityProvider) GetIdentityOrganizationID(context.Context, string) (uuid.UUID, error) {
+func (testIdentityProvider) IdentityOrganizationID(_ context.Context, issuer, _ string) (uuid.UUID, error) {
+	return uuid.Nil, testIssuerRegistered(issuer)
+}
+
+func (testIdentityProvider) UserOrganizationID(context.Context, uuid.UUID) (uuid.UUID, error) {
 	return uuid.Nil, nil
 }
 
-func (testIdentityProvider) GetUserOrganizationID(context.Context, uuid.UUID) (uuid.UUID, error) {
-	return uuid.Nil, nil
-}
-
-func (testIdentityProvider) SetIdentityExternalID(context.Context, string, uuid.UUID) error {
-	return nil
+func (testIdentityProvider) SetIdentityExternalID(_ context.Context, issuer, _ string, _ uuid.UUID) error {
+	return testIssuerRegistered(issuer)
 }
 
 func (testIdentityProvider) PrepareDeleteUser(context.Context, uuid.UUID) (identity.DeleteUserHandle, error) {
