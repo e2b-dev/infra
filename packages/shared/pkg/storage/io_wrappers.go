@@ -216,16 +216,33 @@ func (r sliceReaderAt) ReadAt(p []byte, off int64) (int, error) {
 	return n, io.EOF
 }
 
+// multiSliceReader is a seekable reader over multiple byte slices. Len
+// reports the unread byte count so HTTP clients (retryablehttp's LenReader)
+// send an explicit Content-Length instead of chunked transfer encoding.
+type multiSliceReader struct {
+	*io.SectionReader
+}
+
+// Len returns the number of unread bytes, mirroring bytes.Reader.Len.
+func (r *multiSliceReader) Len() int {
+	cur, err := r.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return 0
+	}
+
+	return int(r.Size() - cur)
+}
+
 // newMultiSliceReader streams multiple byte slices as one seekable body
 // without concatenating them. Used as the multipart-part request body by both
 // the GCP XML uploader (recreated per retry via ReaderFunc) and the AWS part
 // uploader, where the SDK seeks to compute the payload hash/length and to
 // rewind on retries.
-func newMultiSliceReader(slices [][]byte) *io.SectionReader {
+func newMultiSliceReader(slices [][]byte) *multiSliceReader {
 	var size int64
 	for _, s := range slices {
 		size += int64(len(s))
 	}
 
-	return io.NewSectionReader(sliceReaderAt{slices: slices}, 0, size)
+	return &multiSliceReader{io.NewSectionReader(sliceReaderAt{slices: slices}, 0, size)}
 }
