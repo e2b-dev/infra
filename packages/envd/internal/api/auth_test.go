@@ -21,6 +21,7 @@ func newAuthTestAPI(t *testing.T, token string) *API {
 	err := secureToken.Set([]byte(token))
 	require.NoError(t, err)
 	logger := zerolog.Nop()
+
 	return &API{accessToken: secureToken, logger: &logger}
 }
 
@@ -74,13 +75,13 @@ func TestValidateSigningAcceptsCorrectSignature(t *testing.T) {
 	path := "/files"
 	username := "user1"
 	operation := SigningWriteOperation
-	exp := int64(time.Now().Add(time.Hour).Unix())
+	exp := time.Now().Add(time.Hour).Unix()
 
 	sig, err := api.generateSignature(path, username, operation, &exp)
 	require.NoError(t, err)
 
 	expInt := int(exp)
-	r := httptest.NewRequest(http.MethodPost, "/files", nil)
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/files", nil)
 	err = api.validateSigning(r, &sig, &expInt, &username, path, operation)
 	assert.NoError(t, err)
 }
@@ -93,7 +94,7 @@ func TestValidateSigningRejectsWrongSignature(t *testing.T) {
 	exp := int(time.Now().Add(time.Hour).Unix())
 	username := "user1"
 
-	r := httptest.NewRequest(http.MethodPost, "/files", nil)
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/files", nil)
 	err := api.validateSigning(r, &wrong, &exp, &username, "/files", SigningWriteOperation)
 	assert.EqualError(t, err, "invalid signature")
 }
@@ -106,13 +107,13 @@ func TestValidateSigningRejectsExpiredSignature(t *testing.T) {
 	username := "user1"
 	operation := SigningReadOperation
 	// Expired 1 hour ago
-	exp := int64(time.Now().Add(-time.Hour).Unix())
+	exp := time.Now().Add(-time.Hour).Unix()
 
 	sig, err := api.generateSignature(path, username, operation, &exp)
 	require.NoError(t, err)
 
 	expInt := int(exp)
-	r := httptest.NewRequest(http.MethodGet, "/files", nil)
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/files", nil)
 	err = api.validateSigning(r, &sig, &expInt, &username, path, operation)
 	assert.EqualError(t, err, "signature is already expired")
 }
@@ -121,7 +122,7 @@ func TestValidateSigningRejectsMissingSignature(t *testing.T) {
 	t.Parallel()
 	api := newAuthTestAPI(t, "test-token")
 
-	r := httptest.NewRequest(http.MethodGet, "/files", nil)
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/files", nil)
 	err := api.validateSigning(r, nil, nil, nil, "/files", SigningReadOperation)
 	assert.EqualError(t, err, "missing signature query parameter")
 }
@@ -130,7 +131,7 @@ func TestValidateSigningAcceptsValidAccessTokenHeader(t *testing.T) {
 	t.Parallel()
 	api := newAuthTestAPI(t, "test-token")
 
-	r := httptest.NewRequest(http.MethodGet, "/files", nil)
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/files", nil)
 	r.Header.Set(accessTokenHeader, "test-token")
 	err := api.validateSigning(r, nil, nil, nil, "/files", SigningReadOperation)
 	assert.NoError(t, err)
@@ -140,7 +141,7 @@ func TestValidateSigningRejectsInvalidAccessTokenHeader(t *testing.T) {
 	t.Parallel()
 	api := newAuthTestAPI(t, "test-token")
 
-	r := httptest.NewRequest(http.MethodGet, "/files", nil)
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/files", nil)
 	r.Header.Set(accessTokenHeader, "wrong-token")
 	err := api.validateSigning(r, nil, nil, nil, "/files", SigningReadOperation)
 	assert.EqualError(t, err, "access token present in header but does not match")
