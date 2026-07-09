@@ -60,42 +60,66 @@ jobs:
       # that mode (release-please also finds the previous release by tag when
       # generating the next changelog).
       #
-      # For each package it reads the version from the manifest at this commit
-      # and creates the <component>-v<version> tag if it's missing — a missing
-      # tag means this push is that package's release PR merge commit. The tag
-      # push then triggers publish.yml, which builds and uploads the artifact.
+      # A tag is minted ONLY when the head commit of the push is a release PR
+      # merge, recognized by its squash-merge title "chore(main): release
+      # <component> <version>" (release-please's default PR title convention).
+      # An ordinary push, a manual dispatch, or a re-run on a non-release
+      # commit can therefore never (re-)create a tag at the wrong commit, even
+      # if an existing release tag was deleted. The tag push then triggers
+      # publish.yml, which builds and uploads the artifact.
+      #
+      # If this step ever misses a release merge (e.g. the merge wasn't the
+      # head commit of its push, or the repo moves away from squash merges),
+      # the recovery is to push the <component>-v<version> tag on the merge
+      # commit by hand — manual tags are a first-class publish trigger.
       #
       # Tags MUST be created with the App token: tags pushed with the default
       # GITHUB_TOKEN don't trigger `on: push` workflows, so the publish would
       # silently never happen. The step fails instead — once the App is
-      # configured, a re-run creates the missing tags and publishing resumes.
-      - name: Tag releases
-        id: tag
+      # configured, a re-run of this release commit's run creates the tag and
+      # publishing resumes.
+      - name: Tag release
+        if: ${{ github.event_name == 'push' }}
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
           APP_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          # <manifest path>:<tag component> pairs, matching release-please-config.json.
-          for entry in \
-            packages/docker-reverse-proxy:docker-reverse-proxy \
-            packages/client-proxy:client-proxy \
-            packages/clickhouse:clickhouse-migrator; do
-            path="${entry%%:*}"
-            component="${entry##*:}"
-            version="$(jq -r --arg p "${path}" '.[$p] // empty' .release-please-manifest.json)"
-            if [ -z "${version}" ]; then
-              echo "::error::no version for ${path} in .release-please-manifest.json"
+          head_msg="$(git log -1 --format=%s "${GITHUB_SHA}")"
+          case "${head_msg}" in
+            'chore(main): release '*) ;;
+            *)
+              echo "head commit is not a release PR merge; nothing to tag"
+              exit 0
+              ;;
+          esac
+          # "chore(main): release <component> <version> (#N)"
+          rest="${head_msg#chore(main): release }"
+          component="$(echo "${rest}" | cut -d' ' -f1)"
+          msg_version="$(echo "${rest}" | cut -d' ' -f2)"
+          # Tag components map to manifest paths per release-please-config.json
+          # (clickhouse-migrator's package directory is packages/clickhouse).
+          case "${component}" in
+            docker-reverse-proxy) path=packages/docker-reverse-proxy ;;
+            client-proxy)         path=packages/client-proxy ;;
+            clickhouse-migrator)  path=packages/clickhouse ;;
+            *)
+              echo "::error::release merge for unknown component '${component}' — add it to this workflow's package list"
               exit 1
-            fi
-            tag="${component}-v${version}"
-            if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" --silent 2>/dev/null; then
-              echo "${tag} already exists; no new release for ${component}"
-              continue
-            fi
-            if [ -z "${APP_TOKEN}" ]; then
-              echo "::error::${tag} needs to be created, but the release-please GitHub App isn't configured and tags pushed with GITHUB_TOKEN wouldn't trigger the publish workflow. Configure RELEASE_PLEASE_APP_ID / RELEASE_PLEASE_APP_SECRET and re-run."
-              exit 1
-            fi
-            gh api "repos/${GITHUB_REPOSITORY}/git/refs" -f ref="refs/tags/${tag}" -f sha="${GITHUB_SHA}" > /dev/null
-            echo "created ${tag} at ${GITHUB_SHA}; publish.yml will pick it up"
-          done
+              ;;
+          esac
+          version="$(jq -r --arg p "${path}" '.[$p] // empty' .release-please-manifest.json)"
+          if [ -z "${version}" ] || [ "${version}" != "${msg_version}" ]; then
+            echo "::error::version mismatch for ${component}: merge commit says '${msg_version}', manifest says '${version}'"
+            exit 1
+          fi
+          tag="${component}-v${version}"
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" --silent 2>/dev/null; then
+            echo "${tag} already exists; nothing to do"
+            exit 0
+          fi
+          if [ -z "${APP_TOKEN}" ]; then
+            echo "::error::${tag} needs to be created, but the release-please GitHub App isn't configured and tags pushed with GITHUB_TOKEN wouldn't trigger the publish workflow. Configure RELEASE_PLEASE_APP_ID / RELEASE_PLEASE_APP_SECRET and re-run."
+            exit 1
+          fi
+          gh api "repos/${GITHUB_REPOSITORY}/git/refs" -f ref="refs/tags/${tag}" -f sha="${GITHUB_SHA}" > /dev/null
+          echo "created ${tag} at ${GITHUB_SHA}; publish.yml will pick it up"
