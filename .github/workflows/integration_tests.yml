@@ -35,12 +35,12 @@ jobs:
         #
         # On PRs, only the production-like zstd1 config runs (most tests don't
         # depend on compression/dedup/memfd settings), but the suite is split
-        # into package shards on parallel runners. Each host saturates at
+        # into shards on parallel runners. Each host saturates at
         # go test -parallel=4 (Firecracker boots + zstd compression), so the
-        # only way to cut wall time is more hosts: the two heaviest packages
-        # (api/templates, api/sandboxes) get dedicated runners and everything
-        # else shares the third. Shards are resolved by TEST_SHARD in
-        # tests/integration/Makefile.
+        # only way to cut wall time is more hosts: api/templates is split in
+        # two halves by test-name prefix, api/sandboxes gets its own runner,
+        # and everything else shares the last one. Shards are resolved by
+        # TEST_SHARD in tests/integration/Makefile.
         include: >-
           ${{ fromJSON(inputs.full-matrix
             && '[
@@ -49,7 +49,8 @@ jobs:
                   {"name": "lz4", "shard": "all", "compress_enabled": "true", "compress_type": "lz4", "compress_level": "0", "compress_workers": "8", "dedup_mode": "direct_io", "disable_memfd": "false"}
                 ]'
             || '[
-                  {"name": "zstd1-templates", "shard": "templates", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"},
+                  {"name": "zstd1-templates-builds", "shard": "templates-builds", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"},
+                  {"name": "zstd1-templates-misc", "shard": "templates-misc", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"},
                   {"name": "zstd1-sandboxes", "shard": "sandboxes", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"},
                   {"name": "zstd1-rest", "shard": "rest", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"}
                 ]') }}
@@ -78,9 +79,13 @@ jobs:
       - name: Initialize Host
         uses: ./.github/actions/host-init
 
-      - name: Build Template
+      # Kick off the template build in the background: it doesn't need the
+      # services, and the services don't need the template, so it overlaps
+      # with service startup below. Tests gate on the wait step.
+      - name: Build Template (background)
         uses: ./.github/actions/build-sandbox-template
         with:
+          mode: start
           compress_enabled: ${{ matrix.compress_enabled }}
           compress_type: ${{ matrix.compress_type }}
           compress_level: ${{ matrix.compress_level }}
@@ -95,6 +100,11 @@ jobs:
           compress_workers: ${{ matrix.compress_workers }}
           dedup_mode: ${{ matrix.dedup_mode }}
           disable_memfd: ${{ matrix.disable_memfd }}
+
+      - name: Wait for Template Build
+        uses: ./.github/actions/build-sandbox-template
+        with:
+          mode: wait
 
       - name: Run Integration Tests
         env:

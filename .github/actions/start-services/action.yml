@@ -32,21 +32,11 @@ runs:
   steps:
     # The postgres/clickhouse/redis containers were already kicked off in the
     # background by the start-databases action (early in the job, so their
-    # pulls and boots overlapped with the package builds). Here we build the
-    # migrator image, wait for database health, and migrate.
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v4
-
-    - name: Build codegen image with caching
-      uses: docker/build-push-action@v7
-      with:
-        context: packages/clickhouse
-        file: packages/clickhouse/Dockerfile
-        tags: clickhouse-migrator:latest
-        load: true # makes the image available for `docker run`
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-
+    # pulls and boots overlapped with the package builds). Here we wait for
+    # database health and migrate. ClickHouse migrations run goose directly
+    # on the host (migrate-host): building the migrator image took ~2 min per
+    # job even with layer caching, for a container whose only purpose is to
+    # run goose against migrations that get volume-mounted anyway.
     - name: Wait for Databases and Migrate
       env:
         TESTS_E2B_API_KEY: "e2b_5ec17bd3933af21f80dc10bba686691c4fcd7057"
@@ -86,7 +76,6 @@ runs:
         echo "TESTS_SANDBOX_TEAM_ID=${TESTS_SANDBOX_TEAM_ID}" >> .env.test
         echo "TESTS_SANDBOX_USER_ID=${TESTS_SANDBOX_USER_ID}" >> .env.test
         echo "REDIS_URL=localhost:6379" >> .env.test
-        echo "CLICKHOUSE_MIGRATOR_IMAGE=clickhouse-migrator" >> .env.test
         echo "CLICKHOUSE_USERNAME=${CLICKHOUSE_USERNAME}" >> .env.test
         echo "CLICKHOUSE_PORT=${CLICKHOUSE_PORT}" >> .env.test
         echo "CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}" >> .env.test
@@ -97,8 +86,7 @@ runs:
         make migrate
         make -C tests/integration seed
 
-        # We build the image in a separate step to cache it and avoid rebuilding it every time
-        make -C packages/clickhouse migrate-without-build
+        make -C packages/clickhouse migrate-host
       shell: bash
 
     - name: Start Services

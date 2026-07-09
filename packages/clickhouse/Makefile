@@ -49,6 +49,17 @@ migrate-local:
 	GOOSE_DBSTRING="clickhouse://clickhouse:clickhouse@localhost:9000/default" go tool goose -table "_migrations" -dir "migrations" clickhouse up
 	@echo "Done"
 
+# Like migrate-without-build but runs goose directly on the host instead of
+# inside the migrator image, using the CLICKHOUSE_* environment credentials.
+# Used by CI, where building the migrator image costs ~2 minutes per job for
+# no benefit (the migrations directory is mounted over the baked-in copy at
+# runtime anyway).
+.PHONY: migrate-host
+migrate-host:
+	@echo "Applying Clickhouse migrations *$(notdir $@)*"
+	@GOOSE_DBSTRING="clickhouse://$(CLICKHOUSE_USERNAME):$(CLICKHOUSE_PASSWORD)@localhost:$(CLICKHOUSE_PORT)/$(CLICKHOUSE_DATABASE)" go tool goose -table "_migrations" -dir "migrations" clickhouse up
+	@echo "Done"
+
 .PHONY: build
 build:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))

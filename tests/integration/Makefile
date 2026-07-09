@@ -9,16 +9,26 @@ TEST_PARALLELISM ?= 4
 
 # Package shards so CI can split the suite across parallel runners; the wall
 # clock is bound by the host (see TEST_PARALLELISM above), so the only way to
-# go faster is more hosts. Shards are sized by measured test time: the two
-# heaviest packages (api/templates ~1900s, api/sandboxes ~1250s of summed test
-# time) each get their own runner, everything else shares the third.
+# go faster is more hosts. Shards are sized by measured test time: the
+# api/templates package is heavy enough (~880s of summed test time, dominated
+# by real Firecracker builds) that it is split in two roughly equal halves by
+# test-name prefix (^TestTemplateBuild = 417s vs the rest = 460s measured);
+# api/sandboxes (~1250s summed) gets its own runner, and everything else
+# shares the last one.
 TEST_SHARD ?= all
+TEST_RUN_FLAGS :=
 ifeq ($(TEST_SHARD),templates)
 TEST_PACKAGES := ./internal/tests/api/templates/...
+else ifeq ($(TEST_SHARD),templates-builds)
+TEST_PACKAGES := ./internal/tests/api/templates/...
+TEST_RUN_FLAGS := -run '^TestTemplateBuild'
+else ifeq ($(TEST_SHARD),templates-misc)
+TEST_PACKAGES := ./internal/tests/api/templates/...
+TEST_RUN_FLAGS := -skip '^TestTemplateBuild'
 else ifeq ($(TEST_SHARD),sandboxes)
 TEST_PACKAGES := ./internal/tests/api/sandboxes/...
 else ifeq ($(TEST_SHARD),rest)
-# Everything except the two dedicated shards; computed via go list so new
+# Everything except the dedicated shards; computed via go list so new
 # packages are picked up automatically.
 TEST_PACKAGES = $(shell go list ./internal/tests/... | grep -v -e '/tests/api/templates' -e '/tests/api/sandboxes')
 else
@@ -61,7 +71,7 @@ test-shard:
 	export TESTS_SANDBOX_TEAM_ID=$(TESTS_SANDBOX_TEAM_ID); \
 	export TESTS_SANDBOX_USER_ID=$(TESTS_SANDBOX_USER_ID); \
 	go test -v ./internal/main_test.go -count=1 && \
-	go tool gotestsum --rerun-fails=1 --packages="$(strip $(TEST_PACKAGES))" --format standard-verbose --junitfile=test-results.xml -- -count=1 -parallel=$(TEST_PARALLELISM) -timeout=20m
+	go tool gotestsum --rerun-fails=1 --packages="$(strip $(TEST_PACKAGES))" --format standard-verbose --junitfile=test-results.xml -- -count=1 -parallel=$(TEST_PARALLELISM) -timeout=20m $(TEST_RUN_FLAGS)
 
 .PHONY: test
 test: test/.
