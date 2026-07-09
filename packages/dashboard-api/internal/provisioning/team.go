@@ -116,10 +116,7 @@ func (s *Service) resolveProfile(ctx context.Context, userID uuid.UUID) (identit
 
 	profile, ok := profiles[userID]
 	if !ok {
-		return identity.Profile{}, &internalteamprovision.ProvisionError{
-			StatusCode: http.StatusNotFound,
-			Message:    "User not found",
-		}
+		return identity.Profile{}, fmt.Errorf("%w: %s", identity.ErrUserNotFound, userID)
 	}
 
 	return profile, nil
