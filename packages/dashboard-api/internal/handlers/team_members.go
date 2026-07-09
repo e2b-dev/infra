@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -130,8 +131,16 @@ func (s *APIStore) PostTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 	user := profiles[0]
 
 	if teamInfo, ok := auth.GetTeamInfo(c); ok && teamInfo != nil && teamInfo.Team != nil && teamInfo.Team.SsoOrganizationID != nil {
-		if err := s.provisioningService.ValidateInviteeOrganization(ctx, *teamInfo.Team.SsoOrganizationID, user.UserID); err != nil {
-			s.sendProvisioningError(ctx, c, "add team member", err)
+		inviteeOrgID, err := s.identityService.UserOrganizationID(ctx, user.UserID)
+		if err != nil {
+			logger.L().Error(ctx, "failed to resolve invitee organization", zap.Error(err), logger.WithUserID(user.UserID.String()))
+			s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to resolve invitee organization")
+
+			return
+		}
+
+		if inviteeOrgID != *teamInfo.Team.SsoOrganizationID {
+			s.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("%s is not part of this team's SSO organization and cannot be invited.", user.Email))
 
 			return
 		}

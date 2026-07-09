@@ -214,16 +214,16 @@ func TestPostTeamsTeamIDMembers_RejectsInviteOutsideSSOOrg(t *testing.T) {
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(`{"email":"`+handlerTestUserEmail(inviteeID)+`"}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 
-	provisioningService := provisioning.New(nil, ssoIdentityProvider{}, &fakeTeamProvisionSink{})
-
 	store := &APIStore{
-		identityService:     ssoIdentityProvider{},
-		provisioningService: provisioningService,
+		identityService: ssoIdentityProvider{},
 	}
 	store.PostTeamsTeamIDMembers(ginCtx, teamID)
 
-	if recorder.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 for an invite outside the SSO org, got %d: %s", recorder.Code, recorder.Body.String())
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for an invite outside the SSO org, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "is not part of this team's SSO organization") {
+		t.Fatalf("unexpected response body: %s", recorder.Body.String())
 	}
 }
 

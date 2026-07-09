@@ -53,19 +53,3 @@ func (s *Service) ensureNotSSOManaged(ctx context.Context, userID uuid.UUID) err
 
 	return nil
 }
-
-func (s *Service) ValidateInviteeOrganization(ctx context.Context, teamOrgID, inviteeUserID uuid.UUID) error {
-	inviteeOrgID, err := s.identityService.UserOrganizationID(ctx, inviteeUserID)
-	if err != nil {
-		return fmt.Errorf("resolve invitee organization: %w", err)
-	}
-
-	if inviteeOrgID != teamOrgID {
-		return &internalteamprovision.ProvisionError{
-			StatusCode: http.StatusForbidden,
-			Message:    "Only accounts from your organization can be added to this team.",
-		}
-	}
-
-	return nil
-}
