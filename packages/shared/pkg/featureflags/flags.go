@@ -224,6 +224,13 @@ var (
 	// in favor of E2B_API_KEY; the CLI now authenticates via Hydra JWTs. Off by
 	// default so issuance keeps working until the deprecation cutover.
 	DisableE2BAccessTokenProvisioningFlag = NewBoolFlag("disable-e2b-access-token-provisioning", false)
+
+	// DisableE2BAccessTokenAuthFlag stops the API from accepting E2B access
+	// tokens (sk_e2b_) for authentication once enabled. E2B_ACCESS_TOKEN is
+	// superseded by E2B_API_KEY; existing tokens stop working on the
+	// deprecation cutover (Aug 1, 2026). Off by default. Evaluated per-user so
+	// rejection can be rolled out gradually via LD targeting.
+	DisableE2BAccessTokenAuthFlag = NewBoolFlag("disable-e2b-access-token-auth", false)
 )
 
 // envdTimeoutFallbackMs reads ENVD_TIMEOUT (Go duration string, e.g. "10s")
