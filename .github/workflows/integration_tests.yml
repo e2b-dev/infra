@@ -89,13 +89,14 @@ jobs:
           TESTS_ORCHESTRATOR_HOST: "localhost:5008"
           TESTS_ENVD_PROXY: "http://localhost:3002"
           TESTS_CLIENT_PROXY: "http://localhost:3002"
-          # Nearly all tests are t.Parallel() and gated by a 100-slot sandbox
-          # semaphore in the harness; the go test default of -parallel=4 was
-          # the throughput bottleneck (e.g. api/sandboxes is ~1250s of test
-          # time squeezed through 4 slots). 12 starved the host: concurrent
-          # FC template builds (x8 zstd workers each) starved envd inits into
-          # "syncing took too long" failures. Tune down if flakiness returns.
-          TEST_PARALLELISM: "8"
+          # Keep go test -parallel at 4: the host is the bottleneck, not
+          # client-side concurrency. Measured on the zstd1 shard: at 8 the
+          # per-test times inflated 70-140% (net wall win of only ~1 min) and
+          # 10 template builds flaked on timeouts; at 12 concurrent FC builds
+          # (x8 zstd workers each) starved envd inits into "syncing took too
+          # long" failures across 87 tests. Revisit if the compression path
+          # gets cheaper or the runners get more CPU.
+          TEST_PARALLELISM: "4"
         run: |
           # Run the integration tests
           make test-integration
