@@ -1,13 +1,17 @@
 package handlers
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -25,7 +29,8 @@ const (
 func (a *APIStore) GetSnapshots(c *gin.Context, params api.GetSnapshotsParams) {
 	ctx := c.Request.Context()
 
-	teamID := auth.MustGetTeamID(c)
+	teamInfo := auth.MustGetTeamInfo(c)
+	teamID := teamInfo.Team.ID
 
 	span := trace.SpanFromContext(ctx)
 	traceID := span.SpanContext().TraceID().String()
@@ -64,9 +69,55 @@ func (a *APIStore) GetSnapshots(c *gin.Context, params api.GetSnapshotsParams) {
 		sandboxIDFilter = &short
 	}
 
+	var envIDFilter, tagFilter *string
+	if params.Name != nil {
+		identifier, tag, err := id.ParseName(*params.Name)
+		if err != nil {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid name: %s", err))
+
+			return
+		}
+
+		if err := id.ValidateNamespaceMatchesTeam(identifier, teamInfo.Slug); err != nil {
+			a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
+
+			return
+		}
+
+		// ParseName normalizes an explicit ":default" tag to nil; re-check the raw
+		// input so "name:default" filters by the default tag, while a bare "name"
+		// matches builds of any tag.
+		tagFilter = tag
+		if _, _, hasTag := strings.Cut(*params.Name, id.TagSeparator); hasTag && tagFilter == nil {
+			defaultTag := id.DefaultTag
+			tagFilter = &defaultTag
+		}
+
+		// Resolve alias using the cache — same pattern as template builds. Team
+		// ownership is enforced by the query's team_id predicate, so a name that
+		// resolves to another team's template yields an empty list.
+		aliasInfo, err := a.templateCache.ResolveAlias(ctx, identifier, teamInfo.Slug)
+		switch {
+		case err == nil:
+			envIDFilter = &aliasInfo.TemplateID
+		case errors.Is(err, templatecache.ErrTemplateNotFound):
+			c.JSON(http.StatusOK, []api.SnapshotInfo{})
+
+			return
+		default:
+			apiErr := templatecache.ErrorToAPIError(err, identifier)
+			a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+			telemetry.ReportCriticalError(ctx, "error resolving snapshot template alias", apiErr.Err)
+
+			return
+		}
+	}
+
 	snapshots, err := a.sqlcDB.ListTeamSnapshotTemplates(ctx, queries.ListTeamSnapshotTemplatesParams{
 		TeamID:     teamID,
 		SandboxID:  sandboxIDFilter,
+		EnvID:      envIDFilter,
+		Tag:        tagFilter,
 		CursorTime: pagination.CursorTime(),
 		CursorID:   pagination.CursorID(),
 		PageLimit:  pagination.QueryLimit(),

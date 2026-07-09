@@ -19,11 +19,12 @@ import (
 // CgroupStatsFunc is a function that returns current cgroup resource usage statistics.
 type CgroupStatsFunc func(ctx context.Context) (*cgroup.Stats, error)
 
+const hostStatsSamplingInterval = 1 * time.Second
+
 type HostStatsCollector struct {
-	metadata         HostStatsMetadata
-	delivery         hoststats.Delivery
-	samplingInterval time.Duration
-	cgroupStats      CgroupStatsFunc
+	metadata    HostStatsMetadata
+	delivery    hoststats.Delivery
+	cgroupStats CgroupStatsFunc
 
 	prev hoststats.SandboxHostStat // previous sample; seeded with zero counters at construction
 
@@ -46,19 +47,12 @@ type HostStatsMetadata struct {
 func NewHostStatsCollector(
 	metadata HostStatsMetadata,
 	delivery hoststats.Delivery,
-	samplingInterval time.Duration,
 	cgroupStats CgroupStatsFunc,
 ) *HostStatsCollector {
-	// Validate and enforce minimum interval
-	if samplingInterval < 100*time.Millisecond {
-		samplingInterval = 100 * time.Millisecond
-	}
-
 	return &HostStatsCollector{
-		metadata:         metadata,
-		delivery:         delivery,
-		samplingInterval: samplingInterval,
-		cgroupStats:      cgroupStats,
+		metadata:    metadata,
+		delivery:    delivery,
+		cgroupStats: cgroupStats,
 		// Zero baseline so the first sample produces real deltas and interval.
 		prev: hoststats.SandboxHostStat{
 			Timestamp: time.Now(),
@@ -147,7 +141,7 @@ func (h *HostStatsCollector) Start(ctx context.Context) {
 			zap.Error(err))
 	}
 
-	ticker := time.NewTicker(h.samplingInterval)
+	ticker := time.NewTicker(hostStatsSamplingInterval)
 	defer ticker.Stop()
 
 	for {

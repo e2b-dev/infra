@@ -35,18 +35,15 @@ type Checks struct {
 	stopped bool
 
 	healthy atomic.Bool
-
-	UseClickhouseMetrics bool
 }
 
 var ErrChecksStopped = errors.New("checks stopped")
 
-func NewChecks(sandbox *Sandbox, useClickhouseMetrics bool) *Checks {
+func NewChecks(sandbox *Sandbox) *Checks {
 	// Create background context, passed ctx is from create/resume request and will be canceled after the request is processed.
 	h := &Checks{
-		sandbox:              sandbox,
-		healthy:              atomic.Bool{}, // defaults to `false`
-		UseClickhouseMetrics: useClickhouseMetrics,
+		sandbox: sandbox,
+		healthy: atomic.Bool{}, // defaults to `false`
 	}
 
 	// By default, the sandbox should be healthy, if the status change we report it.

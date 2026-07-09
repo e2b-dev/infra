@@ -12,13 +12,125 @@ on:
   pull_request:
 
 jobs:
+  detect-changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    outputs:
+      changed-scopes: ${{ steps.changed-paths.outputs.changes }}
+      docs-only: ${{ steps.docs-only.outputs.docs_only }}
+    steps:
+      - id: changed-paths
+        name: Detect CI-relevant changes
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            iac:
+              - 'iac/**'
+              - '.github/**'
+              - '.tool-versions'
+            test-inputs:
+              - 'packages/**'
+              - 'tests/**'
+              - 'spec/**'
+              - 'go.work'
+              - 'go.work.sum'
+              - 'Makefile'
+              - '.tool-versions'
+              # only the .github paths that affect the Go unit/arm64 test suites,
+              # so unrelated CI edits (e.g. other workflows) don't trigger them
+              - '.github/workflows/pr-tests.yml'
+              - '.github/workflows/pr-tests-arm64.yml'
+              - '.github/actions/go-setup-cache/**'
+            # Like test-inputs, but scoped to only the .github paths that affect
+            # the integration harness (its workflow + composite actions) instead
+            # of all of .github/**. This keeps unrelated CI edits (e.g. other
+            # workflows) from triggering the ~20-min integration suite.
+            integration-inputs:
+              - 'packages/**'
+              - 'tests/**'
+              - 'spec/**'
+              - 'go.work'
+              - 'go.work.sum'
+              - 'Makefile'
+              - '.tool-versions'
+              # invoked by the start-services action to launch each service
+              - 'scripts/start-service.sh'
+              - '.github/workflows/integration_tests.yml'
+              - '.github/actions/build-packages/**'
+              - '.github/actions/build-sandbox-template/**'
+              - '.github/actions/host-init/**'
+              - '.github/actions/start-services/**'
+              - '.github/actions/go-setup-cache/**'
+            lint-inputs:
+              - 'packages/**'
+              - 'tests/**'
+              - 'go.work'
+              - 'go.work.sum'
+              - '.golangci.yml'
+              - '.github/**'
+              - '.tool-versions'
+            openapi-inputs:
+              - 'spec/openapi*.yml'
+              - 'packages/envd/spec/envd.yaml'
+              - '.github/**'
+              - '.tool-versions'
+            generated-inputs:
+              - 'packages/**'
+              - 'tests/**'
+              - 'spec/**'
+              - 'go.work'
+              - 'go.work.sum'
+              - 'Makefile'
+              - '.golangci.yml'
+              - '.mockery.yaml'
+              - 'packages/**/.mockery.yaml'
+              - 'scripts/fix-tracers.sh'
+              - 'scripts/fix-meters.sh'
+              - 'scripts/golang-dependencies-integrity.sh'
+              - '.github/**'
+              - '.tool-versions'
+
+      # dorny/paths-filter can't express "packages but not CHANGELOG" (it OR's
+      # patterns; a '!' pattern would match every non-CHANGELOG file). So detect
+      # docs-only changes (release-please PRs) separately and gate on it below.
+      - name: Checkout for docs-only detection
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - id: docs-only
+        name: Detect docs-only (CHANGELOG / release-please) changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          changed=$(git diff --name-only "${BASE_SHA}...HEAD")
+          # docs_only=true when every changed file is a CHANGELOG.md or the
+          # release-please manifest, i.e. a release PR that shouldn't run CI.
+          if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -qvE '(^|/)CHANGELOG\.md$|^\.release-please-manifest\.json$'; then
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          fi
+
   lint:
+    needs: [detect-changes]
     uses: ./.github/workflows/lint.yml
+    with:
+      run-lint: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'lint-inputs') && needs.detect-changes.outputs.docs-only != 'true' }}
   validate-openapi:
+    needs: [detect-changes]
     uses: ./.github/workflows/validate-openapi.yml
+    with:
+      run-validation: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'openapi-inputs') }}
   generated-code-check:
+    needs: [detect-changes]
     uses: ./.github/workflows/pr-no-generated-changes.yml
     with:
+      run-check: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'generated-inputs') && needs.detect-changes.outputs.docs-only != 'true' }}
       # Only auto-commit for same-repo PRs (secrets aren't available for forks)
       commit: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
     secrets:
@@ -27,34 +139,53 @@ jobs:
   out-of-order-migrations:
     uses: ./.github/workflows/out-of-order-migrations.yml
   unit-tests:
+    needs: [detect-changes]
     uses: ./.github/workflows/pr-tests.yml
+    with:
+      run-tests: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') && needs.detect-changes.outputs.docs-only != 'true' }}
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+  terraform-validation:
+    needs: [detect-changes]
+    uses: ./.github/workflows/validate-iac.yml
+    with:
+      run-validation: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'iac') }}
   arm64-tests:
+    needs: [detect-changes]
     uses: ./.github/workflows/pr-tests-arm64.yml
+    with:
+      run-tests: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') && needs.detect-changes.outputs.docs-only != 'true' }}
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
   integration-tests:
-    needs: [out-of-order-migrations]
+    needs: [detect-changes, out-of-order-migrations]
     uses: ./.github/workflows/integration_tests.yml
     with:
       # Only publish the results for same-repo PRs
       publish: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+      run-tests: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'integration-inputs') && needs.detect-changes.outputs.docs-only != 'true' }}
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
   publish-test-results:
     needs:
+      - detect-changes
       - unit-tests
       - integration-tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       checks: write
     # Skip on cancellation (e.g. superseded by a newer push) so partial
     # artifacts aren't published as failed tests.
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && needs.detect-changes.result == 'success' }}
 
     steps:
+      - name: Skip publishing when tests did not run
+        if: ${{ (!contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') && !contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'integration-inputs')) || needs.detect-changes.outputs.docs-only == 'true' }}
+        run: echo "test result publishing skipped because test inputs did not change"
+
       - name: Download Artifacts
+        if: ${{ (contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') || contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'integration-inputs')) && needs.detect-changes.outputs.docs-only != 'true' }}
         uses: actions/download-artifact@v7
         with:
           path: artifacts
@@ -63,6 +194,7 @@ jobs:
           pattern: "!*.dockerbuild"
 
       - name: Publish Test Results
+        if: ${{ (contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') || contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'integration-inputs')) && needs.detect-changes.outputs.docs-only != 'true' }}
         uses: EnricoMi/publish-unit-test-result-action@v2
         with:
           comment_mode: off

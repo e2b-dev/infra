@@ -113,7 +113,7 @@ func (l *Lifecycle) Bootstrap(args *testharness.BootstrapArgs, _ *testharness.Bo
 		return fmt.Errorf("logger: %w", err)
 	}
 
-	uffd, err := NewUserfaultfdFromFd(l.state.uffdFd, data, mapping, log)
+	uffd, err := NewUserfaultfdFromFd(l.state.uffdFd, data, mapping, 0, log)
 	if err != nil {
 		return fmt.Errorf("NewUserfaultfdFromFd: %w", err)
 	}

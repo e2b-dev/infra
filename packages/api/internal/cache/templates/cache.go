@@ -175,7 +175,7 @@ func (c *TemplateCache) fetchTemplateWithBuild(templateID string, tag *string) f
 		}
 
 		build := &result.EnvBuild
-		template := result.Env
+		template := result.ActiveEnv
 		clusterID := clusters.WithClusterFallback(template.ClusterID)
 
 		tagValue := sharedUtils.DerefOrDefault(tag, id.DefaultTag)

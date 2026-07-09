@@ -97,7 +97,6 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			t.persistence,
 			t.paths.Snapfile(),
 			t.paths.CacheSnapfile(),
-			storage.SnapfileObjectType,
 		)
 		if snapfileErr != nil {
 			errMsg := fmt.Errorf("failed to fetch snapfile: %w", snapfileErr)
@@ -130,7 +129,6 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			t.persistence,
 			t.paths.Metadata(),
 			t.paths.CacheMetadata(),
-			storage.MetadataObjectType,
 		)
 		if err != nil && !errors.Is(err, storage.ErrObjectNotExist) {
 			sourceErr := fmt.Errorf("failed to fetch metafile: %w", err)
@@ -199,6 +197,12 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		if memfileErr != nil {
 			errMsg := fmt.Errorf("failed to create memfile storage: %w", memfileErr)
 
+			logger.L().Warn(ctx, "caching template with failed memfile resolution; reused until cache eviction",
+				logger.WithBuildID(t.paths.BuildID),
+				zap.Duration("min_cache_ttl", templateExpiration),
+				zap.Error(memfileErr),
+			)
+
 			if err := t.memfile.SetError(errMsg); err != nil {
 				return fmt.Errorf("failed to set memfile error: %w", errors.Join(errMsg, err))
 			}
@@ -235,6 +239,12 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		)
 		if rootfsErr != nil {
 			errMsg := fmt.Errorf("failed to create rootfs storage: %w", rootfsErr)
+
+			logger.L().Warn(ctx, "caching template with failed rootfs resolution; reused until cache eviction",
+				logger.WithBuildID(t.paths.BuildID),
+				zap.Duration("min_cache_ttl", templateExpiration),
+				zap.Error(rootfsErr),
+			)
 
 			if err := t.rootfs.SetError(errMsg); err != nil {
 				return fmt.Errorf("failed to set rootfs error: %w", errors.Join(errMsg, err))
@@ -276,18 +286,28 @@ func (t *storageTemplate) Files() storage.CachePaths {
 // rather than the header holders, which stay unset for templates loaded from
 // storage (the headers are resolved internally by NewStorage during Fetch).
 func (t *storageTemplate) SchedulingMetadata(ctx context.Context) *orchestrator.SchedulingMetadata {
-	memfile, memfileErr := t.memfile.WaitWithContext(ctx)
+	// The rootfs is always present; its header carries the build ID and is the
+	// minimum needed for scheduling metadata.
 	rootfs, rootfsErr := t.rootfs.WaitWithContext(ctx)
-	if memfileErr != nil || rootfsErr != nil {
+	if rootfsErr != nil {
 		return nil
 	}
 
-	mh := memfile.Header()
-	if mh == nil || mh.Metadata == nil {
+	rh := rootfs.Header()
+	if rh == nil || rh.Metadata == nil {
 		return nil
 	}
 
-	return scheduling.FromHeaders(mh.Metadata.BuildId, mh, rootfs.Header(), 0)
+	// Filesystem-only snapshots have no memfile object, so memfile.WaitWithContext
+	// errors on reload. Tolerate that and report rootfs-only scheduling metadata
+	// (FromHeaders treats a nil memfile header as rootfs-only) instead of
+	// dropping the rootfs affinity data too.
+	var mh *header.Header
+	if memfile, memfileErr := t.memfile.WaitWithContext(ctx); memfileErr == nil {
+		mh = memfile.Header()
+	}
+
+	return scheduling.FromHeaders(rh.Metadata.BuildId, mh, rh, 0)
 }
 
 func (t *storageTemplate) Memfile(ctx context.Context) (block.ReadonlyDevice, error) {

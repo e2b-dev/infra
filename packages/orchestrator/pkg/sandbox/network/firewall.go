@@ -3,23 +3,31 @@
 package network
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/netip"
 	"slices"
+	"sync"
 
 	"github.com/google/nftables"
 	"github.com/google/nftables/binaryutil"
 	"github.com/google/nftables/expr"
 	"github.com/ngrok/firewall_toolkit/pkg/expressions"
 	"github.com/ngrok/firewall_toolkit/pkg/set"
+	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
 
 const tableName = "slot-firewall"
 
 type Firewall struct {
+	// mu serializes the shared conn buffer, which is committed on Flush().
+	mu sync.Mutex
+
 	conn  *nftables.Conn
 	table *nftables.Table
 
@@ -37,11 +45,17 @@ type Firewall struct {
 	allowedRanges []string
 }
 
-func NewFirewall(tapIf string, orchestratorInternalIP string, extraAllowedCIDRs []string) (*Firewall, error) {
+func NewFirewall(tapIf string, orchestratorInternalIP string, extraAllowedCIDRs []string) (_ *Firewall, err error) {
 	conn, err := nftables.New(nftables.AsLasting())
 	if err != nil {
 		return nil, fmt.Errorf("new nftables conn: %w", err)
 	}
+
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, conn.CloseLasting())
+		}
+	}()
 
 	table := conn.AddTable(&nftables.Table{
 		Name:   tableName,
@@ -79,6 +93,8 @@ func NewFirewall(tapIf string, orchestratorInternalIP string, extraAllowedCIDRs 
 		return nil, fmt.Errorf("new allow set: %w", err)
 	}
 
+	controlIP := fmt.Sprintf("%s/32", orchestratorInternalIP)
+
 	fw := &Firewall{
 		conn:               conn,
 		table:              table,
@@ -88,28 +104,77 @@ func NewFirewall(tapIf string, orchestratorInternalIP string, extraAllowedCIDRs 
 		userAllowSet:       allowSet,
 		tapInterface:       tapIf,
 		allowedRanges: append(
-			[]string{fmt.Sprintf("%s/32", orchestratorInternalIP)},
+			[]string{controlIP},
 			extraAllowedCIDRs...,
 		),
 		filterChain: filterChain,
 	}
 
-	// Add firewall rules to the chain
-	if err := fw.installRules(); err != nil {
-		return nil, err
-	}
-
-	// Populate the sets with initial data
-	err = fw.ReplaceUserRules(nil, nil)
-	if err != nil {
+	// Install default rules and initial set data in a single flush.
+	fw.installRules(false)
+	if err := fw.bufferUserRules(nil, nil); err != nil {
 		return nil, fmt.Errorf("error while configuring initial data: %w", err)
+	}
+	if err := fw.conn.Flush(); err != nil {
+		return nil, fmt.Errorf("flush initial firewall rules: %w", err)
 	}
 
 	return fw, nil
 }
 
 func (fw *Firewall) Close() error {
-	return fw.conn.CloseLasting()
+	fw.mu.Lock()
+	defer fw.mu.Unlock()
+
+	fw.conn.DelTable(&nftables.Table{
+		Name:   tableName,
+		Family: nftables.TableFamilyINet,
+	})
+	deleteErr := fw.conn.Flush()
+	if errors.Is(deleteErr, unix.ENOENT) {
+		deleteErr = nil
+	}
+
+	return errors.Join(deleteErr, fw.conn.CloseLasting())
+}
+
+// resetConn replaces fw.conn with a fresh netlink connection, discarding
+// buffered messages and any sticky serialization error — nftables.Conn has no
+// API for that (see https://github.com/google/nftables/pull/324).
+func (fw *Firewall) resetConn(ctx context.Context) error {
+	closeErr := fw.conn.CloseLasting()
+
+	conn, err := nftables.New(nftables.AsLasting())
+	if err != nil {
+		err = fmt.Errorf("open new lasting nftables conn: %w", err)
+
+		// Fall back to a transient conn.
+		var transientErr error
+		conn, transientErr = nftables.New()
+		if transientErr != nil {
+			err = errors.Join(err, fmt.Errorf("open transient nftables conn: %w", transientErr))
+		}
+	}
+
+	resetErr := errors.Join(closeErr, err)
+	switch {
+	case conn == nil:
+		// Both the lasting and transient constructors failed. Keep the old
+		// (already closed, possibly poisoned) conn rather than storing nil and
+		// panicking on next use; the firewall is left in a degraded state.
+		logger.L().Error(ctx, "firewall nftables conn reset failed; reusing the old conn",
+			zap.String("tap_interface", fw.tapInterface), zap.Error(resetErr))
+	case resetErr != nil:
+		fw.conn = conn
+		logger.L().Error(ctx, "firewall nftables conn reset after apply failure encountered errors",
+			zap.String("tap_interface", fw.tapInterface), zap.Error(resetErr))
+	default:
+		fw.conn = conn
+		logger.L().Warn(ctx, "firewall nftables conn reset after apply failure",
+			zap.String("tap_interface", fw.tapInterface))
+	}
+
+	return resetErr
 }
 
 // tapIfaceMatch returns expressions that match packets from the tap interface.
@@ -183,21 +248,10 @@ func (fw *Firewall) addNonTCPSetFilterRule(ipSet *nftables.Set, drop bool) {
 	})
 }
 
-func (fw *Firewall) installRules() error {
-	// ============================================================
-	// FILTER CHAIN (PREROUTING, priority -150)
-	// Order:
-	//   1. ESTABLISHED/RELATED → accept (allow responses even from denied ranges)
-	//   2. predefinedAllowSet → accept (all protocols)
-	//   3. predefinedDenySet → DROP (all protocols, hard block)
-	//   4. Non-TCP: userAllowSet → accept
-	//   5. Non-TCP: userDenySet → DROP
-	//   6. Default: ACCEPT (TCP handled by iptables REDIRECT)
-	//
-	// ============================================================
-
-	// Rule 1: Allow ESTABLISHED/RELATED connections - all protocols
-	// This ensures response packets are allowed even if the source is in predefinedDenySet
+// addEstablishedAcceptRule buffers a rule that accepts ESTABLISHED/RELATED
+// return traffic from the tap interface, so response packets are allowed even
+// when the source sits in a deny set. Buffer-only; the caller flushes.
+func (fw *Firewall) addEstablishedAcceptRule() {
 	fw.conn.AddRule(&nftables.Rule{
 		Table: fw.table,
 		Chain: fw.filterChain,
@@ -220,12 +274,45 @@ func (fw *Firewall) installRules() error {
 			accept()...,
 		),
 	})
+}
+
+// addTapDropRule buffers a rule that drops every packet from the tap interface,
+// regardless of protocol or destination. Buffer-only; the caller flushes.
+func (fw *Firewall) addTapDropRule() {
+	fw.conn.AddRule(&nftables.Rule{
+		Table: fw.table,
+		Chain: fw.filterChain,
+		Exprs: append(fw.tapIfaceMatch(),
+			&expr.Verdict{Kind: expr.VerdictDrop},
+		),
+	})
+}
+
+// installRules buffers the filter chain rules. When byop is true, Rule 3 drops
+// non-TCP only (TCP shifts to the userspace SOCKS5 proxy); otherwise it drops
+// all protocols. Buffer-only; the caller must Flush.
+func (fw *Firewall) installRules(byop bool) {
+	// FILTER CHAIN (PREROUTING, priority -150)
+	//   1. ESTABLISHED/RELATED → accept
+	//   2. predefinedAllowSet → accept (all protocols)
+	//   3. predefinedDenySet → DROP (all protocols, or non-TCP only when byop)
+	//   4. Non-TCP: userAllowSet → accept
+	//   5. Non-TCP: userDenySet → DROP
+	//   6. Default: ACCEPT (TCP handled by iptables REDIRECT in host netns)
+
+	// Rule 1: Allow ESTABLISHED/RELATED connections - all protocols
+	// This ensures response packets are allowed even if the source is in predefinedDenySet
+	fw.addEstablishedAcceptRule()
 
 	// Rule 2: predefinedAllowSet → accept (all protocols)
 	fw.addSetFilterRule(fw.predefinedAllowSet.Set(), false)
 
-	// Rule 3: predefinedDenySet → DROP (all protocols, hard block)
-	fw.addSetFilterRule(fw.predefinedDenySet.Set(), true)
+	// Rule 3: predefinedDenySet → DROP (all protocols, or non-TCP only in BYOP).
+	if byop {
+		fw.addNonTCPSetFilterRule(fw.predefinedDenySet.Set(), true)
+	} else {
+		fw.addSetFilterRule(fw.predefinedDenySet.Set(), true)
+	}
 
 	// Rule 4: Non-TCP + userAllowSet → accept
 	// Only non-TCP traffic is affected; TCP goes to proxy
@@ -238,17 +325,11 @@ func (fw *Firewall) installRules() error {
 	// Default policy: ACCEPT
 	// - Non-TCP not in user sets: allowed (default policy)
 	// - TCP: iptables REDIRECT handles TCP traffic to proxy
-
-	if err := fw.conn.Flush(); err != nil {
-		return fmt.Errorf("flush nftables changes: %w", err)
-	}
-
-	return nil
 }
 
-// ReplaceUserRules atomically replaces all firewall sets in a single flush.
-// This avoids any window where rules are partially applied.
-func (fw *Firewall) ReplaceUserRules(allowedCIDRs, deniedCIDRs []string) error {
+// bufferUserRules buffers a full replacement of every firewall set.
+// Buffer-only; the caller flushes.
+func (fw *Firewall) bufferUserRules(allowedCIDRs, deniedCIDRs []string) error {
 	// 1. Reset predefined deny set to default blocked ranges (buffered, no flush).
 	if err := fw.predefinedDenySet.ClearAndAddElements(fw.conn, sandbox_network.DeniedSandboxSetData); err != nil {
 		return fmt.Errorf("reset predefined deny set: %w", err)
@@ -273,9 +354,78 @@ func (fw *Firewall) ReplaceUserRules(allowedCIDRs, deniedCIDRs []string) error {
 		return fmt.Errorf("replace user allow set: %w", err)
 	}
 
-	// 5. Single atomic flush.
+	return nil
+}
+
+// ApplyRules reinstalls the filter chain in the given BYOP mode and replaces
+// all firewall sets, committed in a single atomic flush so the kernel never
+// holds the new Rule 3 mode with stale user sets. The chain is always rebuilt
+// from scratch; on flush failure the kernel keeps the previous ruleset and no
+// in-memory state can desync from it.
+//
+// On any failure the conn is replaced via resetConn, so a poisoned batch can
+// never leak into a later flush.
+func (fw *Firewall) ApplyRules(ctx context.Context, byop bool, allowedCIDRs, deniedCIDRs []string) (err error) {
+	fw.mu.Lock()
+	defer fw.mu.Unlock()
+
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, fw.resetConn(ctx))
+		}
+	}()
+
+	fw.conn.FlushChain(fw.filterChain)
+	fw.installRules(byop)
+	if err := fw.bufferUserRules(allowedCIDRs, deniedCIDRs); err != nil {
+		return err
+	}
+
 	if err := fw.conn.Flush(); err != nil {
-		return fmt.Errorf("flush atomic rule replacement: %w", err)
+		return fmt.Errorf("flush atomic rule application: %w", err)
+	}
+
+	return nil
+}
+
+// DenyEgress rebuilds the filter chain so that every packet originating from
+// the guest (the tap interface) is dropped, except ESTABLISHED/RELATED return
+// traffic. Unlike the user deny set — which drops only non-TCP traffic and
+// leaves TCP to the egress proxy — this drops ALL protocols and allows NO
+// guest-initiated destination, so a sandbox isolated this way cannot reach the
+// network at all, including the orchestrator's own in-sandbox IP (which also
+// fronts the NFS proxy, portmapper and hyperloop). The orchestrator still
+// drives the resume because it connects INTO the guest (envd /init, health
+// probes) and those replies match ESTABLISHED/RELATED; nothing about the resume
+// needs the guest to open a connection outward. It backs the throwaway
+// pause-resume prefetch harvest sandbox, whose envd init must not egress — the
+// throwaway is also resumed with its volume mounts suppressed so /init does not
+// attempt the (now-blocked) NFS mount.
+//
+// Like ApplyRules the chain is rebuilt from scratch and committed in a single
+// flush; on failure the conn is reset so a poisoned batch cannot leak into a
+// later flush.
+func (fw *Firewall) DenyEgress(ctx context.Context) (err error) {
+	fw.mu.Lock()
+	defer fw.mu.Unlock()
+
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, fw.resetConn(ctx))
+		}
+	}()
+
+	fw.conn.FlushChain(fw.filterChain)
+
+	// Rule 1: ESTABLISHED/RELATED → accept (lets the orchestrator-driven control
+	// path, which connects into the guest, get its replies back).
+	fw.addEstablishedAcceptRule()
+	// Rule 2: everything else from the tap → drop, all protocols. No
+	// guest-initiated egress is allowed, not even to the orchestrator IP.
+	fw.addTapDropRule()
+
+	if err := fw.conn.Flush(); err != nil {
+		return fmt.Errorf("flush deny-egress rules: %w", err)
 	}
 
 	return nil

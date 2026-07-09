@@ -4,7 +4,6 @@ package sandbox
 
 import (
 	"context"
-	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -21,7 +20,6 @@ func initializeHostStatsCollector(
 	runtime RuntimeMetadata,
 	config *Config,
 	hostStatsDelivery hoststats.Delivery,
-	samplingInterval time.Duration,
 ) {
 	teamID, err := uuid.Parse(runtime.TeamID)
 	if err != nil {
@@ -41,7 +39,6 @@ func initializeHostStatsCollector(
 			SandboxType: runtime.SandboxType,
 		},
 		hostStatsDelivery,
-		samplingInterval,
 		sbx.cgroupHandle.GetStats,
 	)
 

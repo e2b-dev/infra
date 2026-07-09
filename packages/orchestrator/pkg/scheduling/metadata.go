@@ -20,29 +20,35 @@ const chainLimit = 128
 // derives the rest from the resolved parent headers and passes newMemfileBytes
 // (a pre-dedup upper bound) for the new layer. Lists are sorted by build ID —
 // order is not significant for affinity matching.
+//
+// A nil memfileHeader (filesystem-only snapshot) yields rootfs-only metadata
+// with empty memfile fields; the rootfs header is always required.
 func FromHeaders(buildID uuid.UUID, memfileHeader, rootfsHeader *header.Header, newMemfileBytes uint64) *orchestrator.SchedulingMetadata {
-	if memfileHeader == nil || memfileHeader.Metadata == nil || rootfsHeader == nil || rootfsHeader.Metadata == nil {
+	if rootfsHeader == nil || rootfsHeader.Metadata == nil {
 		return nil
 	}
 
-	base := memfileHeader.Metadata.BaseBuildId
-	if base == uuid.Nil {
-		base = rootfsHeader.Metadata.BaseBuildId
+	rootfsBase := rootfsHeader.Metadata.BaseBuildId
+	rootIDs, rootBytes, rootDropped := artifactBuilds(rootfsHeader, rootfsBase, buildID, 0)
+
+	md := &orchestrator.SchedulingMetadata{
+		RootfsBaseBuildId:   rootfsBase.String(),
+		BuildId:             buildID.String(),
+		RootfsBuildIds:      rootIDs,
+		RootfsBuildBytes:    rootBytes,
+		RootfsDroppedBuilds: uint32(rootDropped),
 	}
 
-	memIDs, memBytes, memDropped := artifactBuilds(memfileHeader, base, buildID, newMemfileBytes)
-	rootIDs, rootBytes, rootDropped := artifactBuilds(rootfsHeader, base, buildID, 0)
-
-	return &orchestrator.SchedulingMetadata{
-		BaseBuildId:          base.String(),
-		BuildId:              buildID.String(),
-		MemfileBuildIds:      memIDs,
-		RootfsBuildIds:       rootIDs,
-		MemfileBuildBytes:    memBytes,
-		RootfsBuildBytes:     rootBytes,
-		MemfileDroppedBuilds: uint32(memDropped),
-		RootfsDroppedBuilds:  uint32(rootDropped),
+	if memfileHeader != nil && memfileHeader.Metadata != nil {
+		memfileBase := memfileHeader.Metadata.BaseBuildId
+		memIDs, memBytes, memDropped := artifactBuilds(memfileHeader, memfileBase, buildID, newMemfileBytes)
+		md.MemfileBaseBuildId = memfileBase.String()
+		md.MemfileBuildIds = memIDs
+		md.MemfileBuildBytes = memBytes
+		md.MemfileDroppedBuilds = uint32(memDropped)
 	}
+
+	return md
 }
 
 // artifactBuilds returns the build IDs referenced by the header and their

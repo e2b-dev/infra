@@ -68,10 +68,6 @@ move:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	$(MAKE) -C iac/provider-$(PROVIDER) move
 
-.PHONY: version
-version:
-	./scripts/increment-version.sh
-
 .PHONY: build
 build/%:
 	$(MAKE) -C packages/$(notdir $@) build

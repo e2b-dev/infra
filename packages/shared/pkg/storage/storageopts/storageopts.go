@@ -5,11 +5,66 @@ package storageopts
 import (
 	"context"
 	"maps"
+	"strconv"
 )
 
 type ObjectMetadata map[string]string
 
-const ObjectMetadataTeamID = "team_id"
+// Custom object metadata keys for the storage index (immutable, set-once).
+const (
+	ObjectMetadataTeamID      = "team_id"
+	ObjectMetadataTemplateID  = "template_id"
+	ObjectMetadataBuildOrigin = "build_origin"
+
+	// ObjectMetadataUncompressedSize stores the original size of a compressed
+	// object so that Size() can report it without fetching the frame table.
+	ObjectMetadataUncompressedSize = "uncompressed-size"
+)
+
+// WithUncompressedSize returns a copy of the metadata with the original
+// (uncompressed) size recorded. Internal key wins on collision.
+func (m ObjectMetadata) WithUncompressedSize(size int64) ObjectMetadata {
+	out := make(ObjectMetadata, len(m)+1)
+	maps.Copy(out, m)
+	out[ObjectMetadataUncompressedSize] = strconv.FormatInt(size, 10)
+
+	return out
+}
+
+// UncompressedSize reports the original size of a compressed object, or false
+// if absent (uncompressed object) or malformed.
+func (m ObjectMetadata) UncompressedSize() (int64, bool) {
+	n, err := strconv.ParseInt(m[ObjectMetadataUncompressedSize], 10, 64)
+
+	return n, err == nil
+}
+
+// ObjectOrigin is the immutable operation that created a build, stored as the
+// ObjectMetadataBuildOrigin value.
+type ObjectOrigin string
+
+const (
+	ObjectOriginPause              ObjectOrigin = "pause"
+	ObjectOriginTemplateBuild      ObjectOrigin = "template_build"
+	ObjectOriginTemplateBuildCache ObjectOrigin = "template_build_cache"
+	ObjectOriginSnapshotTemplate   ObjectOrigin = "snapshot_template"
+)
+
+// ObjectMetadataSoftDeleted is a mutable tombstone written by the storage index
+// (not at upload time) to mark a layer for deletion. Value is
+// "<reason>:<action_id>". Consumers fail closed on it behind a feature flag.
+const ObjectMetadataSoftDeleted = "storage-index-soft-deleted"
+
+// Layer-size metadata keys, written on each data object as decimal byte counts
+// (all uncompressed, from the diff header).
+const (
+	// ObjectMetadataLogicalSize is the layer's logical (virtual device) size.
+	ObjectMetadataLogicalSize = "logical-size"
+	// ObjectMetadataMappedSize is the bytes mapped to non-empty builds.
+	ObjectMetadataMappedSize = "mapped-size"
+	// ObjectMetadataDiffSize is the bytes this build itself contributes.
+	ObjectMetadataDiffSize = "diff-size"
+)
 
 // FrameSink fires once per compressed frame with its absolute C-space offset.
 // Best-effort; implementations should return quickly and bound their own I/O.

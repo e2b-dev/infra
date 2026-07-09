@@ -21,7 +21,7 @@ import (
 func pauseSandbox(t *testing.T, c *api.ClientWithResponses, sandboxID string) {
 	t.Helper()
 
-	pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
+	pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNoContent, pauseSandboxResponse.StatusCode())
@@ -175,7 +175,7 @@ func TestSandboxListPausing(t *testing.T) {
 
 	wg := errgroup.Group{}
 	wg.Go(func() error {
-		pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
+		pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 		if err != nil {
 			return err
 		}
@@ -321,7 +321,9 @@ func TestSandboxListPaginationRunningLargerLimit(t *testing.T) { //nolint:tparal
 	sbxsCount := 12
 	sandboxes := make([]string, sbxsCount)
 	for i := range sbxsCount {
-		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
+		// Default 30s timeout is shorter than creating 12 sandboxes plus the
+		// list assertions under load, so the sandboxes would expire mid-test.
+		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithTimeout(300), utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
 		sandboxes[sbxsCount-i-1] = sbx.SandboxID
 
 		t.Logf("Created sandbox %d/%d: %s", i+1, sbxsCount, sbx.SandboxID)

@@ -2,6 +2,12 @@ name: ARM64 tests on PRs
 
 on:
   workflow_call:
+    inputs:
+      run-tests:
+        type: boolean
+        description: "Whether to run ARM64 checks and tests"
+        required: false
+        default: true
     secrets:
       CODECOV_TOKEN: { required: false }
 
@@ -11,17 +17,41 @@ permissions:
 jobs:
   cross-compile:
     name: Cross-compile all packages for ARM64
+    if: ${{ inputs.run-tests == true }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      # Don't use go-setup-cache here: its key has no arch component, so this
+      # job would share it with amd64 jobs and restore a multi-GB cache of
+      # useless amd64 objects, then rebuild everything for arm64 on top —
+      # which can fill the runner disk (and the arm64 objects never get
+      # saved). Keep a dedicated arm64-keyed cache instead.
       - name: Setup Go
-        uses: ./.github/actions/go-setup-cache
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.work
+          cache: false
+
+      - name: Restore ARM64 Go cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-arm64-cross-${{ hashFiles('go.work', 'packages/*/go.mod', 'packages/*/go.sum') }}
+          restore-keys: go-arm64-cross-
 
       - name: Install ARM64 cross-compiler
-        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+        # packages.microsoft.com (preinstalled on runner images) intermittently
+        # serves invalid clearsigned InRelease files, failing apt-get update.
+        # It's not needed here — gcc comes from the Ubuntu archive — so drop
+        # those sources instead of letting a bad MS mirror fail the job.
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.* /etc/apt/sources.list.d/azure-cli.*
+          sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Build and vet packages (pure Go)
         run: |
@@ -41,7 +71,8 @@ jobs:
         working-directory: packages/orchestrator
 
   arm64-unit-tests:
-    name: ARM64 tests for ${{ matrix.package }}
+    name: Run ARM64 test shards
+    if: ${{ inputs.run-tests == true }}
     runs-on: infra-runner-arm
     timeout-minutes: 45
     env:
@@ -194,3 +225,30 @@ jobs:
           flags: ${{ matrix.flag }},unit
           disable_search: true
           report_type: test_results
+
+  arm64_tests:
+    needs:
+      - cross-compile
+      - arm64-unit-tests
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Aggregate ARM64 test result
+        run: |
+          if [[ "${{ inputs.run-tests }}" != "true" ]]; then
+            echo "ARM64 tests skipped because test inputs did not change"
+            exit 0
+          fi
+
+          if [[ "${{ needs.cross-compile.result }}" != "success" ]]; then
+            echo "cross-compile result: ${{ needs.cross-compile.result }}"
+            exit 1
+          fi
+
+          if [[ "${{ needs.arm64-unit-tests.result }}" != "success" ]]; then
+            echo "ARM64 unit tests result: ${{ needs.arm64-unit-tests.result }}"
+            exit 1
+          fi
+
+          echo "all ARM64 checks succeeded"

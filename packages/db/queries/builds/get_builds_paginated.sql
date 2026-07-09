@@ -5,12 +5,18 @@ SELECT
   b.reason,
   b.created_at,
   b.finished_at,
+  b.vcpu,
+  b.ram_mb,
+  b.total_disk_size_mb,
+  b.envd_version,
   eba.env_id AS template_id,
   COALESCE(ea.alias, '') AS template_alias
 FROM public.env_builds b
 JOIN LATERAL (
   SELECT a.env_id
   FROM public.env_build_assignments a
+  -- active_envs (not envs): the build's env must exist and not be soft-deleted
+  JOIN public.active_envs e ON e.id = a.env_id
   WHERE a.build_id = b.id
   ORDER BY a.created_at DESC, a.id DESC
   LIMIT 1
@@ -38,12 +44,18 @@ SELECT
   b.reason,
   b.created_at,
   b.finished_at,
+  b.vcpu,
+  b.ram_mb,
+  b.total_disk_size_mb,
+  b.envd_version,
   eba.env_id AS template_id,
   COALESCE(ea.alias, '') AS template_alias
 FROM public.env_builds b
 JOIN LATERAL (
   SELECT a.env_id
   FROM public.env_build_assignments a
+  -- active_envs (not envs): the build's env must exist and not be soft-deleted
+  JOIN public.active_envs e ON e.id = a.env_id
   WHERE a.build_id = b.id
   ORDER BY a.created_at DESC, a.id DESC
   LIMIT 1
@@ -72,12 +84,18 @@ SELECT
   b.reason,
   b.created_at,
   b.finished_at,
+  b.vcpu,
+  b.ram_mb,
+  b.total_disk_size_mb,
+  b.envd_version,
   eba.env_id AS template_id,
   COALESCE(ea.alias, '') AS template_alias
 FROM public.env_builds b
 JOIN LATERAL (
   SELECT a.env_id
   FROM public.env_build_assignments a
+  -- active_envs (not envs): the build's env must exist and not be soft-deleted
+  JOIN public.active_envs e ON e.id = a.env_id
   WHERE a.build_id = b.id
     AND a.env_id = sqlc.arg(template_id)::text
   ORDER BY a.created_at DESC, a.id DESC
@@ -106,12 +124,18 @@ SELECT
   b.reason,
   b.created_at,
   b.finished_at,
+  b.vcpu,
+  b.ram_mb,
+  b.total_disk_size_mb,
+  b.envd_version,
   eba.env_id AS template_id,
   COALESCE(ea.alias, '') AS template_alias
 FROM public.env_builds b
 JOIN LATERAL (
   SELECT a.env_id
   FROM public.env_build_assignments a
+  -- active_envs (not envs): the build's env must exist and not be soft-deleted
+  JOIN public.active_envs e ON e.id = a.env_id
   WHERE a.build_id = b.id
     AND EXISTS (
       SELECT 1

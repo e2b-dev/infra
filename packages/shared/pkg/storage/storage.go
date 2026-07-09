@@ -20,16 +20,26 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-var (
-	tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/storage")
-	meter  = otel.Meter("github.com/e2b-dev/infra/packages/shared/pkg/storage")
-)
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/storage")
 
 var ErrObjectNotExist = errors.New("object does not exist")
 
 // ErrObjectRateLimited means per-object mutation rate limiting —
 // multiple concurrent writers racing to write the same content-addressed object.
 var ErrObjectRateLimited = errors.New("object access rate limited")
+
+// ErrObjectSoftDeleted means the storage index has marked this object for
+// deletion (soft-delete tombstone in custom metadata) and enforcement is on.
+var ErrObjectSoftDeleted = errors.New("object soft-deleted by storage index")
+
+// ErrMetadataUnsupported means the blob's backend cannot read custom metadata
+// (no MetadataReader). It is distinct from "read succeeded, no metadata" so
+// callers (e.g. soft-delete enforcement) can fail closed on an unverifiable
+// backend instead of assuming there is no tombstone.
+var ErrMetadataUnsupported = errors.New("blob does not support reading custom metadata")
+
+// ObjectMetadataSoftDeleted is the storage-index soft-delete tombstone key.
+const ObjectMetadataSoftDeleted = storageopts.ObjectMetadataSoftDeleted
 
 type Provider string
 
@@ -44,10 +54,6 @@ const (
 
 	// MemoryChunkSize must always be bigger or equal to the block size.
 	MemoryChunkSize = 4 * 1024 * 1024 // 4 MB
-
-	// MetadataKeyUncompressedSize stores the original size so that Size()
-	// returns the uncompressed size for compressed objects.
-	MetadataKeyUncompressedSize = "uncompressed-size"
 )
 
 // GetProviderType returns the configured storage provider type from the
@@ -68,7 +74,19 @@ const (
 	UnknownSeekableObjectType SeekableObjectType = iota
 	MemfileObjectType
 	RootFSObjectType
+	numSeekableObjectTypes
 )
+
+func (t SeekableObjectType) String() string {
+	switch t {
+	case MemfileObjectType:
+		return "memfile"
+	case RootFSObjectType:
+		return "rootfs"
+	default:
+		return "unknown"
+	}
+}
 
 type ObjectType int
 
@@ -85,19 +103,33 @@ const (
 type StorageProvider interface {
 	DeleteObjectsWithPrefix(ctx context.Context, prefix string) error
 	UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error)
-	OpenBlob(ctx context.Context, path string, objectType ObjectType) (Blob, error)
-	OpenSeekable(ctx context.Context, path string, seekableObjectType SeekableObjectType) (Seekable, error)
+	OpenBlob(ctx context.Context, path string) (Blob, error)
+	OpenSeekable(ctx context.Context, path string) (Seekable, error)
 	GetDetails() string
 }
 
 type (
 	ObjectMetadata = storageopts.ObjectMetadata
+	ObjectOrigin   = storageopts.ObjectOrigin
 	PutOptions     = storageopts.PutOptions
 	PutOption      = storageopts.PutOption
 	FrameSink      = storageopts.FrameSink
 )
 
-const ObjectMetadataTeamID = storageopts.ObjectMetadataTeamID
+const (
+	ObjectMetadataTeamID           = storageopts.ObjectMetadataTeamID
+	ObjectMetadataTemplateID       = storageopts.ObjectMetadataTemplateID
+	ObjectMetadataBuildOrigin      = storageopts.ObjectMetadataBuildOrigin
+	ObjectMetadataUncompressedSize = storageopts.ObjectMetadataUncompressedSize
+	ObjectMetadataLogicalSize      = storageopts.ObjectMetadataLogicalSize
+	ObjectMetadataMappedSize       = storageopts.ObjectMetadataMappedSize
+	ObjectMetadataDiffSize         = storageopts.ObjectMetadataDiffSize
+
+	ObjectOriginPause              = storageopts.ObjectOriginPause
+	ObjectOriginTemplateBuild      = storageopts.ObjectOriginTemplateBuild
+	ObjectOriginTemplateBuildCache = storageopts.ObjectOriginTemplateBuildCache
+	ObjectOriginSnapshotTemplate   = storageopts.ObjectOriginSnapshotTemplate
+)
 
 func WithMetadata(metadata ObjectMetadata) PutOption { return storageopts.WithMetadata(metadata) }
 
@@ -140,30 +172,57 @@ type Blob interface {
 	Exists(ctx context.Context) (bool, error)
 }
 
-type SeekableReader interface {
-	// Random slice access, off and buffer length must be aligned to block size
-	ReadAt(ctx context.Context, buffer []byte, off int64, ft *FrameTable) (int, error)
-	Size(ctx context.Context) (int64, error)
+// MetadataReader is an optional Blob capability: read the object's custom
+// metadata without downloading it. Backends that can't answer cheaply omit it.
+type MetadataReader interface {
+	Metadata(ctx context.Context) (ObjectMetadata, error)
 }
 
-// StreamingReader supports progressive reads via a streaming range reader.
-type StreamingReader interface {
-	OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (io.ReadCloser, error)
+// BlobCustomMetadata returns the blob's custom metadata, or ErrMetadataUnsupported
+// when the backend can't read it — so callers can distinguish "no tombstone"
+// from "couldn't check" and fail closed under enforcement.
+func BlobCustomMetadata(ctx context.Context, b Blob) (ObjectMetadata, error) {
+	mr, ok := b.(MetadataReader)
+	if !ok {
+		return nil, ErrMetadataUnsupported
+	}
+
+	return mr.Metadata(ctx)
+}
+
+// ReadStats is what a RangeReader did over its lifetime; returned from Close.
+type ReadStats struct {
+	StoredBytes    int64
+	DeliveredBytes int64
+	Read           time.Duration // source I/O wall, excluding open and decompression
+	Decompress     time.Duration
+}
+
+type RangeReader interface {
+	io.Reader
+	// Close returns the reader's lifetime stats, or nil if it doesn't meter.
+	Close(ctx context.Context) (*ReadStats, error)
+}
+
+// RangeOpener supports progressive reads via a streaming range reader.
+// OpenRangeReader returns the Source that served the bytes.
+type RangeOpener interface {
+	OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (RangeReader, Source, error)
 }
 
 type SeekableWriter interface {
 	// Store entire file. Compression is opt-in via WithCompressConfig.
-	StoreFile(ctx context.Context, path string, opts ...PutOption) (*FrameTable, [32]byte, error)
+	StoreFile(ctx context.Context, path string, opts ...PutOption) (*FullFrameTable, [32]byte, error)
 }
 
 type Seekable interface {
-	StreamingReader
+	RangeOpener
 	SeekableWriter
 	Size(ctx context.Context) (int64, error)
 }
 
-func UploadFramed(ctx context.Context, provider StorageProvider, remotePath string, objType SeekableObjectType, localPath string, opts ...PutOption) (*FrameTable, [32]byte, error) {
-	object, err := provider.OpenSeekable(ctx, remotePath, objType)
+func UploadFramed(ctx context.Context, provider StorageProvider, remotePath string, localPath string, opts ...PutOption) (*FullFrameTable, [32]byte, error) {
+	object, err := provider.OpenSeekable(ctx, remotePath)
 	if err != nil {
 		return nil, [32]byte{}, err
 	}
@@ -171,8 +230,8 @@ func UploadFramed(ctx context.Context, provider StorageProvider, remotePath stri
 	return object.StoreFile(ctx, localPath, opts...)
 }
 
-func UploadBlob(ctx context.Context, provider StorageProvider, remotePath string, objType ObjectType, localPath string, opts ...PutOption) error {
-	blob, err := provider.OpenBlob(ctx, remotePath, objType)
+func UploadBlob(ctx context.Context, provider StorageProvider, remotePath string, localPath string, opts ...PutOption) error {
+	blob, err := provider.OpenBlob(ctx, remotePath)
 	if err != nil {
 		return err
 	}
@@ -255,7 +314,7 @@ func GetStorageProvider(ctx context.Context, cfg StorageConfig) (StorageProvider
 	// cloud bucket-based storage
 	switch provider {
 	case AWSStorageProvider:
-		return newAWSStorage(ctx, bucketName)
+		return newAWSStorage(ctx, bucketName, cfg.limiter)
 	case GCPStorageProvider:
 		return NewGCP(ctx, bucketName, cfg.limiter)
 	}

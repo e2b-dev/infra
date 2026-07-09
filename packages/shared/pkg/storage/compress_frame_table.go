@@ -14,7 +14,11 @@ const (
 	CompressionNone = CompressionType(iota)
 	CompressionZstd
 	CompressionLZ4
+	// numCompressionTypes counts the codecs above; keep last so it auto-updates.
+	numCompressionTypes
+)
 
+const (
 	// maxDeserializedFrames caps the number of frames read from a serialized
 	// FrameTable to prevent OOM from corrupted headers. 1M frames = 2 TiB
 	// uncompressed at 2 MiB frame size.
@@ -70,16 +74,55 @@ type FrameTable struct {
 	entries         []frameEntry // sorted by StartU
 }
 
+// UncompressedFrameTable is the canonical sentinel for "data is stored
+// uncompressed" — an empty FrameTable has no frames to decompress, so a reader
+// handed this back skips the U→C translation entirely. Shared across callers
+// to avoid per-call allocation; read-only and must never be mutated.
+var UncompressedFrameTable = &FrameTable{}
+
+// FullFrameTable marks a FrameTable that covers an entire file with no gaps.
+// Produced by compressStream / CompressBytes / StoreFile / UploadFramed.
+// The inner FrameTable is unexported and unembedded so methods are not
+// promoted; consumers must reach functionality through nil-safe Table().
+type FullFrameTable struct{ ft FrameTable }
+
+// UncompressedFullFrameTable is the Full counterpart of UncompressedFrameTable:
+// the canonical sentinel an authoritative source latches when a build is known
+// to be stored uncompressed end-to-end. Shared across callers; read-only.
+var UncompressedFullFrameTable = &FullFrameTable{}
+
+// Table returns the underlying *FrameTable, nil-safely.
+func (ft *FullFrameTable) Table() *FrameTable {
+	if ft == nil {
+		return nil
+	}
+
+	return &ft.ft
+}
+
+// FullFromTable promotes a *FrameTable to a *FullFrameTable. The caller MUST
+// guarantee ft describes the entire file with no gaps — the only legitimate
+// promotion is from a self-build's loaded.Builds[self].FrameData entry, which
+// build_upload_v4 unconditionally populates from the full upload. Returns the
+// UncompressedFullFrameTable sentinel for nil or empty inputs.
+func FullFromTable(ft *FrameTable) *FullFrameTable {
+	if ft == nil || len(ft.entries) == 0 {
+		return UncompressedFullFrameTable
+	}
+
+	return &FullFrameTable{ft: *ft}
+}
+
 // newFrameTableFromEntries creates a FrameTable from pre-computed absolute-offset entries.
 func newFrameTableFromEntries(ct CompressionType, entries []frameEntry) *FrameTable {
 	return &FrameTable{compressionType: ct, entries: entries}
 }
 
-// NewFrameTable creates a FrameTable from consecutive frame sizes, computing
-// absolute offsets starting from zero.
-func NewFrameTable(ct CompressionType, sizes []FrameSize) *FrameTable {
+// NewFullFrameTable creates a FullFrameTable from consecutive frame sizes,
+// computing absolute offsets starting from zero.
+func NewFullFrameTable(ct CompressionType, sizes []FrameSize) *FullFrameTable {
 	if len(sizes) == 0 {
-		return newFrameTableFromEntries(ct, nil)
+		return &FullFrameTable{ft: *newFrameTableFromEntries(ct, nil)}
 	}
 
 	entries := make([]frameEntry, len(sizes))
@@ -96,7 +139,7 @@ func NewFrameTable(ct CompressionType, sizes []FrameSize) *FrameTable {
 		c += int64(s.C)
 	}
 
-	return newFrameTableFromEntries(ct, entries)
+	return &FullFrameTable{ft: *newFrameTableFromEntries(ct, entries)}
 }
 
 // CompressionType returns the compression type. Nil-safe: returns CompressionNone for nil.
@@ -191,6 +234,14 @@ func (ft *FrameTable) LocateCompressed(offset int64) (Range, error) {
 	e, err := ft.locate(offset)
 	if err != nil {
 		return Range{}, err
+	}
+
+	// The compressed range covers a whole frame; a mid-frame uncompressed
+	// offset would fetch and decode that frame from its start, silently
+	// returning data for the wrong position. Callers must frame-align via
+	// LocateUncompressed, so reject anything else rather than mis-serve.
+	if offset != e.StartU {
+		return Range{}, fmt.Errorf("offset %d is not frame-aligned (frame starts at %d); align via LocateUncompressed", offset, e.StartU)
 	}
 
 	return Range{Offset: e.StartC, Length: int(e.SizeC)}, nil

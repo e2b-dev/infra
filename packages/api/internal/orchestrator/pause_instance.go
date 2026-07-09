@@ -9,14 +9,17 @@ import (
 	"github.com/gogo/status"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -26,18 +29,33 @@ func (PauseQueueExhaustedError) Error() string {
 	return "The pause queue is exhausted"
 }
 
-func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node, sbx sandbox.Sandbox) error {
+func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node, sbx sandbox.Sandbox, filesystemOnly bool) error {
 	ctx, span := tracer.Start(ctx, "pause-sandbox")
 	defer span.End()
 
-	result, err := o.throttledUpsertSnapshot(ctx, buildUpsertSnapshotParams(sbx, node))
+	result, err := o.throttledUpsertSnapshot(ctx, buildUpsertSnapshotParams(sbx, node, filesystemOnly))
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error inserting snapshot for env", err)
 
 		return err
 	}
 
-	err = snapshotInstance(ctx, node, sbx, result.TemplateID, result.BuildID.String())
+	// The snapshot's CPU info is pinned to the source build (see
+	// buildUpsertSnapshotParams), so the node the pause physically ran on is not
+	// persisted. Log it for debugging cross-generation pools.
+	originNodeCPU := node.MachineInfo()
+	logger.L().Info(ctx, "Snapshotting sandbox",
+		logger.WithSandboxID(sbx.SandboxID),
+		zap.String("origin_node_id", node.ID),
+		zap.String("origin_node_cpu_architecture", originNodeCPU.CPUArchitecture),
+		zap.String("origin_node_cpu_family", originNodeCPU.CPUFamily),
+		zap.String("origin_node_cpu_model", originNodeCPU.CPUModel),
+		zap.String("origin_node_cpu_model_name", originNodeCPU.CPUModelName),
+		zap.Strings("origin_node_cpu_flags", originNodeCPU.CPUFlags),
+		zap.String("source_build_id", sbx.BuildID.String()),
+	)
+
+	err = snapshotInstance(ctx, node, sbx, result.TemplateID, result.BuildID.String(), filesystemOnly)
 	if errors.Is(err, PauseQueueExhaustedError{}) {
 		telemetry.ReportCriticalError(ctx, "pause queue exhausted", err)
 
@@ -68,16 +86,17 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 	return nil
 }
 
-func snapshotInstance(ctx context.Context, node *nodemanager.Node, sbx sandbox.Sandbox, templateID, buildID string) error {
+func snapshotInstance(ctx context.Context, node *nodemanager.Node, sbx sandbox.Sandbox, templateID, buildID string, filesystemOnly bool) error {
 	childCtx, childSpan := tracer.Start(ctx, "snapshot-instance")
 	defer childSpan.End()
 
 	client, childCtx := node.GetSandboxDeleteCtx(childCtx, sbx.SandboxID, sbx.ExecutionID)
 	_, err := client.Sandbox.Pause(
 		childCtx, &orchestrator.SandboxPauseRequest{
-			SandboxId:  sbx.SandboxID,
-			TemplateId: templateID,
-			BuildId:    buildID,
+			SandboxId:      sbx.SandboxID,
+			TemplateId:     templateID,
+			BuildId:        buildID,
+			FilesystemOnly: filesystemOnly,
 		},
 	)
 
@@ -103,18 +122,22 @@ func (o *Orchestrator) WaitForStateChange(ctx context.Context, teamID uuid.UUID,
 	return o.sandboxStore.WaitForStateChange(ctx, teamID, sandboxID)
 }
 
-func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node) queries.UpsertSnapshotParams {
-	machineInfo := node.MachineInfo()
-
+func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node, filesystemOnly bool) queries.UpsertSnapshotParams {
 	metadata := types.JSONBStringMap(sbx.Metadata)
 	if metadata == nil {
 		metadata = types.JSONBStringMap{}
+	}
+
+	var clusterID *uuid.UUID
+	if sbx.ClusterID != consts.LocalClusterID {
+		clusterID = &sbx.ClusterID
 	}
 
 	return queries.UpsertSnapshotParams{
 		// Used if there's no snapshot for this sandbox yet
 		TemplateID:     id.Generate(),
 		TeamID:         sbx.TeamID,
+		ClusterID:      clusterID,
 		BaseTemplateID: sbx.BaseTemplateID,
 		SandboxID:      sbx.SandboxID,
 		StartedAt:      pgtype.Timestamptz{Time: sbx.StartTime, Valid: true},
@@ -131,18 +154,18 @@ func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node) quer
 		AllowInternetAccess: sbx.AllowInternetAccess,
 		AutoPause:           sbx.AutoPause,
 		Config: &types.PausedSandboxConfig{
-			Version:      types.PausedSandboxConfigVersion,
-			Network:      sbx.Network,
-			AutoResume:   sbx.AutoResume,
-			VolumeMounts: sbx.VolumeMounts,
+			Version:                 types.PausedSandboxConfigVersion,
+			Network:                 sbx.Network,
+			AutoResume:              sbx.AutoResume,
+			VolumeMounts:            sbx.VolumeMounts,
+			FilesystemOnly:          filesystemOnly,
+			AutoPauseFilesystemOnly: sbx.AutoPauseFilesystemOnly,
 		},
-		OriginNodeID:    node.ID,
-		Status:          types.BuildStatusSnapshotting,
-		CpuArchitecture: new(machineInfo.CPUArchitecture),
-		CpuFamily:       new(machineInfo.CPUFamily),
-		CpuModel:        new(machineInfo.CPUModel),
-		CpuModelName:    new(machineInfo.CPUModelName),
-		CpuFlags:        machineInfo.CPUFlags,
+		OriginNodeID: node.ID,
+		Status:       types.BuildStatusSnapshotting,
+		// Pin the snapshot's CPU info to the source build instead of the executing
+		// node, so a pause/resume across CPU generations stays compatible.
+		SourceBuildID: sbx.BuildID,
 	}
 }
 

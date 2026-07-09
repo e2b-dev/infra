@@ -32,7 +32,8 @@ type Config struct {
 	AnalyticsCollectorAPIToken string `env:"ANALYTICS_COLLECTOR_API_TOKEN"`
 	AnalyticsCollectorHost     string `env:"ANALYTICS_COLLECTOR_HOST"`
 
-	ClickhouseConnectionString string `env:"CLICKHOUSE_CONNECTION_STRING"`
+	ClickhouseConnectionString  string   `env:"CLICKHOUSE_CONNECTION_STRING"`
+	ClickhouseConnectionStrings []string `env:"CLICKHOUSE_CONNECTION_STRINGS" envSeparator:";"`
 
 	LokiPassword string `env:"LOKI_PASSWORD"`
 	LokiURL      string `env:"LOKI_URL,required"`
@@ -46,6 +47,24 @@ type Config struct {
 
 	NomadAddress string `env:"NOMAD_ADDRESS" envDefault:"http://localhost:4646"`
 	NomadToken   string `env:"NOMAD_TOKEN"`
+
+	// NomadOrchestratorServiceNames is the comma-separated list of
+	// Nomad-native service names whose registrations enumerate orchestrator
+	// instances (GET /v1/service/<name> per name, results unioned). Every
+	// orchestrator jobspec registers one of these services, regardless of
+	// job type or node pool. Used when ServiceDiscoveryProvider=nomad.
+	NomadOrchestratorServiceNames []string `env:"NOMAD_ORCHESTRATOR_SERVICE_NAMES" envDefault:"orchestrator" envSeparator:","`
+
+	// NomadOrchestratorLegacyDiscoveryEnabled enables a node-pool-based
+	// discovery FALLBACK unioned with the service-based discovery above: all
+	// ready Nomad nodes in the "default" pool are assumed to run an
+	// orchestrator on the well-known port. It covers orchestrator jobs
+	// deployed from jobspecs that register their service with an empty
+	// Address (pre-port-label-fix), which service discovery skips as
+	// unroutable, and removes any rollout ordering constraint between the
+	// API and orchestrator releases. Set to false once no legacy orchestrator
+	// jobs remain. Used when ServiceDiscoveryProvider=nomad.
+	NomadOrchestratorLegacyDiscoveryEnabled bool `env:"NOMAD_ORCHESTRATOR_LEGACY_DISCOVERY_ENABLED" envDefault:"true"`
 
 	// LocalOrchestratorAddress is the "host:port" address of a statically
 	// configured orchestrator instance. Required when
@@ -90,14 +109,88 @@ type Config struct {
 	DomainName string `env:"DOMAIN_NAME" envDefault:""`
 }
 
+type FailureCondition string
+
+const (
+	FailureConditionInvalidServiceDiscoveryProvider FailureCondition = "invalid_service_discovery_provider"
+)
+
+type FailureError struct {
+	Condition FailureCondition
+	err       error
+}
+
+func (e *FailureError) Error() string {
+	return e.err.Error()
+}
+
+func (e *FailureError) Unwrap() error {
+	return e.err
+}
+
+func ParseFailureCondition(err error) (FailureCondition, bool) {
+	var failureErr *FailureError
+	if !errors.As(err, &failureErr) {
+		return "", false
+	}
+
+	return failureErr.Condition, true
+}
+
+func newFailureError(condition FailureCondition, message string) error {
+	return &FailureError{
+		Condition: condition,
+		err:       errors.New(message),
+	}
+}
+
 type JWTSigningKey any
 
 type VolumesTokenConfig struct {
-	Issuer         string            `env:"VOLUME_TOKEN_ISSUER,required"`
-	SigningMethod  jwt.SigningMethod `env:"VOLUME_TOKEN_SIGNING_METHOD,required"`
-	SigningKey     JWTSigningKey     `env:"VOLUME_TOKEN_SIGNING_KEY,required"`
-	SigningKeyName string            `env:"VOLUME_TOKEN_SIGNING_KEY_NAME,required"`
-	Duration       time.Duration     `env:"VOLUME_TOKEN_DURATION"                  envDefault:"1h"`
+	// Enabled explicitly toggles volume content token signing. When true (the
+	// default), all signing env vars are required. Set to false when volumes are
+	// disabled so the signing env vars may be omitted entirely.
+	Enabled bool `env:"VOLUME_TOKEN_ENABLED" envDefault:"true"`
+
+	Issuer         string            `env:"VOLUME_TOKEN_ISSUER"`
+	SigningMethod  jwt.SigningMethod `env:"VOLUME_TOKEN_SIGNING_METHOD"`
+	SigningKey     JWTSigningKey     `env:"VOLUME_TOKEN_SIGNING_KEY"`
+	SigningKeyName string            `env:"VOLUME_TOKEN_SIGNING_KEY_NAME"`
+	Duration       time.Duration     `env:"VOLUME_TOKEN_DURATION"         envDefault:"1h"`
+}
+
+// IsConfigured reports whether volume content token signing is enabled.
+func (c VolumesTokenConfig) IsConfigured() bool {
+	return c.Enabled
+}
+
+// validate ensures that when signing is enabled all required signing env vars
+// are present. A partial config is a deployment mistake and should fail fast at
+// startup.
+func (c VolumesTokenConfig) validate() error {
+	if !c.Enabled {
+		return nil
+	}
+
+	var missing []string
+	if c.Issuer == "" {
+		missing = append(missing, "VOLUME_TOKEN_ISSUER")
+	}
+	if c.SigningMethod == nil {
+		missing = append(missing, "VOLUME_TOKEN_SIGNING_METHOD")
+	}
+	if c.SigningKey == nil {
+		missing = append(missing, "VOLUME_TOKEN_SIGNING_KEY")
+	}
+	if c.SigningKeyName == "" {
+		missing = append(missing, "VOLUME_TOKEN_SIGNING_KEY_NAME")
+	}
+
+	if len(missing) > 0 {
+		return fmt.Errorf("VOLUME_TOKEN_ENABLED is set but the following are missing: %s", strings.Join(missing, ", "))
+	}
+
+	return nil
 }
 
 var (
@@ -157,7 +250,14 @@ func Parse() (Config, error) {
 	}
 
 	if !slices.Contains([]string{ServiceDiscoveryProviderNomad, ServiceDiscoveryProviderKubernetes, ServiceDiscoveryProviderLocal}, config.ServiceDiscoveryProvider) {
-		return config, fmt.Errorf("invalid service discovery provider: %s", config.ServiceDiscoveryProvider)
+		return config, newFailureError(
+			FailureConditionInvalidServiceDiscoveryProvider,
+			fmt.Sprintf("invalid service discovery provider: %s", config.ServiceDiscoveryProvider),
+		)
+	}
+
+	if err := config.VolumesToken.validate(); err != nil {
+		return config, err
 	}
 
 	return config, nil

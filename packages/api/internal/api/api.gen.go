@@ -26,12 +26,11 @@ import (
 
 const (
 	AccessTokenAuthScopes        accessTokenAuthContextKey        = "AccessTokenAuth.Scopes"
-	AdminTokenAuthScopes         adminTokenAuthContextKey         = "AdminTokenAuth.Scopes"
+	AdminApiKeyAuthScopes        adminApiKeyAuthContextKey        = "AdminApiKeyAuth.Scopes"
+	AdminTeamAuthScopes          adminTeamAuthContextKey          = "AdminTeamAuth.Scopes"
 	ApiKeyAuthScopes             apiKeyAuthContextKey             = "ApiKeyAuth.Scopes"
 	AuthProviderBearerAuthScopes authProviderBearerAuthContextKey = "AuthProviderBearerAuth.Scopes"
 	AuthProviderTeamAuthScopes   authProviderTeamAuthContextKey   = "AuthProviderTeamAuth.Scopes"
-	Supabase1TokenAuthScopes     supabase1TokenAuthContextKey     = "Supabase1TokenAuth.Scopes"
-	Supabase2TeamAuthScopes      supabase2TeamAuthContextKey      = "Supabase2TeamAuth.Scopes"
 )
 
 // Defines values for AWSRegistryType.
@@ -558,6 +557,9 @@ type NewSandbox struct {
 	// AutoPause Automatically pauses the sandbox after the timeout
 	AutoPause *bool `json:"autoPause,omitempty"`
 
+	// AutoPauseMemory Controls the snapshot kind taken when the sandbox auto-pauses on timeout (only relevant when autoPause is true). When false, the auto-pause drops the in-memory state and persists only the filesystem (a filesystem-only snapshot); resuming it cold-boots (reboots) the sandbox from disk. Such a snapshot cannot be auto-resumed by traffic and must be resumed explicitly, so it cannot be combined with autoResume. Defaults to true (full memory snapshot).
+	AutoPauseMemory *bool `json:"autoPauseMemory,omitempty"`
+
 	// AutoResume Auto-resume configuration for paused sandboxes.
 	AutoResume *SandboxAutoResumeConfig `json:"autoResume,omitempty"`
 	EnvVars    *EnvVars                 `json:"envVars,omitempty"`
@@ -625,6 +627,9 @@ type Node struct {
 	// - standby: the node is not actively used, but it can return to ready and continue serving traffic.
 	Status NodeStatus `json:"status"`
 
+	// StatusChangedAt Time when the node status was last changed
+	StatusChangedAt time.Time `json:"statusChangedAt"`
+
 	// Version Version of the orchestrator
 	Version string `json:"version"`
 }
@@ -664,6 +669,9 @@ type NodeDetail struct {
 	// - standby: the node is not actively used, but it can return to ready and continue serving traffic.
 	Status NodeStatus `json:"status"`
 
+	// StatusChangedAt Time when the node status was last changed
+	StatusChangedAt time.Time `json:"statusChangedAt"`
+
 	// Version Version of the orchestrator
 	Version string `json:"version"`
 }
@@ -684,6 +692,18 @@ type NodeMetrics struct {
 
 	// Disks Detailed metrics for each disk/mount point
 	Disks []DiskMetrics `json:"disks"`
+
+	// HugePageSizeBytes Size of a single hugepage in bytes
+	HugePageSizeBytes uint64 `json:"hugePageSizeBytes"`
+
+	// HugePagesReserved Number of reserved hugepages (committed but not yet faulted)
+	HugePagesReserved uint64 `json:"hugePagesReserved"`
+
+	// HugePagesTotal Total number of preallocated hugepages on the node
+	HugePagesTotal uint64 `json:"hugePagesTotal"`
+
+	// HugePagesUsed Number of hugepages in use (total - free)
+	HugePagesUsed uint64 `json:"hugePagesUsed"`
 
 	// MemoryTotalBytes Total node memory in bytes
 	MemoryTotalBytes uint64 `json:"memoryTotalBytes"`
@@ -807,6 +827,18 @@ type SandboxDetail struct {
 	VolumeMounts *[]SandboxVolumeMount `json:"volumeMounts,omitempty"`
 }
 
+// SandboxEgressProxyConfig SOCKS5 proxy for sandbox egress. Outbound TCP is tunneled through the proxy after allow/deny filtering; the sandbox is unaware. Domain-matched flows use remote DNS (ATYP=domain).
+type SandboxEgressProxyConfig struct {
+	// Address SOCKS5 proxy address in host:port format (e.g. "proxy.example.com:1080").
+	Address string `json:"address"`
+
+	// Password Optional SOCKS5 password (RFC 1929), max 255 bytes.
+	Password *string `json:"password,omitempty"`
+
+	// Username Optional SOCKS5 username (RFC 1929), max 255 bytes.
+	Username *string `json:"username,omitempty"`
+}
+
 // SandboxLifecycle Sandbox lifecycle policy returned by sandbox info.
 type SandboxLifecycle struct {
 	// AutoResume Whether the sandbox can auto-resume.
@@ -899,6 +931,9 @@ type SandboxNetworkConfig struct {
 	// DenyOut List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
 	DenyOut *[]string `json:"denyOut,omitempty"`
 
+	// EgressProxy SOCKS5 proxy for sandbox egress. Outbound TCP is tunneled through the proxy after allow/deny filtering; the sandbox is unaware. Domain-matched flows use remote DNS (ATYP=domain).
+	EgressProxy *SandboxEgressProxyConfig `json:"egressProxy,omitempty"`
+
 	// MaskRequestHost Specify host mask which will be used for all sandbox requests
 	MaskRequestHost *string `json:"maskRequestHost,omitempty"`
 
@@ -929,6 +964,9 @@ type SandboxNetworkUpdateConfig struct {
 	// DenyOut List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
 	DenyOut *[]string `json:"denyOut,omitempty"`
 
+	// EgressProxy SOCKS5 proxy for sandbox egress. Outbound TCP is tunneled through the proxy after allow/deny filtering; the sandbox is unaware. Domain-matched flows use remote DNS (ATYP=domain).
+	EgressProxy *SandboxEgressProxyConfig `json:"egressProxy,omitempty"`
+
 	// Rules Per-domain transform rules. Replaces all existing rules when provided.
 	Rules *map[string][]SandboxNetworkRule `json:"rules,omitempty"`
 }
@@ -936,8 +974,32 @@ type SandboxNetworkUpdateConfig struct {
 // SandboxOnTimeout Action taken when the sandbox times out.
 type SandboxOnTimeout string
 
+// SandboxPauseRequest defines model for SandboxPauseRequest.
+type SandboxPauseRequest struct {
+	// Memory Whether to capture a full memory snapshot. When false, only the filesystem is persisted and resuming the sandbox cold-boots (reboots) it from disk, losing in-memory state, running processes, and open connections. Resume it with an explicit request (connect or resume); auto-resume, which can be triggered by arbitrary traffic, refuses such a sandbox. Defaults to true.
+	Memory *bool `json:"memory,omitempty"`
+}
+
+// SandboxRefreshRequest defines model for SandboxRefreshRequest.
+type SandboxRefreshRequest struct {
+	// Duration Duration for which the sandbox should be kept alive in seconds
+	Duration *int `json:"duration,omitempty"`
+}
+
+// SandboxSnapshotRequest defines model for SandboxSnapshotRequest.
+type SandboxSnapshotRequest struct {
+	// Name Optional name for the snapshot template. If a snapshot template with this name already exists, a new build will be assigned to the existing template instead of creating a new one.
+	Name *string `json:"name,omitempty"`
+}
+
 // SandboxState State of the sandbox
 type SandboxState string
+
+// SandboxTimeoutRequest defines model for SandboxTimeoutRequest.
+type SandboxTimeoutRequest struct {
+	// Timeout Timeout in seconds from the current time after which the sandbox should expire
+	Timeout int32 `json:"timeout"`
+}
 
 // SandboxVolumeMount defines model for SandboxVolumeMount.
 type SandboxVolumeMount struct {
@@ -1438,14 +1500,20 @@ type N404 = Error
 // N409 defines model for 409.
 type N409 = Error
 
+// N410 defines model for 410.
+type N410 = Error
+
 // N500 defines model for 500.
 type N500 = Error
 
 // accessTokenAuthContextKey is the context key for AccessTokenAuth security scheme
 type accessTokenAuthContextKey string
 
-// adminTokenAuthContextKey is the context key for AdminTokenAuth security scheme
-type adminTokenAuthContextKey string
+// adminApiKeyAuthContextKey is the context key for AdminApiKeyAuth security scheme
+type adminApiKeyAuthContextKey string
+
+// adminTeamAuthContextKey is the context key for AdminTeamAuth security scheme
+type adminTeamAuthContextKey string
 
 // apiKeyAuthContextKey is the context key for ApiKeyAuth security scheme
 type apiKeyAuthContextKey string
@@ -1455,12 +1523,6 @@ type authProviderBearerAuthContextKey string
 
 // authProviderTeamAuthContextKey is the context key for AuthProviderTeamAuth security scheme
 type authProviderTeamAuthContextKey string
-
-// supabase1TokenAuthContextKey is the context key for Supabase1TokenAuth security scheme
-type supabase1TokenAuthContextKey string
-
-// supabase2TeamAuthContextKey is the context key for Supabase2TeamAuth security scheme
-type supabase2TeamAuthContextKey string
 
 // GetNodesParams defines parameters for GetNodes.
 type GetNodesParams struct {
@@ -1502,27 +1564,12 @@ type GetSandboxesSandboxIDMetricsParams struct {
 	End   *int64 `form:"end,omitempty" json:"end,omitempty"`
 }
 
-// PostSandboxesSandboxIDRefreshesJSONBody defines parameters for PostSandboxesSandboxIDRefreshes.
-type PostSandboxesSandboxIDRefreshesJSONBody struct {
-	// Duration Duration for which the sandbox should be kept alive in seconds
-	Duration *int `json:"duration,omitempty"`
-}
-
-// PostSandboxesSandboxIDSnapshotsJSONBody defines parameters for PostSandboxesSandboxIDSnapshots.
-type PostSandboxesSandboxIDSnapshotsJSONBody struct {
-	// Name Optional name for the snapshot template. If a snapshot template with this name already exists, a new build will be assigned to the existing template instead of creating a new one.
-	Name *string `json:"name,omitempty"`
-}
-
-// PostSandboxesSandboxIDTimeoutJSONBody defines parameters for PostSandboxesSandboxIDTimeout.
-type PostSandboxesSandboxIDTimeoutJSONBody struct {
-	// Timeout Timeout in seconds from the current time after which the sandbox should expire
-	Timeout int32 `json:"timeout"`
-}
-
 // GetSnapshotsParams defines parameters for GetSnapshots.
 type GetSnapshotsParams struct {
 	SandboxID *string `form:"sandboxID,omitempty" json:"sandboxID,omitempty"`
+
+	// Name Filter snapshots by name or ID, optionally tag-qualified (e.g. "my-snapshot", "my-team/my-snapshot" or "my-snapshot:v1").
+	Name *string `form:"name,omitempty" json:"name,omitempty"`
 
 	// Limit Maximum number of items to return per page
 	Limit *PaginationLimit `form:"limit,omitempty" json:"limit,omitempty"`
@@ -1622,6 +1669,17 @@ type GetV2SandboxesSandboxIDLogsParams struct {
 	Search *string `form:"search,omitempty" json:"search,omitempty"`
 }
 
+// GetV2TemplatesParams defines parameters for GetV2Templates.
+type GetV2TemplatesParams struct {
+	TeamID *string `form:"teamID,omitempty" json:"teamID,omitempty"`
+
+	// NextToken Cursor to start the list from
+	NextToken *PaginationNextToken `form:"nextToken,omitempty" json:"nextToken,omitempty"`
+
+	// Limit Maximum number of items to return per page
+	Limit *PaginationLimit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // PostAccessTokensJSONRequestBody defines body for PostAccessTokens for application/json ContentType.
 type PostAccessTokensJSONRequestBody = NewAccessToken
 
@@ -1646,17 +1704,20 @@ type PostSandboxesSandboxIDConnectJSONRequestBody = ConnectSandbox
 // PutSandboxesSandboxIDNetworkJSONRequestBody defines body for PutSandboxesSandboxIDNetwork for application/json ContentType.
 type PutSandboxesSandboxIDNetworkJSONRequestBody = SandboxNetworkUpdateConfig
 
+// PostSandboxesSandboxIDPauseJSONRequestBody defines body for PostSandboxesSandboxIDPause for application/json ContentType.
+type PostSandboxesSandboxIDPauseJSONRequestBody = SandboxPauseRequest
+
 // PostSandboxesSandboxIDRefreshesJSONRequestBody defines body for PostSandboxesSandboxIDRefreshes for application/json ContentType.
-type PostSandboxesSandboxIDRefreshesJSONRequestBody PostSandboxesSandboxIDRefreshesJSONBody
+type PostSandboxesSandboxIDRefreshesJSONRequestBody = SandboxRefreshRequest
 
 // PostSandboxesSandboxIDResumeJSONRequestBody defines body for PostSandboxesSandboxIDResume for application/json ContentType.
 type PostSandboxesSandboxIDResumeJSONRequestBody = ResumedSandbox
 
 // PostSandboxesSandboxIDSnapshotsJSONRequestBody defines body for PostSandboxesSandboxIDSnapshots for application/json ContentType.
-type PostSandboxesSandboxIDSnapshotsJSONRequestBody PostSandboxesSandboxIDSnapshotsJSONBody
+type PostSandboxesSandboxIDSnapshotsJSONRequestBody = SandboxSnapshotRequest
 
 // PostSandboxesSandboxIDTimeoutJSONRequestBody defines body for PostSandboxesSandboxIDTimeout for application/json ContentType.
-type PostSandboxesSandboxIDTimeoutJSONRequestBody PostSandboxesSandboxIDTimeoutJSONBody
+type PostSandboxesSandboxIDTimeoutJSONRequestBody = SandboxTimeoutRequest
 
 // PostTemplatesJSONRequestBody defines body for PostTemplates for application/json ContentType.
 type PostTemplatesJSONRequestBody = TemplateBuildRequest
@@ -1965,8 +2026,10 @@ type ClientInterface interface {
 
 	PutSandboxesSandboxIDNetwork(ctx context.Context, sandboxID SandboxID, body PutSandboxesSandboxIDNetworkJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// PostSandboxesSandboxIDPause request
-	PostSandboxesSandboxIDPause(ctx context.Context, sandboxID SandboxID, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// PostSandboxesSandboxIDPauseWithBody request with any body
+	PostSandboxesSandboxIDPauseWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PostSandboxesSandboxIDPause(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDPauseJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PostSandboxesSandboxIDRefreshesWithBody request with any body
 	PostSandboxesSandboxIDRefreshesWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2057,6 +2120,9 @@ type ClientInterface interface {
 
 	// GetV2SandboxesSandboxIDLogs request
 	GetV2SandboxesSandboxIDLogs(ctx context.Context, sandboxID SandboxID, params *GetV2SandboxesSandboxIDLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetV2Templates request
+	GetV2Templates(ctx context.Context, params *GetV2TemplatesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PostV2TemplatesWithBody request with any body
 	PostV2TemplatesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2465,8 +2531,20 @@ func (c *Client) PutSandboxesSandboxIDNetwork(ctx context.Context, sandboxID San
 	return c.Client.Do(req)
 }
 
-func (c *Client) PostSandboxesSandboxIDPause(ctx context.Context, sandboxID SandboxID, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPostSandboxesSandboxIDPauseRequest(c.Server, sandboxID)
+func (c *Client) PostSandboxesSandboxIDPauseWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostSandboxesSandboxIDPauseRequestWithBody(c.Server, sandboxID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostSandboxesSandboxIDPause(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDPauseJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostSandboxesSandboxIDPauseRequest(c.Server, sandboxID, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2863,6 +2941,18 @@ func (c *Client) GetV2Sandboxes(ctx context.Context, params *GetV2SandboxesParam
 
 func (c *Client) GetV2SandboxesSandboxIDLogs(ctx context.Context, sandboxID SandboxID, params *GetV2SandboxesSandboxIDLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetV2SandboxesSandboxIDLogsRequest(c.Server, sandboxID, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetV2Templates(ctx context.Context, params *GetV2TemplatesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV2TemplatesRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -4052,8 +4142,19 @@ func NewPutSandboxesSandboxIDNetworkRequestWithBody(server string, sandboxID San
 	return req, nil
 }
 
-// NewPostSandboxesSandboxIDPauseRequest generates requests for PostSandboxesSandboxIDPause
-func NewPostSandboxesSandboxIDPauseRequest(server string, sandboxID SandboxID) (*http.Request, error) {
+// NewPostSandboxesSandboxIDPauseRequest calls the generic PostSandboxesSandboxIDPause builder with application/json body
+func NewPostSandboxesSandboxIDPauseRequest(server string, sandboxID SandboxID, body PostSandboxesSandboxIDPauseJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostSandboxesSandboxIDPauseRequestWithBody(server, sandboxID, "application/json", bodyReader)
+}
+
+// NewPostSandboxesSandboxIDPauseRequestWithBody generates requests for PostSandboxesSandboxIDPause with any type of body
+func NewPostSandboxesSandboxIDPauseRequestWithBody(server string, sandboxID SandboxID, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -4078,10 +4179,12 @@ func NewPostSandboxesSandboxIDPauseRequest(server string, sandboxID SandboxID) (
 		return nil, err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -4305,6 +4408,18 @@ func NewGetSnapshotsRequest(server string, params *GetSnapshotsParams) (*http.Re
 		if params.SandboxID != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "sandboxID", *params.SandboxID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Name != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "name", *params.Name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -5465,6 +5580,84 @@ func NewGetV2SandboxesSandboxIDLogsRequest(server string, sandboxID SandboxID, p
 	return req, nil
 }
 
+// NewGetV2TemplatesRequest generates requests for GetV2Templates
+func NewGetV2TemplatesRequest(server string, params *GetV2TemplatesParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v2/templates")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.TeamID != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "teamID", *params.TeamID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.NextToken != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "nextToken", *params.NextToken, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewPostV2TemplatesRequest calls the generic PostV2Templates builder with application/json body
 func NewPostV2TemplatesRequest(server string, body PostV2TemplatesJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -5909,8 +6102,10 @@ type ClientWithResponsesInterface interface {
 
 	PutSandboxesSandboxIDNetworkWithResponse(ctx context.Context, sandboxID SandboxID, body PutSandboxesSandboxIDNetworkJSONRequestBody, reqEditors ...RequestEditorFn) (*PutSandboxesSandboxIDNetworkResponse, error)
 
-	// PostSandboxesSandboxIDPauseWithResponse request
-	PostSandboxesSandboxIDPauseWithResponse(ctx context.Context, sandboxID SandboxID, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDPauseResponse, error)
+	// PostSandboxesSandboxIDPauseWithBodyWithResponse request with any body
+	PostSandboxesSandboxIDPauseWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDPauseResponse, error)
+
+	PostSandboxesSandboxIDPauseWithResponse(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDPauseJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDPauseResponse, error)
 
 	// PostSandboxesSandboxIDRefreshesWithBodyWithResponse request with any body
 	PostSandboxesSandboxIDRefreshesWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDRefreshesResponse, error)
@@ -6002,6 +6197,9 @@ type ClientWithResponsesInterface interface {
 	// GetV2SandboxesSandboxIDLogsWithResponse request
 	GetV2SandboxesSandboxIDLogsWithResponse(ctx context.Context, sandboxID SandboxID, params *GetV2SandboxesSandboxIDLogsParams, reqEditors ...RequestEditorFn) (*GetV2SandboxesSandboxIDLogsResponse, error)
 
+	// GetV2TemplatesWithResponse request
+	GetV2TemplatesWithResponse(ctx context.Context, params *GetV2TemplatesParams, reqEditors ...RequestEditorFn) (*GetV2TemplatesResponse, error)
+
 	// PostV2TemplatesWithBodyWithResponse request with any body
 	PostV2TemplatesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostV2TemplatesResponse, error)
 
@@ -6042,6 +6240,7 @@ type PostAccessTokensResponse struct {
 	HTTPResponse *http.Response
 	JSON201      *CreatedAccessToken
 	JSON401      *N401
+	JSON410      *N410
 	JSON500      *N500
 }
 
@@ -7609,6 +7808,40 @@ func (r GetV2SandboxesSandboxIDLogsResponse) ContentType() string {
 	return ""
 }
 
+type GetV2TemplatesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]Template
+	JSON400      *N400
+	JSON401      *N401
+	JSON403      *N403
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r GetV2TemplatesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetV2TemplatesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetV2TemplatesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type PostV2TemplatesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -8141,9 +8374,17 @@ func (c *ClientWithResponses) PutSandboxesSandboxIDNetworkWithResponse(ctx conte
 	return ParsePutSandboxesSandboxIDNetworkResponse(rsp)
 }
 
-// PostSandboxesSandboxIDPauseWithResponse request returning *PostSandboxesSandboxIDPauseResponse
-func (c *ClientWithResponses) PostSandboxesSandboxIDPauseWithResponse(ctx context.Context, sandboxID SandboxID, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDPauseResponse, error) {
-	rsp, err := c.PostSandboxesSandboxIDPause(ctx, sandboxID, reqEditors...)
+// PostSandboxesSandboxIDPauseWithBodyWithResponse request with arbitrary body returning *PostSandboxesSandboxIDPauseResponse
+func (c *ClientWithResponses) PostSandboxesSandboxIDPauseWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDPauseResponse, error) {
+	rsp, err := c.PostSandboxesSandboxIDPauseWithBody(ctx, sandboxID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostSandboxesSandboxIDPauseResponse(rsp)
+}
+
+func (c *ClientWithResponses) PostSandboxesSandboxIDPauseWithResponse(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDPauseJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDPauseResponse, error) {
+	rsp, err := c.PostSandboxesSandboxIDPause(ctx, sandboxID, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -8438,6 +8679,15 @@ func (c *ClientWithResponses) GetV2SandboxesSandboxIDLogsWithResponse(ctx contex
 	return ParseGetV2SandboxesSandboxIDLogsResponse(rsp)
 }
 
+// GetV2TemplatesWithResponse request returning *GetV2TemplatesResponse
+func (c *ClientWithResponses) GetV2TemplatesWithResponse(ctx context.Context, params *GetV2TemplatesParams, reqEditors ...RequestEditorFn) (*GetV2TemplatesResponse, error) {
+	rsp, err := c.GetV2Templates(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetV2TemplatesResponse(rsp)
+}
+
 // PostV2TemplatesWithBodyWithResponse request with arbitrary body returning *PostV2TemplatesResponse
 func (c *ClientWithResponses) PostV2TemplatesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostV2TemplatesResponse, error) {
 	rsp, err := c.PostV2TemplatesWithBody(ctx, contentType, body, reqEditors...)
@@ -8577,6 +8827,13 @@ func ParsePostAccessTokensResponse(rsp *http.Response) (*PostAccessTokensRespons
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 410:
+		var dest N410
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON410 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500
@@ -10722,6 +10979,60 @@ func ParseGetV2SandboxesSandboxIDLogsResponse(rsp *http.Response) (*GetV2Sandbox
 	return response, nil
 }
 
+// ParseGetV2TemplatesResponse parses an HTTP response from a GetV2TemplatesWithResponse call
+func ParseGetV2TemplatesResponse(rsp *http.Response) (*GetV2TemplatesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetV2TemplatesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []Template
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest N403
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParsePostV2TemplatesResponse parses an HTTP response from a PostV2TemplatesWithResponse call
 func ParsePostV2TemplatesResponse(rsp *http.Response) (*PostV2TemplatesResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -11079,10 +11390,10 @@ func ParseGetVolumesVolumeIDResponse(rsp *http.Response) (*GetVolumesVolumeIDRes
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-
+	// Create access token
 	// (POST /access-tokens)
 	PostAccessTokens(c *gin.Context)
-
+	// Delete access token
 	// (DELETE /access-tokens/{accessTokenID})
 	DeleteAccessTokensAccessTokenID(c *gin.Context, accessTokenID AccessTokenID)
 	// Create team API key as admin
@@ -11097,154 +11408,157 @@ type ServerInterface interface {
 	// Kill all sandboxes for a team
 	// (POST /admin/teams/{teamID}/sandboxes/kill)
 	PostAdminTeamsTeamIDSandboxesKill(c *gin.Context, teamID openapi_types.UUID)
-
+	// List team API keys
 	// (GET /api-keys)
 	GetApiKeys(c *gin.Context)
-
+	// Create team API key
 	// (POST /api-keys)
 	PostApiKeys(c *gin.Context)
-
+	// Delete team API key
 	// (DELETE /api-keys/{apiKeyID})
 	DeleteApiKeysApiKeyID(c *gin.Context, apiKeyID ApiKeyID)
-
+	// Update team API key
 	// (PATCH /api-keys/{apiKeyID})
 	PatchApiKeysApiKeyID(c *gin.Context, apiKeyID ApiKeyID)
-
+	// Health check
 	// (GET /health)
 	GetHealth(c *gin.Context)
-
+	// List nodes
 	// (GET /nodes)
 	GetNodes(c *gin.Context, params GetNodesParams)
-
+	// Node info
 	// (GET /nodes/{nodeID})
 	GetNodesNodeID(c *gin.Context, nodeID NodeID, params GetNodesNodeIDParams)
-
+	// Change node status
 	// (POST /nodes/{nodeID})
 	PostNodesNodeID(c *gin.Context, nodeID NodeID)
-
+	// List running sandboxes
 	// (GET /sandboxes)
 	GetSandboxes(c *gin.Context, params GetSandboxesParams)
-
+	// Create sandbox
 	// (POST /sandboxes)
 	PostSandboxes(c *gin.Context)
-
+	// List sandbox metrics
 	// (GET /sandboxes/metrics)
 	GetSandboxesMetrics(c *gin.Context, params GetSandboxesMetricsParams)
-
+	// Kill sandbox
 	// (DELETE /sandboxes/{sandboxID})
 	DeleteSandboxesSandboxID(c *gin.Context, sandboxID SandboxID)
-
+	// Sandbox
 	// (GET /sandboxes/{sandboxID})
 	GetSandboxesSandboxID(c *gin.Context, sandboxID SandboxID)
-
+	// Connect sandbox
 	// (POST /sandboxes/{sandboxID}/connect)
 	PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID SandboxID)
-
+	// Sandbox logs
 	// (GET /sandboxes/{sandboxID}/logs)
 	GetSandboxesSandboxIDLogs(c *gin.Context, sandboxID SandboxID, params GetSandboxesSandboxIDLogsParams)
-
+	// Sandbox metrics
 	// (GET /sandboxes/{sandboxID}/metrics)
 	GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID SandboxID, params GetSandboxesSandboxIDMetricsParams)
-
+	// Update sandbox network
 	// (PUT /sandboxes/{sandboxID}/network)
 	PutSandboxesSandboxIDNetwork(c *gin.Context, sandboxID SandboxID)
-
+	// Pause sandbox
 	// (POST /sandboxes/{sandboxID}/pause)
 	PostSandboxesSandboxIDPause(c *gin.Context, sandboxID SandboxID)
-
+	// Refresh sandbox
 	// (POST /sandboxes/{sandboxID}/refreshes)
 	PostSandboxesSandboxIDRefreshes(c *gin.Context, sandboxID SandboxID)
-
+	// Resume sandbox
 	// (POST /sandboxes/{sandboxID}/resume)
 	PostSandboxesSandboxIDResume(c *gin.Context, sandboxID SandboxID)
-
+	// Create snapshot
 	// (POST /sandboxes/{sandboxID}/snapshots)
 	PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID SandboxID)
-
+	// Set sandbox timeout
 	// (POST /sandboxes/{sandboxID}/timeout)
 	PostSandboxesSandboxIDTimeout(c *gin.Context, sandboxID SandboxID)
-
+	// List snapshots
 	// (GET /snapshots)
 	GetSnapshots(c *gin.Context, params GetSnapshotsParams)
-
+	// List teams
 	// (GET /teams)
 	GetTeams(c *gin.Context)
-
+	// Team metrics
 	// (GET /teams/{teamID}/metrics)
 	GetTeamsTeamIDMetrics(c *gin.Context, teamID TeamID, params GetTeamsTeamIDMetricsParams)
-
+	// Maximum team metrics
 	// (GET /teams/{teamID}/metrics/max)
 	GetTeamsTeamIDMetricsMax(c *gin.Context, teamID TeamID, params GetTeamsTeamIDMetricsMaxParams)
-
+	// List templates
 	// (GET /templates)
 	GetTemplates(c *gin.Context, params GetTemplatesParams)
-
+	// Create template
 	// (POST /templates)
 	PostTemplates(c *gin.Context)
-
+	// Check template alias
 	// (GET /templates/aliases/{alias})
 	GetTemplatesAliasesAlias(c *gin.Context, alias string)
-
+	// Delete template tags
 	// (DELETE /templates/tags)
 	DeleteTemplatesTags(c *gin.Context)
-
+	// Assign template tags
 	// (POST /templates/tags)
 	PostTemplatesTags(c *gin.Context)
-
+	// Delete template
 	// (DELETE /templates/{templateID})
 	DeleteTemplatesTemplateID(c *gin.Context, templateID TemplateID)
-
+	// List template builds
 	// (GET /templates/{templateID})
 	GetTemplatesTemplateID(c *gin.Context, templateID TemplateID, params GetTemplatesTemplateIDParams)
-
+	// Update template
 	// (PATCH /templates/{templateID})
 	PatchTemplatesTemplateID(c *gin.Context, templateID TemplateID)
-
+	// Rebuild template
 	// (POST /templates/{templateID})
 	PostTemplatesTemplateID(c *gin.Context, templateID TemplateID)
-
+	// Start template build
 	// (POST /templates/{templateID}/builds/{buildID})
 	PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, templateID TemplateID, buildID BuildID)
-
+	// Template build logs
 	// (GET /templates/{templateID}/builds/{buildID}/logs)
 	GetTemplatesTemplateIDBuildsBuildIDLogs(c *gin.Context, templateID TemplateID, buildID BuildID, params GetTemplatesTemplateIDBuildsBuildIDLogsParams)
-
+	// Template build status
 	// (GET /templates/{templateID}/builds/{buildID}/status)
 	GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, templateID TemplateID, buildID BuildID, params GetTemplatesTemplateIDBuildsBuildIDStatusParams)
-
+	// Template build file upload URL
 	// (GET /templates/{templateID}/files/{hash})
 	GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID TemplateID, hash string)
-
+	// List template tags
 	// (GET /templates/{templateID}/tags)
 	GetTemplatesTemplateIDTags(c *gin.Context, templateID TemplateID)
-
+	// List sandboxes (v2)
 	// (GET /v2/sandboxes)
 	GetV2Sandboxes(c *gin.Context, params GetV2SandboxesParams)
-
+	// Sandbox logs (v2)
 	// (GET /v2/sandboxes/{sandboxID}/logs)
 	GetV2SandboxesSandboxIDLogs(c *gin.Context, sandboxID SandboxID, params GetV2SandboxesSandboxIDLogsParams)
-
+	// List templates (v2)
+	// (GET /v2/templates)
+	GetV2Templates(c *gin.Context, params GetV2TemplatesParams)
+	// Create template (v2)
 	// (POST /v2/templates)
 	PostV2Templates(c *gin.Context)
-
+	// Update template (v2)
 	// (PATCH /v2/templates/{templateID})
 	PatchV2TemplatesTemplateID(c *gin.Context, templateID TemplateID)
-
+	// Start template build (v2)
 	// (POST /v2/templates/{templateID}/builds/{buildID})
 	PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templateID TemplateID, buildID BuildID)
-
+	// Create template (v3)
 	// (POST /v3/templates)
 	PostV3Templates(c *gin.Context)
-
+	// List team volumes
 	// (GET /volumes)
 	GetVolumes(c *gin.Context)
-
+	// Create team volume
 	// (POST /volumes)
 	PostVolumes(c *gin.Context)
-
+	// Delete team volume
 	// (DELETE /volumes/{volumeID})
 	DeleteVolumesVolumeID(c *gin.Context, volumeID VolumeID)
-
+	// Team volume
 	// (GET /volumes/{volumeID})
 	GetVolumesVolumeID(c *gin.Context, volumeID VolumeID)
 }
@@ -11260,8 +11574,6 @@ type MiddlewareFunc func(c *gin.Context)
 
 // PostAccessTokens operation middleware
 func (siw *ServerInterfaceWrapper) PostAccessTokens(c *gin.Context) {
-
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
@@ -11290,8 +11602,6 @@ func (siw *ServerInterfaceWrapper) DeleteAccessTokensAccessTokenID(c *gin.Contex
 		return
 	}
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -11319,7 +11629,7 @@ func (siw *ServerInterfaceWrapper) PostAdminTeamsTeamIDApiKeys(c *gin.Context) {
 		return
 	}
 
-	c.Set(string(AdminTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -11355,7 +11665,7 @@ func (siw *ServerInterfaceWrapper) DeleteAdminTeamsTeamIDApiKeysApiKeyID(c *gin.
 		return
 	}
 
-	c.Set(string(AdminTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -11382,7 +11692,7 @@ func (siw *ServerInterfaceWrapper) PostAdminTeamsTeamIDBuildsCancel(c *gin.Conte
 		return
 	}
 
-	c.Set(string(AdminTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -11409,7 +11719,7 @@ func (siw *ServerInterfaceWrapper) PostAdminTeamsTeamIDSandboxesKill(c *gin.Cont
 		return
 	}
 
-	c.Set(string(AdminTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -11424,13 +11734,13 @@ func (siw *ServerInterfaceWrapper) PostAdminTeamsTeamIDSandboxesKill(c *gin.Cont
 // GetApiKeys operation middleware
 func (siw *ServerInterfaceWrapper) GetApiKeys(c *gin.Context) {
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -11444,10 +11754,6 @@ func (siw *ServerInterfaceWrapper) GetApiKeys(c *gin.Context) {
 
 // PostApiKeys operation middleware
 func (siw *ServerInterfaceWrapper) PostApiKeys(c *gin.Context) {
-
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
@@ -11478,13 +11784,13 @@ func (siw *ServerInterfaceWrapper) DeleteApiKeysApiKeyID(c *gin.Context) {
 		return
 	}
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -11511,13 +11817,13 @@ func (siw *ServerInterfaceWrapper) PatchApiKeysApiKeyID(c *gin.Context) {
 		return
 	}
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -11548,7 +11854,7 @@ func (siw *ServerInterfaceWrapper) GetNodes(c *gin.Context) {
 	var err error
 	_ = err
 
-	c.Set(string(AdminTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetNodesParams
@@ -11586,7 +11892,7 @@ func (siw *ServerInterfaceWrapper) GetNodesNodeID(c *gin.Context) {
 		return
 	}
 
-	c.Set(string(AdminTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetNodesNodeIDParams
@@ -11624,7 +11930,7 @@ func (siw *ServerInterfaceWrapper) PostNodesNodeID(c *gin.Context) {
 		return
 	}
 
-	c.Set(string(AdminTokenAuthScopes), []string{})
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -11644,13 +11950,13 @@ func (siw *ServerInterfaceWrapper) GetSandboxes(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetSandboxesParams
@@ -11678,13 +11984,13 @@ func (siw *ServerInterfaceWrapper) PostSandboxes(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -11704,13 +12010,13 @@ func (siw *ServerInterfaceWrapper) GetSandboxesMetrics(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetSandboxesMetricsParams
@@ -11750,13 +12056,13 @@ func (siw *ServerInterfaceWrapper) DeleteSandboxesSandboxID(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -11785,13 +12091,13 @@ func (siw *ServerInterfaceWrapper) GetSandboxesSandboxID(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -11820,13 +12126,13 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDConnect(c *gin.Context)
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -11855,13 +12161,13 @@ func (siw *ServerInterfaceWrapper) GetSandboxesSandboxIDLogs(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetSandboxesSandboxIDLogsParams
@@ -11909,13 +12215,13 @@ func (siw *ServerInterfaceWrapper) GetSandboxesSandboxIDMetrics(c *gin.Context) 
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetSandboxesSandboxIDMetricsParams
@@ -11963,13 +12269,13 @@ func (siw *ServerInterfaceWrapper) PutSandboxesSandboxIDNetwork(c *gin.Context) 
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -11998,13 +12304,13 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDPause(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -12033,13 +12339,13 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDRefreshes(c *gin.Contex
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -12068,13 +12374,13 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDResume(c *gin.Context) 
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -12103,13 +12409,13 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDSnapshots(c *gin.Contex
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -12138,13 +12444,13 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDTimeout(c *gin.Context)
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -12164,13 +12470,13 @@ func (siw *ServerInterfaceWrapper) GetSnapshots(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetSnapshotsParams
@@ -12180,6 +12486,14 @@ func (siw *ServerInterfaceWrapper) GetSnapshots(c *gin.Context) {
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "sandboxID", c.Request.URL.Query(), &params.SandboxID, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter sandboxID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "name" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "name", c.Request.URL.Query(), &params.Name, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -12214,8 +12528,6 @@ func (siw *ServerInterfaceWrapper) GetTeams(c *gin.Context) {
 
 	c.Set(string(AccessTokenAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -12245,13 +12557,13 @@ func (siw *ServerInterfaceWrapper) GetTeamsTeamIDMetrics(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetTeamsTeamIDMetricsParams
@@ -12299,13 +12611,13 @@ func (siw *ServerInterfaceWrapper) GetTeamsTeamIDMetricsMax(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetTeamsTeamIDMetricsMaxParams
@@ -12354,13 +12666,13 @@ func (siw *ServerInterfaceWrapper) GetTemplates(c *gin.Context) {
 
 	c.Set(string(AccessTokenAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetTemplatesParams
@@ -12387,10 +12699,6 @@ func (siw *ServerInterfaceWrapper) GetTemplates(c *gin.Context) {
 func (siw *ServerInterfaceWrapper) PostTemplates(c *gin.Context) {
 
 	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
@@ -12423,13 +12731,13 @@ func (siw *ServerInterfaceWrapper) GetTemplatesAliasesAlias(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -12446,13 +12754,13 @@ func (siw *ServerInterfaceWrapper) DeleteTemplatesTags(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -12469,13 +12777,13 @@ func (siw *ServerInterfaceWrapper) PostTemplatesTags(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -12506,13 +12814,13 @@ func (siw *ServerInterfaceWrapper) DeleteTemplatesTemplateID(c *gin.Context) {
 
 	c.Set(string(AccessTokenAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -12541,13 +12849,13 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateID(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetTemplatesTemplateIDParams
@@ -12597,13 +12905,13 @@ func (siw *ServerInterfaceWrapper) PatchTemplatesTemplateID(c *gin.Context) {
 
 	c.Set(string(AccessTokenAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -12631,10 +12939,6 @@ func (siw *ServerInterfaceWrapper) PostTemplatesTemplateID(c *gin.Context) {
 	}
 
 	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
@@ -12675,10 +12979,6 @@ func (siw *ServerInterfaceWrapper) PostTemplatesTemplateIDBuildsBuildID(c *gin.C
 	}
 
 	c.Set(string(AccessTokenAuthScopes), []string{})
-
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
 
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
@@ -12722,13 +13022,13 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDBuildsBuildIDLogs(c *gi
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetTemplatesTemplateIDBuildsBuildIDLogsParams
@@ -12811,13 +13111,13 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDBuildsBuildIDStatus(c *
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetTemplatesTemplateIDBuildsBuildIDStatusParams
@@ -12884,13 +13184,13 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDFilesHash(c *gin.Contex
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -12919,13 +13219,13 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDTags(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -12945,13 +13245,13 @@ func (siw *ServerInterfaceWrapper) GetV2Sandboxes(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetV2SandboxesParams
@@ -13015,13 +13315,13 @@ func (siw *ServerInterfaceWrapper) GetV2SandboxesSandboxIDLogs(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetV2SandboxesSandboxIDLogsParams
@@ -13076,18 +13376,73 @@ func (siw *ServerInterfaceWrapper) GetV2SandboxesSandboxIDLogs(c *gin.Context) {
 	siw.Handler.GetV2SandboxesSandboxIDLogs(c, sandboxID, params)
 }
 
+// GetV2Templates operation middleware
+func (siw *ServerInterfaceWrapper) GetV2Templates(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	c.Set(string(ApiKeyAuthScopes), []string{})
+
+	c.Set(string(AccessTokenAuthScopes), []string{})
+
+	c.Set(string(AuthProviderBearerAuthScopes), []string{})
+
+	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetV2TemplatesParams
+
+	// ------------- Optional query parameter "teamID" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "teamID", c.Request.URL.Query(), &params.TeamID, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter teamID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "nextToken" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "nextToken", c.Request.URL.Query(), &params.NextToken, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter nextToken: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", c.Request.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetV2Templates(c, params)
+}
+
 // PostV2Templates operation middleware
 func (siw *ServerInterfaceWrapper) PostV2Templates(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -13118,13 +13473,13 @@ func (siw *ServerInterfaceWrapper) PatchV2TemplatesTemplateID(c *gin.Context) {
 
 	c.Set(string(AccessTokenAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -13162,13 +13517,13 @@ func (siw *ServerInterfaceWrapper) PostV2TemplatesTemplateIDBuildsBuildID(c *gin
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -13185,13 +13540,13 @@ func (siw *ServerInterfaceWrapper) PostV3Templates(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -13208,13 +13563,13 @@ func (siw *ServerInterfaceWrapper) GetVolumes(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -13231,13 +13586,13 @@ func (siw *ServerInterfaceWrapper) PostVolumes(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -13266,13 +13621,13 @@ func (siw *ServerInterfaceWrapper) DeleteVolumesVolumeID(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -13301,13 +13656,13 @@ func (siw *ServerInterfaceWrapper) GetVolumesVolumeID(c *gin.Context) {
 
 	c.Set(string(ApiKeyAuthScopes), []string{})
 
-	c.Set(string(Supabase1TokenAuthScopes), []string{})
-
-	c.Set(string(Supabase2TeamAuthScopes), []string{})
-
 	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	c.Set(string(AdminApiKeyAuthScopes), []string{})
+
+	c.Set(string(AdminTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -13394,6 +13749,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/templates/:templateID/tags", wrapper.GetTemplatesTemplateIDTags)
 	router.GET(options.BaseURL+"/v2/sandboxes", wrapper.GetV2Sandboxes)
 	router.GET(options.BaseURL+"/v2/sandboxes/:sandboxID/logs", wrapper.GetV2SandboxesSandboxIDLogs)
+	router.GET(options.BaseURL+"/v2/templates", wrapper.GetV2Templates)
 	router.POST(options.BaseURL+"/v2/templates", wrapper.PostV2Templates)
 	router.PATCH(options.BaseURL+"/v2/templates/:templateID", wrapper.PatchV2TemplatesTemplateID)
 	router.POST(options.BaseURL+"/v2/templates/:templateID/builds/:buildID", wrapper.PostV2TemplatesTemplateIDBuildsBuildID)
@@ -13409,175 +13765,196 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
+	"AwAA//8=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

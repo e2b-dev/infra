@@ -248,10 +248,9 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 var userCgroupsToFreeze = []cgroups.ProcessType{
 	cgroups.ProcessTypeUser,
 	cgroups.ProcessTypePTY,
-	cgroups.ProcessTypeSocat,
 }
 
-// PostFreeze freezes user/pty/socat cgroups directly (no Process.Start / shell).
+// PostFreeze freezes user/pty cgroups directly (no Process.Start / shell).
 // Orchestrator calls this just before pause; the frozen state persists into the
 // snapshot and /init thaws on resume. Best-effort: tries every cgroup even if
 // one fails so we freeze as many as possible before the snapshot.
@@ -284,7 +283,7 @@ func (a *API) PostFreeze(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// PostUnfreeze thaws user/pty/socat cgroups directly. Exists ONLY for the
+// PostUnfreeze thaws user/pty cgroups directly. Exists ONLY for the
 // orchestrator's pause-failure rollback path; the resume thaw runs via /init's
 // deferred unfreeze and must not be replaced by this endpoint. Best-effort: tries
 // every cgroup even if one fails so a partial failure cannot leave the rest frozen.
@@ -318,7 +317,7 @@ func (a *API) PostUnfreeze(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// unfreezeUserCgroups unfreezes user/pty/socat cgroups (idempotent if not frozen).
+// unfreezeUserCgroups unfreezes user/pty cgroups (idempotent if not frozen).
 // Wraps the context with WithoutCancel so the unfreeze always completes.
 func (a *API) unfreezeUserCgroups(ctx context.Context, logger zerolog.Logger) {
 	_ = a.freezeLock.Acquire(context.WithoutCancel(ctx), 1)
@@ -335,6 +334,10 @@ func writeInitError(w http.ResponseWriter, logger zerolog.Logger, err error) {
 	switch {
 	case errors.Is(err, ErrAccessTokenMismatch), errors.Is(err, ErrAccessTokenResetNotAuthorized):
 		w.WriteHeader(http.StatusUnauthorized)
+	case errors.Is(err, host.ErrCAInstallInProgress):
+		// Not a failure, a concurrent install still holds the CA lock.
+		logger.Warn().Err(err).Msg("CA initialization still in progress, retrying")
+		w.WriteHeader(http.StatusServiceUnavailable)
 	default:
 		logger.Error().Msgf("Failed to set data: %v", err)
 		w.WriteHeader(http.StatusBadRequest)

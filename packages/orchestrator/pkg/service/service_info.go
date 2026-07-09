@@ -65,10 +65,13 @@ func (s *Server) ServiceInfo(ctx context.Context, _ *emptypb.Empty) (*orchestrat
 		sandboxDiskAllocated += uint64(item.Config.TotalDiskSizeMB) * 1024 * 1024
 	}
 
+	serviceStatus := info.GetStatus()
+
 	return &orchestratorinfo.ServiceInfoResponse{
-		NodeId:        info.ClientId,
-		ServiceId:     info.ServiceId,
-		ServiceStatus: info.GetStatus(),
+		NodeId:                 info.ClientId,
+		ServiceId:              info.ServiceId,
+		ServiceStatus:          serviceStatus.Status,
+		ServiceStatusChangedAt: timestamppb.New(serviceStatus.ChangedAt),
 
 		ServiceVersion: info.SourceVersion,
 		ServiceCommit:  info.SourceCommit,
@@ -91,6 +94,12 @@ func (s *Server) ServiceInfo(ctx context.Context, _ *emptypb.Empty) (*orchestrat
 		// Host system total resources
 		MetricCpuCount:         cpuMetrics.Count,
 		MetricMemoryTotalBytes: memoryMetrics.TotalBytes,
+
+		// Hugepage pool metrics (page counts)
+		MetricHugepagesTotal:    memoryMetrics.HugePagesTotal,
+		MetricHugepagesUsed:     memoryMetrics.HugePagesUsed,
+		MetricHugepagesReserved: memoryMetrics.HugePagesReserved,
+		MetricHugepageSizeBytes: memoryMetrics.HugePageSizeBytes,
 
 		// Detailed disk metrics
 		MetricDisks: convertDiskMetrics(diskMetrics),

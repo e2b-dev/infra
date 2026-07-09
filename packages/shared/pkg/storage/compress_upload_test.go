@@ -160,7 +160,7 @@ func TestCompressStreamRoundTrip(t *testing.T) {
 			up := &memPartUploader{}
 			cfg := defaultCfg(tc.codec, tc.workers, tc.frameSize)
 
-			ft, checksum, err := compressStream(
+			fullFT, checksum, err := compressStream(
 				t.Context(),
 				bytes.NewReader(original),
 				cfg,
@@ -169,6 +169,7 @@ func TestCompressStreamRoundTrip(t *testing.T) {
 				nil,
 			)
 			require.NoError(t, err)
+			ft := fullFT.Table()
 
 			if tc.dataSize == 0 {
 				require.Equal(t, 0, ft.NumFrames())
@@ -207,6 +208,22 @@ func TestCompressStreamContextCancel(t *testing.T) {
 	_, _, err := compressStream(ctx, bytes.NewReader(data), cfg, up, 4, nil)
 	require.Error(t, err)
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestClampCloudMinPartSize(t *testing.T) {
+	t.Parallel()
+
+	// Below S3/GCS XML API's 5 MiB non-final part minimum → clamped.
+	require.Equal(t, 5, clampCloudMinPartSize(CompressConfig{MinPartSizeMB: 1}, 0).MinPartSizeMB)
+	// Unset resolves to the 50 MB default from MinPartSize().
+	require.Equal(t, 50, clampCloudMinPartSize(CompressConfig{}, 0).MinPartSizeMB)
+	require.Equal(t, 50, clampCloudMinPartSize(CompressConfig{MinPartSizeMB: 50}, 0).MinPartSizeMB)
+
+	// Large files raise the part size to stay under the 10,000-part cap:
+	// 900 GiB at 50 MB parts would need ~18,400 parts.
+	clamped := clampCloudMinPartSize(CompressConfig{}, 900<<30)
+	require.Equal(t, 103, clamped.MinPartSizeMB)
+	require.LessOrEqual(t, int64(900<<30)/clamped.MinPartSize(), int64(cloudMaxParts))
 }
 
 func TestCompressStreamPartSizeMinimum(t *testing.T) {
@@ -300,7 +317,7 @@ func TestCompressStreamRace(t *testing.T) {
 				return fmt.Errorf("stream %d: checksum mismatch", i)
 			}
 
-			decompressed, err := decompressAll(ft, up.Assemble())
+			decompressed, err := decompressAll(ft.Table(), up.Assemble())
 			if err != nil {
 				return fmt.Errorf("stream %d: decompress: %w", i, err)
 			}
@@ -417,10 +434,11 @@ func BenchmarkStoreFile(b *testing.B) {
 					outPath := filepath.Join(outDir, "output.dat")
 					obj := &fsObject{path: outPath}
 
-					ft, _, err := obj.StoreFile(b.Context(), inputPath, WithCompressConfig(compCfg))
+					fullFT, _, err := obj.StoreFile(b.Context(), inputPath, WithCompressConfig(compCfg))
 					if err != nil {
 						b.Fatal(err)
 					}
+					ft := fullFT.Table()
 
 					b.ReportMetric(float64(ft.CompressedSize())/float64(ft.UncompressedSize()), "ratio")
 				}

@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,7 +28,7 @@ type StorageLocal struct {
 	egressProxy  EgressProxy
 }
 
-const netNamespacesDir = "/var/run/netns"
+const NetNamespacesDir = "/var/run/netns"
 
 func NewStorageLocal(ctx context.Context, config Config, egressProxy EgressProxy) (*StorageLocal, error) {
 	// get namespaces that we want to always skip
@@ -118,7 +120,7 @@ func (s *StorageLocal) Release(ips *Slot) error {
 }
 
 func isNamespaceAvailable(name string) (bool, error) {
-	nsPath := filepath.Join(netNamespacesDir, name)
+	nsPath := filepath.Join(NetNamespacesDir, name)
 	_, err := os.Stat(nsPath)
 
 	if os.IsNotExist(err) {
@@ -136,7 +138,7 @@ func isNamespaceAvailable(name string) (bool, error) {
 func getForeignNamespaces() ([]string, error) {
 	var ns []string
 
-	files, err := os.ReadDir(netNamespacesDir)
+	files, err := os.ReadDir(NetNamespacesDir)
 	if err != nil {
 		// Folder does not exist, so we can assume no namespaces are in use
 		if os.IsNotExist(err) {
@@ -166,6 +168,53 @@ func getSlotName(slotIdx int) string {
 	slotIdxStr := strconv.Itoa(slotIdx)
 
 	return fmt.Sprintf("ns-%s", slotIdxStr)
+}
+
+func NamespaceName(slotIdx int) string {
+	return getSlotName(slotIdx)
+}
+
+func SlotIndexFromNamespace(name string) (int, bool) {
+	idxStr, ok := strings.CutPrefix(name, "ns-")
+	if !ok || idxStr == "" {
+		return 0, false
+	}
+
+	idx, err := strconv.Atoi(idxStr)
+	if err != nil || idx < 1 || idx > vrtSlotsSize {
+		return 0, false
+	}
+
+	return idx, true
+}
+
+func ListSlotNamespaces(dir string) ([]int, error) {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf("error reading netns directory: %w", err)
+	}
+
+	indices := make([]int, 0, len(files))
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+
+		idx, ok := SlotIndexFromNamespace(file.Name())
+		if !ok {
+			continue
+		}
+
+		indices = append(indices, idx)
+	}
+
+	slices.Sort(indices)
+
+	return indices, nil
 }
 
 func getLocalKey(slotIdx int) string {

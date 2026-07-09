@@ -9,7 +9,7 @@ import (
 	"syscall"
 )
 
-func (c *Cleaner) stat(path string) (*Candidate, error) {
+func (c *Cleaner) stat(path string) (*Stat, error) {
 	c.StatxC.Add(1)
 	stat, err := os.Stat(path)
 	if err != nil {
@@ -22,26 +22,13 @@ func (c *Cleaner) stat(path string) (*Candidate, error) {
 			stat.Name(), stat.Sys())
 	}
 
-	return &Candidate{
-		Parent:    nil, // not relevant here
-		FullPath:  path,
-		Size:      uint64(stat.Size()),
+	return &Stat{
 		ATimeUnix: actualStruct.Atimespec.Sec,
 		BTimeUnix: actualStruct.Birthtimespec.Sec,
 	}, nil
 }
 
-func (c *Cleaner) statInDir(df *os.File, filename string) (*File, error) {
-	c.StatxInDirC.Add(1)
+func (c *Cleaner) statInDir(df *os.File, filename string) (*Stat, error) {
 	// performance on OS X does not matter, so just use the full stat
-	cand, err := c.stat(filepath.Join(df.Name(), filename))
-	if err != nil {
-		return nil, err
-	}
-
-	return &File{
-		Name:      filename,
-		ATimeUnix: cand.ATimeUnix,
-		Size:      cand.Size,
-	}, nil
+	return c.stat(filepath.Join(df.Name(), filename))
 }

@@ -91,3 +91,36 @@ func TestJSONBStringMap_NilRoundTrip(t *testing.T) {
 	assert.NotNil(t, decoded)
 	assert.Empty(t, decoded)
 }
+
+func TestPausedSandboxConfig_AutoPauseFilesystemOnlyRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	// The policy must survive the column write path (Value -> JSONB) and read
+	// back identically for both kinds.
+	for _, want := range []bool{true, false} {
+		v, err := PausedSandboxConfig{
+			Version:                 PausedSandboxConfigVersion,
+			AutoPauseFilesystemOnly: want,
+		}.Value()
+		require.NoError(t, err)
+
+		raw, ok := v.(string)
+		require.True(t, ok)
+
+		var decoded PausedSandboxConfig
+		require.NoError(t, json.Unmarshal([]byte(raw), &decoded))
+		assert.Equal(t, want, decoded.AutoPauseFilesystemOnly)
+	}
+}
+
+func TestPausedSandboxConfig_LegacyRowDefaultsToMemoryAutoPause(t *testing.T) {
+	t.Parallel()
+
+	// A snapshot row written before the field existed omits the key; it must
+	// decode to false (a memory auto-pause), not error.
+	var decoded PausedSandboxConfig
+	require.NoError(t, json.Unmarshal([]byte(`{"filesystemOnly":true}`), &decoded))
+
+	assert.False(t, decoded.AutoPauseFilesystemOnly, "legacy rows must default to a memory auto-pause")
+	assert.True(t, decoded.FilesystemOnly, "unrelated fields must still decode")
+}

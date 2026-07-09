@@ -13,11 +13,14 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc/status"
 
+	"github.com/e2b-dev/infra/packages/api/internal"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -84,15 +87,37 @@ var ErrUnknownVolumeType = errors.New("unknown volume type")
 func (a *APIStore) executeOnOrchestratorByClusterID(
 	ctx context.Context,
 	clusterID uuid.UUID,
+	volume queries.Volume,
 	fn func(context.Context, *clusters.GRPCClient) error,
 ) error {
 	nodes := a.orchestrator.GetClusterNodes(clusterID)
-
 	if len(nodes) == 0 {
 		return ErrClusterNotFound
 	}
 
-	rand.Shuffle(len(nodes), func(i, j int) { nodes[i], nodes[j] = nodes[j], nodes[i] })
+	// Try nodes with a matching volume label first, then fall back to the rest
+	// of the cluster. A node that fails with a retryable error simply moves on
+	// to the next one, so we only reach the unlabeled nodes once every labeled
+	// node has failed with a retryable error.
+	volumeLabel := internal.MakeVolumeTypeLabel(volume.VolumeType)
+	labeledNodes, otherNodes := findNodesByVolumeLabel(nodes, volumeLabel)
+	rand.Shuffle(len(labeledNodes), func(i, j int) { labeledNodes[i], labeledNodes[j] = labeledNodes[j], labeledNodes[i] })
+	rand.Shuffle(len(otherNodes), func(i, j int) { otherNodes[i], otherNodes[j] = otherNodes[j], otherNodes[i] })
+
+	// Falling back to unlabeled nodes is only useful during the volume-label
+	// migration; once every node is labeled, unlabeled nodes fail 100% of the
+	// time. The flag lets us turn the fallback off (and eventually remove it).
+	fallbackToUnmatched := a.featureFlags.BoolFlag(ctx,
+		featureflags.VolumeFallbackToUnmatchedNodesFlag,
+		featureflags.TeamContext(volume.TeamID.String()),
+		featureflags.ClusterContext(clusterID),
+		featureflags.VolumeContext(volume.ID.String()),
+	)
+
+	nodes = labeledNodes
+	if fallbackToUnmatched {
+		nodes = append(nodes, otherNodes...)
+	}
 
 	var (
 		receivedUnknownVolumeTypeErrors int
@@ -159,6 +184,24 @@ func (a *APIStore) executeOnOrchestratorByClusterID(
 	}
 
 	return ErrNoHealthyOrchestratorFound
+}
+
+// findNodesByVolumeLabel splits nodes into those that advertise the
+// volume's type label and those that don't, preserving the input order within
+// each group.
+func findNodesByVolumeLabel(nodes []*nodemanager.Node, expectedLabel string) (matched, unmatched []*nodemanager.Node) {
+	for _, node := range nodes {
+		labels := node.Labels()
+		if _, ok := labels[expectedLabel]; ok {
+			matched = append(matched, node)
+
+			continue
+		}
+
+		unmatched = append(unmatched, node)
+	}
+
+	return matched, unmatched
 }
 
 func isUnknownVolumeTypeError(err error) (string, bool) {

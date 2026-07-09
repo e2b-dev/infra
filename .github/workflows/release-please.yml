@@ -1,0 +1,256 @@
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+    inputs:
+      publish_package:
+        description: >-
+          Manually (re-)publish an already-released package to e2b-artifacts.
+          Recovery path for when a release was created but its publish job
+          failed (a re-run can't recover it: release-please only emits
+          release_created on the attempt that cut the release). Leave empty to
+          just run release-please.
+        type: choice
+        default: ''
+        options:
+          - ''
+          - docker-reverse-proxy
+          - client-proxy
+          - clickhouse-migrator
+      publish_version:
+        description: >-
+          Version to publish, without the leading v (e.g. 1.0.0). Must match an
+          existing <package>-v<version> release tag.
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    name: Create / update release PRs
+    # Skipped on a manual publish dispatch: the release already exists, we only
+    # want the publish job below.
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.publish_package == '' }}
+    runs-on: ubuntu-24.04
+    outputs:
+      # Per-package outputs are keyed by the package path. Add more here as more
+      # packages are onboarded to release-please.
+      reverse_proxy_released: ${{ steps.release.outputs['packages/docker-reverse-proxy--release_created'] }}
+      reverse_proxy_tag: ${{ steps.release.outputs['packages/docker-reverse-proxy--tag_name'] }}
+      reverse_proxy_version: ${{ steps.release.outputs['packages/docker-reverse-proxy--version'] }}
+      client_proxy_released: ${{ steps.release.outputs['packages/client-proxy--release_created'] }}
+      client_proxy_tag: ${{ steps.release.outputs['packages/client-proxy--tag_name'] }}
+      client_proxy_version: ${{ steps.release.outputs['packages/client-proxy--version'] }}
+      clickhouse_migrator_released: ${{ steps.release.outputs['packages/clickhouse--release_created'] }}
+      clickhouse_migrator_tag: ${{ steps.release.outputs['packages/clickhouse--tag_name'] }}
+      clickhouse_migrator_version: ${{ steps.release.outputs['packages/clickhouse--version'] }}
+    steps:
+      # Mint a short-lived token from a GitHub App so the release PR is opened as
+      # the App (not the default GITHUB_TOKEN). This is required when `main` has
+      # required status checks: PRs opened by GITHUB_TOKEN don't trigger
+      # `pull_request` workflows, so the release PR would be unmergeable.
+      #
+      # Requires a GitHub App (Contents: write, Pull requests: write) installed on
+      # this repo, with its App ID in the RELEASE_PLEASE_APP_ID variable and
+      # private key in the RELEASE_PLEASE_APP_SECRET secret.
+      #
+      # Falls back to GITHUB_TOKEN if the App isn't configured yet, so the
+      # workflow still runs (the release PR just won't trigger required checks
+      # until the App is set up).
+      - name: Generate GitHub App token
+        id: app-token
+        if: ${{ vars.RELEASE_PLEASE_APP_ID != '' }}
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.RELEASE_PLEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PLEASE_APP_SECRET }}
+
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish-reverse-proxy:
+    name: Publish docker-reverse-proxy to e2b-artifacts
+    needs: release-please
+    # Runs when release-please just cut this package's release, or on a manual
+    # publish dispatch for it (release-please job skipped, hence !cancelled()).
+    if: ${{ !cancelled() && (needs.release-please.outputs.reverse_proxy_released == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish_package == 'docker-reverse-proxy' && inputs.publish_version != '')) }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      # <host>/<project>/<repository>/<image>
+      IMAGE: us-docker.pkg.dev/e2b-artifacts/docker-reverse-proxy/docker-reverse-proxy
+      VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_version || needs.release-please.outputs.reverse_proxy_version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          # On manual publish, build from the release tag instead of main's head.
+          ref: ${{ inputs.publish_version != '' && format('docker-reverse-proxy-v{0}', inputs.publish_version) || github.sha }}
+          persist-credentials: false
+
+      - name: Authenticate to the e2b-artifacts project
+        uses: google-github-actions/auth@v3
+        with:
+          # Workload Identity Federation provider + service account for the
+          # e2b-artifacts project. Provisioned out-of-repo (separate Terraform
+          # modules / live repo); wired here via GitHub repo variables.
+          workload_identity_provider: ${{ vars.E2B_ARTIFACTS_WIF_PROVIDER }}
+          service_account: ${{ vars.E2B_ARTIFACTS_PUBLISH_SA }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Configure Docker auth
+        run: gcloud auth configure-docker us-docker.pkg.dev --quiet
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push released image
+        # The Dockerfile lives in packages/docker-reverse-proxy but its build
+        # context is the packages/ directory (it needs shared/ and db/).
+        #
+        # Notes:
+        #  - Tag is v-prefixed (v${VERSION}) to match what customers pin via
+        #    DOCKER_REVERSE_PROXY_VERSION and the manual publish convention.
+        #  - No :latest tag: the e2b-artifacts repo has immutableTags=true, so a
+        #    reused tag would fail on the second release. Customers pin exact
+        #    versions anyway.
+        #  - --provenance=false --sbom=false: Artifact Registry rejects buildx's
+        #    default OCI attestation manifest list (HTTP 400).
+        run: |
+          IMAGE_TAG="v${VERSION}"
+          docker buildx build \
+            --platform linux/amd64 \
+            --provenance=false \
+            --sbom=false \
+            --build-arg COMMIT_SHA="$(git rev-parse --short HEAD)" \
+            --build-arg VERSION="${IMAGE_TAG}" \
+            --tag "${IMAGE}:${IMAGE_TAG}" \
+            --push \
+            -f packages/docker-reverse-proxy/Dockerfile \
+            packages
+
+  publish-client-proxy:
+    name: Publish client-proxy to e2b-artifacts
+    needs: release-please
+    # Runs when release-please just cut this package's release, or on a manual
+    # publish dispatch for it (release-please job skipped, hence !cancelled()).
+    if: ${{ !cancelled() && (needs.release-please.outputs.client_proxy_released == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish_package == 'client-proxy' && inputs.publish_version != '')) }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      # <host>/<project>/<repository>/<image>
+      IMAGE: us-docker.pkg.dev/e2b-artifacts/client-proxy/client-proxy
+      VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_version || needs.release-please.outputs.client_proxy_version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          # On manual publish, build from the release tag instead of main's head.
+          ref: ${{ inputs.publish_version != '' && format('client-proxy-v{0}', inputs.publish_version) || github.sha }}
+          persist-credentials: false
+
+      - name: Authenticate to the e2b-artifacts project
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.E2B_ARTIFACTS_WIF_PROVIDER }}
+          service_account: ${{ vars.E2B_ARTIFACTS_PUBLISH_SA }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Configure Docker auth
+        run: gcloud auth configure-docker us-docker.pkg.dev --quiet
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push released image
+        # The Dockerfile lives in packages/client-proxy but its build context is
+        # the packages/ directory (it needs shared/ and clickhouse/). Same
+        # tagging conventions as docker-reverse-proxy: v-prefixed tag, no
+        # :latest (immutableTags=true on the e2b-artifacts repo), and
+        # --provenance=false --sbom=false for Artifact Registry compatibility.
+        run: |
+          IMAGE_TAG="v${VERSION}"
+          docker buildx build \
+            --platform linux/amd64 \
+            --provenance=false \
+            --sbom=false \
+            --build-arg COMMIT_SHA="$(git rev-parse --short HEAD)" \
+            --tag "${IMAGE}:${IMAGE_TAG}" \
+            --push \
+            -f packages/client-proxy/Dockerfile \
+            packages
+
+  publish-clickhouse-migrator:
+    name: Publish clickhouse-migrator to e2b-artifacts
+    needs: release-please
+    # Runs when release-please just cut this package's release, or on a manual
+    # publish dispatch for it (release-please job skipped, hence !cancelled()).
+    if: ${{ !cancelled() && (needs.release-please.outputs.clickhouse_migrator_released == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish_package == 'clickhouse-migrator' && inputs.publish_version != '')) }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      # <host>/<project>/<repository>/<image>
+      IMAGE: us-docker.pkg.dev/e2b-artifacts/clickhouse-migrator/clickhouse-migrator
+      VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_version || needs.release-please.outputs.clickhouse_migrator_version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          # On manual publish, build from the release tag instead of main's head.
+          ref: ${{ inputs.publish_version != '' && format('clickhouse-migrator-v{0}', inputs.publish_version) || github.sha }}
+          persist-credentials: false
+
+      - name: Authenticate to the e2b-artifacts project
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.E2B_ARTIFACTS_WIF_PROVIDER }}
+          service_account: ${{ vars.E2B_ARTIFACTS_PUBLISH_SA }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Configure Docker auth
+        run: gcloud auth configure-docker us-docker.pkg.dev --quiet
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push released image
+        # The clickhouse-migrator image is self-contained: its Dockerfile and
+        # build context both live in packages/clickhouse (matching the package
+        # Makefile's `docker build .`). Same tagging conventions as
+        # docker-reverse-proxy: v-prefixed tag, no :latest (immutableTags=true
+        # on the e2b-artifacts repo), and --provenance=false --sbom=false for
+        # Artifact Registry compatibility.
+        run: |
+          IMAGE_TAG="v${VERSION}"
+          docker buildx build \
+            --platform linux/amd64 \
+            --provenance=false \
+            --sbom=false \
+            --tag "${IMAGE}:${IMAGE_TAG}" \
+            --push \
+            -f packages/clickhouse/Dockerfile \
+            packages/clickhouse

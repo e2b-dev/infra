@@ -22,6 +22,11 @@ data "aws_ecr_image" "clickhouse_migrator" {
   image_tag       = "latest"
 }
 
+// Its already set up in Nomad server config, but from there its taked only for newly created clusters so we need to make sure its apply here to existing.
+resource "nomad_scheduler_config" "config" {
+  memory_oversubscription_enabled = true
+}
+
 module "otel_collector" {
   source = "../../modules/job-otel-collector"
 
@@ -87,18 +92,10 @@ module "client_proxy" {
   update_stanza      = var.api_cluster_size > 1
   client_proxy_count = var.client_proxy_count
 
-  node_pool   = var.api_node_pool
-  environment = var.environment
+  node_pool = var.api_node_pool
 
-  redis_url                 = var.redis_url
-  redis_cluster_url         = var.redis_cluster_url
-  redis_tls_ca_base64       = var.redis_tls_ca_base64
-  image                     = data.aws_ecr_image.client_proxy.image_uri
-  api_internal_grpc_address = "api-internal-grpc.service.consul:${var.api_internal_grpc_port}"
-
-  otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
-  logs_collector_address       = "http://localhost:${var.logs_proxy_port}"
-  launch_darkly_api_key        = var.launch_darkly_api_key
+  image        = data.aws_ecr_image.client_proxy.image_uri
+  job_env_vars = var.client_proxy_env_vars
 }
 
 module "api" {
@@ -133,12 +130,6 @@ locals {
 module "orchestrator" {
   source = "../../modules/job-orchestrator"
 
-  provider_name = "aws"
-  provider_aws_config = {
-    region                 = var.aws_region
-    docker_repository_name = var.custom_environments_repository_name
-  }
-
   node_pool  = var.orchestrator_node_pool
   port       = var.orchestrator_port
   proxy_port = var.orchestrator_proxy_port
@@ -146,21 +137,7 @@ module "orchestrator" {
   environment           = var.environment
   artifact_source       = local.orchestrator_artifact_source
   orchestrator_checksum = data.aws_s3_object.orchestrator.etag
-
-  logs_collector_address       = "http://localhost:${var.logs_proxy_port}"
-  otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
-  envd_timeout                 = var.envd_timeout
-  template_bucket_name         = var.template_bucket_name
-  allow_sandbox_internal_cidrs = var.allow_sandbox_internal_cidrs
-  clickhouse_connection_string = local.clickhouse_connection_string
-  redis_url                    = var.redis_url
-  redis_cluster_url            = var.redis_cluster_url
-  redis_tls_ca_base64          = var.redis_tls_ca_base64
-
-  consul_token            = var.consul_acl_token
-  domain_name             = var.domain_name
-  build_cache_bucket_name = var.build_cache_bucket_name
-  launch_darkly_api_key   = var.launch_darkly_api_key
+  job_env_vars          = var.orchestrator_env_vars
 }
 
 data "aws_s3_object" "template_manager" {
@@ -175,28 +152,13 @@ locals {
 module "template_manager" {
   source = "../../modules/job-template-manager"
 
-  provider_name = "aws"
-  provider_aws_config = {
-    region                 = var.aws_region
-    docker_repository_name = var.custom_environments_repository_name
-  }
-
   update_stanza = var.build_cluster_size > 1
   node_pool     = var.build_node_pool
 
-  port             = var.template_manager_port
-  environment      = var.environment
-  consul_acl_token = var.consul_acl_token
-  domain_name      = var.domain_name
+  port = var.template_manager_port
 
-  api_secret                   = var.api_secret
-  artifact_source              = local.template_manager_artifact_source
-  template_bucket_name         = var.template_bucket_name
-  build_cache_bucket_name      = var.build_cache_bucket_name
-  otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
-  logs_collector_address       = "http://localhost:${var.logs_proxy_port}"
-  clickhouse_connection_string = local.clickhouse_connection_string
-  launch_darkly_api_key        = var.launch_darkly_api_key
+  artifact_source = local.template_manager_artifact_source
+  job_env_vars    = var.template_manager_env_vars
 
   nomad_addr  = "https://nomad.${var.domain_name}"
   nomad_token = var.nomad_acl_token

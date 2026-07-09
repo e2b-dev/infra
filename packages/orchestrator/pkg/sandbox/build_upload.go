@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"strconv"
 
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
@@ -42,9 +44,17 @@ func NewUpload(
 	useCase string,
 	objectMetadata storage.ObjectMetadata,
 ) (*Upload, error) {
-	mem, memV4, err := resolveCompressConfig(ctx, cfg, ff, storage.MemfileName, snap.MemfileBlockSize, useCase)
-	if err != nil {
-		return nil, fmt.Errorf("resolve memfile compress config: %w", err)
+	// Filesystem-only snapshots have no memfile (NoDiff, block size 0), so
+	// resolving its compress config would fail validation ("block size must be
+	// positive"). The memfile body and header are never uploaded anyway.
+	var mem storage.CompressConfig
+	var memV4 bool
+	var err error
+	if !snap.FilesystemSnapshot {
+		mem, memV4, err = resolveCompressConfig(ctx, cfg, ff, storage.MemfileName, snap.MemorySnapshot.BlockSize, useCase)
+		if err != nil {
+			return nil, fmt.Errorf("resolve memfile compress config: %w", err)
+		}
 	}
 	root, rootV4, err := resolveCompressConfig(ctx, cfg, ff, storage.RootfsName, snap.RootfsBlockSize, useCase)
 	if err != nil {
@@ -84,6 +94,30 @@ func NewUpload(
 	return u, nil
 }
 
+// layerSizeMetadata adds the layer's logical, mapped, and diff sizes (all
+// uncompressed, from the diff header) to the base object metadata. They live on
+// the data object because the memfile values depend on the async dedup header.
+func (u *Upload) layerSizeMetadata(h *headers.Header) storage.ObjectMetadata {
+	md := maps.Clone(u.objectMetadata)
+	if md == nil {
+		md = make(storage.ObjectMetadata)
+	}
+	if h == nil || h.Metadata == nil {
+		return md
+	}
+
+	bytesByBuild := h.Mapping.BytesByBuild()
+	var mapped uint64
+	for _, b := range bytesByBuild {
+		mapped += b
+	}
+	md[storage.ObjectMetadataLogicalSize] = strconv.FormatUint(h.Metadata.Size, 10)
+	md[storage.ObjectMetadataMappedSize] = strconv.FormatUint(mapped, 10)
+	md[storage.ObjectMetadataDiffSize] = strconv.FormatUint(bytesByBuild[h.Metadata.BuildId], 10)
+
+	return md
+}
+
 func (u *Upload) Run(ctx context.Context) error {
 	// Attach the upload use case so flag reads can target it (e.g. write-through only for builds).
 	ctx = featureflags.AddToContext(ctx, featureflags.CompressUseCaseContext(u.useCase))
@@ -93,6 +127,18 @@ func (u *Upload) Run(ctx context.Context) error {
 	}
 
 	return u.runV4(ctx)
+}
+
+// Wait blocks until the upload has reached its terminal outcome (the future set
+// by Finish) or ctx is done, returning the upload error. It lets a caller order
+// work after the snapshot has durably landed — e.g. re-uploading the metadata
+// object without racing the upload's own metadata write.
+func (u *Upload) Wait(ctx context.Context) error {
+	if u.future == nil {
+		return nil
+	}
+
+	return u.future.WaitWithContext(ctx)
 }
 
 // Finish signals the upload's terminal outcome. Same-orch waiters wake on the

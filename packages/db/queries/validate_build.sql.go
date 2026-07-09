@@ -12,7 +12,7 @@ import (
 const existsWaitingTemplateBuild = `-- name: ExistsWaitingTemplateBuild :one
 SELECT EXISTS (
     SELECT 1
-    FROM envs e
+    FROM active_envs e
              JOIN users_teams ut ON ut.team_id = e.team_id
              JOIN access_tokens at ON at.user_id = ut.user_id
              JOIN env_build_assignments eba ON eba.env_id = e.id

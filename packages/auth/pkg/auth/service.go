@@ -33,7 +33,7 @@ type Service interface {
 	ValidateAPIKey(ctx context.Context, ginCtx *gin.Context, apiKey string) (*types.Team, *APIError)
 	ValidateAccessToken(ctx context.Context, ginCtx *gin.Context, accessToken string) (uuid.UUID, *APIError)
 	ValidateAuthProviderToken(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *APIError)
-	ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *APIError)
+	ValidateAuthProviderTeam(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *APIError)
 	GetTeamByID(ctx context.Context, teamID uuid.UUID) (*types.Team, error)
 	InvalidateTeamMemberCache(ctx context.Context, userID uuid.UUID, teamID string)
 	InvalidateTeamCache(ctx context.Context, teamID uuid.UUID) error
@@ -209,8 +209,8 @@ func (s *authService) validateJWTWithProvider(ctx context.Context, ginCtx *gin.C
 	return userID, nil
 }
 
-// ValidateSupabaseTeam extracts the user ID from the gin context and fetches the team via cache + store.
-func (s *authService) ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *APIError) {
+// ValidateAuthProviderTeam extracts the user ID from the gin context and fetches the team via cache + store.
+func (s *authService) ValidateAuthProviderTeam(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *APIError) {
 	userID, ok := GetUserID(ginCtx)
 	if !ok {
 		return nil, &APIError{
@@ -220,7 +220,7 @@ func (s *authService) ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.Cont
 		}
 	}
 
-	cacheKey := supabaseTeamCacheKey(userID, teamID)
+	cacheKey := teamMemberCacheKey(userID, teamID)
 
 	result, err := s.teamCache.GetOrSet(ctx, cacheKey, func(ctx context.Context, _ string) (*types.Team, error) {
 		return s.store.GetTeamByIDAndUserID(ctx, userID, teamID)
@@ -254,7 +254,7 @@ func (s *authService) ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.Cont
 // InvalidateTeamMemberCache removes the cached auth entry for a specific user-team pair.
 // This should be called when team membership changes (member added or removed).
 func (s *authService) InvalidateTeamMemberCache(ctx context.Context, userID uuid.UUID, teamID string) {
-	s.teamCache.Invalidate(ctx, supabaseTeamCacheKey(userID, teamID))
+	s.teamCache.Invalidate(ctx, teamMemberCacheKey(userID, teamID))
 }
 
 // InvalidateTeamCache queries the team's API key hashes and removes their cached entries.
@@ -273,7 +273,7 @@ func (s *authService) InvalidateTeamCache(ctx context.Context, teamID uuid.UUID)
 	return nil
 }
 
-func supabaseTeamCacheKey(userID uuid.UUID, teamID string) string {
+func teamMemberCacheKey(userID uuid.UUID, teamID string) string {
 	return fmt.Sprintf("%s-%s", userID.String(), strings.ToLower(teamID))
 }
 

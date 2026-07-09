@@ -60,10 +60,10 @@ func New(memfile block.ReadonlyDevice, socketPath string) *Uffd {
 	}
 }
 
-func (u *Uffd) Prefault(ctx context.Context, offset int64, data []byte) error {
+func (u *Uffd) Prefault(ctx context.Context, offset int64, data []byte) (installed bool, e error) {
 	handler, err := u.handler.WaitWithContext(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get uffd: %w", err)
+		return false, fmt.Errorf("failed to get uffd: %w", err)
 	}
 
 	return handler.Prefault(ctx, offset, data)
@@ -169,10 +169,18 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string, fdExit *fdexit.FdEx
 
 	m := memory.NewMapping(regions)
 
+	// The memfile header's generation (pause/resume cycle count) tags this
+	// sandbox's fault metrics so latency can be cut by snapshot chain depth.
+	var generation uint64
+	if h := u.memfile.Header(); h != nil && h.Metadata != nil {
+		generation = h.Metadata.Generation
+	}
+
 	uffd, err := userfaultfd.NewUserfaultfdFromFd(
 		uintptr(fds[0]),
 		u.memfile,
 		m,
+		generation,
 		logger.L().With(logger.WithSandboxID(sandboxId)),
 	)
 	if err != nil {
@@ -280,4 +288,16 @@ func (u *Uffd) PrefetchData(ctx context.Context) (block.PrefetchData, error) {
 // the caller. The uffd teardown defer will no longer close it.
 func (u *Uffd) Memfd(_ context.Context) *block.Memfd {
 	return u.memfd.Swap(nil)
+}
+
+// ServeStats returns a cumulative snapshot of demand faults served so far, or a
+// zero snapshot if the handler has not been created yet (FC has not connected).
+// It never blocks.
+func (u *Uffd) ServeStats() userfaultfd.ServeSnapshot {
+	handler, err := u.handler.Result()
+	if err != nil {
+		return userfaultfd.ServeSnapshot{}
+	}
+
+	return handler.ServeStats()
 }

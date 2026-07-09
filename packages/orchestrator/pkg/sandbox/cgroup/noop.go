@@ -22,6 +22,10 @@ func (m *noopManager) Create(_ context.Context, cgroupName string) (*CgroupHandl
 	return newNoopHandle(cgroupName), nil
 }
 
+func (m *noopManager) Destroy(_ context.Context, _ string) error {
+	return nil
+}
+
 // newNoopHandle creates a CgroupHandle that performs no real cgroup operations.
 // GetFD returns NoCgroupFD, GetStats returns (nil, nil), Remove is a no-op.
 func newNoopHandle(cgroupName string) *CgroupHandle {
