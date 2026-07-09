@@ -37,10 +37,11 @@ jobs:
         # depend on compression/dedup/memfd settings), but the suite is split
         # into shards on parallel runners. Each host saturates at
         # go test -parallel=4 (Firecracker boots + zstd compression), so the
-        # only way to cut wall time is more hosts: api/templates is split in
-        # two halves by test-name prefix, api/sandboxes gets its own runner,
-        # and everything else shares the last one. Shards are resolved by
-        # TEST_SHARD in tests/integration/Makefile.
+        # only way to cut wall time is more hosts: the TestTemplateBuild*
+        # tests (real FC builds) are split in two halves by name prefix,
+        # api/sandboxes gets its own runner, and everything else shares the
+        # last one. Shards are resolved by TEST_SHARD in
+        # tests/integration/Makefile.
         include: >-
           ${{ fromJSON(inputs.full-matrix
             && '[
@@ -49,8 +50,8 @@ jobs:
                   {"name": "lz4", "shard": "all", "compress_enabled": "true", "compress_type": "lz4", "compress_level": "0", "compress_workers": "8", "dedup_mode": "direct_io", "disable_memfd": "false"}
                 ]'
             || '[
-                  {"name": "zstd1-templates-builds", "shard": "templates-builds", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"},
-                  {"name": "zstd1-templates-misc", "shard": "templates-misc", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"},
+                  {"name": "zstd1-templates-1", "shard": "templates-builds-1", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"},
+                  {"name": "zstd1-templates-2", "shard": "templates-builds-2", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"},
                   {"name": "zstd1-sandboxes", "shard": "sandboxes", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"},
                   {"name": "zstd1-rest", "shard": "rest", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"}
                 ]') }}
