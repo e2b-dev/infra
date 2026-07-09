@@ -2,6 +2,7 @@ package pool
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"log"
 	"net"
@@ -36,6 +37,7 @@ func newProxyClient(
 	currentConnsCounter *atomic.Int64,
 	l *log.Logger,
 	disableKeepAlives bool,
+	tlsConfig *tls.Config,
 ) *ProxyClient {
 	activeConnections := smap.New[*tracking.Connection]()
 
@@ -49,6 +51,7 @@ func newProxyClient(
 		ResponseHeaderTimeout: 0,
 		DisableKeepAlives:     disableKeepAlives,
 		ForceAttemptHTTP2:     false,
+		TLSClientConfig:       tlsConfig,
 		// TCP configuration
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			var conn net.Conn

@@ -2,6 +2,7 @@ package pool
 
 import (
 	"context"
+	"crypto/tls"
 	"sync/atomic"
 	"time"
 
@@ -30,15 +31,17 @@ type ProxyPool struct {
 	totalConnsCounter     atomic.Uint64
 	currentConnsCounter   atomic.Int64
 	disableKeepAlives     bool
+	tlsConfig             *tls.Config
 }
 
-func New(maxClientConns int, maxConnectionAttempts int, idleTimeout time.Duration, disableKeepAlives bool) *ProxyPool {
+func New(maxClientConns int, maxConnectionAttempts int, idleTimeout time.Duration, disableKeepAlives bool, tlsConfig *tls.Config) *ProxyPool {
 	return &ProxyPool{
 		pool:                  smap.New[*ProxyClient](),
 		maxClientConns:        maxClientConns,
 		maxConnectionAttempts: maxConnectionAttempts,
 		idleTimeout:           idleTimeout,
 		disableKeepAlives:     disableKeepAlives,
+		tlsConfig:             tlsConfig,
 	}
 }
 
@@ -84,6 +87,7 @@ func (p *ProxyPool) Get(ctx context.Context, d *Destination) *ProxyClient {
 			&p.currentConnsCounter,
 			stdLogger,
 			p.disableKeepAlives,
+			p.tlsConfig,
 		)
 	})
 }

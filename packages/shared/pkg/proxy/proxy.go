@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -36,6 +37,18 @@ type Proxy struct {
 	currentServerConnsCounter atomic.Int64
 }
 
+type options struct {
+	upstreamTLS *tls.Config
+}
+
+type Option func(*options)
+
+func WithUpstreamTLS(cfg *tls.Config) Option {
+	return func(o *options) {
+		o.upstreamTLS = cfg
+	}
+}
+
 type MaxConnectionAttempts int
 
 const (
@@ -50,12 +63,19 @@ func New(
 	getDestination func(r *http.Request) (*pool.Destination, error),
 	connLimitConfig *ConnectionLimitConfig,
 	disableKeepAlives bool,
+	opts ...Option,
 ) *Proxy {
+	var cfg options
+	for _, o := range opts {
+		o(&cfg)
+	}
+
 	p := pool.New(
 		maxClientConns,
 		int(maxConnectionAttempts),
 		idleTimeout,
 		disableKeepAlives,
+		cfg.upstreamTLS,
 	)
 
 	proxy := &Proxy{
@@ -106,6 +126,29 @@ func (p *Proxy) ListenAndServe(ctx context.Context) error {
 	}
 
 	return p.Serve(l)
+}
+
+func (p *Proxy) ListenAndServeTLS(ctx context.Context, certFile, keyFile string) error {
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return fmt.Errorf("load proxy TLS cert: %w", err)
+	}
+
+	tlsCfg := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+		NextProtos:   []string{"h2", "http/1.1"},
+	}
+
+	var lisCfg net.ListenConfig
+	l, err := lisCfg.Listen(ctx, "tcp", p.Addr)
+	if err != nil {
+		return err
+	}
+
+	tlsListener := tls.NewListener(l, tlsCfg)
+
+	return p.Serve(tlsListener)
 }
 
 func (p *Proxy) Serve(l net.Listener) error {
