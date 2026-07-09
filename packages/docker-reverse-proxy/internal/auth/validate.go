@@ -7,6 +7,8 @@ import (
 	"log"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -30,20 +32,22 @@ func Validate(ctx context.Context, sqlcDB *client.Client, token, envID string) (
 	return exists, nil
 }
 
-func ValidateAccessToken(ctx context.Context, db *authdb.Client, accessToken string) bool {
+// ValidateAccessToken verifies the token format and DB presence and returns
+// the owning user ID so callers can evaluate per-user feature flags.
+func ValidateAccessToken(ctx context.Context, db *authdb.Client, accessToken string) (uuid.UUID, bool) {
 	hashedToken, err := keys.VerifyKey(keys.AccessTokenPrefix, accessToken)
 	if err != nil {
-		return false
+		return uuid.UUID{}, false
 	}
 
-	_, err = db.Read.GetUserIDFromAccessToken(ctx, hashedToken)
+	userID, err := db.Read.GetUserIDFromAccessToken(ctx, hashedToken)
 	if err != nil {
 		log.Printf("Error while checking access token: %s\n", err.Error())
 
-		return false
+		return uuid.UUID{}, false
 	}
 
-	return true
+	return userID, true
 }
 
 func ExtractAccessToken(authHeader, authType string) (string, error) {
