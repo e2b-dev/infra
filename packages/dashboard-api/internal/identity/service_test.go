@@ -286,6 +286,63 @@ func TestServiceUserOrganizationID(t *testing.T) {
 	}
 }
 
+func TestServiceUserOrganizationID_PicksSSOOrgFromNonFirstLink(t *testing.T) {
+	t.Parallel()
+
+	userID := uuid.New()
+	orgID := uuid.New()
+	socialSubject := uuid.NewString()
+	ssoSubject := uuid.NewString()
+
+	directory := newFakeDirectory(
+		Identity{Subject: socialSubject, OrganizationID: uuid.Nil},
+		Identity{Subject: ssoSubject, OrganizationID: orgID},
+	)
+	linkage := &fakeLinkage{rows: []LinkedIdentity{
+		{Issuer: issuerA, Subject: socialSubject, UserID: userID},
+		{Issuer: issuerA, Subject: ssoSubject, UserID: userID},
+	}}
+
+	svc, err := NewService(map[string]Directory{issuerA: directory}, linkage)
+	if err != nil {
+		t.Fatalf("failed to build service: %v", err)
+	}
+
+	got, err := svc.UserOrganizationID(t.Context(), userID)
+	if err != nil {
+		t.Fatalf("UserOrganizationID returned error: %v", err)
+	}
+	if got != orgID {
+		t.Fatalf("expected organization %s, got %s", orgID, got)
+	}
+}
+
+func TestServiceUserOrganizationID_RejectsMultipleOrgs(t *testing.T) {
+	t.Parallel()
+
+	userID := uuid.New()
+	subjectA := uuid.NewString()
+	subjectB := uuid.NewString()
+
+	directory := newFakeDirectory(
+		Identity{Subject: subjectA, OrganizationID: uuid.New()},
+		Identity{Subject: subjectB, OrganizationID: uuid.New()},
+	)
+	linkage := &fakeLinkage{rows: []LinkedIdentity{
+		{Issuer: issuerA, Subject: subjectA, UserID: userID},
+		{Issuer: issuerA, Subject: subjectB, UserID: userID},
+	}}
+
+	svc, err := NewService(map[string]Directory{issuerA: directory}, linkage)
+	if err != nil {
+		t.Fatalf("failed to build service: %v", err)
+	}
+
+	if _, err := svc.UserOrganizationID(t.Context(), userID); err == nil {
+		t.Fatal("expected error for multiple SSO organizations")
+	}
+}
+
 func TestServiceTeamCreatorContext(t *testing.T) {
 	t.Parallel()
 

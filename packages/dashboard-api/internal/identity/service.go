@@ -117,7 +117,45 @@ func (s *service) UserOrganizationID(ctx context.Context, userID uuid.UUID) (uui
 		return uuid.Nil, nil
 	}
 
-	return s.IdentityOrganizationID(ctx, linked[0].Issuer, linked[0].Subject)
+	byIssuer := make(map[string][]LinkedIdentity, len(s.issuers))
+	for _, row := range linked {
+		byIssuer[row.Issuer] = append(byIssuer[row.Issuer], row)
+	}
+
+	var orgID uuid.UUID
+	for _, issuer := range s.issuers {
+		rows, ok := byIssuer[issuer]
+		if !ok {
+			continue
+		}
+
+		directory, err := s.directoryForIssuer(issuer)
+		if err != nil {
+			return uuid.Nil, err
+		}
+
+		subjects := make([]string, 0, len(rows))
+		for _, row := range rows {
+			subjects = append(subjects, row.Subject)
+		}
+
+		identities, err := directory.ListIdentities(ctx, subjects)
+		if err != nil {
+			return uuid.Nil, err
+		}
+
+		for _, identity := range identities {
+			if identity.OrganizationID == uuid.Nil {
+				continue
+			}
+			if orgID != uuid.Nil && orgID != identity.OrganizationID {
+				return uuid.Nil, fmt.Errorf("multiple SSO organizations for user %s", userID)
+			}
+			orgID = identity.OrganizationID
+		}
+	}
+
+	return orgID, nil
 }
 
 func (s *service) TeamCreatorContext(ctx context.Context, userID uuid.UUID) (*sharedteamprovision.CreatorContextV1, error) {
