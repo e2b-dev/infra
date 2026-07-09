@@ -14,7 +14,7 @@ on:
         default: true
       full-matrix:
         type: boolean
-        description: "Run all compression configs. When false, only the production-like zstd1 config runs (used on PRs to save ~2/3 of runner time; the full matrix still runs on main)."
+        description: "When true (main), run the whole suite once per compression config. When false (PRs), run only the production-like zstd1 config, split into package shards on parallel runners to cut wall time."
         required: false
         default: true
     secrets:
@@ -30,19 +30,28 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The full 3-config matrix (uncompressed/zstd1/lz4) runs on push to
-        # main. PRs run only zstd1 (the production-like config) since most
-        # tests don't depend on compression/dedup/memfd settings, and each
-        # shard repeats the whole build+services+suite pipeline (~20 min).
+        # On push to main, the full 3-config matrix (uncompressed/zstd1/lz4)
+        # runs the whole suite per config, as before.
+        #
+        # On PRs, only the production-like zstd1 config runs (most tests don't
+        # depend on compression/dedup/memfd settings), but the suite is split
+        # into package shards on parallel runners. Each host saturates at
+        # go test -parallel=4 (Firecracker boots + zstd compression), so the
+        # only way to cut wall time is more hosts: the two heaviest packages
+        # (api/templates, api/sandboxes) get dedicated runners and everything
+        # else shares the third. Shards are resolved by TEST_SHARD in
+        # tests/integration/Makefile.
         include: >-
           ${{ fromJSON(inputs.full-matrix
             && '[
-                  {"name": "uncompressed", "compress_enabled": "false", "compress_type": "", "compress_level": "", "compress_workers": "", "dedup_mode": "default", "disable_memfd": "true"},
-                  {"name": "zstd1", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"},
-                  {"name": "lz4", "compress_enabled": "true", "compress_type": "lz4", "compress_level": "0", "compress_workers": "8", "dedup_mode": "direct_io", "disable_memfd": "false"}
+                  {"name": "uncompressed", "shard": "all", "compress_enabled": "false", "compress_type": "", "compress_level": "", "compress_workers": "", "dedup_mode": "default", "disable_memfd": "true"},
+                  {"name": "zstd1", "shard": "all", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"},
+                  {"name": "lz4", "shard": "all", "compress_enabled": "true", "compress_type": "lz4", "compress_level": "0", "compress_workers": "8", "dedup_mode": "direct_io", "disable_memfd": "false"}
                 ]'
             || '[
-                  {"name": "zstd1", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"}
+                  {"name": "zstd1-templates", "shard": "templates", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"},
+                  {"name": "zstd1-sandboxes", "shard": "sandboxes", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"},
+                  {"name": "zstd1-rest", "shard": "rest", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"}
                 ]') }}
     env:
       # Surfaced as env so upload steps can gate on presence (skipped on fork PRs).
@@ -57,6 +66,11 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v5
+
+      # Kick off the database containers first: their image pulls and boots
+      # run in the background and overlap with the package builds below.
+      - name: Start Databases
+        uses: ./.github/actions/start-databases
 
       - name: Build Packages
         uses: ./.github/actions/build-packages
@@ -90,13 +104,14 @@ jobs:
           TESTS_ENVD_PROXY: "http://localhost:3002"
           TESTS_CLIENT_PROXY: "http://localhost:3002"
           # Keep go test -parallel at 4: the host is the bottleneck, not
-          # client-side concurrency. Measured on the zstd1 shard: at 8 the
+          # client-side concurrency. Measured on the zstd1 config: at 8 the
           # per-test times inflated 70-140% (net wall win of only ~1 min) and
           # 10 template builds flaked on timeouts; at 12 concurrent FC builds
           # (x8 zstd workers each) starved envd inits into "syncing took too
-          # long" failures across 87 tests. Revisit if the compression path
-          # gets cheaper or the runners get more CPU.
+          # long" failures across 87 tests. Wall time is cut by sharding
+          # across runners instead (see the matrix above).
           TEST_PARALLELISM: "4"
+          TEST_SHARD: ${{ matrix.shard }}
         run: |
           # Run the integration tests
           make test-integration

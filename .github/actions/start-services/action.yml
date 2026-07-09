@@ -30,38 +30,10 @@ inputs:
 runs:
   using: "composite"
   steps:
-    # Start all database containers up front without waiting, so they boot
-    # concurrently (and overlap with the migrator image build below) instead
-    # of serially blocking on each other's health checks.
-    - name: Start Database Containers
-      env:
-        CLICKHOUSE_USERNAME: "e2b"
-        CLICKHOUSE_PASSWORD: "clickity-clicky-click"
-        CLICKHOUSE_PORT: "9000"
-        CLICKHOUSE_DATABASE: "default"
-      run: |
-        docker run -d --name postgres \
-                      -e POSTGRES_USER=postgres \
-                      -e POSTGRES_PASSWORD=local \
-                      -e POSTGRES_DB=mydatabase \
-                      -p 5432:5432 \
-                      --health-cmd="pg_isready -U postgres" \
-                      --health-interval=5s \
-                      --health-timeout=2s \
-                      --health-retries=5 \
-                      postgres:18
-
-        docker run -d --name redis \
-              -p 6379:6379 \
-              --health-cmd="redis-cli ping" \
-              --health-interval=5s \
-              --health-timeout=2s \
-              --health-retries=5 \
-              redis:8
-
-        make -C packages/clickhouse run &
-      shell: bash
-
+    # The postgres/clickhouse/redis containers were already kicked off in the
+    # background by the start-databases action (early in the job, so their
+    # pulls and boots overlapped with the package builds). Here we build the
+    # migrator image, wait for database health, and migrate.
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v4
 
