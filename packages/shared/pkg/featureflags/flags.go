@@ -503,6 +503,19 @@ var (
 	// ClickHouse endpoints (CLICKHOUSE_CONNECTION_STRINGS). Default DSN
 	// is unaffected.
 	ClickhouseWriteFanoutFlag = NewBoolFlag("clickhouse-write-fanout", false)
+
+	// ClickhouseMaxIdleConns sets the driver pool's idle connection cap.
+	// Read once at driver creation. Higher values keep connections warm for
+	// bursty batcher flushes instead of paying the handshake on each flush.
+	ClickhouseMaxIdleConns = NewIntFlag("clickhouse-max-idle-conns", 8)
+
+	// ClickhouseBatcherAsyncInsert is a kill-switch for server-side async
+	// inserts on batched app writes. When false, the batchers set
+	// async_insert=0 to skip the server-side async buffer — the client
+	// batches are already large Native blocks, so the extra buffering layer
+	// only adds flush latency. Default true preserves current behavior
+	// (server default async_insert=1).
+	ClickhouseBatcherAsyncInsertFlag = NewBoolFlag("clickhouse-batcher-async-insert", true)
 )
 
 // ResolveFirecrackerVersion resolves the firecracker version using the FirecrackerVersions feature flag.

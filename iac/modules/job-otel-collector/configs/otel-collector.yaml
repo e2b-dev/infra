@@ -204,8 +204,9 @@ processors:
     timeout: 5s
 
   batch/clickhouse:
-    timeout: 5s
+    timeout: 15s
     send_batch_size: 50000
+    send_batch_max_size: 100000
 
 %{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
   batch/gcp_telemetry:
@@ -270,7 +271,9 @@ processors:
       include:
         match_type: regexp
         metric_names:
-          - "e2b.*"
+          # Keep only external e2b metrics consumed by downstream pipelines
+          # today. New e2b.* namespaces must be added here intentionally.
+          - "^e2b\\.(sandbox|team)\\..*$"
 
   metricstransform/single_cpu:
     transforms:

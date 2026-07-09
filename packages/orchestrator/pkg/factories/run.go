@@ -474,7 +474,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	// the unsuffixed default batcher names to preserve pre-multi-endpoint
 	// behavior and existing dashboards/alerts.
 	if config.ClickhouseConnectionString != "" {
-		clickhouseConn, err := clickhouse.NewDriver(config.ClickhouseConnectionString)
+		clickhouseConn, err := clickhouse.NewDriverWithFeatureFlags(ctx, config.ClickhouseConnectionString, featureFlags)
 		if err != nil {
 			logger.L().Fatal(ctx, "failed to create clickhouse driver", zap.Error(err))
 		}
@@ -538,7 +538,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 				continue
 			}
 
-			clickhouseConn, err := clickhouse.NewDriver(dsn)
+			clickhouseConn, err := clickhouse.NewDriverWithFeatureFlags(ctx, dsn, featureFlags)
 			if err != nil {
 				logger.L().Error(ctx, "failed to create clickhouse driver, skipping endpoint",
 					zap.String("endpoint", label),

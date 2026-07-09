@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -43,6 +44,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 type ClickhouseDelivery struct {
 	batcher *batcher.Batcher[SandboxHostStat]
 	conn    driver.Conn
+	ff      *featureflags.Client
 }
 
 type GatedClickhouseDelivery struct {
@@ -66,7 +68,7 @@ func NewDefaultClickhouseHostStatsDelivery(
 	batcherQueueSize := featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherQueueSize)
 
 	return NewClickhouseHostStatsDelivery(
-		ctx, conn, batcher.BatcherOptions{
+		ctx, conn, featureFlags, batcher.BatcherOptions{
 			Name:         batcherName,
 			MaxBatchSize: maxBatchSize,
 			MaxDelay:     maxDelay,
@@ -85,9 +87,10 @@ func NewGatedDelivery(inner *ClickhouseDelivery, featureFlags *featureflags.Clie
 func NewClickhouseHostStatsDelivery(
 	ctx context.Context,
 	conn driver.Conn,
+	featureFlags *featureflags.Client,
 	opts batcher.BatcherOptions,
 ) (*ClickhouseDelivery, error) {
-	delivery := &ClickhouseDelivery{conn: conn}
+	delivery := &ClickhouseDelivery{conn: conn, ff: featureFlags}
 
 	var err error
 	delivery.batcher, err = batcher.NewBatcher(delivery.batchInserter, opts)
@@ -123,6 +126,12 @@ func (c *ClickhouseDelivery) batchInserter(ctx context.Context, stats []SandboxH
 	attrs := trace.WithAttributes(attribute.Int("batch.size", len(stats)))
 	ctx, span := tracer.Start(ctx, "Flush host stats batch to Clickhouse", attrs)
 	defer span.End()
+
+	// Client batches are already large Native blocks, so the server-side async
+	// buffer only adds flush latency. Kill-switch skips it (default keeps it).
+	if c.ff != nil && !c.ff.BoolFlag(ctx, featureflags.ClickhouseBatcherAsyncInsertFlag) {
+		ctx = clickhouse.Context(ctx, clickhouse.WithSettings(clickhouse.Settings{"async_insert": 0}))
+	}
 
 	batch, err := c.conn.PrepareBatch(ctx, InsertSandboxHostStatQuery, driver.WithReleaseConnection())
 	if err != nil {
