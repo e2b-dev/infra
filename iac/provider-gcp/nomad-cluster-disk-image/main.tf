@@ -1,8 +1,10 @@
 terraform {
-  required_version = ">= 1.5.0, < 1.6.0"
+  required_version = ">=1.5.0"
+
   backend "gcs" {
     prefix = "terraform/cluster-disk-image/state"
   }
+
   required_providers {
     google = {
       source  = "hashicorp/google"
@@ -23,7 +25,7 @@ resource "google_compute_network" "packer_network" {
 
 resource "google_compute_subnetwork" "packer_subnetwork" {
   ip_cidr_range = "10.0.0.0/8"
-  name          = "${var.network_name}-subnetwork"
+  name          = var.subnet_name
   network       = google_compute_network.packer_network.id
 
   log_config {

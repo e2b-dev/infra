@@ -16,8 +16,11 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth/oidc"
 	authtypes "github.com/e2b-dev/infra/packages/auth/pkg/types"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -67,7 +70,7 @@ func TestRequireAuthedTeamMatchesPath_Success(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(recorder)
 
 	teamID := uuid.New()
-	auth.SetTeamInfo(ctx, &authtypes.Team{
+	auth.SetTeamInfoForTest(t, ctx, &authtypes.Team{
 		Team: &authqueries.Team{ID: teamID},
 	})
 
@@ -84,7 +87,7 @@ func TestRequireAuthedTeamMatchesPath_Mismatch(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
 
-	auth.SetTeamInfo(ctx, &authtypes.Team{
+	auth.SetTeamInfoForTest(t, ctx, &authtypes.Team{
 		Team: &authqueries.Team{ID: uuid.New()},
 	})
 
@@ -117,12 +120,16 @@ func TestPostTeamsTeamIDMembers_DuplicateMemberReturnsBadRequest(t *testing.T) {
 	request.Header.Set("Content-Type", "application/json")
 	ginCtx.Request = request
 
-	auth.SetUserID(ginCtx, addedByUserID)
-	auth.SetTeamInfo(ginCtx, &authtypes.Team{
+	auth.SetUserIDForTest(t, ginCtx, addedByUserID)
+	auth.SetTeamInfoForTest(t, ginCtx, &authtypes.Team{
 		Team: &authqueries.Team{ID: teamID},
 	})
 
-	store := &APIStore{db: testDB.SqlcClient}
+	store := &APIStore{
+		db:           testDB.SqlcClient,
+		authDB:       testDB.AuthDB,
+		userProfiles: newHandlerTestUserProfiles(),
+	}
 	store.PostTeamsTeamIDMembers(ginCtx, teamID)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -130,6 +137,53 @@ func TestPostTeamsTeamIDMembers_DuplicateMemberReturnsBadRequest(t *testing.T) {
 	}
 	if !strings.Contains(recorder.Body.String(), "User is already a member of this team") {
 		t.Fatalf("unexpected response body: %s", recorder.Body.String())
+	}
+}
+
+func TestPostTeamsTeamIDMembers_CreatesPublicUserAnchorForInvitee(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, testDB)
+	inviteeID := uuid.New()
+	addedByUserID := createHandlerTestUser(t, testDB)
+	inviteeEmail := handlerTestUserEmail(inviteeID)
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	body := `{"email":"` + inviteeEmail + `"}`
+	request := httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	ginCtx.Request = request
+
+	auth.SetUserIDForTest(t, ginCtx, addedByUserID)
+	auth.SetTeamInfoForTest(t, ginCtx, &authtypes.Team{
+		Team: &authqueries.Team{ID: teamID},
+	})
+
+	store := &APIStore{
+		db:           testDB.SqlcClient,
+		authDB:       testDB.AuthDB,
+		authService:  noopAuthService{},
+		userProfiles: newHandlerTestUserProfiles(),
+	}
+	store.PostTeamsTeamIDMembers(ginCtx, teamID)
+
+	if ginCtx.Writer.Status() != http.StatusCreated {
+		t.Fatalf("expected status 201, got %d: %s", ginCtx.Writer.Status(), recorder.Body.String())
+	}
+
+	if _, err := testDB.SqlcClient.GetPublicUserID(ctx, inviteeID); err != nil {
+		t.Fatalf("expected public user anchor to be created: %v", err)
+	}
+
+	if _, err := testDB.SqlcClient.GetTeamMemberRelation(ctx, queries.GetTeamMemberRelationParams{
+		TeamID: teamID,
+		UserID: inviteeID,
+	}); err != nil {
+		t.Fatalf("expected invitee team member relation: %v", err)
 	}
 }
 
@@ -144,7 +198,7 @@ func TestDeleteTeamsTeamIDMembersUserId_NonMemberReturnsBadRequest(t *testing.T)
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodDelete, "/", nil)
-	auth.SetTeamInfo(ginCtx, &authtypes.Team{
+	auth.SetTeamInfoForTest(t, ginCtx, &authtypes.Team{
 		Team: &authqueries.Team{ID: teamID},
 	})
 
@@ -197,7 +251,7 @@ func TestDeleteTeamsTeamIDMembersUserId_RechecksDefaultAfterLock(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodDelete, "/", nil)
-	auth.SetTeamInfo(ginCtx, &authtypes.Team{
+	auth.SetTeamInfoForTest(t, ginCtx, &authtypes.Team{
 		Team: &authqueries.Team{ID: teamID},
 	})
 
@@ -213,6 +267,17 @@ func TestDeleteTeamsTeamIDMembersUserId_RechecksDefaultAfterLock(t *testing.T) {
 	case <-done:
 		t.Fatalf("expected delete handler to wait for the locked member row")
 	case <-time.After(100 * time.Millisecond):
+	}
+
+	_, err = tx.Exec(
+		ctx,
+		`UPDATE public.users_teams
+		SET is_default = false
+		WHERE user_id = $1 AND is_default = true`,
+		targetUserID,
+	)
+	if err != nil {
+		t.Fatalf("failed to clear target default team member: %v", err)
 	}
 
 	_, err = tx.Exec(
@@ -275,13 +340,28 @@ func createHandlerTestUserWithCreatedAt(t *testing.T, db *testutils.Database, cr
 
 	userID := uuid.New()
 	email := handlerTestUserEmail(userID)
+	_ = createdAt
 
-	err := db.SupabaseDB.TestsRawSQL(t.Context(), `
-INSERT INTO auth.users (id, email, created_at)
-VALUES ($1, $2, $3)
-`, userID, email, createdAt)
+	if err := db.AuthDB.Write.UpsertPublicUser(t.Context(), userID); err != nil {
+		t.Fatalf("failed to create public user: %v", err)
+	}
+
+	team, err := db.AuthDB.Write.CreateTeam(t.Context(), authqueries.CreateTeamParams{
+		Name:  email,
+		Tier:  baseTierID,
+		Email: email,
+	})
 	if err != nil {
-		t.Fatalf("failed to create test user: %v", err)
+		t.Fatalf("failed to create default team: %v", err)
+	}
+
+	if err := db.AuthDB.Write.CreateTeamMembership(t.Context(), authqueries.CreateTeamMembershipParams{
+		UserID:    userID,
+		TeamID:    team.ID,
+		IsDefault: true,
+		AddedBy:   nil,
+	}); err != nil {
+		t.Fatalf("failed to create default team membership: %v", err)
 	}
 
 	return userID
@@ -291,10 +371,116 @@ func handlerTestUserEmail(userID uuid.UUID) string {
 	return "user-" + userID.String() + "@example.com"
 }
 
+type handlerTestUserProfiles struct{}
+
+func newHandlerTestUserProfiles() userprofile.Provider {
+	return handlerTestUserProfiles{}
+}
+
+func (handlerTestUserProfiles) GetProfilesByUserID(_ context.Context, userIDs []uuid.UUID) (map[uuid.UUID]userprofile.Profile, error) {
+	profiles := make(map[uuid.UUID]userprofile.Profile, len(userIDs))
+	for _, userID := range userIDs {
+		if userID == uuid.Nil {
+			continue
+		}
+		profiles[userID] = userprofile.Profile{
+			UserID: userID,
+			Email:  handlerTestUserEmail(userID),
+		}
+	}
+
+	return profiles, nil
+}
+
+func (handlerTestUserProfiles) FindProfilesByEmail(_ context.Context, email string) ([]userprofile.Profile, error) {
+	userIDText := strings.TrimSuffix(strings.TrimPrefix(email, "user-"), "@example.com")
+	userID, _ := uuid.Parse(userIDText)
+	if userID == uuid.Nil {
+		return []userprofile.Profile{}, nil
+	}
+
+	return []userprofile.Profile{{
+		UserID: userID,
+		Email:  email,
+	}}, nil
+}
+
+func (handlerTestUserProfiles) GetTeamCreatorContext(context.Context, uuid.UUID) (*teamprovision.CreatorContextV1, error) {
+	return nil, nil
+}
+
+func (handlerTestUserProfiles) SetIdentityExternalID(context.Context, string, uuid.UUID) error {
+	return nil
+}
+
+func (handlerTestUserProfiles) PrepareDeleteUser(context.Context, uuid.UUID) (userprofile.DeleteUserHandle, error) {
+	return nil, nil
+}
+
+func TestDefaultTeamNameFromProfile(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		profile userprofile.Profile
+		want    string
+	}{
+		{
+			name: "profile name",
+			profile: userprofile.Profile{
+				Email: "fallback@example.com",
+				Name:  "ada",
+			},
+			want: "Ada's Default Team",
+		},
+		{
+			name: "profile full name first word",
+			profile: userprofile.Profile{
+				Email: "fallback@example.com",
+				Name:  "grace hopper",
+			},
+			want: "Grace's Default Team",
+		},
+		{
+			name: "email prefix",
+			profile: userprofile.Profile{
+				Email: "barbara@example.com",
+			},
+			want: "Barbara's Default Team",
+		},
+		{
+			name:    "no base name",
+			profile: userprofile.Profile{},
+			want:    "Default Team",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := defaultTeamNameFromProfile(tt.profile)
+			if got != tt.want {
+				t.Fatalf("defaultTeamNameFromProfile() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func insertHandlerTestTeamMember(t *testing.T, db *testutils.Database, userID, teamID uuid.UUID, isDefault bool) {
 	t.Helper()
 
-	err := db.AuthDb.TestsRawSQL(t.Context(), `
+	if isDefault {
+		if err := db.AuthDB.TestsRawSQL(t.Context(), `
+UPDATE public.users_teams
+SET is_default = false
+WHERE user_id = $1
+`, userID); err != nil {
+			t.Fatalf("failed to clear default team member relation: %v", err)
+		}
+	}
+
+	err := db.AuthDB.TestsRawSQL(t.Context(), `
 INSERT INTO public.users_teams (user_id, team_id, is_default)
 VALUES ($1, $2, $3)
 `, userID, teamID, isDefault)
@@ -303,163 +489,506 @@ VALUES ($1, $2, $3)
 	}
 }
 
-func TestPostUsersBootstrap_CreatesDefaultTeamAndCallsSink(t *testing.T) {
+func TestBootstrapAuthProviderUser_CreatesIdentityAndDefaultTeam(t *testing.T) {
 	t.Parallel()
 
 	testDB := testutils.SetupDatabase(t)
 	ctx := t.Context()
-	userID := createHandlerTestUser(t, testDB)
 	sink := &fakeTeamProvisionSink{}
 
-	existingTeam, err := testDB.AuthDB.Write.GetDefaultTeamByUserID(ctx, userID)
-	if err != nil {
-		t.Fatalf("expected trigger-created default team: %v", err)
-	}
-	if err := testDB.AuthDB.Write.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
-		t.Fatalf("failed to remove trigger-created default team: %v", err)
-	}
-	if err := testDB.AuthDB.Write.DeletePublicUser(ctx, userID); err != nil {
-		t.Fatalf("failed to remove trigger-created public user: %v", err)
-	}
-
-	recorder := httptest.NewRecorder()
-	ginCtx, _ := gin.CreateTestContext(recorder)
-	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", nil)
-
 	store := &APIStore{
+		config: cfg.Config{
+			OryIssuerURL: "https://ory.example.test",
+			AuthProvider: auth.ProviderConfig{
+				JWT: []oidc.Config{
+					{
+						Issuer: oidc.Issuer{
+							URL:       "https://ory.example.test",
+							Audiences: []string{"https://dashboard-api.example.test"},
+						},
+					},
+				},
+			},
+		},
 		db:                testDB.SqlcClient,
 		authDB:            testDB.AuthDB,
-		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
-	}
-	store.PostAdminUsersUserIdBootstrap(ginCtx, userID)
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", recorder.Code)
+		userProfiles:      newHandlerTestUserProfiles(),
 	}
 
-	team, err := testDB.AuthDB.Write.GetDefaultTeamByUserID(ctx, userID)
+	input := oidcUserBootstrapInput{
+		OIDCIssuer:      "https://ory.example.test",
+		OIDCUserID:      uuid.NewString(),
+		OIDCUserEmail:   "ada@example.test",
+		OIDCUserName:    nil,
+		SignupIP:        "198.51.100.20",
+		SignupUserAgent: "Mozilla/5.0",
+	}
+
+	team, err := store.bootstrapOIDCUser(ctx, input)
+	if err != nil {
+		t.Fatalf("expected bootstrap to succeed: %v", err)
+	}
+
+	userIdentity, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+		OidcIss: input.OIDCIssuer,
+		OidcSub: input.OIDCUserID,
+	})
+	if err != nil {
+		t.Fatalf("expected user identity to be created: %v", err)
+	}
+
+	defaultTeam, err := testDB.AuthDB.Read.GetDefaultTeamByUserID(ctx, userIdentity.UserID)
 	if err != nil {
 		t.Fatalf("expected default team to be created: %v", err)
+	}
+	if defaultTeam.ID != team.ID {
+		t.Fatalf("expected response team %s, got %s", defaultTeam.ID, team.ID)
+	}
+	if defaultTeam.Name != "Default Team" {
+		t.Fatalf("expected team name %q, got %q", "Default Team", defaultTeam.Name)
+	}
+	if defaultTeam.Email != "ada@example.test" {
+		t.Fatalf("expected team email %q, got %q", "ada@example.test", defaultTeam.Email)
 	}
 
 	if len(sink.requests) != 1 {
 		t.Fatalf("expected one billing provisioning call, got %d", len(sink.requests))
 	}
-
-	req := sink.requests[0]
-	if req.TeamID != team.ID {
-		t.Fatalf("expected sink team id %s, got %s", team.ID, req.TeamID)
+	if sink.requests[0].CreatorUserID != userIdentity.UserID {
+		t.Fatalf("expected sink creator %s, got %s", userIdentity.UserID, sink.requests[0].CreatorUserID)
 	}
-	if req.Reason != teamprovision.ReasonDefaultSignupTeam {
-		t.Fatalf("expected default signup reason, got %s", req.Reason)
+	if sink.requests[0].CreatorContext == nil {
+		t.Fatal("expected sink creator context")
 	}
-
-	var responseBody map[string]any
-	if err := json.Unmarshal(recorder.Body.Bytes(), &responseBody); err != nil {
-		t.Fatalf("failed to parse response body: %v", err)
+	if sink.requests[0].CreatorContext.IPAddress != "198.51.100.20" {
+		t.Fatalf("expected sink creator ip %q, got %q", "198.51.100.20", sink.requests[0].CreatorContext.IPAddress)
 	}
-	if responseBody["slug"] != team.Slug {
-		t.Fatalf("expected slug %s, got %v", team.Slug, responseBody["slug"])
+	if sink.requests[0].CreatorContext.UserAgent != "Mozilla/5.0" {
+		t.Fatalf("expected sink creator user agent %q, got %q", "Mozilla/5.0", sink.requests[0].CreatorContext.UserAgent)
+	}
+	if sink.requests[0].CreatorContext.AuthMethod != teamprovision.AuthMethodSocial {
+		t.Fatalf("expected sink creator auth method %q, got %q", teamprovision.AuthMethodSocial, sink.requests[0].CreatorContext.AuthMethod)
 	}
 }
 
-func TestPostUsersBootstrap_ProvisioningFailureKeepsCreatedDefaultTeam(t *testing.T) {
+type recordingUserProfiles struct {
+	handlerTestUserProfiles
+
+	externalIDSubject string
+	externalID        uuid.UUID
+	externalIDCalls   int
+}
+
+func (r *recordingUserProfiles) SetIdentityExternalID(_ context.Context, subject string, externalID uuid.UUID) error {
+	r.externalIDSubject = subject
+	r.externalID = externalID
+	r.externalIDCalls++
+
+	return nil
+}
+
+func TestBootstrapOIDCUser_PopulatesOryExternalID(t *testing.T) {
 	t.Parallel()
 
 	testDB := testutils.SetupDatabase(t)
 	ctx := t.Context()
-	userID := createHandlerTestUser(t, testDB)
-	sink := &fakeTeamProvisionSink{
-		err: &internalteamprovision.ProvisionError{
-			StatusCode: http.StatusInternalServerError,
-			Message:    "boom",
-		},
-	}
-
-	existingTeam, err := testDB.AuthDB.Write.GetDefaultTeamByUserID(ctx, userID)
-	if err != nil {
-		t.Fatalf("expected trigger-created default team: %v", err)
-	}
-	if err := testDB.AuthDB.Write.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
-		t.Fatalf("failed to remove trigger-created default team: %v", err)
-	}
-	if err := testDB.AuthDB.Write.DeletePublicUser(ctx, userID); err != nil {
-		t.Fatalf("failed to remove trigger-created public user: %v", err)
-	}
-
-	recorder := httptest.NewRecorder()
-	ginCtx, _ := gin.CreateTestContext(recorder)
-	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", nil)
+	sink := &fakeTeamProvisionSink{}
+	profiles := &recordingUserProfiles{}
 
 	store := &APIStore{
+		config: cfg.Config{
+			OryIssuerURL: "https://ory.example.test",
+		},
 		db:                testDB.SqlcClient,
 		authDB:            testDB.AuthDB,
-		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
-	}
-	store.PostAdminUsersUserIdBootstrap(ginCtx, userID)
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", recorder.Code)
-	}
-	if len(sink.requests) != 1 {
-		t.Fatalf("expected one provisioning call, got %d", len(sink.requests))
+		userProfiles:      profiles,
 	}
 
-	team, err := testDB.AuthDB.Write.GetDefaultTeamByUserID(ctx, userID)
+	input := oidcUserBootstrapInput{
+		OIDCIssuer:    "https://ory.example.test",
+		OIDCUserID:    uuid.NewString(),
+		OIDCUserEmail: "ada@example.test",
+	}
+
+	if _, err := store.bootstrapOIDCUser(ctx, input); err != nil {
+		t.Fatalf("expected bootstrap to succeed: %v", err)
+	}
+
+	userIdentity, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+		OidcIss: input.OIDCIssuer,
+		OidcSub: input.OIDCUserID,
+	})
 	if err != nil {
-		t.Fatalf("expected default team to remain after provisioning failure: %v", err)
+		t.Fatalf("expected user identity to be created: %v", err)
 	}
 
-	rows, err := testDB.AuthDB.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
-	if err != nil {
-		t.Fatalf("failed to query user teams: %v", err)
+	if profiles.externalIDCalls != 1 {
+		t.Fatalf("expected one external id update, got %d", profiles.externalIDCalls)
 	}
-	if len(rows) != 1 {
-		t.Fatalf("expected one default team to remain, got %d rows", len(rows))
+	if profiles.externalIDSubject != input.OIDCUserID {
+		t.Fatalf("expected external id set on subject %q, got %q", input.OIDCUserID, profiles.externalIDSubject)
 	}
-	if rows[0].Team.ID != team.ID {
-		t.Fatalf("expected remaining team %s, got %s", team.ID, rows[0].Team.ID)
-	}
-	if !rows[0].IsDefault {
-		t.Fatal("expected remaining team to be the default team")
+	if profiles.externalID != userIdentity.UserID {
+		t.Fatalf("expected external id %s, got %s", userIdentity.UserID, profiles.externalID)
 	}
 }
 
-func TestPostUsersBootstrap_UnknownUserReturnsNotFound(t *testing.T) {
+// failingUserProfiles fails the Ory external_id PATCH to simulate the IdP being
+// unavailable after the bootstrap transaction has already committed.
+type failingUserProfiles struct {
+	handlerTestUserProfiles
+
+	externalIDCalls int
+}
+
+func (f *failingUserProfiles) SetIdentityExternalID(context.Context, string, uuid.UUID) error {
+	f.externalIDCalls++
+
+	return errors.New("ory unavailable")
+}
+
+// A failed external_id PATCH must not roll back the committed user/identity/team.
+// The PATCH now runs after the transaction commits, so the user stays provisioned
+// and the next login can backfill external_id rather than being stranded.
+func TestBootstrapOIDCUser_ExternalIDFailureKeepsUserProvisioned(t *testing.T) {
 	t.Parallel()
 
 	testDB := testutils.SetupDatabase(t)
 	ctx := t.Context()
-	userID := uuid.New()
+	sink := &fakeTeamProvisionSink{}
+	profiles := &failingUserProfiles{}
+
+	store := &APIStore{
+		config:            cfg.Config{OryIssuerURL: "https://ory.example.test"},
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDB,
+		teamProvisionSink: sink,
+		userProfiles:      profiles,
+	}
+
+	input := oidcUserBootstrapInput{
+		OIDCIssuer:    "https://ory.example.test",
+		OIDCUserID:    uuid.NewString(),
+		OIDCUserEmail: "ada@example.test",
+	}
+
+	if _, err := store.bootstrapOIDCUser(ctx, input); err == nil {
+		t.Fatal("expected bootstrap to fail when external_id patch fails")
+	}
+	if profiles.externalIDCalls != 1 {
+		t.Fatalf("expected one external id attempt, got %d", profiles.externalIDCalls)
+	}
+
+	userIdentity, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+		OidcIss: input.OIDCIssuer,
+		OidcSub: input.OIDCUserID,
+	})
+	if err != nil {
+		t.Fatalf("expected user identity to survive external_id failure: %v", err)
+	}
+	if _, err := testDB.AuthDB.Read.GetDefaultTeamByUserID(ctx, userIdentity.UserID); err != nil {
+		t.Fatalf("expected default team to survive external_id failure: %v", err)
+	}
+
+	// The billing event must be emitted before the external_id backfill, otherwise
+	// a PATCH failure leaves the committed team billing-orphaned.
+	if len(sink.requests) != 1 {
+		t.Fatalf("expected one billing provisioning call despite external_id failure, got %d", len(sink.requests))
+	}
+}
+
+// A user provisioned by a prior bootstrap whose external_id PATCH failed re-runs
+// here on the next login; the existing-team path re-asserts the PATCH and
+// backfills external_id without creating a duplicate team.
+func TestBootstrapOIDCUser_ReRunBackfillsExternalID(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
 	sink := &fakeTeamProvisionSink{}
 
-	recorder := httptest.NewRecorder()
-	ginCtx, _ := gin.CreateTestContext(recorder)
-	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", nil)
-
 	store := &APIStore{
+		config:            cfg.Config{OryIssuerURL: "https://ory.example.test"},
 		db:                testDB.SqlcClient,
 		authDB:            testDB.AuthDB,
-		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
+		userProfiles:      &failingUserProfiles{},
 	}
-	store.PostAdminUsersUserIdBootstrap(ginCtx, userID)
 
-	if recorder.Code != http.StatusNotFound {
-		t.Fatalf("expected status 404, got %d", recorder.Code)
+	input := oidcUserBootstrapInput{
+		OIDCIssuer:    "https://ory.example.test",
+		OIDCUserID:    uuid.NewString(),
+		OIDCUserEmail: "ada@example.test",
+	}
+
+	if _, err := store.bootstrapOIDCUser(ctx, input); err == nil {
+		t.Fatal("expected first bootstrap to fail on external_id patch")
+	}
+
+	userIdentity, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+		OidcIss: input.OIDCIssuer,
+		OidcSub: input.OIDCUserID,
+	})
+	if err != nil {
+		t.Fatalf("expected user identity from first bootstrap: %v", err)
+	}
+	existingTeam, err := testDB.AuthDB.Read.GetDefaultTeamByUserID(ctx, userIdentity.UserID)
+	if err != nil {
+		t.Fatalf("expected default team from first bootstrap: %v", err)
+	}
+
+	recording := &recordingUserProfiles{}
+	store.userProfiles = recording
+
+	secondTeam, err := store.bootstrapOIDCUser(ctx, input)
+	if err != nil {
+		t.Fatalf("expected re-run bootstrap to succeed: %v", err)
+	}
+	if secondTeam.ID != existingTeam.ID {
+		t.Fatalf("expected re-run to reuse existing team %s, got %s", existingTeam.ID, secondTeam.ID)
+	}
+	if recording.externalIDCalls != 1 {
+		t.Fatalf("expected re-run to backfill external_id once, got %d", recording.externalIDCalls)
+	}
+	if recording.externalID != userIdentity.UserID {
+		t.Fatalf("expected external id %s, got %s", userIdentity.UserID, recording.externalID)
+	}
+}
+
+func TestBootstrapOIDCUser_ConcurrentRequestsSingleIdentityAndTeam(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	sink := &fakeTeamProvisionSink{}
+
+	store := &APIStore{
+		config: cfg.Config{
+			OryIssuerURL: "https://ory.example.test",
+			AuthProvider: auth.ProviderConfig{
+				JWT: []oidc.Config{
+					{
+						Issuer: oidc.Issuer{
+							URL:       "https://ory.example.test",
+							Audiences: []string{"https://dashboard-api.example.test"},
+						},
+					},
+				},
+			},
+		},
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDB,
+		teamProvisionSink: sink,
+		userProfiles:      newHandlerTestUserProfiles(),
+	}
+
+	input := oidcUserBootstrapInput{
+		OIDCIssuer:    "https://ory.example.test",
+		OIDCUserID:    uuid.NewString(),
+		OIDCUserEmail: "ada@example.test",
+		OIDCUserName:  nil,
+	}
+
+	const concurrency = 4
+	var wg sync.WaitGroup
+	results := make(chan provisionedTeam, concurrency)
+	errs := make(chan error, concurrency)
+
+	for range concurrency {
+		wg.Go(func() {
+			team, err := store.bootstrapOIDCUser(ctx, input)
+			if err != nil {
+				errs <- err
+
+				return
+			}
+
+			results <- team
+		})
+	}
+
+	wg.Wait()
+	close(results)
+	close(errs)
+
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("expected bootstrap to succeed, got %v", err)
+		}
+	}
+
+	var teamIDs []uuid.UUID
+	for team := range results {
+		teamIDs = append(teamIDs, team.ID)
+	}
+	if len(teamIDs) != concurrency {
+		t.Fatalf("expected %d bootstrap results, got %d", concurrency, len(teamIDs))
+	}
+	for _, id := range teamIDs[1:] {
+		if id != teamIDs[0] {
+			t.Fatalf("expected all bootstrap calls to share team %s, got %s", teamIDs[0], id)
+		}
+	}
+
+	userIdentity, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+		OidcIss: input.OIDCIssuer,
+		OidcSub: input.OIDCUserID,
+	})
+	if err != nil {
+		t.Fatalf("expected single user identity to exist: %v", err)
+	}
+
+	var defaultTeamCount int
+	err = testDB.AuthDB.TestsRawSQLQuery(ctx,
+		`SELECT count(*)
+		FROM public.users_teams
+		WHERE user_id = $1 AND is_default = true`,
+		func(rows pgx.Rows) error {
+			if !rows.Next() {
+				return errors.New("missing default team count row")
+			}
+
+			return rows.Scan(&defaultTeamCount)
+		},
+		userIdentity.UserID,
+	)
+	if err != nil {
+		t.Fatalf("failed to count default team memberships: %v", err)
+	}
+	if defaultTeamCount != 1 {
+		t.Fatalf("expected exactly one default team for canonical user, got %d", defaultTeamCount)
+	}
+}
+
+func TestPostAdminUsersBootstrap_EmptyOIDCUserIDReturnsBadRequest(t *testing.T) {
+	t.Parallel()
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	ginCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader(`{"oidc_issuer":"https://ory.example.test","oidc_user_id":"   ","oidc_user_email":"ada@example.test","oidc_user_name":null}`))
+	ginCtx.Request.Header.Set("Content-Type", "application/json")
+
+	store := &APIStore{}
+	store.PostAdminUsersBootstrap(ginCtx)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400 for blank oidc_user_id, got %d", recorder.Code)
+	}
+}
+
+func TestBootstrapOIDCUser_OryIssuerWithoutJWTConfigIsAccepted(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	sink := &fakeTeamProvisionSink{}
+
+	const oryIssuer = "https://ory.example.test"
+
+	store := &APIStore{
+		config: cfg.Config{
+			OryIssuerURL: oryIssuer,
+		},
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDB,
+		teamProvisionSink: sink,
+		userProfiles:      newHandlerTestUserProfiles(),
+	}
+
+	team, err := store.bootstrapOIDCUser(ctx, oidcUserBootstrapInput{
+		OIDCIssuer:    oryIssuer,
+		OIDCUserID:    uuid.NewString(),
+		OIDCUserEmail: "ada@example.test",
+		OIDCUserName:  nil,
+	})
+	if err != nil {
+		t.Fatalf("expected bootstrap to succeed with Ory issuer but no JWT config: %v", err)
+	}
+	if team.ID == uuid.Nil {
+		t.Fatal("expected provisioned team")
+	}
+}
+
+func TestBootstrapOIDCUser_OryModeRejectsNonOryJWTIssuer(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	sink := &fakeTeamProvisionSink{}
+
+	const oryIssuer = "https://ory.example.test"
+	const otherIssuer = "https://workos.example.test"
+
+	store := &APIStore{
+		config: cfg.Config{
+			OryIssuerURL: oryIssuer,
+			AuthProvider: auth.ProviderConfig{
+				JWT: []oidc.Config{
+					{Issuer: oidc.Issuer{URL: otherIssuer}},
+				},
+			},
+		},
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDB,
+		teamProvisionSink: sink,
+		userProfiles:      newHandlerTestUserProfiles(),
+	}
+
+	_, err := store.bootstrapOIDCUser(ctx, oidcUserBootstrapInput{
+		OIDCIssuer:    otherIssuer,
+		OIDCUserID:    uuid.NewString(),
+		OIDCUserEmail: "ada@example.test",
+		OIDCUserName:  nil,
+	})
+	if err == nil {
+		t.Fatal("expected ory mode to reject a non-Ory JWT issuer at bootstrap")
+	}
+	var provErr *internalteamprovision.ProvisionError
+	if !errors.As(err, &provErr) || provErr.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected ProvisionError with status 400, got %v", err)
+	}
+}
+
+func TestBootstrapOIDCUser_UnknownIssuerReturnsBadRequest(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	sink := &fakeTeamProvisionSink{}
+
+	store := &APIStore{
+		config: cfg.Config{
+			OryIssuerURL: "https://ory.example.test",
+			AuthProvider: auth.ProviderConfig{
+				JWT: []oidc.Config{
+					{Issuer: oidc.Issuer{URL: "https://ory.example.test"}},
+				},
+			},
+		},
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDB,
+		teamProvisionSink: sink,
+		userProfiles:      newHandlerTestUserProfiles(),
+	}
+
+	_, err := store.bootstrapOIDCUser(ctx, oidcUserBootstrapInput{
+		OIDCIssuer:    "https://attacker.example.test",
+		OIDCUserID:    uuid.NewString(),
+		OIDCUserEmail: "ada@example.test",
+		OIDCUserName:  nil,
+	})
+	if err == nil {
+		t.Fatal("expected unknown issuer to be rejected")
+	}
+
+	var provErr *internalteamprovision.ProvisionError
+	if !errors.As(err, &provErr) || provErr.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected ProvisionError with status 400, got %v", err)
 	}
 	if len(sink.requests) != 0 {
 		t.Fatalf("expected no provisioning calls, got %d", len(sink.requests))
-	}
-
-	var responseBody map[string]any
-	if err := json.Unmarshal(recorder.Body.Bytes(), &responseBody); err != nil {
-		t.Fatalf("failed to parse response body: %v", err)
-	}
-	if responseBody["message"] != "User not found" {
-		t.Fatalf("expected message %q, got %v", "User not found", responseBody["message"])
 	}
 }
 
@@ -473,17 +1002,22 @@ func TestBootstrapUser_ConcurrentRequestsCreateSingleDefaultTeam(t *testing.T) {
 
 	existingTeam, err := testDB.AuthDB.Write.GetDefaultTeamByUserID(ctx, userID)
 	if err != nil {
-		t.Fatalf("expected trigger-created default team: %v", err)
+		t.Fatalf("expected default team: %v", err)
 	}
 	if err := testDB.AuthDB.Write.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
-		t.Fatalf("failed to remove trigger-created default team: %v", err)
+		t.Fatalf("failed to remove default team: %v", err)
 	}
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
 		authDB:            testDB.AuthDB,
-		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
+		userProfiles:      newHandlerTestUserProfiles(),
+	}
+	profile := bootstrapUserProfile{
+		UserID:          userID,
+		Email:           handlerTestUserEmail(userID),
+		DefaultTeamName: defaultTeamNameFromProfile(userprofile.Profile{Email: handlerTestUserEmail(userID)}),
 	}
 
 	var wg sync.WaitGroup
@@ -492,7 +1026,7 @@ func TestBootstrapUser_ConcurrentRequestsCreateSingleDefaultTeam(t *testing.T) {
 
 	for range 2 {
 		wg.Go(func() {
-			team, err := store.bootstrapUser(ctx, userID)
+			team, err := store.bootstrapUser(ctx, profile)
 			if err != nil {
 				errs <- err
 
@@ -556,8 +1090,8 @@ func TestCreateTeam_RecentUserCreatesUnblockedTeam(t *testing.T) {
 	store := &APIStore{
 		db:                testDB.SqlcClient,
 		authDB:            testDB.AuthDB,
-		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: &fakeTeamProvisionSink{},
+		userProfiles:      newHandlerTestUserProfiles(),
 	}
 
 	team, err := store.createTeam(ctx, userID, "Acme")
@@ -603,13 +1137,13 @@ func TestPostTeams_LocalPolicyDeniedReturnsBadRequestWithoutCreatingTeam(t *test
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(`{"name":"Acme"}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
-	auth.SetUserID(ginCtx, userID)
+	auth.SetUserIDForTest(t, ginCtx, userID)
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
 		authDB:            testDB.AuthDB,
-		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
+		userProfiles:      newHandlerTestUserProfiles(),
 	}
 	store.PostTeams(ginCtx)
 
@@ -641,14 +1175,14 @@ func TestPostTeams_InvalidNameReturnsBadRequest(t *testing.T) {
 		ginCtx, _ := gin.CreateTestContext(recorder)
 		ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(body))
 		ginCtx.Request.Header.Set("Content-Type", "application/json")
-		auth.SetUserID(ginCtx, userID)
+		auth.SetUserIDForTest(t, ginCtx, userID)
 
 		sink := &fakeTeamProvisionSink{}
 		store := &APIStore{
 			db:                testDB.SqlcClient,
 			authDB:            testDB.AuthDB,
-			supabaseDB:        testDB.SupabaseDB,
 			teamProvisionSink: sink,
+			userProfiles:      newHandlerTestUserProfiles(),
 		}
 		store.PostTeams(ginCtx)
 
@@ -673,13 +1207,13 @@ func TestPostTeams_InvalidRequestBodyReturnsBadRequest(t *testing.T) {
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(`{"name":`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
-	auth.SetUserID(ginCtx, userID)
+	auth.SetUserIDForTest(t, ginCtx, userID)
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
 		authDB:            testDB.AuthDB,
-		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
+		userProfiles:      newHandlerTestUserProfiles(),
 	}
 	store.PostTeams(ginCtx)
 
@@ -706,13 +1240,13 @@ func TestPostTeams_TrimsNameBeforeCreate(t *testing.T) {
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(`{"name":"  Acme  "}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
-	auth.SetUserID(ginCtx, userID)
+	auth.SetUserIDForTest(t, ginCtx, userID)
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
 		authDB:            testDB.AuthDB,
-		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
+		userProfiles:      newHandlerTestUserProfiles(),
 	}
 	store.PostTeams(ginCtx)
 
@@ -758,13 +1292,13 @@ func TestPostTeams_ProvisioningFailureRollsBackCreatedTeam(t *testing.T) {
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(`{"name":"Acme"}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
-	auth.SetUserID(ginCtx, userID)
+	auth.SetUserIDForTest(t, ginCtx, userID)
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
 		authDB:            testDB.AuthDB,
-		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
+		userProfiles:      newHandlerTestUserProfiles(),
 	}
 	store.PostTeams(ginCtx)
 
@@ -817,13 +1351,13 @@ func TestPostTeams_ProvisioningFailurePreservesProvisionErrorStatus(t *testing.T
 			ginCtx, _ := gin.CreateTestContext(recorder)
 			ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(`{"name":"Acme"}`))
 			ginCtx.Request.Header.Set("Content-Type", "application/json")
-			auth.SetUserID(ginCtx, userID)
+			auth.SetUserIDForTest(t, ginCtx, userID)
 
 			store := &APIStore{
 				db:                testDB.SqlcClient,
 				authDB:            testDB.AuthDB,
-				supabaseDB:        testDB.SupabaseDB,
 				teamProvisionSink: sink,
+				userProfiles:      newHandlerTestUserProfiles(),
 			}
 			store.PostTeams(ginCtx)
 
@@ -878,7 +1412,7 @@ func TestCreateTeam_ConcurrentRequestsRespectLocalPolicyWithZeroMemberships(t *t
 
 	existingTeam, err := testDB.AuthDB.Write.GetDefaultTeamByUserID(ctx, userID)
 	if err != nil {
-		t.Fatalf("expected trigger-created default team: %v", err)
+		t.Fatalf("expected default team: %v", err)
 	}
 	if err := testDB.AuthDB.Write.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
 		t.Fatalf("failed to remove default team: %v", err)
@@ -887,8 +1421,8 @@ func TestCreateTeam_ConcurrentRequestsRespectLocalPolicyWithZeroMemberships(t *t
 	store := &APIStore{
 		db:                testDB.SqlcClient,
 		authDB:            testDB.AuthDB,
-		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: &fakeTeamProvisionSink{},
+		userProfiles:      newHandlerTestUserProfiles(),
 	}
 
 	var wg sync.WaitGroup
@@ -949,4 +1483,36 @@ func (s *fakeTeamProvisionSink) ProvisionTeam(_ context.Context, req teamprovisi
 	s.requests = append(s.requests, req)
 
 	return s.err
+}
+
+type noopAuthService struct{}
+
+func (noopAuthService) ValidateAPIKey(context.Context, *gin.Context, string) (*authtypes.Team, *auth.APIError) {
+	return nil, nil
+}
+
+func (noopAuthService) ValidateAccessToken(context.Context, *gin.Context, string) (uuid.UUID, *auth.APIError) {
+	return uuid.Nil, nil
+}
+
+func (noopAuthService) ValidateAuthProviderToken(context.Context, *gin.Context, string) (uuid.UUID, *auth.APIError) {
+	return uuid.Nil, nil
+}
+
+func (noopAuthService) ValidateAuthProviderTeam(context.Context, *gin.Context, string) (*authtypes.Team, *auth.APIError) {
+	return nil, nil
+}
+
+func (noopAuthService) GetTeamByID(context.Context, uuid.UUID) (*authtypes.Team, error) {
+	return nil, nil
+}
+
+func (noopAuthService) InvalidateTeamMemberCache(context.Context, uuid.UUID, string) {}
+
+func (noopAuthService) InvalidateTeamCache(context.Context, uuid.UUID) error {
+	return nil
+}
+
+func (noopAuthService) Close(context.Context) error {
+	return nil
 }

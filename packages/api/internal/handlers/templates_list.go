@@ -51,10 +51,10 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 	templates := make([]*api.Template, 0, len(envs))
 	for _, item := range envs {
 		var createdBy *api.TeamUser
-		if item.CreatorEmail != nil && item.CreatorID != nil {
+		if item.CreatorID != nil {
 			createdBy = &api.TeamUser{
 				Id:    *item.CreatorID,
-				Email: *item.CreatorEmail,
+				Email: nil,
 			}
 		}
 
@@ -69,19 +69,19 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 		}
 
 		templates = append(templates, &api.Template{
-			TemplateID:    item.Env.ID,
+			TemplateID:    item.ActiveEnv.ID,
 			BuildID:       item.BuildID.String(),
 			CpuCount:      api.CPUCount(item.BuildVcpu),
 			MemoryMB:      api.MemoryMB(item.BuildRamMb),
 			DiskSizeMB:    api.DiskSizeMB(diskMB),
-			Public:        item.Env.Public,
+			Public:        item.ActiveEnv.Public,
 			Aliases:       item.Aliases,
 			Names:         item.Names,
-			CreatedAt:     item.Env.CreatedAt,
-			UpdatedAt:     item.Env.UpdatedAt,
-			LastSpawnedAt: item.Env.LastSpawnedAt,
-			SpawnCount:    item.Env.SpawnCount,
-			BuildCount:    item.Env.BuildCount,
+			CreatedAt:     item.ActiveEnv.CreatedAt,
+			UpdatedAt:     item.ActiveEnv.UpdatedAt,
+			LastSpawnedAt: item.ActiveEnv.LastSpawnedAt,
+			SpawnCount:    item.ActiveEnv.SpawnCount,
+			BuildCount:    item.ActiveEnv.BuildCount,
 			BuildStatus:   getCorrespondingTemplateBuildStatus(ctx, item.BuildStatus),
 			CreatedBy:     createdBy,
 			EnvdVersion:   envdVersion,

@@ -12,6 +12,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
+	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
+	"github.com/e2b-dev/infra/packages/envd/internal/services/fsfreeze"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
 
@@ -41,11 +43,22 @@ type API struct {
 	initLock    *semaphore.Weighted
 
 	caCertInstaller *host.CACertInstaller
-	isMountingNFS   atomic.Bool
-	mountedPaths    sync.Map // map[path]lifecycleID - tracks which lifecycle each path was mounted for
+	cgroupManager   cgroups.Manager
+	// freezeLock serializes the per-cgroup sweep across /freeze, /unfreeze
+	// and the /init deferred unfreeze. PostFreeze acquires with the request
+	// ctx; unfreeze paths acquire with Background so they always land
+	// regardless of HTTP-client cancellation.
+	freezeLock    *semaphore.Weighted
+	isMountingNFS atomic.Bool
+	mountedPaths  sync.Map // map[path]lifecycleID - tracks which lifecycle each path was mounted for
+
+	// fsFreezer freezes/thaws the guest rootfs for filesystem-only pauses;
+	// fsFreezeLock serializes /fsfreeze and /fsthaw.
+	fsFreezer    fsfreeze.Freezer
+	fsFreezeLock *semaphore.Weighted
 }
 
-func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.MMDSOpts, isNotFC bool) *API {
+func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.MMDSOpts, isNotFC bool, cgroupManager cgroups.Manager) *API {
 	return &API{
 		logger:          l,
 		defaults:        defaults,
@@ -55,7 +68,11 @@ func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.
 		lastSetTime:     utils.NewAtomicMax(),
 		accessToken:     &SecureToken{},
 		caCertInstaller: host.NewCACertInstaller(l),
+		cgroupManager:   cgroupManager,
 		initLock:        semaphore.NewWeighted(1),
+		freezeLock:      semaphore.NewWeighted(1),
+		fsFreezer:       fsfreeze.New(),
+		fsFreezeLock:    semaphore.NewWeighted(1),
 	}
 }
 

@@ -72,6 +72,25 @@ const (
 	idleTimeout = 620 * time.Second
 
 	defaultPort = 80
+
+	// shutdownDrainWait is how long /health returns 503 before we begin
+	// stopping the HTTP listener, giving the load balancer time to drain
+	// us off active backends.
+	shutdownDrainWait = 15 * time.Second
+
+	// shutdownTimeout caps how long s.Shutdown waits for in-flight
+	// requests to complete. Must be >= requestTimeout so a request, that
+	// arrived before load balancer stopped sending new traffic,
+	// has its full deadline to finish
+	// (e.g. a slow sandbox pause / snapshot RPC).
+	//
+	// Also caps grpc.Server.GracefulStop. After this we
+	// fall back to Stop() so a stuck stream cannot block the process
+	// past Nomad's kill_timeout.
+	shutdownTimeout = requestTimeout + 5*time.Second
+
+	// pprofShutdownTimeout is a best-effort bound for pprof drain.
+	pprofShutdownTimeout = 5 * time.Second
 )
 
 var (
@@ -150,9 +169,7 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 		// API Key header
 		"Authorization",
 		"X-API-Key",
-		// Supabase headers
-		auth.HeaderSupabaseToken,
-		auth.HeaderSupabaseTeam,
+		auth.HeaderTeamID,
 		// Custom headers sent from SDK
 		"browser",
 		"lang",
@@ -173,9 +190,10 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 		[]auth.Authenticator{
 			auth.NewApiKeyAuthenticator(apiStore.GetTeamFromAPIKey),
 			auth.NewAccessTokenAuthenticator(apiStore.GetUserFromAccessToken),
-			auth.NewSupabaseTokenAuthenticator(apiStore.GetUserIDFromSupabaseToken),
-			auth.NewSupabaseTeamAuthenticator(apiStore.GetTeamFromSupabaseToken),
-			auth.NewAdminTokenAuthenticator(config.AdminToken),
+			auth.NewAuthProviderBearerAuthenticator(apiStore.GetUserIDFromAuthProviderToken),
+			auth.NewAuthProviderTeamAuthenticator(apiStore.GetTeamFromAuthProviderToken),
+			auth.NewAdminApiKeyAuthenticator(config.AdminToken),
+			auth.NewAdminTeamAuthenticator(apiStore.GetTeamFromAdminToken),
 		},
 		metricsMiddleware.SetProcessingStartTime,
 	)
@@ -207,6 +225,11 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	limiter := ratelimit.NewLimiter(redisClient)
 	r.Use(ratelimit.Middleware(limiter, ratelimit.Config{FailOpen: true}, ff)) //nolint:contextcheck // Gin middleware sets context via c.Request.WithContext
 
+	// Deny blocked teams on every mutating route unless allowlisted in
+	// EnforceBlockedTeam. Must run after auth (which populates team info on
+	// the gin context) and before the handlers.
+	r.Use(customMiddleware.EnforceBlockedTeam())
+
 	// We now register our store above as the handler for the interface
 	api.RegisterHandlersWithOptions(r, apiStore, api.GinServerOptions{
 		ErrorHandler: func(c *gin.Context, err error, statusCode int) {
@@ -228,6 +251,12 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 		// Configure timeouts to be greater than the proxy timeouts.
 		IdleTimeout: idleTimeout,
 
+		// BaseContext is the parent of every incoming request's r.Context().
+		// It MUST NOT be derived from a context that the serve goroutines
+		// (HTTP/gRPC) cancel on exit: s.Shutdown stops the listener, the
+		// serve goroutine returns, and its `defer serveErrCancel()` fires
+		// while in-flight requests (sandbox pause/snapshot/delete) are
+		// still running. Per-request deadlines come from middleware.
 		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
 	httpserver.ConfigureH2C(s)
@@ -315,7 +344,12 @@ func run() int {
 
 	config, err := cfg.Parse()
 	if err != nil {
-		logger.L().Fatal(ctx, "Error parsing config", zap.Error(err))
+		fields := []zap.Field{zap.Error(err)}
+		if condition, ok := cfg.ParseFailureCondition(err); ok {
+			fields = append(fields, zap.String("config_failure_condition", string(condition)))
+		}
+
+		logger.L().Fatal(ctx, "Error parsing config", fields...)
 	}
 
 	err = sqlcdb.CheckMigrationVersion(ctx, config.PostgresConnectionString, expectedMigration)
@@ -432,21 +466,24 @@ func run() int {
 	}
 	proxygrpc.RegisterSandboxServiceServer(edgeGrpcServer, handlers.NewSandboxService(apiStore, true, clientProxyOAuthVerifier))
 
-	// pass the signal context so that handlers know when shutdown is happening.
+	// Pass ctx so in-flight requests survive the serve goroutines' exit during graceful shutdown.
 	s := NewGinServer(ctx, config, tel, l, apiStore, redisClient, featureFlags, swagger, port)
 
 	// ////////////////////////
 	//
 	// Start the HTTP service
 
-	// set up the signal handlers so that we can trigger a
-	// shutdown of the HTTP service when the process catches the
-	// specified signal. The parent context isn't canceled until
-	// after the HTTP service returns, to avoid terminating
-	// connections to databases and other upstream services before
-	// the HTTP server has shut down.
+	// signalCtx is cancelled when the process receives SIGTERM/SIGINT.
+	// It is the trigger for the shutdown watcher below.
 	signalCtx, sigCancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer sigCancel()
+
+	// serveErrCtx is cancelled by any serve goroutine when it exits — both
+	// on fatal Serve() error and on the normal "listener closed by Shutdown"
+	// exit. The shutdown watcher selects on this so that a startup-time
+	// listener failure (e.g. port in use) also triggers the drain sequence.
+	serveErrCtx, serveErrCancel := context.WithCancel(ctx)
+	defer serveErrCancel()
 
 	wg := &sync.WaitGroup{}
 
@@ -455,11 +492,10 @@ func run() int {
 	defer wg.Wait()
 
 	wg.Go(func() {
-		// make sure to cancel the parent context before this
-		// goroutine returns, so that in the case of a panic
-		// or error here, the other thread won't block until
-		// signaled.
-		defer cancel()
+		// Signal sibling goroutines via serveErrCtx (NOT the root ctx) so
+		// that a startup error or a normal Shutdown-triggered exit wakes
+		// the shutdown watcher without aborting the drain.
+		defer serveErrCancel()
 
 		l.Info(ctx, "Http service starting", zap.Int("port", port))
 
@@ -479,7 +515,7 @@ func run() int {
 	})
 
 	wg.Go(func() {
-		defer cancel()
+		defer serveErrCancel()
 
 		l.Info(ctx, "internal gRPC service starting", zap.Uint16("port", config.APIInternalGrpcPort))
 		err := grpcServer.Serve(grpcListener)
@@ -490,7 +526,7 @@ func run() int {
 	})
 
 	wg.Go(func() {
-		defer cancel()
+		defer serveErrCancel()
 
 		l.Info(ctx, "edge gRPC service starting", zap.Uint16("port", config.APIEdgeGrpcPort))
 		err := edgeGrpcServer.Serve(edgeGrpcListener)
@@ -503,7 +539,7 @@ func run() int {
 	pprofServer := telemetry.NewPprofServer()
 
 	wg.Go(func() {
-		l.Info(ctx, "pprof server starting", zap.Int("port", telemetry.DefaultPprofPort))
+		l.Info(ctx, "pprof server starting", zap.Int("port", telemetry.PprofPort()))
 
 		if err := pprofServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			l.Error(ctx, "pprof server encountered error", zap.Error(err))
@@ -511,7 +547,14 @@ func run() int {
 	})
 
 	wg.Go(func() {
-		<-signalCtx.Done()
+		// Wake on signal OR on a serve goroutine exiting unexpectedly at
+		// startup. Either way, run the full drain sequence.
+		select {
+		case <-signalCtx.Done():
+			l.Info(ctx, "shutdown signal received, beginning graceful shutdown")
+		case <-serveErrCtx.Done():
+			l.Info(ctx, "serve goroutine exited, beginning graceful shutdown")
+		}
 
 		// Start returning 503s for health checks
 		// to signal that the service is shutting down.
@@ -521,27 +564,42 @@ func run() int {
 
 		// Skip the delay in local environment for instant shutdown
 		if !env.IsLocal() {
-			time.Sleep(15 * time.Second)
+			time.Sleep(shutdownDrainWait)
 		}
 
-		// if the parent context `ctx` is canceled the
-		// shutdown will return early. This should only happen
-		// if there's an error in starting the http service
-		// (and would be a noop), or if there's an unhandled
-		// panic and defers start running, _probably_ won't
-		// even have a chance to return before the program
-		// returns.
-		if err := s.Shutdown(ctx); err != nil {
-			exitCode.Add(1)
-			l.Error(ctx, "Http service shutdown error", zap.Int("port", port), zap.Error(err))
-		}
+		// Drain HTTP, gRPC in parallel.
+		drainWG := &sync.WaitGroup{}
 
-		if err := pprofServer.Shutdown(ctx); err != nil {
+		drainWG.Go(func() {
+			httpShutdownCtx, httpShutdownCancel := context.WithTimeout(ctx, shutdownTimeout)
+			defer httpShutdownCancel()
+			if err := s.Shutdown(httpShutdownCtx); err != nil {
+				exitCode.Add(1)
+				l.Error(ctx, "Http service shutdown error", zap.Int("port", port), zap.Error(err))
+			}
+		})
+
+		// Bounded gRPC stop: GracefulStop has no built-in deadline, so a
+		// stuck stream would block past Nomad's kill_timeout. Fall back to
+		// Stop() after the budget elapses.
+		drainWG.Go(func() {
+			if !e2bgrpc.GracefulStopWithTimeout(grpcServer, shutdownTimeout) {
+				l.Warn(ctx, "internal gRPC forced stop after graceful timeout", zap.Duration("budget", shutdownTimeout))
+			}
+		})
+		drainWG.Go(func() {
+			if !e2bgrpc.GracefulStopWithTimeout(edgeGrpcServer, shutdownTimeout) {
+				l.Warn(ctx, "edge gRPC forced stop after graceful timeout", zap.Duration("budget", shutdownTimeout))
+			}
+		})
+		drainWG.Wait()
+
+		// Drain pprof after, so that it is still available during the shutdown process for debugging if needed.
+		pprofShutdownCtx, pprofCancel := context.WithTimeout(ctx, pprofShutdownTimeout)
+		defer pprofCancel()
+		if err := pprofServer.Shutdown(pprofShutdownCtx); err != nil {
 			l.Error(ctx, "pprof server shutdown error", zap.Error(err))
 		}
-
-		grpcServer.GracefulStop()
-		edgeGrpcServer.GracefulStop()
 	})
 
 	// wait for the HTTP service to complete shutting down first

@@ -54,13 +54,6 @@ CREATE TRIGGER post_user_signup
 -- (which then cascades to access_tokens, users_teams, etc. via the re-pointed FKs).
 GRANT DELETE ON public.users TO trigger_user;
 
-CREATE POLICY "Allow to delete a user"
-    ON public.users
-    AS PERMISSIVE
-    FOR DELETE
-    TO trigger_user
-    USING (true);
-
 -- +goose StatementBegin
 CREATE OR REPLACE FUNCTION public.sync_delete_auth_users_to_public_users_trigger() RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -103,7 +96,6 @@ CREATE TRIGGER post_user_signup
 -- Drop delete-sync trigger and function
 DROP TRIGGER IF EXISTS sync_deletes_to_public_users ON auth.users;
 DROP FUNCTION IF EXISTS public.sync_delete_auth_users_to_public_users_trigger();
-DROP POLICY IF EXISTS "Allow to delete a user" ON public.users;
 REVOKE DELETE ON public.users FROM trigger_user;
 
 -- Restore FK from public.users to auth.users

@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"strconv"
 
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
@@ -25,8 +27,11 @@ type Upload struct {
 	store          storage.StorageProvider
 	mem            storage.CompressConfig
 	root           storage.CompressConfig
+	useCase        string
 	objectMetadata storage.ObjectMetadata
 	future         *utils.ErrorOnce
+	useV4          bool
+	headerVersion  uint64
 }
 
 func NewUpload(
@@ -39,13 +44,29 @@ func NewUpload(
 	useCase string,
 	objectMetadata storage.ObjectMetadata,
 ) (*Upload, error) {
-	mem, err := resolveCompressConfig(ctx, cfg, ff, storage.MemfileName, snap.MemfileDiffHeader.Metadata.BlockSize, useCase)
-	if err != nil {
-		return nil, fmt.Errorf("resolve memfile compress config: %w", err)
+	// Filesystem-only snapshots have no memfile (NoDiff, block size 0), so
+	// resolving its compress config would fail validation ("block size must be
+	// positive"). The memfile body and header are never uploaded anyway.
+	var mem storage.CompressConfig
+	var memV4 bool
+	var err error
+	if !snap.FilesystemSnapshot {
+		mem, memV4, err = resolveCompressConfig(ctx, cfg, ff, storage.MemfileName, snap.MemorySnapshot.BlockSize, useCase)
+		if err != nil {
+			return nil, fmt.Errorf("resolve memfile compress config: %w", err)
+		}
 	}
-	root, err := resolveCompressConfig(ctx, cfg, ff, storage.RootfsName, snap.RootfsDiffHeader.Metadata.BlockSize, useCase)
+	root, rootV4, err := resolveCompressConfig(ctx, cfg, ff, storage.RootfsName, snap.RootfsBlockSize, useCase)
 	if err != nil {
 		return nil, fmt.Errorf("resolve rootfs compress config: %w", err)
+	}
+
+	if useCase != "" {
+		ctx = featureflags.AddToContext(ctx, featureflags.CompressUseCaseContext(useCase))
+	}
+	headerVersion := uint64(headers.MetadataVersionV4)
+	if ff != nil && ff.BoolFlag(ctx, featureflags.HeaderV5WriteFlag) {
+		headerVersion = headers.MetadataVersionV5
 	}
 
 	u := &Upload{
@@ -56,7 +77,10 @@ func NewUpload(
 		store:          store,
 		mem:            mem,
 		root:           root,
+		useCase:        useCase,
 		objectMetadata: objectMetadata,
+		useV4:          memV4 || rootV4 || headerVersion == headers.MetadataVersionV5,
+		headerVersion:  headerVersion,
 	}
 
 	if uploads != nil {
@@ -70,12 +94,51 @@ func NewUpload(
 	return u, nil
 }
 
+// layerSizeMetadata adds the layer's logical, mapped, and diff sizes (all
+// uncompressed, from the diff header) to the base object metadata. They live on
+// the data object because the memfile values depend on the async dedup header.
+func (u *Upload) layerSizeMetadata(h *headers.Header) storage.ObjectMetadata {
+	md := maps.Clone(u.objectMetadata)
+	if md == nil {
+		md = make(storage.ObjectMetadata)
+	}
+	if h == nil || h.Metadata == nil {
+		return md
+	}
+
+	bytesByBuild := h.Mapping.BytesByBuild()
+	var mapped uint64
+	for _, b := range bytesByBuild {
+		mapped += b
+	}
+	md[storage.ObjectMetadataLogicalSize] = strconv.FormatUint(h.Metadata.Size, 10)
+	md[storage.ObjectMetadataMappedSize] = strconv.FormatUint(mapped, 10)
+	md[storage.ObjectMetadataDiffSize] = strconv.FormatUint(bytesByBuild[h.Metadata.BuildId], 10)
+
+	return md
+}
+
 func (u *Upload) Run(ctx context.Context) error {
-	if !u.mem.IsCompressionEnabled() && !u.root.IsCompressionEnabled() {
+	// Attach the upload use case so flag reads can target it (e.g. write-through only for builds).
+	ctx = featureflags.AddToContext(ctx, featureflags.CompressUseCaseContext(u.useCase))
+
+	if !u.mem.IsCompressionEnabled() && !u.root.IsCompressionEnabled() && !u.useV4 {
 		return u.runV3(ctx)
 	}
 
 	return u.runV4(ctx)
+}
+
+// Wait blocks until the upload has reached its terminal outcome (the future set
+// by Finish) or ctx is done, returning the upload error. It lets a caller order
+// work after the snapshot has durably landed — e.g. re-uploading the metadata
+// object without racing the upload's own metadata write.
+func (u *Upload) Wait(ctx context.Context) error {
+	if u.future == nil {
+		return nil
+	}
+
+	return u.future.WaitWithContext(ctx)
 }
 
 // Finish signals the upload's terminal outcome. Same-orch waiters wake on the
@@ -111,20 +174,14 @@ func (u *Upload) publish(ctx context.Context, t build.DiffType, h *headers.Heade
 }
 
 // resolveCompressConfig returns the effective compression config for a given
-// file type and use case. Feature flags override the base config when active.
-// Returns zero-value CompressConfig when compression is disabled.
-//
-// fileType and useCase are added to the LD evaluation context so that
-// LaunchDarkly targeting rules can differentiate (e.g. compress memfile
-// but not rootfs, or compress builds but not pauses). blockSize is the
-// in-VM read granularity for this fileType (from the diff header) and
-// constrains the legal frame sizes — see validateCompressConfig.
-//
-// The resolved config is validated; an invalid env or LD-derived config
-// surfaces as an error so the upload fails fast rather than streaming with
-// a misconfigured frame size.
-func resolveCompressConfig(ctx context.Context, base storage.CompressConfig, ff *featureflags.Client, fileType string, blockSize uint64, useCase string) (storage.CompressConfig, error) {
+// file type and use case, plus whether the V4 header layout should be used for
+// an uncompressed upload. Feature flags override the base config when active.
+// Returns zero-value CompressConfig when compression is disabled. fileType,
+// useCase are added to the LD evaluation context; blockSize constrains legal
+// frame sizes — see validateCompressConfig.
+func resolveCompressConfig(ctx context.Context, base storage.CompressConfig, ff *featureflags.Client, fileType string, blockSize uint64, useCase string) (storage.CompressConfig, bool, error) {
 	resolved := base
+	var useV4 bool
 
 	if ff != nil {
 		var extra []ldcontext.Context
@@ -136,8 +193,9 @@ func resolveCompressConfig(ctx context.Context, base storage.CompressConfig, ff 
 		}
 		ctx = featureflags.AddToContext(ctx, extra...)
 
-		v := ff.JSONFlag(ctx, featureflags.CompressConfigFlag).AsValueMap()
+		useV4 = ff.BoolFlag(ctx, featureflags.V4HeaderForUncompressedFlag)
 
+		v := ff.JSONFlag(ctx, featureflags.CompressConfigFlag).AsValueMap()
 		if v.Get("compressBuilds").BoolValue() {
 			ct := v.Get("compressionType").StringValue()
 			ldCfg := storage.CompressConfig{
@@ -156,14 +214,14 @@ func resolveCompressConfig(ctx context.Context, base storage.CompressConfig, ff 
 	}
 
 	if !resolved.IsCompressionEnabled() {
-		return storage.CompressConfig{}, nil
+		return storage.CompressConfig{}, useV4, nil
 	}
 
 	if err := validateCompressConfig(resolved, blockSize); err != nil {
-		return storage.CompressConfig{}, err
+		return storage.CompressConfig{}, false, err
 	}
 
-	return resolved, nil
+	return resolved, useV4, nil
 }
 
 // validateCompressConfig checks that the resolved config is internally

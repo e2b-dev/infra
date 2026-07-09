@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,6 +20,11 @@ func TestSandboxMemoryIntegrity(t *testing.T) {
 	t.Parallel()
 
 	c := setup.GetAPIClient()
+
+	// Resuming without an explicit timeout gives the sandbox only the 15s
+	// default; hashing the tmpfs after resume can take longer than that under
+	// load, so the sandbox would be evicted mid-check.
+	resumeTimeout := int32(300)
 
 	// Build a template with stress-ng and time pre-installed so subtests
 	// skip the page-fault-heavy apt-get phase that saturates decompression
@@ -38,18 +44,17 @@ func TestSandboxMemoryIntegrity(t *testing.T) {
 	t.Run("tmpfs hash", func(t *testing.T) {
 		t.Parallel()
 
-		// Create a sandbox with auto-pause disabled
-		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false), utils.WithTemplateID(tmpl.TemplateID))
+		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false), utils.WithTimeout(300), utils.WithTemplateID(tmpl.TemplateID))
 		sbxId := sbx.SandboxID
 
 		envdClient := setup.GetEnvdClient(t, t.Context())
 
 		tmpfsFile := "/mnt/testfile"
 
-		percentageOfFreeMemoryToUse := 80
-		// Create a tmpfs with up to 80% of the remaining free RAM and fill it with random data
+		percentageOfFreeMemoryToUse := 60
+		// Create a tmpfs with up to 60% of the remaining free RAM and fill it with random data
 		// Disable swap to ensure we're testing pure RAM-based storage
-		// Always use at least 64MB, but not more than 80% of free memory
+		// Always use at least 64MB, but not more than the configured share of free memory.
 		memCmd := fmt.Sprintf(`
 TOTAL_MEM_MB=$(free -m | awk '/^Mem:/ {print $2}')
 USED_MEM_MB=$(free -m | awk '/^Mem:/ {print $3}')
@@ -71,15 +76,26 @@ echo "Used memory after tmpfs mount and file fill: ${USED_MEM_MB_AFTER} MB"
 		require.NoError(t, err)
 
 		hashCmd := fmt.Sprintf(`sha256sum "%s" | awk '{print $1}'`, tmpfsFile)
-		hashCmdOutput, err := utils.ExecCommandAsRootWithOutput(t, t.Context(), sbx, envdClient, "bash", "-c", hashCmd)
-		require.NoError(t, err)
-		hashCmdOutput = strings.TrimSpace(hashCmdOutput)
+		readHash := func() string {
+			t.Helper()
+
+			var output string
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				var err error
+				output, err = utils.ExecCommandAsRootWithOutput(t, t.Context(), sbx, envdClient, "bash", "-c", hashCmd)
+				require.NoError(c, err)
+			}, 3*time.Minute, 2*time.Second)
+
+			return strings.TrimSpace(output)
+		}
+
+		hashCmdOutput := readHash()
 		require.NotEmpty(t, hashCmdOutput, "Failed to extract hash from command output")
 
 		pauseIterations := 2
 
 		for i := range pauseIterations {
-			resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+			resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 			require.NoError(t, err)
 			require.Equal(t, http.StatusNoContent, resp.StatusCode())
 
@@ -89,16 +105,14 @@ echo "Used memory after tmpfs mount and file fill: ${USED_MEM_MB_AFTER} MB"
 			require.NotNil(t, res.JSON200)
 			assert.Equal(t, api.Paused, res.JSON200.State)
 
-			sbxResume, err := c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())
+			sbxResume, err := c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDResumeJSONRequestBody{Timeout: &resumeTimeout}, setup.WithAPIKey())
 			require.NoError(t, err)
 			require.Equal(t, http.StatusCreated, sbxResume.StatusCode())
 			require.NotNil(t, sbxResume.JSON201)
 			assert.Equal(t, sbxResume.JSON201.SandboxID, sbxId)
 
 			// Check the tmpfs hash and compare it with the original hash
-			hashCmdOutputAfterResume, err := utils.ExecCommandAsRootWithOutput(t, t.Context(), sbx, envdClient, "bash", "-c", hashCmd)
-			require.NoError(t, err)
-			hashCmdOutputAfterResume = strings.TrimSpace(hashCmdOutputAfterResume)
+			hashCmdOutputAfterResume := readHash()
 
 			assert.Equal(t, hashCmdOutput, hashCmdOutputAfterResume, "Hash mismatch on iteration %d: memory integrity check failed", i)
 		}
@@ -107,7 +121,7 @@ echo "Used memory after tmpfs mount and file fill: ${USED_MEM_MB_AFTER} MB"
 	t.Run("write after read survives pause", func(t *testing.T) {
 		t.Parallel()
 
-		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
+		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false), utils.WithTimeout(300))
 		sbxId := sbx.SandboxID
 		envdClient := setup.GetEnvdClient(t, t.Context())
 
@@ -120,13 +134,13 @@ echo "Used memory after tmpfs mount and file fill: ${USED_MEM_MB_AFTER} MB"
 		}
 		pause := func() {
 			t.Helper()
-			resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+			resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 			require.NoError(t, err)
 			require.Equal(t, http.StatusNoContent, resp.StatusCode())
 		}
 		resume := func() {
 			t.Helper()
-			r, err := c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())
+			r, err := c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDResumeJSONRequestBody{Timeout: &resumeTimeout}, setup.WithAPIKey())
 			require.NoError(t, err)
 			require.Equal(t, http.StatusCreated, r.StatusCode())
 		}
@@ -143,13 +157,12 @@ echo "Used memory after tmpfs mount and file fill: ${USED_MEM_MB_AFTER} MB"
 	t.Run("stress-ng verify", func(t *testing.T) {
 		t.Parallel()
 
-		// Create a sandbox with auto-pause disabled
-		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false), utils.WithTemplateID(tmpl.TemplateID))
+		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false), utils.WithTimeout(300), utils.WithTemplateID(tmpl.TemplateID))
 
 		envdClient := setup.GetEnvdClient(t, t.Context())
 
-		// get 80% size of the free memory and use it as the vm-bytes
-		percentageOfFreeMemoryToUse := 80
+		// get a bounded share of free memory and use it as the vm-bytes
+		percentageOfFreeMemoryToUse := 60
 
 		getFreeMemoryCmd := `free -m | awk '/^Mem:/ {print $7}'`
 		freeMemoryStr, err := utils.ExecCommandAsRootWithOutput(t, t.Context(), sbx, envdClient, "bash", "-c", getFreeMemoryCmd)

@@ -1,7 +1,3 @@
-variable "envd_timeout" {
-  type = string
-}
-
 variable "prefix" {
   type = string
 }
@@ -65,17 +61,30 @@ variable "api_internal_grpc_port" {
   default = 5009
 }
 
-variable "client_proxy_oidc_issuer_url" {
-  type    = string
-  default = ""
+variable "api_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "api_db_migrator_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "ingress_port" {
-  type = object({
-    name        = string
-    port        = number
-    health_path = string
-  })
+  type        = number
+  description = "External traffic port number"
+}
+
+variable "ingress_internal_port" {
+  type        = number
+  description = "Internal traffic port number"
+}
+
+variable "ingress_count" {
+  type = number
 }
 
 variable "traefik_config_files" {
@@ -83,52 +92,11 @@ variable "traefik_config_files" {
   description = "Map of filename => content for additional Traefik dynamic configuration files"
 }
 
-variable "ingress_count" {
-  type = number
-}
-
 variable "api_resources_cpu_count" {
   type = number
 }
 
 variable "api_resources_memory_mb" {
-  type = number
-}
-
-variable "api_secret" {
-  type = string
-}
-
-variable "api_admin_token_secret_name" {
-  type = string
-}
-
-variable "dashboard_api_admin_token_secret_name" {
-  type = string
-}
-
-variable "sandbox_access_token_hash_seed" {
-  type = string
-}
-
-variable "sandbox_storage_backend" {
-  type    = string
-  default = "memory"
-}
-
-variable "db_max_open_connections" {
-  type = number
-}
-
-variable "db_min_idle_connections" {
-  type = number
-}
-
-variable "auth_db_max_open_connections" {
-  type = number
-}
-
-variable "auth_db_min_idle_connections" {
   type = number
 }
 
@@ -177,20 +145,12 @@ variable "google_service_account_key" {
   type = string
 }
 
-variable "posthog_api_key_secret_name" {
-  type = string
-}
-
 variable "postgres_connection_string_secret_name" {
   type = string
 }
 
 variable "postgres_read_replica_connection_string_secret_version" {
   type = any
-}
-
-variable "supabase_jwt_secrets_secret_name" {
-  type = string
 }
 
 variable "client_proxy_count" {
@@ -215,6 +175,12 @@ variable "client_proxy_session_port" {
 
 variable "client_proxy_health_port" {
   type = number
+}
+
+variable "client_proxy_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "domain_name" {
@@ -246,14 +212,6 @@ variable "logs_health_proxy_port" {
   }
 }
 
-variable "analytics_collector_host_secret_name" {
-  type = string
-}
-
-variable "analytics_collector_api_token_secret_name" {
-  type = string
-}
-
 variable "launch_darkly_api_key_secret_name" {
   type = string
 }
@@ -281,14 +239,6 @@ variable "loki_service_port" {
   })
 }
 
-variable "redis_cluster_url_secret_version" {
-  type = any
-}
-
-variable "redis_tls_ca_base64_secret_version" {
-  type = any
-}
-
 # Docker reverse proxy
 variable "docker_reverse_proxy_port" {
   type = object({
@@ -298,8 +248,10 @@ variable "docker_reverse_proxy_port" {
   })
 }
 
-variable "docker_reverse_proxy_service_account_key" {
-  type = string
+variable "docker_reverse_proxy_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 # Orchestrator
@@ -315,19 +267,15 @@ variable "fc_env_pipeline_bucket_name" {
   type = string
 }
 
-variable "allow_sandbox_internet" {
-  type = bool
-}
-
-variable "allow_sandbox_internal_cidrs" {
-  type        = string
-  description = "Comma-separated CIDRs to allow through the sandbox firewall deny list"
-  default     = ""
-}
-
 # Template manager
 variable "template_manager_port" {
   type = number
+}
+
+variable "template_manager_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "template_manages_clusters_size_gt_1" {
@@ -364,6 +312,16 @@ variable "clickhouse_resources_cpu_count" {
 variable "clickhouse_username" {
   type    = string
   default = "e2b"
+}
+
+variable "clickhouse_password" {
+  type      = string
+  sensitive = true
+}
+
+variable "clickhouse_server_secret" {
+  type      = string
+  sensitive = true
 }
 
 variable "clickhouse_database" {
@@ -455,18 +413,6 @@ variable "filestore_cache_cleanup_dry_run" {
   type = bool
 }
 
-variable "filestore_cache_cleanup_deletions_per_loop" {
-  type = number
-  validation {
-    condition     = var.filestore_cache_cleanup_deletions_per_loop > 0
-    error_message = "Must be greater than 0"
-  }
-}
-
-variable "filestore_cache_cleanup_files_per_loop" {
-  type = number
-}
-
 variable "filestore_cache_cleanup_max_concurrent_stat" {
   type        = number
   description = "Number of concurrent stat goroutines"
@@ -482,17 +428,14 @@ variable "filestore_cache_cleanup_max_concurrent_delete" {
   description = "Number of concurrent deleter goroutines"
 }
 
-variable "filestore_cache_cleanup_max_retries" {
-  type        = number
-  description = "Maximum number of continuous error or miss retries before giving up"
+variable "filestore_cleanup_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "dockerhub_remote_repository_url" {
   type = string
-}
-
-variable "persistent_volume_mounts" {
-  type = map(string)
 }
 
 variable "default_persistent_volume_type" {
@@ -506,19 +449,12 @@ variable "dashboard_api_count" {
   default = 0
 }
 
-variable "supabase_db_connection_string_secret_version" {
-  type = any
+variable "dashboard_api_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
-variable "enable_auth_user_sync_background_worker" {
-  type    = bool
-  default = false
-}
-
-variable "enable_billing_http_team_provision_sink" {
-  type    = bool
-  default = false
-}
 variable "volume_token_issuer" {
   type = string
 }
@@ -545,8 +481,9 @@ variable "gcs_grpc_connection_pool_size" {
 }
 
 variable "orchestrator_env_vars" {
-  type    = map(string)
-  default = {}
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "orchestrator_enabled" {

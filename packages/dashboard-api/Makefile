@@ -23,11 +23,17 @@ build:
 	$(eval EXPECTED_MIGRATION_TIMESTAMP ?= $(expectedMigration))
 	CGO_ENABLED=0 go build -o bin/dashboard-api -ldflags "-X=main.commitSHA=$(COMMIT_SHA) -X=main.expectedMigrationTimestamp=$(EXPECTED_MIGRATION_TIMESTAMP)" .
 
+.PHONY: build-debug
+build-debug:
+	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
+	$(eval EXPECTED_MIGRATION_TIMESTAMP ?= $(expectedMigration))
+	CGO_ENABLED=1 go build -race -gcflags=all="-N -l" -o bin/dashboard-api -ldflags "-X=main.commitSHA=$(COMMIT_SHA) -X=main.expectedMigrationTimestamp=$(EXPECTED_MIGRATION_TIMESTAMP)" .
+
 .PHONY: build-and-upload
 build-and-upload:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
 	$(eval EXPECTED_MIGRATION_TIMESTAMP := $(expectedMigration))
-	@docker build --platform linux/amd64 --tag $(IMAGE_REGISTRY) --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" --build-arg EXPECTED_MIGRATION_TIMESTAMP="$(EXPECTED_MIGRATION_TIMESTAMP)" -f ./Dockerfile ..
+	@docker build --platform linux/amd64 --tag $(IMAGE_REGISTRY) --tag $(IMAGE_REGISTRY):$(COMMIT_SHA) --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" --build-arg EXPECTED_MIGRATION_TIMESTAMP="$(EXPECTED_MIGRATION_TIMESTAMP)" -f ./Dockerfile ..
 
 .PHONY: run
 run:

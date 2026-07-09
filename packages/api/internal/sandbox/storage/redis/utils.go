@@ -3,6 +3,9 @@ package redis
 import (
 	"strings"
 
+	"github.com/google/uuid"
+
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
 
@@ -25,14 +28,34 @@ var (
 	globalExpirationSet = redis_utils.CreateKey(sandboxKeyPrefix, "global:expiration")
 )
 
-func expirationMember(teamID, sandboxID string) string {
-	return redis_utils.CreateKey(teamID, sandboxID)
+// expirationMember identifies one *execution* (incarnation) of a sandbox in
+// the global expiration ZSET. Scoping the member to the execution makes every
+// ZREM structurally safe: removing a dead execution's member can never
+// unindex a live one, even when a lockless Add for the same sandbox ID races
+// a Remove or the evictor's stale sweep.
+func expirationMember(teamID, sandboxID, executionID string) string {
+	return redis_utils.CreateKey(teamID, sandboxID, executionID)
 }
 
-func parseExpirationMember(member string) (teamID, sandboxID string, ok bool) {
-	teamID, sandboxID, ok = strings.Cut(member, ":")
+// sandboxExpirationMember returns the expiration index member for a stored
+// sandbox.
+func sandboxExpirationMember(sbx sandboxtypes.Sandbox) string {
+	return expirationMember(sbx.TeamID.String(), sbx.SandboxID, sbx.ExecutionID)
+}
 
-	return
+// parseExpirationMember parses "teamID:sandboxID:executionID" members.
+// Sandbox IDs never contain ':' and execution IDs are always UUIDs.
+func parseExpirationMember(member string) (teamID, sandboxID, executionID string, ok bool) {
+	parts := strings.Split(member, ":")
+	if len(parts) != 3 {
+		return "", "", "", false
+	}
+
+	if _, err := uuid.Parse(parts[2]); err != nil {
+		return "", "", "", false
+	}
+
+	return parts[0], parts[1], parts[2], true
 }
 
 // GetTeamPrefix returns the storage team prefix for external packages (e.g. reservations).

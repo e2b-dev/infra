@@ -117,13 +117,13 @@ module "network" {
   domain_name                             = var.domain_name
   additional_domains                      = var.additional_domains
   additional_api_paths_handled_by_ingress = var.additional_api_paths_handled_by_ingress
-  ingress_timeout_seconds                 = var.ingress_timeout_seconds
 
   client_proxy_port        = var.client_proxy_port
   client_proxy_health_port = var.client_proxy_health_port
 
-  api_instance_group    = google_compute_instance_group_manager.api_pool.instance_group
-  server_instance_group = google_compute_region_instance_group_manager.server_pool.instance_group
+  api_instance_group        = google_compute_instance_group_manager.api_pool.instance_group
+  extra_api_instance_groups = var.extra_api_instance_groups
+  server_instance_group     = google_compute_region_instance_group_manager.server_pool.instance_group
 
   nomad_port = var.nomad_port
 

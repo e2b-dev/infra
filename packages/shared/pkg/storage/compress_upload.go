@@ -7,11 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"slices"
 	"sync"
 	"sync/atomic"
 
 	"golang.org/x/sync/errgroup"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/units"
 )
 
 type partUploader interface {
@@ -19,6 +22,55 @@ type partUploader interface {
 	UploadPart(ctx context.Context, partIndex int, data ...[]byte) error
 	Complete(ctx context.Context) error
 	Close() error
+}
+
+const (
+	// cloudMinPartSizeMB is the smallest non-final multipart part both S3 and
+	// the GCS XML API accept (5 MiB). Smaller configured values would fail with
+	// EntityTooSmall at CompleteMultipartUpload, after all bytes are shipped.
+	cloudMinPartSizeMB = 5
+	// cloudMaxParts bounds the part count; S3 and the GCS XML API cap multipart
+	// uploads at 10,000 parts. Kept below the hard cap because parts are sized
+	// by *compressed* bytes and incompressible frames can expand slightly past
+	// the uncompressed file size this bound is computed from.
+	cloudMaxParts = 9000
+)
+
+// clampCloudMinPartSize resolves the configured minimum part size against the
+// multipart limits shared by S3 and the GCS XML API: at least 5 MiB per
+// non-final part, and large enough that even an incompressible file of
+// fileSize bytes stays under the 10,000-part cap.
+func clampCloudMinPartSize(cfg CompressConfig, fileSize int64) CompressConfig {
+	minMB := units.BytesToMB(cfg.MinPartSize()) // resolves the <= 0 default (50 MB)
+	cfg.MinPartSizeMB = int(max(minMB, cloudMinPartSizeMB, units.BytesToMB(fileSize)/cloudMaxParts+1))
+
+	return cfg
+}
+
+// storeFileCompressed streams localPath through compressStream into a
+// provider-specific multipart upload. It owns the shared recipe — open, stat,
+// stamp the uncompressed size into the object metadata (multipart APIs only
+// accept metadata at initiate time) — so providers supply just the uploader.
+func storeFileCompressed(ctx context.Context, localPath string, cfg CompressConfig, maxUploadConcurrency int, putOpts PutOptions, newUploader func(metadata ObjectMetadata) (partUploader, error)) (*FullFrameTable, [32]byte, error) {
+	file, err := os.Open(localPath)
+	if err != nil {
+		return nil, [32]byte{}, fmt.Errorf("failed to open local file %s: %w", localPath, err)
+	}
+	defer file.Close()
+
+	fi, err := file.Stat()
+	if err != nil {
+		return nil, [32]byte{}, fmt.Errorf("failed to stat local file %s: %w", localPath, err)
+	}
+
+	cfg = clampCloudMinPartSize(cfg, fi.Size())
+
+	uploader, err := newUploader(putOpts.Metadata.WithUncompressedSize(fi.Size()))
+	if err != nil {
+		return nil, [32]byte{}, fmt.Errorf("failed to create multipart uploader: %w", err)
+	}
+
+	return compressStream(ctx, file, cfg, uploader, maxUploadConcurrency, putOpts.FrameSink)
 }
 
 type memPartUploader struct {
@@ -62,6 +114,11 @@ func (m *memPartUploader) Assemble() []byte {
 	return buf.Bytes()
 }
 
+// inputBufPool is shared across all uploads so frame-sized buffers (almost
+// always DefaultCompressFrameSize) are reused between streams instead of being
+// reallocated per call. See buffer_pool.go for the buffer lifecycle.
+var inputBufPool = newBufferPool()
+
 type frame struct {
 	uncompressedSize int
 	compressed       []byte
@@ -83,11 +140,13 @@ func newPart(index int, parentCtx context.Context, workers int) (*part, context.
 	return p, ctx
 }
 
-func (p *part) addFrame(ctx context.Context, uncompressedData []byte, pool *sync.Pool) {
-	frameInPart := &frame{uncompressedSize: len(uncompressedData)}
+func (p *part) addFrame(ctx context.Context, buf inputBuf, n int, pool *sync.Pool) {
+	frameInPart := &frame{uncompressedSize: n}
 	p.frames = append(p.frames, frameInPart)
+	uncompressedData := buf.Bytes()[:n]
 
 	p.compress.Go(func() error {
+		defer buf.Free()
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -104,7 +163,7 @@ func (p *part) addFrame(ctx context.Context, uncompressedData []byte, pool *sync
 	})
 }
 
-func compressStream(ctx context.Context, in io.Reader, cfg CompressConfig, uploader partUploader, maxUploadConcurrency int) (*FrameTable, [32]byte, error) {
+func compressStream(ctx context.Context, in io.Reader, cfg CompressConfig, uploader partUploader, maxUploadConcurrency int, sink FrameSink) (*FullFrameTable, [32]byte, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -132,6 +191,7 @@ func compressStream(ctx context.Context, in io.Reader, cfg CompressConfig, uploa
 
 	// Upload loop.
 	var frameSizes []FrameSize
+	var cOffset int64
 	var loopErr error
 	for p := range q {
 		if err := p.compress.Wait(); err != nil {
@@ -145,6 +205,10 @@ func compressStream(ctx context.Context, in io.Reader, cfg CompressConfig, uploa
 		for _, f := range p.frames {
 			frameSizes = append(frameSizes, FrameSize{U: int32(f.uncompressedSize), C: int32(len(f.compressed))})
 			compressed = append(compressed, f.compressed)
+			if sink != nil {
+				sink(ctx, cOffset, f.compressed)
+			}
+			cOffset += int64(len(f.compressed))
 		}
 
 		pi := p.index
@@ -163,15 +227,22 @@ func compressStream(ctx context.Context, in io.Reader, cfg CompressConfig, uploa
 		return nil, [32]byte{}, err
 	}
 
+	// Zero-byte input produces no parts, but S3 and the GCS XML API both
+	// refuse to complete a multipart upload with zero parts — ship a single
+	// empty final part so empty files still store successfully.
+	if len(frameSizes) == 0 {
+		if err := uploader.UploadPart(ctx, 1); err != nil {
+			return nil, [32]byte{}, fmt.Errorf("upload empty part: %w", err)
+		}
+	}
+
 	if err := uploader.Complete(ctx); err != nil {
 		return nil, [32]byte{}, fmt.Errorf("complete upload: %w", err)
 	}
 
-	var checksum [32]byte
-	copy(checksum[:], hasher.Sum(nil))
-	ft := NewFrameTable(cfg.CompressionType(), frameSizes)
+	ft := NewFullFrameTable(cfg.CompressionType(), frameSizes)
 
-	return ft, checksum, nil
+	return ft, sum256(hasher), nil
 }
 
 func readLoop(ctx context.Context, in io.Reader, cfg CompressConfig, hasher io.Writer, q chan<- *part) error {
@@ -190,17 +261,22 @@ func readLoop(ctx context.Context, in io.Reader, cfg CompressConfig, hasher io.W
 			return err
 		}
 
-		buf := make([]byte, frameSize)
-		n, err := io.ReadFull(in, buf)
+		buf := inputBufPool.Get(frameSize)
+		data := buf.Bytes()
+		n, err := io.ReadFull(in, data)
 
 		eof := errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
 		if err != nil && !eof {
+			buf.Free()
+
 			return fmt.Errorf("read frame: %w", err)
 		}
 
 		if n > 0 {
-			hasher.Write(buf[:n])
-			p.addFrame(compressCtx, buf[:n], compressors)
+			hasher.Write(data[:n])
+			p.addFrame(compressCtx, buf, n, compressors)
+		} else {
+			buf.Free()
 		}
 
 		if eof {

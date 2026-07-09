@@ -33,13 +33,6 @@ func TestParse(t *testing.T) {
 		assert.ErrorContains(t, err, `environment variable "POSTGRES_CONNECTION_STRING" should not be empty`)
 	})
 
-	t.Run("supabase secrets are comma separated", func(t *testing.T) {
-		t.Setenv("SUPABASE_JWT_SECRETS", "aaa,bbb")
-		result, err := Parse()
-		require.NoError(t, err)
-		assert.Equal(t, []string{"aaa", "bbb"}, result.SupabaseJWTSecrets)
-	})
-
 	t.Run("base64 signing key can be parsed", func(t *testing.T) {
 		content := []byte{1, 2, 3, 4, 5, 6}
 		encoded := base64.StdEncoding.EncodeToString(content)
@@ -50,11 +43,15 @@ func TestParse(t *testing.T) {
 		assert.Equal(t, content, result.VolumesToken.SigningKey)
 	})
 
-	t.Run("test sandbox backend empty string", func(t *testing.T) {
-		t.Setenv("SANDBOX_STORAGE_BACKEND", "")
-		result, err := Parse()
-		require.NoError(t, err)
-		assert.Equal(t, SandboxStorageBackendMemory, result.SandboxStorageBackend)
+	t.Run("invalid service discovery provider exposes failure condition", func(t *testing.T) {
+		t.Setenv("SERVICE_DISCOVERY_PROVIDER", "invalid")
+
+		_, err := Parse()
+		require.Error(t, err)
+
+		condition, ok := ParseFailureCondition(err)
+		require.True(t, ok)
+		assert.Equal(t, FailureConditionInvalidServiceDiscoveryProvider, condition)
 	})
 }
 

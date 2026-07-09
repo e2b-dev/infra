@@ -11,7 +11,7 @@ processed=0
 skipped=0
 
 readonly prefix="github.com/e2b-dev/infra/packages"
-readonly search_pattern='\.Tracer(".*'
+readonly search_pattern='\.Tracer("[^"]*")'
 
 echo "Starting tracer replacement in directory: $SEARCH_DIR"
 echo "----------------------------------------"

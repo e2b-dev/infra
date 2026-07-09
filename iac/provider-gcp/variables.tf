@@ -139,7 +139,7 @@ variable "additional_api_paths_handled_by_ingress" {
     - Legacy: list(string) - e.g. ["/path1/*", "/path2/*"]
     - New: list(object({paths = list(string), timeout_sec = optional(number)}))
       e.g. [{paths = ["/path1/*", "/path2/*"], timeout_sec = 120}]
-    Per-route timeout_sec overrides the ingress backend default (see ingress_timeout_seconds).
+    Per-route timeout_sec overrides the ingress backend default.
   EOT
   default     = []
 }
@@ -222,6 +222,34 @@ variable "client_proxy_oidc_issuer_url" {
   default = ""
 }
 
+variable "auth_provider_config" {
+  type = object({
+    jwt = optional(list(object({
+      issuer = object({
+        url                 = string
+        discoveryURL        = optional(string)
+        audiences           = list(string)
+        audienceMatchPolicy = optional(string)
+      })
+      cacheDuration = optional(string)
+    })))
+  })
+  sensitive = true
+  default   = null
+}
+
+variable "ory_sdk_url" {
+  type        = string
+  default     = ""
+  description = "Ory Network admin SDK URL (e.g. https://<slug>.projects.oryapis.com)."
+}
+
+variable "ory_issuer_url" {
+  type        = string
+  default     = ""
+  description = "Ory OIDC issuer URL used to namespace public.user_identities. Must match one of auth_provider_config.jwt[*].issuer.url; defaults to the single configured JWT issuer if unset."
+}
+
 variable "ingress_port" {
   type = object({
     name        = string
@@ -235,19 +263,22 @@ variable "ingress_port" {
   }
 }
 
+variable "ingress_internal_port" {
+  type = object({
+    name        = string
+    port        = number
+    health_path = string
+  })
+  default = {
+    name        = "internal"
+    port        = 9435
+    health_path = "/"
+  }
+}
+
 variable "dashboard_api_count" {
   type    = number
   default = 0
-}
-
-variable "enable_auth_user_sync_background_worker" {
-  type    = bool
-  default = false
-}
-
-variable "enable_billing_http_team_provision_sink" {
-  type    = bool
-  default = false
 }
 variable "docker_reverse_proxy_port" {
   type = object({
@@ -276,11 +307,6 @@ variable "redis_port" {
 variable "nomad_port" {
   type    = number
   default = 4646
-}
-
-variable "allow_sandbox_internet" {
-  type    = bool
-  default = true
 }
 
 variable "allow_sandbox_internal_cidrs" {
@@ -488,16 +514,6 @@ variable "filestore_cache_cleanup_dry_run" {
   default = false
 }
 
-variable "filestore_cache_cleanup_files_per_loop" {
-  type    = number
-  default = 10000
-}
-
-variable "filestore_cache_cleanup_deletions_per_loop" {
-  type    = number
-  default = 900
-}
-
 variable "filestore_cache_cleanup_max_concurrent_stat" {
   type        = number
   description = "Number of concurrent stat goroutines"
@@ -514,12 +530,6 @@ variable "filestore_cache_cleanup_max_concurrent_delete" {
   type        = number
   description = "Number of concurrent deleter goroutines"
   default     = 4
-}
-
-variable "filestore_cache_cleanup_max_retries" {
-  type        = number
-  description = "Maximum number of continuous error or miss retries before giving up"
-  default     = 10000
 }
 
 variable "remote_repository_enabled" {
@@ -691,12 +701,6 @@ variable "loki_boot_disk_type" {
   default     = "pd-ssd"
 }
 
-variable "sandbox_storage_backend" {
-  description = "The sandbox storage backend to use. Valid values: 'memory', 'redis'."
-  type        = string
-  default     = ""
-}
-
 variable "db_max_open_connections" {
   type    = number
   default = 40
@@ -805,8 +809,51 @@ variable "anywhere_cache_ttl" {
 }
 
 variable "orchestrator_env_vars" {
-  type    = map(string)
-  default = {}
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "api_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "api_db_migrator_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "client_proxy_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "dashboard_api_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "template_manager_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "docker_reverse_proxy_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "filestore_cleanup_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "orchestrator_enabled" {
@@ -819,9 +866,4 @@ variable "traefik_config_files" {
   type        = map(string)
   description = "Map of filename => content for additional Traefik dynamic configuration files"
   default     = {}
-}
-
-variable "ingress_timeout_seconds" {
-  type    = number
-  default = 80
 }

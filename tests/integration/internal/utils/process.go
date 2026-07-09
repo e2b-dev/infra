@@ -3,6 +3,7 @@ package utils
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -36,6 +37,16 @@ func ExecCommandAsRootWithOutput(tb testing.TB, ctx context.Context, sbx *api.Sa
 	return ExecCommandWithOutput(tb, ctx, sbx, envdClient, nil, "root", command, args...)
 }
 
+// ExecCommandAsDefaultUserWithOutput runs a command without sending a user
+// header, so envd falls back to the default user set at /init time. This is the
+// path that exercises the template's default user/workdir (it differs from
+// passing an explicit "user").
+func ExecCommandAsDefaultUserWithOutput(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, command string, args ...string) (string, error) {
+	tb.Helper()
+
+	return ExecCommandWithOutput(tb, ctx, sbx, envdClient, nil, "", command, args...)
+}
+
 func ExecCommandWithOptions(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, cwd *string, user string, command string, args ...string) error {
 	tb.Helper()
 
@@ -58,7 +69,10 @@ func ExecCommandWithOutput(tb testing.TB, ctx context.Context, sbx *api.Sandbox,
 	})
 
 	setup.SetSandboxHeader(tb, req.Header(), sbx.SandboxID)
-	setup.SetUserHeader(tb, req.Header(), user)
+	// An empty user omits the auth header so envd uses its default user.
+	if user != "" {
+		setup.SetUserHeader(tb, req.Header(), user)
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -82,7 +96,7 @@ func ExecCommandWithOutput(tb testing.TB, ctx context.Context, sbx *api.Sandbox,
 		}
 	}()
 
-	var output string
+	var output strings.Builder
 	for stream.Receive() {
 		select {
 		case <-ctx.Done():
@@ -95,28 +109,28 @@ func ExecCommandWithOutput(tb testing.TB, ctx context.Context, sbx *api.Sandbox,
 			// Capture stdout
 			if msg.GetEvent().GetData() != nil {
 				if stdout := msg.GetEvent().GetData().GetStdout(); stdout != nil {
-					output += string(stdout)
+					output.Write(stdout)
 				}
 
 				if stderr := msg.GetEvent().GetData().GetStderr(); stderr != nil {
-					output += string(stderr)
+					output.Write(stderr)
 				}
 			}
 
 			if msg.GetEvent().GetEnd() != nil {
 				if msg.GetEvent().GetEnd().GetExitCode() != 0 {
-					return output, fmt.Errorf("command %s in sandbox %s failed with exit code %d", command, sbx.SandboxID, msg.GetEvent().GetEnd().GetExitCode())
+					return output.String(), fmt.Errorf("command %s in sandbox %s failed with exit code %d", command, sbx.SandboxID, msg.GetEvent().GetEnd().GetExitCode())
 				}
 				tb.Logf("Command [%s] completed successfully in sandbox %s", command, sbx.SandboxID)
 
-				return output, nil
+				return output.String(), nil
 			}
 		}
 	}
 
 	if err := stream.Err(); err != nil {
-		return output, fmt.Errorf("failed to execute command %s in sandbox %s: %w", command, sbx.SandboxID, err)
+		return output.String(), fmt.Errorf("failed to execute command %s in sandbox %s: %w", command, sbx.SandboxID, err)
 	}
 
-	return output, nil
+	return output.String(), nil
 }

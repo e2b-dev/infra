@@ -21,10 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox/reservations"
 	redisreservations "github.com/e2b-dev/infra/packages/api/internal/sandbox/reservations/redis"
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/memory"
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/populate_redis"
 	redisbackend "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -61,6 +58,7 @@ type Orchestrator struct {
 	metricsRegistration           metric.Registration
 	sandboxCountGaugeRegistration metric.Registration
 	createdSandboxesCounter       metric.Int64Counter
+	resumeOriginNodeRemapCounter  metric.Int64Counter
 	teamMetricsObserver           *metrics.TeamObserver
 	accessTokenGenerator          *sandbox.AccessTokenGenerator
 	createdCounter                metric.Int64Counter
@@ -129,7 +127,10 @@ func New(
 
 	bestOfKAlgorithm := placement.NewBestOfK(getBestOfKConfig(ctx, featureFlags)).(*placement.BestOfK)
 
-	redisStorage := redisbackend.NewStorage(redisClient)
+	redisStorage, err := redisbackend.NewStorage(redisClient, tel.MeterProvider, featureFlags)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create redis sandbox storage: %w", err)
+	}
 	go redisStorage.Start(ctx)
 
 	o := Orchestrator{
@@ -153,27 +154,9 @@ func New(
 		snapshotUpsertSem: snapshotUpsertSem,
 	}
 
-	var reservationStorage sandbox.ReservationStorage
-	var sandboxStorage sandbox.Storage
-
-	switch config.SandboxStorageBackend {
-	case cfg.SandboxStorageBackendMemory:
-		reservationStorage = reservations.NewReservationStorage()
-		sandboxStorage = populate_redis.NewStorage(memory.NewStorage(), redisStorage)
-		logger.L().Info(ctx, "Using populate_redis sandbox storage backend")
-
-		go redisbackend.NewCleaner(redisStorage).Start(ctx)
-	case cfg.SandboxStorageBackendRedis:
-		reservationStorage = redisreservations.NewReservationStorage(redisClient)
-		sandboxStorage = redisStorage
-		logger.L().Info(ctx, "Using redis sandbox storage backend")
-	default:
-		return nil, fmt.Errorf("invalid sandbox storage backend: %s", config.SandboxStorageBackend)
-	}
-
 	o.sandboxStore = sandbox.NewStore(
-		sandboxStorage,
-		reservationStorage,
+		redisStorage,
+		redisreservations.NewReservationStorage(redisClient, redisStorage.Notifier()),
 		sandbox.Callbacks{
 			AddSandboxToRoutingTable: o.addSandboxToRoutingTable,
 			AsyncNewlyCreatedSandbox: o.handleNewlyCreatedSandbox,
@@ -182,7 +165,7 @@ func New(
 	)
 
 	// Evict old sandboxes
-	sandboxEvictor, err := evictor.New(o.sandboxStore, o.RemoveSandbox, meter)
+	sandboxEvictor, err := evictor.New(ctx, o.sandboxStore, o.RemoveSandbox, o.featureFlagsClient, meter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create sandbox evictor: %w", err)
 	}
@@ -302,7 +285,7 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 		errs = append(errs, err)
 	}
 
-	o.redisStorage.Close()
+	o.redisStorage.Close(ctx)
 
 	return errors.Join(errs...)
 }
@@ -332,19 +315,13 @@ func getBestOfKConfig(ctx context.Context, featureFlagsClient *featureflags.Clie
 
 	alphaPercent := featureFlagsClient.IntFlag(ctx, featureflags.BestOfKAlpha)
 
-	canFit := featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKCanFitFlag)
-
-	tooManyStarting := featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKTooManyStartingFlag)
-
 	// Convert percentage to decimal
 	alpha := float64(alphaPercent) / 100.0
 	maxOvercommit := float64(maxOvercommitPercent) / 100.0
 
 	return placement.BestOfKConfig{
-		R:               maxOvercommit,
-		K:               k,
-		Alpha:           alpha,
-		CanFit:          canFit,
-		TooManyStarting: tooManyStarting,
+		R:     maxOvercommit,
+		K:     k,
+		Alpha: alpha,
 	}
 }

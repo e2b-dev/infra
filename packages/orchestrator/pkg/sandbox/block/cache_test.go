@@ -4,7 +4,9 @@ package block
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -13,6 +15,7 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
@@ -756,4 +759,425 @@ func BenchmarkCopyFromHugepagesFile(b *testing.B) {
 
 		b.SetBytes(GetSize(ranges))
 	}
+}
+
+// buildPackedSrcCache packs mem's dirty ranges in BitsetRanges order.
+func buildPackedSrcCache(t *testing.T, mem []byte, dirty *roaring.Bitmap, blockSize int64) *Cache {
+	t.Helper()
+
+	var packed []byte
+	for r := range BitsetRanges(dirty, blockSize) {
+		packed = append(packed, mem[r.Start:r.Start+r.Size]...)
+	}
+
+	cache, err := NewCache(int64(len(packed)), blockSize, t.TempDir()+"/src-cache", false)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cache.Close() })
+
+	if len(packed) > 0 {
+		_, err = cache.WriteAt(packed, 0)
+		require.NoError(t, err)
+	}
+
+	return cache
+}
+
+func runDedup(t *testing.T, srcMem, baseMem []byte, dirty *roaring.Bitmap, blockSize int64) (*Cache, *header.DiffMetadata) {
+	t.Helper()
+
+	src := buildPackedSrcCache(t, srcMem, dirty, blockSize)
+	cache, meta, err := src.Dedup(t.Context(), &fakeOriginalDevice{data: baseMem}, dirty, blockSize, t.TempDir()+"/dedup", false, false, DedupBudget{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cache.Close() })
+
+	return cache, meta
+}
+
+func TestCacheDedup_AllPagesDiffer(t *testing.T) {
+	t.Parallel()
+
+	pageSize := int64(header.PageSize)
+	blockSize := 4 * pageSize
+	size := blockSize * 2
+
+	srcData := make([]byte, size)
+	_, err := rand.Read(srcData)
+	require.NoError(t, err)
+	origData := make([]byte, size)
+
+	cache, meta := runDedup(t, srcData, origData, fullDirty(size, blockSize), blockSize)
+
+	numPages := size / pageSize
+	require.EqualValues(t, numPages, meta.Dirty.GetCardinality())
+	for i := range numPages {
+		got := make([]byte, pageSize)
+		_, err := cache.ReadAt(got, i*pageSize)
+		require.NoError(t, err)
+		require.Equal(t, srcData[i*pageSize:(i+1)*pageSize], got, "page %d", i)
+	}
+}
+
+// Regression: pageIdx must use the absolute guest offset (r.Start+chunkOff+i),
+// and cacheOff must advance correctly across non-contiguous Ranges.
+func TestCacheDedup_NonZeroRangeStartAndMultipleRanges(t *testing.T) {
+	t.Parallel()
+
+	pageSize := int64(header.PageSize)
+	blockSize := 4 * pageSize
+	size := blockSize * 4
+
+	origData := make([]byte, size)
+	_, err := rand.Read(origData)
+	require.NoError(t, err)
+	srcData := make([]byte, size)
+	copy(srcData, origData)
+
+	p1 := bytes.Repeat([]byte{0xD1}, int(pageSize))
+	p13 := bytes.Repeat([]byte{0xD2}, int(pageSize))
+	copy(srcData[1*pageSize:], p1)
+	copy(srcData[13*pageSize:], p13)
+
+	dirty := roaring.New()
+	dirty.AddMany([]uint32{0, 3})
+
+	cache, meta := runDedup(t, srcData, origData, dirty, blockSize)
+
+	require.EqualValues(t, 2, meta.Dirty.GetCardinality())
+	require.True(t, meta.Dirty.Contains(1))
+	require.True(t, meta.Dirty.Contains(13))
+
+	got := make([]byte, pageSize)
+	_, err = cache.ReadAt(got, 0)
+	require.NoError(t, err)
+	require.Equal(t, p1, got)
+	_, err = cache.ReadAt(got, pageSize)
+	require.NoError(t, err)
+	require.Equal(t, p13, got)
+}
+
+// Regression: BitsetRanges merges contiguous bits into one Range; the inner
+// loop must walk r.Size, not blockSize.
+func TestCacheDedup_ContiguousDirtyBlocks(t *testing.T) {
+	t.Parallel()
+
+	pageSize := int64(header.PageSize)
+	blockSize := 4 * pageSize
+	size := blockSize * 5
+
+	origData := make([]byte, size)
+	_, err := rand.Read(origData)
+	require.NoError(t, err)
+	srcData := make([]byte, size)
+	copy(srcData, origData)
+
+	pages := [3][]byte{
+		bytes.Repeat([]byte{0xA1}, int(pageSize)),
+		bytes.Repeat([]byte{0xA2}, int(pageSize)),
+		bytes.Repeat([]byte{0xA3}, int(pageSize)),
+	}
+	for i, idx := range []int64{4, 9, 14} {
+		copy(srcData[idx*pageSize:], pages[i])
+	}
+
+	dirty := roaring.New()
+	dirty.AddMany([]uint32{1, 2, 3})
+
+	cache, meta := runDedup(t, srcData, origData, dirty, blockSize)
+
+	require.EqualValues(t, 3, meta.Dirty.GetCardinality())
+	for i, want := range pages {
+		got := make([]byte, pageSize)
+		_, err := cache.ReadAt(got, int64(i)*pageSize)
+		require.NoError(t, err)
+		require.Equal(t, want, got, "packed page %d", i)
+	}
+}
+
+func TestCacheDedup_ContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	blockSize := 4 * int64(header.PageSize)
+	size := blockSize * 4
+	data := make([]byte, size)
+	_, err := rand.Read(data)
+	require.NoError(t, err)
+
+	dirty := fullDirty(size, blockSize)
+	src := buildPackedSrcCache(t, data, dirty, blockSize)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	_, _, err = src.Dedup(ctx, &fakeOriginalDevice{data: data}, dirty, blockSize, t.TempDir()+"/dedup", false, false, DedupBudget{})
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestCacheDedup_OriginalMemfileReadError(t *testing.T) {
+	t.Parallel()
+
+	blockSize := 4 * int64(header.PageSize)
+	data := make([]byte, blockSize)
+	_, err := rand.Read(data)
+	require.NoError(t, err)
+
+	dirty := fullDirty(blockSize, blockSize)
+	src := buildPackedSrcCache(t, data, dirty, blockSize)
+
+	sentinel := errors.New("base read failed")
+	_, _, err = src.Dedup(
+		t.Context(),
+		&erroringOriginalDevice{fakeOriginalDevice: fakeOriginalDevice{data: data}, err: sentinel},
+		dirty,
+		blockSize,
+		t.TempDir()+"/dedup",
+		false,
+		false,
+		DedupBudget{},
+	)
+	require.ErrorIs(t, err, sentinel)
+}
+
+// Empty parent mapping: dedup must skip base.ReadAt entirely.
+func TestCacheDedup_EmptyParentMappingSkipsBaseReadAt(t *testing.T) {
+	t.Parallel()
+
+	pageSize := int64(header.PageSize)
+	blockSize := 4 * pageSize
+	size := blockSize * 2
+
+	// Header reports Empty, so base bytes don't matter.
+	srcData := make([]byte, size)
+	_, err := rand.Read(srcData)
+	require.NoError(t, err)
+
+	// Block 1 is zero source → exercises pageDirty + pageEmpty in one run.
+	clear(srcData[blockSize : blockSize*2])
+
+	hdr, err := header.NewHeader(
+		header.NewTemplateMetadata(uuid.Nil, uint64(blockSize), uint64(size)),
+		[]header.BuildMap{{Offset: 0, Length: uint64(size), BuildId: uuid.Nil}},
+	)
+	require.NoError(t, err)
+
+	dirty := fullDirty(size, blockSize)
+	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
+
+	// Non-zero base junk: a regression that read base would misclassify pages.
+	junk := bytes.Repeat([]byte{0xFF}, int(size))
+	base := &fakeOriginalDevice{data: junk, hdr: hdr}
+
+	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", false, false, DedupBudget{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cache.Close() })
+
+	require.Zero(t, base.reads, "uuid.Nil parent fast path must not call base.ReadAt")
+
+	require.EqualValues(t, blockSize/pageSize, meta.Dirty.GetCardinality())
+	require.EqualValues(t, blockSize/pageSize, meta.Empty.GetCardinality())
+
+	for i := range blockSize / pageSize {
+		got := make([]byte, pageSize)
+		_, err := cache.ReadAt(got, i*pageSize)
+		require.NoError(t, err)
+		require.Equal(t, srcData[i*pageSize:(i+1)*pageSize], got, "dirty page %d", i)
+	}
+}
+
+// Zero matches → pageEmpty (uuid.Nil); non-zero matches → drop to parent.
+func TestCacheDedup_ZeroMatchingPagesGoIntoEmpty(t *testing.T) {
+	t.Parallel()
+
+	pageSize := int64(header.PageSize)
+	blockSize := 4 * pageSize
+	size := blockSize * 2
+
+	// Base: pages 0..3 zero, pages 4..7 non-zero. Source matches base exactly.
+	origData := make([]byte, size)
+	_, err := rand.Read(origData[4*pageSize:])
+	require.NoError(t, err)
+	srcData := make([]byte, size)
+	copy(srcData, origData)
+
+	cache, meta := runDedup(t, srcData, origData, fullDirty(size, blockSize), blockSize)
+
+	require.EqualValues(t, 0, meta.Dirty.GetCardinality())
+	require.EqualValues(t, header.PageSize, meta.BlockSize)
+	sz, err := cache.Size()
+	require.NoError(t, err)
+	require.EqualValues(t, 0, sz)
+
+	require.EqualValues(t, 4, meta.Empty.GetCardinality())
+	for i := range uint32(4) {
+		require.True(t, meta.Empty.Contains(i))
+	}
+	for i := uint32(4); i < 8; i++ {
+		require.False(t, meta.Empty.Contains(i))
+	}
+}
+
+func TestCacheDedup_ZeroPagesOverrideNonZeroBase(t *testing.T) {
+	t.Parallel()
+
+	pageSize := int64(header.PageSize)
+	blockSize := 4 * pageSize
+	size := blockSize
+
+	origData := make([]byte, size)
+	_, err := rand.Read(origData)
+	require.NoError(t, err)
+	srcData := make([]byte, size)
+
+	cache, meta := runDedup(t, srcData, origData, fullDirty(size, blockSize), blockSize)
+
+	require.EqualValues(t, 0, meta.Dirty.GetCardinality())
+	require.EqualValues(t, size/pageSize, meta.Empty.GetCardinality())
+	sz, err := cache.Size()
+	require.NoError(t, err)
+	require.Zero(t, sz)
+}
+
+// Best-effort + base uncached: skip base.ReadAt, write every non-zero
+// page through.
+func TestCacheDedup_BestEffortUncachedSkipsBaseReadAt(t *testing.T) {
+	t.Parallel()
+
+	pageSize := int64(header.PageSize)
+	blockSize := 4 * pageSize
+	size := blockSize * 2
+
+	srcData := make([]byte, size)
+	_, err := rand.Read(srcData)
+	require.NoError(t, err)
+	// Zero the last page so we exercise the empty routing.
+	clear(srcData[size-pageSize : size])
+
+	// Identical base catches accidental fallthrough to the compare path.
+	baseData := make([]byte, size)
+	copy(baseData, srcData)
+
+	dirty := fullDirty(size, blockSize)
+	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
+	base := &peekingOriginalDevice{fakeOriginalDevice: fakeOriginalDevice{data: baseData}, cached: false}
+
+	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", true, false, DedupBudget{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cache.Close() })
+
+	require.Zero(t, base.reads, "best-effort uncached path must not call base.ReadAt")
+
+	totalPages := uint64(size / pageSize)
+	require.Equal(t, totalPages-1, meta.Dirty.GetCardinality(), "non-zero pages written as dirty")
+	require.EqualValues(t, 1, meta.Empty.GetCardinality(), "zero page still routed to Empty")
+	require.True(t, meta.Empty.Contains(uint32(totalPages-1)))
+}
+
+// Best-effort + cache hit must behave like the normal compare path.
+func TestCacheDedup_BestEffortCachedMatchesNormalPath(t *testing.T) {
+	t.Parallel()
+
+	pageSize := int64(header.PageSize)
+	blockSize := 4 * pageSize
+	size := blockSize * 2
+
+	srcData := make([]byte, size)
+	_, err := rand.Read(srcData)
+	require.NoError(t, err)
+	baseData := make([]byte, size)
+	copy(baseData, srcData)
+	// Force one differing page in block 0.
+	srcData[pageSize] ^= 0xFF
+
+	dirty := fullDirty(size, blockSize)
+	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
+	base := &peekingOriginalDevice{fakeOriginalDevice: fakeOriginalDevice{data: baseData}, cached: true}
+
+	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", true, false, DedupBudget{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cache.Close() })
+
+	require.EqualValues(t, 1, meta.Dirty.GetCardinality(), "only the genuinely differing page is dirty")
+	require.EqualValues(t, 0, meta.Empty.GetCardinality())
+}
+
+type perPagePeeker struct {
+	fakeOriginalDevice
+
+	cachedPages map[uint32]bool
+}
+
+func (p *perPagePeeker) IsCached(_ context.Context, off, _ int64) bool {
+	return p.cachedPages[uint32(off/int64(header.PageSize))]
+}
+
+// Best-effort decides per page, not per block: when the parent has cached and
+// uncached pages inside the same dedup block, only the uncached ones get
+// written through. The earlier block-granular check gave up dedup on the
+// whole block as soon as any page inside it was uncached.
+func TestCacheDedup_BestEffortPerPageCacheCheck(t *testing.T) {
+	t.Parallel()
+
+	pageSize := int64(header.PageSize)
+	blockSize := 4 * pageSize
+	size := blockSize
+
+	srcData := make([]byte, size)
+	_, err := rand.Read(srcData)
+	require.NoError(t, err)
+	baseData := make([]byte, size)
+	copy(baseData, srcData)
+
+	dirty := fullDirty(size, blockSize)
+	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
+	base := &perPagePeeker{
+		fakeOriginalDevice: fakeOriginalDevice{data: baseData},
+		cachedPages:        map[uint32]bool{0: true, 1: false, 2: true, 3: false},
+	}
+
+	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", true, false, DedupBudget{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cache.Close() })
+
+	require.EqualValues(t, 2, meta.Dirty.GetCardinality())
+	require.True(t, meta.Dirty.Contains(1))
+	require.True(t, meta.Dirty.Contains(3))
+}
+
+// TestCache_FileSize_MatchesActualAllocation writes a known number of full
+// blocks through Cache and verifies that FileSize reports the on-disk
+// allocation in bytes — i.e. one block written ⇒ one block on disk.
+//
+// This is a regression test for using the wrong block-size constant in the
+// stat.Blocks math. Before the fix, FileSize multiplied stat.Blocks (POSIX
+// 512-byte units) by statfs.Bsize (4096 on ext4), inflating the reported
+// usage by 8× and stalling the build-cache disk-pressure eviction loop.
+func TestCache_FileSize_MatchesActualAllocation(t *testing.T) {
+	t.Parallel()
+
+	const (
+		blockSize = int64(4096)
+		nBlocks   = int64(4)
+		fileSize  = blockSize * 64 // sparse, only nBlocks actually allocated
+	)
+
+	cache, err := NewCache(fileSize, blockSize, t.TempDir()+"/cache", false)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cache.Close() })
+
+	buf := make([]byte, blockSize)
+	_, err = rand.Read(buf)
+	require.NoError(t, err)
+	for i := range nBlocks {
+		_, err = cache.WriteAt(buf, i*blockSize)
+		require.NoError(t, err)
+	}
+
+	got, err := cache.FileSize(t.Context())
+	require.NoError(t, err)
+
+	expected := nBlocks * blockSize
+	t.Logf("wrote %d blocks of %d B; FileSize=%d B (expected %d B)", nBlocks, blockSize, got, expected)
+
+	require.Equal(t, expected, got,
+		"FileSize must report on-disk allocation in bytes; a value ~%d× expected suggests stat.Blocks was multiplied by statfs.Bsize instead of the POSIX 512",
+		int64(4096)/int64(512))
 }

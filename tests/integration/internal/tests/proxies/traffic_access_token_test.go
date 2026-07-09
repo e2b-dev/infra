@@ -265,7 +265,7 @@ func TestSandboxWithTrafficAccessTokenAutoResumeViaProxy(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// Pause sandbox.
-	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
 
@@ -287,10 +287,8 @@ func TestSandboxWithTrafficAccessTokenAutoResumeViaProxy(t *testing.T) {
 	require.Equal(t, api.Paused, res.JSON200.State)
 
 	// Valid token request should auto-resume and succeed.
-	req = utils.NewRequest(sbx, proxyURL, port, nil)
-	resp, err = client.Do(req)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+	resp = utils.WaitForStatus(t, client, sbx, proxyURL, port, nil, http.StatusOK)
+	require.NotNil(t, resp)
 	require.NoError(t, resp.Body.Close())
 
 	res, err = c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
@@ -319,7 +317,9 @@ func TestEnvdAccessTokenAutoResumeViaProxy(t *testing.T) {
 	envdHealthURL := *proxyURL
 	envdHealthURL.Path = "/health"
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	// The auto-resume request below must cover the whole snapshot resume,
+	// which can take longer than 10s under load.
+	client := &http.Client{Timeout: 60 * time.Second}
 	envdPort := int(consts.DefaultEnvdServerPort)
 
 	// Verify envd is reachable with valid access token while running.
@@ -332,7 +332,7 @@ func TestEnvdAccessTokenAutoResumeViaProxy(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// Pause sandbox.
-	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
 

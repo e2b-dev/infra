@@ -32,14 +32,19 @@ var (
 )
 
 const (
-	futureTTL = 1 * time.Hour
+	// futureTTL must outlive a parent upload's full retry window so a child's
+	// in-memory Wait still finds the parent's future. Keep >= the upload retry
+	// budget (server.uploadTotalBudget, 2h).
+	futureTTL = 3 * time.Hour
 
 	// refreshHeaderBudget bounds how long an upload Wait polls remote storage
 	// for a parent's V4 header. Crosses orchestrators: A may still be uploading
-	// on a remote orch when B's runV4 calls Wait(A) here. Matches the
-	// per-upload bound in server.uploadTimeout — anything longer means the
-	// parent's upload is itself stuck and would have failed on its own.
-	refreshHeaderBudget = 20 * time.Minute
+	// on a remote orch when B's runV4 calls Wait(A) here. It must be >= the
+	// parent's full retry window (server.uploadTotalBudget, 2h); otherwise the
+	// poll's budget expiry returns a non-retryable "object does not exist" and
+	// the child gives up while the parent is still retrying. The per-attempt
+	// context (server.uploadTimeout) bounds the actual poll duration.
+	refreshHeaderBudget = 2 * time.Hour
 
 	// uploadDoneChannelPrefix is the Redis pub/sub channel prefix for per-build
 	// upload-finished signals. Empty payload = success; non-empty = upload error.
@@ -109,6 +114,12 @@ func (u *Uploads) Wait(ctx context.Context, buildID uuid.UUID, t build.DiffType)
 
 	d, err := u.find(ctx, buildID, t)
 	if err != nil && !errors.Is(err, ErrBuildNotInCache) {
+		logger.L().Warn(ctx, "ancestor resolution failed from cached template",
+			logger.WithBuildID(buildID.String()),
+			zap.String("file_type", string(t)),
+			zap.Error(err),
+		)
+
 		return nil, err
 	}
 

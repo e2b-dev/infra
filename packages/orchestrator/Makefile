@@ -48,6 +48,19 @@ build-local:
 build-debug:
 	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -race -gcflags=all="-N -l" -o bin/orchestrator .
 
+# Builds the dummy orchestrator. It only implements the orchestrator.proto
+# SandboxService surface against an in-memory store, and is meant for local
+# API development and lightweight tests where the full Linux orchestrator
+# (firecracker, NBD, NFS, cgroups) is not needed.
+.PHONY: build-dummy
+build-dummy:
+	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
+	CGO_ENABLED=0 go build -o bin/dummy-orchestrator -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" ./cmd/dummy-orchestrator
+
+.PHONY: run-dummy
+run-dummy: build-dummy
+	NODE_ID=$(HOSTNAME) GRPC_PORT=5008 HEALTH_PORT=5018 ./bin/dummy-orchestrator
+
 .PHONY: run-debug
 run-debug:
 	make build-debug
@@ -76,11 +89,14 @@ run-local:
 
 .PHONY: upload/clean-nfs-cache
 upload/clean-nfs-cache:
+	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
 	chmod +x ./bin/clean-nfs-cache
 ifeq ($(PROVIDER),aws)
 	aws s3 cp ./bin/clean-nfs-cache "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/clean-nfs-cache" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
+	aws s3 cp ./bin/clean-nfs-cache "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/clean-nfs-cache.$(COMMIT_SHA)" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
 else
-	gsutil -h "Cache-Control:no-cache, max-age=0" cp ./bin/clean-nfs-cache "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/clean-nfs-cache"
+	gcloud storage cp --cache-control="no-cache, max-age=0" ./bin/clean-nfs-cache "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/clean-nfs-cache"
+	gcloud storage cp --cache-control="no-cache, max-age=0" ./bin/clean-nfs-cache "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/clean-nfs-cache.$(COMMIT_SHA)"
 endif
 
 .PHONY: upload/orchestrator
@@ -94,11 +110,14 @@ endif
 
 .PHONY: upload/template-manager
 upload/template-manager:
+	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
 	chmod +x ./bin/orchestrator
 ifeq ($(PROVIDER),aws)
 	aws s3 cp ./bin/orchestrator "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/template-manager" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
+	aws s3 cp ./bin/orchestrator "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/template-manager.$(COMMIT_SHA)" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
 else
-	gsutil -h "Cache-Control:no-cache, max-age=0" cp ./bin/orchestrator "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/template-manager"
+	gcloud storage cp --cache-control="no-cache, max-age=0" ./bin/orchestrator "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/template-manager"
+	gcloud storage cp --cache-control="no-cache, max-age=0" ./bin/orchestrator "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/template-manager.$(COMMIT_SHA)"
 endif
 
 .PHONY: build-and-upload/clean-nfs-cache
@@ -128,6 +147,10 @@ test-docker:
 	@echo "Done"
 
 .PHONY: build-template
+# Disk size (MB) of the base template rootfs. Matches create-build's own
+# default; callers (e.g. integration-test CI) can override to leave headroom
+# for disk-heavy build steps after the build-reserved-disk-space-mb reservation.
+DISK_SIZE_MB ?= 1024
 build-template: fetch-busybox
 	TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) \
 	GOOGLE_SERVICE_ACCOUNT_BASE64=$(GOOGLE_SERVICE_ACCOUNT_BASE64) \
@@ -144,7 +167,8 @@ build-template: fetch-busybox
 	-template $(TEMPLATE_ID) \
 	-to-build $(BUILD_ID) \
 	-kernel $(KERNEL_VERSION) \
-	-firecracker $(FIRECRACKER_VERSION)
+	-firecracker $(FIRECRACKER_VERSION) \
+	-disk $(DISK_SIZE_MB)
 
 .PHONY: migrate
 migrate:

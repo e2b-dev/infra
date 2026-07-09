@@ -137,7 +137,11 @@ func newProxyClient(
 
 			if err != nil {
 				if t.SandboxPort == uint64(consts.DefaultEnvdServerPort) {
-					t.RequestLogger.Error(ctx, "sandbox error handler called", zap.Error(err))
+					if errors.Is(err, context.Canceled) {
+						t.RequestLogger.Warn(ctx, "sandbox request canceled by client", zap.Error(err))
+					} else {
+						t.RequestLogger.Error(ctx, "sandbox error handler called", zap.Error(err))
+					}
 				} else {
 					t.RequestLogger.Warn(ctx, "sandbox error handler called", zap.Error(err))
 				}

@@ -21,11 +21,10 @@ SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count,
        eb.envd_version as build_envd_version,
        COALESCE(eb.firecracker_version, 'N/A') as build_firecracker_version,
        COALESCE(latest_build.status_group, 'pending') as build_status,
-       u.id as creator_id, u.email as creator_email,
+       e.created_by as creator_id,
        COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases,
        COALESCE(ea.names, ARRAY[]::text[])::text[] AS names
-FROM public.envs AS e
-LEFT JOIN public.users AS u ON u.id = e.created_by
+FROM public.active_envs AS e
 LEFT JOIN LATERAL (
     SELECT 
         ARRAY_AGG(alias ORDER BY alias) AS aliases,
@@ -56,7 +55,7 @@ ORDER BY e.created_at ASC
 `
 
 type GetTeamTemplatesRow struct {
-	Env                     Env
+	ActiveEnv               ActiveEnv
 	BuildID                 uuid.UUID
 	BuildVcpu               int64
 	BuildRamMb              int64
@@ -65,7 +64,6 @@ type GetTeamTemplatesRow struct {
 	BuildFirecrackerVersion string
 	BuildStatus             types.BuildStatusGroup
 	CreatorID               *uuid.UUID
-	CreatorEmail            *string
 	Aliases                 []string
 	Names                   []string
 }
@@ -80,17 +78,17 @@ func (q *Queries) GetTeamTemplates(ctx context.Context, teamID uuid.UUID) ([]Get
 	for rows.Next() {
 		var i GetTeamTemplatesRow
 		if err := rows.Scan(
-			&i.Env.ID,
-			&i.Env.CreatedAt,
-			&i.Env.UpdatedAt,
-			&i.Env.Public,
-			&i.Env.BuildCount,
-			&i.Env.SpawnCount,
-			&i.Env.LastSpawnedAt,
-			&i.Env.TeamID,
-			&i.Env.CreatedBy,
-			&i.Env.ClusterID,
-			&i.Env.Source,
+			&i.ActiveEnv.ID,
+			&i.ActiveEnv.CreatedAt,
+			&i.ActiveEnv.UpdatedAt,
+			&i.ActiveEnv.Public,
+			&i.ActiveEnv.BuildCount,
+			&i.ActiveEnv.SpawnCount,
+			&i.ActiveEnv.LastSpawnedAt,
+			&i.ActiveEnv.TeamID,
+			&i.ActiveEnv.CreatedBy,
+			&i.ActiveEnv.ClusterID,
+			&i.ActiveEnv.Source,
 			&i.BuildID,
 			&i.BuildVcpu,
 			&i.BuildRamMb,
@@ -99,7 +97,6 @@ func (q *Queries) GetTeamTemplates(ctx context.Context, teamID uuid.UUID) ([]Get
 			&i.BuildFirecrackerVersion,
 			&i.BuildStatus,
 			&i.CreatorID,
-			&i.CreatorEmail,
 			&i.Aliases,
 			&i.Names,
 		); err != nil {

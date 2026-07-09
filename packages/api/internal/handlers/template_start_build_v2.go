@@ -71,7 +71,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		return
 	}
 
-	dbTeamID := templateBuildDB.Env.TeamID.String()
+	dbTeamID := templateBuildDB.ActiveEnv.TeamID.String()
 	team, apiErr := a.GetTeam(ctx, c, &dbTeamID)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
@@ -80,7 +80,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		return
 	}
 
-	if team.ID != templateBuildDB.Env.TeamID {
+	if team.ID != templateBuildDB.ActiveEnv.TeamID {
 		a.sendAPIStoreError(c, http.StatusForbidden, "User does not have access to the template")
 
 		telemetry.ReportCriticalError(ctx, "user does not have access to the template", err, telemetry.WithTemplateID(templateID))
@@ -109,7 +109,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	// only waiting builds can be triggered
 	if build.StatusGroup != types.BuildStatusGroupPending {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "build is not in waiting state")
-		telemetry.ReportCriticalError(ctx, "build is not in waiting state", fmt.Errorf("build is not in waiting state: %s", build.StatusGroup), telemetry.WithTemplateID(templateID))
+		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, "build is not in waiting state", fmt.Errorf("build is not in waiting state - current state: %s", build.StatusGroup), telemetry.WithTemplateID(templateID))
 
 		return
 	}
@@ -129,7 +129,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	version, err := userAgentToTemplateVersion(ctx, logger.L().With(logger.WithTemplateID(templateID), logger.WithBuildID(buildID)), c.Request.UserAgent())
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing user agent: %s", err))
-		telemetry.ReportCriticalError(ctx, "error when parsing user agent", err, telemetry.WithTemplateID(templateID))
+		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, "error when parsing user agent", err, telemetry.WithTemplateID(templateID))
 
 		return
 	}
@@ -146,12 +146,12 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	err = a.sqlcDB.UpdateTemplateBuild(ctx, queries.UpdateTemplateBuildParams{
 		StartCmd:        body.StartCmd,
 		ReadyCmd:        body.ReadyCmd,
-		Dockerfile:      utils.ToPtr(string(stepsMarshalled)),
-		ClusterNodeID:   utils.ToPtr(builderNode.NodeID),
-		CpuArchitecture: utils.ToPtr(machineInfo.CPUArchitecture),
-		CpuFamily:       utils.ToPtr(machineInfo.CPUFamily),
-		CpuModel:        utils.ToPtr(machineInfo.CPUModel),
-		CpuModelName:    utils.ToPtr(machineInfo.CPUModelName),
+		Dockerfile:      new(string(stepsMarshalled)),
+		ClusterNodeID:   new(builderNode.NodeID),
+		CpuArchitecture: new(machineInfo.CPUArchitecture),
+		CpuFamily:       new(machineInfo.CPUFamily),
+		CpuModel:        new(machineInfo.CPUModel),
+		CpuModelName:    new(machineInfo.CPUModelName),
 		CpuFlags:        machineInfo.CPUFlags,
 		BuildUuid:       buildUUID,
 	})
@@ -208,32 +208,38 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 func userAgentToTemplateVersion(ctx context.Context, logger logger.Logger, userAgent string) (string, error) {
 	version := templates.TemplateV2LatestVersion
 
-	switch {
-	case strings.HasPrefix(userAgent, jsSDKPrefix):
-		sdk := strings.TrimPrefix(userAgent, jsSDKPrefix)
+	for agent := range strings.FieldsSeq(userAgent) {
+		switch {
+		case strings.HasPrefix(agent, jsSDKPrefix):
+			sdk := strings.TrimPrefix(agent, jsSDKPrefix)
 
-		// Check if the SDK version supports the latest template version
-		ok, err := utils.IsGTEVersion(sdk, templates.SDKTemplateReleaseVersion)
-		if err != nil {
-			return "", fmt.Errorf("parsing JS SDK version: %w", err)
-		}
-		if !ok {
-			version = templates.TemplateV2BetaVersion
-		}
-	case strings.HasPrefix(userAgent, pythonSDKPrefix):
-		sdk := strings.TrimPrefix(userAgent, pythonSDKPrefix)
+			// Check if the SDK version supports the latest template version
+			ok, err := utils.IsGTEVersion(sdk, templates.SDKTemplateReleaseVersion)
+			if err != nil {
+				return "", fmt.Errorf("parsing JS SDK version: %w", err)
+			}
+			if !ok {
+				version = templates.TemplateV2BetaVersion
+			}
 
-		// Check if the SDK version supports the latest template version
-		ok, err := utils.IsGTEVersion(sdk, templates.SDKTemplateReleaseVersion)
-		if err != nil {
-			return "", fmt.Errorf("parsing Python SDK version: %w", err)
+			return version, nil
+		case strings.HasPrefix(agent, pythonSDKPrefix):
+			sdk := strings.TrimPrefix(agent, pythonSDKPrefix)
+
+			// Check if the SDK version supports the latest template version
+			ok, err := utils.IsGTEVersion(sdk, templates.SDKTemplateReleaseVersion)
+			if err != nil {
+				return "", fmt.Errorf("parsing Python SDK version: %w", err)
+			}
+			if !ok {
+				version = templates.TemplateV2BetaVersion
+			}
+
+			return version, nil
 		}
-		if !ok {
-			version = templates.TemplateV2BetaVersion
-		}
-	default:
-		logger.Debug(ctx, "Unrecognized user agent, defaulting to the latest template version", zap.String("user_agent", userAgent), zap.String("version", version))
 	}
+
+	logger.Debug(ctx, "Unrecognized user agent, defaulting to the latest template version", zap.String("user_agent", userAgent), zap.String("version", version))
 
 	return version, nil
 }

@@ -10,6 +10,8 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
@@ -33,15 +35,16 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/phases/user"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/writer"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/units"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	orchestratorgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
+	"github.com/e2b-dev/infra/packages/shared/pkg/units"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -103,6 +106,7 @@ type Result struct {
 	KernelVersion      string
 	FirecrackerVersion string
 	RootfsSizeMB       int64
+	SchedulingMetadata *orchestratorgrpc.SchedulingMetadata
 }
 
 // Build builds the template, uploads it to storage and returns the result metadata.
@@ -180,9 +184,21 @@ func (b *Builder) Build(ctx context.Context, paths storage.Paths, cfg config.Tem
 	// Wrap context as a user error if no user error already exists
 	defer func() {
 		if ctx.Err() != nil {
+			childSpan.AddEvent("build context done", trace.WithAttributes(
+				attribute.String("context.err", ctx.Err().Error()),
+			))
 			e = errors.Join(e, ctx.Err())
 		}
-		e = builderrors.WrapContextAsUserError(e)
+
+		e = builderrors.WrapContextAsUserError(ctx, e)
+		if e != nil {
+			childSpan.RecordError(e, trace.WithAttributes(
+				telemetry.WithTemplateID(cfg.TemplateID),
+				telemetry.WithBuildID(paths.BuildID),
+				telemetry.WithTeamID(cfg.TeamID),
+			))
+			childSpan.SetStatus(codes.Error, e.Error())
+		}
 	}()
 
 	if isV1Build {
@@ -213,9 +229,30 @@ func (b *Builder) Build(ctx context.Context, paths storage.Paths, cfg config.Tem
 	uploadErrGroup := &errgroup.Group{}
 	defer func() {
 		// Wait for all template layers to be uploaded even if the build fails
+		_, waitSpan := tracer.Start(ctx, "wait-for-template-layer-uploads", trace.WithAttributes(
+			telemetry.WithTemplateID(cfg.TemplateID),
+			telemetry.WithBuildID(paths.BuildID),
+			telemetry.WithTeamID(cfg.TeamID),
+		))
+		defer waitSpan.End()
+
 		err := uploadErrGroup.Wait()
 		if err != nil {
+			waitSpan.RecordError(err)
+			waitSpan.SetStatus(codes.Error, err.Error())
+			b.logger.Error(ctx, "template layer upload wait failed",
+				logger.WithTemplateID(cfg.TemplateID),
+				logger.WithBuildID(paths.BuildID),
+				logger.WithTeamID(cfg.TeamID),
+				zap.Error(err),
+			)
 			e = errors.Join(e, fmt.Errorf("error uploading template layers: %w", err))
+		}
+
+		if ctx.Err() != nil {
+			waitSpan.AddEvent("build context done while waiting for uploads", trace.WithAttributes(
+				attribute.String("context.err", ctx.Err().Error()),
+			))
 		}
 	}()
 
@@ -387,7 +424,25 @@ func runBuild(
 		KernelVersion:      bc.Config.KernelVersion,
 		FirecrackerVersion: bc.Config.FirecrackerVersion,
 		RootfsSizeMB:       units.BytesToMB(int64(rootfsSize)),
+		SchedulingMetadata: templateSchedulingMetadata(ctx, builder.templateCache, lastLayerResult.Metadata.Template.BuildID),
 	}, nil
+}
+
+func templateSchedulingMetadata(ctx context.Context, cache *sbxtemplate.Cache, buildID string) *orchestratorgrpc.SchedulingMetadata {
+	// Use GetTemplate (not GetCachedTemplate): the optimize phase invalidates
+	// the final build from the cache, so re-fetch to resolve its headers.
+	t, err := cache.GetTemplate(ctx, buildID, false, false)
+	if err != nil {
+		return nil
+	}
+	provider, ok := t.(interface {
+		SchedulingMetadata(ctx context.Context) *orchestratorgrpc.SchedulingMetadata
+	})
+	if !ok {
+		return nil
+	}
+
+	return provider.SchedulingMetadata(ctx)
 }
 
 // forceSteps sets force for all steps after the first encounter.
@@ -415,7 +470,7 @@ func getRootfsSize(
 	s storage.StorageProvider,
 	paths storage.Paths,
 ) (uint64, error) {
-	obj, err := s.OpenBlob(ctx, paths.RootfsHeader(), storage.RootFSHeaderObjectType)
+	obj, err := s.OpenBlob(ctx, paths.RootfsHeader())
 	if err != nil {
 		return 0, fmt.Errorf("error opening rootfs header object: %w", err)
 	}

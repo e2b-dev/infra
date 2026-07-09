@@ -66,6 +66,16 @@ func TestLocate(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("mid-frame offset errors", func(t *testing.T) {
+		t.Parallel()
+		// A mid-frame uncompressed offset would fetch and decode the whole
+		// containing frame from its start, silently returning data for the
+		// wrong position. It must be rejected so callers frame-align first.
+		_, err := ft.LocateCompressed((1 << 20) / 2)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "frame-aligned")
+	})
+
 	t.Run("nil table errors", func(t *testing.T) {
 		t.Parallel()
 		_, err := (*FrameTable)(nil).LocateCompressed(0)
@@ -93,10 +103,10 @@ func TestLocate(t *testing.T) {
 func TestNewFrameTable(t *testing.T) {
 	t.Parallel()
 
-	ft := NewFrameTable(CompressionZstd, []FrameSize{
+	ft := NewFullFrameTable(CompressionZstd, []FrameSize{
 		{U: 1 << 20, C: 500_000},
 		{U: 1 << 20, C: 600_000},
-	})
+	}).Table()
 
 	require.Equal(t, 2, ft.NumFrames())
 	require.Equal(t, CompressionZstd, ft.CompressionType())
@@ -118,17 +128,17 @@ func TestNewFrameTable(t *testing.T) {
 func TestFrameTable_TrimToRanges(t *testing.T) {
 	t.Parallel()
 
-	ft := NewFrameTable(CompressionLZ4, []FrameSize{
+	ft := NewFullFrameTable(CompressionLZ4, []FrameSize{
 		{U: 1 << 20, C: 500_000},
 		{U: 1 << 20, C: 600_000},
 		{U: 1 << 20, C: 400_000},
 		{U: 1 << 20, C: 700_000},
-	})
+	}).Table()
 
 	t.Run("all frames retained", func(t *testing.T) {
 		t.Parallel()
 		trimmed := ft.TrimToRanges([]Range{{Offset: 0, Length: 4 << 20}})
-		require.Same(t, ft, trimmed)
+		require.Equal(t, ft.NumFrames(), trimmed.NumFrames())
 	})
 
 	t.Run("single range trims to subset", func(t *testing.T) {
@@ -190,10 +200,10 @@ func TestSerializeDeserializeFrameTable(t *testing.T) {
 
 	t.Run("round-trip", func(t *testing.T) {
 		t.Parallel()
-		ft := NewFrameTable(CompressionZstd, []FrameSize{
+		ft := NewFullFrameTable(CompressionZstd, []FrameSize{
 			{U: 2048, C: 1024},
 			{U: 4096, C: 3500},
-		})
+		}).Table()
 
 		var buf bytes.Buffer
 		require.NoError(t, ft.Serialize(&buf))

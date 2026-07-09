@@ -172,10 +172,6 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 					continue
 				}
 
-				if !sbx.Checks.UseClickhouseMetrics {
-					continue
-				}
-
 				wg.Go(func() error {
 					// Make sure the sandbox doesn't change while we are getting metrics (the slot could be assigned to another sandbox)
 					sbxMetrics, err := sbx.Checks.GetMetrics(ctx, timeoutGetMetrics)
@@ -198,9 +194,9 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 					// Check if sandbox clock are in acceptable drift from orchestrator host clock
 					// We want to do it asap so gap between getting metrics and logging is minimal
 					if ok {
-						hostTm := time.Now().UTC().Unix()
-						sbxTm := sbxMetrics.Timestamp
-						sbxDrift := math.Abs(float64(hostTm - sbxTm))
+						hostTmSec := time.Now().UTC().Unix()
+						sbxTmSec := sbxMetrics.Timestamp
+						sbxDrift := math.Abs(float64(hostTmSec - sbxTmSec))
 
 						if sbxDrift > maxAcceptableSandboxClockDriftSec {
 							logger.L().Warn(ctx, "Significant clock drift detected between sandbox and host",
@@ -209,8 +205,8 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 								logger.WithTemplateID(sbx.Runtime.TemplateID),
 								logger.WithEnvdVersion(sbx.Config.Envd.Version),
 								logger.Time("sandbox_start", sbx.GetStartedAt()),
-								zap.Int64("clock_host", hostTm),
-								zap.Int64("clock_sbx", sbxTm),
+								zap.Int64("clock_host", hostTmSec),
+								zap.Int64("clock_sbx", sbxTmSec),
 								zap.Float64("clock_drift_seconds", sbxDrift),
 							)
 						}

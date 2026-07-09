@@ -109,11 +109,11 @@ func newCompressorPool(cfg CompressConfig) (*sync.Pool, error) {
 	return pool, nil
 }
 
-func CompressBytes(ctx context.Context, data []byte, cfg CompressConfig) (*FrameTable, []byte, [32]byte, error) {
+func CompressBytes(ctx context.Context, data []byte, cfg CompressConfig) (*FullFrameTable, []byte, [32]byte, error) {
 	up := &memPartUploader{}
 
 	const compressBytesConcurrency = 1
-	ft, checksum, err := compressStream(ctx, bytes.NewReader(data), cfg, up, compressBytesConcurrency)
+	ft, checksum, err := compressStream(ctx, bytes.NewReader(data), cfg, up, compressBytesConcurrency, nil)
 	if err != nil {
 		return nil, nil, [32]byte{}, err
 	}

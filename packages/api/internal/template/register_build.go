@@ -21,7 +21,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	gutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/template")
@@ -166,14 +165,23 @@ func RegisterBuild(
 		clusterID = &data.ClusterID
 	}
 
-	// Create the template / or update the build count
-	err = client.CreateOrUpdateTemplate(ctx, queries.CreateOrUpdateTemplateParams{
+	// Create the template / or update the build count. A soft-deleted template
+	// is not reactivated: the query returns no row, so the rebuild fails.
+	_, err = client.CreateOrUpdateTemplate(ctx, queries.CreateOrUpdateTemplateParams{
 		TemplateID: data.TemplateID,
 		TeamID:     data.Team.ID,
 		CreatedBy:  data.UserID,
 		ClusterID:  clusterID,
 	})
 	if err != nil {
+		if dberrors.IsNotFoundError(err) {
+			return nil, &api.APIError{
+				Err:       err,
+				ClientMsg: fmt.Sprintf("Template '%s' has been deleted and cannot be rebuilt", data.TemplateID),
+				Code:      http.StatusNotFound,
+			}
+		}
+
 		telemetry.ReportCriticalError(ctx, "error when updating env", err)
 
 		return nil, &api.APIError{
@@ -218,8 +226,8 @@ func RegisterBuild(
 		FreeDiskSizeMb:     data.Team.Limits.DiskMb,
 		StartCmd:           data.StartCmd,
 		ReadyCmd:           data.ReadyCmd,
-		Dockerfile:         gutils.ToPtr(data.Dockerfile),
-		Version:            gutils.ToPtr(data.Version),
+		Dockerfile:         new(data.Dockerfile),
+		Version:            new(data.Version),
 	})
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when inserting build", err)
@@ -328,7 +336,9 @@ func RegisterBuild(
 	}
 
 	for _, tag := range tags {
-		err = client.CreateTemplateBuildAssignment(ctx, queries.CreateTemplateBuildAssignmentParams{
+		// Env is active in this tx (CreateOrUpdateTemplate succeeded above), so
+		// the active_envs guard always matches here; rows is ignored.
+		_, err = client.CreateTemplateBuildAssignment(ctx, queries.CreateTemplateBuildAssignmentParams{
 			TemplateID: data.TemplateID,
 			BuildID:    buildID,
 			Tag:        tag,

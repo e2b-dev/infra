@@ -29,7 +29,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func TestBuildAutoResumeConfig(t *testing.T) {
@@ -469,7 +468,7 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 
 			actual, err := convertAPIVolumesToOrchestratorVolumes(
 				t.Context(), db.SqlcClient, ffClient,
-				teamID, tc.input, &queries.EnvBuild{EnvdVersion: utils.ToPtr(minEnvdVersionForVolumes)},
+				teamID, tc.input, &queries.EnvBuild{EnvdVersion: new(minEnvdVersionForVolumes)},
 			)
 			assert.Equal(t, tc.err, err)
 			assert.Equal(t, tc.expected, actual)
@@ -499,7 +498,7 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 			t.Context(), db.SqlcClient, ffClient,
 			teamID, []api.SandboxVolumeMount{
 				{Name: "vol1", Path: "/vol1"},
-			}, &queries.EnvBuild{EnvdVersion: utils.ToPtr(minEnvdVersionForVolumes)},
+			}, &queries.EnvBuild{EnvdVersion: new(minEnvdVersionForVolumes)},
 		)
 		require.NoError(t, err)
 		assert.Equal(t, []*orchestrator.SandboxVolumeMount{
@@ -552,7 +551,7 @@ func TestPostSandboxes_MissingBareAliasUsesPromotedFallbackKey(t *testing.T) {
 
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/sandboxes", bytes.NewReader(body))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
-	auth.SetTeamInfo(ginCtx, &authtypes.Team{
+	auth.SetTeamInfoForTest(t, ginCtx, &authtypes.Team{
 		Team: &authqueries.Team{
 			ID:   requesterTeamID,
 			Slug: requesterTeamSlug,
@@ -613,7 +612,7 @@ func TestPostSandboxes_PrivateTemplateHidesAccessDenied(t *testing.T) {
 
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/sandboxes", bytes.NewReader(body))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
-	auth.SetTeamInfo(ginCtx, &authtypes.Team{
+	auth.SetTeamInfoForTest(t, ginCtx, &authtypes.Team{
 		Team: &authqueries.Team{
 			ID:   requesterTeamID,
 			Slug: requesterTeamSlug,
@@ -668,7 +667,7 @@ func assertMissingTagDisclosure(t *testing.T, public bool, alias string) {
 
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/sandboxes", bytes.NewReader(body))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
-	auth.SetTeamInfo(ginCtx, &authtypes.Team{
+	auth.SetTeamInfoForTest(t, ginCtx, &authtypes.Team{
 		Team: &authqueries.Team{
 			ID:   requesterTeamID,
 			Slug: requesterTeamSlug,
@@ -730,7 +729,7 @@ func assertMissingDefaultTagDisclosure(t *testing.T) {
 
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/sandboxes", bytes.NewReader(body))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
-	auth.SetTeamInfo(ginCtx, &authtypes.Team{
+	auth.SetTeamInfoForTest(t, ginCtx, &authtypes.Team{
 		Team: &authqueries.Team{
 			ID:   requesterTeamID,
 			Slug: requesterTeamSlug,
@@ -801,10 +800,6 @@ func ffUnused(t *testing.T) *handlersmocks.MockFeatureFlagsClient {
 	return handlersmocks.NewMockFeatureFlagsClient(t) // no expectations — must not be called
 }
 
-func rulesMap(entries map[string][]api.SandboxNetworkRule) *map[string][]api.SandboxNetworkRule {
-	return &entries
-}
-
 func simpleRule(headers map[string]string) api.SandboxNetworkRule {
 	h := headers
 
@@ -835,13 +830,13 @@ func TestValidateNetworkRules(t *testing.T) {
 		{
 			name:        "empty rules map is valid",
 			envdVersion: minEnvdVersionForNetworkRules,
-			rules:       rulesMap(map[string][]api.SandboxNetworkRule{}),
+			rules:       new(map[string][]api.SandboxNetworkRule{}),
 			setupFF:     ffEnabled,
 		},
 		// ── feature flag ─────────────────────────────────────────────────────────
 		{
 			name:     "feature flag disabled returns 400",
-			rules:    rulesMap(map[string][]api.SandboxNetworkRule{"api.openai.com": {}}),
+			rules:    new(map[string][]api.SandboxNetworkRule{"api.openai.com": {}}),
 			setupFF:  ffDisabled,
 			wantCode: http.StatusBadRequest,
 			wantMsg:  "not available for your team",
@@ -849,7 +844,7 @@ func TestValidateNetworkRules(t *testing.T) {
 		// ── envd version ─────────────────────────────────────────────────────────
 		{
 			name:     "missing envd version returns 400",
-			rules:    rulesMap(map[string][]api.SandboxNetworkRule{"api.openai.com": {}}),
+			rules:    new(map[string][]api.SandboxNetworkRule{"api.openai.com": {}}),
 			setupFF:  ffEnabled,
 			wantCode: http.StatusBadRequest,
 			wantMsg:  "template must be rebuilt: envd version is not set",
@@ -857,7 +852,7 @@ func TestValidateNetworkRules(t *testing.T) {
 		{
 			name:        "envd version below minimum returns 400",
 			envdVersion: "0.5.12",
-			rules:       rulesMap(map[string][]api.SandboxNetworkRule{"api.openai.com": {}}),
+			rules:       new(map[string][]api.SandboxNetworkRule{"api.openai.com": {}}),
 			setupFF:     ffEnabled,
 			wantCode:    http.StatusBadRequest,
 			wantMsg:     "template must be rebuilt",
@@ -865,7 +860,7 @@ func TestValidateNetworkRules(t *testing.T) {
 		{
 			name:        "envd version at minimum is valid",
 			envdVersion: minEnvdVersionForNetworkRules,
-			rules:       rulesMap(map[string][]api.SandboxNetworkRule{"api.openai.com": {}}),
+			rules:       new(map[string][]api.SandboxNetworkRule{"api.openai.com": {}}),
 			setupFF:     ffEnabled,
 		},
 		// ── domain count ─────────────────────────────────────────────────────────
@@ -901,7 +896,7 @@ func TestValidateNetworkRules(t *testing.T) {
 		{
 			name:        "empty domain key returns 400",
 			envdVersion: minEnvdVersionForNetworkRules,
-			rules:       rulesMap(map[string][]api.SandboxNetworkRule{"": {}}),
+			rules:       new(map[string][]api.SandboxNetworkRule{"": {}}),
 			setupFF:     ffEnabled,
 			wantCode:    http.StatusBadRequest,
 			wantMsg:     "must not be empty",
@@ -909,7 +904,7 @@ func TestValidateNetworkRules(t *testing.T) {
 		{
 			name:        "domain exceeding max length returns 400",
 			envdVersion: minEnvdVersionForNetworkRules,
-			rules:       rulesMap(map[string][]api.SandboxNetworkRule{strings.Repeat("a", maxNetworkRuleDomainLen+1): {}}),
+			rules:       new(map[string][]api.SandboxNetworkRule{strings.Repeat("a", maxNetworkRuleDomainLen+1): {}}),
 			setupFF:     ffEnabled,
 			wantCode:    http.StatusBadRequest,
 			wantMsg:     "maximum length",
@@ -917,7 +912,7 @@ func TestValidateNetworkRules(t *testing.T) {
 		{
 			name:        "invalid domain returns 400",
 			envdVersion: minEnvdVersionForNetworkRules,
-			rules:       rulesMap(map[string][]api.SandboxNetworkRule{"not a valid domain!": {}}),
+			rules:       new(map[string][]api.SandboxNetworkRule{"not a valid domain!": {}}),
 			setupFF:     ffEnabled,
 			wantCode:    http.StatusBadRequest,
 			wantMsg:     "not a valid domain name",
@@ -925,13 +920,13 @@ func TestValidateNetworkRules(t *testing.T) {
 		{
 			name:        "valid plain domain is accepted",
 			envdVersion: minEnvdVersionForNetworkRules,
-			rules:       rulesMap(map[string][]api.SandboxNetworkRule{"api.openai.com": {}}),
+			rules:       new(map[string][]api.SandboxNetworkRule{"api.openai.com": {}}),
 			setupFF:     ffEnabled,
 		},
 		{
 			name:        "wildcard domain is rejected",
 			envdVersion: minEnvdVersionForNetworkRules,
-			rules:       rulesMap(map[string][]api.SandboxNetworkRule{"*.openai.com": {}}),
+			rules:       new(map[string][]api.SandboxNetworkRule{"*.openai.com": {}}),
 			setupFF:     ffEnabled,
 			wantCode:    http.StatusBadRequest,
 			wantMsg:     "not a valid domain name",
@@ -939,7 +934,7 @@ func TestValidateNetworkRules(t *testing.T) {
 		{
 			name:        "bare wildcard is rejected",
 			envdVersion: minEnvdVersionForNetworkRules,
-			rules:       rulesMap(map[string][]api.SandboxNetworkRule{"*.": {}}),
+			rules:       new(map[string][]api.SandboxNetworkRule{"*.": {}}),
 			setupFF:     ffEnabled,
 			wantCode:    http.StatusBadRequest,
 			wantMsg:     "not a valid domain name",
@@ -948,7 +943,7 @@ func TestValidateNetworkRules(t *testing.T) {
 		{
 			name:        "one transform per domain is valid",
 			envdVersion: minEnvdVersionForNetworkRules,
-			rules: rulesMap(map[string][]api.SandboxNetworkRule{
+			rules: new(map[string][]api.SandboxNetworkRule{
 				"api.openai.com": {simpleRule(map[string]string{"Authorization": "Bearer token"})},
 			}),
 			setupFF: ffEnabled,
@@ -956,7 +951,7 @@ func TestValidateNetworkRules(t *testing.T) {
 		{
 			name:        "two transforms for one domain returns 400",
 			envdVersion: minEnvdVersionForNetworkRules,
-			rules: rulesMap(map[string][]api.SandboxNetworkRule{
+			rules: new(map[string][]api.SandboxNetworkRule{
 				"api.openai.com": {
 					simpleRule(map[string]string{"Authorization": "Bearer token"}),
 					simpleRule(map[string]string{"X-Custom": "value"}),
@@ -970,7 +965,7 @@ func TestValidateNetworkRules(t *testing.T) {
 		{
 			name:        "nil transform in rule is valid",
 			envdVersion: minEnvdVersionForNetworkRules,
-			rules: rulesMap(map[string][]api.SandboxNetworkRule{
+			rules: new(map[string][]api.SandboxNetworkRule{
 				"api.openai.com": {{Transform: nil}},
 			}),
 			setupFF: ffEnabled,
@@ -979,7 +974,7 @@ func TestValidateNetworkRules(t *testing.T) {
 		{
 			name:        "empty header name returns 400",
 			envdVersion: minEnvdVersionForNetworkRules,
-			rules: rulesMap(map[string][]api.SandboxNetworkRule{
+			rules: new(map[string][]api.SandboxNetworkRule{
 				"api.openai.com": {simpleRule(map[string]string{"": "value"})},
 			}),
 			setupFF:  ffEnabled,
@@ -989,7 +984,7 @@ func TestValidateNetworkRules(t *testing.T) {
 		{
 			name:        "header name at max length is valid",
 			envdVersion: minEnvdVersionForNetworkRules,
-			rules: rulesMap(map[string][]api.SandboxNetworkRule{
+			rules: new(map[string][]api.SandboxNetworkRule{
 				"api.openai.com": {simpleRule(map[string]string{
 					strings.Repeat("X", maxNetworkRuleHeaderNameLen): "value",
 				})},
@@ -999,7 +994,7 @@ func TestValidateNetworkRules(t *testing.T) {
 		{
 			name:        "header name exceeding max length returns 400",
 			envdVersion: minEnvdVersionForNetworkRules,
-			rules: rulesMap(map[string][]api.SandboxNetworkRule{
+			rules: new(map[string][]api.SandboxNetworkRule{
 				"api.openai.com": {simpleRule(map[string]string{
 					strings.Repeat("X", maxNetworkRuleHeaderNameLen+1): "value",
 				})},
@@ -1012,7 +1007,7 @@ func TestValidateNetworkRules(t *testing.T) {
 		{
 			name:        "header value at max length is valid",
 			envdVersion: minEnvdVersionForNetworkRules,
-			rules: rulesMap(map[string][]api.SandboxNetworkRule{
+			rules: new(map[string][]api.SandboxNetworkRule{
 				"api.openai.com": {simpleRule(map[string]string{
 					"Authorization": strings.Repeat("x", maxNetworkRuleHeaderValueLen),
 				})},
@@ -1022,7 +1017,7 @@ func TestValidateNetworkRules(t *testing.T) {
 		{
 			name:        "header value exceeding max length returns 400",
 			envdVersion: minEnvdVersionForNetworkRules,
-			rules: rulesMap(map[string][]api.SandboxNetworkRule{
+			rules: new(map[string][]api.SandboxNetworkRule{
 				"api.openai.com": {simpleRule(map[string]string{
 					"Authorization": strings.Repeat("x", maxNetworkRuleHeaderValueLen+1),
 				})},

@@ -25,6 +25,9 @@ type MemoryBackend struct {
 	// Required: true
 	// Enum: ["File","Uffd"]
 	BackendType *string `json:"backend_type"`
+
+	// When true, guest memory is backed by a memfd and its file descriptor is sent to the UFFD handler over the UFFD socket alongside the UFFD itself. Only valid when 'backend_type' is 'Uffd'.
+	UseMemfd *bool `json:"use_memfd,omitempty"`
 }
 
 // Validate validates this memory backend

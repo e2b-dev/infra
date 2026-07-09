@@ -13,10 +13,12 @@ import (
 	"os"
 	"os/signal"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/gofrs/flock"
 	"github.com/google/uuid"
 	"github.com/soheilhy/cmux"
 	"go.opentelemetry.io/otel/attribute"
@@ -51,6 +53,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/server"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/service"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/service/machineinfo"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/startupreclaim"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/constants"
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/pkg/template/server"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/volumes"
@@ -169,6 +172,61 @@ func ensureDirs(c cfg.Config) error {
 	return nil
 }
 
+func acquireOrchestratorLock(path string) (*flock.Flock, error) {
+	fileLock := flock.New(path, flock.SetPermissions(0o644))
+	locked, err := fileLock.TryLock()
+	if err != nil {
+		return nil, fmt.Errorf("lock file: %w", err)
+	}
+	if !locked {
+		// flock(2) is released by the kernel on crash, so reaching here means a
+		// live process holds the lock. Surface the PID it recorded, if any.
+		if pid, perr := readLockHolderPID(path); perr == nil && pid > 0 {
+			return nil, fmt.Errorf("another instance is running with pid %d", pid)
+		}
+
+		return nil, errors.New("another instance is running")
+	}
+
+	// Record our PID so a future conflicting instance can report it. We hold the
+	// exclusive advisory lock, so no other process writes this file concurrently.
+	if err := writeLockHolderPID(path); err != nil {
+		_ = fileLock.Unlock()
+
+		return nil, fmt.Errorf("write lock holder pid: %w", err)
+	}
+
+	return fileLock, nil
+}
+
+func writeLockHolderPID(path string) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return fmt.Errorf("open lock file: %w", err)
+	}
+	defer f.Close()
+
+	if _, err := fmt.Fprintf(f, "%d\n", os.Getpid()); err != nil {
+		return fmt.Errorf("write pid: %w", err)
+	}
+
+	return nil
+}
+
+func readLockHolderPID(path string) (int, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, fmt.Errorf("read lock file: %w", err)
+	}
+
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		return 0, fmt.Errorf("parse pid: %w", err)
+	}
+
+	return pid, nil
+}
+
 func run(config cfg.Config, opts Options) (success bool) {
 	success = true
 
@@ -177,31 +235,27 @@ func run(config cfg.Config, opts Options) (success bool) {
 
 	services := cfg.GetServices(config)
 
-	// Check if the orchestrator crashed and restarted
-	// Skip this check in development mode
-	// We don't want to lock if the service is running with force stop; the subsequent start would fail.
-	if !env.IsDevelopment() && !config.ForceStop && slices.Contains(services, cfg.Orchestrator) {
-		fileLockName := config.OrchestratorLockPath
-		info, err := os.Stat(fileLockName)
-		if err == nil {
-			log.Fatalf("Orchestrator was already started at %s, exiting", info.ModTime())
-		}
+	usesSandboxRuntime := services.UsesSandboxRuntime()
 
-		f, err := os.Create(fileLockName)
+	// Enforce a single host-level sandbox runtime instance.
+	// Skip this check in development mode.
+	if !env.IsDevelopment() && usesSandboxRuntime {
+		f, err := acquireOrchestratorLock(config.OrchestratorLockPath)
 		if err != nil {
-			log.Fatalf("Failed to create lock file %s: %v", fileLockName, err)
+			log.Fatalf("Failed to acquire orchestrator lock %s: %v", config.OrchestratorLockPath, err)
 		}
 		defer func() {
 			fileErr := f.Close()
 			if fileErr != nil {
-				log.Printf("Failed to close lock file %s: %v", fileLockName, fileErr)
+				log.Printf("Failed to close lock file %s: %v", config.OrchestratorLockPath, fileErr)
 			}
-
-			// Remove the lock file on graceful shutdown
-			if success == true {
-				if fileErr = os.Remove(fileLockName); fileErr != nil {
-					log.Printf("Failed to remove lock file %s: %v", fileLockName, fileErr)
-				}
+			// Remove the lock file on clean shutdown so a rollback to the older
+			// stat-based release can start: that guard exits whenever the lock
+			// file exists and cannot tell that this process is already gone.
+			// TODO: Remove this os.Remove once all hosts run a flock-based
+			// release and rollback to the stat-based guard is no longer possible.
+			if rmErr := os.Remove(config.OrchestratorLockPath); rmErr != nil && !os.IsNotExist(rmErr) {
+				log.Printf("Failed to remove lock file %s: %v", config.OrchestratorLockPath, rmErr)
 			}
 		}()
 	}
@@ -224,7 +278,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 		return false
 	}
 
-	serviceInfo := service.NewInfoContainer(ctx, nodeID, version, commitSHA, serviceInstanceID, machineInfo, config)
+	serviceInfo := service.NewInfoContainer(nodeID, version, commitSHA, serviceInstanceID, machineInfo, config)
 
 	serviceError := make(chan error)
 	defer close(serviceError)
@@ -360,6 +414,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	closers = append(closers, closer{"feature flags", featureFlags.Close})
 
 	featureFlags.SetDeploymentName(config.DomainName)
+	featureFlags.RegisterContextProvider(orchestratorContextProvider(nodeID, commitSHA))
 
 	// gcp concurrent upload limiter
 	limiter, err := limit.New(ctx, featureFlags)
@@ -413,10 +468,11 @@ func run(config cfg.Config, opts Options) (success bool) {
 	}})
 
 	sbxEventsDeliveryTargets := make([]event.Delivery[event.SandboxEvent], 0)
+	hostStatsTargets := make([]clickhousehoststats.Delivery, 0, 1+len(config.ClickhouseConnectionStrings))
 
-	hostStatsDelivery := clickhousehoststats.NewNoopDelivery()
-
-	// Clickhouse sandbox events and host stats delivery
+	// Legacy singular ClickHouse delivery path. Fatal on init error and uses
+	// the unsuffixed default batcher names to preserve pre-multi-endpoint
+	// behavior and existing dashboards/alerts.
 	if config.ClickhouseConnectionString != "" {
 		clickhouseConn, err := clickhouse.NewDriver(config.ClickhouseConnectionString)
 		if err != nil {
@@ -426,22 +482,122 @@ func run(config cfg.Config, opts Options) (success bool) {
 			return clickhouseConn.Close()
 		}})
 
-		sbxEventsDeliveryClickhouse, err := clickhouseevents.NewDefaultClickhouseSandboxEventsDelivery(ctx, clickhouseConn, featureFlags)
+		sbxEventsDeliveryClickhouse, err := clickhouseevents.NewDefaultClickhouseSandboxEventsDelivery(
+			ctx,
+			clickhouseConn,
+			featureFlags,
+			clickhouseevents.DefaultBatcherName,
+		)
 		if err != nil {
 			logger.L().Fatal(ctx, "failed to create clickhouse events delivery", zap.Error(err))
 		}
-
 		sbxEventsDeliveryTargets = append(sbxEventsDeliveryTargets, sbxEventsDeliveryClickhouse)
-		closers = append(closers, closer{"sandbox events delivery for clickhouse", sbxEventsDeliveryClickhouse.Close})
 
-		hostStatsDeliveryClickhouse, err := clickhousehoststats.NewDefaultClickhouseHostStatsDelivery(ctx, clickhouseConn, featureFlags)
+		hostStatsDeliveryClickhouse, err := clickhousehoststats.NewDefaultClickhouseHostStatsDelivery(
+			ctx,
+			clickhouseConn,
+			featureFlags,
+			clickhousehoststats.DefaultBatcherName,
+		)
 		if err != nil {
 			logger.L().Fatal(ctx, "failed to create clickhouse host stats delivery", zap.Error(err))
 		}
-
-		hostStatsDelivery = hostStatsDeliveryClickhouse
-		closers = append(closers, closer{"sandbox host stats delivery", hostStatsDeliveryClickhouse.Close})
+		hostStatsTargets = append(hostStatsTargets, hostStatsDeliveryClickhouse)
 	}
+
+	// Additional ClickHouse delivery endpoints are best-effort. One driver +
+	// delivery pair per endpoint keeps connection pools, batcher queues, and
+	// OTel metrics isolated so a slow/failing endpoint cannot stall the others.
+	additionalEndpoints, droppedDuplicates := config.AdditionalClickhouseEndpoints()
+	for _, d := range droppedDuplicates {
+		endpoint, err := clickhouse.EndpointFromDSN(d)
+		if err != nil {
+			logger.L().Info(ctx, "dropped duplicate unparseable ClickHouse endpoint", zap.Error(err))
+
+			continue
+		}
+		logger.L().Info(ctx, "dropped duplicate ClickHouse endpoint", zap.String("endpoint", endpoint))
+	}
+	if len(additionalEndpoints) > 0 {
+		logger.L().Info(ctx, "resolved additional ClickHouse delivery endpoints",
+			zap.Int("count", len(additionalEndpoints)),
+		)
+
+		logClose := func(what, label string, fn func() error) {
+			if err := fn(); err != nil {
+				logger.L().Error(ctx, "failed to close "+what,
+					zap.String("endpoint", label), zap.Error(err))
+			}
+		}
+
+		for _, dsn := range additionalEndpoints {
+			label, err := clickhouse.EndpointFromDSN(dsn)
+			if err != nil {
+				logger.L().Error(ctx, "failed to parse clickhouse DSN, skipping endpoint", zap.Error(err))
+
+				continue
+			}
+
+			clickhouseConn, err := clickhouse.NewDriver(dsn)
+			if err != nil {
+				logger.L().Error(ctx, "failed to create clickhouse driver, skipping endpoint",
+					zap.String("endpoint", label),
+					zap.Error(err),
+				)
+
+				continue
+			}
+
+			sbxEventsDeliveryClickhouse, err := clickhouseevents.NewDefaultClickhouseSandboxEventsDelivery(
+				ctx,
+				clickhouseConn,
+				featureFlags,
+				clickhouseevents.DefaultBatcherName+":"+label,
+			)
+			if err != nil {
+				logger.L().Error(ctx, "failed to create clickhouse events delivery, skipping endpoint",
+					zap.String("endpoint", label),
+					zap.Error(err),
+				)
+				logClose("clickhouse connection after events delivery failure", label, clickhouseConn.Close)
+
+				continue
+			}
+			sbxGatedEventsDeliveryClickhouse := clickhouseevents.NewGatedDelivery(sbxEventsDeliveryClickhouse, featureFlags)
+
+			hostStatsDeliveryClickhouse, err := clickhousehoststats.NewDefaultClickhouseHostStatsDelivery(
+				ctx,
+				clickhouseConn,
+				featureFlags,
+				clickhousehoststats.DefaultBatcherName+":"+label,
+			)
+			if err != nil {
+				logger.L().Error(ctx, "failed to create clickhouse host stats delivery, skipping endpoint",
+					zap.String("endpoint", label),
+					zap.Error(err),
+				)
+				// Events delivery before its underlying driver — it holds a goroutine writing to it.
+				logClose(
+					"clickhouse events delivery after host stats delivery failure",
+					label,
+					func() error { return sbxEventsDeliveryClickhouse.Close(ctx) },
+				)
+				logClose("clickhouse connection after host stats delivery failure", label, clickhouseConn.Close)
+
+				continue
+			}
+			hostStatsGatedDeliveryClickhouse := clickhousehoststats.NewGatedDelivery(hostStatsDeliveryClickhouse, featureFlags)
+
+			sbxEventsDeliveryTargets = append(sbxEventsDeliveryTargets, sbxGatedEventsDeliveryClickhouse)
+			closers = append(closers, closer{"clickhouse connection " + label, func(context.Context) error {
+				return clickhouseConn.Close()
+			}})
+
+			hostStatsTargets = append(hostStatsTargets, hostStatsGatedDeliveryClickhouse)
+		}
+	}
+
+	hostStatsDelivery := clickhousehoststats.NewMultiDelivery(hostStatsTargets...)
 
 	// cgroup manager for resource accounting
 	cgroupManager, err := cgroup.NewManager()
@@ -459,8 +615,12 @@ func run(config cfg.Config, opts Options) (success bool) {
 	if redisClient != nil {
 		sbxEventsDeliveryRedis := event.NewRedisStreamsDelivery[event.SandboxEvent](redisClient, event.SandboxEventsStreamName)
 		sbxEventsDeliveryTargets = append(sbxEventsDeliveryTargets, sbxEventsDeliveryRedis)
-		closers = append(closers, closer{"sandbox events delivery for redis", sbxEventsDeliveryRedis.Close})
 	}
+
+	// Wrapper closers run before per-driver closers (deliveries write through the drivers).
+	eventsService := events.NewEventsService(sbxEventsDeliveryTargets)
+	closers = append(closers, closer{"sandbox host stats deliveries (all)", hostStatsDelivery.Close})
+	closers = append(closers, closer{"sandbox events deliveries (all)", eventsService.Close})
 
 	// sandbox observer
 	sandboxObserver, err := metrics.NewSandboxObserver(ctx, nodeID, serviceName, commitSHA, version, serviceInstanceID, sandboxes)
@@ -518,6 +678,18 @@ func run(config cfg.Config, opts Options) (success bool) {
 		closers = append(closers, closer{"egress proxy", egressSetup.Close})
 	}
 
+	// Sandbox-runtime reclaim must run before newStorage below: reclaim deletes
+	// leaked ns-* from /run/netns, and NewStorageLocal snapshots the remaining
+	// namespaces as foreign at construction.
+	if usesSandboxRuntime && !config.DisableStartupReclaim {
+		startupreclaim.Run(ctx, startupreclaim.Config{
+			NetworkConfig: config.NetworkConfig,
+			EgressProxy:   egressSetup.Proxy,
+			CgroupManager: cgroupManager,
+			StorageConfig: config.StorageConfig,
+		})
+	}
+
 	// device pool
 	devicePool, err := nbd.NewDevicePool(config.NBDPoolSize)
 	if err != nil {
@@ -568,15 +740,15 @@ func run(config cfg.Config, opts Options) (success bool) {
 		Proxy:            sandboxProxy,
 		Persistence:      persistence,
 		FeatureFlags:     featureFlags,
-		SbxEventsService: events.NewEventsService(sbxEventsDeliveryTargets),
+		SbxEventsService: eventsService,
 		PeerRegistry:     peerRegistry,
 		Uploads:          uploads,
 	})
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create orchestrator server", zap.Error(err))
 	}
-	closers = append(closers, closer{"orchestrator server", func(context.Context) error {
-		return orchestratorService.Close()
+	closers = append(closers, closer{"orchestrator server", func(ctx context.Context) error {
+		return orchestratorService.Close(ctx)
 	}})
 
 	// template manager sandbox logger
@@ -632,7 +804,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	// template manager
 	var tmpl *tmplserver.ServerStore
 	var localUploadHandler *localupload.Handler
-	if slices.Contains(services, cfg.TemplateManager) {
+	if services.RunsTemplateManager() {
 		buildPersistence, uploadHandler, err := setupBuildStorage(ctx, limiter, config)
 		if err != nil {
 			logger.L().Fatal(ctx, "failed to setup build storage", zap.Error(err))
@@ -699,7 +871,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	pprofServer := telemetry.NewPprofServer()
 	// We handle the pprof in a separate goroutine to prevent any interaction with the main server.
 	go func() {
-		logger.L().Info(ctx, "pprof server starting", zap.Int("port", telemetry.DefaultPprofPort))
+		logger.L().Info(ctx, "pprof server starting", zap.Int("port", telemetry.PprofPort()))
 
 		if err := pprofServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.L().Error(ctx, "pprof server encountered error", zap.Error(err))
@@ -764,7 +936,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	// Mark service draining if not already.
 	// If service stats was previously changed via API, we don't want to override it.
 	logger.L().Info(ctx, "Starting drain phase", zap.Int("sandbox_count", sandboxes.Count()))
-	if status := serviceInfo.GetStatus(); status == orchestratorinfo.ServiceInfoStatus_Healthy || status == orchestratorinfo.ServiceInfoStatus_Standby {
+	if status := serviceInfo.GetStatus().Status; status == orchestratorinfo.ServiceInfoStatus_Healthy || status == orchestratorinfo.ServiceInfoStatus_Standby {
 		serviceInfo.SetStatus(ctx, orchestratorinfo.ServiceInfoStatus_Draining)
 
 		// Wait for draining state to propagate to all consumers
@@ -778,6 +950,16 @@ func run(config cfg.Config, opts Options) (success bool) {
 		err := tmpl.Wait(closeCtx)
 		if err != nil {
 			logger.L().Error(ctx, "error while waiting for template manager to drain", zap.Error(err))
+			success = false
+		}
+	}
+
+	// Gracefully wait for live sandboxes to exit before closing the services they
+	// depend on. The forced-stop path skips this and tears sandboxes down later.
+	if !config.ForceStop {
+		logger.L().Info(ctx, "Starting sandbox drain phase", zap.Int("sandbox_count", sandboxes.Count()))
+		if err := orchestratorService.DrainSandboxes(closeCtx); err != nil {
+			logger.L().Error(ctx, "error while draining sandboxes", zap.Error(err))
 			success = false
 		}
 	}

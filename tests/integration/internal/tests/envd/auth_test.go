@@ -13,7 +13,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/filesystem"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
-	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/envd"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
@@ -171,7 +170,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithValidAccessToken(t *testing.T
 	c := setup.GetAPIClient()
 
 	// stop sandbox
-	_, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbxMeta.SandboxID, setup.WithAPIKey())
+	_, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbxMeta.SandboxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +188,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithValidAccessToken(t *testing.T
 	// try to get the file with the valid access token
 	fileResponse, err := envdClient.HTTPClient.GetFilesWithResponse(
 		ctx,
-		&envd.GetFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user")},
+		&envd.GetFilesParams{Path: &filePath, Username: new("user")},
 		setup.WithSandbox(t, sbx.JSON201.SandboxID),
 		setup.WithEnvdAccessToken(t, *sbxMeta.EnvdAccessToken),
 	)
@@ -228,7 +227,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithoutAccessToken(t *testing.T) 
 	c := setup.GetAPIClient()
 
 	// stop sandbox
-	_, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbxMeta.SandboxID, setup.WithAPIKey())
+	_, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbxMeta.SandboxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +245,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithoutAccessToken(t *testing.T) 
 	// try to get the file with the without access token
 	fileResponse, err := envdClient.HTTPClient.GetFilesWithResponse(
 		ctx,
-		&envd.GetFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user")},
+		&envd.GetFilesParams{Path: &filePath, Username: new("user")},
 		setup.WithSandbox(t, sbx.JSON201.SandboxID),
 	)
 	if err != nil {

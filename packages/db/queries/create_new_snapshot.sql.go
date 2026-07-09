@@ -15,12 +15,12 @@ import (
 
 const upsertSnapshot = `-- name: UpsertSnapshot :one
 WITH new_template AS (
-    INSERT INTO "public"."envs" (id, public, created_by, team_id, updated_at, source)
-    SELECT $1, FALSE, NULL, $2, now(), 'snapshot'
+    INSERT INTO "public"."envs" (id, public, created_by, team_id, updated_at, source, cluster_id)
+    SELECT $1, FALSE, NULL, $2, now(), 'snapshot', $3
     WHERE NOT EXISTS (
         SELECT id
         FROM "public"."snapshots" s
-        WHERE s.sandbox_id = $3
+        WHERE s.sandbox_id = $4
     ) RETURNING id
 ),
 
@@ -40,23 +40,24 @@ snapshot as (
        created_at
     )
     VALUES (
-            $3,
             $4,
+            $5,
             $2,
             -- If snapshot already exists, new_template id will be null, env_id can't be null, so use placeholder ''
             COALESCE((SELECT id FROM new_template), ''),
-            $5,
             $6,
             $7,
             $8,
             $9,
             $10,
             $11,
+            $12,
             now()
    )
     ON CONFLICT (sandbox_id) DO UPDATE SET
         metadata = excluded.metadata,
         sandbox_started_at = excluded.sandbox_started_at,
+        allow_internet_access = COALESCE(excluded.allow_internet_access, snapshots.allow_internet_access),
         origin_node_id = excluded.origin_node_id,
         auto_pause = excluded.auto_pause,
         config = excluded.config
@@ -80,23 +81,25 @@ new_build as (
         cpu_model,
         cpu_model_name,
         cpu_flags
-    ) VALUES (
-        $12,
+    )
+    VALUES (
         $13,
         $14,
         $15,
         $16,
         $17,
         $18,
-        $9,
         $19,
-        now(),
+        $10,
         $20,
-        $21,
-        $22,
-        $23,
-        $24
-    ) RETURNING id as build_id
+        now(),
+        (SELECT eb.cpu_architecture FROM "public"."env_builds" eb WHERE eb.id = $21),
+        (SELECT eb.cpu_family FROM "public"."env_builds" eb WHERE eb.id = $21),
+        (SELECT eb.cpu_model FROM "public"."env_builds" eb WHERE eb.id = $21),
+        (SELECT eb.cpu_model_name FROM "public"."env_builds" eb WHERE eb.id = $21),
+        (SELECT eb.cpu_flags FROM "public"."env_builds" eb WHERE eb.id = $21)
+    )
+    RETURNING id as build_id
 ),
 
 build_assignment as (
@@ -115,6 +118,7 @@ SELECT build_id, template_id FROM build_assignment
 type UpsertSnapshotParams struct {
 	TemplateID          string
 	TeamID              uuid.UUID
+	ClusterID           *uuid.UUID
 	SandboxID           string
 	BaseTemplateID      string
 	Metadata            types.JSONBStringMap
@@ -132,11 +136,7 @@ type UpsertSnapshotParams struct {
 	EnvdVersion         *string
 	Status              types.BuildStatus
 	TotalDiskSizeMb     *int64
-	CpuArchitecture     *string
-	CpuFamily           *string
-	CpuModel            *string
-	CpuModelName        *string
-	CpuFlags            []string
+	SourceBuildID       uuid.UUID
 }
 
 type UpsertSnapshotRow struct {
@@ -145,12 +145,16 @@ type UpsertSnapshotRow struct {
 }
 
 // Create a new snapshot or update an existing one
-// Create a new build for the snapshot
+// Create a new build for the snapshot, copying CPU info from the source build so
+// a pause keeps the snapshot's CPU compatibility pinned to the original build
+// instead of the node the pause happened to run on. Scalar subqueries are used so
+// the row is always inserted (CPU info is NULL if the source build is missing).
 // Create the build assignment edge (explicit, not relying on trigger)
 func (q *Queries) UpsertSnapshot(ctx context.Context, arg UpsertSnapshotParams) (UpsertSnapshotRow, error) {
 	row := q.db.QueryRow(ctx, upsertSnapshot,
 		arg.TemplateID,
 		arg.TeamID,
+		arg.ClusterID,
 		arg.SandboxID,
 		arg.BaseTemplateID,
 		arg.Metadata,
@@ -168,11 +172,7 @@ func (q *Queries) UpsertSnapshot(ctx context.Context, arg UpsertSnapshotParams) 
 		arg.EnvdVersion,
 		arg.Status,
 		arg.TotalDiskSizeMb,
-		arg.CpuArchitecture,
-		arg.CpuFamily,
-		arg.CpuModel,
-		arg.CpuModelName,
-		arg.CpuFlags,
+		arg.SourceBuildID,
 	)
 	var i UpsertSnapshotRow
 	err := row.Scan(&i.BuildID, &i.TemplateID)

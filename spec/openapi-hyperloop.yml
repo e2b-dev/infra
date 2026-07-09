@@ -62,6 +62,7 @@ paths:
   /me:
     get:
       operationId: me
+      summary: Sandbox information
       description: Returns information about sandbox itself
       responses:
         "200":
@@ -74,6 +75,7 @@ paths:
   /logs:
     post:
       operationId: logs
+      summary: Submit sandbox logs
       description: Receives JSON based logs messages
       responses:
         "200":

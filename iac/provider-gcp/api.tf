@@ -10,6 +10,46 @@ resource "google_artifact_registry_repository_iam_member" "custom_environments_r
   member     = "serviceAccount:${module.init.service_account_email}"
 }
 
+data "google_secret_manager_secret_version" "postgres_connection_string" {
+  secret = module.init.postgres_connection_string_secret_name
+}
+
+data "google_secret_manager_secret_version" "postgres_read_replica_connection_string" {
+  secret = google_secret_manager_secret.postgres_read_replica_connection_string.id
+
+  depends_on = [
+    google_secret_manager_secret_version.postgres_read_replica_connection_string,
+  ]
+}
+
+data "google_secret_manager_secret_version" "posthog_api_key" {
+  secret = module.init.posthog_api_key_secret_name
+}
+
+data "google_secret_manager_secret_version" "api_admin_token" {
+  secret = module.init.api_admin_token_secret_name
+}
+
+data "google_secret_manager_secret_version" "analytics_collector_host" {
+  secret = module.init.analytics_collector_host_secret_name
+}
+
+data "google_secret_manager_secret_version" "analytics_collector_api_token" {
+  secret = module.init.analytics_collector_api_token_secret_name
+}
+
+data "google_secret_manager_secret_version" "redis_cluster_url" {
+  secret = module.init.redis_cluster_url_secret_version.secret
+}
+
+data "google_secret_manager_secret_version" "redis_tls_ca_base64" {
+  secret = module.init.redis_tls_ca_base64_secret_version.secret
+}
+
+data "google_secret_manager_secret_version" "launch_darkly_api_key" {
+  secret = module.init.launch_darkly_api_key_secret_version.secret
+}
+
 resource "google_secret_manager_secret" "postgres_read_replica_connection_string" {
   secret_id = "${var.prefix}postgres-read-replica-connection-string"
 
@@ -28,6 +68,16 @@ resource "google_secret_manager_secret_version" "postgres_read_replica_connectio
 }
 
 resource "random_password" "api_secret" {
+  length  = 32
+  special = false
+}
+
+resource "random_password" "clickhouse_password" {
+  length  = 32
+  special = false
+}
+
+resource "random_password" "clickhouse_server_secret" {
   length  = 32
   special = false
 }

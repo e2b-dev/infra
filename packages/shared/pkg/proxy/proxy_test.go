@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -22,7 +23,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // testBackend represents a test backend server
@@ -40,6 +40,8 @@ func (b *testBackend) RequestCount() uint64 {
 }
 
 const bodyWriteDelayHeader = "body-write-delay"
+
+var testHTTPClients sync.Map
 
 // newTestBackend creates a new test backend server
 func newTestBackend(listener net.Listener, id string) (*testBackend, error) {
@@ -420,12 +422,29 @@ func httpGetWithHeaders(t *testing.T, proxyURL string, headers http.Header) (*ht
 		}
 	}
 
-	rsp, err := (&http.Client{}).Do(req)
+	rsp, err := testHTTPClient(t).Do(req)
 	if err != nil {
 		return nil, err
 	}
 
 	return rsp, nil
+}
+
+func testHTTPClient(t *testing.T) *http.Client {
+	t.Helper()
+
+	transport := &http.Transport{}
+	client := &http.Client{Transport: transport}
+
+	actual, loaded := testHTTPClients.LoadOrStore(t.Name(), client)
+	if !loaded {
+		t.Cleanup(func() {
+			transport.CloseIdleConnections()
+			testHTTPClients.Delete(t.Name())
+		})
+	}
+
+	return actual.(*http.Client)
 }
 
 type instrumentedConn struct {
@@ -790,15 +809,61 @@ func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 	assert.Equal(t, uint64(2), proxy.TotalPoolConnections(), "proxy should not have reused the connection")
 }
 
+// reservedPort holds a TCP socket that is bound but not yet listening:
+// connections are refused while the port stays reserved for this test, and
+// listen turns the same socket into a live listener. This avoids the
+// close-and-rebind race where another process grabs the port in between.
+type reservedPort struct {
+	fd     int
+	addr   string
+	closed bool
+}
+
+func reserveTCPPort(t *testing.T) *reservedPort {
+	t.Helper()
+
+	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
+	require.NoError(t, err)
+	r := &reservedPort{fd: fd}
+	t.Cleanup(r.close)
+
+	require.NoError(t, syscall.Bind(fd, &syscall.SockaddrInet4{Addr: [4]byte{127, 0, 0, 1}}))
+	sa, err := syscall.Getsockname(fd)
+	require.NoError(t, err)
+	r.addr = fmt.Sprintf("127.0.0.1:%d", sa.(*syscall.SockaddrInet4).Port)
+
+	return r
+}
+
+// close releases the raw fd unless listen already handed it off.
+func (r *reservedPort) close() {
+	if r.closed {
+		return
+	}
+	r.closed = true
+	_ = syscall.Close(r.fd)
+}
+
+func (r *reservedPort) listen() (net.Listener, error) {
+	if err := syscall.Listen(r.fd, 128); err != nil {
+		return nil, fmt.Errorf("listen on reserved port: %w", err)
+	}
+	if err := syscall.SetNonblock(r.fd, true); err != nil {
+		return nil, fmt.Errorf("set nonblock: %w", err)
+	}
+	r.closed = true // fd ownership moves to the os.File below
+	f := os.NewFile(uintptr(r.fd), "reserved-port")
+	defer f.Close() // net.FileListener dups the fd
+
+	return net.FileListener(f)
+}
+
 // TestProxyRetriesOnDelayedBackendStartup simulates the scenario where a backend
 // server starts up after the initial connection attempt (like envd port forwarding delay).
 func TestProxyRetriesOnDelayedBackendStartup(t *testing.T) {
 	t.Parallel()
-	var lisCfg net.ListenConfig
-	tempListener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	backendAddr := tempListener.Addr().String()
-	tempListener.Close() // Close to simulate "connection refused" - small race is acceptable
+	reserved := reserveTCPPort(t)
+	backendAddr := reserved.addr
 
 	backendURL, err := url.Parse(fmt.Sprintf("http://%s", backendAddr))
 	require.NoError(t, err)
@@ -827,7 +892,7 @@ func TestProxyRetriesOnDelayedBackendStartup(t *testing.T) {
 		// Wait 300ms before starting the backend (should succeed on retry 2 or 3)
 		time.Sleep(300 * time.Millisecond)
 
-		listener, err := lisCfg.Listen(t.Context(), "tcp", backendAddr)
+		listener, err := reserved.listen()
 		if err != nil {
 			backendReady <- backendResult{nil, fmt.Errorf("failed to create delayed backend listener: %w", err)}
 
@@ -922,7 +987,7 @@ func TestChangeResponseHeader(t *testing.T) {
 			RequestLogger:                      logger.L(),
 			ConnectionKey:                      "connection-key",
 			IncludeSandboxIdInProxyErrorLogger: true,
-			MaskRequestHost:                    utils.ToPtr(maskedHost),
+			MaskRequestHost:                    new(maskedHost),
 		}, nil
 	}, nil, false)
 

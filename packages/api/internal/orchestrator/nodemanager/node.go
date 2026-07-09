@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/metric"
@@ -40,7 +41,7 @@ type Node struct {
 	SandboxDomain *string
 
 	client *clusters.GRPCClient
-	status api.NodeStatus
+	status StatusInfo
 
 	metrics   Metrics
 	metricsMu sync.RWMutex
@@ -83,6 +84,11 @@ func New(
 		nodeStatus = api.NodeStatusUnhealthy
 	}
 
+	var nodeStatusChangedAt time.Time
+	if ts := nodeInfo.GetServiceStatusChangedAt(); ts.IsValid() {
+		nodeStatusChangedAt = ts.AsTime()
+	}
+
 	nodeMetadata := NodeMetadata{
 		ServiceInstanceID: nodeInfo.GetServiceId(),
 		Commit:            nodeInfo.GetServiceCommit(),
@@ -97,7 +103,7 @@ func New(
 		SandboxDomain:    nil,
 
 		client: client,
-		status: nodeStatus,
+		status: StatusInfo{Status: nodeStatus, ChangedAt: nodeStatusChangedAt},
 		meta:   nodeMetadata,
 
 		PlacementMetrics: PlacementMetrics{
@@ -145,7 +151,7 @@ func NewClusterNode(ctx context.Context, client *clusters.GRPCClient, clusterID 
 		},
 
 		client:       client,
-		status:       status,
+		status:       StatusInfo{Status: status, ChangedAt: info.StatusChangedAt},
 		meta:         nodeMetadata,
 		featureflags: ff,
 	}
@@ -209,7 +215,16 @@ func (n *Node) OptimisticRemove(ctx context.Context, res SandboxResources) {
 	n.metricsMu.Lock()
 	defer n.metricsMu.Unlock()
 
-	// Directly subtract from the current metrics view
-	n.metrics.CpuAllocated -= uint32(res.CPUs)
-	n.metrics.MemoryAllocatedBytes -= uint64(res.MiBMemory) * 1024 * 1024
+	cpu := uint32(res.CPUs)
+	memory := uint64(res.MiBMemory) * 1024 * 1024
+
+	// Prevent underflow due to race condition (the sandbox was most likely already removed by the node sync)
+	if cpu > n.metrics.CpuAllocated || memory > n.metrics.MemoryAllocatedBytes {
+		logger.L().Warn(ctx, "OptimisticRemove would cause underflow, skipping", logger.WithNodeID(n.ID), zap.Uint32("cpuAllocated", n.metrics.CpuAllocated), zap.Uint64("memoryAllocatedBytes", n.metrics.MemoryAllocatedBytes), zap.Uint32("cpuToRemove", cpu), zap.Uint64("memoryToRemove", memory))
+
+		return
+	}
+
+	n.metrics.CpuAllocated -= cpu
+	n.metrics.MemoryAllocatedBytes -= memory
 }

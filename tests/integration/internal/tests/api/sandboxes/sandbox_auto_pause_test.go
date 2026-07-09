@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/envd"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
@@ -23,7 +22,7 @@ func TestSandboxAutoPausePauseResume(t *testing.T) {
 	sbxId := sbx.SandboxID
 
 	// Pause the sandbox
-	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
 
@@ -92,7 +91,7 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 		t.Context(),
 		&envd.GetFilesParams{
 			Path:     &path,
-			Username: sharedUtils.ToPtr("user"),
+			Username: new("user"),
 		},
 		setup.WithSandbox(t, sbxId),
 	)
@@ -132,7 +131,7 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 		t.Context(),
 		&envd.GetFilesParams{
 			Path:     &path,
-			Username: sharedUtils.ToPtr("user"),
+			Username: new("user"),
 		},
 		setup.WithSandbox(t, sbxId),
 	)

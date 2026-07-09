@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -27,7 +28,6 @@ const (
 	metricsReaderBufSize = 1 * 1024 * 1024 // 1 MB
 
 	// metricsFlushInterval controls how often we trigger a Firecracker metrics flush.
-	// Matches the host stats sampling interval (HostStatsSamplingInterval, default 5 s).
 	metricsFlushInterval = 5 * time.Second
 )
 
@@ -66,7 +66,67 @@ var (
 	fcBlockRateLimiterEventCount = utils.Must(telemetry.GetHistogram(fcMeter, telemetry.SandboxFCBlockRateLimiterEventCount))
 	fcBlockIOEngineThrottled     = utils.Must(telemetry.GetHistogram(fcMeter, telemetry.SandboxFCBlockIOEngineThrottled))
 	fcBlockRemainingReqs         = utils.Must(telemetry.GetHistogram(fcMeter, telemetry.SandboxFCBlockRemainingReqs))
+
+	// Counter incremented by the stalled thread count at each 1 s poll.
+	// rate() of this counter shows throttle intensity in real-time and
+	// distinguishes dirty-page throttle (non-zero rate) from GCS cold cache
+	// (zero rate) without requiring a Tempo trace lookup.
+	balanceDirtyPageThreads = utils.Must(telemetry.GetCounter(fcMeter, telemetry.OrchestratorHostBalanceDirtyPagesThreads))
 )
+
+// dirtyPollInterval is how often monitorDirtyPageThrottle samples wchan entries.
+// 1 s gives adequate resolution for stall episodes that last several seconds,
+// and is consistent with other host-level pollers in pkg/metrics/host.go.
+const dirtyPollInterval = 1 * time.Second
+
+// balanceDirtyPagesWchan is the kernel wait-channel symbol written to
+// /proc/self/task/*/wchan when a thread is parked in balance_dirty_pages.
+// Fires for both per-BDI and global dirty-page throttle regardless of the
+// global dirty/MemTotal ratio, making it the only reliable userspace signal
+// for per-BDI throttle on large-RAM nodes.
+const balanceDirtyPagesWchan = "balance_dirty_pages"
+
+// countBalanceDirtyThreads returns the number of OS threads of the current
+// process currently stalled in balance_dirty_pages by reading
+// /proc/self/task/*/wchan. Returns 0 on any read error.
+func countBalanceDirtyThreads() int {
+	pid := os.Getpid()
+	entries, err := os.ReadDir(fmt.Sprintf("/proc/%d/task", pid))
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, e := range entries {
+		data, err := os.ReadFile(fmt.Sprintf("/proc/%d/task/%s/wchan", pid, e.Name()))
+		if err != nil {
+			continue
+		}
+		if strings.TrimSpace(string(data)) == balanceDirtyPagesWchan {
+			n++
+		}
+	}
+
+	return n
+}
+
+func init() {
+	go monitorDirtyPageThrottle()
+}
+
+// monitorDirtyPageThrottle runs for the lifetime of the process, sampling
+// balance_dirty_pages thread counts every dirtyPollInterval and incrementing
+// balanceDirtyPageThreads. rate() of the counter gives real-time throttle
+// intensity; 0 means no dirty-page stalls are occurring.
+func monitorDirtyPageThrottle() {
+	ticker := time.NewTicker(dirtyPollInterval)
+	defer ticker.Stop()
+	for range ticker.C {
+		// Add even when 0 so the counter exports from process start —
+		// otherwise a node that never stalls has no series at all and
+		// dashboards can't tell "no stalls" from "no metric".
+		balanceDirtyPageThreads.Add(context.Background(), int64(countBalanceDirtyThreads()))
+	}
+}
 
 // firecrackerNetMetrics is a subset of Firecracker's NetDeviceMetrics we export via OTEL.
 // Full metric list: https://github.com/firecracker-microvm/firecracker/blob/main/docs/metrics.md

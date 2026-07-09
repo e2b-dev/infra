@@ -9,6 +9,7 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/phases"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
@@ -33,7 +34,10 @@ func (bb *BaseBuilder) Hash(ctx context.Context, _ phases.LayerResult) (string, 
 		baseSource = bb.Config.FromImage
 	}
 
-	provisionVersion := provisionScriptFile
+	// For fallback/dev environments, include baked rootfs file contents in the
+	// provision version. In production, BuildProvisionVersion controls rollout
+	// invalidation explicitly.
+	provisionVersion := cache.HashKeys(provisionScriptFile, rootfs.FilesHash())
 	if val := bb.featureFlags.IntFlag(
 		ctx,
 		featureflags.BuildProvisionVersion,

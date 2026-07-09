@@ -4,8 +4,7 @@ const (
 	// Header names for authentication.
 	HeaderAPIKey        = "X-API-Key"
 	HeaderAuthorization = "Authorization"
-	HeaderSupabaseToken = "X-Supabase-Token"
-	HeaderSupabaseTeam  = "X-Supabase-Team"
+	HeaderTeamID        = "X-Team-ID"
 	HeaderAdminToken    = "X-Admin-Token"
 
 	// Token prefixes.

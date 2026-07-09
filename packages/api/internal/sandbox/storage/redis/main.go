@@ -2,13 +2,18 @@ package redis
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
@@ -26,41 +31,115 @@ const (
 	orphanGracePeriod = time.Minute
 )
 
-var _ sandbox.Storage = (*Storage)(nil)
+var _ sandboxtypes.Storage = (*Storage)(nil)
 
 type Storage struct {
-	redisClient redis.UniversalClient
-	locker      *storageLocker
-	subManager  *subscriptionManager
+	redisClient  redis.UniversalClient
+	locker       *storageLocker
+	subManager   *subscriptionManager
+	publisher    *publisher
+	featureFlags *featureflags.Client
+
+	metrics expirationIndexMetrics
 }
 
-func (s *Storage) Name() string { return sandbox.StorageNameRedis }
+// expirationIndexMetrics observes global expiration index consistency.
+// indexHealed is the primary alert signal: healthy steady state is zero.
+type expirationIndexMetrics struct {
+	indexHealed   metric.Int64Counter
+	indexRescored metric.Int64Counter
+
+	indexSwept         metric.Int64Counter
+	sweptOrphan        metric.MeasurementOption
+	sweptDeadExecution metric.MeasurementOption
+	sweptInvalid       metric.MeasurementOption
+}
+
+const sweptReasonAttr = "reason"
+
+func newExpirationIndexMetrics(meter metric.Meter) (expirationIndexMetrics, error) {
+	healed, err := telemetry.GetCounter(meter, telemetry.ApiRedisStorageExpirationIndexHealed)
+	if err != nil {
+		return expirationIndexMetrics{}, fmt.Errorf("expiration index healed counter: %w", err)
+	}
+
+	rescored, err := telemetry.GetCounter(meter, telemetry.ApiRedisStorageExpirationIndexRescored)
+	if err != nil {
+		return expirationIndexMetrics{}, fmt.Errorf("expiration index rescored counter: %w", err)
+	}
+
+	swept, err := telemetry.GetCounter(meter, telemetry.ApiRedisStorageExpirationIndexSwept)
+	if err != nil {
+		return expirationIndexMetrics{}, fmt.Errorf("expiration index swept counter: %w", err)
+	}
+
+	return expirationIndexMetrics{
+		indexHealed:        healed,
+		indexRescored:      rescored,
+		indexSwept:         swept,
+		sweptOrphan:        metric.WithAttributeSet(attribute.NewSet(attribute.String(sweptReasonAttr, "orphan"))),
+		sweptDeadExecution: metric.WithAttributeSet(attribute.NewSet(attribute.String(sweptReasonAttr, "dead_execution"))),
+		sweptInvalid:       metric.WithAttributeSet(attribute.NewSet(attribute.String(sweptReasonAttr, "invalid"))),
+	}, nil
+}
+
+const meterScope = "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 
 func NewStorage(
 	redisClient redis.UniversalClient,
-) *Storage {
+	meterProvider metric.MeterProvider,
+	featureFlags *featureflags.Client,
+) (*Storage, error) {
+	meter := meterProvider.Meter(meterScope)
+
 	subManager := newSubscriptionManager(redisClient, globalStorageNotifyChannel)
+	pub, err := newPublisher(redisClient, globalStorageNotifyChannel, meter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create publisher: %w", err)
+	}
+
+	metrics, err := newExpirationIndexMetrics(meter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create expiration index metrics: %w", err)
+	}
 
 	return &Storage{
-		redisClient: redisClient,
-		locker:      newStorageLocker(redisClient, subManager),
-		subManager:  subManager,
-	}
+		redisClient:  redisClient,
+		locker:       newStorageLocker(redisClient, subManager, pub),
+		subManager:   subManager,
+		publisher:    pub,
+		featureFlags: featureFlags,
+		metrics:      metrics,
+	}, nil
 }
 
-// Start subscribes to the global PubSub channel and blocks until the context
-// is cancelled or Close is called. It is intended to be called in a goroutine.
+// Start subscribes to the global PubSub channel and launches the publish
+// worker and the expiration index healer. Blocks until the context is
+// cancelled or Close is called.
 func (s *Storage) Start(ctx context.Context) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	pubDone := make(chan struct{})
+	go func() {
+		defer close(pubDone)
+		s.publisher.run(ctx)
+	}()
+
+	go s.startHealer(ctx)
+
 	s.subManager.start(ctx)
+	<-pubDone
 }
 
-// Close shuts down the subscription manager and its background goroutine.
-func (s *Storage) Close() {
+// Close shuts down the subscription manager and the publish worker.
+func (s *Storage) Close(ctx context.Context) {
 	s.subManager.close()
+	s.publisher.close(ctx)
 }
 
 // Reconcile returns a list of sandboxes that are considered orphans on the current node.
-func (s *Storage) Reconcile(ctx context.Context, sbxs []sandbox.Sandbox, nodeID string) []sandbox.Sandbox {
+func (s *Storage) Reconcile(ctx context.Context, sbxs []sandboxtypes.Sandbox, nodeID string) []sandboxtypes.Sandbox {
 	if len(sbxs) == 0 {
 		return nil
 	}
@@ -69,7 +148,7 @@ func (s *Storage) Reconcile(ctx context.Context, sbxs []sandbox.Sandbox, nodeID 
 
 	// Filter out sandboxes that are too young to be considered orphans.
 	type candidate struct {
-		sbx sandbox.Sandbox
+		sbx sandboxtypes.Sandbox
 		key string
 	}
 
@@ -120,7 +199,7 @@ func (s *Storage) Reconcile(ctx context.Context, sbxs []sandbox.Sandbox, nodeID 
 		return nil
 	}
 
-	var orphans []sandbox.Sandbox
+	var orphans []sandboxtypes.Sandbox
 	for _, batch := range batches {
 		results := batch.cmd.Val()
 		for i, raw := range results {

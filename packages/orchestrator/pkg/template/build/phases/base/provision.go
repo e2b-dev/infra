@@ -29,9 +29,9 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/layer"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/phases"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/writer"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/units"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/units"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -128,7 +128,7 @@ func (bb *BaseBuilder) provisionSandbox(
 		rootfsPath,
 		fc.ProcessOptions{
 			// Set the IO Engine explicitly to the default value
-			IoEngine: utils.ToPtr(layer.DefaultIoEngine),
+			IoEngine: new(layer.DefaultIoEngine),
 
 			InitScriptPath: rootfs.BusyBoxInitPath,
 			// Always show kernel logs during the provisioning phase,

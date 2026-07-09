@@ -18,6 +18,7 @@ import (
 	apiorchestrator "github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
@@ -113,6 +114,13 @@ func (s *SandboxService) getAutoResumeSnapshot(ctx context.Context, sandboxID st
 		return nil, nil, status.Error(codes.NotFound, "sandbox auto-resume disabled")
 	}
 
+	// A filesystem-only snapshot can only be resumed by cold-booting (reboot),
+	// which loses in-memory state. Refuse to do that implicitly on an incoming
+	// request — the caller must resume it explicitly.
+	if snap.Snapshot.Config != nil && snap.Snapshot.Config.FilesystemOnly {
+		return nil, nil, status.Error(codes.FailedPrecondition, "filesystem-only snapshot must be resumed explicitly")
+	}
+
 	return snap, autoResume, nil
 }
 
@@ -162,6 +170,10 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		if err := oauth.RequireOrgClaims(clientProxyClaims, authOrgID); err != nil {
 			return nil, err
 		}
+	}
+
+	if err := auth.CheckTeamBlocked(team); err != nil {
+		return nil, status.Error(codes.PermissionDenied, err.Error())
 	}
 
 	sandboxData, sandboxErr := s.api.orchestrator.GetSandbox(ctx, teamID, sandboxID)

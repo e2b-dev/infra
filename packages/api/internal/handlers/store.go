@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -34,6 +35,7 @@ import (
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
+	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
 	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -75,7 +77,7 @@ type APIStore struct {
 	templateCache         *templatecache.TemplateCache
 	templateBuildsCache   *templatecache.TemplatesBuildCache
 	snapshotCache         *snapshotcache.SnapshotCache
-	authService           *sharedauth.AuthService[*types.Team]
+	authService           sharedauth.Service
 	templateSpawnCounter  *utils.TemplateSpawnCounter
 	clickhouseStore       clickhouse.Clickhouse
 	accessTokenGenerator  *sandbox.AccessTokenGenerator
@@ -107,16 +109,19 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 
 	logger.L().Info(ctx, "Created database client")
 
-	var clickhouseStore clickhouse.Clickhouse
-
-	clickhouseConnectionString := config.ClickhouseConnectionString
-	if clickhouseConnectionString == "" {
-		clickhouseStore = clickhouse.NewNoopClient()
-	} else {
-		clickhouseStore, err = clickhouse.New(clickhouseConnectionString)
-		if err != nil {
-			logger.L().Fatal(ctx, "initializing ClickHouse store", zap.Error(err))
-		}
+	// LD-gated switcher: empty flag → singular DSN (self-managed); "0", "1", …
+	// → alternates from CLICKHOUSE_CONNECTION_STRINGS. Lets reads shift between
+	// clusters per-query without restarts. Empty singular DSN falls back to a
+	// noop client.
+	clickhouseStore, err := clickhouse.NewSwitchingClient(
+		ctx,
+		featureFlags,
+		config.ClickhouseConnectionString,
+		config.ClickhouseConnectionStrings,
+		clickhouse.WithAllowNoopDefault(true),
+	)
+	if err != nil {
+		logger.L().Fatal(ctx, "initializing ClickHouse switching client", zap.Error(err))
 	}
 
 	posthogClient, posthogErr := analyticscollector.NewPosthogClient(ctx, config.PosthogAPIKey)
@@ -149,6 +154,15 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 			config.K8sNamespace,
 			config.K8sTemplateManagerPodLabelSelector,
 		)
+	case cfg.ServiceDiscoveryProviderLocal:
+		localND, localErr := orchdiscovery.NewLocal(config.LocalOrchestratorAddress)
+		if localErr != nil {
+			logger.L().Fatal(ctx, "Initializing local orchestrator discovery", zap.Error(localErr))
+		}
+		nodeDiscovery = localND
+		// No template builders in local dev — return an empty list so the
+		// clusters pool initializes cleanly.
+		templateBuilderDiscovery = clustersdiscovery.NewStaticDiscovery(nil)
 	default: // ServiceDiscoveryProviderNomad
 		nomadClient, nomadErr := nomadapi.NewClient(&nomadapi.Config{
 			Address:  config.NomadAddress,
@@ -157,7 +171,21 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		if nomadErr != nil {
 			logger.L().Fatal(ctx, "Initializing Nomad client", zap.Error(nomadErr))
 		}
-		nodeDiscovery = orchdiscovery.NewNomad(nomadClient, "default")
+		nodeDiscovery = orchdiscovery.NewNomad(nomadClient, config.NomadOrchestratorServiceNames)
+		// Migration fallback: orchestrator jobs deployed from jobspecs that
+		// predate the service port-label fix register their service with an
+		// empty Address, so service discovery alone would miss them until
+		// they are redeployed. Union in the legacy node-pool listing (service
+		// entries win on conflict) so the API flip has no rollout ordering
+		// constraint. Disable via NOMAD_ORCHESTRATOR_LEGACY_DISCOVERY_ENABLED
+		// once no legacy jobs remain. The pool is hardcoded: legacy jobs only
+		// ever ran on the "default" pool.
+		if config.NomadOrchestratorLegacyDiscoveryEnabled {
+			nodeDiscovery = orchdiscovery.NewMerged(
+				nodeDiscovery,
+				orchdiscovery.NewNomadNodePool(nomadClient, "default"),
+			)
+		}
 		templateBuilderDiscovery = clustersdiscovery.NewLocalDiscovery(consts.LocalClusterID, nomadClient)
 	}
 
@@ -198,9 +226,13 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		logger.L().Fatal(ctx, "Initializing Orchestrator client", zap.Error(err))
 	}
 
-	authCache := sharedauth.NewAuthCache[*types.Team](redisClient)
-	authStore := sharedauth.NewAuthStore(authDB)
-	authService := sharedauth.NewAuthService[*types.Team](authStore, authCache, config.SupabaseJWTSecrets)
+	authClient := &http.Client{
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
+	authService, err := sharedauth.NewAuthService(ctx, redisClient, authDB, config.AuthProvider, authClient)
+	if err != nil {
+		logger.L().Fatal(ctx, "Initializing auth service", zap.Error(err))
+	}
 	templateCache := templatecache.NewTemplateCache(sqlcDB, redisClient)
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(ctx, time.Minute, sqlcDB)
 
@@ -303,6 +335,12 @@ func (a *APIStore) Close(ctx context.Context) error {
 		errs = append(errs, fmt.Errorf("closing snapshot cache: %w", err))
 	}
 
+	if a.clickhouseStore != nil {
+		if err := a.clickhouseStore.Close(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("closing ClickHouse store: %w", err))
+		}
+	}
+
 	return errors.Join(errs...)
 }
 
@@ -362,16 +400,65 @@ func (a *APIStore) GetUserFromAccessToken(ctx context.Context, ginCtx *gin.Conte
 	return a.authService.ValidateAccessToken(ctx, ginCtx, accessToken)
 }
 
-func (a *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, ginCtx *gin.Context, supabaseToken string) (uuid.UUID, *api.APIError) {
-	ctx, span := tracer.Start(ctx, "get user id from supabase token")
+func (a *APIStore) GetUserIDFromAuthProviderToken(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *api.APIError) {
+	ctx, span := tracer.Start(ctx, "get user id from auth provider token")
 	defer span.End()
 
-	return a.authService.ValidateSupabaseToken(ctx, ginCtx, supabaseToken)
+	return a.authService.ValidateAuthProviderToken(ctx, ginCtx, token)
 }
 
-func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *api.APIError) {
-	ctx, span := tracer.Start(ctx, "get team from supabase token")
+func (a *APIStore) GetTeamFromAuthProviderToken(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *api.APIError) {
+	ctx, span := tracer.Start(ctx, "get team from auth provider token")
 	defer span.End()
 
-	return a.authService.ValidateSupabaseTeam(ctx, ginCtx, teamID)
+	return a.authService.ValidateAuthProviderTeam(ctx, ginCtx, teamID)
+}
+
+func (a *APIStore) GetTeamFromAdminToken(ctx context.Context, _ *gin.Context, teamID string) (*types.Team, *api.APIError) {
+	ctx, span := tracer.Start(ctx, "get team from admin token")
+	defer span.End()
+
+	teamUUID, err := uuid.Parse(teamID)
+	if err != nil {
+		return nil, &api.APIError{
+			Code:      http.StatusBadRequest,
+			ClientMsg: "Invalid team ID",
+			Err:       fmt.Errorf("failed to parse team ID: %w", err),
+		}
+	}
+
+	team, err := a.authService.GetTeamByID(ctx, teamUUID)
+	if err != nil {
+		var forbiddenErr *sharedauth.TeamForbiddenError
+		if errors.As(err, &forbiddenErr) {
+			return nil, &api.APIError{
+				Code:      http.StatusForbidden,
+				ClientMsg: err.Error(),
+				Err:       fmt.Errorf("failed getting team: %w", err),
+			}
+		}
+
+		if dberrors.IsNotFoundError(err) {
+			return nil, &api.APIError{
+				Code:      http.StatusNotFound,
+				ClientMsg: "Team not found",
+				Err:       fmt.Errorf("failed getting team: %w", err),
+			}
+		}
+
+		return nil, &api.APIError{
+			Code:      http.StatusInternalServerError,
+			ClientMsg: "Backend authentication failed",
+			Err:       fmt.Errorf("failed getting team: %w", err),
+		}
+	}
+	if team == nil {
+		return nil, &api.APIError{
+			Code:      http.StatusNotFound,
+			ClientMsg: "Team not found",
+			Err:       errors.New("team not found"),
+		}
+	}
+
+	return team, nil
 }

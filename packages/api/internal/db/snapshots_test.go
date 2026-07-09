@@ -1,4 +1,4 @@
-package db_test
+package db
 
 import (
 	"testing"
@@ -9,43 +9,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	apidb "github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 )
-
-// createTestTeam creates a test team in the database using raw SQL
-func createTestTeam(t *testing.T, db *testutils.Database) uuid.UUID {
-	t.Helper()
-	teamID := uuid.New()
-	slug := "test-team-" + teamID.String()[:8]
-
-	// Insert a team directly into the database using raw SQL
-	// Using the default tier 'base_v1' that is created in migrations
-	err := db.AuthDb.TestsRawSQL(t.Context(),
-		"INSERT INTO public.teams (id, name, tier, email, slug) VALUES ($1, $2, $3, $4, $5)",
-		teamID, "Test Team "+teamID.String(), "base_v1", "test-"+teamID.String()+"@example.com", slug,
-	)
-	require.NoError(t, err, "Failed to create test team")
-
-	return teamID
-}
-
-// createTestBaseEnv creates a base env in the database (required by foreign key constraint)
-func createTestBaseEnv(t *testing.T, db *testutils.Database, teamID uuid.UUID) string {
-	t.Helper()
-	envID := "base-env-" + uuid.New().String()
-
-	// Insert a base env directly into the database
-	err := db.SqlcClient.TestsRawSQL(t.Context(),
-		"INSERT INTO public.envs (id, team_id, public, updated_at, source) VALUES ($1, $2, $3, NOW(), 'template')",
-		envID, teamID, true,
-	)
-	require.NoError(t, err, "Failed to create test base env")
-
-	return envID
-}
 
 // createTestSnapshot creates a snapshot using UpsertSnapshot and returns the sandbox_id and env_id
 func createTestSnapshot(t *testing.T, db *testutils.Database, teamID uuid.UUID, baseEnvID string) (string, string, uuid.UUID) {
@@ -58,6 +25,9 @@ func createTestSnapshot(t *testing.T, db *testutils.Database, teamID uuid.UUID, 
 	envdVersion := "v1.0.0"
 	totalDiskSize := int64(1024)
 	allowInternet := true
+
+	// Source build the snapshot copies its CPU info from
+	sourceBuildID := testutils.CreateTestBuild(t, t.Context(), db, baseEnvID, "uploaded")
 
 	// UpsertSnapshot will create the env automatically, so we pass envID as TemplateID
 	params := queries.UpsertSnapshotParams{
@@ -84,8 +54,9 @@ func createTestSnapshot(t *testing.T, db *testutils.Database, teamID uuid.UUID, 
 				},
 			},
 		},
-		OriginNodeID: "node-1",
-		Status:       "success",
+		OriginNodeID:  "node-1",
+		SourceBuildID: sourceBuildID,
+		Status:        "success",
 	}
 
 	result, err := db.SqlcClient.UpsertSnapshot(t.Context(), params)
@@ -142,8 +113,8 @@ func TestGetSnapshotWithBuilds_Success(t *testing.T) {
 	db := testutils.SetupDatabase(t)
 
 	// Create test data: team -> base env -> snapshot with env -> env builds
-	teamID := createTestTeam(t, db)
-	baseEnvID := createTestBaseEnv(t, db, teamID)
+	teamID := testutils.CreateTestTeam(t, db)
+	baseEnvID := testutils.CreateTestTemplate(t, db, teamID)
 	sandboxID, templateID, _ := createTestSnapshot(t, db, teamID, baseEnvID)
 
 	// Create additional builds for the env (UpsertSnapshot already created one)
@@ -151,7 +122,7 @@ func TestGetSnapshotWithBuilds_Success(t *testing.T) {
 	buildID2 := createTestEnvBuild(t, db, templateID)
 
 	// Execute GetSnapshotBuilds
-	result, err := apidb.GetSnapshotBuilds(t.Context(), db.SqlcClient, teamID, sandboxID)
+	result, err := GetSnapshotBuilds(t.Context(), db.SqlcClient, teamID, sandboxID)
 	require.NoError(t, err, "GetSnapshotBuilds should succeed")
 
 	// Verify snapshot data
@@ -176,12 +147,12 @@ func TestGetSnapshotWithBuilds_NoAdditionalBuilds(t *testing.T) {
 
 	// Create test data: team -> base env -> snapshot
 	// Note: UpsertSnapshot creates one build automatically
-	teamID := createTestTeam(t, db)
-	baseEnvID := createTestBaseEnv(t, db, teamID)
+	teamID := testutils.CreateTestTeam(t, db)
+	baseEnvID := testutils.CreateTestTemplate(t, db, teamID)
 	sandboxID, templateID, _ := createTestSnapshot(t, db, teamID, baseEnvID)
 
 	// Execute GetSnapshotBuilds (only the build created by UpsertSnapshot)
-	result, err := apidb.GetSnapshotBuilds(t.Context(), db.SqlcClient, teamID, sandboxID)
+	result, err := GetSnapshotBuilds(t.Context(), db.SqlcClient, teamID, sandboxID)
 	require.NoError(t, err, "GetSnapshotBuilds should succeed")
 
 	// Verify snapshot data
@@ -199,15 +170,15 @@ func TestGetSnapshotWithBuilds_NotFound(t *testing.T) {
 	db := testutils.SetupDatabase(t)
 
 	// Create a team but no snapshot
-	teamID := createTestTeam(t, db)
+	teamID := testutils.CreateTestTeam(t, db)
 	nonExistentSandboxID := "sandbox-does-not-exist"
 
 	// Execute GetSnapshotBuilds with non-existent sandbox ID
-	_, err := apidb.GetSnapshotBuilds(t.Context(), db.SqlcClient, teamID, nonExistentSandboxID)
+	_, err := GetSnapshotBuilds(t.Context(), db.SqlcClient, teamID, nonExistentSandboxID)
 
 	// Verify error is returned
 	require.Error(t, err, "GetSnapshotBuilds should return an error")
-	assert.ErrorIs(t, err, apidb.ErrSnapshotNotFound, "Error should be ErrSnapshotNotFound")
+	assert.ErrorIs(t, err, ErrSnapshotNotFound, "Error should be ErrSnapshotNotFound")
 }
 
 func TestGetSnapshotWithBuilds_WrongTeamID(t *testing.T) {
@@ -216,19 +187,19 @@ func TestGetSnapshotWithBuilds_WrongTeamID(t *testing.T) {
 	db := testutils.SetupDatabase(t)
 
 	// Create test data with one team
-	teamID := createTestTeam(t, db)
-	baseEnvID := createTestBaseEnv(t, db, teamID)
+	teamID := testutils.CreateTestTeam(t, db)
+	baseEnvID := testutils.CreateTestTemplate(t, db, teamID)
 	sandboxID, _, _ := createTestSnapshot(t, db, teamID, baseEnvID)
 
 	// Create a different team
-	differentTeamID := createTestTeam(t, db)
+	differentTeamID := testutils.CreateTestTeam(t, db)
 
 	// Execute GetSnapshotBuilds with wrong team ID
-	_, err := apidb.GetSnapshotBuilds(t.Context(), db.SqlcClient, differentTeamID, sandboxID)
+	_, err := GetSnapshotBuilds(t.Context(), db.SqlcClient, differentTeamID, sandboxID)
 
 	// Verify error is returned (snapshot exists but doesn't belong to this team)
 	require.Error(t, err, "GetSnapshotBuilds should return an error for wrong team")
-	assert.ErrorIs(t, err, apidb.ErrSnapshotNotFound, "Error should be ErrSnapshotNotFound")
+	assert.ErrorIs(t, err, ErrSnapshotNotFound, "Error should be ErrSnapshotNotFound")
 }
 
 func TestGetSnapshotWithBuilds_NoBuilds(t *testing.T) {
@@ -237,13 +208,13 @@ func TestGetSnapshotWithBuilds_NoBuilds(t *testing.T) {
 	db := testutils.SetupDatabase(t)
 
 	// Create test data
-	teamID := createTestTeam(t, db)
-	baseEnvID := createTestBaseEnv(t, db, teamID)
+	teamID := testutils.CreateTestTeam(t, db)
+	baseEnvID := testutils.CreateTestTemplate(t, db, teamID)
 	sandboxID, _, buildID := createTestSnapshot(t, db, teamID, baseEnvID)
 	deleteBuild(t, db, buildID)
 
 	// Execute GetSnapshotBuilds
-	result, err := apidb.GetSnapshotBuilds(t.Context(), db.SqlcClient, teamID, sandboxID)
+	result, err := GetSnapshotBuilds(t.Context(), db.SqlcClient, teamID, sandboxID)
 	require.NoError(t, err, "GetSnapshotBuilds should succeed")
 	assert.Empty(t, result.Builds, "Should have 0 builds after deletion")
 }

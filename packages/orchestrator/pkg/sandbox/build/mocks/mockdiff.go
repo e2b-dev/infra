@@ -130,8 +130,8 @@ func (_c *MockDiff_CacheKey_Call) RunAndReturn(run func() build.DiffStoreKey) *M
 }
 
 // CachePath provides a mock function for the type MockDiff
-func (_mock *MockDiff) CachePath() (string, error) {
-	ret := _mock.Called()
+func (_mock *MockDiff) CachePath(ctx context.Context) (string, error) {
+	ret := _mock.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CachePath")
@@ -139,16 +139,16 @@ func (_mock *MockDiff) CachePath() (string, error) {
 
 	var r0 string
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func() (string, error)); ok {
-		return returnFunc()
+	if returnFunc, ok := ret.Get(0).(func(context.Context) (string, error)); ok {
+		return returnFunc(ctx)
 	}
-	if returnFunc, ok := ret.Get(0).(func() string); ok {
-		r0 = returnFunc()
+	if returnFunc, ok := ret.Get(0).(func(context.Context) string); ok {
+		r0 = returnFunc(ctx)
 	} else {
 		r0 = ret.Get(0).(string)
 	}
-	if returnFunc, ok := ret.Get(1).(func() error); ok {
-		r1 = returnFunc()
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -161,13 +161,20 @@ type MockDiff_CachePath_Call struct {
 }
 
 // CachePath is a helper method to define mock.On call
-func (_e *MockDiff_Expecter) CachePath() *MockDiff_CachePath_Call {
-	return &MockDiff_CachePath_Call{Call: _e.mock.On("CachePath")}
+//   - ctx context.Context
+func (_e *MockDiff_Expecter) CachePath(ctx interface{}) *MockDiff_CachePath_Call {
+	return &MockDiff_CachePath_Call{Call: _e.mock.On("CachePath", ctx)}
 }
 
-func (_c *MockDiff_CachePath_Call) Run(run func()) *MockDiff_CachePath_Call {
+func (_c *MockDiff_CachePath_Call) Run(run func(ctx context.Context)) *MockDiff_CachePath_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run()
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
 	})
 	return _c
 }
@@ -177,7 +184,7 @@ func (_c *MockDiff_CachePath_Call) Return(s string, err error) *MockDiff_CachePa
 	return _c
 }
 
-func (_c *MockDiff_CachePath_Call) RunAndReturn(run func() (string, error)) *MockDiff_CachePath_Call {
+func (_c *MockDiff_CachePath_Call) RunAndReturn(run func(ctx context.Context) (string, error)) *MockDiff_CachePath_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -227,8 +234,8 @@ func (_c *MockDiff_Close_Call) RunAndReturn(run func() error) *MockDiff_Close_Ca
 }
 
 // FileSize provides a mock function for the type MockDiff
-func (_mock *MockDiff) FileSize() (int64, error) {
-	ret := _mock.Called()
+func (_mock *MockDiff) FileSize(ctx context.Context) (int64, error) {
+	ret := _mock.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for FileSize")
@@ -236,16 +243,16 @@ func (_mock *MockDiff) FileSize() (int64, error) {
 
 	var r0 int64
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func() (int64, error)); ok {
-		return returnFunc()
+	if returnFunc, ok := ret.Get(0).(func(context.Context) (int64, error)); ok {
+		return returnFunc(ctx)
 	}
-	if returnFunc, ok := ret.Get(0).(func() int64); ok {
-		r0 = returnFunc()
+	if returnFunc, ok := ret.Get(0).(func(context.Context) int64); ok {
+		r0 = returnFunc(ctx)
 	} else {
 		r0 = ret.Get(0).(int64)
 	}
-	if returnFunc, ok := ret.Get(1).(func() error); ok {
-		r1 = returnFunc()
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -258,56 +265,12 @@ type MockDiff_FileSize_Call struct {
 }
 
 // FileSize is a helper method to define mock.On call
-func (_e *MockDiff_Expecter) FileSize() *MockDiff_FileSize_Call {
-	return &MockDiff_FileSize_Call{Call: _e.mock.On("FileSize")}
-}
-
-func (_c *MockDiff_FileSize_Call) Run(run func()) *MockDiff_FileSize_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run()
-	})
-	return _c
-}
-
-func (_c *MockDiff_FileSize_Call) Return(n int64, err error) *MockDiff_FileSize_Call {
-	_c.Call.Return(n, err)
-	return _c
-}
-
-func (_c *MockDiff_FileSize_Call) RunAndReturn(run func() (int64, error)) *MockDiff_FileSize_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// Init provides a mock function for the type MockDiff
-func (_mock *MockDiff) Init(ctx context.Context) error {
-	ret := _mock.Called(ctx)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Init")
-	}
-
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context) error); ok {
-		r0 = returnFunc(ctx)
-	} else {
-		r0 = ret.Error(0)
-	}
-	return r0
-}
-
-// MockDiff_Init_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Init'
-type MockDiff_Init_Call struct {
-	*mock.Call
-}
-
-// Init is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *MockDiff_Expecter) Init(ctx interface{}) *MockDiff_Init_Call {
-	return &MockDiff_Init_Call{Call: _e.mock.On("Init", ctx)}
+func (_e *MockDiff_Expecter) FileSize(ctx interface{}) *MockDiff_FileSize_Call {
+	return &MockDiff_FileSize_Call{Call: _e.mock.On("FileSize", ctx)}
 }
 
-func (_c *MockDiff_Init_Call) Run(run func(ctx context.Context)) *MockDiff_Init_Call {
+func (_c *MockDiff_FileSize_Call) Run(run func(ctx context.Context)) *MockDiff_FileSize_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -320,19 +283,19 @@ func (_c *MockDiff_Init_Call) Run(run func(ctx context.Context)) *MockDiff_Init_
 	return _c
 }
 
-func (_c *MockDiff_Init_Call) Return(err error) *MockDiff_Init_Call {
-	_c.Call.Return(err)
+func (_c *MockDiff_FileSize_Call) Return(n int64, err error) *MockDiff_FileSize_Call {
+	_c.Call.Return(n, err)
 	return _c
 }
 
-func (_c *MockDiff_Init_Call) RunAndReturn(run func(ctx context.Context) error) *MockDiff_Init_Call {
+func (_c *MockDiff_FileSize_Call) RunAndReturn(run func(ctx context.Context) (int64, error)) *MockDiff_FileSize_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // ReadAt provides a mock function for the type MockDiff
-func (_mock *MockDiff) ReadAt(ctx context.Context, buffer []byte, off int64, ft *storage.FrameTable) (int, error) {
-	ret := _mock.Called(ctx, buffer, off, ft)
+func (_mock *MockDiff) ReadAt(ctx context.Context, p []byte, off int64, ft *storage.FrameTable) (int, error) {
+	ret := _mock.Called(ctx, p, off, ft)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ReadAt")
@@ -341,15 +304,15 @@ func (_mock *MockDiff) ReadAt(ctx context.Context, buffer []byte, off int64, ft 
 	var r0 int
 	var r1 error
 	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte, int64, *storage.FrameTable) (int, error)); ok {
-		return returnFunc(ctx, buffer, off, ft)
+		return returnFunc(ctx, p, off, ft)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte, int64, *storage.FrameTable) int); ok {
-		r0 = returnFunc(ctx, buffer, off, ft)
+		r0 = returnFunc(ctx, p, off, ft)
 	} else {
 		r0 = ret.Get(0).(int)
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, []byte, int64, *storage.FrameTable) error); ok {
-		r1 = returnFunc(ctx, buffer, off, ft)
+		r1 = returnFunc(ctx, p, off, ft)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -363,14 +326,14 @@ type MockDiff_ReadAt_Call struct {
 
 // ReadAt is a helper method to define mock.On call
 //   - ctx context.Context
-//   - buffer []byte
+//   - p []byte
 //   - off int64
 //   - ft *storage.FrameTable
-func (_e *MockDiff_Expecter) ReadAt(ctx interface{}, buffer interface{}, off interface{}, ft interface{}) *MockDiff_ReadAt_Call {
-	return &MockDiff_ReadAt_Call{Call: _e.mock.On("ReadAt", ctx, buffer, off, ft)}
+func (_e *MockDiff_Expecter) ReadAt(ctx interface{}, p interface{}, off interface{}, ft interface{}) *MockDiff_ReadAt_Call {
+	return &MockDiff_ReadAt_Call{Call: _e.mock.On("ReadAt", ctx, p, off, ft)}
 }
 
-func (_c *MockDiff_ReadAt_Call) Run(run func(ctx context.Context, buffer []byte, off int64, ft *storage.FrameTable)) *MockDiff_ReadAt_Call {
+func (_c *MockDiff_ReadAt_Call) Run(run func(ctx context.Context, p []byte, off int64, ft *storage.FrameTable)) *MockDiff_ReadAt_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -403,7 +366,7 @@ func (_c *MockDiff_ReadAt_Call) Return(n int, err error) *MockDiff_ReadAt_Call {
 	return _c
 }
 
-func (_c *MockDiff_ReadAt_Call) RunAndReturn(run func(ctx context.Context, buffer []byte, off int64, ft *storage.FrameTable) (int, error)) *MockDiff_ReadAt_Call {
+func (_c *MockDiff_ReadAt_Call) RunAndReturn(run func(ctx context.Context, p []byte, off int64, ft *storage.FrameTable) (int, error)) *MockDiff_ReadAt_Call {
 	_c.Call.Return(run)
 	return _c
 }

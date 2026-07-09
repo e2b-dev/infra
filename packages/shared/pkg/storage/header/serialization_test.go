@@ -1,7 +1,9 @@
 package header
 
 import (
+	"bytes"
 	"crypto/sha256"
+	"encoding/binary"
 	"testing"
 
 	"github.com/google/uuid"
@@ -9,6 +11,78 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
+
+// fragmentedHeader builds a V4 header with n alternating-build mappings so its
+// uncompressed block is large and incompressible enough to exercise the cap.
+func fragmentedHeader(t *testing.T, n int) *Header {
+	t.Helper()
+	bs := uint64(4096)
+	a, b := uuid.New(), uuid.New()
+	mappings := make([]BuildMap, n)
+	var off, sa, sb uint64
+	for i := range mappings {
+		id, so := a, sa
+		if i%2 == 1 {
+			id, so = b, sb
+		}
+		mappings[i] = BuildMap{Offset: off, Length: bs, BuildId: id, BuildStorageOffset: so}
+		off += bs
+		if i%2 == 0 {
+			sa += bs
+		} else {
+			sb += bs
+		}
+	}
+	meta := &Metadata{Version: MetadataVersionV4, BlockSize: bs, Size: off, BuildId: a, BaseBuildId: b}
+	h, err := NewHeader(meta, mappings)
+	require.NoError(t, err)
+	h.Builds = map[uuid.UUID]BuildData{a: {Size: int64(sa)}, b: {Size: int64(sb)}}
+
+	return h
+}
+
+//nolint:paralleltest // mutates the package-global cap; must not run in parallel
+func TestStoreHeader_RejectsOversizeOnWrite(t *testing.T) {
+	orig := v4MaxUncompressedHeaderSize
+	v4MaxUncompressedHeaderSize = 1024
+	t.Cleanup(func() { v4MaxUncompressedHeaderSize = orig })
+
+	// The guard returns before the storage provider is used, so a nil provider
+	// is fine for the rejection path.
+	h := fragmentedHeader(t, 100)
+	_, _, _, err := StoreHeader(t.Context(), nil, "header", h) //nolint:dogsled // only err matters
+	require.ErrorContains(t, err, "exceeds cap")
+}
+
+//nolint:paralleltest // mutates the package-global cap; must not run in parallel
+func TestDeserialize_AboveOldCapRoundTrips(t *testing.T) {
+	// A header above a lowered cap is rejected on read; raising the cap lets it
+	// round-trip. Mirrors raising the production cap so already-uploaded large
+	// headers become resumable again.
+	orig := v4MaxUncompressedHeaderSize
+	v4MaxUncompressedHeaderSize = 4096
+	t.Cleanup(func() { v4MaxUncompressedHeaderSize = orig })
+
+	h := fragmentedHeader(t, 1000) // ~40 KiB uncompressed block, over the 4 KiB cap
+	data, err := SerializeHeader(h)
+	require.NoError(t, err)
+
+	_, err = DeserializeBytes(data)
+	require.ErrorContains(t, err, "exceeds cap")
+
+	v4MaxUncompressedHeaderSize = orig
+	got, err := DeserializeBytes(data)
+	require.NoError(t, err)
+	require.Equal(t, 1000, got.Mapping.Len())
+}
+
+func mustMapping(t *testing.T, blockSize uint64, src []BuildMap) Mapping {
+	t.Helper()
+	m, err := NewMapping(blockSize, src)
+	require.NoError(t, err)
+
+	return m
+}
 
 func TestSerializeDeserialize_V3_RoundTrip(t *testing.T) {
 	t.Parallel()
@@ -35,27 +109,27 @@ func TestSerializeDeserialize_V3_RoundTrip(t *testing.T) {
 			Offset:             4096,
 			Length:             4096,
 			BuildId:            baseID,
-			BuildStorageOffset: 123,
+			BuildStorageOffset: 8192,
 		},
 	}
 
-	data, err := serializeV3(metadata, mappings)
+	data, err := serializeV3(metadata, mustMapping(t, metadata.BlockSize, mappings))
 	require.NoError(t, err)
 
 	got, err := DeserializeBytes(data)
 	require.NoError(t, err)
 
 	require.Equal(t, metadata, got.Metadata)
-	require.Len(t, got.Mapping, 2)
-	require.Equal(t, uint64(0), got.Mapping[0].Offset)
-	require.Equal(t, uint64(4096), got.Mapping[0].Length)
-	require.Equal(t, buildID, got.Mapping[0].BuildId)
-	require.Equal(t, uint64(0), got.Mapping[0].BuildStorageOffset)
+	require.Equal(t, 2, got.Mapping.Len())
+	require.Equal(t, uint64(0), got.Mapping.At(0).Offset)
+	require.Equal(t, uint64(4096), got.Mapping.At(0).Length)
+	require.Equal(t, buildID, got.Mapping.At(0).BuildId)
+	require.Equal(t, uint64(0), got.Mapping.At(0).BuildStorageOffset)
 
-	require.Equal(t, uint64(4096), got.Mapping[1].Offset)
-	require.Equal(t, uint64(4096), got.Mapping[1].Length)
-	require.Equal(t, baseID, got.Mapping[1].BuildId)
-	require.Equal(t, uint64(123), got.Mapping[1].BuildStorageOffset)
+	require.Equal(t, uint64(4096), got.Mapping.At(1).Offset)
+	require.Equal(t, uint64(4096), got.Mapping.At(1).Length)
+	require.Equal(t, baseID, got.Mapping.At(1).BuildId)
+	require.Equal(t, uint64(8192), got.Mapping.At(1).BuildStorageOffset)
 
 	// V3 headers have no Builds
 	require.Nil(t, got.Builds)
@@ -81,17 +155,17 @@ func TestSerializeDeserialize_EmptyMappings_Defaults(t *testing.T) {
 		BaseBuildId: uuid.New(),
 	}
 
-	data, err := serializeV3(metadata, nil)
+	data, err := serializeV3(metadata, Mapping{})
 	require.NoError(t, err)
 
 	got, err := DeserializeBytes(data)
 	require.NoError(t, err)
 
 	// NewHeader creates a default mapping when none provided
-	require.Len(t, got.Mapping, 1)
-	require.Equal(t, uint64(0), got.Mapping[0].Offset)
-	require.Equal(t, metadata.Size, got.Mapping[0].Length)
-	require.Equal(t, metadata.BuildId, got.Mapping[0].BuildId)
+	require.Equal(t, 1, got.Mapping.Len())
+	require.Equal(t, uint64(0), got.Mapping.At(0).Offset)
+	require.Equal(t, metadata.Size, got.Mapping.At(0).Length)
+	require.Equal(t, metadata.BuildId, got.Mapping.At(0).BuildId)
 }
 
 func TestDeserialize_BlockSizeZero(t *testing.T) {
@@ -106,7 +180,7 @@ func TestDeserialize_BlockSizeZero(t *testing.T) {
 		BaseBuildId: uuid.New(),
 	}
 
-	data, err := serializeV3(metadata, nil)
+	data, err := serializeV3(metadata, Mapping{})
 	require.NoError(t, err)
 
 	_, err = DeserializeBytes(data)
@@ -150,10 +224,10 @@ func TestSerializeDeserialize_V4_WithFrameTable(t *testing.T) {
 	h.Builds = map[uuid.UUID]BuildData{
 		buildID: {
 			Size: 12345, Checksum: checksum,
-			FrameData: storage.NewFrameTable(storage.CompressionLZ4, []storage.FrameSize{
+			FrameData: storage.NewFullFrameTable(storage.CompressionLZ4, []storage.FrameSize{
 				{U: 2048, C: 1024},
 				{U: 2048, C: 900},
-			}),
+			}).Table(),
 		},
 		baseID: {Size: 67890},
 	}
@@ -165,9 +239,9 @@ func TestSerializeDeserialize_V4_WithFrameTable(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, uint64(4), got.Metadata.Version)
-	require.Len(t, got.Mapping, 2)
-	require.Equal(t, buildID, got.Mapping[0].BuildId)
-	require.Equal(t, baseID, got.Mapping[1].BuildId)
+	require.Equal(t, 2, got.Mapping.Len())
+	require.Equal(t, buildID, got.Mapping.At(0).BuildId)
+	require.Equal(t, baseID, got.Mapping.At(1).BuildId)
 
 	// Builds round-trip
 	require.Len(t, got.Builds, 2)
@@ -222,11 +296,11 @@ func TestSerializeDeserialize_V4_Zstd(t *testing.T) {
 	// 3 frames; only the third [8192, 12288) overlaps the mapping.
 	h.Builds = map[uuid.UUID]BuildData{
 		buildID: {
-			FrameData: storage.NewFrameTable(storage.CompressionZstd, []storage.FrameSize{
+			FrameData: storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{
 				{U: 4096, C: 2000},
 				{U: 4096, C: 3000},
 				{U: 4096, C: 3500},
-			}),
+			}).Table(),
 		},
 	}
 
@@ -236,8 +310,8 @@ func TestSerializeDeserialize_V4_Zstd(t *testing.T) {
 	got, err := DeserializeBytes(data)
 	require.NoError(t, err)
 
-	require.Len(t, got.Mapping, 1)
-	require.Equal(t, uint64(8192), got.Mapping[0].BuildStorageOffset)
+	require.Equal(t, 1, got.Mapping.Len())
+	require.Equal(t, uint64(8192), got.Mapping.At(0).BuildStorageOffset)
 
 	require.Len(t, got.Builds, 1)
 	fd := got.Builds[buildID].FrameData
@@ -289,7 +363,7 @@ func TestSerializeDeserialize_V4_NoFrames(t *testing.T) {
 	got, err := DeserializeBytes(data)
 	require.NoError(t, err)
 
-	require.Len(t, got.Mapping, 2)
+	require.Equal(t, 2, got.Mapping.Len())
 	require.Nil(t, got.Builds)
 }
 
@@ -324,7 +398,7 @@ func TestSerializeDeserialize_V4_ManyFrames(t *testing.T) {
 	h, err := NewHeader(metadata, mappings)
 	require.NoError(t, err)
 	h.Builds = map[uuid.UUID]BuildData{
-		buildID: {FrameData: storage.NewFrameTable(storage.CompressionLZ4, frames)},
+		buildID: {FrameData: storage.NewFullFrameTable(storage.CompressionLZ4, frames).Table()},
 	}
 
 	data, err := SerializeHeader(h)
@@ -333,7 +407,7 @@ func TestSerializeDeserialize_V4_ManyFrames(t *testing.T) {
 	got, err := DeserializeBytes(data)
 	require.NoError(t, err)
 
-	require.Len(t, got.Mapping, 1)
+	require.Equal(t, 1, got.Mapping.Len())
 	require.NotNil(t, got.Builds)
 	fd := got.Builds[buildID].FrameData
 	require.NotNil(t, fd)
@@ -380,8 +454,46 @@ func TestSerializeDeserialize_V4_NoBuilds(t *testing.T) {
 	got, err := DeserializeBytes(data)
 	require.NoError(t, err)
 
-	require.Len(t, got.Mapping, 1)
+	require.Equal(t, 1, got.Mapping.Len())
 	require.Nil(t, got.Builds)
+}
+
+func TestReadV4BuildsSection_RejectsOversizedBuildCount(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	require.NoError(t, binary.Write(&buf, binary.LittleEndian, uint32(2)))
+
+	_, err := readV4BuildsSection(bytes.NewReader(buf.Bytes()))
+	require.ErrorContains(t, err, "build count 2 exceeds remaining")
+}
+
+func TestDeserializeV4_RejectsOversizedMappingCount(t *testing.T) {
+	t.Parallel()
+
+	var block bytes.Buffer
+	require.NoError(t, binary.Write(&block, binary.LittleEndian, uint32(0))) // builds
+	require.NoError(t, binary.Write(&block, binary.LittleEndian, uint32(2))) // mappings
+
+	compressed, err := compressLZ4(block.Bytes())
+	require.NoError(t, err)
+
+	metadata := &Metadata{
+		Version:     MetadataVersionV4,
+		BlockSize:   4096,
+		Size:        4096,
+		BuildId:     uuid.New(),
+		BaseBuildId: uuid.New(),
+	}
+	var meta bytes.Buffer
+	require.NoError(t, binary.Write(&meta, binary.LittleEndian, metadata))
+	data := make([]byte, metadataSize+v4FlagsLen+v4SizePrefixLen+len(compressed))
+	copy(data[:metadataSize], meta.Bytes())
+	binary.LittleEndian.PutUint32(data[metadataSize+v4FlagsLen:], uint32(block.Len()))
+	copy(data[metadataSize+v4FlagsLen+v4SizePrefixLen:], compressed)
+
+	_, err = DeserializeBytes(data)
+	require.ErrorContains(t, err, "mapping count 2 exceeds remaining")
 }
 
 func TestSerializeDeserialize_V4_MultiBuild_LocateCompressed(t *testing.T) {
@@ -394,7 +506,7 @@ func TestSerializeDeserialize_V4_MultiBuild_LocateCompressed(t *testing.T) {
 	//   Frame 0: U=[0,4096)   C=[0,1000)
 	//   Frame 1: U=[4096,8192) C=[1000,2800)
 	//   Frame 2: U=[8192,12288) C=[2800,5100)
-	ftA := storage.NewFrameTable(storage.CompressionZstd, []storage.FrameSize{
+	ftA := storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{
 		{U: 4096, C: 1000},
 		{U: 4096, C: 1800},
 		{U: 4096, C: 2300},
@@ -403,7 +515,7 @@ func TestSerializeDeserialize_V4_MultiBuild_LocateCompressed(t *testing.T) {
 	// Build B: 2 frames, each 4096 uncompressed.
 	//   Frame 0: U=[0,4096)   C=[0,500)
 	//   Frame 1: U=[4096,8192) C=[500,1700)
-	ftB := storage.NewFrameTable(storage.CompressionLZ4, []storage.FrameSize{
+	ftB := storage.NewFullFrameTable(storage.CompressionLZ4, []storage.FrameSize{
 		{U: 4096, C: 500},
 		{U: 4096, C: 1200},
 	})
@@ -433,8 +545,8 @@ func TestSerializeDeserialize_V4_MultiBuild_LocateCompressed(t *testing.T) {
 	h, err := NewHeader(metadata, mappings)
 	require.NoError(t, err)
 	h.Builds = map[uuid.UUID]BuildData{
-		buildA: {Size: 12288, Checksum: checksumA, FrameData: ftA},
-		buildB: {Size: 8192, Checksum: checksumB, FrameData: ftB},
+		buildA: {Size: 12288, Checksum: checksumA, FrameData: ftA.Table()},
+		buildB: {Size: 8192, Checksum: checksumB, FrameData: ftB.Table()},
 	}
 
 	data, err := SerializeHeader(h)
@@ -444,7 +556,7 @@ func TestSerializeDeserialize_V4_MultiBuild_LocateCompressed(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, uint64(4), got.Metadata.Version)
-	require.Len(t, got.Mapping, 3)
+	require.Equal(t, 3, got.Mapping.Len())
 	require.Len(t, got.Builds, 2)
 
 	// Verify checksums round-trip.
@@ -506,7 +618,7 @@ func TestSerializeDeserialize_V4_TrimmedOffsets_Error(t *testing.T) {
 	buildID := uuid.New()
 
 	// 4 frames, each 4096 uncompressed.
-	ft := storage.NewFrameTable(storage.CompressionZstd, []storage.FrameSize{
+	ft := storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{
 		{U: 4096, C: 2000},
 		{U: 4096, C: 3000},
 		{U: 4096, C: 3500},
@@ -536,7 +648,7 @@ func TestSerializeDeserialize_V4_TrimmedOffsets_Error(t *testing.T) {
 	h, err := NewHeader(metadata, mappings)
 	require.NoError(t, err)
 	h.Builds = map[uuid.UUID]BuildData{
-		buildID: {FrameData: ft},
+		buildID: {FrameData: ft.Table()},
 	}
 
 	data, err := SerializeHeader(h)
@@ -573,11 +685,11 @@ func TestSerializeDeserialize_V4_TrimmedOffsets_Error(t *testing.T) {
 func TestFrameTable_LocateCompressed(t *testing.T) {
 	t.Parallel()
 
-	fd := storage.NewFrameTable(storage.CompressionZstd, []storage.FrameSize{
+	fd := storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{
 		{U: 2048, C: 1024},
 		{U: 2048, C: 900},
 		{U: 4096, C: 3500},
-	})
+	}).Table()
 
 	// Frame 0: U=[0,2048), C=[0,1024)
 	r, err := fd.LocateCompressed(0)
@@ -585,10 +697,12 @@ func TestFrameTable_LocateCompressed(t *testing.T) {
 	require.Equal(t, int64(0), r.Offset)
 	require.Equal(t, 1024, r.Length)
 
-	r, err = fd.LocateCompressed(2047)
-	require.NoError(t, err)
-	require.Equal(t, int64(0), r.Offset)
-	require.Equal(t, 1024, r.Length)
+	// A mid-frame offset is rejected: it must be frame-aligned via
+	// LocateUncompressed, otherwise the whole frame would be mis-served from
+	// its start.
+	_, err = fd.LocateCompressed(2047)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "frame-aligned")
 
 	// Frame 1: U=[2048,4096), C=[1024,1924)
 	r, err = fd.LocateCompressed(2048)
@@ -610,10 +724,10 @@ func TestFrameTable_LocateCompressed(t *testing.T) {
 func TestFrameTable_LocateUncompressed(t *testing.T) {
 	t.Parallel()
 
-	fd := storage.NewFrameTable(storage.CompressionZstd, []storage.FrameSize{
+	fd := storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{
 		{U: 2048, C: 1024},
 		{U: 4096, C: 3500},
-	})
+	}).Table()
 
 	// Frame 0: U=[0,2048)
 	r, err := fd.LocateUncompressed(0)
@@ -638,7 +752,7 @@ func TestSerializeDeserialize_V4_SparseTrimming(t *testing.T) {
 	buildID := uuid.New()
 	otherID := uuid.New()
 
-	ft := storage.NewFrameTable(storage.CompressionLZ4, []storage.FrameSize{
+	ft := storage.NewFullFrameTable(storage.CompressionLZ4, []storage.FrameSize{
 		{U: 4096, C: 2000},
 		{U: 4096, C: 3000},
 		{U: 4096, C: 2500},
@@ -664,7 +778,7 @@ func TestSerializeDeserialize_V4_SparseTrimming(t *testing.T) {
 	h, err := NewHeader(metadata, mappings)
 	require.NoError(t, err)
 	h.Builds = map[uuid.UUID]BuildData{
-		buildID: {FrameData: ft, Size: 16384},
+		buildID: {FrameData: ft.Table(), Size: 16384},
 		otherID: {Size: 8192},
 	}
 
@@ -693,4 +807,281 @@ func TestSerializeDeserialize_V4_SparseTrimming(t *testing.T) {
 	// Gap
 	_, err = gotFT.LocateCompressed(4096)
 	require.Error(t, err)
+}
+
+func TestSerializeDeserialize_V4_Uncompressed_SelfEntry(t *testing.T) {
+	t.Parallel()
+
+	buildID := uuid.New()
+	metadata := &Metadata{
+		Version:     MetadataVersionV4,
+		BlockSize:   4096,
+		Size:        8192,
+		Generation:  0,
+		BuildId:     buildID,
+		BaseBuildId: buildID,
+	}
+
+	mappings := []BuildMap{
+		{Offset: 0, Length: 8192, BuildId: buildID, BuildStorageOffset: 0},
+	}
+
+	h, err := NewHeader(metadata, mappings)
+	require.NoError(t, err)
+	h.Builds = map[uuid.UUID]BuildData{
+		buildID: {},
+	}
+
+	data, err := SerializeHeader(h)
+	require.NoError(t, err)
+
+	got, err := DeserializeBytes(data)
+	require.NoError(t, err)
+
+	require.Equal(t, uint64(MetadataVersionV4), got.Metadata.Version)
+	require.Len(t, got.Builds, 1)
+	require.Contains(t, got.Builds, buildID)
+	require.Equal(t, storage.UncompressedFrameTable, got.GetBuildFrameData(buildID))
+}
+
+// Layered chain V4-uncompressed (self) → V4-compressed (mid) → V4-uncompressed
+// (older) → V3 ancestor → V3 ancestor: V4 ancestors round-trip via Builds, V3
+// ancestors stay absent.
+func TestSerializeDeserialize_V4_MixedChain(t *testing.T) {
+	t.Parallel()
+
+	selfID := uuid.New()
+	midID := uuid.New()
+	olderID := uuid.New()
+	v3aID := uuid.New()
+	v3bID := uuid.New()
+
+	midFT := storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{
+		{U: 4096, C: 1234},
+	})
+
+	metadata := &Metadata{
+		Version:     MetadataVersionV4,
+		BlockSize:   4096,
+		Size:        4096 * 5,
+		Generation:  4,
+		BuildId:     selfID,
+		BaseBuildId: v3bID,
+	}
+
+	mappings := []BuildMap{
+		{Offset: 0, Length: 4096, BuildId: selfID, BuildStorageOffset: 0},
+		{Offset: 4096, Length: 4096, BuildId: midID, BuildStorageOffset: 0},
+		{Offset: 8192, Length: 4096, BuildId: olderID, BuildStorageOffset: 0},
+		{Offset: 12288, Length: 4096, BuildId: v3aID, BuildStorageOffset: 0},
+		{Offset: 16384, Length: 4096, BuildId: v3bID, BuildStorageOffset: 0},
+	}
+
+	h, err := NewHeader(metadata, mappings)
+	require.NoError(t, err)
+	h.Builds = map[uuid.UUID]BuildData{
+		selfID:  {},
+		midID:   {Size: 4096, FrameData: midFT.Table()},
+		olderID: {Size: 4096},
+	}
+
+	data, err := SerializeHeader(h)
+	require.NoError(t, err)
+
+	got, err := DeserializeBytes(data)
+	require.NoError(t, err)
+
+	require.Equal(t, uint64(MetadataVersionV4), got.Metadata.Version)
+	require.Equal(t, 5, got.Mapping.Len())
+	require.Len(t, got.Builds, 3)
+
+	require.Equal(t, storage.UncompressedFrameTable, got.GetBuildFrameData(selfID))
+	require.Equal(t, storage.UncompressedFrameTable, got.GetBuildFrameData(olderID))
+
+	gotMidFT := got.GetBuildFrameData(midID)
+	require.NotNil(t, gotMidFT)
+	require.Equal(t, storage.CompressionZstd, gotMidFT.CompressionType())
+	require.Equal(t, 1, gotMidFT.NumFrames())
+
+	_, hasV3a := got.Builds[v3aID]
+	require.False(t, hasV3a)
+	_, hasV3b := got.Builds[v3bID]
+	require.False(t, hasV3b)
+
+	require.Equal(t, selfID, got.Mapping.At(0).BuildId)
+	require.Equal(t, midID, got.Mapping.At(1).BuildId)
+	require.Equal(t, olderID, got.Mapping.At(2).BuildId)
+	require.Equal(t, v3aID, got.Mapping.At(3).BuildId)
+	require.Equal(t, v3bID, got.Mapping.At(4).BuildId)
+}
+
+// Layered chain with a compressed self entry:
+// C-v4 (self) → U-v4 (mid) → C-v4 (older) → V3 → V3. After a serialize round
+// trip, every virtual offset resolves to the right build via GetShiftedMapping
+// and carries the expected compression (FrameData present iff compressed).
+func TestSerializeDeserialize_V4_CompressedSelfChain(t *testing.T) {
+	t.Parallel()
+
+	selfID := uuid.New()
+	midID := uuid.New()
+	olderID := uuid.New()
+	v3aID := uuid.New()
+	v3bID := uuid.New()
+
+	selfFT := storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{
+		{U: 4096, C: 1100},
+		{U: 4096, C: 1200},
+	})
+	olderFT := storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{
+		{U: 4096, C: 1300},
+	})
+
+	metadata := &Metadata{
+		Version:     MetadataVersionV4,
+		BlockSize:   4096,
+		Size:        4096 * 6,
+		Generation:  4,
+		BuildId:     selfID,
+		BaseBuildId: v3bID,
+	}
+
+	// self spans two blocks to exercise the intra-build shift.
+	mappings := []BuildMap{
+		{Offset: 0, Length: 8192, BuildId: selfID, BuildStorageOffset: 0},
+		{Offset: 8192, Length: 4096, BuildId: midID, BuildStorageOffset: 0},
+		{Offset: 12288, Length: 4096, BuildId: olderID, BuildStorageOffset: 0},
+		{Offset: 16384, Length: 4096, BuildId: v3aID, BuildStorageOffset: 0},
+		{Offset: 20480, Length: 4096, BuildId: v3bID, BuildStorageOffset: 0},
+	}
+
+	h, err := NewHeader(metadata, mappings)
+	require.NoError(t, err)
+	h.Builds = map[uuid.UUID]BuildData{
+		selfID:  {Size: 8192, FrameData: selfFT.Table()},
+		midID:   {Size: 4096},
+		olderID: {Size: 4096, FrameData: olderFT.Table()},
+	}
+
+	data, err := SerializeHeader(h)
+	require.NoError(t, err)
+
+	got, err := DeserializeBytes(data)
+	require.NoError(t, err)
+
+	require.Equal(t, uint64(MetadataVersionV4), got.Metadata.Version)
+	require.Len(t, got.Builds, 3)
+
+	// Walk every virtual block offset and check it resolves to the owning
+	// build with the expected compression.
+	cases := []struct {
+		offset     int64
+		wantBuild  uuid.UUID
+		wantOffset uint64
+		compressed bool
+	}{
+		{0, selfID, 0, true},
+		{4096, selfID, 4096, true}, // shifted read inside self
+		{8192, midID, 0, false},    // uncompressed V4
+		{12288, olderID, 0, true},  // compressed ancestor
+		{16384, v3aID, 0, false},   // V3 ancestor, no Builds entry
+		{20480, v3bID, 0, false},   // V3 ancestor, no Builds entry
+	}
+	for _, tc := range cases {
+		m, err := got.GetShiftedMapping(t.Context(), tc.offset)
+		require.NoError(t, err, "offset %d", tc.offset)
+		require.Equal(t, tc.wantBuild, m.BuildId, "offset %d build", tc.offset)
+		require.Equal(t, tc.wantOffset, m.Offset, "offset %d storage offset", tc.offset)
+
+		ct := got.GetBuildFrameData(m.BuildId).CompressionType()
+		if tc.compressed {
+			require.Equal(t, storage.CompressionZstd, ct, "offset %d", tc.offset)
+		} else {
+			require.Equal(t, storage.CompressionNone, ct, "offset %d", tc.offset)
+		}
+	}
+
+	// V3 ancestors must not have leaked into Builds.
+	_, hasV3a := got.Builds[v3aID]
+	require.False(t, hasV3a)
+	_, hasV3b := got.Builds[v3bID]
+	require.False(t, hasV3b)
+}
+
+func TestDeserialize_V3_StaysV3(t *testing.T) {
+	t.Parallel()
+
+	buildID := uuid.New()
+	metadata := &Metadata{
+		Version:     3,
+		BlockSize:   4096,
+		Size:        4096,
+		Generation:  0,
+		BuildId:     buildID,
+		BaseBuildId: buildID,
+	}
+	mappings := []BuildMap{{Offset: 0, Length: 4096, BuildId: buildID}}
+
+	data, err := serializeV3(metadata, mustMapping(t, metadata.BlockSize, mappings))
+	require.NoError(t, err)
+
+	got, err := DeserializeBytes(data)
+	require.NoError(t, err)
+
+	require.Equal(t, uint64(3), got.Metadata.Version)
+	require.Nil(t, got.Builds)
+	require.Nil(t, got.GetBuildFrameData(buildID))
+}
+
+func TestFillMissingBuildsAsSentinels(t *testing.T) {
+	t.Parallel()
+
+	selfID := uuid.New()
+	v3aID := uuid.New()
+	v3bID := uuid.New()
+	knownID := uuid.New()
+
+	knownFT := storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{{U: 4096, C: 1024}})
+
+	meta := &Metadata{
+		Version: MetadataVersionV5, BlockSize: 4096, Size: 4096 * 4,
+		BuildId: selfID, BaseBuildId: v3bID,
+	}
+	h, err := NewHeader(meta, []BuildMap{
+		{Offset: 0, Length: 4096, BuildId: selfID, BuildStorageOffset: 0},
+		{Offset: 4096, Length: 4096, BuildId: knownID, BuildStorageOffset: 0},
+		{Offset: 8192, Length: 4096, BuildId: v3aID, BuildStorageOffset: 0},
+		{Offset: 12288, Length: 4096, BuildId: v3bID, BuildStorageOffset: 0},
+	})
+	require.NoError(t, err)
+	h.Builds = map[uuid.UUID]BuildData{
+		knownID: {Size: 4096, FrameData: knownFT.Table()},
+	}
+
+	backfillMissingV3UncompressedBuilds(h)
+
+	require.Len(t, h.Builds, 4)
+	require.Equal(t, BuildData{Size: 4096, FrameData: knownFT.Table()}, h.Builds[knownID])
+	require.Equal(t, BuildData{}, h.Builds[selfID])
+	require.Equal(t, BuildData{}, h.Builds[v3aID])
+	require.Equal(t, BuildData{}, h.Builds[v3bID])
+}
+
+func TestFillMissingBuildsAsSentinels_NilBuilds(t *testing.T) {
+	t.Parallel()
+
+	selfID := uuid.New()
+	meta := &Metadata{
+		Version: MetadataVersionV5, BlockSize: 4096, Size: 4096,
+		BuildId: selfID, BaseBuildId: selfID,
+	}
+	h, err := NewHeader(meta, []BuildMap{
+		{Offset: 0, Length: 4096, BuildId: selfID, BuildStorageOffset: 0},
+	})
+	require.NoError(t, err)
+	require.Nil(t, h.Builds)
+
+	backfillMissingV3UncompressedBuilds(h)
+
+	require.NotNil(t, h.Builds)
+	require.Equal(t, BuildData{}, h.Builds[selfID])
 }

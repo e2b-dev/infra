@@ -15,3 +15,7 @@ func (v *Info) HasFreePageReporting() bool {
 func (v *Info) HasFreePageHinting() bool {
 	return v.lastReleaseVersion.Major() > 1 || (v.lastReleaseVersion.Major() == 1 && v.lastReleaseVersion.Minor() >= 14)
 }
+
+func (v *Info) HasMemfd() bool {
+	return v.lastReleaseVersion.Major() > 1 || (v.lastReleaseVersion.Major() == 1 && v.lastReleaseVersion.Minor() >= 14)
+}

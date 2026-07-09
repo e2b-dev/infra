@@ -80,6 +80,13 @@ variable "api_port" {
   })
 }
 
+variable "extra_api_instance_groups" {
+  description = "Additional instance-group self-links to attach to the api LB backend (e.g. GKE-managed MIGs whose nodes run the api pod with hostPort = api_port.port)."
+  type        = list(string)
+  default     = []
+  nullable    = false
+}
+
 variable "ingress_port" {
   type = object({
     name        = string
@@ -387,8 +394,4 @@ variable "additional_api_paths_handled_by_ingress" {
     paths       = list(string)
     timeout_sec = optional(number)
   }))
-}
-
-variable "ingress_timeout_seconds" {
-  type = number
 }

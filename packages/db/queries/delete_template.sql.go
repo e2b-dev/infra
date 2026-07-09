@@ -11,33 +11,27 @@ import (
 	"github.com/google/uuid"
 )
 
-const deleteTemplate = `-- name: DeleteTemplate :many
-WITH alias_keys AS (
-  SELECT CASE
-    WHEN namespace IS NOT NULL THEN namespace || '/' || alias
-    ELSE alias
-  END::text AS alias_key
-  FROM public.env_aliases
-  WHERE env_id = $1
-), deleted AS (
-  DELETE FROM "public"."envs"
-  WHERE id = $1
-  AND team_id = $2
-  RETURNING id
-)
-SELECT alias_key FROM alias_keys
-WHERE EXISTS (SELECT 1 FROM deleted)
+const deleteActiveTemplateBuilds = `-- name: DeleteActiveTemplateBuilds :exec
+DELETE FROM public.active_template_builds WHERE template_id = $1
 `
 
-type DeleteTemplateParams struct {
-	TemplateID string
-	TeamID     uuid.UUID
+// Clears in-flight build tracking (active_template_builds no longer cascades
+// since the env row is kept) so a deleted template stops counting toward the
+// team build concurrency limit.
+func (q *Queries) DeleteActiveTemplateBuilds(ctx context.Context, templateID string) error {
+	_, err := q.db.Exec(ctx, deleteActiveTemplateBuilds, templateID)
+	return err
 }
 
-// Deletes a template and returns its alias cache keys for cache invalidation.
-// Alias keys are captured via CTE before the cascade delete removes them.
-func (q *Queries) DeleteTemplate(ctx context.Context, arg DeleteTemplateParams) ([]string, error) {
-	rows, err := q.db.Query(ctx, deleteTemplate, arg.TemplateID, arg.TeamID)
+const releaseTemplateAliases = `-- name: ReleaseTemplateAliases :many
+DELETE FROM public.env_aliases
+WHERE env_id = $1
+RETURNING (CASE WHEN namespace IS NOT NULL THEN namespace || '/' || alias ELSE alias END)::text AS alias_key
+`
+
+// Releases the env's aliases (so the name is reusable) and returns their cache keys.
+func (q *Queries) ReleaseTemplateAliases(ctx context.Context, templateID string) ([]string, error) {
+	rows, err := q.db.Query(ctx, releaseTemplateAliases, templateID)
 	if err != nil {
 		return nil, err
 	}
@@ -54,4 +48,28 @@ func (q *Queries) DeleteTemplate(ctx context.Context, arg DeleteTemplateParams) 
 		return nil, err
 	}
 	return items, nil
+}
+
+const softDeleteTemplate = `-- name: SoftDeleteTemplate :one
+UPDATE public.envs
+SET deleted_at = NOW(), updated_at = NOW()
+WHERE id = $1 AND team_id = $2 AND deleted_at IS NULL
+RETURNING id
+`
+
+type SoftDeleteTemplateParams struct {
+	TemplateID string
+	TeamID     uuid.UUID
+}
+
+// Step 1 of soft delete (run in a tx). The UPDATE locks the env row, so a
+// concurrent build registration holding that lock commits first; this then
+// soft-deletes. Returns the id (no row if already deleted or not owned). The
+// alias/active-build cleanup runs as separate statements afterwards so their
+// fresh snapshots see rows that racing registration committed during the wait.
+func (q *Queries) SoftDeleteTemplate(ctx context.Context, arg SoftDeleteTemplateParams) (string, error) {
+	row := q.db.QueryRow(ctx, softDeleteTemplate, arg.TemplateID, arg.TeamID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
 }

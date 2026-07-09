@@ -26,6 +26,7 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 	ctx := c.Request.Context()
 
 	teamInfo := auth.MustGetTeamInfo(c)
+
 	teamID := teamInfo.Team.ID
 
 	span := trace.SpanFromContext(ctx)

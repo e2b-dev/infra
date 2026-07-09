@@ -5,6 +5,7 @@ package sandbox
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
@@ -15,38 +16,56 @@ import (
 )
 
 func (u *Upload) runV4(ctx context.Context) error {
-	memSrc, err := u.snap.MemfileDiff.CachePath()
+	memSrc, err := u.snap.MemorySnapshot.Diff.CachePath(ctx)
 	if err != nil {
 		return fmt.Errorf("memfile diff path: %w", err)
 	}
 
-	rootfsSrc, err := u.snap.RootfsDiff.CachePath()
+	rootfsSrc, err := u.snap.RootfsDiff.CachePath(ctx)
 	if err != nil {
 		return fmt.Errorf("rootfs diff path: %w", err)
 	}
 
 	eg, ctx := errgroup.WithContext(ctx)
 
-	if u.snap.MemfileDiffHeader != nil {
-		eg.Go(func() error {
-			return u.uploadFramed(ctx, build.Memfile, memSrc, u.snap.MemfileDiffHeader, u.mem)
-		})
-	}
+	eg.Go(func() error {
+		h, err := u.snap.MemorySnapshot.DiffHeader.WaitWithContext(ctx)
+		if err != nil {
+			return fmt.Errorf("wait memfile diff header: %w", err)
+		}
+		if h == nil {
+			return nil
+		}
 
-	if u.snap.RootfsDiffHeader != nil {
-		eg.Go(func() error {
-			return u.uploadFramed(ctx, build.Rootfs, rootfsSrc, u.snap.RootfsDiffHeader, u.root)
-		})
-	}
+		return u.uploadFramed(ctx, build.Memfile, memSrc, h, u.mem)
+	})
+
+	eg.Go(func() error {
+		h, err := u.snap.RootfsDiffHeader.WaitWithContext(ctx)
+		if err != nil {
+			return fmt.Errorf("wait rootfs diff header: %w", err)
+		}
+		if h == nil {
+			return nil
+		}
+
+		return u.uploadFramed(ctx, build.Rootfs, rootfsSrc, h, u.root)
+	})
 
 	meta := storage.WithMetadata(u.objectMetadata)
 
 	eg.Go(func() error {
-		return storage.UploadBlob(ctx, u.store, u.paths.Snapfile(), storage.SnapfileObjectType, u.snap.Snapfile.Path(), meta)
+		// Filesystem-only snapshots resume by reboot, not snapfile restore, so
+		// the snapfile (created only for its disk-flush side effect) is not uploaded.
+		if u.snap.FilesystemSnapshot {
+			return nil
+		}
+
+		return uploadBlobWithMetrics(ctx, u.store, u.paths.Snapfile(), u.snap.Snapfile.Path(), uploadFileSnap, meta)
 	})
 
 	eg.Go(func() error {
-		return storage.UploadBlob(ctx, u.store, u.paths.Metadata(), storage.MetadataObjectType, u.snap.Metafile.Path(), meta)
+		return uploadBlobWithMetrics(ctx, u.store, u.paths.Metadata(), u.snap.Metafile.Path(), uploadFileMeta, meta)
 	})
 
 	return eg.Wait()
@@ -62,20 +81,34 @@ func (u *Upload) uploadFramed(
 	var selfBuild headers.BuildData
 
 	if srcPath != "" {
-		ft, checksum, err := storage.UploadFramed(ctx, u.store, u.paths.DataFile(string(fileType), cfg.CompressionType()), seekableTypeFor(fileType), srcPath, storage.WithCompressConfig(cfg), storage.WithMetadata(u.objectMetadata))
+		fullFT, checksum, err := storage.UploadFramed(ctx, u.store, u.paths.DataFile(string(fileType), cfg.CompressionType()), srcPath, storage.WithCompressConfig(cfg), storage.WithMetadata(u.layerSizeMetadata(srcHeader)), storage.WithChecksumSHA256())
 		if err != nil {
 			return fmt.Errorf("%s upload: %w", fileType, err)
 		}
 
-		// FrameTable count, not os.Stat: sparse memfile diffs stream less than
-		// they appear on disk.
-		selfBuild = headers.BuildData{Size: ft.UncompressedSize(), Checksum: checksum}
-		if ft.IsCompressed() {
-			selfBuild.FrameData = ft
+		// Compressed: frame-table byte count, since sparse memfile diffs stream
+		// fewer bytes than they occupy on disk. Uncompressed has no table.
+		ft := fullFT.Table()
+		size := ft.UncompressedSize()
+		compressedSize := ft.CompressedSize()
+		if !ft.IsCompressed() {
+			info, statErr := os.Stat(srcPath)
+			if statErr != nil {
+				return fmt.Errorf("%s stat: %w", fileType, statErr)
+			}
+			size = info.Size()
+			compressedSize = size
 		}
+
+		dataFileType := uploadFileMemfile
+		if fileType == build.Rootfs {
+			dataFileType = uploadFileRootfs
+		}
+		recordUploadCompression(ctx, dataFileType, cfg, size, compressedSize)
+		selfBuild = headers.BuildData{Size: size, Checksum: checksum, FrameData: ft}
 	}
 
-	h := srcHeader.CloneForUpload(headers.MetadataVersionV4)
+	h := srcHeader.CloneForUpload(u.headerVersion)
 	h.IncompletePendingUpload = false
 	if h.Builds == nil {
 		h.Builds = make(map[uuid.UUID]headers.BuildData)
@@ -86,7 +119,11 @@ func (u *Upload) uploadFramed(
 	}
 	h.Builds[u.buildID] = selfBuild
 
-	if err := headers.StoreHeader(ctx, u.store, u.paths.HeaderFile(string(fileType)), h); err != nil {
+	headerFileType := uploadFileMemfileHeader
+	if fileType == build.Rootfs {
+		headerFileType = uploadFileRootfsHeader
+	}
+	if err := storeHeaderWithMetrics(ctx, u.store, u.paths.HeaderFile(string(fileType)), headerFileType, h, storage.WithMetadata(u.objectMetadata)); err != nil {
 		return fmt.Errorf("store %s header: %w", fileType, err)
 	}
 
@@ -97,8 +134,16 @@ func (u *Upload) uploadFramed(
 // (excluding self) — gating publish on parents' header finalization — and,
 // when dst is non-nil, writes the freshest BuildData into it. Existing dst
 // entries are overwritten (Wait is more authoritative than CloneForUpload).
-// Skips silently when Wait returns nil or the ancestor carries no Builds
-// entry (V3 ancestor); pre-existing dst entries are preserved.
+// Skips silently when Wait returns nil.
+//
+// V3 ancestors carry no Builds map, so a sentinel empty BuildData{} is
+// written — the entry's presence alone is what matters: GetBuildFrameData
+// returns UncompressedFrameTable (nil FrameData → sentinel), and createDiff's
+// hasEntry branch handles size=0 by falling back to upstream.Size. We avoid
+// computing the diff size here on purpose: it's not in Metadata.Size (that's
+// the virtual size), and asking storage at upload time across a long
+// ancestor chain would multiply roundtrips. The fallback amortizes into the
+// read that's about to happen anyway.
 //
 // V3 callers pass dst=nil — they need the barrier but have no Builds map.
 //
@@ -108,46 +153,37 @@ func (u *Upload) uploadFramed(
 func (u *Upload) appendAncestorBuilds(
 	ctx context.Context,
 	dst map[uuid.UUID]headers.BuildData,
-	mappings []headers.BuildMap,
+	mappings headers.Mapping,
 	fileType build.DiffType,
 ) error {
 	if u.uploads == nil {
 		return nil
 	}
 
-	seen := make(map[uuid.UUID]struct{}, len(mappings))
-	for _, m := range mappings {
-		if m.BuildId == u.buildID || m.BuildId == uuid.Nil {
+	// Mapping.Builds() is already deduplicated, so no local seen-set is needed.
+	for _, buildID := range mappings.Builds() {
+		if buildID == u.buildID || buildID == uuid.Nil {
 			continue
 		}
-		if _, dup := seen[m.BuildId]; dup {
-			continue
-		}
-		seen[m.BuildId] = struct{}{}
 
-		h, err := u.uploads.Wait(ctx, m.BuildId, fileType)
+		h, err := u.uploads.Wait(ctx, buildID, fileType)
 		if err != nil {
-			return fmt.Errorf("wait for ancestor %s/%s: %w", m.BuildId, fileType, err)
+			return fmt.Errorf("wait for ancestor %s/%s: %w", buildID, fileType, err)
 		}
 		if h == nil || dst == nil {
 			continue
 		}
 
-		if bd, ok := h.Builds[m.BuildId]; ok {
-			dst[m.BuildId] = bd
+		if bd, ok := h.Builds[buildID]; ok {
+			dst[buildID] = bd
+
+			continue
+		}
+
+		if h.Metadata.Version < headers.MetadataVersionV4 {
+			dst[buildID] = headers.BuildData{}
 		}
 	}
 
 	return nil
-}
-
-func seekableTypeFor(fileType build.DiffType) storage.SeekableObjectType {
-	switch fileType {
-	case build.Memfile:
-		return storage.MemfileObjectType
-	case build.Rootfs:
-		return storage.RootFSObjectType
-	}
-
-	return storage.UnknownSeekableObjectType
 }

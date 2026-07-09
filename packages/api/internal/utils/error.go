@@ -131,11 +131,11 @@ func processCustomErrors(e *openapi3filter.SecurityRequirementsError) error {
 		}
 
 		if errors.As(errW, &teamForbidden) {
-			return fmt.Errorf("%s%s", forbiddenErrPrefix, err.Error())
+			return fmt.Errorf("%s%s", forbiddenErrPrefix, teamForbidden.Error())
 		}
 
 		if errors.As(errW, &teamBlocked) {
-			return fmt.Errorf("%s%s", blockedErrPrefix, err.Error())
+			return fmt.Errorf("%s%s", blockedErrPrefix, teamBlocked.Error())
 		}
 
 		err = errW

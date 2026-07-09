@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	testutils "github.com/e2b-dev/infra/tests/integration/internal/utils"
@@ -17,13 +16,13 @@ func TestDeleteTemplate(t *testing.T) {
 	t.Parallel()
 	alias := "test-to-delete"
 	res := buildTemplate(t, alias, api.TemplateBuildStartV2{
-		Force:     utils.ToPtr(ForceBaseBuild),
-		FromImage: utils.ToPtr("ubuntu:22.04"),
-		Steps: utils.ToPtr([]api.TemplateStep{
+		Force:     new(ForceBaseBuild),
+		FromImage: new("ubuntu:22.04"),
+		Steps: new([]api.TemplateStep{
 			{
 				Type:  "RUN",
-				Force: utils.ToPtr(true),
-				Args:  utils.ToPtr([]string{"echo 'Hello, World!'"}),
+				Force: new(true),
+				Args:  new([]string{"echo 'Hello, World!'"}),
 			},
 		}),
 	}, defaultBuildLogHandler(t))
@@ -40,44 +39,6 @@ func TestDeleteTemplate(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, deleteRes.StatusCode())
 }
 
-func TestDeleteTemplateWithAccessToken(t *testing.T) {
-	t.Parallel()
-
-	// Build template and get the template ID
-	template := testutils.BuildSimpleTemplate(t, "test-to-delete-access-token", setup.WithAPIKey())
-
-	c := setup.GetAPIClient()
-	// Access token auth requires template ID (not alias)
-	deleteRes, err := c.DeleteTemplatesTemplateIDWithResponse(
-		t.Context(),
-		template.TemplateID,
-		setup.WithAccessToken(),
-	)
-	require.NoError(t, err)
-	assert.Equal(t, http.StatusNoContent, deleteRes.StatusCode())
-}
-
-func TestDeleteTemplateFromAnotherTeamAccessToken(t *testing.T) {
-	t.Parallel()
-
-	db := setup.GetTestDBClient(t)
-	userID := testutils.CreateUser(t, db)
-	accessToken := testutils.CreateAccessToken(t, db, userID)
-
-	// Build template with default API key (belongs to default team)
-	template := testutils.BuildSimpleTemplate(t, "test-to-delete-another-team-access-token", setup.WithAPIKey())
-
-	c := setup.GetAPIClient()
-	// Access token auth requires template ID; this user has no teams so should get 403
-	deleteRes, err := c.DeleteTemplatesTemplateIDWithResponse(
-		t.Context(),
-		template.TemplateID,
-		setup.WithCustomAccessToken(accessToken),
-	)
-	require.NoError(t, err)
-	assert.Equal(t, http.StatusForbidden, deleteRes.StatusCode())
-}
-
 func TestDeleteTemplateFromAnotherTeamAPIKey(t *testing.T) {
 	t.Parallel()
 	alias := "test-to-delete-another-team-api-key"
@@ -88,13 +49,13 @@ func TestDeleteTemplateFromAnotherTeamAPIKey(t *testing.T) {
 	apiKey := testutils.CreateAPIKey(t, t.Context(), setup.GetAPIClient(), userID.String(), teamID)
 
 	res := buildTemplate(t, alias, api.TemplateBuildStartV2{
-		Force:     utils.ToPtr(ForceBaseBuild),
-		FromImage: utils.ToPtr("ubuntu:22.04"),
-		Steps: utils.ToPtr([]api.TemplateStep{
+		Force:     new(ForceBaseBuild),
+		FromImage: new("ubuntu:22.04"),
+		Steps: new([]api.TemplateStep{
 			{
 				Type:  "RUN",
-				Force: utils.ToPtr(true),
-				Args:  utils.ToPtr([]string{"echo 'Hello, World!'"}),
+				Force: new(true),
+				Args:  new([]string{"echo 'Hello, World!'"}),
 			},
 		}),
 	}, defaultBuildLogHandler(t))

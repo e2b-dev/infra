@@ -2,8 +2,8 @@
 -- Creates a snapshot_template env entry with source='snapshot_template' and links it to an existing build
 -- This is used after UpsertSnapshot to create a persistent snapshot template
 WITH new_env AS (
-    INSERT INTO "public"."envs" (id, public, created_by, team_id, updated_at, source)
-    VALUES (@snapshot_id, FALSE, NULL, @team_id, now(), 'snapshot_template')
+    INSERT INTO "public"."envs" (id, public, created_by, team_id, updated_at, source, cluster_id)
+    VALUES (@snapshot_id, FALSE, NULL, @team_id, now(), 'snapshot_template', @cluster_id)
     RETURNING id
 ),
 

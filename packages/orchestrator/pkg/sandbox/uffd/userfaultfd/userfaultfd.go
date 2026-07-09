@@ -45,14 +45,33 @@ const (
 
 var ErrUnexpectedEventType = errors.New("unexpected event type")
 
+// ErrClosed reports that the userfaultfd was already closed (sandbox
+// teardown) and the requested operation was skipped.
+var ErrClosed = errors.New("userfaultfd is closed")
+
 func hasEvent(revents, event int16) bool {
 	return revents&event != 0
+}
+
+// PageReader is the data source UFFD pulls page contents from on a fault.
+type PageReader interface {
+	ReadAt(ctx context.Context, p []byte, off int64) (int, error)
+}
+
+// pagePool returns HugepageSize-sized scratch buffers shared across all UFFD
+// instances. 4 KiB-page UFFDs allocate per fault instead.
+var pagePool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, header.HugepageSize)
+
+		return &buf
+	},
 }
 
 type Userfaultfd struct {
 	fd Fd
 
-	src         block.Slicer
+	src         PageReader
 	ma          *memory.Mapping
 	pageSize    uintptr
 	pageTracker *block.Tracker
@@ -84,6 +103,24 @@ type Userfaultfd struct {
 	// testFaultHook is set only by SetTestFaultHook in test builds.
 	testFaultHook atomic.Pointer[func(uintptr, faultPhase)]
 
+	// closed is set by Close() under settleRequests.Lock(). Prefault() checks
+	// it under settleRequests.RLock() so it never calls UFFDIO_COPY on a fd
+	// that has already been closed (and potentially recycled by the OS).
+	closed bool
+
+	// Cumulative demand-fault serve counters, read via ServeStats(). They
+	// mirror the orchestrator.sandbox.uffd.serve metric but as a per-handler
+	// snapshot, so a caller can sample "how many pages did this guest need so
+	// far" at a point in time (e.g. the moment envd init returns). Prefaults
+	// bypass the serve loop and are not counted here. See recordServeStats.
+	servedPages       atomic.Int64 // faults resolved (installed or already-present)
+	servedSourcePages atomic.Int64 // subset installed from the source (page_class=new)
+	servedBytes       atomic.Int64 // bytes installed into the guest (new + zero)
+
+	// genBucket tags this sandbox's serve/prefault metrics with its snapshot
+	// generation range, so fault latency can be cut by chain depth.
+	genBucket generationBucket
+
 	logger logger.Logger
 }
 
@@ -93,14 +130,22 @@ type faultPhase uint8
 const (
 	faultPhaseBeforeRLock faultPhase = iota
 	faultPhaseBeforeFaultPage
+	// faultPhaseBeforePrefaultRLock fires inside Prefault(), before acquiring
+	// settleRequests.RLock. Used by TestPrefaultConcurrentWithClose to park
+	// Prefault here, call Close() concurrently, and verify the closed flag is
+	// checked after the RLock is acquired.
+	faultPhaseBeforePrefaultRLock
 )
 
 // faultOutcome is the terminal classification of a faultPage call.
 type faultOutcome uint8
 
 const (
-	// faultInstalled: page was installed (or already mapped; EEXIST).
+	// faultInstalled: page was installed by this call.
 	faultInstalled faultOutcome = iota
+	// faultAlreadyPresent: no install by this call — the page was already
+	// mapped (EEXIST), e.g. a concurrent worker or a prefault won the race.
+	faultAlreadyPresent
 	// faultDeferred: soft failure (EAGAIN); the caller must retry later.
 	faultDeferred
 	// faultDiscarded: no install happened and retry is pointless
@@ -108,13 +153,21 @@ const (
 	faultDiscarded
 )
 
-// NewUserfaultfdFromFd creates a new userfaultfd instance with optional configuration.
-func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logger logger.Logger) (*Userfaultfd, error) {
-	blockSize := src.BlockSize()
-
-	for _, region := range m.Regions {
-		if region.PageSize != uintptr(blockSize) {
-			return nil, fmt.Errorf("block size mismatch: %d != %d for region %d", region.PageSize, blockSize, region.BaseHostVirtAddr)
+// NewUserfaultfdFromFd creates a new userfaultfd instance. Page size is
+// taken from the FC-registered regions; all regions must agree. generation is
+// the snapshot's pause/resume cycle count (Metadata.Generation), used only to
+// tag this instance's metrics.
+func NewUserfaultfdFromFd(fd uintptr, src PageReader, m *memory.Mapping, generation uint64, logger logger.Logger) (*Userfaultfd, error) {
+	if len(m.Regions) == 0 {
+		return nil, errors.New("memory mapping has no regions")
+	}
+	pageSize := m.Regions[0].PageSize
+	if pageSize != header.PageSize && pageSize != header.HugepageSize {
+		return nil, fmt.Errorf("unsupported page size: %d", pageSize)
+	}
+	for _, r := range m.Regions[1:] {
+		if r.PageSize != pageSize {
+			return nil, fmt.Errorf("region page size mismatch: %d != %d for region %d", r.PageSize, pageSize, r.BaseHostVirtAddr)
 		}
 	}
 
@@ -126,14 +179,14 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 	u := &Userfaultfd{
 		fd:              Fd(fd),
 		src:             src,
-		pageSize:        uintptr(blockSize),
+		pageSize:        pageSize,
 		pageTracker:     block.NewTracker(),
-		prefetchTracker: block.NewPrefetchTracker(blockSize),
+		prefetchTracker: block.NewPrefetchTracker(int64(pageSize)),
 		ma:              m,
 		wakeupPipe:      wakeupPipe,
+		genBucket:       bucketForGeneration(generation),
 		logger:          logger,
 	}
-
 	u.wg.SetLimit(maxRequestsInProgress)
 
 	return u, nil
@@ -369,6 +422,22 @@ func (u *Userfaultfd) Serve(
 			}
 
 			u.wg.Go(func() error {
+				// Record serve latency / installed bytes / fault count once
+				// per serve attempt, tagged by page class and outcome. Begun
+				// before the RLock so the latency covers lock wait + faultPage
+				// for this attempt. Note: a deferred fault is re-served (and
+				// re-timed) by a later worker, so the guest's full stall —
+				// including the deferred-queue wait — can exceed any single
+				// recorded serve.
+				sw := serveTimer.Begin()
+				pclass := pageClassUnknown
+				result := faultResultInstalled
+				var servedBytes int64
+				defer func() {
+					sw.RecordRaw(ctx, servedBytes, serveAttrs[u.genBucket][pclass][result])
+					u.recordServeStats(pclass, result, servedBytes)
+				}()
+
 				if h := u.testFaultHook.Load(); h != nil {
 					(*h)(addr, faultPhaseBeforeRLock)
 				}
@@ -379,7 +448,7 @@ func (u *Userfaultfd) Serve(
 				u.settleRequests.RLock()
 				defer u.settleRequests.RUnlock()
 
-				var source block.Slicer
+				var source PageReader
 
 				idx := uint32(header.BlockIdx(offset, int64(u.pageSize)))
 
@@ -387,13 +456,20 @@ func (u *Userfaultfd) Serve(
 				case block.Dirty:
 					// Pages must not be swappable for this short-circuit to hold:
 					// only UFFD_EVENT_REMOVE moves a page out of Dirty.
+					pclass = pageClassResident
+					result = faultResultPresent
+
 					return nil
 				case block.Zero:
 					// Zero-fill. We still owe the kernel an ack for the original
 					// MISSING fault or the faulting thread stays blocked.
+					pclass = pageClassZero
 				case block.NotPresent:
+					pclass = pageClassNew
 					source = u.src
 				default:
+					result = faultResultError
+
 					return fmt.Errorf("unexpected block.State: %#v", state)
 				}
 
@@ -417,11 +493,23 @@ func (u *Userfaultfd) Serve(
 					fdExit.SignalExit,
 				)
 				if err != nil {
+					result = faultResultError
+
 					return err
 				}
 
 				switch outcome {
-				case faultInstalled:
+				case faultInstalled, faultAlreadyPresent:
+					if outcome == faultInstalled {
+						// A page was installed (zero-filled or pulled from
+						// source) by this serve, so count its bytes. On
+						// faultAlreadyPresent a concurrent worker or prefault
+						// copied the page — record it as "present" with no
+						// bytes so the bytes counter stays attributable.
+						servedBytes = int64(u.pageSize)
+					} else {
+						result = faultResultPresent
+					}
 					// Zero-fill on a read fault installs zero+WP; the page still
 					// reads as zero, so keep the tracker entry as Zero so the
 					// snapshot diff marks it Empty. WP-async will catch any
@@ -431,10 +519,16 @@ func (u *Userfaultfd) Serve(
 					}
 					u.prefetchTracker.Add(offset, accessType)
 				case faultDeferred:
+					result = faultResultDeferred
 					deferred.push(pf)
 					u.signalWakeup()
 				case faultDiscarded:
 					// No install happened (ESRCH); retry would be pointless.
+					result = faultResultDiscarded
+				default:
+					result = faultResultError
+
+					return fmt.Errorf("unexpected faultOutcome: %#v", outcome)
 				}
 
 				return nil
@@ -448,7 +542,7 @@ func (u *Userfaultfd) faultPage(
 	addr uintptr,
 	offset int64,
 	accessType block.AccessType,
-	source block.Slicer,
+	source PageReader,
 	onFailure func() error,
 ) (outcome faultOutcome, err error) {
 	span := trace.SpanFromContext(ctx)
@@ -481,6 +575,8 @@ func (u *Userfaultfd) faultPage(
 		}
 		writeErr = u.fd.writeProtect(addr, u.pageSize, UFFDIO_WRITEPROTECT_MODE_WP)
 		if writeErr != nil {
+			writeErr = errors.Join(writeErr, u.fd.wake(addr, u.pageSize))
+
 			break
 		}
 		writeErr = u.fd.wake(addr, u.pageSize)
@@ -489,19 +585,31 @@ func (u *Userfaultfd) faultPage(
 	case source == nil && u.pageSize == header.HugepageSize:
 		writeErr = u.fd.copy(addr, u.pageSize, header.EmptyHugePage, mode)
 	default:
-		// Slice retry holds settleRequests.RLock for up to ~2s of
+		var b []byte
+		if u.pageSize == header.HugepageSize {
+			bufPtr := pagePool.Get().(*[]byte)
+			defer pagePool.Put(bufPtr)
+			b = (*bufPtr)[:u.pageSize]
+		} else {
+			b = make([]byte, u.pageSize)
+		}
+
+		// ReadAt retry holds settleRequests.RLock for up to ~2s of
 		// exponential backoff, blocking any concurrent REMOVE batch.
 		// Correctness holds (uffd FIFO drains the queued REMOVE before
 		// the next same-page fault); if the blocking latency ever shows
-		// up, move Slice outside the lock and re-check state before
+		// up, move ReadAt outside the lock and re-check state before
 		// UFFDIO_COPY.
-		var b []byte
 		var dataErr error
 		var attempt int
 
 	retryLoop:
 		for attempt = range sliceMaxRetries + 1 {
-			b, dataErr = source.Slice(ctx, offset, int64(u.pageSize))
+			var n int
+			n, dataErr = source.ReadAt(ctx, b, offset)
+			if dataErr == nil && int64(n) != int64(u.pageSize) {
+				dataErr = fmt.Errorf("short read at %d: got %d, want %d", offset, n, u.pageSize)
+			}
 			if dataErr == nil {
 				break
 			}
@@ -510,7 +618,7 @@ func (u *Userfaultfd) faultPage(
 				break
 			}
 
-			u.logger.Warn(ctx, "UFFD serve slice error, retrying",
+			u.logger.Warn(ctx, "UFFD serve read error, retrying",
 				zap.Int("attempt", attempt+1),
 				zap.Int("max_attempts", sliceMaxRetries+1),
 				zap.Error(dataErr),
@@ -557,7 +665,7 @@ func (u *Userfaultfd) faultPage(
 
 		u.fd.wake(addr, u.pageSize) //nolint:errcheck // best-effort; thread may already be awake
 
-		return faultInstalled, nil
+		return faultAlreadyPresent, nil
 	}
 
 	// ESRCH: faulting thread exited during sandbox teardown. No install
@@ -615,7 +723,28 @@ func (u *Userfaultfd) drainWakeupPipe() {
 	}
 }
 
+// PageSize returns the FC region page size driving this UFFD.
+func (u *Userfaultfd) PageSize() int64 {
+	return int64(u.pageSize)
+}
+
 func (u *Userfaultfd) Close() error {
+	// Hold the write lock for the entire close sequence so that:
+	//   (a) any Prefault() caller currently holding RLock finishes its
+	//       UFFDIO_COPY before the fd number is freed and potentially
+	//       recycled by the OS;
+	//   (b) Close() is idempotent — a second call sees closed==true and
+	//       returns immediately without touching already-freed fds.
+	// In production Serve() drains all workers (u.wg.Wait) before
+	// returning, so this Lock() is always uncontended when Close() fires.
+	u.settleRequests.Lock()
+	defer u.settleRequests.Unlock()
+
+	if u.closed {
+		return nil
+	}
+	u.closed = true
+
 	syscall.Close(u.wakeupPipe[0])
 	syscall.Close(u.wakeupPipe[1])
 

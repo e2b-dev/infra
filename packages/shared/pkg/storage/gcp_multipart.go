@@ -2,17 +2,20 @@ package storage
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/md5"
 	"encoding/base64"
 	"encoding/xml"
 	"fmt"
+	"hash"
 	"io"
 	"math"
 	"math/rand"
 	"net/http"
 	"os"
-	"sort"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -53,6 +56,7 @@ func createRetryableClient(ctx context.Context, config RetryConfig) *retryableht
 	client.RetryMax = config.MaxAttempts - 1 // go-retryablehttp counts retries, not total attempts
 	client.RetryWaitMin = config.InitialBackoff
 	client.RetryWaitMax = config.MaxBackoff
+	client.CheckRetry = retryOnCompleteError
 
 	// Custom backoff function with full jitter to avoid thundering herd
 	client.Backoff = func(start, maxBackoff time.Duration, attemptNum int, _ *http.Response) time.Duration {
@@ -93,6 +97,40 @@ func createRetryableClient(ctx context.Context, config RetryConfig) *retryableht
 	return client
 }
 
+// retryOnCompleteError extends the default retry policy so a transient
+// CompleteMultipartUpload failure is retried like a 5xx. S3 and the GCS XML
+// API can return HTTP 200 with an <Error> body (e.g. InternalError) for a
+// commit that didn't happen; the default policy only looks at the status code,
+// so without this such a response fails on the first attempt and ignores the
+// configured retry budget. Only the complete request (URL query "uploadId=…",
+// small XML body) is inspected, so buffering the body to peek + restore it is
+// cheap.
+func retryOnCompleteError(ctx context.Context, resp *http.Response, err error) (bool, error) {
+	if retry, rerr := retryablehttp.DefaultRetryPolicy(ctx, resp, err); retry || rerr != nil {
+		return retry, rerr
+	}
+
+	if resp == nil || resp.StatusCode != http.StatusOK || resp.Request == nil ||
+		!strings.HasPrefix(resp.Request.URL.RawQuery, "uploadId=") || resp.Body == nil {
+		return false, nil
+	}
+
+	body, readErr := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	// Restore the body so the caller (or a retry) can read it.
+	resp.Body = io.NopCloser(bytes.NewReader(body))
+
+	// Retry when the body couldn't be fully read (transient truncation/reset
+	// after the headers) or when it carries a transient <Error> (e.g.
+	// InternalError). Crucially, a read failure must not fall through as
+	// no-retry: that would hand completeUpload a clean, buffered partial body
+	// and let it commit on a truncated response.
+	var apiErr completeMultipartError
+	retry := readErr != nil || (xml.Unmarshal(body, &apiErr) == nil && apiErr.Code != "")
+
+	return retry, nil //nolint:nilerr // decision is carried by the bool; returning readErr would abort the retry loop instead of retrying
+}
+
 // zapLogger adapts zap.Logger to retryablehttp.LeveledLogger interface
 var _ retryablehttp.LeveledLogger = &leveledLogger{}
 
@@ -130,6 +168,15 @@ type CompleteMultipartUpload struct {
 type Part struct {
 	PartNumber int    `xml:"PartNumber"`
 	ETag       string `xml:"ETag"`
+}
+
+// completeMultipartError matches the S3/GCS XML error payload that can arrive
+// with an HTTP 200 status on CompleteMultipartUpload. Unmarshal only succeeds
+// (Code populated) when the response root is <Error>.
+type completeMultipartError struct {
+	XMLName xml.Name `xml:"Error"`
+	Code    string   `xml:"Code"`
+	Message string   `xml:"Message"`
 }
 
 type MultipartUploader struct {
@@ -252,22 +299,25 @@ func (m *MultipartUploader) initiateUpload(ctx context.Context) (string, error) 
 }
 
 func (m *MultipartUploader) uploadPart(ctx context.Context, uploadID string, partNumber int, data []byte) (string, error) {
-	// Calculate MD5 for data integrity
-	hasher := md5.New()
-	hasher.Write(data)
-	md5Sum := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
-
 	url := fmt.Sprintf("%s/%s?partNumber=%d&uploadId=%s",
 		m.baseURL, m.objectName, partNumber, uploadID)
 
-	req, err := retryablehttp.NewRequestWithContext(ctx, "PUT", url, bytes.NewReader(data))
+	// A non-nil zero-length body counts as "unknown length" to net/http and
+	// is sent chunked, which S3-compatible XML backends reject with 411. Pass
+	// no body for empty parts so Content-Length: 0 is sent instead.
+	var body any
+	if len(data) > 0 {
+		body = bytes.NewReader(data)
+	}
+
+	req, err := retryablehttp.NewRequestWithContext(ctx, "PUT", url, body)
 	if err != nil {
 		return "", err
 	}
 
 	req.Header.Set("Authorization", "Bearer "+m.token)
-	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(data)))
-	req.Header.Set("Content-MD5", md5Sum)
+	sum := md5.Sum(data) //nolint:gosec // GCS multipart uses Content-MD5 for transport integrity.
+	req.Header.Set("Content-MD5", base64.StdEncoding.EncodeToString(sum[:]))
 
 	resp, err := m.client.Do(req)
 	if err != nil {
@@ -290,38 +340,40 @@ func (m *MultipartUploader) uploadPart(ctx context.Context, uploadID string, par
 }
 
 // uploadPartSlices uploads a part from multiple byte slices without concatenating them.
-// It computes MD5 by hashing each slice and uses a ReaderFunc for retryable reads.
 func (m *MultipartUploader) uploadPartSlices(ctx context.Context, uploadID string, partNumber int, slices [][]byte) (string, error) {
-	// Compute MD5 and total length without copying
-	hasher := md5.New()
 	totalLen := 0
 	for _, s := range slices {
-		hasher.Write(s)
 		totalLen += len(s)
 	}
-	md5Sum := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
 
 	url := fmt.Sprintf("%s/%s?partNumber=%d&uploadId=%s",
 		m.baseURL, m.objectName, partNumber, uploadID)
 
-	// Use a ReaderFunc so the retryable client can replay the body on retries
-	bodyFn := func() (io.Reader, error) {
-		readers := make([]io.Reader, len(slices))
-		for i, s := range slices {
-			readers[i] = bytes.NewReader(s)
-		}
-
-		return io.MultiReader(readers...), nil
+	// Use a ReaderFunc so the retryable client can replay the body on
+	// retries. The multiSliceReader's Len makes retryablehttp set the
+	// request's ContentLength, so parts are sent with an explicit
+	// Content-Length rather than chunked transfer encoding (which GCS
+	// tolerates but S3-compatible XML backends reject with 411). Empty parts
+	// send no body at all for the same reason: a zero-length reader still
+	// counts as "unknown length" to net/http and would be chunked.
+	var body any
+	if totalLen > 0 {
+		body = retryablehttp.ReaderFunc(func() (io.Reader, error) {
+			return newMultiSliceReader(slices), nil
+		})
 	}
 
-	req, err := retryablehttp.NewRequestWithContext(ctx, "PUT", url, retryablehttp.ReaderFunc(bodyFn))
+	req, err := retryablehttp.NewRequestWithContext(ctx, "PUT", url, body)
 	if err != nil {
 		return "", err
 	}
 
 	req.Header.Set("Authorization", "Bearer "+m.token)
-	req.Header.Set("Content-Length", fmt.Sprintf("%d", totalLen))
-	req.Header.Set("Content-MD5", md5Sum)
+	h := md5.New() //nolint:gosec // GCS multipart uses Content-MD5 for transport integrity.
+	for _, s := range slices {
+		_, _ = h.Write(s)
+	}
+	req.Header.Set("Content-MD5", base64.StdEncoding.EncodeToString(h.Sum(nil)))
 
 	resp, err := m.client.Do(req)
 	if err != nil {
@@ -345,8 +397,8 @@ func (m *MultipartUploader) uploadPartSlices(ctx context.Context, uploadID strin
 
 func (m *MultipartUploader) completeUpload(ctx context.Context, uploadID string, parts []Part) error {
 	// Sort parts by part number
-	sort.Slice(parts, func(i, j int) bool {
-		return parts[i].PartNumber < parts[j].PartNumber
+	slices.SortFunc(parts, func(a, b Part) int {
+		return cmp.Compare(a.PartNumber, b.PartNumber)
 	})
 
 	completeReq := CompleteMultipartUpload{Parts: parts}
@@ -373,16 +425,28 @@ func (m *MultipartUploader) completeUpload(ctx context.Context, uploadID string,
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+	body, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return fmt.Errorf("read complete upload response (status %d): %w", resp.StatusCode, readErr)
+	}
 
+	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to complete upload (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	// S3 and the GCS XML API can return HTTP 200 with an <Error> body when the
+	// commit fails server-side (documented for internal errors/timeouts).
+	// Treating that as success would record a frame table for an object that
+	// was never committed, so reject any response whose root is an Error.
+	var apiErr completeMultipartError
+	if xml.Unmarshal(body, &apiErr) == nil && apiErr.Code != "" {
+		return fmt.Errorf("failed to complete upload (status %d, code %s): %s", resp.StatusCode, apiErr.Code, apiErr.Message)
 	}
 
 	return nil
 }
 
-func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath string, maxConcurrency int) (int64, error) {
+func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath string, maxConcurrency int, hasher hash.Hash) (int64, error) {
 	// Open file
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -409,9 +473,38 @@ func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath s
 		return 0, fmt.Errorf("failed to initiate upload: %w", err)
 	}
 
+	// Hash on a sibling goroutine while parts upload — the read overlaps the
+	// upload, adding no wall-clock latency. Own file handle (separate from the
+	// part uploaders' ReadAt); opened here so a failed upload can close it.
+	var hashFile *os.File
+	if hasher != nil {
+		hashFile, err = os.Open(filePath)
+		if err != nil {
+			return 0, fmt.Errorf("failed to open file for checksum: %w", err)
+		}
+		defer hashFile.Close()
+	}
+
+	var eg errgroup.Group
+	if hashFile != nil {
+		eg.Go(func() error {
+			if _, err := io.Copy(hasher, hashFile); err != nil {
+				return fmt.Errorf("failed to checksum file: %w", err)
+			}
+
+			return nil
+		})
+	}
+
 	parts, err := m.uploadParts(ctx, maxConcurrency, numParts, fileSize, file, uploadID)
+	if hashFile != nil && err != nil {
+		hashFile.Close() // cancel the now-pointless io.Copy
+	}
+	if hashErr := eg.Wait(); err == nil {
+		err = hashErr
+	}
 	if err != nil {
-		return 0, fmt.Errorf("failed to upload parts: %w", err)
+		return 0, fmt.Errorf("failed to upload file: %w", err)
 	}
 
 	if err := m.completeUpload(ctx, uploadID, parts); err != nil {

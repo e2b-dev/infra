@@ -111,7 +111,7 @@ Client → Client-Proxy → API (REST) ⟷ PostgreSQL
 **API (`packages/api/`)** - REST API using Gin framework
 - Entry point: `main.go`
 - Core logic: `internal/handlers/store.go` (APIStore)
-- Authentication: JWT via Supabase in `internal/auth/`
+- Authentication: API keys, access tokens, and OIDC auth provider JWTs
 - OpenAPI code generation: `internal/api/*.gen.go`
 - Port: 80
 
@@ -153,7 +153,7 @@ Client → Client-Proxy → API (REST) ⟷ PostgreSQL
 
 ### Key Technologies
 
-- **go 1.25.9** with workspaces (`go.work`)
+- **go 1.26.3** with workspaces (`go.work`)
 - **Firecracker** for microVM virtualization
 - **PostgreSQL** for primary data (sqlc for queries)
 - **ClickHouse** for analytics

@@ -53,11 +53,11 @@ func TestValidateUploadToken(t *testing.T) {
 
 	validKey := []byte("secret")
 	validPath := "file.txt"
-	validExpires := time.Now().Add(5 * time.Minute).Unix()
-	validToken := ComputeUploadHMAC(validKey, validPath, validExpires)
+	validExpiresSec := time.Now().Add(5 * time.Minute).Unix()
+	validToken := ComputeUploadHMAC(validKey, validPath, validExpiresSec)
 
-	expiredExpires := time.Now().Add(-1 * time.Minute).Unix()
-	expiredToken := ComputeUploadHMAC(validKey, validPath, expiredExpires)
+	expiredExpiresSec := time.Now().Add(-1 * time.Minute).Unix()
+	expiredToken := ComputeUploadHMAC(validKey, validPath, expiredExpiresSec)
 
 	tests := []struct {
 		name    string
@@ -71,7 +71,7 @@ func TestValidateUploadToken(t *testing.T) {
 			name:    "Valid",
 			key:     validKey,
 			path:    validPath,
-			expires: validExpires,
+			expires: validExpiresSec,
 			token:   validToken,
 			want:    true,
 		},
@@ -79,7 +79,7 @@ func TestValidateUploadToken(t *testing.T) {
 			name:    "Expired",
 			key:     validKey,
 			path:    validPath,
-			expires: expiredExpires,
+			expires: expiredExpiresSec,
 			token:   expiredToken,
 			want:    false,
 		},
@@ -87,7 +87,7 @@ func TestValidateUploadToken(t *testing.T) {
 			name:    "WrongToken",
 			key:     validKey,
 			path:    validPath,
-			expires: validExpires,
+			expires: validExpiresSec,
 			token:   "bad-token",
 			want:    false,
 		},
@@ -95,7 +95,7 @@ func TestValidateUploadToken(t *testing.T) {
 			name:    "WrongPath",
 			key:     validKey,
 			path:    "tampered.txt",
-			expires: validExpires,
+			expires: validExpiresSec,
 			token:   validToken,
 			want:    false,
 		},
@@ -103,7 +103,7 @@ func TestValidateUploadToken(t *testing.T) {
 			name:    "WrongExpires",
 			key:     validKey,
 			path:    validPath,
-			expires: validExpires + 10,
+			expires: validExpiresSec + 10,
 			token:   validToken,
 			want:    false,
 		},
@@ -111,7 +111,7 @@ func TestValidateUploadToken(t *testing.T) {
 			name:    "WrongKey",
 			key:     []byte("wrong-key"),
 			path:    validPath,
-			expires: validExpires,
+			expires: validExpiresSec,
 			token:   validToken,
 			want:    false,
 		},

@@ -12,8 +12,6 @@ import (
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	clickhouseUtils "github.com/e2b-dev/infra/packages/clickhouse/pkg/utils"
-	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -22,23 +20,11 @@ func (a *APIStore) GetTeamsTeamIDMetricsMax(c *gin.Context, teamID string, param
 	ctx, span := tracer.Start(ctx, "team-metrics-max")
 	defer span.End()
 
-	team := auth.MustGetTeamInfo(c)
+	authTeamID := auth.MustGetTeamID(c)
 
-	if teamID != team.ID.String() {
-		telemetry.ReportError(ctx, "team ids mismatch", fmt.Errorf("you (%s) are not authorized to access this team's (%s) metrics", team.ID, teamID), telemetry.WithTeamID(team.ID.String()))
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You (%s) are not authorized to access this team's (%s) metrics", team.ID, teamID))
-
-		return
-	}
-
-	metricsReadFlag := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlag)
-
-	if !metricsReadFlag {
-		logger.L().Debug(ctx, "sandbox metrics read feature flag is disabled")
-		// If we are not reading from ClickHouse, we can return an empty map
-		// This is here just to have the possibility to turn off ClickHouse metrics reading
-
-		c.JSON(http.StatusOK, api.MaxTeamMetric{})
+	if teamID != authTeamID.String() {
+		telemetry.ReportError(ctx, "team ids mismatch", fmt.Errorf("you (%s) are not authorized to access this team's (%s) metrics", authTeamID, teamID), telemetry.WithTeamID(authTeamID.String()))
+		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You (%s) are not authorized to access this team's (%s) metrics", authTeamID, teamID))
 
 		return
 	}
@@ -55,7 +41,7 @@ func (a *APIStore) GetTeamsTeamIDMetricsMax(c *gin.Context, teamID string, param
 
 	start, end, err := clickhouseUtils.ValidateRange(start, end)
 	if err != nil {
-		telemetry.ReportError(ctx, "error validating dates", err, telemetry.WithTeamID(team.ID.String()))
+		telemetry.ReportError(ctx, "error validating dates", err, telemetry.WithTeamID(authTeamID.String()))
 		a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
 
 		return
@@ -69,13 +55,13 @@ func (a *APIStore) GetTeamsTeamIDMetricsMax(c *gin.Context, teamID string, param
 	case api.SandboxStartRate:
 		maxMetric, err = a.clickhouseStore.QueryMaxStartRateTeamMetrics(ctx, teamID, start, end, metrics.ExportPeriod)
 	default:
-		telemetry.ReportError(ctx, "invalid metric", fmt.Errorf("invalid metric: %s", params.Metric), telemetry.WithTeamID(team.ID.String()))
+		telemetry.ReportError(ctx, "invalid metric", fmt.Errorf("invalid metric: %s", params.Metric), telemetry.WithTeamID(authTeamID.String()))
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("invalid metric: %s", params.Metric))
 
 		return
 	}
 	if err != nil {
-		telemetry.ReportError(ctx, "error querying max team metrics", err, telemetry.WithTeamID(team.ID.String()))
+		telemetry.ReportError(ctx, "error querying max team metrics", err, telemetry.WithTeamID(authTeamID.String()))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error querying max team metrics")
 
 		return

@@ -103,7 +103,7 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 		return
 	}
 
-	template := result.Env
+	template := result.ActiveEnv
 	buildID := result.EnvBuild.ID
 
 	telemetry.SetAttributes(ctx,
@@ -122,14 +122,14 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 	tags, err := id.ValidateAndDeduplicateTags(body.Tags)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid tag: %s", err))
-		telemetry.ReportCriticalError(ctx, "invalid tag", err)
+		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, "invalid tag", err)
 
 		return
 	}
 
 	// Create the tag assignments
 	for _, tag := range tags {
-		err = client.CreateTemplateBuildAssignment(ctx, queries.CreateTemplateBuildAssignmentParams{
+		rows, err := client.CreateTemplateBuildAssignment(ctx, queries.CreateTemplateBuildAssignmentParams{
 			TemplateID: template.ID,
 			BuildID:    buildID,
 			Tag:        tag,
@@ -137,6 +137,11 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, "error when creating tag assignment", err)
 			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error creating tag assignment")
+
+			return
+		}
+		if rows == 0 {
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found", template.ID))
 
 			return
 		}
@@ -190,7 +195,7 @@ func (a *APIStore) DeleteTemplatesTags(c *gin.Context) {
 	tags, err := id.ValidateAndDeduplicateTags(body.Tags)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid tag: %s", err))
-		telemetry.ReportError(ctx, "invalid tag", err)
+		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, "invalid tag", err)
 
 		return
 	}

@@ -22,9 +22,6 @@ CREATE TABLE IF NOT EXISTS "public"."addons"
     CONSTRAINT "addons_valid_dates_check" CHECK (valid_to IS NULL OR valid_to > valid_from)
 );
 
--- Enable RLS for addons table
-ALTER TABLE "public"."addons" ENABLE ROW LEVEL SECURITY;
-
 -- Create system user
 INSERT INTO "auth"."users" (id, email) VALUES ('00000000-0000-0000-0000-000000000000', 'system@e2b.dev');
 

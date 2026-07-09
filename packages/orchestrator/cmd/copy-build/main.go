@@ -12,7 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
-	"sort"
+	"slices"
 	"strings"
 	"sync/atomic"
 
@@ -77,13 +77,13 @@ func NewDestinationFromPath(prefix, file string) (*Destination, error) {
 	}, nil
 }
 
-func NewHeaderFromObject(ctx context.Context, bucketName string, headerPath string, objectType storage.ObjectType) (*header.Header, error) {
+func NewHeaderFromObject(ctx context.Context, bucketName string, headerPath string) (*header.Header, error) {
 	b, err := storage.NewGCP(ctx, bucketName, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS bucket storage provider: %w", err)
 	}
 
-	obj, err := b.OpenBlob(ctx, headerPath, objectType)
+	obj, err := b.OpenBlob(ctx, headerPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open object: %w", err)
 	}
@@ -128,28 +128,25 @@ func NewHeaderFromPath(ctx context.Context, from, headerPath string) (*header.He
 	return h, nil
 }
 
-func getReferencedData(h *header.Header, objectType storage.ObjectType) []string {
-	builds := make(map[string]struct{})
+func getReferencedData(h *header.Header, dataFileName string) []string {
+	builds := make(map[uuid.UUID]struct{})
 
-	for _, mapping := range h.Mapping {
-		builds[mapping.BuildId.String()] = struct{}{}
+	for _, mapping := range h.Mapping.All() {
+		builds[mapping.BuildId] = struct{}{}
 	}
 
-	delete(builds, uuid.Nil.String())
+	delete(builds, uuid.Nil)
 
 	var dataReferences []string
 
 	for build := range builds {
 		paths := storage.Paths{
-			BuildID: build,
+			BuildID: build.String(),
 		}
 
-		switch objectType {
-		case storage.MemfileHeaderObjectType:
-			dataReferences = append(dataReferences, paths.Memfile())
-		case storage.RootFSHeaderObjectType:
-			dataReferences = append(dataReferences, paths.Rootfs())
-		}
+		ct := h.GetBuildFrameData(build).CompressionType()
+
+		dataReferences = append(dataReferences, paths.DataFile(dataFileName, ct))
 	}
 
 	return dataReferences
@@ -231,7 +228,7 @@ func main() {
 	if strings.HasPrefix(*from, "gs://") {
 		bucketName, _ := strings.CutPrefix(*from, "gs://")
 
-		h, err := NewHeaderFromObject(ctx, bucketName, buildMemfileHeaderPath, storage.MemfileHeaderObjectType)
+		h, err := NewHeaderFromObject(ctx, bucketName, buildMemfileHeaderPath)
 		if err != nil {
 			log.Fatalf("failed to create header from object: %s", err)
 		}
@@ -246,7 +243,7 @@ func main() {
 		memfileHeader = h
 	}
 
-	dataReferences := getReferencedData(memfileHeader, storage.MemfileHeaderObjectType)
+	dataReferences := getReferencedData(memfileHeader, storage.MemfileName)
 
 	filesToCopy = append(filesToCopy, buildMemfileHeaderPath)
 	filesToCopy = append(filesToCopy, dataReferences...)
@@ -257,7 +254,7 @@ func main() {
 	var rootfsHeader *header.Header
 	if strings.HasPrefix(*from, "gs://") {
 		bucketName, _ := strings.CutPrefix(*from, "gs://")
-		h, err := NewHeaderFromObject(ctx, bucketName, buildRootfsHeaderPath, storage.RootFSHeaderObjectType)
+		h, err := NewHeaderFromObject(ctx, bucketName, buildRootfsHeaderPath)
 		if err != nil {
 			log.Fatalf("failed to create header from object: %s", err)
 		}
@@ -272,7 +269,7 @@ func main() {
 		rootfsHeader = h
 	}
 
-	dataReferences = getReferencedData(rootfsHeader, storage.RootFSHeaderObjectType)
+	dataReferences = getReferencedData(rootfsHeader, storage.RootfsName)
 
 	filesToCopy = append(filesToCopy, buildRootfsHeaderPath)
 	filesToCopy = append(filesToCopy, dataReferences...)
@@ -285,7 +282,7 @@ func main() {
 	filesToCopy = append(filesToCopy, metadataPath)
 
 	// sort files to copy
-	sort.Strings(filesToCopy)
+	slices.Sort(filesToCopy)
 
 	googleStorageClient, err := googleStorage.NewClient(ctx)
 	if err != nil {

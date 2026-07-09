@@ -200,44 +200,6 @@ resource "google_secret_manager_secret" "postgres_connection_string" {
   depends_on = [time_sleep.secrets_api_wait_60_seconds]
 }
 
-resource "google_secret_manager_secret" "supabase_jwt_secrets" {
-  secret_id = "${var.prefix}supabase-jwt-secrets"
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-resource "google_secret_manager_secret" "supabase_db_connection_string" {
-  secret_id = "${var.prefix}supabase-db-connection-string"
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-resource "google_secret_manager_secret_version" "supabase_db_connection_string" {
-  secret      = google_secret_manager_secret.supabase_db_connection_string.name
-  secret_data = " "
-
-  lifecycle {
-    ignore_changes = [secret_data]
-  }
-}
-
-resource "google_secret_manager_secret_version" "supabase_jwt_secrets" {
-  secret      = google_secret_manager_secret.supabase_jwt_secrets.name
-  secret_data = " "
-
-  lifecycle {
-    ignore_changes = [secret_data]
-  }
-}
-
 
 resource "google_secret_manager_secret" "posthog_api_key" {
   secret_id = "${var.prefix}posthog-api-key"
@@ -258,6 +220,20 @@ resource "google_secret_manager_secret_version" "posthog_api_key" {
   }
 }
 
+locals {
+  ory_project_api_key_secret_id = "${var.prefix}ory-project-api-key"
+}
+
+data "google_secret_manager_secrets" "ory_project_api_key" {
+  project = var.gcp_project_id
+  filter  = "name:${local.ory_project_api_key_secret_id}"
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
+}
+
+locals {
+  ory_project_api_key_secret_exists = try(length(data.google_secret_manager_secrets.ory_project_api_key.secrets) > 0, false)
+}
 
 resource "google_secret_manager_secret" "redis_cluster_url" {
   secret_id = "${var.prefix}redis-cluster-url"
