@@ -86,7 +86,7 @@ func (o *Orchestrator) syncNodes(ctx context.Context, store *sandbox.Store, skip
 	wg.Wait()
 
 	// Discovery succeeded (a listNomadNodes failure returns early above)
-	o.lastDiscoverySync.Store(time.Now().UnixNano())
+	o.lastDiscoverySync.Store(new(time.Now()))
 
 	// Sync state of all nodes currently in the pool
 	ctx, syncNodesSpan := tracer.Start(ctx, "keep-in-sync-existing")

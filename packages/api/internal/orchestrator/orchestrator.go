@@ -86,14 +86,14 @@ type Orchestrator struct {
 	// block forever.
 	discoveryGroup singleflight.Group
 
-	// lastDiscoverySync is the UnixNano time of the last syncNodes cycle that
-	// successfully completed the node discovery phase. Zero until the first
-	// success. The dead-node sweep refuses to act on pool membership older
-	// than this: "node not in pool" is only meaningful when the pool reflects
-	// a recent, successful observation of the world — otherwise a discovery
-	// outage (or a freshly booted replica that cannot reach service
-	// discovery) would make every node look dead.
-	lastDiscoverySync atomic.Int64
+	// lastDiscoverySync is the time of the last syncNodes cycle that
+	// successfully completed the node discovery phase. Nil until the first
+	// success. The dead-node sweep refuses to act on observations older
+	// than this: "node not seen" is only meaningful when nodes are actually
+	// being synced — otherwise a discovery outage (or a freshly booted
+	// replica that cannot reach service discovery) would make every node
+	// look dead.
+	lastDiscoverySync atomic.Pointer[time.Time]
 }
 
 func New(
@@ -214,12 +214,11 @@ func New(
 		redisClient,
 		o.sandboxStore.AllRunningItems,
 		func() time.Time {
-			ns := o.lastDiscoverySync.Load()
-			if ns == 0 {
-				return time.Time{}
+			if ts := o.lastDiscoverySync.Load(); ts != nil {
+				return *ts
 			}
 
-			return time.Unix(0, ns)
+			return time.Time{}
 		},
 		func(d time.Duration) bool {
 			now := time.Now()
