@@ -1,6 +1,6 @@
 module github.com/e2b-dev/infra/packages/clickhouse
 
-go 1.26.3
+go 1.26.5
 
 replace github.com/e2b-dev/infra/packages/shared => ../shared
 
