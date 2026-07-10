@@ -4,7 +4,6 @@ package sandbox
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 
@@ -28,49 +27,23 @@ func (u *Upload) runV3(ctx context.Context) error {
 
 	eg, egCtx := errgroup.WithContext(ctx)
 
+	// Memfile: write header before body so that a partial failure always
+	// leaves a detectable state (header present, body absent) rather than
+	// the silent mis-sizing that a body-without-header causes after cache
+	// eviction (issue #3226).
 	eg.Go(func() error {
 		h, err := u.snap.MemorySnapshot.DiffHeader.WaitWithContext(egCtx)
 		if err != nil {
 			return fmt.Errorf("wait memfile diff header: %w", err)
 		}
-		if h == nil {
-			// A nil header is expected only for filesystem-only snapshots (NoDiff).
-			// For full memory snapshots the header must always resolve — a nil here
-			// means the header goroutine silently failed, leaving the template
-			// permanently unresumable once its in-memory cache entry is evicted.
-			if !u.snap.FilesystemSnapshot {
-				return errors.New("memfile diff header resolved to nil for non-filesystem-only snapshot")
+		if h != nil {
+			if err := storeHeaderWithMetrics(egCtx, u.store, u.paths.MemfileHeader(), uploadFileMemfileHeader, finalizeV3(h), storage.WithMetadata(u.objectMetadata)); err != nil {
+				return err
 			}
-			return nil
 		}
-
-		return storeHeaderWithMetrics(egCtx, u.store, u.paths.MemfileHeader(), uploadFileMemfileHeader, finalizeV3(h), storage.WithMetadata(u.objectMetadata))
-	})
-
-	eg.Go(func() error {
-		h, err := u.snap.RootfsDiffHeader.WaitWithContext(egCtx)
-		if err != nil {
-			return fmt.Errorf("wait rootfs diff header: %w", err)
-		}
-		if h == nil {
-			return nil
-		}
-
-		return storeHeaderWithMetrics(egCtx, u.store, u.paths.RootfsHeader(), uploadFileRootfsHeader, finalizeV3(h), storage.WithMetadata(u.objectMetadata))
-	})
-
-	meta := storage.WithMetadata(u.objectMetadata)
-
-	eg.Go(func() error {
 		if memfilePath == "" {
 			return nil
 		}
-
-		h, err := u.snap.MemorySnapshot.DiffHeader.WaitWithContext(egCtx)
-		if err != nil {
-			return fmt.Errorf("wait memfile diff header: %w", err)
-		}
-
 		info, err := os.Stat(memfilePath)
 		if err != nil {
 			return fmt.Errorf("memfile stat: %w", err)
@@ -80,20 +53,23 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return err
 		}
 		recordUploadCompression(egCtx, uploadFileMemfile, storage.CompressConfig{}, info.Size(), info.Size())
-
 		return nil
 	})
 
+	// Rootfs: same header-before-body ordering as memfile.
 	eg.Go(func() error {
-		if rootfsPath == "" {
-			return nil
-		}
-
 		h, err := u.snap.RootfsDiffHeader.WaitWithContext(egCtx)
 		if err != nil {
 			return fmt.Errorf("wait rootfs diff header: %w", err)
 		}
-
+		if h != nil {
+			if err := storeHeaderWithMetrics(egCtx, u.store, u.paths.RootfsHeader(), uploadFileRootfsHeader, finalizeV3(h), storage.WithMetadata(u.objectMetadata)); err != nil {
+				return err
+			}
+		}
+		if rootfsPath == "" {
+			return nil
+		}
 		info, err := os.Stat(rootfsPath)
 		if err != nil {
 			return fmt.Errorf("rootfs stat: %w", err)
@@ -103,9 +79,10 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return err
 		}
 		recordUploadCompression(egCtx, uploadFileRootfs, storage.CompressConfig{}, info.Size(), info.Size())
-
 		return nil
 	})
+
+	meta := storage.WithMetadata(u.objectMetadata)
 
 	eg.Go(func() error {
 		// Filesystem-only snapshots resume by reboot, not snapfile restore, so
