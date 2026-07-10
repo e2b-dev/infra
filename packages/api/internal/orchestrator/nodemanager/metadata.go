@@ -38,7 +38,7 @@ func (n *Node) Metadata() NodeMetadata {
 func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*clusters.GRPCClient, context.Context) {
 	md := metadata.MD{}
 
-	if !n.IsClusterNode() {
+	if n.IsClusterNode() {
 		md = edge.SerializeSandboxCatalogCreateEvent(
 			edge.SandboxCatalogCreateEvent{
 				SandboxID:               req.GetSandbox().GetSandboxId(),
