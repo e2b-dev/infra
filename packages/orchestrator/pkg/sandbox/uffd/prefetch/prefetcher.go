@@ -30,6 +30,16 @@ type prefetchData struct {
 	data   []byte
 }
 
+// extent is a run of contiguous block indices fetched from the source in a
+// single source.Slice call. Every extent fetched today covers exactly one
+// block; a later change groups contiguous indices into larger extents to
+// coalesce sequential reads. The copy phase always stays per-block (split out
+// of the fetched extent), since UFFDIO_COPY requires page-sized data.
+type extent struct {
+	startIdx uint64
+	blocks   int
+}
+
 // Prefetcher handles background prefetching of memory pages.
 // It proactively fetches pages that are known to be needed based on the prefetch mapping
 // collected during template build.
@@ -118,8 +128,8 @@ func (p *Prefetcher) Start(ctx context.Context) error {
 	)
 
 	// Channels for work distribution
-	// Fetch channel: all offsets to fetch (large buffer so main goroutine doesn't block)
-	fetchCh := make(chan int64, totalPages)
+	// Fetch channel: all extents to fetch (large buffer so main goroutine doesn't block)
+	fetchCh := make(chan extent, totalPages)
 	// Copy channel: offsets ready to copy (fetched successfully)
 	copyCh := make(chan prefetchData, totalPages)
 
@@ -139,9 +149,10 @@ func (p *Prefetcher) Start(ctx context.Context) error {
 	// duration below is immune to wall-clock steps.
 	var copyStart atomic.Pointer[time.Time]
 
-	// Queue all offsets to fetch in the order they were originally accessed
+	// Queue all extents to fetch in the order the underlying indices were
+	// originally accessed. Every extent is a single block for now (blocks: 1).
 	for _, idx := range indices {
-		fetchCh <- header.BlockOffset(int64(idx), blockSize)
+		fetchCh <- extent{startIdx: idx, blocks: 1}
 	}
 	close(fetchCh)
 
@@ -223,10 +234,14 @@ func (p *Prefetcher) startCopyWorkers(
 	copyWorkerWg.Wait()
 }
 
-// fetchWorker fetches pages from the source to populate the cache
+// fetchWorker fetches extents from the source to populate the cache. An
+// extent is one contiguous run of blocks fetched in a single source.Slice
+// call; every extent is a single block for now, so this reproduces the
+// previous per-block fetch exactly. The copy phase stays per-block: an extent
+// is split into page-sized sub-slices (UFFDIO_COPY requires page-sized data).
 func (p *Prefetcher) fetchWorker(
 	ctx context.Context,
-	fetchCh <-chan int64,
+	fetchCh <-chan extent,
 	copyCh chan<- prefetchData,
 	blockSize int64,
 	fetchedCount *atomic.Uint64,
@@ -236,29 +251,39 @@ func (p *Prefetcher) fetchWorker(
 		select {
 		case <-ctx.Done():
 			return
-		case offset, ok := <-fetchCh:
+		case e, ok := <-fetchCh:
 			if !ok {
 				return
 			}
 
-			// Fetch from source - this populates the cache
-			data, err := p.source.Slice(ctx, offset, blockSize)
+			baseOffset := header.BlockOffset(int64(e.startIdx), blockSize)
+
+			// Fetch from source - this populates the cache. A multi-block
+			// extent is one larger sequential read spanning e.blocks pages.
+			data, err := p.source.Slice(ctx, baseOffset, blockSize*int64(e.blocks))
 			if err != nil {
-				p.logger.Debug(ctx, "prefetch: failed to fetch page",
-					zap.Int64("offset", offset),
+				p.logger.Debug(ctx, "prefetch: failed to fetch extent",
+					zap.Int64("offset", baseOffset),
+					zap.Int("blocks", e.blocks),
 					zap.Error(err),
 				)
-				skippedCount.Add(1)
+				skippedCount.Add(uint64(e.blocks))
 
 				continue
 			}
 
-			fetchedCount.Add(1)
+			fetchedCount.Add(uint64(e.blocks))
 
-			// Queue for copy (non-blocking - channel has enough capacity)
-			select {
-			case copyCh <- prefetchData{offset: offset, data: data}:
-			case <-ctx.Done():
+			// Queue each page for copy (non-blocking - channel has enough
+			// capacity).
+			for b := range e.blocks {
+				off := baseOffset + int64(b)*blockSize
+				sub := data[int64(b)*blockSize : int64(b+1)*blockSize]
+				select {
+				case copyCh <- prefetchData{offset: off, data: sub}:
+				case <-ctx.Done():
+					return
+				}
 			}
 		}
 	}
