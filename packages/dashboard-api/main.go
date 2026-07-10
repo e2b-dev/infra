@@ -28,9 +28,9 @@ import (
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/handlers"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/identity"
 	dashboardmiddleware "github.com/e2b-dev/infra/packages/dashboard-api/internal/middleware"
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
-	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
@@ -147,7 +147,6 @@ func run() int {
 	}
 	defer authDB.Close()
 
-	// Initialize feature flags client for ClickHouse endpoint switching
 	featureFlags, err := featureflags.NewClient()
 	if err != nil {
 		l.Error(ctx, "Initializing feature flags client", zap.Error(err))
@@ -199,6 +198,34 @@ func run() int {
 	}
 	defer authService.Close(ctx)
 
+	oryIssuer, err := identity.ResolveOryIssuer(config.OrySDKURL, config.AuthProvider.JWT)
+	if err != nil {
+		l.Error(ctx, "Resolving Ory issuer", zap.Error(err))
+
+		return 1
+	}
+
+	oryDirectory, err := identity.NewOryDirectory(identity.OryConfig{
+		HTTPClient: authClient,
+		SDKURL:     config.OrySDKURL,
+		Token:      config.OryProjectAPIToken,
+	})
+	if err != nil {
+		l.Error(ctx, "Initializing ory identity directory", zap.Error(err))
+
+		return 1
+	}
+
+	identityService, err := identity.NewService(
+		map[string]identity.Directory{oryIssuer: oryDirectory},
+		identity.NewQueriesLinkage(authDB.Write),
+	)
+	if err != nil {
+		l.Error(ctx, "Initializing identity service", zap.Error(err))
+
+		return 1
+	}
+
 	teamProvisionSink, err := internalteamprovision.NewProvisionSink(
 		ctx,
 		config.BillingServerURL,
@@ -210,20 +237,7 @@ func run() int {
 		return 1
 	}
 
-	userProfiles, err := userprofile.NewOryProvider(userprofile.OryConfig{
-		HTTPClient: authClient,
-		SDKURL:     config.OrySDKURL,
-		Token:      config.OryProjectAPIToken,
-		Issuer:     config.OryIssuerURL,
-		Resolver:   authDB.Write,
-	})
-	if err != nil {
-		l.Error(ctx, "Initializing user profile provider", zap.Error(err))
-
-		return 1
-	}
-
-	apiStore := handlers.NewAPIStore(config, db, authDB, clickhouseClient, authService, teamProvisionSink, userProfiles)
+	apiStore := handlers.NewAPIStore(config, db, authDB, clickhouseClient, authService, identityService, teamProvisionSink)
 
 	swagger, err := api.GetSwagger()
 	if err != nil {

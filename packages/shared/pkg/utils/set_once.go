@@ -101,8 +101,21 @@ func (s *SetOnce[T]) Result() (T, error) {
 	return s.res.value, s.res.err
 }
 
-// WaitWithContext TODO: Use waitWithContext in all places instead of Wait.
+// WaitWithContext returns the value or error set by SetValue or SetError,
+// waiting until the result is set or ctx is done, whichever comes first.
+//
+// An already set result always wins: once SetValue or SetError has been
+// called, WaitWithContext returns that result even if ctx is already
+// cancelled. ctx.Err() is returned only when ctx becomes done before the
+// result is set.
 func (s *SetOnce[T]) WaitWithContext(ctx context.Context) (T, error) {
+	// An already set result always wins over an already cancelled context.
+	select {
+	case <-s.Done:
+		return s.Result()
+	default:
+	}
+
 	select {
 	case <-s.Done:
 		return s.Result()

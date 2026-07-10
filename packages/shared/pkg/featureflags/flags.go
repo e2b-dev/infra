@@ -224,6 +224,14 @@ var (
 	// in favor of E2B_API_KEY; the CLI now authenticates via Hydra JWTs. Off by
 	// default so issuance keeps working until the deprecation cutover.
 	DisableE2BAccessTokenProvisioningFlag = NewBoolFlag("disable-e2b-access-token-provisioning", false)
+
+	// DisableE2BAccessTokenAuthFlag stops the API and docker-reverse-proxy
+	// (V1 build docker login) from accepting E2B access tokens (sk_e2b_) for
+	// authentication once enabled. E2B_ACCESS_TOKEN is deprecated in favor of
+	// E2B_API_KEY; existing tokens stop working on the deprecation cutover
+	// (Aug 1, 2026). Off by default. Evaluated per-user so rejection can be
+	// rolled out gradually via LD targeting.
+	DisableE2BAccessTokenAuthFlag = NewBoolFlag("disable-e2b-access-token-auth", false)
 )
 
 // envdTimeoutFallbackMs reads ENVD_TIMEOUT (Go duration string, e.g. "10s")
@@ -268,9 +276,10 @@ func NewIntFlag(name string, fallback int) IntFlag {
 }
 
 var (
-	MaxSandboxesPerNode           = NewIntFlag("max-sandboxes-per-node", 200)
-	GcloudConcurrentUploadLimit   = NewIntFlag("gcloud-concurrent-upload-limit", 8)
-	GcloudMaxTasks                = NewIntFlag("gcloud-max-tasks", 16)
+	MaxSandboxesPerNode = NewIntFlag("max-sandboxes-per-node", 200)
+	// The LD keys keep the legacy "gcloud-" prefix, but the limits apply to uploads on all storage providers.
+	StorageConcurrentUploadLimit  = NewIntFlag("gcloud-concurrent-upload-limit", 8)
+	StorageMaxUploadTasks         = NewIntFlag("gcloud-max-tasks", 16)
 	ClickhouseBatcherMaxBatchSize = NewIntFlag("clickhouse-batcher-max-batch-size", 100)
 	ClickhouseBatcherMaxDelay     = NewIntFlag("clickhouse-batcher-max-delay", 1000) // 1s in milliseconds
 	ClickhouseBatcherQueueSize    = NewIntFlag("clickhouse-batcher-queue-size", 1000)

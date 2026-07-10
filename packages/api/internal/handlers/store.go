@@ -397,7 +397,22 @@ func (a *APIStore) GetUserFromAccessToken(ctx context.Context, ginCtx *gin.Conte
 	ctx, span := tracer.Start(ctx, "get user from access token")
 	defer span.End()
 
-	return a.authService.ValidateAccessToken(ctx, ginCtx, accessToken)
+	userID, apiErr := a.authService.ValidateAccessToken(ctx, ginCtx, accessToken)
+	if apiErr != nil {
+		return uuid.UUID{}, apiErr
+	}
+
+	// Access token acceptance is gated after validation so the flag can be
+	// rolled out per-user via LD targeting during the deprecation cutover.
+	if a.featureFlags.BoolFlag(ctx, featureflags.DisableE2BAccessTokenAuthFlag, featureflags.UserContext(userID.String())) {
+		return uuid.UUID{}, &api.APIError{
+			Err:       errors.New("access token authentication is disabled"),
+			ClientMsg: "E2B_ACCESS_TOKEN is deprecated and no longer accepted. Use an API key (E2B_API_KEY) instead. See https://e2b.dev/docs/migration/access-token-deprecation",
+			Code:      http.StatusUnauthorized,
+		}
+	}
+
+	return userID, nil
 }
 
 func (a *APIStore) GetUserIDFromAuthProviderToken(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *api.APIError) {

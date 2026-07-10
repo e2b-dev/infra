@@ -60,8 +60,10 @@ func (s *APIStore) GetSandboxesSandboxIDRecord(c *gin.Context, sandboxID api.San
 	// fixed retention window ago.
 	retentionExpired := row.StoppedAt != nil && time.Since(*row.StoppedAt) > monitoringRetention
 
-	// Events retention comes from the team's limits (tier + addons)
-	eventsRetentionDays := min(team.Limits.EventsTTLDays, events.MaxEventsTTLDays)
+	eventsRetentionDays := events.DefaultEventsTTLDays
+	if team.Limits != nil {
+		eventsRetentionDays = min(team.Limits.EventsTTLDays, events.MaxEventsTTLDays)
+	}
 	eventsRetention := time.Duration(eventsRetentionDays) * 24 * time.Hour
 	eventsRetentionExpired := row.StoppedAt != nil && time.Since(*row.StoppedAt) > eventsRetention
 

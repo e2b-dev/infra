@@ -54,10 +54,6 @@ const (
 
 	// MemoryChunkSize must always be bigger or equal to the block size.
 	MemoryChunkSize = 4 * 1024 * 1024 // 4 MB
-
-	// MetadataKeyUncompressedSize stores the original size so that Size()
-	// returns the uncompressed size for compressed objects.
-	MetadataKeyUncompressedSize = "uncompressed-size"
 )
 
 // GetProviderType returns the configured storage provider type from the
@@ -121,12 +117,13 @@ type (
 )
 
 const (
-	ObjectMetadataTeamID      = storageopts.ObjectMetadataTeamID
-	ObjectMetadataTemplateID  = storageopts.ObjectMetadataTemplateID
-	ObjectMetadataBuildOrigin = storageopts.ObjectMetadataBuildOrigin
-	ObjectMetadataLogicalSize = storageopts.ObjectMetadataLogicalSize
-	ObjectMetadataMappedSize  = storageopts.ObjectMetadataMappedSize
-	ObjectMetadataDiffSize    = storageopts.ObjectMetadataDiffSize
+	ObjectMetadataTeamID           = storageopts.ObjectMetadataTeamID
+	ObjectMetadataTemplateID       = storageopts.ObjectMetadataTemplateID
+	ObjectMetadataBuildOrigin      = storageopts.ObjectMetadataBuildOrigin
+	ObjectMetadataUncompressedSize = storageopts.ObjectMetadataUncompressedSize
+	ObjectMetadataLogicalSize      = storageopts.ObjectMetadataLogicalSize
+	ObjectMetadataMappedSize       = storageopts.ObjectMetadataMappedSize
+	ObjectMetadataDiffSize         = storageopts.ObjectMetadataDiffSize
 
 	ObjectOriginPause              = storageopts.ObjectOriginPause
 	ObjectOriginTemplateBuild      = storageopts.ObjectOriginTemplateBuild
@@ -317,7 +314,7 @@ func GetStorageProvider(ctx context.Context, cfg StorageConfig) (StorageProvider
 	// cloud bucket-based storage
 	switch provider {
 	case AWSStorageProvider:
-		return newAWSStorage(ctx, bucketName)
+		return newAWSStorage(ctx, bucketName, cfg.limiter)
 	case GCPStorageProvider:
 		return NewGCP(ctx, bucketName, cfg.limiter)
 	}

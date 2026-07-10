@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -9,7 +10,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
-	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/identity"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
@@ -41,7 +42,7 @@ func (s *APIStore) GetTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 		userIDs = append(userIDs, row.UserID)
 	}
 
-	profiles, err := s.userProfiles.GetProfilesByUserID(ctx, userIDs)
+	profiles, err := s.identityService.ProfilesByUserID(ctx, userIDs)
 	if err != nil {
 		// Ory admin API unavailable (e.g. CDN blocks /admin/ paths in Hydra-only deployments).
 		// Fall back to emails stored in each user's default team record.
@@ -56,9 +57,9 @@ func (s *APIStore) GetTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 			return
 		}
 
-		profiles = make(map[uuid.UUID]userprofile.Profile, len(emails))
+		profiles = make(map[uuid.UUID]identity.Profile, len(emails))
 		for uid, email := range emails {
-			profiles[uid] = userprofile.Profile{UserID: uid, Email: email}
+			profiles[uid] = identity.Profile{UserID: uid, Email: email}
 		}
 	}
 
@@ -120,7 +121,7 @@ func (s *APIStore) PostTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 		return
 	}
 
-	profiles, err := s.userProfiles.FindProfilesByEmail(ctx, string(body.Email))
+	profiles, err := s.identityService.FindProfilesByEmail(ctx, string(body.Email))
 	if err != nil {
 		// Ory admin API unavailable — fall back to DB email lookup.
 		logger.L().Warn(ctx, "ory email lookup failed, using DB fallback", zap.Error(err))
@@ -183,6 +184,23 @@ func (s *APIStore) PostTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 	}
 
 	user := profiles[0]
+
+	if teamInfo, ok := auth.GetTeamInfo(c); ok && teamInfo != nil && teamInfo.Team != nil && teamInfo.Team.SsoOrganizationID != nil {
+		inviteeOrgID, err := s.identityService.UserOrganizationID(ctx, user.UserID)
+		if err != nil {
+			logger.L().Error(ctx, "failed to resolve invitee organization", zap.Error(err), logger.WithUserID(user.UserID.String()))
+			s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to resolve invitee organization")
+
+			return
+		}
+
+		if inviteeOrgID != *teamInfo.Team.SsoOrganizationID {
+			s.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("%s is not part of this team's SSO organization and cannot be invited.", user.Email))
+
+			return
+		}
+	}
+
 	if err := s.authDB.Write.UpsertPublicUser(ctx, user.UserID); err != nil {
 		logger.L().Error(ctx, "failed to create public user anchor", zap.Error(err), logger.WithUserID(user.UserID.String()))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to add team member")

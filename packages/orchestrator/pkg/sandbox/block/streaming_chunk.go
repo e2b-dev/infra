@@ -290,13 +290,18 @@ func (c *Chunker) progressiveFetch(ctx context.Context, s *fetchSession, mmapSli
 		var closeErr error
 		res.stats, closeErr = reader.Close(context.WithoutCancel(ctx))
 
+		// A compressed frame's CRC is only verified once its footer is consumed
+		// on Close, so a Close error is a verification failure that must fail
+		// the fetch (don't cache or release a corrupt frame). A read error, if
+		// any, takes precedence.
+		if err == nil {
+			err = closeErr
+		}
+
 		ct := ft.CompressionType()
 		attrs := storage.OKAttrs(c.objType, source, ct)
-		switch {
-		case err != nil:
+		if err != nil {
 			attrs = storage.ErrAttrs(c.objType, source, ct, err)
-		case closeErr != nil:
-			attrs = storage.ErrAttrs(c.objType, source, ct, closeErr)
 		}
 
 		var readDur time.Duration
@@ -318,9 +323,14 @@ func (c *Chunker) progressiveFetch(ctx context.Context, s *fetchSession, mmapSli
 		n, readErr := io.ReadFull(reader, mmapSlice[totalRead:readEnd])
 		totalRead += int64(n)
 
-		if n > 0 {
+		if n > 0 && !ft.IsCompressed() {
 			// Dirty marking is deferred to runFetch after the full chunk is fetched.
 			// With coarse dirty granularity, marking here would expose partially-written data.
+			//
+			// Compressed chunks are a single frame whose CRC is only verified
+			// once the footer is consumed on Close. Releasing waiters here
+			// would hand out bytes that a later CRC failure proves corrupt, so
+			// their release is deferred to setDone after verification.
 			s.advance(totalRead)
 		}
 
