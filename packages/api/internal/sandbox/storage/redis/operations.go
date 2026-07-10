@@ -13,8 +13,10 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
+	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -39,10 +41,30 @@ func (s *Storage) Add(ctx context.Context, sbx sandboxtypes.Sandbox) error {
 		return fmt.Errorf("failed to add sandbox to global expiration index: %w", err)
 	}
 
+	if sbx.Routing != nil {
+		info := e2bcatalog.SandboxInfo{
+			OrchestratorID:   sbx.Routing.OrchestratorID,
+			OrchestratorIP:   sbx.Routing.OrchestratorIP,
+			ExecutionID:      sbx.ExecutionID,
+			StartedAt:        sbx.StartTime,
+			MaxLengthInHours: int64(sbx.MaxInstanceLength / time.Hour),
+		}
+		if err := s.routingCatalog.StoreSandbox(ctx, sbx.SandboxID, &info, sbx.MaxInstanceLength); err != nil {
+			// A timed-out Redis command may still have succeeded.
+			return errors.Join(
+				fmt.Errorf("failed to add sandbox to routing catalog: %w", err),
+				s.rollbackRouting(context.WithoutCancel(ctx), sbx),
+			)
+		}
+	}
+
 	// Execute Lua script for atomic SET + SADD
 	err = addSandboxScript.Run(ctx, s.redisClient, []string{key, teamKey}, data, sbx.SandboxID).Err()
 	if err != nil {
-		return fmt.Errorf("failed to store sandbox in Redis: %w", err)
+		return errors.Join(
+			fmt.Errorf("failed to store sandbox in Redis: %w", err),
+			s.rollbackRouting(context.WithoutCancel(ctx), sbx),
+		)
 	}
 
 	// We can't set the globalTeamsSet in Lua script as they can be in different shards
@@ -51,6 +73,19 @@ func (s *Storage) Add(ctx context.Context, sbx sandboxtypes.Sandbox) error {
 		Member: sbx.TeamID.String(),
 	}).Err(); err != nil {
 		logger.L().Warn(ctx, "failed to add team to global teams index", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
+	}
+
+	return nil
+}
+
+func (s *Storage) rollbackRouting(ctx context.Context, sbx sandboxtypes.Sandbox) error {
+	if sbx.Routing == nil {
+		return nil
+	}
+
+	err := s.routingCatalog.DeleteSandbox(ctx, sbx.SandboxID, sbx.ExecutionID)
+	if err != nil {
+		return fmt.Errorf("failed to roll back sandbox routing: %w", err)
 	}
 
 	return nil
@@ -108,13 +143,25 @@ func (s *Storage) Remove(ctx context.Context, teamID uuid.UUID, sandboxID string
 	// Add for a newer execution wrote a different member, so it can never be
 	// unindexed here. If the key was already gone, any leftover execution
 	// member is swept by ExpiredItems once its score passes.
-	if raw != "" {
-		var sbx sandboxtypes.Sandbox
-		if unmarshalErr := json.Unmarshal([]byte(raw), &sbx); unmarshalErr == nil && sbx.ExecutionID != "" {
-			member := expirationMember(teamID.String(), sandboxID, sbx.ExecutionID)
-			if err := s.redisClient.ZRem(ctx, globalExpirationSet, member).Err(); err != nil {
-				logger.L().Warn(ctx, "Failed to remove sandbox from global expiration index", zap.Error(err), logger.WithSandboxID(sandboxID))
-			}
+	if raw == "" {
+		return nil
+	}
+
+	var sbx sandboxtypes.Sandbox
+	if err := json.Unmarshal([]byte(raw), &sbx); err != nil {
+		return fmt.Errorf("failed to unmarshal removed sandbox: %w", err)
+	}
+
+	member := expirationMember(teamID.String(), sandboxID, sbx.ExecutionID)
+	if err := s.redisClient.ZRem(ctx, globalExpirationSet, member).Err(); err != nil {
+		logger.L().Warn(ctx, "Failed to remove sandbox from global expiration index", zap.Error(err), logger.WithSandboxID(sandboxID))
+	}
+
+	// StartRemoving deletes routes before node shutdown; this idempotent cleanup
+	// also covers direct removals and records created before Routing was persisted.
+	if sbx.Routing != nil || sbx.ClusterID == consts.LocalClusterID {
+		if err := s.routingCatalog.DeleteSandbox(ctx, sbx.SandboxID, sbx.ExecutionID); err != nil {
+			logger.L().Warn(ctx, "Failed to remove sandbox from routing catalog", zap.Error(err), logger.WithSandboxID(sandboxID))
 		}
 	}
 

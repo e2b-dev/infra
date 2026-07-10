@@ -146,23 +146,6 @@ func (o *Orchestrator) removeSandboxFromNode(
 		return fmt.Errorf("node '%s' not found", sbx.NodeID)
 	}
 
-	// For remote cluster nodes we are using gPRC metadata for routing registration instead
-	if !node.IsClusterNode() {
-		// Remove the sandbox resources after the sandbox is deleted
-		err := o.routingCatalog.DeleteSandbox(ctx, sbx.SandboxID, sbx.ExecutionID)
-		if err != nil {
-			fields := []zap.Field{
-				zap.Error(err),
-				logger.WithSandboxID(sbx.SandboxID),
-			}
-			if stateAction == sandbox.StateActionKill {
-				fields = append(fields, zap.String("kill_reason", reason.String()))
-			}
-
-			logger.L().Error(ctx, "error removing routing record from catalog", fields...)
-		}
-	}
-
 	sbxlogger.I(sbx).Debug(ctx, "Removing sandbox",
 		zap.Bool("auto_pause", sbx.AutoPause),
 		zap.String("state_action", stateAction.Name),

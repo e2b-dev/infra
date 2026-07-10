@@ -17,11 +17,12 @@ import (
 	sandboxredis "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
+	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
 
 // newTestStorage spins up a redis testcontainer and returns a fresh redis-backed
 // sandbox.Storage. The container and storage are cleaned up via t.Cleanup.
-func newTestStorage(t *testing.T) Storage {
+func newTestStorage(t *testing.T) (Storage, e2bcatalog.SandboxesCatalog) {
 	t.Helper()
 
 	client := redis_utils.SetupInstance(t)
@@ -30,7 +31,7 @@ func newTestStorage(t *testing.T) Storage {
 	go storage.Start(t.Context())
 	t.Cleanup(func() { storage.Close(context.WithoutCancel(t.Context())) })
 
-	return storage
+	return storage, e2bcatalog.NewRedisSandboxCatalog(client)
 }
 
 // =============================================================================
@@ -54,21 +55,6 @@ func NewCallbackTracker(expectedCalls int) *CallbackTracker {
 		creationMeta:  make(map[string][]CreationMetadata),
 		expectedCalls: expectedCalls,
 		done:          make(chan struct{}),
-	}
-}
-
-// Track returns a callback function that tracks invocations
-func (ct *CallbackTracker) Track(name string) InsertCallback {
-	return func(_ context.Context, sbx Sandbox) {
-		ct.mu.Lock()
-		ct.calls[name] = append(ct.calls[name], sbx)
-		ct.mu.Unlock()
-
-		if int(ct.actualCalls.Add(1)) >= ct.expectedCalls {
-			ct.closeOnce.Do(func() {
-				close(ct.done)
-			})
-		}
 	}
 }
 
@@ -106,14 +92,6 @@ func (ct *CallbackTracker) WaitForCalls(t *testing.T, timeout time.Duration) {
 	}
 }
 
-// AssertCalled asserts that a callback was invoked at least once
-func (ct *CallbackTracker) AssertCalled(t *testing.T, name string) {
-	t.Helper()
-	ct.mu.Lock()
-	defer ct.mu.Unlock()
-	assert.NotEmpty(t, ct.calls[name], "expected callback %s to be called", name)
-}
-
 // AssertNotCalled asserts that a callback was never invoked
 func (ct *CallbackTracker) AssertNotCalled(t *testing.T, name string) {
 	t.Helper()
@@ -128,14 +106,6 @@ func (ct *CallbackTracker) AssertCallCount(t *testing.T, name string, count int)
 	ct.mu.Lock()
 	defer ct.mu.Unlock()
 	assert.Len(t, ct.calls[name], count, "expected callback %s to be called %d times", name, count)
-}
-
-// GetCalls returns all invocations for a callback
-func (ct *CallbackTracker) GetCalls(name string) []Sandbox {
-	ct.mu.Lock()
-	defer ct.mu.Unlock()
-
-	return append([]Sandbox{}, ct.calls[name]...)
 }
 
 // NoOpReservationStorage is a no-op implementation for testing
@@ -155,6 +125,17 @@ type MockStorage struct {
 
 	addError error
 	mu       sync.Mutex
+}
+
+type deleteTrackingCatalog struct {
+	e2bcatalog.SandboxesCatalog
+	deleteCalls atomic.Int32
+}
+
+func (c *deleteTrackingCatalog) DeleteSandbox(ctx context.Context, sandboxID, executionID string) error {
+	c.deleteCalls.Add(1)
+
+	return c.SandboxesCatalog.DeleteSandbox(ctx, sandboxID, executionID)
 }
 
 func NewMockStorage(storage Storage) *MockStorage {
@@ -185,12 +166,12 @@ func (m *MockStorage) Add(ctx context.Context, sbx Sandbox) error {
 
 // createTestSandbox creates a test sandbox with default values
 func createTestSandbox() Sandbox {
-	return NewSandbox(
+	sbx := NewSandbox(
 		"test-sandbox-"+uuid.New().String()[:8],
 		"test-template",
 		consts.ClientID,
 		nil, // alias
-		"",  // executionID
+		uuid.NewString(),
 		uuid.New(),
 		uuid.New(),
 		map[string]string{"test": "metadata"},
@@ -204,7 +185,7 @@ func createTestSandbox() Sandbox {
 		"1.0",                     // firecracker
 		"1.0",                     // envd
 		"node-1",
-		uuid.New(),
+		consts.LocalClusterID,
 		false, // autoPause
 		false, // autoPauseFilesystemOnly
 		nil,   // autoResume
@@ -216,6 +197,12 @@ func createTestSandbox() Sandbox {
 		nil, // trafficAccessToken
 		nil, // volumes
 	)
+	sbx.Routing = &RoutingMetadata{
+		OrchestratorID: "orchestrator-1",
+		OrchestratorIP: "10.0.0.1",
+	}
+
+	return sbx
 }
 
 // =============================================================================
@@ -224,67 +211,71 @@ func createTestSandbox() Sandbox {
 
 func TestAdd_NewSandbox(t *testing.T) {
 	t.Parallel()
-	t.Run("success - all callbacks called", func(t *testing.T) {
+	t.Run("success - route stored and callback called", func(t *testing.T) {
 		t.Parallel()
 		ctx := t.Context()
 
 		// Setup
-		storage := newTestStorage(t)
+		storage, routingCatalog := newTestStorage(t)
 		reservations := &NoOpReservationStorage{}
 
-		tracker := NewCallbackTracker(2) // Expect 2 callbacks
+		tracker := NewCallbackTracker(1)
 		callbacks := Callbacks{
-			AddSandboxToRoutingTable: tracker.Track("AddSandboxToRoutingTable"),
 			AsyncNewlyCreatedSandbox: tracker.TrackCreation("AsyncNewlyCreatedSandbox"),
 		}
 
-		store := NewStore(storage, reservations, callbacks)
+		store := NewStore(storage, reservations, routingCatalog, callbacks)
 		sbx := createTestSandbox()
 
 		// Execute
 		err := store.Add(ctx, sbx, &CreationMetadata{})
 
 		// Wait for async callbacks
-		tracker.WaitForCalls(t, 2*time.Second)
+		tracker.WaitForCalls(t, time.Second)
 
 		// Assert
 		require.NoError(t, err)
 
-		// Verify all callbacks called exactly once
-		tracker.AssertCallCount(t, "AddSandboxToRoutingTable", 1)
 		tracker.AssertCallCount(t, "AsyncNewlyCreatedSandbox", 1)
 
 		// Verify sandbox in storage
 		stored, err := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
 		require.NoError(t, err)
 		assert.Equal(t, sbx.SandboxID, stored.SandboxID)
+		assert.Equal(t, sbx.Routing, stored.Routing)
+
+		route, err := routingCatalog.GetSandbox(ctx, sbx.SandboxID)
+		require.NoError(t, err)
+		assert.Equal(t, sbx.Routing.OrchestratorID, route.OrchestratorID)
+		assert.Equal(t, sbx.Routing.OrchestratorIP, route.OrchestratorIP)
+		assert.Equal(t, sbx.ExecutionID, route.ExecutionID)
+		assert.WithinDuration(t, sbx.StartTime, route.StartedAt, time.Millisecond)
+		assert.Equal(t, int64(1), route.MaxLengthInHours)
 	})
 }
 
 func TestAdd_NotNewlyCreated(t *testing.T) {
 	t.Parallel()
-	t.Run("not in cache - AddSandboxToRoutingTable called", func(t *testing.T) {
+	t.Run("route stored without creation callback", func(t *testing.T) {
 		t.Parallel()
 		ctx := t.Context()
 
-		storage := newTestStorage(t)
+		storage, routingCatalog := newTestStorage(t)
 		reservations := &NoOpReservationStorage{}
 
-		// Add with newlyCreated=false, expect 1 callback
 		tracker := NewCallbackTracker(1)
 		callbacks := Callbacks{
-			AddSandboxToRoutingTable: tracker.Track("AddSandboxToRoutingTable"),
 			AsyncNewlyCreatedSandbox: tracker.TrackCreation("AsyncNewlyCreatedSandbox"),
 		}
-		store := NewStore(storage, reservations, callbacks)
+		store := NewStore(storage, reservations, routingCatalog, callbacks)
 		sbx := createTestSandbox()
 
 		err := store.Add(ctx, sbx, nil)
-		tracker.WaitForCalls(t, 2*time.Second)
 
 		require.NoError(t, err)
-		tracker.AssertCallCount(t, "AddSandboxToRoutingTable", 1)
 		tracker.AssertNotCalled(t, "AsyncNewlyCreatedSandbox")
+		_, err = routingCatalog.GetSandbox(ctx, sbx.SandboxID)
+		require.NoError(t, err)
 	})
 }
 
@@ -294,20 +285,18 @@ func TestAdd_StorageErrors(t *testing.T) {
 		t.Parallel()
 		ctx := t.Context()
 
-		storage := newTestStorage(t)
+		storage, routingCatalog := newTestStorage(t)
 		mockStorage := NewMockStorage(storage)
 		customErr := errors.New("storage failure")
 		mockStorage.SetAddError(customErr)
 
 		reservations := &NoOpReservationStorage{}
 
-		// Expect 0 callbacks since error should be returned immediately
 		tracker := NewCallbackTracker(1)
 		callbacks := Callbacks{
-			AddSandboxToRoutingTable: tracker.Track("AddSandboxToRoutingTable"),
 			AsyncNewlyCreatedSandbox: tracker.TrackCreation("AsyncNewlyCreatedSandbox"),
 		}
-		store := NewStore(mockStorage, reservations, callbacks)
+		store := NewStore(mockStorage, reservations, routingCatalog, callbacks)
 		sbx := createTestSandbox()
 
 		err := store.Add(ctx, sbx, &CreationMetadata{})
@@ -320,8 +309,9 @@ func TestAdd_StorageErrors(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 
 		// No callbacks should have been called
-		tracker.AssertNotCalled(t, "AddSandboxToRoutingTable")
 		tracker.AssertNotCalled(t, "AsyncNewlyCreatedSandbox")
+		_, routeErr := routingCatalog.GetSandbox(ctx, sbx.SandboxID)
+		require.ErrorIs(t, routeErr, e2bcatalog.ErrSandboxNotFound)
 	})
 }
 
@@ -331,17 +321,16 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 		t.Parallel()
 		ctx := t.Context()
 
-		storage := newTestStorage(t)
+		storage, routingCatalog := newTestStorage(t)
 		reservations := &NoOpReservationStorage{}
 
 		numGoroutines := 100
-		tracker := NewCallbackTracker(numGoroutines * 2) // Each add calls 2 callbacks
+		tracker := NewCallbackTracker(numGoroutines)
 
 		callbacks := Callbacks{
-			AddSandboxToRoutingTable: tracker.Track("AddSandboxToRoutingTable"),
 			AsyncNewlyCreatedSandbox: tracker.TrackCreation("AsyncNewlyCreatedSandbox"),
 		}
-		store := NewStore(storage, reservations, callbacks)
+		store := NewStore(storage, reservations, routingCatalog, callbacks)
 
 		teamID := uuid.New()
 		var wg sync.WaitGroup
@@ -376,7 +365,6 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 		tracker.WaitForCalls(t, 5*time.Second)
 
 		// Verify all callbacks were called expected number of times
-		tracker.AssertCallCount(t, "AddSandboxToRoutingTable", numGoroutines)
 		tracker.AssertCallCount(t, "AsyncNewlyCreatedSandbox", numGoroutines)
 
 		// Verify all sandboxes are in storage
@@ -384,6 +372,47 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 			sandboxID := fmt.Sprintf("concurrent-sandbox-%d", i)
 			_, err := storage.Get(ctx, teamID, sandboxID)
 			assert.NoError(t, err, "expected sandbox %s to be in storage", sandboxID)
+			_, err = routingCatalog.GetSandbox(ctx, sandboxID)
+			assert.NoError(t, err, "expected sandbox %s to be routable", sandboxID)
 		}
 	})
+}
+
+func TestStartRemoving_Routing(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		action        StateAction
+		catalogRecord bool
+		clusterID     uuid.UUID
+		wantDeletes   int32
+	}{
+		{"terminal transition deletes route", StateActionPause, true, consts.LocalClusterID, 1},
+		{"transient transition retains route", StateActionSnapshot, true, consts.LocalClusterID, 0},
+		{"remote transition leaves routing to grpc metadata", StateActionPause, false, uuid.New(), 0},
+		{"legacy local transition deletes route", StateActionPause, false, consts.LocalClusterID, 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			storage, routingCatalog := newTestStorage(t)
+			trackingCatalog := &deleteTrackingCatalog{SandboxesCatalog: routingCatalog}
+			store := NewStore(storage, &NoOpReservationStorage{}, trackingCatalog, Callbacks{})
+			sbx := createTestSandbox()
+			sbx.ClusterID = tt.clusterID
+			if !tt.catalogRecord {
+				sbx.Routing = nil
+			}
+			require.NoError(t, store.Add(t.Context(), sbx, nil))
+
+			_, alreadyDone, finish, err := store.StartRemoving(t.Context(), sbx.TeamID, sbx.SandboxID, RemoveOpts{Action: tt.action})
+			require.NoError(t, err)
+			require.False(t, alreadyDone)
+			finish(t.Context(), nil)
+
+			require.Equal(t, tt.wantDeletes, trackingCatalog.deleteCalls.Load())
+		})
+	}
 }

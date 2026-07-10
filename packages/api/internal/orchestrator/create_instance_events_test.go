@@ -22,6 +22,7 @@ import (
 	sandboxredis "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
+	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -65,8 +66,8 @@ func newOrchestratorWithCounter(t *testing.T) (*Orchestrator, *eventCounter) {
 	store := sandbox.NewStore(
 		storage,
 		redisreservations.NewReservationStorage(client, storage.Notifier()),
+		e2bcatalog.NewRedisSandboxCatalog(client),
 		sandbox.Callbacks{
-			AddSandboxToRoutingTable: func(context.Context, sandbox.Sandbox) {},
 			AsyncNewlyCreatedSandbox: ec.callback(),
 		},
 	)

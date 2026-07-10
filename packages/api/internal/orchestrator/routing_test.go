@@ -53,3 +53,24 @@ func TestRouteNodeIPAddress(t *testing.T) {
 		})
 	}
 }
+
+func TestSandboxRoutingMetadata(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nomad node uses catalog routing", func(t *testing.T) {
+		t.Parallel()
+		node := &nodemanager.Node{ClusterID: consts.LocalClusterID, IPAddress: "10.0.0.1"}
+
+		routing := sandboxRoutingMetadata(node, false)
+
+		require.NotNil(t, routing)
+		require.Equal(t, "10.0.0.1", routing.OrchestratorIP)
+	})
+
+	t.Run("remote node uses grpc metadata", func(t *testing.T) {
+		t.Parallel()
+		node := &nodemanager.Node{ClusterID: uuid.New(), IPAddress: "10.0.0.1"}
+
+		require.Nil(t, sandboxRoutingMetadata(node, false))
+	})
+}
