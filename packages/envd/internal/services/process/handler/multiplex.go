@@ -100,9 +100,7 @@ func (m *MultiplexedChannel[T]) HasSubscribers() bool {
 
 // Fork registers a new subscriber and returns its channel plus a cancel func.
 // If Source is already closed it returns a pre-closed channel and a no-op cancel.
-// The channel is bidirectional for backwards compat with start.go which writes
-// a bootstrap event into it; new callers should treat it as receive-only.
-func (m *MultiplexedChannel[T]) Fork() (chan T, func()) {
+func (m *MultiplexedChannel[T]) Fork() (<-chan T, func()) {
 	if m.exited.Load() {
 		ch := make(chan T)
 		close(ch)
