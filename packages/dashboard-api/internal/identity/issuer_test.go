@@ -43,9 +43,17 @@ func TestResolveOryIssuer_MultipleJWTNoMatch(t *testing.T) {
 func TestResolveOryIssuer_NoJWTConfigs(t *testing.T) {
 	t.Parallel()
 
-	_, err := ResolveOryIssuer("https://tenant.projects.oryapis.com", nil)
+	issuer, err := ResolveOryIssuer("https://tenant.projects.oryapis.com", nil)
+	require.NoError(t, err)
+	require.Equal(t, "https://tenant.projects.oryapis.com", issuer)
+}
+
+func TestResolveOryIssuer_NoJWTConfigsAndNoSDKURL(t *testing.T) {
+	t.Parallel()
+
+	_, err := ResolveOryIssuer("", nil)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "no JWT issuers")
+	require.Contains(t, err.Error(), "ORY_SDK_URL is empty")
 }
 
 func TestResolveOryIssuer_DeduplicatesSameIssuer(t *testing.T) {

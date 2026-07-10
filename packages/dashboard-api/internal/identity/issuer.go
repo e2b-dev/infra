@@ -13,12 +13,17 @@ import (
 // configurations by matching the host of sdkURL against each issuer URL.
 // When exactly one JWT entry is configured, its issuer is used without
 // requiring a host match.
+// When no JWT entries are configured, it falls back to the SDK URL.
 func ResolveOryIssuer(sdkURL string, jwtConfigs []oidc.Config) (string, error) {
 	sdkURL = strings.TrimSpace(sdkURL)
 	issuers := uniqueIssuerURLs(jwtConfigs)
 
 	if len(issuers) == 0 {
-		return "", errors.New("no JWT issuers configured in AUTH_PROVIDER_CONFIG")
+		if sdkURL == "" {
+			return "", errors.New("ORY_SDK_URL is empty and no JWT issuers are configured in AUTH_PROVIDER_CONFIG")
+		}
+
+		return sdkURL, nil
 	}
 
 	if len(issuers) == 1 {
