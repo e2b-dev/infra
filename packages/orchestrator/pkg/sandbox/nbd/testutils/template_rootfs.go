@@ -20,14 +20,14 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-func TemplateRootfs(ctx context.Context, buildID string) (*BuildDevice, *Cleaner, error) {
+func TemplateRootfs(ctx context.Context, spec storage.Spec, buildID string) (*BuildDevice, *Cleaner, error) {
 	var cleaner Cleaner
 
 	paths := storage.Paths{
 		BuildID: buildID,
 	}
 
-	s, err := storage.GetStorageProvider(ctx, storage.TemplateStorageConfig)
+	s, err := storage.NewProvider(ctx, spec)
 	if err != nil {
 		return nil, &cleaner, fmt.Errorf("failed to get storage provider: %w", err)
 	}

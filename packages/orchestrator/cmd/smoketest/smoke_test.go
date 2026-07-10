@@ -184,10 +184,14 @@ func newTestInfra(t *testing.T, ctx context.Context) *testInfra {
 	ti := &testInfra{}
 
 	// Storage
-	persistenceTemplate, err := storage.GetStorageProvider(ctx, storage.TemplateStorageConfig)
+	templateSpec, err := cfg.TemplateStorage()
+	require.NoError(t, err)
+	persistenceTemplate, err := storage.NewProvider(ctx, templateSpec)
 	require.NoError(t, err)
 
-	persistenceBuild, err := storage.GetStorageProvider(ctx, storage.BuildCacheStorageConfig)
+	buildCacheSpec, err := cfg.BuildCacheStorage()
+	require.NoError(t, err)
+	persistenceBuild, err := storage.NewProvider(ctx, buildCacheSpec)
 	require.NoError(t, err)
 
 	// NBD

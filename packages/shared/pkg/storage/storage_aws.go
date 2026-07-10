@@ -52,7 +52,7 @@ var (
 	_ Blob     = (*awsObject)(nil)
 )
 
-func newAWSStorage(ctx context.Context, bucketName string, limiter *limit.Limiter) (*awsStorage, error) {
+func newAWSStorage(ctx context.Context, spec Spec, limiter *limit.Limiter) (*awsStorage, error) {
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return nil, err
@@ -60,23 +60,26 @@ func newAWSStorage(ctx context.Context, bucketName string, limiter *limit.Limite
 	otelaws.AppendMiddlewares(&cfg.APIOptions)
 
 	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
-		// S3_USE_PATH_STYLE controls the addressing style:
-		//   "true"  → path-style:         https://host/bucket/key
-		//   "false" → virtual-host-style: https://bucket.host/key  (SDK default)
-		//
-		// Path-style is required for S3-compatible backends (MinIO, Ceph, etc.)
-		// that don't support virtual-host addressing. Set this explicitly when
-		// using a custom endpoint via AWS_ENDPOINT_URL.
-		if strings.EqualFold(os.Getenv("S3_USE_PATH_STYLE"), "true") {
-			o.UsePathStyle = true
+		// Options the spec leaves unset fall back to the AWS SDK's own
+		// resolution (AWS_ENDPOINT_URL, AWS_REGION, credentials, …).
+		if spec.Endpoint != "" {
+			o.BaseEndpoint = aws.String(spec.Endpoint)
 		}
+		if spec.Region != "" {
+			o.Region = spec.Region
+		}
+
+		// Path-style addressing (https://host/bucket/key instead of the SDK's
+		// default virtual-host style https://bucket.host/key) is required by
+		// most S3-compatible backends (MinIO, Ceph, …).
+		o.UsePathStyle = spec.UsePathStyle
 	})
 	presignClient := s3.NewPresignClient(client)
 
 	return &awsStorage{
 		client:        client,
 		presignClient: presignClient,
-		bucketName:    bucketName,
+		bucketName:    spec.Bucket,
 		limiter:       limiter,
 	}, nil
 }

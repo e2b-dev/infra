@@ -14,6 +14,7 @@ import (
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/cmd/internal/cmdutil"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -178,17 +179,31 @@ func (r *runner) fphBenchOnce(ctx context.Context, opts fphBenchOptions, withFph
 	}
 }
 
+// localTemplateBasePath resolves the template storage and returns its local
+// base path; errors when template storage is not on the local filesystem.
+func localTemplateBasePath() (string, error) {
+	spec, err := cfg.TemplateStorage()
+	if err != nil {
+		return "", err
+	}
+	if spec.Provider != storage.LocalStorageProvider {
+		return "", fmt.Errorf("template storage provider is %s, not local", spec.Provider)
+	}
+
+	return spec.BasePath, nil
+}
+
 func readLocalMemfileSize(buildID string) (int64, error) {
-	basePath := os.Getenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH")
-	if basePath == "" {
-		return 0, errors.New("LOCAL_TEMPLATE_STORAGE_BASE_PATH not set; -fph-bench requires local storage")
+	basePath, err := localTemplateBasePath()
+	if err != nil {
+		return 0, fmt.Errorf("-fph-bench requires local storage: %w", err)
 	}
 
 	return cmdutil.GetActualFileSize(filepath.Join(basePath, buildID, storage.MemfileName))
 }
 
 func cleanupLocalBuild(buildID string) {
-	if base := os.Getenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH"); base != "" {
+	if base, err := localTemplateBasePath(); err == nil {
 		_ = os.RemoveAll(filepath.Join(base, buildID))
 	}
 }
