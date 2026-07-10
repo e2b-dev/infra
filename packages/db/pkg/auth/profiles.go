@@ -2,11 +2,9 @@ package authdb
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 // GetUserEmailsByUserIDs returns a map of userID → email by joining each user's
@@ -42,11 +40,12 @@ func (db *Client) GetUserEmailsByUserIDs(ctx context.Context, userIDs []uuid.UUI
 	return result, rows.Err()
 }
 
-// FindUserIDByEmail looks up the user whose default team email matches. Used as
-// a fallback when the Ory admin API is unavailable for the add-member flow.
-func (db *Client) FindUserIDByEmail(ctx context.Context, email string) (uuid.UUID, bool, error) {
+// FindUserIDsByEmail returns all user IDs whose default-team email matches.
+// Callers must handle the ambiguous case (len > 1) explicitly rather than
+// silently picking one. Used as a fallback when the Ory admin API is unavailable.
+func (db *Client) FindUserIDsByEmail(ctx context.Context, email string) ([]uuid.UUID, error) {
 	if email == "" {
-		return uuid.Nil, false, nil
+		return nil, nil
 	}
 
 	const q = `
@@ -55,16 +54,21 @@ func (db *Client) FindUserIDByEmail(ctx context.Context, email string) (uuid.UUI
 		JOIN public.teams t ON t.id = ut.team_id
 		WHERE lower(t.email) = lower($1::text)
 		  AND ut.is_default = true
-		LIMIT 1
 	`
 
-	var userID uuid.UUID
-	err := db.readConn.QueryRow(ctx, q, email).Scan(&userID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return uuid.Nil, false, nil
-	}
+	rows, err := db.readConn.Query(ctx, q, email)
 	if err != nil {
-		return uuid.Nil, false, fmt.Errorf("find user id by email: %w", err)
+		return nil, fmt.Errorf("find user ids by email: %w", err)
 	}
-	return userID, true, nil
+	defer rows.Close()
+
+	var userIDs []uuid.UUID
+	for rows.Next() {
+		var userID uuid.UUID
+		if scanErr := rows.Scan(&userID); scanErr != nil {
+			return nil, fmt.Errorf("scan user id by email: %w", scanErr)
+		}
+		userIDs = append(userIDs, userID)
+	}
+	return userIDs, rows.Err()
 }

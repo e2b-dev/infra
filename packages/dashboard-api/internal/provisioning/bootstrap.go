@@ -72,11 +72,15 @@ func (s *Service) bootstrapUser(ctx context.Context, profile bootstrapUserProfil
 		// has not yet been linked to any identity for this issuer. If so, reuse
 		// their user_id so their existing teams and data are preserved on first login.
 		if profile.Email != "" {
-			linkedUserID, found, emailErr := s.authDB.FindUserIDByEmail(ctx, profile.Email)
+			emailMatches, emailErr := s.authDB.FindUserIDsByEmail(ctx, profile.Email)
 			if emailErr != nil {
 				return ProvisionedTeam{}, fmt.Errorf("find pre-Ory user by email: %w", emailErr)
 			}
-			if found {
+			// Only attempt email-based migration when there is exactly one match.
+			// Multiple matches indicate email reuse across accounts; skip to avoid
+			// linking the wrong user_id.
+			if len(emailMatches) == 1 {
+				linkedUserID := emailMatches[0]
 				// Lock the candidate user row before re-checking identities. Without
 				// this lock, two concurrent bootstraps with different subjects but the
 				// same email can both observe zero identities and both claim linkedUserID.
