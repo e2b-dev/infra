@@ -23,6 +23,7 @@ const DefaultBusyboxVersion = "1.36.1"
 type BuilderConfig struct {
 	DomainName             string `env:"DOMAIN_NAME"              envDefault:""`
 	FirecrackerVersionsDir string `env:"FIRECRACKER_VERSIONS_DIR" envDefault:"/fc-versions"`
+	FirecrackerNoSeccomp   bool   `env:"FIRECRACKER_NO_SECCOMP"`
 	BusyboxVersion         string `env:"BUSYBOX_VERSION"          envDefault:"1.36.1"`
 	HostBusyboxDir         string `env:"HOST_BUSYBOX_DIR"         envDefault:"/fc-busybox"`
 	HostEnvdPath           string `env:"HOST_ENVD_PATH"           envDefault:"/fc-envd/envd"`

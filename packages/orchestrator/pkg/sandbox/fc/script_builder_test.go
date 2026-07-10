@@ -143,6 +143,23 @@ func TestStartScriptBuilder_Build(t *testing.T) {
 	}
 }
 
+func TestStartScriptBuilder_NoSeccomp(t *testing.T) {
+	t.Parallel()
+
+	config, err := cfg.ParseBuilder()
+	require.NoError(t, err)
+	config.FirecrackerNoSeccomp = true
+
+	result, err := NewStartScriptBuilder(config).Build(
+		Config{KernelVersion: "6.1.0", FirecrackerVersion: "1.14.4"},
+		createTestSandboxFiles("test-sandbox", "static-id"),
+		RootfsPaths{TemplateVersion: 2, TemplateID: "template-123", BuildID: "build-456"},
+		"ns-789",
+	)
+	require.NoError(t, err)
+	assert.Contains(t, result.Value, "firecracker --no-seccomp --api-sock")
+}
+
 // createTestSandboxFiles creates a SandboxFiles instance for testing
 func createTestSandboxFiles(sandboxID, staticID string) *storage.SandboxFiles {
 	paths := storage.Paths{

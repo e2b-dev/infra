@@ -20,11 +20,13 @@ func TestParse(t *testing.T) {
 
 	t.Run("embedded structs get overrides", func(t *testing.T) {
 		t.Setenv("SANDBOX_DIR", "/fc-vm2")
+		t.Setenv("FIRECRACKER_NO_SECCOMP", "true")
 
 		config, err := Parse()
 		require.NoError(t, err)
 
 		assert.Equal(t, "/fc-vm2", config.SandboxDir)
+		assert.True(t, config.FirecrackerNoSeccomp)
 	})
 
 	t.Run("network config local flag defaults to false", func(t *testing.T) {

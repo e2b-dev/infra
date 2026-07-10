@@ -71,6 +71,10 @@ type Config struct {
 	// ServiceDiscoveryProvider=local. Used for local dev against the darwin
 	// dummy orchestrator.
 	LocalOrchestratorAddress string `env:"LOCAL_ORCHESTRATOR_ADDRESS" envDefault:"127.0.0.1:5008"`
+	// LocalTemplateBuilderAddress optionally registers a template-manager at a
+	// fixed address in local discovery. Leave empty for the macOS dummy
+	// orchestrator, which cannot build templates.
+	LocalTemplateBuilderAddress string `env:"LOCAL_TEMPLATE_BUILDER_ADDRESS"`
 
 	// Used when ServiceDiscoveryProvider=kubernetes.
 	K8sNamespace                       string `env:"K8S_NAMESPACE"                           envDefault:"default"`

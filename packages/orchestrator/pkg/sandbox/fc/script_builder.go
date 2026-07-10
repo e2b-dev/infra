@@ -25,9 +25,10 @@ type startScriptArgs struct {
 	DeprecatedSandboxRootfsDir string
 	SandboxRootfsFile          string
 
-	NamespaceID       string
-	FirecrackerPath   string
-	FirecrackerSocket string
+	NamespaceID          string
+	FirecrackerPath      string
+	FirecrackerSocket    string
+	FirecrackerNoSeccomp bool
 }
 
 // StartScriptResult contains the generated script and computed paths
@@ -50,7 +51,7 @@ ln -s {{ .HostRootfsPath }} {{ .DeprecatedSandboxRootfsDir }}/{{ .SandboxRootfsF
 mount -t tmpfs tmpfs {{ .SandboxDir }}/{{ .SandboxKernelDir }} -o X-mount.mkdir &&
 ln -s {{ .HostKernelPath }} {{ .SandboxDir }}/{{ .SandboxKernelDir }}/{{ .SandboxKernelFile }} &&
 
-ip netns exec {{ .NamespaceID }} {{ .FirecrackerPath }} --api-sock {{ .FirecrackerSocket }}`
+ip netns exec {{ .NamespaceID }} {{ .FirecrackerPath }}{{ if .FirecrackerNoSeccomp }} --no-seccomp{{ end }} --api-sock {{ .FirecrackerSocket }}`
 
 const startScriptV2 = `mount --make-rprivate / &&
 mount -t tmpfs tmpfs {{ .SandboxDir }} -o X-mount.mkdir &&
@@ -60,7 +61,7 @@ ln -s {{ .HostRootfsPath }} {{ .SandboxDir }}/{{ .SandboxRootfsFile }} &&
 mkdir -p {{ .SandboxDir }}/{{ .SandboxKernelDir }} &&
 ln -s {{ .HostKernelPath }} {{ .SandboxDir }}/{{ .SandboxKernelDir }}/{{ .SandboxKernelFile }} &&
 
-ip netns exec {{ .NamespaceID }} {{ .FirecrackerPath }} --api-sock {{ .FirecrackerSocket }}`
+ip netns exec {{ .NamespaceID }} {{ .FirecrackerPath }}{{ if .FirecrackerNoSeccomp }} --no-seccomp{{ end }} --api-sock {{ .FirecrackerSocket }}`
 
 // StartScriptBuilder handles the creation and execution of firecracker start scripts
 type StartScriptBuilder struct {
@@ -103,9 +104,10 @@ func (sb *StartScriptBuilder) buildArgs(
 		SandboxRootfsFile:          artifact.RootfsFileName,
 
 		// FC
-		NamespaceID:       namespaceID,
-		FirecrackerPath:   versions.FirecrackerPath(sb.builderConfig),
-		FirecrackerSocket: files.SandboxFirecrackerSocketPath(),
+		NamespaceID:          namespaceID,
+		FirecrackerPath:      versions.FirecrackerPath(sb.builderConfig),
+		FirecrackerSocket:    files.SandboxFirecrackerSocketPath(),
+		FirecrackerNoSeccomp: sb.builderConfig.FirecrackerNoSeccomp,
 	}
 }
 
