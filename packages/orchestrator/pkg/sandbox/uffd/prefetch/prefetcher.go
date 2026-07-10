@@ -73,10 +73,17 @@ func coalesceIndices(indices []uint64, maxBlocks int) []extent {
 //
 // Both phases run with their own parallelism limits and don't block each other.
 type Prefetcher struct {
-	logger       logger.Logger
-	source       block.Slicer
-	uffd         uffd.MemoryBackend
-	mapping      *metadata.MemoryPrefetchMapping
+	logger  logger.Logger
+	source  block.Slicer
+	uffd    uffd.MemoryBackend
+	mapping *metadata.MemoryPrefetchMapping
+	// Prefault installs each fetched page into the guest via UFFDIO_COPY (the
+	// copy phase). New defaults it to true. Set it false for a "fetch-only"
+	// run: the prefetcher only warms the shared chunk cache and the guest still
+	// faults (served fast from the warm cache). Fetch-only is used for the
+	// last-cycle diff, whose multi-GiB prefault would load UFFDIO_COPY onto the
+	// resume-critical path for no workload gain and would regress warm resumes.
+	Prefault     bool
 	featureFlags *featureflags.Client
 }
 
@@ -92,6 +99,7 @@ func New(
 		source:       source,
 		uffd:         uffd,
 		mapping:      mapping,
+		Prefault:     true,
 		featureFlags: featureFlags,
 	}
 }
@@ -137,12 +145,22 @@ func (p *Prefetcher) Start(ctx context.Context) error {
 	blockSize := p.mapping.BlockSize
 	totalPages := len(indices)
 
+	// Record the recorded working-set size for this run, tagged by mode so the
+	// fetch-only (last-cycle) distribution is separable from the prefaulted
+	// init trace. Available for rollout dashboards without Tempo sampling.
+	modeAttr := modeFetchAttr
+	if p.Prefault {
+		modeAttr = modePrefaultAttr
+	}
+	mappingBlocksHistogram.Record(ctx, int64(totalPages), modeAttr)
+
 	span.SetAttributes(
 		attribute.Int64("prefetch.total_pages", int64(totalPages)),
 		attribute.Int64("prefetch.block_size", blockSize),
 		attribute.Int("prefetch.max_fetch_workers", maxFetchWorkers),
 		attribute.Int("prefetch.max_copy_workers", maxCopyWorkers),
 		attribute.Int("prefetch.coalesce_max_mb", coalesceMaxMB),
+		attribute.Bool("prefetch.prefault", p.Prefault),
 	)
 
 	p.logger.Debug(ctx, "prefetch: starting background prefetch",
@@ -165,8 +183,13 @@ func (p *Prefetcher) Start(ctx context.Context) error {
 	// Channels for work distribution
 	// Fetch channel: all extents to fetch (large buffer so main goroutine doesn't block)
 	fetchCh := make(chan extent, len(extents))
-	// Copy channel: offsets ready to copy (fetched successfully)
-	copyCh := make(chan prefetchData, totalPages)
+	// Copy channel: pages fetched successfully, ready to install. Only created
+	// when prefaulting; a fetch-only run leaves it nil and skips the copy phase,
+	// so fetched bytes are dropped after warming the cache (no in-memory pile-up).
+	var copyCh chan prefetchData
+	if p.Prefault {
+		copyCh = make(chan prefetchData, totalPages)
+	}
 
 	// Counters for statistics
 	var fetchedCount atomic.Uint64
@@ -197,16 +220,21 @@ func (p *Prefetcher) Start(ctx context.Context) error {
 		})
 	}
 
-	// Start copy coordinator - waits for uffd ready, then spawns copy workers
-	copyWg.Go(func() {
-		p.startCopyWorkers(ctx, cancelRun, copyCh, maxCopyWorkers, &copyStart, &copiedCount, &copySkippedCount)
-	})
+	// Start copy coordinator - waits for uffd ready, then spawns copy workers.
+	// Skipped entirely for fetch-only runs.
+	if p.Prefault {
+		copyWg.Go(func() {
+			p.startCopyWorkers(ctx, cancelRun, copyCh, maxCopyWorkers, &copyStart, &copiedCount, &copySkippedCount)
+		})
+	}
 
 	// Wait for fetch workers to complete
 	fetchWg.Wait()
 	fetchDuration := time.Since(runStart)
 	// Close copy channel when all fetch workers are done
-	close(copyCh)
+	if copyCh != nil {
+		close(copyCh)
+	}
 
 	// Wait for copy workers to complete
 	copyWg.Wait()
@@ -307,10 +335,29 @@ func (p *Prefetcher) fetchWorker(
 				continue
 			}
 
+			// Guard against a short read with a nil error: the per-page slicing
+			// below indexes up to blockSize*e.blocks and would panic (slice
+			// bounds out of range) — which crashes the whole orchestrator — if
+			// the source returned fewer bytes than requested.
+			if int64(len(data)) < blockSize*int64(e.blocks) {
+				p.logger.Debug(ctx, "prefetch: short read from source",
+					zap.Int64("offset", baseOffset),
+					zap.Int("blocks", e.blocks),
+					zap.Int("got_bytes", len(data)),
+				)
+				skippedCount.Add(uint64(e.blocks))
+
+				continue
+			}
+
 			fetchedCount.Add(uint64(e.blocks))
 
 			// Queue each page for copy (non-blocking - channel has enough
-			// capacity).
+			// capacity). Fetch-only runs pass a nil copyCh: warming the cache is
+			// the whole job, so the fetched bytes are dropped here.
+			if copyCh == nil {
+				continue
+			}
 			for b := range e.blocks {
 				off := baseOffset + int64(b)*blockSize
 				sub := data[int64(b)*blockSize : int64(b+1)*blockSize]

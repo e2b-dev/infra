@@ -325,6 +325,21 @@ var (
 	// installs one page at a time, since UFFDIO_COPY requires page-sized data.
 	MemoryPrefetchCoalesceMaxMB = NewIntFlag("memory-prefetch-coalesce-max-mb", 0)
 
+	// ResumePrefetchSourceFlag selects which trace the resume prefetcher
+	// replays:
+	//   "init"     — only the build-time / harvested read-hot init trace
+	//                (meta.Prefetch.Memory), prefaulted. Preserves today's
+	//                behavior, so this is the default and a no-op-equivalent.
+	//   "last-cycle" — only the sandbox's own pause diff (the pages the last
+	//                resume→pause cycle wrote), derived from the memfile header
+	//                and replayed fetch-only.
+	//   "both"     — init first (prefaulted), then last-cycle (fetch-only) behind
+	//                a barrier, so the large last-cycle fetch stays off the
+	//                resume-critical path.
+	//   "off"      — kill switch, no resume prefetch.
+	// Unknown values fall back to "init".
+	ResumePrefetchSourceFlag = NewStringFlag("resume-prefetch-source", "init")
+
 	// PauseResumePrefetchHarvestFlag makes the orchestrator, after a pause
 	// snapshot is durable, run a throwaway warm resume of the just-written
 	// artifact (driven by envd /init, workload frozen, egress denied) to record

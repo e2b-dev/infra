@@ -757,7 +757,26 @@ func (f *Factory) ResumeSandbox(
 		return uffd.New(memfile, fcUffdPath), nil
 	})
 
-	// Prefetching
+	// Prefetching. Derive the prefetch context and register its cancel with the
+	// cleanup manager *synchronously*, before the goroutine below. execCtx is
+	// non-cancelable (context.WithoutCancel) and the fetch-only last-cycle path
+	// has no copy worker to observe uffd close, so without an explicit cancel a
+	// torn-down sandbox would keep draining a (potentially multi-GiB) diff from
+	// object storage. Registering here rather than inside the goroutine also
+	// avoids racing cleanup.Run: a goroutine-side Add could lose the hasRun
+	// check to a concurrent teardown and never register.
+	//
+	// Register as PRIORITY so teardown aborts the fetch first: priority handlers
+	// run before the normal cleanup list, and (LIFO) this one runs before the
+	// priority Stop — otherwise the fetchers keep issuing large memfile reads
+	// through Stop and the rest of the normal cleanup until a late cancel.
+	prefetchCtx, cancelPrefetch := context.WithCancel(execCtx)
+	cleanup.AddPriority(ctx, func(context.Context) error {
+		cancelPrefetch()
+
+		return nil
+	})
+
 	go func() {
 		memfile, err := t.Memfile(ctx)
 		if err != nil {
@@ -771,31 +790,81 @@ func (f *Factory) ResumeSandbox(
 
 		telemetry.ReportEvent(ctx, "got metadata")
 
-		// Start background prefetcher as early as possible if prefetch mapping exists
-		// Fetching from source starts immediately; copying waits for uffd to be ready
-		if meta.Prefetch != nil && meta.Prefetch.Memory != nil {
-			fcUffd, err := uffdPromise.Wait(ctx)
-			if err != nil {
-				return
+		// Start background prefetchers as early as possible. Fetching from
+		// source starts immediately; copying (when prefaulting) waits for uffd.
+		//
+		// Up to two independent mappings are replayed on a resume, chosen by the
+		// resume-prefetch-source flag (see selectResumePrefetch):
+		//  - The init trace (meta.Prefetch.Memory): the build-time
+		//    create-from-template / checkpoint read-hot startup working set.
+		//    Prefaulted, exactly as today.
+		//  - The last-cycle diff: the pages this sandbox's last resume→pause
+		//    cycle wrote — its own pause diff, derived from the memfile header
+		//    (see buildDiffMemoryPrefetchMapping) — a good predictor of the
+		//    next cycle's working set. Replayed FETCH-ONLY: it warms the cache
+		//    and lets the guest fault, because prefaulting a multi-GiB diff
+		//    would load UFFDIO_COPY onto the resume-critical path for no
+		//    workload gain and would regress warm resumes.
+		// The default source "init" selects only the init trace, preserving
+		// today's behavior. Pause/resume normally has no init trace
+		// (SameVersionTemplate drops it), so with source=last-cycle/both the
+		// last-cycle diff usually runs alone. When both exist, the small init
+		// trace runs first and last-cycle follows it (a barrier), keeping the
+		// large last-cycle fetch off the resume-critical path.
+		source := f.featureFlags.StringFlag(ctx, featureflags.ResumePrefetchSourceFlag, sandboxLDContext(runtime, config))
+		useInit, useLastCycle := selectResumePrefetch(source)
+
+		var initMapping *metadata.MemoryPrefetchMapping
+		if useInit && meta.Prefetch != nil {
+			initMapping = meta.Prefetch.Memory
+		}
+
+		var lastCycleMapping *metadata.MemoryPrefetchMapping
+		if useLastCycle {
+			lastCycleMapping = buildDiffMemoryPrefetchMapping(memfile.Header())
+		}
+
+		// Record the chosen source and the sizes it resolved to, so a resume can
+		// be cohorted by prefetch source (guards against flag misconfiguration)
+		// and the last-cycle set size is visible per resume.
+		execSpan.SetAttributes(
+			attribute.String("resume.prefetch.source", source),
+			attribute.Int("resume.prefetch.init_blocks", initMapping.Count()),
+			attribute.Int("resume.prefetch.last_cycle_blocks", lastCycleMapping.Count()),
+		)
+
+		if initMapping == nil && lastCycleMapping == nil {
+			return
+		}
+
+		fcUffd, err := uffdPromise.Wait(ctx)
+		if err != nil {
+			return
+		}
+
+		telemetry.ReportEvent(ctx, "starting prefetcher")
+		l := logger.L().With(logger.WithSandboxID(runtime.SandboxID), logger.WithTemplateID(runtime.TemplateID), logger.WithTeamID(runtime.TeamID))
+
+		go func() {
+			// Init trace first, prefaulted (prod behavior). Start blocks until
+			// its fetch+copy complete, so it acts as a barrier before the
+			// last-cycle fetch begins.
+			if initMapping != nil {
+				p := prefetch.New(l, memfile, fcUffd, initMapping, f.featureFlags)
+				if err := p.Start(prefetchCtx); err != nil {
+					l.Error(ctx, "failed to start init prefetcher", zap.Error(err))
+				}
 			}
 
-			telemetry.ReportEvent(ctx, "starting prefetcher")
-			l := logger.L().With(logger.WithSandboxID(runtime.SandboxID), logger.WithTemplateID(runtime.TemplateID), logger.WithTeamID(runtime.TeamID))
-
-			go func() {
-				p := prefetch.New(
-					l,
-					memfile,
-					fcUffd,
-					meta.Prefetch.Memory,
-					f.featureFlags,
-				)
-				err := p.Start(execCtx)
-				if err != nil {
-					l.Error(ctx, "failed to start prefetcher", zap.Error(err))
+			// Last-cycle diff, fetch-only.
+			if lastCycleMapping != nil {
+				p := prefetch.New(l, memfile, fcUffd, lastCycleMapping, f.featureFlags)
+				p.Prefault = false
+				if err := p.Start(prefetchCtx); err != nil {
+					l.Error(ctx, "failed to start last-cycle prefetcher", zap.Error(err))
 				}
-			}()
-		}
+			}
+		}()
 	}()
 
 	// Slot initialization
