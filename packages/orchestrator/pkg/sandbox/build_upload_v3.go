@@ -4,6 +4,7 @@ package sandbox
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -38,7 +39,7 @@ func (u *Upload) runV3(ctx context.Context) error {
 			// means the header goroutine silently failed, leaving the template
 			// permanently unresumable once its in-memory cache entry is evicted.
 			if !u.snap.FilesystemSnapshot {
-				return fmt.Errorf("memfile diff header resolved to nil for non-filesystem-only snapshot")
+				return errors.New("memfile diff header resolved to nil for non-filesystem-only snapshot")
 			}
 			return nil
 		}
