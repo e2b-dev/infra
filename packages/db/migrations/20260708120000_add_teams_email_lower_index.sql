@@ -1,3 +1,4 @@
+-- +goose NO TRANSACTION
 -- +goose Up
 -- +goose StatementBegin
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_teams_email_lower
