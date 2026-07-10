@@ -33,6 +33,13 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return fmt.Errorf("wait memfile diff header: %w", err)
 		}
 		if h == nil {
+			// A nil header is expected only for filesystem-only snapshots (NoDiff).
+			// For full memory snapshots the header must always resolve — a nil here
+			// means the header goroutine silently failed, leaving the template
+			// permanently unresumable once its in-memory cache entry is evicted.
+			if !u.snap.FilesystemSnapshot {
+				return fmt.Errorf("memfile diff header resolved to nil for non-filesystem-only snapshot")
+			}
 			return nil
 		}
 

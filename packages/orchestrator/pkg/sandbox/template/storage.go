@@ -79,7 +79,7 @@ func NewStorage(
 			return nil, fmt.Errorf("headerless fallback: header %q not loadable (%w), data %q size failed: %w", hdrPath, headerErr, dataPath, err)
 		}
 
-		logger.L().Debug(ctx, "template header not found; using legacy headerless fallback",
+		logger.L().Warn(ctx, "template header not found; using legacy headerless fallback with fixed block size — sandbox resumes will fail for recent templates missing the header file",
 			logger.WithBuildID(buildId),
 			zap.String("file_type", string(fileType)),
 			zap.String("header_path", hdrPath),
