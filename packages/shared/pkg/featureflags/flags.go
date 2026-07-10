@@ -340,6 +340,14 @@ var (
 	// Unknown values fall back to "init".
 	ResumePrefetchSourceFlag = NewStringFlag("resume-prefetch-source", "init")
 
+	// ResumeLastCyclePrefetchMaxMiBFlag caps how much of the last-cycle diff a single
+	// resume prefetches, in MiB. -1 (the default, negative = no limit per the
+	// codebase convention) is uncapped; the recorded diff is small by
+	// construction, so this exists to throttle the heavy-churn tail against the
+	// shared object-store pool without a redeploy. A non-negative N keeps the
+	// first N MiB of blocks in offset order and leaves the rest to demand-fault.
+	ResumeLastCyclePrefetchMaxMiBFlag = NewIntFlag("resume-last-cycle-prefetch-max-mib", -1)
+
 	// PauseResumePrefetchHarvestFlag makes the orchestrator, after a pause
 	// snapshot is durable, run a throwaway warm resume of the just-written
 	// artifact (driven by envd /init, workload frozen, egress denied) to record

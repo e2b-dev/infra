@@ -9,6 +9,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/units"
 )
 
 // resume-prefetch-source flag values (see featureflags.ResumePrefetchSourceFlag).
@@ -33,6 +34,27 @@ func selectResumePrefetch(source string) (useInit, useLastCycle bool) {
 		return true, true
 	default: // resumePrefetchInit and any unrecognized value
 		return true, false
+	}
+}
+
+// capResumePrefetch bounds a prefetch mapping to at most maxMiB of blocks,
+// keeping the earliest (offset-order) blocks and leaving the rest to
+// demand-fault. maxMiB < 0 means uncapped; m is returned unchanged when it
+// already fits, the cap is disabled, or the block size is unknown. A nil
+// mapping returns nil.
+func capResumePrefetch(m *metadata.MemoryPrefetchMapping, maxMiB int) *metadata.MemoryPrefetchMapping {
+	if m == nil || maxMiB < 0 || m.BlockSize <= 0 {
+		return m
+	}
+
+	maxBlocks := units.MBToBytes(int64(maxMiB)) / m.BlockSize
+	if int64(len(m.Indices)) <= maxBlocks {
+		return m
+	}
+
+	return &metadata.MemoryPrefetchMapping{
+		Indices:   m.Indices[:maxBlocks],
+		BlockSize: m.BlockSize,
 	}
 }
 

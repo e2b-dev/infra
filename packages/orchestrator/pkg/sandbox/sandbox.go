@@ -822,6 +822,10 @@ func (f *Factory) ResumeSandbox(
 		var lastCycleMapping *metadata.MemoryPrefetchMapping
 		if useLastCycle {
 			lastCycleMapping = buildDiffMemoryPrefetchMapping(memfile.Header())
+			// Bound the last-cycle volume against the shared object-store pool;
+			// resume-last-cycle-prefetch-max-mib=-1 (default) is uncapped.
+			maxMiB := f.featureFlags.IntFlag(ctx, featureflags.ResumeLastCyclePrefetchMaxMiBFlag, sandboxLDContext(runtime, config))
+			lastCycleMapping = capResumePrefetch(lastCycleMapping, maxMiB)
 		}
 
 		// Record the chosen source and the sizes it resolved to, so a resume can
