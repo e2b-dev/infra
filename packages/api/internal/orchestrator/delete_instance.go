@@ -147,7 +147,7 @@ func (o *Orchestrator) removeSandboxFromNode(
 	}
 
 	// For remote cluster nodes we are using gPRC metadata for routing registration instead
-	if node.IsClusterNode() {
+	if !node.IsClusterNode() {
 		// Remove the sandbox resources after the sandbox is deleted
 		err := o.routingCatalog.DeleteSandbox(ctx, sbx.SandboxID, sbx.ExecutionID)
 		if err != nil {
