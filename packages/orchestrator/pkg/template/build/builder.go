@@ -29,6 +29,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/phases"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/phases/base"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/phases/ensurefreedisk"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/phases/finalize"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/phases/optimize"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/phases/steps"
@@ -396,6 +397,16 @@ func runBuild(
 		builders = append(builders, userBuilder)
 	}
 	builders = append(builders, stepBuilders...)
+	// Grow the quiescent rootfs before finalize cold-boots it.
+	if builder.featureFlags.BoolFlag(ctx, featureflags.BuildEnsureFreeDiskSpace) {
+		builders = append(builders, ensurefreedisk.New(
+			bc,
+			builder.sandboxFactory,
+			layerExecutor,
+			builder.templateCache,
+			index,
+		))
+	}
 	builders = append(builders, postProcessingBuilder)
 	builders = append(builders, optimizeBuilder)
 

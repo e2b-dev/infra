@@ -10,6 +10,7 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -76,56 +77,7 @@ func Run(
 	sourceLayer := LayerResult{}
 
 	for _, builder := range builders {
-		meta := builder.Metadata()
-
-		loggerFields := []zap.Field{
-			zap.String("phase", string(meta.Phase)),
-			zap.String("step_type", meta.StepType),
-			zap.Intp("step_number", meta.StepNumber),
-			zap.String("step", stepString(meta)),
-		}
-
-		logger.Debug(ctx, "running builder phase", loggerFields...)
-		stepUserLogger := userLogger.With(loggerFields...)
-
-		phaseStartTime := time.Now()
-		hash, err := builder.Hash(ctx, sourceLayer)
-		if err != nil {
-			return LayerResult{}, fmt.Errorf("getting hash: %w", err)
-		}
-
-		currentLayer, err := builder.Layer(ctx, sourceLayer, hash)
-		if err != nil {
-			return LayerResult{}, fmt.Errorf("getting layer: %w", err)
-		}
-		metrics.RecordCacheResult(ctx, meta.Phase, meta.StepType, currentLayer.Cached)
-
-		prefix := builder.Prefix()
-		source, err := builder.String(ctx)
-		if err != nil {
-			return LayerResult{}, fmt.Errorf("getting source: %w", err)
-		}
-		stepUserLogger.Info(ctx, layerInfo(currentLayer.Cached, prefix, source, currentLayer.Hash))
-
-		if currentLayer.Cached {
-			phaseDuration := time.Since(phaseStartTime)
-			metrics.RecordPhaseDuration(ctx, phaseDuration, meta.Phase, meta.StepType, true)
-
-			sourceLayer = currentLayer
-
-			continue
-		}
-
-		err = validateLayer(currentLayer)
-		if err != nil {
-			return LayerResult{}, fmt.Errorf("validating layer: %w", err)
-		}
-
-		res, err := builder.Build(ctx, stepUserLogger, prefix, sourceLayer, currentLayer)
-		// Record phase duration
-		phaseDuration := time.Since(phaseStartTime)
-		metrics.RecordPhaseDuration(ctx, phaseDuration, meta.Phase, meta.StepType, false)
-
+		res, err := runPhase(ctx, logger, userLogger, metrics, builder, sourceLayer)
 		if err != nil {
 			return LayerResult{}, err
 		}
@@ -134,6 +86,88 @@ func Run(
 	}
 
 	return sourceLayer, nil
+}
+
+// runPhase executes a single build phase (hash, cache lookup, and build) within
+// its own span so every phase, including cache hits, produces one span.
+func runPhase(
+	ctx context.Context,
+	logger logger.Logger,
+	userLogger logger.Logger,
+	metrics *metrics.BuildMetrics,
+	builder BuilderPhase,
+	sourceLayer LayerResult,
+) (_ LayerResult, e error) {
+	meta := builder.Metadata()
+
+	ctx, span := tracer.Start(ctx, string(meta.Phase), trace.WithAttributes(
+		attribute.String("phase", string(meta.Phase)),
+		attribute.String("step_type", meta.StepType),
+		attribute.String("step", stepString(meta)),
+	))
+	if meta.StepNumber != nil {
+		span.SetAttributes(attribute.Int("step_number", *meta.StepNumber))
+	}
+	defer span.End()
+	defer func() {
+		if e != nil {
+			span.RecordError(e)
+			span.SetStatus(codes.Error, e.Error())
+		}
+	}()
+
+	loggerFields := []zap.Field{
+		zap.String("phase", string(meta.Phase)),
+		zap.String("step_type", meta.StepType),
+		zap.Intp("step_number", meta.StepNumber),
+		zap.String("step", stepString(meta)),
+	}
+
+	logger.Debug(ctx, "running builder phase", loggerFields...)
+	stepUserLogger := userLogger.With(loggerFields...)
+
+	phaseStartTime := time.Now()
+	hash, err := builder.Hash(ctx, sourceLayer)
+	if err != nil {
+		return LayerResult{}, fmt.Errorf("getting hash: %w", err)
+	}
+
+	currentLayer, err := builder.Layer(ctx, sourceLayer, hash)
+	if err != nil {
+		return LayerResult{}, fmt.Errorf("getting layer: %w", err)
+	}
+	metrics.RecordCacheResult(ctx, meta.Phase, meta.StepType, currentLayer.Cached)
+	span.SetAttributes(attribute.Bool("cached", currentLayer.Cached))
+
+	prefix := builder.Prefix()
+	source, err := builder.String(ctx)
+	if err != nil {
+		return LayerResult{}, fmt.Errorf("getting source: %w", err)
+	}
+	stepUserLogger.Info(ctx, layerInfo(currentLayer.Cached, prefix, source, currentLayer.Hash))
+
+	if currentLayer.Cached {
+		phaseDuration := time.Since(phaseStartTime)
+		metrics.RecordPhaseDuration(ctx, phaseDuration, meta.Phase, meta.StepType, true)
+
+		return currentLayer, nil
+	}
+
+	err = validateLayer(currentLayer)
+	if err != nil {
+		return LayerResult{}, fmt.Errorf("validating layer: %w", err)
+	}
+
+	res, err := builder.Build(ctx, stepUserLogger, prefix, sourceLayer, currentLayer)
+	// Record phase duration
+	phaseDuration := time.Since(phaseStartTime)
+	metrics.RecordPhaseDuration(ctx, phaseDuration, meta.Phase, meta.StepType, false)
+
+	if err != nil {
+		return LayerResult{}, err
+	}
+
+	return res, nil
 }
 
 func validateLayer(

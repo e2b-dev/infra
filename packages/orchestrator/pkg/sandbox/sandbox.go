@@ -380,6 +380,11 @@ func (f *Factory) EgressProxy() network.EgressProxy {
 	return f.egressProxy
 }
 
+// NewDirectPathMount opens host-side NBD access without a Firecracker VM.
+func (f *Factory) NewDirectPathMount(backend block.Device) *nbd.DirectPathMount {
+	return nbd.NewDirectPathMount(backend, f.devicePool, f.featureFlags)
+}
+
 // PreBootFn is an optional callback invoked after the rootfs is ready but before
 // Firecracker boots. It receives the rootfs device path (e.g., a file path for
 // DirectProvider or /dev/nbdX for NBDProvider) and may modify the filesystem

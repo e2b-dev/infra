@@ -246,6 +246,23 @@ func CheckIntegrity(ctx context.Context, rootfsPath string, fix bool) (string, e
 	return strings.TrimSpace(string(out)), nil
 }
 
+// ReplayJournal applies committed ext4 journal transactions without a full
+// filesystem check. Guest sync makes journal commits durable but may leave
+// them uncheckpointed, while debugfs reads raw free-block metadata without
+// replaying the journal. Replaying first reflects the latest durable state.
+func ReplayJournal(ctx context.Context, rootfsPath string) (string, error) {
+	cmd := exec.CommandContext(ctx, "e2fsck", "-p", "-E", "journal_only", rootfsPath)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) || exitErr.ExitCode() < 0 || exitErr.ExitCode()&^(1|2) != 0 {
+			return string(out), fmt.Errorf("error replaying ext4 journal: %w\n%s", err, out)
+		}
+	}
+
+	return strings.TrimSpace(string(out)), nil
+}
+
 func ReadFile(ctx context.Context, rootfsPath string, filePath string) (string, error) {
 	_, statSpan := tracer.Start(ctx, "ext4-read-file")
 	defer statSpan.End()

@@ -293,17 +293,19 @@ sequenceDiagram
     C->>API: POST /v2/templates/{id}/builds/{buildID} (recipe: steps, start/ready cmd)
     API->>TM: gRPC TemplateCreate(TemplateConfig)
     TM->>TM: pull image → inject envd/provisioning → extract ext4 rootfs
-    TM->>FC: boot VM per phase: provision → user steps → finalize → optimize
+    TM->>FC: boot VM per phase: provision → user steps
+    TM->>TM: resize disk on host
+    TM->>FC: boot VM per phase: finalize → optimize
     TM->>OS: upload layers + final {buildID}/memfile, rootfs.ext4, snapfile, metadata
     API->>TM: poll TemplateBuildStatus
     API->>API: mark build ready in Postgres
 ```
 
 Builds are **layered** (`pkg/template/build/phases/`): base → user → one layer per recipe step →
-finalize → optimize. Each layer is hashed and cached, so rebuilds only re-run changed steps; each
-non-cached phase runs in a real Firecracker VM and its pause-diff becomes the layer. The optimize
-phase records which memory pages a fresh resume touches, producing prefetch hints that speed up
-future sandbox starts.
+resize disk → finalize → optimize. Each layer is hashed and cached, so rebuilds only re-run changed
+steps. Resize disk grows the quiescent rootfs on the host; the other non-cached phases run in a real
+Firecracker VM and their pause-diffs become layers. The optimize phase records which memory pages a
+fresh resume touches, producing prefetch hints that speed up future sandbox starts.
 
 ## Deployment topology
 
