@@ -21,6 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/units"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/prefetch")
@@ -31,13 +32,35 @@ type prefetchData struct {
 }
 
 // extent is a run of contiguous block indices fetched from the source in a
-// single source.Slice call. Every extent fetched today covers exactly one
-// block; a later change groups contiguous indices into larger extents to
-// coalesce sequential reads. The copy phase always stays per-block (split out
-// of the fetched extent), since UFFDIO_COPY requires page-sized data.
+// single source.Slice call. Coalescing contiguous indices into one extent
+// turns many small sequential reads into fewer, larger ones. The copy phase
+// always stays per-block (split out of the fetched extent), since UFFDIO_COPY
+// requires page-sized data.
 type extent struct {
 	startIdx uint64
 	blocks   int
+}
+
+// coalesceIndices groups sorted, deduplicated block indices into maximal
+// contiguous runs, each capped at maxBlocks. With maxBlocks<=1 every extent is
+// a single block, reproducing the per-block fetch exactly (coalescing off).
+func coalesceIndices(indices []uint64, maxBlocks int) []extent {
+	if maxBlocks < 1 {
+		maxBlocks = 1
+	}
+
+	out := make([]extent, 0, len(indices))
+	for i := 0; i < len(indices); {
+		n := 1
+		for i+n < len(indices) && indices[i+n] == indices[i+n-1]+1 && n < maxBlocks {
+			n++
+		}
+
+		out = append(out, extent{startIdx: indices[i], blocks: n})
+		i += n
+	}
+
+	return out
 }
 
 // Prefetcher handles background prefetching of memory pages.
@@ -99,9 +122,10 @@ func (p *Prefetcher) Start(ctx context.Context) error {
 		return nil
 	}
 
-	// Get worker counts from feature flags at runtime
+	// Get worker counts and coalescing config from feature flags at runtime
 	maxFetchWorkers := p.featureFlags.IntFlag(ctx, featureflags.MemoryPrefetchMaxFetchWorkers)
 	maxCopyWorkers := p.featureFlags.IntFlag(ctx, featureflags.MemoryPrefetchMaxCopyWorkers)
+	coalesceMaxMB := p.featureFlags.IntFlag(ctx, featureflags.MemoryPrefetchCoalesceMaxMB)
 
 	// cancelRun aborts the whole run early. Copy workers fire it on ErrClosed
 	// (uffd gone: sandbox teardown) so fetch workers stop fetching and
@@ -118,6 +142,7 @@ func (p *Prefetcher) Start(ctx context.Context) error {
 		attribute.Int64("prefetch.block_size", blockSize),
 		attribute.Int("prefetch.max_fetch_workers", maxFetchWorkers),
 		attribute.Int("prefetch.max_copy_workers", maxCopyWorkers),
+		attribute.Int("prefetch.coalesce_max_mb", coalesceMaxMB),
 	)
 
 	p.logger.Debug(ctx, "prefetch: starting background prefetch",
@@ -125,11 +150,21 @@ func (p *Prefetcher) Start(ctx context.Context) error {
 		zap.Int64("block_size", blockSize),
 		zap.Int("max_fetch_workers", maxFetchWorkers),
 		zap.Int("max_copy_workers", maxCopyWorkers),
+		zap.Int("coalesce_max_mb", coalesceMaxMB),
 	)
+
+	// Coalesce contiguous blocks into extents. maxBlk<=1 (coalesceMaxMB<=0,
+	// the default) reproduces the per-block fetch exactly.
+	maxBlk := 1
+	if coalesceMaxMB > 0 && blockSize > 0 {
+		maxBlk = max(1, int(units.MBToBytes(int64(coalesceMaxMB))/blockSize))
+	}
+	extents := coalesceIndices(indices, maxBlk)
+	span.SetAttributes(attribute.Int("prefetch.extents", len(extents)))
 
 	// Channels for work distribution
 	// Fetch channel: all extents to fetch (large buffer so main goroutine doesn't block)
-	fetchCh := make(chan extent, totalPages)
+	fetchCh := make(chan extent, len(extents))
 	// Copy channel: offsets ready to copy (fetched successfully)
 	copyCh := make(chan prefetchData, totalPages)
 
@@ -149,10 +184,9 @@ func (p *Prefetcher) Start(ctx context.Context) error {
 	// duration below is immune to wall-clock steps.
 	var copyStart atomic.Pointer[time.Time]
 
-	// Queue all extents to fetch in the order the underlying indices were
-	// originally accessed. Every extent is a single block for now (blocks: 1).
-	for _, idx := range indices {
-		fetchCh <- extent{startIdx: idx, blocks: 1}
+	// Queue all extents to fetch, in offset order.
+	for _, e := range extents {
+		fetchCh <- e
 	}
 	close(fetchCh)
 
@@ -236,9 +270,10 @@ func (p *Prefetcher) startCopyWorkers(
 
 // fetchWorker fetches extents from the source to populate the cache. An
 // extent is one contiguous run of blocks fetched in a single source.Slice
-// call; every extent is a single block for now, so this reproduces the
-// previous per-block fetch exactly. The copy phase stays per-block: an extent
-// is split into page-sized sub-slices (UFFDIO_COPY requires page-sized data).
+// call; with coalescing off (the default) every extent is a single block,
+// reproducing the plain per-block fetch. The copy phase always stays
+// per-block: an extent is split into page-sized sub-slices, since UFFDIO_COPY
+// requires page-sized data.
 func (p *Prefetcher) fetchWorker(
 	ctx context.Context,
 	fetchCh <-chan extent,

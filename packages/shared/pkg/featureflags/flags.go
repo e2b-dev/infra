@@ -318,6 +318,13 @@ var (
 	// Copy uses uffd syscalls, so we limit parallelism to avoid overwhelming the system.
 	MemoryPrefetchMaxCopyWorkers = NewIntFlag("memory-prefetch-max-copy-workers", 8)
 
+	// MemoryPrefetchCoalesceMaxMB caps how many contiguous prefetch blocks are
+	// merged into a single source.Slice fetch (in MiB of extent size). 0
+	// disables coalescing: every block is fetched individually, matching
+	// today's behavior. The copy phase is unaffected either way — it always
+	// installs one page at a time, since UFFDIO_COPY requires page-sized data.
+	MemoryPrefetchCoalesceMaxMB = NewIntFlag("memory-prefetch-coalesce-max-mb", 0)
+
 	// PauseResumePrefetchHarvestFlag makes the orchestrator, after a pause
 	// snapshot is durable, run a throwaway warm resume of the just-written
 	// artifact (driven by envd /init, workload frozen, egress denied) to record
