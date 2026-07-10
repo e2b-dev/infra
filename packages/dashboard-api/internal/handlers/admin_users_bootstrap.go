@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/provisioning"
 	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -35,7 +36,7 @@ func (s *APIStore) PostAdminUsersBootstrap(c *gin.Context) {
 		return
 	}
 
-	team, err := s.bootstrapOIDCUser(ctx, oidcUserBootstrapInput{
+	team, err := s.provisioningService.BootstrapOIDCUser(ctx, provisioning.OIDCUserBootstrapInput{
 		OIDCIssuer:      oidcIssuer,
 		OIDCUserID:      oidcUserID,
 		OIDCUserEmail:   oidcUserEmail,
@@ -44,7 +45,7 @@ func (s *APIStore) PostAdminUsersBootstrap(c *gin.Context) {
 		SignupUserAgent: strings.TrimSpace(valueOrEmpty(body.SignupUserAgent)),
 	})
 	if err != nil {
-		s.handleProvisioningError(ctx, c, "bootstrap auth provider user", err)
+		s.sendProvisioningError(ctx, c, "bootstrap auth provider user", err)
 
 		return
 	}

@@ -1,7 +1,6 @@
-package userprofile
+package identity
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,21 +10,10 @@ import (
 	"github.com/google/uuid"
 	ory "github.com/ory/client-go"
 
-	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	sharedteamprovision "github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 )
 
-type stubIdentityResolver struct{}
-
-func (stubIdentityResolver) GetUserIdentitiesByUserIDs(context.Context, authqueries.GetUserIdentitiesByUserIDsParams) ([]authqueries.GetUserIdentitiesByUserIDsRow, error) {
-	return nil, nil
-}
-
-func (stubIdentityResolver) GetUserIdentitiesBySubjects(context.Context, authqueries.GetUserIdentitiesBySubjectsParams) ([]authqueries.GetUserIdentitiesBySubjectsRow, error) {
-	return nil, nil
-}
-
-func TestOryProvider_SetIdentityExternalID(t *testing.T) {
+func TestOryDirectory_SetExternalID(t *testing.T) {
 	t.Parallel()
 
 	subject := uuid.NewString()
@@ -44,19 +32,17 @@ func TestOryProvider_SetIdentityExternalID(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider, err := NewOryProvider(OryConfig{
+	directory, err := NewOryDirectory(OryConfig{
 		HTTPClient: server.Client(),
 		SDKURL:     server.URL,
 		Token:      "test-token",
-		Issuer:     "https://ory.example.test",
-		Resolver:   stubIdentityResolver{},
 	})
 	if err != nil {
-		t.Fatalf("failed to build ory provider: %v", err)
+		t.Fatalf("failed to build ory directory: %v", err)
 	}
 
-	if err := provider.SetIdentityExternalID(t.Context(), subject, externalID); err != nil {
-		t.Fatalf("SetIdentityExternalID returned error: %v", err)
+	if err := directory.SetExternalID(t.Context(), subject, externalID); err != nil {
+		t.Fatalf("SetExternalID returned error: %v", err)
 	}
 
 	if gotMethod != http.MethodPatch {
@@ -76,20 +62,20 @@ func TestOryProvider_SetIdentityExternalID(t *testing.T) {
 	}
 }
 
-func TestOryProvider_SetIdentityExternalIDValidatesInput(t *testing.T) {
+func TestOryDirectory_SetExternalIDValidatesInput(t *testing.T) {
 	t.Parallel()
 
-	provider := &oryProvider{}
+	directory := &oryDirectory{}
 
-	if err := provider.SetIdentityExternalID(t.Context(), "  ", uuid.New()); err == nil {
+	if err := directory.SetExternalID(t.Context(), "  ", uuid.New()); err == nil {
 		t.Fatal("expected error for blank subject")
 	}
-	if err := provider.SetIdentityExternalID(t.Context(), uuid.NewString(), uuid.Nil); err == nil {
+	if err := directory.SetExternalID(t.Context(), uuid.NewString(), uuid.Nil); err == nil {
 		t.Fatal("expected error for nil external id")
 	}
 }
 
-func TestProfileFromOryIdentity(t *testing.T) {
+func TestIdentityFromOryProfileFields(t *testing.T) {
 	t.Parallel()
 
 	userID := uuid.New()
@@ -190,8 +176,13 @@ func TestProfileFromOryIdentity(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			identity := ory.Identity{Id: uuid.NewString(), Traits: tt.traits, MetadataPublic: tt.metadataPublic, Credentials: tt.credentials}
-			got := profileFromOryIdentity(userID, identity)
+			oryIdentity := ory.Identity{Id: uuid.NewString(), Traits: tt.traits, MetadataPublic: tt.metadataPublic, Credentials: tt.credentials}
+			id, err := identityFromOry(oryIdentity)
+			if err != nil {
+				t.Fatalf("identityFromOry returned error: %v", err)
+			}
+
+			got := ProfileFromIdentity(userID, id)
 			if got.UserID != userID {
 				t.Fatalf("UserID = %s, want %s", got.UserID, userID)
 			}
@@ -211,7 +202,7 @@ func TestProfileFromOryIdentity(t *testing.T) {
 	}
 }
 
-func TestCreatorContextFromOryIdentityUsesMetadataAdmin(t *testing.T) {
+func TestIdentityFromOryCreatorContextUsesMetadataAdmin(t *testing.T) {
 	t.Parallel()
 
 	credentials := map[string]ory.IdentityCredentials{
@@ -221,7 +212,7 @@ func TestCreatorContextFromOryIdentityUsesMetadataAdmin(t *testing.T) {
 			},
 		},
 	}
-	identity := ory.Identity{
+	oryIdentity := ory.Identity{
 		Id: uuid.NewString(),
 		MetadataAdmin: map[string]any{
 			"signup_ip":         "198.51.100.20",
@@ -236,7 +227,12 @@ func TestCreatorContextFromOryIdentityUsesMetadataAdmin(t *testing.T) {
 		Credentials: &credentials,
 	}
 
-	got := creatorContextFromOryIdentity(identity)
+	id, err := identityFromOry(oryIdentity)
+	if err != nil {
+		t.Fatalf("identityFromOry returned error: %v", err)
+	}
+
+	got := CreatorContextFromIdentity(id)
 	if got.IPAddress != "198.51.100.20" {
 		t.Fatalf("IPAddress = %q, want %q", got.IPAddress, "198.51.100.20")
 	}
@@ -248,26 +244,9 @@ func TestCreatorContextFromOryIdentityUsesMetadataAdmin(t *testing.T) {
 	}
 }
 
-type multiSubjectResolver struct {
-	stubIdentityResolver
-
-	userID   uuid.UUID
-	subjects []string
-}
-
-func (r multiSubjectResolver) GetUserIdentitiesByUserIDs(context.Context, authqueries.GetUserIdentitiesByUserIDsParams) ([]authqueries.GetUserIdentitiesByUserIDsRow, error) {
-	rows := make([]authqueries.GetUserIdentitiesByUserIDsRow, 0, len(r.subjects))
-	for _, subject := range r.subjects {
-		rows = append(rows, authqueries.GetUserIdentitiesByUserIDsRow{OidcSub: subject, UserID: r.userID})
-	}
-
-	return rows, nil
-}
-
-func TestOryProvider_GetUserOrganizationID(t *testing.T) {
+func TestOryDirectory_GetIdentityReturnsOrganizationID(t *testing.T) {
 	t.Parallel()
 
-	userID := uuid.New()
 	orgID := uuid.New()
 	subject := uuid.NewString()
 
@@ -278,45 +257,29 @@ func TestOryProvider_GetUserOrganizationID(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider, err := NewOryProvider(OryConfig{
+	directory, err := NewOryDirectory(OryConfig{
 		HTTPClient: server.Client(),
 		SDKURL:     server.URL,
 		Token:      "test-token",
-		Issuer:     "https://ory.example.test",
-		Resolver:   multiSubjectResolver{userID: userID, subjects: []string{subject}},
 	})
 	if err != nil {
-		t.Fatalf("failed to build ory provider: %v", err)
+		t.Fatalf("failed to build ory directory: %v", err)
 	}
 
-	got, err := provider.GetUserOrganizationID(t.Context(), userID)
+	got, err := directory.GetIdentity(t.Context(), subject)
 	if err != nil {
-		t.Fatalf("GetUserOrganizationID returned error: %v", err)
+		t.Fatalf("GetIdentity returned error: %v", err)
 	}
-	if got != orgID {
-		t.Fatalf("expected organization %s, got %s", orgID, got)
+	if got.OrganizationID != orgID {
+		t.Fatalf("expected organization %s, got %s", orgID, got.OrganizationID)
 	}
 }
 
-func TestOryProvider_GetUserOrganizationIDRejectsMultipleLinkedIdentities(t *testing.T) {
+func TestIdentityFromOryRejectsMalformedOrganizationID(t *testing.T) {
 	t.Parallel()
 
-	userID := uuid.New()
-	subjectA := uuid.NewString()
-	subjectB := uuid.NewString()
-
-	provider, err := NewOryProvider(OryConfig{
-		HTTPClient: http.DefaultClient,
-		SDKURL:     "https://ory.example.test",
-		Token:      "test-token",
-		Issuer:     "https://ory.example.test",
-		Resolver:   multiSubjectResolver{userID: userID, subjects: []string{subjectA, subjectB}},
-	})
-	if err != nil {
-		t.Fatalf("failed to build ory provider: %v", err)
-	}
-
-	if _, err := provider.GetUserOrganizationID(t.Context(), userID); err == nil {
-		t.Fatal("expected multiple linked identities to return an error")
+	badOrgID := "not-a-uuid"
+	if _, err := identityFromOry(ory.Identity{Id: uuid.NewString(), OrganizationId: *ory.NewNullableString(&badOrgID)}); err == nil {
+		t.Fatal("expected error for malformed organization_id")
 	}
 }
