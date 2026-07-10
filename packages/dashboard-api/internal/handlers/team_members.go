@@ -57,6 +57,9 @@ func (s *APIStore) GetTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 			return
 		}
 
+		// Note: GetUserEmailsByUserIDs queries default-team records only.
+		// SSO members joined via enrollSSOMember have is_default=false and
+		// will not appear in this fallback — an acceptable gap in degraded mode.
 		profiles = make(map[uuid.UUID]identity.Profile, len(emails))
 		for uid, email := range emails {
 			profiles[uid] = identity.Profile{UserID: uid, Email: email}

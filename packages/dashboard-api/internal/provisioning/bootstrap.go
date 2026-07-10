@@ -58,6 +58,12 @@ func (s *Service) bootstrapUser(ctx context.Context, profile bootstrapUserProfil
 		_ = tx.Rollback(ctx)
 	}()
 
+	// freshUserID is the UUID allocated for this login request. Only this
+	// ephemeral row may be deleted when a concurrent request wins the identity
+	// upsert race. If the email-match path sets profile.UserID to a pre-existing
+	// account, that account must not be deleted on conflict.
+	freshUserID := profile.UserID
+
 	existing, err := authTxDB.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
 		OidcIss: oidcIdentity.Issuer,
 		OidcSub: oidcIdentity.Subject,
@@ -119,8 +125,13 @@ func (s *Service) bootstrapUser(ctx context.Context, profile bootstrapUserProfil
 		return ProvisionedTeam{}, fmt.Errorf("upsert public identity: %w", err)
 	}
 	if canonicalUserID != candidateUserID {
-		if err := authTxDB.DeletePublicUser(ctx, candidateUserID); err != nil {
-			return ProvisionedTeam{}, fmt.Errorf("delete orphan public user: %w", err)
+		// Only delete if this is the ephemeral user we just allocated.
+		// If candidateUserID was set to a pre-existing account via the
+		// email-match migration path, deleting it would destroy real user data.
+		if candidateUserID == freshUserID {
+			if err := authTxDB.DeletePublicUser(ctx, candidateUserID); err != nil {
+				return ProvisionedTeam{}, fmt.Errorf("delete orphan public user: %w", err)
+			}
 		}
 		profile.UserID = canonicalUserID
 	}
