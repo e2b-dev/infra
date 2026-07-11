@@ -3,6 +3,7 @@ package target
 import (
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"strconv"
 	"sync"
 	"time"
@@ -109,7 +110,9 @@ func (p *Plugin) Scale(action sdk.ScalingAction, config map[string]string) error
 		p.logger.Warn("scale reconciliation attempt failed",
 			"namespace", namespace, "job", jobID, "group", group, "attempt", attempt, "error", lastErr)
 		if attempt < maxAttempts && p.retryDelay > 0 {
-			time.Sleep(p.retryDelay)
+			// Jitter in [retryDelay, 2*retryDelay) so concurrent scalers
+			// hitting CAS conflicts do not retry in lockstep.
+			time.Sleep(p.retryDelay + rand.N(p.retryDelay))
 		}
 	}
 
