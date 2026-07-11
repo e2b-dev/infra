@@ -22,6 +22,7 @@ type nomadStub struct {
 	mu                      sync.Mutex
 	count                   int
 	jobModifyIndex          uint64
+	autoRevert              *bool
 	deployment              *api.Deployment
 	scaleConflicts          int
 	injectDeploymentOnScale bool
@@ -137,12 +138,17 @@ func (s *nomadStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *nomadStub) job() *api.Job {
+	taskGroup := api.NewTaskGroup("web", s.count)
+	if s.autoRevert != nil {
+		taskGroup.Update = &api.UpdateStrategy{AutoRevert: s.autoRevert}
+	}
+
 	return &api.Job{
 		ID:             new("example"),
 		Namespace:      new(testNamespace),
 		CreateIndex:    new(uint64(10)),
 		JobModifyIndex: new(s.jobModifyIndex),
-		TaskGroups:     []*api.TaskGroup{api.NewTaskGroup("web", s.count)},
+		TaskGroups:     []*api.TaskGroup{taskGroup},
 	}
 }
 
@@ -357,6 +363,68 @@ func TestScaleRetriesWhenDeploymentAppearsBeforeWrite(t *testing.T) {
 	rollout := stub.deploymentSnapshot()
 	if rollout == nil || rollout.ID == "deployment-injected" || rollout.Status != api.DeploymentStatusRunning {
 		t.Fatalf("rollout deployment spawned by the retried scale was not left running: %#v", rollout)
+	}
+}
+
+func TestScaleRefusesAutoRevertJob(t *testing.T) {
+	t.Parallel()
+
+	stub := newNomadStub(t)
+	stub.autoRevert = new(true)
+	stub.deployment = &api.Deployment{
+		ID:             "deployment-1",
+		JobID:          "example",
+		Namespace:      testNamespace,
+		JobCreateIndex: 10,
+		Status:         api.DeploymentStatusRunning,
+		CreateIndex:    30,
+		ModifyIndex:    31,
+	}
+	p := newTestPlugin(t, stub)
+
+	err := p.Scale(sdk.ScalingAction{Count: 4}, targetConfig())
+	if err == nil || !strings.Contains(err.Error(), "auto_revert") {
+		t.Fatalf("Scale error = %v, want auto_revert configuration error", err)
+	}
+
+	calls, requests := stub.snapshot()
+	// The guard trips before any deployment read or mutation, and the error
+	// is terminal so there is no retry.
+	wantCalls := []string{"GET /v1/job/example"}
+	if !reflect.DeepEqual(calls, wantCalls) {
+		t.Fatalf("calls = %#v, want %#v", calls, wantCalls)
+	}
+	if len(requests) != 0 {
+		t.Fatalf("scale requests = %d, want 0", len(requests))
+	}
+	rollout := stub.deploymentSnapshot()
+	if rollout.Status != api.DeploymentStatusRunning {
+		t.Fatalf("deployment of auto_revert job was disturbed: %#v", rollout)
+	}
+}
+
+func TestScaleAutoRevertJobNoOpWhenCountMatches(t *testing.T) {
+	t.Parallel()
+
+	stub := newNomadStub(t)
+	stub.autoRevert = new(true)
+	stub.count = 4
+	p := newTestPlugin(t, stub)
+
+	if err := p.Scale(sdk.ScalingAction{Count: 4}, targetConfig()); err != nil {
+		t.Fatalf("Scale: %v", err)
+	}
+}
+
+func TestScaleAllowsExplicitAutoRevertFalse(t *testing.T) {
+	t.Parallel()
+
+	stub := newNomadStub(t)
+	stub.autoRevert = new(false)
+	p := newTestPlugin(t, stub)
+
+	if err := p.Scale(sdk.ScalingAction{Count: 5}, targetConfig()); err != nil {
+		t.Fatalf("Scale: %v", err)
 	}
 }
 

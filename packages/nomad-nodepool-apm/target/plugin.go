@@ -27,6 +27,11 @@ const (
 
 var pluginInfo = &base.PluginInfo{Name: pluginName, PluginType: sdk.PluginTypeTarget}
 
+// errAutoRevertEnabled is a configuration error retrying cannot fix: the
+// plugin fails deployments to unblock scaling, and with auto_revert=true
+// Nomad would restore the previous job version on every such failure.
+var errAutoRevertEnabled = errors.New("auto_revert is enabled; " + pluginName + " requires auto_revert=false")
+
 var _ targetsdk.Target = (*Plugin)(nil)
 
 type jobKey struct {
@@ -98,6 +103,9 @@ func (p *Plugin) Scale(action sdk.ScalingAction, config map[string]string) error
 		if lastErr == nil {
 			return nil
 		}
+		if errors.Is(lastErr, errAutoRevertEnabled) {
+			return lastErr
+		}
 		p.logger.Warn("scale reconciliation attempt failed",
 			"namespace", namespace, "job", jobID, "group", group, "attempt", attempt, "error", lastErr)
 		if attempt < maxAttempts && p.retryDelay > 0 {
@@ -130,6 +138,10 @@ func (p *Plugin) attemptScale(action sdk.ScalingAction, jobID, group, namespace 
 		// The durable count already matches. Any active deployment is a
 		// rollout converging to the desired count; leave it alone.
 		return nil
+	}
+
+	if autoRevertEnabled(job, group) {
+		return fmt.Errorf("%w: job %s/%s group %q", errAutoRevertEnabled, namespace, jobID, group)
 	}
 
 	deployment, err := p.readDeployment(jobID, query)
@@ -268,6 +280,26 @@ func taskGroupCount(job *api.Job, group string) (int64, error) {
 	}
 
 	return 0, fmt.Errorf("task group %q not found", group)
+}
+
+// autoRevertEnabled reports whether the target task group has
+// auto_revert=true in its update strategy. Nomad canonicalizes the job-level
+// update block into each group, but the job-level strategy is still consulted
+// as a fallback.
+func autoRevertEnabled(job *api.Job, group string) bool {
+	var update *api.UpdateStrategy
+	for _, taskGroup := range job.TaskGroups {
+		if taskGroup != nil && taskGroup.Name != nil && *taskGroup.Name == group {
+			update = taskGroup.Update
+
+			break
+		}
+	}
+	if update == nil {
+		update = job.Update
+	}
+
+	return update != nil && update.AutoRevert != nil && *update.AutoRevert
 }
 
 func activeForJob(job *api.Job, deployment *api.Deployment) bool {

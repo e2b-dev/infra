@@ -9,7 +9,7 @@ The package builds two plugins because Nomad Autoscaler supports only one plugin
 - `nomad-nodepool-apm` reports the number of ready, eligible nodes in a pool.
 - `nomad-deployment-aware-target` fails an active deployment before applying the requested task-group count.
 
-Together they let service jobs replicate system-job placement while retaining rolling updates. The deployment-aware target is used by the `orchestrator-ee` service job. When the task-group count must change, scaling intentionally abandons a conflicting in-progress rollout (Nomad rejects scaling while a deployment is active); Nomad records that deployment as `failed`, rather than `cancelled`. The rollout spawned by the scale itself is left to run, and no deployment is touched when the count already matches. The job sets `auto_revert = false`, so failure does not restore an older version.
+Together they let service jobs replicate system-job placement while retaining rolling updates. The deployment-aware target is used by the `orchestrator-ee` service job. When the task-group count must change, scaling intentionally abandons a conflicting in-progress rollout (Nomad rejects scaling while a deployment is active); Nomad records that deployment as `failed`, rather than `cancelled`. The rollout spawned by the scale itself is left to run, and no deployment is touched when the count already matches. The target requires `auto_revert = false` on the scaled group (otherwise failing a deployment would restore an older job version and ping-pong); it refuses to scale groups with `auto_revert = true` and returns an error on every attempt.
 
 ## Usage
 
