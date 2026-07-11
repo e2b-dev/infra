@@ -208,10 +208,6 @@ func (s *Slot) CreateNetwork(ctx context.Context) (retErr error) {
 		Mode:      netlink.TUNTAP_MODE_TAP,
 		LinkAttrs: tapAttrs,
 	}
-	tapHostHardwareAddr, err := net.ParseMAC(tapHostMAC)
-	if err != nil {
-		return fmt.Errorf("error parsing tap host MAC address: %w", err)
-	}
 
 	err = netlink.LinkAdd(tap)
 	if err != nil {
