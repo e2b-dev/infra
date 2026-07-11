@@ -279,6 +279,9 @@ func (p *Plugin) readDeployment(jobID string, query *api.QueryOptions) (*api.Dep
 }
 
 func taskGroupCount(job *api.Job, group string) (int64, error) {
+	if job == nil {
+		return 0, errors.New("nil job")
+	}
 	for _, taskGroup := range job.TaskGroups {
 		if taskGroup != nil && taskGroup.Name != nil && *taskGroup.Name == group {
 			if taskGroup.Count == nil {
@@ -297,6 +300,9 @@ func taskGroupCount(job *api.Job, group string) (int64, error) {
 // update block into each group, but the job-level strategy is still consulted
 // as a fallback.
 func autoRevertEnabled(job *api.Job, group string) bool {
+	if job == nil {
+		return false
+	}
 	var update *api.UpdateStrategy
 	for _, taskGroup := range job.TaskGroups {
 		if taskGroup != nil && taskGroup.Name != nil && *taskGroup.Name == group {
