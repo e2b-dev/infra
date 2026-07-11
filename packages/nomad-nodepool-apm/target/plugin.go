@@ -206,6 +206,10 @@ func (p *Plugin) Status(config map[string]string) (*sdk.TargetStatus, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read scale status for %s/%s: %w", namespace, jobID, err)
 	}
+	if status == nil {
+		return nil, fmt.Errorf("nil scale status for %s/%s", namespace, jobID)
+	}
+	// A nil TaskGroups map is safe: indexing it yields ok=false below.
 	groupStatus, ok := status.TaskGroups[group]
 	if !ok {
 		return nil, fmt.Errorf("task group %q not found", group)
@@ -254,6 +258,9 @@ func (p *Plugin) readJob(jobID string, query *api.QueryOptions) (*api.Job, error
 	job, _, err := p.client.Jobs().Info(jobID, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read job %s/%s: %w", query.Namespace, jobID, err)
+	}
+	if job == nil {
+		return nil, fmt.Errorf("nil job returned for %s/%s", query.Namespace, jobID)
 	}
 
 	return job, nil
