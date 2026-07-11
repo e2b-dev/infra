@@ -1568,11 +1568,19 @@ func pauseProcessMemory(
 	headerOut := utils.NewSetOnce[*header.Header]()
 	go func() {
 		setHeader := func(h *header.Header, err error) {
+			logger.L().Info(ctx, "memfile diff header ready",
+				zap.Bool("h_nil", h == nil),
+				zap.Error(err),
+				zap.Stringer("build_id", buildID))
 			if setErr := headerOut.SetResult(h, err); setErr != nil {
 				logger.L().Warn(ctx, "set memfile diff header", zap.Error(setErr))
 			}
 		}
 		meta, err := metaOut.Wait()
+		logger.L().Info(ctx, "memfile dedup metadata ready",
+			zap.Bool("meta_nil", meta == nil),
+			zap.Error(err),
+			zap.Stringer("build_id", buildID))
 		if err != nil {
 			setHeader(nil, err)
 
