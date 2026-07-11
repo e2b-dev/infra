@@ -35,6 +35,7 @@ const (
 	tapInterfaceName = "tap0"
 	tapIp            = "169.254.0.22"
 	tapMAC           = "02:FC:00:00:00:05"
+	tapHostMAC       = "02:FC:00:00:00:06"
 )
 
 var (
