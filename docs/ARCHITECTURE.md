@@ -363,7 +363,7 @@ packages/
   db/                   Postgres migrations (goose) + queries (sqlc)
   clickhouse/           ClickHouse schema, batching writers, query clients
   otel-collector/       Collector config
-  nomad-nodepool-apm/   Nomad autoscaler plugin (scale job = node count)
+  nomad-nodepool-apm/   Nomad autoscaler metric and deployment-aware target plugins
   local-dev/            docker-compose local stack + DB seeding
 spec/                   OpenAPI specs (public, edge, dashboard) — codegen sources
 iac/                    Terraform + Nomad jobs (provider-gcp, provider-aws, shared modules)
