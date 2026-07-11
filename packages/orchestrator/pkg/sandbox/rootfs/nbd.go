@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"syscall"
 
 	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
@@ -136,13 +135,7 @@ func (o *NBDProvider) Close(ctx context.Context) error {
 
 	err := o.sync(ctx)
 	if err != nil {
-		if errors.Is(err, syscall.EIO) {
-			// EIO means the NBD device is already in error state — the VM likely
-			// crashed before cleanup. Nothing to flush; log and continue.
-			logger.L().Warn(ctx, "error flushing cow device (VM likely crashed, ignoring EIO)", zap.Error(err))
-		} else {
-			errs = append(errs, fmt.Errorf("error flushing cow device: %w", err))
-		}
+		errs = append(errs, fmt.Errorf("error flushing cow device: %w", err))
 	}
 
 	err = o.mnt.Close(ctx)
