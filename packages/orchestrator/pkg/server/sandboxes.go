@@ -415,44 +415,51 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		})
 	}
 
-	if err := utils.ApplyAllOrNone(ctx, updates); err != nil {
-		telemetry.ReportCriticalError(ctx, "failed to update sandbox", err)
+	err := sbx.RunUpdate(func() error {
+		if err := utils.ApplyAllOrNone(ctx, updates); err != nil {
+			telemetry.ReportCriticalError(ctx, "failed to update sandbox", err)
 
-		return nil, status.Errorf(codes.Internal, "failed to update sandbox: %s", err)
-	}
-
-	// Publish event if any updates were applied.
-	if len(updates) > 0 {
-		teamID, buildId, eventsTTLDays, eventData := s.prepareSandboxEventData(ctx, sbx)
-		if req.GetEndTime() != nil {
-			eventData["set_timeout"] = req.GetEndTime().AsTime().Format(time.RFC3339)
+			return status.Errorf(codes.Internal, "failed to update sandbox: %s", err)
 		}
-		if egress := req.GetEgress(); egress != nil {
-			eventData["network_egress"] = map[string]any{
-				"allowed_cidrs":   egress.GetAllowedCidrs(),
-				"denied_cidrs":    egress.GetDeniedCidrs(),
-				"allowed_domains": egress.GetAllowedDomains(),
+
+		// Publish event if any updates were applied.
+		if len(updates) > 0 {
+			teamID, buildId, eventsTTLDays, eventData := s.prepareSandboxEventData(ctx, sbx)
+			if req.GetEndTime() != nil {
+				eventData["set_timeout"] = req.GetEndTime().AsTime().Format(time.RFC3339)
 			}
+			if egress := req.GetEgress(); egress != nil {
+				eventData["network_egress"] = map[string]any{
+					"allowed_cidrs":   egress.GetAllowedCidrs(),
+					"denied_cidrs":    egress.GetDeniedCidrs(),
+					"allowed_domains": egress.GetAllowedDomains(),
+				}
+			}
+
+			go s.sbxEventsService.Publish(
+				context.WithoutCancel(ctx),
+				teamID,
+				events.SandboxEvent{
+					Version:   events.StructureVersionV2,
+					ID:        uuid.New(),
+					Type:      events.SandboxUpdatedEventPair.Type,
+					Timestamp: time.Now().UTC(),
+
+					EventData:          eventData,
+					SandboxID:          sbx.Runtime.SandboxID,
+					SandboxExecutionID: sbx.Runtime.ExecutionID,
+					SandboxTemplateID:  sbx.Config.BaseTemplateID,
+					SandboxBuildID:     buildId,
+					SandboxTeamID:      teamID,
+					EventsTTLDays:      eventsTTLDays,
+				},
+			)
 		}
 
-		go s.sbxEventsService.Publish(
-			context.WithoutCancel(ctx),
-			teamID,
-			events.SandboxEvent{
-				Version:   events.StructureVersionV2,
-				ID:        uuid.New(),
-				Type:      events.SandboxUpdatedEventPair.Type,
-				Timestamp: time.Now().UTC(),
-
-				EventData:          eventData,
-				SandboxID:          sbx.Runtime.SandboxID,
-				SandboxExecutionID: sbx.Runtime.ExecutionID,
-				SandboxTemplateID:  sbx.Config.BaseTemplateID,
-				SandboxBuildID:     buildId,
-				SandboxTeamID:      teamID,
-				EventsTTLDays:      eventsTTLDays,
-			},
-		)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return &emptypb.Empty{}, nil

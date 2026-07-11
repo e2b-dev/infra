@@ -14,7 +14,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -147,9 +146,8 @@ func (o *Orchestrator) removeSandboxFromNode(
 		return fmt.Errorf("node '%s' not found", sbx.NodeID)
 	}
 
-	// Only remove from routing table if the node is managed by Nomad
 	// For remote cluster nodes we are using gPRC metadata for routing registration instead
-	if node.IsNomadManaged() || env.IsLocal() {
+	if !node.IsClusterNode() {
 		// Remove the sandbox resources after the sandbox is deleted
 		err := o.routingCatalog.DeleteSandbox(ctx, sbx.SandboxID, sbx.ExecutionID)
 		if err != nil {

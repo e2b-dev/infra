@@ -123,7 +123,7 @@ jobs:
         run: go install gotest.tools/gotestsum@v1.13.0
 
       # sudo strips PATH; pass it through so gotestsum/go resolve to the runner's
-      # toolchain (1.26.3) instead of /usr/bin/go. Trap chowns reports back to
+      # toolchain (1.26.5) instead of /usr/bin/go. Trap chowns reports back to
       # the runner so uploads can read them even when tests fail.
       - name: Run tests that require sudo
         working-directory: ${{ matrix.package }}
