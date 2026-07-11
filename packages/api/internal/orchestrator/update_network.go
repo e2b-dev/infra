@@ -64,18 +64,17 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 		return sbx, nil
 	}
 
-	var sbxNotRunningErr *sandbox.NotRunningError
-
 	sbx, err := o.sandboxStore.Update(ctx, teamID, sandboxID, updateFunc)
 	if err != nil {
-		switch {
-		case errors.As(err, &sbxNotRunningErr):
+		if sbxNotRunningErr, ok := errors.AsType[*sandbox.NotRunningError](err); ok {
 			return &api.APIError{Code: http.StatusConflict, ClientMsg: utils.SandboxChangingStateMsg(sandboxID, sbxNotRunningErr.State), Err: err}
-		case errors.Is(err, sandbox.ErrNotFound):
-			return &api.APIError{Code: http.StatusNotFound, ClientMsg: utils.SandboxNotFoundMsg(sandboxID), Err: err}
-		default:
-			return &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error updating sandbox network config", Err: err}
 		}
+
+		if errors.Is(err, sandbox.ErrNotFound) {
+			return &api.APIError{Code: http.StatusNotFound, ClientMsg: utils.SandboxNotFoundMsg(sandboxID), Err: err}
+		}
+
+		return &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error updating sandbox network config", Err: err}
 	}
 
 	// Apply the network update on the orchestrator node.

@@ -74,7 +74,6 @@ var sourceStrings = [numSources]string{
 // Outcome maps a read-path error to the outcome enum. PeerTransitionedError is a
 // routing signal, not a failure, so it gets its own bucket (not err_io).
 func Outcome(err error) string {
-	var transErr *PeerTransitionedError
 	switch {
 	case err == nil:
 		return OutcomeOK
@@ -84,13 +83,19 @@ func Outcome(err error) string {
 		return OutcomeErrCanceled
 	case errors.Is(err, context.DeadlineExceeded):
 		return OutcomeErrTimeout
-	case errors.As(err, &transErr):
+	case isPeerTransitioned(err):
 		return OutcomeTransitioned
 	case errors.Is(err, lock.ErrLockAlreadyHeld):
 		return OutcomeContended
 	default:
 		return OutcomeErrIO
 	}
+}
+
+func isPeerTransitioned(err error) bool {
+	_, ok := errors.AsType[*PeerTransitionedError](err)
+
+	return ok
 }
 
 // numCodecs tracks the CompressionType enum so a new codec grows the table

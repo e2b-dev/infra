@@ -137,8 +137,7 @@ func (b *File) readAt(ctx context.Context, p []byte, off int64) (int, error) {
 		// A Diff can be evicted and closed between planning and reading. Re-plan
 		// the whole read; reads are idempotent, so re-filling already-written
 		// regions is safe and getBuild re-resolves the closed Diff.
-		var closed *block.CacheClosedError
-		if errors.As(err, &closed) {
+		if _, ok := errors.AsType[*block.CacheClosedError](err); ok {
 			continue
 		}
 

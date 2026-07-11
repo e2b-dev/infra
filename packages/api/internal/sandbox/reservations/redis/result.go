@@ -29,8 +29,7 @@ func encodeResult(sbx sandboxtypes.Sandbox, err error) ([]byte, error) {
 
 	if err != nil {
 		re := &reservationError{Message: err.Error()}
-		var apiErr *api.APIError
-		if errors.As(err, &apiErr) {
+		if apiErr, ok := errors.AsType[*api.APIError](err); ok {
 			re.Code = apiErr.Code
 			re.ClientMsg = apiErr.ClientMsg
 		}
@@ -55,7 +54,7 @@ func decodeResult(data []byte) (sandboxtypes.Sandbox, error) {
 
 // reconstructError rebuilds the appropriate error type from the serialized representation.
 // If the error had an API code, it reconstructs an *api.APIError to preserve
-// errors.As(err, &apiErr) behavior in create_instance.go.
+// errors.AsType[*api.APIError](err) behavior in create_instance.go.
 func reconstructError(re *reservationError) error {
 	if re.Code != 0 {
 		return &api.APIError{

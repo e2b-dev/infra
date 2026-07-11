@@ -78,6 +78,9 @@ linters:
   settings:
     forbidigo:
       forbid:
+        - pattern: 'errors\.As$'
+          pkg: '^errors$'
+          msg: "Use errors.AsType[T](err) (Go 1.26 generics) instead of errors.As(err, &target)."
         - pattern: '.*\.ErrNoRows$'
           pkg: "^database/sql$"
           msg: "Use github.com/e2b-dev/infra/packages/db/pkg/dberrors.IsNotFoundError instead."

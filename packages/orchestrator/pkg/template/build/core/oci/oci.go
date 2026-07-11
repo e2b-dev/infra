@@ -76,8 +76,7 @@ func wrapImagePullError(ctx context.Context, err error, imageRef string) error {
 	logger.L().Warn(ctx, "failed to pull image", zap.String("image_ref", imageRef), zap.Error(err))
 
 	// Check for transport errors with specific error codes from the registry API
-	var transportErr *transport.Error
-	if errors.As(err, &transportErr) {
+	if transportErr, ok := errors.AsType[*transport.Error](err); ok {
 		for _, e := range transportErr.Errors {
 			switch e.Code {
 			case transport.ManifestUnknownErrorCode:

@@ -170,8 +170,7 @@ func TestMoveNonExistingFile(t *testing.T) {
 	// Verify the correct error is returned
 	require.Error(t, err)
 
-	var connectErr *connect.Error
-	ok := errors.As(err, &connectErr)
+	connectErr, ok := errors.AsType[*connect.Error](err)
 	assert.True(t, ok, "expected error to be of type *connect.Error")
 	assert.Equal(t, connect.CodeNotFound, connectErr.Code())
 	assert.Contains(t, connectErr.Message(), "source file not found")

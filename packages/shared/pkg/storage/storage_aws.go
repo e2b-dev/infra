@@ -177,8 +177,7 @@ func (o *awsObject) WriteTo(ctx context.Context, dst io.Writer) (n int64, err er
 
 	resp, err := o.client.GetObject(ctx, &s3.GetObjectInput{Bucket: &o.bucketName, Key: &o.path})
 	if err != nil {
-		var nsk *types.NoSuchKey
-		if errors.As(err, &nsk) {
+		if _, ok := errors.AsType[*types.NoSuchKey](err); ok {
 			return 0, ErrObjectNotExist
 		}
 
@@ -321,8 +320,7 @@ func (o *awsObject) openRangeReader(ctx context.Context, off, length int64) (Ran
 		Range:  aws.String(fmt.Sprintf("bytes=%d-%d", off, off+length-1)),
 	})
 	if err != nil {
-		var nsk *types.NoSuchKey
-		if errors.As(err, &nsk) {
+		if _, ok := errors.AsType[*types.NoSuchKey](err); ok {
 			return nil, ErrObjectNotExist
 		}
 
@@ -342,9 +340,10 @@ func (o *awsObject) Size(ctx context.Context) (_ int64, err error) {
 
 	resp, err := o.client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: &o.bucketName, Key: &o.path})
 	if err != nil {
-		var nsk *types.NoSuchKey
-		var nfd *types.NotFound
-		if errors.As(err, &nsk) || errors.As(err, &nfd) {
+		if _, ok := errors.AsType[*types.NoSuchKey](err); ok {
+			return 0, ErrObjectNotExist
+		}
+		if _, ok := errors.AsType[*types.NotFound](err); ok {
 			return 0, ErrObjectNotExist
 		}
 

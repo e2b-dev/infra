@@ -43,19 +43,21 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandb
 		return sbx, nil
 	}
 
-	var sbxNotRunningErr *sandbox.NotRunningError
 	sbx, err := o.sandboxStore.Update(ctx, teamID, sandboxID, updateFunc)
 	if err != nil {
-		switch {
-		case errors.As(err, &sbxNotRunningErr):
+		if sbxNotRunningErr, ok := errors.AsType[*sandbox.NotRunningError](err); ok {
 			return nil, &api.APIError{Code: http.StatusConflict, ClientMsg: utils.SandboxChangingStateMsg(sandboxID, sbxNotRunningErr.State), Err: err}
-		case errors.Is(err, sandbox.ErrNotFound):
-			return nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: utils.SandboxNotFoundMsg(sandboxID), Err: err}
-		case errors.Is(err, errMaxInstanceLengthExceeded):
-			return nil, &api.APIError{Code: http.StatusBadRequest, ClientMsg: "Max instance length exceeded", Err: err}
-		default:
-			return nil, &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error when setting sandbox timeout", Err: err}
 		}
+
+		if errors.Is(err, sandbox.ErrNotFound) {
+			return nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: utils.SandboxNotFoundMsg(sandboxID), Err: err}
+		}
+
+		if errors.Is(err, errMaxInstanceLengthExceeded) {
+			return nil, &api.APIError{Code: http.StatusBadRequest, ClientMsg: "Max instance length exceeded", Err: err}
+		}
+
+		return nil, &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error when setting sandbox timeout", Err: err}
 	}
 	err = o.UpdateSandbox(ctx, sandboxID, sbx.EndTime, sbx.ClusterID, sbx.NodeID)
 	if err != nil {

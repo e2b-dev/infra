@@ -280,8 +280,7 @@ func (p *Process) configure(
 
 		waitErr := p.cmd.Wait()
 		if waitErr != nil {
-			var exitErr *exec.ExitError
-			if errors.As(waitErr, &exitErr) {
+			if exitErr, ok := errors.AsType[*exec.ExitError](waitErr); ok {
 				// Check if the process was killed by a signal
 				if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() && (status.Signal() == syscall.SIGKILL || status.Signal() == syscall.SIGTERM) {
 					p.Exit.SetError(nil)
@@ -774,8 +773,7 @@ func (p *Process) DrainBalloon(ctx context.Context) error {
 	}
 
 	if err := p.client.startBalloonHinting(ctx, true); err != nil {
-		var notConfigured *operations.StartBalloonHintingBadRequest
-		if errors.As(err, &notConfigured) {
+		if _, ok := errors.AsType[*operations.StartBalloonHintingBadRequest](err); ok {
 			outcome = "not-configured"
 
 			return nil
