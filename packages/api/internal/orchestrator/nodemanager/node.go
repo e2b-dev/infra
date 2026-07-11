@@ -194,6 +194,10 @@ func (n *Node) IsNomadManaged() bool {
 	return n.NomadNodeShortID != UnknownNomadNodeShortID
 }
 
+func (n *Node) IsClusterNode() bool {
+	return n.ClusterID != consts.LocalClusterID
+}
+
 func (n *Node) OptimisticAdd(ctx context.Context, res SandboxResources) {
 	if n.featureflags != nil && !n.featureflags.BoolFlag(ctx, featureflags.OptimisticResourceAccountingFlag) {
 		return

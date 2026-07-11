@@ -40,11 +40,11 @@ var (
 	_ RangeOpener = (*fsObject)(nil)
 )
 
-func newFileSystemStorage(cfg StorageConfig) *fsStorage {
+func newFileSystemStorage(basePath, uploadBaseURL string, hmacKey []byte) *fsStorage {
 	return &fsStorage{
-		basePath:  cfg.GetLocalBasePath(),
-		uploadURL: cfg.uploadBaseURL,
-		hmacKey:   cfg.hmacKey,
+		basePath:  basePath,
+		uploadURL: uploadBaseURL,
+		hmacKey:   hmacKey,
 	}
 }
 

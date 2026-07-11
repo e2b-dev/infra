@@ -153,7 +153,7 @@ func setupEnv(ctx context.Context, storagePath, sandboxDir, kernel, fc string, l
 		}
 
 		dataDir := storagePath
-		dirs := []string{"kernels", "templates", "sandbox", "orchestrator", "snapshot-cache", "fc-versions"}
+		dirs := []string{"kernels", "templates", "build-cache", "sandbox", "orchestrator", "snapshot-cache", "fc-versions"}
 		for _, d := range dirs {
 			if err := os.MkdirAll(filepath.Join(dataDir, d), 0o755); err != nil {
 				return fmt.Errorf("mkdir %s: %w", d, err)
@@ -166,20 +166,23 @@ func setupEnv(ctx context.Context, storagePath, sandboxDir, kernel, fc string, l
 		}
 
 		env := map[string]string{
-			"ARTIFACTS_REGISTRY_PROVIDER":      "Local",
-			"FIRECRACKER_VERSIONS_DIR":         abs(filepath.Join(dataDir, "fc-versions")),
-			"HOST_KERNELS_DIR":                 abs(filepath.Join(dataDir, "kernels")),
-			"LOCAL_TEMPLATE_STORAGE_BASE_PATH": abs(filepath.Join(dataDir, "templates")),
-			"ORCHESTRATOR_BASE_PATH":           abs(filepath.Join(dataDir, "orchestrator")),
-			"SNAPSHOT_CACHE_DIR":               abs(filepath.Join(dataDir, "snapshot-cache")),
-			"STORAGE_PROVIDER":                 "Local",
-			"USE_LOCAL_NAMESPACE_STORAGE":      "true",
+			"ARTIFACTS_REGISTRY_PROVIDER": "Local",
+			"FIRECRACKER_VERSIONS_DIR":    abs(filepath.Join(dataDir, "fc-versions")),
+			"HOST_KERNELS_DIR":            abs(filepath.Join(dataDir, "kernels")),
+			"ORCHESTRATOR_BASE_PATH":      abs(filepath.Join(dataDir, "orchestrator")),
+			"SNAPSHOT_CACHE_DIR":          abs(filepath.Join(dataDir, "snapshot-cache")),
+			"USE_LOCAL_NAMESPACE_STORAGE": "true",
 		}
 		for k, v := range env {
 			if os.Getenv(k) == "" {
 				os.Setenv(k, v)
 			}
 		}
+
+		// The explicit -storage flag is authoritative: set unconditionally,
+		// unlike the fill-the-gap defaults above.
+		os.Setenv("TEMPLATE_STORAGE_URL", "file://"+abs(filepath.Join(dataDir, "templates")))
+		os.Setenv("BUILD_CACHE_STORAGE_URL", "file://"+abs(filepath.Join(dataDir, "build-cache")))
 
 		if err := setupKernel(ctx, filepath.Join(dataDir, "kernels"), kernel); err != nil {
 			return err
@@ -219,12 +222,7 @@ func setupEnv(ctx context.Context, storagePath, sandboxDir, kernel, fc string, l
 		fmt.Printf("✓ Storage: %s (local)\n", dataDir)
 	} else {
 		bucket := strings.TrimPrefix(storagePath, "gs://")
-		if os.Getenv("STORAGE_PROVIDER") == "" {
-			os.Setenv("STORAGE_PROVIDER", "GCPBucket")
-		}
-		if os.Getenv("TEMPLATE_BUCKET_NAME") == "" {
-			os.Setenv("TEMPLATE_BUCKET_NAME", bucket)
-		}
+		os.Setenv("TEMPLATE_STORAGE_URL", "gs://"+bucket)
 		fmt.Printf("✓ Storage: gs://%s\n", bucket)
 	}
 
@@ -298,11 +296,19 @@ func doBuild(
 	go tcpFirewall.Start(ctx)
 	defer tcpFirewall.Close(parentCtx)
 
-	persistenceTemplate, err := storage.GetStorageProvider(ctx, storage.TemplateStorageConfig)
+	templateSpec, err := cfg.TemplateStorage()
 	if err != nil {
 		return fmt.Errorf("template storage: %w", err)
 	}
-	persistenceBuild, err := storage.GetStorageProvider(ctx, storage.BuildCacheStorageConfig)
+	persistenceTemplate, err := storage.NewProvider(ctx, templateSpec)
+	if err != nil {
+		return fmt.Errorf("template storage: %w", err)
+	}
+	buildCacheSpec, err := cfg.BuildCacheStorage()
+	if err != nil {
+		return fmt.Errorf("build storage: %w", err)
+	}
+	persistenceBuild, err := storage.NewProvider(ctx, buildCacheSpec)
 	if err != nil {
 		return fmt.Errorf("build storage: %w", err)
 	}
@@ -436,7 +442,10 @@ func doBuild(
 
 func printArtifactSizes(ctx context.Context, persistence storage.StorageProvider, buildID string, _ *build.Result) {
 	paths := storage.Paths{BuildID: buildID}
-	basePath := os.Getenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH")
+	var basePath string
+	if spec, err := cfg.TemplateStorage(); err == nil && spec.Provider == storage.LocalStorageProvider {
+		basePath = spec.BasePath
+	}
 
 	fmt.Printf("\n📦 Artifacts:\n")
 

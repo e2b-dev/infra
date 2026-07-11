@@ -214,6 +214,13 @@ func (s *Slot) CreateNetwork(ctx context.Context) (retErr error) {
 		return fmt.Errorf("error creating tap device: %w", err)
 	}
 
+	// Keep resumed guests' cached gateway ARP entries valid. Tap devices are
+	// isolated in per-sandbox network namespaces, so sharing this MAC is safe.
+	err = netlink.LinkSetHardwareAddr(tap, tapHostHardwareAddr)
+	if err != nil {
+		return fmt.Errorf("error setting tap device hardware address: %w", err)
+	}
+
 	err = netlink.LinkSetUp(tap)
 	if err != nil {
 		return fmt.Errorf("error setting tap device up: %w", err)

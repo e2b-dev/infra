@@ -1,6 +1,6 @@
 module github.com/e2b-dev/infra/packages/dashboard-api
 
-go 1.26.3
+go 1.26.5
 
 replace github.com/e2b-dev/infra/packages/auth v0.0.0 => ../auth
 
