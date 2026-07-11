@@ -285,6 +285,14 @@ func (p *Process) startMetricsReader(ctx context.Context) {
 			case <-p.Exit.Done():
 				return
 			case <-ticker.C:
+				// Guard against the race where Exit.Done() and ticker.C are
+				// both ready simultaneously: Go selects randomly, so we may
+				// land here even though the process has already exited.
+				select {
+				case <-p.Exit.Done():
+					return
+				default:
+				}
 				if err := p.client.flushMetrics(ctx); err != nil {
 					logger.L().Warn(ctx, "failed to flush fc metrics",
 						zap.Error(err),
