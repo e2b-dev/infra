@@ -63,7 +63,12 @@ elif [ -d "$entry" ]; then
         chmod -R "$permissions" "$entry"
     fi
     mkdir -p "$targetPath"
-    cp -a "$entry/." "$targetPath/" || exit 1
+    # Copy children one by one so the target directory itself keeps its own
+    # metadata (Docker copies a directory's contents, never the directory)
+    find "$entry" -mindepth 1 -maxdepth 1 -exec cp -a -t "$targetPath" {} + || exit 1
+    # Restore write permissions so cleanup works even when a read-only
+    # permissions argument was applied and we are not running as root
+    chmod -R u+rwx "$entry"
     rm -rf "$entry"
 else
     echo "Error: entry is neither file, directory, nor symlink"

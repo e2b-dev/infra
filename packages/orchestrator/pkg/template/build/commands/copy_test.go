@@ -184,6 +184,9 @@ type testCase struct {
 
 	// Verification: file contents to check in the target
 	expectedContents map[string]string
+
+	// Verification: octal permissions to check in the target
+	expectedPerms map[string]string
 }
 
 func TestParseCopyArgs(t *testing.T) {
@@ -699,6 +702,41 @@ func TestCopyScriptBehavior(t *testing.T) { //nolint:paralleltest // no idea why
 			},
 		},
 		{
+			name:        "preserve_target_directory_metadata",
+			description: "Only directory contents are copied; the existing target directory keeps its own permissions",
+			files: map[string]string{
+				"etc/motd": "file",
+			},
+			copyFrom: "etc/",
+			copyTo:   "etc/",
+			// 700 must apply to the copied contents, not the existing target dir
+			permissions: "700",
+			preexistingTargetPaths: map[string]string{
+				"etc/": "dir",
+			},
+			shouldSucceed: true,
+			expectedPaths: map[string]string{
+				"etc/motd": "file",
+			},
+			expectedPerms: map[string]string{
+				"etc": "755",
+			},
+		},
+		{
+			name:        "directory_with_readonly_permissions",
+			description: "Read-only permissions on the copied tree do not break source cleanup",
+			files: map[string]string{
+				"app/config.json": "file",
+			},
+			copyFrom:      "app/",
+			copyTo:        "dest/",
+			permissions:   "500",
+			shouldSucceed: true,
+			expectedPaths: map[string]string{
+				"dest/config.json": "file",
+			},
+		},
+		{
 			name:        "copy_directory_that_is_not_first_alphabetically",
 			description: "The entry named by the source path is copied, not the first entry in its parent",
 			files: map[string]string{
@@ -828,6 +866,14 @@ func TestCopyScriptBehavior(t *testing.T) { //nolint:paralleltest // no idea why
 				content, err := os.ReadFile(filepath.Join(targetBaseDir, path))
 				require.NoError(t, err, "Failed to read file %s", path)
 				assert.Equal(t, expectedContent, string(content), "File %s content mismatch", path)
+			}
+
+			// Verify permissions of specific paths
+			for path, permStr := range tc.expectedPerms {
+				perms := getFilePermissions(t, filepath.Join(targetBaseDir, path))
+				expectedPerms := os.FileMode(0)
+				fmt.Sscanf(permStr, "%o", &expectedPerms)
+				assert.Equal(t, expectedPerms, perms, "Path %s should have %s permissions", path, permStr)
 			}
 
 			// Special verification for permissions tests
