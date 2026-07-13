@@ -72,7 +72,7 @@ func NewStore(
 
 // Add inserts a sandbox into the store. A non-nil creation argument fires the
 // AsyncNewlyCreatedSandbox callback; nil indicates a sync/reconcile re-add.
-func (s *Store) Add(ctx context.Context, sandbox Sandbox, creation *CreationMetadata) error {
+func (s *Store) Add(ctx context.Context, sandbox Sandbox, routing *RoutingMetadata, creation *CreationMetadata) error {
 	sbxlogger.I(sandbox).Debug(ctx, "Adding sandbox to cache",
 		zap.Bool("newly_created", creation != nil),
 		logger.Time("start_time", sandbox.StartTime),
@@ -83,7 +83,7 @@ func (s *Store) Add(ctx context.Context, sandbox Sandbox, creation *CreationMeta
 		sandbox.EndTime = sandbox.StartTime.Add(sandbox.MaxInstanceLength)
 	}
 
-	if err := s.storage.Add(ctx, sandbox); err != nil {
+	if err := s.storage.Add(ctx, sandbox, routing); err != nil {
 		return err
 	}
 
@@ -130,10 +130,7 @@ func (s *Store) Update(ctx context.Context, teamID uuid.UUID, sandboxID string, 
 func (s *Store) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, opts RemoveOpts) (Sandbox, bool, func(context.Context, error), error) {
 	sandbox, alreadyDone, finish, err := s.storage.StartRemoving(ctx, teamID, sandboxID, opts)
 
-	// Routing is set on new catalog-managed records. Local cluster ID covers
-	// records created before routing metadata was persisted.
-	if err == nil && opts.Action.Effect == TransitionExpires &&
-		(sandbox.Routing != nil || sandbox.ClusterID == consts.LocalClusterID) {
+	if err == nil && opts.Action.Effect == TransitionExpires && sandbox.ClusterID == consts.LocalClusterID {
 		if routeErr := s.routingCatalog.DeleteSandbox(ctx, sandbox.SandboxID, sandbox.ExecutionID); routeErr != nil {
 			logger.L().Error(ctx, "error removing routing record from catalog", zap.Error(routeErr), logger.WithSandboxID(sandbox.SandboxID))
 		}

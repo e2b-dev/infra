@@ -437,7 +437,7 @@ func TestStoreReconcile_DoesNotFireCallback(t *testing.T) {
 		NodeID:            "node-1",
 	}
 
-	require.NoError(t, o.sandboxStore.Add(t.Context(), sbx, nil))
+	require.NoError(t, o.sandboxStore.Add(t.Context(), sbx, nil, nil))
 
 	time.Sleep(100 * time.Millisecond)
 	assert.Equal(t, 0, ec.get())

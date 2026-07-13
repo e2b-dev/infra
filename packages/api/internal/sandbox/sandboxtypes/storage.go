@@ -12,7 +12,7 @@ const (
 
 // Storage is the persistence interface implemented by the redis backend.
 type Storage interface {
-	Add(ctx context.Context, sandbox Sandbox) error
+	Add(ctx context.Context, sandbox Sandbox, routing *RoutingMetadata) error
 	Get(ctx context.Context, teamID uuid.UUID, sandboxID string) (Sandbox, error)
 	Remove(ctx context.Context, teamID uuid.UUID, sandboxID string) error
 

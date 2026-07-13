@@ -383,8 +383,8 @@ func (o *Orchestrator) CreateSandbox(
 		nodemanager.ConvertOrchestratorMountsToDatabaseMounts(sbxData.VolumeMounts),
 	)
 
-	sbx.Routing = sandboxRoutingMetadata(node, env.IsLocal())
-	err = o.sandboxStore.Add(ctx, sbx, &creationMeta)
+	routing := sandboxRoutingMetadata(node, env.IsLocal())
+	err = o.sandboxStore.Add(ctx, sbx, routing, &creationMeta)
 	if err != nil {
 		telemetry.ReportError(ctx, "failed to add sandbox to store", err)
 

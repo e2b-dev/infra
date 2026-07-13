@@ -102,7 +102,6 @@ type Sandbox struct {
 	AllowInternetAccess *bool             `json:"allowInternetAccess,omitempty"`
 	NodeID              string            `json:"nodeID"`
 	ClusterID           uuid.UUID         `json:"clusterID"`
-	Routing             *RoutingMetadata  `json:"routing,omitempty"`
 	AutoPause           bool              `json:"autoPause"`
 	// AutoPauseFilesystemOnly makes a timeout auto-pause take a filesystem-only
 	// snapshot (no memory) instead of a full memory snapshot. Only consulted when
@@ -116,8 +115,8 @@ type Sandbox struct {
 }
 
 type RoutingMetadata struct {
-	OrchestratorID string `json:"orchestratorID"`
-	OrchestratorIP string `json:"orchestratorIP"`
+	OrchestratorID string
+	OrchestratorIP string
 }
 
 func (s Sandbox) ToAPISandbox() *api.Sandbox {

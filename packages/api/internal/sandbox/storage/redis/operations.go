@@ -21,7 +21,7 @@ import (
 )
 
 // Add stores a sandbox in Redis atomically with its team index entry.
-func (s *Storage) Add(ctx context.Context, sbx sandboxtypes.Sandbox) error {
+func (s *Storage) Add(ctx context.Context, sbx sandboxtypes.Sandbox, routing *sandboxtypes.RoutingMetadata) error {
 	data, err := json.Marshal(sbx)
 	if err != nil {
 		return fmt.Errorf("failed to marshal sandbox: %w", err)
@@ -41,10 +41,10 @@ func (s *Storage) Add(ctx context.Context, sbx sandboxtypes.Sandbox) error {
 		return fmt.Errorf("failed to add sandbox to global expiration index: %w", err)
 	}
 
-	if sbx.Routing != nil {
+	if routing != nil {
 		info := e2bcatalog.SandboxInfo{
-			OrchestratorID:   sbx.Routing.OrchestratorID,
-			OrchestratorIP:   sbx.Routing.OrchestratorIP,
+			OrchestratorID:   routing.OrchestratorID,
+			OrchestratorIP:   routing.OrchestratorIP,
 			ExecutionID:      sbx.ExecutionID,
 			StartedAt:        sbx.StartTime,
 			MaxLengthInHours: int64(sbx.MaxInstanceLength / time.Hour),
@@ -53,7 +53,7 @@ func (s *Storage) Add(ctx context.Context, sbx sandboxtypes.Sandbox) error {
 			// A timed-out Redis command may still have succeeded.
 			return errors.Join(
 				fmt.Errorf("failed to add sandbox to routing catalog: %w", err),
-				s.rollbackRouting(context.WithoutCancel(ctx), sbx),
+				s.rollbackRouting(context.WithoutCancel(ctx), sbx, routing),
 			)
 		}
 	}
@@ -63,7 +63,7 @@ func (s *Storage) Add(ctx context.Context, sbx sandboxtypes.Sandbox) error {
 	if err != nil {
 		return errors.Join(
 			fmt.Errorf("failed to store sandbox in Redis: %w", err),
-			s.rollbackRouting(context.WithoutCancel(ctx), sbx),
+			s.rollbackRouting(context.WithoutCancel(ctx), sbx, routing),
 		)
 	}
 
@@ -78,8 +78,8 @@ func (s *Storage) Add(ctx context.Context, sbx sandboxtypes.Sandbox) error {
 	return nil
 }
 
-func (s *Storage) rollbackRouting(ctx context.Context, sbx sandboxtypes.Sandbox) error {
-	if sbx.Routing == nil {
+func (s *Storage) rollbackRouting(ctx context.Context, sbx sandboxtypes.Sandbox, routing *sandboxtypes.RoutingMetadata) error {
+	if routing == nil {
 		return nil
 	}
 
@@ -158,8 +158,8 @@ func (s *Storage) Remove(ctx context.Context, teamID uuid.UUID, sandboxID string
 	}
 
 	// StartRemoving deletes routes before node shutdown; this idempotent cleanup
-	// also covers direct removals and records created before Routing was persisted.
-	if sbx.Routing != nil || sbx.ClusterID == consts.LocalClusterID {
+	// also covers direct removals.
+	if sbx.ClusterID == consts.LocalClusterID {
 		if err := s.routingCatalog.DeleteSandbox(ctx, sbx.SandboxID, sbx.ExecutionID); err != nil {
 			logger.L().Warn(ctx, "Failed to remove sandbox from routing catalog", zap.Error(err), logger.WithSandboxID(sandboxID))
 		}

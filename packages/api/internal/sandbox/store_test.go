@@ -152,7 +152,7 @@ func (m *MockStorage) SetAddError(err error) {
 }
 
 // Add wraps Storage.Add() with error injection
-func (m *MockStorage) Add(ctx context.Context, sbx Sandbox) error {
+func (m *MockStorage) Add(ctx context.Context, sbx Sandbox, routing *RoutingMetadata) error {
 	m.mu.Lock()
 	err := m.addError
 	m.mu.Unlock()
@@ -161,12 +161,12 @@ func (m *MockStorage) Add(ctx context.Context, sbx Sandbox) error {
 		return err
 	}
 
-	return m.Storage.Add(ctx, sbx)
+	return m.Storage.Add(ctx, sbx, routing)
 }
 
 // createTestSandbox creates a test sandbox with default values
 func createTestSandbox() Sandbox {
-	sbx := NewSandbox(
+	return NewSandbox(
 		"test-sandbox-"+uuid.New().String()[:8],
 		"test-template",
 		consts.ClientID,
@@ -197,12 +197,13 @@ func createTestSandbox() Sandbox {
 		nil, // trafficAccessToken
 		nil, // volumes
 	)
-	sbx.Routing = &RoutingMetadata{
+}
+
+func createTestRouting() *RoutingMetadata {
+	return &RoutingMetadata{
 		OrchestratorID: "orchestrator-1",
 		OrchestratorIP: "10.0.0.1",
 	}
-
-	return sbx
 }
 
 // =============================================================================
@@ -226,9 +227,10 @@ func TestAdd_NewSandbox(t *testing.T) {
 
 		store := NewStore(storage, reservations, routingCatalog, callbacks)
 		sbx := createTestSandbox()
+		routing := createTestRouting()
 
 		// Execute
-		err := store.Add(ctx, sbx, &CreationMetadata{})
+		err := store.Add(ctx, sbx, routing, &CreationMetadata{})
 
 		// Wait for async callbacks
 		tracker.WaitForCalls(t, time.Second)
@@ -242,12 +244,11 @@ func TestAdd_NewSandbox(t *testing.T) {
 		stored, err := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
 		require.NoError(t, err)
 		assert.Equal(t, sbx.SandboxID, stored.SandboxID)
-		assert.Equal(t, sbx.Routing, stored.Routing)
 
 		route, err := routingCatalog.GetSandbox(ctx, sbx.SandboxID)
 		require.NoError(t, err)
-		assert.Equal(t, sbx.Routing.OrchestratorID, route.OrchestratorID)
-		assert.Equal(t, sbx.Routing.OrchestratorIP, route.OrchestratorIP)
+		assert.Equal(t, routing.OrchestratorID, route.OrchestratorID)
+		assert.Equal(t, routing.OrchestratorIP, route.OrchestratorIP)
 		assert.Equal(t, sbx.ExecutionID, route.ExecutionID)
 		assert.WithinDuration(t, sbx.StartTime, route.StartedAt, time.Millisecond)
 		assert.Equal(t, int64(1), route.MaxLengthInHours)
@@ -270,7 +271,7 @@ func TestAdd_NotNewlyCreated(t *testing.T) {
 		store := NewStore(storage, reservations, routingCatalog, callbacks)
 		sbx := createTestSandbox()
 
-		err := store.Add(ctx, sbx, nil)
+		err := store.Add(ctx, sbx, createTestRouting(), nil)
 
 		require.NoError(t, err)
 		tracker.AssertNotCalled(t, "AsyncNewlyCreatedSandbox")
@@ -299,7 +300,7 @@ func TestAdd_StorageErrors(t *testing.T) {
 		store := NewStore(mockStorage, reservations, routingCatalog, callbacks)
 		sbx := createTestSandbox()
 
-		err := store.Add(ctx, sbx, &CreationMetadata{})
+		err := store.Add(ctx, sbx, createTestRouting(), &CreationMetadata{})
 
 		// Error should be returned
 		require.Error(t, err)
@@ -344,7 +345,7 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 				sbx := createTestSandbox()
 				sbx.SandboxID = fmt.Sprintf("concurrent-sandbox-%d", id)
 				sbx.TeamID = teamID
-				err := store.Add(ctx, sbx, &CreationMetadata{})
+				err := store.Add(ctx, sbx, createTestRouting(), &CreationMetadata{})
 				if err != nil {
 					errorsChan <- err
 				}
@@ -402,10 +403,11 @@ func TestStartRemoving_Routing(t *testing.T) {
 			store := NewStore(storage, &NoOpReservationStorage{}, trackingCatalog, Callbacks{})
 			sbx := createTestSandbox()
 			sbx.ClusterID = tt.clusterID
-			if !tt.catalogRecord {
-				sbx.Routing = nil
+			var routing *RoutingMetadata
+			if tt.catalogRecord {
+				routing = createTestRouting()
 			}
-			require.NoError(t, store.Add(t.Context(), sbx, nil))
+			require.NoError(t, store.Add(t.Context(), sbx, routing, nil))
 
 			_, alreadyDone, finish, err := store.StartRemoving(t.Context(), sbx.TeamID, sbx.SandboxID, RemoveOpts{Action: tt.action})
 			require.NoError(t, err)

@@ -46,12 +46,12 @@ func TestAddReturnsRoutingCatalogError(t *testing.T) {
 
 	now := time.Now()
 	sbx := makeIndexedSandbox(uuid.New(), "sandbox", uuid.NewString(), now, now.Add(time.Hour))
-	sbx.Routing = &sandboxtypes.RoutingMetadata{
+	routing := &sandboxtypes.RoutingMetadata{
 		OrchestratorID: "orchestrator",
 		OrchestratorIP: "10.0.0.1",
 	}
 
-	err := storage.Add(t.Context(), sbx)
+	err := storage.Add(t.Context(), sbx, routing)
 	require.ErrorContains(t, err, "failed to add sandbox to routing catalog")
 	require.True(t, catalog.deleteCalled)
 	_, err = storage.Get(t.Context(), sbx.TeamID, sbx.SandboxID)
@@ -65,11 +65,11 @@ func TestRemoveDeletesRoutingCatalogEntry(t *testing.T) {
 	storage := newTestStorage(t, client)
 	now := time.Now()
 	sbx := makeIndexedSandbox(uuid.New(), "sandbox", uuid.NewString(), now, now.Add(time.Hour))
-	sbx.Routing = &sandboxtypes.RoutingMetadata{
+	routing := &sandboxtypes.RoutingMetadata{
 		OrchestratorID: "orchestrator",
 		OrchestratorIP: "10.0.0.1",
 	}
-	require.NoError(t, storage.Add(t.Context(), sbx))
+	require.NoError(t, storage.Add(t.Context(), sbx, routing))
 	_, err := storage.routingCatalog.GetSandbox(t.Context(), sbx.SandboxID)
 	require.NoError(t, err)
 

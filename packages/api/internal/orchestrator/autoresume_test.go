@@ -57,7 +57,7 @@ func testSandboxForAutoResume(state sandbox.State) sandbox.Sandbox {
 
 func addSandbox(t *testing.T, o *Orchestrator, sbx sandbox.Sandbox) {
 	t.Helper()
-	require.NoError(t, o.sandboxStore.Add(t.Context(), sbx, nil))
+	require.NoError(t, o.sandboxStore.Add(t.Context(), sbx, nil, nil))
 }
 
 func registerNode(o *Orchestrator, sbx sandbox.Sandbox, ip string) {

@@ -73,7 +73,7 @@ func TestStartRemoving_BasicTransitions(t *testing.T) {
 			sbx := createTestSandbox("test-" + tt.name)
 			sbx.State = tt.fromState
 
-			err := storage.Add(ctx, sbx)
+			err := storage.Add(ctx, sbx, nil)
 			require.NoError(t, err)
 
 			_, alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: tt.stateAction})
@@ -117,7 +117,7 @@ func TestStartRemoving_PauseThenKill(t *testing.T) {
 	ctx := t.Context()
 
 	sbx := createTestSandbox("pause-then-kill")
-	err := storage.Add(ctx, sbx)
+	err := storage.Add(ctx, sbx, nil)
 	require.NoError(t, err)
 
 	// Start pause operation
@@ -176,7 +176,7 @@ func TestStartRemoving_ConcurrentSameState(t *testing.T) {
 	ctx := t.Context()
 
 	sbx := createTestSandbox("concurrent-same")
-	err := storage.Add(ctx, sbx)
+	err := storage.Add(ctx, sbx, nil)
 	require.NoError(t, err)
 
 	results := make(chan struct {
@@ -267,7 +267,7 @@ func TestStartRemoving_ContextCancellation(t *testing.T) {
 	storage, _ := setupTestStorage(t)
 
 	sbx := createTestSandbox("context-cancel")
-	err := storage.Add(t.Context(), sbx)
+	err := storage.Add(t.Context(), sbx, nil)
 	require.NoError(t, err)
 
 	// Start a transition
@@ -302,7 +302,7 @@ func TestWaitForStateChange_NoTransition(t *testing.T) {
 	ctx := t.Context()
 
 	sbx := createTestSandbox("no-transition")
-	err := storage.Add(ctx, sbx)
+	err := storage.Add(ctx, sbx, nil)
 	require.NoError(t, err)
 
 	// No transition in progress, should return immediately
@@ -317,7 +317,7 @@ func TestWaitForStateChange_WaitForCompletion(t *testing.T) {
 	ctx := t.Context()
 
 	sbx := createTestSandbox("wait-completion")
-	err := storage.Add(ctx, sbx)
+	err := storage.Add(ctx, sbx, nil)
 	require.NoError(t, err)
 
 	// Start a transition
@@ -356,7 +356,7 @@ func TestWaitForStateChange_ContextCancellation(t *testing.T) {
 	storage, _ := setupTestStorage(t)
 
 	sbx := createTestSandbox("wait-cancel")
-	err := storage.Add(t.Context(), sbx)
+	err := storage.Add(t.Context(), sbx, nil)
 	require.NoError(t, err)
 
 	// Start a transition
@@ -397,7 +397,7 @@ func TestWaitForStateChange_MultipleWaiters(t *testing.T) {
 	ctx := t.Context()
 
 	sbx := createTestSandbox("multi-waiters")
-	err := storage.Add(ctx, sbx)
+	err := storage.Add(ctx, sbx, nil)
 	require.NoError(t, err)
 
 	// Start a transition
@@ -441,7 +441,7 @@ func TestStartRemoving_TransitionKeyTTL(t *testing.T) {
 	ctx := t.Context()
 
 	sbx := createTestSandbox("ttl-test")
-	err := storage.Add(ctx, sbx)
+	err := storage.Add(ctx, sbx, nil)
 	require.NoError(t, err)
 
 	// Start a transition but don't complete it
@@ -469,7 +469,7 @@ func TestStartRemoving_CallbackMarksTransitionCompleted(t *testing.T) {
 	ctx := t.Context()
 
 	sbx := createTestSandbox("callback-complete")
-	err := storage.Add(ctx, sbx)
+	err := storage.Add(ctx, sbx, nil)
 	require.NoError(t, err)
 
 	// Start a transition
@@ -511,7 +511,7 @@ func TestStartRemoving_CallbackSetsErrorOnFailure(t *testing.T) {
 	ctx := t.Context()
 
 	sbx := createTestSandbox("callback-error")
-	err := storage.Add(ctx, sbx)
+	err := storage.Add(ctx, sbx, nil)
 	require.NoError(t, err)
 
 	// Start a transition
@@ -554,7 +554,7 @@ func TestStartRemoving_SetsEndTimeWhenNotExpired(t *testing.T) {
 
 	sbx := createTestSandbox("end-time-test")
 	sbx.EndTime = time.Now().Add(time.Hour) // Not expired
-	err := storage.Add(ctx, sbx)
+	err := storage.Add(ctx, sbx, nil)
 	require.NoError(t, err)
 
 	beforeTransition := time.Now()
@@ -583,7 +583,7 @@ func TestStartRemoving_WaiterCompletesOnCallbackSuccess(t *testing.T) {
 	ctx := t.Context()
 
 	sbx := createTestSandbox("waiter-complete-success")
-	err := storage.Add(ctx, sbx)
+	err := storage.Add(ctx, sbx, nil)
 	require.NoError(t, err)
 
 	// Start a transition
@@ -629,7 +629,7 @@ func TestStartRemoving_WaiterReceivesErrorOnCallbackFailure(t *testing.T) {
 	ctx := t.Context()
 
 	sbx := createTestSandbox("waiter-complete-error")
-	err := storage.Add(ctx, sbx)
+	err := storage.Add(ctx, sbx, nil)
 	require.NoError(t, err)
 
 	// Start a transition
@@ -672,7 +672,7 @@ func TestStartRemoving_DifferentExecutionID(t *testing.T) {
 
 	sbx := createTestSandbox("exec-id-test")
 	sbx.State = sandboxtypes.StateRunning
-	err := storage.Add(ctx, sbx)
+	err := storage.Add(ctx, sbx, nil)
 	require.NoError(t, err)
 
 	// Start a transition
@@ -727,7 +727,7 @@ func TestStartRemoving_TransientTransition(t *testing.T) {
 		ctx := t.Context()
 
 		sbx := createTestSandbox("transient-restore")
-		require.NoError(t, storage.Add(ctx, sbx))
+		require.NoError(t, storage.Add(ctx, sbx, nil))
 
 		_, _, finish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: transientAction})
 		require.NoError(t, err)
@@ -746,7 +746,7 @@ func TestStartRemoving_TransientTransition(t *testing.T) {
 		ctx := t.Context()
 
 		sbx := createTestSandbox("transient-fail-result")
-		require.NoError(t, storage.Add(ctx, sbx))
+		require.NoError(t, storage.Add(ctx, sbx, nil))
 
 		_, _, finish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: transientAction})
 		require.NoError(t, err)
@@ -772,7 +772,7 @@ func TestStartRemoving_TransientTransition(t *testing.T) {
 		ctx := t.Context()
 
 		sbx := createTestSandbox("transient-restore-fail")
-		require.NoError(t, storage.Add(ctx, sbx))
+		require.NoError(t, storage.Add(ctx, sbx, nil))
 
 		_, _, finish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: transientAction})
 		require.NoError(t, err)
@@ -808,7 +808,7 @@ func TestStartRemoving_Eviction(t *testing.T) {
 		sbx.StartTime = time.Now().Add(-2 * time.Hour)
 		sbx.EndTime = time.Now().Add(-time.Second) // already expired
 
-		err := storage.Add(ctx, sbx)
+		err := storage.Add(ctx, sbx, nil)
 		require.NoError(t, err)
 
 		_, alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionKill, Eviction: true})
@@ -832,7 +832,7 @@ func TestStartRemoving_Eviction(t *testing.T) {
 		sbx := createTestSandbox("evict-not-expired")
 		// EndTime defaults to 1 hour from now (not expired)
 
-		err := storage.Add(ctx, sbx)
+		err := storage.Add(ctx, sbx, nil)
 		require.NoError(t, err)
 
 		_, alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionKill, Eviction: true})
@@ -856,7 +856,7 @@ func TestStartRemoving_Eviction(t *testing.T) {
 		sbx.StartTime = time.Now().Add(-2 * time.Hour)
 		sbx.EndTime = time.Now().Add(-time.Second) // expired
 
-		err := storage.Add(ctx, sbx)
+		err := storage.Add(ctx, sbx, nil)
 		require.NoError(t, err)
 
 		// Start a non-eviction pause transition to occupy the transition slot.
@@ -889,7 +889,7 @@ func TestStartRemoving_Eviction(t *testing.T) {
 		sbx.EndTime = time.Now().Add(-time.Second) // expired
 		sbx.AutoPause = true
 
-		err := storage.Add(ctx, sbx)
+		err := storage.Add(ctx, sbx, nil)
 		require.NoError(t, err)
 
 		_, alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionPause, Eviction: true})
@@ -917,7 +917,7 @@ func TestStartRemoving_Eviction(t *testing.T) {
 		sbx.StartTime = time.Now().Add(-2 * time.Hour)
 		sbx.EndTime = time.Now().Add(-time.Second) // expired
 
-		err := storage.Add(ctx, sbx)
+		err := storage.Add(ctx, sbx, nil)
 		require.NoError(t, err)
 
 		// Start a non-eviction pause.
@@ -975,7 +975,7 @@ func TestWaitForStateChange_PubSubWakesWaiterFast(t *testing.T) {
 	ctx := t.Context()
 
 	sbx := createTestSandbox("pubsub-fast-wake")
-	err := storage.Add(ctx, sbx)
+	err := storage.Add(ctx, sbx, nil)
 	require.NoError(t, err)
 
 	// Start a transition
@@ -1023,7 +1023,7 @@ func TestWaitForStateChange_MultipleWaitersPubSub(t *testing.T) {
 	ctx := t.Context()
 
 	sbx := createTestSandbox("pubsub-multi-waiters")
-	err := storage.Add(ctx, sbx)
+	err := storage.Add(ctx, sbx, nil)
 	require.NoError(t, err)
 
 	// Start a transition
@@ -1083,7 +1083,7 @@ func TestCallback_PublishesNotification(t *testing.T) {
 	ctx := t.Context()
 
 	sbx := createTestSandbox("callback-publishes")
-	err := storage.Add(ctx, sbx)
+	err := storage.Add(ctx, sbx, nil)
 	require.NoError(t, err)
 
 	// Subscribe to the global notification channel directly
@@ -1130,7 +1130,7 @@ func TestStartRemoving_PauseThenKill_PubSubFastWake(t *testing.T) {
 	ctx := t.Context()
 
 	sbx := createTestSandbox("pubsub-pause-kill")
-	err := storage.Add(ctx, sbx)
+	err := storage.Add(ctx, sbx, nil)
 	require.NoError(t, err)
 
 	// Start pause
@@ -1174,7 +1174,7 @@ func TestWaitForTransition_StalePubSubNotification(t *testing.T) {
 	storage, client := setupTestStorage(t)
 
 	sbx := createTestSandbox("stale-pubsub")
-	require.NoError(t, storage.Add(t.Context(), sbx))
+	require.NoError(t, storage.Add(t.Context(), sbx, nil))
 
 	// --- Transition A: pause ---
 	_, _, callbackA, err := storage.StartRemoving(t.Context(), sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionPause})
@@ -1247,7 +1247,7 @@ func TestStartRemoving_CompletedTransitionAllowsNewTransition(t *testing.T) {
 
 	sbx := createTestSandbox("completed-allows-new")
 	sbx.State = sandboxtypes.StateRunning
-	err := storage.Add(ctx, sbx)
+	err := storage.Add(ctx, sbx, nil)
 	require.NoError(t, err)
 
 	// Start and complete a pause transition
