@@ -305,6 +305,8 @@ components:
         httpsPorts:
           type: array
           description: Ports whose public URLs should connect to the sandbox using HTTPS. Backend certificate verification is disabled.
+          maxItems: 128
+          uniqueItems: true
           items:
             type: integer
             format: uint32

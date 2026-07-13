@@ -114,6 +114,31 @@ func TestValidateNetworkConfig(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "too many HTTPS ports",
+			network: &api.SandboxNetworkConfig{
+				HttpsPorts: func() *[]uint32 {
+					ports := make([]uint32, maxHTTPSPorts+1)
+					for i := range ports {
+						ports[i] = uint32(i + 1)
+					}
+
+					return &ports
+				}(),
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: fmt.Sprintf("HTTPS ports can have at most %d entries.", maxHTTPSPorts),
+		},
+		{
+			name: "duplicate HTTPS port is invalid",
+			network: &api.SandboxNetworkConfig{
+				HttpsPorts: &[]uint32{443, 443},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: "HTTPS port 443 is specified more than once.",
+		},
+		{
 			name: "zero HTTPS port is invalid",
 			network: &api.SandboxNetworkConfig{
 				HttpsPorts: &[]uint32{0},

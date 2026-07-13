@@ -49,6 +49,7 @@ const (
 	// Network validation error messages
 	ErrMsgDomainsRequireBlockAll = "When specifying allowed domains in allow out, you must include 'ALL_TRAFFIC' in deny out to block all other traffic."
 
+	maxHTTPSPorts                     = 128
 	maxNetworkRuleDomains             = 10
 	maxNetworkRuleTransformsPerDomain = 1
 	maxNetworkRuleDomainLen           = 128
@@ -634,6 +635,15 @@ func validateNetworkConfig(ctx context.Context, featureFlags featureFlagsClient,
 	}
 
 	if httpsPorts := network.HttpsPorts; httpsPorts != nil {
+		if len(*httpsPorts) > maxHTTPSPorts {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("too many HTTPS ports: %d (max %d)", len(*httpsPorts), maxHTTPSPorts),
+				ClientMsg: fmt.Sprintf("HTTPS ports can have at most %d entries.", maxHTTPSPorts),
+			}
+		}
+
+		seen := make(map[uint32]struct{}, len(*httpsPorts))
 		for _, port := range *httpsPorts {
 			if port == 0 || port > 65535 {
 				return &api.APIError{
@@ -649,6 +659,15 @@ func validateNetworkConfig(ctx context.Context, featureFlags featureFlagsClient,
 					ClientMsg: fmt.Sprintf("HTTPS backend routing is not supported for reserved port %d", port),
 				}
 			}
+			if _, ok := seen[port]; ok {
+				return &api.APIError{
+					Code:      http.StatusBadRequest,
+					Err:       fmt.Errorf("duplicate HTTPS port %d", port),
+					ClientMsg: fmt.Sprintf("HTTPS port %d is specified more than once.", port),
+				}
+			}
+
+			seen[port] = struct{}{}
 		}
 	}
 
