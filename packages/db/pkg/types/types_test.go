@@ -124,3 +124,25 @@ func TestPausedSandboxConfig_LegacyRowDefaultsToMemoryAutoPause(t *testing.T) {
 	assert.False(t, decoded.AutoPauseFilesystemOnly, "legacy rows must default to a memory auto-pause")
 	assert.True(t, decoded.FilesystemOnly, "unrelated fields must still decode")
 }
+
+func TestPausedSandboxConfigHTTPSPortsRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	httpsPorts := []uint32{443, 8443}
+	v, err := PausedSandboxConfig{
+		Version: PausedSandboxConfigVersion,
+		Network: &SandboxNetworkConfig{
+			Ingress: &SandboxNetworkIngressConfig{HTTPSPorts: httpsPorts},
+		},
+	}.Value()
+	require.NoError(t, err)
+
+	raw, ok := v.(string)
+	require.True(t, ok)
+
+	var decoded PausedSandboxConfig
+	require.NoError(t, json.Unmarshal([]byte(raw), &decoded))
+	require.NotNil(t, decoded.Network)
+	require.NotNil(t, decoded.Network.Ingress)
+	assert.Equal(t, httpsPorts, decoded.Network.Ingress.HTTPSPorts)
+}

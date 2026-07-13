@@ -2,6 +2,7 @@ package pool
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"log"
 	"net"
@@ -36,6 +37,7 @@ func newProxyClient(
 	currentConnsCounter *atomic.Int64,
 	l *log.Logger,
 	disableKeepAlives bool,
+	insecureSkipTLSVerify bool,
 ) *ProxyClient {
 	activeConnections := smap.New[*tracking.Connection]()
 
@@ -90,6 +92,9 @@ func newProxyClient(
 			return nil, err
 		},
 		DisableCompression: true, // No need to request or manipulate compression
+	}
+	if insecureSkipTLSVerify {
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // Sandbox services commonly use self-signed certificates.
 	}
 
 	pc := &ProxyClient{

@@ -109,6 +109,7 @@ message SandboxNetworkEgressConfig {
 message SandboxNetworkIngressConfig {
   optional string traffic_access_token = 1;
   optional string mask_request_host = 2;
+  repeated uint32 https_ports = 3;
 }
 
 message SandboxCreateRequest {

@@ -120,6 +120,7 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 
 	if network != nil && network.Ingress != nil {
 		orchNetwork.Ingress.MaskRequestHost = network.Ingress.MaskRequestHost
+		orchNetwork.Ingress.HttpsPorts = network.Ingress.HTTPSPorts
 	}
 
 	// Handle the case where internet access is explicitly disabled

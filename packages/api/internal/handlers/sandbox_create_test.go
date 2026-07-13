@@ -25,6 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
@@ -104,6 +105,40 @@ func TestValidateNetworkConfig(t *testing.T) {
 			name:    "empty network config is valid",
 			network: &api.SandboxNetworkConfig{},
 			wantErr: false,
+		},
+		{
+			name: "valid HTTPS ports",
+			network: &api.SandboxNetworkConfig{
+				HttpsPorts: &[]uint32{443, 8443},
+			},
+			wantErr: false,
+		},
+		{
+			name: "zero HTTPS port is invalid",
+			network: &api.SandboxNetworkConfig{
+				HttpsPorts: &[]uint32{0},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: "HTTPS port must be between 1 and 65535: 0",
+		},
+		{
+			name: "out-of-range HTTPS port is invalid",
+			network: &api.SandboxNetworkConfig{
+				HttpsPorts: &[]uint32{65536},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: "HTTPS port must be between 1 and 65535: 65536",
+		},
+		{
+			name: "envd HTTPS port is invalid",
+			network: &api.SandboxNetworkConfig{
+				HttpsPorts: &[]uint32{uint32(consts.DefaultEnvdServerPort)},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: fmt.Sprintf("HTTPS backend routing is not supported for reserved port %d", consts.DefaultEnvdServerPort),
 		},
 		{
 			name: "valid deny_out with CIDR",
@@ -300,6 +335,19 @@ func TestValidateNetworkConfig(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDBNetworkConfigToAPIHTTPSPorts(t *testing.T) {
+	t.Parallel()
+
+	httpsPorts := []uint32{443, 8443}
+	result := dbNetworkConfigToAPI(&dbtypes.SandboxNetworkConfig{
+		Ingress: &dbtypes.SandboxNetworkIngressConfig{HTTPSPorts: httpsPorts},
+	})
+
+	require.NotNil(t, result)
+	require.NotNil(t, result.HttpsPorts)
+	assert.Equal(t, httpsPorts, *result.HttpsPorts)
 }
 
 func TestOrchestrator_convertVolumeMounts(t *testing.T) {

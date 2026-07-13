@@ -97,8 +97,17 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				maskRequestHost = &h
 			}
 
+			scheme := "http"
+			for _, httpsPort := range ingress.GetHttpsPorts() {
+				if uint64(httpsPort) == port {
+					scheme = "https"
+
+					break
+				}
+			}
+
 			url := &url.URL{
-				Scheme: "http",
+				Scheme: scheme,
 				Host:   net.JoinHostPort(sbx.Slot.HostIPString(), strconv.FormatUint(port, 10)),
 			}
 
@@ -118,9 +127,10 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				IncludeSandboxIdInProxyErrorLogger: true,
 				// We need to include id unique to sandbox to prevent reuse of connection to the same IP:port pair by different sandboxes reusing the network slot.
 				// We are not using sandbox id to prevent removing connections based on sandbox id (pause/resume race condition).
-				ConnectionKey:   sbx.LifecycleID,
-				RequestLogger:   logger,
-				MaskRequestHost: maskRequestHost,
+				ConnectionKey:         sbx.LifecycleID,
+				RequestLogger:         logger,
+				MaskRequestHost:       maskRequestHost,
+				InsecureSkipTLSVerify: true,
 			}, nil
 		},
 		connLimitConfig,

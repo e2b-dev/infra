@@ -29,6 +29,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -212,6 +213,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 			Ingress: &types.SandboxNetworkIngressConfig{
 				AllowPublicAccess: n.AllowPublicTraffic,
 				MaskRequestHost:   n.MaskRequestHost,
+				HTTPSPorts:        sharedUtils.DerefOrDefault(n.HttpsPorts, nil),
 			},
 			Egress: &types.SandboxNetworkEgressConfig{
 				AllowedAddresses: sharedUtils.DerefOrDefault(n.AllowOut, nil),
@@ -629,6 +631,25 @@ func apiRulesToDBRules(apiRules *map[string][]api.SandboxNetworkRule) map[string
 func validateNetworkConfig(ctx context.Context, featureFlags featureFlagsClient, teamID uuid.UUID, envdVersion string, network *api.SandboxNetworkConfig) *api.APIError {
 	if network == nil {
 		return nil
+	}
+
+	if httpsPorts := network.HttpsPorts; httpsPorts != nil {
+		for _, port := range *httpsPorts {
+			if port == 0 || port > 65535 {
+				return &api.APIError{
+					Code:      http.StatusBadRequest,
+					Err:       fmt.Errorf("invalid HTTPS port %d", port),
+					ClientMsg: fmt.Sprintf("HTTPS port must be between 1 and 65535: %d", port),
+				}
+			}
+			if port == uint32(consts.DefaultEnvdServerPort) {
+				return &api.APIError{
+					Code:      http.StatusBadRequest,
+					Err:       fmt.Errorf("envd port cannot use HTTPS backend routing"),
+					ClientMsg: fmt.Sprintf("HTTPS backend routing is not supported for reserved port %d", port),
+				}
+			}
+		}
 	}
 
 	if maskRequestHost := network.MaskRequestHost; maskRequestHost != nil {

@@ -19,6 +19,7 @@ import (
 	sandboxredis "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 	teamtypes "github.com/e2b-dev/infra/packages/auth/pkg/types"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
+	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
@@ -96,6 +97,17 @@ func testTeam() *teamtypes.Team {
 			MaxLengthHours:     24,
 		},
 	}
+}
+
+func TestBuildNetworkConfigHTTPSPorts(t *testing.T) {
+	t.Parallel()
+
+	httpsPorts := []uint32{443, 8443}
+	network := buildNetworkConfig(&dbtypes.SandboxNetworkConfig{
+		Ingress: &dbtypes.SandboxNetworkIngressConfig{HTTPSPorts: httpsPorts},
+	}, nil, nil)
+
+	assert.Equal(t, httpsPorts, network.GetIngress().GetHttpsPorts())
 }
 
 // TestCreateSandbox_StaleDataAfterConcurrentPause exercises CreateSandbox with
