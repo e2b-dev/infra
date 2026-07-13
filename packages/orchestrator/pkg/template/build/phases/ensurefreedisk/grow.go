@@ -126,6 +126,11 @@ func (b *EnsureFreeDiskBuilder) measureFree(
 	if _, err := filesystem.ReplayJournal(ctx, device.path); err != nil {
 		return 0, fmt.Errorf("replay source journal: %w", err)
 	}
+	// Make the recovered block-group metadata visible from the backend before
+	// debugfs reopens the device and reads its free-space counters.
+	if err := device.mnt.Flush(ctx); err != nil {
+		return 0, fmt.Errorf("flush recovered source journal: %w", err)
+	}
 	free, err = filesystem.GetFreeSpace(ctx, device.path, blockSize)
 	if err != nil {
 		return 0, fmt.Errorf("measure source free space: %w", err)
