@@ -645,7 +645,7 @@ func validateNetworkConfig(ctx context.Context, featureFlags featureFlagsClient,
 			if port == uint32(consts.DefaultEnvdServerPort) {
 				return &api.APIError{
 					Code:      http.StatusBadRequest,
-					Err:       fmt.Errorf("envd port cannot use HTTPS backend routing"),
+					Err:       errors.New("envd port cannot use HTTPS backend routing"),
 					ClientMsg: fmt.Sprintf("HTTPS backend routing is not supported for reserved port %d", port),
 				}
 			}
