@@ -232,6 +232,9 @@ var (
 	// (Aug 1, 2026). Off by default. Evaluated per-user so rejection can be
 	// rolled out gradually via LD targeting.
 	DisableE2BAccessTokenAuthFlag = NewBoolFlag("disable-e2b-access-token-auth", false)
+
+	// BuildEnsureFreeDiskSpace grows the rootfs after build steps and before finalize.
+	BuildEnsureFreeDiskSpace = NewBoolFlag("build-ensure-free-disk-space", false)
 )
 
 // envdTimeoutFallbackMs reads ENVD_TIMEOUT (Go duration string, e.g. "10s")
