@@ -643,7 +643,7 @@ func TestCopyScriptBehavior(t *testing.T) { //nolint:paralleltest // no idea why
 			name:        "merge_directory_into_existing_tree",
 			description: "COPY rootfs/etc /etc: merge into a target directory that already has content",
 			files: map[string]string{
-				"etc/motd":                   "file",
+				"etc/motd":                  "file",
 				"etc/profile.d/test-env.sh": "file",
 			},
 			copyFrom: "etc/",
@@ -653,9 +653,9 @@ func TestCopyScriptBehavior(t *testing.T) { //nolint:paralleltest // no idea why
 			},
 			shouldSucceed: true,
 			expectedPaths: map[string]string{
-				"etc/motd":                   "file",
+				"etc/motd":                  "file",
 				"etc/profile.d/test-env.sh": "file",
-				"etc/profile.d/existing.sh":  "file",
+				"etc/profile.d/existing.sh": "file",
 			},
 		},
 		{
@@ -663,7 +663,7 @@ func TestCopyScriptBehavior(t *testing.T) { //nolint:paralleltest // no idea why
 			description: "COPY rootfs/ /: every top-level dir already exists in the target root",
 			files: map[string]string{
 				"rootfs/etc/profile.d/test-env.sh": "file",
-				"rootfs/usr/local/bin/tool":         "file",
+				"rootfs/usr/local/bin/tool":        "file",
 			},
 			copyFrom: "rootfs/",
 			copyTo:   ".",
@@ -673,7 +673,7 @@ func TestCopyScriptBehavior(t *testing.T) { //nolint:paralleltest // no idea why
 			},
 			shouldSucceed: true,
 			expectedPaths: map[string]string{
-				"etc/profile.d/test-env.sh":   "file",
+				"etc/profile.d/test-env.sh":    "file",
 				"etc/profile.d/00-existing.sh": "file",
 				"usr/local/bin/tool":           "file",
 				"usr/local/bin/existing-tool":  "file",
