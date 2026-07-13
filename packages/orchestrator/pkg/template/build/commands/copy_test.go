@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -118,6 +119,13 @@ func createFilesAndDirsWithContent(t *testing.T, baseDir string, paths map[strin
 			require.NoError(t, os.WriteFile(targetFile, []byte("symlink target"), 0o644))
 			require.NoError(t, os.Symlink(targetFile, fullPath))
 		default:
+			// "symlink:<target>" creates a symlink pointing at the given path
+			if target, ok := strings.CutPrefix(entryType, "symlink:"); ok {
+				require.NoError(t, os.MkdirAll(filepath.Dir(fullPath), 0o755))
+				require.NoError(t, os.Symlink(target, fullPath))
+
+				continue
+			}
 			t.Fatalf("Unknown entry type: %s", entryType)
 		}
 	}
@@ -138,6 +146,11 @@ func verifyFilesAndDirs(t *testing.T, baseDir string, paths map[string]string) {
 			info, err := os.Lstat(fullPath)
 			require.NoError(t, err, "Symlink %s should exist", path)
 			assert.Equal(t, os.ModeSymlink, info.Mode()&os.ModeSymlink, "%s should be a symlink", path)
+		case "regular":
+			// A regular file, NOT a symlink pointing at one
+			info, err := os.Lstat(fullPath)
+			require.NoError(t, err, "File %s should exist", path)
+			assert.True(t, info.Mode().IsRegular(), "%s should be a regular file, got %s", path, info.Mode())
 		default:
 			t.Fatalf("Unknown entry type: %s", entryType)
 		}
@@ -734,6 +747,48 @@ func TestCopyScriptBehavior(t *testing.T) { //nolint:paralleltest // no idea why
 			shouldSucceed: true,
 			expectedPaths: map[string]string{
 				"dest/config.json": "file",
+			},
+		},
+		{
+			name:        "replace_target_symlink_to_file",
+			description: "A source file replaces a destination symlink instead of writing through it",
+			files: map[string]string{
+				"etc/resolv.conf": "file",
+			},
+			copyFrom: "etc/",
+			copyTo:   "etc/",
+			preexistingTargetPaths: map[string]string{
+				// resolv.conf points outside the target tree (as on Ubuntu images)
+				"../real/resolv.conf": "file",
+				"etc/resolv.conf":     "symlink:../../real/resolv.conf",
+			},
+			shouldSucceed: true,
+			expectedPaths: map[string]string{
+				"etc/resolv.conf": "regular",
+			},
+			expectedContents: map[string]string{
+				"etc/resolv.conf": "dummy",
+				// The symlink's old target must not have been written through
+				"../real/resolv.conf": "preexisting",
+			},
+		},
+		{
+			name:        "follow_target_symlink_to_directory",
+			description: "A source directory merges through a destination directory symlink (usrmerge layout)",
+			files: map[string]string{
+				"lib/mylib.so": "file",
+			},
+			copyFrom: ".",
+			copyTo:   ".",
+			preexistingTargetPaths: map[string]string{
+				"usr/lib/existing.so": "file",
+				"lib":                 "symlink:usr/lib",
+			},
+			shouldSucceed: true,
+			expectedPaths: map[string]string{
+				"lib":                 "symlink",
+				"usr/lib/mylib.so":    "file",
+				"usr/lib/existing.so": "file",
 			},
 		},
 		{

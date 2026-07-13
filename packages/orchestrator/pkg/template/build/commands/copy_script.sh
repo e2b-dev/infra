@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -o pipefail
+
 targetPath="{{ .TargetPath }}"
 sourcePath="{{ .SourcePath }}"
 owner="{{ .Owner }}"
@@ -63,9 +65,11 @@ elif [ -d "$entry" ]; then
         chmod -R "$permissions" "$entry"
     fi
     mkdir -p "$targetPath"
-    # Copy children one by one so the target directory itself keeps its own
-    # metadata (Docker copies a directory's contents, never the directory)
-    find "$entry" -mindepth 1 -maxdepth 1 -exec cp -a -t "$targetPath" {} + || exit 1
+    # Merge via tar, matching Docker's tar-based COPY: unlike cp, it replaces
+    # destination file symlinks instead of writing through them, follows
+    # destination directory symlinks (usrmerge, e.g. /lib -> usr/lib), and
+    # keeps the metadata of the target directory and other existing dirs
+    (cd "$entry" && tar -cf - .) | tar -xf - -C "$targetPath" --keep-directory-symlink --no-overwrite-dir || exit 1
     # Restore write permissions so cleanup works even when a read-only
     # permissions argument was applied and we are not running as root
     chmod -R u+rwx "$entry"
