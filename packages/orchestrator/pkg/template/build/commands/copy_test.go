@@ -93,6 +93,12 @@ func renderTemplate(t *testing.T, data copyScriptData) string {
 // Values: "file", "dir", "symlink"
 func createFilesAndDirs(t *testing.T, baseDir string, paths map[string]string) {
 	t.Helper()
+	createFilesAndDirsWithContent(t, baseDir, paths, "dummy")
+}
+
+// createFilesAndDirsWithContent is createFilesAndDirs with custom file content
+func createFilesAndDirsWithContent(t *testing.T, baseDir string, paths map[string]string, content string) {
+	t.Helper()
 	for path, entryType := range paths {
 		fullPath := filepath.Join(baseDir, path)
 
@@ -103,7 +109,7 @@ func createFilesAndDirs(t *testing.T, baseDir string, paths map[string]string) {
 			// Ensure parent dir exists
 			dir := filepath.Dir(fullPath)
 			require.NoError(t, os.MkdirAll(dir, 0o755))
-			require.NoError(t, os.WriteFile(fullPath, []byte("dummy"), 0o644))
+			require.NoError(t, os.WriteFile(fullPath, []byte(content), 0o644))
 		case "symlink":
 			// Create symlink target outside the tree
 			dir := filepath.Dir(fullPath)
@@ -148,6 +154,10 @@ type testCase struct {
 	// Example: {"app/": "dir", "app/main.js": "file", "link": "symlink"}
 	files map[string]string
 
+	// Setup: paths pre-created in the target before the copy runs,
+	// to simulate copying over an existing filesystem tree
+	preexistingTargetPaths map[string]string
+
 	// Input: the path within the extracted files to copy from
 	// Examples: "." (root), "app/" (subdirectory), "src/main.js" (specific file)
 	copyFrom string
@@ -168,6 +178,12 @@ type testCase struct {
 
 	// Verification: what paths to check in the target with their types
 	expectedPaths map[string]string
+
+	// Verification: paths that must NOT exist in the target
+	absentPaths []string
+
+	// Verification: file contents to check in the target
+	expectedContents map[string]string
 }
 
 func TestParseCopyArgs(t *testing.T) {
@@ -624,6 +640,101 @@ func TestCopyScriptBehavior(t *testing.T) { //nolint:paralleltest // no idea why
 			},
 		},
 		{
+			name:        "merge_directory_into_existing_tree",
+			description: "COPY rootfs/etc /etc: merge into a target directory that already has content",
+			files: map[string]string{
+				"etc/motd":                   "file",
+				"etc/profile.d/test-env.sh": "file",
+			},
+			copyFrom: "etc/",
+			copyTo:   "etc/",
+			preexistingTargetPaths: map[string]string{
+				"etc/profile.d/existing.sh": "file",
+			},
+			shouldSucceed: true,
+			expectedPaths: map[string]string{
+				"etc/motd":                   "file",
+				"etc/profile.d/test-env.sh": "file",
+				"etc/profile.d/existing.sh":  "file",
+			},
+		},
+		{
+			name:        "merge_root_directory_into_existing_root",
+			description: "COPY rootfs/ /: every top-level dir already exists in the target root",
+			files: map[string]string{
+				"rootfs/etc/profile.d/test-env.sh": "file",
+				"rootfs/usr/local/bin/tool":         "file",
+			},
+			copyFrom: "rootfs/",
+			copyTo:   ".",
+			preexistingTargetPaths: map[string]string{
+				"etc/profile.d/00-existing.sh": "file",
+				"usr/local/bin/existing-tool":  "file",
+			},
+			shouldSucceed: true,
+			expectedPaths: map[string]string{
+				"etc/profile.d/test-env.sh":   "file",
+				"etc/profile.d/00-existing.sh": "file",
+				"usr/local/bin/tool":           "file",
+				"usr/local/bin/existing-tool":  "file",
+			},
+		},
+		{
+			name:        "overwrite_existing_file_in_target",
+			description: "Files that already exist in the target are overwritten",
+			files: map[string]string{
+				"etc/motd": "file",
+			},
+			copyFrom: "etc/",
+			copyTo:   "etc/",
+			preexistingTargetPaths: map[string]string{
+				"etc/motd": "file",
+			},
+			shouldSucceed: true,
+			expectedPaths: map[string]string{
+				"etc/motd": "file",
+			},
+			expectedContents: map[string]string{
+				"etc/motd": "dummy",
+			},
+		},
+		{
+			name:        "copy_directory_that_is_not_first_alphabetically",
+			description: "The entry named by the source path is copied, not the first entry in its parent",
+			files: map[string]string{
+				"project/components/Button.tsx": "file",
+				"project/utils/helpers.ts":      "file",
+			},
+			copyFrom:      "project/utils/",
+			copyTo:        "out/",
+			shouldSucceed: true,
+			expectedPaths: map[string]string{
+				"out/helpers.ts": "file",
+			},
+			absentPaths: []string{
+				"out/Button.tsx",
+				"out/components",
+			},
+		},
+		{
+			name:        "copy_file_that_is_not_first_alphabetically",
+			description: "The file named by the source path is copied, not the first entry in its parent",
+			files: map[string]string{
+				"assets/logo.png": "file",
+				"config.json":     "file",
+			},
+			copyFrom:      "config.json",
+			copyTo:        "dest/config.json",
+			shouldSucceed: true,
+			expectedPaths: map[string]string{
+				"dest/config.json": "file",
+			},
+			absentPaths: []string{
+				"dest/logo.png",
+				"dest/config.json/logo.png",
+			},
+		},
+		{
 			name:        "deeply_nested_folder",
 			description: "Deeply nested folder should be copied correctly",
 			files: map[string]string{
@@ -654,6 +765,11 @@ func TestCopyScriptBehavior(t *testing.T) { //nolint:paralleltest // no idea why
 			// Verify expected paths exist
 			if len(tc.files) > 0 {
 				verifyFilesAndDirs(t, unpackDir, tc.files)
+			}
+
+			// Pre-populate the target to simulate an existing filesystem tree
+			if len(tc.preexistingTargetPaths) > 0 {
+				createFilesAndDirsWithContent(t, targetBaseDir, tc.preexistingTargetPaths, "preexisting")
 			}
 
 			// Internal: construct SourcePath (sbxUnpackPath + user's copyFrom path)
@@ -699,6 +815,19 @@ func TestCopyScriptBehavior(t *testing.T) { //nolint:paralleltest // no idea why
 			// Verify expected paths exist
 			if len(tc.expectedPaths) > 0 {
 				verifyFilesAndDirs(t, targetBaseDir, tc.expectedPaths)
+			}
+
+			// Verify paths that must not exist in the target
+			for _, path := range tc.absentPaths {
+				assert.NoFileExists(t, filepath.Join(targetBaseDir, path), "Path %s should not exist", path)
+				assert.NoDirExists(t, filepath.Join(targetBaseDir, path), "Path %s should not exist", path)
+			}
+
+			// Verify file contents
+			for path, expectedContent := range tc.expectedContents {
+				content, err := os.ReadFile(filepath.Join(targetBaseDir, path))
+				require.NoError(t, err, "Failed to read file %s", path)
+				assert.Equal(t, expectedContent, string(content), "File %s content mismatch", path)
 			}
 
 			// Special verification for permissions tests

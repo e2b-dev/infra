@@ -28,11 +28,11 @@ fi
 
 cd "$sourceFolder" || exit 1
 
-# Get the first entry (file, directory, or symlink)
-entry=$(ls -A | head -n 1)
+# Get the entry (file, directory, or symlink) named by the source path
+entry="$(basename "$sourcePath")"
 
-if [ -z "$entry" ]; then
-    echo "Error: sourceFolder is empty"
+if [ ! -e "$entry" ] && [ ! -L "$entry" ]; then
+    echo "Error: source path does not exist: $sourcePath"
     exit 1
 fi
 
@@ -54,14 +54,17 @@ elif [ -f "$entry" ]; then
     mkdir -p "$(dirname "$targetPath")"
     mv "$entry" "$targetPath"
 elif [ -d "$entry" ]; then
-    # It's a directory – apply ownership/permissions recursively, then move contents
+    # It's a directory – apply ownership/permissions recursively, then merge
+    # its contents into the target (Docker COPY semantics: existing directories
+    # are merged into, existing files overwritten – mv can't merge into
+    # non-empty directories, so copy and remove the source instead)
     chown -R "$owner" "$entry"
     if [ -n "$permissions" ]; then
         chmod -R "$permissions" "$entry"
     fi
     mkdir -p "$targetPath"
-    # Move all contents including hidden files
-    find "$entry" -mindepth 1 -maxdepth 1 -exec mv {} "$targetPath/" \;
+    cp -a "$entry/." "$targetPath/" || exit 1
+    rm -rf "$entry"
 else
     echo "Error: entry is neither file, directory, nor symlink"
     exit 1
