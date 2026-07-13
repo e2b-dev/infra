@@ -44,10 +44,12 @@ func newProxyClient(
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		// Limit the max connection per host to avoid exhausting the number of available ports to one host.
-		MaxIdleConnsPerHost:   maxHostIdleConns,
-		MaxIdleConns:          maxIdleConns,
-		IdleConnTimeout:       idleTimeout,
-		TLSHandshakeTimeout:   0,
+		MaxIdleConnsPerHost: maxHostIdleConns,
+		MaxIdleConns:        maxIdleConns,
+		IdleConnTimeout:     idleTimeout,
+		// Bound the TLS handshake so a stalled HTTPS backend cannot hold a
+		// connection open indefinitely (response streaming is intentionally unbounded).
+		TLSHandshakeTimeout:   10 * time.Second,
 		ResponseHeaderTimeout: 0,
 		DisableKeepAlives:     disableKeepAlives,
 		ForceAttemptHTTP2:     false,
