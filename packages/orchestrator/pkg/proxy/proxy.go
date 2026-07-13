@@ -19,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
@@ -35,6 +36,18 @@ const (
 )
 
 var _ sandbox.MapSubscriber = (*SandboxProxy)(nil)
+
+// schemeForPort returns the backend scheme for a sandbox port: "https" when the
+// port is configured in the ingress HTTPS ports, "http" otherwise.
+func schemeForPort(ingress *orchestrator.SandboxNetworkIngressConfig, port uint64) string {
+	for _, httpsPort := range ingress.GetHttpsPorts() {
+		if uint64(httpsPort) == port {
+			return "https"
+		}
+	}
+
+	return "http"
+}
 
 type SandboxProxy struct {
 	proxy   *reverseproxy.Proxy
@@ -97,17 +110,8 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				maskRequestHost = &h
 			}
 
-			scheme := "http"
-			for _, httpsPort := range ingress.GetHttpsPorts() {
-				if uint64(httpsPort) == port {
-					scheme = "https"
-
-					break
-				}
-			}
-
 			url := &url.URL{
-				Scheme: scheme,
+				Scheme: schemeForPort(ingress, port),
 				Host:   net.JoinHostPort(sbx.Slot.HostIPString(), strconv.FormatUint(port, 10)),
 			}
 
