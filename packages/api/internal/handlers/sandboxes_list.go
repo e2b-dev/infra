@@ -152,8 +152,16 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 
 	// Sort direction by start time. Defaults to descending (newest first).
 	order := utils.SortDesc
-	if params.Order != nil && *params.Order == api.Asc {
-		order = utils.SortAsc
+	if params.Order != nil {
+		if !params.Order.Valid() {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid order parameter: %s", *params.Order))
+
+			return
+		}
+
+		if *params.Order == api.Asc {
+			order = utils.SortAsc
+		}
 	}
 
 	// Initialize pagination
