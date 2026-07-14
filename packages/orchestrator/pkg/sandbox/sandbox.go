@@ -352,6 +352,7 @@ type Factory struct {
 	hostStatsDelivery hoststats.Delivery
 	cgroupManager     cgroup.Manager
 	egressProxy       network.EgressProxy
+	startHook         StartHook
 }
 
 func NewFactory(
@@ -362,8 +363,13 @@ func NewFactory(
 	hostStatsDelivery hoststats.Delivery,
 	cgroupManager cgroup.Manager,
 	egressProxy network.EgressProxy,
+	startHook StartHook,
 	sandboxes *Map,
 ) *Factory {
+	if startHook == nil {
+		startHook = NoopStartHook{}
+	}
+
 	return &Factory{
 		Sandboxes:         sandboxes,
 		config:            config,
@@ -373,6 +379,53 @@ func NewFactory(
 		hostStatsDelivery: hostStatsDelivery,
 		cgroupManager:     cgroupManager,
 		egressProxy:       egressProxy,
+		startHook:         startHook,
+	}
+}
+
+// startHookTimeout bounds every StartHook.BeforeStart call, real-time,
+// regardless of whether the implementation itself honors context
+// cancellation. Deliberately not configurable: BeforeStart is documented to
+// do local, bounded work only, and a tunable timeout would just give a
+// slower implementation a knob to lean on instead of a reason to be fast.
+// If 2s is ever too tight for legitimate local work, that's a sign the
+// constant needs raising for everyone, not a per-deployment setting.
+const startHookTimeout = 2 * time.Second
+
+// runStartHook invokes the configured StartHook with real, enforced
+// boundedness and never lets it fail or delay the caller: BeforeStart runs
+// in its own goroutine, which may still be running (or permanently stuck)
+// when runStartHook returns — the caller proceeds regardless. A panic
+// inside BeforeStart is recovered and logged, not propagated.
+func (f *Factory) runStartHook(ctx context.Context, sbx *Sandbox, reason StartReason) {
+	hookCtx, cancel := context.WithTimeout(ctx, startHookTimeout)
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer func() {
+			if r := recover(); r != nil {
+				logger.L().Error(ctx, "sandbox start hook panicked, continuing",
+					logger.WithSandboxID(sbx.Runtime.SandboxID),
+					logger.WithLifecycleID(sbx.LifecycleID),
+					zap.Any("panic", r))
+			}
+		}()
+		if err := f.startHook.BeforeStart(hookCtx, sbx, reason); err != nil {
+			logger.L().Warn(ctx, "sandbox start hook failed, continuing",
+				logger.WithSandboxID(sbx.Runtime.SandboxID),
+				logger.WithLifecycleID(sbx.LifecycleID),
+				zap.Error(err))
+		}
+	}()
+
+	select {
+	case <-done:
+	case <-hookCtx.Done():
+		logger.L().Warn(ctx, "sandbox start hook did not complete before timeout, proceeding without waiting further",
+			logger.WithSandboxID(sbx.Runtime.SandboxID),
+			logger.WithLifecycleID(sbx.LifecycleID))
 	}
 }
 
@@ -393,6 +446,7 @@ type PreBootFn func(ctx context.Context, rootfsPath string) error
 
 type createOptions struct {
 	deferMarkRunning bool
+	startReason      StartReason
 }
 
 type CreateOption func(*createOptions)
@@ -403,6 +457,10 @@ type CreateOption func(*createOptions)
 // routable until envd answers.
 func WithDeferredMarkRunning() CreateOption {
 	return func(o *createOptions) { o.deferMarkRunning = true }
+}
+
+func withStartReason(reason StartReason) CreateOption {
+	return func(o *createOptions) { o.startReason = reason }
 }
 
 // CreateSandbox creates the sandbox.
@@ -423,7 +481,7 @@ func (f *Factory) CreateSandbox(
 	defer span.End()
 	defer handleSpanError(span, &e)
 
-	var createOpts createOptions
+	createOpts := createOptions{startReason: StartReasonCreate}
 	for _, opt := range opts {
 		opt(&createOpts)
 	}
@@ -589,6 +647,8 @@ func (f *Factory) CreateSandbox(
 
 		return nil
 	})
+
+	f.runStartHook(ctx, sbx, createOpts.startReason)
 
 	initializeHostStatsCollector(execCtx, sbx, runtime, config, f.hostStatsDelivery)
 
@@ -1013,6 +1073,12 @@ func (f *Factory) ResumeSandbox(
 
 		return nil
 	})
+
+	reason := StartReasonResume
+	if ropts.skipLiveRegistration {
+		reason = StartReasonThrowawayResume
+	}
+	f.runStartHook(ctx, sbx, reason)
 
 	// A throwaway also skips host-stats collection, so it emits no per-sandbox
 	// host stats under its (unregistered) identity — consistent with not being in
