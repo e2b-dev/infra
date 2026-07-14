@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"sync"
 	"time"
@@ -1236,6 +1237,7 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 
 type pauseOptions struct {
 	filesystemSnapshot bool
+	filesystemSibling  uuid.UUID
 }
 
 type PauseOption func(*pauseOptions)
@@ -1246,6 +1248,15 @@ type PauseOption func(*pauseOptions)
 // The default (no option) is a full memory snapshot.
 func WithFilesystemSnapshot() PauseOption {
 	return func(o *pauseOptions) { o.filesystemSnapshot = true }
+}
+
+// WithFilesystemSibling makes a memory pause additionally derive a
+// filesystem-only sibling snapshot under the given build ID (see
+// Snapshot.FilesystemSibling): a separate build that shares this pause's
+// rootfs data through header references and carries no memory snapshot, so it
+// is resumed by cold boot. Mutually exclusive with WithFilesystemSnapshot.
+func WithFilesystemSibling(buildID uuid.UUID) PauseOption {
+	return func(o *pauseOptions) { o.filesystemSibling = buildID }
 }
 
 // Pause creates a snapshot of the sandbox.
@@ -1274,9 +1285,13 @@ func (s *Sandbox) Pause(
 	for _, opt := range opts {
 		opt(&pauseOpts)
 	}
+	if pauseOpts.filesystemSnapshot && pauseOpts.filesystemSibling != uuid.Nil {
+		return nil, errors.New("filesystem-only snapshot cannot also derive a filesystem sibling")
+	}
 
 	ctx, span := tracer.Start(ctx, "sandbox-snapshot", trace.WithAttributes(
 		attribute.Bool("fs-only-snapshot", pauseOpts.filesystemSnapshot),
+		attribute.Bool("fs-sibling-snapshot", pauseOpts.filesystemSibling != uuid.Nil),
 	))
 	defer span.End()
 
@@ -1328,6 +1343,15 @@ func (s *Sandbox) Pause(
 
 		// Memory prefetch refers to the memfile, which is not persisted.
 		m.Prefetch = nil
+	} else if pauseOpts.filesystemSibling != uuid.Nil {
+		// The sibling is cold-booted from the rootfs alone, so the guest page
+		// cache must be flushed before pause or the sibling would miss
+		// acknowledged writes. Sync instead of fsfreeze: this memory snapshot
+		// IS resumed, and RAM captured with a frozen filesystem would resume
+		// frozen, wedging every write until an explicit thaw.
+		if err := s.guestSync(ctx, s.guestSyncTimeout(ctx)); err != nil {
+			return nil, fmt.Errorf("guest sync before filesystem sibling snapshot: %w", err)
+		}
 	}
 
 	// Record the snapshot kind in metadata so the resume path picks reboot vs
@@ -1428,7 +1452,7 @@ func (s *Sandbox) Pause(
 		return nil, err
 	}
 
-	return &Snapshot{
+	snapshot := &Snapshot{
 		Snapfile:           snapfile,
 		Metafile:           metadataFileLink,
 		MemorySnapshot:     mem,
@@ -1440,6 +1464,73 @@ func (s *Sandbox) Pause(
 
 		BuildID: buildID,
 
+		cleanup: cleanup,
+	}
+
+	if pauseOpts.filesystemSibling != uuid.Nil {
+		sibling, err := s.deriveFilesystemSibling(ctx, cleanup, m, rootfsHeader, pauseOpts.filesystemSibling)
+		if err != nil {
+			return nil, fmt.Errorf("derive filesystem sibling snapshot: %w", err)
+		}
+		snapshot.FilesystemSibling = sibling
+	}
+
+	return snapshot, nil
+}
+
+// deriveFilesystemSibling builds the filesystem-only sibling of a memory
+// pause (see WithFilesystemSibling): a snapshot under its own build ID whose
+// rootfs header maps every block to the memory build's data (next generation,
+// no data of its own) and whose memory snapshot is empty, so it is resumed by
+// cold boot. Its upload therefore waits on the memory build's upload future.
+func (s *Sandbox) deriveFilesystemSibling(
+	ctx context.Context,
+	cleanup *Cleanup,
+	m metadata.Template,
+	rootfsHeader *header.Header,
+	buildID uuid.UUID,
+) (*Snapshot, error) {
+	cachePaths, err := storage.Paths{BuildID: buildID.String()}.Cache(s.config.StorageConfig)
+	if err != nil {
+		return nil, fmt.Errorf("create sibling cache paths: %w", err)
+	}
+	cleanup.AddNoContext(ctx, cachePaths.Close)
+
+	siblingHeader := &header.Header{
+		Metadata:                rootfsHeader.Metadata.NextGeneration(buildID),
+		Builds:                  maps.Clone(rootfsHeader.Builds),
+		Mapping:                 rootfsHeader.Mapping,
+		IncompletePendingUpload: true,
+	}
+
+	// SameVersionTemplate drops the memory build's prefetch (refers to its
+	// memfile) and filesystem-only mark, which is then set for the sibling.
+	siblingTemplate := m.Template
+	siblingTemplate.BuildID = buildID.String()
+	siblingMeta := m.SameVersionTemplate(siblingTemplate).MarkFilesystemOnly(true)
+
+	metafile := template.NewLocalFileLink(cachePaths.CacheMetadata())
+	cleanup.AddNoContext(ctx, metafile.Close)
+	if err := siblingMeta.ToFile(metafile.Path()); err != nil {
+		return nil, fmt.Errorf("write sibling metadata: %w", err)
+	}
+
+	return &Snapshot{
+		// No snapfile: a filesystem-only build is resumed by reboot, and unlike a
+		// filesystem-only pause there is no FC snapfile of its own to cache.
+		Snapfile:           nil,
+		Metafile:           metafile,
+		MemorySnapshot:     MemorySnapshot{Diff: &build.NoDiff{}, DiffHeader: NewResolvedDiffHeader(nil)},
+		RootfsDiff:         &build.NoDiff{},
+		RootfsDiffHeader:   NewResolvedDiffHeader(siblingHeader),
+		SchedulingMetadata: scheduling.FromHeaders(buildID, nil, siblingHeader, 0),
+		FilesystemSnapshot: true,
+		RootfsBlockSize:    rootfsHeader.Metadata.BlockSize,
+
+		BuildID: buildID,
+
+		// The parent snapshot's cleanup owns the sibling's files: a failed pause
+		// runs it once for both, and on success ownership moves to the caches.
 		cleanup: cleanup,
 	}, nil
 }

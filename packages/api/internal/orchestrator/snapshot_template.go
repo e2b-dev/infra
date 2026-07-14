@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -32,6 +33,11 @@ type SnapshotTemplateOpts struct {
 	Namespace *string
 	// Tag is the build tag parsed from the name, defaults to "default".
 	Tag string
+	// FilesystemOnly makes the snapshot template persist only the filesystem:
+	// its build is derived from the memory checkpoint (sharing its rootfs data)
+	// and sandboxes created from it cold-boot. The source sandbox still gets a
+	// full memory checkpoint and resumes with its memory intact.
+	FilesystemOnly bool
 }
 
 // CreateSnapshotTemplate creates a persistent snapshot template from a running sandbox and immediately resumes it.
@@ -69,16 +75,33 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 		return SnapshotTemplateResult{}, fmt.Errorf("node '%s' not found", sbx.NodeID)
 	}
 
-	// Snapshot templates are always memory snapshots; filesystem-only checkpoint
-	// (resume-in-place would need a reboot) is not supported yet.
+	// The sandbox's own snapshot row is always a full memory snapshot, even for
+	// a filesystem-only template: the sandbox is memory-resumed from it and it
+	// can be memory-resumed again later (auto-resume included).
 	upsertResult, err := o.throttledUpsertSnapshot(ctx, buildUpsertSnapshotParams(sbx, node, false))
 	if err != nil {
 		return SnapshotTemplateResult{}, fmt.Errorf("error upserting snapshot: %w", err)
 	}
+	buildIDs := []uuid.UUID{upsertResult.BuildID}
 
-	snapshotTemplateEnvID, err := o.resolveOrCreateSnapshotTemplate(ctx, sandboxID, teamID, upsertResult.BuildID, sbx.NodeID, sbx.ClusterID, opts)
+	// A filesystem-only template gets its own derived build that shares the
+	// memory checkpoint's rootfs data via header references but carries no
+	// memory snapshot, so sandboxes created from it cold-boot. Otherwise the
+	// template reuses the memory build directly.
+	templateBuildID := upsertResult.BuildID
+	if opts.FilesystemOnly {
+		templateBuildID, err = o.sqlcDB.CreateSnapshotTemplateBuild(ctx, buildSnapshotTemplateBuildParams(sbx, node))
+		if err != nil {
+			o.failSnapshotBuilds(ctx, buildIDs, err)
+
+			return SnapshotTemplateResult{}, fmt.Errorf("error creating filesystem-only template build: %w", err)
+		}
+		buildIDs = append(buildIDs, templateBuildID)
+	}
+
+	snapshotTemplateEnvID, err := o.resolveOrCreateSnapshotTemplate(ctx, sandboxID, teamID, templateBuildID, sbx.NodeID, sbx.ClusterID, opts)
 	if err != nil {
-		o.failSnapshotBuild(ctx, upsertResult.BuildID, err)
+		o.failSnapshotBuilds(ctx, buildIDs, err)
 
 		return SnapshotTemplateResult{}, err
 	}
@@ -87,14 +110,23 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 	// orchestrator with the same ExecutionID. On error the orchestrator
 	// kills the sandbox itself; RemoveSandbox is still needed to clean up
 	// API-side state (store, routing, analytics).
-	client, childCtx := node.GetClient(ctx)
-	_, err = client.Sandbox.Checkpoint(childCtx, &orchestrator.SandboxCheckpointRequest{
+	checkpointReq := &orchestrator.SandboxCheckpointRequest{
 		SandboxId: sbx.SandboxID,
 		BuildId:   upsertResult.BuildID.String(),
 		Metadata:  map[string]string{storageopts.ObjectMetadataTemplateID: snapshotTemplateEnvID},
-	})
+	}
+	if opts.FilesystemOnly {
+		// The memory build belongs to the sandbox's own snapshot env (like a
+		// pause build); the derived build is the one owned by the template env.
+		checkpointReq.Metadata = map[string]string{storageopts.ObjectMetadataTemplateID: upsertResult.TemplateID}
+		checkpointReq.FilesystemBuildId = templateBuildID.String()
+		checkpointReq.FilesystemMetadata = map[string]string{storageopts.ObjectMetadataTemplateID: snapshotTemplateEnvID}
+	}
+
+	client, childCtx := node.GetClient(ctx)
+	_, err = client.Sandbox.Checkpoint(childCtx, checkpointReq)
 	if err != nil {
-		o.failSnapshotBuild(ctx, upsertResult.BuildID, err)
+		o.failSnapshotBuilds(ctx, buildIDs, err)
 
 		// Complete the snapshotting transition with error — leaves state as
 		// Snapshotting (no restore to Running) and clears the transition key
@@ -109,14 +141,16 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 	}
 
 	now := time.Now()
-	err = o.sqlcDB.UpdateEnvBuildStatus(ctx, queries.UpdateEnvBuildStatusParams{
-		Status:     types.BuildStatusUploaded,
-		FinishedAt: &now,
-		Reason:     types.BuildReason{},
-		BuildID:    upsertResult.BuildID,
-	})
-	if err != nil {
-		return SnapshotTemplateResult{}, fmt.Errorf("error updating build status: %w", err)
+	for _, buildID := range buildIDs {
+		err = o.sqlcDB.UpdateEnvBuildStatus(ctx, queries.UpdateEnvBuildStatusParams{
+			Status:     types.BuildStatusUploaded,
+			FinishedAt: &now,
+			Reason:     types.BuildReason{},
+			BuildID:    buildID,
+		})
+		if err != nil {
+			return SnapshotTemplateResult{}, fmt.Errorf("error updating build status: %w", err)
+		}
 	}
 
 	o.snapshotCache.Invalidate(context.WithoutCancel(ctx), sandboxID)
@@ -125,19 +159,39 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 
 	return SnapshotTemplateResult{
 		TemplateID: snapshotTemplateEnvID,
-		BuildID:    upsertResult.BuildID,
+		BuildID:    templateBuildID,
 	}, nil
 }
 
-func (o *Orchestrator) failSnapshotBuild(ctx context.Context, buildID uuid.UUID, cause error) {
-	err := o.sqlcDB.UpdateEnvBuildStatus(ctx, queries.UpdateEnvBuildStatusParams{
-		Status:     types.BuildStatusFailed,
-		FinishedAt: new(time.Now()),
-		Reason:     types.BuildReason{Message: cause.Error()},
-		BuildID:    buildID,
-	})
-	if err != nil {
-		telemetry.ReportError(ctx, "error failing build", err)
+// buildSnapshotTemplateBuildParams mirrors buildUpsertSnapshotParams' build
+// fields for the derived filesystem-only template build: same shape and CPU
+// pinning to the source build, just not tied to the sandbox's snapshot env.
+func buildSnapshotTemplateBuildParams(sbx sandbox.Sandbox, node *nodemanager.Node) queries.CreateSnapshotTemplateBuildParams {
+	return queries.CreateSnapshotTemplateBuildParams{
+		Vcpu:               sbx.VCpu,
+		RamMb:              sbx.RamMB,
+		FreeDiskSizeMb:     0,
+		KernelVersion:      sbx.KernelVersion,
+		FirecrackerVersion: sbx.FirecrackerVersion,
+		EnvdVersion:        &sbx.EnvdVersion,
+		Status:             types.BuildStatusSnapshotting,
+		OriginNodeID:       &node.ID,
+		TotalDiskSizeMb:    &sbx.TotalDiskSizeMB,
+		SourceBuildID:      sbx.BuildID,
+	}
+}
+
+func (o *Orchestrator) failSnapshotBuilds(ctx context.Context, buildIDs []uuid.UUID, cause error) {
+	for _, buildID := range buildIDs {
+		err := o.sqlcDB.UpdateEnvBuildStatus(ctx, queries.UpdateEnvBuildStatusParams{
+			Status:     types.BuildStatusFailed,
+			FinishedAt: new(time.Now()),
+			Reason:     types.BuildReason{Message: cause.Error()},
+			BuildID:    buildID,
+		})
+		if err != nil {
+			telemetry.ReportError(ctx, "error failing build", err)
+		}
 	}
 }
 

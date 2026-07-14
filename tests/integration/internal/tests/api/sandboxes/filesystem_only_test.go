@@ -168,6 +168,87 @@ func TestSandboxResume_FilesystemOnlyReboots(t *testing.T) {
 		"default workdir after a filesystem-only reboot must be the template user's home")
 }
 
+// TestSnapshotTemplate_FilesystemOnly verifies the filesystem-only variant of
+// the snapshot endpoint (memory:false): the returned template persists only the
+// rootfs, so a sandbox created from it cold-boots from the captured filesystem,
+// while the source sandbox is memory-checkpointed and resumes with its memory
+// intact — an unchanged kernel boot id proves it was not rebooted.
+func TestSnapshotTemplate_FilesystemOnly(t *testing.T) {
+	t.Parallel()
+	c := setup.GetAPIClient()
+	ctx := t.Context()
+
+	// Generous timeout: the checkpoint resume goes through placement, and under
+	// parallel load a short timeout could expire the end time before it runs.
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false), utils.WithTimeout(300))
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	bootBefore, err := utils.ExecCommandAsRootWithOutput(t, ctx, sbx, envdClient,
+		"cat", "/proc/sys/kernel/random/boot_id")
+	require.NoError(t, err)
+	bootBefore = strings.TrimSpace(bootBefore)
+	require.NotEmpty(t, bootBefore)
+
+	const marker = "fs-only-snapshot-marker"
+	err = utils.ExecCommandAsRoot(t, ctx, sbx, envdClient,
+		"/bin/sh", "-c", "echo "+marker+" > /home/user/fs-only-snapshot-marker.txt")
+	require.NoError(t, err)
+
+	memory := false
+	resp, err := c.PostSandboxesSandboxIDSnapshotsWithResponse(ctx, sbx.SandboxID,
+		api.PostSandboxesSandboxIDSnapshotsJSONRequestBody{Memory: &memory}, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, resp.StatusCode(),
+		"filesystem-only snapshot should succeed, body: %s", string(resp.Body))
+	require.NotNil(t, resp.JSON201)
+	snapshot := resp.JSON201
+	t.Cleanup(func() {
+		c.DeleteTemplatesTemplateIDWithResponse(t.Context(), snapshot.SnapshotID, setup.WithAPIKey())
+	})
+
+	// The source sandbox must come back running with its rootfs intact.
+	res, err := c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.NotNil(t, res.JSON200)
+	assert.Equal(t, api.Running, res.JSON200.State)
+
+	got, err := utils.ExecCommandAsRootWithOutput(t, ctx, sbx, envdClient,
+		"cat", "/home/user/fs-only-snapshot-marker.txt")
+	require.NoError(t, err)
+	assert.Equal(t, marker, strings.TrimSpace(got), "rootfs marker must survive the checkpoint")
+
+	// An unchanged boot id proves the source sandbox was memory-resumed, not
+	// rebooted: only the returned template is filesystem-only.
+	bootAfter, err := utils.ExecCommandAsRootWithOutput(t, ctx, sbx, envdClient,
+		"cat", "/proc/sys/kernel/random/boot_id")
+	require.NoError(t, err)
+	assert.Equal(t, bootBefore, strings.TrimSpace(bootAfter),
+		"boot id must not change — a filesystem-only snapshot memory-resumes the source sandbox")
+
+	// A sandbox created from the filesystem-only template cold-boots from the
+	// captured rootfs, so the marker must be there.
+	newSbx := utils.SetupSandboxWithCleanup(t, c,
+		utils.WithTemplateID(snapshot.SnapshotID),
+		utils.WithAutoPause(false),
+		utils.WithTimeout(120),
+	)
+	assert.NotEqual(t, sbx.SandboxID, newSbx.SandboxID)
+
+	gotNew, err := utils.ExecCommandAsRootWithOutput(t, ctx, newSbx, envdClient,
+		"cat", "/home/user/fs-only-snapshot-marker.txt")
+	require.NoError(t, err)
+	assert.Equal(t, marker, strings.TrimSpace(gotNew),
+		"marker must be present in a sandbox created from the filesystem-only snapshot")
+
+	// A fresh boot id in the new sandbox proves it cold-booted from disk rather
+	// than restoring the source's memory state.
+	newBoot, err := utils.ExecCommandAsRootWithOutput(t, ctx, newSbx, envdClient,
+		"cat", "/proc/sys/kernel/random/boot_id")
+	require.NoError(t, err)
+	assert.NotEqual(t, bootBefore, strings.TrimSpace(newBoot),
+		"a sandbox created from a filesystem-only snapshot must cold-boot")
+}
+
 // TestSandboxAutoPause_FilesystemOnly verifies the auto-pause filesystem-only
 // path: a sandbox created with autoPauseMemory=false is auto-paused on timeout
 // as a filesystem-only snapshot (no memory), so resuming it cold-boots from the

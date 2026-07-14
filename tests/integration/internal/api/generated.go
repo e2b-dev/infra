@@ -983,6 +983,9 @@ type SandboxRefreshRequest struct {
 
 // SandboxSnapshotRequest defines model for SandboxSnapshotRequest.
 type SandboxSnapshotRequest struct {
+	// Memory Whether the snapshot template captures the sandbox's memory. When false, the template persists only the filesystem (a filesystem-only snapshot): sandboxes created from it cold-boot (reboot) from disk instead of restoring in-memory state. The source sandbox itself is unaffected either way — it is checkpointed with memory and resumes with its processes and memory intact. Defaults to true.
+	Memory *bool `json:"memory,omitempty"`
+
 	// Name Optional name for the snapshot template. If a snapshot template with this name already exists, a new build will be assigned to the existing template instead of creating a new one.
 	Name *string `json:"name,omitempty"`
 }

@@ -651,7 +651,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	defer s.stopSandboxAsync(context.WithoutCancel(ctx), sbx)
 
 	// Fire and forget - upload completes in the background
-	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId(), map[string]string{storage.ObjectMetadataTemplateID: in.GetTemplateId()}, storage.ObjectOriginPause, in.GetFilesystemOnly())
+	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId(), map[string]string{storage.ObjectMetadataTemplateID: in.GetTemplateId()}, storage.ObjectOriginPause, in.GetFilesystemOnly(), nil)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error snapshotting sandbox", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
@@ -743,6 +743,17 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		return nil, status.Errorf(codes.FailedPrecondition, "%s", err.Error())
 	}
 
+	// A filesystem-only snapshot template is a derived sibling of the memory
+	// checkpoint build (see SandboxCheckpointRequest.filesystem_build_id).
+	var fsSibling *filesystemSiblingSpec
+	if fsID := in.GetFilesystemBuildId(); fsID != "" {
+		parsed, err := uuid.Parse(fsID)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid filesystem build id '%s': %s", fsID, err)
+		}
+		fsSibling = &filesystemSiblingSpec{buildID: parsed, provenance: in.GetFilesystemMetadata()}
+	}
+
 	// Acquire the starting semaphore before resuming, same as Create/Pause.
 	if err := s.waitForAcquire(ctx); err != nil {
 		return nil, err
@@ -763,9 +774,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 	sbxlogger.E(sbx).Info(ctx, "Checkpointing sandbox")
 
-	// Checkpoint always takes a full memory snapshot; filesystem-only checkpoint
-	// (resume-in-place would need to reboot) is not supported yet.
-	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId(), in.GetMetadata(), storage.ObjectOriginSnapshotTemplate, false)
+	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId(), in.GetMetadata(), storage.ObjectOriginSnapshotTemplate, false, fsSibling)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error snapshotting sandbox for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
@@ -830,10 +839,37 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		}
 	}
 
-	if s.featureFlags.BoolFlag(ctx, featureflags.PeerToPeerAsyncCheckpointFlag) {
+	switch {
+	case res.filesystemSibling != nil:
+		// The sibling's header references the memory build's data and its upload
+		// waits on that build's upload future, so run the two sequentially and
+		// synchronously — the sibling upload is header + metadata only, KB-scale.
+		// On failure tear down the resumed sandbox, same as the plain sync path.
+		uploadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uploadTimeout)
+		defer cancel()
+
+		err := res.upload.Run(uploadCtx)
+		res.completeUpload(uploadCtx, err)
+		if err == nil {
+			err = res.filesystemSibling.upload.Run(uploadCtx)
+			res.filesystemSibling.completeUpload(uploadCtx, err)
+		} else {
+			// Finish the sibling's upload future so nothing waits on it forever.
+			res.filesystemSibling.completeUpload(uploadCtx, fmt.Errorf("memory build upload failed: %w", err))
+		}
+
+		if err != nil {
+			telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
+
+			s.sandboxFactory.Sandboxes.MarkStopping(ctx, resumedSbx.Runtime.SandboxID, resumedSbx.LifecycleID)
+			s.stopSandboxAsync(context.WithoutCancel(ctx), resumedSbx)
+
+			return nil, status.Errorf(codes.Internal, "error uploading snapshot for checkpoint '%s': %s", in.GetSandboxId(), err)
+		}
+	case s.featureFlags.BoolFlag(ctx, featureflags.PeerToPeerAsyncCheckpointFlag):
 		// Async: return immediately; peer nodes can pull chunks from us during the upload window.
 		s.uploadSnapshotAsync(ctx, resumedSbx, res)
-	} else {
+	default:
 		// Sync: wait for upload before returning so a failed upload is surfaced to the caller.
 		// On failure, tear down the resumed sandbox — without a persisted snapshot it cannot
 		// be paused or resumed later.
@@ -906,6 +942,20 @@ type snapshotResult struct {
 	// with. The prefetch harvest reuses it verbatim when re-uploading the
 	// metadata object, so the two can never drift.
 	objectMetadata storage.ObjectMetadata
+
+	// filesystemSibling is the derived filesystem-only sibling build's result
+	// (nil unless requested; its meta field is left zero). Its upload waits on
+	// this build's upload future, so Run it only after this build's upload has
+	// been completed with completeUpload.
+	filesystemSibling *snapshotResult
+}
+
+// filesystemSiblingSpec asks snapshotAndCacheSandbox to additionally derive a
+// filesystem-only sibling build of the memory snapshot — the snapshot-template
+// build of a memory:false snapshot — and prepare its cache entry and upload.
+type filesystemSiblingSpec struct {
+	buildID    uuid.UUID
+	provenance map[string]string
 }
 
 // snapshotAndCacheSandbox creates a snapshot of a sandbox and adds it to the
@@ -918,6 +968,7 @@ func (s *Server) snapshotAndCacheSandbox(
 	provenance map[string]string,
 	buildOrigin storage.ObjectOrigin,
 	filesystemOnly bool,
+	fsSibling *filesystemSiblingSpec,
 ) (*snapshotResult, error) {
 	meta, err := sbx.Template.Metadata()
 	if err != nil {
@@ -933,6 +984,9 @@ func (s *Server) snapshotAndCacheSandbox(
 	var pauseOpts []sandbox.PauseOption
 	if filesystemOnly {
 		pauseOpts = append(pauseOpts, sandbox.WithFilesystemSnapshot())
+	}
+	if fsSibling != nil {
+		pauseOpts = append(pauseOpts, sandbox.WithFilesystemSibling(fsSibling.buildID))
 	}
 
 	snapshot, err := sbx.Pause(ctx, meta, sandbox.SnapshotUseCasePause, pauseOpts...)
@@ -999,12 +1053,67 @@ func (s *Server) snapshotAndCacheSandbox(
 		}
 	}
 
-	return &snapshotResult{
+	res := &snapshotResult{
 		meta:               meta,
 		schedulingMetadata: snapshot.SchedulingMetadata,
 		upload:             upload,
 		completeUpload:     completeUpload,
 		objectMetadata:     objectMetadata,
+	}
+
+	if sibling := snapshot.FilesystemSibling; sibling != nil {
+		res.filesystemSibling, err = s.registerFilesystemSibling(ctx, sbx, sibling, fsSibling.provenance, buildOrigin)
+		if err != nil {
+			return nil, fmt.Errorf("register filesystem sibling: %w", err)
+		}
+	}
+
+	return res, nil
+}
+
+// registerFilesystemSibling adds the derived filesystem-only sibling snapshot
+// (see sandbox.WithFilesystemSibling) to the local template cache and registers
+// its upload — a header + metadata upload only, since the sibling shares the
+// memory build's rootfs data. No peer-to-peer chunk registration: the sibling
+// has no data of its own to serve.
+func (s *Server) registerFilesystemSibling(
+	ctx context.Context,
+	sbx *sandbox.Sandbox,
+	snap *sandbox.Snapshot,
+	provenance map[string]string,
+	buildOrigin storage.ObjectOrigin,
+) (*snapshotResult, error) {
+	err := s.templateCache.AddSnapshot(
+		ctx,
+		snap.BuildID.String(),
+		snap.MemorySnapshot.DiffHeader,
+		snap.RootfsDiffHeader,
+		snap.Snapfile,
+		snap.Metafile,
+		snap.MemorySnapshot.Diff,
+		snap.RootfsDiff,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error adding sibling snapshot to template cache: %w", err)
+	}
+
+	objectMetadata := storage.ObjectMetadata{}
+	maps.Copy(objectMetadata, provenance)
+	objectMetadata[storage.ObjectMetadataTeamID] = sbx.Runtime.TeamID
+	objectMetadata[storage.ObjectMetadataBuildOrigin] = string(buildOrigin)
+
+	upload, err := sandbox.NewUpload(ctx, s.uploads, snap, s.persistence, s.config.StorageConfig.CompressConfig, s.featureFlags, storage.UseCasePause, objectMetadata)
+	if err != nil {
+		return nil, fmt.Errorf("register sibling upload: %w", err)
+	}
+
+	return &snapshotResult{
+		schedulingMetadata: snap.SchedulingMetadata,
+		upload:             upload,
+		completeUpload: func(ctx context.Context, uploadErr error) {
+			upload.Finish(ctx, uploadErr)
+		},
+		objectMetadata: objectMetadata,
 	}, nil
 }
 
