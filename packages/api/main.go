@@ -185,11 +185,6 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	}
 	r.Use(cors.New(corsConfig))
 
-	// Public JWKS discovery endpoint for the volume content token signing key.
-	// Registered before the auth + OpenAPI-validation middleware below so it
-	// stays unauthenticated and is not rejected as an unknown spec path.
-	r.GET("/.well-known/jwks.json", apiStore.GetWellKnownJWKS)
-
 	// Create a team API Key auth validator
 	AuthenticationFunc := auth.CreateAuthenticationFunc(
 		[]auth.Authenticator{

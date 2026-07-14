@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -87,12 +86,6 @@ type APIStore struct {
 	snapshotUpsertSem     *sharedutils.AdjustableSemaphore
 	sandboxListSem        *sharedutils.AdjustableSemaphore
 	snapshotBuildQuerySem *sharedutils.AdjustableSemaphore
-
-	// volumesJWKS is the precomputed .well-known/jwks.json response body. The
-	// volume-token signing config is static for the process lifetime, so it is
-	// marshaled once at startup rather than per request. nil when there is
-	// nothing to publish (signing disabled or symmetric key).
-	volumesJWKS []byte
 }
 
 func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.UniversalClient, featureFlags *featureflags.Client, config cfg.Config) *APIStore {
@@ -252,19 +245,8 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 	// Start the periodic sync of template builds statuses
 	go templateManager.BuildsStatusPeriodicalSync(ctx)
 
-	// Precompute the volume-token JWKS body once; the signing config is static
-	// for the process lifetime, so there is no need to rebuild it per request.
-	var volumesJWKS []byte
-	if jwks, ok := config.VolumesToken.PublicJWKS(); ok {
-		volumesJWKS, err = json.Marshal(jwks)
-		if err != nil {
-			logger.L().Fatal(ctx, "marshaling volume token JWKS", zap.Error(err))
-		}
-	}
-
 	a := &APIStore{
 		config:                config,
-		volumesJWKS:           volumesJWKS,
 		orchestrator:          orch,
 		templateManager:       templateManager,
 		sqlcDB:                sqlcDB,
