@@ -1,15 +1,128 @@
 package logger
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func TestHTTPWriterSendLogLineStatus(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		status  int
+		wantErr bool
+	}{
+		{name: "success", status: http.StatusNoContent},
+		{name: "client error", status: http.StatusBadRequest, wantErr: true},
+		{name: "server error", status: http.StatusServiceUnavailable, wantErr: true},
+		{name: "rate limited", status: http.StatusTooManyRequests, wantErr: true},
+		{name: "internal server error", status: http.StatusInternalServerError, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte("collector diagnostic"))
+			}))
+			t.Cleanup(server.Close)
+
+			writer := &HTTPWriter{httpClient: server.Client()}
+			err := writer.sendLogLine(t.Context(), server.URL, []byte(`{"secret":"not-in-error"}`))
+			if tt.wantErr && err == nil {
+				t.Fatal("expected an error")
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if err != nil && strings.Contains(err.Error(), "not-in-error") {
+				t.Fatalf("error contains request payload: %v", err)
+			}
+		})
+	}
+}
+
+// TestHTTPWriterSendLogLineRespectsContextDeadline verifies a slow/hung
+// destination (e.g. Vector under backpressure) doesn't block sendLogLine
+// forever: once the caller-supplied context deadline passes, the request is
+// aborted client-side and an error is returned promptly, regardless of
+// whether the server ever responds. This is the timeout behavior routeLogLine
+// relies on when a resolved route sets Timeout > 0.
+func TestHTTPWriterSendLogLineRespectsContextDeadline(t *testing.T) {
+	t.Parallel()
+
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	t.Cleanup(func() {
+		close(release)
+		server.Close()
+	})
+
+	writer := &HTTPWriter{httpClient: server.Client()}
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	err := writer.sendLogLine(ctx, server.URL, []byte(`{"msg":"slow"}`))
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected an error from a slow/hung response once the context deadline passes")
+	}
+	if elapsed > 2*time.Second {
+		t.Fatalf("sendLogLine took %v to return; expected it to abort promptly once the 50ms deadline passed", elapsed)
+	}
+}
+
+// TestHTTPWriterSendLogLineRespectsClientTimeout is the legacy-mode
+// equivalent: when there is no per-request context deadline (route.Timeout ==
+// 0, i.e. resolve is nil or the resolved route is unconfigured), the request
+// must still be bounded by the http.Client's own Timeout, exactly as it was
+// before per-request timeouts existed.
+func TestHTTPWriterSendLogLineRespectsClientTimeout(t *testing.T) {
+	t.Parallel()
+
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	t.Cleanup(func() {
+		close(release)
+		server.Close()
+	})
+
+	writer := &HTTPWriter{httpClient: &http.Client{Timeout: 50 * time.Millisecond}}
+
+	start := time.Now()
+	err := writer.sendLogLine(t.Context(), server.URL, []byte(`{"msg":"slow"}`))
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected an error from a slow/hung response once the client timeout passes")
+	}
+	if elapsed > 2*time.Second {
+		t.Fatalf("sendLogLine took %v to return; expected it to abort promptly once the 50ms client timeout passed", elapsed)
+	}
+}
 
 // TestHTTPWriterWaitGroupReuse tests the race condition where WaitGroup is reused
 // before previous Wait has returned, which should panic with:
@@ -234,5 +347,183 @@ func TestHTTPWriterSequentialWrites(t *testing.T) {
 
 	if requestCount.Load() != int32(len(logLines)) {
 		t.Errorf("Expected %d requests, got %d", len(logLines), requestCount.Load())
+	}
+}
+
+// TestDynamicHTTPWriterPrimaryAndShadow verifies primary + shadow fan-out.
+func TestDynamicHTTPWriterPrimaryAndShadow(t *testing.T) {
+	t.Parallel()
+
+	var primaryCount, shadowCount atomic.Int32
+	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		primaryCount.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(primary.Close)
+	shadow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		shadowCount.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(shadow.Close)
+
+	resolve := func(context.Context) LogRoute {
+		return LogRoute{
+			PrimaryURL:              primary.URL,
+			ShadowURLs:              []string{shadow.URL},
+			Timeout:                 2 * time.Second,
+			MaxInflightShadowWrites: 1,
+		}
+	}
+
+	writer := NewDynamicHTTPWriter(t.Context(), primary.URL, resolve)
+	_, err := writer.Write([]byte(`{"level":"info","msg":"line"}` + "\n"))
+	if err != nil {
+		t.Fatalf("Write failed: %v", err)
+	}
+	if err := writer.Sync(); err != nil {
+		t.Fatalf("Sync failed: %v", err)
+	}
+	time.Sleep(100 * time.Millisecond)
+
+	if primaryCount.Load() != 1 {
+		t.Errorf("expected 1 primary request, got %d", primaryCount.Load())
+	}
+	if shadowCount.Load() != 1 {
+		t.Errorf("expected 1 shadow request, got %d", shadowCount.Load())
+	}
+}
+
+// TestDynamicHTTPWriterShadowFailureIgnored verifies a broken shadow does not
+// affect the primary write.
+func TestDynamicHTTPWriterShadowFailureIgnored(t *testing.T) {
+	t.Parallel()
+
+	var primaryCount atomic.Int32
+	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		primaryCount.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(primary.Close)
+	shadowAttempted := make(chan struct{}, 1)
+	shadow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		shadowAttempted <- struct{}{}
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(shadow.Close)
+
+	resolve := func(context.Context) LogRoute {
+		return LogRoute{
+			PrimaryURL:              primary.URL,
+			ShadowURLs:              []string{shadow.URL},
+			Timeout:                 500 * time.Millisecond,
+			MaxInflightShadowWrites: 1,
+		}
+	}
+
+	writer := NewDynamicHTTPWriter(t.Context(), primary.URL, resolve).(*HTTPWriter)
+	if err := writer.routeLogLine([]byte(`{"msg":"x"}`)); err != nil {
+		t.Fatalf("primary failed because shadow returned an error: %v", err)
+	}
+
+	select {
+	case <-shadowAttempted:
+	case <-time.After(time.Second):
+		t.Fatal("shadow request was not attempted")
+	}
+
+	if primaryCount.Load() != 1 {
+		t.Errorf("expected 1 primary request despite shadow failure, got %d", primaryCount.Load())
+	}
+}
+
+// TestDynamicHTTPWriterShadowFanoutBounded verifies shadow writes are capped by
+// the resolved limit: when it is saturated by in-flight (blocked) shadow
+// requests, additional shadow writes are dropped while the primary always
+// succeeds.
+func TestDynamicHTTPWriterShadowFanoutBounded(t *testing.T) {
+	t.Parallel()
+
+	var primaryCount, shadowStarted atomic.Int32
+
+	// release gates the shadow handler so we can hold the semaphore slots.
+	release := make(chan struct{})
+	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		primaryCount.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(primary.Close)
+	shadow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		shadowStarted.Add(1)
+		<-release // block, holding a semaphore slot
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(shadow.Close)
+	t.Cleanup(func() { close(release) })
+
+	const shadowCap = 2
+	resolve := func(context.Context) LogRoute {
+		return LogRoute{
+			PrimaryURL:              primary.URL,
+			ShadowURLs:              []string{shadow.URL},
+			Timeout:                 5 * time.Second,
+			MaxInflightShadowWrites: shadowCap,
+		}
+	}
+
+	writer := &HTTPWriter{
+		ctx:        t.Context(),
+		url:        primary.URL,
+		httpClient: &http.Client{Timeout: 10 * time.Second},
+		resolve:    resolve,
+		wg:         &sync.WaitGroup{},
+	}
+
+	const writes = 50
+	for range writes {
+		if _, err := writer.Write([]byte(`{"msg":"x"}` + "\n")); err != nil {
+			t.Fatalf("Write failed: %v", err)
+		}
+	}
+	if err := writer.Sync(); err != nil {
+		t.Fatalf("Sync failed: %v", err)
+	}
+
+	// Wait until the shadow slots are saturated (bounded, no unbounded growth).
+	deadline := time.Now().Add(5 * time.Second)
+	for shadowStarted.Load() < int32(shadowCap) && time.Now().Before(deadline) {
+		time.Sleep(2 * time.Millisecond)
+	}
+
+	if got := shadowStarted.Load(); got > int32(shadowCap) {
+		t.Errorf("expected at most %d concurrent shadow writes, got %d", shadowCap, got)
+	}
+	if got := primaryCount.Load(); got != writes {
+		t.Errorf("expected %d primary writes, got %d", writes, got)
+	}
+}
+
+// TestDynamicHTTPWriterNilResolverIsLegacy verifies a nil resolver behaves like
+// the legacy writer (sends to the fixed endpoint).
+func TestDynamicHTTPWriterNilResolverIsLegacy(t *testing.T) {
+	t.Parallel()
+
+	var count atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		count.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	writer := NewDynamicHTTPWriter(t.Context(), server.URL, nil)
+	if _, err := writer.Write([]byte(`{"msg":"x"}` + "\n")); err != nil {
+		t.Fatalf("Write failed: %v", err)
+	}
+	if err := writer.Sync(); err != nil {
+		t.Fatalf("Sync failed: %v", err)
+	}
+	time.Sleep(100 * time.Millisecond)
+
+	if count.Load() != 1 {
+		t.Errorf("expected 1 request with nil resolver, got %d", count.Load())
 	}
 }
