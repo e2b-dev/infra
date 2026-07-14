@@ -27,6 +27,13 @@ type RedisConfig struct {
 	// Redis' access key), unlike AWS ElastiCache/GCP Memorystore which rely on network-only
 	// (VPC-scoped) access control and leave this empty.
 	RedisPassword string
+	// RedisTLSEnabled turns on TLS even when RedisTLSCABase64 is empty (a public-CA-signed
+	// endpoint like Azure Managed Redis needs TLS but not a custom trusted CA -- these are
+	// separate questions, and previously only a non-empty RedisTLSCABase64 enabled TLS at
+	// all, so a public-CA TLS-only endpoint got a plaintext connection attempt instead,
+	// which the server closes immediately (EOF on the first command, before any Redis
+	// protocol reply -- indistinguishable from a wrong password without inspecting this).
+	RedisTLSEnabled bool
 	// PoolSize overrides the default connection pool size.
 	// When non-positive, defaults to 40.
 	PoolSize int
@@ -113,7 +120,18 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 				ServerName: serverName,
 			}
 
-			logger.L().Info(ctx, "Redis cluster will be started with TLS enabled")
+			logger.L().Info(ctx, "Redis cluster will be started with TLS enabled (custom CA)")
+		} else if config.RedisTLSEnabled {
+			// Public-CA-signed endpoint (e.g. Azure Managed Redis): TLS is required, but nil
+			// RootCAs means "verify against the system's default trust store" -- there's no
+			// custom cert to add.
+			serverName := strings.Split(config.RedisClusterURL, ":")[0]
+			clusterOpts.TLSConfig = &tls.Config{
+				MinVersion: tls.VersionTLS12,
+				ServerName: serverName,
+			}
+
+			logger.L().Info(ctx, "Redis cluster will be started with TLS enabled (system CA)")
 		}
 
 		redisClient = redis.NewClusterClient(clusterOpts)
