@@ -56,6 +56,7 @@ func TestAddReturnsRoutingCatalogError(t *testing.T) {
 	require.True(t, catalog.deleteCalled)
 	_, err = storage.Get(t.Context(), sbx.TeamID, sbx.SandboxID)
 	require.ErrorIs(t, err, sandboxtypes.ErrNotFound)
+	requireMemberAbsent(t, client, sandboxExpirationMember(sbx))
 }
 
 func TestRemoveDeletesRoutingCatalogEntry(t *testing.T) {

@@ -53,7 +53,7 @@ func (s *Storage) Add(ctx context.Context, sbx sandboxtypes.Sandbox, routing *sa
 			// A timed-out Redis command may still have succeeded.
 			return errors.Join(
 				fmt.Errorf("failed to add sandbox to routing catalog: %w", err),
-				s.rollbackRouting(context.WithoutCancel(ctx), sbx, routing),
+				s.rollbackAdd(context.WithoutCancel(ctx), sbx, routing),
 			)
 		}
 	}
@@ -61,6 +61,7 @@ func (s *Storage) Add(ctx context.Context, sbx sandboxtypes.Sandbox, routing *sa
 	// Execute Lua script for atomic SET + SADD
 	err = addSandboxScript.Run(ctx, s.redisClient, []string{key, teamKey}, data, sbx.SandboxID).Err()
 	if err != nil {
+		// A timed-out script may have committed, so retain its expiration entry.
 		return errors.Join(
 			fmt.Errorf("failed to store sandbox in Redis: %w", err),
 			s.rollbackRouting(context.WithoutCancel(ctx), sbx, routing),
@@ -78,13 +79,21 @@ func (s *Storage) Add(ctx context.Context, sbx sandboxtypes.Sandbox, routing *sa
 	return nil
 }
 
+func (s *Storage) rollbackAdd(ctx context.Context, sbx sandboxtypes.Sandbox, routing *sandboxtypes.RoutingMetadata) error {
+	var expirationErr error
+	if err := s.redisClient.ZRem(ctx, globalExpirationSet, sandboxExpirationMember(sbx)).Err(); err != nil {
+		expirationErr = fmt.Errorf("failed to roll back sandbox expiration index: %w", err)
+	}
+
+	return errors.Join(s.rollbackRouting(ctx, sbx, routing), expirationErr)
+}
+
 func (s *Storage) rollbackRouting(ctx context.Context, sbx sandboxtypes.Sandbox, routing *sandboxtypes.RoutingMetadata) error {
 	if routing == nil {
 		return nil
 	}
 
-	err := s.routingCatalog.DeleteSandbox(ctx, sbx.SandboxID, sbx.ExecutionID)
-	if err != nil {
+	if err := s.routingCatalog.DeleteSandbox(ctx, sbx.SandboxID, sbx.ExecutionID); err != nil {
 		return fmt.Errorf("failed to roll back sandbox routing: %w", err)
 	}
 
