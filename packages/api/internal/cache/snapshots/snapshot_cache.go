@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 
@@ -57,11 +58,24 @@ func NewSnapshotCache(db *sqlcdb.Client, redisClient redis.UniversalClient) *Sna
 }
 
 // Get returns the last snapshot for a sandbox, using cache with DB fallback.
-func (c *SnapshotCache) Get(ctx context.Context, sandboxID string) (*SnapshotInfo, error) {
+// When teamID is provided, the query filters by team at the DB level and uses
+// a team-scoped cache key, preventing cross-team data access without needing
+// a separate method or post-fetch ownership check.
+func (c *SnapshotCache) Get(ctx context.Context, sandboxID string, teamID ...uuid.UUID) (*SnapshotInfo, error) {
 	ctx, span := tracer.Start(ctx, "get last snapshot")
 	defer span.End()
 
-	info, err := c.cache.GetOrSet(ctx, sandboxID, c.fetchFromDB)
+	var tid *uuid.UUID
+	cacheKey := sandboxID
+
+	if len(teamID) > 0 {
+		tid = &teamID[0]
+		cacheKey = sandboxID + ":" + tid.String()
+	}
+
+	info, err := c.cache.GetOrSet(ctx, cacheKey, func(ctx context.Context, _ string) (*SnapshotInfo, error) {
+		return c.fetchFromDB(ctx, sandboxID, tid)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -73,11 +87,14 @@ func (c *SnapshotCache) Get(ctx context.Context, sandboxID string) (*SnapshotInf
 	return info, nil
 }
 
-func (c *SnapshotCache) fetchFromDB(ctx context.Context, sandboxID string) (*SnapshotInfo, error) {
+func (c *SnapshotCache) fetchFromDB(ctx context.Context, sandboxID string, teamID *uuid.UUID) (*SnapshotInfo, error) {
 	ctx, span := tracer.Start(ctx, "fetch last snapshot from DB")
 	defer span.End()
 
-	row, err := c.db.GetLastSnapshot(ctx, sandboxID)
+	row, err := c.db.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{
+		SandboxID: sandboxID,
+		TeamID:    teamID,
+	})
 	if err != nil {
 		if dberrors.IsNotFoundError(err) {
 			return errNotFoundSentinel, nil
@@ -95,8 +112,10 @@ func (c *SnapshotCache) fetchFromDB(ctx context.Context, sandboxID string) (*Sna
 }
 
 // Invalidate removes the cached snapshot for a sandbox.
+// It deletes both the plain sandboxID key and any team-scoped keys.
 func (c *SnapshotCache) Invalidate(ctx context.Context, sandboxID string) {
 	c.cache.Delete(ctx, sandboxID)
+	c.cache.DeleteByPrefix(ctx, sandboxID+":")
 }
 
 func (c *SnapshotCache) Close(ctx context.Context) error {

@@ -115,8 +115,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		continue
 	}
 
-	// TODO: ENG-3544 scope GetLastSnapshot query by teamID to avoid post-fetch ownership check.
-	lastSnapshot, err := a.snapshotCache.Get(ctx, sandboxID)
+	lastSnapshot, err := a.snapshotCache.Get(ctx, sandboxID, teamID)
 	if err != nil {
 		if errors.Is(err, snapshotcache.ErrSnapshotNotFound) {
 			logger.L().Debug(ctx, "Snapshot not found", logger.WithSandboxID(sandboxID))
@@ -127,13 +126,6 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 
 		telemetry.ReportCriticalError(ctx, "Error getting last snapshot", err, telemetry.WithSandboxID(sandboxID), telemetry.WithTeamID(teamID.String()))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting snapshot")
-
-		return
-	}
-
-	if lastSnapshot.Snapshot.TeamID != teamID {
-		telemetry.ReportError(ctx, fmt.Sprintf("snapshot for sandbox '%s' doesn't belong to team '%s'", sandboxID, teamID.String()), nil)
-		a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
 
 		return
 	}
@@ -156,7 +148,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		sandboxID,
 		timeout,
 		teamInfo,
-		a.buildResumeSandboxData(sandboxID, nil),
+		a.buildResumeSandboxData(sandboxID, nil, teamID),
 		&c.Request.Header,
 		true,
 		nil, // mcp

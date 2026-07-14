@@ -92,6 +92,94 @@ func (q *Queries) InsertTestEnv(ctx context.Context, arg InsertTestEnvParams) er
 	return err
 }
 
+const insertTestEnvBuild = `-- name: InsertTestEnvBuild :exec
+INSERT INTO public.env_builds (id, updated_at, status, vcpu, ram_mb, free_disk_size_mb, env_id, status_group, kernel_version, firecracker_version)
+VALUES (
+    $1::uuid,
+    NOW(),
+    'ready',
+    $2::bigint,
+    $3::bigint,
+    $4::bigint,
+    $5::text,
+    'ready',
+    'vmlinux-6.1.102',
+    'v1.10.1'
+)
+`
+
+type InsertTestEnvBuildParams struct {
+	ID             uuid.UUID
+	Vcpu           int64
+	RamMb          int64
+	FreeDiskSizeMb int64
+	EnvID          string
+}
+
+// Inserts an env_build row for tests with status 'ready'.
+func (q *Queries) InsertTestEnvBuild(ctx context.Context, arg InsertTestEnvBuildParams) error {
+	_, err := q.db.Exec(ctx, insertTestEnvBuild,
+		arg.ID,
+		arg.Vcpu,
+		arg.RamMb,
+		arg.FreeDiskSizeMb,
+		arg.EnvID,
+	)
+	return err
+}
+
+const insertTestEnvBuildAssignment = `-- name: InsertTestEnvBuildAssignment :exec
+INSERT INTO public.env_build_assignments (env_id, build_id, tag, source)
+VALUES (
+    $1::text,
+    $2::uuid,
+    $3::text,
+    'app'
+)
+`
+
+type InsertTestEnvBuildAssignmentParams struct {
+	EnvID   string
+	BuildID uuid.UUID
+	Tag     string
+}
+
+// Inserts an env_build_assignment row linking an env to a build with a tag.
+func (q *Queries) InsertTestEnvBuildAssignment(ctx context.Context, arg InsertTestEnvBuildAssignmentParams) error {
+	_, err := q.db.Exec(ctx, insertTestEnvBuildAssignment, arg.EnvID, arg.BuildID, arg.Tag)
+	return err
+}
+
+const insertTestSnapshot = `-- name: InsertTestSnapshot :exec
+INSERT INTO public.snapshots (env_id, sandbox_id, base_env_id, sandbox_started_at, team_id, origin_node_id)
+VALUES (
+    $1::text,
+    $2::text,
+    $3::text,
+    NOW(),
+    $4::uuid,
+    'test-node'
+)
+`
+
+type InsertTestSnapshotParams struct {
+	EnvID     string
+	SandboxID string
+	BaseEnvID string
+	TeamID    uuid.UUID
+}
+
+// Inserts a snapshot row for tests.
+func (q *Queries) InsertTestSnapshot(ctx context.Context, arg InsertTestSnapshotParams) error {
+	_, err := q.db.Exec(ctx, insertTestSnapshot,
+		arg.EnvID,
+		arg.SandboxID,
+		arg.BaseEnvID,
+		arg.TeamID,
+	)
+	return err
+}
+
 const insertTestTeam = `-- name: InsertTestTeam :exec
 INSERT INTO public.teams (id, name, tier, email, slug)
 VALUES (

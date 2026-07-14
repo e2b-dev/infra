@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -120,8 +121,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		}
 	}
 
-	// TODO: ENG-3544 scope GetLastSnapshot query by teamID to avoid post-fetch ownership check.
-	lastSnapshot, err := a.snapshotCache.Get(ctx, sandboxID)
+	lastSnapshot, err := a.snapshotCache.Get(ctx, sandboxID, teamID)
 	if err != nil {
 		if errors.Is(err, snapshotcache.ErrSnapshotNotFound) {
 			logger.L().Debug(ctx, "Snapshot not found", logger.WithSandboxID(sandboxID))
@@ -139,13 +139,6 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		return
 	}
 
-	if lastSnapshot.Snapshot.TeamID != teamID {
-		telemetry.ReportError(ctx, fmt.Sprintf("snapshot for sandbox '%s' doesn't belong to team '%s'", sandboxID, teamID.String()), nil)
-		a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
-
-		return
-	}
-
 	sbxlogger.E(&sbxlogger.SandboxMetadata{
 		SandboxID:  sandboxID,
 		TemplateID: lastSnapshot.Snapshot.EnvID,
@@ -157,7 +150,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		sandboxID,
 		timeout,
 		teamInfo,
-		a.buildResumeSandboxData(sandboxID, body.AutoPause),
+		a.buildResumeSandboxData(sandboxID, body.AutoPause, teamID),
 		&c.Request.Header,
 		true,
 		nil, // mcp
@@ -189,9 +182,9 @@ func convertDatabaseMountsToOrchestratorMounts(volumes []*types.SandboxVolumeMou
 // buildResumeSandboxData returns a SandboxDataFetcher that fetches snapshot data
 // from the cache and builds SandboxMetadata for resume operations.
 // The returned callback is called inside the sandbox lock to prevent race conditions.
-func (a *APIStore) buildResumeSandboxData(sandboxID string, autoPauseOverride *bool) orchestrator.SandboxDataFetcher {
+func (a *APIStore) buildResumeSandboxData(sandboxID string, autoPauseOverride *bool, teamID ...uuid.UUID) orchestrator.SandboxDataFetcher {
 	return func(ctx context.Context) (orchestrator.SandboxMetadata, *api.APIError) {
-		lastSnapshot, err := a.snapshotCache.Get(ctx, sandboxID)
+		lastSnapshot, err := a.snapshotCache.Get(ctx, sandboxID, teamID...)
 		if err != nil {
 			return orchestrator.SandboxMetadata{}, &api.APIError{
 				Code:      http.StatusInternalServerError,

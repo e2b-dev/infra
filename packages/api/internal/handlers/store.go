@@ -69,7 +69,7 @@ type APIStore struct {
 	config                cfg.Config
 	posthog               *analyticscollector.PosthogClient
 	Telemetry             *telemetry.Client
-	orchestrator          *orchestrator.Orchestrator
+	orchestrator          sandboxOrchestrator
 	templateManager       *template_manager.TemplateManager
 	sqlcDB                *sqlcdb.Client
 	authDB                *authdb.Client

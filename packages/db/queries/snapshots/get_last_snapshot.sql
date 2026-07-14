@@ -18,4 +18,4 @@ LEFT JOIN LATERAL (
     FROM "public"."env_aliases"
     WHERE env_id = s.base_env_id
 ) ea ON TRUE
-WHERE s.sandbox_id = $1;
+WHERE s.sandbox_id = $1 AND (sqlc.narg(team_id)::uuid IS NULL OR s.team_id = sqlc.narg(team_id)::uuid);
