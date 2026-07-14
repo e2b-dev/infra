@@ -28,6 +28,14 @@ func (u *Upload) runV3(ctx context.Context) error {
 	eg, egCtx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
+		// During checkpoint we might mark the snapshot as filesystem only, even
+		// though we create the memory snapshot, so that we can resume the existing
+		// sandbox that we are checkpointing.
+		// Keep the memory snapshot locally and avoid uploading it.
+		if u.snap.FilesystemSnapshot {
+			return nil
+		}
+
 		h, err := u.snap.MemorySnapshot.DiffHeader.WaitWithContext(egCtx)
 		if err != nil {
 			return fmt.Errorf("wait memfile diff header: %w", err)
@@ -55,6 +63,14 @@ func (u *Upload) runV3(ctx context.Context) error {
 
 	eg.Go(func() error {
 		if memfilePath == "" {
+			return nil
+		}
+
+		// During checkpoint we might mark the snapshot as filesystem only, even
+		// though we create the memory snapshot, so that we can resume the existing
+		// sandbox that we are checkpointing.
+		// Keep the memory snapshot locally and avoid uploading it.
+		if u.snap.FilesystemSnapshot {
 			return nil
 		}
 
@@ -128,12 +144,16 @@ func (u *Upload) runV3(ctx context.Context) error {
 		return fmt.Errorf("wait rootfs diff header: %w", err)
 	}
 
-	if memfileDiffHeader != nil {
+	// During checkpoint we might mark the snapshot as filesystem only, even
+	// though we create the memory snapshot, so that we can resume the existing
+	// sandbox that we are checkpointing.
+	// Keep the memory snapshot locally and avoid uploading it.
+	if memfileDiffHeader != nil && !u.snap.FilesystemSnapshot {
 		if err := u.appendAncestorBuilds(ctx, nil, memfileDiffHeader.Mapping, build.Memfile); err != nil {
 			return err
 		}
 	}
-	if h := finalizeV3(memfileDiffHeader); h != nil {
+	if h := finalizeV3(memfileDiffHeader); h != nil && !u.snap.FilesystemSnapshot {
 		if err := u.publish(ctx, build.Memfile, h); err != nil {
 			return err
 		}

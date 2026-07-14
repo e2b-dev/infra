@@ -674,6 +674,8 @@ type resumeOptions struct {
 	// (not addressable, not counted, no health checks) for throwaways the caller
 	// reaps itself.
 	skipLiveRegistration bool
+	// fsThawGuest calls envd's /fsthaw endpoint to thaw the guest's filesystem
+	fsThawGuest bool
 }
 
 // ResumeOption customizes a ResumeSandbox call.
@@ -697,6 +699,16 @@ func WithDenyEgress() ResumeOption {
 // teardown stays symmetric.
 func WithoutLiveRegistration() ResumeOption {
 	return func(o *resumeOptions) { o.skipLiveRegistration = true }
+}
+
+// WithFsThawGuest calls envd's /fsthaw endpoint to thaw the guest's filesystem
+// immediately after resuming the sandbox. This is needed when we create filesystem
+// only checkpoints, where we freeze the filesystem before creating the checkpoint
+// so that the resulting snapshot is consistent with the view of the guest's memory.
+// In these cases, when we immediately resume the sandbox we need to thaw the
+// filesystem before returning it to the user.
+func WithFsThawGuest() ResumeOption {
+	return func(o *resumeOptions) { o.fsThawGuest = true }
 }
 
 // ThrowawayResumeOptions are the resume options for a caller-reaped throwaway
@@ -1082,6 +1094,14 @@ func (f *Factory) ResumeSandbox(
 		if err != nil {
 			return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 		}
+
+		if ropts.fsThawGuest {
+			if err := sbx.callEnvdFsthaw(ctx, sbx.guestSyncTimeout(ctx)); err != nil {
+				// We weren't able to thaw the sandbox. Shut it down, since it's
+				// now unusable
+				return nil, fmt.Errorf("failed to thaw the guest filesystem: %w", errors.Join(err, sbx.Shutdown(ctx)))
+			}
+		}
 	}
 
 	// A throwaway (e.g. the pause-resume prefetch harvest) is never promoted to a
@@ -1234,18 +1254,28 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 	return nil
 }
 
+type SnapshotMode int
+
+const (
+	// full memory and rootfs snapshot
+	SnapshotModeFull SnapshotMode = iota
+	// rootfs only snapshot
+	SnapshotModeFilesystem
+	// fs-only persisted, memory kept only locally for resume
+	SnapshotModeFsOnlyKeepMemory
+)
+
 type pauseOptions struct {
-	filesystemSnapshot bool
+	// Snapshot mode
+	mode SnapshotMode
 }
 
 type PauseOption func(*pauseOptions)
 
-// WithFilesystemSnapshot makes the pause produce a filesystem-only snapshot:
-// guest memory is not snapshotted, only the filesystem (rootfs) is persisted.
-// Resuming such a snapshot reboots the guest instead of restoring memory state.
-// The default (no option) is a full memory snapshot.
-func WithFilesystemSnapshot() PauseOption {
-	return func(o *pauseOptions) { o.filesystemSnapshot = true }
+// WithSnapshotMode selects how the snapshot is taken/persisted.
+// Defaults to SnapshotModeFull when omitted.
+func WithSnapshotMode(m SnapshotMode) PauseOption {
+	return func(o *pauseOptions) { o.mode = m }
 }
 
 // Pause creates a snapshot of the sandbox.
@@ -1260,10 +1290,10 @@ func WithFilesystemSnapshot() PauseOption {
 //  5. Base on the info from the custom FC endpoint or from Uffd we copy the pages directly from the FC process to a local cache.
 //  6. We then can either close the sandbox or resume it.
 //
-// With WithFilesystemSnapshot(), steps 3-5 are skipped: a guest sync flushes
-// the page cache to disk before pause, CreateSnapshot is still called for its
-// disk drain+flush side effect (the snapfile is not uploaded), and the memfile
-// diff is empty (NoDiff).
+// With snapshot mode SnapshotModeFilesystem, steps 3-5 are skipped: a guest
+// sync flushes the page cache to disk before pause, CreateSnapshot is still
+// called for its disk drain+flush side effect (the snapfile is not uploaded),
+// and the memfile diff is empty (NoDiff).
 func (s *Sandbox) Pause(
 	ctx context.Context,
 	m metadata.Template,
@@ -1276,7 +1306,7 @@ func (s *Sandbox) Pause(
 	}
 
 	ctx, span := tracer.Start(ctx, "sandbox-snapshot", trace.WithAttributes(
-		attribute.Bool("fs-only-snapshot", pauseOpts.filesystemSnapshot),
+		attribute.Bool("fs-only-snapshot", pauseOpts.mode != SnapshotModeFull),
 	))
 	defer span.End()
 
@@ -1317,7 +1347,7 @@ func (s *Sandbox) Pause(
 		return nil
 	})
 
-	if pauseOpts.filesystemSnapshot {
+	if pauseOpts.mode != SnapshotModeFull {
 		// FC never flushes the guest page cache and no memory snapshot will
 		// preserve it, so the rootfs must be quiesced before pause or it would
 		// persist missing acknowledged writes. This is mandatory, unlike the
@@ -1336,7 +1366,7 @@ func (s *Sandbox) Pause(
 	// sandbox correctly clears the flag. MarkFilesystemOnly also upgrades the
 	// metadata version when needed so the flag survives deserialize for snapshots
 	// taken from a V1 template.
-	m = m.MarkFilesystemOnly(pauseOpts.filesystemSnapshot)
+	m = m.MarkFilesystemOnly(pauseOpts.mode != SnapshotModeFull)
 
 	// Drain free-page-hinting before pause so the snapshot doesn't capture
 	// pages the guest already considers free. Timeout per use case; 0 disables.
@@ -1383,7 +1413,7 @@ func (s *Sandbox) Pause(
 		Diff:       build.Diff(&build.NoDiff{}),
 		DiffHeader: NewResolvedDiffHeader(nil),
 	}
-	if !pauseOpts.filesystemSnapshot {
+	if pauseOpts.mode != SnapshotModeFilesystem {
 		mem, err = s.processMemorySnapshot(ctx, buildID)
 		if err != nil {
 			return nil, err
@@ -1435,7 +1465,7 @@ func (s *Sandbox) Pause(
 		RootfsDiff:         rootfsDiff,
 		RootfsDiffHeader:   rootfsDiffHeader,
 		SchedulingMetadata: schedulingMetadata,
-		FilesystemSnapshot: pauseOpts.filesystemSnapshot,
+		FilesystemSnapshot: pauseOpts.mode != SnapshotModeFull,
 		RootfsBlockSize:    originalRootfs.Header().Metadata.BlockSize,
 
 		BuildID: buildID,

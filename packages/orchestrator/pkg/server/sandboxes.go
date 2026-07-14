@@ -25,6 +25,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
@@ -650,8 +651,22 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	// Stop the old sandbox in background after we're done
 	defer s.stopSandboxAsync(context.WithoutCancel(ctx), sbx)
 
+	var snapshotMode sandbox.SnapshotMode
+	if in.GetFilesystemOnly() {
+		snapshotMode = sandbox.SnapshotModeFilesystem
+	} else {
+		snapshotMode = sandbox.SnapshotModeFull
+	}
+
 	// Fire and forget - upload completes in the background
-	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId(), map[string]string{storage.ObjectMetadataTemplateID: in.GetTemplateId()}, storage.ObjectOriginPause, in.GetFilesystemOnly())
+	res, err := s.snapshotAndCacheSandbox(
+		ctx,
+		sbx,
+		in.GetBuildId(),
+		map[string]string{storage.ObjectMetadataTemplateID: in.GetTemplateId()},
+		storage.ObjectOriginPause,
+		snapshotMode,
+	)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error snapshotting sandbox", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
@@ -763,9 +778,13 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 	sbxlogger.E(sbx).Info(ctx, "Checkpointing sandbox")
 
-	// Checkpoint always takes a full memory snapshot; filesystem-only checkpoint
-	// (resume-in-place would need to reboot) is not supported yet.
-	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId(), in.GetMetadata(), storage.ObjectOriginSnapshotTemplate, false)
+	var snapshotMode sandbox.SnapshotMode
+	if in.GetFilesystemOnly() {
+		snapshotMode = sandbox.SnapshotModeFsOnlyKeepMemory
+	} else {
+		snapshotMode = sandbox.SnapshotModeFull
+	}
+	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId(), in.GetMetadata(), storage.ObjectOriginSnapshotTemplate, snapshotMode)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error snapshotting sandbox for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
@@ -785,6 +804,10 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 	// the API, routing catalog, and analytics) but with a fresh LifecycleID
 	// so the old sandbox's cleanup goroutine won't
 	// accidentally evict the resumed sandbox from the map.
+	var resumeOpts []sandbox.ResumeOption
+	if snapshotMode == sandbox.SnapshotModeFsOnlyKeepMemory {
+		resumeOpts = append(resumeOpts, sandbox.WithFsThawGuest())
+	}
 	resumedSbx, err := s.sandboxFactory.ResumeSandbox(
 		ctx,
 		template,
@@ -800,6 +823,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		sbx.GetStartedAt(),
 		sbx.GetEndAt(),
 		sbx.APIStoredConfig,
+		resumeOpts...,
 	)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error resuming sandbox after checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
@@ -808,16 +832,21 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 	}
 
 	// Collect prefetch data immediately after resume while it's most accurate
-	prefetchData, prefetchErr := resumedSbx.MemoryPrefetchData(ctx)
-	if prefetchErr != nil {
-		sbxlogger.I(resumedSbx).Warn(ctx, "failed to get prefetch data for checkpoint", zap.Error(prefetchErr))
+	var prefetchData block.PrefetchData
+	var prefetchErr error
+
+	if snapshotMode == sandbox.SnapshotModeFull {
+		prefetchData, prefetchErr = resumedSbx.MemoryPrefetchData(ctx)
+		if prefetchErr != nil {
+			sbxlogger.I(resumedSbx).Warn(ctx, "failed to get prefetch data for checkpoint", zap.Error(prefetchErr))
+		}
 	}
 
 	// Setup lifecycle for the resumed sandbox
 	s.setupSandboxLifecycle(ctx, resumedSbx)
 
 	// Embed prefetch data into the metadata so it's uploaded with the snapshot files in a single pass.
-	if prefetchErr == nil {
+	if snapshotMode == sandbox.SnapshotModeFull && prefetchErr == nil {
 		prefetchMapping := metadata.PrefetchEntriesToMapping(slices.Collect(maps.Values(prefetchData.BlockEntries)), prefetchData.BlockSize)
 		if prefetchMapping != nil {
 			res.meta = res.meta.WithPrefetch(&metadata.Prefetch{
@@ -917,7 +946,7 @@ func (s *Server) snapshotAndCacheSandbox(
 	buildID string,
 	provenance map[string]string,
 	buildOrigin storage.ObjectOrigin,
-	filesystemOnly bool,
+	mode sandbox.SnapshotMode,
 ) (*snapshotResult, error) {
 	meta, err := sbx.Template.Metadata()
 	if err != nil {
@@ -931,9 +960,7 @@ func (s *Server) snapshotAndCacheSandbox(
 	})
 
 	var pauseOpts []sandbox.PauseOption
-	if filesystemOnly {
-		pauseOpts = append(pauseOpts, sandbox.WithFilesystemSnapshot())
-	}
+	pauseOpts = append(pauseOpts, sandbox.WithSnapshotMode(mode))
 
 	snapshot, err := sbx.Pause(ctx, meta, sandbox.SnapshotUseCasePause, pauseOpts...)
 	if err != nil {
