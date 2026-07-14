@@ -48,6 +48,7 @@ SELECT COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases, COALESCE(ea.nam
     eb.envd_version AS build_envd_version,
     eb.created_at AS build_created_at
 FROM "public"."snapshots" s
+JOIN "public"."active_envs" e ON e.id = s.env_id
 LEFT JOIN LATERAL (
     SELECT
         ARRAY_AGG(alias ORDER BY alias) AS aliases,
@@ -69,8 +70,11 @@ JOIN LATERAL (
 WHERE
     s.team_id = @team_id
     AND s.metadata @> @metadata
-    -- started_at ascending, sandbox_id descending (reverse of the descending query)
-    AND (s.sandbox_started_at > @cursor_time
-        OR (s.sandbox_started_at = @cursor_time AND s.sandbox_id < @cursor_id::text))
+    -- started_at ascending, sandbox_id descending (reverse of the descending query).
+    -- The redundant >= bound is what the planner turns into an index condition on
+    -- idx_snapshots_team_time_id; with only the OR predicate every deep page would
+    -- rescan the team's range from the oldest row.
+    AND s.sandbox_started_at >= @cursor_time
+    AND (s.sandbox_started_at > @cursor_time OR s.sandbox_id < @cursor_id::text)
 ORDER BY s.sandbox_started_at ASC, s.sandbox_id DESC
 LIMIT $1;
