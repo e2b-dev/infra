@@ -85,8 +85,9 @@ type SandboxNetworkEgressConfig struct {
 const AllowPublicAccessDefault = true
 
 type SandboxNetworkIngressConfig struct {
-	AllowPublicAccess *bool   `json:"allowPublicAccess,omitempty"`
-	MaskRequestHost   *string `json:"maskRequestHost,omitempty"`
+	AllowPublicAccess *bool    `json:"allowPublicAccess,omitempty"`
+	MaskRequestHost   *string  `json:"maskRequestHost,omitempty"`
+	HTTPSPorts        []uint32 `json:"httpsPorts,omitempty"`
 }
 
 type SandboxNetworkConfig struct {

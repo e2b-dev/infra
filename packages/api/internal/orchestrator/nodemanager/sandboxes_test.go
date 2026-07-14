@@ -77,3 +77,35 @@ func TestGetSandboxes_RestoresAutoPauseFilesystemOnly(t *testing.T) {
 	assert.True(t, got["fs-only"], "filesystem-only auto-pause policy must survive an orchestrator re-sync")
 	assert.False(t, got["memory"], "memory auto-pause policy must survive an orchestrator re-sync")
 }
+
+func TestGetSandboxesRestoresHTTPSPorts(t *testing.T) {
+	t.Parallel()
+
+	httpsPorts := []uint32{443, 8443}
+	now := time.Now()
+	node := NewTestNode("test-node", api.NodeStatusReady, 0, 4)
+	node.SetSandboxClient(&mockSandboxListClient{
+		resp: &orchestrator.SandboxListResponse{
+			Sandboxes: []*orchestrator.RunningSandbox{{
+				StartTime: timestamppb.New(now),
+				EndTime:   timestamppb.New(now.Add(time.Hour)),
+				Config: &orchestrator.SandboxConfig{
+					SandboxId:  "sandbox",
+					TemplateId: "template",
+					TeamId:     uuid.NewString(),
+					BuildId:    uuid.NewString(),
+					Network: &orchestrator.SandboxNetworkConfig{
+						Ingress: &orchestrator.SandboxNetworkIngressConfig{HttpsPorts: httpsPorts},
+					},
+				},
+			}},
+		},
+	})
+
+	sandboxes, err := node.GetSandboxes(t.Context())
+	require.NoError(t, err)
+	require.Len(t, sandboxes, 1)
+	require.NotNil(t, sandboxes[0].Network)
+	require.NotNil(t, sandboxes[0].Network.Ingress)
+	assert.Equal(t, httpsPorts, sandboxes[0].Network.Ingress.HTTPSPorts)
+}

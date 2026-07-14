@@ -2,6 +2,7 @@ package pool
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"log"
 	"net"
@@ -18,6 +19,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/tracking"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
+
+// Bound the TLS handshake so a stalled HTTPS backend cannot hold a
+// connection open indefinitely (response streaming is intentionally unbounded).
+const tlsHandshakeTimeout = 10 * time.Second
 
 type ProxyClient struct {
 	httputil.ReverseProxy
@@ -36,6 +41,7 @@ func newProxyClient(
 	currentConnsCounter *atomic.Int64,
 	l *log.Logger,
 	disableKeepAlives bool,
+	insecureSkipTLSVerify bool,
 ) *ProxyClient {
 	activeConnections := smap.New[*tracking.Connection]()
 
@@ -45,7 +51,7 @@ func newProxyClient(
 		MaxIdleConnsPerHost:   maxHostIdleConns,
 		MaxIdleConns:          maxIdleConns,
 		IdleConnTimeout:       idleTimeout,
-		TLSHandshakeTimeout:   0,
+		TLSHandshakeTimeout:   tlsHandshakeTimeout,
 		ResponseHeaderTimeout: 0,
 		DisableKeepAlives:     disableKeepAlives,
 		ForceAttemptHTTP2:     false,
@@ -90,6 +96,9 @@ func newProxyClient(
 			return nil, err
 		},
 		DisableCompression: true, // No need to request or manipulate compression
+	}
+	if insecureSkipTLSVerify {
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // Sandbox services commonly use self-signed certificates.
 	}
 
 	pc := &ProxyClient{

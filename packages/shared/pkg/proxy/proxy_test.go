@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"sync"
@@ -216,6 +217,39 @@ func TestProxyRoutesToTargetServer(t *testing.T) {
 
 	assert.Equal(t, uint64(1), backend.RequestCount(), "backend should have been called once")
 	assert.Equal(t, uint64(1), proxy.TotalPoolConnections(), "proxy should have established one connection")
+}
+
+func TestProxyRoutesToHTTPSBackendWithSelfSignedCertificate(t *testing.T) {
+	t.Parallel()
+
+	backend := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, err := w.Write([]byte("secure backend"))
+		assert.NoError(t, err)
+	}))
+	t.Cleanup(backend.Close)
+
+	backendURL, err := url.Parse(backend.URL)
+	require.NoError(t, err)
+
+	proxy, port, err := newTestProxy(t, func(*http.Request) (*pool.Destination, error) {
+		return &pool.Destination{
+			Url:                   backendURL,
+			SandboxId:             "test-sandbox",
+			RequestLogger:         logger.NewNopLogger(),
+			ConnectionKey:         "https-backend",
+			InsecureSkipTLSVerify: true,
+		}, nil
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, proxy.Close()) })
+
+	resp, err := httpGet(t, fmt.Sprintf("http://127.0.0.1:%d", port))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, resp.Body.Close()) })
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, "secure backend", string(body))
 }
 
 func TestProxyResumePermissionDeniedErrorTemplate(t *testing.T) {

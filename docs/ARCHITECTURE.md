@@ -150,7 +150,8 @@ Key mechanisms (all under `pkg/sandbox/`):
   (with SNI/Host-inspecting TCP firewall for domain allow/deny lists). Slots are pooled and
   reused; slot allocation is coordinated through Consul KV.
 - **Sandbox proxy** (:5007, `pkg/proxy/`): reverse-proxies incoming traffic from client-proxy to
-  the sandbox's slot IP and requested port, enforcing per-sandbox traffic access tokens.
+  the sandbox's slot IP and requested port over HTTP or configured HTTPS, enforcing per-sandbox
+  traffic access tokens. HTTPS backends may use self-signed certificates.
 - Writes sandbox lifecycle **events** and cgroup **host stats** to ClickHouse; exports metrics via OTel.
 
 ### Envd (`packages/envd`)

@@ -27,5 +27,6 @@ type Destination struct {
 	ConnectionKey                      string
 	IncludeSandboxIdInProxyErrorLogger bool
 	// MaskRequestHost is used to mask the request host.
-	MaskRequestHost *string
+	MaskRequestHost       *string
+	InsecureSkipTLSVerify bool
 }
