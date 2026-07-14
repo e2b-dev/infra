@@ -129,6 +129,7 @@ type MockStorage struct {
 
 type deleteTrackingCatalog struct {
 	e2bcatalog.SandboxesCatalog
+
 	deleteCalls atomic.Int32
 }
 
@@ -372,9 +373,9 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 		for i := range numGoroutines {
 			sandboxID := fmt.Sprintf("concurrent-sandbox-%d", i)
 			_, err := storage.Get(ctx, teamID, sandboxID)
-			assert.NoError(t, err, "expected sandbox %s to be in storage", sandboxID)
+			require.NoError(t, err, "expected sandbox %s to be in storage", sandboxID)
 			_, err = routingCatalog.GetSandbox(ctx, sandboxID)
-			assert.NoError(t, err, "expected sandbox %s to be routable", sandboxID)
+			require.NoError(t, err, "expected sandbox %s to be routable", sandboxID)
 		}
 	})
 }
