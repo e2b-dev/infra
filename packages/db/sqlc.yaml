@@ -21,6 +21,15 @@ overrides:
           import: "time"
           type: "Time"
           pointer: true
+      # sqlc does not infer nullability for these view expressions.
+      - column: "public.team_limits_v2.default_free_disk_size_mb"
+        go_type:
+          type: "int64"
+          pointer: true
+      - column: "public.team_limits_v2.max_disk_size_mb"
+        go_type:
+          type: "int64"
+          pointer: true
 
 sql:
   - engine: "postgresql"
