@@ -60,16 +60,16 @@ func (q *Queries) GetAutoJoinTeamsBySSOOrganizationID(ctx context.Context, ssoOr
 }
 
 const getTeamWithTierByAPIKey = `-- name: GetTeamWithTierByAPIKey :one
-SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, t.sandbox_scheduling_labels, t.sso_organization_id, t.sso_auto_join, t.slug, tl.id, tl.max_length_hours, tl.concurrent_sandboxes, tl.concurrent_template_builds, tl.max_vcpu, tl.max_ram_mb, tl.disk_mb, tl.events_ttl_days FROM "public"."team_api_keys" tak
+SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, t.sandbox_scheduling_labels, t.sso_organization_id, t.sso_auto_join, t.slug, tl.id, tl.max_length_hours, tl.concurrent_sandboxes, tl.concurrent_template_builds, tl.max_vcpu, tl.max_ram_mb, tl.disk_mb, tl.events_ttl_days, tl.default_free_disk_size_mb, tl.max_disk_size_mb FROM "public"."team_api_keys" tak
 JOIN "public"."teams" t ON tak.team_id = t.id
-JOIN "public"."team_limits" tl on tl.id = t.id
+JOIN "public"."team_limits_v2" tl on tl.id = t.id
 WHERE tak.team_id = t.id
   AND tak.api_key_hash = $1
 `
 
 type GetTeamWithTierByAPIKeyRow struct {
-	Team      Team
-	TeamLimit TeamLimit
+	Team         Team
+	TeamLimitsV2 TeamLimitsV2
 }
 
 func (q *Queries) GetTeamWithTierByAPIKey(ctx context.Context, apiKeyHash string) (GetTeamWithTierByAPIKeyRow, error) {
@@ -89,23 +89,25 @@ func (q *Queries) GetTeamWithTierByAPIKey(ctx context.Context, apiKeyHash string
 		&i.Team.SsoOrganizationID,
 		&i.Team.SsoAutoJoin,
 		&i.Team.Slug,
-		&i.TeamLimit.ID,
-		&i.TeamLimit.MaxLengthHours,
-		&i.TeamLimit.ConcurrentSandboxes,
-		&i.TeamLimit.ConcurrentTemplateBuilds,
-		&i.TeamLimit.MaxVcpu,
-		&i.TeamLimit.MaxRamMb,
-		&i.TeamLimit.DiskMb,
-		&i.TeamLimit.EventsTtlDays,
+		&i.TeamLimitsV2.ID,
+		&i.TeamLimitsV2.MaxLengthHours,
+		&i.TeamLimitsV2.ConcurrentSandboxes,
+		&i.TeamLimitsV2.ConcurrentTemplateBuilds,
+		&i.TeamLimitsV2.MaxVcpu,
+		&i.TeamLimitsV2.MaxRamMb,
+		&i.TeamLimitsV2.DiskMb,
+		&i.TeamLimitsV2.EventsTtlDays,
+		&i.TeamLimitsV2.DefaultFreeDiskSizeMb,
+		&i.TeamLimitsV2.MaxDiskSizeMb,
 	)
 	return i, err
 }
 
 const getTeamWithTierByTeamAndUser = `-- name: GetTeamWithTierByTeamAndUser :one
-SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, t.sandbox_scheduling_labels, t.sso_organization_id, t.sso_auto_join, t.slug, tl.id, tl.max_length_hours, tl.concurrent_sandboxes, tl.concurrent_template_builds, tl.max_vcpu, tl.max_ram_mb, tl.disk_mb, tl.events_ttl_days
+SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, t.sandbox_scheduling_labels, t.sso_organization_id, t.sso_auto_join, t.slug, tl.id, tl.max_length_hours, tl.concurrent_sandboxes, tl.concurrent_template_builds, tl.max_vcpu, tl.max_ram_mb, tl.disk_mb, tl.events_ttl_days, tl.default_free_disk_size_mb, tl.max_disk_size_mb
 FROM "public"."teams" t
          JOIN "public"."users_teams" ut ON ut.team_id = t.id
-         JOIN "public"."team_limits" tl on tl.id = t.id
+         JOIN "public"."team_limits_v2" tl on tl.id = t.id
 WHERE ut.user_id = $1 AND t.id = $2
 `
 
@@ -115,8 +117,8 @@ type GetTeamWithTierByTeamAndUserParams struct {
 }
 
 type GetTeamWithTierByTeamAndUserRow struct {
-	Team      Team
-	TeamLimit TeamLimit
+	Team         Team
+	TeamLimitsV2 TeamLimitsV2
 }
 
 func (q *Queries) GetTeamWithTierByTeamAndUser(ctx context.Context, arg GetTeamWithTierByTeamAndUserParams) (GetTeamWithTierByTeamAndUserRow, error) {
@@ -136,28 +138,30 @@ func (q *Queries) GetTeamWithTierByTeamAndUser(ctx context.Context, arg GetTeamW
 		&i.Team.SsoOrganizationID,
 		&i.Team.SsoAutoJoin,
 		&i.Team.Slug,
-		&i.TeamLimit.ID,
-		&i.TeamLimit.MaxLengthHours,
-		&i.TeamLimit.ConcurrentSandboxes,
-		&i.TeamLimit.ConcurrentTemplateBuilds,
-		&i.TeamLimit.MaxVcpu,
-		&i.TeamLimit.MaxRamMb,
-		&i.TeamLimit.DiskMb,
-		&i.TeamLimit.EventsTtlDays,
+		&i.TeamLimitsV2.ID,
+		&i.TeamLimitsV2.MaxLengthHours,
+		&i.TeamLimitsV2.ConcurrentSandboxes,
+		&i.TeamLimitsV2.ConcurrentTemplateBuilds,
+		&i.TeamLimitsV2.MaxVcpu,
+		&i.TeamLimitsV2.MaxRamMb,
+		&i.TeamLimitsV2.DiskMb,
+		&i.TeamLimitsV2.EventsTtlDays,
+		&i.TeamLimitsV2.DefaultFreeDiskSizeMb,
+		&i.TeamLimitsV2.MaxDiskSizeMb,
 	)
 	return i, err
 }
 
 const getTeamWithTierByTeamID = `-- name: GetTeamWithTierByTeamID :one
-SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, t.sandbox_scheduling_labels, t.sso_organization_id, t.sso_auto_join, t.slug, tl.id, tl.max_length_hours, tl.concurrent_sandboxes, tl.concurrent_template_builds, tl.max_vcpu, tl.max_ram_mb, tl.disk_mb, tl.events_ttl_days
+SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, t.sandbox_scheduling_labels, t.sso_organization_id, t.sso_auto_join, t.slug, tl.id, tl.max_length_hours, tl.concurrent_sandboxes, tl.concurrent_template_builds, tl.max_vcpu, tl.max_ram_mb, tl.disk_mb, tl.events_ttl_days, tl.default_free_disk_size_mb, tl.max_disk_size_mb
 FROM "public"."teams" t
-         JOIN "public"."team_limits" tl on tl.id = t.id
+         JOIN "public"."team_limits_v2" tl on tl.id = t.id
 WHERE t.id = $1
 `
 
 type GetTeamWithTierByTeamIDRow struct {
-	Team      Team
-	TeamLimit TeamLimit
+	Team         Team
+	TeamLimitsV2 TeamLimitsV2
 }
 
 func (q *Queries) GetTeamWithTierByTeamID(ctx context.Context, id uuid.UUID) (GetTeamWithTierByTeamIDRow, error) {
@@ -177,30 +181,32 @@ func (q *Queries) GetTeamWithTierByTeamID(ctx context.Context, id uuid.UUID) (Ge
 		&i.Team.SsoOrganizationID,
 		&i.Team.SsoAutoJoin,
 		&i.Team.Slug,
-		&i.TeamLimit.ID,
-		&i.TeamLimit.MaxLengthHours,
-		&i.TeamLimit.ConcurrentSandboxes,
-		&i.TeamLimit.ConcurrentTemplateBuilds,
-		&i.TeamLimit.MaxVcpu,
-		&i.TeamLimit.MaxRamMb,
-		&i.TeamLimit.DiskMb,
-		&i.TeamLimit.EventsTtlDays,
+		&i.TeamLimitsV2.ID,
+		&i.TeamLimitsV2.MaxLengthHours,
+		&i.TeamLimitsV2.ConcurrentSandboxes,
+		&i.TeamLimitsV2.ConcurrentTemplateBuilds,
+		&i.TeamLimitsV2.MaxVcpu,
+		&i.TeamLimitsV2.MaxRamMb,
+		&i.TeamLimitsV2.DiskMb,
+		&i.TeamLimitsV2.EventsTtlDays,
+		&i.TeamLimitsV2.DefaultFreeDiskSizeMb,
+		&i.TeamLimitsV2.MaxDiskSizeMb,
 	)
 	return i, err
 }
 
 const getTeamsWithUsersTeamsWithTier = `-- name: GetTeamsWithUsersTeamsWithTier :many
-SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, t.sandbox_scheduling_labels, t.sso_organization_id, t.sso_auto_join, t.slug, ut.is_default, tl.id, tl.max_length_hours, tl.concurrent_sandboxes, tl.concurrent_template_builds, tl.max_vcpu, tl.max_ram_mb, tl.disk_mb, tl.events_ttl_days
+SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, t.sandbox_scheduling_labels, t.sso_organization_id, t.sso_auto_join, t.slug, ut.is_default, tl.id, tl.max_length_hours, tl.concurrent_sandboxes, tl.concurrent_template_builds, tl.max_vcpu, tl.max_ram_mb, tl.disk_mb, tl.events_ttl_days, tl.default_free_disk_size_mb, tl.max_disk_size_mb
 FROM "public"."teams" t
          JOIN "public"."users_teams" ut ON ut.team_id = t.id
-         JOIN "public"."team_limits" tl on tl.id = t.id
+         JOIN "public"."team_limits_v2" tl on tl.id = t.id
 WHERE ut.user_id = $1
 `
 
 type GetTeamsWithUsersTeamsWithTierRow struct {
-	Team      Team
-	IsDefault bool
-	TeamLimit TeamLimit
+	Team         Team
+	IsDefault    bool
+	TeamLimitsV2 TeamLimitsV2
 }
 
 func (q *Queries) GetTeamsWithUsersTeamsWithTier(ctx context.Context, userID uuid.UUID) ([]GetTeamsWithUsersTeamsWithTierRow, error) {
@@ -227,14 +233,16 @@ func (q *Queries) GetTeamsWithUsersTeamsWithTier(ctx context.Context, userID uui
 			&i.Team.SsoAutoJoin,
 			&i.Team.Slug,
 			&i.IsDefault,
-			&i.TeamLimit.ID,
-			&i.TeamLimit.MaxLengthHours,
-			&i.TeamLimit.ConcurrentSandboxes,
-			&i.TeamLimit.ConcurrentTemplateBuilds,
-			&i.TeamLimit.MaxVcpu,
-			&i.TeamLimit.MaxRamMb,
-			&i.TeamLimit.DiskMb,
-			&i.TeamLimit.EventsTtlDays,
+			&i.TeamLimitsV2.ID,
+			&i.TeamLimitsV2.MaxLengthHours,
+			&i.TeamLimitsV2.ConcurrentSandboxes,
+			&i.TeamLimitsV2.ConcurrentTemplateBuilds,
+			&i.TeamLimitsV2.MaxVcpu,
+			&i.TeamLimitsV2.MaxRamMb,
+			&i.TeamLimitsV2.DiskMb,
+			&i.TeamLimitsV2.EventsTtlDays,
+			&i.TeamLimitsV2.DefaultFreeDiskSizeMb,
+			&i.TeamLimitsV2.MaxDiskSizeMb,
 		); err != nil {
 			return nil, err
 		}

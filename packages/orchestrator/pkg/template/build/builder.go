@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -415,20 +416,64 @@ func runBuild(
 		return nil, err
 	}
 
-	// Ensure the base layer is uploaded before getting the rootfs size
+	// Ensure queued layer uploads finish before reading the final rootfs header.
 	err = bc.UploadErrGroup.Wait()
 	if err != nil {
 		return nil, fmt.Errorf("error waiting for layers upload: %w", err)
 	}
 
-	// Get the base rootfs size from the template files
-	// This is the size of the rootfs after provisioning and before building the layers
-	// (as they don't change the rootfs size)
+	// Read the final rootfs header once, then use its exact logical size for both
+	// enforcement and the floored MiB result returned to the API.
+	enforceMaxDiskSize := builder.featureFlags.BoolFlag(ctx, featureflags.BuildEnforceMaxDiskSize)
 	rootfsSize, err := getRootfsSize(ctx, builder.templateStorage, storage.Paths{BuildID: lastLayerResult.Metadata.Template.BuildID})
 	if err != nil {
 		return nil, fmt.Errorf("error getting rootfs size: %w", err)
 	}
 	logger.L().Info(ctx, "rootfs size", zap.Uint64("size", rootfsSize))
+
+	var maxDiskSizeMB int64
+	if bc.Config.MaxDiskSizeMB != nil {
+		maxDiskSizeMB = *bc.Config.MaxDiskSizeMB
+	}
+	validMaxDiskSize := maxDiskSizeMB > 0 && maxDiskSizeMB <= units.BytesToMB(math.MaxInt64)
+	exceededMaxDiskSize := validMaxDiskSize && rootfsSize > uint64(units.MBToBytes(maxDiskSizeMB))
+	rejected := exceededMaxDiskSize && enforceMaxDiskSize
+	span.SetAttributes(
+		attribute.Int64("template.disk.limit.max_mb", maxDiskSizeMB),
+		attribute.Int64("template.disk.limit.final_total_bytes", int64(rootfsSize)),
+		attribute.Bool("template.disk.limit.ld_enabled", enforceMaxDiskSize),
+		attribute.Int64("template.disk.requested_free_mb", bc.Config.DiskSizeMB),
+		attribute.Bool("template.disk.limit.rejected", rejected),
+	)
+	if exceededMaxDiskSize {
+		builder.logger.Warn(ctx, "template build exceeds total disk size limit",
+			logger.WithTeamID(bc.Config.TeamID),
+			logger.WithTemplateID(bc.Config.TemplateID),
+			logger.WithBuildID(bc.Template.BuildID),
+			zap.Int64("template.disk.limit.max_mb", maxDiskSizeMB),
+			zap.Uint64("template.disk.limit.final_total_bytes", rootfsSize),
+			zap.Bool("template.disk.limit.ld_enabled", enforceMaxDiskSize),
+			zap.Int64("template.disk.requested_free_mb", bc.Config.DiskSizeMB),
+			zap.Bool("template.disk.limit.rejected", rejected),
+		)
+	}
+
+	if rejected {
+		displayRootfsSizeMB := rootfsSize >> units.MBShift
+		if rootfsSize&((uint64(1)<<units.MBShift)-1) != 0 {
+			displayRootfsSizeMB++
+		}
+
+		return nil, phases.NewPhaseBuildError(
+			phases.PhaseMeta{},
+			fmt.Errorf(
+				"template root filesystem size %d MiB exceeds your team's maximum of %d MiB (requested free-space target: %d MiB); reduce freeDiskSpaceMB, remove template contents, or contact support",
+				displayRootfsSizeMB,
+				maxDiskSizeMB,
+				bc.Config.DiskSizeMB,
+			),
+		)
+	}
 
 	return &Result{
 		EnvdVersion:        bc.EnvdVersion,

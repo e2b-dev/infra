@@ -40,6 +40,10 @@ type TemplateConfig struct {
 	// ext4 metadata and finalize writes may reduce the available space.
 	DiskSizeMB int64
 
+	// The maximum total logical rootfs size allowed for the build, in MiB.
+	// Nil means that no limit was provided at build start.
+	MaxDiskSizeMB *int64
+
 	// HugePages sets whether the VM use huge pages.
 	HugePages bool
 

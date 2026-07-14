@@ -16,7 +16,7 @@ func GetTeamByID(ctx context.Context, db *authdb.Client, teamID uuid.UUID) (*typ
 		return nil, fmt.Errorf("failed to get team by ID: %w", err)
 	}
 
-	return types.NewTeam(&result.Team, &result.TeamLimit), nil
+	return types.NewTeam(&result.Team, &result.TeamLimitsV2), nil
 }
 
 func GetTeamsByUser(ctx context.Context, db *authdb.Client, userID uuid.UUID) ([]*types.TeamWithDefault, error) {
@@ -28,7 +28,7 @@ func GetTeamsByUser(ctx context.Context, db *authdb.Client, userID uuid.UUID) ([
 	teamsWithLimits := make([]*types.TeamWithDefault, 0, len(teams))
 	for _, team := range teams {
 		teamsWithLimits = append(teamsWithLimits, &types.TeamWithDefault{
-			Team:      types.NewTeam(&team.Team, &team.TeamLimit),
+			Team:      types.NewTeam(&team.Team, &team.TeamLimitsV2),
 			IsDefault: team.IsDefault,
 		})
 	}

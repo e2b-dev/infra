@@ -41,7 +41,7 @@ func TestAdminTeamAuthenticatorSetsTeamContext(t *testing.T) {
 
 	ctx := context.Background()
 	teamID := uuid.New()
-	team := types.NewTeam(&authqueries.Team{ID: teamID}, &authqueries.TeamLimit{})
+	team := types.NewTeam(&authqueries.Team{ID: teamID}, &authqueries.TeamLimitsV2{})
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
 	req.Header.Set(HeaderTeamID, teamID.String())

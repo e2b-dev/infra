@@ -235,6 +235,10 @@ var (
 
 	// BuildEnsureFreeDiskSpace grows the rootfs after build steps and before finalize.
 	BuildEnsureFreeDiskSpace = NewBoolFlag("build-ensure-free-disk-space", false)
+	// BuildEnforceMaxDiskSize rejects builds whose exact logical rootfs exceeds
+	// the maximum resolved at build start. Measurement and observation run
+	// regardless of this flag.
+	BuildEnforceMaxDiskSize = NewBoolFlag("build-enforce-max-disk-size", false)
 )
 
 // envdTimeoutFallbackMs reads ENVD_TIMEOUT (Go duration string, e.g. "10s")

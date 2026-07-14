@@ -42,7 +42,7 @@ type TeamApiKey struct {
 	ApiKeyMaskSuffix string
 }
 
-type TeamLimit struct {
+type TeamLimitsV2 struct {
 	ID                       uuid.UUID
 	MaxLengthHours           int64
 	ConcurrentSandboxes      int32
@@ -51,4 +51,6 @@ type TeamLimit struct {
 	MaxRamMb                 int32
 	DiskMb                   int32
 	EventsTtlDays            int32
+	DefaultFreeDiskSizeMb    int64
+	MaxDiskSizeMb            int64
 }

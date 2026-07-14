@@ -93,6 +93,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		StartCmd:             cfg.GetStartCommand(),
 		ReadyCmd:             cfg.GetReadyCommand(),
 		DiskSizeMB:           int64(cfg.GetDiskSizeMB()),
+		MaxDiskSizeMB:        cfg.MaxDiskSizeMB,
 		HugePages:            hugePages,
 		FreePageReporting:    freePageReporting,
 		FreePageHinting:      freePageHinting,
