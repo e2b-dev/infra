@@ -38,9 +38,9 @@ func (s *APIStore) PostTeams(c *gin.Context) {
 		return
 	}
 
-	team, err := s.createTeam(ctx, userID, name)
+	team, err := s.provisioningService.CreateTeam(ctx, userID, name)
 	if err != nil {
-		s.handleProvisioningError(ctx, c, "create team", err)
+		s.sendProvisioningError(ctx, c, "create team", err)
 
 		return
 	}

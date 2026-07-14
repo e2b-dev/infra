@@ -14,10 +14,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/storageopts"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/storage")
@@ -41,36 +38,8 @@ var ErrMetadataUnsupported = errors.New("blob does not support reading custom me
 // ObjectMetadataSoftDeleted is the storage-index soft-delete tombstone key.
 const ObjectMetadataSoftDeleted = storageopts.ObjectMetadataSoftDeleted
 
-type Provider string
-
-const (
-	GCPStorageProvider   Provider = "GCPBucket"
-	AWSStorageProvider   Provider = "AWSBucket"
-	LocalStorageProvider Provider = "Local"
-
-	DefaultStorageProvider Provider = GCPStorageProvider
-
-	storageProviderEnv = "STORAGE_PROVIDER"
-
-	// MemoryChunkSize must always be bigger or equal to the block size.
-	MemoryChunkSize = 4 * 1024 * 1024 // 4 MB
-
-	// MetadataKeyUncompressedSize stores the original size so that Size()
-	// returns the uncompressed size for compressed objects.
-	MetadataKeyUncompressedSize = "uncompressed-size"
-)
-
-// GetProviderType returns the configured storage provider type from the
-// STORAGE_PROVIDER environment variable, defaulting to GCPBucket.
-func GetProviderType() Provider {
-	return Provider(env.GetEnv(storageProviderEnv, string(DefaultStorageProvider)))
-}
-
-// IsLocal reports whether the configured storage provider is the local
-// filesystem backend.
-func IsLocal() bool {
-	return GetProviderType() == LocalStorageProvider
-}
+// MemoryChunkSize must always be bigger or equal to the block size.
+const MemoryChunkSize = 4 * 1024 * 1024 // 4 MB
 
 type SeekableObjectType int
 
@@ -121,12 +90,13 @@ type (
 )
 
 const (
-	ObjectMetadataTeamID      = storageopts.ObjectMetadataTeamID
-	ObjectMetadataTemplateID  = storageopts.ObjectMetadataTemplateID
-	ObjectMetadataBuildOrigin = storageopts.ObjectMetadataBuildOrigin
-	ObjectMetadataLogicalSize = storageopts.ObjectMetadataLogicalSize
-	ObjectMetadataMappedSize  = storageopts.ObjectMetadataMappedSize
-	ObjectMetadataDiffSize    = storageopts.ObjectMetadataDiffSize
+	ObjectMetadataTeamID           = storageopts.ObjectMetadataTeamID
+	ObjectMetadataTemplateID       = storageopts.ObjectMetadataTemplateID
+	ObjectMetadataBuildOrigin      = storageopts.ObjectMetadataBuildOrigin
+	ObjectMetadataUncompressedSize = storageopts.ObjectMetadataUncompressedSize
+	ObjectMetadataLogicalSize      = storageopts.ObjectMetadataLogicalSize
+	ObjectMetadataMappedSize       = storageopts.ObjectMetadataMappedSize
+	ObjectMetadataDiffSize         = storageopts.ObjectMetadataDiffSize
 
 	ObjectOriginPause              = storageopts.ObjectOriginPause
 	ObjectOriginTemplateBuild      = storageopts.ObjectOriginTemplateBuild
@@ -256,73 +226,6 @@ type PeerTransitionedError struct {
 
 func (e *PeerTransitionedError) Error() string {
 	return "peer upload completed, reload header from storage"
-}
-
-// StorageConfig holds the configuration for creating a storage provider.
-// Both GetLocalBasePath and GetBucketName are evaluated lazily so that
-// callers who set environment variables at runtime (e.g. via os.Setenv
-// or t.Setenv in tests) see their overrides respected.
-type StorageConfig struct {
-	GetLocalBasePath func() string
-	GetBucketName    func() string
-	limiter          *limit.Limiter
-	uploadBaseURL    string
-	hmacKey          []byte
-}
-
-// WithLimiter returns a copy of the config with the given limiter set.
-func (c StorageConfig) WithLimiter(limiter *limit.Limiter) StorageConfig {
-	c.limiter = limiter
-
-	return c
-}
-
-// WithLocalUpload returns a copy of the config with the given local upload
-// parameters set. These are only used when STORAGE_PROVIDER=Local to let the
-// filesystem storage provider generate signed URLs for file uploads.
-func (c StorageConfig) WithLocalUpload(uploadBaseURL string, hmacKey []byte) StorageConfig {
-	c.uploadBaseURL = uploadBaseURL
-	c.hmacKey = hmacKey
-
-	return c
-}
-
-var TemplateStorageConfig = StorageConfig{
-	GetLocalBasePath: func() string {
-		return env.GetEnv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", "/tmp/templates")
-	},
-	GetBucketName: func() string {
-		return utils.RequiredEnv("TEMPLATE_BUCKET_NAME", "Bucket for storing template files")
-	},
-}
-
-var BuildCacheStorageConfig = StorageConfig{
-	GetLocalBasePath: func() string {
-		return env.GetEnv("LOCAL_BUILD_CACHE_STORAGE_BASE_PATH", "/tmp/build-cache")
-	},
-	GetBucketName: func() string {
-		return utils.RequiredEnv("BUILD_CACHE_BUCKET_NAME", "Bucket for storing build cache files")
-	},
-}
-
-func GetStorageProvider(ctx context.Context, cfg StorageConfig) (StorageProvider, error) {
-	provider := GetProviderType()
-
-	if provider == LocalStorageProvider {
-		return newFileSystemStorage(cfg), nil
-	}
-
-	bucketName := cfg.GetBucketName()
-
-	// cloud bucket-based storage
-	switch provider {
-	case AWSStorageProvider:
-		return newAWSStorage(ctx, bucketName)
-	case GCPStorageProvider:
-		return NewGCP(ctx, bucketName, cfg.limiter)
-	}
-
-	return nil, fmt.Errorf("unknown storage provider: %s", provider)
 }
 
 func recordError(span trace.Span, err error) {

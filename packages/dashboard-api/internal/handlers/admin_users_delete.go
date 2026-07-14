@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
-	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/identity"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
@@ -21,10 +21,9 @@ const identityDeleteMaxRetries = 3
 func (s *APIStore) DeleteAdminUsersUserId(c *gin.Context, userId api.UserId) {
 	ctx := c.Request.Context()
 
-	// Resolve the external identity references while user_identities still exists.
-	handle, err := s.userProfiles.PrepareDeleteUser(ctx, userId)
+	handle, err := s.identityService.PrepareDeleteUser(ctx, userId)
 	if err != nil {
-		if errors.Is(err, userprofile.ErrUserNotFound) {
+		if errors.Is(err, identity.ErrUserNotFound) {
 			s.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("User %s not found or has no identity provider record", userId))
 
 			return
@@ -36,7 +35,6 @@ func (s *APIStore) DeleteAdminUsersUserId(c *gin.Context, userId api.UserId) {
 		return
 	}
 
-	// Delete from public.users (cascades to user_identities via FK).
 	// Done before the IdP removal so a DB failure does not orphan the identity.
 	if err := s.authDB.Write.DeletePublicUser(ctx, userId); err != nil {
 		if dberrors.IsNotFoundError(err) {
@@ -58,7 +56,6 @@ func (s *APIStore) DeleteAdminUsersUserId(c *gin.Context, userId api.UserId) {
 		return
 	}
 
-	// Remove the external identity (e.g. Ory) using pre-fetched references.
 	// Retry since the DB rows are already gone and we must not leave the IdP identity active.
 	// Use a detached context so a client disconnect does not cancel the cleanup.
 	cleanupCtx, cleanupCancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)

@@ -1,11 +1,13 @@
 package sandboxes
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -89,13 +91,35 @@ type chainNode struct {
 func verifyChainOnStorage(t *testing.T, ctx context.Context, chain []chainNode) {
 	t.Helper()
 
-	if os.Getenv("TEMPLATE_BUCKET_NAME") == "" && !storage.IsLocal() {
-		t.Log("storage env not configured (TEMPLATE_BUCKET_NAME / STORAGE_PROVIDER); skipping direct storage verification")
+	// Storage role resolution lives in the orchestrator's config layer; the
+	// test builds its spec from its own env contract instead of importing the
+	// orchestrator module.
+	var (
+		spec storage.Spec
+		err  error
+	)
+	switch {
+	case os.Getenv("TEMPLATE_STORAGE_URL") != "":
+		spec, err = storage.ParseStorageURL(os.Getenv("TEMPLATE_STORAGE_URL"))
+	case os.Getenv("TEMPLATE_BUCKET_NAME") != "":
+		spec = storage.Spec{
+			Provider: storage.Provider(cmp.Or(os.Getenv("STORAGE_PROVIDER"), string(storage.GCPStorageProvider))),
+			Bucket:   os.Getenv("TEMPLATE_BUCKET_NAME"),
+		}
+		spec.UsePathStyle = strings.EqualFold(os.Getenv("S3_USE_PATH_STYLE"), "true")
+	case strings.EqualFold(os.Getenv("STORAGE_PROVIDER"), "Local"):
+		spec = storage.Spec{
+			Provider: storage.LocalStorageProvider,
+			BasePath: cmp.Or(os.Getenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH"), "/tmp/templates"),
+		}
+	default:
+		t.Log("template storage not configured (TEMPLATE_STORAGE_URL / TEMPLATE_BUCKET_NAME / STORAGE_PROVIDER); skipping direct storage verification")
 
 		return
 	}
+	require.NoError(t, err, "resolve template storage")
 
-	persistence, err := storage.GetStorageProvider(ctx, storage.TemplateStorageConfig)
+	persistence, err := storage.NewProvider(ctx, spec)
 	require.NoError(t, err, "build storage provider")
 
 	ancestors := make(map[string][]string, len(chain))

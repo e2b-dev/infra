@@ -11,33 +11,34 @@ import (
 	"github.com/google/uuid"
 )
 
-const getUserIdentitiesByUserIDs = `-- name: GetUserIdentitiesByUserIDs :many
+const getUserIdentitiesByUserIDsAndIssuers = `-- name: GetUserIdentitiesByUserIDsAndIssuers :many
 SELECT oidc_iss, oidc_sub, user_id
 FROM public.user_identities
-WHERE oidc_iss = $1::text
+WHERE oidc_iss = ANY($1::text[])
   AND user_id = ANY($2::uuid[])
+ORDER BY user_id, oidc_iss, oidc_sub
 `
 
-type GetUserIdentitiesByUserIDsParams struct {
-	OidcIss string
-	UserIds []uuid.UUID
+type GetUserIdentitiesByUserIDsAndIssuersParams struct {
+	OidcIssuers []string
+	UserIds     []uuid.UUID
 }
 
-type GetUserIdentitiesByUserIDsRow struct {
+type GetUserIdentitiesByUserIDsAndIssuersRow struct {
 	OidcIss string
 	OidcSub string
 	UserID  uuid.UUID
 }
 
-func (q *Queries) GetUserIdentitiesByUserIDs(ctx context.Context, arg GetUserIdentitiesByUserIDsParams) ([]GetUserIdentitiesByUserIDsRow, error) {
-	rows, err := q.db.Query(ctx, getUserIdentitiesByUserIDs, arg.OidcIss, arg.UserIds)
+func (q *Queries) GetUserIdentitiesByUserIDsAndIssuers(ctx context.Context, arg GetUserIdentitiesByUserIDsAndIssuersParams) ([]GetUserIdentitiesByUserIDsAndIssuersRow, error) {
+	rows, err := q.db.Query(ctx, getUserIdentitiesByUserIDsAndIssuers, arg.OidcIssuers, arg.UserIds)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetUserIdentitiesByUserIDsRow
+	var items []GetUserIdentitiesByUserIDsAndIssuersRow
 	for rows.Next() {
-		var i GetUserIdentitiesByUserIDsRow
+		var i GetUserIdentitiesByUserIDsAndIssuersRow
 		if err := rows.Scan(&i.OidcIss, &i.OidcSub, &i.UserID); err != nil {
 			return nil, err
 		}

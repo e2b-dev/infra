@@ -3,7 +3,6 @@ package cfg
 import (
 	"errors"
 	"reflect"
-	"strings"
 
 	"github.com/caarlos0/env/v11"
 
@@ -30,7 +29,6 @@ type Config struct {
 
 	OrySDKURL          string `env:"ORY_SDK_URL"`
 	OryProjectAPIToken string `env:"ORY_PROJECT_API_TOKEN,unset"`
-	OryIssuerURL       string `env:"ORY_ISSUER_URL"`
 
 	DomainName string `env:"DOMAIN_NAME" envDefault:""`
 }
@@ -41,8 +39,6 @@ const (
 	FailureConditionMissingRedisConnection FailureCondition = "missing_redis_connection"
 	FailureConditionMissingOrySDKURL       FailureCondition = "missing_ory_sdk_url"
 	FailureConditionMissingOryProjectToken FailureCondition = "missing_ory_project_api_token"
-	FailureConditionMissingOryIssuerURL    FailureCondition = "missing_ory_issuer_url"
-	FailureConditionOryIssuerURLMismatch   FailureCondition = "ory_issuer_url_mismatch"
 )
 
 type FailureError struct {
@@ -105,23 +101,6 @@ func validateOryConfig(config *Config) error {
 	}
 	if config.OryProjectAPIToken == "" {
 		return newFailureError(FailureConditionMissingOryProjectToken, "ORY_PROJECT_API_TOKEN is required")
-	}
-
-	if config.OryIssuerURL == "" && len(config.AuthProvider.JWT) == 1 {
-		config.OryIssuerURL = strings.TrimSpace(config.AuthProvider.JWT[0].Issuer.URL)
-	}
-	if config.OryIssuerURL == "" {
-		return newFailureError(FailureConditionMissingOryIssuerURL, "ORY_ISSUER_URL is required")
-	}
-
-	if len(config.AuthProvider.JWT) > 0 {
-		for _, jwt := range config.AuthProvider.JWT {
-			if strings.TrimSpace(jwt.Issuer.URL) == config.OryIssuerURL {
-				return nil
-			}
-		}
-
-		return newFailureError(FailureConditionOryIssuerURLMismatch, "ORY_ISSUER_URL does not match any AUTH_PROVIDER_CONFIG.jwt[].issuer.url; identities stored at bootstrap would be invisible to the Ory profile provider")
 	}
 
 	return nil

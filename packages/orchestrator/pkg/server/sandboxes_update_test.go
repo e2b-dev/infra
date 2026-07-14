@@ -108,3 +108,72 @@ func TestUpdate_EndTimeAndEgress_EgressFails_RevertsEndTime(t *testing.T) {
 	assert.Empty(t, egress.GetDeniedCidrs())
 	assert.Empty(t, egress.GetAllowedDomains())
 }
+
+func TestUpdate_SerializesUpdatesPerSandbox(t *testing.T) {
+	t.Parallel()
+
+	slot, err := network.NewSlot("test", 1, network.Config{}, network.NoopEgressProxy{})
+	require.NoError(t, err)
+
+	sbx := &sandbox.Sandbox{
+		Metadata: &sandbox.Metadata{
+			Config:  sandbox.NewConfig(sandbox.Config{}),
+			Runtime: sandbox.RuntimeMetadata{SandboxID: id.Generate()},
+		},
+		Resources: &sandbox.Resources{Slot: slot},
+	}
+	sbx.SetStartedAt(time.Now())
+	sbx.SetEndAt(time.Now().Add(time.Hour))
+	originalEnd := sbx.GetEndAt()
+
+	sandboxMap := sandbox.NewSandboxesMap()
+	sandboxMap.AssignNetwork(t.Context(), sbx)
+	sandboxMap.MarkRunning(t.Context(), sbx)
+
+	s := &Server{
+		sandboxFactory:   &sandbox.Factory{Sandboxes: sandboxMap},
+		info:             &service.ServiceInfo{},
+		sbxEventsService: internalevents.NewEventsService(nil),
+	}
+
+	updateStarted := make(chan struct{})
+	releaseUpdate := make(chan struct{})
+	holderDone := make(chan error, 1)
+	go func() {
+		holderDone <- sbx.RunUpdate(func() error {
+			close(updateStarted)
+			<-releaseUpdate
+
+			return nil
+		})
+	}()
+	<-updateStarted
+
+	newEnd := time.Now().Add(5 * time.Hour)
+	updateDone := make(chan error, 1)
+	go func() {
+		_, updateErr := s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{
+			SandboxId: sbx.Runtime.SandboxID,
+			EndTime:   timestamppb.New(newEnd),
+		})
+		updateDone <- updateErr
+	}()
+
+	var earlyErr error
+	completedEarly := false
+	select {
+	case earlyErr = <-updateDone:
+		completedEarly = true
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	assert.Equal(t, originalEnd, sbx.GetEndAt())
+	close(releaseUpdate)
+	require.NoError(t, <-holderDone)
+	if completedEarly {
+		require.Failf(t, "update completed before lock release", "error: %v", earlyErr)
+	}
+
+	require.NoError(t, <-updateDone)
+	assert.True(t, newEnd.Equal(sbx.GetEndAt()))
+}

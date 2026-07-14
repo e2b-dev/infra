@@ -697,10 +697,12 @@ func TestFrameTable_LocateCompressed(t *testing.T) {
 	require.Equal(t, int64(0), r.Offset)
 	require.Equal(t, 1024, r.Length)
 
-	r, err = fd.LocateCompressed(2047)
-	require.NoError(t, err)
-	require.Equal(t, int64(0), r.Offset)
-	require.Equal(t, 1024, r.Length)
+	// A mid-frame offset is rejected: it must be frame-aligned via
+	// LocateUncompressed, otherwise the whole frame would be mis-served from
+	// its start.
+	_, err = fd.LocateCompressed(2047)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "frame-aligned")
 
 	// Frame 1: U=[2048,4096), C=[1024,1924)
 	r, err = fd.LocateCompressed(2048)

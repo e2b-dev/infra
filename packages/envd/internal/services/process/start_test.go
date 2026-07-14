@@ -21,7 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
 
-func newTestService(t *testing.T) (spec.ProcessClient, func()) {
+func newTestService(t *testing.T, middleware ...func(http.Handler) http.Handler) (spec.ProcessClient, func()) {
 	t.Helper()
 
 	// handler.New sets SysProcAttr.Credential to switch uid/gid,
@@ -46,7 +46,12 @@ func newTestService(t *testing.T) (spec.ProcessClient, func()) {
 	path, handler := spec.NewProcessHandler(svc)
 	mux.Handle(path, handler)
 
-	srv := httptest.NewServer(mux)
+	var h http.Handler = mux
+	for _, mw := range middleware {
+		h = mw(h)
+	}
+
+	srv := httptest.NewServer(h)
 	client := spec.NewProcessClient(srv.Client(), srv.URL)
 
 	return client, srv.Close
@@ -82,6 +87,61 @@ func TestStart_ShortCommand(t *testing.T) {
 	require.GreaterOrEqual(t, len(events), 2, "expected at least start + end events")
 	assert.NotNil(t, events[0].GetStart(), "first event should be Start")
 	assert.NotNil(t, events[len(events)-1].GetEnd(), "last event should be End")
+}
+
+// TestStart_CancelBeforeStartEvent verifies that the handler returns instead
+// of blocking forever when the request context is cancelled before the
+// bootstrap start event reaches the sender goroutine.
+//
+// The middleware cancels the request context at handler entry, exercising the
+// ordering where the sender goroutine exits before handleStart emits the start
+// event. The process itself still starts because it runs on an independent
+// context. A stuck handler keeps its connection open and makes the server
+// close at the end of the test hang.
+func TestStart_CancelBeforeStartEvent(t *testing.T) {
+	t.Parallel()
+
+	cancelAtEntry := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx, cancel := context.WithCancel(r.Context())
+			cancel()
+
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+
+	client, cleanup := newTestService(t, cancelAtEntry)
+
+	// Bound the drain below in case the handler never responds.
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	stream, err := client.Start(ctx, connect.NewRequest(&rpc.StartRequest{
+		Process: &rpc.ProcessConfig{
+			Cmd:  "echo",
+			Args: []string{"hello"},
+		},
+	}))
+	if err == nil {
+		for stream.Receive() {
+		}
+		_ = stream.Close()
+	}
+
+	// Server close waits for outstanding handlers, so a wedged
+	// handler makes it hang.
+	closed := make(chan struct{})
+	go func() {
+		defer close(closed)
+
+		cleanup()
+	}()
+
+	select {
+	case <-closed:
+	case <-time.After(20 * time.Second):
+		t.Fatal("server close timed out: handler goroutine leaked on cancelled start")
+	}
 }
 
 // TestStart_ClientDisconnectMidStream verifies that when a client

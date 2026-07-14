@@ -111,6 +111,24 @@ func TestSetOnceWaitWithContextCanceled(t *testing.T) {
 	wg.Wait()
 }
 
+func TestSetOnceWaitWithContextCanceledValueSet(t *testing.T) {
+	t.Parallel()
+	setOnce := NewSetOnce[int]()
+
+	require.NoError(t, setOnce.SetValue(1))
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	// A set value must always win over a cancelled context. Repeat to catch
+	// the random select choice when both channels are ready.
+	for range 200 {
+		value, err := setOnce.WaitWithContext(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, 1, value)
+	}
+}
+
 func TestSetOnceSetResultConcurrent(t *testing.T) {
 	t.Parallel()
 	setOnce := NewSetOnce[int]()

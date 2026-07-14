@@ -193,7 +193,14 @@ func main() {
 		outputBuildID = uuid.New().String()
 	}
 
-	if err := setupEnv(*storagePath, *sandboxDir); err != nil {
+	storageExplicit := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "storage" {
+			storageExplicit = true
+		}
+	})
+
+	if err := setupEnv(*storagePath, *sandboxDir, storageExplicit); err != nil {
 		log.Fatal(err)
 	}
 
@@ -291,7 +298,7 @@ type cmdTimings struct {
 	err     error
 }
 
-func setupEnv(from string, sandboxDir string) error {
+func setupEnv(from string, sandboxDir string, storageExplicit bool) error {
 	abs := func(s string) string { return utils.Must(filepath.Abs(s)) }
 
 	if sandboxDir != "" {
@@ -328,18 +335,21 @@ func setupEnv(from string, sandboxDir string) error {
 		"USE_LOCAL_NAMESPACE_STORAGE": "true",
 	}
 
-	if strings.HasPrefix(from, "gs://") {
-		env["STORAGE_PROVIDER"] = "GCPBucket"
-		env["TEMPLATE_BUCKET_NAME"] = strings.TrimPrefix(from, "gs://")
-	} else {
-		env["STORAGE_PROVIDER"] = "Local"
-		env["LOCAL_TEMPLATE_STORAGE_BASE_PATH"] = abs(filepath.Join(dataDir, "templates"))
-	}
-
 	for k, v := range env {
 		if os.Getenv(k) == "" {
 			os.Setenv(k, v)
 		}
+	}
+
+	templateURL := from
+	if !strings.HasPrefix(from, "gs://") {
+		templateURL = "file://" + abs(filepath.Join(dataDir, "templates"))
+	}
+
+	// An explicit -storage flag overrides ambient storage config; the flag's
+	// default value only applies when nothing is configured.
+	if storageExplicit || (os.Getenv("TEMPLATE_STORAGE_URL") == "" && os.Getenv("STORAGE_PROVIDER") == "") {
+		os.Setenv("TEMPLATE_STORAGE_URL", templateURL)
 	}
 
 	return nil
@@ -1175,7 +1185,11 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Creating storage provider...")
 	}
-	persistence, err := storage.GetStorageProvider(ctx, storage.TemplateStorageConfig)
+	templateSpec, err := cfg.TemplateStorage()
+	if err != nil {
+		return fmt.Errorf("resolve template storage: %w", err)
+	}
+	persistence, err := storage.NewProvider(ctx, templateSpec)
 	if verbose {
 		fmt.Println("🔧 Storage provider created, err:", err)
 	}
@@ -1442,12 +1456,12 @@ func parseSignal(name string) os.Signal {
 
 // printArtifactSizes prints artifact sizes
 func printArtifactSizes(_, buildID string) {
-	basePath := os.Getenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH")
-	if basePath == "" {
+	spec, err := cfg.TemplateStorage()
+	if err != nil || spec.Provider != storage.LocalStorageProvider {
 		return
 	}
 
-	dir := filepath.Join(basePath, buildID)
+	dir := filepath.Join(spec.BasePath, buildID)
 
 	fmt.Println("\n📦 Artifacts:")
 

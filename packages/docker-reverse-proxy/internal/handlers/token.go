@@ -14,6 +14,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/docker-reverse-proxy/internal/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 )
 
 type DockerToken struct {
@@ -39,13 +40,23 @@ func (a *APIStore) GetToken(w http.ResponseWriter, r *http.Request) error {
 		return fmt.Errorf("error while extracting access token: %w", err)
 	}
 
-	if !auth.ValidateAccessToken(ctx, a.authDb, accessToken) {
+	userID, ok := auth.ValidateAccessToken(ctx, a.authDb, accessToken)
+	if !ok {
 		log.Printf("Invalid access token: '%s'\n", accessToken)
 
 		w.WriteHeader(http.StatusForbidden)
 		w.Write([]byte("invalid access token"))
 
 		return errors.New("invalid access token")
+	}
+
+	// Access token acceptance is gated after validation so the flag can be
+	// rolled out per-user via LD targeting during the deprecation cutover.
+	if a.featureFlags.BoolFlag(ctx, featureflags.DisableE2BAccessTokenAuthFlag, featureflags.UserContext(userID.String())) {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte("E2B_ACCESS_TOKEN is deprecated and no longer accepted. Use an API key (E2B_API_KEY) instead. See https://e2b.dev/docs/migration/access-token-deprecation"))
+
+		return errors.New("access token authentication is disabled")
 	}
 
 	scope := r.URL.Query().Get("scope")

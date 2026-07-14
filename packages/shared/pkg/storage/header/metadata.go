@@ -185,6 +185,31 @@ func (d *DiffMetadata) ToDiffHeader(
 	return header, nil
 }
 
+// ToResizedDiffHeader composes the diff over the original header while changing
+// the rootfs logical size. It leaves the original header untouched and strictly
+// validates that the resulting mapping covers the entire resized rootfs.
+func (d *DiffMetadata) ToResizedDiffHeader(
+	ctx context.Context,
+	originalHeader *Header,
+	buildID uuid.UUID,
+	newSize uint64,
+) (*Header, error) {
+	resizedHeader := *originalHeader
+	resizedMetadata := *originalHeader.Metadata
+	resizedMetadata.Size = newSize
+	resizedHeader.Metadata = &resizedMetadata
+
+	header, err := d.ToDiffHeader(ctx, &resizedHeader, buildID)
+	if err != nil {
+		return nil, err
+	}
+	if err := header.Mapping.Validate(header.Metadata.Size, PageSize); err != nil {
+		return nil, fmt.Errorf("invalid resized header mappings: %w", err)
+	}
+
+	return header, nil
+}
+
 type DiffMetadataBuilder struct {
 	dirty *roaring.Bitmap
 	empty *roaring.Bitmap

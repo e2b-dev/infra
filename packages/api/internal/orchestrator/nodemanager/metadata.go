@@ -38,7 +38,7 @@ func (n *Node) Metadata() NodeMetadata {
 func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*clusters.GRPCClient, context.Context) {
 	md := metadata.MD{}
 
-	if !n.IsNomadManaged() {
+	if n.IsClusterNode() {
 		md = edge.SerializeSandboxCatalogCreateEvent(
 			edge.SandboxCatalogCreateEvent{
 				SandboxID:               req.GetSandbox().GetSandboxId(),
@@ -62,7 +62,7 @@ func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.Sandbo
 func (n *Node) GetSandboxDeleteCtx(ctx context.Context, sandboxID string, executionID string) (*clusters.GRPCClient, context.Context) {
 	md := metadata.MD{}
 
-	if !n.IsNomadManaged() {
+	if n.IsClusterNode() {
 		md = edge.SerializeSandboxCatalogDeleteEvent(
 			edge.SandboxCatalogDeleteEvent{
 				SandboxID:   sandboxID,

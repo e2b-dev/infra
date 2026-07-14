@@ -261,8 +261,6 @@ func (lb *LayerExecutor) PauseAndUpload(
 	ctx, childSpan := tracer.Start(ctx, "pause-and-upload")
 	defer childSpan.End()
 
-	userLogger.Debug(ctx, fmt.Sprintf("Processing layer: %s", meta.Template.BuildID))
-
 	// snapshot is automatically cleared by the templateCache eviction
 	snapshot, err := sbx.Pause(
 		ctx,
@@ -273,8 +271,22 @@ func (lb *LayerExecutor) PauseAndUpload(
 		return fmt.Errorf("error processing vm: %w", err)
 	}
 
+	return lb.UploadSnapshot(ctx, userLogger, snapshot, hash, meta, buildOrigin)
+}
+
+// UploadSnapshot caches and uploads a snapshot produced without a running VM.
+func (lb *LayerExecutor) UploadSnapshot(
+	ctx context.Context,
+	userLogger logger.Logger,
+	snapshot *sandbox.Snapshot,
+	hash string,
+	meta metadata.Template,
+	buildOrigin storage.ObjectOrigin,
+) error {
+	userLogger.Debug(ctx, fmt.Sprintf("Adding layer to cache: %s", meta.Template.BuildID))
+
 	// Add snapshot to template cache so it can be used immediately
-	err = lb.templateCache.AddSnapshot(
+	err := lb.templateCache.AddSnapshot(
 		context.WithoutCancel(ctx),
 		meta.Template.BuildID,
 		snapshot.MemorySnapshot.DiffHeader,
@@ -291,7 +303,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 	}
 
 	// Upload snapshot async, it's added to the template cache immediately
-	userLogger.Debug(ctx, fmt.Sprintf("Saving: %s", meta.Template.BuildID))
+	userLogger.Debug(ctx, fmt.Sprintf("Uploading layer: %s", meta.Template.BuildID))
 
 	objectMetadata := lb.BuildContext.Config.ObjectMetadata(buildOrigin)
 
@@ -333,6 +345,9 @@ func (lb *LayerExecutor) PauseAndUpload(
 			return fmt.Errorf("error uploading snapshot: %w", err)
 		}
 
+		// Publish the recipe hash only after every artifact has been uploaded. A
+		// cache lookup can then resolve the hash to this build ID without observing
+		// a snapshot whose header, metadata, or data is still missing.
 		if err := lb.index.SaveLayerMeta(ctx, hash, cache.LayerMetadata{
 			Template: cache.Template{
 				BuildID: meta.Template.BuildID,
