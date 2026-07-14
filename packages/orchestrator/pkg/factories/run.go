@@ -438,6 +438,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 		RedisURL:         config.RedisURL,
 		RedisClusterURL:  config.RedisClusterURL,
 		RedisTLSCABase64: config.RedisTLSCABase64,
+		RedisPassword:    config.RedisPassword,
 		PoolSize:         config.RedisPoolSize,
 		MinIdleConns:     config.RedisMinIdleConns,
 	})

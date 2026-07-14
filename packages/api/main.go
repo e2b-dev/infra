@@ -417,6 +417,7 @@ func run() int {
 		RedisURL:         config.RedisURL,
 		RedisClusterURL:  config.RedisClusterURL,
 		RedisTLSCABase64: config.RedisTLSCABase64,
+		RedisPassword:    config.RedisPassword,
 		PoolSize:         config.RedisPoolSize,
 	})
 	if err != nil {

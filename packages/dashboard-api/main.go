@@ -176,6 +176,7 @@ func run() int {
 		RedisURL:         config.RedisURL,
 		RedisClusterURL:  config.RedisClusterURL,
 		RedisTLSCABase64: config.RedisTLSCABase64,
+		RedisPassword:    config.RedisPassword,
 	})
 	if err != nil {
 		l.Error(ctx, "Initializing Redis client", zap.Error(err))

@@ -24,6 +24,7 @@ type Config struct {
 	RedisURL         string `env:"REDIS_URL"`
 	RedisClusterURL  string `env:"REDIS_CLUSTER_URL"`
 	RedisTLSCABase64 string `env:"REDIS_TLS_CA_BASE64"`
+	RedisPassword    string `env:"REDIS_PASSWORD"`
 
 	BillingServerURL      string `env:"BILLING_SERVER_URL"`
 	BillingServerAPIToken string `env:"BILLING_SERVER_API_TOKEN"`

@@ -23,6 +23,10 @@ type RedisConfig struct {
 	RedisURL         string
 	RedisClusterURL  string
 	RedisTLSCABase64 string
+	// RedisPassword authenticates to Redis deployments that require it (e.g. Azure Managed
+	// Redis' access key), unlike AWS ElastiCache/GCP Memorystore which rely on network-only
+	// (VPC-scoped) access control and leave this empty.
+	RedisPassword string
 	// PoolSize overrides the default connection pool size.
 	// When non-positive, defaults to 40.
 	PoolSize int
@@ -75,6 +79,7 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 
 		clusterOpts := &redis.ClusterOptions{
 			Addrs:        []string{config.RedisClusterURL},
+			Password:     config.RedisPassword,
 			PoolSize:     poolSize,
 			MinIdleConns: minIdleConns,
 			// Disable idle-time eviction; use lifetime-based recycling with jitter instead.
@@ -115,6 +120,7 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 	case config.RedisURL != "":
 		opts := &redis.Options{
 			Addr:                  config.RedisURL,
+			Password:              config.RedisPassword,
 			PoolSize:              poolSize,
 			MinIdleConns:          minIdleConns,
 			ConnMaxIdleTime:       -1,
