@@ -188,7 +188,7 @@ func TestNewCacheFromMemfdAsync_DetachesAndFlushes(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cachePath := t.TempDir() + "/cache"
-	cache, err := NewCacheFromMemfdAsync(ctx, pageSize, cachePath, memfd, dirty)
+	cache, err := NewCacheFromMemfdAsync(ctx, pageSize, cachePath, memfd, dirty, true)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
@@ -227,7 +227,7 @@ func TestNewCacheFromMemfdDeduped_DetachesCompareAndDrain(t *testing.T) {
 	metaOut := utils.NewSetOnce[*header.DiffMetadata]()
 	cache, err := NewCacheFromMemfdDeduped(
 		ctx, &fakeOriginalDevice{data: baseData}, pageSize, cachePath, memfd, dirty, false, false,
-		DedupBudget{}, nil, metaOut,
+		DedupBudget{}, nil, metaOut, true,
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })

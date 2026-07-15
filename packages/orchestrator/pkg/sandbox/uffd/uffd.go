@@ -290,6 +290,14 @@ func (u *Uffd) Memfd(_ context.Context) *block.Memfd {
 	return u.memfd.Swap(nil)
 }
 
+// PeekMemfd returns the memfd received from Firecracker WITHOUT transferring
+// ownership: the uffd retains it and its teardown defer still closes it, so
+// callers must not close it. Used for in-place resume, where FC keeps using the
+// memfd after the export and the sandbox closes it on stop.
+func (u *Uffd) PeekMemfd(_ context.Context) *block.Memfd {
+	return u.memfd.Load()
+}
+
 // ServeStats returns a cumulative snapshot of demand faults served so far, or a
 // zero snapshot if the handler has not been created yet (FC has not connected).
 // It never blocks.

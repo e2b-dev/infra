@@ -89,6 +89,10 @@ func (m *NoopMemory) Memfd(context.Context) *block.Memfd {
 	return nil
 }
 
+func (m *NoopMemory) PeekMemfd(context.Context) *block.Memfd {
+	return nil
+}
+
 // ServeStats returns a zero snapshot: NoopMemory has no UFFD serve loop, so no
 // pages are demand-faulted through it.
 func (m *NoopMemory) ServeStats() userfaultfd.ServeSnapshot {

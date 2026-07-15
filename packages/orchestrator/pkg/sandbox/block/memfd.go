@@ -70,8 +70,8 @@ func (m *Memfd) Close() error {
 	return err
 }
 
-// NewCacheFromMemfd builds a Cache populated from a memfd. The memfd is
-// consumed and closed during construction.
+// NewCacheFromMemfd builds a Cache populated from a memfd. The copy is
+// synchronous; the caller (ExportMemory) closes the memfd once this returns.
 func NewCacheFromMemfd(
 	ctx context.Context,
 	blockSize int64,
@@ -88,13 +88,10 @@ func NewCacheFromMemfd(
 
 	cache, err := NewCache(int64(dirty.GetCardinality())*blockSize, blockSize, filePath, false)
 	if err != nil {
-		return nil, errors.Join(err, memfd.Close())
+		return nil, err
 	}
 	if err := copyFromMemfd(ctx, cache, memfd, dirty, blockSize); err != nil {
-		return nil, errors.Join(err, memfd.Close(), cache.Close())
-	}
-	if err := memfd.Close(); err != nil {
-		return nil, errors.Join(fmt.Errorf("close memfd: %w", err), cache.Close())
+		return nil, errors.Join(err, cache.Close())
 	}
 
 	return cache, nil
@@ -140,6 +137,7 @@ func NewCacheFromMemfdAsync(
 	filePath string,
 	memfd *Memfd,
 	dirty *roaring.Bitmap,
+	closeMemfd bool,
 ) (*MemfdCache, error) {
 	ctx, span := tracer.Start(ctx, "export-memory-from-memfd",
 		trace.WithAttributes(
@@ -150,12 +148,16 @@ func NewCacheFromMemfdAsync(
 
 	cache, err := NewCache(int64(dirty.GetCardinality())*blockSize, blockSize, filePath, false)
 	if err != nil {
-		return nil, errors.Join(err, memfd.Close())
+		return nil, err
 	}
 	done := utils.NewSetOnce[struct{}]()
 	if dirty.IsEmpty() {
-		if closeErr := memfd.Close(); closeErr != nil {
-			return nil, errors.Join(fmt.Errorf("close memfd: %w", closeErr), cache.Close())
+		// No copy is run, so this is the "done exporting" point for the empty
+		// case: close the memfd here unless the caller keeps it open.
+		if closeMemfd {
+			if closeErr := memfd.Close(); closeErr != nil {
+				return nil, errors.Join(fmt.Errorf("close memfd: %w", closeErr), cache.Close())
+			}
 		}
 		_ = done.SetValue(struct{}{})
 
@@ -166,15 +168,19 @@ func NewCacheFromMemfdAsync(
 	copyCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	m := &MemfdCache{cache: cache, cancel: cancel, done: done}
 
-	go m.runCopy(copyCtx, memfd, dirty, blockSize)
+	go m.runCopy(copyCtx, memfd, dirty, blockSize, closeMemfd)
 
 	return m, nil
 }
 
-func (m *MemfdCache) runCopy(ctx context.Context, memfd *Memfd, dirty *roaring.Bitmap, blockSize int64) {
+func (m *MemfdCache) runCopy(ctx context.Context, memfd *Memfd, dirty *roaring.Bitmap, blockSize int64, closeMemfd bool) {
 	err := copyFromMemfd(ctx, m.cache, memfd, dirty, blockSize)
-	if closeErr := memfd.Close(); closeErr != nil {
-		err = errors.Join(err, fmt.Errorf("close memfd: %w", closeErr))
+	// Done exporting: close the memfd (releasing the hugetlb pages) unless the
+	// caller keeps it open for an in-place resume.
+	if closeMemfd {
+		if closeErr := memfd.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("close memfd: %w", closeErr))
+		}
 	}
 	_ = m.done.SetResult(struct{}{}, err)
 }
@@ -250,6 +256,7 @@ func NewCacheFromMemfdDeduped(
 	budget DedupBudget,
 	inputEmpty *roaring.Bitmap,
 	metaOut *utils.SetOnce[*header.DiffMetadata],
+	closeMemfd bool,
 ) (*DedupedMemfdCache, error) {
 	if blockSize%header.PageSize != 0 {
 		return nil, fmt.Errorf("diff block size %d not a multiple of dedup page size %d", blockSize, header.PageSize)
@@ -260,7 +267,7 @@ func NewCacheFromMemfdDeduped(
 		cancel:  cancel,
 		done:    utils.NewSetOnce[*Cache](),
 	}
-	go d.runDedup(drainCtx, base, blockSize, memfd, dirty, bestEffort, directIO, budget, inputEmpty, metaOut)
+	go d.runDedup(drainCtx, base, blockSize, memfd, dirty, bestEffort, directIO, budget, inputEmpty, metaOut, closeMemfd)
 
 	return d, nil
 }
@@ -275,9 +282,20 @@ func (d *DedupedMemfdCache) runDedup(
 	budget DedupBudget,
 	inputEmpty *roaring.Bitmap,
 	metaOut *utils.SetOnce[*header.DiffMetadata],
+	closeMemfd bool,
 ) {
 	ctx, span := tracer.Start(ctx, "dedup-pages")
 	defer span.End()
+
+	// Done exporting once this goroutine returns (compare error or drain
+	// complete): close the memfd unless the caller keeps it open.
+	if closeMemfd {
+		defer func() {
+			if closeErr := memfd.Close(); closeErr != nil {
+				logger.L().Warn(ctx, "close memfd after dedup", zap.Error(closeErr))
+			}
+		}()
+	}
 
 	src := func(absOff int64) ([]byte, error) { return memfd.Slice(absOff, blockSize) }
 
@@ -286,7 +304,7 @@ func (d *DedupedMemfdCache) runDedup(
 	compareDur := time.Since(compareStart)
 	if err != nil {
 		logSetOnceErr(ctx, "dedup metaOut", metaOut.SetError(err))
-		logSetOnceErr(ctx, "dedup done", d.done.SetError(errors.Join(err, memfd.Close())))
+		logSetOnceErr(ctx, "dedup done", d.done.SetError(err))
 
 		return
 	}
@@ -310,9 +328,6 @@ func (d *DedupedMemfdCache) runDedup(
 	writeStart := time.Now()
 	cache, err := dedupDrain(ctx, src, plan.pageDirty, blockSize, d.outPath, directIO)
 	writeDur := time.Since(writeStart)
-	if closeErr := memfd.Close(); closeErr != nil {
-		logger.L().Warn(ctx, "close memfd after dedup drain", zap.Error(closeErr))
-	}
 
 	recordDedupAttrs(ctx, plan, scanEmptyPages, compareDur, writeDur)
 	logSetOnceErr(ctx, "dedup done", d.done.SetResult(cache, err))

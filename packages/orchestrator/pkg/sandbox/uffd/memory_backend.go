@@ -23,6 +23,10 @@ type MemoryBackend interface {
 	Ready() chan struct{}
 	Exit() *utils.ErrorOnce
 	Memfd(ctx context.Context) *block.Memfd
+	// PeekMemfd returns the memfd without transferring ownership; the backend
+	// still closes it on stop. Callers must not close it. Used for in-place
+	// resume, where FC keeps using the memfd after the export.
+	PeekMemfd(ctx context.Context) *block.Memfd
 	// ServeStats returns a cumulative snapshot of demand faults served so far.
 	// Sampled at the envd-init boundary it yields the pages/bytes a guest
 	// needed to start.

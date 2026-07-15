@@ -65,6 +65,57 @@ func (p *Process) exportMemoryFromFc(
 	return cache, nil
 }
 
+func (p *Process) exportMemoryFromMemfd(
+	ctx context.Context,
+	include *roaring.Bitmap,
+	cachePath string,
+	blockSize int64,
+	memfd *block.Memfd,
+	bgCopy bool,
+	originalMemfile block.ReadonlyDevice,
+	dedupBestEffort bool,
+	dedupDirectIO bool,
+	dedupBudget block.DedupBudget,
+	inputEmpty *roaring.Bitmap,
+	metaOut *utils.SetOnce[*header.DiffMetadata],
+	inputMeta *header.DiffMetadata,
+	closeMemfd bool,
+) (_ block.DiffSource, e error) {
+	// The dedup path resolves metaOut asynchronously inside runDedup; return
+	// early so we don't clobber it with the pre-dedup inputMeta below.
+	if originalMemfile != nil {
+		return block.NewCacheFromMemfdDeduped(ctx, originalMemfile, blockSize, cachePath, memfd, include,
+			dedupBestEffort, dedupDirectIO, dedupBudget, inputEmpty, metaOut, closeMemfd)
+	}
+
+	var (
+		src block.DiffSource
+		err error
+	)
+	if bgCopy {
+		src, err = block.NewCacheFromMemfdAsync(ctx, blockSize, cachePath, memfd, include, closeMemfd)
+	} else {
+		src, err = block.NewCacheFromMemfd(ctx, blockSize, cachePath, memfd, include)
+		// The synchronous copy is complete, so close the memfd here (one layer
+		// up from NewCacheFromMemfd) unless the caller keeps it open for an
+		// in-place resume.
+		if closeMemfd {
+			if closeErr := memfd.Close(); closeErr != nil {
+				err = errors.Join(err, fmt.Errorf("close memfd: %w", closeErr))
+			}
+		}
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	if setErr := metaOut.SetValue(inputMeta); setErr != nil {
+		logger.L().Warn(ctx, "set metaOut", zap.Error(setErr))
+	}
+
+	return src, nil
+}
+
 // ExportMemory writes dirty guest memory to cachePath and resolves metaOut
 // with the diff metadata once it is known. metaOut resolves asynchronously
 // only for the memfd-dedup path; all other paths resolve it before returning.
@@ -83,6 +134,7 @@ func (p *Process) ExportMemory(
 	dedupBudget block.DedupBudget,
 	inputEmpty *roaring.Bitmap,
 	metaOut *utils.SetOnce[*header.DiffMetadata],
+	closeMemfd bool,
 ) (_ block.DiffSource, e error) {
 	// Resolve metaOut on every sync error so Wait-ers don't hang. Success paths
 	// resolve it inline; the memfd-dedup goroutine owns metaOut after this returns.
@@ -97,27 +149,22 @@ func (p *Process) ExportMemory(
 
 	inputMeta := &header.DiffMetadata{Dirty: include, Empty: inputEmpty, BlockSize: blockSize}
 	if memfd != nil {
-		if originalMemfile != nil {
-			return block.NewCacheFromMemfdDeduped(ctx, originalMemfile, blockSize, cachePath, memfd, include,
-				dedupBestEffort, dedupDirectIO, dedupBudget, inputEmpty, metaOut)
-		}
-		var (
-			src block.DiffSource
-			err error
+		return p.exportMemoryFromMemfd(
+			ctx,
+			include,
+			cachePath,
+			blockSize,
+			memfd,
+			bgCopy,
+			originalMemfile,
+			dedupBestEffort,
+			dedupDirectIO,
+			dedupBudget,
+			inputEmpty,
+			metaOut,
+			inputMeta,
+			closeMemfd,
 		)
-		if bgCopy {
-			src, err = block.NewCacheFromMemfdAsync(ctx, blockSize, cachePath, memfd, include)
-		} else {
-			src, err = block.NewCacheFromMemfd(ctx, blockSize, cachePath, memfd, include)
-		}
-		if err != nil {
-			return nil, err
-		}
-		if setErr := metaOut.SetValue(inputMeta); setErr != nil {
-			logger.L().Warn(ctx, "set metaOut", zap.Error(setErr))
-		}
-
-		return src, nil
 	}
 
 	cache, err := p.exportMemoryFromFc(ctx, include, cachePath, blockSize)

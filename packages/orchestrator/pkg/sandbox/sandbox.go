@@ -1559,10 +1559,12 @@ func pauseProcessMemory(
 
 	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
 	metaOut := utils.NewSetOnce[*header.DiffMetadata]()
-	// ExportMemory owns memfd and closes it on all paths.
+	// closeMemfd=true: ExportMemory closes the memfd once the export completes
+	// (in-place resume will pass false so FC keeps using it).
 	cache, err := fc.ExportMemory(
 		ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd, bgCopy,
 		originalMemfile, dedupBestEffort, dedupDirectIO, dedupBudget, diffMetadata.Empty, metaOut,
+		true,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to export memory: %w", err)
