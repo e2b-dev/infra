@@ -10,6 +10,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"time"
 )
 
 const nilUUID = "00000000-0000-0000-0000-000000000000"
@@ -37,7 +38,9 @@ func ResolveTemplateID(input string) (string, error) {
 
 	apiURL := resolveAPIURL() + "/templates"
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)

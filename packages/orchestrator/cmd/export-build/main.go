@@ -108,12 +108,12 @@ func main() {
 		fmt.Printf("resolved template %q -> build %s\n", *templateFlag, buildID)
 	}
 
-	// Default the image tag to the template alias so the loaded image has a
-	// meaningful name. Falls back to a generic name when -build is used directly.
+	// Docker repository names must be lowercase; template aliases are not
+	// guaranteed to be, so normalise the default tag.
 	imageTag := *tagFlag
 	if imageTag == "" {
 		if *templateFlag != "" {
-			imageTag = *templateFlag + ":latest"
+			imageTag = strings.ToLower(*templateFlag) + ":latest"
 		} else {
 			imageTag = "e2b-rootfs:latest"
 		}
@@ -164,10 +164,11 @@ func run(ctx, nbdCtx context.Context, buildID, storageFlag, outputPath, pushRef,
 
 	fmt.Println("loading rootfs from storage...")
 	rootfs, rootfsCleanup, err := testutils.TemplateRootfs(ctx, templateSpec, buildID)
-	defer rootfsCleanup.Run(ctx, 30*time.Second)
 	if err != nil {
+		rootfsCleanup.Run(nbdCtx, 30*time.Second)
 		return fmt.Errorf("load rootfs: %w", err)
 	}
+	defer rootfsCleanup.Run(nbdCtx, 30*time.Second)
 
 	// COW cache absorbs writes from the NBD layer during mount, keeping the
 	// stored rootfs immutable (safe to export while sandboxes are running).
@@ -194,11 +195,12 @@ func run(ctx, nbdCtx context.Context, buildID, storageFlag, outputPath, pushRef,
 
 	fmt.Println("provisioning NBD device...")
 	devicePath, deviceCleanup, err := nbd.GetNBDDevice(nbdCtx, testutils.NewLoggerOverlay(overlay), featureFlags)
-	defer deviceCleanup.Run(ctx, 30*time.Second)
 	if err != nil {
+		deviceCleanup.Run(nbdCtx, 30*time.Second)
 		// If this fails with "NBD module not loaded", run: modprobe nbd max_part=8
 		return fmt.Errorf("get NBD device: %w", err)
 	}
+	defer deviceCleanup.Run(nbdCtx, 30*time.Second)
 	fmt.Printf("rootfs on device: %s\n", devicePath)
 
 	mountPath, err := os.MkdirTemp("", buildID+"-export-mount-")
@@ -209,10 +211,11 @@ func run(ctx, nbdCtx context.Context, buildID, storageFlag, outputPath, pushRef,
 
 	fmt.Printf("mounting at %s...\n", mountPath)
 	mountCleanup, err := nbd.MountNBDDevice(devicePath, mountPath)
-	defer mountCleanup.Run(ctx, 30*time.Second)
 	if err != nil {
+		mountCleanup.Run(nbdCtx, 30*time.Second)
 		return fmt.Errorf("mount NBD device: %w", err)
 	}
+	defer mountCleanup.Run(nbdCtx, 30*time.Second)
 
 	fmt.Println("building OCI image layer...")
 	layer, err := tarball.LayerFromOpener(func() (io.ReadCloser, error) {
