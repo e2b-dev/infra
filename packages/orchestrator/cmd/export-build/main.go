@@ -47,7 +47,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -218,28 +217,41 @@ func run(ctx, nbdCtx context.Context, buildID, storageFlag, outputPath, pushRef,
 	}
 	defer mountCleanup.Run(nbdCtx, 30*time.Second)
 
+	// Archive to a temp file before building the OCI layer. go-containerregistry
+	// calls the layer opener twice (digest computation + actual upload) and sends
+	// Content-Length from the first pass. A live tar pipe can produce slightly
+	// different bytes on each run (xattr PAX headers vary when filesystem metadata
+	// is touched during the first read), causing an HTTP ContentLength mismatch.
+	// Writing once to a file guarantees both passes read identical bytes.
+	layerFile, err := os.CreateTemp("", buildID+"-layer-*.tar")
+	if err != nil {
+		return fmt.Errorf("create layer temp file: %w", err)
+	}
+	layerPath := layerFile.Name()
+	defer os.Remove(layerPath)
+
+	fmt.Println("archiving filesystem...")
+	tarCmd := exec.CommandContext(ctx, "tar",
+		"-C", mountPath,
+		"--one-file-system", // do not cross bind-mount boundaries inside the rootfs
+		"--numeric-owner",   // preserve UID/GID numerically -- no host passwd lookup
+		"--xattrs",          // preserve extended attributes (e.g. security.capability)
+		"--xattrs-include=*", // include all xattr namespaces; stored as PAX headers in the OCI layer
+		"-c",
+		".",
+	)
+	tarCmd.Stdout = layerFile
+	tarCmd.Stderr = os.Stderr
+	if err := tarCmd.Run(); err != nil {
+		layerFile.Close()
+		return fmt.Errorf("archive rootfs: %w", err)
+	}
+	if err := layerFile.Close(); err != nil {
+		return fmt.Errorf("flush layer file: %w", err)
+	}
+
 	fmt.Println("building OCI image layer...")
-	layer, err := tarball.LayerFromOpener(func() (io.ReadCloser, error) {
-		pr, pw := io.Pipe()
-		cmd := exec.CommandContext(ctx, "tar",
-			"-C", mountPath,
-			"--one-file-system", // do not cross bind-mount boundaries inside the rootfs
-			"--numeric-owner",   // preserve UID/GID numerically -- no host passwd lookup
-			"--xattrs",          // preserve extended attributes (e.g. security.capability)
-			"--xattrs-include=*", // include all xattr namespaces; stored as PAX headers in the OCI layer
-			"-c",
-			".",
-		)
-		cmd.Stdout = pw
-		cmd.Stderr = os.Stderr
-		if err := cmd.Start(); err != nil {
-			pw.Close()
-			pr.Close()
-			return nil, fmt.Errorf("start tar: %w", err)
-		}
-		go func() { pw.CloseWithError(cmd.Wait()) }()
-		return pr, nil
-	})
+	layer, err := tarball.LayerFromFile(layerPath)
 	if err != nil {
 		return fmt.Errorf("create OCI layer: %w", err)
 	}
