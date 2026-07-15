@@ -186,17 +186,25 @@ func convertDatabaseMountsToOrchestratorMounts(volumes []*types.SandboxVolumeMou
 	return results
 }
 
-// buildResumeSandboxData returns a SandboxDataFetcher that fetches snapshot data
-// from the cache and builds SandboxMetadata for resume operations.
-// The returned callback is called inside the sandbox lock to prevent race conditions.
+// buildResumeSandboxData returns a SandboxDataFetcher for resuming a sandbox
+// from its own snapshot.
 func (a *APIStore) buildResumeSandboxData(sandboxID string, autoPauseOverride *bool) orchestrator.SandboxDataFetcher {
+	return a.buildResumeSandboxDataFromSnapshot(sandboxID, sandboxID, autoPauseOverride)
+}
+
+// buildResumeSandboxDataFromSnapshot returns a SandboxDataFetcher that fetches
+// snapshot data for snapshotSandboxID from the cache and builds SandboxMetadata
+// for resume operations. sandboxID is the ID the sandbox will run under — it
+// differs from snapshotSandboxID when forking — and scopes the envd access token.
+// The returned callback is called inside the sandbox lock to prevent race conditions.
+func (a *APIStore) buildResumeSandboxDataFromSnapshot(snapshotSandboxID, sandboxID string, autoPauseOverride *bool) orchestrator.SandboxDataFetcher {
 	return func(ctx context.Context) (orchestrator.SandboxMetadata, *api.APIError) {
-		lastSnapshot, err := a.snapshotCache.Get(ctx, sandboxID)
+		lastSnapshot, err := a.snapshotCache.Get(ctx, snapshotSandboxID)
 		if err != nil {
 			return orchestrator.SandboxMetadata{}, &api.APIError{
 				Code:      http.StatusInternalServerError,
 				ClientMsg: "Error when getting snapshot",
-				Err:       fmt.Errorf("error getting last snapshot for sandbox '%s': %w", sandboxID, err),
+				Err:       fmt.Errorf("error getting last snapshot for sandbox '%s': %w", snapshotSandboxID, err),
 			}
 		}
 
@@ -253,6 +261,7 @@ func (a *APIStore) buildResumeSandboxData(sandboxID string, autoPauseOverride *b
 			VolumeMounts:            convertDatabaseMountsToOrchestratorMounts(volumes),
 			EnvdAccessToken:         envdAccessToken,
 			NodeID:                  &nodeID,
+			SnapshotSandboxID:       snapshotSandboxID,
 		}, nil
 	}
 }
