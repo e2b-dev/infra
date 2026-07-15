@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -304,7 +305,15 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 
 		go func() {
 			start := time.Now()
-			_, err := d.prov.ReadAt(ctx, data, int64(from))
+			// RunFaultSafe: the provider copies from a memory-mapped cache
+			// file; an unreadable backing block raises SIGBUS, which must
+			// become an NBD error reply (guest sees EIO on this request)
+			// rather than a process-killing fault.
+			err := block.RunFaultSafe(func() error {
+				_, readErr := d.prov.ReadAt(ctx, data, int64(from))
+
+				return readErr
+			})
 
 			attrs := nbdReadSuccess
 			if err != nil {
@@ -386,8 +395,14 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 		// buffered to avoid goroutine leak
 		errchan := make(chan error, 1)
 		go func() {
-			_, err := d.prov.WriteAt(data, int64(from))
-			errchan <- err
+			// RunFaultSafe: writing into a not-yet-resident mmap page pages
+			// it in first; if that read fails (bad sector) the write raises
+			// SIGBUS. See cmdRead.
+			errchan <- block.RunFaultSafe(func() error {
+				_, writeErr := d.prov.WriteAt(data, int64(from))
+
+				return writeErr
+			})
 		}()
 
 		// Wait until either the WriteAt completed, or our context is cancelled...
@@ -455,8 +470,13 @@ func (d *Dispatch) cmdWriteZeroes(ctx context.Context, cmdHandle uint64, cmdFrom
 		// channel is buffered so the goroutine never leaks on the ctx.Done path.
 		errchan := make(chan error, 1)
 		go func() {
-			_, err := d.prov.WriteZeroesAt(int64(cmdFrom), cmdLength)
-			errchan <- err
+			// RunFaultSafe: the punch-hole fallback clears the mmap range
+			// in-process, which can raise SIGBUS like a write. See cmdRead.
+			errchan <- block.RunFaultSafe(func() error {
+				_, zeroErr := d.prov.WriteZeroesAt(int64(cmdFrom), cmdLength)
+
+				return zeroErr
+			})
 		}()
 
 		var zeroErr error

@@ -325,8 +325,23 @@ func (c *Cache) Dedup(
 	}
 
 	compareStart := time.Now()
-	plan, err := dedupCompare(ctx, src, base, dirty, blockSize, bestEffort, budget)
-	if err != nil {
+	// RunFaultSafe: the compare reads pages from this cache's mmap (and
+	// possibly the base's); an unreadable backing block raises SIGBUS, which
+	// must fail this dedup instead of killing the process.
+	var plan *dedupPlan
+	if err := RunFaultSafe(func() error {
+		var compareErr error
+		plan, compareErr = dedupCompare(ctx, src, base, dirty, blockSize, bestEffort, budget)
+
+		return compareErr
+	}); err != nil {
+		if errors.Is(err, ErrMemoryFault) {
+			logger.L().Error(ctx, "memory fault comparing pages during dedup",
+				zap.Error(err),
+				zap.String("cache_path", c.filePath),
+			)
+		}
+
 		return nil, nil, err
 	}
 	compareDur := time.Since(compareStart)
