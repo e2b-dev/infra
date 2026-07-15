@@ -71,6 +71,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd/testutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func main() {
@@ -224,6 +225,8 @@ func run(ctx, nbdCtx context.Context, buildID, storageFlag, outputPath, pushRef,
 			"-C", mountPath,
 			"--one-file-system", // do not cross bind-mount boundaries inside the rootfs
 			"--numeric-owner",   // preserve UID/GID numerically -- no host passwd lookup
+			"--xattrs",          // preserve extended attributes (e.g. security.capability)
+			"--xattrs-include=*", // include all xattr namespaces; stored as PAX headers in the OCI layer
 			"-c",
 			".",
 		)
@@ -250,7 +253,7 @@ func run(ctx, nbdCtx context.Context, buildID, storageFlag, outputPath, pushRef,
 	if err != nil {
 		return fmt.Errorf("get image config: %w", err)
 	}
-	cfgFile.Architecture = "amd64"
+	cfgFile.Architecture = utils.TargetArch() // respects TARGET_ARCH env var; defaults to host arch
 	cfgFile.OS = "linux"
 	img, err = mutate.ConfigFile(img, cfgFile)
 	if err != nil {
