@@ -89,6 +89,9 @@ type Deps struct {
 type EgressSetup struct {
 	// Proxy is the network egress proxy for slot creation/deletion.
 	Proxy network.EgressProxy
+	// NetworkAssignHook runs right after the sandbox's network is assigned
+	// and strictly before its guest can run (or resume running).
+	NetworkAssignHook sandbox.NetworkAssignHook
 
 	// Start is called as a managed service (optional).
 	// If nil, no service is started for the egress proxy.
@@ -721,7 +724,11 @@ func run(config cfg.Config, opts Options) (success bool) {
 	closers = append(closers, closer{"network pool", networkPool.Close})
 
 	// sandbox factory
-	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, hostStatsDelivery, cgroupManager, egressSetup.Proxy, sandboxes)
+	networkAssignHook := egressSetup.NetworkAssignHook
+	if networkAssignHook == nil {
+		networkAssignHook = sandbox.NoopNetworkAssignHook{}
+	}
+	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, hostStatsDelivery, cgroupManager, egressSetup.Proxy, networkAssignHook, sandboxes)
 
 	// isolated filesystems cache (for nfs proxy)
 	builder := chrooted.NewBuilder(config)
