@@ -16,10 +16,15 @@ func TestSandboxFork(t *testing.T) {
 	t.Parallel()
 	c := setup.GetAPIClient()
 
-	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
+	// The checkpoint plus fork boots can outlast the default 30s sandbox
+	// timeout on a loaded runner, which would expire the original mid-test.
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false), utils.WithTimeout(300))
 	sbxID := sbx.SandboxID
 
-	forkResp, err := c.PostSandboxesSandboxIDForkWithResponse(t.Context(), sbxID, api.PostSandboxesSandboxIDForkJSONRequestBody{}, setup.WithAPIKey())
+	// Forks default to a 15s timeout; give them room so the state
+	// assertions below don't race their expiration on a loaded runner.
+	forkTimeout := int32(300)
+	forkResp, err := c.PostSandboxesSandboxIDForkWithResponse(t.Context(), sbxID, api.PostSandboxesSandboxIDForkJSONRequestBody{Timeout: &forkTimeout}, setup.WithAPIKey())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusCreated, forkResp.StatusCode())
 	require.NotNil(t, forkResp.JSON201)
@@ -56,10 +61,15 @@ func TestSandboxFork_Multiple(t *testing.T) {
 	t.Parallel()
 	c := setup.GetAPIClient()
 
-	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
+	// The checkpoint plus fork boots can outlast the default 30s sandbox
+	// timeout on a loaded runner, which would expire the original mid-test.
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false), utils.WithTimeout(300))
 
 	count := int32(2)
-	forkResp, err := c.PostSandboxesSandboxIDForkWithResponse(t.Context(), sbx.SandboxID, api.PostSandboxesSandboxIDForkJSONRequestBody{Count: &count}, setup.WithAPIKey())
+	// Forks default to a 15s timeout; give them room so the state
+	// assertions below don't race their expiration on a loaded runner.
+	forkTimeout := int32(300)
+	forkResp, err := c.PostSandboxesSandboxIDForkWithResponse(t.Context(), sbx.SandboxID, api.PostSandboxesSandboxIDForkJSONRequestBody{Count: &count, Timeout: &forkTimeout}, setup.WithAPIKey())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusCreated, forkResp.StatusCode())
 	require.NotNil(t, forkResp.JSON201)
