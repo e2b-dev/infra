@@ -38,7 +38,13 @@ func NewTeamObserver(ctx context.Context, sandboxStore *sandbox.Store) (*TeamObs
 		return nil, fmt.Errorf("failed to create external meter exporter: %w", err)
 	}
 
-	meterProvider, err := telemetry.NewMeterProvider(externalMeterExporter, ExportPeriod, nil)
+	meterProvider, err := telemetry.NewMeterProvider(
+		externalMeterExporter,
+		ExportPeriod,
+		nil,
+		// No limit on the number of metrics to be exported, as we want to export all team metrics
+		sdkmetric.WithCardinalityLimit(0),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create external metric provider: %w", err)
 	}
