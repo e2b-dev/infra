@@ -267,7 +267,7 @@ func BenchmarkConcurrentResume(b *testing.B) {
 	sandboxes := sandbox.NewSandboxesMap()
 	sandboxFactory := sandbox.NewFactory(
 		config.BuilderConfig, networkPool, devicePool,
-		featureFlags, hoststats.NewNoopDelivery(), cgroupManager, network.NewNoopEgressProxy(), sandbox.NoopStartHook{}, sandboxes,
+		featureFlags, hoststats.NewNoopDelivery(), cgroupManager, network.NewNoopEgressProxy(), sandbox.NoopNetworkAssignHook{}, sandboxes,
 	)
 
 	dockerhubRepository, err := dockerhub.GetRemoteRepository(b.Context())

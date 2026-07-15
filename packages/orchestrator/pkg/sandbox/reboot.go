@@ -133,7 +133,7 @@ func (f *Factory) RebootSandbox(
 		apiConfigToStore,
 		nil,
 		WithDeferredMarkRunning(),
-		withStartReason(StartReasonReboot),
+		withNetworkAssignReason(NetworkAssignReasonReboot),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create sandbox from rootfs: %w", err)
