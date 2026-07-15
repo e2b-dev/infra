@@ -117,6 +117,17 @@ func (r *decompressReader) Read(p []byte) (int, error) {
 }
 
 func (r *decompressReader) Close(ctx context.Context) (*ReadStats, error) {
+	// Drain any remaining decoded bytes so the codec consumes the frame footer
+	// and surfaces a CRC/truncation error. A caller reading only the exact
+	// uncompressed frame size never pulls the footer through, so zstd would
+	// otherwise report success on a footer-corrupted or truncated frame.
+	// Bounded: the source is a single frame.
+	if r.readErr == nil {
+		if _, err := io.Copy(io.Discard, r.meteredOut); err != nil && !errors.Is(err, io.EOF) {
+			r.readErr = err
+		}
+	}
+
 	r.releaseCodec()
 
 	stats := &ReadStats{
@@ -129,6 +140,10 @@ func (r *decompressReader) Close(ctx context.Context) (*ReadStats, error) {
 	recordDecompressStep(ctx, r, stats, r.readErr)
 
 	_, innerErr := r.inner.Close(ctx)
+
+	if r.readErr != nil {
+		return stats, r.readErr
+	}
 
 	return stats, innerErr
 }

@@ -57,7 +57,9 @@ var copyScriptTemplate = txtTemplate.Must(txtTemplate.New("copy-script-template"
 // 3) Extracts it (still in the /tmp directory)
 // 4) Moves the extracted files to the target path in the sandbox
 //   - If the source is a file, it creates the parent directories and moves the file
-//   - If the source is a directory, it moves all its contents to the target directory
+//   - If the source is a directory, it merges its contents into the target
+//     directory (Docker COPY semantics: existing directories are merged into,
+//     existing files are overwritten)
 
 // Note: The temporary files in the /tmp directory are cleaned up automatically on sandbox restart
 // because the /tmp is mounted as a tmpfs and deleted on restart.

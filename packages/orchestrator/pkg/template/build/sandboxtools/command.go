@@ -190,7 +190,14 @@ func runCommandWithAllOptions(
 			return fmt.Errorf("command failed: %w", err)
 		case msg, ok := <-msgCh:
 			if !ok {
-				return nil
+				// The terminal status, if any, is in msgErrCh before msgCh
+				// closes - drain it so a failure is not reported as success.
+				select {
+				case err := <-msgErrCh:
+					return fmt.Errorf("command failed: %w", err)
+				default:
+					return nil
+				}
 			}
 			e := msg.GetEvent()
 			if e == nil {

@@ -9,23 +9,23 @@ import (
 )
 
 type Limiter struct {
-	gCloudUploadLimiter *utils.AdjustableSemaphore
-	featureFlags        *featureflags.Client
+	storageUploadLimiter *utils.AdjustableSemaphore
+	featureFlags         *featureflags.Client
 
 	done      chan struct{}
 	closeOnce sync.Once
 }
 
 func New(ctx context.Context, featureFlags *featureflags.Client) (*Limiter, error) {
-	uploadLimiter, err := utils.NewAdjustableSemaphore(int64(featureflags.GcloudConcurrentUploadLimit.Fallback()))
+	uploadLimiter, err := utils.NewAdjustableSemaphore(int64(featureflags.StorageConcurrentUploadLimit.Fallback()))
 	if err != nil {
 		return nil, err
 	}
 
 	l := &Limiter{
-		gCloudUploadLimiter: uploadLimiter,
-		featureFlags:        featureFlags,
-		done:                make(chan struct{}),
+		storageUploadLimiter: uploadLimiter,
+		featureFlags:         featureFlags,
+		done:                 make(chan struct{}),
 	}
 
 	go l.UpdateUploadLimitSemaphore(ctx)

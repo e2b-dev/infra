@@ -2,6 +2,7 @@ package host
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,9 @@ import (
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/semaphore"
 )
+
+// ErrCAInstallInProgress means the lock is held by a prior install's cleanup.
+var ErrCAInstallInProgress = errors.New("CA install already in progress")
 
 const (
 	CaBundlePath = "/etc/ssl/certs/ca-certificates.crt"
@@ -81,8 +85,9 @@ func (c *CACertInstaller) install(ctx context.Context, certPEM, bundlePath, extr
 	// consistent regardless of how the caller formatted the PEM.
 	normalized := strings.TrimRight(certPEM, "\n") + "\n"
 
+	// Cancellation here means a prior install's cleanup still holds mu (83ee89f9b).
 	if err := c.mu.Acquire(ctx, 1); err != nil {
-		return fmt.Errorf("acquire CA install lock: %w", err)
+		return fmt.Errorf("%w: %w", ErrCAInstallInProgress, err)
 	}
 	defer c.mu.Release(1)
 
@@ -115,10 +120,10 @@ func (c *CACertInstaller) install(ctx context.Context, certPEM, bundlePath, extr
 		Dur("append_duration", time.Since(start)).
 		Msg("CA cert appended to bundle")
 
-	go func() { //nolint:contextcheck // background cleanup must outlive the caller's ctx
+	go func() {
 		cleanStart := time.Now()
 
-		_ = c.mu.Acquire(context.Background(), 1)
+		_ = c.mu.Acquire(context.WithoutCancel(ctx), 1)
 		defer c.mu.Release(1)
 
 		// A newer install has taken over; let that goroutine handle cleanup.

@@ -1,13 +1,24 @@
 // Package discovery enumerates running orchestrator (Firecracker host) instances
 // for the API to route sandbox calls to.
 //
-// The Discovery interface has two implementations:
+// The Discovery interface has several implementations:
 //
-//   - NomadDiscovery: queries the local Nomad agent's HTTP /v1/nodes endpoint.
-//     Used by the original Nomad-based deploy where every Nomad client node
-//     also runs an orchestrator process.
+//   - NewNomad: lists registrations of the orchestrator's Nomad-native
+//     services via the local Nomad agent's HTTP /v1/service/<name> endpoint
+//     (one query per configured name, unioned). Used by the Nomad-based
+//     deploy; node-pool- and job-agnostic.
 //
-//   - KubernetesDiscovery: lists pods of the orchestrator DaemonSet via the
+//   - NewNomadNodePool: the legacy implementation that lists ready Nomad
+//     NODES in a node pool and assumes each runs an orchestrator on the
+//     well-known port. Kept as a migration fallback for orchestrator jobs
+//     whose service registrations are broken (empty Address); see
+//     nomad_node_pool.go.
+//
+//   - NewMerged: unions a primary and a fallback Discovery, deduplicated by
+//     ShortID with primary winning. Used to combine the two Nomad backends
+//     during the migration.
+//
+//   - NewKubernetes: lists pods of the orchestrator DaemonSet via the
 //     in-cluster K8s API. Used by the K8s deploy.
 //
 // The shape of the returned []Node mirrors what the existing

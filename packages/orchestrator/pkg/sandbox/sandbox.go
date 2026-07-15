@@ -261,6 +261,8 @@ type Sandbox struct {
 	*Resources
 	*Metadata
 
+	updateMu sync.Mutex
+
 	// LifecycleID is a unique identifier for each Firecracker process.
 	// It is used internally by the orchestrator for map eviction guards
 	// and proxy connection pooling. Unlike ExecutionID (which is stable
@@ -308,6 +310,13 @@ type Sandbox struct {
 	// so the warm harvest never pollutes the customer resume distributions. Set
 	// from the WithoutLiveRegistration resume option.
 	skipStartupMetrics bool
+}
+
+func (s *Sandbox) RunUpdate(update func() error) error {
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
+
+	return update()
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -369,6 +378,11 @@ func NewFactory(
 
 func (f *Factory) EgressProxy() network.EgressProxy {
 	return f.egressProxy
+}
+
+// NewDirectPathMount opens host-side NBD access without a Firecracker VM.
+func (f *Factory) NewDirectPathMount(backend block.Device) *nbd.DirectPathMount {
+	return nbd.NewDirectPathMount(backend, f.devicePool, f.featureFlags)
 }
 
 // PreBootFn is an optional callback invoked after the rootfs is ready but before

@@ -14,14 +14,16 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
 	"github.com/e2b-dev/infra/packages/docker-reverse-proxy/internal/cache"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type APIStore struct {
-	db        *client.Client
-	authDb    *authdb.Client
-	AuthCache *cache.AuthCache
-	proxy     *httputil.ReverseProxy
+	db           *client.Client
+	authDb       *authdb.Client
+	AuthCache    *cache.AuthCache
+	proxy        *httputil.ReverseProxy
+	featureFlags *featureflags.Client
 }
 
 func NewStore(ctx context.Context) *APIStore {
@@ -34,6 +36,11 @@ func NewStore(ctx context.Context) *APIStore {
 		log.Fatal(err)
 	}
 	authDatabase, err := authdb.NewClient(ctx, databaseURL, databaseURL, pool.WithMaxConnections(3))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	featureFlags, err := featureflags.NewClient()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -57,10 +64,11 @@ func NewStore(ctx context.Context) *APIStore {
 	}
 
 	return &APIStore{
-		db:        database,
-		authDb:    authDatabase,
-		AuthCache: authCache,
-		proxy:     proxy,
+		db:           database,
+		authDb:       authDatabase,
+		AuthCache:    authCache,
+		proxy:        proxy,
+		featureFlags: featureFlags,
 	}
 }
 

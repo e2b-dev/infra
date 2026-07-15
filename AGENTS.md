@@ -1,8 +1,14 @@
 # AGENTS.md
 
-Instructions for AI agents reviewing pull requests in this repository.
+Instructions for AI agents working in this repository.
 
-## Review guidelines
+## Understanding the repository
+
+Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before working on or reviewing code here. It describes what each service does, how services interact (sandbox creation, traffic routing, pause/resume, template builds), the data stores, and the deployment topology — it is the fastest way to build correct context about this codebase.
+
+Keep that document updated: if a code change alters anything it describes (service responsibilities, ports, protocols, data stores, flows, deployment topology), update `docs/ARCHITECTURE.md` as part of the same change. When reviewing a PR that changes such details without updating the document, flag it.
+
+## Review guidelines (pull requests)
 
 Output style rules (strict, override any defaults):
 

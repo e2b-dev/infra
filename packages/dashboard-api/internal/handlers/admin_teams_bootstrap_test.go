@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/provisioning"
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
@@ -32,9 +33,10 @@ func TestPostAdminTeamsBootstrapCreatesTeam(t *testing.T) {
 	}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 
+	provisioningService := provisioning.New(testDB.AuthDB, nil, sink)
+
 	store := &APIStore{
-		authDB:            testDB.AuthDB,
-		teamProvisionSink: sink,
+		provisioningService: provisioningService,
 	}
 	store.PostAdminTeamsBootstrap(ginCtx)
 
@@ -108,9 +110,10 @@ func TestPostAdminTeamsBootstrapRollsBackOnProvisioningFailure(t *testing.T) {
 	}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 
+	provisioningService := provisioning.New(testDB.AuthDB, nil, sink)
+
 	store := &APIStore{
-		authDB:            testDB.AuthDB,
-		teamProvisionSink: sink,
+		provisioningService: provisioningService,
 	}
 	store.PostAdminTeamsBootstrap(ginCtx)
 
@@ -148,9 +151,10 @@ func TestPostAdminTeamsBootstrapRejectsMissingFields(t *testing.T) {
 	}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 
+	provisioningService := provisioning.New(testDB.AuthDB, nil, &fakeTeamProvisionSink{err: errors.New("should not provision")})
+
 	store := &APIStore{
-		authDB:            testDB.AuthDB,
-		teamProvisionSink: &fakeTeamProvisionSink{err: errors.New("should not provision")},
+		provisioningService: provisioningService,
 	}
 	store.PostAdminTeamsBootstrap(ginCtx)
 

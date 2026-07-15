@@ -247,7 +247,9 @@ func BenchmarkConcurrentResume(b *testing.B) {
 	limiter, err := limit.New(b.Context(), featureFlags)
 	require.NoError(b, err)
 
-	persistence, err := storage.GetStorageProvider(b.Context(), storage.TemplateStorageConfig.WithLimiter(limiter))
+	templateSpec, err := cfg.TemplateStorage()
+	require.NoError(b, err)
+	persistence, err := storage.NewProvider(b.Context(), templateSpec, storage.WithLimiter(limiter))
 	require.NoError(b, err)
 
 	blockMetrics, err := blockmetrics.NewMetrics(&noop.MeterProvider{})
@@ -293,10 +295,14 @@ func BenchmarkConcurrentResume(b *testing.B) {
 	artifactRegistry, err := artifactsregistry.GetArtifactsRegistryProvider(b.Context())
 	require.NoError(b, err)
 
-	persistenceTemplate, err := storage.GetStorageProvider(b.Context(), storage.TemplateStorageConfig)
+	templateSpec2, err := cfg.TemplateStorage()
+	require.NoError(b, err)
+	persistenceTemplate, err := storage.NewProvider(b.Context(), templateSpec2)
 	require.NoError(b, err)
 
-	persistenceBuild, err := storage.GetStorageProvider(b.Context(), storage.BuildCacheStorageConfig)
+	buildCacheSpec, err := cfg.BuildCacheStorage()
+	require.NoError(b, err)
+	persistenceBuild, err := storage.NewProvider(b.Context(), buildCacheSpec)
 	require.NoError(b, err)
 
 	var proxyPort uint16 = 5007

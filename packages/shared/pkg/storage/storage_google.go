@@ -10,10 +10,8 @@ import (
 	"fmt"
 	"hash"
 	"io"
-	"maps"
 	"net/http"
 	"os"
-	"strconv"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -34,16 +32,15 @@ import (
 )
 
 const (
-	googleReadTimeout              = 10 * time.Second
-	googleOperationTimeout         = 5 * time.Second
-	googleBufferSize               = 4 << 20 // 4 MiB
-	googleInitialBackoff           = 10 * time.Millisecond
-	googleMaxBackoff               = 10 * time.Second
-	googleBackoffMultiplier        = 2
-	googleMaxAttempts              = 10
-	defaultGRPCConnectionPoolSize  = 8
-	defaultGCSEnableDirectPath     = false
-	gcloudDefaultUploadConcurrency = 16
+	googleReadTimeout             = 10 * time.Second
+	googleOperationTimeout        = 5 * time.Second
+	googleBufferSize              = 4 << 20 // 4 MiB
+	googleInitialBackoff          = 10 * time.Millisecond
+	googleMaxBackoff              = 10 * time.Second
+	googleBackoffMultiplier       = 2
+	googleMaxAttempts             = 10
+	defaultGRPCConnectionPoolSize = 8
+	defaultGCSEnableDirectPath    = false
 
 	gcsOperationAttr                    = "operation"
 	gcsOperationAttrWrite               = "Write"
@@ -227,11 +224,8 @@ func (o *gcpObject) Size(ctx context.Context) (_ int64, err error) {
 		return 0, fmt.Errorf("failed to get GCS object (%q) attributes: %w", o.path, err)
 	}
 
-	if v, ok := attrs.Metadata[MetadataKeyUncompressedSize]; ok {
-		parsed, parseErr := strconv.ParseInt(v, 10, 64)
-		if parseErr == nil {
-			return parsed, nil
-		}
+	if size, ok := ObjectMetadata(attrs.Metadata).UncompressedSize(); ok {
+		return size, nil
 	}
 
 	return attrs.Size, nil
@@ -418,27 +412,23 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 		attribute.String("compression.type", compressionMetricType),
 	)
 
-	maxConcurrency := gcloudDefaultUploadConcurrency
-	if o.limiter != nil {
-		uploadLimiter := o.limiter.GCloudUploadLimiter()
-		if uploadLimiter != nil {
-			semaphoreErr := uploadLimiter.Acquire(ctx, 1)
-			if semaphoreErr != nil {
-				timer.Failure(ctx, 0)
+	release, err := o.limiter.AcquireUploadSlot(ctx)
+	if err != nil {
+		timer.Failure(ctx, 0)
 
-				return nil, [32]byte{}, fmt.Errorf("failed to acquire semaphore: %w", semaphoreErr)
-			}
-			defer uploadLimiter.Release(1)
-		}
-
-		maxConcurrency = o.limiter.GCloudMaxTasks(ctx)
+		return nil, [32]byte{}, err
 	}
+	defer release()
+
+	maxConcurrency := o.limiter.MaxUploadTasks(ctx)
 
 	// Compressed uploads always go through the multipart compressed path,
 	// regardless of file size.
 	if cfg.IsCompressionEnabled() {
 		start := time.Now()
-		ft, checksum, err := o.storeFileCompressed(ctx, path, cfg, maxConcurrency, putOpts)
+		ft, checksum, err := storeFileCompressed(ctx, path, cfg, maxConcurrency, putOpts, func(metadata ObjectMetadata) (partUploader, error) {
+			return NewMultipartUploaderWithRetryConfig(ctx, bucketName, objectName, DefaultRetryConfig(), metadata)
+		})
 		if err != nil {
 			timer.Failure(ctx, fileInfo.Size())
 			logger.L().Error(ctx, "Failed to upload file to GCS",
@@ -543,38 +533,6 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 	timer.Success(ctx, count)
 
 	return nil, sum256(hasher), e
-}
-
-func (o *gcpObject) storeFileCompressed(ctx context.Context, localPath string, cfg CompressConfig, maxConcurrency int, putOpts PutOptions) (*FullFrameTable, [32]byte, error) {
-	file, err := os.Open(localPath)
-	if err != nil {
-		return nil, [32]byte{}, fmt.Errorf("failed to open local file %s: %w", localPath, err)
-	}
-	defer file.Close()
-
-	fi, err := file.Stat()
-	if err != nil {
-		return nil, [32]byte{}, fmt.Errorf("failed to stat local file %s: %w", localPath, err)
-	}
-
-	// Merge caller metadata (e.g. team_id) with our internal uncompressed-size
-	// bookkeeping. Internal key wins on collision.
-	metadata := make(map[string]string, len(putOpts.Metadata)+1)
-	maps.Copy(metadata, putOpts.Metadata)
-	metadata[MetadataKeyUncompressedSize] = strconv.FormatInt(fi.Size(), 10)
-
-	uploader, err := NewMultipartUploaderWithRetryConfig(
-		ctx,
-		o.storage.bucket.BucketName(),
-		o.path,
-		DefaultRetryConfig(),
-		metadata,
-	)
-	if err != nil {
-		return nil, [32]byte{}, fmt.Errorf("failed to create multipart uploader: %w", err)
-	}
-
-	return compressStream(ctx, file, cfg, uploader, maxConcurrency, putOpts.FrameSink)
 }
 
 type gcpServiceToken struct {

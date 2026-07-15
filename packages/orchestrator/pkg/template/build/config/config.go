@@ -36,7 +36,8 @@ type TemplateConfig struct {
 	// The amount of RAM memory to allocate to the VM, in MiB.
 	MemoryMB int64
 
-	// The amount of free disk to allocate to the VM, in MiB.
+	// The amount of free rootfs target after build steps and before finalize, in MiB.
+	// ext4 metadata and finalize writes may reduce the available space.
 	DiskSizeMB int64
 
 	// HugePages sets whether the VM use huge pages.

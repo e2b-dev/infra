@@ -17,7 +17,6 @@ func setBaseEnv(t *testing.T) {
 	t.Setenv("REDIS_URL", "redis://example")
 	t.Setenv("ORY_SDK_URL", "https://tenant.projects.oryapis.com")
 	t.Setenv("ORY_PROJECT_API_TOKEN", "pat")
-	t.Setenv("ORY_ISSUER_URL", "https://auth.example.com")
 }
 
 func TestParseAuthProviderConfig(t *testing.T) {
@@ -51,26 +50,17 @@ func TestParseRequiresOryEnv(t *testing.T) {
 		name          string
 		sdkURL        string
 		token         string
-		issuer        string
 		wantErrSubstr string
 	}{
 		{
 			name:          "without sdk url errors",
 			token:         "pat",
-			issuer:        "https://auth.example.com",
 			wantErrSubstr: "ORY_SDK_URL",
 		},
 		{
 			name:          "without token errors",
 			sdkURL:        "https://tenant.projects.oryapis.com",
-			issuer:        "https://auth.example.com",
 			wantErrSubstr: "ORY_PROJECT_API_TOKEN",
-		},
-		{
-			name:          "without issuer errors",
-			sdkURL:        "https://tenant.projects.oryapis.com",
-			token:         "pat",
-			wantErrSubstr: "ORY_ISSUER_URL",
 		},
 	}
 
@@ -81,7 +71,6 @@ func TestParseRequiresOryEnv(t *testing.T) {
 			t.Setenv("REDIS_URL", "redis://example")
 			t.Setenv("ORY_SDK_URL", tt.sdkURL)
 			t.Setenv("ORY_PROJECT_API_TOKEN", tt.token)
-			t.Setenv("ORY_ISSUER_URL", tt.issuer)
 
 			_, err := Parse()
 			require.Error(t, err)
@@ -90,18 +79,17 @@ func TestParseRequiresOryEnv(t *testing.T) {
 	}
 }
 
-func TestParseOryHappyPathIsIndependentOfAuthProvider(t *testing.T) { //nolint:paralleltest // t.Setenv cannot be used with t.Parallel.
+func TestParseOryHappyPath(t *testing.T) { //nolint:paralleltest // t.Setenv cannot be used with t.Parallel.
 	setBaseEnv(t)
 
 	config, err := Parse()
 	require.NoError(t, err)
 	require.Equal(t, "https://tenant.projects.oryapis.com", config.OrySDKURL)
 	require.Equal(t, "pat", config.OryProjectAPIToken)
-	require.Equal(t, "https://auth.example.com", config.OryIssuerURL)
 	require.Empty(t, config.AuthProvider.JWT)
 }
 
-func TestParseOryIssuerDefaultsFromSingleAuthProviderJWT(t *testing.T) {
+func TestParseOryWithAuthProviderConfig(t *testing.T) {
 	t.Setenv("POSTGRES_CONNECTION_STRING", "postgres://example")
 	t.Setenv("ADMIN_TOKEN", "admin-token")
 	t.Setenv("REDIS_URL", "redis://example")
@@ -115,21 +103,8 @@ func TestParseOryIssuerDefaultsFromSingleAuthProviderJWT(t *testing.T) {
 
 	config, err := Parse()
 	require.NoError(t, err)
-	require.Equal(t, "https://auth.mycompany.com", config.OryIssuerURL)
-}
-
-func TestParseOryIssuerRejectsMismatchAgainstAuthProvider(t *testing.T) {
-	setBaseEnv(t)
-	t.Setenv("ORY_ISSUER_URL", "https://tenant.projects.oryapis.com")
-	t.Setenv("AUTH_PROVIDER_CONFIG", `{
-		"jwt": [
-			{"issuer": {"url": "https://auth.mycompany.com", "audiences": ["dashboard-api"]}}
-		]
-	}`)
-
-	_, err := Parse()
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "does not match any AUTH_PROVIDER_CONFIG")
+	require.Len(t, config.AuthProvider.JWT, 1)
+	require.Equal(t, "https://auth.mycompany.com", config.AuthProvider.JWT[0].Issuer.URL)
 }
 
 func TestParseFailureCondition(t *testing.T) {
@@ -153,7 +128,6 @@ func TestParseFailureCondition(t *testing.T) {
 				"ADMIN_TOKEN":                "admin-token",
 				"REDIS_URL":                  "redis://example",
 				"ORY_PROJECT_API_TOKEN":      "pat",
-				"ORY_ISSUER_URL":             "https://auth.example.com",
 			},
 			want: FailureConditionMissingOrySDKURL,
 		},
@@ -164,37 +138,8 @@ func TestParseFailureCondition(t *testing.T) {
 				"ADMIN_TOKEN":                "admin-token",
 				"REDIS_URL":                  "redis://example",
 				"ORY_SDK_URL":                "https://tenant.projects.oryapis.com",
-				"ORY_ISSUER_URL":             "https://auth.example.com",
 			},
 			want: FailureConditionMissingOryProjectToken,
-		},
-		{
-			name: "missing ory issuer url",
-			env: map[string]string{
-				"POSTGRES_CONNECTION_STRING": "postgres://example",
-				"ADMIN_TOKEN":                "admin-token",
-				"REDIS_URL":                  "redis://example",
-				"ORY_SDK_URL":                "https://tenant.projects.oryapis.com",
-				"ORY_PROJECT_API_TOKEN":      "pat",
-			},
-			want: FailureConditionMissingOryIssuerURL,
-		},
-		{
-			name: "ory issuer url mismatch",
-			env: map[string]string{
-				"POSTGRES_CONNECTION_STRING": "postgres://example",
-				"ADMIN_TOKEN":                "admin-token",
-				"REDIS_URL":                  "redis://example",
-				"ORY_SDK_URL":                "https://tenant.projects.oryapis.com",
-				"ORY_PROJECT_API_TOKEN":      "pat",
-				"ORY_ISSUER_URL":             "https://tenant.projects.oryapis.com",
-				"AUTH_PROVIDER_CONFIG": `{
-					"jwt": [
-						{"issuer": {"url": "https://auth.example.com", "audiences": ["dashboard-api"]}}
-					]
-				}`,
-			},
-			want: FailureConditionOryIssuerURLMismatch,
 		},
 	}
 

@@ -210,6 +210,22 @@ func TestCompressStreamContextCancel(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
+func TestClampCloudMinPartSize(t *testing.T) {
+	t.Parallel()
+
+	// Below S3/GCS XML API's 5 MiB non-final part minimum → clamped.
+	require.Equal(t, 5, clampCloudMinPartSize(CompressConfig{MinPartSizeMB: 1}, 0).MinPartSizeMB)
+	// Unset resolves to the 50 MB default from MinPartSize().
+	require.Equal(t, 50, clampCloudMinPartSize(CompressConfig{}, 0).MinPartSizeMB)
+	require.Equal(t, 50, clampCloudMinPartSize(CompressConfig{MinPartSizeMB: 50}, 0).MinPartSizeMB)
+
+	// Large files raise the part size to stay under the 10,000-part cap:
+	// 900 GiB at 50 MB parts would need ~18,400 parts.
+	clamped := clampCloudMinPartSize(CompressConfig{}, 900<<30)
+	require.Equal(t, 103, clamped.MinPartSizeMB)
+	require.LessOrEqual(t, int64(900<<30)/clamped.MinPartSize(), int64(cloudMaxParts))
+}
+
 func TestCompressStreamPartSizeMinimum(t *testing.T) {
 	t.Parallel()
 

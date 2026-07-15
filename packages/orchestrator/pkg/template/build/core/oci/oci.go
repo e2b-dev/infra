@@ -12,12 +12,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/containers/storage/pkg/archive"
 	"github.com/dustin/go-humanize"
 	"github.com/google/go-containerregistry/pkg/name"
 	containerregistry "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
+	"github.com/moby/go-archive"
+	"github.com/moby/go-archive/chrootarchive"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
@@ -25,11 +26,11 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/filesystem"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/oci/auth"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/units"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/units"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -440,10 +441,12 @@ func createExport(ctx context.Context, logger logger.Logger, srcImage containerr
 				return fmt.Errorf("failed to get uncompressed layer %d: %w", i, err)
 			}
 			defer rc.Close()
-
-			err = archive.Untar(rc, layerPath, &archive.TarOptions{
-				IgnoreChownErrors: true,
-				WhiteoutFormat:    archive.OverlayWhiteoutFormat,
+			// Use chrootarchive (same mechanism as the Docker daemon's layer unpacking).
+			// Note: layers with redundant nested whiteouts (.wh.foo + foo/.wh.bar)
+			// are not supported and fail here with ENOTDIR — same as stock Docker
+			// (both overlay2 and containerd snapshotter reject such images).
+			err = chrootarchive.UntarUncompressed(rc, layerPath, &archive.TarOptions{
+				WhiteoutFormat: archive.OverlayWhiteoutFormat,
 			})
 			if err != nil {
 				return fmt.Errorf("failed to untar layer %d: %w", i, err)

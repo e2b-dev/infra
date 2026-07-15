@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -40,7 +41,7 @@ func (s *APIStore) GetTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 		userIDs = append(userIDs, row.UserID)
 	}
 
-	profiles, err := s.userProfiles.GetProfilesByUserID(ctx, userIDs)
+	profiles, err := s.identityService.ProfilesByUserID(ctx, userIDs)
 	if err != nil {
 		logger.L().Error(ctx, "failed to get member profiles", zap.Error(err), logger.WithTeamID(authTeamID.String()))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to get team member profiles")
@@ -106,7 +107,7 @@ func (s *APIStore) PostTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 		return
 	}
 
-	profiles, err := s.userProfiles.FindProfilesByEmail(ctx, string(body.Email))
+	profiles, err := s.identityService.FindProfilesByEmail(ctx, string(body.Email))
 	if err != nil {
 		logger.L().Error(ctx, "failed to look up user by email", zap.Error(err))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to look up user")
@@ -128,6 +129,23 @@ func (s *APIStore) PostTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 	}
 
 	user := profiles[0]
+
+	if teamInfo, ok := auth.GetTeamInfo(c); ok && teamInfo != nil && teamInfo.Team != nil && teamInfo.Team.SsoOrganizationID != nil {
+		inviteeOrgID, err := s.identityService.UserOrganizationID(ctx, user.UserID)
+		if err != nil {
+			logger.L().Error(ctx, "failed to resolve invitee organization", zap.Error(err), logger.WithUserID(user.UserID.String()))
+			s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to resolve invitee organization")
+
+			return
+		}
+
+		if inviteeOrgID != *teamInfo.Team.SsoOrganizationID {
+			s.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("%s is not part of this team's SSO organization and cannot be invited.", user.Email))
+
+			return
+		}
+	}
+
 	if err := s.authDB.Write.UpsertPublicUser(ctx, user.UserID); err != nil {
 		logger.L().Error(ctx, "failed to create public user anchor", zap.Error(err), logger.WithUserID(user.UserID.String()))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to add team member")

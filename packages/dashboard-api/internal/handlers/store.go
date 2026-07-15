@@ -12,8 +12,9 @@ import (
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/identity"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/provisioning"
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
-	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
@@ -22,13 +23,13 @@ import (
 var _ api.ServerInterface = (*APIStore)(nil)
 
 type APIStore struct {
-	config            cfg.Config
-	db                *sqlcdb.Client
-	authDB            *authdb.Client
-	clickhouse        clickhouse.Clickhouse
-	authService       sharedauth.Service
-	teamProvisionSink internalteamprovision.TeamProvisionSink
-	userProfiles      userprofile.Provider
+	config              cfg.Config
+	db                  *sqlcdb.Client
+	authDB              *authdb.Client
+	clickhouse          clickhouse.Clickhouse
+	authService         sharedauth.Service
+	identityService     identity.Service
+	provisioningService *provisioning.Service
 }
 
 func NewAPIStore(
@@ -37,17 +38,17 @@ func NewAPIStore(
 	authDB *authdb.Client,
 	ch clickhouse.Clickhouse,
 	authService sharedauth.Service,
+	identityService identity.Service,
 	teamProvisionSink internalteamprovision.TeamProvisionSink,
-	userProfiles userprofile.Provider,
 ) *APIStore {
 	return &APIStore{
-		config:            config,
-		db:                db,
-		authDB:            authDB,
-		clickhouse:        ch,
-		authService:       authService,
-		teamProvisionSink: teamProvisionSink,
-		userProfiles:      userProfiles,
+		config:              config,
+		db:                  db,
+		authDB:              authDB,
+		clickhouse:          ch,
+		authService:         authService,
+		identityService:     identityService,
+		provisioningService: provisioning.New(authDB, identityService, teamProvisionSink),
 	}
 }
 

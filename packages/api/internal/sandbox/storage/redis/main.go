@@ -6,11 +6,14 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
@@ -31,10 +34,53 @@ const (
 var _ sandboxtypes.Storage = (*Storage)(nil)
 
 type Storage struct {
-	redisClient redis.UniversalClient
-	locker      *storageLocker
-	subManager  *subscriptionManager
-	publisher   *publisher
+	redisClient  redis.UniversalClient
+	locker       *storageLocker
+	subManager   *subscriptionManager
+	publisher    *publisher
+	featureFlags *featureflags.Client
+
+	metrics expirationIndexMetrics
+}
+
+// expirationIndexMetrics observes global expiration index consistency.
+// indexHealed is the primary alert signal: healthy steady state is zero.
+type expirationIndexMetrics struct {
+	indexHealed   metric.Int64Counter
+	indexRescored metric.Int64Counter
+
+	indexSwept         metric.Int64Counter
+	sweptOrphan        metric.MeasurementOption
+	sweptDeadExecution metric.MeasurementOption
+	sweptInvalid       metric.MeasurementOption
+}
+
+const sweptReasonAttr = "reason"
+
+func newExpirationIndexMetrics(meter metric.Meter) (expirationIndexMetrics, error) {
+	healed, err := telemetry.GetCounter(meter, telemetry.ApiRedisStorageExpirationIndexHealed)
+	if err != nil {
+		return expirationIndexMetrics{}, fmt.Errorf("expiration index healed counter: %w", err)
+	}
+
+	rescored, err := telemetry.GetCounter(meter, telemetry.ApiRedisStorageExpirationIndexRescored)
+	if err != nil {
+		return expirationIndexMetrics{}, fmt.Errorf("expiration index rescored counter: %w", err)
+	}
+
+	swept, err := telemetry.GetCounter(meter, telemetry.ApiRedisStorageExpirationIndexSwept)
+	if err != nil {
+		return expirationIndexMetrics{}, fmt.Errorf("expiration index swept counter: %w", err)
+	}
+
+	return expirationIndexMetrics{
+		indexHealed:        healed,
+		indexRescored:      rescored,
+		indexSwept:         swept,
+		sweptOrphan:        metric.WithAttributeSet(attribute.NewSet(attribute.String(sweptReasonAttr, "orphan"))),
+		sweptDeadExecution: metric.WithAttributeSet(attribute.NewSet(attribute.String(sweptReasonAttr, "dead_execution"))),
+		sweptInvalid:       metric.WithAttributeSet(attribute.NewSet(attribute.String(sweptReasonAttr, "invalid"))),
+	}, nil
 }
 
 const meterScope = "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
@@ -42,6 +88,7 @@ const meterScope = "github.com/e2b-dev/infra/packages/api/internal/sandbox/stora
 func NewStorage(
 	redisClient redis.UniversalClient,
 	meterProvider metric.MeterProvider,
+	featureFlags *featureflags.Client,
 ) (*Storage, error) {
 	meter := meterProvider.Meter(meterScope)
 
@@ -51,22 +98,35 @@ func NewStorage(
 		return nil, fmt.Errorf("failed to create publisher: %w", err)
 	}
 
+	metrics, err := newExpirationIndexMetrics(meter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create expiration index metrics: %w", err)
+	}
+
 	return &Storage{
-		redisClient: redisClient,
-		locker:      newStorageLocker(redisClient, subManager, pub),
-		subManager:  subManager,
-		publisher:   pub,
+		redisClient:  redisClient,
+		locker:       newStorageLocker(redisClient, subManager, pub),
+		subManager:   subManager,
+		publisher:    pub,
+		featureFlags: featureFlags,
+		metrics:      metrics,
 	}, nil
 }
 
 // Start subscribes to the global PubSub channel and launches the publish
-// worker. Blocks until the context is cancelled or Close is called.
+// worker and the expiration index healer. Blocks until the context is
+// cancelled or Close is called.
 func (s *Storage) Start(ctx context.Context) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	pubDone := make(chan struct{})
 	go func() {
 		defer close(pubDone)
 		s.publisher.run(ctx)
 	}()
+
+	go s.startHealer(ctx)
 
 	s.subManager.start(ctx)
 	<-pubDone

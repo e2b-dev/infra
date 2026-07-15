@@ -19,12 +19,18 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/units"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/units"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/filesystem")
+
+var (
+	groupHeaderPattern     = regexp.MustCompile(`(?m)^[ \t]*Group[ \t]+\d+:`)
+	groupFreeBlocksPattern = regexp.MustCompile(`(?m)^[ \t]+(\d+)[ \t]+free blocks?,`)
+	reservedBlocksPattern  = regexp.MustCompile(`Reserved block count:\s+(\d+)`)
+)
 
 const (
 	// creates an inode for every bytes-per-inode byte of space on the disk
@@ -196,6 +202,8 @@ func GetFreeSpace(ctx context.Context, rootfsPath string, blockSize int64) (int6
 	defer statSpan.End()
 
 	cmd := exec.CommandContext(ctx, "debugfs", "-R", "stats", rootfsPath)
+	// The parser below relies on debugfs's English field names.
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	err := cmd.Run()
@@ -206,7 +214,6 @@ func GetFreeSpace(ctx context.Context, rootfsPath string, blockSize int64) (int6
 		return 0, fmt.Errorf("error statting ext4: %w", err)
 	}
 
-	// Extract block size and free blocks
 	freeBlocks, err := parseFreeBlocks(output)
 	if err != nil {
 		return 0, fmt.Errorf("could not parse free blocks: %w", err)
@@ -240,6 +247,23 @@ func CheckIntegrity(ctx context.Context, rootfsPath string, fix bool) (string, e
 
 		if exitCode > accExitCode {
 			return string(out), fmt.Errorf("error running e2fsck [exit %d]\n%s", exitCode, out)
+		}
+	}
+
+	return strings.TrimSpace(string(out)), nil
+}
+
+// ReplayJournal applies committed ext4 journal transactions without a full
+// filesystem check. Guest sync makes journal commits durable but may leave
+// them uncheckpointed, while debugfs reads raw free-block metadata without
+// replaying the journal. Replaying first reflects the latest durable state.
+func ReplayJournal(ctx context.Context, rootfsPath string) (string, error) {
+	cmd := exec.CommandContext(ctx, "e2fsck", "-p", "-E", "journal_only", rootfsPath)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) || exitErr.ExitCode() < 0 || exitErr.ExitCode()&^(1|2) != 0 {
+			return string(out), fmt.Errorf("error replaying ext4 journal: %w\n%s", err, out)
 		}
 	}
 
@@ -359,25 +383,38 @@ func LogMetadata(ctx context.Context, rootfsPath string, extraFields ...zap.Fiel
 	logger.L().With(extraFields...).Debug(ctx, "tune2fs -l output", zap.String("path", rootfsPath), zap.String("output", string(output)), zap.Error(err))
 }
 
-// parseFreeBlocks extracts the "Free blocks:" value from debugfs output
+// parseFreeBlocks returns the sum of the free-block counters stored in the
+// block-group descriptors. e2fsck documents that the global count can be stale
+// after an unclean unmount and normally rebuilds it from the group counts, but
+// its journal_only path skips that repair:
+// https://github.com/tytso/e2fsprogs/blob/v1.47.0/e2fsck/unix.c#L370-L441
+// debugfs prints each group from ext2fs_bg_free_blocks_count(), so those are the
+// counters we must sum after replaying only the journal:
+// https://github.com/tytso/e2fsprogs/blob/v1.47.0/debugfs/debugfs.c#L486-L501
 func parseFreeBlocks(debugfsOutput string) (int64, error) {
-	re := regexp.MustCompile(`Free blocks:\s+(\d+)`)
-	matches := re.FindStringSubmatch(debugfsOutput)
-	if len(matches) < 2 {
-		return 0, errors.New("could not find free blocks in debugfs output")
+	groups := groupHeaderPattern.FindAllStringIndex(debugfsOutput, -1)
+	matches := groupFreeBlocksPattern.FindAllStringSubmatch(debugfsOutput, -1)
+	// Require one counter per group so truncated or unexpected debugfs output
+	// cannot silently undercount free space and trigger an incorrect resize.
+	if len(groups) == 0 || len(matches) != len(groups) {
+		return 0, fmt.Errorf("could not parse free blocks for every block group: found %d groups and %d counters", len(groups), len(matches))
 	}
-	freeBlocks, err := strconv.ParseInt(matches[1], 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("could not parse free blocks: %w", err)
+
+	var freeBlocks int64
+	for _, match := range matches {
+		groupFreeBlocks, err := strconv.ParseInt(match[1], 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("could not parse block-group free blocks: %w", err)
+		}
+		freeBlocks += groupFreeBlocks
 	}
 
 	return freeBlocks, nil
 }
 
-// parseReservedBlocks extracts the "Reserved block count:" value from debugfs output
+// parseReservedBlocks extracts the "Reserved block count:" value from debugfs output.
 func parseReservedBlocks(debugfsOutput string) (int64, error) {
-	re := regexp.MustCompile(`Reserved block count:\s+(\d+)`)
-	matches := re.FindStringSubmatch(debugfsOutput)
+	matches := reservedBlocksPattern.FindStringSubmatch(debugfsOutput)
 	if len(matches) < 2 {
 		return 0, errors.New("could not find reserved blocks in debugfs output")
 	}

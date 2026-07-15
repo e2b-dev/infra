@@ -21,6 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd/testutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 func main() {
@@ -42,8 +43,9 @@ func main() {
 		log.Fatal("-verify requires -mount")
 	}
 
-	// Set up storage env vars based on -storage flag
-	if err := cmdutil.SetupStorage(*storagePath); err != nil {
+	// Resolve template storage from the -storage flag.
+	templateSpec, err := cmdutil.TemplateSpec(*storagePath)
+	if err != nil {
 		log.Fatal(err)
 	}
 
@@ -87,7 +89,7 @@ func main() {
 			panic(fmt.Errorf("failed to create empty rootfs: %w", err))
 		}
 	} else {
-		err := run(ctx, nbdContext, featureFlags, *build, *mountPath, *verify)
+		err := run(ctx, nbdContext, featureFlags, templateSpec, *build, *mountPath, *verify)
 		if err != nil {
 			panic(fmt.Errorf("failed to mount rootfs: %w", err))
 		}
@@ -134,8 +136,8 @@ func runEmpty(ctx, nbdContext context.Context, featureFlags *featureflags.Client
 	return nil
 }
 
-func run(ctx, nbdContext context.Context, featureFlags *featureflags.Client, buildID, mountPath string, verify bool) error {
-	rootfs, rootfsCleanup, err := testutils.TemplateRootfs(ctx, buildID)
+func run(ctx, nbdContext context.Context, featureFlags *featureflags.Client, templateSpec storage.Spec, buildID, mountPath string, verify bool) error {
+	rootfs, rootfsCleanup, err := testutils.TemplateRootfs(ctx, templateSpec, buildID)
 	defer rootfsCleanup.Run(ctx, 30*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to get template rootfs: %w", err)
