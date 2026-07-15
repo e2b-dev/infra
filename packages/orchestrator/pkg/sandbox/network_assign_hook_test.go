@@ -32,11 +32,11 @@ func TestFactoryRunNetworkAssignHookSuccess(t *testing.T) {
 	callerCtx := t.Context()
 	var gotSandbox *Sandbox
 	var gotReason NetworkAssignReason
-	var gotCtx context.Context
+	var ctxUnchanged bool
 	factory := &Factory{networkAssignHook: networkAssignHookFunc(func(ctx context.Context, got *Sandbox, reason NetworkAssignReason) error {
 		gotSandbox = got
 		gotReason = reason
-		gotCtx = ctx
+		ctxUnchanged = ctx == callerCtx
 
 		return nil
 	})}
@@ -45,7 +45,7 @@ func TestFactoryRunNetworkAssignHookSuccess(t *testing.T) {
 
 	require.Same(t, sbx, gotSandbox)
 	require.Equal(t, NetworkAssignReasonResume, gotReason)
-	require.Equal(t, callerCtx, gotCtx, "the caller's ctx is passed through unchanged, with no derived timeout")
+	require.True(t, ctxUnchanged, "the caller's ctx is passed through unchanged, with no derived timeout")
 }
 
 func TestFactoryRunNetworkAssignHookSwallowsError(t *testing.T) {
