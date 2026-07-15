@@ -30,6 +30,7 @@ func NewLogProvider(ctx context.Context, res *resource.Resource, extraOpts ...ot
 		otlploggrpc.WithInsecure(),
 		otlploggrpc.WithEndpoint(otelCollectorGRPCEndpoint),
 		otlploggrpc.WithCompressor(gzip.Name),
+		otlploggrpc.WithMaxRequestSize(otelCollectorMaxRequestSize),
 	}
 	opts = append(opts, extraOpts...)
 
