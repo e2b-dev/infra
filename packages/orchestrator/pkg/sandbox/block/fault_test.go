@@ -3,6 +3,7 @@
 package block
 
 import (
+	"context"
 	"errors"
 	"os"
 	"os/exec"
@@ -13,6 +14,10 @@ import (
 	"github.com/edsrzf/mmap-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const faultChildEnv = "BLOCK_FAULT_TEST_CHILD"
@@ -43,6 +48,8 @@ func TestRunFaultSafe_MmapFault(t *testing.T) {
 func runFaultSafeMmapFaultChild(t *testing.T) {
 	t.Helper()
 
+	reader := swapMemoryFaultCounter(t)
+
 	const size = 2 * 4096
 
 	path := filepath.Join(t.TempDir(), "backing")
@@ -68,6 +75,45 @@ func runFaultSafeMmapFaultChild(t *testing.T) {
 		return nil
 	})
 	require.ErrorIs(t, err, ErrMemoryFault)
+	require.Equal(t, int64(1), memoryFaultCounterSum(t, reader), "recovered fault must be counted")
+}
+
+// swapMemoryFaultCounter points the package-level fault counter at a manual
+// reader for the duration of the test. NOT parallel-safe (only used in the
+// subprocess child, which runs a single test).
+func swapMemoryFaultCounter(t *testing.T) *sdkmetric.ManualReader {
+	t.Helper()
+
+	reader := sdkmetric.NewManualReader()
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+
+	prev := memoryFaultCounter
+	memoryFaultCounter = utils.Must(mp.Meter("test").Int64Counter("orchestrator.block.memory_fault"))
+	t.Cleanup(func() { memoryFaultCounter = prev })
+
+	return reader
+}
+
+func memoryFaultCounterSum(t *testing.T, reader *sdkmetric.ManualReader) int64 {
+	t.Helper()
+
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(context.Background(), &rm))
+
+	var sum int64
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			counter, ok := m.Data.(metricdata.Sum[int64])
+			if m.Name != "orchestrator.block.memory_fault" || !ok {
+				continue
+			}
+			for _, dp := range counter.DataPoints {
+				sum += dp.Value
+			}
+		}
+	}
+
+	return sum
 }
 
 func TestRunFaultSafe_PassesThroughResult(t *testing.T) {

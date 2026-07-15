@@ -3,11 +3,28 @@
 package block
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"runtime"
 	"runtime/debug"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
+
+var meter = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block")
+
+// memoryFaultCounter counts recovered memory faults across all RunFaultSafe
+// call sites (build segment reads, NBD dispatch, dedup). A non-zero rate on a
+// node usually means its local disk is failing and it should be drained.
+var memoryFaultCounter = utils.Must(meter.Int64Counter(
+	"orchestrator.block.memory_fault",
+	metric.WithDescription("Memory faults recovered while accessing memory-mapped cache files."),
+	metric.WithUnit("{fault}"),
+))
 
 // ErrMemoryFault reports that accessing a memory-mapped file raised a memory
 // fault (SIGBUS/SIGSEGV at a non-nil address). The typical cause is the
@@ -49,6 +66,10 @@ func RunFaultSafe(fn func() error) (err error) {
 		if _, hasAddr := r.(interface{ Addr() uintptr }); !hasAddr {
 			panic(r)
 		}
+		// Background context: this is a plain counter and RunFaultSafe
+		// deliberately keeps a context-free signature; callers attach
+		// request context to their own error logs.
+		memoryFaultCounter.Add(context.Background(), 1)
 		err = fmt.Errorf("%w: %v", ErrMemoryFault, re)
 	}()
 
