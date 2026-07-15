@@ -412,7 +412,11 @@ func (f *Factory) runStartHook(ctx context.Context, sbx *Sandbox, reason StartRe
 					zap.Any("panic", r))
 			}
 		}()
-		if err := f.startHook.BeforeStart(hookCtx, sbx, reason); err != nil {
+		// A Canceled/DeadlineExceeded error here means hookCtx already hit
+		// one of the two branches below - that's already logged there, so
+		// logging it again here would just be the same event twice.
+		if err := f.startHook.BeforeStart(hookCtx, sbx, reason); err != nil &&
+			!errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			logger.L().Warn(ctx, "sandbox start hook failed, continuing",
 				logger.WithSandboxID(sbx.Runtime.SandboxID),
 				logger.WithLifecycleID(sbx.LifecycleID),
@@ -423,9 +427,19 @@ func (f *Factory) runStartHook(ctx context.Context, sbx *Sandbox, reason StartRe
 	select {
 	case <-done:
 	case <-hookCtx.Done():
-		logger.L().Warn(ctx, "sandbox start hook did not complete before timeout, proceeding without waiting further",
-			logger.WithSandboxID(sbx.Runtime.SandboxID),
-			logger.WithLifecycleID(sbx.LifecycleID))
+		// hookCtx.Done() fires for either reason: startHookTimeout elapsed,
+		// or the caller's own ctx was cancelled first - ctx.Err() tells
+		// them apart so the log doesn't call a real cancellation a timeout.
+		if ctx.Err() != nil {
+			logger.L().Warn(ctx, "sandbox start hook abandoned: parent context cancelled",
+				logger.WithSandboxID(sbx.Runtime.SandboxID),
+				logger.WithLifecycleID(sbx.LifecycleID),
+				zap.Error(ctx.Err()))
+		} else {
+			logger.L().Warn(ctx, "sandbox start hook did not complete before timeout, proceeding without waiting further",
+				logger.WithSandboxID(sbx.Runtime.SandboxID),
+				logger.WithLifecycleID(sbx.LifecycleID))
+		}
 	}
 }
 

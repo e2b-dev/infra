@@ -92,6 +92,50 @@ func TestNewFactoryDefaultsNilStartHook(t *testing.T) {
 	require.IsType(t, NoopStartHook{}, factory.startHook)
 }
 
+func TestFactoryRunStartHookSuppressesContextErrors(t *testing.T) {
+	t.Parallel()
+
+	for _, err := range []error{context.Canceled, context.DeadlineExceeded} {
+		factory := &Factory{startHook: startHookFunc(func(context.Context, *Sandbox, StartReason) error {
+			return err
+		})}
+		require.NotPanics(t, func() {
+			factory.runStartHook(t.Context(), testStartHookSandbox(), StartReasonResume)
+		})
+	}
+}
+
+func TestFactoryRunStartHookReturnsPromptlyOnParentCancellation(t *testing.T) {
+	t.Parallel()
+
+	factory := &Factory{startHook: startHookFunc(func(context.Context, *Sandbox, StartReason) error {
+		select {}
+	})}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	started := time.Now()
+	factory.runStartHook(ctx, testStartHookSandbox(), StartReasonResume)
+	require.Less(t, time.Since(started), 500*time.Millisecond, "parent cancellation must not wait for startHookTimeout")
+}
+
+func TestStartReasonString(t *testing.T) {
+	t.Parallel()
+
+	cases := map[StartReason]string{
+		StartReasonUnknown:         "unknown",
+		StartReasonCreate:          "create",
+		StartReasonResume:          "resume",
+		StartReasonReboot:          "reboot",
+		StartReasonThrowawayResume: "throwaway_resume",
+		StartReason(255):           "unknown",
+	}
+	for reason, want := range cases {
+		require.Equal(t, want, reason.String())
+	}
+}
+
 // BenchmarkFactoryRunStartHook measures the cost this extension point adds to
 // every CreateSandbox/ResumeSandbox call when no edition wires in a real
 // StartHook (the common case for any build that doesn't configure one).

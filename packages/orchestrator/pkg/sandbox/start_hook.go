@@ -34,6 +34,23 @@ const (
 	StartReasonThrowawayResume
 )
 
+// String implements fmt.Stringer so a StartReason logged via zap.Any (or
+// any other %v/%s formatting) reads as a name, not a bare uint8.
+func (r StartReason) String() string {
+	switch r {
+	case StartReasonCreate:
+		return "create"
+	case StartReasonResume:
+		return "resume"
+	case StartReasonReboot:
+		return "reboot"
+	case StartReasonThrowawayResume:
+		return "throwaway_resume"
+	default:
+		return "unknown"
+	}
+}
+
 // StartHook is an optional, edition-specific extension point invoked once a
 // sandbox's identity and network slot are assigned, but before its guest
 // begins executing. It keeps this package agnostic of edition-specific
