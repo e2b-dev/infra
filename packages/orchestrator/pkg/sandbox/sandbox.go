@@ -1505,11 +1505,13 @@ func (s *Sandbox) processMemorySnapshot(ctx context.Context, buildID uuid.UUID) 
 		s.config.DefaultCacheDir,
 		s.process,
 		s.memory.Memfd(ctx),
-		s.featureFlags.BoolFlag(ctx, featureflags.MemfdBackgroundCopyFlag, sandboxLDContext(s.Runtime, s.Config)),
-		dedupBase,
-		dedupBestEffort,
-		dedupDirectIO,
-		dedupBudget,
+		MemorySnapshotOptions{
+			BackgroundCopy:  s.featureFlags.BoolFlag(ctx, featureflags.MemfdBackgroundCopyFlag, sandboxLDContext(s.Runtime, s.Config)),
+			DedupBase:       dedupBase,
+			DedupBestEffort: dedupBestEffort,
+			DedupDirectIO:   dedupDirectIO,
+			DedupBudget:     dedupBudget,
+		},
 	)
 	if err != nil {
 		return MemorySnapshot{}, fmt.Errorf("error while post processing: %w", err)
@@ -1540,6 +1542,25 @@ func (s *Sandbox) MemoryPrefetchData(ctx context.Context) (block.PrefetchData, e
 	return prefetchData, nil
 }
 
+// MemorySnapshotOptions bundles the tunable knobs for pauseProcessMemory. The
+// zero value is the common default: synchronous copy, no dedup, and the memfd
+// consumed and closed once the export completes.
+type MemorySnapshotOptions struct {
+	// BackgroundCopy runs the memfd→cache copy on a goroutine so Pause can
+	// return before it finishes.
+	BackgroundCopy bool
+	// DedupBase enables memfile-diff dedup against this base memfile; nil
+	// disables dedup.
+	DedupBase       block.ReadonlyDevice
+	DedupBestEffort bool
+	DedupDirectIO   bool
+	DedupBudget     block.DedupBudget
+	// KeepMemfdOpen borrows the memfd instead of consuming it: the export does
+	// not close it, so an in-place resume can keep using it. Default (false)
+	// consumes and closes it.
+	KeepMemfdOpen bool
+}
+
 func pauseProcessMemory(
 	ctx context.Context,
 	buildID uuid.UUID,
@@ -1548,23 +1569,19 @@ func pauseProcessMemory(
 	cacheDir string,
 	fc *fc.Process,
 	memfd *block.Memfd,
-	bgCopy bool,
-	originalMemfile block.ReadonlyDevice,
-	dedupBestEffort bool,
-	dedupDirectIO bool,
-	dedupBudget block.DedupBudget,
+	opts MemorySnapshotOptions,
 ) (d build.Diff, h *DiffHeader, e error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
 
 	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
 	metaOut := utils.NewSetOnce[*header.DiffMetadata]()
-	// closeMemfd=true: ExportMemory closes the memfd once the export completes
-	// (in-place resume will pass false so FC keeps using it).
+	// closeMemfd is the inverse of KeepMemfdOpen: by default ExportMemory closes
+	// the memfd once the export completes; an in-place resume keeps it open.
 	cache, err := fc.ExportMemory(
-		ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd, bgCopy,
-		originalMemfile, dedupBestEffort, dedupDirectIO, dedupBudget, diffMetadata.Empty, metaOut,
-		true,
+		ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd, opts.BackgroundCopy,
+		opts.DedupBase, opts.DedupBestEffort, opts.DedupDirectIO, opts.DedupBudget, diffMetadata.Empty, metaOut,
+		!opts.KeepMemfdOpen,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to export memory: %w", err)
@@ -1597,10 +1614,10 @@ func pauseProcessMemory(
 		// post == nil signals "no dedup ran" to the metric so it records
 		// kind="none" with zero savings.
 		post := meta
-		if originalMemfile == nil {
+		if opts.DedupBase == nil {
 			post = nil
 		}
-		recordSnapshotDedup(ctx, "memfile", diffMetadata, post, dedupBestEffort)
+		recordSnapshotDedup(ctx, "memfile", diffMetadata, post, opts.DedupBestEffort)
 		setHeader(meta.ToDiffHeader(ctx, originalHeader, buildID))
 	}()
 
