@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sync/atomic"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -58,6 +59,17 @@ func (o *Overlay) EjectCache() (*Cache, error) {
 	}
 
 	return o.cache, nil
+}
+
+// ExportDiffInPlace writes the overlay's dirty blocks to `out` without detaching
+// the cache. The overlay stays usable for a sandbox that keeps running after the
+// export.
+func (o *Overlay) ExportDiffInPlace(ctx context.Context, out *os.File) (*header.DiffMetadata, error) {
+	if o.cacheEjected.Load() {
+		return nil, errors.New("cache ejected")
+	}
+
+	return o.cache.ExportToDiff(ctx, out)
 }
 
 // This method will not be very optimal if the length is not the same as the block size, because we cannot be just exposing the cache slice,

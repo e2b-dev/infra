@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"os"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
@@ -74,7 +76,11 @@ func (o *NBDProvider) ExportDiff(
 	out *os.File,
 	closeSandbox func(ctx context.Context) error,
 ) (*header.DiffMetadata, error) {
-	ctx, span := tracer.Start(ctx, "cow-export")
+	ctx, span := tracer.Start(
+		ctx,
+		"cow-export",
+		trace.WithAttributes(attribute.Bool("in-place", false)),
+	)
 	defer span.End()
 
 	cache, err := o.overlay.EjectCache()
@@ -124,6 +130,26 @@ func (o *NBDProvider) ExportDiff(
 	}
 
 	return m, nil
+}
+
+// ExportDiffInPlace exports the NBD cache into `out` without closing/destroying
+// the underlying cache
+func (o *NBDProvider) ExportDiffInPlace(
+	ctx context.Context,
+	out *os.File,
+) (*header.DiffMetadata, error) {
+	ctx, span := tracer.Start(
+		ctx,
+		"cow-export",
+		trace.WithAttributes(attribute.Bool("in-place", true)),
+	)
+	defer span.End()
+
+	if err := o.sync(ctx); err != nil {
+		return nil, fmt.Errorf("flushing COW device failed: %w", err)
+	}
+
+	return o.overlay.ExportDiffInPlace(ctx, out)
 }
 
 func (o *NBDProvider) Close(ctx context.Context) error {

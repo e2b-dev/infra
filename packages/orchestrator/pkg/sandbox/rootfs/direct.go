@@ -113,6 +113,10 @@ func (o *DirectProvider) ExportDiff(
 	return m, nil
 }
 
+func (o *DirectProvider) ExportDiffInPlace(_ context.Context, _ *os.File) (*header.DiffMetadata, error) {
+	return nil, fmt.Errorf("direct provider does not support in-place export")
+}
+
 func (o *DirectProvider) Close(ctx context.Context) error {
 	o.finishedOperations <- struct{}{}
 

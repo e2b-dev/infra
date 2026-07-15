@@ -24,6 +24,7 @@ type Provider interface {
 	Close(ctx context.Context) error
 	Path() (string, error)
 	ExportDiff(ctx context.Context, out *os.File, closeSandbox func(context.Context) error) (*header.DiffMetadata, error)
+	ExportDiffInPlace(ctx context.Context, out *os.File) (*header.DiffMetadata, error)
 }
 
 // flush flushes the data to the operating system's buffer.
