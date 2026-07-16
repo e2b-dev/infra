@@ -10,6 +10,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/artifact"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -108,7 +109,7 @@ func (sb *StartScriptBuilder) buildArgs(
 		SandboxRootfsFile:          artifact.RootfsFileName,
 
 		// FC
-		NetNamespacePath:  filepath.Join("/var/run/netns", namespaceID),
+		NetNamespacePath:  filepath.Join(network.NetNamespacesDir, namespaceID),
 		FirecrackerPath:   versions.FirecrackerPath(sb.builderConfig),
 		FirecrackerSocket: files.SandboxFirecrackerSocketPath(),
 	}

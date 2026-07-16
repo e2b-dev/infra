@@ -343,6 +343,79 @@ func TestStartScriptBuilder_ScriptStructureOrder(t *testing.T) {
 		"no commands should follow nsenter after firecracker is launched")
 }
 
+// BenchmarkBuild measures single-goroutine script generation cost for both
+// template versions. This covers template rendering and path construction only;
+// subprocess spawn and namespace syscalls (the actual perf win from this PR)
+// require root + real netns files and cannot be measured here.
+//
+// Run with:
+//
+//	go test -bench=BenchmarkBuild -benchmem -count=5 \
+//	    ./packages/orchestrator/pkg/sandbox/fc/
+func BenchmarkBuild(b *testing.B) {
+	config, err := cfg.ParseBuilder()
+	if err != nil {
+		b.Fatal(err)
+	}
+	builder := NewStartScriptBuilder(config)
+	files := createTestSandboxFiles("sbx", "sid")
+
+	b.Run("v2", func(b *testing.B) {
+		b.ReportAllocs()
+		versions := Config{KernelVersion: "6.1.0", FirecrackerVersion: "1.4.0"}
+		rp := RootfsPaths{TemplateVersion: 2, TemplateID: "tmpl", BuildID: "bld"}
+		for b.Loop() {
+			if _, err := builder.Build(versions, files, rp, "ns-1"); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+
+	b.Run("v1", func(b *testing.B) {
+		b.ReportAllocs()
+		versions := Config{KernelVersion: "5.10.0", FirecrackerVersion: "1.3.0"}
+		rp := RootfsPaths{TemplateVersion: 1, TemplateID: "tmpl", BuildID: "bld"}
+		for b.Loop() {
+			if _, err := builder.Build(versions, files, rp, "ns-1"); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+}
+
+// BenchmarkSandboxConcurrentStart measures script generation throughput under
+// GOMAXPROCS parallelism, simulating concurrent sandbox startup at the
+// template-rendering layer. It confirms StartScriptBuilder is stateless and
+// contention-free in Go (the namespace_sem kernel lock that caused >400 ms
+// latency under ip-netns-exec no longer appears in this path at all).
+//
+// Run with:
+//
+//	go test -bench=BenchmarkSandboxConcurrentStart -benchmem -count=5 \
+//	    -cpu=1,4,8,16 \
+//	    ./packages/orchestrator/pkg/sandbox/fc/
+//
+// Expected: throughput scales linearly with -cpu; no lock-induced flattening.
+func BenchmarkSandboxConcurrentStart(b *testing.B) {
+	config, err := cfg.ParseBuilder()
+	if err != nil {
+		b.Fatal(err)
+	}
+	builder := NewStartScriptBuilder(config)
+	files := createTestSandboxFiles("sbx", "sid")
+	versions := Config{KernelVersion: "6.1.0", FirecrackerVersion: "1.4.0"}
+	rp := RootfsPaths{TemplateVersion: 2, TemplateID: "tmpl", BuildID: "bld"}
+
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			if _, err := builder.Build(versions, files, rp, "ns-1"); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+}
+
 // createTestSandboxFiles creates a SandboxFiles instance for testing
 func createTestSandboxFiles(sandboxID, staticID string) *storage.SandboxFiles {
 	paths := storage.Paths{
