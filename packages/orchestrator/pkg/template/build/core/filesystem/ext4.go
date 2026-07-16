@@ -15,6 +15,7 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
@@ -229,7 +230,20 @@ func GetFreeSpace(ctx context.Context, rootfsPath string, blockSize int64) (int6
 	return freeBytes, nil
 }
 
-func CheckIntegrity(ctx context.Context, rootfsPath string, fix bool) (string, error) {
+func CheckIntegrity(ctx context.Context, rootfsPath string, fix bool) (out string, err error) {
+	// e2fsck reads the whole filesystem metadata (and lazily fetches the backing
+	// rootfs chunks), so it usually dominates the resize-disk phase wall time.
+	ctx, span := tracer.Start(ctx, "e2fsck", trace.WithAttributes(
+		attribute.Bool("filesystem.e2fsck.fix", fix),
+	))
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+		span.End()
+	}()
+
 	LogMetadata(ctx, rootfsPath)
 	accExitCode := 0
 	args := "-nfv"
@@ -241,33 +255,45 @@ func CheckIntegrity(ctx context.Context, rootfsPath string, fix bool) (string, e
 		args = "-pfv"
 	}
 	cmd := exec.CommandContext(ctx, "e2fsck", args, rootfsPath)
-	out, err := cmd.CombinedOutput()
+	output, err := cmd.CombinedOutput()
+	if cmd.ProcessState != nil {
+		span.SetAttributes(attribute.Int("filesystem.e2fsck.exit_code", cmd.ProcessState.ExitCode()))
+	}
 	if err != nil {
 		exitCode := cmd.ProcessState.ExitCode()
 
 		if exitCode > accExitCode {
-			return string(out), fmt.Errorf("error running e2fsck [exit %d]\n%s", exitCode, out)
+			return string(output), fmt.Errorf("error running e2fsck [exit %d]\n%s", exitCode, output)
 		}
 	}
 
-	return strings.TrimSpace(string(out)), nil
+	return strings.TrimSpace(string(output)), nil
 }
 
 // ReplayJournal applies committed ext4 journal transactions without a full
 // filesystem check. Guest sync makes journal commits durable but may leave
 // them uncheckpointed, while debugfs reads raw free-block metadata without
 // replaying the journal. Replaying first reflects the latest durable state.
-func ReplayJournal(ctx context.Context, rootfsPath string) (string, error) {
+func ReplayJournal(ctx context.Context, rootfsPath string) (out string, err error) {
+	ctx, span := tracer.Start(ctx, "replay-journal")
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+		span.End()
+	}()
+
 	cmd := exec.CommandContext(ctx, "e2fsck", "-p", "-E", "journal_only", rootfsPath)
-	out, err := cmd.CombinedOutput()
+	output, err := cmd.CombinedOutput()
 	if err != nil {
 		var exitErr *exec.ExitError
 		if !errors.As(err, &exitErr) || exitErr.ExitCode() < 0 || exitErr.ExitCode()&^(1|2) != 0 {
-			return string(out), fmt.Errorf("error replaying ext4 journal: %w\n%s", err, out)
+			return string(output), fmt.Errorf("error replaying ext4 journal: %w\n%s", err, output)
 		}
 	}
 
-	return strings.TrimSpace(string(out)), nil
+	return strings.TrimSpace(string(output)), nil
 }
 
 func ReadFile(ctx context.Context, rootfsPath string, filePath string) (string, error) {

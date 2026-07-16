@@ -17,6 +17,8 @@ import (
 
 	"github.com/Merovius/nbd/nbdnl"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
@@ -95,11 +97,21 @@ func NewDirectPathMount(b block.Device, devicePool *DevicePool, featureFlags *fe
 }
 
 func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err error) {
+	// The connect + wait-for-connected poll loop (and device-pool contention) are
+	// otherwise invisible; both add up when this is opened once per measure/resize.
+	ctx, span := tracer.Start(ctx, "direct-path-mount-open")
+
 	ctx, d.cancelfn = context.WithCancel(ctx)
 
 	defer func() {
 		// Set the device index to the one returned, correctly capture error values
 		d.deviceIndex = retDeviceIndex
+		span.SetAttributes(attribute.Int64("nbd.device_index", int64(retDeviceIndex)))
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+		span.End()
 		logger.L().Debug(ctx, "opening direct path mount", zap.Uint32("device_index", d.deviceIndex), zap.Error(err))
 	}()
 
