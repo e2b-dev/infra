@@ -12,6 +12,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
@@ -22,6 +25,8 @@ import (
 )
 
 const offlineCleanupTimeout = time.Minute
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/phases/ensurefreedisk")
 
 type growResult struct {
 	freeBefore int64
@@ -213,6 +218,18 @@ func (b *EnsureFreeDiskBuilder) resizeOffline(
 	backend block.Device,
 	newSize int64,
 ) (freeAfter int64, e error) {
+	// Group the two e2fsck runs and the resize2fs so the grow target and result
+	// are visible without drilling into individual e2fsprogs spans.
+	ctx, span := tracer.Start(ctx, "resize-offline")
+	span.SetAttributes(attribute.Int64("template.resize_disk.new_size_bytes", newSize))
+	defer func() {
+		if e != nil {
+			span.RecordError(e)
+			span.SetStatus(codes.Error, e.Error())
+		}
+		span.End()
+	}()
+
 	// Expose the detached overlay as a normal host block device for e2fsprogs.
 	device, err := b.openOfflineDevice(ctx, backend)
 	if err != nil {
@@ -236,6 +253,7 @@ func (b *EnsureFreeDiskBuilder) resizeOffline(
 	if err != nil {
 		return 0, fmt.Errorf("measure grown free space: %w", err)
 	}
+	span.SetAttributes(attribute.Int64("template.resize_disk.free_after_bytes", freeAfter))
 	if err := device.mnt.Flush(ctx); err != nil {
 		return 0, fmt.Errorf("flush grown device: %w", err)
 	}
