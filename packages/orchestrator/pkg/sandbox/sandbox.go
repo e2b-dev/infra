@@ -1451,6 +1451,16 @@ func (s *Sandbox) Pause(
 	}
 
 	if pauseOpts.maintainSandbox {
+		// Note on the memory-diff chain: unlike the destroy + resume-fresh path
+		// (which re-resumes from the new build via ResumeSandbox(GetTemplate(B))),
+		// resuming in place does NOT re-base the sandbox onto this build. s.Template
+		// stays the original template T and the WP-async dirty bitmap is not reset,
+		// so the next pause diffs the full working set dirtied since T against T.
+		// That is correct and hole-free — a later build never references this build,
+		// so a failed/evicted upload of it can't corrupt the chain — but it is
+		// non-incremental: repeated checkpoints of a long-lived sandbox produce
+		// progressively larger diffs rather than deltas against the previous build.
+		//
 		// We don't need to resume in the cleanup. All went well.
 		resumeOnError = false
 

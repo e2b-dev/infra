@@ -651,7 +651,15 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	defer s.stopSandboxAsync(context.WithoutCancel(ctx), sbx)
 
 	// Fire and forget - upload completes in the background
-	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId(), map[string]string{storage.ObjectMetadataTemplateID: in.GetTemplateId()}, storage.ObjectOriginPause, in.GetFilesystemOnly())
+	res, err := s.snapshotAndCacheSandbox(
+		ctx,
+		sbx,
+		in.GetBuildId(),
+		map[string]string{storage.ObjectMetadataTemplateID: in.GetTemplateId()},
+		storage.ObjectOriginPause,
+		in.GetFilesystemOnly(),
+		false,
+	)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error snapshotting sandbox", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
@@ -749,72 +757,32 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 	}
 	defer s.startingSandboxes.Release(1)
 
-	marked := s.sandboxFactory.Sandboxes.MarkStopping(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
-	if !marked {
-		telemetry.ReportCriticalError(ctx, "failed to mark sandbox as stopping", nil, telemetry.WithSandboxID(in.GetSandboxId()))
-
-		return nil, status.Errorf(codes.Internal, "failed to checkpoint sandbox '%s'", in.GetSandboxId())
-	}
-
-	// Always stop the old sandbox when done — on success the resumed sandbox
-	// takes over, on failure this prevents a leaked sandbox that is running
-	// but no longer addressable through the map. Stop is idempotent.
-	defer s.stopSandboxAsync(context.WithoutCancel(ctx), sbx)
-
 	sbxlogger.E(sbx).Info(ctx, "Checkpointing sandbox")
 
 	// Checkpoint always takes a full memory snapshot; filesystem-only checkpoint
 	// (resume-in-place would need to reboot) is not supported yet.
-	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId(), in.GetMetadata(), storage.ObjectOriginSnapshotTemplate, false)
+	// This will pause the sandbox, create and cache the checkpoint and then resume
+	// the sandbox in-place.
+	res, err := s.snapshotAndCacheSandbox(
+		ctx,
+		sbx,
+		in.GetBuildId(),
+		in.GetMetadata(),
+		storage.ObjectOriginSnapshotTemplate,
+		false,
+		true,
+	)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error snapshotting sandbox for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
 		return nil, status.Errorf(codes.Internal, "error snapshotting sandbox '%s': %s", in.GetSandboxId(), err)
 	}
 
-	// Get the template for resume
-	template, err := s.templateCache.GetTemplate(ctx, in.GetBuildId(), true, false,
-		sbxtemplate.GetTemplateOpts{MaxSandboxLengthHours: sbx.Config.MaxSandboxLengthHours})
-	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error getting template for resume after checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
-
-		return nil, status.Errorf(codes.Internal, "error getting template for resume: %s", err)
-	}
-
-	// Resume the sandbox keeping the same ExecutionID (stable identity for
-	// the API, routing catalog, and analytics) but with a fresh LifecycleID
-	// so the old sandbox's cleanup goroutine won't
-	// accidentally evict the resumed sandbox from the map.
-	resumedSbx, err := s.sandboxFactory.ResumeSandbox(
-		ctx,
-		template,
-		sbx.Config,
-		sandbox.RuntimeMetadata{
-			TemplateID:  sbx.Runtime.TemplateID,
-			SandboxID:   sbx.Runtime.SandboxID,
-			ExecutionID: sbx.Runtime.ExecutionID,
-			TeamID:      sbx.Runtime.TeamID,
-			BuildID:     sbx.Runtime.BuildID,
-			SandboxType: sbx.Runtime.SandboxType,
-		},
-		sbx.GetStartedAt(),
-		sbx.GetEndAt(),
-		sbx.APIStoredConfig,
-	)
-	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error resuming sandbox after checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
-
-		return nil, status.Errorf(codes.Internal, "error resuming sandbox after checkpoint: %s", err)
-	}
-
 	// Collect prefetch data immediately after resume while it's most accurate
-	prefetchData, prefetchErr := resumedSbx.MemoryPrefetchData(ctx)
+	prefetchData, prefetchErr := sbx.MemoryPrefetchData(ctx)
 	if prefetchErr != nil {
-		sbxlogger.I(resumedSbx).Warn(ctx, "failed to get prefetch data for checkpoint", zap.Error(prefetchErr))
+		sbxlogger.I(sbx).Warn(ctx, "failed to get prefetch data for checkpoint", zap.Error(prefetchErr))
 	}
-
-	// Setup lifecycle for the resumed sandbox
-	s.setupSandboxLifecycle(ctx, resumedSbx)
 
 	// Embed prefetch data into the metadata so it's uploaded with the snapshot files in a single pass.
 	if prefetchErr == nil {
@@ -825,18 +793,16 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 			})
 
 			if err := s.templateCache.UpdateMetadata(in.GetBuildId(), res.meta); err != nil {
-				sbxlogger.I(resumedSbx).Warn(ctx, "failed to update local metadata with prefetch", zap.Error(err))
+				sbxlogger.I(sbx).Warn(ctx, "failed to update local metadata with prefetch", zap.Error(err))
 			}
 		}
 	}
 
 	if s.featureFlags.BoolFlag(ctx, featureflags.PeerToPeerAsyncCheckpointFlag) {
 		// Async: return immediately; peer nodes can pull chunks from us during the upload window.
-		s.uploadSnapshotAsync(ctx, resumedSbx, res)
+		s.uploadSnapshotAsync(ctx, sbx, res)
 	} else {
 		// Sync: wait for upload before returning so a failed upload is surfaced to the caller.
-		// On failure, tear down the resumed sandbox — without a persisted snapshot it cannot
-		// be paused or resumed later.
 		uploadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uploadTimeout)
 		defer cancel()
 
@@ -846,14 +812,11 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
-			s.sandboxFactory.Sandboxes.MarkStopping(ctx, resumedSbx.Runtime.SandboxID, resumedSbx.LifecycleID)
-			s.stopSandboxAsync(context.WithoutCancel(ctx), resumedSbx)
-
 			return nil, status.Errorf(codes.Internal, "error uploading snapshot for checkpoint '%s': %s", in.GetSandboxId(), err)
 		}
 	}
 
-	s.publishSandboxEvent(ctx, resumedSbx, events.SandboxCheckpointedEvent)
+	s.publishSandboxEvent(ctx, sbx, events.SandboxCheckpointedEvent)
 
 	telemetry.ReportEvent(ctx, "Checkpoint completed")
 
@@ -918,6 +881,7 @@ func (s *Server) snapshotAndCacheSandbox(
 	provenance map[string]string,
 	buildOrigin storage.ObjectOrigin,
 	filesystemOnly bool,
+	maintainSandbox bool,
 ) (*snapshotResult, error) {
 	meta, err := sbx.Template.Metadata()
 	if err != nil {
@@ -933,6 +897,9 @@ func (s *Server) snapshotAndCacheSandbox(
 	var pauseOpts []sandbox.PauseOption
 	if filesystemOnly {
 		pauseOpts = append(pauseOpts, sandbox.WithFilesystemSnapshot())
+	}
+	if maintainSandbox {
+		pauseOpts = append(pauseOpts, sandbox.WithMaintainSandbox())
 	}
 
 	snapshot, err := sbx.Pause(ctx, meta, sandbox.SnapshotUseCasePause, pauseOpts...)
