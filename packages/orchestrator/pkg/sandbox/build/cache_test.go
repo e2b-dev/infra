@@ -15,6 +15,8 @@ package build
 // causing a race when closing the cancel channel.
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -30,6 +32,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
@@ -643,4 +646,105 @@ func mustParseCfg(t *testing.T) cfg.Config {
 	require.NoError(t, err)
 
 	return c
+}
+
+func TestGetOrCreate_NegativeCacheShortCircuits(t *testing.T) {
+	store, err := NewDiffStore(
+		mustParseCfg(t),
+		flagsWithMaxBuildCachePercentage(t, 90),
+		t.TempDir(),
+		time.Hour,
+		time.Minute,
+	)
+	require.NoError(t, err)
+	store.Start(t.Context())
+	t.Cleanup(store.Close)
+
+	key := DiffStoreKey(uuid.New().String())
+	calls := 0
+	create := func(ctx context.Context) (Diff, error) {
+		calls++
+		return nil, storage.ErrObjectNotExist
+	}
+
+	// First call: create is invoked, ErrObjectNotExist is cached negatively.
+	_, err = store.GetOrCreate(t.Context(), key, create)
+	require.ErrorIs(t, err, storage.ErrObjectNotExist)
+	require.Equal(t, 1, calls, "create should be called once on first miss")
+
+	// Subsequent calls within TTL must short-circuit without invoking create.
+	for i := 0; i < 3; i++ {
+		_, err = store.GetOrCreate(t.Context(), key, create)
+		require.ErrorIs(t, err, storage.ErrObjectNotExist)
+	}
+	require.Equal(t, 1, calls, "create must not be called again while negative cache is hot")
+}
+
+func TestGetOrCreate_NegativeCacheNotSetForOtherErrors(t *testing.T) {
+	store, err := NewDiffStore(
+		mustParseCfg(t),
+		flagsWithMaxBuildCachePercentage(t, 90),
+		t.TempDir(),
+		time.Hour,
+		time.Minute,
+	)
+	require.NoError(t, err)
+	store.Start(t.Context())
+	t.Cleanup(store.Close)
+
+	key := DiffStoreKey(uuid.New().String())
+	sentinel := errors.New("transient network error")
+	calls := 0
+	create := func(ctx context.Context) (Diff, error) {
+		calls++
+		return nil, sentinel
+	}
+
+	// Two calls for a non-ErrObjectNotExist error — no negative caching expected.
+	_, err = store.GetOrCreate(t.Context(), key, create)
+	require.ErrorIs(t, err, sentinel)
+	_, err = store.GetOrCreate(t.Context(), key, create)
+	require.ErrorIs(t, err, sentinel)
+	require.Equal(t, 2, calls, "create should be retried after non-ErrObjectNotExist errors")
+}
+
+func TestGetOrCreate_AddClearsNegativeCache(t *testing.T) {
+	cachePath := t.TempDir()
+	store, err := NewDiffStore(
+		mustParseCfg(t),
+		flagsWithMaxBuildCachePercentage(t, 90),
+		cachePath,
+		time.Hour,
+		time.Minute,
+	)
+	require.NoError(t, err)
+	store.Start(t.Context())
+	t.Cleanup(store.Close)
+
+	diff := newRootFSDiff(t, cachePath, uuid.New().String())
+	key := diff.CacheKey()
+
+	calls := 0
+	notFound := func(ctx context.Context) (Diff, error) {
+		calls++
+		return nil, storage.ErrObjectNotExist
+	}
+
+	// Populate negative cache.
+	_, err = store.GetOrCreate(t.Context(), key, notFound)
+	require.ErrorIs(t, err, storage.ErrObjectNotExist)
+	require.Equal(t, 1, calls)
+
+	// Explicit Add (simulating a build upload completing) clears the negative cache.
+	store.Add(diff)
+
+	returnDiff := func(ctx context.Context) (Diff, error) {
+		calls++
+		return diff, nil
+	}
+	got, err := store.GetOrCreate(t.Context(), key, returnDiff)
+	// After Add, the positive cache holds the diff — create should not be called.
+	require.NoError(t, err)
+	require.Equal(t, diff, got)
+	require.Equal(t, 1, calls, "create must not be called after Add populates the positive cache")
 }

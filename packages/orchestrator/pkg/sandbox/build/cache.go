@@ -49,10 +49,6 @@ const (
 	negativeCacheTTL = 60 * time.Second
 )
 
-type negativeCacheEntry struct {
-	expiresAt time.Time
-}
-
 type DiffStore struct {
 	cachePath string
 	cache     *ttlcache.Cache[DiffStoreKey, Diff]
@@ -68,7 +64,10 @@ type DiffStore struct {
 	pdDelay time.Duration
 
 	insertionTimes sync.Map // map[DiffStoreKey]time.Time — tracks when each diff was cached
-	negativeCache  sync.Map // map[DiffStoreKey]negativeCacheEntry — permanently-missing builds
+	// negativeCache holds keys for build objects that are permanently missing from
+	// the store. ttlcache handles automatic expiration so entries never accumulate
+	// unboundedly.
+	negativeCache *ttlcache.Cache[DiffStoreKey, struct{}]
 }
 
 func NewDiffStore(
@@ -86,14 +85,19 @@ func NewDiffStore(
 		ttlcache.WithTTL[DiffStoreKey, Diff](ttl),
 	)
 
+	negCache := ttlcache.New(
+		ttlcache.WithTTL[DiffStoreKey, struct{}](negativeCacheTTL),
+	)
+
 	ds := &DiffStore{
-		cachePath: cachePath,
-		cache:     cache,
-		cancel:    func() {},
-		config:    config,
-		flags:     flags,
-		pdSizes:   make(map[DiffStoreKey]*deleteDiff),
-		pdDelay:   delay,
+		cachePath:     cachePath,
+		cache:         cache,
+		negativeCache: negCache,
+		cancel:        func() {},
+		config:        config,
+		flags:         flags,
+		pdSizes:       make(map[DiffStoreKey]*deleteDiff),
+		pdDelay:       delay,
 	}
 
 	cache.OnEviction(func(ctx context.Context, _ ttlcache.EvictionReason, item *ttlcache.Item[DiffStoreKey, Diff]) {
@@ -126,12 +130,14 @@ func (s *DiffStore) Start(ctx context.Context) {
 	s.cancel = cancel
 
 	go s.cache.Start()
+	go s.negativeCache.Start()
 	go s.startDiskSpaceEviction(ctx, s.config, s.flags)
 }
 
 func (s *DiffStore) Close() {
 	s.cancel()
 	s.cache.Stop()
+	s.negativeCache.Stop()
 }
 
 // Get returns the cached Diff for key, refreshing TTL and cancelling any
@@ -157,11 +163,8 @@ func (s *DiffStore) Get(key DiffStoreKey) (Diff, bool) {
 func (s *DiffStore) GetOrCreate(ctx context.Context, key DiffStoreKey, create func(context.Context) (Diff, error)) (Diff, error) {
 	s.resetDelete(key)
 
-	if v, ok := s.negativeCache.Load(key); ok {
-		if entry := v.(negativeCacheEntry); time.Now().Before(entry.expiresAt) {
-			return nil, storage.ErrObjectNotExist
-		}
-		s.negativeCache.Delete(key)
+	if s.negativeCache.Has(key) {
+		return nil, storage.ErrObjectNotExist
 	}
 
 	if item := s.cache.Get(key); item != nil {
@@ -169,12 +172,9 @@ func (s *DiffStore) GetOrCreate(ctx context.Context, key DiffStoreKey, create fu
 	}
 
 	v, err, _ := s.initGroup.Do(string(key), func() (any, error) {
-		// Double-check: another goroutine may have cached it while we waited.
-		if v, ok := s.negativeCache.Load(key); ok {
-			if entry := v.(negativeCacheEntry); time.Now().Before(entry.expiresAt) {
-				return nil, storage.ErrObjectNotExist
-			}
-			s.negativeCache.Delete(key)
+		// Double-check: another goroutine may have populated either cache while we waited.
+		if s.negativeCache.Has(key) {
+			return nil, storage.ErrObjectNotExist
 		}
 		if item := s.cache.Get(key); item != nil {
 			return item.Value(), nil
@@ -185,7 +185,7 @@ func (s *DiffStore) GetOrCreate(ctx context.Context, key DiffStoreKey, create fu
 		diff, err := create(ctx)
 		if err != nil {
 			if errors.Is(err, storage.ErrObjectNotExist) {
-				s.negativeCache.Store(key, negativeCacheEntry{expiresAt: time.Now().Add(negativeCacheTTL)})
+				s.negativeCache.Set(key, struct{}{}, ttlcache.DefaultTTL)
 			}
 			return nil, err
 		}
@@ -203,6 +203,8 @@ func (s *DiffStore) GetOrCreate(ctx context.Context, key DiffStoreKey, create fu
 }
 
 func (s *DiffStore) Add(d Diff) {
+	// Clear any negative cache entry so a re-uploaded build is immediately visible.
+	s.negativeCache.Delete(d.CacheKey())
 	s.resetDelete(d.CacheKey())
 	s.cache.Set(d.CacheKey(), d, ttlcache.DefaultTTL)
 	s.insertionTimes.LoadOrStore(d.CacheKey(), time.Now())
