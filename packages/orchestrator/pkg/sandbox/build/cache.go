@@ -4,6 +4,7 @@ package build
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/units"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -39,6 +41,18 @@ type deleteDiff struct {
 	closeOnce sync.Once
 }
 
+const (
+	// negativeCacheTTL is how long a permanently-missing build object is held in
+	// the negative cache before being rechecked. Keeps the kernel-retry flood from
+	// hammering GCS/S3 with repeated 404s while still recovering when a build is
+	// eventually uploaded or a header arrives.
+	negativeCacheTTL = 60 * time.Second
+)
+
+type negativeCacheEntry struct {
+	expiresAt time.Time
+}
+
 type DiffStore struct {
 	cachePath string
 	cache     *ttlcache.Cache[DiffStoreKey, Diff]
@@ -54,6 +68,7 @@ type DiffStore struct {
 	pdDelay time.Duration
 
 	insertionTimes sync.Map // map[DiffStoreKey]time.Time — tracks when each diff was cached
+	negativeCache  sync.Map // map[DiffStoreKey]negativeCacheEntry — permanently-missing builds
 }
 
 func NewDiffStore(
@@ -135,8 +150,19 @@ func (s *DiffStore) Get(key DiffStoreKey) (Diff, bool) {
 // singleflight to construct + cache a new one. The create closure is invoked
 // at most once per key across concurrent callers; on success the returned Diff
 // is cached and its insertion time recorded.
+//
+// When create fails with storage.ErrObjectNotExist the key is placed in the
+// negative cache for negativeCacheTTL, short-circuiting all subsequent calls
+// for that key and preventing repeated storage 404s under kernel NBD retries.
 func (s *DiffStore) GetOrCreate(ctx context.Context, key DiffStoreKey, create func(context.Context) (Diff, error)) (Diff, error) {
 	s.resetDelete(key)
+
+	if v, ok := s.negativeCache.Load(key); ok {
+		if entry := v.(negativeCacheEntry); time.Now().Before(entry.expiresAt) {
+			return nil, storage.ErrObjectNotExist
+		}
+		s.negativeCache.Delete(key)
+	}
 
 	if item := s.cache.Get(key); item != nil {
 		return item.Value(), nil
@@ -144,6 +170,12 @@ func (s *DiffStore) GetOrCreate(ctx context.Context, key DiffStoreKey, create fu
 
 	v, err, _ := s.initGroup.Do(string(key), func() (any, error) {
 		// Double-check: another goroutine may have cached it while we waited.
+		if v, ok := s.negativeCache.Load(key); ok {
+			if entry := v.(negativeCacheEntry); time.Now().Before(entry.expiresAt) {
+				return nil, storage.ErrObjectNotExist
+			}
+			s.negativeCache.Delete(key)
+		}
 		if item := s.cache.Get(key); item != nil {
 			return item.Value(), nil
 		}
@@ -152,6 +184,9 @@ func (s *DiffStore) GetOrCreate(ctx context.Context, key DiffStoreKey, create fu
 
 		diff, err := create(ctx)
 		if err != nil {
+			if errors.Is(err, storage.ErrObjectNotExist) {
+				s.negativeCache.Store(key, negativeCacheEntry{expiresAt: time.Now().Add(negativeCacheTTL)})
+			}
 			return nil, err
 		}
 
