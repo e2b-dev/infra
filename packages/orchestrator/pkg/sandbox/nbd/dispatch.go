@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"syscall"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -34,6 +35,12 @@ var (
 )
 
 var ErrShuttingDown = errors.New("shutting down. Cannot serve any new requests")
+
+// isSocketClosed returns true when err indicates the NBD Unix socket was
+// closed by the peer — expected during normal sandbox shutdown.
+func isSocketClosed(err error) bool {
+	return errors.Is(err, syscall.EPIPE) || errors.Is(err, io.ErrClosedPipe)
+}
 
 var dispatchBufPool = sync.Pool{
 	New: func() any {
@@ -355,14 +362,25 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 			select {
 			case d.fatal <- err:
 			default:
-				logger.L().Error(ctx, "nbd error cmd read",
-					zap.Error(err),
-					zap.String("nbd_op", "read"),
-					zap.String("nbd_provider", d.provName),
-					zap.Uint64("nbd_handle", cmdHandle),
-					zap.Uint64("nbd_offset", cmdFrom),
-					zap.Uint32("nbd_length", cmdLength),
-				)
+				if isSocketClosed(err) {
+					logger.L().Warn(ctx, "nbd error cmd read",
+						zap.Error(err),
+						zap.String("nbd_op", "read"),
+						zap.String("nbd_provider", d.provName),
+						zap.Uint64("nbd_handle", cmdHandle),
+						zap.Uint64("nbd_offset", cmdFrom),
+						zap.Uint32("nbd_length", cmdLength),
+					)
+				} else {
+					logger.L().Error(ctx, "nbd error cmd read",
+						zap.Error(err),
+						zap.String("nbd_op", "read"),
+						zap.String("nbd_provider", d.provName),
+						zap.Uint64("nbd_handle", cmdHandle),
+						zap.Uint64("nbd_offset", cmdFrom),
+						zap.Uint32("nbd_length", cmdLength),
+					)
+				}
 			}
 		}
 		d.pendingResponses.Done()
@@ -422,14 +440,25 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 			select {
 			case d.fatal <- err:
 			default:
-				logger.L().Error(ctx, "nbd error cmd write",
-					zap.Error(err),
-					zap.String("nbd_op", "write"),
-					zap.String("nbd_provider", d.provName),
-					zap.Uint64("nbd_handle", cmdHandle),
-					zap.Uint64("nbd_offset", cmdFrom),
-					zap.Int("nbd_length", len(cmdData)),
-				)
+				if isSocketClosed(err) {
+					logger.L().Warn(ctx, "nbd error cmd write",
+						zap.Error(err),
+						zap.String("nbd_op", "write"),
+						zap.String("nbd_provider", d.provName),
+						zap.Uint64("nbd_handle", cmdHandle),
+						zap.Uint64("nbd_offset", cmdFrom),
+						zap.Int("nbd_length", len(cmdData)),
+					)
+				} else {
+					logger.L().Error(ctx, "nbd error cmd write",
+						zap.Error(err),
+						zap.String("nbd_op", "write"),
+						zap.String("nbd_provider", d.provName),
+						zap.Uint64("nbd_handle", cmdHandle),
+						zap.Uint64("nbd_offset", cmdFrom),
+						zap.Int("nbd_length", len(cmdData)),
+					)
+				}
 			}
 		}
 		d.pendingResponses.Done()
@@ -500,14 +529,25 @@ func (d *Dispatch) cmdWriteZeroes(ctx context.Context, cmdHandle uint64, cmdFrom
 			select {
 			case d.fatal <- err:
 			default:
-				logger.L().Error(ctx, "nbd error cmd write-zeroes",
-					zap.Error(err),
-					zap.String("nbd_op", "write-zeroes"),
-					zap.String("nbd_provider", d.provName),
-					zap.Uint64("nbd_handle", cmdHandle),
-					zap.Uint64("nbd_offset", cmdFrom),
-					zap.Int64("nbd_length", cmdLength),
-				)
+				if isSocketClosed(err) {
+					logger.L().Warn(ctx, "nbd error cmd write-zeroes",
+						zap.Error(err),
+						zap.String("nbd_op", "write-zeroes"),
+						zap.String("nbd_provider", d.provName),
+						zap.Uint64("nbd_handle", cmdHandle),
+						zap.Uint64("nbd_offset", cmdFrom),
+						zap.Int64("nbd_length", cmdLength),
+					)
+				} else {
+					logger.L().Error(ctx, "nbd error cmd write-zeroes",
+						zap.Error(err),
+						zap.String("nbd_op", "write-zeroes"),
+						zap.String("nbd_provider", d.provName),
+						zap.Uint64("nbd_handle", cmdHandle),
+						zap.Uint64("nbd_offset", cmdFrom),
+						zap.Int64("nbd_length", cmdLength),
+					)
+				}
 			}
 		}
 
