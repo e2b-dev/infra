@@ -510,6 +510,19 @@ func (p *Process) Create(
 	return nil
 }
 
+func (p *Process) ResumeInPlace(
+	ctx context.Context,
+) error {
+	ctx, span := tracer.Start(ctx, "resume-fc-in-place")
+	defer span.End()
+
+	if err := p.client.resumeVM(ctx); err != nil {
+		return fmt.Errorf("could not resume sandbox: %w", err)
+	}
+
+	return nil
+}
+
 func (p *Process) Resume(
 	ctx context.Context,
 	sbxMetadata sbxlogger.SandboxMetadata,

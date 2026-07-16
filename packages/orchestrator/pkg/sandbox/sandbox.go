@@ -1236,6 +1236,7 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 
 type pauseOptions struct {
 	filesystemSnapshot bool
+	maintainSandbox    bool
 }
 
 type PauseOption func(*pauseOptions)
@@ -1246,6 +1247,12 @@ type PauseOption func(*pauseOptions)
 // The default (no option) is a full memory snapshot.
 func WithFilesystemSnapshot() PauseOption {
 	return func(o *pauseOptions) { o.filesystemSnapshot = true }
+}
+
+// WithMaintainSandbox makes the pause keep the sandbox process along with all
+// its resources alive, so it can be resumed in-place later
+func WithMaintainSandbox() PauseOption {
+	return func(o *pauseOptions) { o.maintainSandbox = true }
 }
 
 // Pause creates a snapshot of the sandbox.
@@ -1352,6 +1359,19 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("failed to pause VM: %w", err)
 	}
 
+	resumeOnError := pauseOpts.maintainSandbox
+	if pauseOpts.maintainSandbox {
+		// Add after the reclaim unfreeze and fsthaw cleanups, so
+		// that on error we first run this one, otherwise we wouldn't
+		// be able to run thaw/unfreeze within the guest.
+		cleanup.Add(ctx, func(ctx context.Context) error {
+			if !resumeOnError {
+				return nil
+			}
+			return s.process.ResumeInPlace(ctx)
+		})
+	}
+
 	// Best-effort flush before the rootfs export goroutine closes the FC API
 	// socket. Non-blocking on the reader; trades precision for pause latency.
 	_ = s.process.FlushMetrics(ctx)
@@ -1384,7 +1404,7 @@ func (s *Sandbox) Pause(
 		DiffHeader: NewResolvedDiffHeader(nil),
 	}
 	if !pauseOpts.filesystemSnapshot {
-		mem, err = s.processMemorySnapshot(ctx, buildID)
+		mem, err = s.processMemorySnapshot(ctx, buildID, pauseOpts.maintainSandbox)
 		if err != nil {
 			return nil, err
 		}
@@ -1393,14 +1413,16 @@ func (s *Sandbox) Pause(
 	// harmless and keeps the cleanup ordering identical to the memory path.
 	cleanup.AddNoContext(ctx, mem.Diff.Close)
 
+	rootfsDiffCreator := &RootfsDiffCreator{rootfs: s.rootfs}
+	if !pauseOpts.maintainSandbox {
+		rootfsDiffCreator.closeHook = s.Close
+	}
+
 	rootfsDiff, rootfsHeader, err := pauseProcessRootfs(
 		ctx,
 		buildID,
 		originalRootfs.Header(),
-		&RootfsDiffCreator{
-			rootfs:    s.rootfs,
-			closeHook: s.Close,
-		},
+		rootfsDiffCreator,
 		s.config.DefaultCacheDir,
 	)
 	if err != nil {
@@ -1426,6 +1448,30 @@ func (s *Sandbox) Pause(
 	err = m.ToFile(metadataFileLink.Path())
 	if err != nil {
 		return nil, err
+	}
+
+	if pauseOpts.maintainSandbox {
+		// We don't need to resume in the cleanup. All went well.
+		resumeOnError = false
+
+		if err := s.process.ResumeInPlace(ctx); err != nil {
+			// Final resume failed -> VM stuck paused and unrecoverable.
+			// Tear it down, so we don't leak a frozen VM, and fail the
+			// checkpoint.
+			return nil, fmt.Errorf(
+				"resume in place failed, sandbox torn down: %w",
+				errors.Join(err, s.Close(context.WithoutCancel(ctx))))
+		}
+
+		// The live VM keeps running, so undo unything the pause froze (the destroy
+		// path leaves these for the error cleanup / lets them die with the VM)
+		s.bestEffortUnfreeze(ctx)
+		if pauseOpts.filesystemSnapshot {
+			s.bestEffortFsthaw(ctx)
+		}
+
+		s.Checks = NewChecks(s)
+		go s.Checks.Start(context.WithoutCancel(ctx))
 	}
 
 	return &Snapshot{
@@ -1467,7 +1513,11 @@ type MemorySnapshot struct {
 // and builds its header — steps 3-5 of Pause. Only called for a full memory
 // snapshot; a filesystem-only pause skips it. The returned diff's Close must be
 // registered for cleanup by the caller.
-func (s *Sandbox) processMemorySnapshot(ctx context.Context, buildID uuid.UUID) (MemorySnapshot, error) {
+func (s *Sandbox) processMemorySnapshot(
+	ctx context.Context,
+	buildID uuid.UUID,
+	keepMemfdOpen bool,
+) (MemorySnapshot, error) {
 	originalMemfile, err := s.Template.Memfile(ctx)
 	if err != nil {
 		return MemorySnapshot{}, fmt.Errorf("failed to get original memfile: %w", err)
@@ -1497,6 +1547,13 @@ func (s *Sandbox) processMemorySnapshot(ctx context.Context, buildID uuid.UUID) 
 		}
 	}
 
+	var memfd *block.Memfd
+	if keepMemfdOpen {
+		memfd = s.memory.PeekMemfd(ctx)
+	} else {
+		memfd = s.memory.Memfd(ctx)
+	}
+
 	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
 		ctx,
 		buildID,
@@ -1504,17 +1561,29 @@ func (s *Sandbox) processMemorySnapshot(ctx context.Context, buildID uuid.UUID) 
 		memfileDiffMetadata,
 		s.config.DefaultCacheDir,
 		s.process,
-		s.memory.Memfd(ctx),
+		memfd,
 		MemorySnapshotOptions{
 			BackgroundCopy:  s.featureFlags.BoolFlag(ctx, featureflags.MemfdBackgroundCopyFlag, sandboxLDContext(s.Runtime, s.Config)),
 			DedupBase:       dedupBase,
 			DedupBestEffort: dedupBestEffort,
 			DedupDirectIO:   dedupDirectIO,
 			DedupBudget:     dedupBudget,
+			KeepMemfdOpen:   keepMemfdOpen,
 		},
 	)
 	if err != nil {
 		return MemorySnapshot{}, fmt.Errorf("error while post processing: %w", err)
+	}
+
+	if keepMemfdOpen {
+		// The guest keeps running after an in-place resume, so the memfd (its
+		// live RAM) must be fully read before we return. Block until the async
+		// copy/dedup finishes — otherwise the resumed guest would mutate pages
+		// mid-copy and corrupt the snapshot. CachePath cascades to the diff
+		// source's Wait.
+		if _, err := memfileDiff.CachePath(ctx); err != nil {
+			return MemorySnapshot{}, fmt.Errorf("waiting for memfd copy before in-place resume: %w", err)
+		}
 	}
 
 	return MemorySnapshot{
