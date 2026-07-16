@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -410,35 +409,9 @@ func main() {
 	fmt.Fprintf(os.Stderr, "Build '%s' copied to '%s'\n", *buildId, *to)
 
 	if *teamID != "" {
-		// Read metadata.json from destination to get kernel and firecracker versions.
-		var metadataReader io.ReadCloser
-		if strings.HasPrefix(*to, "gs://") {
-			bucketName, _ := strings.CutPrefix(*to, "gs://")
-			obj := googleStorageClient.Bucket(bucketName).Object(metadataPath)
-			r, err := obj.NewReader(ctx)
-			if err != nil {
-				log.Fatalf("failed to read metadata from GCS: %s", err)
-			}
-			metadataReader = r
-		} else {
-			f, err := os.Open(path.Join(*to, "templates", metadataPath))
-			if err != nil {
-				log.Fatalf("failed to read metadata from local path: %s", err)
-			}
-			metadataReader = f
+		if meta.Template.KernelVersion == "" || meta.Template.FirecrackerVersion == "" {
+			log.Fatalf("kernel/firecracker version missing in build metadata (version %d), cannot generate SQL", meta.Version)
 		}
-
-		var meta struct {
-			Template struct {
-				KernelVersion      string `json:"kernel_version"`
-				FirecrackerVersion string `json:"firecracker_version"`
-			} `json:"template"`
-		}
-		if err := json.NewDecoder(metadataReader).Decode(&meta); err != nil {
-			metadataReader.Close()
-			log.Fatalf("failed to decode metadata.json: %s", err)
-		}
-		metadataReader.Close()
 
 		envID := id.Generate()
 		fmt.Fprintf(os.Stderr, "\n\nGenerated env ID: %s\n\n", envID)
