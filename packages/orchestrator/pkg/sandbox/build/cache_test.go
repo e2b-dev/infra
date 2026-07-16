@@ -748,3 +748,55 @@ func TestGetOrCreate_AddClearsNegativeCache(t *testing.T) {
 	require.Equal(t, diff, got)
 	require.Equal(t, 1, calls, "create must not be called after Add populates the positive cache")
 }
+
+func TestGetOrCreate_AddRaceWithStorageProbe(t *testing.T) {
+	// Regression: if Add() populates the positive cache while create's storage
+	// probe is still in-flight and later returns ErrObjectNotExist, the negative
+	// cache must NOT shadow the diff that Add already installed.
+	cachePath := t.TempDir()
+	store, err := NewDiffStore(
+		mustParseCfg(t),
+		flagsWithMaxBuildCachePercentage(t, 90),
+		cachePath,
+		time.Hour,
+		time.Minute,
+	)
+	require.NoError(t, err)
+	store.Start(t.Context())
+	t.Cleanup(store.Close)
+
+	diff := newRootFSDiff(t, cachePath, uuid.New().String())
+	key := diff.CacheKey()
+
+	// ready gates the storage probe so we can inject Add() before it returns.
+	ready := make(chan struct{})
+
+	// Start a GetOrCreate whose create blocks until we signal it.
+	errc := make(chan error, 1)
+	go func() {
+		_, err := store.GetOrCreate(t.Context(), key, func(ctx context.Context) (Diff, error) {
+			<-ready // wait for Add to fire first
+			return nil, storage.ErrObjectNotExist
+		})
+		errc <- err
+	}()
+
+	// Give the goroutine a moment to enter initGroup.Do and block on <-ready.
+	time.Sleep(20 * time.Millisecond)
+
+	// Add publishes the diff into the positive cache (simulates a concurrent upload).
+	store.Add(diff)
+
+	// Unblock create — it returns ErrObjectNotExist, but Add already ran.
+	close(ready)
+
+	require.ErrorIs(t, <-errc, storage.ErrObjectNotExist)
+
+	// The diff added by Add must be reachable immediately via GetOrCreate.
+	got, err := store.GetOrCreate(t.Context(), key, func(ctx context.Context) (Diff, error) {
+		t.Fatal("create must not be called: diff is in the positive cache")
+		return nil, nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, diff, got)
+}

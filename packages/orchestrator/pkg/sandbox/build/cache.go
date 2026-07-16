@@ -185,7 +185,14 @@ func (s *DiffStore) GetOrCreate(ctx context.Context, key DiffStoreKey, create fu
 		diff, err := create(ctx)
 		if err != nil {
 			if errors.Is(err, storage.ErrObjectNotExist) {
-				s.negativeCache.Set(key, struct{}{}, ttlcache.DefaultTTL)
+				// Recheck the positive cache before installing the negative entry.
+				// Add may have raced with this storage probe: it deletes the negative
+				// entry and populates the positive cache while create was in-flight.
+				// If that happened, installing a negative entry here would shadow the
+				// available diff for up to negativeCacheTTL.
+				if s.cache.Get(key) == nil {
+					s.negativeCache.Set(key, struct{}{}, ttlcache.DefaultTTL)
+				}
 			}
 			return nil, err
 		}
