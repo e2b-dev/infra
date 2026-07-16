@@ -362,25 +362,18 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 			select {
 			case d.fatal <- err:
 			default:
+				logFn := logger.L().Error
 				if isSocketClosed(err) {
-					logger.L().Warn(ctx, "nbd error cmd read",
-						zap.Error(err),
-						zap.String("nbd_op", "read"),
-						zap.String("nbd_provider", d.provName),
-						zap.Uint64("nbd_handle", cmdHandle),
-						zap.Uint64("nbd_offset", cmdFrom),
-						zap.Uint32("nbd_length", cmdLength),
-					)
-				} else {
-					logger.L().Error(ctx, "nbd error cmd read",
-						zap.Error(err),
-						zap.String("nbd_op", "read"),
-						zap.String("nbd_provider", d.provName),
-						zap.Uint64("nbd_handle", cmdHandle),
-						zap.Uint64("nbd_offset", cmdFrom),
-						zap.Uint32("nbd_length", cmdLength),
-					)
+					logFn = logger.L().Warn
 				}
+				logFn(ctx, "nbd error cmd read",
+					zap.Error(err),
+					zap.String("nbd_op", "read"),
+					zap.String("nbd_provider", d.provName),
+					zap.Uint64("nbd_handle", cmdHandle),
+					zap.Uint64("nbd_offset", cmdFrom),
+					zap.Uint32("nbd_length", cmdLength),
+				)
 			}
 		}
 		d.pendingResponses.Done()
@@ -440,25 +433,18 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 			select {
 			case d.fatal <- err:
 			default:
+				logFn := logger.L().Error
 				if isSocketClosed(err) {
-					logger.L().Warn(ctx, "nbd error cmd write",
-						zap.Error(err),
-						zap.String("nbd_op", "write"),
-						zap.String("nbd_provider", d.provName),
-						zap.Uint64("nbd_handle", cmdHandle),
-						zap.Uint64("nbd_offset", cmdFrom),
-						zap.Int("nbd_length", len(cmdData)),
-					)
-				} else {
-					logger.L().Error(ctx, "nbd error cmd write",
-						zap.Error(err),
-						zap.String("nbd_op", "write"),
-						zap.String("nbd_provider", d.provName),
-						zap.Uint64("nbd_handle", cmdHandle),
-						zap.Uint64("nbd_offset", cmdFrom),
-						zap.Int("nbd_length", len(cmdData)),
-					)
+					logFn = logger.L().Warn
 				}
+				logFn(ctx, "nbd error cmd write",
+					zap.Error(err),
+					zap.String("nbd_op", "write"),
+					zap.String("nbd_provider", d.provName),
+					zap.Uint64("nbd_handle", cmdHandle),
+					zap.Uint64("nbd_offset", cmdFrom),
+					zap.Int("nbd_length", len(cmdData)),
+				)
 			}
 		}
 		d.pendingResponses.Done()
@@ -529,25 +515,18 @@ func (d *Dispatch) cmdWriteZeroes(ctx context.Context, cmdHandle uint64, cmdFrom
 			select {
 			case d.fatal <- err:
 			default:
+				logFn := logger.L().Error
 				if isSocketClosed(err) {
-					logger.L().Warn(ctx, "nbd error cmd write-zeroes",
-						zap.Error(err),
-						zap.String("nbd_op", "write-zeroes"),
-						zap.String("nbd_provider", d.provName),
-						zap.Uint64("nbd_handle", cmdHandle),
-						zap.Uint64("nbd_offset", cmdFrom),
-						zap.Int64("nbd_length", cmdLength),
-					)
-				} else {
-					logger.L().Error(ctx, "nbd error cmd write-zeroes",
-						zap.Error(err),
-						zap.String("nbd_op", "write-zeroes"),
-						zap.String("nbd_provider", d.provName),
-						zap.Uint64("nbd_handle", cmdHandle),
-						zap.Uint64("nbd_offset", cmdFrom),
-						zap.Int64("nbd_length", cmdLength),
-					)
+					logFn = logger.L().Warn
 				}
+				logFn(ctx, "nbd error cmd write-zeroes",
+					zap.Error(err),
+					zap.String("nbd_op", "write-zeroes"),
+					zap.String("nbd_provider", d.provName),
+					zap.Uint64("nbd_handle", cmdHandle),
+					zap.Uint64("nbd_offset", cmdFrom),
+					zap.Int64("nbd_length", cmdLength),
+				)
 			}
 		}
 
