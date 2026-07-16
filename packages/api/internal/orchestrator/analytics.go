@@ -23,12 +23,29 @@ const (
 	reportTimeout = 4 * time.Minute
 )
 
+// sbxStopTime returns the effective stop time, prevents stale record evicted late reporting incorrect data
+func sbxStopTime(sbx sandbox.Sandbox, now time.Time) time.Time {
+	if !sbx.EndTime.After(sbx.StartTime) {
+		return sbx.StartTime
+	}
+
+	if sbx.EndTime.Before(now) {
+		return sbx.EndTime
+	}
+
+	if now.Before(sbx.StartTime) {
+		return sbx.StartTime
+	}
+
+	return now
+}
+
 func (o *Orchestrator) analyticsRemove(ctx context.Context, sandbox sandbox.Sandbox, stateAction sandbox.StateAction) {
 	ctx, cancel := context.WithTimeout(ctx, reportTimeout)
 	defer cancel()
 
-	duration := time.Since(sandbox.StartTime).Seconds()
-	stopTime := time.Now()
+	stopTime := sbxStopTime(sandbox, time.Now())
+	duration := stopTime.Sub(sandbox.StartTime).Seconds()
 
 	o.posthogClient.CreateAnalyticsTeamEvent(
 		ctx,

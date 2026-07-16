@@ -194,13 +194,7 @@ components:
       description: Sort column and direction.
       schema:
         type: string
-        enum:
-          [
-            created_at_asc,
-            created_at_desc,
-            updated_at_asc,
-            updated_at_desc,
-          ]
+        enum: [created_at_asc, created_at_desc, updated_at_asc, updated_at_desc]
         default: created_at_desc
     tag_assignments_cursor:
       name: cursor
@@ -471,7 +465,7 @@ components:
         nextCursor:
           type: string
           nullable: true
-          description: Cursor to pass to the next list request, or `null` if there is no next page. 
+          description: Cursor to pass to the next list request, or `null` if there is no next page.
 
     BuildStatusItem:
       type: object
@@ -566,6 +560,7 @@ components:
         - memoryMB
         - diskSizeMB
         - retentionExpired
+        - eventsRetentionExpired
       properties:
         templateID:
           type: string
@@ -597,7 +592,10 @@ components:
           $ref: "#/components/schemas/DiskSizeMB"
         retentionExpired:
           type: boolean
-          description: Whether the sandbox ended more than the retention window ago, so its monitoring, events, and logs data is no longer available
+          description: Whether the sandbox ended more than the fixed retention window ago, so its monitoring and logs data is no longer available
+        eventsRetentionExpired:
+          type: boolean
+          description: Whether the sandbox ended more than the team's events retention window ago, so its events data is no longer available
 
     HealthResponse:
       type: object
@@ -617,6 +615,7 @@ components:
         - maxVcpu
         - maxRamMb
         - diskMb
+        - eventsTtlDays
       properties:
         maxLengthHours:
           type: integer
@@ -634,6 +633,9 @@ components:
           type: integer
           format: int32
         diskMb:
+          type: integer
+          format: int32
+        eventsTtlDays:
           type: integer
           format: int32
 

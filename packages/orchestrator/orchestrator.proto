@@ -58,6 +58,9 @@ message SandboxConfig {
   // orchestrator's sandbox list (mirrors auto_pause); the orchestrator itself
   // does not act on it — the API evictor does.
   bool auto_pause_filesystem_only = 25;
+
+  // Retention of sandbox events in days
+  int64 events_ttl_days = 26;
 }
 
 message SandboxAutoResumeConfig {

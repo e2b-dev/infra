@@ -1,6 +1,6 @@
 module github.com/e2b-dev/infra/packages/local-dev
 
-go 1.26.3
+go 1.26.5
 
 replace github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
 
@@ -10,8 +10,8 @@ require (
 	github.com/e2b-dev/infra/packages/db v0.0.0
 	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.9.2
-	github.com/pressly/goose/v3 v3.26.0
+	github.com/jackc/pgx/v5 v5.10.0
+	github.com/pressly/goose/v3 v3.27.2
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.42.0
 )
@@ -49,8 +49,8 @@ require (
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/go-archive v0.2.0 // indirect
-	github.com/moby/moby/api v1.54.2 // indirect
-	github.com/moby/moby/client v0.4.1 // indirect
+	github.com/moby/moby/api v1.55.0 // indirect
+	github.com/moby/moby/client v0.5.0 // indirect
 	github.com/moby/patternmatcher v0.6.1 // indirect
 	github.com/moby/sys/sequential v0.6.0 // indirect
 	github.com/moby/sys/user v0.4.0 // indirect
@@ -69,11 +69,11 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/bridges/otelzap v0.14.0 // indirect
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.67.0 // indirect
-	go.opentelemetry.io/otel v1.43.0 // indirect
-	go.opentelemetry.io/otel/log v0.19.0 // indirect
-	go.opentelemetry.io/otel/metric v1.43.0 // indirect
-	go.opentelemetry.io/otel/trace v1.43.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.68.0 // indirect
+	go.opentelemetry.io/otel v1.44.0 // indirect
+	go.opentelemetry.io/otel/log v0.20.0 // indirect
+	go.opentelemetry.io/otel/metric v1.44.0 // indirect
+	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.1 // indirect
 	golang.org/x/crypto v0.53.0 // indirect
@@ -81,8 +81,8 @@ require (
 	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/text v0.38.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260401024825-9d38bb4040a9 // indirect
-	google.golang.org/grpc v1.80.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
+	google.golang.org/grpc v1.81.1 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

@@ -285,7 +285,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		eventType = events.SandboxResumedEventPair
 	}
 
-	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
+	teamID, buildId, eventsTTLDays, eventData := s.prepareSandboxEventData(ctx, sbx)
 	go s.sbxEventsService.Publish(
 		context.WithoutCancel(ctx),
 		teamID,
@@ -301,6 +301,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			SandboxTemplateID:  sbx.Config.BaseTemplateID,
 			SandboxBuildID:     buildId,
 			SandboxTeamID:      teamID,
+			EventsTTLDays:      eventsTTLDays,
 		},
 	)
 
@@ -413,43 +414,51 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		})
 	}
 
-	if err := utils.ApplyAllOrNone(ctx, updates); err != nil {
-		telemetry.ReportCriticalError(ctx, "failed to update sandbox", err)
+	err := sbx.RunUpdate(func() error {
+		if err := utils.ApplyAllOrNone(ctx, updates); err != nil {
+			telemetry.ReportCriticalError(ctx, "failed to update sandbox", err)
 
-		return nil, status.Errorf(codes.Internal, "failed to update sandbox: %s", err)
-	}
-
-	// Publish event if any updates were applied.
-	if len(updates) > 0 {
-		teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
-		if req.GetEndTime() != nil {
-			eventData["set_timeout"] = req.GetEndTime().AsTime().Format(time.RFC3339)
+			return status.Errorf(codes.Internal, "failed to update sandbox: %s", err)
 		}
-		if egress := req.GetEgress(); egress != nil {
-			eventData["network_egress"] = map[string]any{
-				"allowed_cidrs":   egress.GetAllowedCidrs(),
-				"denied_cidrs":    egress.GetDeniedCidrs(),
-				"allowed_domains": egress.GetAllowedDomains(),
+
+		// Publish event if any updates were applied.
+		if len(updates) > 0 {
+			teamID, buildId, eventsTTLDays, eventData := s.prepareSandboxEventData(ctx, sbx)
+			if req.GetEndTime() != nil {
+				eventData["set_timeout"] = req.GetEndTime().AsTime().Format(time.RFC3339)
 			}
+			if egress := req.GetEgress(); egress != nil {
+				eventData["network_egress"] = map[string]any{
+					"allowed_cidrs":   egress.GetAllowedCidrs(),
+					"denied_cidrs":    egress.GetDeniedCidrs(),
+					"allowed_domains": egress.GetAllowedDomains(),
+				}
+			}
+
+			go s.sbxEventsService.Publish(
+				context.WithoutCancel(ctx),
+				teamID,
+				events.SandboxEvent{
+					Version:   events.StructureVersionV2,
+					ID:        uuid.New(),
+					Type:      events.SandboxUpdatedEventPair.Type,
+					Timestamp: time.Now().UTC(),
+
+					EventData:          eventData,
+					SandboxID:          sbx.Runtime.SandboxID,
+					SandboxExecutionID: sbx.Runtime.ExecutionID,
+					SandboxTemplateID:  sbx.Config.BaseTemplateID,
+					SandboxBuildID:     buildId,
+					SandboxTeamID:      teamID,
+					EventsTTLDays:      eventsTTLDays,
+				},
+			)
 		}
 
-		go s.sbxEventsService.Publish(
-			context.WithoutCancel(ctx),
-			teamID,
-			events.SandboxEvent{
-				Version:   events.StructureVersionV2,
-				ID:        uuid.New(),
-				Type:      events.SandboxUpdatedEventPair.Type,
-				Timestamp: time.Now().UTC(),
-
-				EventData:          eventData,
-				SandboxID:          sbx.Runtime.SandboxID,
-				SandboxExecutionID: sbx.Runtime.ExecutionID,
-				SandboxTemplateID:  sbx.Config.BaseTemplateID,
-				SandboxBuildID:     buildId,
-				SandboxTeamID:      teamID,
-			},
-		)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return &emptypb.Empty{}, nil
@@ -547,7 +556,7 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 		}
 	}()
 
-	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
+	teamID, buildId, eventsTTLDays, eventData := s.prepareSandboxEventData(ctx, sbx)
 	eventData[executionEventDataKey] = s.getSandboxExecutionData(sbx)
 	addKillReason(eventData, killReason)
 	recordSandboxKill(ctx, s.sandboxKilledCounter, killReason)
@@ -568,6 +577,7 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 			SandboxTemplateID:  sbx.Config.BaseTemplateID,
 			SandboxBuildID:     buildId,
 			SandboxTeamID:      teamID,
+			EventsTTLDays:      eventsTTLDays,
 		},
 	)
 
@@ -665,7 +675,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		s.harvestResumePrefetchAsync(ctx, sbx, res, in.GetBuildId(), res.objectMetadata)
 	}
 
-	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
+	teamID, buildId, eventsTTLDays, eventData := s.prepareSandboxEventData(ctx, sbx)
 	eventData[executionEventDataKey] = s.getSandboxExecutionData(sbx)
 
 	eventType := events.SandboxPausedEventPair
@@ -684,6 +694,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 			SandboxTemplateID:  sbx.Config.BaseTemplateID,
 			SandboxBuildID:     buildId,
 			SandboxTeamID:      teamID,
+			EventsTTLDays:      eventsTTLDays,
 		},
 	)
 
@@ -852,23 +863,25 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 }
 
 // Extracts common data needed for sandbox events
-func (s *Server) prepareSandboxEventData(ctx context.Context, sbx *sandbox.Sandbox) (uuid.UUID, string, map[string]any) {
+func (s *Server) prepareSandboxEventData(ctx context.Context, sbx *sandbox.Sandbox) (uuid.UUID, string, int64, map[string]any) {
 	teamID, err := uuid.Parse(sbx.Runtime.TeamID)
 	if err != nil {
 		sbxlogger.I(sbx).Error(ctx, "error parsing team ID", logger.WithSandboxID(sbx.Runtime.SandboxID), zap.Error(err))
 	}
 
 	buildId := ""
+	eventsTTLDays := int64(0)
 	eventData := make(map[string]any)
 	if sbx.APIStoredConfig != nil {
 		buildId = sbx.APIStoredConfig.GetBuildId()
+		eventsTTLDays = sbx.APIStoredConfig.GetEventsTtlDays()
 		if sbx.APIStoredConfig.Metadata != nil {
 			// Copy the map to avoid race conditions
 			eventData["sandbox_metadata"] = utils.ShallowCopyMap(sbx.APIStoredConfig.GetMetadata())
 		}
 	}
 
-	return teamID, buildId, eventData
+	return teamID, buildId, eventsTTLDays, eventData
 }
 
 func (s *Server) getSandboxExecutionData(sbx *sandbox.Sandbox) map[string]any {
@@ -1075,7 +1088,7 @@ func (s *Server) stopSandboxAsync(ctx context.Context, sbx *sandbox.Sandbox) {
 
 // publishSandboxEvent publishes a sandbox event in the background.
 func (s *Server) publishSandboxEvent(ctx context.Context, sbx *sandbox.Sandbox, eventType string) {
-	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
+	teamID, buildId, eventsTTLDays, eventData := s.prepareSandboxEventData(ctx, sbx)
 
 	go s.sbxEventsService.Publish(
 		context.WithoutCancel(ctx),
@@ -1092,6 +1105,7 @@ func (s *Server) publishSandboxEvent(ctx context.Context, sbx *sandbox.Sandbox, 
 			SandboxTemplateID:  sbx.Config.BaseTemplateID,
 			SandboxBuildID:     buildId,
 			SandboxTeamID:      teamID,
+			EventsTTLDays:      eventsTTLDays,
 		},
 	)
 }

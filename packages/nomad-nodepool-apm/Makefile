@@ -5,13 +5,16 @@ AWS_BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
 GCP_BUCKET_PREFIX ?= $(GCP_PROJECT_ID)-
 
 PLUGIN_NAME := nomad-nodepool-apm
+TARGET_PLUGIN_NAME := nomad-deployment-aware-target
 BIN_DIR := bin
 BINARY := $(BIN_DIR)/$(PLUGIN_NAME)
+TARGET_BINARY := $(BIN_DIR)/$(TARGET_PLUGIN_NAME)
 
 .PHONY: build
 build:
 	@mkdir -p $(BIN_DIR)
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(BINARY) .
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(TARGET_BINARY) ./cmd/nomad-deployment-aware-target
 
 .PHONY: clean
 clean:
@@ -25,12 +28,17 @@ test:
 upload:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
 	chmod +x $(BINARY)
+	chmod +x $(TARGET_BINARY)
 ifeq ($(PROVIDER),aws)
 	aws s3 cp $(BINARY) "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/nomad-nodepool-apm" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
 	aws s3 cp $(BINARY) "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/nomad-nodepool-apm.$(COMMIT_SHA)" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
+	aws s3 cp $(TARGET_BINARY) "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/nomad-deployment-aware-target" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
+	aws s3 cp $(TARGET_BINARY) "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/nomad-deployment-aware-target.$(COMMIT_SHA)" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
 else
 	gcloud storage cp --cache-control="no-cache, max-age=0" $(BINARY) "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/nomad-nodepool-apm"
 	gcloud storage cp --cache-control="no-cache, max-age=0" $(BINARY) "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/nomad-nodepool-apm.$(COMMIT_SHA)"
+	gcloud storage cp --cache-control="no-cache, max-age=0" $(TARGET_BINARY) "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/nomad-deployment-aware-target"
+	gcloud storage cp --cache-control="no-cache, max-age=0" $(TARGET_BINARY) "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/nomad-deployment-aware-target.$(COMMIT_SHA)"
 endif
 
 .PHONY: build-and-upload

@@ -261,6 +261,8 @@ type Sandbox struct {
 	*Resources
 	*Metadata
 
+	updateMu sync.Mutex
+
 	// LifecycleID is a unique identifier for each Firecracker process.
 	// It is used internally by the orchestrator for map eviction guards
 	// and proxy connection pooling. Unlike ExecutionID (which is stable
@@ -310,6 +312,13 @@ type Sandbox struct {
 	skipStartupMetrics bool
 }
 
+func (s *Sandbox) RunUpdate(update func() error) error {
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
+
+	return update()
+}
+
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 	return sbxlogger.SandboxMetadata{
 		SandboxID:  s.Runtime.SandboxID,
@@ -343,6 +352,7 @@ type Factory struct {
 	hostStatsDelivery hoststats.Delivery
 	cgroupManager     cgroup.Manager
 	egressProxy       network.EgressProxy
+	networkAssignHook NetworkAssignHook
 }
 
 func NewFactory(
@@ -353,8 +363,13 @@ func NewFactory(
 	hostStatsDelivery hoststats.Delivery,
 	cgroupManager cgroup.Manager,
 	egressProxy network.EgressProxy,
+	networkAssignHook NetworkAssignHook,
 	sandboxes *Map,
 ) *Factory {
+	if networkAssignHook == nil {
+		networkAssignHook = NoopNetworkAssignHook{}
+	}
+
 	return &Factory{
 		Sandboxes:         sandboxes,
 		config:            config,
@@ -364,11 +379,43 @@ func NewFactory(
 		hostStatsDelivery: hostStatsDelivery,
 		cgroupManager:     cgroupManager,
 		egressProxy:       egressProxy,
+		networkAssignHook: networkAssignHook,
+	}
+}
+
+// runNetworkAssignHook calls the configured NetworkAssignHook.OnNetworkAssign
+// synchronously and imposes no timeout. The implementation is responsible for
+// constraining its own duration. The code recovers any panic here to keep it from
+// crashing the whole process because there is no other recovery layer between
+// this call and the process's main goroutine.
+//
+// The synchronous call ensures the hook finishes before the resource becomes
+// active, preserving that ordering guarantee.
+func (f *Factory) runNetworkAssignHook(ctx context.Context, sbx *Sandbox, reason NetworkAssignReason) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.L().Error(ctx, "sandbox network-assign hook panicked, continuing",
+				logger.WithSandboxID(sbx.Runtime.SandboxID),
+				logger.WithLifecycleID(sbx.LifecycleID),
+				zap.Any("panic", r))
+		}
+	}()
+
+	if err := f.networkAssignHook.OnNetworkAssign(ctx, sbx, reason); err != nil {
+		logger.L().Warn(ctx, "sandbox network-assign hook failed, continuing",
+			logger.WithSandboxID(sbx.Runtime.SandboxID),
+			logger.WithLifecycleID(sbx.LifecycleID),
+			zap.Error(err))
 	}
 }
 
 func (f *Factory) EgressProxy() network.EgressProxy {
 	return f.egressProxy
+}
+
+// NewDirectPathMount opens host-side NBD access without a Firecracker VM.
+func (f *Factory) NewDirectPathMount(backend block.Device) *nbd.DirectPathMount {
+	return nbd.NewDirectPathMount(backend, f.devicePool, f.featureFlags)
 }
 
 // PreBootFn is an optional callback invoked after the rootfs is ready but before
@@ -378,7 +425,8 @@ func (f *Factory) EgressProxy() network.EgressProxy {
 type PreBootFn func(ctx context.Context, rootfsPath string) error
 
 type createOptions struct {
-	deferMarkRunning bool
+	deferMarkRunning    bool
+	networkAssignReason NetworkAssignReason
 }
 
 type CreateOption func(*createOptions)
@@ -389,6 +437,10 @@ type CreateOption func(*createOptions)
 // routable until envd answers.
 func WithDeferredMarkRunning() CreateOption {
 	return func(o *createOptions) { o.deferMarkRunning = true }
+}
+
+func withNetworkAssignReason(reason NetworkAssignReason) CreateOption {
+	return func(o *createOptions) { o.networkAssignReason = reason }
 }
 
 // CreateSandbox creates the sandbox.
@@ -409,7 +461,7 @@ func (f *Factory) CreateSandbox(
 	defer span.End()
 	defer handleSpanError(span, &e)
 
-	var createOpts createOptions
+	createOpts := createOptions{networkAssignReason: NetworkAssignReasonCreate}
 	for _, opt := range opts {
 		opt(&createOpts)
 	}
@@ -575,6 +627,11 @@ func (f *Factory) CreateSandbox(
 
 		return nil
 	})
+
+	// Do not move this call: it must run after AssignNetwork above and
+	// before fcHandle.Create below, so OnNetworkAssign always runs before
+	// the guest can execute.
+	f.runNetworkAssignHook(ctx, sbx, createOpts.networkAssignReason)
 
 	initializeHostStatsCollector(execCtx, sbx, runtime, config, f.hostStatsDelivery)
 
@@ -999,6 +1056,15 @@ func (f *Factory) ResumeSandbox(
 
 		return nil
 	})
+
+	reason := NetworkAssignReasonResume
+	if ropts.skipLiveRegistration {
+		reason = NetworkAssignReasonThrowawayResume
+	}
+	// Do not move this call: it must run after AssignNetwork above and
+	// before fcHandle.Resume below, so OnNetworkAssign always runs before
+	// the guest can resume (and, with it, resume any live connection).
+	f.runNetworkAssignHook(ctx, sbx, reason)
 
 	// A throwaway also skips host-stats collection, so it emits no per-sandbox
 	// host stats under its (unregistered) identity — consistent with not being in

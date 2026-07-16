@@ -18,6 +18,15 @@ FROM "public"."teams" t
          JOIN "public"."team_limits" tl on tl.id = t.id
 WHERE t.id = $1;
 
+-- name: GetAutoJoinTeamsBySSOOrganizationID :many
+SELECT sqlc.embed(t)
+FROM "public"."teams" t
+WHERE t.sso_organization_id = sqlc.arg(sso_organization_id)::uuid
+  AND t.sso_auto_join = true
+  AND t.is_blocked = false
+  AND t.is_banned = false
+ORDER BY t.created_at ASC;
+
 -- name: GetTeamsWithUsersTeamsWithTier :many
 SELECT sqlc.embed(t), ut.is_default, sqlc.embed(tl)
 FROM "public"."teams" t

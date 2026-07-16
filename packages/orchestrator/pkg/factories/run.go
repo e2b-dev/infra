@@ -89,6 +89,9 @@ type Deps struct {
 type EgressSetup struct {
 	// Proxy is the network egress proxy for slot creation/deletion.
 	Proxy network.EgressProxy
+	// NetworkAssignHook runs right after the sandbox's network is assigned
+	// and strictly before its guest can run (or resume running).
+	NetworkAssignHook sandbox.NetworkAssignHook
 
 	// Start is called as a managed service (optional).
 	// If nil, no service is started for the egress proxy.
@@ -423,7 +426,12 @@ func run(config cfg.Config, opts Options) (success bool) {
 	}
 	closers = append(closers, closer{"limiter", limiter.Close})
 
-	persistence, err := storage.GetStorageProvider(ctx, storage.TemplateStorageConfig.WithLimiter(limiter))
+	templateSpec, err := cfg.TemplateStorage()
+	if err != nil {
+		logger.L().Fatal(ctx, "failed to resolve template storage", zap.Error(err))
+	}
+
+	persistence, err := storage.NewProvider(ctx, templateSpec, storage.WithLimiter(limiter))
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create template storage provider", zap.Error(err))
 	}
@@ -716,7 +724,11 @@ func run(config cfg.Config, opts Options) (success bool) {
 	closers = append(closers, closer{"network pool", networkPool.Close})
 
 	// sandbox factory
-	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, hostStatsDelivery, cgroupManager, egressSetup.Proxy, sandboxes)
+	networkAssignHook := egressSetup.NetworkAssignHook
+	if networkAssignHook == nil {
+		networkAssignHook = sandbox.NoopNetworkAssignHook{}
+	}
+	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, hostStatsDelivery, cgroupManager, egressSetup.Proxy, networkAssignHook, sandboxes)
 
 	// isolated filesystems cache (for nfs proxy)
 	builder := chrooted.NewBuilder(config)
@@ -1040,11 +1052,16 @@ func startNFSProxy(
 }
 
 func setupBuildStorage(ctx context.Context, limiter *limit.Limiter, orchConfig cfg.Config) (storage.StorageProvider, *localupload.Handler, error) {
-	cfg := storage.BuildCacheStorageConfig.WithLimiter(limiter)
+	spec, err := cfg.BuildCacheStorage()
+	if err != nil {
+		return nil, nil, fmt.Errorf("resolve build cache storage: %w", err)
+	}
+
+	opts := []storage.Option{storage.WithLimiter(limiter)}
 
 	var uploadHandler *localupload.Handler
 
-	if storage.IsLocal() {
+	if spec.Provider == storage.LocalStorageProvider {
 		hmacKey := make([]byte, 32)
 		if _, err := rand.Read(hmacKey); err != nil {
 			return nil, nil, fmt.Errorf("generate HMAC key: %w", err)
@@ -1055,17 +1072,15 @@ func setupBuildStorage(ctx context.Context, limiter *limit.Limiter, orchConfig c
 			uploadBaseURL = fmt.Sprintf("http://localhost:%d", orchConfig.GRPCPort)
 		}
 
-		cfg = cfg.WithLocalUpload(uploadBaseURL, hmacKey)
-
-		basePath := cfg.GetLocalBasePath()
-		uploadHandler = localupload.NewHandler(basePath, hmacKey)
+		opts = append(opts, storage.WithLocalUpload(uploadBaseURL, hmacKey))
+		uploadHandler = localupload.NewHandler(spec.BasePath, hmacKey)
 
 		logger.L().Info(ctx, "Local upload endpoint enabled for filesystem storage",
 			zap.String("upload_base_url", uploadBaseURL),
-			zap.String("base_path", basePath))
+			zap.String("base_path", spec.BasePath))
 	}
 
-	provider, err := storage.GetStorageProvider(ctx, cfg)
+	provider, err := storage.NewProvider(ctx, spec, opts...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("create build cache storage provider: %w", err)
 	}

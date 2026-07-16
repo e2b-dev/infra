@@ -66,6 +66,16 @@ func TestLocate(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("mid-frame offset errors", func(t *testing.T) {
+		t.Parallel()
+		// A mid-frame uncompressed offset would fetch and decode the whole
+		// containing frame from its start, silently returning data for the
+		// wrong position. It must be rejected so callers frame-align first.
+		_, err := ft.LocateCompressed((1 << 20) / 2)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "frame-aligned")
+	})
+
 	t.Run("nil table errors", func(t *testing.T) {
 		t.Parallel()
 		_, err := (*FrameTable)(nil).LocateCompressed(0)

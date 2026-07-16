@@ -61,11 +61,9 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 
 	exitChan := make(chan struct{})
 
-	startMultiplexer := handler.NewMultiplexedChannel[rpc.ProcessEvent_Start](0)
-	defer close(startMultiplexer.Source)
-
-	start, startCancel := startMultiplexer.Fork()
-	defer startCancel()
+	// Buffered so the send below never blocks when the receiver
+	// goroutine has already exited on a cancelled context.
+	start := make(chan rpc.ProcessEvent_Start, 1)
 
 	data, dataCancel := proc.DataEvent.Fork()
 	defer dataCancel()
@@ -81,13 +79,7 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 			cancel(ctx.Err())
 
 			return
-		case event, ok := <-start:
-			if !ok {
-				cancel(connect.NewError(connect.CodeUnknown, errors.New("start event channel closed before sending start event")))
-
-				return
-			}
-
+		case event := <-start:
 			streamErr := stream.Send(&rpc.StartResponse{
 				Event: &rpc.ProcessEvent{
 					Event: &event,

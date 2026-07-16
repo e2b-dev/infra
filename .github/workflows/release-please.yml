@@ -15,17 +15,13 @@ jobs:
   release-please:
     name: Create / update release PRs
     runs-on: ubuntu-24.04
-    outputs:
-      # Per-package outputs are keyed by the package path. Add more here as more
-      # packages are onboarded to release-please.
-      reverse_proxy_released: ${{ steps.release.outputs['packages/docker-reverse-proxy--release_created'] }}
-      reverse_proxy_tag: ${{ steps.release.outputs['packages/docker-reverse-proxy--tag_name'] }}
-      reverse_proxy_version: ${{ steps.release.outputs['packages/docker-reverse-proxy--version'] }}
     steps:
       # Mint a short-lived token from a GitHub App so the release PR is opened as
       # the App (not the default GITHUB_TOKEN). This is required when `main` has
       # required status checks: PRs opened by GITHUB_TOKEN don't trigger
-      # `pull_request` workflows, so the release PR would be unmergeable.
+      # `pull_request` workflows, so the release PR would be unmergeable. The
+      # release tags created below need it too: tags pushed with GITHUB_TOKEN
+      # don't trigger `on: push` workflows, so publish.yml would never run.
       #
       # Requires a GitHub App (Contents: write, Pull requests: write) installed on
       # this repo, with its App ID in the RELEASE_PLEASE_APP_ID variable and
@@ -33,7 +29,7 @@ jobs:
       #
       # Falls back to GITHUB_TOKEN if the App isn't configured yet, so the
       # workflow still runs (the release PR just won't trigger required checks
-      # until the App is set up).
+      # until the App is set up, and the tag step below refuses to create tags).
       - name: Generate GitHub App token
         id: app-token
         if: ${{ vars.RELEASE_PLEASE_APP_ID != '' }}
@@ -50,64 +46,104 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-  publish-reverse-proxy:
-    name: Publish docker-reverse-proxy to e2b-artifacts
-    needs: release-please
-    if: ${{ needs.release-please.outputs.reverse_proxy_released == 'true' }}
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      # <host>/<project>/<repository>/<image>
-      IMAGE: us-docker.pkg.dev/e2b-artifacts/reverse-proxy/docker-reverse-proxy
-      VERSION: ${{ needs.release-please.outputs.reverse_proxy_version }}
-    steps:
+      # Needed by the tag step below to read .release-please-manifest.json.
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
 
-      - name: Authenticate to the e2b-artifacts project
-        uses: google-github-actions/auth@v3
-        with:
-          # Workload Identity Federation provider + service account for the
-          # e2b-artifacts project. Provisioned out-of-repo (separate Terraform
-          # modules / live repo); wired here via GitHub repo variables.
-          workload_identity_provider: ${{ vars.E2B_ARTIFACTS_WIF_PROVIDER }}
-          service_account: ${{ vars.E2B_ARTIFACTS_PUBLISH_SA }}
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v3
-
-      - name: Configure Docker auth
-        run: gcloud auth configure-docker us-docker.pkg.dev --quiet
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and push released image
-        # The Dockerfile lives in packages/docker-reverse-proxy but its build
-        # context is the packages/ directory (it needs shared/ and db/).
-        #
-        # Notes:
-        #  - Tag is v-prefixed (v${VERSION}) to match what customers pin via
-        #    DOCKER_REVERSE_PROXY_VERSION and the manual publish convention.
-        #  - No :latest tag: the e2b-artifacts repo has immutableTags=true, so a
-        #    reused tag would fail on the second release. Customers pin exact
-        #    versions anyway.
-        #  - --provenance=false --sbom=false: Artifact Registry rejects buildx's
-        #    default OCI attestation manifest list (HTTP 400).
+      # release-please runs with skip-github-release: it still manages the
+      # release PRs and the manifest, but creates no GitHub Releases. Since it
+      # normally tags and does its label bookkeeping *via* the Release, this
+      # step takes over the two things the Release would have done:
+      #
+      #  1. Create the <component>-v<version> tag on the release PR's merge
+      #     commit. The tag push triggers publish.yml (build + upload), and
+      #     release-please finds the previous release by this tag when
+      #     generating the next changelog.
+      #  2. Swap the release PR's label "autorelease: pending" ->
+      #     "autorelease: tagged". release-please refuses to open any new
+      #     release PR while a merged one is still pending ("There are
+      #     untagged, merged release PRs outstanding - aborting"), so without
+      #     the swap releasing would stop after the first release.
+      #
+      # Tags are minted ONLY for release PR merge commits, recognized by their
+      # squash-merge title "chore(main): release <component> <version> (#N)"
+      # (release-please's default PR title convention). Every commit in the
+      # push payload is scanned — not just the head — so release PRs merged
+      # back-to-back in one push each get tagged at their own merge commit.
+      # An ordinary push, a manual dispatch, or a re-run on a non-release
+      # commit can therefore never (re-)create a tag at the wrong commit,
+      # even if an existing release tag was deleted.
+      #
+      # This relies on squash merges titled after the PR ("Default to pull
+      # request title" repo setting). GitHub's fallback subject for a
+      # single-commit PR is the commit's own message, which for release-please
+      # branches happens to equal the PR title — so don't count on that; keep
+      # the repo setting as is. If a release merge is ever missed, recovery
+      # is: push the <component>-v<version> tag on the merge commit by hand
+      # and swap the autorelease labels on the release PR.
+      #
+      # Tags MUST be created with the App token: tags pushed with the default
+      # GITHUB_TOKEN don't trigger `on: push` workflows, so the publish would
+      # silently never happen. The step fails instead — once the App is
+      # configured, a re-run of the release commit's run creates the tag and
+      # publishing resumes.
+      - name: Tag releases
+        if: ${{ github.event_name == 'push' }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          IMAGE_TAG="v${VERSION}"
-          docker buildx build \
-            --platform linux/amd64 \
-            --provenance=false \
-            --sbom=false \
-            --build-arg COMMIT_SHA="${GITHUB_SHA::7}" \
-            --build-arg VERSION="${IMAGE_TAG}" \
-            --tag "${IMAGE}:${IMAGE_TAG}" \
-            --push \
-            -f packages/docker-reverse-proxy/Dockerfile \
-            packages
+          # All commits in this push (the event payload caps at 2048 — far
+          # beyond any real push here).
+          jq -r '.commits[] | [.id, (.message | split("\n")[0])] | @tsv' \
+            "${GITHUB_EVENT_PATH}" > "${RUNNER_TEMP}/push-commits.tsv"
+          while IFS=$'\t' read -r sha subject; do
+            case "${subject}" in
+              'chore(main): release '*) ;;
+              *) continue ;;
+            esac
+            # "chore(main): release <component> <version> (#N)"
+            rest="${subject#chore(main): release }"
+            component="$(printf '%s\n' "${rest}" | cut -d' ' -f1)"
+            msg_version="$(printf '%s\n' "${rest}" | cut -d' ' -f2)"
+            pr_number="$(printf '%s\n' "${subject}" | sed -n 's/.*(#\([0-9][0-9]*\))$/\1/p')"
+            # Tag components map to manifest paths per release-please-config.json
+            # (clickhouse-migrator's package directory is packages/clickhouse).
+            case "${component}" in
+              docker-reverse-proxy) path=packages/docker-reverse-proxy ;;
+              client-proxy)         path=packages/client-proxy ;;
+              clickhouse-migrator)  path=packages/clickhouse ;;
+              *)
+                echo "::error::release merge for unknown component '${component}' — add it to this workflow's package list"
+                exit 1
+                ;;
+            esac
+            version="$(jq -r --arg p "${path}" '.[$p] // empty' .release-please-manifest.json)"
+            if [ -z "${version}" ] || [ "${version}" != "${msg_version}" ]; then
+              echo "::error::version mismatch for ${component}: merge commit says '${msg_version}', manifest says '${version}'"
+              exit 1
+            fi
+            tag="${component}-v${version}"
+            if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" --silent 2>/dev/null; then
+              echo "${tag} already exists"
+            else
+              if [ -z "${APP_TOKEN}" ]; then
+                echo "::error::${tag} needs to be created, but the release-please GitHub App isn't configured and tags pushed with GITHUB_TOKEN wouldn't trigger the publish workflow. Configure RELEASE_PLEASE_APP_ID / RELEASE_PLEASE_APP_SECRET and re-run."
+                exit 1
+              fi
+              gh api "repos/${GITHUB_REPOSITORY}/git/refs" -f ref="refs/tags/${tag}" -f sha="${sha}" > /dev/null
+              echo "created ${tag} at ${sha}; publish.yml will pick it up"
+            fi
+            # Also runs when the tag already existed, so an interrupted run
+            # converges on re-run.
+            if [ -n "${pr_number}" ]; then
+              gh pr edit "${pr_number}" -R "${GITHUB_REPOSITORY}" \
+                --remove-label "autorelease: pending" --add-label "autorelease: tagged"
+              echo "marked release PR #${pr_number} as 'autorelease: tagged'"
+            else
+              echo "::warning::could not parse a PR number from '${subject}' — swap the 'autorelease: pending' label to 'autorelease: tagged' on the release PR by hand, or release-please will stop opening release PRs"
+            fi
+          done < "${RUNNER_TEMP}/push-commits.tsv"

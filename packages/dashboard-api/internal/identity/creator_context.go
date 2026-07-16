@@ -1,4 +1,4 @@
-package userprofile
+package identity
 
 import (
 	"strings"
@@ -10,14 +10,6 @@ const (
 	signupIPMetadataKey        = "signup_ip"
 	signupUserAgentMetadataKey = "signup_user_agent"
 )
-
-func creatorContextFromMetadata(metadata map[string]any, providerNames []string) *sharedteamprovision.CreatorContextV1 {
-	return &sharedteamprovision.CreatorContextV1{
-		IPAddress:  metadataString(metadata, signupIPMetadataKey),
-		UserAgent:  metadataString(metadata, signupUserAgentMetadataKey),
-		AuthMethod: authMethodFromProviderNames(providerNames),
-	}
-}
 
 func authMethodFromProviderNames(providerNames []string) string {
 	for _, provider := range providerNames {

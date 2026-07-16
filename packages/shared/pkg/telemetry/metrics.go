@@ -13,6 +13,9 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 )
 
+// Keep this aligned with the collector's max_recv_msg_size_mib setting.
+const otelCollectorMaxRequestSize = 100 << 20
+
 type noopMetricExporter struct{}
 
 func (noopMetricExporter) Temporality(sdkmetric.InstrumentKind) metricdata.Temporality {
@@ -39,6 +42,7 @@ func NewMeterExporter(ctx context.Context, extraOption ...otlpmetricgrpc.Option)
 	opts := []otlpmetricgrpc.Option{
 		otlpmetricgrpc.WithInsecure(),
 		otlpmetricgrpc.WithEndpoint(otelCollectorGRPCEndpoint),
+		otlpmetricgrpc.WithMaxRequestSize(otelCollectorMaxRequestSize),
 	}
 	opts = append(opts, extraOption...)
 

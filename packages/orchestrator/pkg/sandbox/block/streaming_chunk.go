@@ -158,6 +158,11 @@ func (c *Chunker) getOrCreateSession(ctx context.Context, off, length int64, ups
 // for every block the range spans (a span can cross block boundaries
 // after dedup; waiting only on the start block leaves the tail unfetched).
 func (c *Chunker) fetch(ctx context.Context, off, length int64, upstream storage.RangeOpener, ft *storage.FrameTable) (storage.Source, error) {
+	// (upstream, ft) is a per-call snapshot, so this read can be served by a
+	// session created before a peer→storage switch and framed on a different
+	// geometry (4MB uncompressed peer chunks vs smaller compressed frames).
+	// bytesReady counts from the session's chunkOff, so all readiness math
+	// below is in the session's frame.
 	chunkOff, chunkLen, err := c.locateChunk(off, ft)
 	if err != nil {
 		return storage.UnknownSource, fmt.Errorf("failed to locate chunk for offset %d: %w", off, err)
@@ -171,10 +176,11 @@ func (c *Chunker) fetch(ctx context.Context, off, length int64, upstream storage
 	blockSize := c.cache.BlockSize()
 	startBlock := (off / blockSize) * blockSize
 	endBlock := ((off + length - 1) / blockSize) * blockSize
-	chunkEnd := chunkOff + chunkLen
+
+	chunkEnd := session.chunkOff + session.chunkLen
 
 	// Already streamed past every byte we need: it's in the mmap, source=mmap.
-	endByte := min(endBlock+blockSize, chunkEnd) - chunkOff
+	endByte := min(endBlock+blockSize, chunkEnd) - session.chunkOff
 	if session.bytesReady.Load() >= endByte {
 		return storage.SourceMmap, nil
 	}
@@ -284,13 +290,18 @@ func (c *Chunker) progressiveFetch(ctx context.Context, s *fetchSession, mmapSli
 		var closeErr error
 		res.stats, closeErr = reader.Close(context.WithoutCancel(ctx))
 
+		// A compressed frame's CRC is only verified once its footer is consumed
+		// on Close, so a Close error is a verification failure that must fail
+		// the fetch (don't cache or release a corrupt frame). A read error, if
+		// any, takes precedence.
+		if err == nil {
+			err = closeErr
+		}
+
 		ct := ft.CompressionType()
 		attrs := storage.OKAttrs(c.objType, source, ct)
-		switch {
-		case err != nil:
+		if err != nil {
 			attrs = storage.ErrAttrs(c.objType, source, ct, err)
-		case closeErr != nil:
-			attrs = storage.ErrAttrs(c.objType, source, ct, closeErr)
 		}
 
 		var readDur time.Duration
@@ -312,9 +323,14 @@ func (c *Chunker) progressiveFetch(ctx context.Context, s *fetchSession, mmapSli
 		n, readErr := io.ReadFull(reader, mmapSlice[totalRead:readEnd])
 		totalRead += int64(n)
 
-		if n > 0 {
+		if n > 0 && !ft.IsCompressed() {
 			// Dirty marking is deferred to runFetch after the full chunk is fetched.
 			// With coarse dirty granularity, marking here would expose partially-written data.
+			//
+			// Compressed chunks are a single frame whose CRC is only verified
+			// once the footer is consumed on Close. Releasing waiters here
+			// would hand out bytes that a later CRC failure proves corrupt, so
+			// their release is deferred to setDone after verification.
 			s.advance(totalRead)
 		}
 

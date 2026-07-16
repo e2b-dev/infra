@@ -26,13 +26,13 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/filesystem"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/oci"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/phases"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/units"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/units"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/rootfs")

@@ -35,12 +35,14 @@ const (
 	tapInterfaceName = "tap0"
 	tapIp            = "169.254.0.22"
 	tapMAC           = "02:FC:00:00:00:05"
+	tapHostMAC       = "02:FC:00:00:00:06"
 )
 
 var (
-	hostNetworkCIDR = getHostNetworkCIDR()
-	vrtNetworkCIDR  = getVrtNetworkCIDR()
-	vrtSlotsSize    = GetVrtSlotsSize()
+	hostNetworkCIDR     = getHostNetworkCIDR()
+	vrtNetworkCIDR      = getVrtNetworkCIDR()
+	vrtSlotsSize        = GetVrtSlotsSize()
+	tapHostHardwareAddr = getTapHostHardwareAddr()
 )
 
 // Slot network allocation
@@ -388,6 +390,18 @@ func getHostNetworkCIDR() *net.IPNet {
 	log.Println("Using host network cidr", "cidr", cidr)
 
 	return subnet
+}
+
+// getTapHostHardwareAddr parses the fixed tapHostMAC constant once at package
+// init, so CreateNetwork doesn't reparse a value that can never change or
+// fail at runtime.
+func getTapHostHardwareAddr() net.HardwareAddr {
+	addr, err := net.ParseMAC(tapHostMAC)
+	if err != nil {
+		log.Fatalf("Failed to parse tap host MAC address %s: %v", tapHostMAC, err)
+	}
+
+	return addr
 }
 
 func getVrtNetworkCIDR() *net.IPNet {

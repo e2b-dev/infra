@@ -1,6 +1,6 @@
 module github.com/e2b-dev/infra/packages/envd
 
-go 1.26.3
+go 1.26.5
 
 replace github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
 
@@ -17,7 +17,7 @@ require (
 	github.com/go-chi/chi/v5 v5.2.4
 	github.com/google/uuid v1.6.0
 	github.com/oapi-codegen/runtime v1.4.0
-	github.com/prometheus/procfs v0.17.0
+	github.com/prometheus/procfs v0.20.1
 	github.com/rs/cors v1.11.1
 	github.com/rs/zerolog v1.34.0
 	github.com/shirou/gopsutil/v4 v4.26.3

@@ -21,6 +21,8 @@ type Team struct {
 	BlockedReason           *string
 	ClusterID               *uuid.UUID
 	SandboxSchedulingLabels []string
+	SsoOrganizationID       *uuid.UUID
+	SsoAutoJoin             bool
 	Slug                    string
 }
 
@@ -48,4 +50,5 @@ type TeamLimit struct {
 	MaxVcpu                  int32
 	MaxRamMb                 int32
 	DiskMb                   int32
+	EventsTtlDays            int32
 }

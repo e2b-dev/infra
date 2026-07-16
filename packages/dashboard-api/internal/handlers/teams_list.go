@@ -47,6 +47,7 @@ func (s *APIStore) GetTeams(c *gin.Context) {
 				MaxVcpu:                  row.TeamLimit.MaxVcpu,
 				MaxRamMb:                 row.TeamLimit.MaxRamMb,
 				DiskMb:                   row.TeamLimit.DiskMb,
+				EventsTtlDays:            row.TeamLimit.EventsTtlDays,
 			},
 		})
 	}

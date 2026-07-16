@@ -70,6 +70,12 @@ message ServiceInfoResponse {
 
   // Detailed disk metrics for each mount point
   repeated DiskMetrics metric_disks = 113;
+
+  // Hugepage pool metrics (page counts from /proc/meminfo)
+  uint64 metric_hugepages_total = 114;
+  uint64 metric_hugepages_used = 115;
+  uint64 metric_hugepages_reserved = 116;
+  uint64 metric_hugepage_size_bytes = 117;
 }
 
 message ServiceStatusChangeRequest {

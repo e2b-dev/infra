@@ -688,6 +688,18 @@ type NodeMetrics struct {
 	// Disks Detailed metrics for each disk/mount point
 	Disks []DiskMetrics `json:"disks"`
 
+	// HugePageSizeBytes Size of a single hugepage in bytes
+	HugePageSizeBytes uint64 `json:"hugePageSizeBytes"`
+
+	// HugePagesReserved Number of reserved hugepages (committed but not yet faulted)
+	HugePagesReserved uint64 `json:"hugePagesReserved"`
+
+	// HugePagesTotal Total number of preallocated hugepages on the node
+	HugePagesTotal uint64 `json:"hugePagesTotal"`
+
+	// HugePagesUsed Number of hugepages in use (total - free)
+	HugePagesUsed uint64 `json:"hugePagesUsed"`
+
 	// MemoryTotalBytes Total node memory in bytes
 	MemoryTotalBytes uint64 `json:"memoryTotalBytes"`
 
@@ -820,6 +832,21 @@ type SandboxEgressProxyConfig struct {
 
 	// Username Optional SOCKS5 username (RFC 1929), max 255 bytes.
 	Username *string `json:"username,omitempty"`
+}
+
+// SandboxForkRequest defines model for SandboxForkRequest.
+type SandboxForkRequest struct {
+	// Count Number of forked sandboxes to create. All forks boot from the same snapshot, so the snapshot is captured once regardless of count. Each fork succeeds or fails independently; the outcome of each is reported in its entry of the response list.
+	Count *int32 `json:"count,omitempty"`
+
+	// Timeout Time to live for the new forked sandboxes in seconds.
+	Timeout *int32 `json:"timeout,omitempty"`
+}
+
+// SandboxForkResult Result of one requested fork. Exactly one of sandbox or error is set: sandbox when the fork started successfully, error when it failed to start.
+type SandboxForkResult struct {
+	Error   *Error   `json:"error,omitempty"`
+	Sandbox *Sandbox `json:"sandbox,omitempty"`
 }
 
 // SandboxLifecycle Sandbox lifecycle policy returned by sandbox info.
@@ -1551,6 +1578,9 @@ type GetSandboxesSandboxIDMetricsParams struct {
 type GetSnapshotsParams struct {
 	SandboxID *string `form:"sandboxID,omitempty" json:"sandboxID,omitempty"`
 
+	// Name Filter snapshots by name or ID, optionally tag-qualified (e.g. "my-snapshot", "my-team/my-snapshot" or "my-snapshot:v1").
+	Name *string `form:"name,omitempty" json:"name,omitempty"`
+
 	// Limit Maximum number of items to return per page
 	Limit *PaginationLimit `form:"limit,omitempty" json:"limit,omitempty"`
 
@@ -1680,6 +1710,9 @@ type PostSandboxesJSONRequestBody = NewSandbox
 
 // PostSandboxesSandboxIDConnectJSONRequestBody defines body for PostSandboxesSandboxIDConnect for application/json ContentType.
 type PostSandboxesSandboxIDConnectJSONRequestBody = ConnectSandbox
+
+// PostSandboxesSandboxIDForkJSONRequestBody defines body for PostSandboxesSandboxIDFork for application/json ContentType.
+type PostSandboxesSandboxIDForkJSONRequestBody = SandboxForkRequest
 
 // PutSandboxesSandboxIDNetworkJSONRequestBody defines body for PutSandboxesSandboxIDNetwork for application/json ContentType.
 type PutSandboxesSandboxIDNetworkJSONRequestBody = SandboxNetworkUpdateConfig
@@ -1994,6 +2027,11 @@ type ClientInterface interface {
 	PostSandboxesSandboxIDConnectWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	PostSandboxesSandboxIDConnect(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDConnectJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostSandboxesSandboxIDForkWithBody request with any body
+	PostSandboxesSandboxIDForkWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PostSandboxesSandboxIDFork(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDForkJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetSandboxesSandboxIDLogs request
 	GetSandboxesSandboxIDLogs(ctx context.Context, sandboxID SandboxID, params *GetSandboxesSandboxIDLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2453,6 +2491,30 @@ func (c *Client) PostSandboxesSandboxIDConnectWithBody(ctx context.Context, sand
 
 func (c *Client) PostSandboxesSandboxIDConnect(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDConnectJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPostSandboxesSandboxIDConnectRequest(c.Server, sandboxID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostSandboxesSandboxIDForkWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostSandboxesSandboxIDForkRequestWithBody(c.Server, sandboxID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostSandboxesSandboxIDFork(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDForkJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostSandboxesSandboxIDForkRequest(c.Server, sandboxID, body)
 	if err != nil {
 		return nil, err
 	}
@@ -3929,6 +3991,53 @@ func NewPostSandboxesSandboxIDConnectRequestWithBody(server string, sandboxID Sa
 	return req, nil
 }
 
+// NewPostSandboxesSandboxIDForkRequest calls the generic PostSandboxesSandboxIDFork builder with application/json body
+func NewPostSandboxesSandboxIDForkRequest(server string, sandboxID SandboxID, body PostSandboxesSandboxIDForkJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostSandboxesSandboxIDForkRequestWithBody(server, sandboxID, "application/json", bodyReader)
+}
+
+// NewPostSandboxesSandboxIDForkRequestWithBody generates requests for PostSandboxesSandboxIDFork with any type of body
+func NewPostSandboxesSandboxIDForkRequestWithBody(server string, sandboxID SandboxID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "sandboxID", sandboxID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/sandboxes/%s/fork", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetSandboxesSandboxIDLogsRequest generates requests for GetSandboxesSandboxIDLogs
 func NewGetSandboxesSandboxIDLogsRequest(server string, sandboxID SandboxID, params *GetSandboxesSandboxIDLogsParams) (*http.Request, error) {
 	var err error
@@ -4388,6 +4497,18 @@ func NewGetSnapshotsRequest(server string, params *GetSnapshotsParams) (*http.Re
 		if params.SandboxID != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "sandboxID", *params.SandboxID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Name != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "name", *params.Name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -6059,6 +6180,11 @@ type ClientWithResponsesInterface interface {
 
 	PostSandboxesSandboxIDConnectWithResponse(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDConnectJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDConnectResponse, error)
 
+	// PostSandboxesSandboxIDForkWithBodyWithResponse request with any body
+	PostSandboxesSandboxIDForkWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDForkResponse, error)
+
+	PostSandboxesSandboxIDForkWithResponse(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDForkJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDForkResponse, error)
+
 	// GetSandboxesSandboxIDLogsWithResponse request
 	GetSandboxesSandboxIDLogsWithResponse(ctx context.Context, sandboxID SandboxID, params *GetSandboxesSandboxIDLogsParams, reqEditors ...RequestEditorFn) (*GetSandboxesSandboxIDLogsResponse, error)
 
@@ -6850,6 +6976,40 @@ func (r PostSandboxesSandboxIDConnectResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r PostSandboxesSandboxIDConnectResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PostSandboxesSandboxIDForkResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *[]SandboxForkResult
+	JSON401      *N401
+	JSON404      *N404
+	JSON409      *N409
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r PostSandboxesSandboxIDForkResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostSandboxesSandboxIDForkResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostSandboxesSandboxIDForkResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -8307,6 +8467,23 @@ func (c *ClientWithResponses) PostSandboxesSandboxIDConnectWithResponse(ctx cont
 	return ParsePostSandboxesSandboxIDConnectResponse(rsp)
 }
 
+// PostSandboxesSandboxIDForkWithBodyWithResponse request with arbitrary body returning *PostSandboxesSandboxIDForkResponse
+func (c *ClientWithResponses) PostSandboxesSandboxIDForkWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDForkResponse, error) {
+	rsp, err := c.PostSandboxesSandboxIDForkWithBody(ctx, sandboxID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostSandboxesSandboxIDForkResponse(rsp)
+}
+
+func (c *ClientWithResponses) PostSandboxesSandboxIDForkWithResponse(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDForkJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDForkResponse, error) {
+	rsp, err := c.PostSandboxesSandboxIDFork(ctx, sandboxID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostSandboxesSandboxIDForkResponse(rsp)
+}
+
 // GetSandboxesSandboxIDLogsWithResponse request returning *GetSandboxesSandboxIDLogsResponse
 func (c *ClientWithResponses) GetSandboxesSandboxIDLogsWithResponse(ctx context.Context, sandboxID SandboxID, params *GetSandboxesSandboxIDLogsParams, reqEditors ...RequestEditorFn) (*GetSandboxesSandboxIDLogsResponse, error) {
 	rsp, err := c.GetSandboxesSandboxIDLogs(ctx, sandboxID, params, reqEditors...)
@@ -9646,6 +9823,60 @@ func ParsePostSandboxesSandboxIDConnectResponse(rsp *http.Response) (*PostSandbo
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostSandboxesSandboxIDForkResponse parses an HTTP response from a PostSandboxesSandboxIDForkWithResponse call
+func ParsePostSandboxesSandboxIDForkResponse(rsp *http.Response) (*PostSandboxesSandboxIDForkResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostSandboxesSandboxIDForkResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest []SandboxForkResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500

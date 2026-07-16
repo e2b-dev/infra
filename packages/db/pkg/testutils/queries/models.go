@@ -60,6 +60,7 @@ type Addon struct {
 	ValidTo                       *time.Time
 	AddedBy                       uuid.UUID
 	IdempotencyKey                pgtype.Text
+	ExtraEventsTtlDays            int64
 }
 
 type AuthUser struct {
@@ -190,6 +191,8 @@ type Team struct {
 	BlockedReason           pgtype.Text
 	ClusterID               *uuid.UUID
 	SandboxSchedulingLabels []string
+	SsoOrganizationID       *uuid.UUID
+	SsoAutoJoin             bool
 	Slug                    string
 }
 
@@ -217,6 +220,7 @@ type TeamLimit struct {
 	MaxVcpu                  int32
 	MaxRamMb                 int32
 	DiskMb                   int32
+	EventsTtlDays            int32
 }
 
 type Tier struct {
@@ -230,6 +234,7 @@ type Tier struct {
 	MaxRamMb            int64
 	// The number of concurrent template builds the team can run
 	ConcurrentTemplateBuilds int64
+	EventsTtlDays            int64
 }
 
 type User struct {

@@ -127,7 +127,7 @@ func New(
 
 	bestOfKAlgorithm := placement.NewBestOfK(getBestOfKConfig(ctx, featureFlags)).(*placement.BestOfK)
 
-	redisStorage, err := redisbackend.NewStorage(redisClient, tel.MeterProvider)
+	redisStorage, err := redisbackend.NewStorage(redisClient, tel.MeterProvider, featureFlags)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create redis sandbox storage: %w", err)
 	}
@@ -315,19 +315,13 @@ func getBestOfKConfig(ctx context.Context, featureFlagsClient *featureflags.Clie
 
 	alphaPercent := featureFlagsClient.IntFlag(ctx, featureflags.BestOfKAlpha)
 
-	canFit := featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKCanFitFlag)
-
-	tooManyStarting := featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKTooManyStartingFlag)
-
 	// Convert percentage to decimal
 	alpha := float64(alphaPercent) / 100.0
 	maxOvercommit := float64(maxOvercommitPercent) / 100.0
 
 	return placement.BestOfKConfig{
-		R:               maxOvercommit,
-		K:               k,
-		Alpha:           alpha,
-		CanFit:          canFit,
-		TooManyStarting: tooManyStarting,
+		R:     maxOvercommit,
+		K:     k,
+		Alpha: alpha,
 	}
 }

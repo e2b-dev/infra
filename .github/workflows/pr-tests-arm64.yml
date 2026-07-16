@@ -45,7 +45,13 @@ jobs:
           restore-keys: go-arm64-cross-
 
       - name: Install ARM64 cross-compiler
-        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+        # packages.microsoft.com (preinstalled on runner images) intermittently
+        # serves invalid clearsigned InRelease files, failing apt-get update.
+        # It's not needed here — gcc comes from the Ubuntu archive — so drop
+        # those sources instead of letting a bad MS mirror fail the job.
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.* /etc/apt/sources.list.d/azure-cli.*
+          sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Build and vet packages (pure Go)
         run: |
@@ -179,7 +185,7 @@ jobs:
         if: matrix.sudo == true
 
       # sudo strips PATH; pass it through so gotestsum/go resolve to the runner's
-      # toolchain (1.26.3) instead of /usr/bin/go. Trap chowns reports back to
+      # toolchain (1.26.5) instead of /usr/bin/go. Trap chowns reports back to
       # the runner so uploads can read them even when tests fail.
       - name: Run tests that require sudo
         working-directory: ${{ matrix.package }}

@@ -20,9 +20,8 @@ func (o *Orchestrator) addSandboxToRoutingTable(ctx context.Context, sandbox san
 		return
 	}
 
-	// Only add to routing table if the node is managed by Nomad
 	// For remote cluster nodes we are using gPRC metadata for routing registration instead
-	if !node.IsNomadManaged() && !env.IsLocal() {
+	if node.IsClusterNode() {
 		return
 	}
 

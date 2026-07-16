@@ -52,6 +52,20 @@ const (
 
 	ApiRedisStoragePublisherPublished CounterType = "api.redis_storage.publisher.published"
 	ApiRedisStoragePublisherDropped   CounterType = "api.redis_storage.publisher.dropped"
+
+	// ApiRedisStorageExpirationIndexHealed counts sandboxes the healer re-added
+	// to the global expiration index. Healthy steady state is zero; a sustained
+	// non-zero rate means expiration index writes are being lost and sandboxes
+	// would otherwise become invisible to the evictor (immortal).
+	ApiRedisStorageExpirationIndexHealed CounterType = "api.redis_storage.expiration_index.healed"
+	// ApiRedisStorageExpirationIndexSwept counts members removed from the
+	// global expiration index by the evictor scan
+	// (reason=orphan|dead_execution|invalid).
+	ApiRedisStorageExpirationIndexSwept CounterType = "api.redis_storage.expiration_index.swept"
+	// ApiRedisStorageExpirationIndexRescored counts live members whose index
+	// score drifted from the stored EndTime and were re-scored by the evictor
+	// scan. Sustained non-zero rate means score updates are being lost.
+	ApiRedisStorageExpirationIndexRescored CounterType = "api.redis_storage.expiration_index.rescored"
 )
 
 const (
@@ -237,6 +251,10 @@ var counterDesc = map[CounterType]string{
 
 	ApiRedisStoragePublisherPublished: "Total Redis PUBLISH calls completed by the storage publisher (result=success|failure)",
 	ApiRedisStoragePublisherDropped:   "Total storage notifications dropped before reaching Redis (reason=queue_full|closed)",
+
+	ApiRedisStorageExpirationIndexHealed:   "Sandboxes re-added to the global expiration index by the healer; sustained non-zero rate means index writes are being lost",
+	ApiRedisStorageExpirationIndexSwept:    "Members removed from the global expiration index by the evictor scan (reason=orphan|dead_execution|invalid)",
+	ApiRedisStorageExpirationIndexRescored: "Live expiration index members re-scored after drifting from the stored EndTime",
 }
 
 var counterUnits = map[CounterType]string{
@@ -268,6 +286,10 @@ var counterUnits = map[CounterType]string{
 
 	ApiRedisStoragePublisherPublished: "{notification}",
 	ApiRedisStoragePublisherDropped:   "{notification}",
+
+	ApiRedisStorageExpirationIndexHealed:   "{sandbox}",
+	ApiRedisStorageExpirationIndexSwept:    "{member}",
+	ApiRedisStorageExpirationIndexRescored: "{member}",
 }
 
 var observableCounterDesc = map[ObservableCounterType]string{

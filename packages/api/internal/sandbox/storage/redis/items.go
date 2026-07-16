@@ -36,43 +36,55 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandboxtypes.Sandbox, err
 	}
 
 	// Group by team for per-team MGET (Redis Cluster slot compatibility).
-	type teamEntry struct {
-		sandboxIDs []string
-		members    []string // original ZSET members, aligned 1:1 with sandboxIDs
+	type memberRef struct {
+		member      string
+		sandboxID   string
+		executionID string
 	}
+	type teamEntry struct {
+		teamID string
+		refs   []memberRef
+	}
+	// staleMembers collects ZSET entries to remove: unparseable members, orphans, and dead executions
+	var staleMembers []any
+	var invalidCount int64
+
 	teamSandboxes := make(map[string]*teamEntry)
 	for _, member := range expiredMembers {
-		teamID, sandboxID, ok := parseExpirationMember(member)
+		teamID, sandboxID, executionID, ok := parseExpirationMember(member)
 		if !ok {
-			logger.L().Warn(ctx, "Invalid expiration index member", zap.String("member", member))
+			// Unparseable: sweep it so it stops consuming the scan window on every tick
+			logger.L().Warn(ctx, "Removing invalid expiration index member", zap.String("member", member))
+			staleMembers = append(staleMembers, member)
+			invalidCount++
 
 			continue
 		}
 
 		entry, ok := teamSandboxes[teamID]
 		if !ok {
-			entry = &teamEntry{}
+			entry = &teamEntry{teamID: teamID}
 			teamSandboxes[teamID] = entry
 		}
 
-		entry.sandboxIDs = append(entry.sandboxIDs, sandboxID)
-		entry.members = append(entry.members, member)
+		entry.refs = append(entry.refs, memberRef{member: member, sandboxID: sandboxID, executionID: executionID})
 	}
 
 	pipe := s.redisClient.Pipeline()
 	type batchInfo struct {
-		cmd     *redis.SliceCmd
-		members []string // aligned 1:1 with MGET keys
+		cmd    *redis.SliceCmd
+		teamID string
+		refs   []memberRef // aligned 1:1 with MGET keys
 	}
 	var batches []batchInfo
 	for teamID, entry := range teamSandboxes {
-		keys := make([]string, len(entry.sandboxIDs))
-		for i, id := range entry.sandboxIDs {
-			keys[i] = getSandboxKey(teamID, id)
+		keys := make([]string, len(entry.refs))
+		for i, ref := range entry.refs {
+			keys[i] = getSandboxKey(teamID, ref.sandboxID)
 		}
 
 		cmd := pipe.MGet(ctx, keys...)
-		batches = append(batches, batchInfo{cmd: cmd, members: entry.members})
+		batches = append(batches, batchInfo{cmd: cmd, teamID: teamID, refs: entry.refs})
 	}
 
 	_, err = pipe.Exec(ctx)
@@ -80,15 +92,21 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandboxtypes.Sandbox, err
 		return nil, fmt.Errorf("MGET pipeline failed: %w", err)
 	}
 
-	// Deserialize and filter; collect stale ZSET members for cleanup.
+	// Deserialize and filter.
 	var result []sandboxtypes.Sandbox
-	var staleMembers []any
+	var rescores []redis.Z // live members whose score drifted from EndTime
+	var orphanCount, deadExecutionCount int64
 
 	for _, batch := range batches {
 		for i, raw := range batch.cmd.Val() {
-			// Sandbox key gone but ZSET entry remains — orphaned.
+			ref := batch.refs[i]
+
+			// Sandbox key gone but ZSET entry remains — orphaned. Members are
+			// execution-scoped, so this removal can never unindex a fresh
+			// execution concurrently re-added under the same sandbox ID.
 			if raw == nil {
-				staleMembers = append(staleMembers, batch.members[i])
+				staleMembers = append(staleMembers, ref.member)
+				orphanCount++
 
 				continue
 			}
@@ -105,9 +123,25 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandboxtypes.Sandbox, err
 				continue
 			}
 
+			// Member names a dead execution; the live execution has its own member.
+			if ref.executionID != sbx.ExecutionID {
+				staleMembers = append(staleMembers, ref.member)
+				deadExecutionCount++
+
+				continue
+			}
+
 			// In case that index have failed to be updated
 			if !sbx.IsExpired(now) {
 				logger.L().Debug(ctx, "ExpiredItems: Sandbox marked as expried in index, but state say otherwise", logger.WithSandboxID(sbx.SandboxID), logger.Time("end_time", sbx.EndTime))
+
+				// Re-score the drifted member to the stored EndTime so it
+				// stops occupying the expired scan window on every tick.
+				// XX: never resurrect a member a concurrent Remove deleted.
+				rescores = append(rescores, redis.Z{
+					Score:  float64(sbx.EndTime.UnixMilli()),
+					Member: ref.member,
+				})
 
 				continue
 			}
@@ -132,6 +166,24 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandboxtypes.Sandbox, err
 	if len(staleMembers) > 0 {
 		if err := s.redisClient.ZRem(ctx, globalExpirationSet, staleMembers...).Err(); err != nil {
 			logger.L().Warn(ctx, "Failed to clean up stale expiration index entries", zap.Error(err), zap.Int("count", len(staleMembers)))
+		} else {
+			if orphanCount > 0 {
+				s.metrics.indexSwept.Add(ctx, orphanCount, s.metrics.sweptOrphan)
+			}
+			if deadExecutionCount > 0 {
+				s.metrics.indexSwept.Add(ctx, deadExecutionCount, s.metrics.sweptDeadExecution)
+			}
+			if invalidCount > 0 {
+				s.metrics.indexSwept.Add(ctx, invalidCount, s.metrics.sweptInvalid)
+			}
+		}
+	}
+
+	if len(rescores) > 0 {
+		if err := s.redisClient.ZAddXX(ctx, globalExpirationSet, rescores...).Err(); err != nil {
+			logger.L().Warn(ctx, "Failed to re-score drifted expiration index entries", zap.Error(err), zap.Int("count", len(rescores)))
+		} else {
+			s.metrics.indexRescored.Add(ctx, int64(len(rescores)))
 		}
 	}
 

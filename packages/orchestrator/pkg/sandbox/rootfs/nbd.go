@@ -9,7 +9,6 @@ import (
 	"os"
 
 	"go.uber.org/zap"
-	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
@@ -163,25 +162,9 @@ func (o *NBDProvider) sync(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "sync")
 	defer span.End()
 
-	nbdPath, err := o.Path()
-	if err != nil {
+	if _, err := o.Path(); err != nil {
 		return fmt.Errorf("failed to get cow path: %w", err)
 	}
 
-	file, err := os.Open(nbdPath)
-	if err != nil {
-		return fmt.Errorf("failed to open path: %w", err)
-	}
-	defer func() {
-		err := file.Close()
-		if err != nil {
-			logger.L().Error(ctx, "failed to close nbd file", zap.Error(err))
-		}
-	}()
-
-	if err := unix.IoctlSetInt(int(file.Fd()), unix.BLKFLSBUF, 0); err != nil {
-		return fmt.Errorf("ioctl BLKFLSBUF failed: %w", err)
-	}
-
-	return flush(ctx, nbdPath)
+	return o.mnt.Flush(ctx)
 }

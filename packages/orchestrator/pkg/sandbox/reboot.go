@@ -14,10 +14,10 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/constants"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/units"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/units"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -133,6 +133,7 @@ func (f *Factory) RebootSandbox(
 		apiConfigToStore,
 		nil,
 		WithDeferredMarkRunning(),
+		withNetworkAssignReason(NetworkAssignReasonReboot),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create sandbox from rootfs: %w", err)

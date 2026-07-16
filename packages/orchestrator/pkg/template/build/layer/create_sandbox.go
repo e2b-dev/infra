@@ -17,11 +17,11 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/filesystem"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/constants"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/units"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/units"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 

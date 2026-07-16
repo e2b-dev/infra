@@ -19,4 +19,6 @@ type SandboxEvent struct {
 	SandboxTemplateID  string         `ch:"sandbox_template_id"`
 	SandboxBuildID     string         `ch:"sandbox_build_id"`
 	SandboxTeamID      uuid.UUID      `ch:"sandbox_team_id"`
+
+	EventsTTLDays int64 `ch:"events_ttl_days"`
 }
