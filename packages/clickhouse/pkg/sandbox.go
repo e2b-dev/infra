@@ -90,8 +90,8 @@ SELECT   toStartOfInterval(timestamp, interval {step:UInt32} second) AS ts,
 FROM     sandbox_metrics_gauge s
 WHERE    sandbox_id = {sandbox_id:String}
 AND      team_id = {team_id:String}
-AND      timestamp >= {start_time:DateTime64}
-AND      timestamp <= {end_time:DateTime64}
+AND      timestamp >= fromUnixTimestamp64Nano({start_time:Int64})
+AND      timestamp <= fromUnixTimestamp64Nano({end_time:Int64})
 GROUP BY ts
 ORDER BY ts;
 `, telemetry.SandboxCpuTotalGaugeName, telemetry.SandboxCpuUsedGaugeName, telemetry.SandboxRamTotalGaugeName, telemetry.SandboxRamUsedGaugeName, telemetry.SandboxRamCacheGaugeName, telemetry.SandboxDiskTotalGaugeName, telemetry.SandboxDiskUsedGaugeName)
@@ -114,8 +114,8 @@ func (c *Client) QuerySandboxMetrics(ctx context.Context, sandboxID string, team
 	rows, err := c.conn.Query(ctx, sandboxMetricsSelectQuery,
 		clickhouse.Named("sandbox_id", sandboxID),
 		clickhouse.Named("team_id", teamID),
-		clickhouse.DateNamed("start_time", start, clickhouse.Seconds),
-		clickhouse.DateNamed("end_time", end, clickhouse.Seconds),
+		clickhouse.Named("start_time", start.UTC().UnixNano()),
+		clickhouse.Named("end_time", end.UTC().UnixNano()),
 		clickhouse.Named("step", strconv.Itoa(int(step.Seconds()))),
 	)
 	if err != nil {
