@@ -222,11 +222,13 @@ func getBuildLogsWithSources(
 		sources = append(sources, persistentLogFetcher)
 	}
 
-	// Iterate through sources and return the first successful fetch
+	// Iterate through sources and return the first successful fetch.
+	var lastErr *api.APIError
 	for _, sourceFetch := range sources {
 		entries, err := sourceFetch()
 		if err != nil {
 			logger.L().Warn(ctx, "Error fetching build logs", logger.WithTemplateID(templateID), logger.WithBuildID(buildID), zap.Error(err))
+			lastErr = err
 
 			continue
 		}
@@ -234,5 +236,5 @@ func getBuildLogsWithSources(
 		return entries, nil
 	}
 
-	return nil, nil
+	return nil, lastErr
 }

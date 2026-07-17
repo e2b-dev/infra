@@ -19,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/clusters/discovery"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -75,6 +76,8 @@ func newLocalCluster(
 	storeDiscovery discovery.Discovery,
 	clickhouse clickhouse.Clickhouse,
 	queryLogsProvider *loki.LokiQueryProvider,
+	sandboxLogsReader ClickhouseLogsReader,
+	featureFlags *featureflags.Client,
 	config cfg.Config,
 ) *Cluster {
 	clusterID := consts.LocalClusterID
@@ -93,7 +96,7 @@ func newLocalCluster(
 		"",
 		instances,
 		synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),
-		newLocalClusterResourceProvider(clickhouse, queryLogsProvider, instances, config),
+		newLocalClusterResourceProvider(clickhouse, queryLogsProvider, sandboxLogsReader, featureFlags, instances, config),
 	)
 
 	// Periodically sync cluster instances

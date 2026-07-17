@@ -33,6 +33,7 @@ import (
 	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
+	"github.com/e2b-dev/infra/packages/clickhouse/pkg/sandboxlogs"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
@@ -80,6 +81,7 @@ type APIStore struct {
 	authService           sharedauth.Service
 	templateSpawnCounter  *utils.TemplateSpawnCounter
 	clickhouseStore       clickhouse.Clickhouse
+	sandboxLogsReader     *sandboxlogs.Reader
 	accessTokenGenerator  *sandbox.AccessTokenGenerator
 	featureFlags          *featureflags.Client
 	clusters              *clusters.Pool
@@ -122,6 +124,24 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 	)
 	if err != nil {
 		logger.L().Fatal(ctx, "initializing ClickHouse switching client", zap.Error(err))
+	}
+
+	// ClickHouse-backed sandbox/build log reader for the local cluster, gated at
+	// read time by the logs-read-config flag. Built from the singular DSN; when
+	// it is unset, the local cluster stays on Loki.
+	var sandboxLogsReader *sandboxlogs.Reader
+	// clusterLogsReader carries the reader into the clusters pool as an
+	// interface. It is left as a nil interface (not a typed-nil pointer boxed in
+	// an interface) when no reader is configured, so the nil check in the local
+	// cluster resource provider fires correctly and reads stay on Loki.
+	var clusterLogsReader clusters.ClickhouseLogsReader
+	if config.ClickhouseConnectionString != "" {
+		conn, readerErr := clickhouse.NewDriver(config.ClickhouseConnectionString)
+		if readerErr != nil {
+			logger.L().Fatal(ctx, "initializing ClickHouse sandbox logs reader", zap.Error(readerErr))
+		}
+		sandboxLogsReader = sandboxlogs.NewReader(conn)
+		clusterLogsReader = sandboxLogsReader
 	}
 
 	posthogClient, posthogErr := analyticscollector.NewPosthogClient(ctx, config.PosthogAPIKey)
@@ -194,7 +214,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		logger.L().Fatal(ctx, "error when getting logs query provider", zap.Error(err))
 	}
 
-	clusters, err := clusters.NewPool(ctx, tel, sqlcDB, templateBuilderDiscovery, clickhouseStore, queryLogsProvider, config)
+	clusters, err := clusters.NewPool(ctx, tel, sqlcDB, templateBuilderDiscovery, clickhouseStore, queryLogsProvider, clusterLogsReader, featureFlags, config)
 	if err != nil {
 		logger.L().Fatal(ctx, "initializing edge clusters pool failed", zap.Error(err))
 	}
@@ -259,6 +279,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		authService:           authService,
 		templateSpawnCounter:  templateSpawnCounter,
 		clickhouseStore:       clickhouseStore,
+		sandboxLogsReader:     sandboxLogsReader,
 		accessTokenGenerator:  accessTokenGenerator,
 		clusters:              clusters,
 		featureFlags:          featureFlags,
@@ -338,6 +359,11 @@ func (a *APIStore) Close(ctx context.Context) error {
 	if a.clickhouseStore != nil {
 		if err := a.clickhouseStore.Close(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("closing ClickHouse store: %w", err))
+		}
+	}
+	if a.sandboxLogsReader != nil {
+		if err := a.sandboxLogsReader.Close(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("closing ClickHouse sandbox logs reader: %w", err))
 		}
 	}
 

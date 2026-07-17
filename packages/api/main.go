@@ -305,18 +305,6 @@ func run() int {
 	defer l.Sync()
 	logger.ReplaceGlobals(ctx, l)
 
-	sbxLoggerExternal := sbxlogger.NewLogger(
-		ctx,
-		tel.LogsProvider,
-		sbxlogger.SandboxLoggerConfig{
-			ServiceName:      serviceName,
-			IsInternal:       false,
-			CollectorAddress: env.LogsCollectorAddress(),
-		},
-	)
-	defer sbxLoggerExternal.Sync()
-	sbxlogger.SetSandboxLoggerExternal(sbxLoggerExternal)
-
 	sbxLoggerInternal := sbxlogger.NewLogger(
 		ctx,
 		tel.LogsProvider,
@@ -434,6 +422,22 @@ func run() int {
 
 	featureFlags.SetServiceName(serviceName)
 	featureFlags.SetDeploymentName(config.DomainName)
+
+	// External sandbox logger routes through LaunchDarkly (LogsWriteConfigFlag),
+	// falling back to the fixed collector address. Created here so it can use the
+	// feature flags client.
+	sbxLoggerExternal := sbxlogger.NewLogger(
+		ctx,
+		tel.LogsProvider,
+		sbxlogger.SandboxLoggerConfig{
+			ServiceName:      serviceName,
+			IsInternal:       false,
+			CollectorAddress: env.LogsCollectorAddress(),
+			FeatureFlags:     featureFlags,
+		},
+	)
+	defer sbxLoggerExternal.Sync()
+	sbxlogger.SetSandboxLoggerExternal(sbxLoggerExternal)
 
 	// Create an instance of our handler which satisfies the generated interface
 	//  (use the outer context rather than the signal handling

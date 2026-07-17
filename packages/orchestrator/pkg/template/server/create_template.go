@@ -116,6 +116,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	// both destinations.
 	core := zapcore.NewTee(logs, s.buildLogger.Detach(ctx).Core().
 		With([]zap.Field{
+			{Type: zapcore.StringType, Key: "teamID", String: template.TeamID},
 			{Type: zapcore.StringType, Key: "envID", String: cfg.GetTemplateID()},
 			{Type: zapcore.StringType, Key: "buildID", String: metadata.BuildID},
 		}),

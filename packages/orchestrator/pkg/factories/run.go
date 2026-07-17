@@ -339,24 +339,6 @@ func run(config cfg.Config, opts Options) (success bool) {
 	}(globalLogger)
 	logger.ReplaceGlobals(ctx, globalLogger)
 
-	sbxLoggerExternal := sbxlogger.NewLogger(
-		ctx,
-		tel.LogsProvider,
-		sbxlogger.SandboxLoggerConfig{
-			ServiceName:      serviceName,
-			IsInternal:       false,
-			CollectorAddress: env.LogsCollectorAddress(),
-		},
-	)
-	defer func(l logger.Logger) {
-		err := l.Sync()
-		if err != nil {
-			log.Printf("error while shutting down sandbox logger: %v", err)
-			success = false
-		}
-	}(sbxLoggerExternal)
-	sbxlogger.SetSandboxLoggerExternal(sbxLoggerExternal)
-
 	sbxLoggerInternal := sbxlogger.NewLogger(
 		ctx,
 		tel.LogsProvider,
@@ -418,6 +400,28 @@ func run(config cfg.Config, opts Options) (success bool) {
 
 	featureFlags.SetDeploymentName(config.DomainName)
 	featureFlags.RegisterContextProvider(orchestratorContextProvider(nodeID, commitSHA))
+
+	// External sandbox logger routes through LaunchDarkly (LogsWriteConfigFlag),
+	// falling back to the fixed collector address. Created here so it can use the
+	// feature flags client.
+	sbxLoggerExternal := sbxlogger.NewLogger(
+		ctx,
+		tel.LogsProvider,
+		sbxlogger.SandboxLoggerConfig{
+			ServiceName:      serviceName,
+			IsInternal:       false,
+			CollectorAddress: env.LogsCollectorAddress(),
+			FeatureFlags:     featureFlags,
+		},
+	)
+	defer func(l logger.Logger) {
+		err := l.Sync()
+		if err != nil {
+			log.Printf("error while shutting down sandbox logger: %v", err)
+			success = false
+		}
+	}(sbxLoggerExternal)
+	sbxlogger.SetSandboxLoggerExternal(sbxLoggerExternal)
 
 	// gcp concurrent upload limiter
 	limiter, err := limit.New(ctx, featureFlags)
@@ -771,6 +775,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 			ServiceName:      constants.ServiceNameTemplate,
 			IsInternal:       false,
 			CollectorAddress: env.LogsCollectorAddress(),
+			FeatureFlags:     featureFlags,
 		},
 	)
 	closers = append(closers, closer{
@@ -794,7 +799,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	}
 
 	// hyperloop server
-	hyperloopSrv, err := hyperloopserver.NewHyperloopServer(ctx, config.NetworkConfig.HyperloopProxyPort, globalLogger, sandboxes)
+	hyperloopSrv, err := hyperloopserver.NewHyperloopServer(ctx, config.NetworkConfig.HyperloopProxyPort, globalLogger, sandboxes, featureFlags)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create hyperloop server", zap.Error(err))
 	}
