@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -778,25 +777,15 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		return nil, status.Errorf(codes.Internal, "error snapshotting sandbox '%s': %s", in.GetSandboxId(), err)
 	}
 
-	// Collect prefetch data immediately after resume while it's most accurate
-	prefetchData, prefetchErr := sbx.MemoryPrefetchData(ctx)
-	if prefetchErr != nil {
-		sbxlogger.I(sbx).Warn(ctx, "failed to get prefetch data for checkpoint", zap.Error(prefetchErr))
-	}
-
-	// Embed prefetch data into the metadata so it's uploaded with the snapshot files in a single pass.
-	if prefetchErr == nil {
-		prefetchMapping := metadata.PrefetchEntriesToMapping(slices.Collect(maps.Values(prefetchData.BlockEntries)), prefetchData.BlockSize)
-		if prefetchMapping != nil {
-			res.meta = res.meta.WithPrefetch(&metadata.Prefetch{
-				Memory: prefetchMapping,
-			})
-
-			if err := s.templateCache.UpdateMetadata(in.GetBuildId(), res.meta); err != nil {
-				sbxlogger.I(sbx).Warn(ctx, "failed to update local metadata with prefetch", zap.Error(err))
-			}
-		}
-	}
+	// No memory prefetch mapping is embedded for an in-place checkpoint. The
+	// sandbox is resumed in place (never from a snapshot), so its live
+	// PrefetchTracker holds the whole workload's fault history rather than a
+	// cold-start working set — embedding that made sandboxes launched from the
+	// produced template over-prefetch (a ~65% Spawn regression in cluster
+	// benchmarks). Reusing the source template's own mapping would fix the bloat
+	// but reuses a mapping recorded against a different memory image; and cluster
+	// benchmarks showed launches from a prefetch-less template are as fast as the
+	// destroy+resume-fresh path anyway. So we omit it — res.meta.Prefetch stays nil.
 
 	if s.featureFlags.BoolFlag(ctx, featureflags.PeerToPeerAsyncCheckpointFlag) {
 		// Async: return immediately; peer nodes can pull chunks from us during the upload window.
