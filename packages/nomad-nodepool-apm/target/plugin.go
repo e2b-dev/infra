@@ -224,7 +224,7 @@ func (p *Plugin) Status(config map[string]string) (*sdk.TargetStatus, error) {
 		meta[sdk.TargetStatusMetaKeyLastEvent] = strconv.FormatUint(groupStatus.Events[0].Time, 10)
 	}
 
-	return &sdk.TargetStatus{Ready: !status.JobStopped, Count: int64(groupStatus.Running), Meta: meta}, nil
+	return &sdk.TargetStatus{Ready: !status.JobStopped, Count: int64(groupStatus.Desired), Meta: meta}, nil
 }
 
 func (p *Plugin) target(config map[string]string) (string, string, string, error) {
