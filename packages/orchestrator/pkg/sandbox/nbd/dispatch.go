@@ -305,8 +305,6 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 
 		go func() {
 			start := time.Now()
-			// A fault in the provider's mmap copy becomes an NBD error
-			// reply (guest sees EIO) instead of killing the process.
 			err := block.RunFaultSafe(ctx, func() error {
 				_, readErr := d.prov.ReadAt(ctx, data, int64(from))
 
@@ -393,8 +391,8 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 		// buffered to avoid goroutine leak
 		errchan := make(chan error, 1)
 		go func() {
-			// Writes fault too: storing to a non-resident mmap page first
-			// pages it in.
+			// Even a write can fault: a store to a non-resident page pages
+			// it in first.
 			errchan <- block.RunFaultSafe(ctx, func() error {
 				_, writeErr := d.prov.WriteAt(data, int64(from))
 
@@ -467,8 +465,8 @@ func (d *Dispatch) cmdWriteZeroes(ctx context.Context, cmdHandle uint64, cmdFrom
 		// channel is buffered so the goroutine never leaks on the ctx.Done path.
 		errchan := make(chan error, 1)
 		go func() {
-			// The punch-hole fallback clears the mmap in-process, so it can
-			// fault like a write.
+			// The punch-hole fallback clears the mmap in-process, so this
+			// can fault like a write.
 			errchan <- block.RunFaultSafe(ctx, func() error {
 				_, zeroErr := d.prov.WriteZeroesAt(int64(cmdFrom), cmdLength)
 

@@ -252,9 +252,8 @@ func (b *File) readSegments(ctx context.Context, p []byte, segments []readSegmen
 	return nil
 }
 
-// readSegmentFaultSafe runs readSegment with memory faults from the diff's
-// mmap'd cache file converted to errors, so an unreadable disk block fails
-// only this read instead of the whole process.
+// readSegmentFaultSafe converts memory faults from the diff's mmap'd cache
+// into errors, so a bad disk block fails one read, not the process.
 func (b *File) readSegmentFaultSafe(ctx context.Context, p []byte, s readSegment) error {
 	err := block.RunFaultSafe(ctx, func() error { return b.readSegment(ctx, p, s) })
 	var faultErr *block.MemoryFaultError

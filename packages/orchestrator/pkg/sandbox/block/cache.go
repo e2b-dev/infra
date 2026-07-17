@@ -325,7 +325,6 @@ func (c *Cache) Dedup(
 	}
 
 	compareStart := time.Now()
-	// The compare reads pages from the mmap; see block.RunFaultSafe.
 	var plan *dedupPlan
 	if err := RunFaultSafe(ctx, func() error {
 		var compareErr error

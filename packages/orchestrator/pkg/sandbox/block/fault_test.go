@@ -22,10 +22,7 @@ import (
 
 const faultChildEnv = "BLOCK_FAULT_TEST_CHILD"
 
-// TestRunFaultSafe_MmapFault verifies that a SIGBUS from reading a
-// memory-mapped file whose backing pages are gone becomes ErrMemoryFault.
-// Runs in a subprocess: an unconverted fault is a fatal runtime error that
-// would take the whole test binary down.
+// Runs in a subprocess: an unconverted fault would kill the test binary.
 func TestRunFaultSafe_MmapFault(t *testing.T) {
 	if os.Getenv(faultChildEnv) == "1" {
 		runFaultSafeMmapFaultChild(t)
@@ -58,13 +55,12 @@ func runFaultSafeMmapFaultChild(t *testing.T) {
 	require.NoError(t, err)
 	defer m.Unmap()
 
-	// Mapped pages beyond EOF fault with SIGBUS on access, like paging in
-	// an unreadable disk block.
+	// Mapped pages beyond EOF raise SIGBUS on access, like a bad sector.
 	require.NoError(t, os.Truncate(path, 0))
 
 	buf := make([]byte, size)
 	err = RunFaultSafe(t.Context(), func() error {
-		copy(buf, m) // the same memmove-from-mmap as Cache.ReadAt
+		copy(buf, m)
 
 		return nil
 	})
@@ -78,8 +74,8 @@ func runFaultSafeMmapFaultChild(t *testing.T) {
 	require.Equal(t, int64(1), memoryFaultCounterSum(t, reader), "recovered fault must be counted")
 }
 
-// swapMemoryFaultCounter points the package-level fault counter at a manual
-// reader for the duration of the test. NOT parallel-safe.
+// swapMemoryFaultCounter swaps the package counter for a manual reader; not
+// parallel-safe.
 func swapMemoryFaultCounter(t *testing.T) *sdkmetric.ManualReader {
 	t.Helper()
 
@@ -140,7 +136,6 @@ var faultTestSink int //nolint:gochecknoglobals
 func TestRunFaultSafe_NilDerefPanicPropagates(t *testing.T) {
 	t.Parallel()
 
-	// A nil deref is a bug and must keep panicking, not become ErrMemoryFault.
 	require.Panics(t, func() {
 		_ = RunFaultSafe(t.Context(), func() error {
 			var p *int
@@ -162,7 +157,6 @@ func TestRunFaultSafe_RestoresPanicOnFaultFlag(t *testing.T) {
 		assert.Equalf(t, prev, got, "flag not restored after clean return (prev=%v)", prev)
 	}
 
-	// The flag must be restored even when fn panics.
 	debug.SetPanicOnFault(false)
 	func() {
 		defer func() { _ = recover() }()
