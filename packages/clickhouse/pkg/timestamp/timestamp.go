@@ -3,21 +3,26 @@ package timestamp
 
 import "time"
 
-// maxUnixSeconds is the largest Unix-second value whose nanosecond
-// representation fits in a signed int64. time.Time.UnixNano is undefined
-// beyond approximately 2262-04-11.
-const maxUnixSeconds = (1<<63 - 1) / int64(time.Second)
+const (
+	minUnixNano int64 = -1 << 63
+	maxUnixNano int64 = 1<<63 - 1
+)
 
-// UnixNano returns t as whole-second nanoseconds since the Unix epoch, clamped
-// to the int64 range accepted by ClickHouse's fromUnixTimestamp64Nano.
+var (
+	minUnixNanoTime = time.Unix(0, minUnixNano).UTC()
+	maxUnixNanoTime = time.Unix(0, maxUnixNano).UTC()
+)
+
+// UnixNano returns t as nanoseconds since the Unix epoch, clamped to the int64
+// range accepted by ClickHouse's fromUnixTimestamp64Nano.
 func UnixNano(t time.Time) int64 {
-	seconds := t.UTC().Unix()
+	t = t.UTC()
 	switch {
-	case seconds > maxUnixSeconds:
-		seconds = maxUnixSeconds
-	case seconds < -maxUnixSeconds:
-		seconds = -maxUnixSeconds
+	case t.Before(minUnixNanoTime):
+		return minUnixNano
+	case t.After(maxUnixNanoTime):
+		return maxUnixNano
+	default:
+		return t.UnixNano()
 	}
-
-	return time.Unix(seconds, 0).UTC().UnixNano()
 }

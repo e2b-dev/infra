@@ -10,7 +10,7 @@ import (
 func TestUnixNano(t *testing.T) {
 	t.Parallel()
 
-	timestamp := time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)
+	timestamp := time.Date(2024, 1, 2, 3, 4, 5, 500_000_123, time.UTC)
 	assert.Equal(t, timestamp.UnixNano(), UnixNano(timestamp))
 
 	location := time.FixedZone("test", 3600)
@@ -20,9 +20,8 @@ func TestUnixNano(t *testing.T) {
 func TestUnixNanoClampsToInt64Range(t *testing.T) {
 	t.Parallel()
 
-	max := time.Unix(maxUnixSeconds, 0).UTC().UnixNano()
-	min := time.Unix(-maxUnixSeconds, 0).UTC().UnixNano()
-
-	assert.Equal(t, max, UnixNano(time.Date(2299, 12, 31, 23, 59, 59, 0, time.UTC)))
-	assert.Equal(t, min, UnixNano(time.Date(1600, 1, 1, 0, 0, 0, 0, time.UTC)))
+	assert.Equal(t, maxUnixNano, UnixNano(time.Date(2299, 12, 31, 23, 59, 59, 0, time.UTC)))
+	assert.Equal(t, minUnixNano, UnixNano(time.Date(1600, 1, 1, 0, 0, 0, 0, time.UTC)))
+	assert.Equal(t, maxUnixNano, UnixNano(maxUnixNanoTime))
+	assert.Equal(t, minUnixNano, UnixNano(minUnixNanoTime))
 }
