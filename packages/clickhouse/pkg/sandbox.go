@@ -8,6 +8,7 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 
+	"github.com/e2b-dev/infra/packages/clickhouse/pkg/timestamp"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -22,28 +23,6 @@ type Metrics struct {
 	MemCache       float64   `ch:"ram_cache"`
 	DiskTotal      float64   `ch:"disk_total"`
 	DiskUsed       float64   `ch:"disk_used"`
-}
-
-// maxUnixSecondsForCH is the largest Unix-second value whose nanosecond
-// representation fits in a signed int64. time.Time.UnixNano() is undefined
-// beyond ~2262-04-11; API handlers accept Unix-second query params without
-// an upper bound, so far-future sentinels (e.g. 9999999999 = year 2286)
-// must be clamped before conversion to avoid wrapping to negative int64
-// and silently breaking fromUnixTimestamp64Nano filter windows.
-const maxUnixSecondsForCH = (1<<63 - 1) / int64(time.Second)
-
-// unixNanoForCH returns t as nanoseconds since the Unix epoch, clamped to
-// the int64-representable range. Always use this instead of t.UTC().UnixNano()
-// when feeding values to ClickHouse's fromUnixTimestamp64Nano.
-func unixNanoForCH(t time.Time) int64 {
-	s := t.UTC().Unix()
-	switch {
-	case s > maxUnixSecondsForCH:
-		s = maxUnixSecondsForCH
-	case s < -maxUnixSecondsForCH:
-		s = -maxUnixSecondsForCH
-	}
-	return time.Unix(s, 0).UTC().UnixNano()
 }
 
 var latestMetricsSelectQuery = fmt.Sprintf(`
@@ -136,8 +115,8 @@ func (c *Client) QuerySandboxMetrics(ctx context.Context, sandboxID string, team
 	rows, err := c.conn.Query(ctx, sandboxMetricsSelectQuery,
 		clickhouse.Named("sandbox_id", sandboxID),
 		clickhouse.Named("team_id", teamID),
-		clickhouse.Named("start_time", unixNanoForCH(start)),
-		clickhouse.Named("end_time", unixNanoForCH(end)),
+		clickhouse.Named("start_time", timestamp.UnixNano(start)),
+		clickhouse.Named("end_time", timestamp.UnixNano(end)),
 		clickhouse.Named("step", strconv.Itoa(int(step.Seconds()))),
 	)
 	if err != nil {

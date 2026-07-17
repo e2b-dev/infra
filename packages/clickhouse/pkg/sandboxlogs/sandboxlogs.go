@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/clickhouse/pkg/timestamp"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 )
@@ -104,28 +105,6 @@ func atLeastLevels(minLevel logs.LogLevel) []string {
 	}
 }
 
-// maxUnixSecondsForCH mirrors the constant in packages/clickhouse/pkg/sandbox.go
-// and lives here separately to avoid pulling the parent package into this
-// subpackage. Consolidate into a shared timeutil package if a third caller
-// appears.
-const maxUnixSecondsForCH = (1<<63 - 1) / int64(time.Second)
-
-// unixNano returns t as nanoseconds since the Unix epoch, clamped to the
-// int64-representable range. Handlers accept Unix-second query params without
-// an upper bound, so far-future sentinels like 9999999999 (= year 2286) must
-// be clamped before conversion to avoid wrapping to negative int64 and
-// silently breaking fromUnixTimestamp64Nano filter windows.
-func unixNano(t time.Time) int64 {
-	s := t.UTC().Unix()
-	switch {
-	case s > maxUnixSecondsForCH:
-		s = maxUnixSecondsForCH
-	case s < -maxUnixSecondsForCH:
-		s = -maxUnixSecondsForCH
-	}
-	return time.Unix(s, 0).UTC().UnixNano()
-}
-
 const sandboxLogsSelect = `
 SELECT
     timestamp,
@@ -153,8 +132,8 @@ func (r *Reader) QuerySandboxLogs(ctx context.Context, teamID uuid.UUID, sandbox
 	args := []any{
 		clickhouse.Named("team_id", teamID.String()),
 		clickhouse.Named("sandbox_id", sandboxID),
-		clickhouse.Named("start", unixNano(start)),
-		clickhouse.Named("end", unixNano(end)),
+		clickhouse.Named("start", timestamp.UnixNano(start)),
+		clickhouse.Named("end", timestamp.UnixNano(end)),
 	}
 
 	if level != nil {
@@ -190,8 +169,8 @@ func (r *Reader) QueryBuildLogs(ctx context.Context, templateID, buildID string,
 	args := []any{
 		clickhouse.Named("build_id", buildID),
 		clickhouse.Named("template_id", templateID),
-		clickhouse.Named("start", unixNano(start)),
-		clickhouse.Named("end", unixNano(end)),
+		clickhouse.Named("start", timestamp.UnixNano(start)),
+		clickhouse.Named("end", timestamp.UnixNano(end)),
 	}
 
 	if level != nil {
