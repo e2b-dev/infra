@@ -329,7 +329,7 @@ func (c *Cache) Dedup(
 	// possibly the base's); an unreadable backing block raises SIGBUS, which
 	// must fail this dedup instead of killing the process.
 	var plan *dedupPlan
-	if err := RunFaultSafe(func() error {
+	if err := RunFaultSafe(ctx, func() error {
 		var compareErr error
 		plan, compareErr = dedupCompare(ctx, src, base, dirty, blockSize, bestEffort, budget)
 

@@ -44,7 +44,7 @@ var ErrMemoryFault = errors.New("memory fault while accessing memory-mapped file
 // After a fault the destination buffer of an interrupted copy may be
 // partially written; callers must treat ErrMemoryFault as a total failure of
 // the operation.
-func RunFaultSafe(fn func() error) (err error) {
+func RunFaultSafe(ctx context.Context, fn func() error) (err error) {
 	// SetPanicOnFault is per-goroutine: a fault in fn on this goroutine
 	// becomes a recoverable panic instead of an unrecoverable fatal throw.
 	// The cost on the happy path is a bool swap on the g struct plus two
@@ -66,10 +66,7 @@ func RunFaultSafe(fn func() error) (err error) {
 		if _, hasAddr := r.(interface{ Addr() uintptr }); !hasAddr {
 			panic(r)
 		}
-		// Background context: this is a plain counter and RunFaultSafe
-		// deliberately keeps a context-free signature; callers attach
-		// request context to their own error logs.
-		memoryFaultCounter.Add(context.Background(), 1)
+		memoryFaultCounter.Add(ctx, 1)
 		err = fmt.Errorf("%w: %v", ErrMemoryFault, re)
 	}()
 

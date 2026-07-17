@@ -69,7 +69,7 @@ func runFaultSafeMmapFaultChild(t *testing.T) {
 	require.NoError(t, os.Truncate(path, 0))
 
 	buf := make([]byte, size)
-	err = RunFaultSafe(func() error {
+	err = RunFaultSafe(t.Context(), func() error {
 		copy(buf, m) // the same memmove-from-mmap as Cache.ReadAt
 
 		return nil
@@ -119,10 +119,10 @@ func memoryFaultCounterSum(t *testing.T, reader *sdkmetric.ManualReader) int64 {
 func TestRunFaultSafe_PassesThroughResult(t *testing.T) {
 	t.Parallel()
 
-	require.NoError(t, RunFaultSafe(func() error { return nil }))
+	require.NoError(t, RunFaultSafe(t.Context(), func() error { return nil }))
 
 	sentinel := errors.New("boom")
-	err := RunFaultSafe(func() error { return sentinel })
+	err := RunFaultSafe(t.Context(), func() error { return sentinel })
 	require.ErrorIs(t, err, sentinel)
 	require.NotErrorIs(t, err, ErrMemoryFault)
 }
@@ -131,7 +131,7 @@ func TestRunFaultSafe_NonFaultPanicPropagates(t *testing.T) {
 	t.Parallel()
 
 	require.PanicsWithValue(t, "boom", func() {
-		_ = RunFaultSafe(func() error { panic("boom") })
+		_ = RunFaultSafe(t.Context(), func() error { panic("boom") })
 	})
 }
 
@@ -145,7 +145,7 @@ func TestRunFaultSafe_NilDerefPanicPropagates(t *testing.T) {
 	// failure — it must keep panicking rather than be masked as
 	// ErrMemoryFault.
 	require.Panics(t, func() {
-		_ = RunFaultSafe(func() error {
+		_ = RunFaultSafe(t.Context(), func() error {
 			var p *int
 			faultTestSink = *p
 
@@ -160,7 +160,7 @@ func TestRunFaultSafe_RestoresPanicOnFaultFlag(t *testing.T) {
 
 	for _, prev := range []bool{false, true} {
 		debug.SetPanicOnFault(prev)
-		_ = RunFaultSafe(func() error { return nil })
+		_ = RunFaultSafe(t.Context(), func() error { return nil })
 		got := debug.SetPanicOnFault(false)
 		assert.Equalf(t, prev, got, "flag not restored after clean return (prev=%v)", prev)
 	}
@@ -169,7 +169,7 @@ func TestRunFaultSafe_RestoresPanicOnFaultFlag(t *testing.T) {
 	debug.SetPanicOnFault(false)
 	func() {
 		defer func() { _ = recover() }()
-		_ = RunFaultSafe(func() error { panic("boom") })
+		_ = RunFaultSafe(t.Context(), func() error { panic("boom") })
 	}()
 	assert.False(t, debug.SetPanicOnFault(false), "flag not restored after panic")
 }

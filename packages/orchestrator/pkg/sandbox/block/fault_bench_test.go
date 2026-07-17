@@ -34,7 +34,7 @@ func BenchmarkRunFaultSafeOverhead(b *testing.B) {
 		b.Run(fmt.Sprintf("size=%dKiB/guarded", size>>10), func(b *testing.B) {
 			b.SetBytes(size)
 			for range b.N {
-				if err := RunFaultSafe(func() error {
+				if err := RunFaultSafe(b.Context(), func() error {
 					_, readErr := cache.ReadAt(buf, 0)
 
 					return readErr
