@@ -335,10 +335,12 @@ func (c *Cache) Dedup(
 
 		return compareErr
 	}); err != nil {
-		if errors.Is(err, ErrMemoryFault) {
+		var faultErr *MemoryFaultError
+		if errors.As(err, &faultErr) {
 			logger.L().Error(ctx, "memory fault comparing pages during dedup",
 				zap.Error(err),
 				zap.String("cache_path", c.filePath),
+				zap.Uintptr("fault_addr", faultErr.Addr),
 			)
 		}
 

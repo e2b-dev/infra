@@ -26,13 +26,37 @@ var memoryFaultCounter = utils.Must(meter.Int64Counter(
 	metric.WithUnit("{fault}"),
 ))
 
-// ErrMemoryFault reports that accessing a memory-mapped file raised a memory
-// fault (SIGBUS/SIGSEGV at a non-nil address). The typical cause is the
-// backing storage failing with an unrecoverable read error (bad sector) when
-// the kernel pages in a mapped range - the kernel cannot return EIO for a
+// ErrMemoryFault is the errors.Is match target for memory faults recovered by
+// RunFaultSafe; the concrete returned type is *MemoryFaultError. A memory
+// fault (SIGBUS/SIGSEGV at a non-nil address) is typically raised when the
+// backing storage fails with an unrecoverable read error (bad sector) while
+// the kernel pages in a mapped range — the kernel cannot return EIO for a
 // plain memory access, so it delivers a signal instead. A file truncated
 // while mapped faults the same way.
 var ErrMemoryFault = errors.New("memory fault while accessing memory-mapped file")
+
+// MemoryFaultError is the concrete error RunFaultSafe returns for a recovered
+// memory fault. Match it with errors.Is(err, ErrMemoryFault), or extract the
+// fault address with errors.As.
+type MemoryFaultError struct {
+	// Addr is the faulting address, best-effort (see
+	// runtime/debug.SetPanicOnFault). It can be correlated with the mmap
+	// layout to find the file offset — and hence the disk block — that
+	// failed.
+	Addr uintptr
+
+	cause error // the runtime.Error the fault panic carried
+}
+
+func (e *MemoryFaultError) Error() string {
+	return fmt.Sprintf("memory fault while accessing memory-mapped file at address 0x%x: %v", e.Addr, e.cause)
+}
+
+// Is makes errors.Is(err, ErrMemoryFault) match without callers needing the
+// concrete type.
+func (e *MemoryFaultError) Is(target error) bool { return target == ErrMemoryFault }
+
+func (e *MemoryFaultError) Unwrap() error { return e.cause }
 
 // RunFaultSafe runs fn, converting a runtime memory fault raised by fn (e.g.
 // reading a memory-mapped file whose backing block is unreadable) into an
@@ -63,11 +87,12 @@ func RunFaultSafe(ctx context.Context, fn func() error) (err error) {
 		if !isRuntimeErr {
 			panic(r)
 		}
-		if _, hasAddr := r.(interface{ Addr() uintptr }); !hasAddr {
+		addrErr, hasAddr := r.(interface{ Addr() uintptr })
+		if !hasAddr {
 			panic(r)
 		}
 		memoryFaultCounter.Add(ctx, 1)
-		err = fmt.Errorf("%w: %v", ErrMemoryFault, re)
+		err = &MemoryFaultError{Addr: addrErr.Addr(), cause: re}
 	}()
 
 	return fn()

@@ -75,6 +75,12 @@ func runFaultSafeMmapFaultChild(t *testing.T) {
 		return nil
 	})
 	require.ErrorIs(t, err, ErrMemoryFault)
+
+	var faultErr *MemoryFaultError
+	require.ErrorAs(t, err, &faultErr)
+	require.NotZero(t, faultErr.Addr, "fault address must be carried on the error")
+	require.Contains(t, err.Error(), "at address 0x")
+
 	require.Equal(t, int64(1), memoryFaultCounterSum(t, reader), "recovered fault must be counted")
 }
 

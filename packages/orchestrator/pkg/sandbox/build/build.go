@@ -259,11 +259,13 @@ func (b *File) readSegments(ctx context.Context, p []byte, segments []readSegmen
 // - the diff itself is a cache of remotely stored data.
 func (b *File) readSegmentFaultSafe(ctx context.Context, p []byte, s readSegment) error {
 	err := block.RunFaultSafe(ctx, func() error { return b.readSegment(ctx, p, s) })
-	if errors.Is(err, block.ErrMemoryFault) {
+	var faultErr *block.MemoryFaultError
+	if errors.As(err, &faultErr) {
 		cachePath, _ := s.diff.CachePath(ctx)
 		logger.L().Error(ctx, "memory fault reading build segment; local disk under the cache is likely failing",
 			zap.Error(err),
 			zap.String("cache_path", cachePath),
+			zap.Uintptr("fault_addr", faultErr.Addr),
 			zap.Int64("offset", s.srcOff),
 			zap.Int64("length", s.length),
 		)
