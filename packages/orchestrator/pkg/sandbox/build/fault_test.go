@@ -57,9 +57,10 @@ func readSegmentsFaultChild(t *testing.T) {
 	}
 
 	// Both the parallel and the sequential branch.
+	var faultErr *block.MemoryFaultError
 	err = f.readSegments(t.Context(), buf, segments, 4)
-	require.ErrorIs(t, err, block.ErrMemoryFault)
+	require.ErrorAs(t, err, &faultErr)
 
 	err = f.readSegments(t.Context(), buf, segments, 1)
-	require.ErrorIs(t, err, block.ErrMemoryFault)
+	require.ErrorAs(t, err, &faultErr)
 }

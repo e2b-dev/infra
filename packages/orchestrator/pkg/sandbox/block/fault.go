@@ -4,7 +4,6 @@ package block
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"runtime"
 	"runtime/debug"
@@ -23,13 +22,10 @@ var memoryFaultCounter = utils.Must(meter.Int64Counter(
 	metric.WithUnit("{fault}"),
 ))
 
-// ErrMemoryFault matches (errors.Is) memory faults recovered by RunFaultSafe.
-// The typical cause is an unrecoverable read error (bad sector) under a
-// memory-mapped file: the kernel cannot return EIO for a memory access, so it
-// delivers SIGBUS instead.
-var ErrMemoryFault = errors.New("memory fault while accessing memory-mapped file")
-
-// MemoryFaultError is the concrete error behind ErrMemoryFault.
+// MemoryFaultError is a memory fault recovered by RunFaultSafe. The typical
+// cause is an unrecoverable read error (bad sector) under a memory-mapped
+// file: the kernel cannot return EIO for a memory access, so it delivers
+// SIGBUS instead.
 type MemoryFaultError struct {
 	Addr  uintptr // faulting address, best-effort
 	cause error
@@ -38,8 +34,6 @@ type MemoryFaultError struct {
 func (e *MemoryFaultError) Error() string {
 	return fmt.Sprintf("memory fault while accessing memory-mapped file at address 0x%x: %v", e.Addr, e.cause)
 }
-
-func (e *MemoryFaultError) Is(target error) bool { return target == ErrMemoryFault }
 
 func (e *MemoryFaultError) Unwrap() error { return e.cause }
 

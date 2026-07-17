@@ -35,7 +35,7 @@ func TestRunFaultSafe_MmapFault(t *testing.T) {
 	cmd.Env = append(os.Environ(), faultChildEnv+"=1")
 	out, err := cmd.CombinedOutput()
 	require.NoErrorf(t, err,
-		"child did not survive the mmap fault: RunFaultSafe must convert SIGBUS to ErrMemoryFault, not crash the process\n%s", out)
+		"child did not survive the mmap fault: RunFaultSafe must convert SIGBUS to an error, not crash the process\n%s", out)
 }
 
 func runFaultSafeMmapFaultChild(t *testing.T) {
@@ -64,8 +64,6 @@ func runFaultSafeMmapFaultChild(t *testing.T) {
 
 		return nil
 	})
-	require.ErrorIs(t, err, ErrMemoryFault)
-
 	var faultErr *MemoryFaultError
 	require.ErrorAs(t, err, &faultErr)
 	require.NotZero(t, faultErr.Addr, "fault address must be carried on the error")
@@ -119,7 +117,9 @@ func TestRunFaultSafe_PassesThroughResult(t *testing.T) {
 	sentinel := errors.New("boom")
 	err := RunFaultSafe(t.Context(), func() error { return sentinel })
 	require.ErrorIs(t, err, sentinel)
-	require.NotErrorIs(t, err, ErrMemoryFault)
+
+	var faultErr *MemoryFaultError
+	require.NotErrorAs(t, err, &faultErr)
 }
 
 func TestRunFaultSafe_NonFaultPanicPropagates(t *testing.T) {
