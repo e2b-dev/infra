@@ -104,8 +104,26 @@ func atLeastLevels(minLevel logs.LogLevel) []string {
 	}
 }
 
+// maxUnixSecondsForCH mirrors the constant in packages/clickhouse/pkg/sandbox.go
+// and lives here separately to avoid pulling the parent package into this
+// subpackage. Consolidate into a shared timeutil package if a third caller
+// appears.
+const maxUnixSecondsForCH = (1<<63 - 1) / int64(time.Second)
+
+// unixNano returns t as nanoseconds since the Unix epoch, clamped to the
+// int64-representable range. Handlers accept Unix-second query params without
+// an upper bound, so far-future sentinels like 9999999999 (= year 2286) must
+// be clamped before conversion to avoid wrapping to negative int64 and
+// silently breaking fromUnixTimestamp64Nano filter windows.
 func unixNano(t time.Time) int64 {
-	return t.UTC().UnixNano()
+	s := t.UTC().Unix()
+	switch {
+	case s > maxUnixSecondsForCH:
+		s = maxUnixSecondsForCH
+	case s < -maxUnixSecondsForCH:
+		s = -maxUnixSecondsForCH
+	}
+	return time.Unix(s, 0).UTC().UnixNano()
 }
 
 const sandboxLogsSelect = `
