@@ -305,10 +305,8 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 
 		go func() {
 			start := time.Now()
-			// RunFaultSafe: the provider copies from a memory-mapped cache
-			// file; an unreadable backing block raises SIGBUS, which must
-			// become an NBD error reply (guest sees EIO on this request)
-			// rather than a process-killing fault.
+			// A fault in the provider's mmap copy becomes an NBD error
+			// reply (guest sees EIO) instead of killing the process.
 			err := block.RunFaultSafe(ctx, func() error {
 				_, readErr := d.prov.ReadAt(ctx, data, int64(from))
 
@@ -395,9 +393,8 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 		// buffered to avoid goroutine leak
 		errchan := make(chan error, 1)
 		go func() {
-			// RunFaultSafe: writing into a not-yet-resident mmap page pages
-			// it in first; if that read fails (bad sector) the write raises
-			// SIGBUS. See cmdRead.
+			// Writes fault too: storing to a non-resident mmap page first
+			// pages it in.
 			errchan <- block.RunFaultSafe(ctx, func() error {
 				_, writeErr := d.prov.WriteAt(data, int64(from))
 
@@ -470,8 +467,8 @@ func (d *Dispatch) cmdWriteZeroes(ctx context.Context, cmdHandle uint64, cmdFrom
 		// channel is buffered so the goroutine never leaks on the ctx.Done path.
 		errchan := make(chan error, 1)
 		go func() {
-			// RunFaultSafe: the punch-hole fallback clears the mmap range
-			// in-process, which can raise SIGBUS like a write. See cmdRead.
+			// The punch-hole fallback clears the mmap in-process, so it can
+			// fault like a write.
 			errchan <- block.RunFaultSafe(ctx, func() error {
 				_, zeroErr := d.prov.WriteZeroesAt(int64(cmdFrom), cmdLength)
 

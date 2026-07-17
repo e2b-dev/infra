@@ -325,9 +325,7 @@ func (c *Cache) Dedup(
 	}
 
 	compareStart := time.Now()
-	// RunFaultSafe: the compare reads pages from this cache's mmap (and
-	// possibly the base's); an unreadable backing block raises SIGBUS, which
-	// must fail this dedup instead of killing the process.
+	// The compare reads pages from the mmap; see block.RunFaultSafe.
 	var plan *dedupPlan
 	if err := RunFaultSafe(ctx, func() error {
 		var compareErr error

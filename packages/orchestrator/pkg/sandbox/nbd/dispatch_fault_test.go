@@ -20,11 +20,9 @@ import (
 const dispatchFaultChildEnv = "NBD_FAULT_TEST_CHILD"
 
 // replyConn is a fake NBD socket for the real Dispatch.Handle loop: Read
-// serves queued request bytes (blocking until one is queued; closed reqCh →
-// io.EOF), Write parses 16-byte reply headers onto replies.
-//
-// The parser assumes replies carry no data payload, which holds here because
-// every read in this test fails (error replies are header-only).
+// serves queued request bytes, Write parses 16-byte reply headers onto
+// replies. The parser assumes header-only replies, which holds because every
+// read in this test fails.
 type replyConn struct {
 	reqCh   chan []byte
 	rbuf    []byte
@@ -78,14 +76,10 @@ func (p *faultProv) WriteZeroesAt(off, length int64) (int, error) {
 	return p.cache.WriteZeroesAt(off, length)
 }
 
-// TestDispatchRead_MmapFault verifies that a SIGBUS raised while the backend
-// copies from its mmap (unreadable disk block under the cache file, emulated
-// by truncating it) is reported to the NBD client as a per-request error
-// reply — the guest sees EIO on one read — while the dispatch loop keeps
-// serving. Without the guard the fault kills the whole process and every
-// sandbox on the node.
-//
-// Runs in a subprocess because the unguarded fault is a fatal runtime error.
+// TestDispatchRead_MmapFault verifies that a SIGBUS from the backend's mmap
+// copy is reported as a per-request NBD error reply while the dispatch loop
+// keeps serving. Runs in a subprocess because an unguarded fault is a fatal
+// runtime error.
 func TestDispatchRead_MmapFault(t *testing.T) {
 	if os.Getenv(dispatchFaultChildEnv) == "1" {
 		dispatchReadFaultChild(t)
@@ -114,7 +108,7 @@ func dispatchReadFaultChild(t *testing.T) {
 	require.NoError(t, err)
 	defer cache.Close()
 
-	// All mapped pages beyond EOF → SIGBUS on access, like a bad sector.
+	// Mapped pages beyond EOF fault with SIGBUS on access.
 	require.NoError(t, os.Truncate(path, 0))
 
 	conn := &replyConn{reqCh: make(chan []byte, 8), replies: make(chan Response, 8)}
@@ -123,8 +117,7 @@ func dispatchReadFaultChild(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- d.Handle(t.Context()) }()
 
-	// Two sequential reads: each must come back as an NBD error reply, with
-	// the dispatch loop still alive in between.
+	// Each read must come back as an error reply, with the loop still alive.
 	for handle := uint64(1); handle <= 2; handle++ {
 		conn.reqCh <- nbdRequest(NBDCmdRead, handle, 0, uint32(blockSize))
 		select {

@@ -22,14 +22,10 @@ import (
 
 const faultChildEnv = "BLOCK_FAULT_TEST_CHILD"
 
-// TestRunFaultSafe_MmapFault verifies that a SIGBUS raised by reading a
-// memory-mapped file whose backing pages are gone (here: truncated away; in
-// production: an unrecoverable disk read error / bad sector) is converted
-// into ErrMemoryFault instead of killing the process.
-//
-// The faulting read runs in a subprocess: without the conversion the fault is
-// a fatal runtime error ("unexpected fault address") that no recover() can
-// catch, so an in-process test would take the whole test binary down with it.
+// TestRunFaultSafe_MmapFault verifies that a SIGBUS from reading a
+// memory-mapped file whose backing pages are gone becomes ErrMemoryFault.
+// Runs in a subprocess: an unconverted fault is a fatal runtime error that
+// would take the whole test binary down.
 func TestRunFaultSafe_MmapFault(t *testing.T) {
 	if os.Getenv(faultChildEnv) == "1" {
 		runFaultSafeMmapFaultChild(t)
@@ -62,10 +58,8 @@ func runFaultSafeMmapFaultChild(t *testing.T) {
 	require.NoError(t, err)
 	defer m.Unmap()
 
-	// Truncating the backing file leaves every mapped page beyond EOF: the
-	// next access faults with SIGBUS (BUS_ADRERR), the same signal an
-	// unrecoverable disk read error produces when the kernel pages in a
-	// mapped range.
+	// Mapped pages beyond EOF fault with SIGBUS on access, like paging in
+	// an unreadable disk block.
 	require.NoError(t, os.Truncate(path, 0))
 
 	buf := make([]byte, size)
@@ -85,8 +79,7 @@ func runFaultSafeMmapFaultChild(t *testing.T) {
 }
 
 // swapMemoryFaultCounter points the package-level fault counter at a manual
-// reader for the duration of the test. NOT parallel-safe (only used in the
-// subprocess child, which runs a single test).
+// reader for the duration of the test. NOT parallel-safe.
 func swapMemoryFaultCounter(t *testing.T) *sdkmetric.ManualReader {
 	t.Helper()
 
@@ -147,9 +140,7 @@ var faultTestSink int //nolint:gochecknoglobals
 func TestRunFaultSafe_NilDerefPanicPropagates(t *testing.T) {
 	t.Parallel()
 
-	// A nil-pointer dereference is a program bug, not a backing-store
-	// failure — it must keep panicking rather than be masked as
-	// ErrMemoryFault.
+	// A nil deref is a bug and must keep panicking, not become ErrMemoryFault.
 	require.Panics(t, func() {
 		_ = RunFaultSafe(t.Context(), func() error {
 			var p *int

@@ -252,11 +252,9 @@ func (b *File) readSegments(ctx context.Context, p []byte, segments []readSegmen
 	return nil
 }
 
-// readSegmentFaultSafe runs readSegment with memory faults converted to
-// errors (block.RunFaultSafe): reading a diff served from a memory-mapped
-// cache file whose backing disk block is unreadable raises SIGBUS, which
-// would otherwise kill the whole process. Converted, it fails only this read
-// - the diff itself is a cache of remotely stored data.
+// readSegmentFaultSafe runs readSegment with memory faults from the diff's
+// mmap'd cache file converted to errors, so an unreadable disk block fails
+// only this read instead of the whole process.
 func (b *File) readSegmentFaultSafe(ctx context.Context, p []byte, s readSegment) error {
 	err := block.RunFaultSafe(ctx, func() error { return b.readSegment(ctx, p, s) })
 	var faultErr *block.MemoryFaultError

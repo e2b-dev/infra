@@ -15,14 +15,11 @@ import (
 
 const readSegmentsFaultChildEnv = "BUILD_FAULT_TEST_CHILD"
 
-// TestReadSegments_MmapFault reproduces the production crash where an
-// unrecoverable disk read error under a build cache file raised SIGBUS inside
-// the readSegments memmove (readSegment → localDiff.ReadAt → Cache.ReadAt →
-// copy) and killed the whole orchestrator. The fault must instead surface as
-// an error from readSegments, failing only the one read.
-//
-// Runs in a subprocess because without the guard the fault is a fatal runtime
-// error that would take the whole test binary down.
+// TestReadSegments_MmapFault reproduces the production crash where a bad
+// sector under a build cache file raised SIGBUS inside the readSegments
+// memmove and killed the whole orchestrator; the fault must surface as an
+// error instead. Runs in a subprocess because an unguarded fault is a fatal
+// runtime error.
 func TestReadSegments_MmapFault(t *testing.T) {
 	if os.Getenv(readSegmentsFaultChildEnv) == "1" {
 		readSegmentsFaultChild(t)
@@ -51,8 +48,7 @@ func readSegmentsFaultChild(t *testing.T) {
 	require.NoError(t, err)
 	defer diff.Close()
 
-	// All mapped pages now sit beyond EOF: accessing them raises SIGBUS,
-	// like paging in an unreadable disk block.
+	// Mapped pages beyond EOF fault with SIGBUS on access.
 	require.NoError(t, os.Truncate(path, 0))
 
 	f := &File{}
@@ -62,7 +58,7 @@ func readSegmentsFaultChild(t *testing.T) {
 		{dstOff: int(2 * blockSize), srcOff: 2 * blockSize, length: 2 * blockSize, diff: diff},
 	}
 
-	// Parallel branch (errgroup) — the exact path from the crash stacks.
+	// Parallel (errgroup) branch — the path from the crash stacks.
 	err = f.readSegments(t.Context(), buf, segments, 4)
 	require.ErrorIs(t, err, block.ErrMemoryFault)
 
