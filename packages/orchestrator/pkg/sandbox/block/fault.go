@@ -32,7 +32,7 @@ type MemoryFaultError struct {
 }
 
 func (e *MemoryFaultError) Error() string {
-	return fmt.Sprintf("memory fault while accessing memory-mapped file at address 0x%x: %v", e.Addr, e.cause)
+	return fmt.Sprintf("memory fault at address 0x%x: %v", e.Addr, e.cause)
 }
 
 func (e *MemoryFaultError) Unwrap() error { return e.cause }
