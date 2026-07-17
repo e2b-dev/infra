@@ -57,8 +57,8 @@ ORDER BY all_ts.ts ASC;
 func (c *Client) QueryTeamMetrics(ctx context.Context, teamID string, start time.Time, end time.Time, step time.Duration) ([]TeamMetrics, error) {
 	rows, err := c.conn.Query(ctx, teamMetricsSelectQuery,
 		clickhouse.Named("team_id", teamID),
-		clickhouse.Named("start_time", start.UTC().UnixNano()),
-		clickhouse.Named("end_time", end.UTC().UnixNano()),
+		clickhouse.Named("start_time", unixNanoForCH(start)),
+		clickhouse.Named("end_time", unixNanoForCH(end)),
 		clickhouse.Named("step", strconv.Itoa(int(step.Seconds()))),
 	)
 	if err != nil {
@@ -109,8 +109,8 @@ func (c *Client) QueryMaxStartRateTeamMetrics(ctx context.Context, teamID string
 	rows, err := c.conn.Query(ctx, maxStartRateTeamMetricsSelectQuery,
 		clickhouse.Named("team_id", teamID),
 		clickhouse.Named("step", strconv.Itoa(int(step.Seconds()))),
-		clickhouse.Named("start_time", start.UTC().UnixNano()),
-		clickhouse.Named("end_time", end.UTC().UnixNano()),
+		clickhouse.Named("start_time", unixNanoForCH(start)),
+		clickhouse.Named("end_time", unixNanoForCH(end)),
 	)
 	if err != nil {
 		return MaxTeamMetric{}, fmt.Errorf("query max start rate team metrics: %w", err)
@@ -151,8 +151,8 @@ WHERE metric_name = '%s'
 func (c *Client) QueryMaxConcurrentTeamMetrics(ctx context.Context, teamID string, start time.Time, end time.Time) (MaxTeamMetric, error) {
 	rows, err := c.conn.Query(ctx, maxConcurrentTeamMetricsSelectQuery,
 		clickhouse.Named("team_id", teamID),
-		clickhouse.Named("start_time", start.UTC().UnixNano()),
-		clickhouse.Named("end_time", end.UTC().UnixNano()),
+		clickhouse.Named("start_time", unixNanoForCH(start)),
+		clickhouse.Named("end_time", unixNanoForCH(end)),
 	)
 	if err != nil {
 		return MaxTeamMetric{}, fmt.Errorf("query max concurrent team metrics: %w", err)
