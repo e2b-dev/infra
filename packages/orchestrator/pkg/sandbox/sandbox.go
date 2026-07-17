@@ -270,6 +270,9 @@ type Sandbox struct {
 	// every time a new Firecracker VM is started.
 	LifecycleID string
 
+	// Fresh host timestamp marking lifecycle start.
+	LifecycleStartedAt time.Time
+
 	config  cfg.BuilderConfig
 	files   *storage.SandboxFiles
 	cleanup *Cleanup
@@ -599,7 +602,8 @@ func (f *Factory) CreateSandbox(
 	}
 
 	sbx := &Sandbox{
-		LifecycleID: lifecycleID,
+		LifecycleID:        lifecycleID,
+		LifecycleStartedAt: time.Now().UTC(),
 
 		Resources:    resources,
 		Metadata:     metadata,
@@ -1010,7 +1014,8 @@ func (f *Factory) ResumeSandbox(
 	}
 
 	sbx := &Sandbox{
-		LifecycleID: lifecycleID,
+		LifecycleID:        lifecycleID,
+		LifecycleStartedAt: time.Now().UTC(),
 
 		Resources:    resources,
 		Metadata:     metadata,

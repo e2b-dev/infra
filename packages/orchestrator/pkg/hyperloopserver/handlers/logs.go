@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -43,6 +44,13 @@ func (h *APIStore) Logs(c *gin.Context) {
 		// Inflight logs with old sandboxID from snapshotted sandbox
 		// Change to error once we have a way how to tell sandbox to flush and stop sending logs when being paused
 		h.logger.Warn(ctx, "error when parsing sandbox logs request", zap.Error(err), logger.WithSandboxID(sbxID))
+
+		return
+	}
+
+	if hasStaleLogTimestamp(payload, sbx.LifecycleStartedAt) {
+		h.sendAPIStoreError(c, http.StatusBadRequest, "Log timestamp predates this sandbox's resume")
+		h.logger.Warn(ctx, "dropping envd log with a stale pre-resume timestamp", logger.WithSandboxID(sbxID))
 
 		return
 	}
@@ -97,4 +105,29 @@ func (h *APIStore) validatePayloadSandboxID(payload map[string]any, sbxID string
 	}
 
 	return nil
+}
+
+// Matches envd's zerolog timestamp format.
+const envdTimestampLayout = time.RFC3339Nano
+
+// Allows normal host/guest clock skew.
+const clockSkewTolerance = time.Minute
+
+// True if timestamp predates resume.
+func hasStaleLogTimestamp(payload map[string]any, lifecycleStart time.Time) bool {
+	if lifecycleStart.IsZero() {
+		return false
+	}
+
+	raw, ok := payload["timestamp"].(string)
+	if !ok {
+		return false
+	}
+
+	ts, err := time.Parse(envdTimestampLayout, raw)
+	if err != nil {
+		return false
+	}
+
+	return ts.Before(lifecycleStart.Add(-clockSkewTolerance))
 }
