@@ -162,11 +162,12 @@ var (
 	// of synchronous. Only safe to enable after PeerToPeerChunkTransferFlag is ON.
 	PeerToPeerAsyncCheckpointFlag = NewBoolFlag("peer-to-peer-async-checkpoint", false)
 
-	// BackgroundRootfsSealFlag makes an in-place snapshot (checkpoint) swap a
-	// fresh COW cache onto the live overlay and resume the guest BEFORE the rootfs
-	// diff is sealed (reflinked) to disk, moving the host->NVMe writeback stall off
-	// the pause critical path. Falls back to the synchronous in-place export when
-	// off, unsupported, or a previous seal is still outstanding.
+	// BackgroundRootfsSealFlag moves the rootfs diff seal (the reflink, which forces
+	// a synchronous host->NVMe writeback) off the pause critical path. For an
+	// in-place checkpoint it swaps a fresh COW cache onto the live overlay and
+	// resumes the guest before sealing the old cache; for a destroy-path pause it
+	// ejects + stops the sandbox and reflinks the diff in the background. Falls back
+	// to the synchronous export when off or unsupported (non-NBD provider).
 	BackgroundRootfsSealFlag = NewBoolFlag("background-rootfs-seal", false)
 
 	PersistentVolumesFlag            = NewBoolFlag("can-use-persistent-volumes", env.IsDevelopment())

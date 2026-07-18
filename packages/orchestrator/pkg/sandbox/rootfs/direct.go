@@ -121,6 +121,10 @@ func (o *DirectProvider) SwapForBackgroundSeal(_ context.Context) (*block.Cache,
 	return nil, fmt.Errorf("direct provider does not support background seal")
 }
 
+func (o *DirectProvider) PrepareExportDiff(_ context.Context, _ func(context.Context) error) (*block.Cache, error) {
+	return nil, fmt.Errorf("direct provider does not support deferred export")
+}
+
 func (o *DirectProvider) ReleaseSealed() *block.Cache {
 	return nil
 }

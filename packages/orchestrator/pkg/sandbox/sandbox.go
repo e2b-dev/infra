@@ -1440,26 +1440,38 @@ func (s *Sandbox) Pause(
 		startSeal func(context.Context)
 	)
 
-	useBackgroundSeal := pauseOpts.maintainSandbox &&
-		s.featureFlags.BoolFlag(ctx, featureflags.BackgroundRootfsSealFlag, sandboxLDContext(s.Runtime, s.Config))
-	if useBackgroundSeal {
-		var swapped bool
-		rootfsDiff, rootfsHeader, startSeal, swapped, err = s.setupBackgroundRootfsSeal(ctx, buildID, originalRootfs.Header(), cleanup)
-		if err != nil {
+	bgSealEnabled := s.featureFlags.BoolFlag(ctx, featureflags.BackgroundRootfsSealFlag, sandboxLDContext(s.Runtime, s.Config))
+	useSyncExport := true
+	switch {
+	case bgSealEnabled && pauseOpts.maintainSandbox:
+		// In-place checkpoint: swap a fresh cache, seal the old one in the
+		// background after resume.
+		d, h, ss, swapped, perr := s.setupBackgroundRootfsSeal(ctx, buildID, originalRootfs.Header(), cleanup)
+		if perr != nil {
 			if swapped {
 				// The overlay already swapped in a fresh cache, so the synchronous
 				// export would miss the pre-swap writes now in the sealing cache —
 				// we cannot safely fall back. Fail the checkpoint (the live VM is
 				// resumed by the error cleanup).
-				return nil, fmt.Errorf("background rootfs seal setup failed after swap: %w", err)
+				return nil, fmt.Errorf("background rootfs seal setup failed after swap: %w", perr)
 			}
-			telemetry.ReportError(ctx, "background rootfs seal unavailable; using synchronous export", err)
-			rootfsDiff, rootfsHeader, startSeal = nil, nil, nil
-			useBackgroundSeal = false
+			telemetry.ReportError(ctx, "background rootfs seal unavailable; using synchronous export", perr)
+		} else {
+			rootfsDiff, rootfsHeader, startSeal, useSyncExport = d, h, ss, false
 		}
+	case bgSealEnabled && !pauseOpts.maintainSandbox:
+		// Destroy-path pause: eject + stop the sandbox now, reflink the diff in the
+		// background so the pause returns without the writeback stall.
+		d, h, ss, perr := s.setupDeferredDestroyExport(ctx, buildID, originalRootfs.Header(), cleanup)
+		if perr != nil {
+			// PrepareExportDiff already began teardown (ejected cache / stopped the
+			// sandbox), so a synchronous fall back would double-eject. Fail the pause.
+			return nil, fmt.Errorf("deferred rootfs export setup failed: %w", perr)
+		}
+		rootfsDiff, rootfsHeader, startSeal, useSyncExport = d, h, ss, false
 	}
 
-	if !useBackgroundSeal {
+	if useSyncExport {
 		rootfsDiffCreator := &RootfsDiffCreator{rootfs: s.rootfs}
 		if !pauseOpts.maintainSandbox {
 			rootfsDiffCreator.closeHook = s.Close
@@ -1537,6 +1549,11 @@ func (s *Sandbox) Pause(
 		if startSeal != nil {
 			startSeal(context.WithoutCancel(ctx))
 		}
+	} else if startSeal != nil {
+		// Destroy-path deferred export: the sandbox is already stopped and the
+		// cache ejected, so reflink it to the diff in the background. The pause
+		// returns without paying the writeback stall.
+		startSeal(context.WithoutCancel(ctx))
 	}
 
 	return &Snapshot{
@@ -1897,30 +1914,7 @@ func (s *Sandbox) runBackgroundRootfsSeal(
 	ctx, span := tracer.Start(ctx, "background-rootfs-seal")
 	defer span.End()
 
-	sealErr := func() error {
-		diffFile, err := build.NewLocalDiffFile(s.config.DefaultCacheDir, buildID.String(), build.Rootfs)
-		if err != nil {
-			return s.failRootfsSeal(diffPromise, fmt.Errorf("create rootfs diff file: %w", err))
-		}
-
-		if _, err := sealCache.ExportToDiff(ctx, diffFile.File); err != nil {
-			return s.failRootfsSeal(diffPromise, errors.Join(fmt.Errorf("export rootfs diff: %w", err), diffFile.Close()))
-		}
-
-		diff, err := diffFile.CloseToDiff(blockSize)
-		if err != nil {
-			return s.failRootfsSeal(diffPromise, fmt.Errorf("materialize rootfs diff: %w", err))
-		}
-
-		if err := diffPromise.SetValue(diff); err != nil {
-			// The promise was already settled (checkpoint aborted); drop the diff
-			// so its cache file doesn't leak.
-			return errors.Join(err, diff.Close())
-		}
-
-		return nil
-	}()
-	if sealErr != nil {
+	if sealErr := s.sealCacheToDiff(ctx, sealCache, buildID, blockSize, diffPromise); sealErr != nil {
 		logger.L().Error(ctx, "background rootfs seal failed", zap.Error(sealErr))
 		// Leave the sealing cache attached (reads stay correct via the sealing
 		// fallback); surface the failure to the next checkpoint.
@@ -1956,6 +1950,113 @@ func (s *Sandbox) failRootfsSeal(diffPromise *utils.SetOnce[build.Diff], err err
 	_ = diffPromise.SetError(err)
 
 	return err
+}
+
+// sealCacheToDiff reflinks the frozen cache into a fresh local diff file and
+// resolves diffPromise with the materialized diff. It is the shared core of the
+// in-place background seal and the destroy-path deferred export; it never touches
+// the overlay (no swap/fold) so both callers can layer their own follow-up.
+func (s *Sandbox) sealCacheToDiff(
+	ctx context.Context,
+	sealCache *block.Cache,
+	buildID uuid.UUID,
+	blockSize int64,
+	diffPromise *utils.SetOnce[build.Diff],
+) error {
+	diffFile, err := build.NewLocalDiffFile(s.config.DefaultCacheDir, buildID.String(), build.Rootfs)
+	if err != nil {
+		return s.failRootfsSeal(diffPromise, fmt.Errorf("create rootfs diff file: %w", err))
+	}
+
+	if _, err := sealCache.ExportToDiff(ctx, diffFile.File); err != nil {
+		return s.failRootfsSeal(diffPromise, errors.Join(fmt.Errorf("export rootfs diff: %w", err), diffFile.Close()))
+	}
+
+	diff, err := diffFile.CloseToDiff(blockSize)
+	if err != nil {
+		return s.failRootfsSeal(diffPromise, fmt.Errorf("materialize rootfs diff: %w", err))
+	}
+
+	if err := diffPromise.SetValue(diff); err != nil {
+		// The promise was already settled (pause aborted); drop the diff so its
+		// cache file doesn't leak.
+		return errors.Join(err, diff.Close())
+	}
+
+	return nil
+}
+
+// setupDeferredDestroyExport ejects the writable cache and stops the sandbox
+// (destroy path), then prepares the deferred rootfs diff + header from the frozen
+// ejected cache. It returns a startSeal closure that reflinks the cache into the
+// diff in the background, so the pause returns without paying the reflink stall.
+// Unlike the in-place seal there is no swap or fold — the sandbox is gone.
+func (s *Sandbox) setupDeferredDestroyExport(
+	ctx context.Context,
+	buildID uuid.UUID,
+	originalHeader *header.Header,
+	cleanup *Cleanup,
+) (d build.Diff, h *header.Header, startSeal func(context.Context), e error) {
+	sealCache, err := s.rootfs.PrepareExportDiff(ctx, s.Close)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	diffMetadata, err := sealCache.DiffMetadata()
+	if err != nil {
+		return nil, nil, nil, errors.Join(fmt.Errorf("reading ejected cache metadata: %w", err), sealCache.Close())
+	}
+
+	rootfsHeader, err := diffMetadata.ToDiffHeader(ctx, originalHeader, buildID)
+	if err != nil {
+		return nil, nil, nil, errors.Join(fmt.Errorf("building rootfs diff header: %w", err), sealCache.Close())
+	}
+
+	blockSize := int64(originalHeader.Metadata.BlockSize)
+	diffPromise := utils.NewSetOnce[build.Diff]()
+	rootfsDiff := build.NewDeferredDiff(build.GetDiffStoreKey(buildID.String(), build.Rootfs), blockSize, diffPromise)
+
+	// LIFO: the abort resolver (added last) runs before rootfsDiff.Close, so the
+	// deferred diff's Close never blocks on a seal that won't run.
+	cleanup.AddNoContext(ctx, rootfsDiff.Close)
+	cleanup.Add(ctx, func(context.Context) error {
+		_ = diffPromise.SetError(errors.New("pause aborted before deferred rootfs export ran"))
+
+		return nil
+	})
+
+	startSeal = func(sealCtx context.Context) {
+		go s.runDeferredDestroyExport(sealCtx, sealCache, buildID, blockSize, diffPromise)
+	}
+
+	return rootfsDiff, rootfsHeader, startSeal, nil
+}
+
+// runDeferredDestroyExport reflinks the ejected cache into the rootfs diff and
+// closes the cache. The sandbox is already gone, so there is nothing to fold or
+// serialize; the upload waits on the deferred diff, gating shutdown via the
+// server's upload WaitGroup.
+func (s *Sandbox) runDeferredDestroyExport(
+	ctx context.Context,
+	sealCache *block.Cache,
+	buildID uuid.UUID,
+	blockSize int64,
+	diffPromise *utils.SetOnce[build.Diff],
+) {
+	ctx, span := tracer.Start(ctx, "deferred-destroy-rootfs-export")
+	defer span.End()
+
+	if err := s.sealCacheToDiff(ctx, sealCache, buildID, blockSize, diffPromise); err != nil {
+		logger.L().Error(ctx, "deferred rootfs export failed", zap.Error(err))
+	} else {
+		telemetry.ReportEvent(ctx, "rootfs diff sealed (deferred destroy)")
+	}
+
+	// The sandbox is torn down; the ejected cache is ours to close regardless of
+	// the export outcome.
+	if err := sealCache.Close(); err != nil {
+		logger.L().Warn(ctx, "closing ejected rootfs cache", zap.Error(err))
+	}
 }
 
 // createCgroup creates a cgroup for sandbox resource accounting.

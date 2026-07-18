@@ -26,6 +26,10 @@ type Provider interface {
 	Path() (string, error)
 	ExportDiff(ctx context.Context, out *os.File, closeSandbox func(context.Context) error) (*header.DiffMetadata, error)
 	ExportDiffInPlace(ctx context.Context, out *os.File) (*header.DiffMetadata, error)
+	// PrepareExportDiff ejects the writable cache and stops the sandbox, returning
+	// the frozen ejected cache without reflinking it, so the destroy path can seal
+	// it into a diff in the background. Only the NBD provider supports it.
+	PrepareExportDiff(ctx context.Context, closeSandbox func(context.Context) error) (*block.Cache, error)
 	// SwapForBackgroundSeal flushes the device, swaps a fresh writable cache onto
 	// the live overlay and returns the previous (now frozen) cache so the caller
 	// can seal it (ExportToDiff) in the background while the VM keeps running.

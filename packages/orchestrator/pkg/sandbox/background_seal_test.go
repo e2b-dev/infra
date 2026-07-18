@@ -40,6 +40,18 @@ func (f *fakeSealProvider) ExportDiffInPlace(context.Context, *os.File) (*header
 	return nil, fmt.Errorf("unused")
 }
 
+func (f *fakeSealProvider) PrepareExportDiff(ctx context.Context, closeSandbox func(context.Context) error) (*block.Cache, error) {
+	cache, err := f.overlay.EjectCache()
+	if err != nil {
+		return nil, err
+	}
+	if closeSandbox != nil {
+		_ = closeSandbox(ctx)
+	}
+
+	return cache, nil
+}
+
 func (f *fakeSealProvider) SwapForBackgroundSeal(context.Context) (*block.Cache, error) {
 	f.gen++
 	fresh, err := block.NewCache(f.size, f.blockSize, fmt.Sprintf("%s/fresh%d", f.dir, f.gen), false)
@@ -137,6 +149,46 @@ func TestRunBackgroundRootfsSeal(t *testing.T) {
 	require.NoError(t, err, "sealing slot must be free after fold")
 
 	require.NoError(t, overlay.Close())
+}
+
+// TestRunDeferredDestroyExport verifies the destroy-path deferral: the ejected
+// frozen cache is reflinked into the deferred diff (resolving it with the sealed
+// bytes) and then closed, with no fold/overlay interaction.
+func TestRunDeferredDestroyExport(t *testing.T) {
+	t.Parallel()
+
+	blockSize := int64(header.PageSize)
+	numBlocks := int64(3)
+	size := blockSize * numBlocks
+
+	// A standalone frozen cache with block 1 dirtied (the ejected COW cache).
+	sealCache, err := block.NewCache(size, blockSize, t.TempDir()+"/ejected", false)
+	require.NoError(t, err)
+	blockData := make([]byte, blockSize)
+	for i := range blockData {
+		blockData[i] = 0x5C
+	}
+	_, err = sealCache.WriteAt(blockData, blockSize)
+	require.NoError(t, err)
+
+	s := &Sandbox{
+		Resources: &Resources{},
+		config:    cfg.BuilderConfig{DefaultCacheDir: t.TempDir()},
+	}
+
+	buildID := uuid.New()
+	diffPromise := utils.NewSetOnce[build.Diff]()
+
+	s.runDeferredDestroyExport(t.Context(), sealCache, buildID, blockSize, diffPromise)
+
+	diff, err := diffPromise.Result()
+	require.NoError(t, err)
+	path, err := diff.CachePath(t.Context())
+	require.NoError(t, err)
+	got, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, blockData, got, "deferred diff must contain the dirtied block")
+	require.NoError(t, diff.Close())
 }
 
 // fakeRODevice is a minimal block.ReadonlyDevice over a byte buffer.
