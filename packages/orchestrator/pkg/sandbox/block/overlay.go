@@ -13,8 +13,16 @@ import (
 )
 
 type Overlay struct {
-	device       ReadonlyDevice
-	cache        *Cache
+	device ReadonlyDevice
+	// cache is the writable target. It is loaded atomically on every read/write
+	// so it can be swapped for a fresh cache (SwapCache) while the overlay stays
+	// live.
+	cache atomic.Pointer[Cache]
+	// sealing holds the previous writable cache after a SwapCache: it is frozen
+	// (no new writes land in it) and kept as a read-only fallback so blocks
+	// written before the swap still resolve, until it has been sealed to a diff
+	// and released (ReleaseSealing).
+	sealing      atomic.Pointer[Cache]
 	cacheEjected atomic.Bool
 	blockSize    int64
 }
@@ -22,29 +30,60 @@ type Overlay struct {
 var _ Device = (*Overlay)(nil)
 
 func NewOverlay(device ReadonlyDevice, cache *Cache) *Overlay {
-	blockSize := device.BlockSize()
-
-	return &Overlay{
+	o := &Overlay{
 		device:    device,
-		cache:     cache,
-		blockSize: blockSize,
+		blockSize: device.BlockSize(),
 	}
+	o.cache.Store(cache)
+
+	return o
+}
+
+// isCacheClosed reports whether err is a *CacheClosedError. A sealing cache can
+// be closed by a concurrent collapse after ReadAt has loaded its pointer; in
+// that window we treat it as "not present here" and fall through to the base
+// device (which the collapse guarantees can serve the block before it closes the
+// sealing cache — see Overlay.ReleaseSealing callers).
+func isCacheClosed(err error) bool {
+	var closed *CacheClosedError
+
+	return errors.As(err, &closed)
 }
 
 func (o *Overlay) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
+	// Snapshot both cache pointers once so a concurrent SwapCache/collapse can't
+	// change the layering mid-read.
+	cache := o.cache.Load()
+	sealing := o.sealing.Load()
+
 	blocks := header.BlocksOffsets(int64(len(p)), o.blockSize)
 
 	for _, blockOff := range blocks {
-		n, err := o.cache.ReadAt(p[blockOff:blockOff+o.blockSize], off+blockOff)
+		buf := p[blockOff : blockOff+o.blockSize]
+		blockAbsOff := off + blockOff
+
+		// 1. writable cache
+		n, err := cache.ReadAt(buf, blockAbsOff)
 		if err == nil {
 			continue
 		}
-
 		if !errors.As(err, &BytesNotAvailableError{}) {
 			return n, fmt.Errorf("error reading from cache: %w", err)
 		}
 
-		n, err = o.device.ReadAt(ctx, p[blockOff:blockOff+o.blockSize], off+blockOff)
+		// 2. sealing (frozen previous) cache, if a swap is outstanding
+		if sealing != nil {
+			n, err = sealing.ReadAt(buf, blockAbsOff)
+			if err == nil {
+				continue
+			}
+			if !errors.As(err, &BytesNotAvailableError{}) && !isCacheClosed(err) {
+				return n, fmt.Errorf("error reading from sealing cache: %w", err)
+			}
+		}
+
+		// 3. read-only base device
+		n, err = o.device.ReadAt(ctx, buf, blockAbsOff)
 		if err != nil {
 			return n, fmt.Errorf("error reading from device: %w", err)
 		}
@@ -53,12 +92,49 @@ func (o *Overlay) ReadAt(ctx context.Context, p []byte, off int64) (int, error) 
 	return len(p), nil
 }
 
+// SwapCache installs newCache as the writable target and moves the previous
+// writable cache into the read-only "sealing" slot, returning it. Reads of
+// blocks written before the swap keep resolving through the sealing cache; new
+// writes land in newCache, so the returned cache is frozen and safe to seal
+// (reflink/export) in the background while the VM keeps running.
+//
+// Only one cache may be sealing at a time — SwapCache errors if a previous one
+// has not yet been released via ReleaseSealing. The caller must ensure no writes
+// are in flight during the swap (the VM is FC-paused at snapshot time).
+func (o *Overlay) SwapCache(newCache *Cache) (*Cache, error) {
+	if o.cacheEjected.Load() {
+		return nil, errors.New("cache ejected")
+	}
+
+	if o.sealing.Load() != nil {
+		return nil, errors.New("a previous cache is still sealing")
+	}
+
+	old := o.cache.Load()
+	// Publish the sealing pointer before repointing the writable target so a
+	// concurrent reader never sees a gap where a pre-swap block resolves to
+	// neither cache.
+	o.sealing.Store(old)
+	o.cache.Store(newCache)
+
+	return old, nil
+}
+
+// ReleaseSealing detaches the sealing cache (if any) and clears the slot so a
+// subsequent SwapCache can proceed. It returns the detached cache for the caller
+// to Close; nil if none is sealing. Callers must guarantee the base device can
+// already serve the sealing cache's blocks (e.g. after a header rebase) before
+// closing it, so in-flight reads that fall through don't miss data.
+func (o *Overlay) ReleaseSealing() *Cache {
+	return o.sealing.Swap(nil)
+}
+
 func (o *Overlay) EjectCache() (*Cache, error) {
 	if !o.cacheEjected.CompareAndSwap(false, true) {
 		return nil, errors.New("cache already ejected")
 	}
 
-	return o.cache, nil
+	return o.cache.Load(), nil
 }
 
 // ExportDiffInPlace writes the overlay's dirty blocks to `out` without detaching
@@ -69,7 +145,7 @@ func (o *Overlay) ExportDiffInPlace(ctx context.Context, out *os.File) (*header.
 		return nil, errors.New("cache ejected")
 	}
 
-	return o.cache.ExportToDiff(ctx, out)
+	return o.cache.Load().ExportToDiff(ctx, out)
 }
 
 // This method will not be very optimal if the length is not the same as the block size, because we cannot be just exposing the cache slice,
@@ -81,15 +157,15 @@ func (o *Overlay) Slice(_ context.Context, _, _ int64) ([]byte, error) {
 }
 
 func (o *Overlay) WriteAt(p []byte, off int64) (int, error) {
-	return o.cache.WriteAt(p, off)
+	return o.cache.Load().WriteAt(p, off)
 }
 
 func (o *Overlay) WriteZeroesAt(off, length int64) (int, error) {
-	return o.cache.WriteZeroesAt(off, length)
+	return o.cache.Load().WriteZeroesAt(off, length)
 }
 
 func (o *Overlay) Size(_ context.Context) (int64, error) {
-	return o.cache.Size()
+	return o.cache.Load().Size()
 }
 
 func (o *Overlay) BlockSize() int64 {
@@ -97,11 +173,19 @@ func (o *Overlay) BlockSize() int64 {
 }
 
 func (o *Overlay) Close() error {
-	if o.cacheEjected.Load() {
-		return nil
+	var errs []error
+
+	// Close any outstanding sealing cache first; it is never ejected (only the
+	// writable cache is), so it always belongs to the overlay.
+	if sealing := o.sealing.Swap(nil); sealing != nil {
+		errs = append(errs, sealing.Close())
 	}
 
-	return o.cache.Close()
+	if !o.cacheEjected.Load() {
+		errs = append(errs, o.cache.Load().Close())
+	}
+
+	return errors.Join(errs...)
 }
 
 func (o *Overlay) Header() *header.Header {
