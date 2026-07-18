@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -25,6 +26,15 @@ type Provider interface {
 	Path() (string, error)
 	ExportDiff(ctx context.Context, out *os.File, closeSandbox func(context.Context) error) (*header.DiffMetadata, error)
 	ExportDiffInPlace(ctx context.Context, out *os.File) (*header.DiffMetadata, error)
+	// SwapForBackgroundSeal flushes the device, swaps a fresh writable cache onto
+	// the live overlay and returns the previous (now frozen) cache so the caller
+	// can seal it (ExportToDiff) in the background while the VM keeps running.
+	// Only the NBD provider supports it.
+	SwapForBackgroundSeal(ctx context.Context) (*block.Cache, error)
+	// ReleaseSealed detaches the sealing cache once its background seal has
+	// completed (and the base device can serve its blocks), returning it for the
+	// caller to Close. Returns nil if none is sealing.
+	ReleaseSealed() *block.Cache
 }
 
 // flush flushes the data to the operating system's buffer.

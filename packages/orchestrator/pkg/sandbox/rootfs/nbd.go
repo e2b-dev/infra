@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync/atomic"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -29,6 +30,10 @@ type NBDProvider struct {
 	ready *utils.SetOnce[string]
 
 	blockSize int64
+	// cachePath is the path of the initial writable cache; fresh caches created
+	// by SwapForBackgroundSeal derive a unique path from it.
+	cachePath string
+	sealGen   atomic.Int64
 
 	finishedOperations chan struct{}
 	devicePool         *nbd.DevicePool
@@ -58,6 +63,7 @@ func NewNBDProvider(ctx context.Context, rootfs block.ReadonlyDevice, cachePath 
 		ready:              utils.NewSetOnce[string](),
 		finishedOperations: make(chan struct{}, 1),
 		blockSize:          blockSize,
+		cachePath:          cachePath,
 		devicePool:         devicePool,
 	}, nil
 }
@@ -150,6 +156,47 @@ func (o *NBDProvider) ExportDiffInPlace(
 	}
 
 	return o.overlay.ExportDiffInPlace(ctx, out)
+}
+
+// SwapForBackgroundSeal flushes the NBD device (so all in-flight writes land in
+// the current cache), then swaps a fresh empty cache onto the overlay and
+// returns the previous cache. The returned cache is frozen — new guest writes go
+// to the fresh cache — so the caller can reflink/export it (ExportToDiff) in the
+// background while the VM resumes. The device flush stays on the critical path;
+// only the reflink is deferred.
+func (o *NBDProvider) SwapForBackgroundSeal(ctx context.Context) (*block.Cache, error) {
+	ctx, span := tracer.Start(ctx, "cow-swap-for-seal")
+	defer span.End()
+
+	if err := o.sync(ctx); err != nil {
+		return nil, fmt.Errorf("flushing COW device failed: %w", err)
+	}
+
+	size, err := o.overlay.Size(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("getting overlay size: %w", err)
+	}
+
+	gen := o.sealGen.Add(1)
+	freshPath := fmt.Sprintf("%s.seal%d", o.cachePath, gen)
+	fresh, err := block.NewCache(size, o.blockSize, freshPath, false)
+	if err != nil {
+		return nil, fmt.Errorf("creating fresh cache: %w", err)
+	}
+
+	old, err := o.overlay.SwapCache(fresh)
+	if err != nil {
+		return nil, errors.Join(fmt.Errorf("swapping cache: %w", err), fresh.Close())
+	}
+
+	return old, nil
+}
+
+// ReleaseSealed detaches the sealing cache from the overlay so a subsequent swap
+// can proceed and the caller can Close it. See block.Overlay.ReleaseSealing for
+// the ordering contract (the base device must be able to serve its blocks first).
+func (o *NBDProvider) ReleaseSealed() *block.Cache {
+	return o.overlay.ReleaseSealing()
 }
 
 func (o *NBDProvider) Close(ctx context.Context) error {

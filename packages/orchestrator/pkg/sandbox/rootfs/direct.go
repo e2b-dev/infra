@@ -117,6 +117,14 @@ func (o *DirectProvider) ExportDiffInPlace(_ context.Context, _ *os.File) (*head
 	return nil, fmt.Errorf("direct provider does not support in-place export")
 }
 
+func (o *DirectProvider) SwapForBackgroundSeal(_ context.Context) (*block.Cache, error) {
+	return nil, fmt.Errorf("direct provider does not support background seal")
+}
+
+func (o *DirectProvider) ReleaseSealed() *block.Cache {
+	return nil
+}
+
 func (o *DirectProvider) Close(ctx context.Context) error {
 	o.finishedOperations <- struct{}{}
 
