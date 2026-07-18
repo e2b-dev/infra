@@ -18,7 +18,7 @@ var meter = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandb
 
 var memoryFaultCounter = utils.Must(meter.Int64Counter(
 	"orchestrator.block.memory_fault",
-	metric.WithDescription("Memory faults recovered while accessing memory-mapped cache files."),
+	metric.WithDescription("Memory faults recovered by RunFaultSafe; healthy steady state is zero"),
 	metric.WithUnit("{fault}"),
 ))
 
