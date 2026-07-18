@@ -35,6 +35,12 @@ type Provider interface {
 	// completed (and the base device can serve its blocks), returning it for the
 	// caller to Close. Returns nil if none is sealing.
 	ReleaseSealed() *block.Cache
+	// FoldSealed folds the sealing cache into the live writable cache and detaches
+	// it, returning it for the caller to Close. After it returns the writable
+	// cache is a complete diff again, so a subsequent SwapForBackgroundSeal can
+	// proceed. Returns nil if none is sealing; on error the sealing cache stays
+	// attached and must not be closed.
+	FoldSealed(ctx context.Context) (*block.Cache, error)
 }
 
 // flush flushes the data to the operating system's buffer.

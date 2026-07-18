@@ -199,6 +199,15 @@ func (o *NBDProvider) ReleaseSealed() *block.Cache {
 	return o.overlay.ReleaseSealing()
 }
 
+// FoldSealed folds the sealing cache into the live writable cache and detaches it
+// for closing. See block.Overlay.FoldSealing.
+func (o *NBDProvider) FoldSealed(ctx context.Context) (*block.Cache, error) {
+	_, span := tracer.Start(ctx, "cow-fold-sealed")
+	defer span.End()
+
+	return o.overlay.FoldSealing()
+}
+
 func (o *NBDProvider) Close(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "cow-close")
 	defer span.End()

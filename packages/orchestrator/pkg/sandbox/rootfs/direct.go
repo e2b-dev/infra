@@ -125,6 +125,10 @@ func (o *DirectProvider) ReleaseSealed() *block.Cache {
 	return nil
 }
 
+func (o *DirectProvider) FoldSealed(_ context.Context) (*block.Cache, error) {
+	return nil, nil
+}
+
 func (o *DirectProvider) Close(ctx context.Context) error {
 	o.finishedOperations <- struct{}{}
 

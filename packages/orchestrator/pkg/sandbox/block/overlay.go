@@ -122,11 +122,32 @@ func (o *Overlay) SwapCache(newCache *Cache) (*Cache, error) {
 
 // ReleaseSealing detaches the sealing cache (if any) and clears the slot so a
 // subsequent SwapCache can proceed. It returns the detached cache for the caller
-// to Close; nil if none is sealing. Callers must guarantee the base device can
-// already serve the sealing cache's blocks (e.g. after a header rebase) before
-// closing it, so in-flight reads that fall through don't miss data.
+// to Close; nil if none is sealing. Callers must guarantee the writable cache or
+// base device can already serve the sealing cache's blocks (see FoldSealing)
+// before closing it, so in-flight reads that fall through don't miss data.
 func (o *Overlay) ReleaseSealing() *Cache {
 	return o.sealing.Swap(nil)
+}
+
+// FoldSealing folds the sealing cache into the writable cache (copying only the
+// blocks the writable cache doesn't already hold), then detaches and returns the
+// sealing cache for the caller to Close. After a successful fold the writable
+// cache is a complete diff again, so reads no longer need the sealing layer and
+// a subsequent SwapCache can proceed. Returns (nil, nil) if nothing is sealing.
+//
+// On fold error the sealing cache is left attached (reads stay correct via the
+// sealing fallback) and the error is returned; the caller must not close it.
+func (o *Overlay) FoldSealing() (*Cache, error) {
+	sealing := o.sealing.Load()
+	if sealing == nil {
+		return nil, nil
+	}
+
+	if err := o.cache.Load().FillMissingFrom(sealing); err != nil {
+		return nil, err
+	}
+
+	return o.ReleaseSealing(), nil
 }
 
 func (o *Overlay) EjectCache() (*Cache, error) {

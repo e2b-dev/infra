@@ -152,6 +152,67 @@ func TestOverlaySwapCache_ErrsWhenEjected(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestOverlayFoldSealing_MakesWritableComplete verifies fold-forward: after
+// FoldSealing, the writable cache holds every block from the sealing cache it
+// didn't already have (older blocks), while post-swap writes keep their newer
+// values, and the sealing cache is detached. Reads then resolve entirely from
+// the writable cache + base.
+func TestOverlayFoldSealing_MakesWritableComplete(t *testing.T) {
+	t.Parallel()
+
+	blockSize := int64(header.PageSize)
+	numBlocks := int64(5)
+	base := &fakeOriginalDevice{data: make([]byte, blockSize*numBlocks)}
+
+	c0, err := NewCache(blockSize*numBlocks, blockSize, t.TempDir()+"/c0", false)
+	require.NoError(t, err)
+	o := NewOverlay(base, c0)
+
+	// Pre-swap: block 0 = 0xAA (dirty), block 1 zeroed (zero-state).
+	_, err = o.WriteAt(fill(blockSize, 0xAA), 0)
+	require.NoError(t, err)
+	_, err = o.WriteZeroesAt(blockSize, blockSize)
+	require.NoError(t, err)
+
+	// Swap; c0 becomes sealing.
+	c1, err := NewCache(blockSize*numBlocks, blockSize, t.TempDir()+"/c1", false)
+	require.NoError(t, err)
+	_, err = o.SwapCache(c1)
+	require.NoError(t, err)
+
+	// Post-swap: overwrite block 0 = 0xBB (newer), write block 2 = 0xCC.
+	_, err = o.WriteAt(fill(blockSize, 0xBB), 0)
+	require.NoError(t, err)
+	_, err = o.WriteAt(fill(blockSize, 0xCC), 2*blockSize)
+	require.NoError(t, err)
+
+	// Fold the sealing cache down into the writable cache.
+	detached, err := o.FoldSealing()
+	require.NoError(t, err)
+	require.Same(t, c0, detached)
+	require.NoError(t, detached.Close())
+	require.Nil(t, o.ReleaseSealing(), "sealing slot is free after fold")
+
+	read := func(blockIdx int64) []byte {
+		buf := make([]byte, blockSize)
+		_, rerr := o.ReadAt(t.Context(), buf, blockIdx*blockSize)
+		require.NoError(t, rerr)
+
+		return buf
+	}
+
+	// Block 0: post-swap 0xBB wins over the sealing cache's 0xAA.
+	require.Equal(t, fill(blockSize, 0xBB), read(0))
+	// Block 1: only in the sealing cache (zeroed) → folded in as zeroes.
+	require.Equal(t, make([]byte, blockSize), read(1))
+	// Block 2: post-swap write, resolves from the writable cache.
+	require.Equal(t, fill(blockSize, 0xCC), read(2))
+	// Block 3: never written → base device (zeroes).
+	require.Equal(t, make([]byte, blockSize), read(3))
+
+	require.NoError(t, o.Close())
+}
+
 // TestOverlaySwapCache_ClosedSealingFallsThrough verifies the read safety net:
 // if the sealing cache is closed out from under an in-flight read (as a collapse
 // would do after a header rebase), ReadAt falls through to the base device
