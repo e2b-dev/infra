@@ -171,14 +171,25 @@ func verifyChecksum(t *testing.T, ctx context.Context, persistence storage.Stora
 	obj, err := persistence.OpenSeekable(ctx, dataPath)
 	require.NoErrorf(t, err, "%s/%s: open data file %s", node.name, fileName, dataPath)
 
-	rc, _, err := obj.OpenRangeReader(ctx, 0, bd.Size, bd.FrameData)
-	require.NoErrorf(t, err, "%s/%s: open range reader", node.name, fileName)
-	defer rc.Close(context.WithoutCancel(ctx))
-
 	hasher := sha256.New()
-	n, err := io.Copy(hasher, rc)
-	require.NoErrorf(t, err, "%s/%s: stream data through hasher", node.name, fileName)
-	require.Equalf(t, bd.Size, n, "%s/%s: streamed bytes (%d) differ from BuildData.Size (%d)", node.name, fileName, n, bd.Size)
+	// OpenRangeReader returns one compression frame, so verify each frame separately.
+	for offset := int64(0); offset < bd.Size; {
+		chunkLength := min(int64(storage.DefaultCompressFrameSize), bd.Size-offset)
+		if bd.FrameData.IsCompressed() {
+			frame, err := bd.FrameData.LocateUncompressed(offset)
+			require.NoErrorf(t, err, "%s/%s: locate frame at offset %d", node.name, fileName, offset)
+			chunkLength = min(int64(frame.Length), bd.Size-offset)
+		}
+
+		rc, _, err := obj.OpenRangeReader(ctx, offset, chunkLength, bd.FrameData)
+		require.NoErrorf(t, err, "%s/%s: open range reader", node.name, fileName)
+		n, readErr := io.Copy(hasher, rc)
+		_, closeErr := rc.Close(context.WithoutCancel(ctx))
+		require.NoErrorf(t, readErr, "%s/%s: stream data through hasher", node.name, fileName)
+		require.NoErrorf(t, closeErr, "%s/%s: close range reader", node.name, fileName)
+		require.Equalf(t, chunkLength, n, "%s/%s: streamed chunk bytes (%d) at offset %d differ from requested size (%d)", node.name, fileName, n, offset, chunkLength)
+		offset += n
+	}
 
 	var got [32]byte
 	copy(got[:], hasher.Sum(nil))
