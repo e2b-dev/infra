@@ -310,6 +310,14 @@ type Sandbox struct {
 	// so the warm harvest never pollutes the customer resume distributions. Set
 	// from the WithoutLiveRegistration resume option.
 	skipStartupMetrics bool
+
+	// rootfsSealMu guards rootfsSealDone.
+	rootfsSealMu sync.Mutex
+	// rootfsSealDone is resolved when the most recent in-place background rootfs
+	// seal (swap + reflink + fold) finishes. A subsequent in-place checkpoint
+	// waits on it so the writable COW cache is a complete diff before it swaps
+	// again. nil until the first background seal runs.
+	rootfsSealDone *utils.SetOnce[struct{}]
 }
 
 func (s *Sandbox) RunUpdate(update func() error) error {
@@ -1413,22 +1421,62 @@ func (s *Sandbox) Pause(
 	// harmless and keeps the cleanup ordering identical to the memory path.
 	cleanup.AddNoContext(ctx, mem.Diff.Close)
 
-	rootfsDiffCreator := &RootfsDiffCreator{rootfs: s.rootfs}
-	if !pauseOpts.maintainSandbox {
-		rootfsDiffCreator.closeHook = s.Close
+	// Serialize against any still-running background rootfs seal of this sandbox:
+	// its fold makes the writable COW cache a complete diff again, which every
+	// subsequent export (background or synchronous) relies on. The VM is paused
+	// here, so this only waits out a prior reflink+fold that overran into this
+	// checkpoint.
+	if pauseOpts.maintainSandbox {
+		if err := s.waitForRootfsSeal(ctx); err != nil {
+			return nil, fmt.Errorf("previous rootfs seal did not complete: %w", err)
+		}
 	}
 
-	rootfsDiff, rootfsHeader, err := pauseProcessRootfs(
-		ctx,
-		buildID,
-		originalRootfs.Header(),
-		rootfsDiffCreator,
-		s.config.DefaultCacheDir,
+	var (
+		rootfsDiff   build.Diff
+		rootfsHeader *header.Header
+		// startSeal, when non-nil, kicks off the background rootfs seal after the
+		// guest has resumed in place; nil for the synchronous export.
+		startSeal func(context.Context)
 	)
-	if err != nil {
-		return nil, fmt.Errorf("error while post processing: %w", err)
+
+	useBackgroundSeal := pauseOpts.maintainSandbox &&
+		s.featureFlags.BoolFlag(ctx, featureflags.BackgroundRootfsSealFlag, sandboxLDContext(s.Runtime, s.Config))
+	if useBackgroundSeal {
+		var swapped bool
+		rootfsDiff, rootfsHeader, startSeal, swapped, err = s.setupBackgroundRootfsSeal(ctx, buildID, originalRootfs.Header(), cleanup)
+		if err != nil {
+			if swapped {
+				// The overlay already swapped in a fresh cache, so the synchronous
+				// export would miss the pre-swap writes now in the sealing cache —
+				// we cannot safely fall back. Fail the checkpoint (the live VM is
+				// resumed by the error cleanup).
+				return nil, fmt.Errorf("background rootfs seal setup failed after swap: %w", err)
+			}
+			telemetry.ReportError(ctx, "background rootfs seal unavailable; using synchronous export", err)
+			rootfsDiff, rootfsHeader, startSeal = nil, nil, nil
+			useBackgroundSeal = false
+		}
 	}
-	cleanup.AddNoContext(ctx, rootfsDiff.Close)
+
+	if !useBackgroundSeal {
+		rootfsDiffCreator := &RootfsDiffCreator{rootfs: s.rootfs}
+		if !pauseOpts.maintainSandbox {
+			rootfsDiffCreator.closeHook = s.Close
+		}
+
+		rootfsDiff, rootfsHeader, err = pauseProcessRootfs(
+			ctx,
+			buildID,
+			originalRootfs.Header(),
+			rootfsDiffCreator,
+			s.config.DefaultCacheDir,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("error while post processing: %w", err)
+		}
+		cleanup.AddNoContext(ctx, rootfsDiff.Close)
+	}
 
 	rootfsDiffHeader := NewResolvedDiffHeader(rootfsHeader)
 	// Derive scheduling metadata synchronously so Pause never blocks on the
@@ -1482,6 +1530,13 @@ func (s *Sandbox) Pause(
 
 		s.Checks = NewChecks(s)
 		go s.Checks.Start(context.WithoutCancel(ctx))
+
+		// The guest is running again; seal the frozen rootfs cache to a diff (the
+		// reflink/writeback) off the critical path. Started only now so the stall
+		// no longer blocks resume.
+		if startSeal != nil {
+			startSeal(context.WithoutCancel(ctx))
+		}
 	}
 
 	return &Snapshot{
@@ -1741,6 +1796,166 @@ func pauseProcessRootfs(
 	}
 
 	return rootfsDiff, rootfsHeader, nil
+}
+
+// waitForRootfsSeal blocks until the most recent in-place background rootfs seal
+// of this sandbox has completed (its fold made the writable COW cache whole
+// again). Returns immediately if none has run. A failed prior seal surfaces its
+// error so the caller aborts rather than exporting an incomplete writable cache.
+func (s *Sandbox) waitForRootfsSeal(ctx context.Context) error {
+	s.rootfsSealMu.Lock()
+	done := s.rootfsSealDone
+	s.rootfsSealMu.Unlock()
+
+	if done == nil {
+		return nil
+	}
+
+	_, err := done.WaitWithContext(ctx)
+
+	return err
+}
+
+// setupBackgroundRootfsSeal swaps a fresh COW cache onto the live overlay and
+// prepares the deferred rootfs diff + header from the now-frozen previous cache,
+// all synchronously (the VM is paused). It returns a startSeal closure that the
+// caller invokes AFTER the guest has resumed in place to run the reflink/export
+// and fold off the critical path.
+//
+// swapped reports whether the overlay was already mutated: if it is true and an
+// error is returned, the caller must not fall back to the synchronous export
+// (which would miss the pre-swap writes now in the sealing cache).
+func (s *Sandbox) setupBackgroundRootfsSeal(
+	ctx context.Context,
+	buildID uuid.UUID,
+	originalHeader *header.Header,
+	cleanup *Cleanup,
+) (d build.Diff, h *header.Header, startSeal func(context.Context), swapped bool, e error) {
+	sealCache, err := s.rootfs.SwapForBackgroundSeal(ctx)
+	if err != nil {
+		return nil, nil, nil, false, err
+	}
+	// From here the overlay is swapped; any failure must fail the checkpoint.
+
+	diffMetadata, err := sealCache.DiffMetadata()
+	if err != nil {
+		return nil, nil, nil, true, fmt.Errorf("reading sealed cache metadata: %w", err)
+	}
+
+	rootfsHeader, err := diffMetadata.ToDiffHeader(ctx, originalHeader, buildID)
+	if err != nil {
+		return nil, nil, nil, true, fmt.Errorf("building rootfs diff header: %w", err)
+	}
+
+	blockSize := int64(originalHeader.Metadata.BlockSize)
+	diffPromise := utils.NewSetOnce[build.Diff]()
+	rootfsDiff := build.NewDeferredDiff(build.GetDiffStoreKey(buildID.String(), build.Rootfs), blockSize, diffPromise)
+
+	// Register Close first so it runs AFTER the abort resolver below (cleanup is
+	// LIFO): on the error path the resolver settles the promise so deferredDiff's
+	// Close (and any upload waiter) never blocks on a seal that won't run.
+	cleanup.AddNoContext(ctx, rootfsDiff.Close)
+	cleanup.Add(ctx, func(context.Context) error {
+		_ = diffPromise.SetError(errors.New("checkpoint aborted before background rootfs seal ran"))
+
+		return nil
+	})
+
+	// Track this seal so the next checkpoint serializes behind it. Resolve it on
+	// the abort path too, so a resumed-after-error sandbox isn't wedged waiting on
+	// a seal that never ran.
+	sealDone := utils.NewSetOnce[struct{}]()
+	s.rootfsSealMu.Lock()
+	s.rootfsSealDone = sealDone
+	s.rootfsSealMu.Unlock()
+	cleanup.Add(ctx, func(context.Context) error {
+		_ = sealDone.SetError(errors.New("checkpoint aborted before background rootfs seal ran"))
+
+		return nil
+	})
+
+	startSeal = func(sealCtx context.Context) {
+		go s.runBackgroundRootfsSeal(sealCtx, sealCache, buildID, blockSize, diffPromise, sealDone)
+	}
+
+	return rootfsDiff, rootfsHeader, startSeal, true, nil
+}
+
+// runBackgroundRootfsSeal reflinks the frozen sealing cache into the rootfs diff
+// file, resolves the deferred diff, then folds the sealing cache into the live
+// writable cache and releases it. It runs on its own goroutine after the guest
+// has resumed; the upload waits on the deferred diff, so the server's upload
+// WaitGroup transitively gates graceful shutdown on this seal.
+func (s *Sandbox) runBackgroundRootfsSeal(
+	ctx context.Context,
+	sealCache *block.Cache,
+	buildID uuid.UUID,
+	blockSize int64,
+	diffPromise *utils.SetOnce[build.Diff],
+	sealDone *utils.SetOnce[struct{}],
+) {
+	ctx, span := tracer.Start(ctx, "background-rootfs-seal")
+	defer span.End()
+
+	sealErr := func() error {
+		diffFile, err := build.NewLocalDiffFile(s.config.DefaultCacheDir, buildID.String(), build.Rootfs)
+		if err != nil {
+			return s.failRootfsSeal(diffPromise, fmt.Errorf("create rootfs diff file: %w", err))
+		}
+
+		if _, err := sealCache.ExportToDiff(ctx, diffFile.File); err != nil {
+			return s.failRootfsSeal(diffPromise, errors.Join(fmt.Errorf("export rootfs diff: %w", err), diffFile.Close()))
+		}
+
+		diff, err := diffFile.CloseToDiff(blockSize)
+		if err != nil {
+			return s.failRootfsSeal(diffPromise, fmt.Errorf("materialize rootfs diff: %w", err))
+		}
+
+		if err := diffPromise.SetValue(diff); err != nil {
+			// The promise was already settled (checkpoint aborted); drop the diff
+			// so its cache file doesn't leak.
+			return errors.Join(err, diff.Close())
+		}
+
+		return nil
+	}()
+	if sealErr != nil {
+		logger.L().Error(ctx, "background rootfs seal failed", zap.Error(sealErr))
+		// Leave the sealing cache attached (reads stay correct via the sealing
+		// fallback); surface the failure to the next checkpoint.
+		_ = sealDone.SetError(sealErr)
+
+		return
+	}
+
+	telemetry.ReportEvent(ctx, "rootfs diff sealed")
+
+	// Fold the sealed cache into the live writable cache so it becomes a complete
+	// diff again and the sealing slot frees for the next checkpoint.
+	detached, err := s.rootfs.FoldSealed(ctx)
+	if err != nil {
+		logger.L().Error(ctx, "folding sealed rootfs cache failed", zap.Error(err))
+		_ = sealDone.SetError(fmt.Errorf("fold sealed rootfs cache: %w", err))
+
+		return
+	}
+	if detached != nil {
+		if err := detached.Close(); err != nil {
+			logger.L().Warn(ctx, "closing folded rootfs cache", zap.Error(err))
+		}
+	}
+
+	telemetry.ReportEvent(ctx, "rootfs seal folded")
+	_ = sealDone.SetValue(struct{}{})
+}
+
+// failRootfsSeal settles the deferred diff with err and returns it, for the
+// background seal's error paths.
+func (s *Sandbox) failRootfsSeal(diffPromise *utils.SetOnce[build.Diff], err error) error {
+	_ = diffPromise.SetError(err)
+
+	return err
 }
 
 // createCgroup creates a cgroup for sandbox resource accounting.
