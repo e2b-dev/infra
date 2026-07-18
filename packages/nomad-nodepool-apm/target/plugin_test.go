@@ -44,7 +44,7 @@ func newNomadStub(t *testing.T) *nomadStub {
 			Namespace:  testNamespace,
 			JobStopped: true,
 			TaskGroups: map[string]api.TaskGroupScaleStatus{
-				"web": {Running: 2, Events: []api.ScalingEvent{{Time: 12345}}},
+				"web": {Desired: 3, Running: 2, Events: []api.ScalingEvent{{Time: 12345}}},
 			},
 		},
 	}
@@ -490,7 +490,7 @@ func TestScaleRetriesCASRaceFromFreshJob(t *testing.T) {
 	}
 }
 
-func TestStatusPreservesNomadTargetSemantics(t *testing.T) {
+func TestStatusUsesDurableTaskGroupCount(t *testing.T) {
 	t.Parallel()
 
 	stub := newNomadStub(t)
@@ -500,7 +500,7 @@ func TestStatusPreservesNomadTargetSemantics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Status: %v", err)
 	}
-	if status.Ready || status.Count != 2 {
+	if status.Ready || status.Count != 3 {
 		t.Fatalf("status ready/count = %v/%d", status.Ready, status.Count)
 	}
 	if status.Meta["nomad_autoscaler.target.nomad.example.stopped"] != "true" {

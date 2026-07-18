@@ -20,6 +20,7 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -221,32 +222,66 @@ func main() {
 
 	var filesToCopy []string
 
-	// Extract all files referenced by the build memfile header
-	buildMemfileHeaderPath := paths.MemfileHeader()
-
-	var memfileHeader *header.Header
+	// Metadata is the source of truth for whether the build is a
+	// filesystem-only snapshot (no memfile, no snapfile).
+	var meta metadata.Template
 	if strings.HasPrefix(*from, "gs://") {
 		bucketName, _ := strings.CutPrefix(*from, "gs://")
 
-		h, err := NewHeaderFromObject(ctx, bucketName, buildMemfileHeaderPath)
+		provider, err := storage.NewGCP(ctx, bucketName, nil)
 		if err != nil {
-			log.Fatalf("failed to create header from object: %s", err)
+			log.Fatalf("failed to create GCS bucket storage provider: %s", err)
 		}
 
-		memfileHeader = h
+		m, err := metadata.FromBuildID(ctx, provider, *buildId)
+		if err != nil {
+			log.Fatalf("failed to read build metadata: %s", err)
+		}
+
+		meta = m
 	} else {
-		h, err := NewHeaderFromPath(ctx, *from, buildMemfileHeaderPath)
+		m, err := metadata.FromFile(path.Join(*from, "templates", paths.Metadata()))
 		if err != nil {
-			log.Fatalf("failed to create header from path: %s", err)
+			log.Fatalf("failed to read build metadata: %s", err)
 		}
 
-		memfileHeader = h
+		meta = m
 	}
 
-	dataReferences := getReferencedData(memfileHeader, storage.MemfileName)
+	if meta.IsFilesystemOnly() {
+		fmt.Fprintf(os.Stderr, "Build is a filesystem-only snapshot; skipping memfile and snapfile\n")
+	} else {
+		// Extract all files referenced by the build memfile header
+		buildMemfileHeaderPath := paths.MemfileHeader()
 
-	filesToCopy = append(filesToCopy, buildMemfileHeaderPath)
-	filesToCopy = append(filesToCopy, dataReferences...)
+		var memfileHeader *header.Header
+		if strings.HasPrefix(*from, "gs://") {
+			bucketName, _ := strings.CutPrefix(*from, "gs://")
+
+			h, err := NewHeaderFromObject(ctx, bucketName, buildMemfileHeaderPath)
+			if err != nil {
+				log.Fatalf("failed to create header from object: %s", err)
+			}
+
+			memfileHeader = h
+		} else {
+			h, err := NewHeaderFromPath(ctx, *from, buildMemfileHeaderPath)
+			if err != nil {
+				log.Fatalf("failed to create header from path: %s", err)
+			}
+
+			memfileHeader = h
+		}
+
+		dataReferences := getReferencedData(memfileHeader, storage.MemfileName)
+
+		filesToCopy = append(filesToCopy, buildMemfileHeaderPath)
+		filesToCopy = append(filesToCopy, dataReferences...)
+
+		// Add the snapfile to the list of files to copy
+		snapfilePath := paths.Snapfile()
+		filesToCopy = append(filesToCopy, snapfilePath)
+	}
 
 	// Extract all files referenced by the build rootfs header
 	buildRootfsHeaderPath := paths.RootfsHeader()
@@ -269,14 +304,10 @@ func main() {
 		rootfsHeader = h
 	}
 
-	dataReferences = getReferencedData(rootfsHeader, storage.RootfsName)
+	dataReferences := getReferencedData(rootfsHeader, storage.RootfsName)
 
 	filesToCopy = append(filesToCopy, buildRootfsHeaderPath)
 	filesToCopy = append(filesToCopy, dataReferences...)
-
-	// Add the snapfile to the list of files to copy
-	snapfilePath := paths.Snapfile()
-	filesToCopy = append(filesToCopy, snapfilePath)
 
 	metadataPath := paths.Metadata()
 	filesToCopy = append(filesToCopy, metadataPath)
