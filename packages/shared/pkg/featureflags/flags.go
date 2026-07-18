@@ -168,7 +168,7 @@ var (
 	// resumes the guest before sealing the old cache; for a destroy-path pause it
 	// ejects + stops the sandbox and reflinks the diff in the background. Falls back
 	// to the synchronous export when off or unsupported (non-NBD provider).
-	BackgroundRootfsSealFlag = NewBoolFlag("background-rootfs-seal", false)
+	BackgroundRootfsSealFlag = NewBoolFlag("background-rootfs-seal", true)
 
 	PersistentVolumesFlag            = NewBoolFlag("can-use-persistent-volumes", env.IsDevelopment())
 	SandboxLabelBasedSchedulingFlag  = NewBoolFlag("sandbox-label-based-scheduling", false)
