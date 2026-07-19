@@ -81,6 +81,14 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	ctx, childSpan := tracer.Start(ctx, "sandbox-create")
 	defer childSpan.End()
 
+	releaseCreate, admitted := s.info.BeginSandboxCreate()
+	if !admitted {
+		telemetry.ReportEvent(ctx, "sandbox create rejected while orchestrator is draining")
+
+		return nil, status.Error(codes.Unavailable, "orchestrator is not accepting new sandboxes")
+	}
+	defer releaseCreate()
+
 	isResume := req.GetSandbox().GetSnapshot()
 	createStart := time.Now()
 	defer func() {
