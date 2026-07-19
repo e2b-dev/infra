@@ -4,6 +4,7 @@ package sandbox
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -22,6 +23,29 @@ func TestMapMarkRunningTracksLifecycle(t *testing.T) {
 	sandboxes.MarkRunning(t.Context(), sbx)
 	require.Len(t, sandboxes.Items(), 1)
 	require.Len(t, sandboxes.LifecycleItems(), 1)
+}
+
+func TestProvisionalLifecycleBlocksDrainBeforeRunning(t *testing.T) {
+	t.Parallel()
+
+	sandboxes := NewSandboxesMap()
+	runtime := RuntimeMetadata{
+		SandboxID:   "sandbox-starting",
+		ExecutionID: "execution-starting",
+		TeamID:      "team-starting",
+	}
+	sandboxes.RegisterLifecycle(t.Context(), runtime, "lifecycle-starting")
+
+	require.Equal(t, []Lifecycle{{
+		SandboxID:   runtime.SandboxID,
+		ExecutionID: runtime.ExecutionID,
+		LifecycleID: "lifecycle-starting",
+		TeamID:      runtime.TeamID,
+	}}, sandboxes.LifecycleItems())
+	require.Empty(t, sandboxes.Items())
+
+	sandboxes.CompleteLifecycle(t.Context(), runtime.SandboxID, "lifecycle-starting")
+	require.Empty(t, sandboxes.LifecycleItems())
 }
 
 func TestMapLifecycleItemsRemainAfterMarkStopping(t *testing.T) {
@@ -70,6 +94,82 @@ func TestMapLifecycleItemsAllowDuplicateSandboxIDs(t *testing.T) {
 	sandboxes.MarkRunning(t.Context(), newSbx)
 
 	require.Len(t, sandboxes.LifecycleItems(), 2)
+}
+
+func TestConcurrentDuplicateMarkRunningTracksAndClosesLoser(t *testing.T) {
+	t.Parallel()
+
+	sandboxes := NewSandboxesMap()
+	first := testMapSandbox(t, "lifecycle-first")
+	second := testMapSandbox(t, "lifecycle-second")
+	first.cleanup = NewCleanup()
+	first.sandboxes = sandboxes
+	second.cleanup = NewCleanup()
+	second.sandboxes = sandboxes
+
+	type result struct {
+		sandbox *Sandbox
+		winner  bool
+	}
+	results := make(chan result, 2)
+	start := make(chan struct{})
+	for _, sbx := range []*Sandbox{first, second} {
+		go func() {
+			<-start
+			results <- result{sandbox: sbx, winner: sandboxes.MarkRunning(t.Context(), sbx)}
+		}()
+	}
+	close(start)
+
+	one := <-results
+	two := <-results
+	require.NotEqual(t, one.winner, two.winner)
+	require.Len(t, sandboxes.LifecycleItems(), 2)
+
+	loser := one.sandbox
+	if one.winner {
+		loser = two.sandbox
+	}
+	require.NoError(t, loser.Close(t.Context()))
+	require.Len(t, sandboxes.LifecycleItems(), 1)
+}
+
+func TestBeginStartingAllowsOnlyOneConcurrentLifecycle(t *testing.T) {
+	t.Parallel()
+
+	sandboxes := NewSandboxesMap()
+	start := make(chan struct{})
+	results := make(chan bool, 2)
+	for _, lifecycleID := range []string{"lifecycle-first", "lifecycle-second"} {
+		go func() {
+			<-start
+			results <- sandboxes.BeginStarting("sandbox-1", lifecycleID)
+		}()
+	}
+	close(start)
+
+	first := <-results
+	second := <-results
+	require.NotEqual(t, first, second)
+}
+
+func TestSandboxCloseRetainsLifecycleAfterCleanupFailure(t *testing.T) {
+	t.Parallel()
+
+	sandboxes := NewSandboxesMap()
+	sbx := testMapSandbox(t, "lifecycle-failed-cleanup")
+	sbx.cleanup = NewCleanup()
+	sbx.cleanup.Add(t.Context(), func(context.Context) error { return errors.New("cleanup failed") })
+	sbx.sandboxes = sandboxes
+
+	require.True(t, sandboxes.MarkRunning(t.Context(), sbx))
+	require.Error(t, sbx.Close(t.Context()))
+	require.Equal(t, []Lifecycle{{
+		SandboxID:   sbx.Runtime.SandboxID,
+		ExecutionID: sbx.Runtime.ExecutionID,
+		LifecycleID: sbx.LifecycleID,
+		TeamID:      sbx.Runtime.TeamID,
+	}}, sandboxes.LifecycleItems())
 }
 
 func TestMapWaitLifecyclesReturnsWhenEmpty(t *testing.T) {

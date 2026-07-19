@@ -830,6 +830,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 			persistence,
 			buildPersistence,
 			uploads,
+			serviceInfo,
 		)
 		if err != nil {
 			logger.L().Fatal(ctx, "failed to create template manager", zap.Error(err))
@@ -919,7 +920,11 @@ func run(config cfg.Config, opts Options) (success bool) {
 	})
 	closers = append(closers, closer{"grpc server", func(context.Context) error {
 		logger.L().Info(ctx, "Shutting down grpc server")
-		grpcServer.GracefulStop()
+		if config.ForceStop {
+			grpcServer.Stop()
+		} else {
+			grpcServer.GracefulStop()
+		}
 
 		return nil
 	}})
@@ -938,16 +943,15 @@ func run(config cfg.Config, opts Options) (success bool) {
 		cancelCloseCtx()
 	}
 
-	// Mark service draining if not already.
-	// If service stats was previously changed via API, we don't want to override it.
+	// Fence lifecycle admission before any service starts closing.
 	logger.L().Info(ctx, "Starting drain phase", zap.Int("sandbox_count", sandboxes.Count()))
-	if status := serviceInfo.GetStatus().Status; status == orchestratorinfo.ServiceInfoStatus_Healthy || status == orchestratorinfo.ServiceInfoStatus_Standby {
-		serviceInfo.SetStatus(ctx, orchestratorinfo.ServiceInfoStatus_Draining)
+	if err := serviceInfo.SetStatus(closeCtx, orchestratorinfo.ServiceInfoStatus_Draining); err != nil {
+		logger.L().Warn(ctx, "failed to install drain fence", zap.Error(err))
+	}
 
-		// Wait for draining state to propagate to all consumers
-		if !env.IsLocal() {
-			time.Sleep(15 * time.Second)
-		}
+	// Wait for draining state to propagate to all consumers.
+	if !env.IsLocal() {
+		time.Sleep(15 * time.Second)
 	}
 
 	// Wait for services to be drained before closing them

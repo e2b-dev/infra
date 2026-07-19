@@ -4,8 +4,11 @@ package service
 
 import (
 	"context"
+	"errors"
 
 	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -140,7 +143,12 @@ func convertMachineInfo(machineInfo machineinfo.MachineInfo) *orchestratorinfo.M
 
 func (s *Server) ServiceStatusOverride(ctx context.Context, req *orchestratorinfo.ServiceStatusChangeRequest) (*emptypb.Empty, error) {
 	logger.L().Info(ctx, "service status override request received", zap.String("status", req.GetServiceStatus().String()))
-	s.info.SetStatus(ctx, req.GetServiceStatus())
+	if err := s.info.SetStatus(ctx, req.GetServiceStatus()); err != nil {
+		if errors.Is(err, ErrDrainingServiceCannotBeReenabled) {
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		}
+		return nil, status.Error(codes.Internal, "failed to update service status")
+	}
 
 	return &emptypb.Empty{}, nil
 }

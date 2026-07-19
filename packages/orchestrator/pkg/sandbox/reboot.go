@@ -148,7 +148,11 @@ func (f *Factory) RebootSandbox(
 		return nil, errors.Join(fmt.Errorf("wait for envd after reboot: %w", err), closeErr)
 	}
 
-	f.Sandboxes.MarkRunning(ctx, sbx)
+	if !f.Sandboxes.MarkRunning(ctx, sbx) {
+		closeErr := sbx.Close(context.WithoutCancel(ctx))
+
+		return nil, errors.Join(fmt.Errorf("sandbox %q already has a running lifecycle", sbx.Runtime.SandboxID), closeErr)
+	}
 
 	go sbx.Checks.Start(context.WithoutCancel(ctx))
 

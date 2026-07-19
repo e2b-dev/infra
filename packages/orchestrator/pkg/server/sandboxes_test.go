@@ -35,13 +35,98 @@ var (
 
 func TestCreateRejectsWhileDraining(t *testing.T) {
 	info := &service.ServiceInfo{}
-	info.SetStatus(t.Context(), orchestratorinfo.ServiceInfoStatus_Draining)
+	require.NoError(t, info.SetStatus(t.Context(), orchestratorinfo.ServiceInfoStatus_Draining))
 	s := &Server{info: info}
 
 	_, err := s.Create(t.Context(), &orchestrator.SandboxCreateRequest{})
 	if status.Code(err) != codes.Unavailable {
 		t.Fatalf("Create() error = %v, want unavailable", err)
 	}
+}
+
+func TestCheckpointRejectsWhileDraining(t *testing.T) {
+	info := &service.ServiceInfo{}
+	require.NoError(t, info.SetStatus(t.Context(), orchestratorinfo.ServiceInfoStatus_Draining))
+	s := &Server{info: info}
+
+	_, err := s.Checkpoint(t.Context(), &orchestrator.SandboxCheckpointRequest{})
+	if status.Code(err) != codes.Unavailable {
+		t.Fatalf("Checkpoint() error = %v, want unavailable", err)
+	}
+}
+
+func TestDrainStatusIncludesStoppingLifecycles(t *testing.T) {
+	t.Parallel()
+
+	info := &service.ServiceInfo{ClientId: "node-1", ServiceId: "service-1"}
+	require.NoError(t, info.SetStatus(t.Context(), orchestratorinfo.ServiceInfoStatus_Draining))
+	sandboxes := sandbox.NewSandboxesMap()
+	sbx := &sandbox.Sandbox{
+		LifecycleID: "lifecycle-1",
+		Metadata: &sandbox.Metadata{
+			Runtime: sandbox.RuntimeMetadata{
+				SandboxID:   "sandbox-1",
+				ExecutionID: "execution-1",
+				TeamID:      "team-1",
+			},
+			Config: sandbox.NewConfig(sandbox.Config{}),
+		},
+		Resources: &sandbox.Resources{Slot: &network.Slot{HostIP: net.IPv4(127, 0, 0, 1)}},
+	}
+	sandboxes.AssignNetwork(t.Context(), sbx)
+	sandboxes.MarkRunning(t.Context(), sbx)
+	if !sandboxes.MarkStopping(t.Context(), sbx.Runtime.SandboxID, sbx.LifecycleID) {
+		t.Fatal("failed to mark lifecycle stopping")
+	}
+	s := &Server{info: info, sandboxFactory: &sandbox.Factory{Sandboxes: sandboxes}}
+
+	got, err := s.DrainStatus(t.Context(), &emptypb.Empty{})
+	if err != nil {
+		t.Fatalf("DrainStatus() error = %v", err)
+	}
+	if got.GetNodeId() != "node-1" || got.GetServiceId() != "service-1" || got.GetAcceptingLifecycleWork() {
+		t.Fatalf("DrainStatus() identity = %#v", got)
+	}
+	if !got.GetDrainFenced() || got.GetDrainEpoch() == 0 {
+		t.Fatalf("DrainStatus() fence = %#v", got)
+	}
+	if got.GetLifecycleBlockers() != 1 {
+		t.Fatalf("DrainStatus() lifecycle blockers = %d, want 1", got.GetLifecycleBlockers())
+	}
+}
+
+func TestDrainStatusDoesNotTreatGenericUnhealthyAsDrainFence(t *testing.T) {
+	t.Parallel()
+
+	info := &service.ServiceInfo{ClientId: "node-1", ServiceId: "service-1"}
+	require.NoError(t, info.SetStatus(t.Context(), orchestratorinfo.ServiceInfoStatus_Unhealthy))
+	s := &Server{info: info, sandboxFactory: &sandbox.Factory{Sandboxes: sandbox.NewSandboxesMap()}}
+
+	got, err := s.DrainStatus(t.Context(), &emptypb.Empty{})
+	require.NoError(t, err)
+	require.False(t, got.GetAcceptingLifecycleWork())
+	require.False(t, got.GetDrainFenced())
+	require.Zero(t, got.GetLifecycleBlockers())
+}
+
+func TestDrainStatusWaitsForAdmittedLifecycleWork(t *testing.T) {
+	info := &service.ServiceInfo{ClientId: "node-1", ServiceId: "service-1"}
+	require.NoError(t, info.SetStatus(t.Context(), orchestratorinfo.ServiceInfoStatus_Healthy))
+	release, admitted := info.BeginSandboxLifecycle()
+	require.True(t, admitted)
+
+	require.NoError(t, info.SetStatus(t.Context(), orchestratorinfo.ServiceInfoStatus_Draining))
+
+	s := &Server{info: info, sandboxFactory: &sandbox.Factory{Sandboxes: sandbox.NewSandboxesMap()}}
+	statusCtx, cancelStatus := context.WithTimeout(t.Context(), 10*time.Millisecond)
+	defer cancelStatus()
+	_, err := s.DrainStatus(statusCtx, &emptypb.Empty{})
+	require.Equal(t, codes.DeadlineExceeded, status.Code(err))
+
+	release()
+	got, err := s.DrainStatus(t.Context(), &emptypb.Empty{})
+	require.NoError(t, err)
+	require.True(t, got.GetDrainFenced())
 }
 
 func Test_server_List(t *testing.T) {

@@ -13,7 +13,6 @@ import (
 	"context"
 	"sync"
 
-	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -21,13 +20,16 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 )
 
 // SandboxServer is an in-memory dummy implementation of orchestrator.SandboxServiceServer.
 type SandboxServer struct {
 	orchestrator.UnimplementedSandboxServiceServer
 
-	clientID string
+	nodeID    string
+	serviceID string
+	state     *RuntimeState
 
 	mu        sync.Mutex
 	sandboxes map[string]*orchestrator.RunningSandbox
@@ -36,19 +38,42 @@ type SandboxServer struct {
 // NewSandbox returns a SandboxServer with an empty sandbox map and a fixed
 // per-process clientID (a UUID). The clientID is returned from Create so the
 // api side can route follow-up calls back to this orchestrator.
-func NewSandbox() *SandboxServer {
+func NewSandbox(nodeID, serviceID string, state *RuntimeState) *SandboxServer {
 	return &SandboxServer{
-		clientID:  uuid.NewString(),
+		nodeID:    nodeID,
+		serviceID: serviceID,
+		state:     state,
 		sandboxes: make(map[string]*orchestrator.RunningSandbox),
 	}
 }
 
+func (s *SandboxServer) DrainStatus(_ context.Context, _ *emptypb.Empty) (*orchestrator.SandboxDrainStatusResponse, error) {
+	serviceStatus, drainEpoch, drainFenced, releaseState := s.state.Snapshot()
+	defer releaseState()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return &orchestrator.SandboxDrainStatusResponse{
+		NodeId:                 s.nodeID,
+		ServiceId:              s.serviceID,
+		AcceptingLifecycleWork: serviceStatus == orchestratorinfo.ServiceInfoStatus_Healthy,
+		LifecycleBlockers:      uint64(len(s.sandboxes)),
+		DrainEpoch:             drainEpoch,
+		DrainFenced:            drainFenced,
+	}, nil
+}
+
 // ClientID returns the synthetic client identifier for this dummy node.
 func (s *SandboxServer) ClientID() string {
-	return s.clientID
+	return s.nodeID
 }
 
 func (s *SandboxServer) Create(_ context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
+	releaseLifecycle, admitted := s.state.BeginLifecycle()
+	if !admitted {
+		return nil, status.Error(codes.Unavailable, "orchestrator is not accepting sandbox creates")
+	}
+	defer releaseLifecycle()
 	if req == nil || req.GetSandbox() == nil {
 		return nil, status.Error(codes.InvalidArgument, "sandbox config is required")
 	}
@@ -67,7 +92,7 @@ func (s *SandboxServer) Create(_ context.Context, req *orchestrator.SandboxCreat
 
 	running := &orchestrator.RunningSandbox{
 		Config:    cfg,
-		ClientId:  s.clientID,
+		ClientId:  s.nodeID,
 		StartTime: startTime,
 		EndTime:   req.GetEndTime(),
 	}
@@ -76,7 +101,7 @@ func (s *SandboxServer) Create(_ context.Context, req *orchestrator.SandboxCreat
 	s.sandboxes[sbxID] = running
 	s.mu.Unlock()
 
-	return &orchestrator.SandboxCreateResponse{ClientId: s.clientID}, nil
+	return &orchestrator.SandboxCreateResponse{ClientId: s.nodeID}, nil
 }
 
 func (s *SandboxServer) Update(_ context.Context, req *orchestrator.SandboxUpdateRequest) (*emptypb.Empty, error) {
@@ -143,6 +168,11 @@ func (s *SandboxServer) Pause(_ context.Context, req *orchestrator.SandboxPauseR
 }
 
 func (s *SandboxServer) Checkpoint(_ context.Context, _ *orchestrator.SandboxCheckpointRequest) (*orchestrator.SandboxCheckpointResponse, error) {
+	releaseLifecycle, admitted := s.state.BeginLifecycle()
+	if !admitted {
+		return nil, status.Error(codes.Unavailable, "orchestrator is not accepting sandbox checkpoints")
+	}
+	defer releaseLifecycle()
 	// No-op: there is no real disk/memory to checkpoint.
 	return &orchestrator.SandboxCheckpointResponse{}, nil
 }

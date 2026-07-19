@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -33,9 +34,15 @@ type ServiceInfo struct {
 	Labels      []string
 	MachineInfo machineinfo.MachineInfo
 
-	status   ServiceStatus
-	statusMu sync.RWMutex
+	status            ServiceStatus
+	statusMu          sync.Mutex
+	activeLifecycles  int
+	lifecyclesDrained chan struct{}
+	statusEpoch       uint64
+	drainClosed       bool
 }
+
+var ErrDrainingServiceCannotBeReenabled = errors.New("draining service cannot be re-enabled")
 
 var serviceRolesMapper = map[cfg.ServiceType]orchestratorinfo.ServiceInfoRole{
 	cfg.Orchestrator:    orchestratorinfo.ServiceInfoRole_Orchestrator,
@@ -43,33 +50,82 @@ var serviceRolesMapper = map[cfg.ServiceType]orchestratorinfo.ServiceInfoRole{
 }
 
 func (s *ServiceInfo) GetStatus() ServiceStatus {
-	s.statusMu.RLock()
-	defer s.statusMu.RUnlock()
+	s.statusMu.Lock()
+	defer s.statusMu.Unlock()
 
 	return s.status
 }
 
-func (s *ServiceInfo) SetStatus(ctx context.Context, status orchestratorinfo.ServiceInfoStatus) {
+func (s *ServiceInfo) GetDrainState() (orchestratorinfo.ServiceInfoStatus, uint64, bool) {
 	s.statusMu.Lock()
 	defer s.statusMu.Unlock()
 
+	return s.status.Status, s.statusEpoch, s.drainClosed
+}
+
+func (s *ServiceInfo) SetStatus(ctx context.Context, status orchestratorinfo.ServiceInfoStatus) error {
+	s.statusMu.Lock()
+	if s.drainClosed && status == orchestratorinfo.ServiceInfoStatus_Healthy {
+		s.statusMu.Unlock()
+		return ErrDrainingServiceCannotBeReenabled
+	}
 	if s.status.Status != status {
 		logger.L().Info(ctx, "Service status changed", zap.String("status", status.String()))
 		s.status = ServiceStatus{Status: status, ChangedAt: time.Now()}
+		s.statusEpoch++
 	}
+	if status == orchestratorinfo.ServiceInfoStatus_Draining {
+		s.drainClosed = true
+	}
+	s.statusMu.Unlock()
+
+	return nil
 }
 
-// BeginSandboxCreate admits a sandbox create only while the service is healthy.
-// The returned release function keeps a concurrent drain from completing until
-// the admitted create has finished.
-func (s *ServiceInfo) BeginSandboxCreate() (release func(), admitted bool) {
-	s.statusMu.RLock()
+// BeginSandboxLifecycle admits lifecycle-producing work only while the service
+// is healthy. The release function keeps a concurrent drain from completing
+// until the admitted work can no longer create another sandbox lifecycle.
+func (s *ServiceInfo) BeginSandboxLifecycle() (release func(), admitted bool) {
+	s.statusMu.Lock()
 	if s.status.Status != orchestratorinfo.ServiceInfoStatus_Healthy {
-		s.statusMu.RUnlock()
+		s.statusMu.Unlock()
 		return nil, false
 	}
+	if s.activeLifecycles == 0 {
+		s.lifecyclesDrained = make(chan struct{})
+	}
+	s.activeLifecycles++
+	s.statusMu.Unlock()
 
-	return s.statusMu.RUnlock, true
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			s.statusMu.Lock()
+			defer s.statusMu.Unlock()
+			s.activeLifecycles--
+			if s.activeLifecycles == 0 {
+				close(s.lifecyclesDrained)
+				s.lifecyclesDrained = nil
+			}
+		})
+	}, true
+}
+
+// WaitForSandboxLifecycles waits for all work admitted before a status change.
+func (s *ServiceInfo) WaitForSandboxLifecycles(ctx context.Context) error {
+	s.statusMu.Lock()
+	drained := s.lifecyclesDrained
+	s.statusMu.Unlock()
+	if drained == nil {
+		return nil
+	}
+
+	select {
+	case <-drained:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func NewInfoContainer(clientId string, version string, commit string, instanceID string, machineInfo machineinfo.MachineInfo, config cfg.Config) *ServiceInfo {
