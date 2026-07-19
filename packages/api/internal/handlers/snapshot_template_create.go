@@ -55,9 +55,12 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 		return
 	}
 
+	filesystemOnly := body.Memory != nil && !*body.Memory
+
 	// Build opts from the optional name
 	opts := orchestrator.SnapshotTemplateOpts{
-		Tag: id.DefaultTag,
+		Tag:            id.DefaultTag,
+		FilesystemOnly: filesystemOnly,
 	}
 
 	if body.Name != nil {
