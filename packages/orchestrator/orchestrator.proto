@@ -197,6 +197,15 @@ message SandboxListResponse {
   repeated RunningSandbox sandboxes = 1;
 }
 
+message SandboxDrainStatusResponse {
+  string node_id = 1;
+  string service_id = 2;
+  bool accepting_lifecycle_work = 3;
+  uint64 lifecycle_blockers = 4;
+  uint64 drain_epoch = 5;
+  bool drain_fenced = 6;
+}
+
 message CachedBuildInfo {
   string build_id = 1;
   google.protobuf.Timestamp expiration_time = 2;
@@ -210,6 +219,7 @@ service SandboxService {
   rpc Create(SandboxCreateRequest) returns (SandboxCreateResponse);
   rpc Update(SandboxUpdateRequest) returns (google.protobuf.Empty);
   rpc List(google.protobuf.Empty) returns (SandboxListResponse);
+  rpc DrainStatus(google.protobuf.Empty) returns (SandboxDrainStatusResponse);
   rpc Delete(SandboxDeleteRequest) returns (google.protobuf.Empty);
   rpc Pause(SandboxPauseRequest) returns (SandboxPauseResponse);
   rpc Checkpoint(SandboxCheckpointRequest) returns (SandboxCheckpointResponse);

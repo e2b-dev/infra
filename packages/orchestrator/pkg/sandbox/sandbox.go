@@ -474,16 +474,24 @@ func (f *Factory) CreateSandbox(
 	exit := utils.NewErrorOnce()
 
 	cleanup := NewCleanup()
+	lifecycleID := uuid.NewString()
+	f.Sandboxes.RegisterLifecycle(ctx, runtime, lifecycleID)
+	if !f.Sandboxes.BeginStarting(runtime.SandboxID, lifecycleID) {
+		f.Sandboxes.CompleteLifecycle(context.WithoutCancel(ctx), runtime.SandboxID, lifecycleID)
+		return nil, fmt.Errorf("sandbox %q already has an active lifecycle", runtime.SandboxID)
+	}
+	defer f.Sandboxes.FinishStarting(runtime.SandboxID, lifecycleID)
 	defer func() {
 		if e != nil {
 			cleanupErr := cleanup.Run(ctx)
+			if cleanupErr == nil {
+				f.Sandboxes.CompleteLifecycle(context.WithoutCancel(ctx), runtime.SandboxID, lifecycleID)
+			}
 			e = errors.Join(e, cleanupErr)
 			handleSpanError(execSpan, &e)
 			execSpan.End()
 		}
 	}()
-
-	lifecycleID := uuid.NewString()
 
 	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network, f.Sandboxes.NetworkReleased)
 
@@ -697,7 +705,11 @@ func (f *Factory) CreateSandbox(
 	}()
 
 	if !createOpts.deferMarkRunning {
-		f.Sandboxes.MarkRunning(ctx, sbx)
+		if !f.Sandboxes.MarkRunning(ctx, sbx) {
+			closeErr := sbx.Close(context.WithoutCancel(ctx))
+
+			return nil, errors.Join(fmt.Errorf("sandbox %q already has a running lifecycle", runtime.SandboxID), closeErr)
+		}
 	}
 
 	return sbx, nil
@@ -780,16 +792,24 @@ func (f *Factory) ResumeSandbox(
 	exit := utils.NewErrorOnce()
 
 	cleanup := NewCleanup()
+	lifecycleID := uuid.NewString()
+	f.Sandboxes.RegisterLifecycle(ctx, runtime, lifecycleID)
+	if !f.Sandboxes.BeginStarting(runtime.SandboxID, lifecycleID) {
+		f.Sandboxes.CompleteLifecycle(context.WithoutCancel(ctx), runtime.SandboxID, lifecycleID)
+		return nil, fmt.Errorf("sandbox %q already has an active lifecycle", runtime.SandboxID)
+	}
+	defer f.Sandboxes.FinishStarting(runtime.SandboxID, lifecycleID)
 	defer func() {
 		if e != nil {
 			cleanupErr := cleanup.Run(ctx)
+			if cleanupErr == nil {
+				f.Sandboxes.CompleteLifecycle(context.WithoutCancel(ctx), runtime.SandboxID, lifecycleID)
+			}
 			e = errors.Join(e, cleanupErr)
 			handleSpanError(execSpan, &e)
 			execSpan.End()
 		}
 	}()
-
-	lifecycleID := uuid.NewString()
 
 	sandboxFiles := t.Files().NewSandboxFiles(runtime.SandboxID)
 	cleanup.Add(ctx, cleanupFiles(f.config, sandboxFiles))
@@ -1146,7 +1166,11 @@ func (f *Factory) ResumeSandbox(
 	// does not inflate the node's reported allocation or emit per-sandbox metrics,
 	// and skip health checks it would never need.
 	if !ropts.skipLiveRegistration {
-		f.Sandboxes.MarkRunning(ctx, sbx)
+		if !f.Sandboxes.MarkRunning(ctx, sbx) {
+			closeErr := sbx.Close(context.WithoutCancel(ctx))
+
+			return nil, errors.Join(fmt.Errorf("sandbox %q already has a running lifecycle", sbx.Runtime.SandboxID), closeErr)
+		}
 	}
 
 	telemetry.ReportEvent(execCtx, "envd initialized")
@@ -1196,7 +1220,7 @@ func (s *Sandbox) Wait(ctx context.Context) error {
 
 func (s *Sandbox) Close(ctx context.Context) error {
 	err := s.cleanup.Run(ctx)
-	if s.sandboxes != nil {
+	if err == nil && s.sandboxes != nil {
 		s.sandboxes.MarkStopped(context.WithoutCancel(ctx), s)
 	}
 

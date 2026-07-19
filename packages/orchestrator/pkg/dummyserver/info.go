@@ -5,6 +5,8 @@ import (
 	"runtime"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -23,16 +25,18 @@ type InfoServer struct {
 	labels      []string
 	startedAt   time.Time
 	machineInfo *orchestratorinfo.MachineInfo
+	state       *RuntimeState
 }
 
 // NewInfo creates a new InfoServer with a stable per-process serviceID.
-func NewInfo(nodeID, serviceID, version, commit string, labels []string) *InfoServer {
+func NewInfo(nodeID, serviceID, version, commit string, labels []string, state *RuntimeState) *InfoServer {
 	return &InfoServer{
 		nodeID:    nodeID,
 		serviceID: serviceID,
 		version:   version,
 		commit:    commit,
 		labels:    labels,
+		state:     state,
 		startedAt: time.Now(),
 		machineInfo: &orchestratorinfo.MachineInfo{
 			CpuArchitecture: runtime.GOARCH,
@@ -44,12 +48,13 @@ func NewInfo(nodeID, serviceID, version, commit string, labels []string) *InfoSe
 }
 
 func (s *InfoServer) ServiceInfo(_ context.Context, _ *emptypb.Empty) (*orchestratorinfo.ServiceInfoResponse, error) {
+	serviceStatus, _, _ := s.state.Get()
 	return &orchestratorinfo.ServiceInfoResponse{
 		NodeId:         s.nodeID,
 		ServiceId:      s.serviceID,
 		ServiceVersion: s.version,
 		ServiceCommit:  s.commit,
-		ServiceStatus:  orchestratorinfo.ServiceInfoStatus_Healthy,
+		ServiceStatus:  serviceStatus,
 		ServiceRoles:   []orchestratorinfo.ServiceInfoRole{orchestratorinfo.ServiceInfoRole_Orchestrator},
 		ServiceStartup: timestamppb.New(s.startedAt),
 		MachineInfo:    s.machineInfo,
@@ -57,7 +62,9 @@ func (s *InfoServer) ServiceInfo(_ context.Context, _ *emptypb.Empty) (*orchestr
 	}, nil
 }
 
-func (s *InfoServer) ServiceStatusOverride(_ context.Context, _ *orchestratorinfo.ServiceStatusChangeRequest) (*emptypb.Empty, error) {
-	// No-op on the dummy server.
+func (s *InfoServer) ServiceStatusOverride(_ context.Context, request *orchestratorinfo.ServiceStatusChangeRequest) (*emptypb.Empty, error) {
+	if err := s.state.Set(request.GetServiceStatus()); err != nil {
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
+	}
 	return &emptypb.Empty{}, nil
 }

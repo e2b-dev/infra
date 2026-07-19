@@ -25,30 +25,38 @@ type MapSubscriber interface {
 	OnNetworkRelease(ctx context.Context, sbx *Sandbox)
 }
 
-// Map tracks sandboxes in three indexes, managed independently:
+type Lifecycle struct {
+	SandboxID   string
+	ExecutionID string
+	LifecycleID string
+	TeamID      string
+}
+
+// Map tracks sandboxes in four indexes, managed independently:
 //
 //   - live: keyed by sandboxID, holds the current routable lifecycle per
 //     sandbox from MarkRunning until MarkStopping. It serves the API/proxy
 //     lookup paths (Get, Items, Count).
-//   - lifecycles: keyed by sandboxID/lifecycleID, holds every lifecycle whose
-//     cleanup is still outstanding, from MarkRunning until MarkStopped in
-//     Close. During checkpoint/resume an old lifecycle can still be cleaning
-//     up while a new lifecycle with the same sandboxID is already live, so a
-//     sandboxID can map to multiple lifecycle entries. Shutdown uses this set
-//     (WaitLifecycles, LifecycleItems) to wait for cleanup to finish, not
-//     just for sandboxes to stop being routable.
+//   - lifecycles: keyed by sandboxID/lifecycleID, holds every startup or running
+//     lifecycle whose cleanup is still outstanding. Registration happens before
+//     resource allocation and removal happens only after confirmed cleanup.
+//     During checkpoint/resume an old lifecycle can still be cleaning up while
+//     a new lifecycle with the same sandboxID is already live.
 //   - network: an IP-to-sandbox index managed by AssignNetwork and
 //     NetworkReleased, serving GetByHostPort lookups.
+//   - starting: keyed by sandboxID, prevents duplicate create retries from
+//     allocating a second set of host resources before either lifecycle runs.
 //
-// Invariant: live is a subset of lifecycles; MarkRunning inserts into both.
+// Invariant: live and starting entries are subsets of lifecycles.
 // The live and lifecycles maps could later be merged into a single registry
 // keyed by sandboxID/lifecycleID with a running/stopping state per entry;
 // they are kept separate for now to stay close to the pre-existing live-map
 // shape.
 type Map struct {
 	live       *smap.Map[*Sandbox]
-	lifecycles *smap.Map[*Sandbox]
+	lifecycles *smap.Map[Lifecycle]
 	network    *smap.Map[*Sandbox]
+	starting   *smap.Map[string]
 
 	lifecycleMu      sync.Mutex
 	lifecycleChanged chan struct{}
@@ -60,10 +68,32 @@ type Map struct {
 func NewSandboxesMap() *Map {
 	return &Map{
 		live:             smap.New[*Sandbox](),
-		lifecycles:       smap.New[*Sandbox](),
+		lifecycles:       smap.New[Lifecycle](),
 		network:          smap.New[*Sandbox](),
+		starting:         smap.New[string](),
 		lifecycleChanged: make(chan struct{}),
 	}
+}
+
+func (m *Map) BeginStarting(sandboxID, lifecycleID string) bool {
+	if _, running := m.live.Get(sandboxID); running {
+		return false
+	}
+	if !m.starting.InsertIfAbsent(sandboxID, lifecycleID) {
+		return false
+	}
+	if _, running := m.live.Get(sandboxID); running {
+		m.FinishStarting(sandboxID, lifecycleID)
+		return false
+	}
+
+	return true
+}
+
+func (m *Map) FinishStarting(sandboxID, lifecycleID string) {
+	m.starting.RemoveCb(sandboxID, func(_ string, current string, exists bool) bool {
+		return exists && current == lifecycleID
+	})
 }
 
 func sandboxLifecycleKey(sandboxID, lifecycleID string) string {
@@ -98,14 +128,14 @@ func (m *Map) Get(sandboxID string) (*Sandbox, bool) {
 	return m.live.Get(sandboxID)
 }
 
-func (m *Map) LifecycleItems() []*Sandbox {
+func (m *Map) LifecycleItems() []Lifecycle {
 	items := m.lifecycles.Items()
-	sandboxes := make([]*Sandbox, 0, len(items))
-	for _, sbx := range items {
-		sandboxes = append(sandboxes, sbx)
+	lifecycles := make([]Lifecycle, 0, len(items))
+	for _, lifecycle := range items {
+		lifecycles = append(lifecycles, lifecycle)
 	}
 
-	return sandboxes
+	return lifecycles
 }
 
 func (m *Map) WaitLifecycles(ctx context.Context) error {
@@ -155,26 +185,34 @@ func (m *Map) AssignNetwork(ctx context.Context, sbx *Sandbox) {
 	)
 }
 
-func (m *Map) trackLifecycle(ctx context.Context, sbx *Sandbox) {
+func (m *Map) RegisterLifecycle(ctx context.Context, runtime RuntimeMetadata, lifecycleID string) {
+	lifecycle := Lifecycle{
+		SandboxID:   runtime.SandboxID,
+		ExecutionID: runtime.ExecutionID,
+		LifecycleID: lifecycleID,
+		TeamID:      runtime.TeamID,
+	}
 	m.lifecycleMu.Lock()
-	m.lifecycles.Insert(sandboxLifecycleKey(sbx.Runtime.SandboxID, sbx.LifecycleID), sbx)
+	inserted := m.lifecycles.InsertIfAbsent(sandboxLifecycleKey(runtime.SandboxID, lifecycleID), lifecycle)
+	if !inserted {
+		m.lifecycleMu.Unlock()
+		return
+	}
 	m.notifyLifecycleChangeLocked()
 	m.lifecycleMu.Unlock()
 
 	logger.L().Info(ctx, "sandbox lifecycle tracked",
-		logger.WithSandboxID(sbx.Runtime.SandboxID),
-		logger.WithLifecycleID(sbx.LifecycleID),
-		logger.WithSandboxIP(sbx.Slot.HostIPString()),
+		logger.WithSandboxID(runtime.SandboxID),
+		logger.WithLifecycleID(lifecycleID),
 	)
 }
 
 // MarkRunning makes the sandbox visible to Get/Items/Count and notifies OnInsert subscribers.
-func (m *Map) MarkRunning(ctx context.Context, sbx *Sandbox) {
+func (m *Map) MarkRunning(ctx context.Context, sbx *Sandbox) bool {
+	m.RegisterLifecycle(ctx, sbx.Runtime, sbx.LifecycleID)
 	if !m.live.InsertIfAbsent(sbx.Runtime.SandboxID, sbx) {
-		return
+		return false
 	}
-
-	m.trackLifecycle(ctx, sbx)
 
 	m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
 		s.OnInsert(ctx, sbx)
@@ -190,6 +228,8 @@ func (m *Map) MarkRunning(ctx context.Context, sbx *Sandbox) {
 		logger.WithKernelVersion(sbx.Config.FirecrackerConfig.KernelVersion),
 		logger.WithFirecrackerVersion(sbx.Config.FirecrackerConfig.FirecrackerVersion),
 	)
+
+	return true
 }
 
 // MarkStopping removes the sandbox from live queries (Get, Items, Count).
@@ -221,15 +261,18 @@ func (m *Map) MarkStopping(ctx context.Context, sandboxID, lifecycleID string) b
 }
 
 func (m *Map) MarkStopped(ctx context.Context, sbx *Sandbox) {
+	m.CompleteLifecycle(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
+}
+
+func (m *Map) CompleteLifecycle(ctx context.Context, sandboxID, lifecycleID string) {
 	m.lifecycleMu.Lock()
-	m.lifecycles.Remove(sandboxLifecycleKey(sbx.Runtime.SandboxID, sbx.LifecycleID))
+	m.lifecycles.Remove(sandboxLifecycleKey(sandboxID, lifecycleID))
 	m.notifyLifecycleChangeLocked()
 	m.lifecycleMu.Unlock()
 
 	logger.L().Info(ctx, "sandbox lifecycle stopped",
-		logger.WithSandboxID(sbx.Runtime.SandboxID),
-		logger.WithLifecycleID(sbx.LifecycleID),
-		logger.WithSandboxIP(sbx.Slot.HostIPString()),
+		logger.WithSandboxID(sandboxID),
+		logger.WithLifecycleID(lifecycleID),
 	)
 }
 

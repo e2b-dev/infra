@@ -31,6 +31,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/events"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/retry"
@@ -81,7 +82,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	ctx, childSpan := tracer.Start(ctx, "sandbox-create")
 	defer childSpan.End()
 
-	releaseCreate, admitted := s.info.BeginSandboxCreate()
+	releaseCreate, admitted := s.info.BeginSandboxLifecycle()
 	if !admitted {
 		telemetry.ReportEvent(ctx, "sandbox create rejected while orchestrator is draining")
 
@@ -503,6 +504,27 @@ func (s *Server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 	}, nil
 }
 
+func (s *Server) DrainStatus(ctx context.Context, _ *emptypb.Empty) (*orchestrator.SandboxDrainStatusResponse, error) {
+	_, childSpan := tracer.Start(ctx, "sandbox-drain-status")
+	defer childSpan.End()
+
+	serviceStatus, drainEpoch, drainFenced := s.info.GetDrainState()
+	if serviceStatus != orchestratorinfo.ServiceInfoStatus_Healthy {
+		if err := s.info.WaitForSandboxLifecycles(ctx); err != nil {
+			return nil, status.FromContextError(err).Err()
+		}
+		serviceStatus, drainEpoch, drainFenced = s.info.GetDrainState()
+	}
+	return &orchestrator.SandboxDrainStatusResponse{
+		NodeId:                 s.info.ClientId,
+		ServiceId:              s.info.ServiceId,
+		AcceptingLifecycleWork: serviceStatus == orchestratorinfo.ServiceInfoStatus_Healthy,
+		LifecycleBlockers:      uint64(len(s.sandboxFactory.Sandboxes.LifecycleItems())),
+		DrainEpoch:             drainEpoch,
+		DrainFenced:            drainFenced,
+	}, nil
+}
+
 func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteRequest) (*emptypb.Empty, error) {
 	ctx, cancel := context.WithTimeoutCause(ctxConn, requestTimeout, errors.New("request timed out"))
 	defer cancel()
@@ -714,6 +736,14 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpointRequest) (*orchestrator.SandboxCheckpointResponse, error) {
 	ctx, childSpan := tracer.Start(ctx, "sandbox-checkpoint")
 	defer childSpan.End()
+
+	releaseCheckpoint, admitted := s.info.BeginSandboxLifecycle()
+	if !admitted {
+		telemetry.ReportEvent(ctx, "sandbox checkpoint rejected while orchestrator is draining")
+
+		return nil, status.Error(codes.Unavailable, "orchestrator is not accepting sandbox checkpoints")
+	}
+	defer releaseCheckpoint()
 
 	childSpan.SetAttributes(
 		telemetry.WithSandboxID(in.GetSandboxId()),

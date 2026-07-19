@@ -10,6 +10,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/builderrors"
@@ -27,6 +29,17 @@ import (
 func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templatemanager.TemplateCreateRequest) (*emptypb.Empty, error) {
 	ctx, childSpan := tracer.Start(ctx, "template-create")
 	defer childSpan.End()
+
+	releaseBuild, admitted := s.info.BeginSandboxLifecycle()
+	if !admitted {
+		return nil, status.Error(codes.Unavailable, "orchestrator is not accepting template builds")
+	}
+	releaseOnReturn := true
+	defer func() {
+		if releaseOnReturn {
+			releaseBuild()
+		}
+	}()
 
 	cfg := templateRequest.GetTemplate()
 
@@ -124,9 +137,11 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 
 	s.wg.Add(1)
 	s.activeBuilds.Add(1)
+	releaseOnReturn = false
 	go func(ctx context.Context) {
 		defer s.wg.Done()
 		defer s.activeBuilds.Add(-1)
+		defer releaseBuild()
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()

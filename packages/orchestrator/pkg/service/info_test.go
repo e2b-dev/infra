@@ -4,51 +4,76 @@ package service
 
 import (
 	"context"
-	"runtime"
+	"errors"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 )
 
-func TestDrainWaitsForAdmittedSandboxCreates(t *testing.T) {
+func TestDrainClosesAdmissionBeforeLifecycleWorkFinishes(t *testing.T) {
 	info := &ServiceInfo{}
-	info.SetStatus(t.Context(), orchestratorinfo.ServiceInfoStatus_Healthy)
+	require.NoError(t, info.SetStatus(t.Context(), orchestratorinfo.ServiceInfoStatus_Healthy))
 
-	release, admitted := info.BeginSandboxCreate()
-	if !admitted {
-		t.Fatal("healthy service rejected sandbox create")
-	}
+	release, admitted := info.BeginSandboxLifecycle()
+	require.True(t, admitted)
+	require.NoError(t, info.SetStatus(t.Context(), orchestratorinfo.ServiceInfoStatus_Draining))
 
-	drained := make(chan struct{})
-	go func() {
-		info.SetStatus(context.Background(), orchestratorinfo.ServiceInfoStatus_Draining)
-		close(drained)
-	}()
-
-	deadline := time.Now().Add(time.Second)
-	for info.statusMu.TryRLock() {
-		info.statusMu.RUnlock()
-		if time.Now().After(deadline) {
-			t.Fatal("drain never started waiting for admitted creates")
-		}
-		runtime.Gosched()
-	}
-
-	select {
-	case <-drained:
-		t.Fatal("drain completed while an admitted create was still running")
-	default:
-	}
-
-	release()
-	select {
-	case <-drained:
-	case <-time.After(time.Second):
-		t.Fatal("drain did not complete after the admitted create finished")
-	}
-
-	if _, admitted := info.BeginSandboxCreate(); admitted {
+	if _, admitted := info.BeginSandboxLifecycle(); admitted {
 		t.Fatal("draining service admitted a sandbox create")
 	}
+	waitCtx, cancelWait := context.WithTimeout(t.Context(), 10*time.Millisecond)
+	defer cancelWait()
+	require.ErrorIs(t, info.WaitForSandboxLifecycles(waitCtx), context.DeadlineExceeded)
+
+	release()
+	require.NoError(t, info.WaitForSandboxLifecycles(t.Context()))
+}
+
+func TestDrainWaitCanBeCancelledWithoutReopeningAdmission(t *testing.T) {
+	info := &ServiceInfo{}
+	if err := info.SetStatus(t.Context(), orchestratorinfo.ServiceInfoStatus_Healthy); err != nil {
+		t.Fatal(err)
+	}
+
+	release, admitted := info.BeginSandboxLifecycle()
+	if !admitted {
+		t.Fatal("healthy service rejected lifecycle work")
+	}
+	defer release()
+
+	require.NoError(t, info.SetStatus(t.Context(), orchestratorinfo.ServiceInfoStatus_Draining))
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	require.True(t, errors.Is(info.WaitForSandboxLifecycles(ctx), context.Canceled))
+	if _, admitted := info.BeginSandboxLifecycle(); admitted {
+		t.Fatal("canceled drain wait reopened lifecycle admission")
+	}
+}
+
+func TestDrainingServiceCannotBeReenabled(t *testing.T) {
+	info := &ServiceInfo{}
+	require.NoError(t, info.SetStatus(t.Context(), orchestratorinfo.ServiceInfoStatus_Healthy))
+	require.NoError(t, info.SetStatus(t.Context(), orchestratorinfo.ServiceInfoStatus_Draining))
+	_, drainEpoch, drainFenced := info.GetDrainState()
+	require.True(t, drainFenced)
+	require.NoError(t, info.SetStatus(t.Context(), orchestratorinfo.ServiceInfoStatus_Unhealthy))
+
+	require.ErrorIs(t, info.SetStatus(t.Context(), orchestratorinfo.ServiceInfoStatus_Healthy), ErrDrainingServiceCannotBeReenabled)
+	status, currentEpoch, drainFenced := info.GetDrainState()
+	require.Equal(t, orchestratorinfo.ServiceInfoStatus_Unhealthy, status)
+	require.Greater(t, currentEpoch, drainEpoch)
+	require.True(t, drainFenced)
+}
+
+func TestDrainingFencesPreviouslyUnhealthyService(t *testing.T) {
+	info := &ServiceInfo{}
+	require.NoError(t, info.SetStatus(t.Context(), orchestratorinfo.ServiceInfoStatus_Unhealthy))
+	require.NoError(t, info.SetStatus(t.Context(), orchestratorinfo.ServiceInfoStatus_Draining))
+
+	status, _, drainFenced := info.GetDrainState()
+	require.Equal(t, orchestratorinfo.ServiceInfoStatus_Draining, status)
+	require.True(t, drainFenced)
 }

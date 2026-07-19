@@ -71,13 +71,14 @@ func main() {
 
 	srv := grpc.NewServer()
 
-	sbxServer := dummyserver.NewSandbox()
+	serviceID := uuid.NewString()
+	runtimeState := dummyserver.NewRuntimeState()
+	sbxServer := dummyserver.NewSandbox(nodeID, serviceID, runtimeState)
 	orchestrator.RegisterSandboxServiceServer(srv, sbxServer)
 	orchestrator.RegisterChunkServiceServer(srv, &orchestrator.UnimplementedChunkServiceServer{})
 	orchestrator.RegisterVolumeServiceServer(srv, &orchestrator.UnimplementedVolumeServiceServer{})
 
-	serviceID := uuid.NewString()
-	orchestratorinfo.RegisterInfoServiceServer(srv, dummyserver.NewInfo(nodeID, serviceID, version, commit, labels))
+	orchestratorinfo.RegisterInfoServiceServer(srv, dummyserver.NewInfo(nodeID, serviceID, version, commit, labels, runtimeState))
 
 	healthSrv := health.NewServer()
 	healthSrv.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
