@@ -14,6 +14,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -21,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/service"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -29,6 +32,17 @@ var (
 	startTime = time.Now()
 	endTime   = time.Now().Add(time.Hour)
 )
+
+func TestCreateRejectsWhileDraining(t *testing.T) {
+	info := &service.ServiceInfo{}
+	info.SetStatus(t.Context(), orchestratorinfo.ServiceInfoStatus_Draining)
+	s := &Server{info: info}
+
+	_, err := s.Create(t.Context(), &orchestrator.SandboxCreateRequest{})
+	if status.Code(err) != codes.Unavailable {
+		t.Fatalf("Create() error = %v, want unavailable", err)
+	}
+}
 
 func Test_server_List(t *testing.T) {
 	t.Parallel()

@@ -53,6 +53,19 @@ func (s *ServiceInfo) SetStatus(ctx context.Context, status orchestratorinfo.Ser
 	}
 }
 
+// BeginSandboxCreate admits a sandbox create only while the service is healthy.
+// The returned release function keeps a concurrent drain from completing until
+// the admitted create has finished.
+func (s *ServiceInfo) BeginSandboxCreate() (release func(), admitted bool) {
+	s.statusMu.RLock()
+	if s.status != orchestratorinfo.ServiceInfoStatus_Healthy {
+		s.statusMu.RUnlock()
+		return nil, false
+	}
+
+	return s.statusMu.RUnlock, true
+}
+
 func NewInfoContainer(ctx context.Context, clientId string, version string, commit string, instanceID string, machineInfo machineinfo.MachineInfo, config cfg.Config) *ServiceInfo {
 	services := cfg.GetServices(config)
 	serviceRoles := make([]orchestratorinfo.ServiceInfoRole, 0)
