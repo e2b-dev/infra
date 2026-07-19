@@ -857,7 +857,11 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 	// Pause the sandbox, cache the checkpoint, then resume it IN PLACE — the
 	// sandbox keeps running (same ExecutionID and FC process), so there is no
 	// MarkStopping / stopSandboxAsync / resume-fresh here; Pause resumes it before
-	// returning.
+	// returning. When filesystem_only is set, the memory snapshot is skipped and
+	// the guest is fsfreeze-quiesced before the rootfs seal, so the produced
+	// template is rootfs-only and cold-boots (reboots) on launch; the live sandbox
+	// still resumes in place (its memory never left the process) and is thawed on
+	// resume.
 	//
 	// Gate the rootfs seal deferral on the existing defer-rootfs-export flag: when
 	// on, the rootfs is swapped to a fresh COW cache and sealed (reflinked) in the
@@ -870,7 +874,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		in.GetBuildId(),
 		in.GetMetadata(),
 		storage.ObjectOriginSnapshotTemplate,
-		false, // filesystemOnly: full-memory checkpoint (fs-only in-place is a follow-up)
+		in.GetFilesystemOnly(),
 		deferRootfsExport,
 		true, // maintainSandbox: resume in place
 	)
