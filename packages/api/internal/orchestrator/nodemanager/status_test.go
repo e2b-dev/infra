@@ -15,15 +15,19 @@ import (
 
 type recordingInfoClient struct {
 	orchestratorinfo.InfoServiceClient
+
 	request *orchestratorinfo.ServiceStatusChangeRequest
 }
 
 func (c *recordingInfoClient) ServiceStatusOverrideFenced(_ context.Context, request *orchestratorinfo.ServiceStatusChangeRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	c.request = request
+
 	return &emptypb.Empty{}, nil
 }
 
 func TestSendStatusChangeFencesStoredProcessIdentity(t *testing.T) {
+	t.Parallel()
+
 	info := &recordingInfoClient{}
 	node := &Node{
 		ID:     "node-1",
