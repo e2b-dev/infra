@@ -63,6 +63,23 @@ func (s *InfoServer) ServiceInfo(_ context.Context, _ *emptypb.Empty) (*orchestr
 }
 
 func (s *InfoServer) ServiceStatusOverride(_ context.Context, request *orchestratorinfo.ServiceStatusChangeRequest) (*emptypb.Empty, error) {
+	return s.applyServiceStatusOverride(request)
+}
+
+func (s *InfoServer) ServiceStatusOverrideFenced(_ context.Context, request *orchestratorinfo.ServiceStatusChangeRequest) (*emptypb.Empty, error) {
+	if expected := request.GetExpectedNodeId(); expected != "" && expected != s.nodeID {
+		return nil, status.Error(codes.FailedPrecondition, "orchestrator node identity changed")
+	}
+	if expected := request.GetExpectedServiceId(); expected != "" && expected != s.serviceID {
+		return nil, status.Error(codes.FailedPrecondition, "orchestrator process identity changed")
+	}
+	if request.GetExpectedNodeId() == "" || request.GetExpectedServiceId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "expected orchestrator node and process identity are required")
+	}
+	return s.applyServiceStatusOverride(request)
+}
+
+func (s *InfoServer) applyServiceStatusOverride(request *orchestratorinfo.ServiceStatusChangeRequest) (*emptypb.Empty, error) {
 	if err := s.state.Set(request.GetServiceStatus()); err != nil {
 		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
