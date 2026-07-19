@@ -758,17 +758,18 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 	sbxlogger.E(sbx).Info(ctx, "Checkpointing sandbox")
 
-	// Checkpoint always takes a full memory snapshot; filesystem-only checkpoint
-	// (resume-in-place would need to reboot) is not supported yet.
-	// This will pause the sandbox, create and cache the checkpoint and then resume
-	// the sandbox in-place.
+	// Pause the sandbox, create and cache the checkpoint, then resume the sandbox
+	// in place. When filesystem_only is set the memory snapshot is skipped and the
+	// guest is fsfreeze-quiesced before the rootfs seal so the produced template
+	// is rootfs-only and cold-boots (reboots) on launch; the live sandbox still
+	// resumes in place (its memory never left the process) and is thawed on resume.
 	res, err := s.snapshotAndCacheSandbox(
 		ctx,
 		sbx,
 		in.GetBuildId(),
 		in.GetMetadata(),
 		storage.ObjectOriginSnapshotTemplate,
-		false,
+		in.GetFilesystemOnly(),
 		true,
 	)
 	if err != nil {
