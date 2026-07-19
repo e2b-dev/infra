@@ -143,6 +143,24 @@ func convertMachineInfo(machineInfo machineinfo.MachineInfo) *orchestratorinfo.M
 
 func (s *Server) ServiceStatusOverride(ctx context.Context, req *orchestratorinfo.ServiceStatusChangeRequest) (*emptypb.Empty, error) {
 	logger.L().Info(ctx, "service status override request received", zap.String("status", req.GetServiceStatus().String()))
+	return s.applyServiceStatusOverride(ctx, req)
+}
+
+func (s *Server) ServiceStatusOverrideFenced(ctx context.Context, req *orchestratorinfo.ServiceStatusChangeRequest) (*emptypb.Empty, error) {
+	logger.L().Info(ctx, "fenced service status override request received", zap.String("status", req.GetServiceStatus().String()))
+	if expected := req.GetExpectedNodeId(); expected != "" && expected != s.info.ClientId {
+		return nil, status.Error(codes.FailedPrecondition, "orchestrator node identity changed")
+	}
+	if expected := req.GetExpectedServiceId(); expected != "" && expected != s.info.ServiceId {
+		return nil, status.Error(codes.FailedPrecondition, "orchestrator process identity changed")
+	}
+	if req.GetExpectedNodeId() == "" || req.GetExpectedServiceId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "expected orchestrator node and process identity are required")
+	}
+	return s.applyServiceStatusOverride(ctx, req)
+}
+
+func (s *Server) applyServiceStatusOverride(ctx context.Context, req *orchestratorinfo.ServiceStatusChangeRequest) (*emptypb.Empty, error) {
 	if err := s.info.SetStatus(ctx, req.GetServiceStatus()); err != nil {
 		if errors.Is(err, ErrDrainingServiceCannotBeReenabled) {
 			return nil, status.Error(codes.FailedPrecondition, err.Error())

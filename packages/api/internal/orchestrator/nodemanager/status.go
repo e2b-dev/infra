@@ -81,7 +81,12 @@ func (n *Node) SendStatusChange(ctx context.Context, s api.NodeStatus) error {
 	}
 
 	client, ctx := n.GetClient(ctx)
-	_, err := client.Info.ServiceStatusOverride(ctx, &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: nodeStatus})
+	metadata := n.Metadata()
+	_, err := client.Info.ServiceStatusOverrideFenced(ctx, &orchestratorinfo.ServiceStatusChangeRequest{
+		ServiceStatus:     nodeStatus,
+		ExpectedNodeId:    n.ID,
+		ExpectedServiceId: metadata.ServiceInstanceID,
+	})
 	if err != nil {
 		logger.L().Error(ctx, "Failed to send status change", zap.Error(err))
 

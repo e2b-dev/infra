@@ -80,9 +80,12 @@ message ServiceInfoResponse {
 
 message ServiceStatusChangeRequest {
   ServiceInfoStatus service_status = 2;
+  string expected_node_id = 3;
+  string expected_service_id = 4;
 }
 
 service InfoService {
   rpc ServiceInfo(google.protobuf.Empty) returns (ServiceInfoResponse);
   rpc ServiceStatusOverride(ServiceStatusChangeRequest) returns (google.protobuf.Empty);
+  rpc ServiceStatusOverrideFenced(ServiceStatusChangeRequest) returns (google.protobuf.Empty);
 }
