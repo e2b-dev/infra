@@ -22,7 +22,7 @@ type Store[SourceItem any, PoolItem any] interface {
 	PoolList(ctx context.Context) []PoolItem
 	PoolExists(ctx context.Context, s SourceItem) bool
 	PoolInsert(ctx context.Context, s SourceItem)
-	PoolUpdate(ctx context.Context, s PoolItem)
+	PoolUpdate(ctx context.Context, source []SourceItem, item PoolItem)
 	PoolRemove(ctx context.Context, s PoolItem)
 }
 
@@ -148,7 +148,7 @@ func (s *Synchronize[SourceItem, PoolItem]) syncOutdated(ctx context.Context, so
 
 			found := s.store.SourceExists(ctx, sourceItems, poolItem)
 			if found {
-				s.store.PoolUpdate(ctx, poolItem)
+				s.store.PoolUpdate(ctx, sourceItems, poolItem)
 
 				return
 			}

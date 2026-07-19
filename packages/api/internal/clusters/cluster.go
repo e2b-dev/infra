@@ -41,10 +41,19 @@ type Cluster struct {
 	ID            uuid.UUID
 	SandboxDomain *string
 	AuthOrgID     string
+	remoteConfig  *remoteClusterConfig
 
 	instances       *smap.Map[*Instance]
 	synchronization *synchronization.Synchronize[discovery.Item, *Instance]
 	resources       ClusterResource
+}
+
+type remoteClusterConfig struct {
+	endpoint      string
+	endpointTLS   bool
+	token         string
+	sandboxDomain *string
+	authOrgID     string
 }
 
 var (
@@ -98,7 +107,6 @@ func newLocalCluster(
 		synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),
 		newLocalClusterResourceProvider(clickhouse, queryLogsProvider, sandboxLogsReader, featureFlags, instances, config),
 	)
-
 	// Periodically sync cluster instances
 	go c.synchronization.Start(ctx, instancesSyncInterval, instancesSyncTimeout, true)
 
@@ -160,6 +168,13 @@ func newRemoteCluster(
 		synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),
 		newRemoteClusterResourceProvider(clusterID, instances, httpClient),
 	)
+	c.remoteConfig = &remoteClusterConfig{
+		endpoint:      endpoint,
+		endpointTLS:   endpointTLS,
+		token:         secret,
+		sandboxDomain: sandboxDomain,
+		authOrgID:     authOrgID,
+	}
 
 	// Periodically sync cluster instances
 	go c.synchronization.Start(ctx, instancesSyncInterval, instancesSyncTimeout, true)

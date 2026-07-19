@@ -20,8 +20,10 @@ type testStore struct {
 	source []string
 	pool   map[string]string
 
-	inserts int
-	removes int
+	inserts      int
+	removes      int
+	updates      int
+	updateSource []string
 }
 
 func newTestStore(source []string, preExistingPool []string) *testStore {
@@ -68,7 +70,12 @@ func (s *testStore) PoolInsert(_ context.Context, value string) {
 	s.inserts++
 }
 
-func (s *testStore) PoolUpdate(context.Context, string) { /* not used */ }
+func (s *testStore) PoolUpdate(_ context.Context, source []string, _ string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.updates++
+	s.updateSource = append([]string(nil), source...)
+}
 
 func (s *testStore) PoolRemove(_ context.Context, item string) {
 	s.mu.Lock()
@@ -169,4 +176,6 @@ func TestSynchronize_InsertAndRemove(t *testing.T) {
 	assert.Equal(t, 1, s.removes)
 	assert.Len(t, s.pool, 1)
 	assert.True(t, s.PoolExists(ctx, "a"))
+	assert.Equal(t, 3, s.updates)
+	assert.Equal(t, []string{"a"}, s.updateSource)
 }

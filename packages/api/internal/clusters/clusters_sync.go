@@ -211,8 +211,72 @@ func (d clustersSyncStore) PoolInsert(ctx context.Context, cluster queries.Clust
 	logger.L().Info(ctx, "Remote cluster initialized successfully", logger.WithClusterID(cluster.ID))
 }
 
-func (d clustersSyncStore) PoolUpdate(_ context.Context, _ *Cluster) {
-	// Clusters pool currently does not do something special during synchronization
+func (d clustersSyncStore) PoolUpdate(ctx context.Context, source []queries.Cluster, current *Cluster) {
+	if current.ID == consts.LocalClusterID {
+		return
+	}
+
+	var nextConfig *queries.Cluster
+	for i := range source {
+		if source[i].ID == current.ID {
+			nextConfig = &source[i]
+
+			break
+		}
+	}
+	if nextConfig == nil || clusterConfigMatches(current, *nextConfig) {
+		return
+	}
+
+	authOrgID := ""
+	if nextConfig.AuthOrgID != nil {
+		authOrgID = *nextConfig.AuthOrgID
+	}
+	replacement, err := newRemoteCluster(
+		context.WithoutCancel(ctx),
+		d.tel,
+		nextConfig.Endpoint,
+		nextConfig.EndpointTls,
+		nextConfig.Token,
+		nextConfig.ID,
+		nextConfig.SandboxProxyDomain,
+		authOrgID,
+	)
+	if err != nil {
+		logger.L().Error(ctx, "Refreshing remote cluster configuration failed", zap.Error(err), logger.WithClusterID(current.ID))
+
+		return
+	}
+
+	d.clusters.Insert(current.ID.String(), replacement)
+	logger.L().Info(ctx, "Refreshed remote cluster configuration", logger.WithClusterID(current.ID))
+	if err := current.Close(ctx); err != nil {
+		logger.L().Error(ctx, "Closing replaced cluster failed", zap.Error(err), logger.WithClusterID(current.ID))
+	}
+}
+
+func clusterConfigMatches(cluster *Cluster, source queries.Cluster) bool {
+	if cluster.remoteConfig == nil {
+		return false
+	}
+	authOrgID := ""
+	if source.AuthOrgID != nil {
+		authOrgID = *source.AuthOrgID
+	}
+
+	return cluster.remoteConfig.endpoint == source.Endpoint &&
+		cluster.remoteConfig.endpointTLS == source.EndpointTls &&
+		cluster.remoteConfig.token == source.Token &&
+		stringPointersEqual(cluster.remoteConfig.sandboxDomain, source.SandboxProxyDomain) &&
+		cluster.remoteConfig.authOrgID == authOrgID
+}
+
+func stringPointersEqual(left *string, right *string) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+
+	return *left == *right
 }
 
 func (d clustersSyncStore) PoolRemove(ctx context.Context, cluster *Cluster) {

@@ -79,7 +79,7 @@ func (d instancesSyncStore) PoolInsert(ctx context.Context, item discovery.Item)
 	d.instances.Insert(item.NodeID, instance)
 }
 
-func (d instancesSyncStore) PoolUpdate(ctx context.Context, instance *Instance) {
+func (d instancesSyncStore) PoolUpdate(ctx context.Context, _ []discovery.Item, instance *Instance) {
 	_ = d.tryToSyncInstance(ctx, instance)
 }
 
