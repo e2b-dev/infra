@@ -473,6 +473,9 @@ func transitionEgress(
 	from, to *orchestrator.SandboxNetworkEgressConfig,
 ) error {
 	if to.GetEgressProxyAddress() != "" {
+		// BYOP loosens the kernel firewall: internal-destined TCP is handed
+		// to the userspace proxy instead of dropped, so the proxy must see
+		// the config before the kernel lets that traffic through.
 		applyNetworkEgress(cfg, to)
 		if err := updateInternet(ctx, to); err != nil {
 			// The kernel kept its rules (atomic flush); undo the publish.
