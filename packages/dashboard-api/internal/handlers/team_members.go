@@ -66,6 +66,28 @@ func (s *APIStore) GetTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 		}
 	}
 
+	// Fill profiles for users Ory did not return (Hydra-only or no linked identity).
+	if len(profiles) < len(userIDs) {
+		missingIDs := make([]uuid.UUID, 0, len(userIDs)-len(profiles))
+		for _, uid := range userIDs {
+			if p, ok := profiles[uid]; !ok || p.Email == "" {
+				missingIDs = append(missingIDs, uid)
+			}
+		}
+		if len(missingIDs) > 0 {
+			emails, dbErr := s.authDB.GetUserEmailsByUserIDs(ctx, missingIDs)
+			if dbErr != nil {
+				logger.L().Warn(ctx, "DB email fallback for missing profiles failed", zap.Error(dbErr), logger.WithTeamID(authTeamID.String()))
+			} else {
+				for uid, email := range emails {
+					if email != "" {
+						profiles[uid] = identity.Profile{UserID: uid, Email: email}
+					}
+				}
+			}
+		}
+	}
+
 	members := make([]api.TeamMember, 0, len(rows))
 	for _, row := range rows {
 		profile, ok := profiles[row.UserID]
