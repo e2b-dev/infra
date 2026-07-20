@@ -111,11 +111,18 @@ message SandboxNetworkIngressConfig {
   optional string mask_request_host = 2;
 }
 
+enum SnapshotSourcePolicy {
+  SNAPSHOT_SOURCE_POLICY_AUTO = 0;
+  SNAPSHOT_SOURCE_POLICY_REQUIRE_PEER = 1;
+  SNAPSHOT_SOURCE_POLICY_REQUIRE_STORAGE = 2;
+}
+
 message SandboxCreateRequest {
   SandboxConfig sandbox = 1;
 
   google.protobuf.Timestamp start_time = 2;
   google.protobuf.Timestamp end_time = 3;
+  SnapshotSourcePolicy snapshot_source_policy = 4;
 }
 
 message SandboxCreateResponse {
@@ -168,8 +175,35 @@ message SchedulingMetadata {
   string rootfs_base_build_id = 9;
 }
 
+enum SnapshotPeerRegistrationStatus {
+  SNAPSHOT_PEER_REGISTRATION_STATUS_UNSPECIFIED = 0;
+  SNAPSHOT_PEER_REGISTRATION_STATUS_DISABLED = 1;
+  SNAPSHOT_PEER_REGISTRATION_STATUS_READY = 2;
+  SNAPSHOT_PEER_REGISTRATION_STATUS_NOT_READY = 3;
+}
+
+enum SnapshotPeerFailureReason {
+  SNAPSHOT_PEER_FAILURE_REASON_UNSPECIFIED = 0;
+  SNAPSHOT_PEER_FAILURE_REASON_NONE = 1;
+  SNAPSHOT_PEER_FAILURE_REASON_FEATURE_DISABLED = 2;
+  SNAPSHOT_PEER_FAILURE_REASON_REGISTRY_UNAVAILABLE = 3;
+  SNAPSHOT_PEER_FAILURE_REASON_REGISTER_FAILED = 4;
+  SNAPSHOT_PEER_FAILURE_REASON_VERIFY_FAILED = 5;
+  SNAPSHOT_PEER_FAILURE_REASON_VERIFY_MISMATCH = 6;
+}
+
+message SnapshotPeerRegistration {
+  string build_id = 1;
+  SnapshotPeerRegistrationStatus status = 2;
+  SnapshotPeerFailureReason failure_reason = 3;
+  string source_node_id = 4;
+  string source_address = 5;
+  optional google.protobuf.Timestamp expires_at = 6;
+}
+
 message SandboxPauseResponse {
   SchedulingMetadata scheduling_metadata = 1;
+  SnapshotPeerRegistration peer_registration = 2;
 }
 
 message SandboxCheckpointRequest {
