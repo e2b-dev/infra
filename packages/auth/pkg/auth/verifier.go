@@ -41,7 +41,7 @@ func (c ProviderConfig) normalize() ProviderConfig {
 		jwts[i] = entry.Normalized()
 	}
 
-	return ProviderConfig{JWT: jwts}
+	return ProviderConfig{JWT: jwts, Legacy: c.Legacy}
 }
 
 // validate runs configuration sanity checks on a (already normalized) config.
