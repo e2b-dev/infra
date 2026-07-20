@@ -295,22 +295,36 @@ sequenceDiagram
         DRP->>DRP: swap credentials, rewrite path → artifact registry
     end
     C->>API: POST /v3/templates (register build: cpu, ram) → Postgres env_builds
+    API->>API: resolve team default free-disk target
     C->>API: POST /v2/templates/{id}/builds/{buildID} (recipe: steps, start/ready cmd)
-    API->>TM: gRPC TemplateCreate(TemplateConfig)
+    API->>TM: gRPC TemplateCreate(internal build config + build-start max disk size)
     TM->>TM: pull image → inject envd/provisioning → extract ext4 rootfs
     TM->>FC: boot VM per phase: provision → user steps
-    TM->>TM: resize disk on host
+    opt free-disk restoration enabled
+        TM->>TM: resize disk on host
+    end
     TM->>FC: boot VM per phase: finalize → optimize
     TM->>OS: upload layers + final {buildID}/memfile, rootfs.ext4, snapfile, metadata
-    API->>TM: poll TemplateBuildStatus
-    API->>API: mark build ready in Postgres
+    TM->>TM: read final rootfs header and evaluate team maximum
+    alt maximum exceeded and enforcement enabled
+        TM->>OS: delete failed build artifacts
+        TM-->>API: build failed
+    else within limit or observe-only
+        API->>TM: poll TemplateBuildStatus
+        API->>API: persist floored total size and mark build ready in Postgres
+    end
 ```
 
 Builds are **layered** (`pkg/template/build/phases/`): base → user → one layer per recipe step →
-resize disk → finalize → optimize. Each layer is hashed and cached, so rebuilds only re-run changed
-steps. Resize disk grows the quiescent rootfs on the host; the other non-cached phases run in a real
-Firecracker VM and their pause-diffs become layers. The optimize phase records which memory pages a
-fresh resume touches, producing prefetch hints that speed up future sandbox starts.
+optional free-disk restoration → finalize → optimize. Each layer is hashed and cached, so rebuilds
+only re-run changed steps. Free-disk restoration grows the quiescent rootfs on the host. After all
+phases and uploads complete, the builder reads the final rootfs header once. It uses the exact logical
+byte size both for the team-maximum decision and to derive the floored MiB value returned for
+`env_builds.total_disk_size_mb`. The check adds attributes to the existing build span and rejects an
+excess only when `build-enforce-max-disk-size` is enabled; rejection follows the normal failed-build
+path and deletes the uploaded build prefix. The non-cached VM phases produce pause-diffs as layers.
+The optimize phase records which memory pages a fresh resume touches, producing prefetch hints that
+speed up future sandbox starts.
 
 ## Deployment topology
 

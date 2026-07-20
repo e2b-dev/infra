@@ -71,24 +71,24 @@ func TestCheckTeamBlocked(t *testing.T) {
 		},
 		{
 			name:    "not blocked",
-			team:    types.NewTeam(&authqueries.Team{IsBlocked: false}, &authqueries.TeamLimit{}),
+			team:    types.NewTeam(&authqueries.Team{IsBlocked: false}, &authqueries.TeamLimitsV2{}),
 			wantErr: false,
 		},
 		{
 			name:       "blocked without reason",
-			team:       types.NewTeam(&authqueries.Team{IsBlocked: true}, &authqueries.TeamLimit{}),
+			team:       types.NewTeam(&authqueries.Team{IsBlocked: true}, &authqueries.TeamLimitsV2{}),
 			wantErr:    true,
 			wantMsgHas: "team is blocked",
 		},
 		{
 			name:       "blocked with reason",
-			team:       types.NewTeam(&authqueries.Team{IsBlocked: true, BlockedReason: &reason}, &authqueries.TeamLimit{}),
+			team:       types.NewTeam(&authqueries.Team{IsBlocked: true, BlockedReason: &reason}, &authqueries.TeamLimitsV2{}),
 			wantErr:    true,
 			wantMsgHas: reason,
 		},
 		{
 			name:       "blocked with empty reason pointer",
-			team:       types.NewTeam(&authqueries.Team{IsBlocked: true, BlockedReason: &empty}, &authqueries.TeamLimit{}),
+			team:       types.NewTeam(&authqueries.Team{IsBlocked: true, BlockedReason: &empty}, &authqueries.TeamLimitsV2{}),
 			wantErr:    true,
 			wantMsgHas: "team is blocked",
 		},

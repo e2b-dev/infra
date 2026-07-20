@@ -87,6 +87,10 @@ message TemplateConfig {
   optional FromImageRegistry fromImageRegistry = 15;
 
   string teamID = 16;
+
+  // Carries the build-start maximum because template-manager measures the exact
+  // final rootfs size before reporting success. Absence keeps mixed-version builds fail-open.
+  optional int64 maxDiskSizeMB = 17;
 }
 
 message TemplateCreateRequest {

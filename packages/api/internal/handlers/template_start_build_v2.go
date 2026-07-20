@@ -174,6 +174,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		body.StartCmd,
 		build.Vcpu,
 		build.FreeDiskSizeMb,
+		&team.Limits.MaxDiskSizeMb,
 		build.RamMb,
 		body.ReadyCmd,
 		body.FromImage,

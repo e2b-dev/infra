@@ -48,7 +48,7 @@ func (s *authStoreImpl) GetTeamByHashedAPIKey(ctx context.Context, hashedKey str
 		}
 	}()
 
-	team := types.NewTeam(&result.Team, &result.TeamLimit)
+	team := types.NewTeam(&result.Team, &result.TeamLimitsV2)
 
 	return team, nil
 }
@@ -66,7 +66,7 @@ func (s *authStoreImpl) GetTeamByID(ctx context.Context, teamID uuid.UUID) (*typ
 		return nil, err
 	}
 
-	team := types.NewTeam(&result.Team, &result.TeamLimit)
+	team := types.NewTeam(&result.Team, &result.TeamLimitsV2)
 
 	return team, nil
 }
@@ -92,7 +92,7 @@ func (s *authStoreImpl) GetTeamByIDAndUserID(ctx context.Context, userID uuid.UU
 		return nil, err
 	}
 
-	team := types.NewTeam(&result.Team, &result.TeamLimit)
+	team := types.NewTeam(&result.Team, &result.TeamLimitsV2)
 
 	return team, nil
 }

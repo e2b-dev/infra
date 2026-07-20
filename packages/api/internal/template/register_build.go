@@ -223,7 +223,7 @@ func RegisterBuild(
 		Vcpu:               cpuCount,
 		KernelVersion:      data.KernelVersion,
 		FirecrackerVersion: data.FirecrackerVersion,
-		FreeDiskSizeMb:     data.Team.Limits.DiskMb,
+		FreeDiskSizeMb:     data.Team.Limits.DefaultFreeDiskSizeMb,
 		StartCmd:           data.StartCmd,
 		ReadyCmd:           data.ReadyCmd,
 		Dockerfile:         new(data.Dockerfile),

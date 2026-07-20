@@ -211,6 +211,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		build.StartCmd,
 		build.Vcpu,
 		build.FreeDiskSizeMb,
+		&team.Limits.MaxDiskSizeMb,
 		build.RamMb,
 		build.ReadyCmd,
 		&fromImage,

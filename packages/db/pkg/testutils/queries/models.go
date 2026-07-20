@@ -61,6 +61,7 @@ type Addon struct {
 	AddedBy                       uuid.UUID
 	IdempotencyKey                pgtype.Text
 	ExtraEventsTtlDays            int64
+	ExtraMaxDiskSizeMb            pgtype.Int8
 }
 
 type AuthUser struct {
@@ -223,6 +224,19 @@ type TeamLimit struct {
 	EventsTtlDays            int32
 }
 
+type TeamLimitsV2 struct {
+	ID                       uuid.UUID
+	MaxLengthHours           int64
+	ConcurrentSandboxes      int32
+	ConcurrentTemplateBuilds int32
+	MaxVcpu                  int32
+	MaxRamMb                 int32
+	DiskMb                   int32
+	EventsTtlDays            int32
+	DefaultFreeDiskSizeMb    *int64
+	MaxDiskSizeMb            *int64
+}
+
 type Tier struct {
 	ID     string
 	Name   string
@@ -235,6 +249,8 @@ type Tier struct {
 	// The number of concurrent template builds the team can run
 	ConcurrentTemplateBuilds int64
 	EventsTtlDays            int64
+	DefaultFreeDiskSizeMb    pgtype.Int8
+	MaxDiskSizeMb            pgtype.Int8
 }
 
 type User struct {

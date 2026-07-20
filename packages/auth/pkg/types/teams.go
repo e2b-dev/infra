@@ -15,22 +15,24 @@ func (t *Team) TeamID() string {
 }
 
 func newTeamLimits(
-	teamLimits *authqueries.TeamLimit,
+	teamLimits *authqueries.TeamLimitsV2,
 ) *TeamLimits {
 	return &TeamLimits{
-		SandboxConcurrency: int64(teamLimits.ConcurrentSandboxes),
-		BuildConcurrency:   int64(teamLimits.ConcurrentTemplateBuilds),
-		MaxLengthHours:     teamLimits.MaxLengthHours,
-		MaxVcpu:            int64(teamLimits.MaxVcpu),
-		MaxRamMb:           int64(teamLimits.MaxRamMb),
-		DiskMb:             int64(teamLimits.DiskMb),
-		EventsTTLDays:      int64(teamLimits.EventsTtlDays),
+		SandboxConcurrency:    int64(teamLimits.ConcurrentSandboxes),
+		BuildConcurrency:      int64(teamLimits.ConcurrentTemplateBuilds),
+		MaxLengthHours:        teamLimits.MaxLengthHours,
+		MaxVcpu:               int64(teamLimits.MaxVcpu),
+		MaxRamMb:              int64(teamLimits.MaxRamMb),
+		DiskMb:                int64(teamLimits.DiskMb),
+		DefaultFreeDiskSizeMb: teamLimits.DefaultFreeDiskSizeMb,
+		MaxDiskSizeMb:         teamLimits.MaxDiskSizeMb,
+		EventsTTLDays:         int64(teamLimits.EventsTtlDays),
 	}
 }
 
 func NewTeam(
 	team *authqueries.Team,
-	teamLimits *authqueries.TeamLimit,
+	teamLimits *authqueries.TeamLimitsV2,
 ) *Team {
 	return &Team{
 		Team:   team,
