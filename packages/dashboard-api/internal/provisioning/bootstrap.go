@@ -244,6 +244,9 @@ func (s *Service) bootstrapUser(ctx context.Context, profile bootstrapUserProfil
 
 func backfillIdentityExternalID(ctx context.Context, identityService identity.Service, oidcIdentity bootstrapUserIdentity, userID uuid.UUID) error {
 	if err := identityService.SetIdentityExternalID(ctx, oidcIdentity.Issuer, oidcIdentity.Subject, userID); err != nil {
+		if errors.Is(err, identity.ErrIdentityNotFound) {
+			return nil
+		}
 		return fmt.Errorf("set identity external id: %w", err)
 	}
 

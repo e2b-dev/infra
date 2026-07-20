@@ -174,6 +174,9 @@ func (d *oryDirectory) SetExternalID(ctx context.Context, subject string, extern
 		_ = resp.Body.Close()
 	}
 	if err != nil {
+		if resp != nil && resp.StatusCode == http.StatusNotFound {
+			return ErrIdentityNotFound
+		}
 		return fmt.Errorf("ory patch identity external id: %w", err)
 	}
 
