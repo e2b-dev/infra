@@ -42,10 +42,12 @@ type ServiceInfo struct {
 	drainClosed       bool
 }
 
-var ErrDrainingServiceCannotBeReenabled = errors.New("draining service cannot be re-enabled")
-var ErrStandbyServiceRequiresFencedPromotion = errors.New("standby service requires fenced promotion")
-var ErrServicePromotionStatusMismatch = errors.New("service promotion status does not match")
-var ErrServicePromotionEpochMismatch = errors.New("service promotion epoch does not match")
+var (
+	ErrDrainingServiceCannotBeReenabled      = errors.New("draining service cannot be re-enabled")
+	ErrStandbyServiceRequiresFencedPromotion = errors.New("standby service requires fenced promotion")
+	ErrServicePromotionStatusMismatch        = errors.New("service promotion status does not match")
+	ErrServicePromotionEpochMismatch         = errors.New("service promotion epoch does not match")
+)
 
 var serviceRolesMapper = map[cfg.ServiceType]orchestratorinfo.ServiceInfoRole{
 	cfg.Orchestrator:    orchestratorinfo.ServiceInfoRole_Orchestrator,
