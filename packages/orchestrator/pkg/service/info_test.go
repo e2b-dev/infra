@@ -10,8 +10,30 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/service/machineinfo"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 )
+
+func TestNewInfoContainerCanStartStandby(t *testing.T) {
+	info := NewInfoContainer("node-1", "version", "commit", "service-1", machineinfo.MachineInfo{}, cfg.Config{StartStandby: true})
+
+	status, epoch, drainClosed := info.GetStatusState()
+	require.Equal(t, orchestratorinfo.ServiceInfoStatus_Standby, status.Status)
+	require.Equal(t, uint64(0), epoch)
+	require.False(t, drainClosed)
+	_, admitted := info.BeginSandboxLifecycle()
+	require.False(t, admitted)
+}
+
+func TestNewInfoContainerStartsHealthyByDefault(t *testing.T) {
+	info := NewInfoContainer("node-1", "version", "commit", "service-1", machineinfo.MachineInfo{}, cfg.Config{})
+
+	require.Equal(t, orchestratorinfo.ServiceInfoStatus_Healthy, info.GetStatus().Status)
+	release, admitted := info.BeginSandboxLifecycle()
+	require.True(t, admitted)
+	release()
+}
 
 func TestDrainClosesAdmissionBeforeLifecycleWorkFinishes(t *testing.T) {
 	info := &ServiceInfo{}

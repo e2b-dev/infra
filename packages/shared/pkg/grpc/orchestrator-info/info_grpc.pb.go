@@ -23,6 +23,7 @@ const (
 	InfoService_ServiceInfo_FullMethodName                 = "/InfoService/ServiceInfo"
 	InfoService_ServiceStatusOverride_FullMethodName       = "/InfoService/ServiceStatusOverride"
 	InfoService_ServiceStatusOverrideFenced_FullMethodName = "/InfoService/ServiceStatusOverrideFenced"
+	InfoService_PromoteServiceStatusFenced_FullMethodName  = "/InfoService/PromoteServiceStatusFenced"
 )
 
 // InfoServiceClient is the client API for InfoService service.
@@ -32,6 +33,8 @@ type InfoServiceClient interface {
 	ServiceInfo(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ServiceInfoResponse, error)
 	ServiceStatusOverride(ctx context.Context, in *ServiceStatusChangeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ServiceStatusOverrideFenced(ctx context.Context, in *ServiceStatusChangeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// PromoteServiceStatusFenced atomically promotes one exact Standby process to Healthy.
+	PromoteServiceStatusFenced(ctx context.Context, in *ServicePromotionRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type infoServiceClient struct {
@@ -72,6 +75,16 @@ func (c *infoServiceClient) ServiceStatusOverrideFenced(ctx context.Context, in 
 	return out, nil
 }
 
+func (c *infoServiceClient) PromoteServiceStatusFenced(ctx context.Context, in *ServicePromotionRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, InfoService_PromoteServiceStatusFenced_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // InfoServiceServer is the server API for InfoService service.
 // All implementations must embed UnimplementedInfoServiceServer
 // for forward compatibility.
@@ -79,6 +92,8 @@ type InfoServiceServer interface {
 	ServiceInfo(context.Context, *emptypb.Empty) (*ServiceInfoResponse, error)
 	ServiceStatusOverride(context.Context, *ServiceStatusChangeRequest) (*emptypb.Empty, error)
 	ServiceStatusOverrideFenced(context.Context, *ServiceStatusChangeRequest) (*emptypb.Empty, error)
+	// PromoteServiceStatusFenced atomically promotes one exact Standby process to Healthy.
+	PromoteServiceStatusFenced(context.Context, *ServicePromotionRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedInfoServiceServer()
 }
 
@@ -97,6 +112,9 @@ func (UnimplementedInfoServiceServer) ServiceStatusOverride(context.Context, *Se
 }
 func (UnimplementedInfoServiceServer) ServiceStatusOverrideFenced(context.Context, *ServiceStatusChangeRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method ServiceStatusOverrideFenced not implemented")
+}
+func (UnimplementedInfoServiceServer) PromoteServiceStatusFenced(context.Context, *ServicePromotionRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method PromoteServiceStatusFenced not implemented")
 }
 func (UnimplementedInfoServiceServer) mustEmbedUnimplementedInfoServiceServer() {}
 func (UnimplementedInfoServiceServer) testEmbeddedByValue()                     {}
@@ -173,6 +191,24 @@ func _InfoService_ServiceStatusOverrideFenced_Handler(srv interface{}, ctx conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _InfoService_PromoteServiceStatusFenced_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ServicePromotionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InfoServiceServer).PromoteServiceStatusFenced(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InfoService_PromoteServiceStatusFenced_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InfoServiceServer).PromoteServiceStatusFenced(ctx, req.(*ServicePromotionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // InfoService_ServiceDesc is the grpc.ServiceDesc for InfoService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -191,6 +227,10 @@ var InfoService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ServiceStatusOverrideFenced",
 			Handler:    _InfoService_ServiceStatusOverrideFenced_Handler,
+		},
+		{
+			MethodName: "PromoteServiceStatusFenced",
+			Handler:    _InfoService_PromoteServiceStatusFenced_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

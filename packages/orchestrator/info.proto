@@ -49,6 +49,7 @@ message ServiceInfoResponse {
   MachineInfo machine_info = 54;
   repeated string labels = 55;
   google.protobuf.Timestamp service_status_changed_at = 56;
+  uint64 service_status_epoch = 57;
 
   int64 metric_vcpu_used = 101 [deprecated = true];
   int64 metric_memory_used_mb = 102 [deprecated = true];
@@ -84,8 +85,17 @@ message ServiceStatusChangeRequest {
   string expected_service_id = 4;
 }
 
+message ServicePromotionRequest {
+  string expected_node_id = 1;
+  string expected_service_id = 2;
+  ServiceInfoStatus expected_status = 3;
+  optional uint64 expected_status_epoch = 4;
+}
+
 service InfoService {
   rpc ServiceInfo(google.protobuf.Empty) returns (ServiceInfoResponse);
   rpc ServiceStatusOverride(ServiceStatusChangeRequest) returns (google.protobuf.Empty);
   rpc ServiceStatusOverrideFenced(ServiceStatusChangeRequest) returns (google.protobuf.Empty);
+  // PromoteServiceStatusFenced atomically promotes one exact Standby process to Healthy.
+  rpc PromoteServiceStatusFenced(ServicePromotionRequest) returns (google.protobuf.Empty);
 }

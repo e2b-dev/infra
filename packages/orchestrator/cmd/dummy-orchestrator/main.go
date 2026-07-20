@@ -44,6 +44,10 @@ func main() {
 	healthPort := envOrDefault("HEALTH_PORT", "5018")
 	nodeID := envOrDefault("NODE_ID", "dummy")
 	labels := splitCSV(os.Getenv("NODE_LABELS"))
+	initialStatus, err := initialServiceStatus(envOrDefault("START_STANDBY", "false"))
+	if err != nil {
+		log.Fatalf("invalid START_STANDBY: %v", err)
+	}
 
 	version := envOrDefault("SERVICE_VERSION", defaultVersion)
 	commit := commitSHA
@@ -72,7 +76,7 @@ func main() {
 	srv := grpc.NewServer()
 
 	serviceID := uuid.NewString()
-	runtimeState := dummyserver.NewRuntimeState()
+	runtimeState := dummyserver.NewRuntimeStateWithStatus(initialStatus)
 	sbxServer := dummyserver.NewSandbox(nodeID, serviceID, runtimeState)
 	orchestrator.RegisterSandboxServiceServer(srv, sbxServer)
 	orchestrator.RegisterChunkServiceServer(srv, &orchestrator.UnimplementedChunkServiceServer{})
@@ -160,6 +164,18 @@ func main() {
 			log.Printf("http server returned an error: %v", err)
 		}
 	}
+}
+
+func initialServiceStatus(rawStartStandby string) (orchestratorinfo.ServiceInfoStatus, error) {
+	startStandby, err := strconv.ParseBool(rawStartStandby)
+	if err != nil {
+		return orchestratorinfo.ServiceInfoStatus_Unhealthy, err
+	}
+	if startStandby {
+		return orchestratorinfo.ServiceInfoStatus_Standby, nil
+	}
+
+	return orchestratorinfo.ServiceInfoStatus_Healthy, nil
 }
 
 func envOrDefault(key, def string) string {

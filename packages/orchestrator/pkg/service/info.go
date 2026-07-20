@@ -43,6 +43,9 @@ type ServiceInfo struct {
 }
 
 var ErrDrainingServiceCannotBeReenabled = errors.New("draining service cannot be re-enabled")
+var ErrStandbyServiceRequiresFencedPromotion = errors.New("standby service requires fenced promotion")
+var ErrServicePromotionStatusMismatch = errors.New("service promotion status does not match")
+var ErrServicePromotionEpochMismatch = errors.New("service promotion epoch does not match")
 
 var serviceRolesMapper = map[cfg.ServiceType]orchestratorinfo.ServiceInfoRole{
 	cfg.Orchestrator:    orchestratorinfo.ServiceInfoRole_Orchestrator,
@@ -57,14 +60,23 @@ func (s *ServiceInfo) GetStatus() ServiceStatus {
 }
 
 func (s *ServiceInfo) GetDrainState() (orchestratorinfo.ServiceInfoStatus, uint64, bool) {
+	status, epoch, drainClosed := s.GetStatusState()
+	return status.Status, epoch, drainClosed
+}
+
+func (s *ServiceInfo) GetStatusState() (ServiceStatus, uint64, bool) {
 	s.statusMu.Lock()
 	defer s.statusMu.Unlock()
 
-	return s.status.Status, s.statusEpoch, s.drainClosed
+	return s.status, s.statusEpoch, s.drainClosed
 }
 
 func (s *ServiceInfo) SetStatus(ctx context.Context, status orchestratorinfo.ServiceInfoStatus) error {
 	s.statusMu.Lock()
+	if s.status.Status == orchestratorinfo.ServiceInfoStatus_Standby && status == orchestratorinfo.ServiceInfoStatus_Healthy {
+		s.statusMu.Unlock()
+		return ErrStandbyServiceRequiresFencedPromotion
+	}
 	if s.drainClosed && status == orchestratorinfo.ServiceInfoStatus_Healthy {
 		s.statusMu.Unlock()
 		return ErrDrainingServiceCannotBeReenabled
@@ -78,6 +90,30 @@ func (s *ServiceInfo) SetStatus(ctx context.Context, status orchestratorinfo.Ser
 		s.drainClosed = true
 	}
 	s.statusMu.Unlock()
+
+	return nil
+}
+
+// PromoteStandby atomically promotes an observed Standby generation. It is
+// intentionally narrower than SetStatus so a rollout cannot re-enable an
+// unhealthy or draining process, or promote a stale process observation.
+func (s *ServiceInfo) PromoteStandby(ctx context.Context, expectedEpoch uint64) error {
+	s.statusMu.Lock()
+	defer s.statusMu.Unlock()
+
+	if s.status.Status != orchestratorinfo.ServiceInfoStatus_Standby {
+		return ErrServicePromotionStatusMismatch
+	}
+	if s.statusEpoch != expectedEpoch {
+		return ErrServicePromotionEpochMismatch
+	}
+	if s.drainClosed {
+		return ErrDrainingServiceCannotBeReenabled
+	}
+
+	logger.L().Info(ctx, "Service status changed", zap.String("status", orchestratorinfo.ServiceInfoStatus_Healthy.String()))
+	s.status = ServiceStatus{Status: orchestratorinfo.ServiceInfoStatus_Healthy, ChangedAt: time.Now()}
+	s.statusEpoch++
 
 	return nil
 }
@@ -139,11 +175,15 @@ func NewInfoContainer(clientId string, version string, commit string, instanceID
 	}
 
 	startup := time.Now()
+	initialStatus := orchestratorinfo.ServiceInfoStatus_Healthy
+	if config.StartStandby {
+		initialStatus = orchestratorinfo.ServiceInfoStatus_Standby
+	}
 	serviceInfo := &ServiceInfo{
 		ClientId:  clientId,
 		ServiceId: instanceID,
 
-		status: ServiceStatus{Status: orchestratorinfo.ServiceInfoStatus_Healthy, ChangedAt: startup},
+		status: ServiceStatus{Status: initialStatus, ChangedAt: startup},
 
 		Startup:     startup,
 		Roles:       serviceRoles,

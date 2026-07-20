@@ -131,6 +131,8 @@ gRPC services on :5008 (`pkg/server/`, `pkg/service/`, `pkg/template/server/`, `
 - **SandboxService** — `Create`, `Update`, `List`, `Delete`, `Pause`, `Checkpoint`.
 - **TemplateService** — `TemplateCreate`, `TemplateBuildStatus`, `TemplateBuildDelete` (template-manager role only).
 - **InfoService** — node identity, roles, capacity, health status (used by API node discovery).
+  Rollout replacements may start in non-admitting `Standby`; promotion to `Healthy` is an atomic
+  compare-and-swap over the exact node, process identity, expected status, and observed status epoch.
 - **ChunkService / VolumeService** — peer-to-peer template chunk serving; persistent volumes.
 
 Key mechanisms (all under `pkg/sandbox/`):

@@ -48,18 +48,43 @@ func NewInfo(nodeID, serviceID, version, commit string, labels []string, state *
 }
 
 func (s *InfoServer) ServiceInfo(_ context.Context, _ *emptypb.Empty) (*orchestratorinfo.ServiceInfoResponse, error) {
-	serviceStatus, _, _ := s.state.Get()
+	serviceStatus, serviceStatusEpoch, _ := s.state.Get()
+
 	return &orchestratorinfo.ServiceInfoResponse{
-		NodeId:         s.nodeID,
-		ServiceId:      s.serviceID,
-		ServiceVersion: s.version,
-		ServiceCommit:  s.commit,
-		ServiceStatus:  serviceStatus,
-		ServiceRoles:   []orchestratorinfo.ServiceInfoRole{orchestratorinfo.ServiceInfoRole_Orchestrator},
-		ServiceStartup: timestamppb.New(s.startedAt),
-		MachineInfo:    s.machineInfo,
-		Labels:         s.labels,
+		NodeId:             s.nodeID,
+		ServiceId:          s.serviceID,
+		ServiceVersion:     s.version,
+		ServiceCommit:      s.commit,
+		ServiceStatus:      serviceStatus,
+		ServiceStatusEpoch: serviceStatusEpoch,
+		ServiceRoles:       []orchestratorinfo.ServiceInfoRole{orchestratorinfo.ServiceInfoRole_Orchestrator},
+		ServiceStartup:     timestamppb.New(s.startedAt),
+		MachineInfo:        s.machineInfo,
+		Labels:             s.labels,
 	}, nil
+}
+
+func (s *InfoServer) PromoteServiceStatusFenced(_ context.Context, request *orchestratorinfo.ServicePromotionRequest) (*emptypb.Empty, error) {
+	if request.GetExpectedNodeId() == "" || request.GetExpectedServiceId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "expected orchestrator node and process identity are required")
+	}
+	if request.GetExpectedStatus() != orchestratorinfo.ServiceInfoStatus_Standby {
+		return nil, status.Error(codes.InvalidArgument, "expected service status must be Standby")
+	}
+	if request.ExpectedStatusEpoch == nil {
+		return nil, status.Error(codes.InvalidArgument, "expected service status epoch is required")
+	}
+	if request.GetExpectedNodeId() != s.nodeID {
+		return nil, status.Error(codes.FailedPrecondition, "orchestrator node identity changed")
+	}
+	if request.GetExpectedServiceId() != s.serviceID {
+		return nil, status.Error(codes.FailedPrecondition, "orchestrator process identity changed")
+	}
+	if err := s.state.PromoteStandby(request.GetExpectedStatusEpoch()); err != nil {
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
+	}
+
+	return &emptypb.Empty{}, nil
 }
 
 func (s *InfoServer) ServiceStatusOverride(_ context.Context, request *orchestratorinfo.ServiceStatusChangeRequest) (*emptypb.Empty, error) {
@@ -76,6 +101,7 @@ func (s *InfoServer) ServiceStatusOverrideFenced(_ context.Context, request *orc
 	if request.GetExpectedNodeId() == "" || request.GetExpectedServiceId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "expected orchestrator node and process identity are required")
 	}
+
 	return s.applyServiceStatusOverride(request)
 }
 
@@ -83,5 +109,6 @@ func (s *InfoServer) applyServiceStatusOverride(request *orchestratorinfo.Servic
 	if err := s.state.Set(request.GetServiceStatus()); err != nil {
 		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
+
 	return &emptypb.Empty{}, nil
 }

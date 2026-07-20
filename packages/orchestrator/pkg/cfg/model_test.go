@@ -87,6 +87,14 @@ func TestParse(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, config.DisableStartupReclaim)
 	})
+
+	t.Run("standby startup can be enabled", func(t *testing.T) {
+		t.Setenv("START_STANDBY", "true")
+
+		config, err := Parse()
+		require.NoError(t, err)
+		assert.True(t, config.StartStandby)
+	})
 }
 
 func TestAdditionalClickhouseEndpoints(t *testing.T) {

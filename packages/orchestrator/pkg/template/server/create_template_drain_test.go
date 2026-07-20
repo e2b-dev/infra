@@ -24,3 +24,12 @@ func TestTemplateCreateRejectsWhileDraining(t *testing.T) {
 		t.Fatalf("TemplateCreate() error = %v, want unavailable", err)
 	}
 }
+
+func TestTemplateCreateRejectsWhileStandby(t *testing.T) {
+	info := &service.ServiceInfo{}
+	require.NoError(t, info.SetStatus(t.Context(), orchestratorinfo.ServiceInfoStatus_Standby))
+	store := &ServerStore{info: info}
+
+	_, err := store.TemplateCreate(t.Context(), &templatemanager.TemplateCreateRequest{})
+	require.Equal(t, codes.Unavailable, status.Code(err))
+}

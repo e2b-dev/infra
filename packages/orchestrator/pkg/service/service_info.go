@@ -68,13 +68,14 @@ func (s *Server) ServiceInfo(ctx context.Context, _ *emptypb.Empty) (*orchestrat
 		sandboxDiskAllocated += uint64(item.Config.TotalDiskSizeMB) * 1024 * 1024
 	}
 
-	serviceStatus := info.GetStatus()
+	serviceStatus, serviceStatusEpoch, _ := info.GetStatusState()
 
 	return &orchestratorinfo.ServiceInfoResponse{
 		NodeId:                 info.ClientId,
 		ServiceId:              info.ServiceId,
 		ServiceStatus:          serviceStatus.Status,
 		ServiceStatusChangedAt: timestamppb.New(serviceStatus.ChangedAt),
+		ServiceStatusEpoch:     serviceStatusEpoch,
 
 		ServiceVersion: info.SourceVersion,
 		ServiceCommit:  info.SourceCommit,
@@ -160,9 +161,35 @@ func (s *Server) ServiceStatusOverrideFenced(ctx context.Context, req *orchestra
 	return s.applyServiceStatusOverride(ctx, req)
 }
 
+func (s *Server) PromoteServiceStatusFenced(ctx context.Context, req *orchestratorinfo.ServicePromotionRequest) (*emptypb.Empty, error) {
+	if req.GetExpectedNodeId() == "" || req.GetExpectedServiceId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "expected orchestrator node and process identity are required")
+	}
+	if req.GetExpectedStatus() != orchestratorinfo.ServiceInfoStatus_Standby {
+		return nil, status.Error(codes.InvalidArgument, "expected service status must be Standby")
+	}
+	if req.ExpectedStatusEpoch == nil {
+		return nil, status.Error(codes.InvalidArgument, "expected service status epoch is required")
+	}
+	if req.GetExpectedNodeId() != s.info.ClientId {
+		return nil, status.Error(codes.FailedPrecondition, "orchestrator node identity changed")
+	}
+	if req.GetExpectedServiceId() != s.info.ServiceId {
+		return nil, status.Error(codes.FailedPrecondition, "orchestrator process identity changed")
+	}
+	if err := s.info.PromoteStandby(ctx, req.GetExpectedStatusEpoch()); err != nil {
+		if errors.Is(err, ErrServicePromotionStatusMismatch) || errors.Is(err, ErrServicePromotionEpochMismatch) || errors.Is(err, ErrDrainingServiceCannotBeReenabled) {
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		}
+		return nil, status.Error(codes.Internal, "failed to promote service status")
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
 func (s *Server) applyServiceStatusOverride(ctx context.Context, req *orchestratorinfo.ServiceStatusChangeRequest) (*emptypb.Empty, error) {
 	if err := s.info.SetStatus(ctx, req.GetServiceStatus()); err != nil {
-		if errors.Is(err, ErrDrainingServiceCannotBeReenabled) {
+		if errors.Is(err, ErrDrainingServiceCannotBeReenabled) || errors.Is(err, ErrStandbyServiceRequiresFencedPromotion) {
 			return nil, status.Error(codes.FailedPrecondition, err.Error())
 		}
 		return nil, status.Error(codes.Internal, "failed to update service status")

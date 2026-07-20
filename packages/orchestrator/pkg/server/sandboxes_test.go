@@ -55,6 +55,18 @@ func TestCheckpointRejectsWhileDraining(t *testing.T) {
 	}
 }
 
+func TestCreateAndCheckpointRejectWhileStandby(t *testing.T) {
+	info := &service.ServiceInfo{}
+	require.NoError(t, info.SetStatus(t.Context(), orchestratorinfo.ServiceInfoStatus_Standby))
+	s := &Server{info: info}
+
+	_, createErr := s.Create(t.Context(), &orchestrator.SandboxCreateRequest{})
+	require.Equal(t, codes.Unavailable, status.Code(createErr))
+
+	_, checkpointErr := s.Checkpoint(t.Context(), &orchestrator.SandboxCheckpointRequest{})
+	require.Equal(t, codes.Unavailable, status.Code(checkpointErr))
+}
+
 func TestDrainStatusIncludesStoppingLifecycles(t *testing.T) {
 	t.Parallel()
 
