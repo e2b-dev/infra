@@ -14,12 +14,24 @@ import (
 
 // ProviderConfig describes external auth provider verification.
 type ProviderConfig struct {
-	JWT []oidc.Config `json:"jwt"`
+	JWT    []oidc.Config `json:"jwt"`
+	Legacy *LegacyConfig `json:"legacy,omitempty"`
+}
+
+// LegacyConfig groups non-OIDC verification strategies.
+type LegacyConfig struct {
+	HMAC *HMACConfig `json:"hmac,omitempty"`
+}
+
+// HMACConfig configures HMAC-HS256 JWT verification.
+// The sub claim must be the internal user UUID; no identity lookup is needed.
+type HMACConfig struct {
+	Secrets []string `json:"secrets"`
 }
 
 // enabled returns true when at least one auth provider entry is configured.
 func (c ProviderConfig) enabled() bool {
-	return len(c.JWT) > 0
+	return len(c.JWT) > 0 || (c.Legacy != nil && c.Legacy.HMAC != nil && len(c.Legacy.HMAC.Secrets) > 0)
 }
 
 // normalize applies defaults across both arrays and returns a copy.
@@ -84,6 +96,14 @@ func NewVerifier(ctx context.Context, config ProviderConfig, oidcHTTPClient *htt
 		strategies = append(strategies, s)
 	}
 
+	// HMAC-HS256 strategies (legacy password-login tokens)
+	if normalized.Legacy != nil && normalized.Legacy.HMAC != nil {
+		for _, secret := range normalized.Legacy.HMAC.Secrets {
+			s := &hmacStrategy{secret: []byte(secret)}
+			strategies = append(strategies, s)
+		}
+	}
+
 	if len(strategies) == 0 {
 		return nil, errors.New("auth provider verifier has no configured signing verifier")
 	}
@@ -91,6 +111,33 @@ func NewVerifier(ctx context.Context, config ProviderConfig, oidcHTTPClient *htt
 	return &Verifier{
 		strategies: strategies,
 	}, nil
+}
+
+// hmacStrategy verifies HS256 JWTs whose sub claim is the internal user UUID.
+type hmacStrategy struct {
+	secret []byte
+}
+
+func (h *hmacStrategy) Verify(_ context.Context, tokenString string) (uuid.UUID, jwt.MapClaims, error) {
+	claims := jwt.MapClaims{}
+	_, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (any, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return h.secret, nil
+	})
+	if err != nil {
+		return uuid.Nil, nil, fmt.Errorf("hmac verify: %w", err)
+	}
+	sub, ok := claims["sub"].(string)
+	if !ok || sub == "" {
+		return uuid.Nil, nil, errors.New("hmac token missing sub claim")
+	}
+	userID, err := uuid.Parse(sub)
+	if err != nil {
+		return uuid.Nil, nil, fmt.Errorf("hmac token sub is not a uuid: %w", err)
+	}
+	return userID, claims, nil
 }
 
 // Verify iterates over the configured strategies and returns the first that
