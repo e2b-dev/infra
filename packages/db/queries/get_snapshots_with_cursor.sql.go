@@ -119,3 +119,116 @@ func (q *Queries) GetSnapshotsWithCursor(ctx context.Context, arg GetSnapshotsWi
 	}
 	return items, nil
 }
+
+const getSnapshotsWithCursorAsc = `-- name: GetSnapshotsWithCursorAsc :many
+SELECT COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases, COALESCE(ea.names, ARRAY[]::text[])::text[] AS names,
+    s.created_at, s.env_id, s.sandbox_id, s.id, s.metadata, s.base_env_id, s.sandbox_started_at, s.env_secure, s.origin_node_id, s.allow_internet_access, s.auto_pause, s.team_id, s.config,
+    eb.id AS build_id,
+    eb.vcpu AS build_vcpu,
+    eb.ram_mb AS build_ram_mb,
+    eb.total_disk_size_mb AS build_total_disk_size_mb,
+    eb.envd_version AS build_envd_version,
+    eb.created_at AS build_created_at
+FROM "public"."snapshots" s
+JOIN "public"."active_envs" e ON e.id = s.env_id
+LEFT JOIN LATERAL (
+    SELECT
+        ARRAY_AGG(alias ORDER BY alias) AS aliases,
+        ARRAY_AGG(CASE WHEN namespace IS NOT NULL THEN namespace || '/' || alias ELSE alias END ORDER BY alias) AS names
+    FROM "public"."env_aliases"
+    WHERE env_id = s.base_env_id
+) ea ON TRUE
+JOIN LATERAL (
+    SELECT eb.id, eb.vcpu, eb.ram_mb, eb.total_disk_size_mb, eb.envd_version, eb.created_at
+    FROM "public"."env_build_assignments" eba
+    JOIN "public"."env_builds" eb ON eb.id = eba.build_id
+    WHERE
+        eba.env_id = s.env_id
+        AND eba.tag = 'default'
+        AND eb.status_group = 'ready'
+    ORDER BY eba.created_at DESC
+    LIMIT 1
+) eb ON TRUE
+WHERE
+    s.team_id = $2
+    AND s.metadata @> $3
+    -- started_at ascending, sandbox_id descending (reverse of the descending query).
+    -- The redundant >= bound is what the planner turns into an index condition on
+    -- idx_snapshots_team_time_id; with only the OR predicate every deep page would
+    -- rescan the team's range from the oldest row.
+    AND s.sandbox_started_at >= $4
+    AND (s.sandbox_started_at > $4 OR s.sandbox_id < $5::text)
+ORDER BY s.sandbox_started_at ASC, s.sandbox_id DESC
+LIMIT $1
+`
+
+type GetSnapshotsWithCursorAscParams struct {
+	Limit      int32
+	TeamID     uuid.UUID
+	Metadata   types.JSONBStringMap
+	CursorTime pgtype.Timestamptz
+	CursorID   string
+}
+
+type GetSnapshotsWithCursorAscRow struct {
+	Aliases              []string
+	Names                []string
+	Snapshot             Snapshot
+	BuildID              uuid.UUID
+	BuildVcpu            int64
+	BuildRamMb           int64
+	BuildTotalDiskSizeMb *int64
+	BuildEnvdVersion     *string
+	BuildCreatedAt       time.Time
+}
+
+// Ascending counterpart of GetSnapshotsWithCursor. It is the exact reverse order
+// (started_at ASC, sandbox_id DESC) which maps onto a backward scan of the
+// idx_snapshots_team_time_id (team_id, sandbox_started_at DESC, sandbox_id) index.
+func (q *Queries) GetSnapshotsWithCursorAsc(ctx context.Context, arg GetSnapshotsWithCursorAscParams) ([]GetSnapshotsWithCursorAscRow, error) {
+	rows, err := q.db.Query(ctx, getSnapshotsWithCursorAsc,
+		arg.Limit,
+		arg.TeamID,
+		arg.Metadata,
+		arg.CursorTime,
+		arg.CursorID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetSnapshotsWithCursorAscRow
+	for rows.Next() {
+		var i GetSnapshotsWithCursorAscRow
+		if err := rows.Scan(
+			&i.Aliases,
+			&i.Names,
+			&i.Snapshot.CreatedAt,
+			&i.Snapshot.EnvID,
+			&i.Snapshot.SandboxID,
+			&i.Snapshot.ID,
+			&i.Snapshot.Metadata,
+			&i.Snapshot.BaseEnvID,
+			&i.Snapshot.SandboxStartedAt,
+			&i.Snapshot.EnvSecure,
+			&i.Snapshot.OriginNodeID,
+			&i.Snapshot.AllowInternetAccess,
+			&i.Snapshot.AutoPause,
+			&i.Snapshot.TeamID,
+			&i.Snapshot.Config,
+			&i.BuildID,
+			&i.BuildVcpu,
+			&i.BuildRamMb,
+			&i.BuildTotalDiskSizeMb,
+			&i.BuildEnvdVersion,
+			&i.BuildCreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

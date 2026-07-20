@@ -77,14 +77,25 @@ func ParseCursor(cursor string) (time.Time, string, error) {
 	return cursorTime, parts[1], nil
 }
 
-func FilterBasedOnCursor(sandboxes []PaginatedSandbox, cursorTime time.Time, cursorID string) []PaginatedSandbox {
-	// Apply cursor-based filtering if cursor is provided
+// FilterBasedOnCursor keeps only the sandboxes that fall after the cursor in the
+// requested order. It compares on PaginationTimestamp (the microsecond-aligned keyset
+// value), not the public StartedAt, so running and paused sandboxes share the same
+// precision as the SQL predicate. Descending order pages through
+// (timestamp DESC, sandbox_id ASC); ascending order is the exact reverse
+// (timestamp ASC, sandbox_id DESC).
+func FilterBasedOnCursor(sandboxes []PaginatedSandbox, cursorTime time.Time, cursorID string, order SortDirection) []PaginatedSandbox {
 	var filteredSandboxes []PaginatedSandbox
 	for _, sandbox := range sandboxes {
-		// Take sandboxes with start time before cursor time OR
-		// same start time but sandboxID greater than cursor ID (for stability)
-		if sandbox.StartedAt.Before(cursorTime) ||
-			(sandbox.StartedAt.Equal(cursorTime) && sandbox.SandboxID > cursorID) {
+		var include bool
+		if order == SortAsc {
+			include = sandbox.PaginationTimestamp.After(cursorTime) ||
+				(sandbox.PaginationTimestamp.Equal(cursorTime) && sandbox.SandboxID < cursorID)
+		} else {
+			include = sandbox.PaginationTimestamp.Before(cursorTime) ||
+				(sandbox.PaginationTimestamp.Equal(cursorTime) && sandbox.SandboxID > cursorID)
+		}
+
+		if include {
 			filteredSandboxes = append(filteredSandboxes, sandbox)
 		}
 	}
@@ -92,16 +103,34 @@ func FilterBasedOnCursor(sandboxes []PaginatedSandbox, cursorTime time.Time, cur
 	return filteredSandboxes
 }
 
-// SortPaginatedSandboxesDesc sorts the sandboxes by StartedAt (descending),
-// then by SandboxID (ascending) for stability
-func SortPaginatedSandboxesDesc(sandboxes []PaginatedSandbox) {
+// SortPaginatedSandboxes sorts the sandboxes by PaginationTimestamp then SandboxID for
+// stable pagination. It uses PaginationTimestamp (the microsecond-aligned keyset value),
+// not the public StartedAt, so the order matches the cursor filter and SQL predicate.
+// Descending order is timestamp DESC, SandboxID ASC; ascending order is the exact
+// reverse (timestamp ASC, SandboxID DESC) so it maps onto a backward scan of the
+// (team_id, sandbox_started_at DESC, sandbox_id) index.
+func SortPaginatedSandboxes(sandboxes []PaginatedSandbox, order SortDirection) {
 	slices.SortFunc(sandboxes, func(a, b PaginatedSandbox) int {
-		if !a.StartedAt.Equal(b.StartedAt) {
-			return b.StartedAt.Compare(a.StartedAt)
+		if !a.PaginationTimestamp.Equal(b.PaginationTimestamp) {
+			if order == SortAsc {
+				return a.PaginationTimestamp.Compare(b.PaginationTimestamp)
+			}
+
+			return b.PaginationTimestamp.Compare(a.PaginationTimestamp)
+		}
+
+		if order == SortAsc {
+			return strings.Compare(b.SandboxID, a.SandboxID)
 		}
 
 		return strings.Compare(a.SandboxID, b.SandboxID)
 	})
+}
+
+// SortPaginatedSandboxesDesc preserves the descending-only entry point used by the
+// legacy (v1) list endpoint.
+func SortPaginatedSandboxesDesc(sandboxes []PaginatedSandbox) {
+	SortPaginatedSandboxes(sandboxes, SortDesc)
 }
 
 func FilterSandboxesOnMetadata(sandboxes []PaginatedSandbox, metadata *map[string]string) []PaginatedSandbox {

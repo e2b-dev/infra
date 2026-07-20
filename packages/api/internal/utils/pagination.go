@@ -16,6 +16,15 @@ func generateCursor(timestamp time.Time, id string) string {
 	return base64.URLEncoding.EncodeToString([]byte(cursor))
 }
 
+// SortDirection is the order in which keyset-paginated results are returned.
+// The zero value is SortDesc, preserving the default newest-first behavior.
+type SortDirection int
+
+const (
+	SortDesc SortDirection = iota
+	SortAsc
+)
+
 // PaginationParams holds pagination parameters from the API request
 type PaginationParams struct {
 	Limit     *int32
@@ -27,6 +36,10 @@ type PaginationConfig struct {
 	DefaultLimit int32
 	MaxLimit     int32
 	DefaultID    string // Default cursor ID when no token is provided (e.g., max UUID or max sandbox ID)
+	// Order controls the first-page cursor when no token is provided. For
+	// SortDesc the first page starts at "now" (newest first); for SortAsc it
+	// starts at the zero time (oldest first).
+	Order SortDirection
 }
 
 // Cursor represents a parsed pagination cursor
@@ -60,7 +73,7 @@ func NewPagination[T any](params PaginationParams, config PaginationConfig) (*Pa
 
 	// Parse cursor token
 	var err error
-	p.cursor, err = parseCursorToken(params.NextToken, config.DefaultID)
+	p.cursor, err = parseCursorToken(params.NextToken, config)
 	if err != nil {
 		return nil, fmt.Errorf("invalid next token: %w", err)
 	}
@@ -132,7 +145,7 @@ func (p *Pagination[T]) setHeader(c *gin.Context) {
 }
 
 // parseCursorToken parses a cursor token, returning default values if token is nil/empty
-func parseCursorToken(token *string, defaultID string) (Cursor, error) {
+func parseCursorToken(token *string, config PaginationConfig) (Cursor, error) {
 	if token != nil && *token != "" {
 		cursorTime, cursorID, err := ParseCursor(*token)
 		if err != nil {
@@ -142,6 +155,13 @@ func parseCursorToken(token *string, defaultID string) (Cursor, error) {
 		return Cursor{Time: cursorTime, ID: cursorID}, nil
 	}
 
-	// Default to current time and provided default ID to get the first page
-	return Cursor{Time: time.Now(), ID: defaultID}, nil
+	// Default cursor for the first page. For descending order we start at "now"
+	// (so everything older is included); for ascending order we start at the
+	// zero time (so everything newer is included).
+	defaultTime := time.Now()
+	if config.Order == SortAsc {
+		defaultTime = time.Time{}
+	}
+
+	return Cursor{Time: defaultTime, ID: config.DefaultID}, nil
 }

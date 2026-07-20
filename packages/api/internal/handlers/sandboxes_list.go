@@ -38,6 +38,7 @@ func (a *APIStore) getPausedSandboxes(
 	queryLimit int32,
 	cursorTime time.Time,
 	cursorID string,
+	order utils.SortDirection,
 ) ([]utils.PaginatedSandbox, error) {
 	queryMetadata := dbtypes.JSONBStringMap{}
 	if metadataFilter != nil {
@@ -49,7 +50,7 @@ func (a *APIStore) getPausedSandboxes(
 	// O(rows × array_size) and caused 40s+ query times with large arrays.
 	dbLimit := queryLimit + int32(len(runningSandboxesIDs))
 
-	snapshots, err := a.throttledGetSnapshots(ctx, queries.GetSnapshotsWithCursorParams{
+	snapshots, err := a.throttledGetSnapshots(ctx, order, queries.GetSnapshotsWithCursorParams{
 		Limit:      dbLimit,
 		TeamID:     teamID,
 		Metadata:   queryMetadata,
@@ -149,6 +150,20 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		states = append(states, *params.State...)
 	}
 
+	// Sort direction by start time. Defaults to descending (newest first).
+	order := utils.SortDesc
+	if params.Order != nil {
+		if !params.Order.Valid() {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid order parameter: %s", *params.Order))
+
+			return
+		}
+
+		if *params.Order == api.Asc {
+			order = utils.SortAsc
+		}
+	}
+
 	// Initialize pagination
 	pagination, err := utils.NewPagination[utils.PaginatedSandbox](
 		utils.PaginationParams{
@@ -159,6 +174,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 			DefaultLimit: sandboxesDefaultLimit,
 			MaxLimit:     sandboxesMaxLimit,
 			DefaultID:    utils.MaxSandboxID,
+			Order:        order,
 		},
 	)
 	if err != nil {
@@ -204,7 +220,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		c.Header("X-Total-Running", strconv.Itoa(len(runningSandboxList)))
 
 		// Filter based on cursor
-		runningSandboxList = utils.FilterBasedOnCursor(runningSandboxList, pagination.CursorTime(), pagination.CursorID())
+		runningSandboxList = utils.FilterBasedOnCursor(runningSandboxList, pagination.CursorTime(), pagination.CursorID(), order)
 
 		sandboxes = append(sandboxes, runningSandboxList...)
 	}
@@ -219,7 +235,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 			runningSandboxesIDs = append(runningSandboxesIDs, info.SandboxID)
 		}
 
-		pausedSandboxList, err := a.getPausedSandboxes(ctx, team.ID, runningSandboxesIDs, metadataFilter, pagination.QueryLimit(), pagination.CursorTime(), pagination.CursorID())
+		pausedSandboxList, err := a.getPausedSandboxes(ctx, team.ID, runningSandboxesIDs, metadataFilter, pagination.QueryLimit(), pagination.CursorTime(), pagination.CursorID(), order)
 		if err != nil {
 			logger.L().Error(ctx, "Error getting paused sandboxes", zap.Error(err))
 			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error getting paused sandboxes")
@@ -229,14 +245,14 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 
 		pausingSandboxList := instanceInfoToPaginatedSandboxes(pausingSandboxes)
 		pausingSandboxList = utils.FilterSandboxesOnMetadata(pausingSandboxList, metadataFilter)
-		pausingSandboxList = utils.FilterBasedOnCursor(pausingSandboxList, pagination.CursorTime(), pagination.CursorID())
+		pausingSandboxList = utils.FilterBasedOnCursor(pausingSandboxList, pagination.CursorTime(), pagination.CursorID(), order)
 
 		sandboxes = append(sandboxes, pausedSandboxList...)
 		sandboxes = append(sandboxes, pausingSandboxList...)
 	}
 
 	// We need to sort again after merging running and paused sandboxes
-	utils.SortPaginatedSandboxesDesc(sandboxes)
+	utils.SortPaginatedSandboxes(sandboxes, order)
 
 	sandboxes = pagination.ProcessResultsWithHeader(c, sandboxes, func(s utils.PaginatedSandbox) (time.Time, string) {
 		return s.PaginationTimestamp, s.SandboxID
@@ -329,7 +345,12 @@ func instanceInfoToPaginatedSandboxes(runningSandboxes []sandbox.Sandbox) []util
 				EnvdVersion:  info.EnvdVersion,
 				VolumeMounts: convertFromDBMountsToAPIMounts(info.VolumeMounts),
 			},
-			PaginationTimestamp: info.StartTime,
+			// Paused snapshots come from Postgres at microsecond precision, but running
+			// sandboxes carry nanosecond StartTime from time.Now(). Truncate only the
+			// pagination key (not the public StartedAt) so the in-memory sort/cursor and
+			// the SQL predicate agree at the running/paused boundary; otherwise asc
+			// pagination can re-emit rows that share a truncated microsecond with the cursor.
+			PaginationTimestamp: info.StartTime.Truncate(time.Microsecond),
 		}
 
 		if info.Metadata != nil {
@@ -358,12 +379,35 @@ func convertFromDBMountsToAPIMounts(mounts []*dbtypes.SandboxVolumeMountConfig) 
 	return &results
 }
 
-// throttledGetSnapshots runs GetSnapshotsWithCursor gated by the sandbox list semaphore.
-func (a *APIStore) throttledGetSnapshots(ctx context.Context, params queries.GetSnapshotsWithCursorParams) ([]queries.GetSnapshotsWithCursorRow, error) {
+// throttledGetSnapshots runs the cursor snapshot query gated by the sandbox list
+// semaphore, picking the ascending or descending keyset query based on the requested
+// order. The ascending query returns an identically-shaped row, converted back to the
+// descending row type so callers share a single conversion path.
+func (a *APIStore) throttledGetSnapshots(ctx context.Context, order utils.SortDirection, params queries.GetSnapshotsWithCursorParams) ([]queries.GetSnapshotsWithCursorRow, error) {
 	if err := a.sandboxListSem.Acquire(ctx, 1); err != nil {
 		return nil, err
 	}
 	defer a.sandboxListSem.Release(1)
 
-	return a.sqlcDB.GetSnapshotsWithCursor(ctx, params)
+	if order != utils.SortAsc {
+		return a.sqlcDB.GetSnapshotsWithCursor(ctx, params)
+	}
+
+	ascRows, err := a.sqlcDB.GetSnapshotsWithCursorAsc(ctx, queries.GetSnapshotsWithCursorAscParams{
+		Limit:      params.Limit,
+		TeamID:     params.TeamID,
+		Metadata:   params.Metadata,
+		CursorTime: params.CursorTime,
+		CursorID:   params.CursorID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	rows := make([]queries.GetSnapshotsWithCursorRow, len(ascRows))
+	for i, r := range ascRows {
+		rows[i] = queries.GetSnapshotsWithCursorRow(r)
+	}
+
+	return rows, nil
 }

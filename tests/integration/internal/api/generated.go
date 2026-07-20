@@ -160,6 +160,24 @@ func (e NodeStatus) Valid() bool {
 	}
 }
 
+// Defines values for OrderDirection.
+const (
+	Asc  OrderDirection = "asc"
+	Desc OrderDirection = "desc"
+)
+
+// Valid indicates whether the value is a known member of the OrderDirection enum.
+func (e OrderDirection) Valid() bool {
+	switch e {
+	case Asc:
+		return true
+	case Desc:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SandboxOnTimeout.
 const (
 	Kill  SandboxOnTimeout = "kill"
@@ -722,6 +740,9 @@ type NodeStatusChange struct {
 	// - standby: the node is not actively used, but it can return to ready and continue serving traffic.
 	Status NodeStatus `json:"status"`
 }
+
+// OrderDirection Sort direction
+type OrderDirection string
 
 // ResumedSandbox defines model for ResumedSandbox.
 type ResumedSandbox struct {
@@ -1653,6 +1674,9 @@ type GetV2SandboxesParams struct {
 
 	// State Filter sandboxes by one or more states
 	State *[]SandboxState `form:"state,omitempty" json:"state,omitempty"`
+
+	// Order Sort direction by sandbox start time. Defaults to desc (newest first).
+	Order *OrderDirection `form:"order,omitempty" json:"order,omitempty"`
 
 	// NextToken Cursor to start the list from
 	NextToken *PaginationNextToken `form:"nextToken,omitempty" json:"nextToken,omitempty"`
@@ -5513,6 +5537,18 @@ func NewGetV2SandboxesRequest(server string, params *GetV2SandboxesParams) (*htt
 		if params.State != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "state", *params.State, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "array", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Order != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "order", *params.Order, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
