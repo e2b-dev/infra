@@ -24,6 +24,7 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/auth/pkg/token"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
@@ -247,7 +248,7 @@ func run() int {
 	}
 	swagger.Servers = nil
 
-	adminVerifier, err := sharedauth.NewAdminJWTVerifier(ctx, config.AdminAuth, authClient)
+	adminVerifier, err := token.NewAdminVerifier(ctx, config.AdminAuth, authClient)
 	if err != nil {
 		l.Error(ctx, "initializing admin JWT verifier", zap.Error(err))
 

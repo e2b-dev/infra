@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/auth/pkg/auth/jwks"
+	"github.com/e2b-dev/infra/packages/auth/pkg/token/jwks"
 )
 
 func setBaseEnv(t *testing.T) {

@@ -13,7 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/auth/pkg/auth/jwks"
+	"github.com/e2b-dev/infra/packages/auth/pkg/token/jwks"
 )
 
 const testIssuerURL = "https://issuer.example.com"

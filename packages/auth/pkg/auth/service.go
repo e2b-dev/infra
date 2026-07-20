@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/e2b-dev/infra/packages/auth/pkg/token"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
@@ -44,7 +45,7 @@ type Service interface {
 type authService struct {
 	store                authStore
 	teamCache            *authCache
-	authProviderVerifier *ProviderVerifier
+	authProviderVerifier *token.ProviderVerifier
 }
 
 // Compile-time assertion that *authService satisfies the Service interface.
@@ -59,7 +60,7 @@ func NewAuthService(
 	ctx context.Context,
 	redisClient redis.UniversalClient,
 	authDB *authdb.Client,
-	providerConfig ProviderConfig,
+	providerConfig token.ProviderConfig,
 	httpClient *http.Client,
 ) (*authService, error) {
 	if redisClient == nil {
@@ -77,7 +78,7 @@ func NewAuthService(
 	// OIDC bootstrap writes identity rows on the primary immediately before the
 	// next authenticated request; using the read replica here races replication lag.
 	identityLookup := newAuthIdentityLookup(authDB.Write)
-	v, err := NewProviderVerifier(ctx, providerConfig, httpClient, identityLookup)
+	v, err := token.NewProviderVerifier(ctx, providerConfig, httpClient, identityLookup)
 	if err != nil {
 		return nil, fmt.Errorf("initializing auth provider JWT verifier: %w", err)
 	}
@@ -183,7 +184,7 @@ func (s *authService) ValidateAuthProviderToken(ctx context.Context, ginCtx *gin
 	return s.validateJWTWithProvider(ctx, ginCtx, s.authProviderVerifier, token, "auth provider")
 }
 
-func (s *authService) validateJWTWithProvider(ctx context.Context, ginCtx *gin.Context, v *ProviderVerifier, token string, tokenSource string) (uuid.UUID, *APIError) {
+func (s *authService) validateJWTWithProvider(ctx context.Context, ginCtx *gin.Context, v *token.ProviderVerifier, token string, tokenSource string) (uuid.UUID, *APIError) {
 	userID, _, err := v.Verify(ctx, token)
 	if err != nil {
 		return uuid.UUID{}, &APIError{

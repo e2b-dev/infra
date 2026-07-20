@@ -1,4 +1,4 @@
-package auth
+package token
 
 import (
 	"context"
@@ -16,8 +16,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/auth/pkg/auth/jwks"
-	"github.com/e2b-dev/infra/packages/auth/pkg/auth/oidc"
+	"github.com/e2b-dev/infra/packages/auth/pkg/token/jwks"
+	"github.com/e2b-dev/infra/packages/auth/pkg/token/oidc"
 )
 
 const testIssuerURL = "https://issuer.example.com"
@@ -66,7 +66,7 @@ func httpClientForServers(servers ...*httptest.Server) *http.Client {
 func TestNewVerifier_DisabledConfigReturnsNil(t *testing.T) {
 	t.Parallel()
 
-	verifier, err := NewVerifier(t.Context(), ProviderConfig{}, nil, nil)
+	verifier, err := NewProviderVerifier(t.Context(), ProviderConfig{}, nil, nil)
 	require.NoError(t, err)
 	require.Nil(t, verifier)
 }
@@ -85,7 +85,7 @@ func TestVerifier_VerifyJWT(t *testing.T) {
 	jwksUserID := uuid.New()
 	lookup.set(testIssuerURL, jwksSub, jwksUserID)
 
-	verifier, err := NewVerifier(t.Context(), ProviderConfig{
+	verifier, err := NewProviderVerifier(t.Context(), ProviderConfig{
 		JWT: []jwks.Config{
 			{
 				Issuer: jwks.Issuer{
@@ -137,7 +137,7 @@ func TestVerifier_VerifyMultipleJWTIssuers(t *testing.T) {
 	userID := uuid.New()
 	lookup.set(issuer2URL, tokenSub, userID)
 
-	verifier, err := NewVerifier(t.Context(), ProviderConfig{
+	verifier, err := NewProviderVerifier(t.Context(), ProviderConfig{
 		JWT: []jwks.Config{
 			{
 				Issuer: jwks.Issuer{

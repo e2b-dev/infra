@@ -12,7 +12,7 @@ import (
 	"github.com/caarlos0/env/v11"
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/auth/pkg/token"
 )
 
 const (
@@ -102,7 +102,7 @@ type Config struct {
 
 	VolumesToken VolumesTokenConfig
 
-	AuthProvider auth.ProviderConfig `env:"AUTH_PROVIDER_CONFIG"`
+	AuthProvider token.ProviderConfig `env:"AUTH_PROVIDER_CONFIG"`
 
 	DefaultPersistentVolumeType string `env:"DEFAULT_PERSISTENT_VOLUME_TYPE"`
 
@@ -198,8 +198,8 @@ var (
 	ErrUnknownKeyType       = errors.New("unknown JWT signing key type")
 
 	parserFuncs = map[reflect.Type]env.ParserFunc{
-		reflect.TypeFor[auth.ProviderConfig](): func(v string) (any, error) {
-			return auth.ParseProviderConfig(v)
+		reflect.TypeFor[token.ProviderConfig](): func(v string) (any, error) {
+			return token.ParseProviderConfig(v)
 		},
 		reflect.TypeFor[JWTSigningKey](): func(v string) (any, error) {
 			keyPieces := strings.SplitN(v, ":", 2)

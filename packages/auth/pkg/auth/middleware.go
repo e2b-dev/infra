@@ -14,6 +14,7 @@ import (
 	middleware "github.com/oapi-codegen/gin-middleware"
 	"go.opentelemetry.io/otel/attribute"
 
+	"github.com/e2b-dev/infra/packages/auth/pkg/token"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -186,7 +187,7 @@ func NewAuthProviderTeamAuthenticator(validationFunc func(ctx context.Context, g
 }
 
 // NewAdminJWTAuthenticator creates an authenticator for the AdminJWTAuth security scheme.
-func NewAdminJWTAuthenticator(verifier *AdminJWTVerifier) Authenticator {
+func NewAdminJWTAuthenticator(verifier *token.AdminVerifier) Authenticator {
 	return &commonAuthenticator[struct{}]{
 		schemeName: "AdminJWTAuth",
 		header: headerKey{

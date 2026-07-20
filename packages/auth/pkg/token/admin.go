@@ -1,4 +1,4 @@
-package auth
+package token
 
 import (
 	"context"
@@ -9,24 +9,24 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/e2b-dev/infra/packages/auth/pkg/auth/jwks"
+	"github.com/e2b-dev/infra/packages/auth/pkg/token/jwks"
 )
 
 // adminJWTClockSkew is the leeway applied to time-based claims of admin
 // service JWTs.
 const adminJWTClockSkew = 30 * time.Second
 
-// AdminJWTVerifier verifies admin service JWTs against one or more configured
+// AdminVerifier verifies admin service JWTs against one or more configured
 // issuers and returns the first successful verification.
-type AdminJWTVerifier struct {
+type AdminVerifier struct {
 	verifiers []*jwks.Verifier
 }
 
-// NewAdminJWTVerifier builds the verifier for the AdminJWTAuth security
+// NewAdminVerifier builds the verifier for the AdminJWTAuth security
 // scheme from the same ProviderConfig shape used for AUTH_PROVIDER_CONFIG:
 // short-lived EdDSA-signed service tokens. It returns nil when the config has
 // no issuers, leaving the scheme unconfigured.
-func NewAdminJWTVerifier(ctx context.Context, config ProviderConfig, httpClient *http.Client) (*AdminJWTVerifier, error) {
+func NewAdminVerifier(ctx context.Context, config ProviderConfig, httpClient *http.Client) (*AdminVerifier, error) {
 	normalized := config.normalize()
 	if err := normalized.validate(); err != nil {
 		return nil, err
@@ -49,12 +49,12 @@ func NewAdminJWTVerifier(ctx context.Context, config ProviderConfig, httpClient 
 		verifiers = append(verifiers, verifier)
 	}
 
-	return &AdminJWTVerifier{verifiers: verifiers}, nil
+	return &AdminVerifier{verifiers: verifiers}, nil
 }
 
 // Verify iterates over the configured issuers and returns the claims of the
 // first successful verification.
-func (v *AdminJWTVerifier) Verify(ctx context.Context, tokenString string) (jwt.MapClaims, error) {
+func (v *AdminVerifier) Verify(ctx context.Context, tokenString string) (jwt.MapClaims, error) {
 	if v == nil || len(v.verifiers) == 0 {
 		return nil, errors.New("admin JWT verifier is not configured")
 	}

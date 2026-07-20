@@ -1,4 +1,4 @@
-package auth
+package token
 
 import (
 	"crypto/ed25519"
@@ -10,7 +10,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/auth/pkg/auth/jwks"
+	"github.com/e2b-dev/infra/packages/auth/pkg/token/jwks"
 )
 
 const (
@@ -18,7 +18,7 @@ const (
 	adminTestAudience = "fx1"
 )
 
-func newAdminTestVerifier(t *testing.T) (*AdminJWTVerifier, ed25519.PrivateKey, string) {
+func newAdminTestVerifier(t *testing.T) (*AdminVerifier, ed25519.PrivateKey, string) {
 	t.Helper()
 
 	const issuer = "https://workspace.example.com"
@@ -28,7 +28,7 @@ func newAdminTestVerifier(t *testing.T) (*AdminJWTVerifier, ed25519.PrivateKey, 
 
 	server := jwks.NewTestServer(t, publicKey, adminTestKeyID, jose.EdDSA, issuer)
 
-	verifier, err := NewAdminJWTVerifier(t.Context(), ProviderConfig{
+	verifier, err := NewAdminVerifier(t.Context(), ProviderConfig{
 		JWT: []jwks.Config{{
 			Issuer: jwks.Issuer{
 				URL:          issuer,
@@ -53,7 +53,7 @@ func signAdminToken(t *testing.T, privateKey ed25519.PrivateKey, claims jwt.MapC
 	return signed
 }
 
-func TestAdminJWTVerifier(t *testing.T) {
+func TestAdminVerifier(t *testing.T) {
 	t.Parallel()
 
 	verifier, privateKey, issuer := newAdminTestVerifier(t)
@@ -92,10 +92,10 @@ func TestAdminJWTVerifier(t *testing.T) {
 	})
 }
 
-func TestAdminJWTVerifierDisabled(t *testing.T) {
+func TestAdminVerifierDisabled(t *testing.T) {
 	t.Parallel()
 
-	verifier, err := NewAdminJWTVerifier(t.Context(), ProviderConfig{}, nil)
+	verifier, err := NewAdminVerifier(t.Context(), ProviderConfig{}, nil)
 	require.NoError(t, err)
 	require.Nil(t, verifier)
 
@@ -103,7 +103,7 @@ func TestAdminJWTVerifierDisabled(t *testing.T) {
 	require.ErrorContains(t, err, "not configured")
 }
 
-func TestAdminJWTVerifierRejectsNonEdDSA(t *testing.T) {
+func TestAdminVerifierRejectsNonEdDSA(t *testing.T) {
 	t.Parallel()
 
 	verifier, _, issuer := newAdminTestVerifier(t)

@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/e2b-dev/infra/packages/auth/pkg/auth/jwks"
+	"github.com/e2b-dev/infra/packages/auth/pkg/token/jwks"
 )
 
 // ResolveOryIssuer picks the Ory issuer URL from the auth provider's JWT
