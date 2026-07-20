@@ -187,6 +187,33 @@ func (s *Server) PromoteServiceStatusFenced(ctx context.Context, req *orchestrat
 	return &emptypb.Empty{}, nil
 }
 
+func (s *Server) DrainServiceStatusFenced(ctx context.Context, req *orchestratorinfo.ServiceDrainRequest) (*emptypb.Empty, error) {
+	if req.GetExpectedNodeId() == "" || req.GetExpectedServiceId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "expected orchestrator node and process identity are required")
+	}
+	if req.GetExpectedStatus() != orchestratorinfo.ServiceInfoStatus_Healthy {
+		return nil, status.Error(codes.InvalidArgument, "expected service status must be Healthy")
+	}
+	if req.ExpectedStatusEpoch == nil {
+		return nil, status.Error(codes.InvalidArgument, "expected service status epoch is required")
+	}
+	if req.GetExpectedNodeId() != s.info.ClientId {
+		return nil, status.Error(codes.FailedPrecondition, "orchestrator node identity changed")
+	}
+	if req.GetExpectedServiceId() != s.info.ServiceId {
+		return nil, status.Error(codes.FailedPrecondition, "orchestrator process identity changed")
+	}
+	if err := s.info.DrainHealthy(ctx, req.GetExpectedStatusEpoch()); err != nil {
+		if errors.Is(err, ErrServiceDrainStatusMismatch) || errors.Is(err, ErrServiceDrainEpochMismatch) {
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		}
+
+		return nil, status.Error(codes.Internal, "failed to drain service status")
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
 func (s *Server) applyServiceStatusOverride(ctx context.Context, req *orchestratorinfo.ServiceStatusChangeRequest) (*emptypb.Empty, error) {
 	if err := s.info.SetStatus(ctx, req.GetServiceStatus()); err != nil {
 		if errors.Is(err, ErrDrainingServiceCannotBeReenabled) || errors.Is(err, ErrStandbyServiceRequiresFencedPromotion) {

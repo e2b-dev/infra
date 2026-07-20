@@ -87,6 +87,29 @@ func (s *InfoServer) PromoteServiceStatusFenced(_ context.Context, request *orch
 	return &emptypb.Empty{}, nil
 }
 
+func (s *InfoServer) DrainServiceStatusFenced(_ context.Context, request *orchestratorinfo.ServiceDrainRequest) (*emptypb.Empty, error) {
+	if request.GetExpectedNodeId() == "" || request.GetExpectedServiceId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "expected orchestrator node and process identity are required")
+	}
+	if request.GetExpectedStatus() != orchestratorinfo.ServiceInfoStatus_Healthy {
+		return nil, status.Error(codes.InvalidArgument, "expected service status must be Healthy")
+	}
+	if request.ExpectedStatusEpoch == nil {
+		return nil, status.Error(codes.InvalidArgument, "expected service status epoch is required")
+	}
+	if request.GetExpectedNodeId() != s.nodeID {
+		return nil, status.Error(codes.FailedPrecondition, "orchestrator node identity changed")
+	}
+	if request.GetExpectedServiceId() != s.serviceID {
+		return nil, status.Error(codes.FailedPrecondition, "orchestrator process identity changed")
+	}
+	if err := s.state.DrainHealthy(request.GetExpectedStatusEpoch()); err != nil {
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
 func (s *InfoServer) ServiceStatusOverride(_ context.Context, request *orchestratorinfo.ServiceStatusChangeRequest) (*emptypb.Empty, error) {
 	return s.applyServiceStatusOverride(request)
 }

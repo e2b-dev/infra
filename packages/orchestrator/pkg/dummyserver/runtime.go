@@ -89,3 +89,20 @@ func (s *RuntimeState) PromoteStandby(expectedEpoch uint64) error {
 
 	return nil
 }
+
+func (s *RuntimeState) DrainHealthy(expectedEpoch uint64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.status != orchestratorinfo.ServiceInfoStatus_Healthy || s.drained {
+		return errors.New("service drain status does not match")
+	}
+	if s.epoch != expectedEpoch {
+		return errors.New("service drain epoch does not match")
+	}
+
+	s.status = orchestratorinfo.ServiceInfoStatus_Draining
+	s.epoch++
+	s.drained = true
+
+	return nil
+}

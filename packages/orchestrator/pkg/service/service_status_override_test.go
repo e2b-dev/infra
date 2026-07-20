@@ -153,6 +153,134 @@ func TestPromoteServiceStatusFencedFailsClosedOnLegacyServer(t *testing.T) {
 	require.Equal(t, codes.Unimplemented, status.Code(err))
 }
 
+func TestDrainServiceStatusFencedRequiresExactHealthyGeneration(t *testing.T) {
+	t.Parallel()
+
+	info := &ServiceInfo{
+		ClientId:    "node-1",
+		ServiceId:   "service-1",
+		status:      ServiceStatus{Status: orchestratorinfo.ServiceInfoStatus_Healthy},
+		statusEpoch: 4,
+	}
+	server := &Server{info: info}
+
+	drain := func(epoch uint64) error {
+		_, err := server.DrainServiceStatusFenced(t.Context(), &orchestratorinfo.ServiceDrainRequest{
+			ExpectedNodeId:      "node-1",
+			ExpectedServiceId:   "service-1",
+			ExpectedStatus:      orchestratorinfo.ServiceInfoStatus_Healthy,
+			ExpectedStatusEpoch: new(epoch),
+		})
+
+		return err
+	}
+
+	require.Equal(t, codes.FailedPrecondition, status.Code(drain(3)))
+	current, epoch, drainClosed := info.GetStatusState()
+	require.Equal(t, orchestratorinfo.ServiceInfoStatus_Healthy, current.Status)
+	require.Equal(t, uint64(4), epoch)
+	require.False(t, drainClosed)
+
+	require.NoError(t, drain(4))
+	current, epoch, drainClosed = info.GetStatusState()
+	require.Equal(t, orchestratorinfo.ServiceInfoStatus_Draining, current.Status)
+	require.Equal(t, uint64(5), epoch)
+	require.True(t, drainClosed)
+
+	require.Equal(t, codes.FailedPrecondition, status.Code(drain(5)), "repeated drain must not be a no-op success")
+	_, admitted := info.BeginSandboxLifecycle()
+	require.False(t, admitted, "draining must close lifecycle admission")
+}
+
+func TestDrainServiceStatusFencedPreservesEpochPresenceOverGRPC(t *testing.T) {
+	t.Parallel()
+
+	info := &ServiceInfo{ClientId: "node-1", ServiceId: "service-1", status: ServiceStatus{Status: orchestratorinfo.ServiceInfoStatus_Healthy}}
+	client := newInfoServiceTestClient(t, &Server{info: info})
+	request := &orchestratorinfo.ServiceDrainRequest{
+		ExpectedNodeId:    "node-1",
+		ExpectedServiceId: "service-1",
+		ExpectedStatus:    orchestratorinfo.ServiceInfoStatus_Healthy,
+	}
+
+	_, err := client.DrainServiceStatusFenced(t.Context(), request)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Equal(t, orchestratorinfo.ServiceInfoStatus_Healthy, info.GetStatus().Status)
+
+	request.ExpectedStatusEpoch = new(uint64(0))
+	_, err = client.DrainServiceStatusFenced(t.Context(), request)
+	require.NoError(t, err)
+	require.Equal(t, orchestratorinfo.ServiceInfoStatus_Draining, info.GetStatus().Status)
+}
+
+func TestDrainServiceStatusFencedFailsClosedOnLegacyServer(t *testing.T) {
+	t.Parallel()
+
+	client := newInfoServiceTestClient(t, &legacyInfoServiceServer{})
+
+	_, err := client.DrainServiceStatusFenced(t.Context(), &orchestratorinfo.ServiceDrainRequest{
+		ExpectedNodeId:      "node-1",
+		ExpectedServiceId:   "service-1",
+		ExpectedStatus:      orchestratorinfo.ServiceInfoStatus_Healthy,
+		ExpectedStatusEpoch: new(uint64(0)),
+	})
+	require.Equal(t, codes.Unimplemented, status.Code(err))
+}
+
+func TestDrainServiceStatusFencedRejectsWrongIdentityAndStatus(t *testing.T) {
+	t.Parallel()
+
+	for name, mutate := range map[string]func(*orchestratorinfo.ServiceDrainRequest){
+		"missing identity": func(request *orchestratorinfo.ServiceDrainRequest) { request.ExpectedNodeId = "" },
+		"wrong node":       func(request *orchestratorinfo.ServiceDrainRequest) { request.ExpectedNodeId = "node-old" },
+		"wrong process":    func(request *orchestratorinfo.ServiceDrainRequest) { request.ExpectedServiceId = "service-old" },
+		"wrong status": func(request *orchestratorinfo.ServiceDrainRequest) {
+			request.ExpectedStatus = orchestratorinfo.ServiceInfoStatus_Standby
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			info := &ServiceInfo{ClientId: "node-1", ServiceId: "service-1", status: ServiceStatus{Status: orchestratorinfo.ServiceInfoStatus_Healthy}}
+			server := &Server{info: info}
+			request := &orchestratorinfo.ServiceDrainRequest{
+				ExpectedNodeId:      "node-1",
+				ExpectedServiceId:   "service-1",
+				ExpectedStatus:      orchestratorinfo.ServiceInfoStatus_Healthy,
+				ExpectedStatusEpoch: new(uint64(0)),
+			}
+			mutate(request)
+
+			_, err := server.DrainServiceStatusFenced(t.Context(), request)
+			require.Error(t, err)
+			require.Equal(t, orchestratorinfo.ServiceInfoStatus_Healthy, info.GetStatus().Status)
+		})
+	}
+
+	for _, serviceStatus := range []orchestratorinfo.ServiceInfoStatus{
+		orchestratorinfo.ServiceInfoStatus_Standby,
+		orchestratorinfo.ServiceInfoStatus_Unhealthy,
+		orchestratorinfo.ServiceInfoStatus_Draining,
+	} {
+		t.Run(serviceStatus.String(), func(t *testing.T) {
+			t.Parallel()
+
+			info := &ServiceInfo{
+				ClientId: "node-1", ServiceId: "service-1",
+				status: ServiceStatus{Status: serviceStatus}, statusEpoch: 2,
+				drainClosed: serviceStatus == orchestratorinfo.ServiceInfoStatus_Draining,
+			}
+			server := &Server{info: info}
+			_, err := server.DrainServiceStatusFenced(t.Context(), &orchestratorinfo.ServiceDrainRequest{
+				ExpectedNodeId: "node-1", ExpectedServiceId: "service-1",
+				ExpectedStatus: orchestratorinfo.ServiceInfoStatus_Healthy, ExpectedStatusEpoch: new(uint64(2)),
+			})
+			require.Equal(t, codes.FailedPrecondition, status.Code(err))
+			require.Equal(t, serviceStatus, info.GetStatus().Status)
+		})
+	}
+}
+
 func newInfoServiceTestClient(t *testing.T, server orchestratorinfo.InfoServiceServer) orchestratorinfo.InfoServiceClient {
 	t.Helper()
 
