@@ -29,6 +29,14 @@ func (u *Upload) runV4(ctx context.Context) error {
 	eg, ctx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
+		// During checkpoint we might mark the snapshot as filesystem only, even
+		// though we create the memory snapshot, so that we can resume the existing
+		// sandbox that we are checkpointing.
+		// Keep the memory snapshot locally and avoid uploading it.
+		if u.snap.FilesystemSnapshot {
+			return nil
+		}
+
 		h, err := u.snap.MemorySnapshot.DiffHeader.WaitWithContext(ctx)
 		if err != nil {
 			return fmt.Errorf("wait memfile diff header: %w", err)

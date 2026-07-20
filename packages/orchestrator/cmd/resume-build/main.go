@@ -739,7 +739,7 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 	// Pause and create snapshot
 	var pauseSnapshotOpts []sandbox.PauseOption
 	if opts.fsOnly {
-		pauseSnapshotOpts = append(pauseSnapshotOpts, sandbox.WithFilesystemSnapshot())
+		pauseSnapshotOpts = append(pauseSnapshotOpts, sandbox.WithSnapshotMode(sandbox.SnapshotModeFilesystem))
 	}
 	pauseStart := time.Now()
 	snapshot, err := sbx.Pause(ctx, newMeta, sandbox.SnapshotUseCasePause, pauseSnapshotOpts...)
