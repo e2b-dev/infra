@@ -1,0 +1,122 @@
+package auth
+
+import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"testing"
+	"time"
+
+	jose "github.com/go-jose/go-jose/v4"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth/jwks"
+)
+
+const (
+	adminTestKeyID    = "workspace-key"
+	adminTestAudience = "fx1"
+)
+
+func newAdminTestVerifier(t *testing.T) (*AdminJWTVerifier, ed25519.PrivateKey, string) {
+	t.Helper()
+
+	const issuer = "https://workspace.example.com"
+
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	server := jwks.NewTestServer(t, publicKey, adminTestKeyID, jose.EdDSA, issuer)
+
+	verifier, err := NewAdminJWTVerifier(t.Context(), ProviderConfig{
+		JWT: []jwks.Config{{
+			Issuer: jwks.Issuer{
+				URL:          issuer,
+				DiscoveryURL: server.URL + "/.well-known/openid-configuration",
+				Audiences:    []string{adminTestAudience},
+			},
+		}},
+	}, server.Client())
+	require.NoError(t, err)
+
+	return verifier, privateKey, issuer
+}
+
+func signAdminToken(t *testing.T, privateKey ed25519.PrivateKey, claims jwt.MapClaims) string {
+	t.Helper()
+
+	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
+	token.Header["kid"] = adminTestKeyID
+	signed, err := token.SignedString(privateKey)
+	require.NoError(t, err)
+
+	return signed
+}
+
+func TestAdminJWTVerifier(t *testing.T) {
+	t.Parallel()
+
+	verifier, privateKey, issuer := newAdminTestVerifier(t)
+
+	baseClaims := func() jwt.MapClaims {
+		return jwt.MapClaims{
+			"iss": issuer,
+			"aud": adminTestAudience,
+			"exp": time.Now().Add(5 * time.Minute).Unix(),
+		}
+	}
+
+	t.Run("valid token", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := verifier.Verify(t.Context(), signAdminToken(t, privateKey, baseClaims()))
+		require.NoError(t, err)
+	})
+
+	t.Run("expired token", func(t *testing.T) {
+		t.Parallel()
+
+		claims := baseClaims()
+		claims["exp"] = time.Now().Add(-5 * time.Minute).Unix()
+		_, err := verifier.Verify(t.Context(), signAdminToken(t, privateKey, claims))
+		require.Error(t, err)
+	})
+
+	t.Run("wrong audience", func(t *testing.T) {
+		t.Parallel()
+
+		claims := baseClaims()
+		claims["aud"] = "other"
+		_, err := verifier.Verify(t.Context(), signAdminToken(t, privateKey, claims))
+		require.Error(t, err)
+	})
+}
+
+func TestAdminJWTVerifierDisabled(t *testing.T) {
+	t.Parallel()
+
+	verifier, err := NewAdminJWTVerifier(t.Context(), ProviderConfig{}, nil)
+	require.NoError(t, err)
+	require.Nil(t, verifier)
+
+	_, err = verifier.Verify(t.Context(), "any-token")
+	require.ErrorContains(t, err, "not configured")
+}
+
+func TestAdminJWTVerifierRejectsNonEdDSA(t *testing.T) {
+	t.Parallel()
+
+	verifier, _, issuer := newAdminTestVerifier(t)
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"iss": issuer,
+		"aud": adminTestAudience,
+		"exp": time.Now().Add(5 * time.Minute).Unix(),
+	})
+	token.Header["kid"] = adminTestKeyID
+	signed, err := token.SignedString([]byte("shared-secret"))
+	require.NoError(t, err)
+
+	_, err = verifier.Verify(t.Context(), signed)
+	require.Error(t, err)
+}

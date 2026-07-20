@@ -8,9 +8,12 @@ import (
 	"testing"
 	"time"
 
+	jose "github.com/go-jose/go-jose/v4"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth/jwks"
 )
 
 const testIssuerURL = "https://issuer.example.com"
@@ -41,13 +44,13 @@ func TestVerifier_Verify(t *testing.T) {
 	require.NoError(t, err)
 
 	const keyID = "test-key"
-	server := NewTestServer(t, &privateKey.PublicKey, keyID, testIssuerURL)
+	server := jwks.NewTestServer(t, &privateKey.PublicKey, keyID, jose.RS256, testIssuerURL)
 
 	internalUserID := uuid.New()
 	lookup := &stubIdentityLookup{userID: internalUserID}
 
-	verifier, err := NewVerifier(t.Context(), Config{
-		Issuer: Issuer{
+	verifier, err := NewVerifier(t.Context(), jwks.Config{
+		Issuer: jwks.Issuer{
 			URL:          testIssuerURL,
 			DiscoveryURL: server.URL + "/.well-known/openid-configuration",
 			Audiences:    []string{"dashboard-api"},
@@ -82,12 +85,12 @@ func TestVerifier_IdentityNotFound(t *testing.T) {
 	require.NoError(t, err)
 
 	const keyID = "test-key"
-	server := NewTestServer(t, &privateKey.PublicKey, keyID, testIssuerURL)
+	server := jwks.NewTestServer(t, &privateKey.PublicKey, keyID, jose.RS256, testIssuerURL)
 
 	lookup := &stubIdentityLookup{err: ErrIdentityNotFound}
 
-	verifier, err := NewVerifier(t.Context(), Config{
-		Issuer: Issuer{
+	verifier, err := NewVerifier(t.Context(), jwks.Config{
+		Issuer: jwks.Issuer{
 			URL:          testIssuerURL,
 			DiscoveryURL: server.URL + "/.well-known/openid-configuration",
 			Audiences:    []string{"dashboard-api"},
@@ -119,13 +122,13 @@ func TestVerifier_IdentityLookupError(t *testing.T) {
 	require.NoError(t, err)
 
 	const keyID = "test-key"
-	server := NewTestServer(t, &privateKey.PublicKey, keyID, testIssuerURL)
+	server := jwks.NewTestServer(t, &privateKey.PublicKey, keyID, jose.RS256, testIssuerURL)
 
 	lookupErr := errors.New("boom")
 	lookup := &stubIdentityLookup{err: lookupErr}
 
-	verifier, err := NewVerifier(t.Context(), Config{
-		Issuer: Issuer{
+	verifier, err := NewVerifier(t.Context(), jwks.Config{
+		Issuer: jwks.Issuer{
 			URL:          testIssuerURL,
 			DiscoveryURL: server.URL + "/.well-known/openid-configuration",
 			Audiences:    []string{"dashboard-api"},
@@ -158,11 +161,11 @@ func TestVerifier_RejectsWrongAudience(t *testing.T) {
 	require.NoError(t, err)
 
 	const keyID = "test-key"
-	server := NewTestServer(t, &privateKey.PublicKey, keyID, testIssuerURL)
+	server := jwks.NewTestServer(t, &privateKey.PublicKey, keyID, jose.RS256, testIssuerURL)
 
 	lookup := &stubIdentityLookup{userID: uuid.New()}
-	verifier, err := NewVerifier(t.Context(), Config{
-		Issuer: Issuer{
+	verifier, err := NewVerifier(t.Context(), jwks.Config{
+		Issuer: jwks.Issuer{
 			URL:          testIssuerURL,
 			DiscoveryURL: server.URL + "/.well-known/openid-configuration",
 			Audiences:    []string{"dashboard-api"},
@@ -195,10 +198,10 @@ func TestNewVerifier_DiscoveryIssuerMismatch(t *testing.T) {
 	require.NoError(t, err)
 
 	const keyID = "test-key"
-	server := NewTestServer(t, &privateKey.PublicKey, keyID, "https://different-issuer.example.com")
+	server := jwks.NewTestServer(t, &privateKey.PublicKey, keyID, jose.RS256, "https://different-issuer.example.com")
 
-	_, err = NewVerifier(t.Context(), Config{
-		Issuer: Issuer{
+	_, err = NewVerifier(t.Context(), jwks.Config{
+		Issuer: jwks.Issuer{
 			URL:          testIssuerURL,
 			DiscoveryURL: server.URL + "/.well-known/openid-configuration",
 		},

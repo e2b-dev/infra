@@ -1,7 +1,6 @@
-package oidc
+package jwks
 
 import (
-	"crypto/rsa"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -17,7 +16,7 @@ import (
 //
 // This helper is exported so tests in sibling packages can construct an OIDC
 // fixture without duplicating the boilerplate.
-func NewTestServer(t *testing.T, publicKey *rsa.PublicKey, keyID string, discoveryIssuer string) *httptest.Server {
+func NewTestServer(t *testing.T, publicKey any, keyID string, algorithm jose.SignatureAlgorithm, discoveryIssuer string) *httptest.Server {
 	t.Helper()
 
 	mux := http.NewServeMux()
@@ -39,7 +38,7 @@ func NewTestServer(t *testing.T, publicKey *rsa.PublicKey, keyID string, discove
 			{
 				Key:       publicKey,
 				KeyID:     keyID,
-				Algorithm: string(jose.RS256),
+				Algorithm: string(algorithm),
 				Use:       "sig",
 			},
 		}})

@@ -185,6 +185,29 @@ func NewAuthProviderTeamAuthenticator(validationFunc func(ctx context.Context, g
 	}
 }
 
+// NewAdminJWTAuthenticator creates an authenticator for the AdminJWTAuth security scheme.
+func NewAdminJWTAuthenticator(verifier *AdminJWTVerifier) Authenticator {
+	return &commonAuthenticator[struct{}]{
+		schemeName: "AdminJWTAuth",
+		header: headerKey{
+			name:         HeaderAuthorization,
+			removePrefix: PrefixBearer,
+		},
+		validationFunc: func(ctx context.Context, _ *gin.Context, token string) (struct{}, *APIError) {
+			if _, err := verifier.Verify(ctx, token); err != nil {
+				return struct{}{}, &APIError{
+					Code:      http.StatusUnauthorized,
+					Err:       err,
+					ClientMsg: "Invalid service token.",
+				}
+			}
+
+			return struct{}{}, nil
+		},
+		errorMessage: "Invalid service token.",
+	}
+}
+
 // NewAdminApiKeyAuthenticator creates an authenticator for the AdminApiKeyAuth security scheme (X-Admin-Token header).
 func NewAdminApiKeyAuthenticator(adminToken string) Authenticator {
 	return newAdminApiKeyAuthenticator("AdminApiKeyAuth", adminToken)

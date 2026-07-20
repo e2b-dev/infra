@@ -185,7 +185,11 @@ the API's `ResumeSandbox` gRPC and retries — paused sandboxes wake transparent
 
 A separate REST service (port 3010, spec `spec/openapi-dashboard.yml`) consumed by the web
 dashboard, not the SDK: team management/provisioning, template tags, build listings, admin
-bootstrap. Talks to Postgres and ClickHouse; never talks to orchestrators.
+bootstrap. Its workspace-agnostic `/admin/v1` operations are defined in the same dashboard
+OpenAPI contract and registered on the existing router. Their `AdminJWTAuth` OpenAPI security scheme
+accepts only short-lived EdDSA service JWTs verified against the workspace-api JWKS (resolved via
+OIDC discovery), configured through the JSON `ADMIN_AUTH_CONFIG` value — the same config shape
+as `AUTH_PROVIDER_CONFIG`. Talks to Postgres and ClickHouse; never talks to orchestrators.
 
 ### Docker reverse proxy (`packages/docker-reverse-proxy`)
 

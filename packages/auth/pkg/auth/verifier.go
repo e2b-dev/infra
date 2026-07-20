@@ -9,12 +9,13 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth/jwks"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth/oidc"
 )
 
 // ProviderConfig describes external auth provider verification.
 type ProviderConfig struct {
-	JWT []oidc.Config `json:"jwt"`
+	JWT []jwks.Config `json:"jwt"`
 }
 
 // enabled returns true when at least one auth provider entry is configured.
@@ -24,7 +25,7 @@ func (c ProviderConfig) enabled() bool {
 
 // normalize applies defaults across both arrays and returns a copy.
 func (c ProviderConfig) normalize() ProviderConfig {
-	jwts := make([]oidc.Config, len(c.JWT))
+	jwts := make([]jwks.Config, len(c.JWT))
 	for i, entry := range c.JWT {
 		jwts[i] = entry.Normalized()
 	}
@@ -51,17 +52,17 @@ type strategy interface {
 
 // Verifier aggregates one or more OIDC JWT verification strategies and returns
 // the first that succeeds.
-type Verifier struct {
+type ProviderVerifier struct {
 	strategies []strategy
 }
 
-// NewVerifier constructs a *Verifier from the given ProviderConfig.
+// NewVerifier constructs a *ProviderVerifier from the given ProviderConfig.
 //
 // When the provided config has no JWT issuers, NewVerifier returns (nil, nil).
 // This is a valid configuration: the caller can pass the nil Verifier to
 // authService, and any token verification attempt will be denied at runtime by
 // Verifier.Verify / Service.ValidateAuthProviderToken.
-func NewVerifier(ctx context.Context, config ProviderConfig, oidcHTTPClient *http.Client, identities oidc.IdentityLookup) (*Verifier, error) {
+func NewProviderVerifier(ctx context.Context, config ProviderConfig, oidcHTTPClient *http.Client, identities oidc.IdentityLookup) (*ProviderVerifier, error) {
 	normalized := config.normalize()
 	if err := normalized.validate(); err != nil {
 		return nil, err
@@ -77,7 +78,7 @@ func NewVerifier(ctx context.Context, config ProviderConfig, oidcHTTPClient *htt
 	}
 
 	for i, entry := range normalized.JWT {
-		s, err := oidc.NewVerifier(ctx, entry, oidcHTTPClient, identities)
+		s, err := oidc.NewProviderVerifier(ctx, entry, oidcHTTPClient, identities)
 		if err != nil {
 			return nil, fmt.Errorf("auth provider jwt[%d]: %w", i, err)
 		}
@@ -88,14 +89,14 @@ func NewVerifier(ctx context.Context, config ProviderConfig, oidcHTTPClient *htt
 		return nil, errors.New("auth provider verifier has no configured signing verifier")
 	}
 
-	return &Verifier{
+	return &ProviderVerifier{
 		strategies: strategies,
 	}, nil
 }
 
 // Verify iterates over the configured strategies and returns the first that
 // successfully verifies the token and resolves a non-nil internal user UUID.
-func (v *Verifier) Verify(ctx context.Context, tokenString string) (uuid.UUID, jwt.MapClaims, error) {
+func (v *ProviderVerifier) Verify(ctx context.Context, tokenString string) (uuid.UUID, jwt.MapClaims, error) {
 	if v == nil {
 		return uuid.Nil, nil, errors.New("auth provider verifier is not configured")
 	}

@@ -16,6 +16,7 @@ type Config struct {
 	ClickhouseConnectionStrings []string            `env:"CLICKHOUSE_CONNECTION_STRINGS"                envSeparator:";"`
 	AdminToken                  string              `env:"ADMIN_TOKEN,required,notEmpty"`
 	AuthProvider                auth.ProviderConfig `env:"AUTH_PROVIDER_CONFIG"`
+	AdminAuth                   auth.ProviderConfig `env:"ADMIN_AUTH_CONFIG"`
 
 	AuthDBConnectionString            string `env:"AUTH_DB_CONNECTION_STRING"`
 	AuthDBReadReplicaConnectionString string `env:"AUTH_DB_READ_REPLICA_CONNECTION_STRING"`

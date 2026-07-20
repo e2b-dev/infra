@@ -11,10 +11,12 @@ import (
 	"testing"
 	"time"
 
+	jose "github.com/go-jose/go-jose/v4"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth/jwks"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth/oidc"
 )
 
@@ -76,7 +78,7 @@ func TestVerifier_VerifyJWT(t *testing.T) {
 	require.NoError(t, err)
 
 	const keyID = "test-key"
-	server := oidc.NewTestServer(t, &privateKey.PublicKey, keyID, testIssuerURL)
+	server := jwks.NewTestServer(t, &privateKey.PublicKey, keyID, jose.RS256, testIssuerURL)
 
 	lookup := newStubIdentityLookup()
 	const jwksSub = "external-subject"
@@ -84,9 +86,9 @@ func TestVerifier_VerifyJWT(t *testing.T) {
 	lookup.set(testIssuerURL, jwksSub, jwksUserID)
 
 	verifier, err := NewVerifier(t.Context(), ProviderConfig{
-		JWT: []oidc.Config{
+		JWT: []jwks.Config{
 			{
-				Issuer: oidc.Issuer{
+				Issuer: jwks.Issuer{
 					URL:          testIssuerURL,
 					DiscoveryURL: server.URL + "/.well-known/openid-configuration",
 					Audiences:    []string{"dashboard-api"},
@@ -127,8 +129,8 @@ func TestVerifier_VerifyMultipleJWTIssuers(t *testing.T) {
 		issuer2URL = "https://issuer-two.example.com"
 	)
 
-	server1 := oidc.NewTestServer(t, &privateKey1.PublicKey, keyID1, issuer1URL)
-	server2 := oidc.NewTestServer(t, &privateKey2.PublicKey, keyID2, issuer2URL)
+	server1 := jwks.NewTestServer(t, &privateKey1.PublicKey, keyID1, jose.RS256, issuer1URL)
+	server2 := jwks.NewTestServer(t, &privateKey2.PublicKey, keyID2, jose.RS256, issuer2URL)
 
 	lookup := newStubIdentityLookup()
 	const tokenSub = "external-subject"
@@ -136,16 +138,16 @@ func TestVerifier_VerifyMultipleJWTIssuers(t *testing.T) {
 	lookup.set(issuer2URL, tokenSub, userID)
 
 	verifier, err := NewVerifier(t.Context(), ProviderConfig{
-		JWT: []oidc.Config{
+		JWT: []jwks.Config{
 			{
-				Issuer: oidc.Issuer{
+				Issuer: jwks.Issuer{
 					URL:          issuer1URL,
 					DiscoveryURL: server1.URL + "/.well-known/openid-configuration",
 					Audiences:    []string{"app-1"},
 				},
 			},
 			{
-				Issuer: oidc.Issuer{
+				Issuer: jwks.Issuer{
 					URL:          issuer2URL,
 					DiscoveryURL: server2.URL + "/.well-known/openid-configuration",
 					Audiences:    []string{"app-2"},

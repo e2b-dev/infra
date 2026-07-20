@@ -1,4 +1,4 @@
-package oidc
+package jwks
 
 import (
 	"encoding/json"
