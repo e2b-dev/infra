@@ -342,8 +342,11 @@ func newHTTPServer(
 		sharedmiddleware.RequestTimeout(requestTimeout),
 	)
 
+	r.POST("/internal/auth/validate-password", apiStore.HandleInternalValidatePassword)
+
 	r.Use(
-		middleware.OapiRequestValidatorWithOptions(swagger,
+		sharedmiddleware.ExcludeRoutes(
+			middleware.OapiRequestValidatorWithOptions(swagger,
 			&middleware.Options{
 				ErrorHandler: func(c *gin.Context, message string, statusCode int) {
 					statusCode = max(c.Writer.Status(), statusCode)
@@ -364,6 +367,8 @@ func newHTTPServer(
 					AuthenticationFunc: authenticationFunc,
 				},
 			}),
+			"/internal/auth/validate-password",
+		),
 	)
 
 	r.Use(dashboardmiddleware.EnforceBlockedTeam())

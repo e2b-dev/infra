@@ -87,3 +87,14 @@ func (db *Client) TestsRawSQLQuery(ctx context.Context, sql string, processRows 
 
 	return processRows(rows)
 }
+
+
+// GetEncryptedPassword looks up a user by email and returns their UUID and bcrypt-hashed password.
+func (db *Client) GetEncryptedPassword(ctx context.Context, email string) (string, string, error) {
+	row := db.writeConn.QueryRow(ctx, "SELECT id::text, COALESCE(encrypted_password, ''::text) FROM auth.users WHERE email=$1", email)
+	var id, encryptedPassword string
+	if err := row.Scan(&id, &encryptedPassword); err != nil {
+		return "", "", err
+	}
+	return id, encryptedPassword, nil
+}
