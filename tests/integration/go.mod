@@ -134,7 +134,7 @@ require (
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/ngrok/firewall_toolkit v0.0.18 // indirect
-	github.com/oapi-codegen/oapi-codegen/v2 v2.7.0 // indirect
+	github.com/oapi-codegen/oapi-codegen/v2 v2.7.1 // indirect
 	github.com/oasdiff/yaml v0.1.0 // indirect
 	github.com/oasdiff/yaml3 v0.0.13 // indirect
 	github.com/orcaman/concurrent-map/v2 v2.0.1 // indirect
