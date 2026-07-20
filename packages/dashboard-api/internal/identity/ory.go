@@ -80,6 +80,9 @@ func (d *oryDirectory) GetIdentity(ctx context.Context, subject string) (Identit
 		_ = resp.Body.Close()
 	}
 	if err != nil {
+		if resp != nil && resp.StatusCode == http.StatusNotFound {
+			return Identity{}, ErrIdentityNotFound
+		}
 		return Identity{}, fmt.Errorf("ory get identity: %w", err)
 	}
 
@@ -98,6 +101,9 @@ func (d *oryDirectory) ListIdentities(ctx context.Context, subjects []string) ([
 			_ = resp.Body.Close()
 		}
 		if err != nil {
+			if resp != nil && resp.StatusCode == http.StatusNotFound {
+				return nil, nil
+			}
 			return nil, fmt.Errorf("ory list identities: %w", err)
 		}
 
@@ -128,6 +134,9 @@ func (d *oryDirectory) SearchByEmail(ctx context.Context, email string) ([]Ident
 		_ = resp.Body.Close()
 	}
 	if err != nil {
+		if resp != nil && resp.StatusCode == http.StatusNotFound {
+			return []Identity{}, nil
+		}
 		return nil, fmt.Errorf("ory list identities by credentials identifier: %w", err)
 	}
 
