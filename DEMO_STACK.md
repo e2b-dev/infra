@@ -9,3 +9,7 @@ This line was added by the first branch in the stack.
 ## Layer 2
 
 This line was added by the second branch in the stack.
+
+## Layer 3
+
+This line was added by the third branch in the stack.
