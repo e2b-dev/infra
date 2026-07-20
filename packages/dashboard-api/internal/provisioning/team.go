@@ -79,7 +79,7 @@ func (s *Service) CreateTeam(ctx context.Context, userID uuid.UUID, name string)
 		return ProvisionedTeam{}, err
 	}
 
-	return newProvisionedTeam(team.ID, team.Name, team.Email, team.Slug, team.IsBlocked, team.BlockedReason), nil
+	return newProvisionedTeam(team.ID, team.Name, team.Email, team.Slug, team.IsBlocked, team.BlockedReason, userID), nil
 }
 
 func (s *Service) BootstrapTeam(ctx context.Context, name string, email string) (ProvisionedTeam, error) {
@@ -105,7 +105,7 @@ func (s *Service) BootstrapTeam(ctx context.Context, name string, email string) 
 		return ProvisionedTeam{}, err
 	}
 
-	return newProvisionedTeam(team.ID, team.Name, team.Email, team.Slug, team.IsBlocked, team.BlockedReason), nil
+	return newProvisionedTeam(team.ID, team.Name, team.Email, team.Slug, team.IsBlocked, team.BlockedReason, uuid.Nil), nil
 }
 
 func (s *Service) resolveProfile(ctx context.Context, userID uuid.UUID) (identity.Profile, error) {
