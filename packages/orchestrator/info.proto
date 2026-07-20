@@ -92,19 +92,10 @@ message ServicePromotionRequest {
   optional uint64 expected_status_epoch = 4;
 }
 
-message ServiceDrainRequest {
-  string expected_node_id = 1;
-  string expected_service_id = 2;
-  ServiceInfoStatus expected_status = 3;
-  optional uint64 expected_status_epoch = 4;
-}
-
 service InfoService {
   rpc ServiceInfo(google.protobuf.Empty) returns (ServiceInfoResponse);
   rpc ServiceStatusOverride(ServiceStatusChangeRequest) returns (google.protobuf.Empty);
   rpc ServiceStatusOverrideFenced(ServiceStatusChangeRequest) returns (google.protobuf.Empty);
   // PromoteServiceStatusFenced atomically promotes one exact Standby process to Healthy.
   rpc PromoteServiceStatusFenced(ServicePromotionRequest) returns (google.protobuf.Empty);
-  // DrainServiceStatusFenced atomically drains one exact Healthy process.
-  rpc DrainServiceStatusFenced(ServiceDrainRequest) returns (google.protobuf.Empty);
 }

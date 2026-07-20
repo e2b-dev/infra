@@ -42,14 +42,10 @@ type ServiceInfo struct {
 	drainClosed       bool
 }
 
-var (
-	ErrDrainingServiceCannotBeReenabled      = errors.New("draining service cannot be re-enabled")
-	ErrStandbyServiceRequiresFencedPromotion = errors.New("standby service requires fenced promotion")
-	ErrServicePromotionStatusMismatch        = errors.New("service promotion status does not match")
-	ErrServicePromotionEpochMismatch         = errors.New("service promotion epoch does not match")
-	ErrServiceDrainStatusMismatch            = errors.New("service drain status does not match")
-	ErrServiceDrainEpochMismatch             = errors.New("service drain epoch does not match")
-)
+var ErrDrainingServiceCannotBeReenabled = errors.New("draining service cannot be re-enabled")
+var ErrStandbyServiceRequiresFencedPromotion = errors.New("standby service requires fenced promotion")
+var ErrServicePromotionStatusMismatch = errors.New("service promotion status does not match")
+var ErrServicePromotionEpochMismatch = errors.New("service promotion epoch does not match")
 
 var serviceRolesMapper = map[cfg.ServiceType]orchestratorinfo.ServiceInfoRole{
 	cfg.Orchestrator:    orchestratorinfo.ServiceInfoRole_Orchestrator,
@@ -118,28 +114,6 @@ func (s *ServiceInfo) PromoteStandby(ctx context.Context, expectedEpoch uint64) 
 	logger.L().Info(ctx, "Service status changed", zap.String("status", orchestratorinfo.ServiceInfoStatus_Healthy.String()))
 	s.status = ServiceStatus{Status: orchestratorinfo.ServiceInfoStatus_Healthy, ChangedAt: time.Now()}
 	s.statusEpoch++
-
-	return nil
-}
-
-// DrainHealthy atomically fences one observed Healthy generation. It is
-// intentionally narrower than SetStatus so stale process observations cannot
-// drain a replacement generation.
-func (s *ServiceInfo) DrainHealthy(ctx context.Context, expectedEpoch uint64) error {
-	s.statusMu.Lock()
-	defer s.statusMu.Unlock()
-
-	if s.status.Status != orchestratorinfo.ServiceInfoStatus_Healthy || s.drainClosed {
-		return ErrServiceDrainStatusMismatch
-	}
-	if s.statusEpoch != expectedEpoch {
-		return ErrServiceDrainEpochMismatch
-	}
-
-	logger.L().Info(ctx, "Service status changed", zap.String("status", orchestratorinfo.ServiceInfoStatus_Draining.String()))
-	s.status = ServiceStatus{Status: orchestratorinfo.ServiceInfoStatus_Draining, ChangedAt: time.Now()}
-	s.statusEpoch++
-	s.drainClosed = true
 
 	return nil
 }
