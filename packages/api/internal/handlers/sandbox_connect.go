@@ -77,8 +77,8 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		}
 
 		// Sandbox exists but isn't running → check which transitional state.
-		var notRunningErr *sandbox.NotRunningError
-		if !errors.As(apiErr.Err, &notRunningErr) {
+		notRunningErr, ok := errors.AsType[*sandbox.NotRunningError](apiErr.Err)
+		if !ok {
 			telemetry.ReportErrorByCode(ctx, apiErr.Code, "error keeping sandbox alive", apiErr.Err,
 				telemetry.WithSandboxID(sandboxID),
 				telemetry.WithTeamID(teamID.String()),

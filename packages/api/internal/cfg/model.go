@@ -129,8 +129,8 @@ func (e *FailureError) Unwrap() error {
 }
 
 func ParseFailureCondition(err error) (FailureCondition, bool) {
-	var failureErr *FailureError
-	if !errors.As(err, &failureErr) {
+	failureErr, ok := errors.AsType[*FailureError](err)
+	if !ok {
 		return "", false
 	}
 

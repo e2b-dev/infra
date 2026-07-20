@@ -117,8 +117,7 @@ func TestListDirNonExistingPath(t *testing.T) {
 	})
 	_, err = svc.ListDir(ctx, req)
 	require.Error(t, err)
-	var connectErr *connect.Error
-	ok := errors.As(err, &connectErr)
+	connectErr, ok := errors.AsType[*connect.Error](err)
 	assert.True(t, ok, "expected error to be of type *connect.Error")
 	assert.Equal(t, connect.CodeNotFound, connectErr.Code())
 }
@@ -231,8 +230,7 @@ func TestListDir_Symlinks(t *testing.T) {
 		})
 		_, err := svc.ListDir(ctx, req)
 		require.Error(t, err)
-		var connectErr *connect.Error
-		ok := errors.As(err, &connectErr)
+		connectErr, ok := errors.AsType[*connect.Error](err)
 		assert.True(t, ok, "expected error to be of type *connect.Error")
 		assert.Equal(t, connect.CodeFailedPrecondition, connectErr.Code())
 		assert.Contains(t, connectErr.Error(), "cyclic symlink")

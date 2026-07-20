@@ -58,7 +58,13 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	pause.LogInitiated(ctx, sandboxID, teamID.String(), pause.ReasonRequest)
 
 	err = a.orchestrator.RemoveSandbox(ctx, teamID, sandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause, FilesystemOnly: filesystemOnly})
-	var transErr *sandbox.InvalidStateTransitionError
+
+	if transErr, ok := errors.AsType[*sandbox.InvalidStateTransitionError](err); ok {
+		pause.LogFailure(ctx, sandboxID, teamID.String(), pause.ReasonRequest, err)
+		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox '%s' cannot be paused while in '%s' state", sandboxID, transErr.CurrentState))
+
+		return
+	}
 
 	switch {
 	case err == nil:
@@ -74,11 +80,6 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 			pause.LogFailure(ctx, sandboxID, teamID.String(), pause.ReasonRequest, err)
 		}
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
-
-		return
-	case errors.As(err, &transErr):
-		pause.LogFailure(ctx, sandboxID, teamID.String(), pause.ReasonRequest, err)
-		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox '%s' cannot be paused while in '%s' state", sandboxID, transErr.CurrentState))
 
 		return
 	default:

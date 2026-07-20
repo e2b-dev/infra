@@ -122,19 +122,17 @@ func processCustomErrors(e *openapi3filter.SecurityRequirementsError) error {
 	unwrapped := e.Errors
 	err := unwrapped[0]
 
-	var teamForbidden *sharedauth.TeamForbiddenError
-	var teamBlocked *sharedauth.TeamBlockedError
 	// Return only the first non-missing authorization header error (if possible)
 	for _, errW := range unwrapped {
 		if errors.Is(errW, sharedauth.ErrNoAuthHeader) {
 			continue
 		}
 
-		if errors.As(errW, &teamForbidden) {
+		if teamForbidden, ok := errors.AsType[*sharedauth.TeamForbiddenError](errW); ok {
 			return fmt.Errorf("%s%s", forbiddenErrPrefix, teamForbidden.Error())
 		}
 
-		if errors.As(errW, &teamBlocked) {
+		if teamBlocked, ok := errors.AsType[*sharedauth.TeamBlockedError](errW); ok {
 			return fmt.Errorf("%s%s", blockedErrPrefix, teamBlocked.Error())
 		}
 

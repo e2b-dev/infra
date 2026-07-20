@@ -173,8 +173,7 @@ func (b *File) createDiff(ctx context.Context, buildID uuid.UUID) (Diff, error) 
 
 				break
 			}
-			var transErr *storage.PeerTransitionedError
-			if !errors.As(peerErr, &transErr) {
+			if _, ok := errors.AsType[*storage.PeerTransitionedError](peerErr); !ok {
 				return nil, fmt.Errorf("createDiff: peer Size for build %s: %w", buildID, peerErr)
 			}
 		}
@@ -306,8 +305,8 @@ func (b *StorageDiff) ReadAt(ctx context.Context, p []byte, off int64, callerFT 
 		return 0, err
 	}
 	n, err := b.chunker.ReadAt(ctx, p, off, up, ft)
-	var transErr *storage.PeerTransitionedError
-	if !errors.As(err, &transErr) {
+	transErr, ok := errors.AsType[*storage.PeerTransitionedError](err)
+	if !ok {
 		return n, err
 	}
 	up, ft, err = b.recoverFromPeerTransition(ctx, transErr, callerFT)
@@ -344,8 +343,8 @@ func (b *StorageDiff) Slice(ctx context.Context, off, length int64, callerFT *st
 		return nil, err
 	}
 	out, err := b.chunker.Slice(ctx, off, length, up, ft)
-	var transErr *storage.PeerTransitionedError
-	if !errors.As(err, &transErr) {
+	transErr, ok := errors.AsType[*storage.PeerTransitionedError](err)
+	if !ok {
 		return out, err
 	}
 	up, ft, err = b.recoverFromPeerTransition(ctx, transErr, callerFT)

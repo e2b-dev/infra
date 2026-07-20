@@ -33,8 +33,11 @@ func ignoreExpectedAbsent(err error, isExpected func(error) bool) bool {
 		return true
 	}
 
+	// multiUnwrapError is a marker interface without an Error() method, so it
+	// can't be used as the type parameter of errors.AsType (which requires E
+	// to satisfy error). Keep errors.As here.
 	var joined multiUnwrapError
-	if errors.As(err, &joined) {
+	if errors.As(err, &joined) { //nolint:forbidigo // marker interface, see comment above
 		for _, child := range joined.Unwrap() {
 			if !ignoreExpectedAbsent(child, isExpected) {
 				return false
@@ -48,9 +51,12 @@ func ignoreExpectedAbsent(err error, isExpected func(error) bool) bool {
 }
 
 func isIPTablesNotExist(err error) bool {
+	// notExistError is a marker interface without an Error() method, so it
+	// can't be used as the type parameter of errors.AsType (which requires E
+	// to satisfy error). Keep errors.As here.
 	var notExist notExistError
 
-	return errors.As(err, &notExist) && notExist.IsNotExist()
+	return errors.As(err, &notExist) && notExist.IsNotExist() //nolint:forbidigo // marker interface, see comment above
 }
 
 func isRouteNotExist(err error) bool {
@@ -58,9 +64,9 @@ func isRouteNotExist(err error) bool {
 }
 
 func isLinkNotExist(err error) bool {
-	var linkNotFound netlink.LinkNotFoundError
+	_, ok := errors.AsType[netlink.LinkNotFoundError](err)
 
-	return errors.As(err, &linkNotFound) || errors.Is(err, unix.ENODEV) || errors.Is(err, unix.ENOENT)
+	return ok || errors.Is(err, unix.ENODEV) || errors.Is(err, unix.ENOENT)
 }
 
 func isNamespaceNotExist(err error) bool {

@@ -425,8 +425,8 @@ func (a *API) unmountNFS(ctx context.Context, logger zerolog.Logger, path string
 	// findmnt returns exit code 1 when path is not a mount point - that's not an error.
 	data, err := exec.CommandContext(ctx, "findmnt", "--noheadings", "--output", "SOURCE", path).CombinedOutput()
 	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		exitErr, ok := errors.AsType[*exec.ExitError](err)
+		if ok && exitErr.ExitCode() == 1 {
 			// Not mounted - nothing to unmount
 			return nil
 		}

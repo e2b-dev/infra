@@ -83,7 +83,7 @@ func (s *APIStore) GetSandboxesSandboxIDRecord(c *gin.Context, sandboxID api.San
 }
 
 func isUndefinedTableError(err error) bool {
-	var pgErr *pgconn.PgError
+	pgErr, ok := errors.AsType[*pgconn.PgError](err)
 
-	return errors.As(err, &pgErr) && pgErr.Code == undefinedTableErrorCode
+	return ok && pgErr.Code == undefinedTableErrorCode
 }

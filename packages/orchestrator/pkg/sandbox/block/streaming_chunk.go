@@ -81,7 +81,7 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64, upstream storage
 		return b, nil
 	}
 
-	if !errors.As(err, &BytesNotAvailableError{}) {
+	if _, ok := errors.AsType[BytesNotAvailableError](err); !ok {
 		c.metrics.ChunkSliceTimerFactory.Record(ctx, time.Since(sliceStart), 0, storage.ErrAttrs(c.objType, storage.SourceMmap, ct, err))
 
 		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)

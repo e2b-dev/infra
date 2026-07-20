@@ -33,9 +33,9 @@ func (e *shellExitedError) Error() string {
 }
 
 func isShellExited(err error) bool {
-	var s *shellExitedError
+	_, ok := errors.AsType[*shellExitedError](err)
 
-	return errors.As(err, &s)
+	return ok
 }
 
 // shellEnv builds the environment passed into the in-guest PTY shell.
