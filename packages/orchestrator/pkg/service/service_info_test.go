@@ -23,6 +23,6 @@ func TestServiceStatusOverrideRejectsDrainingToStandby(t *testing.T) {
 		ServiceStatus: orchestratorinfo.ServiceInfoStatus_Standby,
 	})
 
-	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Equal(t, codes.FailedPrecondition, status.Code(err))
 	require.Equal(t, orchestratorinfo.ServiceInfoStatus_Draining, info.GetStatus().Status)
 }
