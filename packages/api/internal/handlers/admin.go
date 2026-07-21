@@ -71,7 +71,7 @@ func (a *APIStore) PostNodesNodeID(c *gin.Context, nodeId api.NodeID) {
 	err = node.SendStatusChange(ctx, body.Status)
 	if err != nil {
 		if status.Code(err) == codes.InvalidArgument {
-			a.sendAPIStoreError(c, http.StatusBadRequest, status.Convert(err).Message())
+			a.sendAPIStoreError(c, http.StatusConflict, status.Convert(err).Message())
 
 			return
 		}
