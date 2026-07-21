@@ -1,10 +1,11 @@
-package auth
+package team
 
 import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/e2b-dev/infra/packages/auth/internal/authcontext"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 )
@@ -58,7 +59,7 @@ func CheckTeamAccess(c *gin.Context, team *types.Team, allowlist BlockedTeamAllo
 // with 403 unless the matched route is in allowlist. Must run after auth.
 func EnforceBlockedTeam(allowlist BlockedTeamAllowlist) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		team, ok := GetTeamInfo(c)
+		team, ok := authcontext.GetTeamInfo(c)
 		if !ok || team == nil {
 			c.Next()
 

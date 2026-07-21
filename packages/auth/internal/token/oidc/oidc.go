@@ -9,7 +9,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 
-	"github.com/e2b-dev/infra/packages/auth/pkg/token/jwks"
+	"github.com/e2b-dev/infra/packages/auth/internal/token/jwks"
 )
 
 // ErrIdentityNotFound is returned by Verify when the token is valid but no

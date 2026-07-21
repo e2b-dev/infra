@@ -12,7 +12,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/auth/pkg/token/jwks"
+	"github.com/e2b-dev/infra/packages/auth/internal/token/jwks"
 )
 
 const (

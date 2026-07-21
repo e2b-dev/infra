@@ -1,4 +1,4 @@
-package auth
+package team
 
 import (
 	"net/http"
@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/e2b-dev/infra/packages/auth/internal/authcontext"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 )
@@ -133,13 +134,13 @@ func TestCheckTeamAccess(t *testing.T) {
 	wantForbidden := func(t *testing.T, err error) {
 		t.Helper()
 
-		var target *TeamForbiddenError
+		var target *ForbiddenError
 		require.ErrorAs(t, err, &target)
 	}
 	wantBlocked := func(t *testing.T, err error) {
 		t.Helper()
 
-		var target *TeamBlockedError
+		var target *BlockedError
 		require.ErrorAs(t, err, &target)
 	}
 
@@ -249,7 +250,7 @@ func runEnforceBlockedTeam(
 	r := gin.New()
 	r.Handle(method, fullPath, func(c *gin.Context) {
 		if team != nil {
-			SetTeamInfoForTest(t, c, team)
+			authcontext.SetTeamInfo(c, team)
 		}
 		EnforceBlockedTeam(allowlist)(c)
 		if !c.IsAborted() {

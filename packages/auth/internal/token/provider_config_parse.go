@@ -7,7 +7,7 @@ import (
 )
 
 // ParseProviderConfig parses a provider-config env value (AUTH_PROVIDER_CONFIG,
-// ADMIN_AUTH_CONFIG) into a ProviderConfig. Empty input and the literal string
+// ADMIN_AUTH_PROVIDER_CONFIG) into a ProviderConfig. Empty input and the literal string
 // "null" (with surrounding whitespace) both produce a zero-value ProviderConfig
 // with no error, so that Terraform `jsonencode(null)` values and unset env vars
 // behave the same.

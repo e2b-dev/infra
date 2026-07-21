@@ -1,4 +1,4 @@
-package auth
+package service
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/e2b-dev/infra/packages/auth/pkg/token/oidc"
+	"github.com/e2b-dev/infra/packages/auth/internal/token/oidc"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/cache"

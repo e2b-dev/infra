@@ -24,7 +24,6 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
-	"github.com/e2b-dev/infra/packages/auth/pkg/token"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
@@ -248,7 +247,7 @@ func run() int {
 	}
 	swagger.Servers = nil
 
-	adminVerifier, err := token.NewAdminVerifier(ctx, config.AdminAuth, authClient)
+	adminVerifier, err := sharedauth.NewAdminVerifier(ctx, config.AdminAuthProvider, authClient)
 	if err != nil {
 		l.Error(ctx, "initializing admin JWT verifier", zap.Error(err))
 
@@ -256,7 +255,7 @@ func run() int {
 	}
 
 	if adminVerifier == nil {
-		l.Warn(ctx, "ADMIN_AUTH_CONFIG is not configured; /admin/v1 endpoints will reject requests with 401")
+		l.Warn(ctx, "ADMIN_AUTH_PROVIDER_CONFIG is not configured; /admin/v1 endpoints will reject requests with 401")
 	}
 
 	authenticationFunc := sharedauth.CreateAuthenticationFunc(

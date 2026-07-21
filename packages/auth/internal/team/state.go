@@ -1,4 +1,4 @@
-package auth
+package team
 
 import (
 	"fmt"
@@ -7,18 +7,18 @@ import (
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 )
 
-// CheckTeamBanned returns *TeamForbiddenError if the team is banned.
+// CheckTeamBanned returns *ForbiddenError if the team is banned.
 // Called inside the shared auth store so every service rejects banned teams
 // at auth time without per-handler plumbing.
 func CheckTeamBanned(team authqueries.Team) error {
 	if team.IsBanned {
-		return &TeamForbiddenError{Message: "team is banned"}
+		return &ForbiddenError{Message: "team is banned"}
 	}
 
 	return nil
 }
 
-// CheckTeamBlocked returns *TeamBlockedError if the team is blocked.
+// CheckTeamBlocked returns *BlockedError if the team is blocked.
 // Called inline at any handler that creates or mutates a billable resource.
 // Each service decides for itself which endpoints need it.
 //
@@ -35,5 +35,5 @@ func CheckTeamBlocked(team *types.Team) error {
 		msg = fmt.Sprintf("%s: %s", msg, *team.BlockedReason)
 	}
 
-	return &TeamBlockedError{Message: msg}
+	return &BlockedError{Message: msg}
 }
