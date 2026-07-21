@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 
@@ -64,19 +65,55 @@ func (r row) toLogEntry(onParseErr func(err error)) logs.LogEntry {
 	fields := map[string]string{}
 	if r.Fields != "" {
 		if err := json.Unmarshal([]byte(r.Fields), &fields); err != nil {
-			if onParseErr != nil {
-				onParseErr(err)
-			}
+			reportParseError(onParseErr, err)
 			fields = map[string]string{}
+		}
+	}
+
+	if legacyFields := fields["legacy.fields"]; legacyFields != "" {
+		legacy := map[string]string{}
+		if err := json.Unmarshal([]byte(legacyFields), &legacy); err != nil {
+			reportParseError(onParseErr, err)
+		} else {
+			for key, value := range legacy {
+				if _, exists := fields[key]; !exists {
+					fields[key] = value
+				}
+			}
+		}
+	}
+	delete(fields, "legacy.raw")
+	delete(fields, "legacy.fields")
+
+	level := logs.StringToLevel(strings.ToLower(r.Level))
+	raw := r.Raw
+	if raw == "" {
+		line := make(map[string]string, len(fields)+3)
+		maps.Copy(line, fields)
+		line["timestamp"] = r.Timestamp.UTC().Format(time.RFC3339Nano)
+		line["message"] = r.Message
+		line["level"] = logs.LevelToString(level)
+
+		encoded, err := json.Marshal(line)
+		if err != nil {
+			reportParseError(onParseErr, err)
+		} else {
+			raw = string(encoded)
 		}
 	}
 
 	return logs.LogEntry{
 		Timestamp: r.Timestamp,
-		Raw:       r.Raw,
-		Level:     logs.StringToLevel(r.Level),
+		Raw:       raw,
+		Level:     level,
 		Message:   r.Message,
 		Fields:    fields,
+	}
+}
+
+func reportParseError(onParseErr func(error), err error) {
+	if onParseErr != nil {
+		onParseErr(err)
 	}
 }
 
@@ -87,6 +124,12 @@ func orderSQL(o SortOrder) string {
 	}
 
 	return "ASC"
+}
+
+func timestampOrderSQL(o SortOrder) string {
+	direction := orderSQL(o)
+
+	return "toStartOfFiveMinutes(Timestamp) " + direction + ", Timestamp " + direction
 }
 
 // atLeastLevels returns the set of stored level strings at or above minLevel,
@@ -108,30 +151,45 @@ func unixNano(t time.Time) int64 {
 	return t.UTC().UnixNano()
 }
 
-const sandboxLogsSelect = `
+func timestampRangeFilters() []string {
+	return []string{
+		"toStartOfFiveMinutes(Timestamp) >= toStartOfFiveMinutes(fromUnixTimestamp64Nano({start:Int64}))",
+		"toStartOfFiveMinutes(Timestamp) <= toStartOfFiveMinutes(fromUnixTimestamp64Nano({end:Int64}))",
+		"Timestamp >= fromUnixTimestamp64Nano({start:Int64})",
+		"Timestamp <= fromUnixTimestamp64Nano({end:Int64})",
+	}
+}
+
+const (
+	teamIDAttribute     = "coalesce(nullIf(LogAttributes['team_id'], ''), LogAttributes['team.id'])"
+	sandboxIDAttribute  = "coalesce(nullIf(LogAttributes['sandbox_id'], ''), LogAttributes['sandbox.id'])"
+	templateIDAttribute = "coalesce(nullIf(LogAttributes['template_id'], ''), LogAttributes['template.id'])"
+	buildIDAttribute    = "coalesce(nullIf(LogAttributes['build_id'], ''), LogAttributes['build.id'])"
+
+	sandboxLogsSelect = `
 SELECT
-    timestamp,
-    team_id,
-    sandbox_id,
-    template_id,
-    build_id,
-    service,
-    category,
-    level,
-    message,
-    raw,
-    fields
+    Timestamp,
+    toUUIDOrZero(` + teamIDAttribute + `),
+    ` + sandboxIDAttribute + `,
+    ` + templateIDAttribute + `,
+    ` + buildIDAttribute + `,
+    ServiceName,
+    LogAttributes['category'],
+    lower(SeverityText),
+    Body,
+    LogAttributes['legacy.raw'],
+    toJSONString(LogAttributes)
 FROM sandbox_logs
 `
+)
 
 func (r *Reader) QuerySandboxLogs(ctx context.Context, teamID uuid.UUID, sandboxID string, start, end time.Time, limit int, order SortOrder, level *logs.LogLevel, search *string) ([]logs.LogEntry, error) {
 	filters := []string{
-		"team_id = {team_id:String}",
-		"sandbox_id = {sandbox_id:String}",
-		"timestamp >= fromUnixTimestamp64Nano({start:Int64})",
-		"timestamp <= fromUnixTimestamp64Nano({end:Int64})",
-		"category != 'metrics'",
+		teamIDAttribute + " = {team_id:String}",
+		sandboxIDAttribute + " = {sandbox_id:String}",
 	}
+	filters = append(filters, timestampRangeFilters()...)
+	filters = append(filters, "LogAttributes['category'] != 'metrics'")
 	args := []any{
 		clickhouse.Named("team_id", teamID.String()),
 		clickhouse.Named("sandbox_id", sandboxID),
@@ -140,17 +198,17 @@ func (r *Reader) QuerySandboxLogs(ctx context.Context, teamID uuid.UUID, sandbox
 	}
 
 	if level != nil {
-		filters = append(filters, "level IN {levels:Array(String)}")
+		filters = append(filters, "lower(SeverityText) IN {levels:Array(String)}")
 		args = append(args, clickhouse.Named("levels", atLeastLevels(*level)))
 	}
 	if search != nil && *search != "" {
-		filters = append(filters, "position(message, {search:String}) > 0")
+		filters = append(filters, "position(Body, {search:String}) > 0")
 		args = append(args, clickhouse.Named("search", *search))
 	}
 
 	q := sandboxLogsSelect +
 		"WHERE " + strings.Join(filters, "\n  AND ") + "\n" +
-		"ORDER BY timestamp " + orderSQL(order) + "\n" +
+		"ORDER BY " + timestampOrderSQL(order) + "\n" +
 		fmt.Sprintf("LIMIT %d", limit)
 
 	out, err := r.scanSandboxLogs(ctx, q, args...)
@@ -163,12 +221,11 @@ func (r *Reader) QuerySandboxLogs(ctx context.Context, teamID uuid.UUID, sandbox
 
 func (r *Reader) QueryBuildLogs(ctx context.Context, templateID, buildID string, start, end time.Time, limit int, offset int32, level *logs.LogLevel, order SortOrder) ([]logs.LogEntry, error) {
 	filters := []string{
-		"build_id = {build_id:String}",
-		"template_id = {template_id:String}",
-		"timestamp >= fromUnixTimestamp64Nano({start:Int64})",
-		"timestamp <= fromUnixTimestamp64Nano({end:Int64})",
-		"service = 'template-manager'",
+		buildIDAttribute + " = {build_id:String}",
+		templateIDAttribute + " = {template_id:String}",
 	}
+	filters = append(filters, timestampRangeFilters()...)
+	filters = append(filters, "ServiceName = 'template-manager'")
 	args := []any{
 		clickhouse.Named("build_id", buildID),
 		clickhouse.Named("template_id", templateID),
@@ -177,13 +234,13 @@ func (r *Reader) QueryBuildLogs(ctx context.Context, templateID, buildID string,
 	}
 
 	if level != nil {
-		filters = append(filters, "level IN {levels:Array(String)}")
+		filters = append(filters, "lower(SeverityText) IN {levels:Array(String)}")
 		args = append(args, clickhouse.Named("levels", atLeastLevels(*level)))
 	}
 
 	q := sandboxLogsSelect +
 		"WHERE " + strings.Join(filters, "\n  AND ") + "\n" +
-		"ORDER BY timestamp " + orderSQL(order) + "\n" +
+		"ORDER BY " + timestampOrderSQL(order) + "\n" +
 		fmt.Sprintf("LIMIT %d, %d", offset, limit)
 
 	out, err := r.scanSandboxLogs(ctx, q, args...)
