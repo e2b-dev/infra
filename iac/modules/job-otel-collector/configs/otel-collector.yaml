@@ -215,49 +215,6 @@ processors:
 
   metricstarttime/gcp_telemetry:
     strategy: subtract_initial_point
-
-  # Keep every GMP-bound OTLP metric in one pipeline. Splitting this union by
-  # metric family makes the GMP exporter emit duplicate target_info and
-  # otel_scope_info series for the same OTLP resource.
-  # Keep this allowlist synchronized with filter/otlp and
-  # filter/rpc_duration_only; external metrics are added only when enabled.
-  filter/gcp_telemetry_otlp:
-    metrics:
-      include:
-        match_type: regexp
-        metric_names:
-          - "orchestrator.*"
-          - "nfsclean.*"
-          - "template.*"
-          - "api.*"
-          - "batcher.*"
-          - "db.sql.connection.*"
-          - "db.client.*"
-          - "vault.*"
-          - "client_proxy.*"
-          - "Click*"
-          - "otelcol.exporter.queue.capacity"
-          - "otelcol.exporter.queue.size"
-          - "otelcol.exporter.send.*"
-          - "otelcol.exporter.sent.*"
-          - "otelcol.receiver.refused.*"
-          - "otel\\.router\\..*"
-          - "pgxpool.*"
-          - "go\\..*"
-          - "traefik.*"
-          - "grpc\\..*"
-          - "rpc\\.client.*"
-          - "rpc.server.duration.*"
-          - "rpc.server.call.duration.*"
-%{ if enable_gcp_telemetry_external_metrics }
-          - "e2b.*"
-%{ endif }
-      # Match filter/otlp's high-volume RPC payload-size exclusions.
-      exclude:
-        match_type: regexp
-        metric_names:
-          - "rpc\\.client\\.request\\.size.*"
-          - "rpc\\.client\\.response\\.size.*"
 %{ endif }
 
   # keep only metrics that are used
@@ -449,6 +406,10 @@ processors:
           enabled: true
         host.name:
           enabled: true
+%{ if enable_gcp_telemetry_external_metrics }
+        gcp.gce.instance_group_manager.name:
+          enabled: true
+%{ endif }
 %{ endif }
 
   # For some reason, the metrics require us to set datapoint.attribute and won't accept the resource.attribute
@@ -472,16 +433,18 @@ processors:
       - context: datapoint
         statements:
           - set(attributes["deployment.environment"], resource.attributes["cloud.account.id"]) where resource.attributes["cloud.account.id"] != nil
-          # GMP only exposes resource service.version on target_info, so copy
-          # it to datapoints to make service_version queryable on each metric.
+          - delete_key(attributes, "service_name")
+          - delete_key(attributes, "service.instance.id")
+
+%{ if enable_gcp_telemetry_external_metrics }
+  transform/gcp_telemetry_external_labels:
+    metric_statements:
+      - context: datapoint
+        statements:
           - set(attributes["service.version"], resource.attributes["service.version"]) where resource.attributes["service.version"] != nil
-          # Derive query-visible group_name from the GCP instance group manager.
           - set(attributes["group.name"], resource.attributes["gcp.gce.instance_group_manager.name"]) where resource.attributes["gcp.gce.instance_group_manager.name"] != nil
           - replace_pattern(attributes["group.name"], "^e2b-orch-(client-)?(.+)-rig$", "$2") where attributes["group.name"] != nil
-          - delete_key(attributes, "service_name")
-          # The exporter already maps this resource attribute; retaining a
-          # datapoint copy would duplicate service_instance_id handling.
-          - delete_key(attributes, "service.instance.id")
+%{ endif }
 
   transform/gcp_managed_prometheus_labels:
     metric_statements:
@@ -652,15 +615,11 @@ service:
       exporters:
         - otlp_http/grafana_cloud
 %{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
-    # All OTLP metrics must share this single GMP pipeline. Do not split metric
-    # families into parallel pipelines targeting the same exporter: each path
-    # independently generates metadata series and can produce duplicate and
-    # out-of-order points.
     metrics/gcp_telemetry:
       receivers:
         - otlp
       processors:
-        - filter/gcp_telemetry_otlp
+        - filter/otlp
         - resourcedetection/gcp_telemetry
         - transform/gcp_telemetry_labels
         - transform/gcp_managed_prometheus_labels
@@ -680,6 +639,17 @@ service:
         - batch/gcp_telemetry
       exporters:
         - googlemanagedprometheus/gcp_telemetry
+    metrics/gcp_telemetry/rpc_only:
+      receivers:
+        - otlp
+      processors:
+        - filter/rpc_duration_only
+        - resourcedetection/gcp_telemetry
+        - transform/gcp_telemetry_labels
+        - transform/gcp_managed_prometheus_labels
+        - batch/gcp_telemetry
+      exporters:
+        - googlemanagedprometheus/gcp_telemetry
     metrics/gcp_telemetry/host:
       receivers:
         - hostmetrics
@@ -694,6 +664,20 @@ service:
         - batch/gcp_telemetry
       exporters:
         - googlemanagedprometheus/gcp_telemetry
+%{ if enable_gcp_telemetry_external_metrics }
+    metrics/gcp_telemetry/external:
+      receivers:
+        - otlp
+      processors:
+        - filter/external_metrics
+        - resourcedetection/gcp_telemetry
+        - transform/gcp_telemetry_labels
+        - transform/gcp_telemetry_external_labels
+        - transform/gcp_managed_prometheus_labels
+        - batch/gcp_telemetry
+      exporters:
+        - googlemanagedprometheus/gcp_telemetry
+%{ endif }
 %{ endif }
     metrics/external:
       receivers:
