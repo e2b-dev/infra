@@ -14,6 +14,7 @@ const (
 	authInfoExpiration = 5 * time.Minute
 	refreshInterval    = 1 * time.Minute
 	refreshTimeout     = 30 * time.Second
+	invalidateTimeout  = 10 * time.Second
 
 	authCacheRedisPrefix = "auth:team"
 )

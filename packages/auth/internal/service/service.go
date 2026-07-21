@@ -282,6 +282,12 @@ func (s *AuthService) InvalidateTeamCache(ctx context.Context, teamID uuid.UUID)
 // This should be called when the key is deleted so revocation takes effect immediately
 // instead of after the cache TTL expires.
 func (s *AuthService) InvalidateAPIKeyCache(ctx context.Context, hashedKey string) {
+	// The invalidation runs after the key's DB delete has committed; if it were
+	// skipped because the client disconnected, the revoked key would keep
+	// authenticating until the cache TTL expires.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), invalidateTimeout)
+	defer cancel()
+
 	s.teamCache.Invalidate(ctx, hashedKey)
 }
 
