@@ -15,7 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/auth/pkg/auth")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/auth/internal/service")
 
 type authStoreImpl struct {
 	authDB *authdb.Client
