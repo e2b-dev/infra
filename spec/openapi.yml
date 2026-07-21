@@ -3547,6 +3547,8 @@ paths:
       responses:
         "204":
           description: The node status was changed successfully
+        "409":
+          $ref: "#/components/responses/409"
         "401":
           $ref: "#/components/responses/401"
         "404":

@@ -6777,6 +6777,7 @@ type PostNodesNodeIDResponse struct {
 	HTTPResponse *http.Response
 	JSON401      *N401
 	JSON404      *N404
+	JSON409      *N409
 	JSON500      *N500
 }
 
@@ -9555,6 +9556,13 @@ func ParsePostNodesNodeIDResponse(rsp *http.Response) (*PostNodesNodeIDResponse,
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500
