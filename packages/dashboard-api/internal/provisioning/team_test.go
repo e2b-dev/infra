@@ -2,6 +2,7 @@ package provisioning
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"sync"
 	"testing"
@@ -91,5 +92,119 @@ func TestCreateTeam_ConcurrentRequestsRespectLocalPolicyWithZeroMemberships(t *t
 	}
 	if badRequestCount != 1 {
 		t.Fatalf("expected one bad request, got %d", badRequestCount)
+	}
+}
+
+func provisionErrorMessage(t *testing.T, err error) string {
+	t.Helper()
+
+	if err == nil {
+		t.Fatal("expected team creation to fail")
+	}
+
+	var provisionErr *internalteamprovision.ProvisionError
+	if !errors.As(err, &provisionErr) {
+		t.Fatalf("expected provisioning error, got %T: %v", err, err)
+	}
+	if provisionErr.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, provisionErr.StatusCode)
+	}
+
+	return provisionErr.Message
+}
+
+func TestCreateTeam_BaseTierLimitReturnsUpgradeMessage(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	userID := createTestUser(t, testDB)
+
+	svc := New(testDB.AuthDB, testIdentityProvider{}, &fakeTeamProvisionSink{})
+
+	for i := 1; i < maxTeamsPerUser; i++ {
+		if _, err := svc.CreateTeam(ctx, userID, fmt.Sprintf("Acme-%d", i)); err != nil {
+			t.Fatalf("expected team creation %d to succeed, got %v", i, err)
+		}
+	}
+
+	_, err := svc.CreateTeam(ctx, userID, "Acme-over-limit")
+	expected := fmt.Sprintf(
+		"You can't create more than %d projects, you can upgrade to Pro tier to create up to %d projects",
+		maxTeamsPerUser,
+		maxTeamsPerUserWithProTier,
+	)
+	if message := provisionErrorMessage(t, err); message != expected {
+		t.Fatalf("expected limit message %q, got %q", expected, message)
+	}
+}
+
+func TestCreateTeam_ProTierLimitReturnsLimitMessage(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	userID := createTestUser(t, testDB)
+
+	if err := testDB.AuthDB.TestsRawSQL(ctx, `
+		INSERT INTO public.tiers (
+			id, name, disk_mb, concurrent_instances, max_length_hours,
+			default_free_disk_size_mb, max_disk_size_mb
+		)
+		VALUES ('pro_test_v1', 'Pro test tier', 10240, 20, 24, 8000, 30000)
+	`); err != nil {
+		t.Fatalf("failed to create pro tier: %v", err)
+	}
+
+	defaultTeam, err := testDB.AuthDB.Read.GetDefaultTeamByUserID(ctx, userID)
+	if err != nil {
+		t.Fatalf("expected default team: %v", err)
+	}
+	if err := testDB.AuthDB.TestsRawSQL(ctx,
+		`UPDATE public.teams SET tier = 'pro_test_v1' WHERE id = $1`,
+		defaultTeam.ID,
+	); err != nil {
+		t.Fatalf("failed to upgrade team tier: %v", err)
+	}
+
+	svc := New(testDB.AuthDB, testIdentityProvider{}, &fakeTeamProvisionSink{})
+
+	for i := 1; i < maxTeamsPerUserWithProTier; i++ {
+		if _, err := svc.CreateTeam(ctx, userID, fmt.Sprintf("Acme-%d", i)); err != nil {
+			t.Fatalf("expected team creation %d to succeed, got %v", i, err)
+		}
+	}
+
+	_, err = svc.CreateTeam(ctx, userID, "Acme-over-limit")
+	expected := fmt.Sprintf("You can't create more than %d projects", maxTeamsPerUserWithProTier)
+	if message := provisionErrorMessage(t, err); message != expected {
+		t.Fatalf("expected limit message %q, got %q", expected, message)
+	}
+}
+
+func TestCreateTeam_BannedTeamReturnsSupportMessage(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	userID := createTestUser(t, testDB)
+
+	defaultTeam, err := testDB.AuthDB.Read.GetDefaultTeamByUserID(ctx, userID)
+	if err != nil {
+		t.Fatalf("expected default team: %v", err)
+	}
+	if err := testDB.AuthDB.TestsRawSQL(ctx,
+		`UPDATE public.teams SET is_banned = true WHERE id = $1`,
+		defaultTeam.ID,
+	); err != nil {
+		t.Fatalf("failed to ban team: %v", err)
+	}
+
+	svc := New(testDB.AuthDB, testIdentityProvider{}, &fakeTeamProvisionSink{})
+
+	_, err = svc.CreateTeam(ctx, userID, "Acme")
+	expected := "You're unable to create a project right now. Please contact support if this persists."
+	if message := provisionErrorMessage(t, err); message != expected {
+		t.Fatalf("expected banned message %q, got %q", expected, message)
 	}
 }
