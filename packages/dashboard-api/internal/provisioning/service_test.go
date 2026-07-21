@@ -41,11 +41,11 @@ func createTestUserWithCreatedAt(t *testing.T, db *testutils.Database, createdAt
 	email := testUserEmail(userID)
 	_ = createdAt
 
-	if err := db.AuthDB.Write.UpsertPublicUser(t.Context(), userID); err != nil {
+	if err := db.AuthDB.UpsertPublicUser(t.Context(), userID); err != nil {
 		t.Fatalf("failed to create public user: %v", err)
 	}
 
-	team, err := db.AuthDB.Write.CreateTeam(t.Context(), authqueries.CreateTeamParams{
+	team, err := db.AuthDB.CreateTeam(t.Context(), authqueries.CreateTeamParams{
 		Name:  email,
 		Tier:  baseTierID,
 		Email: email,
@@ -54,7 +54,7 @@ func createTestUserWithCreatedAt(t *testing.T, db *testutils.Database, createdAt
 		t.Fatalf("failed to create default team: %v", err)
 	}
 
-	if err := db.AuthDB.Write.CreateTeamMembership(t.Context(), authqueries.CreateTeamMembershipParams{
+	if err := db.AuthDB.CreateTeamMembership(t.Context(), authqueries.CreateTeamMembershipParams{
 		UserID:    userID,
 		TeamID:    team.ID,
 		IsDefault: true,

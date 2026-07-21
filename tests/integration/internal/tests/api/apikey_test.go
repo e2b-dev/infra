@@ -25,7 +25,7 @@ func TestAPIKeyLastUsedUpdated(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Eventually(t, func() bool {
-		apiKeys, err := db.AuthDb.Read.GetTeamAPIKeysWithCreator(ctx, teamID)
+		apiKeys, err := db.AuthDb.GetTeamAPIKeysWithCreator(ctx, teamID)
 		require.NoError(t, err)
 
 		for _, key := range apiKeys {

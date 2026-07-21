@@ -83,7 +83,7 @@ func (s *Service) CreateTeam(ctx context.Context, userID uuid.UUID, name string)
 }
 
 func (s *Service) BootstrapTeam(ctx context.Context, name string, email string) (ProvisionedTeam, error) {
-	team, err := s.authDB.Write.CreateTeam(ctx, authqueries.CreateTeamParams{
+	team, err := s.authDB.CreateTeam(ctx, authqueries.CreateTeamParams{
 		Name:          name,
 		Tier:          baseTierID,
 		Email:         email,
@@ -127,7 +127,7 @@ func (s *Service) provisionBillingOrDeleteTeam(ctx context.Context, teamID uuid.
 		rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), teamProvisionRollbackTimeout)
 		defer cancel()
 
-		if deleteErr := s.authDB.Write.DeleteTeamByID(rollbackCtx, teamID); deleteErr != nil {
+		if deleteErr := s.authDB.DeleteTeamByID(rollbackCtx, teamID); deleteErr != nil {
 			return fmt.Errorf("delete team after provisioning failure: provision=%s delete=%w", err.Error(), deleteErr)
 		}
 

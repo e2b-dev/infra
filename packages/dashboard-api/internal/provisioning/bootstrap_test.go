@@ -39,7 +39,7 @@ func TestBootstrapAuthProviderUser_CreatesIdentityAndDefaultTeam(t *testing.T) {
 		t.Fatalf("expected bootstrap to succeed: %v", err)
 	}
 
-	userIdentity, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+	userIdentity, err := testDB.AuthDB.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
 		OidcIss: input.OIDCIssuer,
 		OidcSub: input.OIDCUserID,
 	})
@@ -47,7 +47,7 @@ func TestBootstrapAuthProviderUser_CreatesIdentityAndDefaultTeam(t *testing.T) {
 		t.Fatalf("expected user identity to be created: %v", err)
 	}
 
-	defaultTeam, err := testDB.AuthDB.Read.GetDefaultTeamByUserID(ctx, userIdentity.UserID)
+	defaultTeam, err := testDB.AuthDB.GetDefaultTeamByUserID(ctx, userIdentity.UserID)
 	if err != nil {
 		t.Fatalf("expected default team to be created: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestBootstrapOIDCUser_PopulatesOryExternalID(t *testing.T) {
 		t.Fatalf("expected bootstrap to succeed: %v", err)
 	}
 
-	userIdentity, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+	userIdentity, err := testDB.AuthDB.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
 		OidcIss: input.OIDCIssuer,
 		OidcSub: input.OIDCUserID,
 	})
@@ -155,7 +155,7 @@ func TestBootstrapOIDCUser_RoutesConfiguredSecondaryIssuer(t *testing.T) {
 		t.Fatalf("expected bootstrap to succeed: %v", err)
 	}
 
-	if _, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+	if _, err := testDB.AuthDB.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
 		OidcIss: secondTestIssuer,
 		OidcSub: input.OIDCUserID,
 	}); err != nil {
@@ -204,14 +204,14 @@ func TestBootstrapOIDCUser_ExternalIDFailureKeepsUserProvisioned(t *testing.T) {
 		t.Fatalf("expected one external id attempt, got %d", profiles.externalIDCalls)
 	}
 
-	userIdentity, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+	userIdentity, err := testDB.AuthDB.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
 		OidcIss: input.OIDCIssuer,
 		OidcSub: input.OIDCUserID,
 	})
 	if err != nil {
 		t.Fatalf("expected user identity to survive external_id failure: %v", err)
 	}
-	if _, err := testDB.AuthDB.Read.GetDefaultTeamByUserID(ctx, userIdentity.UserID); err != nil {
+	if _, err := testDB.AuthDB.GetDefaultTeamByUserID(ctx, userIdentity.UserID); err != nil {
 		t.Fatalf("expected default team to survive external_id failure: %v", err)
 	}
 
@@ -239,14 +239,14 @@ func TestBootstrapOIDCUser_ReRunBackfillsExternalID(t *testing.T) {
 		t.Fatal("expected first bootstrap to fail on external_id patch")
 	}
 
-	userIdentity, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+	userIdentity, err := testDB.AuthDB.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
 		OidcIss: input.OIDCIssuer,
 		OidcSub: input.OIDCUserID,
 	})
 	if err != nil {
 		t.Fatalf("expected user identity from first bootstrap: %v", err)
 	}
-	existingTeam, err := testDB.AuthDB.Read.GetDefaultTeamByUserID(ctx, userIdentity.UserID)
+	existingTeam, err := testDB.AuthDB.GetDefaultTeamByUserID(ctx, userIdentity.UserID)
 	if err != nil {
 		t.Fatalf("expected default team from first bootstrap: %v", err)
 	}
@@ -326,7 +326,7 @@ func TestBootstrapOIDCUser_ConcurrentRequestsSingleIdentityAndTeam(t *testing.T)
 		}
 	}
 
-	userIdentity, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+	userIdentity, err := testDB.AuthDB.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
 		OidcIss: input.OIDCIssuer,
 		OidcSub: input.OIDCUserID,
 	})

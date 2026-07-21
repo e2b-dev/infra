@@ -72,7 +72,7 @@ func TestBootstrapOIDCUser_SSOJoinsMappedTeams(t *testing.T) {
 		t.Fatalf("expected landing team %s (earliest created), got %s", teamOlder, team.ID)
 	}
 
-	userIdentity, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+	userIdentity, err := testDB.AuthDB.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
 		OidcIss: input.OIDCIssuer,
 		OidcSub: input.OIDCUserID,
 	})
@@ -80,11 +80,11 @@ func TestBootstrapOIDCUser_SSOJoinsMappedTeams(t *testing.T) {
 		t.Fatalf("expected user identity to be created: %v", err)
 	}
 
-	if _, err := testDB.AuthDB.Read.GetDefaultTeamByUserID(ctx, userIdentity.UserID); err == nil {
+	if _, err := testDB.AuthDB.GetDefaultTeamByUserID(ctx, userIdentity.UserID); err == nil {
 		t.Fatal("expected no default team for an SSO member")
 	}
 
-	memberships, err := testDB.AuthDB.Read.GetTeamsWithUsersTeams(ctx, userIdentity.UserID)
+	memberships, err := testDB.AuthDB.GetTeamsWithUsersTeams(ctx, userIdentity.UserID)
 	if err != nil {
 		t.Fatalf("failed to read memberships: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestBootstrapOIDCUser_SSOFailsClosedWhenNoTeamMapped(t *testing.T) {
 		t.Fatalf("expected 403 ProvisionError, got %v", err)
 	}
 
-	if _, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+	if _, err := testDB.AuthDB.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
 		OidcIss: input.OIDCIssuer,
 		OidcSub: input.OIDCUserID,
 	}); err == nil {

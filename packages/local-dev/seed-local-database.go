@@ -54,7 +54,7 @@ func run(ctx context.Context) error {
 		oidcSubject = defaultOidcSubject
 	}
 
-	authDb, err := authdb.NewClient(ctx, connectionString, connectionString)
+	authDb, err := authdb.NewClient(ctx, connectionString)
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
@@ -103,7 +103,7 @@ func upsertTeamAPIKey(ctx context.Context, db *authdb.Client, teamID uuid.UUID, 
 		return fmt.Errorf("failed to create token hash: %w", err)
 	}
 
-	if _, err = db.Write.CreateTeamAPIKey(ctx, authqueries.CreateTeamAPIKeyParams{
+	if _, err = db.CreateTeamAPIKey(ctx, authqueries.CreateTeamAPIKeyParams{
 		TeamID:           teamID,
 		CreatedBy:        &userID,
 		ApiKeyHash:       tokenHash,
@@ -120,7 +120,7 @@ func upsertTeamAPIKey(ctx context.Context, db *authdb.Client, teamID uuid.UUID, 
 }
 
 func upsertUserIdentity(ctx context.Context, db *authdb.Client, oidcIssuer, oidcSubject string) error {
-	if _, err := db.Write.UpsertPublicIdentity(ctx, authqueries.UpsertPublicIdentityParams{
+	if _, err := db.UpsertPublicIdentity(ctx, authqueries.UpsertPublicIdentityParams{
 		OidcIss: oidcIssuer,
 		OidcSub: oidcSubject,
 		UserID:  userID,
@@ -156,7 +156,7 @@ func upsertUserToken(ctx context.Context, db *authdb.Client, tokenPrefix, token 
 		return fmt.Errorf("failed to create token hash: %w", err)
 	}
 
-	if _, err = db.Write.CreateAccessToken(ctx, authqueries.CreateAccessTokenParams{
+	if _, err = db.CreateAccessToken(ctx, authqueries.CreateAccessTokenParams{
 		ID:                    tokenID,
 		UserID:                userID,
 		AccessTokenHash:       tokenHash,
@@ -212,7 +212,7 @@ ON CONFLICT (id) DO UPDATE SET
 		return fmt.Errorf("failed to upsert user: %w", err)
 	}
 
-	err = db.Write.UpsertPublicUser(ctx, userID)
+	err = db.UpsertPublicUser(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("failed to upsert public user: %w", err)
 	}

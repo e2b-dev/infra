@@ -23,7 +23,7 @@ func GetTestDBClient(tb testing.TB) *Database {
 	db, err := client.NewClient(tb.Context(), databaseURL)
 	require.NoError(tb, err)
 
-	authDb, err := authdb.NewClient(tb.Context(), databaseURL, databaseURL)
+	authDb, err := authdb.NewClient(tb.Context(), databaseURL)
 	require.NoError(tb, err)
 
 	tb.Cleanup(func() {
