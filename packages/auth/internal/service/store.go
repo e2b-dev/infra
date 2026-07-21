@@ -31,7 +31,11 @@ func (s *authStoreImpl) GetTeamByHashedAPIKey(ctx context.Context, hashedKey str
 	ctx, span := tracer.Start(ctx, "get team auth")
 	defer span.End()
 
-	result, err := s.authDB.Read.GetTeamWithTierByAPIKey(ctx, hashedKey)
+	// Deleting an API key invalidates its cache entry; reading through the
+	// read replica here races replication lag and could re-cache a
+	// just-deleted key for the full cache TTL, so key revocation must be
+	// read-after-write safe.
+	result, err := s.authDB.Write.GetTeamWithTierByAPIKey(ctx, hashedKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get team from API key: %w", err)
 	}

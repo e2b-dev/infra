@@ -14,7 +14,7 @@ import (
 const deleteTeamAPIKey = `-- name: DeleteTeamAPIKey :many
 DELETE FROM "public"."team_api_keys"
 WHERE id = $1 AND team_id = $2
-RETURNING id
+RETURNING api_key_hash
 `
 
 type DeleteTeamAPIKeyParams struct {
@@ -22,19 +22,19 @@ type DeleteTeamAPIKeyParams struct {
 	TeamID uuid.UUID
 }
 
-func (q *Queries) DeleteTeamAPIKey(ctx context.Context, arg DeleteTeamAPIKeyParams) ([]uuid.UUID, error) {
+func (q *Queries) DeleteTeamAPIKey(ctx context.Context, arg DeleteTeamAPIKeyParams) ([]string, error) {
 	rows, err := q.db.Query(ctx, deleteTeamAPIKey, arg.ID, arg.TeamID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []uuid.UUID
+	var items []string
 	for rows.Next() {
-		var id uuid.UUID
-		if err := rows.Scan(&id); err != nil {
+		var api_key_hash string
+		if err := rows.Scan(&api_key_hash); err != nil {
 			return nil, err
 		}
-		items = append(items, id)
+		items = append(items, api_key_hash)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

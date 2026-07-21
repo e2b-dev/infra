@@ -18,6 +18,7 @@ import (
 	authtypes "github.com/e2b-dev/infra/packages/auth/pkg/types"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
+	sharedkeys "github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
 
 func TestPostAdminTeamsTeamIDApiKeysCreatesTeamKey(t *testing.T) {
@@ -195,9 +196,13 @@ func TestDeleteAdminTeamsTeamIDApiKeysDeletesTeamKey(t *testing.T) {
 	createCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/teams/"+teamID.String()+"/api-keys", strings.NewReader(`{"name":"Admin integration"}`))
 	createCtx.Request.Header.Set("Content-Type", "application/json")
 
+	var invalidatedHashes []string
 	store := &APIStore{
-		authDB:      testDB.AuthDB,
-		authService: fakeAPIKeyAuthService{team: &authtypes.Team{Team: &authqueries.Team{ID: teamID}}},
+		authDB: testDB.AuthDB,
+		authService: fakeAPIKeyAuthService{
+			team:                    &authtypes.Team{Team: &authqueries.Team{ID: teamID}},
+			invalidatedAPIKeyHashes: &invalidatedHashes,
+		},
 	}
 	store.PostAdminTeamsTeamIDApiKeys(createCtx, teamID)
 	if createRecorder.Code != http.StatusCreated {
@@ -225,6 +230,12 @@ func TestDeleteAdminTeamsTeamIDApiKeysDeletesTeamKey(t *testing.T) {
 	if len(keys) != 0 {
 		t.Fatalf("expected API key to be deleted, got %d keys", len(keys))
 	}
+
+	deletedKeyHash, err := sharedkeys.VerifyKey(sharedkeys.ApiKeyPrefix, created.Key)
+	if err != nil {
+		t.Fatalf("failed to hash created API key: %v", err)
+	}
+	require.Equal(t, []string{deletedKeyHash}, invalidatedHashes, "expected the deleted key's auth cache entry to be invalidated")
 }
 
 func TestDeleteAdminTeamsTeamIDApiKeysRejectsMissingKey(t *testing.T) {
@@ -233,7 +244,7 @@ func TestDeleteAdminTeamsTeamIDApiKeysRejectsMissingKey(t *testing.T) {
 	testDB := testutils.SetupDatabase(t)
 	teamID := testutils.CreateTestTeam(t, testDB)
 
-	store := &APIStore{authDB: testDB.AuthDB}
+	store := &APIStore{authDB: testDB.AuthDB, authService: fakeAPIKeyAuthService{}}
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
 	missingKeyID := uuid.New()
@@ -249,6 +260,8 @@ func TestDeleteAdminTeamsTeamIDApiKeysRejectsMissingKey(t *testing.T) {
 type fakeAPIKeyAuthService struct {
 	team *authtypes.Team
 	err  error
+
+	invalidatedAPIKeyHashes *[]string
 }
 
 func (f fakeAPIKeyAuthService) ValidateAPIKey(context.Context, *gin.Context, string) (*authtypes.Team, *sharedauth.APIError) {
@@ -276,6 +289,12 @@ func (f fakeAPIKeyAuthService) GetTeamByID(context.Context, uuid.UUID) (*authtyp
 }
 
 func (f fakeAPIKeyAuthService) InvalidateTeamMemberCache(context.Context, uuid.UUID, string) {}
+
+func (f fakeAPIKeyAuthService) InvalidateAPIKeyCache(_ context.Context, hashedKey string) {
+	if f.invalidatedAPIKeyHashes != nil {
+		*f.invalidatedAPIKeyHashes = append(*f.invalidatedAPIKeyHashes, hashedKey)
+	}
+}
 
 func (f fakeAPIKeyAuthService) InvalidateTeamCache(context.Context, uuid.UUID) error {
 	return nil
