@@ -13,6 +13,8 @@ import (
 )
 
 func TestServiceStatusOverrideRejectsDrainingToStandby(t *testing.T) {
+	t.Parallel()
+
 	info := &ServiceInfo{}
 	info.SetStatus(t.Context(), orchestratorinfo.ServiceInfoStatus_Draining)
 	server := &Server{info: info}
