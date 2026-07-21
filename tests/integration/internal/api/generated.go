@@ -863,9 +863,6 @@ type SandboxIamToken struct {
 	// Audience Audience of the workload token, stored exactly as provided.
 	Audience string `json:"audience"`
 
-	// FilePath Reserved for future file-based delivery. File delivery is not supported: a non-null value is rejected. Leave absent or null.
-	FilePath *string `json:"filePath,omitempty"`
-
 	// TokenType Workload token type.
 	TokenType string `json:"tokenType"`
 }
