@@ -30,6 +30,7 @@ RUN go mod download
 WORKDIR /build
 
 COPY ./auth/pkg ./auth/pkg
+COPY ./auth/internal ./auth/internal
 COPY ./clickhouse/pkg ./clickhouse/pkg
 COPY ./shared/pkg ./shared/pkg
 COPY ./db/client ./db/client
