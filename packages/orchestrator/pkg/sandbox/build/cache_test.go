@@ -279,6 +279,78 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) { //nolint:paralleltest // ve
 	assert.True(t, found)
 }
 
+// A pinned entry must be skipped by disk-pressure eviction (the next-oldest is
+// chosen instead), and become eligible again once unpinned.
+func TestDiffStorePinnedSkippedByEviction(t *testing.T) {
+	t.Parallel()
+	cachePath := t.TempDir()
+
+	c, err := cfg.Parse()
+	require.NoError(t, err)
+	flags := flagsWithMaxBuildCachePercentage(t, 100)
+	store, err := NewDiffStore(c, flags, cachePath, 60*time.Second, 4*time.Second)
+	require.NoError(t, err)
+
+	oldest := newRootFSDiff(t, cachePath, "pin-oldest")
+	store.Add(oldest)
+	newer := newRootFSDiff(t, cachePath, "pin-newer")
+	store.Add(newer)
+
+	// Pin the oldest → eviction skips it and schedules the next-oldest.
+	store.Pin(oldest.CacheKey())
+	_, err = store.deleteOldestFromCache(t.Context())
+	require.NoError(t, err)
+	assert.False(t, store.isBeingDeleted(oldest.CacheKey()))
+	assert.True(t, store.isBeingDeleted(newer.CacheKey()))
+
+	// Unpin → the oldest is eligible again.
+	store.Unpin(oldest.CacheKey())
+	_, err = store.deleteOldestFromCache(t.Context())
+	require.NoError(t, err)
+	assert.True(t, store.isBeingDeleted(oldest.CacheKey()))
+}
+
+// A Pin that lands after a delete was already scheduled (the Add→Pin window, or
+// a Pin racing the eviction scan) must still protect the entry: the scheduled
+// delete re-checks isPinned when it fires and skips the eviction, so the entry
+// survives and is eligible again only once unpinned.
+func TestDiffStorePinnedSurvivesScheduledDelete(t *testing.T) {
+	t.Parallel()
+	cachePath := t.TempDir()
+
+	c, err := cfg.Parse()
+	require.NoError(t, err)
+	flags := flagsWithMaxBuildCachePercentage(t, 100)
+	// Short pdDelay so the scheduled delete fires within the test.
+	store, err := NewDiffStore(c, flags, cachePath, 60*time.Second, 150*time.Millisecond)
+	require.NoError(t, err)
+
+	diff := newRootFSDiff(t, cachePath, "pin-after-schedule")
+	store.Add(diff)
+
+	// Delete scheduled first (as disk pressure would), then the Pin lands.
+	store.scheduleDelete(t.Context(), diff.CacheKey(), 1024)
+	require.True(t, store.isBeingDeleted(diff.CacheKey()))
+	store.Pin(diff.CacheKey())
+
+	// After the delay elapses the fire-time isPinned re-check must have skipped
+	// the eviction: the entry is still cached and no longer marked for deletion.
+	require.Eventually(t, func() bool {
+		return !store.isBeingDeleted(diff.CacheKey())
+	}, 2*time.Second, 10*time.Millisecond)
+	_, found := store.Lookup(diff.CacheKey())
+	assert.True(t, found, "pinned entry must survive the scheduled delete")
+
+	// Unpin → a freshly scheduled delete now evicts it.
+	store.Unpin(diff.CacheKey())
+	store.scheduleDelete(t.Context(), diff.CacheKey(), 1024)
+	require.Eventually(t, func() bool {
+		_, ok := store.Lookup(diff.CacheKey())
+
+		return !ok
+	}, 2*time.Second, 10*time.Millisecond)
+}
+
 func TestDiffStoreOldestFromCache(t *testing.T) {
 	t.Parallel()
 	cachePath := t.TempDir()

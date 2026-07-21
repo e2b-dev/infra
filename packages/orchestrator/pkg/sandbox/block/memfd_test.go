@@ -464,12 +464,18 @@ func TestMemfdIdentitySource_ServesThenReleases(t *testing.T) {
 		require.Equal(t, int(ps), n)
 		require.Equal(t, data[page*ps:(page+1)*ps], b)
 	}
+	// Slice takes the same identity path and returns a copy of the memfd bytes.
+	sl, err := src.Slice(2*ps, ps)
+	require.NoError(t, err)
+	require.Equal(t, data[2*ps:3*ps], sl)
 	require.True(t, src.IsCached(t.Context(), 0, ps*4))
 
 	require.NoError(t, d.releaseMemfd())
 
-	_, err := src.ReadAt(make([]byte, ps), 0)
 	var bna BytesNotAvailableError
+	_, err = src.ReadAt(make([]byte, ps), 0)
+	require.ErrorAs(t, err, &bna)
+	_, err = src.Slice(0, ps)
 	require.ErrorAs(t, err, &bna)
 	require.False(t, src.IsCached(t.Context(), 0, ps))
 }
