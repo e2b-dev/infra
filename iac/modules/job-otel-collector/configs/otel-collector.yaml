@@ -443,7 +443,7 @@ processors:
         statements:
           - set(attributes["service.version"], resource.attributes["service.version"]) where resource.attributes["service.version"] != nil
           - set(attributes["group.name"], resource.attributes["gcp.gce.instance_group_manager.name"]) where resource.attributes["gcp.gce.instance_group_manager.name"] != nil
-          - replace_pattern(attributes["group.name"], "^e2b-orch-(client-)?(.+)-rig$", "$2") where attributes["group.name"] != nil
+          - replace_pattern(attributes["group.name"], "^e2b-orch-(client-)?(.+)-r?ig$", "$2") where attributes["group.name"] != nil
 %{ endif }
 
   transform/gcp_managed_prometheus_labels:
