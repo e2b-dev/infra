@@ -41,6 +41,14 @@ func (s *Service) bootstrapUser(ctx context.Context, profile bootstrapUserProfil
 	ssoOrgID, err := s.identityService.IdentityOrganizationID(ctx, oidcIdentity.Issuer, oidcIdentity.Subject)
 	if err != nil {
 		if errors.Is(err, identity.ErrUnknownIssuer) {
+			// Password-based accounts use a non-Ory JWT whose issuer is not
+			// registered. If the user is already fully provisioned (has a
+			// default team), return that team rather than failing with a 400.
+			if profile.Email != "" {
+				if team, fallbackErr := s.existingTeamByEmail(ctx, profile.Email); fallbackErr == nil {
+					return team, nil
+				}
+			}
 			return ProvisionedTeam{}, &internalteamprovision.ProvisionError{
 				StatusCode: http.StatusBadRequest,
 				Message:    "oidc_issuer does not match a configured identity provider",
@@ -251,4 +259,18 @@ func backfillIdentityExternalID(ctx context.Context, identityService identity.Se
 	}
 
 	return nil
+}
+
+func (s *Service) existingTeamByEmail(ctx context.Context, email string) (ProvisionedTeam, error) {
+	userIDs, err := s.authDB.FindUserIDsByEmail(ctx, email)
+	if err != nil || len(userIDs) != 1 {
+		return ProvisionedTeam{}, errors.New("no unique provisioned user for email")
+	}
+
+	team, err := s.authDB.Read.GetDefaultTeamByUserID(ctx, userIDs[0])
+	if err != nil {
+		return ProvisionedTeam{}, err
+	}
+
+	return newProvisionedTeam(team.ID, team.Name, team.Email, team.Slug, team.IsBlocked, team.BlockedReason, userIDs[0]), nil
 }
