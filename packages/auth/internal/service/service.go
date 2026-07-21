@@ -281,6 +281,12 @@ func (s *AuthService) InvalidateTeamCache(ctx context.Context, teamID uuid.UUID)
 // InvalidateAPIKeyCache removes the cached auth entry for a specific hashed API key.
 // This should be called when the key is deleted so revocation takes effect immediately
 // instead of after the cache TTL expires.
+//
+// The call is synchronous and waits for any in-flight cache writer on the key
+// (see RedisCache.Delete), so the caller's request can block for up to
+// invalidateTimeout in the worst case — only reached when a concurrent
+// refresh of the same key is wedged near the full refresh timeout, which
+// requires a multi-second DB stall; the typical case returns in milliseconds.
 func (s *AuthService) InvalidateAPIKeyCache(ctx context.Context, hashedKey string) {
 	// The invalidation runs after the key's DB delete has committed; if it were
 	// skipped because the client disconnected, the revoked key would keep

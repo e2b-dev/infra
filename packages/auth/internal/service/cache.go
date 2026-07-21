@@ -14,7 +14,13 @@ const (
 	authInfoExpiration = 5 * time.Minute
 	refreshInterval    = 1 * time.Minute
 	refreshTimeout     = 30 * time.Second
-	invalidateTimeout  = 10 * time.Second
+	// invalidateTimeout must exceed the cache's write-lock wait so an
+	// invalidation can outwait any in-flight cache writer instead of degrading
+	// to a best-effort delete that a stale write could overwrite. The wait is
+	// bounded by the lock TTL (refreshTimeout + 2x the 2s default Redis
+	// timeout = 34s) plus the 5s lock-acquire margin; 45s adds headroom for
+	// the DEL itself.
+	invalidateTimeout = 45 * time.Second
 
 	authCacheRedisPrefix = "auth:team"
 )
