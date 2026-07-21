@@ -54,6 +54,8 @@ const (
 	maxNetworkRuleHeaderNameLen       = 64
 	maxNetworkRuleHeaderValueLen      = 2048
 	maxNetworkRuleHeadersPerRule      = 20
+
+	maxIamTokens = 5
 )
 
 func (a *APIStore) PostSandboxes(c *gin.Context) {
@@ -205,6 +207,12 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		return
 	}
 
+	if iamCfg != nil && !a.featureFlags.BoolFlag(ctx, featureflags.SandboxIamTokensFlag, featureflags.TeamContext(teamInfo.Team.ID.String())) {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Sandbox IAM workload tokens are not available for your team.")
+
+		return
+	}
+
 	allowInternetAccess := body.AllowInternetAccess
 
 	var network *types.SandboxNetworkConfig
@@ -351,8 +359,7 @@ const iamTokenTypeJWTSVID = "JWT-SVID"
 // buildSandboxIam validates the optional iam.tokens map and returns the sandbox
 // workload identity configuration to persist. An absent or empty map means
 // workload identity is disabled and returns nil. The audience is preserved
-// exactly as received. File-based delivery is not supported, so any non-null
-// filePath is rejected rather than silently ignored.
+// exactly as received.
 func buildSandboxIam(iam *api.SandboxIam) (*types.SandboxIam, *api.APIError) {
 	if iam == nil || iam.Tokens == nil || len(*iam.Tokens) == 0 {
 		return nil, nil
@@ -364,6 +371,10 @@ func buildSandboxIam(iam *api.SandboxIam) (*types.SandboxIam, *api.APIError) {
 			Err:       fmt.Errorf("%s: %s", field, msg),
 			ClientMsg: fmt.Sprintf("%s: %s", field, msg),
 		}
+	}
+
+	if len(*iam.Tokens) > maxIamTokens {
+		return nil, reject("iam.tokens", fmt.Sprintf("too many tokens: %d (max %d)", len(*iam.Tokens), maxIamTokens))
 	}
 
 	tokens := make(map[string]types.SandboxIamToken, len(*iam.Tokens))
@@ -378,12 +389,6 @@ func buildSandboxIam(iam *api.SandboxIam) (*types.SandboxIam, *api.APIError) {
 
 		if def.TokenType != iamTokenTypeJWTSVID {
 			return nil, reject(fmt.Sprintf("iam.tokens.%s.tokenType", name), fmt.Sprintf("only %q is supported", iamTokenTypeJWTSVID))
-		}
-
-		// Any non-null filePath (including an empty string) selects file delivery,
-		// which is unsupported.
-		if def.FilePath != nil {
-			return nil, reject(fmt.Sprintf("iam.tokens.%s.filePath", name), "file-based delivery is not supported; leave it absent or null")
 		}
 
 		tokens[name] = types.SandboxIamToken{Audience: def.Audience, TokenType: def.TokenType}

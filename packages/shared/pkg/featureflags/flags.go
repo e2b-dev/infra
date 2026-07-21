@@ -202,6 +202,10 @@ var (
 
 	BYOPProxyEnabledFlag = NewBoolFlag("byop-proxy-enabled", env.IsDevelopment())
 
+	// SandboxIamTokensFlag gates the sandbox IAM workload token configuration
+	// (iam.tokens) per team during beta.
+	SandboxIamTokensFlag = NewBoolFlag("enable-sandbox-iam-tokens", env.IsDevelopment())
+
 	// V4HeaderForUncompressedFlag forces the V4 header layout on uncompressed
 	// uploads. Independent of compress-config: it changes the header format,
 	// not whether data is compressed.

@@ -89,9 +89,13 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 func TestBuildSandboxIam(t *testing.T) {
 	t.Parallel()
 
-	ptr := func(s string) *string { return &s }
 	tokens := func(defs api.SandboxIamTokens) *api.SandboxIam { return &api.SandboxIam{Tokens: &defs} }
 	valid := api.SandboxIamToken{Audience: "sts.amazonaws.com", TokenType: "JWT-SVID"}
+
+	tooMany := api.SandboxIamTokens{}
+	for i := range maxIamTokens + 1 {
+		tooMany[fmt.Sprintf("t%d", i)] = valid
+	}
 
 	tests := []struct {
 		name    string
@@ -123,13 +127,8 @@ func TestBuildSandboxIam(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "non-null filePath is rejected",
-			iam:     tokens(api.SandboxIamTokens{"aws": {Audience: "sts.amazonaws.com", TokenType: "JWT-SVID", FilePath: ptr("/run/token")}}),
-			wantErr: true,
-		},
-		{
-			name:    "empty-string filePath is rejected",
-			iam:     tokens(api.SandboxIamTokens{"aws": {Audience: "sts.amazonaws.com", TokenType: "JWT-SVID", FilePath: ptr("")}}),
+			name:    "too many tokens is rejected",
+			iam:     tokens(tooMany),
 			wantErr: true,
 		},
 	}

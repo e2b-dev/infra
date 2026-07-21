@@ -787,12 +787,6 @@ components:
         tokenType:
           type: string
           description: Workload token type.
-        filePath:
-          type: string
-          nullable: true
-          description: >-
-            Reserved for future file-based delivery. File delivery is not
-            supported: a non-null value is rejected. Leave absent or null.
 
     ResumedSandbox:
       properties:
