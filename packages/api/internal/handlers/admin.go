@@ -6,6 +6,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
@@ -68,6 +70,12 @@ func (a *APIStore) PostNodesNodeID(c *gin.Context, nodeId api.NodeID) {
 
 	err = node.SendStatusChange(ctx, body.Status)
 	if err != nil {
+		if status.Code(err) == codes.InvalidArgument {
+			a.sendAPIStoreError(c, http.StatusBadRequest, status.Convert(err).Message())
+
+			return
+		}
+
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when sending status change: %s", err))
 
 		telemetry.ReportCriticalError(ctx, "error when sending status change", err)

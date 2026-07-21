@@ -6,6 +6,8 @@ import (
 	"context"
 
 	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -140,7 +142,9 @@ func convertMachineInfo(machineInfo machineinfo.MachineInfo) *orchestratorinfo.M
 
 func (s *Server) ServiceStatusOverride(ctx context.Context, req *orchestratorinfo.ServiceStatusChangeRequest) (*emptypb.Empty, error) {
 	logger.L().Info(ctx, "service status override request received", zap.String("status", req.GetServiceStatus().String()))
-	s.info.SetStatus(ctx, req.GetServiceStatus())
+	if !s.info.OverrideStatus(ctx, req.GetServiceStatus()) {
+		return nil, status.Error(codes.InvalidArgument, "cannot change node status from draining to standby")
+	}
 
 	return &emptypb.Empty{}, nil
 }
