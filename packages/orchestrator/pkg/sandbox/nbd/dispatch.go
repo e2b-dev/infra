@@ -16,6 +16,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -333,14 +334,29 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 			// Per-request backend failure: signal it to the NBD client via the
 			// response error byte and keep the dispatch loop alive. Only
 			// writeResponse errors (dead NBD socket) escalate through d.fatal.
-			logger.L().Error(ctx, "nbd backend read failed",
-				zap.Error(readErr),
-				zap.String("nbd_op", "read"),
-				zap.String("nbd_provider", d.provName),
-				zap.Uint64("nbd_handle", handle),
-				zap.Uint64("nbd_offset", from),
-				zap.Uint32("nbd_length", length),
-			)
+			//
+			// ErrObjectNotExist is a permanent failure (the build is gone); the
+			// DiffStore negative cache absorbs subsequent retries. Log at WARN to
+			// avoid flooding dashboards with expected 404s while still surfacing them.
+			if errors.Is(readErr, storage.ErrObjectNotExist) {
+				logger.L().Warn(ctx, "nbd backend read failed: build object not found in store",
+					zap.Error(readErr),
+					zap.String("nbd_op", "read"),
+					zap.String("nbd_provider", d.provName),
+					zap.Uint64("nbd_handle", handle),
+					zap.Uint64("nbd_offset", from),
+					zap.Uint32("nbd_length", length),
+				)
+			} else {
+				logger.L().Error(ctx, "nbd backend read failed",
+					zap.Error(readErr),
+					zap.String("nbd_op", "read"),
+					zap.String("nbd_provider", d.provName),
+					zap.Uint64("nbd_handle", handle),
+					zap.Uint64("nbd_offset", from),
+					zap.Uint32("nbd_length", length),
+				)
+			}
 
 			return d.writeResponse(1, handle, []byte{})
 		}
