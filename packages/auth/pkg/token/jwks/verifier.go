@@ -94,13 +94,18 @@ func NewVerifier(ctx context.Context, entry Config, httpClient *http.Client, opt
 		return nil, fmt.Errorf("create JWKS keyfunc: %w", err)
 	}
 
+	parserOptions := []jwt.ParserOption{
+		jwt.WithExpirationRequired(),
+		jwt.WithIssuer(entry.Issuer.URL),
+	}
+	if alg := entry.Issuer.Algorithm; alg != "" {
+		parserOptions = append(parserOptions, jwt.WithValidMethods([]string{string(alg)}))
+	}
+
 	verifier := &Verifier{
-		keyfunc:   keyFunc,
-		audiences: entry.Issuer.Audiences,
-		parserOptions: []jwt.ParserOption{
-			jwt.WithExpirationRequired(),
-			jwt.WithIssuer(entry.Issuer.URL),
-		},
+		keyfunc:       keyFunc,
+		audiences:     entry.Issuer.Audiences,
+		parserOptions: parserOptions,
 	}
 	for _, option := range options {
 		option(verifier)

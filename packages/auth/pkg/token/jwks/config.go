@@ -23,12 +23,24 @@ type Config struct {
 	CacheDuration time.Duration `json:"cacheDuration"`
 }
 
+// SigningAlgorithm is the JWS signing algorithm an issuer uses.
+// Supported values are "EdDSA" and "ES256".
+type SigningAlgorithm string
+
+const (
+	// SigningAlgorithmEdDSA is EdDSA (Ed25519).
+	SigningAlgorithmEdDSA SigningAlgorithm = "EdDSA"
+	// SigningAlgorithmES256 is ECDSA using P-256 and SHA-256.
+	SigningAlgorithmES256 SigningAlgorithm = "ES256"
+)
+
 // Issuer describes an OIDC issuer endpoint plus audience policy.
 type Issuer struct {
 	URL                 string              `json:"url"`
 	DiscoveryURL        string              `json:"discoveryURL"`
 	Audiences           []string            `json:"audiences"`
 	AudienceMatchPolicy AudienceMatchPolicy `json:"audienceMatchPolicy"`
+	Algorithm           SigningAlgorithm    `json:"algorithm"`
 }
 
 // UnmarshalJSON parses `cacheDuration` from a Go duration string.
@@ -62,6 +74,7 @@ func (e *Config) Normalized() Config {
 	out := *e
 	out.Issuer.URL = strings.TrimSpace(out.Issuer.URL)
 	out.Issuer.DiscoveryURL = strings.TrimSpace(out.Issuer.DiscoveryURL)
+	out.Issuer.Algorithm = SigningAlgorithm(strings.TrimSpace(string(out.Issuer.Algorithm)))
 
 	if out.CacheDuration <= 0 {
 		out.CacheDuration = defaultCacheDuration
@@ -84,7 +97,22 @@ func (e *Config) Validate() error {
 		errs = append(errs, fmt.Errorf("issuer: %w", err))
 	}
 
+	if err := validateSigningAlgorithm(e.Issuer.Algorithm); err != nil {
+		errs = append(errs, fmt.Errorf("issuer: %w", err))
+	}
+
 	return errors.Join(errs...)
+}
+
+// validateSigningAlgorithm ensures the configured algorithm is empty or one of
+// the supported JWS algorithms.
+func validateSigningAlgorithm(alg SigningAlgorithm) error {
+	switch alg {
+	case "", SigningAlgorithmEdDSA, SigningAlgorithmES256:
+		return nil
+	default:
+		return fmt.Errorf("algorithm %q is not supported; must be %q or %q", alg, SigningAlgorithmEdDSA, SigningAlgorithmES256)
+	}
 }
 
 // discoveryURL returns the configured discoveryURL or the default derived

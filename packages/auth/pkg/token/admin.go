@@ -37,11 +37,12 @@ func NewAdminVerifier(ctx context.Context, config ProviderConfig, httpClient *ht
 
 	verifiers := make([]*jwks.Verifier, 0, len(normalized.JWT))
 	for i, entry := range normalized.JWT {
+		if entry.Issuer.Algorithm == "" {
+			entry.Issuer.Algorithm = jwks.SigningAlgorithmEdDSA
+		}
+
 		verifier, err := jwks.NewVerifier(ctx, entry, httpClient,
-			jwks.WithParserOptions(
-				jwt.WithLeeway(adminJWTClockSkew),
-				jwt.WithValidMethods([]string{jwt.SigningMethodEdDSA.Alg()}),
-			),
+			jwks.WithParserOptions(jwt.WithLeeway(adminJWTClockSkew)),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("admin JWT jwt[%d]: %w", i, err)

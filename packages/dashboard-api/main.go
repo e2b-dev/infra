@@ -255,6 +255,10 @@ func run() int {
 		return 1
 	}
 
+	if adminVerifier == nil {
+		l.Warn(ctx, "ADMIN_AUTH_CONFIG is not configured; /admin/v1 endpoints will reject requests with 401")
+	}
+
 	authenticationFunc := sharedauth.CreateAuthenticationFunc(
 		[]sharedauth.Authenticator{
 			sharedauth.NewAdminApiKeyAuthenticator(config.AdminToken),

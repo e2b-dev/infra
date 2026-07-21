@@ -1,7 +1,9 @@
 package token
 
 import (
+	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
 	"testing"
 	"time"
@@ -119,4 +121,39 @@ func TestAdminVerifierRejectsNonEdDSA(t *testing.T) {
 
 	_, err = verifier.Verify(t.Context(), signed)
 	require.Error(t, err)
+}
+
+func TestAdminVerifierES256(t *testing.T) {
+	t.Parallel()
+
+	const issuer = "https://workspace.example.com"
+
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	server := jwks.NewTestServer(t, &privateKey.PublicKey, adminTestKeyID, jose.ES256, issuer)
+
+	verifier, err := NewAdminVerifier(t.Context(), ProviderConfig{
+		JWT: []jwks.Config{{
+			Issuer: jwks.Issuer{
+				URL:          issuer,
+				DiscoveryURL: server.URL + "/.well-known/openid-configuration",
+				Audiences:    []string{adminTestAudience},
+				Algorithm:    jwks.SigningAlgorithmES256,
+			},
+		}},
+	}, server.Client())
+	require.NoError(t, err)
+
+	token := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{
+		"iss": issuer,
+		"aud": adminTestAudience,
+		"exp": time.Now().Add(5 * time.Minute).Unix(),
+	})
+	token.Header["kid"] = adminTestKeyID
+	signed, err := token.SignedString(privateKey)
+	require.NoError(t, err)
+
+	_, err = verifier.Verify(t.Context(), signed)
+	require.NoError(t, err)
 }
