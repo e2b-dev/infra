@@ -167,6 +167,15 @@ var (
 	// of synchronous. Only safe to enable after PeerToPeerChunkTransferFlag is ON.
 	PeerToPeerAsyncCheckpointFlag = NewBoolFlag("peer-to-peer-async-checkpoint", false)
 
+	// DeferRootfsExportFlag moves the rootfs diff seal (the reflink, which forces a
+	// synchronous host->NVMe writeback) off the pause critical path: pause() ejects
+	// the cache and stops the sandbox, then reflinks the diff in the background so
+	// the call returns without the writeback stall. Applied only to the suspend
+	// (pause) path, where nothing reads the diff until a later resume. Off by
+	// default; falls back to the synchronous export when off or on a non-NBD
+	// provider.
+	DeferRootfsExportFlag = NewBoolFlag("defer-rootfs-export", false)
+
 	PersistentVolumesFlag            = NewBoolFlag("can-use-persistent-volumes", env.IsDevelopment())
 	SandboxLabelBasedSchedulingFlag  = NewBoolFlag("sandbox-label-based-scheduling", false)
 	OptimisticResourceAccountingFlag = NewBoolFlag("sandbox-placement-optimistic-resource-accounting", false)

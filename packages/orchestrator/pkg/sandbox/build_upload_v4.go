@@ -21,11 +21,6 @@ func (u *Upload) runV4(ctx context.Context) error {
 		return fmt.Errorf("memfile diff path: %w", err)
 	}
 
-	rootfsSrc, err := u.snap.RootfsDiff.CachePath(ctx)
-	if err != nil {
-		return fmt.Errorf("rootfs diff path: %w", err)
-	}
-
 	eg, ctx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
@@ -41,6 +36,15 @@ func (u *Upload) runV4(ctx context.Context) error {
 	})
 
 	eg.Go(func() error {
+		// Resolve the rootfs diff path inside the group: with deferred rootfs
+		// export it blocks on the background seal, so doing it here lets the
+		// memfile/snapfile/metadata uploads overlap the reflink instead of
+		// waiting behind it.
+		rootfsSrc, err := u.snap.RootfsDiff.CachePath(ctx)
+		if err != nil {
+			return fmt.Errorf("rootfs diff path: %w", err)
+		}
+
 		h, err := u.snap.RootfsDiffHeader.WaitWithContext(ctx)
 		if err != nil {
 			return fmt.Errorf("wait rootfs diff header: %w", err)

@@ -189,7 +189,25 @@ func (s *Server) harvestResumePrefetchAsync(
 		)
 
 		start := time.Now()
-		pages, outcome, err := harvester.run(hCtx, sbx, res.meta, res.upload, buildID, objectMetadata, consume)
+
+		// With deferred rootfs export the just-paused snapshot's rootfs diff is
+		// sealed (reflinked) in the background, and the throwaway warm resume below
+		// reads the rootfs. Wait for the seal to finish here instead of letting the
+		// resume block on — and burn its budget against — the reflink. Returns
+		// immediately for the synchronous and NoDiff paths. If the seal fails, or
+		// the harvest deadline fires before it completes, skip the harvest (it is
+		// best-effort and must never touch a half-sealed snapshot).
+		var (
+			pages   int
+			outcome harvestOutcome
+			err     error
+		)
+		if _, waitErr := res.rootfsDiff.CachePath(hCtx); waitErr != nil {
+			outcome, err = harvestSkipped, fmt.Errorf("waiting for rootfs seal: %w", waitErr)
+		} else {
+			pages, outcome, err = harvester.run(hCtx, sbx, res.meta, res.upload, buildID, objectMetadata, consume)
+		}
+
 		durationMs := time.Since(start).Milliseconds()
 
 		resultAttr := metric.WithAttributes(attribute.String("result", string(outcome)))
