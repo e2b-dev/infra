@@ -163,37 +163,6 @@ func TestEntry_Validate(t *testing.T) {
 			},
 			wantErr: "audienceMatchPolicy must be empty or",
 		},
-		{
-			name: "valid EdDSA algorithm",
-			entry: Config{
-				Issuer: Issuer{
-					URL:       "https://issuer.example.com",
-					Audiences: []string{"a"},
-					Algorithm: SigningAlgorithmEdDSA,
-				},
-			},
-		},
-		{
-			name: "valid ES256 algorithm",
-			entry: Config{
-				Issuer: Issuer{
-					URL:       "https://issuer.example.com",
-					Audiences: []string{"a"},
-					Algorithm: SigningAlgorithmES256,
-				},
-			},
-		},
-		{
-			name: "invalid algorithm",
-			entry: Config{
-				Issuer: Issuer{
-					URL:       "https://issuer.example.com",
-					Audiences: []string{"a"},
-					Algorithm: "RS256",
-				},
-			},
-			wantErr: "algorithm",
-		},
 	}
 
 	for _, tt := range tests {

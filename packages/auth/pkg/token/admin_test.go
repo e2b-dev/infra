@@ -134,7 +134,6 @@ func TestAdminVerifierES256(t *testing.T) {
 			Issuer: jwks.Issuer{
 				URL:       issuer,
 				Audiences: []string{adminTestAudience},
-				Algorithm: jwks.SigningAlgorithmES256,
 			},
 		}},
 	}, server.Client())
@@ -151,4 +150,24 @@ func TestAdminVerifierES256(t *testing.T) {
 
 	_, err = verifier.Verify(t.Context(), signed)
 	require.NoError(t, err)
+}
+
+func TestAdminVerifierRejectsJWKSKeyWithoutAlgorithm(t *testing.T) {
+	t.Parallel()
+
+	publicKey, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	server := jwks.NewTestServer(t, publicKey, adminTestKeyID, "", "https://unexpected.example.com")
+
+	verifier, err := NewAdminVerifier(t.Context(), ProviderConfig{
+		JWT: []jwks.Config{{
+			Issuer: jwks.Issuer{
+				URL:       server.URL,
+				Audiences: []string{adminTestAudience},
+			},
+		}},
+	}, server.Client())
+	require.Nil(t, verifier)
+	require.ErrorContains(t, err, "missing alg")
 }

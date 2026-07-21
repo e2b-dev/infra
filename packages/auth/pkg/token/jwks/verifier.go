@@ -114,6 +114,11 @@ func newVerifier(ctx context.Context, entry Config, jwksURL string, httpClient *
 		return nil, fmt.Errorf("create JWKS storage: %w", err)
 	}
 
+	validMethods, err := validMethodsFromStorage(ctx, storage)
+	if err != nil {
+		return nil, fmt.Errorf("validate JWKS signing algorithms: %w", err)
+	}
+
 	keyFunc, err := keyfunc.New(keyfunc.Options{
 		Ctx:     ctx,
 		Storage: storage,
@@ -125,9 +130,7 @@ func newVerifier(ctx context.Context, entry Config, jwksURL string, httpClient *
 	parserOptions := []jwt.ParserOption{
 		jwt.WithExpirationRequired(),
 		jwt.WithIssuer(entry.Issuer.URL),
-	}
-	if alg := entry.Issuer.Algorithm; alg != "" {
-		parserOptions = append(parserOptions, jwt.WithValidMethods([]string{string(alg)}))
+		jwt.WithValidMethods(validMethods),
 	}
 
 	verifier := &Verifier{
@@ -140,6 +143,41 @@ func newVerifier(ctx context.Context, entry Config, jwksURL string, httpClient *
 	}
 
 	return verifier, nil
+}
+
+func validMethodsFromStorage(ctx context.Context, storage jwkset.Storage) ([]string, error) {
+	keys, err := storage.KeyReadAll(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read JWKS keys: %w", err)
+	}
+	if len(keys) == 0 {
+		return nil, errors.New("JWKS contains no supported keys")
+	}
+
+	methods := make([]string, 0, len(keys))
+	seen := make(map[string]struct{}, len(keys))
+	for _, key := range keys {
+		metadata := key.Marshal()
+		algorithm := metadata.ALG.String()
+		if algorithm == "" {
+			return nil, fmt.Errorf("JWKS key %q is missing alg", metadata.KID)
+		}
+		if _, ok := seen[algorithm]; ok {
+			continue
+		}
+
+		method := jwt.GetSigningMethod(algorithm)
+		switch method.(type) {
+		case *jwt.SigningMethodRSA, *jwt.SigningMethodRSAPSS, *jwt.SigningMethodECDSA, *jwt.SigningMethodEd25519:
+		default:
+			return nil, fmt.Errorf("JWKS key %q uses unsupported signing algorithm %q", metadata.KID, algorithm)
+		}
+
+		seen[algorithm] = struct{}{}
+		methods = append(methods, algorithm)
+	}
+
+	return methods, nil
 }
 
 // Verify parses and validates the supplied token string and returns its

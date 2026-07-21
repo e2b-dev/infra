@@ -24,8 +24,8 @@ type AdminVerifier struct {
 
 // NewAdminVerifier builds the verifier for the AdminJWTAuth security
 // scheme from the same ProviderConfig shape used for AUTH_PROVIDER_CONFIG:
-// short-lived EdDSA-signed service tokens. It returns nil when the config has
-// no issuers, leaving the scheme unconfigured.
+// short-lived service tokens whose signing methods are declared by JWKS keys.
+// It returns nil when the config has no issuers, leaving the scheme unconfigured.
 func NewAdminVerifier(ctx context.Context, config ProviderConfig, httpClient *http.Client) (*AdminVerifier, error) {
 	normalized := config.normalize()
 	if !normalized.enabled() {
@@ -34,10 +34,6 @@ func NewAdminVerifier(ctx context.Context, config ProviderConfig, httpClient *ht
 
 	verifiers := make([]*jwks.Verifier, 0, len(normalized.JWT))
 	for i, entry := range normalized.JWT {
-		if entry.Issuer.Algorithm == "" {
-			entry.Issuer.Algorithm = jwks.SigningAlgorithmEdDSA
-		}
-
 		verifier, err := jwks.NewVerifierFromIssuerJWKS(ctx, entry, httpClient,
 			jwks.WithParserOptions(jwt.WithLeeway(adminJWTClockSkew)),
 		)
