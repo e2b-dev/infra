@@ -1,4 +1,4 @@
-package auth
+package middleware
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
+	"github.com/e2b-dev/infra/packages/auth/internal/authcontext"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 )
@@ -69,12 +70,12 @@ func TestAdminTeamAuthenticatorSetsTeamContext(t *testing.T) {
 		t.Fatalf("AdminTeamAuth.Authenticate(valid team ID) error: %v", err)
 	}
 
-	got, ok := GetTeamInfo(ginCtx)
+	got, ok := authcontext.GetTeamInfo(ginCtx)
 	if !ok {
-		t.Fatalf("GetTeamInfo(ginCtx) ok = false, want true")
+		t.Fatalf("authcontext.GetTeamInfo(ginCtx) ok = false, want true")
 	}
 
 	if got.Team.ID != teamID {
-		t.Errorf("GetTeamInfo(ginCtx).Team.ID = %s, want %s", got.Team.ID, teamID)
+		t.Errorf("authcontext.GetTeamInfo(ginCtx).Team.ID = %s, want %s", got.Team.ID, teamID)
 	}
 }
