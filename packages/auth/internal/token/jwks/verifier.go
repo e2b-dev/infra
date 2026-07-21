@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -23,8 +24,7 @@ const httpTimeout = 10 * time.Second
 // Option customizes a Verifier beyond the issuer configuration.
 type Option func(*Verifier)
 
-// WithParserOptions appends jwt parser options (e.g. jwt.WithValidMethods,
-// jwt.WithLeeway) to the verifier's defaults.
+// WithParserOptions appends jwt parser options to the verifier's defaults.
 func WithParserOptions(options ...jwt.ParserOption) Option {
 	return func(v *Verifier) {
 		v.parserOptions = append(v.parserOptions, options...)
@@ -34,6 +34,7 @@ func WithParserOptions(options ...jwt.ParserOption) Option {
 // Verifier verifies JWTs against the JWKS of a single OIDC issuer.
 type Verifier struct {
 	keyfunc       keyfunc.Keyfunc
+	storage       jwkset.Storage
 	audiences     []string
 	parserOptions []jwt.ParserOption
 }
@@ -114,8 +115,7 @@ func newVerifier(ctx context.Context, entry Config, jwksURL string, httpClient *
 		return nil, fmt.Errorf("create JWKS storage: %w", err)
 	}
 
-	validMethods, err := validMethodsFromStorage(ctx, storage)
-	if err != nil {
+	if _, err := validMethodsFromStorage(ctx, storage); err != nil {
 		return nil, fmt.Errorf("validate JWKS signing algorithms: %w", err)
 	}
 
@@ -130,11 +130,11 @@ func newVerifier(ctx context.Context, entry Config, jwksURL string, httpClient *
 	parserOptions := []jwt.ParserOption{
 		jwt.WithExpirationRequired(),
 		jwt.WithIssuer(entry.Issuer.URL),
-		jwt.WithValidMethods(validMethods),
 	}
 
 	verifier := &Verifier{
 		keyfunc:       keyFunc,
+		storage:       storage,
 		audiences:     entry.Issuer.Audiences,
 		parserOptions: parserOptions,
 	}
@@ -183,14 +183,20 @@ func validMethodsFromStorage(ctx context.Context, storage jwkset.Storage) ([]str
 // Verify parses and validates the supplied token string and returns its
 // claims.
 func (v *Verifier) Verify(ctx context.Context, tokenString string) (jwt.MapClaims, error) {
-	if v == nil || v.keyfunc == nil {
+	if v == nil || v.keyfunc == nil || v.storage == nil {
 		return nil, errors.New("JWKS verifier is not configured")
 	}
+
+	validMethods, err := validMethodsFromStorage(ctx, v.storage)
+	if err != nil {
+		return nil, fmt.Errorf("validate JWKS signing algorithms: %w", err)
+	}
+	parserOptions := append(slices.Clone(v.parserOptions), jwt.WithValidMethods(validMethods))
 
 	claims := jwt.MapClaims{}
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (any, error) {
 		return v.keyfunc.KeyfuncCtx(ctx)(token)
-	}, v.parserOptions...)
+	}, parserOptions...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify token: %w", err)
 	}
