@@ -16,8 +16,11 @@ on:
       CODECOV_TOKEN: { required: false }
 jobs:
   run:
+    # host-init modprobes nbd and the orchestrator boots Firecracker via
+    # /dev/kvm — needs Blacksmith's x64 nested virtualization. 32vcpu matches
+    # the 32-core/128GB infra-tests runner this previously ran on.
     if: ${{ inputs.run-tests == true }}
-    runs-on: infra-tests
+    runs-on: blacksmith-32vcpu-ubuntu-2404
     timeout-minutes: 30
     permissions:
       contents: read

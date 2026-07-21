@@ -18,8 +18,9 @@ jobs:
   run-tests:
     name: Run unit test shards
     if: ${{ inputs.run-tests == true }}
-    # Shards that only need Docker run on Blacksmith. The orchestrator shard
-    # stays on infra-tests: it needs modprobe nbd and /dev/kvm (smoketest).
+    # All shards run on Blacksmith. The orchestrator shard needs modprobe nbd
+    # and /dev/kvm (smoketest); Blacksmith x64 runners support nested
+    # virtualization — verify TestSmokeAllFCVersions runs (not skips) there.
     runs-on: ${{ matrix.runner }}
     env:
       GIN_MODE: test
@@ -60,11 +61,13 @@ jobs:
             test_path: ./...
             sudo: true
             runner: blacksmith-4vcpu-ubuntu-2404
+          # 8vcpu: this shard boots Firecracker VMs (smoketest) and ran on a
+          # 32-core infra-tests runner before; bump if the 20m timeout nears.
           - package: packages/orchestrator
             flag: unit-orchestrator
             test_path: ./...
             sudo: true
-            runner: infra-tests
+            runner: blacksmith-8vcpu-ubuntu-2404
           - package: packages/shared
             flag: unit-shared
             test_path: ./pkg/...
