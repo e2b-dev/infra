@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -154,6 +155,22 @@ func (d *Storage) Header() *header.Header {
 
 func (d *Storage) SwapHeader(h *header.Header) {
 	d.source.SwapHeader(h)
+}
+
+func (d *Storage) SwapHeaderIfCurrent(old, next *header.Header) bool {
+	return d.source.SwapHeaderIfCurrent(old, next)
+}
+
+func (d *Storage) SetDurableHeader(f *utils.SetOnce[*header.Header]) {
+	d.source.SetDurableHeader(f)
+}
+
+func (d *Storage) DurableHeader(ctx context.Context) (*header.Header, error) {
+	return d.source.DurableHeader(ctx)
+}
+
+func (d *Storage) DurableHeaderNow() (*header.Header, bool) {
+	return d.source.DurableHeaderNow()
 }
 
 func (d *Storage) Close() error {

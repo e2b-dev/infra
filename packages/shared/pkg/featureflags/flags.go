@@ -163,8 +163,11 @@ var (
 
 	// MemfdDedupInflightServeFlag lets a resume that overlaps an in-flight
 	// memfile dedup serve dirty pages straight from the still-mapped memfd
-	// instead of blocking on the dedup drain. Only affects the memfd-dedup
-	// path; off restores the prior wait-for-drain behavior.
+	// instead of blocking until dedup finishes. It gates both windows: serving
+	// via a provisional local header while dedup is still computing the deduped
+	// header, and serving during the dedup drain before the compacted diff is
+	// ready. Only affects the memfd-dedup path; off restores the prior
+	// wait-for-dedup behavior.
 	MemfdDedupInflightServeFlag = NewBoolFlag("memfd-dedup-inflight-serve", false)
 
 	// PeerToPeerChunkTransferFlag enables peer-to-peer chunk routing.

@@ -54,6 +54,12 @@ type DiffStore struct {
 	pdDelay time.Duration
 
 	insertionTimes sync.Map // map[DiffStoreKey]time.Time — tracks when each diff was cached
+
+	// pinned entries are skipped by disk-pressure eviction (TTL eviction still
+	// applies). Used to protect a diff whose Close would tear down state another
+	// live entry depends on — e.g. the memfile diff whose DedupedMemfdCache is
+	// also serving an in-flight provisional resume.
+	pinned sync.Map // map[DiffStoreKey]struct{}
 }
 
 func NewDiffStore(
@@ -299,6 +305,12 @@ func (s *DiffStore) deleteOldestFromCache(ctx context.Context) (suc bool, e erro
 			return true
 		}
 
+		// Skip pinned entries (e.g. a memfile diff still backing an in-flight
+		// provisional resume); closing them would tear down shared state.
+		if s.isPinned(item.Key()) {
+			return true
+		}
+
 		sfSize, err := item.Value().FileSize(ctx)
 		if err != nil {
 			logger.L().Warn(ctx, "failed to get size of deleted item from cache", zap.Error(err))
@@ -339,6 +351,19 @@ func (s *DiffStore) isBeingDeleted(key DiffStoreKey) bool {
 	return f
 }
 
+// Pin protects a cached entry from disk-pressure eviction (TTL eviction still
+// applies). Idempotent; pair every Pin with an Unpin.
+func (s *DiffStore) Pin(key DiffStoreKey) { s.pinned.Store(key, struct{}{}) }
+
+// Unpin lifts a Pin, making the entry eligible for disk-pressure eviction again.
+func (s *DiffStore) Unpin(key DiffStoreKey) { s.pinned.Delete(key) }
+
+func (s *DiffStore) isPinned(key DiffStoreKey) bool {
+	_, ok := s.pinned.Load(key)
+
+	return ok
+}
+
 func (s *DiffStore) scheduleDelete(ctx context.Context, key DiffStoreKey, dSize int64) {
 	s.pdMu.Lock()
 	defer s.pdMu.Unlock()
@@ -357,6 +382,18 @@ func (s *DiffStore) scheduleDelete(ctx context.Context, key DiffStoreKey, dSize 
 		case <-ctx.Done():
 		case <-cancelCh:
 		case <-time.After(s.pdDelay):
+			// The entry may have been pinned after this delete was scheduled: a
+			// Pin can race the eviction scan (its isPinned check in
+			// deleteOldestFromCache runs just before scheduleDelete). Re-check at
+			// fire time — the last point before eviction — since deleting a
+			// pinned diff would tear down state an in-flight provisional resume
+			// still needs. Clear the pending-delete record so the entry becomes
+			// eligible for eviction again once it is unpinned.
+			if s.isPinned(key) {
+				s.resetDelete(key)
+
+				return
+			}
 			s.cache.Delete(key)
 		}
 	})()

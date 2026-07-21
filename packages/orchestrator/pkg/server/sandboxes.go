@@ -991,6 +991,9 @@ func (s *Server) snapshotAndCacheSandbox(
 		snapshot.Metafile,
 		snapshot.MemorySnapshot.Diff,
 		snapshot.RootfsDiff,
+		snapshot.MemorySnapshot.ProvisionalDiffHeader,
+		snapshot.MemorySnapshot.ProvisionalDiff,
+		snapshot.MemorySnapshot.ProvisionalSwapDone,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error adding snapshot to template cache: %w", err)
