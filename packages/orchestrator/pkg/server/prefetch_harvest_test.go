@@ -5,6 +5,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -339,6 +340,21 @@ func TestHarvestRun_UploadFailedKeepsLocalSkipsRemote(t *testing.T) {
 	require.True(t, p.upload.called)
 	require.True(t, p.tmpls.updated, "local metadata is updated even when the upload failed")
 	require.False(t, p.uploadCalled, "remote re-upload is skipped when the snapshot did not land")
+}
+
+func TestHarvestRun_CommittedLocalUpdateErrorStillUpdatesRemote(t *testing.T) {
+	t.Parallel()
+
+	p := newHarvestProbe()
+	p.tmpls.updateErr = fmt.Errorf("directory sync failed: %w", metadata.ErrReplaceCommitted)
+
+	pages, outcome, err := p.run(t.Context(), true)
+
+	require.ErrorIs(t, err, metadata.ErrReplaceCommitted)
+	require.Equal(t, harvestSuccess, outcome)
+	require.Equal(t, 2, pages)
+	require.True(t, p.tmpls.updated)
+	require.True(t, p.uploadCalled, "remote metadata should be updated after the local replacement commits")
 }
 
 // TestHarvestRun_DeadlineDuringWaitLeavesMetadataUntouched: if the harvest
