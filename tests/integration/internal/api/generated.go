@@ -559,6 +559,9 @@ type NewSandbox struct {
 	AutoResume *SandboxAutoResumeConfig `json:"autoResume,omitempty"`
 	EnvVars    *EnvVars                 `json:"envVars,omitempty"`
 
+	// Iam Sandbox workload identity configuration. A non-empty, valid tokens map enables workload identity for the sandbox.
+	Iam *SandboxIam `json:"iam,omitempty"`
+
 	// Mcp MCP configuration for the sandbox
 	Mcp      *Mcp                  `json:"mcp,omitempty"`
 	Metadata *SandboxMetadata      `json:"metadata,omitempty"`
@@ -848,6 +851,24 @@ type SandboxForkResult struct {
 	Error   *Error   `json:"error,omitempty"`
 	Sandbox *Sandbox `json:"sandbox,omitempty"`
 }
+
+// SandboxIam Sandbox workload identity configuration. A non-empty, valid tokens map enables workload identity for the sandbox.
+type SandboxIam struct {
+	// Tokens Named workload-token definitions, keyed by a caller-chosen token name.
+	Tokens *SandboxIamTokens `json:"tokens,omitempty"`
+}
+
+// SandboxIamToken defines model for SandboxIamToken.
+type SandboxIamToken struct {
+	// Audience Audience of the workload token, stored exactly as provided.
+	Audience string `json:"audience"`
+
+	// TokenType Workload token type.
+	TokenType string `json:"tokenType"`
+}
+
+// SandboxIamTokens Named workload-token definitions, keyed by a caller-chosen token name.
+type SandboxIamTokens map[string]SandboxIamToken
 
 // SandboxLifecycle Sandbox lifecycle policy returned by sandbox info.
 type SandboxLifecycle struct {

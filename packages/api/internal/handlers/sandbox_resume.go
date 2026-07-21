@@ -240,11 +240,17 @@ func (a *APIStore) buildResumeSandboxDataFromSnapshot(snapshotSandboxID, sandbox
 		// snapshot: there is no resume-time override for it. Changing the kind
 		// requires creating a new sandbox with the desired autoPauseMemory.
 		var autoPauseFilesystemOnly bool
+		// A fork (snapshotSandboxID != sandboxID) inherits the parent sandbox's IAM
+		// configuration from the snapshot, the same as a resume. The resumed/forked
+		// execution still gets a freshly generated execution ID upstream, so no
+		// stored identity subject is carried across.
+		var iam *types.SandboxIam
 		if snap.Config != nil {
 			network = snap.Config.Network
 			autoResume = snap.Config.AutoResume
 			volumes = snap.Config.VolumeMounts
 			autoPauseFilesystemOnly = snap.Config.AutoPauseFilesystemOnly
+			iam = snap.Config.Iam
 		}
 
 		return orchestrator.SandboxMetadata{
@@ -260,6 +266,7 @@ func (a *APIStore) buildResumeSandboxDataFromSnapshot(snapshotSandboxID, sandbox
 			AutoResume:              autoResume,
 			VolumeMounts:            convertDatabaseMountsToOrchestratorMounts(volumes),
 			EnvdAccessToken:         envdAccessToken,
+			Iam:                     iam,
 			NodeID:                  &nodeID,
 			SnapshotSandboxID:       snapshotSandboxID,
 		}, nil

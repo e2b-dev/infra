@@ -53,10 +53,32 @@ type SandboxMetadata struct {
 	AutoResume              *types.SandboxAutoResumeConfig
 	VolumeMounts            []*orchestrator.SandboxVolumeMount
 	EnvdAccessToken         *string
-	NodeID                  *string
+	// Iam records the sandbox workload identity configuration requested at create
+	// time. Nil means workload identity is disabled.
+	Iam    *types.SandboxIam
+	NodeID *string
 	// SnapshotSandboxID is the sandbox ID the resume snapshot is stored under.
 	// It differs from the ID of the sandbox being started when forking.
 	SnapshotSandboxID string
+}
+
+// iamToProto maps the sandbox workload identity configuration into the
+// orchestrator config. It returns nil when nothing is configured so older nodes
+// and stored configs stay unchanged.
+func iamToProto(iam *types.SandboxIam) *orchestrator.SandboxIam {
+	if iam == nil || len(iam.Tokens) == 0 {
+		return nil
+	}
+
+	protoTokens := make(map[string]*orchestrator.SandboxIamToken, len(iam.Tokens))
+	for name, def := range iam.Tokens {
+		protoTokens[name] = &orchestrator.SandboxIamToken{
+			Audience:  def.Audience,
+			TokenType: def.TokenType,
+		}
+	}
+
+	return &orchestrator.SandboxIam{Tokens: protoTokens}
 }
 
 // buildEgressConfig constructs the orchestrator egress configuration from
@@ -300,6 +322,7 @@ func (o *Orchestrator) CreateSandbox(
 			Network:                 sbxNetwork,
 			TotalDiskSizeMb:         ut.FromPtr(sbxData.Build.TotalDiskSizeMb),
 			VolumeMounts:            sbxData.VolumeMounts,
+			Iam:                     iamToProto(sbxData.Iam),
 		},
 		StartTime: timestamppb.New(startTime),
 		EndTime:   timestamppb.New(endTime),
@@ -389,6 +412,7 @@ func (o *Orchestrator) CreateSandbox(
 		sbxData.Network,
 		trafficAccessToken,
 		nodemanager.ConvertOrchestratorMountsToDatabaseMounts(sbxData.VolumeMounts),
+		sbxData.Iam,
 	)
 
 	err = o.sandboxStore.Add(ctx, sbx, &creationMeta)

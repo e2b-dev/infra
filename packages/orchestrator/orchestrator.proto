@@ -61,6 +61,26 @@ message SandboxConfig {
 
   // Retention of sandbox events in days
   int64 events_ttl_days = 26;
+
+  // Sandbox workload identity configuration requested at create time. Absent on
+  // older serialized configs, which decode as no workload identity.
+  optional SandboxIam iam = 27;
+}
+
+// Sandbox workload identity configuration. A non-empty tokens map defines the
+// sandbox workload identity, which the orchestrator derives from the existing
+// trusted team_id, sandbox_id, execution_id and template_id fields. No
+// credential is minted, signed, or delivered here.
+message SandboxIam {
+  // Named workload-token definitions, keyed by a caller-chosen token name.
+  map<string, SandboxIamToken> tokens = 1;
+}
+
+// A named workload-token definition. file_path is intentionally omitted: only
+// absent/null is accepted at admission, so file delivery is not represented.
+message SandboxIamToken {
+  string audience = 1;
+  string token_type = 2;
 }
 
 message SandboxAutoResumeConfig {

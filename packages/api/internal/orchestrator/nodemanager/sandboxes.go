@@ -140,11 +140,31 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 				network,
 				networkTrafficAccessToken,
 				volumeMounts,
+				iamFromProto(config.GetIam()),
 			),
 		)
 	}
 
 	return sandboxesInfo, nil
+}
+
+// iamFromProto maps the stored orchestrator workload identity configuration
+// back into the API's typed representation on re-sync. Returns nil when none is
+// set (older configs).
+func iamFromProto(iam *orchestrator.SandboxIam) *types.SandboxIam {
+	if iam == nil || len(iam.GetTokens()) == 0 {
+		return nil
+	}
+
+	tokens := make(map[string]types.SandboxIamToken, len(iam.GetTokens()))
+	for name, def := range iam.GetTokens() {
+		tokens[name] = types.SandboxIamToken{
+			Audience:  def.GetAudience(),
+			TokenType: def.GetTokenType(),
+		}
+	}
+
+	return &types.SandboxIam{Tokens: tokens}
 }
 
 func ConvertOrchestratorMountsToDatabaseMounts(mounts []*orchestrator.SandboxVolumeMount) []*types.SandboxVolumeMountConfig {
