@@ -1,4 +1,4 @@
-package auth
+package service
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/e2b-dev/infra/packages/auth/pkg/auth/oidc"
+	"github.com/e2b-dev/infra/packages/auth/internal/token/oidc"
 )
 
 type countingIdentityLookup struct {

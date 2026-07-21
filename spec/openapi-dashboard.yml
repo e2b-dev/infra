@@ -10,6 +10,10 @@ components:
       type: apiKey
       in: header
       name: X-Admin-Token
+    AdminJWTAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
     # AuthProviderBearerAuth / AuthProviderTeamAuth: B before T in the name
     # so Bearer is validated before Team.
     AuthProviderBearerAuth:
@@ -273,6 +277,12 @@ components:
             $ref: "#/components/schemas/Error"
     "500":
       description: Server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    "501":
+      description: Operation is not implemented
       content:
         application/json:
           schema:
@@ -1148,11 +1158,89 @@ components:
         slug:
           type: string
 
+    AdminControlPlaneProjectType:
+      type: string
+      enum: [development, staging, production]
+
+    AdminControlPlaneProjectUpsertRequest:
+      type: object
+      required: [name, slug, project_type]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 63
+        project_type:
+          $ref: "#/components/schemas/AdminControlPlaneProjectType"
+
+    AdminControlPlaneProject:
+      allOf:
+        - $ref: "#/components/schemas/AdminControlPlaneProjectUpsertRequest"
+        - type: object
+          required: [id]
+          properties:
+            id:
+              type: string
+              format: uuid
+
+    AdminControlPlaneMemberUpsertRequest:
+      type: object
+      properties:
+        added_by:
+          type: string
+          format: uuid
+
+    AdminControlPlaneProjectLimits:
+      type: object
+      required:
+        - concurrent_sandboxes
+        - max_sandbox_length_hours
+        - max_vcpu
+        - max_ram_mb
+        - disk_mb
+        - concurrent_template_builds
+        - events_ttl_days
+      properties:
+        concurrent_sandboxes:
+          type: integer
+          format: int32
+          minimum: 1
+        max_sandbox_length_hours:
+          type: integer
+          format: int32
+          minimum: 1
+        max_vcpu:
+          type: integer
+          format: int32
+          minimum: 1
+        max_ram_mb:
+          type: integer
+          format: int64
+          minimum: 1
+        disk_mb:
+          type: integer
+          format: int64
+          minimum: 1
+        concurrent_template_builds:
+          type: integer
+          format: int32
+          minimum: 1
+        events_ttl_days:
+          type: integer
+          format: int32
+          minimum: 1
+
 tags:
   - name: builds
   - name: sandboxes
   - name: teams
   - name: templates
+  - name: workspace-admin
+    description: Workspace control-plane admin operations authenticated with service JWTs.
 
 paths:
   /health:
@@ -1786,3 +1874,158 @@ paths:
           $ref: "#/components/responses/404"
         "500":
           $ref: "#/components/responses/500"
+
+  /admin/v1/projects/{teamID}:
+    parameters:
+      - $ref: "#/components/parameters/teamID"
+    put:
+      operationId: upsertProject
+      summary: Create or reconcile a project.
+      tags: [workspace-admin]
+      security:
+        - AdminJWTAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminControlPlaneProjectUpsertRequest"
+      responses:
+        "200":
+          description: Existing project reconciled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminControlPlaneProject"
+        "201":
+          description: Project created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminControlPlaneProject"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "409":
+          $ref: "#/components/responses/409"
+        "500":
+          $ref: "#/components/responses/500"
+        "501":
+          $ref: "#/components/responses/501"
+    delete:
+      operationId: deleteProject
+      summary: Delete a project and its control-plane state.
+      tags: [workspace-admin]
+      security:
+        - AdminJWTAuth: []
+      responses:
+        "204":
+          description: Project state is absent.
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+        "501":
+          $ref: "#/components/responses/501"
+
+  /admin/v1/projects/{teamID}/members/{userId}:
+    parameters:
+      - $ref: "#/components/parameters/teamID"
+      - $ref: "#/components/parameters/userId"
+    put:
+      operationId: upsertProjectMember
+      summary: Reconcile an opaque user UUID as a project member.
+      tags: [workspace-admin]
+      security:
+        - AdminJWTAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminControlPlaneMemberUpsertRequest"
+      responses:
+        "204":
+          description: Membership is present.
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+        "501":
+          $ref: "#/components/responses/501"
+    delete:
+      operationId: deleteProjectMember
+      summary: Remove a project member.
+      tags: [workspace-admin]
+      security:
+        - AdminJWTAuth: []
+      responses:
+        "204":
+          description: Membership is absent.
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+        "501":
+          $ref: "#/components/responses/501"
+
+  /admin/v1/projects/{teamID}/limits:
+    parameters:
+      - $ref: "#/components/parameters/teamID"
+    put:
+      operationId: upsertProjectLimits
+      summary: Reconcile effective limits for a project.
+      tags: [workspace-admin]
+      security:
+        - AdminJWTAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminControlPlaneProjectLimits"
+      responses:
+        "204":
+          description: Effective limits are synchronized.
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+        "501":
+          $ref: "#/components/responses/501"
+
+  /admin/v1/users/{userId}:
+    parameters:
+      - $ref: "#/components/parameters/userId"
+    delete:
+      operationId: purgeUser
+      summary: Purge shard-local membership and access-token state for an opaque user UUID.
+      tags: [workspace-admin]
+      security:
+        - AdminJWTAuth: []
+      responses:
+        "204":
+          description: User-owned shard state is absent.
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+        "501":
+          $ref: "#/components/responses/501"

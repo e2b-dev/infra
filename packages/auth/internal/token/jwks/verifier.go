@@ -1,4 +1,4 @@
-package oidc
+package jwks
 
 import (
 	"context"
@@ -9,36 +9,34 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/MicahParks/jwkset"
 	"github.com/MicahParks/keyfunc/v3"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
 )
 
-// oidcHTTPTimeout is the timeout used for OIDC discovery and JWKS HTTP
-// requests.
-const oidcHTTPTimeout = 10 * time.Second
+// httpTimeout is the timeout used for discovery and JWKS HTTP requests.
+const httpTimeout = 10 * time.Second
 
-// ErrIdentityNotFound is returned by Verify when the token is valid but no
-// matching row exists in public.user_identities for (iss, sub).
-var ErrIdentityNotFound = errors.New("oidc identity not found")
+// Option customizes a Verifier beyond the issuer configuration.
+type Option func(*Verifier)
 
-// IdentityLookup resolves the internal user UUID for an OIDC identity
-// (issuer + subject). Implementations should return ErrIdentityNotFound when
-// no row matches the supplied pair.
-type IdentityLookup interface {
-	GetUserIdentity(ctx context.Context, iss, sub string) (uuid.UUID, error)
+// WithParserOptions appends jwt parser options to the verifier's defaults.
+func WithParserOptions(options ...jwt.ParserOption) Option {
+	return func(v *Verifier) {
+		v.parserOptions = append(v.parserOptions, options...)
+	}
 }
 
-// Verifier verifies JWTs against a single OIDC issuer.
+// Verifier verifies JWTs against the JWKS of a single OIDC issuer.
 type Verifier struct {
 	keyfunc       keyfunc.Keyfunc
+	storage       jwkset.Storage
 	audiences     []string
 	parserOptions []jwt.ParserOption
-	identities    IdentityLookup
 }
 
 // discoveryDocument is a minimal subset of the OIDC discovery document
@@ -51,17 +49,10 @@ type discoveryDocument struct {
 // NewVerifier constructs a Verifier from the supplied Config. It performs the
 // OIDC discovery fetch synchronously and fails fast on configuration or
 // network errors.
-func NewVerifier(ctx context.Context, entry Config, httpClient *http.Client, identities IdentityLookup) (*Verifier, error) {
-	if httpClient == nil {
-		return nil, errors.New("OIDC JWKS HTTP client is required")
-	}
-
-	if identities == nil {
-		return nil, errors.New("OIDC identity lookup is required")
-	}
-
-	if entry.Issuer.URL == "" {
-		return nil, errors.New("issuer URL is required")
+func NewVerifier(ctx context.Context, entry Config, httpClient *http.Client, options ...Option) (*Verifier, error) {
+	entry, err := validateConfig(entry, httpClient)
+	if err != nil {
+		return nil, err
 	}
 
 	discoveryURL := entry.discoveryURL()
@@ -82,14 +73,50 @@ func NewVerifier(ctx context.Context, entry Config, httpClient *http.Client, ide
 		return nil, err
 	}
 
-	storage, err := jwkset.NewStorageFromHTTP(doc.JWKSURI, jwkset.HTTPClientStorageOptions{
+	return newVerifier(ctx, entry, doc.JWKSURI, httpClient, options...)
+}
+
+func NewVerifierFromIssuerJWKS(ctx context.Context, entry Config, httpClient *http.Client, options ...Option) (*Verifier, error) {
+	entry.Issuer.DiscoveryURL = ""
+	entry, err := validateConfig(entry, httpClient)
+	if err != nil {
+		return nil, err
+	}
+
+	jwksURL := strings.TrimRight(entry.Issuer.URL, "/") + defaultJWKSPath
+	if err := validateHTTPSURL(jwksURL, "jwksURL"); err != nil {
+		return nil, err
+	}
+
+	return newVerifier(ctx, entry, jwksURL, httpClient, options...)
+}
+
+func validateConfig(entry Config, httpClient *http.Client) (Config, error) {
+	if httpClient == nil {
+		return Config{}, errors.New("JWKS HTTP client is required")
+	}
+
+	entry = entry.Normalized()
+	if err := entry.Validate(); err != nil {
+		return Config{}, err
+	}
+
+	return entry, nil
+}
+
+func newVerifier(ctx context.Context, entry Config, jwksURL string, httpClient *http.Client, options ...Option) (*Verifier, error) {
+	storage, err := jwkset.NewStorageFromHTTP(jwksURL, jwkset.HTTPClientStorageOptions{
 		Client:          httpClient,
 		Ctx:             ctx,
-		HTTPTimeout:     oidcHTTPTimeout,
+		HTTPTimeout:     httpTimeout,
 		RefreshInterval: entry.CacheDuration,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("create OIDC JWKS storage: %w", err)
+		return nil, fmt.Errorf("create JWKS storage: %w", err)
+	}
+
+	if _, err := validMethodsFromStorage(ctx, storage); err != nil {
+		return nil, fmt.Errorf("validate JWKS signing algorithms: %w", err)
 	}
 
 	keyFunc, err := keyfunc.New(keyfunc.Options{
@@ -97,87 +124,95 @@ func NewVerifier(ctx context.Context, entry Config, httpClient *http.Client, ide
 		Storage: storage,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("create OIDC JWKS keyfunc: %w", err)
+		return nil, fmt.Errorf("create JWKS keyfunc: %w", err)
 	}
 
-	return &Verifier{
-		keyfunc:   keyFunc,
-		audiences: entry.Issuer.Audiences,
-		parserOptions: []jwt.ParserOption{
-			jwt.WithExpirationRequired(),
-			jwt.WithIssuer(entry.Issuer.URL),
-		},
-		identities: identities,
-	}, nil
+	parserOptions := []jwt.ParserOption{
+		jwt.WithExpirationRequired(),
+		jwt.WithIssuer(entry.Issuer.URL),
+	}
+
+	verifier := &Verifier{
+		keyfunc:       keyFunc,
+		storage:       storage,
+		audiences:     entry.Issuer.Audiences,
+		parserOptions: parserOptions,
+	}
+	for _, option := range options {
+		option(verifier)
+	}
+
+	return verifier, nil
 }
 
-// Verify parses and validates the supplied token string and resolves the
-// internal user UUID for the (iss, sub) pair via the configured
-// IdentityLookup. When the token is valid but no matching identity exists,
-// the returned error wraps ErrIdentityNotFound.
-func (v *Verifier) Verify(ctx context.Context, tokenString string) (uuid.UUID, jwt.MapClaims, error) {
+func validMethodsFromStorage(ctx context.Context, storage jwkset.Storage) ([]string, error) {
+	keys, err := storage.KeyReadAll(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read JWKS keys: %w", err)
+	}
+	if len(keys) == 0 {
+		return nil, errors.New("JWKS contains no supported keys")
+	}
+
+	methods := make([]string, 0, len(keys))
+	seen := make(map[string]struct{}, len(keys))
+	for _, key := range keys {
+		metadata := key.Marshal()
+		algorithm := metadata.ALG.String()
+		if algorithm == "" {
+			return nil, fmt.Errorf("JWKS key %q is missing alg", metadata.KID)
+		}
+		if _, ok := seen[algorithm]; ok {
+			continue
+		}
+
+		method := jwt.GetSigningMethod(algorithm)
+		switch method.(type) {
+		case *jwt.SigningMethodRSA, *jwt.SigningMethodRSAPSS, *jwt.SigningMethodECDSA, *jwt.SigningMethodEd25519:
+		default:
+			return nil, fmt.Errorf("JWKS key %q uses unsupported signing algorithm %q", metadata.KID, algorithm)
+		}
+
+		seen[algorithm] = struct{}{}
+		methods = append(methods, algorithm)
+	}
+
+	return methods, nil
+}
+
+// Verify parses and validates the supplied token string and returns its
+// claims.
+func (v *Verifier) Verify(ctx context.Context, tokenString string) (jwt.MapClaims, error) {
+	if v == nil || v.keyfunc == nil || v.storage == nil {
+		return nil, errors.New("JWKS verifier is not configured")
+	}
+
+	validMethods, err := validMethodsFromStorage(ctx, v.storage)
+	if err != nil {
+		return nil, fmt.Errorf("validate JWKS signing algorithms: %w", err)
+	}
+	parserOptions := append(slices.Clone(v.parserOptions), jwt.WithValidMethods(validMethods))
+
 	claims := jwt.MapClaims{}
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (any, error) {
 		return v.keyfunc.KeyfuncCtx(ctx)(token)
-	}, v.parserOptions...)
+	}, parserOptions...)
 	if err != nil {
-		return uuid.Nil, nil, fmt.Errorf("failed to verify auth provider token: %w", err)
+		return nil, fmt.Errorf("failed to verify token: %w", err)
 	}
 	if !token.Valid {
-		return uuid.Nil, nil, errors.New("auth provider token is invalid")
+		return nil, errors.New("token is invalid")
 	}
 
 	if err := validateAudience(claims, v.audiences); err != nil {
-		return uuid.Nil, nil, fmt.Errorf("failed to verify auth provider token: %w", err)
+		return nil, fmt.Errorf("failed to verify token: %w", err)
 	}
 
-	iss, ok := claimString(claims, "iss")
-	if !ok {
-		return uuid.Nil, nil, errors.New("auth provider token is missing iss claim")
-	}
-
-	sub, ok := claimString(claims, "sub")
-	if !ok {
-		return uuid.Nil, nil, errors.New("auth provider token is missing sub claim")
-	}
-
-	userID, err := v.identities.GetUserIdentity(ctx, iss, sub)
-	if err != nil {
-		return uuid.Nil, nil, fmt.Errorf("resolve user identity for auth provider token: %w", err)
-	}
-
-	return userID, claims, nil
-}
-
-func claimString(claims jwt.MapClaims, name string) (string, bool) {
-	value, ok := claims[name]
-	if !ok {
-		return "", false
-	}
-
-	switch typed := value.(type) {
-	case string:
-		return typed, typed != ""
-	case []string:
-		if len(typed) == 0 {
-			return "", false
-		}
-
-		return typed[0], typed[0] != ""
-	case []any:
-		if len(typed) == 0 {
-			return "", false
-		}
-		first, ok := typed[0].(string)
-
-		return first, ok && first != ""
-	default:
-		return "", false
-	}
+	return claims, nil
 }
 
 func fetchDiscoveryDocument(ctx context.Context, httpClient *http.Client, discoveryURL string) (*discoveryDocument, error) {
-	fetchCtx, cancel := context.WithTimeout(ctx, oidcHTTPTimeout)
+	fetchCtx, cancel := context.WithTimeout(ctx, httpTimeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(fetchCtx, http.MethodGet, discoveryURL, nil)

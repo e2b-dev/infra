@@ -1,4 +1,4 @@
-package auth
+package service
 
 import (
 	"context"
@@ -8,13 +8,14 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
+	internalauthteam "github.com/e2b-dev/infra/packages/auth/internal/team"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/auth/pkg/auth")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/auth/internal/service")
 
 type authStoreImpl struct {
 	authDB *authdb.Client
@@ -35,7 +36,7 @@ func (s *authStoreImpl) GetTeamByHashedAPIKey(ctx context.Context, hashedKey str
 		return nil, fmt.Errorf("failed to get team from API key: %w", err)
 	}
 
-	if err := CheckTeamBanned(result.Team); err != nil {
+	if err := internalauthteam.CheckTeamBanned(result.Team); err != nil {
 		return nil, err
 	}
 
@@ -62,7 +63,7 @@ func (s *authStoreImpl) GetTeamByID(ctx context.Context, teamID uuid.UUID) (*typ
 		return nil, fmt.Errorf("failed to get team from team ID: %w", err)
 	}
 
-	if err := CheckTeamBanned(result.Team); err != nil {
+	if err := internalauthteam.CheckTeamBanned(result.Team); err != nil {
 		return nil, err
 	}
 
@@ -88,7 +89,7 @@ func (s *authStoreImpl) GetTeamByIDAndUserID(ctx context.Context, userID uuid.UU
 		return nil, fmt.Errorf("failed to get team from teamID and userID key: %w", err)
 	}
 
-	if err := CheckTeamBanned(result.Team); err != nil {
+	if err := internalauthteam.CheckTeamBanned(result.Team); err != nil {
 		return nil, err
 	}
 

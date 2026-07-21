@@ -247,9 +247,21 @@ func run() int {
 	}
 	swagger.Servers = nil
 
+	adminVerifier, err := sharedauth.NewAdminVerifier(ctx, config.AdminAuthProvider, authClient)
+	if err != nil {
+		l.Error(ctx, "initializing admin JWT verifier", zap.Error(err))
+
+		return 1
+	}
+
+	if adminVerifier == nil {
+		l.Warn(ctx, "ADMIN_AUTH_PROVIDER_CONFIG is not configured; /admin/v1 endpoints will reject requests with 401")
+	}
+
 	authenticationFunc := sharedauth.CreateAuthenticationFunc(
 		[]sharedauth.Authenticator{
 			sharedauth.NewAdminApiKeyAuthenticator(config.AdminToken),
+			sharedauth.NewAdminJWTAuthenticator(adminVerifier),
 			sharedauth.NewAuthProviderBearerAuthenticator(apiStore.GetUserIDFromAuthProviderToken),
 			sharedauth.NewAuthProviderTeamAuthenticator(apiStore.GetTeamFromAuthProviderToken),
 		},
@@ -297,7 +309,7 @@ func newHTTPServer(
 	tel *telemetry.Client,
 	swagger *openapi3.T,
 	authenticationFunc openapi3filter.AuthenticationFunc,
-	apiStore *handlers.APIStore,
+	store api.ServerInterface,
 ) *http.Server {
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -368,7 +380,7 @@ func newHTTPServer(
 
 	r.Use(dashboardmiddleware.EnforceBlockedTeam())
 
-	api.RegisterHandlers(r, apiStore)
+	api.RegisterHandlers(r, store)
 
 	s := &http.Server{
 		Handler:           r,

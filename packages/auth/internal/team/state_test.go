@@ -1,4 +1,4 @@
-package auth
+package team
 
 import (
 	"testing"
@@ -41,7 +41,7 @@ func TestCheckTeamBanned(t *testing.T) {
 				return
 			}
 
-			var forbidden *TeamForbiddenError
+			var forbidden *ForbiddenError
 			assert.ErrorAs(t, err, &forbidden)
 		})
 	}
@@ -105,7 +105,7 @@ func TestCheckTeamBlocked(t *testing.T) {
 				return
 			}
 
-			var blocked *TeamBlockedError
+			var blocked *BlockedError
 			require.ErrorAs(t, err, &blocked)
 			assert.Contains(t, err.Error(), tc.wantMsgHas)
 		})

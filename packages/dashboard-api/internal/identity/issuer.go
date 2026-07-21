@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/e2b-dev/infra/packages/auth/pkg/auth/oidc"
+	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
 )
 
 // ResolveOryIssuer picks the Ory issuer URL from the auth provider's JWT
@@ -14,7 +14,7 @@ import (
 // When exactly one JWT entry is configured, its issuer is used without
 // requiring a host match.
 // When no JWT entries are configured, it falls back to the SDK URL.
-func ResolveOryIssuer(sdkURL string, jwtConfigs []oidc.Config) (string, error) {
+func ResolveOryIssuer(sdkURL string, jwtConfigs []sharedauth.JWTConfig) (string, error) {
 	sdkURL = strings.TrimSpace(sdkURL)
 	issuers := uniqueIssuerURLs(jwtConfigs)
 
@@ -48,7 +48,7 @@ func ResolveOryIssuer(sdkURL string, jwtConfigs []oidc.Config) (string, error) {
 	return "", fmt.Errorf("no JWT issuer in AUTH_PROVIDER_CONFIG matches ORY_SDK_URL host %q", sdkHost)
 }
 
-func uniqueIssuerURLs(jwtConfigs []oidc.Config) []string {
+func uniqueIssuerURLs(jwtConfigs []sharedauth.JWTConfig) []string {
 	seen := make(map[string]struct{}, len(jwtConfigs))
 	issuers := make([]string, 0, len(jwtConfigs))
 	for _, jwt := range jwtConfigs {
