@@ -4,10 +4,18 @@ package build
 
 import (
 	"context"
+	"errors"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
+
+// ErrDeferredSealFailed marks a deferred rootfs seal that failed. The seal runs
+// exactly once, so the failure is permanent: the promise stays settled with this
+// error and every subsequent data-bearing method on the diff returns it. Callers
+// such as the pause-upload retry loop match on it to stop retrying a diff that
+// can never materialize (rather than burning the whole retry budget on it).
+var ErrDeferredSealFailed = errors.New("deferred rootfs seal failed")
 
 // deferredDiff is a Diff whose backing data is produced asynchronously. It is
 // returned synchronously from a pause that seals the rootfs in the background:
