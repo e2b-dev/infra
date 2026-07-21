@@ -340,5 +340,5 @@ func (t *storageTemplate) UpdateMetadata(meta metadata.Template) error {
 		return fmt.Errorf("failed to get metafile: %w", err)
 	}
 
-	return meta.ToFile(metafile.Path())
+	return meta.ReplaceFile(metafile.Path())
 }

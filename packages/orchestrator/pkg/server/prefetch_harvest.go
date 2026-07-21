@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -263,21 +264,25 @@ func (h *prefetchHarvester) run(
 	// update is enough for a same-node resume, so do it regardless of whether the
 	// remote upload succeeded.
 	meta = meta.WithPrefetch(&metadata.Prefetch{Memory: mapping})
+	var localUpdateErr error
 	if err := h.templates.UpdateMetadata(buildID, meta); err != nil {
-		return pages, harvestSuccess, fmt.Errorf("update local metadata: %w", err)
+		localUpdateErr = fmt.Errorf("update local metadata: %w", err)
+		if !errors.Is(err, metadata.ErrReplaceCommitted) {
+			return pages, harvestSuccess, localUpdateErr
+		}
 	}
 
 	// Only enrich the remote metadata if the snapshot actually landed; on upload
 	// failure the remote build is incomplete, so there is nothing to enrich (the
 	// local update above still lets a same-node resume prefetch).
 	if uploadErr != nil {
-		return pages, harvestSuccess, nil //nolint:nilerr // remote snapshot did not land; the local update is the most we can do
+		return pages, harvestSuccess, localUpdateErr
 	}
 	if err := h.uploadMetadata(ctx, meta, objectMetadata); err != nil {
-		return pages, harvestSuccess, fmt.Errorf("re-upload metadata: %w", err)
+		return pages, harvestSuccess, errors.Join(localUpdateErr, fmt.Errorf("re-upload metadata: %w", err))
 	}
 
-	return pages, harvestSuccess, nil
+	return pages, harvestSuccess, localUpdateErr
 }
 
 // resumeMapping resumes a throwaway warm copy of the just-paused snapshot,
