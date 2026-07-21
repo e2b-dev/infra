@@ -752,10 +752,47 @@ components:
           $ref: "#/components/schemas/EnvVars"
         mcp:
           $ref: "#/components/schemas/Mcp"
+        iam:
+          $ref: "#/components/schemas/SandboxIam"
         volumeMounts:
           type: array
           items:
             $ref: "#/components/schemas/SandboxVolumeMount"
+
+    SandboxIam:
+      type: object
+      description: >-
+        Sandbox workload identity configuration. A non-empty, valid tokens map
+        enables workload identity for the sandbox.
+      properties:
+        tokens:
+          $ref: "#/components/schemas/SandboxIamTokens"
+
+    SandboxIamTokens:
+      type: object
+      description: >-
+        Named workload-token definitions, keyed by a caller-chosen token name.
+      additionalProperties:
+        $ref: "#/components/schemas/SandboxIamToken"
+
+    SandboxIamToken:
+      type: object
+      required:
+        - audience
+        - tokenType
+      properties:
+        audience:
+          type: string
+          description: Audience of the workload token, stored exactly as provided.
+        tokenType:
+          type: string
+          description: Workload token type.
+        filePath:
+          type: string
+          nullable: true
+          description: >-
+            Reserved for future file-based delivery. File delivery is not
+            supported: a non-null value is rejected. Leave absent or null.
 
     ResumedSandbox:
       properties:

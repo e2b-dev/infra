@@ -106,6 +106,14 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
   templates and builds, teams, volumes, API keys/access tokens, admin operations.
 - **Auth** (via `packages/auth`): team API keys (`X-API-Key`, `e2b_` prefix), auth-provider JWTs
   (OIDC), admin token. Backed by an auth DB (Postgres) with a Redis team cache.
+- **Workload identity**: sandbox create accepts an optional `iam.tokens` map of caller-named
+  workload-token definitions (each an exact `audience` and `tokenType`). A non-empty, validated
+  map enables workload identity, whose identity the orchestrator derives from the sandbox's
+  already-authoritative team/sandbox/execution/template IDs; the definitions are passed to the
+  orchestrator in `SandboxConfig.iam`. The API mints no credential and delivers nothing into the
+  sandbox; file-based delivery is rejected at admission. Definitions are persisted in the
+  running-sandbox (Redis) and paused-snapshot (Postgres) state so they survive pause/resume and
+  orchestrator re-sync; a fork starts a new workload and does not inherit them.
 - **Placement**: keeps a live map of orchestrator nodes (discovered via Nomad, Kubernetes, or a
   static list). Chooses a node per sandbox with a **best-of-K** algorithm
   (`internal/orchestrator/placement/`): sample K ready nodes, score by CPU

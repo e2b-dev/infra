@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
@@ -76,4 +77,54 @@ func TestGetSandboxes_RestoresAutoPauseFilesystemOnly(t *testing.T) {
 
 	assert.True(t, got["fs-only"], "filesystem-only auto-pause policy must survive an orchestrator re-sync")
 	assert.False(t, got["memory"], "memory auto-pause policy must survive an orchestrator re-sync")
+}
+
+// TestGetSandboxes_RestoresIamTokens verifies that the named workload-token
+// definitions round-trip through the orchestrator's stored SandboxConfig when
+// the API re-syncs its sandbox list (e.g. after a restart), and that a config
+// without an iam message decodes as no definitions.
+func TestGetSandboxes_RestoresIamTokens(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	runningSandbox := func(id string, iam *orchestrator.SandboxIam) *orchestrator.RunningSandbox {
+		return &orchestrator.RunningSandbox{
+			StartTime: timestamppb.New(now),
+			EndTime:   timestamppb.New(now.Add(time.Hour)),
+			Config: &orchestrator.SandboxConfig{
+				SandboxId:      id,
+				TemplateId:     "tmpl",
+				BaseTemplateId: "tmpl",
+				TeamId:         uuid.NewString(),
+				BuildId:        uuid.NewString(),
+				ExecutionId:    uuid.NewString(),
+				Iam:            iam,
+			},
+		}
+	}
+
+	node := NewTestNode("test-node", api.NodeStatusReady, 0, 4)
+	node.SetSandboxClient(&mockSandboxListClient{
+		resp: &orchestrator.SandboxListResponse{
+			Sandboxes: []*orchestrator.RunningSandbox{
+				runningSandbox("with-iam", &orchestrator.SandboxIam{Tokens: map[string]*orchestrator.SandboxIamToken{
+					"aws": {Audience: "sts.amazonaws.com", TokenType: "JWT-SVID"},
+				}}),
+				runningSandbox("no-iam", nil),
+			},
+		},
+	})
+
+	sandboxes, err := node.GetSandboxes(t.Context())
+	require.NoError(t, err)
+	require.Len(t, sandboxes, 2)
+
+	got := make(map[string]*types.SandboxIam, len(sandboxes))
+	for _, sbx := range sandboxes {
+		got[sbx.SandboxID] = sbx.Iam
+	}
+
+	assert.Equal(t, &types.SandboxIam{Tokens: map[string]types.SandboxIamToken{"aws": {Audience: "sts.amazonaws.com", TokenType: "JWT-SVID"}}}, got["with-iam"],
+		"named token definitions must survive an orchestrator re-sync")
+	assert.Nil(t, got["no-iam"], "a config without an iam message must decode as no configuration")
 }

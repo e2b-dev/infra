@@ -40,6 +40,7 @@ func NewSandbox(
 	network *types.SandboxNetworkConfig,
 	trafficAccessToken *string,
 	mounts []*types.SandboxVolumeMountConfig,
+	iam *types.SandboxIam,
 ) Sandbox {
 	return Sandbox{
 		SandboxID:  sandboxID,
@@ -73,6 +74,7 @@ func NewSandbox(
 		BaseTemplateID:          baseTemplateID,
 		Network:                 network,
 		VolumeMounts:            mounts,
+		Iam:                     iam,
 	}
 }
 
@@ -110,6 +112,9 @@ type Sandbox struct {
 	AutoResume              *types.SandboxAutoResumeConfig    `json:"autoResume,omitempty"`
 	Network                 *types.SandboxNetworkConfig       `json:"network"`
 	VolumeMounts            []*types.SandboxVolumeMountConfig `json:"volumeMounts"`
+	// Iam records the sandbox workload identity configuration. Persisted so it
+	// survives re-sync and is carried into the paused snapshot.
+	Iam *types.SandboxIam `json:"iam,omitempty"`
 
 	State State `json:"state"`
 }

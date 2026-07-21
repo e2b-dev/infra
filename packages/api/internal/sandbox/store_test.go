@@ -215,6 +215,7 @@ func createTestSandbox() Sandbox {
 		nil, // network
 		nil, // trafficAccessToken
 		nil, // volumes
+		nil, // iam tokens
 	)
 }
 
