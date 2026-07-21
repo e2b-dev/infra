@@ -87,6 +87,7 @@ func NewLogger(loggerConfig LoggerConfig) (Logger, error) {
 	cores = append(cores, loggerConfig.Cores...)
 
 	logger, err := config.Build(
+		zap.AddStacktrace(zapcore.ErrorLevel),
 		zap.WrapCore(func(c zapcore.Core) zapcore.Core {
 			cores = append(cores, c)
 
