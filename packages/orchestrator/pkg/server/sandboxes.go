@@ -395,21 +395,18 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 	if req.GetEgress() != nil {
 		updates = append(updates, func(ctx context.Context) (func(context.Context), error) {
 			oldEgress := sbx.Config.GetNetworkEgress()
-
-			if err := sbx.Slot.UpdateInternet(ctx, req.GetEgress()); err != nil {
-				return nil, fmt.Errorf("failed to update sandbox network: %w", err)
-			}
-
 			egress := req.GetEgress()
-			if len(egress.GetAllowedCidrs()) == 0 && len(egress.GetDeniedCidrs()) == 0 && len(egress.GetAllowedDomains()) == 0 && len(egress.GetRules()) == 0 && egress.GetEgressProxyAddress() == "" {
-				sbx.Config.SetNetworkEgress(nil)
-			} else {
-				sbx.Config.SetNetworkEgress(egress)
+
+			if err := transitionEgress(ctx, sbx.Config, sbx.Slot.UpdateInternet, oldEgress, egress); err != nil {
+				return nil, err
 			}
 
 			return func(ctx context.Context) {
-				_ = sbx.Slot.UpdateInternet(ctx, oldEgress)
-				sbx.Config.SetNetworkEgress(oldEgress)
+				// Fails closed: a failed kernel re-drop never publishes the
+				// weaker config. Rollbacks cannot propagate errors, so report.
+				if err := transitionEgress(ctx, sbx.Config, sbx.Slot.UpdateInternet, sbx.Config.GetNetworkEgress(), oldEgress); err != nil {
+					telemetry.ReportCriticalError(ctx, "failed to roll back sandbox egress update", err)
+				}
 			}, nil
 		})
 	}
@@ -462,6 +459,51 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 	}
 
 	return &emptypb.Empty{}, nil
+}
+
+// transitionEgress moves the in-memory egress config (read per-connection by
+// the userspace proxy) and the in-netns kernel firewall from one state to
+// another. Loosen last, tighten first: the kernel must never be more relaxed
+// than the config the proxy sees. On failure both layers stay consistent.
+// updateInternet is a parameter so tests can observe the ordering.
+func transitionEgress(
+	ctx context.Context,
+	cfg *sandbox.Config,
+	updateInternet func(context.Context, *orchestrator.SandboxNetworkEgressConfig) error,
+	from, to *orchestrator.SandboxNetworkEgressConfig,
+) error {
+	if to.GetEgressProxyAddress() != "" {
+		// BYOP loosens the kernel firewall: internal-destined TCP is handed
+		// to the userspace proxy instead of dropped, so the proxy must see
+		// the config before the kernel lets that traffic through.
+		applyNetworkEgress(cfg, to)
+		if err := updateInternet(ctx, to); err != nil {
+			// The kernel kept its rules (atomic flush); undo the publish.
+			applyNetworkEgress(cfg, from)
+
+			return fmt.Errorf("failed to update sandbox network: %w", err)
+		}
+
+		return nil
+	}
+
+	if err := updateInternet(ctx, to); err != nil {
+		return fmt.Errorf("failed to update sandbox network: %w", err)
+	}
+	applyNetworkEgress(cfg, to)
+
+	return nil
+}
+
+// applyNetworkEgress publishes the egress config to the in-memory sandbox
+// config, collapsing an all-empty egress (no CIDRs, domains, rules, or proxy)
+// to nil so readers treat it as "no custom egress".
+func applyNetworkEgress(cfg *sandbox.Config, egress *orchestrator.SandboxNetworkEgressConfig) {
+	if len(egress.GetAllowedCidrs()) == 0 && len(egress.GetDeniedCidrs()) == 0 && len(egress.GetAllowedDomains()) == 0 && len(egress.GetRules()) == 0 && egress.GetEgressProxyAddress() == "" {
+		cfg.SetNetworkEgress(nil)
+	} else {
+		cfg.SetNetworkEgress(egress)
+	}
 }
 
 func (s *Server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.SandboxListResponse, error) {
