@@ -406,6 +406,10 @@ processors:
           enabled: true
         host.name:
           enabled: true
+%{ if enable_gcp_telemetry_external_metrics }
+        gcp.gce.instance_group_manager.name:
+          enabled: true
+%{ endif }
 %{ endif }
 
   # For some reason, the metrics require us to set datapoint.attribute and won't accept the resource.attribute
@@ -431,6 +435,16 @@ processors:
           - set(attributes["deployment.environment"], resource.attributes["cloud.account.id"]) where resource.attributes["cloud.account.id"] != nil
           - delete_key(attributes, "service_name")
           - delete_key(attributes, "service.instance.id")
+
+%{ if enable_gcp_telemetry_external_metrics }
+  transform/gcp_telemetry_external_labels:
+    metric_statements:
+      - context: datapoint
+        statements:
+          - set(attributes["service.version"], resource.attributes["service.version"]) where resource.attributes["service.version"] != nil
+          - set(attributes["group.name"], resource.attributes["gcp.gce.instance_group_manager.name"]) where resource.attributes["gcp.gce.instance_group_manager.name"] != nil
+          - replace_pattern(attributes["group.name"], "^e2b-orch-(client-)?(.+)-r?ig$", "$2") where attributes["group.name"] != nil
+%{ endif }
 
   transform/gcp_managed_prometheus_labels:
     metric_statements:
@@ -658,6 +672,7 @@ service:
         - filter/external_metrics
         - resourcedetection/gcp_telemetry
         - transform/gcp_telemetry_labels
+        - transform/gcp_telemetry_external_labels
         - transform/gcp_managed_prometheus_labels
         - batch/gcp_telemetry
       exporters:
