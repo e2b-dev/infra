@@ -43,6 +43,32 @@ func CreateMapping(
 	return mappings
 }
 
+// createIdentityMapping is like CreateMapping but sets each range's
+// BuildStorageOffset equal to its device Offset instead of packing the ranges
+// contiguously. It is for a build whose data is addressed by absolute device
+// offset (e.g. a still-mapped memfd) rather than a compacted diff artifact —
+// used to build a provisional, local-only header while dedup is still running.
+func createIdentityMapping(
+	buildId *uuid.UUID,
+	dirty *roaring.Bitmap,
+	blockSize int64,
+) []BuildMap {
+	var mappings []BuildMap
+
+	for start, endExcl := range dirty.Ranges() {
+		blockLength := int64(endExcl) - int64(start)
+		off := uint64(BlockOffset(int64(start), blockSize))
+		mappings = append(mappings, BuildMap{
+			Offset:             off,
+			BuildId:            *buildId,
+			Length:             uint64(BlockOffset(blockLength, blockSize)),
+			BuildStorageOffset: off,
+		})
+	}
+
+	return mappings
+}
+
 // MergeMappings merges two sets of mappings.
 //
 // The mapping are stored in a sorted order.

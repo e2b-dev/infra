@@ -52,7 +52,12 @@ var (
 )
 
 type File struct {
-	header      atomic.Pointer[header.Header]
+	header atomic.Pointer[header.Header]
+	// durable, when set, is the future for the header this file will eventually
+	// settle on (the deduped header while a provisional header is being served).
+	// DurableHeader waits on it so a pause never parents a snapshot off a
+	// provisional (local-only) header — see SetDurableHeader.
+	durable     atomic.Pointer[utils.SetOnce[*header.Header]]
 	store       *DiffStore
 	fileType    DiffType
 	persistence storage.StorageProvider
@@ -89,6 +94,74 @@ func (b *File) Header() *header.Header {
 
 func (b *File) SwapHeader(h *header.Header) {
 	b.header.Store(h)
+}
+
+// SwapHeaderIfCurrent atomically replaces the header with next only if it is
+// still old, reporting whether it did. The provisional→deduped swap uses this so
+// that, if it runs late, it can't clobber a newer header already installed by
+// another writer (e.g. Upload.publish finalizing the build, which swaps
+// unconditionally) with the older, still-incomplete deduped header.
+func (b *File) SwapHeaderIfCurrent(old, next *header.Header) bool {
+	return b.header.CompareAndSwap(old, next)
+}
+
+// SetDurableHeader records the future for the durable header this file will
+// settle on, so DurableHeader can return it instead of the currently-installed
+// (possibly provisional) header. Set once, before the file is shared.
+func (b *File) SetDurableHeader(f *utils.SetOnce[*header.Header]) {
+	b.durable.Store(f)
+}
+
+// DurableHeader returns the header safe to persist as a parent: the durable
+// future's value if one was set (waiting for it), otherwise the currently
+// installed header. Callers building an *uploaded* snapshot header (a Pause)
+// must use this, never Header(), so they never inherit a provisional header's
+// synthetic build-id mappings, which have no storage object.
+func (b *File) DurableHeader(ctx context.Context) (*header.Header, error) {
+	// Once the live header is finalized (the upload's publish cleared
+	// IncompletePendingUpload), it is the most complete header for this build —
+	// prefer it over the durable future, which resolves to the pre-finalize
+	// deduped header and omits data the upload adds (e.g. the self build's frame
+	// table). Only while the live header is still incomplete — it may be the
+	// provisional header, whose synthetic build id has no storage object — do we
+	// fall back to the durable future, so a parent never inherits provisional
+	// mappings.
+	if h := b.header.Load(); h != nil && !h.IncompletePendingUpload {
+		return h, nil
+	}
+
+	if f := b.durable.Load(); f != nil {
+		return f.WaitWithContext(ctx)
+	}
+
+	return b.Header(), nil
+}
+
+// DurableHeaderNow is the non-blocking form of DurableHeader: it returns
+// (header, true) when the durable header is already known — no provisional swap
+// pending, or the deduped future has resolved — and (nil, false) while a swap is
+// still pending. Latency-sensitive callers (e.g. scheduling metadata on the
+// create/resume response path) use it so they neither block on the dedup nor
+// observe the provisional header's synthetic build id.
+func (b *File) DurableHeaderNow() (*header.Header, bool) {
+	// See DurableHeader: a finalized live header is the most complete, so prefer
+	// it over the (pre-finalize) durable future.
+	if h := b.header.Load(); h != nil && !h.IncompletePendingUpload {
+		return h, true
+	}
+
+	f := b.durable.Load()
+	if f == nil {
+		return b.Header(), true
+	}
+	select {
+	case <-f.Done:
+		h, err := f.Wait()
+
+		return h, err == nil
+	default:
+		return nil, false
+	}
 }
 
 // ReadAt times file.read_at around readAt; Slice composes via readAt directly to

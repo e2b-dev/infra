@@ -1508,6 +1508,17 @@ func (s *Sandbox) Pause(
 type MemorySnapshot struct {
 	Diff       build.Diff
 	DiffHeader *DiffHeader
+	// ProvisionalDiffHeader + ProvisionalDiff, when non-nil, let the local
+	// template serve immediately from the still-mapped memfd via a distinct
+	// provisional build id while dedup runs, instead of blocking a concurrent
+	// resume in storage-template-memfile on the deduped header. They feed only
+	// the local AddSnapshot path; the upload still uses DiffHeader (deduped).
+	ProvisionalDiffHeader *header.Header
+	ProvisionalDiff       build.Diff
+	// ProvisionalSwapDone, when non-nil, is invoked by the AddSnapshot swap
+	// goroutine once it has swapped the deduped header in; it lets the dedup
+	// goroutine release the memfd the provisional source was serving from.
+	ProvisionalSwapDone func()
 	// BlockSize is captured synchronously at Pause time because NewUpload's
 	// compression validation needs it before the async dedup header resolves;
 	// the dedup memfile path produces a page-granular Diff.BlockSize() that
@@ -1529,7 +1540,21 @@ func (s *Sandbox) processMemorySnapshot(ctx context.Context, buildID uuid.UUID) 
 	if err != nil {
 		return MemorySnapshot{}, fmt.Errorf("failed to get original memfile: %w", err)
 	}
+	// Parent off the durable (deduped) header, never a provisional (local-only)
+	// one: a provisional header maps dirty pages to a synthetic build id with no
+	// storage object, so an uploaded header inheriting those mappings would be
+	// unreadable on a cold or cross-node resume. DurableHeader waits for the
+	// deduped header if a provisional swap is still pending; devices without one
+	// return their current header immediately.
 	memfileHeader := originalMemfile.Header()
+	if dh, ok := originalMemfile.(interface {
+		DurableHeader(ctx context.Context) (*header.Header, error)
+	}); ok {
+		memfileHeader, err = dh.DurableHeader(ctx)
+		if err != nil {
+			return MemorySnapshot{}, fmt.Errorf("failed to resolve durable memfile header: %w", err)
+		}
+	}
 
 	memfileDiffMetadata, err := s.Resources.memory.DiffMetadata(ctx, s.process)
 	if err != nil {
@@ -1554,7 +1579,7 @@ func (s *Sandbox) processMemorySnapshot(ctx context.Context, buildID uuid.UUID) 
 		}
 	}
 
-	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
+	memfileDiff, memfileDiffHeader, provMemfileHeader, provMemfileDiff, provMemfileSwapDone, err := pauseProcessMemory(
 		ctx,
 		buildID,
 		memfileHeader,
@@ -1567,17 +1592,21 @@ func (s *Sandbox) processMemorySnapshot(ctx context.Context, buildID uuid.UUID) 
 		dedupBestEffort,
 		dedupDirectIO,
 		dedupBudget,
+		s.featureFlags.BoolFlag(ctx, featureflags.MemfdDedupInflightServeFlag, sandboxLDContext(s.Runtime, s.Config)),
 	)
 	if err != nil {
 		return MemorySnapshot{}, fmt.Errorf("error while post processing: %w", err)
 	}
 
 	return MemorySnapshot{
-		Diff:       memfileDiff,
-		DiffHeader: memfileDiffHeader,
-		BlockSize:  memfileHeader.Metadata.BlockSize,
-		header:     memfileHeader,
-		newBytes:   memfileDiffMetadata.Dirty.GetCardinality() * uint64(memfileDiffMetadata.BlockSize),
+		Diff:                  memfileDiff,
+		DiffHeader:            memfileDiffHeader,
+		ProvisionalDiffHeader: provMemfileHeader,
+		ProvisionalDiff:       provMemfileDiff,
+		ProvisionalSwapDone:   provMemfileSwapDone,
+		BlockSize:             memfileHeader.Metadata.BlockSize,
+		header:                memfileHeader,
+		newBytes:              memfileDiffMetadata.Dirty.GetCardinality() * uint64(memfileDiffMetadata.BlockSize),
 	}, nil
 }
 
@@ -1610,7 +1639,8 @@ func pauseProcessMemory(
 	dedupBestEffort bool,
 	dedupDirectIO bool,
 	dedupBudget block.DedupBudget,
-) (d build.Diff, h *DiffHeader, e error) {
+	dedupInflightServe bool,
+) (d build.Diff, h *DiffHeader, provisionalHeader *header.Header, provisionalDiff build.Diff, provisionalSwapDone func(), e error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
 
@@ -1620,9 +1650,10 @@ func pauseProcessMemory(
 	cache, err := fc.ExportMemory(
 		ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd, bgCopy,
 		originalMemfile, dedupBestEffort, dedupDirectIO, dedupBudget, diffMetadata.Empty, metaOut,
+		dedupInflightServe,
 	)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to export memory: %w", err)
+		return nil, nil, nil, nil, nil, fmt.Errorf("failed to export memory: %w", err)
 	}
 
 	diff, err := build.NewLocalDiffFromCache(
@@ -1630,8 +1661,15 @@ func pauseProcessMemory(
 		cache,
 	)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create local diff from cache: %w", errors.Join(err, cache.Close()))
+		return nil, nil, nil, nil, nil, fmt.Errorf("failed to create local diff from cache: %w", errors.Join(err, cache.Close()))
 	}
+
+	// Provisional local header: while the deduped header is still
+	// being computed, let a same-node resume serve dirty pages from the memfd via
+	// a distinct provisional build id at identity offsets. Gated on the memfd
+	// dedup path + the inflight-serve flag; best-effort (fall back to the deduped
+	// header on any error). The upload always uses the deduped header below.
+	provisionalHeader, provisionalDiff, provisionalSwapDone = buildProvisionalMemfile(ctx, cache, dedupInflightServe, originalMemfile, originalHeader, diffMetadata)
 
 	// Build the diff header on a goroutine so Pause returns without waiting
 	// on memfd-dedup compare. ExportMemory resolves metaOut sync for every
@@ -1659,7 +1697,57 @@ func pauseProcessMemory(
 		setHeader(meta.ToDiffHeader(ctx, originalHeader, buildID))
 	}()
 
-	return diff, headerOut, nil
+	return diff, headerOut, provisionalHeader, provisionalDiff, provisionalSwapDone, nil
+}
+
+// buildProvisionalMemfile builds the provisional local header + its memfd-backed
+// diff source, plus a swap-done callback the AddSnapshot swap goroutine invokes
+// once it has swapped the deduped header in (it lets the dedup goroutine release
+// the memfd). Returns (nil, nil, nil) — falling back to the deduped header —
+// when the path doesn't apply or on any error, so it never blocks a pause. The
+// provisional source is keyed by a fresh build id so a header swap to the
+// deduped header (after dedup) is race-free (see MemfdIdentitySource).
+func buildProvisionalMemfile(
+	ctx context.Context,
+	cache block.DiffSource,
+	enabled bool,
+	originalMemfile block.ReadonlyDevice,
+	originalHeader *header.Header,
+	diffMetadata *header.DiffMetadata,
+) (*header.Header, build.Diff, func()) {
+	dc, ok := cache.(*block.DedupedMemfdCache)
+	if !ok {
+		return nil, nil, nil
+	}
+	// From here dc != nil. On every path that declines to build a provisional
+	// source, signal MarkSwapped so runDedup's inflight memfd-hold releases at
+	// drain-time instead of waiting out the swap grace — nothing will serve from
+	// the memfd, so there's no reason to hold it.
+	if !enabled || originalMemfile == nil || originalHeader == nil || diffMetadata == nil {
+		dc.MarkSwapped()
+
+		return nil, nil, nil
+	}
+
+	provisionalBuildID := uuid.New()
+	provisionalHeader, err := diffMetadata.ToProvisionalDiffHeader(ctx, originalHeader, provisionalBuildID)
+	if err != nil {
+		logger.L().Warn(ctx, "build provisional memfile header; using deduped header", zap.Error(err))
+		dc.MarkSwapped()
+
+		return nil, nil, nil
+	}
+
+	provisionalSource := block.NewMemfdIdentitySource(dc, int64(originalHeader.Metadata.Size))
+	provisionalDiff, err := build.NewLocalDiffFromCache(build.GetDiffStoreKey(provisionalBuildID.String(), build.Memfile), provisionalSource)
+	if err != nil {
+		logger.L().Warn(ctx, "build provisional memfile diff; using deduped header", zap.Error(err))
+		dc.MarkSwapped()
+
+		return nil, nil, nil
+	}
+
+	return provisionalHeader, provisionalDiff, dc.MarkSwapped
 }
 
 func pauseProcessRootfs(
