@@ -43,6 +43,7 @@ type Service interface {
 	GetTeamByID(ctx context.Context, teamID uuid.UUID) (*types.Team, error)
 	InvalidateTeamMemberCache(ctx context.Context, userID uuid.UUID, teamID string)
 	InvalidateTeamCache(ctx context.Context, teamID uuid.UUID) error
+	InvalidateAPIKeyCache(ctx context.Context, hashedKey string)
 	Close(ctx context.Context) error
 }
 
@@ -275,6 +276,13 @@ func (s *AuthService) InvalidateTeamCache(ctx context.Context, teamID uuid.UUID)
 	}
 
 	return nil
+}
+
+// InvalidateAPIKeyCache removes the cached auth entry for a specific hashed API key.
+// This should be called when the key is deleted so revocation takes effect immediately
+// instead of after the cache TTL expires.
+func (s *AuthService) InvalidateAPIKeyCache(ctx context.Context, hashedKey string) {
+	s.teamCache.Invalidate(ctx, hashedKey)
 }
 
 func teamMemberCacheKey(userID uuid.UUID, teamID string) string {
