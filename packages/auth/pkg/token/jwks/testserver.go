@@ -33,7 +33,7 @@ func NewTestServer(t *testing.T, publicKey any, keyID string, algorithm jose.Sig
 		}
 	})
 
-	mux.HandleFunc("/jwks", func(w http.ResponseWriter, _ *http.Request) {
+	jwksHandler := func(w http.ResponseWriter, _ *http.Request) {
 		err := json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{
 			{
 				Key:       publicKey,
@@ -45,7 +45,9 @@ func NewTestServer(t *testing.T, publicKey any, keyID string, algorithm jose.Sig
 		if err != nil {
 			t.Errorf("encode JWKS response: %v", err)
 		}
-	})
+	}
+	mux.HandleFunc("/jwks", jwksHandler)
+	mux.HandleFunc("/.well-known/jwks.json", jwksHandler)
 
 	return server
 }

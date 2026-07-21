@@ -28,9 +28,6 @@ type AdminVerifier struct {
 // no issuers, leaving the scheme unconfigured.
 func NewAdminVerifier(ctx context.Context, config ProviderConfig, httpClient *http.Client) (*AdminVerifier, error) {
 	normalized := config.normalize()
-	if err := normalized.validate(); err != nil {
-		return nil, err
-	}
 	if !normalized.enabled() {
 		return nil, nil
 	}
@@ -41,7 +38,7 @@ func NewAdminVerifier(ctx context.Context, config ProviderConfig, httpClient *ht
 			entry.Issuer.Algorithm = jwks.SigningAlgorithmEdDSA
 		}
 
-		verifier, err := jwks.NewVerifier(ctx, entry, httpClient,
+		verifier, err := jwks.NewVerifierFromIssuerJWKS(ctx, entry, httpClient,
 			jwks.WithParserOptions(jwt.WithLeeway(adminJWTClockSkew)),
 		)
 		if err != nil {

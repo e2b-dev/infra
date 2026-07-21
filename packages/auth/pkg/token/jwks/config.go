@@ -15,6 +15,7 @@ const (
 	// defaultDiscoveryPath is the relative path appended to the issuer URL
 	// to derive the discovery URL when one is not explicitly configured.
 	defaultDiscoveryPath = "/.well-known/openid-configuration"
+	defaultJWKSPath      = "/.well-known/jwks.json"
 )
 
 // Config describes a single OIDC issuer.

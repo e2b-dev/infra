@@ -23,25 +23,22 @@ const (
 func newAdminTestVerifier(t *testing.T) (*AdminVerifier, ed25519.PrivateKey, string) {
 	t.Helper()
 
-	const issuer = "https://workspace.example.com"
-
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
 
-	server := jwks.NewTestServer(t, publicKey, adminTestKeyID, jose.EdDSA, issuer)
+	server := jwks.NewTestServer(t, publicKey, adminTestKeyID, jose.EdDSA, "https://unexpected.example.com")
 
 	verifier, err := NewAdminVerifier(t.Context(), ProviderConfig{
 		JWT: []jwks.Config{{
 			Issuer: jwks.Issuer{
-				URL:          issuer,
-				DiscoveryURL: server.URL + "/.well-known/openid-configuration",
-				Audiences:    []string{adminTestAudience},
+				URL:       server.URL,
+				Audiences: []string{adminTestAudience},
 			},
 		}},
 	}, server.Client())
 	require.NoError(t, err)
 
-	return verifier, privateKey, issuer
+	return verifier, privateKey, server.URL
 }
 
 func signAdminToken(t *testing.T, privateKey ed25519.PrivateKey, claims jwt.MapClaims) string {
@@ -126,20 +123,18 @@ func TestAdminVerifierRejectsNonEdDSA(t *testing.T) {
 func TestAdminVerifierES256(t *testing.T) {
 	t.Parallel()
 
-	const issuer = "https://workspace.example.com"
-
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 
-	server := jwks.NewTestServer(t, &privateKey.PublicKey, adminTestKeyID, jose.ES256, issuer)
+	server := jwks.NewTestServer(t, &privateKey.PublicKey, adminTestKeyID, jose.ES256, "https://unexpected.example.com")
+	issuer := server.URL
 
 	verifier, err := NewAdminVerifier(t.Context(), ProviderConfig{
 		JWT: []jwks.Config{{
 			Issuer: jwks.Issuer{
-				URL:          issuer,
-				DiscoveryURL: server.URL + "/.well-known/openid-configuration",
-				Audiences:    []string{adminTestAudience},
-				Algorithm:    jwks.SigningAlgorithmES256,
+				URL:       issuer,
+				Audiences: []string{adminTestAudience},
+				Algorithm: jwks.SigningAlgorithmES256,
 			},
 		}},
 	}, server.Client())

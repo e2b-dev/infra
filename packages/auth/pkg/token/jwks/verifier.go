@@ -49,12 +49,8 @@ type discoveryDocument struct {
 // OIDC discovery fetch synchronously and fails fast on configuration or
 // network errors.
 func NewVerifier(ctx context.Context, entry Config, httpClient *http.Client, options ...Option) (*Verifier, error) {
-	if httpClient == nil {
-		return nil, errors.New("JWKS HTTP client is required")
-	}
-
-	entry = entry.Normalized()
-	if err := entry.Validate(); err != nil {
+	entry, err := validateConfig(entry, httpClient)
+	if err != nil {
 		return nil, err
 	}
 
@@ -76,7 +72,39 @@ func NewVerifier(ctx context.Context, entry Config, httpClient *http.Client, opt
 		return nil, err
 	}
 
-	storage, err := jwkset.NewStorageFromHTTP(doc.JWKSURI, jwkset.HTTPClientStorageOptions{
+	return newVerifier(ctx, entry, doc.JWKSURI, httpClient, options...)
+}
+
+func NewVerifierFromIssuerJWKS(ctx context.Context, entry Config, httpClient *http.Client, options ...Option) (*Verifier, error) {
+	entry.Issuer.DiscoveryURL = ""
+	entry, err := validateConfig(entry, httpClient)
+	if err != nil {
+		return nil, err
+	}
+
+	jwksURL := strings.TrimRight(entry.Issuer.URL, "/") + defaultJWKSPath
+	if err := validateHTTPSURL(jwksURL, "jwksURL"); err != nil {
+		return nil, err
+	}
+
+	return newVerifier(ctx, entry, jwksURL, httpClient, options...)
+}
+
+func validateConfig(entry Config, httpClient *http.Client) (Config, error) {
+	if httpClient == nil {
+		return Config{}, errors.New("JWKS HTTP client is required")
+	}
+
+	entry = entry.Normalized()
+	if err := entry.Validate(); err != nil {
+		return Config{}, err
+	}
+
+	return entry, nil
+}
+
+func newVerifier(ctx context.Context, entry Config, jwksURL string, httpClient *http.Client, options ...Option) (*Verifier, error) {
+	storage, err := jwkset.NewStorageFromHTTP(jwksURL, jwkset.HTTPClientStorageOptions{
 		Client:          httpClient,
 		Ctx:             ctx,
 		HTTPTimeout:     httpTimeout,
