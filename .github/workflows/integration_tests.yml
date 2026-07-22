@@ -16,8 +16,14 @@ on:
       CODECOV_TOKEN: { required: false }
 jobs:
   run:
+    # Blacksmith x64 kernels ship nbd built in (16 devices; init-client.sh
+    # skips its modprobe in that case) and expose /dev/kvm for Firecracker.
+    # The orchestrator's NBD pool clamps to the available device count, so
+    # 16 caps concurrent sandboxes - watch for NoFreeSlotsError ("no free
+    # slots") in service logs if the suite grows more parallel.
+    # 32vcpu matches the 32-core infra-tests runner this previously ran on.
     if: ${{ inputs.run-tests == true }}
-    runs-on: infra-tests
+    runs-on: blacksmith-32vcpu-ubuntu-2404
     timeout-minutes: 30
     permissions:
       contents: read

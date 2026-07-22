@@ -1,0 +1,112 @@
+name: "Ensure NBD devices"
+description: |
+  Makes the nbd block driver available with device nodes for the
+  orchestrator's DevicePool (which sizes itself from
+  /sys/module/nbd/parameters/nbds_max and refuses to start without it).
+  Handles, in order:
+    1. driver already present (loaded module OR built into the kernel,
+       e.g. Blacksmith x64 runners) - nothing to do, the existing device
+       count applies;
+    2. stock kernel with the module shipped - plain modprobe;
+    3. stock Ubuntu kernel with nbd in linux-modules-extra (GitHub-hosted
+       arm64 runners) - apt install, then modprobe;
+    4. custom kernel without an nbd module at all (Blacksmith arm64
+       runners) - build nbd.ko from the matching kernel.org source using
+       the running kernel's /proc/config.gz, insmod it. The built .ko is
+       cached per kernel release (~36s to build cold, instant when cached).
+
+inputs:
+  nbds-max:
+    description: "Device count to request when loading the module (no effect when the driver is built in)"
+    required: false
+    default: "4096"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Detect nbd provisioning strategy
+      id: detect
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ -r /sys/module/nbd/parameters/nbds_max ]; then
+          echo "nbd driver already present (nbds_max=$(cat /sys/module/nbd/parameters/nbds_max))"
+          echo "strategy=none" >> "$GITHUB_OUTPUT"
+        elif sudo modprobe nbd nbds_max='${{ inputs.nbds-max }}' 2>/dev/null; then
+          echo "strategy=modprobe" >> "$GITHUB_OUTPUT"
+        elif apt-get -s install "linux-modules-extra-$(uname -r)" >/dev/null 2>&1; then
+          echo "strategy=apt" >> "$GITHUB_OUTPUT"
+        else
+          echo "strategy=build" >> "$GITHUB_OUTPUT"
+        fi
+        echo "kver=$(uname -r)" >> "$GITHUB_OUTPUT"
+
+    - name: Install nbd module from linux-modules-extra
+      if: steps.detect.outputs.strategy == 'apt'
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo apt-get update
+        sudo apt-get install -y "linux-modules-extra-$(uname -r)"
+        sudo modprobe nbd nbds_max='${{ inputs.nbds-max }}'
+
+    - name: Restore cached nbd.ko
+      if: steps.detect.outputs.strategy == 'build'
+      uses: actions/cache@v5
+      with:
+        path: /tmp/nbd-ko
+        key: nbd-ko-${{ runner.arch }}-${{ steps.detect.outputs.kver }}
+
+    - name: Build nbd.ko from kernel source and insmod
+      if: steps.detect.outputs.strategy == 'build'
+      shell: bash
+      run: |
+        set -euo pipefail
+        KVER="$(uname -r)"
+        if [ ! -f /tmp/nbd-ko/nbd.ko ]; then
+          if [ ! -e /proc/config.gz ]; then
+            echo "::error::kernel $KVER has no nbd module and no /proc/config.gz to build one from"
+            exit 1
+          fi
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential flex bison bc libssl-dev libelf-dev
+          BASE="${KVER%%-*}"
+          BUILD_DIR="$(mktemp -d)"
+          cd "$BUILD_DIR"
+          curl -fsSLO "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-${BASE}.tar.xz"
+          tar -xf "linux-${BASE}.tar.xz"
+          cd "linux-${BASE}"
+          zcat /proc/config.gz > .config
+          ./scripts/config -m BLK_DEV_NBD
+          # We cannot sign with the kernel's key; the running kernels this
+          # path targets have CONFIG_MODULE_SIG disabled.
+          ./scripts/config --disable MODULE_SIG_ALL || true
+          ./scripts/config --set-str SYSTEM_TRUSTED_KEYS "" || true
+          make olddefconfig
+          make -j"$(nproc)" modules_prepare
+          # Without the running kernel's Module.symvers, modpost cannot
+          # resolve core symbols and errors out; WARN=1 downgrades that.
+          # Actual symbol resolution happens in the kernel at insmod.
+          make -j"$(nproc)" KBUILD_MODPOST_WARN=1 M=drivers/block modules
+          mkdir -p /tmp/nbd-ko
+          cp drivers/block/nbd.ko /tmp/nbd-ko/
+        fi
+        sudo insmod /tmp/nbd-ko/nbd.ko nbds_max='${{ inputs.nbds-max }}' || {
+          echo "insmod failed, dmesg:"
+          sudo dmesg | tail -15
+          exit 1
+        }
+
+    - name: Verify devices and quiet udev
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ ! -r /sys/module/nbd/parameters/nbds_max ]; then
+          echo "::error::nbd driver is not available after provisioning"
+          exit 1
+        fi
+        echo "effective nbds_max=$(cat /sys/module/nbd/parameters/nbds_max)"
+        # Disable inotify watching of change events for NBD devices
+        echo 'ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"' | sudo tee /etc/udev/rules.d/97-nbd-device.rules
+        sudo udevadm control --reload-rules || true
+        sudo udevadm trigger || true

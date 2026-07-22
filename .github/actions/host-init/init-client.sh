@@ -65,8 +65,15 @@ EOH
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 
-# Load the nbd module with 4096 devices
-sudo modprobe nbd nbds_max=4096
+# Load the nbd module with 4096 devices. Kernels that build nbd in
+# (e.g. Blacksmith runners) have no module to load - the parameter file
+# already exists and the built-in device count applies; the orchestrator's
+# device pool clamps to it.
+if [ -r /sys/module/nbd/parameters/nbds_max ]; then
+  echo "nbd driver already present (nbds_max=$(cat /sys/module/nbd/parameters/nbds_max))"
+else
+  sudo modprobe nbd nbds_max=4096
+fi
 
 # Create the directory for the fc mounts
 mkdir -p /fc-vm
