@@ -2,7 +2,12 @@ name: Blacksmith Kernel Probe
 
 # Temporary diagnostic workflow: establishes whether Blacksmith's custom VM
 # kernel can support the orchestrator/integration test requirements (nbd
-# module, KVM, tun, vsock, uffd, hugepages). Delete once the verdict is in.
+# devices, KVM, tun, uffd, hugepages, swap). Delete once the verdict is in.
+#
+# Probe v1 findings: x64 has CONFIG_BLK_DEV_NBD=y (builtin, /dev/nbd0 exists,
+# count unknown) + /dev/kvm + tun + uffd; arm64 has NO nbd at all and no
+# /dev/kvm. So: x64 tests netlink-based nbd device creation; arm64 builds
+# nbd.ko from source (KBUILD_MODPOST_WARN=1 for the missing Module.symvers).
 
 on:
   pull_request:
@@ -17,11 +22,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner:
-          - blacksmith-8vcpu-ubuntu-2404
-          - blacksmith-32vcpu-ubuntu-2404
-          - blacksmith-4vcpu-ubuntu-2404-arm
-          - blacksmith-2vcpu-ubuntu-2204
+        include:
+          - runner: blacksmith-8vcpu-ubuntu-2404
+            arch: x64
+          - runner: blacksmith-32vcpu-ubuntu-2404
+            arch: x64
+          - runner: blacksmith-4vcpu-ubuntu-2404-arm
+            arch: arm64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
@@ -29,121 +36,110 @@ jobs:
         run: |
           set -x
           uname -a
-          cat /proc/version || true
-          echo "--- /lib/modules ---"
-          ls -la /lib/modules/ || true
-          ls /lib/modules/"$(uname -r)"/ 2>/dev/null || echo "no modules dir for running kernel"
-          find /lib/modules -name 'nbd.ko*' 2>/dev/null || true
-          grep -c . /lib/modules/"$(uname -r)"/modules.builtin 2>/dev/null || echo "no modules.builtin"
-          grep nbd /lib/modules/"$(uname -r)"/modules.builtin 2>/dev/null || echo "nbd not builtin (or no list)"
-          echo "--- kernel config ---"
-          CONFIG_SRC=""
-          if [ -e /proc/config.gz ]; then CONFIG_SRC=/proc/config.gz
-          elif [ -e "/boot/config-$(uname -r)" ]; then CONFIG_SRC="/boot/config-$(uname -r)"
-          fi
-          echo "config source: ${CONFIG_SRC:-NONE}"
-          if [ -n "$CONFIG_SRC" ]; then
-            zgrep -hE '^CONFIG_(MODULES|MODVERSIONS|MODULE_SIG|MODULE_SIG_FORCE|MODULE_SIG_ALL|MODULE_FORCE_LOAD|MODULE_COMPRESS|BLK_DEV_NBD|BLK_DEV_LOOP|TUN|VSOCKETS|VHOST_VSOCK|USERFAULTFD|HUGETLBFS|KVM|KVM_INTEL|KVM_AMD|IKHEADERS|IKCONFIG|NF_TABLES|IP_NF_IPTABLES|NETFILTER_XTABLES|BRIDGE|VETH|FUSE_FS|OVERLAY_FS|SQUASHFS|LOCALVERSION)[ =]' "$CONFIG_SRC" 2>/dev/null \
-              || { gzip -t "$CONFIG_SRC" 2>/dev/null && zcat "$CONFIG_SRC" | grep -E '^CONFIG_(MODULES|MODVERSIONS|MODULE_SIG|MODULE_SIG_FORCE|MODULE_FORCE_LOAD|BLK_DEV_NBD|TUN|VHOST_VSOCK|USERFAULTFD|HUGETLBFS|KVM|IKHEADERS)[ =]'; } || true
-          fi
+          cat /proc/cmdline || true
+          echo "--- nbd device inventory ---"
+          ls /dev/nbd* 2>/dev/null | wc -l
+          ls /dev/nbd* 2>/dev/null | sort -V | tail -3 || true
+          echo "--- kernel config (incl. 'not set' lines) ---"
+          zcat /proc/config.gz | grep -E '(MODVERSIONS|MODULE_SIG|MODULE_SIG_FORCE|MODULE_FORCE_LOAD|MODULE_COMPRESS|BLK_DEV_NBD|VSOCKETS|VHOST_VSOCK|SWAP|MEMORY_HOTPLUG)[ =]' || true
           echo "--- devices ---"
-          ls -la /dev/kvm /dev/net/tun /dev/vhost-vsock /dev/fuse /dev/nbd0 /dev/loop0 /dev/loop-control 2>&1 || true
-          echo "--- loaded modules ---"
-          lsmod | head -30 || cat /proc/modules | head -30 || true
-          echo "--- kheaders availability ---"
-          sudo modprobe kheaders 2>&1 || true
-          ls -la /sys/kernel/kheaders.tar.xz 2>&1 || true
-          echo "--- headers / build tree ---"
-          ls -la /lib/modules/"$(uname -r)"/build 2>&1 || true
-          ls /usr/src/ 2>&1 || true
-          apt-get -s install "linux-headers-$(uname -r)" 2>&1 | tail -3 || true
-          echo "--- host features ---"
-          nproc; free -h; df -h / /tmp
-          sudo sysctl vm.unprivileged_userfaultfd || true
-          mount | grep -iE 'hugetlbfs|cgroup2' || true
-          docker info --format '{{.Driver}} kernel={{.KernelVersion}}' 2>/dev/null || true
+          ls -la /dev/kvm /dev/net/tun /dev/vhost-vsock 2>&1 || true
+          echo "--- swap support ---"
+          cat /proc/swaps || true
+          echo "--- filesystem of / (fallocate swapfile support) ---"
+          df -T / | tail -1
 
-      - name: Attempt nbd module build from kernel.org source
-        id: build
+      - name: Swapfile smoke test (init-client.sh does swapon)
         continue-on-error: true
+        run: |
+          set -euxo pipefail
+          sudo fallocate -l 512M /swapfile-probe
+          sudo chmod 600 /swapfile-probe
+          sudo mkswap /swapfile-probe
+          sudo swapon /swapfile-probe
+          cat /proc/swaps
+          sudo swapoff /swapfile-probe
+          echo "SWAP_OK"
+
+      - name: "x64: netlink nbd device creation test"
+        if: matrix.arch == 'x64'
+        run: |
+          set -euxo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq nbd-server nbd-client
+          # nbd-server package start may fail as a service; run manually
+          dd if=/dev/zero of=/tmp/nbd-export.img bs=1M count=8
+          cat > /tmp/nbd.conf <<'EOF'
+          [generic]
+            allowlist = false
+          [probe]
+            exportname = /tmp/nbd-export.img
+          EOF
+          sudo pkill nbd-server || true
+          sudo nbd-server -C /tmp/nbd.conf
+          sleep 1
+
+          echo "--- devices before ---"; N_BEFORE=$(ls /dev/nbd* | wc -l)
+
+          # Ask for an index that does not exist yet; netlink-capable
+          # nbd-client makes the kernel create it on demand.
+          sudo nbd-client -N probe 127.0.0.1 /dev/nbd200
+          ls -la /dev/nbd200
+          sudo nbd-client -d /dev/nbd200
+
+          echo "--- bulk creation timing (50 devices) ---"
+          T0=$(date +%s)
+          for i in $(seq 300 349); do
+            sudo nbd-client -N probe 127.0.0.1 "/dev/nbd$i" >/dev/null 2>&1
+            sudo nbd-client -d "/dev/nbd$i" >/dev/null 2>&1
+          done
+          T1=$(date +%s)
+          echo "50 devices in $((T1-T0))s"
+          N_AFTER=$(ls /dev/nbd* | wc -l)
+          echo "device count: $N_BEFORE -> $N_AFTER"
+          [ -b /dev/nbd349 ]
+
+      - name: "arm64: build nbd.ko from source and insmod"
+        if: matrix.arch == 'arm64'
         run: |
           set -euxo pipefail
           T0=$(date +%s)
           KVER="$(uname -r)"
           BASE="${KVER%%-*}"
-
-          # Bail out early if modprobe already works (e.g. image got fixed)
-          if sudo modprobe nbd nbds_max=256 2>/dev/null; then
-            echo "modprobe worked natively, nothing to build"
-            exit 0
-          fi
-
-          # Kernel config is required to build a compatible module
-          if [ -e /proc/config.gz ]; then
-            CONFIG_CMD="zcat /proc/config.gz"
-          elif [ -e "/boot/config-$KVER" ]; then
-            CONFIG_CMD="cat /boot/config-$KVER"
-          else
-            echo "::error::no kernel config available (no /proc/config.gz, no /boot/config)"
-            exit 1
-          fi
-
           sudo apt-get update -qq
-          sudo apt-get install -y -qq build-essential flex bison bc libssl-dev libelf-dev dwarves
-
+          sudo apt-get install -y -qq build-essential flex bison bc libssl-dev libelf-dev
           cd /tmp
           curl -fsSLO "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-${BASE}.tar.xz"
           tar -xf "linux-${BASE}.tar.xz"
           cd "linux-${BASE}"
-
-          eval "$CONFIG_CMD" > .config
-          # Force nbd to build as a module regardless of the shipped config
+          zcat /proc/config.gz > .config
           ./scripts/config -m BLK_DEV_NBD
-          # A signing key we don't have; disable so modpost doesn't try to sign
           ./scripts/config --disable MODULE_SIG_ALL || true
           ./scripts/config --set-str SYSTEM_TRUSTED_KEYS "" || true
-          ./scripts/config --set-str MODULE_SIG_KEY "" || true
           make olddefconfig
-          echo "--- effective module-relevant config ---"
-          grep -E '^CONFIG_(MODVERSIONS|MODULE_SIG|MODULE_SIG_FORCE|MODULE_FORCE_LOAD|BLK_DEV_NBD|LOCALVERSION)[ =]' .config || true
-
-          T1=$(date +%s); echo "setup took $((T1-T0))s"
+          grep -E '(MODVERSIONS|MODULE_SIG|BLK_DEV_NBD|LOCALVERSION)[ =]' .config || true
           make -j"$(nproc)" modules_prepare
-          T2=$(date +%s); echo "modules_prepare took $((T2-T1))s"
-          make -j"$(nproc)" M=drivers/block modules
-          T3=$(date +%s); echo "module build took $((T3-T2))s"
-
-          modinfo drivers/block/nbd.ko | head -20
-          echo "--- vermagic comparison ---"
-          modinfo -F vermagic drivers/block/nbd.ko || true
+          # No Module.symvers for the running kernel: modpost cannot resolve
+          # core symbols and errors out; WARN=1 downgrades that. Runtime
+          # symbol resolution happens in the kernel at insmod.
+          make -j"$(nproc)" KBUILD_MODPOST_WARN=1 M=drivers/block modules
+          modinfo -F vermagic drivers/block/nbd.ko
           echo "running kernel: $KVER"
-
           if ! sudo insmod drivers/block/nbd.ko nbds_max=256; then
-            echo "plain insmod failed, dmesg:"
-            sudo dmesg | tail -20
-            # Retry via modprobe --force (strips vermagic/version checks;
-            # needs CONFIG_MODULE_FORCE_LOAD=y in the running kernel)
-            sudo mkdir -p "/lib/modules/$KVER/kernel/drivers/block"
-            sudo cp drivers/block/nbd.ko "/lib/modules/$KVER/kernel/drivers/block/"
-            sudo depmod -a || true
-            sudo modprobe --force nbd nbds_max=256 || {
-              echo "forced modprobe also failed, dmesg:"
-              sudo dmesg | tail -20
-              exit 1
-            }
+            echo "insmod failed, dmesg:"
+            sudo dmesg | tail -15
+            exit 1
           fi
-          T4=$(date +%s); echo "TOTAL nbd provisioning: $((T4-T0))s"
+          T1=$(date +%s)
+          echo "TOTAL arm nbd provisioning: $((T1-T0))s"
+          ls /dev/nbd* | wc -l
+          [ -b /dev/nbd0 ] && [ -b /dev/nbd255 ]
+          # size the cacheable artifact
+          ls -la drivers/block/nbd.ko
 
       - name: Verdict
         run: |
           set -x
           echo "=== VERDICT for ${{ matrix.runner }} ==="
-          NBD_OK=false; KVM_OK=false; TUN_OK=false; VSOCK_OK=false
-          [ -b /dev/nbd0 ] && [ -b /dev/nbd255 ] && NBD_OK=true
-          [ -e /dev/kvm ] && KVM_OK=true
-          [ -e /dev/net/tun ] && TUN_OK=true
-          [ -e /dev/vhost-vsock ] && VSOCK_OK=true
+          ls /dev/nbd* 2>/dev/null | wc -l
+          [ -e /dev/kvm ] && echo KVM=yes || echo KVM=no
           sudo dmesg | grep -iE 'nbd|taint' | tail -5 || true
-          echo "NBD=$NBD_OK KVM=$KVM_OK TUN=$TUN_OK VSOCK=$VSOCK_OK"
-          # nbd is the make-or-break requirement on every runner
-          $NBD_OK
