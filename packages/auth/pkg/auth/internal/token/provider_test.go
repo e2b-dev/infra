@@ -16,8 +16,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/auth/internal/token/jwks"
-	"github.com/e2b-dev/infra/packages/auth/internal/token/oidc"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth/internal/token/jwks"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth/internal/token/oidc"
 )
 
 const testIssuerURL = "https://issuer.example.com"

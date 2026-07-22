@@ -1,7 +1,7 @@
 package auth
 
 import (
-	internalauthteam "github.com/e2b-dev/infra/packages/auth/internal/team"
+	internalauthteam "github.com/e2b-dev/infra/packages/auth/pkg/auth/internal/team"
 	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 )
 
