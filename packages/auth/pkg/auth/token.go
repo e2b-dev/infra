@@ -4,9 +4,9 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/e2b-dev/infra/packages/auth/internal/token"
-	"github.com/e2b-dev/infra/packages/auth/internal/token/jwks"
-	"github.com/e2b-dev/infra/packages/auth/internal/token/oidc"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth/internal/token"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth/internal/token/jwks"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth/internal/token/oidc"
 )
 
 type ProviderConfig = token.ProviderConfig

@@ -3,7 +3,7 @@ package auth
 import (
 	"github.com/gin-gonic/gin"
 
-	internalauthteam "github.com/e2b-dev/infra/packages/auth/internal/team"
+	internalauthteam "github.com/e2b-dev/infra/packages/auth/pkg/auth/internal/team"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 )
