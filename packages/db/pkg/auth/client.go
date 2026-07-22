@@ -15,6 +15,7 @@ const poolName = "auth"
 
 type Client struct {
 	*authqueries.Queries
+
 	conn *pgxpool.Pool
 }
 
