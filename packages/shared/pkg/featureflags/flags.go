@@ -354,6 +354,17 @@ var (
 	// change before enabling prefetch on resume. Off by default.
 	PauseResumePrefetchConsumeFlag = NewBoolFlag("pause-resume-prefetch-consume", false)
 
+	// FsOnlyJournalRecoveryFlag makes a filesystem-only pause recover the rootfs
+	// journal on the host (e2fsck) before exporting the snapshot, when the guest's
+	// envd is too old to support FIFREEZE (< 0.6.6) and the pause therefore only
+	// sync'd the guest. Without FIFREEZE the sync->pause race can capture a torn
+	// ext4 journal, which then fails the resume cold-boot with "JBD2: recovery
+	// failed" / "error loading journal". Recovering on the pause path produces a
+	// clean, mountable template once, instead of paying (and risking) recovery on
+	// every reboot. No-op when the captured filesystem is already clean. Off by
+	// default.
+	FsOnlyJournalRecoveryFlag = NewBoolFlag("fs-only-journal-recovery", false)
+
 	// PauseResumePrefetchHarvestTimeoutMsFlag bounds the throwaway harvest resume
 	// (slot-hold cap), in milliseconds. The harvest is best-effort: a cut-short
 	// run is discarded (the build is simply re-harvested on its next pause), so
