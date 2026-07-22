@@ -137,7 +137,6 @@ func run() int {
 	authDB, err := authdb.NewClient(
 		ctx,
 		config.AuthDBConnectionString,
-		config.AuthDBReadReplicaConnectionString,
 		pool.WithMaxConnections(8),
 	)
 	if err != nil {
@@ -218,7 +217,7 @@ func run() int {
 
 	identityService, err := identity.NewService(
 		map[string]identity.Directory{oryIssuer: oryDirectory},
-		identity.NewQueriesLinkage(authDB.Write),
+		identity.NewQueriesLinkage(authDB.Queries),
 	)
 	if err != nil {
 		l.Error(ctx, "Initializing identity service", zap.Error(err))

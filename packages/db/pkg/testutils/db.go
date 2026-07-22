@@ -101,7 +101,7 @@ func SetupDatabase(t *testing.T) *Database {
 	})
 
 	// Create the auth db client
-	authDB, err := authdb.NewClient(t.Context(), connStr, connStr)
+	authDB, err := authdb.NewClient(t.Context(), connStr)
 	require.NoError(t, err, "Failed to create auth db client")
 	t.Cleanup(func() {
 		err := authDB.Close()

@@ -33,9 +33,9 @@ func newTokenTestStore(t *testing.T, accessTokenAuthDisabled bool) (*APIStore, k
 	require.NoError(t, err)
 
 	userID := uuid.New()
-	require.NoError(t, db.AuthDB.Write.UpsertPublicUser(t.Context(), userID))
+	require.NoError(t, db.AuthDB.UpsertPublicUser(t.Context(), userID))
 
-	_, err = db.AuthDB.Write.CreateAccessToken(t.Context(), authqueries.CreateAccessTokenParams{
+	_, err = db.AuthDB.CreateAccessToken(t.Context(), authqueries.CreateAccessTokenParams{
 		ID:                    uuid.New(),
 		UserID:                userID,
 		AccessTokenHash:       accessToken.HashedValue,

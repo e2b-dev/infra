@@ -101,7 +101,6 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 	authDB, err := authdb.NewClient(
 		ctx,
 		config.AuthDBConnectionString,
-		config.AuthDBReadReplicaConnectionString,
 		pool.WithMaxConnections(config.AuthDBMaxOpenConnections),
 		pool.WithMinIdle(config.AuthDBMinIdleConnections),
 	)

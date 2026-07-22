@@ -39,11 +39,11 @@ func TestCreateTeam_ConcurrentRequestsRespectLocalPolicyWithZeroMemberships(t *t
 	ctx := t.Context()
 	userID := createTestUser(t, testDB)
 
-	existingTeam, err := testDB.AuthDB.Write.GetDefaultTeamByUserID(ctx, userID)
+	existingTeam, err := testDB.AuthDB.GetDefaultTeamByUserID(ctx, userID)
 	if err != nil {
 		t.Fatalf("expected default team: %v", err)
 	}
-	if err := testDB.AuthDB.Write.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
+	if err := testDB.AuthDB.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
 		t.Fatalf("failed to remove default team: %v", err)
 	}
 
