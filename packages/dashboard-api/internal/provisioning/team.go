@@ -151,20 +151,20 @@ func validateTeamCreationAllowed(ctx context.Context, authTxDB *authqueries.Quer
 		if row.IsBanned {
 			return &internalteamprovision.ProvisionError{
 				StatusCode: http.StatusBadRequest,
-				Message:    "You're unable to create a team right now. Please contact support if this persists.",
+				Message:    "You're unable to create a project right now. Please contact support if this persists.",
 			}
 		}
 	}
 
 	teamLimit := maxTeamsPerUser
 	limitMessage := fmt.Sprintf(
-		"You can't create more than %d teams, you can upgrade to Pro tier to create up to %d teams",
+		"You can't create more than %d projects, you can upgrade to Pro tier to create up to %d projects",
 		maxTeamsPerUser,
 		maxTeamsPerUserWithProTier,
 	)
 	if hasProTier {
 		teamLimit = maxTeamsPerUserWithProTier
-		limitMessage = fmt.Sprintf("You can't create more than %d teams", maxTeamsPerUserWithProTier)
+		limitMessage = fmt.Sprintf("You can't create more than %d projects", maxTeamsPerUserWithProTier)
 	}
 
 	if len(teams) >= teamLimit {

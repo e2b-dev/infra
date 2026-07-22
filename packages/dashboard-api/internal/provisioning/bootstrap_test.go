@@ -54,8 +54,8 @@ func TestBootstrapAuthProviderUser_CreatesIdentityAndDefaultTeam(t *testing.T) {
 	if defaultTeam.ID != team.ID {
 		t.Fatalf("expected response team %s, got %s", defaultTeam.ID, team.ID)
 	}
-	if defaultTeam.Name != "Default Team" {
-		t.Fatalf("expected team name %q, got %q", "Default Team", defaultTeam.Name)
+	if defaultTeam.Name != "Personal Project" {
+		t.Fatalf("expected team name %q, got %q", "Personal Project", defaultTeam.Name)
 	}
 	if defaultTeam.Email != "ada@example.test" {
 		t.Fatalf("expected team email %q, got %q", "ada@example.test", defaultTeam.Email)
