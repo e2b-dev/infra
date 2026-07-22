@@ -9,13 +9,17 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/constants"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/units"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -127,6 +131,54 @@ func (f *Factory) RebootSandbox(
 		opt(&processOptions)
 	}
 
+	// A filesystem-only snapshot captured without FIFREEZE support may have a torn
+	// ext4 journal, which fails this cold boot with "JBD2: recovery failed" /
+	// "error loading journal". Recover it before Firecracker boots. The trigger is
+	// the EXT4_FEATURE_INCOMPAT_RECOVER superblock bit, which is set whenever the
+	// journal needs replay — so this also runs on healthy non-FIFREEZE snapshots,
+	// where e2fsck simply replays cleanly. Doing it here heals snapshots already
+	// captured torn, not just new ones. Gated behind a flag.
+	var preBoot PreBootFn
+	if f.featureFlags.BoolFlag(ctx, featureflags.FsOnlyJournalRecoveryFlag,
+		featureflags.SandboxContext(runtime.SandboxID),
+		featureflags.TemplateContext(runtime.TemplateID),
+	) {
+		preBoot = func(ctx context.Context, rootfsPath string) error {
+			// Bound e2fsck on its own deadline, decoupled from the request context:
+			// recovery (up to tens of seconds on a cold NBD) must not eat the whole
+			// request budget and starve the envd wait that follows, and a request
+			// timeout must not kill e2fsck mid-write. On timeout we fall through and
+			// boot (best-effort, below).
+			recCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rootfs.JournalRecoveryTimeout)
+			defer cancel()
+
+			recovered, err := rootfs.RecoverExt4Journal(recCtx, rootfsPath)
+			if err != nil {
+				// Best-effort: don't abort a boot the guest kernel can still complete
+				// via its own jbd2 replay. e2fsck can fail for reasons unrelated to a
+				// torn journal (missing binary, slow full check over NBD, a context
+				// timeout); in those cases booting is strictly no worse than not having
+				// this hook. A genuinely torn journal that e2fsck couldn't fix will
+				// fail the boot either way.
+				logger.L().Warn(ctx, "ext4 journal recovery before reboot failed; booting anyway",
+					logger.WithSandboxID(runtime.SandboxID),
+					logger.WithBuildID(buildID.String()),
+					zap.Error(err),
+				)
+
+				return nil
+			}
+			if recovered {
+				logger.L().Info(ctx, "recovered torn rootfs journal before reboot",
+					logger.WithSandboxID(runtime.SandboxID),
+					logger.WithBuildID(buildID.String()),
+				)
+			}
+
+			return nil
+		}
+	}
+
 	sbx, err := f.CreateSandbox(
 		ctx,
 		config,
@@ -139,7 +191,7 @@ func (f *Factory) RebootSandbox(
 		"",
 		processOptions,
 		apiConfigToStore,
-		nil,
+		preBoot,
 		WithDeferredMarkRunning(),
 		withNetworkAssignReason(NetworkAssignReasonReboot),
 	)
