@@ -23,7 +23,11 @@ type Provider interface {
 	Start(ctx context.Context) error
 	Close(ctx context.Context) error
 	Path() (string, error)
-	ExportDiff(ctx context.Context, out *os.File, closeSandbox func(context.Context) error) (*header.DiffMetadata, error)
+	// ExportDiff exports the writable overlay's dirty blocks to out and stops the
+	// sandbox. recoverJournal asks NBD-backed providers to run a host-side ext4
+	// journal recovery before the export (for filesystem-only pauses on guests
+	// without FIFREEZE support); it is ignored by providers that don't support it.
+	ExportDiff(ctx context.Context, out *os.File, closeSandbox func(context.Context) error, recoverJournal bool) (*header.DiffMetadata, error)
 }
 
 // flush flushes the data to the operating system's buffer.
