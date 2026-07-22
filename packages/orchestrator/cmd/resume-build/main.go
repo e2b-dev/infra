@@ -406,7 +406,7 @@ func (r *runner) startSandbox(ctx context.Context, runtime sandbox.RuntimeMetada
 			})
 		}
 
-		return r.factory.RebootSandbox(ctx, r.tmpl, r.sbxConfig, runtime, end, nil, procOpts...)
+		return r.factory.RebootSandbox(ctx, r.tmpl, r.sbxConfig, runtime, end, nil, false, procOpts...)
 	}
 
 	return r.factory.ResumeSandbox(ctx, r.tmpl, r.sbxConfig, runtime, start, end, nil)
