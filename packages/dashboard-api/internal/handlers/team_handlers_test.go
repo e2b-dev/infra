@@ -847,6 +847,8 @@ func (noopAuthService) GetTeamByID(context.Context, uuid.UUID) (*authtypes.Team,
 
 func (noopAuthService) InvalidateTeamMemberCache(context.Context, uuid.UUID, string) {}
 
+func (noopAuthService) InvalidateAPIKeyCache(context.Context, string) {}
+
 func (noopAuthService) InvalidateTeamCache(context.Context, uuid.UUID) error {
 	return nil
 }
