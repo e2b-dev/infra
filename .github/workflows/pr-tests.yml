@@ -18,10 +18,11 @@ jobs:
   run-tests:
     name: Run unit test shards
     if: ${{ inputs.run-tests == true }}
-    # All shards run on Blacksmith. The orchestrator shard needs the nbd
-    # driver (built into the Blacksmith x64 kernel; see ensure-nbd action)
-    # and /dev/kvm (present on Blacksmith x64 - verify the smoketest RUNS,
-    # it skips silently when /dev/kvm is missing).
+    # Shards that only need Docker run on Blacksmith. The orchestrator shard
+    # stays on infra-tests: Blacksmith's 6.6 kernel lacks UFFD_FEATURE_WP_ASYNC
+    # (Linux >= 6.7), which the uffd memory backend and our Firecracker
+    # dirty-page tracking hard-require (nbd/KVM are NOT the blocker - see the
+    # ensure-nbd action). Revisit when Blacksmith ships a >= 6.7 kernel.
     runs-on: ${{ matrix.runner }}
     env:
       GIN_MODE: test
@@ -62,13 +63,11 @@ jobs:
             test_path: ./...
             sudo: true
             runner: blacksmith-4vcpu-ubuntu-2404
-          # 8vcpu: this shard boots Firecracker VMs (smoketest); it ran on a
-          # 32-core infra-tests runner before - bump if the 20m timeout nears.
           - package: packages/orchestrator
             flag: unit-orchestrator
             test_path: ./...
             sudo: true
-            runner: blacksmith-8vcpu-ubuntu-2404
+            runner: infra-tests
           - package: packages/shared
             flag: unit-shared
             test_path: ./pkg/...

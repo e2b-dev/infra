@@ -17,15 +17,22 @@ sudo mkdir -p /orchestrator/sandbox
 sudo mkdir -p /orchestrator/template
 sudo mkdir -p /orchestrator/build
 
-# Add swapfile
+# Add swapfile. Some runner images (e.g. Blacksmith) already boot with an
+# active /swapfile; fallocate on an in-use swap file fails with ETXTBSY,
+# so only create one when no swap is active yet.
 SWAPFILE="/swapfile"
-sudo fallocate -l 1G $SWAPFILE
-sudo chmod 600 $SWAPFILE
-sudo mkswap $SWAPFILE
-sudo swapon $SWAPFILE
+if grep -q '^\S' /proc/swaps 2>/dev/null && [ "$(wc -l < /proc/swaps)" -gt 1 ]; then
+  echo "swap already active, skipping swapfile creation:"
+  cat /proc/swaps
+else
+  sudo fallocate -l 1G $SWAPFILE
+  sudo chmod 600 $SWAPFILE
+  sudo mkswap $SWAPFILE
+  sudo swapon $SWAPFILE
 
-# Make swapfile persistent
-echo "$SWAPFILE none swap sw 0 0" | sudo tee -a /etc/fstab
+  # Make swapfile persistent
+  echo "$SWAPFILE none swap sw 0 0" | sudo tee -a /etc/fstab
+fi
 
 # Set swap settings
 sudo sysctl vm.swappiness=10

@@ -16,14 +16,14 @@ on:
       CODECOV_TOKEN: { required: false }
 jobs:
   run:
-    # Blacksmith x64 kernels ship nbd built in (16 devices; init-client.sh
-    # skips its modprobe in that case) and expose /dev/kvm for Firecracker.
-    # The orchestrator's NBD pool clamps to the available device count, so
-    # 16 caps concurrent sandboxes - watch for NoFreeSlotsError ("no free
-    # slots") in service logs if the suite grows more parallel.
-    # 32vcpu matches the 32-core infra-tests runner this previously ran on.
+    # Stays on infra-tests: Blacksmith's 6.6 kernel lacks
+    # UFFD_FEATURE_WP_ASYNC (Linux >= 6.7), which sandbox resume
+    # hard-requires - snapshot loads fail with "Failed to UFFD object".
+    # Everything else is provisioned for (nbd is built into their x64
+    # kernel; init-client.sh tolerates that and pre-existing swap).
+    # Revisit when Blacksmith ships a >= 6.7 kernel.
     if: ${{ inputs.run-tests == true }}
-    runs-on: blacksmith-32vcpu-ubuntu-2404
+    runs-on: infra-tests
     timeout-minutes: 30
     permissions:
       contents: read
