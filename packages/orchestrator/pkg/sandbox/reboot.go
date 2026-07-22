@@ -35,6 +35,8 @@ const (
 // guest RAM, processes, and sockets are lost; only the filesystem survives.
 // The sandbox is marked running only after envd is ready, matching
 // ResumeSandbox's routing guarantees; endAt is the caller's absolute end time.
+// procOpts, if any, adjust the fc.ProcessOptions of the cold boot after the
+// defaults are set (e.g. debugging tools forwarding the guest kernel console).
 // IMPORTANT: You must Close() the sandbox after you are done with it.
 func (f *Factory) RebootSandbox(
 	ctx context.Context,
@@ -43,7 +45,7 @@ func (f *Factory) RebootSandbox(
 	runtime RuntimeMetadata,
 	endAt time.Time,
 	apiConfigToStore *orchestrator.SandboxConfig,
-	opts ...CreateOption,
+	procOpts ...func(*fc.ProcessOptions),
 ) (*Sandbox, error) {
 	ctx, span := tracer.Start(ctx, "reboot sandbox")
 	defer span.End()
@@ -115,6 +117,16 @@ func (f *Factory) RebootSandbox(
 		return nil, fmt.Errorf("sandbox end time %s is in the past", endAt)
 	}
 
+	processOptions := fc.ProcessOptions{
+		InitScriptPath: constants.SystemdInitPath,
+		KvmClock:       kvmClock,
+		IoEngine:       &ioEngine,
+		AccessToken:    &accessToken,
+	}
+	for _, opt := range procOpts {
+		opt(&processOptions)
+	}
+
 	sbx, err := f.CreateSandbox(
 		ctx,
 		config,
@@ -125,18 +137,11 @@ func (f *Factory) RebootSandbox(
 		// resume, so guest TRIM keeps working and a later pause exports the
 		// overlay diff exactly like a normal resume.
 		"",
-		fc.ProcessOptions{
-			InitScriptPath: constants.SystemdInitPath,
-			KvmClock:       kvmClock,
-			IoEngine:       &ioEngine,
-			AccessToken:    &accessToken,
-		},
+		processOptions,
 		apiConfigToStore,
 		nil,
-		append([]CreateOption{
-			WithDeferredMarkRunning(),
-			withNetworkAssignReason(NetworkAssignReasonReboot),
-		}, opts...)...,
+		WithDeferredMarkRunning(),
+		withNetworkAssignReason(NetworkAssignReasonReboot),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create sandbox from rootfs: %w", err)

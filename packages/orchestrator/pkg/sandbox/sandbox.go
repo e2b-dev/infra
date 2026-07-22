@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -431,11 +430,6 @@ type PreBootFn func(ctx context.Context, rootfsPath string) error
 type createOptions struct {
 	deferMarkRunning    bool
 	networkAssignReason NetworkAssignReason
-	// consoleStdout/consoleStderr, when set, forward the guest serial console
-	// (kernel tty) and Firecracker's own output to these writers (and enable
-	// kernel logs on the boot). For debugging tools; unused by the orchestrator.
-	consoleStdout io.Writer
-	consoleStderr io.Writer
 }
 
 type CreateOption func(*createOptions)
@@ -450,17 +444,6 @@ func WithDeferredMarkRunning() CreateOption {
 
 func withNetworkAssignReason(reason NetworkAssignReason) CreateOption {
 	return func(o *createOptions) { o.networkAssignReason = reason }
-}
-
-// WithConsoleOutput forwards the guest serial console (kernel tty) and
-// Firecracker's own stdout/stderr to the given writers, enabling kernel logs on
-// a fresh boot. Intended for debugging tools (e.g. cmd/resume-build watching a
-// cold boot); the orchestrator itself never sets it.
-func WithConsoleOutput(stdout, stderr io.Writer) CreateOption {
-	return func(o *createOptions) {
-		o.consoleStdout = stdout
-		o.consoleStderr = stderr
-	}
 }
 
 // CreateSandbox creates the sandbox.
@@ -484,14 +467,6 @@ func (f *Factory) CreateSandbox(
 	createOpts := createOptions{networkAssignReason: NetworkAssignReasonCreate}
 	for _, opt := range opts {
 		opt(&createOpts)
-	}
-
-	// Debug console wiring (opt-in via WithConsoleOutput): forward the guest
-	// kernel tty + FC output to the caller's writers. Only affects a fresh boot.
-	if createOpts.consoleStdout != nil || createOpts.consoleStderr != nil {
-		processOptions.KernelLogs = true
-		processOptions.Stdout = createOpts.consoleStdout
-		processOptions.Stderr = createOpts.consoleStderr
 	}
 
 	execCtx, execSpan := startExecutionSpan(ctx)

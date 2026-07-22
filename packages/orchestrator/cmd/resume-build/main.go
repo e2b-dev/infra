@@ -396,13 +396,17 @@ func wrapTemplate(tmpl template.Template, noPrefetch, forceFsOnly bool) template
 // -force-reboot is set.
 func (r *runner) startSandbox(ctx context.Context, runtime sandbox.RuntimeMetadata, start, end time.Time) (*sandbox.Sandbox, error) {
 	if r.reboot || r.forceReboot {
-		var opts []sandbox.CreateOption
+		var procOpts []func(*fc.ProcessOptions)
 		if r.console {
 			// Forward the guest kernel console (tty) + FC output to this process.
-			opts = append(opts, sandbox.WithConsoleOutput(os.Stdout, os.Stderr))
+			procOpts = append(procOpts, func(o *fc.ProcessOptions) {
+				o.KernelLogs = true
+				o.Stdout = os.Stdout
+				o.Stderr = os.Stderr
+			})
 		}
 
-		return r.factory.RebootSandbox(ctx, r.tmpl, r.sbxConfig, runtime, end, nil, opts...)
+		return r.factory.RebootSandbox(ctx, r.tmpl, r.sbxConfig, runtime, end, nil, procOpts...)
 	}
 
 	return r.factory.ResumeSandbox(ctx, r.tmpl, r.sbxConfig, runtime, start, end, nil)
