@@ -32,7 +32,7 @@ func newRetentionTestService(t *testing.T) (spec.ProcessClient, *Service, func()
 	svc := newService(&logger, &execcontext.Defaults{
 		EnvVars: utils.NewEnvVars(),
 		Workdir: &cwd,
-	}, cgroups.NewNoopManager())
+	}, cgroups.NewWorkloadFreezer(cgroups.NewNoopManager()))
 
 	mux := http.NewServeMux()
 	path, handler := spec.NewProcessHandler(svc)

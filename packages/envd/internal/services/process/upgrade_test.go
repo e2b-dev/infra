@@ -39,7 +39,7 @@ func newHandoverTestService(t *testing.T, spy *spyCgroupManager) *Service {
 	return newService(&logger, &execcontext.Defaults{
 		EnvVars: utils.NewEnvVars(),
 		Workdir: &cwd,
-	}, spy)
+	}, cgroups.NewWorkloadFreezer(spy))
 }
 
 // TestUpgrade_RejectsUnexpectedBinary verifies the exec target is constrained:

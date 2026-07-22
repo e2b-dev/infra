@@ -215,8 +215,13 @@ func run() error {
 		}
 	}()
 
+	// One freezer shared by the process service (live-upgrade handover) and the
+	// HTTP API (/freeze, /unfreeze, /init thaw) so every freeze/unfreeze caller
+	// serializes on a single lock.
+	workloadFreezer := cgroups.NewWorkloadFreezer(cgroupManager)
+
 	processLogger := l.With().Str("logger", "process").Logger()
-	processService := processRpc.Handle(m, &processLogger, defaults, cgroupManager)
+	processService := processRpc.Handle(m, &processLogger, defaults, workloadFreezer)
 
 	// Live-upgrade incoming side: if this envd was re-exec'd by an outgoing
 	// envd, re-adopt the handed-over processes before serving.
@@ -247,7 +252,7 @@ func run() error {
 		}()
 	}
 
-	service := api.New(&envLogger, defaults, mmdsChan, isNotFC, cgroupManager)
+	service := api.New(&envLogger, defaults, mmdsChan, isNotFC, workloadFreezer)
 	if resumeHandover {
 		// Surface the handover outcome on the next /init so the orchestrator can
 		// record it — the envd-side result (re-adopted procs, restored retained
@@ -305,17 +310,23 @@ func run() error {
 	// disturbs port forwarding.
 	doUpgrade := func(newBin string) error {
 		fmt.Fprintf(os.Stderr, "envd: self-upgrade (from v%s, newBin=%q)\n", pkg.Version, newBin)
-		processService.FreezeWorkload() //nolint:contextcheck // (un)freeze uses a non-cancellable context internally so the thaw always lands
+		// Hold the freeze lock across the WHOLE handover (freeze -> serialize ->
+		// execve), not just the freeze sweep, so a concurrent /init or /unfreeze
+		// can't acquire the lock and thaw the workload while Upgrade is
+		// snapshotting the process table.
+		releaseFreeze := processService.FreezeWorkloadHold() //nolint:contextcheck // (un)freeze uses a non-cancellable context internally so the thaw always lands
 
 		// Export watcher state (opaque to the process service) so the new envd
 		// can re-arm filesystem watches after the swap.
 		watchersJSON := filesystemService.ExportWatchers()
 
 		// Upgrade only returns on failure — a successful execve replaces this
-		// process. On failure the OLD envd is still running, so thaw the workload
-		// we just froze and keep serving the old version rather than leave the
+		// process (and drops the held freeze lock with it). On failure the OLD
+		// envd is still running, so release the hold FIRST, then thaw the workload
+		// we just froze, keeping the old version serving rather than leaving the
 		// sandbox hung.
 		if err := processService.Upgrade(newBin, pkg.Version, watchersJSON); err != nil {
+			releaseFreeze()
 			processService.UnfreezeWorkload() //nolint:contextcheck // (un)freeze uses a non-cancellable context internally so the thaw always lands
 
 			return err

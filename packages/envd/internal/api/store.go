@@ -43,14 +43,13 @@ type API struct {
 	initLock    *semaphore.Weighted
 
 	caCertInstaller *host.CACertInstaller
-	cgroupManager   cgroups.Manager
-	// freezeLock serializes the per-cgroup sweep across /freeze, /unfreeze
-	// and the /init deferred unfreeze. PostFreeze acquires with the request
-	// ctx; unfreeze paths acquire with Background so they always land
-	// regardless of HTTP-client cancellation.
-	freezeLock    *semaphore.Weighted
-	isMountingNFS atomic.Bool
-	mountedPaths  sync.Map // map[path]lifecycleID - tracks which lifecycle each path was mounted for
+	// workloadFreezer freezes/thaws the user+pty cgroups. Shared with the process
+	// service (the live-upgrade handover) so every freeze/unfreeze caller — this
+	// API's /freeze, /unfreeze and /init deferred thaw, plus the upgrade — is
+	// serialized through one lock.
+	workloadFreezer *cgroups.WorkloadFreezer
+	isMountingNFS   atomic.Bool
+	mountedPaths    sync.Map // map[path]lifecycleID - tracks which lifecycle each path was mounted for
 
 	// fsFreezer freezes/thaws the guest rootfs for filesystem-only pauses;
 	// fsFreezeLock serializes /fsfreeze and /fsthaw.
@@ -101,7 +100,7 @@ func (a *API) SetHandoverResult(procs, procsFailed, retained, retainedFailed, wa
 	}
 }
 
-func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.MMDSOpts, isNotFC bool, cgroupManager cgroups.Manager) *API {
+func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.MMDSOpts, isNotFC bool, workloadFreezer *cgroups.WorkloadFreezer) *API {
 	return &API{
 		logger:          l,
 		defaults:        defaults,
@@ -111,9 +110,8 @@ func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.
 		lastSetTime:     utils.NewAtomicMax(),
 		accessToken:     &SecureToken{},
 		caCertInstaller: host.NewCACertInstaller(l),
-		cgroupManager:   cgroupManager,
+		workloadFreezer: workloadFreezer,
 		initLock:        semaphore.NewWeighted(1),
-		freezeLock:      semaphore.NewWeighted(1),
 		fsFreezer:       fsfreeze.New(),
 		fsFreezeLock:    semaphore.NewWeighted(1),
 	}

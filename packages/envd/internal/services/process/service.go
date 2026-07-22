@@ -38,20 +38,25 @@ type retainedExit struct {
 }
 
 type Service struct {
-	processes     *utils.Map[uint32, *handler.Handler]
-	terminated    *utils.Map[uint32, *retainedExit]
-	logger        *zerolog.Logger
-	defaults      *execcontext.Defaults
-	cgroupManager cgroups.Manager
+	processes  *utils.Map[uint32, *handler.Handler]
+	terminated *utils.Map[uint32, *retainedExit]
+	logger     *zerolog.Logger
+	defaults   *execcontext.Defaults
+	// cgroupManager places spawned processes into their cgroup; workloadFreezer
+	// freezes/thaws the workload during a live-upgrade handover. The freezer is
+	// shared with the HTTP API so both serialize on one lock.
+	cgroupManager   cgroups.Manager
+	workloadFreezer *cgroups.WorkloadFreezer
 }
 
-func newService(l *zerolog.Logger, defaults *execcontext.Defaults, cgroupManager cgroups.Manager) *Service {
+func newService(l *zerolog.Logger, defaults *execcontext.Defaults, workloadFreezer *cgroups.WorkloadFreezer) *Service {
 	return &Service{
-		logger:        l,
-		processes:     utils.NewMap[uint32, *handler.Handler](),
-		terminated:    utils.NewMap[uint32, *retainedExit](),
-		defaults:      defaults,
-		cgroupManager: cgroupManager,
+		logger:          l,
+		processes:       utils.NewMap[uint32, *handler.Handler](),
+		terminated:      utils.NewMap[uint32, *retainedExit](),
+		defaults:        defaults,
+		cgroupManager:   workloadFreezer.Manager(),
+		workloadFreezer: workloadFreezer,
 	}
 }
 
@@ -120,8 +125,8 @@ func (s *Service) retain(pid uint32, r *retainedExit) {
 	})
 }
 
-func Handle(server *chi.Mux, l *zerolog.Logger, defaults *execcontext.Defaults, cgroupManager cgroups.Manager) *Service {
-	service := newService(l, defaults, cgroupManager)
+func Handle(server *chi.Mux, l *zerolog.Logger, defaults *execcontext.Defaults, workloadFreezer *cgroups.WorkloadFreezer) *Service {
+	service := newService(l, defaults, workloadFreezer)
 
 	interceptors := connect.WithInterceptors(logs.NewUnaryLogInterceptor(l))
 

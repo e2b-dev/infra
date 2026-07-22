@@ -1,6 +1,7 @@
 package process
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -435,22 +436,33 @@ func (s *Service) restoreTerminated(entries []handoverExit) (failed int) {
 	return failed
 }
 
-// FreezeWorkload freezes the user/pty cgroups ahead of an Upgrade.
+// FreezeWorkload freezes the user/pty cgroups ahead of an Upgrade, serialized
+// (via the shared freezer) against the HTTP API's freeze/unfreeze paths.
 func (s *Service) FreezeWorkload() {
-	for _, pt := range []cgroups.ProcessType{cgroups.ProcessTypeUser, cgroups.ProcessTypePTY} {
-		if err := s.cgroupManager.Freeze(pt); err != nil {
-			s.logger.Warn().Err(err).Str("cgroup", string(pt)).Msg("handover: freeze failed")
-		}
+	if err := s.workloadFreezer.Freeze(context.Background()); err != nil {
+		s.logger.Warn().Err(err).Msg("handover: freeze failed")
 	}
+}
+
+// FreezeWorkloadHold freezes the workload and keeps the shared freeze lock held,
+// returning a release func, so the freeze stays uninterruptible across the
+// handover: a concurrent /init or /unfreeze thaw blocks until release. The caller
+// MUST release on any path that does not execve; a successful execve drops the
+// lock with the process image.
+func (s *Service) FreezeWorkloadHold() (release func()) {
+	release, err := s.workloadFreezer.FreezeHold(context.Background())
+	if err != nil {
+		s.logger.Warn().Err(err).Msg("handover: freeze failed")
+	}
+
+	return release
 }
 
 // UnfreezeWorkload thaws the user/pty cgroups. Idempotent (thawing a non-frozen
 // cgroup is a no-op), so it is safe to call on every upgrade outcome — success,
 // failure, or panic — guaranteeing a failed swap never leaves the workload frozen.
 func (s *Service) UnfreezeWorkload() {
-	for _, pt := range []cgroups.ProcessType{cgroups.ProcessTypeUser, cgroups.ProcessTypePTY} {
-		if err := s.cgroupManager.Unfreeze(pt); err != nil {
-			s.logger.Warn().Err(err).Str("cgroup", string(pt)).Msg("handover: unfreeze failed")
-		}
+	if err := s.workloadFreezer.Unfreeze(context.Background()); err != nil {
+		s.logger.Warn().Err(err).Msg("handover: unfreeze failed")
 	}
 }
