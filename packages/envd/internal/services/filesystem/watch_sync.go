@@ -24,6 +24,13 @@ type FileWatcher struct {
 	cancel  func()
 	Error   error
 
+	// Config captured so the watcher can be re-armed after an envd
+	// live-upgrade. WatchPath is the already-resolved
+	// absolute path.
+	WatchPath        string
+	Recursive        bool
+	IncludeEntryInfo bool
+
 	Lock sync.Mutex
 }
 
@@ -44,10 +51,13 @@ func CreateFileWatcher(ctx context.Context, logger *zerolog.Logger, watchPath st
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error adding path %s to watcher: %w", watchPath, err))
 	}
 	fw := &FileWatcher{
-		watcher: w,
-		cancel:  cancel,
-		Events:  []*rpc.FilesystemEvent{},
-		Error:   nil,
+		watcher:          w,
+		cancel:           cancel,
+		Events:           []*rpc.FilesystemEvent{},
+		Error:            nil,
+		WatchPath:        watchPath,
+		Recursive:        recursive,
+		IncludeEntryInfo: includeEntryInfo,
 	}
 
 	go func() {

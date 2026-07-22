@@ -165,7 +165,11 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
+	// Drop any retained exit left over from a previous process that used this
+	// PID, so a Connect to the new process can't be served the old exit code.
+	s.terminated.Delete(pid)
 	s.processes.Store(pid, proc)
+	s.trackTermination(pid, proc)
 
 	start <- rpc.ProcessEvent_Start{
 		Start: &rpc.ProcessEvent_StartEvent{
@@ -174,8 +178,11 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 	}
 
 	go func() {
-		defer s.processes.Delete(pid)
-
+		// Reap the process. Removal from s.processes is owned solely by
+		// finalizeTermination (via trackTermination / the reaper OnExit hook),
+		// which retains the exit code BEFORE deleting and is identity-guarded
+		// against PID reuse. Deleting here too would race that retention away and
+		// lose the exit for a late Connect or the pre-upgrade handover.
 		proc.Wait()
 	}()
 
