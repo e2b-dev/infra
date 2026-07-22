@@ -43,6 +43,7 @@ type Service interface {
 	GetTeamByID(ctx context.Context, teamID uuid.UUID) (*types.Team, error)
 	InvalidateTeamMemberCache(ctx context.Context, userID uuid.UUID, teamID string)
 	InvalidateTeamCache(ctx context.Context, teamID uuid.UUID) error
+	InvalidateAPIKeyCache(ctx context.Context, hashedKey string)
 	Close(ctx context.Context) error
 }
 
@@ -80,7 +81,7 @@ func NewAuthService(
 	store := newAuthStore(authDB)
 	// OIDC bootstrap writes identity rows on the primary immediately before the
 	// next authenticated request; using the read replica here races replication lag.
-	identityLookup := newAuthIdentityLookup(authDB.Write)
+	identityLookup := newAuthIdentityLookup(authDB.Queries)
 	v, err := token.NewProviderVerifier(ctx, providerConfig, httpClient, identityLookup)
 	if err != nil {
 		return nil, fmt.Errorf("initializing auth provider JWT verifier: %w", err)
@@ -275,6 +276,25 @@ func (s *AuthService) InvalidateTeamCache(ctx context.Context, teamID uuid.UUID)
 	}
 
 	return nil
+}
+
+// InvalidateAPIKeyCache removes the cached auth entry for a specific hashed API key.
+// This should be called when the key is deleted so revocation takes effect immediately
+// instead of after the cache TTL expires.
+//
+// The call is synchronous and waits for any in-flight cache writer on the key
+// (see RedisCache.Delete), so the caller's request can block for up to
+// invalidateTimeout in the worst case — only reached when a concurrent
+// refresh of the same key is wedged near the full refresh timeout, which
+// requires a multi-second DB stall; the typical case returns in milliseconds.
+func (s *AuthService) InvalidateAPIKeyCache(ctx context.Context, hashedKey string) {
+	// The invalidation runs after the key's DB delete has committed; if it were
+	// skipped because the client disconnected, the revoked key would keep
+	// authenticating until the cache TTL expires.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), invalidateTimeout)
+	defer cancel()
+
+	s.teamCache.Invalidate(ctx, hashedKey)
 }
 
 func teamMemberCacheKey(userID uuid.UUID, teamID string) string {

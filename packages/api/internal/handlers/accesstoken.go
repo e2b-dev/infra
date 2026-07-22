@@ -46,7 +46,7 @@ func (a *APIStore) PostAccessTokens(c *gin.Context) {
 		return
 	}
 
-	accessTokenDB, err := a.authDB.Write.CreateAccessToken(ctx, authqueries.CreateAccessTokenParams{
+	accessTokenDB, err := a.authDB.CreateAccessToken(ctx, authqueries.CreateAccessTokenParams{
 		ID:                    uuid.New(),
 		UserID:                userID,
 		AccessTokenHash:       accessToken.HashedValue,
@@ -92,7 +92,7 @@ func (a *APIStore) DeleteAccessTokensAccessTokenID(c *gin.Context, accessTokenID
 		return
 	}
 
-	_, err = a.authDB.Write.DeleteAccessToken(ctx, authqueries.DeleteAccessTokenParams{
+	_, err = a.authDB.DeleteAccessToken(ctx, authqueries.DeleteAccessTokenParams{
 		ID:     accessTokenIDParsed,
 		UserID: userID,
 	})

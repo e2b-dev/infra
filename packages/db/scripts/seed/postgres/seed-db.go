@@ -71,7 +71,7 @@ func main() {
 	}
 	defer db.Close()
 
-	authDb, err := authdb.NewClient(ctx, connectionString, connectionString)
+	authDb, err := authdb.NewClient(ctx, connectionString)
 	if err != nil {
 		panic(err)
 	}
@@ -140,7 +140,7 @@ VALUES ($1, $2)
 		panic(err)
 	}
 
-	err = authDb.Write.UpsertPublicUser(ctx, userID)
+	err = authDb.UpsertPublicUser(ctx, userID)
 	if err != nil {
 		panic(err)
 	}
@@ -174,7 +174,7 @@ VALUES ($1, $2, $3)
 	if err != nil {
 		panic(err)
 	}
-	_, err = authDb.Write.CreateAccessToken(
+	_, err = authDb.CreateAccessToken(
 		ctx, authqueries.CreateAccessTokenParams{
 			ID:                    uuid.New(),
 			UserID:                userID,
@@ -200,7 +200,7 @@ VALUES ($1, $2, $3)
 	if err != nil {
 		panic(err)
 	}
-	_, err = authDb.Write.CreateTeamAPIKey(ctx, authqueries.CreateTeamAPIKeyParams{
+	_, err = authDb.CreateTeamAPIKey(ctx, authqueries.CreateTeamAPIKeyParams{
 		TeamID:           teamUUID,
 		CreatedBy:        &userID,
 		ApiKeyHash:       apiKeyHash,

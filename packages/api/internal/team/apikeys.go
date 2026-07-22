@@ -6,8 +6,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/e2b-dev/infra/packages/db/pkg/auth"
-	"github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
+	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
+	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -26,7 +27,7 @@ func CreateAPIKey(ctx context.Context, authDB *authdb.Client, teamID uuid.UUID, 
 		return CreateAPIKeyResponse{}, fmt.Errorf("error when generating team API key: %w", err)
 	}
 
-	apiKey, err := authDB.Write.CreateTeamAPIKey(ctx, authqueries.CreateTeamAPIKeyParams{
+	apiKey, err := authDB.CreateTeamAPIKey(ctx, authqueries.CreateTeamAPIKeyParams{
 		TeamID:           teamID,
 		CreatedBy:        createdBy,
 		ApiKeyHash:       teamApiKey.HashedValue,
@@ -48,8 +49,8 @@ func CreateAPIKey(ctx context.Context, authDB *authdb.Client, teamID uuid.UUID, 
 	}, nil
 }
 
-func DeleteAPIKey(ctx context.Context, authDB *authdb.Client, teamID uuid.UUID, apiKeyID uuid.UUID) (bool, error) {
-	ids, err := authDB.Write.DeleteTeamAPIKey(ctx, authqueries.DeleteTeamAPIKeyParams{
+func DeleteAPIKey(ctx context.Context, authDB *authdb.Client, authService sharedauth.Service, teamID uuid.UUID, apiKeyID uuid.UUID) (bool, error) {
+	hashes, err := authDB.DeleteTeamAPIKey(ctx, authqueries.DeleteTeamAPIKeyParams{
 		ID:     apiKeyID,
 		TeamID: teamID,
 	})
@@ -59,5 +60,11 @@ func DeleteAPIKey(ctx context.Context, authDB *authdb.Client, teamID uuid.UUID, 
 		return false, fmt.Errorf("error when deleting API key: %w", err)
 	}
 
-	return len(ids) > 0, nil
+	// Invalidate the auth cache so the deleted key stops authenticating
+	// immediately instead of after the cache TTL expires.
+	for _, hash := range hashes {
+		authService.InvalidateAPIKeyCache(ctx, hash)
+	}
+
+	return len(hashes) > 0, nil
 }

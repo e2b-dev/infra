@@ -36,7 +36,7 @@ func (s *APIStore) DeleteAdminUsersUserId(c *gin.Context, userId api.UserId) {
 	}
 
 	// Done before the IdP removal so a DB failure does not orphan the identity.
-	if err := s.authDB.Write.DeletePublicUser(ctx, userId); err != nil {
+	if err := s.authDB.DeletePublicUser(ctx, userId); err != nil {
 		if dberrors.IsNotFoundError(err) {
 			s.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("User %s not found", userId))
 

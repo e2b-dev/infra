@@ -83,7 +83,7 @@ func CreateAPIKey(t *testing.T, ctx context.Context, _ *api.ClientWithResponses,
 		createdBy = &parsedUserID
 	}
 
-	created, err := db.AuthDb.Write.CreateTeamAPIKey(ctx, authqueries.CreateTeamAPIKeyParams{
+	created, err := db.AuthDb.CreateTeamAPIKey(ctx, authqueries.CreateTeamAPIKeyParams{
 		TeamID:           teamID,
 		CreatedBy:        createdBy,
 		ApiKeyHash:       apiKey.HashedValue,
@@ -96,7 +96,7 @@ func CreateAPIKey(t *testing.T, ctx context.Context, _ *api.ClientWithResponses,
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		_, _ = db.AuthDb.Write.DeleteTeamAPIKey(ctx, authqueries.DeleteTeamAPIKeyParams{
+		_, _ = db.AuthDb.DeleteTeamAPIKey(ctx, authqueries.DeleteTeamAPIKeyParams{
 			ID:     created.ID,
 			TeamID: teamID,
 		})

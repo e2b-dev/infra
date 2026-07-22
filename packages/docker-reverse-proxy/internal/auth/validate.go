@@ -40,7 +40,7 @@ func ValidateAccessToken(ctx context.Context, db *authdb.Client, accessToken str
 		return uuid.UUID{}, false
 	}
 
-	userID, err := db.Read.GetUserIDFromAccessToken(ctx, hashedToken)
+	userID, err := db.GetUserIDFromAccessToken(ctx, hashedToken)
 	if err != nil {
 		log.Printf("Error while checking access token: %s\n", err.Error())
 

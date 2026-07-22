@@ -89,7 +89,7 @@ func (a *APIStore) DeleteAdminTeamsTeamIDApiKeysApiKeyID(c *gin.Context, teamID 
 		return
 	}
 
-	deleted, err := team.DeleteAPIKey(ctx, a.authDB, teamID, apiKeyUUID)
+	deleted, err := team.DeleteAPIKey(ctx, a.authDB, a.authService, teamID, apiKeyUUID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when deleting API key: %s", err))
 

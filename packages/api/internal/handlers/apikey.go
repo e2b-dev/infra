@@ -43,7 +43,7 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 	teamID := auth.MustGetTeamID(c)
 
 	now := time.Now()
-	_, err = a.authDB.Write.UpdateTeamApiKey(ctx, authqueries.UpdateTeamApiKeyParams{
+	_, err = a.authDB.UpdateTeamApiKey(ctx, authqueries.UpdateTeamApiKeyParams{
 		Name:      body.Name,
 		UpdatedAt: &now,
 		ID:        apiKeyIDParsed,
@@ -69,7 +69,7 @@ func (a *APIStore) GetApiKeys(c *gin.Context) {
 
 	teamID := auth.MustGetTeamID(c)
 
-	apiKeysDB, err := a.authDB.Read.GetTeamAPIKeysWithCreator(ctx, teamID)
+	apiKeysDB, err := a.authDB.GetTeamAPIKeysWithCreator(ctx, teamID)
 	if err != nil {
 		logger.L().Warn(ctx, "error when getting team API keys", zap.Error(err))
 		c.String(http.StatusInternalServerError, "Error when getting team API keys")
@@ -118,7 +118,7 @@ func (a *APIStore) DeleteApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 
 	teamID := auth.MustGetTeamID(c)
 
-	deleted, err := team.DeleteAPIKey(ctx, a.authDB, teamID, apiKeyIDParsed)
+	deleted, err := team.DeleteAPIKey(ctx, a.authDB, a.authService, teamID, apiKeyIDParsed)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when deleting API key: %s", err))
 

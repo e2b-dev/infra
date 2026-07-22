@@ -680,3 +680,13 @@ func TestS3UncompressedStoreFile(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, sha256.Sum256(data), sha256.Sum256(got.Bytes()))
 }
+
+func TestAWSDeleteObjectsWithPrefixRejectsEmptyPrefix(t *testing.T) {
+	t.Parallel()
+
+	s := &awsStorage{bucketName: "test-bucket"}
+
+	err := s.DeleteObjectsWithPrefix(context.Background(), "")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "empty prefix")
+}

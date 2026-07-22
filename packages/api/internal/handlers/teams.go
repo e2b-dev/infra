@@ -16,7 +16,7 @@ func (a *APIStore) GetTeams(c *gin.Context) {
 
 	userID := auth.MustGetUserID(c)
 
-	results, err := a.authDB.Read.GetTeamsWithUsersTeams(ctx, userID)
+	results, err := a.authDB.GetTeamsWithUsersTeams(ctx, userID)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when getting teams", err)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when starting transaction")

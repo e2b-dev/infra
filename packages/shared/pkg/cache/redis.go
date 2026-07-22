@@ -116,7 +116,7 @@ func (rc *RedisCache[V]) GetOrSet(ctx context.Context, key string, dataCallback 
 		ctx := context.WithoutCancel(ctx)
 
 		// Acquire distributed lock if enabled
-		lock, lockErr := rc.acquireLock(ctx, key, redislock.LinearBackoff(rc.config.LockRetryInterval))
+		lock, lockErr := rc.acquireLock(ctx, key, redislock.LinearBackoff(rc.config.LockRetryInterval), acquireLockTimeout)
 		defer rc.releaseLock(ctx, lock, key)
 		// We want to get the results even without the lock to prevent failing all the waiting requests
 
@@ -163,10 +163,33 @@ func (rc *RedisCache[V]) Set(ctx context.Context, key string, value V) {
 }
 
 // Delete removes a value from Redis.
+//
+// Writers (the GetOrSet backfill and the background refresh) hold the per-key
+// lock across their SET, so Delete waits for that lock to guarantee the DEL
+// is ordered after any in-flight write; without this, a writer that read the
+// backing store just before the caller's mutation could repopulate the entry
+// with stale data for a full TTL after a fire-and-forget delete.
+//
+// The guarantee comes with constraints the caller must respect:
+//   - The wait is bounded by LockTTL (RefreshTimeout + 2*RedisTimeout) plus a
+//     margin, and by ctx — pass a context that survives at least that long
+//     (and detached from request cancellation when the delete must not be
+//     skipped), otherwise Delete degrades to the best-effort behavior below.
+//   - If the lock still cannot be obtained (Redis/lock-service errors, or the
+//     ctx expiring), Delete falls back to a best-effort DEL and a concurrent
+//     writer may repopulate the entry with stale data until its TTL expires.
+//   - Healthy writers always finish inside the wait window: their data
+//     callback is capped at RefreshTimeout, which is strictly less than the
+//     lock TTL the wait is derived from.
 func (rc *RedisCache[V]) Delete(ctx context.Context, key string) {
-	lock, err := rc.acquireLock(ctx, key, redislock.LinearBackoff(rc.config.LockRetryInterval))
+	// Wait past a wedged writer's lock auto-expiry (LockTTL) so lock
+	// acquisition can only fail on Redis/lock-service errors or ctx expiry,
+	// not on writer contention.
+	lock, err := rc.acquireLock(ctx, key, redislock.LinearBackoff(rc.config.LockRetryInterval), rc.config.LockTTL+acquireLockTimeout)
 	if err != nil {
-		logger.L().Warn(ctx, "RedisCache - Delete: failed to acquire lock", zap.String("key", key))
+		logger.L().Warn(ctx, "RedisCache - Delete: failed to acquire lock, deleting best-effort; a concurrent writer may repopulate stale data",
+			zap.String("key", key),
+			zap.Error(err))
 		// Continue without the lock to remove the stale data
 		// In that case it's just a best effort, the data may get repopulated with stale data
 	}
@@ -299,7 +322,7 @@ func (rc *RedisCache[V]) getFromRedis(ctx context.Context, key string) (V, time.
 func (rc *RedisCache[V]) refreshRedis(ctx context.Context, key string, dataCallback DataCallback[V]) {
 	rc.redisRefresh.Do(key, func() (any, error) {
 		// Acquire lock without retry — if another instance is refreshing, skip.
-		lock, lockErr := rc.acquireLock(ctx, key, redislock.NoRetry())
+		lock, lockErr := rc.acquireLock(ctx, key, redislock.NoRetry(), acquireLockTimeout)
 		if errors.Is(lockErr, redislock.ErrNotObtained) {
 			logger.L().Debug(ctx, "RedisCache: skipping refresh, lock held by another instance",
 				zap.String("key", key))
@@ -350,10 +373,11 @@ func (rc *RedisCache[V]) releaseLock(ctx context.Context, lock redis_utils.Lock,
 	}
 }
 
-// acquireLock attempts to acquire a distributed lock for the given key.
+// acquireLock attempts to acquire a distributed lock for the given key,
+// retrying per the strategy until maxWait or ctx expires, whichever is first.
 // Always returns a non-nil Lock (NoopLock on failure) so callers can defer Release unconditionally.
-func (rc *RedisCache[V]) acquireLock(ctx context.Context, key string, retry redislock.RetryStrategy) (redis_utils.Lock, error) {
-	ctx, cancel := context.WithTimeout(ctx, acquireLockTimeout)
+func (rc *RedisCache[V]) acquireLock(ctx context.Context, key string, retry redislock.RetryStrategy, maxWait time.Duration) (redis_utils.Lock, error) {
+	ctx, cancel := context.WithTimeout(ctx, maxWait)
 	defer cancel()
 
 	lockKey := redis_utils.GetLockKey(rc.RedisKey(key))
