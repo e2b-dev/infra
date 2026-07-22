@@ -148,10 +148,11 @@ func validateBuild(ctx context.Context, storagePath, buildID, artifact string, e
 // openChunker wires a production block.Chunker over the build's data file,
 // returning the chunker, the image's uncompressed size, and a cleanup function.
 func openChunker(ctx context.Context, storagePath, buildID, artifact string, h *header.Header, ft *storage.FrameTable) (*block.Chunker, storage.RangeOpener, int64, func(), error) {
-	if err := cmdutil.SetupStorage(storagePath); err != nil {
+	spec, err := cmdutil.TemplateSpec(storagePath)
+	if err != nil {
 		return nil, nil, 0, nil, err
 	}
-	provider, err := storage.GetStorageProvider(ctx, storage.TemplateStorageConfig)
+	provider, err := storage.NewProvider(ctx, spec)
 	if err != nil {
 		return nil, nil, 0, nil, fmt.Errorf("storage provider: %w", err)
 	}

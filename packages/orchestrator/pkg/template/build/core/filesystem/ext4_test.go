@@ -19,18 +19,33 @@ func TestParseFreeBlocks(t *testing.T) {
 		wantErr  bool
 	}{
 		{
-			name:     "standard debugfs output",
-			input:    "Block count:              131072\nFree blocks:              120000\nFirst block:              0\n",
-			expected: 120000,
+			name: "sums group counters instead of stale superblock",
+			input: `Free blocks:              50000
+ Group  0: block bitmap at 1, inode bitmap at 2, inode table at 3
+           28629 free blocks, 100 free inodes, 1 used directory
+ Group  1: block bitmap at 4, inode bitmap at 5, inode table at 6
+           28639 free blocks, 100 free inodes, 1 used directory
+`,
+			expected: 57268,
 		},
 		{
-			name:     "large block count",
-			input:    "Free blocks:              999999999\n",
-			expected: 999999999,
+			name: "supports singular block counter",
+			input: ` Group  0: block bitmap at 1, inode bitmap at 2, inode table at 3
+           1 free block, 1 free inode, 1 used directory
+`,
+			expected: 1,
 		},
 		{
-			name:    "missing free blocks",
-			input:   "Block count:              131072\n",
+			name: "rejects incomplete group output",
+			input: ` Group  0: block bitmap at 1, inode bitmap at 2, inode table at 3
+           10 free blocks, 100 free inodes, 1 used directory
+ Group  1: block bitmap at 4, inode bitmap at 5, inode table at 6
+`,
+			wantErr: true,
+		},
+		{
+			name:    "rejects global counter without block groups",
+			input:   "Free blocks:              50000\n",
 			wantErr: true,
 		},
 	}

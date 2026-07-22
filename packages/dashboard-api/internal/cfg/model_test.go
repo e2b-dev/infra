@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/auth/pkg/auth/oidc"
+	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
 )
 
 func setBaseEnv(t *testing.T) {
@@ -41,7 +41,7 @@ func TestParseAuthProviderConfig(t *testing.T) {
 	entry := config.AuthProvider.JWT[0]
 	require.Equal(t, "https://auth.example.com", entry.Issuer.URL)
 	require.Equal(t, []string{"dashboard-api", "other"}, entry.Issuer.Audiences)
-	require.Equal(t, oidc.AudienceMatchAny, entry.Issuer.AudienceMatchPolicy)
+	require.Equal(t, sharedauth.AudienceMatchAny, entry.Issuer.AudienceMatchPolicy)
 	require.Equal(t, 30*time.Minute, entry.CacheDuration)
 }
 
@@ -105,6 +105,16 @@ func TestParseOryWithAuthProviderConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, config.AuthProvider.JWT, 1)
 	require.Equal(t, "https://auth.mycompany.com", config.AuthProvider.JWT[0].Issuer.URL)
+}
+
+func TestParseAdminAuthProviderConfig(t *testing.T) {
+	setBaseEnv(t)
+	t.Setenv("ADMIN_AUTH_PROVIDER_CONFIG", `{"jwt":[{"issuer":{"url":"https://workspace.example.com","audiences":["fx1"]}}]}`)
+
+	config, err := Parse()
+	require.NoError(t, err)
+	require.Len(t, config.AdminAuthProvider.JWT, 1)
+	require.Equal(t, "https://workspace.example.com", config.AdminAuthProvider.JWT[0].Issuer.URL)
 }
 
 func TestParseFailureCondition(t *testing.T) {

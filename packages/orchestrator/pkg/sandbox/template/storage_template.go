@@ -36,8 +36,13 @@ type storageTemplate struct {
 
 	memfileHeader *utils.SetOnce[*header.Header]
 	rootfsHeader  *utils.SetOnce[*header.Header]
-	localSnapfile File
-	localMetafile File
+	// durableMemfileHeader, when non-nil, is the header the memfile will settle
+	// on (the deduped header while a provisional header is served); Fetch wires
+	// it into the memfile device as its durable header before publishing the
+	// device, so a pause parents off it rather than the provisional header.
+	durableMemfileHeader *utils.SetOnce[*header.Header]
+	localSnapfile        File
+	localMetafile        File
 
 	metrics     blockmetrics.Metrics
 	persistence storage.StorageProvider
@@ -52,6 +57,7 @@ func newTemplateFromStorage(
 	metrics blockmetrics.Metrics,
 	localSnapfile File,
 	localMetafile File,
+	durableMemfileHeader *utils.SetOnce[*header.Header],
 ) (*storageTemplate, error) {
 	paths, err := storage.Paths{
 		BuildID: buildId,
@@ -61,17 +67,18 @@ func newTemplateFromStorage(
 	}
 
 	return &storageTemplate{
-		paths:         paths,
-		localSnapfile: localSnapfile,
-		localMetafile: localMetafile,
-		memfileHeader: memfileHeader,
-		rootfsHeader:  rootfsHeader,
-		metrics:       metrics,
-		persistence:   persistence,
-		memfile:       utils.NewSetOnce[block.ReadonlyDevice](),
-		rootfs:        utils.NewSetOnce[block.ReadonlyDevice](),
-		snapfile:      utils.NewSetOnce[File](),
-		metafile:      utils.NewSetOnce[File](),
+		paths:                paths,
+		localSnapfile:        localSnapfile,
+		localMetafile:        localMetafile,
+		memfileHeader:        memfileHeader,
+		rootfsHeader:         rootfsHeader,
+		durableMemfileHeader: durableMemfileHeader,
+		metrics:              metrics,
+		persistence:          persistence,
+		memfile:              utils.NewSetOnce[block.ReadonlyDevice](),
+		rootfs:               utils.NewSetOnce[block.ReadonlyDevice](),
+		snapfile:             utils.NewSetOnce[File](),
+		metafile:             utils.NewSetOnce[File](),
 	}, nil
 }
 
@@ -210,6 +217,14 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			return nil
 		}
 
+		// Wire the durable header before publishing the device (SetValue), so no
+		// caller can observe the memfile with its durable header unset: a pause
+		// then always parents off the deduped header rather than the provisional
+		// one being served.
+		if t.durableMemfileHeader != nil {
+			memfileStorage.SetDurableHeader(t.durableMemfileHeader)
+		}
+
 		if err := t.memfile.SetValue(memfileStorage); err != nil {
 			return fmt.Errorf("failed to set memfile value: %w", err)
 		}
@@ -304,7 +319,22 @@ func (t *storageTemplate) SchedulingMetadata(ctx context.Context) *orchestrator.
 	// dropping the rootfs affinity data too.
 	var mh *header.Header
 	if memfile, memfileErr := t.memfile.WaitWithContext(ctx); memfileErr == nil {
-		mh = memfile.Header()
+		// Use the durable (deduped) header, not the live one: during the
+		// provisional window memfile.Header() maps dirty pages to a synthetic build
+		// id that is never uploaded or registered, which would put a nonexistent
+		// layer into scheduling metadata. Non-blocking: this runs on the
+		// create/resume response path, so while a provisional swap is still pending
+		// (deduped header not yet known) report rootfs-only metadata rather than
+		// block the response for the whole dedup. No swap pending → live header.
+		if dh, ok := memfile.(interface {
+			DurableHeaderNow() (*header.Header, bool)
+		}); ok {
+			if h, ready := dh.DurableHeaderNow(); ready {
+				mh = h
+			}
+		} else {
+			mh = memfile.Header()
+		}
 	}
 
 	return scheduling.FromHeaders(rh.Metadata.BuildId, mh, rh, 0)
@@ -340,5 +370,5 @@ func (t *storageTemplate) UpdateMetadata(meta metadata.Template) error {
 		return fmt.Errorf("failed to get metafile: %w", err)
 	}
 
-	return meta.ToFile(metafile.Path())
+	return meta.ReplaceFile(metafile.Path())
 }

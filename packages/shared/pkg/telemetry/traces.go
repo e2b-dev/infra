@@ -25,6 +25,7 @@ func NewSpanExporter(ctx context.Context, extraOption ...otlptracegrpc.Option) (
 		otlptracegrpc.WithInsecure(),
 		otlptracegrpc.WithEndpoint(otelCollectorGRPCEndpoint),
 		otlptracegrpc.WithCompressor(gzip.Name),
+		otlptracegrpc.WithMaxRequestSize(otelCollectorMaxRequestSize),
 	}
 	opts = append(opts, extraOption...)
 

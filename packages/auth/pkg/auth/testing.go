@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"github.com/e2b-dev/infra/packages/auth/internal/authcontext"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 )
 
@@ -13,12 +14,12 @@ import (
 func SetUserIDForTest(t *testing.T, c *gin.Context, userID uuid.UUID) {
 	t.Helper()
 
-	setUserID(c, userID)
+	authcontext.SetUserID(c, userID)
 }
 
 // SetTeamInfoForTest sets the team info on the gin context for use in tests.
 func SetTeamInfoForTest(t *testing.T, c *gin.Context, team *types.Team) {
 	t.Helper()
 
-	setTeamInfo(c, team)
+	authcontext.SetTeamInfo(c, team)
 }

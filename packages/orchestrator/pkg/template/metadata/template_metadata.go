@@ -1,5 +1,3 @@
-//go:build linux
-
 package metadata
 
 import (
@@ -31,6 +29,10 @@ const (
 	// carries later-version fields.
 	FilesystemOnlyVersion = DeprecatedVersion + 1
 )
+
+// ErrReplaceCommitted means the replacement is visible, but parent-directory
+// durability could not be confirmed.
+var ErrReplaceCommitted = ioutils.ErrAtomicWriteCommitted
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata")
 
@@ -218,6 +220,20 @@ func (t Template) ToFile(path string) error {
 	err = ioutils.WriteToFileFromReader(path, mr)
 	if err != nil {
 		return fmt.Errorf("failed to write metadata to file: %w", err)
+	}
+
+	return nil
+}
+
+func (t Template) ReplaceFile(path string) error {
+	mr, err := serialize(t)
+	if err != nil {
+		return err
+	}
+
+	err = ioutils.WriteToFileFromReaderAtomically(path, mr)
+	if err != nil {
+		return fmt.Errorf("failed to replace metadata file: %w", err)
 	}
 
 	return nil

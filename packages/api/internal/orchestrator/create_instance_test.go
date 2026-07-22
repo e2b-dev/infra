@@ -42,8 +42,8 @@ func testBuild() queries.EnvBuild {
 }
 
 // newCreateSandboxTestOrchestrator constructs the minimal Orchestrator needed for
-// CreateSandbox. The returned node is already registered.
-func newCreateSandboxTestOrchestrator(t *testing.T) (*Orchestrator, *nodemanager.Node) {
+// CreateSandbox, with a single ready node already registered.
+func newCreateSandboxTestOrchestrator(t *testing.T) *Orchestrator {
 	t.Helper()
 
 	client := redis_utils.SetupInstance(t)
@@ -82,7 +82,7 @@ func newCreateSandboxTestOrchestrator(t *testing.T) (*Orchestrator, *nodemanager
 
 	o.registerNode(node)
 
-	return o, node
+	return o
 }
 
 func testTeam() *teamtypes.Team {
@@ -110,7 +110,7 @@ func TestCreateSandbox_StaleDataAfterConcurrentPause(t *testing.T) {
 	t.Run("lazy fetcher reads fresh data after lock", func(t *testing.T) {
 		t.Parallel()
 
-		o, _ := newCreateSandboxTestOrchestrator(t)
+		o := newCreateSandboxTestOrchestrator(t)
 		team := testTeam()
 		sandboxID := "sbx-race-" + uuid.New().String()[:8]
 		build := testBuild()

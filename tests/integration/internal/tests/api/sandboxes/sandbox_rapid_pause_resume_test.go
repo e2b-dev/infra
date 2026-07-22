@@ -1,11 +1,13 @@
 package sandboxes
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -89,13 +91,35 @@ type chainNode struct {
 func verifyChainOnStorage(t *testing.T, ctx context.Context, chain []chainNode) {
 	t.Helper()
 
-	if os.Getenv("TEMPLATE_BUCKET_NAME") == "" && !storage.IsLocal() {
-		t.Log("storage env not configured (TEMPLATE_BUCKET_NAME / STORAGE_PROVIDER); skipping direct storage verification")
+	// Storage role resolution lives in the orchestrator's config layer; the
+	// test builds its spec from its own env contract instead of importing the
+	// orchestrator module.
+	var (
+		spec storage.Spec
+		err  error
+	)
+	switch {
+	case os.Getenv("TEMPLATE_STORAGE_URL") != "":
+		spec, err = storage.ParseStorageURL(os.Getenv("TEMPLATE_STORAGE_URL"))
+	case os.Getenv("TEMPLATE_BUCKET_NAME") != "":
+		spec = storage.Spec{
+			Provider: storage.Provider(cmp.Or(os.Getenv("STORAGE_PROVIDER"), string(storage.GCPStorageProvider))),
+			Bucket:   os.Getenv("TEMPLATE_BUCKET_NAME"),
+		}
+		spec.UsePathStyle = strings.EqualFold(os.Getenv("S3_USE_PATH_STYLE"), "true")
+	case strings.EqualFold(os.Getenv("STORAGE_PROVIDER"), "Local"):
+		spec = storage.Spec{
+			Provider: storage.LocalStorageProvider,
+			BasePath: cmp.Or(os.Getenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH"), "/tmp/templates"),
+		}
+	default:
+		t.Log("template storage not configured (TEMPLATE_STORAGE_URL / TEMPLATE_BUCKET_NAME / STORAGE_PROVIDER); skipping direct storage verification")
 
 		return
 	}
+	require.NoError(t, err, "resolve template storage")
 
-	persistence, err := storage.GetStorageProvider(ctx, storage.TemplateStorageConfig)
+	persistence, err := storage.NewProvider(ctx, spec)
 	require.NoError(t, err, "build storage provider")
 
 	ancestors := make(map[string][]string, len(chain))
@@ -147,14 +171,25 @@ func verifyChecksum(t *testing.T, ctx context.Context, persistence storage.Stora
 	obj, err := persistence.OpenSeekable(ctx, dataPath)
 	require.NoErrorf(t, err, "%s/%s: open data file %s", node.name, fileName, dataPath)
 
-	rc, _, err := obj.OpenRangeReader(ctx, 0, bd.Size, bd.FrameData)
-	require.NoErrorf(t, err, "%s/%s: open range reader", node.name, fileName)
-	defer rc.Close(context.WithoutCancel(ctx))
-
 	hasher := sha256.New()
-	n, err := io.Copy(hasher, rc)
-	require.NoErrorf(t, err, "%s/%s: stream data through hasher", node.name, fileName)
-	require.Equalf(t, bd.Size, n, "%s/%s: streamed bytes (%d) differ from BuildData.Size (%d)", node.name, fileName, n, bd.Size)
+	// OpenRangeReader returns one compression frame, so verify each frame separately.
+	for offset := int64(0); offset < bd.Size; {
+		chunkLength := min(int64(storage.DefaultCompressFrameSize), bd.Size-offset)
+		if bd.FrameData.IsCompressed() {
+			frame, err := bd.FrameData.LocateUncompressed(offset)
+			require.NoErrorf(t, err, "%s/%s: locate frame at offset %d", node.name, fileName, offset)
+			chunkLength = min(int64(frame.Length), bd.Size-offset)
+		}
+
+		rc, _, err := obj.OpenRangeReader(ctx, offset, chunkLength, bd.FrameData)
+		require.NoErrorf(t, err, "%s/%s: open range reader", node.name, fileName)
+		n, readErr := io.Copy(hasher, rc)
+		_, closeErr := rc.Close(context.WithoutCancel(ctx))
+		require.NoErrorf(t, readErr, "%s/%s: stream data through hasher", node.name, fileName)
+		require.NoErrorf(t, closeErr, "%s/%s: close range reader", node.name, fileName)
+		require.Equalf(t, chunkLength, n, "%s/%s: streamed chunk bytes (%d) at offset %d differ from requested size (%d)", node.name, fileName, n, offset, chunkLength)
+		offset += n
+	}
 
 	var got [32]byte
 	copy(got[:], hasher.Sum(nil))

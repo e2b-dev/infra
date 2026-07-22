@@ -10,6 +10,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/scheduling"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -51,6 +52,36 @@ type Snapshot struct {
 	RootfsBlockSize uint64
 
 	cleanup *Cleanup
+}
+
+// NewFilesystemOnlySnapshot wraps a host-generated rootfs layer for upload.
+// It owns rootfsDiff and metafile until the template cache accepts them.
+func NewFilesystemOnlySnapshot(
+	ctx context.Context,
+	buildID uuid.UUID,
+	rootfsDiff build.Diff,
+	rootfsHeader *header.Header,
+	metafile template.File,
+) *Snapshot {
+	cleanup := NewCleanup()
+	cleanup.AddNoContext(ctx, rootfsDiff.Close)
+	cleanup.AddNoContext(ctx, metafile.Close)
+
+	return &Snapshot{
+		MemorySnapshot: MemorySnapshot{
+			Diff:       build.Diff(&build.NoDiff{}),
+			DiffHeader: NewResolvedDiffHeader(nil),
+		},
+		RootfsDiff:         rootfsDiff,
+		RootfsDiffHeader:   NewResolvedDiffHeader(rootfsHeader),
+		Snapfile:           &template.NoopFile{},
+		Metafile:           metafile,
+		BuildID:            buildID,
+		SchedulingMetadata: scheduling.FromHeaders(buildID, nil, rootfsHeader, 0),
+		FilesystemSnapshot: true,
+		RootfsBlockSize:    rootfsHeader.Metadata.BlockSize,
+		cleanup:            cleanup,
+	}
 }
 
 func (s *Snapshot) Close(ctx context.Context) error {

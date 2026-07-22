@@ -1,5 +1,3 @@
-//go:build linux
-
 package metadata
 
 import (
@@ -59,35 +57,36 @@ func TestWithPrefetchSetsMappingAndPreservesFields(t *testing.T) {
 }
 
 // TestPrefetchSurvivesMetadataFileRoundTrip is the persist→resume link the
-// consume path depends on: the harvest writes the mapping via ToFile/UploadMetadata
+// consume path depends on: the harvest writes the mapping via ReplaceFile/UploadMetadata
 // and the resume reads it via FromFile. If Prefetch did not survive JSON
 // serialization (e.g. a missing/renamed tag), the whole feature would silently
 // no-op and every in-memory test above would still pass — so assert the round trip.
 func TestPrefetchSurvivesMetadataFileRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	orig := Template{
+	base := Template{
 		Version:  CurrentVersion,
 		Template: TemplateMetadata{BuildID: "build-rt", KernelVersion: "6.1", FirecrackerVersion: "1.14"},
 		Context:  Context{User: "root"},
-		Prefetch: &Prefetch{Memory: &MemoryPrefetchMapping{
-			Indices:     []uint64{3, 1, 2},
-			AccessTypes: []AccessType{"r", "w", "p"},
-			BlockSize:   2 << 20,
-		}},
 	}
+	updated := base.WithPrefetch(&Prefetch{Memory: &MemoryPrefetchMapping{
+		Indices:     []uint64{3, 1, 2},
+		AccessTypes: []AccessType{"r", "w", "p"},
+		BlockSize:   2 << 20,
+	}})
 
 	path := filepath.Join(t.TempDir(), "metadata.json")
-	require.NoError(t, orig.ToFile(path))
+	require.NoError(t, base.ToFile(path))
+	require.NoError(t, updated.ReplaceFile(path))
 
 	got, err := FromFile(path)
 	require.NoError(t, err)
 
 	require.NotNil(t, got.Prefetch, "Prefetch must survive ToFile/FromFile")
 	require.NotNil(t, got.Prefetch.Memory)
-	assert.Equal(t, orig.Prefetch.Memory.Indices, got.Prefetch.Memory.Indices, "ordered indices must be preserved")
-	assert.Equal(t, orig.Prefetch.Memory.AccessTypes, got.Prefetch.Memory.AccessTypes)
-	assert.Equal(t, orig.Prefetch.Memory.BlockSize, got.Prefetch.Memory.BlockSize)
+	assert.Equal(t, updated.Prefetch.Memory.Indices, got.Prefetch.Memory.Indices, "ordered indices must be preserved")
+	assert.Equal(t, updated.Prefetch.Memory.AccessTypes, got.Prefetch.Memory.AccessTypes)
+	assert.Equal(t, updated.Prefetch.Memory.BlockSize, got.Prefetch.Memory.BlockSize)
 }
 
 func TestMemoryPrefetchMappingCount(t *testing.T) {

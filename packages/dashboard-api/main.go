@@ -247,9 +247,21 @@ func run() int {
 	}
 	swagger.Servers = nil
 
+	adminVerifier, err := sharedauth.NewAdminVerifier(ctx, config.AdminAuthProvider, authClient)
+	if err != nil {
+		l.Error(ctx, "initializing admin JWT verifier", zap.Error(err))
+
+		return 1
+	}
+
+	if adminVerifier == nil {
+		l.Warn(ctx, "ADMIN_AUTH_PROVIDER_CONFIG is not configured; /admin/v1 endpoints will reject requests with 401")
+	}
+
 	authenticationFunc := sharedauth.CreateAuthenticationFunc(
 		[]sharedauth.Authenticator{
 			sharedauth.NewAdminApiKeyAuthenticator(config.AdminToken),
+			sharedauth.NewAdminJWTAuthenticator(adminVerifier),
 			sharedauth.NewAuthProviderBearerAuthenticator(apiStore.GetUserIDFromAuthProviderToken),
 			sharedauth.NewAuthProviderTeamAuthenticator(apiStore.GetTeamFromAuthProviderToken),
 		},

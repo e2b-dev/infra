@@ -160,6 +160,7 @@ func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node, file
 			VolumeMounts:            sbx.VolumeMounts,
 			FilesystemOnly:          filesystemOnly,
 			AutoPauseFilesystemOnly: sbx.AutoPauseFilesystemOnly,
+			Iam:                     sbx.Iam,
 		},
 		OriginNodeID: node.ID,
 		Status:       types.BuildStatusSnapshotting,

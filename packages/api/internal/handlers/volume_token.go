@@ -49,6 +49,9 @@ func generateVolumeContentToken(config cfg.VolumesTokenConfig, volume queries.Vo
 	}
 
 	token := jwt.NewWithClaims(config.SigningMethod, claims)
+	// `kid` is the standard header verifiers use to select a key from a JWKS;
+	// `tokid` is kept for backwards compatibility.
+	token.Header["kid"] = config.SigningKeyName
 	token.Header["tokid"] = config.SigningKeyName
 	signedToken, err := token.SignedString(config.SigningKey)
 	if err != nil {

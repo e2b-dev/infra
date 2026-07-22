@@ -186,17 +186,25 @@ func convertDatabaseMountsToOrchestratorMounts(volumes []*types.SandboxVolumeMou
 	return results
 }
 
-// buildResumeSandboxData returns a SandboxDataFetcher that fetches snapshot data
-// from the cache and builds SandboxMetadata for resume operations.
-// The returned callback is called inside the sandbox lock to prevent race conditions.
+// buildResumeSandboxData returns a SandboxDataFetcher for resuming a sandbox
+// from its own snapshot.
 func (a *APIStore) buildResumeSandboxData(sandboxID string, autoPauseOverride *bool) orchestrator.SandboxDataFetcher {
+	return a.buildResumeSandboxDataFromSnapshot(sandboxID, sandboxID, autoPauseOverride)
+}
+
+// buildResumeSandboxDataFromSnapshot returns a SandboxDataFetcher that fetches
+// snapshot data for snapshotSandboxID from the cache and builds SandboxMetadata
+// for resume operations. sandboxID is the ID the sandbox will run under — it
+// differs from snapshotSandboxID when forking — and scopes the envd access token.
+// The returned callback is called inside the sandbox lock to prevent race conditions.
+func (a *APIStore) buildResumeSandboxDataFromSnapshot(snapshotSandboxID, sandboxID string, autoPauseOverride *bool) orchestrator.SandboxDataFetcher {
 	return func(ctx context.Context) (orchestrator.SandboxMetadata, *api.APIError) {
-		lastSnapshot, err := a.snapshotCache.Get(ctx, sandboxID)
+		lastSnapshot, err := a.snapshotCache.Get(ctx, snapshotSandboxID)
 		if err != nil {
 			return orchestrator.SandboxMetadata{}, &api.APIError{
 				Code:      http.StatusInternalServerError,
 				ClientMsg: "Error when getting snapshot",
-				Err:       fmt.Errorf("error getting last snapshot for sandbox '%s': %w", sandboxID, err),
+				Err:       fmt.Errorf("error getting last snapshot for sandbox '%s': %w", snapshotSandboxID, err),
 			}
 		}
 
@@ -232,11 +240,17 @@ func (a *APIStore) buildResumeSandboxData(sandboxID string, autoPauseOverride *b
 		// snapshot: there is no resume-time override for it. Changing the kind
 		// requires creating a new sandbox with the desired autoPauseMemory.
 		var autoPauseFilesystemOnly bool
+		// A fork (snapshotSandboxID != sandboxID) inherits the parent sandbox's IAM
+		// configuration from the snapshot, the same as a resume. The resumed/forked
+		// execution still gets a freshly generated execution ID upstream, so no
+		// stored identity subject is carried across.
+		var iam *types.SandboxIam
 		if snap.Config != nil {
 			network = snap.Config.Network
 			autoResume = snap.Config.AutoResume
 			volumes = snap.Config.VolumeMounts
 			autoPauseFilesystemOnly = snap.Config.AutoPauseFilesystemOnly
+			iam = snap.Config.Iam
 		}
 
 		return orchestrator.SandboxMetadata{
@@ -252,7 +266,9 @@ func (a *APIStore) buildResumeSandboxData(sandboxID string, autoPauseOverride *b
 			AutoResume:              autoResume,
 			VolumeMounts:            convertDatabaseMountsToOrchestratorMounts(volumes),
 			EnvdAccessToken:         envdAccessToken,
+			Iam:                     iam,
 			NodeID:                  &nodeID,
+			SnapshotSandboxID:       snapshotSandboxID,
 		}, nil
 	}
 }

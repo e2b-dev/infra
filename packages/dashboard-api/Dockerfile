@@ -1,5 +1,5 @@
-ARG GOLANG_VERSION=1.26.3
-ARG ALPINE_VERSION=3.22
+ARG GOLANG_VERSION=1.26.5
+ARG ALPINE_VERSION=3.24
 
 FROM golang:${GOLANG_VERSION}-alpine${ALPINE_VERSION} AS builder
 
@@ -30,6 +30,7 @@ RUN go mod download
 WORKDIR /build
 
 COPY ./auth/pkg ./auth/pkg
+COPY ./auth/internal ./auth/internal
 COPY ./clickhouse/pkg ./clickhouse/pkg
 COPY ./shared/pkg ./shared/pkg
 COPY ./db/client ./db/client

@@ -49,7 +49,7 @@ flowchart TB
     subgraph datastores["State"]
         PG[("PostgreSQL<br/>teams, templates, builds, snapshots")]
         RD[("Redis<br/>running sandboxes, routing catalog, caches")]
-        CH[("ClickHouse<br/>metrics, events")]
+        CH[("ClickHouse<br/>metrics, events, optional logs")]
         OS[("Object storage GCS/S3<br/>template + snapshot artifacts")]
     end
 
@@ -106,6 +106,14 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
   templates and builds, teams, volumes, API keys/access tokens, admin operations.
 - **Auth** (via `packages/auth`): team API keys (`X-API-Key`, `e2b_` prefix), auth-provider JWTs
   (OIDC), admin token. Backed by an auth DB (Postgres) with a Redis team cache.
+- **Workload identity**: sandbox create accepts an optional `iam.tokens` map of caller-named
+  workload-token definitions (each an exact `audience` and `tokenType`). A non-empty, validated
+  map enables workload identity, whose identity the orchestrator derives from the sandbox's
+  already-authoritative team/sandbox/execution/template IDs; the definitions are passed to the
+  orchestrator in `SandboxConfig.iam`. The API mints no credential and delivers nothing into the
+  sandbox; file-based delivery is rejected at admission. Definitions are persisted in the
+  running-sandbox (Redis) and paused-snapshot (Postgres) state so they survive pause/resume and
+  orchestrator re-sync; a fork starts a new workload and does not inherit them.
 - **Placement**: keeps a live map of orchestrator nodes (discovered via Nomad, Kubernetes, or a
   static list). Chooses a node per sandbox with a **best-of-K** algorithm
   (`internal/orchestrator/placement/`): sample K ready nodes, score by CPU
@@ -115,8 +123,10 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
   (templates, builds, snapshots, teams) live in Postgres.
 - **Extra listeners**: internal gRPC :5009 and edge gRPC :5109 expose `ResumeSandbox` so
   client-proxy can wake paused sandboxes on incoming traffic.
-- Reads ClickHouse for sandbox/team metrics endpoints; queries Loki for logs; LaunchDarkly
-  feature flags gate placement parameters, rate limits, and rollouts.
+- Reads ClickHouse for sandbox/team metrics endpoints. Sandbox and template-build logs default to
+  Loki, with a LaunchDarkly-gated ClickHouse read path for local-cluster logs during the log
+  storage migration. LaunchDarkly feature flags also gate placement parameters, rate limits, and
+  rollouts.
 
 ### Orchestrator (`packages/orchestrator`)
 
@@ -151,7 +161,10 @@ Key mechanisms (all under `pkg/sandbox/`):
   reused; slot allocation is coordinated through Consul KV.
 - **Sandbox proxy** (:5007, `pkg/proxy/`): reverse-proxies incoming traffic from client-proxy to
   the sandbox's slot IP and requested port, enforcing per-sandbox traffic access tokens.
-- Writes sandbox lifecycle **events** and cgroup **host stats** to ClickHouse; exports metrics via OTel.
+- Writes sandbox lifecycle **events** and cgroup **host stats** to ClickHouse; exports metrics via
+  OTel. Sandbox and template-build log writes go through a flag-resolved HTTP route: the legacy
+  collector remains the fallback primary destination, and configured shadow destinations can mirror
+  writes during collector/storage migrations without changing sandbox behavior.
 
 ### Envd (`packages/envd`)
 
@@ -180,7 +193,13 @@ the API's `ResumeSandbox` gRPC and retries — paused sandboxes wake transparent
 
 A separate REST service (port 3010, spec `spec/openapi-dashboard.yml`) consumed by the web
 dashboard, not the SDK: team management/provisioning, template tags, build listings, admin
-bootstrap. Talks to Postgres and ClickHouse; never talks to orchestrators.
+bootstrap. Its workspace-agnostic `/admin/v1` operations are defined in the same dashboard
+OpenAPI contract and registered on the existing router. Their `AdminJWTAuth` OpenAPI security scheme
+accepts only short-lived service JWTs verified against the workspace-api
+`/.well-known/jwks.json` endpoint, with accepted signing methods derived from each JWK's required
+`alg` metadata. Issuers and audiences are configured through the JSON `ADMIN_AUTH_PROVIDER_CONFIG` value —
+the same config shape as `AUTH_PROVIDER_CONFIG`. Talks to Postgres and ClickHouse; never talks to
+orchestrators.
 
 ### Docker reverse proxy (`packages/docker-reverse-proxy`)
 
@@ -194,7 +213,7 @@ into the cloud artifact registry (`/v2/e2b/custom-envs/<templateID>` → project
 |---|---|---|
 | **PostgreSQL** | `packages/db` (goose migrations, sqlc) | Durable control-plane state: `teams`, `users`, `tiers` (quotas), `envs` (templates), `env_builds` (build rows: vcpu, ram_mb, status, versions), `env_aliases`, `snapshots` (paused sandboxes), `team_api_keys`, `access_tokens`, `volumes`, `clusters` |
 | **Redis** | API, client-proxy, orchestrator | Ephemeral runtime state: running-sandbox store (source of truth), sandbox→node routing catalog, team/template/snapshot caches, rate limiting, P2P chunk peer registry |
-| **ClickHouse** | `packages/clickhouse` | Time-series/analytics: `metrics_gauge`/`metrics_sum` (written by the OTel collector), `sandbox_events`, `sandbox_host_stats` (written by orchestrator), team metrics. Read by API and dashboard-api |
+| **ClickHouse** | `packages/clickhouse` | Time-series/analytics: `metrics_gauge`/`metrics_sum` (written by the OTel collector), `sandbox_events`, `sandbox_host_stats` (written by orchestrator), team metrics, and optionally `sandbox_logs` during the log migration. Read by API and dashboard-api |
 | **Object storage** (GCS/S3/local, `packages/shared/pkg/storage`) | orchestrator, template-manager | Template & snapshot artifacts, keyed by build ID: `{buildID}/memfile`, `{buildID}/rootfs.ext4`, `{buildID}/snapfile`, `{buildID}/metadata.json` + `.header` index files |
 | **Consul KV** | orchestrator | Network slot allocation across restarts |
 
@@ -293,17 +312,19 @@ sequenceDiagram
     C->>API: POST /v2/templates/{id}/builds/{buildID} (recipe: steps, start/ready cmd)
     API->>TM: gRPC TemplateCreate(TemplateConfig)
     TM->>TM: pull image → inject envd/provisioning → extract ext4 rootfs
-    TM->>FC: boot VM per phase: provision → user steps → finalize → optimize
+    TM->>FC: boot VM per phase: provision → user steps
+    TM->>TM: resize disk on host
+    TM->>FC: boot VM per phase: finalize → optimize
     TM->>OS: upload layers + final {buildID}/memfile, rootfs.ext4, snapfile, metadata
     API->>TM: poll TemplateBuildStatus
     API->>API: mark build ready in Postgres
 ```
 
 Builds are **layered** (`pkg/template/build/phases/`): base → user → one layer per recipe step →
-finalize → optimize. Each layer is hashed and cached, so rebuilds only re-run changed steps; each
-non-cached phase runs in a real Firecracker VM and its pause-diff becomes the layer. The optimize
-phase records which memory pages a fresh resume touches, producing prefetch hints that speed up
-future sandbox starts.
+resize disk → finalize → optimize. Each layer is hashed and cached, so rebuilds only re-run changed
+steps. Resize disk grows the quiescent rootfs on the host; the other non-cached phases run in a real
+Firecracker VM and their pause-diffs become layers. The optimize phase records which memory pages a
+fresh resume touches, producing prefetch hints that speed up future sandbox starts.
 
 ## Deployment topology
 
@@ -346,7 +367,9 @@ flowchart TB
 - PostgreSQL is external (connection string via secrets); Redis runs as a Nomad job or as a
   managed service; ClickHouse runs on its own pool.
 - Observability: everything exports OTel; the collector fans out to ClickHouse (product metrics)
-  and Grafana Cloud/stack; logs flow through Vector to Loki.
+  and Grafana Cloud/stack. Logs default to the legacy Vector → Loki path; dynamic log routing can
+  select a primary collector and shadow collectors, and local-cluster log reads can be switched to
+  ClickHouse with `logs-read-config` after `sandbox_logs` is populated.
 
 ## Repository layout
 
@@ -363,7 +386,7 @@ packages/
   db/                   Postgres migrations (goose) + queries (sqlc)
   clickhouse/           ClickHouse schema, batching writers, query clients
   otel-collector/       Collector config
-  nomad-nodepool-apm/   Nomad autoscaler plugin (scale job = node count)
+  nomad-nodepool-apm/   Nomad autoscaler metric and deployment-aware target plugins
   local-dev/            docker-compose local stack + DB seeding
 spec/                   OpenAPI specs (public, edge, dashboard) — codegen sources
 iac/                    Terraform + Nomad jobs (provider-gcp, provider-aws, shared modules)

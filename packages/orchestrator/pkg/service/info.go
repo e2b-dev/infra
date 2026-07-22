@@ -53,6 +53,23 @@ func (s *ServiceInfo) SetStatus(ctx context.Context, status orchestratorinfo.Ser
 	s.statusMu.Lock()
 	defer s.statusMu.Unlock()
 
+	s.setStatus(ctx, status)
+}
+
+func (s *ServiceInfo) OverrideStatus(ctx context.Context, status orchestratorinfo.ServiceInfoStatus) bool {
+	s.statusMu.Lock()
+	defer s.statusMu.Unlock()
+
+	if s.status.Status == orchestratorinfo.ServiceInfoStatus_Draining && status == orchestratorinfo.ServiceInfoStatus_Standby {
+		return false
+	}
+
+	s.setStatus(ctx, status)
+
+	return true
+}
+
+func (s *ServiceInfo) setStatus(ctx context.Context, status orchestratorinfo.ServiceInfoStatus) {
 	if s.status.Status != status {
 		logger.L().Info(ctx, "Service status changed", zap.String("status", status.String()))
 		s.status = ServiceStatus{Status: status, ChangedAt: time.Now()}

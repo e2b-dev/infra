@@ -86,6 +86,72 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 	}
 }
 
+func TestBuildSandboxIam(t *testing.T) {
+	t.Parallel()
+
+	tokens := func(defs api.SandboxIamTokens) *api.SandboxIam { return &api.SandboxIam{Tokens: &defs} }
+	valid := api.SandboxIamToken{Audience: "sts.amazonaws.com", TokenType: "JWT-SVID"}
+
+	tooMany := api.SandboxIamTokens{}
+	for i := range maxIamTokens + 1 {
+		tooMany[fmt.Sprintf("t%d", i)] = valid
+	}
+
+	tests := []struct {
+		name    string
+		iam     *api.SandboxIam
+		want    *dbtypes.SandboxIam
+		wantErr bool
+	}{
+		{name: "nil iam is disabled", iam: nil},
+		{name: "nil tokens is disabled", iam: &api.SandboxIam{}},
+		{name: "empty tokens is disabled", iam: tokens(api.SandboxIamTokens{})},
+		{
+			name: "valid token is preserved exactly",
+			iam:  tokens(api.SandboxIamTokens{"aws": valid}),
+			want: &dbtypes.SandboxIam{Tokens: map[string]dbtypes.SandboxIamToken{"aws": {Audience: "sts.amazonaws.com", TokenType: "JWT-SVID"}}},
+		},
+		{
+			name:    "empty name is rejected",
+			iam:     tokens(api.SandboxIamTokens{"": valid}),
+			wantErr: true,
+		},
+		{
+			name:    "empty audience is rejected",
+			iam:     tokens(api.SandboxIamTokens{"aws": {Audience: "", TokenType: "JWT-SVID"}}),
+			wantErr: true,
+		},
+		{
+			name:    "unsupported token type is rejected",
+			iam:     tokens(api.SandboxIamTokens{"aws": {Audience: "sts.amazonaws.com", TokenType: "OIDC"}}),
+			wantErr: true,
+		},
+		{
+			name:    "too many tokens is rejected",
+			iam:     tokens(tooMany),
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, apiErr := buildSandboxIam(tt.iam)
+			if tt.wantErr {
+				require.NotNil(t, apiErr)
+				assert.Equal(t, http.StatusBadRequest, apiErr.Code)
+				assert.Nil(t, got)
+
+				return
+			}
+
+			require.Nil(t, apiErr)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestValidateNetworkConfig(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

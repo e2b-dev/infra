@@ -1,5 +1,5 @@
-ARG GOLANG_VERSION=1.26.3
-ARG ALPINE_VERSION=3.22
+ARG GOLANG_VERSION=1.26.5
+ARG ALPINE_VERSION=3.24
 
 # Build stage
 FROM golang:${GOLANG_VERSION}-alpine${ALPINE_VERSION} AS builder
@@ -26,4 +26,3 @@ COPY --from=builder /nomad-nodepool-apm /nomad-nodepool-apm
 # The plugin binary will be extracted from this image
 # to be used with the Nomad Autoscaler
 ENTRYPOINT ["/nomad-nodepool-apm"]
-

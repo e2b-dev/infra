@@ -148,6 +148,53 @@ func TestRedisCache_Delete(t *testing.T) {
 	assert.ErrorIs(t, err, redis.Nil)
 }
 
+// A writer (GetOrSet backfill) holds the per-key lock across its SET. Delete
+// must wait for that lock — even past the 5s acquire timeout used by writers —
+// so the DEL is ordered after the in-flight write and stale data cannot be
+// repopulated for a full TTL (e.g. a revoked API key resurrected into the auth
+// cache).
+func TestRedisCache_DeleteWaitsForInflightWriter(t *testing.T) {
+	t.Parallel()
+	redisClient := redis_utils.SetupInstance(t)
+	rc := newTestRedisCache(t, redisClient)
+	defer rc.Close(t.Context())
+
+	key := "key1"
+	callbackStarted := make(chan struct{})
+	writerDone := make(chan struct{})
+
+	var eg errgroup.Group
+	eg.Go(func() error {
+		defer close(writerDone)
+		_, err := rc.GetOrSet(t.Context(), key, func(_ context.Context, _ string) (testValue, error) {
+			close(callbackStarted)
+			// Hold the write lock longer than the acquire timeout writers use,
+			// simulating a callback stalled on a slow backing store.
+			time.Sleep(acquireLockTimeout + time.Second)
+
+			return testValue{ID: "9", Name: "stale"}, nil
+		})
+
+		return err
+	})
+
+	<-callbackStarted
+	rc.Delete(t.Context(), key)
+
+	// Delete must have waited for the writer's lock, so by the time it
+	// returns the writer's SET has already happened and been removed.
+	select {
+	case <-writerDone:
+	default:
+		t.Fatal("Delete returned while the writer still held the lock; the writer's SET could repopulate stale data")
+	}
+
+	require.NoError(t, eg.Wait())
+
+	_, err := redisClient.Get(t.Context(), rc.RedisKey(key)).Result()
+	assert.ErrorIs(t, err, redis.Nil, "the DEL must be ordered after the in-flight writer's SET")
+}
+
 func TestRedisCache_SetWritesRedis(t *testing.T) {
 	t.Parallel()
 	redisClient := redis_utils.SetupInstance(t)

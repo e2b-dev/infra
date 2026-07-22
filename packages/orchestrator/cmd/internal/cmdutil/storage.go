@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	gcsstorage "cloud.google.com/go/storage"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 // IsGCSPath checks if the path is a GCS path (gs:// or gs:).
@@ -35,28 +37,21 @@ func ExtractBucketName(path string) string {
 	return strings.TrimPrefix(normalized, "gs://")
 }
 
-// SetupStorage configures storage environment variables based on the storage path.
-// If path starts with "gs://" or "gs:", configures GCS storage.
-// Otherwise, configures local storage.
-func SetupStorage(storagePath string) error {
-	absPath := func(p string) string {
-		abs, err := filepath.Abs(p)
-		if err != nil {
-			return p
-		}
-
-		return abs
-	}
-
+// TemplateSpec resolves the template storage destination from the -storage
+// flag value: "gs://bucket" (or "gs:bucket") addresses GCS, anything else is
+// a local directory. The flag is authoritative — no environment variables are
+// consulted.
+func TemplateSpec(storagePath string) (storage.Spec, error) {
 	if IsGCSPath(storagePath) {
-		os.Setenv("STORAGE_PROVIDER", "GCPBucket")
-		os.Setenv("TEMPLATE_BUCKET_NAME", ExtractBucketName(storagePath))
-	} else {
-		os.Setenv("STORAGE_PROVIDER", "Local")
-		os.Setenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", absPath(filepath.Join(storagePath, "templates")))
+		return storage.ParseStorageURL(NormalizeGCSPath(storagePath))
 	}
 
-	return nil
+	basePath := filepath.Join(storagePath, "templates")
+	if abs, err := filepath.Abs(basePath); err == nil {
+		basePath = abs
+	}
+
+	return storage.Spec{Provider: storage.LocalStorageProvider, BasePath: basePath}, nil
 }
 
 // ReadFile reads a file from local storage or GCS.

@@ -17,7 +17,10 @@ import (
 
 	"github.com/Merovius/nbd/nbdnl"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.uber.org/zap"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
@@ -94,11 +97,21 @@ func NewDirectPathMount(b block.Device, devicePool *DevicePool, featureFlags *fe
 }
 
 func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err error) {
+	// The connect + wait-for-connected poll loop (and device-pool contention) are
+	// otherwise invisible; both add up when this is opened once per measure/resize.
+	ctx, span := tracer.Start(ctx, "direct-path-mount-open")
+
 	ctx, d.cancelfn = context.WithCancel(ctx)
 
 	defer func() {
 		// Set the device index to the one returned, correctly capture error values
 		d.deviceIndex = retDeviceIndex
+		span.SetAttributes(attribute.Int64("nbd.device_index", int64(retDeviceIndex)))
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+		span.End()
 		logger.L().Debug(ctx, "opening direct path mount", zap.Uint32("device_index", d.deviceIndex), zap.Error(err))
 	}()
 
@@ -238,6 +251,33 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 	telemetry.ReportEvent(ctx, "connected to NBD")
 
 	return deviceIndex, nil
+}
+
+// Flush writes all pending data through the NBD connection and then clears the
+// kernel's block-device buffers. Call this before reading or exporting the
+// backend directly so it cannot observe writes that are still cached by Linux.
+func (d *DirectPathMount) Flush(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "direct-path-mount-flush")
+	defer span.End()
+
+	path := GetDevicePath(d.deviceIndex)
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("open NBD device for flush: %w", err)
+	}
+	defer func() {
+		if err := file.Close(); err != nil {
+			logger.L().Warn(ctx, "failed to close NBD device after flush", zap.Error(err), zap.String("path", path))
+		}
+	}()
+
+	// BLKFLSBUF completes all dirty pages as NBD writes to the in-process
+	// backend and invalidates the cache; fsync would only add the unsupported NBD_CMD_FLUSH.
+	if err := unix.IoctlSetInt(int(file.Fd()), unix.BLKFLSBUF, 0); err != nil {
+		return fmt.Errorf("flush NBD device buffers: %w", err)
+	}
+
+	return nil
 }
 
 func (d *DirectPathMount) Close(ctx context.Context) error {
