@@ -27,6 +27,12 @@ const MinEnvdVersionForHeapCollapse = "0.6.5"
 // filesystem-only pause. Older envds fall back to a plain guest sync.
 const MinEnvdVersionForFsFreeze = "0.6.6"
 
+// MinEnvdVersionForUpgrade is the first envd that has the live-upgrade
+// POST /upgrade endpoint + same-PID handover. The resume-time auto-upgrade
+// trigger delivers to the *running* (old) envd, so anything older would 404 or
+// hang the POST and must be skipped.
+const MinEnvdVersionForUpgrade = "0.6.11"
+
 func sanitizeVersion(version string) string {
 	if len(version) > 0 && version[0] != 'v' {
 		version = "v" + version
