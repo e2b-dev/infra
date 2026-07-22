@@ -61,7 +61,7 @@ func TestPostAdminTeamsTeamIDApiKeysCreatesTeamKey(t *testing.T) {
 		t.Fatalf("expected admin-created key to have nil creator, got %v", *body.CreatedBy)
 	}
 
-	keys, err := testDB.AuthDB.Read.GetTeamAPIKeysWithCreator(t.Context(), teamID)
+	keys, err := testDB.AuthDB.GetTeamAPIKeysWithCreator(t.Context(), teamID)
 	if err != nil {
 		t.Fatalf("failed to list API keys: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestPostAdminTeamsTeamIDApiKeysRejectsBlockedTeam(t *testing.T) {
 		t.Fatalf("expected status 403, got %d: %s", recorder.Code, recorder.Body.String())
 	}
 
-	keys, err := testDB.AuthDB.Read.GetTeamAPIKeysWithCreator(t.Context(), teamID)
+	keys, err := testDB.AuthDB.GetTeamAPIKeysWithCreator(t.Context(), teamID)
 	if err != nil {
 		t.Fatalf("failed to list API keys: %v", err)
 	}
@@ -223,7 +223,7 @@ func TestDeleteAdminTeamsTeamIDApiKeysDeletesTeamKey(t *testing.T) {
 		t.Fatalf("expected delete status 204, got %d: %s", deleteCtx.Writer.Status(), deleteRecorder.Body.String())
 	}
 
-	keys, err := testDB.AuthDB.Read.GetTeamAPIKeysWithCreator(t.Context(), teamID)
+	keys, err := testDB.AuthDB.GetTeamAPIKeysWithCreator(t.Context(), teamID)
 	if err != nil {
 		t.Fatalf("failed to list API keys: %v", err)
 	}

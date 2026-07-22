@@ -7,10 +7,10 @@ import (
 
 func defaultTeamNameFromOIDCUserName(name *string) string {
 	if name == nil || strings.TrimSpace(*name) == "" {
-		return "Default Team"
+		return "Personal Project"
 	}
 
-	return capitalizeFirstLetter(firstWord(*name)) + "'s Default Team"
+	return capitalizeFirstLetter(firstWord(*name)) + "'s Project"
 }
 
 func firstWord(value string) string {

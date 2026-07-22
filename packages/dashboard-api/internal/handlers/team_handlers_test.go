@@ -263,7 +263,7 @@ func TestPostTeamsTeamIDMembers_AllowsInviteFromSSOOrg(t *testing.T) {
 		t.Fatalf("expected 201 for an in-org invite, got %d: %s", ginCtx.Writer.Status(), recorder.Body.String())
 	}
 
-	memberships, err := testDB.AuthDB.Read.GetTeamsWithUsersTeams(ctx, inviteeID)
+	memberships, err := testDB.AuthDB.GetTeamsWithUsersTeams(ctx, inviteeID)
 	if err != nil {
 		t.Fatalf("failed to read memberships: %v", err)
 	}
@@ -412,11 +412,11 @@ func createHandlerTestUser(t *testing.T, db *testutils.Database) uuid.UUID {
 	userID := uuid.New()
 	email := handlerTestUserEmail(userID)
 
-	if err := db.AuthDB.Write.UpsertPublicUser(t.Context(), userID); err != nil {
+	if err := db.AuthDB.UpsertPublicUser(t.Context(), userID); err != nil {
 		t.Fatalf("failed to create public user: %v", err)
 	}
 
-	team, err := db.AuthDB.Write.CreateTeam(t.Context(), authqueries.CreateTeamParams{
+	team, err := db.AuthDB.CreateTeam(t.Context(), authqueries.CreateTeamParams{
 		Name:  email,
 		Tier:  testBaseTier,
 		Email: email,
@@ -425,7 +425,7 @@ func createHandlerTestUser(t *testing.T, db *testutils.Database) uuid.UUID {
 		t.Fatalf("failed to create default team: %v", err)
 	}
 
-	if err := db.AuthDB.Write.CreateTeamMembership(t.Context(), authqueries.CreateTeamMembershipParams{
+	if err := db.AuthDB.CreateTeamMembership(t.Context(), authqueries.CreateTeamMembershipParams{
 		UserID:    userID,
 		TeamID:    team.ID,
 		IsDefault: true,
@@ -550,7 +550,7 @@ func TestPostTeams_LocalPolicyDeniedReturnsBadRequestWithoutCreatingTeam(t *test
 	sink := &fakeTeamProvisionSink{}
 
 	for range 2 {
-		team, err := testDB.AuthDB.Write.CreateTeam(ctx, authqueries.CreateTeamParams{
+		team, err := testDB.AuthDB.CreateTeam(ctx, authqueries.CreateTeamParams{
 			Name:  "extra",
 			Tier:  testBaseTier,
 			Email: handlerTestUserEmail(userID),
@@ -558,7 +558,7 @@ func TestPostTeams_LocalPolicyDeniedReturnsBadRequestWithoutCreatingTeam(t *test
 		if err != nil {
 			t.Fatalf("failed to create extra team: %v", err)
 		}
-		if err := testDB.AuthDB.Write.CreateTeamMembership(ctx, authqueries.CreateTeamMembershipParams{
+		if err := testDB.AuthDB.CreateTeamMembership(ctx, authqueries.CreateTeamMembershipParams{
 			UserID:    userID,
 			TeamID:    team.ID,
 			IsDefault: false,
@@ -584,7 +584,7 @@ func TestPostTeams_LocalPolicyDeniedReturnsBadRequestWithoutCreatingTeam(t *test
 		t.Fatalf("expected no provisioning call, got %d", len(sink.requests))
 	}
 
-	rows, err := testDB.AuthDB.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
+	rows, err := testDB.AuthDB.GetTeamsWithUsersTeamsWithTier(ctx, userID)
 	if err != nil {
 		t.Fatalf("failed to query user teams: %v", err)
 	}
@@ -669,7 +669,7 @@ func TestPostTeams_TrimsNameBeforeCreate(t *testing.T) {
 		t.Fatalf("expected status 200, got %d", recorder.Code)
 	}
 
-	rows, err := testDB.AuthDB.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
+	rows, err := testDB.AuthDB.GetTeamsWithUsersTeamsWithTier(ctx, userID)
 	if err != nil {
 		t.Fatalf("failed to query user teams: %v", err)
 	}
@@ -719,7 +719,7 @@ func TestPostTeams_ProvisioningFailureRollsBackCreatedTeam(t *testing.T) {
 		t.Fatalf("expected one provisioning call, got %d", len(sink.requests))
 	}
 
-	rows, err := testDB.AuthDB.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
+	rows, err := testDB.AuthDB.GetTeamsWithUsersTeamsWithTier(ctx, userID)
 	if err != nil {
 		t.Fatalf("failed to query user teams: %v", err)
 	}
@@ -794,7 +794,7 @@ func TestPostTeams_ProvisioningFailurePreservesProvisionErrorStatus(t *testing.T
 				t.Fatalf("PostTeams(provision status %d) response message = %q, want %q", tt.status, messageValue, tt.message)
 			}
 
-			rows, err := testDB.AuthDB.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
+			rows, err := testDB.AuthDB.GetTeamsWithUsersTeamsWithTier(ctx, userID)
 			if err != nil {
 				t.Fatalf("GetTeamsWithUsersTeamsWithTier(userID=%s) error = %v, want nil", userID, err)
 			}

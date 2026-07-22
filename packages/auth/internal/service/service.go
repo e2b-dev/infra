@@ -81,7 +81,7 @@ func NewAuthService(
 	store := newAuthStore(authDB)
 	// OIDC bootstrap writes identity rows on the primary immediately before the
 	// next authenticated request; using the read replica here races replication lag.
-	identityLookup := newAuthIdentityLookup(authDB.Write)
+	identityLookup := newAuthIdentityLookup(authDB.Queries)
 	v, err := token.NewProviderVerifier(ctx, providerConfig, httpClient, identityLookup)
 	if err != nil {
 		return nil, fmt.Errorf("initializing auth provider JWT verifier: %w", err)

@@ -81,10 +81,9 @@ type Config struct {
 	DBMaxOpenConnections     int32  `env:"DB_MAX_OPEN_CONNECTIONS"                      envDefault:"40"`
 	DBMinIdleConnections     int32  `env:"DB_MIN_IDLE_CONNECTIONS"                      envDefault:"5"`
 
-	AuthDBConnectionString            string `env:"AUTH_DB_CONNECTION_STRING"`
-	AuthDBReadReplicaConnectionString string `env:"AUTH_DB_READ_REPLICA_CONNECTION_STRING"`
-	AuthDBMinIdleConnections          int32  `env:"AUTH_DB_MIN_IDLE_CONNECTIONS"           envDefault:"5"`
-	AuthDBMaxOpenConnections          int32  `env:"AUTH_DB_MAX_OPEN_CONNECTIONS"           envDefault:"20"`
+	AuthDBConnectionString   string `env:"AUTH_DB_CONNECTION_STRING"`
+	AuthDBMinIdleConnections int32  `env:"AUTH_DB_MIN_IDLE_CONNECTIONS" envDefault:"5"`
+	AuthDBMaxOpenConnections int32  `env:"AUTH_DB_MAX_OPEN_CONNECTIONS" envDefault:"20"`
 
 	PosthogAPIKey string `env:"POSTHOG_API_KEY"`
 

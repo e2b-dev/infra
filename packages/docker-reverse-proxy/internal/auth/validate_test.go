@@ -110,10 +110,10 @@ func TestValidate(t *testing.T) {
 func setupValidateTest(tb testing.TB, db *testutils.Database, userID uuid.UUID, accessToken keys.Key, envID, createdEnvStatus string) {
 	tb.Helper()
 
-	err := db.AuthDB.Write.UpsertPublicUser(tb.Context(), userID)
+	err := db.AuthDB.UpsertPublicUser(tb.Context(), userID)
 	require.NoError(tb, err)
 
-	team, err := db.AuthDB.Write.CreateTeam(tb.Context(), authqueries.CreateTeamParams{
+	team, err := db.AuthDB.CreateTeam(tb.Context(), authqueries.CreateTeamParams{
 		Name:      "test-team",
 		Tier:      "base_v1",
 		Email:     "test@e2b.dev",
@@ -121,7 +121,7 @@ func setupValidateTest(tb testing.TB, db *testutils.Database, userID uuid.UUID, 
 	})
 	require.NoError(tb, err)
 
-	err = db.AuthDB.Write.CreateTeamMembership(tb.Context(), authqueries.CreateTeamMembershipParams{
+	err = db.AuthDB.CreateTeamMembership(tb.Context(), authqueries.CreateTeamMembershipParams{
 		UserID:    userID,
 		TeamID:    team.ID,
 		IsDefault: true,
@@ -130,7 +130,7 @@ func setupValidateTest(tb testing.TB, db *testutils.Database, userID uuid.UUID, 
 	require.NoError(tb, err)
 
 	// Create access token
-	_, err = db.AuthDB.Write.CreateAccessToken(tb.Context(), authqueries.CreateAccessTokenParams{
+	_, err = db.AuthDB.CreateAccessToken(tb.Context(), authqueries.CreateAccessTokenParams{
 		ID:                    uuid.New(),
 		UserID:                userID,
 		AccessTokenHash:       accessToken.HashedValue,
