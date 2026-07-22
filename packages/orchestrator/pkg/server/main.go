@@ -81,6 +81,10 @@ type Server struct {
 	sandboxCreateDuration metric.Int64Histogram
 	sandboxKilledCounter  metric.Int64Counter
 	uploadFailedCounter   metric.Int64Counter
+	envdUpgradeAttempts   metric.Int64Counter
+	envdUpgradeGated      metric.Int64Counter
+	envdUpgradeHandover   metric.Int64Counter
+	envdUpgradeDuration   metric.Int64Histogram
 
 	// uploadsWG tracks in-flight async snapshot uploads so a graceful shutdown
 	// can wait for them to finish instead of dropping them. uploadsInFlight is
@@ -157,6 +161,30 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 		return nil, fmt.Errorf("failed to register snapshot upload failed counter: %w", err)
 	}
 	server.uploadFailedCounter = uploadFailedCounter
+
+	envdUpgradeAttempts, err := telemetry.GetCounter(meter, telemetry.OrchestratorEnvdUpgradeAttempts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register envd upgrade attempts counter: %w", err)
+	}
+	server.envdUpgradeAttempts = envdUpgradeAttempts
+
+	envdUpgradeGated, err := telemetry.GetCounter(meter, telemetry.OrchestratorEnvdUpgradeGated)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register envd upgrade gated counter: %w", err)
+	}
+	server.envdUpgradeGated = envdUpgradeGated
+
+	envdUpgradeHandover, err := telemetry.GetCounter(meter, telemetry.OrchestratorEnvdUpgradeHandover)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register envd upgrade handover counter: %w", err)
+	}
+	server.envdUpgradeHandover = envdUpgradeHandover
+
+	envdUpgradeDuration, err := telemetry.GetHistogram(meter, telemetry.OrchestratorEnvdUpgradeDurationName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register envd upgrade duration histogram: %w", err)
+	}
+	server.envdUpgradeDuration = envdUpgradeDuration
 
 	_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(_ context.Context, observer metric.Int64Observer) error {
 		observer.Observe(int64(server.sandboxFactory.Sandboxes.Count()))

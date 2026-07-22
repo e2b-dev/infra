@@ -27,6 +27,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
+	buildenvd "github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/envd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/events"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
@@ -83,6 +84,9 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 	isResume := req.GetSandbox().GetSnapshot()
 	createStart := time.Now()
+	// Set by maybeUpgradeEnvd below; labels the resume-latency histogram so the
+	// treated (upgraded) vs untreated cohorts can be compared during the rollout.
+	var envdUpgraded bool
 	defer func() {
 		if createErr != nil {
 			return
@@ -91,6 +95,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		s.sandboxCreateDuration.Record(ctx, time.Since(createStart).Milliseconds(),
 			metric.WithAttributes(
 				attribute.Bool("sandbox.resume", isResume),
+				attribute.Bool("envd.upgraded", envdUpgraded),
 			),
 		)
 	}()
@@ -270,6 +275,14 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	}
 
 	s.setupSandboxLifecycle(ctx, sbx)
+
+	// Resume-time envd live-upgrade. The API /resume maps to Create
+	// with snapshot=true, so this is the real resume path. Flag-driven,
+	// best-effort + recover-wrapped (see maybeUpgradeEnvd) so it can't disrupt
+	// resume. ctx already carries the LD context (envd-version/team/template).
+	if req.GetSandbox().GetSnapshot() {
+		envdUpgraded = s.maybeUpgradeEnvd(ctx, sbx)
+	}
 
 	// Read scheduling metadata after the sandbox resumed so the template's
 	// memfile/rootfs devices (and their headers) are resolved.
@@ -858,6 +871,10 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 	// Setup lifecycle for the resumed sandbox
 	s.setupSandboxLifecycle(ctx, resumedSbx)
 
+	// resume-time envd live-upgrade. Best-effort and tightly gated so
+	// it can never disrupt the universal resume path.
+	s.maybeUpgradeEnvd(ctx, resumedSbx)
+
 	// Embed prefetch data into the metadata so it's uploaded with the snapshot files in a single pass.
 	if prefetchErr == nil {
 		prefetchMapping := metadata.PrefetchEntriesToMapping(slices.Collect(maps.Values(prefetchData.BlockEntries)), prefetchData.BlockSize)
@@ -1153,4 +1170,172 @@ func (s *Server) publishSandboxEvent(ctx context.Context, sbx *sandbox.Sandbox, 
 			EventsTTLDays:      eventsTTLDays,
 		},
 	)
+}
+
+// maybeUpgradeEnvd is the orchestrator's resume-time envd live-upgrade trigger
+// . At resume it asks EnvdUpgradeTargetFlag whether the sandbox's envd
+// should be swapped for a newer node-local build and, if so, delivers that
+// binary into the guest and triggers envd's same-PID self-upgrade so the
+// workload is preserved.
+//
+// Fully best-effort: recover()-wrapped, bounded timeouts, and every failure is
+// logged-and-swallowed so it can never disrupt the universal resume path. The
+// flag fallback is "off", so with no LaunchDarkly (e.g. dev) this is inert.
+//
+// It returns whether an upgrade actually completed (for the resume-latency
+// label) and emits the rollout metrics: orchestrator.envd.upgrade.attempts
+// {result,from_version,to_version}, .duration{result}, and .gated{reason}.
+func (s *Server) maybeUpgradeEnvd(ctx context.Context, sbx *sandbox.Sandbox) (upgraded bool) {
+	// Decide, label, and confirm against the version the running envd actually
+	// reports (captured on the resume-path /init) — not the template built-with,
+	// which never changes across live upgrades and would otherwise re-trigger the
+	// handover on every resume. Fall back to built-with only when no live version
+	// was captured (an envd too old to report it — which the gate then rejects).
+	from := sbx.LiveEnvdVersion()
+	if from == "" {
+		from = sbx.Config.Envd.Version
+	}
+
+	var (
+		attempted bool
+		toVersion string
+		result    = "success"
+		start     = time.Now()
+	)
+	defer func() {
+		if r := recover(); r != nil {
+			sbxlogger.I(sbx).Error(ctx, "envd auto-upgrade panic (recovered)", zap.Any("panic", r))
+			result = "panic"
+			attempted = true
+			upgraded = false
+		}
+		if attempted {
+			s.envdUpgradeAttempts.Add(ctx, 1, metric.WithAttributes(
+				attribute.String("result", result),
+				attribute.String("from_version", from),
+				attribute.String("to_version", toVersion),
+			))
+			s.envdUpgradeDuration.Record(ctx, time.Since(start).Milliseconds(),
+				metric.WithAttributes(attribute.String("result", result)))
+		}
+	}()
+
+	// Flag-driven resolver, keyed on the LIVE version. "" path => no upgrade, with
+	// a reason: off / same_version are the expected per-resume no-op (a re-resume
+	// of an already-upgraded sandbox), deliberately not counted as noise; the rest
+	// (not_staged — e.g. a bad SHA / rubbish flag value, getversion_failed,
+	// downgrade) are misconfigurations worth a counted, logged signal so a broken
+	// target is distinguishable from "already current".
+	path, tv, reason := featureflags.ResolveEnvdUpgrade(ctx, s.featureFlags, from, s.config.HostEnvdPath, buildenvd.GetEnvdVersion)
+	toVersion = tv
+	if path == "" {
+		switch reason {
+		case "off", "same_version":
+			// expected no-op — not counted
+		default:
+			s.envdUpgradeGated.Add(ctx, 1, metric.WithAttributes(attribute.String("reason", reason)))
+			sbxlogger.I(sbx).Warn(ctx, "envd auto-upgrade: target not resolved",
+				zap.String("reason", reason), zap.String("from", from))
+		}
+
+		return false
+	}
+
+	// The *running* envd must already have the /upgrade endpoint + handover code,
+	// else the delivery POST would 404 or hang. Count the skip so a ramp can see
+	// the gated population.
+	if ok, err := utils.IsGTEVersion(from, utils.MinEnvdVersionForUpgrade); err != nil || !ok {
+		s.envdUpgradeGated.Add(ctx, 1, metric.WithAttributes(attribute.String("reason", "old_envd")))
+
+		return false
+	}
+
+	attempted = true
+	start = time.Now()
+
+	upCtx, span := tracer.Start(ctx, "envd-upgrade", trace.WithAttributes(
+		attribute.String("envd.from_version", from),
+		attribute.String("envd.to_version", toVersion),
+	))
+	defer span.End()
+
+	// Delivery and readiness get INDEPENDENT budgets, not a shared cap: a slow
+	// binary upload must not eat into the time envd has to re-adopt and answer
+	// /init (which would mislabel a would-be success as delivery_failed/not_ready).
+	const (
+		deliverTimeout = 30 * time.Second
+		readyTimeout   = 15 * time.Second
+	)
+
+	sbxlogger.I(sbx).Info(upCtx, "envd auto-upgrade: delivering+triggering",
+		zap.String("from", from), zap.String("to", toVersion), zap.String("path", path))
+
+	// Stream the new binary over the authenticated /upgrade endpoint (delivery
+	// + trigger in one call) and let envd same-PID re-exec into it. NB: not the
+	// build-time /files CopyFile path — a live, post-/init sandbox rejects that.
+	if err := sbx.CallEnvdUpgrade(upCtx, path, "/usr/bin/envd.next", deliverTimeout); err != nil {
+		result = "delivery_failed"
+		span.RecordError(err)
+		sbxlogger.I(sbx).Error(upCtx, "envd auto-upgrade: trigger failed", zap.Error(err))
+
+		return false
+	}
+	// WaitForEnvd re-runs /init, which re-captures the now-running version.
+	if err := sbx.WaitForEnvd(upCtx, sandbox.StartTypeResume, readyTimeout); err != nil {
+		result = "not_ready"
+		span.RecordError(err)
+		sbxlogger.I(sbx).Error(upCtx, "envd auto-upgrade: envd not ready after upgrade", zap.Error(err))
+
+		return false
+	}
+
+	// Confirm by ground truth: the running envd must now report the target
+	// version. This is the arbiter — a transport quirk (e.g. a slow exec that
+	// never answered) can't mislabel a non-swap as success.
+	if now := sbx.LiveEnvdVersion(); now != toVersion {
+		result = "version_mismatch"
+		span.SetAttributes(attribute.String("envd.observed_version", now))
+		sbxlogger.I(sbx).Error(upCtx, "envd auto-upgrade: version did not flip",
+			zap.String("observed", now), zap.String("expected", toVersion))
+
+		return false
+	}
+
+	span.SetAttributes(attribute.Bool("envd.upgraded", true))
+
+	// Record the handover outcome the new envd reported on /init (fleet
+	// visibility into what it re-adopted). Per item (proc|retained|watcher) as
+	// ok/failed so failed/(ok+failed) is the handover error rate — a non-zero
+	// failed means the swap dropped or degraded something (a lost watch, an
+	// unrecoverable exit code, a bad process config), which envd otherwise only
+	// logs in-guest.
+	if h := sbx.HandoverResult(); h != nil {
+		recordItem := func(item string, ok, failed int) {
+			s.envdUpgradeHandover.Add(upCtx, int64(ok), metric.WithAttributes(
+				attribute.String("item", item), attribute.String("result", "ok")))
+			s.envdUpgradeHandover.Add(upCtx, int64(failed), metric.WithAttributes(
+				attribute.String("item", item), attribute.String("result", "failed")))
+		}
+		recordItem("proc", h.Procs-h.ProcsFailed, h.ProcsFailed)
+		recordItem("retained", h.Retained-h.RetainedFailed, h.RetainedFailed)
+		recordItem("watcher", h.Watchers-h.WatchersFailed, h.WatchersFailed)
+
+		span.SetAttributes(
+			attribute.Int("envd.handover.procs", h.Procs),
+			attribute.Int("envd.handover.procs_failed", h.ProcsFailed),
+			attribute.Int("envd.handover.retained", h.Retained),
+			attribute.Int("envd.handover.retained_failed", h.RetainedFailed),
+			attribute.Int("envd.handover.watchers", h.Watchers),
+			attribute.Int("envd.handover.watchers_failed", h.WatchersFailed),
+		)
+		sbxlogger.I(sbx).Info(upCtx, "envd auto-upgrade: complete",
+			zap.String("to", toVersion),
+			zap.Int("procs", h.Procs), zap.Int("procs_failed", h.ProcsFailed),
+			zap.Int("retained", h.Retained), zap.Int("retained_failed", h.RetainedFailed),
+			zap.Int("watchers", h.Watchers), zap.Int("watchers_failed", h.WatchersFailed))
+	} else {
+		sbxlogger.I(sbx).Info(upCtx, "envd auto-upgrade: complete", zap.String("to", toVersion))
+	}
+
+	return true
 }
