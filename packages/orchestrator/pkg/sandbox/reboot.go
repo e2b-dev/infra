@@ -43,6 +43,7 @@ func (f *Factory) RebootSandbox(
 	runtime RuntimeMetadata,
 	endAt time.Time,
 	apiConfigToStore *orchestrator.SandboxConfig,
+	opts ...CreateOption,
 ) (*Sandbox, error) {
 	ctx, span := tracer.Start(ctx, "reboot sandbox")
 	defer span.End()
@@ -132,8 +133,10 @@ func (f *Factory) RebootSandbox(
 		},
 		apiConfigToStore,
 		nil,
-		WithDeferredMarkRunning(),
-		withNetworkAssignReason(NetworkAssignReasonReboot),
+		append([]CreateOption{
+			WithDeferredMarkRunning(),
+			withNetworkAssignReason(NetworkAssignReasonReboot),
+		}, opts...)...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create sandbox from rootfs: %w", err)

@@ -61,6 +61,7 @@ func main() {
 	disableMemfd := flag.Bool("disable-memfd", false, "disable memfd-backed guest memory")
 	memfileDiffDedup := flag.Bool("memfile-diff-dedup", false, "enable 4KiB-page deduplication of memfile diff against the base template")
 	verbose := flag.Bool("v", false, "verbose logging")
+	console := flag.Bool("console", false, "forward Firecracker's output and the guest kernel serial console (tty) to stdout (fresh boot / -reboot only)")
 
 	// Command execution (no pause)
 	cmd := flag.String("cmd", "", "execute command in sandbox and exit (no snapshot)")
@@ -227,6 +228,7 @@ func main() {
 	runOpts := runOptions{
 		cmd:        *cmd,
 		iterations: *iterations,
+		console:    *console,
 	}
 
 	benchIters := *iterations
@@ -284,6 +286,7 @@ type pauseTimings struct {
 type runOptions struct {
 	cmd        string // command to run and exit (no pause)
 	iterations int    // number of iterations (0 = single run)
+	console    bool   // forward the guest kernel console + FC output to stdout/stderr (fresh boot)
 }
 
 func (r runOptions) enabled() bool {
@@ -366,6 +369,7 @@ type runner struct {
 	shell       bool
 	reboot      bool
 	forceReboot bool
+	console     bool
 	config      cfg.BuilderConfig
 	storage     storage.StorageProvider
 }
@@ -389,7 +393,13 @@ func wrapTemplate(tmpl template.Template, noPrefetch, forceFsOnly bool) template
 // -force-reboot is set.
 func (r *runner) startSandbox(ctx context.Context, runtime sandbox.RuntimeMetadata, start, end time.Time) (*sandbox.Sandbox, error) {
 	if r.reboot || r.forceReboot {
-		return r.factory.RebootSandbox(ctx, r.tmpl, r.sbxConfig, runtime, end, nil)
+		var opts []sandbox.CreateOption
+		if r.console {
+			// Forward the guest kernel console (tty) + FC output to this process.
+			opts = append(opts, sandbox.WithConsoleOutput(os.Stdout, os.Stderr))
+		}
+
+		return r.factory.RebootSandbox(ctx, r.tmpl, r.sbxConfig, runtime, end, nil, opts...)
 	}
 
 	return r.factory.ResumeSandbox(ctx, r.tmpl, r.sbxConfig, runtime, start, end, nil)
@@ -1267,6 +1277,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 		shell:       shell,
 		reboot:      reboot,
 		forceReboot: forceReboot,
+		console:     runOpts.console,
 		config:      config.BuilderConfig,
 		storage:     persistence,
 		sbxConfig:   sbxCfg,
