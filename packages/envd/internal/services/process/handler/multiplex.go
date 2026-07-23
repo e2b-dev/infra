@@ -6,9 +6,17 @@ import (
 	"sync/atomic"
 )
 
+// subscriberBufSize is the capacity of each subscriber's channel. A buffer
+// this deep lets a slow consumer absorb short bursts without blocking the
+// fan-out loop. When the buffer fills (consumer stuck in e.g. a dead-
+// connection send), the fan-out cancels and closes the subscriber instead of
+// wedging all other consumers.
+const subscriberBufSize = 64
+
 // MultiplexedChannel fans out values written to Source to every subscriber
-// obtained via Fork. Each subscriber send is guarded by a done channel so
-// a cancelled consumer can never wedge the fan-out loop.
+// obtained via Fork. Each subscriber channel is buffered; a subscriber that
+// cannot keep up is cancelled and its channel is closed so that its consumer
+// goroutine exits cleanly.
 type MultiplexedChannel[T any] struct {
 	Source chan T
 
@@ -18,15 +26,26 @@ type MultiplexedChannel[T any] struct {
 }
 
 type subscriber[T any] struct {
-	ch   chan T
-	done chan struct{}
-	once sync.Once
+	ch         chan T
+	done       chan struct{}
+	cancelOnce sync.Once
+	closeOnce  sync.Once
 }
 
 // cancel marks the subscriber as gone. Idempotent and non-blocking.
 func (s *subscriber[T]) cancel() {
-	s.once.Do(func() {
+	s.cancelOnce.Do(func() {
 		close(s.done)
+	})
+}
+
+// closeCh closes the subscriber's data channel, signalling any consumer that
+// is range-ing or select-ing on it. Must only be called from the run()
+// goroutine, which is the sole sender, to prevent a "send on closed channel"
+// panic. Idempotent.
+func (s *subscriber[T]) closeCh() {
+	s.closeOnce.Do(func() {
+		close(s.ch)
 	})
 }
 
@@ -67,6 +86,18 @@ func (m *MultiplexedChannel[T]) run() {
 			select {
 			case s.ch <- v:
 			case <-s.done:
+			default:
+				// The subscriber's buffer is full and its done channel is not
+				// closed — the consumer goroutine is stuck (e.g. inside a
+				// stream.Send to a dead peer). Cancel and close the subscriber
+				// so the consumer exits promptly rather than wedging the entire
+				// fan-out loop for the duration of TCP's retransmit timeout.
+				s.cancel()
+				// closeCh is safe here: run() is the only sender, and we have
+				// already ensured future iterations skip this subscriber via
+				// isCancelled(). The consumer goroutine sees ok=false on its
+				// next receive and exits its data loop.
+				s.closeCh()
 			}
 		}
 	}
@@ -79,7 +110,7 @@ func (m *MultiplexedChannel[T]) run() {
 
 	for _, s := range m.channels {
 		s.cancel()
-		close(s.ch)
+		s.closeCh() // idempotent: already-closed subscribers are skipped
 	}
 	m.channels = nil
 }
@@ -120,7 +151,7 @@ func (m *MultiplexedChannel[T]) Fork() (<-chan T, func()) {
 	}
 
 	s := &subscriber[T]{
-		ch:   make(chan T),
+		ch:   make(chan T, subscriberBufSize),
 		done: make(chan struct{}),
 	}
 
