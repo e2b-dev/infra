@@ -83,6 +83,19 @@ func (f *Factory) RebootSandbox(
 		config.Envd.DefaultWorkdir = meta.Context.WorkDir
 	}
 
+	// A cold boot also needs Docker image ENV vars from the template metadata.
+	// User-provided env vars take precedence over template defaults.
+	if len(meta.Context.EnvVars) > 0 {
+		merged := make(map[string]string, len(meta.Context.EnvVars)+len(config.Envd.Vars))
+		for k, v := range meta.Context.EnvVars {
+			merged[k] = v
+		}
+		for k, v := range config.Envd.Vars {
+			merged[k] = v
+		}
+		config.Envd.Vars = merged
+	}
+
 	// The masked empty memfile is used only for sizing NoopMemory — guest RAM
 	// is FC's own fresh anonymous memory.
 	pageSize := int64(header.PageSize)

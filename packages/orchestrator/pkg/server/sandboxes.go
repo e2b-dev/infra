@@ -226,6 +226,14 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		return nil, fmt.Errorf("failed to read template metadata: %w", err)
 	}
 
+	// Merge Docker image ENV vars from the template metadata into the sandbox
+	// config. User-provided env vars (from the SDK create call) take precedence.
+	if len(meta.Context.EnvVars) > 0 {
+		merged := maps.Clone(meta.Context.EnvVars)
+		maps.Copy(merged, config.Envd.Vars)
+		config.Envd.Vars = merged
+	}
+
 	var sbx *sandbox.Sandbox
 	if meta.IsFilesystemOnly() {
 		sbx, err = s.sandboxFactory.RebootSandbox(
