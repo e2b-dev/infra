@@ -4,6 +4,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
@@ -20,6 +21,18 @@ func routeNodeIPAddress(node *nodemanager.Node, local bool) string {
 	}
 
 	return ""
+}
+
+func sandboxRoutingMetadata(node *nodemanager.Node, local bool) *sandbox.RoutingMetadata {
+	// Remote clusters register routes through gRPC metadata instead.
+	if node.IsClusterNode() {
+		return nil
+	}
+
+	return &sandbox.RoutingMetadata{
+		OrchestratorID: node.Metadata().ServiceInstanceID,
+		OrchestratorIP: routeNodeIPAddress(node, local),
+	}
 }
 
 func (o *Orchestrator) GetNodeRouteIPAddress(clusterID uuid.UUID, nodeID string) string {

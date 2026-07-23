@@ -23,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fcversion"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -415,7 +416,8 @@ func (o *Orchestrator) CreateSandbox(
 		sbxData.Iam,
 	)
 
-	err = o.sandboxStore.Add(ctx, sbx, &creationMeta)
+	routing := sandboxRoutingMetadata(node, env.IsLocal())
+	err = o.sandboxStore.Add(ctx, sbx, routing, &creationMeta)
 	if err != nil {
 		telemetry.ReportError(ctx, "failed to add sandbox to store", err)
 

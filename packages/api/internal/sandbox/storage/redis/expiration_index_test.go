@@ -86,7 +86,7 @@ func TestAddRemove_ExecutionScopedMember(t *testing.T) {
 
 	teamID := uuid.New()
 	sbx := makeIndexedSandbox(teamID, "sbx-roundtrip", uuid.NewString(), time.Now(), time.Now().Add(time.Hour))
-	require.NoError(t, storage.Add(t.Context(), sbx))
+	require.NoError(t, storage.Add(t.Context(), sbx, nil))
 
 	member := expirationMember(teamID.String(), sbx.SandboxID, sbx.ExecutionID)
 	requireMemberScore(t, client, member, float64(sbx.EndTime.UnixMilli()))
@@ -110,7 +110,7 @@ func TestRemove_DoesNotUnindexFreshExecution(t *testing.T) {
 	const sandboxID = "sbx-race-b"
 
 	old := makeIndexedSandbox(teamID, sandboxID, uuid.NewString(), time.Now().Add(-time.Hour), time.Now().Add(-time.Minute))
-	require.NoError(t, storage.Add(t.Context(), old))
+	require.NoError(t, storage.Add(t.Context(), old, nil))
 
 	// Simulate the concurrent Add's first phase (index write) for a fresh
 	// execution landing before Remove's cleanup.
@@ -142,7 +142,7 @@ func TestExpiredItems_StaleSweepIsExecutionScoped(t *testing.T) {
 
 	// Fresh execution: live key, future member.
 	fresh := makeIndexedSandbox(teamID, sandboxID, uuid.NewString(), time.Now(), time.Now().Add(time.Hour))
-	require.NoError(t, storage.Add(t.Context(), fresh))
+	require.NoError(t, storage.Add(t.Context(), fresh, nil))
 
 	// Dead execution: expired member left behind (e.g. failed Remove cleanup).
 	deadExecutionID := uuid.NewString()
@@ -189,7 +189,7 @@ func TestExpiredItems_SweepsInvalidMember(t *testing.T) {
 
 	teamID := uuid.New()
 	sbx := makeIndexedSandbox(teamID, "sbx-legacy-leftover", uuid.NewString(), time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
-	require.NoError(t, storage.Add(t.Context(), sbx))
+	require.NoError(t, storage.Add(t.Context(), sbx, nil))
 
 	// Sandbox indexed only via an expired legacy two-part member.
 	execMember := expirationMember(teamID.String(), sbx.SandboxID, sbx.ExecutionID)
@@ -221,7 +221,7 @@ func TestExpiredItems_RescoresDriftedMember(t *testing.T) {
 
 	teamID := uuid.New()
 	sbx := makeIndexedSandbox(teamID, "sbx-drift", uuid.NewString(), time.Now(), time.Now().Add(time.Hour))
-	require.NoError(t, storage.Add(t.Context(), sbx))
+	require.NoError(t, storage.Add(t.Context(), sbx, nil))
 
 	// Drift the member's score into the expired window while the stored
 	// EndTime stays in the future.
@@ -245,7 +245,7 @@ func TestExpiredItems_ReturnsExpiredRunningSandbox(t *testing.T) {
 
 	teamID := uuid.New()
 	sbx := makeIndexedSandbox(teamID, "sbx-expired", uuid.NewString(), time.Now().Add(-time.Hour), time.Now().Add(-time.Minute))
-	require.NoError(t, storage.Add(t.Context(), sbx))
+	require.NoError(t, storage.Add(t.Context(), sbx, nil))
 
 	items, err := storage.ExpiredItems(t.Context())
 	require.NoError(t, err)
@@ -264,7 +264,7 @@ func TestHeal_RestoresMissingMember(t *testing.T) {
 
 	teamID := uuid.New()
 	sbx := makeIndexedSandbox(teamID, "sbx-immortal", uuid.NewString(), time.Now().Add(-time.Hour), time.Now().Add(-time.Minute))
-	require.NoError(t, storage.Add(t.Context(), sbx))
+	require.NoError(t, storage.Add(t.Context(), sbx, nil))
 
 	member := expirationMember(teamID.String(), sbx.SandboxID, sbx.ExecutionID)
 	require.NoError(t, client.ZRem(t.Context(), globalExpirationSet, member).Err())
@@ -292,7 +292,7 @@ func TestHeal_SkipsYoungSandbox(t *testing.T) {
 
 	teamID := uuid.New()
 	sbx := makeIndexedSandbox(teamID, "sbx-young", uuid.NewString(), time.Now(), time.Now().Add(time.Hour))
-	require.NoError(t, storage.Add(t.Context(), sbx))
+	require.NoError(t, storage.Add(t.Context(), sbx, nil))
 
 	member := expirationMember(teamID.String(), sbx.SandboxID, sbx.ExecutionID)
 	require.NoError(t, client.ZRem(t.Context(), globalExpirationSet, member).Err())
@@ -360,7 +360,7 @@ func TestHeal_DoesNotClobberExistingScore(t *testing.T) {
 
 	teamID := uuid.New()
 	sbx := makeIndexedSandbox(teamID, "sbx-fresh-score", uuid.NewString(), time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
-	require.NoError(t, storage.Add(t.Context(), sbx))
+	require.NoError(t, storage.Add(t.Context(), sbx, nil))
 
 	// A concurrent SetTimeout moved the score past what the stored JSON says.
 	member := expirationMember(teamID.String(), sbx.SandboxID, sbx.ExecutionID)
@@ -380,7 +380,7 @@ func TestUpdate_RescoresExecutionMember(t *testing.T) {
 
 	teamID := uuid.New()
 	sbx := makeIndexedSandbox(teamID, "sbx-update", uuid.NewString(), time.Now(), time.Now().Add(time.Hour))
-	require.NoError(t, storage.Add(t.Context(), sbx))
+	require.NoError(t, storage.Add(t.Context(), sbx, nil))
 
 	newEndTime := time.Now().Add(2 * time.Hour)
 	updated, err := storage.Update(t.Context(), teamID, sbx.SandboxID, func(cur sandboxtypes.Sandbox) (sandboxtypes.Sandbox, error) {

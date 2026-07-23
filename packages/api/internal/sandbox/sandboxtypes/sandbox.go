@@ -119,6 +119,11 @@ type Sandbox struct {
 	State State `json:"state"`
 }
 
+type RoutingMetadata struct {
+	OrchestratorID string
+	OrchestratorIP string
+}
+
 func (s Sandbox) ToAPISandbox() *api.Sandbox {
 	return &api.Sandbox{
 		SandboxID:          s.SandboxID,

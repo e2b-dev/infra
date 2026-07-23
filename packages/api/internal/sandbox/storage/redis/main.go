@@ -13,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -34,11 +35,12 @@ const (
 var _ sandboxtypes.Storage = (*Storage)(nil)
 
 type Storage struct {
-	redisClient  redis.UniversalClient
-	locker       *storageLocker
-	subManager   *subscriptionManager
-	publisher    *publisher
-	featureFlags *featureflags.Client
+	redisClient    redis.UniversalClient
+	locker         *storageLocker
+	subManager     *subscriptionManager
+	publisher      *publisher
+	featureFlags   *featureflags.Client
+	routingCatalog e2bcatalog.SandboxesCatalog
 
 	metrics expirationIndexMetrics
 }
@@ -104,12 +106,13 @@ func NewStorage(
 	}
 
 	return &Storage{
-		redisClient:  redisClient,
-		locker:       newStorageLocker(redisClient, subManager, pub),
-		subManager:   subManager,
-		publisher:    pub,
-		featureFlags: featureFlags,
-		metrics:      metrics,
+		redisClient:    redisClient,
+		locker:         newStorageLocker(redisClient, subManager, pub),
+		subManager:     subManager,
+		publisher:      pub,
+		featureFlags:   featureFlags,
+		routingCatalog: e2bcatalog.NewRedisSandboxCatalog(redisClient),
+		metrics:        metrics,
 	}, nil
 }
 

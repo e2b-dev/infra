@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	catalogRedisTimeout = time.Second * 1
+	catalogRedisTimeout = 5 * time.Second
 )
 
 type RedisSandboxCatalog struct {
@@ -87,8 +87,11 @@ func (c *RedisSandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID strin
 
 	data, err := c.redisClient.Get(ctx, c.getCatalogKey(sandboxID)).Bytes()
 	// If sandbox does not exist, we can return early
-	if err != nil {
+	if errors.Is(err, redis.Nil) {
 		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("failed to get sandbox info from redis: %w", err)
 	}
 
 	var info *SandboxInfo
@@ -103,7 +106,9 @@ func (c *RedisSandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID strin
 	}
 
 	logger.L().Debug(ctx, "deleting sandbox from redis catalog", logger.WithSandboxID(sandboxID))
-	c.redisClient.Del(ctx, c.getCatalogKey(sandboxID))
+	if err := c.redisClient.Del(ctx, c.getCatalogKey(sandboxID)).Err(); err != nil {
+		return fmt.Errorf("failed to delete sandbox info from redis: %w", err)
+	}
 
 	return nil
 }

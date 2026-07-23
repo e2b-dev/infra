@@ -11,11 +11,12 @@ import "github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
 
 // Domain types.
 type (
-	Sandbox     = sandboxtypes.Sandbox
-	State       = sandboxtypes.State
-	StateAction = sandboxtypes.StateAction
-	KillReason  = sandboxtypes.KillReason
-	RemoveOpts  = sandboxtypes.RemoveOpts
+	Sandbox         = sandboxtypes.Sandbox
+	RoutingMetadata = sandboxtypes.RoutingMetadata
+	State           = sandboxtypes.State
+	StateAction     = sandboxtypes.StateAction
+	KillReason      = sandboxtypes.KillReason
+	RemoveOpts      = sandboxtypes.RemoveOpts
 
 	TransitionEffect = sandboxtypes.TransitionEffect
 

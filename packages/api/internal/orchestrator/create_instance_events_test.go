@@ -22,6 +22,7 @@ import (
 	sandboxredis "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
+	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -65,8 +66,8 @@ func newOrchestratorWithCounter(t *testing.T) (*Orchestrator, *eventCounter) {
 	store := sandbox.NewStore(
 		storage,
 		redisreservations.NewReservationStorage(client, storage.Notifier()),
+		e2bcatalog.NewRedisSandboxCatalog(client),
 		sandbox.Callbacks{
-			AddSandboxToRoutingTable: func(context.Context, sandbox.Sandbox) {},
 			AsyncNewlyCreatedSandbox: ec.callback(),
 		},
 	)
@@ -436,7 +437,7 @@ func TestStoreReconcile_DoesNotFireCallback(t *testing.T) {
 		NodeID:            "node-1",
 	}
 
-	require.NoError(t, o.sandboxStore.Add(t.Context(), sbx, nil))
+	require.NoError(t, o.sandboxStore.Add(t.Context(), sbx, nil, nil))
 
 	time.Sleep(100 * time.Millisecond)
 	assert.Equal(t, 0, ec.get())

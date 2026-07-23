@@ -51,7 +51,6 @@ type Orchestrator struct {
 	featureFlagsClient            *featureflags.Client
 	analytics                     *analyticscollector.Analytics
 	posthogClient                 *analyticscollector.PosthogClient
-	routingCatalog                e2bcatalog.SandboxesCatalog
 	sqlcDB                        *sqlcdb.Client
 	tel                           *telemetry.Client
 	clusters                      *clusters.Pool
@@ -142,7 +141,6 @@ func New(
 		placementAlgorithm:   bestOfKAlgorithm,
 		featureFlagsClient:   featureFlags,
 		accessTokenGenerator: accessTokenGenerator,
-		routingCatalog:       routingCatalog,
 		sqlcDB:               sqlcDB,
 		snapshotCache:        snapshotCache,
 		tel:                  tel,
@@ -157,8 +155,8 @@ func New(
 	o.sandboxStore = sandbox.NewStore(
 		redisStorage,
 		redisreservations.NewReservationStorage(redisClient, redisStorage.Notifier()),
+		routingCatalog,
 		sandbox.Callbacks{
-			AddSandboxToRoutingTable: o.addSandboxToRoutingTable,
 			AsyncNewlyCreatedSandbox: o.handleNewlyCreatedSandbox,
 			RemoveSandboxFromNode:    o.killOrphanSandbox,
 		},
@@ -281,7 +279,7 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 		errs = append(errs, err)
 	}
 
-	if err := o.routingCatalog.Close(ctx); err != nil {
+	if err := o.sandboxStore.Close(ctx); err != nil {
 		errs = append(errs, err)
 	}
 

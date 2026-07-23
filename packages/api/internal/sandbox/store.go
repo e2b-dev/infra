@@ -11,8 +11,10 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
 
 type CreationMetadata struct {
@@ -23,7 +25,6 @@ type CreationMetadata struct {
 }
 
 type (
-	InsertCallback   func(ctx context.Context, sbx Sandbox)
 	RemoveCallback   func(ctx context.Context, sbx Sandbox)
 	CreationCallback func(ctx context.Context, sbx Sandbox, meta CreationMetadata)
 )
@@ -40,8 +41,6 @@ type (
 )
 
 type Callbacks struct {
-	// AddSandboxToRoutingTable should be called sync to prevent race conditions where we would know where to route the sandbox
-	AddSandboxToRoutingTable InsertCallback
 	// AsyncNewlyCreatedSandbox is called asynchronously for newly created sandboxes (Add called with non-nil CreationMetadata).
 	AsyncNewlyCreatedSandbox CreationCallback
 	// RemoveSandboxFromNode kills an orphaned sandbox on the orchestrator node via gRPC.
@@ -50,8 +49,9 @@ type Callbacks struct {
 }
 
 type Store struct {
-	storage   Storage
-	callbacks Callbacks
+	storage        Storage
+	routingCatalog e2bcatalog.SandboxesCatalog
+	callbacks      Callbacks
 
 	reservations ReservationStorage
 }
@@ -59,35 +59,33 @@ type Store struct {
 func NewStore(
 	backend Storage,
 	reservations ReservationStorage,
+	routingCatalog e2bcatalog.SandboxesCatalog,
 	callbacks Callbacks,
 ) *Store {
 	return &Store{
-		storage:      backend,
-		reservations: reservations,
-		callbacks:    callbacks,
+		storage:        backend,
+		reservations:   reservations,
+		routingCatalog: routingCatalog,
+		callbacks:      callbacks,
 	}
 }
 
 // Add inserts a sandbox into the store. A non-nil creation argument fires the
 // AsyncNewlyCreatedSandbox callback; nil indicates a sync/reconcile re-add.
-func (s *Store) Add(ctx context.Context, sandbox Sandbox, creation *CreationMetadata) error {
+func (s *Store) Add(ctx context.Context, sandbox Sandbox, routing *RoutingMetadata, creation *CreationMetadata) error {
 	sbxlogger.I(sandbox).Debug(ctx, "Adding sandbox to cache",
 		zap.Bool("newly_created", creation != nil),
 		logger.Time("start_time", sandbox.StartTime),
 		logger.Time("end_time", sandbox.EndTime),
 	)
 
-	endTime := sandbox.EndTime
-
-	if endTime.Sub(sandbox.StartTime) > sandbox.MaxInstanceLength {
+	if sandbox.EndTime.Sub(sandbox.StartTime) > sandbox.MaxInstanceLength {
 		sandbox.EndTime = sandbox.StartTime.Add(sandbox.MaxInstanceLength)
 	}
 
-	err := s.storage.Add(ctx, sandbox)
-	if err != nil {
+	if err := s.storage.Add(ctx, sandbox, routing); err != nil {
 		return err
 	}
-	s.callbacks.AddSandboxToRoutingTable(ctx, sandbox)
 
 	if creation != nil {
 		meta := *creation
@@ -130,7 +128,15 @@ func (s *Store) Update(ctx context.Context, teamID uuid.UUID, sandboxID string, 
 }
 
 func (s *Store) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, opts RemoveOpts) (Sandbox, bool, func(context.Context, error), error) {
-	return s.storage.StartRemoving(ctx, teamID, sandboxID, opts)
+	sandbox, alreadyDone, finish, err := s.storage.StartRemoving(ctx, teamID, sandboxID, opts)
+
+	if err == nil && opts.Action.Effect == TransitionExpires && sandbox.ClusterID == consts.LocalClusterID {
+		if routeErr := s.routingCatalog.DeleteSandbox(ctx, sandbox.SandboxID, sandbox.ExecutionID); routeErr != nil {
+			logger.L().Error(ctx, "error removing routing record from catalog", zap.Error(routeErr), logger.WithSandboxID(sandbox.SandboxID))
+		}
+	}
+
+	return sandbox, alreadyDone, finish, err
 }
 
 func (s *Store) WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandboxID string) error {
@@ -168,4 +174,8 @@ func (s *Store) Reserve(ctx context.Context, teamID uuid.UUID, sandboxID string,
 	}
 
 	return finishStart, waitForStart, nil
+}
+
+func (s *Store) Close(ctx context.Context) error {
+	return s.routingCatalog.Close(ctx)
 }
