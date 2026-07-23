@@ -106,6 +106,30 @@ func (c *Cache) isClosed() bool {
 	return c.closed.Load()
 }
 
+// DiffMetadata returns the dirty/empty diff metadata from the tracker without
+// copying any block data. It lets a deferred/background seal build the diff
+// header (and scheduling metadata) synchronously while the actual reflink copy
+// (ExportToDiff) runs off the critical path. The result matches what
+// ExportToDiff computes internally, provided the cache is frozen (no writes) in
+// between — which is guaranteed once the sandbox has been stopped and the cache
+// ejected.
+func (c *Cache) DiffMetadata() (*header.DiffMetadata, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.isClosed() {
+		return nil, NewErrCacheClosed(c.filePath)
+	}
+
+	if c.mmap == nil {
+		return header.NewDiffMetadata(c.blockSize, nil, nil), nil
+	}
+
+	dirty, empty := c.tracker.Export()
+
+	return header.NewDiffMetadata(c.blockSize, dirty, empty), nil
+}
+
 func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMetadata, error) {
 	ctx, childSpan := tracer.Start(ctx, "export-to-diff")
 	defer childSpan.End()

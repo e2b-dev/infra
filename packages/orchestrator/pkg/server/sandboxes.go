@@ -25,6 +25,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
@@ -692,8 +693,13 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	// Stop the old sandbox in background after we're done
 	defer s.stopSandboxAsync(context.WithoutCancel(ctx), sbx)
 
+	// Defer the rootfs reflink off the pause critical path when enabled: pause is a
+	// suspend, so nothing reads the diff until a later resume (which waits on the
+	// upload anyway). NBD provider only; falls back to synchronous export otherwise.
+	deferRootfsExport := s.featureFlags.BoolFlag(ctx, featureflags.DeferRootfsExportFlag)
+
 	// Fire and forget - upload completes in the background
-	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId(), map[string]string{storage.ObjectMetadataTemplateID: in.GetTemplateId()}, storage.ObjectOriginPause, in.GetFilesystemOnly())
+	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId(), map[string]string{storage.ObjectMetadataTemplateID: in.GetTemplateId()}, storage.ObjectOriginPause, in.GetFilesystemOnly(), deferRootfsExport)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error snapshotting sandbox", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
@@ -807,7 +813,9 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 	// Checkpoint always takes a full memory snapshot; filesystem-only checkpoint
 	// (resume-in-place would need to reboot) is not supported yet.
-	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId(), in.GetMetadata(), storage.ObjectOriginSnapshotTemplate, false)
+	// Checkpoint resumes a fresh sandbox from the new build immediately, so the
+	// diff must be materialized synchronously — never defer the rootfs export here.
+	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId(), in.GetMetadata(), storage.ObjectOriginSnapshotTemplate, false, false)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error snapshotting sandbox for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
@@ -944,6 +952,11 @@ type snapshotResult struct {
 	schedulingMetadata *orchestrator.SchedulingMetadata
 	upload             *sandbox.Upload
 	completeUpload     func(ctx context.Context, uploadErr error)
+	// rootfsDiff is the snapshot's rootfs diff. With deferred export it is a
+	// promise-backed diff that resolves only once the background seal finishes,
+	// so the prefetch harvest waits on its CachePath before its throwaway resume
+	// (a warm resume reads the rootfs). Nil-safe callers only: always set here.
+	rootfsDiff build.Diff
 	// objectMetadata is the storage object metadata the snapshot was uploaded
 	// with. The prefetch harvest reuses it verbatim when re-uploading the
 	// metadata object, so the two can never drift.
@@ -960,6 +973,7 @@ func (s *Server) snapshotAndCacheSandbox(
 	provenance map[string]string,
 	buildOrigin storage.ObjectOrigin,
 	filesystemOnly bool,
+	deferRootfsExport bool,
 ) (*snapshotResult, error) {
 	meta, err := sbx.Template.Metadata()
 	if err != nil {
@@ -975,6 +989,9 @@ func (s *Server) snapshotAndCacheSandbox(
 	var pauseOpts []sandbox.PauseOption
 	if filesystemOnly {
 		pauseOpts = append(pauseOpts, sandbox.WithFilesystemSnapshot())
+	}
+	if deferRootfsExport {
+		pauseOpts = append(pauseOpts, sandbox.WithDeferredRootfsExport())
 	}
 
 	snapshot, err := sbx.Pause(ctx, meta, sandbox.SnapshotUseCasePause, pauseOpts...)
@@ -1050,6 +1067,7 @@ func (s *Server) snapshotAndCacheSandbox(
 		upload:             upload,
 		completeUpload:     completeUpload,
 		objectMetadata:     objectMetadata,
+		rootfsDiff:         snapshot.RootfsDiff,
 	}, nil
 }
 

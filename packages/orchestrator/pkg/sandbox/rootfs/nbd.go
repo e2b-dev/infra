@@ -69,14 +69,15 @@ func (o *NBDProvider) Start(ctx context.Context) error {
 	return o.ready.SetValue(nbd.GetDevicePath(deviceIndex))
 }
 
-func (o *NBDProvider) ExportDiff(
+// ejectAndStopSandbox detaches the writable cache from the overlay, stops the
+// sandbox and waits for the overlay device to be released, returning the ejected
+// (now standalone, frozen) cache. The caller owns the returned cache and must
+// Close it. Shared by the synchronous ExportDiff and the deferred
+// PrepareExportDiff.
+func (o *NBDProvider) ejectAndStopSandbox(
 	ctx context.Context,
-	out *os.File,
 	closeSandbox func(ctx context.Context) error,
-) (*header.DiffMetadata, error) {
-	ctx, span := tracer.Start(ctx, "cow-export")
-	defer span.End()
-
+) (*block.Cache, error) {
 	cache, err := o.overlay.EjectCache()
 	if err != nil {
 		return nil, fmt.Errorf("error ejecting cache: %w", err)
@@ -104,6 +105,22 @@ func (o *NBDProvider) ExportDiff(
 	}
 	telemetry.ReportEvent(ctx, "sandbox stopped")
 
+	return cache, nil
+}
+
+func (o *NBDProvider) ExportDiff(
+	ctx context.Context,
+	out *os.File,
+	closeSandbox func(ctx context.Context) error,
+) (*header.DiffMetadata, error) {
+	ctx, span := tracer.Start(ctx, "cow-export")
+	defer span.End()
+
+	cache, err := o.ejectAndStopSandbox(ctx, closeSandbox)
+	if err != nil {
+		return nil, err
+	}
+
 	m, err := cache.ExportToDiff(ctx, out)
 	if err != nil {
 		// Close the cache to avoid leaking the mmaped memory. Log an error
@@ -124,6 +141,20 @@ func (o *NBDProvider) ExportDiff(
 	}
 
 	return m, nil
+}
+
+// PrepareExportDiff ejects the writable cache, stops the sandbox and waits for
+// the overlay device to be released, then returns the frozen ejected cache
+// WITHOUT reflinking it. The caller reflinks it into a diff in the background and
+// Closes it, so a pause returns without paying the reflink stall.
+func (o *NBDProvider) PrepareExportDiff(
+	ctx context.Context,
+	closeSandbox func(ctx context.Context) error,
+) (*block.Cache, error) {
+	ctx, span := tracer.Start(ctx, "cow-export-prepare")
+	defer span.End()
+
+	return o.ejectAndStopSandbox(ctx, closeSandbox)
 }
 
 func (o *NBDProvider) Close(ctx context.Context) error {
