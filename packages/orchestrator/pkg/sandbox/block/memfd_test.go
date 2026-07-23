@@ -368,14 +368,17 @@ func TestDedupedMemfdCache_MemfdHeldUntilSwap(t *testing.T) {
 	require.Equal(t, int(ps), n)
 	require.Equal(t, srcData[3*ps:4*ps], buf)
 
-	// Once the swap is signaled the memfd is released and provisional reads fail.
+	// Once the swap is signaled the memfd is released and provisional reads
+	// fail. The release runs on the drain goroutine, which parallel tests in
+	// this package can starve on a loaded runner — the window is generous for
+	// that reason (the poll exits early on success).
 	cache.MarkSwapped()
 	require.Eventually(t, func() bool {
 		_, e := cache.ServeMemfd(buf, 3*ps)
 		var bna BytesNotAvailableError
 
 		return errors.As(e, &bna)
-	}, time.Second, time.Millisecond)
+	}, 15*time.Second, 5*time.Millisecond)
 }
 
 func TestDedupedMemfdCache_InflightConcurrentDrainRace(t *testing.T) {

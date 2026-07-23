@@ -8,14 +8,14 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
-	internalauthteam "github.com/e2b-dev/infra/packages/auth/internal/team"
+	internalauthteam "github.com/e2b-dev/infra/packages/auth/pkg/auth/internal/team"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/auth/internal/service")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/auth/pkg/auth/internal/service")
 
 type authStoreImpl struct {
 	authDB *authdb.Client
