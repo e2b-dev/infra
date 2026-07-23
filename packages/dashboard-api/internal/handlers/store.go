@@ -66,6 +66,10 @@ func (s *APIStore) GetUserIDFromAuthProviderToken(ctx context.Context, ginCtx *g
 	return s.authService.ValidateAuthProviderToken(ctx, ginCtx, token)
 }
 
+func (s *APIStore) GetTeamFromAPIKey(ctx context.Context, ginCtx *gin.Context, apiKey string) (*types.Team, *sharedauth.APIError) {
+	return s.authService.ValidateAPIKey(ctx, ginCtx, apiKey)
+}
+
 func (s *APIStore) GetTeamFromAuthProviderToken(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *sharedauth.APIError) {
 	return s.authService.ValidateAuthProviderTeam(ctx, ginCtx, teamID)
 }

@@ -259,6 +259,7 @@ func run() int {
 
 	authenticationFunc := sharedauth.CreateAuthenticationFunc(
 		[]sharedauth.Authenticator{
+			sharedauth.NewApiKeyAuthenticator(apiStore.GetTeamFromAPIKey),
 			sharedauth.NewAdminApiKeyAuthenticator(config.AdminToken),
 			sharedauth.NewAdminJWTAuthenticator(adminVerifier),
 			sharedauth.NewAuthProviderBearerAuthenticator(apiStore.GetUserIDFromAuthProviderToken),
@@ -320,6 +321,7 @@ func newHTTPServer(
 		"Content-Length",
 		"Content-Type",
 		sharedauth.HeaderAuthorization,
+		sharedauth.HeaderAPIKey,
 		sharedauth.HeaderAdminToken,
 		sharedauth.HeaderTeamID,
 	}

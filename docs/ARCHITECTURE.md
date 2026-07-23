@@ -193,9 +193,10 @@ the API's `ResumeSandbox` gRPC and retries — paused sandboxes wake transparent
 
 A separate REST service (port 3010, spec `spec/openapi-dashboard.yml`) consumed by the web
 dashboard, not the SDK: team management/provisioning, template tags, build listings, admin
-bootstrap. Its workspace-agnostic `/admin/v1` operations are defined in the same dashboard
-OpenAPI contract and registered on the existing router. Their `AdminJWTAuth` OpenAPI security scheme
-accepts only short-lived service JWTs verified against the workspace-api
+bootstrap. Team-scoped template and build read routes accept either dashboard user auth or
+team API key auth (`X-API-Key`). Its workspace-agnostic `/admin/v1` operations are defined in the
+same dashboard OpenAPI contract and registered on the existing router. Their `AdminJWTAuth`
+OpenAPI security scheme accepts only short-lived service JWTs verified against the workspace-api
 `/.well-known/jwks.json` endpoint, with accepted signing methods derived from each JWK's required
 `alg` metadata. Issuers and audiences are configured through the JSON `ADMIN_AUTH_PROVIDER_CONFIG` value —
 the same config shape as `AUTH_PROVIDER_CONFIG`. Talks to Postgres and ClickHouse; never talks to
