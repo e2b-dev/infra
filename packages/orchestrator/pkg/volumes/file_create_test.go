@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
@@ -122,6 +123,29 @@ func TestFileCreate(t *testing.T) {
 		_, err = os.Stat(filepath.Join(tmpdir, filename))
 		require.NoError(t, err)
 		mockServer.AssertExpectations(t)
+	})
+
+	t.Run("create existing file without force", func(t *testing.T) {
+		t.Parallel()
+
+		filename := "already-exists.txt"
+		err := os.WriteFile(filepath.Join(tmpdir, filename), []byte("existing"), 0o644)
+		require.NoError(t, err)
+
+		mockServer := &mockCreateFileServer{}
+		mockServer.On("Context").Return(t.Context())
+
+		mockServer.On("Recv").Return(&orchestrator.CreateFileRequest{
+			Message: &orchestrator.CreateFileRequest_Start{
+				Start: &orchestrator.VolumeFileCreateStart{
+					Volume: volumeInfo,
+					Path:   filename,
+				},
+			},
+		}, nil).Once()
+
+		err = s.CreateFile(mockServer)
+		requireGRPCError(t, err, codes.AlreadyExists, orchestrator.UserErrorCode_PATH_ALREADY_EXISTS)
 	})
 
 	t.Run("unexpected EOF", func(t *testing.T) {
