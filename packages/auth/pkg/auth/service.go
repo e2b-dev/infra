@@ -6,7 +6,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	internalauthservice "github.com/e2b-dev/infra/packages/auth/internal/service"
+	internalauthservice "github.com/e2b-dev/infra/packages/auth/pkg/auth/internal/service"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 )
 

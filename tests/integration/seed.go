@@ -56,7 +56,7 @@ func run(ctx context.Context) int {
 		return 1
 	}
 	defer db.Close()
-	authDb, err := authdb.NewClient(ctx, connectionString, connectionString)
+	authDb, err := authdb.NewClient(ctx, connectionString)
 	if err != nil {
 		log.Printf("Failed to connect to database: %v", err)
 
@@ -97,7 +97,7 @@ VALUES ($1, $2)
 		return fmt.Errorf("failed to create user: %w", err)
 	}
 
-	err = authdb.Write.UpsertPublicUser(ctx, data.UserID)
+	err = authdb.UpsertPublicUser(ctx, data.UserID)
 	if err != nil {
 		return fmt.Errorf("failed to create public user: %w", err)
 	}
@@ -116,7 +116,7 @@ VALUES ($1, $2)
 		return fmt.Errorf("failed to mask access token: %w", err)
 	}
 
-	_, err = authdb.Write.CreateAccessToken(ctx, authqueries.CreateAccessTokenParams{
+	_, err = authdb.CreateAccessToken(ctx, authqueries.CreateAccessTokenParams{
 		ID:                    uuid.New(),
 		UserID:                data.UserID,
 		AccessTokenHash:       accessTokenHash,
@@ -169,7 +169,7 @@ VALUES ($1, $2, $3)
 	if err != nil {
 		return fmt.Errorf("failed to mask api key: %w", err)
 	}
-	_, err = authdb.Write.CreateTeamAPIKey(ctx, authqueries.CreateTeamAPIKeyParams{
+	_, err = authdb.CreateTeamAPIKey(ctx, authqueries.CreateTeamAPIKeyParams{
 		TeamID:           data.TeamID,
 		CreatedBy:        &data.UserID,
 		ApiKeyHash:       apiKeyHash,

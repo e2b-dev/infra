@@ -243,7 +243,7 @@ func (s *APIStore) PostTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 		}
 	}
 
-	if err := s.authDB.Write.UpsertPublicUser(ctx, user.UserID); err != nil {
+	if err := s.authDB.UpsertPublicUser(ctx, user.UserID); err != nil {
 		logger.L().Error(ctx, "failed to create public user anchor", zap.Error(err), logger.WithUserID(user.UserID.String()))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to add team member")
 

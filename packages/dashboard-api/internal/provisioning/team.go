@@ -83,7 +83,7 @@ func (s *Service) CreateTeam(ctx context.Context, userID uuid.UUID, name string)
 }
 
 func (s *Service) BootstrapTeam(ctx context.Context, name string, email string) (ProvisionedTeam, error) {
-	team, err := s.authDB.Write.CreateTeam(ctx, authqueries.CreateTeamParams{
+	team, err := s.authDB.CreateTeam(ctx, authqueries.CreateTeamParams{
 		Name:          name,
 		Tier:          baseTierID,
 		Email:         email,
@@ -127,7 +127,7 @@ func (s *Service) provisionBillingOrDeleteTeam(ctx context.Context, teamID uuid.
 		rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), teamProvisionRollbackTimeout)
 		defer cancel()
 
-		if deleteErr := s.authDB.Write.DeleteTeamByID(rollbackCtx, teamID); deleteErr != nil {
+		if deleteErr := s.authDB.DeleteTeamByID(rollbackCtx, teamID); deleteErr != nil {
 			return fmt.Errorf("delete team after provisioning failure: provision=%s delete=%w", err.Error(), deleteErr)
 		}
 
@@ -151,20 +151,20 @@ func validateTeamCreationAllowed(ctx context.Context, authTxDB *authqueries.Quer
 		if row.IsBanned {
 			return &internalteamprovision.ProvisionError{
 				StatusCode: http.StatusBadRequest,
-				Message:    "You're unable to create a team right now. Please contact support if this persists.",
+				Message:    "You're unable to create a project right now. Please contact support if this persists.",
 			}
 		}
 	}
 
 	teamLimit := maxTeamsPerUser
 	limitMessage := fmt.Sprintf(
-		"You can't create more than %d teams, you can upgrade to Pro tier to create up to %d teams",
+		"You can't create more than %d projects, you can upgrade to Pro tier to create up to %d projects",
 		maxTeamsPerUser,
 		maxTeamsPerUserWithProTier,
 	)
 	if hasProTier {
 		teamLimit = maxTeamsPerUserWithProTier
-		limitMessage = fmt.Sprintf("You can't create more than %d teams", maxTeamsPerUserWithProTier)
+		limitMessage = fmt.Sprintf("You can't create more than %d projects", maxTeamsPerUserWithProTier)
 	}
 
 	if len(teams) >= teamLimit {

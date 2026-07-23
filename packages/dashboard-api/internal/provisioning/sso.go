@@ -47,7 +47,7 @@ func (s *Service) ensureNotSSOManaged(ctx context.Context, userID uuid.UUID) err
 	if orgID != uuid.Nil {
 		return &internalteamprovision.ProvisionError{
 			StatusCode: http.StatusForbidden,
-			Message:    "SSO-managed accounts can't create teams. Contact your organization admin.",
+			Message:    "SSO-managed accounts can't create projects. Contact your organization admin.",
 		}
 	}
 

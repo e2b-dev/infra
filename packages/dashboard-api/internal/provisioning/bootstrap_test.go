@@ -39,7 +39,7 @@ func TestBootstrapAuthProviderUser_CreatesIdentityAndDefaultTeam(t *testing.T) {
 		t.Fatalf("expected bootstrap to succeed: %v", err)
 	}
 
-	userIdentity, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+	userIdentity, err := testDB.AuthDB.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
 		OidcIss: input.OIDCIssuer,
 		OidcSub: input.OIDCUserID,
 	})
@@ -47,15 +47,15 @@ func TestBootstrapAuthProviderUser_CreatesIdentityAndDefaultTeam(t *testing.T) {
 		t.Fatalf("expected user identity to be created: %v", err)
 	}
 
-	defaultTeam, err := testDB.AuthDB.Read.GetDefaultTeamByUserID(ctx, userIdentity.UserID)
+	defaultTeam, err := testDB.AuthDB.GetDefaultTeamByUserID(ctx, userIdentity.UserID)
 	if err != nil {
 		t.Fatalf("expected default team to be created: %v", err)
 	}
 	if defaultTeam.ID != team.ID {
 		t.Fatalf("expected response team %s, got %s", defaultTeam.ID, team.ID)
 	}
-	if defaultTeam.Name != "Default Team" {
-		t.Fatalf("expected team name %q, got %q", "Default Team", defaultTeam.Name)
+	if defaultTeam.Name != "Personal Project" {
+		t.Fatalf("expected team name %q, got %q", "Personal Project", defaultTeam.Name)
 	}
 	if defaultTeam.Email != "ada@example.test" {
 		t.Fatalf("expected team email %q, got %q", "ada@example.test", defaultTeam.Email)
@@ -117,7 +117,7 @@ func TestBootstrapOIDCUser_PopulatesOryExternalID(t *testing.T) {
 		t.Fatalf("expected bootstrap to succeed: %v", err)
 	}
 
-	userIdentity, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+	userIdentity, err := testDB.AuthDB.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
 		OidcIss: input.OIDCIssuer,
 		OidcSub: input.OIDCUserID,
 	})
@@ -155,7 +155,7 @@ func TestBootstrapOIDCUser_RoutesConfiguredSecondaryIssuer(t *testing.T) {
 		t.Fatalf("expected bootstrap to succeed: %v", err)
 	}
 
-	if _, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+	if _, err := testDB.AuthDB.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
 		OidcIss: secondTestIssuer,
 		OidcSub: input.OIDCUserID,
 	}); err != nil {
@@ -209,15 +209,15 @@ func TestBootstrapOIDCUser_ExternalIDFailureKeepsUserProvisioned(t *testing.T) {
 		t.Fatal("expected provisioned team")
 	}
 
-	userIdentity, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+	userIdentity, err := testDB.AuthDB.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
 		OidcIss: input.OIDCIssuer,
 		OidcSub: input.OIDCUserID,
 	})
 	if err != nil {
 		t.Fatalf("expected user identity to be created: %v", err)
 	}
-	if _, err := testDB.AuthDB.Read.GetDefaultTeamByUserID(ctx, userIdentity.UserID); err != nil {
-		t.Fatalf("expected default team to be created: %v", err)
+	if _, err := testDB.AuthDB.GetDefaultTeamByUserID(ctx, userIdentity.UserID); err != nil {
+		t.Fatalf("expected default team to survive external_id failure: %v", err)
 	}
 
 	if len(sink.requests) != 1 {
@@ -245,14 +245,14 @@ func TestBootstrapOIDCUser_ReRunBackfillsExternalID(t *testing.T) {
 		t.Fatalf("expected first bootstrap to succeed: %v", err)
 	}
 
-	userIdentity, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+	userIdentity, err := testDB.AuthDB.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
 		OidcIss: input.OIDCIssuer,
 		OidcSub: input.OIDCUserID,
 	})
 	if err != nil {
 		t.Fatalf("expected user identity from first bootstrap: %v", err)
 	}
-	existingTeam, err := testDB.AuthDB.Read.GetDefaultTeamByUserID(ctx, userIdentity.UserID)
+	existingTeam, err := testDB.AuthDB.GetDefaultTeamByUserID(ctx, userIdentity.UserID)
 	if err != nil {
 		t.Fatalf("expected default team from first bootstrap: %v", err)
 	}
@@ -332,7 +332,7 @@ func TestBootstrapOIDCUser_ConcurrentRequestsSingleIdentityAndTeam(t *testing.T)
 		}
 	}
 
-	userIdentity, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+	userIdentity, err := testDB.AuthDB.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
 		OidcIss: input.OIDCIssuer,
 		OidcSub: input.OIDCUserID,
 	})

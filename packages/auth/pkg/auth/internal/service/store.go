@@ -8,14 +8,14 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
-	internalauthteam "github.com/e2b-dev/infra/packages/auth/internal/team"
+	internalauthteam "github.com/e2b-dev/infra/packages/auth/pkg/auth/internal/team"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/auth/internal/service")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/auth/pkg/auth/internal/service")
 
 type authStoreImpl struct {
 	authDB *authdb.Client
@@ -35,7 +35,7 @@ func (s *authStoreImpl) GetTeamByHashedAPIKey(ctx context.Context, hashedKey str
 	// read replica here races replication lag and could re-cache a
 	// just-deleted key for the full cache TTL, so key revocation must be
 	// read-after-write safe.
-	result, err := s.authDB.Write.GetTeamWithTierByAPIKey(ctx, hashedKey)
+	result, err := s.authDB.GetTeamWithTierByAPIKey(ctx, hashedKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get team from API key: %w", err)
 	}
@@ -47,7 +47,7 @@ func (s *authStoreImpl) GetTeamByHashedAPIKey(ctx context.Context, hashedKey str
 	go func() {
 		// Run the update in a separate context to avoid an extra latency
 		ctx := context.WithoutCancel(ctx)
-		updateErr := s.authDB.Write.UpdateLastTimeUsed(ctx, hashedKey)
+		updateErr := s.authDB.UpdateLastTimeUsed(ctx, hashedKey)
 		if updateErr != nil {
 			logger.L().Error(ctx, "failed to update last time used", zap.Error(updateErr))
 		}
@@ -62,7 +62,7 @@ func (s *authStoreImpl) GetTeamByID(ctx context.Context, teamID uuid.UUID) (*typ
 	ctx, span := tracer.Start(ctx, "get team by id auth")
 	defer span.End()
 
-	result, err := s.authDB.Read.GetTeamWithTierByTeamID(ctx, teamID)
+	result, err := s.authDB.GetTeamWithTierByTeamID(ctx, teamID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get team from team ID: %w", err)
 	}
@@ -85,7 +85,7 @@ func (s *authStoreImpl) GetTeamByIDAndUserID(ctx context.Context, userID uuid.UU
 		return nil, fmt.Errorf("failed to parse team ID: %w", err)
 	}
 
-	result, err := s.authDB.Read.GetTeamWithTierByTeamAndUser(ctx, authqueries.GetTeamWithTierByTeamAndUserParams{
+	result, err := s.authDB.GetTeamWithTierByTeamAndUser(ctx, authqueries.GetTeamWithTierByTeamAndUserParams{
 		ID:     teamIDParsed,
 		UserID: userID,
 	})
@@ -103,9 +103,9 @@ func (s *authStoreImpl) GetTeamByIDAndUserID(ctx context.Context, userID uuid.UU
 }
 
 func (s *authStoreImpl) GetUserIDByHashedAccessToken(ctx context.Context, hashedToken string) (uuid.UUID, error) {
-	return s.authDB.Read.GetUserIDFromAccessToken(ctx, hashedToken)
+	return s.authDB.GetUserIDFromAccessToken(ctx, hashedToken)
 }
 
 func (s *authStoreImpl) GetTeamAPIKeyHashes(ctx context.Context, teamID uuid.UUID) ([]string, error) {
-	return s.authDB.Read.GetTeamAPIKeyHashes(ctx, teamID)
+	return s.authDB.GetTeamAPIKeyHashes(ctx, teamID)
 }

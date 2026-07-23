@@ -9,8 +9,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 
-	"github.com/e2b-dev/infra/packages/auth/internal/token/jwks"
-	"github.com/e2b-dev/infra/packages/auth/internal/token/oidc"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth/internal/token/jwks"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth/internal/token/oidc"
 )
 
 // ProviderConfig describes external auth provider verification.

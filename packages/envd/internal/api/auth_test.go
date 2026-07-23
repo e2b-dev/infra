@@ -75,12 +75,12 @@ func TestValidateSigningAcceptsCorrectSignature(t *testing.T) {
 	path := "/files"
 	username := "user1"
 	operation := SigningWriteOperation
-	exp := time.Now().Add(time.Hour).Unix()
+	expSec := time.Now().Add(time.Hour).Unix()
 
-	sig, err := api.generateSignature(path, username, operation, &exp)
+	sig, err := api.generateSignature(path, username, operation, &expSec)
 	require.NoError(t, err)
 
-	expInt := int(exp)
+	expInt := int(expSec)
 	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/files", nil)
 	err = api.validateSigning(r, &sig, &expInt, &username, path, operation)
 	assert.NoError(t, err)
@@ -107,12 +107,12 @@ func TestValidateSigningRejectsExpiredSignature(t *testing.T) {
 	username := "user1"
 	operation := SigningReadOperation
 	// Expired 1 hour ago
-	exp := time.Now().Add(-time.Hour).Unix()
+	expSec := time.Now().Add(-time.Hour).Unix()
 
-	sig, err := api.generateSignature(path, username, operation, &exp)
+	sig, err := api.generateSignature(path, username, operation, &expSec)
 	require.NoError(t, err)
 
-	expInt := int(exp)
+	expInt := int(expSec)
 	r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/files", nil)
 	err = api.validateSigning(r, &sig, &expInt, &username, path, operation)
 	assert.EqualError(t, err, "signature is already expired")

@@ -35,7 +35,7 @@ func NewStore(ctx context.Context) *APIStore {
 	if err != nil {
 		log.Fatal(err)
 	}
-	authDatabase, err := authdb.NewClient(ctx, databaseURL, databaseURL, pool.WithMaxConnections(3))
+	authDatabase, err := authdb.NewClient(ctx, databaseURL, pool.WithMaxConnections(3))
 	if err != nil {
 		log.Fatal(err)
 	}
