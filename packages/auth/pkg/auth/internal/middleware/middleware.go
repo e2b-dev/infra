@@ -15,9 +15,9 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/e2b-dev/infra/packages/auth/internal/authcontext"
-	internalauthteam "github.com/e2b-dev/infra/packages/auth/internal/team"
-	"github.com/e2b-dev/infra/packages/auth/internal/token"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth/internal/authcontext"
+	internalauthteam "github.com/e2b-dev/infra/packages/auth/pkg/auth/internal/team"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth/internal/token"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -35,7 +35,7 @@ const (
 
 type APIError = apierrors.APIError
 
-var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/auth/internal/middleware")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/auth/pkg/auth/internal/middleware")
 
 var (
 	ErrNoAuthHeader      = errors.New("authorization header is missing")

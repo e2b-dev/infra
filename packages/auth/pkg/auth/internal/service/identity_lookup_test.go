@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/e2b-dev/infra/packages/auth/internal/token/oidc"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth/internal/token/oidc"
 )
 
 type countingIdentityLookup struct {

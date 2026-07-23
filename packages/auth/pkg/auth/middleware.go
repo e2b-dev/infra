@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	internalauthmiddleware "github.com/e2b-dev/infra/packages/auth/internal/middleware"
+	internalauthmiddleware "github.com/e2b-dev/infra/packages/auth/pkg/auth/internal/middleware"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 )
 

@@ -61,6 +61,8 @@ func main() {
 	disableMemfd := flag.Bool("disable-memfd", false, "disable memfd-backed guest memory")
 	memfileDiffDedup := flag.Bool("memfile-diff-dedup", false, "enable 4KiB-page deduplication of memfile diff against the base template")
 	verbose := flag.Bool("v", false, "verbose logging")
+	console := flag.Bool("console", false, "forward Firecracker's output and the guest kernel serial console (tty) to stdout (fresh boot / -reboot only)")
+	firecracker := flag.String("firecracker", "", "override the build's Firecracker version (e.g. when the baked version isn't on this node); safe for a cold boot/-reboot, risky for a memory resume")
 
 	// Command execution (no pause)
 	cmd := flag.String("cmd", "", "execute command in sandbox and exit (no snapshot)")
@@ -225,8 +227,10 @@ func main() {
 	}
 
 	runOpts := runOptions{
-		cmd:        *cmd,
-		iterations: *iterations,
+		cmd:                *cmd,
+		iterations:         *iterations,
+		console:            *console,
+		firecrackerVersion: *firecracker,
 	}
 
 	benchIters := *iterations
@@ -282,8 +286,10 @@ type pauseTimings struct {
 }
 
 type runOptions struct {
-	cmd        string // command to run and exit (no pause)
-	iterations int    // number of iterations (0 = single run)
+	cmd                string // command to run and exit (no pause)
+	iterations         int    // number of iterations (0 = single run)
+	console            bool   // forward the guest kernel console + FC output to stdout/stderr (fresh boot)
+	firecrackerVersion string // override the build's Firecracker version (empty = use the build's own)
 }
 
 func (r runOptions) enabled() bool {
@@ -366,6 +372,7 @@ type runner struct {
 	shell       bool
 	reboot      bool
 	forceReboot bool
+	console     bool
 	config      cfg.BuilderConfig
 	storage     storage.StorageProvider
 }
@@ -389,7 +396,17 @@ func wrapTemplate(tmpl template.Template, noPrefetch, forceFsOnly bool) template
 // -force-reboot is set.
 func (r *runner) startSandbox(ctx context.Context, runtime sandbox.RuntimeMetadata, start, end time.Time) (*sandbox.Sandbox, error) {
 	if r.reboot || r.forceReboot {
-		return r.factory.RebootSandbox(ctx, r.tmpl, r.sbxConfig, runtime, end, nil)
+		var procOpts []func(*fc.ProcessOptions)
+		if r.console {
+			// Forward the guest kernel console (tty) + FC output to this process.
+			procOpts = append(procOpts, func(o *fc.ProcessOptions) {
+				o.KernelLogs = true
+				o.Stdout = os.Stdout
+				o.Stderr = os.Stderr
+			})
+		}
+
+		return r.factory.RebootSandbox(ctx, r.tmpl, r.sbxConfig, runtime, end, nil, procOpts...)
 	}
 
 	return r.factory.ResumeSandbox(ctx, r.tmpl, r.sbxConfig, runtime, start, end, nil)
@@ -1244,6 +1261,12 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	}
 	tmpl = wrapTemplate(tmpl, noPrefetch, forceReboot)
 
+	fcVersion := meta.Template.FirecrackerVersion
+	if runOpts.firecrackerVersion != "" {
+		fmt.Printf("   Overriding Firecracker version: %s -> %s\n", meta.Template.FirecrackerVersion, runOpts.firecrackerVersion)
+		fcVersion = runOpts.firecrackerVersion
+	}
+
 	token := "local"
 	sbxCfg := sandbox.NewConfig(sandbox.Config{
 		BaseTemplateID:    buildID,
@@ -1253,7 +1276,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 		Envd:              sandbox.EnvdMetadata{Vars: map[string]string{}, AccessToken: &token, Version: "1.0.0"},
 		FirecrackerConfig: fc.Config{
 			KernelVersion:      meta.Template.KernelVersion,
-			FirecrackerVersion: meta.Template.FirecrackerVersion,
+			FirecrackerVersion: fcVersion,
 		},
 	})
 
@@ -1267,6 +1290,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 		shell:       shell,
 		reboot:      reboot,
 		forceReboot: forceReboot,
+		console:     runOpts.console,
 		config:      config.BuilderConfig,
 		storage:     persistence,
 		sbxConfig:   sbxCfg,
