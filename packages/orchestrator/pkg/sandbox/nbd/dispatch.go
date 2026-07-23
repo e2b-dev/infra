@@ -333,14 +333,22 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 			// Per-request backend failure: signal it to the NBD client via the
 			// response error byte and keep the dispatch loop alive. Only
 			// writeResponse errors (dead NBD socket) escalate through d.fatal.
-			logger.L().Error(ctx, "nbd backend read failed",
+			//
+			// context.Canceled/DeadlineExceeded means the sandbox is shutting
+			// down; that's expected, so log at Warn rather than Error.
+			fields := []zap.Field{
 				zap.Error(readErr),
 				zap.String("nbd_op", "read"),
 				zap.String("nbd_provider", d.provName),
 				zap.Uint64("nbd_handle", handle),
 				zap.Uint64("nbd_offset", from),
 				zap.Uint32("nbd_length", length),
-			)
+			}
+			if errors.Is(readErr, context.Canceled) || errors.Is(readErr, context.DeadlineExceeded) {
+				logger.L().Warn(ctx, "nbd backend read cancelled (sandbox exiting)", fields...)
+			} else {
+				logger.L().Error(ctx, "nbd backend read failed", fields...)
+			}
 
 			return d.writeResponse(1, handle, []byte{})
 		}
@@ -355,7 +363,10 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 			select {
 			case d.fatal <- err:
 			default:
-				logger.L().Error(ctx, "nbd error cmd read",
+				// fatal channel full: shutdown already in progress.
+				// Downgrade to Warn since this is a response-write failure
+				// on a closing socket, not a new independent failure.
+				logger.L().Warn(ctx, "nbd error cmd read",
 					zap.Error(err),
 					zap.String("nbd_op", "read"),
 					zap.String("nbd_provider", d.provName),
@@ -400,14 +411,19 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 		}
 
 		if writeErr != nil {
-			logger.L().Error(ctx, "nbd backend write failed",
+			fields := []zap.Field{
 				zap.Error(writeErr),
 				zap.String("nbd_op", "write"),
 				zap.String("nbd_provider", d.provName),
 				zap.Uint64("nbd_handle", handle),
 				zap.Uint64("nbd_offset", from),
 				zap.Int("nbd_length", len(data)),
-			)
+			}
+			if errors.Is(writeErr, context.Canceled) || errors.Is(writeErr, context.DeadlineExceeded) {
+				logger.L().Warn(ctx, "nbd backend write cancelled (sandbox exiting)", fields...)
+			} else {
+				logger.L().Error(ctx, "nbd backend write failed", fields...)
+			}
 
 			return d.writeResponse(1, handle, []byte{})
 		}
@@ -422,7 +438,7 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 			select {
 			case d.fatal <- err:
 			default:
-				logger.L().Error(ctx, "nbd error cmd write",
+				logger.L().Warn(ctx, "nbd error cmd write",
 					zap.Error(err),
 					zap.String("nbd_op", "write"),
 					zap.String("nbd_provider", d.provName),
