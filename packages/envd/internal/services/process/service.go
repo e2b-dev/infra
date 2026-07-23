@@ -1,6 +1,7 @@
 package process
 
 import (
+	"errors"
 	"fmt"
 
 	"connectrpc.com/connect"
@@ -42,6 +43,16 @@ func Handle(server *chi.Mux, l *zerolog.Logger, defaults *execcontext.Defaults, 
 	server.Mount(path, h)
 
 	return service
+}
+
+// errSubscriberKicked is returned on a process event stream whose consumer
+// stopped draining events and was disconnected by the fan-out loop so it
+// could not block output delivery to the other consumers of the process.
+func errSubscriberKicked() error {
+	return connect.NewError(
+		connect.CodeResourceExhausted,
+		errors.New("process event stream fell too far behind and was disconnected; reconnect to the process to resume streaming"),
+	)
 }
 
 func (s *Service) getProcess(selector *rpc.ProcessSelector) (*handler.Handler, error) {

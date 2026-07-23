@@ -27,10 +27,10 @@ func (s *Service) handleConnect(ctx context.Context, req *connect.Request[rpc.Co
 
 	exitChan := make(chan struct{})
 
-	data, dataCancel := proc.DataEvent.Fork()
+	data, dataKicked, dataCancel := proc.DataEvent.Fork()
 	defer dataCancel()
 
-	end, endCancel := proc.EndEvent.Fork()
+	end, endKicked, endCancel := proc.EndEvent.Fork()
 	defer endCancel()
 
 	streamErr := stream.Send(&rpc.ConnectResponse{
@@ -72,6 +72,10 @@ func (s *Service) handleConnect(ctx context.Context, req *connect.Request[rpc.Co
 				cancel(ctx.Err())
 
 				return
+			case <-dataKicked:
+				cancel(errSubscriberKicked())
+
+				return
 			case event, ok := <-data:
 				if !ok {
 					break dataLoop
@@ -95,6 +99,10 @@ func (s *Service) handleConnect(ctx context.Context, req *connect.Request[rpc.Co
 		select {
 		case <-ctx.Done():
 			cancel(ctx.Err())
+
+			return
+		case <-endKicked:
+			cancel(errSubscriberKicked())
 
 			return
 		case event, ok := <-end:
