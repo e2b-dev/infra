@@ -937,22 +937,22 @@ type ServerInterface interface {
 	// List ready assignments for a single template tag
 	// (GET /templates/{templateID}/tags/{tag}/assignments)
 	GetTemplatesTemplateIDTagsTagAssignments(c *gin.Context, templateID TemplateID, tag TagPath, params GetTemplatesTemplateIDTagsTagAssignmentsParams)
-	// Delete a project and its control-plane state.
+	// Delete a project and its control-plane state (v1).
 	// (DELETE /v1/management/projects/{teamID})
 	DeleteProject(c *gin.Context, teamID TeamID)
-	// Create or reconcile a project.
+	// Create or reconcile a project (v1).
 	// (PUT /v1/management/projects/{teamID})
 	UpsertProject(c *gin.Context, teamID TeamID)
-	// Reconcile effective limits for a project.
+	// Reconcile effective limits for a project (v1).
 	// (PUT /v1/management/projects/{teamID}/limits)
 	UpsertProjectLimits(c *gin.Context, teamID TeamID)
-	// Remove a project member.
+	// Remove a project member (v1).
 	// (DELETE /v1/management/projects/{teamID}/members/{userId})
 	DeleteProjectMember(c *gin.Context, teamID TeamID, userId UserId)
-	// Reconcile an opaque user UUID as a project member.
+	// Reconcile an opaque user UUID as a project member (v1).
 	// (PUT /v1/management/projects/{teamID}/members/{userId})
 	UpsertProjectMember(c *gin.Context, teamID TeamID, userId UserId)
-	// Purge shard-local membership and access-token state for an opaque user UUID.
+	// Purge shard-local membership and access-token state for an opaque user UUID (v1).
 	// (DELETE /v1/management/users/{userId})
 	PurgeUser(c *gin.Context, userId UserId)
 }
@@ -2088,13 +2088,13 @@ var swaggerSpec = []string{
 	"XB16jZjeSNQbDSd3yqrT1Tv2v+oW9VQnuKFwtdB82eod67tOemmCJ+68pFzxR9IrrYIrE6LxDvI04d+1",
 	"yq586g5rt9QldwKu7uet6kchasVT7E0bmbWvBVcxoCxFDKWAoJuqKlLs0SHBgbKmOmmWHnsEtVJAsZ6u",
 	"gqbqBvdNo4keabH7CrlNMqMdUOjqSN9X/C5WfNvSba81RyEMaILrJ/McErhCsou5+R5689zDcF7GfKI9",
-	"CsmRmLbq9LWqmgWvOKpcrC/hPv6TkLZPeq7tVIU5eu7sQGD4q0KNWKjP6AlGs1mRQYI0Ww4cYd1Q9kmV",
-	"o53Z+z0PyMsWpSf9q7/578pwT3cXPV/112P/kVemPUT5VJtyo8zVfCU+hhJKEpyhVEHXZJkfnS67nKpi",
-	"p3tVrPu4/ba/JWeOGFJWC6tef8NrLEAtzutSX3tcj29sgazHXJW2LFnIcvSo+FfLJUoEvkbVGWuGAN+Q",
-	"ZM0owZ/3jtJ9bOn7Q+n7CpuozTe9me8MsNMPXBg8vLVp+nHZm3MZa1w80t7+9YlbHX+o7YD66PHut/xJ",
-	"51vGlZGDg0dQRnq0joVwPx2G5rOm33HoVTuQAFrA30pzHl59ywTyiQjt6p+hGget84clW6ELHqhhZMOZ",
-	"TtTyNWTpv50nodil5z7LaAIze+RTol0dYFBe+EyV3DPcMZXm2nLerdapdMl9Vdv4g624a29DSpVkfqkv",
-	"ejk/6gNgjR+ssyp/bFW3tiS3nCg1AVCBjLfug6k4E0fsGicI/P3Xc3XUwwzX5sL9x/v/DwAA//8=",
+	"CsmRmLbq9LWqmgWvOKpcrC/hPv6TkLZPeq7tVIU5eu7sQGD4q0KNWKjP6AlGs1mRQYIMW364fqKKz1qJ",
+	"3VD2SdWkndlLPg9IzhalJwesP/zvCnJPFxg9n/bXY/+R96Y9RPn0m/KlzP18JUOGEkoSnKFU4dekmh+d",
+	"Lrumqoqne9Wu+7gCt791Z84ZUlYLy1mE4wstQEHO66Jfe1yUb2yprMdcmrZAWcia9Cj7V8slSgS+RtVp",
+	"a4YA35BkzSjBn/cO1X1s7vuD6vsKoKjNN72t7xa1089fGFC8tVn7cQCYYxprXDzSVv/1yVydhqhlq6Wy",
+	"Rwtg0pmXcbXkgOER1JIerWMw3E/HovnU6XcwehUQJIAW8LfSnJFX3zeBfBuYdjXRUPGD1sHEkq3QBQ/U",
+	"NbLhTGdw+Rqy9N/OxVDs0nOfZTSBmT0LKiGvTjYo93ymavEZ7pgSdB1h717/VFrlvqp8/MHW47V3JaVy",
+	"Mr/U18CcH/XxsMYP1pWVP7ZqX1uSWy6WmgCokMZbt8VUFIojdo0TBP7+67k6CGKGa3Ph/uP9/wcAAP//",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

@@ -1894,7 +1894,7 @@ paths:
       - $ref: "#/components/parameters/teamID"
     put:
       operationId: upsertProject
-      summary: Create or reconcile a project.
+      summary: Create or reconcile a project (v1).
       tags: [workspace-admin]
       security:
         - AdminJWTAuth: []
@@ -1929,7 +1929,7 @@ paths:
           $ref: "#/components/responses/501"
     delete:
       operationId: deleteProject
-      summary: Delete a project and its control-plane state.
+      summary: Delete a project and its control-plane state (v1).
       tags: [workspace-admin]
       security:
         - AdminJWTAuth: []
@@ -1951,7 +1951,7 @@ paths:
       - $ref: "#/components/parameters/userId"
     put:
       operationId: upsertProjectMember
-      summary: Reconcile an opaque user UUID as a project member.
+      summary: Reconcile an opaque user UUID as a project member (v1).
       tags: [workspace-admin]
       security:
         - AdminJWTAuth: []
@@ -1976,7 +1976,7 @@ paths:
           $ref: "#/components/responses/501"
     delete:
       operationId: deleteProjectMember
-      summary: Remove a project member.
+      summary: Remove a project member (v1).
       tags: [workspace-admin]
       security:
         - AdminJWTAuth: []
@@ -1999,7 +1999,7 @@ paths:
       - $ref: "#/components/parameters/teamID"
     put:
       operationId: upsertProjectLimits
-      summary: Reconcile effective limits for a project.
+      summary: Reconcile effective limits for a project (v1).
       tags: [workspace-admin]
       security:
         - AdminJWTAuth: []
@@ -2028,7 +2028,7 @@ paths:
       - $ref: "#/components/parameters/userId"
     delete:
       operationId: purgeUser
-      summary: Purge shard-local membership and access-token state for an opaque user UUID.
+      summary: Purge shard-local membership and access-token state for an opaque user UUID (v1).
       tags: [workspace-admin]
       security:
         - AdminJWTAuth: []
