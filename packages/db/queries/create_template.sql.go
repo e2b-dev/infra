@@ -121,6 +121,7 @@ WITH invalidated AS (
         AND eba.env_id = $2
         AND eba.tag = ANY($3::text[])
         AND eb.status_group = 'pending'
+        AND eb.id != $4
     RETURNING eb.id
 )
 DELETE FROM public.active_template_builds
@@ -128,13 +129,19 @@ WHERE build_id IN (SELECT id FROM invalidated)
 `
 
 type InvalidateUnstartedTemplateBuildsParams struct {
-	Reason     types.BuildReason
-	TemplateID string
-	Tags       []string
+	Reason         types.BuildReason
+	TemplateID     string
+	Tags           []string
+	ExcludeBuildID uuid.UUID
 }
 
 func (q *Queries) InvalidateUnstartedTemplateBuilds(ctx context.Context, arg InvalidateUnstartedTemplateBuildsParams) error {
-	_, err := q.db.Exec(ctx, invalidateUnstartedTemplateBuilds, arg.Reason, arg.TemplateID, arg.Tags)
+	_, err := q.db.Exec(ctx, invalidateUnstartedTemplateBuilds,
+		arg.Reason,
+		arg.TemplateID,
+		arg.Tags,
+		arg.ExcludeBuildID,
+	)
 	return err
 }
 

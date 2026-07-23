@@ -357,8 +357,9 @@ func RegisterBuild(
 		Reason: dbtypes.BuildReason{
 			Message: "The build was canceled because it was superseded by a newer one.",
 		},
-		TemplateID: data.TemplateID,
-		Tags:       tags,
+		TemplateID:     data.TemplateID,
+		Tags:           tags,
+		ExcludeBuildID: buildID,
 	})
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when invalidating unstarted builds", err, attribute.StringSlice("tags", tags))

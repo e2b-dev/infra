@@ -3,6 +3,7 @@ package builds
 import (
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -24,9 +25,10 @@ func TestInvalidateUnstartedTemplateBuilds_InvalidatesWaitingBuilds(t *testing.T
 
 	// Invalidate waiting builds for default tag
 	err := db.SqlcClient.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
-		TemplateID: templateID,
-		Tags:       []string{"default"},
-		Reason:     types.BuildReason{Message: "Test invalidation"},
+		TemplateID:     templateID,
+		Tags:           []string{"default"},
+		Reason:         types.BuildReason{Message: "Test invalidation"},
+		ExcludeBuildID: uuid.Nil,
 	})
 	require.NoError(t, err)
 
@@ -55,9 +57,10 @@ func TestInvalidateUnstartedTemplateBuilds_OnlyAffectsSpecificTag(t *testing.T) 
 
 	// Invalidate only 'default' tag builds
 	err := db.SqlcClient.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
-		TemplateID: templateID,
-		Tags:       []string{"default"},
-		Reason:     types.BuildReason{Message: "Test invalidation"},
+		TemplateID:     templateID,
+		Tags:           []string{"default"},
+		Reason:         types.BuildReason{Message: "Test invalidation"},
+		ExcludeBuildID: uuid.Nil,
 	})
 	require.NoError(t, err)
 
@@ -87,9 +90,10 @@ func TestInvalidateUnstartedTemplateBuilds_DoesNotAffectOtherTemplates(t *testin
 
 	// Invalidate only template1's builds
 	err := db.SqlcClient.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
-		TemplateID: template1ID,
-		Tags:       []string{"default"},
-		Reason:     types.BuildReason{Message: "Test invalidation"},
+		TemplateID:     template1ID,
+		Tags:           []string{"default"},
+		Reason:         types.BuildReason{Message: "Test invalidation"},
+		ExcludeBuildID: uuid.Nil,
 	})
 	require.NoError(t, err)
 
@@ -121,9 +125,10 @@ func TestInvalidateUnstartedTemplateBuilds_DoesNotAffectNonWaitingBuilds(t *test
 
 	// Invalidate waiting builds
 	err := db.SqlcClient.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
-		TemplateID: templateID,
-		Tags:       []string{"default"},
-		Reason:     types.BuildReason{Message: "Test invalidation"},
+		TemplateID:     templateID,
+		Tags:           []string{"default"},
+		Reason:         types.BuildReason{Message: "Test invalidation"},
+		ExcludeBuildID: uuid.Nil,
 	})
 	require.NoError(t, err)
 
@@ -158,9 +163,10 @@ func TestInvalidateUnstartedTemplateBuilds_MultipleWaitingBuilds(t *testing.T) {
 
 	// Invalidate all waiting builds
 	err := db.SqlcClient.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
-		TemplateID: templateID,
-		Tags:       []string{"default"},
-		Reason:     types.BuildReason{Message: "Test invalidation"},
+		TemplateID:     templateID,
+		Tags:           []string{"default"},
+		Reason:         types.BuildReason{Message: "Test invalidation"},
+		ExcludeBuildID: uuid.Nil,
 	})
 	require.NoError(t, err)
 
@@ -200,9 +206,10 @@ func TestInvalidateUnstartedTemplateBuilds_MultipleTagsInSingleCall(t *testing.T
 
 	// Invalidate 'default', 'v1', and 'v2' tags in a single call
 	err := db.SqlcClient.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
-		TemplateID: templateID,
-		Tags:       []string{"default", "v1", "v2"},
-		Reason:     types.BuildReason{Message: "Test batch invalidation"},
+		TemplateID:     templateID,
+		Tags:           []string{"default", "v1", "v2"},
+		Reason:         types.BuildReason{Message: "Test batch invalidation"},
+		ExcludeBuildID: uuid.Nil,
 	})
 	require.NoError(t, err)
 
