@@ -20,6 +20,18 @@ const (
 	testPollInterval = 10 * time.Millisecond
 )
 
+// testPubSubWakeupTimeout bounds the waiter's Obtain in the test asserting
+// the pub/sub wake-up path. It has to satisfy two constraints:
+//   - long enough for the register/release/notify/re-acquire choreography
+//     (several Redis round-trips plus goroutine scheduling) on small, loaded
+//     CI runners - the previous 25ms flaked regularly on 4vcpu machines;
+//   - strictly below the earliest possible backoff retry,
+//     lockRetryMinInterval*(1-lockRetryJitter), so the waiter can only
+//     succeed via the pub/sub notification: if lock holders stop publishing
+//     release notifications, the test still fails instead of passing via
+//     the polling fallback.
+var testPubSubWakeupTimeout = time.Duration(0.9 * (1 - lockRetryJitter) * float64(lockRetryMinInterval))
+
 func TestStorageLocker_ObtainAfterReleaseNotification(t *testing.T) {
 	t.Parallel()
 
@@ -81,7 +93,7 @@ func TestStorageLocker_ObtainUsesProvidedContext(t *testing.T) {
 
 	waiterDone := make(chan error, 1)
 	go func() {
-		waiterLock, obtainErr := locker.Obtain(t.Context(), lockKey, 25*time.Millisecond)
+		waiterLock, obtainErr := locker.Obtain(t.Context(), lockKey, testPubSubWakeupTimeout)
 		if obtainErr != nil {
 			waiterDone <- obtainErr
 
