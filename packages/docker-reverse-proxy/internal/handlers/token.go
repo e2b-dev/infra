@@ -150,12 +150,10 @@ func getToken(ctx context.Context, templateID string) (*DockerToken, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body := make([]byte, resp.ContentLength)
-		_, err := resp.Body.Read(body)
+		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read body for failed token acquisition (%d) for scope - %s: %w", resp.StatusCode, templateID, err)
 		}
-		defer resp.Body.Close()
 
 		return nil, fmt.Errorf("failed to get token (%d) for scope - %s: %s", resp.StatusCode, templateID, string(body))
 	}
