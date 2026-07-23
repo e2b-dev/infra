@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"syscall"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -94,6 +95,14 @@ func processError(ctx context.Context, s string, err error) error {
 
 	if errors.Is(err, os.ErrNotExist) {
 		return newAPIError(ctx, codes.NotFound, http.StatusNotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "%s: %s", s, err.Error()).Err()
+	}
+
+	// ENOTDIR is returned when a path traverses a regular file as if it were a
+	// directory (e.g. "file.txt/sub"). errors.Is(err, os.ErrNotExist) does not
+	// match it, so map it explicitly to a client-facing bad request rather than
+	// letting it fall through to a generic 500.
+	if errors.Is(err, syscall.ENOTDIR) {
+		return newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_INVALID_REQUEST, "%s: a component of the path is a file, but must be a directory", s).Err()
 	}
 
 	return fmt.Errorf("%s: %w", s, err)
