@@ -1,3 +1,7 @@
+// copy-build requires Linux. The template metadata package imports
+// sandbox/block which uses Linux-only syscalls (userfaultfd, memfd).
+// Darwin support is blocked on separating the cross-platform data types
+// from the Linux-only implementation; tracked in issue #3316.
 package main
 
 import (

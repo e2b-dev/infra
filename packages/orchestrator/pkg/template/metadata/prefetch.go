@@ -1,3 +1,6 @@
+//go:build linux
+
+// See template_metadata.go for why this file is restricted to Linux.
 package metadata
 
 import (

@@ -1,3 +1,9 @@
+//go:build linux
+
+// The build tag above restricts this file to Linux because it imports
+// sandbox/block, which depends on Linux-only syscalls. Once the cross-platform
+// data types are separated from the Linux-only block implementation (issue #3316),
+// this tag can be removed.
 package metadata
 
 import (
