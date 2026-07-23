@@ -32,6 +32,15 @@ jobs:
               echo "❌ Migration $file is out of order! ($version <= $HIGHEST_MAIN)"
               exit 1
             fi
+
+            # Reject placeholder timestamps (last 6 digits = HHMMSS) that cause
+            # same-day version collisions. Use a real timestamp instead:
+            #   date +%Y%m%d%H%M%S
+            time_part="${version: -6}"
+            if [ "$time_part" = "120000" ] || [ "$time_part" = "000000" ]; then
+              echo "❌ Migration $file uses a placeholder timestamp ($time_part)! Generate a real timestamp with 'date +%Y%m%d%H%M%S'."
+              exit 1
+            fi
           done
           
           echo "✅ All new migrations are in correct order."
