@@ -8,7 +8,10 @@ import (
 	"slices"
 	"time"
 
+	"go.uber.org/zap"
+
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const (
@@ -24,6 +27,11 @@ func (s *ServerStore) TemplateBuildStatus(ctx context.Context, in *template_mana
 
 	buildInfo, err := s.buildCache.Get(in.GetBuildID())
 	if err != nil {
+		logger.L().Warn(ctx, "TemplateBuildStatus: cache lookup failed",
+			zap.String("build.id", in.GetBuildID()),
+			zap.String("template.id", in.GetTemplateID()),
+			zap.Error(err),
+		)
 		return nil, fmt.Errorf("error while getting build info, maybe already expired: %w", err)
 	}
 

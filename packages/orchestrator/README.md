@@ -303,4 +303,4 @@ Automatically set in local mode. Set before running to override:
 
 ## Limitations
 
-- Custom template builds require Debian/Ubuntu-based base images (images that provide the `apt` package manager). Non-Debian images such as Alpine, CentOS/RHEL, or other distributions without `apt` are not supported and will fail during the template build/provisioning process. The provisioning scripts used during template build call `apt` and expect Debian-specific package names and file locations.
+- Custom template builds now support mainstream Linux distributions, including Debian/Ubuntu, Alpine, CentOS/RHEL. The provisioning logic automatically adapts to the native package manager (apt, apk, dnf/yum) and distro-specific package naming rules, file paths for each target OS during template building and provisioning.

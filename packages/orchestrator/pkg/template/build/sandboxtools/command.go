@@ -19,7 +19,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
@@ -253,7 +252,7 @@ func SyncChangesToDisk(
 		ctx,
 		proxy,
 		sandboxID,
-		rootfs.SandboxBusyBoxPath+" sync",
+		"sync",
 		metadata.Context{
 			User: "root",
 		},
