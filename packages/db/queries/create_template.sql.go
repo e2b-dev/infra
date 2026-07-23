@@ -137,3 +137,18 @@ func (q *Queries) InvalidateUnstartedTemplateBuilds(ctx context.Context, arg Inv
 	_, err := q.db.Exec(ctx, invalidateUnstartedTemplateBuilds, arg.Reason, arg.TemplateID, arg.Tags)
 	return err
 }
+
+const templateRowExists = `-- name: TemplateRowExists :one
+SELECT EXISTS(SELECT 1 FROM "public"."envs" WHERE id = $1)
+`
+
+// Lock-free probe (soft-deleted rows count as existing): decides whether the
+// register transaction must create the envs row up front (new template) or
+// can defer the CreateOrUpdateTemplate bump to just before commit, keeping
+// the hot row unlocked while the rest of the registration runs.
+func (q *Queries) TemplateRowExists(ctx context.Context, templateID string) (bool, error) {
+	row := q.db.QueryRow(ctx, templateRowExists, templateID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}

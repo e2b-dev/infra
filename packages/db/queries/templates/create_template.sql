@@ -1,3 +1,10 @@
+-- name: TemplateRowExists :one
+-- Lock-free probe (soft-deleted rows count as existing): decides whether the
+-- register transaction must create the envs row up front (new template) or
+-- can defer the CreateOrUpdateTemplate bump to just before commit, keeping
+-- the hot row unlocked while the rest of the registration runs.
+SELECT EXISTS(SELECT 1 FROM "public"."envs" WHERE id = @template_id);
+
 -- name: CreateOrUpdateTemplate :one
 INSERT INTO "public"."envs"(id, team_id, created_by, updated_at, public, cluster_id, source)
 VALUES (@template_id, @team_id, @created_by, NOW(), FALSE, @cluster_id, 'template')
