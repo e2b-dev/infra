@@ -95,4 +95,25 @@ func TestFileGet(t *testing.T) {
 
 		requireGRPCError(t, err, codes.NotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND)
 	})
+
+	t.Run("get path traversing a regular file", func(t *testing.T) {
+		t.Parallel()
+
+		// A path whose parent component is a regular file (not a directory)
+		// yields ENOTDIR, which should map to a client-facing bad request
+		// rather than a generic internal error.
+		filename := "traverse-file.txt"
+		err := os.WriteFile(filepath.Join(tmpdir, filename), []byte("test"), 0o644)
+		require.NoError(t, err)
+
+		mockServer := &mockGetFileServer{}
+		mockServer.On("Context").Return(t.Context())
+
+		err = s.GetFile(&orchestrator.GetFileRequest{
+			Volume: volumeInfo,
+			Path:   filename + "/sub",
+		}, mockServer)
+
+		requireGRPCError(t, err, codes.InvalidArgument, orchestrator.UserErrorCode_INVALID_REQUEST)
+	})
 }
