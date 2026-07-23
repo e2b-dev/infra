@@ -1161,7 +1161,9 @@ func (f *Factory) ResumeSandbox(
 		ctx, span := tracer.Start(execCtx, "sandbox-exit-wait")
 		defer span.End()
 
-		// Wait for either uffd or fc process to exit
+		// Wait for either uffd or fc process to exit.
+		// A UFFD handle() failure sets u.exit error and closes Exit().Done(),
+		// causing this goroutine to call sbx.Stop() — no explicit kill needed in uffd.go.
 		select {
 		case <-fcUffd.Exit().Done():
 		case <-fcHandle.Exit.Done():
