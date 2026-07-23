@@ -1,0 +1,140 @@
+name: Namespace Kernel Probe
+
+# Temporary diagnostic workflow: establishes whether namespace.so runners can
+# host the KVM/kernel-dependent jobs still pinned to GitHub larger runners
+# (orchestrator unit shards, integration tests). Checks everything that
+# blocked or nearly blocked the Blacksmith attempt (see closed PR #3332):
+#   - uffd UFFD_FEATURE_WP_ASYNC (Linux >= 6.7) - THE Blacksmith blocker
+#   - nbd driver availability (module, builtin, or modprobe-able)
+#   - /dev/kvm (nested virtualization), tun, hugepages, cgroup2, swap
+# Delete once the verdict is in.
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/namespace-kernel-probe.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: nscloud-ubuntu-24.04-amd64-8x16
+            arch: x64
+          - runner: nscloud-ubuntu-24.04-arm64-4x8
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - name: Kernel and device diagnostics
+        run: |
+          set -x
+          uname -a
+          cat /proc/cmdline || true
+          echo "--- nbd inventory ---"
+          ls /dev/nbd* 2>/dev/null | wc -l || true
+          echo "--- kernel config ---"
+          CONFIG_SRC=""
+          [ -e /proc/config.gz ] && CONFIG_SRC=/proc/config.gz
+          [ -z "$CONFIG_SRC" ] && [ -e "/boot/config-$(uname -r)" ] && CONFIG_SRC="/boot/config-$(uname -r)"
+          echo "config source: ${CONFIG_SRC:-NONE}"
+          if [ -n "$CONFIG_SRC" ]; then
+            zgrep -haE '(MODULES|MODULE_SIG|BLK_DEV_NBD|USERFAULTFD|KVM|HUGETLBFS|SWAP=|TUN|VHOST_VSOCK|PTE_MARKER)' "$CONFIG_SRC" 2>/dev/null | head -20 || true
+          fi
+          echo "--- devices / features ---"
+          ls -la /dev/kvm /dev/net/tun /dev/fuse 2>&1 || true
+          ls /lib/modules/"$(uname -r)"/ 2>&1 | head -5 || true
+          cat /sys/fs/cgroup/cgroup.controllers 2>&1 || true
+          cat /proc/swaps || true
+          nproc; free -h; df -h / | tail -1
+          docker info --format 'docker={{.ServerVersion}} kernel={{.KernelVersion}}' 2>/dev/null || echo "no docker"
+
+      - name: uffd WP_ASYNC feature handshake (the Blacksmith blocker)
+        run: |
+          set -euo pipefail
+          cat > /tmp/uffd_probe.c <<'EOF'
+          #include <stdio.h>
+          #include <fcntl.h>
+          #include <string.h>
+          #include <sys/ioctl.h>
+          #include <sys/syscall.h>
+          #include <unistd.h>
+          #include <linux/userfaultfd.h>
+
+          #ifndef UFFD_FEATURE_WP_ASYNC
+          #define UFFD_FEATURE_WP_ASYNC (1ULL << 15)
+          #endif
+          #ifndef UFFD_FEATURE_WP_UNPOPULATED
+          #define UFFD_FEATURE_WP_UNPOPULATED (1ULL << 13)
+          #endif
+
+          int main(void) {
+            long fd = syscall(__NR_userfaultfd, O_CLOEXEC | O_NONBLOCK);
+            if (fd < 0) { perror("userfaultfd"); return 2; }
+            struct uffdio_api api;
+            memset(&api, 0, sizeof(api));
+            api.api = UFFD_API;
+            if (ioctl(fd, UFFDIO_API, &api) < 0) { perror("UFFDIO_API(features=0)"); return 3; }
+            printf("supported uffd features: 0x%llx\n", (unsigned long long)api.features);
+            printf("WP_ASYNC:        %s\n", (api.features & UFFD_FEATURE_WP_ASYNC) ? "YES" : "NO");
+            printf("WP_UNPOPULATED:  %s\n", (api.features & UFFD_FEATURE_WP_UNPOPULATED) ? "YES" : "NO");
+            close(fd);
+
+            /* handshake with the exact feature set the orchestrator requests */
+            long fd2 = syscall(__NR_userfaultfd, O_CLOEXEC | O_NONBLOCK);
+            if (fd2 < 0) { perror("userfaultfd(2)"); return 2; }
+            struct uffdio_api api2;
+            memset(&api2, 0, sizeof(api2));
+            api2.api = UFFD_API;
+            api2.features = UFFD_FEATURE_WP_ASYNC | UFFD_FEATURE_EVENT_REMOVE | UFFD_FEATURE_MISSING_HUGETLBFS;
+            if (ioctl(fd2, UFFDIO_API, &api2) < 0) {
+              perror("UFFDIO_API(orchestrator feature set)");
+              return 4;
+            }
+            printf("orchestrator feature handshake: OK\n");
+            return (api.features & UFFD_FEATURE_WP_ASYNC) ? 0 : 5;
+          }
+          EOF
+          gcc -o /tmp/uffd_probe /tmp/uffd_probe.c
+          sudo /tmp/uffd_probe
+
+      - name: nbd availability
+        run: |
+          set -x
+          if [ -r /sys/module/nbd/parameters/nbds_max ]; then
+            echo "nbd driver present (nbds_max=$(cat /sys/module/nbd/parameters/nbds_max))"
+          elif sudo modprobe nbd nbds_max=256; then
+            echo "nbd loaded via modprobe"
+          else
+            sudo apt-get update -qq && sudo apt-get install -y -qq "linux-modules-extra-$(uname -r)" && sudo modprobe nbd nbds_max=256
+          fi
+          ls /dev/nbd* | wc -l
+          [ -b /dev/nbd0 ]
+
+      - name: Host feature smoke (hugepages, uffd sysctl, swapfile)
+        run: |
+          set -euxo pipefail
+          echo 1 | sudo tee /proc/sys/vm/unprivileged_userfaultfd
+          sudo mkdir -p /mnt/hugepages
+          sudo mount -t hugetlbfs none /mnt/hugepages
+          echo 256 | sudo tee /proc/sys/vm/nr_hugepages
+          grep -q . /proc/swaps && [ "$(wc -l < /proc/swaps)" -gt 1 ] && echo "swap already active" || {
+            sudo fallocate -l 256M /swapfile-probe && sudo chmod 600 /swapfile-probe && sudo mkswap /swapfile-probe && sudo swapon /swapfile-probe && sudo swapoff /swapfile-probe
+          }
+          echo "HOST_SMOKE_OK"
+
+      - name: Verdict
+        run: |
+          set -x
+          echo "=== VERDICT for ${{ matrix.runner }} ==="
+          NBD_OK=false; KVM_OK=false
+          [ -b /dev/nbd0 ] && NBD_OK=true
+          [ -e /dev/kvm ] && KVM_OK=true
+          echo "kernel=$(uname -r) NBD=$NBD_OK KVM=$KVM_OK (WP_ASYNC verdict is the uffd handshake step)"
+          $NBD_OK
+          # KVM is required on x64 only (no arm64 runner anywhere has it)
+          if [ "${{ matrix.arch }}" = "x64" ]; then $KVM_OK; fi
