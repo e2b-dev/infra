@@ -20,11 +20,10 @@ WHERE id = $1 AND deleted_at IS NULL
 RETURNING id
 `
 
-// The only statement that locks the envs row; it runs LAST in the
-// registration transaction so concurrent same-template registers serialize
-// only on the commit window, not the whole transaction. Doubles as the
-// soft-delete gate: soft-delete is permanent, so a deleted template returns
-// no row and the registration fails instead of resurrecting it.
+// The only statement that locks the envs row — runs LAST in the registration
+// transaction, so same-template registers serialize on the commit window
+// only. Doubles as the soft-delete gate: a deleted template returns no row
+// and the registration fails instead of resurrecting it.
 func (q *Queries) BumpTemplateBuildCount(ctx context.Context, templateID string) (string, error) {
 	row := q.db.QueryRow(ctx, bumpTemplateBuildCount, templateID)
 	var id string
@@ -111,11 +110,9 @@ type EnsureTemplateRowParams struct {
 	ClusterID  *uuid.UUID
 }
 
-// Creates the envs row for a first-time template (the FK target for the rest
-// of the registration). ON CONFLICT DO NOTHING takes no lock on an existing
-// row, so the hot path stays lock-free. build_count starts at 0 (column
-// default is 1) because BumpTemplateBuildCount runs for every registration,
-// including the first — the committed count is identical to the old upsert's.
+// FK target for a first-time template; DO NOTHING takes no lock on existing
+// rows. build_count starts at 0: the bump below runs for every registration,
+// so committed counts match the old upsert (column default is 1).
 func (q *Queries) EnsureTemplateRow(ctx context.Context, arg EnsureTemplateRowParams) error {
 	_, err := q.db.Exec(ctx, ensureTemplateRow,
 		arg.TemplateID,
