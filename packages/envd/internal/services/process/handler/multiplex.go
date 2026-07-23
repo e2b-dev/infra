@@ -7,16 +7,21 @@ import (
 )
 
 // subscriberBufSize is the capacity of each subscriber's channel. A buffer
-// this deep lets a slow consumer absorb short bursts without blocking the
-// fan-out loop. When the buffer fills (consumer stuck in e.g. a dead-
-// connection send), the fan-out cancels and closes the subscriber instead of
-// wedging all other consumers.
-const subscriberBufSize = 64
+// this deep lets a temporarily slow consumer absorb bursts without blocking
+// the fan-out loop. When the buffer is full the fan-out drops that event for
+// that subscriber (non-blockingly) rather than stalling all other consumers.
+//
+// 256 gives a slow-but-live client roughly 256 ms of headroom at a process
+// emission rate of ~1000 events/s before it starts losing events; a ghost
+// subscriber (consumer goroutine stuck inside stream.Send to a dead peer)
+// never blocks the fan-out loop regardless of how long TCP takes to time out.
+const subscriberBufSize = 256
 
 // MultiplexedChannel fans out values written to Source to every subscriber
-// obtained via Fork. Each subscriber channel is buffered; a subscriber that
-// cannot keep up is cancelled and its channel is closed so that its consumer
-// goroutine exits cleanly.
+// obtained via Fork. Each subscriber channel is buffered; when a subscriber's
+// buffer is full the fan-out skips that one event for that subscriber instead
+// of blocking, ensuring that a stuck or slow consumer cannot wedge the loop
+// or starve the others.
 type MultiplexedChannel[T any] struct {
 	Source chan T
 
@@ -26,26 +31,15 @@ type MultiplexedChannel[T any] struct {
 }
 
 type subscriber[T any] struct {
-	ch         chan T
-	done       chan struct{}
-	cancelOnce sync.Once
-	closeOnce  sync.Once
+	ch   chan T
+	done chan struct{}
+	once sync.Once
 }
 
 // cancel marks the subscriber as gone. Idempotent and non-blocking.
 func (s *subscriber[T]) cancel() {
-	s.cancelOnce.Do(func() {
+	s.once.Do(func() {
 		close(s.done)
-	})
-}
-
-// closeCh closes the subscriber's data channel, signalling any consumer that
-// is range-ing or select-ing on it. Must only be called from the run()
-// goroutine, which is the sole sender, to prevent a "send on closed channel"
-// panic. Idempotent.
-func (s *subscriber[T]) closeCh() {
-	s.closeOnce.Do(func() {
-		close(s.ch)
 	})
 }
 
@@ -87,17 +81,21 @@ func (m *MultiplexedChannel[T]) run() {
 			case s.ch <- v:
 			case <-s.done:
 			default:
-				// The subscriber's buffer is full and its done channel is not
-				// closed — the consumer goroutine is stuck (e.g. inside a
-				// stream.Send to a dead peer). Cancel and close the subscriber
-				// so the consumer exits promptly rather than wedging the entire
-				// fan-out loop for the duration of TCP's retransmit timeout.
-				s.cancel()
-				// closeCh is safe here: run() is the only sender, and we have
-				// already ensured future iterations skip this subscriber via
-				// isCancelled(). The consumer goroutine sees ok=false on its
-				// next receive and exits its data loop.
-				s.closeCh()
+				// The subscriber's buffer is full. Skip this event for this
+				// subscriber rather than blocking the fan-out loop.
+				//
+				// A legitimately slow client will drain its buffer as soon as it
+				// catches up, and will resume receiving future events normally;
+				// only the events dropped during the burst are lost. A ghost
+				// subscriber (consumer goroutine stuck inside stream.Send to a
+				// dead peer) will have its buffer permanently full and every
+				// event skipped until the underlying TCP timeout eventually
+				// closes the connection and the consumer goroutine exits.
+				//
+				// In either case the subscriber is NOT cancelled here. Cancelling
+				// on the first overflow would disconnect a temporarily slow but
+				// still-alive client, causing HasSubscribers() to return false
+				// and silently truncating subsequent process output.
 			}
 		}
 	}
@@ -110,7 +108,7 @@ func (m *MultiplexedChannel[T]) run() {
 
 	for _, s := range m.channels {
 		s.cancel()
-		s.closeCh() // idempotent: already-closed subscribers are skipped
+		close(s.ch)
 	}
 	m.channels = nil
 }

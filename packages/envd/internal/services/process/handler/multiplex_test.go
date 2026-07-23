@@ -13,9 +13,9 @@ import (
 // Tests for MultiplexedChannel fan-out, covering:
 //  1. Normal fan-out semantics.
 //  2. Regression: a ghost subscriber (stuck consumer that has NOT called
-//     cancel) must not wedge the fan-out loop or starve healthy subscribers.
-//  3. Buffer-overflow cancels the slow subscriber and closes its channel so
-//     the consumer goroutine can exit without leaking.
+//     cancel) must not block the fan-out loop or starve healthy subscribers.
+//  3. A temporarily slow but live subscriber must NOT be cancelled on buffer
+//     overflow; it stays subscribed and continues to receive future events.
 
 const multiplexTestTimeout = 500 * time.Millisecond
 
@@ -98,9 +98,8 @@ func TestMultiplexedChannel_BasicFanOut(t *testing.T) {
 //     mirroring the real case where stream.Send to a dead peer blocks for the
 //     full TCP retransmit timeout (~924 s with tcp_retries2=15).
 //
-// After the fix, the fan-out must overflow-cancel the ghost once its buffer
-// is full and continue delivering events to the healthy subscriber without
-// blocking.
+// After the fix, the fan-out must skip the ghost's full buffer non-blockingly
+// and continue delivering events to the healthy subscriber without any stall.
 func TestGhostSubscriberDoesNotWedgeFanOut(t *testing.T) {
 	t.Parallel()
 
@@ -123,9 +122,10 @@ func TestGhostSubscriberDoesNotWedgeFanOut(t *testing.T) {
 	_, _ = m.Fork()
 	// Deliberately do not read from ghost's channel and do not call cancel.
 
-	// Flood enough events to overflow the ghost's buffer. Once the buffer
-	// is full the fan-out must take the default: branch, cancel the ghost,
-	// and continue — without blocking.
+	// Flood enough events to fill the ghost's buffer and keep going.
+	// After subscriberBufSize events the ghost's buffer is full; from that
+	// point every subsequent event takes the default: branch (non-blocking
+	// skip) so the fan-out must never stall.
 	const events = subscriberBufSize + 10
 
 	for i := range events {
@@ -135,7 +135,7 @@ func TestGhostSubscriberDoesNotWedgeFanOut(t *testing.T) {
 				"healthy subscriber should not be starved", i)
 	}
 
-	// Healthy subscriber must have received all events.
+	// Healthy subscriber must have received all events (it has its own buffer).
 	for i := range events {
 		v, ok := recvOrTimeout(t, healthyGot, multiplexTestTimeout)
 		require.Truef(t, ok, "healthy subscriber did not receive event %d", i)
@@ -143,42 +143,50 @@ func TestGhostSubscriberDoesNotWedgeFanOut(t *testing.T) {
 	}
 }
 
-// TestOverflowCancelsGhostAndClosesItsChannel verifies that when the ghost's
-// buffer overflows, the fan-out cancels the ghost (isCancelled() == true) and
-// closes its channel so a consumer goroutine blocking on it exits promptly.
-func TestOverflowCancelsGhostAndClosesItsChannel(t *testing.T) {
+// TestSlowLiveSubscriberIsNotCancelledOnOverflow verifies that a subscriber
+// whose buffer is temporarily full is NOT cancelled or disconnected. Once it
+// drains its buffer it must continue to receive subsequent events normally,
+// preserving HasSubscribers() == true throughout.
+func TestSlowLiveSubscriberIsNotCancelledOnOverflow(t *testing.T) {
 	t.Parallel()
 
 	m := NewMultiplexedChannel[int](0)
 	defer close(m.Source)
 
-	ghostCh, _ := m.Fork() // cancel never called — simulating stuck Send
+	slow, cancelSlow := m.Fork()
+	t.Cleanup(cancelSlow)
 
-	// Flood the ghost buffer to trigger the overflow path.
-	const events = subscriberBufSize + 5
-
-	for i := range events {
-		ok := sendOrTimeout(t, m.Source, i, multiplexTestTimeout)
-		require.Truef(t, ok, "send %d timed out", i)
+	// Fill the slow subscriber's buffer without draining it.
+	for i := range subscriberBufSize {
+		require.True(t, sendOrTimeout(t, m.Source, i, multiplexTestTimeout),
+			"pre-fill send %d timed out", i)
 	}
 
-	// After overflow, the ghost channel must be closed.
-	// A consumer doing `for range ghostCh` or `event, ok := <-ghostCh` must
-	// get ok=false without blocking.
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		for range ghostCh { //nolint:revive // drain until closed
-		}
-	}()
+	// One more event: this hits default: in the fan-out (buffer full).
+	// The subscriber must NOT be cancelled.
+	require.True(t, sendOrTimeout(t, m.Source, -1, multiplexTestTimeout),
+		"overflow event timed out")
 
-	select {
-	case <-done:
-		// Ghost consumer exited cleanly — channel was closed by fan-out.
-	case <-time.After(multiplexTestTimeout):
-		t.Fatal("ghost subscriber's channel was not closed after buffer overflow; " +
-			"consumer goroutine would leak indefinitely")
+	// The subscriber must still be alive (not cancelled).
+	assert.True(t, m.HasSubscribers(),
+		"slow subscriber was cancelled on overflow; HasSubscribers must stay true "+
+			"to avoid silently truncating subsequent process output")
+
+	// Drain the buffer: subscriber catches up.
+	got := 0
+	for range subscriberBufSize {
+		_, ok := recvOrTimeout(t, slow, multiplexTestTimeout)
+		require.True(t, ok, "unexpected channel close while draining")
+		got++
 	}
+	assert.Equal(t, subscriberBufSize, got)
+
+	// After draining, the subscriber must receive new events normally.
+	require.True(t, sendOrTimeout(t, m.Source, 999, multiplexTestTimeout),
+		"post-drain send timed out")
+	v, ok := recvOrTimeout(t, slow, multiplexTestTimeout)
+	require.True(t, ok, "slow subscriber did not receive post-drain event")
+	assert.Equal(t, 999, v)
 }
 
 // TestMultiplexedChannel_AbandonedConsumerDoesNotWedgeFanOut verifies that a
@@ -428,6 +436,7 @@ func TestMultipleHealthySubscribersWithOneGhost(t *testing.T) {
 
 	// Healthy subscribers.
 	type result struct {
+		mu  sync.Mutex
 		got []int
 	}
 	results := make([]*result, numHealthy)
@@ -438,7 +447,9 @@ func TestMultipleHealthySubscribersWithOneGhost(t *testing.T) {
 		results[i] = r
 		go func(c <-chan int, res *result) {
 			for v := range c {
+				res.mu.Lock()
 				res.got = append(res.got, v)
+				res.mu.Unlock()
 			}
 		}(ch, r)
 	}
@@ -446,7 +457,7 @@ func TestMultipleHealthySubscribersWithOneGhost(t *testing.T) {
 	for i := range events {
 		require.Truef(t,
 			sendOrTimeout(t, m.Source, i, multiplexTestTimeout),
-			"send %d blocked despite ghost being overflow-cancelled", i,
+			"send %d blocked despite ghost subscriber being non-blocking", i,
 		)
 	}
 
@@ -454,7 +465,10 @@ func TestMultipleHealthySubscribersWithOneGhost(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	for i, r := range results {
-		assert.Lenf(t, r.got, events,
-			"healthy subscriber %d received %d events, expected %d", i, len(r.got), events)
+		r.mu.Lock()
+		got := len(r.got)
+		r.mu.Unlock()
+		assert.Equalf(t, events, got,
+			"healthy subscriber %d received %d events, expected %d", i, got, events)
 	}
 }
