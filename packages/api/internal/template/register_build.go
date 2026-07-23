@@ -166,27 +166,24 @@ func RegisterBuild(
 	}
 
 	// Concurrent registers of the SAME template serialize on two shared rows:
-	// the envs row (the CreateOrUpdateTemplate bump always writes) and the
-	// superseded pending builds (InvalidateUnstartedTemplateBuilds). Both
-	// statements run as the LAST writes before commit, so those locks are held
-	// for microseconds instead of the whole transaction. Only a brand-new
-	// template creates its envs row (FK target) up front — no contention
-	// exists there. The upsert is unchanged, soft-delete gate included; for
-	// existing rows the gate fires at commit time and aborts the transaction
-	// all the same.
-	templateRowExists, err := client.TemplateRowExists(ctx, data.TemplateID)
+	// the envs row (the build-count bump) and the superseded pending builds
+	// (InvalidateUnstartedTemplateBuilds). Both run as the LAST statements
+	// before commit, so those locks are held for the commit window instead of
+	// the whole transaction. This creation is lock-free for existing rows
+	// (ON CONFLICT DO NOTHING) — it only guarantees the FK target exists.
+	err = client.EnsureTemplateRow(ctx, queries.EnsureTemplateRowParams{
+		TemplateID: data.TemplateID,
+		TeamID:     data.Team.ID,
+		CreatedBy:  data.UserID,
+		ClusterID:  clusterID,
+	})
 	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error when checking template row", err)
+		telemetry.ReportCriticalError(ctx, "error when creating template row", err)
 
 		return nil, &api.APIError{
 			Err:       err,
 			ClientMsg: fmt.Sprintf("Error when updating template: %s", err),
 			Code:      http.StatusInternalServerError,
-		}
-	}
-	if !templateRowExists {
-		if apiErr := createOrUpdateTemplate(ctx, client, data, clusterID); apiErr != nil {
-			return nil, apiErr
 		}
 	}
 
@@ -316,7 +313,7 @@ func RegisterBuild(
 
 	for _, tag := range tags {
 		// A deleted env makes the active_envs guard match 0 rows; the
-		// CreateOrUpdateTemplate gate before commit then aborts the whole
+		// BumpTemplateBuildCount gate before commit then aborts the whole
 		// transaction, so ignored rows can never commit an assignment-less build.
 		_, err = client.CreateTemplateBuildAssignment(ctx, queries.CreateTemplateBuildAssignmentParams{
 			TemplateID: data.TemplateID,
@@ -372,11 +369,28 @@ func RegisterBuild(
 	telemetry.ReportEvent(ctx, "marked previous builds as failed")
 
 	// The envs-row bump runs last so its lock spans only the commit window.
-	if templateRowExists {
-		if apiErr := createOrUpdateTemplate(ctx, client, data, clusterID); apiErr != nil {
-			return nil, apiErr
+	// It is also the soft-delete gate: a template deleted at any point before
+	// here returns no row, the registration 404s and the whole transaction —
+	// including EnsureTemplateRow's insert — rolls back.
+	_, err = client.BumpTemplateBuildCount(ctx, data.TemplateID)
+	if err != nil {
+		if dberrors.IsNotFoundError(err) {
+			return nil, &api.APIError{
+				Err:       err,
+				ClientMsg: fmt.Sprintf("Template '%s' has been deleted and cannot be rebuilt", data.TemplateID),
+				Code:      http.StatusNotFound,
+			}
+		}
+
+		telemetry.ReportCriticalError(ctx, "error when updating env", err)
+
+		return nil, &api.APIError{
+			Err:       err,
+			ClientMsg: fmt.Sprintf("Error when updating template: %s", err),
+			Code:      http.StatusInternalServerError,
 		}
 	}
+	telemetry.ReportEvent(ctx, "bumped template build count")
 
 	// Commit the transaction
 	err = tx.Commit(ctx)
@@ -406,36 +420,4 @@ func RegisterBuild(
 		Names:      names,
 		Tags:       tags,
 	}, nil
-}
-
-// createOrUpdateTemplate runs the envs upsert (creation, build-count bump and
-// soft-delete gate — a deleted template returns no row and must not be
-// resurrected) with its error mapping.
-func createOrUpdateTemplate(ctx context.Context, client *sqlcdb.Client, data RegisterBuildData, clusterID *uuid.UUID) *api.APIError {
-	_, err := client.CreateOrUpdateTemplate(ctx, queries.CreateOrUpdateTemplateParams{
-		TemplateID: data.TemplateID,
-		TeamID:     data.Team.ID,
-		CreatedBy:  data.UserID,
-		ClusterID:  clusterID,
-	})
-	if err != nil {
-		if dberrors.IsNotFoundError(err) {
-			return &api.APIError{
-				Err:       err,
-				ClientMsg: fmt.Sprintf("Template '%s' has been deleted and cannot be rebuilt", data.TemplateID),
-				Code:      http.StatusNotFound,
-			}
-		}
-
-		telemetry.ReportCriticalError(ctx, "error when updating env", err)
-
-		return &api.APIError{
-			Err:       err,
-			ClientMsg: fmt.Sprintf("Error when updating template: %s", err),
-			Code:      http.StatusInternalServerError,
-		}
-	}
-	telemetry.ReportEvent(ctx, "created or update template")
-
-	return nil
 }

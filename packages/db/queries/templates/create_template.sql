@@ -1,19 +1,23 @@
--- name: TemplateRowExists :one
--- Lock-free probe (soft-deleted rows count as existing): decides whether the
--- register transaction must create the envs row up front (new template) or
--- can defer the CreateOrUpdateTemplate bump to just before commit, keeping
--- the hot row unlocked while the rest of the registration runs.
-SELECT EXISTS(SELECT 1 FROM "public"."envs" WHERE id = @template_id);
+-- name: EnsureTemplateRow :exec
+-- Creates the envs row for a first-time template (the FK target for the rest
+-- of the registration). ON CONFLICT DO NOTHING takes no lock on an existing
+-- row, so the hot path stays lock-free. build_count starts at 0 (column
+-- default is 1) because BumpTemplateBuildCount runs for every registration,
+-- including the first — the committed count is identical to the old upsert's.
+INSERT INTO "public"."envs"(id, team_id, created_by, updated_at, public, cluster_id, source, build_count)
+VALUES (@template_id, @team_id, @created_by, NOW(), FALSE, @cluster_id, 'template', 0)
+ON CONFLICT (id) DO NOTHING;
 
--- name: CreateOrUpdateTemplate :one
-INSERT INTO "public"."envs"(id, team_id, created_by, updated_at, public, cluster_id, source)
-VALUES (@template_id, @team_id, @created_by, NOW(), FALSE, @cluster_id, 'template')
-ON CONFLICT (id) DO UPDATE
+-- name: BumpTemplateBuildCount :one
+-- The only statement that locks the envs row; it runs LAST in the
+-- registration transaction so concurrent same-template registers serialize
+-- only on the commit window, not the whole transaction. Doubles as the
+-- soft-delete gate: soft-delete is permanent, so a deleted template returns
+-- no row and the registration fails instead of resurrecting it.
+UPDATE "public"."envs"
 SET updated_at  = NOW(),
     build_count = envs.build_count + 1
--- Soft-delete is permanent: skip the update for a deleted env so no row is
--- returned and the build registration fails instead of resurrecting it.
-WHERE envs.deleted_at IS NULL
+WHERE id = @template_id AND deleted_at IS NULL
 RETURNING id;
 
 -- name: InvalidateUnstartedTemplateBuilds :exec
