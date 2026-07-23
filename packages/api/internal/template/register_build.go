@@ -347,30 +347,12 @@ func RegisterBuild(
 		}
 	}
 
-	// Mark the previous not started builds as failed and remove their
-	// active-build rows. Next to commit on purpose — it locks the superseded
-	// builds' rows, the second same-template serialization point. Our own
-	// build (inserted above, pending too) is excluded from the sweep.
-	err = client.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
-		Reason: dbtypes.BuildReason{
-			Message: "The build was canceled because it was superseded by a newer one.",
-		},
-		TemplateID:     data.TemplateID,
-		Tags:           tags,
-		ExcludeBuildID: buildID,
-	})
-	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error when invalidating unstarted builds", err, attribute.StringSlice("tags", tags))
-
-		return nil, &api.APIError{
-			Err:       err,
-			ClientMsg: fmt.Sprintf("Error when updating template: %s", err),
-			Code:      http.StatusInternalServerError,
-		}
-	}
-	telemetry.ReportEvent(ctx, "marked previous builds as failed")
-
-	// The envs-row bump runs last so its lock spans only the commit window.
+	// The envs-row bump acquires the row lock, forcing same-template
+	// registrations to serialize. It runs BEFORE invalidation so the lock is
+	// held while we sweep pending builds — concurrent transactions will block
+	// here until we commit, then their invalidation will see our committed
+	// build. This ordering prevents two same-template registrations from both
+	// completing invalidation without seeing each other under read committed.
 	// It is also the soft-delete gate: a template deleted at any point before
 	// here returns no row, the registration 404s and the whole transaction —
 	// including EnsureTemplateRow's insert — rolls back.
@@ -393,6 +375,30 @@ func RegisterBuild(
 		}
 	}
 	telemetry.ReportEvent(ctx, "bumped template build count")
+
+	// Mark the previous not started builds as failed and remove their
+	// active-build rows. Runs after the env-row bump so invalidation sees
+	// all committed pending builds from prior registrations that released
+	// the lock. Our own build (inserted above, pending too) is excluded
+	// from the sweep.
+	err = client.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
+		Reason: dbtypes.BuildReason{
+			Message: "The build was canceled because it was superseded by a newer one.",
+		},
+		TemplateID:     data.TemplateID,
+		Tags:           tags,
+		ExcludeBuildID: buildID,
+	})
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error when invalidating unstarted builds", err, attribute.StringSlice("tags", tags))
+
+		return nil, &api.APIError{
+			Err:       err,
+			ClientMsg: fmt.Sprintf("Error when updating template: %s", err),
+			Code:      http.StatusInternalServerError,
+		}
+	}
+	telemetry.ReportEvent(ctx, "marked previous builds as failed")
 
 	// Commit the transaction
 	err = tx.Commit(ctx)
