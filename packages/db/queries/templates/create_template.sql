@@ -32,6 +32,9 @@ WITH invalidated AS (
         AND eba.env_id = @template_id
         AND eba.tag = ANY(@tags::text[])
         AND eb.status_group = 'pending'
+        -- The registration transaction runs this AFTER inserting its own
+        -- (pending) build, which must not invalidate itself.
+        AND eb.id != @exclude_build_id
     RETURNING eb.id
 )
 DELETE FROM public.active_template_builds

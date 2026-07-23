@@ -349,13 +349,15 @@ func RegisterBuild(
 
 	// Mark the previous not started builds as failed and remove their
 	// active-build rows. Next to commit on purpose — it locks the superseded
-	// builds' rows, the second same-template serialization point.
+	// builds' rows, the second same-template serialization point. Our own
+	// build (inserted above, pending too) is excluded from the sweep.
 	err = client.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
 		Reason: dbtypes.BuildReason{
 			Message: "The build was canceled because it was superseded by a newer one.",
 		},
-		TemplateID: data.TemplateID,
-		Tags:       tags,
+		TemplateID:     data.TemplateID,
+		Tags:           tags,
+		ExcludeBuildID: buildID,
 	})
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when invalidating unstarted builds", err, attribute.StringSlice("tags", tags))
