@@ -2,9 +2,11 @@ package tests
 
 import (
 	"database/sql"
+	"path/filepath"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
@@ -53,7 +55,10 @@ func TestDiskEntitlementsMigration(t *testing.T) {
 	err = sqlDB.QueryRowContext(ctx, `
 		SELECT COUNT(*), COUNT(*) FILTER (
 			WHERE default_free_disk_size_mb IS DISTINCT FROM disk_mb
-			   OR max_disk_size_mb IS DISTINCT FROM disk_mb + 25000
+			   OR max_disk_size_mb IS DISTINCT FROM CASE
+					WHEN id = 'base_v1' THEN 25600
+					ELSE 51200
+				  END
 		)
 		FROM public.tiers
 	`).Scan(&tierCount, &invalidTierCount)
@@ -120,4 +125,76 @@ func TestDiskEntitlementsMigration(t *testing.T) {
 	require.Equal(t, int64(11240), disk)
 	require.Equal(t, int64(9000), defaultFree)
 	require.Equal(t, int64(33000), maximum)
+}
+
+func TestTierMaxDiskSizeMigrationUpdatesExistingTiers(t *testing.T) { //nolint:paralleltest // Goose migration state is process-global.
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	sqlDB, err := sql.Open("pgx", db.ConnStr())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
+
+	_, err = sqlDB.ExecContext(ctx, `
+		INSERT INTO public.tiers (
+			id,
+			name,
+			disk_mb,
+			concurrent_instances,
+			max_length_hours,
+			max_vcpu,
+			max_ram_mb,
+			concurrent_template_builds,
+			events_ttl_days,
+			default_free_disk_size_mb,
+			max_disk_size_mb
+		)
+		VALUES
+			('pro_v1_long_running', 'Long-running Pro', 20480, 101, 72, 9, 9000, 21, 31, 20000, 51200),
+			('enterprise_v1_context', 'Enterprise Context', 20480, 1001, 48, 10, 10000, 22, 91, 19000, 51200),
+			('other_v1', 'Other paid tier', 12345, 33, 36, 7, 7000, 23, 15, 12000, 51200)
+	`)
+	require.NoError(t, err)
+
+	const customTierStateQuery = `
+		SELECT jsonb_agg(to_jsonb(tier) - 'max_disk_size_mb' ORDER BY id)::text
+		FROM public.tiers tier
+		WHERE id IN ('pro_v1_long_running', 'enterprise_v1_context', 'other_v1')
+	`
+	var customTierStateBefore string
+	err = sqlDB.QueryRowContext(ctx, customTierStateQuery).Scan(&customTierStateBefore)
+	require.NoError(t, err)
+
+	migrationsDir := filepath.Join("..", "..", "migrations")
+	require.NoError(t, goose.DownToContext(ctx, sqlDB, migrationsDir, 20260723030000))
+
+	var invalidPreviousMaximumCount int64
+	err = sqlDB.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM public.tiers
+		WHERE max_disk_size_mb IS DISTINCT FROM default_free_disk_size_mb + 25000
+	`).Scan(&invalidPreviousMaximumCount)
+	require.NoError(t, err)
+	require.Zero(t, invalidPreviousMaximumCount)
+
+	require.NoError(t, goose.UpContext(ctx, sqlDB, migrationsDir))
+
+	var invalidMaximumCount int64
+	err = sqlDB.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM public.tiers
+		WHERE max_disk_size_mb IS DISTINCT FROM CASE
+			WHEN id = 'base_v1' THEN 25600
+			ELSE 51200
+		END
+	`).Scan(&invalidMaximumCount)
+	require.NoError(t, err)
+	require.Zero(t, invalidMaximumCount)
+
+	var customTierStateAfter string
+	err = sqlDB.QueryRowContext(ctx, customTierStateQuery).Scan(&customTierStateAfter)
+	require.NoError(t, err)
+	require.Equal(t, customTierStateBefore, customTierStateAfter)
+
+	require.NoError(t, goose.UpContext(ctx, sqlDB, migrationsDir))
 }
