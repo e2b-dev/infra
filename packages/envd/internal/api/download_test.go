@@ -11,6 +11,8 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -257,6 +259,138 @@ func TestGetFiles_GzipDownload(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, originalContent, decompressed)
+}
+
+func TestGetFiles_IdentityDownload_EmptyFile(t *testing.T) {
+	t.Parallel()
+
+	currentUser, err := user.Current()
+	require.NoError(t, err)
+
+	tempDir := t.TempDir()
+	tempFile := filepath.Join(tempDir, "empty.txt")
+	err = os.WriteFile(tempFile, nil, 0o644)
+	require.NoError(t, err)
+
+	logger := zerolog.Nop()
+	defaults := &execcontext.Defaults{
+		EnvVars: utils.NewEnvVars(),
+		User:    currentUser.Username,
+	}
+	api := New(&logger, defaults, nil, false, cgroups.NewNoopManager())
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/files?path="+url.QueryEscape(tempFile), nil)
+	w := httptest.NewRecorder()
+
+	params := GetFilesParams{
+		Path:     &tempFile,
+		Username: &currentUser.Username,
+	}
+	api.GetFiles(w, req, params)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "0", resp.Header.Get("Content-Length"))
+	assert.Empty(t, body)
+}
+
+// Virtual files (procfs, sysfs) report stat size 0 but yield content when
+// read. The identity path must serve their real content, not an empty body.
+func TestGetFiles_IdentityDownload_VirtualFile(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS != "linux" {
+		t.Skip("procfs is only available on Linux")
+	}
+
+	virtualFile := "/proc/version"
+
+	stat, err := os.Stat(virtualFile)
+	require.NoError(t, err)
+	if stat.Size() != 0 {
+		t.Skipf("expected %s to report stat size 0, got %d", virtualFile, stat.Size())
+	}
+
+	expectedContent, err := os.ReadFile(virtualFile)
+	require.NoError(t, err)
+	require.NotEmpty(t, expectedContent)
+
+	currentUser, err := user.Current()
+	require.NoError(t, err)
+
+	logger := zerolog.Nop()
+	defaults := &execcontext.Defaults{
+		EnvVars: utils.NewEnvVars(),
+		User:    currentUser.Username,
+	}
+	api := New(&logger, defaults, nil, false, cgroups.NewNoopManager())
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/files?path="+url.QueryEscape(virtualFile), nil)
+	w := httptest.NewRecorder()
+
+	params := GetFilesParams{
+		Path:     &virtualFile,
+		Username: &currentUser.Username,
+	}
+	api.GetFiles(w, req, params)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, expectedContent, body)
+	assert.Equal(t, strconv.Itoa(len(expectedContent)), resp.Header.Get("Content-Length"))
+}
+
+func TestGetFiles_IdentityRangeDownload_VirtualFile(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS != "linux" {
+		t.Skip("procfs is only available on Linux")
+	}
+
+	virtualFile := "/proc/version"
+
+	expectedContent, err := os.ReadFile(virtualFile)
+	require.NoError(t, err)
+	require.Greater(t, len(expectedContent), 5)
+
+	currentUser, err := user.Current()
+	require.NoError(t, err)
+
+	logger := zerolog.Nop()
+	defaults := &execcontext.Defaults{
+		EnvVars: utils.NewEnvVars(),
+		User:    currentUser.Username,
+	}
+	api := New(&logger, defaults, nil, false, cgroups.NewNoopManager())
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/files?path="+url.QueryEscape(virtualFile), nil)
+	req.Header.Set("Range", "bytes=0-4")
+	w := httptest.NewRecorder()
+
+	params := GetFilesParams{
+		Path:     &virtualFile,
+		Username: &currentUser.Username,
+	}
+	api.GetFiles(w, req, params)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	assert.Equal(t, http.StatusPartialContent, resp.StatusCode)
+	assert.Equal(t, expectedContent[:5], body)
 }
 
 func TestPostFiles_GzipUpload(t *testing.T) {
