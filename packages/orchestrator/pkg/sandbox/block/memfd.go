@@ -276,6 +276,27 @@ var swapGraceElapsedCounter = utils.Must(otel.Meter("github.com/e2b-dev/infra/pa
 	Int64Counter("orchestrator.memfd.swap_grace_elapsed",
 		metric.WithDescription("Dedup memfd releases that timed out on the swap grace without a swap signal")))
 
+// inflightServePagesCounter counts guest pages (header.PageSize units) served
+// from the still-mapped memfd during the dedup window. A single serve can copy a
+// multi-page contiguous dirty run, so it is incremented by the number of pages
+// in the copy, not once per call — otherwise the count would track mapping
+// fragmentation rather than pages served. Unlike swapGraceElapsedCounter (a
+// failure signal), this is the positive engagement signal: a nonzero rate means
+// resumes overlapping an in-flight pause are reading pages from the memfd
+// instead of blocking on dedup. The phase label separates the two serving paths.
+var inflightServePagesCounter = utils.Must(otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block").
+	Int64Counter("orchestrator.memfd.inflight_serve_pages",
+		metric.WithDescription("Guest pages served from the still-mapped memfd during dedup (in-flight memfd serving)")))
+
+// inflightServe{Provisional,Drain}Attr tag which serving path recorded a page:
+// the provisional compare window (ServeMemfd, identity offsets) or the in-flight
+// drain window (tryInflightRead, packed offsets). Precomputed as attribute-set
+// options so the per-page Add allocates nothing.
+var (
+	inflightServeProvisionalAttr = metric.WithAttributeSet(attribute.NewSet(attribute.String("phase", "provisional")))
+	inflightServeDrainAttr       = metric.WithAttributeSet(attribute.NewSet(attribute.String("phase", "drain")))
+)
+
 func NewCacheFromMemfdDeduped(
 	ctx context.Context,
 	base ReadonlyDevice,
@@ -495,6 +516,7 @@ func (d *DedupedMemfdCache) tryInflightRead(b []byte, off int64) (int, bool) {
 		return 0, false
 	}
 	copy(b, src)
+	inflightServePagesCounter.Add(context.Background(), int64(len(b))/int64(header.PageSize), inflightServeDrainAttr)
 
 	return len(b), true
 }
@@ -558,6 +580,7 @@ func (d *DedupedMemfdCache) ServeMemfd(b []byte, off int64) (int, error) {
 		return 0, err
 	}
 	copy(b, src)
+	inflightServePagesCounter.Add(context.Background(), int64(len(b))/int64(header.PageSize), inflightServeProvisionalAttr)
 
 	return len(b), nil
 }
