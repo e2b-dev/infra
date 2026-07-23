@@ -1,0 +1,47 @@
+name: Static Egress Periodic Test
+
+on:
+  schedule:
+    - cron: "5-59/10 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  static-egress:
+    name: Check staging static egress
+    if: github.repository == 'e2b-dev/infra' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Authenticate to staging
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ secrets.E2B_GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.E2B_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.E2B_SERVICE_ACCOUNT_EMAIL }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Run static egress test
+        env:
+          GCP_PROJECT_ID: ${{ secrets.E2B_GCP_PROJECT_ID }}
+          GCP_REGION: ${{ secrets.E2B_GCP_REGION }}
+          TERRAFORM_PREFIX: ${{ secrets.E2B_TERRAFORM_PREFIX }}
+        run: |
+          gcloud run jobs execute "${TERRAFORM_PREFIX}periodic-tests-egress-ip-e2b-static-egress-us-west3" \
+            --project "${GCP_PROJECT_ID}" \
+            --region "${GCP_REGION}" \
+            --wait
