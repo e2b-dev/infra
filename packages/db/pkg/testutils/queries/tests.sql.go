@@ -80,7 +80,7 @@ type InsertTestEnvParams struct {
 }
 
 // Inserts an env (template) row used as a base for tests. Mirrors what
-// production code does via CreateOrUpdateTemplate but without the build_count
+// production code does via EnsureTemplateRow + BumpTemplateBuildCount but without the build_count
 // bookkeeping so tests can seed deterministic rows.
 func (q *Queries) InsertTestEnv(ctx context.Context, arg InsertTestEnvParams) error {
 	_, err := q.db.Exec(ctx, insertTestEnv,
