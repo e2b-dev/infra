@@ -1,6 +1,8 @@
 name: Out of Order Migrations
 
-on: [workflow_call]
+on:
+  workflow_call:
+  merge_group:
 
 jobs:
   check:
