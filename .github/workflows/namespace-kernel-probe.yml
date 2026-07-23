@@ -27,6 +27,10 @@ jobs:
             arch: x64
           - runner: nscloud-ubuntu-24.04-arm64-4x8
             arch: arm64
+          # canary: the exact label format from Namespace's docs, in case
+          # the 24.04 labels above are not offered
+          - runner: nscloud-ubuntu-22.04-amd64-4x8
+            arch: x64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     steps:
