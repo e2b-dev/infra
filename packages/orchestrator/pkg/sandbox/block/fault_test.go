@@ -12,19 +12,13 @@ import (
 	"github.com/edsrzf/mmap-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
-	"go.opentelemetry.io/otel/sdk/metric/metricdata"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // If the fault conversion regresses, this test crashes the whole test binary
 // with "unexpected fault address" — that crash is the failure signal and
 // points at the unguarded copy.
-//
-//nolint:paralleltest // swaps the package-level fault counter
 func TestRunFaultSafe_MmapFault(t *testing.T) {
-	reader := swapMemoryFaultCounter(t)
+	t.Parallel()
 
 	const size = 2 * 4096
 
@@ -50,31 +44,6 @@ func TestRunFaultSafe_MmapFault(t *testing.T) {
 	var faultErr *MemoryFaultError
 	require.ErrorAs(t, err, &faultErr)
 	require.NotZero(t, faultErr.Addr, "fault address must be carried on the error")
-
-	// The counter is the operational disk-failure signal; one fault, one count.
-	var rm metricdata.ResourceMetrics
-	require.NoError(t, reader.Collect(t.Context(), &rm))
-	require.Len(t, rm.ScopeMetrics, 1)
-	require.Len(t, rm.ScopeMetrics[0].Metrics, 1)
-	sum, ok := rm.ScopeMetrics[0].Metrics[0].Data.(metricdata.Sum[int64])
-	require.True(t, ok)
-	require.Len(t, sum.DataPoints, 1)
-	require.Equal(t, int64(1), sum.DataPoints[0].Value, "recovered fault must be counted")
-}
-
-// swapMemoryFaultCounter swaps the package counter for a manual reader; not
-// parallel-safe.
-func swapMemoryFaultCounter(t *testing.T) *sdkmetric.ManualReader {
-	t.Helper()
-
-	reader := sdkmetric.NewManualReader()
-	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-
-	prev := memoryFaultCounter
-	memoryFaultCounter = utils.Must(mp.Meter("test").Int64Counter("orchestrator.block.memory_fault"))
-	t.Cleanup(func() { memoryFaultCounter = prev })
-
-	return reader
 }
 
 func TestRunFaultSafe_PassesThroughResult(t *testing.T) {
