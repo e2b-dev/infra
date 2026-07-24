@@ -1,8 +1,9 @@
 package distro
 
-import "strings"
-
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // Golden lines lifted VERBATIM from the pre-change provision.sh
 // (packages/orchestrator/pkg/template/build/phases/base/provision.sh @ infra main).
