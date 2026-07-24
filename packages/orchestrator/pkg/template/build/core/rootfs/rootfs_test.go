@@ -124,5 +124,36 @@ func TestAdditionalOCILayers(t *testing.T) {
 WatchdogSec=0`)
 		assert.Equal(t, disabledContent, actualFiles["etc/systemd/system/systemd-journald.service.d/override.conf"])
 		assert.Equal(t, disabledContent, actualFiles["etc/systemd/system/systemd-networkd.service.d/override.conf"])
+
+		// Regression guard (FEAT-145): the envd autostart symlink must not dangle.
+		// A relative target resolves inside multi-user.target.wants/ and dangles,
+		// and provision.sh's offline `systemctl enable` prunes dangling .wants
+		// links — silently disabling envd autostart on e.g. Fedora.
+		symlinksLayer, err := layers[1].Uncompressed()
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			err = symlinksLayer.Close()
+			assert.NoError(t, err)
+		})
+
+		actualSymlinks := map[string]string{}
+		symlinksTarReader := tar.NewReader(symlinksLayer)
+		for {
+			header, err := symlinksTarReader.Next()
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			require.NoError(t, err)
+
+			if header.Typeflag != tar.TypeSymlink {
+				continue
+			}
+			actualSymlinks[header.Name] = header.Linkname
+		}
+
+		envdWants := actualSymlinks["etc/systemd/system/multi-user.target.wants/envd.service"]
+		require.NotEmpty(t, envdWants, "envd autostart symlink must be present")
+		assert.Equal(t, "/etc/systemd/system/envd.service", envdWants,
+			"envd autostart symlink target must be absolute so it never dangles")
 	})
 }

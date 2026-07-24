@@ -265,8 +265,12 @@ func additionalOCILayers(
 
 	symlinkLayer, err := oci.LayerSymlink(
 		map[string]string{
-			// Enable envd service autostart
-			"etc/systemd/system/multi-user.target.wants/envd.service": "etc/systemd/system/envd.service",
+			// Enable envd service autostart. The target MUST be absolute: the link
+			// lives in multi-user.target.wants/, so a relative target would resolve
+			// inside that directory and dangle — and provision.sh's offline
+			// `systemctl enable $E2B_TIMESYNC_UNIT` prunes dangling .wants symlinks,
+			// silently disabling envd on distros where the link dangles (FEAT-145).
+			"etc/systemd/system/multi-user.target.wants/envd.service": "/etc/systemd/system/envd.service",
 			// NOTE: chrony autostart is enabled by provision.sh via `systemctl enable
 			// $E2B_TIMESYNC_UNIT`, which picks the distro-correct unit name (chrony on
 			// Debian, chronyd on RHEL/Arch). A static chrony.service symlink here would
