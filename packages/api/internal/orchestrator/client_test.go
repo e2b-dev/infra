@@ -21,6 +21,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/discovery"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -335,4 +336,72 @@ func TestRegisterNode_NoDuplicates(t *testing.T) {
 
 	wg.Wait()
 	assert.Equal(t, 5, o.nodes.Count())
+}
+
+// TestRegistersClusterOrchestrators covers which discovery path owns
+// orchestrator nodes. Local-cluster instances are owned by the node discovery
+// path (connectToNode) and must not be registered a second time from the
+// clusters registry — except when the node discovery loop is disabled
+// (ENVIRONMENT=local), where the clusters registry is the only source of
+// orchestrator nodes and skipping it would leave the API with zero nodes.
+func TestRegistersClusterOrchestrators(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name                          string
+		clusterID                     uuid.UUID
+		localClusterOwnsOrchestrators bool
+		want                          bool
+	}{
+		{
+			name:                          "local cluster with node discovery running",
+			clusterID:                     consts.LocalClusterID,
+			localClusterOwnsOrchestrators: false,
+			want:                          false,
+		},
+		{
+			name:                          "local cluster without node discovery",
+			clusterID:                     consts.LocalClusterID,
+			localClusterOwnsOrchestrators: true,
+			want:                          true,
+		},
+		{
+			name:                          "remote cluster with node discovery running",
+			clusterID:                     uuid.New(),
+			localClusterOwnsOrchestrators: false,
+			want:                          true,
+		},
+		{
+			name:                          "remote cluster without node discovery",
+			clusterID:                     uuid.New(),
+			localClusterOwnsOrchestrators: true,
+			want:                          true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			o := newTestOrchestrator(t, nil)
+			o.localClusterOwnsOrchestrators = tt.localClusterOwnsOrchestrators
+
+			assert.Equal(t, tt.want, o.registersClusterOrchestrators(tt.clusterID))
+		})
+	}
+}
+
+// TestConnectToClusterNode_SkipsLocalCluster verifies that the ownership check
+// short-circuits connectToClusterNode before it touches the instance. The nil
+// instance is intentional: it makes a regression to unconditional registration
+// fail loudly instead of silently duplicating the node.
+func TestConnectToClusterNode_SkipsLocalCluster(t *testing.T) {
+	t.Parallel()
+
+	o := newTestOrchestrator(t, nil)
+	o.localClusterOwnsOrchestrators = false
+
+	o.connectToClusterNode(t.Context(), &clusters.Cluster{ID: consts.LocalClusterID}, nil)
+
+	assert.Zero(t, o.nodes.Count())
 }
