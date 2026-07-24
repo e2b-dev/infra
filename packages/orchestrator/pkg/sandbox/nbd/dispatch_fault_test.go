@@ -21,7 +21,7 @@ const dispatchFaultChildEnv = "NBD_FAULT_TEST_CHILD"
 
 // replyConn is a fake NBD socket: Read serves queued request bytes, Write
 // parses reply headers onto replies. Assumes header-only replies, which holds
-// because every read in this test fails.
+// because every request in this test fails.
 type replyConn struct {
 	reqCh   chan []byte
 	rbuf    []byte
@@ -78,22 +78,22 @@ func (p *faultProv) WriteZeroesAt(off, length int64) (int, error) {
 // A backend memory fault must become a per-request NBD error reply while the
 // dispatch loop keeps serving. Runs in a subprocess: an unguarded fault would
 // kill the test binary.
-func TestDispatchRead_MmapFault(t *testing.T) {
+func TestDispatch_MmapFault(t *testing.T) {
 	if os.Getenv(dispatchFaultChildEnv) == "1" {
-		dispatchReadFaultChild(t)
+		dispatchFaultChild(t)
 
 		return
 	}
 	t.Parallel()
 
-	cmd := exec.Command(os.Args[0], "-test.run=^TestDispatchRead_MmapFault$", "-test.v")
+	cmd := exec.Command(os.Args[0], "-test.run=^TestDispatch_MmapFault$", "-test.v")
 	cmd.Env = append(os.Environ(), dispatchFaultChildEnv+"=1")
 	out, err := cmd.CombinedOutput()
 	require.NoErrorf(t, err,
 		"child crashed: a backend mmap fault must become an NBD error reply, not kill the process\n%s", out)
 }
 
-func dispatchReadFaultChild(t *testing.T) {
+func dispatchFaultChild(t *testing.T) {
 	t.Helper()
 
 	const (
@@ -115,15 +115,28 @@ func dispatchReadFaultChild(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- d.Handle(t.Context()) }()
 
-	for handle := uint64(1); handle <= 2; handle++ {
-		conn.reqCh <- nbdRequest(NBDCmdRead, handle, 0, uint32(blockSize))
+	// Non-zero payload: an all-zero write takes the punch-hole path, which
+	// does not touch the mapping. A store into the truncated mmap faults
+	// like a read.
+	payload := make([]byte, blockSize)
+	for i := range payload {
+		payload[i] = 0xAB
+	}
+
+	requests := [][]byte{
+		nbdRequest(NBDCmdRead, 1, 0, uint32(blockSize)),
+		nbdRequest(NBDCmdRead, 2, 0, uint32(blockSize)),
+		append(nbdRequest(NBDCmdWrite, 3, 0, uint32(blockSize)), payload...),
+	}
+	for handle, req := range requests {
+		conn.reqCh <- req
 		select {
 		case resp := <-conn.replies:
 			require.Equal(t, uint32(NBDResponseMagic), resp.Magic)
-			require.Equal(t, handle, resp.Handle)
-			require.NotZerof(t, resp.Error, "read %d: backend fault must be an NBD error reply", handle)
+			require.Equal(t, uint64(handle+1), resp.Handle)
+			require.NotZerof(t, resp.Error, "request %d: backend fault must be an NBD error reply", handle+1)
 		case <-time.After(5 * time.Second):
-			t.Fatalf("no reply for read %d: dispatch loop is stuck or dead", handle)
+			t.Fatalf("no reply for request %d: dispatch loop is stuck or dead", handle+1)
 		}
 	}
 

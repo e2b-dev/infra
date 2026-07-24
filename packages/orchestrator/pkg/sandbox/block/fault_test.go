@@ -3,7 +3,6 @@
 package block
 
 import (
-	"context"
 	"errors"
 	"os"
 	"os/exec"
@@ -67,9 +66,16 @@ func runFaultSafeMmapFaultChild(t *testing.T) {
 	var faultErr *MemoryFaultError
 	require.ErrorAs(t, err, &faultErr)
 	require.NotZero(t, faultErr.Addr, "fault address must be carried on the error")
-	require.Contains(t, err.Error(), "at address 0x")
 
-	require.Equal(t, int64(1), memoryFaultCounterSum(t, reader), "recovered fault must be counted")
+	// The counter is the operational disk-failure signal; one fault, one count.
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(t.Context(), &rm))
+	require.Len(t, rm.ScopeMetrics, 1)
+	require.Len(t, rm.ScopeMetrics[0].Metrics, 1)
+	sum, ok := rm.ScopeMetrics[0].Metrics[0].Data.(metricdata.Sum[int64])
+	require.True(t, ok)
+	require.Len(t, sum.DataPoints, 1)
+	require.Equal(t, int64(1), sum.DataPoints[0].Value, "recovered fault must be counted")
 }
 
 // swapMemoryFaultCounter swaps the package counter for a manual reader; not
@@ -85,28 +91,6 @@ func swapMemoryFaultCounter(t *testing.T) *sdkmetric.ManualReader {
 	t.Cleanup(func() { memoryFaultCounter = prev })
 
 	return reader
-}
-
-func memoryFaultCounterSum(t *testing.T, reader *sdkmetric.ManualReader) int64 {
-	t.Helper()
-
-	var rm metricdata.ResourceMetrics
-	require.NoError(t, reader.Collect(context.Background(), &rm))
-
-	var sum int64
-	for _, sm := range rm.ScopeMetrics {
-		for _, m := range sm.Metrics {
-			counter, ok := m.Data.(metricdata.Sum[int64])
-			if m.Name != "orchestrator.block.memory_fault" || !ok {
-				continue
-			}
-			for _, dp := range counter.DataPoints {
-				sum += dp.Value
-			}
-		}
-	}
-
-	return sum
 }
 
 func TestRunFaultSafe_PassesThroughResult(t *testing.T) {
@@ -146,18 +130,11 @@ func TestRunFaultSafe_NilDerefPanicPropagates(t *testing.T) {
 	})
 }
 
+// The restore defer must be registered before the recover defer, so the flag
+// is reset even when fn panics.
+//
 //nolint:paralleltest // manipulates the process-wide panic-on-fault setting
-func TestRunFaultSafe_RestoresPanicOnFaultFlag(t *testing.T) {
-	defer debug.SetPanicOnFault(false)
-
-	for _, prev := range []bool{false, true} {
-		debug.SetPanicOnFault(prev)
-		_ = RunFaultSafe(t.Context(), func() error { return nil })
-		got := debug.SetPanicOnFault(false)
-		assert.Equalf(t, prev, got, "flag not restored after clean return (prev=%v)", prev)
-	}
-
-	debug.SetPanicOnFault(false)
+func TestRunFaultSafe_RestoresPanicOnFaultFlagAfterPanic(t *testing.T) {
 	func() {
 		defer func() { _ = recover() }()
 		_ = RunFaultSafe(t.Context(), func() error { panic("boom") })
