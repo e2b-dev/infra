@@ -298,6 +298,7 @@ components:
           items:
             type: string
         egressProxy:
+          x-not-implemented: true
           $ref: "#/components/schemas/SandboxEgressProxyConfig"
         maskRequestHost:
           type: string
@@ -328,6 +329,7 @@ components:
           items:
             type: string
         egressProxy:
+          x-not-implemented: true
           $ref: "#/components/schemas/SandboxEgressProxyConfig"
         rules:
           type: object
@@ -365,6 +367,7 @@ components:
     SandboxEgressProxyConfig:
       type: object
       nullable: true
+      x-not-implemented: true
       description: >-
         SOCKS5 proxy for sandbox egress. Outbound TCP is tunneled through the
         proxy after allow/deny filtering; the sandbox is unaware. Domain-matched
