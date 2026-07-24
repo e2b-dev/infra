@@ -42,7 +42,6 @@ func (s *Scanner) Unsubscribe(sub *ScannerSubscriber) {
 }
 
 // ScanAndBroadcast starts scanning open TCP ports and broadcasts every open port to all subscribers.
-// It exits promptly when Destroy is called, without sleeping through the current interval.
 func (s *Scanner) ScanAndBroadcast() {
 	ticker := time.NewTicker(s.period)
 	defer ticker.Stop()
