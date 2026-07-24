@@ -99,7 +99,7 @@ func TestRunFaultSafe_NonFaultPanicPropagates(t *testing.T) {
 }
 
 // faultTestSink defeats dead-store elimination of the nil dereference below.
-var faultTestSink int //nolint:gochecknoglobals
+var faultTestSink int
 
 func TestRunFaultSafe_NilDerefPanicPropagates(t *testing.T) {
 	t.Parallel()
@@ -115,10 +115,11 @@ func TestRunFaultSafe_NilDerefPanicPropagates(t *testing.T) {
 }
 
 // The restore defer must be registered before the recover defer, so the flag
-// is reset even when fn panics.
-//
-//nolint:paralleltest // manipulates the process-wide panic-on-fault setting
+// is reset even when fn panics. The flag is per-goroutine, so this is safe to
+// run in parallel.
 func TestRunFaultSafe_RestoresPanicOnFaultFlagAfterPanic(t *testing.T) {
+	t.Parallel()
+
 	func() {
 		defer func() { _ = recover() }()
 		_ = RunFaultSafe(t.Context(), func() error { panic("boom") })
