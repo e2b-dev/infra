@@ -237,19 +237,38 @@ func (b *File) readSegments(ctx context.Context, p []byte, segments []readSegmen
 		g.SetLimit(maxParallel)
 		for _, s := range segments {
 			seg := s
-			g.Go(func() error { return b.readSegment(gctx, p, seg) })
+			g.Go(func() error { return b.readSegmentFaultSafe(gctx, p, seg) })
 		}
 
 		return g.Wait()
 	}
 
 	for _, s := range segments {
-		if err := b.readSegment(ctx, p, s); err != nil {
+		if err := b.readSegmentFaultSafe(ctx, p, s); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// readSegmentFaultSafe converts memory faults from the diff's mmap'd cache
+// into errors, so a bad disk block fails one read, not the process.
+func (b *File) readSegmentFaultSafe(ctx context.Context, p []byte, s readSegment) error {
+	err := block.RunFaultSafe(ctx, func() error { return b.readSegment(ctx, p, s) })
+	var faultErr *block.MemoryFaultError
+	if errors.As(err, &faultErr) {
+		cachePath, _ := s.diff.CachePath(ctx)
+		logger.L().Error(ctx, "memory fault reading build segment; local disk under the cache is likely failing",
+			zap.Error(err),
+			zap.String("cache_path", cachePath),
+			zap.Uintptr("fault_addr", faultErr.Addr),
+			zap.Int64("offset", s.srcOff),
+			zap.Int64("length", s.length),
+		)
+	}
+
+	return err
 }
 
 func (b *File) readSegment(ctx context.Context, p []byte, s readSegment) error {
