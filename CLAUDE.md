@@ -216,7 +216,7 @@ go test -race -v -run TestCreateSandbox ./internal/handlers
 
 ### Database Migrations
 - Migrations: `packages/db/migrations/`
-- Create: Add new `XXXXXX_name.sql` file
+- Create: `cd packages/db && make create-migration NAME=your-migration-name` — this generates the file with a correct `YYYYMMDDHHMMSS` timestamp. Do NOT hand-create migration files; placeholder timestamps like `120000`/`000000` cause same-day version collisions and are rejected by the out-of-order-migrations CI check.
 - Apply: `make migrate` (requires POSTGRES_CONNECTION_STRING)
 - Code generation: `make generate/db` (regenerates sqlc code)
 

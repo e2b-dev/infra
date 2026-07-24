@@ -156,7 +156,7 @@ func TestCreateTeam_ProTierLimitReturnsLimitMessage(t *testing.T) {
 		t.Fatalf("failed to create pro tier: %v", err)
 	}
 
-	defaultTeam, err := testDB.AuthDB.Read.GetDefaultTeamByUserID(ctx, userID)
+	defaultTeam, err := testDB.AuthDB.GetDefaultTeamByUserID(ctx, userID)
 	if err != nil {
 		t.Fatalf("expected default team: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestCreateTeam_BannedTeamReturnsSupportMessage(t *testing.T) {
 	ctx := t.Context()
 	userID := createTestUser(t, testDB)
 
-	defaultTeam, err := testDB.AuthDB.Read.GetDefaultTeamByUserID(ctx, userID)
+	defaultTeam, err := testDB.AuthDB.GetDefaultTeamByUserID(ctx, userID)
 	if err != nil {
 		t.Fatalf("expected default team: %v", err)
 	}

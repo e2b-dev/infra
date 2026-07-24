@@ -3,8 +3,11 @@
 package volumes
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -155,5 +158,42 @@ func TestDirCreate(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Equal(t, originalMode, fi.Mode().Perm(), "Mode should not have been changed for an existing directory when CreateParents=true")
+	})
+}
+
+func TestProcessError(t *testing.T) {
+	t.Parallel()
+
+	t.Run("ErrExist maps to AlreadyExists", func(t *testing.T) {
+		t.Parallel()
+
+		err := processError(t.Context(), "op", fmt.Errorf("wrapped: %w", os.ErrExist))
+		requireGRPCError(t, err, codes.AlreadyExists, orchestrator.UserErrorCode_PATH_ALREADY_EXISTS)
+	})
+
+	t.Run("ErrNotExist maps to NotFound", func(t *testing.T) {
+		t.Parallel()
+
+		err := processError(t.Context(), "op", fmt.Errorf("wrapped: %w", os.ErrNotExist))
+		requireGRPCError(t, err, codes.NotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND)
+	})
+
+	t.Run("ENOTDIR maps to InvalidArgument", func(t *testing.T) {
+		t.Parallel()
+
+		// Emulate a path traversing a regular file, e.g. "file.txt/sub".
+		err := processError(t.Context(), "op", &os.PathError{Op: "open", Path: "file.txt/sub", Err: syscall.ENOTDIR})
+		requireGRPCError(t, err, codes.InvalidArgument, orchestrator.UserErrorCode_INVALID_REQUEST)
+	})
+
+	t.Run("generic error is passed through unmapped", func(t *testing.T) {
+		t.Parallel()
+
+		sentinel := errors.New("boom")
+		err := processError(t.Context(), "op", sentinel)
+
+		// A generic error is wrapped and passed through, not mapped to a
+		// gRPC status (which would drop the original error from the chain).
+		require.ErrorIs(t, err, sentinel)
 	})
 }
