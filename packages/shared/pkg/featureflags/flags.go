@@ -127,6 +127,13 @@ var (
 	CreateStorageCacheSpansFlag         = NewBoolFlag("create-storage-cache-spans", env.IsDevelopment())
 	OrchAcceptsCombinedHostFlag         = NewBoolFlag("orch-accepts-combined-host", false)
 
+	// FsFreezeViaExecFlag freezes the guest rootfs with `fsfreeze -f /` run through
+	// the envd exec API before a filesystem-only pause, for guests whose envd
+	// predates the native /fsfreeze endpoint. Off = those guests fall back to a
+	// plain guest sync (today's behavior). Falls back to sync per-pause if the
+	// guest lacks fsfreeze or the freeze fails.
+	FsFreezeViaExecFlag = NewBoolFlag("fsfreeze-via-exec", false)
+
 	// StorageSoftDeleteCheckFlag enables reading the storage-index soft-delete
 	// tombstone on header load (one extra GCS Attrs on cold load). Off = no overhead.
 	StorageSoftDeleteCheckFlag = NewBoolFlag("storage-soft-delete-check", false)
