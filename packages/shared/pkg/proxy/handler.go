@@ -183,6 +183,19 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			maxLimit := connLimitConfig.GetMaxLimit(ctx)
 			count, acquired := connLimitConfig.Limiter.TryAcquire(d.ConnectionKey, maxLimit)
 			if !acquired {
+				// The limit protects the sandbox, and a preflight answered here never
+				// reaches it, so answering costs nothing and lets the real request
+				// come back for the 429 the browser would otherwise turn into an
+				// opaque error. Not counted as blocked: nothing was.
+				if cors.HandlePreflight(w, r) {
+					logger.L().Debug(ctx, "answered CORS preflight for connection-limited sandbox",
+						zap.String("host", r.Host),
+						logger.WithSandboxID(d.SandboxId),
+						zap.Int("connection_limit", maxLimit))
+
+					return
+				}
+
 				logger.L().Warn(ctx, "sandbox too many incoming connections",
 					zap.String("host", r.Host),
 					logger.WithSandboxID(d.SandboxId),

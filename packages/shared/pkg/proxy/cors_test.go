@@ -1,18 +1,21 @@
 package proxy
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
 )
@@ -59,6 +62,53 @@ func TestHandlerDoesNotShortCircuitBareOptions(t *testing.T) {
 	assert.JSONEq(t,
 		`{"sandboxId":"im9r2ycjiy2534qsdy1oo","message":"The sandbox was not found","code":502}`,
 		w.Body.String())
+}
+
+// The connection limit is reached only when the sandbox resolved, so it sits
+// past the handler's err != nil preflight check and needs its own. The 429 it
+// would otherwise answer with is not an ok status, so the browser would reject
+// the preflight and JS would never get to read the limit it hit.
+func TestHandlerAnswersPreflightForConnectionLimitedSandbox(t *testing.T) {
+	t.Parallel()
+
+	var blocked atomic.Int64
+	connLimitConfig := &ConnectionLimitConfig{
+		Limiter:             connlimit.NewConnectionLimiter(),
+		GetMaxLimit:         func(context.Context) int { return 0 },
+		OnConnectionBlocked: func(context.Context) { blocked.Add(1) },
+	}
+	h := handler(nil, func(*http.Request) (*pool.Destination, error) {
+		return &pool.Destination{
+			SandboxId:     "im9r2ycjiy2534qsdy1oo",
+			RequestLogger: logger.NewNopLogger(),
+			ConnectionKey: "limited",
+		}, nil
+	}, connLimitConfig)
+
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodOptions, "/health", nil)
+	r.Header.Set("Origin", "https://app.example.com")
+	r.Header.Set("Access-Control-Request-Method", "GET")
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, r)
+
+	assert.Equal(t, http.StatusNoContent, w.Code)
+	assert.Equal(t, "*", w.Header().Get("Access-Control-Allow-Origin"))
+	// Answering the preflight never reaches the sandbox, so no connection was
+	// blocked and the metric must not claim otherwise.
+	assert.Zero(t, blocked.Load())
+
+	// The real request that follows still gets the limit error, with the headers
+	// that let JS read it.
+	r = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil)
+	r.Header.Set("Origin", "https://app.example.com")
+	w = httptest.NewRecorder()
+
+	h.ServeHTTP(w, r)
+
+	assert.Equal(t, http.StatusTooManyRequests, w.Code)
+	assert.Equal(t, "*", w.Header().Get("Access-Control-Allow-Origin"))
+	assert.Equal(t, int64(1), blocked.Load())
 }
 
 // The raw http.Error paths are equally unreadable from a browser, so they carry
