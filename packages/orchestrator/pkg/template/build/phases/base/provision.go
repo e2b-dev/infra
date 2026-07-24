@@ -53,6 +53,9 @@ type ProvisionScriptParams struct {
 	BusyBox    string
 	ResultPath string
 	Provider   string
+	// DistroSelector is the generated POSIX-sh block that selects the base
+	// image's distro profile by its /etc/os-release ID (FEAT-145 / ADR-010).
+	DistroSelector string
 }
 
 func getProvisionScript(
