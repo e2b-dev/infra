@@ -126,6 +126,15 @@ echo "Enable time synchronization ($E2B_TIMESYNC_UNIT)"
 # the previously static, Debian-only chrony.service autostart symlink.
 systemctl enable "$E2B_TIMESYNC_UNIT"
 
+echo "Enable envd autostart"
+# The envd.service wants-symlink is baked into the image as an OCI layer, but
+# on the RHEL family installing the systemd package above runs its RPM
+# scriptlet `systemctl preset-all`, whose distro policy is "disable *" — it
+# deletes the baked symlink (units not covered by a preset file are disabled).
+# Re-enabling here, after every package transaction, is what guarantees envd
+# autostarts regardless of what the distro's package scriptlets did.
+systemctl enable envd.service
+
 echo "Disable chrony-wait"
 # chrony-wait blocks multi-user.target until the first clock sync (~8s);
 # chrony still syncs in the background, nothing needs to wait for it.
