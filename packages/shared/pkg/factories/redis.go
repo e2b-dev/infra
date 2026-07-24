@@ -113,14 +113,18 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 
 		redisClient = redis.NewClusterClient(clusterOpts)
 	case config.RedisURL != "":
-		opts := &redis.Options{
-			Addr:                  config.RedisURL,
-			PoolSize:              poolSize,
-			MinIdleConns:          minIdleConns,
-			ConnMaxIdleTime:       -1,
-			ConnMaxLifetime:       connMaxLifetime,
-			ConnMaxLifetimeJitter: connMaxLifetimeJitter,
+		// Parse the Redis URL to extract the address, port, and password.
+		var opts *redis.Options
+		if parsedOpts, err := redis.ParseURL(config.RedisURL); err == nil {
+			opts = parsedOpts
+		} else {
+			opts = &redis.Options{Addr: config.RedisURL}
 		}
+		opts.PoolSize = poolSize
+		opts.MinIdleConns = minIdleConns
+		opts.ConnMaxIdleTime = -1
+		opts.ConnMaxLifetime = connMaxLifetime
+		opts.ConnMaxLifetimeJitter = connMaxLifetimeJitter
 
 		redisClient = redis.NewClient(opts)
 	default:
