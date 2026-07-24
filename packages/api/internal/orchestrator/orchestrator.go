@@ -315,13 +315,17 @@ func getBestOfKConfig(ctx context.Context, featureFlagsClient *featureflags.Clie
 
 	alphaPercent := featureFlagsClient.IntFlag(ctx, featureflags.BestOfKAlpha)
 
+	memOvercommitPercent := featureFlagsClient.IntFlag(ctx, featureflags.BestOfKMaxMemoryOvercommit)
+
 	// Convert percentage to decimal
 	alpha := float64(alphaPercent) / 100.0
 	maxOvercommit := float64(maxOvercommitPercent) / 100.0
+	memOvercommit := float64(memOvercommitPercent) / 100.0
 
 	return placement.BestOfKConfig{
 		R:     maxOvercommit,
 		K:     k,
 		Alpha: alpha,
+		M:     memOvercommit,
 	}
 }

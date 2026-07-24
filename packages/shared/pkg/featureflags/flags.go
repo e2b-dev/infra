@@ -306,7 +306,8 @@ var (
 	ClickhouseBatcherQueueSize    = NewIntFlag("clickhouse-batcher-queue-size", 1000)
 	BestOfKSampleSize             = NewIntFlag("best-of-k-sample-size", 3)                           // Default K=3
 	BestOfKMaxOvercommit          = NewIntFlag("best-of-k-max-overcommit", 400)                      // Default R=4 (stored as percentage, max over-commit ratio)
-	BestOfKAlpha                  = NewIntFlag("best-of-k-alpha", 50)                                // Default Alpha=0.5 (stored as percentage for int flag, current usage weight)
+	BestOfKAlpha                     = NewIntFlag("best-of-k-alpha", 50)                                    // Default Alpha=0.5 (stored as percentage for int flag, current usage weight)
+	BestOfKMaxMemoryOvercommit       = NewIntFlag("best-of-k-max-memory-overcommit", 0)                      // Default 0 = disabled; set e.g. 100 for 1.0x (no overcommit) or 150 for 1.5x
 	EnvdInitTimeoutMilliseconds   = NewIntFlag("envd-init-request-timeout-milliseconds", 50)         // Timeout for envd init request in milliseconds
 	EnvdTimeoutMilliseconds       = NewIntFlag("envd-timeout-milliseconds", envdTimeoutFallbackMs()) // Timeout for waiting for envd on resume; falls back to ENVD_TIMEOUT env var (default 10s)
 	// GuestSyncTimeoutMs overrides the mandatory pre-pause guest-sync deadline
