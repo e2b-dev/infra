@@ -69,22 +69,3 @@ func TestParseExt4Superblock(t *testing.T) {
 		})
 	}
 }
-
-func TestE2fsckExitOK(t *testing.T) {
-	t.Parallel()
-
-	// e2fsck exit codes are a summing bitmask.
-	oks := []int{0, 1, 2, 3}         // clean / corrected / reboot / corrected+reboot
-	fails := []int{4, 5, 6, 7, 8, 9} // any bit >= 0x04 (uncorrected / operational / ...)
-
-	for _, code := range oks {
-		if !e2fsckExitOK(code) {
-			t.Errorf("e2fsckExitOK(%d) = false, want true", code)
-		}
-	}
-	for _, code := range fails {
-		if e2fsckExitOK(code) {
-			t.Errorf("e2fsckExitOK(%d) = true, want false", code)
-		}
-	}
-}

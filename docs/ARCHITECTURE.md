@@ -152,6 +152,16 @@ Key mechanisms (all under `pkg/sandbox/`):
 - **Copy-on-write rootfs** (`rootfs/`, `nbd/`, `block/`): the template rootfs stays read-only;
   writes go to a per-sandbox COW cache exposed to Firecracker as an NBD block device served by
   an in-process userspace NBD server. On pause, the dirty blocks are exported as a diff.
+- **ext4 journal recovery** (`rootfs/journal_recovery.go`): a filesystem-only snapshot taken on a
+  guest whose envd predates FIFREEZE support can capture a torn ext4 journal, which fails the
+  resume cold-boot with "JBD2: recovery failed". When the `EXT4_FEATURE_INCOMPAT_RECOVER`
+  superblock bit is set, the orchestrator replays the journal with `e2fsck` (before the cold boot,
+  and before exporting a pause diff). Because the filesystem is tenant-controlled and e2fsprogs is
+  a large parser, e2fsck never runs directly on the host: it is confined in a transient
+  `systemd-run` service with no network, an empty root exposing only `/usr` and the target device,
+  all capabilities dropped, no-new-privs, `RestrictNamespaces` (no capability regain), and a
+  seccomp allowlist. Recovery is best-effort — on any failure the boot falls back to the guest
+  kernel's own jbd2 replay.
 - **Template cache** (`template/`): templates are fetched lazily from object storage and cached
   on local disk (and optionally on a shared NFS chunk cache, or fetched peer-to-peer from other
   nodes before upload completes).

@@ -32,19 +32,20 @@ const (
 	ext4FeatureIncompatRecover = 0x0004 // set when the journal needs replay
 )
 
-// JournalRecoveryTimeout bounds an e2fsck run. Callers pair it with a cancel-free
-// context so a request cancellation (a pause or create timeout) can't kill e2fsck
-// mid-write — which would persist a half-repaired filesystem — while still capping
-// how long recovery may take so it can't consume the caller's whole budget.
+// JournalRecoveryTimeout is a hard upper bound on a single e2fsck run. Callers
+// pair it with a cancel-free context (context.WithoutCancel) so a request
+// cancellation — a pause or create/resume timeout — can't kill e2fsck mid-write:
+// on the pause path the repaired overlay is exported as the durable snapshot, so a
+// truncated repair would persist a half-repaired filesystem.
+//
+// It is a generous "e2fsck is wedged" backstop, not an expected duration. Without
+// -f a journal replay is seconds, and even an escalated full repair has been
+// observed in the tens of seconds; two minutes leaves headroom for a large,
+// genuinely-inconsistent filesystem to finish rather than be cut short. It does
+// NOT extend the caller's request deadline (a Go context can only shorten): if
+// recovery outlives that deadline the request still fails, but e2fsck completes
+// cleanly rather than leaving a half-repaired filesystem behind.
 const JournalRecoveryTimeout = 2 * time.Minute
-
-// e2fsck exit codes are a bitmask that sums: these two bits mean the filesystem
-// was made consistent. Any higher bit (0x04 = errors left uncorrected, 0x08 =
-// operational error, ...) means it was not.
-const (
-	e2fsckErrorsCorrected   = 0x01 // errors corrected
-	e2fsckRebootRecommended = 0x02 // errors corrected, reboot recommended
-)
 
 // RecoverExt4Journal makes an ext4 filesystem mountable when its journal was
 // captured torn — as happens for a filesystem-only pause on a guest whose envd
@@ -160,34 +161,36 @@ func readSuperblock(devicePath string) ([]byte, error) {
 
 // runE2fsck runs a non-interactive e2fsck (no -f: it replays the journal and
 // only escalates to a full check if the replay leaves the filesystem
-// inconsistent, so a healthy-but-unreplayed journal exits fast). e2fsck's exit
-// code is a
-// bitmask: 0 (clean), 0x01 (errors corrected) and 0x02 (corrected, reboot
-// recommended) — and their combination 0x03 — all mean the filesystem was made
-// consistent, so they are success. Any higher bit (0x04 errors left
-// uncorrected, 0x08 operational error, ...) is a failure, since booting such a
-// filesystem would still fail.
+// inconsistent, so a healthy-but-unreplayed journal exits fast) inside the
+// sandbox. The sandbox unit maps e2fsck's "filesystem made consistent" exit codes
+// — 0 (clean), 1 (corrected), 2 (corrected, reboot recommended), and their sum 3
+// — to success via SuccessExitStatus, so a nil error means recovery succeeded.
+// Any non-nil error means it did not: e2fsck left errors uncorrected (exit >= 4),
+// the sandbox failed to start, or it was killed by the timeout. We deliberately
+// do NOT re-interpret the exit code here — a systemd-run setup failure also exits
+// 1, so trusting the unit's success/failure classification is what keeps a failed
+// run from being mistaken for a repair.
 func runE2fsck(ctx context.Context, devicePath string) error {
-	out, err := exec.CommandContext(ctx, "e2fsck", "-y", devicePath).CombinedOutput()
+	out, err := runE2fsckSandboxed(ctx, devicePath)
 	if err == nil {
 		return nil
 	}
 
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		if e2fsckExitOK(exitErr.ExitCode()) {
-			return nil
-		}
-
-		return fmt.Errorf("exit %d: %s", exitErr.ExitCode(), strings.TrimSpace(string(out)))
+	// e2fsck's stdout/stderr can name tenant-controlled files and paths (e.g.
+	// "Entry 'secret' in /... has deleted/unused inode"). Callers log the returned
+	// error into shared orchestrator logs, so keep that content out of the error
+	// and emit it only at debug level for opt-in troubleshooting.
+	if len(out) > 0 {
+		logger.L().Debug(ctx, "e2fsck output (may contain tenant paths)",
+			zap.String("device", devicePath),
+			zap.String("output", strings.TrimSpace(string(out))),
+		)
 	}
 
-	return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
-}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return fmt.Errorf("e2fsck sandbox exited %d", exitErr.ExitCode())
+	}
 
-// e2fsckExitOK reports whether an e2fsck exit code means the filesystem was made
-// consistent. Only the "corrected" (0x01) and "reboot recommended" (0x02) bits
-// (and their sum, 0x03) are acceptable; any higher bit is a failure.
-func e2fsckExitOK(code int) bool {
-	return code&^(e2fsckErrorsCorrected|e2fsckRebootRecommended) == 0
+	return err
 }
