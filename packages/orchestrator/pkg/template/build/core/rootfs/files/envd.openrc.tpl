@@ -1,12 +1,13 @@
 {{- /*gotype:github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/rootfs.templateModel*/ -}}
-{{ .WriteFile "/etc/init.d/envd" 0o755 }}
+{{ .WriteFile "/usr/local/share/e2b/envd.openrc" 0o755 }}
 
 #!/sbin/openrc-run
 # E2B env daemon — the OpenRC counterpart of envd.service (see envd.service.tpl
 # for the full rationale on each step; this mirrors it for the Alpine/OpenRC
-# family). Baked into every image; on systemd distros it is inert — systemd's
-# sysv-generator skips /etc/init.d scripts shadowed by a native unit, and the
-# native envd.service exists there.
+# family). Baked at a neutral path and installed to /etc/init.d/envd by the
+# OpenRC e2b_init_setup only: if it lived in /etc/init.d on every image,
+# Debian's `systemctl enable envd` would hand it to update-rc.d, which aborts
+# on a non-LSB script and fails the whole provisioning.
 #
 # /tmp-wipe ordering note: OpenRC's bootmisc (boot runlevel) wipes /tmp before
 # the default runlevel starts, so envd — in default — can never answer an

@@ -99,7 +99,9 @@ func TestAdditionalOCILayers(t *testing.T) {
 
 		// The OpenRC counterpart (Alpine, IMPL-145 W5) ships alongside the
 		// systemd unit; it must supervise envd and honor the memory limit.
-		openrcEnvd := actualFiles["etc/init.d/envd"]
+		// It lives OUTSIDE /etc/init.d — Debian's update-rc.d aborts on a
+		// non-LSB script there — and is installed by the OpenRC init setup.
+		openrcEnvd := actualFiles["usr/local/share/e2b/envd.openrc"]
 		require.NotEmpty(t, openrcEnvd, "OpenRC envd service must be baked")
 		assert.Contains(t, openrcEnvd, "#!/sbin/openrc-run")
 		assert.Contains(t, openrcEnvd, "supervisor=supervise-daemon")

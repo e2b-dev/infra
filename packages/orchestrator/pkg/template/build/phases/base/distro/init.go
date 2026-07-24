@@ -95,7 +95,10 @@ echo "Enable time synchronization ($E2B_TIMESYNC_UNIT)"
 rc-update add "$E2B_TIMESYNC_UNIT" default
 
 echo "Enable envd autostart"
-# /etc/init.d/envd is baked into the image as an OCI layer (envd.openrc.tpl).
+# The service script is baked at a neutral path (envd.openrc.tpl) so the
+# Debian family's update-rc.d never sees it; install it for OpenRC here.
+cp /usr/local/share/e2b/envd.openrc /etc/init.d/envd
+chmod 0755 /etc/init.d/envd
 rc-update add envd default
 
 echo "Enable sshd"
