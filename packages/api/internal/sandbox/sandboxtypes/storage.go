@@ -11,6 +11,8 @@ const (
 )
 
 // Storage is the persistence interface implemented by the redis backend.
+//
+//nolint:interfacebloat
 type Storage interface {
 	Add(ctx context.Context, sandbox Sandbox) error
 	Get(ctx context.Context, teamID uuid.UUID, sandboxID string) (Sandbox, error)
@@ -19,6 +21,7 @@ type Storage interface {
 	TeamItems(ctx context.Context, teamID uuid.UUID, states []State) ([]Sandbox, error)
 	ExpiredItems(ctx context.Context) ([]Sandbox, error)
 	TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int64, error)
+	AllRunningItems(ctx context.Context) ([]Sandbox, error)
 
 	Update(ctx context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandbox Sandbox) (Sandbox, error)) (Sandbox, error)
 	StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, opts RemoveOpts) (Sandbox, bool, func(context.Context, error), error)

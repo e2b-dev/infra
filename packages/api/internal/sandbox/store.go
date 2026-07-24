@@ -125,6 +125,11 @@ func (s *Store) TeamsWithSandboxes(ctx context.Context) (map[uuid.UUID]int64, er
 	return s.storage.TeamsWithSandboxCount(ctx)
 }
 
+// AllRunningItems returns every running sandbox across all teams.
+func (s *Store) AllRunningItems(ctx context.Context) ([]Sandbox, error) {
+	return s.storage.AllRunningItems(ctx)
+}
+
 func (s *Store) Update(ctx context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandbox Sandbox) (Sandbox, error)) (Sandbox, error) {
 	return s.storage.Update(ctx, teamID, sandboxID, updateFunc)
 }

@@ -64,12 +64,31 @@ func (n *Node) markUnhealthyLocal(ctx context.Context) {
 	n.mutex.Lock()
 	defer n.mutex.Unlock()
 
+	if n.unreachableSince.IsZero() {
+		n.unreachableSince = time.Now()
+	}
+
 	if n.status.Status == api.NodeStatusUnhealthy {
 		return
 	}
 
 	logger.L().Info(ctx, "NodeID status changed", logger.WithNodeID(n.ID), zap.String("status", string(api.NodeStatusUnhealthy)))
 	n.status = StatusInfo{Status: api.NodeStatusUnhealthy, ChangedAt: time.Now()}
+}
+
+// markReachable records a successful sync cycle, clearing the unreachable observation
+func (n *Node) markReachable() {
+	n.mutex.Lock()
+	defer n.mutex.Unlock()
+
+	n.unreachableSince = time.Time{}
+}
+
+func (n *Node) UnreachableSince() (time.Time, bool) {
+	n.mutex.RLock()
+	defer n.mutex.RUnlock()
+
+	return n.unreachableSince, !n.unreachableSince.IsZero()
 }
 
 func (n *Node) SendStatusChange(ctx context.Context, s api.NodeStatus) error {

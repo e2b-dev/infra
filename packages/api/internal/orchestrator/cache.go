@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/deadnode"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -84,6 +85,9 @@ func (o *Orchestrator) syncNodes(ctx context.Context, store *sandbox.Store, skip
 	// Wait for nodes discovery to finish
 	wg.Wait()
 
+	// Discovery succeeded (a listNomadNodes failure returns early above)
+	o.lastDiscoverySync.Store(new(time.Now()))
+
 	// Sync state of all nodes currently in the pool
 	ctx, syncNodesSpan := tracer.Start(ctx, "keep-in-sync-existing")
 	defer syncNodesSpan.End()
@@ -114,6 +118,15 @@ func (o *Orchestrator) syncNodes(ctx context.Context, store *sandbox.Store, skip
 				}
 
 				o.deregisterNode(n)
+
+				return
+			}
+
+			if _, unreachable := n.UnreachableSince(); !unreachable {
+				ref := deadnode.NodeRef{ClusterID: n.ClusterID.String(), NodeID: n.ID}
+				if err := deadnode.RecordNodeSeen(ctx, o.redisClient, ref, time.Now()); err != nil {
+					logger.L().Warn(ctx, "Failed to record node liveness", zap.Error(err), logger.WithNodeID(n.ID))
+				}
 			}
 		})
 	}

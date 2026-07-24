@@ -43,6 +43,10 @@ type Node struct {
 	client *clusters.GRPCClient
 	status StatusInfo
 
+	// unreachableSince is the time of the first local observation of a full
+	// sync-cycle failure against this node
+	unreachableSince time.Time
+
 	metrics   Metrics
 	metricsMu sync.RWMutex
 

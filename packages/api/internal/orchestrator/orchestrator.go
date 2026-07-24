@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
@@ -16,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/api/internal/metrics"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/deadnode"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/discovery"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/evictor"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
@@ -45,6 +48,7 @@ type SnapshotCacheInvalidator interface {
 type Orchestrator struct {
 	httpClient                    *http.Client
 	nodeDiscovery                 discovery.Discovery
+	redisClient                   redis.UniversalClient
 	sandboxStore                  *sandbox.Store
 	nodes                         *smap.Map[*nodemanager.Node]
 	placementAlgorithm            *placement.BestOfK
@@ -81,6 +85,15 @@ type Orchestrator struct {
 	// same string, and nesting Do calls for the same key on the same Group would
 	// block forever.
 	discoveryGroup singleflight.Group
+
+	// lastDiscoverySync is the time of the last syncNodes cycle that
+	// successfully completed the node discovery phase. Nil until the first
+	// success. The dead-node sweep refuses to act on observations older
+	// than this: "node not seen" is only meaningful when nodes are actually
+	// being synced — otherwise a discovery outage (or a freshly booted
+	// replica that cannot reach service discovery) would make every node
+	// look dead.
+	lastDiscoverySync atomic.Pointer[time.Time]
 }
 
 func New(
@@ -138,6 +151,7 @@ func New(
 		analytics:            analyticsInstance,
 		posthogClient:        posthogClient,
 		nodeDiscovery:        nodeDiscovery,
+		redisClient:          redisClient,
 		nodes:                smap.New[*nodemanager.Node](),
 		placementAlgorithm:   bestOfKAlgorithm,
 		featureFlagsClient:   featureFlags,
@@ -193,6 +207,40 @@ func New(
 
 	go o.startStatusLogging(ctx)
 	go o.updateBestOfKConfig(ctx)
+
+	// Purge sandboxes from the store when their node crashed and never came back.
+	deadNodeSweeper := deadnode.New(
+		featureFlags,
+		redisClient,
+		o.sandboxStore.AllRunningItems,
+		func() time.Time {
+			if ts := o.lastDiscoverySync.Load(); ts != nil {
+				return *ts
+			}
+
+			return time.Time{}
+		},
+		func(d time.Duration) bool {
+			now := time.Now()
+			for _, n := range o.nodes.Items() {
+				if since, ok := n.UnreachableSince(); ok && now.Sub(since) >= d {
+					return true
+				}
+			}
+
+			return false
+		},
+		func(ctx context.Context, teamID uuid.UUID, sandboxID string, opts sandbox.RemoveOpts) error {
+			err := o.RemoveSandbox(ctx, teamID, sandboxID, opts)
+			if errors.Is(err, ErrSandboxNotFound) {
+				// Another replica (or the user) removed it concurrently.
+				return nil
+			}
+
+			return err
+		},
+	)
+	go deadNodeSweeper.Start(ctx)
 
 	return &o, nil
 }
