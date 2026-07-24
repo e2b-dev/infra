@@ -1450,13 +1450,27 @@ func (s *Sandbox) Pause(
 	// harmless and keeps the cleanup ordering identical to the memory path.
 	cleanup.AddNoContext(ctx, mem.Diff.Close)
 
+	// A filesystem-only pause on a guest whose envd predates FIFREEZE support
+	// (< 0.6.6) only sync'd the guest before pause, which can capture a torn ext4
+	// journal. Recover it on the host before exporting so the snapshot is clean
+	// and mountable on the resume cold-boot, instead of failing with "JBD2:
+	// recovery failed". Freeze-capable guests produce a clean filesystem, so this
+	// is scoped to the no-FIFREEZE fallback and gated behind a flag.
+	recoverJournal := pauseOpts.filesystemSnapshot &&
+		!s.envdSupportsFsFreeze(ctx) &&
+		s.featureFlags.BoolFlag(ctx, featureflags.FsOnlyJournalRecoveryFlag,
+			featureflags.SandboxContext(s.Runtime.SandboxID),
+			featureflags.TemplateContext(s.Runtime.TemplateID),
+		)
+
 	rootfsDiff, rootfsHeader, err := pauseProcessRootfs(
 		ctx,
 		buildID,
 		originalRootfs.Header(),
 		&RootfsDiffCreator{
-			rootfs:    s.rootfs,
-			closeHook: s.Close,
+			rootfs:         s.rootfs,
+			closeHook:      s.Close,
+			recoverJournal: recoverJournal,
 		},
 		s.config.DefaultCacheDir,
 	)
