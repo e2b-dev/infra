@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0](https://github.com/e2b-dev/infra/compare/clickhouse-migrator-v0.0.1...clickhouse-migrator-v0.1.0) (2026-07-24)
+
+
+### Features
+
+* dynamic sandbox log routing and ClickHouse-backed log reads ([#3236](https://github.com/e2b-dev/infra/issues/3236)) ([1b19a3b](https://github.com/e2b-dev/infra/commit/1b19a3bcb37d1fb44171ae8dee3a126cf3d39c34))
+
 ## 0.0.1 (2026-07-10)
 
 
