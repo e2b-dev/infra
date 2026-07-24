@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"compress/gzip"
 	"errors"
 	"fmt"
@@ -15,6 +16,11 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 )
+
+// Virtual files (procfs, sysfs) report stat size 0 even though reading them
+// yields content. Files reporting size 0 are buffered up to this cap so they
+// can be served with a correct Content-Length.
+const zeroSizeFileBufferLimit = 16 << 20 // 16 MiB
 
 func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesParams) {
 	defer r.Body.Close()
@@ -164,6 +170,46 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 		_, err = io.Copy(gw, file)
 		if err != nil {
 			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error writing gzip response")
+		}
+
+		return
+	}
+
+	// http.ServeContent sizes the response by seeking to the end of the file,
+	// so virtual files (procfs, sysfs) that report stat size 0 would get an
+	// empty body. Buffer them to serve the real content with a correct length.
+	if stat.Size() == 0 {
+		buffered, readErr := io.ReadAll(io.LimitReader(file, zeroSizeFileBufferLimit+1))
+		if readErr != nil {
+			errMsg = fmt.Errorf("error reading file '%s': %w", resolvedPath, readErr)
+			errorCode = http.StatusInternalServerError
+			jsonError(w, errorCode, errMsg)
+
+			return
+		}
+
+		if len(buffered) <= zeroSizeFileBufferLimit {
+			http.ServeContent(w, r, path, stat.ModTime(), bytes.NewReader(buffered))
+
+			return
+		}
+
+		// The file outgrew the buffer cap; stream the rest without a known
+		// length, like the gzip path does.
+		contentType := mime.TypeByExtension(filepath.Ext(path))
+		if contentType == "" {
+			contentType = http.DetectContentType(buffered)
+		}
+		w.Header().Set("Content-Type", contentType)
+
+		if _, err := w.Write(buffered); err != nil {
+			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error writing response")
+
+			return
+		}
+
+		if _, err := io.Copy(w, file); err != nil {
+			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error writing response")
 		}
 
 		return
