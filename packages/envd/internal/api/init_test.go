@@ -148,7 +148,7 @@ func newTestAPI(accessToken *SecureToken, mmdsClient MMDSClient) *API {
 	defaults := &execcontext.Defaults{
 		EnvVars: utils.NewEnvVars(),
 	}
-	api := New(&logger, defaults, nil, false, cgroups.NewNoopManager())
+	api := New(&logger, defaults, nil, false, cgroups.NewWorkloadFreezer(cgroups.NewNoopManager()))
 	if accessToken != nil {
 		api.accessToken.TakeFrom(accessToken)
 	}
@@ -637,7 +637,7 @@ func (f *fakeCgroupManager) Close() error { return nil }
 func newAPIWithCgroupManager(mgr cgroups.Manager) *API {
 	logger := zerolog.Nop()
 
-	return New(&logger, &execcontext.Defaults{EnvVars: utils.NewEnvVars()}, nil, false, mgr)
+	return New(&logger, &execcontext.Defaults{EnvVars: utils.NewEnvVars()}, nil, false, cgroups.NewWorkloadFreezer(mgr))
 }
 
 func TestPostFreeze(t *testing.T) {
@@ -654,7 +654,7 @@ func TestPostFreeze(t *testing.T) {
 		api.PostFreeze(rec, req)
 
 		require.Equal(t, http.StatusNoContent, rec.Code)
-		assert.Equal(t, userCgroupsToFreeze, mgr.frozen)
+		assert.Equal(t, cgroups.WorkloadProcessTypes, mgr.frozen)
 	})
 
 	t.Run("returns 500 on freeze error", func(t *testing.T) {
@@ -686,7 +686,7 @@ func TestPostUnfreeze(t *testing.T) {
 		api.PostUnfreeze(rec, req)
 
 		require.Equal(t, http.StatusNoContent, rec.Code)
-		assert.Equal(t, userCgroupsToFreeze, mgr.unfrozen)
+		assert.Equal(t, cgroups.WorkloadProcessTypes, mgr.unfrozen)
 	})
 
 	t.Run("returns 500 but attempts every cgroup on unfreeze error", func(t *testing.T) {
@@ -701,7 +701,7 @@ func TestPostUnfreeze(t *testing.T) {
 
 		assert.Equal(t, http.StatusInternalServerError, rec.Code)
 		assert.Empty(t, mgr.unfrozen)
-		assert.Equal(t, userCgroupsToFreeze, mgr.unfreezeAttempts)
+		assert.Equal(t, cgroups.WorkloadProcessTypes, mgr.unfreezeAttempts)
 	})
 }
 
@@ -732,7 +732,7 @@ func TestPostInit_UnfreezeOnStaleTimestamp(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, rec.Code)
 	_, ok := api.defaults.EnvVars.Load("SHOULD_NOT_BE_SET")
 	assert.False(t, ok, "stale /init should not apply EnvVars")
-	assert.Equal(t, userCgroupsToFreeze, mgr.unfrozen, "stale /init must still unfreeze")
+	assert.Equal(t, cgroups.WorkloadProcessTypes, mgr.unfrozen, "stale /init must still unfreeze")
 }
 
 // Unauthorized /init must NOT thaw cgroups.

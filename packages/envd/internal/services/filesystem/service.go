@@ -18,7 +18,7 @@ type Service struct {
 	defaults *execcontext.Defaults
 }
 
-func Handle(server *chi.Mux, l *zerolog.Logger, defaults *execcontext.Defaults) {
+func Handle(server *chi.Mux, l *zerolog.Logger, defaults *execcontext.Defaults) Service {
 	service := Service{
 		logger:   l,
 		watchers: utils.NewMap[string, *FileWatcher](),
@@ -33,4 +33,8 @@ func Handle(server *chi.Mux, l *zerolog.Logger, defaults *execcontext.Defaults) 
 	path, handler := spec.NewFilesystemHandler(service, interceptors)
 
 	server.Mount(path, handler)
+
+	// Returned so the live-upgrade handover (main.go) can export/import watcher
+	// state. Service is a value type but its watchers map is a shared pointer.
+	return service
 }

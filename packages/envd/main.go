@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -38,6 +39,12 @@ const (
 
 	portScannerInterval = 1000 * time.Millisecond
 
+	// handoverFallbackThawTimeout bounds how long a live-upgraded envd keeps its
+	// re-adopted workload frozen waiting for the orchestrator's post-upgrade
+	// /init to thaw it. Comfortably past the orchestrator's upgrade readiness
+	// budget, so it only fires when that /init genuinely never arrives.
+	handoverFallbackThawTimeout = 60 * time.Second
+
 	// This is the default user used in the container if not specified otherwise.
 	// It should be always overridden by the user in /init when building the template.
 	defaultUser = "root"
@@ -57,6 +64,11 @@ var (
 	cgroupRoot  string
 	noCgroups   bool
 	verbose     bool
+
+	// resumeHandover: set by the outgoing envd when it re-execs itself during a
+	// live self-upgrade. On boot the new image re-adopts the
+	// processes described in the tmpfs handover blob.
+	resumeHandover bool
 )
 
 func parseFlags() {
@@ -107,6 +119,13 @@ func parseFlags() {
 		"verbose",
 		false,
 		"write envd logs to stdout",
+	)
+
+	flag.BoolVar(
+		&resumeHandover,
+		"resume-handover",
+		false,
+		"internal: re-adopt processes from the live-upgrade handover blob (set by the outgoing envd)",
 	)
 
 	flag.Parse()
@@ -186,7 +205,7 @@ func run() error {
 
 	envLogger := l.With().Str("logger", "envd").Logger()
 	fsLogger := l.With().Str("logger", "filesystem").Logger()
-	filesystemRpc.Handle(m, &fsLogger, defaults)
+	filesystemService := filesystemRpc.Handle(m, &fsLogger, defaults)
 
 	cgroupManager := createCgroupManager()
 	defer func() {
@@ -196,10 +215,66 @@ func run() error {
 		}
 	}()
 
-	processLogger := l.With().Str("logger", "process").Logger()
-	processRpc.Handle(m, &processLogger, defaults, cgroupManager)
+	// One freezer shared by the process service (live-upgrade handover) and the
+	// HTTP API (/freeze, /unfreeze, /init thaw) so every freeze/unfreeze caller
+	// serializes on a single lock.
+	workloadFreezer := cgroups.NewWorkloadFreezer(cgroupManager)
 
-	service := api.New(&envLogger, defaults, mmdsChan, isNotFC, cgroupManager)
+	processLogger := l.With().Str("logger", "process").Logger()
+	processService := processRpc.Handle(m, &processLogger, defaults, workloadFreezer)
+
+	// Live-upgrade incoming side: if this envd was re-exec'd by an outgoing
+	// envd, re-adopt the handed-over processes before serving.
+	var handover processRpc.HandoverResult
+	if resumeHandover {
+		func() {
+			// A panic here must not crash the new envd: systemd would restart a
+			// fresh (old-binary) envd with a new PID that can neither re-adopt nor
+			// reap the frozen workload. Recover and keep serving; the workload is
+			// thawed by ResumeFromHandover's deferred unfreeze regardless.
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Fprintf(os.Stderr, "resume-from-handover panic (recovered): %v\n", r)
+					processService.UnfreezeWorkload()
+				}
+			}()
+
+			// Pass ImportWatchers as a callback so watchers are re-armed while the
+			// workload is still frozen inside ResumeFromHandover (on success it
+			// stays frozen until the post-upgrade /init thaws it), leaving no gap
+			// in which a filesystem event could be missed between the thaw and the
+			// re-arm.
+			res, err := processService.ResumeFromHandover(filesystemService.ImportWatchers)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "resume-from-handover failed: %v\n", err)
+			}
+			handover = res
+		}()
+	}
+
+	service := api.New(&envLogger, defaults, mmdsChan, isNotFC, workloadFreezer)
+	if resumeHandover {
+		// Surface the handover outcome on the next /init so the orchestrator can
+		// record it — the envd-side result (re-adopted procs, restored retained
+		// exits, watcher re-arm success/failures) is otherwise only logged
+		// in-guest and invisible fleet-wide.
+		service.SetHandoverResult(handover.Procs, handover.ProcsFailed, handover.Retained, handover.RetainedFailed, handover.Watchers, handover.WatchersFailed)
+
+		// Safety net for the freeze-until-/init handover: ResumeFromHandover left
+		// the workload frozen for the orchestrator's post-upgrade /init to thaw.
+		// If that /init never lands (e.g. WaitForEnvd fails / deadlines), thaw
+		// anyway after a grace window so the sandbox degrades rather than hangs
+		// for the rest of its life. Gated on Initialized() so it never races a
+		// legitimate later /freeze, and /upgrade stays gated until /init even on
+		// this path, so the fallback can't reopen the unauthenticated-upgrade
+		// window.
+		time.AfterFunc(handoverFallbackThawTimeout, func() {
+			if !service.Initialized() {
+				fmt.Fprintf(os.Stderr, "envd: post-upgrade /init did not arrive within %s; thawing workload as fallback\n", handoverFallbackThawTimeout)
+				processService.UnfreezeWorkload()
+			}
+		})
+	}
 	handler := api.HandlerFromMux(service, m)
 	middleware := authn.NewMiddleware(permissions.AuthenticateUsername)
 
@@ -225,6 +300,95 @@ func run() error {
 	go portForwarder.StartForwarding(ctx)
 
 	go portScanner.ScanAndBroadcast()
+
+	// Live-upgrade outgoing trigger. doUpgrade performs the outgoing
+	// choreography: freeze the workload, then re-exec into newBin (empty
+	// = re-exec self). It does not return on success. The port scanner is left
+	// running: the fd relocation runs under syscall.ForkLock (see Upgrade), which
+	// already serializes it against the scanner's fd/socat creation, so there is
+	// no CLOEXEC race to quiesce — and leaving it up means a failed upgrade never
+	// disturbs port forwarding.
+	doUpgrade := func(newBin string) error {
+		fmt.Fprintf(os.Stderr, "envd: self-upgrade (from v%s, newBin=%q)\n", pkg.Version, newBin)
+		// Hold the freeze lock across the WHOLE handover (freeze -> serialize ->
+		// execve), not just the freeze sweep, so a concurrent /init or /unfreeze
+		// can't acquire the lock and thaw the workload while Upgrade is
+		// snapshotting the process table.
+		releaseFreeze := processService.FreezeWorkloadHold() //nolint:contextcheck // (un)freeze uses a non-cancellable context internally so the thaw always lands
+
+		// Export watcher state (opaque to the process service) so the new envd
+		// can re-arm filesystem watches after the swap.
+		watchersJSON := filesystemService.ExportWatchers()
+
+		// Upgrade only returns on failure — a successful execve replaces this
+		// process (and drops the held freeze lock with it). On failure the OLD
+		// envd is still running, so release the hold FIRST, then thaw the workload
+		// we just froze, keeping the old version serving rather than leaving the
+		// sandbox hung.
+		if err := processService.Upgrade(newBin, pkg.Version, watchersJSON); err != nil {
+			releaseFreeze()
+			processService.UnfreezeWorkload() //nolint:contextcheck // (un)freeze uses a non-cancellable context internally so the thaw always lands
+
+			return err
+		}
+
+		return nil
+	}
+
+	// Orchestrator-driven trigger: authenticated POST /upgrade with the target
+	// binary path in the X-Envd-Upgrade-Bin header (empty = re-exec self). This
+	// is the production trigger the orchestrator calls at resume after delivering
+	// the new binary into the guest. On success it never responds (envd execs);
+	// the caller treats a dropped connection as success.
+	m.Post("/upgrade", func(w http.ResponseWriter, r *http.Request) {
+		// Refuse upgrades until the first authenticated /init. A re-exec'd envd
+		// serves before /init with its access token cleared, so without this a
+		// guest process could drive an unauthenticated upgrade in that window
+		// (and after the fallback thaw). The orchestrator only triggers /upgrade
+		// on an already-initialized envd, so this never blocks the real caller.
+		if !service.Initialized() {
+			http.Error(w, "envd not initialized", http.StatusConflict)
+
+			return
+		}
+		// The delivered binary is always written to and exec'd from a fixed path;
+		// reject a caller asking for anything else rather than writing/exec'ing an
+		// arbitrary path (defense-in-depth — the endpoint is authenticated).
+		if hdr := r.Header.Get("X-Envd-Upgrade-Bin"); hdr != "" && hdr != processRpc.DefaultUpgradeBinPath {
+			http.Error(w, "unsupported upgrade target", http.StatusBadRequest)
+
+			return
+		}
+		newBin := ""
+		// If the new binary is streamed in the request body (the orchestrator's
+		// authenticated host-side delivery), write it to the fixed path before
+		// swapping. This avoids the unauthenticated /files path that fails on a
+		// runtime sandbox.
+		if r.ContentLength != 0 {
+			newBin = processRpc.DefaultUpgradeBinPath
+			// On a chained upgrade this envd is itself running from
+			// DefaultUpgradeBinPath, so opening it O_TRUNC would fail with ETXTBSY.
+			// Unlink first: the create then lands on a fresh inode while the
+			// running process keeps executing its now-unlinked image.
+			_ = os.Remove(processRpc.DefaultUpgradeBinPath)
+			f, err := os.OpenFile(processRpc.DefaultUpgradeBinPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+
+				return
+			}
+			if _, err := io.Copy(f, r.Body); err != nil {
+				f.Close()
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+
+				return
+			}
+			f.Close()
+		}
+		if err := doUpgrade(newBin); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
 
 	err := s.ListenAndServe()
 	// Signal goroutines to stop before deferred cleanup closes their resources.

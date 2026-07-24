@@ -22,7 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs/ratelimit"
-	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
+	"github.com/e2b-dev/infra/packages/envd/pkg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
 
@@ -115,6 +115,22 @@ func (a *API) checkMMDSHash(ctx context.Context, requestToken *SecureToken) (boo
 func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
+	// Report the running envd version on every /init response (even error/stale
+	// ones) so the orchestrator can read the live version off the resume-path
+	// call it already makes — no extra round-trip. Set before any WriteHeader.
+	w.Header().Set("X-Envd-Version", pkg.Version)
+
+	// If this envd booted from a live-upgrade handover, advertise its outcome on
+	// /init so the orchestrator can record it — the envd-side result (re-adopted
+	// procs, restored retained exits, watcher re-arm success/failures) is
+	// otherwise only logged in-guest and invisible fleet-wide. Set before any
+	// WriteHeader.
+	if a.handover != nil {
+		if b, err := json.Marshal(a.handover); err == nil {
+			w.Header().Set("X-Envd-Handover", string(b))
+		}
+	}
+
 	ctx := r.Context()
 
 	operationID := logs.AssignOperationID()
@@ -166,6 +182,12 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 		// Run on every /init regardless of the Timestamp guard, so stale/replayed
 		// requests still thaw cgroups after pre-pause freeze.
 		defer a.unfreezeUserCgroups(ctx, logger)
+
+		// Auth passed: this is the orchestrator (or an authorized caller). Mark
+		// the envd initialized so the live-upgrade /upgrade endpoint and the
+		// post-upgrade fallback thaw open up — a guest process that can't pass
+		// auth can't flip this and drive an unauthenticated upgrade.
+		a.initialized.Store(true)
 
 		// Update data only if the request is newer or if there's no timestamp at all
 		if initRequest.Timestamp == nil || a.lastSetTime.SetToGreater(initRequest.Timestamp.UnixNano()) {
@@ -245,11 +267,6 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 }
 
 // userCgroupsToFreeze is the cgroup set frozen pre-pause and thawed on /init.
-var userCgroupsToFreeze = []cgroups.ProcessType{
-	cgroups.ProcessTypeUser,
-	cgroups.ProcessTypePTY,
-}
-
 // PostFreeze freezes user/pty cgroups directly (no Process.Start / shell).
 // Orchestrator calls this just before pause; the frozen state persists into the
 // snapshot and /init thaws on resume. Best-effort: tries every cgroup even if
@@ -259,22 +276,16 @@ func (a *API) PostFreeze(w http.ResponseWriter, r *http.Request) {
 
 	logger := a.logger.With().Str(string(logs.OperationIDKey), logs.AssignOperationID()).Logger()
 
-	if err := a.freezeLock.Acquire(r.Context(), 1); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+	if err := a.workloadFreezer.Freeze(r.Context()); err != nil {
+		// A failed lock acquire means the request ctx was cancelled; a failed
+		// sweep leaves ctx intact.
+		if r.Context().Err() != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
 
-		return
-	}
-	defer a.freezeLock.Release(1)
-
-	var errs []error
-	for _, pt := range userCgroupsToFreeze {
-		if err := a.cgroupManager.Freeze(pt); err != nil {
-			logger.Error().Err(err).Msgf("freeze %s cgroup", pt)
-			errs = append(errs, fmt.Errorf("freeze %s cgroup: %w", pt, err))
+			return
 		}
-	}
-	if len(errs) > 0 {
-		jsonError(w, http.StatusInternalServerError, errors.Join(errs...))
+		logger.Error().Err(err).Msg("freeze workload cgroups")
+		jsonError(w, http.StatusInternalServerError, err)
 
 		return
 	}
@@ -290,25 +301,11 @@ func (a *API) PostFreeze(w http.ResponseWriter, r *http.Request) {
 func (a *API) PostUnfreeze(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
-	ctx := r.Context()
 	logger := a.logger.With().Str(string(logs.OperationIDKey), logs.AssignOperationID()).Logger()
 
-	if err := a.freezeLock.Acquire(context.WithoutCancel(ctx), 1); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-
-		return
-	}
-	defer a.freezeLock.Release(1)
-
-	var errs []error
-	for _, pt := range userCgroupsToFreeze {
-		if err := a.cgroupManager.Unfreeze(pt); err != nil {
-			logger.Error().Err(err).Msgf("unfreeze %s cgroup", pt)
-			errs = append(errs, fmt.Errorf("unfreeze %s cgroup: %w", pt, err))
-		}
-	}
-	if len(errs) > 0 {
-		jsonError(w, http.StatusInternalServerError, errors.Join(errs...))
+	if err := a.workloadFreezer.Unfreeze(r.Context()); err != nil {
+		logger.Error().Err(err).Msg("unfreeze workload cgroups")
+		jsonError(w, http.StatusInternalServerError, err)
 
 		return
 	}
@@ -318,15 +315,11 @@ func (a *API) PostUnfreeze(w http.ResponseWriter, r *http.Request) {
 }
 
 // unfreezeUserCgroups unfreezes user/pty cgroups (idempotent if not frozen).
-// Wraps the context with WithoutCancel so the unfreeze always completes.
+// The freezer detaches the wait from ctx cancellation so the unfreeze always
+// completes.
 func (a *API) unfreezeUserCgroups(ctx context.Context, logger zerolog.Logger) {
-	_ = a.freezeLock.Acquire(context.WithoutCancel(ctx), 1)
-	defer a.freezeLock.Release(1)
-
-	for _, pt := range userCgroupsToFreeze {
-		if err := a.cgroupManager.Unfreeze(pt); err != nil {
-			logger.Warn().Err(err).Msgf("unfreeze %s cgroup", pt)
-		}
+	if err := a.workloadFreezer.Unfreeze(ctx); err != nil {
+		logger.Warn().Err(err).Msg("unfreeze workload cgroups")
 	}
 }
 

@@ -65,11 +65,66 @@ type Handler struct {
 
 	DataEvent *MultiplexedChannel[rpc.ProcessEvent_Data]
 	EndEvent  *MultiplexedChannel[rpc.ProcessEvent_End]
+
+	// --- live-upgrade handover ---
+	// pid is stored at Start so it survives an envd self-upgrade where cmd is
+	// gone (a re-adopted handler has cmd == nil). cgType records the cgroup the
+	// child runs in. stdoutF/stderrF/stdinF are the raw pipe fds captured at
+	// New() so they can be carried across execve; tty is the PTY master.
+	pid       uint32
+	cgType    cgroups.ProcessType
+	readopted bool
+	stdoutF   *os.File
+	stderrF   *os.File
+	stdinF    *os.File
+	// deadline is the process's timeout deadline (zero = no timeout). Captured
+	// so it can be carried across a live-upgrade and re-armed on the new envd.
+	deadline time.Time
+	// readoptTimeout is the remaining timeout carried across a live-upgrade,
+	// re-armed when BeginReaping is called.
+	readoptTimeout time.Duration
+	// OnExit, if set, is invoked by the re-adopt reaper with the terminal event
+	// immediately before EndEvent is closed, so the service can retain the exit
+	// synchronously. A Connect that forks after the close then always finds the
+	// retained exit in the cache rather than racing an asynchronous retain.
+	OnExit func(*rpc.ProcessEvent_EndEvent)
 }
 
 // This method must be called only after the process has been started
 func (p *Handler) Pid() uint32 {
-	return uint32(p.cmd.Process.Pid)
+	if p.cmd != nil && p.cmd.Process != nil {
+		return uint32(p.cmd.Process.Pid)
+	}
+
+	return p.pid
+}
+
+// CgType returns the cgroup type the child was placed in (for handover).
+func (p *Handler) CgType() cgroups.ProcessType { return p.cgType }
+
+// Deadline returns the process's timeout deadline and whether one is set, so a
+// live-upgrade handover can carry the remaining timeout.
+func (p *Handler) Deadline() (time.Time, bool) {
+	if p.deadline.IsZero() {
+		return time.Time{}, false
+	}
+
+	return p.deadline, true
+}
+
+// HandoverFds returns the raw fds to carry across an envd self-upgrade:
+// stdout/stderr read ends, stdin write end, and the PTY master. Absent fds
+// are -1. The fds remain owned by the Handler.
+func (p *Handler) HandoverFds() (stdout, stderr, stdin, tty int) {
+	fd := func(f *os.File) int {
+		if f == nil {
+			return -1
+		}
+
+		return int(f.Fd())
+	}
+
+	return fd(p.stdoutF), fd(p.stderrF), fd(p.stdinF), fd(p.tty)
 }
 
 // userCommand returns a human-readable representation of the user's original command,
@@ -188,6 +243,13 @@ func New(
 		EndEvent:  NewMultiplexedChannel[rpc.ProcessEvent_End](0),
 		logger:    logger,
 	}
+	h.cgType = getProcType(req)
+
+	// Capture the process timeout deadline (if any) so it can be carried across
+	// a live-upgrade and re-armed on the new envd.
+	if d, ok := ctx.Deadline(); ok {
+		h.deadline = d
+	}
 
 	if req.GetPty() != nil {
 		// The pty should ideally start only in the Start method, but the package does not support that and we would have to code it manually.
@@ -240,6 +302,9 @@ func New(
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating stdout pipe for command '%s': %w", userCmd, err))
 		}
+		if f, ok := stdout.(*os.File); ok {
+			h.stdoutF = f // captured for live-upgrade handover
+		}
 
 		outWg.Go(func() {
 			readBuf := make([]byte, stdChunkSize)
@@ -278,6 +343,9 @@ func New(
 		stderr, err := cmd.StderrPipe()
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating stderr pipe for command '%s': %w", userCmd, err))
+		}
+		if f, ok := stderr.(*os.File); ok {
+			h.stderrF = f // captured for live-upgrade handover
 		}
 
 		outWg.Go(func() {
@@ -323,6 +391,9 @@ func New(
 			}
 
 			h.stdin = stdin
+			if f, ok := stdin.(*os.File); ok {
+				h.stdinF = f // captured for live-upgrade handover
+			}
 		}
 	}
 
@@ -350,12 +421,21 @@ func getProcType(req *rpc.StartRequest) cgroups.ProcessType {
 }
 
 func (p *Handler) SendSignal(signal syscall.Signal) error {
-	if p.cmd.Process == nil {
-		return errors.New("process not started")
-	}
-
 	if signal == syscall.SIGKILL || signal == syscall.SIGTERM {
 		p.outCancel()
+	}
+
+	// Re-adopted handler (post live-upgrade): no cmd, signal by stored pid.
+	if p.cmd == nil {
+		if p.pid == 0 {
+			return errors.New("process not started")
+		}
+
+		return syscall.Kill(int(p.pid), signal)
+	}
+
+	if p.cmd.Process == nil {
+		return errors.New("process not started")
 	}
 
 	return p.cmd.Process.Signal(signal)
@@ -383,7 +463,7 @@ func (p *Handler) WriteStdin(data []byte) error {
 
 	_, err := p.stdin.Write(data)
 	if err != nil {
-		return fmt.Errorf("error writing to stdin of process '%d': %w", p.cmd.Process.Pid, err)
+		return fmt.Errorf("error writing to stdin of process '%d': %w", p.Pid(), err)
 	}
 
 	return nil
@@ -418,7 +498,7 @@ func (p *Handler) WriteTty(data []byte) error {
 
 	_, err := p.tty.Write(data)
 	if err != nil {
-		return fmt.Errorf("error writing to tty of process '%d': %w", p.cmd.Process.Pid, err)
+		return fmt.Errorf("error writing to tty of process '%d': %w", p.Pid(), err)
 	}
 
 	return nil
@@ -432,6 +512,8 @@ func (p *Handler) Start(requestTimeout time.Duration) (uint32, error) {
 			return 0, fmt.Errorf("error starting process '%s': %w", p.userCommand(), err)
 		}
 	}
+
+	p.pid = uint32(p.cmd.Process.Pid)
 
 	p.logger.
 		Info().

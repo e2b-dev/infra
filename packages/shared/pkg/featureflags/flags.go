@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // kinds
@@ -508,9 +510,22 @@ var FirecrackerVersionMap = map[string]string{
 
 // BuildIoEngine Sync is used by default as there seems to be a bad interaction between Async and a lot of io operations.
 var (
-	BuildFirecrackerVersion     = NewStringFlag("build-firecracker-version", env.GetEnv("DEFAULT_FIRECRACKER_VERSION", DefaultFirecrackerVersion))
-	BuildKernelVersion          = NewStringFlag("build-kernel-version", env.GetEnv("DEFAULT_KERNEL_VERSION", DefaultKernelVersion))
-	BuildIoEngine               = NewStringFlag("build-io-engine", "Sync")
+	BuildFirecrackerVersion = NewStringFlag("build-firecracker-version", env.GetEnv("DEFAULT_FIRECRACKER_VERSION", DefaultFirecrackerVersion))
+	BuildKernelVersion      = NewStringFlag("build-kernel-version", env.GetEnv("DEFAULT_KERNEL_VERSION", DefaultKernelVersion))
+	BuildIoEngine           = NewStringFlag("build-io-engine", "Sync")
+
+	// EnvdUpgradeTargetFlag drives the resume-time envd live-upgrade.
+	// Multivariate string:
+	//   "off"        (fallback) — no upgrade; dev has no LD so this is inert & safe.
+	//   "promoted"   — track the node-local promoted envd (HOST_ENVD_PATH); upgrade
+	//                  whenever it differs from the sandbox's built-with version
+	//                  (no per-publish flag edits needed).
+	//   "<git-sha>"  — pin a specific versioned binary (/fc-envd/envd.<sha>).
+	// The resume-site LD context carries envd-version/team/template, so %-ramp
+	// and cohort canaries come for free. The fallback is env-overridable
+	// (ENVD_UPGRADE_TARGET) so it can be exercised where there is no LD (dev),
+	// mirroring build-firecracker-version's DEFAULT_FIRECRACKER_VERSION.
+	EnvdUpgradeTargetFlag       = NewStringFlag("envd-upgrade-target", env.GetEnv("ENVD_UPGRADE_TARGET", "off"))
 	DefaultPersistentVolumeType = NewStringFlag("default-persistent-volume-type", "")
 	BuildNodeInfo               = NewJSONFlag("preferred-build-node", ldvalue.Null())
 	FirecrackerVersions         = NewJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(FirecrackerVersionMap))
@@ -823,6 +838,81 @@ func ResolveFirecrackerVersion(ctx context.Context, ff *Client, buildVersion str
 	}
 
 	return buildVersion
+}
+
+// ResolveEnvdUpgrade decides whether a resuming sandbox's envd should be swapped
+// for a newer node-local build, per EnvdUpgradeTargetFlag, and returns the local
+// path of the target binary ("" = no upgrade). It is the resume-time analog of
+// ResolveFirecrackerVersion.
+//
+// hostEnvdPath is the promoted binary (cfg HostEnvdPath, e.g. /fc-envd/envd);
+// versioned binaries live beside it as envd.<sha>. getVersion resolves a
+// binary's baked version (orchestrator's build/core/envd.GetEnvdVersion) — it is
+// injected so this shared package does not depend on the orchestrator.
+//
+// The "should we upgrade?" test compares baked version *strings* (built-with vs
+// the target's version). This is sufficient because CLAUDE.md mandates bumping
+// packages/envd/pkg/version.go on every behavioral change; if that ever stops
+// holding, a same-version binary swap would be skipped and this must switch to
+// comparing by git SHA.
+// It returns the target binary's path and baked version ("" path = no upgrade),
+// plus a reason for the no-upgrade case — off | not_staged | getversion_failed |
+// same_version | downgrade, and "" when an upgrade IS returned — so the caller
+// can tell a benign no-op (off / same_version) from a misconfigured target
+// (not_staged from a bad SHA, getversion_failed, a refused downgrade).
+func ResolveEnvdUpgrade(
+	ctx context.Context,
+	ff *Client,
+	builtWithVersion string,
+	hostEnvdPath string,
+	getVersion func(context.Context, string) (string, error),
+) (path, version, reason string) {
+	return resolveEnvdUpgradePath(ctx, ff.StringFlag(ctx, EnvdUpgradeTargetFlag), builtWithVersion, hostEnvdPath, getVersion)
+}
+
+// resolveEnvdUpgradePath is the pure decision, split out so it can be unit-tested
+// without a LaunchDarkly client (the flag value is passed directly). It returns
+// the target path and its baked version, or ("", "", <reason>) for no upgrade.
+func resolveEnvdUpgradePath(
+	ctx context.Context,
+	target string,
+	builtWithVersion string,
+	hostEnvdPath string,
+	getVersion func(context.Context, string) (string, error),
+) (path, version, reason string) {
+	var candidate string
+	switch target {
+	case "", "off":
+		return "", "", "off"
+	case "promoted":
+		candidate = hostEnvdPath
+	default:
+		// A concrete git SHA -> the versioned binary next to the promoted one.
+		candidate = filepath.Join(filepath.Dir(hostEnvdPath), "envd."+target)
+	}
+
+	if _, err := os.Stat(candidate); err != nil {
+		// Not staged on this node — e.g. a bad SHA / rubbish flag value, or a
+		// node that has not fetched the target yet.
+		return "", "", "not_staged"
+	}
+
+	targetVersion, err := getVersion(ctx, candidate)
+	if err != nil || targetVersion == "" {
+		return "", "", "getversion_failed"
+	}
+	if targetVersion == builtWithVersion {
+		return "", "", "same_version" // already on the target (idempotent re-resume)
+	}
+	// Upgrade only: refuse to swap in an older envd. A staged binary that is not
+	// strictly newer than the sandbox's built-with version would otherwise be a
+	// live downgrade on resume. (Rollback, if ever needed, must be an explicit
+	// separate mechanism.)
+	if newer, verr := utils.IsGTEVersion(targetVersion, builtWithVersion); verr != nil || !newer {
+		return "", "", "downgrade"
+	}
+
+	return candidate, targetVersion, ""
 }
 
 // defaultTrackedTemplates is the default map of template aliases tracked for metrics.
