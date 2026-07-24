@@ -502,3 +502,15 @@ func (a *APIStore) GetTeamFromAdminToken(ctx context.Context, _ *gin.Context, te
 
 	return team, nil
 }
+
+// GoBackground starts fn in a background goroutine tracked by the orchestrator's
+// WaitGroup, so the shutdown path can drain all in-flight events.
+func (a *APIStore) GoBackground(fn func()) {
+	a.orchestrator.GoBackground(fn)
+}
+
+// WaitBackground waits for all tracked background goroutines to finish or until
+// ctx is done. Returns true if all goroutines finished before the deadline.
+func (a *APIStore) WaitBackground(ctx context.Context) bool {
+	return a.orchestrator.WaitBackground(ctx)
+}

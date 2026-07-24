@@ -94,13 +94,19 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 
 		if time.Since(sbx.EndTime) > sandbox.StaleCutoff && opts.Action.Effect == sandbox.TransitionExpires {
 			o.sandboxStore.Remove(context.WithoutCancel(ctx), teamID, sandboxID)
-			go o.analyticsRemove(context.WithoutCancel(ctx), sbx, opts.Action)
+			o.GoBackground(func() {
+				o.analyticsRemove(context.WithoutCancel(ctx), sbx, opts.Action)
+			})
 		}
 
 		return nil
 	}
 
-	defer func() { go o.analyticsRemove(context.WithoutCancel(ctx), sbx, opts.Action) }()
+	defer func() {
+		o.GoBackground(func() {
+			o.analyticsRemove(context.WithoutCancel(ctx), sbx, opts.Action)
+		})
+	}()
 	// Once we start the removal process, we want to make sure it gets removed from the store
 	defer o.sandboxStore.Remove(context.WithoutCancel(ctx), teamID, sandboxID)
 	err = o.removeSandboxFromNode(ctx, sbx, opts.Action, opts.Reason, opts.FilesystemOnly)
