@@ -166,11 +166,11 @@ func RegisterBuild(
 	}
 
 	// Concurrent registers of the SAME template serialize on two shared rows:
-	// the envs row (the build-count bump) and the superseded pending builds
-	// (InvalidateUnstartedTemplateBuilds). Both run as the LAST statements
-	// before commit, so those locks are held for the commit window instead of
-	// the whole transaction. This creation is lock-free for existing rows
-	// (ON CONFLICT DO NOTHING) — it only guarantees the FK target exists.
+	// the envs row (the build-count bump, which must be the transaction's
+	// FIRST lock on that row — see the bump's comment) and the superseded
+	// pending builds (InvalidateUnstartedTemplateBuilds, next to commit).
+	// This creation is lock-free for existing rows (ON CONFLICT DO NOTHING)
+	// — it only guarantees the FK target exists.
 	err = client.EnsureTemplateRow(ctx, queries.EnsureTemplateRowParams{
 		TemplateID: data.TemplateID,
 		TeamID:     data.Team.ID,
@@ -311,10 +311,39 @@ func RegisterBuild(
 		telemetry.ReportEvent(ctx, "inserted alias", attribute.String("env.alias", alias))
 	}
 
+	// The envs-row bump runs BEFORE anything that share-locks the row: the
+	// assignment guard below takes FOR SHARE, and share-then-update is the
+	// classic lock-upgrade deadlock when two same-template registers race
+	// (both hold FOR SHARE, both wait on the other's upgrade — reproduced on
+	// this PR). With the exclusive taken first, the later FOR SHARE is
+	// already subsumed and racers just queue here. It is also the
+	// soft-delete gate: a template deleted before this point returns no row
+	// and the whole transaction — including EnsureTemplateRow's insert —
+	// rolls back; a delete arriving after needs this same row lock, so it
+	// waits out our commit and then proceeds normally.
+	_, err = client.BumpTemplateBuildCount(ctx, data.TemplateID)
+	if err != nil {
+		if dberrors.IsNotFoundError(err) {
+			return nil, &api.APIError{
+				Err:       err,
+				ClientMsg: fmt.Sprintf("Template '%s' has been deleted and cannot be rebuilt", data.TemplateID),
+				Code:      http.StatusNotFound,
+			}
+		}
+
+		telemetry.ReportCriticalError(ctx, "error when updating env", err)
+
+		return nil, &api.APIError{
+			Err:       err,
+			ClientMsg: fmt.Sprintf("Error when updating template: %s", err),
+			Code:      http.StatusInternalServerError,
+		}
+	}
+	telemetry.ReportEvent(ctx, "bumped template build count")
+
 	for _, tag := range tags {
-		// A deleted env makes the active_envs guard match 0 rows; the
-		// BumpTemplateBuildCount gate before commit then aborts the whole
-		// transaction, so ignored rows can never commit an assignment-less build.
+		// The envs row is verified alive and exclusively locked by the bump
+		// above, so the active_envs guard always matches here; rows is ignored.
 		_, err = client.CreateTemplateBuildAssignment(ctx, queries.CreateTemplateBuildAssignmentParams{
 			TemplateID: data.TemplateID,
 			BuildID:    buildID,
@@ -369,30 +398,6 @@ func RegisterBuild(
 		}
 	}
 	telemetry.ReportEvent(ctx, "marked previous builds as failed")
-
-	// The envs-row bump runs last so its lock spans only the commit window.
-	// It is also the soft-delete gate: a template deleted at any point before
-	// here returns no row, the registration 404s and the whole transaction —
-	// including EnsureTemplateRow's insert — rolls back.
-	_, err = client.BumpTemplateBuildCount(ctx, data.TemplateID)
-	if err != nil {
-		if dberrors.IsNotFoundError(err) {
-			return nil, &api.APIError{
-				Err:       err,
-				ClientMsg: fmt.Sprintf("Template '%s' has been deleted and cannot be rebuilt", data.TemplateID),
-				Code:      http.StatusNotFound,
-			}
-		}
-
-		telemetry.ReportCriticalError(ctx, "error when updating env", err)
-
-		return nil, &api.APIError{
-			Err:       err,
-			ClientMsg: fmt.Sprintf("Error when updating template: %s", err),
-			Code:      http.StatusInternalServerError,
-		}
-	}
-	telemetry.ReportEvent(ctx, "bumped template build count")
 
 	// Commit the transaction
 	err = tx.Commit(ctx)
