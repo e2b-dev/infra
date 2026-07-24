@@ -91,6 +91,11 @@ const (
 
 	// pprofShutdownTimeout is a best-effort bound for pprof drain.
 	pprofShutdownTimeout = 5 * time.Second
+
+	// bgShutdownTimeout bounds how long we wait for tracked background goroutines
+	// (analytics events, volume cleanup) after the HTTP/gRPC drain completes. Most
+	// goroutines finish in milliseconds; the cap protects against stuck external calls.
+	bgShutdownTimeout = 30 * time.Second
 )
 
 var (
@@ -611,17 +616,20 @@ func run() int {
 	// termination in one of these background threads.
 	wg.Wait()
 
+	// Drain background goroutines (analytics events, volume cleanup) that were
+	// launched during HTTP request handling with a detached context. These have
+	// already been tracked by the orchestrator's WaitGroup; give them a bounded
+	// budget before proceeding to resource teardown.
+	bgCtx, bgCancel := context.WithTimeout(context.Background(), bgShutdownTimeout)
+	defer bgCancel()
+	if !apiStore.WaitBackground(bgCtx) {
+		l.Warn(ctx, "background goroutines did not finish within budget",
+			zap.Duration("budget", bgShutdownTimeout))
+	}
+
 	// call cleanup explicitly because defers (from above) do not
 	// run on os.Exit.
 	cleanup()
-
-	// TODO: wait for additional work to coalesce
-	//
-	// currently we only wait for the HTTP handlers to return, and
-	// then cancel the remaining context and run all of the
-	// cleanup functions. Background go routines at this point
-	// terminate. Would need to have a goroutine pool or worker
-	// coordinator running to manage and track that work.
 
 	// Exit, with appropriate code.
 	return int(exitCode.Load())

@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"errors"
+	"sync"
 	"fmt"
 	"net/http"
 	"time"
@@ -73,6 +74,11 @@ type Orchestrator struct {
 	// connectToNode / connectToClusterNode, so it guards every connection path
 	// regardless of what triggered the attempt.
 	connectGroup singleflight.Group
+
+	// bgWg tracks short-lived background goroutines spawned during request handling
+	// (analytics events, volume cleanup) so the shutdown path can drain them with a
+	// bounded wait instead of silently abandoning in-flight work.
+	bgWg sync.WaitGroup
 
 	// discoveryGroup deduplicates concurrent on-demand discovery attempts in
 	// getOrConnectNode that target the same missing orchestrator node. It is
@@ -158,6 +164,7 @@ func New(
 		redisStorage,
 		redisreservations.NewReservationStorage(redisClient, redisStorage.Notifier()),
 		sandbox.Callbacks{
+			BackgroundWG:             &o.bgWg,
 			AddSandboxToRoutingTable: o.addSandboxToRoutingTable,
 			AsyncNewlyCreatedSandbox: o.handleNewlyCreatedSandbox,
 			RemoveSandboxFromNode:    o.killOrphanSandbox,
@@ -323,5 +330,32 @@ func getBestOfKConfig(ctx context.Context, featureFlagsClient *featureflags.Clie
 		R:     maxOvercommit,
 		K:     k,
 		Alpha: alpha,
+	}
+}
+
+// GoBackground starts fn in a background goroutine tracked by bgWg. Callers
+// must invoke this instead of a bare "go" whenever the goroutine must finish
+// before process exit (analytics events, storage cleanup, etc.).
+func (o *Orchestrator) GoBackground(fn func()) {
+	o.bgWg.Add(1)
+	go func() {
+		defer o.bgWg.Done()
+		fn()
+	}()
+}
+
+// WaitBackground waits for all background goroutines to finish or until ctx
+// is done, whichever comes first. Returns true if all goroutines finished.
+func (o *Orchestrator) WaitBackground(ctx context.Context) bool {
+	ch := make(chan struct{})
+	go func() {
+		o.bgWg.Wait()
+		close(ch)
+	}()
+	select {
+	case <-ch:
+		return true
+	case <-ctx.Done():
+		return false
 	}
 }
