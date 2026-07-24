@@ -216,6 +216,38 @@ func RegisterBuild(
 	}
 	telemetry.ReportEvent(ctx, "inserted new build")
 
+	// The envs-row bump runs BEFORE any statement that locks the row's
+	// satellites, making this transaction's lock order match every other
+	// flow's (envs first, then aliases/builds — softDeleteTemplate locks envs
+	// via SoftDeleteTemplate before deleting aliases; alias-first here is an
+	// ABBA deadlock with a concurrent delete). It equally precedes the
+	// assignment guard's FOR SHARE on the same row: share-then-update is a
+	// lock-upgrade deadlock when two same-template registers race — with the
+	// exclusive taken first, racers just queue here. It is also the
+	// soft-delete gate: a template deleted before this point returns no row
+	// and the whole transaction — including EnsureTemplateRow's insert and
+	// the build row — rolls back; a delete arriving after needs this same
+	// row lock, so it waits out our commit and then proceeds normally.
+	_, err = client.BumpTemplateBuildCount(ctx, data.TemplateID)
+	if err != nil {
+		if dberrors.IsNotFoundError(err) {
+			return nil, &api.APIError{
+				Err:       err,
+				ClientMsg: fmt.Sprintf("Template '%s' has been deleted and cannot be rebuilt", data.TemplateID),
+				Code:      http.StatusNotFound,
+			}
+		}
+
+		telemetry.ReportCriticalError(ctx, "error when updating env", err)
+
+		return nil, &api.APIError{
+			Err:       err,
+			ClientMsg: fmt.Sprintf("Error when updating template: %s", err),
+			Code:      http.StatusInternalServerError,
+		}
+	}
+	telemetry.ReportEvent(ctx, "bumped template build count")
+
 	// Check if the alias is available and claim it
 	var aliases, names []string
 	if data.Alias != nil {
@@ -310,36 +342,6 @@ func RegisterBuild(
 
 		telemetry.ReportEvent(ctx, "inserted alias", attribute.String("env.alias", alias))
 	}
-
-	// The envs-row bump runs BEFORE anything that share-locks the row: the
-	// assignment guard below takes FOR SHARE, and share-then-update is the
-	// classic lock-upgrade deadlock when two same-template registers race
-	// (both hold FOR SHARE, both wait on the other's upgrade — reproduced on
-	// this PR). With the exclusive taken first, the later FOR SHARE is
-	// already subsumed and racers just queue here. It is also the
-	// soft-delete gate: a template deleted before this point returns no row
-	// and the whole transaction — including EnsureTemplateRow's insert —
-	// rolls back; a delete arriving after needs this same row lock, so it
-	// waits out our commit and then proceeds normally.
-	_, err = client.BumpTemplateBuildCount(ctx, data.TemplateID)
-	if err != nil {
-		if dberrors.IsNotFoundError(err) {
-			return nil, &api.APIError{
-				Err:       err,
-				ClientMsg: fmt.Sprintf("Template '%s' has been deleted and cannot be rebuilt", data.TemplateID),
-				Code:      http.StatusNotFound,
-			}
-		}
-
-		telemetry.ReportCriticalError(ctx, "error when updating env", err)
-
-		return nil, &api.APIError{
-			Err:       err,
-			ClientMsg: fmt.Sprintf("Error when updating template: %s", err),
-			Code:      http.StatusInternalServerError,
-		}
-	}
-	telemetry.ReportEvent(ctx, "bumped template build count")
 
 	for _, tag := range tags {
 		// The envs row is verified alive and exclusively locked by the bump
