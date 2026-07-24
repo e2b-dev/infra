@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/e2b-dev/infra/packages/docker-reverse-proxy/internal/constants"
 	"github.com/e2b-dev/infra/packages/docker-reverse-proxy/internal/handlers"
@@ -104,8 +105,10 @@ func main() {
 
 	log.Printf("Starting server on port: %d\n", *port)
 	server := &http.Server{
-		Addr:    fmt.Sprintf(":%s", strconv.Itoa(*port)),
-		Handler: mux,
+		Addr:              fmt.Sprintf(":%s", strconv.Itoa(*port)),
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 	httpserver.ConfigureH2C(server)
 

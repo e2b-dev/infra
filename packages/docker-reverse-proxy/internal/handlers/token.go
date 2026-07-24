@@ -22,8 +22,15 @@ type DockerToken struct {
 	ExpiresIn int    `json:"expires_in"`
 }
 
-// The scope is in format "repository:<project>/<repo>/<templateID>:<action>"
+// scopeRegex matches scope strings like "repository:<project>/<repo>/<templateID>:<action>".
 var scopeRegex = regexp.MustCompile(`^repository:e2b/custom-envs/(?P<templateID>[^:]+):(?P<action>[^:]+)$`)
+
+// tokenClient is a dedicated HTTP client for fetching tokens from the GCP Artifact
+// Registry. Using a client with a timeout prevents goroutines from blocking
+// indefinitely if the registry is unreachable.
+var tokenClient = &http.Client{
+	Timeout: 10 * time.Second,
+}
 
 // GetToken validates if user has access to template and then returns a new token for the required scope
 func (a *APIStore) GetToken(w http.ResponseWriter, r *http.Request) error {
@@ -143,24 +150,22 @@ func getToken(ctx context.Context, templateID string) (*DockerToken, error) {
 	// Use the service account credentials for the request
 	r.Header.Set("Authorization", fmt.Sprintf("Basic %s", consts.EncodedDockerCredentials))
 
-	resp, err := http.DefaultClient.Do(r)
+	resp, err := tokenClient.Do(r)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get token for scope - %s: %w", templateID, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body := make([]byte, resp.ContentLength)
-		_, err := resp.Body.Read(body)
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
 		if err != nil {
 			return nil, fmt.Errorf("failed to read body for failed token acquisition (%d) for scope - %s: %w", resp.StatusCode, templateID, err)
 		}
-		defer resp.Body.Close()
 
 		return nil, fmt.Errorf("failed to get token (%d) for scope - %s: %s", resp.StatusCode, templateID, string(body))
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read body for successful token acquisition for scope - %s: %w", templateID, err)
 	}
