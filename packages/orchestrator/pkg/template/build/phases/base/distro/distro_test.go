@@ -1,6 +1,8 @@
 package distro
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"strings"
 	"testing"
 )
@@ -133,6 +135,20 @@ func TestInitSystemsDeclaredAndCoherent(t *testing.T) {
 		if !strings.Contains(sel, want) {
 			t.Errorf("selector missing OpenRC boot piece %q", want)
 		}
+	}
+}
+
+// The cache fingerprint must cover the whole generated provisioning contract:
+// stable across calls, and carrying both the selector text and the explicit
+// Version (W1 T5 — a profile change must rotate the base-layer cache key).
+func TestFingerprintStableAndVersioned(t *testing.T) {
+	a, b := Fingerprint(), Fingerprint()
+	if a != b || len(a) != 64 {
+		t.Errorf("fingerprint must be a stable sha256 hex: %q vs %q", a, b)
+	}
+	want := sha256.Sum256([]byte(Version + "\x00" + ShellSelector()))
+	if a != hex.EncodeToString(want[:]) {
+		t.Error("fingerprint must hash Version + selector text")
 	}
 }
 

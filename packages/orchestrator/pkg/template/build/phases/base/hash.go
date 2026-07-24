@@ -11,6 +11,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/phases"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/phases/base/distro"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -34,10 +35,12 @@ func (bb *BaseBuilder) Hash(ctx context.Context, _ phases.LayerResult) (string, 
 		baseSource = bb.Config.FromImage
 	}
 
-	// For fallback/dev environments, include baked rootfs file contents in the
-	// provision version. In production, BuildProvisionVersion controls rollout
-	// invalidation explicitly.
-	provisionVersion := cache.HashKeys(provisionScriptFile, rootfs.FilesHash())
+	// For fallback/dev environments, include baked rootfs file contents and
+	// the distro provisioning contract (profiles + init blocks — the rendered
+	// selector is part of the script but not of the raw provisionScriptFile
+	// hashed here) in the provision version. In production,
+	// BuildProvisionVersion controls rollout invalidation explicitly.
+	provisionVersion := cache.HashKeys(provisionScriptFile, rootfs.FilesHash(), distro.Fingerprint())
 	if val := bb.featureFlags.IntFlag(
 		ctx,
 		featureflags.BuildProvisionVersion,

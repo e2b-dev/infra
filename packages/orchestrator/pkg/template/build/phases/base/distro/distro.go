@@ -12,9 +12,27 @@
 package distro
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"strings"
 )
+
+// Version is the explicit provisioning-contract version, folded into
+// Fingerprint. Bump it to force a base-layer rebuild for changes the
+// generated selector text cannot capture.
+const Version = "1"
+
+// Fingerprint is a stable hash of the whole generated provisioning contract
+// (profiles, init-system blocks, selector, Version). It feeds the base-layer
+// cache key: any profile or init-setup change MUST rotate the key, or already
+// provisioned bases built from the old contract get silently reused
+// (IMPL-145 qa.md QA11 — this exact staleness poisoned dev twice).
+func Fingerprint() string {
+	sum := sha256.Sum256([]byte(Version + "\x00" + ShellSelector()))
+
+	return hex.EncodeToString(sum[:])
+}
 
 // Profile is the declared, per-family provisioning contract. Everything that
 // differs across distributions is data here — never discovered at runtime.
