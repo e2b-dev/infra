@@ -47,6 +47,18 @@ func (o *Orchestrator) connectToClusterNode(ctx context.Context, cluster *cluste
 	ctx, span := tracer.Start(ctx, "connect-to-cluster-node")
 	defer span.End()
 
+	// Local-cluster orchestrators are owned by the node discovery path
+	// (connectToNode), which identifies nodes by the ID they report over the
+	// Info RPC. The local clusters registry only exists to find template
+	// builders and identifies instances by their discovery item ID, so an
+	// instance serving both roles — a single process started with
+	// ORCHESTRATOR_SERVICES=orchestrator,template-manager, as in local dev —
+	// would otherwise register twice under two different node IDs and have its
+	// capacity and sandboxes counted twice.
+	if cluster.ID == consts.LocalClusterID {
+		return
+	}
+
 	// connectGroup is keyed by scopedNodeID so that concurrent callers targeting
 	// the same cluster instance share a single dial attempt.
 	scopedKey := o.scopedNodeID(cluster.ID, i.NodeID)
