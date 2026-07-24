@@ -233,6 +233,15 @@ func additionalOCILayers(
 	filesMap := map[string]oci.File{
 		storage.GuestEnvdPath: {Bytes: envdFileData, Mode: 0o777},
 
+		// Systemd preset policy for envd. provision.sh removes /etc/machine-id,
+		// so the template's next boot is a systemd FIRST boot — and on first
+		// boot PID1 applies the distro preset policy to all units. On the
+		// RHEL family that policy ends with "disable *" (and the systemd RPM
+		// scriptlet's preset-all does the same during provisioning), which
+		// deletes envd's autostart symlink no matter how it was created.
+		// A 00- preset sorts before every distro policy file and wins.
+		"etc/systemd/system-preset/00-e2b.preset": {Bytes: []byte("enable envd.service\n"), Mode: 0o644},
+
 		// Provision script
 		"usr/local/bin/provision.sh": {Bytes: []byte(provisionScript), Mode: 0o777},
 		// Setup init system

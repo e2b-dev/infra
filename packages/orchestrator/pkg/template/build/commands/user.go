@@ -60,7 +60,11 @@ func (u *User) Execute(
 			lvl,
 			prefix,
 			sandboxID,
-			fmt.Sprintf("adduser --disabled-password --gecos \"\" %s", userArg),
+			// useradd is part of shadow(-utils) and present on every supported
+			// distro family, unlike Debian's adduser wrapper (FEAT-145). The
+			// created user has no password (locked), matching the previous
+			// adduser --disabled-password behavior.
+			fmt.Sprintf("useradd --create-home --shell /bin/bash %s", userArg),
 			metadata.Context{
 				User:    "root",
 				EnvVars: cmdMetadata.EnvVars,
@@ -99,7 +103,10 @@ func addToSudoers(
 		lvl,
 		prefix,
 		sandboxID,
-		fmt.Sprintf("usermod -aG sudo %s", userArg),
+		// Admin group differs by distro (sudo on Debian/Ubuntu, wheel on
+		// RHEL/Arch); the NOPASSWD sudoers entry below is what actually
+		// grants privileges (FEAT-145).
+		fmt.Sprintf("usermod -aG sudo %[1]s 2>/dev/null || usermod -aG wheel %[1]s", userArg),
 		metadata.Context{
 			User:    "root",
 			EnvVars: cmdMetadata.EnvVars,

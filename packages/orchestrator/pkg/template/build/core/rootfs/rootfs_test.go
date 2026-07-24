@@ -90,7 +90,12 @@ func TestAdditionalOCILayers(t *testing.T) {
 
 		keysIter := maps.Keys(actualFiles)
 		keys := slices.Collect(keysIter)
-		assert.Len(t, keys, 14)
+		assert.Len(t, keys, 15)
+
+		// envd must be preset-enabled: first boot (machine-id is removed by
+		// provisioning) applies the distro preset policy, and the RHEL
+		// family's "disable *" would otherwise delete envd's autostart link.
+		assert.Equal(t, "enable envd.service\n", actualFiles["etc/systemd/system-preset/00-e2b.preset"])
 		assert.Equal(t, "e2b.local", actualFiles["etc/hostname"])
 		assert.Equal(t, "nameserver 8.8.8.8", actualFiles["etc/resolv.conf"])
 
