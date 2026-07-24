@@ -104,6 +104,7 @@ type Config struct {
 	NBDPoolSize                 int               `env:"NBD_POOL_SIZE"                 envDefault:"64"`
 	Services                    []string          `env:"ORCHESTRATOR_SERVICES"         envDefault:"orchestrator"`
 	PersistentVolumeMounts      map[string]string `env:"PERSISTENT_VOLUME_MOUNTS"`
+	VolumeBackendType            string            `env:"VOLUME_BACKEND_TYPE" envDefault:"local"`
 }
 
 // AdditionalClickhouseEndpoints returns the non-blank entries from

@@ -22,7 +22,7 @@ func TestGetVolumeRootPath(t *testing.T) {
 	t.Parallel()
 
 	const goodVolumeType = "good-vol"
-	const goodVolumeTypePath = "/mnt/shared"
+	goodVolumeTypePath := t.TempDir()
 	teamID := uuid.NewString()
 	volumeID := uuid.NewString()
 	goodVolumeBasePath := filepath.Join(
@@ -31,14 +31,19 @@ func TestGetVolumeRootPath(t *testing.T) {
 		fmt.Sprintf("vol-%s", volumeID),
 	)
 
+	ctx := t.Context()
+
 	config := cfg.Config{
 		PersistentVolumeMounts: map[string]string{
 			goodVolumeType: goodVolumeTypePath,
 		},
+		VolumeBackendType: "local",
 	}
 
+	builder, err := chrooted.NewBuilder(ctx, config)
+	require.NoError(t, err)
 	v := Service{
-		builder: chrooted.NewBuilder(config),
+		builder: builder,
 		config:  config,
 	}
 
