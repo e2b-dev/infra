@@ -799,7 +799,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	}
 
 	// hyperloop server
-	hyperloopSrv, err := hyperloopserver.NewHyperloopServer(ctx, config.NetworkConfig.HyperloopProxyPort, globalLogger, sandboxes, featureFlags)
+	hyperloopSrv, err := hyperloopserver.NewHyperloopServer(ctx, config.NetworkConfig.HyperloopProxyPort, globalLogger, sandboxes)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create hyperloop server", zap.Error(err))
 	}

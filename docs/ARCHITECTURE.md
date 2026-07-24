@@ -124,9 +124,9 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
 - **Extra listeners**: internal gRPC :5009 and edge gRPC :5109 expose `ResumeSandbox` so
   client-proxy can wake paused sandboxes on incoming traffic.
 - Reads ClickHouse for sandbox/team metrics endpoints. Sandbox and template-build logs default to
-  Loki, with a LaunchDarkly-gated ClickHouse read path for local-cluster logs during the log
-  storage migration. LaunchDarkly feature flags also gate placement parameters, rate limits, and
-  rollouts.
+  Loki; `logs-read-config` independently enables the ClickHouse read path for local-cluster logs
+  during the log storage migration. LaunchDarkly feature flags also gate placement parameters,
+  rate limits, and rollouts.
 
 ### Orchestrator (`packages/orchestrator`)
 
@@ -162,9 +162,9 @@ Key mechanisms (all under `pkg/sandbox/`):
 - **Sandbox proxy** (:5007, `pkg/proxy/`): reverse-proxies incoming traffic from client-proxy to
   the sandbox's slot IP and requested port, enforcing per-sandbox traffic access tokens.
 - Writes sandbox lifecycle **events** and cgroup **host stats** to ClickHouse; exports metrics via
-  OTel. Sandbox and template-build log writes go through a flag-resolved HTTP route: the legacy
-  collector remains the fallback primary destination, and configured shadow destinations can mirror
-  writes during collector/storage migrations without changing sandbox behavior.
+  OTel. Sandbox and template-build logs always use the fixed Vector HTTP collector. Enabling the
+  boolean `logs-dual-write` LaunchDarkly flag additionally sends each application log through the
+  application's OTel provider during rollout.
 
 ### Envd (`packages/envd`)
 
@@ -368,9 +368,9 @@ flowchart TB
 - PostgreSQL is external (connection string via secrets); Redis runs as a Nomad job or as a
   managed service; ClickHouse runs on its own pool.
 - Observability: everything exports OTel; the collector fans out to ClickHouse (product metrics)
-  and Grafana Cloud/stack. Logs default to the legacy Vector → Loki path; dynamic log routing can
-  select a primary collector and shadow collectors, and local-cluster log reads can be switched to
-  ClickHouse with `logs-read-config` after `sandbox_logs` is populated.
+  and Grafana Cloud/stack. Logs use the legacy Vector → Loki HTTP path; `logs-dual-write` adds an
+  OTLP copy, while local-cluster log reads can independently be switched to ClickHouse with
+  `logs-read-config` after `sandbox_logs` is populated.
 
 ## Repository layout
 

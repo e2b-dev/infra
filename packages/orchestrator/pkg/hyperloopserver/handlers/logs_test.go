@@ -129,8 +129,8 @@ func TestAPIStoreForwardLogsStatus(t *testing.T) {
 			}))
 			t.Cleanup(server.Close)
 
-			store := &APIStore{collectorClient: *server.Client()}
-			err := store.forwardLogs(t.Context(), server.URL, []byte(`{"secret":"not-in-error"}`), 0)
+			store := &APIStore{collectorClient: *server.Client(), collectorAddr: server.URL}
+			err := store.forwardLogs(t.Context(), []byte(`{"secret":"not-in-error"}`))
 			if tt.wantErr && err == nil {
 				t.Fatal("expected an error")
 			}
@@ -141,39 +141,6 @@ func TestAPIStoreForwardLogsStatus(t *testing.T) {
 				t.Fatalf("error contains request payload: %v", err)
 			}
 		})
-	}
-}
-
-// TestAPIStoreForwardLogsRespectsTimeout verifies a slow/hung Vector doesn't
-// block forwardLogs forever when a non-zero timeout is passed: the request is
-// aborted client-side and an error is returned promptly, regardless of
-// whether the server ever responds.
-func TestAPIStoreForwardLogsRespectsTimeout(t *testing.T) {
-	t.Parallel()
-
-	release := make(chan struct{})
-	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-		select {
-		case <-release:
-		case <-r.Context().Done():
-		}
-	}))
-	t.Cleanup(func() {
-		close(release)
-		server.Close()
-	})
-
-	store := &APIStore{collectorClient: *server.Client()}
-
-	start := time.Now()
-	err := store.forwardLogs(t.Context(), server.URL, []byte(`{"msg":"slow"}`), 50*time.Millisecond)
-	elapsed := time.Since(start)
-
-	if err == nil {
-		t.Fatal("expected an error from a slow/hung response once the timeout passes")
-	}
-	if elapsed > 2*time.Second {
-		t.Fatalf("forwardLogs took %v to return; expected it to abort promptly once the 50ms timeout passed", elapsed)
 	}
 }
 
@@ -198,10 +165,10 @@ func TestAPIStoreForwardLogsZeroTimeoutRespectsClientTimeout(t *testing.T) {
 
 	client := server.Client()
 	client.Timeout = 50 * time.Millisecond
-	store := &APIStore{collectorClient: *client}
+	store := &APIStore{collectorClient: *client, collectorAddr: server.URL}
 
 	start := time.Now()
-	err := store.forwardLogs(t.Context(), server.URL, []byte(`{"msg":"slow"}`), 0)
+	err := store.forwardLogs(t.Context(), []byte(`{"msg":"slow"}`))
 	elapsed := time.Since(start)
 
 	if err == nil {
