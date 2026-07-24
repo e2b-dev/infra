@@ -7,10 +7,12 @@ VALUES (@template_id, @team_id, @created_by, NOW(), FALSE, @cluster_id, 'templat
 ON CONFLICT (id) DO NOTHING;
 
 -- name: BumpTemplateBuildCount :one
--- The only statement that locks the envs row — runs LAST in the registration
--- transaction, so same-template registers serialize on the commit window
--- only. Doubles as the soft-delete gate: a deleted template returns no row
--- and the registration fails instead of resurrecting it.
+-- The registration transaction's FIRST lock on the envs row — it runs before
+-- any alias/build-row writes and before the assignment guard's FOR SHARE, so
+-- the transaction's lock order matches the delete flow's (envs first) and no
+-- share-to-exclusive upgrade exists. Same-template registers serialize here.
+-- Doubles as the soft-delete gate: a deleted template returns no row and the
+-- registration fails instead of resurrecting it.
 UPDATE "public"."envs"
 SET updated_at  = NOW(),
     build_count = envs.build_count + 1
