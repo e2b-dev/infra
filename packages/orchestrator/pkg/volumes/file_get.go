@@ -34,14 +34,14 @@ func (s *Service) GetFile(request *orchestrator.GetFileRequest, server orchestra
 
 	f, err := fs.Open(path)
 	if err != nil {
-		return fmt.Errorf("failed to open file: %w", err)
+		return processError(ctx, "failed to open file", err)
 	}
 	defer f.Close()
 
 	span.AddEvent("getting file info")
 	info, err := fs.Stat(path)
 	if err != nil {
-		return fmt.Errorf("failed to stat file: %w", err)
+		return processError(ctx, "failed to stat file", err)
 	}
 
 	span.AddEvent("sending file start", trace.WithAttributes(

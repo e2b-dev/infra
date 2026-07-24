@@ -71,7 +71,7 @@ func (s *Service) CreateFile(server orchestrator.VolumeService_CreateFileServer)
 
 	file, err := fs.OpenFile(path, flags, os.FileMode(mode).Perm())
 	if err != nil {
-		return fmt.Errorf("failed to open file for create: %w", err)
+		return processError(ctx, "failed to open file for create", err)
 	}
 
 	defer func() {

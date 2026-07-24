@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
@@ -92,6 +93,27 @@ func TestFileGet(t *testing.T) {
 			Path:   "non-existent",
 		}, mockServer)
 
-		require.Error(t, err)
+		requireGRPCError(t, err, codes.NotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND)
+	})
+
+	t.Run("get path traversing a regular file", func(t *testing.T) {
+		t.Parallel()
+
+		// A path whose parent component is a regular file (not a directory)
+		// yields ENOTDIR, which should map to a client-facing bad request
+		// rather than a generic internal error.
+		filename := "traverse-file.txt"
+		err := os.WriteFile(filepath.Join(tmpdir, filename), []byte("test"), 0o644)
+		require.NoError(t, err)
+
+		mockServer := &mockGetFileServer{}
+		mockServer.On("Context").Return(t.Context())
+
+		err = s.GetFile(&orchestrator.GetFileRequest{
+			Volume: volumeInfo,
+			Path:   filename + "/sub",
+		}, mockServer)
+
+		requireGRPCError(t, err, codes.InvalidArgument, orchestrator.UserErrorCode_INVALID_REQUEST)
 	})
 }

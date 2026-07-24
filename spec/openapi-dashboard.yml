@@ -6,6 +6,10 @@ info:
 
 components:
   securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
     AdminApiKeyAuth:
       type: apiKey
       in: header
@@ -1259,6 +1263,7 @@ paths:
       summary: List team builds
       tags: [builds]
       security:
+        - ApiKeyAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
       parameters:
@@ -1287,6 +1292,7 @@ paths:
       summary: Build statuses
       tags: [builds]
       security:
+        - ApiKeyAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
       parameters:
@@ -1313,6 +1319,7 @@ paths:
       summary: Build details
       tags: [builds]
       security:
+        - ApiKeyAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
       parameters:
@@ -1687,6 +1694,7 @@ paths:
       description: Returns a paginated list of the team's templates (and default templates inline, unless the team is on a dedicated cluster), with filtering, search, and column sorting via keyset cursor pagination.
       tags: [templates]
       security:
+        - ApiKeyAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
       parameters:
@@ -1717,6 +1725,7 @@ paths:
       description: Returns the list of default templates with their latest build info and aliases.
       tags: [templates]
       security:
+        - ApiKeyAuth: []
         - AuthProviderBearerAuth: []
       responses:
         "200":
@@ -1736,6 +1745,7 @@ paths:
       description: Returns a single template owned by the current team. Dashboard-shaped read, indexed by template ID.
       tags: [templates]
       security:
+        - ApiKeyAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
       parameters:
@@ -1762,6 +1772,7 @@ paths:
       description: Returns ready template tag assignment groups with bounded per-tag history, paginated over tags with keyset cursor.
       tags: [templates]
       security:
+        - ApiKeyAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
       parameters:
@@ -1795,6 +1806,7 @@ paths:
       description: Returns the total number of distinct ready tags for the template.
       tags: [templates]
       security:
+        - ApiKeyAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
       parameters:
@@ -1821,6 +1833,7 @@ paths:
       description: Checks whether a template tag has at least one ready assignment.
       tags: [templates]
       security:
+        - ApiKeyAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
       parameters:
@@ -1850,6 +1863,7 @@ paths:
       description: Returns ready tag assignment events for a single tag, ordered newest first, with keyset cursor pagination.
       tags: [templates]
       security:
+        - ApiKeyAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
       parameters:
@@ -1875,12 +1889,12 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /admin/v1/projects/{teamID}:
+  /v1/management/projects/{teamID}:
     parameters:
       - $ref: "#/components/parameters/teamID"
     put:
       operationId: upsertProject
-      summary: Create or reconcile a project.
+      summary: Create or reconcile a project (v1).
       tags: [workspace-admin]
       security:
         - AdminJWTAuth: []
@@ -1915,7 +1929,7 @@ paths:
           $ref: "#/components/responses/501"
     delete:
       operationId: deleteProject
-      summary: Delete a project and its control-plane state.
+      summary: Delete a project and its control-plane state (v1).
       tags: [workspace-admin]
       security:
         - AdminJWTAuth: []
@@ -1931,13 +1945,13 @@ paths:
         "501":
           $ref: "#/components/responses/501"
 
-  /admin/v1/projects/{teamID}/members/{userId}:
+  /v1/management/projects/{teamID}/members/{userId}:
     parameters:
       - $ref: "#/components/parameters/teamID"
       - $ref: "#/components/parameters/userId"
     put:
       operationId: upsertProjectMember
-      summary: Reconcile an opaque user UUID as a project member.
+      summary: Reconcile an opaque user UUID as a project member (v1).
       tags: [workspace-admin]
       security:
         - AdminJWTAuth: []
@@ -1962,7 +1976,7 @@ paths:
           $ref: "#/components/responses/501"
     delete:
       operationId: deleteProjectMember
-      summary: Remove a project member.
+      summary: Remove a project member (v1).
       tags: [workspace-admin]
       security:
         - AdminJWTAuth: []
@@ -1980,12 +1994,12 @@ paths:
         "501":
           $ref: "#/components/responses/501"
 
-  /admin/v1/projects/{teamID}/limits:
+  /v1/management/projects/{teamID}/limits:
     parameters:
       - $ref: "#/components/parameters/teamID"
     put:
       operationId: upsertProjectLimits
-      summary: Reconcile effective limits for a project.
+      summary: Reconcile effective limits for a project (v1).
       tags: [workspace-admin]
       security:
         - AdminJWTAuth: []
@@ -2009,12 +2023,12 @@ paths:
         "501":
           $ref: "#/components/responses/501"
 
-  /admin/v1/users/{userId}:
+  /v1/management/users/{userId}:
     parameters:
       - $ref: "#/components/parameters/userId"
     delete:
       operationId: purgeUser
-      summary: Purge shard-local membership and access-token state for an opaque user UUID.
+      summary: Purge shard-local membership and access-token state for an opaque user UUID (v1).
       tags: [workspace-admin]
       security:
         - AdminJWTAuth: []
