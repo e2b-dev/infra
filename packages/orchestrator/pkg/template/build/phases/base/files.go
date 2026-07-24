@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/phases"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/phases/base/distro"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
@@ -45,9 +46,10 @@ func constructLayerFilesFromOCI(
 		featureFlags,
 	)
 	provisionScript, err := getProvisionScript(ctx, ProvisionScriptParams{
-		BusyBox:    rootfs.SandboxBusyBoxPath,
-		ResultPath: provisionScriptResultPath,
-		Provider:   buildContext.BuilderConfig.Provider,
+		BusyBox:        rootfs.SandboxBusyBoxPath,
+		ResultPath:     provisionScriptResultPath,
+		Provider:       buildContext.BuilderConfig.Provider,
+		DistroSelector: distro.ShellSelector(),
 	})
 	if err != nil {
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("error getting provision script: %w", err)

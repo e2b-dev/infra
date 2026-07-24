@@ -13,13 +13,27 @@ echo "Starting provisioning script"
 echo "Making configuration immutable"
 $BUSYBOX chattr +i /etc/resolv.conf
 
-# Helper function to check if a package is installed
+# Identify the base image by its DECLARED /etc/os-release ID (FEAT-145 / ADR-010)
+# — not by probing which package manager exists. The selector below is generated
+# from the distro profile registry (packages/.../phases/base/distro); it sets
+# E2B_PACKAGES, e2b_pkg_query(), e2b_pkg_install(), E2B_INIT_BIN, E2B_TIMESYNC_UNIT,
+# E2B_ADMIN_GROUP, E2B_CA_BUNDLE, e2b_ca_refresh() — or exits 1 with a clear error
+# on an unsupported distribution.
+echo "Detecting base image distribution"
+. /etc/os-release 2>/dev/null || true
+E2B_DISTRO_ID="${ID:-unknown}"
+
+{{ .DistroSelector }}
+
+echo "Provisioning for distro '$E2B_DISTRO_ID' (init=$E2B_INIT_BIN, timesync=$E2B_TIMESYNC_UNIT, admin-group=$E2B_ADMIN_GROUP)"
+
+# Helper function to check if a package is installed (distro-specific query)
 is_package_installed() {
-    dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q "install ok installed"
+    e2b_pkg_query "$1"
 }
 
 # Install required packages if not already installed
-PACKAGES="systemd systemd-sysv openssh-server sudo chrony socat curl ca-certificates fuse3 iptables git nfs-common less nftables iputils-ping jq"
+PACKAGES="$E2B_PACKAGES"
 echo "Checking presence of the following packages: $PACKAGES"
 
 MISSING=""
@@ -32,11 +46,17 @@ done
 
 if [ -n "$MISSING" ]; then
     echo "Missing packages detected, installing:$MISSING"
-    apt-get -q update
-    DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get -qq -o=Dpkg::Use-Pty=0 install -y --no-install-recommends $MISSING
+    # shellcheck disable=SC2086
+    e2b_pkg_install $MISSING
 else
     echo "All required packages are already installed."
 fi
+
+# Ensure the system CA trust bundle exists at the path envd expects. On Debian
+# the ca-certificates package creates it; on RHEL it is generated under /etc/pki
+# by update-ca-trust, so e2b_ca_refresh regenerates/exposes it (FEAT-145).
+echo "Ensuring CA trust bundle at $E2B_CA_BUNDLE"
+[ -s "$E2B_CA_BUNDLE" ] || e2b_ca_refresh || true
 
 # Set /dev/fuse permissions to 666 for non-root access
 # Use systemd-tmpfiles to set permissions at boot
@@ -101,22 +121,27 @@ echo "Disable system first boot wizard"
 # and Linux boot was stuck in wizard until envd wait timeout
 systemctl mask systemd-firstboot.service
 
+echo "Enable time synchronization ($E2B_TIMESYNC_UNIT)"
+# Distro-correct chrony unit (chrony on Debian, chronyd on RHEL/Arch). Replaces
+# the previously static, Debian-only chrony.service autostart symlink.
+systemctl enable "$E2B_TIMESYNC_UNIT"
+
 echo "Disable chrony-wait"
 # chrony-wait blocks multi-user.target until the first clock sync (~8s);
 # chrony still syncs in the background, nothing needs to wait for it.
-systemctl mask chrony-wait.service
+systemctl mask chrony-wait.service 2>/dev/null || true
 
 echo "Disable slow boot units not needed in the sandbox"
 # binfmt registrations (foreign-arch exec) take ~1s of CPU early in boot and
 # compete with envd start; e2scrub is for LVM-backed ext4 only.
-systemctl mask systemd-binfmt.service
-systemctl mask e2scrub_reap.service
+systemctl mask systemd-binfmt.service 2>/dev/null || true
+systemctl mask e2scrub_reap.service 2>/dev/null || true
 
 # Clean machine-id from Docker
 rm -rf /etc/machine-id
 
 echo "Linking systemd to init"
-ln -sf /lib/systemd/systemd /usr/sbin/init
+ln -sf "$E2B_INIT_BIN" /usr/sbin/init
 
 echo "Unlocking immutable configuration"
 $BUSYBOX chattr -i /etc/resolv.conf
