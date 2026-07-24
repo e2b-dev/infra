@@ -8,6 +8,8 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 )
 
 type SandboxQueriesProvider interface {
@@ -32,13 +34,28 @@ type Client struct {
 }
 
 func NewDriver(connectionString string) (driver.Conn, error) {
+	return NewDriverWithFeatureFlags(context.Background(), connectionString, nil)
+}
+
+// NewDriverWithFeatureFlags opens a driver connection with pool sizing read
+// from LaunchDarkly at creation time. ff may be nil, in which case flag
+// fallbacks apply.
+func NewDriverWithFeatureFlags(ctx context.Context, connectionString string, ff *featureflags.Client) (driver.Conn, error) {
 	options, err := clickhouse.ParseDSN(connectionString)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse ClickHouse DSN: %w", err)
 	}
 
 	options.MaxOpenConns = 10
-	options.MaxIdleConns = 3
+	// Keep idle conns warm so bursty batcher flushes reuse connections instead
+	// of paying the ClickHouse handshake on each flush. Read once at driver
+	// creation; restart to pick up flag changes.
+	options.MaxIdleConns = featureflags.ClickhouseMaxIdleConns.Fallback()
+	if ff != nil {
+		if n := ff.IntFlag(ctx, featureflags.ClickhouseMaxIdleConns); n > 0 {
+			options.MaxIdleConns = n
+		}
+	}
 
 	conn, err := clickhouse.Open(options)
 	if err != nil {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -51,6 +52,7 @@ VALUES (
 type ClickhouseDelivery struct {
 	batcher *batcher.Batcher[SandboxEvent]
 	conn    driver.Conn
+	ff      *featureflags.Client
 }
 
 type GatedClickhouseDelivery struct {
@@ -71,7 +73,7 @@ func NewDefaultClickhouseSandboxEventsDelivery(ctx context.Context, conn driver.
 	batcherQueueSize := featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherQueueSize)
 
 	return NewClickhouseSandboxEventsDelivery(
-		ctx, conn, batcher.BatcherOptions{
+		ctx, conn, featureFlags, batcher.BatcherOptions{
 			Name:         batcherName,
 			MaxBatchSize: maxBatchSize,
 			MaxDelay:     maxDelay,
@@ -87,10 +89,10 @@ func NewGatedDelivery(inner *ClickhouseDelivery, featureFlags *featureflags.Clie
 	return &GatedClickhouseDelivery{ClickhouseDelivery: inner, ff: featureFlags}
 }
 
-func NewClickhouseSandboxEventsDelivery(ctx context.Context, conn driver.Conn, opts batcher.BatcherOptions) (*ClickhouseDelivery, error) {
+func NewClickhouseSandboxEventsDelivery(ctx context.Context, conn driver.Conn, featureFlags *featureflags.Client, opts batcher.BatcherOptions) (*ClickhouseDelivery, error) {
 	var err error
 
-	delivery := &ClickhouseDelivery{conn: conn}
+	delivery := &ClickhouseDelivery{conn: conn, ff: featureFlags}
 	delivery.batcher, err = batcher.NewBatcher(delivery.batchInserter, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create batcher: %w", err)
@@ -152,6 +154,12 @@ func (c *ClickhouseDelivery) batchInserter(ctx context.Context, events []Sandbox
 	attr := trace.WithAttributes(attribute.Int("batch.size", len(events)))
 	ctx, span := tracer.Start(ctx, "Flush sandbox events batch to Clickhouse", attr)
 	defer span.End()
+
+	// Client batches are already large Native blocks, so the server-side async
+	// buffer only adds flush latency. Kill-switch skips it (default keeps it).
+	if c.ff != nil && !c.ff.BoolFlag(ctx, featureflags.ClickhouseBatcherAsyncInsertFlag) {
+		ctx = clickhouse.Context(ctx, clickhouse.WithSettings(clickhouse.Settings{"async_insert": 0}))
+	}
 
 	batch, err := c.conn.PrepareBatch(ctx, InsertSandboxEventQuery, driver.WithReleaseConnection())
 	if err != nil {
