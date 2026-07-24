@@ -65,10 +65,10 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 	// goroutine has already exited on a cancelled context.
 	start := make(chan rpc.ProcessEvent_Start, 1)
 
-	data, dataCancel := proc.DataEvent.Fork()
+	data, dataKicked, dataCancel := proc.DataEvent.Fork()
 	defer dataCancel()
 
-	end, endCancel := proc.EndEvent.Fork()
+	end, endKicked, endCancel := proc.EndEvent.Fork()
 	defer endCancel()
 
 	go func() {
@@ -115,6 +115,10 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 				cancel(ctx.Err())
 
 				return
+			case <-dataKicked:
+				cancel(errSubscriberKicked())
+
+				return
 			case event, ok := <-data:
 				if !ok {
 					break dataLoop
@@ -138,6 +142,10 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 		select {
 		case <-ctx.Done():
 			cancel(ctx.Err())
+
+			return
+		case <-endKicked:
+			cancel(errSubscriberKicked())
 
 			return
 		case event, ok := <-end:

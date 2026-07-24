@@ -46,8 +46,8 @@ func TestMultiplexedChannel_BasicFanOut(t *testing.T) {
 
 	m := NewMultiplexedChannel[int](1)
 
-	consA, cancelA := m.Fork()
-	consB, cancelB := m.Fork()
+	consA, _, cancelA := m.Fork()
+	consB, _, cancelB := m.Fork()
 	t.Cleanup(cancelA)
 	t.Cleanup(cancelB)
 
@@ -92,7 +92,7 @@ func TestMultiplexedChannel_AbandonedConsumerDoesNotWedgeFanOut(t *testing.T) {
 	m := NewMultiplexedChannel[int](1)
 	t.Cleanup(func() { close(m.Source) })
 
-	abandoned, cancelAbandoned := m.Fork()
+	abandoned, _, cancelAbandoned := m.Fork()
 
 	// Consumer reads one value then exits, modeling a disconnected client.
 	abandonReader := make(chan struct{})
@@ -140,7 +140,7 @@ func TestMultiplexedChannel_AbandonedConsumerDoesNotStarveOthers(t *testing.T) {
 	m := NewMultiplexedChannel[int](1)
 	t.Cleanup(func() { close(m.Source) })
 
-	healthy, cancelHealthy := m.Fork()
+	healthy, _, cancelHealthy := m.Fork()
 	t.Cleanup(cancelHealthy)
 
 	healthyReceived := make(chan int, 16)
@@ -150,7 +150,7 @@ func TestMultiplexedChannel_AbandonedConsumerDoesNotStarveOthers(t *testing.T) {
 		}
 	}()
 
-	abandoned, cancelAbandoned := m.Fork()
+	abandoned, _, cancelAbandoned := m.Fork()
 	go func() {
 		<-abandoned
 	}()
@@ -184,7 +184,7 @@ func TestMultiplexedChannel_CancelIsIdempotentAndPrompt(t *testing.T) {
 
 	m := NewMultiplexedChannel[int](0)
 
-	_, cancel := m.Fork()
+	_, _, cancel := m.Fork()
 
 	// Concurrently push values without anyone draining the consumer chan.
 	stop := make(chan struct{})
@@ -228,7 +228,7 @@ func TestMultiplexedChannel_SourceCloseClosesLiveSubscribers(t *testing.T) {
 
 	m := NewMultiplexedChannel[int](1)
 
-	cons, cancel := m.Fork()
+	cons, _, cancel := m.Fork()
 	t.Cleanup(cancel)
 
 	done := make(chan struct{})
@@ -269,11 +269,113 @@ func TestMultiplexedChannel_ForkAfterSourceCloseReturnsClosedChan(t *testing.T) 
 		time.Sleep(time.Millisecond)
 	}
 
-	cons, cancel := m.Fork()
+	cons, _, cancel := m.Fork()
 	cancel() // must not panic
 
 	_, ok := recvOrTimeout(t, cons, multiplexTestTimeout)
 	assert.False(t, ok, "Fork after shutdown must return a pre-closed channel")
+}
+
+// Regression (#1587): a subscriber that stops draining without cancelling —
+// e.g. its handler goroutine is blocked writing to a connection restored
+// from a pause snapshot that never errors — must be kicked after the send
+// grace instead of wedging the fan-out for every other subscriber.
+func TestMultiplexedChannel_StalledSubscriberIsKickedAndOthersKeepFlowing(t *testing.T) {
+	t.Parallel()
+
+	m := newMultiplexedChannelWithGrace[int](1, 50*time.Millisecond)
+	t.Cleanup(func() { close(m.Source) })
+
+	healthy, _, cancelHealthy := m.Fork()
+	t.Cleanup(cancelHealthy)
+
+	healthyReceived := make(chan int, subscriberBuffer+16)
+	go func() {
+		for v := range healthy {
+			healthyReceived <- v
+		}
+	}()
+
+	// Stalled subscriber: forked but never read.
+	_, stalledKicked, cancelStalled := m.Fork()
+	t.Cleanup(cancelStalled)
+
+	// Fill the stalled subscriber's buffer and push past it. The value that
+	// finds the buffer full waits out the grace once, kicks the subscriber,
+	// and everything after must flow freely.
+	total := subscriberBuffer + 8
+	for i := 1; i <= total; i++ {
+		require.Truef(t,
+			sendOrTimeout(t, m.Source, i, 2*time.Second),
+			"send %d should not be wedged by the stalled subscriber", i,
+		)
+	}
+
+	for i := 1; i <= total; i++ {
+		got, ok := recvOrTimeout(t, healthyReceived, multiplexTestTimeout)
+		require.Truef(t, ok, "healthy subscriber should receive value %d", i)
+		assert.Equal(t, i, got)
+	}
+
+	select {
+	case <-stalledKicked:
+	case <-time.After(multiplexTestTimeout):
+		t.Fatal("stalled subscriber was not kicked")
+	}
+
+	assert.True(t, m.HasSubscribers(),
+		"healthy subscriber should remain after the stalled one is kicked")
+}
+
+// A slow-but-draining subscriber keeps backpressure semantics and is never
+// kicked as long as it makes progress within the send grace.
+func TestMultiplexedChannel_SlowButDrainingSubscriberIsNotKicked(t *testing.T) {
+	t.Parallel()
+
+	m := newMultiplexedChannelWithGrace[int](1, 250*time.Millisecond)
+	t.Cleanup(func() { close(m.Source) })
+
+	slow, slowKicked, cancelSlow := m.Fork()
+	t.Cleanup(cancelSlow)
+
+	total := subscriberBuffer + 8
+	received := make([]int, 0, total)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range total {
+			v, ok := recvOrTimeout(t, slow, 2*time.Second)
+			if !ok {
+				return
+			}
+			received = append(received, v)
+			time.Sleep(2 * time.Millisecond) // slow, but well within the grace
+		}
+	}()
+
+	for i := 1; i <= total; i++ {
+		require.Truef(t,
+			sendOrTimeout(t, m.Source, i, 2*time.Second),
+			"send %d should tolerate a slow subscriber", i,
+		)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("slow subscriber did not receive all values")
+	}
+
+	select {
+	case <-slowKicked:
+		t.Fatal("slow-but-draining subscriber must not be kicked")
+	default:
+	}
+
+	assert.Len(t, received, total)
+	for i, v := range received {
+		assert.Equal(t, i+1, v, "values must arrive in order")
+	}
 }
 
 // Goroutine count must return to baseline after cancelled subscribers settle.
@@ -286,7 +388,7 @@ func TestMultiplexedChannel_NoGoroutineLeakOnAbandon(t *testing.T) { //nolint:pa
 
 	for range wedges {
 		m := NewMultiplexedChannel[int](1)
-		_, cancel := m.Fork()
+		_, _, cancel := m.Fork()
 		// Park one value so fan-out has work, then cancel mid-iteration.
 		m.Source <- 0
 		cancel()
