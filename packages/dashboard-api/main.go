@@ -309,7 +309,7 @@ func newHTTPServer(
 	tel *telemetry.Client,
 	swagger *openapi3.T,
 	authenticationFunc openapi3filter.AuthenticationFunc,
-	store api.ServerInterface,
+	apiStore *handlers.APIStore,
 ) *http.Server {
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -355,8 +355,11 @@ func newHTTPServer(
 		sharedmiddleware.RequestTimeout(requestTimeout),
 	)
 
+	r.POST("/internal/auth/validate-password", apiStore.HandleInternalValidatePassword)
+
 	r.Use(
-		middleware.OapiRequestValidatorWithOptions(swagger,
+		sharedmiddleware.ExcludeRoutes(
+			middleware.OapiRequestValidatorWithOptions(swagger,
 			&middleware.Options{
 				ErrorHandler: func(c *gin.Context, message string, statusCode int) {
 					statusCode = max(c.Writer.Status(), statusCode)
@@ -377,11 +380,13 @@ func newHTTPServer(
 					AuthenticationFunc: authenticationFunc,
 				},
 			}),
+			"/internal/auth/validate-password",
+		),
 	)
 
 	r.Use(dashboardmiddleware.EnforceBlockedTeam())
 
-	api.RegisterHandlers(r, store)
+	api.RegisterHandlers(r, apiStore)
 
 	s := &http.Server{
 		Handler:           r,

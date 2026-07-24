@@ -197,11 +197,16 @@ func TestBootstrapOIDCUser_ExternalIDFailureKeepsUserProvisioned(t *testing.T) {
 		OIDCUserEmail: "ada@example.test",
 	}
 
-	if _, err := svc.BootstrapOIDCUser(ctx, input); err == nil {
-		t.Fatal("expected bootstrap to fail when external_id patch fails")
+	team, err := svc.BootstrapOIDCUser(ctx, input)
+	if err != nil {
+		t.Fatalf("expected bootstrap to succeed despite external_id failure: %v", err)
 	}
 	if profiles.externalIDCalls != 1 {
 		t.Fatalf("expected one external id attempt, got %d", profiles.externalIDCalls)
+	}
+
+	if team.ID == (uuid.UUID{}) {
+		t.Fatal("expected provisioned team")
 	}
 
 	userIdentity, err := testDB.AuthDB.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
@@ -209,7 +214,7 @@ func TestBootstrapOIDCUser_ExternalIDFailureKeepsUserProvisioned(t *testing.T) {
 		OidcSub: input.OIDCUserID,
 	})
 	if err != nil {
-		t.Fatalf("expected user identity to survive external_id failure: %v", err)
+		t.Fatalf("expected user identity to be created: %v", err)
 	}
 	if _, err := testDB.AuthDB.GetDefaultTeamByUserID(ctx, userIdentity.UserID); err != nil {
 		t.Fatalf("expected default team to survive external_id failure: %v", err)
@@ -235,8 +240,9 @@ func TestBootstrapOIDCUser_ReRunBackfillsExternalID(t *testing.T) {
 		OIDCUserEmail: "ada@example.test",
 	}
 
-	if _, err := svc.BootstrapOIDCUser(ctx, input); err == nil {
-		t.Fatal("expected first bootstrap to fail on external_id patch")
+	// First bootstrap succeeds but logs a warning — external_id is not set yet.
+	if _, err := svc.BootstrapOIDCUser(ctx, input); err != nil {
+		t.Fatalf("expected first bootstrap to succeed: %v", err)
 	}
 
 	userIdentity, err := testDB.AuthDB.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
@@ -404,5 +410,155 @@ func TestBootstrapOIDCUser_UnknownIssuerReturnsBadRequest(t *testing.T) {
 	}
 	if len(sink.requests) != 0 {
 		t.Fatalf("expected no provisioning calls, got %d", len(sink.requests))
+	}
+}
+
+// TestBootstrapOIDCUser_PreOryUserEmailMatchReusesExistingAccount verifies that
+// a pre-Ory user (in DB with no user_identities row) logs in via Ory for the
+// first time and bootstrap reuses their existing user_id and team.
+func TestBootstrapOIDCUser_PreOryUserEmailMatchReusesExistingAccount(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	existingUserID := createTestUser(t, testDB)
+	existingEmail := testUserEmail(existingUserID)
+
+	existingTeam, err := testDB.AuthDB.Read.GetDefaultTeamByUserID(ctx, existingUserID)
+	if err != nil {
+		t.Fatalf("expected pre-Ory user to have a default team: %v", err)
+	}
+
+	svc := New(testDB.AuthDB, testIdentityProvider{}, &fakeTeamProvisionSink{})
+
+	result, err := svc.BootstrapOIDCUser(ctx, OIDCUserBootstrapInput{
+		OIDCIssuer:    testIssuer,
+		OIDCUserID:    uuid.NewString(),
+		OIDCUserEmail: existingEmail,
+	})
+	if err != nil {
+		t.Fatalf("expected bootstrap to succeed: %v", err)
+	}
+	if result.ID != existingTeam.ID {
+		t.Fatalf("expected existing team %s to be reused, got %s — pre-Ory user got a new empty account", existingTeam.ID, result.ID)
+	}
+	if result.UserID != existingUserID {
+		t.Fatalf("expected existing user_id %s, got %s", existingUserID, result.UserID)
+	}
+}
+
+// TestBootstrapOIDCUser_EmailMatchBlockedIfUserAlreadyLinked verifies that a
+// user who already has a user_identities row cannot be merged with another
+// subject that shares the same email, preventing account takeover.
+func TestBootstrapOIDCUser_EmailMatchBlockedIfUserAlreadyLinked(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	existingUserID := createTestUser(t, testDB)
+
+	if err := testDB.AuthDB.TestsRawSQL(ctx,
+		`INSERT INTO public.user_identities (oidc_iss, oidc_sub, user_id) VALUES ($1, $2, $3)`,
+		testIssuer, uuid.NewString(), existingUserID,
+	); err != nil {
+		t.Fatalf("failed to insert pre-existing user_identities row: %v", err)
+	}
+
+	svc := New(testDB.AuthDB, testIdentityProvider{}, &fakeTeamProvisionSink{})
+
+	result, err := svc.BootstrapOIDCUser(ctx, OIDCUserBootstrapInput{
+		OIDCIssuer:    testIssuer,
+		OIDCUserID:    uuid.NewString(),
+		OIDCUserEmail: testUserEmail(existingUserID),
+	})
+	if err != nil {
+		t.Fatalf("expected bootstrap to succeed (creating a new account): %v", err)
+	}
+	if result.UserID == existingUserID {
+		t.Fatal("email-match merged into an already-linked account — account hijack vulnerability")
+	}
+}
+
+// TestBootstrapOIDCUser_PreOryUserSecondLoginUsesIdentityLookup verifies that
+// after the email-match bootstrap, a subsequent login with the same sub resolves
+// via the normal identity-lookup path without triggering a second email-match scan.
+func TestBootstrapOIDCUser_PreOryUserSecondLoginUsesIdentityLookup(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	existingUserID := createTestUser(t, testDB)
+	oidcSub := uuid.NewString()
+
+	svc := New(testDB.AuthDB, testIdentityProvider{}, &fakeTeamProvisionSink{})
+
+	input := OIDCUserBootstrapInput{
+		OIDCIssuer:    testIssuer,
+		OIDCUserID:    oidcSub,
+		OIDCUserEmail: testUserEmail(existingUserID),
+	}
+
+	first, err := svc.BootstrapOIDCUser(ctx, input)
+	if err != nil {
+		t.Fatalf("first bootstrap failed: %v", err)
+	}
+	second, err := svc.BootstrapOIDCUser(ctx, input)
+	if err != nil {
+		t.Fatalf("second bootstrap failed: %v", err)
+	}
+	if second.ID != first.ID {
+		t.Fatalf("second login returned different team: first=%s second=%s", first.ID, second.ID)
+	}
+}
+
+// TestBootstrapOIDCUser_ConcurrentEmailMatchOnlyFirstSubMerges verifies that
+// concurrent bootstraps with different subjects but the same email only merge
+// one of them into the pre-Ory account.
+func TestBootstrapOIDCUser_ConcurrentEmailMatchOnlyFirstSubMerges(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	existingUserID := createTestUser(t, testDB)
+
+	svc := New(testDB.AuthDB, testIdentityProvider{}, &fakeTeamProvisionSink{})
+
+	const concurrency = 4
+	type result struct {
+		team ProvisionedTeam
+		err  error
+	}
+
+	results := make(chan result, concurrency)
+	var wg sync.WaitGroup
+	for range concurrency {
+		wg.Go(func() {
+			team, err := svc.BootstrapOIDCUser(ctx, OIDCUserBootstrapInput{
+				OIDCIssuer:    testIssuer,
+				OIDCUserID:    uuid.NewString(),
+				OIDCUserEmail: testUserEmail(existingUserID),
+			})
+			results <- result{team, err}
+		})
+	}
+	wg.Wait()
+	close(results)
+
+	var mergedCount int
+	for r := range results {
+		if r.err != nil {
+			t.Fatalf("expected bootstrap to succeed: %v", r.err)
+		}
+		if r.team.UserID == existingUserID {
+			mergedCount++
+		}
+	}
+
+	if mergedCount != 1 {
+		t.Fatalf("expected exactly 1 bootstrap to merge into existing account, got %d", mergedCount)
 	}
 }
