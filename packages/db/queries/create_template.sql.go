@@ -12,32 +12,20 @@ import (
 	"github.com/google/uuid"
 )
 
-const createOrUpdateTemplate = `-- name: CreateOrUpdateTemplate :one
-INSERT INTO "public"."envs"(id, team_id, created_by, updated_at, public, cluster_id, source)
-VALUES ($1, $2, $3, NOW(), FALSE, $4, 'template')
-ON CONFLICT (id) DO UPDATE
+const bumpTemplateBuildCount = `-- name: BumpTemplateBuildCount :one
+UPDATE "public"."envs"
 SET updated_at  = NOW(),
     build_count = envs.build_count + 1
-WHERE envs.deleted_at IS NULL
+WHERE id = $1 AND deleted_at IS NULL
 RETURNING id
 `
 
-type CreateOrUpdateTemplateParams struct {
-	TemplateID string
-	TeamID     uuid.UUID
-	CreatedBy  *uuid.UUID
-	ClusterID  *uuid.UUID
-}
-
-// Soft-delete is permanent: skip the update for a deleted env so no row is
-// returned and the build registration fails instead of resurrecting it.
-func (q *Queries) CreateOrUpdateTemplate(ctx context.Context, arg CreateOrUpdateTemplateParams) (string, error) {
-	row := q.db.QueryRow(ctx, createOrUpdateTemplate,
-		arg.TemplateID,
-		arg.TeamID,
-		arg.CreatedBy,
-		arg.ClusterID,
-	)
+// The only statement that locks the envs row — runs LAST in the registration
+// transaction, so same-template registers serialize on the commit window
+// only. Doubles as the soft-delete gate: a deleted template returns no row
+// and the registration fails instead of resurrecting it.
+func (q *Queries) BumpTemplateBuildCount(ctx context.Context, templateID string) (string, error) {
+	row := q.db.QueryRow(ctx, bumpTemplateBuildCount, templateID)
 	var id string
 	err := row.Scan(&id)
 	return id, err
@@ -109,6 +97,32 @@ func (q *Queries) CreateTemplateBuild(ctx context.Context, arg CreateTemplateBui
 	return err
 }
 
+const ensureTemplateRow = `-- name: EnsureTemplateRow :exec
+INSERT INTO "public"."envs"(id, team_id, created_by, updated_at, public, cluster_id, source, build_count)
+VALUES ($1, $2, $3, NOW(), FALSE, $4, 'template', 0)
+ON CONFLICT (id) DO NOTHING
+`
+
+type EnsureTemplateRowParams struct {
+	TemplateID string
+	TeamID     uuid.UUID
+	CreatedBy  *uuid.UUID
+	ClusterID  *uuid.UUID
+}
+
+// FK target for a first-time template; DO NOTHING takes no lock on existing
+// rows. build_count starts at 0: the bump below runs for every registration,
+// so committed counts match the old upsert (column default is 1).
+func (q *Queries) EnsureTemplateRow(ctx context.Context, arg EnsureTemplateRowParams) error {
+	_, err := q.db.Exec(ctx, ensureTemplateRow,
+		arg.TemplateID,
+		arg.TeamID,
+		arg.CreatedBy,
+		arg.ClusterID,
+	)
+	return err
+}
+
 const invalidateUnstartedTemplateBuilds = `-- name: InvalidateUnstartedTemplateBuilds :exec
 WITH invalidated AS (
     UPDATE "public"."env_builds" eb
@@ -121,6 +135,9 @@ WITH invalidated AS (
         AND eba.env_id = $2
         AND eba.tag = ANY($3::text[])
         AND eb.status_group = 'pending'
+        -- The registration transaction runs this AFTER inserting its own
+        -- (pending) build, which must not invalidate itself.
+        AND eb.id != $4
     RETURNING eb.id
 )
 DELETE FROM public.active_template_builds
@@ -128,12 +145,18 @@ WHERE build_id IN (SELECT id FROM invalidated)
 `
 
 type InvalidateUnstartedTemplateBuildsParams struct {
-	Reason     types.BuildReason
-	TemplateID string
-	Tags       []string
+	Reason         types.BuildReason
+	TemplateID     string
+	Tags           []string
+	ExcludeBuildID uuid.UUID
 }
 
 func (q *Queries) InvalidateUnstartedTemplateBuilds(ctx context.Context, arg InvalidateUnstartedTemplateBuildsParams) error {
-	_, err := q.db.Exec(ctx, invalidateUnstartedTemplateBuilds, arg.Reason, arg.TemplateID, arg.Tags)
+	_, err := q.db.Exec(ctx, invalidateUnstartedTemplateBuilds,
+		arg.Reason,
+		arg.TemplateID,
+		arg.Tags,
+		arg.ExcludeBuildID,
+	)
 	return err
 }

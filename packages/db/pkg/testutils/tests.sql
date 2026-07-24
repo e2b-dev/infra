@@ -27,7 +27,7 @@ VALUES (
 
 -- name: InsertTestEnv :exec
 -- Inserts an env (template) row used as a base for tests. Mirrors what
--- production code does via CreateOrUpdateTemplate but without the build_count
+-- production code does via EnsureTemplateRow + BumpTemplateBuildCount but without the build_count
 -- bookkeeping so tests can seed deterministic rows.
 INSERT INTO public.envs (id, team_id, public, updated_at, source)
 VALUES (
