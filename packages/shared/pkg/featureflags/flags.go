@@ -339,6 +339,36 @@ var (
 	// Copy uses uffd syscalls, so we limit parallelism to avoid overwhelming the system.
 	MemoryPrefetchMaxCopyWorkers = NewIntFlag("memory-prefetch-max-copy-workers", 8)
 
+	// MemoryPrefetchCoalesceMaxMB caps how many contiguous prefetch blocks are
+	// merged into a single source.Slice fetch (in MiB of extent size). 0
+	// disables coalescing: every block is fetched individually, matching
+	// today's behavior. The copy phase is unaffected either way — it always
+	// installs one page at a time, since UFFDIO_COPY requires page-sized data.
+	MemoryPrefetchCoalesceMaxMB = NewIntFlag("memory-prefetch-coalesce-max-mb", 0)
+
+	// ResumePrefetchSourceFlag selects which trace the resume prefetcher
+	// replays:
+	//   "init"     — only the build-time / harvested read-hot init trace
+	//                (meta.Prefetch.Memory), prefaulted. Preserves today's
+	//                behavior, so this is the default and a no-op-equivalent.
+	//   "last-cycle" — only the sandbox's own pause diff (the pages the last
+	//                resume→pause cycle wrote), derived from the memfile header
+	//                and replayed fetch-only.
+	//   "both"     — init first (prefaulted), then last-cycle (fetch-only) behind
+	//                a barrier, so the large last-cycle fetch stays off the
+	//                resume-critical path.
+	//   "off"      — kill switch, no resume prefetch.
+	// Unknown values fall back to "init".
+	ResumePrefetchSourceFlag = NewStringFlag("resume-prefetch-source", "init")
+
+	// ResumeLastCyclePrefetchMaxMiBFlag caps how much of the last-cycle diff a single
+	// resume prefetches, in MiB. -1 (the default, negative = no limit per the
+	// codebase convention) is uncapped; the recorded diff is small by
+	// construction, so this exists to throttle the heavy-churn tail against the
+	// shared object-store pool without a redeploy. A non-negative N keeps the
+	// first N MiB of blocks in offset order and leaves the rest to demand-fault.
+	ResumeLastCyclePrefetchMaxMiBFlag = NewIntFlag("resume-last-cycle-prefetch-max-mib", -1)
+
 	// PauseResumePrefetchHarvestFlag makes the orchestrator, after a pause
 	// snapshot is durable, run a throwaway warm resume of the just-written
 	// artifact (driven by envd /init, workload frozen, egress denied) to record

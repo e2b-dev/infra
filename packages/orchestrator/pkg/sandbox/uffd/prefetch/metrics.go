@@ -37,7 +37,22 @@ var durationHistogram = utils.Must(meter.Int64Histogram(
 	metric.WithUnit("ms"),
 ))
 
+// mappingBlocksHistogram records the size (in blocks) of each prefetch mapping
+// replayed on a resume, tagged by mode ("prefault" for the init trace, "fetch"
+// for the fetch-only last-cycle diff). It gives the fleet distribution of the
+// recorded working-set size; the "fetch" series sizes the last-cycle-prefetch
+// rollout (how much a resume prefetches) and flags idle-at-pause sandboxes in
+// its bottom bucket.
+var mappingBlocksHistogram = utils.Must(meter.Int64Histogram(
+	"orchestrator.sandbox.uffd.prefetch.mapping_blocks",
+	metric.WithDescription("Prefetch mapping size in blocks, by mode"),
+	metric.WithUnit("{block}"),
+))
+
 var (
+	modePrefaultAttr = telemetry.PrecomputeAttrs(attribute.String("mode", "prefault"))
+	modeFetchAttr    = telemetry.PrecomputeAttrs(attribute.String("mode", "fetch"))
+
 	stageFetchedAttr      = telemetry.PrecomputeAttrs(attribute.String("stage", "fetched"))
 	stageFetchSkippedAttr = telemetry.PrecomputeAttrs(attribute.String("stage", "fetch_skipped"))
 	stageCopiedAttr       = telemetry.PrecomputeAttrs(attribute.String("stage", "copied"))
