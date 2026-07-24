@@ -85,15 +85,27 @@ passwd -d root
 
 echo "Setting up chrony"
 mkdir -p /etc/chrony
-cat <<EOF >/etc/chrony/chrony.conf
-refclock PHC /dev/ptp0 poll 2 dpoll 2
-# Step (jump) the clock instead of slewing when the offset exceeds 1s, but only
-# for the first 3 updates after chronyd starts. chronyd restarts on every cold
-# boot/reboot, so this corrects a large boot-time offset fast (TLS needs a
-# correct clock) without risking a backward jump under a running workload.
-# Needed because chrony-wait is masked, so boot no longer blocks on first sync.
-makestep 1.0 3
-EOF
+{
+    # Prefer the hypervisor's PTP clock (kvm-ptp): no network dependency and
+    # it tracks the host directly. It is missing where nested virtualization
+    # can't expose it (e.g. dev slots) — chronyd treats a missing PHC as a
+    # FATAL error, so only reference it when the device exists and fall back
+    # to NTP otherwise; a running chronyd without PHC beats a dead one.
+    # Device presence is probed in the provisioning VM, which runs on the same
+    # host/KVM as the runtime sandboxes.
+    if [ -e /dev/ptp0 ]; then
+        echo "refclock PHC /dev/ptp0 poll 2 dpoll 2"
+    else
+        echo "pool pool.ntp.org iburst maxsources 3"
+    fi
+    # Step (jump) the clock instead of slewing when the offset exceeds 1s, but
+    # only for the first 3 updates after chronyd starts. chronyd restarts on
+    # every cold boot/reboot, so this corrects a large boot-time offset fast
+    # (TLS needs a correct clock) without risking a backward jump under a
+    # running workload. Needed because chrony-wait is masked, so boot no
+    # longer blocks on first sync.
+    echo "makestep 1.0 3"
+} >/etc/chrony/chrony.conf
 
 # Add a proxy config, as some environments expects it there (e.g. timemaster in Node Dockerimage)
 echo "include /etc/chrony/chrony.conf" >/etc/chrony.conf

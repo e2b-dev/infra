@@ -91,6 +91,14 @@ for svc in localmount sysctl hostname bootmisc; do
     rc-update add "$svc" boot 2>/dev/null || true
 done
 
+# The FC guest's eth0 is configured by the kernel (ip=), but OpenRC services
+# declaring a "need net" dependency (chronyd) trigger the networking service,
+# which errors out on a missing /etc/network/interfaces and takes chronyd
+# down with it. A loopback-only interfaces file lets networking start (and
+# provide "net") without touching the kernel-managed eth0.
+printf 'auto lo\niface lo inet loopback\n' > /etc/network/interfaces
+rc-update add networking boot 2>/dev/null || true
+
 echo "Enable time synchronization ($E2B_TIMESYNC_UNIT)"
 rc-update add "$E2B_TIMESYNC_UNIT" default
 
