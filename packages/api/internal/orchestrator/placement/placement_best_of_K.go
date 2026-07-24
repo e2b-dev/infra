@@ -20,6 +20,9 @@ type BestOfKConfig struct {
 	Alpha float64
 	// K is the number of candidate nodes sampled per placement ("power of K choices")
 	K int
+	// M is the memory overcommit ratio for the hard placement filter.
+	// 0 = disabled (current behaviour); 1.0 = no overcommit; 1.5 = 50% overcommit.
+	M float64
 }
 
 // DefaultBestOfKConfig returns the default placement configuration
@@ -95,7 +98,7 @@ func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, exclu
 	config := b.getConfig()
 
 	// Filter eligible nodes
-	candidates := b.sample(nodes, config, excludedNodes, buildMachineInfo, filterByLabels, requiredLabels)
+	candidates := b.sample(nodes, config, resources, excludedNodes, buildMachineInfo, filterByLabels, requiredLabels)
 
 	// Find the best node among candidates
 	bestScore := math.MaxFloat64
@@ -140,7 +143,7 @@ func (e FailedToPlaceSandboxError) Error() string {
 }
 
 // sample returns up to k items chosen uniformly from those passing ok.
-func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, excludedNodes map[string]struct{}, buildMachineInfo machineinfo.MachineInfo, filterByLabels bool, requiredLabels []string) []*nodemanager.Node {
+func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, resources nodemanager.SandboxResources, excludedNodes map[string]struct{}, buildMachineInfo machineinfo.MachineInfo, filterByLabels bool, requiredLabels []string) []*nodemanager.Node {
 	if config.K <= 0 || len(items) == 0 {
 		return nil
 	}
@@ -182,6 +185,19 @@ func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, exclud
 		// Skip if node doesn't have the required labels
 		if filterByLabels && !isNodeLabelsCompatible(n, requiredLabels) {
 			continue
+		}
+
+		// Hard memory filter: skip when the node would exceed the configured
+		// overcommit ratio. Only active when M > 0 and the node has reported
+		// its total memory (MemoryTotalBytes > 0).
+		if config.M > 0 {
+			metrics := n.Metrics()
+			if metrics.MemoryTotalBytes > 0 {
+				requested := uint64(resources.MiBMemory) * 1024 * 1024
+				if float64(metrics.MemoryAllocatedBytes+requested) > config.M*float64(metrics.MemoryTotalBytes) {
+					continue
+				}
+			}
 		}
 
 		candidates = append(candidates, n)
