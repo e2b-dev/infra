@@ -300,6 +300,10 @@ components:
         egressProxy:
           allOf:
             - $ref: "#/components/schemas/SandboxEgressProxyConfig"
+          description: >-
+            SOCKS5 proxy for sandbox egress. Outbound TCP is tunneled through the
+            proxy after allow/deny filtering; the sandbox is unaware. Domain-matched
+            flows use remote DNS (ATYP=domain).
           x-not-implemented: true
         maskRequestHost:
           type: string
@@ -332,6 +336,10 @@ components:
         egressProxy:
           allOf:
             - $ref: "#/components/schemas/SandboxEgressProxyConfig"
+          description: >-
+            SOCKS5 proxy for sandbox egress. Outbound TCP is tunneled through the
+            proxy after allow/deny filtering; the sandbox is unaware. Domain-matched
+            flows use remote DNS (ATYP=domain).
           x-not-implemented: true
         rules:
           type: object
