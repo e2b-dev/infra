@@ -1099,9 +1099,12 @@ func (s *Server) setupSandboxLifecycle(ctx context.Context, sbx *sandbox.Sandbox
 		ctx, childSpan := tracer.Start(context.WithoutCancel(ctx), "stop sandbox-lifecycle", trace.WithNewRoot())
 		defer childSpan.End()
 
-		waitErr := sbx.Wait(ctx)
+		waitErr := sbx.WaitForExit(ctx)
 		if waitErr != nil {
-			sbxlogger.I(sbx).Error(ctx, "failed to wait for sandbox, cleaning up", zap.Error(waitErr))
+			sbxlogger.I(sbx).Error(ctx, "sandbox exit wait failed, stopping", zap.Error(waitErr))
+			if stopErr := sbx.Stop(ctx); stopErr != nil {
+				sbxlogger.I(sbx).Error(ctx, "failed to stop timed-out sandbox", zap.Error(stopErr))
+			}
 		}
 
 		cleanupErr := sbx.Close(ctx)
