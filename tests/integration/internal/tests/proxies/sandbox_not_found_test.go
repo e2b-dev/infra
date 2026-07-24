@@ -69,3 +69,46 @@ func TestSandboxNotFound(t *testing.T) {
 	assert.Contains(t, string(body), sbx.SandboxID)
 	assert.True(t, strings.HasSuffix(string(body), "</html>"))
 }
+
+// A missing sandbox is answered by the proxy rather than by envd, so the proxy
+// owns the CORS headers. Without them a browser turns the 502 into an opaque
+// network error and the SDK cannot tell a stopped sandbox from being offline.
+func TestSandboxNotFoundCORS(t *testing.T) {
+	t.Parallel()
+	url, err := url.Parse(setup.EnvdProxy)
+	require.NoError(t, err)
+
+	port := 3210
+	client := &http.Client{Timeout: 60 * time.Second}
+	sbx := &api.Sandbox{
+		SandboxID: "i" + id.Generate(),
+		ClientID:  "unknown",
+	}
+
+	// Envd requests carry headers that are not CORS-safelisted, so a browser
+	// always preflights before the real request.
+	preflight := utils.NewRequest(sbx, url, port, &http.Header{
+		"Origin":                         []string{"https://app.example.com"},
+		"Access-Control-Request-Method":  []string{http.MethodGet},
+		"Access-Control-Request-Headers": []string{"e2b-sandbox-id,e2b-sandbox-port"},
+	})
+	preflight.Method = http.MethodOptions
+
+	resp, err := client.Do(preflight)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+
+	// A browser only honors a preflight with an ok status, so a 502 here would
+	// stop the real request from ever being sent.
+	assert.Less(t, resp.StatusCode, http.StatusMultipleChoices)
+	assert.GreaterOrEqual(t, resp.StatusCode, http.StatusOK)
+	assert.Equal(t, "*", resp.Header.Get("Access-Control-Allow-Origin"))
+	assert.Equal(t, "e2b-sandbox-id,e2b-sandbox-port", resp.Header.Get("Access-Control-Allow-Headers"))
+
+	headers := &http.Header{"Origin": []string{"https://app.example.com"}}
+	resp = utils.WaitForStatus(t, client, sbx, url, port, headers, http.StatusBadGateway)
+	require.NotNil(t, resp)
+	require.NoError(t, resp.Body.Close())
+
+	assert.Equal(t, "*", resp.Header.Get("Access-Control-Allow-Origin"))
+}

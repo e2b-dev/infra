@@ -160,7 +160,10 @@ Key mechanisms (all under `pkg/sandbox/`):
   (with SNI/Host-inspecting TCP firewall for domain allow/deny lists). Slots are pooled and
   reused; slot allocation is coordinated through Consul KV.
 - **Sandbox proxy** (:5007, `pkg/proxy/`): reverse-proxies incoming traffic from client-proxy to
-  the sandbox's slot IP and requested port, enforcing per-sandbox traffic access tokens.
+  the sandbox's slot IP and requested port, enforcing per-sandbox traffic access tokens. A live
+  sandbox answers CORS itself (envd allows all origins); when the sandbox is missing or
+  unreachable the proxy synthesizes the response instead, so it carries its own CORS headers
+  and answers preflights (`pkg/proxy/cors/`) — otherwise a browser would hide the error from JS.
 - Writes sandbox lifecycle **events** and cgroup **host stats** to ClickHouse; exports metrics via
   OTel. Sandbox and template-build log writes go through a flag-resolved HTTP route: the legacy
   collector remains the fallback primary destination, and configured shadow destinations can mirror
