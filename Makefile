@@ -184,7 +184,7 @@ test:
 
 .PHONY: test-integration
 test-integration:
-	$(MAKE) -C tests/integration test
+	$(MAKE) -C tests/integration test-shard
 
 .PHONY: connect-orchestrator
 connect-orchestrator:

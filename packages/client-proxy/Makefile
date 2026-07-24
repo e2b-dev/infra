@@ -42,10 +42,16 @@ build:
 	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(BUILD_ARCH) go build -o bin/client-proxy -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" .
 
+# Compiler flags for debug builds. The default disables optimizations and
+# inlining so binaries are debugger-friendly. CI overrides this with an empty
+# value: race-instrumented but optimized binaries compile faster and speed up
+# every integration test at runtime.
+DEBUG_GCFLAGS ?= -gcflags=all="-N -l"
+
 .PHONY: build-debug
 build-debug:
 	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
-	CGO_ENABLED=1 go build -race -gcflags=all="-N -l" -o bin/client-proxy -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" .
+	CGO_ENABLED=1 go build -race $(DEBUG_GCFLAGS) -o bin/client-proxy -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" .
 
 .PHONY: build-and-upload
 build-and-upload:

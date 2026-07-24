@@ -25,11 +25,17 @@ build:
 	$(eval EXPECTED_MIGRATION_TIMESTAMP ?= $(expectedMigration))
 	CGO_ENABLED=0 go build -o bin/api -ldflags "-X=main.commitSHA=$(COMMIT_SHA) -X=main.expectedMigrationTimestamp=$(EXPECTED_MIGRATION_TIMESTAMP)" .
 
+# Compiler flags for debug builds. The default disables optimizations and
+# inlining so binaries are debugger-friendly. CI overrides this with an empty
+# value: race-instrumented but optimized binaries compile faster and speed up
+# every integration test at runtime.
+DEBUG_GCFLAGS ?= -gcflags=all="-N -l"
+
 .PHONY: build-debug
 build-debug:
 	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
 	$(eval EXPECTED_MIGRATION_TIMESTAMP ?= $(expectedMigration))
-	CGO_ENABLED=1 go build -race -gcflags=all="-N -l" -o bin/api -ldflags "-X=main.commitSHA=$(COMMIT_SHA) -X=main.expectedMigrationTimestamp=$(EXPECTED_MIGRATION_TIMESTAMP)" .
+	CGO_ENABLED=1 go build -race $(DEBUG_GCFLAGS) -o bin/api -ldflags "-X=main.commitSHA=$(COMMIT_SHA) -X=main.expectedMigrationTimestamp=$(EXPECTED_MIGRATION_TIMESTAMP)" .
 
 .PHONY: run
 run:

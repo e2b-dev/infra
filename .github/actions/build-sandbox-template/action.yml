@@ -26,6 +26,9 @@ inputs:
 runs:
   using: "composite"
   steps:
+    # Note: this cannot run concurrently with a running orchestrator -
+    # create-build manages its own sandbox network state (slot pools,
+    # namespaces) and the two processes conflict, wedging the provisioning VM.
     - name: Build Sandbox Template
       env:
         TEMPLATE_ID: "2j6ly824owf4awgai1xo"

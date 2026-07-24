@@ -44,9 +44,15 @@ build-local:
 	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -o bin/orchestrator -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" .
 	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -o bin/clean-nfs-cache -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" ./cmd/clean-nfs-cache
 
+# Compiler flags for debug builds. The default disables optimizations and
+# inlining so binaries are debugger-friendly. CI overrides this with an empty
+# value: race-instrumented but optimized binaries compile faster and speed up
+# every integration test at runtime.
+DEBUG_GCFLAGS ?= -gcflags=all="-N -l"
+
 .PHONY: build-debug
 build-debug:
-	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -race -gcflags=all="-N -l" -o bin/orchestrator .
+	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -race $(DEBUG_GCFLAGS) -o bin/orchestrator .
 
 # Builds the dummy orchestrator. It only implements the orchestrator.proto
 # SandboxService surface against an in-memory store, and is meant for local

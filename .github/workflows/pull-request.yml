@@ -62,6 +62,7 @@ jobs:
               - '.github/actions/build-packages/**'
               - '.github/actions/build-sandbox-template/**'
               - '.github/actions/host-init/**'
+              - '.github/actions/start-databases/**'
               - '.github/actions/start-services/**'
               - '.github/actions/go-setup-cache/**'
             lint-inputs:
@@ -164,6 +165,10 @@ jobs:
       # Only publish the results for same-repo PRs
       publish: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
       run-tests: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'integration-inputs') && needs.detect-changes.outputs.docs-only != 'true' }}
+      # PRs run only the production-like zstd1 config, sharded by package
+      # across parallel runners for wall time; the full compression matrix
+      # runs on push to main.
+      full-matrix: false
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
   publish-test-results:

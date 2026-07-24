@@ -1,0 +1,38 @@
+name: "Start Databases"
+description: "Kicks off the PostgreSQL, ClickHouse, and Redis containers in the background. Run this as early as possible: pulls and boots then overlap with the Go builds, and the start-services action later waits for health before migrating."
+
+runs:
+  using: "composite"
+  steps:
+    - name: Start Database Containers
+      env:
+        CLICKHOUSE_USERNAME: "e2b"
+        CLICKHOUSE_PASSWORD: "clickity-clicky-click"
+        CLICKHOUSE_PORT: "9000"
+        CLICKHOUSE_DATABASE: "default"
+      run: |
+        # Everything is backgrounded so the image pulls and container boots
+        # overlap with the (minutes-long) package builds that follow. The
+        # start-services action waits for container health with a bounded
+        # timeout, which also surfaces any startup failure from here.
+        docker run -d --name postgres \
+                      -e POSTGRES_USER=postgres \
+                      -e POSTGRES_PASSWORD=local \
+                      -e POSTGRES_DB=mydatabase \
+                      -p 5432:5432 \
+                      --health-cmd="pg_isready -U postgres" \
+                      --health-interval=5s \
+                      --health-timeout=2s \
+                      --health-retries=5 \
+                      postgres:18 &
+
+        docker run -d --name redis \
+              -p 6379:6379 \
+              --health-cmd="redis-cli ping" \
+              --health-interval=5s \
+              --health-timeout=2s \
+              --health-retries=5 \
+              redis:8 &
+
+        make -C packages/clickhouse run &
+      shell: bash

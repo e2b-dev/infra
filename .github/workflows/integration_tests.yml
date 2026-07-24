@@ -12,6 +12,11 @@ on:
         description: "Whether to run integration tests"
         required: false
         default: true
+      full-matrix:
+        type: boolean
+        description: "When true (main), run the whole suite once per compression config. When false (PRs), run only the production-like zstd1 config, split into package shards on parallel runners to cut wall time."
+        required: false
+        default: true
     secrets:
       CODECOV_TOKEN: { required: false }
 jobs:
@@ -25,35 +30,49 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: uncompressed
-            compress_enabled: "false"
-            compress_type: ""
-            compress_level: ""
-            compress_workers: ""
-            dedup_mode: "default"
-            disable_memfd: "true"
-          - name: zstd1
-            compress_enabled: "true"
-            compress_type: "zstd"
-            compress_level: "1"
-            compress_workers: "8"
-            dedup_mode: "best_effort"
-            disable_memfd: "false"
-          - name: lz4
-            compress_enabled: "true"
-            compress_type: "lz4"
-            compress_level: "0"
-            compress_workers: "8"
-            dedup_mode: "direct_io"
-            disable_memfd: "false"
+        # On push to main, the full 3-config matrix (uncompressed/zstd1/lz4)
+        # runs the whole suite per config, as before.
+        #
+        # On PRs, only the production-like zstd1 config runs (most tests don't
+        # depend on compression/dedup/memfd settings), but the suite is split
+        # into shards on parallel runners. Each host saturates at
+        # go test -parallel=4 (Firecracker boots + zstd compression), so the
+        # only way to cut wall time is more hosts: the TestTemplateBuild*
+        # tests (real FC builds) are split in two halves by name prefix,
+        # api/sandboxes gets its own runner, and everything else shares the
+        # last one. Shards are resolved by TEST_SHARD in
+        # tests/integration/Makefile.
+        include: >-
+          ${{ fromJSON(inputs.full-matrix
+            && '[
+                  {"name": "uncompressed", "shard": "all", "compress_enabled": "false", "compress_type": "", "compress_level": "", "compress_workers": "", "dedup_mode": "default", "disable_memfd": "true"},
+                  {"name": "zstd1", "shard": "all", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"},
+                  {"name": "lz4", "shard": "all", "compress_enabled": "true", "compress_type": "lz4", "compress_level": "0", "compress_workers": "8", "dedup_mode": "direct_io", "disable_memfd": "false"}
+                ]'
+            || '[
+                  {"name": "zstd1-templates-1", "shard": "templates-builds-1", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"},
+                  {"name": "zstd1-templates-2", "shard": "templates-builds-2", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"},
+                  {"name": "zstd1-sandboxes", "shard": "sandboxes", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"},
+                  {"name": "zstd1-rest", "shard": "rest", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"}
+                ]') }}
     env:
       # Surfaced as env so upload steps can gate on presence (skipped on fork PRs).
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      # Build race-instrumented but optimized binaries: nobody attaches a
+      # debugger in CI, and -N -l slows both compilation and every test at
+      # runtime. Set at the job level so the build-packages step and the
+      # rebuilds inside the run/run-debug targets use identical flags (the
+      # second build is then a Go build cache no-op).
+      DEBUG_GCFLAGS: ""
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v5
+
+      # Kick off the database containers first: their image pulls and boots
+      # run in the background and overlap with the package builds below.
+      - name: Start Databases
+        uses: ./.github/actions/start-databases
 
       - name: Build Packages
         uses: ./.github/actions/build-packages
@@ -61,6 +80,10 @@ jobs:
       - name: Initialize Host
         uses: ./.github/actions/host-init
 
+      # Must run before Start Services: create-build manages its own sandbox
+      # network state (slot pools, namespaces) and conflicts with a running
+      # orchestrator doing the same - overlapping them wedges the
+      # provisioning VM until its deadline.
       - name: Build Template
         uses: ./.github/actions/build-sandbox-template
         with:
@@ -86,6 +109,15 @@ jobs:
           TESTS_ORCHESTRATOR_HOST: "localhost:5008"
           TESTS_ENVD_PROXY: "http://localhost:3002"
           TESTS_CLIENT_PROXY: "http://localhost:3002"
+          # Keep go test -parallel at 4: the host is the bottleneck, not
+          # client-side concurrency. Measured on the zstd1 config: at 8 the
+          # per-test times inflated 70-140% (net wall win of only ~1 min) and
+          # 10 template builds flaked on timeouts; at 12 concurrent FC builds
+          # (x8 zstd workers each) starved envd inits into "syncing took too
+          # long" failures across 87 tests. Wall time is cut by sharding
+          # across runners instead (see the matrix above).
+          TEST_PARALLELISM: "4"
+          TEST_SHARD: ${{ matrix.shard }}
         run: |
           # Run the integration tests
           make test-integration
