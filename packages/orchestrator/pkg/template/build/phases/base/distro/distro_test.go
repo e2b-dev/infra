@@ -49,7 +49,11 @@ func TestFamiliesDiffer(t *testing.T) {
 	if rhel.TimeSyncUnit != "chronyd" || rhel.AdminGroup != "wheel" {
 		t.Errorf("rhel unit/group wrong: %s / %s", rhel.TimeSyncUnit, rhel.AdminGroup)
 	}
-	if rhel.CARefresh != "update-ca-trust extract" {
+	// Must both regenerate the trust store AND materialize the bundle at the
+	// Debian-named path envd expects — update-ca-trust alone never creates
+	// ca-certificates.crt, which left envd.service unable to start on Fedora.
+	if !strings.Contains(rhel.CARefresh, "update-ca-trust extract") ||
+		!strings.Contains(rhel.CARefresh, `ln -sf /etc/pki/tls/certs/ca-bundle.crt "$E2B_CA_BUNDLE"`) {
 		t.Errorf("rhel CA refresh wrong: %s", rhel.CARefresh)
 	}
 	if rhel.InitBinary != "/usr/lib/systemd/systemd" {

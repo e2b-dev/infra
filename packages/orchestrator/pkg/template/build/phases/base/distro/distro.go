@@ -77,7 +77,12 @@ var Profiles = []Profile{
 		TimeSyncUnit: "chronyd",
 		AdminGroup:   "wheel",
 		CABundle:     "/etc/ssl/certs/ca-certificates.crt",
-		CARefresh:    "update-ca-trust extract",
+		// update-ca-trust regenerates /etc/pki/ca-trust/extracted/* but never
+		// creates a file named ca-certificates.crt (that name is Debian's), so
+		// the bundle envd expects must be linked to the extracted PEM bundle
+		// explicitly — otherwise envd.service's ExecStartPre finds no bundle
+		// and its update-ca-certificates fallback doesn't exist on this family.
+		CARefresh: `update-ca-trust extract && ln -sf /etc/pki/tls/certs/ca-bundle.crt "$E2B_CA_BUNDLE"`,
 	},
 	{
 		Key: "arch",
@@ -93,7 +98,9 @@ var Profiles = []Profile{
 		TimeSyncUnit: "chronyd",
 		AdminGroup:   "wheel",
 		CABundle:     "/etc/ssl/certs/ca-certificates.crt",
-		CARefresh:    "update-ca-certificates",
+		// Arch ships p11-kit's update-ca-trust (no update-ca-certificates);
+		// its extract step does emit /etc/ssl/certs/ca-certificates.crt.
+		CARefresh: "update-ca-trust extract",
 	},
 }
 
