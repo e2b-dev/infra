@@ -85,24 +85,31 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 			return ErrSandboxOperationFailed
 		}
 	}
+	// Past this point the removal is committed. Detach from the caller's
+	// cancellation (e.g. client disconnect) so a pause can't be aborted
+	// mid-snapshot — the node would kill the sandbox without a persisted
+	// snapshot — and a kill can't leave the VM running on the node after
+	// its store entry is removed below.
+	ctx = context.WithoutCancel(ctx)
+
 	defer func() {
-		finish(context.WithoutCancel(ctx), err)
+		finish(ctx, err)
 	}()
 
 	if alreadyDone {
 		logger.L().Info(ctx, "Sandbox was already in the process of being removed", logger.WithSandboxID(sandboxID), zap.String("state", string(sbx.State)))
 
 		if time.Since(sbx.EndTime) > sandbox.StaleCutoff && opts.Action.Effect == sandbox.TransitionExpires {
-			o.sandboxStore.Remove(context.WithoutCancel(ctx), teamID, sandboxID)
-			go o.analyticsRemove(context.WithoutCancel(ctx), sbx, opts.Action)
+			o.sandboxStore.Remove(ctx, teamID, sandboxID)
+			go o.analyticsRemove(ctx, sbx, opts.Action)
 		}
 
 		return nil
 	}
 
-	defer func() { go o.analyticsRemove(context.WithoutCancel(ctx), sbx, opts.Action) }()
+	defer func() { go o.analyticsRemove(ctx, sbx, opts.Action) }()
 	// Once we start the removal process, we want to make sure it gets removed from the store
-	defer o.sandboxStore.Remove(context.WithoutCancel(ctx), teamID, sandboxID)
+	defer o.sandboxStore.Remove(ctx, teamID, sandboxID)
 	err = o.removeSandboxFromNode(ctx, sbx, opts.Action, opts.Reason, opts.FilesystemOnly)
 	if err != nil {
 		fields := []zap.Field{

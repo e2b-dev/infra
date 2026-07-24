@@ -52,6 +52,12 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 		}
 	}
 
+	// Past this point the snapshot is committed: the sandbox will be paused
+	// on its node, and cancelling the checkpoint mid-snapshot kills it. Detach
+	// from the caller's cancellation (e.g. client disconnect) so the snapshot
+	// always runs to completion once started.
+	ctx = context.WithoutCancel(ctx)
+
 	// finish completes the snapshotting transition exactly once.
 	// On success (nil) it restores the sandbox to Running.
 	// On error it leaves the state as Snapshotting so that
@@ -59,7 +65,7 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 	var once sync.Once
 	finish := func(err error) {
 		once.Do(func() {
-			finishSnapshotting(context.WithoutCancel(ctx), err)
+			finishSnapshotting(ctx, err)
 		})
 	}
 	defer finish(nil)
@@ -116,10 +122,15 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 		BuildID:    upsertResult.BuildID,
 	})
 	if err != nil {
+		// The sandbox itself resumed fine (finish(nil) restores it to Running),
+		// but without an uploaded status the snapshot is unusable: mark the
+		// build failed so it doesn't dangle in Snapshotting forever.
+		o.failSnapshotBuild(ctx, upsertResult.BuildID, err)
+
 		return SnapshotTemplateResult{}, fmt.Errorf("error updating build status: %w", err)
 	}
 
-	o.snapshotCache.Invalidate(context.WithoutCancel(ctx), sandboxID)
+	o.snapshotCache.Invalidate(ctx, sandboxID)
 
 	telemetry.ReportEvent(ctx, "Snapshot template completed")
 

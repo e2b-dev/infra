@@ -44,6 +44,12 @@ func (o *Orchestrator) CheckpointSandbox(ctx context.Context, teamID uuid.UUID, 
 		}
 	}
 
+	// Past this point the checkpoint is committed: the sandbox will be paused
+	// on its node, and cancelling the checkpoint mid-snapshot kills it. Detach
+	// from the caller's cancellation (e.g. client disconnect mid-fork) so the
+	// checkpoint always runs to completion once started.
+	ctx = context.WithoutCancel(ctx)
+
 	// finish completes the snapshotting transition exactly once.
 	// On success (nil) it restores the sandbox to Running.
 	// On error it leaves the state as Snapshotting so that
@@ -51,7 +57,7 @@ func (o *Orchestrator) CheckpointSandbox(ctx context.Context, teamID uuid.UUID, 
 	var once sync.Once
 	finish := func(err error) {
 		once.Do(func() {
-			finishSnapshotting(context.WithoutCancel(ctx), err)
+			finishSnapshotting(ctx, err)
 		})
 	}
 	defer finish(nil)
@@ -77,11 +83,7 @@ func (o *Orchestrator) CheckpointSandbox(ctx context.Context, teamID uuid.UUID, 
 		Metadata:  map[string]string{storageopts.ObjectMetadataTemplateID: upsertResult.TemplateID},
 	})
 	if err != nil {
-		// Cleanup must run even when the checkpoint failed because this
-		// request's context was cancelled (e.g. client disconnect mid-fork).
-		cleanupCtx := context.WithoutCancel(ctx)
-
-		o.failSnapshotBuild(cleanupCtx, upsertResult.BuildID, err)
+		o.failSnapshotBuild(ctx, upsertResult.BuildID, err)
 
 		// The orchestrator rejects these before pausing the VM (envd too old,
 		// starting-sandboxes queue full), so the sandbox is still running
@@ -104,8 +106,8 @@ func (o *Orchestrator) CheckpointSandbox(ctx context.Context, teamID uuid.UUID, 
 		// so RemoveSandbox can proceed without deadlock.
 		finish(err)
 
-		if killErr := o.RemoveSandbox(cleanupCtx, teamID, sandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill}); killErr != nil {
-			telemetry.ReportError(cleanupCtx, "error killing sandbox after failed checkpoint", killErr)
+		if killErr := o.RemoveSandbox(ctx, teamID, sandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill}); killErr != nil {
+			telemetry.ReportError(ctx, "error killing sandbox after failed checkpoint", killErr)
 		}
 
 		return fmt.Errorf("checkpoint failed: %w", err)
@@ -119,10 +121,15 @@ func (o *Orchestrator) CheckpointSandbox(ctx context.Context, teamID uuid.UUID, 
 		BuildID:    upsertResult.BuildID,
 	})
 	if err != nil {
+		// The sandbox itself resumed fine (finish(nil) restores it to Running),
+		// but without a success status the snapshot is unusable: mark the build
+		// failed so it doesn't dangle in Snapshotting forever.
+		o.failSnapshotBuild(ctx, upsertResult.BuildID, err)
+
 		return fmt.Errorf("error updating build status: %w", err)
 	}
 
-	o.snapshotCache.Invalidate(context.WithoutCancel(ctx), sandboxID)
+	o.snapshotCache.Invalidate(ctx, sandboxID)
 
 	telemetry.ReportEvent(ctx, "Checkpointed sandbox")
 
