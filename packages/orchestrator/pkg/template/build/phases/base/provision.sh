@@ -20,8 +20,16 @@ $BUSYBOX chattr +i /etc/resolv.conf
 # E2B_ADMIN_GROUP, E2B_CA_BUNDLE, e2b_ca_refresh() — or exits 1 with a clear error
 # on an unsupported distribution.
 echo "Detecting base image distribution"
-. /etc/os-release 2>/dev/null || true
-E2B_DISTRO_ID="${ID:-unknown}"
+# os-release is the image's DECLARED identity (ADR-010) — never probe for
+# package managers. Images without it (pure-Nix, distroless, scratch) are
+# rejected with a message naming the real problem; supporting them needs the
+# explicit distro-declaration override (qa.md QA3), not guessing.
+if [ -r /etc/os-release ]; then
+    . /etc/os-release
+    E2B_DISTRO_ID="${ID:-unknown}"
+else
+    E2B_DISTRO_ID="unknown (image has no /etc/os-release)"
+fi
 
 {{ .DistroSelector }}
 
@@ -109,48 +117,20 @@ echo 'fs.inotify.max_user_watches=65536' | tee -a /etc/sysctl.conf
 echo "Disabling proactive memory compaction"
 echo 'vm.compaction_proactiveness=0' | tee -a /etc/sysctl.conf
 
-echo "Don't wait for ttyS0 (serial console kernel logs)"
-# This is required when the Firecracker kernel args has specified console=ttyS0
-systemctl mask serial-getty@ttyS0.service
-
-echo "Disable network online wait"
-systemctl mask systemd-networkd-wait-online.service
-
-echo "Disable system first boot wizard"
-# This was problem with Ubuntu 24.04, that differently calculate wizard should be called
-# and Linux boot was stuck in wizard until envd wait timeout
-systemctl mask systemd-firstboot.service
-
-echo "Enable time synchronization ($E2B_TIMESYNC_UNIT)"
-# Distro-correct chrony unit (chrony on Debian, chronyd on RHEL/Arch). Replaces
-# the previously static, Debian-only chrony.service autostart symlink.
-systemctl enable "$E2B_TIMESYNC_UNIT"
-
-echo "Enable envd autostart"
-# The envd.service wants-symlink is baked into the image as an OCI layer, but
-# on the RHEL family installing the systemd package above runs its RPM
-# scriptlet `systemctl preset-all`, whose distro policy is "disable *" — it
-# deletes the baked symlink (units not covered by a preset file are disabled).
-# Re-enabling here, after every package transaction, is what guarantees envd
-# autostarts regardless of what the distro's package scriptlets did.
-systemctl enable envd.service
-
-echo "Disable chrony-wait"
-# chrony-wait blocks multi-user.target until the first clock sync (~8s);
-# chrony still syncs in the background, nothing needs to wait for it.
-systemctl mask chrony-wait.service 2>/dev/null || true
-
-echo "Disable slow boot units not needed in the sandbox"
-# binfmt registrations (foreign-arch exec) take ~1s of CPU early in boot and
-# compete with envd start; e2scrub is for LVM-backed ext4 only.
-systemctl mask systemd-binfmt.service 2>/dev/null || true
-systemctl mask e2scrub_reap.service 2>/dev/null || true
+# Init-system-specific boot arrangement: service autostarts (envd, time sync),
+# boot-noise silencing, and — on OpenRC — replacing the one-shot provisioning
+# inittab with the real boot sequence. The body is rendered per profile family
+# by the distro selector (see distro/init.go); everything below stays shared.
+e2b_init_setup
 
 # Clean machine-id from Docker
 rm -rf /etc/machine-id
 
-echo "Linking systemd to init"
+echo "Linking $E2B_INIT_BIN to init"
 ln -sf "$E2B_INIT_BIN" /usr/sbin/init
+# /sbin is a real directory on non-usr-merged distros (Alpine) where the line
+# above doesn't reach the /sbin/init the kernel is pointed at; link it too.
+[ -L /sbin ] || ln -sf "$E2B_INIT_BIN" /sbin/init
 
 echo "Unlocking immutable configuration"
 $BUSYBOX chattr -i /etc/resolv.conf

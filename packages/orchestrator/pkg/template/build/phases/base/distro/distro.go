@@ -6,9 +6,9 @@
 // the whole divergence between distros lives in one data table here instead of
 // as scattered runtime detection.
 //
-// v1 scope: the systemd family (Debian/Ubuntu, Fedora/RHEL/CentOS/Rocky/Alma,
-// Arch). Alpine (non-systemd/musl) is intentionally NOT supported here and is
-// rejected with a clear error — it needs the separate OpenRC track (IMPL-145 W5).
+// Scope: the systemd family (Debian/Ubuntu, Fedora/RHEL/CentOS/Rocky/Alma,
+// Arch) plus Alpine on the OpenRC track (IMPL-145 W5). Distros with no
+// os-release identity or no declared profile are rejected with a clear error.
 package distro
 
 import (
@@ -21,6 +21,9 @@ import (
 type Profile struct {
 	// Key is the canonical family key.
 	Key string
+	// Init is the init family the guest boots with; it selects the
+	// e2b_init_setup() body rendered into the selector (see init.go).
+	Init InitSystem
 	// IDs are the /etc/os-release ID values that map to this family.
 	IDs []string
 	// Packages is the required package set, in this family's package names.
@@ -47,8 +50,9 @@ type Profile struct {
 // is deliberately different — see ADR-010.
 var Profiles = []Profile{
 	{
-		Key: "debian",
-		IDs: []string{"debian", "ubuntu"},
+		Key:  "debian",
+		Init: InitSystemd,
+		IDs:  []string{"debian", "ubuntu"},
 		Packages: []string{
 			"systemd", "systemd-sysv", "openssh-server", "sudo", "chrony", "socat",
 			"curl", "ca-certificates", "fuse3", "iptables", "git", "nfs-common",
@@ -63,7 +67,8 @@ var Profiles = []Profile{
 		CARefresh:    "update-ca-certificates",
 	},
 	{
-		Key: "rhel",
+		Key:  "rhel",
+		Init: InitSystemd,
 		// Fedora, RHEL, CentOS Stream, Rocky, Alma, Oracle Linux, Amazon Linux.
 		IDs: []string{"fedora", "rhel", "centos", "rocky", "almalinux", "ol", "amzn"},
 		Packages: []string{
@@ -85,8 +90,9 @@ var Profiles = []Profile{
 		CARefresh: `update-ca-trust extract && ln -sf /etc/pki/tls/certs/ca-bundle.crt "$E2B_CA_BUNDLE"`,
 	},
 	{
-		Key: "arch",
-		IDs: []string{"arch", "archarm"},
+		Key:  "arch",
+		Init: InitSystemd,
+		IDs:  []string{"arch", "archarm"},
 		Packages: []string{
 			"systemd", "shadow", "openssh", "sudo", "chrony", "socat", "curl",
 			"ca-certificates", "fuse3", "iptables", "git", "nfs-utils", "less",
@@ -101,6 +107,30 @@ var Profiles = []Profile{
 		// Arch ships p11-kit's update-ca-trust (no update-ca-certificates);
 		// its extract step does emit /etc/ssl/certs/ca-certificates.crt.
 		CARefresh: "update-ca-trust extract",
+	},
+	{
+		Key:  "alpine",
+		Init: InitOpenRC,
+		IDs:  []string{"alpine"},
+		// No systemd packages: Alpine boots busybox init → OpenRC. shadow
+		// provides the useradd/usermod the build steps use (busybox's
+		// adduser takes different flags).
+		Packages: []string{
+			"openrc", "shadow", "openssh", "sudo", "chrony", "socat", "curl",
+			"ca-certificates", "fuse3", "iptables", "git", "nfs-utils", "less",
+			"nftables", "iputils", "jq", "bash",
+		},
+		PkgQueryBody: `apk info -e "$1" >/dev/null 2>&1`,
+		PkgInstall:   `apk add --no-cache "$@"`,
+		// busybox init is Alpine's standard PID1; it hands off to OpenRC via
+		// the inittab installed by e2b_init_setup (init.go).
+		InitBinary:   "/bin/busybox",
+		TimeSyncUnit: "chronyd",
+		AdminGroup:   "wheel",
+		CABundle:     "/etc/ssl/certs/ca-certificates.crt",
+		// Alpine's ca-certificates ships a Debian-compatible
+		// update-ca-certificates that writes the bundle at CABundle.
+		CARefresh: "update-ca-certificates",
 	},
 }
 
@@ -134,11 +164,13 @@ func ShellSelector() string {
 		fmt.Fprintf(&b, "    E2B_ADMIN_GROUP=%q\n", p.AdminGroup)
 		fmt.Fprintf(&b, "    E2B_CA_BUNDLE=%q\n", p.CABundle)
 		fmt.Fprintf(&b, "    e2b_ca_refresh() { %s; }\n", p.CARefresh)
+		fmt.Fprintf(&b, "    E2B_INIT_SYSTEM=%q\n", p.Init)
+		fmt.Fprintf(&b, "    e2b_init_setup() {\n%s\n    }\n", indentBlock(initSetup[p.Init], "        "))
 		fmt.Fprintf(&b, "    ;;\n")
 	}
 	fmt.Fprintf(&b, "  *)\n")
 	fmt.Fprintf(&b, "    echo \"[provision] ERROR: unsupported base image distribution: ID='${E2B_DISTRO_ID:-unknown}'.\" >&2\n")
-	fmt.Fprintf(&b, "    echo \"[provision] E2B template builds support: %s (systemd-based). Alpine/OpenRC is not yet supported.\" >&2\n", strings.Join(SupportedIDs(), ", "))
+	fmt.Fprintf(&b, "    echo \"[provision] E2B template builds support: %s.\" >&2\n", strings.Join(SupportedIDs(), ", "))
 	fmt.Fprintf(&b, "    exit 1\n")
 	fmt.Fprintf(&b, "    ;;\n")
 	b.WriteString("esac\n")

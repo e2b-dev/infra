@@ -95,12 +95,43 @@ func TestSelectorCoversIDsAndRejects(t *testing.T) {
 			t.Errorf("selector missing fast-reject piece %q", want)
 		}
 	}
-	// Alpine must NOT be accepted at v1 (it belongs to the OpenRC track, W5).
+	// Alpine is now supported via the OpenRC track (W5) — and it must be the
+	// OpenRC profile, never folded into a systemd family.
+	alpine := profileByKey(t, "alpine")
+	if alpine.Init != InitOpenRC {
+		t.Errorf("alpine must be the OpenRC profile, got init %q", alpine.Init)
+	}
+}
+
+// Every profile declares a known init system with a rendered setup body, and
+// no body leaks another init system's tooling (systemctl in OpenRC or
+// rc-update in systemd would fail at provisioning time).
+func TestInitSystemsDeclaredAndCoherent(t *testing.T) {
 	for _, p := range Profiles {
-		for _, id := range p.IDs {
-			if id == "alpine" {
-				t.Error("alpine must not be a v1 systemd-family id")
+		setup, ok := initSetup[p.Init]
+		if !ok {
+			t.Errorf("profile %q declares init %q with no setup body", p.Key, p.Init)
+			continue
+		}
+		switch p.Init {
+		case InitSystemd:
+			if strings.Contains(setup, "rc-update") {
+				t.Errorf("systemd init setup leaks rc-update (profile %q)", p.Key)
 			}
+		case InitOpenRC:
+			if strings.Contains(setup, "systemctl") {
+				t.Errorf("openrc init setup leaks systemctl (profile %q)", p.Key)
+			}
+		}
+	}
+	sel := ShellSelector()
+	if !strings.Contains(sel, "e2b_init_setup() {") {
+		t.Error("selector must define e2b_init_setup()")
+	}
+	// The OpenRC boot chain pieces the alpine arm must carry.
+	for _, want := range []string{"/etc/inittab", "rc-update add envd default", "openrc sysinit"} {
+		if !strings.Contains(sel, want) {
+			t.Errorf("selector missing OpenRC boot piece %q", want)
 		}
 	}
 }
