@@ -4,7 +4,6 @@ package build
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -13,28 +12,12 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 )
 
-const readSegmentsFaultChildEnv = "BUILD_FAULT_TEST_CHILD"
-
 // Reproduces the production crash where a bad sector under a build cache
-// raised SIGBUS in readSegments and killed the orchestrator. Runs in a
-// subprocess: an unguarded fault would kill the test binary.
+// raised SIGBUS in readSegments and killed the orchestrator. If the fault
+// guard regresses, this test crashes the whole test binary with "unexpected
+// fault address" — that crash is the failure signal.
 func TestReadSegments_MmapFault(t *testing.T) {
-	if os.Getenv(readSegmentsFaultChildEnv) == "1" {
-		readSegmentsFaultChild(t)
-
-		return
-	}
 	t.Parallel()
-
-	cmd := exec.Command(os.Args[0], "-test.run=^TestReadSegments_MmapFault$", "-test.v")
-	cmd.Env = append(os.Environ(), readSegmentsFaultChildEnv+"=1")
-	out, err := cmd.CombinedOutput()
-	require.NoErrorf(t, err,
-		"child crashed: a memory fault in readSegments must become an error, not kill the process\n%s", out)
-}
-
-func readSegmentsFaultChild(t *testing.T) {
-	t.Helper()
 
 	const (
 		blockSize = int64(4096)

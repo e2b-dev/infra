@@ -7,7 +7,6 @@ import (
 	"encoding/binary"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -16,8 +15,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 )
-
-const dispatchFaultChildEnv = "NBD_FAULT_TEST_CHILD"
 
 // replyConn is a fake NBD socket: Read serves queued request bytes, Write
 // parses reply headers onto replies. Assumes header-only replies, which holds
@@ -76,25 +73,11 @@ func (p *faultProv) WriteZeroesAt(off, length int64) (int, error) {
 }
 
 // A backend memory fault must become a per-request NBD error reply while the
-// dispatch loop keeps serving. Runs in a subprocess: an unguarded fault would
-// kill the test binary.
+// dispatch loop keeps serving. If the fault guard regresses, this test
+// crashes the whole test binary with "unexpected fault address" — that crash
+// is the failure signal.
 func TestDispatch_MmapFault(t *testing.T) {
-	if os.Getenv(dispatchFaultChildEnv) == "1" {
-		dispatchFaultChild(t)
-
-		return
-	}
 	t.Parallel()
-
-	cmd := exec.Command(os.Args[0], "-test.run=^TestDispatch_MmapFault$", "-test.v")
-	cmd.Env = append(os.Environ(), dispatchFaultChildEnv+"=1")
-	out, err := cmd.CombinedOutput()
-	require.NoErrorf(t, err,
-		"child crashed: a backend mmap fault must become an NBD error reply, not kill the process\n%s", out)
-}
-
-func dispatchFaultChild(t *testing.T) {
-	t.Helper()
 
 	const (
 		blockSize = int64(4096)

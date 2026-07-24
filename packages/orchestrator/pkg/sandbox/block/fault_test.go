@@ -5,7 +5,6 @@ package block
 import (
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime/debug"
 	"testing"
@@ -19,27 +18,12 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-const faultChildEnv = "BLOCK_FAULT_TEST_CHILD"
-
-// Runs in a subprocess: an unconverted fault would kill the test binary.
+// If the fault conversion regresses, this test crashes the whole test binary
+// with "unexpected fault address" — that crash is the failure signal and
+// points at the unguarded copy.
+//
+//nolint:paralleltest // swaps the package-level fault counter
 func TestRunFaultSafe_MmapFault(t *testing.T) {
-	if os.Getenv(faultChildEnv) == "1" {
-		runFaultSafeMmapFaultChild(t)
-
-		return
-	}
-	t.Parallel()
-
-	cmd := exec.Command(os.Args[0], "-test.run=^TestRunFaultSafe_MmapFault$", "-test.v")
-	cmd.Env = append(os.Environ(), faultChildEnv+"=1")
-	out, err := cmd.CombinedOutput()
-	require.NoErrorf(t, err,
-		"child did not survive the mmap fault: RunFaultSafe must convert SIGBUS to an error, not crash the process\n%s", out)
-}
-
-func runFaultSafeMmapFaultChild(t *testing.T) {
-	t.Helper()
-
 	reader := swapMemoryFaultCounter(t)
 
 	const size = 2 * 4096
