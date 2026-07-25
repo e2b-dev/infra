@@ -1,6 +1,8 @@
 name: Out of Order Migrations
 
-on: [workflow_call]
+on:
+  workflow_call:
+  merge_group:
 
 jobs:
   check:
@@ -15,16 +17,27 @@ jobs:
 
       - name: Compare migrations
         run: |
-          # Get all migration versions from main
-          git ls-tree -r origin/main --name-only | grep '^packages/db/migrations/' | grep -oE '[0-9]{14}' | sort -n > main_versions.txt
-          
-          # Find the highest version number from main
-          HIGHEST_MAIN=$(tail -n1 main_versions.txt)
+          # Fail if any two migrations share the same 14-digit version. We check the
+          # final directory state (not new-vs-main), which is both simpler and correct:
+          # a duplicate is a duplicate regardless of which commit introduced it. On a
+          # `merge_group` event the checkout contains every queued PR, so this catches
+          # collisions between commits that would each pass against main on their own.
+          DUPES=$(ls packages/db/migrations/ | grep -oE '^[0-9]{14}' | sort | uniq -d)
+          if [ -n "$DUPES" ]; then
+            echo "❌ Duplicate migration version(s):"
+            echo "$DUPES"
+            echo "Two migrations share the same timestamp. Regenerate one with 'date +%Y%m%d%H%M%S'."
+            exit 1
+          fi
+
+          # Find the highest migration version on main. "Out of order" is inherently
+          # relative to what's already applied, so this check still needs main.
+          HIGHEST_MAIN=$(git ls-tree -r origin/main --name-only | grep '^packages/db/migrations/' | grep -oE '[0-9]{14}' | sort -n | tail -n1)
           echo "Highest main migration version: $HIGHEST_MAIN"
-        
-          # Find newly added migration files in this PR
+
+          # Newly added migrations must be newer than everything on main and must not
+          # use placeholder timestamps.
           NEW_FILES=$(git diff --name-status origin/main -- packages/db/migrations/ | grep '^A' | awk '{print $2}')
-          
           for file in $NEW_FILES; do
             version=$(basename "$file" | grep -oE '^[0-9]{14}')
             echo "Checking new migration version: $version"
@@ -32,7 +45,16 @@ jobs:
               echo "❌ Migration $file is out of order! ($version <= $HIGHEST_MAIN)"
               exit 1
             fi
+
+            # Reject placeholder timestamps (last 6 digits = HHMMSS) that cause
+            # same-day version collisions. Use a real timestamp instead:
+            #   date +%Y%m%d%H%M%S
+            time_part="${version: -6}"
+            if [ "$time_part" = "120000" ] || [ "$time_part" = "000000" ]; then
+              echo "❌ Migration $file uses a placeholder timestamp ($time_part)! Generate a real timestamp with 'date +%Y%m%d%H%M%S'."
+              exit 1
+            fi
           done
-          
-          echo "✅ All new migrations are in correct order."
+
+          echo "✅ All new migrations are in correct order and free of collisions."
   

@@ -18,7 +18,6 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
-	"github.com/gin-contrib/cors"
 	limits "github.com/gin-contrib/size"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -157,33 +156,7 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 		sharedmiddleware.RequestTimeout(requestTimeout), //nolint:contextcheck // Gin middleware sets context via c.Request.WithContext
 	)
 
-	corsConfig := cors.DefaultConfig()
-	// Allow all origins
-	corsConfig.AllowAllOrigins = true
-	corsConfig.AllowHeaders = []string{
-		// Default headers
-		"Origin",
-		"Content-Length",
-		"Content-Type",
-		"User-Agent",
-		// API Key header
-		"Authorization",
-		"X-API-Key",
-		auth.HeaderTeamID,
-		// Custom headers sent from SDK
-		"browser",
-		"lang",
-		"lang_version",
-		"machine",
-		"os",
-		"package_version",
-		"processor",
-		"publisher",
-		"release",
-		"sdk_runtime",
-		"system",
-	}
-	r.Use(cors.New(corsConfig))
+	r.Use(customMiddleware.CORS())
 
 	// Create a team API Key auth validator
 	AuthenticationFunc := auth.CreateAuthenticationFunc(

@@ -123,6 +123,19 @@ components:
       schema:
         type: string
 
+  headers:
+    XNextToken:
+      description: Cursor to fetch the next page of results, if more exist
+      schema:
+        type: string
+    XTotalRunning:
+      description: >
+        Number of running sandboxes matching the filters, before pagination is applied.
+        Only present when running sandboxes were requested.
+      schema:
+        type: integer
+        format: int32
+
   responses:
     "400":
       description: Bad request
@@ -298,7 +311,9 @@ components:
           items:
             type: string
         egressProxy:
-          $ref: "#/components/schemas/SandboxEgressProxyConfig"
+          allOf:
+            - $ref: "#/components/schemas/SandboxEgressProxyConfig"
+          x-not-implemented: true
         maskRequestHost:
           type: string
           description: Specify host mask which will be used for all sandbox requests
@@ -328,7 +343,9 @@ components:
           items:
             type: string
         egressProxy:
-          $ref: "#/components/schemas/SandboxEgressProxyConfig"
+          allOf:
+            - $ref: "#/components/schemas/SandboxEgressProxyConfig"
+          x-not-implemented: true
         rules:
           type: object
           description: Per-domain transform rules. Replaces all existing rules when provided.
@@ -365,6 +382,7 @@ components:
     SandboxEgressProxyConfig:
       type: object
       nullable: true
+      x-not-implemented: true
       description: >-
         SOCKS5 proxy for sandbox egress. Outbound TCP is tunneled through the
         proxy after allow/deny filtering; the sandbox is unaware. Domain-matched
@@ -2281,6 +2299,11 @@ paths:
       responses:
         "200":
           description: Successfully returned all running sandboxes
+          headers:
+            X-Next-Token:
+              $ref: "#/components/headers/XNextToken"
+            X-Total-Running:
+              $ref: "#/components/headers/XTotalRunning"
           content:
             application/json:
               schema:
@@ -2832,6 +2855,9 @@ paths:
       responses:
         "200":
           description: Successfully returned snapshots
+          headers:
+            X-Next-Token:
+              $ref: "#/components/headers/XNextToken"
           content:
             application/json:
               schema:
@@ -2903,9 +2929,7 @@ paths:
           description: Successfully returned all templates
           headers:
             X-Next-Token:
-              description: Cursor to fetch the next page of results, if more exist
-              schema:
-                type: string
+              $ref: "#/components/headers/XNextToken"
           content:
             application/json:
               schema:
@@ -3070,6 +3094,9 @@ paths:
       responses:
         "200":
           description: Successfully returned the template with its builds
+          headers:
+            X-Next-Token:
+              $ref: "#/components/headers/XNextToken"
           content:
             application/json:
               schema:

@@ -16,7 +16,10 @@ import (
 	"time"
 
 	"github.com/RoaringBitmap/roaring/v2"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -322,6 +325,92 @@ func TestDedupedMemfdCache_InflightServesFromMemfd(t *testing.T) {
 	require.NoError(t, d.done.SetValue(nil))
 	_, ok := d.tryInflightRead(make([]byte, ps), 0)
 	require.False(t, ok)
+}
+
+// Pages served from the memfd increment inflight_serve_pages by the page count
+// (not once per call) and are tagged by phase: the drain-window path
+// (tryInflightRead, via ReadAt/Slice) as "drain", the provisional compare-window
+// path (ServeMemfd) as "provisional". A read bypassed after the drain resolves
+// must not be counted.
+//
+//nolint:paralleltest // swaps the package-level inflightServePagesCounter
+func TestDedupedMemfdCache_InflightServeMetric(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+
+	prev := inflightServePagesCounter
+	inflightServePagesCounter = utils.Must(mp.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block").
+		Int64Counter("orchestrator.memfd.inflight_serve_pages"))
+	t.Cleanup(func() { inflightServePagesCounter = prev })
+
+	ps := int64(header.PageSize)
+	memfd, _ := newTestMemfd(t, ps*6)
+	t.Cleanup(func() { _ = memfd.Close() })
+
+	dirty := roaring.New()
+	dirty.AddMany([]uint32{0, 2, 5})
+
+	d := &DedupedMemfdCache{
+		done:     utils.NewSetOnce[*Cache](),
+		inflight: true,
+		memfd:    memfd,
+		index:    buildPackedIndex(dirty),
+	}
+
+	// Drain-window path (tryInflightRead via ReadAt/Slice): 3 ReadAt + 1 Slice,
+	// each one page → 4 pages tagged phase=drain.
+	for i := range 3 {
+		_, err := d.ReadAt(make([]byte, ps), int64(i)*ps)
+		require.NoError(t, err)
+	}
+	_, err := d.Slice(ps, ps)
+	require.NoError(t, err)
+
+	// Provisional compare-window path (ServeMemfd): a two-page serve then a
+	// one-page serve → 3 pages tagged phase=provisional, across 2 calls. The
+	// two-page call proves pages are counted per page, not once per call.
+	_, err = d.ServeMemfd(make([]byte, 2*ps), 0)
+	require.NoError(t, err)
+	_, err = d.ServeMemfd(make([]byte, ps), ps)
+	require.NoError(t, err)
+
+	// A read bypassed after the drain resolves is not served from the memfd.
+	require.NoError(t, d.done.SetValue(nil))
+	_, ok := d.tryInflightRead(make([]byte, ps), 0)
+	require.False(t, ok)
+
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(t.Context(), &rm))
+	byPhase := collectCounterByPhase(t, rm, "orchestrator.memfd.inflight_serve_pages")
+	assert.Equal(t, int64(4), byPhase["drain"], "drain pages: 3 ReadAt + 1 Slice")
+	assert.Equal(t, int64(3), byPhase["provisional"], "provisional pages: a 2-page serve + a 1-page serve")
+}
+
+// collectCounterByPhase totals a named int64 monotonic-sum metric's datapoints
+// keyed by their "phase" label value.
+func collectCounterByPhase(t *testing.T, rm metricdata.ResourceMetrics, name string) map[string]int64 {
+	t.Helper()
+
+	out := map[string]int64{}
+	found := false
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != name {
+				continue
+			}
+			found = true
+			sum, ok := m.Data.(metricdata.Sum[int64])
+			require.True(t, ok, "metric %q is not an int64 sum", name)
+			for _, dp := range sum.DataPoints {
+				phase, ok := dp.Attributes.Value("phase")
+				require.True(t, ok, "datapoint missing phase attribute")
+				out[phase.AsString()] += dp.Value
+			}
+		}
+	}
+	require.True(t, found, "metric %q not found in collected metrics", name)
+
+	return out
 }
 
 // End-to-end: drive a real dedup goroutine with inflight serving on and hammer
