@@ -78,6 +78,9 @@ mkdir -p /etc/tmpfiles.d
 echo 'z /dev/fuse 0666 root root -' > /etc/tmpfiles.d/fuse.conf
 
 echo "Setting up shell"
+# Premade images (NixOS) generate /etc/profile.d and /root at first
+# activation; create them so the drop-ins below always have a home.
+mkdir -p /etc/profile.d /root
 echo "export SHELL='/bin/bash'" >/etc/profile.d/shell.sh
 echo "export PS1='\w \$ '" >/etc/profile.d/prompt.sh
 echo "export PS1='\w \$ '" >>"/etc/profile"
@@ -152,6 +155,8 @@ e2b_init_setup
 rm -rf /etc/machine-id
 
 echo "Linking $E2B_INIT_BIN to init"
+# Bare/premade images may not carry /usr/sbin at all.
+mkdir -p /usr/sbin
 ln -sf "$E2B_INIT_BIN" /usr/sbin/init
 # /sbin is a real directory on non-usr-merged distros (Alpine) where the line
 # above doesn't reach the /sbin/init the kernel is pointed at; link it too.

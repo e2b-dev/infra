@@ -141,8 +141,14 @@ else
 fi`,
 
 	// Premade NixOS: the image's declarative configuration owns everything
-	// this block does imperatively on other families.
-	InitNixOS: `echo "NixOS image is premade and declaratively configured; skipping imperative init setup"`,
+	// this block does imperatively on other families — including the envd
+	// unit the OCI layer bakes for the systemd family.
+	InitNixOS: `echo "NixOS is declaratively configured; removing the baked systemd drop-ins"
+# NixOS activation manages /etc/systemd/system as a symlink into the store;
+# with foreign files in the way, setup-etc refuses to create it and systemd
+# boots with NO units at all ("Unit default.target not found", observed on
+# the real console). The premade image's configuration declares envd itself.
+rm -rf /etc/systemd/system`,
 }
 
 // indentBlock indents every non-empty line of a shell block for embedding
