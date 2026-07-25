@@ -13,9 +13,10 @@ SET statement_timeout = '1h';
 -- index cuts real WAL and dead-tuple volume.
 DROP INDEX CONCURRENTLY IF EXISTS public.idx_env_builds_status;
 
--- The migrator session is reused for subsequent migrations — don't leak the
--- widened bound into them.
-RESET statement_timeout;
+-- The migrator session is reused for subsequent migrations: restore its
+-- baseline (scripts/migrator.go sets 3h per connection; RESET would clear
+-- to the unbounded server default instead).
+SET statement_timeout = '3h';
 
 -- +goose Down
 -- +goose NO TRANSACTION
@@ -32,4 +33,5 @@ DROP INDEX CONCURRENTLY IF EXISTS public.idx_env_builds_status;
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_env_builds_status
     ON public.env_builds (status);
 
-RESET statement_timeout;
+-- Restore the migrator session baseline (see Up).
+SET statement_timeout = '3h';
