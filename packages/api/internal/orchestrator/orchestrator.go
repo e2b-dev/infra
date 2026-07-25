@@ -115,6 +115,7 @@ func New(
 	analyticsInstance, err := analyticscollector.NewAnalytics(
 		config.AnalyticsCollectorHost,
 		config.AnalyticsCollectorAPIToken,
+		config.AnalyticsCollectorTLS,
 	)
 	if err != nil {
 		logger.L().Error(ctx, "Error initializing Analytics client", zap.Error(err))
