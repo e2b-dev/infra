@@ -42,11 +42,9 @@ func TestShouldWriteLastUsedConcurrent(t *testing.T) {
 	wins := make(chan bool, n)
 	var wg sync.WaitGroup
 	for range n {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			wins <- shouldWriteLastUsed(key, later)
-		}()
+		})
 	}
 	wg.Wait()
 	close(wins)
