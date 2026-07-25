@@ -8,7 +8,7 @@ SET statement_timeout = '1h';
 -- Exact duplicate of snapshots_sandbox_id_unique (same single column, same
 -- order): the planner always has the unique index available, and this copy
 -- recorded 0 lifetime scans in pg_stat_user_indexes while every snapshot
--- write paid its ~6 GiB maintenance tax.
+-- write paid its maintenance tax.
 DROP INDEX CONCURRENTLY IF EXISTS public.idx_snapshots_sandbox_id;
 
 -- The migrator session is reused for subsequent migrations: restore its
