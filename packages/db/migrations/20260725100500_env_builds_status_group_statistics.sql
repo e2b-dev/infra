@@ -5,14 +5,14 @@
 -- hangs unbounded nor dies to a short session default.
 SET statement_timeout = '1h';
 
--- status_group='pending' rows are ~0.006% of the table (measured 19,906 of
--- ~333M), which the default statistics sample (~30k rows) statistically
--- never catches: 'pending' is absent from the column's MCV list, so the
--- planner estimates ~11 rows and drives InvalidateUnstartedTemplateBuilds
--- from the pending-scan side — ~20k index probes into env_build_assignments
--- per execution instead of one selective (env_id, tag) lookup. A larger
--- per-column sample makes rare-but-hot status groups visible and flips the
--- join order back.
+-- status_group='pending' is rare enough (well under a hundredth of a percent
+-- of the table, measured in production) that the default statistics sample
+-- statistically never catches it: 'pending' is absent from the column's MCV
+-- list, so the planner underestimates it by orders of magnitude and drives
+-- InvalidateUnstartedTemplateBuilds from the pending-scan side — tens of
+-- thousands of index probes into env_build_assignments per execution instead
+-- of one selective (env_id, tag) lookup. A larger per-column sample makes
+-- rare-but-hot status groups visible and flips the join order back.
 ALTER TABLE public.env_builds ALTER COLUMN status_group SET STATISTICS 2000;
 
 -- Rebuild the column stats immediately: autoanalyze would otherwise wait
