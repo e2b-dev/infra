@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
@@ -16,6 +18,23 @@ import (
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/auth/pkg/auth/internal/service")
+
+// last_used is minute-grade observability metadata, but updating it on every
+// authenticated request makes team_api_keys one of the highest dead-tuple
+// producers in the registry. One write per key per window keeps it fresh
+// enough at a fraction of the churn.
+const lastUsedWriteWindow = time.Minute
+
+var lastUsedWrites sync.Map // api key hash -> time.Time of last write
+
+func shouldWriteLastUsed(hashedKey string, now time.Time) bool {
+	if v, ok := lastUsedWrites.Load(hashedKey); ok && now.Sub(v.(time.Time)) < lastUsedWriteWindow {
+		return false
+	}
+	lastUsedWrites.Store(hashedKey, now)
+
+	return true
+}
 
 type authStoreImpl struct {
 	authDB *authdb.Client
@@ -44,14 +63,16 @@ func (s *authStoreImpl) GetTeamByHashedAPIKey(ctx context.Context, hashedKey str
 		return nil, err
 	}
 
-	go func() {
-		// Run the update in a separate context to avoid an extra latency
-		ctx := context.WithoutCancel(ctx)
-		updateErr := s.authDB.UpdateLastTimeUsed(ctx, hashedKey)
-		if updateErr != nil {
-			logger.L().Error(ctx, "failed to update last time used", zap.Error(updateErr))
-		}
-	}()
+	if shouldWriteLastUsed(hashedKey, time.Now()) {
+		go func() {
+			// Run the update in a separate context to avoid an extra latency
+			ctx := context.WithoutCancel(ctx)
+			updateErr := s.authDB.UpdateLastTimeUsed(ctx, hashedKey)
+			if updateErr != nil {
+				logger.L().Error(ctx, "failed to update last time used", zap.Error(updateErr))
+			}
+		}()
+	}
 
 	team := types.NewTeam(&result.Team, &result.TeamLimit)
 
