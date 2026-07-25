@@ -212,13 +212,14 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 		return fmt.Errorf("failed to replace envd binary: %w", err)
 	}
 
-	// Step 3: Restart the envd service (systemd family, or OpenRC on Alpine)
-	// Error is ignored because it's expected the envd connection will be lost
+	// Step 3: Restart the envd service (systemd family, or OpenRC on Alpine).
+	// The overall error is ignored because the restart kills the very envd
+	// this command runs through — the connection loss is expected.
 	_ = sandboxtools.RunCommand(
 		ctx,
 		lb.proxy,
 		sbx.Runtime.SandboxID,
-		"systemctl restart envd || rc-service envd restart",
+		"if command -v systemctl >/dev/null 2>&1; then systemctl restart envd; else rc-service envd restart; fi",
 		metadata.Context{User: "root"},
 	)
 

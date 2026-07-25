@@ -60,6 +60,12 @@ type Profile struct {
 	CABundle string
 	// CARefresh regenerates the trust store (differs: update-ca-certificates vs update-ca-trust).
 	CARefresh string
+	// Bootstrap, when set, runs FIRST in the profile's selector arm — before
+	// any shared provisioning step. Premade images with no FHS userland
+	// (NixOS: nothing in /bin//usr/bin before the first activation) use it to
+	// put the baked busybox's applets on PATH so the shared body's external
+	// commands (mkdir, tee, passwd, ...) resolve.
+	Bootstrap string
 }
 
 // Profiles is the declared registry (systemd family, v1). The package names,
@@ -150,6 +156,36 @@ var Profiles = []Profile{
 		// update-ca-certificates that writes the bundle at CABundle.
 		CARefresh: "update-ca-certificates",
 	},
+	{
+		Key:  "nixos",
+		Init: InitNixOS,
+		IDs:  []string{"nixos"},
+		// NixOS images are PREMADE: built from the E2B NixOS configuration
+		// that declares everything provision.sh installs imperatively
+		// elsewhere (envd unit, chrony, sshd, default user, sudoers). There
+		// is no imperative package manager to drive — an image missing its
+		// declared parts is a broken premade image, not something to repair
+		// here (qa.md QA13).
+		Packages:     nil,
+		PkgQueryBody: "true",
+		PkgInstall:   `echo "[provision] ERROR: NixOS images are premade — packages must be declared in the image's NixOS configuration" >&2; exit 1`,
+		// Stage-2 init of the system closure, reachable via the profile
+		// symlink baked into the premade image.
+		InitBinary:   "/nix/var/nix/profiles/system/init",
+		TimeSyncUnit: "chronyd",
+		AdminGroup:   "wheel",
+		CABundle:     "/etc/ssl/certs/ca-certificates.crt",
+		// The bundle appears at first activation (environment.etc); nothing
+		// can regenerate it pre-activation and envd's unit comes from the
+		// image's own configuration — an explicit, stated code path.
+		CARefresh: `echo "NixOS: the CA bundle is provided by the image configuration at first activation; nothing to refresh at provision time"`,
+		// No FHS userland before the first activation — put the baked
+		// busybox's applets on PATH for the shared provisioning body.
+		Bootstrap: `E2B_BB_DIR=/run/e2b-tools
+    /usr/bin/busybox mkdir -p "$E2B_BB_DIR"
+    /usr/bin/busybox --install -s "$E2B_BB_DIR"
+    export PATH="$E2B_BB_DIR:$PATH"`,
+	},
 }
 
 // SupportedIDs returns every os-release ID the v1 selector accepts.
@@ -174,6 +210,9 @@ func ShellSelector() string {
 	b.WriteString(`case "$E2B_DISTRO_ID" in` + "\n")
 	for _, p := range Profiles {
 		fmt.Fprintf(&b, "  %s)\n", strings.Join(p.IDs, "|"))
+		if p.Bootstrap != "" {
+			fmt.Fprintf(&b, "    %s\n", p.Bootstrap)
+		}
 		fmt.Fprintf(&b, "    E2B_PACKAGES=%q\n", strings.Join(p.Packages, " "))
 		fmt.Fprintf(&b, "    e2b_pkg_query() { %s; }\n", p.PkgQueryBody)
 		fmt.Fprintf(&b, "    e2b_pkg_install() { %s; }\n", p.PkgInstall)

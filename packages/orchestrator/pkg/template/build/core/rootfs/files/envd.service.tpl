@@ -46,11 +46,9 @@ LimitCORE=infinity
 # guaranteed present for the sandbox's routable lifetime. The only gap is guest
 # units that auto-start and egress over TLS before /init; that is accepted
 # (revisit if a template needs boot-time egress).
-# The regenerate fallback is Debian-only (update-ca-certificates does not exist
-# on the RHEL/Arch family, where provisioning links the bundle to the
-# update-ca-trust output instead) — a missing tool must not fail the unit and
-# block envd forever; a degraded trust store is recoverable, a dead envd is not.
-ExecStartPre=/bin/sh -c 'mountpoint -q /etc/ssl/certs || { mkdir -p /run/e2b/certs && { tar -C /run/e2b/certs -xf /usr/local/share/e2b/ssl-certs.tar 2>/dev/null || cp -a /etc/ssl/certs/. /run/e2b/certs/ 2>/dev/null; }; mount --bind /run/e2b/certs /etc/ssl/certs; } && ([ -s /etc/ssl/certs/ca-certificates.crt ] || ! command -v update-ca-certificates >/dev/null 2>&1 || update-ca-certificates)'
+# The seeding logic is shared with the OpenRC service (Alpine) and never fails
+# the unit — a degraded trust store is recoverable, a dead envd is not.
+ExecStartPre=/usr/local/bin/e2b-seed-certs
 ExecStart=/usr/bin/envd
 Nice=-20
 IOSchedulingClass=realtime

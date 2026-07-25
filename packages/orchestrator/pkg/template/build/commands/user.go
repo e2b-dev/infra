@@ -104,9 +104,10 @@ func addToSudoers(
 		prefix,
 		sandboxID,
 		// Admin group differs by distro (sudo on Debian/Ubuntu, wheel on
-		// RHEL/Arch); the NOPASSWD sudoers entry below is what actually
-		// grants privileges (FEAT-145).
-		fmt.Sprintf("usermod -aG sudo %[1]s 2>/dev/null || usermod -aG wheel %[1]s", userArg),
+		// RHEL/Arch/Alpine); the NOPASSWD sudoers entry below is what
+		// actually grants privileges (FEAT-145). Neither group existing is a
+		// real error, not something to swallow.
+		fmt.Sprintf(`if getent group sudo >/dev/null; then usermod -aG sudo %[1]s; elif getent group wheel >/dev/null; then usermod -aG wheel %[1]s; else echo "neither the sudo nor the wheel group exists on this image" >&2; exit 1; fi`, userArg),
 		metadata.Context{
 			User:    "root",
 			EnvVars: cmdMetadata.EnvVars,

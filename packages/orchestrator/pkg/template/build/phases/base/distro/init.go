@@ -24,6 +24,14 @@ const (
 	// /etc/inittab → OpenRC runlevels; envd autostarts via the baked
 	// /etc/init.d/envd (envd.openrc.tpl) added to the default runlevel.
 	InitOpenRC InitSystem = "openrc"
+
+	// InitNixOS — premade NixOS images. Stage-2 init runs the system
+	// activation and execs the closure's systemd; every service (envd,
+	// chrony, sshd) is wired declaratively by the image's own NixOS
+	// configuration, so provisioning neither enables nor masks anything —
+	// offline systemctl couldn't resolve store-path units pre-activation
+	// anyway.
+	InitNixOS InitSystem = "nixos"
 )
 
 // initSetup is the provisioning-time shell block per init system, exposed to
@@ -59,13 +67,15 @@ systemctl enable envd.service
 echo "Disable chrony-wait"
 # chrony-wait blocks multi-user.target until the first clock sync (~8s);
 # chrony still syncs in the background, nothing needs to wait for it.
-systemctl mask chrony-wait.service 2>/dev/null || true
+# masking a unit that doesn't exist on this distro still succeeds (systemctl
+# mask just writes the /dev/null symlink), so a failure here is real.
+systemctl mask chrony-wait.service
 
 echo "Disable slow boot units not needed in the sandbox"
 # binfmt registrations (foreign-arch exec) take ~1s of CPU early in boot and
 # compete with envd start; e2scrub is for LVM-backed ext4 only.
-systemctl mask systemd-binfmt.service 2>/dev/null || true
-systemctl mask e2scrub_reap.service 2>/dev/null || true`,
+systemctl mask systemd-binfmt.service
+systemctl mask e2scrub_reap.service`,
 
 	// OpenRC (Alpine). The image is still running the one-shot PROVISIONING
 	// inittab (it is what launched this script); replace it with the real
@@ -84,11 +94,21 @@ echo "Registering base OpenRC services"
 # real installs): kernel filesystems in sysinit, system prep in boot. bootmisc
 # also wipes /tmp in the boot runlevel, so envd (default runlevel) can never
 # race the wipe — the ordering systemd needs After= for is inherent here.
+# Which scripts exist varies by image (mdev vs udev, procfs presence) — check
+# and say so instead of swallowing rc-update errors.
 for svc in devfs sysfs procfs dmesg mdev; do
-    rc-update add "$svc" sysinit 2>/dev/null || true
+    if [ -e "/etc/init.d/$svc" ]; then
+        rc-update add "$svc" sysinit
+    else
+        echo "OpenRC service $svc not present on this image; skipping"
+    fi
 done
 for svc in localmount sysctl hostname bootmisc; do
-    rc-update add "$svc" boot 2>/dev/null || true
+    if [ -e "/etc/init.d/$svc" ]; then
+        rc-update add "$svc" boot
+    else
+        echo "OpenRC service $svc not present on this image; skipping"
+    fi
 done
 
 # The FC guest's eth0 is configured by the kernel (ip=), but OpenRC services
@@ -97,7 +117,11 @@ done
 # down with it. A loopback-only interfaces file lets networking start (and
 # provide "net") without touching the kernel-managed eth0.
 printf 'auto lo\niface lo inet loopback\n' > /etc/network/interfaces
-rc-update add networking boot 2>/dev/null || true
+if [ -e /etc/init.d/networking ]; then
+    rc-update add networking boot
+else
+    echo "OpenRC networking service not present on this image; services needing 'net' must not be enabled"
+fi
 
 echo "Enable time synchronization ($E2B_TIMESYNC_UNIT)"
 rc-update add "$E2B_TIMESYNC_UNIT" default
@@ -110,7 +134,15 @@ chmod 0755 /etc/init.d/envd
 rc-update add envd default
 
 echo "Enable sshd"
-rc-update add sshd default 2>/dev/null || true`,
+if [ -e /etc/init.d/sshd ]; then
+    rc-update add sshd default
+else
+    echo "sshd service not present on this image; skipping"
+fi`,
+
+	// Premade NixOS: the image's declarative configuration owns everything
+	// this block does imperatively on other families.
+	InitNixOS: `echo "NixOS image is premade and declaratively configured; skipping imperative init setup"`,
 }
 
 // indentBlock indents every non-empty line of a shell block for embedding

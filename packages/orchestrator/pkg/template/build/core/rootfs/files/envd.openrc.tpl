@@ -30,21 +30,12 @@ depend() {
 }
 
 start_pre() {
-    # Seed a tmpfs-backed /etc/ssl/certs exactly like envd.service's
-    # ExecStartPre: prefer the ssl-certs.tar packed as the build's last guest
-    # step, fall back to copying the current cert dir, and never fail the
-    # service over a missing regeneration tool.
-    if ! mountpoint -q /etc/ssl/certs; then
-        mkdir -p /run/e2b/certs
-        tar -C /run/e2b/certs -xf /usr/local/share/e2b/ssl-certs.tar 2>/dev/null \
-            || cp -a /etc/ssl/certs/. /run/e2b/certs/ 2>/dev/null
-        mount -o bind /run/e2b/certs /etc/ssl/certs
-    fi
-    [ -s /etc/ssl/certs/ca-certificates.crt ] \
-        || ! command -v update-ca-certificates >/dev/null 2>&1 \
-        || update-ca-certificates
+    # Shared with envd.service's ExecStartPre; warns-and-continues by design.
+    /usr/local/bin/e2b-seed-certs
     # systemd-tmpfiles applies the fuse.conf tmpfiles.d rule on the systemd
     # family; OpenRC has no tmpfiles pass, so set the mode here.
-    chmod 666 /dev/fuse 2>/dev/null || true
+    if [ -e /dev/fuse ]; then
+        chmod 666 /dev/fuse
+    fi
     return 0
 }

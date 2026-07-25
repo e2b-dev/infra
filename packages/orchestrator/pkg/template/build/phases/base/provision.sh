@@ -63,8 +63,14 @@ fi
 # Ensure the system CA trust bundle exists at the path envd expects. On Debian
 # the ca-certificates package creates it; on RHEL it is generated under /etc/pki
 # by update-ca-trust, so e2b_ca_refresh regenerates/exposes it (FEAT-145).
-echo "Ensuring CA trust bundle at $E2B_CA_BUNDLE"
-[ -s "$E2B_CA_BUNDLE" ] || e2b_ca_refresh || true
+# A refresh failure fails provisioning (set -e) — a sandbox with silently
+# broken TLS trust is worse than a legible build error. Profiles where the
+# bundle legitimately appears later (NixOS: at first activation) say so in
+# their e2b_ca_refresh instead of pretending to regenerate.
+if [ ! -s "$E2B_CA_BUNDLE" ]; then
+    echo "CA trust bundle missing at $E2B_CA_BUNDLE — running the profile's refresh"
+    e2b_ca_refresh
+fi
 
 # Set /dev/fuse permissions to 666 for non-root access
 # Use systemd-tmpfiles to set permissions at boot
@@ -81,7 +87,14 @@ echo "Use .bashrc and .profile"
 echo "if [ -f ~/.bashrc ]; then source ~/.bashrc; fi; if [ -f ~/.profile ]; then source ~/.profile; fi" >>/etc/profile
 
 echo "Remove root password"
-passwd -d root
+# Premade images (NixOS) manage accounts declaratively and have no /etc/passwd
+# before their first activation — nothing to remove there, and that is a
+# deliberate code path, not a swallowed failure.
+if [ -f /etc/passwd ]; then
+    passwd -d root
+else
+    echo "No /etc/passwd yet (declaratively managed image); root password is the image configuration's responsibility"
+fi
 
 echo "Setting up chrony"
 mkdir -p /etc/chrony

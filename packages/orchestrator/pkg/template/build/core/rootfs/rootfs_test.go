@@ -90,7 +90,30 @@ func TestAdditionalOCILayers(t *testing.T) {
 
 		keysIter := maps.Keys(actualFiles)
 		keys := slices.Collect(keysIter)
-		assert.Len(t, keys, 16)
+		assert.Len(t, keys, 18)
+
+		// The provisioning boot must be self-contained on the baked busybox:
+		// bare images (premade NixOS, distroless) have no /bin/sh, and
+		// busybox init hands any inittab line with shell metacharacters to
+		// /bin/sh — so the pipeline lives in the runner script and every
+		// inittab entry is a plain exec.
+		inittab := actualFiles["etc/inittab"]
+		require.NotEmpty(t, inittab)
+		for _, line := range strings.Split(inittab, "\n") {
+			if !strings.HasPrefix(line, "::") {
+				continue
+			}
+			assert.NotContains(t, line, "|", "inittab entries must not need /bin/sh: %s", line)
+			assert.NotContains(t, line, "$", "inittab entries must not need /bin/sh: %s", line)
+		}
+		runner := actualFiles["usr/local/bin/e2b-provision-runner"]
+		require.NotEmpty(t, runner, "provision runner must be baked")
+		assert.Contains(t, runner, "#!/usr/bin/busybox ash")
+
+		// Both init families' envd services seed certs via the shared script.
+		seedCerts := actualFiles["usr/local/bin/e2b-seed-certs"]
+		require.NotEmpty(t, seedCerts, "cert seeding script must be baked")
+		assert.Contains(t, actualFiles["etc/systemd/system/envd.service"], "ExecStartPre=/usr/local/bin/e2b-seed-certs")
 
 		// envd must be preset-enabled: first boot (machine-id is removed by
 		// provisioning) applies the distro preset policy, and the RHEL
