@@ -5,8 +5,8 @@
 -- hangs unbounded nor dies to a short session default.
 SET statement_timeout = '1h';
 
--- Plain btree on the raw status column: 10 lifetime scans in
--- pg_stat_user_indexes against ~3.6 GiB of size, while every build
+-- Plain btree on the raw status column: a negligible number of lifetime scans in
+-- pg_stat_user_indexes, while every build
 -- insert/supersede pays its maintenance write. Status-filtered access runs
 -- on the status_group partial indexes instead. env_builds is the single
 -- most write-amplified table (0% HOT updates, 8 indexes), so each dropped
