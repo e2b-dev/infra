@@ -11,9 +11,10 @@ SET statement_timeout = '1h';
 -- write paid its ~6 GiB maintenance tax.
 DROP INDEX CONCURRENTLY IF EXISTS public.idx_snapshots_sandbox_id;
 
--- The migrator session is reused for subsequent migrations — don't leak the
--- widened bound into them.
-RESET statement_timeout;
+-- The migrator session is reused for subsequent migrations: restore its
+-- baseline (scripts/migrator.go sets 3h per connection; RESET would clear
+-- to the unbounded server default instead).
+SET statement_timeout = '3h';
 
 -- +goose Down
 -- +goose NO TRANSACTION
@@ -31,4 +32,5 @@ DROP INDEX CONCURRENTLY IF EXISTS public.idx_snapshots_sandbox_id;
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_snapshots_sandbox_id
     ON public.snapshots (sandbox_id);
 
-RESET statement_timeout;
+-- Restore the migrator session baseline (see Up).
+SET statement_timeout = '3h';
