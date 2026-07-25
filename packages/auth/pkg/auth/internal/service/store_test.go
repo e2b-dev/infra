@@ -6,6 +6,8 @@ import (
 )
 
 func TestShouldWriteLastUsed(t *testing.T) {
+	t.Parallel()
+
 	base := time.Now()
 
 	if !shouldWriteLastUsed("key-a", base) {
