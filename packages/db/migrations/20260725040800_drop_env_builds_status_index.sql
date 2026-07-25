@@ -13,6 +13,10 @@ SET statement_timeout = '1h';
 -- index cuts real WAL and dead-tuple volume.
 DROP INDEX CONCURRENTLY IF EXISTS public.idx_env_builds_status;
 
+-- The migrator session is reused for subsequent migrations — don't leak the
+-- widened bound into them.
+RESET statement_timeout;
+
 -- +goose Down
 -- +goose NO TRANSACTION
 
@@ -27,3 +31,5 @@ DROP INDEX CONCURRENTLY IF EXISTS public.idx_env_builds_status;
 
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_env_builds_status
     ON public.env_builds (status);
+
+RESET statement_timeout;
