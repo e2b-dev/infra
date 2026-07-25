@@ -11,6 +11,10 @@ SET statement_timeout = '1h';
 -- write paid its ~6 GiB maintenance tax.
 DROP INDEX CONCURRENTLY IF EXISTS public.idx_snapshots_sandbox_id;
 
+-- The migrator session is reused for subsequent migrations — don't leak the
+-- widened bound into them.
+RESET statement_timeout;
+
 -- +goose Down
 -- +goose NO TRANSACTION
 
@@ -26,3 +30,5 @@ DROP INDEX CONCURRENTLY IF EXISTS public.idx_snapshots_sandbox_id;
 
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_snapshots_sandbox_id
     ON public.snapshots (sandbox_id);
+
+RESET statement_timeout;
