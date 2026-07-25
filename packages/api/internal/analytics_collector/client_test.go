@@ -64,7 +64,7 @@ func TestNewAnalyticsWithoutHostIsNoop(t *testing.T) {
 	assert.Nil(t, analytics.connection)
 
 	res, err := analytics.InstanceStarted(t.Context(), &InstanceStartedEvent{})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Nil(t, res)
 
 	assert.NoError(t, analytics.Close())
