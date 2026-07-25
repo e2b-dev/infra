@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -25,15 +26,34 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/auth/pkg/auth/intern
 // enough at a fraction of the churn.
 const lastUsedWriteWindow = time.Minute
 
-var lastUsedWrites sync.Map // api key hash -> time.Time of last write
+var (
+	lastUsedWrites     sync.Map // api key hash -> time.Time of last write
+	lastUsedCallsSweep atomic.Int64
+)
 
 func shouldWriteLastUsed(hashedKey string, now time.Time) bool {
-	if v, ok := lastUsedWrites.Load(hashedKey); ok && now.Sub(v.(time.Time)) < lastUsedWriteWindow {
+	// Occasionally drop entries idle for many windows so the map tracks the
+	// working set of keys, not every key ever seen by the process.
+	if lastUsedCallsSweep.Add(1)%4096 == 0 {
+		lastUsedWrites.Range(func(k, v any) bool {
+			if now.Sub(v.(time.Time)) > 10*lastUsedWriteWindow {
+				lastUsedWrites.Delete(k)
+			}
+
+			return true
+		})
+	}
+
+	prev, loaded := lastUsedWrites.LoadOrStore(hashedKey, now)
+	if !loaded {
+		return true
+	}
+	if now.Sub(prev.(time.Time)) < lastUsedWriteWindow {
 		return false
 	}
-	lastUsedWrites.Store(hashedKey, now)
 
-	return true
+	// CAS so exactly one concurrent caller wins the expired window.
+	return lastUsedWrites.CompareAndSwap(hashedKey, prev, now)
 }
 
 type authStoreImpl struct {
