@@ -194,6 +194,7 @@ func SupportedIDs() []string {
 	for _, p := range Profiles {
 		ids = append(ids, p.IDs...)
 	}
+
 	return ids
 }
 
@@ -231,5 +232,6 @@ func ShellSelector() string {
 	fmt.Fprintf(&b, "    exit 1\n")
 	fmt.Fprintf(&b, "    ;;\n")
 	b.WriteString("esac\n")
+
 	return b.String()
 }

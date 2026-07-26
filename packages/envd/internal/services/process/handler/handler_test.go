@@ -20,6 +20,7 @@ func TestWrapperPrefix(t *testing.T) {
 			if name == want {
 				return "/bin/" + name, nil
 			}
+
 			return "", errors.New("not found")
 		}
 	}

@@ -25,11 +25,13 @@ func profileByKey(t *testing.T, key string) Profile {
 		}
 	}
 	t.Fatalf("no profile with key %q", key)
+
 	return Profile{}
 }
 
 // AC2: the debian profile preserves today's Debian package set / query / init path.
 func TestDebianPreserved(t *testing.T) {
+	t.Parallel()
 	p := profileByKey(t, "debian")
 	if got := strings.Join(p.Packages, " "); got != goldenDebianPackages {
 		t.Errorf("debian packages drifted:\n got: %s\nwant: %s", got, goldenDebianPackages)
@@ -47,6 +49,7 @@ func TestDebianPreserved(t *testing.T) {
 
 // The families genuinely diverge on the axes that matter.
 func TestFamiliesDiffer(t *testing.T) {
+	t.Parallel()
 	rhel := profileByKey(t, "rhel")
 	if rhel.TimeSyncUnit != "chronyd" || rhel.AdminGroup != "wheel" {
 		t.Errorf("rhel unit/group wrong: %s / %s", rhel.TimeSyncUnit, rhel.AdminGroup)
@@ -70,6 +73,7 @@ func TestFamiliesDiffer(t *testing.T) {
 // The generated selector keys on the DECLARED distro id, never on which
 // package-manager binary exists (the anti-#2941 invariant, TT-2).
 func TestSelectorNoPackageManagerProbing(t *testing.T) {
+	t.Parallel()
 	sel := ShellSelector()
 	for _, bad := range []string{
 		"command -v apt-get", "command -v dnf", "command -v yum",
@@ -86,6 +90,7 @@ func TestSelectorNoPackageManagerProbing(t *testing.T) {
 
 // Every supported id gets a case arm; an unknown id hits the failing default (AC4).
 func TestSelectorCoversIDsAndRejects(t *testing.T) {
+	t.Parallel()
 	sel := ShellSelector()
 	for _, id := range SupportedIDs() {
 		if !strings.Contains(sel, id) {
@@ -109,10 +114,12 @@ func TestSelectorCoversIDsAndRejects(t *testing.T) {
 // no body leaks another init system's tooling (systemctl in OpenRC or
 // rc-update in systemd would fail at provisioning time).
 func TestInitSystemsDeclaredAndCoherent(t *testing.T) {
+	t.Parallel()
 	for _, p := range Profiles {
 		setup, ok := initSetup[p.Init]
 		if !ok {
 			t.Errorf("profile %q declares init %q with no setup body", p.Key, p.Init)
+
 			continue
 		}
 		switch p.Init {
@@ -142,6 +149,7 @@ func TestInitSystemsDeclaredAndCoherent(t *testing.T) {
 // stable across calls, and carrying both the selector text and the explicit
 // Version (W1 T5 — a profile change must rotate the base-layer cache key).
 func TestFingerprintStableAndVersioned(t *testing.T) {
+	t.Parallel()
 	a, b := Fingerprint(), Fingerprint()
 	if a != b || len(a) != 64 {
 		t.Errorf("fingerprint must be a stable sha256 hex: %q vs %q", a, b)
@@ -154,6 +162,7 @@ func TestFingerprintStableAndVersioned(t *testing.T) {
 
 // Sanity: RHEL-family aliases (rocky/alma/oracle/amazon) all resolve to one arm.
 func TestRHELFamilyAliases(t *testing.T) {
+	t.Parallel()
 	rhel := profileByKey(t, "rhel")
 	for _, want := range []string{"fedora", "rhel", "centos", "rocky", "almalinux", "ol", "amzn"} {
 		found := false

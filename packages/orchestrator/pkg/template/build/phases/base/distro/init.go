@@ -160,5 +160,6 @@ func indentBlock(s, prefix string) string {
 			lines[i] = prefix + l
 		}
 	}
+
 	return strings.Join(lines, "\n")
 }

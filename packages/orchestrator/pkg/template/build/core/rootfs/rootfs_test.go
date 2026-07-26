@@ -99,7 +99,7 @@ func TestAdditionalOCILayers(t *testing.T) {
 		// inittab entry is a plain exec.
 		inittab := actualFiles["etc/inittab"]
 		require.NotEmpty(t, inittab)
-		for _, line := range strings.Split(inittab, "\n") {
+		for line := range strings.SplitSeq(inittab, "\n") {
 			if !strings.HasPrefix(line, "::") {
 				continue
 			}
