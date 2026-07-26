@@ -71,7 +71,7 @@ func (s *Service) UpdatePath(ctx context.Context, request *orchestrator.UpdatePa
 
 		if err = fs.Chown(path, uid, gid); err != nil {
 			if os.IsNotExist(err) {
-				return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chown: %q not found.", request.GetPath()).Err()
+				return nil, newAPIError(ctx, codes.NotFound, http.StatusNotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chown: %q not found.", request.GetPath()).Err()
 			}
 
 			return nil, fmt.Errorf("failed to update file ownership: %w", err)
@@ -81,7 +81,7 @@ func (s *Service) UpdatePath(ctx context.Context, request *orchestrator.UpdatePa
 	fi, err := fs.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to stat: %q not found.", request.GetPath()).Err()
+			return nil, newAPIError(ctx, codes.NotFound, http.StatusNotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to stat: %q not found.", request.GetPath()).Err()
 		}
 
 		return nil, fmt.Errorf("failed to stat file: %w", err)

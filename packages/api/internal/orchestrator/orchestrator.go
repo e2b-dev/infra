@@ -67,6 +67,21 @@ type Orchestrator struct {
 	snapshotUpsertSem *utils.AdjustableSemaphore
 	redisStorage      *redisbackend.Storage
 
+	// localClusterOwnsOrchestrators makes connectToClusterNode register
+	// local-cluster instances that report the Orchestrator role as nodes.
+	//
+	// It is only set when the node discovery loop is disabled (see
+	// skipNomadSync in New), which is the case in the local environment: there
+	// the local clusters registry is the single source of orchestrator nodes.
+	//
+	// Otherwise local-cluster orchestrators are owned by the node discovery
+	// path (connectToNode), which identifies nodes by the ID they report over
+	// the Info RPC, while the clusters registry identifies instances by their
+	// discovery item ID. An instance serving both the orchestrator and the
+	// template-builder role would then register twice under two different node
+	// IDs and have its capacity and sandboxes counted twice.
+	localClusterOwnsOrchestrators bool
+
 	// connectGroup deduplicates concurrent dial+register attempts for the same
 	// physical node. It is keyed by NomadNodeShortID (Nomad-managed nodes) or
 	// scopedNodeID(clusterID, instanceNodeID) (cluster nodes) and is held inside
@@ -100,6 +115,7 @@ func New(
 	analyticsInstance, err := analyticscollector.NewAnalytics(
 		config.AnalyticsCollectorHost,
 		config.AnalyticsCollectorAPIToken,
+		config.AnalyticsCollectorTLS,
 	)
 	if err != nil {
 		logger.L().Error(ctx, "Error initializing Analytics client", zap.Error(err))
@@ -133,6 +149,10 @@ func New(
 	}
 	go redisStorage.Start(ctx)
 
+	// For local development and testing, we skip the Nomad sync
+	// Local cluster is used for single-node setups instead
+	skipNomadSync := env.IsLocal()
+
 	o := Orchestrator{
 		httpClient:           httpClient,
 		analytics:            analyticsInstance,
@@ -152,6 +172,10 @@ func New(
 		createdCounter: createdCounter,
 
 		snapshotUpsertSem: snapshotUpsertSem,
+
+		// Without the node discovery loop, the local clusters registry is the
+		// only source of orchestrator nodes.
+		localClusterOwnsOrchestrators: skipNomadSync,
 	}
 
 	o.sandboxStore = sandbox.NewStore(
@@ -180,9 +204,6 @@ func New(
 
 	o.teamMetricsObserver = teamMetricsObserver
 
-	// For local development and testing, we skip the Nomad sync
-	// Local cluster is used for single-node setups instead
-	skipNomadSync := env.IsLocal()
 	go o.keepInSync(ctx, o.sandboxStore, skipNomadSync)
 
 	if err := o.setupMetrics(tel.MeterProvider); err != nil {

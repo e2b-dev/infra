@@ -179,9 +179,16 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 			logger.L().Fatal(ctx, "Initializing local orchestrator discovery", zap.Error(localErr))
 		}
 		nodeDiscovery = localND
-		// No template builders in local dev — return an empty list so the
-		// clusters pool initializes cleanly.
-		templateBuilderDiscovery = clustersdiscovery.NewStaticDiscovery(nil)
+		// The local orchestrator doubles as the template builder when it is
+		// started with ORCHESTRATOR_SERVICES=orchestrator,template-manager, so
+		// point builder discovery at the same address. Instances that do not
+		// report the TemplateBuilder role (the darwin dummy orchestrator) are
+		// registered with IsBuilder=false and never selected for builds, which
+		// keeps the dummy setup behaving as before.
+		templateBuilderDiscovery, err = clustersdiscovery.NewStaticFromAddress(config.LocalOrchestratorAddress)
+		if err != nil {
+			logger.L().Fatal(ctx, "Initializing local template builder discovery", zap.Error(err))
+		}
 	default: // ServiceDiscoveryProviderNomad
 		nomadClient, nomadErr := nomadapi.NewClient(&nomadapi.Config{
 			Address:  config.NomadAddress,

@@ -43,6 +43,9 @@ func (s *Scanner) Unsubscribe(sub *ScannerSubscriber) {
 
 // ScanAndBroadcast starts scanning open TCP ports and broadcasts every open port to all subscribers.
 func (s *Scanner) ScanAndBroadcast() {
+	ticker := time.NewTicker(s.period)
+	defer ticker.Stop()
+
 	for {
 		// tcp monitors both ipv4 and ipv6 connections.
 		processes, _ := net.Connections("tcp")
@@ -52,8 +55,7 @@ func (s *Scanner) ScanAndBroadcast() {
 		select {
 		case <-s.scanExit:
 			return
-		default:
-			time.Sleep(s.period)
+		case <-ticker.C:
 		}
 	}
 }
