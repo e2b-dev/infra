@@ -78,17 +78,12 @@ func (s *fakeInfoServer) ServiceInfo(context.Context, *emptypb.Empty) (*infogrpc
 	}, nil
 }
 
-// startFakeOrchestratorGRPC starts a gRPC server that responds to ServiceInfo
-// requests. When addr is empty it listens on an ephemeral port; otherwise it
-// binds to the given address (e.g. "127.0.0.1:5008").
-func startFakeOrchestratorGRPC(t *testing.T, nodeID string, addr string) {
+// startFakeOrchestratorGRPC starts a fake ServiceInfo server on an ephemeral
+// port and returns it; a fixed port flakes on shared runners.
+func startFakeOrchestratorGRPC(t *testing.T, nodeID string) int {
 	t.Helper()
 
-	if addr == "" {
-		addr = "127.0.0.1:0"
-	}
-
-	lis, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", addr)
+	lis, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 
 	srv := grpc.NewServer(grpc.Creds(insecure.NewCredentials()))
@@ -96,6 +91,8 @@ func startFakeOrchestratorGRPC(t *testing.T, nodeID string, addr string) {
 
 	go srv.Serve(lis)
 	t.Cleanup(srv.GracefulStop)
+
+	return lis.Addr().(*net.TCPAddr).Port
 }
 
 // TestGetOrConnectNode_CacheHit verifies that when a node is already in the
@@ -268,21 +265,16 @@ func TestConnectToNode_SingleflightDedup(t *testing.T) {
 //  3. This API instance has NOT yet synced (node is absent from o.nodes).
 //  4. A handler calls getOrConnectNode for a sandbox on that node.
 //
-// The fake gRPC server listens on consts.OrchestratorAPIPort, matching the
-// port carried by the mocked service registration.
+// The fake gRPC server and the mocked service registration share an ephemeral
+// port, so nomad discovery dials the right listener.
 func TestGetOrConnectNode_CacheMiss_DiscoversAndConnects(t *testing.T) {
 	t.Parallel()
 
 	orchestratorNodeID := "orch-node-42"
 	nomadFullID := "aabbccdd11223344aabbccdd11223344aabbccdd"
 
-	// 1. Start a fake gRPC server on consts.OrchestratorAPIPort so that the
-	//    address built by listNomadNodes matches our listener.
-	listenAddr := fmt.Sprintf("127.0.0.1:%d", consts.OrchestratorAPIPort)
-	startFakeOrchestratorGRPC(t, orchestratorNodeID, listenAddr)
+	port := startFakeOrchestratorGRPC(t, orchestratorNodeID)
 
-	// 2. Mock Nomad HTTP API returning a single service registration at
-	//    127.0.0.1.
 	nomadClient := newNomadMock(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/service/orchestrator" {
 			resp := []*nomadapi.ServiceRegistration{
@@ -291,7 +283,7 @@ func TestGetOrConnectNode_CacheMiss_DiscoversAndConnects(t *testing.T) {
 					ServiceName: "orchestrator",
 					NodeID:      nomadFullID,
 					Address:     "127.0.0.1",
-					Port:        int(consts.OrchestratorAPIPort),
+					Port:        port,
 				},
 			}
 			w.Header().Set("Content-Type", "application/json")
