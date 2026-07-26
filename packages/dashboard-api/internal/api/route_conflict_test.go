@@ -95,6 +95,41 @@ func TestDashboardReadRoutesExposeApiKeyAuth(t *testing.T) {
 	}
 }
 
+func TestAdminRoutesRequireAdminApiKeyAuth(t *testing.T) {
+	t.Parallel()
+
+	swagger, err := GetSwagger()
+	require.NoError(t, err)
+	require.Contains(t, swagger.Components.SecuritySchemes, "AdminApiKeyAuth")
+
+	adminScheme := swagger.Components.SecuritySchemes["AdminApiKeyAuth"].Value
+	require.NotNil(t, adminScheme)
+	assert.Equal(t, "apiKey", adminScheme.Type)
+	assert.Equal(t, "header", adminScheme.In)
+	assert.Equal(t, "X-Admin-Token", adminScheme.Name)
+
+	adminRoutes := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/admin/tiers"},
+		{http.MethodGet, "/admin/user-profiles/{userId}"},
+		{http.MethodPost, "/admin/user-profiles/resolve"},
+		{http.MethodPost, "/admin/user-profiles/by-email"},
+		{http.MethodDelete, "/admin/users/{userId}"},
+	}
+
+	for _, route := range adminRoutes {
+		t.Run(route.method+" "+route.path, func(t *testing.T) {
+			t.Parallel()
+
+			operation := operationForRoute(t, swagger, route.method, route.path)
+			require.True(t, securityIncludesScheme(operation.Security, "AdminApiKeyAuth"), "admin route must require X-Admin-Token auth")
+			require.False(t, securityIncludesScheme(operation.Security, "ApiKeyAuth"), "admin route must not be reachable with a team API key")
+		})
+	}
+}
+
 func TestSandboxRecordDoesNotExposeApiKeyAuth(t *testing.T) {
 	t.Parallel()
 

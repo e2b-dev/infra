@@ -400,6 +400,29 @@ components:
           format: email
           description: Billing/contact email for the team.
 
+    AdminTier:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          description: Tier identifier.
+        name:
+          type: string
+          description: Human-readable tier name.
+
+    AdminTiersResponse:
+      type: object
+      required:
+        - tiers
+      properties:
+        tiers:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminTier"
+
     BuildStatus:
       type: string
       description: Build status mapped for dashboard clients.
@@ -1460,6 +1483,25 @@ paths:
           $ref: "#/components/responses/401"
         "502":
           $ref: "#/components/responses/502"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/tiers:
+    get:
+      summary: List tiers
+      description: Returns every tier defined in the platform, ordered by name.
+      tags: [admin]
+      security:
+        - AdminApiKeyAuth: []
+      responses:
+        "200":
+          description: Successfully returned tiers.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTiersResponse"
+        "401":
+          $ref: "#/components/responses/401"
         "500":
           $ref: "#/components/responses/500"
 
