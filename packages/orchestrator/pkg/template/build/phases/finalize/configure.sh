@@ -21,11 +21,18 @@ if ! id -u user >/dev/null 2>&1; then
 fi
 # useradd -m skips skeleton files when /home/user already exists, so copy them
 # explicitly (no-clobber) to match the previous adduser behaviour. Not every
-# image ships /etc/skel — say so instead of hiding it.
+# image ships /etc/skel — say so instead of hiding it. Walked file-by-file
+# because `cp -n` exits non-zero when it skips an existing file on
+# coreutils >= 9.2 (Fedora 40+), which is a skip, not a failure.
 if [ -d /home/user ]; then
     if [ -d /etc/skel ]; then
-        echo "Copy skeleton files to /home/user"
-        cp -rn /etc/skel/. /home/user/
+        echo "Copy skeleton files to /home/user (keeping existing files)"
+        (cd /etc/skel && find . -type f -print | while IFS= read -r f; do
+            if [ ! -e "/home/user/$f" ]; then
+                mkdir -p "/home/user/$(dirname "$f")"
+                cp -a "/etc/skel/$f" "/home/user/$f"
+            fi
+        done)
     else
         echo "No /etc/skel on this image; skipping skeleton copy"
     fi
