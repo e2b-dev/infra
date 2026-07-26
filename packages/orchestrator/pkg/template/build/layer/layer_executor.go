@@ -214,12 +214,16 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 
 	// Step 3: Restart the envd service (systemd family, or OpenRC on Alpine).
 	// The overall error is ignored because the restart kills the very envd
-	// this command runs through — the connection loss is expected.
+	// this command runs through — the connection loss is expected. systemctl
+	// hands the restart to PID1, which survives that; rc-service runs it
+	// synchronously in this very shell, which dies with envd mid-restart —
+	// setsid+background detaches it from envd's process tree so the start
+	// half still runs (observed on Alpine: envd never came back otherwise).
 	_ = sandboxtools.RunCommand(
 		ctx,
 		lb.proxy,
 		sbx.Runtime.SandboxID,
-		"if command -v systemctl >/dev/null 2>&1; then systemctl restart envd; else rc-service envd restart; fi",
+		"if command -v systemctl >/dev/null 2>&1; then systemctl restart envd; else setsid rc-service envd restart </dev/null >/dev/null 2>&1 & fi",
 		metadata.Context{User: "root"},
 	)
 
