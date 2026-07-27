@@ -34,7 +34,10 @@
     # tmpfs over /etc/ssl/certs seeded with DEREFERENCED copies of the trust
     # bundle: envd APPENDS the egress-proxy CA to ca-certificates.crt at
     # sandbox /init, which must not hit a symlink into the read-only store.
-    path = [ pkgs.coreutils pkgs.util-linux pkgs.gnutar ];
+    # socat and iptables are executed by name: envd spawns socat to forward
+    # exposed ports and shells out to iptables to pin the MMDS route. There is no
+    # FHS bin dir to find them in, so they must be on the unit's PATH.
+    path = [ pkgs.coreutils pkgs.util-linux pkgs.gnutar pkgs.socat pkgs.iptables ];
     serviceConfig = {
       Type = "simple";
       Restart = "always";
@@ -135,6 +138,13 @@
   # E2B build steps and customer commands are executed via /bin/bash (the
   # orchestrator invokes it explicitly, like on every FHS distro) — provide it.
   system.activationScripts.e2bBinBash = "mkdir -m 0755 -p /bin && ln -sfn ${pkgs.bash}/bin/bash /bin/bash";
+
+  # Parity with the package set provision.sh installs on the other families, so
+  # a sandbox exposes the same userland whichever base image it was built from.
+  # (openssh, sudo, chrony and bash are declared as services/programs above.)
+  environment.systemPackages = with pkgs; [
+    socat curl git jq less fuse3 iptables nftables iputils nfs-utils
+  ];
 
   system.stateVersion = "24.05";
 }
