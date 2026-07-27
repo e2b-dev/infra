@@ -148,8 +148,11 @@
   # Parity with the package set provision.sh installs on the other families, so
   # a sandbox exposes the same userland whichever base image it was built from.
   # (openssh, sudo, chrony and bash are declared as services/programs above.)
+  # shadow is not optional: finalize's configure.sh runs useradd, usermod and
+  # passwd by name, the same way it does on the families that install
+  # shadow/shadow-utils via Packages.
   environment.systemPackages = with pkgs; [
-    socat curl git jq less fuse3 iptables nftables iputils nfs-utils
+    shadow socat curl git jq less fuse3 iptables nftables iputils nfs-utils
   ];
 
   system.stateVersion = "24.05";
