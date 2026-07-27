@@ -37,7 +37,7 @@ runs:
     - name: Pre-pull Docker Hub images
       shell: bash
       run: |
-        for image in postgres:latest redis:latest otel/opentelemetry-collector-contrib:0.146.0; do
+        for image in postgres:latest redis:latest otel/opentelemetry-collector-contrib:0.146.0 clickhouse/clickhouse-server:25.4.5.24; do
           for attempt in 1 2 3 4 5; do
             docker pull --quiet "$image" && break
             if [ "$attempt" = 5 ]; then echo "giving up on $image"; exit 1; fi
