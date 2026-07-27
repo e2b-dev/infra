@@ -35,10 +35,18 @@ fi
 if [ ! -s /etc/ssl/certs/ca-certificates.crt ]; then
     if command -v update-ca-certificates >/dev/null 2>&1; then
         update-ca-certificates
+    elif command -v update-ca-trust >/dev/null 2>&1; then
+        # RHEL family and Arch refresh with update-ca-trust. Arch's extract emits
+        # the Debian-named bundle itself; RHEL keeps it under /etc/pki, and the
+        # symlink provisioning made was dereferenced into this tmpfs, so copy it.
+        update-ca-trust extract
+        if [ ! -s /etc/ssl/certs/ca-certificates.crt ] && [ -s /etc/pki/tls/certs/ca-bundle.crt ]; then
+            cp -L /etc/pki/tls/certs/ca-bundle.crt /etc/ssl/certs/ca-certificates.crt
+        fi
     else
         # Provisioning guarantees the bundle on every supported family;
         # reaching this means the image diverged after the build.
-        echo "e2b-seed-certs: CA bundle missing and no update-ca-certificates on this image; TLS trust will be degraded" >&2
+        echo "e2b-seed-certs: CA bundle missing and no CA refresh tool on this image; TLS trust will be degraded" >&2
     fi
 fi
 
