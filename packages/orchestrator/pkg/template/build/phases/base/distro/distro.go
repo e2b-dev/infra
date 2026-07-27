@@ -97,7 +97,9 @@ var Profiles = []Profile{
 		TimeSyncUnit: "chronyd",
 		AdminGroup:   "wheel",
 		CABundle:     "/etc/ssl/certs/ca-certificates.crt",
-		CARefresh:    "update-ca-trust extract",
+		// Arch ships /etc/ssl/certs/ca-certificates.crt as a symlink to the p11-kit
+		// bundle update-ca-trust extract regenerates — no manual link, unlike RHEL.
+		CARefresh: "update-ca-trust extract",
 	},
 	{
 		Key:  "alpine",
