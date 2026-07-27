@@ -57,6 +57,12 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 	timeout := sandbox.SandboxTimeoutDefault
 	if body.Timeout != nil {
+		if *body.Timeout <= 0 {
+			a.sendAPIStoreError(c, http.StatusBadRequest, "Timeout must be greater than 0")
+
+			return
+		}
+
 		timeout = time.Duration(*body.Timeout) * time.Second
 
 		if timeout > time.Duration(teamInfo.Limits.MaxLengthHours)*time.Hour {

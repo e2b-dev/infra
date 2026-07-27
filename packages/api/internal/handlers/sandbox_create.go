@@ -81,6 +81,12 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	telemetry.ReportEvent(ctx, "Parsed body")
 
+	if body.Timeout != nil && *body.Timeout <= 0 {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Timeout must be greater than 0")
+
+		return
+	}
+
 	identifier, tag, err := id.ParseName(body.TemplateID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template reference: %s", err))

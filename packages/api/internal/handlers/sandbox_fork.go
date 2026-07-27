@@ -63,6 +63,12 @@ func (a *APIStore) PostSandboxesSandboxIDFork(c *gin.Context, sandboxID api.Sand
 
 	forkTimeout := sandbox.SandboxTimeoutDefault
 	if body.Timeout != nil {
+		if *body.Timeout <= 0 {
+			a.sendAPIStoreError(c, http.StatusBadRequest, "Timeout must be greater than 0")
+
+			return
+		}
+
 		forkTimeout = time.Duration(*body.Timeout) * time.Second
 
 		if forkTimeout > time.Duration(teamInfo.Limits.MaxLengthHours)*time.Hour {
