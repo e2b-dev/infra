@@ -15,6 +15,11 @@
   # eth0 is configured by the kernel command line (ip=...); nothing to manage.
   networking.useDHCP = false;
   networking.resolvconf.enable = false;
+  # NixOS is the only family that enables a firewall by default — provision.sh
+  # installs iptables/nftables for user workloads but never filters. Leaving it on
+  # would drop the orchestrator's connection to envd (TCP 49983) and every
+  # customer-exposed sandbox port; isolation is enforced by the E2B network layer.
+  networking.firewall.enable = false;
   # The E2B rootfs layer bakes an immutable /etc/resolv.conf; NixOS must not
   # try to regenerate it at activation.
   environment.etc."resolv.conf".enable = false;
