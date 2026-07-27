@@ -35,6 +35,13 @@ echo "Enable time synchronization ($E2B_TIMESYNC_UNIT)"
 # Distro-correct chrony unit (chrony on Debian, chronyd on RHEL/Arch).
 systemctl enable "$E2B_TIMESYNC_UNIT"
 
+echo "Enable SSH ($E2B_SSH_UNIT)"
+# provision.sh writes the sandbox sshd_config on every family, but nothing was
+# turning the unit on: Debian's postinst and the RHEL RPM scriptlet enable it
+# themselves, Arch does not, so Arch sandboxes shipped with SSH configured and
+# dead. Enabling is idempotent where the packaging already did it.
+systemctl enable "$E2B_SSH_UNIT.service"
+
 echo "Enable envd autostart"
 # Belt-and-suspenders with the baked 00-e2b.preset: on the RHEL family the
 # package transaction above runs systemd's RPM scriptlet 'systemctl preset-all'

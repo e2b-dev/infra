@@ -36,6 +36,7 @@ type Profile struct {
 	PkgInstall   string
 	InitBinary   string
 	TimeSyncUnit string
+	SSHUnit      string
 	AdminGroup   string
 	CABundle     string
 	CARefresh    string
@@ -55,6 +56,7 @@ var Profiles = []Profile{
 		PkgInstall:   "apt-get -q update\n    DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get -qq -o=Dpkg::Use-Pty=0 install -y --no-install-recommends \"$@\"",
 		InitBinary:   "/lib/systemd/systemd",
 		TimeSyncUnit: "chrony",
+		SSHUnit:      "ssh",
 		AdminGroup:   "sudo",
 		CABundle:     "/etc/ssl/certs/ca-certificates.crt",
 		CARefresh:    "update-ca-certificates",
@@ -75,6 +77,7 @@ var Profiles = []Profile{
 		PkgInstall:   `dnf -y --allowerasing install "$@" || microdnf -y install "$@" || yum -y install "$@"`,
 		InitBinary:   "/usr/lib/systemd/systemd",
 		TimeSyncUnit: "chronyd",
+		SSHUnit:      "sshd",
 		AdminGroup:   "wheel",
 		CABundle:     "/etc/ssl/certs/ca-certificates.crt",
 		// update-ca-trust never writes ca-certificates.crt (a Debian name), so
@@ -95,6 +98,7 @@ var Profiles = []Profile{
 		PkgInstall:   `pacman -Syu --noconfirm --needed "$@"`,
 		InitBinary:   "/usr/lib/systemd/systemd",
 		TimeSyncUnit: "chronyd",
+		SSHUnit:      "sshd",
 		AdminGroup:   "wheel",
 		CABundle:     "/etc/ssl/certs/ca-certificates.crt",
 		// Arch ships /etc/ssl/certs/ca-certificates.crt as a symlink to the p11-kit
@@ -118,6 +122,7 @@ var Profiles = []Profile{
 		PkgInstall:   `apk add --no-cache "$@"`,
 		InitBinary:   "/bin/busybox",
 		TimeSyncUnit: "chronyd",
+		SSHUnit:      "sshd",
 		AdminGroup:   "wheel",
 		CABundle:     "/etc/ssl/certs/ca-certificates.crt",
 		CARefresh:    "update-ca-certificates",
@@ -148,6 +153,7 @@ func ShellSelector() string {
 		fmt.Fprintf(&b, "    e2b_pkg_install() { %s; }\n", p.PkgInstall)
 		fmt.Fprintf(&b, "    E2B_INIT_BIN=%q\n", p.InitBinary)
 		fmt.Fprintf(&b, "    E2B_TIMESYNC_UNIT=%q\n", p.TimeSyncUnit)
+		fmt.Fprintf(&b, "    E2B_SSH_UNIT=%q\n", p.SSHUnit)
 		fmt.Fprintf(&b, "    E2B_ADMIN_GROUP=%q\n", p.AdminGroup)
 		fmt.Fprintf(&b, "    E2B_CA_BUNDLE=%q\n", p.CABundle)
 		fmt.Fprintf(&b, "    e2b_ca_refresh() { %s; }\n", p.CARefresh)
