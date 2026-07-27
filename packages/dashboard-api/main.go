@@ -246,7 +246,7 @@ func run() int {
 	}
 	swagger.Servers = nil
 
-	adminVerifier, err := sharedauth.NewAdminVerifier(ctx, config.AdminAuthProvider, authClient)
+	adminVerifier, err := sharedauth.NewIssuerVerifier(ctx, config.AdminAuthProvider, authClient)
 	if err != nil {
 		l.Error(ctx, "initializing admin JWT verifier", zap.Error(err))
 

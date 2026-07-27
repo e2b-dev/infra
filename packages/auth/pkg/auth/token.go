@@ -19,12 +19,27 @@ type AudienceMatchPolicy = jwks.AudienceMatchPolicy
 
 const AudienceMatchAny = jwks.AudienceMatchAny
 
+// IssuerVerifier verifies a JWT against the issuers in a ProviderConfig and
+// returns its claims. It resolves no identity, so it suits any caller that
+// needs to establish a token is validly signed without asking who it names.
+type IssuerVerifier = token.AdminVerifier
+
+// Deprecated: use IssuerVerifier. Admin service tokens were the first caller
+// and the name followed them, which reads as a restriction that does not
+// exist. Kept so callers can move in their own time.
 type AdminVerifier = token.AdminVerifier
 
 func ParseProviderConfig(value string) (ProviderConfig, error) {
 	return token.ParseProviderConfig(value)
 }
 
+// NewIssuerVerifier builds a verifier for every issuer in the config,
+// returning nil when it declares none. A nil verifier denies everything.
+func NewIssuerVerifier(ctx context.Context, config ProviderConfig, httpClient *http.Client) (*IssuerVerifier, error) {
+	return token.NewAdminVerifier(ctx, config, httpClient)
+}
+
+// Deprecated: use NewIssuerVerifier.
 func NewAdminVerifier(ctx context.Context, config ProviderConfig, httpClient *http.Client) (*AdminVerifier, error) {
 	return token.NewAdminVerifier(ctx, config, httpClient)
 }

@@ -148,6 +148,59 @@ func adminValidationFunction(adminToken string) func(ctx context.Context, ginCtx
 	}
 }
 
+// AuthenticatorConfig describes a header-token security scheme.
+//
+// The constructors below cover the schemes this package defines, each with
+// its scheme name and context key fixed. This exists for a service that
+// defines its own — one that verifies a token under a scheme of its own name,
+// or records something other than a user or a team.
+//
+// Without it such a service reimplements the header handling and the 401
+// stamping below, which is how a scheme ends up subtly different from every
+// other one rather than merely differently named.
+type AuthenticatorConfig[T any] struct {
+	// SchemeName must match the securityScheme in the service's OpenAPI
+	// document; the validator dispatches on it.
+	SchemeName string
+
+	// Header is the header carrying the token.
+	Header string
+
+	// RequiredPrefix, when set, is a prefix the token must carry for this
+	// scheme to apply. A token without it is left to another authenticator.
+	RequiredPrefix string
+
+	// StrippedPrefix is removed before validation, e.g. "Bearer ".
+	StrippedPrefix string
+
+	// Validate turns a token into whatever the scheme establishes, or an
+	// APIError carrying the status the caller should see.
+	Validate func(ctx context.Context, ginCtx *gin.Context, token string) (T, *APIError)
+
+	// SetContext records the result for handlers. Optional: a scheme that
+	// only proves the caller may proceed has nothing to record.
+	SetContext func(ginCtx *gin.Context, value T)
+
+	// ErrorMessage prefixes the failure returned to the validator.
+	ErrorMessage string
+}
+
+// NewAuthenticator builds an Authenticator for a scheme this package does not
+// name itself.
+func NewAuthenticator[T any](config AuthenticatorConfig[T]) Authenticator {
+	return &commonAuthenticator[T]{
+		schemeName: config.SchemeName,
+		header: headerKey{
+			name:         config.Header,
+			prefix:       config.RequiredPrefix,
+			removePrefix: config.StrippedPrefix,
+		},
+		validationFunc: config.Validate,
+		setContextFunc: config.SetContext,
+		errorMessage:   config.ErrorMessage,
+	}
+}
+
 // NewApiKeyAuthenticator creates an authenticator for the ApiKeyAuth security scheme (X-API-Key header, e2b_ prefix).
 func NewApiKeyAuthenticator(validationFunc func(ctx context.Context, ginCtx *gin.Context, token string) (*types.Team, *APIError)) Authenticator {
 	return &commonAuthenticator[*types.Team]{

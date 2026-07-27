@@ -18,6 +18,17 @@ var (
 
 type Authenticator = internalauthmiddleware.Authenticator
 
+// AuthenticatorConfig describes a header-token security scheme for
+// NewAuthenticator.
+type AuthenticatorConfig[T any] = internalauthmiddleware.AuthenticatorConfig[T]
+
+// NewAuthenticator builds an Authenticator for a scheme this package does not
+// name itself. Services using one of the schemes below want that constructor
+// instead — it already carries the right scheme name, header and context key.
+func NewAuthenticator[T any](config AuthenticatorConfig[T]) Authenticator {
+	return internalauthmiddleware.NewAuthenticator(config)
+}
+
 func NewApiKeyAuthenticator(validationFunc func(context.Context, *gin.Context, string) (*types.Team, *APIError)) Authenticator {
 	return internalauthmiddleware.NewApiKeyAuthenticator(validationFunc)
 }
@@ -34,7 +45,7 @@ func NewAuthProviderTeamAuthenticator(validationFunc func(context.Context, *gin.
 	return internalauthmiddleware.NewAuthProviderTeamAuthenticator(validationFunc)
 }
 
-func NewAdminJWTAuthenticator(verifier *AdminVerifier) Authenticator {
+func NewAdminJWTAuthenticator(verifier *IssuerVerifier) Authenticator {
 	return internalauthmiddleware.NewAdminJWTAuthenticator(verifier)
 }
 
