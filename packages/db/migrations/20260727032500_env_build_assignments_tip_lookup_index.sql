@@ -2,8 +2,7 @@
 -- +goose NO TRANSACTION
 
 -- CREATE INDEX CONCURRENTLY and ANALYZE cannot run inside a transaction;
--- bound each pass so it neither hangs unbounded nor dies to a short default.
-SET statement_timeout = '2h';
+-- the migrator's session default (3h, scripts/migrator.go) bounds them.
 
 -- The current-tip lookup orders by (created_at DESC, build_id DESC) under an
 -- (env_id, tag) equality. That exact shape belongs to an internal
@@ -34,14 +33,8 @@ ALTER TABLE public.env_build_assignments ALTER COLUMN tag SET STATISTICS 2000;
 -- Rebuild stats immediately rather than waiting for the next autoanalyze.
 ANALYZE public.env_build_assignments;
 
--- The migrator session is reused for subsequent migrations: restore its
--- baseline (scripts/migrator.go sets 3h per connection).
-SET statement_timeout = '3h';
-
 -- +goose Down
 -- +goose NO TRANSACTION
-
-SET statement_timeout = '2h';
 
 DROP INDEX CONCURRENTLY IF EXISTS idx_env_build_assignments_env_tag_created_build;
 
@@ -49,5 +42,3 @@ ALTER TABLE public.env_build_assignments ALTER COLUMN env_id SET STATISTICS -1;
 ALTER TABLE public.env_build_assignments ALTER COLUMN tag SET STATISTICS -1;
 
 ANALYZE public.env_build_assignments;
-
-SET statement_timeout = '3h';
