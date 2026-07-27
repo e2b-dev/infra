@@ -30,6 +30,22 @@ inputs:
 runs:
   using: "composite"
   steps:
+    # Anonymous Docker Hub pulls from shared runners intermittently fail with
+    # "unauthorized: authentication required" (Hub rate limiting); the implicit
+    # pulls inside the service steps then abort the whole job. Pull everything
+    # up front with retries so a transient 401/429 can't kill the run.
+    - name: Pre-pull Docker Hub images
+      shell: bash
+      run: |
+        for image in postgres:latest redis:latest otel/opentelemetry-collector-contrib:0.146.0 clickhouse/clickhouse-server:25.4.5.24; do
+          for attempt in 1 2 3 4 5; do
+            docker pull --quiet "$image" && break
+            if [ "$attempt" = 5 ]; then echo "giving up on $image"; exit 1; fi
+            echo "pull of $image failed (attempt $attempt), retrying in $((attempt * 10))s..."
+            sleep $((attempt * 10))
+          done
+        done
+
     - name: Run PostgreSQL Database
       env:
         TESTS_E2B_API_KEY: "e2b_5ec17bd3933af21f80dc10bba686691c4fcd7057"
