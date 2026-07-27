@@ -35,9 +35,25 @@
       Restart = "always";
       ExecStartPre = "/usr/local/bin/e2b-seed-certs";
       ExecStart = "/usr/bin/envd";
-      Environment = "GOTRACEBACK=all";
+      LimitCORE = "infinity";
+      # envd.service.tpl templates GOMEMLIMIT per sandbox as min(MemoryMB/2, 512)MiB;
+      # a premade image can't know the sandbox size, so pin the 512 MiB ceiling —
+      # envd must still GC under a cap, not grow unbounded.
+      Environment = [ "GOTRACEBACK=all" "GOMEMLIMIT=512MiB" ];
+      # Priority/scheduling parity with envd.service.tpl (ionice 1:4 = realtime,4).
+      Nice = -20;
+      IOSchedulingClass = "realtime";
+      IOSchedulingPriority = 4;
       OOMPolicy = "continue";
       OOMScoreAdjust = -1000;
+      # Resource-control parity: reserve envd's memory and win CPU/IO contention.
+      Delegate = true;
+      MemoryMin = "50M";
+      MemoryLow = "100M";
+      CPUAccounting = true;
+      CPUWeight = 1000;
+      IOAccounting = true;
+      IOWeight = 10000;
     };
   };
 
@@ -65,10 +81,37 @@
   };
   security.pam.services.sshd.allowNullPassword = true;
 
+  # Time-sync parity with provision.sh: prefer the hypervisor PHC refclock
+  # (kvm-ptp — no network, tracks the host) when /dev/ptp0 is present, else the
+  # NTP pool. A refclock line for a missing PHC is FATAL to chronyd, and a premade
+  # image can't probe the device at build time, so the source line is written at
+  # boot by e2b-chrony-source.service and pulled in via this include.
   services.chrony = {
     enable = true;
-    servers = [ "pool.ntp.org" ];
-    extraConfig = "makestep 1.0 3";
+    servers = [ ];
+    extraConfig = ''
+      include /run/chrony-e2b/source.conf
+      makestep 1.0 3
+    '';
+  };
+
+  systemd.services.e2b-chrony-source = {
+    description = "E2B: select chrony time source (PHC refclock if /dev/ptp0, else NTP)";
+    before = [ "chronyd.service" ];
+    requiredBy = [ "chronyd.service" ];
+    path = [ pkgs.coreutils ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+    };
+    script = ''
+      mkdir -p /run/chrony-e2b
+      if [ -e /dev/ptp0 ]; then
+        echo "refclock PHC /dev/ptp0 poll 2 dpoll 2" > /run/chrony-e2b/source.conf
+      else
+        echo "pool pool.ntp.org iburst maxsources 3" > /run/chrony-e2b/source.conf
+      fi
+    '';
   };
 
   # Journald must not watchdog-reboot when the microVM is paused for
