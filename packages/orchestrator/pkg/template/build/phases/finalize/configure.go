@@ -34,15 +34,17 @@ var ConfigureScriptTemplate = tt.Must(tt.New("provisioning-finish-script").Parse
 // on cold boot, trading the regen's scattered rootfs reads for one sequential
 // read. -h dereferences the hash-named symlinks so the real cert contents are
 // packed instead of links that would still fault the lazily-fetched rootfs.
-// The refresh is per-family: Debian and Alpine ship update-ca-certificates, the
-// RHEL family and Arch ship update-ca-trust instead, and NixOS has neither
-// (its bundle comes from the image configuration). Probing both keeps the merge
-// working everywhere rather than silently skipping it off Debian.
+// Deliberately Debian/Alpine-only. Adding an update-ca-trust branch for the RHEL
+// family regresses it: extract regenerates the extracted/pem/directory-hash tree
+// that /etc/ssl/certs points at, replacing the absolute ca-certificates.crt
+// symlink provisioning created with a relative one that tar -h then packs as a
+// link instead of dereferencing — the packed bundle drops from ~226 KB of PEM to
+// a 20-byte symlink, and envd's egress-CA append needs a real file. Provisioning
+// already refreshes the store per family; this step only has to merge CAs that
+// later build layers dropped in, which is a Debian/Alpine convention anyway.
 const packCertBundleCmd = `set -e
 if command -v update-ca-certificates >/dev/null 2>&1; then
 	update-ca-certificates
-elif command -v update-ca-trust >/dev/null 2>&1; then
-	update-ca-trust extract
 fi
 mkdir -p /usr/local/share/e2b
 tar -C /etc/ssl/certs -chf /usr/local/share/e2b/ssl-certs.tar .
