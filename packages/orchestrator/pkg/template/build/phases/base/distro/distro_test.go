@@ -1,0 +1,176 @@
+package distro
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"strings"
+	"testing"
+)
+
+// Golden lines lifted VERBATIM from the pre-change provision.sh so the debian
+// profile reproduces them and Debian/Ubuntu behaviour is preserved.
+const (
+	goldenDebianPackages = "systemd systemd-sysv openssh-server sudo chrony socat curl ca-certificates fuse3 iptables git nfs-common less nftables iputils-ping jq"
+	goldenDebianQuery    = `dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q "install ok installed"`
+	goldenDebianInit     = "/lib/systemd/systemd"
+)
+
+func profileByKey(t *testing.T, key string) Profile {
+	t.Helper()
+	for _, p := range Profiles {
+		if p.Key == key {
+			return p
+		}
+	}
+	t.Fatalf("no profile with key %q", key)
+
+	return Profile{}
+}
+
+// The debian profile preserves today's Debian package set / query / init path.
+func TestDebianPreserved(t *testing.T) {
+	t.Parallel()
+	p := profileByKey(t, "debian")
+	if got := strings.Join(p.Packages, " "); got != goldenDebianPackages {
+		t.Errorf("debian packages drifted:\n got: %s\nwant: %s", got, goldenDebianPackages)
+	}
+	if p.PkgQueryBody != goldenDebianQuery {
+		t.Errorf("debian query drifted:\n got: %s\nwant: %s", p.PkgQueryBody, goldenDebianQuery)
+	}
+	if p.InitBinary != goldenDebianInit {
+		t.Errorf("debian init drifted: got %s want %s", p.InitBinary, goldenDebianInit)
+	}
+	if p.TimeSyncUnit != "chrony" || p.AdminGroup != "sudo" {
+		t.Errorf("debian unit/group drifted: %s / %s", p.TimeSyncUnit, p.AdminGroup)
+	}
+}
+
+// The families genuinely diverge on the axes that matter.
+func TestFamiliesDiffer(t *testing.T) {
+	t.Parallel()
+	rhel := profileByKey(t, "rhel")
+	if rhel.TimeSyncUnit != "chronyd" || rhel.AdminGroup != "wheel" {
+		t.Errorf("rhel unit/group wrong: %s / %s", rhel.TimeSyncUnit, rhel.AdminGroup)
+	}
+	// Must both regenerate the trust store AND materialize the bundle at the
+	// Debian-named path envd expects — update-ca-trust alone never creates
+	// ca-certificates.crt, which left envd.service unable to start on Fedora.
+	if !strings.Contains(rhel.CARefresh, "update-ca-trust extract") ||
+		!strings.Contains(rhel.CARefresh, `ln -sf /etc/pki/tls/certs/ca-bundle.crt "$E2B_CA_BUNDLE"`) {
+		t.Errorf("rhel CA refresh wrong: %s", rhel.CARefresh)
+	}
+	if rhel.InitBinary != "/usr/lib/systemd/systemd" {
+		t.Errorf("rhel init path wrong: %s", rhel.InitBinary)
+	}
+	arch := profileByKey(t, "arch")
+	if !strings.Contains(arch.PkgInstall, "pacman") {
+		t.Errorf("arch install should use pacman: %s", arch.PkgInstall)
+	}
+}
+
+// The generated selector keys on the DECLARED distro id, never on which
+// package-manager binary happens to exist.
+func TestSelectorNoPackageManagerProbing(t *testing.T) {
+	t.Parallel()
+	sel := ShellSelector()
+	for _, bad := range []string{
+		"command -v apt-get", "command -v dnf", "command -v yum",
+		"command -v microdnf", "command -v pacman", "PKG_FAMILY",
+	} {
+		if strings.Contains(sel, bad) {
+			t.Errorf("selector leaked package-manager probing: %q", bad)
+		}
+	}
+	if !strings.Contains(sel, `case "$E2B_DISTRO_ID" in`) {
+		t.Error("selector must switch on $E2B_DISTRO_ID (declared distro identity)")
+	}
+}
+
+// Every supported id gets a case arm; an unknown id hits the failing default.
+func TestSelectorCoversIDsAndRejects(t *testing.T) {
+	t.Parallel()
+	sel := ShellSelector()
+	for _, id := range SupportedIDs() {
+		if !strings.Contains(sel, id) {
+			t.Errorf("selector missing arm for supported id %q", id)
+		}
+	}
+	for _, want := range []string{"*)", "unsupported base image", "exit 1"} {
+		if !strings.Contains(sel, want) {
+			t.Errorf("selector missing fast-reject piece %q", want)
+		}
+	}
+	// Alpine is supported via the OpenRC track — and it must be the OpenRC
+	// profile, never folded into a systemd family.
+	alpine := profileByKey(t, "alpine")
+	if alpine.Init != InitOpenRC {
+		t.Errorf("alpine must be the OpenRC profile, got init %q", alpine.Init)
+	}
+}
+
+// Every profile declares a known init system with a rendered setup body, and
+// no body leaks another init system's tooling (systemctl in OpenRC or
+// rc-update in systemd would fail at provisioning time).
+func TestInitSystemsDeclaredAndCoherent(t *testing.T) {
+	t.Parallel()
+	for _, p := range Profiles {
+		setup, ok := initSetup[p.Init]
+		if !ok {
+			t.Errorf("profile %q declares init %q with no setup body", p.Key, p.Init)
+
+			continue
+		}
+		switch p.Init {
+		case InitSystemd:
+			if strings.Contains(setup, "rc-update") {
+				t.Errorf("systemd init setup leaks rc-update (profile %q)", p.Key)
+			}
+		case InitOpenRC:
+			if strings.Contains(setup, "systemctl") {
+				t.Errorf("openrc init setup leaks systemctl (profile %q)", p.Key)
+			}
+		}
+	}
+	sel := ShellSelector()
+	if !strings.Contains(sel, "e2b_init_setup() {") {
+		t.Error("selector must define e2b_init_setup()")
+	}
+	// The OpenRC boot chain pieces the alpine arm must carry.
+	for _, want := range []string{"/etc/inittab", "rc-update add envd default", "openrc sysinit"} {
+		if !strings.Contains(sel, want) {
+			t.Errorf("selector missing OpenRC boot piece %q", want)
+		}
+	}
+}
+
+// The cache fingerprint must cover the whole generated provisioning contract:
+// stable across calls, and carrying both the selector text and the explicit
+// Version (a profile change must rotate the base-layer cache key).
+func TestFingerprintStableAndVersioned(t *testing.T) {
+	t.Parallel()
+	a, b := Fingerprint(), Fingerprint()
+	if a != b || len(a) != 64 {
+		t.Errorf("fingerprint must be a stable sha256 hex: %q vs %q", a, b)
+	}
+	want := sha256.Sum256([]byte(Version + "\x00" + ShellSelector()))
+	if a != hex.EncodeToString(want[:]) {
+		t.Error("fingerprint must hash Version + selector text")
+	}
+}
+
+// Sanity: RHEL-family aliases (rocky/alma/oracle/amazon) all resolve to one arm.
+func TestRHELFamilyAliases(t *testing.T) {
+	t.Parallel()
+	rhel := profileByKey(t, "rhel")
+	for _, want := range []string{"fedora", "rhel", "centos", "rocky", "almalinux", "ol", "amzn"} {
+		found := false
+		for _, id := range rhel.IDs {
+			if id == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("rhel family missing alias %q", want)
+		}
+	}
+}

@@ -212,13 +212,24 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 		return fmt.Errorf("failed to replace envd binary: %w", err)
 	}
 
-	// Step 3: Restart the systemd envd service
-	// Error is ignored because it's expected the envd connection will be lost
+	// Step 3: Restart the envd service. The error is ignored because the
+	// restart kills the very envd this command runs through — the connection
+	// loss is expected. systemctl hands the restart to PID1, which survives
+	// that. On OpenRC there is no PID1 handoff: rc-service would run in this
+	// very shell and die with envd between its stop and start halves
+	// (observed on Alpine — envd never came back), so instead envd is simply
+	// killed and supervise-daemon's respawn starts the replaced binary; the
+	// immediate death also means the post-update wait below can never mistake
+	// the old instance for the new one.
 	_ = sandboxtools.RunCommand(
 		ctx,
 		lb.proxy,
 		sbx.Runtime.SandboxID,
-		"systemctl restart envd",
+		`if command -v systemctl >/dev/null 2>&1; then
+    systemctl restart envd
+else
+    kill -TERM "$(pidof envd)"
+fi`,
 		metadata.Context{User: "root"},
 	)
 
