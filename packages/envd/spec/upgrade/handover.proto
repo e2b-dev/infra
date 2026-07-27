@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package upgrade;
+
+import "process/process.proto";
+import "filesystem/filesystem.proto";
+
+// HandoverState is the entire cross-version compatibility contract for an envd
+// live-upgrade (design §5.2, §6.4): the outgoing envd serializes it to a tmpfs
+// file, the incoming (new-binary) envd decodes it after execve to reconstruct
+// its world. It is an additive protobuf — an older envd omits fields a newer one
+// added, and the reader treats absent fields as defaults.
+//
+// Schema is the versioning discipline §6.4 requires: it is bumped on any change,
+// and a reader MUST refuse a blob whose schema exceeds the maximum it understands
+// (decode every schema <= N, abort on schema > N) rather than mis-read a
+// newer-than-known layout — the outgoing envd keeps running the old binary.
+message HandoverState {
+  uint32 schema = 1;
+  string from_ver = 2;
+  repeated HandoverProc processes = 3;
+  // terminated carries the retention cache (recently-exited terminal events not
+  // yet drained).
+  repeated HandoverExit terminated = 4;
+  // watchers is the filesystem service's active-watcher set. The filesystem
+  // service owns building/consuming these; the process handover only carries
+  // them.
+  repeated HandoverWatcher watchers = 5;
+}
+
+// HandoverProc is a live child re-adopted across the same-PID execve. The fd
+// fields carry the *numbers* (kept valid across execve, CLOEXEC cleared); the
+// kernel objects ride the fd table.
+message HandoverProc {
+  uint32 pid = 1;                 // K-anchor: live child, survives same-PID execve
+  string tag = 2;                 // K-metadata: not in /proc, unreconstructable if lost
+  bool has_tag = 3;               // distinguishes an empty tag from no tag
+  string cg_type = 4;             // user | pty
+  process.ProcessConfig config = 5;
+  int32 stdout_fd = 6;
+  int32 stderr_fd = 7;
+  int32 stdin_fd = 8;
+  int32 tty_fd = 9;
+  int64 timeout_ms = 10;          // per-process kill deadline remaining, re-armed on readopt
+}
+
+// HandoverExit is a recently-terminated process whose terminal event has not yet
+// been drained by a client — carried so an exit code is not lost across the swap.
+message HandoverExit {
+  uint32 pid = 1;
+  string tag = 2;
+  bool has_tag = 3;
+  process.ProcessEvent.EndEvent end = 4;
+  int64 remaining_ms = 5;         // retention TTL remaining
+}
+
+// HandoverWatcher re-arms a persistent CreateWatcher on the incoming envd under
+// the preserved id (design §6.9, Option C: re-arm from metadata, do NOT carry an
+// inotify fd).
+message HandoverWatcher {
+  string id = 1;
+  string path = 2;
+  bool recursive = 3;
+  bool include_entry_info = 4;
+  repeated filesystem.FilesystemEvent pending_events = 5;  // un-polled GetWatcherEvents buffer
+}
