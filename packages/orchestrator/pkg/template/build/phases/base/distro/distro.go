@@ -153,8 +153,11 @@ var Profiles = []Profile{
 		PkgInstall:   `echo "[provision] ERROR: NixOS images are premade — packages must be declared in the image's NixOS configuration" >&2; exit 1`,
 		InitBinary:   "/nix/var/nix/profiles/system/init",
 		TimeSyncUnit: "chronyd",
-		AdminGroup:   "wheel",
-		CABundle:     "/etc/ssl/certs/ca-certificates.crt",
+		// Left empty on purpose: services.openssh is declared in the image's
+		// configuration, and the NixOS init setup never enables units.
+		SSHUnit:    "",
+		AdminGroup: "wheel",
+		CABundle:   "/etc/ssl/certs/ca-certificates.crt",
 		// The bundle appears at first activation; nothing to refresh pre-boot.
 		CARefresh: `echo "NixOS: the CA bundle is provided by the image configuration at first activation; nothing to refresh at provision time"`,
 		// No FHS userland pre-activation — put the baked busybox on PATH first.
