@@ -25,8 +25,10 @@ func Fingerprint() string {
 }
 
 // Profile is the declared, per-family provisioning contract. IDs are the
-// /etc/os-release values that map to the family; PkgQueryBody, PkgInstall and
-// CARefresh are shell fragments spliced into the generated selector.
+// /etc/os-release values that map to the family; PkgQueryBody, PkgInstall,
+// CARefresh and Bootstrap are shell fragments spliced into the generated
+// selector (Bootstrap, if set, runs first — for premade images with no FHS
+// userland yet).
 type Profile struct {
 	Key          string
 	Init         InitSystem
@@ -40,6 +42,7 @@ type Profile struct {
 	AdminGroup   string
 	CABundle     string
 	CARefresh    string
+	Bootstrap    string
 }
 
 var Profiles = []Profile{
@@ -139,6 +142,27 @@ var Profiles = []Profile{
 		CABundle:     "/etc/ssl/certs/ca-certificates.crt",
 		CARefresh:    "update-ca-certificates",
 	},
+	{
+		Key:  "nixos",
+		Init: InitNixOS,
+		IDs:  []string{"nixos"},
+		// Premade: packages and services are declared in the image's own NixOS
+		// configuration, so there is no package manager to drive at build time.
+		Packages:     nil,
+		PkgQueryBody: "true",
+		PkgInstall:   `echo "[provision] ERROR: NixOS images are premade — packages must be declared in the image's NixOS configuration" >&2; exit 1`,
+		InitBinary:   "/nix/var/nix/profiles/system/init",
+		TimeSyncUnit: "chronyd",
+		AdminGroup:   "wheel",
+		CABundle:     "/etc/ssl/certs/ca-certificates.crt",
+		// The bundle appears at first activation; nothing to refresh pre-boot.
+		CARefresh: `echo "NixOS: the CA bundle is provided by the image configuration at first activation; nothing to refresh at provision time"`,
+		// No FHS userland pre-activation — put the baked busybox on PATH first.
+		Bootstrap: `E2B_BB_DIR=/run/e2b-tools
+    /usr/bin/busybox mkdir -p "$E2B_BB_DIR"
+    /usr/bin/busybox --install -s "$E2B_BB_DIR"
+    export PATH="$E2B_BB_DIR:$PATH"`,
+	},
 }
 
 // SupportedIDs returns every os-release ID the selector accepts.
@@ -160,6 +184,9 @@ func ShellSelector() string {
 	b.WriteString(`case "$E2B_DISTRO_ID" in` + "\n")
 	for _, p := range Profiles {
 		fmt.Fprintf(&b, "  %s)\n", strings.Join(p.IDs, "|"))
+		if p.Bootstrap != "" {
+			fmt.Fprintf(&b, "    %s\n", p.Bootstrap)
+		}
 		fmt.Fprintf(&b, "    E2B_PACKAGES=%q\n", strings.Join(p.Packages, " "))
 		fmt.Fprintf(&b, "    e2b_pkg_query() { %s; }\n", p.PkgQueryBody)
 		fmt.Fprintf(&b, "    e2b_pkg_install() { %s; }\n", p.PkgInstall)
