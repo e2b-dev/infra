@@ -26,12 +26,7 @@ const AudienceMatchAny = jwks.AudienceMatchAny
 // Not the right verifier for tokens from an identity provider: it neither
 // fetches the discovery document nor cross-checks the issuer that document
 // declares. Those callers want ProviderVerifier or IdentityVerifier.
-type ServiceTokenVerifier = token.AdminVerifier
-
-// Deprecated: use ServiceTokenVerifier. Admin service tokens were the first
-// caller and the name followed them, which reads as a restriction that does
-// not exist while hiding the one that does — no discovery.
-type AdminVerifier = token.AdminVerifier
+type ServiceTokenVerifier = token.ServiceTokenVerifier
 
 func ParseProviderConfig(value string) (ProviderConfig, error) {
 	return token.ParseProviderConfig(value)
@@ -40,7 +35,7 @@ func ParseProviderConfig(value string) (ProviderConfig, error) {
 // NewServiceTokenVerifier builds a verifier for every issuer in the config,
 // returning nil when it declares none. A nil verifier denies everything.
 func NewServiceTokenVerifier(ctx context.Context, config ProviderConfig, httpClient *http.Client) (*ServiceTokenVerifier, error) {
-	return token.NewAdminVerifier(ctx, config, httpClient)
+	return token.NewServiceTokenVerifier(ctx, config, httpClient)
 }
 
 // TokenIdentity is what a verified token asserts about itself: the issuer and
@@ -63,11 +58,6 @@ type IdentityVerifier = token.ProviderVerifier
 // authenticated nobody. This keeps that answer unrepresentable.
 func NewIdentityVerifier(ctx context.Context, config ProviderConfig, httpClient *http.Client) (*IdentityVerifier, error) {
 	return token.NewIdentityVerifier(ctx, config, httpClient)
-}
-
-// Deprecated: use NewServiceTokenVerifier.
-func NewAdminVerifier(ctx context.Context, config ProviderConfig, httpClient *http.Client) (*AdminVerifier, error) {
-	return token.NewAdminVerifier(ctx, config, httpClient)
 }
 
 // IdentityLookup resolves an OIDC identity (issuer + subject) to an internal
