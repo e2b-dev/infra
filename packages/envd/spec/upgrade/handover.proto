@@ -26,6 +26,32 @@ message HandoverState {
   // service owns building/consuming these; the process handover only carries
   // them.
   repeated HandoverWatcher watchers = 5;
+  // mounts is the API service's NFS mount ledger (path -> lifecycle), carried so
+  // the new envd's post-upgrade /init skips re-mounting a still-live mount.
+  repeated MountEntry mounts = 6;
+  // forwards is the port forwarder's active socat set, carried so the new envd
+  // re-adopts the running socat children instead of spawning duplicates.
+  repeated ForwardedPort forwards = 7;
+}
+
+// MountEntry is one NFS volume mount the outgoing envd had set up, keyed by the
+// lifecycle it was mounted for. The kernel mount survives execve; carrying the
+// ledger lets the new envd recognize a matching-lifecycle mount and leave it
+// in place rather than force-unmounting and remounting it (ESTALE risk).
+message MountEntry {
+  string path = 1;
+  string lifecycle_id = 2;
+}
+
+// ForwardedPort is one active port-forward. The socat child survives execve;
+// carrying its pid lets the new forwarder re-adopt it (suppressing a duplicate
+// socat and reaping it when the port closes) instead of respawning.
+message ForwardedPort {
+  string key = 1;           // the forwarder map key: "<listener_pid>-<port>"
+  uint32 port = 2;
+  int32 listener_pid = 3;   // pid of the guest process listening on the port
+  uint32 family = 4;        // IP version (4 or 6)
+  int32 socat_pid = 5;      // pid of the running socat child to re-adopt
 }
 
 // HandoverProc is a live child re-adopted across the same-PID execve. The fd

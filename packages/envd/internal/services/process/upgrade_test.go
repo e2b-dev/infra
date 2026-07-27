@@ -64,7 +64,7 @@ func TestUpgrade_RejectsUnexpectedBinary(t *testing.T) {
 
 	s := newHandoverTestService(t, &spyCgroupManager{})
 
-	err := s.Upgrade("/tmp/attacker-controlled", "0.6.11", nil)
+	err := s.Upgrade("/tmp/attacker-controlled", "0.6.11", nil, nil, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "refusing upgrade")
 }
@@ -164,6 +164,10 @@ func TestHandoverState_ProtoRoundTrip(t *testing.T) {
 			IncludeEntryInfo: true,
 			PendingEvents:    []*fs.FilesystemEvent{{Name: "a.txt", Type: fs.EventType_EVENT_TYPE_CREATE}},
 		}},
+		Mounts: []*upgrade.MountEntry{{Path: "/mnt/vol", LifecycleId: "lc-1"}},
+		Forwards: []*upgrade.ForwardedPort{{
+			Key: "100-8080", Port: 8080, ListenerPid: 100, Family: 4, SocatPid: 555,
+		}},
 	}
 
 	blob, err := proto.Marshal(orig)
@@ -182,6 +186,12 @@ func TestHandoverState_ProtoRoundTrip(t *testing.T) {
 	require.Len(t, got.GetWatchers(), 1)
 	require.Len(t, got.GetWatchers()[0].GetPendingEvents(), 1)
 	assert.Equal(t, "a.txt", got.GetWatchers()[0].GetPendingEvents()[0].GetName())
+	require.Len(t, got.GetMounts(), 1)
+	assert.Equal(t, "/mnt/vol", got.GetMounts()[0].GetPath())
+	assert.Equal(t, "lc-1", got.GetMounts()[0].GetLifecycleId())
+	require.Len(t, got.GetForwards(), 1)
+	assert.Equal(t, "100-8080", got.GetForwards()[0].GetKey())
+	assert.Equal(t, int32(555), got.GetForwards()[0].GetSocatPid())
 }
 
 // TestResumeFromHandover_RejectsNewerSchema is the §6.4 version gate: a blob

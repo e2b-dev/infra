@@ -261,6 +261,11 @@ func run() error {
 
 	service := api.New(&envLogger, defaults, mmdsChan, isNotFC, workloadFreezer)
 	if resumeHandover {
+		// Restore the NFS mount ledger carried across the upgrade before the
+		// post-upgrade /init runs setupNFS, so it recognizes a still-live mount
+		// (matching lifecycle) instead of force-unmounting and remounting it.
+		service.ImportMounts(handover.Mounts)
+
 		// Surface the handover outcome on the next /init so the orchestrator can
 		// record it — the envd-side result (re-adopted procs, restored retained
 		// exits, watcher re-arm success/failures) is otherwise only logged
@@ -304,6 +309,14 @@ func run() error {
 
 	portLogger := l.With().Str("logger", "port-forwarder").Logger()
 	portForwarder := publicport.NewForwarder(&portLogger, portScanner, cgroupManager)
+	if resumeHandover {
+		// Re-adopt the socats carried across the upgrade before the forwarder's
+		// first scan, so it recognizes already-forwarded ports instead of spawning
+		// duplicate socats (and leaking the originals as un-reaped zombies).
+		if readopted := portForwarder.ImportForwards(handover.Forwards); readopted > 0 {
+			fmt.Fprintf(os.Stderr, "envd: re-adopted %d forwarded port(s) after handover\n", readopted)
+		}
+	}
 	go portForwarder.StartForwarding(ctx)
 
 	go portScanner.ScanAndBroadcast()
@@ -340,15 +353,30 @@ func run() error {
 			return fmt.Errorf("handover aborted: freeze workload: %w", freezeErr)
 		}
 
-		// Export watcher state (typed, owned by the filesystem service) so the new
-		// envd can re-arm filesystem watches after the swap.
-		watchers := filesystemService.ExportWatchers()
+		// Export the state owned by the other services so the new envd can restore
+		// it after the swap: filesystem watches, the NFS mount ledger (so /init
+		// doesn't remount a live mount), and the active port-forwards (so socats
+		// are re-adopted, not duplicated).
+		//
+		// Watches and forwards are exported with the owning lock HELD across the
+		// execve (the *Hold variants). The freeze quiesces the workload, but the
+		// filesystem watcher-drain (GetWatcherEvents) and the port scanner are
+		// envd-internal and keep running; holding their locks through the swap
+		// stops a post-snapshot event-drain or socat-spawn that the snapshot could
+		// not capture. On a successful execve this process is replaced and the
+		// held locks vanish with it; the defers below only run on the failure
+		// path, restoring both services under the old envd.
+		watchers, releaseWatchers := filesystemService.ExportWatchersHold()
+		defer releaseWatchers()
+		mounts := service.ExportMounts()
+		forwards, releaseForwards := portForwarder.ExportForwardsHold()
+		defer releaseForwards()
 
 		// Upgrade only returns on failure — a successful execve replaces this
-		// process (and drops the held freeze lock with it). On failure the OLD
-		// envd is still running; the deferred release+thaw keeps the old version
-		// serving rather than leaving the sandbox hung.
-		return processService.Upgrade(newBin, pkg.Version, watchers)
+		// process (and drops the held freeze/watcher/forward locks with it). On
+		// failure the OLD envd is still running; the deferred releases + thaw keep
+		// the old version serving rather than leaving the sandbox hung.
+		return processService.Upgrade(newBin, pkg.Version, watchers, mounts, forwards)
 	}
 
 	// Orchestrator-driven trigger: authenticated POST /upgrade with the target

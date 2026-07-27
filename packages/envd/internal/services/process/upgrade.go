@@ -68,14 +68,20 @@ func dupKeep(oldfd, target int) (int, error) {
 // responsibility — see main's /upgrade handler). It serializes the process
 // table, carries the I/O fds across execve, and re-execs newBin with the same
 // PID. It does not return on success.
-func (s *Service) Upgrade(newBin, fromVer string, watchers []*upgrade.HandoverWatcher) error {
+func (s *Service) Upgrade(newBin, fromVer string, watchers []*upgrade.HandoverWatcher, mounts []*upgrade.MountEntry, forwards []*upgrade.ForwardedPort) error {
 	// Only re-exec self (empty) or the fixed delivered-binary path — never an
 	// arbitrary caller-supplied path. Checked first, before any side effects.
 	if newBin != "" && newBin != DefaultUpgradeBinPath {
 		return fmt.Errorf("refusing upgrade to unexpected binary %q", newBin)
 	}
 
-	st := &upgrade.HandoverState{Schema: handoverSchema, FromVer: fromVer, Watchers: watchers}
+	st := &upgrade.HandoverState{
+		Schema:   handoverSchema,
+		FromVer:  fromVer,
+		Watchers: watchers,
+		Mounts:   mounts,
+		Forwards: forwards,
+	}
 
 	// Serialize the process table and relocate each carried fd to its fixed
 	// target, holding syscall.ForkLock so no concurrent Go fd allocation can
@@ -237,6 +243,12 @@ type HandoverResult struct {
 	RetainedFailed int
 	Watchers       int
 	WatchersFailed int
+	// Mounts and Forwards are decoded from the blob and handed back to their
+	// owners (the API service's mount ledger and the port forwarder), which are
+	// constructed after ResumeFromHandover runs — so unlike watchers they are
+	// returned rather than applied via a callback.
+	Mounts   []*upgrade.MountEntry
+	Forwards []*upgrade.ForwardedPort
 }
 
 func (s *Service) ResumeFromHandover(reArmWatchers func([]*upgrade.HandoverWatcher) (rearmed, failed int)) (HandoverResult, error) {
@@ -408,6 +420,10 @@ func (s *Service) ResumeFromHandover(reArmWatchers func([]*upgrade.HandoverWatch
 		RetainedFailed: retainedFailed,
 		Watchers:       watchersRearmed + watchersFailed,
 		WatchersFailed: watchersFailed,
+		// Handed back to the API service (mount ledger) and port forwarder, which
+		// are constructed after this returns.
+		Mounts:   st.GetMounts(),
+		Forwards: st.GetForwards(),
 	}, nil
 }
 
