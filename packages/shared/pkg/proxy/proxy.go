@@ -129,8 +129,24 @@ func (p *Proxy) ListenAndServe(ctx context.Context) error {
 }
 
 func (p *Proxy) ListenAndServeTLS(ctx context.Context, certFile, keyFile string) error {
+	return p.ListenAndServeTLSOn(ctx, p.Addr, certFile, keyFile)
+}
+
+func (p *Proxy) ListenAndServeTLSOn(ctx context.Context, addr, certFile, keyFile string) error {
+	var lisCfg net.ListenConfig
+	l, err := lisCfg.Listen(ctx, "tcp", addr)
+	if err != nil {
+		return err
+	}
+
+	return p.ServeTLS(l, certFile, keyFile)
+}
+
+func (p *Proxy) ServeTLS(l net.Listener, certFile, keyFile string) error {
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
+		l.Close()
+
 		return fmt.Errorf("load proxy TLS cert: %w", err)
 	}
 
@@ -140,15 +156,10 @@ func (p *Proxy) ListenAndServeTLS(ctx context.Context, certFile, keyFile string)
 		NextProtos:   []string{"h2", "http/1.1"},
 	}
 
-	var lisCfg net.ListenConfig
-	l, err := lisCfg.Listen(ctx, "tcp", p.Addr)
-	if err != nil {
-		return err
-	}
+	trackedListener := tracking.NewListener(l, &p.currentServerConnsCounter)
+	tlsListener := tls.NewListener(trackedListener, tlsCfg)
 
-	tlsListener := tls.NewListener(l, tlsCfg)
-
-	return p.Serve(tlsListener)
+	return p.Server.Serve(tlsListener)
 }
 
 func (p *Proxy) Serve(l net.Listener) error {

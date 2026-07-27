@@ -35,8 +35,8 @@ type testCA struct {
 }
 
 type testCert struct {
-	certPEM []byte
-	keyPEM  []byte
+	certPEM  []byte
+	keyPEM   []byte
 	certFile string
 	keyFile  string
 }
@@ -112,7 +112,7 @@ func (ca *testCA) issueCert(t *testing.T, hosts ...string) *testCert {
 	return &testCert{certPEM: certPEM, keyPEM: keyPEM, certFile: certFile, keyFile: keyFile}
 }
 
-func TestListenAndServeTLS(t *testing.T) {
+func TestListenAndServeTLSOn_UsesSeparatePort(t *testing.T) {
 	t.Parallel()
 
 	ca := newTestCA(t)
@@ -137,34 +137,63 @@ func TestListenAndServeTLS(t *testing.T) {
 	)
 
 	var lisCfg net.ListenConfig
-	l, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
+	plainListener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	port := l.Addr().(*net.TCPAddr).Port
-	l.Close()
+	plainPort := plainListener.Addr().(*net.TCPAddr).Port
+	plainListener.Close()
 
-	proxy.Addr = fmt.Sprintf("127.0.0.1:%d", port)
+	tlsListener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	tlsPort := tlsListener.Addr().(*net.TCPAddr).Port
+	tlsListener.Close()
+
+	proxy.Addr = fmt.Sprintf("127.0.0.1:%d", plainPort)
 
 	go func() {
-		_ = proxy.ListenAndServeTLS(t.Context(), cert.certFile, cert.keyFile)
+		_ = proxy.ListenAndServe(t.Context())
+	}()
+	go func() {
+		tlsAddr := fmt.Sprintf("127.0.0.1:%d", tlsPort)
+		_ = proxy.ListenAndServeTLSOn(t.Context(), tlsAddr, cert.certFile, cert.keyFile)
 	}()
 	t.Cleanup(func() { proxy.Close() })
 
-	waitForPort(t, port)
+	waitForPort(t, plainPort)
+	waitForPort(t, tlsPort)
 
 	client := &http.Client{
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{RootCAs: ca.pool},
+			TLSClientConfig:   &tls.Config{RootCAs: ca.pool},
+			ForceAttemptHTTP2: true,
 		},
 	}
 
-	resp, err := client.Get(fmt.Sprintf("https://127.0.0.1:%d/hello", port))
+	resp, err := client.Get(fmt.Sprintf("https://127.0.0.1:%d/hello", tlsPort))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, 2, resp.ProtoMajor)
 	assert.Equal(t, "ok", string(body))
+
+	plaintextResp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/hello", plainPort))
+	require.NoError(t, err)
+	defer plaintextResp.Body.Close()
+
+	plaintextBody, err := io.ReadAll(plaintextResp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, plaintextResp.StatusCode)
+	assert.Equal(t, "ok", string(plaintextBody))
+
+	plaintextOnTLSPort, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/hello", tlsPort))
+	require.NoError(t, err)
+	defer plaintextOnTLSPort.Body.Close()
+	assert.Equal(t, http.StatusBadRequest, plaintextOnTLSPort.StatusCode)
+
+	_, err = client.Get(fmt.Sprintf("https://127.0.0.1:%d/hello", plainPort))
+	require.Error(t, err)
 }
 
 func TestListenAndServeTLS_WrongCA_Rejected(t *testing.T) {
