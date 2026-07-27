@@ -61,11 +61,11 @@ mkdir -p /home/user
 chown -R user:user /home/user
 
 echo "Give 777 permission to /usr/local"
-chmod 777 -R /usr/local
+chmod -R 777 /usr/local
 
 echo "Create /code directory"
 mkdir -p /code
 echo "Give 777 permission to /code"
-chmod 777 -R /code
+chmod -R 777 /code
 
 echo "Finished configuration script"
