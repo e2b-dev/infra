@@ -3,6 +3,7 @@ package utils
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 
@@ -16,15 +17,31 @@ import (
 )
 
 const (
-	securityErrPrefix  = "error in openapi3filter.SecurityRequirementsError: security requirements failed: "
-	forbiddenErrPrefix = "team forbidden: "
-	blockedErrPrefix   = "team blocked: "
+	securityErrPrefix      = "error in openapi3filter.SecurityRequirementsError: security requirements failed: "
+	forbiddenErrPrefix     = "team forbidden: "
+	blockedErrPrefix       = "team blocked: "
+	clientDisconnectPrefix = "client disconnected: "
 )
 
 func ErrorHandler(c *gin.Context, message string, statusCode int) {
-	var errMsg error
-
 	ctx := c.Request.Context()
+
+	// Client dropped the connection before the request body was fully received.
+	// kin-openapi reads the body before calling auth; when the TCP read fails
+	// it wraps the net.Error in a SecurityRequirementsError, which would otherwise
+	// be logged/traced as an auth failure. This is a client-side network event,
+	// not a server error — record informationally and return 499 so metrics
+	// distinguish it from real auth failures.
+	if after, ok := strings.CutPrefix(message, clientDisconnectPrefix); ok {
+		telemetry.ReportEvent(ctx, "client disconnected before request body received",
+			attribute.String("disconnect.reason", after),
+		)
+		c.AbortWithStatus(499)
+
+		return
+	}
+
+	var errMsg error
 
 	switch {
 	case strings.HasPrefix(c.Request.URL.Path, "/instances"),
@@ -136,6 +153,18 @@ func processCustomErrors(e *openapi3filter.SecurityRequirementsError) error {
 
 		if errors.As(errW, &teamBlocked) {
 			return fmt.Errorf("%s%s", blockedErrPrefix, teamBlocked.Error())
+		}
+
+		// kin-openapi reads the entire request body before invoking auth functions.
+		// When that TCP read fails (client timeout / server ReadTimeout), it returns
+		// a RequestError{Reason:"reading failed"} wrapped in SecurityRequirementsError.
+		// Detect this case so it isn't misclassified as an authentication failure.
+		var reqErr *openapi3filter.RequestError
+		if errors.As(errW, &reqErr) && reqErr.Reason == "reading failed" {
+			var netErr net.Error
+			if errors.As(reqErr.Err, &netErr) {
+				return fmt.Errorf("%s%s", clientDisconnectPrefix, reqErr.Err.Error())
+			}
 		}
 
 		err = errW
