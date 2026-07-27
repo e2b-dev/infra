@@ -104,7 +104,11 @@ printf 'auto lo\niface lo inet loopback\n' > /etc/network/interfaces
 if [ -e /etc/init.d/networking ]; then
     rc-update add networking boot
 else
-    echo "OpenRC networking service not present on this image; services needing 'net' must not be enabled"
+    # openrc ships this script and the profile installs openrc, so this is
+    # unreachable on the images we support. If it ever fires, nothing provides
+    # "net": chronyd is still enabled below so the failure shows up in the boot
+    # log rather than the sandbox silently running without time sync.
+    echo "OpenRC networking service not present on this image; nothing provides 'net', so time sync will fail to start"
 fi
 
 echo "Enable time synchronization ($E2B_TIMESYNC_UNIT)"
