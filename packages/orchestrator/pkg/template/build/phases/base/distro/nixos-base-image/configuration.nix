@@ -23,6 +23,12 @@
   # The E2B rootfs layer bakes an immutable /etc/resolv.conf; NixOS must not
   # try to regenerate it at activation.
   environment.etc."resolv.conf".enable = false;
+  # Same for the baked /etc/hostname and /etc/hosts (both carry e2b.local, which
+  # every other family keeps). An empty hostName also stops activation calling
+  # `hostname` and overriding the running name.
+  networking.hostName = "";
+  environment.etc."hostname".enable = false;
+  environment.etc."hosts".enable = false;
 
   # The env daemon: E2B bakes the static binary at /usr/bin/envd as an OCI
   # layer on top of this image. Mirrors envd.service.tpl (systemd family).
