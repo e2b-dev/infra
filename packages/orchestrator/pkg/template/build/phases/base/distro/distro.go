@@ -106,10 +106,13 @@ var Profiles = []Profile{
 		Init: InitOpenRC,
 		IDs:  []string{"alpine"},
 		// shadow provides useradd/usermod (busybox's adduser takes different flags).
+		// util-linux-misc provides ionice, which busybox does not ship: envd runs at
+		// realtime IO (supervise-daemon --ionice 1:4) and resets each user process to
+		// best-effort with it, so without the binary they'd inherit realtime IO.
 		Packages: []string{
 			"openrc", "shadow", "openssh", "sudo", "chrony", "socat", "curl",
 			"ca-certificates", "fuse3", "iptables", "git", "nfs-utils", "less",
-			"nftables", "iputils", "jq", "bash",
+			"nftables", "iputils", "jq", "bash", "util-linux-misc",
 		},
 		PkgQueryBody: `apk info -e "$1" >/dev/null 2>&1`,
 		PkgInstall:   `apk add --no-cache "$@"`,
