@@ -248,6 +248,18 @@ type AdminTeamBootstrapRequest struct {
 	Name string `json:"name"`
 }
 
+// AdminUserBootstrapResponse defines model for AdminUserBootstrapResponse.
+type AdminUserBootstrapResponse struct {
+	// Id The team ID for the bootstrapped user.
+	Id openapi_types.UUID `json:"id"`
+
+	// Slug The team slug for the bootstrapped user.
+	Slug string `json:"slug"`
+
+	// UserId The internal user ID assigned to the bootstrapped identity.
+	UserId openapi_types.UUID `json:"user_id"`
+}
+
 // BuildInfo defines model for BuildInfo.
 type BuildInfo struct {
 	// CreatedAt Build creation timestamp in RFC3339 format.

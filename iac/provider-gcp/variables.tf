@@ -233,6 +233,11 @@ variable "auth_provider_config" {
       })
       cacheDuration = optional(string)
     })))
+    legacy = optional(object({
+      hmac = optional(object({
+        secrets = list(string)
+      }))
+    }))
   })
   sensitive = true
   default   = null

@@ -1162,6 +1162,25 @@ components:
         slug:
           type: string
 
+    AdminUserBootstrapResponse:
+      type: object
+      required:
+        - id
+        - slug
+        - user_id
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The team ID for the bootstrapped user.
+        slug:
+          type: string
+          description: The team slug for the bootstrapped user.
+        user_id:
+          type: string
+          format: uuid
+          description: The internal user ID assigned to the bootstrapped identity.
+
     AdminControlPlaneProjectType:
       type: string
       enum: [development, staging, production]
@@ -1426,7 +1445,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TeamResolveResponse"
+                $ref: "#/components/schemas/AdminUserBootstrapResponse"
         "400":
           $ref: "#/components/responses/400"
         "401":

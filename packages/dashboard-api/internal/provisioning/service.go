@@ -41,6 +41,7 @@ type ProvisionedTeam struct {
 	Slug          string
 	IsBlocked     bool
 	BlockedReason *string
+	UserID        uuid.UUID
 }
 
 type bootstrapUserProfile struct {
@@ -64,7 +65,7 @@ type OIDCUserBootstrapInput struct {
 	SignupUserAgent string
 }
 
-func newProvisionedTeam(id uuid.UUID, name, email, slug string, isBlocked bool, blockedReason *string) ProvisionedTeam {
+func newProvisionedTeam(id uuid.UUID, name, email, slug string, isBlocked bool, blockedReason *string, userID uuid.UUID) ProvisionedTeam {
 	return ProvisionedTeam{
 		ID:            id,
 		Name:          name,
@@ -72,5 +73,6 @@ func newProvisionedTeam(id uuid.UUID, name, email, slug string, isBlocked bool, 
 		Slug:          slug,
 		IsBlocked:     isBlocked,
 		BlockedReason: blockedReason,
+		UserID:        userID,
 	}
 }

@@ -36,7 +36,7 @@ func (s *Service) enrollSSOMember(ctx context.Context, authTxDB *authqueries.Que
 
 	landing := autoTeams[0].Team
 
-	return newProvisionedTeam(landing.ID, landing.Name, landing.Email, landing.Slug, landing.IsBlocked, landing.BlockedReason), nil
+	return newProvisionedTeam(landing.ID, landing.Name, landing.Email, landing.Slug, landing.IsBlocked, landing.BlockedReason, userID), nil
 }
 
 func (s *Service) ensureNotSSOManaged(ctx context.Context, userID uuid.UUID) error {

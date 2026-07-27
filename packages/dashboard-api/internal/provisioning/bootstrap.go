@@ -9,11 +9,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/identity"
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 )
 
@@ -39,6 +41,14 @@ func (s *Service) bootstrapUser(ctx context.Context, profile bootstrapUserProfil
 	ssoOrgID, err := s.identityService.IdentityOrganizationID(ctx, oidcIdentity.Issuer, oidcIdentity.Subject)
 	if err != nil {
 		if errors.Is(err, identity.ErrUnknownIssuer) {
+			// Password-based accounts use a non-Ory JWT whose issuer is not
+			// registered. If the user is already fully provisioned (has a
+			// default team), return that team rather than failing with a 400.
+			if profile.Email != "" {
+				if team, fallbackErr := s.existingTeamByEmail(ctx, profile.Email); fallbackErr == nil {
+					return team, nil
+				}
+			}
 			return ProvisionedTeam{}, &internalteamprovision.ProvisionError{
 				StatusCode: http.StatusBadRequest,
 				Message:    "oidc_issuer does not match a configured identity provider",
@@ -56,6 +66,12 @@ func (s *Service) bootstrapUser(ctx context.Context, profile bootstrapUserProfil
 		_ = tx.Rollback(ctx)
 	}()
 
+	// freshUserID is the UUID allocated for this login request. Only this
+	// ephemeral row may be deleted when a concurrent request wins the identity
+	// upsert race. If the email-match path sets profile.UserID to a pre-existing
+	// account, that account must not be deleted on conflict.
+	freshUserID := profile.UserID
+
 	existing, err := authTxDB.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
 		OidcIss: oidcIdentity.Issuer,
 		OidcSub: oidcIdentity.Subject,
@@ -65,6 +81,43 @@ func (s *Service) bootstrapUser(ctx context.Context, profile bootstrapUserProfil
 		profile.UserID = existing.UserID
 	case !dberrors.IsNotFoundError(err):
 		return ProvisionedTeam{}, fmt.Errorf("get user identity: %w", err)
+	default:
+		// No identity found: check if a pre-Ory user with this email exists and
+		// has not yet been linked to any identity for this issuer. If so, reuse
+		// their user_id so their existing teams and data are preserved on first login.
+		if profile.Email != "" {
+			emailMatches, emailErr := s.authDB.FindUserIDsByEmail(ctx, profile.Email)
+			if emailErr != nil {
+				return ProvisionedTeam{}, fmt.Errorf("find pre-Ory user by email: %w", emailErr)
+			}
+			// Only attempt email-based migration when there is exactly one match.
+			// Multiple matches indicate email reuse across accounts; skip to avoid
+			// linking the wrong user_id.
+			if len(emailMatches) == 1 {
+				linkedUserID := emailMatches[0]
+				// Lock the candidate user row before re-checking identities. Without
+				// this lock, two concurrent bootstraps with different subjects but the
+				// same email can both observe zero identities and both claim linkedUserID.
+				if _, lockErr := authTxDB.LockPublicUserForUpdate(ctx, linkedUserID); lockErr != nil {
+					return ProvisionedTeam{}, fmt.Errorf("lock pre-Ory user for migration: %w", lockErr)
+				}
+				identityRows, idErr := authTxDB.GetUserIdentitiesByUserIDsAndIssuers(ctx, authqueries.GetUserIdentitiesByUserIDsAndIssuersParams{
+					OidcIssuers: []string{oidcIdentity.Issuer},
+					UserIds:     []uuid.UUID{linkedUserID},
+				})
+				if idErr != nil {
+					return ProvisionedTeam{}, fmt.Errorf("check existing identities for pre-Ory user: %w", idErr)
+				}
+				// Only reuse the pre-Ory account for non-SSO identities.
+				// SSO-backed identities must go through enrollSSOMember so the
+				// user is added to the correct org team; skipping that step
+				// would return the user's personal default team and silently
+				// drop the SSO auto-join memberships.
+				if len(identityRows) == 0 && ssoOrgID == uuid.Nil {
+					profile.UserID = linkedUserID
+				}
+			}
+		}
 	}
 
 	candidateUserID := profile.UserID
@@ -80,8 +133,13 @@ func (s *Service) bootstrapUser(ctx context.Context, profile bootstrapUserProfil
 		return ProvisionedTeam{}, fmt.Errorf("upsert public identity: %w", err)
 	}
 	if canonicalUserID != candidateUserID {
-		if err := authTxDB.DeletePublicUser(ctx, candidateUserID); err != nil {
-			return ProvisionedTeam{}, fmt.Errorf("delete orphan public user: %w", err)
+		// Only delete if this is the ephemeral user we just allocated.
+		// If candidateUserID was set to a pre-existing account via the
+		// email-match migration path, deleting it would destroy real user data.
+		if candidateUserID == freshUserID {
+			if err := authTxDB.DeletePublicUser(ctx, candidateUserID); err != nil {
+				return ProvisionedTeam{}, fmt.Errorf("delete orphan public user: %w", err)
+			}
 		}
 		profile.UserID = canonicalUserID
 	}
@@ -109,10 +167,13 @@ func (s *Service) bootstrapUser(ctx context.Context, profile bootstrapUserProfil
 		}
 
 		if err := backfillIdentityExternalID(ctx, s.identityService, oidcIdentity, profile.UserID); err != nil {
-			return ProvisionedTeam{}, err
+			logger.L().Warn(ctx, "failed to backfill identity external_id (recoverable)",
+				zap.String("user_id", profile.UserID.String()),
+				zap.Error(err),
+			)
 		}
 
-		return newProvisionedTeam(existingTeam.ID, existingTeam.Name, existingTeam.Email, existingTeam.Slug, existingTeam.IsBlocked, existingTeam.BlockedReason), nil
+		return newProvisionedTeam(existingTeam.ID, existingTeam.Name, existingTeam.Email, existingTeam.Slug, existingTeam.IsBlocked, existingTeam.BlockedReason, profile.UserID), nil
 	}
 	if !dberrors.IsNotFoundError(err) {
 		return ProvisionedTeam{}, fmt.Errorf("get default team: %w", err)
@@ -129,8 +190,13 @@ func (s *Service) bootstrapUser(ctx context.Context, profile bootstrapUserProfil
 		}
 
 		if err := backfillIdentityExternalID(ctx, s.identityService, oidcIdentity, profile.UserID); err != nil {
-			return ProvisionedTeam{}, err
+			logger.L().Warn(ctx, "failed to backfill identity external_id (recoverable)",
+				zap.String("user_id", profile.UserID.String()),
+				zap.Error(err),
+			)
 		}
+
+		landing.UserID = profile.UserID
 
 		return landing, nil
 	}
@@ -175,16 +241,36 @@ func (s *Service) bootstrapUser(ctx context.Context, profile bootstrapUserProfil
 	_ = s.billing.ProvisionTeam(ctx, req)
 
 	if err := backfillIdentityExternalID(ctx, s.identityService, oidcIdentity, profile.UserID); err != nil {
-		return ProvisionedTeam{}, err
+		logger.L().Warn(ctx, "failed to backfill identity external_id (recoverable)",
+			zap.String("user_id", profile.UserID.String()),
+			zap.Error(err),
+		)
 	}
 
-	return newProvisionedTeam(team.ID, team.Name, team.Email, team.Slug, team.IsBlocked, team.BlockedReason), nil
+	return newProvisionedTeam(team.ID, team.Name, team.Email, team.Slug, team.IsBlocked, team.BlockedReason, profile.UserID), nil
 }
 
 func backfillIdentityExternalID(ctx context.Context, identityService identity.Service, oidcIdentity bootstrapUserIdentity, userID uuid.UUID) error {
 	if err := identityService.SetIdentityExternalID(ctx, oidcIdentity.Issuer, oidcIdentity.Subject, userID); err != nil {
+		if errors.Is(err, identity.ErrIdentityNotFound) {
+			return nil
+		}
 		return fmt.Errorf("set identity external id: %w", err)
 	}
 
 	return nil
+}
+
+func (s *Service) existingTeamByEmail(ctx context.Context, email string) (ProvisionedTeam, error) {
+	userIDs, err := s.authDB.FindUserIDsByEmail(ctx, email)
+	if err != nil || len(userIDs) != 1 {
+		return ProvisionedTeam{}, errors.New("no unique provisioned user for email")
+	}
+
+	team, err := s.authDB.Read.GetDefaultTeamByUserID(ctx, userIDs[0])
+	if err != nil {
+		return ProvisionedTeam{}, err
+	}
+
+	return newProvisionedTeam(team.ID, team.Name, team.Email, team.Slug, team.IsBlocked, team.BlockedReason, userIDs[0]), nil
 }

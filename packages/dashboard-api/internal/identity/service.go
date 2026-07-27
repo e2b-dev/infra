@@ -75,6 +75,9 @@ func (s *service) IdentityOrganizationID(ctx context.Context, issuer, subject st
 
 	id, err := directory.GetIdentity(ctx, subject)
 	if err != nil {
+		if errors.Is(err, ErrIdentityNotFound) {
+			return uuid.Nil, nil
+		}
 		return uuid.Nil, err
 	}
 
