@@ -145,6 +145,16 @@
   # orchestrator invokes it explicitly, like on every FHS distro) — provide it.
   system.activationScripts.e2bBinBash = "mkdir -m 0755 -p /bin && ln -sfn ${pkgs.bash}/bin/bash /bin/bash";
 
+  # Load the store registration build.sh packed, once, so the nix tooling sees
+  # the closure as valid. Never fail activation over it: without the DB the nix
+  # commands are broken, but the sandbox itself is fine — which is the status quo
+  # this repairs, not a regression it could introduce.
+  system.activationScripts.e2bNixDb = ''
+    if [ -f /nix/var/nix/db-registration ] && [ ! -e /nix/var/nix/db/db.sqlite ]; then
+      ${pkgs.nix}/bin/nix-store --load-db < /nix/var/nix/db-registration || true
+    fi
+  '';
+
   # Parity with the package set provision.sh installs on the other families, so
   # a sandbox exposes the same userland whichever base image it was built from.
   # (openssh, sudo, chrony and bash are declared as services/programs above.)

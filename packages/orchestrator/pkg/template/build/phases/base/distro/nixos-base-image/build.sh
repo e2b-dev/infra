@@ -14,6 +14,10 @@ tar -cf /build/nixos-rootfs.tar \$(cat /build/closure.txt)
 staging=/tmp/extra
 mkdir -p \$staging/sbin \$staging/etc \$staging/nix/var/nix/profiles
 ln -s \$top \$staging/nix/var/nix/profiles/system
+# Tarring store paths does not make them valid to nix: the DB lives in
+# /nix/var/nix/db, which the closure does not carry. Ship the registration so
+# first boot can load it, otherwise nix-env and friends reject every path.
+nix-store --dump-db \$(cat /build/closure.txt) > \$staging/nix/var/nix/db-registration
 ln -s /nix/var/nix/profiles/system/init \$staging/sbin/init
 cat > \$staging/etc/os-release <<OSR
 NAME=NixOS
