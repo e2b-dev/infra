@@ -48,12 +48,33 @@ func (c ProviderConfig) validate() error {
 // ProviderVerifier.
 type strategy interface {
 	Verify(ctx context.Context, tokenString string) (uuid.UUID, jwt.MapClaims, error)
+	VerifyIdentity(ctx context.Context, tokenString string) (oidc.TokenIdentity, error)
+}
+
+func newStrategy(ctx context.Context, entry jwks.Config, httpClient *http.Client, identities oidc.IdentityLookup) (strategy, error) {
+	if identities == nil {
+		return oidc.NewIdentityVerifier(ctx, entry, httpClient)
+	}
+
+	return oidc.NewVerifier(ctx, entry, httpClient, identities)
 }
 
 // ProviderVerifier aggregates one or more OIDC JWT verification strategies and
 // returns the first that succeeds.
 type ProviderVerifier struct {
 	strategies []strategy
+}
+
+// NewIdentityVerifier constructs a *ProviderVerifier that establishes what a
+// token asserts without resolving it to a user. Only VerifyIdentity is
+// available on the result.
+//
+// For a caller that runs before the user it will name exists — signup, or
+// anything else that must read a subject in order to create it — this is the
+// verifier to use. It performs the same OIDC discovery and issuer validation
+// as the resolving one, so choosing it weakens nothing about the token.
+func NewIdentityVerifier(ctx context.Context, config ProviderConfig, oidcHTTPClient *http.Client) (*ProviderVerifier, error) {
+	return newProviderVerifier(ctx, config, oidcHTTPClient, nil)
 }
 
 // NewProviderVerifier constructs a *ProviderVerifier from the given
@@ -64,6 +85,14 @@ type ProviderVerifier struct {
 // ProviderVerifier along, and any token verification attempt will be denied at
 // runtime by ProviderVerifier.Verify.
 func NewProviderVerifier(ctx context.Context, config ProviderConfig, oidcHTTPClient *http.Client, identities oidc.IdentityLookup) (*ProviderVerifier, error) {
+	if len(config.normalize().JWT) > 0 && identities == nil {
+		return nil, errors.New("auth provider OIDC identity lookup is required when JWT issuers are configured")
+	}
+
+	return newProviderVerifier(ctx, config, oidcHTTPClient, identities)
+}
+
+func newProviderVerifier(ctx context.Context, config ProviderConfig, oidcHTTPClient *http.Client, identities oidc.IdentityLookup) (*ProviderVerifier, error) {
 	normalized := config.normalize()
 	if err := normalized.validate(); err != nil {
 		return nil, err
@@ -74,12 +103,8 @@ func NewProviderVerifier(ctx context.Context, config ProviderConfig, oidcHTTPCli
 
 	strategies := make([]strategy, 0, len(normalized.JWT))
 
-	if len(normalized.JWT) > 0 && identities == nil {
-		return nil, errors.New("auth provider OIDC identity lookup is required when JWT issuers are configured")
-	}
-
 	for i, entry := range normalized.JWT {
-		s, err := oidc.NewVerifier(ctx, entry, oidcHTTPClient, identities)
+		s, err := newStrategy(ctx, entry, oidcHTTPClient, identities)
 		if err != nil {
 			return nil, fmt.Errorf("auth provider jwt[%d]: %w", i, err)
 		}
@@ -93,6 +118,36 @@ func NewProviderVerifier(ctx context.Context, config ProviderConfig, oidcHTTPCli
 	return &ProviderVerifier{
 		strategies: strategies,
 	}, nil
+}
+
+// VerifyIdentity iterates over the configured issuers and returns what the
+// first one to accept the token says it asserts.
+//
+// Unlike Verify there is no non-nil user id to insist on, because nothing has
+// been resolved: the caller is asking who the token claims to be, which is
+// the question worth asking before that person exists.
+func (v *ProviderVerifier) VerifyIdentity(ctx context.Context, tokenString string) (oidc.TokenIdentity, error) {
+	if v == nil {
+		return oidc.TokenIdentity{}, errors.New("auth provider verifier is not configured")
+	}
+
+	if len(v.strategies) == 0 {
+		return oidc.TokenIdentity{}, errors.New("auth provider verifier strategies are not configured")
+	}
+
+	errs := make([]error, 0, len(v.strategies))
+	for _, strategy := range v.strategies {
+		identity, err := strategy.VerifyIdentity(ctx, tokenString)
+		if err != nil {
+			errs = append(errs, err)
+
+			continue
+		}
+
+		return identity, nil
+	}
+
+	return oidc.TokenIdentity{}, fmt.Errorf("failed to verify auth provider token: %w", errors.Join(errs...))
 }
 
 // Verify iterates over the configured strategies and returns the first that
