@@ -11,7 +11,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
@@ -171,25 +170,29 @@ func (s *Sandbox) guestPrepareFsForPause(ctx context.Context, cleanup *Cleanup) 
 	timeout := s.guestSyncTimeout(ctx)
 	start := time.Now()
 
-	ctx, span := tracer.Start(
-		ctx,
-		"envd-guest-fs-pause",
-		trace.WithAttributes(attribute.Bool("fsfreeze", supportsFsFreeze)),
-	)
+	// method records how the rootfs was quiesced: native "fsfreeze", "fsfreeze-exec"
+	// (old envd, via the exec API), or "sync" (fallback). Updated as we proceed.
+	method := "sync"
+
+	ctx, span := tracer.Start(ctx, "envd-guest-fs-pause")
 	defer span.End()
 
 	// Record on every exit so slow and timed-out syncs are captured too.
 	defer func() {
+		frozen := method != "sync"
+		span.SetAttributes(attribute.String("method", method), attribute.Bool("fsfreeze", frozen))
 		guestSyncDurationHistogram.Record(ctx, time.Since(start).Milliseconds(),
 			metric.WithAttributes(
 				attribute.Bool("success", e == nil),
-				attribute.Bool("fsfreeze", supportsFsFreeze),
+				attribute.Bool("fsfreeze", frozen),
+				attribute.String("method", method),
 				attribute.Int64("timeout_ms", timeout.Milliseconds()),
 			),
 		)
 	}()
 
 	if supportsFsFreeze {
+		method = "fsfreeze"
 		// fsfreeze flushes the rootfs AND blocks further writes until thaw,
 		// closing the sync->pause race. FIFREEZE already syncs as part of
 		// freezing, so a separate guest sync would be redundant.
@@ -205,10 +208,53 @@ func (s *Sandbox) guestPrepareFsForPause(ctx context.Context, cleanup *Cleanup) 
 		if err := s.callEnvdFsfreeze(ctx, timeout); err != nil {
 			return fmt.Errorf("fsfreeze before filesystem-only pause: %w", err)
 		}
-	} else {
-		if err := s.guestSync(ctx, timeout); err != nil {
-			return fmt.Errorf("guest sync before filesystem-only pause: %w", err)
+
+		return nil
+	}
+
+	// Old envd, no native /fsfreeze. When enabled, freeze the rootfs via the exec
+	// API so the snapshot is captured on a quiesced, consistent filesystem instead
+	// of a merely sync'd one (which leaves the sync->pause write race open).
+	if s.featureFlags.BoolFlag(ctx, featureflags.FsFreezeViaExecFlag, sandboxLDContext(s.Runtime, s.Config)) {
+		// Probe for the fsfreeze binary first. `command -v` only inspects PATH and
+		// never touches the rootfs, so if it's missing (or the probe itself errors)
+		// the filesystem is definitely not frozen and it's safe to fall back to a
+		// plain sync — the "never fail a pause just because fsfreeze is missing"
+		// case. Only once we know the binary exists do we risk a freeze.
+		hasFsfreeze, err := s.guestHasFsfreeze(ctx, timeout)
+		if err != nil {
+			logger.L().Warn(ctx, "probing guest for fsfreeze failed; falling back to guest sync",
+				logger.WithSandboxID(s.Runtime.SandboxID), zap.Error(err))
+		} else if hasFsfreeze {
+			// Register the rollback thaw before freezing so an aborted freeze can't
+			// leave the live VM frozen; thawing a non-frozen fs is a harmless no-op.
+			cleanup.Add(ctx, func(ctx context.Context) error {
+				s.bestEffortFsthawViaExec(ctx)
+
+				return nil
+			})
+			// Set method before the freeze — as the native path sets "fsfreeze"
+			// before its call — so the deferred metric attributes an attempted but
+			// failed/aborted freeze to fsfreeze-exec, not to the sync fallback.
+			method = "fsfreeze-exec"
+			// A freeze error here may leave the rootfs frozen: FIFREEZE persists
+			// after the command exits, so a timeout or stream error that races a
+			// freeze which already engaged still leaves it frozen. A fallback sync
+			// would then block on the frozen fs, so abort the pause like the native
+			// path does and let the registered cleanup thaw it — do not sync.
+			if err := s.guestFsfreezeViaExec(ctx, timeout); err != nil {
+				return fmt.Errorf("fsfreeze via exec before filesystem-only pause: %w", err)
+			}
+
+			logger.L().Info(ctx, "froze guest rootfs via envd exec API before filesystem-only pause",
+				logger.WithSandboxID(s.Runtime.SandboxID))
+
+			return nil
 		}
+	}
+
+	if err := s.guestSync(ctx, timeout); err != nil {
+		return fmt.Errorf("guest sync before filesystem-only pause: %w", err)
 	}
 
 	return nil
@@ -220,13 +266,28 @@ func (s *Sandbox) guestPrepareFsForPause(ctx context.Context, cleanup *Cleanup) 
 // error instead of persisting a rootfs missing acknowledged writes. Unlike
 // bestEffortReclaim's sync step (LD-flag gated, best-effort), this always runs
 // and always reports failure.
-func (s *Sandbox) guestSync(ctx context.Context, syncTimeout time.Duration) (e error) {
-	rcCtx, cancel := context.WithTimeout(ctx, syncTimeout+reclaimOuterSlack)
+func (s *Sandbox) guestSync(ctx context.Context, syncTimeout time.Duration) error {
+	exitCode, err := s.runGuestShellCommand(ctx, syncTimeout, "sync")
+	if err != nil {
+		return err
+	}
+	if exitCode != 0 {
+		return fmt.Errorf("guest sync exited with code %d", exitCode)
+	}
+
+	return nil
+}
+
+// runGuestShellCommand runs `sh -c <script>` in the guest as root via the envd
+// process API and returns the command's exit code. Shared by the sync and
+// fsfreeze/fsthaw steps of a filesystem-only pause.
+func (s *Sandbox) runGuestShellCommand(ctx context.Context, timeout time.Duration, script string) (int32, error) {
+	rcCtx, cancel := context.WithTimeout(ctx, timeout+reclaimOuterSlack)
 	defer cancel()
 
-	stream, err := s.StartEnvdSystemShell(rcCtx, "/bin/sh", []string{"-c", "sync"}, "root", syncTimeout)
+	stream, err := s.StartEnvdSystemShell(rcCtx, "/bin/sh", []string{"-c", script}, "root", timeout)
 	if err != nil {
-		return fmt.Errorf("start guest sync: %w", err)
+		return -1, fmt.Errorf("start guest command: %w", err)
 	}
 	defer stream.Close()
 
@@ -237,13 +298,73 @@ func (s *Sandbox) guestSync(ctx context.Context, syncTimeout time.Duration) (e e
 		}
 	}
 	if err := stream.Err(); err != nil {
-		return fmt.Errorf("guest sync stream: %w", err)
+		return -1, fmt.Errorf("guest command stream: %w", err)
+	}
+
+	return exitCode, nil
+}
+
+// fsthawViaExecTimeout bounds the rollback thaw run through the exec API. Kept
+// short: the thaw runs only on the pause-failure path, and one that blocks (e.g.
+// the exec path touches the frozen rootfs) must not hang the cleanup — a bounded
+// failure lets the caller tear the sandbox down instead of leaving it frozen.
+const fsthawViaExecTimeout = 10 * time.Second
+
+// guestHasFsfreeze reports whether the guest has an fsfreeze binary. It probes
+// with `command -v`, which only inspects PATH and never touches the rootfs, so
+// it is safe to run before deciding whether to freeze or fall back to sync. A
+// non-zero exit means the binary is absent (a clean "fall back to sync" signal);
+// only a stream/RPC failure is returned as an error.
+func (s *Sandbox) guestHasFsfreeze(ctx context.Context, timeout time.Duration) (bool, error) {
+	exitCode, err := s.runGuestShellCommand(ctx, timeout, "command -v fsfreeze >/dev/null 2>&1")
+	if err != nil {
+		return false, err
+	}
+
+	return exitCode == 0, nil
+}
+
+// guestFsfreezeViaExec freezes the guest rootfs with `fsfreeze -f /` through the
+// envd exec API, for guests whose envd predates the native /fsfreeze endpoint.
+// Callers must confirm the fsfreeze binary exists first (see guestHasFsfreeze).
+// FIFREEZE flushes the rootfs and blocks further writes until thaw, closing the
+// sync->pause race a plain sync leaves open; the freeze is a superblock property,
+// so it persists after the command exits. A non-zero exit or stream error is
+// returned so the caller aborts the pause rather than syncing a possibly-frozen
+// rootfs (which would block).
+func (s *Sandbox) guestFsfreezeViaExec(ctx context.Context, timeout time.Duration) error {
+	exitCode, err := s.runGuestShellCommand(ctx, timeout, "fsfreeze -f /")
+	if err != nil {
+		return err
 	}
 	if exitCode != 0 {
-		return fmt.Errorf("guest sync exited with code %d", exitCode)
+		return fmt.Errorf("guest fsfreeze -f / exited with code %d", exitCode)
 	}
 
 	return nil
+}
+
+// bestEffortFsthawViaExec thaws the guest rootfs with `fsfreeze -u /` through the
+// exec API on the pause-failure rollback, so a frozen filesystem can't leave the
+// live VM deadlocked. Bounded and detached; FITHAW on a non-frozen filesystem is
+// a harmless no-op, so it is safe even when no freeze actually happened.
+//
+// Caveat: the thaw spawns a process against a possibly-frozen rootfs. If the exec
+// path writes to that rootfs it would block; the bounded timeout ensures we
+// return rather than hang, but a timed-out thaw leaves the VM frozen and the
+// sandbox should then be torn down. The pause success path never thaws.
+func (s *Sandbox) bestEffortFsthawViaExec(ctx context.Context) {
+	exitCode, err := s.runGuestShellCommand(context.WithoutCancel(ctx), fsthawViaExecTimeout,
+		"command -v fsfreeze >/dev/null 2>&1 && fsfreeze -u /")
+	if err != nil {
+		logger.L().Warn(ctx, "fsthaw via exec failed", logger.WithSandboxID(s.Runtime.SandboxID), zap.Error(err))
+
+		return
+	}
+	if exitCode != 0 {
+		logger.L().Warn(ctx, "fsthaw via exec exited non-zero",
+			logger.WithSandboxID(s.Runtime.SandboxID), zap.Int32("exit_code", exitCode))
+	}
 }
 
 // envdSupportsCgroupFreeze reports whether the sandbox's envd exposes the
