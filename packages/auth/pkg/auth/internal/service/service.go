@@ -51,7 +51,7 @@ type Service interface {
 type AuthService struct {
 	store                authStore
 	teamCache            *authCache
-	authProviderVerifier *token.ProviderVerifier
+	authProviderVerifier *token.LinkedOIDCVerifier
 }
 
 // Compile-time assertion that *AuthService satisfies the Service interface.
@@ -82,7 +82,7 @@ func NewAuthService(
 	// OIDC bootstrap writes identity rows on the primary immediately before the
 	// next authenticated request; using the read replica here races replication lag.
 	identityLookup := newAuthIdentityLookup(authDB.Queries)
-	v, err := token.NewProviderVerifier(ctx, providerConfig, httpClient, identityLookup)
+	v, err := token.NewLinkedOIDCVerifier(ctx, providerConfig, httpClient, identityLookup)
 	if err != nil {
 		return nil, fmt.Errorf("initializing auth provider JWT verifier: %w", err)
 	}
@@ -188,7 +188,7 @@ func (s *AuthService) ValidateAuthProviderToken(ctx context.Context, ginCtx *gin
 	return s.validateJWTWithProvider(ctx, ginCtx, s.authProviderVerifier, token, "auth provider")
 }
 
-func (s *AuthService) validateJWTWithProvider(ctx context.Context, ginCtx *gin.Context, v *token.ProviderVerifier, token string, tokenSource string) (uuid.UUID, *APIError) {
+func (s *AuthService) validateJWTWithProvider(ctx context.Context, ginCtx *gin.Context, v *token.LinkedOIDCVerifier, token string, tokenSource string) (uuid.UUID, *APIError) {
 	userID, _, err := v.Verify(ctx, token)
 	if err != nil {
 		return uuid.UUID{}, &APIError{

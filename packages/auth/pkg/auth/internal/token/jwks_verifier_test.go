@@ -20,7 +20,7 @@ const (
 	adminTestAudience = "fx1"
 )
 
-func newAdminTestVerifier(t *testing.T) (*ServiceTokenVerifier, ed25519.PrivateKey, string) {
+func newAdminTestVerifier(t *testing.T) (*JWKSVerifier, ed25519.PrivateKey, string) {
 	t.Helper()
 
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
@@ -28,7 +28,7 @@ func newAdminTestVerifier(t *testing.T) (*ServiceTokenVerifier, ed25519.PrivateK
 
 	server := jwks.NewTestServer(t, publicKey, adminTestKeyID, jose.EdDSA, "https://unexpected.example.com")
 
-	verifier, err := NewServiceTokenVerifier(t.Context(), ProviderConfig{
+	verifier, err := NewJWKSVerifier(t.Context(), ProviderConfig{
 		JWT: []jwks.Config{{
 			Issuer: jwks.Issuer{
 				URL:       server.URL,
@@ -52,7 +52,7 @@ func signAdminToken(t *testing.T, privateKey ed25519.PrivateKey, claims jwt.MapC
 	return signed
 }
 
-func TestServiceTokenVerifier(t *testing.T) {
+func TestJWKSVerifier(t *testing.T) {
 	t.Parallel()
 
 	verifier, privateKey, issuer := newAdminTestVerifier(t)
@@ -91,10 +91,10 @@ func TestServiceTokenVerifier(t *testing.T) {
 	})
 }
 
-func TestServiceTokenVerifierDisabled(t *testing.T) {
+func TestJWKSVerifierDisabled(t *testing.T) {
 	t.Parallel()
 
-	verifier, err := NewServiceTokenVerifier(t.Context(), ProviderConfig{}, nil)
+	verifier, err := NewJWKSVerifier(t.Context(), ProviderConfig{}, nil)
 	require.NoError(t, err)
 	require.Nil(t, verifier)
 
@@ -102,7 +102,7 @@ func TestServiceTokenVerifierDisabled(t *testing.T) {
 	require.ErrorContains(t, err, "not configured")
 }
 
-func TestServiceTokenVerifierRejectsNonEdDSA(t *testing.T) {
+func TestJWKSVerifierRejectsNonEdDSA(t *testing.T) {
 	t.Parallel()
 
 	verifier, _, issuer := newAdminTestVerifier(t)
@@ -120,7 +120,7 @@ func TestServiceTokenVerifierRejectsNonEdDSA(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestServiceTokenVerifierES256(t *testing.T) {
+func TestJWKSVerifierES256(t *testing.T) {
 	t.Parallel()
 
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -129,7 +129,7 @@ func TestServiceTokenVerifierES256(t *testing.T) {
 	server := jwks.NewTestServer(t, &privateKey.PublicKey, adminTestKeyID, jose.ES256, "https://unexpected.example.com")
 	issuer := server.URL
 
-	verifier, err := NewServiceTokenVerifier(t.Context(), ProviderConfig{
+	verifier, err := NewJWKSVerifier(t.Context(), ProviderConfig{
 		JWT: []jwks.Config{{
 			Issuer: jwks.Issuer{
 				URL:       issuer,
@@ -152,7 +152,7 @@ func TestServiceTokenVerifierES256(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestServiceTokenVerifierRejectsJWKSKeyWithoutAlgorithm(t *testing.T) {
+func TestJWKSVerifierRejectsJWKSKeyWithoutAlgorithm(t *testing.T) {
 	t.Parallel()
 
 	publicKey, _, err := ed25519.GenerateKey(rand.Reader)
@@ -160,7 +160,7 @@ func TestServiceTokenVerifierRejectsJWKSKeyWithoutAlgorithm(t *testing.T) {
 
 	server := jwks.NewTestServer(t, publicKey, adminTestKeyID, "", "https://unexpected.example.com")
 
-	verifier, err := NewServiceTokenVerifier(t.Context(), ProviderConfig{
+	verifier, err := NewJWKSVerifier(t.Context(), ProviderConfig{
 		JWT: []jwks.Config{{
 			Issuer: jwks.Issuer{
 				URL:       server.URL,

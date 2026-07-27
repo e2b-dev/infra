@@ -19,45 +19,52 @@ type AudienceMatchPolicy = jwks.AudienceMatchPolicy
 
 const AudienceMatchAny = jwks.AudienceMatchAny
 
-// ServiceTokenVerifier verifies a JWT whose keys are published at the
-// issuer's conventional JWKS path, with no OIDC discovery document. Suited to
-// tokens minted by a peer service, where there is no discovery to do.
+// The three verifiers below sit on one axis: how a token's keys are found,
+// and how far the result is carried.
 //
-// Not the right verifier for tokens from an identity provider: it neither
-// fetches the discovery document nor cross-checks the issuer that document
-// declares. Those callers want ProviderVerifier or IdentityVerifier.
-type ServiceTokenVerifier = token.ServiceTokenVerifier
+//	JWKSVerifier        keys from the issuer's JWKS path; claims
+//	OIDCVerifier        keys via OIDC discovery; what the token asserts
+//	LinkedOIDCVerifier  the above, resolved to an internal user
+//
+// Each adds to the one before it. Picking a lower one is a decision about
+// what the caller needs, never a weakening of the token: discovery and issuer
+// validation are identical across both OIDC levels.
+
+// JWKSVerifier verifies a JWT against keys published at each issuer's
+// conventional JWKS path, without an OIDC discovery document.
+//
+// Suited to a token minted by a peer service, where there is no discovery to
+// perform. Not suited to one from an identity provider: it neither fetches
+// the discovery document nor cross-checks the issuer that document declares.
+type JWKSVerifier = token.JWKSVerifier
 
 func ParseProviderConfig(value string) (ProviderConfig, error) {
 	return token.ParseProviderConfig(value)
 }
 
-// NewServiceTokenVerifier builds a verifier for every issuer in the config,
-// returning nil when it declares none. A nil verifier denies everything.
-func NewServiceTokenVerifier(ctx context.Context, config ProviderConfig, httpClient *http.Client) (*ServiceTokenVerifier, error) {
-	return token.NewServiceTokenVerifier(ctx, config, httpClient)
+// NewJWKSVerifier builds a verifier for every issuer in the config, returning
+// nil when it declares none. A nil verifier denies everything.
+func NewJWKSVerifier(ctx context.Context, config ProviderConfig, httpClient *http.Client) (*JWKSVerifier, error) {
+	return token.NewJWKSVerifier(ctx, config, httpClient)
 }
 
 // TokenIdentity is what a verified token asserts about itself: the issuer and
 // subject it names, and the claims it carried.
 type TokenIdentity = oidc.TokenIdentity
 
-// IdentityVerifier verifies auth-provider tokens and reports what they assert
-// without resolving anyone. The same type as ProviderVerifier, constructed
-// without a lookup, so only VerifyIdentity is available on it.
-type IdentityVerifier = token.ProviderVerifier
-
-// NewIdentityVerifier constructs a verifier for a caller that must read a
-// token's subject before that subject is a user here — signup, or anything
-// else that creates the identity it is authenticating.
+// OIDCVerifier verifies auth-provider tokens across every configured issuer
+// and reports what they assert, linking them to nobody.
 //
-// Performs the same discovery and issuer validation as NewProviderVerifier,
-// so declining to resolve weakens nothing about the token itself. The
-// alternative — handing the resolving verifier a lookup that answers
-// "nobody" — makes not-found a value and turns any missed check into an
-// authenticated nobody. This keeps that answer unrepresentable.
-func NewIdentityVerifier(ctx context.Context, config ProviderConfig, httpClient *http.Client) (*IdentityVerifier, error) {
-	return token.NewIdentityVerifier(ctx, config, httpClient)
+// For a caller that must read a subject before that subject is a user here —
+// signup, or anything else creating the identity it authenticates. The
+// alternative, giving a linked verifier a lookup that answers "nobody", makes
+// not-found a value and turns any missed check into an authenticated nobody.
+type OIDCVerifier = token.OIDCVerifier
+
+// NewOIDCVerifier builds a verifier that reports what tokens assert without
+// resolving them.
+func NewOIDCVerifier(ctx context.Context, config ProviderConfig, httpClient *http.Client) (*OIDCVerifier, error) {
+	return token.NewOIDCVerifier(ctx, config, httpClient)
 }
 
 // IdentityLookup resolves an OIDC identity (issuer + subject) to an internal
@@ -67,7 +74,7 @@ type IdentityLookup = oidc.IdentityLookup
 
 // OIDCVerifier verifies auth-provider user JWTs for a single issuer and
 // resolves the internal user identity through an IdentityLookup.
-type OIDCVerifier = oidc.Verifier
+type OIDCIssuerVerifier = oidc.Verifier
 
 // ErrIdentityNotFound is returned by OIDC verification when the token is
 // valid but no matching identity exists.
@@ -76,17 +83,17 @@ var ErrIdentityNotFound = oidc.ErrIdentityNotFound
 // NewOIDCVerifier constructs an OIDCVerifier for the given issuer config.
 // External consumers (e.g. belt) use this to verify auth-provider tokens with
 // their own identity storage.
-func NewOIDCVerifier(ctx context.Context, config JWTConfig, httpClient *http.Client, identities IdentityLookup) (*OIDCVerifier, error) {
+func NewOIDCIssuerVerifier(ctx context.Context, config JWTConfig, httpClient *http.Client, identities IdentityLookup) (*OIDCIssuerVerifier, error) {
 	return oidc.NewVerifier(ctx, config, httpClient, identities)
 }
 
-// ProviderVerifier verifies auth-provider user JWTs across every issuer in a
-// ProviderConfig.
-type ProviderVerifier = token.ProviderVerifier
+// LinkedOIDCVerifier verifies auth-provider user JWTs across every issuer in
+// a ProviderConfig and resolves each to the internal user it names.
+type LinkedOIDCVerifier = token.LinkedOIDCVerifier
 
-// NewProviderVerifier constructs a ProviderVerifier for the given provider
-// config. When the config has no JWT issuers it returns (nil, nil); a nil
-// ProviderVerifier denies all verification attempts at runtime.
-func NewProviderVerifier(ctx context.Context, config ProviderConfig, httpClient *http.Client, identities IdentityLookup) (*ProviderVerifier, error) {
-	return token.NewProviderVerifier(ctx, config, httpClient, identities)
+// NewLinkedOIDCVerifier constructs a verifier for the given provider config.
+// When the config has no JWT issuers it returns (nil, nil); a nil verifier
+// denies all verification attempts at runtime.
+func NewLinkedOIDCVerifier(ctx context.Context, config ProviderConfig, httpClient *http.Client, identities IdentityLookup) (*LinkedOIDCVerifier, error) {
+	return token.NewLinkedOIDCVerifier(ctx, config, httpClient, identities)
 }

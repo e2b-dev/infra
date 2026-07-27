@@ -66,7 +66,7 @@ func httpClientForServers(servers ...*httptest.Server) *http.Client {
 func TestNewVerifier_DisabledConfigReturnsNil(t *testing.T) {
 	t.Parallel()
 
-	verifier, err := NewProviderVerifier(t.Context(), ProviderConfig{}, nil, nil)
+	verifier, err := NewLinkedOIDCVerifier(t.Context(), ProviderConfig{}, nil, nil)
 	require.NoError(t, err)
 	require.Nil(t, verifier)
 }
@@ -85,7 +85,7 @@ func TestVerifier_VerifyJWT(t *testing.T) {
 	jwksUserID := uuid.New()
 	lookup.set(testIssuerURL, jwksSub, jwksUserID)
 
-	verifier, err := NewProviderVerifier(t.Context(), ProviderConfig{
+	verifier, err := NewLinkedOIDCVerifier(t.Context(), ProviderConfig{
 		JWT: []jwks.Config{
 			{
 				Issuer: jwks.Issuer{
@@ -137,7 +137,7 @@ func TestVerifier_VerifyMultipleJWTIssuers(t *testing.T) {
 	userID := uuid.New()
 	lookup.set(issuer2URL, tokenSub, userID)
 
-	verifier, err := NewProviderVerifier(t.Context(), ProviderConfig{
+	verifier, err := NewLinkedOIDCVerifier(t.Context(), ProviderConfig{
 		JWT: []jwks.Config{
 			{
 				Issuer: jwks.Issuer{
@@ -173,4 +173,25 @@ func TestVerifier_VerifyMultipleJWTIssuers(t *testing.T) {
 	gotUserID, _, err := verifier.Verify(t.Context(), signedToken)
 	require.NoError(t, err)
 	require.Equal(t, userID, gotUserID)
+}
+
+// An unconfigured provider yields a nil verifier that callers pass along, so
+// every method on it must deny rather than panic — including the one promoted
+// from the embedded verifier, which would otherwise dereference the outer
+// pointer before its own nil check.
+func TestNilVerifiersDenyRatherThanPanic(t *testing.T) {
+	t.Parallel()
+
+	var linked *LinkedOIDCVerifier
+
+	_, _, err := linked.Verify(t.Context(), "token")
+	require.ErrorContains(t, err, "not configured")
+
+	_, err = linked.VerifyIdentity(t.Context(), "token")
+	require.ErrorContains(t, err, "not configured")
+
+	var unlinked *OIDCVerifier
+
+	_, err = unlinked.VerifyIdentity(t.Context(), "token")
+	require.ErrorContains(t, err, "not configured")
 }

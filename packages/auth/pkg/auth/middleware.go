@@ -45,7 +45,7 @@ func NewAuthProviderTeamAuthenticator(validationFunc func(context.Context, *gin.
 	return internalauthmiddleware.NewAuthProviderTeamAuthenticator(validationFunc)
 }
 
-func NewAdminJWTAuthenticator(verifier *ServiceTokenVerifier) Authenticator {
+func NewAdminJWTAuthenticator(verifier *JWKSVerifier) Authenticator {
 	return internalauthmiddleware.NewAdminJWTAuthenticator(verifier)
 }
 

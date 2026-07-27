@@ -44,55 +44,61 @@ func (c ProviderConfig) validate() error {
 	return nil
 }
 
-// strategy is the interface satisfied by per-provider JWT verifiers used by
-// ProviderVerifier.
+// strategy is the interface satisfied by per-issuer JWT verifiers.
 type strategy interface {
 	Verify(ctx context.Context, tokenString string) (uuid.UUID, jwt.MapClaims, error)
 	VerifyIdentity(ctx context.Context, tokenString string) (oidc.TokenIdentity, error)
 }
 
-func newStrategy(ctx context.Context, entry jwks.Config, httpClient *http.Client, identities oidc.IdentityLookup) (strategy, error) {
-	if identities == nil {
-		return oidc.NewIdentityVerifier(ctx, entry, httpClient)
-	}
-
-	return oidc.NewVerifier(ctx, entry, httpClient, identities)
-}
-
-// ProviderVerifier aggregates one or more OIDC JWT verification strategies and
-// returns the first that succeeds.
-type ProviderVerifier struct {
+// OIDCVerifier verifies auth-provider JWTs against every issuer in a
+// ProviderConfig, via each issuer's OIDC discovery document, and reports what
+// the first accepting issuer says the token asserts.
+//
+// It links the token to nothing. A caller that needs the internal user behind
+// it wants LinkedOIDCVerifier, which is this plus a lookup.
+type OIDCVerifier struct {
 	strategies []strategy
 }
 
-// NewIdentityVerifier constructs a *ProviderVerifier that establishes what a
-// token asserts without resolving it to a user. Only VerifyIdentity is
-// available on the result.
+// LinkedOIDCVerifier is an OIDCVerifier that also resolves the asserted
+// identity to an internal user.
 //
-// For a caller that runs before the user it will name exists — signup, or
-// anything else that must read a subject in order to create it — this is the
-// verifier to use. It performs the same OIDC discovery and issuer validation
-// as the resolving one, so choosing it weakens nothing about the token.
-func NewIdentityVerifier(ctx context.Context, config ProviderConfig, oidcHTTPClient *http.Client) (*ProviderVerifier, error) {
-	return newProviderVerifier(ctx, config, oidcHTTPClient, nil)
+// Separate type rather than a flag, so a verifier built without a lookup has
+// no Verify to call. The capability is visible where the verifier is passed
+// rather than discovered when a request reaches it.
+type LinkedOIDCVerifier struct {
+	OIDCVerifier
+
+	identities oidc.IdentityLookup
 }
 
-// NewProviderVerifier constructs a *ProviderVerifier from the given
-// ProviderConfig.
-//
-// When the provided config has no JWT issuers, NewProviderVerifier returns
-// (nil, nil). This is a valid configuration: the caller can pass the nil
-// ProviderVerifier along, and any token verification attempt will be denied at
-// runtime by ProviderVerifier.Verify.
-func NewProviderVerifier(ctx context.Context, config ProviderConfig, oidcHTTPClient *http.Client, identities oidc.IdentityLookup) (*ProviderVerifier, error) {
+// NewOIDCVerifier builds a verifier over every issuer in the config,
+// returning (nil, nil) when it declares none. A nil verifier denies
+// everything, so an unconfigured provider needs no branch at the call site.
+func NewOIDCVerifier(ctx context.Context, config ProviderConfig, oidcHTTPClient *http.Client) (*OIDCVerifier, error) {
+	return newOIDCVerifier(ctx, config, oidcHTTPClient, nil)
+}
+
+// NewLinkedOIDCVerifier builds a verifier that also resolves the asserted
+// identity through the supplied lookup.
+func NewLinkedOIDCVerifier(ctx context.Context, config ProviderConfig, oidcHTTPClient *http.Client, identities oidc.IdentityLookup) (*LinkedOIDCVerifier, error) {
+	// Only when there is something to resolve. A config declaring no issuers
+	// yields a nil verifier that denies everything, and demanding a lookup to
+	// reach that conclusion would make an unconfigured provider a startup
+	// failure rather than a supported state.
 	if len(config.normalize().JWT) > 0 && identities == nil {
 		return nil, errors.New("auth provider OIDC identity lookup is required when JWT issuers are configured")
 	}
 
-	return newProviderVerifier(ctx, config, oidcHTTPClient, identities)
+	verifier, err := newOIDCVerifier(ctx, config, oidcHTTPClient, identities)
+	if err != nil || verifier == nil {
+		return nil, err
+	}
+
+	return &LinkedOIDCVerifier{OIDCVerifier: *verifier, identities: identities}, nil
 }
 
-func newProviderVerifier(ctx context.Context, config ProviderConfig, oidcHTTPClient *http.Client, identities oidc.IdentityLookup) (*ProviderVerifier, error) {
+func newOIDCVerifier(ctx context.Context, config ProviderConfig, oidcHTTPClient *http.Client, identities oidc.IdentityLookup) (*OIDCVerifier, error) {
 	normalized := config.normalize()
 	if err := normalized.validate(); err != nil {
 		return nil, err
@@ -102,7 +108,6 @@ func newProviderVerifier(ctx context.Context, config ProviderConfig, oidcHTTPCli
 	}
 
 	strategies := make([]strategy, 0, len(normalized.JWT))
-
 	for i, entry := range normalized.JWT {
 		s, err := newStrategy(ctx, entry, oidcHTTPClient, identities)
 		if err != nil {
@@ -115,9 +120,18 @@ func newProviderVerifier(ctx context.Context, config ProviderConfig, oidcHTTPCli
 		return nil, errors.New("auth provider verifier has no configured signing verifier")
 	}
 
-	return &ProviderVerifier{
-		strategies: strategies,
-	}, nil
+	return &OIDCVerifier{strategies: strategies}, nil
+}
+
+// newStrategy builds the per-issuer verifier. Both levels perform the same
+// discovery and issuer validation; the lookup only decides whether the result
+// can be resolved further.
+func newStrategy(ctx context.Context, entry jwks.Config, httpClient *http.Client, identities oidc.IdentityLookup) (strategy, error) {
+	if identities == nil {
+		return oidc.NewIdentityVerifier(ctx, entry, httpClient)
+	}
+
+	return oidc.NewVerifier(ctx, entry, httpClient, identities)
 }
 
 // VerifyIdentity iterates over the configured issuers and returns what the
@@ -126,7 +140,7 @@ func newProviderVerifier(ctx context.Context, config ProviderConfig, oidcHTTPCli
 // Unlike Verify there is no non-nil user id to insist on, because nothing has
 // been resolved: the caller is asking who the token claims to be, which is
 // the question worth asking before that person exists.
-func (v *ProviderVerifier) VerifyIdentity(ctx context.Context, tokenString string) (oidc.TokenIdentity, error) {
+func (v *OIDCVerifier) VerifyIdentity(ctx context.Context, tokenString string) (oidc.TokenIdentity, error) {
 	if v == nil {
 		return oidc.TokenIdentity{}, errors.New("auth provider verifier is not configured")
 	}
@@ -152,7 +166,20 @@ func (v *ProviderVerifier) VerifyIdentity(ctx context.Context, tokenString strin
 
 // Verify iterates over the configured strategies and returns the first that
 // successfully verifies the token and resolves a non-nil internal user UUID.
-func (v *ProviderVerifier) Verify(ctx context.Context, tokenString string) (uuid.UUID, jwt.MapClaims, error) {
+// VerifyIdentity shadows the promoted method so a nil verifier denies rather
+// than panics. Promotion computes the address of the embedded value, which
+// dereferences the outer pointer before the inner nil check can run, and a
+// nil verifier is a supported state here: an unconfigured provider yields one
+// and callers pass it along.
+func (v *LinkedOIDCVerifier) VerifyIdentity(ctx context.Context, tokenString string) (oidc.TokenIdentity, error) {
+	if v == nil {
+		return oidc.TokenIdentity{}, errors.New("auth provider verifier is not configured")
+	}
+
+	return v.OIDCVerifier.VerifyIdentity(ctx, tokenString)
+}
+
+func (v *LinkedOIDCVerifier) Verify(ctx context.Context, tokenString string) (uuid.UUID, jwt.MapClaims, error) {
 	if v == nil {
 		return uuid.Nil, nil, errors.New("auth provider verifier is not configured")
 	}

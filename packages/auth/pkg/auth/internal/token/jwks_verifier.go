@@ -12,27 +12,27 @@ import (
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth/internal/token/jwks"
 )
 
-// serviceTokenClockSkew is the leeway applied to time-based claims. Service
+// jwksClockSkew is the leeway applied to time-based claims. Service
 // tokens are short-lived, so a clock a little out of step would otherwise
 // reject one that is legitimately current.
-const serviceTokenClockSkew = 30 * time.Second
+const jwksClockSkew = 30 * time.Second
 
-// ServiceTokenVerifier verifies JWTs against one or more configured issuers
+// JWKSVerifier verifies JWTs against one or more configured issuers
 // and returns the first successful verification.
 //
 // Keys come from each issuer's conventional JWKS path rather than an OIDC
 // discovery document, which suits a token minted by a peer service: there is
 // no discovery to perform, and no separate issuer declaration to cross-check.
-type ServiceTokenVerifier struct {
+type JWKSVerifier struct {
 	verifiers []*jwks.Verifier
 }
 
-// NewServiceTokenVerifier builds a verifier from the same ProviderConfig shape
+// NewJWKSVerifier builds a verifier from the same ProviderConfig shape
 // used for AUTH_PROVIDER_CONFIG. It returns nil when the config declares no
 // issuers, leaving whichever scheme uses it unconfigured.
 //
 // Backs AdminJWTAuth today; nothing about it is specific to that scheme.
-func NewServiceTokenVerifier(ctx context.Context, config ProviderConfig, httpClient *http.Client) (*ServiceTokenVerifier, error) {
+func NewJWKSVerifier(ctx context.Context, config ProviderConfig, httpClient *http.Client) (*JWKSVerifier, error) {
 	normalized := config.normalize()
 	if !normalized.enabled() {
 		return nil, nil
@@ -41,7 +41,7 @@ func NewServiceTokenVerifier(ctx context.Context, config ProviderConfig, httpCli
 	verifiers := make([]*jwks.Verifier, 0, len(normalized.JWT))
 	for i, entry := range normalized.JWT {
 		verifier, err := jwks.NewVerifierFromIssuerJWKS(ctx, entry, httpClient,
-			jwks.WithParserOptions(jwt.WithLeeway(serviceTokenClockSkew)),
+			jwks.WithParserOptions(jwt.WithLeeway(jwksClockSkew)),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("service token jwt[%d]: %w", i, err)
@@ -49,12 +49,12 @@ func NewServiceTokenVerifier(ctx context.Context, config ProviderConfig, httpCli
 		verifiers = append(verifiers, verifier)
 	}
 
-	return &ServiceTokenVerifier{verifiers: verifiers}, nil
+	return &JWKSVerifier{verifiers: verifiers}, nil
 }
 
 // Verify iterates over the configured issuers and returns the claims of the
 // first successful verification.
-func (v *ServiceTokenVerifier) Verify(ctx context.Context, tokenString string) (jwt.MapClaims, error) {
+func (v *JWKSVerifier) Verify(ctx context.Context, tokenString string) (jwt.MapClaims, error) {
 	if v == nil || len(v.verifiers) == 0 {
 		return nil, errors.New("service token verifier is not configured")
 	}

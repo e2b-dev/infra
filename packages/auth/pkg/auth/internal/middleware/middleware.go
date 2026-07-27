@@ -258,7 +258,7 @@ func NewAuthProviderTeamAuthenticator(validationFunc func(ctx context.Context, g
 }
 
 // NewAdminJWTAuthenticator creates an authenticator for the AdminJWTAuth security scheme.
-func NewAdminJWTAuthenticator(verifier *token.ServiceTokenVerifier) Authenticator {
+func NewAdminJWTAuthenticator(verifier *token.JWKSVerifier) Authenticator {
 	return &commonAuthenticator[struct{}]{
 		schemeName: "AdminJWTAuth",
 		header: headerKey{
