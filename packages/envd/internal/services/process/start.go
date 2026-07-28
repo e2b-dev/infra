@@ -43,7 +43,7 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 		procCtx, cancelProc = context.WithTimeout(procCtx, requestTimeout)
 	}
 
-	proc, err := handler.New( //nolint:contextcheck // TODO: fix this later
+	proc, err := handler.New( //nolint:contextcheck // procCtx is intentionally decoupled from the request ctx so the process outlives the RPC (see comment above)
 		procCtx,
 		u,
 		req.Msg,

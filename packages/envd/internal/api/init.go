@@ -177,7 +177,7 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	go func() { //nolint:contextcheck // TODO: fix this later
+	go func() { //nolint:contextcheck // MMDS re-poll must outlive the /init HTTP response, so it can't derive from r.Context
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 		host.PollForMMDSOpts(ctx, a.mmdsChan, a.defaults.EnvVars)
