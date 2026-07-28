@@ -125,7 +125,7 @@ func TestProjectLimitsRejectsFreeDiskAboveTheCeiling(t *testing.T) {
 
 	teamID := seedTeam(t, sqlDB, "incoherent")
 
-	insert := func(defaultFree, max int64) error {
+	insert := func(defaultFree, ceiling int64) error {
 		_, err := sqlDB.ExecContext(ctx, `
 			INSERT INTO public.project_limits (
 				team_id, max_length_hours, concurrent_sandboxes, concurrent_template_builds,
@@ -135,7 +135,7 @@ func TestProjectLimitsRejectsFreeDiskAboveTheCeiling(t *testing.T) {
 			ON CONFLICT (team_id) DO UPDATE SET
 				default_free_disk_size_mb = EXCLUDED.default_free_disk_size_mb,
 				max_disk_size_mb = EXCLUDED.max_disk_size_mb
-		`, teamID, defaultFree, max)
+		`, teamID, defaultFree, ceiling)
 
 		return err
 	}
