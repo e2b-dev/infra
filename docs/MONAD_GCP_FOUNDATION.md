@@ -243,6 +243,124 @@ is stable before replacing a worker template. That orchestration is not yet
 implemented, so this gate authorizes only the initial one-workcell canary and
 non-destructive plans. It does not authorize fleet replacement or expansion.
 
+## Guarded Packer network and image canary
+
+The inherited `nomad-cluster-disk-image/Makefile` used to combine
+`terraform apply -auto-approve` with a Packer build. That path is disabled.
+Legacy `init`, `build`, and `destroy` targets fail with the supported sequence;
+there is no automatic destroy or credential-writing target.
+
+The Packer-network backend predates environment-scoped state and remains at
+`terraform/cluster-disk-image/state`. To avoid aliasing multiple environments
+onto that singleton state, the guarded workflow accepts only `ENV=dev`. It
+reads only allowlisted non-secret deployment metadata from `.env.dev`; implicit
+Terraform/Packer variable files, static Google credentials, ambient
+`TF_CLI_ARGS*`, `PKR_VAR_*`, HCP Packer settings, alternate workspaces,
+symlinks, unexpected HCL, and dirty Git worktrees fail closed.
+Repository-pinned tool versions, source image, artifact lock, topology policy,
+lease helper, smoke machine type, release identities, and one-hour plan age
+cannot be replaced with Make command-line assignments.
+
+Run the sequence from a clean, committed checkout with the exact Terraform,
+Packer, and gcloud versions in `.tool-versions`:
+
+```bash
+mise exec -- make -C iac/provider-gcp/nomad-cluster-disk-image \
+  operator-canary-init ENV=dev
+mise exec -- make -C iac/provider-gcp/nomad-cluster-disk-image \
+  operator-canary-plan ENV=dev
+# Inspect the complete Terraform plan and provenance printed above.
+mise exec -- make -C iac/provider-gcp/nomad-cluster-disk-image \
+  operator-canary-apply-build ENV=dev \
+  CONFIRM='APPLY PACKER CANARY manifest=<sha256> env=dev project=<project> image=<candidate>'
+```
+
+`operator-canary-init` installs only googlecompute plugin `1.0.16` into an
+isolated plugin directory without `-upgrade`, verifies its checksum, and
+initializes the exact legacy backend. The plan stage permits only creation or
+no-op for the one VPC, subnet, and IAP-only SSH firewall. Updates,
+replacements, deletes, drift, unknown checks, extra resources, sensitive
+values, and changed security fields are rejected. The saved plan and manifest
+are mode `0600` and are published only after the complete human plan is
+displayed.
+
+Provenance binds the plan bytes, Git SHA, complete reviewed Packer/Terraform
+source and setup files (including the root-artifact lock, Ops Agent YAML, and
+file modes), exact
+Terraform/Packer/gcloud binaries, isolated plugin bytes, selected inputs,
+backend, Terraform state lineage/serial, and the resolved Ubuntu source image
+identity. The source binding records its self-link, ID, archive size, disk size,
+status, and deprecation state rather than trusting only a mutable-looking image
+name. The plan expires after one hour. Its confirmation contains the manifest
+digest, environment, project, and deterministic one-shot candidate image, so a
+confirmation from one plan cannot authorize another.
+
+The apply/build stage acquires the shared rollout lease before it repeats any
+live capacity, backend/state, provenance, saved-plan, or candidate-image
+check. Those final checks therefore cannot race a workload rollout. Live
+headroom must preserve the complete policy peak across `CPUS_ALL_REGIONS`, the
+regional `CPUS` quota shared by E2 and N1, instances, SSD and standard
+persistent disks, local SSD, and regional addresses. The lease is:
+
+```text
+gs://<project>-terraform-state/operator-locks/<project>/<region>/workload-mutation.json
+```
+
+The bucket name is canonical and cannot be overridden; the lease scope is one
+project and region. The lease is created with generation-match zero and
+released only with the captured generation and holder. Workload rollout
+automation must use the same regional lease, which serializes Packer against
+MIG changes. A stale or partially
+captured lease is never stolen or deleted automatically. Inspect it with:
+
+```bash
+mise exec -- make -C iac/provider-gcp/nomad-cluster-disk-image \
+  operator-canary-lease-inspect ENV=dev
+```
+
+Recover a stale lease only after checking its holder, object generation,
+Terraform state, active MIG operations, and Packer/GCE operations. Record that
+review, then remove exactly that object generation with `gcloud storage rm
+--if-generation-match=<generation>`; never delete the `operator-locks` prefix.
+
+Terraform consumes only the reviewed saved plan. A subsequent read-only plan
+must return exactly no changes before Packer starts. Packer rechecks all
+build-input provenance, refuses an existing candidate image, runs one source
+without `-force`, and publishes to the environment-qualified candidate family.
+The exact ready Ubuntu source is
+`ubuntu-2404-noble-amd64-v20260723`. Ubuntu dependencies resolve from snapshot
+`20260728T000000Z`; Docker, GCSFuse, Ops Agent, docker-credential-gcr,
+bash-commons, Consul, Nomad, CNI, and ClickHouse inputs use exact URLs and
+committed digests from `setup/root-artifacts.lock.json` or the reviewed shared
+installer mappings. Packer records that lock digest in its manifest.
+The build VM has `disable_default_service_account = true`; Packer uses the
+operator's ADC for control-plane calls and attaches no GCE service account to
+the root-running build guest. Exactly one manifest artifact and the resulting
+ready image identity must match. A disposable, service-account-free VM then
+boots that exact image, not its family, and proves Docker, Nomad dev mode,
+Consul dev mode, and nested KVM work before it is deleted. Only then, still
+under the same rollout lease, the workflow moves that exact image into the
+canonical `<prefix>orch` family and requires `describe-from-family` to resolve
+the same image ID and self-link before it consumes the plan or releases the
+lease. Workloads never resolve the candidate family. Promotion is idempotent:
+a retry verifies and accepts an already-complete exact promotion, including
+the case where the update succeeded but its client response failed. If
+canonical promotion begins but cannot be verified, cleanup deliberately
+preserves the lease and token for manual recovery.
+
+On Terraform, drift, or Packer failure, the target fails and preserves the
+saved plan/provenance for diagnosis; Packer never runs after a failed apply or
+non-empty post-apply plan. The shared lease is released by a generation-bound
+cleanup trap when possible. The workflow never exports secrets, uses `-force`,
+exposes an unverified image through the canonical runtime family, or destroys
+network state.
+
+For the first internal canary, direct upstream HTTPS plus committed digests
+and the Ubuntu snapshot is the deliberate availability trade-off. A
+content-addressed Engram mirror, durable smoke attestation, multi-region lease
+coordination, and mirrored Packer-plugin bootstrap remain follow-up hardening;
+none is required to run the single-region canary safely.
+
 After the foundation apply, add the Cloudflare secret version directly over
 stdin so its value never enters shell history. Replace `<prefix>` with the
 configured prefix (the template default is `e2b-`), paste the value, then send

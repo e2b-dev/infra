@@ -29,7 +29,8 @@ function print_usage {
   echo "Options:"
   echo
   echo -e "  --version\t\tThe version of Consul to install. Optional if download-url is provided."
-  echo -e "  --download-url\t\tUrl to exact Consul package to be installed. Optional if version is provided."
+    echo -e "  --download-url\t\tUrl to exact Consul package to be installed. Optional if version is provided."
+    echo -e "  --sha256\t\tExpected SHA-256 of the Consul archive."
   echo -e "  --path\t\tThe path where Consul should be installed. Optional. Default: $DEFAULT_INSTALL_PATH."
   echo -e "  --user\t\tThe user who will own the Consul install directories. Optional. Default: $DEFAULT_CONSUL_USER."
   echo -e "  --ca-file-path\t\tPath to a PEM-encoded certificate authority used to encrypt and verify authenticity of client and server connections. Will be installed under <install-path>/tls/ca."
@@ -161,8 +162,9 @@ function install_tls_certificates {
 }
 
 function install {
-  local version=""
-  local download_url=""
+    local version=""
+    local download_url=""
+    local sha256=""
   local path="$DEFAULT_INSTALL_PATH"
   local user="$DEFAULT_CONSUL_USER"
   local ca_file_path=""
@@ -179,6 +181,10 @@ function install {
         ;;
       --download-url)
         download_url="$2"
+        shift
+        ;;
+      --sha256)
+        sha256="$2"
         shift
         ;;
       --path)
@@ -222,6 +228,21 @@ function install {
   assert_not_empty "--path" "$path"
   assert_not_empty "--user" "$user"
 
+  if [[ -z "$sha256" && -z "$download_url" ]]; then
+    case "${version}:$(uname -m)" in
+      1.17.3:x86_64)
+        sha256="bb71f4b9b465e314af0d98f5a6884794be9a44e930180537f0825ae9939461a4"
+        ;;
+      1.17.3:aarch64)
+        sha256="e06c529ff108314bbb3705ed63b744c3b91aa33791d88c7e7c73d26cb8200c0b"
+        ;;
+    esac
+  fi
+  [[ "$sha256" =~ ^[0-9a-f]{64}$ ]] || {
+    log_error "A reviewed --sha256 is required for this Consul artifact."
+    exit 1
+  }
+
   log_info "Starting Consul install"
 
   install_dependencies
@@ -229,6 +250,7 @@ function install {
   create_consul_install_paths "$path" "$user"
 
   fetch_binary "$version" "$download_url"
+  echo "$sha256  $DOWNLOAD_PACKAGE_PATH" | sha256sum --check --strict
   install_binary "$path" "$user"
 
   if [[ -n "$ca_file_path" || -n "$cert_file_path" || -n "$key_file_path" ]]; then

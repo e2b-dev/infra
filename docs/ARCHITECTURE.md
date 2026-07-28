@@ -373,6 +373,28 @@ flowchart TB
   before replacing a worker template, the operator must pause/snapshot active sandboxes, verify
   durable uploads, stop placement, drain Nomad allocations, and verify MIG stability. Automated
   drain orchestration is not implemented, and Packer image builds must not overlap a rollout.
+- Packer image construction and workload rollouts serialize through one
+  generation-preconditioned object in the private Terraform state bucket,
+  keyed by GCP project and region. The operator Packer path is a staged,
+  `dev`-only workflow: it saves and validates the exact legacy network-state
+  plan, binds its digest to Git/config/tool/plugin/source-image identities and
+  Terraform state lineage/serial, expires it after one hour, and requires a
+  digest-specific confirmation. It acquires the project/region lease in the
+  canonical `<project>-terraform-state` bucket before repeating live quota,
+  state, provenance, and saved-plan checks, applies only the saved
+  non-destructive plan, and requires a clean post-apply plan. The one-shot
+  candidate image uses an
+  environment-qualified family, cannot replace an existing image, and is built
+  without a GCE service account attached to the root-running guest. Its exact
+  Ubuntu source, Ubuntu package snapshot, and checksum-verified root artifacts
+  are provenance-bound. Before promotion, a disposable VM boots the exact
+  candidate and proves Docker, Nomad, Consul, and nested KVM. The lease remains
+  held while the exact verified image is promoted idempotently into the
+  canonical runtime family; `describe-from-family` must return the same image
+  ID and self-link before workloads may continue. A failed or unverifiable
+  promotion preserves the lease. The lease is released only by its captured
+  object generation; stale leases require explicit inspection and recovery
+  rather than automatic stealing.
 - **ClickHouse nodes** have an explicit MIG target size equal to the configured ClickHouse cluster
   size so the instance count cannot silently remain at the provider default.
 - The Monad dev operator canary provisions a dedicated Cloud SQL for PostgreSQL 16 instance in

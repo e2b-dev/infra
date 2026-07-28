@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "ubuntu_snapshot": "20260728T000000Z",
+  "docker_engine_version": "29.6.2",
+  "consul": {
+    "version": "1.17.3",
+    "sha256": "bb71f4b9b465e314af0d98f5a6884794be9a44e930180537f0825ae9939461a4"
+  },
+  "nomad": {
+    "version": "1.8.4",
+    "sha256": "681832b4ffaff0626119420569f117fb7ad1e323d6c929ef3c0bccb432165c6b"
+  },
+  "cni_plugins": {
+    "version": "v1.6.2",
+    "sha256": "b8e811578fb66023f90d2e238d80cec3bdfca4b44049af74c374d4fae0f9c090"
+  },
+  "clickhouse_client": {
+    "version": "25.4.5.24",
+    "sha512": "32071a8d2a1c1b0071b8ae53c52782d822059c852592dbcc3f03cb14ea25afbf1a25ec12c4a7694d9edc4f2754831929251909f688146565de6e12280dd34bac"
+  },
+  "docker_credential_gcr": {
+    "version": "2.1.32",
+    "sha256": "fc8927596b8b2ac939a48b020bd1105dff8c367f584a2b3b54c08915127c9ebb"
+  },
+  "docker_ce": {
+    "url": "https://download.docker.com/linux/ubuntu/dists/noble/pool/stable/amd64/docker-ce_29.6.2-1~ubuntu.24.04~noble_amd64.deb",
+    "sha256": "4d32ac53660446a16f3ab39b29ca3c9253568a68aefbdd0d8b6f449b3a953a0a"
+  },
+  "docker_cli": {
+    "url": "https://download.docker.com/linux/ubuntu/dists/noble/pool/stable/amd64/docker-ce-cli_29.6.2-1~ubuntu.24.04~noble_amd64.deb",
+    "sha256": "fcc3014d7a8c5c16abda30ce643a498f8b34aa213ad7a14ff8fb30ad07670d7d"
+  },
+  "containerd": {
+    "url": "https://download.docker.com/linux/ubuntu/dists/noble/pool/stable/amd64/containerd.io_2.2.6-1~ubuntu.24.04~noble_amd64.deb",
+    "sha256": "ad9d5ed46615d5adf0fab492101996a395776f0f15fdc37ff425c59d5c4dca02"
+  },
+  "docker_buildx": {
+    "url": "https://download.docker.com/linux/ubuntu/dists/noble/pool/stable/amd64/docker-buildx-plugin_0.35.0-1~ubuntu.24.04~noble_amd64.deb",
+    "sha256": "ddcd67d3e9a8b4cda74326ebebe4ebdc3879210d2d0093274d19f5e1bbaf24f4"
+  },
+  "docker_compose": {
+    "url": "https://download.docker.com/linux/ubuntu/dists/noble/pool/stable/amd64/docker-compose-plugin_5.3.1-1~ubuntu.24.04~noble_amd64.deb",
+    "sha256": "19d9473c2f011f94e1e54b035dcac170dab0c19671799db6f015e29eb9f23357"
+  },
+  "docker_rootless": {
+    "url": "https://download.docker.com/linux/ubuntu/dists/noble/pool/stable/amd64/docker-ce-rootless-extras_29.6.2-1~ubuntu.24.04~noble_amd64.deb",
+    "sha256": "27f8e2db4a1f706474ba01269ebd090b87b50edeb55b5729b35ae1f708f0c396"
+  },
+  "docker_model": {
+    "url": "https://download.docker.com/linux/ubuntu/dists/noble/pool/stable/amd64/docker-model-plugin_1.2.6-1~ubuntu.24.04~noble_amd64.deb",
+    "sha256": "99e5c1e278ff73f4a950f39dfa4499db949424cc9002e4ba47e21ed951cd0d8e"
+  },
+  "gcsfuse": {
+    "url": "https://github.com/GoogleCloudPlatform/gcsfuse/releases/download/v3.11.2/gcsfuse_3.11.2_amd64.deb",
+    "sha256": "f8722da4944a49757804f82c2ff38e75e3b7feb466f54e550869374dffd67b33"
+  },
+  "google_cloud_ops_agent": {
+    "url": "https://packages.cloud.google.com/apt/pool/google-cloud-ops-agent-noble-all/google-cloud-ops-agent_2.70.0~ubuntu24.04_amd64_6efcff2e9e1bf082a81e7103dad41611.deb",
+    "sha256": "f9fbae4255a6aeabfaf00a24324d5f3fd8caf79fd7f461f789728f2db7b93685"
+  },
+  "bash_commons": {
+    "revision": "013a0b429d0bd57ce49f487fade15cf95cef5b6d",
+    "url": "https://github.com/gruntwork-io/bash-commons/archive/013a0b429d0bd57ce49f487fade15cf95cef5b6d.tar.gz",
+    "sha256": "2b755d9ec36acfbc3abe79f7e16470a0566caa6607185648ed57bf220af75e82"
+  }
+}

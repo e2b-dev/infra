@@ -10,11 +10,16 @@
 set -euo pipefail
 
 VERSION=""
+SHA512=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --version)
       VERSION="$2"
+      shift 2
+      ;;
+    --sha512)
+      SHA512="$2"
       shift 2
       ;;
     *)
@@ -32,8 +37,16 @@ fi
 # Map dpkg arch -> ClickHouse tarball arch suffix.
 DPKG_ARCH=$(dpkg --print-architecture)
 case "$DPKG_ARCH" in
-  amd64) CH_ARCH="amd64" ;;
-  arm64) CH_ARCH="arm64" ;;
+  amd64)
+    CH_ARCH="amd64"
+    [[ -n "$SHA512" ]] ||
+      SHA512="32071a8d2a1c1b0071b8ae53c52782d822059c852592dbcc3f03cb14ea25afbf1a25ec12c4a7694d9edc4f2754831929251909f688146565de6e12280dd34bac"
+    ;;
+  arm64)
+    CH_ARCH="arm64"
+    [[ -n "$SHA512" ]] ||
+      SHA512="d80ffde9dac48c8c812c3f88ad873ddd7625b0db6d4e34069b55bc7e8a42d9ea495422741f0ebfc10e5ffc0714059cb96834f19042922bc89f3ec9b0a8ae0ebf"
+    ;;
   *)
     echo "ERROR: unsupported architecture: $DPKG_ARCH" >&2
     exit 1
@@ -43,7 +56,11 @@ esac
 BASE_URL="https://packages.clickhouse.com/tgz/stable"
 TARBALL="clickhouse-common-static-${VERSION}-${CH_ARCH}.tgz"
 URL="${BASE_URL}/${TARBALL}"
-CHECKSUM_URL="${URL}.sha512"
+
+if [[ "$VERSION" != "25.4.5.24" || ! "$SHA512" =~ ^[0-9a-f]{128}$ ]]; then
+  echo "ERROR: a reviewed --sha512 is required for this ClickHouse artifact" >&2
+  exit 1
+fi
 
 echo "Installing clickhouse-client ${VERSION} (${CH_ARCH}) from ${URL}"
 
@@ -52,13 +69,10 @@ WORK_DIR=$(mktemp -d)
 trap 'rm -rf "$WORK_DIR"' EXIT
 
 curl -fsSL --retry 5 --retry-delay 5 -o "${WORK_DIR}/${TARBALL}" "${URL}"
-curl -fsSL --retry 5 --retry-delay 5 -o "${WORK_DIR}/${TARBALL}.sha512" "${CHECKSUM_URL}"
 
-# Verify SHA-512 checksum before extracting. The .sha512 file is in standard
-# `<hash>  <filename>` format, so `sha512sum -c` works directly when run in
-# the same directory as the tarball.
+# Verify against the reviewed checksum committed with the image definition.
 echo "Verifying SHA-512 checksum"
-(cd "${WORK_DIR}" && sha512sum -c "${TARBALL}.sha512")
+echo "${SHA512}  ${WORK_DIR}/${TARBALL}" | sha512sum --check --strict
 
 tar -xzf "${WORK_DIR}/${TARBALL}" -C "${WORK_DIR}"
 

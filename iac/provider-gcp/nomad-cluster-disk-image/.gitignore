@@ -1,1 +1,6 @@
 setup/tc-redirect-tap
+.packer-plugins/
+.tfplan.network.*
+.tfplan.network.*.manifest
+.packer-build-manifest.*
+.rollout-lease-token.*

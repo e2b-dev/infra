@@ -22,6 +22,7 @@ function print_usage {
   echo "Options:"
   echo
   echo -e "  --version\t\tThe version of Nomad to install. Required."
+  echo -e "  --sha256\t\tExpected SHA-256 of the Nomad archive."
   echo -e "  --path\t\tThe path where Nomad should be installed. Optional. Default: $DEFAULT_INSTALL_PATH."
   echo -e "  --user\t\tThe user who will own the Nomad install directories. Optional. Default: $DEFAULT_NOMAD_USER."
   echo
@@ -133,6 +134,7 @@ function install_binaries {
   local -r version="$1"
   local -r path="$2"
   local -r username="$3"
+  local -r sha256="$4"
 
   local -r url="https://releases.hashicorp.com/nomad/${version}/nomad_${version}_linux_amd64.zip"
   local -r download_path="/tmp/nomad_${version}_linux_amd64.zip"
@@ -140,7 +142,8 @@ function install_binaries {
   local -r nomad_dest_path="$bin_dir/nomad"
 
   log_info "Downloading Nomad $version from $url to $download_path"
-  curl -o "$download_path" "$url"
+  curl --fail --location --show-error -o "$download_path" "$url"
+  echo "$sha256  $download_path" | sha256sum --check --strict
   unzip -o -d /tmp "$download_path"
 
   log_info "Moving Nomad binary to $nomad_dest_path"
@@ -159,6 +162,7 @@ function install_binaries {
 
 function install {
   local version=""
+  local sha256=""
   local path="$DEFAULT_INSTALL_PATH"
   local user="$DEFAULT_NOMAD_USER"
 
@@ -168,6 +172,10 @@ function install {
     case "$key" in
       --version)
         version="$2"
+        shift
+        ;;
+      --sha256)
+        sha256="$2"
         shift
         ;;
       --path)
@@ -195,13 +203,27 @@ function install {
   assert_not_empty "--version" "$version"
   assert_not_empty "--path" "$path"
   assert_not_empty "--user" "$user"
+  if [[ -z "$sha256" ]]; then
+    case "${version}:$(uname -m)" in
+      1.8.4:x86_64)
+        sha256="681832b4ffaff0626119420569f117fb7ad1e323d6c929ef3c0bccb432165c6b"
+        ;;
+      1.8.4:aarch64)
+        sha256="54c92041133073cd4b642c2530990fdcd3ccca1003507d0c636448385d867147"
+        ;;
+    esac
+  fi
+  [[ "$sha256" =~ ^[0-9a-f]{64}$ ]] || {
+    log_error "A reviewed --sha256 is required for this Nomad artifact."
+    exit 1
+  }
 
   log_info "Starting Nomad install"
 
   install_dependencies
   create_nomad_user "$user"
   create_nomad_install_paths "$path" "$user"
-  install_binaries "$version" "$path" "$user"
+  install_binaries "$version" "$path" "$user" "$sha256"
 
   log_info "Nomad install complete!"
 }

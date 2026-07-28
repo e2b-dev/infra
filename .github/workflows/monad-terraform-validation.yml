@@ -80,15 +80,39 @@ jobs:
         run: |
           make -C iac/provider-gcp workload-plan-assertions-test
           make -C iac/provider-gcp packer-reserve-check
+          make -C iac/provider-gcp/nomad-cluster-disk-image \
+            operator-canary-static-check ENV=dev
+          iac/provider-gcp/nomad-cluster-disk-image/scripts/test-operator-canary-workflow.sh
+          iac/provider-gcp/scripts/test-rollout-mutation-lease.sh
+
+      - name: Validate Packer network configuration
+        run: |
+          terraform \
+            -chdir=iac/provider-gcp/nomad-cluster-disk-image \
+            init -backend=false -input=false
+          terraform \
+            -chdir=iac/provider-gcp/nomad-cluster-disk-image \
+            validate
 
       - name: Validate runtime image configuration
+        env:
+          PACKER_PLUGIN_PATH: ${{ runner.temp }}/packer-plugins
         run: |
+          mkdir -m 0700 "$PACKER_PLUGIN_PATH"
           packer fmt -check iac/provider-gcp/nomad-cluster-disk-image
-          packer init iac/provider-gcp/nomad-cluster-disk-image/main.pkr.hcl
+          packer init iac/provider-gcp/nomad-cluster-disk-image
+          iac/provider-gcp/nomad-cluster-disk-image/scripts/assert-packer-plugin.sh \
+            "$(command -v packer)" "$PACKER_PLUGIN_PATH"
           packer validate \
+            -only=googlecompute.orch \
+            -var 'build_manifest_path=/tmp/packer-manifest.json' \
             -var 'gcp_project_id=keyless-validation' \
             -var 'gcp_zone=us-east4-a' \
+            -var 'image_environment=dev' \
+            -var 'image_family=e2b-orch-dev-candidate' \
+            -var 'image_name=e2b-orch-dev-candidate-0123456789ab' \
             -var 'network_name=keyless-validation' \
+            -var 'source_revision=0123456789abcdef0123456789abcdef01234567' \
             -var 'subnet_name=keyless-validation' \
             iac/provider-gcp/nomad-cluster-disk-image
 

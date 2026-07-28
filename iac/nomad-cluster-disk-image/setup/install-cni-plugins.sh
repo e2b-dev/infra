@@ -9,11 +9,16 @@
 set -euo pipefail
 
 VERSION=""
+SHA256=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --version)
       VERSION="$2"
+      shift 2
+      ;;
+    --sha256)
+      SHA256="$2"
       shift 2
       ;;
     *)
@@ -30,8 +35,16 @@ fi
 
 # Map uname -m to the arch suffix used by the CNI release artifacts.
 case "$(uname -m)" in
-  x86_64)  ARCH="amd64" ;;
-  aarch64) ARCH="arm64" ;;
+  x86_64)
+    ARCH="amd64"
+    [[ -n "$SHA256" ]] ||
+      SHA256="b8e811578fb66023f90d2e238d80cec3bdfca4b44049af74c374d4fae0f9c090"
+    ;;
+  aarch64)
+    ARCH="arm64"
+    [[ -n "$SHA256" ]] ||
+      SHA256="01e0e22acc7f7004e4588c1fe1871cc86d7ab562cd858e1761c4641d89ebfaa4"
+    ;;
   *)
     echo "ERROR: unsupported architecture: $(uname -m)" >&2
     exit 1
@@ -41,7 +54,11 @@ esac
 TARBALL="cni-plugins-linux-${ARCH}-${VERSION}.tgz"
 BASE_URL="https://github.com/containernetworking/plugins/releases/download/${VERSION}"
 URL="${BASE_URL}/${TARBALL}"
-CHECKSUM_URL="${URL}.sha256"
+
+if [[ "$VERSION" != "v1.6.2" || ! "$SHA256" =~ ^[0-9a-f]{64}$ ]]; then
+  echo "ERROR: a reviewed --sha256 is required for this CNI artifact" >&2
+  exit 1
+fi
 
 echo "Installing CNI plugins ${VERSION} (${ARCH}) from ${URL}"
 
@@ -50,12 +67,10 @@ WORK_DIR=$(mktemp -d)
 trap 'rm -rf "$WORK_DIR"' EXIT
 
 curl -fsSL --retry 5 --retry-delay 5 -o "${WORK_DIR}/${TARBALL}" "${URL}"
-curl -fsSL --retry 5 --retry-delay 5 -o "${WORK_DIR}/${TARBALL}.sha256" "${CHECKSUM_URL}"
 
-# Verify SHA-256 checksum before extracting. The .sha256 file is in standard
-# `<hash>  <filename>` format, so `sha256sum -c` works directly.
+# Verify against the reviewed checksum committed with the image definition.
 echo "Verifying SHA-256 checksum"
-(cd "${WORK_DIR}" && sha256sum -c "${TARBALL}.sha256")
+echo "${SHA256}  ${WORK_DIR}/${TARBALL}" | sha256sum --check --strict
 
 sudo mkdir -p /opt/cni/bin
 sudo tar -C /opt/cni/bin -xzf "${WORK_DIR}/${TARBALL}"
