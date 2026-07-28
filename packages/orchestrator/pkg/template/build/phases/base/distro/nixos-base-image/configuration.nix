@@ -43,7 +43,21 @@
     # socat and iptables are executed by name: envd spawns socat to forward
     # exposed ports and shells out to iptables to pin the MMDS route. There is no
     # FHS bin dir to find them in, so they must be on the unit's PATH.
-    path = [ pkgs.coreutils pkgs.util-linux pkgs.gnutar pkgs.socat pkgs.iptables ];
+    #
+    # envd hands its OWN environment's PATH to every process it spawns, so this
+    # list is also the PATH of anything started through the exec API that does
+    # not go through a login shell (`sh -c` — what the orchestrator's pre-pause
+    # reclaim/sync use — or a bare argv[0]). Without the system profile that PATH
+    # has no `sh`, `curl`, `git`, `jq`: on the FHS families the same unit inherits
+    # systemd's default /usr/bin:/bin, i.e. the whole userland, so append NixOS's
+    # equivalent. /run/wrappers first, like the login PATH, so setuid wrappers win
+    # over the plain store copies; the explicit packages stay ahead of the profile
+    # so envd's own helpers always resolve inside this closure.
+    path = [
+      "/run/wrappers"
+      pkgs.coreutils pkgs.util-linux pkgs.gnutar pkgs.socat pkgs.iptables
+      "/run/current-system/sw"
+    ];
     serviceConfig = {
       Type = "simple";
       Restart = "always";
