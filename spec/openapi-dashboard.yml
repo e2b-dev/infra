@@ -1164,7 +1164,16 @@ components:
 
     AdminControlPlaneProjectType:
       type: string
-      enum: [development, staging, production]
+      minLength: 1
+      description: >-
+        The caller's name for the project's tier. Recorded, not interpreted:
+        limits arrive separately and in full through upsertProjectLimits, so
+        nothing here derives behaviour from this value.
+
+        Deliberately unconstrained. The caller owns the vocabulary and the
+        catalog behind it, and enumerating it here would make adding a tier a
+        cross-repo change to a field this side only stores.
+      example: base_v1
 
     AdminControlPlaneProjectUpsertRequest:
       type: object
@@ -1197,6 +1206,31 @@ components:
         added_by:
           type: string
           format: uuid
+
+    AdminControlPlaneMemberBatchEntry:
+      type: object
+      required:
+        - user_id
+        - present
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        present:
+          type: boolean
+          description: >-
+            Whether the user should be a member after this call. Presence is
+            stated rather than implied by inclusion, so one request carries
+            both additions and removals and the caller never has to order them.
+
+    AdminControlPlaneMemberBatchRequest:
+      type: array
+      description: >-
+        Desired membership for the listed users, ignoring everyone unlisted.
+        Entries are independent, so applying them in any order converges.
+      items:
+        $ref: "#/components/schemas/AdminControlPlaneMemberBatchEntry"
+      maxItems: 1024
 
     AdminControlPlaneProjectLimits:
       type: object
@@ -1983,6 +2017,38 @@ paths:
       responses:
         "204":
           description: Membership is absent.
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+        "501":
+          $ref: "#/components/responses/501"
+
+  /v1/management/projects/{teamID}/members/batch:
+    parameters:
+      - $ref: "#/components/parameters/teamID"
+    post:
+      operationId: batchSyncProjectMembers
+      summary: Reconcile many project memberships in one call (v1).
+      description: >-
+        The bulk path behind group and directory fan-outs, where the per-member
+        routes would cost one request each. Callers chunk larger sets.
+      tags: [workspace-admin]
+      security:
+        - AdminJWTAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminControlPlaneMemberBatchRequest"
+      responses:
+        "204":
+          description: Every listed membership matches the request.
         "400":
           $ref: "#/components/responses/400"
         "401":

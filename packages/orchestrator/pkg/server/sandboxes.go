@@ -82,15 +82,19 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	defer childSpan.End()
 
 	isResume := req.GetSandbox().GetSnapshot()
+	// fsOnly is set at the resume fork below when this takes the filesystem-only
+	// reboot path (vs a memory restore), so create/resume e2e latency can be
+	// split reboot vs memory — mirroring the fs_only pause label. Combined with
+	// sandbox.resume: resume=false → fresh create; resume=true,fs_only=false →
+	// memory resume; resume=true,fs_only=true → filesystem-only reboot.
+	var fsOnly bool
 	createStart := time.Now()
 	defer func() {
-		if createErr != nil {
-			return
-		}
-
 		s.sandboxCreateDuration.Record(ctx, time.Since(createStart).Milliseconds(),
 			metric.WithAttributes(
 				attribute.Bool("sandbox.resume", isResume),
+				attribute.Bool("fs_only", fsOnly),
+				attribute.Bool("success", createErr == nil),
 			),
 		)
 	}()
@@ -228,6 +232,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 	var sbx *sandbox.Sandbox
 	if meta.IsFilesystemOnly() {
+		fsOnly = true
 		sbx, err = s.sandboxFactory.RebootSandbox(
 			ctx,
 			template,
@@ -645,9 +650,22 @@ func recordSandboxKill(ctx context.Context, counter metric.Int64Counter, killRea
 	counter.Add(ctx, 1, metric.WithAttributes(attribute.String("kill_reason", killReason)))
 }
 
-func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest) (*orchestrator.SandboxPauseResponse, error) {
+func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest) (resp *orchestrator.SandboxPauseResponse, err error) {
 	ctx, childSpan := tracer.Start(ctx, "sandbox-pause")
 	defer childSpan.End()
+
+	// Record pause duration split by fs_only vs memory (the gRPC RPC metric
+	// can't distinguish them) and success, so dashboards can scope pause
+	// call-count / error-rate / latency to filesystem-only pauses.
+	pauseStart := time.Now()
+	defer func() {
+		s.sandboxPauseDuration.Record(ctx, time.Since(pauseStart).Milliseconds(),
+			metric.WithAttributes(
+				attribute.Bool("fs_only", in.GetFilesystemOnly()),
+				attribute.Bool("success", err == nil),
+			),
+		)
+	}()
 
 	childSpan.SetAttributes(
 		telemetry.WithSandboxID(in.GetSandboxId()),
@@ -948,6 +966,9 @@ type snapshotResult struct {
 	// with. The prefetch harvest reuses it verbatim when re-uploading the
 	// metadata object, so the two can never drift.
 	objectMetadata storage.ObjectMetadata
+	// filesystemOnly records whether this was a filesystem-only (memoryless)
+	// pause, so the async upload can label its failure counter with fs_only.
+	filesystemOnly bool
 }
 
 // snapshotAndCacheSandbox creates a snapshot of a sandbox and adds it to the
@@ -1050,6 +1071,7 @@ func (s *Server) snapshotAndCacheSandbox(
 		upload:             upload,
 		completeUpload:     completeUpload,
 		objectMetadata:     objectMetadata,
+		filesystemOnly:     filesystemOnly,
 	}, nil
 }
 
@@ -1084,7 +1106,7 @@ func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, 
 		)
 		if err != nil {
 			sbxlogger.I(sbx).Error(spanCtx, "snapshot upload did not durably land", zap.Error(err))
-			s.uploadFailedCounter.Add(spanCtx, 1)
+			s.uploadFailedCounter.Add(spanCtx, 1, metric.WithAttributes(attribute.Bool("fs_only", res.filesystemOnly)))
 		} else {
 			sbxlogger.I(sbx).Info(spanCtx, "snapshot finished uploading successfully")
 		}
