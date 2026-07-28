@@ -27,7 +27,7 @@ jq -e \
   and (.builds | length) == 1
   and .builds[0].name == "orch"
   and .builds[0].builder_type == "googlecompute"
-  and .builds[0].artifact_id == ($project + "/" + $image_name)
+  and .builds[0].artifact_id == $image_name
   and .builds[0].custom_data.environment == $environment
   and .builds[0].custom_data.image_family == $image_family
   and .builds[0].custom_data.image_name == $image_name

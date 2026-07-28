@@ -251,6 +251,48 @@ operator-canary-apply-build: operator-canary-toolchain-guard operator-canary-con
 	trap - EXIT HUP INT TERM; \
 	printf "Operator canary image completed: %s/%s.\n" "$(GCP_PROJECT_ID)" "$(PACKER_IMAGE_NAME)"
 
+.PHONY: operator-canary-resume-promotion
+operator-canary-resume-promotion: operator-canary-toolchain-guard operator-canary-config-guard
+	@ set -eu; \
+	test -f "$(PACKER_BUILD_MANIFEST)" && test ! -L "$(PACKER_BUILD_MANIFEST)" || (printf "Missing safe Packer build manifest.\n" >&2; exit 1); \
+	recovery_revision="$$(jq -er '.builds[0].custom_data.source_revision' "$(PACKER_BUILD_MANIFEST)")"; \
+	recovery_image="$$(jq -er '.builds[0].custom_data.image_name' "$(PACKER_BUILD_MANIFEST)")"; \
+	printf '%s' "$${recovery_revision}" | grep -Eq '^[0-9a-f]{40}$$' || (printf "Invalid recovery revision.\n" >&2; exit 1); \
+	recovery_short="$$(printf '%s' "$${recovery_revision}" | cut -c1-12)"; \
+	test "$${recovery_image}" = "$(PACKER_IMAGE_FAMILY)-$${recovery_short}" || (printf "Recovery image does not match its exact revision.\n" >&2; exit 1); \
+	expected_confirmation="RESUME PACKER CANARY image=$${recovery_image} revision=$${recovery_revision}"; \
+	test "$(CONFIRM)" = "$${expected_confirmation}" || (printf "Confirmation mismatch. Required exact value:\nCONFIRM='%s'\n" "$${expected_confirmation}" >&2; exit 1); \
+	git -C "$(REPO_ROOT)" merge-base --is-ancestor "$${recovery_revision}" HEAD || (printf "Recovery revision is not an ancestor of the reviewed checkout.\n" >&2; exit 1); \
+	./scripts/assert-packer-artifact.sh "$(PACKER_BUILD_MANIFEST)" "$(GCP_PROJECT_ID)" "$${recovery_image}" "$(PACKER_IMAGE_FAMILY)" "$(ENV)" "$${recovery_revision}" "$(PACKER_SOURCE_IMAGE)" "$(ROOT_ARTIFACT_LOCK_SHA256)"; \
+	./scripts/assert-built-image.sh "$(GCLOUD)" "$(GCP_PROJECT_ID)" "$${recovery_image}" "$(PACKER_IMAGE_FAMILY)" "$(ENV)" "$${recovery_revision}"; \
+	mkdir "$(LOCAL_LOCK_DIR)" 2>/dev/null || (printf "Another local operator-canary workflow holds %s.\n" "$(LOCAL_LOCK_DIR)"; exit 1); \
+	lease_acquired=false; \
+	promotion_started=false; \
+	cleanup() { status=$$?; if [ "$${lease_acquired}" = true ] && [ "$${promotion_started}" = false ]; then "$(ROLLOUT_LEASE)" release "$(GCLOUD)" "$(ROLLOUT_LEASE_TOKEN)" || true; elif [ "$${lease_acquired}" = true ]; then printf "Canonical promotion started but did not verify; preserving the shared lease and token for manual recovery.\n" >&2; fi; rmdir "$(LOCAL_LOCK_DIR)" 2>/dev/null || true; exit $$status; }; \
+	trap cleanup EXIT HUP INT TERM; \
+	manifest_digest="$$(shasum -a 256 "$(PACKER_BUILD_MANIFEST)" | awk '{print $$1}')"; \
+	"$(ROLLOUT_LEASE)" acquire "$(GCLOUD)" "$(TERRAFORM_STATE_BUCKET)" "$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$${manifest_digest}" "$(ROLLOUT_LEASE_TOKEN)"; \
+	lease_acquired=true; \
+	"$(PROVIDER_ROOT)/scripts/assert-foundation-backend.sh" "$(TERRAFORM_STATE_BUCKET)" "$(TERRAFORM_STATE_PREFIX)" .terraform; \
+	"$(PROVIDER_ROOT)/scripts/assert-foundation-workspace.sh" "$(TF)"; \
+	"$(PROVIDER_ROOT)/scripts/assert-foundation-state-bucket.sh" "$(TERRAFORM_STATE_BUCKET)" "$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(GCLOUD)"; \
+	"$(PACKER_RESERVE_GUARD)" "$(POLICY_PATH)" ./main.pkr.hcl; \
+	./scripts/assert-live-capacity.sh "$(POLICY_PATH)" "$(GCLOUD)" "$(GCP_PROJECT_ID)" "$(GCP_REGION)"; \
+	if $(tf_vars) "$(TF)" plan -input=false -compact-warnings -detailed-exitcode; then :; else \
+		printf "Recovery drift check was not exactly clean; smoke and promotion will not run.\n" >&2; exit 1; \
+	fi; \
+	./scripts/assert-packer-artifact.sh "$(PACKER_BUILD_MANIFEST)" "$(GCP_PROJECT_ID)" "$${recovery_image}" "$(PACKER_IMAGE_FAMILY)" "$(ENV)" "$${recovery_revision}" "$(PACKER_SOURCE_IMAGE)" "$(ROOT_ARTIFACT_LOCK_SHA256)"; \
+	./scripts/assert-built-image.sh "$(GCLOUD)" "$(GCP_PROJECT_ID)" "$${recovery_image}" "$(PACKER_IMAGE_FAMILY)" "$(ENV)" "$${recovery_revision}"; \
+	./scripts/smoke-built-image.sh "$(GCLOUD)" "$(GCP_PROJECT_ID)" "$(GCP_ZONE)" "$${recovery_image}" "$(PACKER_NETWORK_NAME)" "$(PACKER_SUBNET_NAME)" "$(PACKER_SMOKE_MACHINE_TYPE)" "$(PACKER_DOCKER_VERSION)" "$(PACKER_NOMAD_VERSION)" "$(PACKER_CONSUL_VERSION)" "$(ENV)" "$${recovery_revision}"; \
+	promotion_started=true; \
+	./scripts/promote-built-image.sh "$(GCLOUD)" "$(GCP_PROJECT_ID)" "$${recovery_image}" "$(PACKER_IMAGE_FAMILY)" "$(PACKER_CANONICAL_IMAGE_FAMILY)" "$(ENV)" "$${recovery_revision}"; \
+	promotion_started=false; \
+	"$(ROLLOUT_LEASE)" release "$(GCLOUD)" "$(ROLLOUT_LEASE_TOKEN)"; \
+	lease_acquired=false; \
+	rmdir "$(LOCAL_LOCK_DIR)"; \
+	trap - EXIT HUP INT TERM; \
+	printf "Recovered, smoked, and promoted operator canary image: %s/%s.\n" "$(GCP_PROJECT_ID)" "$${recovery_image}"
+
 .PHONY: operator-canary-lease-inspect
 operator-canary-lease-inspect: operator-canary-toolchain-guard operator-canary-config-guard
 	@ "$(ROLLOUT_LEASE)" inspect "$(GCLOUD)" "$(TERRAFORM_STATE_BUCKET)" "$(GCP_PROJECT_ID)" "$(GCP_REGION)"

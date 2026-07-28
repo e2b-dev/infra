@@ -276,7 +276,7 @@ fi
 apply_recipe="$(
   awk '
     /^operator-canary-apply-build:/ { capture = 1 }
-    capture && /^\.PHONY: operator-canary-lease-inspect/ { exit }
+    capture && /^\.PHONY: operator-canary-resume-promotion/ { exit }
     capture { print }
   ' "${config_root}/Makefile"
 )"
@@ -318,6 +318,56 @@ if assert_lease_first "${adversarial_recipe}"; then
   printf 'A live capacity check injected before lease acquisition passed ordering.\n' >&2
   exit 1
 fi
+
+recovery_recipe="$(
+  awk '
+    /^operator-canary-resume-promotion:/ { capture = 1 }
+    capture && /^\.PHONY: operator-canary-lease-inspect/ { exit }
+    capture { print }
+  ' "${config_root}/Makefile"
+)"
+for required in \
+  'RESUME PACKER CANARY image=' \
+  'merge-base --is-ancestor' \
+  './scripts/assert-packer-artifact.sh' \
+  './scripts/assert-built-image.sh' \
+  '"$(ROLLOUT_LEASE)" acquire' \
+  '"$(TF)" plan' \
+  './scripts/smoke-built-image.sh' \
+  './scripts/promote-built-image.sh' \
+  '"$(ROLLOUT_LEASE)" release'; do
+  grep -F "${required}" <<<"${recovery_recipe}" >/dev/null || {
+    printf 'Recovery recipe is missing required guard: %s\n' "${required}" >&2
+    exit 1
+  }
+done
+if grep -Eq -- \
+  '(\$\(PACKER\)" build|\$\(TF\)" apply|compute images delete)' \
+  <<<"${recovery_recipe}"; then
+  printf 'Recovery recipe rebuilds or replaces immutable infrastructure.\n' >&2
+  exit 1
+fi
+recovery_acquire_line="$(
+  grep -nF '"$(ROLLOUT_LEASE)" acquire' <<<"${recovery_recipe}" |
+    cut -d: -f1
+)"
+for guarded in \
+  '"$(TF)" plan' \
+  './scripts/smoke-built-image.sh' \
+  './scripts/promote-built-image.sh'; do
+  guarded_line="$(
+    grep -nF "${guarded}" <<<"${recovery_recipe}" |
+      cut -d: -f1
+  )"
+  if [[ ! "${recovery_acquire_line}" =~ ^[0-9]+$ ]] ||
+    [[ ! "${guarded_line}" =~ ^[0-9]+$ ]] ||
+    [[ "${guarded_line}" -le "${recovery_acquire_line}" ]]; then
+    printf 'Recovery mutation is not guarded by the shared lease: %s\n' \
+      "${guarded}" >&2
+    exit 1
+  fi
+done
+
 grep -F \
   'test "$(TERRAFORM_STATE_BUCKET)" = "$(GCP_PROJECT_ID)-terraform-state"' \
   "${config_root}/Makefile" >/dev/null || {
@@ -355,7 +405,7 @@ jq -n \
   builds: [{
     name: "orch",
     builder_type: "googlecompute",
-    artifact_id: "test-project/candidate-image",
+    artifact_id: "candidate-image",
     custom_data: {
       environment: "dev",
       image_family: "e2b-orch-dev-candidate",
@@ -372,6 +422,19 @@ jq -n \
   e2b-orch-dev-candidate dev \
   0123456789abcdef0123456789abcdef01234567 \
   ubuntu-2404-noble-amd64-v20260723 "${artifact_lock_sha}" >/dev/null
+qualified_packer_manifest="${temp_dir}/qualified-packer-manifest.json"
+jq '
+  .builds[0].artifact_id = "test-project/candidate-image"
+' "${packer_manifest}" >"${qualified_packer_manifest}"
+if "${script_dir}/assert-packer-artifact.sh" \
+  "${qualified_packer_manifest}" test-project candidate-image \
+  e2b-orch-dev-candidate dev \
+  0123456789abcdef0123456789abcdef01234567 \
+  ubuntu-2404-noble-amd64-v20260723 "${artifact_lock_sha}" \
+  >/dev/null 2>&1; then
+  printf 'Project-qualified Packer artifact identity unexpectedly passed.\n' >&2
+  exit 1
+fi
 if "${script_dir}/assert-packer-artifact.sh" \
   "${packer_manifest}" test-project candidate-image \
   e2b-orch-dev-candidate dev \
