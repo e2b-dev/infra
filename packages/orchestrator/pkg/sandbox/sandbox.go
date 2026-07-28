@@ -52,6 +52,9 @@ var (
 	envdCollapseChunks            = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdCollapseChunks))
 	guestSyncDurationHistogram    = utils.Must(telemetry.GetHistogram(meter, telemetry.GuestSyncDurationHistogramName))
 
+	processMemoryDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotProcessMemoryDurationName))
+	processRootfsDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotProcessRootfsDurationName))
+
 	uffdStartupPagesHistogram       = utils.Must(telemetry.GetHistogram(meter, telemetry.UffdStartupPagesHistogramName))
 	uffdStartupSourcePagesHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.UffdStartupSourcePagesHistogramName))
 	uffdStartupBytesHistogram       = utils.Must(telemetry.GetHistogram(meter, telemetry.UffdStartupBytesHistogramName))
@@ -1459,6 +1462,7 @@ func (s *Sandbox) Pause(
 			closeHook: s.Close,
 		},
 		s.config.DefaultCacheDir,
+		pauseOpts.filesystemSnapshot,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
@@ -1644,6 +1648,14 @@ func pauseProcessMemory(
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
 
+	// Duration of the synchronous memory export+diff (memory pauses only; fs-only
+	// pauses skip this). The async header dedup goroutine below outlives this span.
+	start := time.Now()
+	defer func() {
+		processMemoryDurationHistogram.Record(ctx, time.Since(start).Milliseconds(),
+			metric.WithAttributes(attribute.Bool("success", e == nil)))
+	}()
+
 	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
 	metaOut := utils.NewSetOnce[*header.DiffMetadata]()
 	// ExportMemory owns memfd and closes it on all paths.
@@ -1756,9 +1768,21 @@ func pauseProcessRootfs(
 	originalHeader *header.Header,
 	diffCreator DiffCreator,
 	cacheDir string,
+	filesystemOnly bool,
 ) (d build.Diff, h *header.Header, e error) {
 	ctx, span := tracer.Start(ctx, "process-rootfs")
 	defer span.End()
+
+	// Duration of the rootfs export+diff, split by fs_only (runs for both pause
+	// kinds) so the fs-only pause latency can be decomposed into quiesce + rootfs.
+	start := time.Now()
+	defer func() {
+		processRootfsDurationHistogram.Record(ctx, time.Since(start).Milliseconds(),
+			metric.WithAttributes(
+				attribute.Bool("fs_only", filesystemOnly),
+				attribute.Bool("success", e == nil),
+			))
+	}()
 
 	rootfsDiffFile, err := build.NewLocalDiffFile(cacheDir, buildId.String(), build.Rootfs)
 	if err != nil {
