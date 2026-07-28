@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"net/http"
 	"testing"
 	"time"
 
@@ -64,4 +65,52 @@ func TestCalculateAutoResumeTimeout(t *testing.T) {
 		team,
 	)
 	require.Equal(t, time.Hour, timeout)
+}
+
+func TestValidateAndParseTimeout(t *testing.T) {
+	t.Parallel()
+
+	maxHours := int64(24)
+
+	t.Run("nil timeout uses default", func(t *testing.T) {
+		t.Parallel()
+		d, err := validateAndParseTimeout(nil, maxHours)
+		require.Nil(t, err)
+		require.Equal(t, 15*time.Second, d)
+	})
+
+	t.Run("valid timeout", func(t *testing.T) {
+		t.Parallel()
+		v := int32(60)
+		d, err := validateAndParseTimeout(&v, maxHours)
+		require.Nil(t, err)
+		require.Equal(t, 60*time.Second, d)
+	})
+
+	t.Run("zero timeout returns 400 error", func(t *testing.T) {
+		t.Parallel()
+		v := int32(0)
+		_, err := validateAndParseTimeout(&v, maxHours)
+		require.NotNil(t, err)
+		require.Equal(t, int(http.StatusBadRequest), int(err.Code))
+		require.Equal(t, "Timeout must be greater than 0", err.ClientMsg)
+	})
+
+	t.Run("negative timeout returns 400 error", func(t *testing.T) {
+		t.Parallel()
+		v := int32(-10)
+		_, err := validateAndParseTimeout(&v, maxHours)
+		require.NotNil(t, err)
+		require.Equal(t, int(http.StatusBadRequest), int(err.Code))
+		require.Equal(t, "Timeout must be greater than 0", err.ClientMsg)
+	})
+
+	t.Run("timeout exceeding max hours returns 400 error", func(t *testing.T) {
+		t.Parallel()
+		v := int32(90000)
+		_, err := validateAndParseTimeout(&v, maxHours)
+		require.NotNil(t, err)
+		require.Equal(t, int(http.StatusBadRequest), int(err.Code))
+		require.Equal(t, "Timeout cannot be greater than 24 hours", err.ClientMsg)
+	})
 }

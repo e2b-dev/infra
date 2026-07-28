@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/trace"
@@ -55,21 +54,11 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 	telemetry.ReportEvent(ctx, "Parsed body")
 
-	timeout := sandbox.SandboxTimeoutDefault
-	if body.Timeout != nil {
-		if *body.Timeout <= 0 {
-			a.sendAPIStoreError(c, http.StatusBadRequest, "Timeout must be greater than 0")
+	timeout, apiErr := validateAndParseTimeout(body.Timeout, teamInfo.Limits.MaxLengthHours)
+	if apiErr != nil {
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
-			return
-		}
-
-		timeout = time.Duration(*body.Timeout) * time.Second
-
-		if timeout > time.Duration(teamInfo.Limits.MaxLengthHours)*time.Hour {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Timeout cannot be greater than %d hours", teamInfo.Limits.MaxLengthHours))
-
-			return
-		}
+		return
 	}
 
 	teamID := teamInfo.Team.ID

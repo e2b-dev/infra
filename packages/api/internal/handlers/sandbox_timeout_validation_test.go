@@ -35,46 +35,6 @@ func minimalTeamInfo() *authtypes.Team {
 	}
 }
 
-// TestSandboxCreate_RejectsNonPositiveTimeout verifies that POST /sandboxes returns
-// 400 for zero and negative timeout values. The validation fires right after body
-// parse, before template lookup, so no DB or orchestrator setup is needed.
-func TestSandboxCreate_RejectsNonPositiveTimeout(t *testing.T) {
-	t.Parallel()
-
-	for _, tc := range []struct {
-		name    string
-		timeout int32
-	}{
-		{"zero", 0},
-		{"negative one", -1},
-		{"large negative", -3600},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			ctx := t.Context()
-			store := &APIStore{}
-
-			recorder := httptest.NewRecorder()
-			ginCtx, _ := gin.CreateTestContext(recorder)
-
-			body, err := json.Marshal(api.PostSandboxesJSONRequestBody{
-				TemplateID: "some-template",
-				Timeout:    &tc.timeout,
-			})
-			require.NoError(t, err)
-
-			ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/sandboxes", bytes.NewReader(body))
-			ginCtx.Request.Header.Set("Content-Type", "application/json")
-			auth.SetTeamInfoForTest(t, ginCtx, minimalTeamInfo())
-
-			//nolint:contextcheck // PostSandboxes reads ctx from ginCtx.Request.Context().
-			store.PostSandboxes(ginCtx)
-
-			assertBadRequestTimeout(t, recorder)
-		})
-	}
-}
 
 // TestSandboxResume_RejectsNonPositiveTimeout verifies that POST /sandboxes/{id}/resume
 // returns 400 for zero and negative timeout values. The check runs before any
