@@ -16,6 +16,7 @@ tool (
 )
 
 require (
+	github.com/antithesishq/antithesis-sdk-go v0.7.2
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2
 	github.com/bsm/redislock v0.9.4
 	github.com/caarlos0/env/v11 v11.3.1

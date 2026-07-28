@@ -221,6 +221,8 @@ func (s *Storage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string
 		return sandboxtypes.Sandbox{}, err
 	}
 
+	assertLockHeld(ctx, lock, "update")
+
 	// Execute transaction
 	err = s.redisClient.Set(ctx, key, newData, redis.KeepTTL).Err()
 	if err != nil {

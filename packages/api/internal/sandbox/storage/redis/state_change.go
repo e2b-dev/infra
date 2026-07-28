@@ -135,6 +135,8 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 	ttlSeconds := int(transitionKeyTTL.Seconds())
 	resultTtlSeconds := int(transitionResultKeyTTL.Seconds())
 
+	assertLockHeld(ctx, lock, "start_removing")
+
 	err = startTransitionScript.Run(ctx, s.redisClient, []string{key, transitionKey, resultKey}, newData, transitionID, ttlSeconds, resultTtlSeconds).Err()
 	if err != nil {
 		return sbx, false, nil, fmt.Errorf("failed to update sandbox state: %w", err)
