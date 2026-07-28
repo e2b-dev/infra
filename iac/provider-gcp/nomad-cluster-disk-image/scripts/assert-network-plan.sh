@@ -39,6 +39,59 @@ if ! jq -e \
       false
     end;
 
+  # The Google provider refreshes a few unset list fields from null to [] after
+  # creation. Admit only those byte-for-byte-equivalent normalizations.
+  def has_exact_path($path):
+    any(paths; . == $path);
+
+  def exact_null_to_empty_normalization($paths):
+    (.change.before // null) as $before
+    | (.change.after // null) as $after
+    | $before != null
+    and $after != null
+    and (
+      [
+        $paths[] as $path
+        | ($before | has_exact_path($path))
+          and ($after | has_exact_path($path))
+          and ($before | getpath($path)) == null
+          and ($after | getpath($path)) == []
+      ]
+      | all
+    )
+    and (
+      reduce $paths[] as $path (
+        {before: $before, after: $after};
+        .before |= setpath($path; [])
+        | .after |= setpath($path; [])
+      )
+      | .before == .after
+    );
+
+  def allowed_resource_drift:
+    .mode == "managed"
+    and .change.actions == ["update"]
+    and ((.change.after_unknown // {}) | length == 0)
+    and (
+      if .address
+        == "google_compute_firewall.internal_remote_connection_firewall_ingress"
+      then
+        exact_null_to_empty_normalization([
+          ["source_service_accounts"],
+          ["source_tags"],
+          ["target_service_accounts"],
+          ["target_tags"]
+        ])
+      elif .address == "google_compute_subnetwork.packer_subnetwork"
+      then
+        exact_null_to_empty_normalization([
+          ["log_config", 0, "metadata_fields"]
+        ])
+      else
+        false
+      end
+    );
+
   [
     "google_compute_firewall.internal_remote_connection_firewall_ingress",
     "google_compute_network.packer_network",
@@ -82,7 +135,12 @@ if ! jq -e \
     and .terraform_version == "1.7.5"
     and .errored != true
     and ((.complete // true) == true)
-    and ((.resource_drift // []) | length == 0)
+    and (
+      (.resource_drift // []) as $drift
+      | ($drift | map(.address) | length)
+        == ($drift | map(.address) | unique | length)
+      and all($drift[]; allowed_resource_drift)
+    )
     and ((.output_changes // {}) | length == 0)
     and all(.checks[]?; .status == "pass")
     and (
