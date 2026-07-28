@@ -107,6 +107,8 @@ const (
 	WaitForEnvdDurationHistogramName      HistogramType = "orchestrator.sandbox.envd.init.duration"
 	GuestSyncDurationHistogramName        HistogramType = "orchestrator.sandbox.guest_sync.duration"
 	PauseDurationHistogramName            HistogramType = "orchestrator.sandbox.pause.duration"
+	SnapshotProcessMemoryDurationName     HistogramType = "orchestrator.sandbox.snapshot.process_memory.duration"
+	SnapshotProcessRootfsDurationName     HistogramType = "orchestrator.sandbox.snapshot.process_rootfs.duration"
 
 	// Pre-pause envd heap collapse round-trip duration (the pause-path cost of
 	// POST /collapse: network plus envd's madvise work), recorded once per pause
@@ -453,6 +455,8 @@ var histogramDesc = map[HistogramType]string{
 	EnvdCollapseDurationHistogramName:     "Time taken for the pre-pause envd heap collapse round-trip",
 	GuestSyncDurationHistogramName:        "Time taken for the mandatory pre-pause guest sync (filesystem-only pause)",
 	PauseDurationHistogramName:            "Time taken to pause a sandbox, labeled by fs_only (filesystem-only vs memory) and success",
+	SnapshotProcessMemoryDurationName:     "Time to export+diff the memory file during a pause snapshot (memory pauses only), labeled by success",
+	SnapshotProcessRootfsDurationName:     "Time to export+diff the rootfs during a pause snapshot, labeled by fs_only and success",
 
 	PauseResumePrefetchHarvestDurationName: "Time taken for a pause-resume prefetch harvest run (slot-hold cost)",
 	PauseResumePrefetchHarvestPagesName:    "Harvested resume-prefetch trace size in 2 MiB blocks, per successful harvest",
@@ -504,6 +508,8 @@ var histogramUnits = map[HistogramType]string{
 	EnvdCollapseDurationHistogramName:             "ms",
 	GuestSyncDurationHistogramName:                "ms",
 	PauseDurationHistogramName:                    "ms",
+	SnapshotProcessMemoryDurationName:             "ms",
+	SnapshotProcessRootfsDurationName:             "ms",
 	PauseResumePrefetchHarvestDurationName:        "ms",
 	PauseResumePrefetchHarvestPagesName:           "{page}",
 	UffdStartupPagesHistogramName:                 "{page}",
