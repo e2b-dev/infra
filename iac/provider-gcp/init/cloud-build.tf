@@ -11,6 +11,14 @@ resource "google_project_service_identity" "cloud_build" {
   service = google_project_service.cloud_build_api.service
 }
 
+data "google_project" "current" {
+  project_id = var.gcp_project_id
+}
+
+locals {
+  cloud_build_service_agent_email = "service-${data.google_project.current.number}@gcp-sa-cloudbuild.iam.gserviceaccount.com"
+}
+
 resource "google_service_account" "image_builder" {
   account_id   = "${var.prefix}image-builder"
   display_name = "E2B control-plane image builder"
@@ -21,7 +29,9 @@ resource "google_service_account" "image_builder" {
 resource "google_project_iam_member" "cloud_build_service_agent" {
   project = var.gcp_project_id
   role    = "roles/cloudbuild.serviceAgent"
-  member  = "serviceAccount:${google_project_service_identity.cloud_build.email}"
+  member  = "serviceAccount:${local.cloud_build_service_agent_email}"
+
+  depends_on = [google_project_service_identity.cloud_build]
 }
 
 # Cloud Build impersonates only the dedicated build identity. Runtime VMs keep
@@ -29,7 +39,9 @@ resource "google_project_iam_member" "cloud_build_service_agent" {
 resource "google_service_account_iam_member" "cloud_build_image_builder_token_creator" {
   service_account_id = google_service_account.image_builder.name
   role               = "roles/iam.serviceAccountTokenCreator"
-  member             = "serviceAccount:${google_project_service_identity.cloud_build.email}"
+  member             = "serviceAccount:${local.cloud_build_service_agent_email}"
+
+  depends_on = [google_project_service_identity.cloud_build]
 }
 
 resource "google_artifact_registry_repository_iam_member" "core_image_builder" {
