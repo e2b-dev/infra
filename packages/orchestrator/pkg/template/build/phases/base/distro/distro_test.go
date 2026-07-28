@@ -158,11 +158,11 @@ func TestFingerprintStableAndVersioned(t *testing.T) {
 	}
 }
 
-// Sanity: RHEL-family aliases (rocky/alma/oracle/amazon) all resolve to one arm.
+// Sanity: the RHEL-family rebuilds (centos/rocky/alma) all resolve to one arm.
 func TestRHELFamilyAliases(t *testing.T) {
 	t.Parallel()
 	rhel := profileByKey(t, "rhel")
-	for _, want := range []string{"fedora", "rhel", "centos", "rocky", "almalinux", "ol", "amzn"} {
+	for _, want := range []string{"fedora", "centos", "rocky", "almalinux"} {
 		found := false
 		for _, id := range rhel.IDs {
 			if id == want {
@@ -171,6 +171,20 @@ func TestRHELFamilyAliases(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("rhel family missing alias %q", want)
+		}
+	}
+}
+
+// RHEL, Oracle Linux and Amazon Linux are deliberately NOT accepted: sandboxes
+// boot E2B's kernel, so the kernel-level fidelity those images are chosen for
+// isn't there. Rejecting them up front beats building something subtly wrong.
+func TestKernelDependentIDsAreRejected(t *testing.T) {
+	t.Parallel()
+	for _, id := range []string{"rhel", "ol", "amzn"} {
+		for _, got := range SupportedIDs() {
+			if got == id {
+				t.Errorf("id %q must not be accepted: E2B supplies the guest kernel", id)
+			}
 		}
 	}
 }

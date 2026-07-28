@@ -62,18 +62,25 @@ var Profiles = []Profile{
 		CARefresh:    "update-ca-certificates",
 	},
 	{
-		Key:  "rhel", // Fedora, RHEL, CentOS Stream, Rocky, Alma, Oracle Linux, Amazon Linux
+		Key:  "rhel", // Fedora, CentOS Stream, Rocky, Alma
 		Init: InitSystemd,
-		IDs:  []string{"fedora", "rhel", "centos", "rocky", "almalinux", "ol", "amzn"},
-		// "iptables" (not iptables-nft) and "tar" cover the yum-era members
-		// (CentOS 7, Amazon Linux 2) that lack the nft package or don't ship tar.
+		// Deliberately not rhel/ol/amzn. Sandboxes always boot E2B's kernel, so
+		// /lib/modules is empty and SELinux is off — which is most of what RHEL
+		// and Oracle Linux are chosen for (kABI, signed kmods, UEK), and
+		// kernel-devel would resolve against a kernel that isn't running. RHEL's
+		// UBI repos also carry neither chrony nor nfs-utils. Accepting those IDs
+		// promised a fidelity this can't deliver; they now fail fast instead.
+		IDs: []string{"fedora", "centos", "rocky", "almalinux"},
+		// "iptables" (not iptables-nft) and "tar" cover yum-era CentOS 7, which
+		// lacks the nft package and doesn't ship tar.
 		Packages: []string{
 			"systemd", "shadow-utils", "passwd", "openssh-server", "sudo", "chrony",
 			"socat", "curl", "ca-certificates", "fuse3", "iptables", "git",
 			"nfs-utils", "less", "nftables", "iputils", "jq", "bash", "tar",
 		},
 		PkgQueryBody: `rpm -q "$1" >/dev/null 2>&1`,
-		// dnf → microdnf → yum spans the whole family; errors reach the build log.
+		// dnf → microdnf → yum spans the family (yum for CentOS 7); errors reach
+		// the build log.
 		PkgInstall:   `dnf -y --allowerasing install "$@" || microdnf -y install "$@" || yum -y install "$@"`,
 		InitBinary:   "/usr/lib/systemd/systemd",
 		TimeSyncUnit: "chronyd",
