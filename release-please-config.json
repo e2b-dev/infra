@@ -23,6 +23,12 @@
       "component": "clickhouse-migrator",
       "include-v-in-tag": true,
       "changelog-path": "CHANGELOG.md"
+    },
+    "packages/envd": {
+      "release-type": "go",
+      "component": "envd",
+      "include-v-in-tag": true,
+      "changelog-path": "CHANGELOG.md"
     }
   }
 }

@@ -116,6 +116,7 @@ jobs:
               docker-reverse-proxy) path=packages/docker-reverse-proxy ;;
               client-proxy)         path=packages/client-proxy ;;
               clickhouse-migrator)  path=packages/clickhouse ;;
+              envd)                 path=packages/envd ;;
               *)
                 echo "::error::release merge for unknown component '${component}' — add it to this workflow's package list"
                 exit 1
