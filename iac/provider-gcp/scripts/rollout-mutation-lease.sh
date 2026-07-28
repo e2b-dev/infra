@@ -109,7 +109,12 @@ case "${mode}" in
     generation="$(
       jq -er \
         --arg holder "${holder}" \
-        'select(.metadata."monad-holder" == $holder) | .generation | tostring' \
+        'select(
+          ([
+            .metadata["monad-holder"]?,
+            .custom_fields["monad-holder"]?
+          ] | map(select(. != null)) | unique) == [$holder]
+        ) | .generation | tostring' \
         <<<"${object_json}"
     )"
 
@@ -191,7 +196,12 @@ case "${mode}" in
       --arg generation "${generation}" \
       --arg holder "${holder}" '
       (.generation | tostring) == $generation
-      and .metadata."monad-holder" == $holder
+      and (
+        ([
+          .metadata["monad-holder"]?,
+          .custom_fields["monad-holder"]?
+        ] | map(select(. != null)) | unique) == [$holder]
+      )
     ' <<<"${object_json}" >/dev/null || {
       printf 'Lease token no longer matches the current object generation/holder.\n' >&2
       exit 1
@@ -215,7 +225,7 @@ case "${mode}" in
     "${gcloud_bin}" storage objects describe \
       "$(lease_uri "${bucket}" "${project}" "${region}")" \
       --project="${project}" \
-      --format='json(generation,metadata,timeCreated,updated)'
+      --format='json(generation,metadata,custom_fields,creation_time,update_time)'
     ;;
   *)
     usage

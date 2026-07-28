@@ -32,7 +32,7 @@ if [[ "$1 $2" == "storage cp" ]]; then
   cp "${source_path}" "${object_path}"
   jq -cn \
     --arg holder "${holder}" \
-    '{generation: "1", metadata: {"monad-holder": $holder}}' \
+    '{generation: "1", custom_fields: {"monad-holder": $holder}}' \
     >"${object_path}.meta"
 elif [[ "$1 $2 $3" == "storage objects describe" ]]; then
   [[ "${FAKE_FAIL_DESCRIBE:-false}" != "true" ]] || exit 1
@@ -94,6 +94,18 @@ if "${lease_script}" release \
   exit 1
 fi
 [[ -f "${uri_path}" ]]
+
+jq '.metadata = {"monad-holder": "conflicting-holder"}' \
+  "${uri_path}.meta" >"${temp_dir}/conflicting-meta.json"
+mv "${temp_dir}/conflicting-meta.json" "${uri_path}.meta"
+if "${lease_script}" release \
+  "${fake_gcloud}" "${token}" >/dev/null 2>&1; then
+  printf 'Conflicting custom metadata unexpectedly released the lease.\n' >&2
+  exit 1
+fi
+[[ -f "${uri_path}" ]]
+jq 'del(.metadata)' "${uri_path}.meta" >"${temp_dir}/restored-meta.json"
+mv "${temp_dir}/restored-meta.json" "${uri_path}.meta"
 
 "${lease_script}" release "${fake_gcloud}" "${token}"
 [[ ! -e "${uri_path}" ]]
