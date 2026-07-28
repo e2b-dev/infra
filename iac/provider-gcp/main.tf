@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">=1.5.0"
+  required_version = "=1.7.5"
 
   backend "gcs" {
     prefix = "terraform/orchestration/state"
@@ -164,7 +164,7 @@ locals {
 
   template_manager_env_vars = merge({
     CONSUL_TOKEN                    = module.init.consul_acl_token_secret
-    GOOGLE_SERVICE_ACCOUNT_BASE64   = module.init.google_service_account_key
+    GOOGLE_SERVICE_ACCOUNT_BASE64   = ""
     GCP_PROJECT_ID                  = var.gcp_project_id
     GCP_REGION                      = var.gcp_region
     GCP_DOCKER_REPOSITORY_NAME      = google_artifact_registry_repository.custom_environments_repository.name
@@ -187,7 +187,7 @@ locals {
 
   docker_reverse_proxy_env_vars = merge({
     POSTGRES_CONNECTION_STRING    = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
-    GOOGLE_SERVICE_ACCOUNT_BASE64 = google_service_account_key.google_service_key.private_key
+    GOOGLE_SERVICE_ACCOUNT_BASE64 = ""
     GCP_REGION                    = var.gcp_region
     GCP_PROJECT_ID                = var.gcp_project_id
     GCP_DOCKER_REPOSITORY_NAME    = google_artifact_registry_repository.custom_environments_repository.name
@@ -273,10 +273,10 @@ module "cluster" {
   environment = var.environment
 
   cloudflare_api_token_secret_name = module.init.cloudflare_api_token_secret_name
-  gcp_project_id                   = var.gcp_project_id
+  gcp_project_id                   = local.runtime_guarded_gcp_project_id
   gcp_region                       = var.gcp_region
   gcp_zone                         = var.gcp_zone
-  google_service_account_key       = module.init.google_service_account_key
+  google_service_account_key       = ""
   network_name                     = var.network_name
 
   build_clusters_config  = var.build_clusters_config
@@ -353,6 +353,8 @@ module "cluster" {
 module "k8s_apps" {
   source = "./k8s-apps"
 
+  depends_on = [terraform_data.runtime_credential_guard]
+
   prefix         = var.prefix
   gcp_project_id = var.gcp_project_id
   gcp_region     = var.gcp_region
@@ -376,7 +378,6 @@ module "k8s_apps" {
   api_db_migrator_env_vars                               = local.api_db_migrator_env_vars
   auth_provider_config                                   = local.auth_provider_config
   environment                                            = var.environment
-  google_service_account_key                             = module.init.google_service_account_key
   api_secret                                             = random_password.api_secret.result
   custom_envs_repository_name                            = google_artifact_registry_repository.custom_environments_repository.name
   postgres_connection_string_secret_name                 = module.init.postgres_connection_string_secret_name
@@ -389,7 +390,7 @@ module "nomad" {
   source = "./nomad"
 
   prefix         = var.prefix
-  gcp_project_id = var.gcp_project_id
+  gcp_project_id = local.runtime_guarded_gcp_project_id
   gcp_region     = var.gcp_region
   gcp_zone       = var.gcp_zone
 
@@ -429,7 +430,6 @@ module "nomad" {
   api_env_vars                                           = local.api_env_vars
   api_db_migrator_env_vars                               = local.api_db_migrator_env_vars
   environment                                            = var.environment
-  google_service_account_key                             = module.init.google_service_account_key
   custom_envs_repository_name                            = google_artifact_registry_repository.custom_environments_repository.name
   postgres_connection_string_secret_name                 = module.init.postgres_connection_string_secret_name
   postgres_read_replica_connection_string_secret_version = google_secret_manager_secret_version.postgres_read_replica_connection_string
@@ -522,6 +522,8 @@ module "redis" {
   source = "./redis"
   count  = var.redis_managed ? 1 : 0
 
+  depends_on = [terraform_data.runtime_credential_guard]
+
   gcp_project_id = var.gcp_project_id
   gcp_region     = var.gcp_region
   gcp_zone       = var.gcp_zone
@@ -541,7 +543,7 @@ module "remote_repository" {
 
   count = var.remote_repository_enabled ? 1 : 0
 
-  depends_on = [module.init]
+  depends_on = [module.init, terraform_data.runtime_credential_guard]
 
   prefix = var.prefix
 

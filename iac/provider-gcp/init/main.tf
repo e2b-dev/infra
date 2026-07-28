@@ -73,10 +73,6 @@ resource "google_service_account" "infra_instances_service_account" {
   display_name = "Infra Instances Service Account"
 }
 
-resource "google_service_account_key" "google_service_key" {
-  service_account_id = google_service_account.infra_instances_service_account.name
-}
-
 // todo: delete after migration period
 resource "google_artifact_registry_repository" "orchestration_repository" {
   format        = "DOCKER"

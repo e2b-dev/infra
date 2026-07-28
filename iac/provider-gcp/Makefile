@@ -1,12 +1,15 @@
-ENV := $(shell cat ../../.last_used_env || echo "not-set")
+ENV := $(shell cat ../../.last_used_env 2>/dev/null || echo "not-set")
 ENV_FILE := ../../.env.${ENV}
 
 -include ${ENV_FILE}
 
 TF := $(shell which terraform)
-TF_VAR_FILE := ./.terraform.${ENV}.tfvars
-TF_VAR_FILE_ARG := $(if $(wildcard $(TF_VAR_FILE)),-var-file=$(TF_VAR_FILE))
+GCLOUD := $(shell which gcloud)
+override EXPECTED_TERRAFORM_VERSION := $(shell awk '$$1 == "terraform" { print $$2; exit }' ../../.tool-versions)
+override TF_VAR_FILE := ./.terraform.${ENV}.tfvars
+override TF_VAR_FILE_ARG := $(if $(wildcard $(TF_VAR_FILE)),-var-file=$(TF_VAR_FILE))
 TERRAFORM_STATE_BUCKET ?= $(GCP_PROJECT_ID)-terraform-state
+override TERRAFORM_STATE_PREFIX := terraform/orchestration/$(ENV)/state
 TEMPLATE_BUCKET_LOCATION ?= $(GCP_REGION)
 BUCKET_PREFIX ?= $(GCP_PROJECT_ID)-
 
@@ -101,30 +104,171 @@ tf_vars := \
 
 .PHONY: init
 init:
-	@ printf "Initializing Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	@ gcloud storage buckets create gs://$(TERRAFORM_STATE_BUCKET) --location $(GCP_REGION) --project $(GCP_PROJECT_ID) --default-storage-class STANDARD  --uniform-bucket-level-access > /dev/null 2>&1 || true
+	@ printf "Refusing legacy init in the Monad fork. Use 'make foundation-init' then review 'make foundation-plan'.\n"
+	@ exit 1
 
-	# Enable object versioning (keeps deleted/replaced objects as older versions)
-	@ gcloud storage buckets update gs://$(TERRAFORM_STATE_BUCKET) --versioning --soft-delete-duration=30d
+FOUNDATION_PLAN := .tfplan.foundation.$(ENV)
+FOUNDATION_PLAN_MANIFEST := $(FOUNDATION_PLAN).manifest
+FOUNDATION_DESTROY_PLAN := .tfplan.foundation-destroy.$(ENV)
+override FOUNDATION_CONFIRMATION := APPLY KEYLESS FOUNDATION
 
-	# Create a temporary file for lifecycle rules
-	$(eval LIFECYCLE_FILE := $(shell mktemp))
+define foundation_metadata_context
+FOUNDATION_ENV="$(ENV)" \
+FOUNDATION_ENV_FILE="$(ENV_FILE)" \
+FOUNDATION_TF_VAR_FILE="$(TF_VAR_FILE)" \
+FOUNDATION_GCP_PROJECT_ID="$(GCP_PROJECT_ID)" \
+FOUNDATION_GCP_REGION="$(GCP_REGION)" \
+FOUNDATION_STATE_BUCKET="$(TERRAFORM_STATE_BUCKET)" \
+FOUNDATION_STATE_PREFIX="$(TERRAFORM_STATE_PREFIX)"
+endef
 
-	# Set lifecycle rules to delete non-live objects after 30 days or more than 50 newer versions
-	echo '{"rule":[{"action":{"type":"Delete"},"condition":{"isLive":false,"age":30}},{"action":{"type":"Delete"},"condition":{"numNewerVersions":50}}]}' > $(LIFECYCLE_FILE)
-	@ gcloud storage buckets update gs://$(TERRAFORM_STATE_BUCKET) --lifecycle-file=$(LIFECYCLE_FILE)
+.PHONY: runtime-blocked
+runtime-blocked:
+	@ printf "Refusing workload Terraform in the F1.0 foundation branch. Only foundation-init, foundation-plan, and confirmed foundation-apply are supported.\n"
+	@ exit 1
 
-	# Remove the temporary lifecycle file
-	@ rm -f $(LIFECYCLE_FILE)
+.PHONY: foundation-config-guard
+foundation-config-guard:
+	@ test "$(ENV)" != "not-set" || (printf "No environment selected. Run 'make set-env ENV=dev' from the repository root.\n"; exit 1)
+	@ printf '%s' "$(ENV)" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$$' || (printf "Invalid environment name: %s\n" "$(ENV)"; exit 1)
+	@ test -f "$(ENV_FILE)" || (printf "Missing environment file $(ENV_FILE).\n"; exit 1)
+	@ test -n "$(TERRAFORM_ENVIRONMENT)" && test "$(TERRAFORM_ENVIRONMENT)" = "$(ENV)" || (printf "TERRAFORM_ENVIRONMENT must exactly match the selected environment %s; found %s.\n" "$(ENV)" "$(TERRAFORM_ENVIRONMENT)"; exit 1)
+	@ test -n "$(GCP_PROJECT_ID)" || (printf "GCP_PROJECT_ID is required.\n"; exit 1)
+	@ test -n "$(GCP_REGION)" || (printf "GCP_REGION is required.\n"; exit 1)
+	@ test -n "$(TERRAFORM_STATE_BUCKET)" && test "$(TERRAFORM_STATE_BUCKET)" != "-terraform-state" || (printf "A valid TERRAFORM_STATE_BUCKET is required.\n"; exit 1)
+	@ test -n "$(TERRAFORM_STATE_PREFIX)" || (printf "A valid TERRAFORM_STATE_PREFIX is required.\n"; exit 1)
+	@ ./scripts/assert-foundation-var-sources.sh "." "$(TF_VAR_FILE)"
 
-	@ $(TF) init -input=false -reconfigure -backend-config=bucket=$(TERRAFORM_STATE_BUCKET)
-	@ $(tf_vars) $(TF) apply -target=module.init -auto-approve -input=false -compact-warnings
+.PHONY: foundation-toolchain-guard
+foundation-toolchain-guard:
+	@ test -n "$(EXPECTED_TERRAFORM_VERSION)" || (printf "No Terraform version is pinned in ../../.tool-versions.\n"; exit 1)
+	@ test -n "$(TF)" && test -x "$(TF)" || (printf "Terraform is not installed or not executable.\n"; exit 1)
+	@ actual_version="$$("$(TF)" version -json | jq -r '.terraform_version')"; \
+	if [ "$$actual_version" != "$(EXPECTED_TERRAFORM_VERSION)" ]; then \
+		printf "Terraform %s is required; found %s at %s.\n" "$(EXPECTED_TERRAFORM_VERSION)" "$$actual_version" "$(TF)"; \
+		exit 1; \
+	fi
 
-	@ TERRAFORM_STATE_BUCKET="$(TERRAFORM_STATE_BUCKET)" $(MAKE) -C nomad-cluster-disk-image init build
-	@ gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+.PHONY: foundation-init
+foundation-init: foundation-config-guard foundation-toolchain-guard
+	@ printf "Initializing keyless foundation state for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	@ ./scripts/ensure-foundation-state-bucket.sh \
+		"$(TERRAFORM_STATE_BUCKET)" \
+		"$(GCP_PROJECT_ID)" \
+		"$(GCP_REGION)" \
+		"$(GCLOUD)"
+	@ $(TF) init -input=false -reconfigure \
+		-backend-config=bucket="$(TERRAFORM_STATE_BUCKET)" \
+		-backend-config=prefix="$(TERRAFORM_STATE_PREFIX)"
+	@ ./scripts/assert-foundation-backend.sh "$(TERRAFORM_STATE_BUCKET)" "$(TERRAFORM_STATE_PREFIX)"
+	@ ./scripts/assert-foundation-workspace.sh "$(TF)"
+	@ ./scripts/assert-foundation-state.sh "$(TF)"
+
+.PHONY: foundation-plan
+foundation-plan:
+	@ printf '%s' "$(ENV)" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$$' || (printf "Invalid environment name: %s\n" "$(ENV)"; exit 1)
+	@ rm -f -- "$(FOUNDATION_PLAN)" "$(FOUNDATION_PLAN_MANIFEST)"
+	@ $(MAKE) foundation-config-guard foundation-toolchain-guard
+	@ printf "Planning keyless foundation only for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	@ ./scripts/assert-foundation-backend.sh "$(TERRAFORM_STATE_BUCKET)" "$(TERRAFORM_STATE_PREFIX)"
+	@ ./scripts/assert-foundation-state-bucket.sh \
+		"$(TERRAFORM_STATE_BUCKET)" \
+		"$(GCP_PROJECT_ID)" \
+		"$(GCP_REGION)" \
+		"$(GCLOUD)"
+	@ ./scripts/assert-foundation-workspace.sh "$(TF)"
+	@ ./scripts/assert-foundation-state.sh "$(TF)"
+	@ $(call tf_fmt)
+	@ set -eu; \
+		before_fingerprint="$$($(foundation_metadata_context) ./scripts/foundation-plan-metadata.sh fingerprint "$(TF)" "." "../..")"; \
+		temp_dir="$$(mktemp -d ".foundation-plan.$(ENV).XXXXXX")"; \
+		temp_plan="$${temp_dir}/plan"; \
+		temp_manifest="$${temp_dir}/manifest"; \
+		trap 'rm -rf -- "$${temp_dir}"' EXIT HUP INT TERM; \
+		umask 077; \
+		$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) \
+			-var=anywhere_cache_enabled=false \
+			-target=module.init \
+			-out="$${temp_plan}" \
+			-input=false \
+			-compact-warnings; \
+		chmod 0600 "$${temp_plan}"; \
+		after_fingerprint="$$($(foundation_metadata_context) ./scripts/foundation-plan-metadata.sh fingerprint "$(TF)" "." "../..")"; \
+		if [ "$${before_fingerprint}" != "$${after_fingerprint}" ]; then \
+			printf "Refusing foundation plan: configuration changed while Terraform was planning.\n" >&2; \
+			exit 1; \
+		fi; \
+		./scripts/assert-foundation-plan.sh \
+			"$${temp_plan}" "$(TF)" apply \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(ENV)"; \
+		$(foundation_metadata_context) ./scripts/foundation-plan-metadata.sh write \
+			"$${temp_plan}" "$${temp_manifest}" "$(TF)" "." "../.." "$${after_fingerprint}"; \
+		mv -f -- "$${temp_plan}" "$(FOUNDATION_PLAN)"; \
+		mv -f -- "$${temp_manifest}" "$(FOUNDATION_PLAN_MANIFEST)"; \
+		rmdir "$${temp_dir}"; \
+		trap - EXIT HUP INT TERM
+
+.PHONY: foundation-apply
+foundation-apply: foundation-config-guard foundation-toolchain-guard
+	@ if [ "$(CONFIRM)" != "$(FOUNDATION_CONFIRMATION)" ]; then \
+		printf "Refusing foundation apply. Re-run with CONFIRM='$(FOUNDATION_CONFIRMATION)'.\n"; \
+		exit 1; \
+	fi
+	@ test -f $(FOUNDATION_PLAN) || (printf "Missing reviewed plan $(FOUNDATION_PLAN). Run 'make foundation-plan' first.\n"; exit 1)
+	@ test -f $(FOUNDATION_PLAN_MANIFEST) || (printf "Missing plan provenance $(FOUNDATION_PLAN_MANIFEST). Run 'make foundation-plan' first.\n"; exit 1)
+	@ ./scripts/assert-foundation-backend.sh "$(TERRAFORM_STATE_BUCKET)" "$(TERRAFORM_STATE_PREFIX)"
+	@ ./scripts/assert-foundation-state-bucket.sh \
+		"$(TERRAFORM_STATE_BUCKET)" \
+		"$(GCP_PROJECT_ID)" \
+		"$(GCP_REGION)" \
+		"$(GCLOUD)"
+	@ ./scripts/assert-foundation-workspace.sh "$(TF)"
+	@ ./scripts/assert-foundation-state.sh "$(TF)"
+	@ $(foundation_metadata_context) ./scripts/foundation-plan-metadata.sh verify \
+		"$(FOUNDATION_PLAN)" "$(FOUNDATION_PLAN_MANIFEST)" "$(TF)" "." "../.."
+	@ ./scripts/assert-foundation-plan.sh \
+		"$(FOUNDATION_PLAN)" "$(TF)" apply \
+		"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(ENV)"
+	@ $(TF) apply -input=false $(FOUNDATION_PLAN)
+	@ rm "$(FOUNDATION_PLAN)" "$(FOUNDATION_PLAN_MANIFEST)"
+
+.PHONY: foundation-destroy-plan
+foundation-destroy-plan:
+	@ printf '%s' "$(ENV)" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$$' || (printf "Invalid environment name: %s\n" "$(ENV)"; exit 1)
+	@ rm -f -- "$(FOUNDATION_DESTROY_PLAN)"
+	@ $(MAKE) foundation-config-guard foundation-toolchain-guard
+	@ printf "Planning review-only foundation destroy for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	@ ./scripts/assert-foundation-backend.sh "$(TERRAFORM_STATE_BUCKET)" "$(TERRAFORM_STATE_PREFIX)"
+	@ ./scripts/assert-foundation-state-bucket.sh \
+		"$(TERRAFORM_STATE_BUCKET)" \
+		"$(GCP_PROJECT_ID)" \
+		"$(GCP_REGION)" \
+		"$(GCLOUD)"
+	@ ./scripts/assert-foundation-workspace.sh "$(TF)"
+	@ ./scripts/assert-foundation-state.sh "$(TF)"
+	@ set -eu; \
+		temp_dir="$$(mktemp -d ".foundation-destroy-plan.$(ENV).XXXXXX")"; \
+		temp_plan="$${temp_dir}/plan"; \
+		trap 'rm -rf -- "$${temp_dir}"' EXIT HUP INT TERM; \
+		umask 077; \
+		$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) \
+			-var=anywhere_cache_enabled=false \
+			-target=module.init \
+			-destroy \
+			-out="$${temp_plan}" \
+			-input=false \
+			-compact-warnings; \
+		chmod 0600 "$${temp_plan}"; \
+		./scripts/assert-foundation-plan.sh \
+			"$${temp_plan}" "$(TF)" destroy \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(ENV)"; \
+		mv -f -- "$${temp_plan}" "$(FOUNDATION_DESTROY_PLAN)"; \
+		rmdir "$${temp_dir}"; \
+		trap - EXIT HUP INT TERM
+	@ printf "Destroy plan is review-only; this branch intentionally provides no apply target.\n"
 
 .PHONY: state-migrate
-state-migrate:
+state-migrate: runtime-blocked
 	@ printf "Running Terraform state migrations for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ $(tf_vars) $(TF) state mv 'random_password.api_admin_secret' 'module.init.random_password.api_admin_secret' || true
 	@ $(tf_vars) $(TF) state mv 'google_secret_manager_secret.api_admin_token' 'module.init.google_secret_manager_secret.api_admin_token' || true
@@ -136,27 +280,27 @@ state-migrate:
 	@ $(tf_vars) $(TF) state mv 'module.nomad.random_password.clickhouse_server_secret' 'random_password.clickhouse_server_secret' || true
 
 .PHONY: apply-init
-apply-init:
+apply-init: runtime-blocked
 	@ $(tf_vars) $(TF) apply $(TF_VAR_FILE_ARG) -target=module.init -auto-approve -input=false -compact-warnings
 
 .PHONY: switch
-switch:
+switch: runtime-blocked
 	@ printf "Switching Terraform backend for different env ${ENV}\n"
 	@ $(TF) init -input=false -upgrade -reconfigure -backend-config=bucket=$(TERRAFORM_STATE_BUCKET)
 
 .PHONY: destroy
-destroy:
+destroy: runtime-blocked
 	@ printf "Destroying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ $(tf_vars) $(TF) destroy $(TF_VAR_FILE_ARG)
 
 .PHONY: plan
-plan:
+plan: runtime-blocked
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ $(call tf_fmt)
 	@ $(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings
 
 .PHONY: terraform
-terraform:
+terraform: runtime-blocked
 	@ printf "Terraform command for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ $(call tf_fmt)
 	@ $(tf_vars) $(TF) $(ARGS)
@@ -167,33 +311,33 @@ terraform:
 plan_only_jobs_moved_targets = -target="random_password.clickhouse_password" -target="random_password.clickhouse_server_secret" -target="module.nomad.random_password.clickhouse_password" -target="module.nomad.random_password.clickhouse_server_secret"
 
 .PHONY: plan-only-jobs plan-only-jobs/clickhouse plan-only-jobs/clickhouse_migrator plan-only-jobs/clickhouse_backup plan-only-jobs/clickhouse_backup_restore
-plan-only-jobs/clickhouse:
+plan-only-jobs/clickhouse: runtime-blocked
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(call tf_fmt)
 	$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target="module.nomad.module.clickhouse.nomad_job.clickhouse" $(plan_only_jobs_moved_targets)
-plan-only-jobs/clickhouse_migrator:
+plan-only-jobs/clickhouse_migrator: runtime-blocked
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(call tf_fmt)
 	$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target="module.nomad.module.clickhouse.nomad_job.clickhouse_migrator" $(plan_only_jobs_moved_targets)
-plan-only-jobs/clickhouse_backup:
+plan-only-jobs/clickhouse_backup: runtime-blocked
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(call tf_fmt)
 	$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target="module.nomad.module.clickhouse.nomad_job.clickhouse_backup" $(plan_only_jobs_moved_targets)
-plan-only-jobs/clickhouse_backup_restore:
+plan-only-jobs/clickhouse_backup_restore: runtime-blocked
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(call tf_fmt)
 	$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target="module.nomad.module.clickhouse.nomad_job.clickhouse_backup_restore" $(plan_only_jobs_moved_targets)
-plan-only-jobs/%:
+plan-only-jobs/%: runtime-blocked
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(call tf_fmt)
 	@ $(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target=module.nomad.nomad_job.$(subst -,_,$(notdir $@)) -target=module.nomad.module.$(subst -,_,$(notdir $@)) $(plan_only_jobs_moved_targets)
-plan-only-jobs:
+plan-only-jobs: runtime-blocked
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(call tf_fmt)
 	@ $(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target=module.nomad $(plan_only_jobs_moved_targets)
 
 .PHONY: plan-without-jobs
-plan-without-jobs:
+plan-without-jobs: runtime-blocked
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(eval TARGET := $(shell cat main.tf | grep "^module" | awk '{print $$2}' | tr ' ' '\n' | grep -v -e "nomad" | awk '{print "-target=module." $$0 ""}' | xargs))
 	@ $(tf_vars) \
@@ -206,7 +350,7 @@ plan-without-jobs:
 	$(TARGET)
 
 .PHONY: apply
-apply:
+apply: runtime-blocked
 	@ printf "Applying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ $(TF) apply \
 	-auto-approve \
@@ -218,12 +362,12 @@ apply:
 
 # Shortcut to importing resources into Terraform state (e.g. after creating resources manually or switching between different branches for the same environment)
 .PHONY: import
-import:
+import: runtime-blocked
 	@ printf "Importing resources for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ $(tf_vars) $(TF) import $(TF_VAR_FILE_ARG) "$(TARGET)" "$(ID)" -no-color
 
 .PHONY: move
-move:
+move: runtime-blocked
 	@ printf "Moving resource for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ $(tf_vars) $(TF) state mv "$(SOURCE)" "$(TARGET)" -no-color
 

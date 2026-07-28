@@ -2,6 +2,8 @@ resource "google_artifact_registry_repository" "custom_environments_repository" 
   format        = "DOCKER"
   repository_id = "${var.prefix}custom-environments"
   labels        = var.labels
+
+  depends_on = [terraform_data.runtime_credential_guard]
 }
 
 resource "google_artifact_registry_repository_iam_member" "custom_environments_repository_member" {
@@ -53,6 +55,8 @@ data "google_secret_manager_secret_version" "launch_darkly_api_key" {
 resource "google_secret_manager_secret" "postgres_read_replica_connection_string" {
   secret_id = "${var.prefix}postgres-read-replica-connection-string"
 
+  depends_on = [terraform_data.runtime_credential_guard]
+
   replication {
     auto {}
   }
@@ -62,6 +66,8 @@ resource "google_secret_manager_secret_version" "postgres_read_replica_connectio
   secret      = google_secret_manager_secret.postgres_read_replica_connection_string.name
   secret_data = " "
 
+  depends_on = [terraform_data.runtime_credential_guard]
+
   lifecycle {
     ignore_changes = [secret_data]
   }
@@ -70,20 +76,28 @@ resource "google_secret_manager_secret_version" "postgres_read_replica_connectio
 resource "random_password" "api_secret" {
   length  = 32
   special = false
+
+  depends_on = [terraform_data.runtime_credential_guard]
 }
 
 resource "random_password" "clickhouse_password" {
   length  = 32
   special = false
+
+  depends_on = [terraform_data.runtime_credential_guard]
 }
 
 resource "random_password" "clickhouse_server_secret" {
   length  = 32
   special = false
+
+  depends_on = [terraform_data.runtime_credential_guard]
 }
 
 resource "google_secret_manager_secret" "api_secret" {
   secret_id = "${var.prefix}api-secret"
+
+  depends_on = [terraform_data.runtime_credential_guard]
 
   replication {
     auto {}
@@ -94,16 +108,23 @@ resource "google_secret_manager_secret_version" "api_secret_value" {
   secret = google_secret_manager_secret.api_secret.id
 
   secret_data = random_password.api_secret.result
+
+  depends_on = [terraform_data.runtime_credential_guard]
 }
 
 resource "random_password" "sandbox_access_token_hash_seed" {
   length  = 32
   special = false
+
+  depends_on = [terraform_data.runtime_credential_guard]
 }
 
 
 resource "google_secret_manager_secret" "sandbox_access_token_hash_seed" {
   secret_id = "${var.prefix}sandbox-access-token-hash-seed"
+
+  depends_on = [terraform_data.runtime_credential_guard]
+
   replication {
     auto {}
   }
@@ -112,4 +133,6 @@ resource "google_secret_manager_secret" "sandbox_access_token_hash_seed" {
 resource "google_secret_manager_secret_version" "sandbox_access_token_hash_seed" {
   secret      = google_secret_manager_secret.sandbox_access_token_hash_seed.id
   secret_data = random_password.sandbox_access_token_hash_seed.result
+
+  depends_on = [terraform_data.runtime_credential_guard]
 }

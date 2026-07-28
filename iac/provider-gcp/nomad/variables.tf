@@ -141,10 +141,6 @@ variable "gcp_region" {
   type = string
 }
 
-variable "google_service_account_key" {
-  type = string
-}
-
 variable "postgres_connection_string_secret_name" {
   type = string
 }

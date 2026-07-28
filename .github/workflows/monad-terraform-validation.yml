@@ -47,6 +47,14 @@ jobs:
       - name: Validate configuration
         run: terraform -chdir=iac/provider-gcp validate
 
+      - name: Verify pinned foundation toolchain
+        run: make -C iac/provider-gcp foundation-toolchain-guard
+
+      - name: Test foundation safety guards
+        run: |
+          iac/provider-gcp/scripts/test-foundation-guards.sh
+          iac/provider-gcp/scripts/test-foundation-workflow.sh
+
       - name: Keep inherited automation dormant
         shell: bash
         run: |

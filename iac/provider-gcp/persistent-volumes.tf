@@ -3,6 +3,8 @@ module "persistent-volume-types" {
 
   for_each = var.persistent_volume_types
 
+  depends_on = [terraform_data.runtime_credential_guard]
+
   allow_deletion     = each.value.allow_deletion
   capacity_gb        = each.value.capacity_gb
   key                = each.key

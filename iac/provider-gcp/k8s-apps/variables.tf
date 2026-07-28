@@ -111,10 +111,6 @@ variable "auth_provider_config" {
   default   = null
 }
 
-variable "google_service_account_key" {
-  type = string
-}
-
 variable "api_secret" {
   type = string
 }

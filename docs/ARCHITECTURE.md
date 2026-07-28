@@ -367,6 +367,12 @@ flowchart TB
   autoscaler plugin scales the job with the node pool.
 - PostgreSQL is external (connection string via secrets); Redis runs as a Nomad job or as a
   managed service; ClickHouse runs on its own pool.
+- The Monad fork contains no Google service-account-key resources.
+  Its F1.0 path may apply only the `module.init` foundation. A full workload
+  plan is deliberately blocked until every API, build, sandbox, registry, and
+  backup consumer uses an attached service account, ADC, or Workload Identity.
+  Existing key-shaped runtime inputs remain blocked compatibility seams until
+  that migration is complete.
 - Observability: everything exports OTel; the collector fans out to ClickHouse (product metrics)
   and Grafana Cloud/stack. Logs default to the legacy Vector → Loki path; dynamic log routing can
   select a primary collector and shadow collectors, and local-cluster log reads can be switched to
