@@ -34,6 +34,8 @@ if [[ -f "$cloud_build_tf" ]]; then
     "$cloud_build_tf" >/dev/null
   grep -F 'resource "google_service_account_iam_member" "cloud_build_regional_image_builder_token_creator"' \
     "$cloud_build_tf" >/dev/null
+  grep -F 'resource "google_storage_bucket_iam_member" "cloud_build_source_reader"' \
+    "$cloud_build_tf" >/dev/null
 fi
 
 echo "Keyless GCP runtime guard tests passed."

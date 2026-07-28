@@ -13,6 +13,8 @@ consumers use attached service accounts and Application Default Credentials.
 - service-account identities without private keys;
 - a dedicated Cloud Build image-builder identity with write access only to the
   core Artifact Registry repository and Cloud Logging;
+- a private regional Cloud Build source bucket whose objects expire after
+  seven days;
 - Secret Manager containers and generated control-plane secrets;
 - Artifact Registry repositories;
 - GCS buckets and their IAM bindings.
@@ -168,6 +170,7 @@ revision="$(git rev-parse --short=12 HEAD)"
 gcloud builds submit \
   --project=monad-code \
   --region=us-east4 \
+  --gcs-source-staging-dir=gs://monad-code-cloud-build-source/source \
   --config=cloudbuild.core-images.yaml \
   --substitutions="_REVISION=${revision}" \
   .
