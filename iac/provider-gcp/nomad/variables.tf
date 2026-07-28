@@ -263,6 +263,17 @@ variable "fc_env_pipeline_bucket_name" {
   type = string
 }
 
+variable "core_image_revision" {
+  type        = string
+  description = "Optional immutable release revision used for workload job binary aliases."
+  default     = ""
+
+  validation {
+    condition     = var.core_image_revision == "" || can(regex("^[0-9a-f]{12,40}$", var.core_image_revision))
+    error_message = "core_image_revision must be empty or a 12-40 character lowercase Git SHA."
+  }
+}
+
 # Template manager
 variable "template_manager_port" {
   type = number

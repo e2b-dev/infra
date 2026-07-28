@@ -476,6 +476,7 @@ module "nomad" {
   orchestrator_port              = var.orchestrator_port
   orchestrator_proxy_port        = var.orchestrator_proxy_port
   fc_env_pipeline_bucket_name    = module.init.fc_env_pipeline_bucket_name
+  core_image_revision            = var.core_image_revision
   default_persistent_volume_type = var.default_persistent_volume_type
   orchestrator_env_vars          = local.orchestrator_env_vars
   orchestrator_enabled           = var.orchestrator_enabled

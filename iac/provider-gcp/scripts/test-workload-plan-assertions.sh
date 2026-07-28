@@ -39,7 +39,23 @@ jq \
     ) = $source_image
   ' \
   "${fixture}" >"${test_dir}/minimal-with-cloud-sql.json"
-fixture="${test_dir}/minimal-with-cloud-sql.json"
+bootstrap_fixture="${test_dir}/minimal-with-cloud-sql.json"
+jq '
+  .resource_changes |= map(
+    if (
+      .mode == "managed"
+      and (.address | startswith("module.cluster."))
+      and (.type | startswith("google_compute_"))
+    )
+    then (
+      .change.before = .change.after
+      | .change.actions = ["no-op"]
+    )
+    else .
+    end
+  )
+' "${bootstrap_fixture}" >"${test_dir}/phase-two-minimal.json"
+fixture="${test_dir}/phase-two-minimal.json"
 
 grep -F 'ssl_mode                                      = "ENCRYPTED_ONLY"' \
   "${cloud_sql_config}" >/dev/null
@@ -66,6 +82,7 @@ expect_failure() {
   local policy_path="${4:-${policy}}"
   local packer_template_path="${5:-${packer_template}}"
   local artifacts_path="${6:-${artifacts}}"
+  local scope="${7:-full}"
   local output_path="${test_dir}/${name}.output"
 
   if "${assertion_script}" \
@@ -73,7 +90,8 @@ expect_failure() {
     "${fake_terraform}" \
     "${policy_path}" \
     "${packer_template_path}" \
-    "${artifacts_path}" >"${output_path}" 2>&1; then
+    "${artifacts_path}" \
+    "${scope}" >"${output_path}" 2>&1; then
     printf 'Expected %s fixture to fail.\n' "${name}" >&2
     exit 1
   fi
@@ -88,6 +106,7 @@ expect_failure() {
 expect_success() {
   local name="$1"
   local plan_path="$2"
+  local scope="${3:-full}"
   local output_path="${test_dir}/${name}.output"
 
   "${assertion_script}" \
@@ -95,7 +114,8 @@ expect_success() {
     "${fake_terraform}" \
     "${policy}" \
     "${packer_template}" \
-    "${artifacts}" >"${output_path}"
+    "${artifacts}" \
+    "${scope}" >"${output_path}"
 
   grep -F '"global_vcpus":30' "${output_path}" >/dev/null
   grep -F '"regional_cpus":30' "${output_path}" >/dev/null
@@ -104,9 +124,145 @@ expect_success() {
   grep -F '"pd_standard_gb":400' "${output_path}" >/dev/null
   grep -F '"local_ssd_gb":750' "${output_path}" >/dev/null
   grep -F '"regional_public_ips":7' "${output_path}" >/dev/null
+  if [[ "${scope}" == "cluster" ]]; then
+    grep -F \
+      'Cluster bootstrap scope passed: only module.cluster may mutate' \
+      "${output_path}" >/dev/null
+  fi
 }
 
 expect_success "minimal" "${fixture}"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.address == "module.cluster.google_compute_instance_template.api")
+    | .change.actions
+  ) = ["update"]
+' "${fixture}" >"${test_dir}/phase-two-cluster-compute-update.json"
+expect_failure \
+  "phase-two-cluster-compute-update" \
+  "module.cluster compute mutations must be empty." \
+  "${test_dir}/phase-two-cluster-compute-update.json"
+
+jq '
+  .resource_changes += [{
+    "address": "module.cluster.google_compute_disk.unreviewed",
+    "mode": "managed",
+    "type": "google_compute_disk",
+    "name": "unreviewed",
+    "change": {
+      "actions": ["create"],
+      "before": null,
+      "after": {"name": "unreviewed"}
+    }
+  }]
+' "${fixture}" >"${test_dir}/phase-two-cluster-compute-create.json"
+expect_failure \
+  "phase-two-cluster-compute-create" \
+  "module.cluster compute mutations must be empty." \
+  "${test_dir}/phase-two-cluster-compute-create.json"
+
+jq '
+  .resource_changes |= map(
+    select(.address | startswith("module.cluster."))
+  )
+  | (
+      .planned_values.root_module
+      | recurse(.child_modules[]?)
+      | .resources?
+    ) |= map(
+      select(.address | startswith("module.cluster."))
+  )
+' "${bootstrap_fixture}" >"${test_dir}/cluster-minimal.json"
+cluster_fixture="${test_dir}/cluster-minimal.json"
+expect_success "cluster-minimal" "${cluster_fixture}" cluster
+
+jq '
+  .resource_changes += [{
+    "address": "google_storage_bucket.unrelated",
+    "mode": "managed",
+    "type": "google_storage_bucket",
+    "name": "unrelated",
+    "change": {
+      "actions": ["create"],
+      "before": null,
+      "after": {"name": "unrelated"}
+    }
+  }]
+' "${cluster_fixture}" >"${test_dir}/cluster-outside-mutation.json"
+expect_failure \
+  "cluster-outside-mutation" \
+  "mutations outside module.cluster must be empty." \
+  "${test_dir}/cluster-outside-mutation.json" \
+  "${policy}" \
+  "${packer_template}" \
+  "${artifacts}" \
+  cluster
+
+jq '
+  .resource_changes += [{
+    "address": "google_storage_bucket.reviewed",
+    "mode": "managed",
+    "type": "google_storage_bucket",
+    "name": "reviewed",
+    "change": {
+      "actions": ["no-op"],
+      "before": {"name": "reviewed"},
+      "after": {"name": "reviewed"}
+    }
+  }]
+' "${cluster_fixture}" >"${test_dir}/cluster-outside-noop.json"
+expect_success "cluster-outside-noop" "${test_dir}/cluster-outside-noop.json" cluster
+
+jq '
+  .resource_changes += [{
+    "address": "module.nomad.nomad_job.unreviewed",
+    "mode": "managed",
+    "type": "nomad_job",
+    "name": "unreviewed",
+    "change": {
+      "actions": ["create"],
+      "before": null,
+      "after": {"jobspec": "job unreviewed {}"}
+    }
+  }]
+' "${cluster_fixture}" >"${test_dir}/cluster-nomad-job.json"
+expect_failure \
+  "cluster-nomad-job" \
+  "Nomad workload resources must be absent." \
+  "${test_dir}/cluster-nomad-job.json" \
+  "${policy}" \
+  "${packer_template}" \
+  "${artifacts}" \
+  cluster
+
+jq '
+  (
+    .resource_changes[]
+    | select(.address == "module.cluster.google_compute_instance_template.api")
+    | .change.after.disk[]
+    | select(.boot == true)
+    | .source_image
+  ) = "projects/monad-code/global/images/unreviewed"
+' "${cluster_fixture}" >"${test_dir}/cluster-template-source-image-drift.json"
+expect_failure \
+  "cluster-template-source-image-drift" \
+  "invalid_template_source_images must be empty." \
+  "${test_dir}/cluster-template-source-image-drift.json" \
+  "${policy}" \
+  "${packer_template}" \
+  "${artifacts}" \
+  cluster
+
+expect_failure \
+  "unknown-assertion-scope" \
+  "Unknown workload plan assertion scope" \
+  "${cluster_fixture}" \
+  "${policy}" \
+  "${packer_template}" \
+  "${artifacts}" \
+  unsupported
 
 jq '
   (
@@ -198,7 +354,7 @@ jq '
 ' "${fixture}" >"${test_dir}/destructive-mig.json"
 expect_failure \
   "destructive-mig" \
-  "destructive_migs must be empty." \
+  "module.cluster compute mutations must be empty." \
   "${test_dir}/destructive-mig.json"
 
 jq '
@@ -261,7 +417,7 @@ jq '
 ' "${fixture}" >"${test_dir}/capacity-reduction.json"
 expect_failure \
   "capacity-reduction" \
-  "capacity_reductions must be empty." \
+  "module.cluster compute mutations must be empty." \
   "${test_dir}/capacity-reduction.json"
 
 jq '
@@ -273,7 +429,7 @@ jq '
 ' "${fixture}" >"${test_dir}/unknown-previous-capacity.json"
 expect_failure \
   "unknown-previous-capacity" \
-  "unresolved_previous_capacities must be empty." \
+  "module.cluster compute mutations must be empty." \
   "${test_dir}/unknown-previous-capacity.json"
 
 jq '
@@ -418,7 +574,7 @@ jq '
 ' "${fixture}" >"${test_dir}/unknown-template.json"
 expect_failure \
   "unknown-template" \
-  "unknown_templates must be empty." \
+  "module.cluster compute mutations must be empty." \
   "${test_dir}/unknown-template.json"
 
 jq '
@@ -440,7 +596,7 @@ jq '
 ' "${fixture}" >"${test_dir}/unknown-resource.json"
 expect_failure \
   "unknown-resource" \
-  "unexpected_quota_resources must be empty." \
+  "module.cluster compute mutations must be empty." \
   "${test_dir}/unknown-resource.json"
 
 jq '
@@ -744,6 +900,88 @@ expect_failure \
   "core-job-drift" \
   "invalid_core_jobs must be empty." \
   "${test_dir}/core-job-drift.json"
+
+jq '
+  (
+    .planned_values.root_module
+    | recurse(.child_modules[]?)
+    | .resources[]?
+    | select(
+        .address
+        == "module.nomad.data.google_storage_bucket_object.template_manager"
+      )
+    | .values.generation
+  ) = 9999
+' "${fixture}" >"${test_dir}/job-binary-generation-drift.json"
+expect_failure \
+  "job-binary-generation-drift" \
+  "invalid_job_binary_objects must be empty." \
+  "${test_dir}/job-binary-generation-drift.json"
+
+jq '
+  (
+    .planned_values.root_module.child_modules[].resources
+  ) |= map(
+    select(
+      .address
+      != "module.nomad.data.google_storage_bucket_object.filestore_cleanup"
+    )
+  )
+' "${fixture}" >"${test_dir}/missing-job-binary-object.json"
+expect_failure \
+  "missing-job-binary-object" \
+  "missing_or_duplicate_job_binary_objects must be empty." \
+  "${test_dir}/missing-job-binary-object.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "module.nomad.module.template_manager.nomad_job.template_manager"
+      )
+    | .change.after.jobspec
+  ) = "source = \"gcs::https://www.googleapis.com/storage/v1/monad-code-fc-env-pipeline/template-manager\""
+' "${fixture}" >"${test_dir}/job-binary-unpinned-url.json"
+expect_failure \
+  "job-binary-unpinned-url" \
+  "invalid_job_binary_jobs must be empty." \
+  "${test_dir}/job-binary-unpinned-url.json"
+
+jq '
+  .resource_changes |= map(
+    select(
+      .address
+      != "module.nomad.module.orchestrator[0].nomad_job.orchestrator"
+    )
+  )
+' "${fixture}" >"${test_dir}/missing-required-job-binary-job.json"
+expect_failure \
+  "missing-required-job-binary-job" \
+  "missing_or_duplicate_job_binary_jobs must be empty." \
+  "${test_dir}/missing-required-job-binary-job.json"
+
+jq '
+  .resource_changes |= map(
+    select(
+      .address
+      != "module.nomad.nomad_job.clean_nfs_cache[0]"
+    )
+  )
+' "${fixture}" >"${test_dir}/optional-clean-nfs-job-absent.json"
+expect_success \
+  "optional-clean-nfs-job-absent" \
+  "${test_dir}/optional-clean-nfs-job-absent.json"
+
+jq '.schema_version = 1' \
+  "${artifacts}" >"${test_dir}/legacy-workload-artifacts.json"
+expect_failure \
+  "legacy-workload-artifacts" \
+  "Resolved workload artifacts are invalid" \
+  "${fixture}" \
+  "${policy}" \
+  "${packer_template}" \
+  "${test_dir}/legacy-workload-artifacts.json"
 
 jq '
   (

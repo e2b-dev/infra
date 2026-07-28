@@ -155,6 +155,45 @@
                 "name": "projects/monad-code/locations/us-east4/repositories/e2b-core/dockerImages/clickhouse-migrator@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 "self_link": "us-east4-docker.pkg.dev/monad-code/e2b-core/clickhouse-migrator@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
               }
+            },
+            {
+              "address": "module.nomad.data.google_storage_bucket_object.orchestrator[0]",
+              "mode": "data",
+              "type": "google_storage_bucket_object",
+              "name": "orchestrator",
+              "values": {
+                "bucket": "monad-code-fc-env-pipeline",
+                "name": "orchestrator.0123456789ab",
+                "generation": 2001,
+                "md5hash": "PMSUl0V18Ei9Lyj4jlVgag==",
+                "crc32c": "R/l+hQ=="
+              }
+            },
+            {
+              "address": "module.nomad.data.google_storage_bucket_object.template_manager",
+              "mode": "data",
+              "type": "google_storage_bucket_object",
+              "name": "template_manager",
+              "values": {
+                "bucket": "monad-code-fc-env-pipeline",
+                "name": "template-manager.0123456789ab",
+                "generation": 2002,
+                "md5hash": "PMSUl0V18Ei9Lyj4jlVgag==",
+                "crc32c": "R/l+hQ=="
+              }
+            },
+            {
+              "address": "module.nomad.data.google_storage_bucket_object.filestore_cleanup",
+              "mode": "data",
+              "type": "google_storage_bucket_object",
+              "name": "filestore_cleanup",
+              "values": {
+                "bucket": "monad-code-fc-env-pipeline",
+                "name": "clean-nfs-cache.0123456789ab",
+                "generation": 2003,
+                "md5hash": "zLUBMUIvTYcm+aDVzj1ZFA==",
+                "crc32c": "f4G09A=="
+              }
             }
           ]
         }
@@ -195,6 +234,48 @@
         "actions": ["create"],
         "after": {
           "jobspec": "image = \"us-east4-docker.pkg.dev/monad-code/e2b-core/client-proxy@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\""
+        }
+      }
+    },
+    {
+      "address": "module.nomad.module.orchestrator[0].nomad_job.orchestrator",
+      "mode": "managed",
+      "type": "nomad_job",
+      "name": "orchestrator",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "jobspec": "source = \"gcs::https://www.googleapis.com/storage/v1/monad-code-fc-env-pipeline/orchestrator.0123456789ab#2001\""
+        }
+      }
+    },
+    {
+      "address": "module.nomad.module.template_manager.nomad_job.template_manager",
+      "mode": "managed",
+      "type": "nomad_job",
+      "name": "template_manager",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "jobspec": "source = \"nomad-nodepool-apm\"\nsource = \"gcs::https://www.googleapis.com/storage/v1/monad-code-fc-env-pipeline/template-manager.0123456789ab#2002\""
+        }
+      }
+    },
+    {
+      "address": "module.nomad.nomad_job.clean_nfs_cache[0]",
+      "mode": "managed",
+      "type": "nomad_job",
+      "name": "clean_nfs_cache",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "jobspec": "source = \"gcs::https://www.googleapis.com/storage/v1/monad-code-fc-env-pipeline/clean-nfs-cache.0123456789ab#2003\""
         }
       }
     }

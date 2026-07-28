@@ -80,12 +80,35 @@ def job_specs:
     }
   ];
 
+def job_binary_specs:
+  [
+    {
+      binary: "orchestrator",
+      data_address: "module.nomad.data.google_storage_bucket_object.orchestrator[0]",
+      job_address: "module.nomad.module.orchestrator[0].nomad_job.orchestrator",
+      required_job: true
+    },
+    {
+      binary: "template-manager",
+      data_address: "module.nomad.data.google_storage_bucket_object.template_manager",
+      job_address: "module.nomad.module.template_manager.nomad_job.template_manager",
+      required_job: true
+    },
+    {
+      binary: "clean-nfs-cache",
+      data_address: "module.nomad.data.google_storage_bucket_object.filestore_cleanup",
+      job_address: "module.nomad.nomad_job.clean_nfs_cache[0]",
+      required_job: false
+    }
+  ];
+
 planned_resources as $planned
 | managed_changes as $changes
 | orchestrator_data_addresses as $orchestrator_addresses
 | instance_template_addresses as $template_addresses
 | core_specs as $core_specs
 | job_specs as $job_specs
+| job_binary_specs as $job_binary_specs
 | (
     [
       $planned[]
@@ -113,6 +136,22 @@ planned_resources as $planned
         )
     ]
   ) as $core_rows
+| (
+    [
+      $planned[]
+      | . as $resource
+      | select(
+          .mode == "data"
+          and .type == "google_storage_bucket_object"
+          and (
+            [
+              $job_binary_specs[].data_address
+            ]
+            | index($resource.address)
+          ) != null
+        )
+    ]
+  ) as $job_binary_rows
 | {
     missing_or_duplicate_orchestrator_images: [
       $orchestrator_addresses[] as $address
@@ -283,6 +322,108 @@ planned_resources as $planned
           address: $spec.address,
           expected_images: $expected_images,
           actual_images: $actual_images
+        }
+    ],
+    missing_or_duplicate_job_binary_objects: [
+      $job_binary_specs[] as $spec
+      | (
+          [
+            $job_binary_rows[]
+            | select(.address == $spec.data_address)
+          ]
+          | length
+        ) as $count
+      | select($count != 1)
+      | {
+          address: $spec.data_address,
+          binary: $spec.binary,
+          count: $count
+        }
+    ],
+    invalid_job_binary_objects: [
+      $job_binary_specs[] as $spec
+      | $job_binary_rows[]
+      | select(.address == $spec.data_address)
+      | select(
+          .values.bucket
+            != $artifacts.job_binaries[$spec.binary].revision.bucket
+          or .values.name
+            != $artifacts.job_binaries[$spec.binary].revision.name
+          or (.values.generation | tostring)
+            != $artifacts.job_binaries[$spec.binary].revision.generation
+          or .values.md5hash
+            != $artifacts.job_binaries[$spec.binary].revision.md5
+          or .values.crc32c
+            != $artifacts.job_binaries[$spec.binary].revision.crc32c
+        )
+      | {
+          address,
+          binary: $spec.binary,
+          values
+        }
+    ],
+    missing_or_duplicate_job_binary_jobs: [
+      $job_binary_specs[] as $spec
+      | (
+          [
+            $changes[]
+            | select(
+                .type == "nomad_job"
+                and .address == $spec.job_address
+              )
+          ]
+          | length
+        ) as $count
+      | select(
+          (
+            $spec.required_job == true
+            and $count != 1
+          )
+          or (
+            $spec.required_job != true
+            and $count > 1
+          )
+        )
+      | {
+          address: $spec.job_address,
+          binary: $spec.binary,
+          required: $spec.required_job,
+          count: $count
+        }
+    ],
+    invalid_job_binary_jobs: [
+      $job_binary_specs[] as $spec
+      | $changes[]
+      | select(
+          .type == "nomad_job"
+          and .address == $spec.job_address
+        )
+      | . as $job
+      | (
+          if ($job.change.after.jobspec | type) == "string" then
+            [
+              $job.change.after.jobspec
+              | scan(
+                  "(?m)^[[:space:]]*source[[:space:]]*=[[:space:]]*\"(gcs::https://www.googleapis.com/storage/v1/[^\"]+)\""
+                )
+              | .[0]
+            ]
+            | sort
+          else
+            []
+          end
+        ) as $actual_sources
+      | (
+          [
+            $artifacts.job_binaries[$spec.binary].nomad_source
+          ]
+        ) as $expected_sources
+      | select($actual_sources != $expected_sources)
+      | {
+          address: $spec.job_address,
+          binary: $spec.binary,
+          expected_sources: $expected_sources,
+          actual_sources: $actual_sources
         }
     ]
   }

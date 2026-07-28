@@ -13,9 +13,12 @@ set -euo pipefail
 eval "$(jq -r '@sh "ADDR=\(.nomad_addr) TOKEN=\(.nomad_token) JOB=\(.job_name) MIN=\(.min_count)"')"
 
 # Fetch job info and capture HTTP status code
-RESPONSE=$(curl -s -w "\n---HTTP_STATUS:%{http_code}" -H "X-Nomad-Token: $TOKEN" \
-  "$ADDR/v1/job/$JOB" 2>&1)
-CURL_EXIT=$?
+if RESPONSE=$(curl -s -w "\n---HTTP_STATUS:%{http_code}" -H "X-Nomad-Token: $TOKEN" \
+  "$ADDR/v1/job/$JOB" 2>&1); then
+  CURL_EXIT=0
+else
+  CURL_EXIT=$?
+fi
 
 # Extract HTTP code and body
 HTTP_CODE=$(echo "$RESPONSE" | grep '^---HTTP_STATUS:' | sed 's/---HTTP_STATUS://')
