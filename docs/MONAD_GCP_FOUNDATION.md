@@ -11,6 +11,8 @@ consumers use attached service accounts and Application Default Credentials.
 - the Terraform state bucket;
 - required project APIs;
 - service-account identities without private keys;
+- a dedicated Cloud Build image-builder identity with write access only to the
+  core Artifact Registry repository and Cloud Logging;
 - Secret Manager containers and generated control-plane secrets;
 - Artifact Registry repositories;
 - GCS buckets and their IAM bindings.
@@ -155,3 +157,25 @@ milestone is a reviewed smallest-fleet workload plan, image build, and stock SDK
 create/pause/resume/fork canary. That canary must prove metadata-server ADC,
 signed uploads, registry push/pull, snapshot persistence, ClickHouse backup,
 and credential refresh before production promotion.
+
+## Build the control-plane images
+
+Do not build the required amd64 images on the operator's Docker Desktop. Submit
+the checked-out source to Cloud Build using the dedicated keyless identity:
+
+```bash
+revision="$(git rev-parse --short=12 HEAD)"
+gcloud builds submit \
+  --project=monad-code \
+  --region=us-east4 \
+  --config=cloudbuild.core-images.yaml \
+  --substitutions="_REVISION=${revision}" \
+  .
+```
+
+The build publishes `api`, `db-migrator`, `client-proxy`,
+`docker-reverse-proxy`, and `clickhouse-migrator` with both `latest` and the
+source revision tag. Terraform resolves these images before the first workload
+plan. Cloud Build can impersonate only `e2b-image-builder`; that identity can
+write the core repository and Cloud Logging, while runtime VMs retain
+read-only registry access.

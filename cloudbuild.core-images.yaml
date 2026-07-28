@@ -1,0 +1,101 @@
+timeout: 3600s
+
+substitutions:
+  _REGISTRY: us-east4-docker.pkg.dev/${PROJECT_ID}/e2b-core
+  _REVISION: dev
+
+serviceAccount: projects/${PROJECT_ID}/serviceAccounts/e2b-image-builder@${PROJECT_ID}.iam.gserviceaccount.com
+
+options:
+  dynamicSubstitutions: true
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+  diskSizeGb: 100
+  env:
+    - DOCKER_BUILDKIT=1
+
+steps:
+  - id: api
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        migration="$$(find packages/db/migrations -maxdepth 1 -type f -print \
+          | sed 's|.*/||; s/_.*//' \
+          | sort \
+          | tail -n 1)"
+        [[ "$${migration}" =~ ^[0-9]+$ ]]
+        docker build \
+          --tag "${_REGISTRY}/api:latest" \
+          --tag "${_REGISTRY}/api:${_REVISION}" \
+          --build-arg "COMMIT_SHA=${_REVISION}" \
+          --build-arg "EXPECTED_MIGRATION_TIMESTAMP=$${migration}" \
+          --file packages/api/Dockerfile \
+          packages
+
+  - id: db-migrator
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --tag
+      - ${_REGISTRY}/db-migrator:latest
+      - --tag
+      - ${_REGISTRY}/db-migrator:${_REVISION}
+      - --file
+      - packages/db/Dockerfile
+      - packages
+
+  - id: client-proxy
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --tag
+      - ${_REGISTRY}/client-proxy:latest
+      - --tag
+      - ${_REGISTRY}/client-proxy:${_REVISION}
+      - --build-arg
+      - COMMIT_SHA=${_REVISION}
+      - --file
+      - packages/client-proxy/Dockerfile
+      - packages
+
+  - id: docker-reverse-proxy
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --tag
+      - ${_REGISTRY}/docker-reverse-proxy:latest
+      - --tag
+      - ${_REGISTRY}/docker-reverse-proxy:${_REVISION}
+      - --build-arg
+      - COMMIT_SHA=${_REVISION}
+      - --build-arg
+      - VERSION=${_REVISION}
+      - --file
+      - packages/docker-reverse-proxy/Dockerfile
+      - packages
+
+  - id: clickhouse-migrator
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --tag
+      - ${_REGISTRY}/clickhouse-migrator:latest
+      - --tag
+      - ${_REGISTRY}/clickhouse-migrator:${_REVISION}
+      - --file
+      - packages/clickhouse/Dockerfile
+      - packages/clickhouse
+
+images:
+  - ${_REGISTRY}/api:latest
+  - ${_REGISTRY}/api:${_REVISION}
+  - ${_REGISTRY}/db-migrator:latest
+  - ${_REGISTRY}/db-migrator:${_REVISION}
+  - ${_REGISTRY}/client-proxy:latest
+  - ${_REGISTRY}/client-proxy:${_REVISION}
+  - ${_REGISTRY}/docker-reverse-proxy:latest
+  - ${_REGISTRY}/docker-reverse-proxy:${_REVISION}
+  - ${_REGISTRY}/clickhouse-migrator:latest
+  - ${_REGISTRY}/clickhouse-migrator:${_REVISION}
