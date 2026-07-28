@@ -12,7 +12,9 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"net/http"
+	"net/url"
 	"testing"
+	"time"
 
 	gcs "cloud.google.com/go/storage"
 	"github.com/stretchr/testify/require"
@@ -22,6 +24,55 @@ import (
 )
 
 const fakeGCSImage = "fsouza/fake-gcs-server:1.54.0"
+
+func TestGCSUploadSignedURLUsesIAMSigner(t *testing.T) {
+	var (
+		gotEmail   string
+		gotPayload []byte
+	)
+	storage := &gcpStorage{
+		bucket:              (&gcs.Client{}).Bucket("signed-upload-bucket"),
+		serviceAccountEmail: "runtime@example.iam.gserviceaccount.com",
+		signBlob: func(_ context.Context, email string, payload []byte) ([]byte, error) {
+			gotEmail = email
+			gotPayload = append([]byte(nil), payload...)
+
+			return []byte("remote-signature"), nil
+		},
+	}
+
+	signedURL, err := storage.UploadSignedURL(t.Context(), "path/to/layer", 5*time.Minute)
+	require.NoError(t, err)
+	require.Equal(t, storage.serviceAccountEmail, gotEmail)
+	require.NotEmpty(t, gotPayload)
+
+	parsed, err := url.Parse(signedURL)
+	require.NoError(t, err)
+	require.Equal(t, "storage.googleapis.com", parsed.Host)
+	require.Equal(t, "/signed-upload-bucket/path/to/layer", parsed.Path)
+	require.Contains(t, parsed.RawQuery, "GoogleAccessId=runtime%40example.iam.gserviceaccount.com")
+	require.NotContains(t, parsed.RawQuery, "private")
+}
+
+func TestGCSUploadSignedURLRequiresServiceAccountEmail(t *testing.T) {
+	storage := &gcpStorage{bucket: (&gcs.Client{}).Bucket("signed-upload-bucket")}
+
+	_, err := storage.UploadSignedURL(t.Context(), "object", time.Minute)
+	require.ErrorContains(t, err, "GCP_SERVICE_ACCOUNT_EMAIL")
+}
+
+func TestGCSUploadSignedURLFailsClosedWhenIAMSignerFails(t *testing.T) {
+	storage := &gcpStorage{
+		bucket:              (&gcs.Client{}).Bucket("signed-upload-bucket"),
+		serviceAccountEmail: "runtime@example.iam.gserviceaccount.com",
+		signBlob: func(context.Context, string, []byte) ([]byte, error) {
+			return nil, fmt.Errorf("signBlob unavailable")
+		},
+	}
+
+	_, err := storage.UploadSignedURL(t.Context(), "object", time.Minute)
+	require.ErrorContains(t, err, "signBlob unavailable")
+}
 
 // emulatorRedirectTransport sends every request to the emulator's host while
 // keeping the originally targeted host in the Host header, so fake-gcs-server

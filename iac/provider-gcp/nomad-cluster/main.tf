@@ -26,8 +26,9 @@ locals {
   ])
 
   file_hash = {
-    "scripts/run-consul.sh" = substr(filesha256("${path.module}/scripts/run-consul.sh"), 0, 5)
-    "scripts/run-nomad.sh"  = substr(filesha256("${path.module}/scripts/run-nomad.sh"), 0, 5)
+    "scripts/configure-docker-gcp.sh" = substr(filesha256("${path.module}/scripts/configure-docker-gcp.sh"), 0, 5)
+    "scripts/run-consul.sh"           = substr(filesha256("${path.module}/scripts/run-consul.sh"), 0, 5)
+    "scripts/run-nomad.sh"            = substr(filesha256("${path.module}/scripts/run-nomad.sh"), 0, 5)
   }
 }
 
@@ -84,8 +85,9 @@ resource "google_project_iam_member" "logging_writer" {
 variable "setup_files" {
   type = map(string)
   default = {
-    "scripts/run-nomad.sh"  = "run-nomad",
-    "scripts/run-consul.sh" = "run-consul"
+    "scripts/configure-docker-gcp.sh" = "configure-docker-gcp",
+    "scripts/run-nomad.sh"            = "run-nomad",
+    "scripts/run-consul.sh"           = "run-consul"
   }
 }
 
@@ -154,7 +156,6 @@ module "build_cluster" {
   gcp_region                   = var.gcp_region
   gcp_zone                     = var.gcp_zone
   google_service_account_email = var.google_service_account_email
-  google_service_account_key   = var.google_service_account_key
 
   cluster_size     = each.value.cluster_size
   cache_disks      = each.value.cache_disks
@@ -200,6 +201,7 @@ module "build_cluster" {
   set_orchestrator_version_metadata = false
 
   depends_on = [
+    google_storage_bucket_object.setup_config_objects["scripts/configure-docker-gcp.sh"],
     google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"],
     google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]
   ]
@@ -212,7 +214,6 @@ module "client_cluster" {
   gcp_region                   = var.gcp_region
   gcp_zone                     = var.gcp_zone
   google_service_account_email = var.google_service_account_email
-  google_service_account_key   = var.google_service_account_key
 
   cluster_size     = each.value.cluster_size
   cache_disks      = each.value.cache_disks
@@ -259,6 +260,7 @@ module "client_cluster" {
   set_orchestrator_version_metadata = true
 
   depends_on = [
+    google_storage_bucket_object.setup_config_objects["scripts/configure-docker-gcp.sh"],
     google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"],
     google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]
   ]

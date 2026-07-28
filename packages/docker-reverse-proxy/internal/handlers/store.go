@@ -15,7 +15,9 @@ import (
 	"github.com/e2b-dev/infra/packages/docker-reverse-proxy/internal/cache"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/gcpauth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
+	"github.com/google/go-containerregistry/pkg/authn"
 )
 
 type APIStore struct {
@@ -24,6 +26,7 @@ type APIStore struct {
 	AuthCache    *cache.AuthCache
 	proxy        *httputil.ReverseProxy
 	featureFlags *featureflags.Client
+	registryAuth authn.Authenticator
 }
 
 func NewStore(ctx context.Context) *APIStore {
@@ -41,6 +44,11 @@ func NewStore(ctx context.Context) *APIStore {
 	}
 
 	featureFlags, err := featureflags.NewClient()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	registryAuth, err := gcpauth.NewRegistryAuthenticator(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -69,6 +77,7 @@ func NewStore(ctx context.Context) *APIStore {
 		AuthCache:    authCache,
 		proxy:        proxy,
 		featureFlags: featureFlags,
+		registryAuth: registryAuth,
 	}
 }
 

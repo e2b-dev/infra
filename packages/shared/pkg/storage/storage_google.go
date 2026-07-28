@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"hash"
@@ -14,6 +12,8 @@ import (
 	"os"
 	"time"
 
+	iamcredentials "cloud.google.com/go/iam/credentials/apiv1"
+	"cloud.google.com/go/iam/credentials/apiv1/credentialspb"
 	"cloud.google.com/go/storage"
 	"github.com/googleapis/gax-go/v2"
 	"go.opentelemetry.io/otel/attribute"
@@ -51,8 +51,12 @@ type gcpStorage struct {
 	client *storage.Client
 	bucket *storage.BucketHandle
 
-	limiter *limit.Limiter
+	serviceAccountEmail string
+	signBlob            signBlobFunc
+	limiter             *limit.Limiter
 }
+
+type signBlobFunc func(ctx context.Context, serviceAccountEmail string, payload []byte) ([]byte, error)
 
 var _ StorageProvider = (*gcpStorage)(nil)
 
@@ -90,9 +94,11 @@ func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (Sto
 	}
 
 	return &gcpStorage{
-		client:  client,
-		bucket:  client.Bucket(bucketName),
-		limiter: limiter,
+		client:              client,
+		bucket:              client.Bucket(bucketName),
+		serviceAccountEmail: consts.GCPServiceAccountEmail,
+		signBlob:            signBlobWithADC,
+		limiter:             limiter,
 	}, nil
 }
 
@@ -122,17 +128,23 @@ func (s *gcpStorage) GetDetails() string {
 	return fmt.Sprintf("[GCP Storage, bucket set to %s]", s.bucket.BucketName())
 }
 
-func (s *gcpStorage) UploadSignedURL(_ context.Context, path string, ttl time.Duration) (string, error) {
-	token, err := parseServiceAccountBase64(consts.GoogleServiceAccountSecret)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse GCP service account: %w", err)
+func (s *gcpStorage) UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error) {
+	if s.serviceAccountEmail == "" {
+		return "", errors.New("GCP_SERVICE_ACCOUNT_EMAIL is required for GCS signed uploads")
+	}
+
+	signBlob := s.signBlob
+	if signBlob == nil {
+		signBlob = signBlobWithADC
 	}
 
 	opts := &storage.SignedURLOptions{
-		GoogleAccessID: token.ClientEmail,
-		PrivateKey:     []byte(token.PrivateKey),
-		Method:         http.MethodPut,
-		Expires:        time.Now().Add(ttl),
+		GoogleAccessID: s.serviceAccountEmail,
+		SignBytes: func(payload []byte) ([]byte, error) {
+			return signBlob(ctx, s.serviceAccountEmail, payload)
+		},
+		Method:  http.MethodPut,
+		Expires: time.Now().Add(ttl),
 	}
 
 	url, err := storage.SignedURL(s.bucket.BucketName(), path, opts)
@@ -141,6 +153,27 @@ func (s *gcpStorage) UploadSignedURL(_ context.Context, path string, ttl time.Du
 	}
 
 	return url, nil
+}
+
+func signBlobWithADC(ctx context.Context, serviceAccountEmail string, payload []byte) ([]byte, error) {
+	client, err := iamcredentials.NewIamCredentialsClient(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("create IAM Credentials client: %w", err)
+	}
+	defer client.Close()
+
+	response, err := client.SignBlob(ctx, &credentialspb.SignBlobRequest{
+		Name:    fmt.Sprintf("projects/-/serviceAccounts/%s", serviceAccountEmail),
+		Payload: payload,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("IAM Credentials signBlob for %s: %w", serviceAccountEmail, err)
+	}
+	if len(response.SignedBlob) == 0 {
+		return nil, fmt.Errorf("IAM Credentials signBlob for %s returned an empty signature", serviceAccountEmail)
+	}
+
+	return response.SignedBlob, nil
 }
 
 func (s *gcpStorage) OpenSeekable(_ context.Context, path string) (Seekable, error) {
@@ -533,25 +566,6 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 	timer.Success(ctx, count)
 
 	return nil, sum256(hasher), e
-}
-
-type gcpServiceToken struct {
-	ClientEmail string `json:"client_email"`
-	PrivateKey  string `json:"private_key"`
-}
-
-func parseServiceAccountBase64(serviceAccount string) (*gcpServiceToken, error) {
-	decoded, err := base64.StdEncoding.DecodeString(serviceAccount)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode base64: %w", err)
-	}
-
-	var sa gcpServiceToken
-	if err := json.Unmarshal(decoded, &sa); err != nil {
-		return nil, fmt.Errorf("failed to parse service account JSON: %w", err)
-	}
-
-	return &sa, nil
 }
 
 func (o *gcpObject) OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (_ RangeReader, _ Source, err error) {

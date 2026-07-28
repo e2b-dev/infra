@@ -367,12 +367,19 @@ flowchart TB
   autoscaler plugin scales the job with the node pool.
 - PostgreSQL is external (connection string via secrets); Redis runs as a Nomad job or as a
   managed service; ClickHouse runs on its own pool.
-- The Monad fork contains no Google service-account-key resources.
-  Its F1.0 path may apply only the `module.init` foundation. A full workload
-  plan is deliberately blocked until every API, build, sandbox, registry, and
-  backup consumer uses an attached service account, ADC, or Workload Identity.
-  Existing key-shaped runtime inputs remain blocked compatibility seams until
-  that migration is complete.
+- The Monad fork contains no Google service-account-key resources or internal
+  key-shaped runtime inputs. GCE nodes use their attached service account
+  through ADC. GCS signed uploads delegate signing to IAM Credentials
+  `signBlob`; shared registry clients and multipart uploads refresh short-lived
+  ADC tokens; Docker/Nomad use `docker-credential-gcr`; the registry proxy adds
+  a fresh ADC token to every upstream request; ClickHouse backup uses metadata
+  ADC. Consul/Nomad ACL UUIDs are derived from sensitive random-password seeds
+  so their Terraform resource IDs never contain active token material; legacy
+  UUID generator state is scrubbed before any refresh and prior Secret Manager
+  versions are disabled during rotation. A repository guard blocks any
+  reintroduced static-key seam. The
+  customer-facing private-GCP-registry credential contract is retained as a
+  separate, explicit compatibility surface and is not Monad's runtime identity.
 - Observability: everything exports OTel; the collector fans out to ClickHouse (product metrics)
   and Grafana Cloud/stack. Logs default to the legacy Vector → Loki path; dynamic log routing can
   select a primary collector and shadow collectors, and local-cluster log reads can be switched to

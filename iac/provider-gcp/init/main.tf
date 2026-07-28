@@ -30,6 +30,13 @@ resource "google_project_service" "artifact_registry_api" {
   disable_on_destroy = false
 }
 
+# Enable IAM Service Account Credentials API for short-lived signBlob calls.
+resource "google_project_service" "iam_credentials_api" {
+  service = "iamcredentials.googleapis.com"
+
+  disable_on_destroy = false
+}
+
 # Enable OS Config API
 resource "google_project_service" "os_config_api" {
   #project = var.gcp_project_id
@@ -71,6 +78,16 @@ resource "time_sleep" "secrets_api_wait_60_seconds" {
 resource "google_service_account" "infra_instances_service_account" {
   account_id   = "${var.prefix}infra-instances"
   display_name = "Infra Instances Service Account"
+}
+
+# Let the attached identity sign only as itself. This is required for GCS
+# signed upload URLs and does not create or export any private key material.
+resource "google_service_account_iam_member" "infra_instances_self_token_creator" {
+  service_account_id = google_service_account.infra_instances_service_account.name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
+
+  depends_on = [google_project_service.iam_credentials_api]
 }
 
 // todo: delete after migration period

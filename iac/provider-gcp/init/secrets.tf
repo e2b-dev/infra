@@ -19,11 +19,39 @@ resource "google_secret_manager_secret" "consul_acl_token" {
   depends_on = [time_sleep.secrets_api_wait_60_seconds]
 }
 
-resource "random_uuid" "consul_acl_token" {}
+resource "random_password" "consul_acl_token_seed" {
+  length  = 64
+  special = false
+}
 
-resource "google_secret_manager_secret_version" "consul_acl_token" {
+locals {
+  # Consul accepts an opaque UUID SecretID. Deriving it from a sensitive seed
+  # preserves that format without putting the token in a Terraform resource ID.
+  consul_acl_token = uuidv5("dns", random_password.consul_acl_token_seed.result)
+}
+
+resource "google_secret_manager_secret_version" "consul_acl_token_legacy" {
   secret      = google_secret_manager_secret.consul_acl_token.name
-  secret_data = random_uuid.consul_acl_token.result
+  secret_data = sensitive("retired-legacy-consul-acl-token")
+  enabled     = false
+
+  deletion_policy = "DISABLE"
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+resource "google_secret_manager_secret_version" "consul_acl_token_active" {
+  secret      = google_secret_manager_secret.consul_acl_token.name
+  secret_data = local.consul_acl_token
+
+  deletion_policy = "DISABLE"
+
+  # On an existing foundation, the prior version is first moved to the legacy
+  # address and disabled. On a fresh foundation, the disabled placeholder is
+  # created before the active version, so "latest" always resolves to active.
+  depends_on = [google_secret_manager_secret_version.consul_acl_token_legacy]
 }
 
 resource "google_secret_manager_secret" "nomad_acl_token" {
@@ -36,11 +64,36 @@ resource "google_secret_manager_secret" "nomad_acl_token" {
   depends_on = [time_sleep.secrets_api_wait_60_seconds]
 }
 
-resource "random_uuid" "nomad_acl_token" {}
+resource "random_password" "nomad_acl_token_seed" {
+  length  = 64
+  special = false
+}
 
-resource "google_secret_manager_secret_version" "nomad_acl_token" {
+locals {
+  # Nomad's bootstrap API requires a UUID token. uuidv5 preserves the contract
+  # while sensitivity propagates from the random_password seed.
+  nomad_acl_token = uuidv5("dns", random_password.nomad_acl_token_seed.result)
+}
+
+resource "google_secret_manager_secret_version" "nomad_acl_token_legacy" {
   secret      = google_secret_manager_secret.nomad_acl_token.name
-  secret_data = random_uuid.nomad_acl_token.result
+  secret_data = sensitive("retired-legacy-nomad-acl-token")
+  enabled     = false
+
+  deletion_policy = "DISABLE"
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+resource "google_secret_manager_secret_version" "nomad_acl_token_active" {
+  secret      = google_secret_manager_secret.nomad_acl_token.name
+  secret_data = local.nomad_acl_token
+
+  deletion_policy = "DISABLE"
+
+  depends_on = [google_secret_manager_secret_version.nomad_acl_token_legacy]
 }
 
 resource "random_password" "api_admin_secret" {

@@ -194,10 +194,6 @@ variable "google_service_account_email" {
   type = string
 }
 
-variable "google_service_account_key" {
-  type = string
-}
-
 variable "docker_contexts_bucket_name" {
   type = string
 }

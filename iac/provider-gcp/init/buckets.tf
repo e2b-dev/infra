@@ -256,6 +256,12 @@ resource "google_storage_bucket_iam_member" "fc_template_bucket_iam_reader" {
   member = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
 }
 
+resource "google_storage_bucket_iam_member" "clickhouse_backups_bucket_iam" {
+  bucket = google_storage_bucket.clickhouse_backups_bucket.name
+  role   = "roles/storage.objectUser"
+  member = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
+}
+
 resource "google_storage_bucket" "public_builds_storage_bucket" {
   count    = var.gcp_project_id == "e2b-prod" ? 1 : 0
   name     = "${var.bucket_prefix}public-builds"

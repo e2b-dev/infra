@@ -26,15 +26,11 @@ locals {
   )
 }
 
-resource "time_static" "volume_token_generation" {
-  depends_on = [terraform_data.runtime_credential_guard]
-}
+resource "time_static" "volume_token_generation" {}
 
 resource "tls_private_key" "volume_token" {
   count     = local.should_generate_volume_token_signing_key ? 1 : 0
   algorithm = "ED25519"
-
-  depends_on = [terraform_data.runtime_credential_guard]
 }
 
 output "volume_token_signature_verification_key_name" {

@@ -3,11 +3,13 @@ output "service_account_email" {
 }
 
 output "consul_acl_token_secret" {
-  value = google_secret_manager_secret_version.consul_acl_token.secret_data
+  value     = google_secret_manager_secret_version.consul_acl_token_active.secret_data
+  sensitive = true
 }
 
 output "nomad_acl_token_secret" {
-  value = google_secret_manager_secret_version.nomad_acl_token.secret_data
+  value     = google_secret_manager_secret_version.nomad_acl_token_active.secret_data
+  sensitive = true
 }
 
 output "api_admin_token_secret_name" {

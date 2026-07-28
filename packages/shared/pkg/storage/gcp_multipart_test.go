@@ -26,6 +26,7 @@ import (
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/oauth2"
 )
 
 // Test constants
@@ -35,6 +36,18 @@ const (
 	testToken      = "test-token"
 	uploadsPath    = "uploads"
 )
+
+type multipartSequenceTokenSource struct {
+	tokens []string
+	calls  int
+}
+
+func (s *multipartSequenceTokenSource) Token() (*oauth2.Token, error) {
+	token := s.tokens[s.calls]
+	s.calls++
+
+	return &oauth2.Token{AccessToken: token}, nil
+}
 
 // createTestMultipartUploader creates a test uploader with a mock HTTP client
 func createTestMultipartUploader(t *testing.T, handler http.HandlerFunc, retryConfig ...RetryConfig) *MultipartUploader {
@@ -55,13 +68,39 @@ func createTestMultipartUploader(t *testing.T, handler http.HandlerFunc, retryCo
 	uploader := &MultipartUploader{
 		bucketName:  testBucketName,
 		objectName:  testObjectName,
-		token:       testToken,
+		tokenSource: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: testToken}),
 		client:      retryableClient,
 		retryConfig: config,
 		baseURL:     server.URL, // Override to use test server
 	}
 
 	return uploader
+}
+
+func TestMultipartUploaderRequestsCurrentADCTokenForEveryRequest(t *testing.T) {
+	var authHeaders []string
+	uploader := createTestMultipartUploader(t, func(w http.ResponseWriter, r *http.Request) {
+		authHeaders = append(authHeaders, r.Header.Get("Authorization"))
+
+		switch r.Method {
+		case http.MethodPost:
+			w.Write([]byte(`<InitiateMultipartUploadResult><UploadId>id-1</UploadId></InitiateMultipartUploadResult>`))
+		case http.MethodPut:
+			w.Header().Set("ETag", `"part-1"`)
+		default:
+			t.Fatalf("unexpected method %s", r.Method)
+		}
+	})
+	source := &multipartSequenceTokenSource{tokens: []string{"first", "second"}}
+	uploader.tokenSource = source
+
+	uploadID, err := uploader.initiateUpload(t.Context())
+	require.NoError(t, err)
+	_, err = uploader.uploadPart(t.Context(), uploadID, 1, []byte("part"))
+	require.NoError(t, err)
+
+	require.Equal(t, []string{"Bearer first", "Bearer second"}, authHeaders)
+	require.Equal(t, 2, source.calls)
 }
 
 func TestMultipartUploader_PartUploaderContract(t *testing.T) {
@@ -1134,9 +1173,11 @@ func newCompleteErrorUploader(t *testing.T, completeAttempts *atomic.Int32, comp
 	t.Cleanup(server.Close)
 
 	return &MultipartUploader{
-		bucketName: "b", objectName: "o", token: "t",
-		client:  createRetryableClient(t.Context(), fastRetryConfig()),
-		baseURL: server.URL + "/b",
+		bucketName:  "b",
+		objectName:  "o",
+		tokenSource: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "t"}),
+		client:      createRetryableClient(t.Context(), fastRetryConfig()),
+		baseURL:     server.URL + "/b",
 	}
 }
 
@@ -1263,7 +1304,7 @@ func gcsXMLUploader(t *testing.T, backend *s3TestBackend, key string, metadata O
 	return &MultipartUploader{
 		bucketName:  backend.bucket,
 		objectName:  key,
-		token:       "test-token", // stripped by authStrippingTransport
+		tokenSource: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "test-token"}), // stripped by authStrippingTransport
 		client:      rc,
 		retryConfig: DefaultRetryConfig(),
 		metadata:    metadata,

@@ -88,12 +88,6 @@ variable "backup_folder" {
   default = "clickhouse-data"
 }
 
-variable "gcs_credentials_json_encoded" {
-  type      = string
-  default   = ""
-  sensitive = true
-}
-
 variable "aws_region" {
   type    = string
   default = ""

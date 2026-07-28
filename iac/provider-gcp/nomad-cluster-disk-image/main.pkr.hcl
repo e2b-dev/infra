@@ -12,13 +12,13 @@ source "googlecompute" "orch" {
   image_family = "${var.prefix}orch"
 
   # TODO: Overwrite the image instead of creating timestamped images every time we build its
-  image_name    = "${var.prefix}orch-${formatdate("YYYY-MM-DD-hh-mm-ss", timestamp())}"
-  project_id    = var.gcp_project_id
-  source_image  = var.source_image
-  ssh_username  = "ubuntu"
-  zone          = var.gcp_zone
-  disk_size     = 10
-  disk_type     = "pd-ssd"
+  image_name   = "${var.prefix}orch-${formatdate("YYYY-MM-DD-hh-mm-ss", timestamp())}"
+  project_id   = var.gcp_project_id
+  source_image = var.source_image
+  ssh_username = "ubuntu"
+  zone         = var.gcp_zone
+  disk_size    = 10
+  disk_type    = "pd-ssd"
 
   # This is used only for building the image and the GCE VM is then deleted
   machine_type = "n1-standard-4"
@@ -66,6 +66,20 @@ build {
       "sudo mv /tmp/daemon.json /etc/docker/daemon.json",
       "sudo curl -fsSL https://get.docker.com -o get-docker.sh",
       "sudo sh get-docker.sh",
+    ]
+  }
+
+  # Nomad and host Docker use this helper to exchange the VM's attached
+  # service-account identity for short-lived Artifact Registry credentials.
+  provisioner "shell" {
+    inline_shebang = "/bin/bash"
+    inline = [
+      "set -euo pipefail",
+      "helper_archive=/tmp/docker-credential-gcr.tar.gz",
+      "curl -fsSL -o $helper_archive https://github.com/GoogleCloudPlatform/docker-credential-gcr/releases/download/v${var.docker_credential_gcr_version}/docker-credential-gcr_linux_amd64-${var.docker_credential_gcr_version}.tar.gz",
+      "echo '${var.docker_credential_gcr_linux_amd64_sha256}  '$helper_archive | sha256sum --check --strict",
+      "sudo tar -xzf $helper_archive -C /usr/local/bin docker-credential-gcr",
+      "sudo chmod 0755 /usr/local/bin/docker-credential-gcr",
     ]
   }
 

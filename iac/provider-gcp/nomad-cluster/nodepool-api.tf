@@ -9,9 +9,9 @@ locals {
     FC_ENV_PIPELINE_BUCKET_NAME  = var.fc_env_pipeline_bucket_name
     DOCKER_CONTEXTS_BUCKET_NAME  = var.docker_contexts_bucket_name
     GCP_REGION                   = var.gcp_region
-    GOOGLE_SERVICE_ACCOUNT_KEY   = var.google_service_account_key
     NOMAD_TOKEN                  = var.nomad_acl_token_secret
     CONSUL_TOKEN                 = var.consul_acl_token_secret
+    CONFIGURE_DOCKER_FILE_HASH   = local.file_hash["scripts/configure-docker-gcp.sh"]
     RUN_CONSUL_FILE_HASH         = local.file_hash["scripts/run-consul.sh"]
     RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-nomad.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
@@ -167,6 +167,7 @@ resource "google_compute_instance_template" "api" {
   }
 
   depends_on = [
+    google_storage_bucket_object.setup_config_objects["scripts/configure-docker-gcp.sh"],
     google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"],
     google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]
   ]

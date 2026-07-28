@@ -52,22 +52,10 @@ sudo sysctl -p
 # These variables are passed in via Terraform template interpolation
 gsutil cp "gs://${SCRIPTS_BUCKET}/run-consul-${RUN_CONSUL_FILE_HASH}.sh" /opt/consul/bin/run-consul.sh
 gsutil cp "gs://${SCRIPTS_BUCKET}/run-nomad-${RUN_NOMAD_FILE_HASH}.sh" /opt/nomad/bin/run-nomad.sh
-chmod +x /opt/consul/bin/run-consul.sh /opt/nomad/bin/run-nomad.sh
+gsutil cp "gs://${SCRIPTS_BUCKET}/configure-docker-gcp-${CONFIGURE_DOCKER_FILE_HASH}.sh" /opt/configure-docker-gcp.sh
+chmod +x /opt/consul/bin/run-consul.sh /opt/nomad/bin/run-nomad.sh /opt/configure-docker-gcp.sh
 
-mkdir -p /root/docker
-touch /root/docker/config.json
-cat <<EOF >/root/docker/config.json
-{
-    "auths": {
-        "${GCP_REGION}-docker.pkg.dev": {
-            "username": "_json_key_base64",
-            "password": "${GOOGLE_SERVICE_ACCOUNT_KEY}",
-            "server_address": "https://${GCP_REGION}-docker.pkg.dev"
-        }
-    }
-}
-EOF
-
+/opt/configure-docker-gcp.sh "${GCP_REGION}-docker.pkg.dev"
 
 mkdir -p /etc/systemd/resolved.conf.d/
 touch /etc/systemd/resolved.conf.d/consul.conf

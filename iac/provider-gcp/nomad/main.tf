@@ -450,17 +450,6 @@ resource "google_secret_manager_secret_version" "clickhouse_server_secret_value"
   secret_data = var.clickhouse_server_secret
 }
 
-resource "google_service_account" "clickhouse_service_account" {
-  account_id   = "${var.prefix}clickhouse-service-account"
-  display_name = "${var.prefix}clickhouse-service-account"
-}
-
-resource "google_storage_bucket_iam_member" "clickhouse_service_account_iam" {
-  bucket = var.clickhouse_backups_bucket_name
-  role   = "roles/storage.objectAdmin"
-  member = "serviceAccount:${google_service_account.clickhouse_service_account.email}"
-}
-
 module "clickhouse" {
   source = "../../modules/job-clickhouse"
 

@@ -100,11 +100,6 @@ variable "google_service_account_email" {
   type = string
 }
 
-variable "google_service_account_key" {
-  type      = string
-  sensitive = true
-}
-
 # ---------------------------------------------------------------------------------------------------------------------
 # NOMAD & CONSUL CONFIGURATION
 # ---------------------------------------------------------------------------------------------------------------------

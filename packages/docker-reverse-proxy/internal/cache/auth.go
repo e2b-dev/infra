@@ -16,8 +16,7 @@ const (
 )
 
 type AccessTokenData struct {
-	DockerToken string
-	TemplateID  string
+	TemplateID string
 }
 
 type AuthCache struct {
@@ -47,19 +46,19 @@ func (c *AuthCache) Get(e2bToken string) (*AccessTokenData, error) {
 	return item.Value(), nil
 }
 
-// Create creates a new auth token for the given templateID and accessToken and returns e2bToken
-func (c *AuthCache) Create(templateID, token string, expiresIn int) string {
-	// Get docker token from the actual registry for the scope,
-	// Create a new e2b token for the user and store it in the cache
+// Create creates a new short-lived proxy token for the given templateID.
+// Upstream Artifact Registry credentials are resolved per request and never
+// retained in this cache.
+func (c *AuthCache) Create(templateID string, expiresIn int) string {
 	userToken := utils.GenerateRandomString(128)
 	jsonResponse := fmt.Sprintf(`{"token": "%s", "expires_in": %d}`, userToken, expiresIn)
 
 	data := &AccessTokenData{
-		DockerToken: token,
-		TemplateID:  templateID,
+		TemplateID: templateID,
 	}
 
-	c.cache.Set(userToken, data, authInfoExpiration)
+	ttl := min(time.Duration(expiresIn)*time.Second, authInfoExpiration)
+	c.cache.Set(userToken, data, ttl)
 
 	log.Printf("Created new auth token for '%s' expiring in '%d'\n", templateID, expiresIn)
 

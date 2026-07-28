@@ -22,10 +22,6 @@ func CheckRequired() error {
 		missing = append(missing, "GCP_DOCKER_REPOSITORY_NAME")
 	}
 
-	if consts.GoogleServiceAccountSecret == "" {
-		missing = append(missing, "GOOGLE_SERVICE_ACCOUNT_BASE64")
-	}
-
 	if consts.GCPRegion == "" {
 		missing = append(missing, "GCP_REGION")
 	}

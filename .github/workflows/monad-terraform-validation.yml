@@ -38,6 +38,25 @@ jobs:
         with:
           terraform_version: ${{ steps.terraform-version.outputs.version }}
 
+      - name: Install pinned Packer
+        shell: bash
+        env:
+          PACKER_LINUX_AMD64_SHA256: c3401da41a47d51e2ef3e78a76f625c753b6f19e81681e4cdc3bc6e6f8c699c0
+        run: |
+          set -euo pipefail
+          version="$(awk '$1 == "packer" { print $2; exit }' .tool-versions)"
+          test -n "$version"
+          archive="${RUNNER_TEMP}/packer_${version}_linux_amd64.zip"
+          install_dir="${RUNNER_TEMP}/packer-bin"
+          curl -fsSL \
+            "https://releases.hashicorp.com/packer/${version}/packer_${version}_linux_amd64.zip" \
+            -o "$archive"
+          printf '%s  %s\n' "$PACKER_LINUX_AMD64_SHA256" "$archive" | sha256sum --check --strict
+          mkdir -p "$install_dir"
+          unzip -q "$archive" -d "$install_dir"
+          chmod 0755 "$install_dir/packer"
+          printf '%s\n' "$install_dir" >> "$GITHUB_PATH"
+
       - name: Check formatting
         run: terraform fmt -check -recursive iac/provider-gcp
 
@@ -49,6 +68,20 @@ jobs:
 
       - name: Verify pinned foundation toolchain
         run: make -C iac/provider-gcp foundation-toolchain-guard
+
+      - name: Test keyless runtime identity
+        run: make -C iac/provider-gcp keyless-runtime-check
+
+      - name: Validate runtime image configuration
+        run: |
+          packer fmt -check iac/provider-gcp/nomad-cluster-disk-image
+          packer init iac/provider-gcp/nomad-cluster-disk-image/main.pkr.hcl
+          packer validate \
+            -var 'gcp_project_id=keyless-validation' \
+            -var 'gcp_zone=us-east4-a' \
+            -var 'network_name=keyless-validation' \
+            -var 'subnet_name=keyless-validation' \
+            iac/provider-gcp/nomad-cluster-disk-image
 
       - name: Test foundation safety guards
         run: |

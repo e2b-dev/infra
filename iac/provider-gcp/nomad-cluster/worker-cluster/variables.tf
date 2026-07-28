@@ -98,12 +98,6 @@ variable "google_service_account_email" {
   type        = string
 }
 
-variable "google_service_account_key" {
-  description = "JSON key for the Google service account"
-  type        = string
-  sensitive   = true
-}
-
 # ---------------------------------------------------------------------------------------------------------------------
 # NOMAD & CONSUL CONFIGURATION
 # ---------------------------------------------------------------------------------------------------------------------

@@ -493,9 +493,12 @@ expect_fail \
 
 workflow_repo="${workspace}/workflow-repo"
 workflow_provider="${workflow_repo}/iac/provider-gcp"
-mkdir -p "${workflow_provider}"
+mkdir -p "${workflow_provider}/nomad-cluster/scripts"
 cp "${provider_root}/Makefile" "${workflow_provider}/Makefile"
 cp -R "${provider_root}/scripts" "${workflow_provider}/scripts"
+cp \
+  "${provider_root}/nomad-cluster/scripts/configure-docker-gcp.sh" \
+  "${workflow_provider}/nomad-cluster/scripts/configure-docker-gcp.sh"
 cp "${repo_root}/.tool-versions" "${workflow_repo}/.tool-versions"
 cat >"${workflow_repo}/.env.dev" <<'EOF'
 GCP_PROJECT_ID=monad-code

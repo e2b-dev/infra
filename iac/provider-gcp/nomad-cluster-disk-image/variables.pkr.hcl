@@ -29,6 +29,16 @@ variable "nomad_version" {
   default = "1.8.4"
 }
 
+variable "docker_credential_gcr_version" {
+  type    = string
+  default = "2.1.32"
+}
+
+variable "docker_credential_gcr_linux_amd64_sha256" {
+  type    = string
+  default = "fc8927596b8b2ac939a48b020bd1105dff8c367f584a2b3b54c08915127c9ebb"
+}
+
 # Keep in sync with `clickhouse_version` in iac/modules/job-clickhouse/variables.tf
 variable "clickhouse_client_version" {
   type    = string

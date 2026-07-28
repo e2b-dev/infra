@@ -111,6 +111,7 @@ FOUNDATION_PLAN := .tfplan.foundation.$(ENV)
 FOUNDATION_PLAN_MANIFEST := $(FOUNDATION_PLAN).manifest
 FOUNDATION_DESTROY_PLAN := .tfplan.foundation-destroy.$(ENV)
 override FOUNDATION_CONFIRMATION := APPLY KEYLESS FOUNDATION
+override ACL_STATE_SCRUB_CONFIRMATION := FORGET LEAKING ACL TOKEN GENERATORS
 
 define foundation_metadata_context
 FOUNDATION_ENV="$(ENV)" \
@@ -121,11 +122,6 @@ FOUNDATION_GCP_REGION="$(GCP_REGION)" \
 FOUNDATION_STATE_BUCKET="$(TERRAFORM_STATE_BUCKET)" \
 FOUNDATION_STATE_PREFIX="$(TERRAFORM_STATE_PREFIX)"
 endef
-
-.PHONY: runtime-blocked
-runtime-blocked:
-	@ printf "Refusing workload Terraform in the F1.0 foundation branch. Only foundation-init, foundation-plan, and confirmed foundation-apply are supported.\n"
-	@ exit 1
 
 .PHONY: foundation-config-guard
 foundation-config-guard:
@@ -149,8 +145,18 @@ foundation-toolchain-guard:
 		exit 1; \
 	fi
 
+.PHONY: keyless-runtime-check
+keyless-runtime-check:
+	@ ./scripts/test-keyless-runtime-guard.sh
+	@ ./scripts/test-configure-docker-gcp.sh
+	@ ./scripts/test-scrub-legacy-acl-token-state.sh
+
+.PHONY: acl-token-state-guard
+acl-token-state-guard:
+	@ ./scripts/assert-no-legacy-acl-token-state.sh "$(TF)"
+
 .PHONY: foundation-init
-foundation-init: foundation-config-guard foundation-toolchain-guard
+foundation-init: foundation-config-guard foundation-toolchain-guard keyless-runtime-check
 	@ printf "Initializing keyless foundation state for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ ./scripts/ensure-foundation-state-bucket.sh \
 		"$(TERRAFORM_STATE_BUCKET)" \
@@ -164,11 +170,26 @@ foundation-init: foundation-config-guard foundation-toolchain-guard
 	@ ./scripts/assert-foundation-workspace.sh "$(TF)"
 	@ ./scripts/assert-foundation-state.sh "$(TF)"
 
+.PHONY: foundation-scrub-legacy-acl-token-state
+foundation-scrub-legacy-acl-token-state: foundation-config-guard foundation-toolchain-guard keyless-runtime-check
+	@ if [ "$(CONFIRM)" != "$(ACL_STATE_SCRUB_CONFIRMATION)" ]; then \
+		printf "Refusing state-only ACL migration. Re-run with CONFIRM='$(ACL_STATE_SCRUB_CONFIRMATION)'.\n"; \
+		exit 1; \
+	fi
+	@ ./scripts/assert-foundation-backend.sh "$(TERRAFORM_STATE_BUCKET)" "$(TERRAFORM_STATE_PREFIX)"
+	@ ./scripts/assert-foundation-state-bucket.sh \
+		"$(TERRAFORM_STATE_BUCKET)" \
+		"$(GCP_PROJECT_ID)" \
+		"$(GCP_REGION)" \
+		"$(GCLOUD)"
+	@ ./scripts/assert-foundation-workspace.sh "$(TF)"
+	@ ./scripts/scrub-legacy-acl-token-state.sh "$(TF)"
+
 .PHONY: foundation-plan
 foundation-plan:
 	@ printf '%s' "$(ENV)" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$$' || (printf "Invalid environment name: %s\n" "$(ENV)"; exit 1)
 	@ rm -f -- "$(FOUNDATION_PLAN)" "$(FOUNDATION_PLAN_MANIFEST)"
-	@ $(MAKE) foundation-config-guard foundation-toolchain-guard
+	@ $(MAKE) foundation-config-guard foundation-toolchain-guard keyless-runtime-check
 	@ printf "Planning keyless foundation only for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ ./scripts/assert-foundation-backend.sh "$(TERRAFORM_STATE_BUCKET)" "$(TERRAFORM_STATE_PREFIX)"
 	@ ./scripts/assert-foundation-state-bucket.sh \
@@ -209,7 +230,7 @@ foundation-plan:
 		trap - EXIT HUP INT TERM
 
 .PHONY: foundation-apply
-foundation-apply: foundation-config-guard foundation-toolchain-guard
+foundation-apply: foundation-config-guard foundation-toolchain-guard keyless-runtime-check acl-token-state-guard
 	@ if [ "$(CONFIRM)" != "$(FOUNDATION_CONFIRMATION)" ]; then \
 		printf "Refusing foundation apply. Re-run with CONFIRM='$(FOUNDATION_CONFIRMATION)'.\n"; \
 		exit 1; \
@@ -236,7 +257,7 @@ foundation-apply: foundation-config-guard foundation-toolchain-guard
 foundation-destroy-plan:
 	@ printf '%s' "$(ENV)" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$$' || (printf "Invalid environment name: %s\n" "$(ENV)"; exit 1)
 	@ rm -f -- "$(FOUNDATION_DESTROY_PLAN)"
-	@ $(MAKE) foundation-config-guard foundation-toolchain-guard
+	@ $(MAKE) foundation-config-guard foundation-toolchain-guard keyless-runtime-check
 	@ printf "Planning review-only foundation destroy for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ ./scripts/assert-foundation-backend.sh "$(TERRAFORM_STATE_BUCKET)" "$(TERRAFORM_STATE_PREFIX)"
 	@ ./scripts/assert-foundation-state-bucket.sh \
@@ -268,7 +289,7 @@ foundation-destroy-plan:
 	@ printf "Destroy plan is review-only; this branch intentionally provides no apply target.\n"
 
 .PHONY: state-migrate
-state-migrate: runtime-blocked
+state-migrate: foundation-config-guard foundation-toolchain-guard keyless-runtime-check
 	@ printf "Running Terraform state migrations for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ $(tf_vars) $(TF) state mv 'random_password.api_admin_secret' 'module.init.random_password.api_admin_secret' || true
 	@ $(tf_vars) $(TF) state mv 'google_secret_manager_secret.api_admin_token' 'module.init.google_secret_manager_secret.api_admin_token' || true
@@ -280,27 +301,28 @@ state-migrate: runtime-blocked
 	@ $(tf_vars) $(TF) state mv 'module.nomad.random_password.clickhouse_server_secret' 'random_password.clickhouse_server_secret' || true
 
 .PHONY: apply-init
-apply-init: runtime-blocked
-	@ $(tf_vars) $(TF) apply $(TF_VAR_FILE_ARG) -target=module.init -auto-approve -input=false -compact-warnings
+apply-init:
+	@ printf "Refusing unreviewed foundation apply. Use foundation-plan and confirmed foundation-apply.\n"
+	@ exit 1
 
 .PHONY: switch
-switch: runtime-blocked
-	@ printf "Switching Terraform backend for different env ${ENV}\n"
-	@ $(TF) init -input=false -upgrade -reconfigure -backend-config=bucket=$(TERRAFORM_STATE_BUCKET)
+switch:
+	@ printf "Refusing legacy backend switch. Select the environment and run foundation-init so bucket and prefix bindings are verified.\n"
+	@ exit 1
 
 .PHONY: destroy
-destroy: runtime-blocked
+destroy: foundation-config-guard foundation-toolchain-guard keyless-runtime-check acl-token-state-guard
 	@ printf "Destroying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ $(tf_vars) $(TF) destroy $(TF_VAR_FILE_ARG)
 
 .PHONY: plan
-plan: runtime-blocked
+plan: foundation-config-guard foundation-toolchain-guard keyless-runtime-check acl-token-state-guard
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ $(call tf_fmt)
 	@ $(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings
 
 .PHONY: terraform
-terraform: runtime-blocked
+terraform: foundation-toolchain-guard keyless-runtime-check acl-token-state-guard
 	@ printf "Terraform command for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ $(call tf_fmt)
 	@ $(tf_vars) $(TF) $(ARGS)
@@ -311,33 +333,33 @@ terraform: runtime-blocked
 plan_only_jobs_moved_targets = -target="random_password.clickhouse_password" -target="random_password.clickhouse_server_secret" -target="module.nomad.random_password.clickhouse_password" -target="module.nomad.random_password.clickhouse_server_secret"
 
 .PHONY: plan-only-jobs plan-only-jobs/clickhouse plan-only-jobs/clickhouse_migrator plan-only-jobs/clickhouse_backup plan-only-jobs/clickhouse_backup_restore
-plan-only-jobs/clickhouse: runtime-blocked
+plan-only-jobs/clickhouse: foundation-config-guard foundation-toolchain-guard keyless-runtime-check acl-token-state-guard
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(call tf_fmt)
 	$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target="module.nomad.module.clickhouse.nomad_job.clickhouse" $(plan_only_jobs_moved_targets)
-plan-only-jobs/clickhouse_migrator: runtime-blocked
+plan-only-jobs/clickhouse_migrator: foundation-config-guard foundation-toolchain-guard keyless-runtime-check acl-token-state-guard
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(call tf_fmt)
 	$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target="module.nomad.module.clickhouse.nomad_job.clickhouse_migrator" $(plan_only_jobs_moved_targets)
-plan-only-jobs/clickhouse_backup: runtime-blocked
+plan-only-jobs/clickhouse_backup: foundation-config-guard foundation-toolchain-guard keyless-runtime-check acl-token-state-guard
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(call tf_fmt)
 	$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target="module.nomad.module.clickhouse.nomad_job.clickhouse_backup" $(plan_only_jobs_moved_targets)
-plan-only-jobs/clickhouse_backup_restore: runtime-blocked
+plan-only-jobs/clickhouse_backup_restore: foundation-config-guard foundation-toolchain-guard keyless-runtime-check acl-token-state-guard
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(call tf_fmt)
 	$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target="module.nomad.module.clickhouse.nomad_job.clickhouse_backup_restore" $(plan_only_jobs_moved_targets)
-plan-only-jobs/%: runtime-blocked
+plan-only-jobs/%: foundation-config-guard foundation-toolchain-guard keyless-runtime-check acl-token-state-guard
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(call tf_fmt)
 	@ $(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target=module.nomad.nomad_job.$(subst -,_,$(notdir $@)) -target=module.nomad.module.$(subst -,_,$(notdir $@)) $(plan_only_jobs_moved_targets)
-plan-only-jobs: runtime-blocked
+plan-only-jobs: foundation-config-guard foundation-toolchain-guard keyless-runtime-check acl-token-state-guard
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(call tf_fmt)
 	@ $(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target=module.nomad $(plan_only_jobs_moved_targets)
 
 .PHONY: plan-without-jobs
-plan-without-jobs: runtime-blocked
+plan-without-jobs: foundation-config-guard foundation-toolchain-guard keyless-runtime-check acl-token-state-guard
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(eval TARGET := $(shell cat main.tf | grep "^module" | awk '{print $$2}' | tr ' ' '\n' | grep -v -e "nomad" | awk '{print "-target=module." $$0 ""}' | xargs))
 	@ $(tf_vars) \
@@ -350,7 +372,7 @@ plan-without-jobs: runtime-blocked
 	$(TARGET)
 
 .PHONY: apply
-apply: runtime-blocked
+apply: foundation-config-guard foundation-toolchain-guard keyless-runtime-check acl-token-state-guard
 	@ printf "Applying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ $(TF) apply \
 	-auto-approve \
@@ -362,12 +384,12 @@ apply: runtime-blocked
 
 # Shortcut to importing resources into Terraform state (e.g. after creating resources manually or switching between different branches for the same environment)
 .PHONY: import
-import: runtime-blocked
+import: foundation-config-guard foundation-toolchain-guard keyless-runtime-check
 	@ printf "Importing resources for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ $(tf_vars) $(TF) import $(TF_VAR_FILE_ARG) "$(TARGET)" "$(ID)" -no-color
 
 .PHONY: move
-move: runtime-blocked
+move: foundation-config-guard foundation-toolchain-guard keyless-runtime-check
 	@ printf "Moving resource for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ $(tf_vars) $(TF) state mv "$(SOURCE)" "$(TARGET)" -no-color
 

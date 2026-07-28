@@ -48,9 +48,10 @@ job "clickhouse-backup-restore" {
         CLICKHOUSE_PASSWORD     = "${clickhouse_password}"
 
 %{ if cloud_provider == "gcp" }
+        # clickhouse-backup uses Application Default Credentials from the
+        # instance metadata server. No service-account key is injected.
         REMOTE_STORAGE               = "gcs"
         GCS_DEBUG                    = "true"
-        GCS_CREDENTIALS_JSON_ENCODED = "${gcs_credentials_json_encoded}"
         GCS_BUCKET                   = "${backup_bucket}"
         GCS_PATH                     = "${backup_folder}/backup/server-${i + 1}/"
 %{ endif }

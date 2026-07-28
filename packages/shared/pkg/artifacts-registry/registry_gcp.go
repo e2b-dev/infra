@@ -2,8 +2,6 @@ package artifacts_registry
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
 
 	artifactregistry "cloud.google.com/go/artifactregistry/apiv1"
@@ -16,15 +14,12 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/gcpauth"
 )
 
 type GCPArtifactsRegistry struct {
 	registry *artifactregistry.Client
-}
-
-var gcpAuthConfig = authn.Basic{
-	Username: "_json_key_base64",
-	Password: consts.GoogleServiceAccountSecret,
+	auth     authn.Authenticator
 }
 
 func NewGCPArtifactsRegistry(ctx context.Context) (*GCPArtifactsRegistry, error) {
@@ -33,7 +28,14 @@ func NewGCPArtifactsRegistry(ctx context.Context) (*GCPArtifactsRegistry, error)
 		return nil, fmt.Errorf("error creating artifact registry client: %w", err)
 	}
 
-	return &GCPArtifactsRegistry{registry: registry}, nil
+	auth, err := gcpauth.NewRegistryAuthenticator(ctx)
+	if err != nil {
+		_ = registry.Close()
+
+		return nil, fmt.Errorf("create ADC Artifact Registry authenticator: %w", err)
+	}
+
+	return &GCPArtifactsRegistry{registry: registry, auth: auth}, nil
 }
 
 func (g *GCPArtifactsRegistry) Delete(ctx context.Context, templateId string, buildId string) error {
@@ -65,43 +67,12 @@ func (g *GCPArtifactsRegistry) GetImage(ctx context.Context, templateId string, 
 		return nil, fmt.Errorf("invalid image reference: %w", err)
 	}
 
-	auth, err := g.getAuthToken(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get auth: %w", err)
-	}
-
-	img, err := remote.Image(ref, remote.WithAuth(auth), remote.WithPlatform(platform), remote.WithContext(ctx))
+	img, err := remote.Image(ref, remote.WithAuth(g.auth), remote.WithPlatform(platform), remote.WithContext(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("error pulling image: %w", err)
 	}
 
 	return img, nil
-}
-
-func (g *GCPArtifactsRegistry) getAuthToken(_ context.Context) (*authn.Basic, error) {
-	authCfg := consts.DockerAuthConfig
-	if authCfg == "" {
-		return &gcpAuthConfig, nil
-	}
-
-	decoded, err := base64.URLEncoding.DecodeString(authCfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode auth config: %w", err)
-	}
-
-	var cfg struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-	}
-
-	if err := json.Unmarshal(decoded, &cfg); err != nil {
-		return nil, fmt.Errorf("invalid JSON auth config: %w", err)
-	}
-
-	return &authn.Basic{
-		Username: cfg.Username,
-		Password: cfg.Password,
-	}, nil
 }
 
 func (g *GCPArtifactsRegistry) getDockerImagePath(templateId string) string {

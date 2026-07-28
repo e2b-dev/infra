@@ -156,7 +156,7 @@ locals {
     PROVIDER                      = "gcp"
     ARTIFACTS_REGISTRY_PROVIDER   = "GCP_ARTIFACTS"
     STORAGE_PROVIDER              = "GCPBucket"
-    GOOGLE_SERVICE_ACCOUNT_BASE64 = ""
+    GCP_SERVICE_ACCOUNT_EMAIL     = module.init.service_account_email
     GCS_GRPC_CONNECTION_POOL_SIZE = var.gcs_grpc_connection_pool_size != 0 ? tostring(var.gcs_grpc_connection_pool_size) : ""
     PERSISTENT_VOLUME_MOUNTS      = join(",", [for key, value in local.persistent_volume_types : format("%s:%s", key, value["local_mount_path"])])
     LAUNCH_DARKLY_API_KEY         = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
@@ -164,7 +164,7 @@ locals {
 
   template_manager_env_vars = merge({
     CONSUL_TOKEN                    = module.init.consul_acl_token_secret
-    GOOGLE_SERVICE_ACCOUNT_BASE64   = ""
+    GCP_SERVICE_ACCOUNT_EMAIL       = module.init.service_account_email
     GCP_PROJECT_ID                  = var.gcp_project_id
     GCP_REGION                      = var.gcp_region
     GCP_DOCKER_REPOSITORY_NAME      = google_artifact_registry_repository.custom_environments_repository.name
@@ -186,12 +186,11 @@ locals {
   }, var.template_manager_env_vars)
 
   docker_reverse_proxy_env_vars = merge({
-    POSTGRES_CONNECTION_STRING    = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
-    GOOGLE_SERVICE_ACCOUNT_BASE64 = ""
-    GCP_REGION                    = var.gcp_region
-    GCP_PROJECT_ID                = var.gcp_project_id
-    GCP_DOCKER_REPOSITORY_NAME    = google_artifact_registry_repository.custom_environments_repository.name
-    DOMAIN_NAME                   = var.domain_name
+    POSTGRES_CONNECTION_STRING = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+    GCP_REGION                 = var.gcp_region
+    GCP_PROJECT_ID             = var.gcp_project_id
+    GCP_DOCKER_REPOSITORY_NAME = google_artifact_registry_repository.custom_environments_repository.name
+    DOMAIN_NAME                = var.domain_name
   }, var.docker_reverse_proxy_env_vars)
 
   filestore_cleanup_env_vars = merge({
@@ -273,10 +272,9 @@ module "cluster" {
   environment = var.environment
 
   cloudflare_api_token_secret_name = module.init.cloudflare_api_token_secret_name
-  gcp_project_id                   = local.runtime_guarded_gcp_project_id
+  gcp_project_id                   = var.gcp_project_id
   gcp_region                       = var.gcp_region
   gcp_zone                         = var.gcp_zone
-  google_service_account_key       = ""
   network_name                     = var.network_name
 
   build_clusters_config  = var.build_clusters_config
@@ -353,8 +351,6 @@ module "cluster" {
 module "k8s_apps" {
   source = "./k8s-apps"
 
-  depends_on = [terraform_data.runtime_credential_guard]
-
   prefix         = var.prefix
   gcp_project_id = var.gcp_project_id
   gcp_region     = var.gcp_region
@@ -390,7 +386,7 @@ module "nomad" {
   source = "./nomad"
 
   prefix         = var.prefix
-  gcp_project_id = local.runtime_guarded_gcp_project_id
+  gcp_project_id = var.gcp_project_id
   gcp_region     = var.gcp_region
   gcp_zone       = var.gcp_zone
 
@@ -522,8 +518,6 @@ module "redis" {
   source = "./redis"
   count  = var.redis_managed ? 1 : 0
 
-  depends_on = [terraform_data.runtime_credential_guard]
-
   gcp_project_id = var.gcp_project_id
   gcp_region     = var.gcp_region
   gcp_zone       = var.gcp_zone
@@ -543,7 +537,7 @@ module "remote_repository" {
 
   count = var.remote_repository_enabled ? 1 : 0
 
-  depends_on = [module.init, terraform_data.runtime_credential_guard]
+  depends_on = [module.init]
 
   prefix = var.prefix
 

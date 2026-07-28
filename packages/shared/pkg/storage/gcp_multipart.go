@@ -7,6 +7,7 @@ import (
 	"crypto/md5"
 	"encoding/base64"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -22,9 +23,10 @@ import (
 	"github.com/hashicorp/go-retryablehttp"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
-	"golang.org/x/oauth2/google"
+	"golang.org/x/oauth2"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/gcpauth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -182,7 +184,7 @@ type completeMultipartError struct {
 type MultipartUploader struct {
 	bucketName  string
 	objectName  string
-	token       string
+	tokenSource oauth2.TokenSource
 	client      *retryablehttp.Client
 	retryConfig RetryConfig
 	metadata    ObjectMetadata
@@ -241,25 +243,38 @@ func (m *MultipartUploader) Close() error {
 }
 
 func NewMultipartUploaderWithRetryConfig(ctx context.Context, bucketName, objectName string, retryConfig RetryConfig, metadata ObjectMetadata) (*MultipartUploader, error) {
-	creds, err := google.FindDefaultCredentials(ctx, "https://www.googleapis.com/auth/cloud-platform")
+	tokenSource, err := gcpauth.NewTokenSource(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get credentials: %w", err)
-	}
-
-	token, err := creds.TokenSource.Token()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get token: %w", err)
+		return nil, fmt.Errorf("create refreshing GCS token source: %w", err)
 	}
 
 	return &MultipartUploader{
 		bucketName:  bucketName,
 		objectName:  objectName,
-		token:       token.AccessToken,
+		tokenSource: tokenSource,
 		client:      createRetryableClient(ctx, retryConfig),
 		retryConfig: retryConfig,
 		metadata:    metadata,
 		baseURL:     fmt.Sprintf("https://%s.storage.googleapis.com", bucketName),
 	}, nil
+}
+
+func (m *MultipartUploader) authorize(req *retryablehttp.Request) error {
+	if m.tokenSource == nil {
+		return errors.New("GCS multipart ADC token source is nil")
+	}
+
+	token, err := m.tokenSource.Token()
+	if err != nil {
+		return fmt.Errorf("refresh GCS multipart ADC token: %w", err)
+	}
+	if token.AccessToken == "" {
+		return errors.New("GCS multipart ADC returned an empty access token")
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token.AccessToken)
+
+	return nil
 }
 
 func (m *MultipartUploader) initiateUpload(ctx context.Context) (string, error) {
@@ -270,7 +285,9 @@ func (m *MultipartUploader) initiateUpload(ctx context.Context) (string, error) 
 		return "", err
 	}
 
-	req.Header.Set("Authorization", "Bearer "+m.token)
+	if err := m.authorize(req); err != nil {
+		return "", err
+	}
 	req.Header.Set("Content-Length", "0")
 	req.Header.Set("Content-Type", "application/octet-stream")
 	// Custom user metadata is set on initiate; the final object inherits it.
@@ -315,7 +332,9 @@ func (m *MultipartUploader) uploadPart(ctx context.Context, uploadID string, par
 		return "", err
 	}
 
-	req.Header.Set("Authorization", "Bearer "+m.token)
+	if err := m.authorize(req); err != nil {
+		return "", err
+	}
 	sum := md5.Sum(data) //nolint:gosec // GCS multipart uses Content-MD5 for transport integrity.
 	req.Header.Set("Content-MD5", base64.StdEncoding.EncodeToString(sum[:]))
 
@@ -368,7 +387,9 @@ func (m *MultipartUploader) uploadPartSlices(ctx context.Context, uploadID strin
 		return "", err
 	}
 
-	req.Header.Set("Authorization", "Bearer "+m.token)
+	if err := m.authorize(req); err != nil {
+		return "", err
+	}
 	h := md5.New() //nolint:gosec // GCS multipart uses Content-MD5 for transport integrity.
 	for _, s := range slices {
 		_, _ = h.Write(s)
@@ -415,7 +436,9 @@ func (m *MultipartUploader) completeUpload(ctx context.Context, uploadID string,
 		return fmt.Errorf("failed to create complete request: %w", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+m.token)
+	if err := m.authorize(req); err != nil {
+		return err
+	}
 	req.Header.Set("Content-Type", "application/xml")
 	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(xmlData)))
 

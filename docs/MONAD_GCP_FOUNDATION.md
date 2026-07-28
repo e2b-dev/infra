@@ -3,8 +3,8 @@
 This fork deliberately separates a zero-workload GCP foundation from the E2B
 runtime cluster. Engram's organisation policy forbids long-lived Google
 service-account keys. The fork removes those key resources, and a full cluster
-plan is blocked until all runtime consumers use attached service accounts,
-Application Default Credentials, or Workload Identity.
+plan is permitted only after a repository guard proves that Monad's runtime
+consumers use attached service accounts and Application Default Credentials.
 
 ## F1.0 creates
 
@@ -47,6 +47,9 @@ sandbox nodes, workload VMs, or Packer image.
 ```bash
 make set-env ENV=dev
 mise exec -- make -C iac/provider-gcp foundation-init
+# Existing foundations created before the sensitive ACL migration only:
+mise exec -- make -C iac/provider-gcp foundation-scrub-legacy-acl-token-state \
+  CONFIRM='FORGET LEAKING ACL TOKEN GENERATORS'
 mise exec -- make -C iac/provider-gcp foundation-plan
 mise exec -- terraform -chdir=iac/provider-gcp show .tfplan.foundation.dev
 mise exec -- make -C iac/provider-gcp foundation-apply \
@@ -68,24 +71,40 @@ public-access prevention, versioning, or 30-day soft-delete policy has drifted.
 The workflow requires Terraform's `default` workspace because environment
 isolation is provided by the explicit backend prefix instead.
 
-`foundation-init` is the only pre-plan cloud mutation: it bootstraps the remote
-state bucket when absent, then enforces and re-reads its immutable project and
-location plus uniform bucket-level access, public access prevention, Standard
-storage, versioning, and 30-day soft deletion. It fails rather than reusing a
-bucket in another project or location, and it never suppresses a create error.
+`foundation-init` is the only pre-plan cloud-resource mutation: it bootstraps
+the remote state bucket when absent, then enforces and re-reads its immutable
+project and location plus uniform bucket-level access, public access
+prevention, Standard storage, versioning, and 30-day soft deletion. It fails
+rather than reusing a bucket in another project or location, and it never
+suppresses a create error.
 
-The legacy `make init` path is disabled in the Monad fork. Workload modules
-depend on a hard-fail credential guard which has no variable escape hatch. The
-patch that completes and verifies the keyless migration must remove that guard
-as an explicit reviewed change.
+Foundations created before the sensitive ACL migration contain two
+`random_uuid` state entries whose UUID value is also their non-sensitive
+Terraform ID. Terraform can print that ID during refresh or destroy. Before any
+post-upgrade plan, the guarded one-time scrub above forgets exactly those two
+generator addresses. It never reads an attribute, destroys a cloud object, or
+touches any other state address. Every supported refresh/plan/apply path refuses
+to continue while either address remains.
 
-All generic workload plan/apply/import/move Make targets are disabled during
-F1.0, including stale saved-plan apply paths. The supported foundation workflow
-also refuses existing state outside `module.init`, long-lived credential state,
-changes outside `module.init`, and any destructive plan. Direct targeted
-Terraform commands are unsupported in this phase. A later patch should split
-foundation and workload into separate Terraform roots/states, removing the
-need for `-target`.
+The following reviewed foundation apply derives UUID-shaped Consul and Nomad
+tokens from sensitive `random_password` seeds, creates new latest Secret
+Manager versions, and moves the old version resources to explicit legacy
+addresses. The old versions are disabled with a `DISABLE` deletion policy;
+their payloads remain ignored and redacted. New foundations create a disabled
+placeholder before their active version so `versions/latest` always resolves
+to the active token. Do not use `terraform state show` or run a direct plan to
+inspect the legacy generators.
+
+The legacy `make init` path remains disabled in the Monad fork. The keyless
+runtime migration removes the hard-fail Terraform dependency and gates generic
+workload plan/apply/import/move targets with configuration, exact-toolchain,
+and repository-wide static-credential checks. `make keyless-runtime-check`
+runs that guard directly.
+
+The supported foundation workflow still refuses existing state outside
+`module.init`, long-lived credential state, changes outside `module.init`, and
+any destructive plan. A later patch should split foundation and workload into
+separate Terraform roots/states, removing the need for `-target`.
 
 After the foundation apply, add the first secret versions directly over stdin
 so values never enter shell history. Replace `<prefix>` with the configured
@@ -124,10 +143,15 @@ rm -f iac/provider-gcp/.tfplan.foundation-destroy.dev
 
 - Terraform state is remote, versioned, and recoverable.
 - No `google_service_account_key` resource exists in state.
+- No legacy ACL `random_uuid` generator exists in state.
 - No workload VM or external IP exists.
-- Secret values are out-of-band and absent from Git and plan output.
+- ACL values are sensitive, UUID-shaped, and redacted from human plan output.
+- Out-of-band secret values are absent from Git and plan output.
 - The plan contains only reviewed foundation resources.
 - A destroy plan has been inspected.
 
-The next milestone is the keyless runtime credential migration, followed by the
-smallest reference fleet and stock SDK create/pause/resume/fork canary.
+The runtime migration is code-complete but is not live evidence. The next
+milestone is a reviewed smallest-fleet workload plan, image build, and stock SDK
+create/pause/resume/fork canary. That canary must prove metadata-server ADC,
+signed uploads, registry push/pull, snapshot persistence, ClickHouse backup,
+and credential refresh before production promotion.
