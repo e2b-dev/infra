@@ -135,6 +135,45 @@ assert_rejected() {
 }
 
 assert_plan "${base_plan}"
+
+benign_refresh_plan="${temp_dir}/benign-refresh.json"
+jq '
+  .resource_drift = [
+    {
+      address:
+        "google_compute_firewall.internal_remote_connection_firewall_ingress",
+      mode: "managed",
+      change: {
+        actions: ["update"],
+        before: {
+          source_service_accounts: null,
+          source_tags: null,
+          target_service_accounts: null,
+          target_tags: null
+        },
+        after: {
+          source_service_accounts: [],
+          source_tags: [],
+          target_service_accounts: [],
+          target_tags: []
+        },
+        after_unknown: {}
+      }
+    },
+    {
+      address: "google_compute_subnetwork.packer_subnetwork",
+      mode: "managed",
+      change: {
+        actions: ["update"],
+        before: {log_config: [{metadata_fields: null}]},
+        after: {log_config: [{metadata_fields: []}]},
+        after_unknown: {}
+      }
+    }
+  ]
+' "${base_plan}" >"${benign_refresh_plan}"
+assert_plan "${benign_refresh_plan}"
+
 assert_rejected \
   '(.resource_changes[0].change.actions) = ["delete"]' \
   destructive
@@ -163,6 +202,38 @@ assert_rejected \
 assert_rejected \
   '.resource_drift = [{address: "google_compute_network.packer_network"}]' \
   drift
+unsafe_refresh_plan="${temp_dir}/unsafe-refresh.json"
+jq '
+  .resource_drift = [
+    {
+      address:
+        "google_compute_firewall.internal_remote_connection_firewall_ingress",
+      mode: "managed",
+      change: {
+        actions: ["update"],
+        before: {
+          source_service_accounts: null,
+          source_tags: null,
+          target_service_accounts: null,
+          target_tags: null,
+          source_ranges: ["35.235.240.0/20"]
+        },
+        after: {
+          source_service_accounts: [],
+          source_tags: [],
+          target_service_accounts: [],
+          target_tags: [],
+          source_ranges: ["0.0.0.0/0"]
+        },
+        after_unknown: {}
+      }
+    }
+  ]
+' "${base_plan}" >"${unsafe_refresh_plan}"
+if assert_plan "${unsafe_refresh_plan}" >/dev/null 2>&1; then
+  printf 'Unsafe refresh drift unexpectedly passed.\n' >&2
+  exit 1
+fi
 assert_rejected \
   '.checks = [{status: "unknown"}]' \
   unknown-check
