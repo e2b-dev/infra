@@ -1,5 +1,6 @@
 locals {
   clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${var.clickhouse_password}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
+  job_binary_suffix            = var.core_image_revision == "" ? "" : ".${var.core_image_revision}"
 
   docker_reverse_proxy_env_vars = {
     for key, value in var.docker_reverse_proxy_env_vars : key => trimspace(value)
@@ -339,13 +340,13 @@ module "logs_collector" {
 
 data "google_storage_bucket_object" "orchestrator" {
   count  = var.orchestrator_enabled ? 1 : 0
-  name   = "orchestrator"
+  name   = "orchestrator${local.job_binary_suffix}"
   bucket = var.fc_env_pipeline_bucket_name
 }
 
 locals {
   orchestrator_checksum        = var.orchestrator_enabled ? data.google_storage_bucket_object.orchestrator[0].generation : ""
-  orchestrator_artifact_source = var.orchestrator_enabled ? "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/orchestrator?version=${local.orchestrator_checksum}" : ""
+  orchestrator_artifact_source = var.orchestrator_enabled ? "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/${data.google_storage_bucket_object.orchestrator[0].name}#${local.orchestrator_checksum}" : ""
 }
 
 module "orchestrator" {
@@ -364,12 +365,12 @@ module "orchestrator" {
 }
 
 data "google_storage_bucket_object" "template_manager" {
-  name   = "template-manager"
+  name   = "template-manager${local.job_binary_suffix}"
   bucket = var.fc_env_pipeline_bucket_name
 }
 
 locals {
-  template_manager_artifact_source = "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/template-manager?version=${data.google_storage_bucket_object.template_manager.generation}"
+  template_manager_artifact_source = "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/${data.google_storage_bucket_object.template_manager.name}#${data.google_storage_bucket_object.template_manager.generation}"
 }
 
 module "template_manager" {
@@ -481,12 +482,12 @@ module "clickhouse" {
 }
 
 data "google_storage_bucket_object" "filestore_cleanup" {
-  name   = "clean-nfs-cache"
+  name   = "clean-nfs-cache${local.job_binary_suffix}"
   bucket = var.fc_env_pipeline_bucket_name
 }
 
 locals {
-  clean_nfs_cache_artifact_source = "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/clean-nfs-cache?version=${data.google_storage_bucket_object.filestore_cleanup.generation}"
+  clean_nfs_cache_artifact_source = "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/${data.google_storage_bucket_object.filestore_cleanup.name}#${data.google_storage_bucket_object.filestore_cleanup.generation}"
 }
 
 resource "nomad_job" "clean_nfs_cache" {

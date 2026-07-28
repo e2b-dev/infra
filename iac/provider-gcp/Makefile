@@ -43,6 +43,7 @@ tf_vars := \
 	$(call tfvar, GCP_ZONE) \
 	$(call tfvar, DOMAIN_NAME) \
 	$(call tfvar, PREFIX) \
+	$(call tfvar, CORE_IMAGE_REVISION) \
 	$(call tfvar, ORCHESTRATOR_ENABLED) \
 	$(call tfvar, API_INTERNAL_GRPC_PORT) \
 	$(call tfvar, ALLOW_SANDBOX_INTERNAL_CIDRS) \
@@ -112,13 +113,18 @@ FOUNDATION_PLAN_MANIFEST := $(FOUNDATION_PLAN).manifest
 FOUNDATION_DESTROY_PLAN := .tfplan.foundation-destroy.$(ENV)
 override WORKLOAD_PLAN := .tfplan.workload.$(ENV)
 override WORKLOAD_PLAN_MANIFEST := $(WORKLOAD_PLAN).manifest
+override WORKLOAD_CLUSTER_PLAN := .tfplan.workload-cluster.$(ENV)
+override WORKLOAD_CLUSTER_PLAN_MANIFEST := $(WORKLOAD_CLUSTER_PLAN).manifest
 override WORKLOAD_TOPOLOGY_POLICY := topology/minimal-workload-policy.json
 override WORKLOAD_PACKER_TEMPLATE := nomad-cluster-disk-image/main.pkr.hcl
 override WORKLOAD_IMAGE_REVISION := $(CORE_IMAGE_REVISION)
+override WORKLOAD_JOB_BINARY_BUCKET := $(BUCKET_PREFIX)fc-env-pipeline
 override WORKLOAD_ROLLOUT_LEASE := scripts/rollout-mutation-lease.sh
 override FOUNDATION_CONFIRMATION := APPLY KEYLESS FOUNDATION
 override ACL_STATE_SCRUB_CONFIRMATION := FORGET LEAKING ACL TOKEN GENERATORS
 override WORKLOAD_CONFIRMATION := APPLY ONE WORKCELL CANARY
+override WORKLOAD_CLUSTER_CONFIRMATION := APPLY ONE WORKCELL CLUSTER
+WORKLOAD_CLUSTER_WAIT_SECONDS ?= 1800
 
 define foundation_metadata_context
 FOUNDATION_ENV="$(ENV)" \
@@ -139,13 +145,14 @@ WORKLOAD_GCP_REGION="$(GCP_REGION)" \
 WORKLOAD_GCP_ZONE="$(GCP_ZONE)" \
 WORKLOAD_PREFIX="$(PREFIX)" \
 WORKLOAD_CORE_IMAGE_REVISION="$(WORKLOAD_IMAGE_REVISION)" \
+WORKLOAD_JOB_BINARY_BUCKET="$(WORKLOAD_JOB_BINARY_BUCKET)" \
 WORKLOAD_STATE_BUCKET="$(TERRAFORM_STATE_BUCKET)" \
 WORKLOAD_STATE_PREFIX="$(TERRAFORM_STATE_PREFIX)" \
 WORKLOAD_TOPOLOGY_POLICY="$(WORKLOAD_TOPOLOGY_POLICY)" \
 WORKLOAD_PACKER_TEMPLATE="$(WORKLOAD_PACKER_TEMPLATE)"
 endef
 
-.PHONY: workload-plan-check workload-plan-assertions-test workload-release-test packer-reserve-check worker-startup-render-test
+.PHONY: workload-plan-check workload-cluster-plan-check workload-plan-assertions-test workload-release-test packer-reserve-check worker-startup-render-test
 workload-plan-check:
 	@ test -f "$(WORKLOAD_PLAN_MANIFEST)" || (printf "Missing workload plan provenance %s.\n" "$(WORKLOAD_PLAN_MANIFEST)"; exit 1)
 	@ set -eu; \
@@ -159,11 +166,27 @@ workload-plan-check:
 			"$(WORKLOAD_TOPOLOGY_POLICY)" "$(WORKLOAD_PACKER_TEMPLATE)" \
 			"$${artifacts}"
 
+workload-cluster-plan-check:
+	@ test -f "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)" || (printf "Missing cluster plan provenance %s.\n" "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)"; exit 1)
+	@ set -eu; \
+		umask 077; \
+		artifacts="$$(mktemp ".workload-cluster-plan-check.$(ENV).XXXXXX")"; \
+		trap 'rm -f -- "$${artifacts}"' EXIT HUP INT TERM; \
+		jq -eS '.release_artifacts' "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)" >"$${artifacts}"; \
+		chmod 0600 "$${artifacts}"; \
+		./scripts/assert-workload-plan.sh \
+			"$(WORKLOAD_CLUSTER_PLAN)" "$(TF)" \
+			"$(WORKLOAD_TOPOLOGY_POLICY)" "$(WORKLOAD_PACKER_TEMPLATE)" \
+			"$${artifacts}" cluster
+
 workload-plan-assertions-test:
 	@ ./scripts/test-workload-plan-assertions.sh
 	@ ./scripts/test-legacy-workload-mutation-disabled.sh
 	@ ./scripts/test-rollout-mutation-lease.sh
 	@ ./scripts/test-workload-release.sh
+	@ ./scripts/test-workload-cluster-wait.sh
+	@ ../modules/job-template-manager/scripts/test-get-nomad-job-count.sh
+	@ ../modules/job-template-manager/scripts/test-module.sh "$(TF)"
 	@ $(MAKE) worker-startup-render-test
 
 workload-release-test:
@@ -217,6 +240,7 @@ workload-config-guard: foundation-config-guard
 	@ printf '%s' "$(GCP_ZONE)" | grep -Eq '^$(GCP_REGION)-[a-z]$$' || (printf "GCP_ZONE must belong to GCP_REGION %s; found %s.\n" "$(GCP_REGION)" "$(GCP_ZONE)"; exit 1)
 	@ test -n "$(PREFIX)" || (printf "PREFIX is required for workload artifact discovery.\n"; exit 1)
 	@ printf '%s' "$(WORKLOAD_IMAGE_REVISION)" | grep -Eq '^[0-9a-f]{12,40}$$' || (printf "CORE_IMAGE_REVISION must be an explicit 12-40 character lowercase Git SHA for the reviewed core image release.\n"; exit 1)
+	@ printf '%s' "$(WORKLOAD_JOB_BINARY_BUCKET)" | grep -Eq '^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$$' || (printf "Derived workload job binary bucket is invalid: %s\n" "$(WORKLOAD_JOB_BINARY_BUCKET)"; exit 1)
 	@ test -x "$(GCLOUD)" || (printf "gcloud is not installed or executable: %s\n" "$(GCLOUD)"; exit 1)
 	@ test -f "$(WORKLOAD_TOPOLOGY_POLICY)" && test ! -L "$(WORKLOAD_TOPOLOGY_POLICY)" || (printf "Workload topology policy must be a regular, non-symlink file.\n"; exit 1)
 	@ test -f "$(WORKLOAD_PACKER_TEMPLATE)" && test ! -L "$(WORKLOAD_PACKER_TEMPLATE)" || (printf "Workload Packer template must be a regular, non-symlink file.\n"; exit 1)
@@ -235,7 +259,236 @@ workload-context-guard:
 	@ ./scripts/assert-foundation-workspace.sh "$(TF)"
 	@ ./scripts/assert-no-legacy-acl-token-state.sh "$(TF)"
 
-.PHONY: workload-plan workload-apply
+.PHONY: workload-cluster-plan workload-cluster-apply workload-cluster-wait workload-plan workload-apply
+workload-cluster-plan:
+	@ printf '%s' "$(ENV)" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$$' || (printf "Invalid environment name: %s\n" "$(ENV)"; exit 1)
+	@ $(MAKE) workload-context-guard
+	@ $(call tf_fmt)
+	@ set -eu; \
+		temp_dir="$$(mktemp -d ".workload-cluster-plan.$(ENV).XXXXXX")"; \
+		temp_plan="$${temp_dir}/plan"; \
+		temp_manifest="$${temp_dir}/manifest"; \
+		before_artifacts="$${temp_dir}/artifacts-before.json"; \
+		after_artifacts="$${temp_dir}/artifacts-after.json"; \
+		lease_token="$${temp_dir}/lease-token.json"; \
+		lease_acquired=false; \
+		cleanup() { \
+			status=$$?; \
+			trap - EXIT HUP INT TERM; \
+			if [ "$${lease_acquired}" = true ]; then \
+				if ! "$(WORKLOAD_ROLLOUT_LEASE)" release "$(GCLOUD)" "$${lease_token}"; then \
+					printf "Shared rollout lease release failed; inspect it before another rollout.\n" >&2; \
+					if [ "$${status}" -eq 0 ]; then status=1; fi; \
+				fi; \
+			fi; \
+			rm -rf -- "$${temp_dir}"; \
+			exit "$${status}"; \
+		}; \
+		trap cleanup EXIT HUP INT TERM; \
+		umask 077; \
+		holder_digest="$$( \
+			{ \
+				git -C ../.. rev-parse --verify HEAD; \
+				printf '%s\n' "$(ENV)" "$$$$" "$$(date -u +%s)"; \
+			} | shasum -a 256 | awk '{print $$1}' \
+		)"; \
+		"$(WORKLOAD_ROLLOUT_LEASE)" acquire \
+			"$(GCLOUD)" "$(TERRAFORM_STATE_BUCKET)" \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" \
+			"cluster-plan:$${holder_digest}" "$${lease_token}"; \
+		lease_acquired=true; \
+		rm -f -- "$(WORKLOAD_CLUSTER_PLAN)" "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)"; \
+		./scripts/assert-workload-artifacts.sh \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(PREFIX)" \
+			"$(WORKLOAD_IMAGE_REVISION)" "$(WORKLOAD_JOB_BINARY_BUCKET)" \
+			"$(GCLOUD)" \
+			>"$${before_artifacts}"; \
+		chmod 0600 "$${before_artifacts}"; \
+		before_fingerprint="$$($(workload_metadata_context) ./scripts/workload-plan-metadata.sh fingerprint \
+			"$(TF)" "." "../.." "$${before_artifacts}")"; \
+		$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) \
+			-target=module.cluster \
+			-out="$${temp_plan}" \
+			-input=false \
+			-compact-warnings; \
+		chmod 0600 "$${temp_plan}"; \
+		./scripts/assert-workload-artifacts.sh \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(PREFIX)" \
+			"$(WORKLOAD_IMAGE_REVISION)" "$(WORKLOAD_JOB_BINARY_BUCKET)" \
+			"$(GCLOUD)" \
+			>"$${after_artifacts}"; \
+		chmod 0600 "$${after_artifacts}"; \
+		after_fingerprint="$$($(workload_metadata_context) ./scripts/workload-plan-metadata.sh fingerprint \
+			"$(TF)" "." "../.." "$${after_artifacts}")"; \
+		if [ "$${before_fingerprint}" != "$${after_fingerprint}" ]; then \
+			printf "Refusing cluster bootstrap plan: configuration or release artifacts changed while Terraform was planning.\n" >&2; \
+			exit 1; \
+		fi; \
+		./scripts/assert-workload-plan.sh \
+			"$${temp_plan}" "$(TF)" \
+			"$(WORKLOAD_TOPOLOGY_POLICY)" "$(WORKLOAD_PACKER_TEMPLATE)" \
+			"$${after_artifacts}" cluster; \
+		./scripts/assert-workload-quota.sh \
+			"$(WORKLOAD_TOPOLOGY_POLICY)" \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(GCLOUD)" \
+			"bootstrap"; \
+		$(workload_metadata_context) ./scripts/workload-plan-metadata.sh write \
+			"$${temp_plan}" "$${temp_manifest}" "$(TF)" "." "../.." \
+			"$${after_artifacts}" "$${after_fingerprint}"; \
+		mv -f -- "$${temp_manifest}" "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)"; \
+		mv -f -- "$${temp_plan}" "$(WORKLOAD_CLUSTER_PLAN)"; \
+		rm -f -- "$${before_artifacts}" "$${after_artifacts}"; \
+		"$(WORKLOAD_ROLLOUT_LEASE)" release "$(GCLOUD)" "$${lease_token}"; \
+		lease_acquired=false; \
+		rmdir "$${temp_dir}"; \
+		trap - EXIT HUP INT TERM
+	@ printf "Saved cluster-only plan and provenance are ready for review: %s and %s\n" "$(WORKLOAD_CLUSTER_PLAN)" "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)"
+
+workload-cluster-apply:
+	@ if [ "$(CONFIRM)" != "$(WORKLOAD_CLUSTER_CONFIRMATION)" ]; then \
+		printf "Refusing cluster bootstrap apply. Re-run with CONFIRM='$(WORKLOAD_CLUSTER_CONFIRMATION)'.\n"; \
+		exit 1; \
+	fi
+	@ $(MAKE) workload-context-guard
+	@ set -eu; \
+		temp_dir="$$(mktemp -d ".workload-cluster-apply.$(ENV).XXXXXX")"; \
+		before_artifacts="$${temp_dir}/artifacts-before.json"; \
+		after_artifacts="$${temp_dir}/artifacts-after.json"; \
+		apply_plan="$${temp_dir}/reviewed.plan"; \
+		apply_manifest="$${temp_dir}/reviewed.plan.manifest"; \
+		consumed_plan="$${temp_dir}/consumed.plan"; \
+		consumed_manifest="$${temp_dir}/consumed.plan.manifest"; \
+		lease_token="$${temp_dir}/lease-token.json"; \
+		lease_acquired=false; \
+		plan_moved=false; \
+		manifest_moved=false; \
+		cleanup() { \
+			status=$$?; \
+			restore_failed=false; \
+			trap - EXIT HUP INT TERM; \
+			if [ "$${plan_moved}" = true ]; then \
+				if [ ! -e "$(WORKLOAD_CLUSTER_PLAN)" ] \
+					&& mv "$${consumed_plan}" "$(WORKLOAD_CLUSTER_PLAN)"; then \
+					plan_moved=false; \
+				else \
+					printf "Could not restore consumed cluster plan; preserving private recovery directory %s.\n" "$${temp_dir}" >&2; \
+					restore_failed=true; \
+					status=1; \
+				fi; \
+			fi; \
+			if [ "$${manifest_moved}" = true ]; then \
+				if [ ! -e "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)" ] \
+					&& mv "$${consumed_manifest}" "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)"; then \
+					manifest_moved=false; \
+				else \
+					printf "Could not restore consumed cluster manifest; preserving private recovery directory %s.\n" "$${temp_dir}" >&2; \
+					restore_failed=true; \
+					status=1; \
+				fi; \
+			fi; \
+			if [ "$${lease_acquired}" = true ]; then \
+				if ! "$(WORKLOAD_ROLLOUT_LEASE)" release "$(GCLOUD)" "$${lease_token}"; then \
+					printf "Shared rollout lease release failed; inspect it before another rollout.\n" >&2; \
+					if [ "$${status}" -eq 0 ]; then status=1; fi; \
+				fi; \
+			fi; \
+			if [ "$${restore_failed}" = false ]; then \
+				rm -rf -- "$${temp_dir}"; \
+			fi; \
+			exit "$${status}"; \
+		}; \
+		trap cleanup EXIT HUP INT TERM; \
+		umask 077; \
+		holder_digest="$$( \
+			{ \
+				git -C ../.. rev-parse --verify HEAD; \
+				printf '%s\n' "$(ENV)" "$$$$" "$$(date -u +%s)"; \
+			} | shasum -a 256 | awk '{print $$1}' \
+		)"; \
+		"$(WORKLOAD_ROLLOUT_LEASE)" acquire \
+			"$(GCLOUD)" "$(TERRAFORM_STATE_BUCKET)" \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" \
+			"cluster-apply:$${holder_digest}" "$${lease_token}"; \
+		lease_acquired=true; \
+		test -f "$(WORKLOAD_CLUSTER_PLAN)" || { \
+			printf "Missing reviewed cluster plan %s. Run 'make workload-cluster-plan' first.\n" "$(WORKLOAD_CLUSTER_PLAN)" >&2; \
+			exit 1; \
+		}; \
+		test -f "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)" || { \
+			printf "Missing cluster plan provenance %s. Run 'make workload-cluster-plan' first.\n" "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)" >&2; \
+			exit 1; \
+		}; \
+		./scripts/assert-workload-artifacts.sh \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(PREFIX)" \
+			"$(WORKLOAD_IMAGE_REVISION)" "$(WORKLOAD_JOB_BINARY_BUCKET)" \
+			"$(GCLOUD)" \
+			>"$${before_artifacts}"; \
+		chmod 0600 "$${before_artifacts}"; \
+		$(workload_metadata_context) ./scripts/workload-plan-metadata.sh verify \
+			"$(WORKLOAD_CLUSTER_PLAN)" "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)" "$(TF)" "." "../.." \
+			"$${before_artifacts}"; \
+		cp "$(WORKLOAD_CLUSTER_PLAN)" "$${apply_plan}"; \
+		cp "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)" "$${apply_manifest}"; \
+		chmod 0600 "$${apply_plan}" "$${apply_manifest}"; \
+		$(workload_metadata_context) ./scripts/workload-plan-metadata.sh verify \
+			"$${apply_plan}" "$${apply_manifest}" "$(TF)" "." "../.." \
+			"$${before_artifacts}"; \
+		./scripts/assert-workload-plan.sh \
+			"$${apply_plan}" "$(TF)" \
+			"$(WORKLOAD_TOPOLOGY_POLICY)" "$(WORKLOAD_PACKER_TEMPLATE)" \
+			"$${before_artifacts}" cluster; \
+		./scripts/assert-workload-quota.sh \
+			"$(WORKLOAD_TOPOLOGY_POLICY)" \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(GCLOUD)" \
+			"bootstrap"; \
+		./scripts/assert-workload-artifacts.sh \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(PREFIX)" \
+			"$(WORKLOAD_IMAGE_REVISION)" "$(WORKLOAD_JOB_BINARY_BUCKET)" \
+			"$(GCLOUD)" \
+			>"$${after_artifacts}"; \
+		chmod 0600 "$${after_artifacts}"; \
+		$(workload_metadata_context) ./scripts/workload-plan-metadata.sh verify \
+			"$${apply_plan}" "$${apply_manifest}" "$(TF)" "." "../.." \
+			"$${after_artifacts}"; \
+		$(TF) apply -input=false "$${apply_plan}"; \
+		set +e; \
+		$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) \
+			-target=module.cluster \
+			-out="$${temp_dir}/post-apply.plan" \
+			-input=false \
+			-compact-warnings \
+			-detailed-exitcode \
+			>/dev/null; \
+		post_apply_status=$$?; \
+		set -e; \
+		if [ "$${post_apply_status}" -ne 0 ]; then \
+			printf "Post-apply cluster convergence check was not clean (Terraform exit %s).\n" \
+					"$${post_apply_status}" >&2; \
+			exit 1; \
+		fi; \
+		if ! cmp -s "$(WORKLOAD_CLUSTER_PLAN)" "$${apply_plan}" \
+			|| ! cmp -s "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)" "$${apply_manifest}"; then \
+			printf "Applied reviewed bytes, but the published cluster plan changed concurrently; preserving the replacement.\n" >&2; \
+			exit 1; \
+		fi; \
+		mv "$(WORKLOAD_CLUSTER_PLAN)" "$${consumed_plan}"; \
+		plan_moved=true; \
+		mv "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)" "$${consumed_manifest}"; \
+		manifest_moved=true; \
+		"$(WORKLOAD_ROLLOUT_LEASE)" release "$(GCLOUD)" "$${lease_token}"; \
+		lease_acquired=false; \
+		plan_moved=false; \
+		manifest_moved=false; \
+		rm -rf -- "$${temp_dir}"; \
+		trap - EXIT HUP INT TERM
+
+workload-cluster-wait:
+	@ $(MAKE) workload-context-guard
+	@ ./scripts/wait-workload-cluster.sh \
+		"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(GCP_ZONE)" \
+		"$(PREFIX)" "$(DOMAIN_NAME)" "$(GCLOUD)" \
+		"$(WORKLOAD_CLUSTER_WAIT_SECONDS)"
+
 workload-plan:
 	@ printf '%s' "$(ENV)" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$$' || (printf "Invalid environment name: %s\n" "$(ENV)"; exit 1)
 	@ $(MAKE) workload-context-guard
@@ -276,7 +529,8 @@ workload-plan:
 		rm -f -- "$(WORKLOAD_PLAN)" "$(WORKLOAD_PLAN_MANIFEST)"; \
 		./scripts/assert-workload-artifacts.sh \
 			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(PREFIX)" \
-			"$(WORKLOAD_IMAGE_REVISION)" "$(GCLOUD)" \
+			"$(WORKLOAD_IMAGE_REVISION)" "$(WORKLOAD_JOB_BINARY_BUCKET)" \
+			"$(GCLOUD)" \
 			>"$${before_artifacts}"; \
 		chmod 0600 "$${before_artifacts}"; \
 		before_fingerprint="$$($(workload_metadata_context) ./scripts/workload-plan-metadata.sh fingerprint \
@@ -288,7 +542,8 @@ workload-plan:
 		chmod 0600 "$${temp_plan}"; \
 		./scripts/assert-workload-artifacts.sh \
 			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(PREFIX)" \
-			"$(WORKLOAD_IMAGE_REVISION)" "$(GCLOUD)" \
+			"$(WORKLOAD_IMAGE_REVISION)" "$(WORKLOAD_JOB_BINARY_BUCKET)" \
+			"$(GCLOUD)" \
 			>"$${after_artifacts}"; \
 		chmod 0600 "$${after_artifacts}"; \
 		after_fingerprint="$$($(workload_metadata_context) ./scripts/workload-plan-metadata.sh fingerprint \
@@ -303,7 +558,8 @@ workload-plan:
 			"$${after_artifacts}"; \
 		./scripts/assert-workload-quota.sh \
 			"$(WORKLOAD_TOPOLOGY_POLICY)" \
-			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(GCLOUD)"; \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(GCLOUD)" \
+			"post-cluster"; \
 		$(workload_metadata_context) ./scripts/workload-plan-metadata.sh write \
 			"$${temp_plan}" "$${temp_manifest}" "$(TF)" "." "../.." \
 			"$${after_artifacts}" "$${after_fingerprint}"; \
@@ -392,7 +648,8 @@ workload-apply:
 		}; \
 		./scripts/assert-workload-artifacts.sh \
 			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(PREFIX)" \
-			"$(WORKLOAD_IMAGE_REVISION)" "$(GCLOUD)" \
+			"$(WORKLOAD_IMAGE_REVISION)" "$(WORKLOAD_JOB_BINARY_BUCKET)" \
+			"$(GCLOUD)" \
 			>"$${before_artifacts}"; \
 		chmod 0600 "$${before_artifacts}"; \
 		$(workload_metadata_context) ./scripts/workload-plan-metadata.sh verify \
@@ -410,10 +667,12 @@ workload-apply:
 			"$${before_artifacts}"; \
 		./scripts/assert-workload-quota.sh \
 			"$(WORKLOAD_TOPOLOGY_POLICY)" \
-			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(GCLOUD)"; \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(GCLOUD)" \
+			"post-cluster"; \
 		./scripts/assert-workload-artifacts.sh \
 			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(PREFIX)" \
-			"$(WORKLOAD_IMAGE_REVISION)" "$(GCLOUD)" \
+			"$(WORKLOAD_IMAGE_REVISION)" "$(WORKLOAD_JOB_BINARY_BUCKET)" \
+			"$(GCLOUD)" \
 			>"$${after_artifacts}"; \
 		chmod 0600 "$${after_artifacts}"; \
 		$(workload_metadata_context) ./scripts/workload-plan-metadata.sh verify \

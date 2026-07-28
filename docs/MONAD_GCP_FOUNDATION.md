@@ -116,6 +116,55 @@ The legacy `make plan`, `make apply`, and `make destroy` workload targets remain
 disabled. Workload creation uses only the dedicated saved-plan workflow below.
 There is deliberately no workload destroy target.
 
+## First-deploy cluster bootstrap
+
+The first workload deployment may bring up the compute and networking substrate
+before Terraform is allowed to create Nomad jobs or Cloud SQL. This is a
+deliberately narrow recovery/bootstrap phase, not a replacement for the complete
+one-workcell release:
+
+```bash
+mise exec -- make -C iac/provider-gcp workload-cluster-plan
+mise exec -- terraform -chdir=iac/provider-gcp \
+  show .tfplan.workload-cluster.dev
+mise exec -- make -C iac/provider-gcp workload-cluster-apply \
+  CONFIRM='APPLY ONE WORKCELL CLUSTER'
+mise exec -- make -C iac/provider-gcp workload-cluster-wait
+```
+
+`workload-cluster-plan` uses the exact Terraform target
+`-target=module.cluster`. The saved-plan guard rejects every managed mutation
+outside `module.cluster`, every Nomad provider resource, destructive or
+capacity-reducing changes, topology drift, and an unreviewed orchestrator
+source image. It retains the same environment, backend, toolchain, artifact,
+provenance, live-quota, and shared mutation-lease checks as the complete
+release. It does not revive the legacy `plan-without-jobs` path.
+
+The apply target consumes only the private verified copy of the reviewed plan,
+requires a separate literal confirmation, and runs a second targeted plan that
+must report clean convergence. Failed planning leaves an older reviewed pair
+untouched until the lease has been acquired; failed apply, residual drift, or
+lease-release failure preserves the plan and manifest for diagnosis.
+
+`workload-cluster-wait` is read-only and bounded to 30 minutes by default
+(`WORKLOAD_CLUSTER_WAIT_SECONDS` accepts 60–3600). It waits for the three-server,
+one-build, one-client, and one-API managed instance groups to reach their exact
+sizes and stable target versions; three Nomad backends to report healthy; the
+managed certificate and DNS to resolve to the forwarding IP; and Nomad to
+report a leader, three peers, healthy autopilot, and at least three ready
+clients. The Nomad ACL token is read from Secret Manager into the process and
+passed to curl over stdin rather than in its argument vector. A timeout names
+the exact readiness stage that remained unhealthy.
+
+After this readiness gate, the full workload plan uses `post-cluster` quota
+admission. That mode still requires every reviewed quota limit and live metric
+to be present. It does not double-count the already-created base fleet, but it
+retains the reviewed peak-minus-base operational reserve for an API rollout or
+Packer worker. The full-plan assertion enforces the corresponding zero cluster
+delta by rejecting any mutating `module.cluster.google_compute_*` action. Only
+a reviewed full plan that satisfies both checks may proceed to the Cloud SQL
+and Nomad-job release.
+
 ## One-workcell workload release
 
 Set `CORE_IMAGE_REVISION` in the ignored selected environment file to the exact
@@ -150,7 +199,10 @@ image plus both the pinned-revision and `latest` digest for `api`,
 `db-migrator`, `client-proxy`, `docker-reverse-proxy`, and
 `clickhouse-migrator`. `latest` must match the pinned revision. The canonical
 resolved identities and their digest are embedded in provenance so a moved tag
-or image family invalidates apply.
+or image family invalidates apply. Orchestrator, template-manager, and cache
+cleanup jobs fetch their `binary.<revision>` GCS aliases and exact generations,
+so a later canonical upload cannot strand an existing or rescheduled
+allocation.
 
 `workload-apply` requires the literal confirmation above. It rechecks context,
 provenance, exact plan topology, live quota/current usage, and resolved

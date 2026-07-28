@@ -1,10 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-policy_path="${1:?usage: assert-workload-quota.sh POLICY PROJECT REGION [GCLOUD_BIN]}"
-project_id="${2:?usage: assert-workload-quota.sh POLICY PROJECT REGION [GCLOUD_BIN]}"
-region="${3:?usage: assert-workload-quota.sh POLICY PROJECT REGION [GCLOUD_BIN]}"
+policy_path="${1:?usage: assert-workload-quota.sh POLICY PROJECT REGION [GCLOUD_BIN] [bootstrap|post-cluster]}"
+project_id="${2:?usage: assert-workload-quota.sh POLICY PROJECT REGION [GCLOUD_BIN] [bootstrap|post-cluster]}"
+region="${3:?usage: assert-workload-quota.sh POLICY PROJECT REGION [GCLOUD_BIN] [bootstrap|post-cluster]}"
 gcloud_bin="${4:-gcloud}"
+quota_mode="${5:-bootstrap}"
+
+case "${quota_mode}" in
+  bootstrap | post-cluster) ;;
+  *)
+    printf 'Unknown workload quota mode: %s\n' "${quota_mode}" >&2
+    exit 2
+    ;;
+esac
 
 command -v jq >/dev/null 2>&1 || {
   printf 'jq is required to inspect live workload quota.\n' >&2
@@ -121,18 +130,96 @@ for quota_name in \
 done
 
 policy_json="$(jq -ce . "${policy_path}")"
+post_cluster_required="$(
+  jq -ce '
+    . as $policy
+    | (
+        reduce (
+          $policy.expected_role_max_instances
+          | to_entries[]
+        ) as $role (
+          {
+            instances: 0,
+            global_vcpus: 0,
+            regional_cpus: 0,
+            pd_ssd_gb: 0,
+            pd_standard_gb: 0,
+            local_ssd_gb: 0,
+            regional_public_ips: 0
+          };
+          .instances += $role.value
+          | .global_vcpus += (
+              $role.value
+              * $policy.expected_role_resources[$role.key].vcpus
+            )
+          | .regional_cpus = .global_vcpus
+          | .pd_ssd_gb += (
+              $role.value
+              * $policy.expected_role_resources[$role.key].pd_ssd_gb
+            )
+          | .pd_standard_gb += (
+              $role.value
+              * $policy.expected_role_resources[$role.key].pd_standard_gb
+            )
+          | .local_ssd_gb += (
+              $role.value
+              * $policy.expected_role_resources[$role.key].local_ssd_gb
+            )
+          | .regional_public_ips += (
+              $role.value
+              * (
+                  if $policy.expected_role_resources[$role.key].regional_public_ip
+                  then 1
+                  else 0
+                  end
+                )
+              )
+        )
+      ) as $base
+    | $policy.expected_peak_usage as $peak
+    | if (
+        ($base | keys | sort) == ($peak | keys | sort)
+        and all($base[]; type == "number" and . >= 0 and floor == .)
+        and all($peak[]; type == "number" and . >= 0 and floor == .)
+      )
+      then reduce ($peak | to_entries[]) as $entry (
+        {};
+        .[$entry.key] = ($entry.value - $base[$entry.key])
+      )
+      else error("invalid workload quota policy shape")
+      end
+    | if all(.[]; type == "number" and . >= 0 and floor == .)
+      then .
+      else error("workload peak is below the deployed base fleet")
+      end
+  ' <<<"${policy_json}"
+)" || {
+  printf 'Workload topology policy cannot derive post-cluster reserve headroom.\n' >&2
+  exit 1
+}
+
 report="$(
   jq -cn \
     --arg project_id "${project_id}" \
     --arg region "${region}" \
+    --arg quota_mode "${quota_mode}" \
     --argjson live "${live_json}" \
-    --argjson expected "$(jq -c '.expected_peak_usage' <<<"${policy_json}")" \
+    --argjson bootstrap_required "$(jq -c '.expected_peak_usage' <<<"${policy_json}")" \
+    --argjson post_cluster_required "${post_cluster_required}" \
     --argjson reviewed "$(jq -c '.quota_limits' <<<"${policy_json}")" '
+      (
+        if $quota_mode == "bootstrap"
+        then $bootstrap_required
+        else $post_cluster_required
+        end
+      ) as $required
+      |
       {
         project_id: $project_id,
         region: $region,
+        quota_mode: $quota_mode,
         quotas: (
-          reduce ($expected | keys[]) as $key (
+          reduce ($required | keys[]) as $key (
             {};
             .[$key] = {
               metric_limit: (
@@ -152,7 +239,7 @@ report="$(
               effective_available: (
                 $live[$key].effective_limit - $live[$key].usage
               ),
-              required_peak: $expected[$key],
+              required_headroom: $required[$key],
               reviewed_limit: $reviewed[$key]
             }
           )
@@ -163,7 +250,7 @@ report="$(
           | to_entries[]
           | select(
               .value.effective_limit < .value.reviewed_limit
-              or .value.effective_available < .value.required_peak
+              or .value.effective_available < .value.required_headroom
             )
           | {
               quota: .key,
@@ -171,7 +258,7 @@ report="$(
               reviewed_limit: .value.reviewed_limit,
               current_usage: .value.current_usage,
               available: .value.available,
-              required_peak: .value.required_peak
+              required_headroom: .value.required_headroom
             }
         ]
     '
@@ -183,7 +270,8 @@ if [[ "$(jq '.violations | length' <<<"${report}")" -ne 0 ]]; then
   exit 1
 fi
 
-printf 'Live one-workcell quota passed for %s/%s: %s\n' \
+printf 'Live one-workcell quota passed for %s/%s in %s mode: %s\n' \
   "${project_id}" \
   "${region}" \
+  "${quota_mode}" \
   "$(jq -c '.quotas' <<<"${report}")"

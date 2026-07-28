@@ -44,6 +44,8 @@ if [[ "${1:-}" == "compute" && "${2:-}" == "project-info" ]]; then
   usage=0
   [[ "${mode}" != "low-global-limit" ]] || limit=29
   [[ "${mode}" != "low-global-headroom" ]] || usage=40
+  [[ "${mode}" != "post-cluster-saturated" ]] || usage=64
+  [[ "${mode}" != "post-cluster-reserve" ]] || usage=60
   jq -cn \
     --argjson limit "${limit}" \
     --argjson usage "${usage}" \
@@ -76,6 +78,21 @@ if [[ "${1:-}" == "compute" && "${2:-}" == "regions" ]]; then
       local_usage=100
       ;;
     low-address-headroom) address_usage=2 ;;
+    post-cluster-saturated)
+      instances_usage=32
+      regional_cpu_usage=200
+      ssd_usage=500
+      standard_usage=4096
+      local_usage=750
+      address_usage=8
+      ;;
+    post-cluster-reserve)
+      instances_usage=31
+      regional_cpu_usage=196
+      ssd_usage=490
+      standard_usage=3896
+      address_usage=7
+      ;;
   esac
   jq -cn \
     --argjson instances_limit "${instances_limit}" \
@@ -167,6 +184,59 @@ if [[ "${1:-}" == "artifacts" && "${2:-}" == "docker" ]]; then
   exit 0
 fi
 
+if [[ "${1:-}" == "storage" && "${2:-}" == "objects" && "${3:-}" == "describe" ]]; then
+  object_uri="${4:-}"
+  bucket="${object_uri#gs://}"
+  bucket="${bucket%%/*}"
+  object_name="${object_uri#gs://${bucket}/}"
+  canonical_name="${object_name%%.${FAKE_CORE_IMAGE_REVISION}}"
+
+  case "${canonical_name}" in
+    orchestrator)
+      generation=1001
+      size=129278600
+      md5_hash="PMSUl0V18Ei9Lyj4jlVgag=="
+      crc32c_hash="R/l+hQ=="
+      ;;
+    template-manager)
+      generation=1002
+      size=129278600
+      md5_hash="PMSUl0V18Ei9Lyj4jlVgag=="
+      crc32c_hash="R/l+hQ=="
+      ;;
+    clean-nfs-cache)
+      generation=1003
+      size=50557937
+      md5_hash="zLUBMUIvTYcm+aDVzj1ZFA=="
+      crc32c_hash="f4G09A=="
+      ;;
+    *)
+      printf 'unexpected fake GCS object: %s\n' "${object_uri}" >&2
+      exit 2
+      ;;
+  esac
+  if [[ "${object_name}" != "${canonical_name}" ]]; then
+    generation=$((generation + 1000))
+  fi
+  jq -cn \
+    --arg bucket "${bucket}" \
+    --arg name "${object_name}" \
+    --arg generation "${generation}" \
+    --argjson size "${size}" \
+    --arg md5_hash "${md5_hash}" \
+    --arg crc32c_hash "${crc32c_hash}" '
+      {
+        bucket: $bucket,
+        name: $name,
+        generation: $generation,
+        size: $size,
+        md5_hash: $md5_hash,
+        crc32c_hash: $crc32c_hash
+      }
+    '
+  exit 0
+fi
+
 printf 'unexpected fake gcloud command: %s\n' "$*" >&2
 exit 2
 EOF
@@ -201,14 +271,47 @@ for quota_mode in \
     "${policy}" monad-code us-east4 "${fake_gcloud}"
 done
 
+printf 'post-cluster-saturated\n' >"${fake_gcloud_mode}"
+expect_fail \
+  "bootstrap quota rejects a fully consumed fleet limit" \
+  "${script_dir}/assert-workload-quota.sh" \
+  "${policy}" monad-code us-east4 "${fake_gcloud}" bootstrap
+expect_fail \
+  "post-cluster quota preserves operational reserve at saturated limits" \
+  "${script_dir}/assert-workload-quota.sh" \
+  "${policy}" monad-code us-east4 "${fake_gcloud}" post-cluster
+
+printf 'post-cluster-reserve\n' >"${fake_gcloud_mode}"
+expect_pass \
+  "post-cluster quota admits exactly the reviewed peak-minus-base reserve" \
+  "${script_dir}/assert-workload-quota.sh" \
+  "${policy}" monad-code us-east4 "${fake_gcloud}" post-cluster
+
+for quota_mode in low-global-limit missing-regional-metric; do
+  printf '%s\n' "${quota_mode}" >"${fake_gcloud_mode}"
+  expect_fail \
+    "post-cluster quota remains fail-closed for ${quota_mode}" \
+    "${script_dir}/assert-workload-quota.sh" \
+    "${policy}" monad-code us-east4 "${fake_gcloud}" post-cluster
+done
+
+printf 'pass\n' >"${fake_gcloud_mode}"
+expect_fail \
+  "unknown quota mode" \
+  "${script_dir}/assert-workload-quota.sh" \
+  "${policy}" monad-code us-east4 "${fake_gcloud}" unknown
+
 revision="0123456789ab"
+job_binary_bucket="monad-code-fc-env-pipeline"
+export FAKE_CORE_IMAGE_REVISION="${revision}"
 printf 'pass\n' >"${fake_gcloud_mode}"
 : >"${fake_gcloud_log}"
 expect_pass \
   "orchestrator image and five revision-matched core images" \
   "${script_dir}/assert-workload-artifacts.sh" \
-  monad-code us-east4 e2b- "${revision}" "${fake_gcloud}"
-test "$(wc -l <"${fake_gcloud_log}" | tr -d ' ')" -eq 11
+  monad-code us-east4 e2b- "${revision}" "${job_binary_bucket}" \
+  "${fake_gcloud}"
+test "$(wc -l <"${fake_gcloud_log}" | tr -d ' ')" -eq 17
 for image in \
   api \
   db-migrator \
@@ -233,12 +336,13 @@ for artifact_mode in \
   expect_fail \
     "artifact fixture ${artifact_mode}" \
     "${script_dir}/assert-workload-artifacts.sh" \
-    monad-code us-east4 e2b- "${revision}" "${fake_gcloud}"
+    monad-code us-east4 e2b- "${revision}" "${job_binary_bucket}" \
+    "${fake_gcloud}"
 done
 expect_fail \
   "non-SHA image revision" \
   "${script_dir}/assert-workload-artifacts.sh" \
-  monad-code us-east4 e2b- latest "${fake_gcloud}"
+  monad-code us-east4 e2b- latest "${job_binary_bucket}" "${fake_gcloud}"
 
 fake_terraform="${test_dir}/terraform"
 terraform_version_file="${test_dir}/terraform-version"
@@ -312,6 +416,7 @@ export WORKLOAD_GCP_REGION="us-east4"
 export WORKLOAD_GCP_ZONE="us-east4-a"
 export WORKLOAD_PREFIX="e2b-"
 export WORKLOAD_CORE_IMAGE_REVISION="${revision}"
+export WORKLOAD_JOB_BINARY_BUCKET="${job_binary_bucket}"
 export WORKLOAD_STATE_BUCKET="monad-code-terraform-state"
 export WORKLOAD_STATE_PREFIX="terraform/orchestration/dev/state"
 export WORKLOAD_TOPOLOGY_POLICY="${config_root}/topology/policy.json"
@@ -319,7 +424,8 @@ export WORKLOAD_PACKER_TEMPLATE="${config_root}/nomad-cluster-disk-image/main.pk
 artifacts_file="${test_dir}/artifacts.json"
 printf 'pass\n' >"${fake_gcloud_mode}"
 "${script_dir}/assert-workload-artifacts.sh" \
-  monad-code us-east4 e2b- "${revision}" "${fake_gcloud}" \
+  monad-code us-east4 e2b- "${revision}" "${job_binary_bucket}" \
+  "${fake_gcloud}" \
   >"${artifacts_file}"
 chmod 0600 "${artifacts_file}"
 
@@ -352,6 +458,7 @@ jq -e \
     and .gcp_zone == "us-east4-a"
     and .prefix == "e2b-"
     and .core_image_revision == "0123456789ab"
+    and .job_binary_bucket == "monad-code-fc-env-pipeline"
     and .terraform_version == "1.7.5"
     and .backend == {
       type: "gcs",
@@ -368,8 +475,11 @@ jq -e \
     and (.packer_inputs_sha256 | test("^[0-9a-f]{64}$"))
     and (.release_artifacts_sha256 | test("^[0-9a-f]{64}$"))
     and .release_artifacts.core_image_revision == "0123456789ab"
+    and .release_artifacts.schema_version == 2
+    and .release_artifacts.job_binary_bucket == "monad-code-fc-env-pipeline"
     and .release_artifacts.orchestrator_image.family == "e2b-orch"
     and (.release_artifacts.core_images | length) == 5
+    and (.release_artifacts.job_binaries | length) == 3
   ' "${manifest}" >/dev/null
 expect_pass \
   "unchanged workload provenance" \
@@ -381,7 +491,8 @@ for identity_mode in different-orchestrator-image different-core-digest; do
   drifted_artifacts="${test_dir}/artifacts-${identity_mode}.json"
   printf '%s\n' "${identity_mode}" >"${fake_gcloud_mode}"
   "${script_dir}/assert-workload-artifacts.sh" \
-    monad-code us-east4 e2b- "${revision}" "${fake_gcloud}" \
+    monad-code us-east4 e2b- "${revision}" "${job_binary_bucket}" \
+    "${fake_gcloud}" \
     >"${drifted_artifacts}"
   chmod 0600 "${drifted_artifacts}"
   expect_fail \
@@ -557,9 +668,35 @@ jq \
       | select(.boot == true)
       | .source_image
     ) = $source_image
+  | .resource_changes |= map(
+      if (
+        (.address | startswith("module.cluster."))
+        and (.type | startswith("google_compute_"))
+      )
+      then .change = (
+        .change
+        | .before = .after
+        | .actions = ["no-op"]
+      )
+      else .
+      end
+    )
   ' \
   "${provider_root}/scripts/testdata/minimal-workload-plan.json" \
   >"${test_dir}/workflow-plan.json"
+jq '
+  .resource_changes |= map(
+    select(.address | startswith("module.cluster."))
+  )
+  | (
+      .planned_values.root_module
+      | recurse(.child_modules[]?)
+      | .resources?
+    ) |= map(
+      select(.address | startswith("module.cluster."))
+    )
+' "${test_dir}/workflow-plan.json" \
+  >"${test_dir}/workflow-cluster-plan.json"
 printf 'terraform fixture\n' >"${workflow_provider}/main.tf"
 printf 'provider lock\n' >"${workflow_provider}/.terraform.lock.hcl"
 printf 'api_cluster_size = 1\n' \
@@ -789,6 +926,141 @@ test "$(grep -c '^acquire ' "${workflow_lease_log}")" -eq 1
 test "$(grep -c '^release ' "${workflow_lease_log}")" -eq 1
 test -z "$(find "${workflow_provider}" -maxdepth 1 -type d -name '.workload-apply.*' -print)"
 
+workflow_cluster_plan="${workflow_provider}/.tfplan.workload-cluster.dev"
+workflow_cluster_manifest="${workflow_cluster_plan}.manifest"
+export WORKFLOW_PLAN_FIXTURE="${test_dir}/workflow-cluster-plan.json"
+export WORKFLOW_SHARED_PLAN="${workflow_cluster_plan}"
+export WORKFLOW_SHARED_MANIFEST="${workflow_cluster_manifest}"
+: >"${workflow_terraform_log}"
+: >"${workflow_lease_log}"
+printf 'stale cluster plan\n' >"${workflow_cluster_plan}"
+printf 'stale cluster manifest\n' >"${workflow_cluster_manifest}"
+chmod 0600 "${workflow_cluster_plan}" "${workflow_cluster_manifest}"
+
+printf 'lease-acquire-fail\n' >"${workflow_mode}"
+expect_fail "failed cluster-plan lease preserves the previously reviewed release" \
+  run_workflow_make workload-cluster-plan
+test "$(cat "${workflow_cluster_plan}")" = "stale cluster plan"
+test "$(cat "${workflow_cluster_manifest}")" = "stale cluster manifest"
+
+printf 'plan-fail\n' >"${workflow_mode}"
+expect_fail "failed cluster plan invalidates old plan and manifest" \
+  run_workflow_make workload-cluster-plan
+test ! -e "${workflow_cluster_plan}"
+test ! -e "${workflow_cluster_manifest}"
+
+printf 'pass\n' >"${workflow_mode}"
+expect_pass "cluster-only plan publishes private reviewed bytes" \
+  run_workflow_make workload-cluster-plan
+test -f "${workflow_cluster_plan}"
+test -f "${workflow_cluster_manifest}"
+test "$(stat -c '%a' "${workflow_cluster_plan}" 2>/dev/null || stat -f '%Lp' "${workflow_cluster_plan}")" = "600"
+test "$(stat -c '%a' "${workflow_cluster_manifest}" 2>/dev/null || stat -f '%Lp' "${workflow_cluster_manifest}")" = "600"
+test -z "$(find "${workflow_provider}" -maxdepth 1 -type d -name '.workload-cluster-plan.*' -print)"
+test "$(grep -c '^acquire ' "${workflow_lease_log}")" -eq 3
+test "$(grep -c '^release ' "${workflow_lease_log}")" -eq 2
+cluster_initial_plan_command="$(
+  grep '^plan ' "${workflow_terraform_log}" | head -1
+)"
+grep -F -- '-target=module.cluster' \
+  <<<"${cluster_initial_plan_command}" >/dev/null
+if grep -Eq -- '(^|[[:space:]])-destroy(=|[[:space:]]|$)' \
+  <<<"${cluster_initial_plan_command}"; then
+  printf 'cluster workflow fixture observed a destroy plan\n' >&2
+  exit 1
+fi
+
+expect_fail "wrong cluster apply confirmation preserves saved release" \
+  run_workflow_make workload-cluster-apply CONFIRM=wrong
+test -f "${workflow_cluster_plan}"
+test -f "${workflow_cluster_manifest}"
+
+: >"${workflow_lease_log}"
+printf 'apply-fail\n' >"${workflow_mode}"
+expect_fail "cluster Terraform apply failure preserves reviewed release" \
+  run_workflow_make \
+  workload-cluster-apply CONFIRM='APPLY ONE WORKCELL CLUSTER'
+test -f "${workflow_cluster_plan}"
+test -f "${workflow_cluster_manifest}"
+test "$(grep -c '^acquire ' "${workflow_lease_log}")" -eq 1
+test "$(grep -c '^release ' "${workflow_lease_log}")" -eq 1
+
+printf 'post-drift\n' >"${workflow_mode}"
+expect_fail "post-apply cluster drift preserves reviewed release" \
+  run_workflow_make \
+  workload-cluster-apply CONFIRM='APPLY ONE WORKCELL CLUSTER'
+test -f "${workflow_cluster_plan}"
+test -f "${workflow_cluster_manifest}"
+test "$(grep -c '^acquire ' "${workflow_lease_log}")" -eq 2
+test "$(grep -c '^release ' "${workflow_lease_log}")" -eq 2
+
+printf 'pass\n' >"${workflow_mode}"
+: >"${workflow_lease_log}"
+expect_pass "clean saved cluster-plan apply consumes release exactly once" \
+  run_workflow_make \
+  workload-cluster-apply CONFIRM='APPLY ONE WORKCELL CLUSTER'
+test ! -e "${workflow_cluster_plan}"
+test ! -e "${workflow_cluster_manifest}"
+test "$(grep -c '^acquire ' "${workflow_lease_log}")" -eq 1
+test "$(grep -c '^release ' "${workflow_lease_log}")" -eq 1
+test -z "$(find "${workflow_provider}" -maxdepth 1 -type d -name '.workload-cluster-apply.*' -print)"
+cluster_post_apply_plan_command="$(
+  grep '^plan ' "${workflow_terraform_log}" | tail -1
+)"
+grep -F -- '-target=module.cluster' \
+  <<<"${cluster_post_apply_plan_command}" >/dev/null
+grep -F -- '-detailed-exitcode' \
+  <<<"${cluster_post_apply_plan_command}" >/dev/null
+
+cluster_plan_recipe="$(
+  awk '
+    /^workload-cluster-plan:/ {capture = 1}
+    /^workload-cluster-apply:/ {capture = 0}
+    capture {print}
+  ' "${provider_root}/Makefile"
+)"
+cluster_apply_recipe="$(
+  awk '
+    /^workload-cluster-apply:/ {capture = 1}
+    /^workload-cluster-wait:/ {capture = 0}
+    capture {print}
+  ' "${provider_root}/Makefile"
+)"
+cluster_wait_recipe="$(
+  awk '
+    /^workload-cluster-wait:/ {capture = 1}
+    /^workload-plan:/ {capture = 0}
+    capture {print}
+  ' "${provider_root}/Makefile"
+)"
+grep -F 'rm -f -- "$(WORKLOAD_CLUSTER_PLAN)" "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)"' \
+  <<<"${cluster_plan_recipe}" >/dev/null
+grep -F -- '-target=module.cluster' <<<"${cluster_plan_recipe}" >/dev/null
+grep -F '"$${after_artifacts}" cluster' <<<"${cluster_plan_recipe}" >/dev/null
+grep -F '"$(WORKLOAD_ROLLOUT_LEASE)" acquire' \
+  <<<"${cluster_plan_recipe}" >/dev/null
+cluster_plan_acquire_line="$(
+  grep -nF '"$(WORKLOAD_ROLLOUT_LEASE)" acquire' \
+    <<<"${cluster_plan_recipe}" | cut -d: -f1
+)"
+cluster_plan_remove_line="$(
+  grep -nF 'rm -f -- "$(WORKLOAD_CLUSTER_PLAN)" "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)"' \
+    <<<"${cluster_plan_recipe}" | cut -d: -f1
+)"
+test "${cluster_plan_acquire_line}" -lt "${cluster_plan_remove_line}"
+grep -F '$(WORKLOAD_CLUSTER_CONFIRMATION)' \
+  <<<"${cluster_apply_recipe}" >/dev/null
+grep -F 'cp "$(WORKLOAD_CLUSTER_PLAN)" "$${apply_plan}"' \
+  <<<"${cluster_apply_recipe}" >/dev/null
+grep -F '"$${before_artifacts}" cluster' \
+  <<<"${cluster_apply_recipe}" >/dev/null
+grep -F '$(TF) apply -input=false "$${apply_plan}"' \
+  <<<"${cluster_apply_recipe}" >/dev/null
+grep -F -- '-target=module.cluster' <<<"${cluster_apply_recipe}" >/dev/null
+grep -F -- '-detailed-exitcode' <<<"${cluster_apply_recipe}" >/dev/null
+grep -F './scripts/wait-workload-cluster.sh' \
+  <<<"${cluster_wait_recipe}" >/dev/null
+
 workload_plan_recipe="$(
   awk '
     /^workload-plan:/ {capture = 1}
@@ -875,6 +1147,20 @@ test "${apply_acquire_line}" -lt "${apply_first_artifact_check_line}"
 test "${apply_move_line}" -lt "${apply_final_release_line}"
 grep -F 'override WORKLOAD_IMAGE_REVISION := $(CORE_IMAGE_REVISION)' \
   "${provider_root}/Makefile" >/dev/null
+grep -F '$(call tfvar, CORE_IMAGE_REVISION)' \
+  "${provider_root}/Makefile" >/dev/null
 grep -F 'CORE_IMAGE_REVISION=' "${repo_root}/.env.gcp.template" >/dev/null
+grep -F 'name   = "orchestrator${local.job_binary_suffix}"' \
+  "${provider_root}/nomad/main.tf" >/dev/null
+grep -F '#${local.orchestrator_checksum}' \
+  "${provider_root}/nomad/main.tf" >/dev/null
+test "$(
+  grep -c -- '--if-generation-match=0' \
+    "${repo_root}/packages/orchestrator/Makefile"
+)" -eq 3
+test "$(
+  grep -c -- "--if-none-match '\\*'" \
+    "${repo_root}/packages/orchestrator/Makefile"
+)" -eq 3
 
 printf 'Workload release gate tests passed without contacting GCP.\n'

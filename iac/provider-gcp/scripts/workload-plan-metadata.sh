@@ -19,6 +19,7 @@ Required environment:
   WORKLOAD_GCP_ZONE
   WORKLOAD_PREFIX
   WORKLOAD_CORE_IMAGE_REVISION
+  WORKLOAD_JOB_BINARY_BUCKET
   WORKLOAD_STATE_BUCKET
   WORKLOAD_STATE_PREFIX
   WORKLOAD_TOPOLOGY_POLICY
@@ -75,6 +76,7 @@ require_context() {
     WORKLOAD_GCP_ZONE \
     WORKLOAD_PREFIX \
     WORKLOAD_CORE_IMAGE_REVISION \
+    WORKLOAD_JOB_BINARY_BUCKET \
     WORKLOAD_STATE_BUCKET \
     WORKLOAD_STATE_PREFIX \
     WORKLOAD_TOPOLOGY_POLICY \
@@ -120,6 +122,9 @@ configuration_sha256() {
         -path "${config_root}/.workload-plan.*" -prune -o \
         -path "${config_root}/.workload-apply.*" -prune -o \
         -path "${config_root}/.workload-plan-check.*" -prune -o \
+        -path "${config_root}/.workload-cluster-plan.*" -prune -o \
+        -path "${config_root}/.workload-cluster-apply.*" -prune -o \
+        -path "${config_root}/.workload-cluster-plan-check.*" -prune -o \
         -type f \
         ! -name '.tfplan*' \
         ! -name '*.tfstate' \
@@ -219,16 +224,24 @@ identity_json() {
       --arg project_id "${WORKLOAD_GCP_PROJECT_ID}" \
       --arg region "${WORKLOAD_GCP_REGION}" \
       --arg repository "${WORKLOAD_PREFIX}core" \
-      --arg core_image_revision "${WORKLOAD_CORE_IMAGE_REVISION}" '
+      --arg core_image_revision "${WORKLOAD_CORE_IMAGE_REVISION}" \
+      --arg job_binary_bucket "${WORKLOAD_JOB_BINARY_BUCKET}" '
         if (
-          .schema_version == 1
+          .schema_version == 2
           and .gcp_project_id == $project_id
           and .gcp_region == $region
           and .core_repository == $repository
           and .core_image_revision == $core_image_revision
+          and .job_binary_bucket == $job_binary_bucket
           and (.orchestrator_image.self_link | type) == "string"
           and (.core_images | type) == "object"
           and (.core_images | length) == 5
+          and (.job_binaries | type) == "object"
+          and (.job_binaries | keys | sort) == [
+            "clean-nfs-cache",
+            "orchestrator",
+            "template-manager"
+          ]
         )
         then .
         else error("resolved artifact identity does not match workload context")
@@ -256,6 +269,7 @@ identity_json() {
     --arg gcp_zone "${WORKLOAD_GCP_ZONE}" \
     --arg prefix "${WORKLOAD_PREFIX}" \
     --arg core_image_revision "${WORKLOAD_CORE_IMAGE_REVISION}" \
+    --arg job_binary_bucket "${WORKLOAD_JOB_BINARY_BUCKET}" \
     --arg state_bucket "${WORKLOAD_STATE_BUCKET}" \
     --arg state_prefix "${WORKLOAD_STATE_PREFIX}" \
     '{
@@ -276,6 +290,7 @@ identity_json() {
       gcp_zone: $gcp_zone,
       prefix: $prefix,
       core_image_revision: $core_image_revision,
+      job_binary_bucket: $job_binary_bucket,
       backend: {
         type: "gcs",
         bucket: $state_bucket,

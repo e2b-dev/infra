@@ -1,14 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-plan_path="${1:?usage: assert-workload-plan.sh PLAN_PATH TERRAFORM_BIN POLICY_PATH PACKER_TEMPLATE_PATH ARTIFACTS_PATH}"
+plan_path="${1:?usage: assert-workload-plan.sh PLAN_PATH TERRAFORM_BIN POLICY_PATH PACKER_TEMPLATE_PATH ARTIFACTS_PATH [full|cluster]}"
 terraform_bin="${2:-terraform}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 policy_path="${3:-${script_dir}/../topology/minimal-workload-policy.json}"
 packer_template_path="${4:-${script_dir}/../nomad-cluster-disk-image/main.pkr.hcl}"
-artifacts_path="${5:?usage: assert-workload-plan.sh PLAN_PATH TERRAFORM_BIN POLICY_PATH PACKER_TEMPLATE_PATH ARTIFACTS_PATH}"
+artifacts_path="${5:?usage: assert-workload-plan.sh PLAN_PATH TERRAFORM_BIN POLICY_PATH PACKER_TEMPLATE_PATH ARTIFACTS_PATH [full|cluster]}"
+scope="${6:-full}"
 analysis_filter="${script_dir}/workload-plan-topology.jq"
 artifact_filter="${script_dir}/workload-plan-artifacts.jq"
+
+case "${scope}" in
+  full | cluster) ;;
+  *)
+    printf 'Unknown workload plan assertion scope: %s\n' "${scope}" >&2
+    exit 2
+    ;;
+esac
 
 command -v jq >/dev/null 2>&1 || {
   printf 'jq is required to inspect the saved workload plan.\n' >&2
@@ -44,6 +53,24 @@ command -v jq >/dev/null 2>&1 || {
 }
 
 artifacts_json="$(jq -ceS '
+  def positive_integer:
+    type == "number" and . > 0 and floor == .;
+
+  def gcs_object:
+    (keys | sort)
+      == ["bucket", "crc32c", "generation", "md5", "name", "size"]
+    and (.bucket | type) == "string"
+    and (.bucket | length) > 0
+    and (.name | type) == "string"
+    and (.name | length) > 0
+    and (.generation | type) == "string"
+    and (.generation | test("^[1-9][0-9]*$"))
+    and (.size | positive_integer)
+    and (.md5 | type) == "string"
+    and (.md5 | test("^[A-Za-z0-9+/]{22}==$"))
+    and (.crc32c | type) == "string"
+    and (.crc32c | test("^[A-Za-z0-9+/]{6}==$"));
+
   (.core_images | keys | sort) == [
     "api",
     "clickhouse-migrator",
@@ -51,12 +78,14 @@ artifacts_json="$(jq -ceS '
     "db-migrator",
     "docker-reverse-proxy"
   ]
-  and .schema_version == 1
+  and .schema_version == 2
   and (.gcp_project_id | type) == "string"
   and (.gcp_region | type) == "string"
   and (.core_repository | type) == "string"
   and (.core_image_revision | type) == "string"
   and (.core_image_revision | test("^[0-9a-f]{12,40}$"))
+  and (.job_binary_bucket | type) == "string"
+  and (.job_binary_bucket | length) > 0
   and .orchestrator_image.family == "e2b-orch"
   and .orchestrator_image.project == .gcp_project_id
   and .orchestrator_image.status == "READY"
@@ -72,6 +101,35 @@ artifacts_json="$(jq -ceS '
     and (.latest.resolved_reference | type) == "string"
     and .revision.digest == .latest.digest
     and .revision.resolved_reference == .latest.resolved_reference
+  )
+  and (.job_binaries | keys | sort) == [
+    "clean-nfs-cache",
+    "orchestrator",
+    "template-manager"
+  ]
+  and all(
+    .job_binaries
+    | to_entries[];
+    .key as $name
+    | .value.canonical as $canonical
+    | .value.revision as $revision
+    | ($canonical | gcs_object)
+    and ($revision | gcs_object)
+    and $canonical.bucket == $input.job_binary_bucket
+    and $canonical.name == $name
+    and $revision.bucket == $input.job_binary_bucket
+    and $revision.name == ($name + "." + $input.core_image_revision)
+    and $canonical.size == $revision.size
+    and $canonical.md5 == $revision.md5
+    and $canonical.crc32c == $revision.crc32c
+    and .value.nomad_source == (
+      "gcs::https://www.googleapis.com/storage/v1/"
+      + $input.job_binary_bucket
+      + "/"
+      + $revision.name
+      + "#"
+      + $revision.generation
+    )
   )
   |
   if . then $input else error("invalid resolved workload artifacts") end
@@ -259,6 +317,33 @@ jq -e '.errored != true' <<<"${plan_json}" >/dev/null || {
   exit 1
 }
 
+if [[ "${scope}" == "full" ]]; then
+  cluster_compute_mutations="$(
+    jq -c '
+      [
+        .resource_changes[]?
+        | select(.mode == "managed")
+        | select(.address | startswith("module.cluster."))
+        | select(.type | startswith("google_compute_"))
+        | select(
+            .change.actions != ["no-op"]
+            and .change.actions != ["read"]
+          )
+        | {
+            address,
+            type,
+            actions: .change.actions
+          }
+      ]
+    ' <<<"${plan_json}"
+  )"
+  if [[ "$(jq 'length' <<<"${cluster_compute_mutations}")" -ne 0 ]]; then
+    printf 'Refusing phase-two workload plan: module.cluster compute mutations must be empty.\n' >&2
+    jq -c '.[]' <<<"${cluster_compute_mutations}" >&2
+    exit 1
+  fi
+fi
+
 topology="$(
   jq -c \
     --argjson expected "${policy_json}" \
@@ -284,10 +369,17 @@ failure_fields=(
   automated_worker_server_surges
   unresolved_templates
   invalid_template_disks
-  destructive_cloud_sql_resources
-  unknown_cloud_sql_resources
-  missing_or_duplicate_cloud_sql_resources
-  invalid_cloud_sql_resources
+)
+
+if [[ "${scope}" == "full" ]]; then
+  failure_fields+=(
+    destructive_cloud_sql_resources
+    unknown_cloud_sql_resources
+    missing_or_duplicate_cloud_sql_resources
+    invalid_cloud_sql_resources
+  )
+fi
+failure_fields+=(
   destructive_managed_resources
   quota_violations
 )
@@ -324,20 +416,79 @@ for comparison in \
   fi
 done
 
+if [[ "${scope}" == "cluster" ]]; then
+  unexpected_nomad_resources="$(
+    jq -c '
+      [
+        .resource_changes[]?
+        | select(
+            (.type | startswith("nomad_"))
+            or (.address | startswith("module.nomad."))
+          )
+        | {
+            address,
+            type,
+            actions: .change.actions
+          }
+      ]
+    ' <<<"${plan_json}"
+  )"
+  if [[ "$(jq 'length' <<<"${unexpected_nomad_resources}")" -ne 0 ]]; then
+    printf 'Refusing cluster bootstrap plan: Nomad workload resources must be absent.\n' >&2
+    jq -c '.[]' <<<"${unexpected_nomad_resources}" >&2
+    exit 1
+  fi
+
+  unexpected_cluster_mutations="$(
+    jq -c '
+      [
+        .resource_changes[]?
+        | select(.mode == "managed")
+        | select(
+            .change.actions != ["no-op"]
+            and .change.actions != ["read"]
+          )
+        | select(.address | startswith("module.cluster.") | not)
+        | {
+            address,
+            type,
+            actions: .change.actions
+          }
+      ]
+    ' <<<"${plan_json}"
+  )"
+  if [[ "$(jq 'length' <<<"${unexpected_cluster_mutations}")" -ne 0 ]]; then
+    printf 'Refusing cluster bootstrap plan: mutations outside module.cluster must be empty.\n' >&2
+    jq -c '.[]' <<<"${unexpected_cluster_mutations}" >&2
+    exit 1
+  fi
+fi
+
 artifact_bindings="$(
   jq -c \
     --argjson artifacts "${artifacts_json}" \
     -f "${artifact_filter}" \
     <<<"${plan_json}"
 )"
-for field in \
-  missing_or_duplicate_orchestrator_images \
-  invalid_orchestrator_images \
-  invalid_template_source_images \
-  missing_or_duplicate_core_images \
-  invalid_core_images \
-  missing_or_duplicate_core_jobs \
-  invalid_core_jobs; do
+artifact_failure_fields=(
+  missing_or_duplicate_orchestrator_images
+  invalid_orchestrator_images
+  invalid_template_source_images
+)
+if [[ "${scope}" == "full" ]]; then
+  artifact_failure_fields+=(
+    missing_or_duplicate_core_images
+    invalid_core_images
+    missing_or_duplicate_core_jobs
+    invalid_core_jobs
+    missing_or_duplicate_job_binary_objects
+    invalid_job_binary_objects
+    missing_or_duplicate_job_binary_jobs
+    invalid_job_binary_jobs
+  )
+fi
+
+for field in "${artifact_failure_fields[@]}"; do
   if [[ "$(jq ".${field} | length" <<<"${artifact_bindings}")" -ne 0 ]]; then
     printf 'Refusing workload plan: %s must be empty.\n' "${field}" >&2
     jq -c ".${field}[]" <<<"${artifact_bindings}" >&2
@@ -355,3 +506,6 @@ printf 'Workload plan topology passed: roles=%s surge=%s unavailable=%s base=%s 
   "$(jq -c '.peak_usage' <<<"${topology}")" \
   "$(jq -c '.quota_limits' <<<"${policy_json}")"
 printf 'The API rollout and Packer reserve are mutually exclusive; verify live quotas immediately before apply.\n'
+if [[ "${scope}" == "cluster" ]]; then
+  printf 'Cluster bootstrap scope passed: only module.cluster may mutate and no Nomad workload resources are present.\n'
+fi

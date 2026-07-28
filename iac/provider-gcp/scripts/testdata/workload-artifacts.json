@@ -1,9 +1,10 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "gcp_project_id": "monad-code",
   "gcp_region": "us-east4",
   "core_repository": "e2b-core",
   "core_image_revision": "0123456789ab",
+  "job_binary_bucket": "monad-code-fc-env-pipeline",
   "orchestrator_image": {
     "family": "e2b-orch",
     "project": "monad-code",
@@ -72,6 +73,65 @@
         "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "resolved_reference": "us-east4-docker.pkg.dev/monad-code/e2b-core/clickhouse-migrator@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       }
+    }
+  },
+  "job_binaries": {
+    "orchestrator": {
+      "canonical": {
+        "bucket": "monad-code-fc-env-pipeline",
+        "name": "orchestrator",
+        "generation": "1001",
+        "size": 129278600,
+        "md5": "PMSUl0V18Ei9Lyj4jlVgag==",
+        "crc32c": "R/l+hQ=="
+      },
+      "revision": {
+        "bucket": "monad-code-fc-env-pipeline",
+        "name": "orchestrator.0123456789ab",
+        "generation": "2001",
+        "size": 129278600,
+        "md5": "PMSUl0V18Ei9Lyj4jlVgag==",
+        "crc32c": "R/l+hQ=="
+      },
+      "nomad_source": "gcs::https://www.googleapis.com/storage/v1/monad-code-fc-env-pipeline/orchestrator.0123456789ab#2001"
+    },
+    "template-manager": {
+      "canonical": {
+        "bucket": "monad-code-fc-env-pipeline",
+        "name": "template-manager",
+        "generation": "1002",
+        "size": 129278600,
+        "md5": "PMSUl0V18Ei9Lyj4jlVgag==",
+        "crc32c": "R/l+hQ=="
+      },
+      "revision": {
+        "bucket": "monad-code-fc-env-pipeline",
+        "name": "template-manager.0123456789ab",
+        "generation": "2002",
+        "size": 129278600,
+        "md5": "PMSUl0V18Ei9Lyj4jlVgag==",
+        "crc32c": "R/l+hQ=="
+      },
+      "nomad_source": "gcs::https://www.googleapis.com/storage/v1/monad-code-fc-env-pipeline/template-manager.0123456789ab#2002"
+    },
+    "clean-nfs-cache": {
+      "canonical": {
+        "bucket": "monad-code-fc-env-pipeline",
+        "name": "clean-nfs-cache",
+        "generation": "1003",
+        "size": 50557937,
+        "md5": "zLUBMUIvTYcm+aDVzj1ZFA==",
+        "crc32c": "f4G09A=="
+      },
+      "revision": {
+        "bucket": "monad-code-fc-env-pipeline",
+        "name": "clean-nfs-cache.0123456789ab",
+        "generation": "2003",
+        "size": 50557937,
+        "md5": "zLUBMUIvTYcm+aDVzj1ZFA==",
+        "crc32c": "f4G09A=="
+      },
+      "nomad_source": "gcs::https://www.googleapis.com/storage/v1/monad-code-fc-env-pipeline/clean-nfs-cache.0123456789ab#2003"
     }
   }
 }
