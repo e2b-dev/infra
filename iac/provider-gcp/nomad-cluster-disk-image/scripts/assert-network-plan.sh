@@ -41,6 +41,9 @@ if ! jq -e \
 
   # The Google provider refreshes a few unset list fields from null to [] after
   # creation. Admit only those byte-for-byte-equivalent normalizations.
+  def has_exact_path($path):
+    any(paths; . == $path);
+
   def exact_null_to_empty_normalization($paths):
     (.change.before // null) as $before
     | (.change.after // null) as $after
@@ -49,7 +52,9 @@ if ! jq -e \
     and (
       [
         $paths[] as $path
-        | ($before | getpath($path)) == null
+        | ($before | has_exact_path($path))
+          and ($after | has_exact_path($path))
+          and ($before | getpath($path)) == null
           and ($after | getpath($path)) == []
       ]
       | all

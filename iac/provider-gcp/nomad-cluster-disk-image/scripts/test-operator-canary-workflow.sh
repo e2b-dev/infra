@@ -174,6 +174,24 @@ jq '
 ' "${base_plan}" >"${benign_refresh_plan}"
 assert_plan "${benign_refresh_plan}"
 
+empty_refresh_parent_plan="${temp_dir}/empty-refresh-parent.json"
+jq '
+  .resource_drift[1].change.before.log_config = []
+' "${benign_refresh_plan}" >"${empty_refresh_parent_plan}"
+if assert_plan "${empty_refresh_parent_plan}" >/dev/null 2>&1; then
+  printf 'Empty refresh parent unexpectedly passed.\n' >&2
+  exit 1
+fi
+
+missing_refresh_parent_plan="${temp_dir}/missing-refresh-parent.json"
+jq '
+  del(.resource_drift[1].change.before.log_config)
+' "${benign_refresh_plan}" >"${missing_refresh_parent_plan}"
+if assert_plan "${missing_refresh_parent_plan}" >/dev/null 2>&1; then
+  printf 'Missing refresh parent unexpectedly passed.\n' >&2
+  exit 1
+fi
+
 assert_rejected \
   '(.resource_changes[0].change.actions) = ["delete"]' \
   destructive
