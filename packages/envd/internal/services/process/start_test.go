@@ -40,7 +40,7 @@ func newTestService(t *testing.T, middleware ...func(http.Handler) http.Handler)
 		EnvVars: utils.NewEnvVars(),
 		User:    u.Username,
 		Workdir: &cwd,
-	}, cgroups.NewNoopManager())
+	}, cgroups.NewWorkloadFreezer(cgroups.NewNoopManager()))
 
 	mux := http.NewServeMux()
 	path, handler := spec.NewProcessHandler(svc)
