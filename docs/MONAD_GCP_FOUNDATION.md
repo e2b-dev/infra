@@ -203,7 +203,14 @@ changes, public database IPv4, plaintext-capable SSL modes, missing backup/PITR
 or deletion protection, and drift from the reviewed shared-core tier and disk
 bounds.
 
-The base fleet is six VMs and 26 vCPUs. Two transient scenarios are reviewed:
+The base fleet is six VMs and 26 vCPUs. Its build and client workers each use a
+100 GB SSD boot disk with an explicit 32 GB swapfile, leaving 68 GB for the
+runtime image, Docker, Nomad, and logs. The worker module retains a 100 GB swap
+default for configurations that omit the new setting, and refuses any
+configuration that leaves less than 20 GB outside swap. Each worker separately
+retains one fixed 375 GB local SSD for sandbox and snapshot cache data.
+
+Two transient scenarios are reviewed:
 
 - an API rollout adds one `e2-standard-4` VM and 200 GB standard PD;
 - a Packer image build adds one `n1-standard-4` VM, 10 GB SSD PD, and one
@@ -213,7 +220,7 @@ Those scenarios are mutually exclusive. Never run Packer while any MIG rollout
 is active. Adding both at once would require eight VMs and 34 vCPUs, exceeding
 the reviewed 32-vCPU limit. The guard takes the maximum usage across the two
 serialized scenarios, yielding seven VMs, 30 total regional/shared-pool vCPUs,
-470 GB SSD PD, 400 GB standard PD, 750 GB local SSD, and seven regional public
+270 GB SSD PD, 400 GB standard PD, 750 GB local SSD, and seven regional public
 IPs.
 
 The reviewed admission floors are 24 instances, 32 global vCPUs, 32 regional

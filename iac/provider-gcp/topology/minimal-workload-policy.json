@@ -35,7 +35,7 @@
     "build": {
       "machine_type": "n1-standard-8",
       "vcpus": 8,
-      "pd_ssd_gb": 200,
+      "pd_ssd_gb": 100,
       "pd_standard_gb": 0,
       "local_ssd_gb": 375,
       "regional_public_ip": true
@@ -51,7 +51,7 @@
     "client": {
       "machine_type": "n1-standard-8",
       "vcpus": 8,
-      "pd_ssd_gb": 200,
+      "pd_ssd_gb": 100,
       "pd_standard_gb": 0,
       "local_ssd_gb": 375,
       "regional_public_ip": true
@@ -88,7 +88,7 @@
     "instances": 7,
     "global_vcpus": 30,
     "regional_cpus": 30,
-    "pd_ssd_gb": 470,
+    "pd_ssd_gb": 270,
     "pd_standard_gb": 400,
     "local_ssd_gb": 750,
     "regional_public_ips": 7

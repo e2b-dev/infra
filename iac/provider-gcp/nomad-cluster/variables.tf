@@ -127,8 +127,9 @@ variable "client_clusters_config" {
       min_cpu_platform = string
     })
     boot_disk = object({
-      disk_type = string
-      size_gb   = number
+      disk_type    = string
+      size_gb      = number
+      swap_size_gb = optional(number, 100)
     })
     cache_disks = object({
       disk_type = string
@@ -160,8 +161,9 @@ variable "build_clusters_config" {
       min_cpu_platform = string
     })
     boot_disk = object({
-      disk_type = string
-      size_gb   = number
+      disk_type    = string
+      size_gb      = number
+      swap_size_gb = optional(number, 100)
     })
     cache_disks = object({
       disk_type = string

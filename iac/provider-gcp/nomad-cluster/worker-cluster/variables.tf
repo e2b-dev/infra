@@ -25,9 +25,19 @@ variable "min_cpu_platform" {
 
 variable "boot_disk" {
   type = object({
-    disk_type = string
-    size_gb   = number
+    disk_type    = string
+    size_gb      = number
+    swap_size_gb = optional(number, 100)
   })
+
+  validation {
+    condition = (
+      var.boot_disk.swap_size_gb >= 1
+      && floor(var.boot_disk.swap_size_gb) == var.boot_disk.swap_size_gb
+      && var.boot_disk.size_gb >= var.boot_disk.swap_size_gb + 20
+    )
+    error_message = "Swap size must be a positive whole number and leave at least 20 GB of boot-disk space for the worker image and runtime data."
+  }
 }
 
 variable "network_interface_type" {

@@ -37,6 +37,10 @@ jobs:
         uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
         with:
           terraform_version: ${{ steps.terraform-version.outputs.version }}
+          # The rendered startup test pipes an expression to `terraform console`.
+          # setup-terraform's output-capturing wrapper does not forward that
+          # interactive stdin reliably on hosted Linux runners.
+          terraform_wrapper: false
 
       - name: Install pinned Packer
         shell: bash

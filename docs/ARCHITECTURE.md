@@ -367,7 +367,9 @@ flowchart TB
   autoscaler plugin scales the job with the node pool.
 - The quota-constrained **dev operator canary** gives server and worker regional MIGs zero surge
   and one unavailable instance, so they replace in place. The API zonal MIG retains one surge
-  instance. Non-dev keeps the upstream rollout policies. Zero surge does not drain workloads:
+  instance. Its build and sandbox workers each use a 100 GB SSD boot disk with 32 GB of swap and
+  one fixed 375 GB local SSD for sandbox and snapshot caches. Non-dev keeps the upstream rollout
+  policies. Zero surge does not drain workloads:
   before replacing a worker template, the operator must pause/snapshot active sandboxes, verify
   durable uploads, stop placement, drain Nomad allocations, and verify MIG stability. Automated
   drain orchestration is not implemented, and Packer image builds must not overlap a rollout.

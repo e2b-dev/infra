@@ -25,6 +25,7 @@ locals {
     BASE_HUGEPAGES_PERCENTAGE         = var.base_hugepages_percentage
     CACHE_DISK_COUNT                  = var.cache_disks.count
     LOCAL_SSD                         = local.has_local_ssd ? "true" : "false"
+    SWAP_SIZE_GB                      = var.boot_disk.swap_size_gb
     SET_ORCHESTRATOR_VERSION_METADATA = var.set_orchestrator_version_metadata ? "true" : "false"
     NODE_LABELS                       = join(",", var.node_labels)
     PERSISTENT_VOLUME_TYPES           = var.persistent_volume_types

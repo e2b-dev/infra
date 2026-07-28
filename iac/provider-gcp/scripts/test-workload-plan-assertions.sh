@@ -100,7 +100,7 @@ expect_success() {
   grep -F '"global_vcpus":30' "${output_path}" >/dev/null
   grep -F '"regional_cpus":30' "${output_path}" >/dev/null
   grep -F '"instances":7' "${output_path}" >/dev/null
-  grep -F '"pd_ssd_gb":470' "${output_path}" >/dev/null
+  grep -F '"pd_ssd_gb":270' "${output_path}" >/dev/null
   grep -F '"pd_standard_gb":400' "${output_path}" >/dev/null
   grep -F '"local_ssd_gb":750' "${output_path}" >/dev/null
   grep -F '"regional_public_ips":7' "${output_path}" >/dev/null
@@ -319,7 +319,7 @@ jq '
     | .change.after.disk[]
     | select(.disk_type == "pd-ssd")
     | .disk_size_gb
-  ) = 210
+  ) = 110
 ' "${fixture}" >"${test_dir}/ssd-capacity-drift.json"
 expect_failure \
   "ssd-capacity-drift" \

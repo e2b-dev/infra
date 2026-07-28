@@ -145,7 +145,7 @@ WORKLOAD_TOPOLOGY_POLICY="$(WORKLOAD_TOPOLOGY_POLICY)" \
 WORKLOAD_PACKER_TEMPLATE="$(WORKLOAD_PACKER_TEMPLATE)"
 endef
 
-.PHONY: workload-plan-check workload-plan-assertions-test workload-release-test packer-reserve-check
+.PHONY: workload-plan-check workload-plan-assertions-test workload-release-test packer-reserve-check worker-startup-render-test
 workload-plan-check:
 	@ test -f "$(WORKLOAD_PLAN_MANIFEST)" || (printf "Missing workload plan provenance %s.\n" "$(WORKLOAD_PLAN_MANIFEST)"; exit 1)
 	@ set -eu; \
@@ -164,10 +164,14 @@ workload-plan-assertions-test:
 	@ ./scripts/test-legacy-workload-mutation-disabled.sh
 	@ ./scripts/test-rollout-mutation-lease.sh
 	@ ./scripts/test-workload-release.sh
+	@ $(MAKE) worker-startup-render-test
 
 workload-release-test:
 	@ ./scripts/test-rollout-mutation-lease.sh
 	@ ./scripts/test-workload-release.sh
+
+worker-startup-render-test:
+	@ ./scripts/test-worker-startup-render.sh "$(TF)"
 
 packer-reserve-check:
 	@ ./scripts/assert-packer-reserve.sh "$(WORKLOAD_TOPOLOGY_POLICY)" "$(WORKLOAD_PACKER_TEMPLATE)"

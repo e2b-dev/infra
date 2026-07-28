@@ -69,15 +69,47 @@ mkdir -p /orchestrator/sandbox
 mkdir -p /orchestrator/template
 mkdir -p /orchestrator/build
 
-# Add swapfile
-SWAPFILE="/swapfile"
-fallocate -l 100G $SWAPFILE
-chmod 600 $SWAPFILE
-mkswap $SWAPFILE
-swapon $SWAPFILE
+# Add the boot-disk swapfile. Refuse to resize an active swapfile in place:
+# worker replacement is the safe migration path when the configured size changes.
+readonly SWAPFILE="/swapfile"
+readonly SWAP_SIZE_GB=${SWAP_SIZE_GB}
+readonly SWAP_SIZE_BYTES=$((SWAP_SIZE_GB * 1024 * 1024 * 1024))
 
-# Make swapfile persistent
-echo "$SWAPFILE none swap sw 0 0" | tee -a /etc/fstab
+if swapon --show=NAME --noheadings --raw \
+  | awk -v swapfile="$SWAPFILE" \
+    '$1 == swapfile { found = 1 } END { exit !found }'; then
+  active_swap_size_bytes="$(stat --format=%s "$SWAPFILE")"
+  if [[ "$active_swap_size_bytes" -ne "$SWAP_SIZE_BYTES" ]]; then
+    echo "active swapfile size $${active_swap_size_bytes} does not match configured size $${SWAP_SIZE_BYTES}" >&2
+    exit 1
+  fi
+else
+  if [[ -L "$SWAPFILE" || ( -e "$SWAPFILE" && ! -f "$SWAPFILE" ) ]]; then
+    echo "$SWAPFILE exists but is not a regular file" >&2
+    exit 1
+  fi
+
+  current_swap_size_bytes=0
+  if [[ -f "$SWAPFILE" ]]; then
+    current_swap_size_bytes="$(stat --format=%s "$SWAPFILE")"
+  fi
+
+  if [[ "$current_swap_size_bytes" -ne "$SWAP_SIZE_BYTES" ]]; then
+    truncate --size 0 "$SWAPFILE"
+    fallocate --length "$${SWAP_SIZE_GB}G" "$SWAPFILE"
+  fi
+
+  chmod 600 "$SWAPFILE"
+  mkswap "$SWAPFILE"
+  swapon "$SWAPFILE"
+fi
+
+# Make the swapfile persistent without duplicating the entry on startup reruns.
+if ! awk -v swapfile="$SWAPFILE" \
+  '$1 == swapfile && $3 == "swap" { found = 1 } END { exit !found }' \
+  /etc/fstab; then
+  echo "$SWAPFILE none swap sw 0 0" | tee -a /etc/fstab
+fi
 
 # Set swap settings
 sysctl vm.swappiness=10

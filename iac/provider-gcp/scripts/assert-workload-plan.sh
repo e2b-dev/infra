@@ -96,7 +96,7 @@ reviewed_peak_usage="$(
     instances: 7,
     global_vcpus: 30,
     regional_cpus: 30,
-    pd_ssd_gb: 470,
+    pd_ssd_gb: 270,
     pd_standard_gb: 400,
     local_ssd_gb: 750,
     regional_public_ips: 7

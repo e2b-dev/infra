@@ -554,8 +554,9 @@ variable "client_clusters_config" {
     }))
 
     boot_disk = object({
-      disk_type = string
-      size_gb   = number
+      disk_type    = string
+      size_gb      = number
+      swap_size_gb = optional(number, 100)
     })
 
     cache_disks = object({
@@ -585,7 +586,8 @@ Format: [
       },
       "boot_disk": {
           "disk_type": "pd-ssd",  // Boot disk type
-          "size_gb": 100  // Boot disk size in GB
+          "size_gb": 100,  // Boot disk size in GB
+          "swap_size_gb": 32  // Swap file size in GB; defaults to 100 when omitted
       },
       "cache_disks": {
           "disk_type": "local-ssd",  // Cache disk type
@@ -614,8 +616,9 @@ variable "build_clusters_config" {
     }))
 
     boot_disk = object({
-      disk_type = string
-      size_gb   = number
+      disk_type    = string
+      size_gb      = number
+      swap_size_gb = optional(number, 100)
     })
 
     cache_disks = object({
@@ -645,7 +648,8 @@ Format:
     },
     "boot_disk": {
         "disk_type": "pd-ssd",  // Boot disk type
-        "size_gb": 100  // Boot disk size in GB
+        "size_gb": 100,  // Boot disk size in GB
+        "swap_size_gb": 32  // Swap file size in GB; defaults to 100 when omitted
     },
     "cache_disks": {
         "disk_type": "local-ssd",  // Cache disk type
