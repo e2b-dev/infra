@@ -44,6 +44,22 @@ const (
 	// A non-zero rate means lost snapshots.
 	OrchestratorSnapshotUploadFailedCounterName CounterType = "orchestrator.snapshot.upload.failed"
 
+	// OrchestratorEnvdUpgradeAttempts counts resume-time envd live-upgrade
+	// attempts, by result (success|delivery_failed|not_ready|panic) and
+	// from_version/to_version. success/total is the rollout success rate;
+	// attempts/resumes is the fire rate.
+	OrchestratorEnvdUpgradeAttempts CounterType = "orchestrator.envd.upgrade.attempts"
+	// OrchestratorEnvdUpgradeGated counts resumes the envd-upgrade-target flag
+	// targeted but the min-version gate skipped (reason=old_envd) — a silent
+	// no-op worth watching during a ramp.
+	OrchestratorEnvdUpgradeGated CounterType = "orchestrator.envd.upgrade.gated"
+	// OrchestratorEnvdUpgradeHandover counts live-upgrade handover items by item
+	// (proc|retained|watcher) and result (ok|failed), reported back by the new
+	// envd on /init. failed/(ok+failed) is the handover error rate — the
+	// fleet-visible signal (otherwise only logged in-guest) that the new envd
+	// dropped or degraded something it re-adopted across the swap.
+	OrchestratorEnvdUpgradeHandover CounterType = "orchestrator.envd.upgrade.handover"
+
 	// PauseResumePrefetchHarvestAttempts counts pause-resume prefetch harvest
 	// attempts, by result (success|resume_failed|collect_failed|skipped). The
 	// throwaway is absent from Prometheus otherwise (registration-skip), so this
@@ -109,6 +125,11 @@ const (
 	PauseDurationHistogramName            HistogramType = "orchestrator.sandbox.pause.duration"
 	SnapshotProcessMemoryDurationName     HistogramType = "orchestrator.sandbox.snapshot.process_memory.duration"
 	SnapshotProcessRootfsDurationName     HistogramType = "orchestrator.sandbox.snapshot.process_rootfs.duration"
+
+	// OrchestratorEnvdUpgradeDurationName is the wall-time of a resume-time envd
+	// live-upgrade (delivery + trigger + WaitForEnvd) = overhead added to the
+	// resume. Labeled by result.
+	OrchestratorEnvdUpgradeDurationName HistogramType = "orchestrator.envd.upgrade.duration"
 
 	// Pre-pause envd heap collapse round-trip duration (the pause-path cost of
 	// POST /collapse: network plus envd's madvise work), recorded once per pause
@@ -237,6 +258,9 @@ var counterDesc = map[CounterType]string{
 	EnvdCollapseChunks:                          "2 MiB chunks the pre-pause envd heap collapse attempted, by result",
 	OrchestratorSandboxKilledCounterName:        "Number of sandboxes killed, labeled by kill reason",
 	OrchestratorSnapshotUploadFailedCounterName: "Number of pause-snapshot uploads that never landed durably",
+	OrchestratorEnvdUpgradeAttempts:             "Resume-time envd live-upgrade attempts, by result and from/to version",
+	OrchestratorEnvdUpgradeGated:                "Resumes the envd-upgrade-target flag targeted but the min-version gate skipped",
+	OrchestratorEnvdUpgradeHandover:             "Live-upgrade handover items by item (proc|retained|watcher) and result (ok|failed)",
 	PauseResumePrefetchHarvestAttempts:          "Pause-resume prefetch harvest attempts, by result",
 	TCPFirewallConnectionsTotal:                 "Total number of TCP firewall connections processed",
 	TCPFirewallErrorsTotal:                      "Total number of TCP firewall errors",
@@ -272,6 +296,9 @@ var counterUnits = map[CounterType]string{
 	EnvdCollapseChunks:                          "{chunk}",
 	OrchestratorSandboxKilledCounterName:        "{sandbox}",
 	OrchestratorSnapshotUploadFailedCounterName: "{snapshot}",
+	OrchestratorEnvdUpgradeAttempts:             "{attempt}",
+	OrchestratorEnvdUpgradeGated:                "{sandbox}",
+	OrchestratorEnvdUpgradeHandover:             "{item}",
 	PauseResumePrefetchHarvestAttempts:          "{attempt}",
 	TCPFirewallConnectionsTotal:                 "{connection}",
 	TCPFirewallErrorsTotal:                      "{error}",
@@ -451,6 +478,7 @@ var histogramDesc = map[HistogramType]string{
 	BuildStepDurationHistogramName:        "Time taken to build each step of a template",
 	BuildRootfsSizeHistogramName:          "Size of the built template rootfs in bytes",
 	OrchestratorSandboxCreateDurationName: "Time taken to create a sandbox",
+	OrchestratorEnvdUpgradeDurationName:   "Wall-time of a resume-time envd upgrade (delivery + trigger + WaitForEnvd)",
 	WaitForEnvdDurationHistogramName:      "Time taken for Envd to initialize successfully",
 	EnvdCollapseDurationHistogramName:     "Time taken for the pre-pause envd heap collapse round-trip",
 	GuestSyncDurationHistogramName:        "Time taken for the mandatory pre-pause guest sync (filesystem-only pause)",
@@ -504,6 +532,7 @@ var histogramUnits = map[HistogramType]string{
 	BuildStepDurationHistogramName:                "ms",
 	BuildRootfsSizeHistogramName:                  "{By}",
 	OrchestratorSandboxCreateDurationName:         "ms",
+	OrchestratorEnvdUpgradeDurationName:           "ms",
 	WaitForEnvdDurationHistogramName:              "ms",
 	EnvdCollapseDurationHistogramName:             "ms",
 	GuestSyncDurationHistogramName:                "ms",

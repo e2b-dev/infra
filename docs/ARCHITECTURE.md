@@ -174,9 +174,18 @@ The agent inside every VM (started by systemd very early in boot), port 49983, c
   stdout/stderr, stdin, signals, PTYs — this is what SDKs use to "run code".
 - **Filesystem service** (`spec/filesystem/filesystem.proto`): stat/list/make/move/remove/watch.
 - **REST**: `/health`, `/metrics`, `/files` upload/download, `/init` (orchestrator pushes env
-  vars, access token, metadata after boot/resume), freeze/thaw hooks used during pause.
+  vars, access token, metadata after boot/resume), `/upgrade` (live self-upgrade, below),
+  freeze/thaw hooks used during pause.
 - **Auth**: `X-Access-Token` header checked against a token delivered via Firecracker MMDS;
   signed URLs for file endpoints.
+- **Live upgrade** (`internal/services/process/upgrade.go`): an authenticated `POST /upgrade` lets
+  the orchestrator swap envd inside a *running* sandbox at resume. It streams the new binary in the
+  request body and envd `syscall.Exec`s into it **with the same PID**, carrying the workload's
+  stdio/PTY fds, process table, recently-retained exit codes and filesystem watchers forward via a
+  tmpfs handover blob. The workload cgroups stay frozen until the post-upgrade `/init` restores the
+  access token (so no re-adopted process runs unauthenticated), and the handover outcome
+  (procs/watchers re-adopted, plus any failures) rides back on that `/init`'s `X-Envd-Handover`
+  header for fleet visibility.
 - Scans guest ports and forwards them so any port a user process opens becomes reachable through
   sandbox URLs. **`pkg/version.go` must be bumped on every behavioral change** — the API and the
   orchestrator gate features on the envd version recorded in each template build.
@@ -290,6 +299,12 @@ sequenceDiagram
 - **Resume**: same path as creation, but placement prefers the **origin node** — if the snapshot
   is still in its local cache, resume avoids any object-storage reads. `Checkpoint` is a
   pause+resume in place used to persist state while keeping the sandbox running.
+- **Envd live-upgrade on resume**: the orchestrator can upgrade the sandbox's envd to a newer
+  node-local build during resume (gated by the `envd-upgrade-target` flag in
+  `packages/shared/pkg/featureflags`), via envd's `POST /upgrade` (see the envd section). It is
+  best-effort — a delivery failure before the `exec` leaves the old envd serving — except an
+  unrecoverable post-`exec` failure (the new envd never re-initializes), which fails the resume
+  rather than return a permanently unusable sandbox.
 - Auto-pause/auto-resume make sandboxes effectively serverless: idle sandboxes pause, traffic
   resumes them (see traffic flow above).
 

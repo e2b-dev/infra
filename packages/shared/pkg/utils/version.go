@@ -27,6 +27,14 @@ const MinEnvdVersionForHeapCollapse = "0.6.5"
 // filesystem-only pause. Older envds fall back to a plain guest sync.
 const MinEnvdVersionForFsFreeze = "0.6.6"
 
+// MinEnvdVersionForUpgrade is the first envd that both exposes the live-upgrade
+// POST /upgrade endpoint and writes the protobuf handover blob the incoming envd
+// decodes. The resume-time auto-upgrade trigger delivers to the *running* (old)
+// envd, which serializes the handover, so anything older either lacks /upgrade
+// or writes the pre-proto (JSON) format the new envd can't read — both must be
+// skipped.
+const MinEnvdVersionForUpgrade = "0.6.12"
+
 func sanitizeVersion(version string) string {
 	if len(version) > 0 && version[0] != 'v' {
 		version = "v" + version
