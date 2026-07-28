@@ -376,7 +376,7 @@ module "k8s_apps" {
   environment                                            = var.environment
   api_secret                                             = random_password.api_secret.result
   custom_envs_repository_name                            = google_artifact_registry_repository.custom_environments_repository.name
-  postgres_connection_string_secret_name                 = module.init.postgres_connection_string_secret_name
+  postgres_connection_string_secret_version              = google_secret_manager_secret_version.postgres_connection_string
   postgres_read_replica_connection_string_secret_version = google_secret_manager_secret_version.postgres_read_replica_connection_string
   redis_cluster_url_secret_version                       = module.init.redis_cluster_url_secret_version
   redis_tls_ca_base64_secret_version                     = module.init.redis_tls_ca_base64_secret_version
@@ -427,7 +427,7 @@ module "nomad" {
   api_db_migrator_env_vars                               = local.api_db_migrator_env_vars
   environment                                            = var.environment
   custom_envs_repository_name                            = google_artifact_registry_repository.custom_environments_repository.name
-  postgres_connection_string_secret_name                 = module.init.postgres_connection_string_secret_name
+  postgres_connection_string_secret_version              = google_secret_manager_secret_version.postgres_connection_string
   postgres_read_replica_connection_string_secret_version = google_secret_manager_secret_version.postgres_read_replica_connection_string
 
   # Click Proxy

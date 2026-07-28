@@ -14,7 +14,8 @@ locals {
 
 # API
 data "google_secret_manager_secret_version" "postgres_connection_string" {
-  secret = var.postgres_connection_string_secret_name
+  secret  = var.postgres_connection_string_secret_version.secret
+  version = var.postgres_connection_string_secret_version.version
 }
 
 data "google_secret_manager_secret_version" "postgres_read_replica_connection_string" {

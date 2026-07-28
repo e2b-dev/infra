@@ -702,23 +702,27 @@ variable "loki_boot_disk_type" {
 }
 
 variable "db_max_open_connections" {
-  type    = number
-  default = 40
+  description = "Primary API database pool ceiling; the operator canary defaults to 6."
+  type        = number
+  default     = 6
 }
 
 variable "db_min_idle_connections" {
-  type    = number
-  default = 5
+  description = "Primary API idle database connections; the operator canary defaults to 1."
+  type        = number
+  default     = 1
 }
 
 variable "auth_db_max_open_connections" {
-  type    = number
-  default = 20
+  description = "Auth database pool ceiling; the operator canary defaults to 3."
+  type        = number
+  default     = 3
 }
 
 variable "auth_db_min_idle_connections" {
-  type    = number
-  default = 5
+  description = "Auth idle database connections; the operator canary defaults to 1."
+  type        = number
+  default     = 1
 }
 
 variable "loki_use_v13_schema_from" {

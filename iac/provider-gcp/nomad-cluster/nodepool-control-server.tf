@@ -61,10 +61,15 @@ resource "google_compute_region_instance_group_manager" "server_pool" {
     // Note: redistributed instances will pick up the current instance template, which may apply pending template
     // changes as a side effect of zone rebalancing. This is an acceptable trade-off for server quorum safety.
     instance_redistribution_type = "PROACTIVE"
-    max_unavailable_fixed        = 0
-
-    // The number has to be a multiple of the number of zones in the region
-    max_surge_fixed = length(data.google_compute_zones.region_zones.names)
+    // The quota-constrained dev canary replaces exactly one server at a time:
+    // two servers remain available for Raft quorum and no surge VM is created.
+    // Non-dev retains the upstream no-unavailability, one-per-zone surge.
+    max_unavailable_fixed = var.environment == "dev" ? 1 : 0
+    max_surge_fixed = (
+      var.environment == "dev"
+      ? 0
+      : length(data.google_compute_zones.region_zones.names)
+    )
 
     // Wait 120s after instance is "healthy" before considering it truly ready
     // Gives Consul time to join Raft before GCP proceeds to kill old instances

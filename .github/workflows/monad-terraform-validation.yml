@@ -72,6 +72,11 @@ jobs:
       - name: Test keyless runtime identity
         run: make -C iac/provider-gcp keyless-runtime-check
 
+      - name: Test workload topology and quota guards
+        run: |
+          make -C iac/provider-gcp workload-plan-assertions-test
+          make -C iac/provider-gcp packer-reserve-check
+
       - name: Validate runtime image configuration
         run: |
           packer fmt -check iac/provider-gcp/nomad-cluster-disk-image

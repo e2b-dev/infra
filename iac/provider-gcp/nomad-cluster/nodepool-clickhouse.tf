@@ -64,6 +64,7 @@ resource "google_compute_instance_group_manager" "clickhouse_pool" {
   }
 
   base_instance_name = local.clickhouse_pool_name
+  target_size        = var.clickhouse_cluster_size
   target_pools       = []
 
   depends_on = [

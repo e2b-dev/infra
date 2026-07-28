@@ -365,8 +365,29 @@ flowchart TB
   template caches. Autoscaled.
 - **Build nodes** run the same binary in template-manager mode; the `nomad-nodepool-apm`
   autoscaler plugin scales the job with the node pool.
-- PostgreSQL is external (connection string via secrets); Redis runs as a Nomad job or as a
-  managed service; ClickHouse runs on its own pool.
+- The quota-constrained **dev operator canary** gives server and worker regional MIGs zero surge
+  and one unavailable instance, so they replace in place. The API zonal MIG retains one surge
+  instance. Non-dev keeps the upstream rollout policies. Zero surge does not drain workloads:
+  before replacing a worker template, the operator must pause/snapshot active sandboxes, verify
+  durable uploads, stop placement, drain Nomad allocations, and verify MIG stability. Automated
+  drain orchestration is not implemented, and Packer image builds must not overlap a rollout.
+- **ClickHouse nodes** have an explicit MIG target size equal to the configured ClickHouse cluster
+  size so the instance count cannot silently remain at the provider default.
+- The Monad dev operator canary provisions a dedicated Cloud SQL for PostgreSQL 16 instance in
+  the workload region. It has only a private IPv4 address reached through Private Services Access
+  on the existing workload VPC. Cloud SQL rejects unencrypted connections, and Terraform publishes
+  the generated dedicated database/user URI with `sslmode=require` directly into the existing
+  `postgres-connection-string` Secret Manager container. The shared-core `db-f1-micro` tier is a
+  low-cost, zonal, no-SLA development choice for the one-workcell canary, not beta capacity.
+  Its reviewed client ceiling is one API allocation with six primary and three auth connections,
+  six fixed docker-reverse-proxy connections, four migrator connections, and no dashboard API:
+  19 configured connections in aggregate.
+  Automated backups, seven-day PITR, bounded disk auto-growth, and both Terraform and GCP deletion
+  protection are enabled. The private service connection is abandoned rather than automatically
+  deleted during teardown, and Terraform prevents destruction of its allocated range. Both remain
+  until an operator proves that no other managed service uses the peering and performs a separately
+  reviewed teardown after Cloud SQL producer cleanup. Redis runs as a Nomad job or as a managed
+  service; ClickHouse runs on its own pool.
 - The Monad fork contains no Google service-account-key resources or internal
   key-shaped runtime inputs. GCE nodes use their attached service account
   through ADC. GCS signed uploads delegate signing to IAM Credentials
@@ -377,9 +398,9 @@ flowchart TB
   so their Terraform resource IDs never contain active token material; legacy
   UUID generator state is scrubbed before any refresh and prior Secret Manager
   versions are disabled during rotation. A repository guard blocks any
-  reintroduced static-key seam. The
-  customer-facing private-GCP-registry credential contract is retained as a
-  separate, explicit compatibility surface and is not Monad's runtime identity.
+  reintroduced static-key seam. The customer-facing private-GCP-registry
+  credential contract is retained as a separate, explicit compatibility
+  surface and is not Monad's runtime identity.
 - Observability: everything exports OTel; the collector fans out to ClickHouse (product metrics)
   and Grafana Cloud/stack. Logs default to the legacy Vector → Loki path; dynamic log routing can
   select a primary collector and shadow collectors, and local-cluster log reads can be switched to

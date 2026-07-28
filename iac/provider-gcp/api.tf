@@ -12,6 +12,10 @@ resource "google_artifact_registry_repository_iam_member" "custom_environments_r
 
 data "google_secret_manager_secret_version" "postgres_connection_string" {
   secret = module.init.postgres_connection_string_secret_name
+
+  depends_on = [
+    google_secret_manager_secret_version.postgres_connection_string,
+  ]
 }
 
 data "google_secret_manager_secret_version" "postgres_read_replica_connection_string" {

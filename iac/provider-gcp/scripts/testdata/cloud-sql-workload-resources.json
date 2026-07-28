@@ -1,0 +1,288 @@
+[
+  {
+    "address": "google_project_service.cloud_sql_admin_api",
+    "mode": "managed",
+    "type": "google_project_service",
+    "name": "cloud_sql_admin_api",
+    "change": {
+      "actions": ["create"],
+      "after": {
+        "disable_on_destroy": false,
+        "project": "operator-canary",
+        "service": "sqladmin.googleapis.com"
+      },
+      "after_unknown": {}
+    }
+  },
+  {
+    "address": "google_project_service.service_networking_api",
+    "mode": "managed",
+    "type": "google_project_service",
+    "name": "service_networking_api",
+    "change": {
+      "actions": ["create"],
+      "after": {
+        "disable_on_destroy": false,
+        "project": "operator-canary",
+        "service": "servicenetworking.googleapis.com"
+      },
+      "after_unknown": {}
+    }
+  },
+  {
+    "address": "google_project_service_identity.cloud_sql",
+    "mode": "managed",
+    "type": "google_project_service_identity",
+    "name": "cloud_sql",
+    "provider_name": "registry.terraform.io/hashicorp/google-beta",
+    "change": {
+      "actions": ["create"],
+      "after": {
+        "project": "operator-canary",
+        "service": "sqladmin.googleapis.com"
+      },
+      "after_unknown": {
+        "email": true
+      }
+    }
+  },
+  {
+    "address": "google_project_service_identity.service_networking",
+    "mode": "managed",
+    "type": "google_project_service_identity",
+    "name": "service_networking",
+    "provider_name": "registry.terraform.io/hashicorp/google-beta",
+    "change": {
+      "actions": ["create"],
+      "after": {
+        "project": "operator-canary",
+        "service": "servicenetworking.googleapis.com"
+      },
+      "after_unknown": {
+        "email": true
+      }
+    }
+  },
+  {
+    "address": "google_project_iam_member.cloud_sql_service_agent",
+    "mode": "managed",
+    "type": "google_project_iam_member",
+    "name": "cloud_sql_service_agent",
+    "change": {
+      "actions": ["create"],
+      "after": {
+        "project": "operator-canary",
+        "role": "roles/cloudsql.serviceAgent"
+      },
+      "after_unknown": {
+        "member": true
+      }
+    }
+  },
+  {
+    "address": "google_project_iam_member.service_networking_service_agent",
+    "mode": "managed",
+    "type": "google_project_iam_member",
+    "name": "service_networking_service_agent",
+    "change": {
+      "actions": ["create"],
+      "after": {
+        "project": "operator-canary",
+        "role": "roles/servicenetworking.serviceAgent"
+      },
+      "after_unknown": {
+        "member": true
+      }
+    }
+  },
+  {
+    "address": "google_compute_global_address.cloud_sql_private_services",
+    "mode": "managed",
+    "type": "google_compute_global_address",
+    "name": "cloud_sql_private_services",
+    "change": {
+      "actions": ["create"],
+      "after": {
+        "address_type": "INTERNAL",
+        "name": "e2b-cloud-sql-private-services",
+        "network": "projects/operator-canary/global/networks/default",
+        "prefix_length": 24,
+        "project": "operator-canary",
+        "purpose": "VPC_PEERING"
+      },
+      "after_unknown": {
+        "address": true
+      }
+    }
+  },
+  {
+    "address": "google_service_networking_connection.cloud_sql",
+    "mode": "managed",
+    "type": "google_service_networking_connection",
+    "name": "cloud_sql",
+    "change": {
+      "actions": ["create"],
+      "after": {
+        "deletion_policy": "ABANDON",
+        "network": "projects/operator-canary/global/networks/default",
+        "reserved_peering_ranges": [
+          "e2b-cloud-sql-private-services"
+        ],
+        "service": "servicenetworking.googleapis.com"
+      },
+      "after_unknown": {}
+    }
+  },
+  {
+    "address": "google_sql_database_instance.operator_canary",
+    "mode": "managed",
+    "type": "google_sql_database_instance",
+    "name": "operator_canary",
+    "change": {
+      "actions": ["create"],
+      "after": {
+        "database_version": "POSTGRES_16",
+        "deletion_protection": true,
+        "name": "e2b-postgres-canary",
+        "project": "operator-canary",
+        "region": "us-east4",
+        "settings": [
+          {
+            "availability_type": "ZONAL",
+            "backup_configuration": [
+              {
+                "backup_retention_settings": [
+                  {
+                    "retained_backups": 7,
+                    "retention_unit": "COUNT"
+                  }
+                ],
+                "enabled": true,
+                "location": "us-east4",
+                "point_in_time_recovery_enabled": true,
+                "start_time": "03:00",
+                "transaction_log_retention_days": 7
+              }
+            ],
+            "deletion_protection_enabled": true,
+            "disk_autoresize": true,
+            "disk_autoresize_limit": 20,
+            "disk_size": 10,
+            "disk_type": "PD_HDD",
+            "edition": "ENTERPRISE",
+            "ip_configuration": [
+              {
+                "allocated_ip_range": "e2b-cloud-sql-private-services",
+                "enable_private_path_for_google_cloud_services": false,
+                "ipv4_enabled": false,
+                "private_network": "projects/operator-canary/global/networks/default",
+                "ssl_mode": "ENCRYPTED_ONLY"
+              }
+            ],
+            "tier": "db-f1-micro"
+          }
+        ]
+      },
+      "after_unknown": {
+        "private_ip_address": true
+      }
+    }
+  },
+  {
+    "address": "google_sql_database.operator_canary",
+    "mode": "managed",
+    "type": "google_sql_database",
+    "name": "operator_canary",
+    "change": {
+      "actions": ["create"],
+      "after": {
+        "instance": "e2b-postgres-canary",
+        "name": "e2b",
+        "project": "operator-canary"
+      },
+      "after_unknown": {}
+    }
+  },
+  {
+    "address": "random_password.cloud_sql_operator_canary",
+    "mode": "managed",
+    "type": "random_password",
+    "name": "cloud_sql_operator_canary",
+    "change": {
+      "actions": ["create"],
+      "after": {
+        "length": 32,
+        "special": false
+      },
+      "after_unknown": {
+        "result": true
+      },
+      "after_sensitive": {
+        "result": true
+      }
+    }
+  },
+  {
+    "address": "google_sql_user.operator_canary",
+    "mode": "managed",
+    "type": "google_sql_user",
+    "name": "operator_canary",
+    "change": {
+      "actions": ["create"],
+      "after": {
+        "instance": "e2b-postgres-canary",
+        "name": "e2b",
+        "project": "operator-canary"
+      },
+      "after_unknown": {
+        "password": true
+      },
+      "after_sensitive": {
+        "password": true
+      }
+    }
+  },
+  {
+    "address": "google_secret_manager_secret_version.postgres_connection_string",
+    "mode": "managed",
+    "type": "google_secret_manager_secret_version",
+    "name": "postgres_connection_string",
+    "change": {
+      "actions": ["create"],
+      "after": {
+        "secret": "projects/operator-canary/secrets/e2b-postgres-connection-string"
+      },
+      "after_unknown": {
+        "secret_data": true,
+        "version": true
+      },
+      "after_sensitive": {
+        "secret_data": true
+      }
+    }
+  },
+  {
+    "address": "terraform_data.cloud_sql_connection_budget",
+    "mode": "managed",
+    "type": "terraform_data",
+    "name": "cloud_sql_connection_budget",
+    "change": {
+      "actions": ["create"],
+      "after": {
+        "input": {
+          "api_server_count": 1,
+          "auth_db_max_open_connections": 3,
+          "auth_db_min_idle_connections": 1,
+          "dashboard_api_count": 0,
+          "dashboard_api_max_open_connections_per_instance": 16,
+          "db_max_open_connections": 6,
+          "db_min_idle_connections": 1,
+          "docker_reverse_proxy_max_open_connections": 6,
+          "maximum_concurrent_connections": 19,
+          "migrator_max_open_connections": 4
+        }
+      },
+      "after_unknown": {}
+    }
+  }
+]
