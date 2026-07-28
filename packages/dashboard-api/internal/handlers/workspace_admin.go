@@ -24,6 +24,10 @@ func (s *APIStore) DeleteProjectMember(c *gin.Context, _ api.TeamID, _ api.UserI
 	sendNotImplemented(c)
 }
 
+func (s *APIStore) BatchSyncProjectMembers(c *gin.Context, _ api.TeamID) {
+	sendNotImplemented(c)
+}
+
 func (s *APIStore) UpsertProjectLimits(c *gin.Context, _ api.TeamID) {
 	sendNotImplemented(c)
 }
