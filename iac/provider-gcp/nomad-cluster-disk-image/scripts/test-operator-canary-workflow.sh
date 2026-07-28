@@ -407,6 +407,9 @@ cat >"${identity_packer}" <<EOF
 set -euo pipefail
 if [[ "\$1" == "version" ]]; then
   printf '0,,version,1.13.1\\n'
+  for i in {1..5000}; do
+    printf '0,,ui,message,trailing-version-output-%s\\n' "\$i"
+  done
 elif [[ "\$1 \$2" == "plugins installed" ]]; then
   printf '0,,ui,message,%s\\n' '${identity_plugin_path}'
 else

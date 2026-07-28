@@ -143,7 +143,18 @@ configuration_sha256() {
 
 packer_version() {
   "$1" version -machine-readable |
-    awk -F, '$3 == "version" { print $4; exit }'
+    awk -F, '
+      $3 == "version" && !found {
+        value = $4
+        found = 1
+      }
+      END {
+        if (!found) {
+          exit 1
+        }
+        print value
+      }
+    '
 }
 
 state_identity_json() {
