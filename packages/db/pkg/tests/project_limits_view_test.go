@@ -109,6 +109,42 @@ func TestProjectLimitsOverridesTierAndAddons(t *testing.T) {
 	require.Equal(t, [9]int64{111, 222, 333, 444, 555, 666, 777, 888, 999}, got)
 }
 
+// tiers has always guaranteed that a team's free disk allowance sits at or
+// below its ceiling. The view reads both columns straight from an override, so
+// without the same constraint here a pushed row could surface a pair tiers can
+// never produce, to readers that have never had to handle one.
+func TestProjectLimitsRejectsFreeDiskAboveTheCeiling(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	sqlDB, err := sql.Open("pgx", db.ConnStr())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
+
+	teamID := seedTeam(t, sqlDB, "incoherent")
+
+	insert := func(defaultFree, max int64) error {
+		_, err := sqlDB.ExecContext(ctx, `
+			INSERT INTO public.project_limits (
+				team_id, max_length_hours, concurrent_sandboxes, concurrent_template_builds,
+				max_vcpu, max_ram_mb, disk_mb, events_ttl_days,
+				default_free_disk_size_mb, max_disk_size_mb
+			) VALUES ($1, 1, 1, 1, 1, 1, 1, 1, $2, $3)
+			ON CONFLICT (team_id) DO UPDATE SET
+				default_free_disk_size_mb = EXCLUDED.default_free_disk_size_mb,
+				max_disk_size_mb = EXCLUDED.max_disk_size_mb
+		`, teamID, defaultFree, max)
+
+		return err
+	}
+
+	require.Error(t, insert(2048, 1024), "a free allowance above the ceiling must be rejected")
+	require.NoError(t, insert(1024, 1024), "equal values are the boundary and must be allowed")
+	require.NoError(t, insert(512, 1024))
+}
+
 // Deleting a team takes its overrides with it. The FK is intra-schema and
 // stays after billing is detached, so this is the one referential guarantee
 // this table keeps.

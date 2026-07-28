@@ -29,7 +29,14 @@ CREATE TABLE IF NOT EXISTS "public"."project_limits" (
     default_free_disk_size_mb  bigint NOT NULL CHECK (default_free_disk_size_mb >= 0),
     max_disk_size_mb           bigint NOT NULL CHECK (max_disk_size_mb >= 0),
 
-    updated_at                 timestamptz NOT NULL DEFAULT now()
+    updated_at                 timestamptz NOT NULL DEFAULT now(),
+
+    -- Mirrors tiers_default_free_disk_size_lte_max_check. The view reads both
+    -- columns straight from here, so without this an override could surface a
+    -- free allowance above the ceiling -- a pair tiers cannot produce and that
+    -- readers have never had to handle.
+    CONSTRAINT project_limits_default_free_disk_size_lte_max_check
+        CHECK (default_free_disk_size_mb <= max_disk_size_mb)
 );
 
 -- tiers CHECKs the same columns as > 0. These allow 0 deliberately: this table
@@ -37,6 +44,10 @@ CREATE TABLE IF NOT EXISTS "public"."project_limits" (
 -- product decision into a retry loop that never drains. Negatives are always a
 -- bug, so they stay rejected. Every column is NOT NULL, so a row overrides all
 -- nine or does not exist -- there is no half-overridden team to reason about.
+--
+-- The cross-column check above is different in kind: an incoherent pair is not
+-- a policy this side should defer to, and it is the one invariant every reader
+-- of these two columns has been able to assume since tiers gained them.
 
 CREATE OR REPLACE VIEW "public"."team_limits"
 WITH (security_invoker=on) AS
