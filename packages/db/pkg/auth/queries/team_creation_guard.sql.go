@@ -56,12 +56,12 @@ type GetTeamsWithUsersTeamsWithTierForUpdateRow struct {
 	IsDefault                bool
 	ID_2                     uuid.UUID
 	MaxLengthHours           int64
-	ConcurrentSandboxes      int32
-	ConcurrentTemplateBuilds int32
-	MaxVcpu                  int32
-	MaxRamMb                 int32
-	DiskMb                   int32
-	EventsTtlDays            int32
+	ConcurrentSandboxes      int64
+	ConcurrentTemplateBuilds int64
+	MaxVcpu                  int64
+	MaxRamMb                 int64
+	DiskMb                   int64
+	EventsTtlDays            int64
 }
 
 func (q *Queries) GetTeamsWithUsersTeamsWithTierForUpdate(ctx context.Context, userID uuid.UUID) ([]GetTeamsWithUsersTeamsWithTierForUpdateRow, error) {
