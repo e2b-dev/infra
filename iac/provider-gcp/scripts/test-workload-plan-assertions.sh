@@ -6,6 +6,8 @@ assertion_script="${script_dir}/assert-workload-plan.sh"
 packer_assertion_script="${script_dir}/assert-packer-reserve.sh"
 fixture="${script_dir}/testdata/minimal-workload-plan.json"
 cloud_sql_fixture="${script_dir}/testdata/cloud-sql-workload-resources.json"
+artifact_bindings_fixture="${script_dir}/testdata/workload-artifact-plan-bindings.json"
+artifacts="${script_dir}/testdata/workload-artifacts.json"
 policy="${script_dir}/../topology/minimal-workload-policy.json"
 packer_template="${script_dir}/../nomad-cluster-disk-image/main.pkr.hcl"
 cloud_sql_config="${script_dir}/../cloud-sql.tf"
@@ -19,8 +21,23 @@ fake_terraform="${test_dir}/terraform"
 cp "${script_dir}/testdata/fake-terraform.sh" "${fake_terraform}"
 chmod 0700 "${fake_terraform}"
 
-jq --slurpfile cloud_sql "${cloud_sql_fixture}" \
-  '.resource_changes += $cloud_sql[0]' \
+jq \
+  --slurpfile cloud_sql "${cloud_sql_fixture}" \
+  --slurpfile artifact_bindings "${artifact_bindings_fixture}" '
+  .resource_changes += (
+    $cloud_sql[0]
+    + $artifact_bindings[0].resource_changes
+  )
+  | .planned_values = $artifact_bindings[0].planned_values
+  | $artifact_bindings[0].orchestrator_source_image as $source_image
+  | (
+      .resource_changes[]
+      | select(.type == "google_compute_instance_template")
+      | .change.after.disk[]
+      | select(.boot == true)
+      | .source_image
+    ) = $source_image
+  ' \
   "${fixture}" >"${test_dir}/minimal-with-cloud-sql.json"
 fixture="${test_dir}/minimal-with-cloud-sql.json"
 
@@ -48,13 +65,15 @@ expect_failure() {
   local plan_path="$3"
   local policy_path="${4:-${policy}}"
   local packer_template_path="${5:-${packer_template}}"
+  local artifacts_path="${6:-${artifacts}}"
   local output_path="${test_dir}/${name}.output"
 
   if "${assertion_script}" \
     "${plan_path}" \
     "${fake_terraform}" \
     "${policy_path}" \
-    "${packer_template_path}" >"${output_path}" 2>&1; then
+    "${packer_template_path}" \
+    "${artifacts_path}" >"${output_path}" 2>&1; then
     printf 'Expected %s fixture to fail.\n' "${name}" >&2
     exit 1
   fi
@@ -75,9 +94,11 @@ expect_success() {
     "${plan_path}" \
     "${fake_terraform}" \
     "${policy}" \
-    "${packer_template}" >"${output_path}"
+    "${packer_template}" \
+    "${artifacts}" >"${output_path}"
 
   grep -F '"global_vcpus":30' "${output_path}" >/dev/null
+  grep -F '"regional_cpus":30' "${output_path}" >/dev/null
   grep -F '"instances":7' "${output_path}" >/dev/null
   grep -F '"pd_ssd_gb":470' "${output_path}" >/dev/null
   grep -F '"pd_standard_gb":400' "${output_path}" >/dev/null
@@ -179,6 +200,42 @@ expect_failure \
   "destructive-mig" \
   "destructive_migs must be empty." \
   "${test_dir}/destructive-mig.json"
+
+jq '
+  .resource_changes += [{
+    "address": "google_storage_bucket.unrelated",
+    "mode": "managed",
+    "type": "google_storage_bucket",
+    "name": "unrelated",
+    "change": {
+      "actions": ["delete"],
+      "before": {"name": "valuable"},
+      "after": null
+    }
+  }]
+' "${fixture}" >"${test_dir}/destructive-unreviewed.json"
+expect_failure \
+  "destructive-unreviewed" \
+  "destructive_managed_resources must be empty." \
+  "${test_dir}/destructive-unreviewed.json"
+
+jq '
+  .resource_changes += [{
+    "address": "google_storage_bucket.forgotten",
+    "mode": "managed",
+    "type": "google_storage_bucket",
+    "name": "forgotten",
+    "change": {
+      "actions": ["forget"],
+      "before": {"name": "valuable"},
+      "after": null
+    }
+  }]
+' "${fixture}" >"${test_dir}/state-forget.json"
+expect_failure \
+  "state-forget" \
+  "destructive_managed_resources must be empty." \
+  "${test_dir}/state-forget.json"
 
 jq '
   (
@@ -627,6 +684,81 @@ expect_failure \
   "destructive-cloud-sql" \
   "destructive_cloud_sql_resources must be empty." \
   "${test_dir}/destructive-cloud-sql.json"
+
+jq '
+  (
+    .planned_values.root_module
+    | recurse(.child_modules[]?)
+    | .resources[]?
+    | select(
+        .address
+        == "module.cluster.data.google_compute_image.api_source_image"
+      )
+    | .values.name
+  ) = "e2b-orch-unreviewed"
+' "${fixture}" >"${test_dir}/orchestrator-image-drift.json"
+expect_failure \
+  "orchestrator-image-drift" \
+  "invalid_orchestrator_images must be empty." \
+  "${test_dir}/orchestrator-image-drift.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.address == "module.cluster.google_compute_instance_template.api")
+    | .change.after.disk[]
+    | select(.boot == true)
+    | .source_image
+  ) = "projects/monad-code/global/images/unreviewed"
+' "${fixture}" >"${test_dir}/template-source-image-drift.json"
+expect_failure \
+  "template-source-image-drift" \
+  "invalid_template_source_images must be empty." \
+  "${test_dir}/template-source-image-drift.json"
+
+jq '
+  (
+    .planned_values.root_module
+    | recurse(.child_modules[]?)
+    | .resources[]?
+    | select(
+        .address
+        == "module.nomad.data.google_artifact_registry_docker_image.api_image"
+      )
+    | .values.self_link
+  ) = "us-east4-docker.pkg.dev/monad-code/e2b-core/api@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+' "${fixture}" >"${test_dir}/core-image-drift.json"
+expect_failure \
+  "core-image-drift" \
+  "invalid_core_images must be empty." \
+  "${test_dir}/core-image-drift.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.address == "module.nomad.module.api.nomad_job.api")
+    | .change.after.jobspec
+  ) = "# us-east4-docker.pkg.dev/monad-code/e2b-core/api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n# us-east4-docker.pkg.dev/monad-code/e2b-core/db-migrator@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nimage = \"malicious.example.invalid/api@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\""
+' "${fixture}" >"${test_dir}/core-job-drift.json"
+expect_failure \
+  "core-job-drift" \
+  "invalid_core_jobs must be empty." \
+  "${test_dir}/core-job-drift.json"
+
+jq '
+  (
+    .planned_values.root_module.child_modules[].resources
+  ) |= map(
+    select(
+      .address
+      != "module.nomad.data.google_artifact_registry_docker_image.client_proxy_image"
+    )
+  )
+' "${fixture}" >"${test_dir}/missing-core-image.json"
+expect_failure \
+  "missing-core-image" \
+  "missing_or_duplicate_core_images must be empty." \
+  "${test_dir}/missing-core-image.json"
 
 jq '.quota_limits.global_vcpus = 64' \
   "${policy}" >"${test_dir}/quota-policy-drift.json"

@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "gcp_project_id": "monad-code",
+  "gcp_region": "us-east4",
+  "core_repository": "e2b-core",
+  "core_image_revision": "0123456789ab",
+  "orchestrator_image": {
+    "family": "e2b-orch",
+    "project": "monad-code",
+    "status": "READY",
+    "name": "e2b-orch-20260728",
+    "self_link": "https://www.googleapis.com/compute/v1/projects/monad-code/global/images/e2b-orch-20260728",
+    "id": "123456789"
+  },
+  "core_images": {
+    "api": {
+      "revision": {
+        "reference": "us-east4-docker.pkg.dev/monad-code/e2b-core/api:0123456789ab",
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "resolved_reference": "us-east4-docker.pkg.dev/monad-code/e2b-core/api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "latest": {
+        "reference": "us-east4-docker.pkg.dev/monad-code/e2b-core/api:latest",
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "resolved_reference": "us-east4-docker.pkg.dev/monad-code/e2b-core/api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    "db-migrator": {
+      "revision": {
+        "reference": "us-east4-docker.pkg.dev/monad-code/e2b-core/db-migrator:0123456789ab",
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "resolved_reference": "us-east4-docker.pkg.dev/monad-code/e2b-core/db-migrator@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "latest": {
+        "reference": "us-east4-docker.pkg.dev/monad-code/e2b-core/db-migrator:latest",
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "resolved_reference": "us-east4-docker.pkg.dev/monad-code/e2b-core/db-migrator@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    "client-proxy": {
+      "revision": {
+        "reference": "us-east4-docker.pkg.dev/monad-code/e2b-core/client-proxy:0123456789ab",
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "resolved_reference": "us-east4-docker.pkg.dev/monad-code/e2b-core/client-proxy@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "latest": {
+        "reference": "us-east4-docker.pkg.dev/monad-code/e2b-core/client-proxy:latest",
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "resolved_reference": "us-east4-docker.pkg.dev/monad-code/e2b-core/client-proxy@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    "docker-reverse-proxy": {
+      "revision": {
+        "reference": "us-east4-docker.pkg.dev/monad-code/e2b-core/docker-reverse-proxy:0123456789ab",
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "resolved_reference": "us-east4-docker.pkg.dev/monad-code/e2b-core/docker-reverse-proxy@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "latest": {
+        "reference": "us-east4-docker.pkg.dev/monad-code/e2b-core/docker-reverse-proxy:latest",
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "resolved_reference": "us-east4-docker.pkg.dev/monad-code/e2b-core/docker-reverse-proxy@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    "clickhouse-migrator": {
+      "revision": {
+        "reference": "us-east4-docker.pkg.dev/monad-code/e2b-core/clickhouse-migrator:0123456789ab",
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "resolved_reference": "us-east4-docker.pkg.dev/monad-code/e2b-core/clickhouse-migrator@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "latest": {
+        "reference": "us-east4-docker.pkg.dev/monad-code/e2b-core/clickhouse-migrator:latest",
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "resolved_reference": "us-east4-docker.pkg.dev/monad-code/e2b-core/clickhouse-migrator@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    }
+  }
+}

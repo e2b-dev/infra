@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-plan_path="${1:?usage: assert-workload-plan.sh PLAN_PATH [TERRAFORM_BIN] [POLICY_PATH] [PACKER_TEMPLATE_PATH]}"
+plan_path="${1:?usage: assert-workload-plan.sh PLAN_PATH TERRAFORM_BIN POLICY_PATH PACKER_TEMPLATE_PATH ARTIFACTS_PATH}"
 terraform_bin="${2:-terraform}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 policy_path="${3:-${script_dir}/../topology/minimal-workload-policy.json}"
 packer_template_path="${4:-${script_dir}/../nomad-cluster-disk-image/main.pkr.hcl}"
+artifacts_path="${5:?usage: assert-workload-plan.sh PLAN_PATH TERRAFORM_BIN POLICY_PATH PACKER_TEMPLATE_PATH ARTIFACTS_PATH}"
 analysis_filter="${script_dir}/workload-plan-topology.jq"
+artifact_filter="${script_dir}/workload-plan-artifacts.jq"
 
 command -v jq >/dev/null 2>&1 || {
   printf 'jq is required to inspect the saved workload plan.\n' >&2
@@ -29,10 +31,60 @@ command -v jq >/dev/null 2>&1 || {
   exit 1
 }
 
+[[ -f "${artifact_filter}" ]] || {
+  printf 'Workload artifact analysis filter does not exist: %s\n' \
+    "${artifact_filter}" >&2
+  exit 1
+}
+
+[[ -f "${artifacts_path}" && ! -L "${artifacts_path}" ]] || {
+  printf 'Resolved workload artifacts must be a regular, non-symlink file: %s\n' \
+    "${artifacts_path}" >&2
+  exit 1
+}
+
+artifacts_json="$(jq -ceS '
+  (.core_images | keys | sort) == [
+    "api",
+    "clickhouse-migrator",
+    "client-proxy",
+    "db-migrator",
+    "docker-reverse-proxy"
+  ]
+  and .schema_version == 1
+  and (.gcp_project_id | type) == "string"
+  and (.gcp_region | type) == "string"
+  and (.core_repository | type) == "string"
+  and (.core_image_revision | type) == "string"
+  and (.core_image_revision | test("^[0-9a-f]{12,40}$"))
+  and .orchestrator_image.family == "e2b-orch"
+  and .orchestrator_image.project == .gcp_project_id
+  and .orchestrator_image.status == "READY"
+  and (.orchestrator_image.name | type) == "string"
+  and (.orchestrator_image.self_link | type) == "string"
+  and all(
+    .core_images[];
+    (.revision.reference | type) == "string"
+    and (.revision.digest | test("^sha256:[0-9a-f]{64}$"))
+    and (.revision.resolved_reference | type) == "string"
+    and (.latest.reference | type) == "string"
+    and (.latest.digest | test("^sha256:[0-9a-f]{64}$"))
+    and (.latest.resolved_reference | type) == "string"
+    and .revision.digest == .latest.digest
+    and .revision.resolved_reference == .latest.resolved_reference
+  )
+  |
+  if . then $input else error("invalid resolved workload artifacts") end
+' --argjson input "$(jq -c . "${artifacts_path}")" "${artifacts_path}")" || {
+  printf 'Resolved workload artifacts are invalid: %s\n' "${artifacts_path}" >&2
+  exit 1
+}
+
 reviewed_quota_limits="$(
   jq -cn '{
     instances: 24,
     global_vcpus: 32,
+    regional_cpus: 32,
     pd_ssd_gb: 500,
     pd_standard_gb: 4096,
     local_ssd_gb: 6000,
@@ -43,6 +95,7 @@ reviewed_peak_usage="$(
   jq -cn '{
     instances: 7,
     global_vcpus: 30,
+    regional_cpus: 30,
     pd_ssd_gb: 470,
     pd_standard_gb: 400,
     local_ssd_gb: 750,
@@ -129,6 +182,7 @@ jq -e \
         "local_ssd_gb",
         "pd_ssd_gb",
         "pd_standard_gb",
+        "regional_cpus",
         "regional_public_ips"
       ]
     and all(.[]; nonnegative_integer);
@@ -234,6 +288,7 @@ failure_fields=(
   unknown_cloud_sql_resources
   missing_or_duplicate_cloud_sql_resources
   invalid_cloud_sql_resources
+  destructive_managed_resources
   quota_violations
 )
 
@@ -265,6 +320,27 @@ for comparison in \
       "$(jq -c ".${policy_field}" <<<"${policy_json}")" >&2
     printf 'Planned:  %s\n' \
       "$(jq -c ".${topology_field}" <<<"${topology}")" >&2
+    exit 1
+  fi
+done
+
+artifact_bindings="$(
+  jq -c \
+    --argjson artifacts "${artifacts_json}" \
+    -f "${artifact_filter}" \
+    <<<"${plan_json}"
+)"
+for field in \
+  missing_or_duplicate_orchestrator_images \
+  invalid_orchestrator_images \
+  invalid_template_source_images \
+  missing_or_duplicate_core_images \
+  invalid_core_images \
+  missing_or_duplicate_core_jobs \
+  invalid_core_jobs; do
+  if [[ "$(jq ".${field} | length" <<<"${artifact_bindings}")" -ne 0 ]]; then
+    printf 'Refusing workload plan: %s must be empty.\n' "${field}" >&2
+    jq -c ".${field}[]" <<<"${artifact_bindings}" >&2
     exit 1
   fi
 done

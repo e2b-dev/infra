@@ -87,6 +87,7 @@
   "expected_peak_usage": {
     "instances": 7,
     "global_vcpus": 30,
+    "regional_cpus": 30,
     "pd_ssd_gb": 470,
     "pd_standard_gb": 400,
     "local_ssd_gb": 750,
@@ -135,6 +136,7 @@
   "quota_limits": {
     "instances": 24,
     "global_vcpus": 32,
+    "regional_cpus": 32,
     "pd_ssd_gb": 500,
     "pd_standard_gb": 4096,
     "local_ssd_gb": 6000,

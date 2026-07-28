@@ -186,6 +186,7 @@ def usage_zero:
   {
     instances: 0,
     global_vcpus: 0,
+    regional_cpus: 0,
     pd_ssd_gb: 0,
     pd_standard_gb: 0,
     local_ssd_gb: 0,
@@ -236,6 +237,10 @@ def scaled_role_usage($templates; $role; $count):
         number_or_zero($template.vcpus)
         * number_or_zero($count)
       ),
+      regional_cpus: (
+        number_or_zero($template.vcpus)
+        * number_or_zero($count)
+      ),
       pd_ssd_gb: (
         number_or_zero($template.pd_ssd_gb)
         * number_or_zero($count)
@@ -261,6 +266,7 @@ def reserve_usage($reserve):
   {
     instances: $reserve.instances,
     global_vcpus: $reserve.vcpus,
+    regional_cpus: $reserve.vcpus,
     pd_ssd_gb: $reserve.pd_ssd_gb,
     pd_standard_gb: $reserve.pd_standard_gb,
     local_ssd_gb: $reserve.local_ssd_gb,
@@ -709,6 +715,23 @@ managed_changes as $changes
       $cloud_sql_resources[]
       | select(.change.actions | index("delete"))
       | .address
+    ],
+    destructive_managed_resources: [
+      $changes[]
+      | select(
+          (
+            .change.actions == ["no-op"]
+            or .change.actions == ["create"]
+            or .change.actions == ["read"]
+            or .change.actions == ["update"]
+          )
+          | not
+        )
+      | {
+          address,
+          type,
+          actions: .change.actions
+        }
     ],
     unknown_cloud_sql_resources: [
       $cloud_sql_resources[] as $resource

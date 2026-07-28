@@ -1,0 +1,202 @@
+{
+  "orchestrator_source_image": "projects/monad-code/global/images/e2b-orch-20260728",
+  "planned_values": {
+    "root_module": {
+      "resources": [],
+      "child_modules": [
+        {
+          "address": "module.fixture",
+          "resources": [
+            {
+              "address": "module.cluster.data.google_compute_image.server_source_image",
+              "mode": "data",
+              "type": "google_compute_image",
+              "name": "server_source_image",
+              "values": {
+                "family": "e2b-orch",
+                "project": "monad-code",
+                "status": "READY",
+                "name": "e2b-orch-20260728",
+                "id": "projects/monad-code/global/images/e2b-orch-20260728",
+                "self_link": "https://www.googleapis.com/compute/v1/projects/monad-code/global/images/e2b-orch-20260728"
+              }
+            },
+            {
+              "address": "module.cluster.data.google_compute_image.api_source_image",
+              "mode": "data",
+              "type": "google_compute_image",
+              "name": "api_source_image",
+              "values": {
+                "family": "e2b-orch",
+                "project": "monad-code",
+                "status": "READY",
+                "name": "e2b-orch-20260728",
+                "id": "projects/monad-code/global/images/e2b-orch-20260728",
+                "self_link": "https://www.googleapis.com/compute/v1/projects/monad-code/global/images/e2b-orch-20260728"
+              }
+            },
+            {
+              "address": "module.cluster.data.google_compute_image.clickhouse_source_image",
+              "mode": "data",
+              "type": "google_compute_image",
+              "name": "clickhouse_source_image",
+              "values": {
+                "family": "e2b-orch",
+                "project": "monad-code",
+                "status": "READY",
+                "name": "e2b-orch-20260728",
+                "id": "projects/monad-code/global/images/e2b-orch-20260728",
+                "self_link": "https://www.googleapis.com/compute/v1/projects/monad-code/global/images/e2b-orch-20260728"
+              }
+            },
+            {
+              "address": "module.cluster.data.google_compute_image.loki_source_image",
+              "mode": "data",
+              "type": "google_compute_image",
+              "name": "loki_source_image",
+              "values": {
+                "family": "e2b-orch",
+                "project": "monad-code",
+                "status": "READY",
+                "name": "e2b-orch-20260728",
+                "id": "projects/monad-code/global/images/e2b-orch-20260728",
+                "self_link": "https://www.googleapis.com/compute/v1/projects/monad-code/global/images/e2b-orch-20260728"
+              }
+            },
+            {
+              "address": "module.cluster.module.build_cluster[\"default\"].data.google_compute_image.source_image",
+              "mode": "data",
+              "type": "google_compute_image",
+              "name": "source_image",
+              "values": {
+                "family": "e2b-orch",
+                "project": "monad-code",
+                "status": "READY",
+                "name": "e2b-orch-20260728",
+                "id": "projects/monad-code/global/images/e2b-orch-20260728",
+                "self_link": "https://www.googleapis.com/compute/v1/projects/monad-code/global/images/e2b-orch-20260728"
+              }
+            },
+            {
+              "address": "module.cluster.module.client_cluster[\"default\"].data.google_compute_image.source_image",
+              "mode": "data",
+              "type": "google_compute_image",
+              "name": "source_image",
+              "values": {
+                "family": "e2b-orch",
+                "project": "monad-code",
+                "status": "READY",
+                "name": "e2b-orch-20260728",
+                "id": "projects/monad-code/global/images/e2b-orch-20260728",
+                "self_link": "https://www.googleapis.com/compute/v1/projects/monad-code/global/images/e2b-orch-20260728"
+              }
+            },
+            {
+              "address": "module.nomad.data.google_artifact_registry_docker_image.api_image",
+              "mode": "data",
+              "type": "google_artifact_registry_docker_image",
+              "name": "api_image",
+              "values": {
+                "image_name": "api:latest",
+                "location": "us-east4",
+                "repository_id": "e2b-core",
+                "name": "projects/monad-code/locations/us-east4/repositories/e2b-core/dockerImages/api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "self_link": "us-east4-docker.pkg.dev/monad-code/e2b-core/api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            },
+            {
+              "address": "module.nomad.data.google_artifact_registry_docker_image.db_migrator_image",
+              "mode": "data",
+              "type": "google_artifact_registry_docker_image",
+              "name": "db_migrator_image",
+              "values": {
+                "image_name": "db-migrator:latest",
+                "location": "us-east4",
+                "repository_id": "e2b-core",
+                "name": "projects/monad-code/locations/us-east4/repositories/e2b-core/dockerImages/db-migrator@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "self_link": "us-east4-docker.pkg.dev/monad-code/e2b-core/db-migrator@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            },
+            {
+              "address": "module.nomad.data.google_artifact_registry_docker_image.docker_reverse_proxy_image",
+              "mode": "data",
+              "type": "google_artifact_registry_docker_image",
+              "name": "docker_reverse_proxy_image",
+              "values": {
+                "image_name": "docker-reverse-proxy:latest",
+                "location": "us-east4",
+                "repository_id": "e2b-core",
+                "name": "projects/monad-code/locations/us-east4/repositories/e2b-core/dockerImages/docker-reverse-proxy@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "self_link": "us-east4-docker.pkg.dev/monad-code/e2b-core/docker-reverse-proxy@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            },
+            {
+              "address": "module.nomad.data.google_artifact_registry_docker_image.client_proxy_image",
+              "mode": "data",
+              "type": "google_artifact_registry_docker_image",
+              "name": "client_proxy_image",
+              "values": {
+                "image_name": "client-proxy:latest",
+                "location": "us-east4",
+                "repository_id": "e2b-core",
+                "name": "projects/monad-code/locations/us-east4/repositories/e2b-core/dockerImages/client-proxy@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "self_link": "us-east4-docker.pkg.dev/monad-code/e2b-core/client-proxy@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            },
+            {
+              "address": "module.nomad.data.google_artifact_registry_docker_image.clickhouse_migrator_image",
+              "mode": "data",
+              "type": "google_artifact_registry_docker_image",
+              "name": "clickhouse_migrator_image",
+              "values": {
+                "image_name": "clickhouse-migrator:latest",
+                "location": "us-east4",
+                "repository_id": "e2b-core",
+                "name": "projects/monad-code/locations/us-east4/repositories/e2b-core/dockerImages/clickhouse-migrator@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "self_link": "us-east4-docker.pkg.dev/monad-code/e2b-core/clickhouse-migrator@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "module.nomad.module.api.nomad_job.api",
+      "mode": "managed",
+      "type": "nomad_job",
+      "name": "api",
+      "change": {
+        "actions": ["create"],
+        "after": {
+          "jobspec": "image = \"us-east4-docker.pkg.dev/monad-code/e2b-core/api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\nimage = \"us-east4-docker.pkg.dev/monad-code/e2b-core/db-migrator@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\""
+        }
+      }
+    },
+    {
+      "address": "module.nomad.nomad_job.docker_reverse_proxy",
+      "mode": "managed",
+      "type": "nomad_job",
+      "name": "docker_reverse_proxy",
+      "change": {
+        "actions": ["create"],
+        "after": {
+          "jobspec": "image = \"us-east4-docker.pkg.dev/monad-code/e2b-core/docker-reverse-proxy@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\""
+        }
+      }
+    },
+    {
+      "address": "module.nomad.module.client_proxy.nomad_job.client_proxy",
+      "mode": "managed",
+      "type": "nomad_job",
+      "name": "client_proxy",
+      "change": {
+        "actions": ["create"],
+        "after": {
+          "jobspec": "image = \"us-east4-docker.pkg.dev/monad-code/e2b-core/client-proxy@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\""
+        }
+      }
+    }
+  ]
+}
