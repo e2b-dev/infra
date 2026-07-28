@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -157,12 +158,26 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 	return redisClient, nil
 }
 
+// redisConnectWindow is redisConnectTimeout unless REDIS_CONNECT_TIMEOUT
+// overrides it. Environments that induce outages longer than the default —
+// deterministic simulation testing, where network partitions are deliberate and
+// can outlast 30s — need a longer window, but production keeps the default.
+func redisConnectWindow() time.Duration {
+	if v := os.Getenv("REDIS_CONNECT_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			return d
+		}
+	}
+
+	return redisConnectTimeout
+}
+
 // pingWithRetry retries the startup ping for a bounded window. Callers treat a
 // failure here as fatal, so a single dropped packet would otherwise take the
 // process down — and since every node reconnects at once after a Redis blip,
 // that turns a brief outage into a fleet-wide crash loop.
 func pingWithRetry(ctx context.Context, client redis.UniversalClient) error {
-	deadline := time.Now().Add(redisConnectTimeout)
+	deadline := time.Now().Add(redisConnectWindow())
 	backoff := 100 * time.Millisecond
 
 	for attempt := 1; ; attempt++ {
