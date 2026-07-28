@@ -35,7 +35,6 @@ func minimalTeamInfo() *authtypes.Team {
 	}
 }
 
-
 // TestSandboxResume_RejectsNonPositiveTimeout verifies that POST /sandboxes/{id}/resume
 // returns 400 for zero and negative timeout values. The check runs before any
 // snapshot or orchestrator lookup.

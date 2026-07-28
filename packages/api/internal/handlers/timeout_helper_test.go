@@ -92,7 +92,7 @@ func TestValidateAndParseTimeout(t *testing.T) {
 		v := int32(0)
 		_, err := validateAndParseTimeout(&v, maxHours)
 		require.NotNil(t, err)
-		require.Equal(t, int(http.StatusBadRequest), int(err.Code))
+		require.Equal(t, http.StatusBadRequest, err.Code)
 		require.Equal(t, "Timeout must be greater than 0", err.ClientMsg)
 	})
 
@@ -101,7 +101,7 @@ func TestValidateAndParseTimeout(t *testing.T) {
 		v := int32(-10)
 		_, err := validateAndParseTimeout(&v, maxHours)
 		require.NotNil(t, err)
-		require.Equal(t, int(http.StatusBadRequest), int(err.Code))
+		require.Equal(t, http.StatusBadRequest, err.Code)
 		require.Equal(t, "Timeout must be greater than 0", err.ClientMsg)
 	})
 
@@ -110,7 +110,7 @@ func TestValidateAndParseTimeout(t *testing.T) {
 		v := int32(90000)
 		_, err := validateAndParseTimeout(&v, maxHours)
 		require.NotNil(t, err)
-		require.Equal(t, int(http.StatusBadRequest), int(err.Code))
+		require.Equal(t, http.StatusBadRequest, err.Code)
 		require.Equal(t, "Timeout cannot be greater than 24 hours", err.ClientMsg)
 	})
 }
