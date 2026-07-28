@@ -11,10 +11,12 @@ override. The orchestrator's `nixos` profile then only verifies and boots
 
 ## Building and publishing
 
-`build.sh` (run on a Linux host with docker):
+`./build.sh <tag> [registry]` (run on a Linux host with docker; the registry
+defaults to `127.0.0.1:5000`):
 
 1. evaluates the NixOS system closure with `nix` inside a `nixos/nix`
-   container (`nixpkgs` channel pinned in the script),
+   container (`nixpkgs` channel pinned in the script), from the
+   `configuration.nix` committed next to the script,
 2. packs the closure into a single-layer OCI rootfs tar, adding the three
    pieces of glue the boot path needs:
    - `/sbin/init -> /nix/var/nix/profiles/system/init` (the stage-2 init the
@@ -24,10 +26,11 @@ override. The orchestrator's `nixos` profile then only verifies and boots
      identify the image *before* the first activation generates the real one,
 3. `docker import`s and pushes the tar.
 
-**Push every rebuild under a NEW TAG.** The base-layer cache key includes the
-image reference as written in the Dockerfile — republishing under the same tag
-silently reuses the previously cached base layer (observed; same "default tag"
-ambiguity called out in `phases/base/hash.go`).
+**Push every rebuild under a NEW TAG** (hence the required `<tag>` argument).
+The base-layer cache key includes the image reference as written in the
+Dockerfile — republishing under the same tag silently reuses the previously
+cached base layer (observed; same "default tag" ambiguity called out in
+`phases/base/hash.go`).
 
 ## Boot-path notes (all observed on real KVM)
 
