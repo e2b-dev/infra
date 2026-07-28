@@ -355,6 +355,25 @@ cleanup trap when possible. The workflow never exports secrets, uses `-force`,
 exposes an unverified image through the canonical runtime family, or destroys
 network state.
 
+If Packer successfully creates the exact candidate but a later manifest,
+smoke, or pre-promotion check fails, preserve both the candidate and
+`.packer-build-manifest.<env>.json`. After fixing and reviewing the check, use
+the explicit recovery target instead of deleting or rebuilding the image:
+
+```bash
+mise exec -- make -C iac/provider-gcp/nomad-cluster-disk-image \
+  operator-canary-resume-promotion ENV=dev \
+  CONFIRM='RESUME PACKER CANARY image=<candidate> revision=<40-character-revision>'
+```
+
+The target accepts only the manifest's single bare image identity, requires
+the recorded revision to be an ancestor of the reviewed checkout, revalidates
+the root-input lock and live candidate metadata, acquires the shared rollout
+lease, and requires a clean read-only network plan before running the same
+disposable smoke and canonical promotion checks. It never reruns Packer or
+applies Terraform. A failure before promotion releases the lease; an
+unverified promotion preserves it for manual recovery.
+
 For the first internal canary, direct upstream HTTPS plus committed digests
 and the Ubuntu snapshot is the deliberate availability trade-off. A
 content-addressed Engram mirror, durable smoke attestation, multi-region lease
