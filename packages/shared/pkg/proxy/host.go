@@ -95,6 +95,10 @@ func parseHost(host string) (sandboxID string, port uint64, err error) {
 		return "", 0, InvalidSandboxPortError{sandboxPortString, err}
 	}
 
+	if sandboxPort == 0 || sandboxPort > 65535 {
+		return "", 0, InvalidSandboxPortError{sandboxPortString, fmt.Errorf("port out of range: %d", sandboxPort)}
+	}
+
 	return sandboxID, sandboxPort, nil
 }
 
@@ -130,6 +134,10 @@ func parseHeaders(h http.Header) (sandboxID string, port uint64, ok bool, err er
 	port, err = strconv.ParseUint(portString, 10, 64)
 	if err != nil {
 		return "", 0, false, InvalidSandboxPortError{portString, err}
+	}
+
+	if port == 0 || port > 65535 {
+		return "", 0, false, InvalidSandboxPortError{portString, fmt.Errorf("port out of range: %d", port)}
 	}
 
 	return sandboxID, port, true, nil
