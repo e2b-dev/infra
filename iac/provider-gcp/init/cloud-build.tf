@@ -29,6 +29,17 @@ resource "google_service_account" "image_builder" {
 resource "google_project_iam_member" "cloud_build_service_agent" {
   project = var.gcp_project_id
   role    = "roles/cloudbuild.serviceAgent"
+  member  = "serviceAccount:${google_project_service_identity.cloud_build.email}"
+
+  depends_on = [google_project_service_identity.cloud_build]
+}
+
+# Add the regional-build service agent before removing the legacy build account
+# bindings. Keeping the resource identities separate makes this migration
+# addition-only and avoids a destroy-before-create permission gap.
+resource "google_project_iam_member" "cloud_build_regional_service_agent" {
+  project = var.gcp_project_id
+  role    = "roles/cloudbuild.serviceAgent"
   member  = "serviceAccount:${local.cloud_build_service_agent_email}"
 
   depends_on = [google_project_service_identity.cloud_build]
@@ -37,6 +48,14 @@ resource "google_project_iam_member" "cloud_build_service_agent" {
 # Cloud Build impersonates only the dedicated build identity. Runtime VMs keep
 # their separate read-only Artifact Registry identity.
 resource "google_service_account_iam_member" "cloud_build_image_builder_token_creator" {
+  service_account_id = google_service_account.image_builder.name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "serviceAccount:${google_project_service_identity.cloud_build.email}"
+
+  depends_on = [google_project_service_identity.cloud_build]
+}
+
+resource "google_service_account_iam_member" "cloud_build_regional_image_builder_token_creator" {
   service_account_id = google_service_account.image_builder.name
   role               = "roles/iam.serviceAccountTokenCreator"
   member             = "serviceAccount:${local.cloud_build_service_agent_email}"

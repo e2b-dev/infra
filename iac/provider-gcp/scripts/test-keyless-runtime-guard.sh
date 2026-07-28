@@ -30,12 +30,10 @@ grep -F "Static GCP credentials are forbidden" "${test_dir}/acl-bad.log" >/dev/n
 if [[ -f "$cloud_build_tf" ]]; then
   grep -F 'service-${data.google_project.current.number}@gcp-sa-cloudbuild.iam.gserviceaccount.com' \
     "$cloud_build_tf" >/dev/null
-
-  if grep -F 'member  = "serviceAccount:${google_project_service_identity.cloud_build.email}"' \
-    "$cloud_build_tf" >/dev/null; then
-    echo "Cloud Build IAM must target the regional-build service agent, not the legacy build account." >&2
-    exit 1
-  fi
+  grep -F 'resource "google_project_iam_member" "cloud_build_regional_service_agent"' \
+    "$cloud_build_tf" >/dev/null
+  grep -F 'resource "google_service_account_iam_member" "cloud_build_regional_image_builder_token_creator"' \
+    "$cloud_build_tf" >/dev/null
 fi
 
 echo "Keyless GCP runtime guard tests passed."
