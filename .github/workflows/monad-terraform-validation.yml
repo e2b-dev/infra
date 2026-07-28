@@ -1,0 +1,67 @@
+name: Monad Terraform Validation
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: monad-terraform-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Keyless GCP configuration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Read pinned Terraform version
+        id: terraform-version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(awk '$1 == "terraform" { print $2; exit }' .tool-versions)"
+          test -n "$version"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: ${{ steps.terraform-version.outputs.version }}
+
+      - name: Check formatting
+        run: terraform fmt -check -recursive iac/provider-gcp
+
+      - name: Initialise without a backend
+        run: terraform -chdir=iac/provider-gcp init -backend=false -input=false
+
+      - name: Validate configuration
+        run: terraform -chdir=iac/provider-gcp validate
+
+      - name: Keep inherited automation dormant
+        shell: bash
+        run: |
+          set -euo pipefail
+          active_workflows="$(
+            find .github/workflows -maxdepth 1 -type f \
+              \( -name '*.yml' -o -name '*.yaml' \) \
+              -print | LC_ALL=C sort
+          )"
+          expected=".github/workflows/monad-terraform-validation.yml"
+          if [[ "$active_workflows" != "$expected" ]]; then
+            printf 'unexpected active workflows:\n%s\n' "${active_workflows:-<none>}" >&2
+            exit 1
+          fi
+
+          test -f .github/upstream-workflows-disabled/pull-request.yml
+          test -f .github/upstream-workflows-disabled/push-main.yml
+          test -f .github/upstream-workflows-disabled/publish.yml
