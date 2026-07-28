@@ -66,11 +66,24 @@ func NewLogger(loggerConfig LoggerConfig) (Logger, error) {
 		encoderConfig = GetConsoleEncoderConfig()
 	}
 
+	// Terse mode trades log fidelity for volume. Development mode attaches a
+	// stack trace to every Warn, and sampling is off, so a service that warns in
+	// a retry loop emits gigabytes — which is fine on a workstation and ruinous
+	// under a simulator that pays for every byte. Off by default; production
+	// behaviour is unchanged.
+	terse := os.Getenv("E2B_LOG_TERSE") == "true"
+
+	var sampling *zap.SamplingConfig
+	if terse {
+		// Keep the first 100 of an identical message each second, then 1 in 100.
+		sampling = &zap.SamplingConfig{Initial: 100, Thereafter: 100}
+	}
+
 	config := zap.Config{
-		DisableStacktrace: loggerConfig.DisableStacktrace,
+		DisableStacktrace: loggerConfig.DisableStacktrace || terse,
 		// Takes stacktraces more liberally
-		Development: true,
-		Sampling:    nil,
+		Development: !terse,
+		Sampling:    sampling,
 
 		Encoding:         encoding,
 		EncoderConfig:    encoderConfig,

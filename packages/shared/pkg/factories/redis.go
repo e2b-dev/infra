@@ -43,6 +43,9 @@ const (
 	// connMaxLifetimeJitter adds random offset in [-jitter, +jitter] to each connection's lifetime,
 	// so connections expire between 20-40 minutes instead of all at exactly 30 minutes.
 	connMaxLifetimeJitter = 10 * time.Minute
+
+	// redisConnectTimeout bounds the startup ping retry window.
+	redisConnectTimeout = 30 * time.Second
 )
 
 // resolvePoolSize computes the effective pool size and minimum idle connections
@@ -145,13 +148,46 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 		return nil, errors.Join(fmt.Errorf("failed to enable redis metrics: %w", err), closeErr)
 	}
 
-	if _, err := redisClient.Ping(ctx).Result(); err != nil {
+	if err := pingWithRetry(ctx, redisClient); err != nil {
 		closeErr := redisClient.Close()
 
 		return nil, errors.Join(fmt.Errorf("failed to ping redis: %w", err), closeErr)
 	}
 
 	return redisClient, nil
+}
+
+// pingWithRetry retries the startup ping for a bounded window. Callers treat a
+// failure here as fatal, so a single dropped packet would otherwise take the
+// process down — and since every node reconnects at once after a Redis blip,
+// that turns a brief outage into a fleet-wide crash loop.
+func pingWithRetry(ctx context.Context, client redis.UniversalClient) error {
+	deadline := time.Now().Add(redisConnectTimeout)
+	backoff := 100 * time.Millisecond
+
+	for attempt := 1; ; attempt++ {
+		_, err := client.Ping(ctx).Result()
+		if err == nil {
+			return nil
+		}
+
+		if ctx.Err() != nil || time.Now().After(deadline) {
+			return err
+		}
+
+		logger.L().Warn(ctx, "Redis ping failed, retrying",
+			zap.Int("attempt", attempt), zap.Error(err))
+
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(backoff):
+		}
+
+		if backoff < time.Second {
+			backoff *= 2
+		}
+	}
 }
 
 func CloseCleanly(client redis.UniversalClient) error {
