@@ -79,6 +79,7 @@ type Server struct {
 	uploadedBuilds        *ttlcache.Cache[string, struct{}]
 	uploads               *sandbox.Uploads
 	sandboxCreateDuration metric.Int64Histogram
+	sandboxPauseDuration  metric.Int64Histogram
 	sandboxKilledCounter  metric.Int64Counter
 	uploadFailedCounter   metric.Int64Counter
 
@@ -145,6 +146,12 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 		return nil, fmt.Errorf("failed to register sandbox create duration histogram: %w", err)
 	}
 	server.sandboxCreateDuration = sandboxCreateDuration
+
+	sandboxPauseDuration, err := telemetry.GetHistogram(meter, telemetry.PauseDurationHistogramName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register sandbox pause duration histogram: %w", err)
+	}
+	server.sandboxPauseDuration = sandboxPauseDuration
 
 	sandboxKilledCounter, err := telemetry.GetCounter(meter, telemetry.OrchestratorSandboxKilledCounterName)
 	if err != nil {
