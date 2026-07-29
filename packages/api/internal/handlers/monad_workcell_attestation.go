@@ -77,11 +77,18 @@ func (a *APIStore) GetWellKnownMonadWorkcellAttestationsSandboxID(c *gin.Context
 
 			return
 		}
+		sourceBuildID, parseErr := monadRunningSourceBuildID(sbx)
+		if parseErr != nil {
+			telemetry.ReportError(ctx, "Monad workcell attestation rejected resumed sandbox image metadata", parseErr, telemetry.WithSandboxID(sandboxID))
+			a.sendAPIStoreError(c, http.StatusConflict, monadAttestationConflictError)
+
+			return
+		}
 
 		source = monadWorkcellAttestationSource{
 			sandboxID:               sbx.SandboxID,
 			templateID:              sbx.BaseTemplateID,
-			buildID:                 sbx.BuildID,
+			buildID:                 sourceBuildID,
 			metadata:                sbx.Metadata,
 			cpuCount:                sbx.VCpu,
 			memoryMB:                sbx.RamMB,
@@ -169,6 +176,24 @@ func (a *APIStore) GetWellKnownMonadWorkcellAttestationsSandboxID(c *gin.Context
 	}
 
 	c.JSON(http.StatusOK, attestation)
+}
+
+func monadRunningSourceBuildID(sbx sandboxtypes.Sandbox) (uuid.UUID, error) {
+	// A resumed sandbox executes from the pause snapshot's transient build, while
+	// BaseTemplateID and Monad's reserved image metadata continue to identify the
+	// immutable source template build. The paused-sandbox path below uses the
+	// same persisted source identity. Direct creates must still attest the actual
+	// running build so callers cannot substitute metadata before the first pause.
+	if sbx.TemplateID == sbx.BaseTemplateID {
+		return sbx.BuildID, nil
+	}
+
+	sourceBuildID, err := uuid.Parse(sbx.Metadata[monadMetadataImageID])
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("invalid resumed sandbox source build metadata: %w", err)
+	}
+
+	return sourceBuildID, nil
 }
 
 func (a *APIStore) verifyMonadTemplateBuild(c *gin.Context, source monadWorkcellAttestationSource, teamID uuid.UUID) error {
