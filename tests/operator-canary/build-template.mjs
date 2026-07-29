@@ -6,6 +6,7 @@ import {
   requiredEnv,
   safeErrorMessage,
 } from './lifecycle-core.mjs';
+import { createCanaryTemplateDefinition } from './template-definition.mjs';
 
 const environment = process.env;
 const apiKey = requiredEnv(environment, 'E2B_API_KEY');
@@ -42,11 +43,7 @@ try {
     );
   }
 
-  const definition = Template()
-    .fromUbuntuImage('24.04')
-    .runCmd(
-      "install -d -m 0755 /opt/monad && printf '%s\\n' 'monad-gcp-canary-template-v1' > /opt/monad/canary-template",
-    );
+  const definition = createCanaryTemplateDefinition();
 
   const result = await Template.build(definition, templateName, {
     ...connection,

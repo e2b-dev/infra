@@ -10,6 +10,10 @@ import {
   requiredEnv,
   safeErrorMessage,
 } from './lifecycle-core.mjs';
+import {
+  TEMPLATE_MARKER_PATH,
+  TEMPLATE_MARKER_VALUE,
+} from './template-definition.mjs';
 
 const environment = process.env;
 const apiKey = requiredEnv(environment, 'E2B_API_KEY');
@@ -255,7 +259,7 @@ try {
 
   await runChecked(
     source,
-    `test "$(cat /opt/monad/canary-template)" = monad-gcp-canary-template-v1 && printf '%s' source > ${markerPath} && printf '%s' source`,
+    `test "$(cat ${TEMPLATE_MARKER_PATH})" = ${TEMPLATE_MARKER_VALUE} && printf '%s' source > ${markerPath} && printf '%s' source`,
     'source',
   );
   record('source-executed');

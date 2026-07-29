@@ -8,7 +8,7 @@
   "scripts": {
     "build-template": "node build-template.mjs",
     "canary": "node lifecycle.mjs",
-    "test": "node --test lifecycle-core.test.mjs"
+    "test": "node --test *.test.mjs"
   },
   "dependencies": {
     "e2b": "2.21.0"
