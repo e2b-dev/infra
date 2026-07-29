@@ -167,6 +167,10 @@ func TestSetRemovesADefaultMembership(t *testing.T) {
 	require.Empty(t, teamMembers(t, db, teamID))
 }
 
+// The evicted set has to equal the deleted set: exactly the projects the purge
+// removed the user from, and no others. Deriving it from the delete rather than
+// a preceding read is what keeps that true when a membership is committed while
+// the purge is running.
 func TestPurgeUserClearsMembershipsAndTokensAcrossProjects(t *testing.T) {
 	t.Parallel()
 

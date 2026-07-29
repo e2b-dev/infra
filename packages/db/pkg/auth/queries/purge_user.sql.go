@@ -11,17 +11,32 @@ import (
 	"github.com/google/uuid"
 )
 
-const listUserTeamIDs = `-- name: ListUserTeamIDs :many
-
-SELECT team_id FROM public.users_teams
+const purgeUserAccessTokens = `-- name: PurgeUserAccessTokens :exec
+DELETE FROM public.access_tokens
 WHERE user_id = $1::uuid
+`
+
+func (q *Queries) PurgeUserAccessTokens(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, purgeUserAccessTokens, userID)
+	return err
+}
+
+const purgeUserMemberships = `-- name: PurgeUserMemberships :many
+
+DELETE FROM public.users_teams
+WHERE user_id = $1::uuid
+RETURNING team_id
 `
 
 // Cluster-local teardown of one user's state, for the management interface's
 // purge route. public.users is deliberately left standing.
-// Read before the delete: afterwards nothing says which teams cached the user.
-func (q *Queries) ListUserTeamIDs(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, listUserTeamIDs, userID)
+// Returns the projects it touched, so the caller evicts exactly what it
+// removed. Reading them beforehand instead would be a second statement
+// snapshot under READ COMMITTED, and would miss a membership committed between
+// the read and this delete — which this statement removes but the caller would
+// then never evict.
+func (q *Queries) PurgeUserMemberships(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, purgeUserMemberships, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -38,24 +53,4 @@ func (q *Queries) ListUserTeamIDs(ctx context.Context, userID uuid.UUID) ([]uuid
 		return nil, err
 	}
 	return items, nil
-}
-
-const purgeUserAccessTokens = `-- name: PurgeUserAccessTokens :exec
-DELETE FROM public.access_tokens
-WHERE user_id = $1::uuid
-`
-
-func (q *Queries) PurgeUserAccessTokens(ctx context.Context, userID uuid.UUID) error {
-	_, err := q.db.Exec(ctx, purgeUserAccessTokens, userID)
-	return err
-}
-
-const purgeUserMemberships = `-- name: PurgeUserMemberships :exec
-DELETE FROM public.users_teams
-WHERE user_id = $1::uuid
-`
-
-func (q *Queries) PurgeUserMemberships(ctx context.Context, userID uuid.UUID) error {
-	_, err := q.db.Exec(ctx, purgeUserMemberships, userID)
-	return err
 }

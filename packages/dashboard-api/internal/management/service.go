@@ -168,16 +168,11 @@ func (s *Service) PurgeUser(ctx context.Context, userID uuid.UUID) error {
 		_ = tx.Rollback(ctx)
 	}()
 
-	// Read first, because afterwards nothing says which teams cached this user.
-	// That also bounds repair: a crash before the evictions below leaves entries
-	// a retry can no longer find, so they stand until they expire. Recording
-	// them would be a teardown log, which is a lot for a five-minute worst case.
-	teamIDs, err := txDB.ListUserTeamIDs(ctx, userID)
+	// Driven by what the delete removed, not by a read taken before it. Under
+	// READ COMMITTED those are different snapshots, and a membership committed
+	// between them would be deleted here but never evicted below.
+	teamIDs, err := txDB.PurgeUserMemberships(ctx, userID)
 	if err != nil {
-		return fmt.Errorf("list user projects: %w", err)
-	}
-
-	if err := txDB.PurgeUserMemberships(ctx, userID); err != nil {
 		return fmt.Errorf("purge user memberships: %w", err)
 	}
 
@@ -189,6 +184,10 @@ func (s *Service) PurgeUser(ctx context.Context, userID uuid.UUID) error {
 		return fmt.Errorf("commit user purge: %w", err)
 	}
 
+	// A crash before this leaves entries a retry cannot find, since the rows it
+	// would evict from are already gone. They stand until they expire; carrying
+	// them across the gap would need a teardown log, which is a lot of
+	// machinery for a five-minute worst case on a crash.
 	for _, teamID := range teamIDs {
 		s.cache.InvalidateTeamMemberCache(ctx, userID, teamID.String())
 	}
