@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -61,15 +60,11 @@ func (a *APIStore) PostSandboxesSandboxIDFork(c *gin.Context, sandboxID api.Sand
 		return
 	}
 
-	forkTimeout := sandbox.SandboxTimeoutDefault
-	if body.Timeout != nil {
-		forkTimeout = time.Duration(*body.Timeout) * time.Second
+	forkTimeout, apiErr := validateAndParseTimeout(body.Timeout, teamInfo.Limits.MaxLengthHours)
+	if apiErr != nil {
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
-		if forkTimeout > time.Duration(teamInfo.Limits.MaxLengthHours)*time.Hour {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Timeout cannot be greater than %d hours", teamInfo.Limits.MaxLengthHours))
-
-			return
-		}
+		return
 	}
 
 	forkCount := 1
