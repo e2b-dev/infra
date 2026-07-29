@@ -1238,6 +1238,13 @@ components:
         A project's effective limits, already resolved by the caller. Every
         field is absolute: this side stores what it is given and performs no
         arithmetic of its own.
+
+
+        The minimums below track the CHECK constraints on tiers, which is the
+        contract for what a limit may be. project_limits stores the same values
+        under looser constraints on purpose — it is a push target, and a floor
+        that only rejects the impossible keeps a future decision about what is
+        allowed a change to this schema rather than a migration.
       required:
         - concurrent_sandboxes
         - max_sandbox_length_hours
