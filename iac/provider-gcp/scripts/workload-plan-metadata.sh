@@ -125,6 +125,9 @@ configuration_sha256() {
         -path "${config_root}/.workload-cluster-plan.*" -prune -o \
         -path "${config_root}/.workload-cluster-apply.*" -prune -o \
         -path "${config_root}/.workload-cluster-plan-check.*" -prune -o \
+        -path "${config_root}/.workload-prerequisite-plan.*" -prune -o \
+        -path "${config_root}/.workload-prerequisite-apply.*" -prune -o \
+        -path "${config_root}/.workload-prerequisite-plan-check.*" -prune -o \
         -type f \
         ! -name '.tfplan*' \
         ! -name '*.tfstate' \
