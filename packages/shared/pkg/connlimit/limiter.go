@@ -57,6 +57,12 @@ func (l *ConnectionLimiter) Release(key string) {
 			return
 		}
 		if counter.CompareAndSwap(current, current-1) {
+			if current-1 == 0 {
+				l.connections.RemoveCb(key, func(k string, v *atomic.Int64, exists bool) bool {
+					return exists && v.Load() == 0
+				})
+			}
+
 			return
 		}
 	}
