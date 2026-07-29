@@ -12,7 +12,6 @@ import (
 )
 
 const insertManagedTeam = `-- name: InsertManagedTeam :one
-
 INSERT INTO public.teams (id, name, slug, tier, email, is_blocked)
 VALUES (
     $1::uuid,
@@ -41,12 +40,10 @@ type InsertManagedTeamRow struct {
 	Email string
 }
 
-// Project reconciliation for the control-plane management interface. The caller
-// supplies the id, so create and reconcile are one request and these are its
-// branches.
-// Yields no row when the id is taken, which is the signal to reconcile. DO
-// NOTHING rather than DO UPDATE, so a slug collision still surfaces as the
-// distinct violation it is.
+// Tier is assigned here and only here. DO NOTHING covers the case where the
+// lock above found nothing and another request inserted the same id before
+// this ran: no row means that happened. A slug collision is a different
+// constraint and still raises.
 func (q *Queries) InsertManagedTeam(ctx context.Context, arg InsertManagedTeamParams) (InsertManagedTeamRow, error) {
 	row := q.db.QueryRow(ctx, insertManagedTeam,
 		arg.ID,
@@ -66,6 +63,7 @@ func (q *Queries) InsertManagedTeam(ctx context.Context, arg InsertManagedTeamPa
 }
 
 const lockManagedTeam = `-- name: LockManagedTeam :one
+
 SELECT id, slug FROM public.teams
 WHERE id = $1::uuid
 FOR UPDATE
@@ -76,6 +74,11 @@ type LockManagedTeamRow struct {
 	Slug string
 }
 
+// Project reconciliation for the control-plane management interface. The caller
+// supplies the id, so create and reconcile are one request and these are its
+// branches.
+// Taken first, so the branch is decided by whether the project exists rather
+// than by an insert failing.
 func (q *Queries) LockManagedTeam(ctx context.Context, id uuid.UUID) (LockManagedTeamRow, error) {
 	row := q.db.QueryRow(ctx, lockManagedTeam, id)
 	var i LockManagedTeamRow
@@ -87,14 +90,14 @@ const updateManagedTeam = `-- name: UpdateManagedTeam :one
 UPDATE public.teams
 SET
     name = $1::text,
-    email = COALESCE($2::text, email)
+    email = $2::text
 WHERE id = $3::uuid
 RETURNING id, name, slug, email
 `
 
 type UpdateManagedTeamParams struct {
 	Name  string
-	Email *string
+	Email string
 	ID    uuid.UUID
 }
 
@@ -105,9 +108,9 @@ type UpdateManagedTeamRow struct {
 	Email string
 }
 
-// Touches only what a reconcile may change. Tier stays because limits arrive
-// through their own route; is_blocked stays because an operator's decision must
-// outlive a routine name push.
+// Touches only the properties the caller synchronizes. Tier stays because it is
+// this side's to assign; is_blocked stays because an operator's decision must
+// outlive a routine push.
 func (q *Queries) UpdateManagedTeam(ctx context.Context, arg UpdateManagedTeamParams) (UpdateManagedTeamRow, error) {
 	row := q.db.QueryRow(ctx, updateManagedTeam, arg.Name, arg.Email, arg.ID)
 	var i UpdateManagedTeamRow

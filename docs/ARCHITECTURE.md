@@ -212,8 +212,9 @@ the same config shape as `AUTH_PROVIDER_CONFIG`. Talks to Postgres and ClickHous
 orchestrators.
 
 The `/v1/management` operations are the cluster's half of a contract the workspace residency owns:
-project upsert (a project is a `public.teams` row created from a caller-supplied UUID on the
-`base_v1` tier), member sync (granular and batched, over opaque user UUIDs in `users_teams`),
+project upsert (a project is a `public.teams` row created from a caller-supplied UUID; the tier is
+assigned once at creation from a local default and no push moves it), member sync (granular and
+batched, over opaque user UUIDs in `users_teams`),
 limit sync (into `project_limits`, which `team_limits` reads in preference to `tiers`), and user
 purge (memberships and access tokens; the `public.users` row survives). All are idempotent, because
 the caller is level-triggered and retries. Membership writes live in `internal/management` with

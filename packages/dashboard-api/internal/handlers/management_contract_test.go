@@ -49,52 +49,28 @@ func TestBatchMemberRequestMatchesTheShapeCallersSend(t *testing.T) {
 	}
 }
 
-// project_type carried an enum of deployment environments from the scaffolding
-// that predated any caller. The caller that arrived sends tier names, so every
-// upsert failed validation client-side, before a request was ever made.
+// project_type is gone from the contract. It named the caller's plan
+// vocabulary, which this side never had a column for or an opinion about: the
+// tier is assigned once at creation from a local default, and the limits that
+// actually matter arrive absolute through upsertProjectLimits.
 //
-// Nothing on this side reads the value — there is no column for it, and limits
-// arrive in full through upsertProjectLimits — so the contract has no business
-// enumerating it. This pins that: a tier name decodes, which it cannot do if
-// someone reintroduces a closed set that guesses at the caller's vocabulary.
-func TestProjectUpsertAcceptsTheCallersOwnTierNames(t *testing.T) {
+// Removing it is safe to ship ahead of the callers. Nothing declares
+// additionalProperties: false, so a caller still sending the field has it
+// ignored rather than rejected — the break is at their next codegen, not at
+// runtime.
+func TestProjectUpsertIgnoresARetiredProjectType(t *testing.T) {
 	t.Parallel()
 
-	for _, projectType := range []string{"base_v1", "pro_v1", "enterprise_v3"} {
-		body := `{"name":"Acme","slug":"acme","project_type":"` + projectType + `"}`
-
-		var decoded api.ManagementProjectUpsertRequest
-		if err := json.Unmarshal([]byte(body), &decoded); err != nil {
-			t.Fatalf("decoding an upsert with project_type %q: %v", projectType, err)
-		}
-
-		if decoded.ProjectType != projectType {
-			t.Errorf("ProjectType = %q, want %q", decoded.ProjectType, projectType)
-		}
-	}
-}
-
-// email arrived after the callers did, so the shape they send has no such
-// field. Declaring it required would break every one of them at its next spec
-// sync; the create-only rule is enforced in the handler for that reason.
-func TestProjectUpsertAcceptsAPayloadWithoutAnEmail(t *testing.T) {
-	t.Parallel()
+	body := `{"name":"Acme","slug":"acme","email":"ops@acme.test","project_type":"enterprise_v3"}`
 
 	var decoded api.ManagementProjectUpsertRequest
-	if err := json.Unmarshal([]byte(`{"name":"Acme","slug":"acme","project_type":"base_v1"}`), &decoded); err != nil {
-		t.Fatalf("decoding an upsert without an email: %v", err)
+	if err := json.Unmarshal([]byte(body), &decoded); err != nil {
+		t.Fatalf("decoding an upsert that still carries project_type: %v", err)
 	}
 
-	if decoded.Email != nil {
-		t.Errorf("Email = %v, want nil so an absent address stays distinguishable from a blank one", *decoded.Email)
-	}
-
-	if err := json.Unmarshal([]byte(`{"name":"Acme","slug":"acme","project_type":"base_v1","email":"ops@acme.test"}`), &decoded); err != nil {
-		t.Fatalf("decoding an upsert with an email: %v", err)
-	}
-
-	if decoded.Email == nil || *decoded.Email != "ops@acme.test" {
-		t.Errorf("Email = %v, want ops@acme.test", decoded.Email)
+	want := api.ManagementProjectUpsertRequest{Name: "Acme", Slug: "acme", Email: "ops@acme.test"}
+	if decoded != want {
+		t.Errorf("decoded %+v, want %+v", decoded, want)
 	}
 }
 

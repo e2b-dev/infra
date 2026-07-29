@@ -19,9 +19,10 @@ import (
 )
 
 // managedProjectTier is where a project created through the management
-// interface starts. project_type does not decide it: the caller names tiers
-// this cluster has never heard of, so mapping it onto teams.tier would fail
-// the foreign key on the first project that is not base.
+// interface starts, and the only tier this side ever assigns. Nothing in the
+// contract names one: the caller's plan vocabulary is its own, and the limits
+// it actually wants arrive absolute through upsertProjectLimits, which
+// team_limits reads in preference to the tier.
 const managedProjectTier = "base_v1"
 
 const teamSlugUniqueConstraint = "teams_slug_unique"
@@ -31,8 +32,9 @@ var (
 	// a different slug.
 	errProjectSlugImmutable = errors.New("project slug cannot change")
 
-	// errProjectEmailRequired reports a create with no address to store.
-	errProjectEmailRequired = errors.New("email is required to create a project")
+	// errProjectRaced reports an id that appeared between the existence check
+	// and the insert.
+	errProjectRaced = errors.New("project was created concurrently")
 )
 
 // ManagementUpsertProject creates or reconciles a project from a
@@ -44,6 +46,7 @@ var (
 func (s *APIStore) ManagementUpsertProject(c *gin.Context, teamID api.TeamID) {
 	ctx := c.Request.Context()
 	attrs := []attribute.KeyValue{telemetry.WithTeamID(teamID.String())}
+	telemetry.SetAttributes(ctx, attrs...)
 
 	body, err := ginutils.ParseBody[api.ManagementProjectUpsertRequest](ctx, c)
 	if err != nil {
@@ -53,12 +56,6 @@ func (s *APIStore) ManagementUpsertProject(c *gin.Context, teamID api.TeamID) {
 
 		return
 	}
-
-	// Traced and not stored. The contract says project_type is recorded rather
-	// than interpreted, and nothing here reads it: no column, no behaviour, and
-	// limits that arrive already resolved.
-	attrs = append(attrs, attribute.String("project.type", body.ProjectType))
-	telemetry.SetAttributes(ctx, attrs...)
 
 	project, created, err := s.upsertManagedProject(ctx, teamID, body)
 	if err != nil {
@@ -78,11 +75,10 @@ func (s *APIStore) ManagementUpsertProject(c *gin.Context, teamID api.TeamID) {
 	}
 
 	c.JSON(upsertStatus(created), api.ManagementProject{
-		Id:          teamID,
-		Name:        project.Name,
-		Slug:        project.Slug,
-		ProjectType: body.ProjectType,
-		Email:       optionalEmail(project.Email),
+		Id:    teamID,
+		Name:  project.Name,
+		Slug:  project.Slug,
+		Email: project.Email,
 	})
 }
 
@@ -93,14 +89,10 @@ type managedProject struct {
 	Email string
 }
 
-// upsertManagedProject inserts first and reconciles when the id is taken, so
-// the common create path costs one statement.
-//
-// The address is required to create and optional to reconcile, which the
-// contract cannot express on a single operation. A create has nowhere to get
-// one from and the column does not accept none; a reconcile already has one
-// stored, and blanking it because the caller stopped sending it would discard
-// something nobody asked to change.
+// upsertManagedProject branches on whether the project already exists, because
+// the two cases differ in what they are allowed to set. A create assigns the
+// tier; a reconcile writes only the properties the caller synchronizes and
+// leaves the tier where it is.
 func (s *APIStore) upsertManagedProject(
 	ctx context.Context,
 	teamID api.TeamID,
@@ -114,42 +106,62 @@ func (s *APIStore) upsertManagedProject(
 		_ = tx.Rollback(ctx)
 	}()
 
-	if body.Email != nil {
-		inserted, insertErr := txDB.InsertManagedTeam(ctx, authqueries.InsertManagedTeamParams{
-			ID:    teamID,
-			Name:  body.Name,
-			Slug:  body.Slug,
-			Tier:  managedProjectTier,
-			Email: *body.Email,
-		})
-
-		if insertErr == nil {
-			if err := tx.Commit(ctx); err != nil {
-				return managedProject{}, false, fmt.Errorf("commit project create: %w", err)
-			}
-
-			return managedProject{Name: inserted.Name, Slug: inserted.Slug, Email: inserted.Email}, true, nil
-		}
-
-		// No row means the id is taken, so this is a reconcile: DO NOTHING lets
-		// the insert double as the branch test, and a concurrent create resolve
-		// below instead of into a 409. Anything else is a real failure.
-		if !dberrors.IsNotFoundError(insertErr) {
-			return managedProject{}, false, fmt.Errorf("create project: %w", insertErr)
-		}
-	}
-
 	existing, err := txDB.LockManagedTeam(ctx, teamID)
-	if err != nil {
-		// Only reachable without an address, since the insert above would
-		// otherwise have created the row.
-		if dberrors.IsNotFoundError(err) {
-			return managedProject{}, false, errProjectEmailRequired
-		}
 
-		return managedProject{}, false, fmt.Errorf("lock project: %w", err)
+	switch {
+	case err == nil:
+		project, err = reconcileManagedProject(ctx, txDB, teamID, existing, body)
+	case dberrors.IsNotFoundError(err):
+		project, err = createManagedProject(ctx, txDB, teamID, body)
+		created = true
+	default:
+		return managedProject{}, false, fmt.Errorf("look up project: %w", err)
 	}
 
+	if err != nil {
+		return managedProject{}, false, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return managedProject{}, false, fmt.Errorf("commit project upsert: %w", err)
+	}
+
+	return project, created, nil
+}
+
+func createManagedProject(
+	ctx context.Context,
+	txDB *authqueries.Queries,
+	teamID api.TeamID,
+	body api.ManagementProjectUpsertRequest,
+) (managedProject, error) {
+	inserted, err := txDB.InsertManagedTeam(ctx, authqueries.InsertManagedTeamParams{
+		ID:    teamID,
+		Name:  body.Name,
+		Slug:  body.Slug,
+		Tier:  managedProjectTier,
+		Email: body.Email,
+	})
+
+	switch {
+	// ON CONFLICT DO NOTHING yields no row, which here means another request
+	// inserted this id between the lock finding nothing and this statement.
+	case dberrors.IsNotFoundError(err):
+		return managedProject{}, errProjectRaced
+	case err != nil:
+		return managedProject{}, fmt.Errorf("create project: %w", err)
+	}
+
+	return managedProject{Name: inserted.Name, Slug: inserted.Slug, Email: inserted.Email}, nil
+}
+
+func reconcileManagedProject(
+	ctx context.Context,
+	txDB *authqueries.Queries,
+	teamID api.TeamID,
+	existing authqueries.LockManagedTeamRow,
+	body api.ManagementProjectUpsertRequest,
+) (managedProject, error) {
 	// The rule that a slug never moves is the caller's: it owns the region-wide
 	// namespace these labels address, and teams_slug_unique is only the backstop
 	// underneath it. Refusing also stops a reconcile adopting a team it does not
@@ -157,7 +169,7 @@ func (s *APIStore) upsertManagedProject(
 	// into projects makes other ids reachable, and a mismatched slug is the
 	// signal that one of them is not the project being described.
 	if existing.Slug != body.Slug {
-		return managedProject{}, false, fmt.Errorf("%w: stored %q, requested %q",
+		return managedProject{}, fmt.Errorf("%w: stored %q, requested %q",
 			errProjectSlugImmutable, existing.Slug, body.Slug)
 	}
 
@@ -167,27 +179,23 @@ func (s *APIStore) upsertManagedProject(
 		Email: body.Email,
 	})
 	if err != nil {
-		return managedProject{}, false, fmt.Errorf("reconcile project: %w", err)
+		return managedProject{}, fmt.Errorf("reconcile project: %w", err)
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return managedProject{}, false, fmt.Errorf("commit project reconcile: %w", err)
-	}
-
-	return managedProject{Name: updated.Name, Slug: updated.Slug, Email: updated.Email}, false, nil
+	return managedProject{Name: updated.Name, Slug: updated.Slug, Email: updated.Email}, nil
 }
 
 func (s *APIStore) sendProjectUpsertError(c *gin.Context, err error, attrs ...attribute.KeyValue) {
 	ctx := c.Request.Context()
 
 	switch {
-	case errors.Is(err, errProjectEmailRequired):
-		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, "upsert project failed", err, attrs...)
-		s.sendAPIStoreError(c, http.StatusBadRequest, "Email is required to create a project")
-
 	case errors.Is(err, errProjectSlugImmutable):
 		telemetry.ReportErrorByCode(ctx, http.StatusConflict, "upsert project failed", err, attrs...)
 		s.sendAPIStoreError(c, http.StatusConflict, "Project slug cannot change")
+
+	case errors.Is(err, errProjectRaced):
+		telemetry.ReportErrorByCode(ctx, http.StatusConflict, "upsert project failed", err, attrs...)
+		s.sendAPIStoreError(c, http.StatusConflict, "Project was created concurrently, retry")
 
 	// Slugs are unique cluster-wide, so the collision may be with a project the
 	// caller has never heard of. Only it can pick another name.
@@ -208,13 +216,4 @@ func upsertStatus(created bool) int {
 	}
 
 	return http.StatusOK
-}
-
-// optionalEmail reports an unset address as absent rather than blank.
-func optionalEmail(email string) *string {
-	if email == "" {
-		return nil
-	}
-
-	return &email
 }

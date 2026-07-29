@@ -2,9 +2,17 @@
 -- supplies the id, so create and reconcile are one request and these are its
 -- branches.
 
--- Yields no row when the id is taken, which is the signal to reconcile. DO
--- NOTHING rather than DO UPDATE, so a slug collision still surfaces as the
--- distinct violation it is.
+-- Taken first, so the branch is decided by whether the project exists rather
+-- than by an insert failing.
+-- name: LockManagedTeam :one
+SELECT id, slug FROM public.teams
+WHERE id = sqlc.arg(id)::uuid
+FOR UPDATE;
+
+-- Tier is assigned here and only here. DO NOTHING covers the case where the
+-- lock above found nothing and another request inserted the same id before
+-- this ran: no row means that happened. A slug collision is a different
+-- constraint and still raises.
 -- name: InsertManagedTeam :one
 INSERT INTO public.teams (id, name, slug, tier, email, is_blocked)
 VALUES (
@@ -18,18 +26,13 @@ VALUES (
 ON CONFLICT (id) DO NOTHING
 RETURNING id, name, slug, email;
 
--- name: LockManagedTeam :one
-SELECT id, slug FROM public.teams
-WHERE id = sqlc.arg(id)::uuid
-FOR UPDATE;
-
--- Touches only what a reconcile may change. Tier stays because limits arrive
--- through their own route; is_blocked stays because an operator's decision must
--- outlive a routine name push.
+-- Touches only the properties the caller synchronizes. Tier stays because it is
+-- this side's to assign; is_blocked stays because an operator's decision must
+-- outlive a routine push.
 -- name: UpdateManagedTeam :one
 UPDATE public.teams
 SET
     name = sqlc.arg(name)::text,
-    email = COALESCE(sqlc.narg(email)::text, email)
+    email = sqlc.arg(email)::text
 WHERE id = sqlc.arg(id)::uuid
 RETURNING id, name, slug, email;

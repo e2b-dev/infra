@@ -104,8 +104,6 @@ func TestUpsertProjectPreservesBlockedStateAndTier(t *testing.T) {
 
 	require.Equal(t, http.StatusCreated, callUpsertProject(t, store, project.id, project.request()).Code)
 
-	// project_type names tiers this cluster has never heard of, which is why it
-	// is not mapped onto teams.tier — doing so would fail this very constraint.
 	require.NoError(t, db.AuthDB.TestsRawSQL(t.Context(),
 		`INSERT INTO public.tiers (id, name, disk_mb, concurrent_instances, max_length_hours,
 			max_vcpu, max_ram_mb, concurrent_template_builds, events_ttl_days,
@@ -117,38 +115,32 @@ func TestUpsertProjectPreservesBlockedStateAndTier(t *testing.T) {
 
 	reconcile := project.request()
 	reconcile.Name = "Acme Renamed"
-	reconcile.ProjectType = "enterprise_v3"
 
 	renamed := callUpsertProject(t, store, project.id, reconcile)
 	require.Equal(t, http.StatusOK, renamed.Code, renamed.Body.String())
 
 	require.Equal(t, "true", teamColumn(t, db, project.id, "is_blocked::text"))
+	// The tier is this side's to assign, once, at creation. No push moves it.
 	require.Equal(t, "pro_v1", teamColumn(t, db, project.id, "tier"))
 }
 
-// Required to create, optional to reconcile — the asymmetry the contract cannot
-// express on one operation.
-func TestUpsertProjectRequiresAnEmailOnlyToCreate(t *testing.T) {
+// Assigned once, at creation, and never moved by a push. The caller names no
+// tier at all, so there is nothing here that could move it.
+func TestUpsertProjectCreatesOnTheDefaultTier(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
 	store, _ := newUpsertStore(db)
 	project := newProjectFixture()
-	withoutEmail := project.request()
-	withoutEmail.Email = nil
-
-	refused := callUpsertProject(t, store, project.id, withoutEmail)
-	require.Equal(t, http.StatusBadRequest, refused.Code, refused.Body.String())
 
 	require.Equal(t, http.StatusCreated, callUpsertProject(t, store, project.id, project.request()).Code)
 
-	// The project now has an address, so a caller that stopped sending one is
-	// omitting a value rather than clearing it.
-	require.Equal(t, http.StatusOK, callUpsertProject(t, store, project.id, withoutEmail).Code)
-	require.Equal(t, "ops@acme.test", teamColumn(t, db, project.id, "email"))
+	require.Equal(t, "base_v1", teamColumn(t, db, project.id, "tier"))
 }
 
-func TestUpsertProjectUpdatesTheEmailWhenOneIsSent(t *testing.T) {
+// Every property in the contract is synchronized by the caller and sent on
+// every push, so a reconcile is a complete statement rather than a patch.
+func TestUpsertProjectReconcilesSynchronizedProperties(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
@@ -157,10 +149,12 @@ func TestUpsertProjectUpdatesTheEmailWhenOneIsSent(t *testing.T) {
 
 	require.Equal(t, http.StatusCreated, callUpsertProject(t, store, project.id, project.request()).Code)
 	rebilled := project.request()
-	rebilled.Email = new("billing@acme.test")
+	rebilled.Name = "Acme Renamed"
+	rebilled.Email = "billing@acme.test"
 
 	require.Equal(t, http.StatusOK, callUpsertProject(t, store, project.id, rebilled).Code)
 
+	require.Equal(t, "Acme Renamed", teamColumn(t, db, project.id, "name"))
 	require.Equal(t, "billing@acme.test", teamColumn(t, db, project.id, "email"))
 }
 
@@ -171,10 +165,7 @@ func TestUpsertProjectEchoesTheStoredProject(t *testing.T) {
 	store, _ := newUpsertStore(db)
 	project := newProjectFixture()
 
-	pro := project.request()
-	pro.ProjectType = "pro_v1"
-
-	recorder := callUpsertProject(t, store, project.id, pro)
+	recorder := callUpsertProject(t, store, project.id, project.request())
 	require.Equal(t, http.StatusCreated, recorder.Code)
 
 	var decoded api.ManagementProject
@@ -182,10 +173,7 @@ func TestUpsertProjectEchoesTheStoredProject(t *testing.T) {
 	require.Equal(t, project.id, decoded.Id)
 	require.Equal(t, "Acme", decoded.Name)
 	require.Equal(t, project.slug, decoded.Slug)
-	// Echoed from the request: there is no column for it.
-	require.Equal(t, "pro_v1", decoded.ProjectType)
-	require.NotNil(t, decoded.Email)
-	require.Equal(t, "ops@acme.test", *decoded.Email)
+	require.Equal(t, "ops@acme.test", decoded.Email)
 }
 
 // Deleting a project needs teardown this process cannot reach. If you are
@@ -217,13 +205,10 @@ func newProjectFixture() projectFixture {
 }
 
 func (p projectFixture) request() api.ManagementProjectUpsertRequest {
-	email := "ops@acme.test"
-
 	return api.ManagementProjectUpsertRequest{
-		Name:        "Acme",
-		Slug:        p.slug,
-		ProjectType: "base_v1",
-		Email:       &email,
+		Name:  "Acme",
+		Slug:  p.slug,
+		Email: "ops@acme.test",
 	}
 }
 
