@@ -135,12 +135,19 @@ func reconcileProject(
 	existing authqueries.LockManagedTeamRow,
 	project Project,
 ) (Project, error) {
-	// The rule that a slug never moves is the caller's: it owns the region-wide
-	// namespace these labels address, and teams_slug_unique is only the backstop
-	// underneath it. Refusing also stops a reconcile adopting a team it does not
-	// own — caller-minted ids will not collide, but backfilling legacy teams
-	// into projects makes other ids reachable, and a mismatched slug is the
-	// signal that one of them is not the project being described.
+	// A slug is not a display property, and this side has its own reason to
+	// refuse moving one. Template aliases are namespaced by it: register_build
+	// stamps the team's slug onto every alias it claims, and a template's name
+	// renders as "<slug>/<alias>". Accepting a new slug without rewriting every
+	// one of those rows would leave the team's templates addressed under a name
+	// that no longer exists. The caller has its own reason too — the slug is the
+	// DNS label projects are reached at — but neither is satisfied by a rename
+	// here alone.
+	//
+	// Refusing also stops a reconcile adopting a team it does not own:
+	// caller-minted ids will not collide, but backfilling legacy teams into
+	// projects makes other ids reachable, and a mismatched slug is the signal
+	// that one of them is not the project being described.
 	if existing.Slug != project.Slug {
 		return Project{}, fmt.Errorf("%w: stored %q, requested %q",
 			ErrProjectSlugImmutable, existing.Slug, project.Slug)
