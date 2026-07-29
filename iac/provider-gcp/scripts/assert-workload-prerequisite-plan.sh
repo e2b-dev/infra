@@ -46,7 +46,8 @@ expected_cloud_sql_policy="$(
       "google_sql_database_instance.operator_canary",
       "google_sql_user.operator_canary",
       "random_password.cloud_sql_operator_canary",
-      "terraform_data.cloud_sql_connection_budget"
+      "terraform_data.cloud_sql_connection_budget",
+      "time_sleep.service_identity_propagation"
     ],
     instance_name_suffix: "postgres-canary",
     connection_secret_id_suffix: "postgres-connection-string",
@@ -81,40 +82,66 @@ if ! jq -ne \
   exit 1
 fi
 
-expected_mutations="$(
+expected_resources="$(
   jq -cn '[
-    {address:"google_artifact_registry_repository.custom_environments_repository",type:"google_artifact_registry_repository",actions:["create"]},
-    {address:"google_artifact_registry_repository_iam_member.custom_environments_repository_member",type:"google_artifact_registry_repository_iam_member",actions:["create"]},
-    {address:"google_compute_global_address.cloud_sql_private_services",type:"google_compute_global_address",actions:["create"]},
-    {address:"google_project_iam_member.cloud_sql_service_agent",type:"google_project_iam_member",actions:["create"]},
-    {address:"google_project_iam_member.service_networking_service_agent",type:"google_project_iam_member",actions:["create"]},
-    {address:"google_project_service.cloud_sql_admin_api",type:"google_project_service",actions:["create"]},
-    {address:"google_project_service.service_networking_api",type:"google_project_service",actions:["create"]},
-    {address:"google_project_service_identity.cloud_sql",type:"google_project_service_identity",actions:["create"]},
-    {address:"google_project_service_identity.service_networking",type:"google_project_service_identity",actions:["create"]},
-    {address:"google_secret_manager_secret.postgres_read_replica_connection_string",type:"google_secret_manager_secret",actions:["create"]},
-    {address:"google_secret_manager_secret.sandbox_access_token_hash_seed",type:"google_secret_manager_secret",actions:["create"]},
-    {address:"google_secret_manager_secret_version.postgres_connection_string",type:"google_secret_manager_secret_version",actions:["create"]},
-    {address:"google_secret_manager_secret_version.postgres_read_replica_connection_string",type:"google_secret_manager_secret_version",actions:["create"]},
-    {address:"google_secret_manager_secret_version.sandbox_access_token_hash_seed",type:"google_secret_manager_secret_version",actions:["create"]},
-    {address:"google_service_networking_connection.cloud_sql",type:"google_service_networking_connection",actions:["create"]},
-    {address:"google_sql_database.operator_canary",type:"google_sql_database",actions:["create"]},
-    {address:"google_sql_database_instance.operator_canary",type:"google_sql_database_instance",actions:["create"]},
-    {address:"google_sql_user.operator_canary",type:"google_sql_user",actions:["create"]},
-    {address:"random_password.cloud_sql_operator_canary",type:"random_password",actions:["create"]},
-    {address:"random_password.sandbox_access_token_hash_seed",type:"random_password",actions:["create"]},
-    {address:"terraform_data.cloud_sql_connection_budget",type:"terraform_data",actions:["create"]},
-    {address:"time_static.volume_token_generation",type:"time_static",actions:["create"]},
-    {address:"tls_private_key.volume_token[0]",type:"tls_private_key",actions:["create"]}
+    {address:"google_artifact_registry_repository.custom_environments_repository",type:"google_artifact_registry_repository"},
+    {address:"google_artifact_registry_repository_iam_member.custom_environments_repository_member",type:"google_artifact_registry_repository_iam_member"},
+    {address:"google_compute_global_address.cloud_sql_private_services",type:"google_compute_global_address"},
+    {address:"google_project_iam_member.cloud_sql_service_agent",type:"google_project_iam_member"},
+    {address:"google_project_iam_member.service_networking_service_agent",type:"google_project_iam_member"},
+    {address:"google_project_service.cloud_sql_admin_api",type:"google_project_service"},
+    {address:"google_project_service.service_networking_api",type:"google_project_service"},
+    {address:"google_project_service_identity.cloud_sql",type:"google_project_service_identity"},
+    {address:"google_project_service_identity.service_networking",type:"google_project_service_identity"},
+    {address:"google_secret_manager_secret.postgres_read_replica_connection_string",type:"google_secret_manager_secret"},
+    {address:"google_secret_manager_secret.sandbox_access_token_hash_seed",type:"google_secret_manager_secret"},
+    {address:"google_secret_manager_secret_version.postgres_connection_string",type:"google_secret_manager_secret_version"},
+    {address:"google_secret_manager_secret_version.postgres_read_replica_connection_string",type:"google_secret_manager_secret_version"},
+    {address:"google_secret_manager_secret_version.sandbox_access_token_hash_seed",type:"google_secret_manager_secret_version"},
+    {address:"google_service_networking_connection.cloud_sql",type:"google_service_networking_connection"},
+    {address:"google_sql_database.operator_canary",type:"google_sql_database"},
+    {address:"google_sql_database_instance.operator_canary",type:"google_sql_database_instance"},
+    {address:"google_sql_user.operator_canary",type:"google_sql_user"},
+    {address:"random_password.cloud_sql_operator_canary",type:"random_password"},
+    {address:"random_password.sandbox_access_token_hash_seed",type:"random_password"},
+    {address:"terraform_data.cloud_sql_connection_budget",type:"terraform_data"},
+    {address:"time_sleep.service_identity_propagation",type:"time_sleep"},
+    {address:"time_static.volume_token_generation",type:"time_static"},
+    {address:"tls_private_key.volume_token[0]",type:"tls_private_key"}
   ] | sort_by(.address)'
 )"
 
-actual_mutations="$(
-  jq -c '
+reviewed_resources="$(
+  jq -c \
+    --argjson expected "${expected_resources}" '
+    [
+      .resource_changes[]?
+      | select(.mode == "managed")
+      | select(
+          .address as $address
+          | any($expected[]; .address == $address)
+        )
+      | {
+          address,
+          type,
+          actions: .change.actions
+        }
+    ]
+    | sort_by(.address)
+  ' <<<"${plan_json}"
+)"
+
+unexpected_mutations="$(
+  jq -c \
+    --argjson expected "${expected_resources}" '
     [
       .resource_changes[]?
       | select(.mode == "managed")
       | select(.change.actions != ["no-op"])
+      | select(
+          .address as $address
+          | all($expected[]; .address != $address)
+        )
       | {
           address,
           type,
@@ -126,12 +153,18 @@ actual_mutations="$(
 )"
 
 if ! jq -ne \
-  --argjson expected "${expected_mutations}" \
-  --argjson actual "${actual_mutations}" \
-  '$actual == $expected' >/dev/null; then
-  printf 'Refusing workload prerequisite plan: mutation set must be the exact reviewed 23 creates.\n' >&2
-  printf 'Expected: %s\n' "$(jq -c . <<<"${expected_mutations}")" >&2
-  printf 'Planned:  %s\n' "$(jq -c . <<<"${actual_mutations}")" >&2
+  --argjson expected "${expected_resources}" \
+  --argjson actual "${reviewed_resources}" \
+  --argjson unexpected "${unexpected_mutations}" '
+    ($actual | map({address, type})) == $expected
+    and all($actual[]; .actions == ["create"] or .actions == ["no-op"])
+    and any($actual[]; .actions == ["create"])
+    and ($unexpected | length) == 0
+  ' >/dev/null; then
+  printf 'Refusing workload prerequisite plan: resource set must be the exact reviewed 24 resources with creates or verified no-ops, including at least one create.\n' >&2
+  printf 'Expected: %s\n' "$(jq -c . <<<"${expected_resources}")" >&2
+  printf 'Reviewed: %s\n' "$(jq -c . <<<"${reviewed_resources}")" >&2
+  printf 'Unexpected mutations: %s\n' "$(jq -c . <<<"${unexpected_mutations}")" >&2
   exit 1
 fi
 
@@ -208,6 +241,19 @@ if ! jq -e \
       .configuration.root_module.resources[]?
       | select(.address == $address)
     ][0];
+  def creating:
+    .change.actions == ["create"];
+  def stable:
+    .change.actions == ["no-op"]
+    and .change.before == .change.after;
+  def reviewed_change:
+    creating or stable;
+  def artifact_repository_name:
+    if type == "string" and startswith("projects/") then
+      split("/")[-1]
+    else
+      .
+    end;
 
   row("google_artifact_registry_repository.custom_environments_repository") as $repo
   | row("google_artifact_registry_repository_iam_member.custom_environments_repository_member") as $repo_iam
@@ -229,7 +275,21 @@ if ! jq -e \
         ($repo_config.provider_config_key // "")
       ] // {}
     ) as $provider_config
-  | $repo.change.after.format == "DOCKER"
+  | all(
+      [
+        $repo,
+        $repo_iam,
+        $read_secret,
+        $read_version,
+        $seed_password,
+        $seed_secret,
+        $seed_version,
+        $volume_key,
+        $volume_time
+      ][];
+      reviewed_change
+    )
+    and $repo.change.after.format == "DOCKER"
     and $repo.change.after.project == $expected_project
     and $repo.change.after.location == $expected_region
     and $repo.change.after.repository_id
@@ -251,7 +311,7 @@ if ! jq -e \
       == ["var.gcp_region"]
     and $repo_iam.change.after.project == $expected_project
     and $repo_iam.change.after.location == $expected_region
-    and $repo_iam.change.after.repository
+    and ($repo_iam.change.after.repository | artifact_repository_name)
       == ($expected_prefix + "custom-environments")
     and $repo_iam.change.after.role == "roles/artifactregistry.repoAdmin"
     and $repo_iam.change.after.member
@@ -289,8 +349,15 @@ if ! jq -e \
     and ($read_secret.change.after.replication[0].auto | length) == 1
     and $read_secret.change.after.replication[0].auto[0].customer_managed_encryption == []
     and $read_secret.change.after.replication[0].user_managed == []
-    and $read_version.change.after.secret == null
-    and $read_version.change.after_unknown.secret == true
+    and (
+      ($read_version | stable)
+      or (
+        ($read_version | creating)
+        and $read_version.change.after.secret == null
+        and $read_version.change.after_unknown.secret == true
+        and $read_version.change.after.secret_data == " "
+      )
+    )
     and $read_version_config.expressions.secret.references
       == [
         "google_secret_manager_secret.postgres_read_replica_connection_string.name",
@@ -298,12 +365,17 @@ if ! jq -e \
       ]
     and $connection_version_config.expressions.secret.references
       == ["module.init.postgres_connection_string_secret_name", "module.init"]
-    and $read_version.change.after.secret_data == " "
     and $read_version.change.after_sensitive.secret_data == true
     and $seed_password.change.after.length == 32
     and $seed_password.change.after.special == false
-    and $seed_password.change.after.result == null
-    and $seed_password.change.after_unknown.result == true
+    and (
+      ($seed_password | stable)
+      or (
+        ($seed_password | creating)
+        and $seed_password.change.after.result == null
+        and $seed_password.change.after_unknown.result == true
+      )
+    )
     and $seed_password.change.after_sensitive.result == true
     and $seed_secret.change.after.project == $expected_project
     and $seed_secret.change.after_unknown.project != true
@@ -313,11 +385,17 @@ if ! jq -e \
     and ($seed_secret.change.after.replication[0].auto | length) == 1
     and $seed_secret.change.after.replication[0].auto[0].customer_managed_encryption == []
     and $seed_secret.change.after.replication[0].user_managed == []
-    and $seed_version.change.after.secret == null
-    and $seed_version.change.after_unknown.secret == true
-    and $seed_version.change.after.secret_data == null
+    and (
+      ($seed_version | stable)
+      or (
+        ($seed_version | creating)
+        and $seed_version.change.after.secret == null
+        and $seed_version.change.after_unknown.secret == true
+        and $seed_version.change.after.secret_data == null
+        and $seed_version.change.after_unknown.secret_data == true
+      )
+    )
     and $seed_version.change.after_sensitive.secret_data == true
-    and $seed_version.change.after_unknown.secret_data == true
     and $seed_version_config.expressions.secret.references
       == [
         "google_secret_manager_secret.sandbox_access_token_hash_seed.id",
@@ -331,12 +409,24 @@ if ! jq -e \
     and $volume_key.change.after.algorithm == "ED25519"
     and $volume_key.change.after_sensitive.private_key_openssh == true
     and $volume_key.change.after_sensitive.private_key_pem == true
-    and $volume_key.change.after_unknown.private_key_openssh == true
-    and $volume_key.change.after_unknown.private_key_pem == true
-    and $volume_time.change.after.rfc3339 == null
-    and $volume_time.change.after_unknown.rfc3339 == true
-    and $volume_time.change.after.unix == null
-    and $volume_time.change.after_unknown.unix == true
+    and (
+      ($volume_key | stable)
+      or (
+        ($volume_key | creating)
+        and $volume_key.change.after_unknown.private_key_openssh == true
+        and $volume_key.change.after_unknown.private_key_pem == true
+      )
+    )
+    and (
+      ($volume_time | stable)
+      or (
+        ($volume_time | creating)
+        and $volume_time.change.after.rfc3339 == null
+        and $volume_time.change.after_unknown.rfc3339 == true
+        and $volume_time.change.after.unix == null
+        and $volume_time.change.after_unknown.unix == true
+      )
+    )
     and $sql_instance.change.after.project == $expected_project
     and $sql_instance.change.after.region == $expected_region
 ' <<<"${plan_json}" >/dev/null; then
@@ -419,4 +509,9 @@ if ! jq -e \
   exit 1
 fi
 
-printf 'Workload prerequisite plan passed: exactly 23 reviewed creates, zero data reads, and zero Nomad resources.\n'
+create_count="$(jq '[.[] | select(.actions == ["create"])] | length' <<<"${reviewed_resources}")"
+no_op_count="$(jq '[.[] | select(.actions == ["no-op"])] | length' <<<"${reviewed_resources}")"
+printf \
+  'Workload prerequisite plan passed: %s reviewed creates, %s verified no-ops, zero data reads, and zero Nomad resources.\n' \
+  "${create_count}" \
+  "${no_op_count}"

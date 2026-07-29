@@ -64,6 +64,23 @@
     }
   },
   {
+    "address": "time_sleep.service_identity_propagation",
+    "mode": "managed",
+    "type": "time_sleep",
+    "name": "service_identity_propagation",
+    "provider_name": "registry.terraform.io/hashicorp/time",
+    "change": {
+      "actions": ["create"],
+      "before": null,
+      "after": {
+        "create_duration": "30s"
+      },
+      "after_unknown": {
+        "id": true
+      }
+    }
+  },
+  {
     "address": "google_project_iam_member.cloud_sql_service_agent",
     "mode": "managed",
     "type": "google_project_iam_member",

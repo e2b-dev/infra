@@ -108,7 +108,8 @@
       "google_sql_database_instance.operator_canary",
       "google_sql_user.operator_canary",
       "random_password.cloud_sql_operator_canary",
-      "terraform_data.cloud_sql_connection_budget"
+      "terraform_data.cloud_sql_connection_budget",
+      "time_sleep.service_identity_propagation"
     ],
     "instance_name_suffix": "postgres-canary",
     "connection_secret_id_suffix": "postgres-connection-string",

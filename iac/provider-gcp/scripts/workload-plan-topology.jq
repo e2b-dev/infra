@@ -12,6 +12,13 @@ def prior_state_resources:
     | .resources[]?
   ];
 
+def normalize_compute_resource_id:
+  if type == "string" then
+    sub("^https://www.googleapis.com/compute/v1/"; "")
+  else
+    .
+  end;
+
 def is_mig:
   .type == "google_compute_instance_group_manager"
   or .type == "google_compute_region_instance_group_manager";
@@ -1069,10 +1076,16 @@ managed_changes as $changes
               $ip.private_network
               | length
             ) == 0
-            or $ip.private_network
-              != $cloud_sql_private_services_range.change.after.network
-            or $ip.private_network
-              != $cloud_sql_private_services_connection.change.after.network
+            or ($ip.private_network | normalize_compute_resource_id)
+              != (
+                $cloud_sql_private_services_range.change.after.network
+                | normalize_compute_resource_id
+              )
+            or ($ip.private_network | normalize_compute_resource_id)
+              != (
+                $cloud_sql_private_services_connection.change.after.network
+                | normalize_compute_resource_id
+              )
             or (
               $ip.allocated_ip_range
               | type
@@ -1121,10 +1134,16 @@ managed_changes as $changes
               .change.after.network
               | length
             ) == 0
-            or .change.after.network
-              != $cloud_sql_instance.change.after.settings[0].ip_configuration[0].private_network
-            or .change.after.network
-              != $cloud_sql_private_services_connection.change.after.network
+            or (.change.after.network | normalize_compute_resource_id)
+              != (
+                $cloud_sql_instance.change.after.settings[0].ip_configuration[0].private_network
+                | normalize_compute_resource_id
+              )
+            or (.change.after.network | normalize_compute_resource_id)
+              != (
+                $cloud_sql_private_services_connection.change.after.network
+                | normalize_compute_resource_id
+              )
           )
         | {
             address: .address,
@@ -1148,10 +1167,16 @@ managed_changes as $changes
               .change.after.network
               | length
             ) == 0
-            or .change.after.network
-              != $cloud_sql_private_services_range.change.after.network
-            or .change.after.network
-              != $cloud_sql_instance.change.after.settings[0].ip_configuration[0].private_network
+            or (.change.after.network | normalize_compute_resource_id)
+              != (
+                $cloud_sql_private_services_range.change.after.network
+                | normalize_compute_resource_id
+              )
+            or (.change.after.network | normalize_compute_resource_id)
+              != (
+                $cloud_sql_instance.change.after.settings[0].ip_configuration[0].private_network
+                | normalize_compute_resource_id
+              )
             or (
               .change.after.reserved_peering_ranges
               | type

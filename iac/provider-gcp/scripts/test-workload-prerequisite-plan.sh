@@ -332,6 +332,75 @@ expect_failure() {
 run_assertion "${test_dir}/reviewed.json" >/dev/null
 
 jq '
+  (
+    .resource_changes[]
+    | select(.address == "time_sleep.service_identity_propagation")
+    | .change
+  ) |= (
+    .actions = ["no-op"]
+    | .before = .after
+    | .after_unknown = {}
+  )
+' "${test_dir}/reviewed.json" >"${test_dir}/recovery.json"
+run_assertion "${test_dir}/recovery.json" >/dev/null
+
+jq '
+  .resource_changes |= map(
+    if (
+      .address
+      | IN(
+          "google_artifact_registry_repository.custom_environments_repository",
+          "google_artifact_registry_repository_iam_member.custom_environments_repository_member",
+          "google_secret_manager_secret.postgres_read_replica_connection_string",
+          "google_secret_manager_secret_version.postgres_read_replica_connection_string",
+          "random_password.sandbox_access_token_hash_seed",
+          "google_secret_manager_secret.sandbox_access_token_hash_seed",
+          "google_secret_manager_secret_version.sandbox_access_token_hash_seed",
+          "time_static.volume_token_generation",
+          "tls_private_key.volume_token[0]"
+        )
+    ) then
+      .change.actions = ["no-op"]
+      | .change.before = .change.after
+      | .change.after_unknown = {}
+    else
+      .
+    end
+  )
+  | (
+      .resource_changes[]
+      | select(
+          .address
+          == "google_artifact_registry_repository_iam_member.custom_environments_repository_member"
+        )
+      | .change.before.repository,
+        .change.after.repository
+    ) = "projects/operator-canary/locations/us-east4/repositories/e2b-custom-environments"
+  | (
+      .resource_changes[]
+      | select(.address == "time_static.volume_token_generation")
+      | .change.before,
+        .change.after
+    ) = {
+      rfc3339: "2026-07-29T11:09:40Z",
+      unix: 1785323380
+    }
+' "${test_dir}/reviewed.json" >"${test_dir}/partial-live-state.json"
+run_assertion "${test_dir}/partial-live-state.json" >/dev/null
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "google_compute_global_address.cloud_sql_private_services"
+      )
+    | .change.after.network
+  ) = "https://www.googleapis.com/compute/v1/projects/operator-canary/global/networks/default"
+' "${test_dir}/reviewed.json" >"${test_dir}/network-self-link.json"
+run_assertion "${test_dir}/network-self-link.json" >/dev/null
+
+jq '
   .resource_changes |= map(
     select(
       .address
@@ -341,7 +410,7 @@ jq '
 ' "${test_dir}/reviewed.json" >"${test_dir}/missing.json"
 expect_failure \
   missing \
-  "mutation set must be the exact reviewed 23 creates" \
+  "resource set must be the exact reviewed 24 resources" \
   "${test_dir}/missing.json"
 
 jq '
@@ -360,7 +429,7 @@ jq '
 ' "${test_dir}/reviewed.json" >"${test_dir}/extra.json"
 expect_failure \
   extra \
-  "mutation set must be the exact reviewed 23 creates" \
+  "resource set must be the exact reviewed 24 resources" \
   "${test_dir}/extra.json"
 
 jq '
@@ -372,8 +441,27 @@ jq '
 ' "${test_dir}/reviewed.json" >"${test_dir}/update.json"
 expect_failure \
   update \
-  "mutation set must be the exact reviewed 23 creates" \
+  "resource set must be the exact reviewed 24 resources" \
   "${test_dir}/update.json"
+
+jq '
+  .resource_changes |= map(
+    if (
+      .mode == "managed"
+      and .change.actions == ["create"]
+    ) then
+      .change.actions = ["no-op"]
+      | .change.before = .change.after
+      | .change.after_unknown = {}
+    else
+      .
+    end
+  )
+' "${test_dir}/reviewed.json" >"${test_dir}/complete.json"
+expect_failure \
+  complete \
+  "including at least one create" \
+  "${test_dir}/complete.json"
 
 jq '
   .resource_changes += [{

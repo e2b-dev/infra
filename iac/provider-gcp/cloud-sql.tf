@@ -36,16 +36,33 @@ resource "google_project_service_identity" "service_networking" {
   service = google_project_service.service_networking_api.service
 }
 
+resource "time_sleep" "service_identity_propagation" {
+  create_duration = "30s"
+
+  depends_on = [
+    google_project_service_identity.cloud_sql,
+    google_project_service_identity.service_networking,
+  ]
+}
+
 resource "google_project_iam_member" "cloud_sql_service_agent" {
   project = var.gcp_project_id
   role    = "roles/cloudsql.serviceAgent"
   member  = "serviceAccount:${google_project_service_identity.cloud_sql.email}"
+
+  depends_on = [
+    time_sleep.service_identity_propagation,
+  ]
 }
 
 resource "google_project_iam_member" "service_networking_service_agent" {
   project = var.gcp_project_id
   role    = "roles/servicenetworking.serviceAgent"
   member  = "serviceAccount:${google_project_service_identity.service_networking.email}"
+
+  depends_on = [
+    time_sleep.service_identity_propagation,
+  ]
 }
 
 resource "google_compute_global_address" "cloud_sql_private_services" {
