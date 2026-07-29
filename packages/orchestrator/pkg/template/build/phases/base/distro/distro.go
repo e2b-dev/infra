@@ -53,7 +53,7 @@ var Profiles = []Profile{
 			"less", "nftables", "iputils-ping", "jq",
 		},
 		PkgQueryBody: `dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q "install ok installed"`,
-		PkgInstall:   "apt-get -q update\n    DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get -qq -o=Dpkg::Use-Pty=0 install -y --no-install-recommends \"$@\"",
+		PkgInstall:   `apt-get -q update && DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get -qq -o=Dpkg::Use-Pty=0 install -y --no-install-recommends "$@"`,
 		InitBinary:   "/lib/systemd/systemd",
 		TimeSyncUnit: "chrony",
 		SSHUnit:      "ssh",
