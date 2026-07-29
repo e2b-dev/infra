@@ -1,0 +1,16 @@
+{
+  "name": "monad-e2b-operator-canary",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build-template": "node build-template.mjs",
+    "canary": "node lifecycle.mjs",
+    "test": "node --test lifecycle-core.test.mjs"
+  },
+  "dependencies": {
+    "e2b": "2.21.0"
+  }
+}

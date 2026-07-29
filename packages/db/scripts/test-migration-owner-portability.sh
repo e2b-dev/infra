@@ -11,6 +11,15 @@ cleanup() {
 }
 trap cleanup EXIT
 
+report_failure() {
+  status=$?
+  printf 'migration portability test failed near line %s\n' \
+    "${BASH_LINENO[0]:-unknown}" >&2
+  docker logs --tail 80 "${container_name}" >&2 || true
+  exit "${status}"
+}
+trap report_failure ERR
+
 docker run \
   --detach \
   --rm \
@@ -19,13 +28,22 @@ docker run \
   --volume "${migration}:/migration.sql:ro" \
   postgres:16-alpine >/dev/null
 
-for _ in {1..30}; do
+ready_count=0
+for _ in {1..60}; do
   if docker exec "${container_name}" pg_isready --username postgres >/dev/null 2>&1; then
-    break
+    ready_count=$((ready_count + 1))
+    if [[ "${ready_count}" -ge 2 ]]; then
+      break
+    fi
+  else
+    ready_count=0
   fi
   sleep 1
 done
-docker exec "${container_name}" pg_isready --username postgres >/dev/null
+if [[ "${ready_count}" -lt 2 ]]; then
+  printf 'PostgreSQL did not reach stable readiness\n' >&2
+  exit 1
+fi
 
 docker exec "${container_name}" \
   psql --username postgres --set ON_ERROR_STOP=1 \

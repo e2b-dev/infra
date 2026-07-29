@@ -143,6 +143,11 @@ jobs:
       - name: Test database migration owner portability
         run: packages/db/scripts/test-migration-owner-portability.sh
 
+      - name: Test raw SDK lifecycle canary guards
+        run: |
+          npm ci --prefix tests/operator-canary
+          npm test --prefix tests/operator-canary
+
       - name: Keep inherited automation dormant
         shell: bash
         run: |
