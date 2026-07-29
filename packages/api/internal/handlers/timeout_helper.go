@@ -1,8 +1,12 @@
 package handlers
 
 import (
+	"fmt"
+	"net/http"
 	"time"
 
+	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	typesteam "github.com/e2b-dev/infra/packages/auth/pkg/types"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 )
@@ -10,6 +14,29 @@ import (
 const (
 	defaultProxyAutoResumeTimeout = 5 * time.Minute
 )
+
+func validateAndParseTimeout(rawTimeout *int32, maxHours int64) (time.Duration, *api.APIError) {
+	timeout := sandbox.SandboxTimeoutDefault
+	if rawTimeout != nil {
+		if *rawTimeout <= 0 {
+			return 0, &api.APIError{
+				Code:      http.StatusBadRequest,
+				ClientMsg: "Timeout must be greater than 0",
+			}
+		}
+
+		timeout = time.Duration(*rawTimeout) * time.Second
+
+		if maxDuration := time.Duration(maxHours) * time.Hour; timeout > maxDuration {
+			return 0, &api.APIError{
+				Code:      http.StatusBadRequest,
+				ClientMsg: fmt.Sprintf("Timeout cannot be greater than %d hours", maxHours),
+			}
+		}
+	}
+
+	return timeout, nil
+}
 
 func getTeamPlanLimit(team *typesteam.Team) time.Duration {
 	if team == nil || team.Limits == nil {

@@ -400,7 +400,13 @@ func (d *DedupedMemfdCache) runDedup(
 	src := func(absOff int64) ([]byte, error) { return memfd.Slice(absOff, blockSize) }
 
 	compareStart := time.Now()
-	plan, err := dedupCompare(ctx, src, base, dirty, blockSize, bestEffort, budget)
+	var plan *dedupPlan
+	err := RunFaultSafe(ctx, func() error {
+		var compareErr error
+		plan, compareErr = dedupCompare(ctx, src, base, dirty, blockSize, bestEffort, budget)
+
+		return compareErr
+	})
 	compareDur := time.Since(compareStart)
 	if err != nil {
 		logSetOnceErr(ctx, "dedup metaOut", metaOut.SetError(err))
