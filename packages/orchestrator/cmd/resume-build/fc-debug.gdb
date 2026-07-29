@@ -23,7 +23,7 @@ define fc-faults
   else
     set $_fc_n = $arg0
   end
-  break *handle_mm_fault
+  hbreak *handle_mm_fault
   set $_fc_i = 0
   while $_fc_i < $_fc_n
     continue
