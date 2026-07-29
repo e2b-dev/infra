@@ -261,7 +261,7 @@ func (b *File) readSegmentFaultSafe(ctx context.Context, p []byte, s readSegment
 		cacheKey := string(s.diff.CacheKey())
 		logger.L().Error(ctx, "memory fault reading build segment; local disk under the cache is likely failing",
 			zap.Error(err),
-			zap.String("diff_cache_key", cacheKey)
+			zap.String("diff_cache_key", cacheKey),
 			zap.Uintptr("fault_addr", faultErr.Addr),
 			zap.Int64("offset", s.srcOff),
 			zap.Int64("length", s.length),
