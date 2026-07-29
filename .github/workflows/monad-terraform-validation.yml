@@ -140,6 +140,9 @@ jobs:
           iac/provider-gcp/scripts/test-foundation-guards.sh
           iac/provider-gcp/scripts/test-foundation-workflow.sh
 
+      - name: Test database migration owner portability
+        run: packages/db/scripts/test-migration-owner-portability.sh
+
       - name: Keep inherited automation dormant
         shell: bash
         run: |

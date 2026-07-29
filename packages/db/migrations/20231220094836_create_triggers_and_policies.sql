@@ -6,7 +6,7 @@ INSERT INTO public.tiers (id, name, vcpu, ram_mb, disk_mb, concurrent_instances)
 
 -- Create user for triggers
 CREATE USER trigger_user;
-GRANT trigger_user TO postgres;
+GRANT trigger_user TO CURRENT_USER;
 
 GRANT CREATE, USAGE ON SCHEMA public TO trigger_user;
 GRANT USAGE ON SCHEMA extensions TO trigger_user;
