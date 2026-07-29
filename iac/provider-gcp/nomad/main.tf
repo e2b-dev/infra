@@ -38,6 +38,12 @@ provider "nomad" {
 // Its already set up in Nomad server config, but from there its taked only for newly created clusters so we need to make sure its apply here to existing.
 resource "nomad_scheduler_config" "config" {
   memory_oversubscription_enabled = true
+  preemption_config = {
+    batch_scheduler_enabled    = false
+    service_scheduler_enabled  = false
+    sysbatch_scheduler_enabled = false
+    system_scheduler_enabled   = false
+  }
 }
 
 module "ingress" {

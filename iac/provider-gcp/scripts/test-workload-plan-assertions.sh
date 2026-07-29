@@ -13,6 +13,7 @@ artifacts="${script_dir}/testdata/workload-artifacts.json"
 policy="${script_dir}/../topology/minimal-workload-policy.json"
 packer_template="${script_dir}/../nomad-cluster-disk-image/main.pkr.hcl"
 cloud_sql_config="${script_dir}/../cloud-sql.tf"
+nomad_config="${script_dir}/../nomad/main.tf"
 reverse_proxy_store="${script_dir}/../../../packages/docker-reverse-proxy/internal/handlers/store.go"
 dashboard_api_main="${script_dir}/../../../packages/dashboard-api/main.go"
 database_migrator="${script_dir}/../../../packages/db/scripts/migrator.go"
@@ -92,6 +93,11 @@ grep -F 'member  = "serviceAccount:${google_project_service_identity.service_net
   "${cloud_sql_config}" >/dev/null
 grep -F 'prevent_destroy = true' \
   "${cloud_sql_config}" >/dev/null
+test "$(
+  grep -Ec \
+    '^[[:space:]]+(batch|service|sysbatch|system)_scheduler_enabled[[:space:]]*=[[:space:]]*false$' \
+    "${nomad_config}"
+)" -eq 4
 test "$(grep -Fc 'pool.WithMaxConnections(3)' "${reverse_proxy_store}")" -eq 2
 test "$(grep -Fc 'pool.WithMaxConnections(8)' "${dashboard_api_main}")" -eq 2
 grep -F 'poolConfig.MaxConns = 4' "${database_migrator}" >/dev/null
