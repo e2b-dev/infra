@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/management"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 )
 
@@ -215,7 +216,7 @@ func (p projectFixture) request() api.ManagementProjectUpsertRequest {
 func newUpsertStore(db *testutils.Database) (*APIStore, *recordingCacheAuthService) {
 	auth := &recordingCacheAuthService{}
 
-	return &APIStore{authDB: db.AuthDB, authService: auth}, auth
+	return &APIStore{managementService: management.NewService(db.AuthDB, auth)}, auth
 }
 
 func callUpsertProject(t *testing.T, store *APIStore, projectID uuid.UUID, request api.ManagementProjectUpsertRequest) *httptest.ResponseRecorder {
