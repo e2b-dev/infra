@@ -447,6 +447,90 @@ components:
         onTimeout:
           $ref: "#/components/schemas/SandboxOnTimeout"
 
+    MonadWorkcellAttestation:
+      type: object
+      description: Authenticated control-plane attestation for a Monad workcell.
+      required:
+        - schemaVersion
+        - sandboxId
+        - provider
+        - cloud
+        - region
+        - templateId
+        - identityFidelity
+        - imageId
+        - resources
+        - network
+        - lifecycle
+      properties:
+        schemaVersion:
+          type: integer
+          enum: [1]
+        sandboxId:
+          type: string
+        provider:
+          type: string
+          enum: [e2b]
+        cloud:
+          type: string
+        region:
+          type: string
+        templateId:
+          type: string
+        identityFidelity:
+          type: string
+          enum: [image-attested]
+        imageId:
+          type: string
+          format: uuid
+        resources:
+          type: object
+          required:
+            - cpuCount
+            - memoryMb
+          properties:
+            cpuCount:
+              type: integer
+              format: int64
+              minimum: 1
+            memoryMb:
+              type: integer
+              format: int64
+              minimum: 1
+        network:
+          type: object
+          required:
+            - allowInternetAccess
+            - allowPublicTraffic
+          properties:
+            allowInternetAccess:
+              type: boolean
+            allowPublicTraffic:
+              type: boolean
+            allowOut:
+              type: array
+              items:
+                type: string
+            denyOut:
+              type: array
+              items:
+                type: string
+        lifecycle:
+          type: object
+          required:
+            - onTimeout
+            - autoResume
+          properties:
+            onTimeout:
+              $ref: "#/components/schemas/SandboxOnTimeout"
+            autoResume:
+              type: boolean
+            pauseFidelity:
+              type: string
+              enum:
+                - filesystem-only
+                - filesystem-and-memory
+
     SandboxLog:
       description: Log entry with timestamp and line
       required:
@@ -2461,6 +2545,31 @@ paths:
           $ref: "#/components/responses/401"
         "404":
           $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /.well-known/monad/workcell-attestations/{sandboxID}:
+    get:
+      summary: Monad workcell attestation
+      description: Return an authenticated, authoritative control-plane attestation for a sandbox owned by the calling team.
+      tags: [sandboxes]
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/sandboxID"
+      responses:
+        "200":
+          description: Successfully attested the workcell.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonadWorkcellAttestation"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
         "500":
           $ref: "#/components/responses/500"
 

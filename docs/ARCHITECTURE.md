@@ -121,6 +121,16 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
 - **State**: writes sandbox records to Redis (source of truth for *running* sandboxes) and the
   sandbox→node **routing catalog** in Redis that client-proxy reads. Persistent entities
   (templates, builds, snapshots, teams) live in Postgres.
+- **Monad workcell attestation**: when both
+  `MONAD_WORKCELL_ATTESTATION_CLOUD` and
+  `MONAD_WORKCELL_ATTESTATION_REGION` are configured, an API-key-authenticated
+  `GET /.well-known/monad/workcell-attestations/{sandboxID}` endpoint proves
+  the caller owns the running or paused sandbox. It verifies Monad's reserved
+  identity metadata against the authoritative template/build assignment in
+  Postgres and the running Redis or paused Postgres policy state before
+  returning immutable image, placement, resources, network, and lifecycle
+  claims. Partial placement configuration fails API startup; absent
+  configuration disables the endpoint.
 - **Extra listeners**: internal gRPC :5009 and edge gRPC :5109 expose `ResumeSandbox` so
   client-proxy can wake paused sandboxes on incoming traffic.
 - Reads ClickHouse for sandbox/team metrics endpoints. Sandbox and template-build logs default to

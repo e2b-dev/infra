@@ -53,6 +53,24 @@ func TestParse(t *testing.T) {
 		require.True(t, ok)
 		assert.Equal(t, FailureConditionInvalidServiceDiscoveryProvider, condition)
 	})
+
+	t.Run("workcell attestation placement must be complete", func(t *testing.T) {
+		t.Setenv("MONAD_WORKCELL_ATTESTATION_CLOUD", "gcp")
+		t.Setenv("MONAD_WORKCELL_ATTESTATION_REGION", "")
+
+		_, err := Parse()
+		assert.ErrorContains(t, err, "MONAD_WORKCELL_ATTESTATION_CLOUD and MONAD_WORKCELL_ATTESTATION_REGION must be set together")
+	})
+
+	t.Run("workcell attestation placement is normalized", func(t *testing.T) {
+		t.Setenv("MONAD_WORKCELL_ATTESTATION_CLOUD", " gcp ")
+		t.Setenv("MONAD_WORKCELL_ATTESTATION_REGION", " us-east4 ")
+
+		result, err := Parse()
+		require.NoError(t, err)
+		assert.Equal(t, "gcp", result.MonadWorkcellAttestationCloud)
+		assert.Equal(t, "us-east4", result.MonadWorkcellAttestationRegion)
+	})
 }
 
 // removeEnv was mostly copied from the implementation of t.Setenv

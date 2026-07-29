@@ -117,7 +117,12 @@ locals {
     VOLUME_TOKEN_DURATION         = var.volume_token_valid_for
     VOLUME_TOKEN_SIGNING_METHOD   = local.volume_token_signature_method
     CLIENT_PROXY_OIDC_ISSUER_URL  = var.client_proxy_oidc_issuer_url
-  }, var.api_env_vars)
+    }, var.api_env_vars, {
+    # These placement claims describe the Terraform-managed deployment and
+    # cannot be forged through the generic API environment override map.
+    MONAD_WORKCELL_ATTESTATION_CLOUD  = "gcp"
+    MONAD_WORKCELL_ATTESTATION_REGION = var.gcp_region
+  })
 
   api_db_migrator_env_vars = merge({
     POSTGRES_CONNECTION_STRING = data.google_secret_manager_secret_version.postgres_connection_string.secret_data

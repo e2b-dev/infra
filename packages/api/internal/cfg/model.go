@@ -113,6 +113,12 @@ type Config struct {
 	DefaultPersistentVolumeType string `env:"DEFAULT_PERSISTENT_VOLUME_TYPE"`
 
 	DomainName string `env:"DOMAIN_NAME" envDefault:""`
+
+	// MonadWorkcellAttestationCloud and MonadWorkcellAttestationRegion enable
+	// the authenticated Monad workcell-attestation endpoint. They must be set
+	// together so the API never emits a partial or inferred placement claim.
+	MonadWorkcellAttestationCloud  string `env:"MONAD_WORKCELL_ATTESTATION_CLOUD"  envDefault:""`
+	MonadWorkcellAttestationRegion string `env:"MONAD_WORKCELL_ATTESTATION_REGION" envDefault:""`
 }
 
 type FailureCondition string
@@ -264,6 +270,12 @@ func Parse() (Config, error) {
 
 	if err := config.VolumesToken.validate(); err != nil {
 		return config, err
+	}
+
+	config.MonadWorkcellAttestationCloud = strings.TrimSpace(config.MonadWorkcellAttestationCloud)
+	config.MonadWorkcellAttestationRegion = strings.TrimSpace(config.MonadWorkcellAttestationRegion)
+	if (config.MonadWorkcellAttestationCloud == "") != (config.MonadWorkcellAttestationRegion == "") {
+		return config, errors.New("MONAD_WORKCELL_ATTESTATION_CLOUD and MONAD_WORKCELL_ATTESTATION_REGION must be set together")
 	}
 
 	return config, nil
