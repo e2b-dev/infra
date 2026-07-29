@@ -56,9 +56,9 @@ func TestUpsertProjectIsIdempotent(t *testing.T) {
 	require.Equal(t, "Acme", teamColumn(t, db, project.id, "name"))
 }
 
-// The slug is the project's DNS label, and the caller's region-wide namespace
-// depends on it not moving.
-func TestUpsertProjectRefusesAChangedSlug(t *testing.T) {
+// Template names are stored as "<slug>/<alias>", so a rename that left them
+// behind would address the project's templates under a slug it no longer has.
+func TestUpsertProjectRenameCarriesTemplateNames(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
@@ -67,12 +67,41 @@ func TestUpsertProjectRefusesAChangedSlug(t *testing.T) {
 
 	require.Equal(t, http.StatusCreated, callUpsertProject(t, store, project.id, project.request()).Code)
 
+	templateID := testutils.CreateTestTemplate(t, db, project.id)
+	namespaced := testutils.CreateTestTemplateAliasWithNamespace(t, db, templateID, &project.slug)
+	legacy := testutils.CreateTestTemplateAliasWithNamespace(t, db, templateID, nil)
+
 	moved := project.request()
 	moved.Slug += "-moved"
 
-	movedResponse := callUpsertProject(t, store, project.id, moved)
-	require.Equal(t, http.StatusConflict, movedResponse.Code, movedResponse.Body.String())
-	require.Equal(t, project.slug, teamColumn(t, db, project.id, "slug"))
+	response := callUpsertProject(t, store, project.id, moved)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+
+	require.Equal(t, moved.Slug, teamColumn(t, db, project.id, "slug"))
+	require.Equal(t, moved.Slug, aliasNamespace(t, db, namespaced))
+	// Aliases predating the namespace column stay null, which is how they are
+	// still resolved.
+	require.Empty(t, aliasNamespace(t, db, legacy))
+}
+
+// The slug is unique cluster-wide on the way in and on the way out, so a rename
+// can collide just as a create can.
+func TestUpsertProjectRenameRejectsATakenSlug(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+	store, _ := newUpsertStore(db)
+	incumbent, mover := newProjectFixture(), newProjectFixture()
+
+	require.Equal(t, http.StatusCreated, callUpsertProject(t, store, incumbent.id, incumbent.request()).Code)
+	require.Equal(t, http.StatusCreated, callUpsertProject(t, store, mover.id, mover.request()).Code)
+
+	collide := mover.request()
+	collide.Slug = incumbent.slug
+
+	response := callUpsertProject(t, store, mover.id, collide)
+	require.Equal(t, http.StatusConflict, response.Code, response.Body.String())
+	require.Equal(t, mover.slug, teamColumn(t, db, mover.id, "slug"))
 }
 
 // Slugs are unique cluster-wide, so the collision may be with a project the
@@ -235,6 +264,25 @@ func callUpsertProject(t *testing.T, store *APIStore, projectID uuid.UUID, reque
 	ginCtx.Writer.WriteHeaderNow()
 
 	return recorder
+}
+
+func aliasNamespace(t *testing.T, db *testutils.Database, alias string) string {
+	t.Helper()
+
+	var namespace *string
+	require.NoError(t, db.AuthDB.TestsRawSQLQuery(t.Context(),
+		"SELECT namespace FROM public.env_aliases WHERE alias = $1",
+		func(rows pgx.Rows) error {
+			rows.Next()
+
+			return rows.Scan(&namespace)
+		}, alias))
+
+	if namespace == nil {
+		return ""
+	}
+
+	return *namespace
 }
 
 func teamColumn(t *testing.T, db *testutils.Database, teamID uuid.UUID, column string) string {

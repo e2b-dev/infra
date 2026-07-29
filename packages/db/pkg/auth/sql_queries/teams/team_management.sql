@@ -33,6 +33,16 @@ RETURNING id, name, slug, email;
 UPDATE public.teams
 SET
     name = sqlc.arg(name)::text,
+    slug = sqlc.arg(slug)::text,
     email = sqlc.arg(email)::text
 WHERE id = sqlc.arg(id)::uuid
 RETURNING id, name, slug, email;
+
+-- Template names are stored as "<namespace>/<alias>" with the namespace copied
+-- from the team's slug, so a rename has to carry them with it. Aliases predating
+-- the namespace column are left null, which is how they are still resolved.
+-- name: RepointTeamAliasNamespace :exec
+UPDATE public.env_aliases
+SET namespace = sqlc.arg(slug)::text
+WHERE namespace IS NOT NULL
+  AND env_id IN (SELECT id FROM public.envs WHERE team_id = sqlc.arg(team_id)::uuid);

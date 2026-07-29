@@ -22,10 +22,6 @@ const defaultProjectTier = "base_v1"
 const teamSlugUniqueConstraint = "teams_slug_unique"
 
 var (
-	// ErrProjectSlugImmutable reports a reconcile that would move a project to
-	// a different slug.
-	ErrProjectSlugImmutable = errors.New("project slug cannot change")
-
 	// ErrProjectSlugTaken reports a slug already held on this cluster, possibly
 	// by a project the caller has never heard of.
 	ErrProjectSlugTaken = errors.New("project slug is already taken")
@@ -135,30 +131,31 @@ func reconcileProject(
 	existing authqueries.LockManagedTeamRow,
 	project Project,
 ) (Project, error) {
-	// A slug is not a display property, and this side has its own reason to
-	// refuse moving one. Template aliases are namespaced by it: register_build
-	// stamps the team's slug onto every alias it claims, and a template's name
-	// renders as "<slug>/<alias>". Accepting a new slug without rewriting every
-	// one of those rows would leave the team's templates addressed under a name
-	// that no longer exists. The caller has its own reason too — the slug is the
-	// DNS label projects are reached at — but neither is satisfied by a rename
-	// here alone.
-	//
-	// Refusing also stops a reconcile adopting a team it does not own:
-	// caller-minted ids will not collide, but backfilling legacy teams into
-	// projects makes other ids reachable, and a mismatched slug is the signal
-	// that one of them is not the project being described.
+	// A rename carries the team's template names with it: they are stored as
+	// "<slug>/<alias>", so leaving them behind would address templates under a
+	// slug the project no longer has. Two costs stay with the caller — the names
+	// its users already type change, and the api service resolves aliases
+	// through a cache, so the old ones answer for up to its TTL.
 	if existing.Slug != project.Slug {
-		return Project{}, fmt.Errorf("%w: stored %q, requested %q",
-			ErrProjectSlugImmutable, existing.Slug, project.Slug)
+		if err := txDB.RepointTeamAliasNamespace(ctx, authqueries.RepointTeamAliasNamespaceParams{
+			TeamID: project.ID,
+			Slug:   project.Slug,
+		}); err != nil {
+			return Project{}, fmt.Errorf("repoint template namespace: %w", err)
+		}
 	}
 
 	updated, err := txDB.UpdateManagedTeam(ctx, authqueries.UpdateManagedTeamParams{
 		ID:    project.ID,
 		Name:  project.Name,
+		Slug:  project.Slug,
 		Email: project.Email,
 	})
-	if err != nil {
+
+	switch {
+	case dberrors.ConstraintName(err) == teamSlugUniqueConstraint:
+		return Project{}, fmt.Errorf("%w: %q", ErrProjectSlugTaken, project.Slug)
+	case err != nil:
 		return Project{}, fmt.Errorf("reconcile project: %w", err)
 	}
 

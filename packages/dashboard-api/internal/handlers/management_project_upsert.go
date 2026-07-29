@@ -68,8 +68,6 @@ func (s *APIStore) sendProjectUpsertError(c *gin.Context, err error, attrs ...at
 // failure is not one the caller can resolve by changing the request.
 func projectConflictMessage(err error) string {
 	switch {
-	case errors.Is(err, management.ErrProjectSlugImmutable):
-		return "Project slug cannot change"
 	case errors.Is(err, management.ErrProjectSlugTaken):
 		return "Slug is already taken on this control plane"
 	case errors.Is(err, management.ErrProjectRaced):

@@ -86,17 +86,39 @@ func (q *Queries) LockManagedTeam(ctx context.Context, id uuid.UUID) (LockManage
 	return i, err
 }
 
+const repointTeamAliasNamespace = `-- name: RepointTeamAliasNamespace :exec
+UPDATE public.env_aliases
+SET namespace = $1::text
+WHERE namespace IS NOT NULL
+  AND env_id IN (SELECT id FROM public.envs WHERE team_id = $2::uuid)
+`
+
+type RepointTeamAliasNamespaceParams struct {
+	Slug   string
+	TeamID uuid.UUID
+}
+
+// Template names are stored as "<namespace>/<alias>" with the namespace copied
+// from the team's slug, so a rename has to carry them with it. Aliases predating
+// the namespace column are left null, which is how they are still resolved.
+func (q *Queries) RepointTeamAliasNamespace(ctx context.Context, arg RepointTeamAliasNamespaceParams) error {
+	_, err := q.db.Exec(ctx, repointTeamAliasNamespace, arg.Slug, arg.TeamID)
+	return err
+}
+
 const updateManagedTeam = `-- name: UpdateManagedTeam :one
 UPDATE public.teams
 SET
     name = $1::text,
-    email = $2::text
-WHERE id = $3::uuid
+    slug = $2::text,
+    email = $3::text
+WHERE id = $4::uuid
 RETURNING id, name, slug, email
 `
 
 type UpdateManagedTeamParams struct {
 	Name  string
+	Slug  string
 	Email string
 	ID    uuid.UUID
 }
@@ -112,7 +134,12 @@ type UpdateManagedTeamRow struct {
 // this side's to assign; is_blocked stays because an operator's decision must
 // outlive a routine push.
 func (q *Queries) UpdateManagedTeam(ctx context.Context, arg UpdateManagedTeamParams) (UpdateManagedTeamRow, error) {
-	row := q.db.QueryRow(ctx, updateManagedTeam, arg.Name, arg.Email, arg.ID)
+	row := q.db.QueryRow(ctx, updateManagedTeam,
+		arg.Name,
+		arg.Slug,
+		arg.Email,
+		arg.ID,
+	)
 	var i UpdateManagedTeamRow
 	err := row.Scan(
 		&i.ID,
