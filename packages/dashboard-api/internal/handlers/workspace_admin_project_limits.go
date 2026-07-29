@@ -30,7 +30,7 @@ func (s *APIStore) UpsertProjectLimits(c *gin.Context, teamID api.TeamID) {
 	ctx := c.Request.Context()
 	attrs := []attribute.KeyValue{telemetry.WithTeamID(teamID.String())}
 
-	body, err := ginutils.ParseBody[api.AdminControlPlaneProjectLimits](ctx, c)
+	body, err := ginutils.ParseBody[api.ManagementProjectLimits](ctx, c)
 	if err != nil {
 		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, "upsert project limits failed",
 			fmt.Errorf("parse project limits request: %w", err), attrs...)

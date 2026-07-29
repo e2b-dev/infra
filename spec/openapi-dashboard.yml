@@ -1162,7 +1162,7 @@ components:
         slug:
           type: string
 
-    AdminControlPlaneProjectType:
+    ManagementProjectType:
       type: string
       minLength: 1
       description: >-
@@ -1175,7 +1175,7 @@ components:
         cross-repo change to a field this side only stores.
       example: base_v1
 
-    AdminControlPlaneProjectUpsertRequest:
+    ManagementProjectUpsertRequest:
       type: object
       required: [name, slug, project_type]
       properties:
@@ -1188,11 +1188,11 @@ components:
           minLength: 1
           maxLength: 63
         project_type:
-          $ref: "#/components/schemas/AdminControlPlaneProjectType"
+          $ref: "#/components/schemas/ManagementProjectType"
 
-    AdminControlPlaneProject:
+    ManagementProject:
       allOf:
-        - $ref: "#/components/schemas/AdminControlPlaneProjectUpsertRequest"
+        - $ref: "#/components/schemas/ManagementProjectUpsertRequest"
         - type: object
           required: [id]
           properties:
@@ -1200,14 +1200,14 @@ components:
               type: string
               format: uuid
 
-    AdminControlPlaneMemberUpsertRequest:
+    ManagementMemberUpsertRequest:
       type: object
       properties:
         added_by:
           type: string
           format: uuid
 
-    AdminControlPlaneMemberBatchEntry:
+    ManagementMemberBatchEntry:
       type: object
       required:
         - user_id
@@ -1223,16 +1223,16 @@ components:
             stated rather than implied by inclusion, so one request carries
             both additions and removals and the caller never has to order them.
 
-    AdminControlPlaneMemberBatchRequest:
+    ManagementMemberBatchRequest:
       type: array
       description: >-
         Desired membership for the listed users, ignoring everyone unlisted.
         Entries are independent, so applying them in any order converges.
       items:
-        $ref: "#/components/schemas/AdminControlPlaneMemberBatchEntry"
+        $ref: "#/components/schemas/ManagementMemberBatchEntry"
       maxItems: 1024
 
-    AdminControlPlaneProjectLimits:
+    ManagementProjectLimits:
       type: object
       description: >-
         A project's effective limits, already resolved by the caller. Every
@@ -1291,11 +1291,11 @@ components:
 
 tags:
   - name: builds
+  - name: management
+    description: Workspace control-plane operations authenticated with service JWTs.
   - name: sandboxes
   - name: teams
   - name: templates
-  - name: workspace-admin
-    description: Workspace control-plane admin operations authenticated with service JWTs.
 
 paths:
   /health:
@@ -1946,7 +1946,7 @@ paths:
     put:
       operationId: upsertProject
       summary: Create or reconcile a project (v1).
-      tags: [workspace-admin]
+      tags: [management]
       security:
         - AdminJWTAuth: []
       requestBody:
@@ -1954,20 +1954,20 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AdminControlPlaneProjectUpsertRequest"
+              $ref: "#/components/schemas/ManagementProjectUpsertRequest"
       responses:
         "200":
           description: Existing project reconciled.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AdminControlPlaneProject"
+                $ref: "#/components/schemas/ManagementProject"
         "201":
           description: Project created.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AdminControlPlaneProject"
+                $ref: "#/components/schemas/ManagementProject"
         "400":
           $ref: "#/components/responses/400"
         "401":
@@ -1981,7 +1981,7 @@ paths:
     delete:
       operationId: deleteProject
       summary: Delete a project and its control-plane state (v1).
-      tags: [workspace-admin]
+      tags: [management]
       security:
         - AdminJWTAuth: []
       responses:
@@ -2003,7 +2003,7 @@ paths:
     put:
       operationId: upsertProjectMember
       summary: Reconcile an opaque user UUID as a project member (v1).
-      tags: [workspace-admin]
+      tags: [management]
       security:
         - AdminJWTAuth: []
       requestBody:
@@ -2011,7 +2011,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AdminControlPlaneMemberUpsertRequest"
+              $ref: "#/components/schemas/ManagementMemberUpsertRequest"
       responses:
         "204":
           description: Membership is present.
@@ -2028,7 +2028,7 @@ paths:
     delete:
       operationId: deleteProjectMember
       summary: Remove a project member (v1).
-      tags: [workspace-admin]
+      tags: [management]
       security:
         - AdminJWTAuth: []
       responses:
@@ -2054,7 +2054,7 @@ paths:
       description: >-
         The bulk path behind group and directory fan-outs, where the per-member
         routes would cost one request each. Callers chunk larger sets.
-      tags: [workspace-admin]
+      tags: [management]
       security:
         - AdminJWTAuth: []
       requestBody:
@@ -2062,7 +2062,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AdminControlPlaneMemberBatchRequest"
+              $ref: "#/components/schemas/ManagementMemberBatchRequest"
       responses:
         "204":
           description: Every listed membership matches the request.
@@ -2083,7 +2083,7 @@ paths:
     put:
       operationId: upsertProjectLimits
       summary: Reconcile effective limits for a project (v1).
-      tags: [workspace-admin]
+      tags: [management]
       security:
         - AdminJWTAuth: []
       requestBody:
@@ -2091,7 +2091,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AdminControlPlaneProjectLimits"
+              $ref: "#/components/schemas/ManagementProjectLimits"
       responses:
         "204":
           description: Effective limits are synchronized.
@@ -2112,7 +2112,7 @@ paths:
     delete:
       operationId: purgeUser
       summary: Purge shard-local membership and access-token state for an opaque user UUID (v1).
-      tags: [workspace-admin]
+      tags: [management]
       security:
         - AdminJWTAuth: []
       responses:
