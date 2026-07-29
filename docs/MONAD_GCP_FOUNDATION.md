@@ -140,6 +140,17 @@ source image. It retains the same environment, backend, toolchain, artifact,
 provenance, live-quota, and shared mutation-lease checks as the complete
 release. It does not revive the legacy `plan-without-jobs` path.
 
+The cluster plan and apply derive quota admission from the same reviewed saved
+plan. If every positive-capacity MIG already has the exact reviewed base size
+in the plan's refreshed prior state, only `no-op` or in-place `update` actions
+may use `post-cluster` peak-minus-base reserve. Initial or partial creation uses
+`bootstrap` full-peak headroom. Unexpected direct quota-bearing resources,
+unknown fleet shapes, capacity drift, and MIG replacement cannot obtain
+`post-cluster` admission; the preceding topology guard still determines
+whether any initial-create resource is reviewed. An instance-template
+create-before-destroy rollout remains eligible only after the topology guard
+proves its MIG size and reviewed surge policy.
+
 The apply target consumes only the private verified copy of the reviewed plan,
 requires a separate literal confirmation, and runs a second targeted plan that
 must report clean convergence. Failed planning leaves an older reviewed pair

@@ -183,6 +183,7 @@ workload-plan-assertions-test:
 	@ ./scripts/test-workload-plan-assertions.sh
 	@ ./scripts/test-legacy-workload-mutation-disabled.sh
 	@ ./scripts/test-rollout-mutation-lease.sh
+	@ ./scripts/test-workload-quota-mode.sh
 	@ ./scripts/test-workload-release.sh
 	@ ./scripts/test-workload-cluster-wait.sh
 	@ ../modules/job-template-manager/scripts/test-get-nomad-job-count.sh
@@ -191,6 +192,7 @@ workload-plan-assertions-test:
 
 workload-release-test:
 	@ ./scripts/test-rollout-mutation-lease.sh
+	@ ./scripts/test-workload-quota-mode.sh
 	@ ./scripts/test-workload-release.sh
 
 worker-startup-render-test:
@@ -328,10 +330,12 @@ workload-cluster-plan:
 			"$${temp_plan}" "$(TF)" \
 			"$(WORKLOAD_TOPOLOGY_POLICY)" "$(WORKLOAD_PACKER_TEMPLATE)" \
 			"$${after_artifacts}" cluster; \
+		quota_mode="$$(./scripts/select-workload-quota-mode.sh \
+			"$${temp_plan}" "$(TF)" "$(WORKLOAD_TOPOLOGY_POLICY)")"; \
 		./scripts/assert-workload-quota.sh \
 			"$(WORKLOAD_TOPOLOGY_POLICY)" \
 			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(GCLOUD)" \
-			"bootstrap"; \
+			"$${quota_mode}"; \
 		$(workload_metadata_context) ./scripts/workload-plan-metadata.sh write \
 			"$${temp_plan}" "$${temp_manifest}" "$(TF)" "." "../.." \
 			"$${after_artifacts}" "$${after_fingerprint}"; \
@@ -437,10 +441,12 @@ workload-cluster-apply:
 			"$${apply_plan}" "$(TF)" \
 			"$(WORKLOAD_TOPOLOGY_POLICY)" "$(WORKLOAD_PACKER_TEMPLATE)" \
 			"$${before_artifacts}" cluster; \
+		quota_mode="$$(./scripts/select-workload-quota-mode.sh \
+			"$${apply_plan}" "$(TF)" "$(WORKLOAD_TOPOLOGY_POLICY)")"; \
 		./scripts/assert-workload-quota.sh \
 			"$(WORKLOAD_TOPOLOGY_POLICY)" \
 			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(GCLOUD)" \
-			"bootstrap"; \
+			"$${quota_mode}"; \
 		./scripts/assert-workload-artifacts.sh \
 			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(PREFIX)" \
 			"$(WORKLOAD_IMAGE_REVISION)" "$(WORKLOAD_JOB_BINARY_BUCKET)" \

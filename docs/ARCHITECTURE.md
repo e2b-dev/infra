@@ -369,7 +369,11 @@ flowchart TB
   and one unavailable instance, so they replace in place. The API zonal MIG retains one surge
   instance. Its build and sandbox workers each use a 100 GB SSD boot disk with 32 GB of swap and
   one fixed 375 GB local SSD for sandbox and snapshot caches. Non-dev keeps the upstream rollout
-  policies. Zero surge does not drain workloads:
+  policies. The guarded cluster plan uses full-peak quota headroom for initial or partial fleet
+  creation, and permits peak-minus-base rollout reserve only when the reviewed plan's refreshed
+  prior state proves every positive-capacity MIG is already at its exact policy size. Direct
+  quota-bearing mutations against an applied fleet and ambiguous/replacing MIGs cannot obtain
+  post-cluster admission. Zero surge does not drain workloads:
   before replacing a worker template, the operator must pause/snapshot active sandboxes, verify
   durable uploads, stop placement, drain Nomad allocations, and verify MIG stability. Automated
   drain orchestration is not implemented, and Packer image builds must not overlap a rollout.

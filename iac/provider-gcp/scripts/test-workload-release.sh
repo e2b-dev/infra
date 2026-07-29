@@ -633,6 +633,8 @@ cp "${provider_root}/scripts/assert-workload-plan.sh" \
   "${workflow_provider}/scripts/"
 cp "${provider_root}/scripts/assert-workload-quota.sh" \
   "${workflow_provider}/scripts/"
+cp "${provider_root}/scripts/select-workload-quota-mode.sh" \
+  "${workflow_provider}/scripts/"
 cp "${provider_root}/scripts/assert-packer-reserve.sh" \
   "${workflow_provider}/scripts/"
 cp "${provider_root}/scripts/workload-plan-metadata.sh" \
@@ -952,6 +954,7 @@ test ! -e "${workflow_cluster_manifest}"
 printf 'pass\n' >"${workflow_mode}"
 expect_pass "cluster-only plan publishes private reviewed bytes" \
   run_workflow_make workload-cluster-plan
+grep -F 'in post-cluster mode' "${test_dir}/stdout" >/dev/null
 test -f "${workflow_cluster_plan}"
 test -f "${workflow_cluster_manifest}"
 test "$(stat -c '%a' "${workflow_cluster_plan}" 2>/dev/null || stat -f '%Lp' "${workflow_cluster_plan}")" = "600"
@@ -1037,6 +1040,8 @@ grep -F 'rm -f -- "$(WORKLOAD_CLUSTER_PLAN)" "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)"
   <<<"${cluster_plan_recipe}" >/dev/null
 grep -F -- '-target=module.cluster' <<<"${cluster_plan_recipe}" >/dev/null
 grep -F '"$${after_artifacts}" cluster' <<<"${cluster_plan_recipe}" >/dev/null
+grep -F './scripts/select-workload-quota-mode.sh' \
+  <<<"${cluster_plan_recipe}" >/dev/null
 grep -F '"$(WORKLOAD_ROLLOUT_LEASE)" acquire' \
   <<<"${cluster_plan_recipe}" >/dev/null
 cluster_plan_acquire_line="$(
@@ -1053,6 +1058,8 @@ grep -F '$(WORKLOAD_CLUSTER_CONFIRMATION)' \
 grep -F 'cp "$(WORKLOAD_CLUSTER_PLAN)" "$${apply_plan}"' \
   <<<"${cluster_apply_recipe}" >/dev/null
 grep -F '"$${before_artifacts}" cluster' \
+  <<<"${cluster_apply_recipe}" >/dev/null
+grep -F './scripts/select-workload-quota-mode.sh' \
   <<<"${cluster_apply_recipe}" >/dev/null
 grep -F '$(TF) apply -input=false "$${apply_plan}"' \
   <<<"${cluster_apply_recipe}" >/dev/null
