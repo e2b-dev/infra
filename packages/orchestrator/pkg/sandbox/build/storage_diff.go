@@ -158,10 +158,12 @@ func (b *File) createDiff(ctx context.Context, buildID uuid.UUID) (Diff, error) 
 		}
 
 	default:
-		// hasEntry=false implies a peer-served header (LoadHeader backfills
-		// missing entries for storage-loaded headers, so storage paths always
-		// hit one of the hasEntry cases). Probe basic-name to detect peer
-		// routing; on miss/transition refresh from storage.
+		// hasEntry=false has two sources: a peer-served incomplete header, and a
+		// V4+ header whose Builds section lost an ancestor — LoadHeader leaves
+		// those absent on purpose, because claiming uncompressed would pin the
+		// suffix-less object name and 404 forever on a compressed build. Probe
+		// basic-name to detect peer routing; otherwise refresh from storage,
+		// which is what resolves the ancestor's real path and frame table.
 		upstream, dataPath, err = b.openDataFile(ctx, buildID, storage.CompressionNone)
 		if err != nil {
 			return nil, err

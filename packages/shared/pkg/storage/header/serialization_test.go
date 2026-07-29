@@ -1064,6 +1064,13 @@ func TestFillMissingBuildsAsSentinels(t *testing.T) {
 	require.Equal(t, BuildData{}, h.Builds[selfID])
 	require.NotContains(t, h.Builds, v3aID)
 	require.NotContains(t, h.Builds, v3bID)
+	// The gap must read back as "unknown" (nil), never as "authoritatively
+	// uncompressed": nil is what sends createDiff and StorageDiff.resolve to the
+	// ancestor's own header instead of the suffix-less object name. A future
+	// change that returned UncompressedFrameTable for absent entries would
+	// reintroduce the 404 while every other assertion here still passed.
+	require.Nil(t, h.GetBuildFrameData(v3aID))
+	require.Nil(t, h.GetBuildFrameData(v3bID))
 }
 
 // V3 is the only format the ancestor sentinels still apply to: it has no Builds
