@@ -26,7 +26,7 @@ cp "$here/configuration.nix" "$work/configuration.nix"
 rm -f "$work/result"
 
 # Build the toplevel closure with nix inside the nixos/nix container.
-docker run --rm -v "$work:/build" nixos/nix:latest sh -c "
+docker run --rm -v "$work:/build" nixos/nix:2.35.1 sh -c "
 set -e
 nix-build -I nixpkgs=channel:nixos-24.05 -I nixos-config=/build/configuration.nix \
   '<nixpkgs/nixos>' -A config.system.build.toplevel -o /build/result
