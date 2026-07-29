@@ -6680,7 +6680,6 @@ func (r PatchApiKeysApiKeyIDResponse) ContentType() string {
 type GetHealthResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON401      *N401
 }
 
 // Status returns HTTPResponse.Status
@@ -9427,16 +9426,6 @@ func ParseGetHealthResponse(rsp *http.Response) (*GetHealthResponse, error) {
 	response := &GetHealthResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest N401
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON401 = &dest
-
 	}
 
 	return response, nil

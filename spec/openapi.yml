@@ -2087,11 +2087,20 @@ paths:
     get:
       summary: Health check
       description: Health check
+      security: []
       responses:
-        "204":
+        "200":
           description: The service is healthy
-        "401":
-          $ref: "#/components/responses/401"
+          content:
+            text/plain:
+              schema:
+                type: string
+        "503":
+          description: The service is unavailable
+          content:
+            text/plain:
+              schema:
+                type: string
 
   /teams:
     get:

@@ -48,6 +48,29 @@ func TestSpecSecuritySchemeHeaderNames(t *testing.T) {
 	}
 }
 
+// TestHealthResponseContract keeps the public health-check contract aligned
+// with the statuses and content type returned by handlers.APIStore.GetHealth.
+func TestHealthResponseContract(t *testing.T) {
+	t.Parallel()
+
+	swagger, err := GetSpec()
+	require.NoError(t, err)
+
+	pathItem := swagger.Paths.Find("/health")
+	require.NotNil(t, pathItem)
+	require.NotNil(t, pathItem.Get)
+
+	for _, status := range []string{"200", "503"} {
+		response := pathItem.Get.Responses.Value(status)
+		require.NotNil(t, response, "health response %s is not declared", status)
+		require.NotNil(t, response.Value)
+		require.Contains(t, response.Value.Content, "text/plain")
+	}
+
+	require.Nil(t, pathItem.Get.Responses.Value("204"))
+	require.Nil(t, pathItem.Get.Responses.Value("401"))
+}
+
 // TestAuthProviderTeamAuthHeaderRoutes verifies that a request carrying the
 // X-Team-ID header reaches the AuthenticationFunc via the openapi3filter, and
 // that the header value is the one extracted by the auth middleware.
