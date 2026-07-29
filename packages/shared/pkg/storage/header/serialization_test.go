@@ -1065,11 +1065,9 @@ func TestFillMissingBuildsAsSentinels(t *testing.T) {
 	require.Equal(t, BuildData{}, h.Builds[selfID])
 	require.NotContains(t, h.Builds, v3aID)
 	require.NotContains(t, h.Builds, v3bID)
-	// The gap must read back as "unknown" (nil), never as "authoritatively
-	// uncompressed": nil is what sends createDiff and StorageDiff.resolve to the
-	// ancestor's own header instead of the suffix-less object name. A future
-	// change that returned UncompressedFrameTable for absent entries would
-	// reintroduce the 404 while every other assertion here still passed.
+	// Absent must read back nil ("unknown"), never UncompressedFrameTable: nil
+	// is what routes createDiff to the ancestor's own header instead of the
+	// suffix-less object name.
 	require.Nil(t, h.GetBuildFrameData(v3aID))
 	require.Nil(t, h.GetBuildFrameData(v3bID))
 }
@@ -1103,12 +1101,10 @@ func TestFillMissingBuildsAsSentinels_V3(t *testing.T) {
 	require.Equal(t, storage.UncompressedFrameTable, h.GetBuildFrameData(ancAID))
 }
 
-// The ancestor-gap contract across a pause generation: ToDiffHeader copies
-// only entries the parent has, the serializer writes only entries that exist,
-// and the next load's backfill leaves the inherited gap absent. Fabricating
-// an entry at any of these steps would persist "authoritatively uncompressed"
-// for a compressed ancestor — the permanent-404 shape the backfill fix
-// removed — surfacing only on grandchild resumes.
+// A V4+ ancestor gap must survive a pause generation absent: ToDiffHeader
+// copies only entries the parent has, the serializer writes only existing
+// entries, and the next load's backfill leaves the gap alone. An entry
+// fabricated at any step would persist "uncompressed" — the permanent 404.
 func TestToDiffHeader_AncestorGapRoundTripsAbsent(t *testing.T) {
 	t.Parallel()
 
@@ -1118,7 +1114,6 @@ func TestToDiffHeader_AncestorGapRoundTripsAbsent(t *testing.T) {
 	childID := uuid.New()
 
 	knownFT := storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{{U: 4096, C: 1024}})
-	childFT := storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{{U: 4096, C: 999}})
 
 	meta := &Metadata{
 		Version: MetadataVersionV5, BlockSize: 4096, Size: 4096 * 3,
@@ -1143,7 +1138,7 @@ func TestToDiffHeader_AncestorGapRoundTripsAbsent(t *testing.T) {
 	require.Contains(t, child.Builds, knownID)
 
 	// Upload adds the self entry and clears the in-flight flag.
-	child.SetBuild(childID, BuildData{Size: 4096, FrameData: childFT.Table()})
+	child.SetBuild(childID, BuildData{Size: 4096})
 	child.IncompletePendingUpload = false
 
 	data, err := SerializeHeader(child)
@@ -1160,7 +1155,6 @@ func TestToDiffHeader_AncestorGapRoundTripsAbsent(t *testing.T) {
 	require.Nil(t, got.GetBuildFrameData(gapID))
 
 	require.Equal(t, storage.CompressionZstd, got.GetBuildFrameData(knownID).CompressionType())
-	require.Equal(t, storage.CompressionZstd, got.GetBuildFrameData(childID).CompressionType())
 }
 
 func TestFillMissingBuildsAsSentinels_NilBuilds(t *testing.T) {

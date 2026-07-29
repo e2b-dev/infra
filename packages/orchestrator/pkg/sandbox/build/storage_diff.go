@@ -158,12 +158,11 @@ func (b *File) createDiff(ctx context.Context, buildID uuid.UUID) (Diff, error) 
 		}
 
 	default:
-		// hasEntry=false has two sources: a peer-served incomplete header, and a
-		// V4+ header whose Builds section lost an ancestor — LoadHeader leaves
-		// those absent on purpose, because claiming uncompressed would pin the
-		// suffix-less object name and 404 forever on a compressed build. Probe
-		// basic-name to detect peer routing; otherwise refresh from storage,
-		// which is what resolves the ancestor's real path and frame table.
+		// hasEntry=false: a peer-served incomplete header, or a V4+ header whose
+		// Builds section lost an ancestor (LoadHeader leaves the gap absent on
+		// purpose — see backfillMissingV3UncompressedBuilds). Probe basic-name to
+		// detect peer routing; otherwise refresh from storage to resolve the
+		// build's real path and frame table.
 		upstream, dataPath, err = b.openDataFile(ctx, buildID, storage.CompressionNone)
 		if err != nil {
 			return nil, err
