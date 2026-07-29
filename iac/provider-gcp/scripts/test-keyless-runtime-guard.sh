@@ -13,6 +13,11 @@ trap 'rm -rf "$test_dir"' EXIT
 printf '%s\n' 'runtime identity is provided by attached service account ADC' >"${test_dir}/safe.txt"
 "$guard" "${test_dir}/safe.txt"
 
+mkdir -p "${test_dir}/node_modules/e2b"
+printf '%s\n' 'serviceAccountJson is part of an installed SDK type definition' \
+  >"${test_dir}/node_modules/e2b/index.d.ts"
+"$guard" "$test_dir"
+
 printf '%s\n' 'GOOGLE_SERVICE_ACCOUNT_KEY=forbidden' >"${test_dir}/bad.txt"
 if "$guard" "${test_dir}/bad.txt" >"${test_dir}/bad.log" 2>&1; then
   echo "Expected the keyless runtime guard to reject a static credential seam." >&2

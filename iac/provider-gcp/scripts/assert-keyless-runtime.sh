@@ -28,6 +28,7 @@ matches="$(
   grep -RInE -I \
     --exclude-dir=.git \
     --exclude-dir=.terraform \
+    --exclude-dir=node_modules \
     --exclude-dir=vendor \
     --exclude=assert-keyless-runtime.sh \
     --exclude=test-keyless-runtime-guard.sh \
