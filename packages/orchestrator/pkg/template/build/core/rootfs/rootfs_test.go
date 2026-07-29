@@ -90,7 +90,7 @@ func TestAdditionalOCILayers(t *testing.T) {
 
 		keysIter := maps.Keys(actualFiles)
 		keys := slices.Collect(keysIter)
-		assert.Len(t, keys, 18)
+		assert.Len(t, keys, 21)
 
 		// The provisioning boot must be self-contained on the baked busybox:
 		// minimal images (distroless) may have no /bin/sh, and busybox init
@@ -114,6 +114,21 @@ func TestAdditionalOCILayers(t *testing.T) {
 		seedCerts := actualFiles["usr/local/bin/e2b-seed-certs"]
 		require.NotEmpty(t, seedCerts, "cert seeding script must be baked")
 		assert.Contains(t, actualFiles["etc/systemd/system/envd.service"], "ExecStartPre=/usr/local/bin/e2b-seed-certs")
+
+		// Both init families run the same boot-time chrony source selector, and
+		// the file it writes is the only source chrony.conf gets — a PHC
+		// refclock baked at build time is fatal to chronyd on a node without
+		// the device.
+		chronySource := actualFiles["usr/local/bin/e2b-chrony-source"]
+		require.NotEmpty(t, chronySource, "chrony source selector must be baked")
+		assert.Contains(t, chronySource, "/run/chrony-e2b/source.conf")
+		assert.Contains(t, chronySource, "refclock PHC /dev/ptp0")
+		assert.Contains(t, chronySource, "pool pool.ntp.org")
+		assert.Contains(t, actualFiles["etc/systemd/system/e2b-chrony-source.service"],
+			"ExecStart=/usr/local/bin/e2b-chrony-source")
+		openrcChronySource := actualFiles["usr/local/share/e2b/chrony-source.openrc"]
+		require.NotEmpty(t, openrcChronySource, "OpenRC chrony source service must be baked")
+		assert.Contains(t, openrcChronySource, "before chronyd")
 
 		// envd must be preset-enabled: first boot (machine-id is removed by
 		// provisioning) applies the distro preset policy, and the RHEL

@@ -101,20 +101,11 @@ fi
 echo "Setting up chrony"
 mkdir -p /etc/chrony
 {
-    # Prefer the hypervisor's PTP clock (kvm-ptp): no network dependency and
-    # it tracks the host directly. It is missing where nested virtualization
-    # can't expose it (e.g. dev slots) — chronyd treats a missing PHC as a
-    # FATAL error, so only reference it when the device exists and fall back
-    # to NTP otherwise; a running chronyd without PHC beats a dead one.
-    # Device presence is probed in the provisioning VM, which runs on the same
-    # host/KVM as the runtime sandboxes.
-    if [ -e /dev/ptp0 ]; then
-        echo "refclock PHC /dev/ptp0 poll 2 dpoll 2"
-        E2B_CHRONY_PHC=1
-    else
-        echo "pool pool.ntp.org iburst maxsources 3"
-        E2B_CHRONY_PHC=0
-    fi
+    # The source line (PHC refclock vs NTP pool) is chosen at BOOT by
+    # e2b-chrony-source, not here: a template provisioned on a node with
+    # /dev/ptp0 can cold-boot on a node without it, and a refclock line for a
+    # missing PHC is FATAL to chronyd.
+    echo "include /run/chrony-e2b/source.conf"
     # Step (jump) the clock instead of slewing when the offset exceeds 1s, but
     # only for the first 3 updates after chronyd starts. chronyd restarts on
     # every cold boot/reboot, so this corrects a large boot-time offset fast
@@ -123,20 +114,6 @@ mkdir -p /etc/chrony
     # longer blocks on first sync.
     echo "makestep 1.0 3"
 } >/etc/chrony/chrony.conf
-
-# Alpine's OpenRC init script hardcodes `-F 1`, which loads chronyd's seccomp
-# filter. Alpine's chrony build (-NTS -SECHASH -DEBUG) takes a SIGSYS —
-# "Bad system call" right after "Loaded seccomp filter (level 1)" — as soon as
-# the PHC refclock is driven, so the service lands in OpenRC's "crashed" state
-# with the clock unsynced. The pool path is unaffected, and the systemd families
-# pass no -F at all, so this only restores parity. The init script splices
-# $command_args in after its own -F 1 and chronyd honours the last -F, so this
-# turns the filter off.
-if [ "$E2B_CHRONY_PHC" = 1 ] && [ "$E2B_INIT_SYSTEM" = "openrc" ]; then
-    echo "Disabling the chronyd seccomp filter (PHC refclock traps under it)"
-    mkdir -p /etc/conf.d
-    echo 'command_args="-F 0"' >>/etc/conf.d/chronyd
-fi
 
 # Add a proxy config, as some environments expects it there (e.g. timemaster in Node Dockerimage)
 echo "include /etc/chrony/chrony.conf" >/etc/chrony.conf

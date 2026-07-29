@@ -157,6 +157,82 @@ func TestInitSystemsDeclaredAndCoherent(t *testing.T) {
 	}
 }
 
+// The per-profile fragments are spliced into single-line generated shell
+// functions (`e2b_pkg_install() { … ; }`), so they stay one-liners — chain with
+// `;` or `&&` instead of embedding newlines.
+func TestProfileFragmentsAreSingleLine(t *testing.T) {
+	t.Parallel()
+	for _, p := range Profiles {
+		for name, frag := range map[string]string{
+			"PkgQueryBody": p.PkgQueryBody,
+			"PkgInstall":   p.PkgInstall,
+			"CARefresh":    p.CARefresh,
+		} {
+			if strings.Contains(frag, "\n") {
+				t.Errorf("profile %q %s spans lines; chain with ; or && instead: %s", p.Key, name, frag)
+			}
+		}
+	}
+}
+
+// Both init families must wire the boot-time chrony source selector in, each
+// with its own mechanism: chrony.conf includes a file only that selector writes,
+// so a family that skips the wiring boots with no time source at all.
+func TestInitSetupWiresChronySourceSelector(t *testing.T) {
+	t.Parallel()
+	systemd := initSetup[InitSystemd]
+	// A drop-in on the family's own unit name, not a static symlink or a unit
+	// [Install] section: the name differs per family and the RHEL preset policy
+	// deletes enablement symlinks on first boot.
+	for _, want := range []string{
+		`/etc/systemd/system/$E2B_TIMESYNC_UNIT.service.d`,
+		"Requires=e2b-chrony-source.service",
+		"After=e2b-chrony-source.service",
+	} {
+		if !strings.Contains(systemd, want) {
+			t.Errorf("systemd init setup missing chrony source wiring %q", want)
+		}
+	}
+	openrc := initSetup[InitOpenRC]
+	for _, want := range []string{
+		"cp /usr/local/share/e2b/chrony-source.openrc /etc/init.d/e2b-chrony-source",
+		"rc-update add e2b-chrony-source boot",
+	} {
+		if !strings.Contains(openrc, want) {
+			t.Errorf("openrc init setup missing chrony source wiring %q", want)
+		}
+	}
+}
+
+// Alpine's chrony build takes a SIGSYS under the seccomp filter its OpenRC init
+// script hardcodes (-F 1) the moment the PHC refclock is driven. Since
+// e2b-chrony-source picks the source at BOOT, provisioning cannot know whether
+// the PHC branch will be taken, so the filter must come off unconditionally —
+// gating it on a build-time /dev/ptp0 probe (as the original fix did) puts the
+// crash back on exactly the nodes that have a PHC.
+func TestOpenRCDisablesChronySeccompRegardlessOfSource(t *testing.T) {
+	t.Parallel()
+	openrc := initSetup[InitOpenRC]
+	if !strings.Contains(openrc, `echo 'command_args="-F 0"' >>"/etc/conf.d/$E2B_TIMESYNC_UNIT"`) {
+		t.Error("openrc init setup must disable the chronyd seccomp filter via conf.d command_args")
+	}
+	// The whole block runs on every Alpine build, so no COMMAND in it may branch
+	// on the device or on a provisioning-time PHC verdict. Comments are stripped
+	// first — they are where the reasoning lives and legitimately say "refclock".
+	var code []string
+	for l := range strings.SplitSeq(openrc, "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(l), "#") {
+			code = append(code, l)
+		}
+	}
+	openrcCode := strings.Join(code, "\n")
+	for _, bad := range []string{"/dev/ptp0", "E2B_CHRONY_PHC", "refclock"} {
+		if strings.Contains(openrcCode, bad) {
+			t.Errorf("openrc init setup branches on %q; the time source is chosen at boot, not while provisioning", bad)
+		}
+	}
+}
+
 // The cache fingerprint must cover the whole generated provisioning contract:
 // stable across calls, and carrying both the selector text and the explicit
 // Version (a profile change must rotate the base-layer cache key).
