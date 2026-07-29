@@ -19,8 +19,9 @@ if command -v fsfreeze >/dev/null 2>&1; then
     fsfreeze --freeze /
 else
     # No util-linux on this image; the double sync flushes the ext4 journal
-    # and the VM is paused before the snapshot is taken.
-    echo "fsfreeze not available on this image; using sync-only flush"
+    # and the VM is paused before the snapshot is taken. Prefixed so the
+    # fallback shows up in the customer's build logs.
+    echo "{{ .ProvisionLogPrefix }}fsfreeze not available on this image; using sync-only flush"
     $BB sync
 fi
 
