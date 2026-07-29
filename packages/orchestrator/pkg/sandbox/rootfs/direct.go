@@ -73,6 +73,7 @@ func (o *DirectProvider) ExportDiff(
 	ctx context.Context,
 	out *os.File,
 	stopSandbox func(context.Context) error,
+	_ bool, // recoverJournal: the direct provider is build-only and never fs-only paused
 ) (*header.DiffMetadata, error) {
 	ctx, childSpan := tracer.Start(ctx, "direct-provider-export")
 	defer childSpan.End()

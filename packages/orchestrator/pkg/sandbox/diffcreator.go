@@ -17,8 +17,11 @@ type DiffCreator interface {
 type RootfsDiffCreator struct {
 	rootfs    rootfs.Provider
 	closeHook func(context.Context) error
+	// recoverJournal runs a host-side ext4 journal recovery before the export
+	// (filesystem-only pause on a guest without FIFREEZE support).
+	recoverJournal bool
 }
 
 func (r *RootfsDiffCreator) process(ctx context.Context, out *os.File) (*header.DiffMetadata, error) {
-	return r.rootfs.ExportDiff(ctx, out, r.closeHook)
+	return r.rootfs.ExportDiff(ctx, out, r.closeHook, r.recoverJournal)
 }
