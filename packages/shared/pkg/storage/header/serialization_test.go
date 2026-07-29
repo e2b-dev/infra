@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"testing"
 
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
@@ -1059,11 +1060,101 @@ func TestFillMissingBuildsAsSentinels(t *testing.T) {
 
 	backfillMissingV3UncompressedBuilds(h)
 
-	require.Len(t, h.Builds, 4)
+	require.Len(t, h.Builds, 2)
 	require.Equal(t, BuildData{Size: 4096, FrameData: knownFT.Table()}, h.Builds[knownID])
 	require.Equal(t, BuildData{}, h.Builds[selfID])
-	require.Equal(t, BuildData{}, h.Builds[v3aID])
-	require.Equal(t, BuildData{}, h.Builds[v3bID])
+	require.NotContains(t, h.Builds, v3aID)
+	require.NotContains(t, h.Builds, v3bID)
+	// Absent must read back nil ("unknown"), never UncompressedFrameTable: nil
+	// is what routes createDiff to the ancestor's own header instead of the
+	// suffix-less object name.
+	require.Nil(t, h.GetBuildFrameData(v3aID))
+	require.Nil(t, h.GetBuildFrameData(v3bID))
+}
+
+// V3 is the only format the ancestor sentinels still apply to: it has no Builds
+// section and no compression, so every gap is genuinely uncompressed.
+func TestFillMissingBuildsAsSentinels_V3(t *testing.T) {
+	t.Parallel()
+
+	selfID := uuid.New()
+	ancAID := uuid.New()
+	ancBID := uuid.New()
+
+	meta := &Metadata{
+		Version: 3, BlockSize: 4096, Size: 4096 * 3,
+		BuildId: selfID, BaseBuildId: ancBID,
+	}
+	h, err := NewHeader(meta, []BuildMap{
+		{Offset: 0, Length: 4096, BuildId: selfID, BuildStorageOffset: 0},
+		{Offset: 4096, Length: 4096, BuildId: ancAID, BuildStorageOffset: 0},
+		{Offset: 8192, Length: 4096, BuildId: ancBID, BuildStorageOffset: 0},
+	})
+	require.NoError(t, err)
+
+	backfillMissingV3UncompressedBuilds(h)
+
+	require.Len(t, h.Builds, 3)
+	require.Equal(t, BuildData{}, h.Builds[selfID])
+	require.Equal(t, BuildData{}, h.Builds[ancAID])
+	require.Equal(t, BuildData{}, h.Builds[ancBID])
+	require.Equal(t, storage.UncompressedFrameTable, h.GetBuildFrameData(ancAID))
+}
+
+// A V4+ ancestor gap must survive a pause generation absent: ToDiffHeader
+// copies only entries the parent has, the serializer writes only existing
+// entries, and the next load's backfill leaves the gap alone. An entry
+// fabricated at any step would persist "uncompressed" — the permanent 404.
+func TestToDiffHeader_AncestorGapRoundTripsAbsent(t *testing.T) {
+	t.Parallel()
+
+	selfID := uuid.New()
+	gapID := uuid.New()   // compressed ancestor whose entry was lost
+	knownID := uuid.New() // ancestor with an intact entry
+	childID := uuid.New()
+
+	knownFT := storage.NewFullFrameTable(storage.CompressionZstd, []storage.FrameSize{{U: 4096, C: 1024}})
+
+	meta := &Metadata{
+		Version: MetadataVersionV5, BlockSize: 4096, Size: 4096 * 3,
+		BuildId: selfID, BaseBuildId: gapID,
+	}
+	parent, err := NewHeader(meta, []BuildMap{
+		{Offset: 0, Length: 4096, BuildId: selfID, BuildStorageOffset: 0},
+		{Offset: 4096, Length: 4096, BuildId: knownID, BuildStorageOffset: 0},
+		{Offset: 8192, Length: 4096, BuildId: gapID, BuildStorageOffset: 0},
+	})
+	require.NoError(t, err)
+	parent.Builds = map[uuid.UUID]BuildData{
+		selfID:  {Size: 4096},
+		knownID: {Size: 4096, FrameData: knownFT.Table()},
+	}
+
+	// Pause: page 0 dirtied; the known and gap ranges are inherited untouched.
+	dm := &DiffMetadata{Dirty: roaring.BitmapOf(0), Empty: roaring.New(), BlockSize: 4096}
+	child, err := dm.ToDiffHeader(t.Context(), parent, childID)
+	require.NoError(t, err)
+	require.NotContains(t, child.Builds, gapID)
+	require.Contains(t, child.Builds, knownID)
+
+	// Upload adds the self entry and clears the in-flight flag.
+	child.SetBuild(childID, BuildData{Size: 4096})
+	child.IncompletePendingUpload = false
+
+	data, err := SerializeHeader(child)
+	require.NoError(t, err)
+	got, err := DeserializeBytes(data)
+	require.NoError(t, err)
+	backfillMissingV3UncompressedBuilds(got) // what LoadHeader runs after deserialize
+
+	// The gap ancestor still owns its range and still has no entry.
+	m, err := got.GetShiftedMapping(t.Context(), 8192)
+	require.NoError(t, err)
+	require.Equal(t, gapID, m.BuildId)
+	require.NotContains(t, got.Builds, gapID)
+	require.Nil(t, got.GetBuildFrameData(gapID))
+
+	require.Equal(t, storage.CompressionZstd, got.GetBuildFrameData(knownID).CompressionType())
 }
 
 func TestFillMissingBuildsAsSentinels_NilBuilds(t *testing.T) {
