@@ -33,6 +33,13 @@ type BuildLogHandler func(alias string, entry api.BuildLogEntry)
 // It receives the templateID, allowing callers to upload files or perform other setup.
 type PreBuildFunc func(tb testing.TB, ctx context.Context, templateID string)
 
+// buildOutcome is how a build ended: ready, or failed with the reason the API
+// reported for it.
+type buildOutcome struct {
+	ready  bool
+	reason string
+}
+
 func buildTemplate(
 	tb testing.TB,
 	templateName string,
@@ -40,6 +47,27 @@ func buildTemplate(
 	logHandler BuildLogHandler,
 	preBuildFns ...PreBuildFunc,
 ) bool {
+	tb.Helper()
+
+	outcome := runTemplateBuild(tb, templateName, data, logHandler, preBuildFns...)
+	if !outcome.ready {
+		tb.Fatalf("Build failed: %v", outcome.reason)
+
+		return false
+	}
+
+	return true
+}
+
+// runTemplateBuild requests, starts and follows a build, reporting how it ended
+// instead of failing the test — so a case can assert on a build that must fail.
+func runTemplateBuild(
+	tb testing.TB,
+	templateName string,
+	data api.TemplateBuildStartV2,
+	logHandler BuildLogHandler,
+	preBuildFns ...PreBuildFunc,
+) buildOutcome {
 	tb.Helper()
 
 	ctx, cancel := context.WithTimeout(tb.Context(), BuildTimeout)
@@ -106,11 +134,9 @@ func buildTemplate(
 		case api.TemplateBuildStatusReady:
 			tb.Log("Build completed successfully")
 
-			return true
+			return buildOutcome{ready: true}
 		case api.TemplateBuildStatusError:
-			tb.Fatalf("Build failed: %v", safe(statusResp.JSON200.Reason))
-
-			return false
+			return buildOutcome{reason: safe(statusResp.JSON200.Reason).Message}
 		}
 
 		time.Sleep(time.Second)
