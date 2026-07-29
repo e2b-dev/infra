@@ -41,10 +41,15 @@ jobs:
           TAG: ${{ inputs.tag || github.ref_name }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Map the tag's component prefix to its build inputs. build_args
-          # lists which --build-arg values the build step passes (their values
-          # are computed there, after checkout). Unknown components are
-          # skipped, not failed: the '*-v*' trigger can match unrelated tags.
+          # Map the tag's component prefix to its build inputs. Most
+          # components are Docker images (kind=image): build_args lists which
+          # --build-arg values the build step passes (their values are
+          # computed there, after checkout). Raw-binary components
+          # (kind=binary) are built with the Go toolchain and uploaded to the
+          # public e2b-artifact-binaries bucket instead. Unknown components
+          # are skipped, not failed: the '*-v*' trigger can match unrelated
+          # tags.
+          kind=image
           case "${TAG}" in
             docker-reverse-proxy-v*)
               component=docker-reverse-proxy
@@ -69,6 +74,15 @@ jobs:
               dockerfile=packages/clickhouse/Dockerfile
               context=packages/clickhouse
               build_args=""
+              ;;
+            envd-v*)
+              # envd is a raw static binary (CGO_ENABLED=0), not an image:
+              # published as a versioned object in the public
+              # e2b-artifact-binaries bucket. The package Makefile's
+              # ENVD_VERSION flow downloads it and uploads it to the client's
+              # fc-env-pipeline bucket, exactly as a from-source build would.
+              component=envd
+              kind=binary
               ;;
             *)
               # A stray tag caught by the loose glob is a no-op; an explicit
@@ -96,11 +110,17 @@ jobs:
           {
             echo "component=${component}"
             echo "version=${version}"
-            # <host>/<project>/<repository>/<image>
-            echo "image=us-docker.pkg.dev/e2b-artifacts/${component}/${component}"
-            echo "dockerfile=${dockerfile}"
-            echo "context=${context}"
-            echo "build_args=${build_args}"
+            echo "kind=${kind}"
+            if [ "${kind}" = "image" ]; then
+              # <host>/<project>/<repository>/<image>
+              echo "image=us-docker.pkg.dev/e2b-artifacts/${component}/${component}"
+              echo "dockerfile=${dockerfile}"
+              echo "context=${context}"
+              echo "build_args=${build_args}"
+            else
+              # <bucket>/<component>/<version>/<binary>
+              echo "binary_uri=gs://e2b-artifact-binaries/${component}/v${version}/${component}"
+            fi
           } >> "${GITHUB_OUTPUT}"
 
       - name: Checkout repository
@@ -127,15 +147,15 @@ jobs:
         uses: google-github-actions/setup-gcloud@v3
 
       - name: Configure Docker auth
-        if: ${{ steps.pkg.outputs.component != '' }}
+        if: ${{ steps.pkg.outputs.kind == 'image' }}
         run: gcloud auth configure-docker us-docker.pkg.dev --quiet
 
       - name: Set up Docker Buildx
-        if: ${{ steps.pkg.outputs.component != '' }}
+        if: ${{ steps.pkg.outputs.kind == 'image' }}
         uses: docker/setup-buildx-action@v3
 
       - name: Build and push released image
-        if: ${{ steps.pkg.outputs.component != '' }}
+        if: ${{ steps.pkg.outputs.kind == 'image' }}
         env:
           IMAGE: ${{ steps.pkg.outputs.image }}
           VERSION: ${{ steps.pkg.outputs.version }}
@@ -168,3 +188,33 @@ jobs:
             --push \
             -f "${DOCKERFILE}" \
             "${CONTEXT}"
+
+      # Binary components (kind=binary): build with the repo Go toolchain and
+      # upload the versioned object to the public e2b-artifact-binaries
+      # bucket. The package Makefile's `build` target derives the commit sha
+      # from git, which the tag checkout provides.
+      - name: Set up Go
+        if: ${{ steps.pkg.outputs.kind == 'binary' }}
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.work
+
+      - name: Build released binary
+        if: ${{ steps.pkg.outputs.kind == 'binary' }}
+        env:
+          COMPONENT: ${{ steps.pkg.outputs.component }}
+        run: make -C "packages/${COMPONENT}" build
+
+      # The publish SA has storage.objectCreator ONLY: it can create objects
+      # but never overwrite or delete them, so re-publishing an existing
+      # version fails loudly instead of silently replacing the binary (the
+      # bucket equivalent of the registry's immutableTags). Anonymous
+      # consumers fetch via
+      # https://storage.googleapis.com/e2b-artifact-binaries/... — the bucket
+      # is public-read.
+      - name: Upload released binary
+        if: ${{ steps.pkg.outputs.kind == 'binary' }}
+        env:
+          COMPONENT: ${{ steps.pkg.outputs.component }}
+          BINARY_URI: ${{ steps.pkg.outputs.binary_uri }}
+        run: gcloud storage cp "packages/${COMPONENT}/bin/${COMPONENT}" "${BINARY_URI}"

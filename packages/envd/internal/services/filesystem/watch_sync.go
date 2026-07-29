@@ -24,6 +24,13 @@ type FileWatcher struct {
 	cancel  func()
 	Error   error
 
+	// Config captured so the watcher can be re-armed after an envd
+	// live-upgrade. WatchPath is the already-resolved
+	// absolute path.
+	WatchPath        string
+	Recursive        bool
+	IncludeEntryInfo bool
+
 	Lock sync.Mutex
 }
 
@@ -44,10 +51,13 @@ func CreateFileWatcher(ctx context.Context, logger *zerolog.Logger, watchPath st
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error adding path %s to watcher: %w", watchPath, err))
 	}
 	fw := &FileWatcher{
-		watcher: w,
-		cancel:  cancel,
-		Events:  []*rpc.FilesystemEvent{},
-		Error:   nil,
+		watcher:          w,
+		cancel:           cancel,
+		Events:           []*rpc.FilesystemEvent{},
+		Error:            nil,
+		WatchPath:        watchPath,
+		Recursive:        recursive,
+		IncludeEntryInfo: includeEntryInfo,
 	}
 
 	go func() {
@@ -179,7 +189,9 @@ func (s Service) CreateWatcher(ctx context.Context, req *connect.Request[rpc.Cre
 		return nil, err
 	}
 
+	s.watchersMu.Lock()
 	s.watchers.Store(watcherId, w)
+	s.watchersMu.Unlock()
 
 	return connect.NewResponse(&rpc.CreateWatcherResponse{
 		WatcherId: watcherId,
@@ -193,6 +205,14 @@ func (s Service) GetWatcherEvents(_ context.Context, req *connect.Request[rpc.Ge
 	if !ok {
 		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("watcher with id %s not found", watcherId))
 	}
+
+	// Serialize the drain against a live-upgrade handover snapshot
+	// (ExportWatchersHold holds watchersMu across the execve). Draining a
+	// watcher's events in that window would consume events the snapshot already
+	// carried, so the re-armed watcher would re-deliver them after the swap.
+	// watchersMu is taken before w.Lock, matching Export/CreateWatcher ordering.
+	s.watchersMu.Lock()
+	defer s.watchersMu.Unlock()
 
 	w.Lock.Lock()
 	defer w.Lock.Unlock()
@@ -218,7 +238,9 @@ func (s Service) RemoveWatcher(_ context.Context, req *connect.Request[rpc.Remov
 	}
 
 	w.Close()
+	s.watchersMu.Lock()
 	s.watchers.Delete(watcherId)
+	s.watchersMu.Unlock()
 
 	return connect.NewResponse(&rpc.RemoveWatcherResponse{}), nil
 }

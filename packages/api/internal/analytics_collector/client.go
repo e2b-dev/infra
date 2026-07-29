@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
@@ -20,28 +21,49 @@ type Analytics struct {
 	connection *grpc.ClientConn
 }
 
-func NewAnalytics(host, grpcAPIKey string) (*Analytics, error) {
+// NewAnalytics creates a client for the analytics collector.
+//
+// host is either a bare hostname, in which case the collector is assumed to be
+// served on the default HTTPS port (the managed deployment puts it behind a
+// load balancer on 443), or an explicit "host:port" address. An empty host
+// returns a no-op client that drops every event.
+//
+// useTLS must be false for collectors that speak plaintext gRPC, such as the
+// one running in local development; the per-RPC API key is then sent over an
+// unencrypted connection, so only do that on loopback.
+func NewAnalytics(host, grpcAPIKey string, useTLS bool) (*Analytics, error) {
 	var client AnalyticsCollectorClient
 	var connection *grpc.ClientConn
 
 	// Run dummy client if host is not provided
 	if host != "" {
-		systemRoots, err := x509.SystemCertPool()
-		if err != nil {
-			errMsg := fmt.Errorf("failed to read system root certificate pool: %w", err)
-
-			return nil, errMsg
+		target := host
+		if _, _, err := net.SplitHostPort(host); err != nil {
+			// No port in host, default to the HTTPS one.
+			target = net.JoinHostPort(host, "443")
 		}
 
-		cred := credentials.NewTLS(&tls.Config{
-			RootCAs:    systemRoots,
-			MinVersion: tls.VersionTLS13,
-		})
+		var cred credentials.TransportCredentials
+		if useTLS {
+			systemRoots, err := x509.SystemCertPool()
+			if err != nil {
+				errMsg := fmt.Errorf("failed to read system root certificate pool: %w", err)
+
+				return nil, errMsg
+			}
+
+			cred = credentials.NewTLS(&tls.Config{
+				RootCAs:    systemRoots,
+				MinVersion: tls.VersionTLS13,
+			})
+		} else {
+			cred = insecure.NewCredentials()
+		}
 
 		conn, err := grpc.NewClient(
-			net.JoinHostPort(host, "443"),
+			target,
 			grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
-			grpc.WithPerRPCCredentials(newGRPCAPIKey(grpcAPIKey)),
+			grpc.WithPerRPCCredentials(newGRPCAPIKey(grpcAPIKey, useTLS)),
 			grpc.WithAuthority(host),
 			grpc.WithTransportCredentials(cred),
 		)

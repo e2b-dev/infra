@@ -209,3 +209,105 @@ func TestNewVerifier_DiscoveryIssuerMismatch(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "issuer")
 }
+
+// A verifier built without a lookup reports what the token asserts and never
+// consults an identity store — the case a caller has when it is about to
+// create the user the token names.
+func TestIdentityVerifier_ReportsClaimsWithoutResolving(t *testing.T) {
+	t.Parallel()
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	const keyID = "test-key"
+	server := jwks.NewTestServer(t, &privateKey.PublicKey, keyID, jose.RS256, testIssuerURL)
+
+	verifier, err := NewIdentityVerifier(t.Context(), jwks.Config{
+		Issuer: jwks.Issuer{
+			URL:          testIssuerURL,
+			DiscoveryURL: server.URL + "/.well-known/openid-configuration",
+			Audiences:    []string{"dashboard-api"},
+		},
+		CacheDuration: time.Minute,
+	}, server.Client())
+	require.NoError(t, err)
+
+	const tokenSub = "external-subject-123"
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+		"iss": testIssuerURL,
+		"aud": "dashboard-api",
+		"sub": tokenSub,
+		"exp": time.Now().Add(time.Hour).Unix(),
+	})
+	token.Header["kid"] = keyID
+
+	signedToken, err := token.SignedString(privateKey)
+	require.NoError(t, err)
+
+	identity, err := verifier.VerifyIdentity(t.Context(), signedToken)
+	require.NoError(t, err)
+	require.Equal(t, testIssuerURL, identity.Issuer)
+	require.Equal(t, tokenSub, identity.Subject)
+	require.NotNil(t, identity.Claims)
+
+	// Resolving is the one thing it cannot do, rather than something it does
+	// badly by returning a zero user.
+	_, _, err = verifier.Verify(t.Context(), signedToken)
+	require.ErrorContains(t, err, "no identity lookup")
+}
+
+// The subject is only meaningful alongside the issuer that vouched for it, so
+// a token missing either identifies nobody however well it is signed.
+func TestIdentityVerifier_RejectsATokenWithNoSubject(t *testing.T) {
+	t.Parallel()
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	const keyID = "test-key"
+	server := jwks.NewTestServer(t, &privateKey.PublicKey, keyID, jose.RS256, testIssuerURL)
+
+	verifier, err := NewIdentityVerifier(t.Context(), jwks.Config{
+		Issuer: jwks.Issuer{
+			URL:          testIssuerURL,
+			DiscoveryURL: server.URL + "/.well-known/openid-configuration",
+			Audiences:    []string{"dashboard-api"},
+		},
+		CacheDuration: time.Minute,
+	}, server.Client())
+	require.NoError(t, err)
+
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+		"iss": testIssuerURL,
+		"aud": "dashboard-api",
+		"exp": time.Now().Add(time.Hour).Unix(),
+	})
+	token.Header["kid"] = keyID
+
+	signedToken, err := token.SignedString(privateKey)
+	require.NoError(t, err)
+
+	_, err = verifier.VerifyIdentity(t.Context(), signedToken)
+	require.ErrorContains(t, err, "missing sub claim")
+}
+
+// The discovery document and its issuer are validated whichever level the
+// caller verifies at. Choosing not to resolve must not weaken the token.
+func TestNewIdentityVerifier_RejectsADiscoveryIssuerMismatch(t *testing.T) {
+	t.Parallel()
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	server := jwks.NewTestServer(t, &privateKey.PublicKey, "test-key", jose.RS256, "https://someone-else.example.com")
+
+	_, err = NewIdentityVerifier(t.Context(), jwks.Config{
+		Issuer: jwks.Issuer{
+			URL:          testIssuerURL,
+			DiscoveryURL: server.URL + "/.well-known/openid-configuration",
+			Audiences:    []string{"dashboard-api"},
+		},
+		CacheDuration: time.Minute,
+	}, server.Client())
+	require.ErrorContains(t, err, "does not match configured issuer")
+}

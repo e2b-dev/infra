@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -51,6 +52,9 @@ var (
 	envdCollapseDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.EnvdCollapseDurationHistogramName))
 	envdCollapseChunks            = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdCollapseChunks))
 	guestSyncDurationHistogram    = utils.Must(telemetry.GetHistogram(meter, telemetry.GuestSyncDurationHistogramName))
+
+	processMemoryDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotProcessMemoryDurationName))
+	processRootfsDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotProcessRootfsDurationName))
 
 	uffdStartupPagesHistogram       = utils.Must(telemetry.GetHistogram(meter, telemetry.UffdStartupPagesHistogramName))
 	uffdStartupSourcePagesHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.UffdStartupSourcePagesHistogramName))
@@ -286,6 +290,16 @@ type Sandbox struct {
 
 	Template template.Template
 
+	// liveEnvdVersion is the version the running envd reported on its most recent
+	// /init response (X-Envd-Version). Empty until first captured. The resume-time
+	// upgrade trigger uses this ground truth — not the template built-with, which
+	// never changes across live upgrades — to decide, label, and confirm upgrades.
+	liveEnvdVersion atomic.Pointer[string]
+	// handoverResult is the live-upgrade handover outcome the running envd
+	// reported on its most recent /init (X-Envd-Handover header), or nil if the
+	// running envd did not boot from a handover.
+	handoverResult atomic.Pointer[EnvdHandoverResult]
+
 	Checks *Checks
 
 	hostStatsCollector *HostStatsCollector
@@ -300,13 +314,16 @@ type Sandbox struct {
 
 	stop utils.Lazy[error]
 
-	// startupStatsOnce guards the orchestrator.sandbox.uffd.startup.* recording
-	// so it fires only on the first WaitForEnvd — the actual sandbox start.
-	// ServeStats() is lifetime-cumulative on the UFFD handler, so a later
-	// WaitForEnvd on the same handler (e.g. the envd-binary swap + restart in a
-	// template build) would otherwise emit a sample inflated with post-startup
-	// faults rather than that init's working set.
-	startupStatsOnce sync.Once
+	// startupRecorded guards ALL first-WaitForEnvd recording — the envd-init
+	// duration + uffd.startup.* histograms, the envd-init call counter (in
+	// initEnvd), and SetStartedAt — so they fire only on the actual sandbox
+	// start. A later WaitForEnvd on the same handler (the post-upgrade readiness
+	// re-check, or the envd-binary swap + restart in a template build) re-runs
+	// /init to re-capture state but must not re-record these: ServeStats() is
+	// lifetime-cumulative, the duration/counter would double-count the resume
+	// KPI, and SetStartedAt would overwrite the real start with a later time.
+	// CAS'd true by the first WaitForEnvd; later calls see false and skip.
+	startupRecorded atomic.Bool
 
 	// skipStartupMetrics suppresses the per-start KPI histograms (envd-init
 	// duration, uffd startup pages/source-pages/bytes) for a throwaway resume,
@@ -721,6 +738,14 @@ type resumeOptions struct {
 	// (not addressable, not counted, no health checks) for throwaways the caller
 	// reaps itself.
 	skipLiveRegistration bool
+	// deferMarkRunning skips only MarkRunning and health-check startup inside
+	// ResumeSandbox, leaving everything else (metrics, host stats, network
+	// assignment) intact, so the caller can promote the sandbox to live itself
+	// once a post-resume step has completed. Used by the resume-time envd
+	// live-upgrade path so the sandbox is not routable during the sub-second
+	// pre-/init auth window after the upgrade re-exec. Unlike skipLiveRegistration
+	// the sandbox IS meant to go live — just later.
+	deferMarkRunning bool
 }
 
 // ResumeOption customizes a ResumeSandbox call.
@@ -744,6 +769,18 @@ func WithDenyEgress() ResumeOption {
 // teardown stays symmetric.
 func WithoutLiveRegistration() ResumeOption {
 	return func(o *resumeOptions) { o.skipLiveRegistration = true }
+}
+
+// WithDeferredLiveRegistration resumes the sandbox but defers MarkRunning and
+// health-check startup to the caller, so the sandbox is not addressable via the
+// sandbox map until the caller promotes it with Sandboxes.MarkRunning +
+// Checks.Start. Used by the resume-time envd live-upgrade path to keep the
+// sandbox out of routing during the sub-second pre-/init window after the
+// upgrade re-exec. Everything else (metrics, host stats, network assignment)
+// runs as normal, so — unlike WithoutLiveRegistration — the sandbox is a real,
+// soon-to-be-live sandbox, not a throwaway.
+func WithDeferredLiveRegistration() ResumeOption {
+	return func(o *resumeOptions) { o.deferMarkRunning = true }
 }
 
 // ThrowawayResumeOptions are the resume options for a caller-reaped throwaway
@@ -1145,13 +1182,13 @@ func (f *Factory) ResumeSandbox(
 	// live sandbox: keep it out of the live registry so it is not addressable and
 	// does not inflate the node's reported allocation or emit per-sandbox metrics,
 	// and skip health checks it would never need.
-	if !ropts.skipLiveRegistration {
+	if !ropts.skipLiveRegistration && !ropts.deferMarkRunning {
 		f.Sandboxes.MarkRunning(ctx, sbx)
 	}
 
 	telemetry.ReportEvent(execCtx, "envd initialized")
 
-	if !ropts.skipLiveRegistration {
+	if !ropts.skipLiveRegistration && !ropts.deferMarkRunning {
 		go sbx.Checks.Start(execCtx)
 	}
 
@@ -1459,6 +1496,7 @@ func (s *Sandbox) Pause(
 			closeHook: s.Close,
 		},
 		s.config.DefaultCacheDir,
+		pauseOpts.filesystemSnapshot,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
@@ -1644,6 +1682,14 @@ func pauseProcessMemory(
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
 
+	// Duration of the synchronous memory export+diff (memory pauses only; fs-only
+	// pauses skip this). The async header dedup goroutine below outlives this span.
+	start := time.Now()
+	defer func() {
+		processMemoryDurationHistogram.Record(ctx, time.Since(start).Milliseconds(),
+			metric.WithAttributes(attribute.Bool("success", e == nil)))
+	}()
+
 	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
 	metaOut := utils.NewSetOnce[*header.DiffMetadata]()
 	// ExportMemory owns memfd and closes it on all paths.
@@ -1756,9 +1802,21 @@ func pauseProcessRootfs(
 	originalHeader *header.Header,
 	diffCreator DiffCreator,
 	cacheDir string,
+	filesystemOnly bool,
 ) (d build.Diff, h *header.Header, e error) {
 	ctx, span := tracer.Start(ctx, "process-rootfs")
 	defer span.End()
+
+	// Duration of the rootfs export+diff, split by fs_only (runs for both pause
+	// kinds) so the fs-only pause latency can be decomposed into quiesce + rootfs.
+	start := time.Now()
+	defer func() {
+		processRootfsDurationHistogram.Record(ctx, time.Since(start).Milliseconds(),
+			metric.WithAttributes(
+				attribute.Bool("fs_only", filesystemOnly),
+				attribute.Bool("success", e == nil),
+			))
+	}()
 
 	rootfsDiffFile, err := build.NewLocalDiffFile(cacheDir, buildId.String(), build.Rootfs)
 	if err != nil {
@@ -1905,7 +1963,17 @@ func (s *Sandbox) WaitForEnvd(
 	ctx, span := tracer.Start(ctx, "sandbox-wait-for-start")
 	defer span.End()
 
+	// Record the per-start KPIs, the envd-init counter, and StartedAt only on the
+	// FIRST WaitForEnvd for this handler (see startupRecorded). A later call — the
+	// post-upgrade readiness re-check, or the envd-binary swap during a template
+	// build — re-runs /init to re-capture state but must not re-record.
+	firstStart := s.startupRecorded.CompareAndSwap(false, true)
+
 	defer func() {
+		if !firstStart {
+			return
+		}
+
 		// A throwaway (the pause-resume prefetch harvest) is warm by construction
 		// and must not pollute the customer resume KPIs (envd-init duration,
 		// startup pages/source-pages — the consume-side payoff signals) or even be
@@ -1923,24 +1991,18 @@ func (s *Sandbox) WaitForEnvd(
 				attribute.String("exit_type", string(classifyEnvdInitExit(e))),
 			))
 
-			// Record the demand-fault working set the guest needed to reach this
-			// point. Only on the first WaitForEnvd: it is the actual start, and
+			// The demand-fault working set the guest needed to reach this point.
 			// ServeStats() is cumulative since resume, so at this instant it equals
-			// the startup counts. A later WaitForEnvd on the same handler (e.g. the
-			// envd-binary swap + restart during a template build) would otherwise
-			// re-report a cumulative total polluted with intervening faults.
-			// Recorded for both outcomes (success label) so slow/failed starts can
-			// be correlated with page volume.
-			s.startupStatsOnce.Do(func() {
-				stats := s.memory.ServeStats()
-				startupAttrs := metric.WithAttributes(
-					attribute.String("start_type", string(startType)),
-					attribute.Bool("success", e == nil),
-				)
-				uffdStartupPagesHistogram.Record(ctx, stats.Pages, startupAttrs)
-				uffdStartupSourcePagesHistogram.Record(ctx, stats.SourcePages, startupAttrs)
-				uffdStartupBytesHistogram.Record(ctx, stats.Bytes, startupAttrs)
-			})
+			// the startup counts. Recorded for both outcomes (success label) so
+			// slow/failed starts can be correlated with page volume.
+			stats := s.memory.ServeStats()
+			startupAttrs := metric.WithAttributes(
+				attribute.String("start_type", string(startType)),
+				attribute.Bool("success", e == nil),
+			)
+			uffdStartupPagesHistogram.Record(ctx, stats.Pages, startupAttrs)
+			uffdStartupSourcePagesHistogram.Record(ctx, stats.SourcePages, startupAttrs)
+			uffdStartupBytesHistogram.Record(ctx, stats.Bytes, startupAttrs)
 		}
 
 		if e != nil {
@@ -1967,7 +2029,7 @@ func (s *Sandbox) WaitForEnvd(
 		}
 	}()
 
-	if err := s.initEnvd(ctx, startType); err != nil {
+	if err := s.initEnvd(ctx, startType, firstStart); err != nil {
 		return fmt.Errorf("failed to init new envd: %w", err)
 	}
 

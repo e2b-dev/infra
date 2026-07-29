@@ -30,7 +30,14 @@ type Config struct {
 	AdminToken string `env:"ADMIN_TOKEN"`
 
 	AnalyticsCollectorAPIToken string `env:"ANALYTICS_COLLECTOR_API_TOKEN"`
-	AnalyticsCollectorHost     string `env:"ANALYTICS_COLLECTOR_HOST"`
+	// AnalyticsCollectorHost is the hostname, or "host:port" address, of the
+	// analytics collector. Without a port, 443 is used. Empty disables
+	// analytics reporting entirely.
+	AnalyticsCollectorHost string `env:"ANALYTICS_COLLECTOR_HOST"`
+	// AnalyticsCollectorTLS controls whether the collector connection uses
+	// TLS. Set to false only for a plaintext collector on loopback, as the
+	// local development one is; the API token is sent unencrypted then.
+	AnalyticsCollectorTLS bool `env:"ANALYTICS_COLLECTOR_TLS" envDefault:"true"`
 
 	ClickhouseConnectionString  string   `env:"CLICKHOUSE_CONNECTION_STRING"`
 	ClickhouseConnectionStrings []string `env:"CLICKHOUSE_CONNECTION_STRINGS" envSeparator:";"`

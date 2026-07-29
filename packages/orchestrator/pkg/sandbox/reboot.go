@@ -45,6 +45,7 @@ func (f *Factory) RebootSandbox(
 	runtime RuntimeMetadata,
 	endAt time.Time,
 	apiConfigToStore *orchestrator.SandboxConfig,
+	deferMarkRunning bool,
 	procOpts ...func(*fc.ProcessOptions),
 ) (*Sandbox, error) {
 	ctx, span := tracer.Start(ctx, "reboot sandbox")
@@ -157,9 +158,15 @@ func (f *Factory) RebootSandbox(
 		return nil, errors.Join(fmt.Errorf("wait for envd after reboot: %w", err), closeErr)
 	}
 
-	f.Sandboxes.MarkRunning(ctx, sbx)
+	// deferMarkRunning: the caller promotes the sandbox to live itself after a
+	// post-resume step (the resume-time envd live-upgrade's post-/init), so it is
+	// not routable during the upgrade's pre-init auth window. Mirrors the resume
+	// path's WithDeferredLiveRegistration.
+	if !deferMarkRunning {
+		f.Sandboxes.MarkRunning(ctx, sbx)
 
-	go sbx.Checks.Start(context.WithoutCancel(ctx))
+		go sbx.Checks.Start(context.WithoutCancel(ctx))
+	}
 
 	return sbx, nil
 }
