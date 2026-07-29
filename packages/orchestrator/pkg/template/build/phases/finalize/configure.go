@@ -48,6 +48,12 @@ if command -v update-ca-certificates >/dev/null 2>&1; then
 fi
 mkdir -p /usr/local/share/e2b
 tar -C /etc/ssl/certs -chf /usr/local/share/e2b/ssl-certs.tar .
+# Root extracts this tar into the boot-time cert tmpfs, so it must not be
+# writable by the sandbox user. Set explicitly: the configuration script's
+# chmod -R 777 /usr/local ran before this step, and rewriting the tar in place
+# on a FROM-template rebuild keeps the existing file's mode and owner.
+chown root:root /usr/local/share/e2b/ssl-certs.tar
+chmod 644 /usr/local/share/e2b/ssl-certs.tar
 `
 
 // packCertBundle runs packCertBundleCmd in the guest as root.
