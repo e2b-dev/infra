@@ -11,6 +11,21 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+// TestDeferredDiff_SealedIsNonBlocking verifies sealed() reports readiness
+// without blocking on the promise, so cache eviction can skip an unsealed diff
+// instead of stalling on it.
+func TestDeferredDiff_SealedIsNonBlocking(t *testing.T) {
+	t.Parallel()
+
+	inner := utils.NewSetOnce[Diff]()
+	d := NewDeferredDiff(GetDiffStoreKey("build-id", Rootfs), 4096, inner).(*deferredDiff)
+
+	require.False(t, d.sealed(), "unresolved promise must read as not sealed")
+
+	require.NoError(t, inner.SetValue(&NoDiff{}))
+	require.True(t, d.sealed(), "resolved promise must read as sealed")
+}
+
 // makeLocalDiff writes `data` to a fresh local diff file and materializes it.
 func makeLocalDiff(t *testing.T, blockSize int64, data []byte) Diff {
 	t.Helper()

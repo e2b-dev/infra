@@ -53,6 +53,19 @@ func (d *deferredDiff) BlockSize() int64 {
 	return d.blockSize
 }
 
+// sealed reports, without blocking, whether the background seal has resolved the
+// promise (with the materialized diff or an error). Cache eviction uses it to
+// skip a not-yet-sealed diff rather than block on the data methods (which wait
+// on the seal) or evict a fresh, still-in-flight snapshot.
+func (d *deferredDiff) sealed() bool {
+	select {
+	case <-d.inner.Done:
+		return true
+	default:
+		return false
+	}
+}
+
 func (d *deferredDiff) CachePath(ctx context.Context) (string, error) {
 	inner, err := d.inner.WaitWithContext(ctx)
 	if err != nil {

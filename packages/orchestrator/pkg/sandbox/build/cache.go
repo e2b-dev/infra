@@ -98,6 +98,22 @@ func NewDiffStore(
 		// buildData will be deleted by calling buildData.Close()
 		defer ds.resetDelete(item.Key())
 
+		// A deferred diff whose background seal hasn't resolved would block Close()
+		// on the reflink; close it off the eviction goroutine so this callback
+		// isn't stalled. Bounded (the seal always resolves) and only reachable if
+		// the TTL is shortened below the seal time — the disk-pressure eviction
+		// path already skips unsealed diffs (see deferredDiff.sealed()).
+		if dd, ok := buildData.(*deferredDiff); ok && !dd.sealed() {
+			logCtx := context.WithoutCancel(ctx)
+			go func() {
+				if closeErr := dd.Close(); closeErr != nil {
+					logger.L().Warn(logCtx, "failed to close unsealed deferred diff", zap.Any("item_key", item.Key()), zap.Error(closeErr))
+				}
+			}()
+
+			return
+		}
+
 		if closeErr := buildData.Close(); closeErr != nil {
 			logger.L().Warn(ctx, "failed to cleanup build data cache for item", zap.Any("item_key", item.Key()), zap.Error(closeErr))
 		}
@@ -308,6 +324,14 @@ func (s *DiffStore) deleteOldestFromCache(ctx context.Context) (suc bool, e erro
 		// Skip pinned entries (e.g. a memfile diff still backing an in-flight
 		// provisional resume); closing them would tear down shared state.
 		if s.isPinned(item.Key()) {
+			return true
+		}
+
+		// Skip a deferred diff whose background rootfs seal hasn't resolved yet:
+		// FileSize below would block on the seal (stalling the sole eviction
+		// goroutine), and a fresh, still-sealing snapshot is exactly what a
+		// just-resumed peer needs. It becomes evictable once the seal resolves.
+		if dd, ok := item.Value().(*deferredDiff); ok && !dd.sealed() {
 			return true
 		}
 
