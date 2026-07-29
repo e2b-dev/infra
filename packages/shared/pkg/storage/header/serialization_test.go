@@ -1059,11 +1059,40 @@ func TestFillMissingBuildsAsSentinels(t *testing.T) {
 
 	backfillMissingV3UncompressedBuilds(h)
 
-	require.Len(t, h.Builds, 4)
+	require.Len(t, h.Builds, 2)
 	require.Equal(t, BuildData{Size: 4096, FrameData: knownFT.Table()}, h.Builds[knownID])
 	require.Equal(t, BuildData{}, h.Builds[selfID])
-	require.Equal(t, BuildData{}, h.Builds[v3aID])
-	require.Equal(t, BuildData{}, h.Builds[v3bID])
+	require.NotContains(t, h.Builds, v3aID)
+	require.NotContains(t, h.Builds, v3bID)
+}
+
+// V3 is the only format the ancestor sentinels still apply to: it has no Builds
+// section and no compression, so every gap is genuinely uncompressed.
+func TestFillMissingBuildsAsSentinels_V3(t *testing.T) {
+	t.Parallel()
+
+	selfID := uuid.New()
+	ancAID := uuid.New()
+	ancBID := uuid.New()
+
+	meta := &Metadata{
+		Version: 3, BlockSize: 4096, Size: 4096 * 3,
+		BuildId: selfID, BaseBuildId: ancBID,
+	}
+	h, err := NewHeader(meta, []BuildMap{
+		{Offset: 0, Length: 4096, BuildId: selfID, BuildStorageOffset: 0},
+		{Offset: 4096, Length: 4096, BuildId: ancAID, BuildStorageOffset: 0},
+		{Offset: 8192, Length: 4096, BuildId: ancBID, BuildStorageOffset: 0},
+	})
+	require.NoError(t, err)
+
+	backfillMissingV3UncompressedBuilds(h)
+
+	require.Len(t, h.Builds, 3)
+	require.Equal(t, BuildData{}, h.Builds[selfID])
+	require.Equal(t, BuildData{}, h.Builds[ancAID])
+	require.Equal(t, BuildData{}, h.Builds[ancBID])
+	require.Equal(t, storage.UncompressedFrameTable, h.GetBuildFrameData(ancAID))
 }
 
 func TestFillMissingBuildsAsSentinels_NilBuilds(t *testing.T) {
