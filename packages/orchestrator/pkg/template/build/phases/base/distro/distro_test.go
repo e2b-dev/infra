@@ -68,6 +68,20 @@ func TestFamiliesDiffer(t *testing.T) {
 	}
 }
 
+// dnf5 (Fedora 41+) only accepts --allowerasing after the subcommand and exits 2
+// with "Unknown argument" when it comes first, which silently demoted every
+// modern Fedora build to the flagless microdnf/yum fallback.
+func TestRhelAllowErasingFollowsSubcommand(t *testing.T) {
+	t.Parallel()
+	rhel := profileByKey(t, "rhel")
+	if !strings.Contains(rhel.PkgInstall, "install --allowerasing") {
+		t.Errorf("rhel install must place --allowerasing after the subcommand: %s", rhel.PkgInstall)
+	}
+	if strings.Contains(rhel.PkgInstall, "--allowerasing install") {
+		t.Errorf("rhel install has --allowerasing before the subcommand, which dnf5 rejects: %s", rhel.PkgInstall)
+	}
+}
+
 // The generated selector keys on the DECLARED distro id, never on which
 // package-manager binary happens to exist.
 func TestSelectorNoPackageManagerProbing(t *testing.T) {

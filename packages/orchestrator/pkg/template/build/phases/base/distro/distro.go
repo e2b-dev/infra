@@ -80,8 +80,13 @@ var Profiles = []Profile{
 		},
 		PkgQueryBody: `rpm -q "$1" >/dev/null 2>&1`,
 		// dnf → microdnf → yum spans the family (yum for CentOS 7); errors reach
-		// the build log.
-		PkgInstall:   `dnf -y --allowerasing install "$@" || microdnf -y install "$@" || yum -y install "$@"`,
+		// the build log. --allowerasing goes AFTER the subcommand: dnf5 (Fedora
+		// 41+, where /usr/bin/dnf IS dnf5) rejects it before one with "Unknown
+		// argument" and exits 2, which put two errors in every modern Fedora
+		// build log and quietly demoted the install to the flagless
+		// microdnf/yum fallback, so the flag never applied. dnf4 accepts either
+		// position.
+		PkgInstall:   `dnf -y install --allowerasing "$@" || microdnf -y install "$@" || yum -y install "$@"`,
 		InitBinary:   "/usr/lib/systemd/systemd",
 		TimeSyncUnit: "chronyd",
 		SSHUnit:      "sshd",
