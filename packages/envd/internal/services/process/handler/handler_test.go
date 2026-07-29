@@ -27,21 +27,26 @@ func TestWrapperPrefix(t *testing.T) {
 
 	t.Run("both present", func(t *testing.T) {
 		t.Parallel()
-		assert.Equal(t, "/usr/bin/ionice -c 2 -n 4 /usr/bin/nice -n 5 ", wrapperPrefix(5, all))
+		assert.Equal(t, "/usr/bin/ionice -c 2 -n 4 /usr/bin/nice -n 5 ", ioniceNicePrefix(2, 4, 5, all))
 	})
 
 	t.Run("both absent degrades to bare exec", func(t *testing.T) {
 		t.Parallel()
-		assert.Empty(t, wrapperPrefix(5, notFound))
+		assert.Empty(t, ioniceNicePrefix(2, 4, 5, notFound))
 	})
 
 	t.Run("only nice", func(t *testing.T) {
 		t.Parallel()
-		assert.Equal(t, "/bin/nice -n -3 ", wrapperPrefix(-3, only("nice")))
+		assert.Equal(t, "/bin/nice -n -3 ", ioniceNicePrefix(2, 4, -3, only("nice")))
 	})
 
 	t.Run("only ionice", func(t *testing.T) {
 		t.Parallel()
-		assert.Equal(t, "/bin/ionice -c 2 -n 4 ", wrapperPrefix(0, only("ionice")))
+		assert.Equal(t, "/bin/ionice -c 2 -n 4 ", ioniceNicePrefix(2, 4, 0, only("ionice")))
+	})
+
+	t.Run("class and priority are caller-controlled", func(t *testing.T) {
+		t.Parallel()
+		assert.Equal(t, "/bin/ionice -c 1 -n 6 ", ioniceNicePrefix(1, 6, 0, only("ionice")))
 	})
 }
