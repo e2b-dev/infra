@@ -1,0 +1,13 @@
+{
+  "address": "module.init.data.google_project.current",
+  "mode": "data",
+  "type": "google_project",
+  "name": "current",
+  "provider_name": "registry.terraform.io/hashicorp/google",
+  "schema_version": 0,
+  "values": {
+    "number": "123456789",
+    "project_id": "operator-canary"
+  },
+  "sensitive_values": {}
+}

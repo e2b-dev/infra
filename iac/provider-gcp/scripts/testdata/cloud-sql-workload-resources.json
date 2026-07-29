@@ -243,6 +243,29 @@
     }
   },
   {
+    "address": "module.init.google_secret_manager_secret.postgres_connection_string",
+    "module_address": "module.init",
+    "mode": "managed",
+    "type": "google_secret_manager_secret",
+    "name": "postgres_connection_string",
+    "change": {
+      "actions": ["no-op"],
+      "before": {
+        "id": "projects/operator-canary/secrets/e2b-postgres-connection-string",
+        "name": "projects/123456789/secrets/e2b-postgres-connection-string",
+        "project": "operator-canary",
+        "secret_id": "e2b-postgres-connection-string"
+      },
+      "after": {
+        "id": "projects/operator-canary/secrets/e2b-postgres-connection-string",
+        "name": "projects/123456789/secrets/e2b-postgres-connection-string",
+        "project": "operator-canary",
+        "secret_id": "e2b-postgres-connection-string"
+      },
+      "after_unknown": {}
+    }
+  },
+  {
     "address": "google_secret_manager_secret_version.postgres_connection_string",
     "mode": "managed",
     "type": "google_secret_manager_secret_version",
@@ -250,7 +273,7 @@
     "change": {
       "actions": ["create"],
       "after": {
-        "secret": "projects/operator-canary/secrets/e2b-postgres-connection-string"
+        "secret": "projects/123456789/secrets/e2b-postgres-connection-string"
       },
       "after_unknown": {
         "secret_data": true,

@@ -6,6 +6,7 @@ assertion_script="${script_dir}/assert-workload-plan.sh"
 packer_assertion_script="${script_dir}/assert-packer-reserve.sh"
 fixture="${script_dir}/testdata/minimal-workload-plan.json"
 cloud_sql_fixture="${script_dir}/testdata/cloud-sql-workload-resources.json"
+cloud_sql_project_state="${script_dir}/testdata/cloud-sql-project-state.json"
 artifact_bindings_fixture="${script_dir}/testdata/workload-artifact-plan-bindings.json"
 artifacts="${script_dir}/testdata/workload-artifacts.json"
 policy="${script_dir}/../topology/minimal-workload-policy.json"
@@ -23,11 +24,25 @@ chmod 0700 "${fake_terraform}"
 
 jq \
   --slurpfile cloud_sql "${cloud_sql_fixture}" \
+  --slurpfile cloud_sql_project "${cloud_sql_project_state}" \
   --slurpfile artifact_bindings "${artifact_bindings_fixture}" '
   .resource_changes += (
     $cloud_sql[0]
     + $artifact_bindings[0].resource_changes
   )
+  | .prior_state = {
+      format_version: "1.0",
+      values: {
+        root_module: {
+          child_modules: [
+            {
+              address: "module.init",
+              resources: $cloud_sql_project
+            }
+          ]
+        }
+      }
+    }
   | .planned_values = $artifact_bindings[0].planned_values
   | $artifact_bindings[0].orchestrator_source_image as $source_image
   | (
@@ -132,6 +147,32 @@ expect_success() {
 }
 
 expect_success "minimal" "${fixture}"
+
+jq '
+  .resource_changes += [
+    {
+      address: "module.init.data.google_project.current",
+      mode: "data",
+      type: "google_project",
+      name: "current",
+      change: {
+        actions: ["read"],
+        before: {
+          number: "123456789",
+          project_id: "operator-canary"
+        },
+        after: {
+          number: "123456789",
+          project_id: "operator-canary"
+        },
+        after_unknown: {}
+      }
+    }
+  ]
+' "${fixture}" >"${test_dir}/refreshed-project-identity.json"
+expect_success \
+  "refreshed-project-identity" \
+  "${test_dir}/refreshed-project-identity.json"
 
 jq '
   (
@@ -1028,6 +1069,495 @@ expect_failure \
   "cloud-sql-hostile-secret" \
   "invalid_cloud_sql_resources must be empty." \
   "${test_dir}/cloud-sql-hostile-secret.json"
+
+jq '
+  .resource_changes |= map(
+    select(
+      .address
+      != "module.init.google_secret_manager_secret.postgres_connection_string"
+    )
+  )
+' "${fixture}" >"${test_dir}/cloud-sql-missing-secret-container.json"
+expect_failure \
+  "cloud-sql-missing-secret-container" \
+  "invalid_cloud_sql_resources must be empty." \
+  "${test_dir}/cloud-sql-missing-secret-container.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "module.init.google_secret_manager_secret.postgres_connection_string"
+      )
+  ) as $container
+  | .resource_changes += [$container]
+' "${fixture}" >"${test_dir}/cloud-sql-duplicate-secret-container.json"
+expect_failure \
+  "cloud-sql-duplicate-secret-container" \
+  "invalid_cloud_sql_resources must be empty." \
+  "${test_dir}/cloud-sql-duplicate-secret-container.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "module.init.google_secret_manager_secret.postgres_connection_string"
+      )
+    | .change.after.name
+  ) = "projects/999999999/secrets/e2b-postgres-connection-string"
+  | (
+      .resource_changes[]
+      | select(
+          .address
+          == "google_secret_manager_secret_version.postgres_connection_string"
+        )
+      | .change.after.secret
+    ) = "projects/999999999/secrets/e2b-postgres-connection-string"
+' "${fixture}" >"${test_dir}/cloud-sql-coupled-wrong-numeric-name.json"
+expect_failure \
+  "cloud-sql-coupled-wrong-numeric-name" \
+  "invalid_cloud_sql_resources must be empty." \
+  "${test_dir}/cloud-sql-coupled-wrong-numeric-name.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "module.init.google_secret_manager_secret.postgres_connection_string"
+      )
+    | .change.actions
+  ) = ["update"]
+' "${fixture}" >"${test_dir}/cloud-sql-secret-container-update.json"
+expect_failure \
+  "cloud-sql-secret-container-update" \
+  "invalid_cloud_sql_resources must be empty." \
+  "${test_dir}/cloud-sql-secret-container-update.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "module.init.google_secret_manager_secret.postgres_connection_string"
+      )
+    | .change.after_unknown
+  ) = {
+    project: true,
+    secret_id: true,
+    id: true,
+    name: true
+  }
+' "${fixture}" >"${test_dir}/cloud-sql-secret-container-conflicting-identity.json"
+expect_failure \
+  "cloud-sql-secret-container-conflicting-identity" \
+  "invalid_cloud_sql_resources must be empty." \
+  "${test_dir}/cloud-sql-secret-container-conflicting-identity.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "google_secret_manager_secret_version.postgres_connection_string"
+      )
+    | .change.after_unknown.secret
+  ) = true
+' "${fixture}" >"${test_dir}/cloud-sql-secret-version-conflicting-target.json"
+expect_failure \
+  "cloud-sql-secret-version-conflicting-target" \
+  "invalid_cloud_sql_resources must be empty." \
+  "${test_dir}/cloud-sql-secret-version-conflicting-target.json"
+
+jq '
+  (
+    .prior_state.values.root_module.child_modules[]
+    | select(.address == "module.init")
+    | .resources
+  ) = []
+' "${fixture}" >"${test_dir}/cloud-sql-missing-project-state.json"
+expect_failure \
+  "cloud-sql-missing-project-state" \
+  "invalid_cloud_sql_resources must be empty." \
+  "${test_dir}/cloud-sql-missing-project-state.json"
+
+jq '
+  (
+    .prior_state.values.root_module.child_modules[]
+    | select(.address == "module.init")
+    | .resources[0]
+  ) as $project
+  | (
+      .prior_state.values.root_module.child_modules[]
+      | select(.address == "module.init")
+      | .resources
+    ) += [$project]
+' "${fixture}" >"${test_dir}/cloud-sql-duplicate-project-state.json"
+expect_failure \
+  "cloud-sql-duplicate-project-state" \
+  "invalid_cloud_sql_resources must be empty." \
+  "${test_dir}/cloud-sql-duplicate-project-state.json"
+
+jq '
+  (
+    .prior_state.values.root_module.child_modules[]
+    | select(.address == "module.init")
+    | .resources[]
+    | select(.address == "module.init.data.google_project.current")
+    | .values.project_id
+  ) = "other-project"
+' "${fixture}" >"${test_dir}/cloud-sql-wrong-project-state.json"
+expect_failure \
+  "cloud-sql-wrong-project-state" \
+  "invalid_cloud_sql_resources must be empty." \
+  "${test_dir}/cloud-sql-wrong-project-state.json"
+
+jq '
+  .resource_changes += [
+    {
+      address: "module.init.data.google_project.current",
+      mode: "data",
+      type: "google_project",
+      name: "current",
+      change: {
+        actions: ["update"],
+        before: {
+          number: "123456789",
+          project_id: "operator-canary"
+        },
+        after: {
+          number: "123456789",
+          project_id: "operator-canary"
+        },
+        after_unknown: {}
+      }
+    }
+  ]
+' "${fixture}" >"${test_dir}/cloud-sql-unsafe-project-action.json"
+expect_failure \
+  "cloud-sql-unsafe-project-action" \
+  "invalid_cloud_sql_resources must be empty." \
+  "${test_dir}/cloud-sql-unsafe-project-action.json"
+
+jq '
+  .resource_changes += [
+    {
+      address: "module.init.data.google_project.current",
+      mode: "data",
+      type: "google_project",
+      name: "current",
+      change: {
+        actions: ["read"],
+        before: {
+          number: "123456789",
+          project_id: "operator-canary"
+        },
+        after: {
+          number: "123456789",
+          project_id: "operator-canary"
+        },
+        after_unknown: {
+          number: true
+        }
+      }
+    }
+  ]
+' "${fixture}" >"${test_dir}/cloud-sql-conflicting-project-read.json"
+expect_failure \
+  "cloud-sql-conflicting-project-read" \
+  "invalid_cloud_sql_resources must be empty." \
+  "${test_dir}/cloud-sql-conflicting-project-read.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "module.init.google_secret_manager_secret.postgres_connection_string"
+      )
+    | .change.after.project
+  ) = "other-project"
+' "${fixture}" >"${test_dir}/cloud-sql-secret-container-project.json"
+expect_failure \
+  "cloud-sql-secret-container-project" \
+  "invalid_cloud_sql_resources must be empty." \
+  "${test_dir}/cloud-sql-secret-container-project.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "module.init.google_secret_manager_secret.postgres_connection_string"
+      )
+    | .change.after.secret_id
+  ) = "hostile-secret"
+' "${fixture}" >"${test_dir}/cloud-sql-secret-container-secret-id.json"
+expect_failure \
+  "cloud-sql-secret-container-secret-id" \
+  "invalid_cloud_sql_resources must be empty." \
+  "${test_dir}/cloud-sql-secret-container-secret-id.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "module.init.google_secret_manager_secret.postgres_connection_string"
+      )
+    | .change.after.id
+  ) = "projects/operator-canary/secrets/hostile-secret"
+' "${fixture}" >"${test_dir}/cloud-sql-secret-container-id.json"
+expect_failure \
+  "cloud-sql-secret-container-id" \
+  "invalid_cloud_sql_resources must be empty." \
+  "${test_dir}/cloud-sql-secret-container-id.json"
+
+jq '
+  del(
+    .resource_changes[]
+    | select(
+        .address
+        == "module.init.google_secret_manager_secret.postgres_connection_string"
+      )
+    | .change.after.id
+  )
+  | (
+      .resource_changes[]
+      | select(
+          .address
+          == "module.init.google_secret_manager_secret.postgres_connection_string"
+        )
+      | .change.after_unknown.id
+    ) = true
+' "${fixture}" >"${test_dir}/cloud-sql-secret-container-unknown-id.json"
+expect_failure \
+  "cloud-sql-secret-container-unknown-id" \
+  "invalid_cloud_sql_resources must be empty." \
+  "${test_dir}/cloud-sql-secret-container-unknown-id.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "google_secret_manager_secret_version.postgres_connection_string"
+      )
+    | .change.after.secret
+  ) = "projects/operator-canary/secrets/e2b-postgres-connection-string"
+' "${fixture}" >"${test_dir}/cloud-sql-secret-version-name-mismatch.json"
+expect_failure \
+  "cloud-sql-secret-version-name-mismatch" \
+  "invalid_cloud_sql_resources must be empty." \
+  "${test_dir}/cloud-sql-secret-version-name-mismatch.json"
+
+jq '
+  del(
+    .resource_changes[]
+    | select(
+        .address
+        == "module.init.google_secret_manager_secret.postgres_connection_string"
+      )
+    | .change.after.name
+  )
+  | (
+      .resource_changes[]
+      | select(
+          .address
+          == "module.init.google_secret_manager_secret.postgres_connection_string"
+        )
+      | .change.after_unknown.name
+    ) = true
+' "${fixture}" >"${test_dir}/cloud-sql-secret-container-unknown-name.json"
+expect_failure \
+  "cloud-sql-secret-container-unknown-name" \
+  "invalid_cloud_sql_resources must be empty." \
+  "${test_dir}/cloud-sql-secret-container-unknown-name.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "module.init.google_secret_manager_secret.postgres_connection_string"
+      )
+    | .change.after.name
+  ) = null
+  | (
+      .resource_changes[]
+      | select(
+          .address
+          == "google_secret_manager_secret_version.postgres_connection_string"
+        )
+      | .change.after.secret
+    ) = null
+' "${fixture}" >"${test_dir}/cloud-sql-secret-container-null-name.json"
+expect_failure \
+  "cloud-sql-secret-container-null-name" \
+  "invalid_cloud_sql_resources must be empty." \
+  "${test_dir}/cloud-sql-secret-container-null-name.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "module.init.google_secret_manager_secret.postgres_connection_string"
+      )
+    | .change.after.name
+  ) = ""
+  | (
+      .resource_changes[]
+      | select(
+          .address
+          == "google_secret_manager_secret_version.postgres_connection_string"
+        )
+      | .change.after.secret
+    ) = ""
+' "${fixture}" >"${test_dir}/cloud-sql-secret-container-empty-name.json"
+expect_failure \
+  "cloud-sql-secret-container-empty-name" \
+  "invalid_cloud_sql_resources must be empty." \
+  "${test_dir}/cloud-sql-secret-container-empty-name.json"
+
+jq '
+  del(
+    .resource_changes[]
+    | select(
+        .address
+        == "google_secret_manager_secret_version.postgres_connection_string"
+      )
+    | .change.after_sensitive.secret_data
+  )
+' "${fixture}" >"${test_dir}/cloud-sql-secret-data-not-sensitive.json"
+expect_failure \
+  "cloud-sql-secret-data-not-sensitive" \
+  "invalid_cloud_sql_resources must be empty." \
+  "${test_dir}/cloud-sql-secret-data-not-sensitive.json"
+
+jq '
+  del(
+    .resource_changes[]
+    | select(
+        .address
+        == "google_secret_manager_secret_version.postgres_connection_string"
+      )
+    | .change.after_unknown.secret_data
+  )
+' "${fixture}" >"${test_dir}/cloud-sql-secret-data-not-unknown.json"
+expect_failure \
+  "cloud-sql-secret-data-not-unknown" \
+  "invalid_cloud_sql_resources must be empty." \
+  "${test_dir}/cloud-sql-secret-data-not-unknown.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "google_secret_manager_secret_version.postgres_connection_string"
+      )
+    | .change.after.secret_data
+  ) = ""
+  | del(
+      .resource_changes[]
+      | select(
+          .address
+          == "google_secret_manager_secret_version.postgres_connection_string"
+        )
+      | .change.after_unknown.secret_data
+    )
+' "${fixture}" >"${test_dir}/cloud-sql-empty-secret-data.json"
+expect_failure \
+  "cloud-sql-empty-secret-data" \
+  "invalid_cloud_sql_resources must be empty." \
+  "${test_dir}/cloud-sql-empty-secret-data.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.address == "random_password.cloud_sql_operator_canary")
+    | .change.after.result
+  ) = "fixture-password"
+  | del(
+      .resource_changes[]
+      | select(.address == "random_password.cloud_sql_operator_canary")
+      | .change.after_unknown.result
+    )
+  | (
+      .resource_changes[]
+      | select(.address == "google_sql_user.operator_canary")
+      | .change.after.password
+    ) = "fixture-password"
+  | del(
+      .resource_changes[]
+      | select(.address == "google_sql_user.operator_canary")
+      | .change.after_unknown.password
+    )
+  | (
+      .resource_changes[]
+      | select(.address == "google_sql_database_instance.operator_canary")
+      | .change.after.private_ip_address
+    ) = "10.0.0.2"
+  | del(
+      .resource_changes[]
+      | select(.address == "google_sql_database_instance.operator_canary")
+      | .change.after_unknown.private_ip_address
+    )
+  | (
+      .resource_changes[]
+      | select(
+          .address
+          == "google_secret_manager_secret_version.postgres_connection_string"
+        )
+      | .change.after.secret_data
+    ) = "postgresql://e2b:fixture-password@10.0.0.2:5432/e2b?sslmode=require"
+  | del(
+      .resource_changes[]
+      | select(
+          .address
+          == "google_secret_manager_secret_version.postgres_connection_string"
+        )
+      | .change.after_unknown.secret_data
+    )
+' "${fixture}" >"${test_dir}/cloud-sql-concrete-connection-uri.json"
+expect_success \
+  "cloud-sql-concrete-connection-uri" \
+  "${test_dir}/cloud-sql-concrete-connection-uri.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "google_secret_manager_secret_version.postgres_connection_string"
+      )
+    | .change.after_unknown.secret_data
+  ) = true
+' "${test_dir}/cloud-sql-concrete-connection-uri.json" \
+  >"${test_dir}/cloud-sql-conflicting-concrete-unknown-uri.json"
+expect_failure \
+  "cloud-sql-conflicting-concrete-unknown-uri" \
+  "invalid_cloud_sql_resources must be empty." \
+  "${test_dir}/cloud-sql-conflicting-concrete-unknown-uri.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "google_secret_manager_secret_version.postgres_connection_string"
+      )
+    | .change.after.secret_data
+  ) = "postgresql://e2b:wrong@10.0.0.2:5432/e2b?sslmode=require"
+' "${test_dir}/cloud-sql-concrete-connection-uri.json" \
+  >"${test_dir}/cloud-sql-concrete-connection-uri-mismatch.json"
+expect_failure \
+  "cloud-sql-concrete-connection-uri-mismatch" \
+  "invalid_cloud_sql_resources must be empty." \
+  "${test_dir}/cloud-sql-concrete-connection-uri-mismatch.json"
 
 jq '
   .resource_changes += [

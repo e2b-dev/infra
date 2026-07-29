@@ -4,6 +4,14 @@ def managed_changes:
     | select(.mode == "managed")
   ];
 
+def prior_state_resources:
+  [
+    .prior_state.values.root_module?
+    | select(. != null)
+    | recurse(.child_modules[]?)
+    | .resources[]?
+  ];
+
 def is_mig:
   .type == "google_compute_instance_group_manager"
   or .type == "google_compute_region_instance_group_manager";
@@ -556,6 +564,50 @@ managed_changes as $changes
     | map(select(.address == "google_sql_user.operator_canary"))
     | first
   ) as $cloud_sql_user
+| (
+    [
+      $changes[]
+      | select(
+          .address
+          == "module.init.google_secret_manager_secret.postgres_connection_string"
+        )
+    ]
+  ) as $cloud_sql_connection_secret_containers
+| (
+    $cloud_sql_connection_secret_containers
+    | first
+  ) as $cloud_sql_connection_secret_container
+| (
+    prior_state_resources
+    | map(
+        select(
+          .address == "module.init.data.google_project.current"
+          and .mode == "data"
+        )
+      )
+  ) as $cloud_sql_project_states
+| (
+    $cloud_sql_project_states
+    | first
+  ) as $cloud_sql_project_state
+| (
+    [
+      .resource_changes[]?
+      | select(
+          .address == "module.init.data.google_project.current"
+        )
+    ]
+  ) as $cloud_sql_project_changes
+| (
+    $cloud_sql_project_changes
+    | first
+  ) as $cloud_sql_project_change
+| (
+    if ($cloud_sql_project_changes | length) == 1
+    then $cloud_sql_project_change.change.after
+    else $cloud_sql_project_state.values
+    end
+  ) as $cloud_sql_project_identity
 | {
     role_max_instances: $role_max_instances,
     role_surge_instances: $role_surge_instances,
@@ -798,7 +850,142 @@ managed_changes as $changes
         }
     ],
     invalid_cloud_sql_resources: (
-      [
+      (
+        [
+          {
+            address: "module.init.data.google_project.current",
+            count: ($cloud_sql_project_states | length),
+            reason: "connection-secret-project-state-count"
+          }
+          | select(.count != 1)
+        ]
+        + [
+          {
+            address: "module.init.data.google_project.current",
+            count: ($cloud_sql_project_changes | length),
+            mode: ($cloud_sql_project_change.mode // null),
+            actions: ($cloud_sql_project_change.change.actions // null),
+            reason: "connection-secret-project-action"
+          }
+          | select(
+              .count > 1
+              or (
+                .count == 1
+                and (
+                  .mode != "data"
+                  or $cloud_sql_project_change.type != "google_project"
+                  or (
+                    .actions != ["read"]
+                    and .actions != ["no-op"]
+                  )
+                  or $cloud_sql_project_change.change.after_unknown.project_id
+                    == true
+                  or $cloud_sql_project_change.change.after_unknown.number
+                    == true
+                )
+              )
+            )
+        ]
+        + [
+          $cloud_sql_project_identity
+          | select(
+              ($cloud_sql_project_states | length) == 1
+              and ($cloud_sql_project_changes | length) <= 1
+          )
+          | select(
+              $cloud_sql_project_state.type != "google_project"
+              or ($cloud_sql_project_state.values.project_id | type)
+                != "string"
+              or ($cloud_sql_project_state.values.project_id | length) == 0
+              or ($cloud_sql_project_state.values.number | type)
+                != "string"
+              or (
+                try (
+                  $cloud_sql_project_state.values.number
+                  | test("^[1-9][0-9]*$")
+                ) catch false
+                | not
+              )
+              or (.project_id | type) != "string"
+              or (.project_id | length) == 0
+              or (.number | type) != "string"
+              or (
+                try (.number | test("^[1-9][0-9]*$")) catch false
+                | not
+              )
+              or .project_id
+                != $cloud_sql_project_state.values.project_id
+              or .number != $cloud_sql_project_state.values.number
+              or .project_id != $cloud_sql_instance.change.after.project
+            )
+          | {
+              address: "module.init.data.google_project.current",
+              reason: "connection-secret-project-identity"
+            }
+        ]
+        + [
+          {
+            address: "module.init.google_secret_manager_secret.postgres_connection_string",
+            count: ($cloud_sql_connection_secret_containers | length),
+            reason: "connection-secret-container-count"
+          }
+          | select(.count != 1)
+        ]
+        + [
+          $cloud_sql_connection_secret_container
+          | select(
+              ($cloud_sql_connection_secret_containers | length) == 1
+            )
+          | (
+              $cloud_sql_instance.change.after.name
+              | rtrimstr(
+                  $expected.expected_cloud_sql.instance_name_suffix
+                )
+            ) as $prefix
+          | (
+              "projects/"
+              + $cloud_sql_instance.change.after.project
+              + "/secrets/"
+              + $prefix
+              + $expected.expected_cloud_sql.connection_secret_id_suffix
+            ) as $expected_id
+          | select(
+              (.change.after.project | type) != "string"
+              or .change.after.project
+                != $cloud_sql_instance.change.after.project
+              or (.change.after.secret_id | type) != "string"
+              or .change.after.secret_id
+                != (
+                  $prefix
+                  + $expected.expected_cloud_sql.connection_secret_id_suffix
+                )
+              or (.change.after.id | type) != "string"
+              or .change.after.id != $expected_id
+              or (.change.after.name | type) != "string"
+              or (.change.after.name | length) == 0
+              or .change.actions != ["no-op"]
+              or .change.after_unknown.project == true
+              or .change.after_unknown.secret_id == true
+              or .change.after_unknown.id == true
+              or .change.after_unknown.name == true
+              or (
+                .change.after.name
+                != (
+                  "projects/"
+                  + $cloud_sql_project_identity.number
+                  + "/secrets/"
+                  + $prefix
+                  + $expected.expected_cloud_sql.connection_secret_id_suffix
+                )
+              )
+            )
+          | {
+              address: .address,
+              reason: "connection-secret-container-identity"
+            }
+        ]
+      )
+      + [
         $cloud_sql_resources[]
         | select(
             .address
@@ -1080,23 +1267,18 @@ managed_changes as $changes
             .address
             == "google_secret_manager_secret_version.postgres_connection_string"
           )
-        | (
-            $cloud_sql_instance.change.after.name
-            | rtrimstr($expected.expected_cloud_sql.instance_name_suffix)
-          ) as $prefix
         | select(
-            .change.after.secret
-              != (
-                "projects/"
-                + $cloud_sql_instance.change.after.project
-                + "/secrets/"
-                + $prefix
-                + $expected.expected_cloud_sql.connection_secret_id_suffix
-              )
+            ($cloud_sql_connection_secret_containers | length) != 1
+            or (.change.after.secret | type) != "string"
+            or .change.after.secret
+              != $cloud_sql_connection_secret_container.change.after.name
+            or .change.after_unknown.secret == true
             or .change.after_sensitive.secret_data != true
             or (
               if (.change.after.secret_data | type) == "string" then
-                if (
+                if .change.after_unknown.secret_data == true then
+                  true
+                elif (
                   ($cloud_sql_user.change.after.name | type) == "string"
                   and ($cloud_sql_password.change.after.result | type) == "string"
                   and (
