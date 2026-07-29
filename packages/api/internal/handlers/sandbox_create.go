@@ -391,7 +391,7 @@ func buildSandboxIam(iam *api.SandboxIam) (*types.SandboxIam, *api.APIError) {
 			return nil, reject(fmt.Sprintf("iam.tokens.%s.tokenType", name), fmt.Sprintf("only %q is supported", iamTokenTypeJWTSVID))
 		}
 
-		tokens[name] = types.SandboxIamToken{Audience: def.Audience, TokenType: def.TokenType}
+		tokens[name] = types.SandboxIamToken{Audience: def.Audience, TokenType: string(def.TokenType)}
 	}
 
 	return &types.SandboxIam{Tokens: tokens}, nil

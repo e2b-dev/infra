@@ -32,7 +32,7 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 		return
 	}
 
-	c.JSON(http.StatusOK, nil)
+	c.Status(http.StatusOK)
 }
 
 // PatchV2TemplatesTemplateID serves to update a template (v2 - for new CLIs)

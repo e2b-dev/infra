@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/gin-gonic/gin"
 	middleware "github.com/oapi-codegen/gin-middleware"
@@ -69,6 +70,75 @@ func TestHealthResponseContract(t *testing.T) {
 
 	require.Nil(t, pathItem.Get.Responses.Value("204"))
 	require.Nil(t, pathItem.Get.Responses.Value("401"))
+}
+
+// TestMiddlewareResponseContracts covers responses produced before handlers:
+// team authorization/rate limiting and the global request-size limiter.
+func TestMiddlewareResponseContracts(t *testing.T) {
+	t.Parallel()
+
+	swagger, err := GetSpec()
+	require.NoError(t, err)
+
+	for path, pathItem := range swagger.Paths.Map() {
+		operations := map[string]*openapi3.Operation{
+			http.MethodGet:    pathItem.Get,
+			http.MethodPost:   pathItem.Post,
+			http.MethodPut:    pathItem.Put,
+			http.MethodPatch:  pathItem.Patch,
+			http.MethodDelete: pathItem.Delete,
+		}
+		for method, operation := range operations {
+			if operation == nil {
+				continue
+			}
+
+			name := method + " " + path
+			if operationUsesTeamAuth(operation) {
+				for _, status := range []string{"403", "429"} {
+					response := operation.Responses.Value(status)
+					require.NotNil(t, response, "%s must document middleware response %s", name, status)
+					require.NotNil(t, response.Value)
+					require.Contains(t, response.Value.Content, "application/json")
+				}
+
+				rateLimited := operation.Responses.Value("429")
+				require.Contains(t, rateLimited.Value.Headers, "Retry-After",
+					"%s must document the rate limiter Retry-After header", name)
+			}
+
+			if operation.RequestBody != nil {
+				response := operation.Responses.Value("413")
+				require.NotNil(t, response, "%s must document the request-size limiter response", name)
+				require.NotNil(t, response.Value)
+				require.Contains(t, response.Value.Content, "text/plain")
+			}
+
+			if operation.RequestBody != nil || len(operation.Parameters) > 0 || len(pathItem.Parameters) > 0 {
+				response := operation.Responses.Value("400")
+				require.NotNil(t, response, "%s must document generated request-binding failures", name)
+				require.NotNil(t, response.Value)
+				require.Contains(t, response.Value.Content, "application/json")
+			}
+		}
+	}
+}
+
+func operationUsesTeamAuth(operation *openapi3.Operation) bool {
+	if operation.Security == nil {
+		return false
+	}
+
+	for _, requirement := range *operation.Security {
+		if _, ok := requirement["AuthProviderTeamAuth"]; ok {
+			return true
+		}
+		if _, ok := requirement["AdminTeamAuth"]; ok {
+			return true
+		}
+	}
+
+	return false
 }
 
 // TestAuthProviderTeamAuthHeaderRoutes verifies that a request carrying the
