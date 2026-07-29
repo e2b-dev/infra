@@ -258,10 +258,10 @@ func (b *File) readSegmentFaultSafe(ctx context.Context, p []byte, s readSegment
 	err := block.RunFaultSafe(ctx, func() error { return b.readSegment(ctx, p, s) })
 	var faultErr *block.MemoryFaultError
 	if errors.As(err, &faultErr) {
-		cachePath, _ := s.diff.CachePath(ctx)
+		cacheKey := string(s.diff.CacheKey())
 		logger.L().Error(ctx, "memory fault reading build segment; local disk under the cache is likely failing",
 			zap.Error(err),
-			zap.String("cache_path", cachePath),
+			zap.String("diff_cache_key", cacheKey)
 			zap.Uintptr("fault_addr", faultErr.Addr),
 			zap.Int64("offset", s.srcOff),
 			zap.Int64("length", s.length),
