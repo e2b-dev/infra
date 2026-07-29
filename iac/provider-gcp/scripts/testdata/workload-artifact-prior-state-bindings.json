@@ -85,6 +85,54 @@
                 "self_link": "us-east4-docker.pkg.dev/monad-code/e2b-core/clickhouse-migrator@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
               },
               "sensitive_values": {}
+            },
+            {
+              "address": "module.nomad.data.google_storage_bucket_object.orchestrator[0]",
+              "mode": "data",
+              "type": "google_storage_bucket_object",
+              "name": "orchestrator",
+              "provider_name": "registry.terraform.io/hashicorp/google",
+              "schema_version": 0,
+              "values": {
+                "bucket": "monad-code-fc-env-pipeline",
+                "name": "orchestrator.0123456789ab",
+                "generation": 2001,
+                "md5hash": "PMSUl0V18Ei9Lyj4jlVgag==",
+                "crc32c": "R/l+hQ=="
+              },
+              "sensitive_values": {}
+            },
+            {
+              "address": "module.nomad.data.google_storage_bucket_object.template_manager",
+              "mode": "data",
+              "type": "google_storage_bucket_object",
+              "name": "template_manager",
+              "provider_name": "registry.terraform.io/hashicorp/google",
+              "schema_version": 0,
+              "values": {
+                "bucket": "monad-code-fc-env-pipeline",
+                "name": "template-manager.0123456789ab",
+                "generation": 2002,
+                "md5hash": "PMSUl0V18Ei9Lyj4jlVgag==",
+                "crc32c": "R/l+hQ=="
+              },
+              "sensitive_values": {}
+            },
+            {
+              "address": "module.nomad.data.google_storage_bucket_object.filestore_cleanup",
+              "mode": "data",
+              "type": "google_storage_bucket_object",
+              "name": "filestore_cleanup",
+              "provider_name": "registry.terraform.io/hashicorp/google",
+              "schema_version": 0,
+              "values": {
+                "bucket": "monad-code-fc-env-pipeline",
+                "name": "clean-nfs-cache.0123456789ab",
+                "generation": 2003,
+                "md5hash": "zLUBMUIvTYcm+aDVzj1ZFA==",
+                "crc32c": "f4G09A=="
+              },
+              "sensitive_values": {}
             }
           ]
         }

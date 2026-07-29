@@ -1968,7 +1968,10 @@ jq '
   | del(.configuration.provider_config.google)
   | (
       .configuration.root_module.module_calls.nomad.module.resources[]
-      | select(.type == "google_artifact_registry_docker_image")
+      | select(
+          .type == "google_artifact_registry_docker_image"
+          or .type == "google_storage_bucket_object"
+        )
       | .provider_config_key
     ) = "module.nomad:google"
 ' "${fixture}" >"${test_dir}/opaque-core-image-provider-key.json"
@@ -2232,16 +2235,57 @@ jq '
   (
     .planned_values.root_module.child_modules[].resources
   ) |= map(
+    select(.type != "google_storage_bucket_object")
+  )
+' "${fixture}" >"${test_dir}/prior-state-job-binary-objects.json"
+expect_success \
+  "prior-state-job-binary-objects" \
+  "${test_dir}/prior-state-job-binary-objects.json"
+
+jq '
+  (
+    .planned_values.root_module.child_modules[].resources
+  ) |= map(
     select(
       .address
       != "module.nomad.data.google_storage_bucket_object.filestore_cleanup"
     )
   )
+  | (
+      .prior_state.values.root_module.child_modules[].resources
+    ) |= map(
+      select(
+        .address
+        != "module.nomad.data.google_storage_bucket_object.filestore_cleanup"
+      )
+    )
 ' "${fixture}" >"${test_dir}/missing-job-binary-object.json"
 expect_failure \
   "missing-job-binary-object" \
   "missing_or_duplicate_job_binary_objects must be empty." \
   "${test_dir}/missing-job-binary-object.json"
+
+jq '
+  (
+    .planned_values.root_module.child_modules[].resources
+  ) |= map(
+    select(.type != "google_storage_bucket_object")
+  )
+  | (
+      .prior_state.values.root_module
+      | recurse(.child_modules[]?)
+      | .resources[]?
+      | select(
+          .address
+          == "module.nomad.data.google_storage_bucket_object.template_manager"
+        )
+      | .values.generation
+    ) = 9999
+' "${fixture}" >"${test_dir}/prior-state-job-binary-generation-drift.json"
+expect_failure \
+  "prior-state-job-binary-generation-drift" \
+  "invalid_job_binary_objects must be empty." \
+  "${test_dir}/prior-state-job-binary-generation-drift.json"
 
 jq '
   (
@@ -2257,6 +2301,45 @@ expect_failure \
   "job-binary-unpinned-url" \
   "invalid_job_binary_jobs must be empty." \
   "${test_dir}/job-binary-unpinned-url.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "module.nomad.module.template_manager.nomad_job.template_manager"
+      )
+    | .change
+  ) |= (
+    .after.jobspec = null
+    | .after_unknown.jobspec = true
+  )
+' "${fixture}" >"${test_dir}/unknown-template-manager-jobspec.json"
+expect_success \
+  "unknown-template-manager-jobspec" \
+  "${test_dir}/unknown-template-manager-jobspec.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "module.nomad.module.template_manager.nomad_job.template_manager"
+      )
+    | .change
+  ) |= (
+    .after.jobspec = null
+    | .after_unknown.jobspec = true
+  )
+  | (
+      .configuration.root_module.module_calls.nomad.module
+      .module_calls.template_manager.expressions.artifact_source.references
+    ) = ["local.unreviewed_artifact_source"]
+' "${fixture}" >"${test_dir}/unknown-template-manager-wiring-drift.json"
+expect_failure \
+  "unknown-template-manager-wiring-drift" \
+  "invalid_job_binary_jobs must be empty." \
+  "${test_dir}/unknown-template-manager-wiring-drift.json"
 
 jq '
   .resource_changes |= map(

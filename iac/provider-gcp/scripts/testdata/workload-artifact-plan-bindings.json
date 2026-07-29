@@ -152,8 +152,77 @@
                     ]
                   }
                 }
+              },
+              {
+                "address": "data.google_storage_bucket_object.orchestrator",
+                "mode": "data",
+                "type": "google_storage_bucket_object",
+                "name": "orchestrator",
+                "provider_config_key": "google",
+                "expressions": {
+                  "bucket": {
+                    "references": [
+                      "var.fc_env_pipeline_bucket_name"
+                    ]
+                  },
+                  "name": {
+                    "references": [
+                      "local.job_binary_suffix"
+                    ]
+                  }
+                }
+              },
+              {
+                "address": "data.google_storage_bucket_object.template_manager",
+                "mode": "data",
+                "type": "google_storage_bucket_object",
+                "name": "template_manager",
+                "provider_config_key": "google",
+                "expressions": {
+                  "bucket": {
+                    "references": [
+                      "var.fc_env_pipeline_bucket_name"
+                    ]
+                  },
+                  "name": {
+                    "references": [
+                      "local.job_binary_suffix"
+                    ]
+                  }
+                }
+              },
+              {
+                "address": "data.google_storage_bucket_object.filestore_cleanup",
+                "mode": "data",
+                "type": "google_storage_bucket_object",
+                "name": "filestore_cleanup",
+                "provider_config_key": "google",
+                "expressions": {
+                  "bucket": {
+                    "references": [
+                      "var.fc_env_pipeline_bucket_name"
+                    ]
+                  },
+                  "name": {
+                    "references": [
+                      "local.job_binary_suffix"
+                    ]
+                  }
+                }
               }
-            ]
+            ],
+            "module_calls": {
+              "template_manager": {
+                "source": "../../modules/job-template-manager",
+                "expressions": {
+                  "artifact_source": {
+                    "references": [
+                      "local.template_manager_artifact_source"
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }

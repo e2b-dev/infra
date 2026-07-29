@@ -104,18 +104,25 @@ def job_binary_specs:
   [
     {
       binary: "orchestrator",
+      data_name: "orchestrator",
       data_address: "module.nomad.data.google_storage_bucket_object.orchestrator[0]",
       job_address: "module.nomad.module.orchestrator[0].nomad_job.orchestrator",
       required_job: true
     },
     {
       binary: "template-manager",
+      data_name: "template_manager",
       data_address: "module.nomad.data.google_storage_bucket_object.template_manager",
       job_address: "module.nomad.module.template_manager.nomad_job.template_manager",
-      required_job: true
+      required_job: true,
+      allow_unknown_jobspec: true,
+      module_name: "template_manager",
+      module_source: "../../modules/job-template-manager",
+      artifact_source_reference: "local.template_manager_artifact_source"
     },
     {
       binary: "clean-nfs-cache",
+      data_name: "filestore_cleanup",
       data_address: "module.nomad.data.google_storage_bucket_object.filestore_cleanup",
       job_address: "module.nomad.nomad_job.clean_nfs_cache[0]",
       required_job: false
@@ -206,20 +213,58 @@ planned_resources as $planned
   ) as $core_selections
 | (
     [
-      $planned[]
-      | . as $resource
-      | select(
-          .mode == "data"
-          and .type == "google_storage_bucket_object"
-          and (
-            [
-              $job_binary_specs[].data_address
-            ]
-            | index($resource.address)
-          ) != null
-        )
+      $job_binary_specs[] as $spec
+      | (
+          [
+            $planned[]
+            | select(.address == $spec.data_address)
+          ]
+        ) as $planned_rows
+      | (
+          [
+            $prior[]
+            | select(.address == $spec.data_address)
+          ]
+        ) as $prior_rows
+      | (
+          [
+            $all_changes[]
+            | select(.address == $spec.data_address)
+          ]
+        ) as $change_rows
+      | (
+          [
+            $nomad_config.module.resources[]?
+            | select(
+                .mode == "data"
+                and .type == "google_storage_bucket_object"
+                and .name == $spec.data_name
+              )
+          ]
+        ) as $config_rows
+      | {
+          spec: $spec,
+          planned_count: ($planned_rows | length),
+          prior_count: ($prior_rows | length),
+          change_count: ($change_rows | length),
+          config_count: ($config_rows | length),
+          config: $config_rows[0],
+          row: (
+            if ($planned_rows | length) == 1 then
+              $planned_rows[0]
+            elif (
+              ($planned_rows | length) == 0
+              and ($prior_rows | length) == 1
+              and ($change_rows | length) == 0
+            ) then
+              $prior_rows[0]
+            else
+              null
+            end
+          )
+        }
     ]
-  ) as $job_binary_rows
+  ) as $job_binary_selections
 | {
     missing_or_duplicate_orchestrator_images: [
       $orchestrator_addresses[] as $address
@@ -501,41 +546,61 @@ planned_resources as $planned
         }
     ],
     missing_or_duplicate_job_binary_objects: [
-      $job_binary_specs[] as $spec
-      | (
-          [
-            $job_binary_rows[]
-            | select(.address == $spec.data_address)
-          ]
-          | length
-        ) as $count
-      | select($count != 1)
+      $job_binary_selections[]
+      | select(
+          .planned_count > 1
+          or .prior_count > 1
+          or .change_count > 0
+          or (
+            .planned_count == 0
+            and .prior_count != 1
+          )
+        )
       | {
-          address: $spec.data_address,
-          binary: $spec.binary,
-          count: $count
+          address: .spec.data_address,
+          binary: .spec.binary,
+          planned_count,
+          prior_count,
+          change_count
         }
     ],
     invalid_job_binary_objects: [
-      $job_binary_specs[] as $spec
-      | $job_binary_rows[]
-      | select(.address == $spec.data_address)
+      $job_binary_selections[]
+      | select(.row != null)
+      | . as $selection
+      | (
+          $provider_configs[
+            ($selection.config.provider_config_key // "")
+          ] // {}
+        ) as $provider_config
       | select(
-          .values.bucket
-            != $artifacts.job_binaries[$spec.binary].revision.bucket
-          or .values.name
-            != $artifacts.job_binaries[$spec.binary].revision.name
-          or (.values.generation | tostring)
-            != $artifacts.job_binaries[$spec.binary].revision.generation
-          or .values.md5hash
-            != $artifacts.job_binaries[$spec.binary].revision.md5
-          or .values.crc32c
-            != $artifacts.job_binaries[$spec.binary].revision.crc32c
+          .config_count != 1
+          or .row.address != .spec.data_address
+          or .row.mode != "data"
+          or .row.type != "google_storage_bucket_object"
+          or .row.name != .spec.data_name
+          or .row.values.bucket
+            != $artifacts.job_binaries[.spec.binary].revision.bucket
+          or .row.values.name
+            != $artifacts.job_binaries[.spec.binary].revision.name
+          or (.row.values.generation | tostring)
+            != $artifacts.job_binaries[.spec.binary].revision.generation
+          or .row.values.md5hash
+            != $artifacts.job_binaries[.spec.binary].revision.md5
+          or .row.values.crc32c
+            != $artifacts.job_binaries[.spec.binary].revision.crc32c
+          or .config.expressions.bucket.references
+            != ["var.fc_env_pipeline_bucket_name"]
+          or .config.expressions.name.references
+            != ["local.job_binary_suffix"]
+          or $provider_config.full_name
+            != "registry.terraform.io/hashicorp/google"
+          or ($provider_config.alias // null) != null
         )
       | {
-          address,
-          binary: $spec.binary,
-          values
+          address: .spec.data_address,
+          binary: .spec.binary,
+          reason: "effective job-binary identity or Terraform wiring mismatch"
         }
     ],
     missing_or_duplicate_job_binary_jobs: [
@@ -594,12 +659,41 @@ planned_resources as $planned
             $artifacts.job_binaries[$spec.binary].nomad_source
           ]
         ) as $expected_sources
-      | select($actual_sources != $expected_sources)
+      | (
+          if $spec.allow_unknown_jobspec == true then
+            (
+              $nomad_config.module.module_calls[$spec.module_name]? // {}
+            ) as $module_call
+            | (
+                $module_call.source == $spec.module_source
+                and (
+                  $module_call.expressions.artifact_source.references
+                  // []
+                ) == [$spec.artifact_source_reference]
+              )
+          else
+            false
+          end
+        ) as $unknown_source_wiring_valid
+      | select(
+          if ($job.change.after.jobspec | type) == "string" then
+            $actual_sources != $expected_sources
+          else
+            (
+              ($job.change.after_unknown.jobspec // false) != true
+              or $unknown_source_wiring_valid != true
+            )
+          end
+        )
       | {
           address: $spec.job_address,
           binary: $spec.binary,
           expected_sources: $expected_sources,
-          actual_sources: $actual_sources
+          actual_sources: $actual_sources,
+          jobspec_unknown: (
+            ($job.change.after.jobspec | type) != "string"
+          ),
+          unknown_source_wiring_valid: $unknown_source_wiring_valid
         }
     ]
   }
