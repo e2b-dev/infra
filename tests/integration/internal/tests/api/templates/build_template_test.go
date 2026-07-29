@@ -49,7 +49,7 @@ func buildTemplate(
 ) bool {
 	tb.Helper()
 
-	outcome := runTemplateBuild(tb, templateName, BuildTimeout, data, logHandler, preBuildFns...)
+	outcome := runTemplateBuild(tb, templateName, data, logHandler, preBuildFns...)
 	if !outcome.ready {
 		tb.Fatalf("Build failed: %v", outcome.reason)
 
@@ -64,14 +64,13 @@ func buildTemplate(
 func runTemplateBuild(
 	tb testing.TB,
 	templateName string,
-	timeout time.Duration,
 	data api.TemplateBuildStartV2,
 	logHandler BuildLogHandler,
 	preBuildFns ...PreBuildFunc,
 ) buildOutcome {
 	tb.Helper()
 
-	ctx, cancel := context.WithTimeout(tb.Context(), timeout)
+	ctx, cancel := context.WithTimeout(tb.Context(), BuildTimeout)
 	defer cancel()
 
 	c := setup.GetAPIClient()
