@@ -29,3 +29,15 @@ func IsForeignKeyViolation(err error) bool {
 
 	return false
 }
+
+// IsCheckViolation reports a CHECK constraint rejection, which for a write
+// taken straight from a request body means the caller sent something the
+// column set does not permit — a client error rather than a server one.
+func IsCheckViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == "23514"
+	}
+
+	return false
+}
