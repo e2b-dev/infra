@@ -40,13 +40,26 @@ echo "Add sudo to 'user' with no password"
 # Admin group differs by distro (sudo on Debian/Ubuntu, wheel elsewhere); the
 # NOPASSWD sudoers entry below is what actually grants privileges. The group
 # comes from the distro profile, resolved and persisted by provisioning —
-# defined once in distro.go, not re-probed here.
-. /usr/local/share/e2b/distro.env
-if ! getent group "$E2B_ADMIN_GROUP" >/dev/null; then
-    echo "ERROR: the '$E2B_ADMIN_GROUP' group from the distro profile does not exist on this image" >&2
+# defined once in distro.go, not re-probed here. Templates built before
+# distro.env existed (FROM-template parents reuse their rootfs without
+# re-provisioning) fall back to probing the two known groups.
+if [ -f /usr/local/share/e2b/distro.env ]; then
+    . /usr/local/share/e2b/distro.env
+fi
+if [ -n "${E2B_ADMIN_GROUP:-}" ]; then
+    if ! getent group "$E2B_ADMIN_GROUP" >/dev/null; then
+        echo "ERROR: the '$E2B_ADMIN_GROUP' group from the distro profile does not exist on this image" >&2
+        exit 1
+    fi
+    usermod -aG "$E2B_ADMIN_GROUP" user
+elif getent group sudo >/dev/null; then
+    usermod -aG sudo user
+elif getent group wheel >/dev/null; then
+    usermod -aG wheel user
+else
+    echo "ERROR: neither the sudo nor the wheel group exists on this image" >&2
     exit 1
 fi
-usermod -aG "$E2B_ADMIN_GROUP" user
 passwd -d user
 # Skip the append when the entry is already present.
 if grep -q '^user ALL=(ALL:ALL) NOPASSWD: ALL' /etc/sudoers; then
