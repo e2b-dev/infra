@@ -61,3 +61,20 @@ test: build-tools
 seed-db:
 	@echo "Seeding database..."
 	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) go run ./scripts/seed/postgres/seed-db.go
+
+.PHONY: canary-bootstrap
+canary-bootstrap:
+	@ test -n "$(STATE_FILE)" || (printf "STATE_FILE is required.\n"; exit 1)
+	@ test -n "$(POSTGRES_CONNECTION_STRING)" || (printf "POSTGRES_CONNECTION_STRING is required.\n"; exit 1)
+	@ test -n "$(GCP_PROJECT_ID)" || (printf "GCP_PROJECT_ID is required.\n"; exit 1)
+	@ POSTGRES_CONNECTION_STRING="$(POSTGRES_CONNECTION_STRING)" go run ./scripts/canary/bootstrap \
+		--project "$(GCP_PROJECT_ID)" \
+		--state-file "$(STATE_FILE)"
+
+.PHONY: canary-cleanup
+canary-cleanup:
+	@ test -n "$(STATE_FILE)" || (printf "STATE_FILE is required.\n"; exit 1)
+	@ test -n "$(POSTGRES_CONNECTION_STRING)" || (printf "POSTGRES_CONNECTION_STRING is required.\n"; exit 1)
+	@ POSTGRES_CONNECTION_STRING="$(POSTGRES_CONNECTION_STRING)" go run ./scripts/canary/bootstrap \
+		--cleanup \
+		--state-file "$(STATE_FILE)"
