@@ -28,10 +28,6 @@ func (s *APIStore) BatchSyncProjectMembers(c *gin.Context, _ api.TeamID) {
 	sendNotImplemented(c)
 }
 
-func (s *APIStore) UpsertProjectLimits(c *gin.Context, _ api.TeamID) {
-	sendNotImplemented(c)
-}
-
 func (s *APIStore) PurgeUser(c *gin.Context, _ api.UserId) {
 	sendNotImplemented(c)
 }

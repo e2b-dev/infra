@@ -1234,6 +1234,10 @@ components:
 
     AdminControlPlaneProjectLimits:
       type: object
+      description: >-
+        A project's effective limits, already resolved by the caller. Every
+        field is absolute: this side stores what it is given and performs no
+        arithmetic of its own.
       required:
         - concurrent_sandboxes
         - max_sandbox_length_hours
@@ -1242,6 +1246,8 @@ components:
         - disk_mb
         - concurrent_template_builds
         - events_ttl_days
+        - default_free_disk_size_mb
+        - max_disk_size_mb
       properties:
         concurrent_sandboxes:
           type: integer
@@ -1270,6 +1276,17 @@ components:
         events_ttl_days:
           type: integer
           format: int32
+          minimum: 1
+        default_free_disk_size_mb:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >-
+            Free rootfs allowance. Must not exceed max_disk_size_mb; the two
+            are stored together and rejected as a pair if they disagree.
+        max_disk_size_mb:
+          type: integer
+          format: int64
           minimum: 1
 
 tags:
