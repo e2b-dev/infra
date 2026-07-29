@@ -29,12 +29,12 @@ func TestBatchMemberRequestMatchesTheShapeCallersSend(t *testing.T) {
 	body := `[{"user_id":"` + present.String() + `","present":true},` +
 		`{"user_id":"` + absent.String() + `","present":false}]`
 
-	var decoded api.AdminControlPlaneMemberBatchRequest
+	var decoded api.ManagementMemberBatchRequest
 	if err := json.Unmarshal([]byte(body), &decoded); err != nil {
 		t.Fatalf("decoding the payload callers send: %v", err)
 	}
 
-	want := api.AdminControlPlaneMemberBatchRequest{
+	want := api.ManagementMemberBatchRequest{
 		{UserId: present, Present: true},
 		{UserId: absent, Present: false},
 	}
@@ -63,7 +63,7 @@ func TestProjectUpsertAcceptsTheCallersOwnTierNames(t *testing.T) {
 	for _, projectType := range []string{"base_v1", "pro_v1", "enterprise_v3"} {
 		body := `{"name":"Acme","slug":"acme","project_type":"` + projectType + `"}`
 
-		var decoded api.AdminControlPlaneProjectUpsertRequest
+		var decoded api.ManagementProjectUpsertRequest
 		if err := json.Unmarshal([]byte(body), &decoded); err != nil {
 			t.Fatalf("decoding an upsert with project_type %q: %v", projectType, err)
 		}
@@ -113,12 +113,12 @@ type routeRecorder struct {
 	reached chan string
 }
 
-func (r *routeRecorder) BatchSyncProjectMembers(c *gin.Context, _ api.TeamID) {
+func (r *routeRecorder) ManagementBatchSyncProjectMembers(c *gin.Context, _ api.TeamID) {
 	r.reached <- "batch"
 	c.Status(http.StatusNoContent)
 }
 
-func (r *routeRecorder) UpsertProjectMember(c *gin.Context, _ api.TeamID, _ api.UserId) {
+func (r *routeRecorder) ManagementUpsertProjectMember(c *gin.Context, _ api.TeamID, _ api.UserId) {
 	r.reached <- "single"
 	c.Status(http.StatusNoContent)
 }

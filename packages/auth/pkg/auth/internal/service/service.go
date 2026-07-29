@@ -28,6 +28,7 @@ type authStore interface {
 	GetTeamByIDAndUserID(ctx context.Context, userID uuid.UUID, teamID string) (*types.Team, error)
 	GetUserIDByHashedAccessToken(ctx context.Context, hashedToken string) (uuid.UUID, error)
 	GetTeamAPIKeyHashes(ctx context.Context, teamID uuid.UUID) ([]string, error)
+	GetTeamMemberIDs(ctx context.Context, teamID uuid.UUID) ([]uuid.UUID, error)
 }
 
 type APIError = apierrors.APIError
@@ -262,7 +263,17 @@ func (s *AuthService) InvalidateTeamMemberCache(ctx context.Context, userID uuid
 	s.teamCache.Invalidate(ctx, teamMemberCacheKey(userID, teamID))
 }
 
-// InvalidateTeamCache queries the team's API key hashes and removes their cached entries.
+// InvalidateTeamCache removes every cached entry carrying this team's data.
+//
+// A team is cached under three kinds of key, and a caller changing something
+// team-wide -- limits, blocked state -- means all three are stale. Leaving any
+// of them means the change lands on some auth paths and not others, which is
+// harder to diagnose than not invalidating at all.
+//
+//	team-<id>          GetTeamByID, the admin and management paths
+//	<api key hash>     ApiKeyAuth
+//	<user id>-<id>     AuthProviderBearerAuth + AuthProviderTeamAuth, the
+//	                   browser session path, one entry per member
 func (s *AuthService) InvalidateTeamCache(ctx context.Context, teamID uuid.UUID) error {
 	s.teamCache.Invalidate(ctx, teamCacheKey(teamID))
 
@@ -273,6 +284,15 @@ func (s *AuthService) InvalidateTeamCache(ctx context.Context, teamID uuid.UUID)
 
 	for _, hash := range hashes {
 		s.teamCache.Invalidate(ctx, hash)
+	}
+
+	memberIDs, err := s.store.GetTeamMemberIDs(ctx, teamID)
+	if err != nil {
+		return fmt.Errorf("failed to get team member ids: %w", err)
+	}
+
+	for _, userID := range memberIDs {
+		s.teamCache.Invalidate(ctx, teamMemberCacheKey(userID, teamID.String()))
 	}
 
 	return nil
