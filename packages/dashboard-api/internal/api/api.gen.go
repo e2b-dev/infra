@@ -851,17 +851,17 @@ type PatchTeamsTeamIDJSONRequestBody = UpdateTeamRequest
 // PostTeamsTeamIDMembersJSONRequestBody defines body for PostTeamsTeamIDMembers for application/json ContentType.
 type PostTeamsTeamIDMembersJSONRequestBody = AddTeamMemberRequest
 
-// UpsertProjectJSONRequestBody defines body for UpsertProject for application/json ContentType.
-type UpsertProjectJSONRequestBody = ManagementProjectUpsertRequest
+// ManagementUpsertProjectJSONRequestBody defines body for ManagementUpsertProject for application/json ContentType.
+type ManagementUpsertProjectJSONRequestBody = ManagementProjectUpsertRequest
 
-// UpsertProjectLimitsJSONRequestBody defines body for UpsertProjectLimits for application/json ContentType.
-type UpsertProjectLimitsJSONRequestBody = ManagementProjectLimits
+// ManagementUpsertProjectLimitsJSONRequestBody defines body for ManagementUpsertProjectLimits for application/json ContentType.
+type ManagementUpsertProjectLimitsJSONRequestBody = ManagementProjectLimits
 
-// BatchSyncProjectMembersJSONRequestBody defines body for BatchSyncProjectMembers for application/json ContentType.
-type BatchSyncProjectMembersJSONRequestBody = ManagementMemberBatchRequest
+// ManagementBatchSyncProjectMembersJSONRequestBody defines body for ManagementBatchSyncProjectMembers for application/json ContentType.
+type ManagementBatchSyncProjectMembersJSONRequestBody = ManagementMemberBatchRequest
 
-// UpsertProjectMemberJSONRequestBody defines body for UpsertProjectMember for application/json ContentType.
-type UpsertProjectMemberJSONRequestBody = ManagementMemberUpsertRequest
+// ManagementUpsertProjectMemberJSONRequestBody defines body for ManagementUpsertProjectMember for application/json ContentType.
+type ManagementUpsertProjectMemberJSONRequestBody = ManagementMemberUpsertRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -942,25 +942,25 @@ type ServerInterface interface {
 	GetTemplatesTemplateIDTagsTagAssignments(c *gin.Context, templateID TemplateID, tag TagPath, params GetTemplatesTemplateIDTagsTagAssignmentsParams)
 	// Delete a project and its control-plane state (v1).
 	// (DELETE /v1/management/projects/{teamID})
-	DeleteProject(c *gin.Context, teamID TeamID)
+	ManagementDeleteProject(c *gin.Context, teamID TeamID)
 	// Create or reconcile a project (v1).
 	// (PUT /v1/management/projects/{teamID})
-	UpsertProject(c *gin.Context, teamID TeamID)
+	ManagementUpsertProject(c *gin.Context, teamID TeamID)
 	// Reconcile effective limits for a project (v1).
 	// (PUT /v1/management/projects/{teamID}/limits)
-	UpsertProjectLimits(c *gin.Context, teamID TeamID)
+	ManagementUpsertProjectLimits(c *gin.Context, teamID TeamID)
 	// Reconcile many project memberships in one call (v1).
 	// (POST /v1/management/projects/{teamID}/members/batch)
-	BatchSyncProjectMembers(c *gin.Context, teamID TeamID)
+	ManagementBatchSyncProjectMembers(c *gin.Context, teamID TeamID)
 	// Remove a project member (v1).
 	// (DELETE /v1/management/projects/{teamID}/members/{userId})
-	DeleteProjectMember(c *gin.Context, teamID TeamID, userId UserId)
+	ManagementDeleteProjectMember(c *gin.Context, teamID TeamID, userId UserId)
 	// Reconcile an opaque user UUID as a project member (v1).
 	// (PUT /v1/management/projects/{teamID}/members/{userId})
-	UpsertProjectMember(c *gin.Context, teamID TeamID, userId UserId)
+	ManagementUpsertProjectMember(c *gin.Context, teamID TeamID, userId UserId)
 	// Purge shard-local membership and access-token state for an opaque user UUID (v1).
 	// (DELETE /v1/management/users/{userId})
-	PurgeUser(c *gin.Context, userId UserId)
+	ManagementPurgeUser(c *gin.Context, userId UserId)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -1752,8 +1752,8 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDTagsTagAssignments(c *g
 	siw.Handler.GetTemplatesTemplateIDTagsTagAssignments(c, templateID, tag, params)
 }
 
-// DeleteProject operation middleware
-func (siw *ServerInterfaceWrapper) DeleteProject(c *gin.Context) {
+// ManagementDeleteProject operation middleware
+func (siw *ServerInterfaceWrapper) ManagementDeleteProject(c *gin.Context) {
 
 	var err error
 	_ = err
@@ -1776,11 +1776,11 @@ func (siw *ServerInterfaceWrapper) DeleteProject(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.DeleteProject(c, teamID)
+	siw.Handler.ManagementDeleteProject(c, teamID)
 }
 
-// UpsertProject operation middleware
-func (siw *ServerInterfaceWrapper) UpsertProject(c *gin.Context) {
+// ManagementUpsertProject operation middleware
+func (siw *ServerInterfaceWrapper) ManagementUpsertProject(c *gin.Context) {
 
 	var err error
 	_ = err
@@ -1803,11 +1803,11 @@ func (siw *ServerInterfaceWrapper) UpsertProject(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.UpsertProject(c, teamID)
+	siw.Handler.ManagementUpsertProject(c, teamID)
 }
 
-// UpsertProjectLimits operation middleware
-func (siw *ServerInterfaceWrapper) UpsertProjectLimits(c *gin.Context) {
+// ManagementUpsertProjectLimits operation middleware
+func (siw *ServerInterfaceWrapper) ManagementUpsertProjectLimits(c *gin.Context) {
 
 	var err error
 	_ = err
@@ -1830,11 +1830,11 @@ func (siw *ServerInterfaceWrapper) UpsertProjectLimits(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.UpsertProjectLimits(c, teamID)
+	siw.Handler.ManagementUpsertProjectLimits(c, teamID)
 }
 
-// BatchSyncProjectMembers operation middleware
-func (siw *ServerInterfaceWrapper) BatchSyncProjectMembers(c *gin.Context) {
+// ManagementBatchSyncProjectMembers operation middleware
+func (siw *ServerInterfaceWrapper) ManagementBatchSyncProjectMembers(c *gin.Context) {
 
 	var err error
 	_ = err
@@ -1857,47 +1857,11 @@ func (siw *ServerInterfaceWrapper) BatchSyncProjectMembers(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.BatchSyncProjectMembers(c, teamID)
+	siw.Handler.ManagementBatchSyncProjectMembers(c, teamID)
 }
 
-// DeleteProjectMember operation middleware
-func (siw *ServerInterfaceWrapper) DeleteProjectMember(c *gin.Context) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "teamID" -------------
-	var teamID TeamID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "teamID", c.Param("teamID"), &teamID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter teamID: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "userId" -------------
-	var userId UserId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "userId", c.Param("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter userId: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(string(AdminJWTAuthScopes), []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.DeleteProjectMember(c, teamID, userId)
-}
-
-// UpsertProjectMember operation middleware
-func (siw *ServerInterfaceWrapper) UpsertProjectMember(c *gin.Context) {
+// ManagementDeleteProjectMember operation middleware
+func (siw *ServerInterfaceWrapper) ManagementDeleteProjectMember(c *gin.Context) {
 
 	var err error
 	_ = err
@@ -1929,11 +1893,47 @@ func (siw *ServerInterfaceWrapper) UpsertProjectMember(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.UpsertProjectMember(c, teamID, userId)
+	siw.Handler.ManagementDeleteProjectMember(c, teamID, userId)
 }
 
-// PurgeUser operation middleware
-func (siw *ServerInterfaceWrapper) PurgeUser(c *gin.Context) {
+// ManagementUpsertProjectMember operation middleware
+func (siw *ServerInterfaceWrapper) ManagementUpsertProjectMember(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "teamID" -------------
+	var teamID TeamID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "teamID", c.Param("teamID"), &teamID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter teamID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "userId" -------------
+	var userId UserId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", c.Param("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter userId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(string(AdminJWTAuthScopes), []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ManagementUpsertProjectMember(c, teamID, userId)
+}
+
+// ManagementPurgeUser operation middleware
+func (siw *ServerInterfaceWrapper) ManagementPurgeUser(c *gin.Context) {
 
 	var err error
 	_ = err
@@ -1956,7 +1956,7 @@ func (siw *ServerInterfaceWrapper) PurgeUser(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.PurgeUser(c, userId)
+	siw.Handler.ManagementPurgeUser(c, userId)
 }
 
 // GinServerOptions provides options for the Gin server.
@@ -2011,13 +2011,13 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/templates/:templateID/tags/exists", wrapper.GetTemplatesTemplateIDTagsExists)
 	router.GET(options.BaseURL+"/templates/:templateID/tags/groups", wrapper.GetTemplatesTemplateIDTagsGroups)
 	router.GET(options.BaseURL+"/templates/:templateID/tags/:tag/assignments", wrapper.GetTemplatesTemplateIDTagsTagAssignments)
-	router.DELETE(options.BaseURL+"/v1/management/projects/:teamID", wrapper.DeleteProject)
-	router.PUT(options.BaseURL+"/v1/management/projects/:teamID", wrapper.UpsertProject)
-	router.PUT(options.BaseURL+"/v1/management/projects/:teamID/limits", wrapper.UpsertProjectLimits)
-	router.POST(options.BaseURL+"/v1/management/projects/:teamID/members/batch", wrapper.BatchSyncProjectMembers)
-	router.DELETE(options.BaseURL+"/v1/management/projects/:teamID/members/:userId", wrapper.DeleteProjectMember)
-	router.PUT(options.BaseURL+"/v1/management/projects/:teamID/members/:userId", wrapper.UpsertProjectMember)
-	router.DELETE(options.BaseURL+"/v1/management/users/:userId", wrapper.PurgeUser)
+	router.DELETE(options.BaseURL+"/v1/management/projects/:teamID", wrapper.ManagementDeleteProject)
+	router.PUT(options.BaseURL+"/v1/management/projects/:teamID", wrapper.ManagementUpsertProject)
+	router.PUT(options.BaseURL+"/v1/management/projects/:teamID/limits", wrapper.ManagementUpsertProjectLimits)
+	router.POST(options.BaseURL+"/v1/management/projects/:teamID/members/batch", wrapper.ManagementBatchSyncProjectMembers)
+	router.DELETE(options.BaseURL+"/v1/management/projects/:teamID/members/:userId", wrapper.ManagementDeleteProjectMember)
+	router.PUT(options.BaseURL+"/v1/management/projects/:teamID/members/:userId", wrapper.ManagementUpsertProjectMember)
+	router.DELETE(options.BaseURL+"/v1/management/users/:userId", wrapper.ManagementPurgeUser)
 }
 
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
@@ -2131,16 +2131,17 @@ var swaggerSpec = []string{
 	"wX+aYeQQm8Y9hYgsuJPIe+6hFWbAGD0ZOnr2knzYRqyMvBA5JozPQM5wnzGlhdxOPVVHbEDagwRr1JTc",
 	"XXadzd5x+F03r6a6gxpKV3NLl73qFLrrTpV20MS9SqiKPxJfaSRc2cEa7yHPDvwbV3konbpF2j15ya2m",
 	"q7vjRvajELbSkezNCpmVrkVXU/vmHMSEw02ZFWnawUOCDWV1dlJPPfYIbCWjer07C9qVN/g1HSd6pM3e",
-	"lchtJzHaA4XNjvRtxz/Ejm9Kus295jGEAU6weXKcls8sHbt3kOpxD8N+meJRxRAfiStrXwR1jw1CqWJ9",
-	"Cffxn4SUfdJzbadMzNFzZ4cW757Zt8s0PkitpUhmWUI5OLJ8t3mCyWeLFauWx7px9/XLZnmH+/fKfzDt",
-	"QNF2Y69oPm40Svs50A5mhoqTu4yPCyYhEjxiCcQIVudXfrwBFTunzGt6UB56iItuh9tdLppQyGqVvK02",
-	"uJ0COOBxldXrgFvv5yIX1qNswCL1WMjO62DjrxpvzNoHTbc8WkvB2eeDw/MQx/bh4PmuBGXzbV53YD8Y",
-	"UougikURqLg/YDsTGl1ixujkIzEib/GuJeoaNpKeSYg0PoZI+UzkWk291/0ykDP3WrgUOTrj8NXLSJSW",
-	"O/vsN9BofURe4gObikTrnH8kCZUrkESB7nDN4ePTF1seOXRXMUyH3Uwdz3rvvaPwDWb30Lf3BDgmhXF5",
-	"3N1kvu2tzr2VUr4td1JFQUUYR3RFNEkeboeFhy3VMBkkJL+plv9xJOSvb9ExiIg2lvswgvNOUWLj57yH",
-	"g8Ozppacfbc7/jIJ3wDYy3UoJyKjv+XuOgk+BWQfb98Bmm3GM5QipBG+m8sVXKlA1mIKzmycg1pTGf/H",
-	"KeJILjv3WSIimviHLcb/oBFrhhkrHXVcosbWOj8ouymZyF2ZGvx9kbC6uExseFEjw7uQH/G5moYhocSI",
-	"atyGRCurArlhEZC//XqJ0pTrxRu/6cn9Wt3I9H60kZq1Hwqr0t2Hu/8JAAD//w==",
+	"lchtJzHaA4XNjvRtxz/Ejm9Kus295jGEAU6weXKcls8sHbt3kOpxD31+mep5JuuhKZ5XDPGWuLL2bVD3",
+	"7CCUytaXcDP/SUjZJz0XeMoUHT23d2jxApp9xUzj09RaimSWJZSDI8t3myeYhrZYu1qZWbVs1r27r782",
+	"y/XQ2l75T6odKB5v7J3Nx41XaT8Y2sHuULVy1/VxISVEgkcsgRhB7DzPjzegYkeVmU8PymUPcRXucLvO",
+	"xRsKWa2StwV32GYBHPO4ygL2KFvy5yKL1qNszCJpWciO7GD7rxqv09qnULc8WkvB2eeDw/YQB/7hYPuu",
+	"BGvzVV931B8IwUVwxqIIeNwfyJ2JkS4x83TykRjRuXgfE3UWG5HPJEQaH1WkfCZyrabeK4EZyJl7dVyK",
+	"HJ16+HpmJEoLoH0+HGi0PiIv8aFORaJ1zj+ShMoVSKJAd7j4KrDjc9YXWx451FdRUYfdZB0Phe+90/BV",
+	"Z/d0uPeoOKaZcZnh3WS+7bnOPZdSvi13WEVBRRhHnEU0SQ6180LConrE7zdFWM04Rt5UsHgcCfzrAwOG",
+	"K9EGDB5DMN8pOm0XecHDx+FZWUuOv9sdl5mEb8Ds5VKUE5HR33J3oQUfI7LPx+8N2TajGkpZ0ge6t7lc",
+	"wZUKZEWm4MxGYKg1lfF/nGEAyWXnPktERBP/0MbIJDSvzTCXpqOOSyHZWv8DsqeS6dyVKczfF4m1i0vP",
+	"hnc1MtEL+RGf1WmYOUrsqMatTbQGK5AbFgH526+XKK25XnpnY/p1Zap7pN6PNr609kNhC7v7cPc/AQAA",
+	"//8=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

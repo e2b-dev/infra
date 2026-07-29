@@ -16,7 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-// UpsertProjectLimits records a project's effective limits.
+// ManagementUpsertProjectLimits records a project's effective limits.
 //
 // The values arrive absolute. This side stores them and does no arithmetic:
 // the caller owns plans and add-ons and has already resolved them, which is
@@ -26,7 +26,7 @@ import (
 // Idempotent, because the caller retries. A repeated push writes the same nine
 // values and touches updated_at, so a duplicate delivery is indistinguishable
 // from the first.
-func (s *APIStore) UpsertProjectLimits(c *gin.Context, teamID api.TeamID) {
+func (s *APIStore) ManagementUpsertProjectLimits(c *gin.Context, teamID api.TeamID) {
 	ctx := c.Request.Context()
 	attrs := []attribute.KeyValue{telemetry.WithTeamID(teamID.String())}
 

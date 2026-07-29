@@ -113,12 +113,12 @@ type routeRecorder struct {
 	reached chan string
 }
 
-func (r *routeRecorder) BatchSyncProjectMembers(c *gin.Context, _ api.TeamID) {
+func (r *routeRecorder) ManagementBatchSyncProjectMembers(c *gin.Context, _ api.TeamID) {
 	r.reached <- "batch"
 	c.Status(http.StatusNoContent)
 }
 
-func (r *routeRecorder) UpsertProjectMember(c *gin.Context, _ api.TeamID, _ api.UserId) {
+func (r *routeRecorder) ManagementUpsertProjectMember(c *gin.Context, _ api.TeamID, _ api.UserId) {
 	r.reached <- "single"
 	c.Status(http.StatusNoContent)
 }

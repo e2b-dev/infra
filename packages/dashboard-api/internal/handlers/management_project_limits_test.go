@@ -127,7 +127,7 @@ func callUpsertProjectLimits(t *testing.T, store *APIStore, teamID uuid.UUID, bo
 		"/v1/management/projects/"+teamID.String()+"/limits", strings.NewReader(body))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 
-	store.UpsertProjectLimits(ginCtx, teamID)
+	store.ManagementUpsertProjectLimits(ginCtx, teamID)
 	// The engine flushes at the end of the handler chain; calling the handler
 	// directly skips that, and c.Status alone only records the code.
 	ginCtx.Writer.WriteHeaderNow()

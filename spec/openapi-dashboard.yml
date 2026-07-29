@@ -1291,7 +1291,7 @@ components:
 
 tags:
   - name: builds
-  - name: management
+  - name: control-plane-management
     description: Workspace control-plane operations authenticated with service JWTs.
   - name: sandboxes
   - name: teams
@@ -1944,9 +1944,9 @@ paths:
     parameters:
       - $ref: "#/components/parameters/teamID"
     put:
-      operationId: upsertProject
+      operationId: managementUpsertProject
       summary: Create or reconcile a project (v1).
-      tags: [management]
+      tags: [control-plane-management]
       security:
         - AdminJWTAuth: []
       requestBody:
@@ -1979,9 +1979,9 @@ paths:
         "501":
           $ref: "#/components/responses/501"
     delete:
-      operationId: deleteProject
+      operationId: managementDeleteProject
       summary: Delete a project and its control-plane state (v1).
-      tags: [management]
+      tags: [control-plane-management]
       security:
         - AdminJWTAuth: []
       responses:
@@ -2001,9 +2001,9 @@ paths:
       - $ref: "#/components/parameters/teamID"
       - $ref: "#/components/parameters/userId"
     put:
-      operationId: upsertProjectMember
+      operationId: managementUpsertProjectMember
       summary: Reconcile an opaque user UUID as a project member (v1).
-      tags: [management]
+      tags: [control-plane-management]
       security:
         - AdminJWTAuth: []
       requestBody:
@@ -2026,9 +2026,9 @@ paths:
         "501":
           $ref: "#/components/responses/501"
     delete:
-      operationId: deleteProjectMember
+      operationId: managementDeleteProjectMember
       summary: Remove a project member (v1).
-      tags: [management]
+      tags: [control-plane-management]
       security:
         - AdminJWTAuth: []
       responses:
@@ -2049,12 +2049,12 @@ paths:
     parameters:
       - $ref: "#/components/parameters/teamID"
     post:
-      operationId: batchSyncProjectMembers
+      operationId: managementBatchSyncProjectMembers
       summary: Reconcile many project memberships in one call (v1).
       description: >-
         The bulk path behind group and directory fan-outs, where the per-member
         routes would cost one request each. Callers chunk larger sets.
-      tags: [management]
+      tags: [control-plane-management]
       security:
         - AdminJWTAuth: []
       requestBody:
@@ -2081,9 +2081,9 @@ paths:
     parameters:
       - $ref: "#/components/parameters/teamID"
     put:
-      operationId: upsertProjectLimits
+      operationId: managementUpsertProjectLimits
       summary: Reconcile effective limits for a project (v1).
-      tags: [management]
+      tags: [control-plane-management]
       security:
         - AdminJWTAuth: []
       requestBody:
@@ -2110,9 +2110,9 @@ paths:
     parameters:
       - $ref: "#/components/parameters/userId"
     delete:
-      operationId: purgeUser
+      operationId: managementPurgeUser
       summary: Purge shard-local membership and access-token state for an opaque user UUID (v1).
-      tags: [management]
+      tags: [control-plane-management]
       security:
         - AdminJWTAuth: []
       responses:
