@@ -8,6 +8,7 @@ fixture="${script_dir}/testdata/minimal-workload-plan.json"
 cloud_sql_fixture="${script_dir}/testdata/cloud-sql-workload-resources.json"
 cloud_sql_project_state="${script_dir}/testdata/cloud-sql-project-state.json"
 artifact_bindings_fixture="${script_dir}/testdata/workload-artifact-plan-bindings.json"
+artifact_prior_fixture="${script_dir}/testdata/workload-artifact-prior-state-bindings.json"
 artifacts="${script_dir}/testdata/workload-artifacts.json"
 policy="${script_dir}/../topology/minimal-workload-policy.json"
 packer_template="${script_dir}/../nomad-cluster-disk-image/main.pkr.hcl"
@@ -25,7 +26,8 @@ chmod 0700 "${fake_terraform}"
 jq \
   --slurpfile cloud_sql "${cloud_sql_fixture}" \
   --slurpfile cloud_sql_project "${cloud_sql_project_state}" \
-  --slurpfile artifact_bindings "${artifact_bindings_fixture}" '
+  --slurpfile artifact_bindings "${artifact_bindings_fixture}" \
+  --slurpfile artifact_prior "${artifact_prior_fixture}" '
   .resource_changes += (
     $cloud_sql[0]
     + $artifact_bindings[0].resource_changes
@@ -34,15 +36,19 @@ jq \
       format_version: "1.0",
       values: {
         root_module: {
-          child_modules: [
-            {
-              address: "module.init",
-              resources: $cloud_sql_project
-            }
-          ]
+          child_modules: (
+            [
+              {
+                address: "module.init",
+                resources: $cloud_sql_project
+              }
+            ]
+            + $artifact_prior[0].values.root_module.child_modules
+          )
         }
       }
     }
+  | .configuration = $artifact_bindings[0].configuration
   | .planned_values = $artifact_bindings[0].planned_values
   | $artifact_bindings[0].orchestrator_source_image as $source_image
   | (
@@ -1653,6 +1659,351 @@ expect_failure \
 
 jq '
   (
+    .planned_values.root_module
+    | recurse(.child_modules[]?)
+    | .resources?
+  ) |= map(
+    select(.type != "google_artifact_registry_docker_image")
+  )
+' "${fixture}" >"${test_dir}/prior-state-core-images-including-jobless-clickhouse.json"
+expect_success \
+  "prior-state-core-images-including-jobless-clickhouse" \
+  "${test_dir}/prior-state-core-images-including-jobless-clickhouse.json"
+
+jq '
+  (
+    .planned_values.root_module.child_modules[0].resources
+  ) += [
+    (
+      .planned_values.root_module.child_modules[0].resources[]
+      | select(
+          .address
+          == "module.nomad.data.google_artifact_registry_docker_image.api_image"
+        )
+      | .address
+        = "module.k8s_apps.data.google_artifact_registry_docker_image.api_image"
+    )
+  ]
+' "${fixture}" >"${test_dir}/sibling-module-core-image-name.json"
+expect_success \
+  "sibling-module-core-image-name" \
+  "${test_dir}/sibling-module-core-image-name.json"
+
+jq '
+  (
+    .planned_values.root_module
+    | recurse(.child_modules[]?)
+    | .resources?
+  ) |= map(
+    select(
+      .address
+      != "module.nomad.data.google_artifact_registry_docker_image.api_image"
+    )
+  )
+  | (
+      .prior_state.values.root_module
+      | recurse(.child_modules[]?)
+      | .resources[]?
+      | select(
+          .address
+          == "module.nomad.data.google_artifact_registry_docker_image.api_image"
+        )
+      | .values
+    ) |= (
+      .name = "projects/monad-code/locations/us-east4/repositories/e2b-core/dockerImages/api@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      | .self_link = "us-east4-docker.pkg.dev/monad-code/e2b-core/api@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    )
+' "${fixture}" >"${test_dir}/prior-state-core-image-coupled-tamper.json"
+expect_failure \
+  "prior-state-core-image-coupled-tamper" \
+  "invalid_core_images must be empty." \
+  "${test_dir}/prior-state-core-image-coupled-tamper.json"
+
+jq '
+  (
+    .planned_values.root_module
+    | recurse(.child_modules[]?)
+    | .resources[]?
+    | select(
+        .address
+        == "module.nomad.data.google_artifact_registry_docker_image.api_image"
+      )
+    | .values
+  ) |= (
+    .name = "projects/monad-code/locations/us-east4/repositories/e2b-core/dockerImages/api@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    | .self_link = "us-east4-docker.pkg.dev/monad-code/e2b-core/api@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  )
+' "${fixture}" >"${test_dir}/planned-core-image-coupled-tamper.json"
+expect_failure \
+  "planned-core-image-coupled-tamper" \
+  "invalid_core_images must be empty." \
+  "${test_dir}/planned-core-image-coupled-tamper.json"
+
+jq '
+  (
+    .planned_values.root_module.child_modules[0].resources
+  ) += [
+    (
+      .planned_values.root_module.child_modules[0].resources[]
+      | select(
+          .address
+          == "module.nomad.data.google_artifact_registry_docker_image.api_image"
+        )
+    )
+  ]
+' "${fixture}" >"${test_dir}/duplicate-planned-core-image.json"
+expect_failure \
+  "duplicate-planned-core-image" \
+  "missing_or_duplicate_core_images must be empty." \
+  "${test_dir}/duplicate-planned-core-image.json"
+
+jq '
+  (
+    .prior_state.values.root_module.child_modules[]
+    | select(.address == "module.nomad")
+    | .resources
+  ) += [
+    (
+      .prior_state.values.root_module.child_modules[]
+      | select(.address == "module.nomad")
+      | .resources[]
+      | select(
+          .address
+          == "module.nomad.data.google_artifact_registry_docker_image.api_image"
+        )
+    )
+  ]
+' "${fixture}" >"${test_dir}/duplicate-prior-core-image.json"
+expect_failure \
+  "duplicate-prior-core-image" \
+  "missing_or_duplicate_core_images must be empty." \
+  "${test_dir}/duplicate-prior-core-image.json"
+
+jq '
+  .resource_changes += [
+    {
+      address: "module.nomad.data.google_artifact_registry_docker_image.api_image",
+      mode: "data",
+      type: "google_artifact_registry_docker_image",
+      name: "api_image",
+      change: {
+        actions: ["read"],
+        before: null,
+        after: {},
+        after_unknown: {}
+      }
+    }
+  ]
+' "${fixture}" >"${test_dir}/core-image-read-change.json"
+expect_failure \
+  "core-image-read-change" \
+  "missing_or_duplicate_core_images must be empty." \
+  "${test_dir}/core-image-read-change.json"
+
+jq '
+  (
+    .planned_values.root_module
+    | recurse(.child_modules[]?)
+    | .resources[]?
+    | select(
+        .address
+        == "module.nomad.data.google_artifact_registry_docker_image.api_image"
+      )
+    | .values
+  ) |= del(.self_link)
+' "${fixture}" >"${test_dir}/partial-core-image-identity.json"
+expect_failure \
+  "partial-core-image-identity" \
+  "invalid_core_images must be empty." \
+  "${test_dir}/partial-core-image-identity.json"
+
+jq '
+  (
+    .planned_values.root_module
+    | recurse(.child_modules[]?)
+    | .resources[]?
+    | select(
+        .address
+        == "module.nomad.data.google_artifact_registry_docker_image.api_image"
+      )
+    | .values
+  ) = {
+    image_name: "api:latest",
+    location: "us-east4",
+    repository_id: "e2b-core"
+  }
+  | .proposed_unknown.root_module.child_modules = [
+      {
+        address: "module.nomad",
+        resources: [
+          {
+            address: "module.nomad.data.google_artifact_registry_docker_image.api_image",
+            mode: "data",
+            type: "google_artifact_registry_docker_image",
+            name: "api_image",
+            values: {
+              name: true,
+              self_link: true
+            }
+          }
+        ]
+      }
+    ]
+' "${fixture}" >"${test_dir}/deferred-unknown-core-image-identity.json"
+expect_failure \
+  "deferred-unknown-core-image-identity" \
+  "invalid_core_images must be empty." \
+  "${test_dir}/deferred-unknown-core-image-identity.json"
+
+jq '
+  (
+    .planned_values.root_module
+    | recurse(.child_modules[]?)
+    | .resources[]?
+    | select(
+        .address
+        == "module.nomad.data.google_artifact_registry_docker_image.api_image"
+      )
+    | .mode
+  ) = "managed"
+' "${fixture}" >"${test_dir}/wrong-core-image-mode.json"
+expect_failure \
+  "wrong-core-image-mode" \
+  "invalid_core_images must be empty." \
+  "${test_dir}/wrong-core-image-mode.json"
+
+jq '
+  (
+    .planned_values.root_module
+    | recurse(.child_modules[]?)
+    | .resources[]?
+    | select(
+        .address
+        == "module.nomad.data.google_artifact_registry_docker_image.api_image"
+      )
+    | .type
+  ) = "google_storage_bucket_object"
+' "${fixture}" >"${test_dir}/wrong-core-image-type.json"
+expect_failure \
+  "wrong-core-image-type" \
+  "invalid_core_images must be empty." \
+  "${test_dir}/wrong-core-image-type.json"
+
+jq '
+  (
+    .planned_values.root_module
+    | recurse(.child_modules[]?)
+    | .resources[]?
+    | select(
+        .address
+        == "module.nomad.data.google_artifact_registry_docker_image.api_image"
+      )
+    | .address
+  ) = "module.nomad.data.google_artifact_registry_docker_image.unreviewed"
+  | (
+      .prior_state.values.root_module.child_modules[]
+      | select(.address == "module.nomad")
+      | .resources
+    ) |= map(
+      select(
+        .address
+        != "module.nomad.data.google_artifact_registry_docker_image.api_image"
+      )
+    )
+' "${fixture}" >"${test_dir}/wrong-core-image-address.json"
+expect_failure \
+  "wrong-core-image-address" \
+  "missing_or_duplicate_core_images must be empty." \
+  "${test_dir}/wrong-core-image-address.json"
+
+jq '
+  (
+    .configuration.root_module.module_calls.nomad.module.resources[]
+    | select(
+        .address
+        == "data.google_artifact_registry_docker_image.api_image"
+      )
+    | .expressions.location.references
+  ) = ["var.unreviewed_region"]
+' "${fixture}" >"${test_dir}/core-image-config-wiring-drift.json"
+expect_failure \
+  "core-image-config-wiring-drift" \
+  "invalid_core_images must be empty." \
+  "${test_dir}/core-image-config-wiring-drift.json"
+
+jq '
+  (
+    .configuration.root_module.module_calls.nomad.module.resources
+  ) += [
+    (
+      .configuration.root_module.module_calls.nomad.module.resources[]
+      | select(
+          .address
+          == "data.google_artifact_registry_docker_image.api_image"
+        )
+    )
+  ]
+' "${fixture}" >"${test_dir}/duplicate-core-image-config.json"
+expect_failure \
+  "duplicate-core-image-config" \
+  "invalid_core_images must be empty." \
+  "${test_dir}/duplicate-core-image-config.json"
+
+jq '
+  .configuration.root_module.module_calls.nomad.module.resources |= map(
+    select(
+      .address
+      != "data.google_artifact_registry_docker_image.api_image"
+    )
+  )
+' "${fixture}" >"${test_dir}/missing-core-image-config.json"
+expect_failure \
+  "missing-core-image-config" \
+  "invalid_core_images must be empty." \
+  "${test_dir}/missing-core-image-config.json"
+
+jq '
+  .configuration.provider_config["module.nomad:google"]
+    = .configuration.provider_config.google
+  | del(.configuration.provider_config.google)
+  | (
+      .configuration.root_module.module_calls.nomad.module.resources[]
+      | select(.type == "google_artifact_registry_docker_image")
+      | .provider_config_key
+    ) = "module.nomad:google"
+' "${fixture}" >"${test_dir}/opaque-core-image-provider-key.json"
+expect_success \
+  "opaque-core-image-provider-key" \
+  "${test_dir}/opaque-core-image-provider-key.json"
+
+jq '
+  .configuration.provider_config.google.full_name
+    = "registry.terraform.io/unreviewed/google"
+' "${fixture}" >"${test_dir}/malicious-core-image-provider.json"
+expect_failure \
+  "malicious-core-image-provider" \
+  "invalid_core_images must be empty." \
+  "${test_dir}/malicious-core-image-provider.json"
+
+jq '
+  .configuration.provider_config.google.alias = "unreviewed"
+' "${fixture}" >"${test_dir}/aliased-core-image-provider.json"
+expect_failure \
+  "aliased-core-image-provider" \
+  "invalid_core_images must be empty." \
+  "${test_dir}/aliased-core-image-provider.json"
+
+jq '
+  .configuration.provider_config.google.expressions.project.references
+    = ["var.unreviewed_project"]
+' "${fixture}" >"${test_dir}/core-image-provider-wiring-drift.json"
+expect_failure \
+  "core-image-provider-wiring-drift" \
+  "invalid_core_images must be empty." \
+  "${test_dir}/core-image-provider-wiring-drift.json"
+
+jq '
+  (
     .resource_changes[]
     | select(.address == "module.nomad.module.api.nomad_job.api")
     | .change.after.jobspec
@@ -1662,6 +2013,203 @@ expect_failure \
   "core-job-drift" \
   "invalid_core_jobs must be empty." \
   "${test_dir}/core-job-drift.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.address == "module.nomad.module.api.nomad_job.api")
+    | .change.after.jobspec
+  ) = "job \"api\" {\n  datacenters = [\"dc1\"]\n  meta {\n    reviewed_images = <<-EOT\nimage = \"us-east4-docker.pkg.dev/monad-code/e2b-core/api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\nimage = \"us-east4-docker.pkg.dev/monad-code/e2b-core/db-migrator@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\nEOT\n  }\n  group \"api\" {\n    task \"api\" {\n      driver = \"docker\"\n      config {\n        image = trimspace(<<-EOT\nmalicious.example.invalid/api@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nEOT\n        )\n      }\n    }\n    task \"db-migrator\" {\n      driver = \"docker\"\n      config {\n        image = \"us-east4-docker.pkg.dev/monad-code/e2b-core/db-migrator@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n      }\n    }\n  }\n}"
+' "${fixture}" >"${test_dir}/core-job-heredoc-decoy.json"
+expect_failure \
+  "core-job-heredoc-decoy" \
+  "invalid_core_jobs must be empty." \
+  "${test_dir}/core-job-heredoc-decoy.json"
+
+jq '
+  .resource_changes |= map(
+    select(.address != "module.nomad.module.api.nomad_job.api")
+  )
+' "${fixture}" >"${test_dir}/missing-core-job.json"
+expect_failure \
+  "missing-core-job" \
+  "missing_or_duplicate_core_jobs must be empty." \
+  "${test_dir}/missing-core-job.json"
+
+jq '
+  .resource_changes += [
+    (
+      .resource_changes[]
+      | select(.address == "module.nomad.module.api.nomad_job.api")
+    )
+  ]
+' "${fixture}" >"${test_dir}/duplicate-core-job.json"
+expect_failure \
+  "duplicate-core-job" \
+  "missing_or_duplicate_core_jobs must be empty." \
+  "${test_dir}/duplicate-core-job.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.address == "module.nomad.module.api.nomad_job.api")
+    | .change.actions
+  ) = ["read"]
+' "${fixture}" >"${test_dir}/unsafe-core-job-action.json"
+expect_failure \
+  "unsafe-core-job-action" \
+  "invalid_core_jobs must be empty." \
+  "${test_dir}/unsafe-core-job-action.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.address == "module.nomad.module.api.nomad_job.api")
+    | .change.after_unknown.jobspec
+  ) = true
+' "${fixture}" >"${test_dir}/unknown-core-job-jobspec.json"
+expect_failure \
+  "unknown-core-job-jobspec" \
+  "invalid_core_jobs must be empty." \
+  "${test_dir}/unknown-core-job-jobspec.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address == "module.nomad.nomad_job.docker_reverse_proxy"
+      )
+    | .change.after.jobspec
+  ) |= sub(
+    "        image = \"us-east4-docker.pkg.dev/monad-code/e2b-core/docker-reverse-proxy@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n";
+    ""
+  )
+' "${fixture}" >"${test_dir}/missing-core-job-image.json"
+expect_failure \
+  "missing-core-job-image" \
+  "invalid_core_jobs must be empty." \
+  "${test_dir}/missing-core-job-image.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address == "module.nomad.nomad_job.docker_reverse_proxy"
+      )
+    | .change.after.jobspec
+  ) |= sub(
+    "image = \"us-east4-docker.pkg.dev/monad-code/e2b-core/docker-reverse-proxy@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"";
+    "image = 42"
+  )
+' "${fixture}" >"${test_dir}/non-string-core-job-image.json"
+expect_failure \
+  "non-string-core-job-image" \
+  "invalid_core_jobs must be empty." \
+  "${test_dir}/non-string-core-job-image.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.address == "module.nomad.module.api.nomad_job.api")
+    | .change.after.jobspec
+  ) |= sub(
+    "us-east4-docker.pkg.dev/monad-code/e2b-core/api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    "us-east4-docker.pkg.dev/monad-code/e2b-core/api:latest"
+  )
+' "${fixture}" >"${test_dir}/tagged-core-job-image.json"
+expect_failure \
+  "tagged-core-job-image" \
+  "invalid_core_jobs must be empty." \
+  "${test_dir}/tagged-core-job-image.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.address == "module.nomad.module.api.nomad_job.api")
+    | .change.after.jobspec
+  ) |= sub(
+    "\n}$";
+    "\n  group \"unreviewed\" {\n    task \"unreviewed\" {\n      driver = \"raw_exec\"\n      config {\n        command = \"/bin/true\"\n      }\n    }\n  }\n}"
+  )
+' "${fixture}" >"${test_dir}/non-docker-core-job-task.json"
+expect_failure \
+  "non-docker-core-job-task" \
+  "invalid_core_jobs must be empty." \
+  "${test_dir}/non-docker-core-job-task.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.address == "module.nomad.module.api.nomad_job.api")
+    | .change.after.jobspec
+  ) |= sub(
+    "  group \"api\" [{]\n";
+    "  group \"api\" {\n    service {\n      name = \"api\"\n      provider = \"nomad\"\n      connect {\n        sidecar_service {}\n        sidecar_task {\n          driver = \"docker\"\n          config {\n            image = \"malicious.example.invalid/connect@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"\n          }\n        }\n      }\n    }\n"
+  )
+' "${fixture}" >"${test_dir}/connect-sidecar-core-job-image.json"
+expect_failure \
+  "connect-sidecar-core-job-image" \
+  "invalid_core_jobs must be empty." \
+  "${test_dir}/connect-sidecar-core-job-image.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.address == "module.nomad.module.api.nomad_job.api")
+    | .change.after.jobspec
+  ) |= sub(
+    "      driver = \"docker\"\n      config [{]";
+    "      driver = \"docker\"\n      service {\n        name = \"api-task\"\n        provider = \"nomad\"\n        connect {\n          sidecar_service {}\n          sidecar_task {\n            driver = \"docker\"\n            config {\n              image = \"malicious.example.invalid/task-connect@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"\n            }\n          }\n        }\n      }\n      config {"
+  )
+' "${fixture}" >"${test_dir}/task-connect-sidecar-core-job-image.json"
+expect_failure \
+  "task-connect-sidecar-core-job-image" \
+  "invalid_core_jobs must be empty." \
+  "${test_dir}/task-connect-sidecar-core-job-image.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.address == "module.nomad.module.api.nomad_job.api")
+    | .change.after.jobspec
+  ) |= sub(
+    "  group \"api\" [{]\n";
+    "  group \"api\" {\n    service {\n      name = \"api\"\n      provider = \"nomad\"\n    }\n"
+  )
+' "${fixture}" >"${test_dir}/service-without-connect-core-job.json"
+expect_success \
+  "service-without-connect-core-job" \
+  "${test_dir}/service-without-connect-core-job.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.address == "module.nomad.module.api.nomad_job.api")
+    | .change.after.jobspec
+  ) |= sub(
+    "\n}$";
+    "\n  group \"extra\" {\n    task \"extra\" {\n      driver = \"docker\"\n      config {\n        image = \"malicious.example.invalid/extra@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"\n      }\n    }\n  }\n}"
+  )
+' "${fixture}" >"${test_dir}/extra-core-job-image.json"
+expect_failure \
+  "extra-core-job-image" \
+  "invalid_core_jobs must be empty." \
+  "${test_dir}/extra-core-job-image.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.address == "module.nomad.module.api.nomad_job.api")
+    | .change.after.jobspec
+  ) |= sub(
+    "\n}$";
+    "\n  group \"duplicate\" {\n    task \"duplicate\" {\n      driver = \"docker\"\n      config {\n        image = \"us-east4-docker.pkg.dev/monad-code/e2b-core/api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n      }\n    }\n  }\n}"
+  )
+' "${fixture}" >"${test_dir}/duplicate-core-job-image.json"
+expect_failure \
+  "duplicate-core-job-image" \
+  "invalid_core_jobs must be empty." \
+  "${test_dir}/duplicate-core-job-image.json"
 
 jq '
   (
@@ -1754,6 +2302,14 @@ jq '
       != "module.nomad.data.google_artifact_registry_docker_image.client_proxy_image"
     )
   )
+  | (
+      .prior_state.values.root_module.child_modules[].resources
+    ) |= map(
+      select(
+        .address
+        != "module.nomad.data.google_artifact_registry_docker_image.client_proxy_image"
+      )
+    )
 ' "${fixture}" >"${test_dir}/missing-core-image.json"
 expect_failure \
   "missing-core-image" \

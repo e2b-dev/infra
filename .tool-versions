@@ -5,6 +5,7 @@ go 1.26.5
 go:golang.org/x/tools/gopls 0.21.1
 go:github.com/vektra/mockery/v3 v3.7.0
 golangci-lint 2.11.4
+nomad 1.8.4
 packer 1.13.1
 protoc 29.3
 protoc-gen-connect-go 1.18.1

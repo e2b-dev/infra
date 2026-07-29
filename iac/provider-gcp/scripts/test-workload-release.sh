@@ -658,7 +658,9 @@ jq \
   --slurpfile cloud_sql_project \
   "${provider_root}/scripts/testdata/cloud-sql-project-state.json" \
   --slurpfile artifact_bindings \
-  "${provider_root}/scripts/testdata/workload-artifact-plan-bindings.json" '
+  "${provider_root}/scripts/testdata/workload-artifact-plan-bindings.json" \
+  --slurpfile artifact_prior \
+  "${provider_root}/scripts/testdata/workload-artifact-prior-state-bindings.json" '
   .resource_changes += (
     $cloud_sql[0]
     + $artifact_bindings[0].resource_changes
@@ -667,15 +669,19 @@ jq \
       format_version: "1.0",
       values: {
         root_module: {
-          child_modules: [
-            {
-              address: "module.init",
-              resources: $cloud_sql_project
-            }
-          ]
+          child_modules: (
+            [
+              {
+                address: "module.init",
+                resources: $cloud_sql_project
+              }
+            ]
+            + $artifact_prior[0].values.root_module.child_modules
+          )
         }
       }
     }
+  | .configuration = $artifact_bindings[0].configuration
   | .planned_values = $artifact_bindings[0].planned_values
   | $artifact_bindings[0].orchestrator_source_image as $source_image
   | (

@@ -7,6 +7,21 @@ def planned_resources:
     )
   ];
 
+def prior_resources:
+  [
+    (
+      .prior_state.values.root_module?
+      | select(. != null)
+      | recurse(.child_modules[]?)
+      | .resources[]?
+    )
+  ];
+
+def all_changes:
+  [
+    .resource_changes[]?
+  ];
+
 def managed_changes:
   [
     .resource_changes[]?
@@ -44,23 +59,28 @@ def core_specs:
   [
     {
       image: "api",
-      address: "module.nomad.data.google_artifact_registry_docker_image.api_image"
+      address: "module.nomad.data.google_artifact_registry_docker_image.api_image",
+      name: "api_image"
     },
     {
       image: "db-migrator",
-      address: "module.nomad.data.google_artifact_registry_docker_image.db_migrator_image"
+      address: "module.nomad.data.google_artifact_registry_docker_image.db_migrator_image",
+      name: "db_migrator_image"
     },
     {
       image: "docker-reverse-proxy",
-      address: "module.nomad.data.google_artifact_registry_docker_image.docker_reverse_proxy_image"
+      address: "module.nomad.data.google_artifact_registry_docker_image.docker_reverse_proxy_image",
+      name: "docker_reverse_proxy_image"
     },
     {
       image: "client-proxy",
-      address: "module.nomad.data.google_artifact_registry_docker_image.client_proxy_image"
+      address: "module.nomad.data.google_artifact_registry_docker_image.client_proxy_image",
+      name: "client_proxy_image"
     },
     {
       image: "clickhouse-migrator",
-      address: "module.nomad.data.google_artifact_registry_docker_image.clickhouse_migrator_image"
+      address: "module.nomad.data.google_artifact_registry_docker_image.clickhouse_migrator_image",
+      name: "clickhouse_migrator_image"
     }
   ];
 
@@ -103,6 +123,8 @@ def job_binary_specs:
   ];
 
 planned_resources as $planned
+| prior_resources as $prior
+| all_changes as $all_changes
 | managed_changes as $changes
 | orchestrator_data_addresses as $orchestrator_addresses
 | instance_template_addresses as $template_addresses
@@ -121,21 +143,67 @@ planned_resources as $planned
     ]
   ) as $orchestrator_rows
 | (
+    .configuration.root_module.module_calls.nomad? // {}
+  ) as $nomad_config
+| (
+    .configuration.provider_config? // {}
+  ) as $provider_configs
+| (
     [
-      $planned[]
-      | . as $resource
-      | select(
-          .mode == "data"
-          and .type == "google_artifact_registry_docker_image"
-          and (
-            [
-              $core_specs[].address
-            ]
-            | index($resource.address)
-          ) != null
-        )
+      $core_specs[] as $spec
+      | (
+          [
+            $planned[]
+            | select(.address == $spec.address)
+          ]
+        ) as $planned_rows
+      | (
+          [
+            $prior[]
+            | select(.address == $spec.address)
+          ]
+        ) as $prior_rows
+      | (
+          [
+            $all_changes[]
+            | select(.address == $spec.address)
+          ]
+        ) as $change_rows
+      | (
+          [
+            $nomad_config.module.resources[]?
+            | select(
+                .address
+                == (
+                  "data.google_artifact_registry_docker_image."
+                  + $spec.name
+                )
+              )
+          ]
+        ) as $config_rows
+      | {
+          spec: $spec,
+          planned_count: ($planned_rows | length),
+          prior_count: ($prior_rows | length),
+          change_count: ($change_rows | length),
+          config_count: ($config_rows | length),
+          config: $config_rows[0],
+          row: (
+            if ($planned_rows | length) == 1 then
+              $planned_rows[0]
+            elif (
+              ($planned_rows | length) == 0
+              and ($prior_rows | length) == 1
+              and ($change_rows | length) == 0
+            ) then
+              $prior_rows[0]
+            else
+              null
+            end
+          )
+        }
     ]
-  ) as $core_rows
+  ) as $core_selections
 | (
     [
       $planned[]
@@ -287,25 +355,28 @@ planned_resources as $planned
         }
     ],
     missing_or_duplicate_core_images: [
-      $core_specs[] as $spec
-      | (
-          [
-            $core_rows[]
-            | select(.address == $spec.address)
-          ]
-          | length
-        ) as $count
-      | select($count != 1)
+      $core_selections[]
+      | select(
+          .planned_count > 1
+          or .prior_count > 1
+          or .change_count > 0
+          or (
+            .planned_count == 0
+            and .prior_count != 1
+          )
+        )
       | {
-          address: $spec.address,
-          image: $spec.image,
-          count: $count
+          address: .spec.address,
+          image: .spec.image,
+          planned_count,
+          prior_count,
+          change_count
         }
     ],
     invalid_core_images: [
-      $core_specs[] as $spec
-      | $core_rows[]
-      | select(.address == $spec.address)
+      $core_selections[]
+      | select(.row != null)
+      | . as $selection
       | (
           "projects/"
           + $artifacts.gcp_project_id
@@ -314,22 +385,65 @@ planned_resources as $planned
           + "/repositories/"
           + $artifacts.core_repository
           + "/dockerImages/"
-          + $spec.image
+          + $selection.spec.image
           + "@"
-          + $artifacts.core_images[$spec.image].latest.digest
+          + $artifacts.core_images[$selection.spec.image].latest.digest
         ) as $expected_name
+      | (
+          $provider_configs[
+            ($selection.config.provider_config_key // "")
+          ] // {}
+        ) as $provider_config
       | select(
-          .values.image_name != ($spec.image + ":latest")
-          or .values.location != $artifacts.gcp_region
-          or .values.repository_id != $artifacts.core_repository
-          or .values.self_link
-            != $artifacts.core_images[$spec.image].latest.resolved_reference
-          or .values.name != $expected_name
+          .config_count != 1
+          or .row.address != .spec.address
+          or .row.mode != "data"
+          or .row.type != "google_artifact_registry_docker_image"
+          or .row.name != .spec.name
+          or .row.values.image_name != (.spec.image + ":latest")
+          or .row.values.location != $artifacts.gcp_region
+          or .row.values.repository_id != $artifacts.core_repository
+          or .row.values.self_link
+            != $artifacts.core_images[.spec.image].latest.resolved_reference
+          or .row.values.name != $expected_name
+          or .config.mode != "data"
+          or .config.type != "google_artifact_registry_docker_image"
+          or .config.name != .spec.name
+          or .config.expressions.image_name.constant_value
+            != (.spec.image + ":latest")
+          or .config.expressions.location.references != ["var.gcp_region"]
+          or .config.expressions.repository_id.references
+            != ["var.core_repository_name"]
+          or $nomad_config.expressions.gcp_project_id.references
+            != ["var.gcp_project_id"]
+          or $nomad_config.expressions.gcp_region.references
+            != ["var.gcp_region"]
+          or (
+            $nomad_config.expressions.core_repository_name.references
+              != ["module.init.core_repository_name"]
+            and (
+              (
+                $nomad_config.expressions.core_repository_name.references
+                // []
+              )
+              | sort
+            ) != (
+              ["module.init", "module.init.core_repository_name"]
+              | sort
+            )
+          )
+          or $provider_config.full_name
+            != "registry.terraform.io/hashicorp/google"
+          or ($provider_config.alias // null) != null
+          or $provider_config.expressions.project.references
+            != ["var.gcp_project_id"]
+          or $provider_config.expressions.region.references
+            != ["var.gcp_region"]
         )
       | {
-          address,
-          image: $spec.image,
-          values
+          address: .spec.address,
+          image: .spec.image,
+          reason: "effective core-image identity or Terraform wiring mismatch"
         }
     ],
     missing_or_duplicate_core_jobs: [
@@ -366,20 +480,20 @@ planned_resources as $planned
           | sort
         ) as $expected_images
       | (
-          if ($job.change.after.jobspec | type) == "string" then
-            [
-              $job.change.after.jobspec
-              | scan(
-                  "(?m)^[[:space:]]*image[[:space:]]*=[[:space:]]*\"([^\"]+)\""
-                )
-              | .[0]
-            ]
-            | sort
-          else
-            []
-          end
+          $core_job_images[$spec.address] // []
+          | sort
         ) as $actual_images
-      | select($actual_images != $expected_images)
+      | select(
+          (
+            $job.change.actions != ["create"]
+            and $job.change.actions != ["update"]
+            and $job.change.actions != ["no-op"]
+          )
+          or ($job.change.after.jobspec | type) != "string"
+          or ($job.change.after_unknown.jobspec // false) == true
+          or ($actual_images | length) != ($expected_images | length)
+          or $actual_images != $expected_images
+        )
       | {
           address: $spec.address,
           expected_images: $expected_images,

@@ -24,6 +24,35 @@ command -v jq >/dev/null 2>&1 || {
   exit 1
 }
 
+nomad_bin=""
+if [[ "${scope}" == "full" ]]; then
+  nomad_candidate="${NOMAD_BIN:-nomad}"
+  if [[ "${nomad_candidate}" == */* ]]; then
+    [[ -x "${nomad_candidate}" ]] || {
+      printf 'Pinned Nomad CLI is not executable: %s\n' "${nomad_candidate}" >&2
+      exit 1
+    }
+    nomad_bin="${nomad_candidate}"
+  else
+    nomad_bin="$(command -v "${nomad_candidate}" 2>/dev/null || true)"
+    [[ -n "${nomad_bin}" ]] || {
+      printf 'Pinned Nomad CLI is required to inspect workload jobspecs.\n' >&2
+      exit 1
+    }
+  fi
+
+  nomad_version_output="$("${nomad_bin}" version 2>/dev/null)" || {
+    printf 'Unable to verify the pinned Nomad CLI version.\n' >&2
+    exit 1
+  }
+  nomad_version_line="${nomad_version_output%%$'\n'*}"
+  [[ "${nomad_version_line}" == "Nomad v1.8.4" ]] || {
+    printf 'Nomad CLI version must be exactly 1.8.4; found: %s\n' \
+      "${nomad_version_line}" >&2
+    exit 1
+  }
+fi
+
 [[ -f "${plan_path}" ]] || {
   printf 'Saved workload plan does not exist: %s\n' "${plan_path}" >&2
   exit 1
@@ -465,9 +494,132 @@ if [[ "${scope}" == "cluster" ]]; then
   fi
 fi
 
+core_job_images='{}'
+if [[ "${scope}" == "full" ]]; then
+  core_job_specs="$(
+    jq -cn '[
+      "module.nomad.module.api.nomad_job.api",
+      "module.nomad.nomad_job.docker_reverse_proxy",
+      "module.nomad.module.client_proxy.nomad_job.client_proxy"
+    ]'
+  )"
+  temp_root="${TMPDIR:-/tmp}"
+  core_jobs_dir="$(mktemp -d "${temp_root%/}/workload-core-jobs.XXXXXX")"
+  chmod 0700 "${core_jobs_dir}"
+  cleanup_core_jobs() {
+    rm -rf -- "${core_jobs_dir}"
+  }
+  trap cleanup_core_jobs EXIT
+
+  core_job_index=0
+  while IFS= read -r core_job_address; do
+    core_job_index=$((core_job_index + 1))
+    core_job_row_count="$(
+      jq \
+        --arg address "${core_job_address}" '
+        [
+          .resource_changes[]?
+          | select(.address == $address)
+        ]
+        | length
+      ' <<<"${plan_json}"
+    )"
+    if [[ "${core_job_row_count}" -ne 1 ]]; then
+      printf 'Refusing workload plan: missing_or_duplicate_core_jobs must be empty.\n' >&2
+      exit 1
+    fi
+
+    if ! jq -e \
+      --arg address "${core_job_address}" '
+      [
+        .resource_changes[]?
+        | select(.address == $address)
+      ] as $rows
+      | $rows[0].mode == "managed"
+        and $rows[0].type == "nomad_job"
+        and ($rows[0].change.after.jobspec | type) == "string"
+        and ($rows[0].change.after.jobspec | length) > 0
+        and ($rows[0].change.after_unknown.jobspec // false) != true
+    ' <<<"${plan_json}" >/dev/null; then
+      printf 'Refusing workload plan: invalid_core_jobs must be empty. Invalid row: %s.\n' \
+        "${core_job_address}" >&2
+      exit 1
+    fi
+
+    jobspec_path="${core_jobs_dir}/job-${core_job_index}.hcl"
+    rendered_job_path="${core_jobs_dir}/job-${core_job_index}.json"
+    jq -er \
+      --arg address "${core_job_address}" '
+      .resource_changes[]
+      | select(.address == $address)
+      | .change.after.jobspec
+    ' <<<"${plan_json}" >"${jobspec_path}"
+    chmod 0600 "${jobspec_path}"
+
+    if ! "${nomad_bin}" job run -output "${jobspec_path}" \
+      >"${rendered_job_path}" 2>/dev/null; then
+      printf 'Refusing workload plan: invalid_core_jobs must be empty. Unparseable jobspec: %s.\n' \
+        "${core_job_address}" >&2
+      exit 1
+    fi
+    chmod 0600 "${rendered_job_path}"
+
+    if ! rendered_images="$(
+      jq -ce '
+        [
+          .Job.TaskGroups[]?.Tasks[]?
+        ] as $tasks
+        | [
+            (
+              .Job.TaskGroups[]?.Services[]?.Connect?
+            ),
+            (
+              .Job.TaskGroups[]?.Tasks[]?.Services[]?.Connect?
+            )
+            | select(
+                . != null
+                and (
+                  type != "object"
+                  or length > 0
+                )
+              )
+          ] as $connect_declarations
+        | if (
+            ($tasks | length) > 0
+            and ($connect_declarations | length) == 0
+            and all(
+              $tasks[];
+              .Driver == "docker"
+              and (.Config.image | type) == "string"
+              and (.Config.image | length) > 0
+            )
+          ) then
+            [$tasks[].Config.image]
+          else
+            error("invalid core task driver, Docker image, or Connect declaration")
+          end
+      ' "${rendered_job_path}"
+    )"; then
+      printf 'Refusing workload plan: invalid_core_jobs must be empty. Invalid core task driver, image, or Connect declaration: %s.\n' \
+        "${core_job_address}" >&2
+      exit 1
+    fi
+
+    core_job_images="$(
+      jq -cn \
+        --argjson current "${core_job_images}" \
+        --arg address "${core_job_address}" \
+        --argjson images "${rendered_images}" '
+        $current + {($address): $images}
+      '
+    )"
+  done < <(jq -r '.[]' <<<"${core_job_specs}")
+fi
+
 artifact_bindings="$(
   jq -c \
     --argjson artifacts "${artifacts_json}" \
+    --argjson core_job_images "${core_job_images}" \
     -f "${artifact_filter}" \
     <<<"${plan_json}"
 )"

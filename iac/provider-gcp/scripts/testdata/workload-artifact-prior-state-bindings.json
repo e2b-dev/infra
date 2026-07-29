@@ -1,0 +1,94 @@
+{
+  "format_version": "1.0",
+  "values": {
+    "root_module": {
+      "child_modules": [
+        {
+          "address": "module.nomad",
+          "resources": [
+            {
+              "address": "module.nomad.data.google_artifact_registry_docker_image.api_image",
+              "mode": "data",
+              "type": "google_artifact_registry_docker_image",
+              "name": "api_image",
+              "provider_name": "registry.terraform.io/hashicorp/google",
+              "schema_version": 0,
+              "values": {
+                "image_name": "api:latest",
+                "location": "us-east4",
+                "repository_id": "e2b-core",
+                "name": "projects/monad-code/locations/us-east4/repositories/e2b-core/dockerImages/api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "self_link": "us-east4-docker.pkg.dev/monad-code/e2b-core/api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "sensitive_values": {}
+            },
+            {
+              "address": "module.nomad.data.google_artifact_registry_docker_image.db_migrator_image",
+              "mode": "data",
+              "type": "google_artifact_registry_docker_image",
+              "name": "db_migrator_image",
+              "provider_name": "registry.terraform.io/hashicorp/google",
+              "schema_version": 0,
+              "values": {
+                "image_name": "db-migrator:latest",
+                "location": "us-east4",
+                "repository_id": "e2b-core",
+                "name": "projects/monad-code/locations/us-east4/repositories/e2b-core/dockerImages/db-migrator@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "self_link": "us-east4-docker.pkg.dev/monad-code/e2b-core/db-migrator@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "sensitive_values": {}
+            },
+            {
+              "address": "module.nomad.data.google_artifact_registry_docker_image.docker_reverse_proxy_image",
+              "mode": "data",
+              "type": "google_artifact_registry_docker_image",
+              "name": "docker_reverse_proxy_image",
+              "provider_name": "registry.terraform.io/hashicorp/google",
+              "schema_version": 0,
+              "values": {
+                "image_name": "docker-reverse-proxy:latest",
+                "location": "us-east4",
+                "repository_id": "e2b-core",
+                "name": "projects/monad-code/locations/us-east4/repositories/e2b-core/dockerImages/docker-reverse-proxy@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "self_link": "us-east4-docker.pkg.dev/monad-code/e2b-core/docker-reverse-proxy@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "sensitive_values": {}
+            },
+            {
+              "address": "module.nomad.data.google_artifact_registry_docker_image.client_proxy_image",
+              "mode": "data",
+              "type": "google_artifact_registry_docker_image",
+              "name": "client_proxy_image",
+              "provider_name": "registry.terraform.io/hashicorp/google",
+              "schema_version": 0,
+              "values": {
+                "image_name": "client-proxy:latest",
+                "location": "us-east4",
+                "repository_id": "e2b-core",
+                "name": "projects/monad-code/locations/us-east4/repositories/e2b-core/dockerImages/client-proxy@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "self_link": "us-east4-docker.pkg.dev/monad-code/e2b-core/client-proxy@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "sensitive_values": {}
+            },
+            {
+              "address": "module.nomad.data.google_artifact_registry_docker_image.clickhouse_migrator_image",
+              "mode": "data",
+              "type": "google_artifact_registry_docker_image",
+              "name": "clickhouse_migrator_image",
+              "provider_name": "registry.terraform.io/hashicorp/google",
+              "schema_version": 0,
+              "values": {
+                "image_name": "clickhouse-migrator:latest",
+                "location": "us-east4",
+                "repository_id": "e2b-core",
+                "name": "projects/monad-code/locations/us-east4/repositories/e2b-core/dockerImages/clickhouse-migrator@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "self_link": "us-east4-docker.pkg.dev/monad-code/e2b-core/clickhouse-migrator@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "sensitive_values": {}
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

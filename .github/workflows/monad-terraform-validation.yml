@@ -61,6 +61,25 @@ jobs:
           chmod 0755 "$install_dir/packer"
           printf '%s\n' "$install_dir" >> "$GITHUB_PATH"
 
+      - name: Install pinned Nomad
+        shell: bash
+        env:
+          NOMAD_LINUX_AMD64_SHA256: 681832b4ffaff0626119420569f117fb7ad1e323d6c929ef3c0bccb432165c6b
+        run: |
+          set -euo pipefail
+          version="$(awk '$1 == "nomad" { print $2; exit }' .tool-versions)"
+          test -n "$version"
+          archive="${RUNNER_TEMP}/nomad_${version}_linux_amd64.zip"
+          install_dir="${RUNNER_TEMP}/nomad-bin"
+          curl -fsSL \
+            "https://releases.hashicorp.com/nomad/${version}/nomad_${version}_linux_amd64.zip" \
+            -o "$archive"
+          printf '%s  %s\n' "$NOMAD_LINUX_AMD64_SHA256" "$archive" | sha256sum --check --strict
+          mkdir -p "$install_dir"
+          unzip -q "$archive" -d "$install_dir"
+          chmod 0755 "$install_dir/nomad"
+          printf '%s\n' "$install_dir" >> "$GITHUB_PATH"
+
       - name: Check formatting
         run: terraform fmt -check -recursive iac/provider-gcp
 

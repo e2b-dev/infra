@@ -1,5 +1,164 @@
 {
   "orchestrator_source_image": "projects/monad-code/global/images/e2b-orch-20260728",
+  "configuration": {
+    "provider_config": {
+      "google": {
+        "name": "google",
+        "full_name": "registry.terraform.io/hashicorp/google",
+        "expressions": {
+          "project": {
+            "references": [
+              "var.gcp_project_id"
+            ]
+          },
+          "region": {
+            "references": [
+              "var.gcp_region"
+            ]
+          }
+        }
+      }
+    },
+    "root_module": {
+      "module_calls": {
+        "nomad": {
+          "source": "./nomad",
+          "expressions": {
+            "gcp_project_id": {
+              "references": [
+                "var.gcp_project_id"
+              ]
+            },
+            "gcp_region": {
+              "references": [
+                "var.gcp_region"
+              ]
+            },
+            "core_repository_name": {
+              "references": [
+                "module.init.core_repository_name",
+                "module.init"
+              ]
+            }
+          },
+          "module": {
+            "resources": [
+              {
+                "address": "data.google_artifact_registry_docker_image.api_image",
+                "mode": "data",
+                "type": "google_artifact_registry_docker_image",
+                "name": "api_image",
+                "provider_config_key": "google",
+                "expressions": {
+                  "image_name": {
+                    "constant_value": "api:latest"
+                  },
+                  "location": {
+                    "references": [
+                      "var.gcp_region"
+                    ]
+                  },
+                  "repository_id": {
+                    "references": [
+                      "var.core_repository_name"
+                    ]
+                  }
+                }
+              },
+              {
+                "address": "data.google_artifact_registry_docker_image.db_migrator_image",
+                "mode": "data",
+                "type": "google_artifact_registry_docker_image",
+                "name": "db_migrator_image",
+                "provider_config_key": "google",
+                "expressions": {
+                  "image_name": {
+                    "constant_value": "db-migrator:latest"
+                  },
+                  "location": {
+                    "references": [
+                      "var.gcp_region"
+                    ]
+                  },
+                  "repository_id": {
+                    "references": [
+                      "var.core_repository_name"
+                    ]
+                  }
+                }
+              },
+              {
+                "address": "data.google_artifact_registry_docker_image.docker_reverse_proxy_image",
+                "mode": "data",
+                "type": "google_artifact_registry_docker_image",
+                "name": "docker_reverse_proxy_image",
+                "provider_config_key": "google",
+                "expressions": {
+                  "image_name": {
+                    "constant_value": "docker-reverse-proxy:latest"
+                  },
+                  "location": {
+                    "references": [
+                      "var.gcp_region"
+                    ]
+                  },
+                  "repository_id": {
+                    "references": [
+                      "var.core_repository_name"
+                    ]
+                  }
+                }
+              },
+              {
+                "address": "data.google_artifact_registry_docker_image.client_proxy_image",
+                "mode": "data",
+                "type": "google_artifact_registry_docker_image",
+                "name": "client_proxy_image",
+                "provider_config_key": "google",
+                "expressions": {
+                  "image_name": {
+                    "constant_value": "client-proxy:latest"
+                  },
+                  "location": {
+                    "references": [
+                      "var.gcp_region"
+                    ]
+                  },
+                  "repository_id": {
+                    "references": [
+                      "var.core_repository_name"
+                    ]
+                  }
+                }
+              },
+              {
+                "address": "data.google_artifact_registry_docker_image.clickhouse_migrator_image",
+                "mode": "data",
+                "type": "google_artifact_registry_docker_image",
+                "name": "clickhouse_migrator_image",
+                "provider_config_key": "google",
+                "expressions": {
+                  "image_name": {
+                    "constant_value": "clickhouse-migrator:latest"
+                  },
+                  "location": {
+                    "references": [
+                      "var.gcp_region"
+                    ]
+                  },
+                  "repository_id": {
+                    "references": [
+                      "var.core_repository_name"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
   "planned_values": {
     "root_module": {
       "resources": [],
@@ -209,7 +368,7 @@
       "change": {
         "actions": ["create"],
         "after": {
-          "jobspec": "image = \"us-east4-docker.pkg.dev/monad-code/e2b-core/api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\nimage = \"us-east4-docker.pkg.dev/monad-code/e2b-core/db-migrator@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\""
+          "jobspec": "job \"api\" {\n  datacenters = [\"dc1\"]\n  group \"api\" {\n    task \"api\" {\n      driver = \"docker\"\n      config {\n        image = \"us-east4-docker.pkg.dev/monad-code/e2b-core/api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n      }\n    }\n    task \"db-migrator\" {\n      driver = \"docker\"\n      config {\n        image = \"us-east4-docker.pkg.dev/monad-code/e2b-core/db-migrator@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n      }\n    }\n  }\n}"
         }
       }
     },
@@ -221,7 +380,7 @@
       "change": {
         "actions": ["create"],
         "after": {
-          "jobspec": "image = \"us-east4-docker.pkg.dev/monad-code/e2b-core/docker-reverse-proxy@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\""
+          "jobspec": "job \"docker-reverse-proxy\" {\n  datacenters = [\"dc1\"]\n  group \"proxy\" {\n    task \"proxy\" {\n      driver = \"docker\"\n      config {\n        image = \"us-east4-docker.pkg.dev/monad-code/e2b-core/docker-reverse-proxy@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n      }\n    }\n  }\n}"
         }
       }
     },
@@ -233,7 +392,7 @@
       "change": {
         "actions": ["create"],
         "after": {
-          "jobspec": "image = \"us-east4-docker.pkg.dev/monad-code/e2b-core/client-proxy@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\""
+          "jobspec": "job \"client-proxy\" {\n  datacenters = [\"dc1\"]\n  group \"proxy\" {\n    task \"proxy\" {\n      driver = \"docker\"\n      config {\n        image = \"us-east4-docker.pkg.dev/monad-code/e2b-core/client-proxy@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n      }\n    }\n  }\n}"
         }
       }
     },
