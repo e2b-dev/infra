@@ -517,6 +517,7 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 			for _, v := range tc.database {
 				_, err := db.SqlcClient.CreateVolume(t.Context(),
 					queries.CreateVolumeParams{
+						ID:         uuid.New(),
 						Name:       v.Name,
 						TeamID:     teamID,
 						VolumeType: v.VolumeType,
@@ -548,6 +549,7 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 
 		dbVolume, err := db.SqlcClient.CreateVolume(t.Context(),
 			queries.CreateVolumeParams{
+				ID:         uuid.New(),
 				Name:       "vol1",
 				TeamID:     teamID,
 				VolumeType: "local",
