@@ -75,6 +75,35 @@ chown -R user:user /home/user
 echo "Give 777 permission to /usr/local"
 chmod -R 777 /usr/local
 
+# The 777 above is what lets sandbox users install into /usr/local without
+# sudo, but it also lets them delete or replace the E2B helpers root runs at
+# boot (envd's ExecStartPre). Sticky keeps that convenience — anyone can still
+# create files here — while restricting unlink/rename to a file's owner, so the
+# root-owned helpers below cannot be swapped out. Defense in depth: 'user'
+# already has NOPASSWD sudo, so this is not a privilege boundary.
+# The whole ancestor chain needs it, not just the leaves: a sticky directory
+# whose parent is world-writable and non-sticky can be renamed aside wholesale
+# and recreated with replaced contents.
+echo "Set the sticky bit on the directories holding root-executed E2B helpers"
+for dir in /usr/local /usr/local/bin /usr/local/share /usr/local/share/e2b; do
+    if [ -d "$dir" ]; then
+        chmod 1777 "$dir"
+    fi
+done
+echo "Restore root-owned, non-writable modes on the E2B helpers"
+for exe in /usr/local/bin/e2b-seed-certs /usr/local/bin/e2b-provision-runner /usr/local/share/e2b/envd.openrc; do
+    if [ -f "$exe" ]; then
+        chown root:root "$exe"
+        chmod 755 "$exe"
+    fi
+done
+# distro.env is sourced by root here and by later FROM-template builds.
+# ssl-certs.tar is packed after this script runs, so it is hardened there.
+if [ -f /usr/local/share/e2b/distro.env ]; then
+    chown root:root /usr/local/share/e2b/distro.env
+    chmod 644 /usr/local/share/e2b/distro.env
+fi
+
 echo "Create /code directory"
 mkdir -p /code
 echo "Give 777 permission to /code"
