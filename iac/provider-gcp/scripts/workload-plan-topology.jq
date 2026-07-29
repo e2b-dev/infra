@@ -818,6 +818,11 @@ managed_changes as $changes
               and template_role != null
               and .change.actions == ["create", "delete"]
             )
+            or (
+              .address == "module.nomad.module.orchestrator[0].random_id.orchestrator_job"
+              and .type == "random_id"
+              and .change.actions == ["delete", "create"]
+            )
           )
           | not
         )

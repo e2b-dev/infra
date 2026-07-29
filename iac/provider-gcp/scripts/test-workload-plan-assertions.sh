@@ -646,6 +646,41 @@ expect_failure \
 
 jq '
   .resource_changes += [{
+    "address": "module.nomad.module.orchestrator[0].random_id.orchestrator_job",
+    "mode": "managed",
+    "type": "random_id",
+    "name": "orchestrator_job",
+    "change": {
+      "actions": ["delete", "create"],
+      "before": {"id": "old-rollout-marker"},
+      "after": {"id": null}
+    }
+  }]
+' "${fixture}" >"${test_dir}/orchestrator-rollout-marker.json"
+expect_success \
+  "orchestrator-rollout-marker" \
+  "${test_dir}/orchestrator-rollout-marker.json"
+
+jq '
+  .resource_changes += [{
+    "address": "module.unreviewed.random_id.rollout_marker",
+    "mode": "managed",
+    "type": "random_id",
+    "name": "rollout_marker",
+    "change": {
+      "actions": ["delete", "create"],
+      "before": {"id": "old-rollout-marker"},
+      "after": {"id": null}
+    }
+  }]
+' "${fixture}" >"${test_dir}/unreviewed-rollout-marker.json"
+expect_failure \
+  "unreviewed-rollout-marker" \
+  "destructive_managed_resources must be empty." \
+  "${test_dir}/unreviewed-rollout-marker.json"
+
+jq '
+  .resource_changes += [{
     "address": "google_storage_bucket.forgotten",
     "mode": "managed",
     "type": "google_storage_bucket",
