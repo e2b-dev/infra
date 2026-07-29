@@ -325,8 +325,22 @@ func (c *Cache) Dedup(
 	}
 
 	compareStart := time.Now()
-	plan, err := dedupCompare(ctx, src, base, dirty, blockSize, bestEffort, budget)
-	if err != nil {
+	var plan *dedupPlan
+	if err := RunFaultSafe(ctx, func() error {
+		var compareErr error
+		plan, compareErr = dedupCompare(ctx, src, base, dirty, blockSize, bestEffort, budget)
+
+		return compareErr
+	}); err != nil {
+		var faultErr *MemoryFaultError
+		if errors.As(err, &faultErr) {
+			logger.L().Error(ctx, "memory fault comparing pages during dedup",
+				zap.Error(err),
+				zap.String("cache_path", c.filePath),
+				zap.Uintptr("fault_addr", faultErr.Addr),
+			)
+		}
+
 		return nil, nil, err
 	}
 	compareDur := time.Since(compareStart)
