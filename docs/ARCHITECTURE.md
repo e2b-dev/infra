@@ -211,6 +211,21 @@ OpenAPI security scheme accepts only short-lived service JWTs verified against t
 the same config shape as `AUTH_PROVIDER_CONFIG`. Talks to Postgres and ClickHouse; never talks to
 orchestrators.
 
+The `/v1/management` operations are the cluster's half of a contract the workspace residency owns:
+project upsert (a project is a `public.teams` row created from a caller-supplied UUID on the
+`base_v1` tier), member sync (granular and batched, over opaque user UUIDs in `users_teams`),
+limit sync (into `project_limits`, which `team_limits` reads in preference to `tiers`), and user
+purge (memberships and access tokens; the `public.users` row survives). All are idempotent, because
+the caller is level-triggered and retries. Membership writes live in `internal/management` with
+their cache evictions rather than in the handlers: auth caches a copy of the team per member, and
+the sweep that would find those keys reads `users_teams`, so a removal has to name them itself.
+
+`DELETE /v1/management/projects/{teamID}` is declared and answers 501. `envs`, `snapshots` and
+`volumes` reference `teams` with `ON DELETE NO ACTION` and templates are only soft-deleted, so a
+project that ever built one pins its team row — and releasing it needs the API service's
+orchestrator connections, which this service does not have. Projects are not deleted from control
+planes today.
+
 ### Docker reverse proxy (`packages/docker-reverse-proxy`)
 
 A Docker Registry v2 auth gateway (port 5000). Users `docker push` template base images with E2B

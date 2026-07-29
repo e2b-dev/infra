@@ -1189,6 +1189,17 @@ components:
           maxLength: 63
         project_type:
           $ref: "#/components/schemas/ManagementProjectType"
+        email:
+          type: string
+          maxLength: 255
+          description: >-
+            Contact address recorded on the project. Required to create one and
+            optional to reconcile it, which is why it is not listed as required
+            here — a single operation cannot say that.
+
+            A create has nowhere else to get an address from. A reconcile
+            already has one stored, so omitting it leaves that value alone
+            rather than blanking it.
 
     ManagementProject:
       allOf:
@@ -1988,6 +1999,12 @@ paths:
     delete:
       operationId: managementDeleteProject
       summary: Delete a project and its control-plane state (v1).
+      description: >-
+        Declared, and answered with 501 by every control plane. Deleting a
+        project means reclaiming templates, snapshots, volumes, running
+        sandboxes and their stored artifacts, and no single service can reach
+        all of them today. Callers should not depend on this operation until
+        that changes.
       tags: [control-plane-management]
       security:
         - AdminJWTAuth: []

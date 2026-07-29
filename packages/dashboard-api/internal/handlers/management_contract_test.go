@@ -74,51 +74,118 @@ func TestProjectUpsertAcceptsTheCallersOwnTierNames(t *testing.T) {
 	}
 }
 
-// A batch route sitting beside /members/{userId} is the arrangement where a
-// router can read "batch" as a user id and hand the request to the wrong
-// operation. Registering it and driving a request through proves which handler
-// the path reaches.
-func TestBatchMemberRouteIsNotShadowedByTheMemberParameter(t *testing.T) {
+// email arrived after the callers did, so the shape they send has no such
+// field. Declaring it required would break every one of them at its next spec
+// sync; the create-only rule is enforced in the handler for that reason.
+func TestProjectUpsertAcceptsAPayloadWithoutAnEmail(t *testing.T) {
 	t.Parallel()
 
-	reached := make(chan string, 1)
-	router := gin.New()
-	api.RegisterHandlers(router, &routeRecorder{reached: reached})
+	var decoded api.ManagementProjectUpsertRequest
+	if err := json.Unmarshal([]byte(`{"name":"Acme","slug":"acme","project_type":"base_v1"}`), &decoded); err != nil {
+		t.Fatalf("decoding an upsert without an email: %v", err)
+	}
 
-	teamID := uuid.New()
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost,
-		"/v1/management/projects/"+teamID.String()+"/members/batch",
-		strings.NewReader(`[{"user_id":"`+uuid.New().String()+`","present":true}]`))
-	request.Header.Set("Content-Type", "application/json")
+	if decoded.Email != nil {
+		t.Errorf("Email = %v, want nil so an absent address stays distinguishable from a blank one", *decoded.Email)
+	}
 
-	router.ServeHTTP(recorder, request)
+	if err := json.Unmarshal([]byte(`{"name":"Acme","slug":"acme","project_type":"base_v1","email":"ops@acme.test"}`), &decoded); err != nil {
+		t.Fatalf("decoding an upsert with an email: %v", err)
+	}
 
-	select {
-	case got := <-reached:
-		if got != "batch" {
-			t.Fatalf("request reached %q, want the batch handler", got)
-		}
-	default:
-		t.Fatalf("no handler was reached; status %d", recorder.Code)
+	if decoded.Email == nil || *decoded.Email != "ops@acme.test" {
+		t.Errorf("Email = %v, want ops@acme.test", decoded.Email)
 	}
 }
 
-// routeRecorder answers the two member operations and reports which one ran.
-// Embedding the generated interface leaves every other operation nil, which is
-// fine: reaching one would panic, and that is the failure this test is for.
+// Every declared operation has to reach its own handler. Only another
+// repository's generated client exercises this surface, so a route registered
+// against the wrong path fails first in an integration nobody runs here.
+//
+// The batch route is why this is a table: it sits beside /members/{userId},
+// exactly where a router reads "batch" as a user id and dispatches wrongly.
+func TestEveryManagementRouteReachesItsHandler(t *testing.T) {
+	t.Parallel()
+
+	teamID, userID := uuid.New().String(), uuid.New().String()
+	project := "/v1/management/projects/" + teamID
+
+	for _, tt := range []struct {
+		operation string
+		method    string
+		path      string
+		body      string
+	}{
+		{"upsertProject", http.MethodPut, project, `{"name":"a","slug":"a","project_type":"base_v1"}`},
+		{"deleteProject", http.MethodDelete, project, ""},
+		{"upsertMember", http.MethodPut, project + "/members/" + userID, `{}`},
+		{"deleteMember", http.MethodDelete, project + "/members/" + userID, ""},
+		{"batchMembers", http.MethodPost, project + "/members/batch", `[]`},
+		{"upsertLimits", http.MethodPut, project + "/limits", `{}`},
+		{"purgeUser", http.MethodDelete, "/v1/management/users/" + userID, ""},
+	} {
+		t.Run(tt.operation, func(t *testing.T) {
+			t.Parallel()
+
+			reached := make(chan string, 1)
+			router := gin.New()
+			api.RegisterHandlers(router, &routeRecorder{reached: reached})
+
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequestWithContext(t.Context(), tt.method, tt.path, strings.NewReader(tt.body))
+			request.Header.Set("Content-Type", "application/json")
+
+			router.ServeHTTP(recorder, request)
+
+			select {
+			case got := <-reached:
+				if got != tt.operation {
+					t.Fatalf("request reached %q, want %q", got, tt.operation)
+				}
+			default:
+				t.Fatalf("no handler was reached; status %d", recorder.Code)
+			}
+		})
+	}
+}
+
+// routeRecorder reports which operation ran. Embedding the generated interface
+// leaves the rest nil: reaching one panics, which is the failure under test.
 type routeRecorder struct {
 	api.ServerInterface
 
 	reached chan string
 }
 
-func (r *routeRecorder) ManagementBatchSyncProjectMembers(c *gin.Context, _ api.TeamID) {
-	r.reached <- "batch"
+func (r *routeRecorder) report(c *gin.Context, operation string) {
+	r.reached <- operation
 	c.Status(http.StatusNoContent)
 }
 
+func (r *routeRecorder) ManagementUpsertProject(c *gin.Context, _ api.TeamID) {
+	r.report(c, "upsertProject")
+}
+
+func (r *routeRecorder) ManagementDeleteProject(c *gin.Context, _ api.TeamID) {
+	r.report(c, "deleteProject")
+}
+
 func (r *routeRecorder) ManagementUpsertProjectMember(c *gin.Context, _ api.TeamID, _ api.UserId) {
-	r.reached <- "single"
-	c.Status(http.StatusNoContent)
+	r.report(c, "upsertMember")
+}
+
+func (r *routeRecorder) ManagementDeleteProjectMember(c *gin.Context, _ api.TeamID, _ api.UserId) {
+	r.report(c, "deleteMember")
+}
+
+func (r *routeRecorder) ManagementBatchSyncProjectMembers(c *gin.Context, _ api.TeamID) {
+	r.report(c, "batchMembers")
+}
+
+func (r *routeRecorder) ManagementUpsertProjectLimits(c *gin.Context, _ api.TeamID) {
+	r.report(c, "upsertLimits")
+}
+
+func (r *routeRecorder) ManagementPurgeUser(c *gin.Context, _ api.UserId) {
+	r.report(c, "purgeUser")
 }
