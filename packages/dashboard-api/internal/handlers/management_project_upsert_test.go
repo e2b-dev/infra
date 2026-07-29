@@ -96,6 +96,14 @@ func TestUpsertProjectRenameRejectsATakenSlug(t *testing.T) {
 	require.Equal(t, http.StatusCreated, callUpsertProject(t, store, incumbent.id, incumbent.request()).Code)
 	require.Equal(t, http.StatusCreated, callUpsertProject(t, store, mover.id, mover.request()).Code)
 
+	// Both hold a template of the same name. Template names are unique on
+	// (alias, namespace), so a rename that repointed them before claiming the
+	// slug would collide there first and report this as a server error.
+	testutils.CreateTestTemplateAliasWithName(t, db,
+		testutils.CreateTestTemplate(t, db, incumbent.id), "web", &incumbent.slug)
+	testutils.CreateTestTemplateAliasWithName(t, db,
+		testutils.CreateTestTemplate(t, db, mover.id), "web", &mover.slug)
+
 	collide := mover.request()
 	collide.Slug = incumbent.slug
 
