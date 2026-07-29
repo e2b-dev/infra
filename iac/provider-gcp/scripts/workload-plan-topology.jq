@@ -335,7 +335,6 @@ managed_changes as $changes
             or unknown_field($resource; "disk")
             or unknown_child_field($resource; "disk"; "disk_size_gb")
             or unknown_child_field($resource; "disk"; "disk_type")
-            or unknown_child_field($resource; "disk"; "type")
             or unknown_field($resource; "network_interface")
             or unknown_child_field(
               $resource;

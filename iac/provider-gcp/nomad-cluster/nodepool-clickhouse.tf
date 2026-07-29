@@ -108,7 +108,8 @@ resource "google_compute_per_instance_config" "clickhouse_instances" {
 }
 
 data "google_compute_image" "clickhouse_source_image" {
-  family = var.api_image_family
+  family  = var.api_image_family
+  project = var.gcp_project_id
 }
 
 resource "google_compute_instance_template" "clickhouse" {

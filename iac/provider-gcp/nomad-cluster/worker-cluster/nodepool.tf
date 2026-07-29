@@ -148,7 +148,8 @@ resource "google_compute_region_instance_group_manager" "pool" {
 }
 
 data "google_compute_image" "source_image" {
-  family = var.image_family
+  family  = var.image_family
+  project = var.gcp_project_id
 }
 
 resource "google_compute_instance_template" "template" {

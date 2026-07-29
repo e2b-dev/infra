@@ -91,7 +91,8 @@ resource "google_compute_region_instance_group_manager" "server_pool" {
 }
 
 data "google_compute_image" "server_source_image" {
-  family = var.server_image_family
+  family  = var.server_image_family
+  project = var.gcp_project_id
 }
 
 resource "google_compute_instance_template" "server" {

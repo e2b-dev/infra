@@ -162,7 +162,10 @@ planned_resources as $planned
           ]
           | length
         ) as $count
-      | select($count != 1)
+      # Terraform omits data sources that it fully resolves during planning
+      # from planned_values. The instance-template source-image checks below
+      # remain the canonical binding; reject only ambiguous duplicate rows here.
+      | select($count > 1)
       | {
           address: $address,
           count: $count
@@ -171,23 +174,32 @@ planned_resources as $planned
     invalid_orchestrator_images: [
       $orchestrator_rows[]
       | select(
-          .values.family != $artifacts.orchestrator_image.family
-          or .values.name != $artifacts.orchestrator_image.name
+        .values.family != $artifacts.orchestrator_image.family
           or .values.project != $artifacts.orchestrator_image.project
-          or .values.status != $artifacts.orchestrator_image.status
           or (
-            .values.self_link
-            | normalize_gce_image
-          ) != (
-            $artifacts.orchestrator_image.self_link
-            | normalize_gce_image
-          )
-          or (
-            .values.id
-            | normalize_gce_image
-          ) != (
-            $artifacts.orchestrator_image.self_link
-            | normalize_gce_image
+            # planned_values retains only configuration fields for data
+            # sources that Terraform defers. Validate computed identity when
+            # present; template source_image remains mandatory below.
+            (.values | has("name"))
+            and (
+              .values.name != $artifacts.orchestrator_image.name
+              or .values.project != $artifacts.orchestrator_image.project
+              or .values.status != $artifacts.orchestrator_image.status
+              or (
+                .values.self_link
+                | normalize_gce_image
+              ) != (
+                $artifacts.orchestrator_image.self_link
+                | normalize_gce_image
+              )
+              or (
+                .values.id
+                | normalize_gce_image
+              ) != (
+                $artifacts.orchestrator_image.self_link
+                | normalize_gce_image
+              )
+            )
           )
         )
       | {
@@ -209,14 +221,64 @@ planned_resources as $planned
             | .source_image
           ]
         ) as $source_images
+      | (
+          if (
+            $resource.address
+            == "module.cluster.module.build_cluster[\"default\"].google_compute_instance_template.template"
+          ) then
+            "module.cluster.module.build_cluster[\"default\"].data.google_compute_image.source_image"
+          elif (
+            $resource.address
+            == "module.cluster.module.client_cluster[\"default\"].google_compute_instance_template.template"
+          ) then
+            "module.cluster.module.client_cluster[\"default\"].data.google_compute_image.source_image"
+          else
+            null
+          end
+        ) as $deferred_data_address
       | select(
-          ($source_images | length) != 1
+        ($source_images | length) != 1
           or (
             $source_images[0]
             | normalize_gce_image
           ) != (
             $artifacts.orchestrator_image.self_link
             | normalize_gce_image
+          )
+          and (
+            $source_images[0] != null
+            or $deferred_data_address == null
+            or (
+              [
+                $orchestrator_rows[]
+                | select(.address == $deferred_data_address)
+                | select(
+                    .values.family
+                    == $artifacts.orchestrator_image.family
+                    and .values.project
+                    == $artifacts.orchestrator_image.project
+                  )
+              ]
+              | length
+            ) != 1
+            or (
+              [
+                range(
+                  0;
+                  (($resource.change.after.disk // []) | length)
+                ) as $disk_index
+                | select(
+                    $resource.change.after.disk[$disk_index].boot == true
+                  )
+                | select(
+                    (
+                      $resource.change.after_unknown.disk[$disk_index].source_image
+                      // false
+                    ) == true
+                  )
+              ]
+              | length
+            ) != 1
           )
         )
       | {

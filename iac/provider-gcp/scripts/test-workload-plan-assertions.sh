@@ -137,6 +137,143 @@ jq '
   (
     .resource_changes[]
     | select(.address == "module.cluster.google_compute_instance_template.api")
+    | .change.after.disk[0]
+  ) |= del(.type)
+  | (
+      .resource_changes[]
+      | select(.address == "module.cluster.google_compute_instance_template.api")
+      | .change.after_unknown.disk
+    ) = [{"type": true}]
+' "${fixture}" >"${test_dir}/computed-persistent-disk-type.json"
+expect_success \
+  "computed-persistent-disk-type" \
+  "${test_dir}/computed-persistent-disk-type.json"
+
+jq '
+  (
+    .planned_values.root_module
+    | recurse(.child_modules[]?)
+    | .resources?
+  ) |= map(select(.type != "google_compute_image"))
+' "${fixture}" >"${test_dir}/resolved-image-data-sources-omitted.json"
+expect_success \
+  "resolved-image-data-sources-omitted" \
+  "${test_dir}/resolved-image-data-sources-omitted.json"
+
+jq '
+  (
+    .planned_values.root_module
+    | recurse(.child_modules[]?)
+    | .resources[]?
+    | select(.type == "google_compute_image")
+    | .values
+  ) = {
+    family: "e2b-orch",
+    filter: null,
+    most_recent: null,
+    project: "monad-code"
+  }
+' "${fixture}" >"${test_dir}/deferred-image-data-sources.json"
+expect_success \
+  "deferred-image-data-sources" \
+  "${test_dir}/deferred-image-data-sources.json"
+
+jq '
+  (
+    .planned_values.root_module
+    | recurse(.child_modules[]?)
+    | .resources[]?
+    | select(.type == "google_compute_image")
+    | .values
+  ) = {
+    family: "e2b-orch",
+    filter: null,
+    most_recent: null,
+    project: "monad-code"
+  }
+  | (
+      .resource_changes[]
+      | select(
+          .address
+          == "module.cluster.module.build_cluster[\"default\"].google_compute_instance_template.template"
+          or .address
+          == "module.cluster.module.client_cluster[\"default\"].google_compute_instance_template.template"
+        )
+      | .change.after.disk[]
+      | select(.boot == true)
+      | .source_image
+    ) = null
+  | (
+      .resource_changes[]
+      | select(
+          .address
+          == "module.cluster.module.build_cluster[\"default\"].google_compute_instance_template.template"
+          or .address
+          == "module.cluster.module.client_cluster[\"default\"].google_compute_instance_template.template"
+        )
+      | .change.after_unknown.disk
+    ) = [{"source_image": true}, {}]
+' "${fixture}" >"${test_dir}/deferred-worker-template-images.json"
+expect_success \
+  "deferred-worker-template-images" \
+  "${test_dir}/deferred-worker-template-images.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "module.cluster.module.build_cluster[\"default\"].google_compute_instance_template.template"
+      )
+    | .change.after_unknown.disk
+  ) = [{}, {}]
+' "${test_dir}/deferred-worker-template-images.json" \
+  >"${test_dir}/unbound-deferred-worker-template-image.json"
+expect_failure \
+  "unbound-deferred-worker-template-image" \
+  "invalid_template_source_images must be empty." \
+  "${test_dir}/unbound-deferred-worker-template-image.json"
+
+jq '
+  (
+    .planned_values.root_module
+    | recurse(.child_modules[]?)
+    | .resources[]?
+    | select(
+        .address
+        == "module.cluster.module.build_cluster[\"default\"].data.google_compute_image.source_image"
+      )
+    | .values.family
+  ) = "unreviewed"
+' "${test_dir}/deferred-worker-template-images.json" \
+  >"${test_dir}/unreviewed-deferred-worker-image-family.json"
+expect_failure \
+  "unreviewed-deferred-worker-image-family" \
+  "invalid_orchestrator_images must be empty." \
+  "${test_dir}/unreviewed-deferred-worker-image-family.json"
+
+jq '
+  (
+    .planned_values.root_module
+    | recurse(.child_modules[]?)
+    | .resources[]?
+    | select(
+        .address
+        == "module.cluster.module.build_cluster[\"default\"].data.google_compute_image.source_image"
+      )
+    | .values.project
+  ) = "attacker-project"
+' "${test_dir}/deferred-worker-template-images.json" \
+  >"${test_dir}/unreviewed-deferred-worker-image-project.json"
+expect_failure \
+  "unreviewed-deferred-worker-image-project" \
+  "invalid_orchestrator_images must be empty." \
+  "${test_dir}/unreviewed-deferred-worker-image-project.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.address == "module.cluster.google_compute_instance_template.api")
     | .change.actions
   ) = ["update"]
 ' "${fixture}" >"${test_dir}/phase-two-cluster-compute-update.json"
@@ -549,6 +686,22 @@ expect_failure \
   "unknown-disk" \
   "unresolved_templates must be empty." \
   "${test_dir}/unknown-disk.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "module.cluster.module.client_cluster[\"default\"].google_compute_instance_template.template"
+      )
+    | .change.after.disk[]
+    | select(.disk_type == "local-ssd")
+  ) |= del(.type)
+' "${fixture}" >"${test_dir}/unknown-local-ssd-type.json"
+expect_failure \
+  "unknown-local-ssd-type" \
+  "invalid_template_disks must be empty." \
+  "${test_dir}/unknown-local-ssd-type.json"
 
 jq '
   .resource_changes += [

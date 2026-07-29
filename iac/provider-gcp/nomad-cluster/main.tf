@@ -153,6 +153,7 @@ module "build_cluster" {
   for_each = var.build_clusters_config
   source   = "./worker-cluster"
 
+  gcp_project_id               = var.gcp_project_id
   gcp_region                   = var.gcp_region
   gcp_zone                     = var.gcp_zone
   google_service_account_email = var.google_service_account_email
@@ -211,6 +212,7 @@ module "client_cluster" {
   for_each = var.client_clusters_config
   source   = "./worker-cluster"
 
+  gcp_project_id               = var.gcp_project_id
   gcp_region                   = var.gcp_region
   gcp_zone                     = var.gcp_zone
   google_service_account_email = var.google_service_account_email

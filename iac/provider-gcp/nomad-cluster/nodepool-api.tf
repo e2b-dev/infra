@@ -97,7 +97,8 @@ resource "google_compute_instance_group_manager" "api_pool" {
 }
 
 data "google_compute_image" "api_source_image" {
-  family = var.api_image_family
+  family  = var.api_image_family
+  project = var.gcp_project_id
 }
 
 resource "google_compute_instance_template" "api" {

@@ -81,6 +81,11 @@ variable "image_family" {
 
 # GCP CONFIGURATION
 
+variable "gcp_project_id" {
+  description = "GCP project that owns the reviewed worker image family"
+  type        = string
+}
+
 variable "gcp_region" {
   description = "GCP region where the cluster will be deployed"
   type        = string
