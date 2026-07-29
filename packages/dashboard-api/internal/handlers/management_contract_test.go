@@ -49,76 +49,119 @@ func TestBatchMemberRequestMatchesTheShapeCallersSend(t *testing.T) {
 	}
 }
 
-// project_type carried an enum of deployment environments from the scaffolding
-// that predated any caller. The caller that arrived sends tier names, so every
-// upsert failed validation client-side, before a request was ever made.
+// project_type is gone from the contract. It named the caller's plan
+// vocabulary, which this side never had a column for or an opinion about: the
+// tier is assigned once at creation from a local default, and the limits that
+// actually matter arrive absolute through upsertProjectLimits.
 //
-// Nothing on this side reads the value — there is no column for it, and limits
-// arrive in full through upsertProjectLimits — so the contract has no business
-// enumerating it. This pins that: a tier name decodes, which it cannot do if
-// someone reintroduces a closed set that guesses at the caller's vocabulary.
-func TestProjectUpsertAcceptsTheCallersOwnTierNames(t *testing.T) {
+// Removing it is safe to ship ahead of the callers. Nothing declares
+// additionalProperties: false, so a caller still sending the field has it
+// ignored rather than rejected — the break is at their next codegen, not at
+// runtime.
+func TestProjectUpsertIgnoresARetiredProjectType(t *testing.T) {
 	t.Parallel()
 
-	for _, projectType := range []string{"base_v1", "pro_v1", "enterprise_v3"} {
-		body := `{"name":"Acme","slug":"acme","project_type":"` + projectType + `"}`
+	body := `{"name":"Acme","slug":"acme","email":"ops@acme.test","project_type":"enterprise_v3"}`
 
-		var decoded api.ManagementProjectUpsertRequest
-		if err := json.Unmarshal([]byte(body), &decoded); err != nil {
-			t.Fatalf("decoding an upsert with project_type %q: %v", projectType, err)
-		}
+	var decoded api.ManagementProjectUpsertRequest
+	if err := json.Unmarshal([]byte(body), &decoded); err != nil {
+		t.Fatalf("decoding an upsert that still carries project_type: %v", err)
+	}
 
-		if decoded.ProjectType != projectType {
-			t.Errorf("ProjectType = %q, want %q", decoded.ProjectType, projectType)
-		}
+	want := api.ManagementProjectUpsertRequest{Name: "Acme", Slug: "acme", Email: "ops@acme.test"}
+	if decoded != want {
+		t.Errorf("decoded %+v, want %+v", decoded, want)
 	}
 }
 
-// A batch route sitting beside /members/{userId} is the arrangement where a
-// router can read "batch" as a user id and hand the request to the wrong
-// operation. Registering it and driving a request through proves which handler
-// the path reaches.
-func TestBatchMemberRouteIsNotShadowedByTheMemberParameter(t *testing.T) {
+// Every declared operation has to reach its own handler. Only another
+// repository's generated client exercises this surface, so a route registered
+// against the wrong path fails first in an integration nobody runs here.
+//
+// The batch route is why this is a table: it sits beside /members/{userId},
+// exactly where a router reads "batch" as a user id and dispatches wrongly.
+func TestEveryManagementRouteReachesItsHandler(t *testing.T) {
 	t.Parallel()
 
-	reached := make(chan string, 1)
-	router := gin.New()
-	api.RegisterHandlers(router, &routeRecorder{reached: reached})
+	teamID, userID := uuid.New().String(), uuid.New().String()
+	project := "/v1/management/projects/" + teamID
 
-	teamID := uuid.New()
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost,
-		"/v1/management/projects/"+teamID.String()+"/members/batch",
-		strings.NewReader(`[{"user_id":"`+uuid.New().String()+`","present":true}]`))
-	request.Header.Set("Content-Type", "application/json")
+	for _, tt := range []struct {
+		operation string
+		method    string
+		path      string
+		body      string
+	}{
+		{"upsertProject", http.MethodPut, project, `{"name":"a","slug":"a","project_type":"base_v1"}`},
+		{"deleteProject", http.MethodDelete, project, ""},
+		{"upsertMember", http.MethodPut, project + "/members/" + userID, `{}`},
+		{"deleteMember", http.MethodDelete, project + "/members/" + userID, ""},
+		{"batchMembers", http.MethodPost, project + "/members/batch", `[]`},
+		{"upsertLimits", http.MethodPut, project + "/limits", `{}`},
+		{"purgeUser", http.MethodDelete, "/v1/management/users/" + userID, ""},
+	} {
+		t.Run(tt.operation, func(t *testing.T) {
+			t.Parallel()
 
-	router.ServeHTTP(recorder, request)
+			reached := make(chan string, 1)
+			router := gin.New()
+			api.RegisterHandlers(router, &routeRecorder{reached: reached})
 
-	select {
-	case got := <-reached:
-		if got != "batch" {
-			t.Fatalf("request reached %q, want the batch handler", got)
-		}
-	default:
-		t.Fatalf("no handler was reached; status %d", recorder.Code)
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequestWithContext(t.Context(), tt.method, tt.path, strings.NewReader(tt.body))
+			request.Header.Set("Content-Type", "application/json")
+
+			router.ServeHTTP(recorder, request)
+
+			select {
+			case got := <-reached:
+				if got != tt.operation {
+					t.Fatalf("request reached %q, want %q", got, tt.operation)
+				}
+			default:
+				t.Fatalf("no handler was reached; status %d", recorder.Code)
+			}
+		})
 	}
 }
 
-// routeRecorder answers the two member operations and reports which one ran.
-// Embedding the generated interface leaves every other operation nil, which is
-// fine: reaching one would panic, and that is the failure this test is for.
+// routeRecorder reports which operation ran. Embedding the generated interface
+// leaves the rest nil: reaching one panics, which is the failure under test.
 type routeRecorder struct {
 	api.ServerInterface
 
 	reached chan string
 }
 
-func (r *routeRecorder) ManagementBatchSyncProjectMembers(c *gin.Context, _ api.TeamID) {
-	r.reached <- "batch"
+func (r *routeRecorder) report(c *gin.Context, operation string) {
+	r.reached <- operation
 	c.Status(http.StatusNoContent)
 }
 
+func (r *routeRecorder) ManagementUpsertProject(c *gin.Context, _ api.TeamID) {
+	r.report(c, "upsertProject")
+}
+
+func (r *routeRecorder) ManagementDeleteProject(c *gin.Context, _ api.TeamID) {
+	r.report(c, "deleteProject")
+}
+
 func (r *routeRecorder) ManagementUpsertProjectMember(c *gin.Context, _ api.TeamID, _ api.UserId) {
-	r.reached <- "single"
-	c.Status(http.StatusNoContent)
+	r.report(c, "upsertMember")
+}
+
+func (r *routeRecorder) ManagementDeleteProjectMember(c *gin.Context, _ api.TeamID, _ api.UserId) {
+	r.report(c, "deleteMember")
+}
+
+func (r *routeRecorder) ManagementBatchSyncProjectMembers(c *gin.Context, _ api.TeamID) {
+	r.report(c, "batchMembers")
+}
+
+func (r *routeRecorder) ManagementUpsertProjectLimits(c *gin.Context, _ api.TeamID) {
+	r.report(c, "upsertLimits")
+}
+
+func (r *routeRecorder) ManagementPurgeUser(c *gin.Context, _ api.UserId) {
+	r.report(c, "purgeUser")
 }

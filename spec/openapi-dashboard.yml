@@ -1162,22 +1162,19 @@ components:
         slug:
           type: string
 
-    ManagementProjectType:
-      type: string
-      minLength: 1
-      description: >-
-        The caller's name for the project's tier. Recorded, not interpreted:
-        limits arrive separately and in full through upsertProjectLimits, so
-        nothing here derives behaviour from this value.
-
-        Deliberately unconstrained. The caller owns the vocabulary and the
-        catalog behind it, and enumerating it here would make adding a tier a
-        cross-repo change to a field this side only stores.
-      example: base_v1
-
     ManagementProjectUpsertRequest:
       type: object
-      required: [name, slug, project_type]
+      description: >-
+        The properties of a project this side stores. Every one is synchronized
+        by the caller and sent on every push, so a reconcile is a complete
+        statement of the project rather than a patch.
+
+
+        A project's tier is not among them. It is assigned once, at creation,
+        from this side's own default, and no push moves it — limits arrive
+        separately and in full through upsertProjectLimits, which takes
+        precedence over the tier anyway.
+      required: [name, slug, email]
       properties:
         name:
           type: string
@@ -1187,8 +1184,17 @@ components:
           type: string
           minLength: 1
           maxLength: 63
-        project_type:
-          $ref: "#/components/schemas/ManagementProjectType"
+          description: >-
+            Changing it renames the project, and nothing follows it. Template
+            names embed the slug they were built under, so a renamed project
+            keeps its existing template names and only new ones carry the new
+            slug. A slug already held on this control plane is a 409, on a
+            rename as much as on a create.
+        email:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Contact address recorded on the project.
 
     ManagementProject:
       allOf:
@@ -1988,6 +1994,12 @@ paths:
     delete:
       operationId: managementDeleteProject
       summary: Delete a project and its control-plane state (v1).
+      description: >-
+        Declared, and answered with 501 by every control plane. Deleting a
+        project means reclaiming templates, snapshots, volumes, running
+        sandboxes and their stored artifacts, and no single service can reach
+        all of them today. Callers should not depend on this operation until
+        that changes.
       tags: [control-plane-management]
       security:
         - AdminJWTAuth: []
