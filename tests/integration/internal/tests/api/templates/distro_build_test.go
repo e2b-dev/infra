@@ -31,12 +31,12 @@ func TestTemplateBuildDistroFamilies(t *testing.T) {
 		{
 			name:         "Debian family",
 			templateName: "test-distro-ubuntu",
-			fromImage:    "ubuntu:22.04",
+			fromImage:    "ubuntu:26.04",
 		},
 		{
 			name:         "RPM family",
 			templateName: "test-distro-fedora",
-			fromImage:    "fedora:42",
+			fromImage:    "fedora:44",
 		},
 		{
 			name:         "Arch",
@@ -46,7 +46,7 @@ func TestTemplateBuildDistroFamilies(t *testing.T) {
 		{
 			name:         "Alpine on OpenRC",
 			templateName: "test-distro-alpine",
-			fromImage:    "alpine:3.22",
+			fromImage:    "alpine:3.24",
 		},
 	}
 
