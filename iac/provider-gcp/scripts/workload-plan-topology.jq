@@ -361,6 +361,17 @@ managed_changes as $changes
           actions: $resource.change.actions,
           capacity: $capacity,
           previous_capacity: previous_capacity($resource; $changes),
+          regional: (
+            $resource.type
+            == "google_compute_region_instance_group_manager"
+          ),
+          distribution_policy_zones: (
+            $resource.change.after.distribution_policy_zones
+            // null
+          ),
+          distribution_policy_zones_unknown: (
+            unknown_field($resource; "distribution_policy_zones")
+          ),
           surge: (
             if $capacity == 0 then
               0
@@ -675,6 +686,26 @@ managed_changes as $changes
       | {
           address,
           max_unavailable
+        }
+    ],
+    invalid_single_unavailable_regional_migs: [
+      $rows[]
+      | select(.regional and .capacity != 0)
+      | select(.max_unavailable == 1)
+      | select(
+          .distribution_policy_zones_unknown
+          or (
+            .distribution_policy_zones
+            | type
+          ) != "array"
+          or (
+            .distribution_policy_zones
+            | length
+          ) != 1
+        )
+      | {
+          address,
+          distribution_policy_zones
         }
     ],
     automated_worker_server_surges: [

@@ -366,6 +366,7 @@ failure_fields=(
   invalid_surges
   percentage_surges
   invalid_max_unavailable
+  invalid_single_unavailable_regional_migs
   automated_worker_server_surges
   unresolved_templates
   invalid_template_disks

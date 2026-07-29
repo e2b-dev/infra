@@ -181,6 +181,7 @@
       "change": {
         "actions": ["create"],
         "after": {
+          "distribution_policy_zones": ["us-east4-c"],
           "target_size": 3,
           "update_policy": [
             {
@@ -257,6 +258,7 @@
       "change": {
         "actions": ["create"],
         "after": {
+          "distribution_policy_zones": ["us-east4-c"],
           "target_size": 1,
           "update_policy": [
             {
@@ -276,6 +278,7 @@
       "change": {
         "actions": ["create"],
         "after": {
+          "distribution_policy_zones": ["us-east4-c"],
           "target_size": 1,
           "update_policy": [
             {

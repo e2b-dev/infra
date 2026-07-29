@@ -122,6 +122,11 @@ resource "google_compute_region_instance_group_manager" "pool" {
   }
 
   distribution_policy_target_shape = "BALANCED"
+  # GCP validates max_unavailable_fixed against the number of zones in a
+  # regional MIG. Keep the quota-bounded dev canary in its selected zone so
+  # max_unavailable_fixed = 1 remains valid; staging/prod retain the provider's
+  # multi-zone regional distribution.
+  distribution_policy_zones = var.environment == "dev" ? [var.gcp_zone] : null
 
   # Server is a stateful cluster, so the update strategy used to roll out a new GCE Instance Template must be
   # a rolling update.

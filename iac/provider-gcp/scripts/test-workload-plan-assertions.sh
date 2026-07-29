@@ -473,6 +473,18 @@ expect_failure \
 jq '
   (
     .resource_changes[]
+    | select(.name == "server_pool")
+    | .change.after
+  ) |= del(.distribution_policy_zones)
+' "${fixture}" >"${test_dir}/regional-mig-without-single-zone.json"
+expect_failure \
+  "regional-mig-without-single-zone" \
+  "invalid_single_unavailable_regional_migs must be empty." \
+  "${test_dir}/regional-mig-without-single-zone.json"
+
+jq '
+  (
+    .resource_changes[]
     | select(.name == "api_pool")
     | .change.after.update_policy[0].max_surge_fixed
   ) = 2
