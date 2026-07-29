@@ -103,7 +103,8 @@ type Config struct {
 
 	AuthProvider sharedauth.ProviderConfig `env:"AUTH_PROVIDER_CONFIG"`
 
-	DefaultPersistentVolumeType string `env:"DEFAULT_PERSISTENT_VOLUME_TYPE"`
+	DefaultPersistentVolumeType     string `env:"DEFAULT_PERSISTENT_VOLUME_TYPE"`
+	PlaceholderPersistentVolumeType string `env:"PLACHHOLE_PERSISTENT_VOLUME_TYPE" envDefault:"REPLACEME"`
 
 	DomainName string `env:"DOMAIN_NAME" envDefault:""`
 }

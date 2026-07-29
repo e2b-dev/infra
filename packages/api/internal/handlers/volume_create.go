@@ -12,6 +12,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	clustershared "github.com/e2b-dev/infra/packages/shared/pkg/clusters"
@@ -74,7 +75,7 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 
 	ctx = featureflags.AddToContext(ctx, featureflags.VolumeContext(body.Name))
 
-	volumeType := a.getVolumeType(ctx)
+	volumeType := a.getVolumeType(ctx, team)
 	if volumeType == "" {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "No persistent volume type is configured")
 		telemetry.ReportCriticalError(ctx, "default persistent volume type is not configured", nil)
@@ -174,8 +175,12 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 	c.JSON(http.StatusCreated, result)
 }
 
-func (a *APIStore) getVolumeType(ctx context.Context) string {
+func (a *APIStore) getVolumeType(ctx context.Context, team *types.Team) string {
 	volumeType := a.featureFlags.StringFlag(ctx, featureflags.DefaultPersistentVolumeType)
+	if volumeType == "" && team != nil && team.ClusterID != nil {
+		volumeType = a.config.PlaceholderPersistentVolumeType
+	}
+
 	if volumeType == "" {
 		volumeType = a.config.DefaultPersistentVolumeType
 	}
