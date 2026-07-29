@@ -20,7 +20,7 @@ func NewConnectionLimiter() *ConnectionLimiter {
 
 func (l *ConnectionLimiter) getCounter(key string) *atomic.Int64 {
 	return l.connections.Upsert(key, &atomic.Int64{}, func(exists bool, valueInMap, newValue *atomic.Int64) *atomic.Int64 {
-		if exists {
+		if exists && valueInMap.Load() >= 0 {
 			return valueInMap
 		}
 
@@ -32,9 +32,12 @@ func (l *ConnectionLimiter) getCounter(key string) *atomic.Int64 {
 // Returns (current count after increment, true) if successful, or (current count, false) if limit exceeded.
 // If maxLimit is negative, no limit is enforced. If maxLimit is 0, all connections are blocked.
 func (l *ConnectionLimiter) TryAcquire(key string, maxLimit int) (int64, bool) {
-	counter := l.getCounter(key)
 	for {
+		counter := l.getCounter(key)
 		current := counter.Load()
+		if current < 0 {
+			continue
+		}
 		if maxLimit >= 0 && current >= int64(maxLimit) {
 			return current, false
 		}
@@ -58,9 +61,11 @@ func (l *ConnectionLimiter) Release(key string) {
 		}
 		if counter.CompareAndSwap(current, current-1) {
 			if current-1 == 0 {
-				l.connections.RemoveCb(key, func(k string, v *atomic.Int64, exists bool) bool {
-					return exists && v.Load() == 0
-				})
+				if counter.CompareAndSwap(0, -1) {
+					l.connections.RemoveCb(key, func(k string, v *atomic.Int64, exists bool) bool {
+						return exists && v == counter
+					})
+				}
 			}
 
 			return
@@ -76,7 +81,9 @@ func (l *ConnectionLimiter) Remove(key string) {
 // Count returns the current connection count for a key.
 func (l *ConnectionLimiter) Count(key string) int64 {
 	if counter, ok := l.connections.Get(key); ok {
-		return counter.Load()
+		if count := counter.Load(); count > 0 {
+			return count
+		}
 	}
 
 	return 0
