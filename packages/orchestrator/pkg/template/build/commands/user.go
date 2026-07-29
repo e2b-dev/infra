@@ -101,17 +101,15 @@ func addToSudoers(
 		lvl,
 		prefix,
 		sandboxID,
-		// Admin group differs by distro (sudo on Debian/Ubuntu, wheel on
-		// RHEL/Arch/Alpine); the NOPASSWD sudoers entry below is what actually
-		// grants privileges. Neither group existing is a real error.
-		fmt.Sprintf(`if getent group sudo >/dev/null; then
-    usermod -aG sudo %[1]s
-elif getent group wheel >/dev/null; then
-    usermod -aG wheel %[1]s
-else
-    echo "neither the sudo nor the wheel group exists on this image" >&2
+		// The admin group comes from the distro profile, persisted by
+		// provisioning; the NOPASSWD sudoers entry below is what actually
+		// grants privileges.
+		fmt.Sprintf(`. /usr/local/share/e2b/distro.env
+if ! getent group "$E2B_ADMIN_GROUP" >/dev/null; then
+    echo "the '$E2B_ADMIN_GROUP' group from the distro profile does not exist on this image" >&2
     exit 1
-fi`, userArg),
+fi
+usermod -aG "$E2B_ADMIN_GROUP" %s`, userArg),
 		metadata.Context{
 			User:    "root",
 			EnvVars: cmdMetadata.EnvVars,

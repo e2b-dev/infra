@@ -30,6 +30,15 @@ fi
 
 echo "Provisioning for distro '$E2B_DISTRO_ID' (init=$E2B_INIT_BIN, timesync=$E2B_TIMESYNC_UNIT, admin-group=$E2B_ADMIN_GROUP)"
 
+# Persist the resolved identity for later build phases (finalize sources it),
+# so the profile's values are defined once, here.
+mkdir -p /usr/local/share/e2b
+{
+    echo "E2B_DISTRO_ID='$E2B_DISTRO_ID'"
+    echo "E2B_INIT_SYSTEM='$E2B_INIT_SYSTEM'"
+    echo "E2B_ADMIN_GROUP='$E2B_ADMIN_GROUP'"
+} > /usr/local/share/e2b/distro.env
+
 # Helper function to check if a package is installed (distro-specific query)
 is_package_installed() {
     e2b_pkg_query "$1"
