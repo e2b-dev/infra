@@ -174,9 +174,18 @@ The agent inside every VM (started by systemd very early in boot), port 49983, c
   stdout/stderr, stdin, signals, PTYs — this is what SDKs use to "run code".
 - **Filesystem service** (`spec/filesystem/filesystem.proto`): stat/list/make/move/remove/watch.
 - **REST**: `/health`, `/metrics`, `/files` upload/download, `/init` (orchestrator pushes env
-  vars, access token, metadata after boot/resume), freeze/thaw hooks used during pause.
+  vars, access token, metadata after boot/resume), `/upgrade` (live self-upgrade, below),
+  freeze/thaw hooks used during pause.
 - **Auth**: `X-Access-Token` header checked against a token delivered via Firecracker MMDS;
   signed URLs for file endpoints.
+- **Live upgrade** (`internal/services/process/upgrade.go`): an authenticated `POST /upgrade` lets
+  the orchestrator swap envd inside a *running* sandbox at resume. It streams the new binary in the
+  request body and envd `syscall.Exec`s into it **with the same PID**, carrying the workload's
+  stdio/PTY fds, process table, recently-retained exit codes and filesystem watchers forward via a
+  tmpfs handover blob. The workload cgroups stay frozen until the post-upgrade `/init` restores the
+  access token (so no re-adopted process runs unauthenticated), and the handover outcome
+  (procs/watchers re-adopted, plus any failures) rides back on that `/init`'s `X-Envd-Handover`
+  header for fleet visibility.
 - Scans guest ports and forwards them so any port a user process opens becomes reachable through
   sandbox URLs. **`pkg/version.go` must be bumped on every behavioral change** — the API and the
   orchestrator gate features on the envd version recorded in each template build.
@@ -212,7 +221,7 @@ into the cloud artifact registry (`/v2/e2b/custom-envs/<templateID>` → project
 
 | Store | Owner packages | What lives there |
 |---|---|---|
-| **PostgreSQL** | `packages/db` (goose migrations, sqlc) | Durable control-plane state: `teams`, `users`, `tiers` (quotas), `envs` (templates), `env_builds` (build rows: vcpu, ram_mb, status, versions), `env_aliases`, `snapshots` (paused sandboxes), `team_api_keys`, `access_tokens`, `volumes`, `clusters` |
+| **PostgreSQL** | `packages/db` (goose migrations, sqlc) | Durable control-plane state: `teams`, `users`, `tiers` (quota defaults), `project_limits` (per-team quota overrides pushed in by the owning service; the `team_limits` view reads it in preference to `tiers`), `envs` (templates), `env_builds` (build rows: vcpu, ram_mb, status, versions), `env_aliases`, `snapshots` (paused sandboxes), `team_api_keys`, `access_tokens`, `volumes`, `clusters` |
 | **Redis** | API, client-proxy, orchestrator | Ephemeral runtime state: running-sandbox store (source of truth), sandbox→node routing catalog, team/template/snapshot caches, rate limiting, P2P chunk peer registry |
 | **ClickHouse** | `packages/clickhouse` | Time-series/analytics: `metrics_gauge`/`metrics_sum` (written by the OTel collector), `sandbox_events`, `sandbox_host_stats` (written by orchestrator), team metrics, and optionally `sandbox_logs` during the log migration. Read by API and dashboard-api |
 | **Object storage** (GCS/S3/local, `packages/shared/pkg/storage`) | orchestrator, template-manager | Template & snapshot artifacts, keyed by build ID: `{buildID}/memfile`, `{buildID}/rootfs.ext4`, `{buildID}/snapfile`, `{buildID}/metadata.json` + `.header` index files |
@@ -290,6 +299,12 @@ sequenceDiagram
 - **Resume**: same path as creation, but placement prefers the **origin node** — if the snapshot
   is still in its local cache, resume avoids any object-storage reads. `Checkpoint` is a
   pause+resume in place used to persist state while keeping the sandbox running.
+- **Envd live-upgrade on resume**: the orchestrator can upgrade the sandbox's envd to a newer
+  node-local build during resume (gated by the `envd-upgrade-target` flag in
+  `packages/shared/pkg/featureflags`), via envd's `POST /upgrade` (see the envd section). It is
+  best-effort — a delivery failure before the `exec` leaves the old envd serving — except an
+  unrecoverable post-`exec` failure (the new envd never re-initializes), which fails the resume
+  rather than return a permanently unusable sandbox.
 - Auto-pause/auto-resume make sandboxes effectively serverless: idle sandboxes pause, traffic
   resumes them (see traffic flow above).
 
