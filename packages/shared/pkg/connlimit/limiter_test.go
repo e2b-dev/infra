@@ -251,4 +251,28 @@ func TestConnectionLimiter_Concurrent(t *testing.T) {
 
 		wg.Wait()
 	})
+
+	t.Run("concurrent acquire during release does not orphan connections", func(t *testing.T) {
+		t.Parallel()
+		limiter := NewConnectionLimiter()
+		const limit = 100
+		const goroutines = 50
+		const iterations = 500
+
+		var wg sync.WaitGroup
+		for range goroutines {
+			wg.Go(func() {
+				for range iterations {
+					if _, ok := limiter.TryAcquire("sandbox-race", limit); ok {
+						limiter.Release("sandbox-race")
+					}
+				}
+			})
+		}
+
+		wg.Wait()
+
+		assert.Equal(t, int64(0), limiter.Count("sandbox-race"))
+		assert.Equal(t, 0, limiter.connections.Count())
+	})
 }
