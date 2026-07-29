@@ -259,7 +259,10 @@ module "client_cluster" {
 
   file_hash = local.file_hash
 
-  set_orchestrator_version_metadata = true
+  # The dev orchestrator job has the stable ID "dev" and no version metadata
+  # constraint. Avoid waiting during cluster bootstrap for the phase-two Nomad
+  # variable; non-dev keeps version-pinned worker scheduling.
+  set_orchestrator_version_metadata = var.environment != "dev"
 
   depends_on = [
     google_storage_bucket_object.setup_config_objects["scripts/configure-docker-gcp.sh"],

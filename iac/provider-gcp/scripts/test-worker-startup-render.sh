@@ -6,6 +6,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 provider_dir="$(cd "${script_dir}/.." && pwd)"
 template_path="${provider_dir}/nomad-cluster/scripts/start-client.sh"
 nodepool_path="${provider_dir}/nomad-cluster/worker-cluster/nodepool.tf"
+cluster_path="${provider_dir}/nomad-cluster/main.tf"
 environment_template="${provider_dir}/../../.env.gcp.template"
 test_dir="$(mktemp -d)"
 trap 'rm -rf -- "${test_dir}"' EXIT
@@ -45,7 +46,8 @@ canary_swap_size_gb="$(
 
 render_startup() {
   local swap_size_gb="$1"
-  local output_path="$2"
+  local set_orchestrator_version_metadata="$2"
+  local output_path="$3"
   local config_path="${test_dir}/main.tf"
 
   cat >"${config_path}" <<EOF
@@ -76,7 +78,7 @@ locals {
     CACHE_DISK_COUNT = 1
     LOCAL_SSD = "true"
     SWAP_SIZE_GB = ${swap_size_gb}
-    SET_ORCHESTRATOR_VERSION_METADATA = "true"
+    SET_ORCHESTRATOR_VERSION_METADATA = "${set_orchestrator_version_metadata}"
     NODE_LABELS = ""
     PERSISTENT_VOLUME_TYPES = {}
   })
@@ -89,33 +91,51 @@ EOF
     | jq -r . >"${output_path}"
 }
 
-canary_render="${test_dir}/canary-startup.sh"
-alternate_render="${test_dir}/alternate-startup.sh"
-render_startup "${canary_swap_size_gb}" "${canary_render}"
-render_startup 48 "${alternate_render}"
+dev_render="${test_dir}/dev-startup.sh"
+nondev_render="${test_dir}/nondev-startup.sh"
+render_startup "${canary_swap_size_gb}" "false" "${dev_render}"
+render_startup 48 "true" "${nondev_render}"
 
-bash -n "${canary_render}"
-bash -n "${alternate_render}"
+bash -n "${dev_render}"
+bash -n "${nondev_render}"
 
-grep -F 'readonly SWAP_SIZE_GB=32' "${canary_render}" >/dev/null
-grep -F 'readonly SWAP_SIZE_GB=48' "${alternate_render}" >/dev/null
+grep -F 'readonly SWAP_SIZE_GB=32' "${dev_render}" >/dev/null
+grep -F 'readonly SWAP_SIZE_GB=48' "${nondev_render}" >/dev/null
 grep -F 'fallocate --length "${SWAP_SIZE_GB}G" "$SWAPFILE"' \
-  "${canary_render}" >/dev/null
+  "${dev_render}" >/dev/null
 grep -F 'active swapfile size ${active_swap_size_bytes} does not match configured size ${SWAP_SIZE_BYTES}' \
-  "${canary_render}" >/dev/null
+  "${dev_render}" >/dev/null
 grep -F '[[ -L "$SWAPFILE" || ( -e "$SWAPFILE" && ! -f "$SWAPFILE" ) ]]' \
-  "${canary_render}" >/dev/null
+  "${dev_render}" >/dev/null
 grep -E 'SWAP_SIZE_GB[[:space:]]*=[[:space:]]*var\.boot_disk\.swap_size_gb' \
   "${nodepool_path}" >/dev/null
+grep -F 'set_orchestrator_version_metadata = var.environment != "dev"' \
+  "${cluster_path}" >/dev/null
 
-if grep -F 'fallocate -l 100G' "${canary_render}" >/dev/null; then
+if grep -F '[Fetching orchestrator version from Nomad servers' \
+  "${dev_render}" >/dev/null; then
+  printf 'Dev worker startup must not wait for phase-two orchestrator metadata.\n' >&2
+  exit 1
+fi
+
+if grep -F -- '--orchestrator-job-version' "${dev_render}" >/dev/null; then
+  printf 'Dev worker startup must not set orchestrator job-version metadata.\n' >&2
+  exit 1
+fi
+
+grep -F '[Fetching orchestrator version from Nomad servers' \
+  "${nondev_render}" >/dev/null
+grep -F -- '--orchestrator-job-version "$ORCHESTRATOR_VERSION"' \
+  "${nondev_render}" >/dev/null
+
+if grep -F 'fallocate -l 100G' "${dev_render}" >/dev/null; then
   printf 'Worker startup still contains the legacy hard-coded 100 GB swap allocation.\n' >&2
   exit 1
 fi
 
-if grep -F -- '--show=NAME,SIZE' "${canary_render}" >/dev/null; then
+if grep -F -- '--show=NAME,SIZE' "${dev_render}" >/dev/null; then
   printf 'Worker startup must validate the backing file size, not the smaller usable swap area.\n' >&2
   exit 1
 fi
 
-printf 'Worker startup swap rendering passed.\n'
+printf 'Worker startup swap and orchestrator metadata rendering passed.\n'
