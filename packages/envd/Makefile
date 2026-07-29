@@ -12,6 +12,25 @@ AWS_BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
 GCP_BUCKET_PREFIX ?= $(GCP_PROJECT_ID)-
 ENVD_UPLOAD_MODE ?= latest
 
+# Public bucket holding released, prebuilt envd binaries (objects are
+# <version>/envd). Published to by the release-please workflow on tagging a
+# release; public-read, so downloads need no credentials.
+E2B_ARTIFACT_BINARIES_URL ?= https://storage.googleapis.com/e2b-artifact-binaries/envd
+
+# Optional version "hook" for the released-artifact flow.
+# When empty (default), build-and-upload builds from source and uploads the
+# binary to the client's fc-env-pipeline bucket (the existing flow,
+# unchanged). When set (e.g. ENVD_VERSION=v0.1.0), skip building: download
+# the released binary and upload that to the client's fc-env-pipeline bucket
+# instead. The env pipeline keeps fetching from the same bucket object either
+# way.
+#
+# Set it either on the command line (make ... ENVD_VERSION=v0.1.0) or in the
+# active .env.${ENV} file, which is included above. Quotes are stripped so
+# both `=v0.1.0` and `="v0.1.0"` work; a command-line value always wins over
+# the env file.
+ENVD_VERSION := $(strip $(subst ",,$(ENVD_VERSION)))
+
 # Architecture for builds. Defaults to amd64; override for ARM64 builds.
 # (e.g., BUILD_ARCH=arm64 make build-local)
 BUILD_ARCH ?= amd64
@@ -70,8 +89,25 @@ start-docker:
 	-i envd-debug \
 	/usr/bin/envd -isnotfc -verbose
 
+# Released-artifact flow: download the prebuilt, versioned binary from the
+# public E2B artifact-binaries bucket.
+.PHONY: pull-released
+pull-released:
+	@echo "Using released envd $(ENVD_VERSION) from $(E2B_ARTIFACT_BINARIES_URL)"
+	mkdir -p bin
+	curl -fL -o bin/envd "$(E2B_ARTIFACT_BINARIES_URL)/$(ENVD_VERSION)/envd"
+
+# The binary comes from source (default) or from a released object when
+# ENVD_VERSION is set. Either way it lands in ./bin and the upload below is
+# identical.
+ifeq ($(strip $(ENVD_VERSION)),)
+BIN_SOURCE := build
+else
+BIN_SOURCE := pull-released
+endif
+
 build-and-upload:
-	$(MAKE) build
+	$(MAKE) $(BIN_SOURCE)
 	$(MAKE) upload
 
 .PHONY: generate
