@@ -56,9 +56,10 @@ func TestUpsertProjectIsIdempotent(t *testing.T) {
 	require.Equal(t, "Acme", teamColumn(t, db, project.id, "name"))
 }
 
-// Template names are stored as "<slug>/<alias>", so a rename that left them
-// behind would address the project's templates under a slug it no longer has.
-func TestUpsertProjectRenameCarriesTemplateNames(t *testing.T) {
+// A rename moves the slug and nothing else: template names embed the slug they
+// were built under, and rewriting them would break references users already
+// have.
+func TestUpsertProjectRenameLeavesTemplateNames(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
@@ -68,8 +69,7 @@ func TestUpsertProjectRenameCarriesTemplateNames(t *testing.T) {
 	require.Equal(t, http.StatusCreated, callUpsertProject(t, store, project.id, project.request()).Code)
 
 	templateID := testutils.CreateTestTemplate(t, db, project.id)
-	namespaced := testutils.CreateTestTemplateAliasWithNamespace(t, db, templateID, &project.slug)
-	legacy := testutils.CreateTestTemplateAliasWithNamespace(t, db, templateID, nil)
+	alias := testutils.CreateTestTemplateAliasWithNamespace(t, db, templateID, &project.slug)
 
 	moved := project.request()
 	moved.Slug += "-moved"
@@ -78,10 +78,7 @@ func TestUpsertProjectRenameCarriesTemplateNames(t *testing.T) {
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 
 	require.Equal(t, moved.Slug, teamColumn(t, db, project.id, "slug"))
-	require.Equal(t, moved.Slug, aliasNamespace(t, db, namespaced))
-	// Aliases predating the namespace column stay null, which is how they are
-	// still resolved.
-	require.Empty(t, aliasNamespace(t, db, legacy))
+	require.Equal(t, project.slug, aliasNamespace(t, db, alias))
 }
 
 // The slug is unique cluster-wide on the way in and on the way out, so a rename
@@ -95,14 +92,6 @@ func TestUpsertProjectRenameRejectsATakenSlug(t *testing.T) {
 
 	require.Equal(t, http.StatusCreated, callUpsertProject(t, store, incumbent.id, incumbent.request()).Code)
 	require.Equal(t, http.StatusCreated, callUpsertProject(t, store, mover.id, mover.request()).Code)
-
-	// Both hold a template of the same name. Template names are unique on
-	// (alias, namespace), so a rename that repointed them before claiming the
-	// slug would collide there first and report this as a server error.
-	testutils.CreateTestTemplateAliasWithName(t, db,
-		testutils.CreateTestTemplate(t, db, incumbent.id), "web", &incumbent.slug)
-	testutils.CreateTestTemplateAliasWithName(t, db,
-		testutils.CreateTestTemplate(t, db, mover.id), "web", &mover.slug)
 
 	collide := mover.request()
 	collide.Slug = incumbent.slug
@@ -229,7 +218,7 @@ func TestDeleteProjectIsDeliberatelyNotImplemented(t *testing.T) {
 	require.Equal(t, http.StatusNotImplemented, recorder.Code)
 }
 
-// upsertFixture is a valid project with a slug unique to its test, so cases
+// projectFixture is a valid project with a slug unique to its test, so cases
 // that care about one field can change that one and send the rest.
 type projectFixture struct {
 	id   uuid.UUID

@@ -1185,10 +1185,11 @@ components:
           minLength: 1
           maxLength: 63
           description: >-
-            Changing it renames the project. The project's template names move
-            with it, since they read "<slug>/<alias>", so the names its users
-            already type change too. A slug already held on this control plane
-            is a 409, on a rename as much as on a create.
+            Changing it renames the project, and nothing follows it. Template
+            names embed the slug they were built under, so a renamed project
+            keeps its existing template names and only new ones carry the new
+            slug. A slug already held on this control plane is a 409, on a
+            rename as much as on a create.
         email:
           type: string
           minLength: 1

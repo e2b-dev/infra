@@ -64,46 +64,20 @@ func (q *Queries) InsertManagedTeam(ctx context.Context, arg InsertManagedTeamPa
 
 const lockManagedTeam = `-- name: LockManagedTeam :one
 
-SELECT id, slug FROM public.teams
+SELECT id FROM public.teams
 WHERE id = $1::uuid
 FOR UPDATE
 `
-
-type LockManagedTeamRow struct {
-	ID   uuid.UUID
-	Slug string
-}
 
 // Project reconciliation for the control-plane management interface. The caller
 // supplies the id, so create and reconcile are one request and these are its
 // branches.
 // Taken first, so the branch is decided by whether the project exists rather
 // than by an insert failing.
-func (q *Queries) LockManagedTeam(ctx context.Context, id uuid.UUID) (LockManagedTeamRow, error) {
+func (q *Queries) LockManagedTeam(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, lockManagedTeam, id)
-	var i LockManagedTeamRow
-	err := row.Scan(&i.ID, &i.Slug)
-	return i, err
-}
-
-const repointTeamAliasNamespace = `-- name: RepointTeamAliasNamespace :exec
-UPDATE public.env_aliases
-SET namespace = $1::text
-WHERE namespace IS NOT NULL
-  AND env_id IN (SELECT id FROM public.envs WHERE team_id = $2::uuid)
-`
-
-type RepointTeamAliasNamespaceParams struct {
-	Slug   string
-	TeamID uuid.UUID
-}
-
-// Template names are stored as "<namespace>/<alias>" with the namespace copied
-// from the team's slug, so a rename has to carry them with it. Aliases predating
-// the namespace column are left null, which is how they are still resolved.
-func (q *Queries) RepointTeamAliasNamespace(ctx context.Context, arg RepointTeamAliasNamespaceParams) error {
-	_, err := q.db.Exec(ctx, repointTeamAliasNamespace, arg.Slug, arg.TeamID)
-	return err
+	err := row.Scan(&id)
+	return id, err
 }
 
 const updateManagedTeam = `-- name: UpdateManagedTeam :one

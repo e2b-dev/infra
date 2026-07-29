@@ -34,6 +34,11 @@ var (
 // Project is the set of properties the caller synchronizes. It sends all of
 // them on every push, so a reconcile is a complete statement rather than a
 // patch.
+//
+// Slug moves like the others, and nothing follows it. Template names embed the
+// slug they were built under, so a renamed project keeps its existing template
+// names and only new ones carry the new slug. Rewriting them would break every
+// reference a user has already scripted, which is worse than the inconsistency.
 type Project struct {
 	ID    uuid.UUID
 	Name  string
@@ -79,11 +84,11 @@ func (s *Service) writeProject(ctx context.Context, project Project) (stored Pro
 		_ = tx.Rollback(ctx)
 	}()
 
-	existing, err := txDB.LockManagedTeam(ctx, project.ID)
+	_, err = txDB.LockManagedTeam(ctx, project.ID)
 
 	switch {
 	case err == nil:
-		stored, err = reconcileProject(ctx, txDB, existing, project)
+		stored, err = reconcileProject(ctx, txDB, project)
 	case dberrors.IsNotFoundError(err):
 		stored, err = createProject(ctx, txDB, project)
 		created = true
@@ -125,12 +130,7 @@ func createProject(ctx context.Context, txDB *authqueries.Queries, project Proje
 	return Project{ID: project.ID, Name: inserted.Name, Slug: inserted.Slug, Email: inserted.Email}, nil
 }
 
-func reconcileProject(
-	ctx context.Context,
-	txDB *authqueries.Queries,
-	existing authqueries.LockManagedTeamRow,
-	project Project,
-) (Project, error) {
+func reconcileProject(ctx context.Context, txDB *authqueries.Queries, project Project) (Project, error) {
 	updated, err := txDB.UpdateManagedTeam(ctx, authqueries.UpdateManagedTeamParams{
 		ID:    project.ID,
 		Name:  project.Name,
@@ -143,24 +143,6 @@ func reconcileProject(
 		return Project{}, fmt.Errorf("%w: %q", ErrProjectSlugTaken, project.Slug)
 	case err != nil:
 		return Project{}, fmt.Errorf("reconcile project: %w", err)
-	}
-
-	// A rename carries the team's template names with it: they are stored as
-	// "<slug>/<alias>", so leaving them behind would address templates under a
-	// slug the project no longer has. Two costs stay with the caller — the names
-	// its users already type change, and the api service resolves aliases
-	// through a cache, so the old ones answer for up to its TTL.
-	//
-	// After the slug is claimed, not before. Template names are unique on
-	// (alias, namespace), so repointing into a namespace another project still
-	// holds collides there first and reports a taken slug as a server error.
-	if existing.Slug != project.Slug {
-		if err := txDB.RepointTeamAliasNamespace(ctx, authqueries.RepointTeamAliasNamespaceParams{
-			TeamID: project.ID,
-			Slug:   project.Slug,
-		}); err != nil {
-			return Project{}, fmt.Errorf("repoint template namespace: %w", err)
-		}
 	}
 
 	return Project{ID: project.ID, Name: updated.Name, Slug: updated.Slug, Email: updated.Email}, nil

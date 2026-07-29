@@ -5,7 +5,7 @@
 -- Taken first, so the branch is decided by whether the project exists rather
 -- than by an insert failing.
 -- name: LockManagedTeam :one
-SELECT id, slug FROM public.teams
+SELECT id FROM public.teams
 WHERE id = sqlc.arg(id)::uuid
 FOR UPDATE;
 
@@ -37,12 +37,3 @@ SET
     email = sqlc.arg(email)::text
 WHERE id = sqlc.arg(id)::uuid
 RETURNING id, name, slug, email;
-
--- Template names are stored as "<namespace>/<alias>" with the namespace copied
--- from the team's slug, so a rename has to carry them with it. Aliases predating
--- the namespace column are left null, which is how they are still resolved.
--- name: RepointTeamAliasNamespace :exec
-UPDATE public.env_aliases
-SET namespace = sqlc.arg(slug)::text
-WHERE namespace IS NOT NULL
-  AND env_id IN (SELECT id FROM public.envs WHERE team_id = sqlc.arg(team_id)::uuid);
