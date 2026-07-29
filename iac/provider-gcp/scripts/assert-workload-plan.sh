@@ -133,6 +133,7 @@ artifacts_json="$(jq -ceS '
   )
   and (.job_binaries | keys | sort) == [
     "clean-nfs-cache",
+    "envd",
     "orchestrator",
     "template-manager"
   ]

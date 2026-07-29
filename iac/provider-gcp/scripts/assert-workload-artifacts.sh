@@ -203,7 +203,8 @@ job_binaries='{}'
 for binary in \
   orchestrator \
   template-manager \
-  clean-nfs-cache; do
+  clean-nfs-cache \
+  envd; do
   canonical="$(
     describe_job_binary "${binary}"
   )" || {

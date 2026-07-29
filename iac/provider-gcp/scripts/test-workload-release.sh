@@ -190,6 +190,9 @@ if [[ "${1:-}" == "storage" && "${2:-}" == "objects" && "${3:-}" == "describe" ]
   bucket="${bucket%%/*}"
   object_name="${object_uri#gs://${bucket}/}"
   canonical_name="${object_name%%.${FAKE_CORE_IMAGE_REVISION}}"
+  if [[ "${mode}" == "missing-envd" && "${canonical_name}" == "envd" ]]; then
+    exit 1
+  fi
 
   case "${canonical_name}" in
     orchestrator)
@@ -210,6 +213,12 @@ if [[ "${1:-}" == "storage" && "${2:-}" == "objects" && "${3:-}" == "describe" ]
       md5_hash="zLUBMUIvTYcm+aDVzj1ZFA=="
       crc32c_hash="f4G09A=="
       ;;
+    envd)
+      generation=1004
+      size=42000000
+      md5_hash="47DEQpj8HBSa+/TImW+5JA=="
+      crc32c_hash="AAAAAA=="
+      ;;
     *)
       printf 'unexpected fake GCS object: %s\n' "${object_uri}" >&2
       exit 2
@@ -217,6 +226,9 @@ if [[ "${1:-}" == "storage" && "${2:-}" == "objects" && "${3:-}" == "describe" ]
   esac
   if [[ "${object_name}" != "${canonical_name}" ]]; then
     generation=$((generation + 1000))
+    if [[ "${mode}" == "mismatched-envd" && "${canonical_name}" == "envd" ]]; then
+      md5_hash="AAAAAAAAAAAAAAAAAAAAAA=="
+    fi
   fi
   jq -cn \
     --arg bucket "${bucket}" \
@@ -307,11 +319,11 @@ export FAKE_CORE_IMAGE_REVISION="${revision}"
 printf 'pass\n' >"${fake_gcloud_mode}"
 : >"${fake_gcloud_log}"
 expect_pass \
-  "orchestrator image and five revision-matched core images" \
+  "orchestrator image, five revision-matched core images, and four runtime binaries" \
   "${script_dir}/assert-workload-artifacts.sh" \
   monad-code us-east4 e2b- "${revision}" "${job_binary_bucket}" \
   "${fake_gcloud}"
-test "$(wc -l <"${fake_gcloud_log}" | tr -d ' ')" -eq 17
+test "$(wc -l <"${fake_gcloud_log}" | tr -d ' ')" -eq 19
 for image in \
   api \
   db-migrator \
@@ -331,6 +343,8 @@ for artifact_mode in \
   deprecated-orchestrator-family \
   missing-core-revision \
   missing-core-latest \
+  missing-envd \
+  mismatched-envd \
   mismatched-core-tag; do
   printf '%s\n' "${artifact_mode}" >"${fake_gcloud_mode}"
   expect_fail \
@@ -479,7 +493,7 @@ jq -e \
     and .release_artifacts.job_binary_bucket == "monad-code-fc-env-pipeline"
     and .release_artifacts.orchestrator_image.family == "e2b-orch"
     and (.release_artifacts.core_images | length) == 5
-    and (.release_artifacts.job_binaries | length) == 3
+    and (.release_artifacts.job_binaries | length) == 4
   ' "${manifest}" >/dev/null
 expect_pass \
   "unchanged workload provenance" \

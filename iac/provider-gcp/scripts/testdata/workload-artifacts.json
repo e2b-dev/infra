@@ -132,6 +132,25 @@
         "crc32c": "f4G09A=="
       },
       "nomad_source": "gcs::https://www.googleapis.com/storage/v1/monad-code-fc-env-pipeline/clean-nfs-cache.0123456789ab#2003"
+    },
+    "envd": {
+      "canonical": {
+        "bucket": "monad-code-fc-env-pipeline",
+        "name": "envd",
+        "generation": "1004",
+        "size": 42000000,
+        "md5": "47DEQpj8HBSa+/TImW+5JA==",
+        "crc32c": "AAAAAA=="
+      },
+      "revision": {
+        "bucket": "monad-code-fc-env-pipeline",
+        "name": "envd.0123456789ab",
+        "generation": "2004",
+        "size": 42000000,
+        "md5": "47DEQpj8HBSa+/TImW+5JA==",
+        "crc32c": "AAAAAA=="
+      },
+      "nomad_source": "gcs::https://www.googleapis.com/storage/v1/monad-code-fc-env-pipeline/envd.0123456789ab#2004"
     }
   }
 }

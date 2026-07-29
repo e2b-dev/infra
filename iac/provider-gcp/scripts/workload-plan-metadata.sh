@@ -242,6 +242,7 @@ identity_json() {
           and (.job_binaries | type) == "object"
           and (.job_binaries | keys | sort) == [
             "clean-nfs-cache",
+            "envd",
             "orchestrator",
             "template-manager"
           ]
