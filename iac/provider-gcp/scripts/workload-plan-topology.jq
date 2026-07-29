@@ -754,6 +754,11 @@ managed_changes as $changes
             or .change.actions == ["create"]
             or .change.actions == ["read"]
             or .change.actions == ["update"]
+            or (
+              .type == "google_compute_instance_template"
+              and template_role != null
+              and .change.actions == ["create", "delete"]
+            )
           )
           | not
         )

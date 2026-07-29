@@ -316,6 +316,73 @@ cluster_fixture="${test_dir}/cluster-minimal.json"
 expect_success "cluster-minimal" "${cluster_fixture}" cluster
 
 jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "module.cluster.module.client_cluster[\"default\"].google_compute_instance_template.template"
+      )
+    | .change
+  ) |= (
+    .before = .after
+    | .actions = ["create", "delete"]
+  )
+' "${cluster_fixture}" >"${test_dir}/cluster-rolling-client-template.json"
+expect_success \
+  "cluster-rolling-client-template" \
+  "${test_dir}/cluster-rolling-client-template.json" \
+  cluster
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "module.cluster.module.client_cluster[\"default\"].google_compute_instance_template.template"
+      )
+    | .change
+  ) |= (
+    .before = .after
+    | .actions = ["delete", "create"]
+  )
+' "${cluster_fixture}" >"${test_dir}/cluster-destroy-before-create-template.json"
+expect_failure \
+  "cluster-destroy-before-create-template" \
+  "destructive_managed_resources must be empty." \
+  "${test_dir}/cluster-destroy-before-create-template.json" \
+  "${policy}" \
+  "${packer_template}" \
+  "${artifacts}" \
+  cluster
+
+jq '
+  (
+    .resource_changes[]
+    | select(.address == "module.cluster.google_compute_instance_template.api")
+    | .change
+  ) as $reviewed_change
+  | .resource_changes += [{
+    "address": "module.cluster.google_compute_instance_template.unreviewed",
+    "mode": "managed",
+    "type": "google_compute_instance_template",
+    "name": "unreviewed",
+    "change": (
+      $reviewed_change
+      | .before = .after
+      | .actions = ["create", "delete"]
+    )
+  }]
+' "${cluster_fixture}" >"${test_dir}/cluster-unreviewed-template-replacement.json"
+expect_failure \
+  "cluster-unreviewed-template-replacement" \
+  "unknown_templates must be empty." \
+  "${test_dir}/cluster-unreviewed-template-replacement.json" \
+  "${policy}" \
+  "${packer_template}" \
+  "${artifacts}" \
+  cluster
+
+jq '
   .resource_changes += [{
     "address": "google_storage_bucket.unrelated",
     "mode": "managed",
