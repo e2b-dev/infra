@@ -9,8 +9,58 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 )
+
+func TestMonadRunningSourceBuildID(t *testing.T) {
+	t.Parallel()
+
+	currentBuildID := uuid.New()
+	sourceBuildID := uuid.New()
+
+	t.Run("direct create uses authoritative running build", func(t *testing.T) {
+		t.Parallel()
+
+		got, err := monadRunningSourceBuildID(sandboxtypes.Sandbox{
+			TemplateID:     "template-test",
+			BaseTemplateID: "template-test",
+			BuildID:        currentBuildID,
+			Metadata: map[string]string{
+				monadMetadataImageID: sourceBuildID.String(),
+			},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, currentBuildID, got)
+	})
+
+	t.Run("resumed sandbox uses persisted source build", func(t *testing.T) {
+		t.Parallel()
+
+		got, err := monadRunningSourceBuildID(sandboxtypes.Sandbox{
+			TemplateID:     "pause-snapshot-template",
+			BaseTemplateID: "template-test",
+			BuildID:        currentBuildID,
+			Metadata: map[string]string{
+				monadMetadataImageID: sourceBuildID.String(),
+			},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, sourceBuildID, got)
+	})
+
+	t.Run("resumed sandbox fails closed without source build", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := monadRunningSourceBuildID(sandboxtypes.Sandbox{
+			TemplateID:     "pause-snapshot-template",
+			BaseTemplateID: "template-test",
+			BuildID:        currentBuildID,
+			Metadata:       map[string]string{},
+		})
+		require.Error(t, err)
+	})
+}
 
 func TestBuildMonadWorkcellAttestation(t *testing.T) {
 	t.Parallel()
