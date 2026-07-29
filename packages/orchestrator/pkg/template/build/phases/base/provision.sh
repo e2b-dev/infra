@@ -110,8 +110,10 @@ mkdir -p /etc/chrony
     # host/KVM as the runtime sandboxes.
     if [ -e /dev/ptp0 ]; then
         echo "refclock PHC /dev/ptp0 poll 2 dpoll 2"
+        E2B_CHRONY_PHC=1
     else
         echo "pool pool.ntp.org iburst maxsources 3"
+        E2B_CHRONY_PHC=0
     fi
     # Step (jump) the clock instead of slewing when the offset exceeds 1s, but
     # only for the first 3 updates after chronyd starts. chronyd restarts on
@@ -121,6 +123,20 @@ mkdir -p /etc/chrony
     # longer blocks on first sync.
     echo "makestep 1.0 3"
 } >/etc/chrony/chrony.conf
+
+# Alpine's OpenRC init script hardcodes `-F 1`, which loads chronyd's seccomp
+# filter. Alpine's chrony build (-NTS -SECHASH -DEBUG) takes a SIGSYS —
+# "Bad system call" right after "Loaded seccomp filter (level 1)" — as soon as
+# the PHC refclock is driven, so the service lands in OpenRC's "crashed" state
+# with the clock unsynced. The pool path is unaffected, and the systemd families
+# pass no -F at all, so this only restores parity. The init script splices
+# $command_args in after its own -F 1 and chronyd honours the last -F, so this
+# turns the filter off.
+if [ "$E2B_CHRONY_PHC" = 1 ] && [ "$E2B_INIT_SYSTEM" = "openrc" ]; then
+    echo "Disabling the chronyd seccomp filter (PHC refclock traps under it)"
+    mkdir -p /etc/conf.d
+    echo 'command_args="-F 0"' >>/etc/conf.d/chronyd
+fi
 
 # Add a proxy config, as some environments expects it there (e.g. timemaster in Node Dockerimage)
 echo "include /etc/chrony/chrony.conf" >/etc/chrony.conf

@@ -299,10 +299,17 @@ func main() {
 	if *teamID != "" && *envdVersion == "" {
 		log.Fatal("-envd-version is required when -team is set")
 	}
-	// Validate -gdb's gs:// precondition up front (deriveArtifactBuckets needs it), so a
-	// wrong invocation fails instantly rather than after the multi-GB snapshot copy.
-	if *gdb && (!strings.HasPrefix(*from, "gs://") || !strings.HasPrefix(*to, "gs://")) {
-		log.Fatal("-gdb requires gs:// -from and -to (it stages debug artifacts between bucket environments)")
+	// Validate the -gdb bucket preconditions up front, so a wrong invocation fails
+	// instantly rather than after the multi-GB snapshot copy. deriveArtifactBuckets
+	// checks both the gs:// scheme and the *-fc-templates suffix it needs to map the
+	// template bucket to its versions/kernels siblings.
+	if *gdb {
+		if _, _, err := deriveArtifactBuckets(*from); err != nil {
+			log.Fatalf("-gdb -from: %s", err)
+		}
+		if _, _, err := deriveArtifactBuckets(*to); err != nil {
+			log.Fatalf("-gdb -to: %s", err)
+		}
 	}
 
 	fmt.Fprintf(os.Stderr, "Copying build '%s' from '%s' to '%s'\n", *buildId, *from, *to)

@@ -43,6 +43,17 @@ func TestParse(t *testing.T) {
 		assert.Equal(t, content, result.VolumesToken.SigningKey)
 	})
 
+	t.Run("default persistent volume type by region is parsed as a map", func(t *testing.T) {
+		t.Setenv("DEFAULT_PERSISTENT_VOLUME_TYPE_BY_REGION", "us-west3:zonalfilestore-us-west3,other:other-type")
+
+		result, err := Parse()
+		require.NoError(t, err)
+		assert.Equal(t, map[string]string{
+			"us-west3": "zonalfilestore-us-west3",
+			"other":    "other-type",
+		}, result.DefaultPersistentVolumeTypeByRegion)
+	})
+
 	t.Run("invalid service discovery provider exposes failure condition", func(t *testing.T) {
 		t.Setenv("SERVICE_DISCOVERY_PROVIDER", "invalid")
 
