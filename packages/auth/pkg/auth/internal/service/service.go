@@ -259,7 +259,14 @@ func (s *AuthService) ValidateAuthProviderTeam(ctx context.Context, ginCtx *gin.
 
 // InvalidateTeamMemberCache removes the cached auth entry for a specific user-team pair.
 // This should be called when team membership changes (member added or removed).
+//
+// Detached for the same reason as InvalidateAPIKeyCache: the invalidation runs
+// after the membership change has committed, and skipping it because the client
+// disconnected leaves a removed member authenticating until the cache TTL.
 func (s *AuthService) InvalidateTeamMemberCache(ctx context.Context, userID uuid.UUID, teamID string) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), invalidateTimeout)
+	defer cancel()
+
 	s.teamCache.Invalidate(ctx, teamMemberCacheKey(userID, teamID))
 }
 
@@ -274,7 +281,15 @@ func (s *AuthService) InvalidateTeamMemberCache(ctx context.Context, userID uuid
 //	<api key hash>     ApiKeyAuth
 //	<user id>-<id>     AuthProviderBearerAuth + AuthProviderTeamAuth, the
 //	                   browser session path, one entry per member
+//
+// Detached from the caller's cancellation, and bounded, because it runs after
+// the change it reflects has committed. One budget covers the whole sweep: the
+// reads below decide which keys to drop, so a cancelled context part-way
+// through would leave an arbitrary subset of them stale.
 func (s *AuthService) InvalidateTeamCache(ctx context.Context, teamID uuid.UUID) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), invalidateTimeout)
+	defer cancel()
+
 	s.teamCache.Invalidate(ctx, teamCacheKey(teamID))
 
 	hashes, err := s.store.GetTeamAPIKeyHashes(ctx, teamID)

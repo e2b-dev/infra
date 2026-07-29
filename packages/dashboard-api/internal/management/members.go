@@ -162,10 +162,11 @@ func (s *Service) PurgeUser(ctx context.Context, userID uuid.UUID) error {
 		return fmt.Errorf("commit user purge: %w", err)
 	}
 
-	// A crash before this leaves entries a retry cannot find, since the rows it
-	// would evict from are already gone. They stand until they expire; carrying
-	// them across the gap would need a teardown log, which is a lot of
-	// machinery for a five-minute worst case on a crash.
+	// Losing the process here leaves entries a retry cannot find, since the rows
+	// it would evict from are already gone. They stand until they expire;
+	// carrying them across the gap would need a teardown log, which is a lot of
+	// machinery for a five-minute worst case on a crash. Cancellation is not
+	// part of that gap — the invalidation detaches from the request context.
 	for _, teamID := range teamIDs {
 		s.cache.InvalidateTeamMemberCache(ctx, userID, teamID.String())
 	}
