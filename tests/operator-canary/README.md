@@ -55,3 +55,41 @@ E2B_TEMPLATE=<returned-template-name-and-tag> \
 If the lifecycle fails, the script still inventories and deletes every sandbox
 owned by the unique synthetic team and every explicit snapshot it can identify.
 Do not clean up the synthetic team/key until the final inventory is empty.
+
+## Live worker-capacity benchmark
+
+`capacity.mjs` is a separate operator-only pressure test. It refuses a
+non-empty synthetic team, verifies the exact running GCE worker profile and
+the template's 2-vCPU/2-GiB/1-GiB maximum shape, and hard-caps the run at five
+workcells. Each density level exercises CPU, memory, fsynced local disk,
+proxied network output, and command latency while collecting the worker's CPU,
+memory, hugepage, swap, disk, network, and Firecracker-process measurements.
+
+The fifth workcell is the only permitted oversubscription point on the
+`n1-standard-8` canary worker. It is a bounded measurement, not a supported
+capacity claim. The benchmark denies internet access and tags every sandbox as
+synthetic. Its `finally` path inventories and deletes every sandbox belonging
+to the unique canary team, then proves both the API inventory and worker
+Firecracker count return to zero.
+
+Run only from the reviewed infra revision and retain stdout as the non-secret
+evidence artifact:
+
+```bash
+export E2B_API_KEY="$(
+  gcloud secrets versions access latest \
+    --project monad-code \
+    --secret <unique-canary-secret-id>
+)"
+export E2B_API_URL=https://api.e2b.monad0.net
+export E2B_DOMAIN=e2b.monad0.net
+export E2B_TEMPLATE=monad-gcp-canary-base:infra-36c8d3cdd
+export E2B_CAPACITY_CONFIRM='RUN LIVE MONAD F1 CAPACITY BENCHMARK'
+
+npm run --prefix tests/operator-canary capacity
+```
+
+Optional overrides exist for `E2B_CAPACITY_GCP_PROJECT`,
+`E2B_CAPACITY_GCP_ZONE`, `E2B_CAPACITY_WORKER`,
+`E2B_CAPACITY_MACHINE_TYPE`, and `E2B_CAPACITY_MAX_WORKCELLS`. The maximum
+cannot exceed five even if an environment override asks for more.

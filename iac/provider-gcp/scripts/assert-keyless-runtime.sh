@@ -63,6 +63,7 @@ while IFS= read -r match; do
     path="${path#./}"
     case "$path" in
       .github/upstream-workflows-disabled/* | \
+        docs/MONAD_F1_LIVE_EVIDENCE_2026-07-30.md | \
         docs/MONAD_GCP_FOUNDATION.md | \
         iac/provider-aws/init/secrets-cluster.tf | \
         iac/provider-gcp/scripts/assert-no-legacy-acl-token-state.sh | \

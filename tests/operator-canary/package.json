@@ -7,6 +7,7 @@
   },
   "scripts": {
     "build-template": "node build-template.mjs",
+    "capacity": "node capacity.mjs",
     "canary": "node lifecycle.mjs",
     "test": "node --test *.test.mjs"
   },

@@ -439,6 +439,18 @@ flowchart TB
   reintroduced static-key seam. The customer-facing private-GCP-registry
   credential contract is retained as a separate, explicit compatibility
   surface and is not Monad's runtime identity.
+- F1 worker capacity uses explicit nouns and separate limits. A durable session
+  is a control-plane record or paused snapshot; an active workcell is a running
+  Firecracker microVM; a worker host is a GCE client-pool VM; build workers and
+  fixed control/data nodes are not workcell capacity. The measured
+  `n1-standard-8` envelope plans two active 2-vCPU/2-GiB workcells per ready
+  worker and hard-caps placement at three. Four workcells saturate all worker
+  CPU and are unsupported. The steady autoscaling formula is
+  `max(1, ceil(active_workcells / 2))`, subject to the independently reviewed
+  worker-host ceiling and live quota replacement reserve. Paused sessions do
+  not reserve a Firecracker slot, but every resume must pass active-workcell
+  admission. See `docs/MONAD_F1_LIVE_EVIDENCE_2026-07-30.md` for measurements,
+  cleanup proof, and the current quota-bound host ceiling.
 - Observability: everything exports OTel; the collector fans out to ClickHouse (product metrics)
   and Grafana Cloud/stack. Logs default to the legacy Vector → Loki path; dynamic log routing can
   select a primary collector and shadow collectors, and local-cluster log reads can be switched to
