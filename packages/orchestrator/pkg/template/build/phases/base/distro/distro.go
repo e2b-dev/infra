@@ -1,8 +1,9 @@
 // Package distro makes template-build provisioning distro-aware: it selects a
 // declared per-family Profile by the base image's /etc/os-release ID rather than
 // probing for a package manager. Supported: the systemd family (Debian/Ubuntu,
-// Fedora/RHEL/CentOS/Rocky/Alma, Arch) and Alpine on OpenRC; anything else is
-// rejected with a clear error.
+// Fedora/CentOS/Rocky/Alma, Arch) and Alpine on OpenRC. Derivatives are
+// provisioned via ID_LIKE as a best-effort guess with a warning; kernel-dependent
+// ids (RejectedIDs) and anything unmatched are rejected with a clear error.
 package distro
 
 import (
@@ -188,13 +189,9 @@ var RejectedIDs = []string{"rhel", "ol", "amzn"}
 // on the guest's $E2B_DISTRO_ID and defines the profile's packages, shell
 // functions, init path, time-sync unit, admin group and CA handling.
 //
-// An id we don't know falls back to $E2B_ID_LIKE, the derivative-to-parent
-// pointer from os-release: Kali declares ID=kali ID_LIKE=debian, and before
-// provisioning switched on the declared id, every such Debian derivative worked
-// by accident because we probed for a package manager instead. That fallback
-// warns rather than fails — the profile is a best-effort guess at that point —
-// but an id matching nothing, and an image with no os-release at all, still
-// exits 1 rather than being provisioned against a guessed family.
+// An unknown id retries each $E2B_ID_LIKE token in order and provisions the
+// first matching family — best effort, with a customer-visible warning.
+// RejectedIDs, ids matching nothing, and images without /etc/os-release exit 1.
 func ShellSelector() string {
 	var b strings.Builder
 
