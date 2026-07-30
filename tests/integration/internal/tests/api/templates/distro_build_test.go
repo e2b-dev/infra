@@ -77,7 +77,8 @@ func TestTemplateBuildDistroFamilies(t *testing.T) {
 
 // An image from a distro E2B doesn't provision must be rejected while
 // provisioning, and the reason must reach the customer instead of a bare exit
-// status. Oracle Linux is deliberately unsupported: sandboxes boot E2B's kernel.
+// status. Oracle Linux declares ID_LIKE=fedora, so this also covers the
+// rejection guard running before the ID_LIKE fallback.
 func TestTemplateBuildUnsupportedDistro(t *testing.T) {
 	t.Parallel()
 
@@ -89,5 +90,6 @@ func TestTemplateBuildUnsupportedDistro(t *testing.T) {
 
 	outcome := runTemplateBuild(t, "test-distro-unsupported", buildConfig, defaultBuildLogHandler(t))
 	require.False(t, outcome.ready, "Build of an unsupported distro must fail")
-	assert.Contains(t, outcome.reason, "unsupported base image distribution")
+	assert.Contains(t, outcome.reason, "ID='ol' is not supported")
+	assert.Contains(t, outcome.reason, "Sandboxes boot E2B's kernel")
 }

@@ -202,3 +202,47 @@ func TestKernelDependentIDsAreRejected(t *testing.T) {
 		}
 	}
 }
+
+// An id we don't know falls back to ID_LIKE with a warning instead of failing:
+// switching provisioning to the declared id silently dropped every Debian
+// derivative (Kali declares ID=kali ID_LIKE=debian) that used to work back when
+// we probed for a package manager.
+func TestUnknownIDFallsBackToIDLike(t *testing.T) {
+	t.Parallel()
+	sel := ShellSelector()
+	if !strings.Contains(sel, "e2b_select_profile") {
+		t.Error("selection must be a function so it can be retried per ID_LIKE token")
+	}
+	if !strings.Contains(sel, "for e2b_like in $E2B_ID_LIKE; do") {
+		t.Error("selector must retry each ID_LIKE token")
+	}
+	if !strings.Contains(sel, "WARNING") {
+		t.Error("an ID_LIKE match must warn, not pass silently")
+	}
+	// Nothing matched is still fatal — better than provisioning a guessed family.
+	if !strings.Contains(sel, "unsupported base image distribution") {
+		t.Error("an id matching neither ID nor ID_LIKE must still fail")
+	}
+	// An if-condition call runs the function body with errexit suppressed.
+	if strings.Contains(sel, "if e2b_select_profile") || strings.Contains(sel, "if ! e2b_select_profile") {
+		t.Error("e2b_select_profile must not be invoked as an if-condition (errexit suppression)")
+	}
+	if !strings.Contains(sel, "e2b_profile_matched=1") {
+		t.Error("a matched profile arm must set e2b_profile_matched")
+	}
+}
+
+// ID_LIKE must not re-admit the ids the rhel profile documents as out of scope:
+// Oracle and Amazon Linux both declare ID_LIKE=fedora.
+func TestRejectedIDsAreNotReachableViaIDLike(t *testing.T) {
+	t.Parallel()
+	sel := ShellSelector()
+	guard := strings.Join(RejectedIDs, "|")
+	if !strings.Contains(sel, guard) {
+		t.Errorf("selector must guard rejected ids (%s) before the ID_LIKE fallback", guard)
+	}
+	// The guard has to come first, or ID_LIKE=fedora would match them.
+	if strings.Index(sel, guard) > strings.Index(sel, "E2B_ID_LIKE") {
+		t.Error("the rejected-id guard must precede the ID_LIKE fallback")
+	}
+}

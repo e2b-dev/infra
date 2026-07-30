@@ -7,12 +7,25 @@ runs:
     - name: Setup Go
       uses: ./.github/actions/go-setup-cache
 
+    # Built concurrently: the runner has 32 cores and 128 GB, while the two
+    # slow builds (api, orchestrator) are mostly serial link steps that leave
+    # the box idle. Output is buffered per package so logs stay readable.
     - name: Build Packages
       run: |
-        make -C tests/integration build-debug
-        make -C packages/db build-debug
-        make -C packages/orchestrator build-debug
-        make -C packages/api build-debug
-        make -C packages/envd build-debug
-        make -C packages/client-proxy build-debug
+        packages=(tests/integration packages/db packages/orchestrator packages/api packages/envd packages/client-proxy)
+
+        pids=()
+        for package in "${packages[@]}"; do
+          make -C "$package" build-debug >"${RUNNER_TEMP}/build-${package//\//_}.log" 2>&1 &
+          pids+=("$!")
+        done
+
+        status=0
+        for i in "${!packages[@]}"; do
+          wait "${pids[$i]}" || status=1
+          echo "::group::build ${packages[$i]}"
+          cat "${RUNNER_TEMP}/build-${packages[$i]//\//_}.log"
+          echo "::endgroup::"
+        done
+        exit "$status"
       shell: bash
