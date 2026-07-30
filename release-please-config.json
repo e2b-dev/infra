@@ -28,6 +28,31 @@
       "release-type": "go",
       "component": "envd",
       "include-v-in-tag": true,
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": ["pkg/version.go"]
+    },
+    "packages/orchestrator": {
+      "release-type": "go",
+      "component": "orchestrator",
+      "include-v-in-tag": true,
+      "changelog-path": "CHANGELOG.md"
+    },
+    "packages/api": {
+      "release-type": "go",
+      "component": "api",
+      "include-v-in-tag": true,
+      "changelog-path": "CHANGELOG.md"
+    },
+    "packages/dashboard-api": {
+      "release-type": "go",
+      "component": "dashboard-api",
+      "include-v-in-tag": true,
+      "changelog-path": "CHANGELOG.md"
+    },
+    "packages/nomad-nodepool-apm": {
+      "release-type": "go",
+      "component": "nomad-nodepool-apm",
+      "include-v-in-tag": true,
       "changelog-path": "CHANGELOG.md"
     },
     "packages/orchestrator": {
