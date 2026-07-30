@@ -9,6 +9,23 @@ Package for defining integration tests. Currently, there is a setup for API and 
 3. If necessary, run `make connect-orchestrator` to create a tunnel to one orchestrator client VM in GCP (you may need to run `make setup-ssh` the first time)
 4. Run `make test` in this folder or `make test-integration` from the root `infra/` folder.
 
+Narrow the run with `make test/<path under internal/tests>`, e.g. `make test/api/templates`
+or `make test/api/templates/build_template_test.go:TestTemplateBuildCOPY`.
+
+## Sharding
+
+A compression config can be split across parallel CI jobs, each running one
+shard: `SHARDS=2 SHARD=1 make test`. `scripts/select-tests.sh` enumerates the
+top-level tests from the source tree and bin-packs each package across the
+shards using the recorded per-test times in `scripts/test-weights.tsv`, so every
+test runs in exactly one shard and the shards finish at roughly the same time.
+Enumeration happens at run time, so a newly added test always lands in exactly
+one shard; a test missing from the weights file still runs, it just gets a
+median-time estimate for balancing. Refresh the weights with
+`make update-test-weights JUNIT_DIR=…` when the suite's shape changes.
+
+CI ships `SHARDS: 1`, i.e. sharding off — see the note in the workflow.
+
 ## Usage of clients (api, orchestrator, envd)
 
 All tests are in the folder internal/tests. You can see the usage of different clients in the tests. Here are just basics.

@@ -14,8 +14,20 @@ on:
         default: true
     secrets:
       CODECOV_TOKEN: { required: false }
+env:
+  # Number of parallel shards each compression config is split into. Every
+  # top-level test lands in exactly one shard, so the shards together are the
+  # full suite — keep this in sync with strategy.matrix.shard below.
+  #
+  # Deliberately 1: this wires the sharding up without spending anything. The
+  # infra-tests pool is saturated, and measured at 4 shards the extra jobs
+  # spent their savings queueing for runners. Raise it (and the shard list) to
+  # spend new capacity once #3352 lands.
+  SHARDS: "1"
+
 jobs:
   run:
+    name: run (${{ matrix.name }}, shard ${{ matrix.shard }})
     if: ${{ inputs.run-tests == true }}
     runs-on: infra-tests
     timeout-minutes: 30
@@ -25,6 +37,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        name: [uncompressed, zstd1, lz4]
+        shard: [1]
         include:
           - name: uncompressed
             compress_enabled: "false"
@@ -86,6 +100,7 @@ jobs:
           TESTS_ORCHESTRATOR_HOST: "localhost:5008"
           TESTS_ENVD_PROXY: "http://localhost:3002"
           TESTS_CLIENT_PROXY: "http://localhost:3002"
+          SHARD: ${{ matrix.shard }}
         run: |
           # Run the integration tests
           make test-integration
@@ -123,7 +138,7 @@ jobs:
         if: ${{ always() && inputs.publish == true }}
         uses: actions/upload-artifact@v6
         with:
-          name: Integration Tests Results (${{ matrix.name }})
+          name: Integration Tests Results (${{ matrix.name }} ${{ matrix.shard }})
           path: ./tests/integration/test-results.xml
 
       - name: Upload test results to Codecov
@@ -140,7 +155,7 @@ jobs:
         if: ${{ always() && inputs.publish == true }}
         uses: actions/upload-artifact@v6
         with:
-          name: Service Logs (${{ matrix.name }})
+          name: Service Logs (${{ matrix.name }} ${{ matrix.shard }})
           path: ~/logs/*.log
 
   integration_tests:

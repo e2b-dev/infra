@@ -21,6 +21,15 @@ seed:
 		go run seed.go
 	@echo "Done"
 
+# Tunables, overridable from the environment (CI sets SHARDS/SHARD).
+# SHARDS > 1 runs only shard SHARD of the selected packages; the shards
+# partition the suite, so the union of all SHARDS runs is the full suite.
+TEST_PARALLEL := $(or $(strip $(TEST_PARALLEL)),4)
+TEST_TIMEOUT := $(or $(strip $(TEST_TIMEOUT)),20m)
+JUNIT_FILE := $(or $(strip $(JUNIT_FILE)),test-results.xml)
+SHARDS := $(or $(strip $(SHARDS)),1)
+SHARD := $(or $(strip $(SHARD)),1)
+
 .PHONY: test
 test: test/.
 test/%:
@@ -35,14 +44,24 @@ test/%:
 	export TESTS_SANDBOX_USER_ID=$(TESTS_SANDBOX_USER_ID); \
 	go test -v ./internal/main_test.go -count=1 && \
 	TEST_PATH="./internal/tests/$(subst test/,,$@)"; \
+	TEST_PATH="$${TEST_PATH%/.}"; \
+	RUN=""; \
 	case "$${TEST_PATH}" in \
-		*.go:*) \
-			BASE=$${TEST_PATH%%:*}; \
-			TEST_FN=$${TEST_PATH#*:}; \
-			go tool gotestsum --rerun-fails=1 --packages="$$BASE" --format standard-verbose --junitfile=test-results.xml -- -count=1 -parallel=4 -timeout=20m -run "$${TEST_FN}" ;; \
-		*.go) go tool gotestsum --rerun-fails=1 --packages="$$TEST_PATH" --format standard-verbose --junitfile=test-results.xml -- -count=1 -parallel=4 -timeout=20m ;; \
-		*) go tool gotestsum --rerun-fails=1 --packages="$$TEST_PATH/..." --format standard-verbose --junitfile=test-results.xml -- -count=1 -parallel=4 -timeout=20m ;; \
-	esac
+		*.go:*) PACKAGES="$${TEST_PATH%%:*}"; RUN="$${TEST_PATH#*:}" ;; \
+		*.go) PACKAGES="$${TEST_PATH}" ;; \
+		*) PACKAGES="$${TEST_PATH}/..." ;; \
+	esac; \
+	if [ "$(SHARDS)" -gt 1 ]; then RUN=$$(./scripts/select-tests.sh $(SHARD) $(SHARDS) "$${PACKAGES}") || exit 1; fi; \
+	if [ -n "$${RUN}" ]; then set -- -run "$${RUN}"; else set --; fi; \
+	go tool gotestsum --rerun-fails=1 --packages="$${PACKAGES}" --format standard-verbose --junitfile=$(JUNIT_FILE) \
+		-- -count=1 -parallel=$(TEST_PARALLEL) -timeout=$(TEST_TIMEOUT) "$$@"
+
+# Refresh the shard-balancing weights from the JUnit files of a full CI run:
+#   gh run download <run-id> -p 'Integration Tests Results*' -D /tmp/junit
+#   make -C tests/integration update-test-weights JUNIT_DIR=/tmp/junit
+.PHONY: update-test-weights
+update-test-weights:
+	go run scripts/update-test-weights.go $(JUNIT_DIR)
 
 .PHONY: connect-orchestrator
 connect-orchestrator:
