@@ -41,7 +41,13 @@ fi
 # Check type BEFORE applying ownership/permissions to avoid dereferencing symlinks
 if [ -L "$entry" ]; then
     # It's a symlink – create parent folders and move+rename it to the exact path
-    mkdir -p "$(dirname "$targetPath")"
+    if [[ "$targetPath" == */ ]]; then
+        # Docker COPY semantics: a trailing slash means the target is a
+        # directory — create it and move the entry inside under its own name
+        mkdir -p "$targetPath"
+    else
+        mkdir -p "$(dirname "$targetPath")"
+    fi
     # Change ownership of the symlink itself (not the target)
     chown -h "$owner" "$entry"
     # Note: chmod on symlinks affects the target, not the link itself in most systems
@@ -53,7 +59,13 @@ elif [ -f "$entry" ]; then
     if [ -n "$permissions" ]; then
         chmod "$permissions" "$entry"
     fi
-    mkdir -p "$(dirname "$targetPath")"
+    if [[ "$targetPath" == */ ]]; then
+        # Docker COPY semantics: a trailing slash means the target is a
+        # directory — create it and move the entry inside under its own name
+        mkdir -p "$targetPath"
+    else
+        mkdir -p "$(dirname "$targetPath")"
+    fi
     mv "$entry" "$targetPath"
 elif [ -d "$entry" ]; then
     # It's a directory – apply ownership/permissions recursively, then merge
