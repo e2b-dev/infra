@@ -341,7 +341,15 @@ The operator-owned Monad application runtime is defined under
 `templates/monad-runtime/` and built through this same API/template-manager
 path with `make build-monad-runtime-template`. Its immutable template reference
 and build ID are recorded in `docs/MONAD_RUNTIME_TEMPLATE_STATUS.md`; the
-generated source assets remain untracked.
+generated source assets remain untracked. The desktop runtime uses the
+digest-pinned LinuxServer Webtop Selkies Ubuntu i3 image: its s6-overlay graph
+supervises Xvfb, i3, Selkies, nginx, and the added Monad daemon longrun. The
+graph runs in a child PID namespace so `/init` is PID 1 without replacing the
+E2B guest's outer systemd; it shares the guest network namespace. The desktop
+listeners implement the platform contract on 6080/6081. Nested-Docker packages
+are removed, and Webtop's retained `svc-docker` guard sleeps with
+`START_DOCKER=false`; the E2B guest's outer infrastructure dockerd remains
+outside the desktop PID and mount namespaces.
 
 ## Deployment topology
 

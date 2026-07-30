@@ -13,9 +13,11 @@
   ],
   "tool_versions": {
     "agent_browser": "0.27.0",
-    "bun_base_image": "oven/bun:1-debian",
+    "bun_base_image": "oven/bun:1-debian@sha256:9dba1a1b43ce28c9d7931bfc4eb00feb63b0114720a0277a8f939ae4dfc9db6f",
     "opencode": "1.14.28",
-    "playwright": "1.60.0"
+    "playwright": "1.60.0",
+    "remote_desktop": "LinuxServer Webtop Selkies on Ubuntu i3",
+    "webtop_image": "lscr.io/linuxserver/webtop@sha256:6da6d68a2e3309fdbdc945a1b5465c3174acdf19dfbd44734495b122f10a5236"
   },
   "template_resources": {
     "cpu_count": 2,

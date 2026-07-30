@@ -4,6 +4,14 @@ import { readFile } from 'node:fs/promises';
 export const SOURCE_FILE = new URL('./runtime-source.json', import.meta.url);
 export const DOCKERFILE = new URL('./e2b.Dockerfile', import.meta.url);
 export const TEMPLATE_DEFINITION = new URL('./template.mjs', import.meta.url);
+export const S6_SERVICE_FILES = [
+  new URL('./s6-overlay/s6-rc.d/svc-monad-agent/run', import.meta.url),
+  new URL('./s6-overlay/s6-rc.d/svc-monad-agent/type', import.meta.url),
+  new URL(
+    './s6-overlay/s6-rc.d/svc-monad-agent/dependencies.d/init-services',
+    import.meta.url,
+  ),
+];
 
 export function requiredEnv(environment, name) {
   const value = environment[name]?.trim();
@@ -46,6 +54,9 @@ export async function loadRuntimeSource() {
 export async function calculateRuntimeVersion(source) {
   const dockerfile = await readFile(DOCKERFILE);
   const templateDefinition = await readFile(TEMPLATE_DEFINITION);
+  const s6ServiceFiles = await Promise.all(
+    S6_SERVICE_FILES.map((file) => readFile(file)),
+  );
   const versionInput = {
     schema_version: source.schema_version,
     tams_revision: source.tams_revision,
@@ -54,13 +65,16 @@ export async function calculateRuntimeVersion(source) {
     tool_versions: source.tool_versions,
     template_resources: source.template_resources,
   };
-  return createHash('sha256')
+  const hash = createHash('sha256')
     .update(dockerfile)
     .update('\0')
     .update(templateDefinition)
     .update('\0')
-    .update(JSON.stringify(versionInput))
-    .digest('hex');
+    .update(JSON.stringify(versionInput));
+  for (const file of s6ServiceFiles) {
+    hash.update('\0').update(file);
+  }
+  return hash.digest('hex');
 }
 
 export function safeErrorMessage(error, secrets = []) {

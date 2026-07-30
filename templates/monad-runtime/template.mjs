@@ -42,8 +42,8 @@ export async function createMonadRuntimeTemplate() {
         { user: 'root' },
       )
       .setStartCmd(
-        '/usr/local/bin/monad-entrypoint',
-        "curl -fsS http://127.0.0.1:8000/monad/health | jq -e '.daemon == \"ok\" and .opencode == \"ok\" and .runtimeReady == true' >/dev/null",
+        'unshare --pid --fork --mount-proc --kill-child=TERM /init',
+        "curl -fsS http://127.0.0.1:8000/monad/health | jq -e '.daemon == \"ok\" and .opencode == \"ok\" and .runtimeReady == true' >/dev/null && curl -fsS http://127.0.0.1:6080/ >/dev/null && curl -fkSs https://127.0.0.1:6081/ >/dev/null",
       );
     return { template, runtimeVersion, source, assetManifest };
   } finally {

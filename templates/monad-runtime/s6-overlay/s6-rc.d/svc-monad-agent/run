@@ -1,0 +1,2 @@
+#!/usr/bin/with-contenv bash
+exec /usr/local/bin/monad-entrypoint

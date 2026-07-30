@@ -75,6 +75,7 @@ export async function prepareRuntimeAssets(environment = process.env) {
   const cliImage = `monad-runtime-cli-build:${shortVersion}`;
   const agentContainer = `monad-runtime-agent-${shortVersion}`;
   const cliContainer = `monad-runtime-cli-${shortVersion}`;
+  const bunContainer = `monad-runtime-bun-${shortVersion}`;
 
   await rm(assetsDir, { recursive: true, force: true });
   await mkdir(assetsDir, { recursive: true });
@@ -117,6 +118,12 @@ export async function prepareRuntimeAssets(environment = process.env) {
       `${assetsDir}/monad`,
       cliContainer,
     );
+    await copyContainerFile(
+      source.tool_versions.bun_base_image,
+      '/usr/local/bin/bun',
+      `${assetsDir}/bun`,
+      bunContainer,
+    );
   } finally {
     for (const image of [agentImage, cliImage]) {
       try {
@@ -155,8 +162,15 @@ export async function prepareRuntimeAssets(environment = process.env) {
   );
 
   const dockerfile = await readFile(`${templateDir}/e2b.Dockerfile`, 'utf8');
-  if (/\b(?:kasm|selkies|vnc)\b/i.test(dockerfile)) {
-    throw new Error('PR A Dockerfile must not contain a desktop layer');
+  if (/\b(?:kasm|novnc|tigervnc)\b/i.test(dockerfile)) {
+    throw new Error('desktop Dockerfile must use Selkies, not a VNC stack');
+  }
+  if (
+    !dockerfile.includes(source.tool_versions.webtop_image) ||
+    !dockerfile.includes('CUSTOM_PORT=6080') ||
+    !dockerfile.includes('CUSTOM_HTTPS_PORT=6081')
+  ) {
+    throw new Error('desktop Dockerfile does not match its pinned Webtop contract');
   }
   return manifest;
 }
