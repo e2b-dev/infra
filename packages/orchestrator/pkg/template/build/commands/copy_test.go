@@ -441,6 +441,48 @@ func TestCopyScriptBehavior(t *testing.T) { //nolint:paralleltest // no idea why
 			},
 		},
 		{
+			name:        "single_file_to_new_nested_directory_trailing_slash",
+			description: "COPY file /a/b/c/ must create the directory chain and place the file inside (Docker semantics)",
+			files: map[string]string{
+				"test.sh": "file",
+			},
+			copyFrom:      "test.sh",
+			copyTo:        "a/b/c/",
+			shouldSucceed: true,
+			expectedPaths: map[string]string{
+				"a/b/c/test.sh": "file",
+			},
+		},
+		{
+			name:        "single_file_to_preexisting_directory_no_slash",
+			description: "COPY file /existing-dir (no trailing slash, dir exists) places the file inside it",
+			files: map[string]string{
+				"test.sh": "file",
+			},
+			preexistingTargetPaths: map[string]string{
+				"dest/": "dir",
+			},
+			copyFrom:      "test.sh",
+			copyTo:        "dest",
+			shouldSucceed: true,
+			expectedPaths: map[string]string{
+				"dest/test.sh": "file",
+			},
+		},
+		{
+			name:        "symlink_to_new_directory_trailing_slash",
+			description: "COPY symlink /newdir/ must create the directory and place the symlink inside (Docker semantics)",
+			files: map[string]string{
+				"link.txt": "symlink",
+			},
+			copyFrom:      "link.txt",
+			copyTo:        "newdir/",
+			shouldSucceed: true,
+			expectedPaths: map[string]string{
+				"newdir/link.txt": "symlink",
+			},
+		},
+		{
 			name:        "multiple_files_root_level",
 			description: "Multiple files at root, copied to target directory",
 			files: map[string]string{
@@ -869,8 +911,12 @@ func TestCopyScriptBehavior(t *testing.T) { //nolint:paralleltest // no idea why
 			// This mimics how copy.go constructs the path: filepath.Join(sbxUnpackPath, sourcePath)
 			sourcePath := filepath.Join(unpackDir, tc.copyFrom)
 
-			// Make target path absolute
+			// Make target path absolute, preserving a trailing slash
+			// (filepath.Join strips it, but Docker COPY semantics depend on it)
 			targetPathOrFile := filepath.Join(targetBaseDir, tc.copyTo)
+			if strings.HasSuffix(tc.copyTo, "/") {
+				targetPathOrFile += "/"
+			}
 
 			// Set owner if not specified
 			owner := tc.owner
