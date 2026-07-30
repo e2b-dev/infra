@@ -111,7 +111,7 @@ type Config struct {
 	AuthProvider sharedauth.ProviderConfig `env:"AUTH_PROVIDER_CONFIG"`
 
 	DefaultPersistentVolumeType     string `env:"DEFAULT_PERSISTENT_VOLUME_TYPE"`
-	PlaceholderPersistentVolumeType string `env:"PLACEHOLDER_PERSISTENT_VOLUME_TYPE" envDefault:"REPLACEME"`
+	PlaceholderPersistentVolumeType string `env:"PLACEHOLDER_PERSISTENT_VOLUME_TYPE" envDefault:"__DEFAULT_VOLUME_TYPE__"`
 
 	// DefaultPersistentVolumeTypeByRegion is the per-region default volume type,
 	// e.g. "us-west3:zonalfilestore-us-west3". A team's region is resolved from
