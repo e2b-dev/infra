@@ -28,8 +28,6 @@
       "release-type": "go",
       "component": "envd",
       "include-v-in-tag": true,
-<<<<<<< Updated upstream
-=======
       "changelog-path": "CHANGELOG.md",
       "extra-files": ["pkg/version.go"]
     },
@@ -55,7 +53,6 @@
       "release-type": "go",
       "component": "nomad-nodepool-apm",
       "include-v-in-tag": true,
->>>>>>> Stashed changes
       "changelog-path": "CHANGELOG.md"
     }
   }
