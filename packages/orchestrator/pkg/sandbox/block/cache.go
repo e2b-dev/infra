@@ -106,18 +106,62 @@ func (c *Cache) isClosed() bool {
 	return c.closed.Load()
 }
 
-func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMetadata, error) {
-	ctx, childSpan := tracer.Start(ctx, "export-to-diff")
-	defer childSpan.End()
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
+// DiffMetadata returns the dirty/empty diff metadata from the tracker without
+// copying any block data. It lets a deferred/background seal build the diff
+// header (and scheduling metadata) synchronously while the actual reflink copy
+// (ExportToDiff) runs off the critical path. The result matches what
+// ExportToDiff computes internally, provided the cache is frozen (no writes) in
+// between — which is guaranteed once the sandbox has been stopped and the cache
+// ejected.
+func (c *Cache) DiffMetadata() (*header.DiffMetadata, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 
 	if c.isClosed() {
 		return nil, NewErrCacheClosed(c.filePath)
 	}
 
 	if c.mmap == nil {
+		return header.NewDiffMetadata(c.blockSize, nil, nil), nil
+	}
+
+	dirty, empty := c.tracker.Export()
+
+	return header.NewDiffMetadata(c.blockSize, dirty, empty), nil
+}
+
+func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMetadata, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.exportToDiffLocked(ctx, out, nil)
+}
+
+// ExportToDiffWithMetadata copies the dirty ranges described by meta to out,
+// using meta's bitmap instead of re-reading the tracker. Callers that captured a
+// DiffMetadata earlier (e.g. the deferred rootfs seal, which reads it at setup
+// and exports later in the background) use this so the copied ranges are
+// guaranteed to match a header built from the same bitmap read.
+func (c *Cache) ExportToDiffWithMetadata(ctx context.Context, out *os.File, meta *header.DiffMetadata) (*header.DiffMetadata, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.exportToDiffLocked(ctx, out, meta)
+}
+
+func (c *Cache) exportToDiffLocked(ctx context.Context, out *os.File, meta *header.DiffMetadata) (*header.DiffMetadata, error) {
+	ctx, childSpan := tracer.Start(ctx, "export-to-diff")
+	defer childSpan.End()
+
+	if c.isClosed() {
+		return nil, NewErrCacheClosed(c.filePath)
+	}
+
+	if c.mmap == nil {
+		if meta != nil {
+			return meta, nil
+		}
+
 		return header.NewDiffMetadata(c.blockSize, nil, nil), nil
 	}
 
@@ -137,8 +181,11 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 		logger.L().Warn(ctx, "error syncing file", zap.Error(err))
 	}
 
-	dirty, empty := c.tracker.Export()
-	diffMetadata := header.NewDiffMetadata(c.blockSize, dirty, empty)
+	diffMetadata := meta
+	if diffMetadata == nil {
+		dirty, empty := c.tracker.Export()
+		diffMetadata = header.NewDiffMetadata(c.blockSize, dirty, empty)
+	}
 
 	dst := int(out.Fd())
 	var writeOffset int64
