@@ -2,7 +2,6 @@ package clusters
 
 import (
 	"context"
-	"math/rand/v2"
 	"sync"
 	"time"
 
@@ -26,8 +25,6 @@ import (
 const (
 	clustersSyncInterval = 15 * time.Second
 	clusterSyncTimeout   = 5 * time.Second
-	clusterCacheTTL      = 5 * time.Minute
-	clusterCacheJitter   = 30 * time.Second
 )
 
 type Pool struct {
@@ -60,7 +57,6 @@ func NewPool(
 	clusters := smap.New[*Cluster]()
 	clusterConfigs := smap.New[queries.Cluster]()
 	currentConfigs := smap.New[queries.Cluster]()
-	clusterExpiresAt := smap.New[time.Time]()
 
 	localCluster := localClusterConfig()
 
@@ -71,15 +67,12 @@ func NewPool(
 		clusters:             clusters,
 		clusterConfigs:       clusterConfigs,
 		currentConfigs:       currentConfigs,
-		clusterExpiresAt:     clusterExpiresAt,
 		local:                localCluster,
 		localDiscovery:       localDiscovery,
 		queryLogsProvider:    queryLogsProvider,
 		queryMetricsProvider: queryMetricsProvider,
 		sandboxLogsReader:    sandboxLogsReader,
 		featureFlags:         featureFlags,
-		now:                  time.Now,
-		cacheTTL:             jitteredClusterCacheTTL,
 	}
 
 	p := &Pool{
@@ -137,9 +130,6 @@ type clustersSyncStore struct {
 	config               cfg.Config
 	clusterConfigs       *smap.Map[queries.Cluster]
 	currentConfigs       *smap.Map[queries.Cluster]
-	clusterExpiresAt     *smap.Map[time.Time]
-	now                  func() time.Time
-	cacheTTL             func() time.Duration
 	clusterFactory       func(context.Context, queries.Cluster) (*Cluster, error)
 	clusterCloser        func(context.Context, *Cluster) error
 }
@@ -203,9 +193,6 @@ func (d clustersSyncStore) PoolInsert(ctx context.Context, cluster queries.Clust
 
 	d.clusters.Insert(clusterID, c)
 	d.clusterConfigs.Insert(clusterID, cluster)
-	if cluster.ID != consts.LocalClusterID {
-		d.clusterExpiresAt.Insert(clusterID, d.nextClusterExpiry())
-	}
 	logger.L().Info(ctx, "Cluster initialized successfully", logger.WithClusterID(cluster.ID))
 }
 
@@ -215,11 +202,6 @@ func (d clustersSyncStore) PoolUpdate(ctx context.Context, cluster *Cluster) {
 	}
 
 	clusterID := cluster.ID.String()
-	expiresAt, ok := d.clusterExpiresAt.Get(clusterID)
-	if ok && d.now().Before(expiresAt) {
-		return
-	}
-
 	current, ok := d.currentConfigs.Get(clusterID)
 	if !ok {
 		return
@@ -227,8 +209,6 @@ func (d clustersSyncStore) PoolUpdate(ctx context.Context, cluster *Cluster) {
 
 	cached, ok := d.clusterConfigs.Get(clusterID)
 	if ok && sameClusterConfig(cached, current) {
-		d.clusterExpiresAt.Insert(clusterID, d.nextClusterExpiry())
-
 		return
 	}
 
@@ -243,7 +223,6 @@ func (d clustersSyncStore) PoolUpdate(ctx context.Context, cluster *Cluster) {
 	// observe the cluster as missing.
 	d.clusters.Insert(clusterID, replacement)
 	d.clusterConfigs.Insert(clusterID, current)
-	d.clusterExpiresAt.Insert(clusterID, d.nextClusterExpiry())
 
 	if err := d.closeCluster(ctx, cluster); err != nil {
 		logger.L().Error(ctx, "Closing stale cluster failed", zap.Error(err), logger.WithClusterID(cluster.ID))
@@ -262,7 +241,6 @@ func (d clustersSyncStore) PoolRemove(ctx context.Context, cluster *Cluster) {
 	d.clusters.Remove(cluster.ID.String())
 	d.clusterConfigs.Remove(cluster.ID.String())
 	d.currentConfigs.Remove(cluster.ID.String())
-	d.clusterExpiresAt.Remove(cluster.ID.String())
 }
 
 func (d clustersSyncStore) initializeCluster(ctx context.Context, cluster queries.Cluster) (*Cluster, error) {
@@ -297,19 +275,6 @@ func (d clustersSyncStore) closeCluster(ctx context.Context, cluster *Cluster) e
 	}
 
 	return cluster.Close(ctx)
-}
-
-func (d clustersSyncStore) nextClusterExpiry() time.Time {
-	ttl := clusterCacheTTL
-	if d.cacheTTL != nil {
-		ttl = d.cacheTTL()
-	}
-
-	return d.now().Add(ttl)
-}
-
-func jitteredClusterCacheTTL() time.Duration {
-	return clusterCacheTTL + time.Duration(rand.Int64N(int64(clusterCacheJitter)+1))
 }
 
 func sameClusterConfig(left, right queries.Cluster) bool {
