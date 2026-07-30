@@ -78,6 +78,12 @@ type RemoveOpts struct {
 	// snapshot); resuming it cold-boots from disk. Ignored unless Action is a
 	// pause. Default false = full memory snapshot.
 	FilesystemOnly bool
+
+	// RequesterIP and UserAgent are populated for explicit API kill requests
+	// (KillReasonRequest) so that sandbox.lifecycle.killed events can record
+	// which client initiated the deletion.
+	RequesterIP string
+	UserAgent   string
 }
 
 var AllowedTransitions = map[State]map[State]bool{
