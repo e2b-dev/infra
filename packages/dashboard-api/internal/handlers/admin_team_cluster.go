@@ -55,6 +55,7 @@ func (s *APIStore) PostAdminClusters(c *gin.Context) {
 		return
 	}
 
+	logger.L().Info(ctx, "admin cluster created", logger.WithClusterID(clusterID))
 	c.JSON(http.StatusCreated, api.AdminClusterCreateResponse{ClusterId: clusterID})
 }
 
@@ -91,6 +92,9 @@ func (s *APIStore) PutAdminTeamsTeamIDCluster(c *gin.Context, teamID api.TeamID)
 
 		return
 	}
+
+	logger.L().Info(ctx, "admin team cluster assigned",
+		logger.WithTeamID(teamID.String()), logger.WithClusterID(body.ClusterId))
 
 	if err := s.authService.InvalidateTeamCache(ctx, teamID); err != nil {
 		logger.L().Error(ctx, "invalidating team cache after cluster assignment",
