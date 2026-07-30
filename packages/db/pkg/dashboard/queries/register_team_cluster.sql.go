@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 )
 
-const assignTeamCluster = `-- name: AssignTeamCluster :exec
+const assignTeamCluster = `-- name: AssignTeamCluster :execrows
 UPDATE public.teams
 SET cluster_id = $1::uuid
 WHERE id = $2::uuid
@@ -22,43 +22,15 @@ type AssignTeamClusterParams struct {
 	TeamID    uuid.UUID
 }
 
-func (q *Queries) AssignTeamCluster(ctx context.Context, arg AssignTeamClusterParams) error {
-	_, err := q.db.Exec(ctx, assignTeamCluster, arg.ClusterID, arg.TeamID)
-	return err
+func (q *Queries) AssignTeamCluster(ctx context.Context, arg AssignTeamClusterParams) (int64, error) {
+	result, err := q.db.Exec(ctx, assignTeamCluster, arg.ClusterID, arg.TeamID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const getClusterForRegistration = `-- name: GetClusterForRegistration :one
-SELECT id, name, endpoint, endpoint_tls, token, sandbox_proxy_domain, auth_org_id
-FROM public.clusters
-WHERE id = $1::uuid
-`
-
-type GetClusterForRegistrationRow struct {
-	ID                 uuid.UUID
-	Name               string
-	Endpoint           string
-	EndpointTls        bool
-	Token              string
-	SandboxProxyDomain *string
-	AuthOrgID          *string
-}
-
-func (q *Queries) GetClusterForRegistration(ctx context.Context, clusterID uuid.UUID) (GetClusterForRegistrationRow, error) {
-	row := q.db.QueryRow(ctx, getClusterForRegistration, clusterID)
-	var i GetClusterForRegistrationRow
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.Endpoint,
-		&i.EndpointTls,
-		&i.Token,
-		&i.SandboxProxyDomain,
-		&i.AuthOrgID,
-	)
-	return i, err
-}
-
-const insertClusterForRegistration = `-- name: InsertClusterForRegistration :one
+const createCluster = `-- name: CreateCluster :exec
 INSERT INTO public.clusters (
     id,
     name,
@@ -77,10 +49,9 @@ VALUES (
     $6::text,
     $7::text
 )
-RETURNING id, name, endpoint, endpoint_tls, token, sandbox_proxy_domain, auth_org_id
 `
 
-type InsertClusterForRegistrationParams struct {
+type CreateClusterParams struct {
 	ClusterID          uuid.UUID
 	Name               string
 	Endpoint           string
@@ -90,18 +61,8 @@ type InsertClusterForRegistrationParams struct {
 	AuthOrgID          *string
 }
 
-type InsertClusterForRegistrationRow struct {
-	ID                 uuid.UUID
-	Name               string
-	Endpoint           string
-	EndpointTls        bool
-	Token              string
-	SandboxProxyDomain *string
-	AuthOrgID          *string
-}
-
-func (q *Queries) InsertClusterForRegistration(ctx context.Context, arg InsertClusterForRegistrationParams) (InsertClusterForRegistrationRow, error) {
-	row := q.db.QueryRow(ctx, insertClusterForRegistration,
+func (q *Queries) CreateCluster(ctx context.Context, arg CreateClusterParams) error {
+	_, err := q.db.Exec(ctx, createCluster,
 		arg.ClusterID,
 		arg.Name,
 		arg.Endpoint,
@@ -110,34 +71,5 @@ func (q *Queries) InsertClusterForRegistration(ctx context.Context, arg InsertCl
 		arg.SandboxProxyDomain,
 		arg.AuthOrgID,
 	)
-	var i InsertClusterForRegistrationRow
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.Endpoint,
-		&i.EndpointTls,
-		&i.Token,
-		&i.SandboxProxyDomain,
-		&i.AuthOrgID,
-	)
-	return i, err
-}
-
-const lockTeamClusterForUpdate = `-- name: LockTeamClusterForUpdate :one
-SELECT cluster_id, tier
-FROM public.teams
-WHERE id = $1::uuid
-FOR UPDATE
-`
-
-type LockTeamClusterForUpdateRow struct {
-	ClusterID *uuid.UUID
-	Tier      string
-}
-
-func (q *Queries) LockTeamClusterForUpdate(ctx context.Context, teamID uuid.UUID) (LockTeamClusterForUpdateRow, error) {
-	row := q.db.QueryRow(ctx, lockTeamClusterForUpdate, teamID)
-	var i LockTeamClusterForUpdateRow
-	err := row.Scan(&i.ClusterID, &i.Tier)
-	return i, err
+	return err
 }

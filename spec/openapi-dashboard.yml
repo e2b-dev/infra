@@ -400,11 +400,10 @@ components:
           format: email
           description: Billing/contact email for the team.
 
-    AdminTeamClusterRegistrationRequest:
+    AdminClusterCreateRequest:
       type: object
       required:
         - cluster_id
-        - expected_previous_cluster_id
         - name
         - endpoint
         - endpoint_tls
@@ -414,11 +413,6 @@ components:
           type: string
           format: uuid
           description: Stable identifier for the new immutable cluster row.
-        expected_previous_cluster_id:
-          type: string
-          format: uuid
-          nullable: true
-          description: Current team cluster ID, or null when the team is expected to be unassigned.
         name:
           type: string
           minLength: 1
@@ -437,27 +431,14 @@ components:
           type: string
           nullable: true
 
-    AdminTeamClusterRegistrationResponse:
+    AdminTeamClusterAssignmentRequest:
       type: object
       required:
-        - team_id
         - cluster_id
-        - previous_cluster_id
-        - changed
       properties:
-        team_id:
-          type: string
-          format: uuid
         cluster_id:
           type: string
           format: uuid
-        previous_cluster_id:
-          type: string
-          format: uuid
-          nullable: true
-        changed:
-          type: boolean
-          description: False when an identical request was already committed.
 
     BuildStatus:
       type: string
@@ -1586,14 +1567,35 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
+  /admin/clusters:
+    post:
+      summary: Create an immutable cluster
+      description: Creates a cluster row. Existing cluster rows are never modified.
+      tags: [admin]
+      security:
+        - AdminApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminClusterCreateRequest"
+      responses:
+        "201":
+          description: Cluster created.
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "409":
+          $ref: "#/components/responses/409"
+        "500":
+          $ref: "#/components/responses/500"
+
   /admin/teams/{teamID}/cluster:
     put:
-      summary: Register and assign an immutable cluster
-      description: >-
-        Atomically inserts a new cluster row and assigns it to the team. The
-        expected previous cluster ID prevents concurrent deployments from
-        overwriting each other. Repeating an identical committed request is
-        idempotent; an existing cluster row is never modified.
+      summary: Assign a cluster to a team
+      description: Updates the team's cluster reference to an existing cluster.
       tags: [admin]
       security:
         - AdminApiKeyAuth: []
@@ -1604,22 +1606,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AdminTeamClusterRegistrationRequest"
+              $ref: "#/components/schemas/AdminTeamClusterAssignmentRequest"
       responses:
-        "200":
-          description: Cluster registered and assigned, or an identical request already completed.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AdminTeamClusterRegistrationResponse"
+        "204":
+          description: Cluster assigned.
         "400":
           $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
         "404":
           $ref: "#/components/responses/404"
-        "409":
-          $ref: "#/components/responses/409"
         "500":
           $ref: "#/components/responses/500"
 

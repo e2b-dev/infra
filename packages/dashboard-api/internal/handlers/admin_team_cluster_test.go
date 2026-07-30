@@ -16,42 +16,79 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 )
 
-func TestPutAdminTeamsTeamIDClusterRegistersAndAssignsAtomically(t *testing.T) {
+func TestPostAdminClustersCreatesImmutableCluster(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
 	ctx := t.Context()
-	teamID := createEnterpriseTestTeam(t, db)
-
 	clusterID := uuid.New()
 	authOrgID := "org_test"
 	sandboxDomain := "sandbox.example.test"
-	request := api.AdminTeamClusterRegistrationRequest{
-		ClusterId:                 clusterID,
-		ExpectedPreviousClusterId: nil,
-		Name:                      "Managed BYOC",
-		Endpoint:                  "api.example.test:5008",
-		EndpointTls:               true,
-		Token:                     "cluster-token",
-		SandboxProxyDomain:        &sandboxDomain,
-		AuthOrgId:                 &authOrgID,
+	request := api.AdminClusterCreateRequest{
+		ClusterId:          clusterID,
+		Name:               "Managed BYOC",
+		Endpoint:           "api.example.test:5008",
+		EndpointTls:        true,
+		Token:              "cluster-token",
+		SandboxProxyDomain: &sandboxDomain,
+		AuthOrgId:          &authOrgID,
 	}
+	store := &APIStore{db: db.SqlcClient}
+
+	response := callCreateCluster(t, store, request)
+	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
+
+	var count int
+	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(ctx,
+		`SELECT count(*) FROM public.clusters WHERE id = $1 AND name = $2 AND endpoint = $3 AND token = $4`,
+		func(rows pgx.Rows) error {
+			require.True(t, rows.Next())
+
+			return rows.Scan(&count)
+		},
+		clusterID,
+		request.Name,
+		request.Endpoint,
+		request.Token,
+	))
+	require.Equal(t, 1, count)
+
+	changed := request
+	changed.Name = "Changed"
+	conflict := callCreateCluster(t, store, changed)
+	require.Equal(t, http.StatusConflict, conflict.Code, conflict.Body.String())
+	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(ctx,
+		`SELECT count(*) FROM public.clusters WHERE id = $1 AND name = $2`,
+		func(rows pgx.Rows) error {
+			require.True(t, rows.Next())
+
+			return rows.Scan(&count)
+		},
+		clusterID,
+		request.Name,
+	))
+	require.Equal(t, 1, count)
+}
+
+func TestPutAdminTeamsTeamIDClusterAssignsExistingCluster(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	teamID := createClusterAssignmentTestTeam(t, db)
+	clusterID := uuid.New()
+	require.NoError(t, db.SqlcClient.TestsRawSQL(ctx,
+		`INSERT INTO public.clusters (id, name, endpoint, endpoint_tls, token) VALUES ($1, 'managed', 'api.example.test:5008', true, 'token')`,
+		clusterID,
+	))
+
 	authService := &recordingCacheAuthService{}
 	store := &APIStore{db: db.SqlcClient, authService: authService}
-
-	first := callClusterRegistration(t, store, teamID, request)
-	require.Equal(t, http.StatusOK, first.Code, first.Body.String())
-
-	var firstBody api.AdminTeamClusterRegistrationResponse
-	require.NoError(t, json.Unmarshal(first.Body.Bytes(), &firstBody))
-	require.True(t, firstBody.Changed)
-	require.Equal(t, teamID, firstBody.TeamId)
-	require.Equal(t, clusterID, firstBody.ClusterId)
-	require.Nil(t, firstBody.PreviousClusterId)
+	response := callAssignCluster(t, store, teamID, api.AdminTeamClusterAssignmentRequest{ClusterId: clusterID})
+	require.Equal(t, http.StatusNoContent, response.Code, response.Body.String())
 	require.Equal(t, []uuid.UUID{teamID}, authService.invalidated)
 
 	var assignedClusterID uuid.UUID
-	var clusterCount int
 	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(ctx,
 		`SELECT cluster_id FROM public.teams WHERE id = $1`,
 		func(rows pgx.Rows) error {
@@ -62,128 +99,48 @@ func TestPutAdminTeamsTeamIDClusterRegistersAndAssignsAtomically(t *testing.T) {
 		teamID,
 	))
 	require.Equal(t, clusterID, assignedClusterID)
-	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(ctx,
-		`SELECT count(*) FROM public.clusters WHERE id = $1 AND name = $2 AND endpoint = $3 AND token = $4`,
-		func(rows pgx.Rows) error {
-			require.True(t, rows.Next())
-
-			return rows.Scan(&clusterCount)
-		},
-		clusterID,
-		request.Name,
-		request.Endpoint,
-		request.Token,
-	))
-	require.Equal(t, 1, clusterCount)
-
-	retry := callClusterRegistration(t, store, teamID, request)
-	require.Equal(t, http.StatusOK, retry.Code, retry.Body.String())
-
-	var retryBody api.AdminTeamClusterRegistrationResponse
-	require.NoError(t, json.Unmarshal(retry.Body.Bytes(), &retryBody))
-	require.False(t, retryBody.Changed)
-	require.Equal(t, []uuid.UUID{teamID, teamID}, authService.invalidated)
-
-	replacementClusterID := uuid.New()
-	replacementRequest := request
-	replacementRequest.ClusterId = replacementClusterID
-	replacementRequest.ExpectedPreviousClusterId = &clusterID
-	replacementRequest.Name = "Managed BYOC replacement"
-	replacementAuthOrgID := "org_replacement"
-	replacementRequest.AuthOrgId = &replacementAuthOrgID
-
-	replacement := callClusterRegistration(t, store, teamID, replacementRequest)
-	require.Equal(t, http.StatusOK, replacement.Code, replacement.Body.String())
-
-	var replacementBody api.AdminTeamClusterRegistrationResponse
-	require.NoError(t, json.Unmarshal(replacement.Body.Bytes(), &replacementBody))
-	require.True(t, replacementBody.Changed)
-	require.Equal(t, &clusterID, replacementBody.PreviousClusterId)
-	require.Equal(t, replacementClusterID, replacementBody.ClusterId)
-	require.Equal(t, []uuid.UUID{teamID, teamID, teamID}, authService.invalidated)
-
-	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(ctx,
-		`SELECT cluster_id FROM public.teams WHERE id = $1`,
-		func(rows pgx.Rows) error {
-			require.True(t, rows.Next())
-
-			return rows.Scan(&assignedClusterID)
-		},
-		teamID,
-	))
-	require.Equal(t, replacementClusterID, assignedClusterID)
-	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(ctx,
-		`SELECT count(*) FROM public.clusters WHERE id IN ($1, $2)`,
-		func(rows pgx.Rows) error {
-			require.True(t, rows.Next())
-
-			return rows.Scan(&clusterCount)
-		},
-		clusterID,
-		replacementClusterID,
-	))
-	require.Equal(t, 2, clusterCount, "replacement must preserve the previous immutable cluster row")
 }
 
-func TestPutAdminTeamsTeamIDClusterRejectsStaleTeamAndRollsBackCluster(t *testing.T) {
+func TestPutAdminTeamsTeamIDClusterRejectsMissingResources(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
-	ctx := t.Context()
-	teamID := createEnterpriseTestTeam(t, db)
+	teamID := createClusterAssignmentTestTeam(t, db)
+	store := &APIStore{db: db.SqlcClient, authService: &recordingCacheAuthService{}}
 
-	previousClusterID := uuid.New()
-	require.NoError(t, db.SqlcClient.TestsRawSQL(ctx,
-		`INSERT INTO public.clusters (id, name, endpoint, endpoint_tls, token) VALUES ($1, 'previous', 'previous.test:5008', true, 'previous-token')`,
-		previousClusterID,
+	missingCluster := callAssignCluster(t, store, teamID, api.AdminTeamClusterAssignmentRequest{ClusterId: uuid.New()})
+	require.Equal(t, http.StatusNotFound, missingCluster.Code, missingCluster.Body.String())
+
+	clusterID := uuid.New()
+	require.NoError(t, db.SqlcClient.TestsRawSQL(t.Context(),
+		`INSERT INTO public.clusters (id, name, endpoint, endpoint_tls, token) VALUES ($1, 'managed', 'api.example.test:5008', true, 'token')`,
+		clusterID,
 	))
-	require.NoError(t, db.SqlcClient.TestsRawSQL(ctx, "UPDATE public.teams SET cluster_id = $1 WHERE id = $2", previousClusterID, teamID))
-
-	newClusterID := uuid.New()
-	request := api.AdminTeamClusterRegistrationRequest{
-		ClusterId:                 newClusterID,
-		ExpectedPreviousClusterId: nil,
-		Name:                      "Managed BYOC",
-		Endpoint:                  "api.example.test:5008",
-		EndpointTls:               true,
-		Token:                     "cluster-token",
-	}
-	authService := &recordingCacheAuthService{}
-	store := &APIStore{db: db.SqlcClient, authService: authService}
-
-	response := callClusterRegistration(t, store, teamID, request)
-	require.Equal(t, http.StatusConflict, response.Code, response.Body.String())
-	require.Empty(t, authService.invalidated)
-
-	var assignedClusterID uuid.UUID
-	var newClusterCount int
-	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(ctx,
-		`SELECT cluster_id FROM public.teams WHERE id = $1`,
-		func(rows pgx.Rows) error {
-			require.True(t, rows.Next())
-
-			return rows.Scan(&assignedClusterID)
-		},
-		teamID,
-	))
-	require.Equal(t, previousClusterID, assignedClusterID)
-	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(ctx,
-		`SELECT count(*) FROM public.clusters WHERE id = $1`,
-		func(rows pgx.Rows) error {
-			require.True(t, rows.Next())
-
-			return rows.Scan(&newClusterCount)
-		},
-		newClusterID,
-	))
-	require.Zero(t, newClusterCount)
+	missingTeam := callAssignCluster(t, store, uuid.New(), api.AdminTeamClusterAssignmentRequest{ClusterId: clusterID})
+	require.Equal(t, http.StatusNotFound, missingTeam.Code, missingTeam.Body.String())
 }
 
-func callClusterRegistration(
+func callCreateCluster(t *testing.T, store *APIStore, request api.AdminClusterCreateRequest) *httptest.ResponseRecorder {
+	t.Helper()
+
+	body, err := json.Marshal(request)
+	require.NoError(t, err)
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	ginCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/clusters", bytes.NewReader(body))
+	ginCtx.Request.Header.Set("Content-Type", "application/json")
+	store.PostAdminClusters(ginCtx)
+	ginCtx.Writer.WriteHeaderNow()
+
+	return recorder
+}
+
+func callAssignCluster(
 	t *testing.T,
 	store *APIStore,
 	teamID uuid.UUID,
-	request api.AdminTeamClusterRegistrationRequest,
+	request api.AdminTeamClusterAssignmentRequest,
 ) *httptest.ResponseRecorder {
 	t.Helper()
 
@@ -194,13 +151,13 @@ func callClusterRegistration(
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/admin/teams/"+teamID.String()+"/cluster", bytes.NewReader(body))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
-
 	store.PutAdminTeamsTeamIDCluster(ginCtx, teamID)
+	ginCtx.Writer.WriteHeaderNow()
 
 	return recorder
 }
 
-func createEnterpriseTestTeam(t *testing.T, db *testutils.Database) uuid.UUID {
+func createClusterAssignmentTestTeam(t *testing.T, db *testutils.Database) uuid.UUID {
 	t.Helper()
 
 	teamID := uuid.New()
@@ -218,14 +175,14 @@ func createEnterpriseTestTeam(t *testing.T, db *testutils.Database) uuid.UUID {
 			default_free_disk_size_mb,
 			max_disk_size_mb
 		)
-		VALUES ('enterprise_v1', 'Enterprise tier', 512, 20, 1, 8, 8096, 20, 7, 512, 25512)
+		VALUES ('cluster_assignment_test', 'Cluster assignment test', 512, 20, 1, 8, 8096, 20, 7, 512, 25512)
 	`))
 	require.NoError(t, db.SqlcClient.TestsRawSQL(t.Context(),
-		`INSERT INTO public.teams (id, name, tier, email, slug) VALUES ($1, $2, 'enterprise_v1', $3, $4)`,
+		`INSERT INTO public.teams (id, name, tier, email, slug) VALUES ($1, $2, 'cluster_assignment_test', $3, $4)`,
 		teamID,
-		"Enterprise team",
-		"enterprise-"+teamID.String()+"@example.com",
-		"enterprise-"+teamID.String()[:8],
+		"Cluster assignment test team",
+		"cluster-"+teamID.String()+"@example.com",
+		"cluster-"+teamID.String()[:8],
 	))
 
 	return teamID
