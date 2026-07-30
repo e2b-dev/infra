@@ -89,38 +89,19 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 
 	clusterID := clustershared.WithClusterFallback(team.ClusterID)
 
-	client, tx, err := a.sqlcDB.WithTx(ctx)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to create transaction")
-		telemetry.ReportCriticalError(ctx, "Failed to create transaction", err)
-
-		return
-	}
-	defer func(ctx context.Context) {
-		_ = tx.Rollback(ctx)
-	}(context.WithoutCancel(ctx))
-
-	volume, err := client.CreateVolume(ctx, queries.CreateVolumeParams{
+	// The volume identity we intend to create. We generate the ID up front so we
+	// can hand it to the orchestrator, which is given the chance to adjust these
+	// values (e.g. resolve a placeholder volume type) and returns the definitive
+	// values we then persist.
+	volume := queries.Volume{
+		ID:         uuid.New(),
 		TeamID:     team.ID,
 		Name:       body.Name,
 		VolumeType: volumeType,
-	})
-
-	switch {
-	case dberrors.IsUniqueConstraintViolation(err):
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Volume with name '%s' already exists", body.Name))
-		telemetry.ReportError(ctx, "volume already exists", err)
-
-		return
-	case err != nil:
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when creating volume")
-		telemetry.ReportCriticalError(ctx, "error when creating volume", err)
-
-		return
-	default:
 	}
 
-	if err := a.createVolume(ctx, clusterID, volume); err != nil {
+	response, err := a.createVolume(ctx, clusterID, volume)
+	if err != nil {
 		if errors.Is(err, ErrClusterNotFound) {
 			a.sendAPIStoreError(c, http.StatusServiceUnavailable, "Cluster not found")
 			telemetry.ReportError(ctx, "cluster not found", err)
@@ -141,25 +122,46 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 		return
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		go func(ctx context.Context) {
-			if err := a.deleteVolume(ctx, clusterID, volume); err != nil {
-				telemetry.ReportCriticalError(ctx, "failed to clean up volume after failing to commit transaction", err)
-			}
-		}(context.WithoutCancel(ctx))
+	// The orchestrator may have changed the volume type; persist
+	// whatever it returned. Older orchestrators leave this empty, in which case
+	// we fall back to the values we sent.
+	if volumeType := response.GetVolumeType(); volumeType != "" {
+		volume.VolumeType = volumeType
+	}
 
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to commit transaction")
-		telemetry.ReportCriticalError(ctx, "failed to commit transaction", err)
+	created, err := a.sqlcDB.CreateVolume(ctx, queries.CreateVolumeParams{
+		ID:         volume.ID,
+		TeamID:     volume.TeamID,
+		Name:       volume.Name,
+		VolumeType: volume.VolumeType,
+	})
+
+	switch {
+	case dberrors.IsUniqueConstraintViolation(err):
+		a.cleanupOrchestratorVolume(ctx, clusterID, volume)
+
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Volume with name '%s' already exists", body.Name))
+		telemetry.ReportError(ctx, "volume already exists", err)
 
 		return
+	case err != nil:
+		a.cleanupOrchestratorVolume(ctx, clusterID, volume)
+
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when creating volume")
+		telemetry.ReportCriticalError(ctx, "error when creating volume", err)
+
+		return
+	default:
 	}
+
+	volume = created
 
 	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "created_volume", properties.
 		Set("volume_id", volume.ID.String()).
 		Set("volume_name", volume.Name).
-		Set("volume_type", volumeType),
+		Set("volume_type", volume.VolumeType),
 	)
 
 	token, apiErr := generateVolumeContentToken(a.config.VolumesToken, volume, team)
@@ -201,6 +203,10 @@ const (
 func (a *APIStore) getVolumeType(ctx context.Context, team *types.Team) string {
 	if volumeType := a.featureFlags.StringFlag(ctx, featureflags.DefaultPersistentVolumeType); volumeType != "" {
 		return volumeType
+	}
+
+	if team != nil && team.ClusterID != nil {
+		return a.config.PlaceholderPersistentVolumeType
 	}
 
 	// Regional defaulting is opt-in: without a map there is nothing to look
@@ -267,12 +273,25 @@ func isValidVolumeName(name string) bool {
 	return validVolumeNameRegex.MatchString(name)
 }
 
-func (a *APIStore) createVolume(ctx context.Context, clusterID uuid.UUID, volume queries.Volume) error {
-	return a.executeOnOrchestratorByClusterID(ctx, clusterID, volume, func(ctx context.Context, client *clusters.GRPCClient) error {
-		_, err := client.Volumes.CreateVolume(ctx, &orchestrator.CreateVolumeRequest{
+// cleanupOrchestratorVolume best-effort deletes an orchestrator volume that was
+// created before the database row could be persisted, so we don't leak the
+// underlying directory. It runs in the background and only logs on failure.
+func (a *APIStore) cleanupOrchestratorVolume(ctx context.Context, clusterID uuid.UUID, volume queries.Volume) {
+	go func(ctx context.Context) {
+		if err := a.deleteVolume(ctx, clusterID, volume); err != nil {
+			telemetry.ReportCriticalError(ctx, "failed to clean up volume after failing to persist it", err)
+		}
+	}(context.WithoutCancel(ctx))
+}
+
+func (a *APIStore) createVolume(ctx context.Context, clusterID uuid.UUID, volume queries.Volume) (response *orchestrator.CreateVolumeResponse, err error) {
+	err = a.executeOnOrchestratorByClusterID(ctx, clusterID, volume, func(ctx context.Context, client *clusters.GRPCClient) error {
+		response, err = client.Volumes.CreateVolume(ctx, &orchestrator.CreateVolumeRequest{
 			Volume: toVolumeKey(volume),
 		})
 
 		return err
 	})
+
+	return
 }

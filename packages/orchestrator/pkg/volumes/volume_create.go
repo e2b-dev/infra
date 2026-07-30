@@ -13,7 +13,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
-func (s *Service) CreateVolume(ctx context.Context, request *orchestrator.CreateVolumeRequest) (r *orchestrator.CreateVolumeResponse, err error) {
+func (s *Service) CreateVolume(
+	ctx context.Context,
+	request *orchestrator.CreateVolumeRequest,
+) (r *orchestrator.CreateVolumeResponse, err error) {
 	_, span := tracer.Start(ctx, "create volume")
 	defer func() {
 		setSpanStatus(span, err)
@@ -33,5 +36,11 @@ func (s *Service) CreateVolume(ctx context.Context, request *orchestrator.Create
 		return nil, fmt.Errorf("failed to create volume: %w", err)
 	}
 
-	return &orchestrator.CreateVolumeResponse{}, nil
+	response := &orchestrator.CreateVolumeResponse{}
+
+	if vt := request.GetVolume().GetVolumeType(); vt != "" {
+		response.VolumeType = &vt
+	}
+
+	return response, nil
 }
