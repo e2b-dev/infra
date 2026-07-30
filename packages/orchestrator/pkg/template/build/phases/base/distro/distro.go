@@ -178,13 +178,31 @@ func SupportedIDs() []string {
 	return ids
 }
 
+// RejectedIDs are distro ids we refuse even though their ID_LIKE names a
+// family we do support. Oracle Linux and Amazon Linux both declare
+// ID_LIKE=fedora, so without this the ID_LIKE fallback below would quietly
+// re-admit exactly the images the rhel profile documents as out of scope.
+var RejectedIDs = []string{"rhel", "ol", "amzn"}
+
 // ShellSelector generates the POSIX-sh block provision.sh sources: it switches
 // on the guest's $E2B_DISTRO_ID and defines the profile's packages, shell
-// functions, init path, time-sync unit, admin group and CA handling. An
-// unrecognized id exits 1 with a customer-visible error.
+// functions, init path, time-sync unit, admin group and CA handling.
+//
+// An id we don't know falls back to $E2B_ID_LIKE, the derivative-to-parent
+// pointer from os-release: Kali declares ID=kali ID_LIKE=debian, and before
+// provisioning switched on the declared id, every such Debian derivative worked
+// by accident because we probed for a package manager instead. That fallback
+// warns rather than fails — the profile is a best-effort guess at that point —
+// but an id matching nothing, and an image with no os-release at all, still
+// exits 1 rather than being provisioned against a guessed family.
 func ShellSelector() string {
 	var b strings.Builder
-	b.WriteString(`case "$E2B_DISTRO_ID" in` + "\n")
+
+	// Selection lives in a function so it can be retried per ID_LIKE token.
+	// Assignments and function definitions inside a POSIX-sh function are
+	// global, so the caller sees the profile the same way it always has.
+	b.WriteString("e2b_select_profile() {\n")
+	b.WriteString(`  case "$1" in` + "\n")
 	for _, p := range Profiles {
 		fmt.Fprintf(&b, "  %s)\n", strings.Join(p.IDs, "|"))
 		if p.Bootstrap != "" {
@@ -201,14 +219,40 @@ func ShellSelector() string {
 		fmt.Fprintf(&b, "    e2b_ca_refresh() { %s; }\n", p.CARefresh)
 		fmt.Fprintf(&b, "    E2B_INIT_SYSTEM=%q\n", p.Init)
 		fmt.Fprintf(&b, "    e2b_init_setup() {\n%s\n    }\n", indentBlock(initSetup[p.Init], "        "))
+		fmt.Fprintf(&b, "    return 0\n")
 		fmt.Fprintf(&b, "    ;;\n")
 	}
-	fmt.Fprintf(&b, "  *)\n")
+	fmt.Fprintf(&b, "  *)\n    return 1\n    ;;\n")
+	b.WriteString("  esac\n}\n\n")
+
+	b.WriteString(`if ! e2b_select_profile "$E2B_DISTRO_ID"; then` + "\n")
+
+	// Deliberate rejections are checked before the fallback, so they keep
+	// failing fast with their own reason instead of being matched by ID_LIKE.
+	fmt.Fprintf(&b, "  case \"$E2B_DISTRO_ID\" in\n")
+	fmt.Fprintf(&b, "  %s)\n", strings.Join(RejectedIDs, "|"))
+	fmt.Fprintf(&b, "    echo \"[provision] ERROR: base image distribution ID='$E2B_DISTRO_ID' is not supported.\" >&2\n")
+	fmt.Fprintf(&b, "    echo \"[provision] Sandboxes boot E2B's kernel, so the kABI, signed modules and SELinux these images are chosen for are unavailable.\" >&2\n")
+	fmt.Fprintf(&b, "    exit 1\n")
+	fmt.Fprintf(&b, "    ;;\n")
+	fmt.Fprintf(&b, "  esac\n")
+
+	b.WriteString("  e2b_like_match=\n")
+	b.WriteString(`  for e2b_like in $E2B_ID_LIKE; do` + "\n")
+	b.WriteString(`    if e2b_select_profile "$e2b_like"; then` + "\n")
+	b.WriteString("      e2b_like_match=$e2b_like\n")
+	b.WriteString("      break\n")
+	b.WriteString("    fi\n")
+	b.WriteString("  done\n")
+
+	b.WriteString(`  if [ -z "$e2b_like_match" ]; then` + "\n")
 	fmt.Fprintf(&b, "    echo \"[provision] ERROR: unsupported base image distribution: ID='${E2B_DISTRO_ID:-unknown}'.\" >&2\n")
 	fmt.Fprintf(&b, "    echo \"[provision] E2B template builds support: %s.\" >&2\n", strings.Join(SupportedIDs(), ", "))
 	fmt.Fprintf(&b, "    exit 1\n")
-	fmt.Fprintf(&b, "    ;;\n")
-	b.WriteString("esac\n")
+	b.WriteString("  fi\n")
+
+	fmt.Fprintf(&b, "  echo \"[provision] WARNING: base image distribution ID='$E2B_DISTRO_ID' is not officially supported; provisioning it as '$e2b_like_match' from ID_LIKE. This is best effort and untested.\" >&2\n")
+	b.WriteString("fi\n")
 
 	return b.String()
 }
