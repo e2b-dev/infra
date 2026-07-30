@@ -329,6 +329,17 @@ sequenceDiagram
   best-effort — a delivery failure before the `exec` leaves the old envd serving — except an
   unrecoverable post-`exec` failure (the new envd never re-initializes), which fails the resume
   rather than return a permanently unusable sandbox.
+- **Envd offline-upgrade on cold-boot resume**: reaches envd too old for the live `/upgrade`
+  handover (below `MinEnvdVersionForUpgrade`). When a *filesystem-only* snapshot cold-boots
+  (`RebootSandbox`), the orchestrator rewrites `/usr/bin/envd` in the rootfs **before** the VM
+  boots (`PreBootFn` → `pkg/sandbox/rootfs.SwapEnvdBinary`), entirely in userspace via a jailed
+  `debugfs` — never a host-kernel mount of the tenant image. The old envd never participates, so
+  the method is version-agnostic. Gated by the `envd-offline-upgrade-target` flag (a sibling of
+  `envd-upgrade-target` sharing the same version-remap resolver), and applied only when the
+  snapshot's rootfs was captured frozen (`fs_quiesced`, so it is crash-consistent); best-effort
+  (a swap failure boots the original envd). Because the swap keys on the snapshot's *built-with*
+  version, which it does not advance, it re-fires idempotently on each cold-boot resume until a
+  re-pause re-bakes the running version.
 - Auto-pause/auto-resume make sandboxes effectively serverless: idle sandboxes pause, traffic
   resumes them (see traffic flow above).
 
