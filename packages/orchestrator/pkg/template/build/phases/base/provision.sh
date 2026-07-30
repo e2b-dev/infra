@@ -22,8 +22,12 @@ echo "Detecting base image distribution"
 if [ -r /etc/os-release ]; then
     . /etc/os-release
     E2B_DISTRO_ID="${ID:-unknown}"
+    # Derivative-to-parent pointer, e.g. Kali declares ID=kali ID_LIKE=debian.
+    # Only consulted when the declared ID matches no profile.
+    E2B_ID_LIKE="${ID_LIKE:-}"
 else
     E2B_DISTRO_ID="unknown (image has no /etc/os-release)"
+    E2B_ID_LIKE=""
 fi
 
 {{ .DistroSelector }}
