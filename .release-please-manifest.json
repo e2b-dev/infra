@@ -4,7 +4,7 @@
   "packages/clickhouse": "0.0.1",
   "packages/envd": "0.0.1",
   "packages/orchestrator": "0.0.0",
-  "packages/api": "0.0.0",
+  "packages/api": "0.0.1",
   "packages/dashboard-api": "0.0.0",
   "packages/nomad-nodepool-apm": "0.0.0"
 }
