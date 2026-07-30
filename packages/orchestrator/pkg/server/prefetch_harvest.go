@@ -52,10 +52,11 @@ const (
 )
 
 var (
-	harvestMeter             = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/server")
-	harvestAttemptsCounter   = utils.Must(telemetry.GetCounter(harvestMeter, telemetry.PauseResumePrefetchHarvestAttempts))
-	harvestDurationHistogram = utils.Must(telemetry.GetHistogram(harvestMeter, telemetry.PauseResumePrefetchHarvestDurationName))
-	harvestPagesHistogram    = utils.Must(telemetry.GetHistogram(harvestMeter, telemetry.PauseResumePrefetchHarvestPagesName))
+	harvestMeter              = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/server")
+	harvestAttemptsCounter    = utils.Must(telemetry.GetCounter(harvestMeter, telemetry.PauseResumePrefetchHarvestAttempts))
+	harvestDurationHistogram  = utils.Must(telemetry.GetHistogram(harvestMeter, telemetry.PauseResumePrefetchHarvestDurationName))
+	harvestPagesHistogram     = utils.Must(telemetry.GetHistogram(harvestMeter, telemetry.PauseResumePrefetchHarvestPagesName))
+	sealWaitDurationHistogram = utils.Must(telemetry.GetHistogram(harvestMeter, telemetry.PauseResumePrefetchSealWaitDurationName))
 )
 
 // harvestResumer resumes the throwaway instance the harvest records its trace
@@ -189,8 +190,31 @@ func (s *Server) harvestResumePrefetchAsync(
 			attribute.Bool("consume", consume),
 		)
 
+		// With deferred rootfs export the just-paused snapshot's rootfs diff is
+		// sealed (reflinked) in the background, and the throwaway warm resume below
+		// reads the rootfs. Wait for the seal to finish here instead of letting the
+		// resume block on — and burn its budget against — the reflink. Returns
+		// immediately for the synchronous and NoDiff paths. If the seal fails, or
+		// the harvest deadline fires before it completes, skip the harvest (it is
+		// best-effort and must never touch a half-sealed snapshot). Record the wait
+		// as its own metric and start the harvest timer after it, so the reflink
+		// wait doesn't inflate the harvest-duration (slot-hold) histogram.
+		sealWaitStart := time.Now()
+		_, sealWaitErr := res.rootfsDiff.CachePath(hCtx)
+		sealWaitDurationHistogram.Record(hCtx, time.Since(sealWaitStart).Milliseconds())
+
 		start := time.Now()
-		pages, outcome, err := harvester.run(hCtx, sbx, res.meta, res.upload, buildID, objectMetadata, consume)
+		var (
+			pages   int
+			outcome harvestOutcome
+			err     error
+		)
+		if sealWaitErr != nil {
+			outcome, err = harvestSkipped, fmt.Errorf("waiting for rootfs seal: %w", sealWaitErr)
+		} else {
+			pages, outcome, err = harvester.run(hCtx, sbx, res.meta, res.upload, buildID, objectMetadata, consume)
+		}
+
 		durationMs := time.Since(start).Milliseconds()
 
 		resultAttr := metric.WithAttributes(attribute.String("result", string(outcome)))

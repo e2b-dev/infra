@@ -113,6 +113,10 @@ func (o *DirectProvider) ExportDiff(
 	return m, nil
 }
 
+func (o *DirectProvider) PrepareExportDiff(_ context.Context, _ func(context.Context) error) (*block.Cache, error) {
+	return nil, ErrDeferredExportNotSupported
+}
+
 func (o *DirectProvider) Close(ctx context.Context) error {
 	o.finishedOperations <- struct{}{}
 
