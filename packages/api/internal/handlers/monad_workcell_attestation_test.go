@@ -11,6 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
+	"github.com/e2b-dev/infra/packages/db/queries"
 )
 
 func TestMonadRunningSourceBuildID(t *testing.T) {
@@ -69,9 +70,10 @@ func TestBuildMonadWorkcellAttestation(t *testing.T) {
 	allowInternet := false
 	allowPublic := false
 	source := monadWorkcellAttestationSource{
-		sandboxID:  "i-test",
-		templateID: "template-test",
-		buildID:    buildID,
+		sandboxID:        "i-test",
+		templateID:       "template-test",
+		buildID:          &buildID,
+		identityFidelity: api.ImageAttested,
 		metadata: map[string]string{
 			monadMetadataProvider:         monadProviderE2B,
 			monadMetadataTemplateID:       "template-test",
@@ -99,7 +101,8 @@ func TestBuildMonadWorkcellAttestation(t *testing.T) {
 	assert.Equal(t, "us-east4", got.Region)
 	assert.Equal(t, "template-test", got.TemplateId)
 	assert.Equal(t, api.ImageAttested, got.IdentityFidelity)
-	assert.Equal(t, buildID, got.ImageId)
+	require.NotNil(t, got.ImageId)
+	assert.Equal(t, buildID, *got.ImageId)
 	assert.EqualValues(t, 2, got.Resources.CpuCount)
 	assert.EqualValues(t, 2048, got.Resources.MemoryMb)
 	assert.False(t, got.Network.AllowInternetAccess)
@@ -122,9 +125,10 @@ func TestBuildMonadWorkcellAttestationFailsClosed(t *testing.T) {
 	allowInternet := true
 	allowPublic := false
 	valid := monadWorkcellAttestationSource{
-		sandboxID:  "i-test",
-		templateID: "template-test",
-		buildID:    buildID,
+		sandboxID:        "i-test",
+		templateID:       "template-test",
+		buildID:          &buildID,
+		identityFidelity: api.ImageAttested,
 		metadata: map[string]string{
 			monadMetadataProvider:         monadProviderE2B,
 			monadMetadataTemplateID:       "template-test",
@@ -181,9 +185,10 @@ func TestBuildMonadWorkcellAttestationLifecycle(t *testing.T) {
 	allowInternet := true
 	allowPublic := true
 	source := monadWorkcellAttestationSource{
-		sandboxID:  "i-test",
-		templateID: "template-test",
-		buildID:    buildID,
+		sandboxID:        "i-test",
+		templateID:       "template-test",
+		buildID:          &buildID,
+		identityFidelity: api.ImageAttested,
 		metadata: map[string]string{
 			monadMetadataProvider:         monadProviderE2B,
 			monadMetadataTemplateID:       "template-test",
@@ -213,4 +218,74 @@ func TestBuildMonadWorkcellAttestationLifecycle(t *testing.T) {
 	assert.True(t, pause.Lifecycle.AutoResume)
 	require.NotNil(t, pause.Lifecycle.PauseFidelity)
 	assert.Equal(t, api.FilesystemOnly, *pause.Lifecycle.PauseFidelity)
+}
+
+func TestBuildMonadWorkcellSnapshotAttestation(t *testing.T) {
+	t.Parallel()
+
+	allowInternet := false
+	allowPublic := false
+	source := monadWorkcellAttestationSource{
+		sandboxID:        "i-restored",
+		templateID:       "snapshot-template:default",
+		identityFidelity: api.SnapshotId,
+		metadata: map[string]string{
+			monadMetadataProvider:         monadProviderE2B,
+			monadMetadataTemplateID:       "snapshot-template:default",
+			monadMetadataIdentityFidelity: string(api.SnapshotId),
+			monadMetadataPlacement:        "us-east4",
+		},
+		cpuCount:            2,
+		memoryMB:            2048,
+		allowInternetAccess: &allowInternet,
+		network: &dbtypes.SandboxNetworkConfig{
+			Ingress: &dbtypes.SandboxNetworkIngressConfig{AllowPublicAccess: &allowPublic},
+		},
+	}
+
+	got, err := buildMonadWorkcellAttestation(source, "gcp", "us-east4")
+	require.NoError(t, err)
+	assert.Equal(t, api.SnapshotId, got.IdentityFidelity)
+	assert.Equal(t, "snapshot-template:default", got.TemplateId)
+	assert.Nil(t, got.ImageId)
+
+	imageID := uuid.New()
+	source.buildID = &imageID
+	_, err = buildMonadWorkcellAttestation(source, "gcp", "us-east4")
+	require.Error(t, err)
+}
+
+func TestValidateMonadSnapshotTemplateIdentity(t *testing.T) {
+	t.Parallel()
+
+	buildID := uuid.New()
+	lineage := queries.GetMonadSnapshotTemplateBuildRow{
+		TemplateID:  "snapshot-template",
+		TeamID:      uuid.New(),
+		BuildID:     &buildID,
+		Tag:         "default",
+		StatusGroup: dbtypes.BuildStatusGroupReady,
+	}
+	metadata := map[string]string{
+		monadMetadataTemplateID:       "snapshot-template:default",
+		monadMetadataIdentityFidelity: string(api.SnapshotId),
+	}
+
+	got, err := validateMonadSnapshotTemplateIdentity(lineage, metadata, &buildID)
+	require.NoError(t, err)
+	assert.Equal(t, "snapshot-template:default", got)
+
+	wrongBuildID := uuid.New()
+	_, err = validateMonadSnapshotTemplateIdentity(lineage, metadata, &wrongBuildID)
+	require.Error(t, err)
+
+	wrongMetadata := maps.Clone(metadata)
+	wrongMetadata[monadMetadataTemplateID] = "other:default"
+	_, err = validateMonadSnapshotTemplateIdentity(lineage, wrongMetadata, nil)
+	require.Error(t, err)
+
+	imageMetadata := maps.Clone(metadata)
+	imageMetadata[monadMetadataImageID] = uuid.NewString()
+	_, err = validateMonadSnapshotTemplateIdentity(lineage, imageMetadata, nil)
+	require.Error(t, err)
 }

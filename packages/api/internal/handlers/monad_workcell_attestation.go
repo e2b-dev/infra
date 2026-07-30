@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	idutils "github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -34,7 +36,8 @@ const (
 type monadWorkcellAttestationSource struct {
 	sandboxID               string
 	templateID              string
-	buildID                 uuid.UUID
+	buildID                 *uuid.UUID
+	identityFidelity        api.MonadWorkcellAttestationIdentityFidelity
 	metadata                map[string]string
 	cpuCount                int64
 	memoryMB                int64
@@ -77,18 +80,45 @@ func (a *APIStore) GetWellKnownMonadWorkcellAttestationsSandboxID(c *gin.Context
 
 			return
 		}
-		sourceBuildID, parseErr := monadRunningSourceBuildID(sbx)
-		if parseErr != nil {
-			telemetry.ReportError(ctx, "Monad workcell attestation rejected resumed sandbox image metadata", parseErr, telemetry.WithSandboxID(sandboxID))
-			a.sendAPIStoreError(c, http.StatusConflict, monadAttestationConflictError)
+		sourceTemplateID := sbx.BaseTemplateID
+		var sourceBuildID *uuid.UUID
+		identityFidelity := api.ImageAttested
+		if sbx.Metadata[monadMetadataIdentityFidelity] == string(api.SnapshotId) {
+			var directBuildID *uuid.UUID
+			if sbx.TemplateID == sbx.BaseTemplateID {
+				directBuildID = &sbx.BuildID
+			}
 
-			return
+			sourceTemplateID, err = a.resolveMonadSnapshotTemplateIdentity(
+				ctx,
+				sbx.BaseTemplateID,
+				team.ID,
+				sbx.Metadata,
+				directBuildID,
+			)
+			if err != nil {
+				telemetry.ReportError(ctx, "Monad workcell attestation rejected restored snapshot lineage", err, telemetry.WithSandboxID(sandboxID))
+				a.sendAPIStoreError(c, http.StatusConflict, monadAttestationConflictError)
+
+				return
+			}
+			identityFidelity = api.SnapshotId
+		} else {
+			resolvedBuildID, parseErr := monadRunningSourceBuildID(sbx)
+			if parseErr != nil {
+				telemetry.ReportError(ctx, "Monad workcell attestation rejected resumed sandbox image metadata", parseErr, telemetry.WithSandboxID(sandboxID))
+				a.sendAPIStoreError(c, http.StatusConflict, monadAttestationConflictError)
+
+				return
+			}
+			sourceBuildID = &resolvedBuildID
 		}
 
 		source = monadWorkcellAttestationSource{
 			sandboxID:               sbx.SandboxID,
-			templateID:              sbx.BaseTemplateID,
+			templateID:              sourceTemplateID,
 			buildID:                 sourceBuildID,
+			identityFidelity:        identityFidelity,
 			metadata:                sbx.Metadata,
 			cpuCount:                sbx.VCpu,
 			memoryMB:                sbx.RamMB,
@@ -124,12 +154,33 @@ func (a *APIStore) GetWellKnownMonadWorkcellAttestationsSandboxID(c *gin.Context
 		}
 
 		metadata := map[string]string(lastSnapshot.Snapshot.Metadata)
-		sourceBuildID, parseErr := uuid.Parse(metadata[monadMetadataImageID])
-		if parseErr != nil {
-			telemetry.ReportError(ctx, "Monad workcell attestation rejected paused sandbox image metadata", parseErr, telemetry.WithSandboxID(sandboxID))
-			a.sendAPIStoreError(c, http.StatusConflict, monadAttestationConflictError)
+		sourceTemplateID := lastSnapshot.Snapshot.BaseEnvID
+		var sourceBuildID *uuid.UUID
+		identityFidelity := api.ImageAttested
+		if metadata[monadMetadataIdentityFidelity] == string(api.SnapshotId) {
+			sourceTemplateID, err = a.resolveMonadSnapshotTemplateIdentity(
+				ctx,
+				lastSnapshot.Snapshot.BaseEnvID,
+				team.ID,
+				metadata,
+				nil,
+			)
+			if err != nil {
+				telemetry.ReportError(ctx, "Monad workcell attestation rejected paused restored-snapshot lineage", err, telemetry.WithSandboxID(sandboxID))
+				a.sendAPIStoreError(c, http.StatusConflict, monadAttestationConflictError)
 
-			return
+				return
+			}
+			identityFidelity = api.SnapshotId
+		} else {
+			resolvedBuildID, parseErr := uuid.Parse(metadata[monadMetadataImageID])
+			if parseErr != nil {
+				telemetry.ReportError(ctx, "Monad workcell attestation rejected paused sandbox image metadata", parseErr, telemetry.WithSandboxID(sandboxID))
+				a.sendAPIStoreError(c, http.StatusConflict, monadAttestationConflictError)
+
+				return
+			}
+			sourceBuildID = &resolvedBuildID
 		}
 
 		var network *dbtypes.SandboxNetworkConfig
@@ -143,11 +194,12 @@ func (a *APIStore) GetWellKnownMonadWorkcellAttestationsSandboxID(c *gin.Context
 
 		source = monadWorkcellAttestationSource{
 			sandboxID:  lastSnapshot.Snapshot.SandboxID,
-			templateID: lastSnapshot.Snapshot.BaseEnvID,
+			templateID: sourceTemplateID,
 			// A pause creates a snapshot build. Monad's immutable workcell image
 			// remains the source build in reserved metadata; the DB check below
 			// proves it is assigned to the authoritative base template.
 			buildID:                 sourceBuildID,
+			identityFidelity:        identityFidelity,
 			metadata:                metadata,
 			cpuCount:                lastSnapshot.EnvBuild.Vcpu,
 			memoryMB:                lastSnapshot.EnvBuild.RamMb,
@@ -196,11 +248,94 @@ func monadRunningSourceBuildID(sbx sandboxtypes.Sandbox) (uuid.UUID, error) {
 	return sourceBuildID, nil
 }
 
+func (a *APIStore) resolveMonadSnapshotTemplateIdentity(
+	ctx context.Context,
+	baseTemplateID string,
+	teamID uuid.UUID,
+	metadata map[string]string,
+	directBuildID *uuid.UUID,
+) (string, error) {
+	lineage, err := a.sqlcDB.GetMonadSnapshotTemplateBuild(ctx, queries.GetMonadSnapshotTemplateBuildParams{
+		TemplateID: baseTemplateID,
+		TeamID:     teamID,
+	})
+	if err != nil {
+		return "", fmt.Errorf("load snapshot-template lineage: %w", err)
+	}
+
+	return validateMonadSnapshotTemplateIdentity(lineage, metadata, directBuildID)
+}
+
+func validateMonadSnapshotTemplateIdentity(
+	lineage queries.GetMonadSnapshotTemplateBuildRow,
+	metadata map[string]string,
+	directBuildID *uuid.UUID,
+) (string, error) {
+	if lineage.BuildID == nil || *lineage.BuildID == uuid.Nil {
+		return "", errors.New("snapshot-template lineage has no build")
+	}
+	if lineage.StatusGroup != dbtypes.BuildStatusGroupReady {
+		return "", fmt.Errorf("snapshot-template lineage build is not ready: %s", lineage.StatusGroup)
+	}
+	if directBuildID != nil && *directBuildID != *lineage.BuildID {
+		return "", fmt.Errorf(
+			"running snapshot build %s does not match lineage build %s",
+			directBuildID.String(),
+			lineage.BuildID.String(),
+		)
+	}
+
+	reference := idutils.WithTag(lineage.TemplateID, lineage.Tag)
+	if metadata[monadMetadataTemplateID] != reference {
+		return "", fmt.Errorf(
+			"snapshot template metadata %q does not match lineage %q",
+			metadata[monadMetadataTemplateID],
+			reference,
+		)
+	}
+	if metadata[monadMetadataIdentityFidelity] != string(api.SnapshotId) {
+		return "", errors.New("snapshot template metadata fidelity is not snapshot-id")
+	}
+	if metadata[monadMetadataImageID] != "" {
+		return "", errors.New("snapshot-id metadata unexpectedly claims an image build")
+	}
+
+	return reference, nil
+}
+
+func (a *APIStore) monadReportedTemplateID(
+	ctx context.Context,
+	baseTemplateID string,
+	teamID uuid.UUID,
+	metadata map[string]string,
+	directBuildID *uuid.UUID,
+) (string, error) {
+	if a.config.MonadWorkcellAttestationCloud == "" ||
+		metadata[monadMetadataIdentityFidelity] != string(api.SnapshotId) {
+		return baseTemplateID, nil
+	}
+
+	return a.resolveMonadSnapshotTemplateIdentity(ctx, baseTemplateID, teamID, metadata, directBuildID)
+}
+
 func (a *APIStore) verifyMonadTemplateBuild(c *gin.Context, source monadWorkcellAttestationSource, teamID uuid.UUID) error {
+	if source.identityFidelity == api.SnapshotId {
+		// resolveMonadSnapshotTemplateIdentity already proved the active,
+		// team-owned snapshot template, its immutable build/tag edge, and
+		// readiness. Snapshot identity intentionally has no image build.
+		return nil
+	}
+	if source.buildID == nil {
+		err := errors.New("image-attested sandbox has no source build")
+		a.sendAPIStoreError(c, http.StatusConflict, monadAttestationConflictError)
+
+		return err
+	}
+
 	ctx := c.Request.Context()
 	templateBuild, err := a.sqlcDB.GetTemplateBuildWithTemplate(ctx, queries.GetTemplateBuildWithTemplateParams{
 		TemplateID: source.templateID,
-		BuildID:    source.buildID,
+		BuildID:    *source.buildID,
 	})
 	if err != nil {
 		if dberrors.IsNotFoundError(err) {
@@ -236,7 +371,7 @@ func buildMonadWorkcellAttestation(source monadWorkcellAttestationSource, cloud,
 	if cloud == "" || region == "" {
 		return api.MonadWorkcellAttestation{}, errors.New("attestation placement is not configured")
 	}
-	if source.sandboxID == "" || source.templateID == "" || source.buildID == uuid.Nil {
+	if source.sandboxID == "" || source.templateID == "" {
 		return api.MonadWorkcellAttestation{}, errors.New("sandbox immutable identity is incomplete")
 	}
 	if source.metadata[monadMetadataProvider] != monadProviderE2B {
@@ -245,12 +380,27 @@ func buildMonadWorkcellAttestation(source monadWorkcellAttestationSource, cloud,
 	if source.metadata[monadMetadataTemplateID] != source.templateID {
 		return api.MonadWorkcellAttestation{}, errors.New("sandbox template metadata does not match control-plane state")
 	}
-	if source.metadata[monadMetadataIdentityFidelity] != monadIdentityImageAttested {
-		return api.MonadWorkcellAttestation{}, errors.New("sandbox identity fidelity is not image-attested")
-	}
-	metadataBuildID, err := uuid.Parse(source.metadata[monadMetadataImageID])
-	if err != nil || metadataBuildID != source.buildID {
-		return api.MonadWorkcellAttestation{}, errors.New("sandbox image metadata does not match control-plane build")
+	switch source.identityFidelity {
+	case api.ImageAttested:
+		if source.metadata[monadMetadataIdentityFidelity] != monadIdentityImageAttested {
+			return api.MonadWorkcellAttestation{}, errors.New("sandbox identity fidelity is not image-attested")
+		}
+		if source.buildID == nil || *source.buildID == uuid.Nil {
+			return api.MonadWorkcellAttestation{}, errors.New("sandbox image identity is incomplete")
+		}
+		metadataBuildID, err := uuid.Parse(source.metadata[monadMetadataImageID])
+		if err != nil || metadataBuildID != *source.buildID {
+			return api.MonadWorkcellAttestation{}, errors.New("sandbox image metadata does not match control-plane build")
+		}
+	case api.SnapshotId:
+		if source.metadata[monadMetadataIdentityFidelity] != string(api.SnapshotId) {
+			return api.MonadWorkcellAttestation{}, errors.New("sandbox identity fidelity is not snapshot-id")
+		}
+		if source.buildID != nil || source.metadata[monadMetadataImageID] != "" {
+			return api.MonadWorkcellAttestation{}, errors.New("snapshot identity cannot claim an image build")
+		}
+	default:
+		return api.MonadWorkcellAttestation{}, errors.New("sandbox identity fidelity is unsupported")
 	}
 	if source.metadata[monadMetadataPlacement] != region {
 		return api.MonadWorkcellAttestation{}, errors.New("sandbox placement metadata does not match configured region")
@@ -267,13 +417,16 @@ func buildMonadWorkcellAttestation(source monadWorkcellAttestationSource, cloud,
 
 	attestation := api.MonadWorkcellAttestation{
 		Cloud:            cloud,
-		IdentityFidelity: api.ImageAttested,
-		ImageId:          source.buildID,
+		IdentityFidelity: source.identityFidelity,
 		Provider:         api.E2b,
 		Region:           region,
 		SandboxId:        source.sandboxID,
 		SchemaVersion:    api.N1,
 		TemplateId:       source.templateID,
+	}
+	if source.buildID != nil {
+		imageID := *source.buildID
+		attestation.ImageId = &imageID
 	}
 	attestation.Resources.CpuCount = source.cpuCount
 	attestation.Resources.MemoryMb = source.memoryMB
