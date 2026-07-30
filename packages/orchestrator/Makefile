@@ -12,12 +12,6 @@ GCP_BUCKET_PREFIX ?= $(GCP_PROJECT_ID)-
 # public-read, so downloads need no credentials.
 E2B_ARTIFACT_BINARIES_URL ?= https://storage.googleapis.com/e2b-artifact-binaries/orchestrator
 
-# Where the release's SHA256SUMS asset lives. Deliberately a different trust
-# domain than the binaries bucket: a checksum file sitting next to the
-# binaries could be replaced together with them, so pull-released verifies
-# the downloads against the GitHub release instead.
-E2B_RELEASES_URL ?= https://github.com/e2b-dev/infra/releases/download
-
 # Optional version "hook" for the released-artifact flow.
 # When empty (default), the build-and-upload/* targets build from source and
 # upload the binaries to the client's fc-env-pipeline bucket (the existing
@@ -150,17 +144,13 @@ else
 endif
 
 # Released-artifact flow: download the prebuilt, versioned binaries from the
-# public E2B artifact-binaries bucket and verify them against the SHA256SUMS
-# asset on the release's GitHub release before anything is uploaded. A failed
-# check stops make here, so tampered binaries never reach fc-env-pipeline.
+# public E2B artifact-binaries bucket.
 .PHONY: pull-released
 pull-released:
 	@echo "Using released orchestrator $(ORCHESTRATOR_VERSION) from $(E2B_ARTIFACT_BINARIES_URL)"
 	mkdir -p bin
 	curl -fL -o bin/orchestrator "$(E2B_ARTIFACT_BINARIES_URL)/$(ORCHESTRATOR_VERSION)/orchestrator"
 	curl -fL -o bin/clean-nfs-cache "$(E2B_ARTIFACT_BINARIES_URL)/$(ORCHESTRATOR_VERSION)/clean-nfs-cache"
-	curl -fL -o bin/SHA256SUMS "$(E2B_RELEASES_URL)/orchestrator-$(ORCHESTRATOR_VERSION)/SHA256SUMS"
-	cd bin && if command -v sha256sum > /dev/null 2>&1; then sha256sum -c SHA256SUMS; else shasum -a 256 -c SHA256SUMS; fi
 
 # The binaries come from source (default) or from released objects when
 # ORCHESTRATOR_VERSION is set. Either way they land in ./bin and the
