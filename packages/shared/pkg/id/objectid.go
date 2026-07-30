@@ -88,7 +88,8 @@ const (
 )
 
 var (
-	// ErrBadLength means the string is not encodedLen bytes.
+	// ErrBadLength means the string is not the width the format fixes:
+	// encodedLen for a bare body, ObjectIDLen for a prefixed object ID.
 	ErrBadLength = errors.New("id: wrong length")
 
 	// ErrNotCanonical means the string decodes, but is not the spelling
