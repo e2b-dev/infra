@@ -47,6 +47,10 @@ type Callbacks struct {
 	// RemoveSandboxFromNode kills an orphaned sandbox on the orchestrator node via gRPC.
 	// Used during sync when the Redis backend detects sandboxes running on a node but not present in the store.
 	RemoveSandboxFromNode RemoveCallback
+	// BackgroundWG, if non-nil, is incremented before the AsyncNewlyCreatedSandbox goroutine
+	// starts and decremented when the goroutine returns, allowing callers to drain all
+	// in-flight creation events before process exit.
+	BackgroundWG *sync.WaitGroup
 }
 
 type Store struct {
@@ -91,7 +95,15 @@ func (s *Store) Add(ctx context.Context, sandbox Sandbox, creation *CreationMeta
 
 	if creation != nil {
 		meta := *creation
-		go s.callbacks.AsyncNewlyCreatedSandbox(context.WithoutCancel(ctx), sandbox, meta)
+		if wg := s.callbacks.BackgroundWG; wg != nil {
+			wg.Add(1)
+		}
+		go func() {
+			if wg := s.callbacks.BackgroundWG; wg != nil {
+				defer wg.Done()
+			}
+			s.callbacks.AsyncNewlyCreatedSandbox(context.WithoutCancel(ctx), sandbox, meta)
+		}()
 	}
 
 	return nil
