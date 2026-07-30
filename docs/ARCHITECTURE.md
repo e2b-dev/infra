@@ -312,6 +312,14 @@ sequenceDiagram
   orchestrator pauses the VM, snapshots it, diffs memory (dirty-page tracking) and rootfs (COW
   cache) against the template, caches the snapshot locally, and uploads asynchronously to object
   storage (with a retry budget). The sandbox leaves the Redis catalog.
+  - **Deferred rootfs export** (gated by the `deferred-rootfs-export` flag in
+    `packages/shared/pkg/featureflags`): instead of diffing the rootfs on the pause critical
+    path, the orchestrator ejects the writable COW cache during pause and returns, then seals it
+    into the rootfs diff (reflink) in the background. This moves the rootfs-diff latency off the
+    pause, but the local snapshot's rootfs body isn't materialized until the seal finishes, so the
+    async upload — and any origin-node resume/prefetch that reads the rootfs diff — waits on the
+    seal. A seal failure is permanent (it never re-runs), so the upload fails fast rather than
+    retrying.
 - **Resume**: same path as creation, but placement prefers the **origin node** — if the snapshot
   is still in its local cache, resume avoids any object-storage reads. `Checkpoint` is a
   pause+resume in place used to persist state while keeping the sandbox running.
