@@ -157,6 +157,20 @@ type EnvBuildAssignment struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type ProjectLimit struct {
+	TeamID                   uuid.UUID
+	MaxLengthHours           int64
+	ConcurrentSandboxes      int64
+	ConcurrentTemplateBuilds int64
+	MaxVcpu                  int64
+	MaxRamMb                 int64
+	DiskMb                   int64
+	EventsTtlDays            int64
+	DefaultFreeDiskSizeMb    int64
+	MaxDiskSizeMb            int64
+	UpdatedAt                time.Time
+}
+
 type Snapshot struct {
 	CreatedAt           pgtype.Timestamptz
 	EnvID               string
@@ -216,12 +230,12 @@ type TeamApiKey struct {
 type TeamLimit struct {
 	ID                       uuid.UUID
 	MaxLengthHours           int64
-	ConcurrentSandboxes      int32
-	ConcurrentTemplateBuilds int32
-	MaxVcpu                  int32
-	MaxRamMb                 int32
-	DiskMb                   int32
-	EventsTtlDays            int32
+	ConcurrentSandboxes      int64
+	ConcurrentTemplateBuilds int64
+	MaxVcpu                  int64
+	MaxRamMb                 int64
+	DiskMb                   int64
+	EventsTtlDays            int64
 	DefaultFreeDiskSizeMb    int64
 	MaxDiskSizeMb            int64
 }

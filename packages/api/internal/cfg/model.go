@@ -113,6 +113,13 @@ type Config struct {
 	DefaultPersistentVolumeType     string `env:"DEFAULT_PERSISTENT_VOLUME_TYPE"`
 	PlaceholderPersistentVolumeType string `env:"PLACEHOLDER_PERSISTENT_VOLUME_TYPE" envDefault:"REPLACEME"`
 
+	// DefaultPersistentVolumeTypeByRegion is the per-region default volume type,
+	// e.g. "us-west3:zonalfilestore-us-west3". A team's region is resolved from
+	// the region= node labels of the nodes its scheduling labels select; Terraform
+	// derives this map from the volume types themselves and fails the plan when a
+	// region with several types lacks an explicit default.
+	DefaultPersistentVolumeTypeByRegion map[string]string `env:"DEFAULT_PERSISTENT_VOLUME_TYPE_BY_REGION"`
+
 	DomainName string `env:"DOMAIN_NAME" envDefault:""`
 }
 

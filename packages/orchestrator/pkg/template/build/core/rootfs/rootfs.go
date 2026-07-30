@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"text/template"
 
 	"github.com/dustin/go-humanize"
@@ -41,15 +42,39 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/tem
 var files embed.FS
 var fileTemplates = template.Must(template.ParseFS(files, "files/*"))
 
-// filesHash is a stable hash of the embedded rootfs file templates. It is used
-// only as part of the fallback provision version; explicit provision versions
-// remain the rollout control.
+// enableSymlinks is the content of the baked symlink layer. Package-level so
+// it feeds filesHash: a change here must rotate the fallback provision
+// version like any other baked-layer change.
+var enableSymlinks = map[string]string{
+	// Enable envd service autostart. The target MUST be absolute: the link
+	// lives in multi-user.target.wants/, so a relative target would resolve
+	// inside that directory and dangle — and provision.sh's offline
+	// `systemctl enable $E2B_TIMESYNC_UNIT` prunes dangling .wants symlinks,
+	// silently disabling envd on distros where the link dangles.
+	"etc/systemd/system/multi-user.target.wants/envd.service": "/etc/systemd/system/envd.service",
+	// NOTE: chrony autostart is enabled by provision.sh via `systemctl enable
+	// $E2B_TIMESYNC_UNIT`, which picks the distro-correct unit name (chrony on
+	// Debian, chronyd on RHEL/Arch). A static chrony.service symlink here would
+	// dangle on non-Debian images where the unit is chronyd.service.
+}
+
+// filesHash is a stable hash of the embedded rootfs file templates plus the
+// baked symlink layer. It is used only as part of the fallback provision
+// version; explicit provision versions remain the rollout control.
 var filesHash = func() string {
 	entries, _ := fs.ReadDir(files, "files")
 	h := sha256.New()
 	for _, e := range entries {
 		data, _ := files.ReadFile("files/" + e.Name())
 		fmt.Fprintf(h, "%s\x00%x\x00", e.Name(), data)
+	}
+	links := make([]string, 0, len(enableSymlinks))
+	for name := range enableSymlinks {
+		links = append(links, name)
+	}
+	slices.Sort(links)
+	for _, name := range links {
+		fmt.Fprintf(h, "%s\x00%s\x00", name, enableSymlinks[name])
 	}
 
 	return hex.EncodeToString(h.Sum(nil))
@@ -233,6 +258,15 @@ func additionalOCILayers(
 	filesMap := map[string]oci.File{
 		storage.GuestEnvdPath: {Bytes: envdFileData, Mode: 0o777},
 
+		// Systemd preset policy for envd. provision.sh removes /etc/machine-id,
+		// so the template's next boot is a systemd FIRST boot — and on first
+		// boot PID1 applies the distro preset policy to all units. On the
+		// RHEL family that policy ends with "disable *" (and the systemd RPM
+		// scriptlet's preset-all does the same during provisioning), which
+		// deletes envd's autostart symlink no matter how it was created.
+		// A 00- preset sorts before every distro policy file and wins.
+		"etc/systemd/system-preset/00-e2b.preset": {Bytes: []byte("enable envd.service\n"), Mode: 0o644},
+
 		// Provision script
 		"usr/local/bin/provision.sh": {Bytes: []byte(provisionScript), Mode: 0o777},
 		// Setup init system
@@ -263,14 +297,7 @@ func additionalOCILayers(
 		return nil, fmt.Errorf("error creating layer from files: %w", err)
 	}
 
-	symlinkLayer, err := oci.LayerSymlink(
-		map[string]string{
-			// Enable envd service autostart
-			"etc/systemd/system/multi-user.target.wants/envd.service": "etc/systemd/system/envd.service",
-			// Enable chrony service autostart
-			"etc/systemd/system/multi-user.target.wants/chrony.service": "etc/systemd/system/chrony.service",
-		},
-	)
+	symlinkLayer, err := oci.LayerSymlink(enableSymlinks)
 	if err != nil {
 		return nil, fmt.Errorf("error creating layer from symlinks: %w", err)
 	}

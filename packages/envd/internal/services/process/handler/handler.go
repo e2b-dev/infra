@@ -29,6 +29,8 @@ import (
 const (
 	defaultNice      = 0
 	defaultOomScore  = 100
+	defaultIoClass   = 2 // ionice best-effort
+	defaultIoPrio    = 4
 	outputBufferSize = 64
 	systemTag        = "_system"
 	stdChunkSize     = 32 << 10 // 32 KiB
@@ -161,6 +163,25 @@ func currentNice() int {
 	return 20 - prio
 }
 
+// ioniceNicePrefix builds the ionice/nice part of the process wrapper from
+// whatever the image actually ships. Both are util-linux/coreutils
+// conveniences that minimal and busybox-based images (Alpine, UBI) may lack or
+// keep elsewhere than /usr/bin — a missing helper must degrade to running the
+// command without that priority adjustment, never to a failed spawn (exit 127
+// killed every process on such images). lookPath is injected for testability;
+// production passes exec.LookPath.
+func ioniceNicePrefix(ioClass, ioPrio, niceDelta int, lookPath func(string) (string, error)) string {
+	prefix := ""
+	if p, err := lookPath("ionice"); err == nil {
+		prefix += fmt.Sprintf("%s -c %d -n %d ", p, ioClass, ioPrio)
+	}
+	if p, err := lookPath("nice"); err == nil {
+		prefix += fmt.Sprintf("%s -n %d ", p, niceDelta)
+	}
+
+	return prefix
+}
+
 func New(
 	ctx context.Context,
 	user *user.User,
@@ -173,9 +194,11 @@ func New(
 	// User command string for logging (without the internal wrapper details).
 	userCmd := strings.Join(append([]string{req.GetProcess().GetCmd()}, req.GetProcess().GetArgs()...), " ")
 
-	// Wrap in a shell that resets oom_score_adj, ioprio (ionice best-effort/4), and nice.
+	// Wrap in a shell that resets oom_score_adj, ioprio (ionice best-effort/4),
+	// and nice. The oom_score_adj write is pure /proc and always applied; the
+	// priority helpers are used only where the image provides them.
 	niceDelta := defaultNice - currentNice()
-	oomWrapperScript := fmt.Sprintf(`echo %d > /proc/$$/oom_score_adj && exec /usr/bin/ionice -c 2 -n 4 /usr/bin/nice -n %d "${@}"`, defaultOomScore, niceDelta)
+	oomWrapperScript := fmt.Sprintf(`echo %d > /proc/$$/oom_score_adj && exec %s"${@}"`, defaultOomScore, ioniceNicePrefix(defaultIoClass, defaultIoPrio, niceDelta, exec.LookPath))
 	wrapperArgs := append([]string{"-c", oomWrapperScript, "--", req.GetProcess().GetCmd()}, req.GetProcess().GetArgs()...)
 	cmd := exec.CommandContext(ctx, "/bin/sh", wrapperArgs...)
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -73,7 +74,10 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 		return
 	}
 
-	ctx = featureflags.AddToContext(ctx, featureflags.VolumeContext(body.Name))
+	ctx = featureflags.AddToContext(ctx,
+		featureflags.VolumeContext(body.Name),
+		featureflags.TeamContext(team.ID.String()),
+	)
 
 	volumeType := a.getVolumeType(ctx, team)
 	if volumeType == "" {
@@ -185,17 +189,90 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 	c.JSON(http.StatusCreated, result)
 }
 
+const (
+	// regionNodeLabelPrefix marks the node label naming the region a node runs
+	// in, e.g. "region=us-west3". Regions live on nodes, never on teams:
+	// Terraform appends the label to every client cluster automatically.
+	regionNodeLabelPrefix = "region="
+
+	// defaultSchedulingLabel is the pool a team without scheduling labels of
+	// its own lands on.
+	defaultSchedulingLabel = "default"
+)
+
+// getVolumeType resolves the volume type a new volume of the given team gets,
+// in order of precedence: the LaunchDarkly override, the per-region default of
+// the region the team schedules into, and finally the deployment-wide default.
+//
+// Node labels only answer *where* the team runs; *what* a new volume there
+// should be is policy and comes exclusively from the region map. A region
+// mounting several volume types therefore never needs runtime guessing - the
+// map names its default explicitly.
 func (a *APIStore) getVolumeType(ctx context.Context, team *types.Team) string {
-	volumeType := a.featureFlags.StringFlag(ctx, featureflags.DefaultPersistentVolumeType)
-	if volumeType == "" && team != nil && team.ClusterID != nil {
-		volumeType = a.config.PlaceholderPersistentVolumeType
+	if volumeType := a.featureFlags.StringFlag(ctx, featureflags.DefaultPersistentVolumeType); volumeType != "" {
+		return volumeType
 	}
 
-	if volumeType == "" {
-		volumeType = a.config.DefaultPersistentVolumeType
+	if team != nil && team.ClusterID != nil {
+		return a.config.PlaceholderPersistentVolumeType
 	}
 
-	return volumeType
+	// Regional defaulting is opt-in: without a map there is nothing to look
+	// up, so don't walk the cluster.
+	if len(a.config.DefaultPersistentVolumeTypeByRegion) == 0 || a.orchestrator == nil {
+		return a.config.DefaultPersistentVolumeType
+	}
+
+	// Mirrors generateRequiredNodeLabels: a team without labels of its own
+	// runs on the "default" pool, so we resolve the region over the same set
+	// of nodes that placement would choose from.
+	requiredLabels := team.SandboxSchedulingLabels
+	if len(requiredLabels) == 0 {
+		requiredLabels = []string{defaultSchedulingLabel}
+	}
+
+	// Collect the distinct regions advertised by the ready nodes carrying all
+	// of requiredLabels; the same subset semantics as sandbox placement.
+	regions := make(map[string]struct{})
+	for _, node := range a.orchestrator.GetClusterNodes(clustershared.WithClusterFallback(team.ClusterID)) {
+		if node.Status() != api.NodeStatusReady {
+			continue
+		}
+
+		labels := node.Labels()
+		if !hasAllLabels(labels, requiredLabels) {
+			continue
+		}
+
+		for label := range labels {
+			if region, ok := strings.CutPrefix(label, regionNodeLabelPrefix); ok && region != "" {
+				regions[region] = struct{}{}
+			}
+		}
+	}
+
+	// Exactly one region with a mapped default is the only affirmative
+	// answer. Zero regions (labels match nothing yet) or several (labels do
+	// not pin a region) fall open to the deployment-wide default.
+	if len(regions) == 1 {
+		for region := range regions {
+			if volumeType, ok := a.config.DefaultPersistentVolumeTypeByRegion[region]; ok {
+				return volumeType
+			}
+		}
+	}
+
+	return a.config.DefaultPersistentVolumeType
+}
+
+func hasAllLabels(labels map[string]struct{}, requiredLabels []string) bool {
+	for _, required := range requiredLabels {
+		if _, ok := labels[required]; !ok {
+			return false
+		}
+	}
+
+	return true
 }
 
 var validVolumeNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)

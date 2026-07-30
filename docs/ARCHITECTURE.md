@@ -211,6 +211,22 @@ OpenAPI security scheme accepts only short-lived service JWTs verified against t
 the same config shape as `AUTH_PROVIDER_CONFIG`. Talks to Postgres and ClickHouse; never talks to
 orchestrators.
 
+The `/v1/management` operations are the cluster's half of a contract the workspace residency owns:
+project upsert (a project is a `public.teams` row created from a caller-supplied UUID; the tier is
+assigned once at creation from a local default and no push moves it; a changed slug renames the project, and nothing else follows it), member sync (granular and
+batched, over opaque user UUIDs in `users_teams`),
+limit sync (into `project_limits`, which `team_limits` reads in preference to `tiers`), and user
+purge (memberships and access tokens; the `public.users` row survives). All are idempotent, because
+the caller is level-triggered and retries. Membership writes live in `internal/management` with
+their cache evictions rather than in the handlers: auth caches a copy of the team per member, and
+the sweep that would find those keys reads `users_teams`, so a removal has to name them itself.
+
+`DELETE /v1/management/projects/{teamID}` is declared and answers 501. `envs`, `snapshots` and
+`volumes` reference `teams` with `ON DELETE NO ACTION` and templates are only soft-deleted, so a
+project that ever built one pins its team row — and releasing it needs the API service's
+orchestrator connections, which this service does not have. Projects are not deleted from control
+planes today.
+
 ### Docker reverse proxy (`packages/docker-reverse-proxy`)
 
 A Docker Registry v2 auth gateway (port 5000). Users `docker push` template base images with E2B
@@ -221,7 +237,7 @@ into the cloud artifact registry (`/v2/e2b/custom-envs/<templateID>` → project
 
 | Store | Owner packages | What lives there |
 |---|---|---|
-| **PostgreSQL** | `packages/db` (goose migrations, sqlc) | Durable control-plane state: `teams`, `users`, `tiers` (quotas), `envs` (templates), `env_builds` (build rows: vcpu, ram_mb, status, versions), `env_aliases`, `snapshots` (paused sandboxes), `team_api_keys`, `access_tokens`, `volumes`, `clusters` |
+| **PostgreSQL** | `packages/db` (goose migrations, sqlc) | Durable control-plane state: `teams`, `users`, `tiers` (quota defaults), `project_limits` (per-team quota overrides pushed in by the owning service; the `team_limits` view reads it in preference to `tiers`), `envs` (templates), `env_builds` (build rows: vcpu, ram_mb, status, versions), `env_aliases`, `snapshots` (paused sandboxes), `team_api_keys`, `access_tokens`, `volumes`, `clusters` |
 | **Redis** | API, client-proxy, orchestrator | Ephemeral runtime state: running-sandbox store (source of truth), sandbox→node routing catalog, team/template/snapshot caches, rate limiting, P2P chunk peer registry |
 | **ClickHouse** | `packages/clickhouse` | Time-series/analytics: `metrics_gauge`/`metrics_sum` (written by the OTel collector), `sandbox_events`, `sandbox_host_stats` (written by orchestrator), team metrics, and optionally `sandbox_logs` during the log migration. Read by API and dashboard-api |
 | **Object storage** (GCS/S3/local, `packages/shared/pkg/storage`) | orchestrator, template-manager | Template & snapshot artifacts, keyed by build ID: `{buildID}/memfile`, `{buildID}/rootfs.ext4`, `{buildID}/snapfile`, `{buildID}/metadata.json` + `.header` index files |

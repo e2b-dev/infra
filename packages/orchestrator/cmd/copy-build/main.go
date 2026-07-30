@@ -28,13 +28,16 @@ import (
 type Destination struct {
 	Path    string
 	CRC     uint32
+	exists  bool
 	isLocal bool
 }
 
 func NewDestinationFromObject(ctx context.Context, o *googleStorage.ObjectHandle) (*Destination, error) {
 	var crc uint32
+	exists := false
 	if attrs, err := o.Attrs(ctx); err == nil {
 		crc = attrs.CRC32C
+		exists = true
 	} else if !errors.Is(err, googleStorage.ErrObjectNotExist) {
 		return nil, fmt.Errorf("failed to get object attributes: %w", err)
 	}
@@ -42,6 +45,7 @@ func NewDestinationFromObject(ctx context.Context, o *googleStorage.ObjectHandle
 	return &Destination{
 		Path:    fmt.Sprintf("gs://%s/%s", o.BucketName(), o.ObjectName()),
 		CRC:     crc,
+		exists:  exists,
 		isLocal: false,
 	}, nil
 }
@@ -67,6 +71,7 @@ func NewDestinationFromPath(prefix, file string) (*Destination, error) {
 		return &Destination{
 			Path:    p,
 			CRC:     crc,
+			exists:  true,
 			isLocal: true,
 		}, nil
 	}
@@ -194,6 +199,88 @@ func gcloudCopy(ctx context.Context, from, to *Destination) error {
 	return nil
 }
 
+// deriveArtifactBuckets maps a template bucket (gs://<prefix>-fc-templates) to the
+// sibling firecracker-versions and kernels buckets in the same project/env. The build
+// records no environment, so the env is taken from the template bucket location.
+func deriveArtifactBuckets(templateLoc string) (fcBucket, kernelBucket string, err error) {
+	if !strings.HasPrefix(templateLoc, "gs://") {
+		return "", "", fmt.Errorf("-gdb requires a gs:// location, got %q", templateLoc)
+	}
+	bucket := strings.TrimSuffix(strings.TrimPrefix(templateLoc, "gs://"), "/")
+	prefix, ok := strings.CutSuffix(bucket, "-fc-templates")
+	if !ok {
+		return "", "", fmt.Errorf("cannot derive versions/kernels buckets from %q (expected a *-fc-templates bucket)", templateLoc)
+	}
+
+	return "gs://" + prefix + "-fc-versions", "gs://" + prefix + "-fc-kernels", nil
+}
+
+// copyGdbArtifacts ensures the build's FC + kernel runtime and debug artifacts exist at
+// the destination, copying each from the source env's versions/kernels buckets only if
+// it is not already present at the destination (so a large vmlinux.debug is not recopied
+// for a version already there). Required artifacts must exist at the source; the optional
+// firecracker-debug.debug (FC's own symbols, not needed for guest-kernel gdb) is skipped
+// if absent.
+func copyGdbArtifacts(ctx context.Context, client *googleStorage.Client, from, to, arch, fcVer, kernelVer string) error {
+	fcFrom, kFrom, err := deriveArtifactBuckets(from)
+	if err != nil {
+		return err
+	}
+	fcTo, kTo, err := deriveArtifactBuckets(to)
+	if err != nil {
+		return err
+	}
+
+	artifacts := []struct {
+		name                      string
+		srcBucket, dstBucket, obj string
+		required                  bool
+	}{
+		{"firecracker", fcFrom, fcTo, path.Join(fcVer, arch, "firecracker"), true},
+		{"firecracker-debug", fcFrom, fcTo, path.Join(fcVer, arch, "firecracker-debug"), true},
+		{"firecracker-debug.debug", fcFrom, fcTo, path.Join(fcVer, arch, "firecracker-debug.debug"), false},
+		{"vmlinux.bin", kFrom, kTo, path.Join(kernelVer, arch, "vmlinux.bin"), true},
+		{"vmlinux.debug", kFrom, kTo, path.Join(kernelVer, arch, "vmlinux.debug"), true},
+	}
+
+	for _, a := range artifacts {
+		srcBucket := strings.TrimPrefix(a.srcBucket, "gs://")
+		dstBucket := strings.TrimPrefix(a.dstBucket, "gs://")
+		src, err := NewDestinationFromObject(ctx, client.Bucket(srcBucket).Object(a.obj))
+		if err != nil {
+			return fmt.Errorf("stat source %s: %w", a.name, err)
+		}
+		dst, err := NewDestinationFromObject(ctx, client.Bucket(dstBucket).Object(a.obj))
+		if err != nil {
+			return fmt.Errorf("stat destination %s: %w", a.name, err)
+		}
+
+		if !src.exists { // not present at source
+			if a.required {
+				return fmt.Errorf("required gdb artifact %s not found at %s (is this version published with gdb support?)", a.name, src.Path)
+			}
+			fmt.Fprintf(os.Stderr, "-> optional gdb artifact %s not at source, skipping\n", a.name)
+
+			continue
+		}
+		// Skip only when the destination already holds identical content (CRC32C match);
+		// otherwise copy, replacing a divergent/stale or absent artifact rather than
+		// trusting it. The dst.exists guard avoids a false 0 == 0 match when the
+		// destination is missing and the source's CRC32C is genuinely zero.
+		if dst.exists && src.CRC == dst.CRC {
+			fmt.Fprintf(os.Stderr, "-> gdb artifact %s already current at destination, skipping\n", a.name)
+
+			continue
+		}
+		fmt.Fprintf(os.Stderr, "+ copying gdb artifact '%s' to '%s'\n", src.Path, dst.Path)
+		if err := gcloudCopy(ctx, src, dst); err != nil {
+			return fmt.Errorf("copy %s: %w", a.name, err)
+		}
+	}
+
+	return nil
+}
+
 func main() {
 	buildId := flag.String("build", "", "build id")
 	from := flag.String("from", "", "from destination")
@@ -204,11 +291,25 @@ func main() {
 	memory := flag.Int("memory", 1024, "memory MB")
 	disk := flag.Int("disk", 1024, "disk MB")
 	tag := flag.String("tag", "default", "build assignment tag")
+	gdb := flag.Bool("gdb", false, "also copy the build's FC + kernel runtime and debug artifacts (firecracker, firecracker-debug, vmlinux.bin, vmlinux.debug) into the matching versions/kernels buckets so the snapshot is gdb-ready at the destination; requires gs:// -from/-to")
+	arch := flag.String("arch", "amd64", "artifact arch for -gdb (amd64 or arm64)")
 
 	flag.Parse()
 
 	if *teamID != "" && *envdVersion == "" {
 		log.Fatal("-envd-version is required when -team is set")
+	}
+	// Validate the -gdb bucket preconditions up front, so a wrong invocation fails
+	// instantly rather than after the multi-GB snapshot copy. deriveArtifactBuckets
+	// checks both the gs:// scheme and the *-fc-templates suffix it needs to map the
+	// template bucket to its versions/kernels siblings.
+	if *gdb {
+		if _, _, err := deriveArtifactBuckets(*from); err != nil {
+			log.Fatalf("-gdb -from: %s", err)
+		}
+		if _, _, err := deriveArtifactBuckets(*to); err != nil {
+			log.Fatalf("-gdb -to: %s", err)
+		}
 	}
 
 	fmt.Fprintf(os.Stderr, "Copying build '%s' from '%s' to '%s'\n", *buildId, *from, *to)
@@ -408,22 +509,33 @@ func main() {
 
 	fmt.Fprintf(os.Stderr, "Build '%s' copied to '%s'\n", *buildId, *to)
 
-	if *teamID != "" {
+	if *teamID != "" || *gdb {
+		// metadata carries the kernel + FC versions; both the -gdb artifact copy and
+		// the -team SQL seed need them.
 		if meta.Template.KernelVersion == "" || meta.Template.FirecrackerVersion == "" {
-			log.Fatalf("kernel/firecracker version missing in build metadata (version %d), cannot generate SQL", meta.Version)
+			log.Fatalf("kernel/firecracker version missing in build metadata (version %d)", meta.Version)
 		}
 
-		envID := id.Generate()
-		fmt.Fprintf(os.Stderr, "\n\nGenerated env ID: %s\n\n", envID)
+		if *gdb {
+			if err := copyGdbArtifacts(ctx, googleStorageClient, *from, *to, *arch, meta.Template.FirecrackerVersion, meta.Template.KernelVersion); err != nil {
+				log.Fatalf("failed to copy gdb artifacts: %s", err)
+			}
+			fmt.Fprintf(os.Stderr, "gdb artifacts ensured at destination (arch %s)\n", *arch)
+		}
 
-		fmt.Printf("BEGIN;\n")
-		fmt.Printf("INSERT INTO public.envs (id, team_id, updated_at, public, source)\n")
-		fmt.Printf("VALUES ('%s', '%s', NOW(), FALSE, 'template');\n\n", envID, *teamID)
-		fmt.Printf("INSERT INTO public.env_builds (id, env_id, updated_at, finished_at, status, ram_mb, vcpu, kernel_version, firecracker_version, envd_version, free_disk_size_mb, total_disk_size_mb)\n")
-		fmt.Printf("VALUES ('%s', '%s', NOW(), NOW(), 'uploaded', %d, %d, '%s', '%s', '%s', %d, %d);\n\n",
-			*buildId, envID, *memory, *vcpu, meta.Template.KernelVersion, meta.Template.FirecrackerVersion, *envdVersion, *disk, *disk)
-		fmt.Printf("INSERT INTO public.env_build_assignments (env_id, build_id, tag)\n")
-		fmt.Printf("VALUES ('%s', '%s', '%s');\n", envID, *buildId, *tag)
-		fmt.Printf("COMMIT;\n")
+		if *teamID != "" {
+			envID := id.Generate()
+			fmt.Fprintf(os.Stderr, "\n\nGenerated env ID: %s\n\n", envID)
+
+			fmt.Printf("BEGIN;\n")
+			fmt.Printf("INSERT INTO public.envs (id, team_id, updated_at, public, source)\n")
+			fmt.Printf("VALUES ('%s', '%s', NOW(), FALSE, 'template');\n\n", envID, *teamID)
+			fmt.Printf("INSERT INTO public.env_builds (id, env_id, updated_at, finished_at, status, ram_mb, vcpu, kernel_version, firecracker_version, envd_version, free_disk_size_mb, total_disk_size_mb)\n")
+			fmt.Printf("VALUES ('%s', '%s', NOW(), NOW(), 'uploaded', %d, %d, '%s', '%s', '%s', %d, %d);\n\n",
+				*buildId, envID, *memory, *vcpu, meta.Template.KernelVersion, meta.Template.FirecrackerVersion, *envdVersion, *disk, *disk)
+			fmt.Printf("INSERT INTO public.env_build_assignments (env_id, build_id, tag)\n")
+			fmt.Printf("VALUES ('%s', '%s', '%s');\n", envID, *buildId, *tag)
+			fmt.Printf("COMMIT;\n")
+		}
 	}
 }
