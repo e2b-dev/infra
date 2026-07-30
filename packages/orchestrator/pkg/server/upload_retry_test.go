@@ -26,6 +26,8 @@ func TestIsRetryableUploadErr(t *testing.T) {
 		{"object not exist", storage.ErrObjectNotExist, false},
 		{"object not exist wrapped", fmt.Errorf("load: %w", storage.ErrObjectNotExist), false},
 		{"parent cancelled", context.Canceled, false},
+		{"deferred seal failed", build.ErrDeferredSealFailed, false},
+		{"deferred seal failed wrapped", fmt.Errorf("rootfs diff path: %w", build.ErrDeferredSealFailed), false},
 		{"per-attempt deadline", context.DeadlineExceeded, true},
 		{"gcs 503", errors.New("server error (503)"), true},
 		{"unknown", errors.New("boom"), true},

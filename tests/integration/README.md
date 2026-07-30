@@ -9,6 +9,19 @@ Package for defining integration tests. Currently, there is a setup for API and 
 3. If necessary, run `make connect-orchestrator` to create a tunnel to one orchestrator client VM in GCP (you may need to run `make setup-ssh` the first time)
 4. Run `make test` in this folder or `make test-integration` from the root `infra/` folder.
 
+Narrow the run with `make test/<path under internal/tests>`, e.g. `make test/api/templates`
+or `make test/api/templates/build_template_test.go:TestTemplateBuildCOPY`.
+
+## What CI runs
+
+The `uncompressed` config runs the whole suite. The compressed configs (`zstd1`,
+`lz4`) re-run only `scripts/compression-tests.tsv`, the explicit allow-list of
+tests whose subject is writing or reading back a snapshot; that file documents
+the inclusion criteria and the code paths the compression knobs reach. Select it
+locally with `TESTS_ONLY=scripts/compression-tests.tsv make test`. An entry that
+no longer matches a real test is an error, so the list cannot rot into silently
+reduced coverage.
+
 ## Usage of clients (api, orchestrator, envd)
 
 All tests are in the folder internal/tests. You can see the usage of different clients in the tests. Here are just basics.
