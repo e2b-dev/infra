@@ -76,8 +76,8 @@ func (a *APIStore) PostSnapshotsSnapshotIDFork(c *gin.Context, rawSnapshotID api
 		return
 	}
 
-	if int64(forkCount) >= teamInfo.Limits.SandboxConcurrency {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Count must be lower than the maximum number of concurrent sandboxes (%d)", teamInfo.Limits.SandboxConcurrency))
+	if int64(forkCount) > teamInfo.Limits.SandboxConcurrency {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Count must not exceed the maximum number of concurrent sandboxes (%d)", teamInfo.Limits.SandboxConcurrency))
 		return
 	}
 
