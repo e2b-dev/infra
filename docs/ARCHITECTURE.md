@@ -337,6 +337,12 @@ steps. Resize disk grows the quiescent rootfs on the host; the other non-cached 
 Firecracker VM and their pause-diffs become layers. The optimize phase records which memory pages a
 fresh resume touches, producing prefetch hints that speed up future sandbox starts.
 
+The operator-owned Monad application runtime is defined under
+`templates/monad-runtime/` and built through this same API/template-manager
+path with `make build-monad-runtime-template`. Its immutable template reference
+and build ID are recorded in `docs/MONAD_RUNTIME_TEMPLATE_STATUS.md`; the
+generated source assets remain untracked.
+
 ## Deployment topology
 
 Deployed with **Terraform** (`iac/provider-gcp/`, `iac/provider-aws/`) onto a **Nomad + Consul**

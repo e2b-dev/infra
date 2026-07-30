@@ -211,6 +211,26 @@ tidy:
 local-infra:
 	$(MAKE) -C packages/local-dev local-infra
 
+.PHONY: prepare-monad-runtime-template
+prepare-monad-runtime-template:
+	npm ci --prefix templates/monad-runtime
+	node templates/monad-runtime/prepare-assets.mjs
+
+.PHONY: build-monad-runtime-template
+build-monad-runtime-template:
+	npm ci --prefix templates/monad-runtime
+	node templates/monad-runtime/build.mjs
+
+.PHONY: test-monad-runtime-template
+test-monad-runtime-template:
+	npm ci --prefix templates/monad-runtime
+	npm test --prefix templates/monad-runtime
+
+.PHONY: verify-monad-runtime-template
+verify-monad-runtime-template:
+	npm ci --prefix templates/monad-runtime
+	node templates/monad-runtime/verify-runtime.mjs
+
 .PHONY: gcloud-ingress-dashboard
 gcloud-ingress-dashboard:
 ifndef INSTANCE

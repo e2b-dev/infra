@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "tams_repository": "rehoboam-lab/tams",
+  "tams_revision": "41ee498773c1524cab763ca1616faab0b16f5de5",
+  "tams_apps_sandbox_tree_oid": "322a658913532aa66a9c946cb3797f19b660fcca",
+  "runtime_input_paths": [
+    "apps/sandbox",
+    "apps/monad-sandbox-agent-server",
+    "apps/cli",
+    "packages/executor-sdk",
+    "packages/manifest-schema",
+    "packages/starter"
+  ],
+  "tool_versions": {
+    "agent_browser": "0.27.0",
+    "bun_base_image": "oven/bun:1-debian",
+    "opencode": "1.14.28",
+    "playwright": "1.60.0"
+  },
+  "template_resources": {
+    "cpu_count": 2,
+    "memory_mb": 4096
+  }
+}
