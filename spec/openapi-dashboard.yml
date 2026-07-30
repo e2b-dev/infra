@@ -403,16 +403,11 @@ components:
     AdminClusterCreateRequest:
       type: object
       required:
-        - cluster_id
         - name
         - endpoint
         - endpoint_tls
         - token
       properties:
-        cluster_id:
-          type: string
-          format: uuid
-          description: Stable identifier for the new immutable cluster row.
         name:
           type: string
           minLength: 1
@@ -430,6 +425,15 @@ components:
         auth_org_id:
           type: string
           nullable: true
+
+    AdminClusterCreateResponse:
+      type: object
+      required:
+        - cluster_id
+      properties:
+        cluster_id:
+          type: string
+          format: uuid
 
     AdminTeamClusterAssignmentRequest:
       type: object
@@ -1583,6 +1587,10 @@ paths:
       responses:
         "201":
           description: Cluster created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminClusterCreateResponse"
         "400":
           $ref: "#/components/responses/400"
         "401":

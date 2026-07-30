@@ -31,14 +31,13 @@ func (s *APIStore) PostAdminClusters(c *gin.Context) {
 	body.Token = strings.TrimSpace(body.Token)
 	body.SandboxProxyDomain = trimmedOptional(body.SandboxProxyDomain)
 	body.AuthOrgId = trimmedOptional(body.AuthOrgId)
-	if body.ClusterId == uuid.Nil || body.Name == "" || body.Endpoint == "" || body.Token == "" {
-		s.sendAPIStoreError(c, http.StatusBadRequest, "cluster_id, name, endpoint and token are required")
+	if body.Name == "" || body.Endpoint == "" || body.Token == "" {
+		s.sendAPIStoreError(c, http.StatusBadRequest, "name, endpoint and token are required")
 
 		return
 	}
 
-	err = s.db.Dashboard.CreateCluster(ctx, dashboardqueries.CreateClusterParams{
-		ClusterID:          body.ClusterId,
+	clusterID, err := s.db.Dashboard.CreateCluster(ctx, dashboardqueries.CreateClusterParams{
 		Name:               body.Name,
 		Endpoint:           body.Endpoint,
 		EndpointTls:        body.EndpointTls,
@@ -56,7 +55,7 @@ func (s *APIStore) PostAdminClusters(c *gin.Context) {
 		return
 	}
 
-	c.Status(http.StatusCreated)
+	c.JSON(http.StatusCreated, api.AdminClusterCreateResponse{ClusterId: clusterID})
 }
 
 func (s *APIStore) PutAdminTeamsTeamIDCluster(c *gin.Context, teamID api.TeamID) {

@@ -30,9 +30,8 @@ func (q *Queries) AssignTeamCluster(ctx context.Context, arg AssignTeamClusterPa
 	return result.RowsAffected(), nil
 }
 
-const createCluster = `-- name: CreateCluster :exec
+const createCluster = `-- name: CreateCluster :one
 INSERT INTO public.clusters (
-    id,
     name,
     endpoint,
     endpoint_tls,
@@ -41,18 +40,17 @@ INSERT INTO public.clusters (
     auth_org_id
 )
 VALUES (
-    $1::uuid,
+    $1::text,
     $2::text,
-    $3::text,
-    $4::boolean,
+    $3::boolean,
+    $4::text,
     $5::text,
-    $6::text,
-    $7::text
+    $6::text
 )
+RETURNING id
 `
 
 type CreateClusterParams struct {
-	ClusterID          uuid.UUID
 	Name               string
 	Endpoint           string
 	EndpointTls        bool
@@ -61,9 +59,8 @@ type CreateClusterParams struct {
 	AuthOrgID          *string
 }
 
-func (q *Queries) CreateCluster(ctx context.Context, arg CreateClusterParams) error {
-	_, err := q.db.Exec(ctx, createCluster,
-		arg.ClusterID,
+func (q *Queries) CreateCluster(ctx context.Context, arg CreateClusterParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, createCluster,
 		arg.Name,
 		arg.Endpoint,
 		arg.EndpointTls,
@@ -71,5 +68,7 @@ func (q *Queries) CreateCluster(ctx context.Context, arg CreateClusterParams) er
 		arg.SandboxProxyDomain,
 		arg.AuthOrgID,
 	)
-	return err
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
 }

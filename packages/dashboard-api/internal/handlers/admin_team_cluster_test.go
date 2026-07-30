@@ -21,11 +21,9 @@ func TestPostAdminClustersCreatesImmutableCluster(t *testing.T) {
 
 	db := testutils.SetupDatabase(t)
 	ctx := t.Context()
-	clusterID := uuid.New()
 	authOrgID := "org_test"
 	sandboxDomain := "sandbox.example.test"
 	request := api.AdminClusterCreateRequest{
-		ClusterId:          clusterID,
 		Name:               "Managed BYOC",
 		Endpoint:           "api.example.test:5008",
 		EndpointTls:        true,
@@ -38,6 +36,10 @@ func TestPostAdminClustersCreatesImmutableCluster(t *testing.T) {
 	response := callCreateCluster(t, store, request)
 	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
 
+	var created api.AdminClusterCreateResponse
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &created))
+	require.NotEqual(t, uuid.Nil, created.ClusterId)
+
 	var count int
 	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(ctx,
 		`SELECT count(*) FROM public.clusters WHERE id = $1 AND name = $2 AND endpoint = $3 AND token = $4`,
@@ -46,16 +48,14 @@ func TestPostAdminClustersCreatesImmutableCluster(t *testing.T) {
 
 			return rows.Scan(&count)
 		},
-		clusterID,
+		created.ClusterId,
 		request.Name,
 		request.Endpoint,
 		request.Token,
 	))
 	require.Equal(t, 1, count)
 
-	changed := request
-	changed.Name = "Changed"
-	conflict := callCreateCluster(t, store, changed)
+	conflict := callCreateCluster(t, store, request)
 	require.Equal(t, http.StatusConflict, conflict.Code, conflict.Body.String())
 	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(ctx,
 		`SELECT count(*) FROM public.clusters WHERE id = $1 AND name = $2`,
@@ -64,7 +64,7 @@ func TestPostAdminClustersCreatesImmutableCluster(t *testing.T) {
 
 			return rows.Scan(&count)
 		},
-		clusterID,
+		created.ClusterId,
 		request.Name,
 	))
 	require.Equal(t, 1, count)
