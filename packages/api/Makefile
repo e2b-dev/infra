@@ -14,6 +14,27 @@ else
 	REGISTRY_PREFIX := $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(PREFIX)core
 endif
 
+# E2B-hosted registry repo holding released, prebuilt api AND db-migrator
+# images — they release as one unit from this package's docker-bake.hcl.
+# Published to by the release-please workflow on tagging a release.
+E2B_ARTIFACTS_REGISTRY ?= us-docker.pkg.dev/e2b-artifacts/api
+
+# Optional version "hook" for the released-image flow.
+# When empty (default), build-and-upload bakes both images from source and
+# pushes to the client's own core repo (the existing flow, unchanged).
+# When set (e.g. API_VERSION=v0.1.0), skip building: pull the released api
+# and db-migrator images from $(E2B_ARTIFACTS_REGISTRY) and retag/push them
+# into the client's core repo. One API_VERSION covers BOTH images on purpose:
+# the api bakes in the migration timestamp its startup guard expects and the
+# migrator bakes in the migrations, so a shared version makes schema skew
+# between them impossible.
+#
+# Set it either on the command line (make ... API_VERSION=v0.1.0) or in the
+# active .env.${ENV} file, which is included above. Quotes are stripped so
+# both `=v0.1.0` and `="v0.1.0"` work; a command-line value always wins over
+# the env file.
+API_VERSION := $(strip $(subst ",,$(API_VERSION)))
+
 .PHONY: generate
 generate:
 	go generate ./...
@@ -73,12 +94,31 @@ profiler:
 
 .PHONY: build-and-upload
 build-and-upload:
+ifeq ($(strip $(API_VERSION)),)
+	# Existing flow: bake both images from source and push to the client's
+	# own core repo.
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
 	$(eval EXPECTED_MIGRATION_TIMESTAMP := $(expectedMigration))
 	cd .. && REGISTRY_PREFIX=$(REGISTRY_PREFIX) \
 		COMMIT_SHA=$(COMMIT_SHA) \
 		EXPECTED_MIGRATION_TIMESTAMP=$(EXPECTED_MIGRATION_TIMESTAMP) \
 		docker buildx bake -f api/docker-bake.hcl --push
+else
+	# Released-image flow: pull the prebuilt, versioned api + db-migrator
+	# images from the E2B artifacts registry and retag/push them into the
+	# client's own core repo.
+	@echo "Using released api + db-migrator $(API_VERSION) from $(E2B_ARTIFACTS_REGISTRY)"
+	docker pull --platform linux/amd64 $(E2B_ARTIFACTS_REGISTRY)/api:$(API_VERSION)
+	docker pull --platform linux/amd64 $(E2B_ARTIFACTS_REGISTRY)/db-migrator:$(API_VERSION)
+	docker tag $(E2B_ARTIFACTS_REGISTRY)/api:$(API_VERSION) $(REGISTRY_PREFIX)/api:latest
+	docker tag $(E2B_ARTIFACTS_REGISTRY)/api:$(API_VERSION) $(REGISTRY_PREFIX)/api:$(API_VERSION)
+	docker tag $(E2B_ARTIFACTS_REGISTRY)/db-migrator:$(API_VERSION) $(REGISTRY_PREFIX)/db-migrator:latest
+	docker tag $(E2B_ARTIFACTS_REGISTRY)/db-migrator:$(API_VERSION) $(REGISTRY_PREFIX)/db-migrator:$(API_VERSION)
+	docker push $(REGISTRY_PREFIX)/api:latest
+	docker push $(REGISTRY_PREFIX)/api:$(API_VERSION)
+	docker push $(REGISTRY_PREFIX)/db-migrator:latest
+	docker push $(REGISTRY_PREFIX)/db-migrator:$(API_VERSION)
+endif
 
 .PHONY: test
 test:

@@ -117,6 +117,10 @@ jobs:
               client-proxy)         path=packages/client-proxy ;;
               clickhouse-migrator)  path=packages/clickhouse ;;
               envd)                 path=packages/envd ;;
+              orchestrator)         path=packages/orchestrator ;;
+              api)                  path=packages/api ;;
+              dashboard-api)        path=packages/dashboard-api ;;
+              nomad-nodepool-apm)   path=packages/nomad-nodepool-apm ;;
               *)
                 echo "::error::release merge for unknown component '${component}' — add it to this workflow's package list"
                 exit 1

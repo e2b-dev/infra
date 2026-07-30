@@ -4,6 +4,29 @@ ENV := $(shell cat ../../.last_used_env || echo "not-set")
 AWS_BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
 GCP_BUCKET_PREFIX ?= $(GCP_PROJECT_ID)-
 
+# Public bucket holding released, prebuilt orchestrator-package binaries
+# (objects are <version>/orchestrator and <version>/clean-nfs-cache; there is
+# no separate template-manager object — it is the orchestrator binary
+# uploaded under a second name, matching upload/template-manager below).
+# Published to by the release-please workflow on tagging a release;
+# public-read, so downloads need no credentials.
+E2B_ARTIFACT_BINARIES_URL ?= https://storage.googleapis.com/e2b-artifact-binaries/orchestrator
+
+# Optional version "hook" for the released-artifact flow.
+# When empty (default), the build-and-upload/* targets build from source and
+# upload the binaries to the client's fc-env-pipeline bucket (the existing
+# flow, unchanged). When set (e.g. ORCHESTRATOR_VERSION=v0.1.0), skip
+# building: download the released binaries and upload those instead. The env
+# pipeline keeps fetching from the same bucket objects either way. One
+# version covers orchestrator, template-manager, and clean-nfs-cache — they
+# release together.
+#
+# Set it either on the command line (make ... ORCHESTRATOR_VERSION=v0.1.0) or
+# in the active .env.${ENV} file, which is included above. Quotes are
+# stripped so both `=v0.1.0` and `="v0.1.0"` work; a command-line value
+# always wins over the env file.
+ORCHESTRATOR_VERSION := $(strip $(subst ",,$(ORCHESTRATOR_VERSION)))
+
 HOSTNAME := $(shell hostname 2> /dev/null || hostnamectl hostname 2> /dev/null)
 $(if $(HOSTNAME),,$(error Failed to determine hostname: both 'hostname' and 'hostnamectl' failed))
 
@@ -120,14 +143,32 @@ else
 	gcloud storage cp --cache-control="no-cache, max-age=0" ./bin/orchestrator "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/template-manager.$(COMMIT_SHA)"
 endif
 
+# Released-artifact flow: download the prebuilt, versioned binaries from the
+# public E2B artifact-binaries bucket.
+.PHONY: pull-released
+pull-released:
+	@echo "Using released orchestrator $(ORCHESTRATOR_VERSION) from $(E2B_ARTIFACT_BINARIES_URL)"
+	mkdir -p bin
+	curl -fL -o bin/orchestrator "$(E2B_ARTIFACT_BINARIES_URL)/$(ORCHESTRATOR_VERSION)/orchestrator"
+	curl -fL -o bin/clean-nfs-cache "$(E2B_ARTIFACT_BINARIES_URL)/$(ORCHESTRATOR_VERSION)/clean-nfs-cache"
+
+# The binaries come from source (default) or from released objects when
+# ORCHESTRATOR_VERSION is set. Either way they land in ./bin and the
+# upload/* targets are identical.
+ifeq ($(strip $(ORCHESTRATOR_VERSION)),)
+BIN_SOURCE := build
+else
+BIN_SOURCE := pull-released
+endif
+
 .PHONY: build-and-upload/clean-nfs-cache
-build-and-upload/clean-nfs-cache: build upload/clean-nfs-cache
+build-and-upload/clean-nfs-cache: $(BIN_SOURCE) upload/clean-nfs-cache
 
 .PHONY: build-and-upload/orchestrator
-build-and-upload/orchestrator: build upload/orchestrator
+build-and-upload/orchestrator: $(BIN_SOURCE) upload/orchestrator
 
 .PHONY: build-and-upload/template-manager
-build-and-upload/template-manager: build upload/template-manager
+build-and-upload/template-manager: $(BIN_SOURCE) upload/template-manager
 
 
 .PHONY: test
