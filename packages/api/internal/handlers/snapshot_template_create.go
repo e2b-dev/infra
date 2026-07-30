@@ -18,6 +18,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"time"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -161,5 +163,9 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 	c.JSON(http.StatusCreated, api.SnapshotInfo{
 		SnapshotID: snapshotID,
 		Names:      names,
+		CpuCount:   int32(sbx.VCpu),
+		MemoryMB:   int32(sbx.RamMB),
+		DiskSizeMB: int32(sbx.TotalDiskSizeMB),
+		CreatedAt:  time.Now(),
 	})
 }
