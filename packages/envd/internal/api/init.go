@@ -33,6 +33,7 @@ var pinMMDSWarnLimit = ratelimit.New(10 * time.Second)
 var (
 	ErrAccessTokenMismatch           = errors.New("access token validation failed")
 	ErrAccessTokenResetNotAuthorized = errors.New("access token reset not authorized")
+	ErrConcurrentNFSInit             = errors.New("NFS mount already in progress")
 )
 
 const (
@@ -371,7 +372,7 @@ func (a *API) setupNFS(ctx context.Context, logger zerolog.Logger, lifecycleID *
 	if !a.isMountingNFS.CompareAndSwap(false, true) {
 		logger.Debug().Msg("NFS volumes already mounting")
 
-		return e
+		return ErrConcurrentNFSInit
 	}
 	defer a.isMountingNFS.Store(false)
 
