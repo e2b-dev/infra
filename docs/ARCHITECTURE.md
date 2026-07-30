@@ -126,11 +126,16 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
   `MONAD_WORKCELL_ATTESTATION_REGION` are configured, an API-key-authenticated
   `GET /.well-known/monad/workcell-attestations/{sandboxID}` endpoint proves
   the caller owns the running or paused sandbox. It verifies Monad's reserved
-  identity metadata against the authoritative template/build assignment in
-  Postgres and the running Redis or paused Postgres policy state before
-  returning immutable image, placement, resources, network, and lifecycle
-  claims. Partial placement configuration fails API startup; absent
-  configuration disables the endpoint.
+  identity metadata against authoritative Postgres lineage and the running
+  Redis or paused Postgres policy state. Direct, resumed, and forked workcells
+  are attested against their immutable source template build. A workcell
+  restored from a reusable snapshot is instead attested as `snapshot-id`: the
+  API resolves the active, team-owned `snapshot_templates` build/tag edge,
+  requires the runtime metadata to name that exact `<template-id>:<tag>`, and
+  reports no unrelated image ID. Sandbox inspection reports the same tagged
+  snapshot identity so the SDK and attestation cannot disagree. Partial
+  placement configuration fails API startup; absent configuration disables
+  the endpoint.
 - **Extra listeners**: internal gRPC :5009 and edge gRPC :5109 expose `ResumeSandbox` so
   client-proxy can wake paused sandboxes on incoming traffic.
 - Reads ClickHouse for sandbox/team metrics endpoints. Sandbox and template-build logs default to
@@ -300,6 +305,10 @@ sequenceDiagram
 - **Resume**: same path as creation, but placement prefers the **origin node** — if the snapshot
   is still in its local cache, resume avoids any object-storage reads. `Checkpoint` is a
   pause+resume in place used to persist state while keeping the sandbox running.
+- **Reusable snapshot restore**: a snapshot-template build retains a durable
+  `snapshot_templates` row plus build/tag assignment. Restores and their later pause/resume
+  cycles keep the tagged snapshot reference as their externally reported identity; the current
+  execution build may change, but the attested snapshot build/tag edge does not.
 - Auto-pause/auto-resume make sandboxes effectively serverless: idle sandboxes pause, traffic
   resumes them (see traffic flow above).
 

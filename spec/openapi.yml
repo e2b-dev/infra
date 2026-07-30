@@ -458,7 +458,6 @@ components:
         - region
         - templateId
         - identityFidelity
-        - imageId
         - resources
         - network
         - lifecycle
@@ -479,10 +478,11 @@ components:
           type: string
         identityFidelity:
           type: string
-          enum: [image-attested]
+          enum: [image-attested, snapshot-id]
         imageId:
           type: string
           format: uuid
+          description: Present only when identityFidelity is image-attested.
         resources:
           type: object
           required:

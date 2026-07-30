@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	snapshotcache "github.com/e2b-dev/infra/packages/api/internal/cache/snapshots"
@@ -143,10 +144,29 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			return
 		}
 
+		reportedTemplateID := sbx.BaseTemplateID
+		var directBuildID *uuid.UUID
+		if sbx.TemplateID == sbx.BaseTemplateID {
+			directBuildID = &sbx.BuildID
+		}
+		reportedTemplateID, err = a.monadReportedTemplateID(
+			ctx,
+			sbx.BaseTemplateID,
+			team.ID,
+			sbx.Metadata,
+			directBuildID,
+		)
+		if err != nil {
+			telemetry.ReportError(ctx, "restored snapshot template identity is invalid", err, telemetry.WithSandboxID(sandboxId))
+			a.sendAPIStoreError(c, http.StatusConflict, monadAttestationConflictError)
+
+			return
+		}
+
 		// Sandbox exists and belongs to the team - return running sandbox sbx
 		sandbox := api.SandboxDetail{
 			ClientID:            sbx.ClientID,
-			TemplateID:          sbx.BaseTemplateID,
+			TemplateID:          reportedTemplateID,
 			Alias:               sbx.Alias,
 			SandboxID:           sbx.SandboxID,
 			StartedAt:           sbx.StartTime,
@@ -238,10 +258,23 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	}
 
 	pausedAlias := firstAlias(lastSnapshot.Aliases)
+	reportedTemplateID, err := a.monadReportedTemplateID(
+		ctx,
+		lastSnapshot.Snapshot.BaseEnvID,
+		team.ID,
+		map[string]string(lastSnapshot.Snapshot.Metadata),
+		nil,
+	)
+	if err != nil {
+		telemetry.ReportError(ctx, "paused restored-snapshot template identity is invalid", err, telemetry.WithSandboxID(sandboxId))
+		a.sendAPIStoreError(c, http.StatusConflict, monadAttestationConflictError)
+
+		return
+	}
 
 	sandbox := api.SandboxDetail{
 		ClientID:            consts.ClientID, // for backwards compatibility we need to return a client id
-		TemplateID:          lastSnapshot.Snapshot.BaseEnvID,
+		TemplateID:          reportedTemplateID,
 		SandboxID:           lastSnapshot.Snapshot.SandboxID,
 		StartedAt:           lastSnapshot.Snapshot.SandboxStartedAt.Time,
 		CpuCount:            cpuCount,
