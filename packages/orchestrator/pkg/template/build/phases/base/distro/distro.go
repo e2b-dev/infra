@@ -201,7 +201,11 @@ func ShellSelector() string {
 	// Selection lives in a function so it can be retried per ID_LIKE token.
 	// Assignments and function definitions inside a POSIX-sh function are
 	// global, so the caller sees the profile the same way it always has.
+	// The match is reported via e2b_profile_matched, not the return status —
+	// a function called as an if-condition runs with errexit suppressed,
+	// which would swallow Bootstrap failures inside a matched arm.
 	b.WriteString("e2b_select_profile() {\n")
+	b.WriteString("  e2b_profile_matched=\n")
 	b.WriteString(`  case "$1" in` + "\n")
 	for _, p := range Profiles {
 		fmt.Fprintf(&b, "  %s)\n", strings.Join(p.IDs, "|"))
@@ -219,13 +223,14 @@ func ShellSelector() string {
 		fmt.Fprintf(&b, "    e2b_ca_refresh() { %s; }\n", p.CARefresh)
 		fmt.Fprintf(&b, "    E2B_INIT_SYSTEM=%q\n", p.Init)
 		fmt.Fprintf(&b, "    e2b_init_setup() {\n%s\n    }\n", indentBlock(initSetup[p.Init], "        "))
-		fmt.Fprintf(&b, "    return 0\n")
+		fmt.Fprintf(&b, "    e2b_profile_matched=1\n")
 		fmt.Fprintf(&b, "    ;;\n")
 	}
-	fmt.Fprintf(&b, "  *)\n    return 1\n    ;;\n")
+	fmt.Fprintf(&b, "  *)\n    ;;\n")
 	b.WriteString("  esac\n}\n\n")
 
-	b.WriteString(`if ! e2b_select_profile "$E2B_DISTRO_ID"; then` + "\n")
+	b.WriteString(`e2b_select_profile "$E2B_DISTRO_ID"` + "\n")
+	b.WriteString(`if [ -z "$e2b_profile_matched" ]; then` + "\n")
 
 	// Deliberate rejections are checked before the fallback, so they keep
 	// failing fast with their own reason instead of being matched by ID_LIKE.
@@ -239,7 +244,8 @@ func ShellSelector() string {
 
 	b.WriteString("  e2b_like_match=\n")
 	b.WriteString(`  for e2b_like in $E2B_ID_LIKE; do` + "\n")
-	b.WriteString(`    if e2b_select_profile "$e2b_like"; then` + "\n")
+	b.WriteString(`    e2b_select_profile "$e2b_like"` + "\n")
+	b.WriteString(`    if [ -n "$e2b_profile_matched" ]; then` + "\n")
 	b.WriteString("      e2b_like_match=$e2b_like\n")
 	b.WriteString("      break\n")
 	b.WriteString("    fi\n")

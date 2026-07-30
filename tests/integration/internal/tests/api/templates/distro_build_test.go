@@ -77,9 +77,8 @@ func TestTemplateBuildDistroFamilies(t *testing.T) {
 
 // An image from a distro E2B doesn't provision must be rejected while
 // provisioning, and the reason must reach the customer instead of a bare exit
-// status. Oracle Linux is deliberately unsupported: sandboxes boot E2B's
-// kernel, and it declares ID_LIKE=fedora, so it also proves the rejection is
-// checked before the ID_LIKE fallback could re-admit it.
+// status. Oracle Linux declares ID_LIKE=fedora, so this also covers the
+// rejection guard running before the ID_LIKE fallback.
 func TestTemplateBuildUnsupportedDistro(t *testing.T) {
 	t.Parallel()
 

@@ -223,6 +223,13 @@ func TestUnknownIDFallsBackToIDLike(t *testing.T) {
 	if !strings.Contains(sel, "unsupported base image distribution") {
 		t.Error("an id matching neither ID nor ID_LIKE must still fail")
 	}
+	// An if-condition call runs the function body with errexit suppressed.
+	if strings.Contains(sel, "if e2b_select_profile") || strings.Contains(sel, "if ! e2b_select_profile") {
+		t.Error("e2b_select_profile must not be invoked as an if-condition (errexit suppression)")
+	}
+	if !strings.Contains(sel, "e2b_profile_matched=1") {
+		t.Error("a matched profile arm must set e2b_profile_matched")
+	}
 }
 
 // ID_LIKE must not re-admit the ids the rhel profile documents as out of scope:
