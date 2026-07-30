@@ -21,7 +21,10 @@ on:
         required: true
 
 permissions:
-  contents: read
+  # contents: write (not read): binary releases attach a SHA256SUMS asset to
+  # the tag's GitHub release so consumers can verify bucket downloads against
+  # a trust root outside the bucket (see the checksums step below).
+  contents: write
   id-token: write
 
 # One publish per tag at a time. The e2b-artifacts registry has
@@ -299,3 +302,32 @@ jobs:
           for f in ${BINARY_FILES}; do
             gcloud storage cp "packages/${COMPONENT}/bin/${f}" "${BINARY_DIR}/${f}"
           done
+
+      # Checksums go to the tag's GitHub release, NOT to the bucket: a
+      # SHA256SUMS object next to the binaries would share their trust domain
+      # (whoever could replace a binary could replace it too), so the package
+      # Makefiles' pull-released flows verify bucket downloads against this
+      # release asset instead — tampering would have to compromise both GCS
+      # and GitHub.
+      - name: Attach checksums to the GitHub release
+        if: ${{ steps.pkg.outputs.kind == 'binary' }}
+        env:
+          COMPONENT: ${{ steps.pkg.outputs.component }}
+          BINARY_FILES: ${{ steps.pkg.outputs.binary_files }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd "packages/${COMPONENT}/bin"
+          sha256sum ${BINARY_FILES} > SHA256SUMS
+          cat SHA256SUMS
+          if gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            # --clobber keeps a workflow_dispatch re-publish idempotent (the
+            # binaries themselves can't change: the bucket rejects overwrites).
+            gh release upload "${TAG}" SHA256SUMS --clobber --repo "${GITHUB_REPOSITORY}"
+          else
+            # Hand-pushed RC tags have no Release Please release; create a
+            # prerelease to carry the checksums.
+            gh release create "${TAG}" SHA256SUMS --prerelease --verify-tag \
+              --title "${TAG}" --notes "Checksums for the ${TAG} binaries." \
+              --repo "${GITHUB_REPOSITORY}"
+          fi

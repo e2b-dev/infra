@@ -10,6 +10,12 @@ GCP_BUCKET_PREFIX ?= $(GCP_PROJECT_ID)-
 # public-read, so downloads need no credentials.
 E2B_ARTIFACT_BINARIES_URL ?= https://storage.googleapis.com/e2b-artifact-binaries/nomad-nodepool-apm
 
+# Where the release's SHA256SUMS asset lives. Deliberately a different trust
+# domain than the binaries bucket: a checksum file sitting next to the
+# binaries could be replaced together with them, so pull-released verifies
+# the downloads against the GitHub release instead.
+E2B_RELEASES_URL ?= https://github.com/e2b-dev/infra/releases/download
+
 # Optional version "hook" for the released-artifact flow.
 # When empty (default), build-and-upload builds from source and uploads the
 # binaries to the client's fc-env-pipeline bucket (the existing flow,
@@ -60,13 +66,17 @@ else
 endif
 
 # Released-artifact flow: download the prebuilt, versioned binaries from the
-# public E2B artifact-binaries bucket.
+# public E2B artifact-binaries bucket and verify them against the SHA256SUMS
+# asset on the release's GitHub release before anything is uploaded. A failed
+# check stops make here, so tampered binaries never reach fc-env-pipeline.
 .PHONY: pull-released
 pull-released:
 	@echo "Using released nomad-nodepool-apm $(NOMAD_NODEPOOL_APM_VERSION) from $(E2B_ARTIFACT_BINARIES_URL)"
 	@mkdir -p $(BIN_DIR)
 	curl -fL -o $(BINARY) "$(E2B_ARTIFACT_BINARIES_URL)/$(NOMAD_NODEPOOL_APM_VERSION)/$(PLUGIN_NAME)"
 	curl -fL -o $(TARGET_BINARY) "$(E2B_ARTIFACT_BINARIES_URL)/$(NOMAD_NODEPOOL_APM_VERSION)/$(TARGET_PLUGIN_NAME)"
+	curl -fL -o $(BIN_DIR)/SHA256SUMS "$(E2B_RELEASES_URL)/$(PLUGIN_NAME)-$(NOMAD_NODEPOOL_APM_VERSION)/SHA256SUMS"
+	cd $(BIN_DIR) && if command -v sha256sum > /dev/null 2>&1; then sha256sum -c SHA256SUMS; else shasum -a 256 -c SHA256SUMS; fi
 
 # The binaries come from source (default) or from released objects when
 # NOMAD_NODEPOOL_APM_VERSION is set. Either way they land in ./bin and the
