@@ -400,6 +400,65 @@ components:
           format: email
           description: Billing/contact email for the team.
 
+    AdminTeamClusterRegistrationRequest:
+      type: object
+      required:
+        - cluster_id
+        - expected_previous_cluster_id
+        - name
+        - endpoint
+        - endpoint_tls
+        - token
+      properties:
+        cluster_id:
+          type: string
+          format: uuid
+          description: Stable identifier for the new immutable cluster row.
+        expected_previous_cluster_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Current team cluster ID, or null when the team is expected to be unassigned.
+        name:
+          type: string
+          minLength: 1
+        endpoint:
+          type: string
+          minLength: 1
+        endpoint_tls:
+          type: boolean
+        token:
+          type: string
+          minLength: 1
+        sandbox_proxy_domain:
+          type: string
+          nullable: true
+        auth_org_id:
+          type: string
+          nullable: true
+
+    AdminTeamClusterRegistrationResponse:
+      type: object
+      required:
+        - team_id
+        - cluster_id
+        - previous_cluster_id
+        - changed
+      properties:
+        team_id:
+          type: string
+          format: uuid
+        cluster_id:
+          type: string
+          format: uuid
+        previous_cluster_id:
+          type: string
+          format: uuid
+          nullable: true
+        changed:
+          type: boolean
+          description: False when an identical request was already committed.
+
     BuildStatus:
       type: string
       description: Build status mapped for dashboard clients.
@@ -1524,6 +1583,43 @@ paths:
           $ref: "#/components/responses/401"
         "502":
           $ref: "#/components/responses/502"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/teams/{teamID}/cluster:
+    put:
+      summary: Register and assign an immutable cluster
+      description: >-
+        Atomically inserts a new cluster row and assigns it to the team. The
+        expected previous cluster ID prevents concurrent deployments from
+        overwriting each other. Repeating an identical committed request is
+        idempotent; an existing cluster row is never modified.
+      tags: [admin]
+      security:
+        - AdminApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/teamID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminTeamClusterRegistrationRequest"
+      responses:
+        "200":
+          description: Cluster registered and assigned, or an identical request already completed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTeamClusterRegistrationResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
         "500":
           $ref: "#/components/responses/500"
 
