@@ -272,6 +272,10 @@ components:
       required:
         - snapshotID
         - names
+        - cpuCount
+        - memoryMB
+        - diskSizeMB
+        - createdAt
       properties:
         snapshotID:
           type: string
@@ -281,6 +285,16 @@ components:
           items:
             type: string
           description: Full names of the snapshot template including team namespace and tag (e.g. team-slug/my-snapshot:v2)
+        cpuCount:
+          $ref: "#/components/schemas/CPUCount"
+        memoryMB:
+          $ref: "#/components/schemas/MemoryMB"
+        diskSizeMB:
+          $ref: "#/components/schemas/DiskSizeMB"
+        createdAt:
+          type: string
+          format: date-time
+          description: Time when the snapshot was created
 
     EnvVars:
       additionalProperties:
@@ -2881,6 +2895,57 @@ paths:
                   $ref: "#/components/schemas/SnapshotInfo"
         "401":
           $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /snapshots/{snapshotID}:
+    get:
+      summary: Get snapshot
+      description: Get information about a single snapshot by its ID or alias
+      tags: [snapshots]
+      security:
+        - ApiKeyAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+        - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/snapshotID"
+      responses:
+        "200":
+          description: Successfully returned the snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SnapshotInfo"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+    delete:
+      summary: Delete snapshot
+      description: >-
+        Permanently deletes a snapshot template. Running sandboxes forked from
+        this snapshot are not affected. No new forks can be created after
+        deletion.
+      tags: [snapshots]
+      security:
+        - ApiKeyAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+        - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/snapshotID"
+      responses:
+        "204":
+          description: Snapshot was deleted successfully
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
         "500":
           $ref: "#/components/responses/500"
 

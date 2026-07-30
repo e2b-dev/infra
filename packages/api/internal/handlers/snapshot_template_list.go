@@ -142,6 +142,10 @@ func (a *APIStore) GetSnapshots(c *gin.Context, params api.GetSnapshotsParams) {
 		return api.SnapshotInfo{
 			SnapshotID: snapshotID,
 			Names:      snap.Names,
+			CpuCount:   int32(snap.Vcpu),
+			MemoryMB:   int32(snap.RamMb),
+			DiskSizeMB: func() int32 { if snap.TotalDiskSizeMb != nil { return int32(*snap.TotalDiskSizeMb) }; return 0 }(),
+			CreatedAt:  snap.CreatedAt,
 		}
 	})
 
