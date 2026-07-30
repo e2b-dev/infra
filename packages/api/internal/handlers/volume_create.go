@@ -122,19 +122,11 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 		return
 	}
 
-	// The orchestrator may have changed some of the volume's values; persist
+	// The orchestrator may have changed the volume type; persist
 	// whatever it returned. Older orchestrators leave this empty, in which case
 	// we fall back to the values we sent.
-	if info := response.GetVolume(); info != nil {
-		if id, err := uuid.Parse(info.GetVolumeId()); err == nil {
-			volume.ID = id
-		}
-		if teamID, err := uuid.Parse(info.GetTeamId()); err == nil {
-			volume.TeamID = teamID
-		}
-		if info.GetVolumeType() != "" {
-			volume.VolumeType = info.GetVolumeType()
-		}
+	if volumeType := response.GetVolumeType(); volumeType != "" {
+		volume.VolumeType = volumeType
 	}
 
 	created, err := a.sqlcDB.CreateVolume(ctx, queries.CreateVolumeParams{

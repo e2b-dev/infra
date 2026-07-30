@@ -50,7 +50,7 @@ message CreateVolumeRequest {
 }
 
 message CreateVolumeResponse {
-  optional VolumeInfo volume = 1;
+  optional string volume_type = 1;
 }
 
 message DeleteVolumeRequest {
