@@ -44,6 +44,13 @@ const (
 	// A non-zero rate means lost snapshots.
 	OrchestratorSnapshotUploadFailedCounterName CounterType = "orchestrator.snapshot.upload.failed"
 
+	// SandboxPauseFsQuiescedCounterName counts filesystem-only pauses by whether
+	// the captured rootfs was frozen (quiesced=true, crash-consistent) vs a plain
+	// sync fallback (quiesced=false). quiesced/total is the fraction of newly
+	// minted fs-only snapshots that are safe to cold-boot / rewrite — the eligible
+	// population for the offline envd upgrade built on top of this flag.
+	SandboxPauseFsQuiescedCounterName CounterType = "orchestrator.sandbox.pause.fs_quiesced"
+
 	// OrchestratorEnvdUpgradeAttempts counts resume-time envd live-upgrade
 	// attempts, by result (success|delivery_failed|not_ready|panic) and
 	// from_version/to_version. success/total is the rollout success rate;
@@ -260,6 +267,7 @@ var counterDesc = map[CounterType]string{
 	EnvdCollapseChunks:                          "2 MiB chunks the pre-pause envd heap collapse attempted, by result",
 	OrchestratorSandboxKilledCounterName:        "Number of sandboxes killed, labeled by kill reason",
 	OrchestratorSnapshotUploadFailedCounterName: "Number of pause-snapshot uploads that never landed durably",
+	SandboxPauseFsQuiescedCounterName:           "Filesystem-only pauses by whether the rootfs was frozen (quiesced) vs sync fallback",
 	OrchestratorEnvdUpgradeAttempts:             "Resume-time envd live-upgrade attempts, by result and from/to version",
 	OrchestratorEnvdUpgradeGated:                "Resumes the envd-upgrade-target flag targeted but the min-version gate skipped",
 	OrchestratorEnvdUpgradeHandover:             "Live-upgrade handover items by item (proc|retained|watcher) and result (ok|failed)",
@@ -298,6 +306,7 @@ var counterUnits = map[CounterType]string{
 	EnvdCollapseChunks:                          "{chunk}",
 	OrchestratorSandboxKilledCounterName:        "{sandbox}",
 	OrchestratorSnapshotUploadFailedCounterName: "{snapshot}",
+	SandboxPauseFsQuiescedCounterName:           "{snapshot}",
 	OrchestratorEnvdUpgradeAttempts:             "{attempt}",
 	OrchestratorEnvdUpgradeGated:                "{sandbox}",
 	OrchestratorEnvdUpgradeHandover:             "{item}",
