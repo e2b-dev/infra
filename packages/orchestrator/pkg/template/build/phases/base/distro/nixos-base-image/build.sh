@@ -73,6 +73,10 @@ nix-store --dump-db \$(cat /build/closure.txt) > \$staging/nix/var/nix/db-regist
 bash_bin=\$(readlink -f \$top/sw/bin/bash)
 cat > \$staging/sbin/e2b-nixos-init <<INIT
 #!\$bash_bin
+# Deliberately NOT 'set -e'. NixOS's activate exits non-zero when any snippet
+# failed, including ones that are non-fatal here, and aborting PID 1 on that
+# panics the kernel instead of booting a sandbox that is fine — observed: with
+# set -e the template build fails outright. Failures are visible on the console.
 # There is no FHS userland yet -- /bin and /usr/bin appear only once activation
 # has run -- so every command below needs the system profile on PATH. Without
 # it the shim silently does nothing but run activate: mount, install and ln are

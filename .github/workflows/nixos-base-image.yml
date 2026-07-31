@@ -189,7 +189,8 @@ jobs:
           fi
 
           # 2./3. The boot chain the nixos profile points the kernel at:
-          #    /sbin/init -> /nix/var/nix/profiles/system/init -> <toplevel>/init.
+          #    /sbin/init -> /sbin/e2b-nixos-init (the activation shim, checked
+          #    below) -> systemd, with the profile symlink resolving the closure.
           system_target=""
           if ! system_target=$(symlink_target nix/var/nix/profiles/system); then
             fail "nix/var/nix/profiles/system is missing or is not a symlink"

@@ -58,10 +58,15 @@ host with docker; the registry defaults to `127.0.0.1:5000`, so a bare
    container, against the exact `nixpkgs` revision pinned in the script (see
    [nixpkgs pin](#nixpkgs-pin)), from the `configuration.nix` committed next
    to the script,
-2. packs the closure into a single-layer OCI rootfs tar, adding the three
+2. packs the closure into a single-layer OCI rootfs tar, adding the four
    pieces of glue the boot path needs:
-   - `/sbin/init -> /nix/var/nix/profiles/system/init` (the stage-2 init the
-     `nixos` profile points the kernel at),
+   - `/sbin/e2b-nixos-init`, the activation shim the `nixos` profile points the
+     kernel at (`InitBinary` in `../distro.go`). It mounts `/proc` and `/sys`,
+     runs the system's `activate`, then execs systemd — what NixOS's own
+     stage-2 script did until 25.05 replaced `$toplevel/init` with the systemd
+     binary itself. Booting `$toplevel/init` directly, with no initrd to
+     activate for us, lands in PID 1 with an empty `/etc`,
+   - `/sbin/init -> /sbin/e2b-nixos-init`,
    - `/nix/var/nix/profiles/system -> <toplevel store path>`,
    - a static `/etc/os-release` with `ID=nixos` so the distro selector can
      identify the image *before* the first activation generates the real one,
@@ -90,7 +95,8 @@ reproducible reference.
 
 | | |
 |---|---|
-| `NIXPKGS_REV` | `21ea275a7c46aef9d4d6ddc962e6d562e9d94183` |
+| `NIXOS_SERIES` | `26.05` |
+| `NIXPKGS_RELEASE` | `nixos-26.05.6503.21ea275a7c46` |
 | release | `nixos-26.05.6503`, 2026-07-30 |
 
 It is a revision and not `channel:nixos-XX.YY` on purpose. A channel resolves
@@ -101,7 +107,7 @@ pin.
 
 **Bumping it is how the image gets security updates**, and it is the whole
 maintenance story for this file: pick a revision from a release branch
-upstream still maintains, update `NIXPKGS_REV`/`NIXPKGS_RELEASE` and
+upstream still maintains, update `NIXOS_SERIES`/`NIXPKGS_RELEASE` and
 `stateVersion`, rebuild, and re-run the boot checks — the boot glue
 (`/sbin/init` chain, the systemd `/etc` symlink handling in `../init.go`) is
 the part that breaks across releases, and a tar-level check will not catch it.
