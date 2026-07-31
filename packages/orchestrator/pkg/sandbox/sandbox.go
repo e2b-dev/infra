@@ -1579,7 +1579,15 @@ func (s *Sandbox) Pause(
 				return nil
 			}
 
-			return s.process.ResumeInPlace(ctx)
+			if err := s.process.ResumeInPlace(ctx); err != nil {
+				return err
+			}
+			// Health checks were stopped at the top of Pause; restart them so an
+			// error-path resume doesn't leave the live sandbox with checks off.
+			s.Checks = NewChecks(s)
+			go s.Checks.Start(context.WithoutCancel(ctx))
+
+			return nil
 		})
 	}
 
@@ -1690,10 +1698,19 @@ func (s *Sandbox) Pause(
 				errors.Join(err, s.Close(context.WithoutCancel(ctx))))
 		}
 
-		// The live VM keeps running, so undo anything the pause froze.
+		// The live VM keeps running, so undo anything the pause froze. Unlike the
+		// destroy path (VM discarded with its frozen state), an in-place resume
+		// must actually thaw, matching how guestPrepareFsForPause froze the rootfs:
+		// native /fsthaw when envd supports it, otherwise the exec fsfreeze -u path
+		// (a no-op if the guest was only sync'd). A native-only thaw would leave an
+		// exec-frozen guest's filesystem frozen after resume.
 		s.bestEffortUnfreeze(ctx)
 		if pauseOpts.filesystemSnapshot {
-			s.bestEffortFsthaw(ctx)
+			if s.envdSupportsFsFreeze(ctx) {
+				s.bestEffortFsthaw(ctx)
+			} else {
+				s.bestEffortFsthawViaExec(ctx)
+			}
 		}
 
 		s.Checks = NewChecks(s)
@@ -1806,14 +1823,19 @@ func (s *Sandbox) processMemorySnapshot(ctx context.Context, buildID uuid.UUID, 
 		}
 	}
 
-	// In-place snapshot borrows the memfd (the running VM keeps using it) and
-	// turns off dedup + inflight-serve, which would consume or double-manage it.
-	memfd := s.memory.Memfd(ctx)
+	// In-place snapshot borrows the memfd via PeekMemfd (the running VM keeps
+	// using it) and turns off dedup + inflight-serve, which would consume or
+	// double-manage it. The destroy path consumes the memfd via Memfd. We must NOT
+	// call Memfd on the in-place path: it swaps the memfd out of uffd, which both
+	// leaks the fd and makes the subsequent PeekMemfd return nil.
+	var memfd *block.Memfd
 	dedupInflightServe := s.featureFlags.BoolFlag(ctx, featureflags.MemfdDedupInflightServeFlag, sandboxLDContext(s.Runtime, s.Config))
 	if keepMemfdOpen {
 		memfd = s.memory.PeekMemfd(ctx)
 		dedupBase = nil
 		dedupInflightServe = false
+	} else {
+		memfd = s.memory.Memfd(ctx)
 	}
 
 	memfileDiff, memfileDiffHeader, provMemfileHeader, provMemfileDiff, provMemfileSwapDone, err := pauseProcessMemory(
