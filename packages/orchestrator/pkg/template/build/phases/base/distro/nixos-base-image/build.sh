@@ -25,10 +25,25 @@ mkdir -p "$work"
 cp "$here/configuration.nix" "$work/configuration.nix"
 rm -f "$work/result"
 
+# nixpkgs is pinned to one exact channel release, not to a channel name.
+# `channel:nixos-XX.YY` resolves at build time, so the same commit would
+# evaluate to a different closure on every run — the image could not be
+# reproduced or bisected. The release URL is immutable (it carries the release
+# id), so this is a real pin while still being the artifact the channel serves.
+#
+# Bumping these three is the whole maintenance story, and is how the image
+# picks up security updates. Keep the series on a release upstream still
+# maintains: NixOS releases get ~7 months, and nixos-24.05 (used here until
+# this pin) stopped receiving commits on 2024-12-30.
+NIXOS_SERIES=${NIXOS_SERIES:-26.05}
+NIXPKGS_RELEASE=${NIXPKGS_RELEASE:-nixos-26.05.6503.21ea275a7c46}
+NIXPKGS_URL=${NIXPKGS_URL:-https://releases.nixos.org/nixos/$NIXOS_SERIES/$NIXPKGS_RELEASE/nixexprs.tar.xz}
+
 # Build the toplevel closure with nix inside the nixos/nix container.
+echo "nixpkgs pin: $NIXPKGS_RELEASE"
 docker run --rm -v "$work:/build" nixos/nix:2.35.1 sh -c "
 set -e
-nix-build -I nixpkgs=channel:nixos-24.05 -I nixos-config=/build/configuration.nix \
+nix-build -I nixpkgs=$NIXPKGS_URL -I nixos-config=/build/configuration.nix \
   '<nixpkgs/nixos>' -A config.system.build.toplevel -o /build/result
 top=\$(readlink /build/result)
 echo \"TOPLEVEL=\$top\"
@@ -44,11 +59,14 @@ ln -s \$top \$staging/nix/var/nix/profiles/system
 # first boot can load it, otherwise nix-env and friends reject every path.
 nix-store --dump-db \$(cat /build/closure.txt) > \$staging/nix/var/nix/db-registration
 ln -s /nix/var/nix/profiles/system/init \$staging/sbin/init
+# Derived from NIXOS_SERIES so it cannot drift from the pin above: this is the
+# pre-activation os-release, and the only field the distro selector reads is
+# ID, so a stale version here is invisible to every automated check.
 cat > \$staging/etc/os-release <<OSR
 NAME=NixOS
 ID=nixos
-VERSION_ID=\"24.05\"
-PRETTY_NAME=\"NixOS 24.05 (E2B sandbox base)\"
+VERSION_ID=\"$NIXOS_SERIES\"
+PRETTY_NAME=\"NixOS $NIXOS_SERIES (E2B sandbox base)\"
 OSR
 tar -rf /build/nixos-rootfs.tar -C \$staging sbin etc nix
 echo PACKED

@@ -179,5 +179,10 @@
     shadow socat curl git jq less fuse3 iptables nftables iputils nfs-utils
   ];
 
-  system.stateVersion = "24.05";
+  # Tracks the nixpkgs pin in build.sh, and is meant to. The usual "never
+  # change stateVersion" rule protects persistent state across an upgrade of a
+  # running system; this image has none — every publish builds it from scratch
+  # and every sandbox boots it fresh — so leaving it behind the pin would just
+  # opt the image into compatibility shims for a release it never ran.
+  system.stateVersion = "26.05";
 }
