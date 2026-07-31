@@ -97,7 +97,6 @@ reproducible reference.
 |---|---|
 | `NIXOS_SERIES` | `26.05` |
 | `NIXPKGS_RELEASE` | `nixos-26.05.6503.21ea275a7c46` |
-| release | `nixos-26.05.6503`, 2026-07-30 |
 
 It is a revision and not `channel:nixos-XX.YY` on purpose. A channel resolves
 at build time, so the same commit would evaluate to a different closure on
