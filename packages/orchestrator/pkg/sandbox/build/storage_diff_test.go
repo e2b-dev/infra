@@ -552,6 +552,78 @@ func TestStorageDiff_AbsentEntryOnV4ResolvesFromOwnHeader(t *testing.T) {
 	require.Equal(t, payload[:readLen], runRead(t, bHeader, provider))
 }
 
+// A zero Builds entry for a zstd ancestor: older releases fabricated zero
+// entries for gaps at load time, and a pause serialized them into descendant
+// headers as real entries — on the wire indistinguishable from the legit V3
+// uncompressed sentinel. The claimed suffix-less object does not exist, so
+// instead of failing the size lookup permanently, createDiff must fall back
+// to the build's own header and read the compressed object.
+func TestStorageDiff_StaleZeroEntryRecoversFromOwnHeader(t *testing.T) {
+	t.Parallel()
+
+	const (
+		frameSizeKB = 256
+		payloadSize = 256 * 1024
+	)
+	readLen := testBlockSize
+
+	ctx := t.Context()
+	aID := uuid.New()
+	payload := bytes.Repeat([]byte("stale-zero-"), payloadSize/len("stale-zero-")+1)[:payloadSize]
+
+	aFrameTable, compressed, _, err := storage.CompressBytes(ctx, payload, storage.CompressConfig{
+		Enabled:            true,
+		Type:               storage.CompressionZstd.String(),
+		Level:              2,
+		EncoderConcurrency: 1,
+		FrameEncodeWorkers: 1,
+		FrameSizeKB:        frameSizeKB,
+		MinPartSizeMB:      50,
+	})
+	require.NoError(t, err)
+
+	aHeader := buildHeader(t, aID, payloadSize, aID)
+	aHeader.SetBuild(aID, header.BuildData{Size: int64(payloadSize), FrameData: aFrameTable.Table()})
+	aHeaderBytes, err := header.SerializeHeader(aHeader)
+	require.NoError(t, err)
+
+	// Current header carries the stale zero entry for A.
+	bHeader := buildHeader(t, uuid.New(), payloadSize, aID)
+	bHeader.SetBuild(aID, header.BuildData{})
+
+	aPaths := storage.Paths{BuildID: aID.String()}
+	provider := storage.NewMockStorageProvider(t)
+
+	// The zero entry resolves to the suffix-less name, whose size lookup 404s.
+	rawSeekable := storage.NewMockSeekable(t)
+	rawSeekable.EXPECT().
+		Size(mock.Anything).
+		Return(int64(0), storage.ErrObjectNotExist).Once()
+	provider.EXPECT().
+		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionNone)).
+		Return(rawSeekable, nil).Once()
+
+	headerBlob := storage.NewMockBlob(t)
+	headerBlob.EXPECT().
+		WriteTo(mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, w io.Writer) (int64, error) {
+			return io.Copy(w, bytes.NewReader(aHeaderBytes))
+		}).Once()
+	provider.EXPECT().
+		OpenBlob(mock.Anything, aPaths.HeaderFile(storage.MemfileName)).
+		Return(headerBlob, nil).Once()
+
+	compressedSeekable := storage.NewMockSeekable(t)
+	compressedSeekable.EXPECT().
+		OpenRangeReader(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(decompressingRangeReader(compressed))
+	provider.EXPECT().
+		OpenSeekable(mock.Anything, aPaths.DataFile(storage.MemfileName, storage.CompressionZstd)).
+		Return(compressedSeekable, nil).Once()
+
+	require.Equal(t, payload[:readLen], runRead(t, bHeader, provider))
+}
+
 // loadHeaderThroughStorage round-trips h via LoadHeader so the deserialize plus
 // backfill path runs as it does on a resume. Hand-built headers skip the backfill,
 // which is why the rest of this file's coverage passed while production was broken.

@@ -23,6 +23,7 @@ import (
 const (
 	refreshCauseProactive        = "proactive"
 	refreshCausePeerTransitioned = "peer_transitioned"
+	refreshCauseZeroEntryMiss    = "zero_entry_miss"
 )
 
 // source carries the StorageDiff's current routing state. upstream is always
@@ -144,10 +145,11 @@ func (b *File) createDiff(ctx context.Context, buildID uuid.UUID) (Diff, error) 
 	switch {
 	case hasEntry:
 		// bd.FrameData is per-mapping trimmed, not the ancestor's full table —
-		// don't latch it; first read will refresh. Exception: a zero bd is the
-		// LoadHeader backfill marker for an uncompressed V3-or-older ancestor;
-		// UncompressedFullFrameTable IS that ancestor's full table, latch it
-		// to skip a refresh whose header file may not exist.
+		// don't latch it; first read will refresh. Exception: a zero bd marks
+		// an uncompressed V3-or-older ancestor; UncompressedFullFrameTable IS
+		// that ancestor's full table, latch it to skip a refresh whose header
+		// file may not exist. If the mark proves false, the size lookup below
+		// recovers via the build's own header.
 		upstream, dataPath, err = b.openDataFile(ctx, buildID, bd.FrameData.CompressionType())
 		if err != nil {
 			return nil, err
@@ -207,6 +209,19 @@ func (b *File) createDiff(ctx context.Context, buildID uuid.UUID) (Diff, error) 
 
 	if size == 0 {
 		size, err = upstream.Size(ctx)
+		if hasEntry && initialFT == storage.UncompressedFullFrameTable && errors.Is(err, storage.ErrObjectNotExist) {
+			// The zero entry claimed an uncompressed V3-era ancestor, but the
+			// suffix-less object does not exist: the entry is a gap persisted
+			// as zero by older releases. Resolve the build's own header like
+			// the no-entry branch instead of failing every fault permanently.
+			loaded, lerr := refreshHeader(ctx, b.persistence, buildID, b.fileType, refreshCauseZeroEntryMiss)
+			if lerr == nil {
+				upstream, size, initialFT, dataPath, err = openFromLoadedHeader(ctx, b.persistence, loaded, b.fileType)
+				if err == nil && size == 0 {
+					size, err = upstream.Size(ctx)
+				}
+			}
+		}
 		if err != nil {
 			return nil, fmt.Errorf("createDiff: size lookup for build %s: %w", buildID, err)
 		}
