@@ -122,7 +122,7 @@ func (o *DirectProvider) ExportDiffInPlace(_ context.Context, _ *os.File) (*head
 }
 
 func (o *DirectProvider) SwapForBackgroundSeal(_ context.Context) (*block.Cache, error) {
-	return nil, fmt.Errorf("direct provider does not support background seal")
+	return nil, ErrDeferredExportNotSupported
 }
 
 func (o *DirectProvider) FoldSealed(_ context.Context) (*block.Cache, error) {
