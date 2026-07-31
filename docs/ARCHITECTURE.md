@@ -211,6 +211,22 @@ OpenAPI security scheme accepts only short-lived service JWTs verified against t
 the same config shape as `AUTH_PROVIDER_CONFIG`. Talks to Postgres and ClickHouse; never talks to
 orchestrators.
 
+The `/v1/management` operations are the cluster's half of a contract the workspace residency owns:
+project upsert (a project is a `public.teams` row created from a caller-supplied UUID; the tier is
+assigned once at creation from a local default and no push moves it; a changed slug renames the project, and nothing else follows it), member sync (granular and
+batched, over opaque user UUIDs in `users_teams`),
+limit sync (into `project_limits`, which `team_limits` reads in preference to `tiers`), and user
+purge (memberships and access tokens; the `public.users` row survives). All are idempotent, because
+the caller is level-triggered and retries. Membership writes live in `internal/management` with
+their cache evictions rather than in the handlers: auth caches a copy of the team per member, and
+the sweep that would find those keys reads `users_teams`, so a removal has to name them itself.
+
+`DELETE /v1/management/projects/{teamID}` is declared and answers 501. `envs`, `snapshots` and
+`volumes` reference `teams` with `ON DELETE NO ACTION` and templates are only soft-deleted, so a
+project that ever built one pins its team row — and releasing it needs the API service's
+orchestrator connections, which this service does not have. Projects are not deleted from control
+planes today.
+
 ### Docker reverse proxy (`packages/docker-reverse-proxy`)
 
 A Docker Registry v2 auth gateway (port 5000). Users `docker push` template base images with E2B
@@ -296,6 +312,14 @@ sequenceDiagram
   orchestrator pauses the VM, snapshots it, diffs memory (dirty-page tracking) and rootfs (COW
   cache) against the template, caches the snapshot locally, and uploads asynchronously to object
   storage (with a retry budget). The sandbox leaves the Redis catalog.
+  - **Deferred rootfs export** (gated by the `deferred-rootfs-export` flag in
+    `packages/shared/pkg/featureflags`): instead of diffing the rootfs on the pause critical
+    path, the orchestrator ejects the writable COW cache during pause and returns, then seals it
+    into the rootfs diff (reflink) in the background. This moves the rootfs-diff latency off the
+    pause, but the local snapshot's rootfs body isn't materialized until the seal finishes, so the
+    async upload — and any origin-node resume/prefetch that reads the rootfs diff — waits on the
+    seal. A seal failure is permanent (it never re-runs), so the upload fails fast rather than
+    retrying.
 - **Resume**: same path as creation, but placement prefers the **origin node** — if the snapshot
   is still in its local cache, resume avoids any object-storage reads. `Checkpoint` is a
   pause+resume in place used to persist state while keeping the sandbox running.

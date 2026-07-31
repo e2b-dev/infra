@@ -22,7 +22,6 @@ func TestTemplateBuildDistroFamilies(t *testing.T) {
 		name         string
 		templateName string
 		fromImage    string
-		skipReason   string
 	}{
 		{
 			name:         "Debian family",
@@ -43,22 +42,12 @@ func TestTemplateBuildDistroFamilies(t *testing.T) {
 			name:         "Alpine on OpenRC",
 			templateName: "test-distro-alpine",
 			fromImage:    "alpine:3.24",
-			// The integration host installs the envd from `make build-debug`, and
-			// -race requires cgo, so that binary is glibc-linked and cannot exec
-			// on musl: envd never answers and the base layer times out. Released
-			// envd is built with CGO_ENABLED=0 and runs on Alpine. Drop this once
-			// the host installs a static envd.
-			skipReason: "host envd is glibc-linked; a musl guest cannot exec it",
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
-			if tc.skipReason != "" {
-				t.Skip(tc.skipReason)
-			}
 
 			var logMessages []string
 			logHandler := func(alias string, entry api.BuildLogEntry) {
@@ -88,7 +77,8 @@ func TestTemplateBuildDistroFamilies(t *testing.T) {
 
 // An image from a distro E2B doesn't provision must be rejected while
 // provisioning, and the reason must reach the customer instead of a bare exit
-// status. Oracle Linux is deliberately unsupported: sandboxes boot E2B's kernel.
+// status. Oracle Linux declares ID_LIKE=fedora, so this also covers the
+// rejection guard running before the ID_LIKE fallback.
 func TestTemplateBuildUnsupportedDistro(t *testing.T) {
 	t.Parallel()
 
@@ -100,5 +90,6 @@ func TestTemplateBuildUnsupportedDistro(t *testing.T) {
 
 	outcome := runTemplateBuild(t, "test-distro-unsupported", buildConfig, defaultBuildLogHandler(t))
 	require.False(t, outcome.ready, "Build of an unsupported distro must fail")
-	assert.Contains(t, outcome.reason, "unsupported base image distribution")
+	assert.Contains(t, outcome.reason, "ID='ol' is not supported")
+	assert.Contains(t, outcome.reason, "Sandboxes boot E2B's kernel")
 }

@@ -10,6 +10,29 @@ else
 	IMAGE_REGISTRY := $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(PREFIX)core/dashboard-api
 endif
 
+# E2B-hosted registry that holds released, prebuilt dashboard-api images.
+# Published to by the release-please workflow on tagging a release.
+E2B_ARTIFACTS_REGISTRY ?= us-docker.pkg.dev/e2b-artifacts/dashboard-api/dashboard-api
+
+# Optional version "hook" for the released-image flow.
+# When empty (default), build-and-upload builds from source and pushes to the
+# client's own core repo (the existing flow, unchanged).
+# When set (e.g. DASHBOARD_API_VERSION=v0.1.0), skip building: pull the
+# released image from $(E2B_ARTIFACTS_REGISTRY) and retag/push it into the
+# client's core repo, so the `dashboard-api:latest` lookup keeps working.
+#
+# Set it either on the command line (make ... DASHBOARD_API_VERSION=v0.1.0)
+# or in the active .env.${ENV} file, which is included above. Quotes are
+# stripped so both `=v0.1.0` and `="v0.1.0"` work; a command-line value
+# always wins over the env file.
+#
+# Bump in lockstep with API_VERSION: dashboard-api guards startup on the
+# same DB's migration timestamp, and the migrations come from the db-migrator
+# image that releases WITH the api — a dashboard-api pinned ahead of
+# API_VERSION expects migrations the pinned migrator doesn't carry and fails
+# its startup check.
+DASHBOARD_API_VERSION := $(strip $(subst ",,$(DASHBOARD_API_VERSION)))
+
 HOSTNAME := $(shell hostname 2> /dev/null || hostnamectl hostname 2> /dev/null)
 $(if $(HOSTNAME),,$(error Failed to determine hostname: both 'hostname' and 'hostnamectl' failed))
 
@@ -31,9 +54,21 @@ build-debug:
 
 .PHONY: build-and-upload
 build-and-upload:
+ifeq ($(strip $(DASHBOARD_API_VERSION)),)
+	# Existing flow: build from source and push to the client's own core repo.
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
 	$(eval EXPECTED_MIGRATION_TIMESTAMP := $(expectedMigration))
 	@docker build --platform linux/amd64 --tag $(IMAGE_REGISTRY) --tag $(IMAGE_REGISTRY):$(COMMIT_SHA) --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" --build-arg EXPECTED_MIGRATION_TIMESTAMP="$(EXPECTED_MIGRATION_TIMESTAMP)" -f ./Dockerfile ..
+else
+	# Released-image flow: pull the prebuilt, versioned image from the E2B
+	# artifacts registry and retag/push it into the client's own core repo.
+	@echo "Using released dashboard-api $(DASHBOARD_API_VERSION) from $(E2B_ARTIFACTS_REGISTRY)"
+	docker pull --platform linux/amd64 $(E2B_ARTIFACTS_REGISTRY):$(DASHBOARD_API_VERSION)
+	docker tag $(E2B_ARTIFACTS_REGISTRY):$(DASHBOARD_API_VERSION) $(IMAGE_REGISTRY):latest
+	docker tag $(E2B_ARTIFACTS_REGISTRY):$(DASHBOARD_API_VERSION) $(IMAGE_REGISTRY):$(DASHBOARD_API_VERSION)
+	docker push $(IMAGE_REGISTRY):latest
+	docker push $(IMAGE_REGISTRY):$(DASHBOARD_API_VERSION)
+endif
 
 .PHONY: run
 run:

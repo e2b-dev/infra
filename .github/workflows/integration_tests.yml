@@ -55,6 +55,12 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v5
 
+      # The compressed configs only run what the allow-list names, so verify
+      # its stale-entry guard still bites before depending on it.
+      - name: Check Test Allow-list
+        run: make -C tests/integration check-tests-allowlist
+        shell: bash
+
       - name: Build Packages
         uses: ./.github/actions/build-packages
 
@@ -86,6 +92,11 @@ jobs:
           TESTS_ORCHESTRATOR_HOST: "localhost:5008"
           TESTS_ENVD_PROXY: "http://localhost:3002"
           TESTS_CLIENT_PROXY: "http://localhost:3002"
+          # The uncompressed config runs the whole suite. The compressed configs
+          # only re-run the tests whose subject is writing or reading back a
+          # snapshot, which is all the compression knobs can affect — the
+          # allow-list documents the criteria and the code paths involved.
+          TESTS_ONLY: ${{ matrix.compress_enabled == 'true' && 'scripts/compression-tests.tsv' || '' }}
         run: |
           # Run the integration tests
           make test-integration

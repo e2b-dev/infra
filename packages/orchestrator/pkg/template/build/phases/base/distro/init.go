@@ -13,6 +13,8 @@ const (
 	InitSystemd InitSystem = "systemd"
 	// InitOpenRC — Alpine (busybox init → OpenRC via the baked /etc/init.d/envd).
 	InitOpenRC InitSystem = "openrc"
+	// InitNixOS — premade NixOS (declarative; provisioning masks nothing).
+	InitNixOS InitSystem = "nixos"
 )
 
 // initSetup is the provisioning-time shell block per init system. Bodies may
@@ -127,6 +129,12 @@ if [ -e /etc/init.d/sshd ]; then
 else
     echo "sshd service not present on this image; skipping"
 fi`,
+
+	// NixOS is declaratively configured; drop the baked systemd units so
+	// activation can own /etc/systemd/system as a store symlink (foreign files
+	// there make systemd boot with no units at all).
+	InitNixOS: `echo "NixOS is declaratively configured; removing the baked systemd drop-ins"
+rm -rf /etc/systemd/system`,
 }
 
 // indentBlock indents every non-empty line of a shell block for embedding
