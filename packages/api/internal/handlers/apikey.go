@@ -50,7 +50,7 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 		TeamID:    teamID,
 	})
 	if dberrors.IsNotFoundError(err) {
-		c.String(http.StatusNotFound, "id not found")
+		a.sendAPIStoreError(c, http.StatusNotFound, "id not found")
 
 		return
 	} else if err != nil {
@@ -72,7 +72,7 @@ func (a *APIStore) GetApiKeys(c *gin.Context) {
 	apiKeysDB, err := a.authDB.GetTeamAPIKeysWithCreator(ctx, teamID)
 	if err != nil {
 		logger.L().Warn(ctx, "error when getting team API keys", zap.Error(err))
-		c.String(http.StatusInternalServerError, "Error when getting team API keys")
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting team API keys")
 
 		return
 	}
@@ -127,7 +127,7 @@ func (a *APIStore) DeleteApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 		return
 	}
 	if !deleted {
-		c.String(http.StatusNotFound, "id not found")
+		a.sendAPIStoreError(c, http.StatusNotFound, "id not found")
 
 		return
 	}

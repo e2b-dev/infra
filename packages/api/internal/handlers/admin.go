@@ -34,7 +34,7 @@ func (a *APIStore) GetNodesNodeID(c *gin.Context, nodeID api.NodeID, params api.
 	result, err := a.orchestrator.AdminNodeDetail(clusterID, nodeID)
 	if err != nil {
 		if errors.Is(err, orchestrator.ErrNodeNotFound) {
-			c.Status(http.StatusNotFound)
+			a.sendAPIStoreError(c, http.StatusNotFound, "node not found")
 
 			return
 		}
@@ -63,7 +63,7 @@ func (a *APIStore) PostNodesNodeID(c *gin.Context, nodeId api.NodeID) {
 	clusterID := clusters.WithClusterFallback(body.ClusterID)
 	node := a.orchestrator.GetNode(clusterID, nodeId)
 	if node == nil {
-		c.Status(http.StatusNotFound)
+		a.sendAPIStoreError(c, http.StatusNotFound, "node not found")
 
 		return
 	}

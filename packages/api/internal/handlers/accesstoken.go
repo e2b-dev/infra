@@ -97,7 +97,7 @@ func (a *APIStore) DeleteAccessTokensAccessTokenID(c *gin.Context, accessTokenID
 		UserID: userID,
 	})
 	if dberrors.IsNotFoundError(err) {
-		c.String(http.StatusNotFound, "id not found")
+		a.sendAPIStoreError(c, http.StatusNotFound, "id not found")
 
 		return
 	} else if err != nil {
