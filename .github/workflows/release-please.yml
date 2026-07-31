@@ -100,6 +100,14 @@ jobs:
           # beyond any real push here).
           jq -r '.commits[] | [.id, (.message | split("\n")[0])] | @tsv' \
             "${GITHUB_EVENT_PATH}" > "${RUNNER_TEMP}/push-commits.tsv"
+          # Per-component failures are recorded and reported at the end rather
+          # than aborting immediately. A single bad component used to abort the
+          # whole step, which skipped the label swap for every other release in
+          # the same push and left those PRs "autorelease: pending" — and a
+          # pending PR blocks NEW release PRs for the entire repo. Continuing
+          # keeps one component's problem from stalling all releases, while the
+          # non-zero exit at the end still turns the run red.
+          failed=0
           while IFS=$'\t' read -r sha subject; do
             case "${subject}" in
               'chore(main): release '*) ;;
@@ -123,13 +131,15 @@ jobs:
               nomad-nodepool-apm)   path=packages/nomad-nodepool-apm ;;
               *)
                 echo "::error::release merge for unknown component '${component}' — add it to this workflow's package list"
-                exit 1
+                failed=1
+                continue
                 ;;
             esac
             version="$(jq -r --arg p "${path}" '.[$p] // empty' .release-please-manifest.json)"
             if [ -z "${version}" ] || [ "${version}" != "${msg_version}" ]; then
-              echo "::error::version mismatch for ${component}: merge commit says '${msg_version}', manifest says '${version}'"
-              exit 1
+              echo "::error::version mismatch for ${component}: merge commit says '${msg_version}', manifest says '${version}'. No tag was created, so release PR #${pr_number:-?} keeps its 'autorelease: pending' label and will block new release PRs for EVERY component until this is resolved. Recovery: correct ${path} in .release-please-manifest.json, push the ${component}-v${msg_version} tag on ${sha} by hand, then swap that PR's label to 'autorelease: tagged'. A duplicate key in the manifest is the usual cause, since JSON parsers keep only the last value."
+              failed=1
+              continue
             fi
             tag="${component}-v${version}"
             if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" --silent 2>/dev/null; then
@@ -137,18 +147,30 @@ jobs:
             else
               if [ -z "${APP_TOKEN}" ]; then
                 echo "::error::${tag} needs to be created, but the release-please GitHub App isn't configured and tags pushed with GITHUB_TOKEN wouldn't trigger the publish workflow. Configure RELEASE_PLEASE_APP_ID / RELEASE_PLEASE_APP_SECRET and re-run."
-                exit 1
+                failed=1
+                continue
               fi
-              gh api "repos/${GITHUB_REPOSITORY}/git/refs" -f ref="refs/tags/${tag}" -f sha="${sha}" > /dev/null
+              if ! gh api "repos/${GITHUB_REPOSITORY}/git/refs" -f ref="refs/tags/${tag}" -f sha="${sha}" > /dev/null; then
+                echo "::error::could not create ${tag} at ${sha}; release PR #${pr_number:-?} stays 'autorelease: pending' and blocks new release PRs until the tag is pushed by hand and the label swapped"
+                failed=1
+                continue
+              fi
               echo "created ${tag} at ${sha}; publish.yml will pick it up"
             fi
-            # Also runs when the tag already existed, so an interrupted run
+            # Only reached once the tag is confirmed to exist, so the label
+            # never claims "tagged" for a release that was not tagged. Also
+            # runs when the tag already existed, so an interrupted run
             # converges on re-run.
             if [ -n "${pr_number}" ]; then
-              gh pr edit "${pr_number}" -R "${GITHUB_REPOSITORY}" \
-                --remove-label "autorelease: pending" --add-label "autorelease: tagged"
-              echo "marked release PR #${pr_number} as 'autorelease: tagged'"
+              if gh pr edit "${pr_number}" -R "${GITHUB_REPOSITORY}" \
+                --remove-label "autorelease: pending" --add-label "autorelease: tagged"; then
+                echo "marked release PR #${pr_number} as 'autorelease: tagged'"
+              else
+                echo "::error::${tag} exists but relabelling release PR #${pr_number} failed. Swap 'autorelease: pending' to 'autorelease: tagged' on it by hand, or release-please will stop opening release PRs for every component."
+                failed=1
+              fi
             else
               echo "::warning::could not parse a PR number from '${subject}' — swap the 'autorelease: pending' label to 'autorelease: tagged' on the release PR by hand, or release-please will stop opening release PRs"
             fi
           done < "${RUNNER_TEMP}/push-commits.tsv"
+          exit "${failed}"
