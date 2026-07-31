@@ -41,8 +41,8 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@v2
         with:
-          app-id: ${{ secrets.app_id }}
-          private-key: ${{ secrets.app_secret }}
+          app-id: ${{ vars.VERSION_BUMPER_APPID }}
+          private-key: ${{ secrets.VERSION_BUMPER_SECRET }}
 
       - name: Checkout
         uses: actions/checkout@v6
@@ -121,9 +121,21 @@ jobs:
           SERIES: ${{ steps.resolve.outputs.series }}
         run: |
           set -euo pipefail
-          if gh pr list --head "${BRANCH}" --state open --json number --jq 'length' | grep -qv '^0$'; then
-            echo "A PR for ${BRANCH} is already open; leaving it alone."
+          # Any state, not just open: a closed PR for this exact release means a
+          # human rejected it, and re-proposing it every month would be nagging.
+          # The branch name carries the release id, so once upstream cuts a newer
+          # one this stops mattering by itself.
+          if [[ "$(gh pr list --head "${BRANCH}" --state all --json number --jq 'length')" != "0" ]]; then
+            echo "A PR for ${BRANCH} already exists; not re-proposing."
             exit 0
+          fi
+
+          # No PR ever existed, but the branch might still be there from a run
+          # that pushed and then failed. Left in place it makes the push below
+          # non-fast-forward and the bump would never reopen.
+          if git ls-remote --exit-code --heads origin "${BRANCH}" >/dev/null 2>&1; then
+            echo "Deleting orphaned remote branch ${BRANCH} (no PR references it)."
+            git push origin --delete "${BRANCH}"
           fi
 
           # The release id appears in build.sh (the functional pin) and in the
