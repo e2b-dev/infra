@@ -121,6 +121,14 @@ runs:
         PERSISTENT_VOLUME_MOUNTS="test-volume-type:${test_volume_dir}"
         export PERSISTENT_VOLUME_MOUNTS
 
+        # The backgrounded warm-up pull in start-databases discards its exit
+        # status; this synchronous call is the actual guarantee (near-instant
+        # when the warm-up succeeded) so a rate-limited pull retries instead
+        # of failing the collector's 30s health window. The tag comes from
+        # the Makefile that runs the image.
+        OTEL_IMAGE=$(grep -oE 'otel/opentelemetry-collector-contrib:[0-9.]+' packages/otel-collector/Makefile | head -1)
+        ./scripts/pull-retry.sh "$OTEL_IMAGE"
+
         echo "Start otel-collector"
         ./scripts/start-service.sh "OtelCollector" packages/otel-collector run ~/logs/otel-collector.log http://localhost:13133/healthz
 

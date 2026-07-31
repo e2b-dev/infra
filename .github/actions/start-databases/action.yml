@@ -11,26 +11,14 @@ runs:
         CLICKHOUSE_PORT: "9000"
         CLICKHOUSE_DATABASE: "default"
       run: |
-        # Anonymous Docker Hub pulls from shared runners intermittently fail
-        # with "unauthorized: authentication required" (Hub rate limiting);
-        # an implicit pull inside docker run then aborts the whole job. Pull
-        # explicitly with retries so a transient 401/429 can't kill the run.
-        pull_retry() {
-          local image="$1"
-          for attempt in 1 2 3 4 5; do
-            docker pull --quiet "$image" && return 0
-            if [ "$attempt" = 5 ]; then echo "::error::giving up on pulling $image"; return 1; fi
-            echo "pull of $image failed (attempt $attempt), retrying in $((attempt * 10))s..."
-            sleep $((attempt * 10))
-          done
-        }
-
-        # Everything is backgrounded so the image pulls and container boots
-        # overlap with the (minutes-long) package builds that follow. The
-        # start-services action waits for container health with a bounded
-        # timeout, which also surfaces any startup failure from here.
+        # Everything is backgrounded so the image pulls (with rate-limit
+        # retries, see scripts/pull-retry.sh) and container boots overlap
+        # with the (minutes-long) package builds that follow. Failures are
+        # not silent: a container whose pull or boot failed here never turns
+        # healthy, and start-services waits on container health with a
+        # bounded timeout.
         (
-          pull_retry postgres:18
+          ./scripts/pull-retry.sh postgres:18
           docker run -d --name postgres \
                         -e POSTGRES_USER=postgres \
                         -e POSTGRES_PASSWORD=local \
@@ -44,7 +32,7 @@ runs:
         ) &
 
         (
-          pull_retry redis:8
+          ./scripts/pull-retry.sh redis:8
           docker run -d --name redis \
                 -p 6379:6379 \
                 --health-cmd="redis-cli ping" \
@@ -55,12 +43,15 @@ runs:
         ) &
 
         (
-          pull_retry clickhouse/clickhouse-server:25.4.5.24
+          ./scripts/pull-retry.sh clickhouse/clickhouse-server:25.4.5.24
           make -C packages/clickhouse run
         ) &
 
-        # Not a database, but the only other Docker Hub image the job needs
-        # (started later by start-services); pre-pull it here for the same
-        # rate-limit resilience, overlapped with the builds.
-        pull_retry otel/opentelemetry-collector-contrib:0.146.0 &
+        # Warm-up only: this discards its exit status by design (the step
+        # must not block on it). The guarantee lives in start-services,
+        # which re-runs pull-retry.sh for this image synchronously before
+        # starting the otel collector. The tag comes from the Makefile that
+        # runs the image, so a version bump there can't strand these pulls.
+        OTEL_IMAGE=$(grep -oE 'otel/opentelemetry-collector-contrib:[0-9.]+' packages/otel-collector/Makefile | head -1)
+        ./scripts/pull-retry.sh "$OTEL_IMAGE" &
       shell: bash
