@@ -117,6 +117,18 @@ func (o *DirectProvider) PrepareExportDiff(_ context.Context, _ func(context.Con
 	return nil, ErrDeferredExportNotSupported
 }
 
+func (o *DirectProvider) ExportDiffInPlace(_ context.Context, _ *os.File) (*header.DiffMetadata, error) {
+	return nil, fmt.Errorf("direct provider does not support in-place export")
+}
+
+func (o *DirectProvider) SwapForBackgroundSeal(_ context.Context) (*block.Cache, error) {
+	return nil, fmt.Errorf("direct provider does not support background seal")
+}
+
+func (o *DirectProvider) FoldSealed(_ context.Context) (*block.Cache, error) {
+	return nil, nil
+}
+
 func (o *DirectProvider) Close(ctx context.Context) error {
 	o.finishedOperations <- struct{}{}
 
