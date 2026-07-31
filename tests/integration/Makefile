@@ -11,17 +11,18 @@ TEST_PARALLELISM ?= 4
 # clock is bound by the host (see TEST_PARALLELISM above), so the only way to
 # go faster is more hosts. Shards are sized by measured test time:
 #
-#   - The ^TestTemplateBuild tests (real Firecracker builds, ~1400s of summed
-#     test+subtest time) are split into two roughly equal halves by name
-#     prefix: (ENV|COPY|RUN|W)* = ~680s vs the rest = ~740s. New
-#     TestTemplateBuild* tests fall into shard 2 unless they match the
-#     shard 1 prefix.
+#   - The ^TestTemplateBuild tests (real Firecracker builds, ~1015s of summed
+#     test+subtest time measured uncompressed on run 30634340619) are split
+#     into two roughly equal halves by name prefix: the shard-1 prefixes sum
+#     to ~504s vs ~511s for the rest. New TestTemplateBuild* tests fall into
+#     shard 2 unless they match the shard 1 prefix; rebalance by moving a
+#     prefix when the shards' test steps drift apart.
 #   - api/sandboxes gets its own runner, topped up with the light packages
 #     (proxies, api/metrics, api/volumes) to balance against the rest shard.
 #   - Everything else (including the non-build template tests) shares the
 #     last runner; the -skip only affects the templates package since no
 #     other package has TestTemplateBuild* tests.
-TEMPLATE_BUILDS_SHARD1_RE := ^TestTemplateBuild(ENV|COPY|RUN|W)
+TEMPLATE_BUILDS_SHARD1_RE := ^TestTemplateBuild(ENV|COPY|RUN|W|Cache|Fuse|Unsupported)
 SANDBOXES_SHARD_PACKAGES := ./internal/tests/api/sandboxes/... ./internal/tests/api/metrics/... ./internal/tests/api/volumes/... ./internal/tests/proxies/...
 TEST_SHARD ?= all
 TEST_RUN_FLAGS :=
