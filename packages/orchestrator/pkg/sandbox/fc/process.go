@@ -510,6 +510,23 @@ func (p *Process) Create(
 	return nil
 }
 
+// ResumeInPlace resumes the already-running Firecracker process after an
+// in-place snapshot (Pause + CreateSnapshot). Unlike Resume it does not
+// reconfigure FC, wait for a UFFD socket or load a snapshot — the process,
+// memory and rootfs overlay are all still live; it only un-pauses the VM.
+func (p *Process) ResumeInPlace(
+	ctx context.Context,
+) error {
+	ctx, span := tracer.Start(ctx, "resume-fc-in-place")
+	defer span.End()
+
+	if err := p.client.resumeVM(ctx); err != nil {
+		return fmt.Errorf("could not resume sandbox: %w", err)
+	}
+
+	return nil
+}
+
 func (p *Process) Resume(
 	ctx context.Context,
 	sbxMetadata sbxlogger.SandboxMetadata,
