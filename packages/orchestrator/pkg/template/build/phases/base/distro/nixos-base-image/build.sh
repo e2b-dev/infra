@@ -65,12 +65,11 @@ nix-store --dump-db \$(cat /build/closure.txt) > \$staging/nix/var/nix/db-regist
 # activation moved into the systemd stage-1 initrd. E2B boots the rootfs
 # directly with no initrd, so booting \$toplevel/init now lands in PID 1 with an
 # empty /etc: no units, 'Unit default.target not found', and systemd freezes.
-# Do what stage 2 used to do. The interpreter is resolved from the closure so
-# the shim works before anything is activated.
-# Activation runs before systemd, so nothing has mounted /proc or /sys yet --
-# stage 2 used to do it. Without /proc the activation snippets that read it fail:
-# nix-store reads /proc/self/exe, so --load-db (the e2bNixDb snippet) errors out
-# and, because it is deliberately non-fatal, the store DB silently never loads.
+# Do what stage 2 used to do, including mounting /proc: activation runs before
+# systemd, and nix-store reads /proc/self/exe, so without it the e2bNixDb
+# snippet that loads the store registration errors out and — being deliberately
+# non-fatal — leaves the store DB silently unloaded. The interpreter is
+# resolved from the closure so the shim works before anything is activated.
 bash_bin=\$(readlink -f \$top/sw/bin/bash)
 cat > \$staging/sbin/e2b-nixos-init <<INIT
 #!\$bash_bin
