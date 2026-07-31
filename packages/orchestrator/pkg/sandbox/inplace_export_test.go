@@ -56,6 +56,7 @@ func (d *inPlaceRODevice) ReadAt(_ context.Context, p []byte, off int64) (int, e
 
 	return copy(p, d.data[off:]), nil
 }
+
 func (d *inPlaceRODevice) Slice(_ context.Context, off, length int64) ([]byte, error) {
 	return d.data[off : off+length], nil
 }
