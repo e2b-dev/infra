@@ -23,6 +23,10 @@ type MemoryBackend interface {
 	Ready() chan struct{}
 	Exit() *utils.ErrorOnce
 	Memfd(ctx context.Context) *block.Memfd
+	// PeekMemfd returns the memfd without transferring ownership, so an in-place
+	// snapshot can copy the guest's dirty pages while the running VM keeps using
+	// it. Unlike Memfd it does not consume the fd.
+	PeekMemfd(ctx context.Context) *block.Memfd
 	// ServeStats returns a cumulative snapshot of demand faults served so far.
 	// Sampled at the envd-init boundary it yields the pages/bytes a guest
 	// needed to start.

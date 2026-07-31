@@ -1582,7 +1582,7 @@ func (s *Sandbox) Pause(
 		DiffHeader: NewResolvedDiffHeader(nil),
 	}
 	if !pauseOpts.filesystemSnapshot {
-		mem, err = s.processMemorySnapshot(ctx, buildID)
+		mem, err = s.processMemorySnapshot(ctx, buildID, false)
 		if err != nil {
 			return nil, err
 		}
@@ -1687,7 +1687,11 @@ type MemorySnapshot struct {
 // and builds its header — steps 3-5 of Pause. Only called for a full memory
 // snapshot; a filesystem-only pause skips it. The returned diff's Close must be
 // registered for cleanup by the caller.
-func (s *Sandbox) processMemorySnapshot(ctx context.Context, buildID uuid.UUID) (MemorySnapshot, error) {
+// processMemorySnapshot copies the dirty guest memory to a local diff. When
+// keepMemfdOpen is set (an in-place snapshot that resumes the same VM) it borrows
+// the memfd without consuming it and skips dedup/provisional serving, since the
+// running guest still faults on that fd.
+func (s *Sandbox) processMemorySnapshot(ctx context.Context, buildID uuid.UUID, keepMemfdOpen bool) (MemorySnapshot, error) {
 	originalMemfile, err := s.Template.Memfile(ctx)
 	if err != nil {
 		return MemorySnapshot{}, fmt.Errorf("failed to get original memfile: %w", err)
@@ -1731,6 +1735,16 @@ func (s *Sandbox) processMemorySnapshot(ctx context.Context, buildID uuid.UUID) 
 		}
 	}
 
+	// In-place snapshot borrows the memfd (the running VM keeps using it) and
+	// turns off dedup + inflight-serve, which would consume or double-manage it.
+	memfd := s.memory.Memfd(ctx)
+	dedupInflightServe := s.featureFlags.BoolFlag(ctx, featureflags.MemfdDedupInflightServeFlag, sandboxLDContext(s.Runtime, s.Config))
+	if keepMemfdOpen {
+		memfd = s.memory.PeekMemfd(ctx)
+		dedupBase = nil
+		dedupInflightServe = false
+	}
+
 	memfileDiff, memfileDiffHeader, provMemfileHeader, provMemfileDiff, provMemfileSwapDone, err := pauseProcessMemory(
 		ctx,
 		buildID,
@@ -1738,13 +1752,14 @@ func (s *Sandbox) processMemorySnapshot(ctx context.Context, buildID uuid.UUID) 
 		memfileDiffMetadata,
 		s.config.DefaultCacheDir,
 		s.process,
-		s.memory.Memfd(ctx),
+		memfd,
 		s.featureFlags.BoolFlag(ctx, featureflags.MemfdBackgroundCopyFlag, sandboxLDContext(s.Runtime, s.Config)),
 		dedupBase,
 		dedupBestEffort,
 		dedupDirectIO,
 		dedupBudget,
-		s.featureFlags.BoolFlag(ctx, featureflags.MemfdDedupInflightServeFlag, sandboxLDContext(s.Runtime, s.Config)),
+		dedupInflightServe,
+		keepMemfdOpen,
 	)
 	if err != nil {
 		return MemorySnapshot{}, fmt.Errorf("error while post processing: %w", err)
@@ -1792,6 +1807,7 @@ func pauseProcessMemory(
 	dedupDirectIO bool,
 	dedupBudget block.DedupBudget,
 	dedupInflightServe bool,
+	keepMemfdOpen bool,
 ) (d build.Diff, h *DiffHeader, provisionalHeader *header.Header, provisionalDiff build.Diff, provisionalSwapDone func(), e error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
@@ -1806,11 +1822,13 @@ func pauseProcessMemory(
 
 	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
 	metaOut := utils.NewSetOnce[*header.DiffMetadata]()
-	// ExportMemory owns memfd and closes it on all paths.
+	// ExportMemory owns memfd and closes it on all paths, EXCEPT when
+	// keepMemfdOpen is set (in-place snapshot): then it borrows the fd and the
+	// running VM keeps ownership.
 	cache, err := fc.ExportMemory(
 		ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd, bgCopy,
 		originalMemfile, dedupBestEffort, dedupDirectIO, dedupBudget, diffMetadata.Empty, metaOut,
-		dedupInflightServe,
+		dedupInflightServe, keepMemfdOpen,
 	)
 	if err != nil {
 		return nil, nil, nil, nil, nil, fmt.Errorf("failed to export memory: %w", err)
@@ -1829,7 +1847,12 @@ func pauseProcessMemory(
 	// a distinct provisional build id at identity offsets. Gated on the memfd
 	// dedup path + the inflight-serve flag; best-effort (fall back to the deduped
 	// header on any error). The upload always uses the deduped header below.
-	provisionalHeader, provisionalDiff, provisionalSwapDone = buildProvisionalMemfile(ctx, cache, dedupInflightServe, originalMemfile, originalHeader, diffMetadata)
+	// Skipped entirely when keepMemfdOpen: the running in-place VM owns the memfd,
+	// so a provisional source serving from (and later releasing) it would
+	// double-manage the live fd.
+	if !keepMemfdOpen {
+		provisionalHeader, provisionalDiff, provisionalSwapDone = buildProvisionalMemfile(ctx, cache, dedupInflightServe, originalMemfile, originalHeader, diffMetadata)
+	}
 
 	// Build the diff header on a goroutine so Pause returns without waiting
 	// on memfd-dedup compare. ExportMemory resolves metaOut sync for every
