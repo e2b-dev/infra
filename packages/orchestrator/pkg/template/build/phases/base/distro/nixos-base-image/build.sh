@@ -58,7 +58,38 @@ ln -s \$top \$staging/nix/var/nix/profiles/system
 # /nix/var/nix/db, which the closure does not carry. Ship the registration so
 # first boot can load it, otherwise nix-env and friends reject every path.
 nix-store --dump-db \$(cat /build/closure.txt) > \$staging/nix/var/nix/db-registration
-ln -s /nix/var/nix/profiles/system/init \$staging/sbin/init
+# Activation shim. Up to NixOS 24.11 \$toplevel/init was the stage-2 shell
+# script, which ran \$toplevel/activate (populating /etc from the store) and
+# only then exec'd systemd. From 25.05 \$toplevel/init IS the systemd binary --
+# activation moved into the systemd stage-1 initrd. E2B boots the rootfs
+# directly with no initrd, so booting \$toplevel/init now lands in PID 1 with an
+# empty /etc: no units, 'Unit default.target not found', and systemd freezes.
+# Do what stage 2 used to do. The interpreter is resolved from the closure so
+# the shim works before anything is activated.
+# Activation runs before systemd, so nothing has mounted /proc or /sys yet --
+# stage 2 used to do it. Without /proc the activation snippets that read it fail:
+# nix-store reads /proc/self/exe, so --load-db (the e2bNixDb snippet) errors out
+# and, because it is deliberately non-fatal, the store DB silently never loads.
+bash_bin=\$(readlink -f \$top/sw/bin/bash)
+cat > \$staging/sbin/e2b-nixos-init <<INIT
+#!\$bash_bin
+# There is no FHS userland yet -- /bin and /usr/bin appear only once activation
+# has run -- so every command below needs the system profile on PATH. Without
+# it the shim silently does nothing but run activate: mount, install and ln are
+# all simply not found. Stage 2 set an explicit PATH for the same reason.
+export PATH=/nix/var/nix/profiles/system/sw/bin:/nix/var/nix/profiles/system/sw/sbin
+[ -e /proc/self/exe ] || mount -t proc -o nosuid,noexec,nodev proc /proc
+[ -e /sys/kernel ] || mount -t sysfs -o nosuid,noexec,nodev sysfs /sys
+install -m 0755 -d /etc
+install -m 01777 -d /tmp
+/nix/var/nix/profiles/system/activate
+ln -sfn /nix/var/nix/profiles/system /run/booted-system
+# Stop systemd's first-boot heuristic from trying to populate /etc itself.
+: >> /etc/machine-id
+exec /nix/var/nix/profiles/system/systemd/lib/systemd/systemd \"\\\$@\"
+INIT
+chmod +x \$staging/sbin/e2b-nixos-init
+ln -s /sbin/e2b-nixos-init \$staging/sbin/init
 # Derived from NIXOS_SERIES so it cannot drift from the pin above: this is the
 # pre-activation os-release, and the only field the distro selector reads is
 # ID, so a stale version here is invisible to every automated check.
