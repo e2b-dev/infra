@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.0.2](https://github.com/e2b-dev/infra/compare/orchestrator-v0.0.1...orchestrator-v0.0.2) (2026-07-31)
+
+
+### Bug Fixes
+
+* **orch:** choose the chrony time source at boot instead of at build time ([#3440](https://github.com/e2b-dev/infra/issues/3440)) ([10b1bae](https://github.com/e2b-dev/infra/commit/10b1bae7c8c6d95baf599ada006981347d507568))
+* **orch:** pin nixpkgs to a supported release for the NixOS base image ([#3478](https://github.com/e2b-dev/infra/issues/3478)) ([6e8e9d3](https://github.com/e2b-dev/infra/commit/6e8e9d35ddeb45bc54a1e30322d04d363c1923cc))
+* **template-build:** create trailing-slash COPY targets before moving files ([#3458](https://github.com/e2b-dev/infra/issues/3458)) ([dc53fa7](https://github.com/e2b-dev/infra/commit/dc53fa7fd7989eec69a166e7a0456eabd18101f4))
+
 ## 0.0.1 (2026-07-30)
 
 
