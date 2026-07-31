@@ -52,6 +52,7 @@ var (
 	envdCollapseDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.EnvdCollapseDurationHistogramName))
 	envdCollapseChunks            = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdCollapseChunks))
 	guestSyncDurationHistogram    = utils.Must(telemetry.GetHistogram(meter, telemetry.GuestSyncDurationHistogramName))
+	fsQuiescedPauseCounter        = utils.Must(telemetry.GetCounter(meter, telemetry.SandboxPauseFsQuiescedCounterName))
 
 	processMemoryDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotProcessMemoryDurationName))
 	processRootfsDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotProcessRootfsDurationName))
@@ -1495,17 +1496,33 @@ func (s *Sandbox) Pause(
 		return nil
 	})
 
+	// frozen records whether the fs-only pause quiesced the rootfs with a real
+	// FIFREEZE (vs a plain sync fallback); false for a memory pause.
+	frozen := false
+	// Count the eligible-snapshot population only for pauses that actually mint a
+	// snapshot: record on the success path (deferred, e == nil) so a pause that
+	// aborts after the freeze — process pause, snapshot creation, rootfs export,
+	// metadata write — doesn't inflate quiesced/total. The span attribute is set
+	// inline (the span already carries the outcome), the counter is not.
+	defer func() {
+		if e == nil && pauseOpts.filesystemSnapshot {
+			fsQuiescedPauseCounter.Add(ctx, 1, metric.WithAttributes(attribute.Bool("quiesced", frozen)))
+		}
+	}()
 	if pauseOpts.filesystemSnapshot {
 		// FC never flushes the guest page cache and no memory snapshot will
 		// preserve it, so the rootfs must be quiesced before pause or it would
 		// persist missing acknowledged writes. This is mandatory, unlike the
 		// best-effort reclaim above.
-		if err := s.guestPrepareFsForPause(ctx, cleanup); err != nil {
+		frozen, err = s.guestPrepareFsForPause(ctx, cleanup)
+		if err != nil {
 			return nil, err
 		}
 
 		// Memory prefetch refers to the memfile, which is not persisted.
 		m.Prefetch = nil
+
+		span.SetAttributes(attribute.Bool("fs_quiesced", frozen))
 	}
 
 	// Record the snapshot kind in metadata so the resume path picks reboot vs
@@ -1515,6 +1532,9 @@ func (s *Sandbox) Pause(
 	// metadata version when needed so the flag survives deserialize for snapshots
 	// taken from a V1 template.
 	m = m.MarkFilesystemOnly(pauseOpts.filesystemSnapshot)
+	// Persist whether the rootfs was frozen so a later feature can safely decide
+	// this snapshot is one it may cold-boot / rewrite without journal repair.
+	m = m.MarkFsQuiesced(pauseOpts.filesystemSnapshot && frozen)
 
 	// Drain free-page-hinting before pause so the snapshot doesn't capture
 	// pages the guest already considers free. Timeout per use case; 0 disables.

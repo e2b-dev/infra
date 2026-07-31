@@ -131,6 +131,16 @@ type Template struct {
 	// reboot-vs-memory-resume. Deliberately NOT carried by the
 	// With*/SameVersionTemplate copy-constructors — Sandbox.Pause re-stamps it.
 	FilesystemOnly bool `json:"filesystem_only,omitempty"`
+
+	// FsQuiesced records that a filesystem-only snapshot's rootfs was captured
+	// while frozen (FIFREEZE — native for envd >= 0.6.6, or via the exec API for
+	// older envd) rather than merely sync'd, so it is crash-consistent. The zero
+	// value (false) means unknown / not-frozen — a legacy snapshot (no field) or a
+	// sync fallback. Only meaningful alongside FilesystemOnly. Stamped at pause and
+	// re-stamped every pause; deliberately NOT carried by the copy-constructors.
+	// This is a building block: it lets a later feature decide safely whether a
+	// snapshot is one it can cold-boot / rewrite without repairing the journal.
+	FsQuiesced bool `json:"fs_quiesced,omitempty"`
 }
 
 // IsFilesystemOnly reports whether this snapshot persists only the filesystem
@@ -153,6 +163,22 @@ func (t Template) MarkFilesystemOnly(filesystemOnly bool) Template {
 	if filesystemOnly && t.Version < FilesystemOnlyVersion {
 		t.Version = FilesystemOnlyVersion
 	}
+
+	return t
+}
+
+// IsFsQuiesced reports whether a filesystem-only snapshot's rootfs was frozen
+// (crash-consistent) at pause.
+func (t Template) IsFsQuiesced() bool {
+	return t.FsQuiesced
+}
+
+// MarkFsQuiesced records whether the rootfs was frozen at pause. It is only set
+// true together with FilesystemOnly, whose MarkFilesystemOnly already lifts the
+// metadata version to >= FilesystemOnlyVersion; deserialize() fully unmarshals
+// those versions, so the flag survives without a further version bump.
+func (t Template) MarkFsQuiesced(quiesced bool) Template {
+	t.FsQuiesced = quiesced
 
 	return t
 }
