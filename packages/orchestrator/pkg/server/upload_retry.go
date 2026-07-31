@@ -36,6 +36,8 @@ func isRetryableUploadErr(err error) bool {
 		return false // source vanished; retry cannot recover it
 	case errors.Is(err, context.Canceled):
 		return false // parent cancelled (shutdown)
+	case errors.Is(err, build.ErrDeferredSealFailed):
+		return false // deferred rootfs seal ran once and failed; it never re-runs
 	default:
 		// Includes per-attempt context.DeadlineExceeded, GCS 401/503, rate
 		// limiting, and unknown errors — all worth retrying within the budget.

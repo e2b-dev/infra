@@ -12,6 +12,11 @@ on:
         description: "Whether to run integration tests"
         required: false
         default: true
+      full-matrix:
+        type: boolean
+        description: "When true (main), run all three compression configs unsharded. When false (PRs), split the full-suite uncompressed config into package shards on parallel runners to cut wall time; the compressed configs run their allow-list unsharded either way."
+        required: false
+        default: true
     secrets:
       CODECOV_TOKEN: { required: false }
 jobs:
@@ -25,35 +30,67 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: uncompressed
-            compress_enabled: "false"
-            compress_type: ""
-            compress_level: ""
-            compress_workers: ""
-            dedup_mode: "default"
-            disable_memfd: "true"
-          - name: zstd1
-            compress_enabled: "true"
-            compress_type: "zstd"
-            compress_level: "1"
-            compress_workers: "8"
-            dedup_mode: "best_effort"
-            disable_memfd: "false"
-          - name: lz4
-            compress_enabled: "true"
-            compress_type: "lz4"
-            compress_level: "0"
-            compress_workers: "8"
-            dedup_mode: "direct_io"
-            disable_memfd: "false"
+        # Coverage is split along two independent axes:
+        #
+        #   - Which tests run per config: the uncompressed config runs the
+        #     whole suite; the compressed configs (zstd1/lz4) only re-run the
+        #     allow-listed tests whose subject is writing or reading back a
+        #     snapshot, which is all the compression knobs can affect (see
+        #     scripts/compression-tests.tsv).
+        #   - Sharding for wall time (PRs only): each host saturates at
+        #     go test -parallel=4 (Firecracker boots + compression), so the
+        #     only way to cut wall time is more hosts. The full-suite
+        #     uncompressed config is split into package shards - the
+        #     TestTemplateBuild* tests (real FC builds) in two halves by name
+        #     prefix, api/sandboxes plus the light packages on their own
+        #     runner, everything else on the last one. The compressed
+        #     allow-list runs are split at the package level: the templates
+        #     package (real-build snapshot tests) vs everything else. Shards
+        #     are resolved by TEST_SHARD in tests/integration/Makefile.
+        #
+        # On push to main (full-matrix), all three configs run unsharded, one
+        # job per config, as before.
+        include: >-
+          ${{ fromJSON(inputs.full-matrix
+            && '[
+                  {"name": "uncompressed", "shard": "all", "compress_enabled": "false", "compress_type": "", "compress_level": "", "compress_workers": "", "dedup_mode": "default", "disable_memfd": "true"},
+                  {"name": "zstd1", "shard": "all", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"},
+                  {"name": "lz4", "shard": "all", "compress_enabled": "true", "compress_type": "lz4", "compress_level": "0", "compress_workers": "8", "dedup_mode": "direct_io", "disable_memfd": "false"}
+                ]'
+            || '[
+                  {"name": "uncompressed-templates-1", "shard": "templates-builds-1", "compress_enabled": "false", "compress_type": "", "compress_level": "", "compress_workers": "", "dedup_mode": "default", "disable_memfd": "true"},
+                  {"name": "uncompressed-templates-2", "shard": "templates-builds-2", "compress_enabled": "false", "compress_type": "", "compress_level": "", "compress_workers": "", "dedup_mode": "default", "disable_memfd": "true"},
+                  {"name": "uncompressed-sandboxes", "shard": "sandboxes", "compress_enabled": "false", "compress_type": "", "compress_level": "", "compress_workers": "", "dedup_mode": "default", "disable_memfd": "true"},
+                  {"name": "uncompressed-rest", "shard": "rest", "compress_enabled": "false", "compress_type": "", "compress_level": "", "compress_workers": "", "dedup_mode": "default", "disable_memfd": "true"},
+                  {"name": "zstd1-templates", "shard": "templates", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"},
+                  {"name": "zstd1-other", "shard": "no-templates", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"},
+                  {"name": "lz4-templates", "shard": "templates", "compress_enabled": "true", "compress_type": "lz4", "compress_level": "0", "compress_workers": "8", "dedup_mode": "direct_io", "disable_memfd": "false"},
+                  {"name": "lz4-other", "shard": "no-templates", "compress_enabled": "true", "compress_type": "lz4", "compress_level": "0", "compress_workers": "8", "dedup_mode": "direct_io", "disable_memfd": "false"}
+                ]') }}
     env:
       # Surfaced as env so upload steps can gate on presence (skipped on fork PRs).
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      # Build race-instrumented but optimized binaries: nobody attaches a
+      # debugger in CI, and -N -l slows both compilation and every test at
+      # runtime. Set at the job level so the build-packages step and the
+      # rebuilds inside the run/run-debug targets use identical flags (the
+      # second build is then a Go build cache no-op).
+      DEBUG_GCFLAGS: ""
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v5
+
+      # Kick off the database containers first: their image pulls and boots
+      # run in the background and overlap with the package builds below.
+      - name: Start Databases
+        uses: ./.github/actions/start-databases
+
+      # The compressed configs only run what the allow-list names, so verify
+      # its stale-entry guard still bites before depending on it.
+      - name: Check Test Allow-list
+        run: make -C tests/integration check-tests-allowlist
+        shell: bash
 
       - name: Build Packages
         uses: ./.github/actions/build-packages
@@ -61,6 +98,10 @@ jobs:
       - name: Initialize Host
         uses: ./.github/actions/host-init
 
+      # Must run before Start Services: create-build manages its own sandbox
+      # network state (slot pools, namespaces) and conflicts with a running
+      # orchestrator doing the same - overlapping them wedges the
+      # provisioning VM until its deadline.
       - name: Build Template
         uses: ./.github/actions/build-sandbox-template
         with:
@@ -86,6 +127,20 @@ jobs:
           TESTS_ORCHESTRATOR_HOST: "localhost:5008"
           TESTS_ENVD_PROXY: "http://localhost:3002"
           TESTS_CLIENT_PROXY: "http://localhost:3002"
+          # The uncompressed config runs the whole suite. The compressed configs
+          # only re-run the tests whose subject is writing or reading back a
+          # snapshot, which is all the compression knobs can affect — the
+          # allow-list documents the criteria and the code paths involved.
+          TESTS_ONLY: ${{ matrix.compress_enabled == 'true' && 'scripts/compression-tests.tsv' || '' }}
+          # Keep go test -parallel at 4: the host is the bottleneck, not
+          # client-side concurrency. Measured on the zstd1 config: at 8 the
+          # per-test times inflated 70-140% (net wall win of only ~1 min) and
+          # 10 template builds flaked on timeouts; at 12 concurrent FC builds
+          # (x8 zstd workers each) starved envd inits into "syncing took too
+          # long" failures across 87 tests. Wall time is cut by sharding
+          # across runners instead (see the matrix above).
+          TEST_PARALLELISM: "4"
+          TEST_SHARD: ${{ matrix.shard }}
         run: |
           # Run the integration tests
           make test-integration

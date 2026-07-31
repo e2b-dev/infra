@@ -1,8 +1,9 @@
 // Package distro makes template-build provisioning distro-aware: it selects a
 // declared per-family Profile by the base image's /etc/os-release ID rather than
 // probing for a package manager. Supported: the systemd family (Debian/Ubuntu,
-// Fedora/RHEL/CentOS/Rocky/Alma, Arch) and Alpine on OpenRC; anything else is
-// rejected with a clear error.
+// Fedora/CentOS/Rocky/Alma, Arch) and Alpine on OpenRC. Derivatives are
+// provisioned via ID_LIKE as a best-effort guess with a warning; kernel-dependent
+// ids (RejectedIDs) and anything unmatched are rejected with a clear error.
 package distro
 
 import (
@@ -151,7 +152,13 @@ var Profiles = []Profile{
 		Packages:     nil,
 		PkgQueryBody: "true",
 		PkgInstall:   `echo "[provision] ERROR: NixOS images are premade — packages must be declared in the image's NixOS configuration" >&2; exit 1`,
-		InitBinary:   "/nix/var/nix/profiles/system/init",
+		// Not $toplevel/init: from NixOS 25.05 that IS the systemd binary, and
+		// activation moved into the systemd stage-1 initrd. We boot the rootfs
+		// directly with no initrd, so PID 1 would start against an unpopulated
+		// /etc and freeze on "Unit default.target not found". The image ships
+		// this shim, which activates and then execs systemd — what the pre-25.05
+		// stage-2 init did (nixos-base-image/build.sh).
+		InitBinary:   "/sbin/e2b-nixos-init",
 		TimeSyncUnit: "chronyd",
 		// Left empty on purpose: services.openssh is declared in the image's
 		// configuration, and the NixOS init setup never enables units.
@@ -178,13 +185,31 @@ func SupportedIDs() []string {
 	return ids
 }
 
+// RejectedIDs are distro ids we refuse even though their ID_LIKE names a
+// family we do support. Oracle Linux and Amazon Linux both declare
+// ID_LIKE=fedora, so without this the ID_LIKE fallback below would quietly
+// re-admit exactly the images the rhel profile documents as out of scope.
+var RejectedIDs = []string{"rhel", "ol", "amzn"}
+
 // ShellSelector generates the POSIX-sh block provision.sh sources: it switches
 // on the guest's $E2B_DISTRO_ID and defines the profile's packages, shell
-// functions, init path, time-sync unit, admin group and CA handling. An
-// unrecognized id exits 1 with a customer-visible error.
+// functions, init path, time-sync unit, admin group and CA handling.
+//
+// An unknown id retries each $E2B_ID_LIKE token in order and provisions the
+// first matching family — best effort, with a customer-visible warning.
+// RejectedIDs, ids matching nothing, and images without /etc/os-release exit 1.
 func ShellSelector() string {
 	var b strings.Builder
-	b.WriteString(`case "$E2B_DISTRO_ID" in` + "\n")
+
+	// Selection lives in a function so it can be retried per ID_LIKE token.
+	// Assignments and function definitions inside a POSIX-sh function are
+	// global, so the caller sees the profile the same way it always has.
+	// The match is reported via e2b_profile_matched, not the return status —
+	// a function called as an if-condition runs with errexit suppressed,
+	// which would swallow Bootstrap failures inside a matched arm.
+	b.WriteString("e2b_select_profile() {\n")
+	b.WriteString("  e2b_profile_matched=\n")
+	b.WriteString(`  case "$1" in` + "\n")
 	for _, p := range Profiles {
 		fmt.Fprintf(&b, "  %s)\n", strings.Join(p.IDs, "|"))
 		if p.Bootstrap != "" {
@@ -201,14 +226,42 @@ func ShellSelector() string {
 		fmt.Fprintf(&b, "    e2b_ca_refresh() { %s; }\n", p.CARefresh)
 		fmt.Fprintf(&b, "    E2B_INIT_SYSTEM=%q\n", p.Init)
 		fmt.Fprintf(&b, "    e2b_init_setup() {\n%s\n    }\n", indentBlock(initSetup[p.Init], "        "))
+		fmt.Fprintf(&b, "    e2b_profile_matched=1\n")
 		fmt.Fprintf(&b, "    ;;\n")
 	}
-	fmt.Fprintf(&b, "  *)\n")
+	fmt.Fprintf(&b, "  *)\n    ;;\n")
+	b.WriteString("  esac\n}\n\n")
+
+	b.WriteString(`e2b_select_profile "$E2B_DISTRO_ID"` + "\n")
+	b.WriteString(`if [ -z "$e2b_profile_matched" ]; then` + "\n")
+
+	// Deliberate rejections are checked before the fallback, so they keep
+	// failing fast with their own reason instead of being matched by ID_LIKE.
+	fmt.Fprintf(&b, "  case \"$E2B_DISTRO_ID\" in\n")
+	fmt.Fprintf(&b, "  %s)\n", strings.Join(RejectedIDs, "|"))
+	fmt.Fprintf(&b, "    echo \"[provision] ERROR: base image distribution ID='$E2B_DISTRO_ID' is not supported.\" >&2\n")
+	fmt.Fprintf(&b, "    echo \"[provision] Sandboxes boot E2B's kernel, so the kABI, signed modules and SELinux these images are chosen for are unavailable.\" >&2\n")
+	fmt.Fprintf(&b, "    exit 1\n")
+	fmt.Fprintf(&b, "    ;;\n")
+	fmt.Fprintf(&b, "  esac\n")
+
+	b.WriteString("  e2b_like_match=\n")
+	b.WriteString(`  for e2b_like in $E2B_ID_LIKE; do` + "\n")
+	b.WriteString(`    e2b_select_profile "$e2b_like"` + "\n")
+	b.WriteString(`    if [ -n "$e2b_profile_matched" ]; then` + "\n")
+	b.WriteString("      e2b_like_match=$e2b_like\n")
+	b.WriteString("      break\n")
+	b.WriteString("    fi\n")
+	b.WriteString("  done\n")
+
+	b.WriteString(`  if [ -z "$e2b_like_match" ]; then` + "\n")
 	fmt.Fprintf(&b, "    echo \"[provision] ERROR: unsupported base image distribution: ID='${E2B_DISTRO_ID:-unknown}'.\" >&2\n")
 	fmt.Fprintf(&b, "    echo \"[provision] E2B template builds support: %s.\" >&2\n", strings.Join(SupportedIDs(), ", "))
 	fmt.Fprintf(&b, "    exit 1\n")
-	fmt.Fprintf(&b, "    ;;\n")
-	b.WriteString("esac\n")
+	b.WriteString("  fi\n")
+
+	fmt.Fprintf(&b, "  echo \"[provision] WARNING: base image distribution ID='$E2B_DISTRO_ID' is not officially supported; provisioning it as '$e2b_like_match' from ID_LIKE. This is best effort and untested.\" >&2\n")
+	b.WriteString("fi\n")
 
 	return b.String()
 }

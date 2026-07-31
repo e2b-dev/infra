@@ -288,3 +288,45 @@ func TestFilesystemOnly_BackwardCompatAndOmitempty(t *testing.T) {
 	require.NoError(t, json.Unmarshal(fsJSON, &back))
 	assert.True(t, back.IsFilesystemOnly())
 }
+
+func TestIsFsQuiesced(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, Template{FsQuiesced: true}.IsFsQuiesced())
+	assert.False(t, Template{}.IsFsQuiesced(), "zero value is not quiesced")
+}
+
+// fs_quiesced must survive a metadata round-trip on a filesystem-only snapshot
+// without needing its own version bump: MarkFilesystemOnly already lifts the
+// version past deserialize()'s strip threshold. A legacy/unmarked snapshot must
+// deserialize as not-quiesced — the safe "not eligible" default that makes it
+// wait for a future freezing pause.
+func TestMarkFsQuiesced_SurvivesRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	// A frozen fs-only snapshot taken from a V1 template: both flags survive.
+	frozen := V1TemplateVersion().MarkFilesystemOnly(true).MarkFsQuiesced(true)
+	r, err := serialize(frozen)
+	require.NoError(t, err)
+	got, err := deserialize(r)
+	require.NoError(t, err)
+	assert.True(t, got.IsFilesystemOnly())
+	assert.True(t, got.IsFsQuiesced(), "fs_quiesced must survive alongside filesystem_only")
+
+	// A fs-only-but-sync-fallback snapshot round-trips as not quiesced.
+	syncOnly := V1TemplateVersion().MarkFilesystemOnly(true).MarkFsQuiesced(false)
+	r2, err := serialize(syncOnly)
+	require.NoError(t, err)
+	g2, err := deserialize(r2)
+	require.NoError(t, err)
+	assert.True(t, g2.IsFilesystemOnly())
+	assert.False(t, g2.IsFsQuiesced(), "a sync-fallback fs-only snapshot must not be quiesced")
+
+	// A legacy fs-only snapshot without the field defaults to not-quiesced.
+	legacy := Template{Version: FilesystemOnlyVersion, FilesystemOnly: true}
+	r3, err := serialize(legacy)
+	require.NoError(t, err)
+	g3, err := deserialize(r3)
+	require.NoError(t, err)
+	assert.False(t, g3.IsFsQuiesced(), "a snapshot without fs_quiesced is not eligible (safe default)")
+}

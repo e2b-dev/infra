@@ -1,0 +1,87 @@
+# package	test
+#
+# Allow-list of tests run under the compressed storage configs (zstd1, lz4).
+# The uncompressed config always runs the whole suite; this file only decides
+# what is worth running a *second* and *third* time with compression on.
+#
+# The compression knobs (COMPRESS_ENABLED/TYPE/LEVEL/FRAME_ENCODE_WORKERS,
+# TESTS_MEMFILE_DIFF_DEDUP_MODE, TESTS_DISABLE_MEMFD) reach the system at
+# exactly four points:
+#   1. template build layer upload  - storage.UseCaseBuild, layer_executor.go
+#   2. pause/snapshot upload        - storage.UseCasePause, server/sandboxes.go
+#   3. decompress on chunk read     - storage_cache_seekable.go
+#   4. snapshot diffing / guest memory backing - MemfileDiffDedupFlag and
+#      UseMemFdFlag in pkg/sandbox/sandbox.go
+#
+# So a test earns a slot here if its subject is writing or reading back a
+# snapshot: pause, resume, fork, auto-pause, snapshot templates, snapshot
+# content integrity, fsfreeze, persistent volumes, or a template build that
+# reads its own layers back. Tests whose subject is API surface, egress
+# firewall behaviour, proxy routing or the envd feature set are excluded: they
+# do start sandboxes and therefore decompress template chunks, but that read
+# path is already covered many times over by the entries below, so they only
+# add wall time. Frames are a fixed 2 MiB (storage.DefaultCompressFrameSize)
+# and must stay a multiple of the hugepage and rootfs block sizes, so the
+# compressed writer is agnostic to what a layer contains - a handful of builds
+# covers it, and 58 do not.
+#
+# "*" selects every test in the package. shard-tests.sh fails if an entry no
+# longer exists, so this list cannot rot into silently reduced coverage.
+
+# Snapshot/restore integrity suite - entirely on the pause/resume path.
+internal/tests/orchestrator	*
+
+# Auto-resume through the proxy resumes real paused sandboxes.
+internal/tests/proxies	*
+
+# Persistent volumes are a separate storage path.
+internal/tests/api/volumes	*
+
+# Snapshot templates: pause -> template -> new sandbox.
+internal/tests/api/sandboxes	TestSnapshotTemplateCreate
+internal/tests/api/sandboxes	TestSnapshotTemplateCreateSandbox
+internal/tests/api/sandboxes	TestSnapshotTemplateList
+internal/tests/api/sandboxes	TestSnapshotTemplateDelete
+internal/tests/api/sandboxes	TestSnapshotTemplateConcurrentOperations
+
+# Pause / resume / fork / auto-pause lifecycle.
+internal/tests/api/sandboxes	TestSandboxPause
+internal/tests/api/sandboxes	TestSandboxPauseNonFound
+internal/tests/api/sandboxes	TestSandboxResume
+internal/tests/api/sandboxes	TestSandboxResumeUnknownSandbox
+internal/tests/api/sandboxes	TestSandboxResumeWithSecuredEnvd
+internal/tests/api/sandboxes	TestSandboxResume_FilesystemOnlyReboots
+internal/tests/api/sandboxes	TestSandboxConnect_FilesystemOnlyResumes
+internal/tests/api/sandboxes	TestSandboxFork
+internal/tests/api/sandboxes	TestSandboxFork_Multiple
+internal/tests/api/sandboxes	TestSandboxFork_AlreadyPaused
+internal/tests/api/sandboxes	TestSandboxFork_NotFound
+internal/tests/api/sandboxes	TestSandboxFork_InvalidCount
+internal/tests/api/sandboxes	TestSandboxRapidSnapshotForkChain
+internal/tests/api/sandboxes	TestSandboxAutoPausePauseResume
+internal/tests/api/sandboxes	TestSandboxAutoPauseResumePersisted
+internal/tests/api/sandboxes	TestSandboxAutoPause_FilesystemOnly
+internal/tests/api/sandboxes	TestSandboxNotAutoPause
+
+# Plain create reads the base template's compressed chunks; the fuse tests
+# cover how the decompressed rootfs is presented in the guest.
+internal/tests/api/sandboxes	TestSandboxCreate
+internal/tests/api/sandboxes	TestFuseDevicePermissions
+internal/tests/api/sandboxes	TestFuseNonRootAccess
+
+# Template builds that write layers and read them back: cache reuse,
+# multi-level inheritance, a large COPY layer, a package-install RUN layer,
+# distinct source images, and a plain single-layer build.
+internal/tests/api/templates	TestTemplateBuildCache
+internal/tests/api/templates	TestTemplateBuildFromTemplate
+internal/tests/api/templates	TestTemplateBuildFromTemplateLayered
+internal/tests/api/templates	TestTemplateBuildCOPY
+internal/tests/api/templates	TestTemplateBuildRUN
+internal/tests/api/templates	TestTemplateBuildWithDifferentSourceImages
+
+# Guest filesystem state across freeze/snapshot/resume.
+internal/tests/envd	TestFsFreezeThaw
+internal/tests/envd	TestCACertRotationOnResume
+internal/tests/envd	TestSecureSandboxFilesystemOnlyResumeAuth
+internal/tests/envd	TestAccessAuthorizedPathWithResumedSandboxWithValidAccessToken
+internal/tests/envd	TestAccessAuthorizedPathWithResumedSandboxWithoutAccessToken
