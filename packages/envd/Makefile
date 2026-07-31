@@ -7,6 +7,7 @@ ENV := $(shell cat ../../.last_used_env || echo "not-set")
 BUILD := $(shell git rev-parse HEAD | cut -c1-7)
 LDFLAGS=-ldflags "-X=main.commitSHA=$(BUILD)"
 PROD_LDFLAGS=-ldflags "-X=main.commitSHA=$(BUILD) -s -w -buildid="
+DEBUG_LDFLAGS=-ldflags "-X=main.commitSHA=$(BUILD) -linkmode external -extldflags=-static"
 
 AWS_BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
 GCP_BUCKET_PREFIX ?= $(GCP_PROJECT_ID)-
@@ -71,8 +72,12 @@ endif
 build:
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(BUILD_ARCH) go build -trimpath -buildvcs=false -a -o bin/envd ${PROD_LDFLAGS}
 
+# This binary is injected into every sandbox guest, including musl ones, so it
+# must not need a dynamic loader; -race requires cgo, hence the static external
+# link. osusergo/netgo keep user and DNS lookups pure Go, as in the CGO_ENABLED=0
+# build above, so only the race instrumentation differs from what ships.
 build-debug:
-	CGO_ENABLED=1 go build -race -gcflags=all="-N -l" -o bin/debug/envd ${LDFLAGS}
+	CGO_ENABLED=1 go build -race -tags osusergo,netgo -gcflags=all="-N -l" -o bin/debug/envd ${DEBUG_LDFLAGS}
 
 start-docker:
 	make build

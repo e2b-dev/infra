@@ -41,3 +41,16 @@ func IsCheckViolation(err error) bool {
 
 	return false
 }
+
+// ConstraintName names the constraint an error violated, or "" when the error
+// is not a constraint violation. A statement carrying more than one constraint
+// needs the name to say which rule the request actually broke, and those rules
+// rarely map to the same response.
+func ConstraintName(err error) string {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.ConstraintName
+	}
+
+	return ""
+}

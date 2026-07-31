@@ -164,7 +164,12 @@ func (s *Sandbox) guestSyncTimeout(ctx context.Context) time.Duration {
 	return ramScaledSyncTimeout(s.Config.RamMB)
 }
 
-func (s *Sandbox) guestPrepareFsForPause(ctx context.Context, cleanup *Cleanup) (e error) {
+// guestPrepareFsForPause quiesces the guest rootfs before a filesystem-only
+// pause. It returns frozen=true only when a real FIFREEZE ran (native for
+// >= 0.6.6, or via the exec API for < 0.6.6) — i.e. the captured rootfs is
+// crash-consistent; frozen=false means it fell back to a plain sync. The caller
+// persists this into the snapshot metadata (fs_quiesced).
+func (s *Sandbox) guestPrepareFsForPause(ctx context.Context, cleanup *Cleanup) (frozen bool, e error) {
 	supportsFsFreeze := s.envdSupportsFsFreeze(ctx)
 	// Use guestSyncTimeout here, as fsfreeze also syncs the disk
 	timeout := s.guestSyncTimeout(ctx)
@@ -179,12 +184,12 @@ func (s *Sandbox) guestPrepareFsForPause(ctx context.Context, cleanup *Cleanup) 
 
 	// Record on every exit so slow and timed-out syncs are captured too.
 	defer func() {
-		frozen := method != "sync"
-		span.SetAttributes(attribute.String("method", method), attribute.Bool("fsfreeze", frozen))
+		didFreeze := method != "sync"
+		span.SetAttributes(attribute.String("method", method), attribute.Bool("fsfreeze", didFreeze))
 		guestSyncDurationHistogram.Record(ctx, time.Since(start).Milliseconds(),
 			metric.WithAttributes(
 				attribute.Bool("success", e == nil),
-				attribute.Bool("fsfreeze", frozen),
+				attribute.Bool("fsfreeze", didFreeze),
 				attribute.String("method", method),
 				attribute.Int64("timeout_ms", timeout.Milliseconds()),
 			),
@@ -206,10 +211,10 @@ func (s *Sandbox) guestPrepareFsForPause(ctx context.Context, cleanup *Cleanup) 
 			return nil
 		})
 		if err := s.callEnvdFsfreeze(ctx, timeout); err != nil {
-			return fmt.Errorf("fsfreeze before filesystem-only pause: %w", err)
+			return false, fmt.Errorf("fsfreeze before filesystem-only pause: %w", err)
 		}
 
-		return nil
+		return true, nil
 	}
 
 	// Old envd, no native /fsfreeze. When enabled, freeze the rootfs via the exec
@@ -243,21 +248,21 @@ func (s *Sandbox) guestPrepareFsForPause(ctx context.Context, cleanup *Cleanup) 
 			// would then block on the frozen fs, so abort the pause like the native
 			// path does and let the registered cleanup thaw it — do not sync.
 			if err := s.guestFsfreezeViaExec(ctx, timeout); err != nil {
-				return fmt.Errorf("fsfreeze via exec before filesystem-only pause: %w", err)
+				return false, fmt.Errorf("fsfreeze via exec before filesystem-only pause: %w", err)
 			}
 
 			logger.L().Info(ctx, "froze guest rootfs via envd exec API before filesystem-only pause",
 				logger.WithSandboxID(s.Runtime.SandboxID))
 
-			return nil
+			return true, nil
 		}
 	}
 
 	if err := s.guestSync(ctx, timeout); err != nil {
-		return fmt.Errorf("guest sync before filesystem-only pause: %w", err)
+		return false, fmt.Errorf("guest sync before filesystem-only pause: %w", err)
 	}
 
-	return nil
+	return false, nil
 }
 
 // guestSync runs sync in the guest via envd so ext4 flushes dirty pages to the

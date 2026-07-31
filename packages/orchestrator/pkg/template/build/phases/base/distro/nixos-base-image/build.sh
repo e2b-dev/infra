@@ -16,7 +16,8 @@ if [ -z "$tag" ]; then
   echo "usage: ${BASH_SOURCE[0]} <tag> [registry]   # push every rebuild under a NEW tag" >&2
   exit 1
 fi
-image="$registry/e2b-nixos:$tag"
+# Published as docker.io/e2bdev/nixos:<tag>; locally as 127.0.0.1:5000/nixos:<tag>.
+image="$registry/nixos:$tag"
 
 # Staged outside the repo: the closure tar is ~700 MB, and the repo checkout can
 # be a slow network mount on a dev box.
@@ -55,5 +56,12 @@ echo PACKED
 "
 ls -lh "$work/nixos-rootfs.tar"
 docker import "$work/nixos-rootfs.tar" "$image"
+# E2B_NIXOS_SKIP_PUSH lets a caller inspect the tar and the imported image
+# before anything reaches the registry — the publish workflow uses it to gate
+# the push on its rootfs checks, since a broken tag cannot be republished.
+if [ "${E2B_NIXOS_SKIP_PUSH:-}" = "1" ]; then
+  echo "IMAGE_IMPORTED $image (push skipped: E2B_NIXOS_SKIP_PUSH=1)"
+  exit 0
+fi
 docker push "$image"
 echo "IMAGE_PUSHED $image"
