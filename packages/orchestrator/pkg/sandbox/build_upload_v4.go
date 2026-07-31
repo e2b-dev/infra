@@ -4,6 +4,7 @@ package sandbox
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -151,6 +152,11 @@ func (u *Upload) uploadFramed(
 //
 // V3 callers pass dst=nil — they need the barrier but have no Builds map.
 //
+// When Wait returns nil for a build dst still lacks (a gap inherited from the
+// source header), the entry is recovered from the build's own stored header so
+// the gap stops propagating to descendant headers; only builds with no header
+// file (legacy uncompressed) stay absent, resolved by the read path.
+//
 // Local ancestors resolve from the in-memory futures map without I/O;
 // cross-orch ancestors take a single remote storage round-trip. Sequential —
 // the critical path is the slowest pending Wait either way.
@@ -174,8 +180,20 @@ func (u *Upload) appendAncestorBuilds(
 		if err != nil {
 			return fmt.Errorf("wait for ancestor %s/%s: %w", buildID, fileType, err)
 		}
-		if h == nil || dst == nil {
+		if dst == nil {
 			continue
+		}
+		if h == nil {
+			if _, ok := dst[buildID]; ok {
+				continue
+			}
+			h, _, err = headers.LoadHeader(ctx, u.store, storage.Paths{BuildID: buildID.String()}.HeaderFile(string(fileType)))
+			if errors.Is(err, storage.ErrObjectNotExist) {
+				continue
+			}
+			if err != nil {
+				return fmt.Errorf("recover ancestor %s/%s build data: %w", buildID, fileType, err)
+			}
 		}
 
 		if bd, ok := h.Builds[buildID]; ok {
