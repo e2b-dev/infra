@@ -152,7 +152,13 @@ var Profiles = []Profile{
 		Packages:     nil,
 		PkgQueryBody: "true",
 		PkgInstall:   `echo "[provision] ERROR: NixOS images are premade — packages must be declared in the image's NixOS configuration" >&2; exit 1`,
-		InitBinary:   "/nix/var/nix/profiles/system/init",
+		// Not $toplevel/init: from NixOS 25.05 that IS the systemd binary, and
+		// activation moved into the systemd stage-1 initrd. We boot the rootfs
+		// directly with no initrd, so PID 1 would start against an unpopulated
+		// /etc and freeze on "Unit default.target not found". The image ships
+		// this shim, which activates and then execs systemd — what the pre-25.05
+		// stage-2 init did (nixos-base-image/build.sh).
+		InitBinary:   "/sbin/e2b-nixos-init",
 		TimeSyncUnit: "chronyd",
 		// Left empty on purpose: services.openssh is declared in the image's
 		// configuration, and the NixOS init setup never enables units.

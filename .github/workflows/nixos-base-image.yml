@@ -189,7 +189,8 @@ jobs:
           fi
 
           # 2./3. The boot chain the nixos profile points the kernel at:
-          #    /sbin/init -> /nix/var/nix/profiles/system/init -> <toplevel>/init.
+          #    /sbin/init -> /sbin/e2b-nixos-init (the activation shim, checked
+          #    below) -> systemd, with the profile symlink resolving the closure.
           system_target=""
           if ! system_target=$(symlink_target nix/var/nix/profiles/system); then
             fail "nix/var/nix/profiles/system is missing or is not a symlink"
@@ -197,10 +198,23 @@ jobs:
             fail "nix/var/nix/profiles/system points at ${system_target}, expected a /nix/store path"
           fi
 
+          # Not $toplevel/init: from NixOS 25.05 that is the systemd binary and
+          # runs no activation, so the image boots through a shim instead.
           if ! init_target=$(symlink_target sbin/init); then
             fail "sbin/init is missing or is not a symlink"
-          elif [[ "${init_target}" != "/nix/var/nix/profiles/system/init" ]]; then
-            fail "sbin/init points at ${init_target}, expected /nix/var/nix/profiles/system/init"
+          elif [[ "${init_target}" != "/sbin/e2b-nixos-init" ]]; then
+            fail "sbin/init points at ${init_target}, expected /sbin/e2b-nixos-init"
+          fi
+
+          # The shim is what actually activates the system. If it is missing the
+          # sandbox boots into a systemd with an empty /etc and freezes.
+          if ! shim=$(tar -xOf "${tar_path}" sbin/e2b-nixos-init 2>/dev/null); then
+            fail "sbin/e2b-nixos-init is missing from the rootfs tar"
+          else
+            grep -q '/activate$' <<<"${shim}" ||
+              fail "sbin/e2b-nixos-init never runs the activation script:"$'\n'"${shim}"
+            grep -q '^export PATH=' <<<"${shim}" ||
+              fail "sbin/e2b-nixos-init sets no PATH; mount/install/ln resolve to nothing pre-activation"
           fi
 
           # 4. The closure itself has to be in the tar, or the chain above
