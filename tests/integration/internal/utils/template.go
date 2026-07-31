@@ -234,3 +234,19 @@ func BuildSimpleTemplate(tb testing.TB, name string, reqEditors ...api.RequestEd
 
 	return BuildTemplate(tb, opts)
 }
+
+// RequestTemplateWithoutBuild creates a template without starting (or waiting
+// for) its build. The template row, a build in the "waiting" state, the alias,
+// and the default tag assignment all exist as soon as the request returns, so
+// the template can be listed, updated (e.g. visibility), and deleted.
+//
+// Use this instead of BuildSimpleTemplate in tests that only exercise template
+// metadata or authorization and never need a runnable build - a real build
+// boots a Firecracker VM and takes minutes, while this is a single API call.
+func RequestTemplateWithoutBuild(tb testing.TB, name string, reqEditors ...api.RequestEditorFn) *api.TemplateRequestResponseV3 {
+	tb.Helper()
+
+	reqEditors = append(reqEditors, setup.WithTestsUserAgent())
+
+	return requestTemplateBuild(tb, name, nil, nil, nil, reqEditors...)
+}

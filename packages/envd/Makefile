@@ -9,6 +9,12 @@ LDFLAGS=-ldflags "-X=main.commitSHA=$(BUILD)"
 PROD_LDFLAGS=-ldflags "-X=main.commitSHA=$(BUILD) -s -w -buildid="
 DEBUG_LDFLAGS=-ldflags "-X=main.commitSHA=$(BUILD) -linkmode external -extldflags=-static"
 
+# Compiler flags for debug builds. The default disables optimizations and
+# inlining so binaries are debugger-friendly. CI overrides this with an empty
+# value: race-instrumented but optimized binaries compile faster and speed up
+# every integration test at runtime.
+DEBUG_GCFLAGS ?= -gcflags=all="-N -l"
+
 AWS_BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
 GCP_BUCKET_PREFIX ?= $(GCP_PROJECT_ID)-
 ENVD_UPLOAD_MODE ?= latest
@@ -77,7 +83,7 @@ build:
 # link. osusergo/netgo keep user and DNS lookups pure Go, as in the CGO_ENABLED=0
 # build above, so only the race instrumentation differs from what ships.
 build-debug:
-	CGO_ENABLED=1 go build -race -tags osusergo,netgo -gcflags=all="-N -l" -o bin/debug/envd ${DEBUG_LDFLAGS}
+	CGO_ENABLED=1 go build -race -tags osusergo,netgo $(DEBUG_GCFLAGS) -o bin/debug/envd ${DEBUG_LDFLAGS}
 
 start-docker:
 	make build

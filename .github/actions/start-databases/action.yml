@@ -1,0 +1,66 @@
+name: "Start Databases"
+description: "Kicks off the PostgreSQL, ClickHouse, and Redis containers in the background. Run this as early as possible: pulls and boots then overlap with the Go builds, and the start-services action later waits for health before migrating."
+
+runs:
+  using: "composite"
+  steps:
+    - name: Start Database Containers
+      env:
+        CLICKHOUSE_USERNAME: "e2b"
+        CLICKHOUSE_PASSWORD: "clickity-clicky-click"
+        CLICKHOUSE_PORT: "9000"
+        CLICKHOUSE_DATABASE: "default"
+      run: |
+        # Anonymous Docker Hub pulls from shared runners intermittently fail
+        # with "unauthorized: authentication required" (Hub rate limiting);
+        # an implicit pull inside docker run then aborts the whole job. Pull
+        # explicitly with retries so a transient 401/429 can't kill the run.
+        pull_retry() {
+          local image="$1"
+          for attempt in 1 2 3 4 5; do
+            docker pull --quiet "$image" && return 0
+            if [ "$attempt" = 5 ]; then echo "::error::giving up on pulling $image"; return 1; fi
+            echo "pull of $image failed (attempt $attempt), retrying in $((attempt * 10))s..."
+            sleep $((attempt * 10))
+          done
+        }
+
+        # Everything is backgrounded so the image pulls and container boots
+        # overlap with the (minutes-long) package builds that follow. The
+        # start-services action waits for container health with a bounded
+        # timeout, which also surfaces any startup failure from here.
+        (
+          pull_retry postgres:18
+          docker run -d --name postgres \
+                        -e POSTGRES_USER=postgres \
+                        -e POSTGRES_PASSWORD=local \
+                        -e POSTGRES_DB=mydatabase \
+                        -p 5432:5432 \
+                        --health-cmd="pg_isready -U postgres" \
+                        --health-interval=5s \
+                        --health-timeout=2s \
+                        --health-retries=5 \
+                        postgres:18
+        ) &
+
+        (
+          pull_retry redis:8
+          docker run -d --name redis \
+                -p 6379:6379 \
+                --health-cmd="redis-cli ping" \
+                --health-interval=5s \
+                --health-timeout=2s \
+                --health-retries=5 \
+                redis:8
+        ) &
+
+        (
+          pull_retry clickhouse/clickhouse-server:25.4.5.24
+          make -C packages/clickhouse run
+        ) &
+
+        # Not a database, but the only other Docker Hub image the job needs
+        # (started later by start-services); pre-pull it here for the same
+        # rate-limit resilience, overlapped with the builds.
+        pull_retry otel/opentelemetry-collector-contrib:0.146.0 &
+      shell: bash

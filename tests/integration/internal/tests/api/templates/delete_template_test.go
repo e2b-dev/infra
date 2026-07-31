@@ -48,18 +48,9 @@ func TestDeleteTemplateFromAnotherTeamAPIKey(t *testing.T) {
 	teamID := testutils.CreateTeamWithUser(t, db, "foreign-team", userID.String())
 	apiKey := testutils.CreateAPIKey(t, t.Context(), setup.GetAPIClient(), userID.String(), teamID)
 
-	res := buildTemplate(t, alias, api.TemplateBuildStartV2{
-		Force:     new(ForceBaseBuild),
-		FromImage: new("ubuntu:22.04"),
-		Steps: new([]api.TemplateStep{
-			{
-				Type:  "RUN",
-				Force: new(true),
-				Args:  new([]string{"echo 'Hello, World!'"}),
-			},
-		}),
-	}, defaultBuildLogHandler(t))
-	require.True(t, res)
+	// The foreign team's lookup never sees the template regardless of build
+	// state, so requesting the template (no build) is enough for this test.
+	testutils.RequestTemplateWithoutBuild(t, alias, setup.WithAPIKey())
 
 	c := setup.GetAPIClient()
 	deleteRes, err := c.DeleteTemplatesTemplateIDWithResponse(

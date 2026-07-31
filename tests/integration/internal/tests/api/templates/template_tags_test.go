@@ -90,8 +90,9 @@ func TestTemplateTagDeleteLatestNotAllowed(t *testing.T) {
 
 	c := setup.GetAPIClient()
 
-	// Build a template to work with
-	template := testutils.BuildSimpleTemplate(t, "test-tag-delete-latest", setup.WithAPIKey())
+	// The default-tag deletion guard fires before any build lookup, so a
+	// template without a build is enough for this test.
+	template := testutils.RequestTemplateWithoutBuild(t, "test-tag-delete-latest", setup.WithAPIKey())
 
 	// Try to delete the 'default' tag - should fail
 	deleteResp, err := c.DeleteTemplatesTagsWithResponse(ctx, api.DeleteTemplateTagsRequest{

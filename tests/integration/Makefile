@@ -1,6 +1,65 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 
+# Max in-flight parallel tests per package (go test -parallel). Measurements
+# on the CI hosts showed they saturate server-side (Firecracker boots + zstd
+# compression) right around 4; higher values only inflate per-test times and
+# flake template builds. Kept as a knob for local runs and future tuning.
+TEST_PARALLELISM ?= 4
+
+# Package shards so CI can split the suite across parallel runners; the wall
+# clock is bound by the host (see TEST_PARALLELISM above), so the only way to
+# go faster is more hosts. Shards are sized by measured test time:
+#
+#   - The ^TestTemplateBuild tests (real Firecracker builds, ~1400s of summed
+#     test+subtest time) are split into two roughly equal halves by name
+#     prefix: (ENV|COPY|RUN|W)* = ~680s vs the rest = ~740s. New
+#     TestTemplateBuild* tests fall into shard 2 unless they match the
+#     shard 1 prefix.
+#   - api/sandboxes gets its own runner, topped up with the light packages
+#     (proxies, api/metrics, api/volumes) to balance against the rest shard.
+#   - Everything else (including the non-build template tests) shares the
+#     last runner; the -skip only affects the templates package since no
+#     other package has TestTemplateBuild* tests.
+TEMPLATE_BUILDS_SHARD1_RE := ^TestTemplateBuild(ENV|COPY|RUN|W)
+SANDBOXES_SHARD_PACKAGES := ./internal/tests/api/sandboxes/... ./internal/tests/api/metrics/... ./internal/tests/api/volumes/... ./internal/tests/proxies/...
+TEST_SHARD ?= all
+TEST_RUN_FLAGS :=
+# TESTS_ONLY (the compression allow-list) composes with package-pure shards:
+# its selection becomes a -run regex, so it cannot combine with the
+# name-split shards that carry their own -run (go test keeps only the last
+# -run flag, which would silently drop one of the two selections).
+TESTS_ONLY_OK := yes
+ifeq ($(TEST_SHARD),templates)
+TEST_PACKAGES := ./internal/tests/api/templates/...
+else ifeq ($(TEST_SHARD),no-templates)
+# Package-level complement of the templates shard; computed via go list so
+# new packages are picked up automatically. Used to split the compressed
+# allow-list runs: templates (real-build snapshot tests) vs everything else.
+TEST_PACKAGES = $(shell go list ./internal/tests/... | grep -v -e '/tests/api/templates')
+else ifeq ($(TEST_SHARD),templates-builds-1)
+TEST_PACKAGES := ./internal/tests/api/templates/...
+TEST_RUN_FLAGS := -run '$(TEMPLATE_BUILDS_SHARD1_RE)'
+TESTS_ONLY_OK := no
+else ifeq ($(TEST_SHARD),templates-builds-2)
+TEST_PACKAGES := ./internal/tests/api/templates/...
+TEST_RUN_FLAGS := -run '^TestTemplateBuild' -skip '$(TEMPLATE_BUILDS_SHARD1_RE)'
+TESTS_ONLY_OK := no
+else ifeq ($(TEST_SHARD),sandboxes)
+TEST_PACKAGES := $(SANDBOXES_SHARD_PACKAGES)
+else ifeq ($(TEST_SHARD),rest)
+# Everything not covered by the dedicated shards; computed via go list so
+# new packages are picked up automatically.
+TEST_PACKAGES = $(shell go list ./internal/tests/... | grep -v -e '/tests/api/sandboxes' -e '/tests/api/metrics' -e '/tests/api/volumes' -e '/tests/proxies')
+TEST_RUN_FLAGS := -skip '^TestTemplateBuild'
+else ifeq ($(TEST_SHARD),all)
+TEST_PACKAGES := ./internal/tests/...
+else
+# Unknown shard names resolve to nothing so the guard in test-shard fails
+# loudly instead of silently running the whole suite.
+TEST_PACKAGES :=
+endif
+
 .PHONY: generate
 generate:
 	go generate ./...
@@ -43,6 +102,30 @@ check-tests-allowlist:
 	done; \
 	echo "allow-list resolves; stale named and wildcard entries are rejected"
 
+# CI entrypoint: run one package shard (or the whole suite with the default
+# TEST_SHARD=all). TESTS_ONLY narrows the run to the allow-list within the
+# shard's packages; the guard below rejects the name-split shards whose own
+# -run flag would silently collide with the allow-list's.
+.PHONY: test-shard
+test-shard:
+	@if [ -z "$(strip $(TEST_PACKAGES))" ]; then echo "no packages resolved for TEST_SHARD=$(TEST_SHARD)"; exit 1; fi
+	@if [ -n "$(TESTS_ONLY)" ] && [ "$(TESTS_ONLY_OK)" != "yes" ]; then echo "TESTS_ONLY cannot compose with name-split shard $(TEST_SHARD) (-run flags collide)"; exit 1; fi
+	@export POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING); \
+	export TESTS_API_SERVER_URL=$(TESTS_API_SERVER_URL); \
+	export TESTS_ORCHESTRATOR_HOST=$(TESTS_ORCHESTRATOR_HOST); \
+	export TESTS_ENVD_PROXY=$(TESTS_ENVD_PROXY); \
+	export TESTS_SANDBOX_TEMPLATE_ID=$(TESTS_SANDBOX_TEMPLATE_ID); \
+	export TESTS_E2B_API_KEY=$(TESTS_E2B_API_KEY); \
+	export TESTS_E2B_ACCESS_TOKEN=$(TESTS_E2B_ACCESS_TOKEN); \
+	export TESTS_SANDBOX_TEAM_ID=$(TESTS_SANDBOX_TEAM_ID); \
+	export TESTS_SANDBOX_USER_ID=$(TESTS_SANDBOX_USER_ID); \
+	go test -v ./internal/main_test.go -count=1 && \
+	RUN=""; \
+	if [ -n "$(TESTS_ONLY)" ]; then RUN=$$(./scripts/select-tests.sh --only $(TESTS_ONLY) ./internal/tests/...) || exit 1; fi; \
+	if [ -n "$${RUN}" ]; then set -- -run "$${RUN}"; else set --; fi; \
+	go tool gotestsum --rerun-fails=1 --packages="$(strip $(TEST_PACKAGES))" --format standard-verbose --junitfile=test-results.xml \
+		-- -count=1 -parallel=$(TEST_PARALLELISM) -timeout=20m $(TEST_RUN_FLAGS) "$$@"
+
 .PHONY: test
 test: test/.
 test/%:
@@ -67,7 +150,7 @@ test/%:
 	if [ -n "$(TESTS_ONLY)" ]; then RUN=$$(./scripts/select-tests.sh --only $(TESTS_ONLY) "$${PACKAGES}") || exit 1; fi; \
 	if [ -n "$${RUN}" ]; then set -- -run "$${RUN}"; else set --; fi; \
 	go tool gotestsum --rerun-fails=1 --packages="$${PACKAGES}" --format standard-verbose --junitfile=test-results.xml \
-		-- -count=1 -parallel=4 -timeout=20m "$$@"
+		-- -count=1 -parallel=$(TEST_PARALLELISM) -timeout=20m "$$@"
 
 .PHONY: connect-orchestrator
 connect-orchestrator:
