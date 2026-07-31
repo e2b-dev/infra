@@ -1,0 +1,260 @@
+name: Publish NixOS base image
+
+# Builds the premade NixOS base image from the committed configuration.nix and
+# publishes it to Docker Hub so templates can be built `fromImage` a NixOS base.
+# Manual only: the image is a slow-moving artifact and every publish needs a
+# deliberate new tag (see the `tag` input).
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: >-
+          Immutable tag to publish under, e.g. 24.05-20260731. Required and must
+          be UNUSED: the base-layer cache key includes the image reference, so
+          republishing an existing tag silently serves the previously cached
+          base layer. The job refuses to overwrite a tag that already exists.
+        type: string
+        required: true
+      namespace:
+        description: >-
+          Docker Hub namespace to publish into (image is
+          docker.io/<namespace>/nixos:<tag>).
+        type: string
+        required: false
+        default: e2bdev
+
+permissions:
+  contents: read
+
+# Not keyed on the tag: `latest` is shared mutable state, so two publishes must
+# not race to move it.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish nixos:${{ inputs.tag }}
+    # Hosted runner is enough: nix runs inside the nixos/nix container and
+    # nothing here boots a VM, so no KVM and no self-hosted pool needed.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      NAMESPACE: ${{ inputs.namespace }}
+      REGISTRY: docker.io/${{ inputs.namespace }}
+      IMAGE: docker.io/${{ inputs.namespace }}/nixos:${{ inputs.tag }}
+      LATEST: docker.io/${{ inputs.namespace }}/nixos:latest
+      TAG: ${{ inputs.tag }}
+      # The rootfs tar is several hundred MB. Stage it on /mnt (the ~65 GB temp
+      # disk) and leave the ~25 GB on / to the docker graph, which holds the
+      # container's nix store during the build plus the imported image.
+      E2B_NIXOS_WORKDIR: /mnt/e2b-nixos-base
+      # CI verifies the tar before anything reaches a public registry, so
+      # build.sh stops after `docker import` and the push step below runs only
+      # once the checks pass.
+      E2B_NIXOS_SKIP_PUSH: "1"
+      BUILD_DIR: packages/orchestrator/pkg/template/build/phases/base/distro/nixos-base-image
+
+    steps:
+      - name: Check the Docker Hub credentials are configured
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # docker/login-action reports an empty password as a usage error and an
+          # empty username as an anonymous login, neither of which names the
+          # missing secret. Fail here instead, before the ~20 minute nix build.
+          missing=()
+          [[ -n "${DOCKERHUB_USERNAME}" ]] || missing+=(DOCKERHUB_USERNAME)
+          [[ -n "${DOCKERHUB_TOKEN}" ]] || missing+=(DOCKERHUB_TOKEN)
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::Missing repository secret(s): ${missing[*]}." \
+                 "Set DOCKERHUB_USERNAME and DOCKERHUB_TOKEN (a Docker Hub access" \
+                 "token with write access to the '${NAMESPACE}' namespace)."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Check the tag is well formed and unused
+        run: |
+          set -euo pipefail
+          # Fail in seconds rather than after a ~20 minute nix build.
+          if [[ ! "${TAG}" =~ ^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}$ ]]; then
+            echo "::error::'${TAG}' is not a valid OCI tag ([a-zA-Z0-9_][a-zA-Z0-9._-]{0,127})."
+            exit 1
+          fi
+          if [[ "${TAG}" == "latest" ]]; then
+            echo "::error::'latest' is moved by this job to point at the tag it just" \
+                 "published; it cannot be the immutable tag itself."
+            exit 1
+          fi
+          # This guard has to fail CLOSED. `imagetools inspect` exits non-zero
+          # for "no such tag" and for 429/5xx/DNS alike, so treating any failure
+          # as "tag is free" would let a registry hiccup overwrite a published
+          # tag — and every template on it would silently keep resolving to the
+          # stale cached base layer. Only an explicit answer is accepted.
+          state=unknown
+          err=""
+          for attempt in 1 2 3; do
+            if err=$(docker buildx imagetools inspect "${IMAGE}" 2>&1 >/dev/null); then
+              state=exists
+              break
+            fi
+            case "${err}" in
+              *"not found"*|*MANIFEST_UNKNOWN*)
+                state=free; break ;;
+              *"repository does not exist"*|*insufficient_scope*|*"pull access denied"*)
+                state=no-repo; break ;;
+            esac
+            echo "Registry gave no clear answer (attempt ${attempt}/3): ${err}"
+            if [[ "${attempt}" -lt 3 ]]; then
+              sleep $((attempt * 5))
+            fi
+          done
+
+          case "${state}" in
+            exists)
+              echo "::error::${IMAGE} already exists. Dispatch again with a NEW tag:" \
+                   "the base-layer cache key includes the image reference, so a" \
+                   "rebuilt image under a reused tag would be silently ignored in" \
+                   "favour of the cached base layer."
+              exit 1 ;;
+            free)
+              echo "${IMAGE} is unused." ;;
+            no-repo)
+              echo "::notice::${REGISTRY}/nixos does not exist yet — this is its first publish." ;;
+            *)
+              echo "::error::Could not determine whether ${IMAGE} already exists" \
+                   "(last error: ${err}). Refusing to continue rather than risk" \
+                   "overwriting a published tag."
+              exit 1 ;;
+          esac
+
+      - name: Prepare staging disk
+        run: |
+          set -euo pipefail
+          df -h
+          sudo mkdir -p "${E2B_NIXOS_WORKDIR}"
+          sudo chown "$(id -u):$(id -g)" "${E2B_NIXOS_WORKDIR}"
+
+      - name: Build rootfs and import image
+        run: |
+          set -euo pipefail
+          "${BUILD_DIR}/build.sh" "${TAG}" "${REGISTRY}"
+          df -h
+
+      - name: Verify rootfs tar before publishing
+        # Publishing a broken base image is worse than not publishing: every
+        # template built from it fails at boot, after the tag is already public
+        # and (per the cache-key rule) unfixable in place. The image has no FHS
+        # userland before its first activation, so a `docker run` probe cannot
+        # work — assert on the tar instead. Nothing is tagged `latest` until
+        # this step passes, so `latest` only ever names a verified build.
+        run: |
+          set -euo pipefail
+          tar_path="${E2B_NIXOS_WORKDIR}/nixos-rootfs.tar"
+          ls -lh "${tar_path}"
+          failed=0
+          fail() { echo "::error::$*"; failed=1; }
+
+          # Exact member lookup: tar treats the operand as an anchored name, so
+          # `sbin/init` does not match `nix/store/<hash>/sbin/init`.
+          symlink_target() {
+            local line
+            line=$(tar -tvf "${tar_path}" "$1" 2>/dev/null) || return 1
+            case "${line}" in
+              *" -> "*) printf '%s\n' "${line##* -> }" ;;
+              *) return 1 ;;
+            esac
+          }
+
+          # 1. The distro selector identifies the image by /etc/os-release
+          #    before the first activation generates the real one.
+          if ! os_release=$(tar -xOf "${tar_path}" etc/os-release 2>/dev/null); then
+            fail "etc/os-release is missing from the rootfs tar"
+          elif ! grep -qx 'ID=nixos' <<<"${os_release}"; then
+            fail "etc/os-release does not declare ID=nixos:"$'\n'"${os_release}"
+          fi
+
+          # 2./3. The boot chain the nixos profile points the kernel at:
+          #    /sbin/init -> /nix/var/nix/profiles/system/init -> <toplevel>/init.
+          system_target=""
+          if ! system_target=$(symlink_target nix/var/nix/profiles/system); then
+            fail "nix/var/nix/profiles/system is missing or is not a symlink"
+          elif [[ "${system_target}" != /nix/store/* ]]; then
+            fail "nix/var/nix/profiles/system points at ${system_target}, expected a /nix/store path"
+          fi
+
+          if ! init_target=$(symlink_target sbin/init); then
+            fail "sbin/init is missing or is not a symlink"
+          elif [[ "${init_target}" != "/nix/var/nix/profiles/system/init" ]]; then
+            fail "sbin/init points at ${init_target}, expected /nix/var/nix/profiles/system/init"
+          fi
+
+          # 4. The closure itself has to be in the tar, or the chain above
+          #    dangles and the sandbox boots into nothing.
+          if [[ -n "${system_target}" ]]; then
+            if ! tar -tf "${tar_path}" "${system_target#/}/init" >/dev/null 2>&1; then
+              fail "the system toplevel ${system_target} is not packed in the tar"
+            fi
+          fi
+
+          # 5. Without the store registration nix rejects every path in the
+          #    image, so nix-env and friends are broken in the sandbox.
+          db_bytes=$(tar -xOf "${tar_path}" nix/var/nix/db-registration 2>/dev/null | wc -c) || db_bytes=0
+          if [[ "${db_bytes}" -eq 0 ]]; then
+            fail "nix/var/nix/db-registration is missing or empty"
+          fi
+
+          if [[ "${failed}" -ne 0 ]]; then
+            echo "Refusing to publish ${IMAGE}."
+            exit 1
+          fi
+          echo "Rootfs tar looks sane; publishing ${IMAGE} and moving ${LATEST}."
+
+      - name: Push image
+        # Both refs are the same local image, so they push the same digest.
+        run: |
+          set -euo pipefail
+          docker tag "${IMAGE}" "${LATEST}"
+          docker push "${IMAGE}"
+          docker push "${LATEST}"
+
+      - name: Summarize
+        run: |
+          set -euo pipefail
+          digest=$(docker image inspect "${IMAGE}" --format '{{index .RepoDigests 0}}' 2>/dev/null || true)
+          {
+            echo "## Published \`${IMAGE}\`"
+            echo
+            echo "| Reference | Use |"
+            echo "| --- | --- |"
+            echo "| \`${IMAGE}\` | **Reproducible** — immutable, never republished. Pin templates to this. |"
+            echo "| \`${LATEST}\` | Convenience pointer at the newest verified build. Moves. |"
+            if [ -n "${digest}" ]; then
+              echo
+              echo '```'
+              echo "${digest}"
+              echo '```'
+            fi
+            echo
+            echo "Publish the next rebuild under a **new tag** — the base-layer cache key"
+            echo "includes the image reference, so reusing this one serves the cached layer."
+            echo
+            echo "> For the same reason a template built \`FROM .../nixos:latest\` keeps its"
+            echo "> base-layer cache key when \`latest\` moves, and goes on using the **stale**"
+            echo "> base layer until it is force-rebuilt. Pin \`${IMAGE}\` for reproducible builds."
+          } >> "${GITHUB_STEP_SUMMARY}"
+          df -h

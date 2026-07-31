@@ -3,6 +3,7 @@ package volumes
 import (
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -27,6 +28,7 @@ func TestQueries_Volumes(t *testing.T) {
 
 		// create volume = success
 		volume, err := db.CreateVolume(ctx, queries.CreateVolumeParams{
+			ID:         uuid.New(),
 			TeamID:     teamID,
 			VolumeType: "volume-type",
 			Name:       "volume-name",

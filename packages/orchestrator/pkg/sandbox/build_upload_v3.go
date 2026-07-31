@@ -20,11 +20,6 @@ func (u *Upload) runV3(ctx context.Context) error {
 		return fmt.Errorf("error getting memfile diff path: %w", err)
 	}
 
-	rootfsPath, err := u.snap.RootfsDiff.CachePath(ctx)
-	if err != nil {
-		return fmt.Errorf("error getting rootfs diff path: %w", err)
-	}
-
 	eg, egCtx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
@@ -46,6 +41,17 @@ func (u *Upload) runV3(ctx context.Context) error {
 		}
 		if h == nil {
 			return nil
+		}
+
+		// Gate the header publish on the rootfs seal (deferred export): the rootfs
+		// header resolves synchronously at pause time, so without this it could be
+		// finalized to storage while the background seal is still running — and if
+		// the seal then fails (it does not retry) storage would keep a completed
+		// header with no body. The body goroutine below waits on the same seal, so
+		// both rootfs uploads are gated on it while memfile/snapfile/metadata still
+		// overlap it. No-op on the synchronous path (CachePath returns immediately).
+		if _, err := u.snap.RootfsDiff.CachePath(egCtx); err != nil {
+			return fmt.Errorf("error getting rootfs diff path: %w", err)
 		}
 
 		return storeHeaderWithMetrics(egCtx, u.store, u.paths.RootfsHeader(), uploadFileRootfsHeader, finalizeV3(h), storage.WithMetadata(u.objectMetadata))
@@ -77,6 +83,14 @@ func (u *Upload) runV3(ctx context.Context) error {
 	})
 
 	eg.Go(func() error {
+		// Resolve the rootfs diff path inside the group: with deferred rootfs
+		// export it blocks on the background seal, so doing it here lets the
+		// memfile/snapfile/metadata uploads overlap the reflink instead of
+		// waiting behind it.
+		rootfsPath, err := u.snap.RootfsDiff.CachePath(egCtx)
+		if err != nil {
+			return fmt.Errorf("error getting rootfs diff path: %w", err)
+		}
 		if rootfsPath == "" {
 			return nil
 		}

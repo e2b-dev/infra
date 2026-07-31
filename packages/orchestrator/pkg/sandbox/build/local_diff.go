@@ -53,8 +53,20 @@ func (f *LocalDiffFile) Close() error {
 
 func (f *LocalDiffFile) CloseToDiff(
 	blockSize int64,
-) (Diff, error) {
+) (d Diff, e error) {
 	defer f.File.Close()
+
+	// On any failure to produce a usable Diff (e.g. an fsync/stat error after the
+	// bytes were written), remove the partial cache file. Nothing registers it in
+	// the DiffStore, so otherwise it orphans in the cache dir until process restart
+	// — disk-pressure eviction can't reclaim a file it doesn't know about.
+	defer func() {
+		if e != nil {
+			if rmErr := os.Remove(f.cachePath); rmErr != nil && !os.IsNotExist(rmErr) {
+				e = fmt.Errorf("%w; remove partial diff file: %w", e, rmErr)
+			}
+		}
+	}()
 
 	err := f.File.Sync()
 	if err != nil {

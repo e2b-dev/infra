@@ -21,6 +21,28 @@ seed:
 		go run seed.go
 	@echo "Done"
 
+# TESTS_ONLY points at an allow-list file (see scripts/compression-tests.tsv)
+# and narrows the run to the tests it names. Overridable from the environment.
+TESTS_ONLY := $(strip $(TESTS_ONLY))
+
+# The compressed configs only run what the allow-list names, so a stale entry
+# would silently stop testing something. select-tests.sh rejects entries that
+# match no test; this proves it still does, for named tests and for the
+# package wildcards alike, before CI relies on it.
+.PHONY: check-tests-allowlist
+check-tests-allowlist:
+	@set -e; \
+	tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' EXIT; \
+	./scripts/select-tests.sh --only scripts/compression-tests.tsv ./internal/tests/... >/dev/null; \
+	printf 'internal/tests/orchestrator\t*\ninternal/tests/api/sandboxes\tTestNoSuchTestExists\n' >"$$tmp/named.tsv"; \
+	printf 'internal/tests/orchestrator\t*\ninternal/tests/no-such-package\t*\n' >"$$tmp/wildcard.tsv"; \
+	for kind in named wildcard; do \
+		if ./scripts/select-tests.sh --only "$$tmp/$$kind.tsv" ./internal/tests/... >/dev/null 2>&1; then \
+			echo "select-tests.sh accepted a stale $$kind entry" >&2; exit 1; \
+		fi; \
+	done; \
+	echo "allow-list resolves; stale named and wildcard entries are rejected"
+
 .PHONY: test
 test: test/.
 test/%:
@@ -35,14 +57,17 @@ test/%:
 	export TESTS_SANDBOX_USER_ID=$(TESTS_SANDBOX_USER_ID); \
 	go test -v ./internal/main_test.go -count=1 && \
 	TEST_PATH="./internal/tests/$(subst test/,,$@)"; \
+	TEST_PATH="$${TEST_PATH%/.}"; \
+	RUN=""; \
 	case "$${TEST_PATH}" in \
-		*.go:*) \
-			BASE=$${TEST_PATH%%:*}; \
-			TEST_FN=$${TEST_PATH#*:}; \
-			go tool gotestsum --rerun-fails=1 --packages="$$BASE" --format standard-verbose --junitfile=test-results.xml -- -count=1 -parallel=4 -timeout=20m -run "$${TEST_FN}" ;; \
-		*.go) go tool gotestsum --rerun-fails=1 --packages="$$TEST_PATH" --format standard-verbose --junitfile=test-results.xml -- -count=1 -parallel=4 -timeout=20m ;; \
-		*) go tool gotestsum --rerun-fails=1 --packages="$$TEST_PATH/..." --format standard-verbose --junitfile=test-results.xml -- -count=1 -parallel=4 -timeout=20m ;; \
-	esac
+		*.go:*) PACKAGES="$${TEST_PATH%%:*}"; RUN="$${TEST_PATH#*:}" ;; \
+		*.go) PACKAGES="$${TEST_PATH}" ;; \
+		*) PACKAGES="$${TEST_PATH}/..." ;; \
+	esac; \
+	if [ -n "$(TESTS_ONLY)" ]; then RUN=$$(./scripts/select-tests.sh --only $(TESTS_ONLY) "$${PACKAGES}") || exit 1; fi; \
+	if [ -n "$${RUN}" ]; then set -- -run "$${RUN}"; else set --; fi; \
+	go tool gotestsum --rerun-fails=1 --packages="$${PACKAGES}" --format standard-verbose --junitfile=test-results.xml \
+		-- -count=1 -parallel=4 -timeout=20m "$$@"
 
 .PHONY: connect-orchestrator
 connect-orchestrator:

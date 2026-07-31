@@ -51,6 +51,18 @@ jobs:
           # tags.
           kind=image
           case "${TAG}" in
+            api-v*)
+              # api releases as one unit with the infra db-migrator: its
+              # docker-bake.hcl builds both images (the api bakes in the
+              # migration timestamp its startup guard expects, the migrator
+              # bakes in the migrations, so one shared version makes schema
+              # skew impossible). Both images land in the single `api`
+              # registry repo (e2b-artifacts/api/api and
+              # e2b-artifacts/api/db-migrator), which also avoids colliding
+              # with belt's separate db-migrator repo.
+              component=api
+              kind=bake
+              ;;
             docker-reverse-proxy-v*)
               component=docker-reverse-proxy
               # Build context is packages/ (the Dockerfile needs shared/ and db/).
@@ -75,6 +87,13 @@ jobs:
               context=packages/clickhouse
               build_args=""
               ;;
+            dashboard-api-v*)
+              component=dashboard-api
+              # Build context is packages/ (the Dockerfile needs shared/).
+              dockerfile=packages/dashboard-api/Dockerfile
+              context=packages
+              build_args="COMMIT_SHA EXPECTED_MIGRATION_TIMESTAMP"
+              ;;
             envd-v*)
               # envd is a raw static binary (CGO_ENABLED=0), not an image:
               # published as a versioned object in the public
@@ -83,6 +102,28 @@ jobs:
               # fc-env-pipeline bucket, exactly as a from-source build would.
               component=envd
               kind=binary
+              ;;
+            orchestrator-v*)
+              # One release covers all three fc-env-pipeline binaries built
+              # from packages/orchestrator: `make build` produces bin/
+              # orchestrator and bin/clean-nfs-cache, and template-manager IS
+              # the orchestrator binary uploaded under a second object name
+              # (see the package Makefile's upload/template-manager), so no
+              # separate template-manager object is published. The Makefile's
+              # ORCHESTRATOR_VERSION flow downloads these and uploads them to
+              # the client's fc-env-pipeline bucket under the usual names.
+              component=orchestrator
+              kind=binary
+              binary_files="orchestrator clean-nfs-cache"
+              ;;
+            nomad-nodepool-apm-v*)
+              # Two Nomad plugin binaries built and released together from
+              # one package; the Makefile's NOMAD_NODEPOOL_APM_VERSION flow
+              # downloads both and uploads them to the client's
+              # fc-env-pipeline bucket under the usual names.
+              component=nomad-nodepool-apm
+              kind=binary
+              binary_files="nomad-nodepool-apm nomad-deployment-aware-target"
               ;;
             *)
               # A stray tag caught by the loose glob is a no-op; an explicit
@@ -117,10 +158,15 @@ jobs:
               echo "dockerfile=${dockerfile}"
               echo "context=${context}"
               echo "build_args=${build_args}"
-            else
-              # <bucket>/<component>/<version>/<binary>
-              echo "binary_uri=gs://e2b-artifact-binaries/${component}/v${version}/${component}"
+            elif [ "${kind}" = "binary" ]; then
+              # Versioned directory in the public binaries bucket; most
+              # binary components ship one file named after the component,
+              # multi-binary packages (orchestrator) list theirs explicitly.
+              echo "binary_dir=gs://e2b-artifact-binaries/${component}/v${version}"
+              echo "binary_files=${binary_files:-${component}}"
             fi
+            # kind=bake needs no extra outputs: the bake step derives its
+            # registry paths from the component and version.
           } >> "${GITHUB_OUTPUT}"
 
       - name: Checkout repository
@@ -147,11 +193,11 @@ jobs:
         uses: google-github-actions/setup-gcloud@v3
 
       - name: Configure Docker auth
-        if: ${{ steps.pkg.outputs.kind == 'image' }}
+        if: ${{ steps.pkg.outputs.kind == 'image' || steps.pkg.outputs.kind == 'bake' }}
         run: gcloud auth configure-docker us-docker.pkg.dev --quiet
 
       - name: Set up Docker Buildx
-        if: ${{ steps.pkg.outputs.kind == 'image' }}
+        if: ${{ steps.pkg.outputs.kind == 'image' || steps.pkg.outputs.kind == 'bake' }}
         uses: docker/setup-buildx-action@v3
 
       - name: Build and push released image
@@ -177,6 +223,11 @@ jobs:
             case "${arg}" in
               COMMIT_SHA) args+=( --build-arg COMMIT_SHA="$(git rev-parse --short HEAD)" ) ;;
               VERSION)    args+=( --build-arg VERSION="${IMAGE_TAG}" ) ;;
+              # The newest DB migration version in the tagged source — the
+              # startup migration guard (api, dashboard-api). Derived from
+              # the checkout, so it matches a from-source build; without it
+              # the guard is silently disabled (empty parses to 0).
+              EXPECTED_MIGRATION_TIMESTAMP) args+=( --build-arg EXPECTED_MIGRATION_TIMESTAMP="$(scripts/get-latest-migration.sh)" ) ;;
             esac
           done
           docker buildx build \
@@ -188,6 +239,32 @@ jobs:
             --push \
             -f "${DOCKERFILE}" \
             "${CONTEXT}"
+
+      # Bake components (kind=bake): api's docker-bake.hcl builds the api and
+      # db-migrator images together; both are pushed into the `api` registry
+      # repo under the shared version tag. Tag overrides replace the bake
+      # file's REGISTRY_PREFIX-derived tags; the migration timestamp is
+      # computed from the tag's checkout, matching a from-source build.
+      - name: Build and push released images (bake)
+        if: ${{ steps.pkg.outputs.kind == 'bake' }}
+        env:
+          COMPONENT: ${{ steps.pkg.outputs.component }}
+          VERSION: ${{ steps.pkg.outputs.version }}
+        run: |
+          IMAGE_TAG="v${VERSION}"
+          REGISTRY="us-docker.pkg.dev/e2b-artifacts/${COMPONENT}"
+          EXPECTED_MIGRATION_TIMESTAMP="$(scripts/get-latest-migration.sh)"
+          COMMIT_SHA="$(git rev-parse --short HEAD)"
+          cd packages
+          REGISTRY_PREFIX="${REGISTRY}" \
+          COMMIT_SHA="${COMMIT_SHA}" \
+          EXPECTED_MIGRATION_TIMESTAMP="${EXPECTED_MIGRATION_TIMESTAMP}" \
+          docker buildx bake -f "${COMPONENT}/docker-bake.hcl" \
+            --provenance=false \
+            --sbom=false \
+            --set "api.tags=${REGISTRY}/api:${IMAGE_TAG}" \
+            --set "db-migrator.tags=${REGISTRY}/db-migrator:${IMAGE_TAG}" \
+            --push
 
       # Binary components (kind=binary): build with the repo Go toolchain and
       # upload the versioned object to the public e2b-artifact-binaries
@@ -212,9 +289,13 @@ jobs:
       # consumers fetch via
       # https://storage.googleapis.com/e2b-artifact-binaries/... — the bucket
       # is public-read.
-      - name: Upload released binary
+      - name: Upload released binaries
         if: ${{ steps.pkg.outputs.kind == 'binary' }}
         env:
           COMPONENT: ${{ steps.pkg.outputs.component }}
-          BINARY_URI: ${{ steps.pkg.outputs.binary_uri }}
-        run: gcloud storage cp "packages/${COMPONENT}/bin/${COMPONENT}" "${BINARY_URI}"
+          BINARY_DIR: ${{ steps.pkg.outputs.binary_dir }}
+          BINARY_FILES: ${{ steps.pkg.outputs.binary_files }}
+        run: |
+          for f in ${BINARY_FILES}; do
+            gcloud storage cp "packages/${COMPONENT}/bin/${f}" "${BINARY_DIR}/${f}"
+          done

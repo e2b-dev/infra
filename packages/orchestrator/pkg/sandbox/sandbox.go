@@ -52,9 +52,11 @@ var (
 	envdCollapseDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.EnvdCollapseDurationHistogramName))
 	envdCollapseChunks            = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdCollapseChunks))
 	guestSyncDurationHistogram    = utils.Must(telemetry.GetHistogram(meter, telemetry.GuestSyncDurationHistogramName))
+	fsQuiescedPauseCounter        = utils.Must(telemetry.GetCounter(meter, telemetry.SandboxPauseFsQuiescedCounterName))
 
 	processMemoryDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotProcessMemoryDurationName))
 	processRootfsDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotProcessRootfsDurationName))
+	rootfsSealDurationHistogram    = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotRootfsSealDurationName))
 
 	uffdStartupPagesHistogram       = utils.Must(telemetry.GetHistogram(meter, telemetry.UffdStartupPagesHistogramName))
 	uffdStartupSourcePagesHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.UffdStartupSourcePagesHistogramName))
@@ -846,7 +848,26 @@ func (f *Factory) ResumeSandbox(
 		return uffd.New(memfile, fcUffdPath), nil
 	})
 
-	// Prefetching
+	// Prefetching. Derive the prefetch context and register its cancel with the
+	// cleanup manager *synchronously*, before the goroutine below. execCtx is
+	// non-cancelable (context.WithoutCancel) and the fetch-only last-cycle path
+	// has no copy worker to observe uffd close, so without an explicit cancel a
+	// torn-down sandbox would keep draining a (potentially multi-GiB) diff from
+	// object storage. Registering here rather than inside the goroutine also
+	// avoids racing cleanup.Run: a goroutine-side Add could lose the hasRun
+	// check to a concurrent teardown and never register.
+	//
+	// Register as PRIORITY so teardown aborts the fetch first: priority handlers
+	// run before the normal cleanup list, and (LIFO) this one runs before the
+	// priority Stop — otherwise the fetchers keep issuing large memfile reads
+	// through Stop and the rest of the normal cleanup until a late cancel.
+	prefetchCtx, cancelPrefetch := context.WithCancel(execCtx)
+	cleanup.AddPriority(ctx, func(context.Context) error {
+		cancelPrefetch()
+
+		return nil
+	})
+
 	go func() {
 		memfile, err := t.Memfile(ctx)
 		if err != nil {
@@ -860,31 +881,85 @@ func (f *Factory) ResumeSandbox(
 
 		telemetry.ReportEvent(ctx, "got metadata")
 
-		// Start background prefetcher as early as possible if prefetch mapping exists
-		// Fetching from source starts immediately; copying waits for uffd to be ready
-		if meta.Prefetch != nil && meta.Prefetch.Memory != nil {
-			fcUffd, err := uffdPromise.Wait(ctx)
-			if err != nil {
-				return
+		// Start background prefetchers as early as possible. Fetching from
+		// source starts immediately; copying (when prefaulting) waits for uffd.
+		//
+		// Up to two independent mappings are replayed on a resume, chosen by the
+		// resume-prefetch-source flag (see selectResumePrefetch):
+		//  - The init trace (meta.Prefetch.Memory): the build-time
+		//    create-from-template / checkpoint read-hot startup working set.
+		//    Prefaulted, exactly as today.
+		//  - The last-cycle diff: the pages this sandbox's last resume→pause
+		//    cycle wrote — its own pause diff, derived from the memfile header
+		//    (see buildDiffMemoryPrefetchMapping) — a good predictor of the
+		//    next cycle's working set. Replayed FETCH-ONLY: it warms the cache
+		//    and lets the guest fault, because prefaulting a multi-GiB diff
+		//    would load UFFDIO_COPY onto the resume-critical path for no
+		//    workload gain and would regress warm resumes.
+		// The default source "init" selects only the init trace, preserving
+		// today's behavior. Pause/resume normally has no init trace
+		// (SameVersionTemplate drops it), so with source=last-cycle/both the
+		// last-cycle diff usually runs alone. When both exist, the small init
+		// trace runs first and last-cycle follows it (a barrier), keeping the
+		// large last-cycle fetch off the resume-critical path.
+		source := f.featureFlags.StringFlag(ctx, featureflags.ResumePrefetchSourceFlag, sandboxLDContext(runtime, config))
+		useInit, useLastCycle := selectResumePrefetch(source)
+
+		var initMapping *metadata.MemoryPrefetchMapping
+		if useInit && meta.Prefetch != nil {
+			initMapping = meta.Prefetch.Memory
+		}
+
+		var lastCycleMapping *metadata.MemoryPrefetchMapping
+		if useLastCycle {
+			lastCycleMapping = buildDiffMemoryPrefetchMapping(memfile.Header())
+			// Bound the last-cycle volume against the shared object-store pool;
+			// resume-last-cycle-prefetch-max-mib=-1 (default) is uncapped.
+			maxMiB := f.featureFlags.IntFlag(ctx, featureflags.ResumeLastCyclePrefetchMaxMiBFlag, sandboxLDContext(runtime, config))
+			lastCycleMapping = capResumePrefetch(lastCycleMapping, maxMiB)
+		}
+
+		// Record the chosen source and the sizes it resolved to, so a resume can
+		// be cohorted by prefetch source (guards against flag misconfiguration)
+		// and the last-cycle set size is visible per resume.
+		execSpan.SetAttributes(
+			attribute.String("resume.prefetch.source", source),
+			attribute.Int("resume.prefetch.init_blocks", initMapping.Count()),
+			attribute.Int("resume.prefetch.last_cycle_blocks", lastCycleMapping.Count()),
+		)
+
+		if initMapping == nil && lastCycleMapping == nil {
+			return
+		}
+
+		fcUffd, err := uffdPromise.Wait(ctx)
+		if err != nil {
+			return
+		}
+
+		telemetry.ReportEvent(ctx, "starting prefetcher")
+		l := logger.L().With(logger.WithSandboxID(runtime.SandboxID), logger.WithTemplateID(runtime.TemplateID), logger.WithTeamID(runtime.TeamID))
+
+		go func() {
+			// Init trace first, prefaulted (prod behavior). Start blocks until
+			// its fetch+copy complete, so it acts as a barrier before the
+			// last-cycle fetch begins.
+			if initMapping != nil {
+				p := prefetch.New(l, memfile, fcUffd, initMapping, f.featureFlags)
+				if err := p.Start(prefetchCtx); err != nil {
+					l.Error(ctx, "failed to start init prefetcher", zap.Error(err))
+				}
 			}
 
-			telemetry.ReportEvent(ctx, "starting prefetcher")
-			l := logger.L().With(logger.WithSandboxID(runtime.SandboxID), logger.WithTemplateID(runtime.TemplateID), logger.WithTeamID(runtime.TeamID))
-
-			go func() {
-				p := prefetch.New(
-					l,
-					memfile,
-					fcUffd,
-					meta.Prefetch.Memory,
-					f.featureFlags,
-				)
-				err := p.Start(execCtx)
-				if err != nil {
-					l.Error(ctx, "failed to start prefetcher", zap.Error(err))
+			// Last-cycle diff, fetch-only.
+			if lastCycleMapping != nil {
+				p := prefetch.New(l, memfile, fcUffd, lastCycleMapping, f.featureFlags)
+				p.Prefault = false
+				if err := p.Start(prefetchCtx); err != nil {
+					l.Error(ctx, "failed to start last-cycle prefetcher", zap.Error(err))
 				}
-			}()
-		}
+			}
+		}()
 	}()
 
 	// Slot initialization
@@ -1330,6 +1405,7 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 
 type pauseOptions struct {
 	filesystemSnapshot bool
+	deferRootfsExport  bool
 }
 
 type PauseOption func(*pauseOptions)
@@ -1340,6 +1416,15 @@ type PauseOption func(*pauseOptions)
 // The default (no option) is a full memory snapshot.
 func WithFilesystemSnapshot() PauseOption {
 	return func(o *pauseOptions) { o.filesystemSnapshot = true }
+}
+
+// WithDeferredRootfsExport seals the rootfs diff off the critical path: the
+// sandbox is ejected/stopped and the diff is reflinked in the background, so the
+// pause returns without the host->NVMe writeback stall. Only safe when nothing
+// reads the diff before the background seal completes — i.e. the suspend (pause)
+// path, not a resume-fresh checkpoint.
+func WithDeferredRootfsExport() PauseOption {
+	return func(o *pauseOptions) { o.deferRootfsExport = true }
 }
 
 // Pause creates a snapshot of the sandbox.
@@ -1411,17 +1496,33 @@ func (s *Sandbox) Pause(
 		return nil
 	})
 
+	// frozen records whether the fs-only pause quiesced the rootfs with a real
+	// FIFREEZE (vs a plain sync fallback); false for a memory pause.
+	frozen := false
+	// Count the eligible-snapshot population only for pauses that actually mint a
+	// snapshot: record on the success path (deferred, e == nil) so a pause that
+	// aborts after the freeze — process pause, snapshot creation, rootfs export,
+	// metadata write — doesn't inflate quiesced/total. The span attribute is set
+	// inline (the span already carries the outcome), the counter is not.
+	defer func() {
+		if e == nil && pauseOpts.filesystemSnapshot {
+			fsQuiescedPauseCounter.Add(ctx, 1, metric.WithAttributes(attribute.Bool("quiesced", frozen)))
+		}
+	}()
 	if pauseOpts.filesystemSnapshot {
 		// FC never flushes the guest page cache and no memory snapshot will
 		// preserve it, so the rootfs must be quiesced before pause or it would
 		// persist missing acknowledged writes. This is mandatory, unlike the
 		// best-effort reclaim above.
-		if err := s.guestPrepareFsForPause(ctx, cleanup); err != nil {
+		frozen, err = s.guestPrepareFsForPause(ctx, cleanup)
+		if err != nil {
 			return nil, err
 		}
 
 		// Memory prefetch refers to the memfile, which is not persisted.
 		m.Prefetch = nil
+
+		span.SetAttributes(attribute.Bool("fs_quiesced", frozen))
 	}
 
 	// Record the snapshot kind in metadata so the resume path picks reboot vs
@@ -1431,6 +1532,9 @@ func (s *Sandbox) Pause(
 	// metadata version when needed so the flag survives deserialize for snapshots
 	// taken from a V1 template.
 	m = m.MarkFilesystemOnly(pauseOpts.filesystemSnapshot)
+	// Persist whether the rootfs was frozen so a later feature can safely decide
+	// this snapshot is one it may cold-boot / rewrite without journal repair.
+	m = m.MarkFsQuiesced(pauseOpts.filesystemSnapshot && frozen)
 
 	// Drain free-page-hinting before pause so the snapshot doesn't capture
 	// pages the guest already considers free. Timeout per use case; 0 disables.
@@ -1487,21 +1591,24 @@ func (s *Sandbox) Pause(
 	// harmless and keeps the cleanup ordering identical to the memory path.
 	cleanup.AddNoContext(ctx, mem.Diff.Close)
 
-	rootfsDiff, rootfsHeader, err := pauseProcessRootfs(
+	var (
+		rootfsDiff   build.Diff
+		rootfsHeader *header.Header
+		// startSeal, when non-nil, reflinks the ejected cache into the diff in the
+		// background; the caller invokes it after the metadata is written.
+		startSeal func(context.Context)
+	)
+
+	rootfsDiff, rootfsHeader, startSeal, err = s.processRootfsSnapshot(
 		ctx,
 		buildID,
 		originalRootfs.Header(),
-		&RootfsDiffCreator{
-			rootfs:    s.rootfs,
-			closeHook: s.Close,
-		},
-		s.config.DefaultCacheDir,
-		pauseOpts.filesystemSnapshot,
+		&pauseOpts,
+		cleanup,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
 	}
-	cleanup.AddNoContext(ctx, rootfsDiff.Close)
 
 	rootfsDiffHeader := NewResolvedDiffHeader(rootfsHeader)
 	// Derive scheduling metadata synchronously so Pause never blocks on the
@@ -1509,9 +1616,10 @@ func (s *Sandbox) Pause(
 	// parent header plus the new build, whose exact bytes aren't known yet, so
 	// we pass the pre-dedup dirty size as an upper bound. It is block-granular
 	// (dirty blocks * diff block size) and counts pages before dedup drops the
-	// base-identical ones, so it over-estimates. The rootfs copy is synchronous
-	// today, so its new header carries the exact rootfs chain and bytes; if it
-	// ever becomes async, switch it to the parent plus a dirty proxy like memfile.
+	// base-identical ones, so it over-estimates. The rootfs header is known
+	// synchronously even with deferred export — the diff metadata (chain + exact
+	// bytes) is read up front at pause time and only the reflink seal is deferred —
+	// so the rootfs half of the scheduling metadata is exact.
 	// mem.header is nil for a filesystem-only pause → rootfs-only metadata.
 	schedulingMetadata := scheduling.FromHeaders(buildID, mem.header, rootfsHeader, mem.newBytes)
 
@@ -1521,6 +1629,12 @@ func (s *Sandbox) Pause(
 	err = m.ToFile(metadataFileLink.Path())
 	if err != nil {
 		return nil, err
+	}
+
+	// The sandbox is stopped and the cache ejected; reflink it to the diff in the
+	// background so the pause returned without paying the writeback stall.
+	if startSeal != nil {
+		startSeal(context.WithoutCancel(ctx))
 	}
 
 	return &Snapshot{
@@ -1796,29 +1910,79 @@ func buildProvisionalMemfile(
 	return provisionalHeader, provisionalDiff, dc.MarkSwapped
 }
 
-func pauseProcessRootfs(
+func (s *Sandbox) processRootfsSnapshot(
 	ctx context.Context,
-	buildId uuid.UUID,
+	buildID uuid.UUID,
 	originalHeader *header.Header,
-	diffCreator DiffCreator,
-	cacheDir string,
-	filesystemOnly bool,
-) (d build.Diff, h *header.Header, e error) {
+	pauseOpts *pauseOptions,
+	cleanup *Cleanup,
+) (d build.Diff, h *header.Header, startSeal func(context.Context), e error) {
 	ctx, span := tracer.Start(ctx, "process-rootfs")
 	defer span.End()
-
 	// Duration of the rootfs export+diff, split by fs_only (runs for both pause
 	// kinds) so the fs-only pause latency can be decomposed into quiesce + rootfs.
+	// This is the pause CRITICAL-PATH rootfs cost: the full export for the
+	// synchronous path, but only the eject/setup for the deferred path — the
+	// background reflink seal (runDeferredRootfsExport) is intentionally excluded.
+	//
+	// The `deferred` attribute records which of those two populations a sample
+	// belongs to: without it the (much smaller) deferred setup-only timings would
+	// be indistinguishable from full synchronous exports. It reflects the path
+	// actually taken — the fall-through below flips it off when a provider can't
+	// defer. `success` here is the critical-path outcome only; on the deferred
+	// path the actual export success/failure is recorded by the seal metric
+	// (rootfsSealDurationHistogram), so a deferred success=true is setup-only.
 	start := time.Now()
 	defer func() {
 		processRootfsDurationHistogram.Record(ctx, time.Since(start).Milliseconds(),
 			metric.WithAttributes(
-				attribute.Bool("fs_only", filesystemOnly),
+				attribute.Bool("fs_only", pauseOpts.filesystemSnapshot),
+				attribute.Bool("deferred", pauseOpts.deferRootfsExport),
 				attribute.Bool("success", e == nil),
 			))
 	}()
 
-	rootfsDiffFile, err := build.NewLocalDiffFile(cacheDir, buildId.String(), build.Rootfs)
+	if pauseOpts.deferRootfsExport {
+		rootfsDiff, rootfsHeader, startSeal, err := s.setupDeferredRootfsExport(ctx, buildID, originalHeader, cleanup)
+		switch {
+		case errors.Is(err, rootfs.ErrDeferredExportNotSupported):
+			// The provider (e.g. DirectProvider) can't defer; fall through to the
+			// synchronous export below. Safe because PrepareExportDiff returns this
+			// sentinel before ejecting/stopping anything.
+			pauseOpts.deferRootfsExport = false
+		case err != nil:
+			return nil, nil, nil, fmt.Errorf("deferred rootfs export setup failed: %w", err)
+		default:
+			return rootfsDiff, rootfsHeader, startSeal, nil
+		}
+	}
+
+	rootfsDiff, rootfsHeader, err := pauseProcessRootfs(
+		ctx,
+		buildID,
+		originalHeader,
+		&RootfsDiffCreator{
+			rootfs:    s.rootfs,
+			closeHook: s.Close,
+		},
+		s.config.DefaultCacheDir,
+	)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("synchronous rootfs export failed: %w", err)
+	}
+	cleanup.AddNoContext(ctx, rootfsDiff.Close)
+
+	return rootfsDiff, rootfsHeader, nil, nil
+}
+
+func pauseProcessRootfs(
+	ctx context.Context,
+	buildID uuid.UUID,
+	originalHeader *header.Header,
+	diffCreator DiffCreator,
+	cacheDir string,
+) (d build.Diff, h *header.Header, e error) {
+	rootfsDiffFile, err := build.NewLocalDiffFile(cacheDir, buildID.String(), build.Rootfs)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create rootfs diff: %w", err)
 	}
@@ -1838,7 +2002,7 @@ func pauseProcessRootfs(
 	}
 	telemetry.ReportEvent(ctx, "converted rootfs diff file to local diff")
 
-	rootfsHeader, err := rootfsDiffMetadata.ToDiffHeader(ctx, originalHeader, buildId)
+	rootfsHeader, err := rootfsDiffMetadata.ToDiffHeader(ctx, originalHeader, buildID)
 	if err != nil {
 		err = errors.Join(err, rootfsDiff.Close())
 
@@ -1846,6 +2010,175 @@ func pauseProcessRootfs(
 	}
 
 	return rootfsDiff, rootfsHeader, nil
+}
+
+// setupDeferredRootfsExport ejects the writable cache and stops the sandbox
+// (destroy path), then prepares the deferred rootfs diff + header from the frozen
+// ejected cache. It returns a startSeal closure that reflinks the cache into the
+// diff in the background, so the pause returns without paying the reflink stall.
+// Only safe on the suspend path, where nothing reads the diff before the seal
+// completes.
+func (s *Sandbox) setupDeferredRootfsExport(
+	ctx context.Context,
+	buildID uuid.UUID,
+	originalHeader *header.Header,
+	cleanup *Cleanup,
+) (d build.Diff, h *header.Header, startSeal func(context.Context), e error) {
+	sealCache, err := s.rootfs.PrepareExportDiff(ctx, s.Close)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	diffMetadata, err := sealCache.DiffMetadata()
+	if err != nil {
+		return nil, nil, nil, errors.Join(fmt.Errorf("reading ejected cache metadata: %w", err), sealCache.Close())
+	}
+	// Emit the same rootfs size/ratio metrics the synchronous pauseProcessRootfs
+	// path does, so deferring the export doesn't blind the snapshot dashboards.
+	recordSnapshotDiff(ctx, "rootfs", diffMetadata, originalHeader)
+
+	rootfsHeader, err := diffMetadata.ToDiffHeader(ctx, originalHeader, buildID)
+	if err != nil {
+		return nil, nil, nil, errors.Join(fmt.Errorf("building rootfs diff header: %w", err), sealCache.Close())
+	}
+
+	// No dirty filesystem blocks: the seal would produce an empty diff, i.e. the
+	// same *NoDiff the synchronous path returns. Return NoDiff directly (and skip
+	// the background seal — nothing to reflink) so AddSnapshot omits it from the
+	// DiffStore and peer LookupDiff keeps returning ErrNotAvailable rather than an
+	// entry whose Slice/Size yield NoDiffError. Close the ejected cache now since
+	// no seal will own it.
+	if diffMetadata.Dirty.IsEmpty() {
+		if err := sealCache.Close(); err != nil {
+			return nil, nil, nil, fmt.Errorf("closing empty ejected cache: %w", err)
+		}
+
+		return &build.NoDiff{}, rootfsHeader, func(context.Context) {}, nil
+	}
+
+	blockSize := int64(originalHeader.Metadata.BlockSize)
+	diffPromise := utils.NewSetOnce[build.Diff]()
+	rootfsDiff := build.NewDeferredDiff(build.GetDiffStoreKey(buildID.String(), build.Rootfs), blockSize, diffPromise)
+
+	// The ejected cache and the deferred diff's promise are both owned by the
+	// background seal once it starts. If Pause aborts before startSeal runs (e.g.
+	// m.ToFile fails), the goroutine never runs, so on that path we close the
+	// cache here (else its mmap + backing file leak) and poison the promise (else
+	// the deferred diff's Close and any waiter block forever on a seal that will
+	// never resolve). Both are guarded by `started`: once the seal owns them, this
+	// cleanup is a no-op, so we never double-close the cache nor race a spurious
+	// SetError against the seal's SetValue (which would drop the sealed diff).
+	// atomic because startSeal writes it on the pause goroutine and these cleanups
+	// read it on the cleanup goroutine.
+	var started atomic.Bool
+	cleanup.Add(ctx, func(context.Context) error {
+		if started.Load() {
+			return nil
+		}
+
+		return sealCache.Close()
+	})
+
+	// LIFO: the abort resolver (added last) runs before rootfsDiff.Close, so on the
+	// error path the deferred diff's Close never blocks on a seal that won't run.
+	cleanup.AddNoContext(ctx, rootfsDiff.Close)
+	cleanup.Add(ctx, func(context.Context) error {
+		if started.Load() {
+			return nil
+		}
+		_ = diffPromise.SetError(errors.New("pause aborted before deferred rootfs export ran"))
+
+		return nil
+	})
+
+	startSeal = func(sealCtx context.Context) {
+		started.Store(true)
+		go s.runDeferredRootfsExport(sealCtx, sealCache, buildID, blockSize, diffMetadata, diffPromise)
+	}
+
+	return rootfsDiff, rootfsHeader, startSeal, nil
+}
+
+// runDeferredRootfsExport reflinks the ejected cache into the rootfs diff and
+// closes the cache. The sandbox is already stopped, so there is nothing to fold
+// or serialize; the upload waits on the deferred diff, gating shutdown via the
+// server's upload WaitGroup.
+func (s *Sandbox) runDeferredRootfsExport(
+	ctx context.Context,
+	sealCache *block.Cache,
+	buildID uuid.UUID,
+	blockSize int64,
+	meta *header.DiffMetadata,
+	diffPromise *utils.SetOnce[build.Diff],
+) {
+	ctx, span := tracer.Start(ctx, "deferred-rootfs-export")
+	defer span.End()
+
+	// Record the background reflink seal latency separately from the
+	// critical-path process_rootfs.duration, so the deferred export's off-path
+	// cost stays visible.
+	start := time.Now()
+	err := s.sealCacheToDiff(ctx, sealCache, buildID, blockSize, meta, diffPromise)
+	rootfsSealDurationHistogram.Record(ctx, time.Since(start).Milliseconds(),
+		metric.WithAttributes(attribute.Bool("success", err == nil)))
+	if err != nil {
+		logger.L().Error(ctx, "deferred rootfs export failed", zap.Error(err))
+	} else {
+		telemetry.ReportEvent(ctx, "rootfs diff sealed (deferred)")
+	}
+
+	// The sandbox is torn down; the ejected cache is ours to close regardless of
+	// the export outcome.
+	if err := sealCache.Close(); err != nil {
+		logger.L().Warn(ctx, "closing ejected rootfs cache", zap.Error(err))
+	}
+}
+
+// sealCacheToDiff reflinks the frozen cache into a fresh local diff file and
+// resolves diffPromise with the materialized diff.
+func (s *Sandbox) sealCacheToDiff(
+	ctx context.Context,
+	sealCache *block.Cache,
+	buildID uuid.UUID,
+	blockSize int64,
+	meta *header.DiffMetadata,
+	diffPromise *utils.SetOnce[build.Diff],
+) error {
+	diffFile, err := build.NewLocalDiffFile(s.config.DefaultCacheDir, buildID.String(), build.Rootfs)
+	if err != nil {
+		return s.failRootfsSeal(diffPromise, fmt.Errorf("create rootfs diff file: %w", err))
+	}
+
+	// Export using the metadata captured at setup so the sealed data matches the
+	// header built from the same bitmap read (rather than re-reading the tracker).
+	if _, err := sealCache.ExportToDiffWithMetadata(ctx, diffFile.File, meta); err != nil {
+		return s.failRootfsSeal(diffPromise, errors.Join(fmt.Errorf("export rootfs diff: %w", err), diffFile.Close()))
+	}
+	telemetry.ReportEvent(ctx, "exported rootfs")
+
+	diff, err := diffFile.CloseToDiff(blockSize)
+	if err != nil {
+		return s.failRootfsSeal(diffPromise, fmt.Errorf("materialize rootfs diff: %w", err))
+	}
+
+	if err := diffPromise.SetValue(diff); err != nil {
+		// The promise was already settled (pause aborted); drop the diff so its
+		// cache file doesn't leak.
+		return errors.Join(err, diff.Close())
+	}
+
+	return nil
+}
+
+// failRootfsSeal settles the deferred diff with err and returns it.
+func (s *Sandbox) failRootfsSeal(diffPromise *utils.SetOnce[build.Diff], err error) error {
+	// Tag the failure with ErrDeferredSealFailed so the upload retry loop can tell
+	// this permanent, one-shot seal failure apart from transient upload errors and
+	// stop retrying (the seal never re-runs, so the diff can never materialize).
+	sealErr := fmt.Errorf("%w: %w", build.ErrDeferredSealFailed, err)
+	_ = diffPromise.SetError(sealErr)
+
+	return sealErr
 }
 
 // createCgroup creates a cgroup for sandbox resource accounting.

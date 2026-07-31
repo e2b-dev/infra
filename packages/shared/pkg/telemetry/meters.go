@@ -44,6 +44,13 @@ const (
 	// A non-zero rate means lost snapshots.
 	OrchestratorSnapshotUploadFailedCounterName CounterType = "orchestrator.snapshot.upload.failed"
 
+	// SandboxPauseFsQuiescedCounterName counts filesystem-only pauses by whether
+	// the captured rootfs was frozen (quiesced=true, crash-consistent) vs a plain
+	// sync fallback (quiesced=false). quiesced/total is the fraction of newly
+	// minted fs-only snapshots that are safe to cold-boot / rewrite — the eligible
+	// population for the offline envd upgrade built on top of this flag.
+	SandboxPauseFsQuiescedCounterName CounterType = "orchestrator.sandbox.pause.fs_quiesced"
+
 	// OrchestratorEnvdUpgradeAttempts counts resume-time envd live-upgrade
 	// attempts, by result (success|delivery_failed|not_ready|panic) and
 	// from_version/to_version. success/total is the rollout success rate;
@@ -125,6 +132,7 @@ const (
 	PauseDurationHistogramName            HistogramType = "orchestrator.sandbox.pause.duration"
 	SnapshotProcessMemoryDurationName     HistogramType = "orchestrator.sandbox.snapshot.process_memory.duration"
 	SnapshotProcessRootfsDurationName     HistogramType = "orchestrator.sandbox.snapshot.process_rootfs.duration"
+	SnapshotRootfsSealDurationName        HistogramType = "orchestrator.sandbox.snapshot.rootfs_seal.duration"
 
 	// OrchestratorEnvdUpgradeDurationName is the wall-time of a resume-time envd
 	// live-upgrade (delivery + trigger + WaitForEnvd) = overhead added to the
@@ -140,8 +148,9 @@ const (
 	// duration is the whole throwaway resume-and-persist run (slot-hold cost);
 	// pages is the harvested trace size (distinct 2 MiB blocks), recorded only on
 	// success, so its bottom bucket surfaces the empty-trace (idle-at-pause) rate.
-	PauseResumePrefetchHarvestDurationName HistogramType = "orchestrator.sandbox.pause_resume_prefetch.harvest.duration"
-	PauseResumePrefetchHarvestPagesName    HistogramType = "orchestrator.sandbox.pause_resume_prefetch.harvest.pages"
+	PauseResumePrefetchHarvestDurationName  HistogramType = "orchestrator.sandbox.pause_resume_prefetch.harvest.duration"
+	PauseResumePrefetchHarvestPagesName     HistogramType = "orchestrator.sandbox.pause_resume_prefetch.harvest.pages"
+	PauseResumePrefetchSealWaitDurationName HistogramType = "orchestrator.sandbox.pause_resume_prefetch.seal_wait.duration"
 
 	// Sandbox startup working-set histograms: demand-fault pages/bytes a guest
 	// needed to reach a successful envd init, recorded once per start. Sampled
@@ -258,6 +267,7 @@ var counterDesc = map[CounterType]string{
 	EnvdCollapseChunks:                          "2 MiB chunks the pre-pause envd heap collapse attempted, by result",
 	OrchestratorSandboxKilledCounterName:        "Number of sandboxes killed, labeled by kill reason",
 	OrchestratorSnapshotUploadFailedCounterName: "Number of pause-snapshot uploads that never landed durably",
+	SandboxPauseFsQuiescedCounterName:           "Filesystem-only pauses by whether the rootfs was frozen (quiesced) vs sync fallback",
 	OrchestratorEnvdUpgradeAttempts:             "Resume-time envd live-upgrade attempts, by result and from/to version",
 	OrchestratorEnvdUpgradeGated:                "Resumes the envd-upgrade-target flag targeted but the min-version gate skipped",
 	OrchestratorEnvdUpgradeHandover:             "Live-upgrade handover items by item (proc|retained|watcher) and result (ok|failed)",
@@ -296,6 +306,7 @@ var counterUnits = map[CounterType]string{
 	EnvdCollapseChunks:                          "{chunk}",
 	OrchestratorSandboxKilledCounterName:        "{sandbox}",
 	OrchestratorSnapshotUploadFailedCounterName: "{snapshot}",
+	SandboxPauseFsQuiescedCounterName:           "{snapshot}",
 	OrchestratorEnvdUpgradeAttempts:             "{attempt}",
 	OrchestratorEnvdUpgradeGated:                "{sandbox}",
 	OrchestratorEnvdUpgradeHandover:             "{item}",
@@ -485,9 +496,11 @@ var histogramDesc = map[HistogramType]string{
 	PauseDurationHistogramName:            "Time taken to pause a sandbox, labeled by fs_only (filesystem-only vs memory) and success",
 	SnapshotProcessMemoryDurationName:     "Time to export+diff the memory file during a pause snapshot (memory pauses only), labeled by success",
 	SnapshotProcessRootfsDurationName:     "Time to export+diff the rootfs during a pause snapshot, labeled by fs_only and success",
+	SnapshotRootfsSealDurationName:        "Time for the background deferred rootfs reflink seal (off the pause critical path), labeled by success",
 
-	PauseResumePrefetchHarvestDurationName: "Time taken for a pause-resume prefetch harvest run (slot-hold cost)",
-	PauseResumePrefetchHarvestPagesName:    "Harvested resume-prefetch trace size in 2 MiB blocks, per successful harvest",
+	PauseResumePrefetchHarvestDurationName:  "Time taken for a pause-resume prefetch harvest run (slot-hold cost)",
+	PauseResumePrefetchHarvestPagesName:     "Harvested resume-prefetch trace size in 2 MiB blocks, per successful harvest",
+	PauseResumePrefetchSealWaitDurationName: "Time the prefetch harvest waited for the deferred rootfs seal before its warm resume",
 
 	UffdStartupPagesHistogramName:       "Demand-fault pages a guest needed to reach a successful envd init, per start",
 	UffdStartupSourcePagesHistogramName: "Subset of startup demand-fault pages pulled from the source (e.g. GCS), per start",
@@ -539,8 +552,10 @@ var histogramUnits = map[HistogramType]string{
 	PauseDurationHistogramName:                    "ms",
 	SnapshotProcessMemoryDurationName:             "ms",
 	SnapshotProcessRootfsDurationName:             "ms",
+	SnapshotRootfsSealDurationName:                "ms",
 	PauseResumePrefetchHarvestDurationName:        "ms",
 	PauseResumePrefetchHarvestPagesName:           "{page}",
+	PauseResumePrefetchSealWaitDurationName:       "ms",
 	UffdStartupPagesHistogramName:                 "{page}",
 	UffdStartupSourcePagesHistogramName:           "{page}",
 	UffdStartupBytesHistogramName:                 "{By}",
