@@ -58,6 +58,8 @@ jobs:
               - '.tool-versions'
               # invoked by the start-services action to launch each service
               - 'scripts/start-service.sh'
+              # invoked by start-databases and start-services to pull images
+              - 'scripts/pull-retry.sh'
               - '.github/workflows/integration_tests.yml'
               - '.github/actions/build-packages/**'
               - '.github/actions/build-sandbox-template/**'
