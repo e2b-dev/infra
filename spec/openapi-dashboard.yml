@@ -400,6 +400,50 @@ components:
           format: email
           description: Billing/contact email for the team.
 
+    AdminClusterCreateRequest:
+      type: object
+      required:
+        - name
+        - endpoint
+        - endpoint_tls
+        - token
+      properties:
+        name:
+          type: string
+          minLength: 1
+        endpoint:
+          type: string
+          minLength: 1
+        endpoint_tls:
+          type: boolean
+        token:
+          type: string
+          minLength: 1
+        sandbox_proxy_domain:
+          type: string
+          nullable: true
+        auth_org_id:
+          type: string
+          nullable: true
+
+    AdminClusterCreateResponse:
+      type: object
+      required:
+        - cluster_id
+      properties:
+        cluster_id:
+          type: string
+          format: uuid
+
+    AdminTeamClusterAssignmentRequest:
+      type: object
+      required:
+        - cluster_id
+      properties:
+        cluster_id:
+          type: string
+          format: uuid
+
     BuildStatus:
       type: string
       description: Build status mapped for dashboard clients.
@@ -1524,6 +1568,62 @@ paths:
           $ref: "#/components/responses/401"
         "502":
           $ref: "#/components/responses/502"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/clusters:
+    post:
+      summary: Create an immutable cluster
+      description: Creates a cluster row. Existing cluster rows are never modified.
+      tags: [admin]
+      security:
+        - AdminApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminClusterCreateRequest"
+      responses:
+        "201":
+          description: Cluster created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminClusterCreateResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "409":
+          $ref: "#/components/responses/409"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/teams/{teamID}/cluster:
+    put:
+      summary: Assign a cluster to a team
+      description: Updates the team's cluster reference to an existing cluster.
+      tags: [admin]
+      security:
+        - AdminApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/teamID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminTeamClusterAssignmentRequest"
+      responses:
+        "204":
+          description: Cluster assigned.
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
         "500":
           $ref: "#/components/responses/500"
 
