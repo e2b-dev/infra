@@ -30,8 +30,7 @@ func fakeBinDir(t *testing.T, script string) string {
 	return dir
 }
 
-func TestCheckIntegrityExitStatus(t *testing.T) {
-	// No t.Parallel: these subtests mutate PATH via t.Setenv.
+func TestCheckIntegrityExitStatus(t *testing.T) { //nolint:paralleltest // t.Setenv cannot be used with t.Parallel.
 	tests := []struct {
 		name    string
 		script  string
@@ -101,7 +100,7 @@ func TestCheckIntegrityExitStatus(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
+	for _, tt := range tests { //nolint:paralleltest // t.Setenv cannot be used with t.Parallel.
 		t.Run(tt.name, func(t *testing.T) {
 			fakeBinDir(t, tt.script)
 
