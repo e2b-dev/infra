@@ -80,6 +80,38 @@ func (a *APIStore) getVolume(c *gin.Context, volumeID string) (queries.Volume, *
 
 var ErrClusterNotFound = errors.New("cluster not found")
 
+// volumeContentDomain resolves the domain the SDK should use as the destination
+// for volume content requests. Teams connected to a custom (BYOC) cluster get
+// that cluster's domain, which the SDK uses in place of the default
+// api.<E2B_DOMAIN> host. Teams on the default cluster get nil, leaving the SDK
+// on its configured default.
+func (a *APIStore) volumeContentDomain(team *types.Team) (*string, error) {
+	if team.ClusterID == nil {
+		return nil, nil
+	}
+
+	cluster, ok := a.clusters.GetClusterById(*team.ClusterID)
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", ErrClusterNotFound, team.ClusterID.String())
+	}
+
+	return cluster.SandboxDomain, nil
+}
+
+// volumeTokenAudience builds the audience claim for a volume content token: the
+// origin the SDK targets for content requests, i.e. `https://api.<domain>`. The
+// domain is the team's BYOC cluster domain when set (as resolved by
+// volumeContentDomain) and the deployment default otherwise, matching the host
+// the token is actually presented to.
+func (a *APIStore) volumeTokenAudience(domain *string) string {
+	host := a.config.DomainName
+	if domain != nil && *domain != "" {
+		host = *domain
+	}
+
+	return fmt.Sprintf("https://api.%s", host)
+}
+
 var ErrNoHealthyOrchestratorFound = errors.New("no healthy orchestrator found")
 
 var ErrUnknownVolumeType = errors.New("unknown volume type")

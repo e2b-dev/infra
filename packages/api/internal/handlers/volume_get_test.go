@@ -45,7 +45,8 @@ func TestGenerateVolumeContentToken_SetsTokidHeader(t *testing.T) {
 	}
 
 	// Act: generate token
-	tokenStr, apiErr := generateVolumeContentToken(config, volume, team)
+	audience := "https://api.custom.example.com"
+	tokenStr, apiErr := generateVolumeContentToken(config, volume, team, audience)
 	require.Nil(t, apiErr)
 	require.NotEmpty(t, tokenStr)
 
@@ -64,4 +65,11 @@ func TestGenerateVolumeContentToken_SetsTokidHeader(t *testing.T) {
 	tokidVal, ok := parsed.Header["tokid"].(string)
 	require.True(t, ok, "expected custom header 'tokid' to be present and a string")
 	require.Equal(t, config.SigningKeyName, tokidVal)
+
+	// Assert: the audience claim is the origin we passed, not the cluster ID.
+	claims, ok := parsed.Claims.(jwt.MapClaims)
+	require.True(t, ok)
+	aud, err := claims.GetAudience()
+	require.NoError(t, err)
+	require.Equal(t, jwt.ClaimStrings{audience}, aud)
 }
