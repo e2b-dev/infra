@@ -290,7 +290,20 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 }
 
 func (t *storageTemplate) Close(ctx context.Context) error {
-	return closeTemplate(ctx, t)
+	err := closeTemplate(ctx, t)
+
+	// closeTemplate only reclaims what the Template interface exposes. The
+	// metafile becomes the template's own once AddSnapshot transfers it from the
+	// snapshot, so eviction is the last chance to reclaim it. Read it with
+	// Result, not Wait: a template evicted while it is still fetching has no
+	// metafile yet and must not block eviction waiting for one.
+	if metafile, metafileErr := t.metafile.Result(); metafileErr == nil {
+		if closeErr := metafile.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("error closing metafile: %w", closeErr))
+		}
+	}
+
+	return err
 }
 
 func (t *storageTemplate) Files() storage.CachePaths {
