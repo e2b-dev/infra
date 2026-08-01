@@ -11,7 +11,7 @@
 #   (the SYMBOLS list below) must either appear in the allow-list or carry
 #   an explicit exclusion marker in the comment block directly above it:
 #
-#     //compression-tests:excluded <reason>
+#     // compression-tests:excluded <reason>
 #
 #   per the allow-list's own criterion: excluded is correct when the test's
 #   *subject* is API surface / egress / proxy routing and pause/resume is
@@ -95,7 +95,7 @@ while IFS= read -r file; do
         fi
         [ "$excluded" = "excluded" ] && continue
         if ! is_listed "$pkg" "$fn"; then
-            echo "${file}:${fline}: ${fn} touches the snapshot path but is neither in ${TSV} nor marked '//${MARKER} <reason>'"
+            echo "${file}:${fline}: ${fn} touches the snapshot path but is neither in ${TSV} nor marked '// ${MARKER} <reason>'"
             fail=1
         fi
     done <<<"$hits"
@@ -105,7 +105,7 @@ done < <(find "$TESTS_DIR" -name '*_test.go' | sort)
 while IFS= read -r file; do
     pkg=$(dirname "$file")
     awk -v marker="$MARKER" '
-        $0 ~ "^//" marker { m = 1; next }
+        $0 ~ "^// ?" marker { m = 1; next }
         /^func Test/ && m { fn = $2; sub(/\(.*/, "", fn); print FNR "\t" fn }
         { if (!/^\/\//) m = 0 }
     ' "$file" | while IFS=$'\t' read -r fline fn; do
@@ -121,7 +121,7 @@ if [ "$fail" -ne 0 ]; then
     echo ""
     echo "Snapshot-path tests must run under the compressed configs or opt out"
     echo "explicitly. Either add the test to ${TSV} (subject: writing or"
-    echo "reading back a snapshot) or put '//${MARKER} <reason>' directly"
+    echo "reading back a snapshot) or put '// ${MARKER} <reason>' directly"
     echo "above it (subject: API surface / egress / routing; snapshot is fixture)."
     exit 1
 fi
