@@ -40,6 +40,15 @@ const (
 	reservedBlocksPercentage = int64(0)
 )
 
+// e2fsck reports its outcome as a bitmask, so several conditions can be
+// combined in a single exit status. See the "EXIT CODE" section of e2fsck(8);
+// the statuses not named here (4 uncorrected errors, 8 operational error,
+// 16 usage error, 32 canceled, 128 shared-library error) are always failures.
+const (
+	e2fsckErrorsCorrected   = 1
+	e2fsckRebootRecommended = 2
+)
+
 func Make(ctx context.Context, rootfsPath string, sizeMb int64, blockSize int64) error {
 	ctx, tuneSpan := tracer.Start(ctx, "make-ext4")
 	defer tuneSpan.End()
@@ -245,24 +254,37 @@ func CheckIntegrity(ctx context.Context, rootfsPath string, fix bool) (out strin
 	}()
 
 	LogMetadata(ctx, rootfsPath)
-	accExitCode := 0
+	acceptedStatus := 0
 	args := "-nfv"
 	if fix {
-		// 0 - No errors
-		// 1 - File system errors corrected
-		// 2 - File system errors corrected, a system should be rebooted
-		accExitCode = 2
+		// Repairing runs unattended, so the statuses meaning "e2fsck fixed it"
+		// are expected rather than failures.
+		acceptedStatus = e2fsckErrorsCorrected | e2fsckRebootRecommended
 		args = "-pfv"
 	}
 	cmd := exec.CommandContext(ctx, "e2fsck", args, rootfsPath)
 	output, err := cmd.CombinedOutput()
-	if cmd.ProcessState != nil {
-		span.SetAttributes(attribute.Int("filesystem.e2fsck.exit_code", cmd.ProcessState.ExitCode()))
-	}
-	if err != nil {
-		exitCode := cmd.ProcessState.ExitCode()
 
-		if exitCode > accExitCode {
+	// ExitCode reports -1 when e2fsck never started (ProcessState is nil) or was
+	// terminated by a signal, so derive it defensively.
+	exitCode := -1
+	if cmd.ProcessState != nil {
+		exitCode = cmd.ProcessState.ExitCode()
+		span.SetAttributes(attribute.Int("filesystem.e2fsck.exit_code", exitCode))
+	}
+
+	if err != nil {
+		// A missing binary or a signal (OOM killer, context cancellation) means
+		// the filesystem was never fully checked. Reporting that as healthy would
+		// let a corrupted rootfs pass, so surface the underlying error instead of
+		// comparing the -1 placeholder against the accepted statuses.
+		if exitCode < 0 {
+			return string(output), fmt.Errorf("error running e2fsck: %w\n%s", err, output)
+		}
+
+		// e2fsck statuses are a bitmask, so test the bits rather than ordering
+		// them: any bit outside the accepted set is a real failure.
+		if exitCode&^acceptedStatus != 0 {
 			return string(output), fmt.Errorf("error running e2fsck [exit %d]\n%s", exitCode, output)
 		}
 	}
