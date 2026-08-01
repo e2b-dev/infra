@@ -261,26 +261,35 @@ func (p *Pool) Get(ctx context.Context, network *orchestrator.SandboxNetworkConf
 		}
 	}
 
-	// Slots are pooled and created before their tenant is known, so the DSCP
-	// class the slot was built with only matches a regular sandbox. Re-stamp it
-	// for a build. This is a no-op (and costs no netns round-trip) whenever the
-	// two configured values agree, which is the default.
-	err := slot.ApplyEgressDSCP(ctx, p.config.EgressDSCP(class))
-	if err == nil {
-		err = slot.ConfigureInternet(ctx, network)
-	}
-
-	if err != nil {
+	if err := p.configureSlot(ctx, slot, network, class); err != nil {
 		// Return the slot to the pool if configuring it fails. The slot was
 		// never handed out, so nobody listens for its release notification.
 		if rerr := p.ReturnAsync(context.WithoutCancel(ctx), slot, func(context.Context, string) {}, 0); rerr != nil {
 			logger.L().Error(ctx, "failed to return slot to the pool", zap.Error(rerr), zap.Int("slot_index", slot.Idx))
 		}
 
-		return nil, fmt.Errorf("error setting slot internet access: %w", err)
+		return nil, err
 	}
 
 	return slot, nil
+}
+
+// configureSlot applies the tenant-specific setup a pooled slot needs before it
+// is handed out.
+func (p *Pool) configureSlot(ctx context.Context, slot *Slot, network *orchestrator.SandboxNetworkConfig, class EgressClass) error {
+	// Slots are created before their tenant is known, so the DSCP class the
+	// slot was built with only matches a regular sandbox. Re-stamp it for a
+	// build. This is a no-op (and costs no netns round-trip) whenever the two
+	// configured values agree, which is the default.
+	if err := slot.ApplyEgressDSCP(ctx, p.config.EgressDSCP(class)); err != nil {
+		return fmt.Errorf("error setting slot egress DSCP: %w", err)
+	}
+
+	if err := slot.ConfigureInternet(ctx, network); err != nil {
+		return fmt.Errorf("error setting slot internet access: %w", err)
+	}
+
+	return nil
 }
 
 // returnSlot recycles a slot that was used by a sandbox. It waits returnDelay
