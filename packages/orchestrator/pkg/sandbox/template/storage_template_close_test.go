@@ -3,6 +3,7 @@
 package template
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -14,6 +15,8 @@ import (
 	blockmocks "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/mocks"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
+
+var errFailingMetafile = errors.New("metafile close failed")
 
 // closableTemplate builds a storageTemplate whose devices are already resolved,
 // mirroring a template that finished fetching and is now being evicted.
@@ -57,6 +60,27 @@ func TestStorageTemplate_CloseRemovesMetafile(t *testing.T) {
 
 	assert.NoFileExists(t, snapPath, "snapfile should be reclaimed on close")
 	assert.NoFileExists(t, metaPath, "metafile should be reclaimed on close")
+}
+
+// failingFile is a File whose Close always fails.
+type failingFile struct{ err error }
+
+func (f failingFile) Path() string { return "/dev/null" }
+
+func (f failingFile) Close() error { return f.err }
+
+// A metafile that cannot be reclaimed must surface the failure rather than be
+// dropped, so eviction problems stay visible.
+func TestStorageTemplate_CloseReportsMetafileError(t *testing.T) {
+	t.Parallel()
+
+	tmpl, _, _ := closableTemplate(t)
+	tmpl.metafile = utils.NewSetOnce[File]()
+	require.NoError(t, tmpl.metafile.SetValue(failingFile{err: errFailingMetafile}))
+
+	err := tmpl.Close(t.Context())
+
+	require.ErrorIs(t, err, errFailingMetafile)
 }
 
 // A template can be evicted before its metafile has resolved (eviction racing
