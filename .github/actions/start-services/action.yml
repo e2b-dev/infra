@@ -129,16 +129,20 @@ runs:
         OTEL_IMAGE=$(grep -oE 'otel/opentelemetry-collector-contrib:[0-9.]+' packages/otel-collector/Makefile | head -1)
         ./scripts/pull-retry.sh "$OTEL_IMAGE"
 
-        echo "Start otel-collector"
-        ./scripts/start-service.sh "OtelCollector" packages/otel-collector run ~/logs/otel-collector.log http://localhost:13133/healthz
+        # Boot in two concurrent phases instead of four serial start+wait
+        # chains. Phase 1: otel-collector and orchestrator boot together -
+        # neither depends on the other (the services' OTLP exporters retry
+        # until the collector is up). Phase 2: API and client-proxy (needed
+        # for auto-resume tests) boot together once the orchestrator is
+        # healthy, preserving the orchestrator-before-API ordering the
+        # serial flow guaranteed.
+        ./scripts/start-service.sh start "OtelCollector" packages/otel-collector run ~/logs/otel-collector.log
+        ./scripts/start-service.sh start "Orchestrator" packages/orchestrator run-debug ~/logs/orchestrator.log
+        ./scripts/start-service.sh wait "Orchestrator" ~/logs/orchestrator.log http://localhost:5008/health
+        ./scripts/start-service.sh wait "OtelCollector" ~/logs/otel-collector.log http://localhost:13133/healthz
 
-
-        echo "Start orchestrator"
-        ./scripts/start-service.sh "Orchestrator" packages/orchestrator run-debug ~/logs/orchestrator.log http://localhost:5008/health
-
-        echo "Start API"
-        STARTUP_TIMEOUT=60 ./scripts/start-service.sh "API" packages/api run ~/logs/api.log http://localhost:3000/health
-
-        # Start client-proxy (needed for auto-resume tests)
-        ./scripts/start-service.sh "ClientProxy" packages/client-proxy run ~/logs/client-proxy.log http://localhost:3003
+        ./scripts/start-service.sh start "API" packages/api run ~/logs/api.log
+        ./scripts/start-service.sh start "ClientProxy" packages/client-proxy run ~/logs/client-proxy.log
+        STARTUP_TIMEOUT=60 ./scripts/start-service.sh wait "API" ~/logs/api.log http://localhost:3000/health
+        ./scripts/start-service.sh wait "ClientProxy" ~/logs/client-proxy.log http://localhost:3003
       shell: bash
