@@ -27,7 +27,6 @@ require (
 	github.com/flowchartsman/retry v1.2.0
 	github.com/getkin/kin-openapi v0.145.0
 	github.com/gin-contrib/cors v1.7.6
-	github.com/gin-contrib/size v1.0.2
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-redis/redis_rate/v10 v10.0.1
 	github.com/gogo/status v1.1.1

@@ -47,6 +47,14 @@ func ErrorHandler(c *gin.Context, message string, statusCode int) {
 
 	c.Error(errMsg)
 
+	// Something upstream already committed a response. Appending the error
+	// envelope to it would produce a body no client can parse, so leave it be.
+	if c.Writer.Written() {
+		c.Abort()
+
+		return
+	}
+
 	// Handle forbidden errors
 	if after, ok := strings.CutPrefix(message, forbiddenErrPrefix); ok {
 		c.AbortWithStatusJSON(

@@ -18,7 +18,6 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
-	limits "github.com/gin-contrib/size"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	middleware "github.com/oapi-codegen/gin-middleware"
@@ -174,7 +173,7 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	// Use our validation middleware to check all requests against the
 	// OpenAPI schema.
 	r.Use(
-		limits.RequestSizeLimiter(maxUploadLimit),
+		customMiddleware.RequestSizeLimiter(maxUploadLimit),
 		middleware.OapiRequestValidatorWithOptions(swagger,
 			&middleware.Options{
 				ErrorHandler: func(c *gin.Context, message string, fallbackStatusCode int) {
