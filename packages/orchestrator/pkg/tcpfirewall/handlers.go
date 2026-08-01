@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net"
 	"strings"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -16,6 +15,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
@@ -28,13 +28,15 @@ const (
 	noHostnameValue = ""
 )
 
-// Set by Proxy.New() from network.Config.SandboxEgressDSCP << 2. 0 = disabled.
-var sandboxEgressTOS atomic.Uint32
+// egressTOS converts a configured DSCP class into the IPv4 TOS / IPv6
+// traffic-class byte, which carries DSCP in its top 6 bits. 0 = disabled.
+func egressTOS(networkConfig network.Config, sbx *sandbox.Sandbox) int {
+	return int(networkConfig.EgressDSCP(sbx.Runtime.SandboxType.EgressClass())) << 2
+}
 
 // Sets both IP_TOS and IPV6_TCLASS because Happy Eyeballs may pick either family.
 // Tolerates ENOPROTOOPT from the non-matching one.
-func markDSCP(c syscall.RawConn) error {
-	tos := int(sandboxEgressTOS.Load())
+func markDSCP(c syscall.RawConn, tos int) error {
 	if tos == 0 {
 		return nil
 	}
@@ -56,7 +58,7 @@ func markDSCP(c syscall.RawConn) error {
 }
 
 // domainHandler handles connections with hostname information (HTTP Host header or TLS SNI).
-func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol) {
+func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol, tos int) {
 	// Get hostname from tcpproxy's wrapped connection (HTTP Host or TLS SNI).
 	// Hostname can be empty, e.g. for https://1.1.1.1 like requests.
 	var hostname string
@@ -89,18 +91,18 @@ func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int
 	// After connecting, we verify the connected IP is not internal/private.
 	if matchType == MatchTypeDomain {
 		upstreamAddr := net.JoinHostPort(hostname, fmt.Sprintf("%d", dstPort))
-		proxyWithIPVerification(ctx, conn, upstreamAddr, logger, metrics, protocol)
+		proxyWithIPVerification(ctx, conn, upstreamAddr, logger, metrics, protocol, tos)
 
 		return
 	}
 
 	// For non-domain matches, use the original destination IP
 	upstreamAddr := net.JoinHostPort(dstIP.String(), fmt.Sprintf("%d", dstPort))
-	proxy(ctx, conn, upstreamAddr, metrics, protocol)
+	proxy(ctx, conn, upstreamAddr, metrics, protocol, tos)
 }
 
 // cidrOnlyHandler handles connections without hostname information.
-func cidrOnlyHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol) {
+func cidrOnlyHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol, tos int) {
 	// No hostname available for CIDR-only handler
 	allowed, matchType, err := isEgressAllowed(sbx, noHostnameValue, dstIP)
 	if err != nil {
@@ -122,11 +124,11 @@ func cidrOnlyHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort i
 
 	upstreamAddr := net.JoinHostPort(dstIP.String(), fmt.Sprintf("%d", dstPort))
 
-	proxy(ctx, conn, upstreamAddr, metrics, protocol)
+	proxy(ctx, conn, upstreamAddr, metrics, protocol, tos)
 }
 
 // proxy proxies the connection to the upstream address.
-func proxy(ctx context.Context, conn net.Conn, upstreamAddr string, metrics *Metrics, protocol Protocol) {
+func proxy(ctx context.Context, conn net.Conn, upstreamAddr string, metrics *Metrics, protocol Protocol, tos int) {
 	tracker := metrics.TrackConnection(protocol)
 	defer tracker.Close(ctx)
 
@@ -137,7 +139,7 @@ func proxy(ctx context.Context, conn net.Conn, upstreamAddr string, metrics *Met
 			dialer := &net.Dialer{
 				Timeout: upstreamDialTimeout,
 				Control: func(_, _ string, c syscall.RawConn) error {
-					return markDSCP(c)
+					return markDSCP(c, tos)
 				},
 			}
 
@@ -154,7 +156,7 @@ func proxy(ctx context.Context, conn net.Conn, upstreamAddr string, metrics *Met
 //
 // The ControlContext callback is called after DNS resolution but before the TCP connect()
 // syscall, so no TCP handshake occurs to internal IPs.
-func proxyWithIPVerification(ctx context.Context, conn net.Conn, upstreamAddr string, logger logger.Logger, metrics *Metrics, protocol Protocol) {
+func proxyWithIPVerification(ctx context.Context, conn net.Conn, upstreamAddr string, logger logger.Logger, metrics *Metrics, protocol Protocol, tos int) {
 	tracker := metrics.TrackConnection(protocol)
 	defer tracker.Close(ctx)
 
@@ -190,7 +192,7 @@ func proxyWithIPVerification(ctx context.Context, conn net.Conn, upstreamAddr st
 						return fmt.Errorf("hostname resolved to internal IP %s", resolvedIP)
 					}
 
-					return markDSCP(c)
+					return markDSCP(c, tos)
 				},
 			}
 

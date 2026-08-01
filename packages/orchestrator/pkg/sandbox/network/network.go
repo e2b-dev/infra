@@ -273,8 +273,10 @@ func (s *Slot) CreateNetwork(ctx context.Context) (retErr error) {
 	}
 
 	// Marker for downstream L3 firewalls. 0 disables; see SANDBOX_EGRESS_DSCP.
-	if s.config.SandboxEgressDSCP > 0 {
-		err = tables.Append("mangle", "POSTROUTING", "-o", s.VpeerName(), "-j", "DSCP", "--set-dscp", strconv.Itoa(int(s.config.SandboxEgressDSCP)))
+	// Slots are pooled, so this seeds the regular-sandbox class; Pool.Get
+	// re-stamps it via ApplyEgressDSCP when a build sandbox takes the slot.
+	if dscp := s.config.EgressDSCP(EgressClassSandbox); dscp > 0 {
+		err = tables.Append("mangle", "POSTROUTING", s.dscpMangleRuleArgs(dscp)...)
 		if err != nil {
 			return fmt.Errorf("error creating DSCP mangle rule on vpeer: %w", err)
 		}

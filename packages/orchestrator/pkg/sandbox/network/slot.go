@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 
 	"github.com/containernetworking/plugins/pkg/ns"
+	"github.com/coreos/go-iptables/iptables"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -67,6 +68,12 @@ type Slot struct {
 
 	// firewallCustomRules is used to track if custom firewall rules are set for the slot and need a cleanup.
 	firewallCustomRules atomic.Bool
+
+	// egressDSCP is the DSCP class the slot's mangle rule currently stamps on
+	// egress (0 = no rule installed). Seeded in NewSlot from the regular-sandbox
+	// config value, which is what CreateNetwork installs and what a slot
+	// reclaimed at startup already carries; ApplyEgressDSCP moves it.
+	egressDSCP atomic.Uint32
 
 	vPeerIp net.IP
 	vEthIp  net.IP
@@ -145,6 +152,8 @@ func NewSlot(key string, idx int, config Config, egressProxy EgressProxy) (*Slot
 		config:      config,
 		egressProxy: egressProxy,
 	}
+
+	slot.egressDSCP.Store(uint32(config.EgressDSCP(EgressClassSandbox)))
 
 	return slot, nil
 }
@@ -246,6 +255,69 @@ func (s *Slot) CloseFirewall() error {
 		return fmt.Errorf("error closing firewall: %w", err)
 	}
 	s.Firewall = nil
+
+	return nil
+}
+
+// dscpMangleRuleArgs builds the mangle/POSTROUTING rule that stamps the given
+// DSCP class on everything leaving the sandbox netns through the vpeer uplink.
+func (s *Slot) dscpMangleRuleArgs(dscp uint8) []string {
+	return []string{"-o", s.VpeerName(), "-j", "DSCP", "--set-dscp", strconv.Itoa(int(dscp))}
+}
+
+// ApplyEgressDSCP re-stamps the slot's egress DSCP rule, so a template-build
+// sandbox can be marked differently from a regular one even though slots are
+// pre-created by the pool before their tenant is known. 0 removes the rule.
+//
+// It returns without touching the netns when the slot already stamps dscp,
+// which is every start under the default configuration (both classes resolve to
+// the same value) and keeps this off the sandbox cold-start critical path.
+func (s *Slot) ApplyEgressDSCP(ctx context.Context, dscp uint8) error {
+	current := uint8(s.egressDSCP.Load())
+	if current == dscp {
+		return nil
+	}
+
+	ctx, span := tracer.Start(ctx, "slot-egress-dscp-apply", trace.WithAttributes(
+		attribute.String("namespace_id", s.NamespaceID()),
+		attribute.Int("dscp", int(dscp)),
+	))
+	defer span.End()
+
+	n, err := ns.GetNS(filepath.Join(NetNamespacesDir, s.NamespaceID()))
+	if err != nil {
+		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
+	}
+	defer n.Close()
+
+	err = n.Do(func(_ ns.NetNS) error {
+		tables, err := iptables.New()
+		if err != nil {
+			return fmt.Errorf("error initializing iptables: %w", err)
+		}
+
+		// No guest traffic flows over the uplink at either call site (the slot
+		// is acquired before the VM boots and recycled after it is gone), so
+		// the gap between the two operations is not observable.
+		if current > 0 {
+			if err := tables.DeleteIfExists("mangle", "POSTROUTING", s.dscpMangleRuleArgs(current)...); err != nil {
+				return fmt.Errorf("error removing DSCP %d mangle rule on vpeer: %w", current, err)
+			}
+		}
+
+		if dscp > 0 {
+			if err := tables.AppendUnique("mangle", "POSTROUTING", s.dscpMangleRuleArgs(dscp)...); err != nil {
+				return fmt.Errorf("error creating DSCP %d mangle rule on vpeer: %w", dscp, err)
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
+	}
+
+	s.egressDSCP.Store(uint32(dscp))
 
 	return nil
 }

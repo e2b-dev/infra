@@ -3,10 +3,13 @@
 package tcpfirewall
 
 import (
+	"fmt"
 	"net"
+	"syscall"
 	"testing"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
@@ -458,6 +461,152 @@ func TestAlwaysDeniedCIDRs(t *testing.T) {
 			got := isIPInAlwaysDeniedCIDRs(ip)
 			if got != tt.want {
 				t.Errorf("isIPInDeniedCIDRs(%s) = %v, want %v", tt.ip, got, tt.want)
+			}
+		})
+	}
+}
+
+func dscp(v uint8) *uint8 { return &v }
+
+func sandboxOfType(t sandbox.SandboxType) *sandbox.Sandbox {
+	return &sandbox.Sandbox{Metadata: &sandbox.Metadata{Runtime: sandbox.RuntimeMetadata{SandboxType: t}}}
+}
+
+// TestEgressTOS covers the per-sandbox-class DSCP selection the upstream dialer
+// stamps on its socket: template builds can be marked differently from regular
+// sandboxes, and a build with no value of its own inherits the sandbox one.
+func TestEgressTOS(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		sandboxDSCP uint8
+		buildDSCP   *uint8
+		sandboxType sandbox.SandboxType
+		want        int
+	}{
+		{
+			name:        "build sandbox uses the build value",
+			sandboxDSCP: 8,
+			buildDSCP:   dscp(16),
+			sandboxType: sandbox.SandboxTypeBuild,
+			want:        16 << 2, // 0x40
+		},
+		{
+			name:        "regular sandbox keeps the sandbox value when a build value is set",
+			sandboxDSCP: 8,
+			buildDSCP:   dscp(16),
+			sandboxType: sandbox.SandboxTypeSandbox,
+			want:        8 << 2, // 0x20
+		},
+		{
+			name:        "unset build value falls back to the sandbox value",
+			sandboxDSCP: 8,
+			sandboxType: sandbox.SandboxTypeBuild,
+			want:        8 << 2,
+		},
+		{
+			name:        "build value of 0 disables marking for builds only",
+			sandboxDSCP: 8,
+			buildDSCP:   dscp(0),
+			sandboxType: sandbox.SandboxTypeBuild,
+			want:        0,
+		},
+		{
+			name:        "sandbox value of 0 disables marking while builds stay marked",
+			sandboxDSCP: 0,
+			buildDSCP:   dscp(16),
+			sandboxType: sandbox.SandboxTypeSandbox,
+			want:        0,
+		},
+		{
+			name:        "both unset disables marking",
+			sandboxType: sandbox.SandboxTypeBuild,
+			want:        0,
+		},
+		{
+			name:        "empty sandbox type is treated as a regular sandbox",
+			sandboxDSCP: 8,
+			buildDSCP:   dscp(16),
+			sandboxType: "",
+			want:        8 << 2,
+		},
+		{
+			name:        "max DSCP maps to the top of the TOS byte",
+			sandboxDSCP: 0,
+			buildDSCP:   dscp(63),
+			sandboxType: sandbox.SandboxTypeBuild,
+			want:        63 << 2, // 0xFC
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := network.Config{SandboxEgressDSCP: tt.sandboxDSCP, BuildSandboxEgressDSCP: tt.buildDSCP}
+
+			if got := egressTOS(cfg, sandboxOfType(tt.sandboxType)); got != tt.want {
+				t.Errorf("egressTOS() = %#x, want %#x", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestMarkDSCP_SetsSocketTOS dials a real loopback socket through the same
+// Control hook the upstream dialer uses and reads IP_TOS back off the fd, so the
+// DSCP-to-TOS shift is checked against the kernel rather than against itself.
+func TestMarkDSCP_SetsSocketTOS(t *testing.T) {
+	t.Parallel()
+
+	ln, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_ = c.Close()
+		}
+	}()
+
+	for _, tos := range []int{0, 8 << 2, 16 << 2, 63 << 2} {
+		t.Run(fmt.Sprintf("tos_%#x", tos), func(t *testing.T) {
+			t.Parallel()
+
+			dialer := &net.Dialer{
+				Control: func(_, _ string, c syscall.RawConn) error { return markDSCP(c, tos) },
+			}
+
+			conn, err := dialer.DialContext(t.Context(), "tcp4", ln.Addr().String())
+			if err != nil {
+				t.Fatalf("dial: %v", err)
+			}
+			t.Cleanup(func() { _ = conn.Close() })
+
+			raw, err := conn.(*net.TCPConn).SyscallConn()
+			if err != nil {
+				t.Fatalf("syscall conn: %v", err)
+			}
+
+			var got int
+			var sockErr error
+			if err := raw.Control(func(fd uintptr) {
+				got, sockErr = syscall.GetsockoptInt(int(fd), syscall.IPPROTO_IP, syscall.IP_TOS)
+			}); err != nil {
+				t.Fatalf("control: %v", err)
+			}
+			if sockErr != nil {
+				t.Fatalf("getsockopt IP_TOS: %v", sockErr)
+			}
+
+			if got != tos {
+				t.Errorf("IP_TOS = %#x, want %#x", got, tos)
 			}
 		})
 	}

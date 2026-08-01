@@ -194,6 +194,18 @@ func (t SandboxType) String() string {
 	return string(t)
 }
 
+// EgressClass maps the sandbox type onto the network package's egress class, so
+// build and regular sandboxes can be marked with different DSCP values. The
+// network package cannot use SandboxType directly because this package depends
+// on it. The empty type, like String, is treated as a regular sandbox.
+func (t SandboxType) EgressClass() network.EgressClass {
+	if t == SandboxTypeBuild {
+		return network.EgressClassBuild
+	}
+
+	return network.EgressClassSandbox
+}
+
 type RuntimeMetadata struct {
 	TemplateID  string
 	SandboxID   string
@@ -504,7 +516,7 @@ func (f *Factory) CreateSandbox(
 
 	lifecycleID := uuid.NewString()
 
-	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network, f.Sandboxes.NetworkReleased)
+	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network, f.Sandboxes.NetworkReleased, runtime.SandboxType.EgressClass())
 
 	sandboxFiles := template.Files().NewSandboxFiles(runtime.SandboxID)
 	cleanup.Add(ctx, cleanupFiles(f.config, sandboxFiles))
@@ -963,7 +975,7 @@ func (f *Factory) ResumeSandbox(
 	}()
 
 	// Slot initialization
-	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network, f.Sandboxes.NetworkReleased)
+	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network, f.Sandboxes.NetworkReleased, runtime.SandboxType.EgressClass())
 
 	// Rootfs initialization
 	overlayPromise := utils.NewPromise(func() (rootfs.Provider, error) {
@@ -2212,12 +2224,13 @@ func getNetworkSlot(
 	cleanup *Cleanup,
 	networkConfig *orchestrator.SandboxNetworkConfig,
 	networkReleased network.ReleaseNotify,
+	egressClass network.EgressClass,
 ) *utils.Promise[*network.Slot] {
 	return utils.NewPromise(func() (*network.Slot, error) {
 		ctx, span := tracer.Start(ctx, "get network-slot")
 		defer span.End()
 
-		slot, err := networkPool.Get(ctx, networkConfig)
+		slot, err := networkPool.Get(ctx, networkConfig, egressClass)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get network slot: %w", err)
 		}

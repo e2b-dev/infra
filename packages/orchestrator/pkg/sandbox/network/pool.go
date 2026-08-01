@@ -84,11 +84,53 @@ type Config struct {
 
 	// 0 disables; valid range 0..63 (DSCP is 6 bits). CS1=8 is the canonical Scavenger class (RFC 3662).
 	SandboxEgressDSCP uint8 `env:"SANDBOX_EGRESS_DSCP" envDefault:"0"`
+
+	// Egress DSCP for template-build sandboxes. Unset (the pointer is nil, not 0)
+	// inherits SANDBOX_EGRESS_DSCP, so single-value deployments keep their
+	// current behaviour; setting it to 0 explicitly disables marking for builds
+	// while regular sandboxes stay marked. Same 0..63 range.
+	BuildSandboxEgressDSCP *uint8 `env:"BUILD_SANDBOX_EGRESS_DSCP"`
+}
+
+// EgressClass selects which of the configured egress DSCP values applies to a
+// sandbox. It mirrors sandbox.SandboxType, which this package cannot reference
+// because the sandbox package depends on it (see SandboxType.EgressClass).
+type EgressClass uint8
+
+const (
+	// EgressClassSandbox is a regular, customer-facing sandbox.
+	EgressClassSandbox EgressClass = iota
+	// EgressClassBuild is a template-build sandbox.
+	EgressClassBuild
+)
+
+func (c EgressClass) String() string {
+	if c == EgressClassBuild {
+		return "build"
+	}
+
+	return "sandbox"
+}
+
+const maxDSCP = 63 // DSCP is the top 6 bits of the IPv4 TOS / IPv6 traffic-class byte.
+
+// EgressDSCP returns the DSCP class to stamp on egress for the given kind of
+// sandbox. 0 means "leave the field alone".
+func (c Config) EgressDSCP(class EgressClass) uint8 {
+	if class == EgressClassBuild && c.BuildSandboxEgressDSCP != nil {
+		return *c.BuildSandboxEgressDSCP
+	}
+
+	return c.SandboxEgressDSCP
 }
 
 func (c Config) Validate() error {
-	if c.SandboxEgressDSCP > 63 {
-		return fmt.Errorf("SANDBOX_EGRESS_DSCP=%d out of range (0..63)", c.SandboxEgressDSCP)
+	if c.SandboxEgressDSCP > maxDSCP {
+		return fmt.Errorf("SANDBOX_EGRESS_DSCP=%d out of range (0..%d)", c.SandboxEgressDSCP, maxDSCP)
+	}
+
+	if c.BuildSandboxEgressDSCP != nil && *c.BuildSandboxEgressDSCP > maxDSCP {
+		return fmt.Errorf("BUILD_SANDBOX_EGRESS_DSCP=%d out of range (0..%d)", *c.BuildSandboxEgressDSCP, maxDSCP)
 	}
 
 	return nil
@@ -192,7 +234,7 @@ func (p *Pool) Populate(ctx context.Context) {
 	}
 }
 
-func (p *Pool) Get(ctx context.Context, network *orchestrator.SandboxNetworkConfig) (*Slot, error) {
+func (p *Pool) Get(ctx context.Context, network *orchestrator.SandboxNetworkConfig, class EgressClass) (*Slot, error) {
 	var slot *Slot
 
 	select {
@@ -219,10 +261,18 @@ func (p *Pool) Get(ctx context.Context, network *orchestrator.SandboxNetworkConf
 		}
 	}
 
-	err := slot.ConfigureInternet(ctx, network)
+	// Slots are pooled and created before their tenant is known, so the DSCP
+	// class the slot was built with only matches a regular sandbox. Re-stamp it
+	// for a build. This is a no-op (and costs no netns round-trip) whenever the
+	// two configured values agree, which is the default.
+	err := slot.ApplyEgressDSCP(ctx, p.config.EgressDSCP(class))
+	if err == nil {
+		err = slot.ConfigureInternet(ctx, network)
+	}
+
 	if err != nil {
-		// Return the slot to the pool if configuring internet fails. The slot
-		// was never handed out, so nobody listens for its release notification.
+		// Return the slot to the pool if configuring it fails. The slot was
+		// never handed out, so nobody listens for its release notification.
 		if rerr := p.ReturnAsync(context.WithoutCancel(ctx), slot, func(context.Context, string) {}, 0); rerr != nil {
 			logger.L().Error(ctx, "failed to return slot to the pool", zap.Error(rerr), zap.Int("slot_index", slot.Idx))
 		}
@@ -303,6 +353,11 @@ func (p *Pool) ReturnAsync(ctx context.Context, slot *Slot, releasedFn ReleaseNo
 // recycle resets the slot's internet configuration and puts it back into the
 // reused pool, or cleans it up if the pool is full or closed.
 func (p *Pool) recycle(ctx context.Context, slot *Slot) error {
+	// Undo any build-specific DSCP before the next tenant can inherit it.
+	if err := slot.ApplyEgressDSCP(ctx, p.config.EgressDSCP(EgressClassSandbox)); err != nil {
+		return p.cleanupWith(ctx, slot, fmt.Errorf("error resetting slot egress DSCP: %w", err))
+	}
+
 	if err := slot.ResetInternet(ctx); err != nil {
 		return p.cleanupWith(ctx, slot, fmt.Errorf("error resetting slot internet access: %w", err))
 	}

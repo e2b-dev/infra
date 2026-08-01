@@ -38,22 +38,25 @@ type Proxy struct {
 	tlsPort   uint16 // For port 443 traffic - TLS SNI inspection
 	otherPort uint16 // For all other ports - CIDR-only, no protocol inspection
 
+	// networkConfig supplies the per-sandbox-class egress DSCP; the TOS byte is
+	// resolved per connection, once the sandbox behind it is known.
+	networkConfig network.Config
+
 	proxyRules []proxyRule
 	proxy      *tcpproxy.Proxy
 }
 
 func New(logger logger.Logger, networkConfig network.Config, sandboxes *sandbox.Map, meterProvider metric.MeterProvider, featureFlags *featureflags.Client) *Proxy {
-	sandboxEgressTOS.Store(uint32(networkConfig.SandboxEgressDSCP) << 2)
-
 	p := &Proxy{
-		httpPort:     networkConfig.SandboxTCPFirewallHTTPPort,
-		tlsPort:      networkConfig.SandboxTCPFirewallTLSPort,
-		otherPort:    networkConfig.SandboxTCPFirewallOtherPort,
-		logger:       logger,
-		sandboxes:    sandboxes,
-		metrics:      NewMetrics(meterProvider),
-		limiter:      connlimit.NewConnectionLimiter(),
-		featureFlags: featureFlags,
+		httpPort:      networkConfig.SandboxTCPFirewallHTTPPort,
+		tlsPort:       networkConfig.SandboxTCPFirewallTLSPort,
+		otherPort:     networkConfig.SandboxTCPFirewallOtherPort,
+		networkConfig: networkConfig,
+		logger:        logger,
+		sandboxes:     sandboxes,
+		metrics:       NewMetrics(meterProvider),
+		limiter:       connlimit.NewConnectionLimiter(),
+		featureFlags:  featureFlags,
 	}
 
 	p.proxyRules = []proxyRule{
@@ -100,16 +103,16 @@ func (p *Proxy) Start(ctx context.Context) error {
 	otherAddr := fmt.Sprintf("0.0.0.0:%d", p.otherPort)
 
 	// HTTP listener (port 80 traffic): inspect Host header for domain allowlist
-	p.proxy.AddHTTPHostMatchRoute(httpAddr, func(_ context.Context, _ string) bool { return true }, newConnectionHandler(ctx, domainHandler, ProtocolHTTP, p.metrics, p.limiter, p.logger, p.sandboxes, p.featureFlags))
-	p.proxy.AddRoute(httpAddr, newConnectionHandler(ctx, cidrOnlyHandler, ProtocolHTTP, p.metrics, p.limiter, p.logger, p.sandboxes, p.featureFlags))
+	p.proxy.AddHTTPHostMatchRoute(httpAddr, func(_ context.Context, _ string) bool { return true }, newConnectionHandler(ctx, domainHandler, ProtocolHTTP, p.metrics, p.limiter, p.logger, p.sandboxes, p.featureFlags, p.networkConfig))
+	p.proxy.AddRoute(httpAddr, newConnectionHandler(ctx, cidrOnlyHandler, ProtocolHTTP, p.metrics, p.limiter, p.logger, p.sandboxes, p.featureFlags, p.networkConfig))
 
 	// TLS listener (port 443 traffic): inspect SNI for domain allowlist
-	p.proxy.AddSNIMatchRoute(tlsAddr, func(_ context.Context, _ string) bool { return true }, newConnectionHandler(ctx, domainHandler, ProtocolTLS, p.metrics, p.limiter, p.logger, p.sandboxes, p.featureFlags))
-	p.proxy.AddRoute(tlsAddr, newConnectionHandler(ctx, cidrOnlyHandler, ProtocolTLS, p.metrics, p.limiter, p.logger, p.sandboxes, p.featureFlags))
+	p.proxy.AddSNIMatchRoute(tlsAddr, func(_ context.Context, _ string) bool { return true }, newConnectionHandler(ctx, domainHandler, ProtocolTLS, p.metrics, p.limiter, p.logger, p.sandboxes, p.featureFlags, p.networkConfig))
+	p.proxy.AddRoute(tlsAddr, newConnectionHandler(ctx, cidrOnlyHandler, ProtocolTLS, p.metrics, p.limiter, p.logger, p.sandboxes, p.featureFlags, p.networkConfig))
 
 	// Other listener (all other ports): CIDR-only check, no protocol inspection
 	// This prevents blocking on server-first protocols like SSH
-	p.proxy.AddRoute(otherAddr, newConnectionHandler(ctx, cidrOnlyHandler, ProtocolOther, p.metrics, p.limiter, p.logger, p.sandboxes, p.featureFlags))
+	p.proxy.AddRoute(otherAddr, newConnectionHandler(ctx, cidrOnlyHandler, ProtocolOther, p.metrics, p.limiter, p.logger, p.sandboxes, p.featureFlags, p.networkConfig))
 
 	p.logger.Info(ctx, "TCP firewall proxy started",
 		zap.Uint16("http_port", p.httpPort),
@@ -188,7 +191,9 @@ func (p *Proxy) SupportsBYOP() bool {
 }
 
 // handlerFunc is the signature for connection handlers.
-type handlerFunc func(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol)
+// tos is the IPv4 TOS / IPv6 traffic-class byte to stamp on the upstream
+// socket, resolved per connection from the sandbox's egress DSCP class.
+type handlerFunc func(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol, tos int)
 
 var _ tcpproxy.Target = (*connectionHandler)(nil)
 
@@ -196,25 +201,27 @@ var _ tcpproxy.Target = (*connectionHandler)(nil)
 type connectionHandler struct {
 	ctx context.Context //nolint:containedctx // base context for request tracing
 
-	handler      handlerFunc
-	protocol     Protocol
-	metrics      *Metrics
-	limiter      *connlimit.ConnectionLimiter
-	logger       logger.Logger
-	sandboxes    *sandbox.Map
-	featureFlags *featureflags.Client
+	handler       handlerFunc
+	protocol      Protocol
+	metrics       *Metrics
+	limiter       *connlimit.ConnectionLimiter
+	logger        logger.Logger
+	sandboxes     *sandbox.Map
+	featureFlags  *featureflags.Client
+	networkConfig network.Config
 }
 
-func newConnectionHandler(ctx context.Context, handler handlerFunc, protocol Protocol, metrics *Metrics, limiter *connlimit.ConnectionLimiter, logger logger.Logger, sandboxes *sandbox.Map, featureFlags *featureflags.Client) *connectionHandler {
+func newConnectionHandler(ctx context.Context, handler handlerFunc, protocol Protocol, metrics *Metrics, limiter *connlimit.ConnectionLimiter, logger logger.Logger, sandboxes *sandbox.Map, featureFlags *featureflags.Client, networkConfig network.Config) *connectionHandler {
 	return &connectionHandler{
-		ctx:          ctx,
-		handler:      handler,
-		protocol:     protocol,
-		metrics:      metrics,
-		limiter:      limiter,
-		logger:       logger,
-		sandboxes:    sandboxes,
-		featureFlags: featureFlags,
+		ctx:           ctx,
+		handler:       handler,
+		protocol:      protocol,
+		metrics:       metrics,
+		limiter:       limiter,
+		logger:        logger,
+		sandboxes:     sandboxes,
+		featureFlags:  featureFlags,
+		networkConfig: networkConfig,
 	}
 }
 
@@ -272,10 +279,13 @@ func (t *connectionHandler) HandleConn(conn net.Conn) {
 	t.metrics.RecordConnection(ctx, t.protocol)
 
 	// Wrap the handler to release the connection slot when done
-	wrappedHandler := func(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, l logger.Logger, metrics *Metrics, protocol Protocol) {
+	wrappedHandler := func(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, l logger.Logger, metrics *Metrics, protocol Protocol, tos int) {
 		defer t.limiter.Release(limiterKey)
-		t.handler(ctx, conn, dstIP, dstPort, sbx, l, metrics, protocol)
+		t.handler(ctx, conn, dstIP, dstPort, sbx, l, metrics, protocol, tos)
 	}
 
-	wrappedHandler(ctx, conn, ip, port, sbx, sbxLogger, t.metrics, t.protocol)
+	// Resolved here rather than at Proxy.New: one orchestrator serves both
+	// template builds and regular sandboxes, so the DSCP class depends on which
+	// sandbox opened this connection.
+	wrappedHandler(ctx, conn, ip, port, sbx, sbxLogger, t.metrics, t.protocol, egressTOS(t.networkConfig, sbx))
 }
