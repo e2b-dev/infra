@@ -136,3 +136,21 @@ func TestErrorResponsesUseTheDocumentedEnvelope(t *testing.T) {
 		})
 	}
 }
+
+// TestErrorHandlerLeavesACommittedResponseAlone is the backstop for the corrupt
+// body in EN-919: whatever a middleware has already written, ErrorHandler must
+// not append the envelope to it.
+func TestErrorHandlerLeavesACommittedResponseAlone(t *testing.T) {
+	t.Parallel()
+
+	rr := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rr)
+	c.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/templates", strings.NewReader("{}"))
+
+	c.String(http.StatusRequestEntityTooLarge, "request too large")
+
+	ErrorHandler(c, "reading failed: request too large", http.StatusRequestEntityTooLarge)
+
+	assert.True(t, c.IsAborted(), "the request should still be aborted")
+	assert.Equal(t, "request too large", rr.Body.String(), "the committed body must be left untouched")
+}
