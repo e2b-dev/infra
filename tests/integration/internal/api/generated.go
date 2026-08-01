@@ -1476,6 +1476,12 @@ type Volume struct {
 
 // VolumeAndToken defines model for VolumeAndToken.
 type VolumeAndToken struct {
+	// Domain Domain to use as the destination for volume content requests,
+	// replacing the default `api.<E2B_DOMAIN>`. Only returned when the
+	// team is connected to a custom (BYOC) cluster; absent otherwise, in
+	// which case the default domain is used.
+	Domain *string `json:"domain,omitempty"`
+
 	// Name Name of the volume
 	Name string `json:"name"`
 
