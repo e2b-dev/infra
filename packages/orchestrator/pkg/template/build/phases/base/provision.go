@@ -4,16 +4,13 @@ package base
 
 import (
 	"bufio"
-	"bytes"
 	"context"
-	_ "embed"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"strings"
-	tt "text/template"
 	"time"
 
 	"go.uber.org/zap"
@@ -30,7 +27,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/phases"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/writer"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/units"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -39,38 +35,11 @@ const (
 	provisionTimeout = 5 * time.Minute
 )
 
-//go:embed provision.sh
-var provisionScriptFile string
-var ProvisionScriptTemplate = tt.Must(tt.New("provisioning-script").Parse(provisionScriptFile))
-
 const (
 	// provisionScriptFileName is a path where the provision script stores it's exit code.
 	provisionScriptResultPath = "/provision.result"
 	provisionLogPrefix        = "[external] "
 )
-
-type ProvisionScriptParams struct {
-	BusyBox    string
-	ResultPath string
-	Provider   string
-	// DistroSelector is the generated POSIX-sh block that selects the base
-	// image's distro profile by its /etc/os-release ID.
-	DistroSelector string
-}
-
-func getProvisionScript(
-	ctx context.Context,
-	params ProvisionScriptParams,
-) (string, error) {
-	var scriptDef bytes.Buffer
-	err := ProvisionScriptTemplate.Execute(&scriptDef, params)
-	if err != nil {
-		return "", fmt.Errorf("error executing provision script: %w", err)
-	}
-	telemetry.ReportEvent(ctx, "executed provision script env")
-
-	return scriptDef.String(), nil
-}
 
 func (bb *BaseBuilder) provisionSandbox(
 	ctx context.Context,

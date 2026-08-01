@@ -10,26 +10,29 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"strings"
 )
 
-// Version forces a base-layer rebuild for provisioning changes the generated
-// selector text can't otherwise capture; bump it when the contract changes.
-const Version = "1"
+// Version forces a base-layer rebuild for provisioning changes the view data
+// can't otherwise capture (e.g. how provision.sh consumes a field); bump it
+// when the contract changes. "2": selection moved into provision.sh's template.
+const Version = "2"
 
-// Fingerprint hashes the whole generated provisioning contract into the
-// base-layer cache key, so any profile or init-setup change rebuilds the base.
+// Fingerprint hashes the distro registry's entire contribution to the
+// provisioning script — the view data, which embeds the init-setup files, the
+// quoted profile scalars and the id lists. The script's structure is the raw
+// provision.sh template, hashed separately by base's Hash(). %#v prints field
+// names, so a field added to ProfileView is fingerprinted automatically.
 func Fingerprint() string {
-	sum := sha256.Sum256([]byte(Version + "\x00" + ShellSelector()))
+	sum := sha256.Sum256([]byte(Version + "\x00" + fmt.Sprintf("%#v", NewTemplateData())))
 
 	return hex.EncodeToString(sum[:])
 }
 
 // Profile is the declared, per-family provisioning contract. IDs are the
 // /etc/os-release values that map to the family; PkgQueryBody, PkgInstall,
-// CARefresh and Bootstrap are shell fragments spliced into the generated
-// selector (Bootstrap, if set, runs first — for premade images with no FHS
-// userland yet).
+// CARefresh and Bootstrap are shell fragments spliced into provision.sh's
+// selection template (Bootstrap, if set, runs first — for premade images with
+// no FHS userland yet).
 type Profile struct {
 	Key          string
 	Init         InitSystem
@@ -175,7 +178,7 @@ var Profiles = []Profile{
 	},
 }
 
-// SupportedIDs returns every os-release ID the selector accepts.
+// SupportedIDs returns every os-release ID the selection accepts.
 func SupportedIDs() []string {
 	var ids []string
 	for _, p := range Profiles {
@@ -187,81 +190,6 @@ func SupportedIDs() []string {
 
 // RejectedIDs are distro ids we refuse even though their ID_LIKE names a
 // family we do support. Oracle Linux and Amazon Linux both declare
-// ID_LIKE=fedora, so without this the ID_LIKE fallback below would quietly
+// ID_LIKE=fedora, so without this provision.sh's ID_LIKE fallback would quietly
 // re-admit exactly the images the rhel profile documents as out of scope.
 var RejectedIDs = []string{"rhel", "ol", "amzn"}
-
-// ShellSelector generates the POSIX-sh block provision.sh sources: it switches
-// on the guest's $E2B_DISTRO_ID and defines the profile's packages, shell
-// functions, init path, time-sync unit, admin group and CA handling.
-//
-// An unknown id retries each $E2B_ID_LIKE token in order and provisions the
-// first matching family — best effort, with a customer-visible warning.
-// RejectedIDs, ids matching nothing, and images without /etc/os-release exit 1.
-func ShellSelector() string {
-	var b strings.Builder
-
-	// Selection lives in a function so it can be retried per ID_LIKE token.
-	// Assignments and function definitions inside a POSIX-sh function are
-	// global, so the caller sees the profile the same way it always has.
-	// The match is reported via e2b_profile_matched, not the return status —
-	// a function called as an if-condition runs with errexit suppressed,
-	// which would swallow Bootstrap failures inside a matched arm.
-	b.WriteString("e2b_select_profile() {\n")
-	b.WriteString("  e2b_profile_matched=\n")
-	b.WriteString(`  case "$1" in` + "\n")
-	for _, p := range Profiles {
-		fmt.Fprintf(&b, "  %s)\n", strings.Join(p.IDs, "|"))
-		if p.Bootstrap != "" {
-			fmt.Fprintf(&b, "    %s\n", p.Bootstrap)
-		}
-		fmt.Fprintf(&b, "    E2B_PACKAGES=%q\n", strings.Join(p.Packages, " "))
-		fmt.Fprintf(&b, "    e2b_pkg_query() { %s; }\n", p.PkgQueryBody)
-		fmt.Fprintf(&b, "    e2b_pkg_install() { %s; }\n", p.PkgInstall)
-		fmt.Fprintf(&b, "    E2B_INIT_BIN=%q\n", p.InitBinary)
-		fmt.Fprintf(&b, "    E2B_TIMESYNC_UNIT=%q\n", p.TimeSyncUnit)
-		fmt.Fprintf(&b, "    E2B_SSH_UNIT=%q\n", p.SSHUnit)
-		fmt.Fprintf(&b, "    E2B_ADMIN_GROUP=%q\n", p.AdminGroup)
-		fmt.Fprintf(&b, "    E2B_CA_BUNDLE=%q\n", p.CABundle)
-		fmt.Fprintf(&b, "    e2b_ca_refresh() { %s; }\n", p.CARefresh)
-		fmt.Fprintf(&b, "    E2B_INIT_SYSTEM=%q\n", p.Init)
-		fmt.Fprintf(&b, "    e2b_init_setup() {\n%s\n    }\n", indentBlock(initSetup[p.Init], "        "))
-		fmt.Fprintf(&b, "    e2b_profile_matched=1\n")
-		fmt.Fprintf(&b, "    ;;\n")
-	}
-	fmt.Fprintf(&b, "  *)\n    ;;\n")
-	b.WriteString("  esac\n}\n\n")
-
-	b.WriteString(`e2b_select_profile "$E2B_DISTRO_ID"` + "\n")
-	b.WriteString(`if [ -z "$e2b_profile_matched" ]; then` + "\n")
-
-	// Deliberate rejections are checked before the fallback, so they keep
-	// failing fast with their own reason instead of being matched by ID_LIKE.
-	fmt.Fprintf(&b, "  case \"$E2B_DISTRO_ID\" in\n")
-	fmt.Fprintf(&b, "  %s)\n", strings.Join(RejectedIDs, "|"))
-	fmt.Fprintf(&b, "    echo \"[provision] ERROR: base image distribution ID='$E2B_DISTRO_ID' is not supported.\" >&2\n")
-	fmt.Fprintf(&b, "    echo \"[provision] Sandboxes boot E2B's kernel, so the kABI, signed modules and SELinux these images are chosen for are unavailable.\" >&2\n")
-	fmt.Fprintf(&b, "    exit 1\n")
-	fmt.Fprintf(&b, "    ;;\n")
-	fmt.Fprintf(&b, "  esac\n")
-
-	b.WriteString("  e2b_like_match=\n")
-	b.WriteString(`  for e2b_like in $E2B_ID_LIKE; do` + "\n")
-	b.WriteString(`    e2b_select_profile "$e2b_like"` + "\n")
-	b.WriteString(`    if [ -n "$e2b_profile_matched" ]; then` + "\n")
-	b.WriteString("      e2b_like_match=$e2b_like\n")
-	b.WriteString("      break\n")
-	b.WriteString("    fi\n")
-	b.WriteString("  done\n")
-
-	b.WriteString(`  if [ -z "$e2b_like_match" ]; then` + "\n")
-	fmt.Fprintf(&b, "    echo \"[provision] ERROR: unsupported base image distribution: ID='${E2B_DISTRO_ID:-unknown}'.\" >&2\n")
-	fmt.Fprintf(&b, "    echo \"[provision] E2B template builds support: %s.\" >&2\n", strings.Join(SupportedIDs(), ", "))
-	fmt.Fprintf(&b, "    exit 1\n")
-	b.WriteString("  fi\n")
-
-	fmt.Fprintf(&b, "  echo \"[provision] WARNING: base image distribution ID='$E2B_DISTRO_ID' is not officially supported; provisioning it as '$e2b_like_match' from ID_LIKE. This is best effort and untested.\" >&2\n")
-	b.WriteString("fi\n")
-
-	return b.String()
-}

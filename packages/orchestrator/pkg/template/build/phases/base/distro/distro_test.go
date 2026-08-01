@@ -3,6 +3,7 @@ package distro
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -82,40 +83,11 @@ func TestRhelAllowErasingFollowsSubcommand(t *testing.T) {
 	}
 }
 
-// The generated selector keys on the DECLARED distro id, never on which
-// package-manager binary happens to exist.
-func TestSelectorNoPackageManagerProbing(t *testing.T) {
+// Alpine is supported via the OpenRC track — and it must be the OpenRC
+// profile, never folded into a systemd family. (Selection-text assertions
+// live in base/provision_test.go against the rendered script.)
+func TestAlpineIsOpenRC(t *testing.T) {
 	t.Parallel()
-	sel := ShellSelector()
-	for _, bad := range []string{
-		"command -v apt-get", "command -v dnf", "command -v yum",
-		"command -v microdnf", "command -v pacman", "PKG_FAMILY",
-	} {
-		if strings.Contains(sel, bad) {
-			t.Errorf("selector leaked package-manager probing: %q", bad)
-		}
-	}
-	if !strings.Contains(sel, `case "$E2B_DISTRO_ID" in`) {
-		t.Error("selector must switch on $E2B_DISTRO_ID (declared distro identity)")
-	}
-}
-
-// Every supported id gets a case arm; an unknown id hits the failing default.
-func TestSelectorCoversIDsAndRejects(t *testing.T) {
-	t.Parallel()
-	sel := ShellSelector()
-	for _, id := range SupportedIDs() {
-		if !strings.Contains(sel, id) {
-			t.Errorf("selector missing arm for supported id %q", id)
-		}
-	}
-	for _, want := range []string{"*)", "unsupported base image", "exit 1"} {
-		if !strings.Contains(sel, want) {
-			t.Errorf("selector missing fast-reject piece %q", want)
-		}
-	}
-	// Alpine is supported via the OpenRC track — and it must be the OpenRC
-	// profile, never folded into a systemd family.
 	alpine := profileByKey(t, "alpine")
 	if alpine.Init != InitOpenRC {
 		t.Errorf("alpine must be the OpenRC profile, got init %q", alpine.Init)
@@ -143,16 +115,6 @@ func TestInitSystemsDeclaredAndCoherent(t *testing.T) {
 			if strings.Contains(setup, "systemctl") {
 				t.Errorf("openrc init setup leaks systemctl (profile %q)", p.Key)
 			}
-		}
-	}
-	sel := ShellSelector()
-	if !strings.Contains(sel, "e2b_init_setup() {") {
-		t.Error("selector must define e2b_init_setup()")
-	}
-	// The OpenRC boot chain pieces the alpine arm must carry.
-	for _, want := range []string{"/etc/inittab", "rc-update add envd default", "openrc sysinit"} {
-		if !strings.Contains(sel, want) {
-			t.Errorf("selector missing OpenRC boot piece %q", want)
 		}
 	}
 }
@@ -233,18 +195,19 @@ func TestOpenRCDisablesChronySeccompRegardlessOfSource(t *testing.T) {
 	}
 }
 
-// The cache fingerprint must cover the whole generated provisioning contract:
-// stable across calls, and carrying both the selector text and the explicit
-// Version (a profile change must rotate the base-layer cache key).
+// The cache fingerprint must cover the registry's whole contribution to
+// provisioning: stable across calls, and carrying both the view data and the
+// explicit Version (a profile or init-file change must rotate the base-layer
+// cache key; the script structure is hashed separately in base).
 func TestFingerprintStableAndVersioned(t *testing.T) {
 	t.Parallel()
 	a, b := Fingerprint(), Fingerprint()
 	if a != b || len(a) != 64 {
 		t.Errorf("fingerprint must be a stable sha256 hex: %q vs %q", a, b)
 	}
-	want := sha256.Sum256([]byte(Version + "\x00" + ShellSelector()))
+	want := sha256.Sum256([]byte(Version + "\x00" + fmt.Sprintf("%#v", NewTemplateData())))
 	if a != hex.EncodeToString(want[:]) {
-		t.Error("fingerprint must hash Version + selector text")
+		t.Error("fingerprint must hash Version + template view data")
 	}
 }
 
@@ -279,46 +242,49 @@ func TestKernelDependentIDsAreRejected(t *testing.T) {
 	}
 }
 
-// An id we don't know falls back to ID_LIKE with a warning instead of failing:
-// switching provisioning to the declared id silently dropped every Debian
-// derivative (Kali declares ID=kali ID_LIKE=debian) that used to work back when
-// we probed for a package manager.
-func TestUnknownIDFallsBackToIDLike(t *testing.T) {
+// Quoted view fields are spliced into sh double quotes via Go %q, which only
+// matches sh semantics for values free of `"`, `\`, `$`, backticks and control
+// characters (%q passes $ and backtick through unescaped — sh would expand
+// them — and escapes control chars into sequences sh reads literally).
+func TestQuotedFieldsAreShellSafe(t *testing.T) {
 	t.Parallel()
-	sel := ShellSelector()
-	if !strings.Contains(sel, "e2b_select_profile") {
-		t.Error("selection must be a function so it can be retried per ID_LIKE token")
-	}
-	if !strings.Contains(sel, "for e2b_like in $E2B_ID_LIKE; do") {
-		t.Error("selector must retry each ID_LIKE token")
-	}
-	if !strings.Contains(sel, "WARNING") {
-		t.Error("an ID_LIKE match must warn, not pass silently")
-	}
-	// Nothing matched is still fatal — better than provisioning a guessed family.
-	if !strings.Contains(sel, "unsupported base image distribution") {
-		t.Error("an id matching neither ID nor ID_LIKE must still fail")
-	}
-	// An if-condition call runs the function body with errexit suppressed.
-	if strings.Contains(sel, "if e2b_select_profile") || strings.Contains(sel, "if ! e2b_select_profile") {
-		t.Error("e2b_select_profile must not be invoked as an if-condition (errexit suppression)")
-	}
-	if !strings.Contains(sel, "e2b_profile_matched=1") {
-		t.Error("a matched profile arm must set e2b_profile_matched")
+	for _, p := range Profiles {
+		fields := map[string]string{
+			"Packages":     strings.Join(p.Packages, " "),
+			"InitBinary":   p.InitBinary,
+			"TimeSyncUnit": p.TimeSyncUnit,
+			"SSHUnit":      p.SSHUnit,
+			"AdminGroup":   p.AdminGroup,
+			"CABundle":     p.CABundle,
+			"InitSystem":   string(p.Init),
+		}
+		for name, v := range fields {
+			if fmt.Sprintf("%q", v) != `"`+v+`"` {
+				t.Errorf("profile %q field %s needs %%q escaping — not plain-sh-quotable: %q", p.Key, name, v)
+			}
+			if strings.ContainsAny(v, "$`") {
+				t.Errorf("profile %q field %s contains sh-expandable characters: %q", p.Key, name, v)
+			}
+		}
 	}
 }
 
-// ID_LIKE must not re-admit the ids the rhel profile documents as out of scope:
-// Oracle and Amazon Linux both declare ID_LIKE=fedora.
-func TestRejectedIDsAreNotReachableViaIDLike(t *testing.T) {
+// The view hands provision.sh ready-made patterns and lists.
+func TestTemplateDataJoins(t *testing.T) {
 	t.Parallel()
-	sel := ShellSelector()
-	guard := strings.Join(RejectedIDs, "|")
-	if !strings.Contains(sel, guard) {
-		t.Errorf("selector must guard rejected ids (%s) before the ID_LIKE fallback", guard)
+	data := NewTemplateData()
+	if len(data.Profiles) != len(Profiles) {
+		t.Fatalf("view has %d profiles, registry %d", len(data.Profiles), len(Profiles))
 	}
-	// The guard has to come first, or ID_LIKE=fedora would match them.
-	if strings.Index(sel, guard) > strings.Index(sel, "E2B_ID_LIKE") {
-		t.Error("the rejected-id guard must precede the ID_LIKE fallback")
+	for i, p := range Profiles {
+		if data.Profiles[i].CasePattern != strings.Join(p.IDs, "|") {
+			t.Errorf("profile %q CasePattern mismatch: %q", p.Key, data.Profiles[i].CasePattern)
+		}
+	}
+	if data.RejectedIDsPattern != strings.Join(RejectedIDs, "|") {
+		t.Errorf("RejectedIDsPattern mismatch: %q", data.RejectedIDsPattern)
+	}
+	if data.SupportedIDs != strings.Join(SupportedIDs(), ", ") {
+		t.Errorf("SupportedIDs mismatch: %q", data.SupportedIDs)
 	}
 }

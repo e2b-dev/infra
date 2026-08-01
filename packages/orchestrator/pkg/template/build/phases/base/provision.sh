@@ -14,10 +14,10 @@ echo "Making configuration immutable"
 $BUSYBOX chattr +i /etc/resolv.conf
 
 # Identify the base image by its DECLARED /etc/os-release ID, never by probing
-# for a package manager. The selector (generated from the distro profile
-# registry) defines the E2B_* vars and pkg/CA shell functions, or exits 1 on an
-# unsupported distribution. Images with no os-release (distroless, scratch) are
-# rejected by name rather than guessed.
+# for a package manager. The selection below (rendered inline from the distro
+# profile registry) defines the E2B_* vars and pkg/CA shell functions, or exits
+# 1 on an unsupported distribution. Images with no os-release (distroless,
+# scratch) are rejected by name rather than guessed.
 echo "Detecting base image distribution"
 if [ -r /etc/os-release ]; then
     . /etc/os-release
@@ -30,7 +30,68 @@ else
     E2B_ID_LIKE=""
 fi
 
-{{ .DistroSelector }}
+# Assignments and function definitions inside a POSIX-sh function are global.
+# The match is reported via e2b_profile_matched, never the return status — a
+# function called as an if-condition runs with errexit suppressed.
+e2b_select_profile() {
+  e2b_profile_matched=
+  case "$1" in
+{{- range .Distro.Profiles }}
+  {{ .CasePattern }})
+{{- if .Bootstrap }}
+    {{ .Bootstrap }}
+{{- end }}
+    E2B_PACKAGES={{ .Packages }}
+    e2b_pkg_query() { {{ .PkgQuery }}; }
+    e2b_pkg_install() { {{ .PkgInstall }}; }
+    E2B_INIT_BIN={{ .InitBinary }}
+    E2B_TIMESYNC_UNIT={{ .TimeSyncUnit }}
+    E2B_SSH_UNIT={{ .SSHUnit }}
+    E2B_ADMIN_GROUP={{ .AdminGroup }}
+    E2B_CA_BUNDLE={{ .CABundle }}
+    e2b_ca_refresh() { {{ .CARefresh }}; }
+    E2B_INIT_SYSTEM={{ .InitSystem }}
+    e2b_init_setup() {
+{{ .InitSetup }}
+    }
+    e2b_profile_matched=1
+    ;;
+{{- end }}
+  *)
+    ;;
+  esac
+}
+
+e2b_select_profile "$E2B_DISTRO_ID"
+if [ -z "$e2b_profile_matched" ]; then
+  # Deliberate rejections fail fast with their own reason, checked before
+  # ID_LIKE could match them (Oracle and Amazon Linux declare ID_LIKE=fedora).
+  case "$E2B_DISTRO_ID" in
+  {{ .Distro.RejectedIDsPattern }})
+    echo "[provision] ERROR: base image distribution ID='$E2B_DISTRO_ID' is not supported." >&2
+    echo "[provision] Sandboxes boot E2B's kernel, so the kABI, signed modules and SELinux these images are chosen for are unavailable." >&2
+    exit 1
+    ;;
+  esac
+
+  # Unknown id: retry each ID_LIKE token (Kali declares ID=kali ID_LIKE=debian).
+  e2b_like_match=
+  for e2b_like in $E2B_ID_LIKE; do
+    e2b_select_profile "$e2b_like"
+    if [ -n "$e2b_profile_matched" ]; then
+      e2b_like_match=$e2b_like
+      break
+    fi
+  done
+
+  if [ -z "$e2b_like_match" ]; then
+    echo "[provision] ERROR: unsupported base image distribution: ID='${E2B_DISTRO_ID:-unknown}'." >&2
+    echo "[provision] E2B template builds support: {{ .Distro.SupportedIDs }}." >&2
+    exit 1
+  fi
+
+  echo "[provision] WARNING: base image distribution ID='$E2B_DISTRO_ID' is not officially supported; provisioning it as '$e2b_like_match' from ID_LIKE. This is best effort and untested." >&2
+fi
 
 echo "Provisioning for distro '$E2B_DISTRO_ID' (init=$E2B_INIT_BIN, timesync=$E2B_TIMESYNC_UNIT, admin-group=$E2B_ADMIN_GROUP)"
 

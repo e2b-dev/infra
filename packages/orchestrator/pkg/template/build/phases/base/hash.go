@@ -36,10 +36,10 @@ func (bb *BaseBuilder) Hash(ctx context.Context, _ phases.LayerResult) (string, 
 	}
 
 	// For fallback/dev environments, include baked rootfs file contents and
-	// the distro provisioning contract (profiles + init blocks — the rendered
-	// selector is part of the script but not of the raw provisionScriptFile
-	// hashed here) in the provision version. In production,
-	// BuildProvisionVersion controls rollout invalidation explicitly.
+	// the distro provisioning contract in the provision version: the selection
+	// structure lives in the raw provisionScriptFile hashed here, the spliced
+	// data (profiles, init-setup files, id lists) in distro.Fingerprint(). In
+	// production, BuildProvisionVersion controls rollout invalidation explicitly.
 	provisionVersion := cache.HashKeys(provisionScriptFile, rootfs.FilesHash(), distro.Fingerprint())
 	if val := bb.featureFlags.IntFlag(
 		ctx,

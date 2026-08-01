@@ -46,10 +46,10 @@ func constructLayerFilesFromOCI(
 		featureFlags,
 	)
 	provisionScript, err := getProvisionScript(ctx, ProvisionScriptParams{
-		BusyBox:        rootfs.SandboxBusyBoxPath,
-		ResultPath:     provisionScriptResultPath,
-		Provider:       buildContext.BuilderConfig.Provider,
-		DistroSelector: distro.ShellSelector(),
+		BusyBox:    rootfs.SandboxBusyBoxPath,
+		ResultPath: provisionScriptResultPath,
+		Provider:   buildContext.BuilderConfig.Provider,
+		Distro:     distro.NewTemplateData(),
 	})
 	if err != nil {
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("error getting provision script: %w", err)
