@@ -9,6 +9,8 @@ import (
 	"github.com/flowchartsman/retry"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -19,7 +21,17 @@ import (
 var (
 	buildTimeout             = time.Hour
 	syncWaitingStateDeadline = time.Minute * 40
+
+	// transientErrorGracePeriod is how long the poller keeps asking the builder
+	// for a build status that only answers with transient errors. The build
+	// itself keeps running on the builder while we retry, so failing it on the
+	// first hiccup would throw away work that is still perfectly fine.
+	transientErrorGracePeriod = 5 * time.Minute
 )
+
+// errTransientStatus marks a status error that is worth retrying instead of
+// failing the build over.
+var errTransientStatus = errors.New("transient error")
 
 func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUID, templateID string, clusterID uuid.UUID, nodeID *string) error {
 	if tm.createInProcessingQueue(buildID, templateID) {
@@ -99,6 +111,10 @@ type PollBuildStatus struct {
 	nodeID    string
 
 	status *templatemanagergrpc.TemplateBuildStatusResponse
+
+	// transientErrorsSince is when the current run of transient status errors
+	// started. Zero while the builder is answering.
+	transientErrorsSince time.Time
 }
 
 func (c *PollBuildStatus) poll(ctx context.Context) {
@@ -121,10 +137,17 @@ func (c *PollBuildStatus) poll(ctx context.Context) {
 		case <-ticker.C:
 			buildCompleted, err := c.checkBuildStatus(ctx)
 			if err != nil {
-				c.logger.Error(ctx, "Build status polling received unrecoverable error", zap.Error(err))
+				failure := c.buildFailure(err)
+				if failure == nil {
+					c.logger.Warn(ctx, "Build status polling received a transient error, keeping the build alive", zap.Error(err))
+
+					continue
+				}
+
+				c.logger.Error(ctx, "Build status polling failed", zap.Error(failure))
 
 				statusErr := c.client.SetStatus(ctx, c.buildID, types.BuildStatusGroupFailed, &templatemanagergrpc.TemplateBuildStatusReason{
-					Message: fmt.Sprintf("polling received unrecoverable error: %s", err),
+					Message: failure.Error(),
 				})
 				if statusErr != nil {
 					c.logger.Error(ctx, "error when setting build status", zap.Error(statusErr))
@@ -133,12 +156,56 @@ func (c *PollBuildStatus) poll(ctx context.Context) {
 				return
 			}
 
+			c.transientErrorsSince = time.Time{}
+
 			// build status can return empty error when build is still in progress
 			// this will cause fast return to avoid pooling when build is already finished
 			if buildCompleted {
 				return
 			}
 		}
+	}
+}
+
+// buildFailure turns a polling error into the reason the build should be failed
+// with, or nil when the error is transient and the poller should just try again.
+func (c *PollBuildStatus) buildFailure(err error) error {
+	if !errors.Is(err, errTransientStatus) {
+		return fmt.Errorf("polling received unrecoverable error: %w", err)
+	}
+
+	if c.transientErrorsSince.IsZero() {
+		c.transientErrorsSince = time.Now()
+	}
+
+	// Give up once the builder has been unreachable for long enough that the
+	// build is very unlikely to still be alive on the other end.
+	if time.Since(c.transientErrorsSince) >= transientErrorGracePeriod {
+		return fmt.Errorf("polling kept failing for %s: %w", transientErrorGracePeriod, err)
+	}
+
+	return nil
+}
+
+// isTransientStatusError reports whether a status RPC failed for a reason that
+// says nothing about the build itself: the call timed out, or the builder was
+// briefly unreachable or overloaded. gRPC status errors do not unwrap to
+// context.DeadlineExceeded, so the status code has to be inspected explicitly.
+func isTransientStatusError(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+
+	st, ok := grpcstatus.FromError(err)
+	if !ok {
+		return false
+	}
+
+	switch st.Code() {
+	case codes.DeadlineExceeded, codes.Unavailable, codes.ResourceExhausted:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -160,9 +227,9 @@ func newTerminalError(err error) error {
 
 func (c *PollBuildStatus) setStatus(ctx context.Context) error {
 	status, err := c.client.GetStatus(ctx, c.buildID, c.templateID, c.clusterID, c.nodeID)
-	if err != nil && errors.Is(err, context.DeadlineExceeded) {
-		return fmt.Errorf("context deadline exceeded: %w", err)
-	} else if err != nil { // retry only on context deadline exceeded
+	if err != nil && isTransientStatusError(err) {
+		return fmt.Errorf("%w when polling build status: %w", errTransientStatus, err)
+	} else if err != nil { // retry only on transient errors
 		c.logger.Error(ctx, "terminal error when polling build status", zap.Error(err))
 
 		return newTerminalError(err)
@@ -229,10 +296,9 @@ func (c *PollBuildStatus) checkBuildStatus(ctx context.Context) (bool, error) {
 		time.Second,
 	)
 
+	// The caller logs the error with the level matching how it handles it.
 	err := retrier.RunContext(ctx, c.setStatus)
 	if err != nil {
-		c.logger.Error(ctx, "error when calling setStatus", zap.Error(err))
-
 		return false, err
 	}
 
