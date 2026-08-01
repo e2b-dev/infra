@@ -15,7 +15,15 @@ func (a *APIStore) GetVolumesVolumeID(c *gin.Context, volumeID api.VolumeID) {
 		return
 	}
 
-	token, err := generateVolumeContentToken(a.config.VolumesToken, volume, team)
+	domain, domainErr := a.volumeContentDomain(team)
+	if domainErr != nil {
+		a.sendAPIStoreError(c, http.StatusServiceUnavailable, "Cluster not found")
+		telemetry.ReportError(c.Request.Context(), "cluster not found", domainErr)
+
+		return
+	}
+
+	token, err := generateVolumeContentToken(a.config.VolumesToken, volume, team, a.volumeTokenAudience(domain))
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "failed to sign token")
 		telemetry.ReportCriticalError(c.Request.Context(), "failed to sign token", err)
@@ -27,6 +35,7 @@ func (a *APIStore) GetVolumesVolumeID(c *gin.Context, volumeID api.VolumeID) {
 		VolumeID: volume.ID.String(),
 		Name:     volume.Name,
 		Token:    token,
+		Domain:   domain,
 	}
 
 	c.JSON(http.StatusOK, result)

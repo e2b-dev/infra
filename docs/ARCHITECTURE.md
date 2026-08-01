@@ -39,6 +39,8 @@ flowchart TB
 
     LB["Load balancer<br/>api.* | *.domain wildcard | docker.*"]
 
+    VC["volume-content API (belt)<br/>api.&lt;domain&gt;"]
+
     subgraph controlplane["Control plane (API node pool)"]
         API["API<br/>REST :80, gRPC :5009/:5109"]
         DashAPI["dashboard-api :3010"]
@@ -68,6 +70,8 @@ flowchart TB
     SDK -->|REST| LB --> API
     Browser -->|"port-sandboxid.domain"| LB --> CP
     Docker --> LB --> DRP
+    API -.->|"mint content token + domain"| SDK
+    SDK -->|"volume content (token-authed)<br/>api.&lt;BYOC or default domain&gt;"| VC
     API -->|"gRPC Create/Delete/Pause"| ORCH
     API -->|"gRPC TemplateCreate"| TM
     CP -->|"lookup sandbox → node"| RD
@@ -305,6 +309,43 @@ sequenceDiagram
     OP->>E: http://slotIP:3000 (via veth/tap into VM)
     E-->>U: response
 ```
+
+### Volume content
+
+Persistent volumes (`packages/orchestrator/pkg/volumes/`) are managed through the control-plane
+API (`POST/GET /volumes`), but their **content** — reading and writing files — is served by a
+separate volume-content API (belt, `e2b-dev/belt`) that the SDK talks to directly, not through the
+control-plane API. The API's role is to mint the credential and tell the SDK where to send content
+traffic.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as SDK
+    participant API as API
+    participant PG as PostgreSQL
+    participant VC as volume-content API (belt)
+
+    U->>API: POST /volumes (create) or GET /volumes/{id}
+    API->>PG: persist / load volume row
+    API->>API: mint JWT (aud = https://api.&lt;domain&gt;)<br/>resolve domain
+    API-->>U: { volumeID, name, token, domain? }
+    Note over U: domain is returned only for BYOC teams;<br/>SDK stores it and falls back to api.&lt;E2B_DOMAIN&gt; otherwise
+    U->>VC: /volumecontent/{id}/... at api.&lt;domain&gt;<br/>Authorization: Bearer token
+    VC->>VC: verify token (audience must match its own origin)
+    VC-->>U: file content
+```
+
+- **Domain selection.** The token's audience and the content host are the same origin,
+  `https://api.<domain>`. For teams on a **custom (BYOC) cluster** (`team.ClusterID` set), the API
+  returns that cluster's domain (`cluster.SandboxDomain`, resolved in
+  `handlers.volumeContentDomain`) so content traffic goes to the BYOC cluster's edge instead of the
+  control-plane host. For teams on the default cluster the response omits `domain` and the SDK uses
+  its configured default (`api.<E2B_DOMAIN>`); the audience then uses the deployment's `DOMAIN_NAME`.
+- **Token.** A short-lived JWT (`handlers.generateVolumeContentToken`, config in
+  `cfg.VolumesTokenConfig`) signed by the API, scoped to the team and volume, presented as a bearer
+  token on every content request. Its `aud` claim is `https://api.<domain>`, so a token minted for
+  one cluster's origin is not accepted by another.
 
 ### Pause and resume
 
