@@ -15,6 +15,7 @@ import (
 	"syscall"
 
 	"github.com/rs/zerolog"
+	gopsnet "github.com/shirou/gopsutil/v4/net"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
 	"github.com/e2b-dev/infra/packages/envd/internal/services/spec/upgrade"
@@ -108,62 +109,84 @@ func (f *Forwarder) StartForwarding(ctx context.Context) {
 				return
 			}
 
-			// Serialize the whole refresh against a concurrent ExportForwards
-			// (live-upgrade). stop/startPortForwarding below are called with the
-			// lock held and must not take it themselves.
-			f.mu.Lock()
-
-			// Now we are going to refresh all ports that are being forwarded in the `ports` map. Maybe add new ones
-			// and maybe remove some.
-
-			// Go through the ports that are currently being forwarded and set all of them
-			// to the `DELETE` state. We don't know yet if they will be there after refresh.
-			for _, v := range f.ports {
-				v.state = PortStateDelete
-			}
-
-			// Let's refresh our map of currently forwarded ports and mark the currently opened ones with the "FORWARD" state.
-			// This will make sure we won't delete them later.
-			for _, p := range procs {
-				key := fmt.Sprintf("%d-%d", p.Pid, p.Laddr.Port)
-
-				// We check if the opened port is in our map of forwarded ports.
-				val, portOk := f.ports[key]
-				if portOk {
-					// Just mark the port as being forwarded so we don't delete it.
-					// The actual socat process that handles forwarding should be running from the last iteration.
-					val.state = PortStateForward
-				} else {
-					f.logger.Debug().
-						Str("ip", p.Laddr.IP).
-						Uint32("port", p.Laddr.Port).
-						Uint32("family", familyToIPVersion(p.Family)).
-						Str("state", p.Status).
-						Msg("Detected new opened port on localhost that is not forwarded")
-
-					// The opened port wasn't in the map so we create a new PortToForward and start forwarding.
-					ptf := &PortToForward{
-						pid:    p.Pid,
-						port:   p.Laddr.Port,
-						state:  PortStateForward,
-						family: familyToIPVersion(p.Family),
-					}
-					f.ports[key] = ptf
-					f.startPortForwarding(ctx, ptf)
-				}
-			}
-
-			// We go through the ports map one more time and stop forwarding all ports
-			// that stayed marked as "DELETE".
-			for _, v := range f.ports {
-				if v.state == PortStateDelete {
-					f.stopPortForwarding(v)
-				}
-			}
-
-			f.mu.Unlock()
+			f.refresh(ctx, procs)
 		}
 	}
+}
+
+// refresh reconciles the forwarded ports with the listening sockets reported by
+// the latest scan.
+func (f *Forwarder) refresh(ctx context.Context, procs []gopsnet.ConnectionStat) {
+	// Serialize the whole refresh against a concurrent ExportForwards
+	// (live-upgrade). stop/startPortForwarding below are called with the
+	// lock held and must not take it themselves.
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	// Now we are going to refresh all ports that are being forwarded in the `ports` map. Maybe add new ones
+	// and maybe remove some.
+
+	// Go through the ports that are currently being forwarded and set all of them
+	// to the `DELETE` state. We don't know yet if they will be there after refresh.
+	for _, v := range f.ports {
+		v.state = PortStateDelete
+	}
+
+	// Let's refresh our map of currently forwarded ports and mark the currently opened ones with the "FORWARD" state.
+	// This will make sure we won't delete them later.
+	// The actual socat process that handles forwarding is running from the last iteration.
+	for _, p := range procs {
+		if val, portOk := f.ports[forwardKey(p)]; portOk {
+			val.state = PortStateForward
+		}
+	}
+
+	// Stop forwarding all ports that stayed marked as "DELETE" and forget them.
+	// Forgetting is what makes the forwarding recoverable: a retained entry would
+	// be marked "FORWARD" again as soon as the same listener shows up in a later
+	// scan, and because it is already in the map no socat would ever be started
+	// for it again — leaving the port permanently unreachable from outside the
+	// sandbox. Listeners do drop out of individual scans: an app can close and
+	// reopen its socket, and the scanner reports a socket with no pid when it
+	// cannot map the socket's inode to a process.
+	//
+	// This also has to happen before the new forwards are started below, so a
+	// fresh socat never has to contend for a bind address that a socat being
+	// torn down still holds.
+	for key, v := range f.ports {
+		if v.state == PortStateDelete {
+			f.stopPortForwarding(v)
+			delete(f.ports, key)
+		}
+	}
+
+	// Start forwarding the ports that are newly opened.
+	for _, p := range procs {
+		key := forwardKey(p)
+		if _, portOk := f.ports[key]; portOk {
+			continue
+		}
+
+		f.logger.Debug().
+			Str("ip", p.Laddr.IP).
+			Uint32("port", p.Laddr.Port).
+			Uint32("family", familyToIPVersion(p.Family)).
+			Str("state", p.Status).
+			Msg("Detected new opened port on localhost that is not forwarded")
+
+		ptf := &PortToForward{
+			pid:    p.Pid,
+			port:   p.Laddr.Port,
+			state:  PortStateForward,
+			family: familyToIPVersion(p.Family),
+		}
+		f.ports[key] = ptf
+		f.startPortForwarding(ctx, ptf)
+	}
+}
+
+func forwardKey(p gopsnet.ConnectionStat) string {
+	return fmt.Sprintf("%d-%d", p.Pid, p.Laddr.Port)
 }
 
 func (f *Forwarder) startPortForwarding(ctx context.Context, p *PortToForward) {
