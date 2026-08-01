@@ -28,6 +28,20 @@ const (
 	// ReturnDelay is how long we wait before returning a slot to the reused pool,
 	// to let inflight requests on the previous sandbox drain and reduce reuse churn.
 	ReturnDelay = 3 * time.Second
+
+	// poolCloseTimeout bounds the whole shutdown drain. Close detaches the
+	// drain from its caller's context (see Close) so slots are still released
+	// under FORCE_STOP, which cancels that context up front; this timeout is
+	// what keeps the detached drain from running unbounded.
+	//
+	// Sizing: against a healthy Consul agent on localhost the drain is two
+	// round trips per slot and finishes well inside a second, so this only
+	// bites when the backend is unresponsive. The forced-stop path runs with
+	// Nomad's kill_timeout of 1m shared across every closer, and the network
+	// pool is one of ~26, so it must not take the whole budget. 15s leaves 45s
+	// for the rest while still being long enough for at least one full release
+	// to complete when the backend is slow rather than dead.
+	poolCloseTimeout = 15 * time.Second
 )
 
 var (
@@ -148,7 +162,11 @@ func (p *Pool) createNetworkSlot(ctx context.Context) (*Slot, error) {
 
 	err = ips.CreateNetwork(ctx)
 	if err != nil {
-		releaseErr := p.slotStorage.Release(ips)
+		// Detach from ctx: CreateNetwork commonly fails *because* ctx ended, and
+		// skipping the release would leak the slot's KV key, marking that slot
+		// index permanently taken for this node. The storage bounds every call
+		// with its own timeout, so detaching cannot hang.
+		releaseErr := p.slotStorage.Release(context.WithoutCancel(ctx), ips)
 		err = errors.Join(err, releaseErr)
 
 		return nil, fmt.Errorf("failed to create network: %w", err)
@@ -247,7 +265,11 @@ func (p *Pool) returnSlot(ctx context.Context, slot *Slot, releasedFn ReleaseNot
 	// still fall through and clean up the slot to avoid leaking it.
 	select {
 	case <-ctx.Done():
-		return p.cleanupWith(ctx, slot, ctx.Err())
+		// Detach the cleanup from the dead ctx so the slot's storage entry is
+		// still released — otherwise its KV key leaks and the slot index stays
+		// marked as taken for this node forever. The storage bounds every call
+		// with its own timeout, so detaching cannot hang.
+		return p.cleanupWith(context.WithoutCancel(ctx), slot, ctx.Err())
 	case <-p.done:
 		return p.cleanupWith(ctx, slot, ErrClosed)
 	case <-time.After(returnDelay):
@@ -360,7 +382,7 @@ func (p *Pool) cleanup(ctx context.Context, slot *Slot) error {
 		errs = append(errs, fmt.Errorf("cannot remove network when releasing slot '%d': %w", slot.Idx, err))
 	}
 
-	err = p.slotStorage.Release(slot)
+	err = p.slotStorage.Release(ctx, slot)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("failed to release slot '%d': %w", slot.Idx, err))
 	}
@@ -385,12 +407,20 @@ func (p *Pool) Close(ctx context.Context) error {
 	// up itself or has already pushed it into reusedSlots, drained below.
 	p.returnsWG.Wait()
 
+	// Slot releases must outlive a forced shutdown's already-cancelled context:
+	// the storage key is node-scoped and nothing ever reclaims it, so skipping
+	// the release would permanently burn that slot index on this node. Detach
+	// from cancellation, but bound the whole drain so an unresponsive backend
+	// still cannot stall shutdown.
+	drainCtx, cancelDrain := context.WithTimeout(context.WithoutCancel(ctx), poolCloseTimeout)
+	defer cancelDrain()
+
 	var errs []error
 
 	for slot := range p.newSlots {
 		newSlotsAvailableCounter.Add(ctx, -1)
 
-		err := p.cleanup(ctx, slot)
+		err := p.cleanup(drainCtx, slot)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("failed to cleanup slot '%d': %w", slot.Idx, err))
 		}
@@ -402,7 +432,7 @@ drain:
 		case slot := <-p.reusedSlots:
 			reusableSlotsAvailableCounter.Add(ctx, -1)
 
-			err := p.cleanup(ctx, slot)
+			err := p.cleanup(drainCtx, slot)
 			if err != nil {
 				errs = append(errs, fmt.Errorf("failed to cleanup slot '%d': %w", slot.Idx, err))
 			}
