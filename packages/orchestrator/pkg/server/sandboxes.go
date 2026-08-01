@@ -36,6 +36,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/retry"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -550,6 +551,50 @@ func applyNetworkEgress(cfg *sandbox.Config, egress *orchestrator.SandboxNetwork
 	}
 }
 
+// currentAPIStoredConfig returns the sandbox's API-stored config with the live
+// network egress overlaid. APIStoredConfig is a create-time snapshot: Update
+// publishes egress changes to sbx.Config (see transitionEgress) and never
+// touches it, so handing it out verbatim reports stale network settings — and
+// an API re-sync that repopulates its store from them loses the update on the
+// next pause/resume.
+//
+// The stored config is shared and handed out by reference, so it is cloned
+// before the overlay, and only when the two actually diverge.
+func currentAPIStoredConfig(sbx *sandbox.Sandbox) *orchestrator.SandboxConfig {
+	stored := sbx.APIStoredConfig
+
+	egress := sbx.Config.GetNetworkEgress()
+	if proto.Equal(egress, stored.GetNetwork().GetEgress()) {
+		return stored
+	}
+
+	cfg := proto.CloneOf(stored)
+
+	network := cfg.GetNetwork()
+	if network == nil {
+		network = &orchestrator.SandboxNetworkConfig{}
+		cfg.Network = network
+	}
+
+	network.Egress = egress
+
+	// allow_internet_access is the API's shorthand for a deny-all egress rule:
+	// it folds `false` into a 0.0.0.0/0 denied CIDR on create and on resume. A
+	// stale `false` would re-apply that deny-all on the next resume and undo an
+	// update that re-enabled the internet, so correct it once the live egress
+	// stops denying everything. The converse (unset/true alongside a deny-all)
+	// needs no fix: the deny-all is carried by the denied CIDRs themselves, and
+	// rewriting the field would report an explicit choice never made — unset
+	// means "not explicitly set" to the API.
+	//nolint:protogetter // unset must stay distinct from false
+	if allow := cfg.AllowInternetAccess; allow != nil && !*allow &&
+		!slices.Contains(egress.GetDeniedCidrs(), sandbox_network.AllInternetTrafficCIDR) {
+		cfg.AllowInternetAccess = new(true)
+	}
+
+	return cfg
+}
+
 func (s *Server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.SandboxListResponse, error) {
 	_, childSpan := tracer.Start(ctx, "sandbox-list")
 	defer childSpan.End()
@@ -569,7 +614,7 @@ func (s *Server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 
 		startedAt := sbx.GetStartedAt()
 		sandboxes = append(sandboxes, &orchestrator.RunningSandbox{
-			Config:    sbx.APIStoredConfig,
+			Config:    currentAPIStoredConfig(sbx),
 			ClientId:  s.info.ClientId,
 			StartTime: timestamppb.New(startedAt),
 			EndTime:   timestamppb.New(sbx.GetEndAt()),
