@@ -87,8 +87,11 @@ while IFS= read -r file; do
         if [[ "$fn" != Test* ]]; then
             # A package-local helper touches the snapshot surface: require it
             # in SYMBOLS so tests calling it are not invisible to this lint.
-            if ! grep -qE "(^|\|)${fn}" <<<"$SYMBOLS"; then
-                echo "${file}:${fline}: helper ${fn} touches snapshot symbols; add '${fn}\\(' to SYMBOLS in $(basename "$0")"
+            # Exact whole-entry match ("name[(]"): a substring or prefix match
+            # would let a wrapper whose name is a prefix of an existing entry
+            # slip through as already listed.
+            if ! tr '|' '\n' <<<"$SYMBOLS" | grep -qxF "${fn}[(]"; then
+                echo "${file}:${fline}: helper ${fn} touches snapshot symbols; add '${fn}[(]' to SYMBOLS in $(basename "$0")"
                 fail=1
             fi
             continue
