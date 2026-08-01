@@ -102,6 +102,7 @@ check-tests-allowlist:
 		fi; \
 	done; \
 	echo "allow-list resolves; stale named and wildcard entries are rejected"
+	@./scripts/check-allowlist-completeness.sh
 
 # CI entrypoint: run one package shard (or the whole suite with the default
 # TEST_SHARD=all). TESTS_ONLY narrows the run to the allow-list within the

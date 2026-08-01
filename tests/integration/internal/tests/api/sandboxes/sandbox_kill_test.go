@@ -12,6 +12,7 @@ import (
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
 
+//compression-tests:excluded subject is kill semantics; pause/resume set up the states to kill
 func TestSandboxKill(t *testing.T) {
 	t.Parallel()
 	c := setup.GetAPIClient()

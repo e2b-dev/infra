@@ -50,6 +50,7 @@ func TestInternetAccess(t *testing.T) {
 	}
 }
 
+//compression-tests:excluded subject is internet egress behaviour, excluded per the allow-list criterion
 func TestInternetAccessResumedSbx(t *testing.T) {
 	t.Parallel()
 

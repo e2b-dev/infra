@@ -235,6 +235,7 @@ func TestEgressFirewallAllowAndBlockCombination(t *testing.T) {
 }
 
 // TestEgressFirewallPersistsAfterResume tests that network config persists after pause/resume
+//compression-tests:excluded subject is egress firewall behaviour, excluded per the allow-list criterion
 func TestEgressFirewallPersistsAfterResume(t *testing.T) {
 	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
@@ -708,6 +709,7 @@ func TestEgressFirewallHTTPSByIPNoHostname(t *testing.T) {
 }
 
 // TestEgressFirewallDomainPersistsAfterResume tests that domain-based network config persists after pause/resume
+//compression-tests:excluded subject is egress firewall behaviour, excluded per the allow-list criterion
 func TestEgressFirewallDomainPersistsAfterResume(t *testing.T) {
 	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)

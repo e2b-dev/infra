@@ -58,6 +58,7 @@ UPDATE teams SET is_banned = $1 WHERE id = $2
 // Mutate / Delete subtests use a synthetic sandbox ID because the
 // blocked-team check runs before the resource is resolved — we only
 // care that the request was (not) rejected by the blocked-team policy.
+//compression-tests:excluded subject is team-blocking authz; the pause call targets a nonexistent sandbox
 func TestBlockedTeam(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()

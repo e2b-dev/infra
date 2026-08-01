@@ -25,7 +25,7 @@
 # compressed writer is agnostic to what a layer contains - a handful of builds
 # covers it, and 58 do not.
 #
-# "*" selects every test in the package. shard-tests.sh fails if an entry no
+# "*" selects every test in the package. select-tests.sh fails if an entry no
 # longer exists, so this list cannot rot into silently reduced coverage.
 
 # Snapshot/restore integrity suite - entirely on the pause/resume path.
@@ -50,13 +50,18 @@ internal/tests/api/sandboxes	TestSandboxPauseNonFound
 internal/tests/api/sandboxes	TestSandboxResume
 internal/tests/api/sandboxes	TestSandboxResumeUnknownSandbox
 internal/tests/api/sandboxes	TestSandboxResumeWithSecuredEnvd
+internal/tests/api/sandboxes	TestSandboxResume_CrossTeamAccess_Paused
+internal/tests/api/sandboxes	TestSandboxResume_CrossTeamAccess_Running
 internal/tests/api/sandboxes	TestSandboxResume_FilesystemOnlyReboots
 internal/tests/api/sandboxes	TestSandboxConnect_FilesystemOnlyResumes
+internal/tests/api/sandboxes	TestSandboxConnect
+internal/tests/api/sandboxes	TestSandboxConnect_CrossTeamAccess_Paused
 internal/tests/api/sandboxes	TestSandboxFork
 internal/tests/api/sandboxes	TestSandboxFork_Multiple
 internal/tests/api/sandboxes	TestSandboxFork_AlreadyPaused
 internal/tests/api/sandboxes	TestSandboxFork_NotFound
 internal/tests/api/sandboxes	TestSandboxFork_InvalidCount
+internal/tests/api/sandboxes	TestSandboxFork_CrossTeamAccess
 internal/tests/api/sandboxes	TestSandboxRapidSnapshotForkChain
 internal/tests/api/sandboxes	TestSandboxAutoPausePauseResume
 internal/tests/api/sandboxes	TestSandboxAutoPauseResumePersisted
@@ -82,6 +87,7 @@ internal/tests/api/templates	TestTemplateBuildWithDifferentSourceImages
 # Guest filesystem state across freeze/snapshot/resume.
 internal/tests/envd	TestFsFreezeThaw
 internal/tests/envd	TestCACertRotationOnResume
+internal/tests/envd	TestCACertTrustedAfterFilesystemOnlyReboot
 internal/tests/envd	TestSecureSandboxFilesystemOnlyResumeAuth
 internal/tests/envd	TestAccessAuthorizedPathWithResumedSandboxWithValidAccessToken
 internal/tests/envd	TestAccessAuthorizedPathWithResumedSandboxWithoutAccessToken
