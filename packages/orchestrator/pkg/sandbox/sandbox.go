@@ -314,7 +314,13 @@ type Sandbox struct {
 
 	exit *utils.ErrorOnce
 
-	stop utils.Lazy[error]
+	// stopMu serializes stop attempts; stopped latches once one of them
+	// succeeds. Deliberately not a sync.Once: sync.Once would memoize a failed
+	// stop and every later caller — the priority cleanup hook, the exit-watcher
+	// goroutine, stopSandboxAsync — would get the stale error back without the
+	// kill ever being re-attempted, orphaning the Firecracker process.
+	stopMu  sync.Mutex
+	stopped bool
 
 	// startupRecorded guards ALL first-WaitForEnvd recording — the envd-init
 	// duration + uffd.startup.* histograms, the envd-init call counter (in
@@ -1319,12 +1325,36 @@ func (s *Sandbox) Close(ctx context.Context) error {
 	return nil
 }
 
-// Stop kills the sandbox. It is safe to call multiple times; only the first
-// call will actually perform the stop operation.
+// Stop kills the sandbox. It is safe to call multiple times and from multiple
+// goroutines: attempts are serialized, and once one succeeds the sandbox stays
+// stopped and later calls are a no-op. A *failed* stop is retried by the next
+// caller — a transient failure (a canceled context, an FC process that outlived
+// its SIGKILL grace, a cgroup that was still populated when the kill budget ran
+// out) must not leave the VM running with nothing left to kill it.
 func (s *Sandbox) Stop(ctx context.Context) error {
-	return s.stop.GetOrInit(func() error {
+	return s.latchStop(func() error {
 		return s.doStop(ctx)
 	})
+}
+
+// latchStop serializes stop attempts and latches only on success, so a failed
+// stop stays retryable. doStop is idempotent, so re-running it after a partial
+// failure is safe.
+func (s *Sandbox) latchStop(stop func() error) error {
+	s.stopMu.Lock()
+	defer s.stopMu.Unlock()
+
+	if s.stopped {
+		return nil
+	}
+
+	if err := stop(); err != nil {
+		return err
+	}
+
+	s.stopped = true
+
+	return nil
 }
 
 // doStop performs the actual stop operation.
