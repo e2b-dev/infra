@@ -98,6 +98,20 @@ func (a *APIStore) volumeContentDomain(team *types.Team) (*string, error) {
 	return cluster.SandboxDomain, nil
 }
 
+// volumeTokenAudience builds the audience claim for a volume content token: the
+// origin the SDK targets for content requests, i.e. `https://api.<domain>`. The
+// domain is the team's BYOC cluster domain when set (as resolved by
+// volumeContentDomain) and the deployment default otherwise, matching the host
+// the token is actually presented to.
+func (a *APIStore) volumeTokenAudience(domain *string) string {
+	host := a.config.DomainName
+	if domain != nil && *domain != "" {
+		host = *domain
+	}
+
+	return fmt.Sprintf("https://api.%s", host)
+}
+
 var ErrNoHealthyOrchestratorFound = errors.New("no healthy orchestrator found")
 
 var ErrUnknownVolumeType = errors.New("unknown volume type")

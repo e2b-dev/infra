@@ -174,7 +174,7 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 		Set("volume_type", volume.VolumeType),
 	)
 
-	token, apiErr := generateVolumeContentToken(a.config.VolumesToken, volume, team)
+	token, apiErr := generateVolumeContentToken(a.config.VolumesToken, volume, team, a.volumeTokenAudience(domain))
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(ctx, apiErr.ClientMsg, apiErr.Err)

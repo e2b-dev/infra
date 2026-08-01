@@ -8,11 +8,31 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 )
+
+func TestVolumeTokenAudience(t *testing.T) {
+	t.Parallel()
+
+	store := &APIStore{config: cfg.Config{DomainName: "e2b.app"}}
+
+	t.Run("falls back to the deployment domain", func(t *testing.T) {
+		t.Parallel()
+
+		assert.Equal(t, "https://api.e2b.app", store.volumeTokenAudience(nil))
+	})
+
+	t.Run("uses the BYOC domain when set", func(t *testing.T) {
+		t.Parallel()
+
+		domain := "custom.example.com"
+		assert.Equal(t, "https://api.custom.example.com", store.volumeTokenAudience(&domain))
+	})
+}
 
 func TestVolumeContentDomain(t *testing.T) {
 	t.Parallel()
