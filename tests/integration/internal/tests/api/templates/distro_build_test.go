@@ -15,6 +15,9 @@ import (
 // own package names under set -e, links its own init binary and regenerates its
 // own CA bundle, so a build that reaches ready with the start and ready commands
 // executed proves the whole profile resolves and that envd boots under it.
+//
+// NixOS installs nothing — see its case below — so there the same assertions
+// prove the boot path rather than the package set.
 func TestTemplateBuildDistroFamilies(t *testing.T) {
 	t.Parallel()
 
@@ -42,6 +45,22 @@ func TestTemplateBuildDistroFamilies(t *testing.T) {
 			name:         "Alpine on OpenRC",
 			templateName: "test-distro-alpine",
 			fromImage:    "alpine:3.24",
+		},
+		// Premade, so the profile declares no packages and a PkgInstall that
+		// exits 1: everything provisioning installs elsewhere is baked into the
+		// image's own NixOS configuration. Reaching ready therefore proves the
+		// parts that are still ours — the busybox Bootstrap standing in for the
+		// FHS userland the image has no /bin/sh for before its first activation,
+		// the /sbin/e2b-nixos-init activation shim, and the drop-in removal that
+		// lets setup-etc take over /etc/systemd/system.
+		//
+		// Pinned to the immutable tag, never :latest: the base-layer cache key is
+		// the image reference as written (phases/base/hash.go), so a republished
+		// :latest would keep building from the stale cached layer.
+		{
+			name:         "NixOS premade",
+			templateName: "test-distro-nixos",
+			fromImage:    "e2bdev/nixos:26.05-20260731",
 		},
 	}
 
