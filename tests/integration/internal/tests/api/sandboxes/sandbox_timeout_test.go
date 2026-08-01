@@ -82,7 +82,7 @@ func TestSandboxTimeout_NotFound(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, timeoutResp.StatusCode())
 }
 
-//compression-tests:excluded subject is the timeout API surface; pause is fixture
+// compression-tests:excluded subject is the timeout API surface; pause is fixture
 func TestSandboxSetTimeoutPausingSandbox(t *testing.T) {
 	t.Parallel()
 	c := setup.GetAPIClient()

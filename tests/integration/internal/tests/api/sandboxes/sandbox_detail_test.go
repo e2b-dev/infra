@@ -34,7 +34,7 @@ func TestSandboxDetailRunning(t *testing.T) {
 	assert.Equal(t, "base", *returnedSbx.Alias)
 }
 
-//compression-tests:excluded subject is the detail API surface; autopause config is fixture
+// compression-tests:excluded subject is the detail API surface; autopause config is fixture
 func TestSandboxDetailReturnsLifecycleAndNetworkConfig(t *testing.T) {
 	t.Parallel()
 	c := setup.GetAPIClient()
@@ -88,7 +88,7 @@ func TestSandboxDetailReturnsLifecycleAndNetworkConfig(t *testing.T) {
 	assertDetail(t, api.Paused)
 }
 
-//compression-tests:excluded subject is the detail API surface; pause is fixture
+// compression-tests:excluded subject is the detail API surface; pause is fixture
 func TestSandboxDetailPaused(t *testing.T) {
 	t.Parallel()
 	c := setup.GetAPIClient()
@@ -108,7 +108,7 @@ func TestSandboxDetailPaused(t *testing.T) {
 	assert.Equal(t, "base", *returnedSbx.Alias)
 }
 
-//compression-tests:excluded subject is the detail API surface; pause is fixture
+// compression-tests:excluded subject is the detail API surface; pause is fixture
 func TestSandboxDetailPausingSandbox(t *testing.T) {
 	t.Parallel()
 	c := setup.GetAPIClient()

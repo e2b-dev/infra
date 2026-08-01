@@ -127,7 +127,7 @@ func TestSandboxListRunning_NoMetadata(t *testing.T) {
 	assert.Contains(t, sandboxIds, sandboxID)
 }
 
-//compression-tests:excluded subject is the list API surface; pause is fixture
+// compression-tests:excluded subject is the list API surface; pause is fixture
 func TestSandboxListPaused(t *testing.T) {
 	t.Parallel()
 	c := setup.GetAPIClient()
@@ -163,7 +163,7 @@ func TestSandboxListPaused(t *testing.T) {
 	assert.True(t, found)
 }
 
-//compression-tests:excluded subject is the list API surface; pause is fixture
+// compression-tests:excluded subject is the list API surface; pause is fixture
 func TestSandboxListPausing(t *testing.T) {
 	t.Parallel()
 	c := setup.GetAPIClient()
@@ -220,7 +220,7 @@ func TestSandboxListPausing(t *testing.T) {
 	require.NoError(t, err)
 }
 
-//compression-tests:excluded subject is the list API surface; pause is fixture
+// compression-tests:excluded subject is the list API surface; pause is fixture
 func TestSandboxListPaused_NoMetadata(t *testing.T) {
 	t.Parallel()
 	c := setup.GetAPIClient()
@@ -396,7 +396,7 @@ func TestSandboxListPaginationRunningLargerLimit(t *testing.T) { //nolint:tparal
 	})
 }
 
-//compression-tests:excluded subject is list pagination; pause is fixture
+// compression-tests:excluded subject is list pagination; pause is fixture
 func TestSandboxListPaginationPaused(t *testing.T) {
 	t.Parallel()
 	c := setup.GetAPIClient()
@@ -447,7 +447,7 @@ func TestSandboxListPaginationPaused(t *testing.T) {
 	assert.Empty(t, nextToken)
 }
 
-//compression-tests:excluded subject is list pagination; pause is fixture
+// compression-tests:excluded subject is list pagination; pause is fixture
 func TestSandboxListPaginationRunningAndPaused(t *testing.T) {
 	t.Parallel()
 	c := setup.GetAPIClient()

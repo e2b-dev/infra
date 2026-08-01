@@ -91,7 +91,7 @@ func verifyConnectivity(
 
 // TestUpdateNetworkConfig exercises all update scenarios using a single sandbox.
 // Subtests run sequentially — each PUT fully replaces the previous config.
-//compression-tests:excluded subject is network config surface; pause/resume cycles the states
+// compression-tests:excluded subject is network config surface; pause/resume cycles the states
 func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are sequential
 	t.Parallel()
 
