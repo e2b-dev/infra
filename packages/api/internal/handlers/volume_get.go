@@ -23,10 +23,19 @@ func (a *APIStore) GetVolumesVolumeID(c *gin.Context, volumeID api.VolumeID) {
 		return
 	}
 
+	domain, domainErr := a.volumeContentDomain(team)
+	if domainErr != nil {
+		a.sendAPIStoreError(c, http.StatusServiceUnavailable, "Cluster not found")
+		telemetry.ReportError(c.Request.Context(), "cluster not found", domainErr)
+
+		return
+	}
+
 	result := api.VolumeAndToken{
 		VolumeID: volume.ID.String(),
 		Name:     volume.Name,
 		Token:    token,
+		Domain:   domain,
 	}
 
 	c.JSON(http.StatusOK, result)

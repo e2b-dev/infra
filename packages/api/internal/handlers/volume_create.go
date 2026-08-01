@@ -89,6 +89,16 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 
 	clusterID := clustershared.WithClusterFallback(team.ClusterID)
 
+	// Resolve the BYOC domain up front so we fail before allocating any
+	// resources if the team's cluster can't be found.
+	domain, err := a.volumeContentDomain(team)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusServiceUnavailable, "Cluster not found")
+		telemetry.ReportError(ctx, "cluster not found", err)
+
+		return
+	}
+
 	// The volume identity we intend to create. We generate the ID up front so we
 	// can hand it to the orchestrator, which is given the chance to adjust these
 	// values (e.g. resolve a placeholder volume type) and returns the definitive
@@ -176,6 +186,7 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 		VolumeID: volume.ID.String(),
 		Name:     volume.Name,
 		Token:    token,
+		Domain:   domain,
 	}
 
 	c.JSON(http.StatusCreated, result)

@@ -3,11 +3,57 @@ package handlers
 import (
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
+	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 )
+
+func TestVolumeContentDomain(t *testing.T) {
+	t.Parallel()
+
+	clusterID := uuid.New()
+	domain := "custom.example.com"
+
+	store := &APIStore{
+		clusters: clusters.NewTestPool(clusters.NewTestCluster(clusterID, &domain)),
+	}
+
+	teamWith := func(id *uuid.UUID) *types.Team {
+		return &types.Team{Team: &authqueries.Team{ID: uuid.New(), ClusterID: id}}
+	}
+
+	t.Run("no cluster returns nil domain", func(t *testing.T) {
+		t.Parallel()
+
+		got, err := store.volumeContentDomain(teamWith(nil))
+		require.NoError(t, err)
+		assert.Nil(t, got)
+	})
+
+	t.Run("BYOC cluster returns its domain", func(t *testing.T) {
+		t.Parallel()
+
+		got, err := store.volumeContentDomain(teamWith(&clusterID))
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, domain, *got)
+	})
+
+	t.Run("unknown cluster returns error", func(t *testing.T) {
+		t.Parallel()
+
+		unknown := uuid.New()
+		got, err := store.volumeContentDomain(teamWith(&unknown))
+		require.ErrorIs(t, err, ErrClusterNotFound)
+		assert.Nil(t, got)
+	})
+}
 
 func TestFindNodesByVolumeLabel(t *testing.T) {
 	t.Parallel()
