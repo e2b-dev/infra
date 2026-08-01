@@ -1,0 +1,161 @@
+package handler
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io/fs"
+	"os/exec"
+	"syscall"
+	"testing"
+
+	"connectrpc.com/connect"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
+)
+
+// eagainStartError is shaped exactly like the error a real spawn failure
+// produces: os/exec returns *fs.PathError{Op: "fork/exec"} carrying the errno,
+// and Handler.Start wraps it with %w.
+func eagainStartError() error {
+	return fmt.Errorf("error starting process '%s': %w", "sleep 1", &fs.PathError{Op: "fork/exec", Path: "/bin/sh", Err: syscall.EAGAIN})
+}
+
+// A sandbox that runs out of process capacity must not be told its request was
+// invalid — EAGAIN is transient and retryable, so it maps to
+// CodeResourceExhausted. Everything that is genuinely the caller's fault keeps
+// mapping to CodeInvalidArgument.
+func TestStartErrorCode(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		err  error
+		name string
+		want connect.Code
+	}{
+		{
+			name: "fork/exec EAGAIN is resource exhaustion",
+			err:  eagainStartError(),
+			want: connect.CodeResourceExhausted,
+		},
+		{
+			name: "pty spawn EAGAIN is resource exhaustion",
+			err:  fmt.Errorf("error starting pty with command '%s' in dir '%s' with '%d' cols and '%d' rows: %w", "sleep 1", "/home/user", 80, 24, &fs.PathError{Op: "fork/exec", Path: "/bin/sh", Err: syscall.EAGAIN}),
+			want: connect.CodeResourceExhausted,
+		},
+		{
+			name: "bare EAGAIN is resource exhaustion",
+			err:  syscall.EAGAIN,
+			want: connect.CodeResourceExhausted,
+		},
+		{
+			name: "ENOMEM is resource exhaustion",
+			err:  fmt.Errorf("wrapped: %w", syscall.ENOMEM),
+			want: connect.CodeResourceExhausted,
+		},
+		{
+			name: "EMFILE is resource exhaustion",
+			err:  fmt.Errorf("wrapped: %w", syscall.EMFILE),
+			want: connect.CodeResourceExhausted,
+		},
+		{
+			name: "ENFILE is resource exhaustion",
+			err:  fmt.Errorf("wrapped: %w", syscall.ENFILE),
+			want: connect.CodeResourceExhausted,
+		},
+		{
+			name: "out of ptys is resource exhaustion",
+			err:  fmt.Errorf("error starting pty: %w", &fs.PathError{Op: "open", Path: "/dev/ptmx", Err: syscall.ENOSPC}),
+			want: connect.CodeResourceExhausted,
+		},
+		{
+			name: "expired request timeout is a deadline",
+			err:  fmt.Errorf("error starting process '%s': %w", "sleep 1", context.DeadlineExceeded),
+			want: connect.CodeDeadlineExceeded,
+		},
+		{
+			name: "cancelled request is a cancellation",
+			err:  fmt.Errorf("error starting process '%s': %w", "sleep 1", context.Canceled),
+			want: connect.CodeCanceled,
+		},
+		// Regression guards: the fix must not reclassify anything that is
+		// genuinely a bad request.
+		{
+			name: "missing binary stays invalid argument",
+			err:  fmt.Errorf("error starting process '%s': %w", "nope", &exec.Error{Name: "nope", Err: exec.ErrNotFound}),
+			want: connect.CodeInvalidArgument,
+		},
+		{
+			name: "missing cwd stays invalid argument",
+			err:  fmt.Errorf("error starting process '%s': %w", "sleep 1", &fs.PathError{Op: "chdir", Path: "/nope", Err: syscall.ENOENT}),
+			want: connect.CodeInvalidArgument,
+		},
+		{
+			name: "permission denied stays invalid argument",
+			err:  fmt.Errorf("error starting process '%s': %w", "sleep 1", &fs.PathError{Op: "fork/exec", Path: "/bin/sh", Err: syscall.EACCES}),
+			want: connect.CodeInvalidArgument,
+		},
+		{
+			name: "opaque error stays invalid argument",
+			err:  errors.New("something went wrong"),
+			want: connect.CodeInvalidArgument,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := StartErrorCode(tc.err)
+			assert.Equalf(t, tc.want, got, "got %s, want %s", got, tc.want)
+		})
+	}
+}
+
+// What the SDK client actually observes on the wire is the code carried by the
+// *connect.Error, so assert on that rather than on the classifier alone.
+func TestStartErrorClientObservedCode(t *testing.T) {
+	t.Parallel()
+
+	exhausted := eagainStartError()
+	assert.Equal(t, connect.CodeResourceExhausted, connect.CodeOf(connect.NewError(StartErrorCode(exhausted), exhausted)))
+
+	badRequest := fmt.Errorf("error starting process '%s': %w", "nope", &exec.Error{Name: "nope", Err: exec.ErrNotFound})
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(connect.NewError(StartErrorCode(badRequest), badRequest)))
+}
+
+// Handler.Start must wrap the spawn failure so the errno survives to the
+// classifier — a %v instead of %w here would silently turn every exhausted
+// sandbox back into an invalid_argument.
+func TestHandlerStartPreservesErrno(t *testing.T) {
+	t.Parallel()
+
+	newHandler := func(t *testing.T, startErr error) *Handler {
+		t.Helper()
+
+		return &Handler{
+			Config:   &rpc.ProcessConfig{Cmd: "sleep", Args: []string{"200"}},
+			cmd:      exec.CommandContext(t.Context(), "/bin/sh", "-c", "sleep 200"),
+			startCmd: func(*exec.Cmd) error { return startErr },
+		}
+	}
+
+	t.Run("EAGAIN surfaces as resource exhausted", func(t *testing.T) {
+		t.Parallel()
+
+		pid, err := newHandler(t, &fs.PathError{Op: "fork/exec", Path: "/bin/sh", Err: syscall.EAGAIN}).Start(0)
+		require.ErrorIs(t, err, syscall.EAGAIN)
+		assert.Zero(t, pid)
+		assert.Contains(t, err.Error(), "sleep 200")
+		assert.Equal(t, connect.CodeResourceExhausted, connect.CodeOf(connect.NewError(StartErrorCode(err), err)))
+	})
+
+	t.Run("missing binary stays invalid argument", func(t *testing.T) {
+		t.Parallel()
+
+		pid, err := newHandler(t, &exec.Error{Name: "nope", Err: exec.ErrNotFound}).Start(0)
+		require.Error(t, err)
+		assert.Zero(t, pid)
+		assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(connect.NewError(StartErrorCode(err), err)))
+	})
+}

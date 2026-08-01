@@ -53,6 +53,12 @@ type Handler struct {
 	cmd *exec.Cmd
 	tty *os.File
 
+	// startCmd forks cmd. Injected for testability so the spawn-failure path can
+	// be exercised without actually exhausting the host; production passes
+	// (*exec.Cmd).Start. Set by New, which is the only constructor whose handler
+	// is ever started — a re-adopted handler has no cmd and never Starts.
+	startCmd func(*exec.Cmd) error
+
 	cancel context.CancelFunc
 
 	outCtx    context.Context //nolint:containedctx // todo: refactor so this can be removed
@@ -275,6 +281,7 @@ func New(
 	h := &Handler{
 		Config:    req.GetProcess(),
 		cmd:       cmd,
+		startCmd:  (*exec.Cmd).Start,
 		Tag:       req.Tag,
 		DataEvent: outMultiplex,
 		cancel:    cancel,
@@ -299,7 +306,9 @@ func New(
 			Rows: uint16(req.GetPty().GetSize().GetRows()),
 		})
 		if err != nil {
-			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("error starting pty with command '%s' in dir '%s' with '%d' cols and '%d' rows: %w", userCmd, cmd.Dir, req.GetPty().GetSize().GetCols(), req.GetPty().GetSize().GetRows(), err))
+			startErr := fmt.Errorf("error starting pty with command '%s' in dir '%s' with '%d' cols and '%d' rows: %w", userCmd, cmd.Dir, req.GetPty().GetSize().GetCols(), req.GetPty().GetSize().GetRows(), err)
+
+			return nil, connect.NewError(StartErrorCode(startErr), startErr)
 		}
 
 		outWg.Go(func() {
@@ -547,7 +556,7 @@ func (p *Handler) WriteTty(data []byte) error {
 func (p *Handler) Start(requestTimeout time.Duration) (uint32, error) {
 	// Pty is already started in the New method
 	if p.tty == nil {
-		err := p.cmd.Start()
+		err := p.startCmd(p.cmd)
 		if err != nil {
 			return 0, fmt.Errorf("error starting process '%s': %w", p.userCommand(), err)
 		}

@@ -174,7 +174,7 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 	if err != nil {
 		s.snapshotMu.RUnlock()
 
-		return connect.NewError(connect.CodeInvalidArgument, err)
+		return connect.NewError(handler.StartErrorCode(err), err)
 	}
 
 	// Drop any retained exit left over from a previous process that used this
