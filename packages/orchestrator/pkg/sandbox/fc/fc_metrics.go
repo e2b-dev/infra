@@ -263,6 +263,37 @@ func (p *Process) FlushAndReadBalloonMetrics(ctx context.Context) (BalloonMetric
 	}
 }
 
+// runMetricsFlushLoop asks Firecracker to flush its metrics on every tick until
+// the VM exits. It reports flush failures through onFlushErr.
+func runMetricsFlushLoop(
+	ctx context.Context,
+	exit <-chan struct{},
+	ticks <-chan time.Time,
+	flush func(context.Context) error,
+	onFlushErr func(error),
+) {
+	for {
+		select {
+		case <-exit:
+			return
+		case <-ticks:
+			// A select with several ready cases picks one at random, so a tick
+			// can win against an already-closed exit. Re-check before touching
+			// the API socket: Firecracker may already be gone, and the resulting
+			// "connection reset by peer" would look like a real API failure.
+			select {
+			case <-exit:
+				return
+			default:
+			}
+
+			if err := flush(ctx); err != nil {
+				onFlushErr(err)
+			}
+		}
+	}
+}
+
 // startMetricsReader opens the metrics FIFO and starts a goroutine that reads
 // Firecracker metrics lines and exports metrics via OTEL.
 // It must be called before setMetrics so that the FIFO is open for reading
@@ -280,19 +311,12 @@ func (p *Process) startMetricsReader(ctx context.Context) {
 		ticker := time.NewTicker(metricsFlushInterval)
 		defer ticker.Stop()
 
-		for {
-			select {
-			case <-p.Exit.Done():
-				return
-			case <-ticker.C:
-				if err := p.client.flushMetrics(ctx); err != nil {
-					logger.L().Warn(ctx, "failed to flush fc metrics",
-						zap.Error(err),
-						logger.WithSandboxID(sandboxID),
-					)
-				}
-			}
-		}
+		runMetricsFlushLoop(ctx, p.Exit.Done(), ticker.C, p.client.flushMetrics, func(err error) {
+			logger.L().Warn(ctx, "failed to flush fc metrics",
+				zap.Error(err),
+				logger.WithSandboxID(sandboxID),
+			)
+		})
 	}()
 
 	go func() {
