@@ -15,7 +15,10 @@ if [ -z "${workdir}" ]; then
     # Use the user's home directory
     workdir=$(getent passwd "$user" | cut -d: -f6)
 fi
-cd "$workdir" || exit 1
+if ! cd "$workdir"; then
+    echo "Error: working directory does not exist: $workdir" >&2
+    exit 1
+fi
 
 # Get the parent folder of the source file/folder
 sourceFolder="$(dirname "$sourcePath")"
@@ -28,13 +31,19 @@ else
     targetPath="$(pwd)/$inputPath"
 fi
 
-cd "$sourceFolder" || exit 1
+# A missing parent folder means the source path was never part of the uploaded
+# build context - report it the same way as a missing entry instead of exiting
+# silently, which left the build with a bare "exit status 1".
+if ! cd "$sourceFolder"; then
+    echo "Error: source path does not exist: $sourcePath" >&2
+    exit 1
+fi
 
 # Get the entry (file, directory, or symlink) named by the source path
 entry="$(basename "$sourcePath")"
 
 if [ ! -e "$entry" ] && [ ! -L "$entry" ]; then
-    echo "Error: source path does not exist: $sourcePath"
+    echo "Error: source path does not exist: $sourcePath" >&2
     exit 1
 fi
 
@@ -87,6 +96,6 @@ elif [ -d "$entry" ]; then
     chmod -R u+rwx "$entry"
     rm -rf "$entry"
 else
-    echo "Error: entry is neither file, directory, nor symlink"
+    echo "Error: entry is neither file, directory, nor symlink: $sourcePath" >&2
     exit 1
 fi

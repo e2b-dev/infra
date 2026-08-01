@@ -151,7 +151,8 @@ func (c *Copy) Execute(
 
 	// Run the move script as root so it can chown files to any user
 	// The script handles both ownership and permissions on the source before moving
-	err = sandboxtools.RunCommandWithLogger(
+	var moveStderr strings.Builder
+	err = sandboxtools.RunCommandWithLoggerAndOutput(
 		ctx,
 		proxy,
 		logger,
@@ -160,12 +161,38 @@ func (c *Copy) Execute(
 		sandboxID,
 		moveScript.String(),
 		cmdMetadata.WithUser("root"),
+		func(_, stderr string) {
+			moveStderr.WriteString(stderr)
+		},
 	)
 	if err != nil {
-		return metadata.Context{}, fmt.Errorf("failed to move files in sandbox: %w", err)
+		return metadata.Context{}, fmt.Errorf(
+			"failed to copy %q to %q in sandbox: %w",
+			args.SourcePath, args.TargetPath, withCommandDiagnostic(err, moveStderr.String()),
+		)
 	}
 
 	return cmdMetadata, nil
+}
+
+// maxCommandDiagnosticLen caps how much of a failing command's stderr is folded
+// into the returned error, so a runaway command cannot flood the build result.
+const maxCommandDiagnosticLen = 512
+
+// withCommandDiagnostic annotates err with what the command printed on stderr.
+// Without it a failing copy surfaces as a bare "exit status 1" with no hint of
+// which path could not be resolved.
+func withCommandDiagnostic(err error, stderr string) error {
+	diagnostic := strings.TrimSpace(stderr)
+	if diagnostic == "" {
+		return err
+	}
+
+	if len(diagnostic) > maxCommandDiagnosticLen {
+		diagnostic = diagnostic[:maxCommandDiagnosticLen] + "..."
+	}
+
+	return fmt.Errorf("%w: %s", err, diagnostic)
 }
 
 func ensureTrailingSlash(s string) string {

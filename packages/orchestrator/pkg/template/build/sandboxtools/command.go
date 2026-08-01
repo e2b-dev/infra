@@ -93,6 +93,39 @@ func RunCommandWithLogger(
 	)
 }
 
+// RunCommandWithLoggerAndOutput streams the command output to the build logger
+// exactly like RunCommandWithLogger, and additionally hands every chunk to
+// processOutput so the caller can quote the command's own diagnostics in the
+// error it returns. Build logs are emitted at lvl, which is usually too verbose
+// to be shown to the user, so a failing command has no other way to explain
+// itself.
+func RunCommandWithLoggerAndOutput(
+	ctx context.Context,
+	proxy *proxy.SandboxProxy,
+	logger logger.Logger,
+	lvl zapcore.Level,
+	id string,
+	sandboxID string,
+	command string,
+	metadata metadata.Context,
+	processOutput func(stdout, stderr string),
+) error {
+	return runCommandWithAllOptions(
+		ctx,
+		proxy,
+		sandboxID,
+		command,
+		metadata,
+		// No confirmation needed for this command
+		make(chan struct{}),
+		func(stdout, stderr string) {
+			logStream(ctx, logger, lvl, id, "stdout", stdout)
+			logStream(ctx, logger, lvl, id, "stderr", stderr)
+			processOutput(stdout, stderr)
+		},
+	)
+}
+
 func RunCommandWithConfirmation(
 	ctx context.Context,
 	proxy *proxy.SandboxProxy,

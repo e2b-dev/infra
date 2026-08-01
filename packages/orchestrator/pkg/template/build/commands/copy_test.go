@@ -870,6 +870,36 @@ func TestCopyScriptBehavior(t *testing.T) { //nolint:paralleltest // no idea why
 			},
 		},
 		{
+			// EN-819: an absolute host path is joined onto the unpack directory,
+			// so the synthesized parent folder never exists. The script used to
+			// "cd || exit 1" here without printing anything, leaving the build
+			// with a bare "exit status 1".
+			name:        "absolute_source_path_outside_context",
+			description: "An absolute source path that is not in the build context reports which path is missing",
+			files: map[string]string{
+				"file.txt": "file",
+			},
+			copyFrom:         "/Users/mish/Documents/Projects/E2B/pathwork/file.txt",
+			copyTo:           "file.txt",
+			shouldSucceed:    false,
+			expectedExitCode: 1,
+			expectedError:    "source path does not exist",
+			absentPaths:      []string{"file.txt"},
+		},
+		{
+			name:        "missing_source_entry_in_existing_folder",
+			description: "A missing entry inside an existing folder still reports the source path",
+			files: map[string]string{
+				"app/main.js": "file",
+			},
+			copyFrom:         "app/missing.js",
+			copyTo:           "out/missing.js",
+			shouldSucceed:    false,
+			expectedExitCode: 1,
+			expectedError:    "source path does not exist",
+			absentPaths:      []string{"out/missing.js"},
+		},
+		{
 			name:        "deeply_nested_folder",
 			description: "Deeply nested folder should be copied correctly",
 			files: map[string]string{
@@ -989,6 +1019,49 @@ func TestCopyScriptBehavior(t *testing.T) { //nolint:paralleltest // no idea why
 					}
 				}
 			}
+		})
+	}
+}
+
+func TestWithCommandDiagnostic(t *testing.T) {
+	t.Parallel()
+
+	baseErr := errors.New("exit status 1")
+
+	tests := []struct {
+		name     string
+		stderr   string
+		expected string
+	}{
+		{
+			name:     "no output leaves the error untouched",
+			stderr:   "",
+			expected: "exit status 1",
+		},
+		{
+			name:     "whitespace only leaves the error untouched",
+			stderr:   "\n  \n",
+			expected: "exit status 1",
+		},
+		{
+			name:     "diagnostic is appended",
+			stderr:   "Error: source path does not exist: /tmp/hash/unpack/Users/mish/file.txt\n",
+			expected: "exit status 1: Error: source path does not exist: /tmp/hash/unpack/Users/mish/file.txt",
+		},
+		{
+			name:     "long output is truncated",
+			stderr:   strings.Repeat("x", maxCommandDiagnosticLen+50),
+			expected: "exit status 1: " + strings.Repeat("x", maxCommandDiagnosticLen) + "...",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := withCommandDiagnostic(baseErr, tt.stderr)
+			assert.Equal(t, tt.expected, err.Error())
+			assert.ErrorIs(t, err, baseErr, "the original error must stay unwrappable")
 		})
 	}
 }
