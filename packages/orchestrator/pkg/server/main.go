@@ -93,6 +93,9 @@ type Server struct {
 	uploadsWG       sync.WaitGroup
 	uploadsInFlight atomic.Int64
 
+	// drainPoll overrides sandboxDrainPollInterval. Only set in tests.
+	drainPoll time.Duration
+
 	done      chan struct{}
 	closeOnce sync.Once
 }
@@ -321,24 +324,51 @@ func (s *Server) drainUploads(ctx context.Context, uploadsDone <-chan struct{}) 
 }
 
 // DrainSandboxes waits for the live sandboxes on this node to exit on their own
-// during a graceful shutdown, then waits for their lifecycle cleanup to finish.
-// It does not reject new sandbox starts; that admission gating is layered in
-// separately. It returns ctx.Err() if ctx is cancelled before the node empties.
+// during a graceful shutdown, then waits for their lifecycle cleanup and for any
+// detached snapshot upload to finish. It does not reject new sandbox starts;
+// that admission gating is layered in separately. It returns ctx.Err() if ctx is
+// cancelled before the node empties.
 func (s *Server) DrainSandboxes(ctx context.Context) error {
 	live := s.sandboxFactory.Sandboxes.Count()
 	logger.L().Info(ctx, "starting graceful sandbox drain", zap.Int("live_sandboxes", live))
 
-	ticker := time.NewTicker(sandboxDrainPollInterval)
+	pollInterval := s.drainPoll
+	if pollInterval <= 0 {
+		pollInterval = sandboxDrainPollInterval
+	}
+
+	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 	startedAt := time.Now()
 	lastLoggedAt := startedAt
+	awaitingUploads := false
 
 	for {
 		remaining := s.sandboxFactory.Sandboxes.Count()
 		if remaining == 0 {
-			logger.L().Info(ctx, "graceful sandbox drain complete", zap.Int("live_sandboxes", remaining))
+			if err := s.waitSandboxLifecycles(ctx); err != nil {
+				return err
+			}
 
-			return s.waitSandboxLifecycles(ctx)
+			// Pause detaches the snapshot upload from the sandbox lifecycle: the
+			// sandbox is marked stopping when Pause starts and its lifecycle ends
+			// well before the memfile and rootfs reach storage. Reporting the node
+			// as drained here lets the supervisor terminate the orchestrator while
+			// the last paused sandbox is still uploading, which loses the snapshot.
+			uploads := s.uploadsInFlight.Load()
+			if uploads == 0 {
+				logger.L().Info(ctx, "graceful sandbox drain complete", zap.Int("live_sandboxes", remaining))
+
+				return nil
+			}
+
+			if !awaitingUploads {
+				awaitingUploads = true
+
+				logger.L().Info(ctx, "sandboxes drained, waiting for in-flight snapshot uploads",
+					zap.Int64("uploads", uploads),
+				)
+			}
 		}
 
 		select {

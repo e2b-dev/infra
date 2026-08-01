@@ -56,6 +56,18 @@ job "orchestrator-${latest_orchestrator_job_id}" {
     task "start" {
       driver = "raw_exec"
 
+      # The orchestrator drains on SIGTERM: it marks itself draining, waits for
+      # its sandboxes to exit and then for the detached snapshot uploads of the
+      # sandboxes that were paused on the way out. Without an explicit
+      # kill_timeout Nomad SIGKILLs after 5s, which is shorter than the drain's
+      # own 15s status-propagation wait, so the drain never got to run and a
+      # snapshot still uploading was lost. The clients allow up to 24h
+      # (max_kill_timeout in run-nomad.sh); FORCE_STOP=true is the escape hatch
+      # for an immediate stop.
+      # https://developer.hashicorp.com/nomad/docs/configuration/client#max_kill_timeout
+      kill_timeout = "24h"
+      kill_signal  = "SIGTERM"
+
       restart {
         attempts = 0
       }

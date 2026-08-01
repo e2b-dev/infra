@@ -76,11 +76,78 @@ func TestDrainSandboxesCompletesAfterSandboxLeaves(t *testing.T) {
 	}
 }
 
+// Pausing a sandbox marks it stopping before the snapshot is taken and ends its
+// lifecycle before the upload finishes, so the node looks empty while the last
+// snapshot is still on its way to storage. The drain must not report completion
+// until those detached uploads land.
+func TestDrainSandboxesWaitsForInFlightSnapshotUploads(t *testing.T) {
+	t.Parallel()
+
+	s := drainTestServer()
+	s.uploadsInFlight.Add(1)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- s.DrainSandboxes(t.Context())
+	}()
+
+	select {
+	case err := <-done:
+		require.Failf(t, "DrainSandboxes returned while a snapshot upload was in flight", "err: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	s.uploadsInFlight.Add(-1)
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("DrainSandboxes did not complete after the snapshot upload finished")
+	}
+}
+
+func TestDrainSandboxesWaitsForUploadStartedByTheLastSandbox(t *testing.T) {
+	t.Parallel()
+
+	s := drainTestServer()
+	sbx := drainTestSandbox(t, "lifecycle-1")
+	s.sandboxFactory.Sandboxes.MarkRunning(t.Context(), sbx)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- s.DrainSandboxes(t.Context())
+	}()
+
+	// Pause of the last sandbox: it leaves the live map and its lifecycle ends,
+	// but the snapshot upload is registered and still running.
+	s.uploadsInFlight.Add(1)
+	require.True(t, s.sandboxFactory.Sandboxes.MarkStopping(t.Context(), sbx.Runtime.SandboxID, sbx.LifecycleID))
+	s.sandboxFactory.Sandboxes.MarkStopped(t.Context(), sbx)
+
+	select {
+	case err := <-done:
+		require.Failf(t, "DrainSandboxes returned while the last snapshot was uploading", "err: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	s.uploadsInFlight.Add(-1)
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("DrainSandboxes did not complete after the snapshot upload finished")
+	}
+}
+
 func drainTestServer() *Server {
 	return &Server{
 		sandboxFactory: &sandbox.Factory{
 			Sandboxes: sandbox.NewSandboxesMap(),
 		},
+		// Keep the drain responsive; production polls every 5s.
+		drainPoll: 10 * time.Millisecond,
 	}
 }
 
