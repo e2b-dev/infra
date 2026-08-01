@@ -320,7 +320,7 @@ func (a *APIStore) GetTemplatesTemplateIDTags(c *gin.Context, templateID api.Tem
 		return
 	}
 
-	aliasInfo, err := a.templateCache.ResolveAlias(ctx, identifier, team.Slug)
+	aliasInfo, metadata, err := a.templateCache.ResolveAliasWithMetadata(ctx, identifier, team.Slug)
 	if err != nil {
 		apiErr := templatecache.ErrorToAPIError(err, identifier)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
@@ -329,7 +329,8 @@ func (a *APIStore) GetTemplatesTemplateIDTags(c *gin.Context, templateID api.Tem
 		return
 	}
 
-	if aliasInfo.TeamID != team.ID {
+	// Public templates are readable cross-team, matching how they can be used everywhere else.
+	if aliasInfo.TeamID != team.ID && !metadata.Public {
 		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", templateID))
 		telemetry.ReportError(ctx, "no access to the template", nil, telemetry.WithTemplateID(aliasInfo.TemplateID))
 
