@@ -52,6 +52,15 @@ net.core.netdev_max_backlog = 65535
 # Increase maximum number of TCP sockets
 net.ipv4.tcp_max_syn_backlog = 65535
 
+# Raise the ARP/NDP neighbour table limits. Each sandbox adds a host-side veth
+# neighbour entry, and the kernel defaults (128/512/1024) overflow on a full node.
+net.ipv4.neigh.default.gc_thresh1 = 4096
+net.ipv4.neigh.default.gc_thresh2 = 8192
+net.ipv4.neigh.default.gc_thresh3 = 16384
+net.ipv6.neigh.default.gc_thresh1 = 4096
+net.ipv6.neigh.default.gc_thresh2 = 8192
+net.ipv6.neigh.default.gc_thresh3 = 16384
+
 # Increase the maximum number of memory map areas
 vm.max_map_count=1048576
 
