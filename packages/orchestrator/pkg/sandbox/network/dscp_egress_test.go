@@ -13,7 +13,7 @@ import (
 	"github.com/vishvananda/netns"
 )
 
-func dscp(v uint8) *uint8 { return &v }
+func dscp(v uint8) *uint8 { return new(v) }
 
 // TestConfig_EgressDSCP covers how the two configured classes resolve. Build
 // sandboxes get their own value when one is set and otherwise inherit the

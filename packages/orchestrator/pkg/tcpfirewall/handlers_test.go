@@ -466,7 +466,7 @@ func TestAlwaysDeniedCIDRs(t *testing.T) {
 	}
 }
 
-func dscp(v uint8) *uint8 { return &v }
+func dscp(v uint8) *uint8 { return new(v) }
 
 func sandboxOfType(t sandbox.SandboxType) *sandbox.Sandbox {
 	return &sandbox.Sandbox{Metadata: &sandbox.Metadata{Runtime: sandbox.RuntimeMetadata{SandboxType: t}}}
@@ -559,7 +559,7 @@ func TestEgressTOS(t *testing.T) {
 func TestMarkDSCP_SetsSocketTOS(t *testing.T) {
 	t.Parallel()
 
-	ln, err := net.Listen("tcp4", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}

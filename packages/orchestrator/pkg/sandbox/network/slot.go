@@ -278,7 +278,8 @@ func (s *Slot) ApplyEgressDSCP(ctx context.Context, dscp uint8) error {
 		return nil
 	}
 
-	ctx, span := tracer.Start(ctx, "slot-egress-dscp-apply", trace.WithAttributes(
+	// The netns work below is synchronous and takes no context of its own.
+	_, span := tracer.Start(ctx, "slot-egress-dscp-apply", trace.WithAttributes(
 		attribute.String("namespace_id", s.NamespaceID()),
 		attribute.Int("dscp", int(dscp)),
 	))
