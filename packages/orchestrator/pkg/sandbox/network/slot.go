@@ -304,6 +304,12 @@ func (s *Slot) ApplyEgressDSCP(ctx context.Context, dscp uint8) error {
 			if err := tables.DeleteIfExists("mangle", "POSTROUTING", s.dscpMangleRuleArgs(current)...); err != nil {
 				return fmt.Errorf("error removing DSCP %d mangle rule on vpeer: %w", current, err)
 			}
+
+			// Record the slot as unmarked before attempting the append. If that
+			// fails, the cache must not keep claiming a rule that is no longer
+			// installed, or recycle would see a match, skip the restamp and put
+			// a silently unmarked slot back into the pool.
+			s.egressDSCP.Store(0)
 		}
 
 		if dscp > 0 {

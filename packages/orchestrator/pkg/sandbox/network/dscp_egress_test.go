@@ -221,6 +221,42 @@ func TestApplyEgressDSCP_RestampsSlotRule(t *testing.T) { //nolint:paralleltest 
 	require.Emptyf(t, dscpMangleRules(t, slot.NamespaceID()), "DSCP 0 must leave no mangle rule in %s", slot.NamespaceID())
 }
 
+// TestApplyEgressDSCP_FailedRestampIsNotCached covers the partial failure: the
+// old rule is deleted but installing the new one fails. The slot must not cache
+// the class it no longer stamps, otherwise recycle would see a match, skip the
+// restamp, and return a silently unmarked slot to the pool.
+//
+// The failure is induced with an out-of-range class, which the DSCP target
+// rejects, so the delete succeeds and only the append fails.
+func TestApplyEgressDSCP_FailedRestampIsNotCached(t *testing.T) { //nolint:paralleltest // mutates the caller's netns via LockOSThread + netns.Set; cannot run in parallel
+	if os.Geteuid() != 0 {
+		t.Skip("requires root for netns + iptables")
+	}
+
+	config, err := ParseConfig()
+	require.NoError(t, err)
+	config.SandboxEgressDSCP = 8
+
+	const idx = 30002 // high, fixed: avoid collision with the pool's low-index Populate
+	slot, err := NewSlot("dscp-failed-restamp-test", idx, config, NewNoopEgressProxy())
+	require.NoError(t, err)
+
+	require.NoError(t, slot.CreateNetwork(t.Context()))
+	t.Cleanup(func() { _ = slot.RemoveNetwork() })
+
+	requireSingleDSCPRule(t, slot, "0x08")
+
+	// 200 is outside the 6-bit DSCP range, so the append is rejected after the
+	// existing rule has already been removed.
+	require.Error(t, slot.ApplyEgressDSCP(t.Context(), 200))
+	require.Empty(t, dscpMangleRules(t, slot.NamespaceID()), "the old rule must be gone after a failed restamp")
+
+	// Recycling back to the sandbox class has to reinstall the rule rather than
+	// treat the slot as already correct.
+	require.NoError(t, slot.ApplyEgressDSCP(t.Context(), config.EgressDSCP(EgressClassSandbox)))
+	requireSingleDSCPRule(t, slot, "0x08")
+}
+
 // requireSingleDSCPRule asserts the slot's netns holds exactly one DSCP mangle
 // rule, on the vpeer uplink, setting the given class.
 func requireSingleDSCPRule(t *testing.T, slot *Slot, wantDSCP string) {
