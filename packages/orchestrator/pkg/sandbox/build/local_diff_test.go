@@ -34,3 +34,23 @@ func TestLocalDiffFileCloseToDiffRemovesPartialOnError(t *testing.T) {
 	require.Nil(t, diff)
 	require.NoFileExists(t, cachePath, "partial diff file must be removed on materialization failure")
 }
+
+// An empty diff is reported as NoDiff, which owns no path, so CloseToDiff is the
+// only place that can reclaim the zero-length cache file it created. Leaving it
+// behind orphans a file the DiffStore never learns about, so disk-pressure
+// eviction cannot reclaim it either.
+func TestLocalDiffFileCloseToDiffRemovesEmptyCacheFile(t *testing.T) {
+	t.Parallel()
+
+	f, err := NewLocalDiffFile(t.TempDir(), "build-test-id", Rootfs)
+	require.NoError(t, err)
+
+	cachePath := f.cachePath
+	require.FileExists(t, cachePath)
+
+	// Nothing written, so CloseToDiff takes the zero-size NoDiff branch.
+	diff, err := f.CloseToDiff(blockSize)
+	require.NoError(t, err)
+	require.IsType(t, &NoDiff{}, diff)
+	require.NoFileExists(t, cachePath, "empty diff cache file must be removed")
+}

@@ -79,6 +79,13 @@ func (f *LocalDiffFile) CloseToDiff(
 	}
 
 	if size.Size() == 0 {
+		// NoDiff carries no path, so this is the last reference to the cache file
+		// and nothing registers it in the DiffStore. Reclaim it here or it orphans
+		// exactly like the partial file the deferred cleanup above removes.
+		if rmErr := os.Remove(f.cachePath); rmErr != nil && !os.IsNotExist(rmErr) {
+			return nil, fmt.Errorf("failed to remove empty diff file: %w", rmErr)
+		}
+
 		return &NoDiff{}, nil
 	}
 
