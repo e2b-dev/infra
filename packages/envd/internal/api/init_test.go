@@ -754,3 +754,29 @@ func TestPostInit_UnauthorizedDoesNotUnfreeze(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	assert.Empty(t, mgr.unfreezeAttempts, "unauthorized /init must not attempt unfreeze")
 }
+
+// The nfs proxy serves no NLM (nlockmgr) program, so volume mounts must resolve
+// locks locally. Without "nolock" the kernel default is local_lock=none, every
+// flock/fcntl is forwarded to NLM, and "hard" makes the client retry the
+// (always failing) nlockmgr port lookup forever — wedging the caller in D state.
+func TestNFSOptionsResolveLocksLocally(t *testing.T) {
+	t.Parallel()
+
+	opts := make(map[string]string, 16)
+	for opt := range strings.SplitSeq(nfsOptions, ",") {
+		name, value, _ := strings.Cut(opt, "=")
+		opts[name] = value
+	}
+
+	_, hasNolock := opts["nolock"]
+	assert.True(t, hasNolock, "nfsOptions must contain nolock, got %q", nfsOptions)
+
+	_, hasLock := opts["lock"]
+	assert.False(t, hasLock, "nfsOptions must not contain lock, got %q", nfsOptions)
+
+	// local_lock is only meaningful when it keeps locks off the wire; "none"
+	// and "posix" both still forward flock or fcntl to NLM.
+	if localLock, ok := opts["local_lock"]; ok {
+		assert.Equal(t, "all", localLock, "local_lock must not re-enable NLM, got %q", nfsOptions)
+	}
+}
