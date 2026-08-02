@@ -12,6 +12,7 @@ import "github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
 // Domain types.
 type (
 	Sandbox     = sandboxtypes.Sandbox
+	NodeSandbox = sandboxtypes.NodeSandbox
 	State       = sandboxtypes.State
 	StateAction = sandboxtypes.StateAction
 	KillReason  = sandboxtypes.KillReason

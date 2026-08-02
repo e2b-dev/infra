@@ -24,7 +24,7 @@ type CreationMetadata struct {
 
 type (
 	InsertCallback   func(ctx context.Context, sbx Sandbox)
-	RemoveCallback   func(ctx context.Context, sbx Sandbox)
+	OrphanCallback   func(ctx context.Context, sbx NodeSandbox)
 	CreationCallback func(ctx context.Context, sbx Sandbox, meta CreationMetadata)
 )
 
@@ -44,9 +44,9 @@ type Callbacks struct {
 	AddSandboxToRoutingTable InsertCallback
 	// AsyncNewlyCreatedSandbox is called asynchronously for newly created sandboxes (Add called with non-nil CreationMetadata).
 	AsyncNewlyCreatedSandbox CreationCallback
-	// RemoveSandboxFromNode kills an orphaned sandbox on the orchestrator node via gRPC.
+	// KillOrphanSandbox kills an orphaned sandbox on the orchestrator node via gRPC.
 	// Used during sync when the Redis backend detects sandboxes running on a node but not present in the store.
-	RemoveSandboxFromNode RemoveCallback
+	KillOrphanSandbox OrphanCallback
 }
 
 type Store struct {
@@ -137,7 +137,7 @@ func (s *Store) WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandbo
 	return s.storage.WaitForStateChange(ctx, teamID, sandboxID)
 }
 
-func (s *Store) Reconcile(ctx context.Context, sandboxes []Sandbox, nodeID string) {
+func (s *Store) Reconcile(ctx context.Context, sandboxes []NodeSandbox, nodeID string) {
 	// Redis is the source of truth — divergent sandboxes are orphans running
 	// on the node but not present in the store. Kill them.
 	orphans := s.storage.Reconcile(ctx, sandboxes, nodeID)
@@ -147,7 +147,7 @@ func (s *Store) Reconcile(ctx context.Context, sandboxes []Sandbox, nodeID strin
 		wg.Go(func() {
 			ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), sbxRemoveTimeout)
 			defer cancel()
-			s.callbacks.RemoveSandboxFromNode(ctx, sbx)
+			s.callbacks.KillOrphanSandbox(ctx, sbx)
 		})
 	}
 

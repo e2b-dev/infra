@@ -19,8 +19,15 @@ import (
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager")
 
-// GetOrphanCandidates lists the sandboxes the node reports as running.
-func (n *Node) GetOrphanCandidates(ctx context.Context) ([]sandbox.Sandbox, error) {
+// GetOrphanCandidates lists the sandboxes the node reports as running, so the
+// caller can compare them against the store and kill the ones it does not know
+// about. Only the fields that decision needs are read; Redis is the source of
+// truth for everything else.
+//
+// A sandbox with an unparseable team ID is skipped rather than failing the
+// whole call: its store key cannot be computed, so it can be neither confirmed
+// nor killed, and failing here would abort the node sync entirely.
+func (n *Node) GetOrphanCandidates(ctx context.Context) ([]sandbox.NodeSandbox, error) {
 	childCtx, childSpan := tracer.Start(ctx, "get-sandboxes-from-orchestrator")
 	defer childSpan.End()
 
@@ -34,7 +41,7 @@ func (n *Node) GetOrphanCandidates(ctx context.Context) ([]sandbox.Sandbox, erro
 
 	sandboxes := res.GetSandboxes()
 
-	sandboxesInfo := make([]sandbox.Sandbox, 0, len(sandboxes))
+	sandboxesInfo := make([]sandbox.NodeSandbox, 0, len(sandboxes))
 
 	for _, sbx := range sandboxes {
 		// config is deprecated and only read as a fallback for orchestrators
@@ -56,7 +63,7 @@ func (n *Node) GetOrphanCandidates(ctx context.Context) ([]sandbox.Sandbox, erro
 			continue
 		}
 
-		sandboxesInfo = append(sandboxesInfo, sandbox.Sandbox{
+		sandboxesInfo = append(sandboxesInfo, sandbox.NodeSandbox{
 			SandboxID:   sandboxID,
 			TeamID:      teamID,
 			ExecutionID: cmp.Or(sbx.GetExecutionId(), config.GetExecutionId()),

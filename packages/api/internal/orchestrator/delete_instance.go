@@ -173,7 +173,7 @@ func (o *Orchestrator) removeSandboxFromNode(
 		err := o.pauseSandbox(ctx, node, sbx, filesystemOnly)
 		if err != nil {
 			if dberrors.IsForeignKeyViolation(err) {
-				killErr := o.killSandboxOnNode(ctx, node, sbx, sandbox.KillReasonBaseTemplateMissing)
+				killErr := o.killSandboxOnNode(ctx, node, sbx.ToNodeSandbox(), sandbox.KillReasonBaseTemplateMissing)
 				logger.L().Error(ctx, "Pause failed due to missing base template, killed sandbox as fallback",
 					logger.WithSandboxID(sbx.SandboxID),
 					zap.String("base_template_id", sbx.BaseTemplateID),
@@ -190,13 +190,13 @@ func (o *Orchestrator) removeSandboxFromNode(
 
 		return nil
 	case sandbox.StateActionKill:
-		return o.killSandboxOnNode(ctx, node, sbx, reason)
+		return o.killSandboxOnNode(ctx, node, sbx.ToNodeSandbox(), reason)
 	}
 
 	return nil
 }
 
-func (o *Orchestrator) killOrphanSandbox(ctx context.Context, sbx sandbox.Sandbox) {
+func (o *Orchestrator) killOrphanSandbox(ctx context.Context, sbx sandbox.NodeSandbox) {
 	node := o.GetNode(sbx.ClusterID, sbx.NodeID)
 	if node == nil {
 		logger.L().Error(ctx, "Node not found for orphan sandbox kill",
@@ -222,7 +222,7 @@ func (o *Orchestrator) killOrphanSandbox(ctx context.Context, sbx sandbox.Sandbo
 func (o *Orchestrator) killSandboxOnNode(
 	ctx context.Context,
 	node *nodemanager.Node,
-	sbx sandbox.Sandbox,
+	sbx sandbox.NodeSandbox,
 	reason sandbox.KillReason,
 ) error {
 	killReason := reason.String()

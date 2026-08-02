@@ -7,13 +7,12 @@
 package orchestrator
 
 import (
-	reflect "reflect"
-	sync "sync"
-
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
+	reflect "reflect"
+	sync "sync"
 )
 
 const (
@@ -1473,12 +1472,21 @@ type RunningSandbox struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
+	// Deprecated: the API no longer rebuilds sandbox state from this list. Redis
+	// is the source of truth; List is only used to detect sandboxes running on a
+	// node that the store does not know about, so they can be killed. The fields
+	// below carry everything that decision needs. Still populated so API
+	// instances predating those fields keep working during a rollout.
+	//
 	// Deprecated: Do not use.
 	Config    *SandboxConfig         `protobuf:"bytes,1,opt,name=config,proto3" json:"config,omitempty"`
 	ClientId  string                 `protobuf:"bytes,2,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
 	StartTime *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=start_time,json=startTime,proto3" json:"start_time,omitempty"`
 	EndTime   *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=end_time,json=endTime,proto3" json:"end_time,omitempty"`
-	// Minimal identity and resource set required to detect an orphaned sandbox
+	// Minimal set required to detect an orphaned sandbox and kill it.
+	// sandbox_id + team_id form the store key. execution_id is carried in the
+	// edge sandbox-catalog delete event, so a cluster node's routing entry is
+	// evicted too. vcpu/ram_mb feed the node's optimistic resource accounting.
 	SandboxId   string `protobuf:"bytes,5,opt,name=sandbox_id,json=sandboxId,proto3" json:"sandbox_id,omitempty"`
 	TeamId      string `protobuf:"bytes,6,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
 	ExecutionId string `protobuf:"bytes,7,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
