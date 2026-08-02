@@ -51,14 +51,14 @@ func (n *Node) Sync(ctx context.Context, store *sandbox.Store) {
 		// Update host metrics from service info
 		n.UpdateMetricsFromServiceInfoResponse(nodeInfo)
 
-		activeInstances, instancesErr := n.GetSandboxes(ctx)
+		orphanCandidates, instancesErr := n.GetOrphanCandidates(ctx)
 		if instancesErr != nil {
 			logger.L().Error(ctx, "Error getting instances", zap.Error(instancesErr), logger.WithNodeID(n.ID))
 
 			continue
 		}
 
-		store.Reconcile(ctx, activeInstances, n.ID)
+		store.Reconcile(ctx, orphanCandidates, n.ID)
 
 		syncRetrySuccess = true
 

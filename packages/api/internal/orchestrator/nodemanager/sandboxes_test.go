@@ -13,13 +13,12 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
 // mockSandboxListClient implements orchestrator.SandboxServiceClient and returns
-// a canned List response, so GetSandboxes' proto->Sandbox reconstruction can be
-// tested without a live orchestrator.
+// a canned List response, so GetOrphanCandidates can be tested without a live
+// orchestrator.
 type mockSandboxListClient struct {
 	orchestrator.SandboxServiceClient
 
@@ -30,101 +29,120 @@ func (m *mockSandboxListClient) List(_ context.Context, _ *emptypb.Empty, _ ...g
 	return m.resp, nil
 }
 
-// TestGetSandboxes_RestoresAutoPauseFilesystemOnly verifies that the auto-pause
-// snapshot-kind policy round-trips through the orchestrator's SandboxConfig when
-// the API re-syncs its sandbox list (e.g. after a restart). The proto field
-// exists for exactly this path, so without it the policy would silently revert
-// to a memory auto-pause.
-func TestGetSandboxes_RestoresAutoPauseFilesystemOnly(t *testing.T) {
-	t.Parallel()
-
-	now := time.Now()
-	runningSandbox := func(id string, autoPauseFilesystemOnly bool) *orchestrator.RunningSandbox {
-		return &orchestrator.RunningSandbox{
-			StartTime: timestamppb.New(now),
-			EndTime:   timestamppb.New(now.Add(time.Hour)),
-			Config: &orchestrator.SandboxConfig{
-				SandboxId:               id,
-				TemplateId:              "tmpl",
-				BaseTemplateId:          "tmpl",
-				TeamId:                  uuid.NewString(),
-				BuildId:                 uuid.NewString(),
-				ExecutionId:             uuid.NewString(),
-				AutoPause:               true,
-				AutoPauseFilesystemOnly: autoPauseFilesystemOnly,
-			},
-		}
-	}
+func newTestNodeWithList(t *testing.T, sandboxes ...*orchestrator.RunningSandbox) *TestNode {
+	t.Helper()
 
 	node := NewTestNode("test-node", api.NodeStatusReady, 0, 4)
 	node.SetSandboxClient(&mockSandboxListClient{
-		resp: &orchestrator.SandboxListResponse{
-			Sandboxes: []*orchestrator.RunningSandbox{
-				runningSandbox("fs-only", true),
-				runningSandbox("memory", false),
-			},
-		},
+		resp: &orchestrator.SandboxListResponse{Sandboxes: sandboxes},
 	})
 
-	sandboxes, err := node.GetSandboxes(t.Context())
-	require.NoError(t, err)
-	require.Len(t, sandboxes, 2)
-
-	got := make(map[string]bool, len(sandboxes))
-	for _, sbx := range sandboxes {
-		got[sbx.SandboxID] = sbx.AutoPauseFilesystemOnly
-	}
-
-	assert.True(t, got["fs-only"], "filesystem-only auto-pause policy must survive an orchestrator re-sync")
-	assert.False(t, got["memory"], "memory auto-pause policy must survive an orchestrator re-sync")
+	return node
 }
 
-// TestGetSandboxes_RestoresIamTokens verifies that the named workload-token
-// definitions round-trip through the orchestrator's stored SandboxConfig when
-// the API re-syncs its sandbox list (e.g. after a restart), and that a config
-// without an iam message decodes as no definitions.
-func TestGetSandboxes_RestoresIamTokens(t *testing.T) {
+// TestGetOrphanCandidates_ReadsScalarFields covers the current orchestrator,
+// which sends the identity and resource fields directly on RunningSandbox.
+func TestGetOrphanCandidates_ReadsScalarFields(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now()
-	runningSandbox := func(id string, iam *orchestrator.SandboxIam) *orchestrator.RunningSandbox {
-		return &orchestrator.RunningSandbox{
-			StartTime: timestamppb.New(now),
-			EndTime:   timestamppb.New(now.Add(time.Hour)),
-			Config: &orchestrator.SandboxConfig{
-				SandboxId:      id,
-				TemplateId:     "tmpl",
-				BaseTemplateId: "tmpl",
-				TeamId:         uuid.NewString(),
-				BuildId:        uuid.NewString(),
-				ExecutionId:    uuid.NewString(),
-				Iam:            iam,
-			},
-		}
-	}
+	teamID := uuid.New()
+	node := newTestNodeWithList(t, &orchestrator.RunningSandbox{
+		StartTime:   timestamppb.New(now),
+		EndTime:     timestamppb.New(now.Add(time.Hour)),
+		SandboxId:   "sbx-1",
+		TeamId:      teamID.String(),
+		ExecutionId: "exec-1",
+		Vcpu:        2,
+		RamMb:       512,
+	})
 
-	node := NewTestNode("test-node", api.NodeStatusReady, 0, 4)
-	node.SetSandboxClient(&mockSandboxListClient{
-		resp: &orchestrator.SandboxListResponse{
-			Sandboxes: []*orchestrator.RunningSandbox{
-				runningSandbox("with-iam", &orchestrator.SandboxIam{Tokens: map[string]*orchestrator.SandboxIamToken{
-					"aws": {Audience: "sts.amazonaws.com", TokenType: "JWT-SVID"},
-				}}),
-				runningSandbox("no-iam", nil),
-			},
+	sandboxes, err := node.GetOrphanCandidates(t.Context())
+	require.NoError(t, err)
+	require.Len(t, sandboxes, 1)
+
+	got := sandboxes[0]
+	assert.Equal(t, "sbx-1", got.SandboxID)
+	assert.Equal(t, teamID, got.TeamID)
+	assert.Equal(t, "exec-1", got.ExecutionID)
+	assert.Equal(t, int64(2), got.VCpu)
+	assert.Equal(t, int64(512), got.RamMB)
+	assert.Equal(t, now.UTC(), got.StartTime.UTC())
+	assert.Equal(t, "test-node", got.NodeID)
+}
+
+// TestGetOrphanCandidates_FallsBackToDeprecatedConfig covers an orchestrator
+// that predates the scalar fields and only sends the deprecated config message.
+// Without the fallback the whole node would look orphaned and get killed.
+func TestGetOrphanCandidates_FallsBackToDeprecatedConfig(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	teamID := uuid.New()
+	node := newTestNodeWithList(t, &orchestrator.RunningSandbox{
+		StartTime: timestamppb.New(now),
+		EndTime:   timestamppb.New(now.Add(time.Hour)),
+		Config: &orchestrator.SandboxConfig{ //nolint:staticcheck // exercising the rollout fallback
+			SandboxId:   "sbx-legacy",
+			TeamId:      teamID.String(),
+			ExecutionId: "exec-legacy",
+			Vcpu:        4,
+			RamMb:       1024,
 		},
 	})
 
-	sandboxes, err := node.GetSandboxes(t.Context())
+	sandboxes, err := node.GetOrphanCandidates(t.Context())
 	require.NoError(t, err)
-	require.Len(t, sandboxes, 2)
+	require.Len(t, sandboxes, 1)
 
-	got := make(map[string]*types.SandboxIam, len(sandboxes))
-	for _, sbx := range sandboxes {
-		got[sbx.SandboxID] = sbx.Iam
-	}
+	got := sandboxes[0]
+	assert.Equal(t, "sbx-legacy", got.SandboxID)
+	assert.Equal(t, teamID, got.TeamID)
+	assert.Equal(t, "exec-legacy", got.ExecutionID)
+	assert.Equal(t, int64(4), got.VCpu)
+	assert.Equal(t, int64(1024), got.RamMB)
+}
 
-	assert.Equal(t, &types.SandboxIam{Tokens: map[string]types.SandboxIamToken{"aws": {Audience: "sts.amazonaws.com", TokenType: "JWT-SVID"}}}, got["with-iam"],
-		"named token definitions must survive an orchestrator re-sync")
-	assert.Nil(t, got["no-iam"], "a config without an iam message must decode as no configuration")
+// TestGetOrphanCandidates_ToleratesMissingConfig verifies that a response with
+// no config message at all is accepted, so the orchestrator can stop sending it.
+func TestGetOrphanCandidates_ToleratesMissingConfig(t *testing.T) {
+	t.Parallel()
+
+	teamID := uuid.New()
+	node := newTestNodeWithList(t, &orchestrator.RunningSandbox{
+		StartTime: timestamppb.New(time.Now()),
+		SandboxId: "sbx-no-config",
+		TeamId:    teamID.String(),
+	})
+
+	sandboxes, err := node.GetOrphanCandidates(t.Context())
+	require.NoError(t, err)
+	require.Len(t, sandboxes, 1)
+	assert.Equal(t, "sbx-no-config", sandboxes[0].SandboxID)
+}
+
+// TestGetOrphanCandidates_SkipsUnparseableTeamID verifies that one malformed
+// entry does not abort the sync for the whole node. A sandbox with no usable
+// team ID has no store key, so it can be neither confirmed nor killed.
+func TestGetOrphanCandidates_SkipsUnparseableTeamID(t *testing.T) {
+	t.Parallel()
+
+	teamID := uuid.New()
+	node := newTestNodeWithList(t,
+		&orchestrator.RunningSandbox{
+			StartTime: timestamppb.New(time.Now()),
+			SandboxId: "sbx-bad",
+			TeamId:    "not-a-uuid",
+		},
+		&orchestrator.RunningSandbox{
+			StartTime: timestamppb.New(time.Now()),
+			SandboxId: "sbx-good",
+			TeamId:    teamID.String(),
+		},
+	)
+
+	sandboxes, err := node.GetOrphanCandidates(t.Context())
+	require.NoError(t, err)
+	require.Len(t, sandboxes, 1)
+	assert.Equal(t, "sbx-good", sandboxes[0].SandboxID)
 }

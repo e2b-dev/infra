@@ -28,6 +28,10 @@ import (
 var (
 	startTime = time.Now()
 	endTime   = time.Now().Add(time.Hour)
+
+	listSandboxID   = id.Generate()
+	listTeamID      = "6c6f2ba0-9c62-4f2a-9ab8-0a0a9c6f3e11"
+	listExecutionID = "8f7f6b3a-1a2b-4c3d-9e8f-7a6b5c4d3e2f"
 )
 
 func Test_server_List(t *testing.T) {
@@ -56,9 +60,11 @@ func Test_server_List(t *testing.T) {
 					},
 					Metadata: &sandbox.Metadata{
 						Runtime: sandbox.RuntimeMetadata{
-							SandboxID: id.Generate(),
+							SandboxID:   listSandboxID,
+							TeamID:      listTeamID,
+							ExecutionID: listExecutionID,
 						},
-						Config: sandbox.NewConfig(sandbox.Config{}),
+						Config: sandbox.NewConfig(sandbox.Config{Vcpu: 2, RamMB: 512}),
 					},
 					Resources: &sandbox.Resources{
 						Slot: &network.Slot{HostIP: net.IPv4(127, 0, 0, 1)},
@@ -71,8 +77,13 @@ func Test_server_List(t *testing.T) {
 					{
 						Config: &orchestrator.SandboxConfig{TemplateId: "template-id"},
 						// ClientId:  "client-id",
-						StartTime: timestamppb.New(startTime),
-						EndTime:   timestamppb.New(endTime),
+						StartTime:   timestamppb.New(startTime),
+						EndTime:     timestamppb.New(endTime),
+						SandboxId:   listSandboxID,
+						TeamId:      listTeamID,
+						ExecutionId: listExecutionID,
+						Vcpu:        2,
+						RamMb:       512,
 					},
 				},
 			},
