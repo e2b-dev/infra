@@ -97,8 +97,7 @@ func TestMultipartUploader_PartUploaderContract(t *testing.T) {
 }
 
 // abortRecordingUploader builds a test uploader whose part uploads always
-// fail, so the abort (DELETE ...?uploadId=) issued on the failure path can be
-// observed. Retries are kept negligible so the 500s don't stall the test.
+// fail, recording whether the failure path issued the abort DELETE.
 func abortRecordingUploader(t *testing.T, uploadID string, aborted *atomic.Bool) *MultipartUploader {
 	t.Helper()
 
@@ -119,9 +118,6 @@ func abortRecordingUploader(t *testing.T, uploadID string, aborted *atomic.Bool)
 	}, fastRetryConfig())
 }
 
-// TestGCPCompressedStoreFileAbortsMultipartUploadOnFailure mirrors the AWS
-// test of the same shape: a compressed upload that dies mid-flight must abort
-// the multipart upload instead of orphaning its parts in the bucket.
 func TestGCPCompressedStoreFileAbortsMultipartUploadOnFailure(t *testing.T) {
 	t.Parallel()
 
@@ -135,9 +131,8 @@ func TestGCPCompressedStoreFileAbortsMultipartUploadOnFailure(t *testing.T) {
 	require.True(t, aborted.Load(), "failed compressed upload should abort the multipart upload")
 }
 
-// TestGCPUploadFileInParallelAbortsOnPartFailure covers the uncompressed
-// >=50MB path, which initiates its own upload and has no deferred Close from
-// compressStream: a failed part must still abort the multipart upload.
+// The uncompressed >=50MB path has no deferred Close from compressStream and
+// must abort on its own.
 func TestGCPUploadFileInParallelAbortsOnPartFailure(t *testing.T) {
 	t.Parallel()
 
@@ -1374,9 +1369,7 @@ func TestGCSXMLPartUploaderContract(t *testing.T) {
 		"parts must reassemble in part-number order, not upload order")
 }
 
-// TestGCSXMLPartUploaderAbortOnClose mirrors TestS3PartUploaderAbortOnClose
-// for the XML uploader: Close on an incomplete upload must abort it against a
-// real S3/GCS-XML implementation, leaving no orphaned multipart upload behind.
+// Mirrors TestS3PartUploaderAbortOnClose for the GCS XML uploader.
 func TestGCSXMLPartUploaderAbortOnClose(t *testing.T) {
 	t.Parallel()
 

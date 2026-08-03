@@ -30,9 +30,7 @@ import (
 
 const (
 	gcpMultipartUploadChunkSize = 50 * 1024 * 1024 // 50MB chunks
-	// gcpAbortUploadTimeout bounds the abort issued from Close, which runs on
-	// a context detached from the (usually already canceled) upload context.
-	gcpAbortUploadTimeout = 5 * time.Second
+	gcpAbortUploadTimeout       = 5 * time.Second
 )
 
 // RetryConfig holds the configuration for retry logic
@@ -195,8 +193,7 @@ type MultipartUploader struct {
 	uploadID string
 	mu       sync.Mutex
 	parts    []Part
-	// completed is guarded by mu: it is set by the sole commit point
-	// (completeUpload) and read by Close.
+	// completed is guarded by mu; set only by completeUpload, read by Close.
 	completed bool
 }
 
@@ -242,8 +239,8 @@ func (m *MultipartUploader) Complete(ctx context.Context) error {
 	return m.completeUpload(ctx, m.uploadID, parts)
 }
 
-// Close aborts an upload that was started but never committed, so the parts
-// already shipped don't linger in the bucket as an orphaned multipart upload.
+// Close aborts an upload that was started but never committed, discarding
+// its staged parts.
 func (m *MultipartUploader) Close() error {
 	m.mu.Lock()
 	completed := m.completed
@@ -253,8 +250,8 @@ func (m *MultipartUploader) Close() error {
 		return nil
 	}
 
-	// The caller's context is usually already canceled by the failure that
-	// brought us here, so abort on a detached context with its own deadline.
+	// The upload's context is usually already canceled here, so abort on a
+	// detached context with its own deadline.
 	ctx, cancel := context.WithTimeout(context.Background(), gcpAbortUploadTimeout)
 	defer cancel()
 
@@ -464,8 +461,8 @@ func (m *MultipartUploader) completeUpload(ctx context.Context, uploadID string,
 		return fmt.Errorf("failed to complete upload (status %d, code %s): %s", resp.StatusCode, apiErr.Code, apiErr.Message)
 	}
 
-	// Flagging the commit here (rather than in Complete) covers every caller
-	// of completeUpload, so no path can leave Close aborting a live object.
+	// Set here, not in Complete: UploadFileInParallel also commits through
+	// this path, and Close must never abort a live object.
 	m.mu.Lock()
 	m.completed = true
 	m.mu.Unlock()
@@ -473,10 +470,9 @@ func (m *MultipartUploader) completeUpload(ctx context.Context, uploadID string,
 	return nil
 }
 
-// abortUpload discards an in-flight multipart upload and the parts already
-// staged for it. GCS answers 204 on success and 404 when the upload is
-// already gone (completed or aborted), both of which mean nothing is left to
-// clean up.
+// abortUpload discards an in-flight multipart upload and its staged parts.
+// GCS answers 204 on success and 404 when the upload is already gone; both
+// mean nothing is left to clean up.
 func (m *MultipartUploader) abortUpload(ctx context.Context, uploadID string) error {
 	url := fmt.Sprintf("%s/%s?uploadId=%s",
 		m.baseURL, m.objectName, uploadID)
@@ -530,13 +526,12 @@ func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath s
 		return 0, fmt.Errorf("failed to initiate upload: %w", err)
 	}
 
-	// Publish the upload ID so Close can find it, and abort here on the way
-	// out: unlike the compressed path, this one is not wrapped in
-	// compressStream's deferred Close, so nothing else would clean up the
-	// staged parts. Close is a no-op once completeUpload has committed.
+	// Unlike the compressed path, nothing wraps this in compressStream's
+	// deferred Close, so abort here on failure; Close needs m.uploadID and is
+	// a no-op after commit.
 	m.uploadID = uploadID
 	defer func() {
-		if abortErr := m.Close(); abortErr != nil { //nolint:contextcheck // Close aborts on a detached context by design, so the cleanup still lands when ctx is already canceled.
+		if abortErr := m.Close(); abortErr != nil { //nolint:contextcheck // Close aborts on a detached context by design.
 			logger.L().Warn(ctx, "failed to abort GCS multipart upload",
 				zap.String("bucket", m.bucketName),
 				zap.String("object", m.objectName),

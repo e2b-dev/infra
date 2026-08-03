@@ -172,9 +172,8 @@ func compressStream(ctx context.Context, in io.Reader, cfg CompressConfig, uploa
 	if err := uploader.Start(ctx); err != nil {
 		return nil, [32]byte{}, fmt.Errorf("start upload: %w", err)
 	}
-	// Close aborts the upload unless it was committed. A failed abort leaves
-	// an orphaned multipart upload behind, so surface it instead of dropping
-	// it — it can't be returned, since Close runs after the result is fixed.
+	// Close aborts the upload unless it was committed; the deferred error
+	// can't be returned, only logged.
 	defer func() {
 		if err := uploader.Close(); err != nil {
 			logger.L().Warn(ctx, "failed to abort multipart upload", zap.Error(err))
