@@ -4,10 +4,31 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 assertion_script="${script_dir}/assert-workload-prerequisite-plan.sh"
 policy="${script_dir}/../topology/minimal-workload-policy.json"
+makefile="${script_dir}/../Makefile"
 cloud_sql_fixture="${script_dir}/testdata/cloud-sql-workload-resources.json"
 cloud_sql_project_state="${script_dir}/testdata/cloud-sql-project-state.json"
 test_dir="$(mktemp -d)"
 trap 'rm -rf -- "${test_dir}"' EXIT
+
+prerequisite_targets="$(
+  awk '
+    /^override WORKLOAD_PREREQUISITE_TARGETS :=/ { capture = 1 }
+    capture { print }
+    capture && $0 !~ /\\[[:space:]]*$/ { exit }
+  ' "${makefile}"
+)"
+for candidate_target in \
+  google_sql_database_instance.invited_beta \
+  google_sql_database.invited_beta \
+  random_password.cloud_sql_invited_beta \
+  google_sql_user.invited_beta \
+  google_secret_manager_secret_version.cloud_sql_invited_beta_password; do
+  grep -F -- "-target='${candidate_target}'" <<<"${prerequisite_targets}" >/dev/null || {
+    printf 'Missing invited-beta Cloud SQL prerequisite target: %s\n' \
+      "${candidate_target}" >&2
+    exit 1
+  }
+done
 
 fake_terraform="${test_dir}/terraform"
 cp "${script_dir}/testdata/fake-terraform.sh" "${fake_terraform}"
@@ -295,6 +316,27 @@ jq -n \
                 ]
               }
             }
+          },
+          {
+            address: "google_secret_manager_secret_version.cloud_sql_invited_beta_password",
+            mode: "managed",
+            type: "google_secret_manager_secret_version",
+            name: "cloud_sql_invited_beta_password",
+            provider_config_key: "google",
+            expressions: {
+              secret: {
+                references: [
+                  "google_secret_manager_secret.cloud_sql_invited_beta_password.name",
+                  "google_secret_manager_secret.cloud_sql_invited_beta_password"
+                ]
+              },
+              secret_data: {
+                references: [
+                  "random_password.cloud_sql_invited_beta.result",
+                  "random_password.cloud_sql_invited_beta"
+                ]
+              }
+            }
           }
         ]
       }
@@ -330,6 +372,39 @@ expect_failure() {
 }
 
 run_assertion "${test_dir}/reviewed.json" >/dev/null
+
+jq '
+  (
+    .resource_changes[]
+    | select(.address == "terraform_data.cloud_sql_connection_budget")
+    | .change
+  ) |= (
+    .actions = ["update"]
+    | .before = {
+        input: (
+          .after.input
+          + {
+              api_server_count: 1,
+              maximum_concurrent_connections: 19
+            }
+        )
+      }
+  )
+' "${test_dir}/reviewed.json" >"${test_dir}/bounded-budget-update.json"
+run_assertion "${test_dir}/bounded-budget-update.json" >/dev/null
+
+jq '
+  (
+    .resource_changes[]
+    | select(.address == "terraform_data.cloud_sql_connection_budget")
+    | .change.before.input.api_server_count
+  ) = 3
+' "${test_dir}/bounded-budget-update.json" \
+  >"${test_dir}/unbounded-budget-update.json"
+expect_failure \
+  unbounded-budget-update \
+  "connection-budget update must be exactly" \
+  "${test_dir}/unbounded-budget-update.json"
 
 jq '
   (
@@ -410,7 +485,7 @@ jq '
 ' "${test_dir}/reviewed.json" >"${test_dir}/missing.json"
 expect_failure \
   missing \
-  "resource set must be the exact reviewed 24 resources" \
+  "resource set must be the exact reviewed resources" \
   "${test_dir}/missing.json"
 
 jq '
@@ -429,7 +504,7 @@ jq '
 ' "${test_dir}/reviewed.json" >"${test_dir}/extra.json"
 expect_failure \
   extra \
-  "resource set must be the exact reviewed 24 resources" \
+  "resource set must be the exact reviewed resources" \
   "${test_dir}/extra.json"
 
 jq '
@@ -441,7 +516,7 @@ jq '
 ' "${test_dir}/reviewed.json" >"${test_dir}/update.json"
 expect_failure \
   update \
-  "resource set must be the exact reviewed 24 resources" \
+  "resource set must be the exact reviewed resources" \
   "${test_dir}/update.json"
 
 jq '
@@ -699,6 +774,34 @@ expect_failure \
   wrong-sql-region \
   "invalid_cloud_sql_resources must be empty" \
   "${test_dir}/wrong-sql-region.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.address == "google_sql_database_instance.invited_beta")
+    | .change.after.settings[0].tier
+  ) = "db-f1-micro"
+' "${test_dir}/reviewed.json" >"${test_dir}/wrong-candidate-sql-tier.json"
+expect_failure \
+  wrong-candidate-sql-tier \
+  "invalid_cloud_sql_resources must be empty" \
+  "${test_dir}/wrong-candidate-sql-tier.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "google_secret_manager_secret.cloud_sql_invited_beta_password"
+      )
+    | .change.after.secret_id
+  ) = "e2b-wrong-password-secret"
+' "${test_dir}/reviewed.json" \
+  >"${test_dir}/wrong-candidate-password-secret.json"
+expect_failure \
+  wrong-candidate-password-secret \
+  "invalid_cloud_sql_resources must be empty" \
+  "${test_dir}/wrong-candidate-password-secret.json"
 
 jq '
   .expected_cloud_sql.application_connection_budget = 99

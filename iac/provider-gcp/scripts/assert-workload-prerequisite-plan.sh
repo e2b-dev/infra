@@ -49,15 +49,30 @@ expected_cloud_sql_policy="$(
       "terraform_data.cloud_sql_connection_budget",
       "time_sleep.service_identity_propagation"
     ],
+    candidate_resource_addresses: [
+      "google_secret_manager_secret.cloud_sql_invited_beta_password",
+      "google_secret_manager_secret_version.cloud_sql_invited_beta_password",
+      "google_sql_database.invited_beta",
+      "google_sql_database_instance.invited_beta",
+      "google_sql_user.invited_beta",
+      "random_password.cloud_sql_invited_beta"
+    ],
     instance_name_suffix: "postgres-canary",
+    candidate_instance_name_suffix: "postgres-beta",
+    candidate_password_secret_id_suffix: "postgres-beta-password",
     connection_secret_id_suffix: "postgres-connection-string",
     database_version: "POSTGRES_16",
-    tier: "db-custom-2-7680",
+    tier: "db-f1-micro",
+    candidate_tier: "db-custom-2-7680",
     edition: "ENTERPRISE",
-    availability_type: "REGIONAL",
-    disk_type: "PD_SSD",
-    disk_size_gb: 20,
-    disk_autoresize_limit_gb: 200,
+    availability_type: "ZONAL",
+    candidate_availability_type: "REGIONAL",
+    disk_type: "PD_HDD",
+    candidate_disk_type: "PD_SSD",
+    disk_size_gb: 10,
+    candidate_disk_size_gb: 20,
+    disk_autoresize_limit_gb: 20,
+    candidate_disk_autoresize_limit_gb: 200,
     private_services_prefix_length: 24,
     ssl_mode: "ENCRYPTED_ONLY",
     backup_start_time: "03:00",
@@ -99,9 +114,15 @@ expected_resources="$(
     {address:"google_secret_manager_secret_version.postgres_read_replica_connection_string",type:"google_secret_manager_secret_version"},
     {address:"google_secret_manager_secret_version.sandbox_access_token_hash_seed",type:"google_secret_manager_secret_version"},
     {address:"google_service_networking_connection.cloud_sql",type:"google_service_networking_connection"},
+    {address:"google_secret_manager_secret.cloud_sql_invited_beta_password",type:"google_secret_manager_secret"},
+    {address:"google_secret_manager_secret_version.cloud_sql_invited_beta_password",type:"google_secret_manager_secret_version"},
+    {address:"google_sql_database.invited_beta",type:"google_sql_database"},
     {address:"google_sql_database.operator_canary",type:"google_sql_database"},
+    {address:"google_sql_database_instance.invited_beta",type:"google_sql_database_instance"},
     {address:"google_sql_database_instance.operator_canary",type:"google_sql_database_instance"},
+    {address:"google_sql_user.invited_beta",type:"google_sql_user"},
     {address:"google_sql_user.operator_canary",type:"google_sql_user"},
+    {address:"random_password.cloud_sql_invited_beta",type:"random_password"},
     {address:"random_password.cloud_sql_operator_canary",type:"random_password"},
     {address:"random_password.sandbox_access_token_hash_seed",type:"random_password"},
     {address:"terraform_data.cloud_sql_connection_budget",type:"terraform_data"},
@@ -157,14 +178,46 @@ if ! jq -ne \
   --argjson actual "${reviewed_resources}" \
   --argjson unexpected "${unexpected_mutations}" '
     ($actual | map({address, type})) == $expected
-    and all($actual[]; .actions == ["create"] or .actions == ["no-op"])
+    and all(
+      $actual[];
+      .actions == ["create"]
+      or .actions == ["no-op"]
+      or (
+        .address == "terraform_data.cloud_sql_connection_budget"
+        and .actions == ["update"]
+      )
+    )
     and any($actual[]; .actions == ["create"])
     and ($unexpected | length) == 0
   ' >/dev/null; then
-  printf 'Refusing workload prerequisite plan: resource set must be the exact reviewed 24 resources with creates or verified no-ops, including at least one create.\n' >&2
+  printf 'Refusing workload prerequisite plan: resource set must be the exact reviewed resources with creates or verified no-ops, plus only the bounded connection-budget update, including at least one create.\n' >&2
   printf 'Expected: %s\n' "$(jq -c . <<<"${expected_resources}")" >&2
   printf 'Reviewed: %s\n' "$(jq -c . <<<"${reviewed_resources}")" >&2
   printf 'Unexpected mutations: %s\n' "$(jq -c . <<<"${unexpected_mutations}")" >&2
+  exit 1
+fi
+
+if ! jq -e '
+  [
+    .resource_changes[]?
+    | select(.address == "terraform_data.cloud_sql_connection_budget")
+  ][0] as $budget
+  | if $budget.change.actions == ["update"] then
+      $budget.change.before.input.api_server_count == 1
+      and $budget.change.before.input.maximum_concurrent_connections == 19
+      and $budget.change.after.input
+        == (
+          $budget.change.before.input
+          + {
+              api_server_count: 2,
+              maximum_concurrent_connections: 28
+            }
+        )
+    else
+      true
+    end
+' <<<"${plan_json}" >/dev/null; then
+  printf 'Refusing workload prerequisite plan: connection-budget update must be exactly API allocations 1 to 2 and aggregate connections 19 to 28.\n' >&2
   exit 1
 fi
 
@@ -265,11 +318,14 @@ if ! jq -e \
   | row("tls_private_key.volume_token[0]") as $volume_key
   | row("time_static.volume_token_generation") as $volume_time
   | row("google_sql_database_instance.operator_canary") as $sql_instance
+  | row("google_secret_manager_secret.cloud_sql_invited_beta_password") as $candidate_password_secret
+  | row("google_secret_manager_secret_version.cloud_sql_invited_beta_password") as $candidate_password_version
   | config("google_artifact_registry_repository.custom_environments_repository") as $repo_config
   | config("google_artifact_registry_repository_iam_member.custom_environments_repository_member") as $repo_iam_config
   | config("google_secret_manager_secret_version.postgres_connection_string") as $connection_version_config
   | config("google_secret_manager_secret_version.postgres_read_replica_connection_string") as $read_version_config
   | config("google_secret_manager_secret_version.sandbox_access_token_hash_seed") as $seed_version_config
+  | config("google_secret_manager_secret_version.cloud_sql_invited_beta_password") as $candidate_password_version_config
   | (
       .configuration.provider_config[
         ($repo_config.provider_config_key // "")
@@ -429,6 +485,23 @@ if ! jq -e \
     )
     and $sql_instance.change.after.project == $expected_project
     and $sql_instance.change.after.region == $expected_region
+    and $candidate_password_secret.change.after.project == $expected_project
+    and $candidate_password_secret.change.after.secret_id
+      == ($expected_prefix + "postgres-beta-password")
+    and $candidate_password_secret.change.after.deletion_protection == true
+    and $candidate_password_version.change.after_sensitive.secret_data == true
+    and $candidate_password_version.change.after.secret_data == null
+    and $candidate_password_version.change.after_unknown.secret_data == true
+    and $candidate_password_version_config.expressions.secret.references
+      == [
+        "google_secret_manager_secret.cloud_sql_invited_beta_password.name",
+        "google_secret_manager_secret.cloud_sql_invited_beta_password"
+      ]
+    and $candidate_password_version_config.expressions.secret_data.references
+      == [
+        "random_password.cloud_sql_invited_beta.result",
+        "random_password.cloud_sql_invited_beta"
+      ]
 ' <<<"${plan_json}" >/dev/null; then
   printf 'Refusing workload prerequisite plan: non-Cloud-SQL prerequisite identity or sensitive-value handling drifted.\n' >&2
   jq -c '

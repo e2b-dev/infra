@@ -289,7 +289,10 @@ def reserve_usage($reserve):
   };
 
 def expected_cloud_sql_address($resource; $policy):
-  ($policy.resource_addresses | index($resource.address)) != null;
+  (
+    (($policy.resource_addresses // []) + ($policy.candidate_resource_addresses // []))
+    | index($resource.address)
+  ) != null;
 
 def is_cloud_sql_resource($resource; $policy):
   expected_cloud_sql_address($resource; $policy)
@@ -590,6 +593,11 @@ managed_changes as $changes
   ) as $cloud_sql_instance
 | (
     $cloud_sql_resources
+    | map(select(.address == "google_sql_database_instance.invited_beta"))
+    | first
+  ) as $cloud_sql_candidate_instance
+| (
+    $cloud_sql_resources
     | map(select(.address == "google_compute_global_address.cloud_sql_private_services"))
     | first
   ) as $cloud_sql_private_services_range
@@ -615,14 +623,49 @@ managed_changes as $changes
   ) as $cloud_sql_password
 | (
     $cloud_sql_resources
+    | map(select(.address == "random_password.cloud_sql_invited_beta"))
+    | first
+  ) as $cloud_sql_candidate_password
+| (
+    $cloud_sql_resources
     | map(select(.address == "google_sql_database.operator_canary"))
     | first
   ) as $cloud_sql_database
 | (
     $cloud_sql_resources
+    | map(select(.address == "google_sql_database.invited_beta"))
+    | first
+  ) as $cloud_sql_candidate_database
+| (
+    $cloud_sql_resources
     | map(select(.address == "google_sql_user.operator_canary"))
     | first
   ) as $cloud_sql_user
+| (
+    $cloud_sql_resources
+    | map(select(.address == "google_sql_user.invited_beta"))
+    | first
+  ) as $cloud_sql_candidate_user
+| (
+    $cloud_sql_resources
+    | map(
+        select(
+          .address
+          == "google_secret_manager_secret.cloud_sql_invited_beta_password"
+        )
+      )
+    | first
+  ) as $cloud_sql_candidate_password_secret
+| (
+    $cloud_sql_resources
+    | map(
+        select(
+          .address
+          == "google_secret_manager_secret_version.cloud_sql_invited_beta_password"
+        )
+      )
+    | first
+  ) as $cloud_sql_candidate_password_version
 | (
     [
       $changes[]
@@ -930,7 +973,10 @@ managed_changes as $changes
         }
     ],
     missing_or_duplicate_cloud_sql_resources: [
-      $expected.expected_cloud_sql.resource_addresses[] as $address
+      (
+        $expected.expected_cloud_sql.resource_addresses
+        + $expected.expected_cloud_sql.candidate_resource_addresses
+      )[] as $address
       | (
           [
             $cloud_sql_resources[]
@@ -1198,6 +1244,76 @@ managed_changes as $changes
         $cloud_sql_resources[]
         | select(
             .address
+            == "google_sql_database_instance.invited_beta"
+          )
+        | . as $resource
+        | ($resource.change.after.settings[0] // {}) as $settings
+        | ($settings.backup_configuration[0] // {}) as $backup
+        | ($backup.backup_retention_settings[0] // {}) as $retention
+        | ($settings.ip_configuration[0] // {}) as $ip
+        | select(
+            $resource.change.after.database_version
+              != $expected.expected_cloud_sql.database_version
+            or ($resource.change.after.name | type) != "string"
+            or (
+              try (
+                $resource.change.after.name
+                | endswith($expected.expected_cloud_sql.candidate_instance_name_suffix)
+              ) catch false
+              | not
+            )
+            or $resource.change.after.project
+              != $cloud_sql_instance.change.after.project
+            or $resource.change.after.region
+              != $cloud_sql_instance.change.after.region
+            or $resource.change.after.deletion_protection != true
+            or $settings.tier
+              != $expected.expected_cloud_sql.candidate_tier
+            or $settings.edition
+              != $expected.expected_cloud_sql.edition
+            or $settings.availability_type
+              != $expected.expected_cloud_sql.candidate_availability_type
+            or $settings.disk_type
+              != $expected.expected_cloud_sql.candidate_disk_type
+            or $settings.disk_size
+              != $expected.expected_cloud_sql.candidate_disk_size_gb
+            or $settings.disk_autoresize != true
+            or $settings.disk_autoresize_limit
+              != $expected.expected_cloud_sql.candidate_disk_autoresize_limit_gb
+            or $settings.deletion_protection_enabled != true
+            or $backup.enabled != true
+            or $backup.location != $resource.change.after.region
+            or $backup.start_time
+              != $expected.expected_cloud_sql.backup_start_time
+            or $backup.point_in_time_recovery_enabled != true
+            or $backup.transaction_log_retention_days
+              != $expected.expected_cloud_sql.transaction_log_retention_days
+            or $retention.retained_backups
+              != $expected.expected_cloud_sql.retained_backups
+            or $retention.retention_unit != "COUNT"
+            or $ip.ipv4_enabled != false
+            or ($ip.private_network | type) != "string"
+            or ($ip.private_network | normalize_compute_resource_id)
+              != (
+                $cloud_sql_private_services_range.change.after.network
+                | normalize_compute_resource_id
+              )
+            or $ip.allocated_ip_range
+              != $cloud_sql_private_services_range.change.after.name
+            or $ip.allocated_ip_range
+              != $cloud_sql_private_services_connection.change.after.reserved_peering_ranges[0]
+            or $ip.enable_private_path_for_google_cloud_services != false
+            or $ip.ssl_mode != $expected.expected_cloud_sql.ssl_mode
+          )
+        | {
+            address: $resource.address,
+            reason: "candidate-instance-settings"
+          }
+      ]
+      + [
+        $cloud_sql_resources[]
+        | select(
+            .address
             == "google_compute_global_address.cloud_sql_private_services"
           )
         | select(
@@ -1303,9 +1419,25 @@ managed_changes as $changes
             ) == 0
             or .change.after.instance != $cloud_sql_instance.change.after.name
           )
-        | {
+          | {
             address: .address,
             reason: "database"
+          }
+      ]
+      + [
+        $cloud_sql_resources[]
+        | select(.address == "google_sql_database.invited_beta")
+        | select(
+            .change.after.name
+              != $expected.expected_cloud_sql.database_name
+            or .change.after.project
+              != $cloud_sql_candidate_instance.change.after.project
+            or .change.after.instance
+              != $cloud_sql_candidate_instance.change.after.name
+          )
+        | {
+            address: .address,
+            reason: "candidate-database"
           }
       ]
       + [
@@ -1345,9 +1477,43 @@ managed_changes as $changes
               end
             )
           )
-        | {
+          | {
             address: .address,
             reason: "database-user"
+          }
+      ]
+      + [
+        $cloud_sql_resources[]
+        | select(.address == "google_sql_user.invited_beta")
+        | select(
+            .change.after.name
+              != $expected.expected_cloud_sql.user_name
+            or .change.after.project
+              != $cloud_sql_candidate_instance.change.after.project
+            or .change.after.instance
+              != $cloud_sql_candidate_instance.change.after.name
+            or .change.after_sensitive.password != true
+            or (
+              if (
+                (.change.after.password | type) == "string"
+                and ($cloud_sql_candidate_password.change.after.result | type) == "string"
+              ) then
+                .change.after.password
+                  != $cloud_sql_candidate_password.change.after.result
+              elif (
+                .change.after.password == null
+                and $cloud_sql_candidate_password.change.after.result == null
+              ) then
+                .change.after_unknown.password != true
+                  or $cloud_sql_candidate_password.change.after_unknown.result != true
+              else
+                true
+              end
+            )
+          )
+        | {
+            address: .address,
+            reason: "candidate-database-user"
           }
       ]
       + [
@@ -1369,9 +1535,81 @@ managed_changes as $changes
               end
             )
           )
-        | {
+          | {
             address: .address,
             reason: "database-password-policy"
+          }
+      ]
+      + [
+        $cloud_sql_resources[]
+        | select(.address == "random_password.cloud_sql_invited_beta")
+        | select(
+            .change.after.length != 32
+            or .change.after.special != false
+            or .change.after_sensitive.result != true
+            or (
+              if (.change.after.result | type) == "string" then
+                false
+              else
+                .change.after.result != null
+                  or .change.after_unknown.result != true
+              end
+            )
+          )
+        | {
+            address: .address,
+            reason: "candidate-database-password-policy"
+          }
+      ]
+      + [
+        $cloud_sql_candidate_password_secret
+        | (
+            $cloud_sql_candidate_instance.change.after.name
+            | rtrimstr(
+                $expected.expected_cloud_sql.candidate_instance_name_suffix
+              )
+          ) as $prefix
+        | select(
+            .change.after.project
+              != $cloud_sql_candidate_instance.change.after.project
+            or .change.after.secret_id
+              != (
+                $prefix
+                + $expected.expected_cloud_sql.candidate_password_secret_id_suffix
+              )
+            or .change.after.deletion_protection != true
+            or (.change.after.replication[0].auto | length) != 1
+            or (.change.after.replication[0].user_managed | length) != 0
+          )
+        | {
+            address: .address,
+            reason: "candidate-password-secret"
+          }
+      ]
+      + [
+        $cloud_sql_candidate_password_version
+        | select(
+            .change.after_sensitive.secret_data != true
+            or (
+              if (.change.after.secret | type) == "string" then
+                (.change.after.secret | length) == 0
+              else
+                .change.after.secret != null
+                  or .change.after_unknown.secret != true
+              end
+            )
+            or (
+              if (.change.after.secret_data | type) == "string" then
+                false
+              else
+                .change.after.secret_data != null
+                  or .change.after_unknown.secret_data != true
+              end
+            )
+          )
+        | {
+            address: .address,
+            reason: "candidate-password-secret-version"
           }
       ]
       + [

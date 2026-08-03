@@ -102,6 +102,60 @@ resource "google_sql_database_instance" "operator_canary" {
   deletion_protection = true
 
   settings {
+    tier              = "db-f1-micro"
+    edition           = "ENTERPRISE"
+    availability_type = "ZONAL"
+
+    disk_type             = "PD_HDD"
+    disk_size             = 10
+    disk_autoresize       = true
+    disk_autoresize_limit = 20
+
+    deletion_protection_enabled = true
+    user_labels                 = var.labels
+
+    backup_configuration {
+      enabled                        = true
+      location                       = var.gcp_region
+      point_in_time_recovery_enabled = true
+      start_time                     = "03:00"
+      transaction_log_retention_days = 7
+
+      backup_retention_settings {
+        retained_backups = 7
+        retention_unit   = "COUNT"
+      }
+    }
+
+    ip_configuration {
+      ipv4_enabled                                  = false
+      private_network                               = data.google_compute_network.workload.id
+      allocated_ip_range                            = google_compute_global_address.cloud_sql_private_services.name
+      enable_private_path_for_google_cloud_services = false
+      ssl_mode                                      = "ENCRYPTED_ONLY"
+    }
+  }
+
+  depends_on = [
+    google_project_iam_member.cloud_sql_service_agent,
+    google_service_networking_connection.cloud_sql,
+    terraform_data.cloud_sql_connection_budget,
+  ]
+}
+
+# The live operator-canary database is intentionally retained unchanged while
+# the invited-beta regional database is provisioned and validated. The
+# application connection secret continues to reference operator_canary until a
+# separately reviewed data migration and cutover changes that binding.
+resource "google_sql_database_instance" "invited_beta" {
+  name             = "${var.prefix}postgres-beta"
+  project          = var.gcp_project_id
+  region           = var.gcp_region
+  database_version = "POSTGRES_16"
+
+  deletion_protection = true
+
+  settings {
     tier              = "db-custom-2-7680"
     edition           = "ENTERPRISE"
     availability_type = "REGIONAL"
@@ -197,6 +251,43 @@ resource "google_sql_user" "operator_canary" {
   project  = var.gcp_project_id
   instance = google_sql_database_instance.operator_canary.name
   password = random_password.cloud_sql_operator_canary.result
+}
+
+resource "google_sql_database" "invited_beta" {
+  name     = local.cloud_sql_database_name
+  project  = var.gcp_project_id
+  instance = google_sql_database_instance.invited_beta.name
+}
+
+resource "random_password" "cloud_sql_invited_beta" {
+  length  = 32
+  special = false
+}
+
+resource "google_sql_user" "invited_beta" {
+  name     = local.cloud_sql_user_name
+  project  = var.gcp_project_id
+  instance = google_sql_database_instance.invited_beta.name
+  password = random_password.cloud_sql_invited_beta.result
+}
+
+resource "google_secret_manager_secret" "cloud_sql_invited_beta_password" {
+  project             = var.gcp_project_id
+  secret_id           = "${var.prefix}postgres-beta-password"
+  deletion_protection = true
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "cloud_sql_invited_beta_password" {
+  secret      = google_secret_manager_secret.cloud_sql_invited_beta_password.name
+  secret_data = random_password.cloud_sql_invited_beta.result
+
+  depends_on = [
+    google_sql_user.invited_beta,
+  ]
 }
 
 resource "google_secret_manager_secret_version" "postgres_connection_string" {

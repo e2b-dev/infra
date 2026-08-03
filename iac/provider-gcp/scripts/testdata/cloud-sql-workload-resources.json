@@ -185,7 +185,7 @@
         "region": "us-east4",
         "settings": [
           {
-            "availability_type": "REGIONAL",
+            "availability_type": "ZONAL",
             "backup_configuration": [
               {
                 "backup_retention_settings": [
@@ -203,9 +203,9 @@
             ],
             "deletion_protection_enabled": true,
             "disk_autoresize": true,
-            "disk_autoresize_limit": 200,
-            "disk_size": 20,
-            "disk_type": "PD_SSD",
+            "disk_autoresize_limit": 20,
+            "disk_size": 10,
+            "disk_type": "PD_HDD",
             "edition": "ENTERPRISE",
             "ip_configuration": [
               {
@@ -216,7 +216,7 @@
                 "ssl_mode": "ENCRYPTED_ONLY"
               }
             ],
-            "tier": "db-custom-2-7680"
+            "tier": "db-f1-micro"
           }
         ]
       },
@@ -355,6 +355,174 @@
         }
       },
       "after_unknown": {}
+    }
+  },
+  {
+    "address": "google_sql_database_instance.invited_beta",
+    "mode": "managed",
+    "type": "google_sql_database_instance",
+    "name": "invited_beta",
+    "change": {
+      "actions": [
+        "create"
+      ],
+      "after": {
+        "database_version": "POSTGRES_16",
+        "deletion_protection": true,
+        "name": "e2b-postgres-beta",
+        "project": "operator-canary",
+        "region": "us-east4",
+        "settings": [
+          {
+            "availability_type": "REGIONAL",
+            "backup_configuration": [
+              {
+                "backup_retention_settings": [
+                  {
+                    "retained_backups": 7,
+                    "retention_unit": "COUNT"
+                  }
+                ],
+                "enabled": true,
+                "location": "us-east4",
+                "point_in_time_recovery_enabled": true,
+                "start_time": "03:00",
+                "transaction_log_retention_days": 7
+              }
+            ],
+            "deletion_protection_enabled": true,
+            "disk_autoresize": true,
+            "disk_autoresize_limit": 200,
+            "disk_size": 20,
+            "disk_type": "PD_SSD",
+            "edition": "ENTERPRISE",
+            "ip_configuration": [
+              {
+                "allocated_ip_range": "e2b-cloud-sql-private-services",
+                "enable_private_path_for_google_cloud_services": false,
+                "ipv4_enabled": false,
+                "private_network": "projects/operator-canary/global/networks/default",
+                "ssl_mode": "ENCRYPTED_ONLY"
+              }
+            ],
+            "tier": "db-custom-2-7680"
+          }
+        ]
+      },
+      "after_unknown": {
+        "private_ip_address": true
+      }
+    }
+  },
+  {
+    "address": "google_sql_database.invited_beta",
+    "mode": "managed",
+    "type": "google_sql_database",
+    "name": "invited_beta",
+    "change": {
+      "actions": [
+        "create"
+      ],
+      "after": {
+        "instance": "e2b-postgres-beta",
+        "name": "e2b",
+        "project": "operator-canary"
+      },
+      "after_unknown": {}
+    }
+  },
+  {
+    "address": "random_password.cloud_sql_invited_beta",
+    "mode": "managed",
+    "type": "random_password",
+    "name": "cloud_sql_invited_beta",
+    "change": {
+      "actions": [
+        "create"
+      ],
+      "after": {
+        "length": 32,
+        "special": false
+      },
+      "after_unknown": {
+        "result": true
+      },
+      "after_sensitive": {
+        "result": true
+      }
+    }
+  },
+  {
+    "address": "google_sql_user.invited_beta",
+    "mode": "managed",
+    "type": "google_sql_user",
+    "name": "invited_beta",
+    "change": {
+      "actions": [
+        "create"
+      ],
+      "after": {
+        "instance": "e2b-postgres-beta",
+        "name": "e2b",
+        "project": "operator-canary"
+      },
+      "after_unknown": {
+        "password": true
+      },
+      "after_sensitive": {
+        "password": true
+      }
+    }
+  },
+  {
+    "address": "google_secret_manager_secret.cloud_sql_invited_beta_password",
+    "mode": "managed",
+    "type": "google_secret_manager_secret",
+    "name": "cloud_sql_invited_beta_password",
+    "change": {
+      "actions": [
+        "create"
+      ],
+      "after": {
+        "deletion_protection": true,
+        "project": "operator-canary",
+        "replication": [
+          {
+            "auto": [
+              {}
+            ],
+            "user_managed": []
+          }
+        ],
+        "secret_id": "e2b-postgres-beta-password"
+      },
+      "after_unknown": {
+        "id": true,
+        "name": true
+      }
+    }
+  },
+  {
+    "address": "google_secret_manager_secret_version.cloud_sql_invited_beta_password",
+    "mode": "managed",
+    "type": "google_secret_manager_secret_version",
+    "name": "cloud_sql_invited_beta_password",
+    "change": {
+      "actions": [
+        "create"
+      ],
+      "after": {
+        "secret": null,
+        "secret_data": null
+      },
+      "after_unknown": {
+        "secret": true,
+        "secret_data": true,
+        "version": true
+      },
+      "after_sensitive": {
+        "secret_data": true
+      }
     }
   }
 ]

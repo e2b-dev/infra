@@ -24,6 +24,16 @@ fake_terraform="${test_dir}/terraform"
 cp "${script_dir}/testdata/fake-terraform.sh" "${fake_terraform}"
 chmod 0700 "${fake_terraform}"
 
+candidate_password_secret_block="$(
+  awk '
+    /^resource "google_secret_manager_secret" "cloud_sql_invited_beta_password"/ {
+      capture = 1
+    }
+    capture { print }
+    capture && /^}/ { exit }
+  ' "${cloud_sql_config}"
+)"
+
 jq \
   --slurpfile cloud_sql "${cloud_sql_fixture}" \
   --slurpfile cloud_sql_project "${cloud_sql_project_state}" \
@@ -84,6 +94,20 @@ grep -F 'ssl_mode                                      = "ENCRYPTED_ONLY"' \
 grep -F '"postgresql://%s:%s@%s:5432/%s?sslmode=require"' \
   "${cloud_sql_config}" >/dev/null
 grep -F 'password = random_password.cloud_sql_operator_canary.result' \
+  "${cloud_sql_config}" >/dev/null
+grep -F 'resource "google_sql_database_instance" "invited_beta"' \
+  "${cloud_sql_config}" >/dev/null
+grep -F 'name             = "${var.prefix}postgres-beta"' \
+  "${cloud_sql_config}" >/dev/null
+grep -F 'password = random_password.cloud_sql_invited_beta.result' \
+  "${cloud_sql_config}" >/dev/null
+grep -F 'resource "google_secret_manager_secret" "cloud_sql_invited_beta_password"' \
+  "${cloud_sql_config}" >/dev/null
+grep -E 'secret_id[[:space:]]*=[[:space:]]*"\$\{var\.prefix\}postgres-beta-password"' \
+  <<<"${candidate_password_secret_block}" >/dev/null
+grep -E 'deletion_protection[[:space:]]*=[[:space:]]*true' \
+  <<<"${candidate_password_secret_block}" >/dev/null
+grep -F 'secret_data = random_password.cloud_sql_invited_beta.result' \
   "${cloud_sql_config}" >/dev/null
 grep -F 'secret = module.init.postgres_connection_string_secret_name' \
   "${cloud_sql_config}" >/dev/null
@@ -1066,6 +1090,33 @@ expect_failure \
 jq '
   (
     .resource_changes[]
+    | select(.address == "google_sql_database_instance.invited_beta")
+    | .change.after.settings[0].availability_type
+  ) = "ZONAL"
+' "${fixture}" >"${test_dir}/cloud-sql-candidate-not-regional.json"
+expect_failure \
+  "cloud-sql-candidate-not-regional" \
+  "invalid_cloud_sql_resources must be empty." \
+  "${test_dir}/cloud-sql-candidate-not-regional.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "google_secret_manager_secret.cloud_sql_invited_beta_password"
+      )
+    | .change.after.secret_id
+  ) = "e2b-wrong-password-secret"
+' "${fixture}" >"${test_dir}/cloud-sql-candidate-wrong-password-secret.json"
+expect_failure \
+  "cloud-sql-candidate-wrong-password-secret" \
+  "invalid_cloud_sql_resources must be empty." \
+  "${test_dir}/cloud-sql-candidate-wrong-password-secret.json"
+
+jq '
+  (
+    .resource_changes[]
     | select(.address == "terraform_data.cloud_sql_connection_budget")
     | .change.after.input.db_max_open_connections
   ) = 7
@@ -1733,6 +1784,16 @@ expect_failure \
   "missing-cloud-sql-secret-version" \
   "missing_or_duplicate_cloud_sql_resources must be empty." \
   "${test_dir}/missing-cloud-sql-secret-version.json"
+
+jq '
+  .resource_changes |= map(
+    select(.address != "google_sql_database_instance.invited_beta")
+  )
+' "${fixture}" >"${test_dir}/missing-cloud-sql-candidate.json"
+expect_failure \
+  "missing-cloud-sql-candidate" \
+  "missing_or_duplicate_cloud_sql_resources must be empty." \
+  "${test_dir}/missing-cloud-sql-candidate.json"
 
 jq '
   (
