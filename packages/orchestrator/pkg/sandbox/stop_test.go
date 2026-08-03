@@ -13,22 +13,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// errStopFailed stands in for the ordinary, transient failures doStop can
-// return: "fc process %d still exists after SIGKILL", "cgroup %s still has
-// processes after cgroup.kill", or a canceled context in the FC-exit wait.
+// errStopFailed stands in for the transient failures doStop can return.
 var errStopFailed = errors.New("stop failed")
 
-// TestSandboxStop_RetriesAfterFailure is a regression test for the orphaned
-// Firecracker leak.
-//
-// Stop used to memoize its result in a utils.Lazy[error], which is backed by
-// sync.Once and therefore caches the *failure* too. Every later caller — the
-// priority cleanup hook, the exit-watcher goroutine, and stopSandboxAsync —
-// then got the stale error back without the kill ever being re-attempted, so a
-// single transient failure permanently orphaned the VM (and, with it, its
-// netns/tap/iptables rules).
-//
-// The latch must close only on success.
+// Regression test: Stop used to memoize its result in a utils.Lazy[error]
+// (sync.Once-backed), so a single transient failure was cached forever and the
+// Firecracker VM leaked. A failed stop must stay retryable.
 func TestSandboxStop_RetriesAfterFailure(t *testing.T) {
 	t.Parallel()
 
@@ -52,9 +42,6 @@ func TestSandboxStop_RetriesAfterFailure(t *testing.T) {
 	require.EqualValues(t, 2, calls.Load(), "a failed stop must be retried, not served from a cached error")
 }
 
-// TestSandboxStop_RetriesEveryFailure checks that the latch stays open across
-// repeated failures and that each attempt returns its own error rather than the
-// first one.
 func TestSandboxStop_RetriesEveryFailure(t *testing.T) {
 	t.Parallel()
 
@@ -73,10 +60,6 @@ func TestSandboxStop_RetriesEveryFailure(t *testing.T) {
 	}
 }
 
-// TestSandboxStop_NoRetryAfterSuccess checks the other half of the contract:
-// once a stop succeeds the sandbox stays stopped, so repeated Stop calls (the
-// cleanup hook plus the exit watcher both fire on a normal teardown) must not
-// re-run the kill.
 func TestSandboxStop_NoRetryAfterSuccess(t *testing.T) {
 	t.Parallel()
 
@@ -96,8 +79,6 @@ func TestSandboxStop_NoRetryAfterSuccess(t *testing.T) {
 	require.EqualValues(t, 1, calls.Load(), "a successful stop must latch")
 }
 
-// TestSandboxStop_RetryLatchesAfterSuccess combines both halves: a failure is
-// retried, and the successful retry latches.
 func TestSandboxStop_RetryLatchesAfterSuccess(t *testing.T) {
 	t.Parallel()
 
@@ -118,8 +99,6 @@ func TestSandboxStop_RetryLatchesAfterSuccess(t *testing.T) {
 	require.EqualValues(t, 2, calls.Load(), "the successful retry must latch")
 }
 
-// TestSandboxStop_ConcurrentCallersRunStopOnce checks that concurrent callers
-// are serialized and, on success, the work runs exactly once. Run under -race.
 func TestSandboxStop_ConcurrentCallersRunStopOnce(t *testing.T) {
 	t.Parallel()
 
@@ -158,9 +137,6 @@ func TestSandboxStop_ConcurrentCallersRunStopOnce(t *testing.T) {
 	require.EqualValues(t, 1, calls.Load(), "concurrent callers must run the stop work once")
 }
 
-// TestSandboxStop_ConcurrentCallersRetryUntilSuccess checks that a failing stop
-// under concurrency is retried by the callers that follow, and stops being
-// retried once one of them succeeds.
 func TestSandboxStop_ConcurrentCallersRetryUntilSuccess(t *testing.T) {
 	t.Parallel()
 

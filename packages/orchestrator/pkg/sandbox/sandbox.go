@@ -314,11 +314,9 @@ type Sandbox struct {
 
 	exit *utils.ErrorOnce
 
-	// stopMu serializes stop attempts; stopped latches once one of them
-	// succeeds. Deliberately not a sync.Once: sync.Once would memoize a failed
-	// stop and every later caller — the priority cleanup hook, the exit-watcher
-	// goroutine, stopSandboxAsync — would get the stale error back without the
-	// kill ever being re-attempted, orphaning the Firecracker process.
+	// stopMu serializes stop attempts; stopped latches only on success.
+	// Deliberately not a sync.Once: that would memoize a failed stop and the
+	// kill would never be re-attempted, orphaning the Firecracker process.
 	stopMu  sync.Mutex
 	stopped bool
 
@@ -1325,12 +1323,9 @@ func (s *Sandbox) Close(ctx context.Context) error {
 	return nil
 }
 
-// Stop kills the sandbox. It is safe to call multiple times and from multiple
-// goroutines: attempts are serialized, and once one succeeds the sandbox stays
-// stopped and later calls are a no-op. A *failed* stop is retried by the next
-// caller — a transient failure (a canceled context, an FC process that outlived
-// its SIGKILL grace, a cgroup that was still populated when the kill budget ran
-// out) must not leave the VM running with nothing left to kill it.
+// Stop kills the sandbox. Safe to call multiple times and from multiple
+// goroutines: attempts are serialized, a success latches so later calls are
+// no-ops, and a failed stop is retried by the next caller.
 func (s *Sandbox) Stop(ctx context.Context) error {
 	return s.latchStop(func() error {
 		return s.doStop(ctx)
