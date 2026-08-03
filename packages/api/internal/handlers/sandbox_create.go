@@ -767,17 +767,6 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 	return nil
 }
 
-// isValidDomainPattern reports whether s is a domain name optionally prefixed
-// with a single "*." subdomain wildcard, matching the patterns accepted in
-// allowOut/denyOut ("api.example.com", "*.example.com").
-//
-// A bare "*" is deliberately not accepted: transform rules inject headers
-// (typically credentials) into matching requests, so an all-domains rule would
-// leak them to every host the sandbox talks to.
-func isValidDomainPattern(s string) bool {
-	return govalidator.IsDNSName(strings.TrimPrefix(s, "*."))
-}
-
 func validateNetworkRules(ctx context.Context, featureFlags featureFlagsClient, teamID uuid.UUID, envdVersion string, rules *map[string][]api.SandboxNetworkRule) *api.APIError {
 	if rules == nil {
 		return nil
@@ -832,7 +821,7 @@ func validateNetworkRules(ctx context.Context, featureFlags featureFlagsClient, 
 			}
 		}
 
-		if !isValidDomainPattern(domain) {
+		if !govalidator.IsDNSName(domain) {
 			return &api.APIError{
 				Code:      http.StatusBadRequest,
 				Err:       fmt.Errorf("rule domain %q is not a valid domain", domain),
