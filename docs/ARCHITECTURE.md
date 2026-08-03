@@ -372,13 +372,13 @@ flowchart TB
     subgraph servers["server pool (3 nodes)"]
         NS["Nomad + Consul servers (control plane)"]
     end
-    subgraph apipool["api pool"]
+    subgraph apipool["api pool (2 private nodes)"]
         AJ["api, dashboard-api, client-proxy,<br/>ingress (Traefik), docker-reverse-proxy,<br/>redis, loki, otel-collector, autoscaler"]
     end
-    subgraph clientpool["default pool (autoscaled)"]
+    subgraph clientpool["default pool (2 bootstrap, 2-15 managed)"]
         OJ["orchestrator (system job, raw_exec)<br/>+ Firecracker sandboxes"]
     end
-    subgraph buildpool["build pool (autoscaled)"]
+    subgraph buildpool["build pool (1 fixed private node)"]
         TJ["template-manager (raw_exec)"]
     end
     subgraph chpool["clickhouse pool"]
@@ -392,13 +392,18 @@ flowchart TB
 
 - **Server nodes** run only Nomad/Consul servers (scheduling, service discovery, Consul DNS —
   services address each other as `*.service.consul`).
-- **API nodes** host every control-plane container and are the only LB backend.
+- **API nodes** host every control-plane container and are the only LB backend. The invited-beta
+  topology runs two API nodes.
 - **Sandbox ("client") nodes** run the orchestrator as a Nomad *system* job via `raw_exec`
   (it needs root for Firecracker, namespaces, NBD, cgroups). Configured with hugepages and local
   template caches. Autoscaled.
-- **Build nodes** run the same binary in template-manager mode; the `nomad-nodepool-apm`
-  autoscaler plugin scales the job with the node pool.
-- The quota-constrained **dev operator canary** gives server and worker regional MIGs zero surge
+- **Build nodes** run the same binary in template-manager mode. The invited-beta topology keeps
+  one fixed build node, reported separately from workcell capacity.
+- Server, API, worker, build, and optional data nodes have no per-instance public address in the
+  invited-beta topology. Two reviewed static addresses back one Cloud NAT with full translation
+  logging; administration uses IAP and OS Login. The public load balancer is the only application
+  ingress path.
+- The guarded **dev invited-beta topology** gives server and worker regional MIGs zero surge
   and one unavailable instance, so they replace in place. The API zonal MIG retains one surge
   instance. Its build and sandbox workers each use a 100 GB SSD boot disk with 32 GB of swap and
   one fixed 375 GB local SSD for sandbox and snapshot caches. Non-dev keeps the upstream rollout
@@ -408,8 +413,11 @@ flowchart TB
   quota-bearing mutations against an applied fleet and ambiguous/replacing MIGs cannot obtain
   post-cluster admission. Zero surge does not drain workloads:
   before replacing a worker template, the operator must pause/snapshot active sandboxes, verify
-  durable uploads, stop placement, drain Nomad allocations, and verify MIG stability. Automated
-  drain orchestration is not implemented, and Packer image builds must not overlap a rollout.
+  durable uploads, stop placement, drain Nomad allocations, and verify MIG stability. Terraform
+  establishes the two-host worker floor and then ignores live target-size changes so a
+  Nomad-aware capacity controller can own the 2-15 range without configuration collapse. Until
+  that controller job is deployed, operators hold the fleet at two workers. Packer image builds
+  must not overlap a rollout.
 - Packer image construction and workload rollouts serialize through one
   generation-preconditioned object in the private Terraform state bucket,
   keyed by GCP project and region. The operator Packer path is a staged,
@@ -434,15 +442,15 @@ flowchart TB
   rather than automatic stealing.
 - **ClickHouse nodes** have an explicit MIG target size equal to the configured ClickHouse cluster
   size so the instance count cannot silently remain at the provider default.
-- The Monad dev operator canary provisions a dedicated Cloud SQL for PostgreSQL 16 instance in
+- The Monad invited-beta topology provisions a dedicated Cloud SQL for PostgreSQL 16 instance in
   the workload region. It has only a private IPv4 address reached through Private Services Access
   on the existing workload VPC. Cloud SQL rejects unencrypted connections, and Terraform publishes
   the generated dedicated database/user URI with `sslmode=require` directly into the existing
-  `postgres-connection-string` Secret Manager container. The shared-core `db-f1-micro` tier is a
-  low-cost, zonal, no-SLA development choice for the one-workcell canary, not beta capacity.
-  Its reviewed client ceiling is one API allocation with six primary and three auth connections,
-  six fixed docker-reverse-proxy connections, four migrator connections, and no dashboard API:
-  19 configured connections in aggregate.
+  `postgres-connection-string` Secret Manager container. It uses regional HA
+  `db-custom-2-7680` with SSD storage. Its reviewed client ceiling is two API allocations with six
+  primary and three auth connections each, six fixed docker-reverse-proxy connections, four
+  migrator connections, and no dashboard API: 28 configured connections in aggregate, below the
+  hard application budget of 100.
   Automated backups, seven-day PITR, bounded disk auto-growth, and both Terraform and GCP deletion
   protection are enabled. The private service connection is abandoned rather than automatically
   deleted during teardown, and Terraform prevents destruction of its allocated range. Both remain
@@ -468,9 +476,9 @@ flowchart TB
   fixed control/data nodes are not workcell capacity. The measured
   `n1-standard-8` envelope plans two active 2-vCPU/2-GiB workcells per ready
   worker and hard-caps placement at three. Four workcells saturate all worker
-  CPU and are unsupported. The steady autoscaling formula is
-  `max(1, ceil(active_workcells / 2))`, subject to the independently reviewed
-  worker-host ceiling and live quota replacement reserve. Paused sessions do
+  CPU and are unsupported. The invited-beta target formula is
+  `clamp(ceil((active + booting + draining + max(parked, warmTarget)) / 2) + 1, 2, 15)`;
+  the extra host is readiness reserve, not planned workcell density. Paused sessions do
   not reserve a Firecracker slot, but every resume must pass active-workcell
   admission. See `docs/MONAD_F1_LIVE_EVIDENCE_2026-07-30.md` for measurements,
   cleanup proof, and the current quota-bound host ceiling.

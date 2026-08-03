@@ -40,16 +40,26 @@ printf '%s\n' "$*" >>"${FAKE_GCLOUD_LOG_FILE}"
 
 if [[ "${1:-}" == "compute" && "${2:-}" == "project-info" ]]; then
   [[ "${mode}" != "global-read-fails" ]] || exit 1
-  limit=64
+  limit=200
   usage=0
-  [[ "${mode}" != "low-global-limit" ]] || limit=29
-  [[ "${mode}" != "low-global-headroom" ]] || usage=40
-  [[ "${mode}" != "post-cluster-saturated" ]] || usage=64
-  [[ "${mode}" != "post-cluster-reserve" ]] || usage=60
+  [[ "${mode}" != "low-global-limit" ]] || limit=153
+  [[ "${mode}" != "low-global-headroom" ]] || usage=159
+  [[ "${mode}" != "post-cluster-saturated" ]] || usage=200
+  [[ "${mode}" != "post-cluster-reserve" ]] || usage=196
   jq -cn \
     --argjson limit "${limit}" \
     --argjson usage "${usage}" \
-    '{quotas: [{metric: "CPUS_ALL_REGIONS", limit: $limit, usage: $usage}]}'
+    --arg mode "${mode}" '
+      {
+        quotas: [
+          {metric: "CPUS_ALL_REGIONS", limit: $limit, usage: $usage}
+        ]
+      }
+      | if $mode == "missing-global-cpu-metric"
+        then .quotas = []
+        else .
+        end
+    '
   exit 0
 fi
 
@@ -59,39 +69,39 @@ if [[ "${1:-}" == "compute" && "${2:-}" == "regions" ]]; then
   instances_usage=0
   regional_cpu_limit=200
   regional_cpu_usage=0
-  ssd_limit=500
+  ssd_limit=2000
   ssd_usage=0
   standard_limit=4096
   standard_usage=0
   local_limit=-1
   local_usage=0
-  address_limit=8
+  address_limit=16
   address_usage=0
   case "${mode}" in
     low-instance-headroom) instances_usage=26 ;;
-    low-regional-cpu-limit) regional_cpu_limit=29 ;;
-    low-regional-cpu-headroom) regional_cpu_usage=180 ;;
-    low-ssd-limit) ssd_limit=469 ;;
-    low-standard-headroom) standard_usage=3700 ;;
+    low-regional-cpu-limit) regional_cpu_limit=153 ;;
+    low-regional-cpu-headroom) regional_cpu_usage=159 ;;
+    low-ssd-limit) ssd_limit=1769 ;;
+    low-standard-headroom) standard_usage=3497 ;;
     low-local-headroom)
-      local_limit=800
-      local_usage=100
+      local_limit=6375
+      local_usage=5251
       ;;
-    low-address-headroom) address_usage=2 ;;
+    low-address-headroom) address_usage=14 ;;
     post-cluster-saturated)
       instances_usage=32
       regional_cpu_usage=200
-      ssd_usage=500
+      ssd_usage=2000
       standard_usage=4096
-      local_usage=750
-      address_usage=8
+      local_usage=6375
+      address_usage=16
       ;;
     post-cluster-reserve)
       instances_usage=31
       regional_cpu_usage=196
-      ssd_usage=490
+      ssd_usage=1990
       standard_usage=3896
-      address_usage=7
+      address_usage=15
       ;;
   esac
   jq -cn \
@@ -262,6 +272,13 @@ expect_pass \
   "${script_dir}/assert-workload-quota.sh" \
   "${policy}" monad-code us-east4 "${fake_gcloud}"
 grep -F '"metric_limit":"unlimited"' "${test_dir}/stdout" >/dev/null
+
+printf '%s\n' missing-global-cpu-metric >"${fake_gcloud_mode}"
+expect_pass \
+  "regional CPU quota replaces retired global CPU metric" \
+  "${script_dir}/assert-workload-quota.sh" \
+  "${policy}" monad-code us-east4 "${fake_gcloud}"
+printf '%s\n' pass >"${fake_gcloud_mode}"
 
 for quota_mode in \
   low-global-limit \

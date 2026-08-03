@@ -35,7 +35,7 @@ variable "api_node_pool" {
 
 variable "api_use_nat" {
   type        = bool
-  description = "Whether API nodes should use NAT with dedicated external IPs."
+  description = "Whether all compute pools use the shared Cloud NAT without per-instance public IPs."
   default     = false
 }
 

@@ -101,6 +101,11 @@ variable "network_name" {
   type        = string
 }
 
+variable "use_cloud_nat" {
+  description = "Use the shared Cloud NAT and omit public IPs from this pool."
+  type        = bool
+}
+
 variable "cluster_tag_name" {
   description = "Network tag applied to cluster instances for firewall rules"
   type        = string

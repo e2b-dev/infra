@@ -11,7 +11,9 @@
       "type": "google_compute_instance_template",
       "name": "server",
       "change": {
-        "actions": ["create"],
+        "actions": [
+          "create"
+        ],
         "after": {
           "machine_type": "e2-standard-2",
           "disk": [
@@ -24,7 +26,7 @@
           ],
           "network_interface": [
             {
-              "access_config": [{}]
+              "access_config": []
             }
           ]
         },
@@ -37,7 +39,9 @@
       "type": "google_compute_instance_template",
       "name": "api",
       "change": {
-        "actions": ["create"],
+        "actions": [
+          "create"
+        ],
         "after": {
           "machine_type": "e2-standard-4",
           "disk": [
@@ -50,7 +54,7 @@
           ],
           "network_interface": [
             {
-              "access_config": [{}]
+              "access_config": []
             }
           ]
         },
@@ -63,7 +67,9 @@
       "type": "google_compute_instance_template",
       "name": "clickhouse",
       "change": {
-        "actions": ["create"],
+        "actions": [
+          "create"
+        ],
         "after": {
           "machine_type": "e2-standard-4",
           "disk": [
@@ -76,7 +82,7 @@
           ],
           "network_interface": [
             {
-              "access_config": [{}]
+              "access_config": []
             }
           ]
         },
@@ -89,7 +95,9 @@
       "type": "google_compute_instance_template",
       "name": "loki",
       "change": {
-        "actions": ["create"],
+        "actions": [
+          "create"
+        ],
         "after": {
           "machine_type": "e2-standard-4",
           "disk": [
@@ -102,7 +110,7 @@
           ],
           "network_interface": [
             {
-              "access_config": [{}]
+              "access_config": []
             }
           ]
         },
@@ -115,7 +123,9 @@
       "type": "google_compute_instance_template",
       "name": "template",
       "change": {
-        "actions": ["create"],
+        "actions": [
+          "create"
+        ],
         "after": {
           "machine_type": "n1-standard-8",
           "disk": [
@@ -134,7 +144,7 @@
           ],
           "network_interface": [
             {
-              "access_config": [{}]
+              "access_config": []
             }
           ]
         },
@@ -147,7 +157,9 @@
       "type": "google_compute_instance_template",
       "name": "template",
       "change": {
-        "actions": ["create"],
+        "actions": [
+          "create"
+        ],
         "after": {
           "machine_type": "n1-standard-8",
           "disk": [
@@ -166,7 +178,7 @@
           ],
           "network_interface": [
             {
-              "access_config": [{}]
+              "access_config": []
             }
           ]
         },
@@ -179,9 +191,13 @@
       "type": "google_compute_region_instance_group_manager",
       "name": "server_pool",
       "change": {
-        "actions": ["create"],
+        "actions": [
+          "create"
+        ],
         "after": {
-          "distribution_policy_zones": ["us-east4-c"],
+          "distribution_policy_zones": [
+            "us-east4-c"
+          ],
           "target_size": 3,
           "update_policy": [
             {
@@ -199,9 +215,11 @@
       "type": "google_compute_instance_group_manager",
       "name": "api_pool",
       "change": {
-        "actions": ["create"],
+        "actions": [
+          "create"
+        ],
         "after": {
-          "target_size": 1,
+          "target_size": 2,
           "update_policy": [
             {
               "max_surge_fixed": 1,
@@ -218,7 +236,9 @@
       "type": "google_compute_instance_group_manager",
       "name": "clickhouse_pool",
       "change": {
-        "actions": ["create"],
+        "actions": [
+          "create"
+        ],
         "after": {
           "target_size": 0,
           "update_policy": [
@@ -237,7 +257,9 @@
       "type": "google_compute_instance_group_manager",
       "name": "loki_pool",
       "change": {
-        "actions": ["create"],
+        "actions": [
+          "create"
+        ],
         "after": {
           "target_size": 0,
           "update_policy": [
@@ -256,9 +278,13 @@
       "type": "google_compute_region_instance_group_manager",
       "name": "pool",
       "change": {
-        "actions": ["create"],
+        "actions": [
+          "create"
+        ],
         "after": {
-          "distribution_policy_zones": ["us-east4-c"],
+          "distribution_policy_zones": [
+            "us-east4-c"
+          ],
           "target_size": 1,
           "update_policy": [
             {
@@ -276,10 +302,14 @@
       "type": "google_compute_region_instance_group_manager",
       "name": "pool",
       "change": {
-        "actions": ["create"],
+        "actions": [
+          "create"
+        ],
         "after": {
-          "distribution_policy_zones": ["us-east4-c"],
-          "target_size": 1,
+          "distribution_policy_zones": [
+            "us-east4-c"
+          ],
+          "target_size": 2,
           "update_policy": [
             {
               "max_surge_fixed": 0,
@@ -287,6 +317,46 @@
               "max_unavailable_fixed": 1
             }
           ]
+        }
+      }
+    },
+    {
+      "address": "module.cluster.module.network.google_compute_address.nat_ips[0]",
+      "mode": "managed",
+      "type": "google_compute_address",
+      "name": "nat_ips",
+      "index": 0,
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "address_type": "EXTERNAL",
+          "region": "https://www.googleapis.com/compute/v1/projects/operator-canary/regions/us-east4"
+        },
+        "after_unknown": {
+          "address": true
+        }
+      }
+    },
+    {
+      "address": "module.cluster.module.network.google_compute_address.nat_ips[1]",
+      "mode": "managed",
+      "type": "google_compute_address",
+      "name": "nat_ips",
+      "index": 1,
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "address_type": "EXTERNAL",
+          "region": "https://www.googleapis.com/compute/v1/projects/operator-canary/regions/us-east4"
+        },
+        "after_unknown": {
+          "address": true
         }
       }
     }

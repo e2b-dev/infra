@@ -72,6 +72,7 @@ jq '
     if (
       .type == "google_compute_instance_group_manager"
       or .type == "google_compute_region_instance_group_manager"
+      or .type == "google_compute_address"
     )
     then .change = (
       .change
@@ -92,6 +93,7 @@ jq '
     if (
       .type == "google_compute_instance_group_manager"
       or .type == "google_compute_region_instance_group_manager"
+      or .type == "google_compute_address"
     )
     then .change = (
       .change
@@ -122,6 +124,7 @@ jq '
     if (
       .type == "google_compute_instance_group_manager"
       or .type == "google_compute_region_instance_group_manager"
+      or .type == "google_compute_address"
     )
     then .change = (
       .change
@@ -161,6 +164,7 @@ jq '
     if (
       .type == "google_compute_instance_group_manager"
       or .type == "google_compute_region_instance_group_manager"
+      or .type == "google_compute_address"
     )
     then .change = (
       .change

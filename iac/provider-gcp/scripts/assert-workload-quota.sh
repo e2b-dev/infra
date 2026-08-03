@@ -88,10 +88,17 @@ quota_value() {
     ' <<<"${document}"
 }
 
-global_cpu="$(quota_value "${project_json}" "CPUS_ALL_REGIONS" "global")" || {
-  printf 'Live quota response is missing a unique valid CPUS_ALL_REGIONS metric.\n' >&2
-  exit 1
-}
+if ! global_cpu="$(
+  quota_value "${project_json}" "CPUS_ALL_REGIONS" "global"
+)"; then
+  # Newer Compute quota responses no longer expose CPUS_ALL_REGIONS. In that
+  # response shape, regional CPUS is the authoritative capacity limit and is
+  # deliberately reused for the aggregate planning dimension.
+  global_cpu="$(quota_value "${region_json}" "CPUS" "regional fallback")" || {
+    printf 'Live quota response is missing both CPUS_ALL_REGIONS and a unique valid regional CPUS metric.\n' >&2
+    exit 1
+  }
+fi
 
 live_json="$(
   jq -cn \
@@ -175,6 +182,9 @@ post_cluster_required="$(
                 )
               )
         )
+        | .regional_public_ips += (
+            $policy.fixed_regional_public_ip_addresses | length
+          )
       ) as $base
     | $policy.expected_peak_usage as $peak
     | if (
