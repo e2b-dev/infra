@@ -15,9 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// newWedgedConsul returns a StorageKV talking to a fake agent that accepts
-// requests and never answers them - what a wedged Consul agent looks like on
-// the wire. The returned channel is closed once the agent has seen a request.
+// newWedgedConsul returns a StorageKV backed by a fake Consul agent that
+// accepts requests and never answers. The channel closes on the first request.
 func newWedgedConsul(t *testing.T, releaseTimeout time.Duration) (*StorageKV, <-chan struct{}) {
 	t.Helper()
 
@@ -57,8 +56,6 @@ func newWedgedConsul(t *testing.T, releaseTimeout time.Duration) (*StorageKV, <-
 	}, gotRequest
 }
 
-// consulApi.DefaultConfig() hands back an http.Client with no Timeout, so
-// reverting to it would put every Consul call back on an unbounded wait.
 func TestNewConsulConfig_SetsHTTPRequestTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -71,9 +68,6 @@ func TestNewConsulConfig_SetsHTTPRequestTimeout(t *testing.T) {
 	assert.Equal(t, "test-token", config.Token)
 }
 
-// Release takes no context by design, so its own deadline is the only thing
-// standing between a wedged agent and a slot return that never completes -
-// which Pool.Close waits on. It must fail, not block.
 func TestStorageKV_ReleaseIsBounded(t *testing.T) {
 	t.Parallel()
 
