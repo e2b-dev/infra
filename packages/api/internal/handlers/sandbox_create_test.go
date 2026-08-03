@@ -876,6 +876,46 @@ func simpleRule(headers map[string]string) api.SandboxNetworkRule {
 	}
 }
 
+func TestIsValidDomainPattern(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		pattern string
+		want    bool
+	}{
+		// Plain domains.
+		{pattern: "example.com", want: true},
+		{pattern: "api.github.com", want: true},
+		{pattern: "localhost", want: true},
+		// Single leading subdomain wildcard.
+		{pattern: "*.github.com", want: true},
+		{pattern: "*.a.b.example.com", want: true},
+		// A bare wildcard is not a domain pattern — see isValidDomainPattern.
+		{pattern: "*", want: false},
+		{pattern: "*.", want: false},
+		// The wildcard is only allowed once, as a whole leading label.
+		{pattern: "*.*.com", want: false},
+		{pattern: "a*.com", want: false},
+		{pattern: "*a.com", want: false},
+		{pattern: "**.com", want: false},
+		{pattern: "example.*", want: false},
+		{pattern: "sub.*.example.com", want: false},
+		// Non-domains.
+		{pattern: "", want: false},
+		{pattern: "not a valid domain!", want: false},
+		{pattern: "1.2.3.4", want: false},
+		{pattern: "*.1.2.3.4", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.pattern, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.want, isValidDomainPattern(tt.pattern))
+		})
+	}
+}
+
 func TestValidateNetworkRules(t *testing.T) {
 	t.Parallel()
 
@@ -992,17 +1032,48 @@ func TestValidateNetworkRules(t *testing.T) {
 			setupFF:     ffEnabled,
 		},
 		{
-			name:        "wildcard domain is rejected",
+			name:        "wildcard domain is accepted",
 			envdVersion: minEnvdVersionForNetworkRules,
 			rules:       new(map[string][]api.SandboxNetworkRule{"*.openai.com": {}}),
+			setupFF:     ffEnabled,
+		},
+		{
+			name:        "wildcard and plain domain in the same map are accepted",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules: new(map[string][]api.SandboxNetworkRule{
+				"*.github.com":   {},
+				"api.github.com": {},
+			}),
+			setupFF: ffEnabled,
+		},
+		{
+			name:        "bare wildcard is rejected",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       new(map[string][]api.SandboxNetworkRule{"*": {}}),
 			setupFF:     ffEnabled,
 			wantCode:    http.StatusBadRequest,
 			wantMsg:     "not a valid domain name",
 		},
 		{
-			name:        "bare wildcard is rejected",
+			name:        "wildcard with empty suffix is rejected",
 			envdVersion: minEnvdVersionForNetworkRules,
 			rules:       new(map[string][]api.SandboxNetworkRule{"*.": {}}),
+			setupFF:     ffEnabled,
+			wantCode:    http.StatusBadRequest,
+			wantMsg:     "not a valid domain name",
+		},
+		{
+			name:        "nested wildcard is rejected",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       new(map[string][]api.SandboxNetworkRule{"*.*.com": {}}),
+			setupFF:     ffEnabled,
+			wantCode:    http.StatusBadRequest,
+			wantMsg:     "not a valid domain name",
+		},
+		{
+			name:        "wildcard inside a label is rejected",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       new(map[string][]api.SandboxNetworkRule{"a*.com": {}}),
 			setupFF:     ffEnabled,
 			wantCode:    http.StatusBadRequest,
 			wantMsg:     "not a valid domain name",

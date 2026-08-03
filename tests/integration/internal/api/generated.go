@@ -968,7 +968,7 @@ type SandboxNetworkConfig struct {
 	// MaskRequestHost Specify host mask which will be used for all sandbox requests
 	MaskRequestHost *string `json:"maskRequestHost,omitempty"`
 
-	// Rules Per-domain transform rules applied to matching egress HTTP/HTTPS requests. Keys are domains (e.g. "api.example.com", "example.com"). A domain listed here is not automatically allowed - use allowOut to permit the traffic.
+	// Rules Per-domain transform rules applied to matching egress HTTP/HTTPS requests. Keys are domains, optionally with a leading subdomain wildcard (e.g. "api.example.com", "example.com", "*.example.com"). A bare "*" is not accepted. A domain listed here is not automatically allowed - use allowOut to permit the traffic.
 	Rules *map[string][]SandboxNetworkRule `json:"rules,omitempty"`
 }
 

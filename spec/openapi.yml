@@ -325,7 +325,8 @@ components:
           type: object
           description: >
             Per-domain transform rules applied to matching egress HTTP/HTTPS requests.
-            Keys are domains (e.g. "api.example.com", "example.com").
+            Keys are domains, optionally with a leading subdomain wildcard
+            (e.g. "api.example.com", "example.com", "*.example.com"). A bare "*" is not accepted.
             A domain listed here is not automatically allowed - use allowOut to permit the traffic.
           additionalProperties:
             type: array
