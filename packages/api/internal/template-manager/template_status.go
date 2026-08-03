@@ -22,15 +22,12 @@ var (
 	buildTimeout             = time.Hour
 	syncWaitingStateDeadline = time.Minute * 40
 
-	// transientErrorGracePeriod is how long the poller keeps asking the builder
-	// for a build status that only answers with transient errors. The build
-	// itself keeps running on the builder while we retry, so failing it on the
-	// first hiccup would throw away work that is still perfectly fine.
+	// transientErrorGracePeriod bounds how long the poller tolerates transient
+	// status errors — the build keeps running on the builder while we retry.
 	transientErrorGracePeriod = 5 * time.Minute
 )
 
-// errTransientStatus marks a status error that is worth retrying instead of
-// failing the build over.
+// errTransientStatus marks a status error worth retrying instead of failing the build.
 var errTransientStatus = errors.New("transient error")
 
 func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUID, templateID string, clusterID uuid.UUID, nodeID *string) error {
@@ -178,8 +175,6 @@ func (c *PollBuildStatus) buildFailure(err error) error {
 		c.transientErrorsSince = time.Now()
 	}
 
-	// Give up once the builder has been unreachable for long enough that the
-	// build is very unlikely to still be alive on the other end.
 	if time.Since(c.transientErrorsSince) >= transientErrorGracePeriod {
 		return fmt.Errorf("polling kept failing for %s: %w", transientErrorGracePeriod, err)
 	}
@@ -188,8 +183,7 @@ func (c *PollBuildStatus) buildFailure(err error) error {
 }
 
 // isTransientStatusError reports whether a status RPC failed for a reason that
-// says nothing about the build itself: the call timed out, or the builder was
-// briefly unreachable or overloaded. gRPC status errors do not unwrap to
+// says nothing about the build itself. gRPC status errors do not unwrap to
 // context.DeadlineExceeded, so the status code has to be inspected explicitly.
 func isTransientStatusError(err error) bool {
 	if errors.Is(err, context.DeadlineExceeded) {
@@ -296,7 +290,6 @@ func (c *PollBuildStatus) checkBuildStatus(ctx context.Context) (bool, error) {
 		time.Second,
 	)
 
-	// The caller logs the error with the level matching how it handles it.
 	err := retrier.RunContext(ctx, c.setStatus)
 	if err != nil {
 		return false, err

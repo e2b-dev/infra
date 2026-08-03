@@ -19,9 +19,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-// grpcDeadlineExceeded is the error the API sees when the status RPC to the
-// template builder times out, e.g. "rpc error: code = DeadlineExceeded desc =
-// context deadline exceeded".
+// grpcDeadlineExceeded is a status-RPC timeout as the API sees it: a gRPC
+// status error, not context.DeadlineExceeded.
 func grpcDeadlineExceeded() error {
 	return grpcstatus.Error(codes.DeadlineExceeded, "context deadline exceeded")
 }
@@ -162,8 +161,8 @@ func TestPollBuildStatus_transientRPCErrorEventuallyFailsBuild(t *testing.T) {
 	})
 }
 
-// TestPollBuildStatus_terminalRPCErrorFailsBuild keeps the existing behaviour
-// for errors that will not fix themselves.
+// TestPollBuildStatus_terminalRPCErrorFailsBuild: errors that will not fix
+// themselves fail the build immediately, with no grace period.
 func TestPollBuildStatus_terminalRPCErrorFailsBuild(t *testing.T) {
 	t.Parallel()
 
