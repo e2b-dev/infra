@@ -48,6 +48,21 @@ func isPeerRouted(v any) bool {
 	return ok
 }
 
+// zeroEntryRefreshCause maps a size lookup that a zero Builds entry could not
+// answer to the cause of the header refresh that recovers it, or "" when the
+// error is not recoverable that way.
+func zeroEntryRefreshCause(err error) string {
+	var transErr *storage.PeerTransitionedError
+	switch {
+	case errors.Is(err, storage.ErrObjectNotExist):
+		return refreshCauseZeroEntryMiss
+	case errors.As(err, &transErr):
+		return refreshCausePeerTransitioned
+	default:
+		return ""
+	}
+}
+
 type StorageDiff struct {
 	chunker           *block.Chunker
 	cachePath         string
@@ -209,12 +224,12 @@ func (b *File) createDiff(ctx context.Context, buildID uuid.UUID) (Diff, error) 
 
 	if size == 0 {
 		size, err = upstream.Size(ctx)
-		if hasEntry && initialFT == storage.UncompressedFullFrameTable && errors.Is(err, storage.ErrObjectNotExist) {
+		if cause := zeroEntryRefreshCause(err); hasEntry && initialFT == storage.UncompressedFullFrameTable && cause != "" {
 			// The zero entry claimed an uncompressed V3-era ancestor, but the
-			// suffix-less object does not exist: the entry is a gap persisted
-			// as zero by older releases. Resolve the build's own header like
-			// the no-entry branch instead of failing every fault permanently.
-			loaded, lerr := refreshHeader(ctx, b.persistence, buildID, b.fileType, refreshCauseZeroEntryMiss)
+			// basic-name object cannot answer: it does not exist, or the peer
+			// serving it is gone. Resolve the build's own header like the
+			// no-entry branch instead of failing every fault permanently.
+			loaded, lerr := refreshHeader(ctx, b.persistence, buildID, b.fileType, cause)
 			if lerr == nil {
 				upstream, size, initialFT, dataPath, err = openFromLoadedHeader(ctx, b.persistence, loaded, b.fileType)
 				if err == nil && size == 0 {
