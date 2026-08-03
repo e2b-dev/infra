@@ -468,6 +468,23 @@ expect_failure \
 jq '
   (
     .resource_changes[]
+    | select(.type == "google_storage_bucket_object")
+    | .change.after.name
+  ) = "run-consul-def34.sh"
+' "${test_dir}/cluster-content-addressed-setup-object.json" \
+  >"${test_dir}/cluster-mismatched-setup-object.json"
+expect_failure \
+  "cluster-mismatched-setup-object" \
+  "destructive_managed_resources must be empty." \
+  "${test_dir}/cluster-mismatched-setup-object.json" \
+  "${policy}" \
+  "${packer_template}" \
+  "${artifacts}" \
+  cluster
+
+jq '
+  (
+    .resource_changes[]
     | select(
         .address
         == "module.cluster.module.client_cluster[\"default\"].google_compute_instance_template.template"

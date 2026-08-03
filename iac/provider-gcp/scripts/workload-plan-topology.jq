@@ -306,26 +306,31 @@ def is_cloud_sql_resource($resource; $policy):
   );
 
 def is_safe_setup_object_replacement:
-  .type == "google_storage_bucket_object"
-  and (
-    .address
-    | test(
-        "^module\\.cluster\\.google_storage_bucket_object\\.setup_config_objects\\[\\\"scripts/(?:configure-docker-gcp|run-consul|run-nomad)\\.sh\\\"\\]$"
-      )
-  )
-  and .change.actions == ["create", "delete"]
-  and .change.after.deletion_policy == "ABANDON"
-  and (.change.before.bucket | type) == "string"
-  and .change.after.bucket == .change.before.bucket
-  and (
-    .change.before.name
-    | test("^(?:configure-docker-gcp|run-consul|run-nomad)-[0-9a-f]{5}\\.sh$")
-  )
-  and (
-    .change.after.name
-    | test("^(?:configure-docker-gcp|run-consul|run-nomad)-[0-9a-f]{5}\\.sh$")
-  )
-  and .change.after.name != .change.before.name;
+  . as $resource
+  | (
+      [
+        $resource.address
+        | capture(
+            "^module\\.cluster\\.google_storage_bucket_object\\.setup_config_objects\\[\\\"scripts/(?<script>configure-docker-gcp|run-consul|run-nomad)\\.sh\\\"\\]$"
+          )
+      ]
+      | first // null
+    ) as $identity
+  | $resource.type == "google_storage_bucket_object"
+    and $identity != null
+    and $resource.change.actions == ["create", "delete"]
+    and $resource.change.after.deletion_policy == "ABANDON"
+    and ($resource.change.before.bucket | type) == "string"
+    and $resource.change.after.bucket == $resource.change.before.bucket
+    and (
+      $resource.change.before.name
+      | test("^" + $identity.script + "-[0-9a-f]{5}\\.sh$")
+    )
+    and (
+      $resource.change.after.name
+      | test("^" + $identity.script + "-[0-9a-f]{5}\\.sh$")
+    )
+    and $resource.change.after.name != $resource.change.before.name;
 
 managed_changes as $changes
 | (
