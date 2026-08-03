@@ -48,9 +48,8 @@ func newBlackHoleConsul(t *testing.T) *httptest.Server {
 	return srv
 }
 
-// newTestStorageKV builds a StorageKV talking to addr. The client is
-// constructed directly instead of through NewStorageKV so the tests need no
-// environment variables and stay parallel-safe.
+// newTestStorageKV builds a StorageKV talking to addr, bypassing NewStorageKV
+// so the tests need no environment variables and stay parallel-safe.
 func newTestStorageKV(t *testing.T, addr string, requestTimeout time.Duration) *StorageKV {
 	t.Helper()
 
@@ -228,11 +227,8 @@ func newFakeConsul(t *testing.T, modifyIndex uint64) (*fakeConsul, *httptest.Ser
 	return fake, srv
 }
 
-// TestNewConsulConfig_SetsHTTPClientTimeout guards the backstop. Every call
-// site bounds itself with a per-operation context today; the client-level
-// timeout is what keeps a Consul call added later from being unbounded,
-// because consulApi.DefaultConfig() sets neither Timeout nor
-// ResponseHeaderTimeout.
+// TestNewConsulConfig_SetsHTTPClientTimeout guards the client-level backstop
+// for any future Consul call that skips a per-operation context.
 func TestNewConsulConfig_SetsHTTPClientTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -245,8 +241,7 @@ func TestNewConsulConfig_SetsHTTPClientTimeout(t *testing.T) {
 }
 
 // TestStorageKV_ReleaseAgainstRespondingConsul guards the normal path: the
-// context plumbing must not break a release that should succeed, and the
-// DeleteCAS must carry the ModifyIndex read by the preceding Get.
+// context plumbing must not break a release that should succeed.
 func TestStorageKV_ReleaseAgainstRespondingConsul(t *testing.T) {
 	t.Parallel()
 
@@ -263,8 +258,6 @@ func TestStorageKV_ReleaseAgainstRespondingConsul(t *testing.T) {
 	assert.Equal(t, "42", cas, "DeleteCAS must use the ModifyIndex returned by the preceding Get")
 }
 
-// TestStorageKV_AcquireAgainstRespondingConsul is the Acquire counterpart: the
-// WriteOptions context must not break a CAS that should succeed.
 func TestStorageKV_AcquireAgainstRespondingConsul(t *testing.T) {
 	t.Parallel()
 

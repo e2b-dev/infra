@@ -16,10 +16,9 @@ import (
 )
 
 // consulRequestTimeout bounds a single Consul KV round trip. The Consul API
-// client builds its http.Client without a Timeout and without a
-// ResponseHeaderTimeout, so an agent that accepts the connection but never
-// answers would otherwise block the caller forever — stalling orchestrator
-// shutdown, which releases every pooled slot through this storage.
+// client's http.Client has no timeout of its own, so an agent that accepts
+// the connection but never answers would block callers — including
+// shutdown's slot releases — forever.
 const consulRequestTimeout = 5 * time.Second
 
 type StorageKV struct {
@@ -28,7 +27,7 @@ type StorageKV struct {
 	consulClient *consulApi.Client
 	nodeID       string
 	egressProxy  EgressProxy
-	// requestTimeout bounds each individual Consul round trip. Tests shrink it.
+	// requestTimeout bounds each Consul round trip; tests shrink it.
 	requestTimeout time.Duration
 }
 
@@ -54,23 +53,18 @@ func NewStorageKV(nodeID string, config Config, egressProxy EgressProxy) (*Stora
 	}, nil
 }
 
-// opContext bounds a single Consul round trip so no individual call can hang,
-// even when the caller's context carries no deadline. The caller must cancel.
 func (s *StorageKV) opContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(ctx, s.requestTimeout)
 }
 
-// newConsulConfig builds the Consul client configuration with an explicit
-// overall HTTP timeout, which consulApi.DefaultConfig() does not set.
 func newConsulConfig(token string) (*consulApi.Config, error) {
 	config := consulApi.DefaultConfig()
 	config.Token = token
 
-	// Build the same client consulApi.NewClient would have built, but with an
-	// explicit Timeout. Every call site below already bounds itself with a
-	// per-operation context; this is the backstop so a call added later without
-	// one cannot go unbounded. Note NewClient replaces this client for
-	// "unix://" addresses, which we never configure.
+	// The client NewClient would build, plus a Timeout DefaultConfig never
+	// sets — the backstop for any future call that skips a per-operation
+	// context. NewClient replaces this client for "unix://" addresses, which
+	// we never configure.
 	httpClient, err := consulApi.NewHttpClient(config.Transport, config.TLSConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize Consul HTTP client: %w", err)
@@ -121,8 +115,6 @@ func (s *StorageKV) Acquire(ctx context.Context) (*Slot, error) {
 	}
 
 	for randomTry := 1; randomTry <= 10; randomTry++ {
-		// Stop retrying as soon as the caller gives up instead of spending the
-		// remaining attempts on doomed round trips.
 		if err := ctx.Err(); err != nil {
 			return nil, fmt.Errorf("failed to acquire IP slot: %w", err)
 		}
@@ -182,9 +174,8 @@ func (s *StorageKV) Acquire(ctx context.Context) (*Slot, error) {
 	return slot, nil
 }
 
-// reservedKeys lists the slot keys already taken on this node. It lives in its
-// own function so the per-request context is cancelled as soon as the call
-// returns.
+// reservedKeys lists the slot keys already taken on this node. Separate
+// function so its per-request context is cancelled on return.
 func (s *StorageKV) reservedKeys(ctx context.Context, kv *consulApi.KV) ([]string, error) {
 	opCtx, cancel := s.opContext(ctx)
 	defer cancel()
@@ -224,8 +215,8 @@ func (s *StorageKV) Release(ctx context.Context, ips *Slot) error {
 	return nil
 }
 
-// slotPair reads the slot's KV entry. Separate function so the per-request
-// context is cancelled before the follow-up delete starts.
+// slotPair reads the slot's KV entry. Separate function so its per-request
+// context is cancelled before the follow-up delete.
 func (s *StorageKV) slotPair(ctx context.Context, kv *consulApi.KV, key string) (*consulApi.KVPair, error) {
 	opCtx, cancel := s.opContext(ctx)
 	defer cancel()

@@ -18,9 +18,8 @@ type fakeStorage struct {
 	released  atomic.Int64
 	releaseFn func(*Slot) error
 
-	// ctxErrMu guards releaseCtxErrs, which records ctx.Err() as seen at the
-	// start of each Release call. A non-nil entry means the caller handed the
-	// storage a dead context, which a real backend would refuse to act on.
+	// releaseCtxErrs records ctx.Err() at the start of each Release; non-nil
+	// means the caller handed the storage a dead context.
 	ctxErrMu       sync.Mutex
 	releaseCtxErrs []error
 }
@@ -196,11 +195,9 @@ func TestReturnAsync_AfterCloseCleansUpSynchronously(t *testing.T) {
 	assert.Equal(t, int64(1), storage.released.Load(), "ReturnAsync after Close must release the slot before returning")
 }
 
-// TestClose_ReleasesPooledSlotsWithCanceledContext guards the shutdown path
-// the template-manager actually runs: it sets FORCE_STOP, which cancels the
-// close context before any closer runs. Close must still hand Storage.Release
-// a live context — the storage key is node-scoped and nothing reclaims it, so
-// releases skipped here leak those slot indices for the lifetime of the node.
+// TestClose_ReleasesPooledSlotsWithCanceledContext guards the FORCE_STOP
+// shutdown path: the close context is cancelled before any closer runs, yet
+// Release must get a live context or the node-scoped slot keys leak forever.
 func TestClose_ReleasesPooledSlotsWithCanceledContext(t *testing.T) {
 	t.Parallel()
 
@@ -217,8 +214,8 @@ func TestClose_ReleasesPooledSlotsWithCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	// Close error ignored: cleanup()'s netlink teardown may fail in the test
-	// environment; the release accounting is the leak signal.
+	// cleanup()'s netlink teardown may fail in the test environment; the
+	// release accounting is the leak signal.
 	_ = pool.Close(ctx)
 
 	require.Equal(t, int64(slots), storage.released.Load(),
