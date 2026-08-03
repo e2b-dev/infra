@@ -175,13 +175,10 @@ func (c *Copy) Execute(
 	return cmdMetadata, nil
 }
 
-// maxCommandDiagnosticLen caps how much of a failing command's stderr is folded
-// into the returned error, so a runaway command cannot flood the build result.
+// maxCommandDiagnosticLen caps how much stderr is quoted into the returned error.
 const maxCommandDiagnosticLen = 512
 
 // withCommandDiagnostic annotates err with what the command printed on stderr.
-// Without it a failing copy surfaces as a bare "exit status 1" with no hint of
-// which path could not be resolved.
 func withCommandDiagnostic(err error, stderr string) error {
 	diagnostic := strings.TrimSpace(stderr)
 	if diagnostic == "" {

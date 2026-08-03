@@ -871,9 +871,7 @@ func TestCopyScriptBehavior(t *testing.T) { //nolint:paralleltest // no idea why
 		},
 		{
 			// EN-819: an absolute host path is joined onto the unpack directory,
-			// so the synthesized parent folder never exists. The script used to
-			// "cd || exit 1" here without printing anything, leaving the build
-			// with a bare "exit status 1".
+			// so the parent folder itself is missing, not just the entry.
 			name:        "absolute_source_path_outside_context",
 			description: "An absolute source path that is not in the build context reports which path is missing",
 			files: map[string]string{

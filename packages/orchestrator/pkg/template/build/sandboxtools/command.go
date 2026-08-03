@@ -93,12 +93,8 @@ func RunCommandWithLogger(
 	)
 }
 
-// RunCommandWithLoggerAndOutput streams the command output to the build logger
-// exactly like RunCommandWithLogger, and additionally hands every chunk to
-// processOutput so the caller can quote the command's own diagnostics in the
-// error it returns. Build logs are emitted at lvl, which is usually too verbose
-// to be shown to the user, so a failing command has no other way to explain
-// itself.
+// RunCommandWithLoggerAndOutput streams output to the build logger like
+// RunCommandWithLogger and additionally hands each chunk to processOutput.
 func RunCommandWithLoggerAndOutput(
 	ctx context.Context,
 	proxy *proxy.SandboxProxy,

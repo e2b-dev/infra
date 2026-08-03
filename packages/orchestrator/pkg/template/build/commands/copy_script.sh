@@ -31,9 +31,7 @@ else
     targetPath="$(pwd)/$inputPath"
 fi
 
-# A missing parent folder means the source path was never part of the uploaded
-# build context - report it the same way as a missing entry instead of exiting
-# silently, which left the build with a bare "exit status 1".
+# A missing parent folder means the source path was never in the build context
 if ! cd "$sourceFolder"; then
     echo "Error: source path does not exist: $sourcePath" >&2
     exit 1
