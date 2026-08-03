@@ -134,7 +134,7 @@ upload/orchestrator:
 ifeq ($(PROVIDER),aws)
 	aws s3 cp ./bin/orchestrator "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/orchestrator" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
 else
-	gsutil -h "Cache-Control:no-cache, max-age=0" cp ./bin/orchestrator "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/orchestrator"
+	gcloud storage cp --cache-control="no-cache, max-age=0" ./bin/orchestrator "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/orchestrator"
 endif
 
 .PHONY: upload/template-manager
