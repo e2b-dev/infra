@@ -57,9 +57,8 @@ func TestPortMapServer(t *testing.T) {
 // nlockmgrProg is the RPC program number of the NFSv3 lock manager (NLM).
 const nlockmgrProg = 100021
 
-// The proxy implements no NLM service, so the portmapper has no port to hand
-// out for it and answers 0. envd depends on this: it mounts sandbox volumes
-// with "nolock" precisely because a lock RPC here could never be answered.
+// envd mounts sandbox volumes with "nolock" because this proxy serves no NLM;
+// the portmapper must keep answering 0 for nlockmgr.
 func TestPortMapDoesNotAdvertiseNLM(t *testing.T) {
 	t.Parallel()
 

@@ -359,13 +359,8 @@ var nfsOptions = strings.Join([]string{
 	"nfsvers=3",      // nfs proxy is nfs version 3
 	"noacl",          // no reason for acl in the sandbox
 
-	// Handle file locks locally instead of over NLM. The nfs proxy serves no
-	// nlockmgr (program 100021) — the portmapper only advertises nfs (100003)
-	// and mountd (100005), so a GETPORT for nlockmgr answers 0. Without this
-	// the kernel default (local_lock=none) sends every flock/fcntl to NLM,
-	// and "hard" makes it retry that bind forever, so any lock on a volume
-	// wedges in D state. Locks are therefore process-local to one sandbox,
-	// matching volume semantics: there is no cross-sandbox lock coordination.
+	// The nfs proxy serves no nlockmgr, so NLM lock calls wedge forever (D state)
+	// under "hard". Locks are sandbox-local: no cross-sandbox lock coordination.
 	"nolock",
 
 	// disable caching so that pause/resume works correctly
