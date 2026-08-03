@@ -39,9 +39,10 @@ MARKER="compression-tests:excluded"
 # lifecycle call or a package-local wrapper around one is introduced.
 # NB: character classes ([(]) instead of \( — backslashes do not survive
 # awk -v value processing portably.
-# The autopause options also match variable args and calls that break the
-# line after the paren; only the literal false stays quiet.
-SYMBOLS='PostSandboxesSandboxIDPauseWithResponse|PostSandboxesSandboxIDResumeWithResponse|PostSandboxesSandboxIDForkWithResponse|PostSandboxesSandboxIDSnapshotsWithResponse|WithAutoPause[(](true[)]|[A-Za-z_]|[[:space:]]*$)|WithAutoResume[(](true[)]|[A-Za-z_]|[[:space:]]*$)|FsFreeze|Fsfreeze|pauseFilesystemOnly[(]|pauseSandbox[(]|createSnapshotTemplate[(]|startSnapshotInBackground[(]|createSnapshotTemplateWithCleanup[(]'
+# Any autopause call counts (variable args and line-broken calls included);
+# the scan strips literal WithAutoPause(false)/WithAutoResume(false) from a
+# line before matching, so only the explicit opt-out stays quiet.
+SYMBOLS='PostSandboxesSandboxIDPauseWithResponse|PostSandboxesSandboxIDResumeWithResponse|PostSandboxesSandboxIDForkWithResponse|PostSandboxesSandboxIDSnapshotsWithResponse|WithAutoPause[(]|WithAutoResume[(]|FsFreeze|Fsfreeze|pauseFilesystemOnly[(]|pauseSandbox[(]|createSnapshotTemplate[(]|startSnapshotInBackground[(]|createSnapshotTemplateWithCleanup[(]'
 
 fail=0
 
@@ -83,7 +84,11 @@ while IFS= read -r file; do
         # must not be attributed to the previous one.
         /^}/ { fn = "" }
         { if (!/^func /) cbuf = "" }
-        $0 ~ symre && fn != "" && !reported[fn] {
+        {
+            probe = $0
+            gsub(/WithAutoPause\(false\)|WithAutoResume\(false\)/, "", probe)
+        }
+        probe ~ symre && fn != "" && !reported[fn] {
             reported[fn] = 1
             print fn "\t" fline "\t" (excluded ? "excluded" : "-")
         }
