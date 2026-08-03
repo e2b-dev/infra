@@ -39,7 +39,9 @@ MARKER="compression-tests:excluded"
 # lifecycle call or a package-local wrapper around one is introduced.
 # NB: character classes ([(]) instead of \( — backslashes do not survive
 # awk -v value processing portably.
-SYMBOLS='PostSandboxesSandboxIDPauseWithResponse|PostSandboxesSandboxIDResumeWithResponse|PostSandboxesSandboxIDForkWithResponse|PostSandboxesSandboxIDSnapshotsWithResponse|WithAutoPause[(]true[)]|WithAutoResume[(]true[)]|FsFreeze|Fsfreeze|pauseFilesystemOnly[(]|pauseSandbox[(]|createSnapshotTemplate[(]|startSnapshotInBackground[(]|createSnapshotTemplateWithCleanup[(]'
+# The autopause options also match variable args and calls that break the
+# line after the paren; only the literal false stays quiet.
+SYMBOLS='PostSandboxesSandboxIDPauseWithResponse|PostSandboxesSandboxIDResumeWithResponse|PostSandboxesSandboxIDForkWithResponse|PostSandboxesSandboxIDSnapshotsWithResponse|WithAutoPause[(](true[)]|[A-Za-z_]|[[:space:]]*$)|WithAutoResume[(](true[)]|[A-Za-z_]|[[:space:]]*$)|FsFreeze|Fsfreeze|pauseFilesystemOnly[(]|pauseSandbox[(]|createSnapshotTemplate[(]|startSnapshotInBackground[(]|createSnapshotTemplateWithCleanup[(]'
 
 fail=0
 
@@ -68,12 +70,18 @@ while IFS= read -r file; do
     hits=$(awk -v symre="$SYMBOLS" -v marker="$MARKER" '
         /^\/\// { cbuf = cbuf $0; next }
         /^func / {
-            fn = $2; sub(/\(.*/, "", fn)
+            # Strip an optional receiver so methods attribute by name too.
+            fn = $0
+            sub(/^func +/, "", fn)
+            sub(/^\([^)]*\) */, "", fn)
+            sub(/\(.*/, "", fn)
             fline = FNR
             excluded = (cbuf ~ marker)
             cbuf = ""
-            next_is_body = 1
         }
+        # Column-0 close brace ends the function: symbols between functions
+        # must not be attributed to the previous one.
+        /^}/ { fn = "" }
         { if (!/^func /) cbuf = "" }
         $0 ~ symre && fn != "" && !reported[fn] {
             reported[fn] = 1
