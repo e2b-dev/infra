@@ -33,9 +33,9 @@ else
 endif
 else
 ifeq ($(ENVD_UPLOAD_MODE),versioned)
-	gsutil -h "Cache-Control:no-cache, max-age=0" cp bin/envd "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/envd.$(BUILD)"
+	gcloud storage cp --cache-control="no-cache, max-age=0" bin/envd "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/envd.$(BUILD)"
 else
-	gsutil -h "Cache-Control:no-cache, max-age=0" cp bin/envd "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/envd"
+	gcloud storage cp --cache-control="no-cache, max-age=0" bin/envd "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/envd"
 endif
 endif
 
@@ -46,7 +46,7 @@ promote:
 ifeq ($(PROVIDER),aws)
 	aws s3 cp "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/envd.$(ENVD_COMMIT_SHA_SHORT)" "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/envd" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
 else
-	gsutil -h "Cache-Control:no-cache, max-age=0" cp "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/envd.$(ENVD_COMMIT_SHA_SHORT)" "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/envd"
+	gcloud storage cp --cache-control="no-cache, max-age=0" "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/envd.$(ENVD_COMMIT_SHA_SHORT)" "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/envd"
 endif
 
 build:
