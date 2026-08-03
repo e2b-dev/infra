@@ -18,8 +18,7 @@ import (
 
 var errFailingMetafile = errors.New("metafile close failed")
 
-// closableTemplate builds a storageTemplate whose devices are already resolved,
-// mirroring a template that finished fetching and is now being evicted.
+// closableTemplate builds a storageTemplate fully resolved, as after a completed fetch.
 func closableTemplate(t *testing.T) (*storageTemplate, string, string) {
 	t.Helper()
 
@@ -48,9 +47,8 @@ func closableTemplate(t *testing.T) (*storageTemplate, string, string) {
 	return tmpl, snapPath, metaPath
 }
 
-// Evicting a cached template must reclaim every file it owns. The metafile is
-// owned by the template once AddSnapshot transfers it from the snapshot, so
-// leaving it behind leaks one cache file per evicted template.
+// The metafile is template-owned once AddSnapshot transfers it from the
+// snapshot; leaving it behind leaks one cache file per evicted template.
 func TestStorageTemplate_CloseRemovesMetafile(t *testing.T) {
 	t.Parallel()
 
