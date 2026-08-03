@@ -11,9 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeBinDir creates a directory containing a fake `e2fsck` shell script and
-// points PATH at it, so CheckIntegrity resolves the fake instead of the real
-// binary. Passing an empty script body means "no e2fsck on PATH at all".
+// fakeBinDir points PATH at a directory whose only entry is a fake `e2fsck`
+// script; an empty script means no e2fsck on PATH at all.
 func fakeBinDir(t *testing.T, script string) string {
 	t.Helper()
 
@@ -74,25 +73,19 @@ func TestCheckIntegrityExitStatus(t *testing.T) { //nolint:paralleltest // t.Set
 			wantErr: false,
 		},
 		{
-			// e2fsck exit codes are a bitmask: 3 == 1|2 == "errors corrected"
-			// plus "reboot recommended". Both bits are accepted individually
-			// when fixing, so their combination must be accepted too.
+			// 3 == e2fsckErrorsCorrected|e2fsckRebootRecommended, both accepted bits at once.
 			name:    "combined corrected+reboot bitmask is accepted when fixing",
 			script:  "exit 3",
 			fix:     true,
 			wantErr: false,
 		},
 		{
-			// e2fsck killed by a signal (OOM killer, context cancellation)
-			// never finished checking the filesystem, so its silence must not
-			// be read as "healthy".
 			name:    "e2fsck killed by a signal is reported",
 			script:  "kill -9 $$",
 			fix:     true,
 			wantErr: true,
 		},
 		{
-			// e2fsck missing entirely means the filesystem was never checked.
 			name:    "e2fsck failing to start is reported",
 			script:  "",
 			fix:     true,
