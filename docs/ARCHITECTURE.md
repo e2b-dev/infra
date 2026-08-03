@@ -467,7 +467,10 @@ flowchart TB
   ADC. Consul/Nomad ACL UUIDs are derived from sensitive random-password seeds
   so their Terraform resource IDs never contain active token material; legacy
   UUID generator state is scrubbed before any refresh and prior Secret Manager
-  versions are disabled during rotation. A repository guard blocks any
+  versions are disabled during rotation. Control-plane bootstrap scripts never
+  enable shell tracing, never emit ACL tokens, remove their mode-0600 temporary
+  token files, and treat an already-bootstrapped Nomad quorum as a successful
+  replacement-host join. A repository guard blocks any
   reintroduced static-key seam. The customer-facing private-GCP-registry
   credential contract is retained as a separate, explicit compatibility
   surface and is not Monad's runtime identity.
