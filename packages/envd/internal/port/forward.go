@@ -114,8 +114,7 @@ func (f *Forwarder) StartForwarding(ctx context.Context) {
 	}
 }
 
-// refresh reconciles the forwarded ports with the listening sockets reported by
-// the latest scan.
+// refresh reconciles the forwarded ports with the latest scan's listening sockets.
 func (f *Forwarder) refresh(ctx context.Context, procs []gopsnet.ConnectionStat) {
 	// Serialize the whole refresh against a concurrent ExportForwards
 	// (live-upgrade). stop/startPortForwarding below are called with the
@@ -141,18 +140,12 @@ func (f *Forwarder) refresh(ctx context.Context, procs []gopsnet.ConnectionStat)
 		}
 	}
 
-	// Stop forwarding all ports that stayed marked as "DELETE" and forget them.
-	// Forgetting is what makes the forwarding recoverable: a retained entry would
-	// be marked "FORWARD" again as soon as the same listener shows up in a later
-	// scan, and because it is already in the map no socat would ever be started
-	// for it again — leaving the port permanently unreachable from outside the
-	// sandbox. Listeners do drop out of individual scans: an app can close and
-	// reopen its socket, and the scanner reports a socket with no pid when it
-	// cannot map the socket's inode to a process.
-	//
-	// This also has to happen before the new forwards are started below, so a
-	// fresh socat never has to contend for a bind address that a socat being
-	// torn down still holds.
+	// Torn-down forwards must also leave the map: a retained entry would be
+	// re-marked "FORWARD" by a later scan with no new socat ever started,
+	// leaving the port permanently unreachable. Listeners do drop out of
+	// single scans — a socket closed and reopened, or an inode the scanner
+	// cannot map to a pid. Tearing down before starting new forwards keeps a
+	// fresh socat from contending for a bind address a dying one still holds.
 	for key, v := range f.ports {
 		if v.state == PortStateDelete {
 			f.stopPortForwarding(v)
@@ -160,7 +153,6 @@ func (f *Forwarder) refresh(ctx context.Context, procs []gopsnet.ConnectionStat)
 		}
 	}
 
-	// Start forwarding the ports that are newly opened.
 	for _, p := range procs {
 		key := forwardKey(p)
 		if _, portOk := f.ports[key]; portOk {

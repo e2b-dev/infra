@@ -22,10 +22,9 @@ import (
 
 const fakeSocatEnv = "ENVD_PORT_FAKE_SOCAT"
 
-// TestFakeSocatHelperProcess is not a test. The forwarder tests put a `socat`
-// shim on PATH that re-executes this test binary, so the spawned "socat" is a
-// process that really binds the listen address and really holds it until it is
-// killed. That is what makes the forwarding observable end to end.
+// TestFakeSocatHelperProcess is not a test: the socat shim on PATH re-executes
+// this test binary, so the spawned "socat" really binds the listen address and
+// holds it until killed.
 //
 //nolint:paralleltest // helper process, must not run alongside anything
 func TestFakeSocatHelperProcess(t *testing.T) {
@@ -41,8 +40,7 @@ func TestFakeSocatHelperProcess(t *testing.T) {
 	var lc net.ListenConfig
 	l, err := lc.Listen(context.Background(), "tcp", addr)
 	if err != nil {
-		// Address already in use, exactly what a second socat bound to the
-		// same address would do.
+		// Exit nonzero, like a real socat whose address is already in use.
 		os.Exit(1)
 	}
 	defer l.Close()
@@ -156,11 +154,9 @@ func requireForwarded(t *testing.T, port uint32, want bool) {
 	}, 10*time.Second, 25*time.Millisecond, "port %d forwarded=%v, want %v", port, last, want)
 }
 
-// TestForwarderReForwardsPortAfterScanMiss covers a listening socket that drops
-// out of a single scan and comes back under the same pid: an app closing and
-// reopening its socket, or a scan that cannot map the socket's inode to a pid.
-// The forward has to come back, otherwise the app stays unreachable through the
-// proxy for the rest of the sandbox's life even though it is listening.
+// TestForwarderReForwardsPortAfterScanMiss covers a listener that drops out of
+// a single scan and comes back under the same pid: a socket closed and
+// reopened, or a scan that could not map the socket's inode to a pid.
 //
 //nolint:paralleltest // newRefreshTestForwarder uses t.Setenv
 func TestForwarderReForwardsPortAfterScanMiss(t *testing.T) {
@@ -170,19 +166,17 @@ func TestForwarderReForwardsPortAfterScanMiss(t *testing.T) {
 	f.refresh(t.Context(), []gopsnet.ConnectionStat{listening(100, port)})
 	requireForwarded(t, port, true)
 
-	// The listener drops out of one scan and the forward is torn down.
+	// The listener drops out of one scan.
 	f.refresh(t.Context(), nil)
 	requireForwarded(t, port, false)
 	assert.Empty(t, f.ports, "a torn down forward must not stay in the ports map")
 
-	// The next scan reports it again.
 	f.refresh(t.Context(), []gopsnet.ConnectionStat{listening(100, port)})
 	requireForwarded(t, port, true)
 }
 
 // TestForwarderReplacesForwardWhenListenerPidChanges covers an app restarting
-// inside the sandbox: same port, new pid. The port has to keep being forwarded
-// and the previous listener must not be left behind in the ports map.
+// inside the sandbox: same port, new pid.
 //
 //nolint:paralleltest // newRefreshTestForwarder uses t.Setenv
 func TestForwarderReplacesForwardWhenListenerPidChanges(t *testing.T) {
