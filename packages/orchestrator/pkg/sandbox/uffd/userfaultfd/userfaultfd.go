@@ -121,6 +121,10 @@ type Userfaultfd struct {
 	// generation range, so fault latency can be cut by chain depth.
 	genBucket generationBucket
 
+	// wpFaultsResolved counts synchronous userfault write-protect faults resolved
+	// (non-zero only when paired with a sync-WP Firecracker that omits WP_ASYNC).
+	wpFaultsResolved atomic.Int64
+
 	logger logger.Logger
 }
 
@@ -408,17 +412,25 @@ func (u *Userfaultfd) Serve(
 				return errors.New("unexpected MINOR pagefault event, closing UFFD")
 			}
 
-			// WP faults are not registered: we use UFFD_FEATURE_WP_ASYNC.
-			if pf.flags&UFFD_PAGEFAULT_FLAG_WP != 0 {
-				return errors.New("unexpected WP pagefault event, closing UFFD")
-			}
-
 			addr := getPagefaultAddress(pf)
 			offset, err := u.ma.GetOffset(addr)
 			if err != nil {
 				u.logger.Error(ctx, "UFFD serve got mapping error", zap.Error(err))
 
 				return fmt.Errorf("failed to map: %w", err)
+			}
+
+			if pf.flags&UFFD_PAGEFAULT_FLAG_WP != 0 {
+				// Synchronous WP fault: the guest wrote a write-protected present
+				// page (the paired sync-WP Firecracker build registers guest RAM
+				// without WP_ASYNC). Record it dirty and clear the protection so
+				// the write proceeds. With a WP_ASYNC Firecracker these events are
+				// never delivered, so this path is inert.
+				u.wg.Go(func() error {
+					return u.resolveWriteProtect(addr, offset)
+				})
+
+				continue
 			}
 
 			u.wg.Go(func() error {
@@ -535,6 +547,34 @@ func (u *Userfaultfd) Serve(
 			})
 		}
 	}
+}
+
+// resolveWriteProtect handles a synchronous userfault write-protect fault: the
+// guest wrote a write-protected, present page. We record the page dirty and
+// clear the protection, which also wakes the blocked writer. Tracking-only —
+// the copy-before-unprotect (CoW) that lets the memory export run in the
+// background lands in a later phase.
+func (u *Userfaultfd) resolveWriteProtect(addr uintptr, offset int64) error {
+	u.settleRequests.RLock()
+	defer u.settleRequests.RUnlock()
+
+	if u.closed {
+		return nil
+	}
+
+	idx := uint32(header.BlockIdx(offset, int64(u.pageSize)))
+	// Mark dirty before waking so a concurrent Export cannot observe the woken
+	// guest's write without the tracker reflecting the page as dirty.
+	u.pageTracker.SetRange(idx, idx+1, block.Dirty)
+
+	// mode 0 = clear write-protection + wake the faulting thread (no DONTWAKE).
+	if err := u.fd.writeProtect(addr, u.pageSize, 0); err != nil {
+		return fmt.Errorf("uffd WP resolve at %#x: %w", addr, err)
+	}
+
+	u.wpFaultsResolved.Add(1)
+
+	return nil
 }
 
 func (u *Userfaultfd) faultPage(
