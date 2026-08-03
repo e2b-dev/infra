@@ -350,11 +350,9 @@ func (s *Server) DrainSandboxes(ctx context.Context) error {
 				return err
 			}
 
-			// Pause detaches the snapshot upload from the sandbox lifecycle: the
-			// sandbox is marked stopping when Pause starts and its lifecycle ends
-			// well before the memfile and rootfs reach storage. Reporting the node
-			// as drained here lets the supervisor terminate the orchestrator while
-			// the last paused sandbox is still uploading, which loses the snapshot.
+			// Pause detaches the snapshot upload from the sandbox lifecycle: the node
+			// looks empty while memfile and rootfs are still uploading. Reporting
+			// drained then lets the supervisor kill the orchestrator mid-upload.
 			uploads := s.uploadsInFlight.Load()
 			if uploads == 0 {
 				logger.L().Info(ctx, "graceful sandbox drain complete", zap.Int("live_sandboxes", remaining))

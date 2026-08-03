@@ -76,10 +76,8 @@ func TestDrainSandboxesCompletesAfterSandboxLeaves(t *testing.T) {
 	}
 }
 
-// Pausing a sandbox marks it stopping before the snapshot is taken and ends its
-// lifecycle before the upload finishes, so the node looks empty while the last
-// snapshot is still on its way to storage. The drain must not report completion
-// until those detached uploads land.
+// Pause ends a sandbox's lifecycle before its snapshot upload finishes; the
+// drain must not report an empty node until those detached uploads land.
 func TestDrainSandboxesWaitsForInFlightSnapshotUploads(t *testing.T) {
 	t.Parallel()
 
@@ -119,8 +117,7 @@ func TestDrainSandboxesWaitsForUploadStartedByTheLastSandbox(t *testing.T) {
 		done <- s.DrainSandboxes(t.Context())
 	}()
 
-	// Pause of the last sandbox: it leaves the live map and its lifecycle ends,
-	// but the snapshot upload is registered and still running.
+	// Simulate Pause of the last sandbox: lifecycle ends, upload still in flight.
 	s.uploadsInFlight.Add(1)
 	require.True(t, s.sandboxFactory.Sandboxes.MarkStopping(t.Context(), sbx.Runtime.SandboxID, sbx.LifecycleID))
 	s.sandboxFactory.Sandboxes.MarkStopped(t.Context(), sbx)
@@ -146,7 +143,6 @@ func drainTestServer() *Server {
 		sandboxFactory: &sandbox.Factory{
 			Sandboxes: sandbox.NewSandboxesMap(),
 		},
-		// Keep the drain responsive; production polls every 5s.
 		drainPoll: 10 * time.Millisecond,
 	}
 }
