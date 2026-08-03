@@ -253,6 +253,7 @@ foundation-toolchain-guard:
 keyless-runtime-check:
 	@ ./scripts/test-keyless-runtime-guard.sh
 	@ ./scripts/test-configure-docker-gcp.sh
+	@ ./scripts/test-control-plane-secret-logging.sh
 	@ ./scripts/test-scrub-legacy-acl-token-state.sh
 
 .PHONY: acl-token-state-guard

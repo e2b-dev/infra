@@ -498,7 +498,9 @@ cp "${provider_root}/Makefile" "${workflow_provider}/Makefile"
 cp -R "${provider_root}/scripts" "${workflow_provider}/scripts"
 cp \
   "${provider_root}/nomad-cluster/scripts/configure-docker-gcp.sh" \
-  "${workflow_provider}/nomad-cluster/scripts/configure-docker-gcp.sh"
+  "${provider_root}/nomad-cluster/scripts/run-consul.sh" \
+  "${provider_root}/nomad-cluster/scripts/run-nomad.sh" \
+  "${workflow_provider}/nomad-cluster/scripts/"
 cp "${repo_root}/.tool-versions" "${workflow_repo}/.tool-versions"
 cat >"${workflow_repo}/.env.dev" <<'EOF'
 GCP_PROJECT_ID=monad-code

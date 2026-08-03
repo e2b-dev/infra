@@ -3,9 +3,6 @@
 
 set -e
 
-# Enable command tracing
-set -x
-
 readonly NOMAD_CONFIG_FILE="default.hcl"
 readonly SUPERVISOR_CONFIG_PATH="/etc/supervisor/conf.d/run-nomad.conf"
 
@@ -334,10 +331,31 @@ function bootstrap {
   log_info "Nomad server started."
 
   local -r nomad_token="$1"
+  local token_file
+  local bootstrap_output
+  local bootstrap_status
   log_info "Bootstrapping Nomad"
-  echo "$nomad_token" >"/tmp/nomad.token"
-  nomad acl bootstrap /tmp/nomad.token
-  rm "/tmp/nomad.token"
+  token_file="$(mktemp "${TMPDIR:-/tmp}/nomad.token.XXXXXX")"
+  chmod 0600 "$token_file"
+  printf '%s\n' "$nomad_token" >"$token_file"
+
+  set +e
+  bootstrap_output="$(nomad acl bootstrap "$token_file" 2>&1)"
+  bootstrap_status=$?
+  set -e
+  rm -f -- "$token_file"
+
+  if [[ "$bootstrap_status" -eq 0 ]]; then
+    log_info "Nomad ACL bootstrap completed"
+    return 0
+  fi
+  if grep -Fq 'ACL bootstrap already done' <<<"$bootstrap_output"; then
+    log_info "Nomad ACL is already bootstrapped"
+    return 0
+  fi
+
+  log_error "Nomad ACL bootstrap failed"
+  return "$bootstrap_status"
 }
 
 function create_node_pools {
@@ -463,4 +481,6 @@ function run {
   fi
 }
 
-run "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  run "$@"
+fi
