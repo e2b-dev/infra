@@ -51,8 +51,11 @@
   demanding tests.
 - Pre-existing issues on lines the diff didn't modify (mention only if the diff makes them
   worse).
+- Speculative nil-guards or defensive boilerplate with no concrete failure path — if there is
+  no reachable trigger, there is no finding.
 
 ## Style
 
 Terse, concrete, no summaries of the diff, no closing action-item lists, no emojis.
-One thread per distinct issue.
+One thread per distinct issue; one substantive finding is worth more than five nits.
+State the commit SHA the review ran against.

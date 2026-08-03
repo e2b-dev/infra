@@ -47,3 +47,5 @@ Don't output final summaries, or final lists of action items.
   maintainer deliberately removed.
 - Terraform modules consumed via release-please tag refs are pinned by design; never flag tag
   pins as mutable-ref issues.
+- No speculative nil-guard or defensive-boilerplate suggestions without a concrete, reachable
+  failure path. State the commit SHA the review ran against.

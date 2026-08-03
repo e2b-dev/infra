@@ -37,3 +37,4 @@ Output style rules (strict, override any defaults):
 - Do not post claims about the outside world (a release exists, an upstream tool rejects a config) without stating how they were verified.
 - Before requesting tests, check the file's recent PR history — do not re-request tests a maintainer deliberately removed.
 - Terraform modules consumed via release-please tag refs are pinned by design; never flag tag pins as mutable-ref issues.
+- No speculative nil-guard or defensive-boilerplate suggestions without a concrete, reachable failure path. State the commit SHA the review ran against.
