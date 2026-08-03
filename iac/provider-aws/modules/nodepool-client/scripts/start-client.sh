@@ -75,14 +75,8 @@ modprobe nbd nbds_max=4096
 mkdir -p /fc-vm
 
 # Mount envd buckets
-#
-# disable_noobj_cache: s3fs caches "this object does not exist" answers for
-# stat_cache_expire (900s by default). These buckets are written out-of-band -
-# a new Firecracker/kernel/envd version is uploaded after a host has already
-# looked for it - so a cached miss makes the freshly uploaded object invisible
-# on that host until the entry expires or the mount is recreated.
-# Note that "enable_noobj_cache" is the s3fs default, so passing it was a no-op;
-# "disable_noobj_cache" is the option that actually turns the negative cache off.
+# disable_noobj_cache: s3fs caches negative lookups for stat_cache_expire (900s
+# default), hiding freshly uploaded envd/kernel/FC versions until the entry expires.
 envd_dir="/fc-envd"
 mkdir -p $envd_dir
 s3fs "${FC_ENV_PIPELINE_BUCKET_NAME}" "$envd_dir" -o allow_other -o umask=000 -o nonempty -o iam_role -o disable_noobj_cache
