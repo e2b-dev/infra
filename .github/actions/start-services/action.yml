@@ -121,21 +121,15 @@ runs:
         PERSISTENT_VOLUME_MOUNTS="test-volume-type:${test_volume_dir}"
         export PERSISTENT_VOLUME_MOUNTS
 
-        # The backgrounded warm-up pull in start-databases discards its exit
-        # status; this synchronous call is the actual guarantee (near-instant
-        # when the warm-up succeeded) so a rate-limited pull retries instead
-        # of failing the collector's 30s health window. The tag comes from
-        # the Makefile that runs the image.
+        # The warm-up pull in start-databases discards its exit status; this
+        # synchronous call is the guarantee (near-instant when warm). Tag
+        # comes from the Makefile that runs the image, so bumps can't strand it.
         OTEL_IMAGE=$(grep -oE 'otel/opentelemetry-collector-contrib:[0-9.]+' packages/otel-collector/Makefile | head -1)
         ./scripts/pull-retry.sh "$OTEL_IMAGE"
 
-        # Boot in two concurrent phases instead of four serial start+wait
-        # chains. Phase 1: otel-collector and orchestrator boot together -
-        # neither depends on the other (the services' OTLP exporters retry
-        # until the collector is up). Phase 2: API and client-proxy (needed
-        # for auto-resume tests) boot together once the orchestrator is
-        # healthy, preserving the orchestrator-before-API ordering the
-        # serial flow guaranteed.
+        # Two concurrent boot phases: otel + orchestrator (OTLP exporters
+        # retry until the collector is up), then API + client-proxy once the
+        # orchestrator is healthy — API must not start before it.
         ./scripts/start-service.sh start "OtelCollector" packages/otel-collector run ~/logs/otel-collector.log
         ./scripts/start-service.sh start "Orchestrator" packages/orchestrator run-debug ~/logs/orchestrator.log
         ./scripts/start-service.sh wait "Orchestrator" ~/logs/orchestrator.log http://localhost:5008/health
