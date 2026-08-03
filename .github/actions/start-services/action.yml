@@ -26,6 +26,13 @@ inputs:
     description: "Disable memfd-backed guest memory (on by default)"
     required: false
     default: "false"
+  orchestrator-make-path:
+    description: |
+      Directory whose Makefile starts the orchestrator (run-debug target).
+      Lets callers substitute a compatible orchestrator build from a
+      different directory.
+    required: false
+    default: "packages/orchestrator"
 
 runs:
   using: "composite"
@@ -110,6 +117,7 @@ runs:
         COMPRESS_FRAME_ENCODE_WORKERS: ${{ inputs.compress_workers }}
         TESTS_MEMFILE_DIFF_DEDUP_MODE: ${{ inputs.dedup_mode }}
         TESTS_DISABLE_MEMFD: ${{ inputs.disable_memfd }}
+        ORCHESTRATOR_MAKE_PATH: ${{ inputs.orchestrator-make-path }}
         E2B_DEBUG: "true"
       run: |
         mkdir -p $SHARED_CHUNK_CACHE_PATH
@@ -134,7 +142,7 @@ runs:
 
 
         echo "Start orchestrator"
-        ./scripts/start-service.sh "Orchestrator" packages/orchestrator run-debug ~/logs/orchestrator.log http://localhost:5008/health
+        ./scripts/start-service.sh "Orchestrator" "${ORCHESTRATOR_MAKE_PATH}" run-debug ~/logs/orchestrator.log http://localhost:5008/health
 
         echo "Start API"
         STARTUP_TIMEOUT=60 ./scripts/start-service.sh "API" packages/api run ~/logs/api.log http://localhost:3000/health
