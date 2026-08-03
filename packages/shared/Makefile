@@ -14,7 +14,7 @@ build-base-template:
         if [ -z "$$E2B_API_KEY" ]; then \
 			read -p "Enter E2B_API_KEY for the base template team: " E2B_API_KEY; \
 		fi; \
-		E2B_API_KEY=$$E2B_API_KEY E2B_DOMAIN=$(DOMAIN_NAME) \
+		E2B_API_KEY=$$E2B_API_KEY E2B_DOMAIN=$${E2B_DOMAIN:-$(DOMAIN_NAME)} \
     	npx tsx build.prod.ts
 	@echo "Done"
 
