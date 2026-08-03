@@ -1,1 +1,4 @@
 clickhouse-config-generated.xml
+
+# Remove go build binary
+/local-dev
