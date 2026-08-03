@@ -19,7 +19,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-// Values written into the fake cgroup files and expected back out of them.
 const (
 	fakeCPUUsageUsec  uint64 = 123456789
 	fakeCPUUserUsec   uint64 = 100000000
@@ -28,16 +27,14 @@ const (
 	fakeMemoryPeak    uint64 = 805306368
 )
 
-// peakWriteError builds the error shape the kernel produces for the reset
-// write, i.e. what os.File.WriteString returns: the errno wrapped in a
-// *os.PathError ("write /sys/fs/cgroup/e2b/sbx-x/memory.peak: invalid argument").
+// peakWriteError wraps errno the way os.File.WriteString does — inside a
+// *os.PathError — so tests exercise the errors.Is unwrap.
 func peakWriteError(errno syscall.Errno) error {
 	return &os.PathError{Op: "write", Path: "/sys/fs/cgroup/e2b/sbx-test/memory.peak", Err: errno}
 }
 
-// stubPeakReset replaces the memory.peak reset write with a stub returning
-// writeErr and returns its call counter. The process-wide latch is cleared
-// before the test and restored afterwards, since it outlives any single test.
+// stubPeakReset stubs the reset write; the process-wide latch outlives any
+// single test, so it is cleared before and after.
 func stubPeakReset(t *testing.T, writeErr error) *atomic.Int64 {
 	t.Helper()
 
@@ -59,8 +56,6 @@ func stubPeakReset(t *testing.T, writeErr error) *atomic.Int64 {
 	return calls
 }
 
-// observeWarnings swaps the global logger for an in-memory one so the number
-// of emitted warnings can be asserted.
 func observeWarnings(t *testing.T) *observer.ObservedLogs {
 	t.Helper()
 
@@ -70,8 +65,6 @@ func observeWarnings(t *testing.T) *observer.ObservedLogs {
 	return logs
 }
 
-// fakeCgroupDir builds a directory holding the cgroup v2 files getStatsForPath
-// reads and returns its path plus an open memory.peak FD.
 func fakeCgroupDir(t *testing.T) (string, *os.File) {
 	t.Helper()
 
@@ -103,11 +96,6 @@ func assertParsedStats(t *testing.T, stats *Stats) {
 	assert.Equal(t, fakeMemoryPeak, stats.MemoryPeakBytes, "the peak read must be reported regardless of reset support")
 }
 
-// Kernels older than 6.12 have no write handler for memory.peak and reject
-// every reset with EINVAL. The first failure must latch so the warning is
-// emitted once per process and the doomed write is never retried — instead of
-// once per sandbox per sample, forever.
-//
 //nolint:paralleltest // mutates the process-wide reset latch and the global logger
 func TestGetStatsPeakResetUnsupportedLatchesAfterOneWarning(t *testing.T) {
 	calls := stubPeakReset(t, peakWriteError(syscall.EINVAL))
@@ -129,8 +117,7 @@ func TestGetStatsPeakResetUnsupportedLatchesAfterOneWarning(t *testing.T) {
 	require.Len(t, warnings, 1, "unsupported reset must be logged exactly once per process")
 	assert.Contains(t, warnings[0].Message, "kernel 6.12+")
 
-	// The latch is a property of the kernel, so it must hold for every other
-	// sandbox on this host too, not just the FD that discovered it.
+	// The latch is per-kernel, so it must hold for a second sandbox's FD too.
 	otherPath, otherPeakFile := fakeCgroupDir(t)
 	stats, err := mgr.getStatsForPath(t.Context(), otherPath, otherPeakFile)
 	require.NoError(t, err)

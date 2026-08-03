@@ -35,18 +35,13 @@ const (
 	cgroupKillPollInterval = 100 * time.Millisecond
 )
 
-// memoryPeakResetUnsupported latches once the kernel has rejected a memory.peak
-// reset write. Resetting the per-FD peak by writing to memory.peak requires
-// Linux 6.12+; older kernels register no write handler for that file and fail
-// every write with EINVAL. The property is per-kernel, so a single failure
-// proves it for every sandbox on this host — latch it, log once, and stop
-// attempting the write instead of spamming one warning per sandbox per sample.
+// memoryPeakResetUnsupported latches once the kernel rejects a memory.peak
+// reset write: reset support is per-kernel (Linux 6.12+), so one failure
+// proves it for every sandbox on this host. See resetMemoryPeak.
 var memoryPeakResetUnsupported atomic.Bool
 
-// writeMemoryPeakReset performs the actual reset write. It is a package-level
-// variable so tests can inject failures without a real cgroup filesystem
-// (a regular file happily accepts the write, and an O_RDONLY file returns
-// EBADF rather than the EINVAL a pre-6.12 kernel returns).
+// writeMemoryPeakReset is injectable for tests: a regular file accepts the
+// write, so a pre-6.12 kernel's EINVAL cannot be provoked without a real cgroup.
 var writeMemoryPeakReset = func(memoryPeakFile *os.File) error {
 	_, err := memoryPeakFile.WriteString("0")
 
@@ -60,9 +55,8 @@ type Stats struct {
 	CPUSystemUsec uint64 // microseconds
 
 	MemoryUsageBytes uint64 // bytes
-	// MemoryPeakBytes is the peak since the previous GetStats() call. On
-	// kernels without memory.peak reset support (Linux < 6.12) the reset is
-	// not possible, and this degrades to the lifetime peak of the cgroup.
+	// MemoryPeakBytes is the peak since the previous GetStats() call — or the
+	// cgroup's lifetime peak on kernels without memory.peak reset (Linux < 6.12).
 	MemoryPeakBytes uint64 // bytes
 }
 
@@ -537,7 +531,6 @@ func (m *managerImpl) getStatsForPath(ctx context.Context, cgroupPath string, me
 //   - Read requires file position 0 (seq_file), so we seek before reading.
 //   - Write resets the per-FD peak to current memory usage. The kernel ignores
 //     both the written content and the file offset, so no seek before write is needed.
-//     The write handler only exists on Linux 6.12+ — see resetMemoryPeak.
 func (m *managerImpl) readAndResetMemoryPeak(ctx context.Context, memoryPeakFile *os.File) (uint64, error) {
 	if _, err := memoryPeakFile.Seek(0, io.SeekStart); err != nil {
 		return 0, fmt.Errorf("failed to seek memory.peak for read: %w", err)
@@ -559,15 +552,12 @@ func (m *managerImpl) readAndResetMemoryPeak(ctx context.Context, memoryPeakFile
 	return peakBytes, nil
 }
 
-// resetMemoryPeak resets the per-FD peak so the next read reports the peak of
-// the next interval only. A failure is never fatal: the peak that was already
-// read stays valid, it just widens to cover more than one interval.
-//
-// Kernels older than 6.12 have no write handler for memory.peak and reject
-// every write with EINVAL. That is a permanent property of the running kernel,
-// so the first such failure latches memoryPeakResetUnsupported: it is logged
-// once and no further write is attempted for the lifetime of the process.
-// Any other error is treated as transient and retried on the next sample.
+// resetMemoryPeak resets the per-FD peak so the next read covers one interval.
+// Failure is never fatal — the peak already read stays valid, just widens to
+// span more than one interval. Pre-6.12 kernels have no memory.peak write
+// handler and fail every write with EINVAL; that is permanent, so the first
+// such failure latches memoryPeakResetUnsupported (logged once, never
+// retried). Other errors are transient and retried on the next sample.
 func resetMemoryPeak(ctx context.Context, memoryPeakFile *os.File) {
 	if memoryPeakResetUnsupported.Load() {
 		return
