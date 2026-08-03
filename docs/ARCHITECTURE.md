@@ -396,7 +396,8 @@ flowchart TB
   topology runs two API nodes.
 - **Sandbox ("client") nodes** run the orchestrator as a Nomad *system* job via `raw_exec`
   (it needs root for Firecracker, namespaces, NBD, cgroups). Configured with hugepages and local
-  template caches. Autoscaled.
+  template caches. Terraform holds the invited-beta bootstrap at two workers until the
+  Nomad-aware controller is deployed.
 - **Build nodes** run the same binary in template-manager mode. The invited-beta topology keeps
   one fixed build node, reported separately from workcell capacity.
 - Server, API, worker, build, and optional data nodes have no per-instance public address in the
@@ -414,10 +415,10 @@ flowchart TB
   post-cluster admission. Zero surge does not drain workloads:
   before replacing a worker template, the operator must pause/snapshot active sandboxes, verify
   durable uploads, stop placement, drain Nomad allocations, and verify MIG stability. Terraform
-  establishes the two-host worker floor and then ignores live target-size changes so a
-  Nomad-aware capacity controller can own the 2-15 range without configuration collapse. Until
-  that controller job is deployed, operators hold the fleet at two workers. Packer image builds
-  must not overlap a rollout.
+  establishes and owns the two-host worker floor. The capacity-controller change must transfer
+  target-size ownership to the Nomad-aware controller in the same reviewed deployment that makes
+  the 2-15 range live; ownership is not relinquished early. Packer image builds must not overlap
+  a rollout.
 - Packer image construction and workload rollouts serialize through one
   generation-preconditioned object in the private Terraform state bucket,
   keyed by GCP project and region. The operator Packer path is a staged,

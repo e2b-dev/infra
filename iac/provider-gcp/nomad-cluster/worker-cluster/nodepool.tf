@@ -150,14 +150,6 @@ resource "google_compute_region_instance_group_manager" "pool" {
   depends_on = [
     google_compute_instance_template.template,
   ]
-
-  # Nomad-aware capacity controllers and the existing job scaler own the live
-  # target after the initial cluster_size is established. Terraform continues
-  # to own the template, health policy, and update strategy without collapsing
-  # a safely scaled fleet back to the bootstrap count on the next plan.
-  lifecycle {
-    ignore_changes = [target_size]
-  }
 }
 
 data "google_compute_image" "source_image" {
