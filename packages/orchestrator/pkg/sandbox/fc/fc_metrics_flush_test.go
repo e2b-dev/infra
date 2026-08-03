@@ -11,10 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// When Firecracker has exited, a tick that was already pending must not reach
-// the (now dead) API socket. Both channels are armed before every iteration so
-// the select genuinely has to choose between them; repeating drives the random
-// choice hard enough that an unguarded loop cannot stay silent.
+// A tick already pending when exit closes must not trigger a flush. Both
+// channels are ready on every iteration, so the select must choose between
+// them; repetition makes an unguarded loop fail despite the random pick.
 func TestRunMetricsFlushLoop_NoFlushAfterExit(t *testing.T) {
 	t.Parallel()
 
@@ -50,7 +49,6 @@ func TestRunMetricsFlushLoop_NoFlushAfterExit(t *testing.T) {
 	assert.Zero(t, flushes, "flushed Firecracker metrics after the VM had exited")
 }
 
-// While the VM is alive, ticks must still trigger flushes.
 func TestRunMetricsFlushLoop_FlushesWhileRunning(t *testing.T) {
 	t.Parallel()
 
@@ -89,7 +87,6 @@ func TestRunMetricsFlushLoop_FlushesWhileRunning(t *testing.T) {
 	}
 }
 
-// Flush failures while the VM is alive are still reported.
 func TestRunMetricsFlushLoop_ReportsFlushError(t *testing.T) {
 	t.Parallel()
 

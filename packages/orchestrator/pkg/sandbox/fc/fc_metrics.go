@@ -277,10 +277,9 @@ func runMetricsFlushLoop(
 		case <-exit:
 			return
 		case <-ticks:
-			// A select with several ready cases picks one at random, so a tick
-			// can win against an already-closed exit. Re-check before touching
-			// the API socket: Firecracker may already be gone, and the resulting
-			// "connection reset by peer" would look like a real API failure.
+			// select picks ready cases at random, so a tick can win against an
+			// already-closed exit; re-check or the flush hits a dead Firecracker
+			// and logs a spurious API failure.
 			select {
 			case <-exit:
 				return
