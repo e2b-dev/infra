@@ -1,3 +1,9 @@
+# Runs the integration test suite.
+#
+# The suite flow lives in the composite action
+# .github/actions/integration-tests; only the matrix/sharding strategy and
+# the result uploads live here.
+
 name: Integration Tests
 
 on:
@@ -81,37 +87,8 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v5
 
-      # Kick off the database containers first: their image pulls and boots
-      # run in the background and overlap with the package builds below.
-      - name: Start Databases
-        uses: ./.github/actions/start-databases
-
-      # The compressed configs only run what the allow-list names, so verify
-      # its stale-entry guard still bites before depending on it.
-      - name: Check Test Allow-list
-        run: make -C tests/integration check-tests-allowlist
-        shell: bash
-
-      - name: Build Packages
-        uses: ./.github/actions/build-packages
-
-      - name: Initialize Host
-        uses: ./.github/actions/host-init
-
-      # Must run before Start Services: create-build manages its own sandbox
-      # network state (slot pools, namespaces) and conflicts with a running
-      # orchestrator doing the same - overlapping them wedges the
-      # provisioning VM until its deadline.
-      - name: Build Template
-        uses: ./.github/actions/build-sandbox-template
-        with:
-          compress_enabled: ${{ matrix.compress_enabled }}
-          compress_type: ${{ matrix.compress_type }}
-          compress_level: ${{ matrix.compress_level }}
-          compress_workers: ${{ matrix.compress_workers }}
-
-      - name: Start Services
-        uses: ./.github/actions/start-services
+      - name: Run integration tests
+        uses: ./.github/actions/integration-tests
         with:
           compress_enabled: ${{ matrix.compress_enabled }}
           compress_type: ${{ matrix.compress_type }}
@@ -119,60 +96,12 @@ jobs:
           compress_workers: ${{ matrix.compress_workers }}
           dedup_mode: ${{ matrix.dedup_mode }}
           disable_memfd: ${{ matrix.disable_memfd }}
-
-      - name: Run Integration Tests
-        env:
-          TESTS_API_SERVER_URL: "http://localhost:3000"
-          TESTS_API_INTERNAL_GRPC_ADDRESS: "localhost:5009"
-          TESTS_ORCHESTRATOR_HOST: "localhost:5008"
-          TESTS_ENVD_PROXY: "http://localhost:3002"
-          TESTS_CLIENT_PROXY: "http://localhost:3002"
-          # The uncompressed config runs the whole suite. The compressed configs
-          # only re-run the tests whose subject is writing or reading back a
-          # snapshot, which is all the compression knobs can affect — the
-          # allow-list documents the criteria and the code paths involved.
-          TESTS_ONLY: ${{ matrix.compress_enabled == 'true' && 'scripts/compression-tests.tsv' || '' }}
-          # Keep go test -parallel at 4: the host is the bottleneck, not
-          # client-side concurrency. Measured on the zstd1 config: at 8 the
-          # per-test times inflated 70-140% (net wall win of only ~1 min) and
-          # 10 template builds flaked on timeouts; at 12 concurrent FC builds
-          # (x8 zstd workers each) starved envd inits into "syncing took too
-          # long" failures across 87 tests. Wall time is cut by sharding
-          # across runners instead (see the matrix above).
-          TEST_PARALLELISM: "4"
-          TEST_SHARD: ${{ matrix.shard }}
-        run: |
-          # Run the integration tests
-          make test-integration
-
-      - name: Check for Data Races in Service Logs
-        if: always()
-        run: |
-          echo "Checking service logs for data races..."
-          RACE_FOUND=0
-
-          for log_file in ~/logs/*.log; do
-            if [ -f "$log_file" ]; then
-              if grep -q "WARNING: DATA RACE" "$log_file"; then
-                echo "::error::Data race detected in $(basename "$log_file")"
-                echo "=========================================="
-                echo "DATA RACES IN: $log_file"
-                echo "=========================================="
-                # Extract and print all data race blocks
-                grep -A 30 "WARNING: DATA RACE" "$log_file" | head -200
-                echo ""
-                RACE_FOUND=1
-              fi
-            fi
-          done
-
-          if [ "$RACE_FOUND" -eq 1 ]; then
-            echo "::error::Data races were detected in service logs. See above for details."
-            exit 1
-          else
-            echo "No data races detected in service logs."
-          fi
-        shell: bash
+          test-shard: ${{ matrix.shard }}
+          # The uncompressed config runs the whole suite. The compressed
+          # configs only re-run the tests whose subject is writing or reading
+          # back a snapshot, which is all the compression knobs can affect —
+          # the allow-list documents the criteria and the code paths involved.
+          tests-only: ${{ matrix.compress_enabled == 'true' && 'scripts/compression-tests.tsv' || '' }}
 
       - name: Upload Test Results
         if: ${{ always() && inputs.publish == true }}
