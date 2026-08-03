@@ -305,6 +305,28 @@ def is_cloud_sql_resource($resource; $policy):
     )
   );
 
+def is_safe_setup_object_replacement:
+  .type == "google_storage_bucket_object"
+  and (
+    .address
+    | test(
+        "^module\\.cluster\\.google_storage_bucket_object\\.setup_config_objects\\[\\\"scripts/(?:configure-docker-gcp|run-consul|run-nomad)\\.sh\\\"\\]$"
+      )
+  )
+  and .change.actions == ["create", "delete"]
+  and .change.after.deletion_policy == "ABANDON"
+  and (.change.before.bucket | type) == "string"
+  and .change.after.bucket == .change.before.bucket
+  and (
+    .change.before.name
+    | test("^(?:configure-docker-gcp|run-consul|run-nomad)-[0-9a-f]{5}\\.sh$")
+  )
+  and (
+    .change.after.name
+    | test("^(?:configure-docker-gcp|run-consul|run-nomad)-[0-9a-f]{5}\\.sh$")
+  )
+  and .change.after.name != .change.before.name;
+
 managed_changes as $changes
 | (
     [
@@ -873,6 +895,7 @@ managed_changes as $changes
               and template_role != null
               and .change.actions == ["create", "delete"]
             )
+            or is_safe_setup_object_replacement
             or (
               .address == "module.nomad.module.orchestrator[0].random_id.orchestrator_job"
               and .type == "random_id"

@@ -92,10 +92,11 @@ variable "setup_files" {
 }
 
 resource "google_storage_bucket_object" "setup_config_objects" {
-  for_each = var.setup_files
-  name     = "${each.value}-${local.file_hash[each.key]}.sh"
-  source   = "${path.module}/${each.key}"
-  bucket   = var.cluster_setup_bucket_name
+  for_each        = var.setup_files
+  name            = "${each.value}-${local.file_hash[each.key]}.sh"
+  source          = "${path.module}/${each.key}"
+  bucket          = var.cluster_setup_bucket_name
+  deletion_policy = "ABANDON"
 }
 
 module "network" {
