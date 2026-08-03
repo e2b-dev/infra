@@ -9,9 +9,11 @@ import (
 	"os"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	headers "github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -154,8 +156,9 @@ func (u *Upload) uploadFramed(
 //
 // When Wait returns nil for a build dst still lacks (a gap inherited from the
 // source header), the entry is recovered from the build's own stored header so
-// the gap stops propagating to descendant headers; only builds with no header
-// file (legacy uncompressed) stay absent, resolved by the read path.
+// the gap stops propagating to descendant headers; builds with no header file
+// (legacy uncompressed) stay absent, resolved by the read path. The heal is
+// best-effort: a failed load leaves the gap rather than failing the pause.
 //
 // Local ancestors resolve from the in-memory futures map without I/O;
 // cross-orch ancestors take a single remote storage round-trip. Sequential —
@@ -192,7 +195,18 @@ func (u *Upload) appendAncestorBuilds(
 				continue
 			}
 			if err != nil {
-				return fmt.Errorf("recover ancestor %s/%s build data: %w", buildID, fileType, err)
+				// createDiff resolves an absent entry on its own, so don't fail
+				// a snapshot over the heal — unless the context is already done.
+				if ctx.Err() != nil {
+					return fmt.Errorf("recover ancestor %s/%s build data: %w", buildID, fileType, err)
+				}
+				logger.L().Warn(ctx, "ancestor build data recovery failed, persisting header with the gap",
+					logger.WithBuildID(buildID.String()),
+					zap.String("file_type", string(fileType)),
+					zap.Error(err),
+				)
+
+				continue
 			}
 		}
 

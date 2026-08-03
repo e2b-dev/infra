@@ -5,6 +5,7 @@ package sandbox
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"testing"
 
@@ -213,6 +214,42 @@ func TestAppendAncestorBuilds_LeavesGapAbsentWithoutStoredHeader(t *testing.T) {
 	dst := map[uuid.UUID]headers.BuildData{}
 	require.NoError(t, gapUpload(t, provider).appendAncestorBuilds(t.Context(), dst, mappingTo(t, 4096, ancestorID, 4096), build.Memfile))
 	require.NotContains(t, dst, ancestorID)
+}
+
+// A transient failure loading the ancestor's header must not fail the pause:
+// the heal is an optimization, and leaving the gap absent is what every release
+// before it did — createDiff still resolves the build's own header per fault.
+func TestAppendAncestorBuilds_TransientLoadFailureKeepsUploadAlive(t *testing.T) {
+	t.Parallel()
+
+	ancestorID := uuid.New()
+	provider := storage.NewMockStorageProvider(t)
+	provider.EXPECT().
+		OpenBlob(mock.Anything, storage.Paths{BuildID: ancestorID.String()}.HeaderFile(storage.MemfileName)).
+		Return(nil, errors.New("storage unavailable")).Once()
+
+	dst := map[uuid.UUID]headers.BuildData{}
+	require.NoError(t, gapUpload(t, provider).appendAncestorBuilds(t.Context(), dst, mappingTo(t, 4096, ancestorID, 4096), build.Memfile))
+	require.NotContains(t, dst, ancestorID)
+}
+
+// A load failure on an already-cancelled context still fails: continuing would
+// bury the real cause under a store-header error further down the pause.
+func TestAppendAncestorBuilds_CancelledContextFailsUpload(t *testing.T) {
+	t.Parallel()
+
+	ancestorID := uuid.New()
+	provider := storage.NewMockStorageProvider(t)
+	provider.EXPECT().
+		OpenBlob(mock.Anything, storage.Paths{BuildID: ancestorID.String()}.HeaderFile(storage.MemfileName)).
+		Return(nil, context.Canceled).Once()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	dst := map[uuid.UUID]headers.BuildData{}
+	err := gapUpload(t, provider).appendAncestorBuilds(ctx, dst, mappingTo(t, 4096, ancestorID, 4096), build.Memfile)
+	require.ErrorIs(t, err, context.Canceled)
 }
 
 // An entry already carried through the source header is kept as-is, with no
