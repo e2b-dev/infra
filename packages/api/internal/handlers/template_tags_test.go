@@ -58,9 +58,7 @@ func listTemplateTagsForTeam(
 	return res
 }
 
-// createPrivateTestTemplate seeds a non-public template.
-// testutils.CreateTestTemplate hardcodes public = true, so private templates
-// have to be inserted directly.
+// createPrivateTestTemplate inserts directly: testutils.CreateTestTemplate hardcodes public = true.
 func createPrivateTestTemplate(t *testing.T, testDB *testutils.Database, teamID uuid.UUID) string {
 	t.Helper()
 	templateID := "base-env-" + uuid.New().String()
@@ -100,8 +98,7 @@ func TestGetTemplateTagsAsOwnerTeam(t *testing.T) {
 	assert.Equal(t, buildID, (*res.JSON200)[0].BuildID)
 }
 
-// TestGetTemplateTagsPublicTemplateAsForeignTeam covers EN-617: a public
-// template is usable cross-team, so listing its tags must not be owner-only.
+// EN-617: public templates are usable cross-team, so listing their tags must not be owner-only.
 func TestGetTemplateTagsPublicTemplateAsForeignTeam(t *testing.T) {
 	t.Parallel()
 
