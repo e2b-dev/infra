@@ -220,6 +220,9 @@ func (b *File) createDiff(ctx context.Context, buildID uuid.UUID) (Diff, error) 
 				if err == nil && size == 0 {
 					size, err = upstream.Size(ctx)
 				}
+			} else {
+				// Report why the recovery failed, not just the object miss.
+				err = errors.Join(err, lerr)
 			}
 		}
 		if err != nil {
