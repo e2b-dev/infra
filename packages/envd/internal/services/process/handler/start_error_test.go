@@ -16,17 +16,12 @@ import (
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
 )
 
-// eagainStartError is shaped exactly like the error a real spawn failure
-// produces: os/exec returns *fs.PathError{Op: "fork/exec"} carrying the errno,
-// and Handler.Start wraps it with %w.
+// eagainStartError mirrors a real spawn failure: os/exec returns
+// *fs.PathError{Op: "fork/exec"} carrying the errno, wrapped with %w by Handler.Start.
 func eagainStartError() error {
 	return fmt.Errorf("error starting process '%s': %w", "sleep 1", &fs.PathError{Op: "fork/exec", Path: "/bin/sh", Err: syscall.EAGAIN})
 }
 
-// A sandbox that runs out of process capacity must not be told its request was
-// invalid — EAGAIN is transient and retryable, so it maps to
-// CodeResourceExhausted. Everything that is genuinely the caller's fault keeps
-// mapping to CodeInvalidArgument.
 func TestStartErrorCode(t *testing.T) {
 	t.Parallel()
 
@@ -80,8 +75,6 @@ func TestStartErrorCode(t *testing.T) {
 			err:  fmt.Errorf("error starting process '%s': %w", "sleep 1", context.Canceled),
 			want: connect.CodeCanceled,
 		},
-		// Regression guards: the fix must not reclassify anything that is
-		// genuinely a bad request.
 		{
 			name: "missing binary stays invalid argument",
 			err:  fmt.Errorf("error starting process '%s': %w", "nope", &exec.Error{Name: "nope", Err: exec.ErrNotFound}),
@@ -112,8 +105,7 @@ func TestStartErrorCode(t *testing.T) {
 	}
 }
 
-// What the SDK client actually observes on the wire is the code carried by the
-// *connect.Error, so assert on that rather than on the classifier alone.
+// Asserts on the code carried by *connect.Error — what the client observes on the wire.
 func TestStartErrorClientObservedCode(t *testing.T) {
 	t.Parallel()
 
@@ -124,9 +116,8 @@ func TestStartErrorClientObservedCode(t *testing.T) {
 	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(connect.NewError(StartErrorCode(badRequest), badRequest)))
 }
 
-// Handler.Start must wrap the spawn failure so the errno survives to the
-// classifier — a %v instead of %w here would silently turn every exhausted
-// sandbox back into an invalid_argument.
+// Handler.Start must wrap the spawn failure with %w — %v would silently turn
+// every exhausted sandbox back into invalid_argument.
 func TestHandlerStartPreservesErrno(t *testing.T) {
 	t.Parallel()
 

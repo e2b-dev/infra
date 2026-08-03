@@ -53,10 +53,8 @@ type Handler struct {
 	cmd *exec.Cmd
 	tty *os.File
 
-	// startCmd forks cmd. Injected for testability so the spawn-failure path can
-	// be exercised without actually exhausting the host; production passes
-	// (*exec.Cmd).Start. Set by New, which is the only constructor whose handler
-	// is ever started — a re-adopted handler has no cmd and never Starts.
+	// startCmd is (*exec.Cmd).Start in production; injected so tests can exercise
+	// spawn failures. Only New sets it — re-adopted handlers have no cmd and never Start.
 	startCmd func(*exec.Cmd) error
 
 	cancel context.CancelFunc
