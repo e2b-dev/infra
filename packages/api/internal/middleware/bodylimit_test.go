@@ -26,10 +26,9 @@ func TestRequestSizeLimiter(t *testing.T) {
 		wantConnHdr string
 	}{
 		{
-			name:     "body within the limit is read in full",
-			body:     strings.Repeat("a", limit),
-			wantRead: strings.Repeat("a", limit),
-			// Nothing was rejected, so the handler decides the status.
+			name:       "body within the limit is read in full",
+			body:       strings.Repeat("a", limit),
+			wantRead:   strings.Repeat("a", limit),
 			wantStatus: http.StatusOK,
 		},
 		{
@@ -75,8 +74,7 @@ func TestRequestSizeLimiter(t *testing.T) {
 
 			assert.Equal(t, tt.wantStatus, rr.Code)
 			assert.Equal(t, tt.wantConnHdr, rr.Header().Get("Connection"))
-			// The limiter must never write a body of its own — the error
-			// handler is the single writer of the error response.
+			// The limiter must never write a body; the error handler is the sole writer.
 			assert.Empty(t, rr.Body.String())
 		})
 	}

@@ -21,9 +21,8 @@ import (
 
 const testBodyLimit = 1 << 10
 
-// envelopeRouter mirrors the middleware chain main.go puts in front of every
-// request: the body size limiter, then the OpenAPI validator wired to
-// ErrorHandler.
+// envelopeRouter mirrors main.go's middleware chain: the body size limiter,
+// then the OpenAPI validator wired to ErrorHandler.
 func envelopeRouter(t *testing.T, authOK bool) *gin.Engine {
 	t.Helper()
 
@@ -59,10 +58,8 @@ func envelopeRouter(t *testing.T, authOK bool) *gin.Engine {
 	return r
 }
 
-// TestErrorResponsesUseTheDocumentedEnvelope covers EN-919: every way a
-// template build request can be rejected has to answer with the Error schema
-// the spec promises, so clients can report something better than
-// "[undefined] no message".
+// TestErrorResponsesUseTheDocumentedEnvelope covers EN-919: every rejection
+// path must answer with the Error schema the spec promises.
 func TestErrorResponsesUseTheDocumentedEnvelope(t *testing.T) {
 	t.Parallel()
 
@@ -137,9 +134,8 @@ func TestErrorResponsesUseTheDocumentedEnvelope(t *testing.T) {
 	}
 }
 
-// TestErrorHandlerLeavesACommittedResponseAlone is the backstop for the corrupt
-// body in EN-919: whatever a middleware has already written, ErrorHandler must
-// not append the envelope to it.
+// TestErrorHandlerLeavesACommittedResponseAlone is the EN-919 backstop:
+// ErrorHandler must not append the envelope to an already-committed response.
 func TestErrorHandlerLeavesACommittedResponseAlone(t *testing.T) {
 	t.Parallel()
 

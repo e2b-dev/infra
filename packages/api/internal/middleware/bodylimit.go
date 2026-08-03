@@ -10,11 +10,9 @@ import (
 
 // RequestSizeLimiter caps how much of a request body the server will read.
 //
-// It deliberately writes no response of its own: it only records the 413 status
-// on the context and lets the OpenAPI validator's error handler render the
-// documented {code, message} error body. Writing here would commit a plain-text
-// body that the error handler then appends JSON to, leaving clients with a
-// response they cannot parse.
+// On overflow it records the 413 status without writing a body: the OpenAPI
+// validator's error handler is the sole writer of the documented error
+// envelope, and a body committed here would corrupt it.
 func RequestSizeLimiter(limit int64) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Request.Body = &limitedBody{
@@ -38,7 +36,6 @@ func (b *limitedBody) Read(p []byte) (int, error) {
 	if errors.As(err, &tooLarge) {
 		// The rest of the body is never read, so the connection cannot be reused.
 		b.ctx.Header("Connection", "close")
-		// Only records the status, nothing is written to the client yet.
 		b.ctx.Status(http.StatusRequestEntityTooLarge)
 	}
 

@@ -47,8 +47,7 @@ func ErrorHandler(c *gin.Context, message string, statusCode int) {
 
 	c.Error(errMsg)
 
-	// Something upstream already committed a response. Appending the error
-	// envelope to it would produce a body no client can parse, so leave it be.
+	// A response is already committed upstream; appending the envelope would corrupt it.
 	if c.Writer.Written() {
 		c.Abort()
 
