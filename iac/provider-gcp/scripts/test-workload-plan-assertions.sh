@@ -161,6 +161,27 @@ expect_success() {
 expect_success "minimal" "${fixture}"
 
 jq '
+  (
+    .resource_changes[]
+    | select(.address | startswith("module.cluster.module.network.google_compute_address.nat_ips["))
+    | .change.after.region
+  ) = "us-east4"
+' "${fixture}" >"${test_dir}/short-nat-region.json"
+expect_success "short-nat-region" "${test_dir}/short-nat-region.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.address == "module.cluster.module.network.google_compute_address.nat_ips[0]")
+    | .change.after.region
+  ) = "us-west1"
+' "${fixture}" >"${test_dir}/wrong-nat-region.json"
+expect_failure \
+  "wrong-nat-region" \
+  "invalid_fixed_regional_public_ip_resources must be empty." \
+  "${test_dir}/wrong-nat-region.json"
+
+jq '
   .resource_changes |= map(
     select(
       .address

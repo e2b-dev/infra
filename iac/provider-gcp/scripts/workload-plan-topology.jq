@@ -693,7 +693,14 @@ managed_changes as $changes
           (.change.actions | index("delete")) != null
           or .change.after.address_type != "EXTERNAL"
           or (.change.after.region | type) != "string"
-          or (.change.after.region | endswith("/regions/" + $expected.gcp_region) | not)
+          or (
+            .change.after.region != $expected.gcp_region
+            and (
+              .change.after.region
+              | endswith("/regions/" + $expected.gcp_region)
+              | not
+            )
+          )
         )
       | {
           address,
