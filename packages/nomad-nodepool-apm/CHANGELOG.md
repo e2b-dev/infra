@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.0](https://github.com/e2b-dev/infra/compare/nomad-nodepool-apm-v0.0.1...nomad-nodepool-apm-v0.1.0) (2026-08-03)
+
+
+### Features
+
+* **nomad-nodepool-apm:** add deployment-aware target plugin ([#3270](https://github.com/e2b-dev/infra/issues/3270)) ([a5a3d63](https://github.com/e2b-dev/infra/commit/a5a3d63d03e0c66c8784b47deb15d3289c47ed7b))
+
+
+### Bug Fixes
+
+* added api and orch ([#3454](https://github.com/e2b-dev/infra/issues/3454)) ([d56e0a8](https://github.com/e2b-dev/infra/commit/d56e0a8bd53f54250fa4102bfaa7629f29d7af12))
+* correct 3 CVES ([#3218](https://github.com/e2b-dev/infra/issues/3218)) ([076823b](https://github.com/e2b-dev/infra/commit/076823bc5cbffb9f8c04670c886562445e50ead7))
+* **nomad-nodepool-apm:** retain ineligible nodes ([#3301](https://github.com/e2b-dev/infra/issues/3301)) ([4f8269a](https://github.com/e2b-dev/infra/commit/4f8269ad9372886ec424f5fb350bce30b2eb9ed6))
+
 ## 0.0.1 (2026-07-30)
 
 

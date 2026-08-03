@@ -6,5 +6,5 @@
   "packages/orchestrator": "0.0.2",
   "packages/api": "0.0.1",
   "packages/dashboard-api": "0.1.0",
-  "packages/nomad-nodepool-apm": "0.0.1"
+  "packages/nomad-nodepool-apm": "0.1.0"
 }
