@@ -305,6 +305,33 @@ def is_cloud_sql_resource($resource; $policy):
     )
   );
 
+def is_safe_setup_object_replacement:
+  . as $resource
+  | (
+      [
+        $resource.address
+        | capture(
+            "^module\\.cluster\\.google_storage_bucket_object\\.setup_config_objects\\[\\\"scripts/(?<script>configure-docker-gcp|run-consul|run-nomad)\\.sh\\\"\\]$"
+          )
+      ]
+      | first // null
+    ) as $identity
+  | $resource.type == "google_storage_bucket_object"
+    and $identity != null
+    and $resource.change.actions == ["create", "delete"]
+    and $resource.change.after.deletion_policy == "ABANDON"
+    and ($resource.change.before.bucket | type) == "string"
+    and $resource.change.after.bucket == $resource.change.before.bucket
+    and (
+      $resource.change.before.name
+      | test("^" + $identity.script + "-[0-9a-f]{5}\\.sh$")
+    )
+    and (
+      $resource.change.after.name
+      | test("^" + $identity.script + "-[0-9a-f]{5}\\.sh$")
+    )
+    and $resource.change.after.name != $resource.change.before.name;
+
 managed_changes as $changes
 | (
     [
@@ -873,6 +900,7 @@ managed_changes as $changes
               and template_role != null
               and .change.actions == ["create", "delete"]
             )
+            or is_safe_setup_object_replacement
             or (
               .address == "module.nomad.module.orchestrator[0].random_id.orchestrator_job"
               and .type == "random_id"

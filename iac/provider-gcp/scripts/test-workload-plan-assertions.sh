@@ -421,6 +421,68 @@ expect_success \
   cluster
 
 jq '
+  .resource_changes += [{
+    "address": "module.cluster.google_storage_bucket_object.setup_config_objects[\"scripts/run-nomad.sh\"]",
+    "mode": "managed",
+    "type": "google_storage_bucket_object",
+    "name": "setup_config_objects",
+    "index": "scripts/run-nomad.sh",
+    "change": {
+      "actions": ["create", "delete"],
+      "before": {
+        "bucket": "operator-instance-setup",
+        "deletion_policy": "DELETE",
+        "name": "run-nomad-abc12.sh"
+      },
+      "after": {
+        "bucket": "operator-instance-setup",
+        "deletion_policy": "ABANDON",
+        "name": "run-nomad-def34.sh"
+      },
+      "after_unknown": {}
+    }
+  }]
+' "${cluster_fixture}" >"${test_dir}/cluster-content-addressed-setup-object.json"
+expect_success \
+  "cluster-content-addressed-setup-object" \
+  "${test_dir}/cluster-content-addressed-setup-object.json" \
+  cluster
+
+jq '
+  (
+    .resource_changes[]
+    | select(.type == "google_storage_bucket_object")
+    | .change.after.deletion_policy
+  ) = "DELETE"
+' "${test_dir}/cluster-content-addressed-setup-object.json" \
+  >"${test_dir}/cluster-deleting-setup-object.json"
+expect_failure \
+  "cluster-deleting-setup-object" \
+  "destructive_managed_resources must be empty." \
+  "${test_dir}/cluster-deleting-setup-object.json" \
+  "${policy}" \
+  "${packer_template}" \
+  "${artifacts}" \
+  cluster
+
+jq '
+  (
+    .resource_changes[]
+    | select(.type == "google_storage_bucket_object")
+    | .change.after.name
+  ) = "run-consul-def34.sh"
+' "${test_dir}/cluster-content-addressed-setup-object.json" \
+  >"${test_dir}/cluster-mismatched-setup-object.json"
+expect_failure \
+  "cluster-mismatched-setup-object" \
+  "destructive_managed_resources must be empty." \
+  "${test_dir}/cluster-mismatched-setup-object.json" \
+  "${policy}" \
+  "${packer_template}" \
+  "${artifacts}" \
+  cluster
+
+jq '
   (
     .resource_changes[]
     | select(
