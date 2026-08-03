@@ -21,8 +21,8 @@ if [[ "${1:-}" == "compute" \
   case "${5:-}" in
     e2b-orch-server-rig) target_size=3 ;;
     e2b-orch-build-default-rig) target_size=1 ;;
-    e2b-orch-client-rig) target_size=1 ;;
-    e2b-orch-api-ig) target_size=1 ;;
+    e2b-orch-client-rig) target_size=2 ;;
+    e2b-orch-api-ig) target_size=2 ;;
     *)
       printf 'unexpected instance group: %s\n' "${5:-}" >&2
       exit 2
@@ -145,7 +145,7 @@ DIG_BIN="${fake_dig}" \
   "${fake_gcloud}" 60 >"${test_dir}/ready.output"
 
 grep -F \
-  'One-workcell cluster bootstrap is ready: servers=3 clients>=3' \
+  'Invited-beta cluster bootstrap is ready: servers=3 clients>=3' \
   "${test_dir}/ready.output" >/dev/null
 test "$(grep -c '^compute instance-groups managed describe ' "${gcloud_log}")" -eq 4
 grep -F \

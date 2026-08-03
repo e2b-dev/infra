@@ -144,13 +144,13 @@ expect_success() {
     "${artifacts}" \
     "${scope}" >"${output_path}"
 
-  grep -F '"global_vcpus":30' "${output_path}" >/dev/null
-  grep -F '"regional_cpus":30' "${output_path}" >/dev/null
-  grep -F '"instances":7' "${output_path}" >/dev/null
-  grep -F '"pd_ssd_gb":270' "${output_path}" >/dev/null
-  grep -F '"pd_standard_gb":400' "${output_path}" >/dev/null
-  grep -F '"local_ssd_gb":750' "${output_path}" >/dev/null
-  grep -F '"regional_public_ips":7' "${output_path}" >/dev/null
+  grep -F '"global_vcpus":42' "${output_path}" >/dev/null
+  grep -F '"regional_cpus":42' "${output_path}" >/dev/null
+  grep -F '"instances":9' "${output_path}" >/dev/null
+  grep -F '"pd_ssd_gb":370' "${output_path}" >/dev/null
+  grep -F '"pd_standard_gb":600' "${output_path}" >/dev/null
+  grep -F '"local_ssd_gb":1125' "${output_path}" >/dev/null
+  grep -F '"regional_public_ips":3' "${output_path}" >/dev/null
   if [[ "${scope}" == "cluster" ]]; then
     grep -F \
       'Cluster bootstrap scope passed: only module.cluster may mutate' \
@@ -159,6 +159,40 @@ expect_success() {
 }
 
 expect_success "minimal" "${fixture}"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.address | startswith("module.cluster.module.network.google_compute_address.nat_ips["))
+    | .change.after.region
+  ) = "us-east4"
+' "${fixture}" >"${test_dir}/short-nat-region.json"
+expect_success "short-nat-region" "${test_dir}/short-nat-region.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.address == "module.cluster.module.network.google_compute_address.nat_ips[0]")
+    | .change.after.region
+  ) = "us-west1"
+' "${fixture}" >"${test_dir}/wrong-nat-region.json"
+expect_failure \
+  "wrong-nat-region" \
+  "invalid_fixed_regional_public_ip_resources must be empty." \
+  "${test_dir}/wrong-nat-region.json"
+
+jq '
+  .resource_changes |= map(
+    select(
+      .address
+      != "module.cluster.module.network.google_compute_address.nat_ips[1]"
+    )
+  )
+' "${fixture}" >"${test_dir}/missing-nat-ip.json"
+expect_failure \
+  "missing-nat-ip" \
+  "fixed regional public IPs differ from policy." \
+  "${test_dir}/missing-nat-ip.json"
 
 jq '
   .resource_changes += [
@@ -548,7 +582,7 @@ jq '
 ' "${fixture}" >"${test_dir}/unexpected-clickhouse.json"
 expect_failure \
   "unexpected-clickhouse" \
-  "quota_violations must be empty." \
+  "role maximum instance counts differ from policy." \
   "${test_dir}/unexpected-clickhouse.json"
 
 jq '
@@ -611,7 +645,7 @@ jq '
 ' "${fixture}" >"${test_dir}/quota-overflow.json"
 expect_failure \
   "quota-overflow" \
-  "quota_violations must be empty." \
+  "role rollout surge counts differ from policy." \
   "${test_dir}/quota-overflow.json"
 
 jq '
@@ -820,7 +854,7 @@ jq '
     .resource_changes[]
     | select(.address == "module.cluster.google_compute_instance_template.api")
     | .change.after.network_interface[0].access_config
-  ) = []
+  ) = [{}]
 ' "${fixture}" >"${test_dir}/public-ip-drift.json"
 expect_failure \
   "public-ip-drift" \
@@ -978,7 +1012,7 @@ jq '
     .resource_changes[]
     | select(.address == "terraform_data.cloud_sql_connection_budget")
     | .change.after.input.maximum_concurrent_connections
-  ) = 20
+  ) = 30
 ' "${fixture}" >"${test_dir}/cloud-sql-pool-over-budget.json"
 expect_failure \
   "cloud-sql-pool-over-budget" \
@@ -990,13 +1024,13 @@ jq '
     .resource_changes[]
     | select(.address == "terraform_data.cloud_sql_connection_budget")
     | .change.after.input.api_server_count
-  ) = 2
+  ) = 1
   |
   (
     .resource_changes[]
     | select(.address == "terraform_data.cloud_sql_connection_budget")
     | .change.after.input.maximum_concurrent_connections
-  ) = 28
+  ) = 19
 ' "${fixture}" >"${test_dir}/cloud-sql-api-replica-drift.json"
 expect_failure \
   "cloud-sql-api-replica-drift" \
@@ -1014,7 +1048,7 @@ jq '
     .resource_changes[]
     | select(.address == "terraform_data.cloud_sql_connection_budget")
     | .change.after.input.maximum_concurrent_connections
-  ) = 35
+  ) = 44
 ' "${fixture}" >"${test_dir}/cloud-sql-dashboard-enabled.json"
 expect_failure \
   "cloud-sql-dashboard-enabled" \

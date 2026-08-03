@@ -309,6 +309,24 @@ managed_changes as $changes
 | (
     [
       $changes[]
+      | select(.type == "google_compute_address")
+      | select(
+          .address as $address
+          | (
+              $expected.fixed_regional_public_ip_addresses
+              | index($address)
+            ) != null
+        )
+    ]
+  ) as $fixed_regional_public_ip_resources
+| (
+    $fixed_regional_public_ip_resources
+    | map(.address)
+    | sort
+  ) as $fixed_regional_public_ip_addresses
+| (
+    [
+      $changes[]
       | select(is_mig)
     ]
   ) as $migs
@@ -488,16 +506,23 @@ managed_changes as $changes
     )
   ) as $role_resources
 | (
-    reduce $rows[] as $row (
-      usage_zero;
-      add_usage(
-        .;
-        scaled_role_usage(
-          $templates;
-          $row.role;
-          number_or_zero($row.capacity)
+    add_usage(
+      reduce $rows[] as $row (
+        usage_zero;
+        add_usage(
+          .;
+          scaled_role_usage(
+            $templates;
+            $row.role;
+            number_or_zero($row.capacity)
+          )
         )
-      )
+      );
+      {
+        regional_public_ips: (
+          $fixed_regional_public_ip_resources | length
+        )
+      }
     )
   ) as $base_usage
 | (
@@ -620,6 +645,7 @@ managed_changes as $changes
     role_surge_instances: $role_surge_instances,
     role_max_unavailable_instances: $role_max_unavailable_instances,
     role_resources: $role_resources,
+    fixed_regional_public_ip_addresses: $fixed_regional_public_ip_addresses,
     base_usage: $base_usage,
     rollout_usage: $rollout_usage,
     packer_usage: $packer_usage,
@@ -649,9 +675,38 @@ managed_changes as $changes
           or .type == "google_compute_region_address"
           or .type == "google_compute_region_autoscaler"
         )
+      | select(
+          .address as $address
+          | (
+              $expected.fixed_regional_public_ip_addresses
+              | index($address)
+            ) == null
+        )
       | {
           address,
           type
+        }
+    ],
+    invalid_fixed_regional_public_ip_resources: [
+      $fixed_regional_public_ip_resources[]
+      | select(
+          (.change.actions | index("delete")) != null
+          or .change.after.address_type != "EXTERNAL"
+          or (.change.after.region | type) != "string"
+          or (
+            .change.after.region != $expected.gcp_region
+            and (
+              .change.after.region
+              | endswith("/regions/" + $expected.gcp_region)
+              | not
+            )
+          )
+        )
+      | {
+          address,
+          actions: .change.actions,
+          address_type: .change.after.address_type,
+          region: .change.after.region
         }
     ],
     missing_or_duplicate_mig_roles: [

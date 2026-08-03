@@ -171,6 +171,7 @@ module "build_cluster" {
   base_hugepages_percentage = coalesce((each.value.hugepages_percentage), local.build_base_hugepages_percentage)
   network_interface_type    = each.value.network_interface_type
   node_labels               = each.value.node_labels
+  use_cloud_nat             = var.api_use_nat
 
   cluster_tag_name                         = var.cluster_tag_name
   node_pool                                = var.build_node_pool
@@ -231,6 +232,7 @@ module "client_cluster" {
   base_hugepages_percentage = coalesce((each.value.hugepages_percentage), local.client_base_hugepages_percentage)
   network_interface_type    = each.value.network_interface_type
   node_labels               = each.value.node_labels
+  use_cloud_nat             = var.api_use_nat
 
   cluster_tag_name                         = var.cluster_tag_name
   node_pool                                = var.orchestrator_node_pool

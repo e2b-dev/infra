@@ -114,7 +114,7 @@ resource "google_compute_instance_template" "loki" {
     network = var.network_name
 
     dynamic "access_config" {
-      for_each = ["public_ip"]
+      for_each = var.api_use_nat ? [] : ["public_ip"]
       content {}
     }
   }

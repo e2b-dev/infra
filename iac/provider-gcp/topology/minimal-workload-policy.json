@@ -1,9 +1,14 @@
 {
+  "gcp_region": "us-east4",
+  "fixed_regional_public_ip_addresses": [
+    "module.cluster.module.network.google_compute_address.nat_ips[0]",
+    "module.cluster.module.network.google_compute_address.nat_ips[1]"
+  ],
   "expected_role_max_instances": {
-    "api": 1,
+    "api": 2,
     "build": 1,
     "clickhouse": 0,
-    "client": 1,
+    "client": 2,
     "loki": 0,
     "server": 3
   },
@@ -30,7 +35,7 @@
       "pd_ssd_gb": 0,
       "pd_standard_gb": 200,
       "local_ssd_gb": 0,
-      "regional_public_ip": true
+      "regional_public_ip": false
     },
     "build": {
       "machine_type": "n1-standard-8",
@@ -38,7 +43,7 @@
       "pd_ssd_gb": 100,
       "pd_standard_gb": 0,
       "local_ssd_gb": 375,
-      "regional_public_ip": true
+      "regional_public_ip": false
     },
     "clickhouse": {
       "machine_type": "e2-standard-4",
@@ -46,7 +51,7 @@
       "pd_ssd_gb": 0,
       "pd_standard_gb": 200,
       "local_ssd_gb": 0,
-      "regional_public_ip": true
+      "regional_public_ip": false
     },
     "client": {
       "machine_type": "n1-standard-8",
@@ -54,7 +59,7 @@
       "pd_ssd_gb": 100,
       "pd_standard_gb": 0,
       "local_ssd_gb": 375,
-      "regional_public_ip": true
+      "regional_public_ip": false
     },
     "loki": {
       "machine_type": "e2-standard-4",
@@ -62,7 +67,7 @@
       "pd_ssd_gb": 0,
       "pd_standard_gb": 200,
       "local_ssd_gb": 0,
-      "regional_public_ip": true
+      "regional_public_ip": false
     },
     "server": {
       "machine_type": "e2-standard-2",
@@ -70,7 +75,7 @@
       "pd_ssd_gb": 20,
       "pd_standard_gb": 0,
       "local_ssd_gb": 0,
-      "regional_public_ip": true
+      "regional_public_ip": false
     }
   },
   "transient_reserve": {
@@ -85,13 +90,13 @@
   },
   "transient_scenarios_are_mutually_exclusive": true,
   "expected_peak_usage": {
-    "instances": 7,
-    "global_vcpus": 30,
-    "regional_cpus": 30,
-    "pd_ssd_gb": 270,
-    "pd_standard_gb": 400,
-    "local_ssd_gb": 750,
-    "regional_public_ips": 7
+    "instances": 9,
+    "global_vcpus": 42,
+    "regional_cpus": 42,
+    "pd_ssd_gb": 370,
+    "pd_standard_gb": 600,
+    "local_ssd_gb": 1125,
+    "regional_public_ips": 3
   },
   "expected_cloud_sql": {
     "resource_addresses": [
@@ -114,12 +119,12 @@
     "instance_name_suffix": "postgres-canary",
     "connection_secret_id_suffix": "postgres-connection-string",
     "database_version": "POSTGRES_16",
-    "tier": "db-f1-micro",
+    "tier": "db-custom-2-7680",
     "edition": "ENTERPRISE",
-    "availability_type": "ZONAL",
-    "disk_type": "PD_HDD",
-    "disk_size_gb": 10,
-    "disk_autoresize_limit_gb": 20,
+    "availability_type": "REGIONAL",
+    "disk_type": "PD_SSD",
+    "disk_size_gb": 20,
+    "disk_autoresize_limit_gb": 200,
     "private_services_prefix_length": 24,
     "ssl_mode": "ENCRYPTED_ONLY",
     "backup_start_time": "03:00",
@@ -127,21 +132,21 @@
     "transaction_log_retention_days": 7,
     "database_name": "e2b",
     "user_name": "e2b",
-    "application_connection_budget": 19,
+    "application_connection_budget": 28,
     "migrator_max_open_connections": 4,
     "docker_reverse_proxy_max_open_connections": 6,
     "dashboard_api_max_open_connections_per_instance": 16,
-    "api_server_count": 1,
+    "api_server_count": 2,
     "dashboard_api_count": 0
   },
   "quota_limits": {
-    "instances": 24,
-    "global_vcpus": 32,
-    "regional_cpus": 32,
-    "pd_ssd_gb": 500,
+    "instances": 23,
+    "global_vcpus": 154,
+    "regional_cpus": 154,
+    "pd_ssd_gb": 1770,
     "pd_standard_gb": 4096,
-    "local_ssd_gb": 6000,
-    "regional_public_ips": 8
+    "local_ssd_gb": 6375,
+    "regional_public_ips": 16
   },
   "max_automated_worker_server_surge_per_pool": 0
 }

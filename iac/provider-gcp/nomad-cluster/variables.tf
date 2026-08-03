@@ -329,7 +329,7 @@ variable "orchestrator_node_pool" {
 }
 
 variable "api_use_nat" {
-  description = "Whether API nodes should use NAT with dedicated external IPs."
+  description = "Whether all compute pools use the shared Cloud NAT without per-instance public IPs."
   type        = bool
 }
 

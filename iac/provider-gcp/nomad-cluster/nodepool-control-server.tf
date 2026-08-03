@@ -134,10 +134,10 @@ resource "google_compute_instance_template" "server" {
   network_interface {
     network = var.network_name
 
-    # Create access config dynamically. If a public ip is requested, we just need the empty `access_config` block
-    # to automatically assign an external IP address.
+    # Invited-beta administration uses IAP/OS Login. When the shared NAT is
+    # enabled, control servers do not receive directly reachable public IPs.
     dynamic "access_config" {
-      for_each = ["public_ip"]
+      for_each = var.api_use_nat ? [] : ["public_ip"]
       content {}
     }
   }

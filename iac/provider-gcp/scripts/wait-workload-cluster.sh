@@ -97,9 +97,9 @@ check_cluster() {
   last_stage="build MIG"
   managed_group_ready "${build_group}" --region "${region}" 1 || return 1
   last_stage="client MIG"
-  managed_group_ready "${client_group}" --region "${region}" 1 || return 1
+  managed_group_ready "${client_group}" --region "${region}" 2 || return 1
   last_stage="API MIG"
-  managed_group_ready "${api_group}" --zone "${zone}" 1 || return 1
+  managed_group_ready "${api_group}" --zone "${zone}" 2 || return 1
 
   last_stage="Nomad load-balancer health"
   backend_health="$(
@@ -177,7 +177,7 @@ deadline=$((start_time + max_seconds))
 
 while true; do
   if check_cluster; then
-    printf 'One-workcell cluster bootstrap is ready: servers=3 clients>=3 endpoint=https://%s.\n' \
+    printf 'Invited-beta cluster bootstrap is ready: servers=3 clients>=3 endpoint=https://%s.\n' \
       "${nomad_host}"
     exit 0
   fi

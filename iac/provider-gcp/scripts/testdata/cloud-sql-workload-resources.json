@@ -5,7 +5,9 @@
     "type": "google_project_service",
     "name": "cloud_sql_admin_api",
     "change": {
-      "actions": ["create"],
+      "actions": [
+        "create"
+      ],
       "after": {
         "disable_on_destroy": false,
         "project": "operator-canary",
@@ -20,7 +22,9 @@
     "type": "google_project_service",
     "name": "service_networking_api",
     "change": {
-      "actions": ["create"],
+      "actions": [
+        "create"
+      ],
       "after": {
         "disable_on_destroy": false,
         "project": "operator-canary",
@@ -36,7 +40,9 @@
     "name": "cloud_sql",
     "provider_name": "registry.terraform.io/hashicorp/google-beta",
     "change": {
-      "actions": ["create"],
+      "actions": [
+        "create"
+      ],
       "after": {
         "project": "operator-canary",
         "service": "sqladmin.googleapis.com"
@@ -53,7 +59,9 @@
     "name": "service_networking",
     "provider_name": "registry.terraform.io/hashicorp/google-beta",
     "change": {
-      "actions": ["create"],
+      "actions": [
+        "create"
+      ],
       "after": {
         "project": "operator-canary",
         "service": "servicenetworking.googleapis.com"
@@ -70,7 +78,9 @@
     "name": "service_identity_propagation",
     "provider_name": "registry.terraform.io/hashicorp/time",
     "change": {
-      "actions": ["create"],
+      "actions": [
+        "create"
+      ],
       "before": null,
       "after": {
         "create_duration": "30s"
@@ -86,7 +96,9 @@
     "type": "google_project_iam_member",
     "name": "cloud_sql_service_agent",
     "change": {
-      "actions": ["create"],
+      "actions": [
+        "create"
+      ],
       "after": {
         "project": "operator-canary",
         "role": "roles/cloudsql.serviceAgent"
@@ -102,7 +114,9 @@
     "type": "google_project_iam_member",
     "name": "service_networking_service_agent",
     "change": {
-      "actions": ["create"],
+      "actions": [
+        "create"
+      ],
       "after": {
         "project": "operator-canary",
         "role": "roles/servicenetworking.serviceAgent"
@@ -118,7 +132,9 @@
     "type": "google_compute_global_address",
     "name": "cloud_sql_private_services",
     "change": {
-      "actions": ["create"],
+      "actions": [
+        "create"
+      ],
       "after": {
         "address_type": "INTERNAL",
         "name": "e2b-cloud-sql-private-services",
@@ -138,7 +154,9 @@
     "type": "google_service_networking_connection",
     "name": "cloud_sql",
     "change": {
-      "actions": ["create"],
+      "actions": [
+        "create"
+      ],
       "after": {
         "deletion_policy": "ABANDON",
         "network": "projects/operator-canary/global/networks/default",
@@ -156,7 +174,9 @@
     "type": "google_sql_database_instance",
     "name": "operator_canary",
     "change": {
-      "actions": ["create"],
+      "actions": [
+        "create"
+      ],
       "after": {
         "database_version": "POSTGRES_16",
         "deletion_protection": true,
@@ -165,7 +185,7 @@
         "region": "us-east4",
         "settings": [
           {
-            "availability_type": "ZONAL",
+            "availability_type": "REGIONAL",
             "backup_configuration": [
               {
                 "backup_retention_settings": [
@@ -183,9 +203,9 @@
             ],
             "deletion_protection_enabled": true,
             "disk_autoresize": true,
-            "disk_autoresize_limit": 20,
-            "disk_size": 10,
-            "disk_type": "PD_HDD",
+            "disk_autoresize_limit": 200,
+            "disk_size": 20,
+            "disk_type": "PD_SSD",
             "edition": "ENTERPRISE",
             "ip_configuration": [
               {
@@ -196,7 +216,7 @@
                 "ssl_mode": "ENCRYPTED_ONLY"
               }
             ],
-            "tier": "db-f1-micro"
+            "tier": "db-custom-2-7680"
           }
         ]
       },
@@ -211,7 +231,9 @@
     "type": "google_sql_database",
     "name": "operator_canary",
     "change": {
-      "actions": ["create"],
+      "actions": [
+        "create"
+      ],
       "after": {
         "instance": "e2b-postgres-canary",
         "name": "e2b",
@@ -226,7 +248,9 @@
     "type": "random_password",
     "name": "cloud_sql_operator_canary",
     "change": {
-      "actions": ["create"],
+      "actions": [
+        "create"
+      ],
       "after": {
         "length": 32,
         "special": false
@@ -245,7 +269,9 @@
     "type": "google_sql_user",
     "name": "operator_canary",
     "change": {
-      "actions": ["create"],
+      "actions": [
+        "create"
+      ],
       "after": {
         "instance": "e2b-postgres-canary",
         "name": "e2b",
@@ -266,7 +292,9 @@
     "type": "google_secret_manager_secret",
     "name": "postgres_connection_string",
     "change": {
-      "actions": ["no-op"],
+      "actions": [
+        "no-op"
+      ],
       "before": {
         "id": "projects/operator-canary/secrets/e2b-postgres-connection-string",
         "name": "projects/123456789/secrets/e2b-postgres-connection-string",
@@ -288,7 +316,9 @@
     "type": "google_secret_manager_secret_version",
     "name": "postgres_connection_string",
     "change": {
-      "actions": ["create"],
+      "actions": [
+        "create"
+      ],
       "after": {
         "secret": "projects/123456789/secrets/e2b-postgres-connection-string"
       },
@@ -307,10 +337,12 @@
     "type": "terraform_data",
     "name": "cloud_sql_connection_budget",
     "change": {
-      "actions": ["create"],
+      "actions": [
+        "create"
+      ],
       "after": {
         "input": {
-          "api_server_count": 1,
+          "api_server_count": 2,
           "auth_db_max_open_connections": 3,
           "auth_db_min_idle_connections": 1,
           "dashboard_api_count": 0,
@@ -318,7 +350,7 @@
           "db_max_open_connections": 6,
           "db_min_idle_connections": 1,
           "docker_reverse_proxy_max_open_connections": 6,
-          "maximum_concurrent_connections": 19,
+          "maximum_concurrent_connections": 28,
           "migrator_max_open_connections": 4
         }
       },

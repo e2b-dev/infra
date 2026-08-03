@@ -143,7 +143,10 @@ resource "google_compute_instance_template" "clickhouse" {
   network_interface {
     network = var.network_name
 
-    access_config {}
+    dynamic "access_config" {
+      for_each = var.api_use_nat ? [] : ["public_ip"]
+      content {}
+    }
   }
 
   # For a full list of oAuth 2.0 Scopes, see https://developers.google.com/identity/protocols/googlescopes

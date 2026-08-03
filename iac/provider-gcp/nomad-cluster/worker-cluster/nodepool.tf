@@ -222,7 +222,7 @@ resource "google_compute_instance_template" "template" {
     nic_type = var.network_interface_type
 
     dynamic "access_config" {
-      for_each = ["public_ip"]
+      for_each = var.use_cloud_nat ? [] : ["public_ip"]
       content {}
     }
   }

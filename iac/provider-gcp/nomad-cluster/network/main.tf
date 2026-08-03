@@ -752,7 +752,7 @@ resource "google_compute_address" "nat_ips" {
   region = var.gcp_region
 }
 
-# Cloud NAT for API nodes
+# Shared Cloud NAT for private server, API, worker, build, and optional data pools.
 resource "google_compute_router_nat" "api_nat" {
   count                              = var.api_use_nat ? 1 : 0
   name                               = "${var.prefix}api-nat"
@@ -764,7 +764,7 @@ resource "google_compute_router_nat" "api_nat" {
 
   log_config {
     enable = true
-    filter = "ERRORS_ONLY"
+    filter = "ALL"
   }
 
   lifecycle {

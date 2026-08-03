@@ -141,8 +141,15 @@ selection="$(
                 .address
                 | test(
                     "^module\\.cluster\\.module\\.(build|client)_cluster\\[\"[^\"]+\"\\]\\.google_compute_region_autoscaler\\.autoscaler\\[0\\]$"
-                  )
+                )
               )
+            )
+          | select(
+              .address as $address
+              | (
+                  $expected.fixed_regional_public_ip_addresses
+                  | index($address)
+                ) == null
             )
           | {
               address,
@@ -150,6 +157,21 @@ selection="$(
               actions: .change.actions
             }
         ] as $unexpected_quota_mutations
+      | [
+          $expected.fixed_regional_public_ip_addresses[] as $address
+          | [
+              $changes[]
+              | select(.address == $address)
+            ] as $matches
+          | {
+              address: $address,
+              count: ($matches | length),
+              type: ($matches[0].type // null),
+              actions: ($matches[0].change.actions // null),
+              before: ($matches[0].change.before // null),
+              after: ($matches[0].change.after // null)
+            }
+        ] as $fixed_regional_public_ips
       | [
           $expected.expected_role_max_instances
           | to_entries[]
@@ -196,6 +218,7 @@ selection="$(
               )
           ],
           roles: $roles
+          ,fixed_regional_public_ips: $fixed_regional_public_ips
         }
       | (
           all(
@@ -207,6 +230,13 @@ selection="$(
             )
             else true
             end
+          )
+          and all(
+            .fixed_regional_public_ips[];
+            .count == 1
+            and .type == "google_compute_address"
+            and .before != null
+            and (.actions == ["no-op"] or .actions == ["update"])
           )
         ) as $fully_applied
       | if (.invalid_roles | length) != 0 then

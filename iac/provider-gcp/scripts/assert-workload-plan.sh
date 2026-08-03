@@ -170,24 +170,24 @@ artifacts_json="$(jq -ceS '
 
 reviewed_quota_limits="$(
   jq -cn '{
-    instances: 24,
-    global_vcpus: 32,
-    regional_cpus: 32,
-    pd_ssd_gb: 500,
+    instances: 23,
+    global_vcpus: 154,
+    regional_cpus: 154,
+    pd_ssd_gb: 1770,
     pd_standard_gb: 4096,
-    local_ssd_gb: 6000,
-    regional_public_ips: 8
+    local_ssd_gb: 6375,
+    regional_public_ips: 16
   }'
 )"
 reviewed_peak_usage="$(
   jq -cn '{
-    instances: 7,
-    global_vcpus: 30,
-    regional_cpus: 30,
-    pd_ssd_gb: 270,
-    pd_standard_gb: 400,
-    local_ssd_gb: 750,
-    regional_public_ips: 7
+    instances: 9,
+    global_vcpus: 42,
+    regional_cpus: 42,
+    pd_ssd_gb: 370,
+    pd_standard_gb: 600,
+    local_ssd_gb: 1125,
+    regional_public_ips: 3
   }'
 )"
 reviewed_reserve="$(
@@ -224,12 +224,12 @@ reviewed_cloud_sql="$(
     instance_name_suffix: "postgres-canary",
     connection_secret_id_suffix: "postgres-connection-string",
     database_version: "POSTGRES_16",
-    tier: "db-f1-micro",
+    tier: "db-custom-2-7680",
     edition: "ENTERPRISE",
-    availability_type: "ZONAL",
-    disk_type: "PD_HDD",
-    disk_size_gb: 10,
-    disk_autoresize_limit_gb: 20,
+    availability_type: "REGIONAL",
+    disk_type: "PD_SSD",
+    disk_size_gb: 20,
+    disk_autoresize_limit_gb: 200,
     private_services_prefix_length: 24,
     ssl_mode: "ENCRYPTED_ONLY",
     backup_start_time: "03:00",
@@ -237,11 +237,11 @@ reviewed_cloud_sql="$(
     transaction_log_retention_days: 7,
     database_name: "e2b",
     user_name: "e2b",
-    application_connection_budget: 19,
+    application_connection_budget: 28,
     migrator_max_open_connections: 4,
     docker_reverse_proxy_max_open_connections: 6,
     dashboard_api_max_open_connections_per_instance: 16,
-    api_server_count: 1,
+    api_server_count: 2,
     dashboard_api_count: 0
   }'
 )"
@@ -319,6 +319,11 @@ jq -e \
     .expected_role_resources
     | all(.[]; role_resources_shape)
   )
+  and .gcp_region == "us-east4"
+  and .fixed_regional_public_ip_addresses == [
+    "module.cluster.module.network.google_compute_address.nat_ips[0]",
+    "module.cluster.module.network.google_compute_address.nat_ips[1]"
+  ]
   and .transient_reserve == $reviewed_reserve
   and .transient_scenarios_are_mutually_exclusive == true
   and .expected_peak_usage == $reviewed_peak_usage
@@ -387,6 +392,7 @@ failure_fields=(
   unknown_migs
   unknown_templates
   unexpected_quota_resources
+  invalid_fixed_regional_public_ip_resources
   missing_or_duplicate_mig_roles
   missing_or_duplicate_template_roles
   unresolved_capacities
@@ -429,6 +435,7 @@ for comparison in \
   "role rollout surge counts|role_surge_instances|expected_role_surge_instances" \
   "role maximum unavailable counts|role_max_unavailable_instances|expected_role_max_unavailable_instances" \
   "role machine and disk resources|role_resources|expected_role_resources" \
+  "fixed regional public IPs|fixed_regional_public_ip_addresses|fixed_regional_public_ip_addresses" \
   "peak quota usage|peak_usage|expected_peak_usage"; do
   description="${comparison%%|*}"
   remaining="${comparison#*|}"

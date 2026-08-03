@@ -102,14 +102,14 @@ resource "google_sql_database_instance" "operator_canary" {
   deletion_protection = true
 
   settings {
-    tier              = "db-f1-micro"
+    tier              = "db-custom-2-7680"
     edition           = "ENTERPRISE"
-    availability_type = "ZONAL"
+    availability_type = "REGIONAL"
 
-    disk_type             = "PD_HDD"
-    disk_size             = 10
+    disk_type             = "PD_SSD"
+    disk_size             = 20
     disk_autoresize       = true
-    disk_autoresize_limit = 20
+    disk_autoresize_limit = 200
 
     deletion_protection_enabled = true
     user_labels                 = var.labels
@@ -166,16 +166,16 @@ resource "terraform_data" "cloud_sql_connection_budget" {
         && var.db_min_idle_connections <= var.db_max_open_connections
         && var.auth_db_min_idle_connections >= 0
         && var.auth_db_min_idle_connections <= var.auth_db_max_open_connections
-        && var.api_server_count == 1
+        && var.api_server_count == 2
         && var.dashboard_api_count == 0
-        && (var.db_max_open_connections + var.auth_db_max_open_connections) * var.api_server_count + 16 * var.dashboard_api_count + 6 + 4 <= 19
+        && (var.db_max_open_connections + var.auth_db_max_open_connections) * var.api_server_count + 16 * var.dashboard_api_count + 6 + 4 <= 100
       )
       error_message = <<-EOT
-        The db-f1-micro operator canary requires exactly one API allocation,
-        no dashboard API, valid idle bounds, and at most 19 configured API,
-        reverse-proxy, dashboard, and migrator connections in aggregate.
-        Upsize Cloud SQL and update the reviewed workload policy before
-        increasing this conservative application-side budget or replica count.
+        The invited-beta regional Cloud SQL contract requires exactly two API
+        allocations, no dashboard API, valid idle bounds, and at most 100
+        configured API, reverse-proxy, dashboard, and migrator connections in
+        aggregate. Update the reviewed workload policy before increasing this
+        conservative application-side budget or replica count.
       EOT
     }
   }
