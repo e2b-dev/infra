@@ -335,6 +335,12 @@ func writeInitError(w http.ResponseWriter, logger zerolog.Logger, err error) {
 	switch {
 	case errors.Is(err, ErrAccessTokenMismatch), errors.Is(err, ErrAccessTokenResetNotAuthorized):
 		w.WriteHeader(http.StatusUnauthorized)
+	case errors.Is(err, ErrConcurrentNFSInit):
+		// Transient: a previous /init is still mounting NFS (setupNFS uses
+		// context.WithoutCancel so it outlives a request cancelled by EnvdInitRequestTimeout).
+		// The orchestrator retries on 503.
+		logger.Warn().Err(err).Msg("NFS mount already in progress, retrying")
+		w.WriteHeader(http.StatusServiceUnavailable)
 	case errors.Is(err, host.ErrCAInstallInProgress):
 		// Not a failure, a concurrent install still holds the CA lock.
 		logger.Warn().Err(err).Msg("CA initialization still in progress, retrying")
