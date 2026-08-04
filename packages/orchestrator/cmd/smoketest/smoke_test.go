@@ -262,6 +262,15 @@ func checkPrerequisites(t *testing.T) {
 	if _, err := os.Stat("/dev/kvm"); err != nil {
 		t.Skip("/dev/kvm not available")
 	}
+
+	// Firecracker host assets, shipped with the orchestrator host image.
+	builderConfig, err := cfg.ParseBuilder()
+	require.NoError(t, err)
+
+	busybox := filepath.Join(builderConfig.HostBusyboxDir, builderConfig.BusyboxVersion, runtime.GOARCH, "busybox")
+	if _, err := os.Stat(busybox); err != nil {
+		t.Skipf("busybox binary %q not available; set HOST_BUSYBOX_DIR/BUSYBOX_VERSION", busybox)
+	}
 }
 
 // --- envd -------------------------------------------------------------------
@@ -308,14 +317,18 @@ func findOrBuildEnvd(t *testing.T) string {
 func locateEnvdSource(t *testing.T) string {
 	t.Helper()
 
-	// Walk up from the test directory to find packages/envd
 	wd, err := os.Getwd()
 	require.NoError(t, err)
 
+	// belt keeps envd at go/oss/envd, infra at packages/envd.
+	layouts := [][]string{{"go", "oss", "envd"}, {"packages", "envd"}}
+
 	for dir := wd; dir != "/"; dir = filepath.Dir(dir) {
-		candidate := filepath.Join(dir, "packages", "envd", "main.go")
-		if _, err := os.Stat(candidate); err == nil {
-			return filepath.Join(dir, "packages", "envd")
+		for _, layout := range layouts {
+			candidate := filepath.Join(append([]string{dir}, layout...)...)
+			if _, err := os.Stat(filepath.Join(candidate, "main.go")); err == nil {
+				return candidate
+			}
 		}
 	}
 
