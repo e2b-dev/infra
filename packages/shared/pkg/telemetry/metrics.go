@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
-	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/exemplar"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
@@ -90,7 +89,7 @@ var uploadBytesView = sdkmetric.NewView(
 	},
 )
 
-func NewMeterProvider(metricsExporter sdkmetric.Exporter, metricExportPeriod time.Duration, res *resource.Resource, extraOption ...sdkmetric.Option) (metric.MeterProvider, error) {
+func NewMeterProvider(metricsExporter sdkmetric.Exporter, metricExportPeriod time.Duration, res *resource.Resource, extraOption ...sdkmetric.Option) (*sdkmetric.MeterProvider, error) {
 	opts := []sdkmetric.Option{
 		sdkmetric.WithReader(
 			sdkmetric.NewPeriodicReader(
