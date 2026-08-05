@@ -172,14 +172,18 @@ fi
 
 if [[ "${1:-}" == "compute" && "${2:-}" == "firewall-rules" ]]; then
   name="${4:?missing firewall name}"
-  if [[ "${name}" == *internal-remote-connection-firewall-ingress ]]; then
-    source_range='35.235.240.0/20'
-    [[ "${mode}" != "convergence-timeout" ]] || source_range='0.0.0.0/0'
+  if [[ "${name}" == *iap-remote-connection-firewall-ingress ]]; then
+    source_ranges='["35.235.240.0/20"]'
+    [[ "${mode}" != "convergence-timeout" ]] || \
+      source_ranges='["0.0.0.0/0","35.235.240.0/20"]'
     printf '%s\n' \
-      "{\"direction\":\"INGRESS\",\"disabled\":false,\"priority\":900,\"sourceRanges\":[\"${source_range}\"],\"targetTags\":[\"orch\"],\"allowed\":[{\"IPProtocol\":\"tcp\",\"ports\":[\"22\",\"3389\"]}],\"logConfig\":{\"enable\":true,\"metadata\":\"EXCLUDE_ALL_METADATA\"}}"
+      "{\"direction\":\"INGRESS\",\"disabled\":false,\"priority\":700,\"sourceRanges\":${source_ranges},\"targetTags\":[\"orch\"],\"allowed\":[{\"IPProtocol\":\"tcp\",\"ports\":[\"22\",\"3389\"]}],\"logConfig\":{\"enable\":true,\"metadata\":\"EXCLUDE_ALL_METADATA\"}}"
+  elif [[ "${name}" == *internal-remote-connection-firewall-ingress ]]; then
+    printf '%s\n' \
+      '{"direction":"INGRESS","disabled":false,"priority":900,"sourceRanges":["0.0.0.0/0","35.235.240.0/20"],"targetTags":["orch"],"allowed":[{"IPProtocol":"tcp","ports":["22","3389"]}],"logConfig":{"enable":true,"metadata":"EXCLUDE_ALL_METADATA"}}'
   else
     printf '%s\n' \
-      '{"direction":"INGRESS","disabled":false,"priority":1000,"sourceRanges":["0.0.0.0/0"],"targetTags":["orch"],"denied":[{"IPProtocol":"tcp","ports":["22","3389"]}],"logConfig":{"enable":true,"metadata":"EXCLUDE_ALL_METADATA"}}'
+      '{"direction":"INGRESS","disabled":false,"priority":800,"sourceRanges":["0.0.0.0/0"],"targetTags":["orch"],"denied":[{"IPProtocol":"tcp","ports":["22","3389"]}],"logConfig":{"enable":true,"metadata":"EXCLUDE_ALL_METADATA"}}'
   fi
   exit 0
 fi
@@ -862,16 +866,58 @@ jq '
         }
       },
       {
+        address: "module.cluster.module.network.google_compute_firewall.iap_remote_connection_firewall_ingress[0]",
+        mode: "managed",
+        type: "google_compute_firewall",
+        change: {
+          actions: ["create"],
+          before: null,
+          after: {
+            direction: "INGRESS",
+            priority: 700,
+            source_ranges: ["35.235.240.0/20"],
+            target_tags: ["orch"],
+            allow: [{protocol: "tcp", ports: ["22", "3389"]}],
+            deny: [],
+            log_config: [{metadata: "EXCLUDE_ALL_METADATA"}]
+          }
+        }
+      },
+      {
         address: "module.cluster.module.network.google_compute_firewall.internal_remote_connection_firewall_ingress",
         mode: "managed",
         type: "google_compute_firewall",
-        change: {actions: ["update"], before: {}, after: {}}
+        change: {
+          actions: ["update"],
+          before: {},
+          after: {
+            direction: "INGRESS",
+            priority: 900,
+            source_ranges: ["0.0.0.0/0", "35.235.240.0/20"],
+            target_tags: ["orch"],
+            allow: [{protocol: "tcp", ports: ["22", "3389"]}],
+            deny: [],
+            log_config: [{metadata: "EXCLUDE_ALL_METADATA"}]
+          }
+        }
       },
       {
         address: "module.cluster.module.network.google_compute_firewall.remote_connection_firewall_ingress",
         mode: "managed",
         type: "google_compute_firewall",
-        change: {actions: ["update"], before: {}, after: {}}
+        change: {
+          actions: ["update"],
+          before: {},
+          after: {
+            direction: "INGRESS",
+            priority: 800,
+            source_ranges: ["0.0.0.0/0"],
+            target_tags: ["orch"],
+            allow: [],
+            deny: [{protocol: "tcp", ports: ["22", "3389"]}],
+            log_config: [{metadata: "EXCLUDE_ALL_METADATA"}]
+          }
+        }
       }
     ]
   | (

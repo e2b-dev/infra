@@ -20,20 +20,37 @@ if [[ "$1 $2" == "storage cp" ]]; then
   uri="$4"
   object_path="$(uri_path "${uri}")"
   holder=""
+  expected=""
   for argument in "$@"; do
     case "${argument}" in
       --custom-metadata=monad-holder=*)
         holder="${argument#--custom-metadata=monad-holder=}"
         ;;
+      --if-generation-match=*)
+        expected="${argument#--if-generation-match=}"
+        ;;
     esac
   done
-  [[ ! -e "${object_path}" ]] || exit 1
   mkdir -p "$(dirname "${object_path}")"
+  if [[ "${expected}" == "0" ]]; then
+    [[ ! -e "${object_path}" ]] || exit 1
+    generation=1
+  else
+    [[ -f "${object_path}" && -f "${object_path}.meta" ]] || exit 1
+    current_generation="$(jq -er '.generation | tostring' "${object_path}.meta")"
+    [[ "${expected}" == "${current_generation}" ]] || exit 1
+    generation=$((current_generation + 1))
+  fi
   cp "${source_path}" "${object_path}"
   jq -cn \
+    --arg generation "${generation}" \
     --arg holder "${holder}" \
-    '{generation: "1", custom_fields: {"monad-holder": $holder}}' \
+    '{generation: $generation, custom_fields: {"monad-holder": $holder}}' \
     >"${object_path}.meta"
+  if [[ "${expected}" != "0" \
+    && "${FAKE_COMMIT_TRANSFER_THEN_FAIL:-false}" == "true" ]]; then
+    exit 1
+  fi
 elif [[ "$1 $2 $3" == "storage objects describe" ]]; then
   [[ "${FAKE_FAIL_DESCRIBE:-false}" != "true" ]] || exit 1
   object_path="$(uri_path "$4")"
@@ -161,8 +178,64 @@ fi
 jq 'del(.metadata)' "${uri_path}.meta" >"${temp_dir}/restored-meta.json"
 mv "${temp_dir}/restored-meta.json" "${uri_path}.meta"
 
-"${lease_script}" release "${fake_gcloud}" "${token}"
+stale_token="${temp_dir}/stale-transfer-token.json"
+cp "${token}" "${stale_token}"
+chmod 0600 "${stale_token}"
+replacement_token="${temp_dir}/replacement-token.json"
+replacement_holder="cluster-apply:network:dev:terraform/orchestration/dev/state:abcdef0123456789abcdef0123456789abcdef01:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+"${lease_script}" transfer \
+  "${fake_gcloud}" "${token}" "${replacement_holder}" "${replacement_token}"
+[[ ! -e "${token}" && -f "${replacement_token}" ]]
+[[ "$(jq -er '.generation | tostring' "${replacement_token}")" == "2" ]]
+[[ "$(jq -er '.holder' "${replacement_token}")" == "${replacement_holder}" ]]
+"${lease_script}" assert-held \
+  "${fake_gcloud}" state-bucket test-project us-east4 "${replacement_token}" >/dev/null
+if "${lease_script}" assert-held \
+  "${fake_gcloud}" state-bucket test-project us-east4 "${stale_token}" \
+  >/dev/null 2>&1; then
+  printf 'Pre-transfer token unexpectedly validated the replacement lease.\n' >&2
+  exit 1
+fi
+if "${lease_script}" transfer \
+  "${fake_gcloud}" "${stale_token}" later-holder \
+  "${temp_dir}/later-token.json" >/dev/null 2>&1; then
+  printf 'Stale generation unexpectedly transferred the live lease.\n' >&2
+  exit 1
+fi
+
+"${lease_script}" release "${fake_gcloud}" "${replacement_token}"
 [[ ! -e "${uri_path}" ]]
+
+ambiguous_token="${temp_dir}/ambiguous-token.json"
+ambiguous_new_token="${temp_dir}/ambiguous-new-token.json"
+ambiguous_holder="cluster-apply:network:dev:terraform/orchestration/dev/state:1111111111111111111111111111111111111111:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+"${lease_script}" acquire \
+  "${fake_gcloud}" state-bucket test-project us-east4 \
+  ambiguous-original-holder "${ambiguous_token}" >/dev/null
+export FAKE_COMMIT_TRANSFER_THEN_FAIL=true
+if "${lease_script}" transfer \
+  "${fake_gcloud}" "${ambiguous_token}" "${ambiguous_holder}" \
+  "${ambiguous_new_token}" >"${temp_dir}/ambiguous.stdout" \
+  2>"${temp_dir}/ambiguous.stderr"; then
+  printf 'Ambiguous transfer response unexpectedly reported success.\n' >&2
+  exit 1
+fi
+unset FAKE_COMMIT_TRANSFER_THEN_FAIL
+grep -F 'canonical object may still have changed' \
+  "${temp_dir}/ambiguous.stderr" >/dev/null
+[[ -f "${ambiguous_token}" && ! -e "${ambiguous_new_token}" ]]
+[[ "$(jq -er '.generation | tostring' "${uri_path}.meta")" == "2" ]]
+[[ "$(jq -er '.custom_fields["monad-holder"]' "${uri_path}.meta")" == \
+  "${ambiguous_holder}" ]]
+if "${lease_script}" assert-held \
+  "${fake_gcloud}" state-bucket test-project us-east4 "${ambiguous_token}" \
+  >/dev/null 2>&1; then
+  printf 'Original token unexpectedly validated after an ambiguous committed transfer.\n' >&2
+  exit 1
+fi
+"${fake_gcloud}" storage rm \
+  "gs://state-bucket/operator-locks/test-project/us-east4/workload-mutation.json" \
+  --if-generation-match=2 >/dev/null
 
 export FAKE_FAIL_DESCRIBE=true
 if "${lease_script}" acquire \

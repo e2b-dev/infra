@@ -529,6 +529,41 @@ resource "google_compute_firewall" "client_proxy_firewall_ingress" {
   source_ranges = ["130.211.0.0/22", "35.191.0.0/16"]
 }
 
+// Dev carried a legacy public administrative allow at priority 900. The GCP
+// first provider/API update preserved that source range while adding IAP, so
+// an in-place source-range contraction is not a safe rollout primitive. Install an exact
+// IAP-only rule ahead of both the public deny and the shadowed legacy rule.
+resource "google_compute_firewall" "iap_remote_connection_firewall_ingress" {
+  count = var.environment == "dev" && var.network_hardening_rollout_stage != "disabled" ? 1 : 0
+
+  name    = "${var.prefix}${var.cluster_tag_name}-iap-remote-connection-firewall-ingress"
+  network = var.network_name
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22", "3389"]
+  }
+
+  log_config {
+    metadata = "EXCLUDE_ALL_METADATA"
+  }
+
+  priority      = 700
+  direction     = "INGRESS"
+  target_tags   = [var.cluster_tag_name]
+  source_ranges = ["35.235.240.0/20"]
+
+  lifecycle {
+    precondition {
+      condition = (
+        var.os_login_operator_access_confirmed
+        && var.network_hardening_rollout_stage != "disabled"
+      )
+      error_message = "Dev IAP overlay requires the in-graph OS Login access guard and a reviewed rollout stage."
+    }
+  }
+}
+
 resource "google_compute_firewall" "internal_remote_connection_firewall_ingress" {
   name    = "${var.prefix}${var.cluster_tag_name}-internal-remote-connection-firewall-ingress"
   network = var.network_name
@@ -538,6 +573,9 @@ resource "google_compute_firewall" "internal_remote_connection_firewall_ingress"
     ports    = ["22", "3389"]
   }
 
+  // In dev this is a deliberately shadowed compatibility rule. Priority 700
+  // admits IAP and priority 800 denies every other source before this rule can
+  // match. Non-dev retains its original IAP-only shape.
   priority = 900
 
   # Add allow-decision logging only with the reviewed dev hardening rollout.
@@ -553,7 +591,10 @@ resource "google_compute_firewall" "internal_remote_connection_firewall_ingress"
   direction   = "INGRESS"
   target_tags = [var.cluster_tag_name]
   # https://googlecloudplatform.github.io/iap-desktop/setup-iap/
-  source_ranges = ["35.235.240.0/20"]
+  source_ranges = var.environment == "dev" ? [
+    "0.0.0.0/0",
+    "35.235.240.0/20",
+  ] : ["35.235.240.0/20"]
 
   lifecycle {
     precondition {
@@ -567,6 +608,10 @@ resource "google_compute_firewall" "internal_remote_connection_firewall_ingress"
       error_message = "Dev IAP firewall hardening requires the in-graph OS Login access guard and a reviewed rollout stage; non-dev already uses the IAP-only posture."
     }
   }
+
+  // If a future dev environment starts with an IAP-only legacy rule, never
+  // broaden it until the higher-precedence public deny is committed.
+  depends_on = [google_compute_firewall.remote_connection_firewall_ingress]
 }
 
 resource "google_compute_firewall" "remote_connection_firewall_ingress" {
@@ -584,7 +629,9 @@ resource "google_compute_firewall" "remote_connection_firewall_ingress" {
     metadata = "EXCLUDE_ALL_METADATA"
   }
 
-  priority = 1000
+  // Dev must deny public administrative traffic before the legacy priority-900
+  // allow can match. Non-dev retains the prior rule priority.
+  priority = var.environment == "dev" ? 800 : 1000
 
   direction     = "INGRESS"
   target_tags   = [var.cluster_tag_name]
@@ -602,6 +649,10 @@ resource "google_compute_firewall" "remote_connection_firewall_ingress" {
       error_message = "Dev public administrative ingress denial requires the in-graph OS Login access guard and a reviewed rollout stage; non-dev already uses this deny posture."
     }
   }
+
+  // Create the exact IAP allow before raising the deny's precedence, avoiding
+  // an administrative lockout if this apply is interrupted between changes.
+  depends_on = [google_compute_firewall.iap_remote_connection_firewall_ingress]
 }
 
 

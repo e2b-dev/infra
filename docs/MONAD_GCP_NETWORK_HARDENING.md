@@ -1,6 +1,6 @@
 # Monad GCP network hardening status and rollout
 
-Status date: 2026-08-05. GCP project: `monad-code`. Region: `us-east4`.
+Status date: 2026-08-06. GCP project: `monad-code`. Region: `us-east4`.
 
 This document records the read-only live audit behind the invited-beta network hardening and the
 prerequisites for applying it. The changes described here are source changes only until a guarded,
@@ -13,9 +13,15 @@ SSH-key value.
 
 - All eight `e2b-orch-*` instances (three servers, two API nodes, two workers, and one build node)
   have private `10.150.0.0/20` addresses and no per-instance public address.
-- `e2b-orch-internal-remote-connection-firewall-ingress` currently allows TCP 22/3389 from
-  `0.0.0.0/0` at priority 900 and has logging disabled. The priority-1000 non-IAP deny therefore
-  never sees those packets. This is the live defect fixed by this branch.
+- The first guarded `network` apply enabled decision logging but the provider/API result retained
+  both `0.0.0.0/0` and `35.235.240.0/20` on
+  `e2b-orch-internal-remote-connection-firewall-ingress` at priority 900. The priority-1000
+  public deny therefore still never sees those packets. The convergence sentinel rejected that
+  effective state, kept the stage marker at `disabled`, and preserved the rollout lease for a
+  same-stage recovery. The saved applied plan expected the replacement, but Google provider
+  v6.50.0's source-range diff suppression preserves the API's default `0.0.0.0/0` when one sole
+  source range is replaced by another. The live union is therefore provider behavior that the
+  priority-700/800 overlay must safely shadow, not evidence that the reviewed plan omitted IAP.
 - Project common metadata contains a legacy `ssh-keys` entry and no `enable-oslogin` entry. None of
   the eight live fleet instances has an instance-level `enable-oslogin` value. The effective
   `constraints/compute.requireOsLogin` response did not report enforcement.
@@ -34,15 +40,22 @@ SSH-key value.
 
 ## Source invariants
 
-- The `orch` administrative allow is exactly `35.235.240.0/20`, ports 22/3389, priority 900.
-- The public-source administrative deny remains priority 1000. On the dev invited-beta fleet both
-  rules log decisions with `EXCLUDE_ALL_METADATA`; the IAP allow retains its pre-existing unlogged
-  shape outside dev so this dev-only migration cannot block ordinary staging/production releases.
+- Dev installs a new exact IAP-only allow for `35.235.240.0/20`, ports 22/3389, at priority 700.
+  The public-source deny moves to priority 800. The provider-retained compatibility allow remains
+  explicit at priority 900 and is therefore shadowed for every non-IAP source. All three dev rules
+  log decisions with `EXCLUDE_ALL_METADATA`, and both saved-plan and live-convergence guards prove
+  their exact sources, ports, actions, logging, target tag, and precedence.
+- Terraform orders the transition as exact IAP allow, then higher-precedence public deny, then any
+  legacy-rule broadening. An interrupted apply therefore cannot strand IAP behind the deny or
+  expose a broad legacy allow before that deny exists.
+- Outside dev the existing IAP-only allow remains priority 900 and retains its prior logging shape;
+  the public deny remains priority 1000. The overlay is dev-only, so this recovery cannot introduce
+  otherwise-unapplyable staging/production drift.
 - Server, API, worker/build, Loki, and ClickHouse instance templates add
   `enable-oslogin = "TRUE"` only when their state-backed serial stage has been reached. The API
   template no longer ignores all metadata changes.
 - `os_login_operator_access_confirmed` defaults to false. Its precondition is inside
-  `module.cluster`; every template path and both administrative firewalls consume that in-graph
+  `module.cluster`; every template path and all three dev administrative firewalls consume that in-graph
   guard. A direct or normal `-target=module.cluster` plan therefore cannot omit it. Worker and
   build templates consume the guard only in their resource lifecycle precondition: a module-wide
   dependency would defer their `google_compute_image` reads while the guard changes and spuriously
@@ -149,8 +162,8 @@ Do not apply this branch merely because validation is green.
    Once Terraform apply has
    started, any timeout, interruption, or unverifiable post-apply result preserves the
    generation-bound shared lease and its private recovery directory.
-   Prove the original process is no longer running, create a fresh checkpoint for the same stage,
-   then run:
+   Prove the original process is no longer running. If recovery continues at the same exact Git
+   head, create a fresh checkpoint for the same stage and run:
 
    ```bash
    mise exec -- make -C iac/provider-gcp workload-cluster-recover-lease \
@@ -159,6 +172,29 @@ Do not apply this branch merely because validation is green.
      WORKLOAD_CLUSTER_RECOVERY_TOKEN=<preserved-token> \
      CONFIRM='RELEASE NETWORK HARDENING LEASE <stage>'
    ```
+
+   A recovery lease cannot be copied to a repaired checkout: its holder is intentionally bound to
+   the exact source commit that began the failed apply. When the in-boundary repair has instead
+   landed as a reviewed descendant, use a fresh checkpoint bound to that descendant and transfer
+   the continuously held generation with the dedicated network-only command:
+
+   ```bash
+   mise exec -- make -C iac/provider-gcp workload-cluster-rebind-recovery-source \
+     WORKLOAD_CLUSTER_STAGE=network \
+     WORKLOAD_CLUSTER_CHECKPOINT=<fresh-descendant-checkpoint> \
+     WORKLOAD_CLUSTER_RECOVERY_TOKEN=<preserved-original-token> \
+     WORKLOAD_CLUSTER_REBOUND_TOKEN=<new-private-token-path> \
+     CONFIRM='REBIND NETWORK HARDENING LEASE network'
+   ```
+
+   The command requires a clean exact descendant, permits only the reviewed firewall repair,
+   guard, test, and runbook paths between the two commits, and atomically replaces the canonical
+   lease object under its old generation. There is no unlocked interval. The new mode-0600 token
+   captures the replacement generation and exact descendant holder; only after that succeeds is
+   the original token removed. Any unrelated diff, stale generation, wrong scope, existing output
+   path, or non-network stage fails before mutation. Use the rebound token for the bounded plan and
+   apply below. If either the object-transfer response or replacement-token capture cannot be
+   proven, stop and inspect the canonical object; never delete or reacquire it speculatively.
 
    The recovery command re-proves live firewall/MIG convergence, exact replacement identity,
    post-replacement IAP/OS Login and stage-specific Nomad/load-balancer health, then requires a clean

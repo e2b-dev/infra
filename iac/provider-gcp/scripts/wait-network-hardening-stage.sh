@@ -60,8 +60,9 @@ if [[ "${stage}" != "network" ]]; then
   }
 fi
 
-iap_firewall="${prefix}orch-internal-remote-connection-firewall-ingress"
+iap_firewall="${prefix}orch-iap-remote-connection-firewall-ingress"
 public_deny_firewall="${prefix}orch-remote-connection-firewall-ingress"
+legacy_allow_firewall="${prefix}orch-internal-remote-connection-firewall-ingress"
 nomad_backend="${prefix}backend-nomad"
 api_backends=("${prefix}backend-api" "${prefix}h2c-api")
 nomad_secret="${prefix}nomad-secret-id"
@@ -91,7 +92,7 @@ firewall_ready() {
       jq -e '
         .direction == "INGRESS"
         and .disabled != true
-        and .priority == 900
+        and .priority == 700
         and (.sourceRanges | sort) == ["35.235.240.0/20"]
         and (.targetTags | sort) == ["orch"]
         and ([.allowed[]? | select(.IPProtocol == "tcp") | .ports[]?] | sort)
@@ -105,12 +106,26 @@ firewall_ready() {
       jq -e '
         .direction == "INGRESS"
         and .disabled != true
-        and .priority == 1000
+        and .priority == 800
         and (.sourceRanges | sort) == ["0.0.0.0/0"]
         and (.targetTags | sort) == ["orch"]
         and ([.denied[]? | select(.IPProtocol == "tcp") | .ports[]?] | sort)
           == ["22", "3389"]
         and ((.allowed // []) | length) == 0
+        and .logConfig.enable == true
+        and .logConfig.metadata == "EXCLUDE_ALL_METADATA"
+      ' <<<"${document}" >/dev/null
+      ;;
+    legacy-shadowed)
+      jq -e '
+        .direction == "INGRESS"
+        and .disabled != true
+        and .priority == 900
+        and (.sourceRanges | sort) == ["0.0.0.0/0", "35.235.240.0/20"]
+        and (.targetTags | sort) == ["orch"]
+        and ([.allowed[]? | select(.IPProtocol == "tcp") | .ports[]?] | sort)
+          == ["22", "3389"]
+        and ((.denied // []) | length) == 0
         and .logConfig.enable == true
         and .logConfig.metadata == "EXCLUDE_ALL_METADATA"
       ' <<<"${document}" >/dev/null
@@ -455,6 +470,7 @@ stage_ready() {
 
   firewall_ready "${iap_firewall}" iap || return 1
   firewall_ready "${public_deny_firewall}" public-deny || return 1
+  firewall_ready "${legacy_allow_firewall}" legacy-shadowed || return 1
 
   if [[ "${stage}" == "network" ]]; then
     return 0

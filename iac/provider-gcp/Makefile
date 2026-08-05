@@ -121,6 +121,7 @@ override WORKLOAD_PREREQUISITE_PLAN_MANIFEST := $(WORKLOAD_PREREQUISITE_PLAN).ma
 WORKLOAD_CLUSTER_STAGE ?=
 WORKLOAD_CLUSTER_CHECKPOINT ?=
 WORKLOAD_CLUSTER_RECOVERY_TOKEN ?=
+WORKLOAD_CLUSTER_REBOUND_TOKEN ?=
 override WORKLOAD_CLUSTER_PLAN := .tfplan.workload-cluster.$(WORKLOAD_CLUSTER_STAGE).$(ENV)
 override WORKLOAD_CLUSTER_PLAN_MANIFEST := $(WORKLOAD_CLUSTER_PLAN).manifest
 override WORKLOAD_CLUSTER_COMPLETION_REPLACE := -replace='module.cluster.terraform_data.network_hardening_rollout_completion'
@@ -135,6 +136,7 @@ override WORKLOAD_CONFIRMATION := APPLY ONE WORKCELL CANARY
 override WORKLOAD_PREREQUISITE_CONFIRMATION := APPLY WORKLOAD PREREQUISITES
 override WORKLOAD_CLUSTER_CONFIRMATION := APPLY NETWORK HARDENING $(WORKLOAD_CLUSTER_STAGE)
 override WORKLOAD_CLUSTER_RECOVERY_CONFIRMATION := RELEASE NETWORK HARDENING LEASE $(WORKLOAD_CLUSTER_STAGE)
+override WORKLOAD_CLUSTER_REBIND_CONFIRMATION := REBIND NETWORK HARDENING LEASE $(WORKLOAD_CLUSTER_STAGE)
 override WORKLOAD_PREREQUISITE_TARGETS := \
 	-target='google_secret_manager_secret_version.postgres_connection_string' \
 	-target='google_secret_manager_secret_version.postgres_read_replica_connection_string' \
@@ -246,6 +248,7 @@ workload-plan-assertions-test:
 	@ ./scripts/test-network-hardening-rollout.sh
 	@ ./scripts/test-network-hardening-normal-plan.sh
 	@ ./scripts/test-network-hardening-recovery-token.sh
+	@ ./scripts/test-rebind-network-hardening-recovery-token.sh
 	@ ./scripts/test-network-hardening-stage-wait.sh
 	@ ./scripts/test-workload-plan-assertions.sh
 	@ ./scripts/test-workload-prerequisite-plan.sh
@@ -346,7 +349,7 @@ workload-cluster-stage-guard:
 		"$(WORKLOAD_CLUSTER_STAGE)" "$(WORKLOAD_CLUSTER_CHECKPOINT)" \
 		"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(GCP_ZONE)" "$(PREFIX)" "../.."
 
-.PHONY: workload-cluster-plan workload-cluster-apply workload-cluster-recover-lease workload-cluster-wait workload-prerequisite-plan workload-prerequisite-apply workload-plan workload-apply
+.PHONY: workload-cluster-plan workload-cluster-apply workload-cluster-rebind-recovery-source workload-cluster-recover-lease workload-cluster-wait workload-prerequisite-plan workload-prerequisite-apply workload-plan workload-apply
 workload-cluster-plan:
 	@ printf '%s' "$(ENV)" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$$' || (printf "Invalid environment name: %s\n" "$(ENV)"; exit 1)
 	@ $(MAKE) workload-context-guard workload-cluster-stage-guard
@@ -651,6 +654,29 @@ workload-cluster-apply:
 		manifest_moved=false; \
 		rm -rf -- "$${temp_dir}"; \
 		trap - EXIT HUP INT TERM
+
+workload-cluster-rebind-recovery-source:
+	@ if [ "$(CONFIRM)" != "$(WORKLOAD_CLUSTER_REBIND_CONFIRMATION)" ]; then \
+		printf "Refusing cluster recovery source rebind. Re-run with CONFIRM='$(WORKLOAD_CLUSTER_REBIND_CONFIRMATION)'.\n"; \
+		exit 1; \
+	fi
+	@ $(MAKE) workload-context-guard workload-cluster-stage-guard
+	@ set -eu; \
+		old_token="$(WORKLOAD_CLUSTER_RECOVERY_TOKEN)"; \
+		new_token="$(WORKLOAD_CLUSTER_REBOUND_TOKEN)"; \
+		test -n "$${old_token}" || { \
+			printf "WORKLOAD_CLUSTER_RECOVERY_TOKEN must name the preserved generation-bound token.\n" >&2; \
+			exit 1; \
+		}; \
+		test -n "$${new_token}" || { \
+			printf "WORKLOAD_CLUSTER_REBOUND_TOKEN must name a distinct, nonexistent private token path.\n" >&2; \
+			exit 1; \
+		}; \
+		./scripts/rebind-network-hardening-recovery-token.sh \
+			"$${old_token}" "$${new_token}" \
+			"$(TERRAFORM_STATE_BUCKET)" "$(GCP_PROJECT_ID)" "$(GCP_REGION)" \
+			"$(WORKLOAD_CLUSTER_STAGE)" "$(ENV)" \
+			"$(TERRAFORM_STATE_PREFIX)" ../.. "$(GCLOUD)"
 
 workload-cluster-recover-lease:
 	@ if [ "$(CONFIRM)" != "$(WORKLOAD_CLUSTER_RECOVERY_CONFIRMATION)" ]; then \

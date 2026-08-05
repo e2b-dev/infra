@@ -20,11 +20,20 @@ printf '%s\n' \
   'case "${2:-}" in' \
   '  firewall-rules)' \
   '    name="${4:?}"' \
-  '    if [[ "${name}" == *internal-remote-connection-firewall-ingress ]]; then' \
-  '      printf "%s\n" "{\"direction\":\"INGRESS\",\"disabled\":false,\"priority\":900,\"sourceRanges\":[\"35.235.240.0/20\"],\"targetTags\":[\"orch\"],\"allowed\":[{\"IPProtocol\":\"tcp\",\"ports\":[\"22\",\"3389\"]}],\"logConfig\":{\"enable\":true,\"metadata\":\"EXCLUDE_ALL_METADATA\"}}"' \
-  '    else' \
-  '      printf "%s\n" "{\"direction\":\"INGRESS\",\"disabled\":false,\"priority\":1000,\"sourceRanges\":[\"0.0.0.0/0\"],\"targetTags\":[\"orch\"],\"denied\":[{\"IPProtocol\":\"tcp\",\"ports\":[\"22\",\"3389\"]}],\"logConfig\":{\"enable\":true,\"metadata\":\"EXCLUDE_ALL_METADATA\"}}"' \
-  '    fi' \
+  '    case "${name}" in' \
+  '      *-iap-remote-connection-firewall-ingress)' \
+  '        if [[ "${FAKE_GCLOUD_MODE:-stable}" == "unsafe-iap-public" ]]; then sources="[\"0.0.0.0/0\",\"35.235.240.0/20\"]"; else sources="[\"35.235.240.0/20\"]"; fi' \
+  '        printf "%s\n" "{\"direction\":\"INGRESS\",\"disabled\":false,\"priority\":700,\"sourceRanges\":${sources},\"targetTags\":[\"orch\"],\"allowed\":[{\"IPProtocol\":\"tcp\",\"ports\":[\"22\",\"3389\"]}],\"logConfig\":{\"enable\":true,\"metadata\":\"EXCLUDE_ALL_METADATA\"}}"' \
+  '        ;;' \
+  '      *-internal-remote-connection-firewall-ingress)' \
+  '        if [[ "${FAKE_GCLOUD_MODE:-stable}" == "unsafe-legacy-precedence" ]]; then priority=750; else priority=900; fi' \
+  '        printf "%s\n" "{\"direction\":\"INGRESS\",\"disabled\":false,\"priority\":${priority},\"sourceRanges\":[\"0.0.0.0/0\",\"35.235.240.0/20\"],\"targetTags\":[\"orch\"],\"allowed\":[{\"IPProtocol\":\"tcp\",\"ports\":[\"22\",\"3389\"]}],\"logConfig\":{\"enable\":true,\"metadata\":\"EXCLUDE_ALL_METADATA\"}}"' \
+  '        ;;' \
+  '      *)' \
+  '        if [[ "${FAKE_GCLOUD_MODE:-stable}" == "unsafe-deny-precedence" ]]; then priority=1000; else priority=800; fi' \
+  '        printf "%s\n" "{\"direction\":\"INGRESS\",\"disabled\":false,\"priority\":${priority},\"sourceRanges\":[\"0.0.0.0/0\"],\"targetTags\":[\"orch\"],\"denied\":[{\"IPProtocol\":\"tcp\",\"ports\":[\"22\",\"3389\"]}],\"logConfig\":{\"enable\":true,\"metadata\":\"EXCLUDE_ALL_METADATA\"}}"' \
+  '        ;;' \
+  '    esac' \
   '    ;;' \
   '  instance-groups)' \
   '    [[ "${3:-}" == "managed" ]] || exit 2' \
@@ -192,6 +201,12 @@ run_stage disabled >/dev/null
 
 run_stage network >"${test_dir}/network.output"
 grep -F 'Network-hardening stage converged: network.' "${test_dir}/network.output" >/dev/null
+expect_fail "public source on the IAP overlay fails closed" \
+  run_stage network unsafe-iap-public 1 1
+expect_fail "public deny cannot follow the legacy allow" \
+  run_stage network unsafe-deny-precedence 1 1
+expect_fail "legacy public allow cannot precede the deny" \
+  run_stage network unsafe-legacy-precedence 1 1
 
 run_stage server >"${test_dir}/server.output"
 grep -E 'replacements=.*identity_sha256=[0-9a-f]{64}' "${test_dir}/server.output" >/dev/null

@@ -421,10 +421,13 @@ flowchart TB
   one fixed build node, reported separately from workcell capacity.
 - Server, API, worker, build, and optional data nodes have no per-instance public address in the
   invited-beta topology. Two reviewed static addresses back one Cloud NAT with full translation
-  logging. Administrative SSH/RDP is allowed only from Google's IAP TCP-forwarding range
-  (`35.235.240.0/20`) and, on the dev invited-beta fleet, all allow/deny decisions are logged without
-  packet metadata. The IAP allow keeps its prior unlogged shape outside dev so this rollout does not
-  introduce otherwise-unapplyable staging/production drift. Every dev
+  logging. On the dev invited-beta fleet, administrative SSH/RDP uses an exact IAP-only priority-700
+  allow for `35.235.240.0/20`, followed by a public-source priority-800 deny. A provider-retained
+  legacy allow is explicit at priority 900, where the deny shadows it for every non-IAP source.
+  Saved-plan and live-convergence guards prove this effective ordering and all three rules log
+  decisions without packet metadata. Outside dev, the IAP allow and public deny keep their prior
+  priority and logging shapes so this rollout does not introduce otherwise-unapplyable
+  staging/production drift. Every dev
   fleet instance template enables OS Login after its serial rollout stage. The authorization guard lives
   inside `module.cluster` and every replacement path depends on it, so a targeted saved plan cannot
   omit it. Worker and build templates consume the guard through a resource-level lifecycle

@@ -170,6 +170,7 @@ jq -e \
 case "${stage}" in
   network)
     expected_mutations='[
+      "module.cluster.module.network.google_compute_firewall.iap_remote_connection_firewall_ingress[0]",
       "module.cluster.module.network.google_compute_firewall.internal_remote_connection_firewall_ingress",
       "module.cluster.module.network.google_compute_firewall.remote_connection_firewall_ingress"
     ]'
@@ -227,6 +228,49 @@ if [[ "$(jq 'length' <<<"${unexpected_mutations}")" -ne 0 ]]; then
     "${stage}" >&2
   printf 'Allowed: %s\nActual:  %s\n' "${expected_mutations}" "${actual_mutations}" >&2
   exit 1
+fi
+
+if [[ "${stage}" == "network" ]]; then
+  jq -e '
+    def ports($rule):
+      [$rule[]? | select(.protocol == "tcp") | .ports[]?] | sort;
+    def logged:
+      (.log_config | length) == 1
+      and .log_config[0].metadata == "EXCLUDE_ALL_METADATA";
+    def after($address):
+      [.resource_changes[]? | select(.address == $address)]
+      | if length == 1 then .[0].change.after else null end;
+    after("module.cluster.module.network.google_compute_firewall.iap_remote_connection_firewall_ingress[0]") as $iap
+    | after("module.cluster.module.network.google_compute_firewall.remote_connection_firewall_ingress") as $deny
+    | after("module.cluster.module.network.google_compute_firewall.internal_remote_connection_firewall_ingress") as $legacy
+    | $iap != null
+      and $iap.direction == "INGRESS"
+      and $iap.priority == 700
+      and ($iap.source_ranges | sort) == ["35.235.240.0/20"]
+      and ($iap.target_tags | sort) == ["orch"]
+      and ports($iap.allow) == ["22", "3389"]
+      and (($iap.deny // []) | length) == 0
+      and ($iap | logged)
+      and $deny != null
+      and $deny.direction == "INGRESS"
+      and $deny.priority == 800
+      and ($deny.source_ranges | sort) == ["0.0.0.0/0"]
+      and ($deny.target_tags | sort) == ["orch"]
+      and ports($deny.deny) == ["22", "3389"]
+      and (($deny.allow // []) | length) == 0
+      and ($deny | logged)
+      and $legacy != null
+      and $legacy.direction == "INGRESS"
+      and $legacy.priority == 900
+      and ($legacy.source_ranges | sort) == ["0.0.0.0/0", "35.235.240.0/20"]
+      and ($legacy.target_tags | sort) == ["orch"]
+      and ports($legacy.allow) == ["22", "3389"]
+      and (($legacy.deny // []) | length) == 0
+      and ($legacy | logged)
+  ' <<<"${plan_json}" >/dev/null || {
+    printf 'Refusing network stage: firewall precedence or exact rule semantics are unsafe.\n' >&2
+    exit 1
+  }
 fi
 
 # A failed apply can already have committed a template or MIG update while the

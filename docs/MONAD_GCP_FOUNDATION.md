@@ -147,7 +147,7 @@ authorizes the whole module to mutate at once. The OS Login authorization guard 
 module and is an explicit dependency of every replacement path. A Terraform-state marker must
 advance exactly one step only after the sentinel has re-proved live convergence, exact replacement
 identity, IAP/OS Login access, and stage-specific Nomad/load-balancer health. A second assertion
-permits only the two firewall updates for `network`,
+permits only the exact three-rule firewall precedence transition for `network`,
 or one PROACTIVE pool's template/MIG pair for `server`, `api`, `worker`, or `build` (the zero-sized
 Loki/ClickHouse templates are adopted with `build`). Any concurrent pool, generic autoscaler,
 worker-MIG ownership, or unrelated drift fails closed.
@@ -165,6 +165,10 @@ replaces the convergence sentinel before applying any remaining in-boundary muta
 If an interruption destroys that sentinel before the marker advances, only the validated recovery
 token for the exact same stage admits its recreation; an ordinary or next-stage plan cannot use the
 missing state object to bypass serial ordering.
+When a reviewed in-boundary firewall repair must continue a held `network` lease from the failed
+source commit, `workload-cluster-rebind-recovery-source` performs a generation-matched same-object
+transfer to the exact clean descendant. It accepts no other stage or unrelated source diff and
+creates no unlocked interval; the normal recovery plan/apply path then consumes the rebound token.
 
 The cluster plan and apply derive quota admission from the same reviewed saved
 plan. If every positive-capacity MIG already has the exact reviewed base size

@@ -86,6 +86,7 @@ make_plan() {
     | {network:"disabled",server:"network",api:"server",worker:"api",build:"worker"} as $previous
     | {
         network: [
+          "module.cluster.module.network.google_compute_firewall.iap_remote_connection_firewall_ingress[0]",
           "module.cluster.module.network.google_compute_firewall.internal_remote_connection_firewall_ingress",
           "module.cluster.module.network.google_compute_firewall.remote_connection_firewall_ingress"
         ],
@@ -168,7 +169,28 @@ make_plan() {
                   address:$address,
                   mode:"managed",
                   type:(if ($address | contains("firewall")) then "google_compute_firewall" else "google_compute_instance_group_manager" end),
-                  change:{actions:["update"],before:{},after:{}}
+                  change:{
+                    actions:(if ($address | contains("iap_remote_connection")) then ["create"] else ["update"] end),
+                    before:(if ($address | contains("iap_remote_connection")) then null else {} end),
+                    after:(
+                      if ($address | contains("iap_remote_connection")) then {
+                        direction:"INGRESS", priority:700,
+                        source_ranges:["35.235.240.0/20"], target_tags:["orch"],
+                        allow:[{protocol:"tcp",ports:["22","3389"]}], deny:[],
+                        log_config:[{metadata:"EXCLUDE_ALL_METADATA"}]
+                      } elif ($address | contains("internal_remote_connection")) then {
+                        direction:"INGRESS", priority:900,
+                        source_ranges:["0.0.0.0/0","35.235.240.0/20"], target_tags:["orch"],
+                        allow:[{protocol:"tcp",ports:["22","3389"]}], deny:[],
+                        log_config:[{metadata:"EXCLUDE_ALL_METADATA"}]
+                      } elif ($address | contains("remote_connection_firewall_ingress")) then {
+                        direction:"INGRESS", priority:800,
+                        source_ranges:["0.0.0.0/0"], target_tags:["orch"],
+                        allow:[], deny:[{protocol:"tcp",ports:["22","3389"]}],
+                        log_config:[{metadata:"EXCLUDE_ALL_METADATA"}]
+                      } else {} end
+                    )
+                  }
                 }
             ]
         )
@@ -184,10 +206,64 @@ for stage in network server api worker build; do
     "${plan}" "${fake_terraform}" "${stage}" >/dev/null
 done
 
+jq '
+  .resource_changes |= map(
+    select(.address != "module.cluster.module.network.google_compute_firewall.iap_remote_connection_firewall_ingress[0]")
+  )
+' "${test_dir}/network.plan" >"${test_dir}/network-missing-iap-overlay.plan"
+expect_fail "network stage requires the exact IAP overlay" \
+  "${script_dir}/assert-network-hardening-stage-plan.sh" \
+  "${test_dir}/network-missing-iap-overlay.plan" "${fake_terraform}" network
+
+jq '
+  (.resource_changes[]
+    | select(.address == "module.cluster.module.network.google_compute_firewall.iap_remote_connection_firewall_ingress[0]")
+    | .change.after.priority) = 900
+' "${test_dir}/network.plan" >"${test_dir}/network-wrong-iap-priority.plan"
+expect_fail "IAP overlay must precede the public deny" \
+  "${script_dir}/assert-network-hardening-stage-plan.sh" \
+  "${test_dir}/network-wrong-iap-priority.plan" "${fake_terraform}" network
+
+jq '
+  (.resource_changes[]
+    | select(.address == "module.cluster.module.network.google_compute_firewall.internal_remote_connection_firewall_ingress")
+    | .change.after.priority) = 750
+' "${test_dir}/network.plan" >"${test_dir}/network-legacy-beats-deny.plan"
+expect_fail "legacy public allow must remain shadowed by the deny" \
+  "${script_dir}/assert-network-hardening-stage-plan.sh" \
+  "${test_dir}/network-legacy-beats-deny.plan" "${fake_terraform}" network
+
+jq '
+  (.resource_changes[]
+    | select(.address == "module.cluster.module.network.google_compute_firewall.iap_remote_connection_firewall_ingress[0]")
+    | .change.after.source_ranges) = ["0.0.0.0/0", "35.235.240.0/20"]
+' "${test_dir}/network.plan" >"${test_dir}/network-public-iap-overlay.plan"
+expect_fail "IAP overlay cannot retain a public source" \
+  "${script_dir}/assert-network-hardening-stage-plan.sh" \
+  "${test_dir}/network-public-iap-overlay.plan" "${fake_terraform}" network
+
+jq '
+  (.resource_changes[]
+    | select(.address == "module.cluster.module.network.google_compute_firewall.remote_connection_firewall_ingress")
+    | .change.after.log_config) = []
+' "${test_dir}/network.plan" >"${test_dir}/network-unlogged-deny.plan"
+expect_fail "public deny must retain decision logging" \
+  "${script_dir}/assert-network-hardening-stage-plan.sh" \
+  "${test_dir}/network-unlogged-deny.plan" "${fake_terraform}" network
+
+jq '
+  (.resource_changes[]
+    | select(.address == "module.cluster.module.network.google_compute_firewall.remote_connection_firewall_ingress")
+    | .change.after.deny[0].ports) = ["22"]
+' "${test_dir}/network.plan" >"${test_dir}/network-incomplete-deny.plan"
+expect_fail "public deny must cover every administrative port" \
+  "${script_dir}/assert-network-hardening-stage-plan.sh" \
+  "${test_dir}/network-incomplete-deny.plan" "${fake_terraform}" network
+
 # A whole-module dependency on the changing authorization guard defers the
 # worker/build image-family reads and turns their otherwise-stable templates
 # into replacements. The network stage must reject that exact regression even
-# though its two firewall updates remain valid.
+# though its exact firewall transition remains valid.
 jq '
   (.resource_changes[]
     | select(

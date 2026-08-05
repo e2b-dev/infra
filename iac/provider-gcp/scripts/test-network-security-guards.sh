@@ -71,11 +71,16 @@ extract_module() {
   ' "${source_file}"
 }
 
-iap_allow="$(extract_resource google_compute_firewall internal_remote_connection_firewall_ingress "${network_tf}")"
+iap_overlay="$(extract_resource google_compute_firewall iap_remote_connection_firewall_ingress "${network_tf}")"
+legacy_allow="$(extract_resource google_compute_firewall internal_remote_connection_firewall_ingress "${network_tf}")"
 internet_deny="$(extract_resource google_compute_firewall remote_connection_firewall_ingress "${network_tf}")"
 
-[[ -n "${iap_allow}" ]] || {
-  printf 'IAP administrative allow firewall resource is missing.\n' >&2
+[[ -n "${iap_overlay}" ]] || {
+  printf 'Exact IAP administrative overlay firewall resource is missing.\n' >&2
+  exit 1
+}
+[[ -n "${legacy_allow}" ]] || {
+  printf 'Legacy administrative compatibility firewall resource is missing.\n' >&2
   exit 1
 }
 [[ -n "${internet_deny}" ]] || {
@@ -83,22 +88,39 @@ internet_deny="$(extract_resource google_compute_firewall remote_connection_fire
   exit 1
 }
 
-grep -F 'source_ranges = ["35.235.240.0/20"]' <<<"${iap_allow}" >/dev/null
-if grep -F '0.0.0.0/0' <<<"${iap_allow}" >/dev/null; then
-  printf 'Administrative allow rule must never admit the public internet.\n' >&2
+grep -F 'count = var.environment == "dev" && var.network_hardening_rollout_stage != "disabled" ? 1 : 0' \
+  <<<"${iap_overlay}" >/dev/null
+grep -F 'source_ranges = ["35.235.240.0/20"]' <<<"${iap_overlay}" >/dev/null
+if grep -F '0.0.0.0/0' <<<"${iap_overlay}" >/dev/null; then
+  printf 'Exact IAP overlay must never admit the public internet.\n' >&2
   exit 1
 fi
-grep -F 'ports    = ["22", "3389"]' <<<"${iap_allow}" >/dev/null
-grep -F 'dynamic "log_config" {' <<<"${iap_allow}" >/dev/null
-grep -F 'for_each = var.environment == "dev" ? [1] : []' <<<"${iap_allow}" >/dev/null
-grep -F 'metadata = "EXCLUDE_ALL_METADATA"' <<<"${iap_allow}" >/dev/null
-grep -F 'var.environment != "dev"' <<<"${iap_allow}" >/dev/null
+grep -F 'ports    = ["22", "3389"]' <<<"${iap_overlay}" >/dev/null
+grep -F 'priority      = 700' <<<"${iap_overlay}" >/dev/null
+grep -F 'log_config {' <<<"${iap_overlay}" >/dev/null
+grep -F 'metadata = "EXCLUDE_ALL_METADATA"' <<<"${iap_overlay}" >/dev/null
+grep -F 'var.os_login_operator_access_confirmed' <<<"${iap_overlay}" >/dev/null
+
+grep -F 'priority = 900' <<<"${legacy_allow}" >/dev/null
+grep -F '"0.0.0.0/0",' <<<"${legacy_allow}" >/dev/null
+grep -F '"35.235.240.0/20",' <<<"${legacy_allow}" >/dev/null
+grep -F '] : ["35.235.240.0/20"]' <<<"${legacy_allow}" >/dev/null
+grep -F 'ports    = ["22", "3389"]' <<<"${legacy_allow}" >/dev/null
+grep -F 'dynamic "log_config" {' <<<"${legacy_allow}" >/dev/null
+grep -F 'for_each = var.environment == "dev" ? [1] : []' <<<"${legacy_allow}" >/dev/null
+grep -F 'metadata = "EXCLUDE_ALL_METADATA"' <<<"${legacy_allow}" >/dev/null
+grep -F 'var.environment != "dev"' <<<"${legacy_allow}" >/dev/null
+grep -F 'depends_on = [google_compute_firewall.remote_connection_firewall_ingress]' \
+  <<<"${legacy_allow}" >/dev/null
 
 grep -F 'source_ranges = ["0.0.0.0/0"]' <<<"${internet_deny}" >/dev/null
 grep -F 'ports    = ["22", "3389"]' <<<"${internet_deny}" >/dev/null
+grep -F 'priority = var.environment == "dev" ? 800 : 1000' <<<"${internet_deny}" >/dev/null
 grep -F 'log_config {' <<<"${internet_deny}" >/dev/null
 grep -F 'metadata = "EXCLUDE_ALL_METADATA"' <<<"${internet_deny}" >/dev/null
 grep -F 'var.environment != "dev"' <<<"${internet_deny}" >/dev/null
+grep -F 'depends_on = [google_compute_firewall.iap_remote_connection_firewall_ingress]' \
+  <<<"${internet_deny}" >/dev/null
 
 for role in server api loki clickhouse; do
   template_file="${provider_root}/nomad-cluster/nodepool-${role/server/control-server}.tf"
