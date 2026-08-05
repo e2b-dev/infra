@@ -64,7 +64,7 @@ func TestHTTPOverviewSourceRejectsCrossOriginBeforeMint(t *testing.T) {
 	defer server.Close()
 	tokens := &sequenceIdentityTokenSource{tokens: []string{"secret.payload.signature"}}
 	source := HTTPOverviewSource{
-		URL: server.URL, Audience: "https://tams.monad0.net", TokenSource: tokens, Client: server.Client(),
+		URL: server.URL, Audience: "https://api.tams.monad0.net", TokenSource: tokens, Client: server.Client(),
 	}
 	_, err := source.Fetch(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "same origin") {
@@ -113,7 +113,7 @@ func TestHTTPOverviewSourceRedactsBearerAndResponseBodyFromErrors(t *testing.T) 
 func TestMetadataIdentityTokenSourceUsesAudienceAndRedactsFailureBody(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Metadata-Flavor") != "Google" || r.URL.Query().Get("audience") != "https://tams.monad0.net" || r.URL.Query().Get("format") != "full" {
+		if r.Header.Get("Metadata-Flavor") != "Google" || r.URL.Query().Get("audience") != "https://api.tams.monad0.net" || r.URL.Query().Get("format") != "full" {
 			t.Errorf("unexpected metadata request: headers=%v query=%v", r.Header, r.URL.Query())
 		}
 		w.Header().Set("Metadata-Flavor", "Google")
@@ -121,7 +121,7 @@ func TestMetadataIdentityTokenSourceUsesAudienceAndRedactsFailureBody(t *testing
 	}))
 	defer server.Close()
 	source := MetadataIdentityTokenSource{Endpoint: server.URL, Client: server.Client()}
-	token, err := source.Token(context.Background(), "https://tams.monad0.net")
+	token, err := source.Token(context.Background(), "https://api.tams.monad0.net")
 	if err != nil || token != "header.payload.signature" {
 		t.Fatalf("token=%q err=%v", token, err)
 	}
@@ -131,7 +131,7 @@ func TestMetadataIdentityTokenSourceUsesAudienceAndRedactsFailureBody(t *testing
 		_, _ = w.Write([]byte("sensitive-token-body"))
 	}))
 	defer failure.Close()
-	_, err = (MetadataIdentityTokenSource{Endpoint: failure.URL, Client: failure.Client()}).Token(context.Background(), "https://tams.monad0.net")
+	_, err = (MetadataIdentityTokenSource{Endpoint: failure.URL, Client: failure.Client()}).Token(context.Background(), "https://api.tams.monad0.net")
 	if err == nil || strings.Contains(err.Error(), "sensitive-token-body") {
 		t.Fatalf("metadata failure must be redacted, got %v", err)
 	}

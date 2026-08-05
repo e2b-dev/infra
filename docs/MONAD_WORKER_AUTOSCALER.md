@@ -129,6 +129,12 @@ accounts, including same-project workers, must be rejected. This is intentional
 rollout sequencing: enabling the job before both sides are configured results
 only in fail-closed holds.
 
+The canonical dev endpoint is
+`https://api.tams.monad0.net/v1/ops/capacity`, with the exact Google ID-token
+audience `https://api.tams.monad0.net`. The frontend origin is not an API
+fallback: `https://tams.monad0.net/v1/ops/capacity` is invalid and must never
+be configured.
+
 All named capacity fields are required. Unknown capacity fields, negative
 counts, invited-beta limit drift, density/bound drift, active plus draining
 session workcells exceeding durable sessions or the 25-workcell beta cap,
