@@ -508,7 +508,7 @@ func setupKernel(ctx context.Context, dir, version string) error {
 	}
 
 	// Try arch-specific URL first: {version}/{arch}/vmlinux.bin
-	archURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/kernels/", version, arch, artifact.KernelFileName)
+	archURL, err := url.JoinPath("https://storage.googleapis.com/e2b-artifact-binaries/kernels/", version, arch, artifact.KernelFileName)
 	if err != nil {
 		return fmt.Errorf("invalid kernel URL: %w", err)
 	}
@@ -526,7 +526,7 @@ func setupKernel(ctx context.Context, dir, version string) error {
 		return fmt.Errorf("kernel %s not found for %s (no legacy fallback for non-amd64)", version, arch)
 	}
 
-	legacyURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/kernels/", version, artifact.KernelFileName)
+	legacyURL, err := url.JoinPath("https://storage.googleapis.com/e2b-artifact-binaries/kernels/", version, artifact.KernelFileName)
 	if err != nil {
 		return fmt.Errorf("invalid kernel legacy URL: %w", err)
 	}
@@ -551,7 +551,7 @@ func setupFC(ctx context.Context, dir, version string) error {
 	}
 
 	// Download from GCS bucket with {version}/{arch}/firecracker path
-	fcURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/firecrackers/", version, arch, artifact.FirecrackerBinaryName)
+	fcURL, err := url.JoinPath("https://storage.googleapis.com/e2b-artifact-binaries/firecrackers/", version, arch, artifact.FirecrackerBinaryName)
 	if err != nil {
 		return fmt.Errorf("invalid Firecracker URL: %w", err)
 	}
@@ -569,7 +569,7 @@ func setupFC(ctx context.Context, dir, version string) error {
 		return fmt.Errorf("firecracker %s not found for %s (no legacy fallback for non-amd64)", version, arch)
 	}
 
-	legacyURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/firecrackers/", version, artifact.FirecrackerBinaryName)
+	legacyURL, err := url.JoinPath("https://storage.googleapis.com/e2b-artifact-binaries/firecrackers/", version, artifact.FirecrackerBinaryName)
 	if err != nil {
 		return fmt.Errorf("invalid Firecracker legacy URL: %w", err)
 	}

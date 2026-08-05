@@ -381,7 +381,7 @@ func setupEnvVars(t *testing.T, dataDir, envdPath string) {
 func downloadKernel(t *testing.T, dataDir string) {
 	t.Helper()
 	dst := filepath.Join(dataDir, "kernels", featureflags.DefaultKernelVersion, artifact.KernelFileName)
-	url := fmt.Sprintf("https://storage.googleapis.com/e2b-prod-public-builds/kernels/%s/%s", featureflags.DefaultKernelVersion, artifact.KernelFileName)
+	url := fmt.Sprintf("https://storage.googleapis.com/e2b-artifact-binaries/kernels/%s/%s", featureflags.DefaultKernelVersion, artifact.KernelFileName)
 	downloadFile(t, url, dst, 0o644)
 }
 

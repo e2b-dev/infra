@@ -99,7 +99,7 @@ jobs:
       - name: Prepare vmlinux.bin
         run: |
           cp .github/workflows/artifacts/vmlinux.bin .
-          gcloud storage cp --recursive gs://e2b-prod-public-builds/kernels/vmlinux-6.1.102/vmlinux.bin vmlinux.bin
+          gcloud storage cp --recursive gs://e2b-artifact-binaries/kernels/vmlinux-6.1.102/vmlinux.bin vmlinux.bin
           chmod 755 vmlinux.bin
           ls -lh vmlinux.bin
 
