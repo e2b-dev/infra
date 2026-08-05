@@ -57,6 +57,16 @@ if [[ "${1:-}" == "compute" && "${2:-}" == "project-info" ]]; then
       }
       | if $mode == "missing-global-cpu-metric"
         then .quotas = []
+        elif $mode == "duplicate-global-cpu-metric"
+        then .quotas += [{metric: "CPUS_ALL_REGIONS", limit: $limit, usage: $usage}]
+        elif $mode == "mixed-duplicate-global-cpu-metric"
+        then .quotas += [{metric: "CPUS_ALL_REGIONS", limit: $limit, usage: -1}]
+        elif $mode == "invalid-global-cpu-metric"
+        then .quotas[0].usage = -1
+        elif $mode == "missing-global-quota-container"
+        then del(.quotas)
+        elif $mode == "non-array-global-quota-container"
+        then .quotas = {}
         else .
         end
     '
@@ -278,6 +288,11 @@ expect_pass \
   "regional CPU quota replaces retired global CPU metric" \
   "${script_dir}/assert-workload-quota.sh" \
   "${policy}" monad-code us-east4 "${fake_gcloud}"
+if [[ -s "${test_dir}/stderr" ]]; then
+  printf 'expected retired global CPU fallback to be diagnostic-free\n' >&2
+  sed -n '1,40p' "${test_dir}/stderr" >&2
+  exit 1
+fi
 printf '%s\n' pass >"${fake_gcloud_mode}"
 
 for quota_mode in \
@@ -291,6 +306,11 @@ for quota_mode in \
   low-local-headroom \
   low-address-headroom \
   missing-regional-metric \
+  duplicate-global-cpu-metric \
+  mixed-duplicate-global-cpu-metric \
+  invalid-global-cpu-metric \
+  missing-global-quota-container \
+  non-array-global-quota-container \
   global-read-fails \
   region-read-fails; do
   printf '%s\n' "${quota_mode}" >"${fake_gcloud_mode}"

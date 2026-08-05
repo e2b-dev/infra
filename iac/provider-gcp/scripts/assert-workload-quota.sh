@@ -88,9 +88,19 @@ quota_value() {
     ' <<<"${document}"
 }
 
-if ! global_cpu="$(
-  quota_value "${project_json}" "CPUS_ALL_REGIONS" "global"
-)"; then
+global_cpu_metric_count="$(
+  jq -er '
+    if (.quotas | type) != "array"
+    then error("global quota response does not contain a quota array")
+    else [.quotas[] | select(.metric == "CPUS_ALL_REGIONS")] | length
+    end
+  ' <<<"${project_json}"
+)" || {
+  printf 'Unable to inspect the global Compute Engine CPU quota response.\n' >&2
+  exit 1
+}
+
+if [[ "${global_cpu_metric_count}" -eq 0 ]]; then
   # Newer Compute quota responses no longer expose CPUS_ALL_REGIONS. In that
   # response shape, regional CPUS is the authoritative capacity limit and is
   # deliberately reused for the aggregate planning dimension.
@@ -98,6 +108,16 @@ if ! global_cpu="$(
     printf 'Live quota response is missing both CPUS_ALL_REGIONS and a unique valid regional CPUS metric.\n' >&2
     exit 1
   }
+elif [[ "${global_cpu_metric_count}" -eq 1 ]]; then
+  # Only absence authorizes the regional fallback. A duplicated or malformed
+  # global metric is ambiguous and must remain fail-closed.
+  global_cpu="$(quota_value "${project_json}" "CPUS_ALL_REGIONS" "global")" || {
+    printf 'Live quota response contains an invalid or ambiguous CPUS_ALL_REGIONS metric.\n' >&2
+    exit 1
+  }
+else
+  printf 'Live quota response contains duplicate CPUS_ALL_REGIONS metrics.\n' >&2
+  exit 1
 fi
 
 live_json="$(
