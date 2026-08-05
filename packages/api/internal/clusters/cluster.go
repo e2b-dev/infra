@@ -240,7 +240,7 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context, expectedInfo 
 
 	instance, ok := c.getRandomInstance(func(info InstanceInfo, machineInfo machineinfo.MachineInfo) bool {
 		// Check availability and builder role
-		if info.Status != infogrpc.ServiceInfoStatus_Healthy || !info.IsBuilder {
+		if !info.Status.CanAcceptNewRequests() || !info.IsBuilder {
 			return false
 		}
 

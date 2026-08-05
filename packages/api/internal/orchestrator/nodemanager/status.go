@@ -13,6 +13,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
+// ApiNodeToOrchestratorStateMapper translates an api.NodeStatus into the status
+// an orchestrator understands. It has callers with different needs. Adding an entry
+// purely to make a status overridable therefore also makes it routable if its
+// orchestrator counterpart is. TestStatusMappersAreInverses pins this map
+// against OrchestratorToApiNodeStateMapper so the two cannot drift apart.
 var ApiNodeToOrchestratorStateMapper = map[api.NodeStatus]orchestratorinfo.ServiceInfoStatus{
 	api.NodeStatusReady:     orchestratorinfo.ServiceInfoStatus_Healthy,
 	api.NodeStatusDraining:  orchestratorinfo.ServiceInfoStatus_Draining,
@@ -27,6 +32,15 @@ type StatusInfo struct {
 
 func (n *Node) Status() api.NodeStatus {
 	return n.StatusInfo().Status
+}
+
+// CanAcceptNewRequests reports whether the node may be sent new requests. A
+// status with no orchestrator counterpart — api.NodeStatusConnecting, which is
+// derived from the local gRPC channel state — is treated as unroutable.
+func (n *Node) CanAcceptNewRequests() bool {
+	status, ok := ApiNodeToOrchestratorStateMapper[n.Status()]
+
+	return ok && status.CanAcceptNewRequests()
 }
 
 func (n *Node) StatusInfo() StatusInfo {

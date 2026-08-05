@@ -2,15 +2,17 @@ package testutils
 
 import (
 	"context"
+	"database/sql"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // this allows goose to function
 	"github.com/pressly/goose/v3"
+	"github.com/pressly/goose/v3/database"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -24,15 +26,16 @@ import (
 )
 
 const (
+	// TrackingTable is goose's bookkeeping table for this database. Exported
+	// because migration tests step the schema through their own provider and
+	// must target the same table the harness migrated.
+	TrackingTable = "_migrations"
+
 	testPostgresImage = "postgres:16-alpine"
 	testDatabaseName  = "test_db"
 	testUsername      = "postgres"
 	testPassword      = "test_password"
 )
-
-func init() {
-	goose.SetTableName("_migrations")
-}
 
 // Database encapsulates the test database container and clients
 type Database struct {
@@ -42,12 +45,6 @@ type Database struct {
 	TestQueries *queries.Queries
 	connStr     string
 }
-
-// gooseMu serializes goose operations across parallel tests.
-// goose.OpenDBWithDriver calls goose.SetDialect which writes to package-level
-// globals (dialect, store) without synchronization. Concurrent test goroutines
-// race on these globals, triggering the race detector on ARM64.
-var gooseMu sync.Mutex
 
 // SetupDatabase creates a fresh PostgreSQL container with migrations applied
 func SetupDatabase(t *testing.T) *Database {
@@ -135,25 +132,36 @@ func (db *Database) applyGooseMigrations(t *testing.T, migrationDirs ...string) 
 	require.NoError(t, err, "Failed to find git root")
 	repoRoot := strings.TrimSpace(string(output))
 
-	gooseMu.Lock()
-	defer gooseMu.Unlock()
-
-	sqlDB, err := goose.OpenDBWithDriver("pgx", db.connStr)
+	sqlDB, err := sql.Open("pgx", db.connStr)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		err := sqlDB.Close()
 		assert.NoError(t, err)
 	})
 
-	for _, migrationsDir := range migrationDirs {
-		err = goose.RunWithOptionsContext(
-			t.Context(),
-			"up",
-			sqlDB,
-			filepath.Join(repoRoot, migrationsDir),
-			nil,
-		)
+	// A provider per directory, each carrying its own store, so nothing here
+	// depends on goose's package-level dialect and tracking-table globals. That
+	// is what the mutex this replaced was guarding: parallel tests raced on
+	// those globals, and the race detector caught it on ARM64.
+	store, err := database.NewStore(goose.DialectPostgres, TrackingTable)
+	require.NoError(t, err)
 
+	for _, migrationsDir := range migrationDirs {
+		// os.DirFS defers failure until the first read, which surfaces as "no
+		// migrations found" — a message that sends you looking for missing SQL
+		// rather than a missing directory.
+		dir := filepath.Join(repoRoot, migrationsDir)
+		require.DirExists(t, dir)
+
+		provider, err := goose.NewProvider(
+			"", // Has to be empty when using a custom store
+			sqlDB,
+			os.DirFS(dir),
+			goose.WithStore(store),
+		)
+		require.NoError(t, err)
+
+		_, err = provider.Up(t.Context())
 		require.NoError(t, err)
 	}
 }

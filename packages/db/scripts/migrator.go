@@ -62,22 +62,6 @@ func main() {
 		log.Fatalf("failed to create session locker: %v", err) //nolint:gocritic // process exits, db cleanup not critical
 	}
 
-	goose.SetTableName(trackingTable)
-
-	version, err := goose.EnsureDBVersion(db)
-	if err != nil {
-		log.Fatalf("EnsureDBVersion: %v", err)
-	}
-
-	fmt.Printf("Current DB version: %d\n", version)
-	if version < authMigrationVersion {
-		fmt.Println("Creating auth.users table...")
-		err = setupAuthSchema(ctx, db, version)
-		if err != nil {
-			log.Fatalf("failed to ensure auth.users table: %v", err)
-		}
-	}
-
 	// We have to use custom store to use a custom tracking table
 	store, err := database.NewStore(goose.DialectPostgres, trackingTable)
 	if err != nil {
@@ -94,6 +78,26 @@ func main() {
 	)
 	if err != nil {
 		log.Fatalf("failed to create goose provider: %v", err)
+	}
+
+	// Built before the version is read, because reading it through the provider
+	// is what replaced goose's package-level version API — that API selected the
+	// tracking table through a global. Otherwise the effect is the same, which
+	// setupAuthSchema depends on: the version table is created if absent, so its
+	// INSERT below has somewhere to go, and a database with nothing applied
+	// reports 0.
+	version, err := provider.GetDBVersion(ctx)
+	if err != nil {
+		log.Fatalf("failed to get current DB version: %v", err)
+	}
+
+	fmt.Printf("Current DB version: %d\n", version)
+	if version < authMigrationVersion {
+		fmt.Println("Creating auth.users table...")
+		err = setupAuthSchema(ctx, db, version)
+		if err != nil {
+			log.Fatalf("failed to ensure auth.users table: %v", err)
+		}
 	}
 
 	results, err := provider.Up(ctx)

@@ -2,19 +2,18 @@ package main
 
 import (
 	"context"
+	"database/sql"
+	"os"
 	"path/filepath"
 	"testing"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
+	"github.com/pressly/goose/v3/database"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )
-
-func init() {
-	goose.SetTableName("_migrations")
-}
 
 func TestRun(t *testing.T) {
 	postgresContainer, err := postgres.Run(t.Context(),
@@ -34,21 +33,27 @@ func TestRun(t *testing.T) {
 	require.NoError(t, err)
 	t.Setenv("POSTGRES_CONNECTION_STRING", connectionString)
 
-	db, err := goose.OpenDBWithDriver("pgx", connectionString)
+	db, err := sql.Open("pgx", connectionString)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		err := db.Close()
 		assert.NoError(t, err)
 	})
 
-	// run the db migration
-	err = goose.RunWithOptionsContext(
-		t.Context(),
-		"up",
+	// run the db migration, through a provider carrying its own store rather
+	// than goose's package-level dialect and tracking-table globals
+	store, err := database.NewStore(goose.DialectPostgres, "_migrations")
+	require.NoError(t, err)
+
+	provider, err := goose.NewProvider(
+		"", // Has to be empty when using a custom store
 		db,
-		filepath.Join("..", "db", "migrations"),
-		nil,
+		os.DirFS(filepath.Join("..", "db", "migrations")),
+		goose.WithStore(store),
 	)
+	require.NoError(t, err)
+
+	_, err = provider.Up(t.Context())
 	require.NoError(t, err)
 
 	// run the seed script

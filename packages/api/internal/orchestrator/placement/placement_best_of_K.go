@@ -7,7 +7,6 @@ import (
 	"math/rand"
 	"sync"
 
-	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 )
@@ -169,8 +168,8 @@ func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, exclud
 			continue
 		}
 
-		// If the node is not ready, skip it
-		if n.Status() != api.NodeStatusReady {
+		// If the node can't take new sandboxes, skip it
+		if !n.CanAcceptNewRequests() {
 			continue
 		}
 
