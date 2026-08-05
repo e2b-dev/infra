@@ -5,6 +5,8 @@ package sandbox
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -238,6 +240,14 @@ func (s *Sandbox) CallEnvdUpgrade(ctx context.Context, localSrcPath, guestBinPat
 	}
 	defer f.Close()
 
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, f); err != nil {
+		return false, fmt.Errorf("hash envd source %s: %w", localSrcPath, err)
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return false, fmt.Errorf("rewind envd source %s: %w", localSrcPath, err)
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.envdServerURL()+"/upgrade", f)
 	if err != nil {
 		return false, fmt.Errorf("build upgrade request: %w", err)
@@ -249,6 +259,7 @@ func (s *Sandbox) CallEnvdUpgrade(ctx context.Context, localSrcPath, guestBinPat
 		req.Header.Set("X-Access-Token", *s.Config.Envd.AccessToken)
 	}
 	req.Header.Set("X-Envd-Upgrade-Bin", guestBinPath)
+	req.Header.Set("X-Envd-Upgrade-Sha256", hex.EncodeToString(hasher.Sum(nil)))
 
 	// Reuse the shared transport but drop sandboxHttpClient's short client-level
 	// Timeout (10s) — it would preempt the deliverTimeout ctx above and cut the

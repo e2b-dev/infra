@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -407,27 +407,25 @@ func run() error {
 		// If the new binary is streamed in the request body (the orchestrator's
 		// authenticated host-side delivery), write it to the fixed path before
 		// swapping. This avoids the unauthenticated /files path that fails on a
-		// runtime sandbox.
+		// runtime sandbox. A matching X-Envd-Upgrade-Sha256 is required so the
+		// guest only materializes bytes whose digest the caller attested.
 		if r.ContentLength != 0 {
 			newBin = processRpc.DefaultUpgradeBinPath
-			// On a chained upgrade this envd is itself running from
-			// DefaultUpgradeBinPath, so opening it O_TRUNC would fail with ETXTBSY.
-			// Unlink first: the create then lands on a fresh inode while the
-			// running process keeps executing its now-unlinked image.
-			_ = os.Remove(processRpc.DefaultUpgradeBinPath)
-			f, err := os.OpenFile(processRpc.DefaultUpgradeBinPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+			if err := processRpc.WriteUpgradeBinary(
+				processRpc.DefaultUpgradeBinPath,
+				r.Header.Get(processRpc.UpgradeSha256Header),
+				r.Body,
+			); err != nil {
+				status := http.StatusInternalServerError
+				if errors.Is(err, processRpc.ErrUpgradeSHA256Missing) ||
+					errors.Is(err, processRpc.ErrUpgradeSHA256Malformed) ||
+					errors.Is(err, processRpc.ErrUpgradeSHA256Mismatch) {
+					status = http.StatusBadRequest
+				}
+				http.Error(w, err.Error(), status)
 
 				return
 			}
-			if _, err := io.Copy(f, r.Body); err != nil {
-				f.Close()
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-
-				return
-			}
-			f.Close()
 		}
 		if err := doUpgrade(newBin); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
