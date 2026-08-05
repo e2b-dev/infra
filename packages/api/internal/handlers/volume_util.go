@@ -14,7 +14,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/api/internal"
-	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
@@ -154,7 +153,7 @@ func (a *APIStore) executeOnOrchestratorByClusterID(
 	var (
 		receivedUnknownVolumeTypeErrors int
 		unknownVolumeType               string
-		notReadyNodeCount               int
+		skippedNodeCount                int
 	)
 	defer func() {
 		if receivedUnknownVolumeTypeErrors != 0 {
@@ -171,8 +170,9 @@ func (a *APIStore) executeOnOrchestratorByClusterID(
 			return fmt.Errorf("context error: %w", err)
 		}
 
-		if node.Status() != api.NodeStatusReady {
-			notReadyNodeCount++
+		// Only nodes that can take new requests serve volume content
+		if !node.CanAcceptNewRequests() {
+			skippedNodeCount++
 
 			continue
 		}
@@ -211,7 +211,7 @@ func (a *APIStore) executeOnOrchestratorByClusterID(
 		return err
 	}
 
-	if receivedUnknownVolumeTypeErrors == len(nodes)-notReadyNodeCount && receivedUnknownVolumeTypeErrors > 0 {
+	if receivedUnknownVolumeTypeErrors == len(nodes)-skippedNodeCount && receivedUnknownVolumeTypeErrors > 0 {
 		return fmt.Errorf("%w: %s", ErrUnknownVolumeType, unknownVolumeType)
 	}
 

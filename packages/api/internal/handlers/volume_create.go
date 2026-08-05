@@ -238,7 +238,7 @@ func (a *APIStore) getVolumeType(ctx context.Context, team *types.Team) string {
 	// of requiredLabels; the same subset semantics as sandbox placement.
 	regions := make(map[string]struct{})
 	for _, node := range a.orchestrator.GetClusterNodes(clustershared.WithClusterFallback(team.ClusterID)) {
-		if node.Status() != api.NodeStatusReady {
+		if !node.CanAcceptNewRequests() {
 			continue
 		}
 
