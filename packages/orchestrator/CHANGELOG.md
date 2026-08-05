@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.0](https://github.com/e2b-dev/infra/compare/orchestrator-v0.0.2...orchestrator-v0.1.0) (2026-08-05)
+
+
+### Features
+
+* **data-exporter:** add export pipeline metrics ([#1324](https://github.com/e2b-dev/infra/issues/1324)) ([9a6c71d](https://github.com/e2b-dev/infra/commit/9a6c71df0c3c3d1a43b2c99df88bf4608e1c2e3a))
+
+
+### Bug Fixes
+
+* **orchestrator:** abort the NBD release backoff on context cancellation ([#3495](https://github.com/e2b-dev/infra/issues/3495)) ([f6378f5](https://github.com/e2b-dev/infra/commit/f6378f56cced0ddfce617eb92c315f3c10374868))
+* **orch:** smoketest never ran on belt — envd locator predates the restructure ([#1386](https://github.com/e2b-dev/infra/issues/1386)) ([dec8a79](https://github.com/e2b-dev/infra/commit/dec8a79e25e80d1bc9c9b76458cdeb21d6dd126f))
+* **oss:** upload with gcloud storage instead of gsutil ([#1302](https://github.com/e2b-dev/infra/issues/1302)) ([416a1b2](https://github.com/e2b-dev/infra/commit/416a1b21353a1605204b900afd194c3499ab0d48))
+
 ## [0.0.2](https://github.com/e2b-dev/infra/compare/orchestrator-v0.0.1...orchestrator-v0.0.2) (2026-07-31)
 
 
