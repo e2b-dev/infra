@@ -96,7 +96,9 @@ flowchart TB
 Supporting packages: `packages/shared` (protos, telemetry, storage clients, feature flags),
 `packages/auth` (authentication library), `packages/db` (Postgres migrations + sqlc queries),
 `packages/clickhouse` (ClickHouse schema + clients), `packages/otel-collector` (collector config),
-`packages/nomad-nodepool-apm` (autoscaler plugin), `packages/local-dev` (local stack).
+`packages/nomad-nodepool-apm` (template-manager allocation autoscaler plugin),
+`packages/monad-worker-autoscaler` (shadow-only Monad worker-capacity controller), and
+`packages/local-dev` (local stack).
 
 ### API (`packages/api`)
 
@@ -373,7 +375,7 @@ flowchart TB
         NS["Nomad + Consul servers (control plane)"]
     end
     subgraph apipool["api pool (2 private nodes)"]
-        AJ["api, dashboard-api, client-proxy,<br/>ingress (Traefik), docker-reverse-proxy,<br/>redis, loki, otel-collector, autoscaler"]
+        AJ["api, dashboard-api, client-proxy,<br/>ingress (Traefik), docker-reverse-proxy,<br/>redis, loki, otel-collector,<br/>optional worker autoscaler (shadow only)"]
     end
     subgraph clientpool["default pool (2 bootstrap, 2-15 managed)"]
         OJ["orchestrator (system job, raw_exec)<br/>+ Firecracker sandboxes"]
@@ -398,6 +400,23 @@ flowchart TB
   (it needs root for Firecracker, namespaces, NBD, cgroups). Configured with hugepages and local
   template caches. Terraform holds the invited-beta bootstrap at two workers until the
   Nomad-aware controller is deployed.
+- The workload-aware Monad worker controller currently has a **shadow-only** deployment path on
+  at most two API-pool allocations. Consul session locking elects one observer. It consumes the
+  strict capacity subset of TAMS `GET /v1/ops/capacity`, counts actual ready worker hosts from
+  Nomad independently, recomputes
+  `clamp(ceil((active + booting + draining + max(parked, warmTarget)) / 2) + 1, 2, 15)`, and
+  emits structured decisions and Prometheus metrics. It has no resize, drain, instance-delete, or
+  GCP API client. Each TAMS read uses a fresh Google ID token minted from the API node's attached
+  service account through the metadata server. The endpoint and audience must share an exact
+  HTTPS origin before a token is minted; no TAMS bearer is stored in Terraform, Nomad, or
+  the task environment. Activation requires a dedicated API/controller service account; the current
+  fleet-wide instance identity is forbidden because workers and build nodes share it. Invalid,
+  stale, regressing, contradictory, or ambiguous state produces a hold
+  and resets the 15-minute scale-in evidence window. The job is disabled by default pending the
+  documented TAMS `capacity.revision` and `capacity.warm_target` additions; see
+  `docs/MONAD_WORKER_AUTOSCALER.md`. This beta path also requires one two-host
+  `n1-standard-8` Terraform client cluster named `default` in the Nomad `default` pool,
+  preventing another MIG or generic autoscaler from contaminating the observed host count.
 - **Build nodes** run the same binary in template-manager mode. The invited-beta topology keeps
   one fixed build node, reported separately from workcell capacity.
 - Server, API, worker, build, and optional data nodes have no per-instance public address in the
@@ -507,6 +526,7 @@ packages/
   clickhouse/           ClickHouse schema, batching writers, query clients
   otel-collector/       Collector config
   nomad-nodepool-apm/   Nomad autoscaler metric and deployment-aware target plugins
+  monad-worker-autoscaler/ Shadow-only TAMS/Nomad worker-capacity controller
   local-dev/            docker-compose local stack + DB seeding
 spec/                   OpenAPI specs (public, edge, dashboard) — codegen sources
 iac/                    Terraform + Nomad jobs (provider-gcp, provider-aws, shared modules)

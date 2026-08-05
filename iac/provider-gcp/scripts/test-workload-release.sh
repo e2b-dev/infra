@@ -1221,5 +1221,13 @@ test "$(
   grep -c -- "--if-none-match '\\*'" \
     "${repo_root}/packages/orchestrator/Makefile"
 )" -eq 3
+test "$(
+  grep -c -- '--if-generation-match=0' \
+    "${repo_root}/packages/monad-worker-autoscaler/Makefile"
+)" -eq 1
+test "$(
+  grep -c -- "--if-none-match '\\*'" \
+    "${repo_root}/packages/monad-worker-autoscaler/Makefile"
+)" -eq 1
 
 printf 'Workload release gate tests passed without contacting GCP.\n'

@@ -611,6 +611,56 @@ Format: [
 EOT
 }
 
+variable "monad_worker_autoscaler_shadow_enabled" {
+  type        = bool
+  description = "Deploy the non-mutating workload-aware worker-capacity observer."
+  default     = false
+}
+
+variable "monad_worker_autoscaler_revision" {
+  type        = string
+  description = "Immutable infra Git revision suffix of the uploaded shadow-controller binary."
+  default     = ""
+
+  validation {
+    condition     = var.monad_worker_autoscaler_revision == "" || can(regex("^[0-9a-f]{12,40}$", var.monad_worker_autoscaler_revision))
+    error_message = "monad_worker_autoscaler_revision must be empty or a 12-40 character lowercase Git SHA."
+  }
+}
+
+variable "monad_worker_autoscaler_tams_capacity_url" {
+  type        = string
+  description = "Exact authenticated TAMS /v1/ops/capacity endpoint for shadow capacity observations."
+  default     = ""
+
+  validation {
+    condition     = var.monad_worker_autoscaler_tams_capacity_url == "" || can(regex("^https://[^/?#]+/v1/ops/capacity$", var.monad_worker_autoscaler_tams_capacity_url))
+    error_message = "monad_worker_autoscaler_tams_capacity_url must be empty or an HTTPS origin plus /v1/ops/capacity."
+  }
+}
+
+variable "monad_worker_autoscaler_tams_audience" {
+  type        = string
+  description = "Expected HTTPS audience for attached-service-account identity tokens minted for TAMS."
+  default     = ""
+
+  validation {
+    condition     = var.monad_worker_autoscaler_tams_audience == "" || can(regex("^https://[^/?#]+$", var.monad_worker_autoscaler_tams_audience))
+    error_message = "monad_worker_autoscaler_tams_audience must be empty or an exact HTTPS origin."
+  }
+}
+
+variable "monad_worker_autoscaler_allocations" {
+  type        = number
+  description = "One or two shadow observers; Consul elects one reader."
+  default     = 2
+
+  validation {
+    condition     = contains([1, 2], var.monad_worker_autoscaler_allocations)
+    error_message = "monad_worker_autoscaler_allocations must be one or two."
+  }
+}
+
 variable "build_clusters_config" {
   type = map(object({
     cluster_size = number

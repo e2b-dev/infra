@@ -285,6 +285,8 @@ module "cluster" {
   build_clusters_config  = var.build_clusters_config
   client_clusters_config = var.client_clusters_config
 
+  monad_worker_autoscaler_shadow_enabled = var.monad_worker_autoscaler_shadow_enabled
+
   api_cluster_size        = var.api_cluster_size
   clickhouse_cluster_size = var.clickhouse_cluster_size
   server_cluster_size     = var.server_cluster_size
@@ -485,6 +487,17 @@ module "nomad" {
   default_persistent_volume_type = var.default_persistent_volume_type
   orchestrator_env_vars          = local.orchestrator_env_vars
   orchestrator_enabled           = var.orchestrator_enabled
+
+  # Workload-aware worker-capacity observer. This phase is shadow-only: it
+  # reads TAMS, Nomad, and a Consul election lock and has no GCE mutation path.
+  monad_worker_autoscaler_shadow_enabled      = var.monad_worker_autoscaler_shadow_enabled
+  monad_worker_autoscaler_revision            = var.monad_worker_autoscaler_revision
+  monad_worker_autoscaler_tams_capacity_url   = var.monad_worker_autoscaler_tams_capacity_url
+  monad_worker_autoscaler_tams_audience       = var.monad_worker_autoscaler_tams_audience
+  monad_worker_autoscaler_allocations         = var.monad_worker_autoscaler_allocations
+  monad_worker_autoscaler_worker_cluster_keys = keys(var.client_clusters_config)
+  monad_worker_autoscaler_worker_cluster_size = try(var.client_clusters_config["default"].cluster_size, 0)
+  monad_worker_autoscaler_worker_machine_type = try(var.client_clusters_config["default"].machine.type, "")
 
   # Template manager
   builder_node_pool                   = var.build_node_pool

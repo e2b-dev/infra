@@ -142,6 +142,12 @@ variable "client_clusters_config" {
   }))
 }
 
+variable "monad_worker_autoscaler_shadow_enabled" {
+  type        = bool
+  description = "Whether the non-mutating workload-aware shadow observer is deployed."
+  default     = false
+}
+
 variable "build_cluster_name" {
   type    = string
   default = "orch-build"

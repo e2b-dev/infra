@@ -15,6 +15,12 @@ variable "autoscaler" {
   })
 }
 
+variable "workload_autoscaler_shadow_enabled" {
+  type        = bool
+  description = "Enable the ownership guard for the workload-aware shadow observer."
+  default     = false
+}
+
 variable "machine_type" {
   type = string
 }

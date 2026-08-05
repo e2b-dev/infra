@@ -226,6 +226,8 @@ module "client_cluster" {
   boot_disk        = each.value.boot_disk
   autoscaler       = each.value.autoscaler
 
+  workload_autoscaler_shadow_enabled = each.key == "default" && var.monad_worker_autoscaler_shadow_enabled
+
   // This is here for backwards compatibility
   cluster_name              = each.key == "default" ? "${var.prefix}${var.client_cluster_name}" : "${var.prefix}${var.client_cluster_name}-${each.key}"
   image_family              = var.client_image_family

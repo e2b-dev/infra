@@ -295,6 +295,73 @@ variable "nomad_autoscaler_version" {
   default     = "0.4.5"
 }
 
+variable "monad_worker_autoscaler_shadow_enabled" {
+  type        = bool
+  description = "Deploy the workload-aware worker observer without any scale mutation."
+  default     = false
+}
+
+variable "monad_worker_autoscaler_revision" {
+  type        = string
+  description = "Immutable infra Git revision suffix of the uploaded controller binary."
+  default     = ""
+
+  validation {
+    condition     = var.monad_worker_autoscaler_revision == "" || can(regex("^[0-9a-f]{12,40}$", var.monad_worker_autoscaler_revision))
+    error_message = "monad_worker_autoscaler_revision must be empty or a 12-40 character lowercase Git SHA."
+  }
+}
+
+variable "monad_worker_autoscaler_tams_capacity_url" {
+  type        = string
+  description = "Exact authenticated TAMS /v1/ops/capacity endpoint."
+  default     = ""
+
+  validation {
+    condition     = var.monad_worker_autoscaler_tams_capacity_url == "" || can(regex("^https://[^/?#]+/v1/ops/capacity$", var.monad_worker_autoscaler_tams_capacity_url))
+    error_message = "monad_worker_autoscaler_tams_capacity_url must be empty or an HTTPS /v1/ops/capacity URL without query or fragment."
+  }
+}
+
+variable "monad_worker_autoscaler_tams_audience" {
+  type        = string
+  description = "Expected HTTPS audience for attached-service-account identity tokens minted for TAMS."
+  default     = ""
+
+  validation {
+    condition     = var.monad_worker_autoscaler_tams_audience == "" || can(regex("^https://[^/?#]+$", var.monad_worker_autoscaler_tams_audience))
+    error_message = "monad_worker_autoscaler_tams_audience must be empty or an HTTPS URI without query or fragment."
+  }
+}
+
+variable "monad_worker_autoscaler_allocations" {
+  type    = number
+  default = 2
+
+  validation {
+    condition     = contains([1, 2], var.monad_worker_autoscaler_allocations)
+    error_message = "The shadow controller supports one or two allocations only."
+  }
+}
+
+variable "monad_worker_autoscaler_worker_cluster_keys" {
+  type        = list(string)
+  description = "Terraform client-cluster keys represented by the observed Nomad worker pool."
+  default     = []
+}
+
+variable "monad_worker_autoscaler_worker_cluster_size" {
+  type        = number
+  description = "Terraform floor of the isolated default worker MIG."
+  default     = 0
+}
+
+variable "monad_worker_autoscaler_worker_machine_type" {
+  type        = string
+  description = "GCE worker machine profile whose measured density drives the controller."
+  default     = ""
+}
+
 # Redis
 variable "redis_port" {
   type = object({

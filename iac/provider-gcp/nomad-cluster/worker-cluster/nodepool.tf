@@ -150,6 +150,13 @@ resource "google_compute_region_instance_group_manager" "pool" {
   depends_on = [
     google_compute_instance_template.template,
   ]
+
+  lifecycle {
+    precondition {
+      condition     = !var.workload_autoscaler_shadow_enabled || !try(var.autoscaler.size_max > var.cluster_size, false)
+      error_message = "The workload-aware shadow observer cannot run while the generic GCE CPU/memory autoscaler owns this worker MIG. Keep Terraform target_size at the reviewed floor during shadow mode."
+    }
+  }
 }
 
 data "google_compute_image" "source_image" {

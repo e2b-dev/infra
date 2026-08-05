@@ -10,6 +10,7 @@ use (
 	./packages/docker-reverse-proxy
 	./packages/envd
 	./packages/local-dev
+	./packages/monad-worker-autoscaler
 	./packages/nomad-nodepool-apm
 	./packages/orchestrator
 	./packages/shared
