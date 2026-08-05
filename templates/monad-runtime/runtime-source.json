@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "tams_repository": "rehoboam-lab/tams",
-  "tams_revision": "631489d82a7e97f7765b7a63e2832c79e86fa5db",
+  "tams_revision": "3cb02cdb30ec1d26be41be4e29f63cfb3502f2ee",
   "tams_apps_sandbox_tree_oid": "322a658913532aa66a9c946cb3797f19b660fcca",
   "runtime_input_paths": [
     "apps/sandbox",
