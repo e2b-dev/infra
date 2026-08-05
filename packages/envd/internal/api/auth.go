@@ -79,6 +79,18 @@ func (a *API) WithAuthorization(handler http.Handler) http.Handler {
 			jsonError(w, http.StatusUnauthorized, errors.New("envd not initialized"))
 
 			return
+
+		case a.initialized.Load() && !allowedPath:
+			// After /init, if no access token is configured, fail CLOSED for
+			// privileged routes (including POST /upgrade) instead of allowing
+			// unauthenticated access. Allowlisted paths in authExcludedPaths
+			// (health, files, init) still proceed.
+			a.logger.Error().Msg("Trying to access secured envd without access token configured")
+
+			err := errors.New("unauthorized access, please provide a valid access token or method signing if supported")
+			jsonError(w, http.StatusUnauthorized, err)
+
+			return
 		}
 
 		handler.ServeHTTP(w, req)

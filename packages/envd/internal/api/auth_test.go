@@ -146,3 +146,58 @@ func TestValidateSigningRejectsInvalidAccessTokenHeader(t *testing.T) {
 	err := api.validateSigning(r, nil, nil, nil, "/files", SigningReadOperation)
 	assert.EqualError(t, err, "access token present in header but does not match")
 }
+
+func TestWithAuthorizationFailClosedWhenTokenUnsetAfterInit(t *testing.T) {
+	t.Parallel()
+	logger := zerolog.Nop()
+	api := &API{accessToken: &SecureToken{}, logger: &logger}
+	api.initialized.Store(true)
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	h := api.WithAuthorization(next)
+
+	// Privileged route must be rejected when token unset post-init.
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/upgrade", nil)
+	h.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusUnauthorized, rr.Code)
+
+	// Allowlisted paths still pass.
+	for _, tc := range []struct {
+		method, path string
+	}{
+		{http.MethodGet, "/health"},
+		{http.MethodGet, "/files"},
+		{http.MethodPost, "/files"},
+		{http.MethodPost, "/init"},
+	} {
+		rr = httptest.NewRecorder()
+		req = httptest.NewRequestWithContext(t.Context(), tc.method, tc.path, nil)
+		h.ServeHTTP(rr, req)
+		assert.Equal(t, http.StatusOK, rr.Code, "%s %s", tc.method, tc.path)
+	}
+}
+
+func TestWithAuthorizationRequiresTokenWhenSet(t *testing.T) {
+	t.Parallel()
+	api := newAuthTestAPI(t, "secret")
+	api.initialized.Store(true)
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	h := api.WithAuthorization(next)
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/upgrade", nil)
+	h.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusUnauthorized, rr.Code)
+
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/upgrade", nil)
+	req.Header.Set(accessTokenHeader, "secret")
+	h.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code)
+}
