@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.0](https://github.com/e2b-dev/infra/compare/api-v0.0.1...api-v0.1.0) (2026-08-05)
+
+
+### Features
+
+* **api:** return BYOC cluster domain from volume endpoints ([#3490](https://github.com/e2b-dev/infra/issues/3490)) ([bb04d1f](https://github.com/e2b-dev/infra/commit/bb04d1fc944dab666f4c6a007ea85dbfcecb6fd3))
+
+
+### Bug Fixes
+
+* **api:** accept subdomain wildcards in network transform rule domains ([#3501](https://github.com/e2b-dev/infra/issues/3501)) ([48d321b](https://github.com/e2b-dev/infra/commit/48d321beac75626f15e65ba6ffb792d5f3b765e7))
+
 ## 0.0.1 (2026-07-30)
 
 
