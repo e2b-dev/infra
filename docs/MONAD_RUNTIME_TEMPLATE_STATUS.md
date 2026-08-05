@@ -1,6 +1,6 @@
 # Monad runtime template status
 
-Last updated: 2026-07-30
+Last updated: 2026-08-05
 
 ## Remote-desktop entry gate
 
@@ -157,4 +157,52 @@ Identity:
 E2B_TEMPLATE=rdtms8je5mx3qrtxn1ap
 E2B_TEMPLATE_REF=monad-runtime:desktop-54b32edc942d-c5g
 E2B_IMAGE_ID=886b9312-c1b4-4e09-907e-9fdc6a6dc872
+```
+
+## Current invited-beta runtime: brokered Git bootstrap
+
+Status: built, verified, and registered in the TAMS `dev` environment by an
+operator workflow run at the exact current `main` revision on 2026-08-05. The
+immutable build uses merged infra revision
+`97d88ab16b63e4ad229fdc431b4bb14c30524f1c` and merged TAMS revision
+`8230ee3082a46882e0ff905bada245bd48cf8059` (TAMS PR #269). The template ID
+remains the stable registered template identity; the image ID and immutable
+create reference identify this build.
+
+Pinned provenance:
+
+```text
+runtime content version=d839b29d8b6c7e5eadc4ecd6c44ee137465881d6b8ff42b808c7eba5e1d65c1d
+apps/sandbox tree=322a658913532aa66a9c946cb3797f19b660fcca
+apps/monad-sandbox-agent-server tree=28f31feab075fb217b3e747e082895fd2ecc82a1
+apps/cli tree=53ebc83a507fb4e1fb32be540c74a73a8e163250
+packages/executor-sdk tree=bf4835dbce1c07e30e590dd2dfc8ce9389c65bd2
+packages/manifest-schema tree=a82e10d5952f23cc4b95d14ce6524c1f71e641bf
+packages/starter tree=551a6da7e2ec81975469919b1161d9df6e031335
+```
+
+The build/verification workflow run
+[`31015567594`](https://github.com/rehoboam-lab/tams/actions/runs/31015567594)
+proved:
+
+- the Monad daemon was supervised and waiting on a credential-bootstrap socket
+  whose measured filesystem mode was `0600`; the workflow did not assert the
+  socket UID/GID or perform an exhaustive immutable-image credential scan;
+- OpenCode 1.14.28, agent-browser 0.27.0, Playwright 1.60.0, Git 2.53.0,
+  the Monad CLI, and the exact source provenance were present;
+- Chromium rendered the synthetic `monad-runtime-ok` page;
+- Selkies HTTP 6080 and HTTPS 6081 returned 200, the authenticated external
+  port-6080 surface returned HTML, and the Monad/Xorg/Selkies/nginx service
+  graph was up without Kasm/noVNC/TigerVNC paths;
+- the 4667 MiB guest filesystem retained 543 MiB available after a real
+  256 MiB write probe; and
+- cleanup returned the operator team to zero active sandboxes at
+  `2026-08-05T14:32:44.518Z`.
+
+Registered identity:
+
+```text
+E2B_TEMPLATE=rdtms8je5mx3qrtxn1ap
+E2B_TEMPLATE_REF=monad-runtime:desktop-d839b29d8b6c
+E2B_IMAGE_ID=1ff0f699-2f58-4c69-9251-09dcc17cade9
 ```
