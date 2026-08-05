@@ -43,6 +43,8 @@ revision `b20d6a57ca1ee2952d8d502cf52e1e228fa82493`.
 
 Full methods, caveats, measurements, and the supported autoscaling envelope
 are in [`MONAD_F1_LIVE_EVIDENCE_2026-07-30.md`](MONAD_F1_LIVE_EVIDENCE_2026-07-30.md).
+The latest read-only GCP static-key re-audit is in
+[`MONAD_GCP_KEYLESS_REAUDIT_2026-08-05.md`](MONAD_GCP_KEYLESS_REAUDIT_2026-08-05.md).
 
 ## Supported worker envelope
 

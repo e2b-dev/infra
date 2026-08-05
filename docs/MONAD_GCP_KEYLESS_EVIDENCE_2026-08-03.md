@@ -1,5 +1,9 @@
 # Monad GCP keyless and quota evidence — 2026-08-03
 
+> Current keyless posture was re-audited read-only on 2026-08-05; see
+> [`MONAD_GCP_KEYLESS_REAUDIT_2026-08-05.md`](MONAD_GCP_KEYLESS_REAUDIT_2026-08-05.md).
+> This file remains the 2026-08-03 deployment and quota snapshot.
+
 ## Scope and identity
 
 - Project: `monad-code`.
