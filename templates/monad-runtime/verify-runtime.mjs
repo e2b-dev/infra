@@ -197,21 +197,34 @@ try {
   });
   evidence.sandbox_id = sandbox.sandboxId;
 
-  const health = JSON.parse(
-    await run('curl -fsS http://127.0.0.1:8000/monad/health'),
-  );
+  // The daemon boots credential-gated and cannot reach /monad/health under
+  // this verification's deny-all egress (lease activation must mint against
+  // the control plane). The verifiable build-time contract is: the daemon
+  // process is supervised and up, and it is awaiting the private bootstrap
+  // on its root-only socket. Full runtime health belongs to the session path
+  // and credentialed canaries.
+  const bootstrapGate = (
+    await run(
+      "sh -c 'pgrep -x monad-agent >/dev/null && echo daemon-running || echo daemon-missing; test -S /var/run/monad/credential-bootstrap.sock && echo awaiting-bootstrap || echo socket-missing; stat -c %a /var/run/monad/credential-bootstrap.sock 2>/dev/null || true'",
+    )
+  ).trim().split('\n');
   if (
-    health.daemon !== 'ok' ||
-    health.opencode !== 'ok' ||
-    health.runtimeReady !== true
+    bootstrapGate[0] !== 'daemon-running' ||
+    bootstrapGate[1] !== 'awaiting-bootstrap'
   ) {
-    throw new Error('daemon runtime health contract is not ready');
+    throw new Error(
+      `daemon is not awaiting credential bootstrap: ${bootstrapGate.join(', ')}`,
+    );
+  }
+  if (bootstrapGate[2] !== '600') {
+    throw new Error(
+      `credential bootstrap socket mode is ${bootstrapGate[2] ?? 'unknown'}; expected root-only 600`,
+    );
   }
   evidence.health = {
-    daemon: health.daemon,
-    opencode: health.opencode,
-    runtime_ready: health.runtimeReady,
-    auth: health.auth,
+    daemon: 'running',
+    credential_bootstrap: 'awaiting',
+    bootstrap_socket_mode: bootstrapGate[2],
   };
 
   evidence.versions = JSON.parse(

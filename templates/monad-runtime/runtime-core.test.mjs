@@ -50,13 +50,20 @@ test('PR B Dockerfile has the base runtime and pinned Selkies desktop', async ()
   assert.doesNotMatch(dockerfile, /\b(?:kasm|novnc|tigervnc)\b/i);
 });
 
-test('template readiness composes daemon and desktop health under s6', async () => {
+test('template readiness composes bootstrap-await and desktop health under s6', async () => {
   const definition = await readFile(
     new URL('./template.mjs', import.meta.url),
     'utf8',
   );
-  assert.match(definition, /8000\/monad\/health/);
-  assert.match(definition, /\.runtimeReady == true/);
+  // The daemon boots credential-gated (flag baked into the image), so
+  // build-time readiness is "daemon awaiting bootstrap on its root-only
+  // socket" — /monad/health cannot come up without minted session leases,
+  // and the build/verify posture denies all egress anyway.
+  assert.match(
+    definition,
+    /test -S \/var\/run\/monad\/credential-bootstrap\.sock/,
+  );
+  assert.doesNotMatch(definition, /8000\/monad\/health/);
   assert.match(definition, /127\.0\.0\.1:6080/);
   assert.match(definition, /127\.0\.0\.1:6081/);
   assert.match(

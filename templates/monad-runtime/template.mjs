@@ -43,7 +43,14 @@ export async function createMonadRuntimeTemplate() {
       )
       .setStartCmd(
         'unshare --pid --fork --mount-proc --kill-child=TERM /init',
-        "curl -fsS http://127.0.0.1:8000/monad/health | jq -e '.daemon == \"ok\" and .opencode == \"ok\" and .runtimeReady == true' >/dev/null && curl -fsS http://127.0.0.1:6080/ >/dev/null && curl -fkSs https://127.0.0.1:6081/ >/dev/null",
+        // The daemon boots credential-gated (MONAD_CREDENTIAL_BOOTSTRAP_REQUIRED
+        // is baked into the image) and cannot serve /monad/health until a
+        // session bootstrap arrives — which never happens at build time, and
+        // could not mint anyway under the build/verify deny-all egress posture.
+        // Build-time readiness is therefore: daemon up AND awaiting bootstrap
+        // (socket present) plus the desktop surfaces. Full runtime health is
+        // proven by the session path / credentialed canaries, not the build.
+        "test -S /var/run/monad/credential-bootstrap.sock && curl -fsS http://127.0.0.1:6080/ >/dev/null && curl -fkSs https://127.0.0.1:6081/ >/dev/null",
       );
     return { template, runtimeVersion, source, assetManifest };
   } finally {
