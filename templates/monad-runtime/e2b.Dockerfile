@@ -58,6 +58,13 @@ RUN chmod +x \
     && monad --version
 
 ENV MONAD_WORKSPACE=/workspace
+# E2B create-time env vars reach envd-exec'd commands only — never the
+# s6-supervised daemon (proved live 2026-08-05: daemon environ carries image
+# ENV via with-contenv/container_environment, but not sandbox create env).
+# Every E2B workcell — ordinary session or parked warm pool — must boot
+# credential-free and await the private stdin bootstrap, so the flag is a
+# property of this template, baked here where with-contenv delivers it.
+ENV MONAD_CREDENTIAL_BOOTSTRAP_REQUIRED=1
 ENV PLAYWRIGHT_BROWSERS_PATH=0
 ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV AGENT_BROWSER_ARGS=--no-sandbox,--disable-dev-shm-usage
