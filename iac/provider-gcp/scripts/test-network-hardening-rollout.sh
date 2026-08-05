@@ -184,6 +184,24 @@ for stage in network server api worker build; do
     "${plan}" "${fake_terraform}" "${stage}" >/dev/null
 done
 
+# A whole-module dependency on the changing authorization guard defers the
+# worker/build image-family reads and turns their otherwise-stable templates
+# into replacements. The network stage must reject that exact regression even
+# though its two firewall updates remain valid.
+jq '
+  (.resource_changes[]
+    | select(
+        .address
+        == "module.cluster.module.client_cluster[\"default\"].google_compute_instance_template.template"
+        or .address
+        == "module.cluster.module.build_cluster[\"default\"].google_compute_instance_template.template"
+      )
+    | .change.actions) = ["create", "delete"]
+' "${test_dir}/network.plan" >"${test_dir}/network-deferred-source-image.plan"
+expect_fail "network stage cannot replace worker/build templates after deferred source-image reads" \
+  "${script_dir}/assert-network-hardening-stage-plan.sh" \
+  "${test_dir}/network-deferred-source-image.plan" "${fake_terraform}" network
+
 # A normal deployment can initialize the no-op sentinel while rollout is
 # disabled. Its first reviewed network stage must replace that persisted value.
 jq '

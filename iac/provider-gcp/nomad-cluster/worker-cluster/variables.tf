@@ -26,6 +26,11 @@ variable "enable_os_login" {
   description = "Whether this pool has reached its reviewed OS Login rollout stage."
 }
 
+variable "os_login_operator_access_confirmed" {
+  type        = bool
+  description = "In-graph authorization proving IAP and OS Login operator access before this pool enables OS Login."
+}
+
 variable "machine_type" {
   type = string
 }

@@ -427,7 +427,10 @@ flowchart TB
   introduce otherwise-unapplyable staging/production drift. Every dev
   fleet instance template enables OS Login after its serial rollout stage. The authorization guard lives
   inside `module.cluster` and every replacement path depends on it, so a targeted saved plan cannot
-  omit it. A convergence sentinel and state-backed marker serialize adoption as
+  omit it. Worker and build templates consume the guard through a resource-level lifecycle
+  precondition rather than a whole-module `depends_on`; this keeps their image-family data sources
+  plan-time resolved when the earlier network stage opens the guard. A convergence sentinel and
+  state-backed marker serialize adoption as
   `network -> server -> api -> worker -> build`; each stage requires a fresh, private operator
   checkpoint for IAP/OS Login plus the role-specific health or drain evidence. The checkpoint bytes
   are bound into saved-plan provenance; their expiry and full schema are revalidated under the held

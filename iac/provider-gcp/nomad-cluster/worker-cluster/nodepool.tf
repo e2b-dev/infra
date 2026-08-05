@@ -255,6 +255,11 @@ resource "google_compute_instance_template" "template" {
   # which this Terraform resource depends will also need this lifecycle statement.
   lifecycle {
     precondition {
+      condition     = !var.enable_os_login || var.os_login_operator_access_confirmed
+      error_message = "Enabling OS Login on a worker or build pool requires the in-graph operator access guard."
+    }
+
+    precondition {
       condition     = local.has_local_ssd || var.cache_disks.count == 1
       error_message = "When using persistent disks for the cluster cache, only 1 disk is supported."
     }

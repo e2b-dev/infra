@@ -316,11 +316,11 @@ module "build_cluster" {
 
   file_hash = local.file_hash
 
-  set_orchestrator_version_metadata = false
-  enable_os_login                   = local.os_login_enabled.build
+  set_orchestrator_version_metadata  = false
+  enable_os_login                    = local.os_login_enabled.build
+  os_login_operator_access_confirmed = terraform_data.os_login_operator_access_guard.output
 
   depends_on = [
-    terraform_data.os_login_operator_access_guard,
     google_storage_bucket_object.setup_config_objects["scripts/configure-docker-gcp.sh"],
     google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"],
     google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]
@@ -345,6 +345,7 @@ module "client_cluster" {
 
   workload_autoscaler_shadow_enabled = each.key == "default" && var.monad_worker_autoscaler_shadow_enabled
   enable_os_login                    = local.os_login_enabled.client
+  os_login_operator_access_confirmed = terraform_data.os_login_operator_access_guard.output
 
   // This is here for backwards compatibility
   cluster_name              = each.key == "default" ? "${var.prefix}${var.client_cluster_name}" : "${var.prefix}${var.client_cluster_name}-${each.key}"
@@ -388,7 +389,6 @@ module "client_cluster" {
   set_orchestrator_version_metadata = var.environment != "dev"
 
   depends_on = [
-    terraform_data.os_login_operator_access_guard,
     google_storage_bucket_object.setup_config_objects["scripts/configure-docker-gcp.sh"],
     google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"],
     google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]

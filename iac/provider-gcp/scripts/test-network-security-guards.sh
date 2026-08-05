@@ -51,6 +51,26 @@ extract_variable() {
   ' "${source_file}"
 }
 
+extract_module() {
+  local module_name="$1"
+  local source_file="$2"
+
+  awk -v module_name="${module_name}" '
+    $0 == "module \"" module_name "\" {" {
+      inside = 1
+    }
+    inside {
+      print
+      opens = gsub(/\{/, "{")
+      closes = gsub(/\}/, "}")
+      depth += opens - closes
+      if (depth == 0) {
+        exit
+      }
+    }
+  ' "${source_file}"
+}
+
 iap_allow="$(extract_resource google_compute_firewall internal_remote_connection_firewall_ingress "${network_tf}")"
 internet_deny="$(extract_resource google_compute_firewall remote_connection_firewall_ingress "${network_tf}")"
 
@@ -91,8 +111,33 @@ for role in server api loki clickhouse; do
 done
 grep -F 'var.enable_os_login ? { enable-oslogin = "TRUE" } : {}' \
   "${provider_root}/nomad-cluster/worker-cluster/nodepool.tf" >/dev/null
+grep -F 'condition     = !var.enable_os_login || var.os_login_operator_access_confirmed' \
+  "${provider_root}/nomad-cluster/worker-cluster/nodepool.tf" >/dev/null
 grep -Eq '^[[:space:]]*enable_os_login[[:space:]]*=[[:space:]]*false[[:space:]]*$' \
   "${provider_root}/nomad-cluster/worker-cluster/autoscaler_ownership.tftest.hcl" >/dev/null
+grep -Eq '^[[:space:]]*os_login_operator_access_confirmed[[:space:]]*=[[:space:]]*true[[:space:]]*$' \
+  "${provider_root}/nomad-cluster/worker-cluster/autoscaler_ownership.tftest.hcl" >/dev/null
+
+# A dependency on the whole child module defers its source-image data read when
+# the network-stage guard changes. Keep that edge on the instance-template
+# precondition instead, so the network stage cannot manufacture worker/build
+# replacements while the later pool stages remain guarded.
+cluster_source="${provider_root}/nomad-cluster/main.tf"
+for pool_module in build_cluster client_cluster; do
+  pool_block="$(extract_module "${pool_module}" "${cluster_source}")"
+  [[ -n "${pool_block}" ]] || {
+    printf 'Missing %s module block.\n' "${pool_module}" >&2
+    exit 1
+  }
+  grep -F 'os_login_operator_access_confirmed = terraform_data.os_login_operator_access_guard.output' \
+    <<<"${pool_block}" >/dev/null
+  if [[ "$(grep -Fc 'terraform_data.os_login_operator_access_guard' <<<"${pool_block}")" -ne 1 ]]; then
+    printf '%s must consume the OS Login guard only through its narrow template input.\n' \
+      "${pool_module}" >&2
+    exit 1
+  fi
+done
+
 test "$(grep -Fc 'terraform_data.os_login_operator_access_guard' \
   "${provider_root}/nomad-cluster/main.tf")" -ge 4
 grep -F 'depends_on = [terraform_data.network_hardening_rollout_completion]' \
@@ -211,6 +256,39 @@ grep -F 'OS Login rollout is restricted to the dev invited-beta fleet' \
   -target=module.cluster.terraform_data.targeted_replacement \
   -var='network_hardening_rollout_stage=server' \
   -var='os_login_operator_access_confirmed=true' >/dev/null
+
+worker_test_root="${test_dir}/worker-module/nomad-cluster"
+worker_test_module="${worker_test_root}/worker-cluster"
+mkdir -p "${worker_test_module}" "${worker_test_root}/scripts"
+cp "${provider_root}/nomad-cluster/worker-cluster/nodepool.tf" \
+  "${provider_root}/nomad-cluster/worker-cluster/variables.tf" \
+  "${provider_root}/nomad-cluster/worker-cluster/autoscaler_ownership.tftest.hcl" \
+  "${worker_test_module}/"
+cp -R "${provider_root}/nomad-cluster/scripts/." "${worker_test_root}/scripts/"
+google_provider_version="$(
+  awk '
+    /^[[:space:]]*google[[:space:]]*=[[:space:]]*\{/ { google = 1; next }
+    google && /^[[:space:]]*version[[:space:]]*=/ {
+      gsub(/\"/, "", $3)
+      print $3
+      exit
+    }
+  ' "${provider_root}/main.tf"
+)"
+[[ -n "${google_provider_version}" ]]
+printf '%s\n' \
+  'terraform {' \
+  '  required_providers {' \
+  '    google = {' \
+  '      source  = "hashicorp/google"' \
+  "      version = \"${google_provider_version}\"" \
+  '    }' \
+  '  }' \
+  '}' \
+  >"${worker_test_module}/versions.tf"
+"${terraform_bin}" -chdir="${worker_test_module}" init \
+  -backend=false -input=false -no-color >/dev/null
+"${terraform_bin}" -chdir="${worker_test_module}" test -no-color >/dev/null
 
 mkdir "${test_dir}/reserved-env"
 {

@@ -43,7 +43,10 @@ SSH-key value.
   template no longer ignores all metadata changes.
 - `os_login_operator_access_confirmed` defaults to false. Its precondition is inside
   `module.cluster`; every template path and both administrative firewalls consume that in-graph
-  guard. A direct or normal `-target=module.cluster` plan therefore cannot omit it.
+  guard. A direct or normal `-target=module.cluster` plan therefore cannot omit it. Worker and
+  build templates consume the guard only in their resource lifecycle precondition: a module-wide
+  dependency would defer their `google_compute_image` reads while the guard changes and spuriously
+  plan template/MIG replacement during the network-only stage.
 - The staged replacement path is restricted to the current `dev` invited-beta fleet. Any non-dev
   stage fails at the in-module plan guard, leaving its upstream opportunistic MIG policy unchanged;
   production/staging retain their existing IAP-only firewall posture at `disabled` and require a

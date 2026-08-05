@@ -1,4 +1,10 @@
-mock_provider "google" {}
+mock_provider "google" {
+  mock_data "google_compute_image" {
+    defaults = {
+      id = "projects/monad-code/global/images/e2b-orch-fixture"
+    }
+  }
+}
 
 variables {
   cluster_size                             = 2
@@ -35,6 +41,7 @@ variables {
   nfs_mount_opts                           = ""
   base_hugepages_percentage                = 80
   enable_os_login                          = false
+  os_login_operator_access_confirmed       = true
   environment                              = "dev"
   labels                                   = {}
   file_hash = {
@@ -68,4 +75,48 @@ run "shadow_rejects_generic_gce_autoscaler" {
   }
 
   expect_failures = [google_compute_region_instance_group_manager.pool]
+}
+
+run "network_stage_keeps_worker_source_resolved" {
+  command = plan
+
+  variables {
+    autoscaler = { size_max = 2, cpu_target = 1, memory_target = 100 }
+  }
+
+  assert {
+    condition     = google_compute_instance_template.template.disk[0].source_image == data.google_compute_image.source_image.id
+    error_message = "Opening the network-stage operator guard must leave the worker source image resolved during planning."
+  }
+
+  assert {
+    condition     = lookup(google_compute_instance_template.template.metadata, "enable-oslogin", null) == null
+    error_message = "The network stage must not enable OS Login on worker or build templates."
+  }
+}
+
+run "worker_stage_requires_operator_access" {
+  command = plan
+
+  variables {
+    autoscaler                         = { size_max = 2, cpu_target = 1, memory_target = 100 }
+    enable_os_login                    = true
+    os_login_operator_access_confirmed = false
+  }
+
+  expect_failures = [google_compute_instance_template.template]
+}
+
+run "worker_stage_enables_os_login" {
+  command = plan
+
+  variables {
+    autoscaler      = { size_max = 2, cpu_target = 1, memory_target = 100 }
+    enable_os_login = true
+  }
+
+  assert {
+    condition     = google_compute_instance_template.template.metadata["enable-oslogin"] == "TRUE"
+    error_message = "The reviewed worker/build stages must still add OS Login metadata."
+  }
 }
