@@ -121,6 +121,7 @@ resource "google_compute_instance_template" "api" {
       enable-osconfig         = "TRUE",
       enable-guest-attributes = "TRUE",
     },
+    local.os_login_enabled.api ? { enable-oslogin = "TRUE" } : {},
   )
 
   scheduling {
@@ -161,13 +162,10 @@ resource "google_compute_instance_template" "api" {
   # which this Terraform resource depends will also need this lifecycle statement.
   lifecycle {
     create_before_destroy = true
-
-    # TODO: Temporary workaround to avoid unnecessary updates to the instance template.
-    #  This should be removed once cluster size is removed from the metadata
-    ignore_changes = [metadata]
   }
 
   depends_on = [
+    terraform_data.os_login_operator_access_guard,
     google_storage_bucket_object.setup_config_objects["scripts/configure-docker-gcp.sh"],
     google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"],
     google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]

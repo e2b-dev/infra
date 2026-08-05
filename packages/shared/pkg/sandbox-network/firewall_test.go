@@ -1,10 +1,61 @@
 package sandbox_network
 
 import (
+	"net"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestDeniedSandboxCIDRsCoverGCPControlPlane(t *testing.T) {
+	t.Parallel()
+
+	blocked := map[string]string{
+		"metadata server":              "169.254.169.254",
+		"link-local service":           "169.254.1.1",
+		"representative worker or API": "10.150.0.27",
+		"representative Cloud SQL":     "10.26.7.6",
+		"RFC1918 172 range":            "172.20.0.1",
+		"RFC1918 192 range":            "192.168.1.1",
+		"CGNAT internal service":       "100.64.0.1",
+		"loopback":                     "127.0.0.1",
+	}
+
+	for name, address := range blocked {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			ip := net.ParseIP(address)
+			require.NotNil(t, ip)
+			require.Truef(t, isInDeniedSandboxCIDRs(ip), "%s must remain in the kernel guest deny set", address)
+		})
+	}
+
+	for _, address := range []string{"1.1.1.1", "8.8.8.8", "203.0.113.5"} {
+		address := address
+		t.Run("public_"+address, func(t *testing.T) {
+			t.Parallel()
+
+			ip := net.ParseIP(address)
+			require.NotNil(t, ip)
+			require.Falsef(t, isInDeniedSandboxCIDRs(ip), "%s must remain outside the private/control-plane deny set", address)
+		})
+	}
+}
+
+func isInDeniedSandboxCIDRs(ip net.IP) bool {
+	for _, cidr := range DeniedSandboxCIDRs {
+		_, network, err := net.ParseCIDR(cidr)
+		if err != nil {
+			panic(err)
+		}
+		if network.Contains(ip) {
+			return true
+		}
+	}
+
+	return false
+}
 
 func TestIsSpecifiedIPOrCIDR(t *testing.T) {
 	t.Parallel()

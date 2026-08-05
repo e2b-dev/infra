@@ -949,6 +949,14 @@ managed_changes as $changes
               and .type == "random_id"
               and .change.actions == ["delete", "create"]
             )
+            or (
+              .address == "module.cluster.terraform_data.network_hardening_rollout_completion"
+              and .type == "terraform_data"
+              and (
+                .change.actions == ["delete", "create"]
+                or .change.actions == ["create", "delete"]
+              )
+            )
           )
           | not
         )

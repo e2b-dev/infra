@@ -24,6 +24,10 @@ Required environment:
   WORKLOAD_STATE_PREFIX
   WORKLOAD_TOPOLOGY_POLICY
   WORKLOAD_PACKER_TEMPLATE
+
+Optional cluster-rollout environment (both or neither):
+  WORKLOAD_CLUSTER_STAGE
+  WORKLOAD_CLUSTER_CHECKPOINT
 EOF
   exit 2
 }
@@ -211,6 +215,7 @@ identity_json() {
   local source_sha256
   local lock_file
   local release_artifacts
+  local cluster_rollout='null'
 
   require_context
   config_root="$(cd "${config_root}" && pwd -P)"
@@ -253,6 +258,35 @@ identity_json() {
       ' "${artifacts_path}"
   )"
 
+  if [[ -n "${WORKLOAD_CLUSTER_STAGE:-}" || -n "${WORKLOAD_CLUSTER_CHECKPOINT:-}" ]]; then
+    if [[ -z "${WORKLOAD_CLUSTER_STAGE:-}" || -z "${WORKLOAD_CLUSTER_CHECKPOINT:-}" ]]; then
+      printf 'Cluster rollout provenance requires both WORKLOAD_CLUSTER_STAGE and WORKLOAD_CLUSTER_CHECKPOINT.\n' >&2
+      exit 1
+    fi
+    case "${WORKLOAD_CLUSTER_STAGE}" in
+      network | server | api | worker | build) ;;
+      *)
+        printf 'Invalid cluster rollout stage in provenance context: %s\n' \
+          "${WORKLOAD_CLUSTER_STAGE}" >&2
+        exit 1
+        ;;
+    esac
+    assert_private_regular_file \
+      "${WORKLOAD_CLUSTER_CHECKPOINT}" "Network-hardening checkpoint"
+    cluster_rollout="$(jq -ceS \
+      --arg stage "${WORKLOAD_CLUSTER_STAGE}" \
+      --arg checkpoint_sha256 "$(sha256_file "${WORKLOAD_CLUSTER_CHECKPOINT}")" '
+        if .stage == $stage
+        then {
+          stage: $stage,
+          checkpoint_sha256: $checkpoint_sha256,
+          checkpoint: .
+        }
+        else error("checkpoint stage does not match rollout context")
+        end
+      ' "${WORKLOAD_CLUSTER_CHECKPOINT}")"
+  fi
+
   jq -cn \
     --arg git_head "${git_head}" \
     --arg source_sha256 "${source_sha256}" \
@@ -276,7 +310,8 @@ identity_json() {
     --arg job_binary_bucket "${WORKLOAD_JOB_BINARY_BUCKET}" \
     --arg state_bucket "${WORKLOAD_STATE_BUCKET}" \
     --arg state_prefix "${WORKLOAD_STATE_PREFIX}" \
-    '{
+    --argjson cluster_rollout "${cluster_rollout}" \
+    '({
       git_head: $git_head,
       source_sha256: $source_sha256,
       terraform_lock_sha256: $terraform_lock_sha256,
@@ -301,7 +336,7 @@ identity_json() {
         prefix: $state_prefix,
         workspace: "default"
       }
-    }'
+    } | if $cluster_rollout == null then . else . + {cluster_rollout: $cluster_rollout} end)'
 }
 
 build_manifest() {

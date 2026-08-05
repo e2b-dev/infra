@@ -179,10 +179,13 @@ resource "google_compute_instance_template" "template" {
   )
   tags                    = [var.cluster_tag_name]
   metadata_startup_script = local.startup_script
-  metadata = {
-    enable-osconfig         = "TRUE",
-    enable-guest-attributes = "TRUE",
-  }
+  metadata = merge(
+    {
+      enable-osconfig         = "TRUE",
+      enable-guest-attributes = "TRUE",
+    },
+    var.enable_os_login ? { enable-oslogin = "TRUE" } : {},
+  )
 
   scheduling {
     on_host_maintenance = "MIGRATE"

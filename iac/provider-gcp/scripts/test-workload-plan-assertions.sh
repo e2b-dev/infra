@@ -427,6 +427,24 @@ cluster_fixture="${test_dir}/cluster-minimal.json"
 expect_success "cluster-minimal" "${cluster_fixture}" cluster
 
 jq '
+  .resource_changes += [{
+    "address": "module.cluster.terraform_data.network_hardening_rollout_completion",
+    "mode": "managed",
+    "type": "terraform_data",
+    "name": "network_hardening_rollout_completion",
+    "change": {
+      "actions": ["delete", "create"],
+      "before": {"input": "network"},
+      "after": {"input": "server"}
+    }
+  }]
+' "${cluster_fixture}" >"${test_dir}/cluster-network-hardening-completion.json"
+expect_success \
+  "cluster-network-hardening-completion" \
+  "${test_dir}/cluster-network-hardening-completion.json" \
+  cluster
+
+jq '
   (
     .resource_changes[]
     | select(

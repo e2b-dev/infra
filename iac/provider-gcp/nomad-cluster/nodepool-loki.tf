@@ -97,6 +97,7 @@ resource "google_compute_instance_template" "loki" {
       enable-osconfig         = "TRUE",
       enable-guest-attributes = "TRUE",
     },
+    local.os_login_enabled.loki ? { enable-oslogin = "TRUE" } : {},
   )
 
   scheduling {
@@ -140,6 +141,7 @@ resource "google_compute_instance_template" "loki" {
   }
 
   depends_on = [
+    terraform_data.os_login_operator_access_guard,
     google_storage_bucket_object.setup_config_objects,
   ]
 }

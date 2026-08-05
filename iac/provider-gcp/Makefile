@@ -32,6 +32,9 @@ tf_vars := \
 	$(call tfvar, API_CLUSTER_SIZE) \
 	$(call tfvar, API_USE_NAT) \
 	$(call tfvar, API_NAT_IPS) \
+	$(call tfvar, OS_LOGIN_OPERATOR_ACCESS_CONFIRMED) \
+	$(call tfvar, NETWORK_HARDENING_ROLLOUT_STAGE) \
+	$(call tfvar, NETWORK_HARDENING_ROLLOUT_WAIT_SECONDS) \
 	$(call tfvar, SERVER_MACHINE_TYPE) \
 	$(call tfvar, SERVER_CLUSTER_SIZE) \
 	$(call tfvar, CLICKHOUSE_CLUSTER_SIZE) \
@@ -115,8 +118,12 @@ override WORKLOAD_PLAN := .tfplan.workload.$(ENV)
 override WORKLOAD_PLAN_MANIFEST := $(WORKLOAD_PLAN).manifest
 override WORKLOAD_PREREQUISITE_PLAN := .tfplan.workload-prerequisite.$(ENV)
 override WORKLOAD_PREREQUISITE_PLAN_MANIFEST := $(WORKLOAD_PREREQUISITE_PLAN).manifest
-override WORKLOAD_CLUSTER_PLAN := .tfplan.workload-cluster.$(ENV)
+WORKLOAD_CLUSTER_STAGE ?=
+WORKLOAD_CLUSTER_CHECKPOINT ?=
+WORKLOAD_CLUSTER_RECOVERY_TOKEN ?=
+override WORKLOAD_CLUSTER_PLAN := .tfplan.workload-cluster.$(WORKLOAD_CLUSTER_STAGE).$(ENV)
 override WORKLOAD_CLUSTER_PLAN_MANIFEST := $(WORKLOAD_CLUSTER_PLAN).manifest
+override WORKLOAD_CLUSTER_COMPLETION_REPLACE := -replace='module.cluster.terraform_data.network_hardening_rollout_completion'
 override WORKLOAD_TOPOLOGY_POLICY := topology/minimal-workload-policy.json
 override WORKLOAD_PACKER_TEMPLATE := nomad-cluster-disk-image/main.pkr.hcl
 override WORKLOAD_IMAGE_REVISION := $(CORE_IMAGE_REVISION)
@@ -126,7 +133,8 @@ override FOUNDATION_CONFIRMATION := APPLY KEYLESS FOUNDATION
 override ACL_STATE_SCRUB_CONFIRMATION := FORGET LEAKING ACL TOKEN GENERATORS
 override WORKLOAD_CONFIRMATION := APPLY ONE WORKCELL CANARY
 override WORKLOAD_PREREQUISITE_CONFIRMATION := APPLY WORKLOAD PREREQUISITES
-override WORKLOAD_CLUSTER_CONFIRMATION := APPLY ONE WORKCELL CLUSTER
+override WORKLOAD_CLUSTER_CONFIRMATION := APPLY NETWORK HARDENING $(WORKLOAD_CLUSTER_STAGE)
+override WORKLOAD_CLUSTER_RECOVERY_CONFIRMATION := RELEASE NETWORK HARDENING LEASE $(WORKLOAD_CLUSTER_STAGE)
 override WORKLOAD_PREREQUISITE_TARGETS := \
 	-target='google_secret_manager_secret_version.postgres_connection_string' \
 	-target='google_secret_manager_secret_version.postgres_read_replica_connection_string' \
@@ -140,6 +148,7 @@ override WORKLOAD_PREREQUISITE_TARGETS := \
 	-target='tls_private_key.volume_token[0]' \
 	-target='google_artifact_registry_repository_iam_member.custom_environments_repository_member'
 WORKLOAD_CLUSTER_WAIT_SECONDS ?= 1800
+NETWORK_HARDENING_ROLLOUT_WAIT_SECONDS ?= $(WORKLOAD_CLUSTER_WAIT_SECONDS)
 
 define foundation_metadata_context
 FOUNDATION_ENV="$(ENV)" \
@@ -167,6 +176,12 @@ WORKLOAD_TOPOLOGY_POLICY="$(WORKLOAD_TOPOLOGY_POLICY)" \
 WORKLOAD_PACKER_TEMPLATE="$(WORKLOAD_PACKER_TEMPLATE)"
 endef
 
+define workload_cluster_metadata_context
+$(workload_metadata_context) \
+WORKLOAD_CLUSTER_STAGE="$(WORKLOAD_CLUSTER_STAGE)" \
+WORKLOAD_CLUSTER_CHECKPOINT="$(WORKLOAD_CLUSTER_CHECKPOINT)"
+endef
+
 .PHONY: workload-plan-check workload-prerequisite-plan-check workload-cluster-plan-check workload-plan-assertions-test workload-release-test packer-reserve-check worker-startup-render-test
 workload-plan-check:
 	@ test -f "$(WORKLOAD_PLAN_MANIFEST)" || (printf "Missing workload plan provenance %s.\n" "$(WORKLOAD_PLAN_MANIFEST)"; exit 1)
@@ -179,7 +194,9 @@ workload-plan-check:
 		./scripts/assert-workload-plan.sh \
 			"$(WORKLOAD_PLAN)" "$(TF)" \
 			"$(WORKLOAD_TOPOLOGY_POLICY)" "$(WORKLOAD_PACKER_TEMPLATE)" \
-			"$${artifacts}"
+			"$${artifacts}"; \
+		./scripts/assert-network-hardening-normal-plan.sh \
+			"$(WORKLOAD_PLAN)" "$(TF)" "$(TERRAFORM_ENVIRONMENT)"
 
 workload-prerequisite-plan-check:
 	@ test -f "$(WORKLOAD_PREREQUISITE_PLAN_MANIFEST)" || (printf "Missing workload prerequisite plan provenance %s.\n" "$(WORKLOAD_PREREQUISITE_PLAN_MANIFEST)"; exit 1)
@@ -197,6 +214,7 @@ workload-prerequisite-plan-check:
 			"$(WORKLOAD_TOPOLOGY_POLICY)"
 
 workload-cluster-plan-check:
+	@ $(MAKE) workload-cluster-stage-guard
 	@ test -f "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)" || (printf "Missing cluster plan provenance %s.\n" "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)"; exit 1)
 	@ set -eu; \
 		umask 077; \
@@ -204,12 +222,31 @@ workload-cluster-plan-check:
 		trap 'rm -f -- "$${artifacts}"' EXIT HUP INT TERM; \
 		jq -eS '.release_artifacts' "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)" >"$${artifacts}"; \
 		chmod 0600 "$${artifacts}"; \
+		$(workload_cluster_metadata_context) ./scripts/workload-plan-metadata.sh verify \
+			"$(WORKLOAD_CLUSTER_PLAN)" "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)" \
+			"$(TF)" "." "../.." "$${artifacts}"; \
 		./scripts/assert-workload-plan.sh \
 			"$(WORKLOAD_CLUSTER_PLAN)" "$(TF)" \
 			"$(WORKLOAD_TOPOLOGY_POLICY)" "$(WORKLOAD_PACKER_TEMPLATE)" \
-			"$${artifacts}" cluster
+			"$${artifacts}" cluster; \
+		recovery_stage=""; \
+		if [ -n "$(WORKLOAD_CLUSTER_RECOVERY_TOKEN)" ]; then \
+			./scripts/assert-network-hardening-recovery-token.sh \
+				"$(WORKLOAD_CLUSTER_RECOVERY_TOKEN)" "$(TERRAFORM_STATE_BUCKET)" \
+				"$(GCP_PROJECT_ID)" "$(GCP_REGION)" \
+				"$(WORKLOAD_CLUSTER_STAGE)" "$(ENV)" \
+				"$(TERRAFORM_STATE_PREFIX)" ../.. >/dev/null; \
+			recovery_stage="$(WORKLOAD_CLUSTER_STAGE)"; \
+		fi; \
+		./scripts/assert-network-hardening-stage-plan.sh \
+			"$(WORKLOAD_CLUSTER_PLAN)" "$(TF)" "$(WORKLOAD_CLUSTER_STAGE)" \
+			"$${recovery_stage}"
 
 workload-plan-assertions-test:
+	@ ./scripts/test-network-hardening-rollout.sh
+	@ ./scripts/test-network-hardening-normal-plan.sh
+	@ ./scripts/test-network-hardening-recovery-token.sh
+	@ ./scripts/test-network-hardening-stage-wait.sh
 	@ ./scripts/test-workload-plan-assertions.sh
 	@ ./scripts/test-workload-prerequisite-plan.sh
 	@ ./scripts/test-legacy-workload-mutation-disabled.sh
@@ -220,6 +257,7 @@ workload-plan-assertions-test:
 	@ ../modules/job-template-manager/scripts/test-get-nomad-job-count.sh
 	@ ../modules/job-template-manager/scripts/test-module.sh "$(TF)"
 	@ $(MAKE) worker-startup-render-test
+	@ $(MAKE) network-security-check
 
 workload-release-test:
 	@ ./scripts/test-rollout-mutation-lease.sh
@@ -228,6 +266,11 @@ workload-release-test:
 
 worker-startup-render-test:
 	@ ./scripts/test-worker-startup-render.sh "$(TF)"
+
+.PHONY: network-security-check
+network-security-check:
+	@ ./scripts/test-network-security-guards.sh "$(TF)"
+	@ go test ../../packages/shared/pkg/sandbox-network
 
 packer-reserve-check:
 	@ ./scripts/assert-packer-reserve.sh "$(WORKLOAD_TOPOLOGY_POLICY)" "$(WORKLOAD_PACKER_TEMPLATE)"
@@ -279,6 +322,8 @@ workload-config-guard: foundation-config-guard
 	@ test -f "$(WORKLOAD_TOPOLOGY_POLICY)" && test ! -L "$(WORKLOAD_TOPOLOGY_POLICY)" || (printf "Workload topology policy must be a regular, non-symlink file.\n"; exit 1)
 	@ test -f "$(WORKLOAD_PACKER_TEMPLATE)" && test ! -L "$(WORKLOAD_PACKER_TEMPLATE)" || (printf "Workload Packer template must be a regular, non-symlink file.\n"; exit 1)
 	@ test -x "$(WORKLOAD_ROLLOUT_LEASE)" || (printf "Shared rollout mutation lease helper is missing or not executable.\n"; exit 1)
+	@ test -x ./scripts/assert-network-hardening-normal-plan.sh || (printf "Ordinary workload network-hardening stage guard is missing or not executable.\n"; exit 1)
+	@ test -x ./scripts/assert-network-hardening-recovery-token.sh || (printf "Network-hardening recovery-token guard is missing or not executable.\n"; exit 1)
 	@ test -z "$${TF_CLI_ARGS:-}" && test -z "$${TF_CLI_ARGS_plan:-}" && test -z "$${TF_CLI_ARGS_apply:-}" || (printf "Ambient TF_CLI_ARGS values are forbidden in the workload release workflow.\n"; exit 1)
 	@ if env | grep -q '^TF_VAR_'; then printf "Ambient TF_VAR_* values are forbidden; use the selected environment and explicit var file.\n"; exit 1; fi
 
@@ -293,10 +338,18 @@ workload-context-guard:
 	@ ./scripts/assert-foundation-workspace.sh "$(TF)"
 	@ ./scripts/assert-no-legacy-acl-token-state.sh "$(TF)"
 
-.PHONY: workload-cluster-plan workload-cluster-apply workload-cluster-wait workload-prerequisite-plan workload-prerequisite-apply workload-plan workload-apply
+.PHONY: workload-cluster-stage-guard
+workload-cluster-stage-guard:
+	@ printf '%s' "$(WORKLOAD_CLUSTER_STAGE)" | grep -Eq '^(network|server|api|worker|build)$$' || (printf "WORKLOAD_CLUSTER_STAGE must be one of network, server, api, worker, or build.\n"; exit 1)
+	@ test "$(OS_LOGIN_OPERATOR_ACCESS_CONFIRMED)" = "true" || (printf "OS_LOGIN_OPERATOR_ACCESS_CONFIRMED=true is required after proving IAP and OS Login access.\n"; exit 1)
+	@ ./scripts/assert-network-hardening-checkpoint.sh \
+		"$(WORKLOAD_CLUSTER_STAGE)" "$(WORKLOAD_CLUSTER_CHECKPOINT)" \
+		"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(GCP_ZONE)" "$(PREFIX)" "../.."
+
+.PHONY: workload-cluster-plan workload-cluster-apply workload-cluster-recover-lease workload-cluster-wait workload-prerequisite-plan workload-prerequisite-apply workload-plan workload-apply
 workload-cluster-plan:
 	@ printf '%s' "$(ENV)" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$$' || (printf "Invalid environment name: %s\n" "$(ENV)"; exit 1)
-	@ $(MAKE) workload-context-guard
+	@ $(MAKE) workload-context-guard workload-cluster-stage-guard
 	@ $(call tf_fmt)
 	@ set -eu; \
 		temp_dir="$$(mktemp -d ".workload-cluster-plan.$(ENV).XXXXXX")"; \
@@ -306,11 +359,16 @@ workload-cluster-plan:
 		after_artifacts="$${temp_dir}/artifacts-after.json"; \
 		lease_token="$${temp_dir}/lease-token.json"; \
 		lease_acquired=false; \
+		lease_borrowed=false; \
+		recovery_token="$(WORKLOAD_CLUSTER_RECOVERY_TOKEN)"; \
+		recovery_stage=""; \
 		cleanup() { \
 			status=$$?; \
 			trap - EXIT HUP INT TERM; \
 			if [ "$${lease_acquired}" = true ]; then \
-				if ! "$(WORKLOAD_ROLLOUT_LEASE)" release "$(GCLOUD)" "$${lease_token}"; then \
+				if [ "$${lease_borrowed}" = true ]; then \
+					printf "Preserving the borrowed recovery lease after cluster-plan exit.\n" >&2; \
+				elif ! "$(WORKLOAD_ROLLOUT_LEASE)" release "$(GCLOUD)" "$${lease_token}"; then \
 					printf "Shared rollout lease release failed; inspect it before another rollout.\n" >&2; \
 					if [ "$${status}" -eq 0 ]; then status=1; fi; \
 				fi; \
@@ -323,13 +381,26 @@ workload-cluster-plan:
 		holder_digest="$$( \
 			{ \
 				git -C ../.. rev-parse --verify HEAD; \
-				printf '%s\n' "$(ENV)" "$$$$" "$$(date -u +%s)"; \
+				printf '%s\n' "$(ENV)" "$(WORKLOAD_CLUSTER_STAGE)" \
+					"$$(shasum -a 256 "$(WORKLOAD_CLUSTER_CHECKPOINT)" | awk '{print $$1}')" \
+					"$$$$" "$$(date -u +%s)"; \
 			} | shasum -a 256 | awk '{print $$1}' \
 		)"; \
-		"$(WORKLOAD_ROLLOUT_LEASE)" acquire \
-			"$(GCLOUD)" "$(TERRAFORM_STATE_BUCKET)" \
-			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" \
-			"cluster-plan:$${holder_digest}" "$${lease_token}"; \
+		if [ -n "$${recovery_token}" ]; then \
+			./scripts/assert-network-hardening-recovery-token.sh \
+				"$${recovery_token}" "$(TERRAFORM_STATE_BUCKET)" \
+				"$(GCP_PROJECT_ID)" "$(GCP_REGION)" \
+				"$(WORKLOAD_CLUSTER_STAGE)" "$(ENV)" \
+				"$(TERRAFORM_STATE_PREFIX)" ../.. >/dev/null; \
+			lease_token="$${recovery_token}"; \
+			lease_borrowed=true; \
+			recovery_stage="$(WORKLOAD_CLUSTER_STAGE)"; \
+		else \
+			"$(WORKLOAD_ROLLOUT_LEASE)" acquire \
+				"$(GCLOUD)" "$(TERRAFORM_STATE_BUCKET)" \
+				"$(GCP_PROJECT_ID)" "$(GCP_REGION)" \
+				"cluster-plan:$${holder_digest}" "$${lease_token}"; \
+		fi; \
 		lease_acquired=true; \
 		rm -f -- "$(WORKLOAD_CLUSTER_PLAN)" "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)"; \
 		./scripts/assert-workload-artifacts.sh \
@@ -338,10 +409,15 @@ workload-cluster-plan:
 			"$(GCLOUD)" \
 			>"$${before_artifacts}"; \
 		chmod 0600 "$${before_artifacts}"; \
-		before_fingerprint="$$($(workload_metadata_context) ./scripts/workload-plan-metadata.sh fingerprint \
+		before_fingerprint="$$($(workload_cluster_metadata_context) ./scripts/workload-plan-metadata.sh fingerprint \
 			"$(TF)" "." "../.." "$${before_artifacts}")"; \
-		$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) \
+		"$(WORKLOAD_ROLLOUT_LEASE)" assert-held \
+			"$(GCLOUD)" "$(TERRAFORM_STATE_BUCKET)" \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$${lease_token}"; \
+		$(tf_vars) TF_VAR_network_hardening_rollout_stage="$(WORKLOAD_CLUSTER_STAGE)" \
+			$(TF) plan $(TF_VAR_FILE_ARG) \
 			-target=module.cluster \
+			$(WORKLOAD_CLUSTER_COMPLETION_REPLACE) \
 			-out="$${temp_plan}" \
 			-input=false \
 			-compact-warnings; \
@@ -352,7 +428,7 @@ workload-cluster-plan:
 			"$(GCLOUD)" \
 			>"$${after_artifacts}"; \
 		chmod 0600 "$${after_artifacts}"; \
-		after_fingerprint="$$($(workload_metadata_context) ./scripts/workload-plan-metadata.sh fingerprint \
+		after_fingerprint="$$($(workload_cluster_metadata_context) ./scripts/workload-plan-metadata.sh fingerprint \
 			"$(TF)" "." "../.." "$${after_artifacts}")"; \
 		if [ "$${before_fingerprint}" != "$${after_fingerprint}" ]; then \
 			printf "Refusing cluster bootstrap plan: configuration or release artifacts changed while Terraform was planning.\n" >&2; \
@@ -362,30 +438,37 @@ workload-cluster-plan:
 			"$${temp_plan}" "$(TF)" \
 			"$(WORKLOAD_TOPOLOGY_POLICY)" "$(WORKLOAD_PACKER_TEMPLATE)" \
 			"$${after_artifacts}" cluster; \
+		./scripts/assert-network-hardening-stage-plan.sh \
+			"$${temp_plan}" "$(TF)" "$(WORKLOAD_CLUSTER_STAGE)" \
+			"$${recovery_stage}"; \
 		quota_mode="$$(./scripts/select-workload-quota-mode.sh \
 			"$${temp_plan}" "$(TF)" "$(WORKLOAD_TOPOLOGY_POLICY)")"; \
 		./scripts/assert-workload-quota.sh \
 			"$(WORKLOAD_TOPOLOGY_POLICY)" \
 			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(GCLOUD)" \
 			"$${quota_mode}"; \
-		$(workload_metadata_context) ./scripts/workload-plan-metadata.sh write \
+		$(workload_cluster_metadata_context) ./scripts/workload-plan-metadata.sh write \
 			"$${temp_plan}" "$${temp_manifest}" "$(TF)" "." "../.." \
 			"$${after_artifacts}" "$${after_fingerprint}"; \
 		mv -f -- "$${temp_manifest}" "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)"; \
 		mv -f -- "$${temp_plan}" "$(WORKLOAD_CLUSTER_PLAN)"; \
 		rm -f -- "$${before_artifacts}" "$${after_artifacts}"; \
-		"$(WORKLOAD_ROLLOUT_LEASE)" release "$(GCLOUD)" "$${lease_token}"; \
+		if [ "$${lease_borrowed}" = false ]; then \
+			"$(WORKLOAD_ROLLOUT_LEASE)" release "$(GCLOUD)" "$${lease_token}"; \
+		else \
+			printf "Saved recovery plan while preserving the existing shared rollout lease.\n"; \
+		fi; \
 		lease_acquired=false; \
 		rmdir "$${temp_dir}"; \
 		trap - EXIT HUP INT TERM
-	@ printf "Saved cluster-only plan and provenance are ready for review: %s and %s\n" "$(WORKLOAD_CLUSTER_PLAN)" "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)"
+	@ printf "Saved %s-stage cluster plan and checkpoint-bound provenance are ready for review: %s and %s\n" "$(WORKLOAD_CLUSTER_STAGE)" "$(WORKLOAD_CLUSTER_PLAN)" "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)"
 
 workload-cluster-apply:
 	@ if [ "$(CONFIRM)" != "$(WORKLOAD_CLUSTER_CONFIRMATION)" ]; then \
 		printf "Refusing cluster bootstrap apply. Re-run with CONFIRM='$(WORKLOAD_CLUSTER_CONFIRMATION)'.\n"; \
 		exit 1; \
 	fi
-	@ $(MAKE) workload-context-guard
+	@ $(MAKE) workload-context-guard workload-cluster-stage-guard
 	@ set -eu; \
 		temp_dir="$$(mktemp -d ".workload-cluster-apply.$(ENV).XXXXXX")"; \
 		before_artifacts="$${temp_dir}/artifacts-before.json"; \
@@ -396,11 +479,17 @@ workload-cluster-apply:
 		consumed_manifest="$${temp_dir}/consumed.plan.manifest"; \
 		lease_token="$${temp_dir}/lease-token.json"; \
 		lease_acquired=false; \
+		lease_borrowed=false; \
+		recovery_token="$(WORKLOAD_CLUSTER_RECOVERY_TOKEN)"; \
+		recovery_stage=""; \
+		mutation_started=false; \
+		convergence_proven=false; \
 		plan_moved=false; \
 		manifest_moved=false; \
 		cleanup() { \
 			status=$$?; \
 			restore_failed=false; \
+			lease_preserved=false; \
 			trap - EXIT HUP INT TERM; \
 			if [ "$${plan_moved}" = true ]; then \
 				if [ ! -e "$(WORKLOAD_CLUSTER_PLAN)" ] \
@@ -423,28 +512,50 @@ workload-cluster-apply:
 				fi; \
 			fi; \
 			if [ "$${lease_acquired}" = true ]; then \
-				if ! "$(WORKLOAD_ROLLOUT_LEASE)" release "$(GCLOUD)" "$${lease_token}"; then \
+				if [ "$${lease_borrowed}" = true ] && [ "$${mutation_started}" = false ]; then \
+					printf "Recovery apply did not start a mutation; preserving its borrowed shared lease and token %s.\n" "$${lease_token}" >&2; \
+				elif [ "$${mutation_started}" = true ] && [ "$${convergence_proven}" = false ]; then \
+					printf "Cluster mutation started but convergence was not proven; preserving the shared lease and private recovery directory %s.\n" "$${temp_dir}" >&2; \
+					printf "After proving the original apply is no longer running, use a fresh stage checkpoint and recover with WORKLOAD_CLUSTER_RECOVERY_TOKEN=%s CONFIRM='%s'.\n" "$${lease_token}" "$(WORKLOAD_CLUSTER_RECOVERY_CONFIRMATION)" >&2; \
+					lease_preserved=true; \
+					status=1; \
+				elif ! "$(WORKLOAD_ROLLOUT_LEASE)" release "$(GCLOUD)" "$${lease_token}"; then \
 					printf "Shared rollout lease release failed; inspect it before another rollout.\n" >&2; \
+					lease_preserved=true; \
 					if [ "$${status}" -eq 0 ]; then status=1; fi; \
 				fi; \
 			fi; \
-			if [ "$${restore_failed}" = false ]; then \
+			if [ "$${restore_failed}" = false ] && [ "$${lease_preserved}" = false ]; then \
 				rm -rf -- "$${temp_dir}"; \
 			fi; \
 			exit "$${status}"; \
 		}; \
 		trap cleanup EXIT HUP INT TERM; \
 		umask 077; \
+		source_head="$$(git -C ../.. rev-parse --verify HEAD)"; \
 		holder_digest="$$( \
 			{ \
-				git -C ../.. rev-parse --verify HEAD; \
-				printf '%s\n' "$(ENV)" "$$$$" "$$(date -u +%s)"; \
+				printf '%s\n' "$${source_head}"; \
+				printf '%s\n' "$(ENV)" "$(WORKLOAD_CLUSTER_STAGE)" \
+					"$$(shasum -a 256 "$(WORKLOAD_CLUSTER_CHECKPOINT)" | awk '{print $$1}')" \
+					"$$$$" "$$(date -u +%s)"; \
 			} | shasum -a 256 | awk '{print $$1}' \
 		)"; \
-		"$(WORKLOAD_ROLLOUT_LEASE)" acquire \
-			"$(GCLOUD)" "$(TERRAFORM_STATE_BUCKET)" \
-			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" \
-			"cluster-apply:$${holder_digest}" "$${lease_token}"; \
+		if [ -n "$${recovery_token}" ]; then \
+			./scripts/assert-network-hardening-recovery-token.sh \
+				"$${recovery_token}" "$(TERRAFORM_STATE_BUCKET)" \
+				"$(GCP_PROJECT_ID)" "$(GCP_REGION)" \
+				"$(WORKLOAD_CLUSTER_STAGE)" "$(ENV)" \
+				"$(TERRAFORM_STATE_PREFIX)" ../.. >/dev/null; \
+			lease_token="$${recovery_token}"; \
+			lease_borrowed=true; \
+			recovery_stage="$(WORKLOAD_CLUSTER_STAGE)"; \
+		else \
+			"$(WORKLOAD_ROLLOUT_LEASE)" acquire \
+				"$(GCLOUD)" "$(TERRAFORM_STATE_BUCKET)" \
+				"$(GCP_PROJECT_ID)" "$(GCP_REGION)" \
+				"cluster-apply:$(WORKLOAD_CLUSTER_STAGE):$(ENV):$(TERRAFORM_STATE_PREFIX):$${source_head}:$${holder_digest}" "$${lease_token}"; \
+		fi; \
 		lease_acquired=true; \
 		test -f "$(WORKLOAD_CLUSTER_PLAN)" || { \
 			printf "Missing reviewed cluster plan %s. Run 'make workload-cluster-plan' first.\n" "$(WORKLOAD_CLUSTER_PLAN)" >&2; \
@@ -460,19 +571,22 @@ workload-cluster-apply:
 			"$(GCLOUD)" \
 			>"$${before_artifacts}"; \
 		chmod 0600 "$${before_artifacts}"; \
-		$(workload_metadata_context) ./scripts/workload-plan-metadata.sh verify \
+		$(workload_cluster_metadata_context) ./scripts/workload-plan-metadata.sh verify \
 			"$(WORKLOAD_CLUSTER_PLAN)" "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)" "$(TF)" "." "../.." \
 			"$${before_artifacts}"; \
 		cp "$(WORKLOAD_CLUSTER_PLAN)" "$${apply_plan}"; \
 		cp "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)" "$${apply_manifest}"; \
 		chmod 0600 "$${apply_plan}" "$${apply_manifest}"; \
-		$(workload_metadata_context) ./scripts/workload-plan-metadata.sh verify \
+		$(workload_cluster_metadata_context) ./scripts/workload-plan-metadata.sh verify \
 			"$${apply_plan}" "$${apply_manifest}" "$(TF)" "." "../.." \
 			"$${before_artifacts}"; \
 		./scripts/assert-workload-plan.sh \
 			"$${apply_plan}" "$(TF)" \
 			"$(WORKLOAD_TOPOLOGY_POLICY)" "$(WORKLOAD_PACKER_TEMPLATE)" \
 			"$${before_artifacts}" cluster; \
+		./scripts/assert-network-hardening-stage-plan.sh \
+			"$${apply_plan}" "$(TF)" "$(WORKLOAD_CLUSTER_STAGE)" \
+			"$${recovery_stage}"; \
 		quota_mode="$$(./scripts/select-workload-quota-mode.sh \
 			"$${apply_plan}" "$(TF)" "$(WORKLOAD_TOPOLOGY_POLICY)")"; \
 		./scripts/assert-workload-quota.sh \
@@ -485,12 +599,29 @@ workload-cluster-apply:
 			"$(GCLOUD)" \
 			>"$${after_artifacts}"; \
 		chmod 0600 "$${after_artifacts}"; \
-		$(workload_metadata_context) ./scripts/workload-plan-metadata.sh verify \
+		$(workload_cluster_metadata_context) ./scripts/workload-plan-metadata.sh verify \
 			"$${apply_plan}" "$${apply_manifest}" "$(TF)" "." "../.." \
 			"$${after_artifacts}"; \
+		./scripts/assert-network-hardening-checkpoint.sh \
+			"$(WORKLOAD_CLUSTER_STAGE)" "$(WORKLOAD_CLUSTER_CHECKPOINT)" \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(GCP_ZONE)" "$(PREFIX)" "../.."; \
+		"$(WORKLOAD_ROLLOUT_LEASE)" assert-held \
+			"$(GCLOUD)" "$(TERRAFORM_STATE_BUCKET)" \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$${lease_token}"; \
+		mutation_started=true; \
 		$(TF) apply -input=false "$${apply_plan}"; \
+		GCP_PROJECT_ID="$(GCP_PROJECT_ID)" \
+			GCP_REGION="$(GCP_REGION)" \
+			GCP_ZONE="$(GCP_ZONE)" \
+			DOMAIN_NAME="$(DOMAIN_NAME)" \
+			PREFIX="$(PREFIX)" \
+			NETWORK_HARDENING_ROLLOUT_STAGE="$(WORKLOAD_CLUSTER_STAGE)" \
+			NETWORK_HARDENING_WAIT_SECONDS="$(NETWORK_HARDENING_ROLLOUT_WAIT_SECONDS)" \
+			GCLOUD_BIN="$(GCLOUD)" \
+			./scripts/wait-network-hardening-stage.sh; \
 		set +e; \
-		$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) \
+		$(tf_vars) TF_VAR_network_hardening_rollout_stage="$(WORKLOAD_CLUSTER_STAGE)" \
+			$(TF) plan $(TF_VAR_FILE_ARG) \
 			-target=module.cluster \
 			-out="$${temp_dir}/post-apply.plan" \
 			-input=false \
@@ -504,6 +635,7 @@ workload-cluster-apply:
 					"$${post_apply_status}" >&2; \
 			exit 1; \
 		fi; \
+		convergence_proven=true; \
 		if ! cmp -s "$(WORKLOAD_CLUSTER_PLAN)" "$${apply_plan}" \
 			|| ! cmp -s "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)" "$${apply_manifest}"; then \
 			printf "Applied reviewed bytes, but the published cluster plan changed concurrently; preserving the replacement.\n" >&2; \
@@ -519,6 +651,58 @@ workload-cluster-apply:
 		manifest_moved=false; \
 		rm -rf -- "$${temp_dir}"; \
 		trap - EXIT HUP INT TERM
+
+workload-cluster-recover-lease:
+	@ if [ "$(CONFIRM)" != "$(WORKLOAD_CLUSTER_RECOVERY_CONFIRMATION)" ]; then \
+		printf "Refusing cluster lease recovery. Re-run with CONFIRM='$(WORKLOAD_CLUSTER_RECOVERY_CONFIRMATION)'.\n"; \
+		exit 1; \
+	fi
+	@ $(MAKE) workload-context-guard workload-cluster-stage-guard
+	@ set -eu; \
+		token="$(WORKLOAD_CLUSTER_RECOVERY_TOKEN)"; \
+		test -n "$${token}" || { \
+			printf "WORKLOAD_CLUSTER_RECOVERY_TOKEN must name the preserved generation-bound token.\n" >&2; \
+			exit 1; \
+		}; \
+		./scripts/assert-network-hardening-recovery-token.sh \
+			"$${token}" "$(TERRAFORM_STATE_BUCKET)" \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" \
+			"$(WORKLOAD_CLUSTER_STAGE)" "$(ENV)" \
+			"$(TERRAFORM_STATE_PREFIX)" ../.. >/dev/null; \
+		"$(WORKLOAD_ROLLOUT_LEASE)" assert-held \
+			"$(GCLOUD)" "$(TERRAFORM_STATE_BUCKET)" \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$${token}"; \
+		temp_dir="$$(mktemp -d ".workload-cluster-recover.$(ENV).XXXXXX")"; \
+		cleanup() { status=$$?; trap - EXIT HUP INT TERM; rm -rf -- "$${temp_dir}"; exit "$${status}"; }; \
+		trap cleanup EXIT HUP INT TERM; \
+		GCP_PROJECT_ID="$(GCP_PROJECT_ID)" \
+			GCP_REGION="$(GCP_REGION)" \
+			GCP_ZONE="$(GCP_ZONE)" \
+			DOMAIN_NAME="$(DOMAIN_NAME)" \
+			PREFIX="$(PREFIX)" \
+			NETWORK_HARDENING_ROLLOUT_STAGE="$(WORKLOAD_CLUSTER_STAGE)" \
+			NETWORK_HARDENING_WAIT_SECONDS="$(NETWORK_HARDENING_ROLLOUT_WAIT_SECONDS)" \
+			GCLOUD_BIN="$(GCLOUD)" \
+			./scripts/wait-network-hardening-stage.sh; \
+		set +e; \
+		$(tf_vars) TF_VAR_network_hardening_rollout_stage="$(WORKLOAD_CLUSTER_STAGE)" \
+			$(TF) plan $(TF_VAR_FILE_ARG) \
+			-target=module.cluster \
+			-out="$${temp_dir}/post-recovery.plan" \
+			-input=false \
+			-compact-warnings \
+			-detailed-exitcode \
+			>/dev/null; \
+		post_recovery_status=$$?; \
+		set -e; \
+		if [ "$${post_recovery_status}" -ne 0 ]; then \
+			printf "Recovery convergence is live-stable but Terraform is not clean (exit %s); preserving the lease. Create a fresh same-stage plan and apply it with WORKLOAD_CLUSTER_RECOVERY_TOKEN=%s.\n" "$${post_recovery_status}" "$${token}" >&2; \
+			exit 1; \
+		fi; \
+		"$(WORKLOAD_ROLLOUT_LEASE)" release "$(GCLOUD)" "$${token}"; \
+		rm -rf -- "$${temp_dir}"; \
+		trap - EXIT HUP INT TERM; \
+		printf "Recovered the converged, Terraform-clean %s stage and released its exact shared lease.\n" "$(WORKLOAD_CLUSTER_STAGE)"
 
 workload-cluster-wait:
 	@ $(MAKE) workload-context-guard
@@ -715,6 +899,9 @@ workload-prerequisite-apply:
 		$(workload_metadata_context) ./scripts/workload-plan-metadata.sh verify \
 			"$${apply_plan}" "$${apply_manifest}" "$(TF)" "." "../.." \
 			"$${after_artifacts}"; \
+		"$(WORKLOAD_ROLLOUT_LEASE)" assert-held \
+			"$(GCLOUD)" "$(TERRAFORM_STATE_BUCKET)" \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$${lease_token}"; \
 		$(TF) apply -input=false "$${apply_plan}"; \
 		set +e; \
 		$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) \
@@ -814,6 +1001,8 @@ workload-plan:
 			"$${temp_plan}" "$(TF)" \
 			"$(WORKLOAD_TOPOLOGY_POLICY)" "$(WORKLOAD_PACKER_TEMPLATE)" \
 			"$${after_artifacts}"; \
+		./scripts/assert-network-hardening-normal-plan.sh \
+			"$${temp_plan}" "$(TF)" "$(TERRAFORM_ENVIRONMENT)"; \
 		./scripts/assert-workload-quota.sh \
 			"$(WORKLOAD_TOPOLOGY_POLICY)" \
 			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(GCLOUD)" \
@@ -923,6 +1112,8 @@ workload-apply:
 			"$${apply_plan}" "$(TF)" \
 			"$(WORKLOAD_TOPOLOGY_POLICY)" "$(WORKLOAD_PACKER_TEMPLATE)" \
 			"$${before_artifacts}"; \
+		./scripts/assert-network-hardening-normal-plan.sh \
+			"$${apply_plan}" "$(TF)" "$(TERRAFORM_ENVIRONMENT)"; \
 		./scripts/assert-workload-quota.sh \
 			"$(WORKLOAD_TOPOLOGY_POLICY)" \
 			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(GCLOUD)" \
@@ -936,6 +1127,9 @@ workload-apply:
 		$(workload_metadata_context) ./scripts/workload-plan-metadata.sh verify \
 			"$${apply_plan}" "$${apply_manifest}" "$(TF)" "." "../.." \
 			"$${after_artifacts}"; \
+		"$(WORKLOAD_ROLLOUT_LEASE)" assert-held \
+			"$(GCLOUD)" "$(TERRAFORM_STATE_BUCKET)" \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$${lease_token}"; \
 		$(TF) apply -input=false "$${apply_plan}"; \
 		set +e; \
 		$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) \

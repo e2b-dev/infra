@@ -34,6 +34,7 @@ variables {
   nfs_mount_subdir                         = "chunks-cache"
   nfs_mount_opts                           = ""
   base_hugepages_percentage                = 80
+  enable_os_login                          = false
   environment                              = "dev"
   labels                                   = {}
   file_hash = {

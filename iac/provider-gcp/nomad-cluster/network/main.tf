@@ -540,10 +540,33 @@ resource "google_compute_firewall" "internal_remote_connection_firewall_ingress"
 
   priority = 900
 
+  # Add allow-decision logging only with the reviewed dev hardening rollout.
+  # Non-dev already has the IAP-only source range and must retain its prior
+  # logging shape so ordinary staging/production workload releases stay no-op.
+  dynamic "log_config" {
+    for_each = var.environment == "dev" ? [1] : []
+    content {
+      metadata = "EXCLUDE_ALL_METADATA"
+    }
+  }
+
   direction   = "INGRESS"
   target_tags = [var.cluster_tag_name]
   # https://googlecloudplatform.github.io/iap-desktop/setup-iap/
-  source_ranges = var.environment == "dev" ? ["0.0.0.0/0"] : ["35.235.240.0/20"]
+  source_ranges = ["35.235.240.0/20"]
+
+  lifecycle {
+    precondition {
+      condition = (
+        var.environment != "dev"
+        || (
+          var.os_login_operator_access_confirmed
+          && var.network_hardening_rollout_stage != "disabled"
+        )
+      )
+      error_message = "Dev IAP firewall hardening requires the in-graph OS Login access guard and a reviewed rollout stage; non-dev already uses the IAP-only posture."
+    }
+  }
 }
 
 resource "google_compute_firewall" "remote_connection_firewall_ingress" {
@@ -556,12 +579,9 @@ resource "google_compute_firewall" "remote_connection_firewall_ingress" {
   }
 
 
-  #  Metadata fields can be found here: https://cloud.google.com/firewall/docs/firewall-rules-logging#log-format
-  dynamic "log_config" {
-    for_each = var.environment != "dev" ? [1] : []
-    content {
-      metadata = "EXCLUDE_ALL_METADATA"
-    }
+  # Metadata fields can be found here: https://cloud.google.com/firewall/docs/firewall-rules-logging#log-format
+  log_config {
+    metadata = "EXCLUDE_ALL_METADATA"
   }
 
   priority = 1000
@@ -569,6 +589,19 @@ resource "google_compute_firewall" "remote_connection_firewall_ingress" {
   direction     = "INGRESS"
   target_tags   = [var.cluster_tag_name]
   source_ranges = ["0.0.0.0/0"]
+
+  lifecycle {
+    precondition {
+      condition = (
+        var.environment != "dev"
+        || (
+          var.os_login_operator_access_confirmed
+          && var.network_hardening_rollout_stage != "disabled"
+        )
+      )
+      error_message = "Dev public administrative ingress denial requires the in-graph OS Login access guard and a reviewed rollout stage; non-dev already uses this deny posture."
+    }
+  }
 }
 
 

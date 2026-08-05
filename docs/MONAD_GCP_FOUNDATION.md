@@ -116,29 +116,55 @@ The legacy `make plan`, `make apply`, and `make destroy` workload targets remain
 disabled. Workload creation uses only the dedicated saved-plan workflow below.
 There is deliberately no workload destroy target.
 
-## First-deploy cluster bootstrap
+## Guarded live-fleet replacement
 
-The first workload deployment may bring up the compute and networking substrate
-before Terraform is allowed to create Nomad jobs or Cloud SQL. This is a
-deliberately narrow recovery/bootstrap phase, not a replacement for the complete
-one-workcell release:
+The current invited-beta fleet already exists. Network/OS Login adoption on that live topology is
+strictly serialized as `network`, `server`, `api`, `worker`, then `build`; this target is not a
+greenfield cluster creator or a replacement for the complete one-workcell release. A fresh private
+checkpoint is required for each stage. For example:
+
+This staged path is deliberately restricted to the `dev` invited-beta environment. Non-dev plans
+that request a stage fail before mutation and retain their upstream opportunistic MIG policies until
+a separate rollout strategy is reviewed. Their already-IAP-only administrative firewall posture
+remains valid while the rollout stage stays disabled.
 
 ```bash
-mise exec -- make -C iac/provider-gcp workload-cluster-plan
+mise exec -- make -C iac/provider-gcp workload-cluster-plan \
+  WORKLOAD_CLUSTER_STAGE=network \
+  WORKLOAD_CLUSTER_CHECKPOINT=/private/path/network-checkpoint.json
 mise exec -- terraform -chdir=iac/provider-gcp \
-  show .tfplan.workload-cluster.dev
+  show .tfplan.workload-cluster.network.dev
 mise exec -- make -C iac/provider-gcp workload-cluster-apply \
-  CONFIRM='APPLY ONE WORKCELL CLUSTER'
+  WORKLOAD_CLUSTER_STAGE=network \
+  WORKLOAD_CLUSTER_CHECKPOINT=/private/path/network-checkpoint.json \
+  CONFIRM='APPLY NETWORK HARDENING network'
 mise exec -- make -C iac/provider-gcp workload-cluster-wait
 ```
 
-`workload-cluster-plan` uses the exact Terraform target
-`-target=module.cluster`. The saved-plan guard rejects every managed mutation
-outside `module.cluster`, every Nomad provider resource, destructive or
-capacity-reducing changes, topology drift, and an unreviewed orchestrator
-source image. It retains the same environment, backend, toolchain, artifact,
-provenance, live-quota, and shared mutation-lease checks as the complete
-release. It does not revive the legacy `plan-without-jobs` path.
+`workload-cluster-plan` uses the exact Terraform target `-target=module.cluster` and forces the
+in-graph convergence sentinel to be replaced on every reviewed attempt, but the target no longer
+authorizes the whole module to mutate at once. The OS Login authorization guard is inside that
+module and is an explicit dependency of every replacement path. A Terraform-state marker must
+advance exactly one step only after the sentinel has re-proved live convergence, exact replacement
+identity, IAP/OS Login access, and stage-specific Nomad/load-balancer health. A second assertion
+permits only the two firewall updates for `network`,
+or one PROACTIVE pool's template/MIG pair for `server`, `api`, `worker`, or `build` (the zero-sized
+Loki/ClickHouse templates are adopted with `build`). Any concurrent pool, generic autoscaler,
+worker-MIG ownership, or unrelated drift fails closed.
+
+The mode-0600 checkpoint records the exact Git head, environment identity, named operator, fresh
+IAP/OS Login proof, and stage-specific health or drain evidence. It is valid for at most one hour;
+its bytes and digest are embedded in plan provenance and checked again under the mutation lease at
+apply. Worker and build checkpoints require a drained target, zero allocations, and zero workcells.
+Server/API checkpoints require quorum/load-balancer and target-pool health. The stage plan retains
+the environment, backend, toolchain, artifact, topology, quota, provenance, and shared mutation
+lease checks of the complete release. It does not revive the legacy `plan-without-jobs` path.
+If a successful apply advances the marker but its post-apply plan detects same-stage drift, a
+generation-bound borrowed-token retry accepts the current marker only as a no-op and forcibly
+replaces the convergence sentinel before applying any remaining in-boundary mutation.
+If an interruption destroys that sentinel before the marker advances, only the validated recovery
+token for the exact same stage admits its recreation; an ordinary or next-stage plan cannot use the
+missing state object to bypass serial ordering.
 
 The cluster plan and apply derive quota admission from the same reviewed saved
 plan. If every positive-capacity MIG already has the exact reviewed base size
@@ -151,9 +177,11 @@ whether any initial-create resource is reviewed. An instance-template
 create-before-destroy rollout remains eligible only after the topology guard
 proves its MIG size and reviewed surge policy.
 
-The apply target consumes only the private verified copy of the reviewed plan,
-requires a separate literal confirmation, and runs a second targeted plan that
-must report clean convergence. Failed planning leaves an older reviewed pair
+The apply target consumes only the private verified copy of the reviewed stage plan, requires a
+stage-specific literal confirmation, rechecks the still-fresh checkpoint, proves that the
+canonical GCS lease still has the token's exact generation and holder immediately before
+Terraform mutation, and runs a second targeted plan that must report clean convergence. Failed
+planning leaves an older reviewed pair
 untouched until the lease has been acquired; failed apply, residual drift, or
 lease-release failure preserves the plan and manifest for diagnosis.
 

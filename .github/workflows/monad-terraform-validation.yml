@@ -95,6 +95,9 @@ jobs:
       - name: Test keyless runtime identity
         run: make -C iac/provider-gcp keyless-runtime-check
 
+      - name: Test GCP network security invariants
+        run: make -C iac/provider-gcp network-security-check
+
       - name: Test workload topology and quota guards
         run: |
           make -C iac/provider-gcp workload-plan-assertions-test

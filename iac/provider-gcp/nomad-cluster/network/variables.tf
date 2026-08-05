@@ -116,3 +116,13 @@ variable "additional_api_paths_handled_by_ingress" {
     timeout_sec = optional(number)
   }))
 }
+
+variable "os_login_operator_access_confirmed" {
+  type        = bool
+  description = "Guard output proving IAP and OS Login operator access before firewall hardening."
+}
+
+variable "network_hardening_rollout_stage" {
+  type        = string
+  description = "Guarded serial rollout stage consumed by the administrative firewall resources."
+}

@@ -141,13 +141,12 @@ locals {
     LAUNCH_DARKLY_API_KEY     = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
   }, var.client_proxy_env_vars)
 
-  orchestrator_env_vars = merge({
+  orchestrator_default_env_vars = {
     LOGS_COLLECTOR_ADDRESS        = "http://localhost:${local.logs_proxy_port}"
     ENVIRONMENT                   = var.environment
     ENVD_TIMEOUT                  = var.envd_timeout
     TEMPLATE_BUCKET_NAME          = module.init.fc_template_bucket_name
     OTEL_COLLECTOR_GRPC_ENDPOINT  = "localhost:${local.otel_collector_grpc_port}"
-    ALLOW_SANDBOX_INTERNAL_CIDRS  = var.allow_sandbox_internal_cidrs
     CLICKHOUSE_CONNECTION_STRING  = local.clickhouse_connection_string
     REDIS_POOL_SIZE               = "10"
     REDIS_CLUSTER_URL             = local.redis_cluster_url
@@ -165,7 +164,19 @@ locals {
     GCS_GRPC_CONNECTION_POOL_SIZE = var.gcs_grpc_connection_pool_size != 0 ? tostring(var.gcs_grpc_connection_pool_size) : ""
     PERSISTENT_VOLUME_MOUNTS      = join(",", [for key, value in local.persistent_volume_types : format("%s:%s", key, value["local_mount_path"])])
     LAUNCH_DARKLY_API_KEY         = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
-  }, var.orchestrator_env_vars)
+  }
+
+  # These two protected values define the host-proxy exception ahead of the
+  # guest's private/control-plane deny set. Keep them after the generic
+  # override map even though variables.tf also rejects reserved-key collisions.
+  orchestrator_env_vars = merge(
+    local.orchestrator_default_env_vars,
+    var.orchestrator_env_vars,
+    {
+      ALLOW_SANDBOX_INTERNAL_CIDRS = var.allow_sandbox_internal_cidrs
+      SANDBOX_ORCHESTRATOR_IP      = "192.0.2.1"
+    },
+  )
 
   template_manager_env_vars = merge({
     CONSUL_TOKEN                    = module.init.consul_acl_token_secret
@@ -286,6 +297,9 @@ module "cluster" {
   client_clusters_config = var.client_clusters_config
 
   monad_worker_autoscaler_shadow_enabled = var.monad_worker_autoscaler_shadow_enabled
+  network_hardening_rollout_stage        = var.network_hardening_rollout_stage
+  network_hardening_rollout_wait_seconds = var.network_hardening_rollout_wait_seconds
+  os_login_operator_access_confirmed     = var.os_login_operator_access_confirmed
 
   api_cluster_size        = var.api_cluster_size
   clickhouse_cluster_size = var.clickhouse_cluster_size

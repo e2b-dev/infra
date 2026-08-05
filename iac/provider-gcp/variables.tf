@@ -311,8 +311,52 @@ variable "nomad_port" {
 
 variable "allow_sandbox_internal_cidrs" {
   type        = string
-  description = "Comma-separated CIDRs to allow through the sandbox firewall deny list (e.g. 10.0.0.1/32,10.0.0.2/32)"
+  description = "Retired GCP compatibility input. It must remain empty so guests cannot bypass the metadata, link-local, private-network, or control-plane deny set."
   default     = ""
+
+  validation {
+    condition     = trimspace(var.allow_sandbox_internal_cidrs) == ""
+    error_message = "ALLOW_SANDBOX_INTERNAL_CIDRS is forbidden on GCP; guest access to metadata, VPC, Cloud SQL, Nomad, Consul, and control-plane ranges must remain fail-closed."
+  }
+}
+
+variable "os_login_operator_access_confirmed" {
+  type        = bool
+  description = "Explicit operator confirmation that IAP tunnel and OS Login administrator access were granted and proven before any OS Login-enabled instance-template rollout."
+  default     = false
+}
+
+variable "network_hardening_rollout_stage" {
+  type        = string
+  description = "Dev invited-beta state-backed serial network/OS Login rollout stage. Non-dev environments must remain disabled; only the guarded saved-plan workflow may advance it."
+  default     = "disabled"
+
+  validation {
+    condition = contains([
+      "disabled",
+      "network",
+      "server",
+      "api",
+      "worker",
+      "build",
+    ], var.network_hardening_rollout_stage)
+    error_message = "network_hardening_rollout_stage must be disabled, network, server, api, worker, or build."
+  }
+}
+
+variable "network_hardening_rollout_wait_seconds" {
+  type        = number
+  description = "Bounded maximum time for a staged network-hardening MIG replacement to converge."
+  default     = 1800
+
+  validation {
+    condition = (
+      floor(var.network_hardening_rollout_wait_seconds) == var.network_hardening_rollout_wait_seconds
+      && var.network_hardening_rollout_wait_seconds >= 60
+      && var.network_hardening_rollout_wait_seconds <= 3600
+    )
+    error_message = "network_hardening_rollout_wait_seconds must be an integer between 60 and 3600."
+  }
 }
 
 variable "orchestrator_node_pool" {
@@ -881,6 +925,17 @@ variable "orchestrator_env_vars" {
   type      = map(string)
   default   = {}
   sensitive = true
+
+  validation {
+    condition = length(setintersection(
+      toset(keys(var.orchestrator_env_vars)),
+      toset([
+        "ALLOW_SANDBOX_INTERNAL_CIDRS",
+        "SANDBOX_ORCHESTRATOR_IP",
+      ]),
+    )) == 0
+    error_message = "orchestrator_env_vars cannot override ALLOW_SANDBOX_INTERNAL_CIDRS or SANDBOX_ORCHESTRATOR_IP; GCP guest isolation reserves both values."
+  }
 }
 
 variable "api_env_vars" {

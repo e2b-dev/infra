@@ -421,8 +421,45 @@ flowchart TB
   one fixed build node, reported separately from workcell capacity.
 - Server, API, worker, build, and optional data nodes have no per-instance public address in the
   invited-beta topology. Two reviewed static addresses back one Cloud NAT with full translation
-  logging; administration uses IAP and OS Login. The public load balancer is the only application
-  ingress path.
+  logging. Administrative SSH/RDP is allowed only from Google's IAP TCP-forwarding range
+  (`35.235.240.0/20`) and, on the dev invited-beta fleet, all allow/deny decisions are logged without
+  packet metadata. The IAP allow keeps its prior unlogged shape outside dev so this rollout does not
+  introduce otherwise-unapplyable staging/production drift. Every dev
+  fleet instance template enables OS Login after its serial rollout stage. The authorization guard lives
+  inside `module.cluster` and every replacement path depends on it, so a targeted saved plan cannot
+  omit it. A convergence sentinel and state-backed marker serialize adoption as
+  `network -> server -> api -> worker -> build`; each stage requires a fresh, private operator
+  checkpoint for IAP/OS Login plus the role-specific health or drain evidence. The checkpoint bytes
+  are bound into saved-plan provenance; their expiry and full schema are revalidated under the held
+  rollout lease immediately before mutation. After replacement, the convergence sentinel inventories
+  the exact instance IDs and target templates, proves IAP plus OS Login by checking each instance's
+  metadata identity over the tunnel, and requires the replacement names to appear in healthy Nomad
+  quorum/client state. Server and API stages additionally bind healthy load-balancer backends to that
+  same inventory. The marker remains at the prior stage until those checks and MIG target-version
+  convergence pass, and the shared rollout lease remains held through that proof. If apply starts but
+  that proof is interrupted or times
+  out, the generation-bound lease and recovery token remain held until an explicit recovery command
+  re-proves convergence and a clean Terraform post-plan, or a fresh reviewed same-stage retry runs
+  under the borrowed token. Ordinary full workload plans in `dev` require the convergence sentinel
+  and state marker to remain matching, non-disabled no-ops; they cannot initialize, advance, skip,
+  or reverse the staged rollout. Non-dev ordinary plans may only initialize or preserve both
+  resources at `disabled`. The staged workflow is hard-failed outside the current `dev`
+  invited-beta environment, so non-dev retains its upstream opportunistic MIG policy pending a
+  separately reviewed replacement strategy. This prevents both operator lockout and concurrent
+  PROACTIVE replacement of every pool. The public load balancer is the only
+  application ingress path. See
+  [`MONAD_GCP_NETWORK_HARDENING.md`](MONAD_GCP_NETWORK_HARDENING.md) for the live audit and rollout
+  procedure.
+- Every Firecracker slot installs an nftables `PREROUTING` filter on the guest tap before host
+  masquerading. Its predefined deny set blocks metadata/link-local (`169.254.0.0/16`), loopback,
+  RFC1918, CGNAT, and IPv6 local ranges, which covers the workload VPC, Nomad, Consul, Cloud SQL,
+  and other private control endpoints. The predefined deny precedes tenant allow rules. GCP
+  rejects the former `ALLOW_SANDBOX_INTERNAL_CIDRS` escape hatch and reserves both that key and
+  `SANDBOX_ORCHESTRATOR_IP` against generic environment overrides. The fixed documentation-range
+  orchestrator-in-sandbox address remains an explicit exception for the hyperloop, portmapper, and
+  NFS proxy redirects. Public destinations, including authenticated public TAMS broker/proxy
+  routes, continue through host NAT and logged Cloud NAT. Because the nftables rules match only
+  the guest tap, host metadata-server access for attached-service-account ADC remains available.
 - The guarded **dev invited-beta topology** gives server and worker regional MIGs zero surge
   and one unavailable instance, so they replace in place. The API zonal MIG retains one surge
   instance. Its build and sandbox workers each use a 100 GB SSD boot disk with 32 GB of swap and

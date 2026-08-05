@@ -7,14 +7,17 @@ usage() {
   cat >&2 <<'EOF'
 usage:
   rollout-mutation-lease.sh acquire GCLOUD_BIN STATE_BUCKET PROJECT REGION HOLDER TOKEN_FILE
+  rollout-mutation-lease.sh assert-held GCLOUD_BIN STATE_BUCKET PROJECT REGION TOKEN_FILE
   rollout-mutation-lease.sh release GCLOUD_BIN TOKEN_FILE
   rollout-mutation-lease.sh inspect GCLOUD_BIN STATE_BUCKET PROJECT REGION
 
 The lease object is:
   gs://STATE_BUCKET/operator-locks/PROJECT/REGION/workload-mutation.json
 
-Acquire uses object generation-match=0. Release uses the exact acquired
-generation. A stale lease is never stolen or deleted automatically.
+Acquire uses object generation-match=0. Assert-held proves that the canonical
+live object still has the token's exact generation and holder. Release repeats
+that proof and uses the exact acquired generation. A stale lease is never
+stolen or deleted automatically.
 EOF
   exit 2
 }
@@ -36,6 +39,83 @@ lease_uri() {
     "${bucket}" "${project}" "${region}"
 }
 
+load_lease_token() {
+  local token_file="$1"
+  local token_mode
+
+  [[ -f "${token_file}" && ! -L "${token_file}" ]] || {
+    printf 'Lease token must be a regular, non-symlink file: %s\n' \
+      "${token_file}" >&2
+    return 1
+  }
+  token_mode="$(
+    stat -c '%a' "${token_file}" 2>/dev/null \
+      || stat -f '%Lp' "${token_file}"
+  )"
+  if (( (8#${token_mode} & 077) != 0 )); then
+    printf 'Lease token must be private (mode 0600 or stricter): %s\n' \
+      "${token_file}" >&2
+    return 1
+  fi
+  jq -e '
+    .schema_version == 1
+    and (.uri | type) == "string"
+    and (.bucket | type) == "string"
+    and (.project | type) == "string"
+    and (.region | type) == "string"
+    and (.holder | type) == "string"
+    and (.holder | test("^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"))
+    and ((.generation | tostring) | test("^[0-9]+$"))
+  ' "${token_file}" >/dev/null || {
+    printf 'Lease token schema is invalid.\n' >&2
+    return 1
+  }
+
+  lease_token_uri="$(jq -er '.uri' "${token_file}")"
+  lease_token_bucket="$(jq -er '.bucket' "${token_file}")"
+  lease_token_project="$(jq -er '.project' "${token_file}")"
+  lease_token_region="$(jq -er '.region' "${token_file}")"
+  lease_token_generation="$(jq -er '.generation | tostring' "${token_file}")"
+  lease_token_holder="$(jq -er '.holder' "${token_file}")"
+  require_component "${lease_token_bucket}" "state bucket"
+  require_component "${lease_token_project}" "project"
+  require_component "${lease_token_region}" "region"
+  [[ "${lease_token_uri}" == "$(lease_uri \
+    "${lease_token_bucket}" "${lease_token_project}" "${lease_token_region}")" ]] || {
+    printf 'Lease token URI does not match its exact project/region scope.\n' >&2
+    return 1
+  }
+}
+
+assert_live_lease() {
+  local gcloud_bin="$1"
+  local object_json
+
+  if ! object_json="$(
+    "${gcloud_bin}" storage objects describe "${lease_token_uri}" \
+      --project="${lease_token_project}" \
+      --format=json
+  )"; then
+    printf 'Could not prove the current rollout lease object: %s\n' \
+      "${lease_token_uri}" >&2
+    return 1
+  fi
+  jq -e \
+    --arg generation "${lease_token_generation}" \
+    --arg holder "${lease_token_holder}" '
+      (.generation | tostring) == $generation
+      and (
+        ([
+          .metadata["monad-holder"]?,
+          .custom_fields["monad-holder"]?
+        ] | map(select(. != null)) | unique) == [$holder]
+      )
+    ' <<<"${object_json}" >/dev/null || {
+    printf 'Lease token no longer matches the current object generation/holder.\n' >&2
+    return 1
+  }
+}
+
 case "${mode}" in
   acquire)
     [[ "$#" -eq 7 ]] || usage
@@ -49,7 +129,7 @@ case "${mode}" in
     require_component "${bucket}" "state bucket"
     require_component "${project}" "project"
     require_component "${region}" "region"
-    [[ "${holder}" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$ ]] || {
+    [[ "${holder}" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$ ]] || {
       printf 'Invalid rollout-lease holder: %s\n' "${holder}" >&2
       exit 1
     }
@@ -140,78 +220,42 @@ case "${mode}" in
     printf 'Acquired shared rollout mutation lease %s generation %s.\n' \
       "${uri}" "${generation}"
     ;;
+  assert-held)
+    [[ "$#" -eq 6 ]] || usage
+    gcloud_bin="$2"
+    expected_bucket="$3"
+    expected_project="$4"
+    expected_region="$5"
+    token_file="$6"
+    require_component "${expected_bucket}" "state bucket"
+    require_component "${expected_project}" "project"
+    require_component "${expected_region}" "region"
+    load_lease_token "${token_file}"
+    if [[ "${lease_token_bucket}" != "${expected_bucket}" \
+      || "${lease_token_project}" != "${expected_project}" \
+      || "${lease_token_region}" != "${expected_region}" \
+      || "${lease_token_uri}" != "$(lease_uri \
+        "${expected_bucket}" "${expected_project}" "${expected_region}")" ]]; then
+      printf 'Lease token does not belong to the expected canonical rollout scope.\n' >&2
+      exit 1
+    fi
+    assert_live_lease "${gcloud_bin}"
+    printf 'Confirmed shared rollout mutation lease %s generation %s held by %s.\n' \
+      "${lease_token_uri}" "${lease_token_generation}" "${lease_token_holder}"
+    ;;
   release)
     [[ "$#" -eq 3 ]] || usage
     gcloud_bin="$2"
     token_file="$3"
-    [[ -f "${token_file}" && ! -L "${token_file}" ]] || {
-      printf 'Lease token must be a regular, non-symlink file: %s\n' \
-        "${token_file}" >&2
-      exit 1
-    }
-    token_mode="$(
-      stat -c '%a' "${token_file}" 2>/dev/null \
-        || stat -f '%Lp' "${token_file}"
-    )"
-    if (( (8#${token_mode} & 077) != 0 )); then
-      printf 'Lease token must be private (mode 0600 or stricter): %s\n' \
-        "${token_file}" >&2
-      exit 1
-    fi
-    jq -e '
-      .schema_version == 1
-      and (.uri | type) == "string"
-      and (.bucket | type) == "string"
-      and (.project | type) == "string"
-      and (.region | type) == "string"
-      and (.holder | type) == "string"
-      and ((.generation | tostring) | test("^[0-9]+$"))
-    ' "${token_file}" >/dev/null || {
-      printf 'Lease token schema is invalid.\n' >&2
-      exit 1
-    }
-    uri="$(jq -er '.uri' "${token_file}")"
-    bucket="$(jq -er '.bucket' "${token_file}")"
-    project="$(jq -er '.project' "${token_file}")"
-    region="$(jq -er '.region' "${token_file}")"
-    generation="$(jq -er '.generation | tostring' "${token_file}")"
-    holder="$(jq -er '.holder' "${token_file}")"
-    require_component "${bucket}" "state bucket"
-    require_component "${project}" "project"
-    require_component "${region}" "region"
-    [[ "${uri}" == "$(lease_uri "${bucket}" "${project}" "${region}")" ]] || {
-      printf 'Lease token URI does not match its exact project/region scope.\n' >&2
-      exit 1
-    }
-    [[ "${generation}" =~ ^[0-9]+$ ]] || {
-      printf 'Invalid generation in lease token.\n' >&2
-      exit 1
-    }
-    object_json="$(
-      "${gcloud_bin}" storage objects describe "${uri}" \
-        --project="${project}" \
-        --format=json
-    )"
-    jq -e \
-      --arg generation "${generation}" \
-      --arg holder "${holder}" '
-      (.generation | tostring) == $generation
-      and (
-        ([
-          .metadata["monad-holder"]?,
-          .custom_fields["monad-holder"]?
-        ] | map(select(. != null)) | unique) == [$holder]
-      )
-    ' <<<"${object_json}" >/dev/null || {
-      printf 'Lease token no longer matches the current object generation/holder.\n' >&2
-      exit 1
-    }
-    "${gcloud_bin}" storage rm "${uri}" \
-      --project="${project}" \
-      --if-generation-match="${generation}" \
+    load_lease_token "${token_file}"
+    assert_live_lease "${gcloud_bin}"
+    "${gcloud_bin}" storage rm "${lease_token_uri}" \
+      --project="${lease_token_project}" \
+      --if-generation-match="${lease_token_generation}" \
       --quiet
     rm -f -- "${token_file}"
-    printf 'Released shared rollout mutation lease held by %s.\n' "${holder}"
+    printf 'Released shared rollout mutation lease held by %s.\n' \
+      "${lease_token_holder}"
     ;;
   inspect)
     [[ "$#" -eq 5 ]] || usage

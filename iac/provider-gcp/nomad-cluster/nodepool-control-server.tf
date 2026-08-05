@@ -108,11 +108,11 @@ resource "google_compute_instance_template" "server" {
 
   tags                    = [var.cluster_tag_name]
   metadata_startup_script = local.server_startup_script
-  metadata = {
+  metadata = merge({
     enable-osconfig         = "TRUE",
     enable-guest-attributes = "TRUE",
     cluster-size            = var.server_cluster_size,
-  }
+  }, local.os_login_enabled.server ? { enable-oslogin = "TRUE" } : {})
 
   labels = merge(
     var.labels,
@@ -162,6 +162,7 @@ resource "google_compute_instance_template" "server" {
   }
 
   depends_on = [
+    terraform_data.os_login_operator_access_guard,
     google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"],
     google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]
   ]

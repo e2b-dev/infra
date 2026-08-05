@@ -148,6 +148,43 @@ variable "monad_worker_autoscaler_shadow_enabled" {
   default     = false
 }
 
+variable "network_hardening_rollout_stage" {
+  type        = string
+  description = "Dev invited-beta serial state-backed stage controlling network hardening and OS Login template adoption; non-dev environments must remain disabled."
+
+  validation {
+    condition = contains([
+      "disabled",
+      "network",
+      "server",
+      "api",
+      "worker",
+      "build",
+    ], var.network_hardening_rollout_stage)
+    error_message = "network_hardening_rollout_stage must be disabled, network, server, api, worker, or build."
+  }
+}
+
+variable "network_hardening_rollout_wait_seconds" {
+  type        = number
+  description = "Bounded maximum time for the in-apply stage convergence sentinel."
+  default     = 1800
+
+  validation {
+    condition = (
+      floor(var.network_hardening_rollout_wait_seconds) == var.network_hardening_rollout_wait_seconds
+      && var.network_hardening_rollout_wait_seconds >= 60
+      && var.network_hardening_rollout_wait_seconds <= 3600
+    )
+    error_message = "network_hardening_rollout_wait_seconds must be an integer between 60 and 3600."
+  }
+}
+
+variable "os_login_operator_access_confirmed" {
+  type        = bool
+  description = "Whether the operator proved IAP tunnel and OS Login administrator access for this rollout."
+}
+
 variable "build_cluster_name" {
   type    = string
   default = "orch-build"

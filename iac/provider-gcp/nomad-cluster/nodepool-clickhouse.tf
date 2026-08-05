@@ -123,11 +123,11 @@ resource "google_compute_instance_template" "clickhouse" {
   )
   tags                    = [var.cluster_tag_name]
   metadata_startup_script = local.clickhouse_start_script
-  metadata = {
+  metadata = merge({
     enable-osconfig         = "TRUE",
     enable-guest-attributes = "TRUE",
     node-pool               = var.clickhouse_node_pool,
-  }
+  }, local.os_login_enabled.clickhouse ? { enable-oslogin = "TRUE" } : {})
 
   scheduling {
     on_host_maintenance = "MIGRATE"
@@ -170,6 +170,7 @@ resource "google_compute_instance_template" "clickhouse" {
   }
 
   depends_on = [
+    terraform_data.os_login_operator_access_guard,
     google_storage_bucket_object.setup_config_objects
   ]
 }

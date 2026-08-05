@@ -21,6 +21,11 @@ variable "workload_autoscaler_shadow_enabled" {
   default     = false
 }
 
+variable "enable_os_login" {
+  type        = bool
+  description = "Whether this pool has reached its reviewed OS Login rollout stage."
+}
+
 variable "machine_type" {
   type = string
 }
