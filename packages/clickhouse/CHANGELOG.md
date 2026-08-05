@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/e2b-dev/infra/compare/clickhouse-migrator-v0.1.0...clickhouse-migrator-v0.2.0) (2026-08-05)
+
+
+### Features
+
+* **azure:** add azure provider arms to byoc-path build tooling ([#1361](https://github.com/e2b-dev/infra/issues/1361)) ([f8fb541](https://github.com/e2b-dev/infra/commit/f8fb541387f4d390dbbf1d8638c765419ac48048))
+
 ## [0.1.0](https://github.com/e2b-dev/infra/compare/clickhouse-migrator-v0.0.1...clickhouse-migrator-v0.1.0) (2026-07-31)
 
 
