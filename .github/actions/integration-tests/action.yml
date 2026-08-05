@@ -87,7 +87,9 @@ runs:
     - name: Build alternate orchestrator
       if: inputs.orchestrator-make-path != 'packages/orchestrator'
       shell: bash
-      run: make -C "${{ inputs.orchestrator-make-path }}" build-debug
+      env:
+        ORCHESTRATOR_MAKE_PATH: ${{ inputs.orchestrator-make-path }}
+      run: make -C "$ORCHESTRATOR_MAKE_PATH" build-debug
 
     - name: Initialize Host
       uses: ./.github/actions/host-init
@@ -121,9 +123,11 @@ runs:
     - name: Verify the alternate orchestrator is running
       if: inputs.orchestrator-make-path != 'packages/orchestrator'
       shell: bash
+      env:
+        ORCHESTRATOR_MAKE_PATH: ${{ inputs.orchestrator-make-path }}
       run: |
-        if ! sudo pgrep -af "${{ inputs.orchestrator-make-path }}/bin/"; then
-          echo "::error::No orchestrator process from ${{ inputs.orchestrator-make-path }} is running."
+        if ! sudo pgrep -af "$ORCHESTRATOR_MAKE_PATH/bin/"; then
+          echo "::error::No orchestrator process from $ORCHESTRATOR_MAKE_PATH is running."
           echo "::error::The start-services action probably ignored orchestrator-make-path (version without this input)."
           exit 1
         fi

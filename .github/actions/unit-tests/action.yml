@@ -94,15 +94,19 @@ runs:
       if: inputs.sudo == 'true'
       shell: bash
       working-directory: ${{ inputs.package }}
+      env:
+        TEST_PATH: ${{ inputs.test-path }}
       run: |
         trap 'sudo chown "$(id -u):$(id -g)" coverage.txt junit.xml 2>/dev/null || true' EXIT
         sudo -E env "PATH=$PATH" gotestsum --junitfile=junit.xml --format=standard-verbose \
-          -- -timeout 20m -coverprofile=coverage.txt -covermode=atomic ${{ inputs.test-path }}
+          -- -timeout 20m -coverprofile=coverage.txt -covermode=atomic $TEST_PATH
 
     - name: Run tests
       if: inputs.sudo != 'true'
       shell: bash
       working-directory: ${{ inputs.package }}
+      env:
+        TEST_PATH: ${{ inputs.test-path }}
       run: |
         gotestsum --junitfile=junit.xml --format=standard-verbose \
-          -- -timeout 20m -coverprofile=coverage.txt -covermode=atomic ${{ inputs.test-path }}
+          -- -timeout 20m -coverprofile=coverage.txt -covermode=atomic $TEST_PATH
