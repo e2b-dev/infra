@@ -2,7 +2,7 @@
   "packages/docker-reverse-proxy": "0.0.1",
   "packages/client-proxy": "0.0.1",
   "packages/clickhouse": "0.1.0",
-  "packages/envd": "0.6.13",
+  "packages/envd": "0.7.0",
   "packages/orchestrator": "0.0.2",
   "packages/api": "0.0.1",
   "packages/dashboard-api": "0.1.0",

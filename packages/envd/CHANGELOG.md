@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.7.0](https://github.com/e2b-dev/infra/compare/envd-v0.6.13...envd-v0.7.0) (2026-08-05)
+
+
+### Features
+
+* **azure:** add azure provider arms to byoc-path build tooling ([#1361](https://github.com/e2b-dev/infra/issues/1361)) ([f8fb541](https://github.com/e2b-dev/infra/commit/f8fb541387f4d390dbbf1d8638c765419ac48048))
+* **orch:** distro-aware template base-image provisioning ([#3411](https://github.com/e2b-dev/infra/issues/3411)) ([1abece1](https://github.com/e2b-dev/infra/commit/1abece1991dbd94c6d84efed08e119156271f064))
+
+
+### Bug Fixes
+
+* added envd to artifact repository ([#3432](https://github.com/e2b-dev/infra/issues/3432)) ([b7024ba](https://github.com/e2b-dev/infra/commit/b7024ba2ab34fb7973c5686bf1cc8b4aaa916a67))
+* **envd:** replace time.Sleep with ticker in ScanAndBroadcast for prompt shutdown ([#3374](https://github.com/e2b-dev/infra/issues/3374)) ([002fd9f](https://github.com/e2b-dev/infra/commit/002fd9f1abf35f311f8434eba21733c87738c838))
+* **oss:** upload with gcloud storage instead of gsutil ([#1302](https://github.com/e2b-dev/infra/issues/1302)) ([416a1b2](https://github.com/e2b-dev/infra/commit/416a1b21353a1605204b900afd194c3499ab0d48))
+
 ## 0.0.1 (2026-07-29)
 
 
