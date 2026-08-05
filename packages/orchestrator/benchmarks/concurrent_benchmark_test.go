@@ -186,7 +186,7 @@ func BenchmarkConcurrentResume(b *testing.B) {
 	}
 
 	// kernel download
-	linuxKernelURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/kernels/", kernelVersion, "vmlinux.bin")
+	linuxKernelURL, err := url.JoinPath("https://storage.googleapis.com/e2b-artifact-binaries/kernels/", kernelVersion, "vmlinux.bin")
 	require.NoError(b, err)
 	linuxKernelFilename := filepath.Join(kernelsDir, kernelVersion, "vmlinux.bin")
 	downloadKernel(b, linuxKernelFilename, linuxKernelURL)

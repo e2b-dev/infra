@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Download busybox from GCS public builds bucket and verify SHA256.
+# Download busybox from the public e2b-artifact-binaries bucket and verify SHA256.
 # Skips download if binary exists and version/arch match the stamp file.
 #
 # Usage:
@@ -21,7 +21,7 @@ if [ -f "$OUTPUT" ] && [ "$(cat "$STAMP" 2>/dev/null)" = "${VERSION}-${ARCH}" ];
   exit 0
 fi
 
-GCS_PREFIX="https://storage.googleapis.com/e2b-prod-public-builds/busybox/${VERSION}/${ARCH}"
+GCS_PREFIX="https://storage.googleapis.com/e2b-artifact-binaries/busybox/${VERSION}/${ARCH}"
 TMP_BIN=$(mktemp)
 TMP_SHA=$(mktemp)
 
