@@ -1,0 +1,199 @@
+[
+  {
+    "address": "module.init.google_service_account.api_controller_service_account",
+    "module_address": "module.init",
+    "mode": "managed",
+    "type": "google_service_account",
+    "name": "api_controller_service_account",
+    "provider_name": "registry.terraform.io/hashicorp/google",
+    "change": {
+      "actions": ["create"],
+      "before": null,
+      "after": {
+        "account_id": "e2b-api-controller",
+        "display_name": "API and Worker Capacity Controller Service Account",
+        "project": "operator-canary"
+      },
+      "after_unknown": {
+        "email": true,
+        "id": true,
+        "member": true,
+        "name": true,
+        "unique_id": true
+      }
+    }
+  },
+  {
+    "address": "module.init.google_artifact_registry_repository_iam_member.api_controller_orchestration_reader",
+    "module_address": "module.init",
+    "mode": "managed",
+    "type": "google_artifact_registry_repository_iam_member",
+    "name": "api_controller_orchestration_reader",
+    "provider_name": "registry.terraform.io/hashicorp/google",
+    "change": {
+      "actions": ["create"],
+      "before": null,
+      "after": {
+        "location": "us-east4",
+        "member": null,
+        "project": "operator-canary",
+        "repository": "e2b-orchestration",
+        "role": "roles/artifactregistry.reader"
+      },
+      "after_unknown": {"member": true}
+    }
+  },
+  {
+    "address": "module.init.google_artifact_registry_repository_iam_member.api_controller_core_reader",
+    "module_address": "module.init",
+    "mode": "managed",
+    "type": "google_artifact_registry_repository_iam_member",
+    "name": "api_controller_core_reader",
+    "provider_name": "registry.terraform.io/hashicorp/google",
+    "change": {
+      "actions": ["create"],
+      "before": null,
+      "after": {
+        "location": "us-east4",
+        "member": null,
+        "project": "operator-canary",
+        "repository": "e2b-core",
+        "role": "roles/artifactregistry.reader"
+      },
+      "after_unknown": {"member": true}
+    }
+  },
+  {
+    "address": "module.init.google_storage_bucket_iam_member.api_controller[\"instance_setup\"]",
+    "module_address": "module.init",
+    "mode": "managed",
+    "type": "google_storage_bucket_iam_member",
+    "name": "api_controller",
+    "index": "instance_setup",
+    "provider_name": "registry.terraform.io/hashicorp/google",
+    "change": {
+      "actions": ["create"],
+      "before": null,
+      "after": {
+        "bucket": "operator-canary-instance-setup",
+        "member": null,
+        "role": "roles/storage.objectViewer"
+      },
+      "after_unknown": {"member": true}
+    }
+  },
+  {
+    "address": "module.init.google_storage_bucket_iam_member.api_controller[\"controller_artifact\"]",
+    "module_address": "module.init",
+    "mode": "managed",
+    "type": "google_storage_bucket_iam_member",
+    "name": "api_controller",
+    "index": "controller_artifact",
+    "provider_name": "registry.terraform.io/hashicorp/google",
+    "change": {
+      "actions": ["create"],
+      "before": null,
+      "after": {
+        "bucket": "operator-canary-fc-env-pipeline",
+        "member": null,
+        "role": "roles/storage.objectViewer"
+      },
+      "after_unknown": {"member": true}
+    }
+  },
+  {
+    "address": "module.init.google_storage_bucket_iam_member.api_controller[\"loki\"]",
+    "module_address": "module.init",
+    "mode": "managed",
+    "type": "google_storage_bucket_iam_member",
+    "name": "api_controller",
+    "index": "loki",
+    "provider_name": "registry.terraform.io/hashicorp/google",
+    "change": {
+      "actions": ["create"],
+      "before": null,
+      "after": {
+        "bucket": "operator-canary-loki-storage",
+        "member": null,
+        "role": "roles/storage.objectUser"
+      },
+      "after_unknown": {"member": true}
+    }
+  },
+  {
+    "address": "module.init.google_project_iam_member.api_controller[\"roles/compute.networkViewer\"]",
+    "module_address": "module.init",
+    "mode": "managed",
+    "type": "google_project_iam_member",
+    "name": "api_controller",
+    "index": "roles/compute.networkViewer",
+    "provider_name": "registry.terraform.io/hashicorp/google",
+    "change": {
+      "actions": ["create"],
+      "before": null,
+      "after": {
+        "member": null,
+        "project": "operator-canary",
+        "role": "roles/compute.networkViewer"
+      },
+      "after_unknown": {"member": true}
+    }
+  },
+  {
+    "address": "module.init.google_project_iam_member.api_controller[\"roles/logging.logWriter\"]",
+    "module_address": "module.init",
+    "mode": "managed",
+    "type": "google_project_iam_member",
+    "name": "api_controller",
+    "index": "roles/logging.logWriter",
+    "provider_name": "registry.terraform.io/hashicorp/google",
+    "change": {
+      "actions": ["create"],
+      "before": null,
+      "after": {
+        "member": null,
+        "project": "operator-canary",
+        "role": "roles/logging.logWriter"
+      },
+      "after_unknown": {"member": true}
+    }
+  },
+  {
+    "address": "module.init.google_project_iam_member.api_controller[\"roles/monitoring.editor\"]",
+    "module_address": "module.init",
+    "mode": "managed",
+    "type": "google_project_iam_member",
+    "name": "api_controller",
+    "index": "roles/monitoring.editor",
+    "provider_name": "registry.terraform.io/hashicorp/google",
+    "change": {
+      "actions": ["create"],
+      "before": null,
+      "after": {
+        "member": null,
+        "project": "operator-canary",
+        "role": "roles/monitoring.editor"
+      },
+      "after_unknown": {"member": true}
+    }
+  },
+  {
+    "address": "google_artifact_registry_repository_iam_member.custom_environments_repository_api_controller_member",
+    "mode": "managed",
+    "type": "google_artifact_registry_repository_iam_member",
+    "name": "custom_environments_repository_api_controller_member",
+    "provider_name": "registry.terraform.io/hashicorp/google",
+    "change": {
+      "actions": ["create"],
+      "before": null,
+      "after": {
+        "location": "us-east4",
+        "member": null,
+        "project": "operator-canary",
+        "repository": "e2b-custom-environments",
+        "role": "roles/artifactregistry.reader"
+      },
+      "after_unknown": {"member": true}
+    }
+  }
+]

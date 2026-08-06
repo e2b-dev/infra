@@ -186,8 +186,12 @@ alias.
 
 ## Identity and shadow rollout order
 
-1. Apply the foundation plan that creates the dedicated attached identity and
-   its scoped grants. Record the email and immutable numeric subject outputs.
+1. For the existing invited-beta fleet, use the guarded
+   `workload-prerequisite-plan` / `workload-prerequisite-apply` workflow. Its
+   exact target and plan assertions create the dedicated attached identity and
+   all scoped grants inside the legacy combined live state. The
+   `foundation-plan` path remains valid only for a greenfield foundation-only
+   state. Record the email and immutable numeric subject outputs.
 2. Set the TAMS verifier's exact audience, GCP project, email, and numeric
    subject. A shared worker/build identity must remain rejected.
 3. Read the live network-hardening marker before replacing the API pool. Use

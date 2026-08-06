@@ -13,6 +13,7 @@ cluster_variables="${provider_root}/nomad-cluster/variables.tf"
 root_main="${provider_root}/main.tf"
 root_outputs="${provider_root}/outputs.tf"
 api_tf="${provider_root}/api.tf"
+makefile="${provider_root}/Makefile"
 
 grep -F 'resource "google_service_account" "api_controller_service_account"' \
   "${identity_tf}" >/dev/null
@@ -63,6 +64,20 @@ grep -F 'api_controller_service_account_email = (' "${root_main}" >/dev/null
 grep -F 'resource "google_artifact_registry_repository_iam_member" "custom_environments_repository_api_controller_member"' \
   "${api_tf}" >/dev/null
 grep -F 'module.init.api_controller_service_account_email' "${api_tf}" >/dev/null
+api_controller_custom_repository_block="$(
+  awk '
+    /resource "google_artifact_registry_repository_iam_member" "custom_environments_repository_api_controller_member"/ { capture = 1 }
+    capture { print }
+    capture && /^}/ { exit }
+  ' "${api_tf}"
+)"
+grep -F 'role       = "roles/artifactregistry.reader"' \
+  <<<"${api_controller_custom_repository_block}" >/dev/null
+if grep -F 'roles/artifactregistry.repoAdmin' \
+  <<<"${api_controller_custom_repository_block}" >/dev/null; then
+  printf 'The API/controller identity can mutate custom runtime images.\n' >&2
+  exit 1
+fi
 
 for variable in \
   MONAD_WORKER_AUTOSCALER_SHADOW_ENABLED \
@@ -74,7 +89,18 @@ for variable in \
   grep -F "${variable}=" "${repo_root}/.env.gcp.template" >/dev/null
 done
 
-grep -F "custom_environments_repository_api_controller_member'" \
-  "${provider_root}/Makefile" >/dev/null
+for target in \
+  module.init.google_service_account.api_controller_service_account \
+  module.init.google_artifact_registry_repository_iam_member.api_controller_orchestration_reader \
+  module.init.google_artifact_registry_repository_iam_member.api_controller_core_reader \
+  module.init.google_storage_bucket_iam_member.api_controller \
+  module.init.google_project_iam_member.api_controller \
+  google_artifact_registry_repository_iam_member.custom_environments_repository_api_controller_member; do
+  grep -F -- "-target='${target}'" "${makefile}" >/dev/null || {
+    printf 'The live workload prerequisite path omits controller identity target %s.\n' \
+      "${target}" >&2
+    exit 1
+  }
+done
 
 printf 'Dedicated API/controller attached-identity guards passed.\n'

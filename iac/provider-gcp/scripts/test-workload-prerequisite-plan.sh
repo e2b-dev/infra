@@ -7,6 +7,7 @@ policy="${script_dir}/../topology/minimal-workload-policy.json"
 makefile="${script_dir}/../Makefile"
 cloud_sql_fixture="${script_dir}/testdata/cloud-sql-workload-resources.json"
 cloud_sql_project_state="${script_dir}/testdata/cloud-sql-project-state.json"
+api_controller_identity_fixture="${script_dir}/testdata/api-controller-identity-workload-resources.json"
 test_dir="$(mktemp -d)"
 trap 'rm -rf -- "${test_dir}"' EXIT
 
@@ -29,6 +30,19 @@ for candidate_target in \
     exit 1
   }
 done
+for controller_target in \
+  module.init.google_service_account.api_controller_service_account \
+  module.init.google_artifact_registry_repository_iam_member.api_controller_orchestration_reader \
+  module.init.google_artifact_registry_repository_iam_member.api_controller_core_reader \
+  module.init.google_storage_bucket_iam_member.api_controller \
+  module.init.google_project_iam_member.api_controller \
+  google_artifact_registry_repository_iam_member.custom_environments_repository_api_controller_member; do
+  grep -F -- "-target='${controller_target}'" <<<"${prerequisite_targets}" >/dev/null || {
+    printf 'Missing API/controller identity prerequisite target: %s\n' \
+      "${controller_target}" >&2
+    exit 1
+  }
+done
 
 fake_terraform="${test_dir}/terraform"
 cp "${script_dir}/testdata/fake-terraform.sh" "${fake_terraform}"
@@ -36,7 +50,8 @@ chmod 0700 "${fake_terraform}"
 
 jq -n \
   --slurpfile cloud_sql "${cloud_sql_fixture}" \
-  --slurpfile cloud_sql_project "${cloud_sql_project_state}" '
+  --slurpfile cloud_sql_project "${cloud_sql_project_state}" \
+  --slurpfile api_controller_identity "${api_controller_identity_fixture}" '
   {
     format_version: "1.2",
     terraform_version: "1.7.5",
@@ -55,6 +70,7 @@ jq -n \
             end
           )
       )
+      + $api_controller_identity[0]
       + [
         {
           address: "google_artifact_registry_repository.custom_environments_repository",
@@ -256,6 +272,29 @@ jq -n \
               location: {references: ["var.gcp_region"]},
               member: {
                 references: ["module.init.service_account_email", "module.init"]
+              },
+              project: {references: ["var.gcp_project_id"]},
+              repository: {
+                references: [
+                  "google_artifact_registry_repository.custom_environments_repository.repository_id",
+                  "google_artifact_registry_repository.custom_environments_repository"
+                ]
+              }
+            }
+          },
+          {
+            address: "google_artifact_registry_repository_iam_member.custom_environments_repository_api_controller_member",
+            mode: "managed",
+            type: "google_artifact_registry_repository_iam_member",
+            name: "custom_environments_repository_api_controller_member",
+            provider_config_key: "google",
+            expressions: {
+              location: {references: ["var.gcp_region"]},
+              member: {
+                references: [
+                  "module.init.api_controller_service_account_email",
+                  "module.init"
+                ]
               },
               project: {references: ["var.gcp_project_id"]},
               repository: {
@@ -630,6 +669,59 @@ expect_failure \
   wrong-repository-member \
   "non-Cloud-SQL prerequisite identity" \
   "${test_dir}/wrong-repository-member.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "google_artifact_registry_repository_iam_member.custom_environments_repository_api_controller_member"
+      )
+    | .change.after.role
+  ) = "roles/artifactregistry.repoAdmin"
+' "${test_dir}/reviewed.json" >"${test_dir}/privileged-controller-repository.json"
+expect_failure \
+  privileged-controller-repository \
+  "API/controller identity must match the exact least-privilege" \
+  "${test_dir}/privileged-controller-repository.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "module.init.google_project_iam_member.api_controller[\"roles/compute.networkViewer\"]"
+      )
+    | .change.after.role
+  ) = "roles/compute.admin"
+' "${test_dir}/reviewed.json" >"${test_dir}/privileged-controller-project-role.json"
+expect_failure \
+  privileged-controller-project-role \
+  "API/controller identity must match the exact least-privilege" \
+  "${test_dir}/privileged-controller-project-role.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "module.init.google_storage_bucket_iam_member.api_controller[\"instance_setup\"]"
+      )
+    | .change.after.member
+  ) = "serviceAccount:attacker@operator-canary.iam.gserviceaccount.com"
+  | del(
+      .resource_changes[]
+      | select(
+          .address
+          == "module.init.google_storage_bucket_iam_member.api_controller[\"instance_setup\"]"
+        )
+      | .change.after_unknown.member
+    )
+' "${test_dir}/reviewed.json" >"${test_dir}/wrong-controller-member.json"
+expect_failure \
+  wrong-controller-member \
+  "API/controller identity must match the exact least-privilege" \
+  "${test_dir}/wrong-controller-member.json"
 
 jq '
   (
