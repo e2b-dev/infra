@@ -2,11 +2,8 @@
 
 set -euo pipefail
 
-
-# Set timestamp format
-PS4='[\D{%Y-%m-%d %H:%M:%S}] '
-# Enable command tracing
-set -x
+# This rendered script receives Consul ACL material. Never enable xtrace: its
+# output is copied to the serial console, syslog, and user-data.log.
 
 # Send the log output from this script to user-data.log, syslog, and the console
 # Inspired by https://alestic.com/2010/12/ec2-user-data-output/

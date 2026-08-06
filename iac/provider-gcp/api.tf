@@ -14,6 +14,17 @@ resource "google_artifact_registry_repository_iam_member" "custom_environments_r
   member     = "serviceAccount:${module.init.service_account_email}"
 }
 
+# The docker reverse proxy runs on the API pool and obtains short-lived ADC
+# tokens from its distinct attached identity. Keep the worker/build grant above
+# for template construction while granting the API identity independently.
+resource "google_artifact_registry_repository_iam_member" "custom_environments_repository_api_controller_member" {
+  project    = var.gcp_project_id
+  location   = var.gcp_region
+  repository = google_artifact_registry_repository.custom_environments_repository.repository_id
+  role       = "roles/artifactregistry.repoAdmin"
+  member     = "serviceAccount:${module.init.api_controller_service_account_email}"
+}
+
 data "google_secret_manager_secret_version" "postgres_connection_string" {
   secret = module.init.postgres_connection_string_secret_name
 

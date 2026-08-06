@@ -27,11 +27,17 @@ The Terraform switch is disabled by default:
   `default`, assigned to the Nomad `default` node pool, with the reviewed
   two-host `n1-standard-8` floor.
 
-The module adds no IAM grants. It reuses the existing Nomad and Consul ACL
-tokens for those internal systems. For TAMS, it mints a short-lived Google ID
-token from the GCE metadata server and the API node's attached service account
-for every capacity request. The capacity endpoint is origin-bound to the token
-audience before a token is minted. The metadata client bypasses proxies;
+The Nomad job module adds no IAM grants. The GCP foundation provisions a
+dedicated `api-controller` service account, attaches it only to the dev API
+pool, and grants the API-pool baseline needed for startup objects, container
+pulls, telemetry, Loki, the immutable observer artifact, and the docker
+registry proxy. It has no template/build-bucket or service-account-signing
+grant. Worker, build, and server pools retain the separate fleet runtime identity. The job
+reuses the existing Nomad and Consul ACL tokens for those internal systems. For
+TAMS, it mints a short-lived Google ID token from the GCE metadata server and
+the API node's attached service account for every capacity request. The
+capacity endpoint is origin-bound to the token audience before a token is
+minted. The metadata client bypasses proxies;
 bearer bytes
 are never placed in Terraform, the Nomad job, environment, URL, filesystem,
 logs, or artifacts. The Nomad task sets mutation disabled explicitly. A
@@ -118,16 +124,18 @@ data is rejected. The controller also rejects a timestamp regression, a new
 revision at the same timestamp, snapshots older than 90 seconds, and snapshots
 more than 30 seconds in the future.
 
-The dedicated TAMS capacity route and its workload-identity reader must land
+The dedicated TAMS capacity route and its workload-identity reader must be live
 before this job is enabled. The route must validate the exact configured
-audience and authorize only a dedicated API/controller service account for this
-read-only snapshot. The current live `e2b-infra-instances` identity is attached
-to control, API, build, and worker VMs and is therefore explicitly forbidden as
-the allowlisted controller identity. Infra must create and attach a distinct
-controller service account to the API pool before activation; all other service
-accounts, including same-project workers, must be rejected. This is intentional
-rollout sequencing: enabling the job before both sides are configured results
-only in fail-closed holds.
+audience and authorize only the dedicated API/controller service account for
+this read-only snapshot. The fleet-wide `e2b-infra-instances` identity remains
+attached to control, build, and worker VMs and is explicitly forbidden as an
+allowlisted controller identity. Apply the foundation identity and grants,
+perform the guarded API-pool replacement, and then bind both Terraform outputs
+`api_controller_service_account_email` and
+`api_controller_service_account_unique_id` into TAMS before activation. All
+other service accounts, including same-project workers, must be rejected. This
+is intentional rollout sequencing: enabling the job before both sides are
+configured results only in fail-closed holds.
 
 The canonical dev endpoint is
 `https://api.tams.monad0.net/v1/ops/capacity`, with the exact Google ID-token
@@ -160,6 +168,7 @@ than serving a stale leader recommendation.
 ```sh
 go test -race ./packages/monad-worker-autoscaler/...
 make build/monad-worker-autoscaler
+make -C iac/provider-gcp keyless-runtime-check
 
 cd iac/modules/job-monad-worker-autoscaler
 terraform init -backend=false
@@ -174,3 +183,18 @@ Use the repository-pinned Terraform 1.7.5. `make
 build-and-upload/monad-worker-autoscaler` uploads only the immutable
 SHA-suffixed artifact used by the Nomad module; it does not update a mutable
 alias.
+
+## Identity and shadow rollout order
+
+1. Apply the foundation plan that creates the dedicated attached identity and
+   its scoped grants. Record the email and immutable numeric subject outputs.
+2. Set the TAMS verifier's exact audience, GCP project, email, and numeric
+   subject. A shared worker/build identity must remain rejected.
+3. Use the existing guarded `api` replacement stage to attach the dedicated
+   identity to both API nodes, then prove load-balancer and Nomad convergence.
+4. Build and create-only upload `monad-worker-autoscaler.<infra-sha>`.
+5. Set the five `MONAD_WORKER_AUTOSCALER_*` operator inputs and apply the
+   ordinary workload plan with two shadow allocations. Mutation remains
+   disabled.
+6. Prove one elected leader reports a fresh accepted capacity revision, the
+   follower publishes no stale decision, and no GCE resize or deletion occurs.

@@ -2,6 +2,16 @@ output "service_account_email" {
   value = google_service_account.infra_instances_service_account.email
 }
 
+output "api_controller_service_account_email" {
+  description = "Attached identity for the invited-beta API pool and shadow worker-capacity observer."
+  value       = google_service_account.api_controller_service_account.email
+}
+
+output "api_controller_service_account_unique_id" {
+  description = "Immutable numeric Google subject for the API/controller workload identity allowlist."
+  value       = google_service_account.api_controller_service_account.unique_id
+}
+
 output "consul_acl_token_secret" {
   value     = google_secret_manager_secret_version.consul_acl_token_active.secret_data
   sensitive = true

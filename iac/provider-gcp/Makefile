@@ -35,6 +35,11 @@ tf_vars := \
 	$(call tfvar, OS_LOGIN_OPERATOR_ACCESS_CONFIRMED) \
 	$(call tfvar, NETWORK_HARDENING_ROLLOUT_STAGE) \
 	$(call tfvar, NETWORK_HARDENING_ROLLOUT_WAIT_SECONDS) \
+	$(call tfvar, MONAD_WORKER_AUTOSCALER_SHADOW_ENABLED) \
+	$(call tfvar, MONAD_WORKER_AUTOSCALER_REVISION) \
+	$(call tfvar, MONAD_WORKER_AUTOSCALER_TAMS_CAPACITY_URL) \
+	$(call tfvar, MONAD_WORKER_AUTOSCALER_TAMS_AUDIENCE) \
+	$(call tfvar, MONAD_WORKER_AUTOSCALER_ALLOCATIONS) \
 	$(call tfvar, SERVER_MACHINE_TYPE) \
 	$(call tfvar, SERVER_CLUSTER_SIZE) \
 	$(call tfvar, CLICKHOUSE_CLUSTER_SIZE) \
@@ -148,7 +153,8 @@ override WORKLOAD_PREREQUISITE_TARGETS := \
 	-target='google_secret_manager_secret_version.sandbox_access_token_hash_seed' \
 	-target='time_static.volume_token_generation' \
 	-target='tls_private_key.volume_token[0]' \
-	-target='google_artifact_registry_repository_iam_member.custom_environments_repository_member'
+	-target='google_artifact_registry_repository_iam_member.custom_environments_repository_member' \
+	-target='google_artifact_registry_repository_iam_member.custom_environments_repository_api_controller_member'
 WORKLOAD_CLUSTER_WAIT_SECONDS ?= 1800
 NETWORK_HARDENING_ROLLOUT_WAIT_SECONDS ?= $(WORKLOAD_CLUSTER_WAIT_SECONDS)
 
@@ -303,6 +309,7 @@ foundation-toolchain-guard:
 .PHONY: keyless-runtime-check
 keyless-runtime-check:
 	@ ./scripts/test-keyless-runtime-guard.sh
+	@ ./scripts/test-api-controller-identity.sh
 	@ ./scripts/test-configure-docker-gcp.sh
 	@ ./scripts/test-control-plane-secret-logging.sh
 	@ ./scripts/test-scrub-legacy-acl-token-state.sh
