@@ -15,6 +15,7 @@ locals {
 resource "nomad_job" "client_proxy" {
   jobspec = templatefile("${path.module}/jobs/client-proxy.hcl", {
     update_stanza       = var.update_stanza
+    update_canary_count = var.available_host_count > var.client_proxy_count ? 1 : 0
     count               = var.client_proxy_count
     cpu_count           = var.client_proxy_cpu_count
     memory_mb           = var.client_proxy_memory_mb
@@ -29,4 +30,20 @@ resource "nomad_job" "client_proxy" {
     job_env_vars = local.job_env_vars
     entrypoints  = local.entrypoints
   })
+
+  lifecycle {
+    precondition {
+      condition = (
+        var.available_host_count >= 1
+        && floor(var.available_host_count) == var.available_host_count
+        && var.client_proxy_count >= 1
+        && floor(var.client_proxy_count) == var.client_proxy_count
+        && var.client_proxy_count <= var.available_host_count
+        && var.client_proxy_update_max_parallel >= 1
+        && floor(var.client_proxy_update_max_parallel) == var.client_proxy_update_max_parallel
+        && var.client_proxy_update_max_parallel <= max(1, var.client_proxy_count - 1)
+      )
+      error_message = "client-proxy requires one distinct static-port allocation per eligible API host and must leave one existing replica serving during a multi-replica rolling update."
+    }
+  }
 }

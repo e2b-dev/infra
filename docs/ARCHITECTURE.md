@@ -399,6 +399,12 @@ flowchart TB
   `api-controller` service account rather than the fleet-wide worker/build
   identity. TAMS binds both its email and immutable numeric Google subject for
   the read-only capacity route; same-project worker identities remain rejected.
+  Unless explicitly narrowed, ingress and client-proxy replica counts follow
+  the API host count and use `distinct_hosts`, so every load-balancer backend
+  can serve ordinary API and sandbox traffic. Their host-network listeners use
+  static ports. When replicas fill the API pool, Nomad therefore rolls one
+  allocation at a time without an extra canary; a canary is used only when an
+  eligible spare API host exists.
 - **Sandbox ("client") nodes** run the orchestrator as a Nomad *system* job via `raw_exec`
   (it needs root for Firecracker, namespaces, NBD, cgroups). Configured with hugepages and local
   template caches. Terraform holds the invited-beta bootstrap at two workers until the

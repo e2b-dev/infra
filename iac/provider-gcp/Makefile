@@ -309,6 +309,7 @@ workload-plan-assertions-test:
 	@ ./scripts/test-workload-quota-mode.sh
 	@ ./scripts/test-workload-release.sh
 	@ ./scripts/test-workload-cluster-wait.sh
+	@ ./scripts/test-api-edge-ha.sh "$(TF)"
 	@ ../modules/job-template-manager/scripts/test-get-nomad-job-count.sh
 	@ ../modules/job-template-manager/scripts/test-module.sh "$(TF)"
 	@ $(MAKE) worker-startup-render-test
