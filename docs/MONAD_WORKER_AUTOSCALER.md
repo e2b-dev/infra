@@ -129,8 +129,9 @@ before this job is enabled. The route must validate the exact configured
 audience and authorize only the dedicated API/controller service account for
 this read-only snapshot. The fleet-wide `e2b-infra-instances` identity remains
 attached to control, build, and worker VMs and is explicitly forbidden as an
-allowlisted controller identity. Apply the foundation identity and grants,
-perform the guarded API-pool replacement, and then bind both Terraform outputs
+allowlisted controller identity. Apply the dedicated identity and grants through
+the guarded live prerequisite workflow, perform the API-pool replacement, and
+then bind both Terraform outputs
 `api_controller_service_account_email` and
 `api_controller_service_account_unique_id` into TAMS before activation. All
 other service accounts, including same-project workers, must be rejected. This
@@ -186,8 +187,12 @@ alias.
 
 ## Identity and shadow rollout order
 
-1. Apply the foundation plan that creates the dedicated attached identity and
-   its scoped grants. Record the email and immutable numeric subject outputs.
+1. For the existing invited-beta fleet, use the guarded
+   `workload-prerequisite-plan` / `workload-prerequisite-apply` workflow. Its
+   exact target and plan assertions create the dedicated attached identity and
+   all scoped grants inside the legacy combined live state. The
+   `foundation-plan` path remains valid only for a greenfield foundation-only
+   state. Record the email and immutable numeric subject outputs.
 2. Set the TAMS verifier's exact audience, GCP project, email, and numeric
    subject. A shared worker/build identity must remain rejected.
 3. Read the live network-hardening marker before replacing the API pool. Use

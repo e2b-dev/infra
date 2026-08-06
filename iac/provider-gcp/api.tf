@@ -21,7 +21,7 @@ resource "google_artifact_registry_repository_iam_member" "custom_environments_r
   project    = var.gcp_project_id
   location   = var.gcp_region
   repository = google_artifact_registry_repository.custom_environments_repository.repository_id
-  role       = "roles/artifactregistry.repoAdmin"
+  role       = "roles/artifactregistry.reader"
   member     = "serviceAccount:${module.init.api_controller_service_account_email}"
 }
 

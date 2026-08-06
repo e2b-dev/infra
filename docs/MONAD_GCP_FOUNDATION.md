@@ -50,6 +50,13 @@ sandbox nodes, workload VMs, or Packer image.
 
 ## Reviewable workflow
 
+This workflow is for an empty or already foundation-only state. The existing
+invited-beta `dev` state still contains both foundation and workload resources,
+so its guard intentionally refuses this path. Additive live prerequisites,
+including the dedicated API/controller identity, must use the exact-target
+`workload-prerequisite-plan` / `workload-prerequisite-apply` workflow until a
+separately reviewed state split is complete.
+
 ```bash
 make set-env ENV=dev
 mise exec -- make -C iac/provider-gcp foundation-init

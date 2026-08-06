@@ -100,6 +100,7 @@ fi
 expected_resources="$(
   jq -cn '[
     {address:"google_artifact_registry_repository.custom_environments_repository",type:"google_artifact_registry_repository"},
+    {address:"google_artifact_registry_repository_iam_member.custom_environments_repository_api_controller_member",type:"google_artifact_registry_repository_iam_member"},
     {address:"google_artifact_registry_repository_iam_member.custom_environments_repository_member",type:"google_artifact_registry_repository_iam_member"},
     {address:"google_compute_global_address.cloud_sql_private_services",type:"google_compute_global_address"},
     {address:"google_project_iam_member.cloud_sql_service_agent",type:"google_project_iam_member"},
@@ -128,7 +129,16 @@ expected_resources="$(
     {address:"terraform_data.cloud_sql_connection_budget",type:"terraform_data"},
     {address:"time_sleep.service_identity_propagation",type:"time_sleep"},
     {address:"time_static.volume_token_generation",type:"time_static"},
-    {address:"tls_private_key.volume_token[0]",type:"tls_private_key"}
+    {address:"tls_private_key.volume_token[0]",type:"tls_private_key"},
+    {address:"module.init.google_artifact_registry_repository_iam_member.api_controller_core_reader",type:"google_artifact_registry_repository_iam_member"},
+    {address:"module.init.google_artifact_registry_repository_iam_member.api_controller_orchestration_reader",type:"google_artifact_registry_repository_iam_member"},
+    {address:"module.init.google_project_iam_member.api_controller[\"roles/compute.networkViewer\"]",type:"google_project_iam_member"},
+    {address:"module.init.google_project_iam_member.api_controller[\"roles/logging.logWriter\"]",type:"google_project_iam_member"},
+    {address:"module.init.google_project_iam_member.api_controller[\"roles/monitoring.editor\"]",type:"google_project_iam_member"},
+    {address:"module.init.google_service_account.api_controller_service_account",type:"google_service_account"},
+    {address:"module.init.google_storage_bucket_iam_member.api_controller[\"controller_artifact\"]",type:"google_storage_bucket_iam_member"},
+    {address:"module.init.google_storage_bucket_iam_member.api_controller[\"instance_setup\"]",type:"google_storage_bucket_iam_member"},
+    {address:"module.init.google_storage_bucket_iam_member.api_controller[\"loki\"]",type:"google_storage_bucket_iam_member"}
   ] | sort_by(.address)'
 )"
 
@@ -194,6 +204,122 @@ if ! jq -ne \
   printf 'Expected: %s\n' "$(jq -c . <<<"${expected_resources}")" >&2
   printf 'Reviewed: %s\n' "$(jq -c . <<<"${reviewed_resources}")" >&2
   printf 'Unexpected mutations: %s\n' "$(jq -c . <<<"${unexpected_mutations}")" >&2
+  exit 1
+fi
+
+if ! jq -e \
+  --arg expected_project "${expected_project}" \
+  --arg expected_region "${expected_region}" \
+  --arg expected_prefix "${expected_prefix}" '
+  def row($address):
+    [.resource_changes[]? | select(.address == $address)][0];
+  def config($address):
+    [.configuration.root_module.resources[]? | select(.address == $address)][0];
+  def creating:
+    .change.actions == ["create"];
+  def stable:
+    .change.actions == ["no-op"] and .change.before == .change.after;
+  def reviewed_change:
+    creating or stable;
+  def artifact_repository_name:
+    if type == "string" and startswith("projects/") then split("/")[-1] else . end;
+  def dedicated_member($row; $expected_member):
+    if ($row | creating) then
+      $row.change.after.member == null
+      and $row.change.after_unknown.member == true
+    else
+      ($row | stable)
+      and $row.change.after.member == $expected_member
+      and $row.change.after_unknown.member != true
+    end;
+
+  ($expected_prefix + "api-controller@" + $expected_project + ".iam.gserviceaccount.com") as $expected_email
+  | ("serviceAccount:" + $expected_email) as $expected_member
+  | row("module.init.google_service_account.api_controller_service_account") as $service_account
+  | row("module.init.google_artifact_registry_repository_iam_member.api_controller_orchestration_reader") as $orchestration_reader
+  | row("module.init.google_artifact_registry_repository_iam_member.api_controller_core_reader") as $core_reader
+  | row("module.init.google_storage_bucket_iam_member.api_controller[\"instance_setup\"]") as $instance_setup_reader
+  | row("module.init.google_storage_bucket_iam_member.api_controller[\"controller_artifact\"]") as $controller_artifact_reader
+  | row("module.init.google_storage_bucket_iam_member.api_controller[\"loki\"]") as $loki_writer
+  | row("module.init.google_project_iam_member.api_controller[\"roles/compute.networkViewer\"]") as $network_viewer
+  | row("module.init.google_project_iam_member.api_controller[\"roles/logging.logWriter\"]") as $log_writer
+  | row("module.init.google_project_iam_member.api_controller[\"roles/monitoring.editor\"]") as $monitoring_editor
+  | row("google_artifact_registry_repository_iam_member.custom_environments_repository_api_controller_member") as $custom_environment_reader
+  | config("google_artifact_registry_repository_iam_member.custom_environments_repository_api_controller_member") as $custom_environment_reader_config
+  | all(
+      [
+        $service_account,
+        $orchestration_reader,
+        $core_reader,
+        $instance_setup_reader,
+        $controller_artifact_reader,
+        $loki_writer,
+        $network_viewer,
+        $log_writer,
+        $monitoring_editor,
+        $custom_environment_reader
+      ][];
+      reviewed_change
+      and .provider_name == "registry.terraform.io/hashicorp/google"
+    )
+  and $service_account.change.after.account_id == ($expected_prefix + "api-controller")
+  and $service_account.change.after.display_name == "API and Worker Capacity Controller Service Account"
+  and $service_account.change.after.project == $expected_project
+  and (
+    if ($service_account | creating) then
+      $service_account.change.after.email == null
+      and $service_account.change.after_unknown.email == true
+      and $service_account.change.after_unknown.unique_id == true
+    else
+      ($service_account | stable)
+      and $service_account.change.after.email == $expected_email
+      and ($service_account.change.after.unique_id | test("^[0-9]+$"))
+    end
+  )
+  and ($orchestration_reader.change.after.repository | artifact_repository_name) == "e2b-orchestration"
+  and $orchestration_reader.change.after.role == "roles/artifactregistry.reader"
+  and dedicated_member($orchestration_reader; $expected_member)
+  and ($core_reader.change.after.repository | artifact_repository_name) == ($expected_prefix + "core")
+  and $core_reader.change.after.role == "roles/artifactregistry.reader"
+  and dedicated_member($core_reader; $expected_member)
+  and $instance_setup_reader.change.after.bucket == ($expected_project + "-instance-setup")
+  and $instance_setup_reader.change.after.role == "roles/storage.objectViewer"
+  and dedicated_member($instance_setup_reader; $expected_member)
+  and $controller_artifact_reader.change.after.bucket == ($expected_project + "-fc-env-pipeline")
+  and $controller_artifact_reader.change.after.role == "roles/storage.objectViewer"
+  and dedicated_member($controller_artifact_reader; $expected_member)
+  and $loki_writer.change.after.bucket == ($expected_project + "-loki-storage")
+  and $loki_writer.change.after.role == "roles/storage.objectUser"
+  and dedicated_member($loki_writer; $expected_member)
+  and $network_viewer.change.after.project == $expected_project
+  and $network_viewer.change.after.role == "roles/compute.networkViewer"
+  and dedicated_member($network_viewer; $expected_member)
+  and $log_writer.change.after.project == $expected_project
+  and $log_writer.change.after.role == "roles/logging.logWriter"
+  and dedicated_member($log_writer; $expected_member)
+  and $monitoring_editor.change.after.project == $expected_project
+  and $monitoring_editor.change.after.role == "roles/monitoring.editor"
+  and dedicated_member($monitoring_editor; $expected_member)
+  and $custom_environment_reader.change.after.project == $expected_project
+  and $custom_environment_reader.change.after.location == $expected_region
+  and ($custom_environment_reader.change.after.repository | artifact_repository_name)
+    == ($expected_prefix + "custom-environments")
+  and $custom_environment_reader.change.after.role == "roles/artifactregistry.reader"
+  and dedicated_member($custom_environment_reader; $expected_member)
+  and $custom_environment_reader_config.mode == "managed"
+  and $custom_environment_reader_config.type == "google_artifact_registry_repository_iam_member"
+  and $custom_environment_reader_config.expressions.project.references == ["var.gcp_project_id"]
+  and $custom_environment_reader_config.expressions.location.references == ["var.gcp_region"]
+  and $custom_environment_reader_config.expressions.repository.references == [
+    "google_artifact_registry_repository.custom_environments_repository.repository_id",
+    "google_artifact_registry_repository.custom_environments_repository"
+  ]
+  and $custom_environment_reader_config.expressions.member.references == [
+    "module.init.api_controller_service_account_email",
+    "module.init"
+  ]
+' <<<"${plan_json}" >/dev/null; then
+  printf 'Refusing workload prerequisite plan: API/controller identity must match the exact least-privilege live rollout contract.\n' >&2
   exit 1
 fi
 
