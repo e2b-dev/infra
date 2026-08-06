@@ -10,6 +10,7 @@ import (
 )
 
 type Scanner struct {
+	logger    *zerolog.Logger
 	Processes chan net.ConnectionStat
 	scanExit  chan struct{}
 	subs      *smap.Map[*ScannerSubscriber]
@@ -20,8 +21,9 @@ func (s *Scanner) Destroy() {
 	close(s.scanExit)
 }
 
-func NewScanner(period time.Duration) *Scanner {
+func NewScanner(logger *zerolog.Logger, period time.Duration) *Scanner {
 	return &Scanner{
+		logger:    logger,
 		period:    period,
 		subs:      smap.New[*ScannerSubscriber](),
 		scanExit:  make(chan struct{}),
@@ -48,9 +50,15 @@ func (s *Scanner) ScanAndBroadcast() {
 
 	for {
 		// tcp monitors both ipv4 and ipv6 connections.
-		processes, _ := net.Connections("tcp")
-		for _, sub := range s.subs.Items() {
-			sub.Signal(processes)
+		processes, err := net.Connections("tcp")
+		if err != nil {
+			if s.logger != nil {
+				s.logger.Error().Err(err).Msg("Failed to scan open TCP connections")
+			}
+		} else {
+			for _, sub := range s.subs.Items() {
+				sub.Signal(processes)
+			}
 		}
 		select {
 		case <-s.scanExit:
