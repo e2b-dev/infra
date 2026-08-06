@@ -148,16 +148,26 @@ mise exec -- make -C iac/provider-gcp workload-cluster-apply \
 mise exec -- make -C iac/provider-gcp workload-cluster-wait
 ```
 
-`workload-cluster-plan` uses the exact Terraform target `-target=module.cluster` and forces the
-in-graph convergence sentinel to be replaced on every reviewed attempt, but the target no longer
-authorizes the whole module to mutate at once. The OS Login authorization guard is inside that
-module and is an explicit dependency of every replacement path. A Terraform-state marker must
-advance exactly one step only after the sentinel has re-proved live convergence, exact replacement
-identity, IAP/OS Login access, and stage-specific Nomad/load-balancer health. A second assertion
-permits only the exact three-rule firewall precedence transition for `network`,
-or one PROACTIVE pool's template/MIG pair for `server`, `api`, `worker`, or `build` (the zero-sized
-Loki/ClickHouse templates are adopted with `build`). Any concurrent pool, generic autoscaler,
-worker-MIG ownership, or unrelated drift fails closed.
+`workload-cluster-plan` creates two different plans under the shared lease. A transient
+`-target=module.cluster` plan is used only to audit complete topology and quota headroom. It is
+mode 0600, is never published or passed to `terraform apply`, and is deleted before an apply can
+set `mutation_started=true`; preserved recovery directories therefore cannot contain it. The only
+saved and applyable plan targets the in-module authorization guard, the exact current-stage
+firewall/template/MIG resources, and a cumulative stage-specific completion/marker chain. While
+the already-live shared ledger root moves to its explicit `network` addresses, the target list also
+names both legacy source addresses so Terraform can process that state move inside the same exact
+plan; those legacy targets authorize no independent resource mutation.
+
+Each completion sentinel depends on the previous persisted marker and the exact current pool
+resources; precise child-module readiness outputs pull only the network, worker, or build resources
+needed for that stage into the graph. The current sentinel is forced through creation or replacement
+on every reviewed attempt. Its marker cannot advance until the bounded waiter has re-proved live
+convergence, exact replacement identity, IAP/OS Login access, and stage-specific
+Nomad/load-balancer health. The plan assertion requires every earlier ledger pair to be an exact
+no-op and permits mutation only for the current three-rule firewall transition or one PROACTIVE
+pool's template/MIG pair for `server`, `api`, `worker`, or `build` (the zero-sized Loki/ClickHouse
+templates are adopted with `build`). Prior-stage drift, any future or concurrent pool, generic
+autoscaler changes, worker-MIG ownership changes, and unrelated drift all fail closed.
 
 The mode-0600 checkpoint records the exact Git head, environment identity, named operator, fresh
 IAP/OS Login proof, and stage-specific health or drain evidence. It is valid for at most one hour;
@@ -177,9 +187,10 @@ source commit, `workload-cluster-rebind-recovery-source` performs a generation-m
 transfer to the exact clean descendant. It accepts no other stage or unrelated source diff and
 creates no unlocked interval; the normal recovery plan/apply path then consumes the rebound token.
 
-The cluster plan and apply derive quota admission from the same reviewed saved
-plan. If every positive-capacity MIG already has the exact reviewed base size
-in the plan's refreshed prior state, only `no-op` or in-place `update` actions
+The cluster plan and apply each derive quota admission from a fresh private,
+transient full-topology audit; the exact-stage plan is the only saved, reviewed,
+and applyable plan. If every positive-capacity MIG already has the exact reviewed
+base size in the audit's refreshed prior state, only `no-op` or in-place `update` actions
 may use `post-cluster` peak-minus-base reserve. Initial or partial creation uses
 `bootstrap` full-peak headroom. Unexpected direct quota-bearing resources,
 unknown fleet shapes, capacity drift, and MIG replacement cannot obtain
@@ -188,12 +199,12 @@ whether any initial-create resource is reviewed. An instance-template
 create-before-destroy rollout remains eligible only after the topology guard
 proves its MIG size and reviewed surge policy.
 
-The apply target consumes only the private verified copy of the reviewed stage plan, requires a
-stage-specific literal confirmation, rechecks the still-fresh checkpoint, proves that the
+The apply target consumes only the private verified copy of the exact reviewed stage plan,
+requires a stage-specific literal confirmation, rechecks the still-fresh checkpoint, proves that the
 canonical GCS lease still has the token's exact generation and holder immediately before
-Terraform mutation, and runs a second targeted plan that must report clean convergence. Failed
-planning leaves an older reviewed pair
-untouched until the lease has been acquired; failed apply, residual drift, or
+Terraform mutation, deletes the transient topology audit, and runs a second exact targeted plan
+that must report clean convergence. Failed planning leaves an older reviewed pair untouched until
+the lease has been acquired; failed apply, residual drift, or
 lease-release failure preserves the plan and manifest for diagnosis.
 
 `workload-cluster-wait` is read-only and bounded to 30 minutes by default

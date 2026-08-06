@@ -428,13 +428,13 @@ expect_success "cluster-minimal" "${cluster_fixture}" cluster
 
 jq '
   .resource_changes += [{
-    "address": "module.cluster.terraform_data.network_hardening_rollout_completion",
+    "address": "module.cluster.terraform_data.network_hardening_rollout_completion_server[0]",
     "mode": "managed",
     "type": "terraform_data",
-    "name": "network_hardening_rollout_completion",
+    "name": "network_hardening_rollout_completion_server",
     "change": {
       "actions": ["delete", "create"],
-      "before": {"input": "network"},
+      "before": {"input": "server"},
       "after": {"input": "server"}
     }
   }]

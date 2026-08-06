@@ -29,19 +29,35 @@ expect_fail() {
 
 cluster_source="${provider_root}/nomad-cluster/main.tf"
 runbook="${repo_root}/docs/MONAD_GCP_NETWORK_HARDENING.md"
-grep -F 'resource "terraform_data" "network_hardening_rollout_completion"' \
+grep -F 'resource "terraform_data" "network_hardening_rollout_completion_network"' \
   "${cluster_source}" >/dev/null
 grep -F 'command = "\"${abspath("${path.module}/../scripts/wait-network-hardening-stage.sh")}\""' \
   "${cluster_source}" >/dev/null
-grep -F 'DOMAIN_NAME                     = var.domain_name' \
+grep -F 'DOMAIN_NAME                    = var.domain_name' \
   "${cluster_source}" >/dev/null
-grep -F 'depends_on = [terraform_data.network_hardening_rollout_completion]' \
+grep -F 'depends_on = [terraform_data.network_hardening_rollout_completion_network]' \
   "${cluster_source}" >/dev/null
-if grep -R -n 'terraform_data\.network_hardening_rollout_stage' \
-  "${provider_root}/nomad-cluster" >/dev/null; then
-  printf 'stage marker must not remain upstream of a template, MIG, or firewall\n' >&2
-  exit 1
-fi
+grep -F 'from = terraform_data.network_hardening_rollout_completion' \
+  "${cluster_source}" >/dev/null
+grep -F 'from = terraform_data.network_hardening_rollout_stage' \
+  "${cluster_source}" >/dev/null
+for stage in network server api worker build; do
+  grep -F "resource \"terraform_data\" \"network_hardening_rollout_completion_${stage}\"" \
+    "${cluster_source}" >/dev/null
+  grep -F "resource \"terraform_data\" \"network_hardening_rollout_stage_${stage}\"" \
+    "${cluster_source}" >/dev/null
+done
+for dependency in \
+  terraform_data.network_hardening_rollout_stage_network \
+  terraform_data.network_hardening_rollout_stage_server \
+  terraform_data.network_hardening_rollout_stage_api \
+  terraform_data.network_hardening_rollout_stage_worker \
+  google_compute_region_instance_group_manager.server_pool \
+  google_compute_instance_group_manager.api_pool \
+  module.client_cluster \
+  module.build_cluster; do
+  grep -F "${dependency}" "${cluster_source}" >/dev/null
+done
 
 for recovery_target in \
   workload-cluster-recover-lease \
@@ -67,7 +83,7 @@ awk '
   capture
 ' "${provider_root}/Makefile" >"${apply_block}"
 apply_line="$(grep -nF '$(TF) apply -input=false' "${apply_block}" | cut -d: -f1)"
-lease_assert_line="$(grep -nF '"$(WORKLOAD_ROLLOUT_LEASE)" assert-held' "${apply_block}" | cut -d: -f1)"
+lease_assert_line="$(grep -nF '"$(WORKLOAD_ROLLOUT_LEASE)" assert-held' "${apply_block}" | tail -1 | cut -d: -f1)"
 wait_line="$(grep -nF './scripts/wait-network-hardening-stage.sh' "${apply_block}" | cut -d: -f1)"
 release_line="$(grep -nF '"$(WORKLOAD_ROLLOUT_LEASE)" release' "${apply_block}" | tail -1 | cut -d: -f1)"
 [[ -n "${lease_assert_line}" && -n "${apply_line}" && -n "${wait_line}" && -n "${release_line}" ]]
@@ -83,7 +99,21 @@ make_plan() {
   local output="$2"
   jq -n --arg stage "${stage}" '
     {network:1,server:2,api:3,worker:4,build:5} as $rank
-    | {network:"disabled",server:"network",api:"server",worker:"api",build:"worker"} as $previous
+    | ["network","server","api","worker","build"] as $stages
+    | {
+        network:"module.cluster.terraform_data.network_hardening_rollout_completion_network",
+        server:"module.cluster.terraform_data.network_hardening_rollout_completion_server[0]",
+        api:"module.cluster.terraform_data.network_hardening_rollout_completion_api[0]",
+        worker:"module.cluster.terraform_data.network_hardening_rollout_completion_worker[0]",
+        build:"module.cluster.terraform_data.network_hardening_rollout_completion_build[0]"
+      } as $completions
+    | {
+        network:"module.cluster.terraform_data.network_hardening_rollout_stage_network",
+        server:"module.cluster.terraform_data.network_hardening_rollout_stage_server[0]",
+        api:"module.cluster.terraform_data.network_hardening_rollout_stage_api[0]",
+        worker:"module.cluster.terraform_data.network_hardening_rollout_stage_worker[0]",
+        build:"module.cluster.terraform_data.network_hardening_rollout_stage_build[0]"
+      } as $markers
     | {
         network: [
           "module.cluster.module.network.google_compute_firewall.iap_remote_connection_firewall_ingress[0]",
@@ -131,26 +161,45 @@ make_plan() {
               change:{actions:["no-op"],before:{input:true},after:{input:true}}
             },
             {
-              address:"module.cluster.terraform_data.network_hardening_rollout_completion",
+              address:$completions[$stage],
               mode:"managed",
               type:"terraform_data",
               change:{
-                actions:(if $stage == "network" then ["create"] else ["delete","create"] end),
-                before:(if $stage == "network" then null else {input:$previous[$stage]} end),
+                actions:(if $stage == "network" then ["delete","create"] else ["create"] end),
+                before:(if $stage == "network" then {input:"disabled"} else null end),
                 after:{input:$stage}
               }
             },
             {
-              address:"module.cluster.terraform_data.network_hardening_rollout_stage",
+              address:$markers[$stage],
               mode:"managed",
               type:"terraform_data",
-              change:{actions:["update"],before:{input:$previous[$stage]},after:{input:$stage}}
+              change:{
+                actions:(if $stage == "network" then ["update"] else ["create"] end),
+                before:(if $stage == "network" then {input:"disabled"} else null end),
+                after:{input:$stage}
+              }
             }
           ]
           + [
+              $stages[0:($rank[$stage] - 1)][] as $prior
+              | {
+                  address:$completions[$prior],
+                  mode:"managed",
+                  type:"terraform_data",
+                  change:{actions:["no-op"],before:{input:$prior},after:{input:$prior}}
+                },
+                {
+                  address:$markers[$prior],
+                  mode:"managed",
+                  type:"terraform_data",
+                  change:{actions:["no-op"],before:{input:$prior},after:{input:$prior}}
+                }
+            ]
+          + [
               $templates[]
+              | select(.role_rank <= $rank[$stage])
               | . as $template
-              | ($rank[$stage] >= .role_rank) as $enabled
               | {
                   address:.address,
                   mode:"managed",
@@ -158,10 +207,24 @@ make_plan() {
                   change:{
                     actions:(if ($mutations[$stage] | index($template.address)) then ["create","delete"] else ["no-op"] end),
                     before:{metadata:{}},
-                    after:{metadata:(if $enabled then {"enable-oslogin":"TRUE"} else {} end)}
+                    after:{metadata:{"enable-oslogin":"TRUE"}}
                   }
                 }
             ]
+          + (
+              if $rank[$stage] >= $rank.server then [
+                {
+                  address:"module.cluster.google_storage_bucket_object.setup_config_objects[\"scripts/run-nomad.sh\"]",
+                  mode:"managed",
+                  type:"google_storage_bucket_object",
+                  change:{
+                    actions:(if $stage == "server" then ["delete","create"] else ["no-op"] end),
+                    before:{name:"run-nomad-11111.sh",source:"/repo/nomad-cluster/scripts/run-nomad.sh"},
+                    after:{name:"run-nomad-22222.sh",source:"/repo/nomad-cluster/scripts/run-nomad.sh"}
+                  }
+                }
+              ] else [] end
+            )
           + [
               $mutations[$stage][] as $address
               | select([$templates[].address] | index($address) | not)
@@ -265,53 +328,62 @@ expect_fail "public deny must cover every administrative port" \
 # into replacements. The network stage must reject that exact regression even
 # though its exact firewall transition remains valid.
 jq '
-  (.resource_changes[]
-    | select(
-        .address
-        == "module.cluster.module.client_cluster[\"default\"].google_compute_instance_template.template"
-        or .address
-        == "module.cluster.module.build_cluster[\"default\"].google_compute_instance_template.template"
-      )
-    | .change.actions) = ["create", "delete"]
+  .resource_changes += [
+    {
+      address:"module.cluster.module.client_cluster[\"default\"].google_compute_instance_template.template",
+      mode:"managed", type:"google_compute_instance_template",
+      change:{actions:["create","delete"],before:{metadata:{}},after:{metadata:{}}}
+    },
+    {
+      address:"module.cluster.module.build_cluster[\"default\"].google_compute_instance_template.template",
+      mode:"managed", type:"google_compute_instance_template",
+      change:{actions:["create","delete"],before:{metadata:{}},after:{metadata:{}}}
+    }
+  ]
 ' "${test_dir}/network.plan" >"${test_dir}/network-deferred-source-image.plan"
 expect_fail "network stage cannot replace worker/build templates after deferred source-image reads" \
   "${script_dir}/assert-network-hardening-stage-plan.sh" \
   "${test_dir}/network-deferred-source-image.plan" "${fake_terraform}" network
 
-# A normal deployment can initialize the no-op sentinel while rollout is
-# disabled. Its first reviewed network stage must replace that persisted value.
+# A fresh state may create the network ledger directly; an initialized state
+# replaces its moved disabled completion. Both are valid first transitions.
 jq '
   (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion")
-    | .change.actions) = ["delete", "create"]
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion_network")
+    | .change.actions) = ["create"]
   | (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion")
-    | .change.before) = {input: "disabled"}
-' "${test_dir}/network.plan" >"${test_dir}/initialized-network.plan"
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion_network")
+    | .change.before) = null
+  | (.resource_changes[]
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_stage_network")
+    | .change.actions) = ["create"]
+  | (.resource_changes[]
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_stage_network")
+    | .change.before) = null
+' "${test_dir}/network.plan" >"${test_dir}/fresh-network.plan"
 "${script_dir}/assert-network-hardening-stage-plan.sh" \
-  "${test_dir}/initialized-network.plan" "${fake_terraform}" network >/dev/null
+  "${test_dir}/fresh-network.plan" "${fake_terraform}" network >/dev/null
 
-# A failed stage can have committed the template while leaving the MIG pending.
-# The convergence sentinel and stage marker keep the persisted stage at the
-# previous value, so the remaining in-boundary mutation must be retryable.
+# A failed server transition can leave the template committed while the MIG,
+# completion, and marker remain pending. The remaining exact-stage subset is
+# retryable because the completion depends on the MIG and prior network marker.
 jq '
   (.resource_changes[]
     | select(.address == "module.cluster.google_compute_instance_template.server")
     | .change.actions) = ["no-op"]
-  | (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion")
-    | .change.before.input) = "server"
 ' "${test_dir}/server.plan" >"${test_dir}/partial-retry.plan"
 "${script_dir}/assert-network-hardening-stage-plan.sh" \
   "${test_dir}/partial-retry.plan" "${fake_terraform}" server >/dev/null
 
-# If convergence completed but persisting the marker failed, every pool
-# resource can be a no-op on the retry, but the sentinel must still be replaced
-# so live convergence is re-proven inside the apply graph.
+# If the completion exists but the marker did not persist, a forced replacement
+# re-proves live convergence before creating the marker.
 jq '
   (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion")
-    | .change.before.input) = "server"
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion_server[0]")
+    | .change.actions) = ["delete", "create"]
+  | (.resource_changes[]
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion_server[0]")
+    | .change.before) = {input:"server"}
   | (.resource_changes[]
     | select(.address == "module.cluster.google_compute_instance_template.server")
     | .change.actions) = ["no-op"]
@@ -320,118 +392,124 @@ jq '
     | .change.actions) = ["no-op"]
 ' "${test_dir}/server.plan" >"${test_dir}/marker-retry.plan"
 "${script_dir}/assert-network-hardening-stage-plan.sh" \
-  "${test_dir}/marker-retry.plan" "${fake_terraform}" server >/dev/null
+  "${test_dir}/marker-retry.plan" "${fake_terraform}" server server >/dev/null
 
-# A forced same-stage retry can destroy the convergence sentinel before its
-# replacement is persisted. The current marker must be allowed to repair that
-# missing sentinel, while the following stage must remain blocked.
+# A completed marker can only be retried under the exact recovery context, and
+# a missing forced completion remains recoverable under that held lease.
 jq '
   (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion")
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion_server[0]")
     | .change.actions) = ["create"]
   | (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion")
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion_server[0]")
     | .change.before) = null
   | (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_stage")
-    | .change.before.input) = "server"
-  | (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_stage")
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_stage_server[0]")
     | .change.actions) = ["no-op"]
+  | (.resource_changes[]
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_stage_server[0]")
+    | .change.before) = {input:"server"}
 ' "${test_dir}/server.plan" >"${test_dir}/missing-sentinel-retry.plan"
 "${script_dir}/assert-network-hardening-stage-plan.sh" \
   "${test_dir}/missing-sentinel-retry.plan" "${fake_terraform}" server server >/dev/null
-expect_fail "absent current-stage sentinel requires validated recovery context" \
+expect_fail "same-stage retry requires validated recovery context" \
   "${script_dir}/assert-network-hardening-stage-plan.sh" \
   "${test_dir}/missing-sentinel-retry.plan" "${fake_terraform}" server
 
-# An initial stage transition can likewise be interrupted after Terraform
-# destroys the previous sentinel but before either its replacement or the
-# downstream marker is persisted. Only the exact previous -> requested marker
-# transition may recreate that absent sentinel.
+# Skips are visible because the current stage depends on every cumulative prior
+# marker; a prior marker that would be created or changed fails closed.
 jq '
   (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion")
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_stage_server[0]")
     | .change.actions) = ["create"]
   | (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion")
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_stage_server[0]")
     | .change.before) = null
-' "${test_dir}/server.plan" >"${test_dir}/missing-initial-sentinel-retry.plan"
-"${script_dir}/assert-network-hardening-stage-plan.sh" \
-  "${test_dir}/missing-initial-sentinel-retry.plan" "${fake_terraform}" server server >/dev/null
-expect_fail "absent initial-stage sentinel requires validated recovery context" \
+' "${test_dir}/api.plan" >"${test_dir}/missing-previous-marker.plan"
+expect_fail "missing previous-stage marker cannot admit the following stage" \
   "${script_dir}/assert-network-hardening-stage-plan.sh" \
-  "${test_dir}/missing-initial-sentinel-retry.plan" "${fake_terraform}" server
+  "${test_dir}/missing-previous-marker.plan" "${fake_terraform}" api
+
+jq '
+  .resource_changes |= map(
+    select(.address != "module.cluster.terraform_data.network_hardening_rollout_completion_server[0]")
+  )
+' "${test_dir}/api.plan" >"${test_dir}/missing-previous-completion.plan"
+expect_fail "missing previous-stage completion cannot admit the following stage" \
+  "${script_dir}/assert-network-hardening-stage-plan.sh" \
+  "${test_dir}/missing-previous-completion.plan" "${fake_terraform}" api
+
+# Drift in a completed prior pool is present through the cumulative dependency
+# chain and cannot be hidden by the exact current-stage mutation allowlist.
+jq '
+  (.resource_changes[]
+    | select(.address == "module.cluster.google_compute_instance_template.server")
+    | .change.actions) = ["create", "delete"]
+' "${test_dir}/api.plan" >"${test_dir}/prior-server-drift.plan"
+expect_fail "API stage rejects completed server-pool drift" \
+  "${script_dir}/assert-network-hardening-stage-plan.sh" \
+  "${test_dir}/prior-server-drift.plan" "${fake_terraform}" api
 
 jq '
   (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_stage")
-    | .change.before.input) = "disabled"
-' "${test_dir}/missing-initial-sentinel-retry.plan" \
-  >"${test_dir}/missing-initial-sentinel-skipped-marker.plan"
-expect_fail "absent sentinel cannot weaken the exact previous-stage marker" \
+    | select(.address == "module.cluster.google_storage_bucket_object.setup_config_objects[\"scripts/run-nomad.sh\"]")
+    | .change.after.name) = "run-nomad-unsafe.sh"
+' "${test_dir}/server.plan" >"${test_dir}/unsafe-run-nomad-object.plan"
+expect_fail "server stage rejects an unbound Nomad bootstrap object" \
   "${script_dir}/assert-network-hardening-stage-plan.sh" \
-  "${test_dir}/missing-initial-sentinel-skipped-marker.plan" "${fake_terraform}" server server
+  "${test_dir}/unsafe-run-nomad-object.plan" "${fake_terraform}" server
 
+# After a successful stage, only a recovery-token retry may keep the current
+# marker as a no-op while replacing the completion sentinel.
 jq '
   (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion")
-    | .change.actions) = ["create"]
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion_server[0]")
+    | .change.actions) = ["delete", "create"]
   | (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion")
-    | .change.before) = null
-' "${test_dir}/api.plan" >"${test_dir}/missing-previous-sentinel.plan"
-expect_fail "missing previous-stage sentinel cannot admit the following stage" \
-  "${script_dir}/assert-network-hardening-stage-plan.sh" \
-  "${test_dir}/missing-previous-sentinel.plan" "${fake_terraform}" api
-
-# A successful apply can advance the marker and still leave same-stage drift
-# for the post-apply plan to detect. The borrowed-token retry must accept the
-# current marker as a no-op while the forced sentinel replacement re-proves
-# live convergence before the remaining bounded mutation is applied.
-jq '
-  (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion")
-    | .change.before.input) = "server"
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion_server[0]")
+    | .change.before) = {input:"server"}
   | (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_stage")
-    | .change.before.input) = "server"
-  | (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_stage")
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_stage_server[0]")
     | .change.actions) = ["no-op"]
+  | (.resource_changes[]
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_stage_server[0]")
+    | .change.before) = {input:"server"}
   | (.resource_changes[]
     | select(.address == "module.cluster.google_compute_instance_template.server")
     | .change.actions) = ["no-op"]
 ' "${test_dir}/server.plan" >"${test_dir}/post-apply-drift-retry.plan"
 "${script_dir}/assert-network-hardening-stage-plan.sh" \
-  "${test_dir}/post-apply-drift-retry.plan" "${fake_terraform}" server >/dev/null
+  "${test_dir}/post-apply-drift-retry.plan" "${fake_terraform}" server server >/dev/null
+expect_fail "completed stage cannot be re-entered without recovery context" \
+  "${script_dir}/assert-network-hardening-stage-plan.sh" \
+  "${test_dir}/post-apply-drift-retry.plan" "${fake_terraform}" server
 
 jq '
   (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_stage")
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_stage_server[0]")
     | .change.actions) = ["update"]
 ' "${test_dir}/post-apply-drift-retry.plan" >"${test_dir}/post-apply-marker-update.plan"
 expect_fail "same-stage retry cannot mutate the persisted marker" \
   "${script_dir}/assert-network-hardening-stage-plan.sh" \
-  "${test_dir}/post-apply-marker-update.plan" "${fake_terraform}" server
+  "${test_dir}/post-apply-marker-update.plan" "${fake_terraform}" server server
 
 jq '
   (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion")
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion_server[0]")
     | .change.before.input) = "network"
 ' "${test_dir}/post-apply-drift-retry.plan" >"${test_dir}/mismatched-current-marker.plan"
-expect_fail "current-stage marker requires current-stage convergence replacement" \
+expect_fail "current marker requires its exact completion replacement" \
   "${script_dir}/assert-network-hardening-stage-plan.sh" \
-  "${test_dir}/mismatched-current-marker.plan" "${fake_terraform}" server
+  "${test_dir}/mismatched-current-marker.plan" "${fake_terraform}" server server
 
 jq '
   (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion")
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion_server[0]")
     | .change.actions) = ["no-op"]
 ' "${test_dir}/post-apply-drift-retry.plan" >"${test_dir}/marker-retry-without-convergence.plan"
 expect_fail "marker retry without forced convergence replacement" \
   "${script_dir}/assert-network-hardening-stage-plan.sh" \
-  "${test_dir}/marker-retry-without-convergence.plan" "${fake_terraform}" server
+  "${test_dir}/marker-retry-without-convergence.plan" "${fake_terraform}" server server
 
 jq '(.resource_changes[] | select(.address == "module.cluster.terraform_data.os_login_operator_access_guard") | .change.after.input) = false' \
   "${test_dir}/server.plan" >"${test_dir}/closed.plan"
@@ -439,15 +517,18 @@ expect_fail "closed in-graph authorization guard" \
   "${script_dir}/assert-network-hardening-stage-plan.sh" \
   "${test_dir}/closed.plan" "${fake_terraform}" server
 
-jq '(.resource_changes[] | select(.address == "module.cluster.terraform_data.network_hardening_rollout_stage") | .change.before.input) = "disabled"' \
-  "${test_dir}/worker.plan" >"${test_dir}/skipped.plan"
-expect_fail "skipped serial stage" \
-  "${script_dir}/assert-network-hardening-stage-plan.sh" \
-  "${test_dir}/skipped.plan" "${fake_terraform}" worker
-
-jq '(.resource_changes[] | select(.address == "module.cluster.terraform_data.network_hardening_rollout_stage") | .change.before.input) = "server"' \
-  "${test_dir}/network.plan" >"${test_dir}/rollback.plan"
-expect_fail "reverse stage rollback" \
+jq '
+  (.resource_changes[]
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion_network")
+    | .change.before) = {input:"network"}
+  | (.resource_changes[]
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_stage_network")
+    | .change.before) = {input:"network"}
+  | (.resource_changes[]
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_stage_network")
+    | .change.actions) = ["no-op"]
+' "${test_dir}/network.plan" >"${test_dir}/rollback.plan"
+expect_fail "normal workflow cannot reverse or repeat a completed stage" \
   "${script_dir}/assert-network-hardening-stage-plan.sh" \
   "${test_dir}/rollback.plan" "${fake_terraform}" network
 

@@ -17,85 +17,125 @@ jq -e '.errored != true' <<<"${plan_json}" >/dev/null || {
   exit 1
 }
 
-completion_address='module.cluster.terraform_data.network_hardening_rollout_completion'
-marker_address='module.cluster.terraform_data.network_hardening_rollout_stage'
+stage_ledger='[
+  {
+    "stage":"network",
+    "completion":"module.cluster.terraform_data.network_hardening_rollout_completion_network",
+    "marker":"module.cluster.terraform_data.network_hardening_rollout_stage_network"
+  },
+  {
+    "stage":"server",
+    "completion":"module.cluster.terraform_data.network_hardening_rollout_completion_server[0]",
+    "marker":"module.cluster.terraform_data.network_hardening_rollout_stage_server[0]"
+  },
+  {
+    "stage":"api",
+    "completion":"module.cluster.terraform_data.network_hardening_rollout_completion_api[0]",
+    "marker":"module.cluster.terraform_data.network_hardening_rollout_stage_api[0]"
+  },
+  {
+    "stage":"worker",
+    "completion":"module.cluster.terraform_data.network_hardening_rollout_completion_worker[0]",
+    "marker":"module.cluster.terraform_data.network_hardening_rollout_stage_worker[0]"
+  },
+  {
+    "stage":"build",
+    "completion":"module.cluster.terraform_data.network_hardening_rollout_completion_build[0]",
+    "marker":"module.cluster.terraform_data.network_hardening_rollout_stage_build[0]"
+  }
+]'
 
-assert_stable_stage_resource() {
-  local address="$1"
-  local label="$2"
-  local count
+ledger_addresses="$(jq -cS '
+  [
+    .resource_changes[]?
+    | select(
+        .address
+        | startswith("module.cluster.terraform_data.network_hardening_rollout_completion")
+          or startswith("module.cluster.terraform_data.network_hardening_rollout_stage")
+      )
+    | .address
+  ]
+  | sort
+' <<<"${plan_json}")"
 
-  count="$(jq --arg address "${address}" \
-    '[.resource_changes[]? | select(.address == $address)] | length' \
-    <<<"${plan_json}")"
-  [[ "${count}" -eq 1 ]] || {
-    printf '%s must be present exactly once in an ordinary workload plan.\n' \
-      "${label}" >&2
+marker_stage=''
+if [[ "${expected_environment}" == "dev" ]]; then
+  for candidate_stage in network server api worker build; do
+    expected_addresses="$(jq -cnS \
+      --argjson ledger "${stage_ledger}" \
+      --arg candidate "${candidate_stage}" '
+        ($ledger | map(.stage) | index($candidate)) as $candidate_index
+        | [
+            $ledger[:($candidate_index + 1)][]
+            | .completion, .marker
+          ]
+        | sort
+      ')"
+    [[ "${ledger_addresses}" == "${expected_addresses}" ]] || continue
+
+    if jq -e \
+      --argjson ledger "${stage_ledger}" \
+      --arg candidate "${candidate_stage}" '
+        ($ledger | map(.stage) | index($candidate)) as $candidate_index
+        | [
+            $ledger[:($candidate_index + 1)][] as $want
+            | [$want.completion, $want.marker][] as $address
+            | [.resource_changes[]? | select(.address == $address)] as $matches
+            | ($matches | length) == 1
+              and $matches[0].mode == "managed"
+              and $matches[0].type == "terraform_data"
+              and $matches[0].change.actions == ["no-op"]
+              and $matches[0].change.before.input == $want.stage
+              and $matches[0].change.after.input == $want.stage
+          ]
+        | all
+      ' <<<"${plan_json}" >/dev/null; then
+      marker_stage="${candidate_stage}"
+      break
+    fi
+  done
+
+  [[ -n "${marker_stage}" ]] || {
+    printf 'Ordinary dev workload plan must preserve one exact no-op cumulative network-hardening ledger; use the reviewed staged cluster workflow.\n' >&2
     exit 1
   }
-
-  if [[ "${expected_environment}" == "dev" ]]; then
-    jq -e --arg address "${address}" '
-      .resource_changes[]
-      | select(.address == $address)
-      | .mode == "managed"
-        and .type == "terraform_data"
-        and .change.actions == ["no-op"]
-        and .change.before.input == .change.after.input
-        and (
-          .change.after.input == "network"
-          or .change.after.input == "server"
-          or .change.after.input == "api"
-          or .change.after.input == "worker"
-          or .change.after.input == "build"
-        )
-    ' <<<"${plan_json}" >/dev/null || {
-      printf '%s may not initialize, advance, regress, or remain disabled in an ordinary dev workload plan; use the reviewed staged cluster workflow.\n' \
-        "${label}" >&2
-      exit 1
-    }
-  else
-    jq -e --arg address "${address}" '
-      .resource_changes[]
-      | select(.address == $address)
-      | .mode == "managed"
-        and .type == "terraform_data"
-        and .change.after.input == "disabled"
+else
+  expected_addresses="$(jq -cnS --argjson ledger "${stage_ledger}" '
+    [$ledger[0].completion, $ledger[0].marker] | sort
+  ')"
+  [[ "${ledger_addresses}" == "${expected_addresses}" ]] || {
+    printf 'Ordinary non-dev workload plan must contain only the disabled network-hardening ledger root: %s.\n' \
+      "${expected_environment}" >&2
+    exit 1
+  }
+  jq -e --argjson ledger "${stage_ledger}" '
+    [
+      $ledger[0] as $want
+      | [$want.completion, $want.marker][] as $address
+      | [.resource_changes[]? | select(.address == $address)] as $matches
+      | ($matches | length) == 1
+        and $matches[0].mode == "managed"
+        and $matches[0].type == "terraform_data"
+        and $matches[0].change.after.input == "disabled"
         and (
           (
-            .change.actions == ["no-op"]
-            and .change.before.input == "disabled"
+            $matches[0].change.actions == ["no-op"]
+            and $matches[0].change.before.input == "disabled"
           )
           or (
-            .change.actions == ["create"]
-            and .change.before == null
+            $matches[0].change.actions == ["create"]
+            and $matches[0].change.before == null
           )
         )
-    ' <<<"${plan_json}" >/dev/null || {
-      printf '%s in non-dev environment %s may only initialize or remain stable at disabled in an ordinary workload plan.\n' \
-        "${label}" "${expected_environment}" >&2
-      exit 1
-    }
-  fi
-}
-
-assert_stable_stage_resource \
-  "${completion_address}" 'Network-hardening convergence sentinel'
-assert_stable_stage_resource \
-  "${marker_address}" 'Network-hardening state marker'
-
-completion_stage="$(jq -r --arg address "${completion_address}" '
-  .resource_changes[] | select(.address == $address) | .change.after.input
-' <<<"${plan_json}")"
-marker_stage="$(jq -r --arg address "${marker_address}" '
-  .resource_changes[] | select(.address == $address) | .change.after.input
-' <<<"${plan_json}")"
-
-[[ "${completion_stage}" == "${marker_stage}" ]] || {
-  printf 'Network-hardening convergence sentinel and state marker disagree (%s != %s).\n' \
-    "${completion_stage}" "${marker_stage}" >&2
-  exit 1
-}
+    ]
+    | all
+  ' <<<"${plan_json}" >/dev/null || {
+    printf 'Ordinary non-dev workload plan may only initialize or preserve the disabled network-hardening ledger root: %s.\n' \
+      "${expected_environment}" >&2
+    exit 1
+  }
+  marker_stage='disabled'
+fi
 
 # The stage resources alone are not sufficient if a future template change
 # accidentally decouples OS Login from the rollout variable. Prove cumulative

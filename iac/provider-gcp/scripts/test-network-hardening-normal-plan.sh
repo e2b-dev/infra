@@ -17,6 +17,33 @@ make_plan() {
   jq -n --arg stage "${stage}" '
     {disabled: 0, network: 1, server: 2, api: 3, worker: 4, build: 5} as $rank
     | [
+        {
+          stage:"network",
+          completion:"module.cluster.terraform_data.network_hardening_rollout_completion_network",
+          marker:"module.cluster.terraform_data.network_hardening_rollout_stage_network"
+        },
+        {
+          stage:"server",
+          completion:"module.cluster.terraform_data.network_hardening_rollout_completion_server[0]",
+          marker:"module.cluster.terraform_data.network_hardening_rollout_stage_server[0]"
+        },
+        {
+          stage:"api",
+          completion:"module.cluster.terraform_data.network_hardening_rollout_completion_api[0]",
+          marker:"module.cluster.terraform_data.network_hardening_rollout_stage_api[0]"
+        },
+        {
+          stage:"worker",
+          completion:"module.cluster.terraform_data.network_hardening_rollout_completion_worker[0]",
+          marker:"module.cluster.terraform_data.network_hardening_rollout_stage_worker[0]"
+        },
+        {
+          stage:"build",
+          completion:"module.cluster.terraform_data.network_hardening_rollout_completion_build[0]",
+          marker:"module.cluster.terraform_data.network_hardening_rollout_stage_build[0]"
+        }
+      ] as $ledger
+    | [
         {address:"module.cluster.google_compute_instance_template.server", role_rank:2},
         {address:"module.cluster.google_compute_instance_template.api", role_rank:3},
         {address:"module.cluster.module.client_cluster[\"default\"].google_compute_instance_template.template", role_rank:4},
@@ -29,26 +56,23 @@ make_plan() {
       errored: false,
       resource_changes: (
         [
-          {
-            address: "module.cluster.terraform_data.network_hardening_rollout_completion",
-            mode: "managed",
-            type: "terraform_data",
-            change: {
-              actions: ["no-op"],
-              before: {input: $stage},
-              after: {input: $stage}
+          $ledger[]
+          | select(
+              if $stage == "disabled"
+              then .stage == "network"
+              else $rank[.stage] <= $rank[$stage]
+              end
+            )
+          | . as $entry
+          | [$entry.completion, $entry.marker][]
+          | {
+              address: ., mode: "managed", type: "terraform_data",
+              change: {
+                actions: ["no-op"],
+                before: {input: (if $stage == "disabled" then "disabled" else $entry.stage end)},
+                after: {input: (if $stage == "disabled" then "disabled" else $entry.stage end)}
+              }
             }
-          },
-          {
-            address: "module.cluster.terraform_data.network_hardening_rollout_stage",
-            mode: "managed",
-            type: "terraform_data",
-            change: {
-              actions: ["no-op"],
-              before: {input: $stage},
-              after: {input: $stage}
-            }
-          }
         ]
         + [
             $templates[]
@@ -96,7 +120,7 @@ grep -F 'preserves completed network-hardening stage: build' \
 make_plan disabled "${test_dir}/disabled.json"
 expect_failure \
   disabled \
-  'may not initialize, advance, regress, or remain disabled in an ordinary dev workload plan' \
+  'must preserve one exact no-op cumulative network-hardening ledger' \
   "${test_dir}/disabled.json"
 
 "${assertion_script}" \
@@ -123,52 +147,49 @@ grep -F 'preserves network-hardening stage disabled: prod' \
 
 expect_failure \
   non-dev-enabled \
-  'in non-dev environment staging may only initialize or remain stable at disabled' \
+  'must contain only the disabled network-hardening ledger root' \
   "${test_dir}/valid.json" \
   staging
 
 expect_failure \
   dev-disabled-initialization \
-  'may not initialize, advance, regress, or remain disabled in an ordinary dev workload plan' \
+  'must preserve one exact no-op cumulative network-hardening ledger' \
   "${test_dir}/non-dev-initial.json"
 
 jq '
   (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_stage")
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_stage_build[0]")
     | .change.actions) = ["update"]
   | (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_stage")
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_stage_build[0]")
     | .change.after.input) = "disabled"
 ' "${test_dir}/valid.json" >"${test_dir}/reverse.json"
 expect_failure \
   reverse \
-  'may not initialize, advance, regress, or remain disabled in an ordinary dev workload plan' \
+  'must preserve one exact no-op cumulative network-hardening ledger' \
   "${test_dir}/reverse.json"
 
 jq '
-  (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion")
-    | .change.actions) = ["delete", "create"]
-  | (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion")
-    | .change.after.input) = "server"
+  .resource_changes |= map(
+    select(.address != "module.cluster.terraform_data.network_hardening_rollout_stage_server[0]")
+  )
 ' "${test_dir}/valid.json" >"${test_dir}/skip.json"
 expect_failure \
   skip \
-  'may not initialize, advance, regress, or remain disabled in an ordinary dev workload plan' \
+  'must preserve one exact no-op cumulative network-hardening ledger' \
   "${test_dir}/skip.json"
 
 jq '
   (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion")
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion_server[0]")
     | .change.before.input) = "worker"
   | (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion")
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion_server[0]")
     | .change.after.input) = "worker"
 ' "${test_dir}/valid.json" >"${test_dir}/mismatch.json"
 expect_failure \
   mismatch \
-  'Network-hardening convergence sentinel and state marker disagree' \
+  'must preserve one exact no-op cumulative network-hardening ledger' \
   "${test_dir}/mismatch.json"
 
 jq '
@@ -183,12 +204,12 @@ expect_failure \
 
 jq '
   .resource_changes |= map(
-    select(.address != "module.cluster.terraform_data.network_hardening_rollout_stage")
+    select(.address != "module.cluster.terraform_data.network_hardening_rollout_stage_build[0]")
   )
 ' "${test_dir}/valid.json" >"${test_dir}/missing.json"
 expect_failure \
   missing \
-  'Network-hardening state marker must be present exactly once' \
+  'must preserve one exact no-op cumulative network-hardening ledger' \
   "${test_dir}/missing.json"
 
 printf 'Ordinary workload network-hardening stage tests passed.\n'

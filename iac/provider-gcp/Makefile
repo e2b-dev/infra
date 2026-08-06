@@ -129,7 +129,49 @@ WORKLOAD_CLUSTER_RECOVERY_TOKEN ?=
 WORKLOAD_CLUSTER_REBOUND_TOKEN ?=
 override WORKLOAD_CLUSTER_PLAN := .tfplan.workload-cluster.$(WORKLOAD_CLUSTER_STAGE).$(ENV)
 override WORKLOAD_CLUSTER_PLAN_MANIFEST := $(WORKLOAD_CLUSTER_PLAN).manifest
-override WORKLOAD_CLUSTER_COMPLETION_REPLACE := -replace='module.cluster.terraform_data.network_hardening_rollout_completion'
+override WORKLOAD_CLUSTER_TOPOLOGY_TARGET := -target=module.cluster
+override WORKLOAD_CLUSTER_STAGE_COMPLETION_network := module.cluster.terraform_data.network_hardening_rollout_completion_network
+override WORKLOAD_CLUSTER_STAGE_COMPLETION_server := module.cluster.terraform_data.network_hardening_rollout_completion_server[0]
+override WORKLOAD_CLUSTER_STAGE_COMPLETION_api := module.cluster.terraform_data.network_hardening_rollout_completion_api[0]
+override WORKLOAD_CLUSTER_STAGE_COMPLETION_worker := module.cluster.terraform_data.network_hardening_rollout_completion_worker[0]
+override WORKLOAD_CLUSTER_STAGE_COMPLETION_build := module.cluster.terraform_data.network_hardening_rollout_completion_build[0]
+override WORKLOAD_CLUSTER_STAGE_MARKER_network := module.cluster.terraform_data.network_hardening_rollout_stage_network
+override WORKLOAD_CLUSTER_STAGE_MARKER_server := module.cluster.terraform_data.network_hardening_rollout_stage_server[0]
+override WORKLOAD_CLUSTER_STAGE_MARKER_api := module.cluster.terraform_data.network_hardening_rollout_stage_api[0]
+override WORKLOAD_CLUSTER_STAGE_MARKER_worker := module.cluster.terraform_data.network_hardening_rollout_stage_worker[0]
+override WORKLOAD_CLUSTER_STAGE_MARKER_build := module.cluster.terraform_data.network_hardening_rollout_stage_build[0]
+override WORKLOAD_CLUSTER_COMPLETION_ADDRESS := $(WORKLOAD_CLUSTER_STAGE_COMPLETION_$(WORKLOAD_CLUSTER_STAGE))
+override WORKLOAD_CLUSTER_MARKER_ADDRESS := $(WORKLOAD_CLUSTER_STAGE_MARKER_$(WORKLOAD_CLUSTER_STAGE))
+override WORKLOAD_CLUSTER_COMPLETION_REPLACE := -replace='$(WORKLOAD_CLUSTER_COMPLETION_ADDRESS)'
+override WORKLOAD_CLUSTER_COMMON_TARGETS := \
+	-target='module.cluster.terraform_data.os_login_operator_access_guard' \
+	-target='module.cluster.terraform_data.network_hardening_rollout_completion' \
+	-target='module.cluster.terraform_data.network_hardening_rollout_stage' \
+	-target='module.cluster.terraform_data.network_hardening_rollout_completion_network' \
+	-target='module.cluster.terraform_data.network_hardening_rollout_stage_network' \
+	-target='$(WORKLOAD_CLUSTER_COMPLETION_ADDRESS)' \
+	-target='$(WORKLOAD_CLUSTER_MARKER_ADDRESS)'
+override WORKLOAD_CLUSTER_STAGE_TARGETS_network := \
+	-target='module.cluster.module.network.google_compute_firewall.iap_remote_connection_firewall_ingress[0]' \
+	-target='module.cluster.module.network.google_compute_firewall.internal_remote_connection_firewall_ingress' \
+	-target='module.cluster.module.network.google_compute_firewall.remote_connection_firewall_ingress'
+override WORKLOAD_CLUSTER_STAGE_TARGETS_server := \
+	-target='module.cluster.google_compute_instance_template.server' \
+	-target='module.cluster.google_compute_region_instance_group_manager.server_pool'
+override WORKLOAD_CLUSTER_STAGE_TARGETS_api := \
+	-target='module.cluster.google_compute_instance_template.api' \
+	-target='module.cluster.google_compute_instance_group_manager.api_pool'
+override WORKLOAD_CLUSTER_STAGE_TARGETS_worker := \
+	-target='module.cluster.module.client_cluster["default"].google_compute_instance_template.template' \
+	-target='module.cluster.module.client_cluster["default"].google_compute_region_instance_group_manager.pool'
+override WORKLOAD_CLUSTER_STAGE_TARGETS_build := \
+	-target='module.cluster.google_compute_instance_template.clickhouse' \
+	-target='module.cluster.google_compute_instance_group_manager.clickhouse_pool' \
+	-target='module.cluster.google_compute_instance_template.loki' \
+	-target='module.cluster.google_compute_instance_group_manager.loki_pool' \
+	-target='module.cluster.module.build_cluster["default"].google_compute_instance_template.template' \
+	-target='module.cluster.module.build_cluster["default"].google_compute_region_instance_group_manager.pool'
+override WORKLOAD_CLUSTER_TARGETS := $(WORKLOAD_CLUSTER_COMMON_TARGETS) $(WORKLOAD_CLUSTER_STAGE_TARGETS_$(WORKLOAD_CLUSTER_STAGE))
 override WORKLOAD_TOPOLOGY_POLICY := topology/minimal-workload-policy.json
 override WORKLOAD_PACKER_TEMPLATE := nomad-cluster-disk-image/main.pkr.hcl
 override WORKLOAD_IMAGE_REVISION := $(CORE_IMAGE_REVISION)
@@ -238,10 +280,6 @@ workload-cluster-plan-check:
 		$(workload_cluster_metadata_context) ./scripts/workload-plan-metadata.sh verify \
 			"$(WORKLOAD_CLUSTER_PLAN)" "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)" \
 			"$(TF)" "." "../.." "$${artifacts}"; \
-		./scripts/assert-workload-plan.sh \
-			"$(WORKLOAD_CLUSTER_PLAN)" "$(TF)" \
-			"$(WORKLOAD_TOPOLOGY_POLICY)" "$(WORKLOAD_PACKER_TEMPLATE)" \
-			"$${artifacts}" cluster; \
 		recovery_stage=""; \
 		if [ -n "$(WORKLOAD_CLUSTER_RECOVERY_TOKEN)" ]; then \
 			./scripts/assert-network-hardening-recovery-token.sh \
@@ -370,6 +408,7 @@ workload-cluster-plan:
 	@ set -eu; \
 		temp_dir="$$(mktemp -d ".workload-cluster-plan.$(ENV).XXXXXX")"; \
 		temp_plan="$${temp_dir}/plan"; \
+		topology_plan="$${temp_dir}/topology.plan"; \
 		temp_manifest="$${temp_dir}/manifest"; \
 		before_artifacts="$${temp_dir}/artifacts-before.json"; \
 		after_artifacts="$${temp_dir}/artifacts-after.json"; \
@@ -432,7 +471,14 @@ workload-cluster-plan:
 			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$${lease_token}"; \
 		$(tf_vars) TF_VAR_network_hardening_rollout_stage="$(WORKLOAD_CLUSTER_STAGE)" \
 			$(TF) plan $(TF_VAR_FILE_ARG) \
-			-target=module.cluster \
+			$(WORKLOAD_CLUSTER_TOPOLOGY_TARGET) \
+			-out="$${topology_plan}" \
+			-input=false \
+			-compact-warnings; \
+		chmod 0600 "$${topology_plan}"; \
+		$(tf_vars) TF_VAR_network_hardening_rollout_stage="$(WORKLOAD_CLUSTER_STAGE)" \
+			$(TF) plan $(TF_VAR_FILE_ARG) \
+			$(WORKLOAD_CLUSTER_TARGETS) \
 			$(WORKLOAD_CLUSTER_COMPLETION_REPLACE) \
 			-out="$${temp_plan}" \
 			-input=false \
@@ -451,14 +497,14 @@ workload-cluster-plan:
 			exit 1; \
 		fi; \
 		./scripts/assert-workload-plan.sh \
-			"$${temp_plan}" "$(TF)" \
+			"$${topology_plan}" "$(TF)" \
 			"$(WORKLOAD_TOPOLOGY_POLICY)" "$(WORKLOAD_PACKER_TEMPLATE)" \
 			"$${after_artifacts}" cluster; \
 		./scripts/assert-network-hardening-stage-plan.sh \
 			"$${temp_plan}" "$(TF)" "$(WORKLOAD_CLUSTER_STAGE)" \
 			"$${recovery_stage}"; \
 		quota_mode="$$(./scripts/select-workload-quota-mode.sh \
-			"$${temp_plan}" "$(TF)" "$(WORKLOAD_TOPOLOGY_POLICY)")"; \
+			"$${topology_plan}" "$(TF)" "$(WORKLOAD_TOPOLOGY_POLICY)")"; \
 		./scripts/assert-workload-quota.sh \
 			"$(WORKLOAD_TOPOLOGY_POLICY)" \
 			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(GCLOUD)" \
@@ -468,7 +514,7 @@ workload-cluster-plan:
 			"$${after_artifacts}" "$${after_fingerprint}"; \
 		mv -f -- "$${temp_manifest}" "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)"; \
 		mv -f -- "$${temp_plan}" "$(WORKLOAD_CLUSTER_PLAN)"; \
-		rm -f -- "$${before_artifacts}" "$${after_artifacts}"; \
+		rm -f -- "$${before_artifacts}" "$${after_artifacts}" "$${topology_plan}"; \
 		if [ "$${lease_borrowed}" = false ]; then \
 			"$(WORKLOAD_ROLLOUT_LEASE)" release "$(GCLOUD)" "$${lease_token}"; \
 		else \
@@ -487,6 +533,7 @@ workload-cluster-apply:
 	@ $(MAKE) workload-context-guard workload-cluster-stage-guard
 	@ set -eu; \
 		temp_dir="$$(mktemp -d ".workload-cluster-apply.$(ENV).XXXXXX")"; \
+		topology_plan="$${temp_dir}/topology.plan"; \
 		before_artifacts="$${temp_dir}/artifacts-before.json"; \
 		after_artifacts="$${temp_dir}/artifacts-after.json"; \
 		apply_plan="$${temp_dir}/reviewed.plan"; \
@@ -527,6 +574,7 @@ workload-cluster-apply:
 					status=1; \
 				fi; \
 			fi; \
+			rm -f -- "$${topology_plan}"; \
 			if [ "$${lease_acquired}" = true ]; then \
 				if [ "$${lease_borrowed}" = true ] && [ "$${mutation_started}" = false ]; then \
 					printf "Recovery apply did not start a mutation; preserving its borrowed shared lease and token %s.\n" "$${lease_token}" >&2; \
@@ -596,19 +644,30 @@ workload-cluster-apply:
 		$(workload_cluster_metadata_context) ./scripts/workload-plan-metadata.sh verify \
 			"$${apply_plan}" "$${apply_manifest}" "$(TF)" "." "../.." \
 			"$${before_artifacts}"; \
+		"$(WORKLOAD_ROLLOUT_LEASE)" assert-held \
+			"$(GCLOUD)" "$(TERRAFORM_STATE_BUCKET)" \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$${lease_token}"; \
+		$(tf_vars) TF_VAR_network_hardening_rollout_stage="$(WORKLOAD_CLUSTER_STAGE)" \
+			$(TF) plan $(TF_VAR_FILE_ARG) \
+			$(WORKLOAD_CLUSTER_TOPOLOGY_TARGET) \
+			-out="$${topology_plan}" \
+			-input=false \
+			-compact-warnings; \
+		chmod 0600 "$${topology_plan}"; \
 		./scripts/assert-workload-plan.sh \
-			"$${apply_plan}" "$(TF)" \
+			"$${topology_plan}" "$(TF)" \
 			"$(WORKLOAD_TOPOLOGY_POLICY)" "$(WORKLOAD_PACKER_TEMPLATE)" \
 			"$${before_artifacts}" cluster; \
 		./scripts/assert-network-hardening-stage-plan.sh \
 			"$${apply_plan}" "$(TF)" "$(WORKLOAD_CLUSTER_STAGE)" \
 			"$${recovery_stage}"; \
 		quota_mode="$$(./scripts/select-workload-quota-mode.sh \
-			"$${apply_plan}" "$(TF)" "$(WORKLOAD_TOPOLOGY_POLICY)")"; \
+			"$${topology_plan}" "$(TF)" "$(WORKLOAD_TOPOLOGY_POLICY)")"; \
 		./scripts/assert-workload-quota.sh \
 			"$(WORKLOAD_TOPOLOGY_POLICY)" \
 			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(GCLOUD)" \
 			"$${quota_mode}"; \
+		rm -f -- "$${topology_plan}"; \
 		./scripts/assert-workload-artifacts.sh \
 			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(PREFIX)" \
 			"$(WORKLOAD_IMAGE_REVISION)" "$(WORKLOAD_JOB_BINARY_BUCKET)" \
@@ -638,7 +697,7 @@ workload-cluster-apply:
 		set +e; \
 		$(tf_vars) TF_VAR_network_hardening_rollout_stage="$(WORKLOAD_CLUSTER_STAGE)" \
 			$(TF) plan $(TF_VAR_FILE_ARG) \
-			-target=module.cluster \
+			$(WORKLOAD_CLUSTER_TARGETS) \
 			-out="$${temp_dir}/post-apply.plan" \
 			-input=false \
 			-compact-warnings \
@@ -726,7 +785,7 @@ workload-cluster-recover-lease:
 		set +e; \
 		$(tf_vars) TF_VAR_network_hardening_rollout_stage="$(WORKLOAD_CLUSTER_STAGE)" \
 			$(TF) plan $(TF_VAR_FILE_ARG) \
-			-target=module.cluster \
+			$(WORKLOAD_CLUSTER_TARGETS) \
 			-out="$${temp_dir}/post-recovery.plan" \
 			-input=false \
 			-compact-warnings \
