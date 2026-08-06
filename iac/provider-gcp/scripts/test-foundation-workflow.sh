@@ -493,15 +493,32 @@ expect_fail \
 
 workflow_repo="${workspace}/workflow-repo"
 workflow_provider="${workflow_repo}/iac/provider-gcp"
-mkdir -p "${workflow_provider}/nomad-cluster/scripts"
+mkdir -p \
+  "${workflow_provider}/init" \
+  "${workflow_provider}/nomad-cluster/scripts"
 cp "${provider_root}/Makefile" "${workflow_provider}/Makefile"
 cp -R "${provider_root}/scripts" "${workflow_provider}/scripts"
+cp \
+  "${provider_root}/init/api-controller-identity.tf" \
+  "${provider_root}/init/outputs.tf" \
+  "${workflow_provider}/init/"
+cp \
+  "${provider_root}/nomad-cluster/main.tf" \
+  "${provider_root}/nomad-cluster/nodepool-api.tf" \
+  "${provider_root}/nomad-cluster/variables.tf" \
+  "${workflow_provider}/nomad-cluster/"
 cp \
   "${provider_root}/nomad-cluster/scripts/configure-docker-gcp.sh" \
   "${provider_root}/nomad-cluster/scripts/run-consul.sh" \
   "${provider_root}/nomad-cluster/scripts/run-nomad.sh" \
   "${workflow_provider}/nomad-cluster/scripts/"
+cp \
+  "${provider_root}/main.tf" \
+  "${provider_root}/outputs.tf" \
+  "${provider_root}/api.tf" \
+  "${workflow_provider}/"
 cp "${repo_root}/.tool-versions" "${workflow_repo}/.tool-versions"
+cp "${repo_root}/.env.gcp.template" "${workflow_repo}/.env.gcp.template"
 cat >"${workflow_repo}/.env.dev" <<'EOF'
 GCP_PROJECT_ID=monad-code
 GCP_REGION=us-east4
@@ -511,7 +528,7 @@ TERRAFORM_ENVIRONMENT=dev
 PREFIX=e2b-
 EOF
 printf 'dev\n' >"${workflow_repo}/.last_used_env"
-cat >"${workflow_provider}/main.tf" <<'EOF'
+cat >"${workflow_provider}/fixture.tf" <<'EOF'
 terraform {
   required_version = "=1.7.5"
 }
@@ -645,7 +662,7 @@ expect_fail \
 test ! -e "${workflow_apply_marker}"
 printf 'secure\n' >"${bucket_mode_file}"
 
-printf '\n# changed after review\n' >>"${workflow_provider}/main.tf"
+printf '\n# changed after review\n' >>"${workflow_provider}/fixture.tf"
 expect_fail \
   "apply rejects source drift before Terraform apply" \
   make -C "${workflow_provider}" foundation-apply \
@@ -654,7 +671,7 @@ expect_fail \
   CONFIRM='APPLY KEYLESS FOUNDATION'
 test ! -e "${workflow_apply_marker}"
 
-cat >"${workflow_provider}/main.tf" <<'EOF'
+cat >"${workflow_provider}/fixture.tf" <<'EOF'
 terraform {
   required_version = "=1.7.5"
 }
