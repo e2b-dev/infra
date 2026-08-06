@@ -187,9 +187,10 @@ source commit, `workload-cluster-rebind-recovery-source` performs a generation-m
 transfer to the exact clean descendant. It accepts no other stage or unrelated source diff and
 creates no unlocked interval; the normal recovery plan/apply path then consumes the rebound token.
 
-The cluster plan and apply derive quota admission from the same reviewed saved
-plan. If every positive-capacity MIG already has the exact reviewed base size
-in the plan's refreshed prior state, only `no-op` or in-place `update` actions
+The cluster plan and apply each derive quota admission from a fresh private,
+transient full-topology audit; the exact-stage plan is the only saved, reviewed,
+and applyable plan. If every positive-capacity MIG already has the exact reviewed
+base size in the audit's refreshed prior state, only `no-op` or in-place `update` actions
 may use `post-cluster` peak-minus-base reserve. Initial or partial creation uses
 `bootstrap` full-peak headroom. Unexpected direct quota-bearing resources,
 unknown fleet shapes, capacity drift, and MIG replacement cannot obtain

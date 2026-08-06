@@ -574,6 +574,7 @@ workload-cluster-apply:
 					status=1; \
 				fi; \
 			fi; \
+			rm -f -- "$${topology_plan}"; \
 			if [ "$${lease_acquired}" = true ]; then \
 				if [ "$${lease_borrowed}" = true ] && [ "$${mutation_started}" = false ]; then \
 					printf "Recovery apply did not start a mutation; preserving its borrowed shared lease and token %s.\n" "$${lease_token}" >&2; \

@@ -986,10 +986,12 @@ case "${1:-}" in
   plan)
     output=""
     detailed=false
+    broad_cluster=false
     for argument in "$@"; do
       case "${argument}" in
         -out=*) output="${argument#-out=}" ;;
         -detailed-exitcode) detailed=true ;;
+        -target=module.cluster) broad_cluster=true ;;
       esac
     done
     [[ -n "${output}" ]] || {
@@ -999,7 +1001,11 @@ case "${1:-}" in
     if [[ "${mode}" == "plan-fail" && "${detailed}" == false ]]; then
       exit 1
     fi
-    cp "${WORKFLOW_PLAN_FIXTURE}" "${output}"
+    if [[ "${mode}" == "topology-assert-release-fail" && "${broad_cluster}" == true ]]; then
+      printf '{}\n' >"${output}"
+    else
+      cp "${WORKFLOW_PLAN_FIXTURE}" "${output}"
+    fi
     if [[ "${mode}" == "post-drift" && "${detailed}" == true ]]; then
       exit 2
     fi
@@ -1087,7 +1093,8 @@ case "${1:-}" in
       ' "${token}" >/dev/null
     ;;
   release)
-    [[ "$(cat "${WORKFLOW_MODE_FILE}")" != "release-fail" ]] || exit 1
+    mode="$(cat "${WORKFLOW_MODE_FILE}")"
+    [[ "${mode}" != "release-fail" && "${mode}" != "topology-assert-release-fail" ]] || exit 1
     rm -f -- "${3:?missing token}"
     ;;
   *)
@@ -1382,6 +1389,21 @@ mv "${test_dir}/network-checkpoint.original.json" "${workflow_checkpoint}"
 chmod 0600 "${workflow_checkpoint}"
 
 : >"${workflow_lease_log}"
+printf 'topology-assert-release-fail\n' >"${workflow_mode}"
+expect_fail "topology assertion plus lease release failure never preserves the broad plan" \
+  run_workflow_make \
+  workload-cluster-apply CONFIRM='APPLY NETWORK HARDENING network'
+test -f "${workflow_cluster_plan}"
+test -f "${workflow_cluster_manifest}"
+test "$(grep -c '^acquire ' "${workflow_lease_log}")" -eq 1
+test "$(grep -c '^release ' "${workflow_lease_log}")" -eq 1
+cluster_recovery_dir="$(find "${workflow_provider}" -maxdepth 1 -type d -name '.workload-cluster-apply.dev.*' -print -quit)"
+test -n "${cluster_recovery_dir}"
+test -f "${cluster_recovery_dir}/lease-token.json"
+test ! -e "${cluster_recovery_dir}/topology.plan"
+rm -rf -- "${cluster_recovery_dir}"
+
+: >"${workflow_lease_log}"
 printf 'apply-fail\n' >"${workflow_mode}"
 expect_fail "cluster Terraform apply failure preserves reviewed release" \
   run_workflow_make \
@@ -1645,7 +1667,7 @@ cluster_mutation_started_line="$(
 )"
 cluster_topology_remove_line="$(
   grep -nF 'rm -f -- "$${topology_plan}"' \
-    <<<"${cluster_apply_recipe}" | cut -d: -f1
+    <<<"${cluster_apply_recipe}" | tail -1 | cut -d: -f1
 )"
 cluster_lease_assert_line="$(
   grep -nF '"$(WORKLOAD_ROLLOUT_LEASE)" assert-held' \
