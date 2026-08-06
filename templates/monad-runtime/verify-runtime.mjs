@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { Sandbox } from 'e2b';
 import {
@@ -6,6 +7,14 @@ import {
   safeErrorMessage,
   validateTemplateRef,
 } from './runtime-core.mjs';
+import {
+  assertSafeVerificationBaseline,
+  buildCleanupEvidence,
+  RUNTIME_VERIFICATION_METADATA_KEY,
+  RUNTIME_VERIFICATION_RUN_METADATA_KEY,
+  summarizeSandboxInventory,
+  SYNTHETIC_METADATA_KEY,
+} from './runtime-verification-inventory.mjs';
 
 const environment = process.env;
 const apiKey = requiredEnv(environment, 'E2B_API_KEY');
@@ -19,18 +28,24 @@ const manifest = JSON.parse(
 );
 const requestTimeoutMs = 10 * 60 * 1000;
 const connection = { apiKey, apiUrl, domain, requestTimeoutMs };
+const verificationRunId = randomUUID();
 const evidence = {
   template_ref: templateRef,
   runtime_version: manifest.runtime_version,
+  verification_run_id: verificationRunId,
   started_at: new Date().toISOString(),
 };
 let sandbox;
+let baseline;
 
-async function listSandboxes() {
+async function listSandboxes(metadata) {
   const paginator = Sandbox.list({
     ...connection,
     limit: 100,
-    query: { state: ['running', 'paused'] },
+    query: {
+      state: ['running', 'paused'],
+      ...(metadata ? { metadata } : {}),
+    },
   });
   const items = [];
   while (paginator.hasNext) {
@@ -40,6 +55,29 @@ async function listSandboxes() {
     }
   }
   return items;
+}
+
+async function waitForCleanupInventory(currentSandboxId) {
+  let result;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const [finalSandboxes, metadataMatchedSandboxes] = await Promise.all([
+      listSandboxes(),
+      listSandboxes({
+        [RUNTIME_VERIFICATION_RUN_METADATA_KEY]: verificationRunId,
+      }),
+    ]);
+    result = { finalSandboxes, metadataMatchedSandboxes };
+    const currentPresentById =
+      currentSandboxId &&
+      finalSandboxes.some(
+        (candidate) => candidate.sandboxId === currentSandboxId,
+      );
+    if (!currentPresentById && metadataMatchedSandboxes.length === 0) {
+      return result;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+  return result;
 }
 
 async function run(command, timeoutMs = 120_000) {
@@ -175,11 +213,9 @@ process.stdout.write(JSON.stringify({
 let verificationError;
 try {
   const initial = await listSandboxes();
-  if (initial.length !== 0) {
-    throw new Error(
-      `operator canary team must be empty; found ${initial.length} sandbox(es)`,
-    );
-  }
+  baseline = summarizeSandboxInventory(initial);
+  evidence.baseline = baseline;
+  assertSafeVerificationBaseline(baseline);
 
   sandbox = await Sandbox.create(templateRef, {
     ...connection,
@@ -191,8 +227,9 @@ try {
     },
     lifecycle: { onTimeout: 'pause', autoResume: false },
     metadata: {
-      'monad.operator.runtime-template-verification': manifest.runtime_version,
-      'monad.operator.synthetic': 'true',
+      [RUNTIME_VERIFICATION_METADATA_KEY]: manifest.runtime_version,
+      [RUNTIME_VERIFICATION_RUN_METADATA_KEY]: verificationRunId,
+      [SYNTHETIC_METADATA_KEY]: 'true',
     },
   });
   evidence.sandbox_id = sandbox.sandboxId;
@@ -291,22 +328,29 @@ try {
 } catch (error) {
   verificationError = error;
 } finally {
+  const killedSandboxIds = [];
   if (sandbox) {
     try {
       await sandbox.kill(connection);
+      killedSandboxIds.push(sandbox.sandboxId);
     } catch (error) {
       verificationError ??= error;
     }
   }
   try {
-    const remaining = await listSandboxes();
-    evidence.cleanup = {
-      active_sandboxes: remaining.length,
-      confirmed_at: new Date().toISOString(),
-    };
-    if (remaining.length !== 0) {
+    const { finalSandboxes, metadataMatchedSandboxes } =
+      await waitForCleanupInventory(sandbox?.sandboxId);
+    evidence.cleanup = buildCleanupEvidence({
+      baseline: baseline ?? summarizeSandboxInventory([]),
+      finalSandboxes,
+      metadataMatchedSandboxes,
+      currentSandboxId: sandbox?.sandboxId,
+      verificationRunId,
+      killedSandboxIds,
+    });
+    if (!evidence.cleanup.zero_leak_verified) {
       verificationError ??= new Error(
-        `${remaining.length} sandbox(es) remain after cleanup`,
+        'current runtime-template-verification sandbox remains after cleanup',
       );
     }
   } catch (error) {
