@@ -22,17 +22,23 @@ import (
 type StorageLocal struct {
 	config       Config
 	slotsSize    int
+	netnsDir     string
 	foreignNs    map[string]struct{}
 	acquiredNs   map[string]struct{}
 	acquiredNsMu sync.Mutex
 	egressProxy  EgressProxy
+	slotFactory  func(key string, slotIdx int) (*Slot, error)
 }
 
 const NetNamespacesDir = "/var/run/netns"
 
 func NewStorageLocal(ctx context.Context, config Config, egressProxy EgressProxy) (*StorageLocal, error) {
+	return newStorageLocal(ctx, config, egressProxy, NetNamespacesDir)
+}
+
+func newStorageLocal(ctx context.Context, config Config, egressProxy EgressProxy, netnsDir string) (*StorageLocal, error) {
 	// get namespaces that we want to always skip
-	foreignNs, err := getForeignNamespaces()
+	foreignNs, err := getForeignNamespaces(netnsDir)
 	if err != nil {
 		return nil, fmt.Errorf("error getting already used namespaces: %w", err)
 	}
@@ -45,11 +51,15 @@ func NewStorageLocal(ctx context.Context, config Config, egressProxy EgressProxy
 
 	return &StorageLocal{
 		config:       config,
+		netnsDir:     netnsDir,
 		foreignNs:    foreignNsMap,
 		slotsSize:    vrtSlotsSize,
 		acquiredNs:   make(map[string]struct{}, vrtSlotsSize),
 		acquiredNsMu: sync.Mutex{},
 		egressProxy:  egressProxy,
+		slotFactory: func(key string, slotIdx int) (*Slot, error) {
+			return NewSlot(key, slotIdx, config, egressProxy)
+		},
 	}, nil
 }
 
@@ -62,20 +72,21 @@ func (s *StorageLocal) Acquire(ctx context.Context) (*Slot, error) {
 
 	s.acquiredNsMu.Lock()
 	defer s.acquiredNsMu.Unlock()
+	slotFactory := s.slotFactory
+	if slotFactory == nil {
+		slotFactory = func(key string, slotIdx int) (*Slot, error) {
+			return NewSlot(key, slotIdx, s.config, s.egressProxy)
+		}
+	}
 
-	// we skip the first slot because it's the host slot
-	slotIdx := 1
-
-	for {
+	// Slot zero is the host slot. Candidate slots are exactly [1, slotsSize),
+	// matching StorageMemory and NewSlot. Keep the scan explicitly bounded so
+	// a host full of foreign namespaces returns deterministic exhaustion.
+	for slotIdx := 1; slotIdx < s.slotsSize; slotIdx++ {
 		select {
 		case <-acquireTimeoutCtx.Done():
 			return nil, errors.New("failed to acquire IP slot: timeout")
 		default:
-			if len(s.acquiredNs) > s.slotsSize {
-				return nil, errors.New("failed to acquire IP slot: no empty slots found")
-			}
-
-			slotIdx++
 			slotName := getSlotName(slotIdx)
 
 			// skip the slot if it's already in use by foreign program
@@ -89,7 +100,7 @@ func (s *StorageLocal) Acquire(ctx context.Context) (*Slot, error) {
 			}
 
 			// check if the slot can be acquired
-			available, err := isNamespaceAvailable(slotName)
+			available, err := isNamespaceAvailable(s.netnsDir, slotName)
 			if err != nil {
 				return nil, fmt.Errorf("error checking if namespace is available: %w", err)
 			}
@@ -101,12 +112,18 @@ func (s *StorageLocal) Acquire(ctx context.Context) (*Slot, error) {
 				continue
 			}
 
-			s.acquiredNs[slotName] = struct{}{}
 			slotKey := getLocalKey(slotIdx)
+			slot, slotErr := slotFactory(slotKey, slotIdx)
+			if slotErr != nil {
+				return nil, fmt.Errorf("failed to construct IP slot: %w", slotErr)
+			}
+			s.acquiredNs[slotName] = struct{}{}
 
-			return NewSlot(slotKey, slotIdx, s.config, s.egressProxy)
+			return slot, nil
 		}
 	}
+
+	return nil, errors.New("failed to acquire IP slot: no empty slots found")
 }
 
 func (s *StorageLocal) Release(ips *Slot) error {
@@ -119,8 +136,8 @@ func (s *StorageLocal) Release(ips *Slot) error {
 	return nil
 }
 
-func isNamespaceAvailable(name string) (bool, error) {
-	nsPath := filepath.Join(NetNamespacesDir, name)
+func isNamespaceAvailable(netnsDir string, name string) (bool, error) {
+	nsPath := filepath.Join(netnsDir, name)
 	_, err := os.Stat(nsPath)
 
 	if os.IsNotExist(err) {
@@ -135,10 +152,10 @@ func isNamespaceAvailable(name string) (bool, error) {
 	return false, nil
 }
 
-func getForeignNamespaces() ([]string, error) {
+func getForeignNamespaces(netnsDir string) ([]string, error) {
 	var ns []string
 
-	files, err := os.ReadDir(NetNamespacesDir)
+	files, err := os.ReadDir(netnsDir)
 	if err != nil {
 		// Folder does not exist, so we can assume no namespaces are in use
 		if os.IsNotExist(err) {
@@ -181,7 +198,7 @@ func SlotIndexFromNamespace(name string) (int, bool) {
 	}
 
 	idx, err := strconv.Atoi(idxStr)
-	if err != nil || idx < 1 || idx > vrtSlotsSize {
+	if err != nil || idx < 1 || idx >= vrtSlotsSize {
 		return 0, false
 	}
 

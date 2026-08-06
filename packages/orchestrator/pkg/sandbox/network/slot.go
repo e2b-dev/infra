@@ -63,6 +63,11 @@ type Slot struct {
 	Key string
 	Idx int
 
+	// reservationValue binds a distributed StorageKV lease to the exact
+	// acquisition that created this Slot. It prevents a stale Slot handle from
+	// deleting a later allocation of the same numeric slot (the ABA case).
+	reservationValue []byte
+
 	Firewall *Firewall
 
 	// firewallCustomRules is used to track if custom firewall rules are set for the slot and need a cleanup.
@@ -88,7 +93,7 @@ type Slot struct {
 }
 
 func NewSlot(key string, idx int, config Config, egressProxy EgressProxy) (*Slot, error) {
-	if idx < 1 || idx > vrtSlotsSize {
+	if idx < 1 || idx >= vrtSlotsSize {
 		return nil, fmt.Errorf("slot index %d is out of range [1, %d)", idx, vrtSlotsSize)
 	}
 

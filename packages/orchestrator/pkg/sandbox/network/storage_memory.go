@@ -5,6 +5,7 @@ package network
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"sync"
 )
@@ -15,6 +16,7 @@ type StorageMemory struct {
 	freeSlots   []bool
 	freeSlotsMu sync.Mutex
 	egressProxy EgressProxy
+	slotFactory func(key string, slotIdx int) (*Slot, error)
 }
 
 func NewStorageMemory(slotsSize int, config Config, egressProxy EgressProxy) (*StorageMemory, error) {
@@ -24,6 +26,9 @@ func NewStorageMemory(slotsSize int, config Config, egressProxy EgressProxy) (*S
 		freeSlots:   make([]bool, slotsSize),
 		freeSlotsMu: sync.Mutex{},
 		egressProxy: egressProxy,
+		slotFactory: func(key string, slotIdx int) (*Slot, error) {
+			return NewSlot(key, slotIdx, config, egressProxy)
+		},
 	}, nil
 }
 
@@ -33,12 +38,22 @@ func (s *StorageMemory) Acquire(_ context.Context) (*Slot, error) {
 
 	// Simple slot tracking in memory
 	// We skip the first slot because it's the host slot
+	slotFactory := s.slotFactory
+	if slotFactory == nil {
+		slotFactory = func(key string, slotIdx int) (*Slot, error) {
+			return NewSlot(key, slotIdx, s.config, s.egressProxy)
+		}
+	}
 	for slotIdx := 1; slotIdx < s.slotsSize; slotIdx++ {
 		key := getMemoryKey(slotIdx)
 		if !s.freeSlots[slotIdx] {
+			slot, err := slotFactory(key, slotIdx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to construct IP slot: %w", err)
+			}
 			s.freeSlots[slotIdx] = true
 
-			return NewSlot(key, slotIdx, s.config, s.egressProxy)
+			return slot, nil
 		}
 	}
 

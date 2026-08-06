@@ -194,12 +194,27 @@ func acquireOrchestratorLock(path string) (*flock.Flock, error) {
 	// Record our PID so a future conflicting instance can report it. We hold the
 	// exclusive advisory lock, so no other process writes this file concurrently.
 	if err := writeLockHolderPID(path); err != nil {
-		_ = fileLock.Unlock()
+		_ = fileLock.Close()
 
 		return nil, fmt.Errorf("write lock holder pid: %w", err)
 	}
 
 	return fileLock, nil
+}
+
+func releaseOrchestratorLock(fileLock *flock.Flock) error {
+	// Keep the pathname and inode stable forever. flock(2) exclusion attaches
+	// to the inode, so unlinking after unlock can let two later processes hold
+	// locks on different inodes with the same pathname.
+	return fileLock.Close()
+}
+
+func requiresOrchestratorLock(environment string, usesSandboxRuntime bool) bool {
+	// `dev` is the deployed GCP environment, not a single-process developer
+	// sandbox. Only the explicit `local` environment may skip this host-wide
+	// guard. Every deployed sandbox runtime must acquire it before startup
+	// reclaim or host-local namespace allocation begins.
+	return usesSandboxRuntime && environment != "local"
 }
 
 func writeLockHolderPID(path string) error {
@@ -240,26 +255,25 @@ func run(config cfg.Config, opts Options) (success bool) {
 
 	usesSandboxRuntime := services.UsesSandboxRuntime()
 
-	// Enforce a single host-level sandbox runtime instance.
-	// Skip this check in development mode.
-	if !env.IsDevelopment() && usesSandboxRuntime {
+	// Enforce a single host-level sandbox runtime instance before startup
+	// reclaim. The GCP deployment is named "dev", so IsDevelopment is not a
+	// safe exemption here: rolling system allocations can overlap on one host.
+	if requiresOrchestratorLock(env.GetEnv("ENVIRONMENT", "prod"), usesSandboxRuntime) {
 		f, err := acquireOrchestratorLock(config.OrchestratorLockPath)
 		if err != nil {
 			log.Fatalf("Failed to acquire orchestrator lock %s: %v", config.OrchestratorLockPath, err)
 		}
 		defer func() {
-			fileErr := f.Close()
+			fileErr := releaseOrchestratorLock(f)
 			if fileErr != nil {
 				log.Printf("Failed to close lock file %s: %v", config.OrchestratorLockPath, fileErr)
 			}
-			// Remove the lock file on clean shutdown so a rollback to the older
-			// stat-based release can start: that guard exits whenever the lock
-			// file exists and cannot tell that this process is already gone.
-			// TODO: Remove this os.Remove once all hosts run a flock-based
-			// release and rollback to the stat-based guard is no longer possible.
-			if rmErr := os.Remove(config.OrchestratorLockPath); rmErr != nil && !os.IsNotExist(rmErr) {
-				log.Printf("Failed to remove lock file %s: %v", config.OrchestratorLockPath, rmErr)
-			}
+			// Never unlink a flock path. Closing releases the kernel lock after
+			// both graceful exit and SIGKILL. Unlinking after close creates an
+			// inode race: a second process can lock the old inode, then a third
+			// can create and lock the same pathname while the second is live.
+			// Rollback to the former stat-only guard is deliberately forbidden
+			// once host-local namespace allocation is enabled.
 		}()
 	}
 
