@@ -122,13 +122,27 @@ variable "clickhouse_health_port" {
 }
 
 variable "client_proxy_count" {
-  type    = number
-  default = 1
+  type        = number
+  default     = null
+  nullable    = true
+  description = "Client-proxy replicas. Null places one replica on every API host."
+
+  validation {
+    condition     = var.client_proxy_count == null ? true : var.client_proxy_count >= 1 && floor(var.client_proxy_count) == var.client_proxy_count
+    error_message = "client_proxy_count must be null or a positive whole number."
+  }
 }
 
 variable "ingress_count" {
-  type    = number
-  default = 1
+  type        = number
+  default     = null
+  nullable    = true
+  description = "Ingress replicas. Null places one replica on every API host."
+
+  validation {
+    condition     = var.ingress_count == null ? true : var.ingress_count >= 1 && floor(var.ingress_count) == var.ingress_count
+    error_message = "ingress_count must be null or a positive whole number."
+  }
 }
 
 variable "additional_api_paths_handled_by_ingress" {

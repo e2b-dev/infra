@@ -59,6 +59,8 @@ locals {
   loki_url                     = "http://loki.service.consul:${var.loki_service_port.port}"
   logs_proxy_port              = 30006
   otel_collector_grpc_port     = 4317
+  client_proxy_count           = coalesce(var.client_proxy_count, var.api_cluster_size)
+  ingress_count                = coalesce(var.ingress_count, var.api_cluster_size)
 
   default_auth_provider_config = {
     jwt = []
@@ -435,7 +437,7 @@ module "nomad" {
   clickhouse_node_pool             = var.clickhouse_node_pool
 
   # Ingress
-  ingress_count         = var.ingress_count
+  ingress_count         = local.ingress_count
   ingress_port          = var.ingress_port.port
   ingress_internal_port = var.ingress_internal_port.port
 
@@ -457,7 +459,7 @@ module "nomad" {
   postgres_read_replica_connection_string_secret_version = google_secret_manager_secret_version.postgres_read_replica_connection_string
 
   # Click Proxy
-  client_proxy_count               = var.client_proxy_count
+  client_proxy_count               = local.client_proxy_count
   client_proxy_resources_cpu_count = var.client_proxy_resources_cpu_count
   client_proxy_resources_memory_mb = var.client_proxy_resources_memory_mb
   client_proxy_update_max_parallel = var.client_proxy_update_max_parallel

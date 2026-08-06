@@ -43,6 +43,11 @@ variable "ingress_count" {
   type = number
 }
 
+variable "available_host_count" {
+  type        = number
+  description = "Number of API hosts eligible to run this static-port job."
+}
+
 variable "ingress_cpu_count" {
   type    = number
   default = 1

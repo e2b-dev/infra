@@ -52,6 +52,7 @@ module "ingress" {
   ingress_count         = var.ingress_count
   ingress_port          = var.ingress_port
   ingress_internal_port = var.ingress_internal_port
+  available_host_count  = var.api_machine_count
 
   traefik_config_files = var.traefik_config_files
 
@@ -129,6 +130,7 @@ module "client_proxy" {
   client_proxy_cpu_count           = var.client_proxy_resources_cpu_count
   client_proxy_memory_mb           = var.client_proxy_resources_memory_mb
   client_proxy_update_max_parallel = var.client_proxy_update_max_parallel
+  available_host_count             = var.api_machine_count
 
   node_pool = var.api_node_pool
 

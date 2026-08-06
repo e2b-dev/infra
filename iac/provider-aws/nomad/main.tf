@@ -74,6 +74,7 @@ module "ingress" {
   ingress_count         = var.ingress_count
   ingress_port          = var.ingress_port
   ingress_internal_port = var.ingress_internal_port
+  available_host_count  = var.api_cluster_size
 
   traefik_config_files = var.traefik_config_files
 
@@ -89,8 +90,9 @@ module "ingress" {
 module "client_proxy" {
   source = "../../modules/job-client-proxy"
 
-  update_stanza      = var.api_cluster_size > 1
-  client_proxy_count = var.client_proxy_count
+  update_stanza        = var.api_cluster_size > 1
+  client_proxy_count   = var.client_proxy_count
+  available_host_count = var.api_cluster_size
 
   node_pool = var.api_node_pool
 

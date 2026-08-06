@@ -6,6 +6,11 @@ variable "client_proxy_count" {
   type = number
 }
 
+variable "available_host_count" {
+  type        = number
+  description = "Number of API hosts eligible to run this static-port job."
+}
+
 variable "client_proxy_cpu_count" {
   type    = number
   default = 1
