@@ -413,6 +413,24 @@ expect_failure() {
 run_assertion "${test_dir}/reviewed.json" >/dev/null
 
 jq '
+  .resource_changes |= map(
+    if .address == "module.init.google_service_account.api_controller_service_account" then
+      del(.change.after.email)
+      | .change.after_unknown.email = true
+    elif (
+      .address
+      | test("api_controller|api-controller")
+    ) and .type != "google_service_account" then
+      .change.after.member = null
+      | .change.after_unknown.member = true
+    else
+      .
+    end
+  )
+' "${test_dir}/reviewed.json" >"${test_dir}/deferred-controller-identity.json"
+run_assertion "${test_dir}/deferred-controller-identity.json" >/dev/null
+
+jq '
   (
     .resource_changes[]
     | select(.address == "terraform_data.cloud_sql_connection_budget")
@@ -722,6 +740,21 @@ expect_failure \
   wrong-controller-member \
   "API/controller identity must match the exact least-privilege" \
   "${test_dir}/wrong-controller-member.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "module.init.google_service_account.api_controller_service_account"
+      )
+    | .change.after.email
+  ) = "attacker@operator-canary.iam.gserviceaccount.com"
+' "${test_dir}/reviewed.json" >"${test_dir}/wrong-controller-email.json"
+expect_failure \
+  wrong-controller-email \
+  "API/controller identity must match the exact least-privilege" \
+  "${test_dir}/wrong-controller-email.json"
 
 jq '
   (

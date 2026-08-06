@@ -223,10 +223,22 @@ if ! jq -e \
     creating or stable;
   def artifact_repository_name:
     if type == "string" and startswith("projects/") then split("/")[-1] else . end;
+  def resolved_or_deferred($value; $unknown; $expected):
+    (
+      $value == $expected
+      and $unknown != true
+    )
+    or (
+      $value == null
+      and $unknown == true
+    );
   def dedicated_member($row; $expected_member):
     if ($row | creating) then
-      $row.change.after.member == null
-      and $row.change.after_unknown.member == true
+      resolved_or_deferred(
+        $row.change.after.member;
+        $row.change.after_unknown.member;
+        $expected_member
+      )
     else
       ($row | stable)
       and $row.change.after.member == $expected_member
@@ -267,8 +279,11 @@ if ! jq -e \
   and $service_account.change.after.project == $expected_project
   and (
     if ($service_account | creating) then
-      $service_account.change.after.email == null
-      and $service_account.change.after_unknown.email == true
+      resolved_or_deferred(
+        $service_account.change.after.email;
+        $service_account.change.after_unknown.email;
+        $expected_email
+      )
       and $service_account.change.after_unknown.unique_id == true
     else
       ($service_account | stable)
