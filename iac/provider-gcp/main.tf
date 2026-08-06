@@ -472,6 +472,7 @@ module "nomad" {
   dashboard_api_env_vars = local.dashboard_api_env_vars
 
   # Docker reverse proxy
+  docker_reverse_proxy_enabled  = var.docker_reverse_proxy_enabled
   docker_reverse_proxy_port     = var.docker_reverse_proxy_port
   docker_reverse_proxy_env_vars = local.docker_reverse_proxy_env_vars
 

@@ -53,11 +53,6 @@ jobs:
             test_path: ./...
             sudo: false
             runner: blacksmith-4vcpu-ubuntu-2404
-          - package: packages/docker-reverse-proxy
-            flag: unit-docker-reverse-proxy
-            test_path: ./...
-            sudo: false
-            runner: blacksmith-4vcpu-ubuntu-2404
           # envd mounts via bindfs (FUSE, no modprobe); this shard doubles as
           # the FUSE-on-Blacksmith canary — if it fails, pin it back to
           # infra-tests.

@@ -58,6 +58,8 @@ module "init" {
   ]
 
   allow_force_destroy = var.allow_force_destroy
+
+  docker_reverse_proxy_enabled = var.docker_reverse_proxy_enabled
 }
 
 resource "random_password" "volume_token_key" {

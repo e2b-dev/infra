@@ -55,7 +55,7 @@ jobs:
 
       - name: Build and vet packages (pure Go)
         run: |
-          for pkg in api client-proxy envd shared db docker-reverse-proxy; do
+          for pkg in api client-proxy envd shared db; do
             echo "::group::packages/$pkg"
             pushd "packages/$pkg" > /dev/null
             GOARCH=arm64 go build ./...
@@ -100,11 +100,6 @@ jobs:
             runner: blacksmith-4vcpu-ubuntu-2404-arm
           - package: packages/db
             flag: arm64-db
-            test_path: ./...
-            sudo: false
-            runner: blacksmith-4vcpu-ubuntu-2404-arm
-          - package: packages/docker-reverse-proxy
-            flag: arm64-docker-reverse-proxy
             test_path: ./...
             sudo: false
             runner: blacksmith-4vcpu-ubuntu-2404-arm

@@ -35,6 +35,8 @@ resource "aws_ecr_repository" "dashboard_api" {
 }
 
 resource "aws_ecr_repository" "docker_reverse_proxy" {
+  count = var.docker_reverse_proxy_enabled ? 1 : 0
+
   name                 = "${var.prefix}core/docker-reverse-proxy"
   image_tag_mutability = "MUTABLE"
   force_delete         = var.allow_force_destroy

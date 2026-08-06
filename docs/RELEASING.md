@@ -14,7 +14,6 @@ appear in this repository.
 | client-proxy | `packages/client-proxy` | image `us-docker.pkg.dev/e2b-artifacts/client-proxy/client-proxy` |
 | clickhouse-migrator | `packages/clickhouse` | image `us-docker.pkg.dev/e2b-artifacts/clickhouse-migrator/clickhouse-migrator` |
 | dashboard-api | `packages/dashboard-api` | image `us-docker.pkg.dev/e2b-artifacts/dashboard-api/dashboard-api` |
-| docker-reverse-proxy | `packages/docker-reverse-proxy` | image `us-docker.pkg.dev/e2b-artifacts/docker-reverse-proxy/docker-reverse-proxy` |
 | envd | `packages/envd` | binary `https://storage.googleapis.com/e2b-artifact-binaries/envd/v<version>/envd` |
 | nomad-nodepool-apm | `packages/nomad-nodepool-apm` | binaries `nomad-nodepool-apm`, `nomad-deployment-aware-target` under `…/nomad-nodepool-apm/v<version>/` |
 | orchestrator | `packages/orchestrator` | binaries `orchestrator`, `clean-nfs-cache` under `…/orchestrator/v<version>/` |

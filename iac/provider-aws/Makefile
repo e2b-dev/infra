@@ -33,6 +33,7 @@ tf_vars := AWS_PROFILE=$(AWS_PROFILE) AWS_REGION=$(AWS_REGION) \
 	$(call tfvar, CLICKHOUSE_CLUSTER_SIZE) \
 	$(call tfvar, REDIS_INSTANCE_TYPE) \
 	$(call tfvar, REDIS_MANAGED) \
+	$(call tfvar, DOCKER_REVERSE_PROXY_ENABLED) \
 	$(call tfvar, API_CLUSTER_SIZE) \
 	$(call tfvar, API_INTERNAL_GRPC_PORT) \
 	$(call tfvar, API_SERVER_MACHINE_TYPE) \
