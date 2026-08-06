@@ -31,8 +31,57 @@ jq -e '.errored != true' <<<"${plan_json}" >/dev/null || {
 }
 
 guard_address='module.cluster.terraform_data.os_login_operator_access_guard'
-completion_address='module.cluster.terraform_data.network_hardening_rollout_completion'
-marker_address='module.cluster.terraform_data.network_hardening_rollout_stage'
+case "${stage}" in
+  network)
+    completion_address='module.cluster.terraform_data.network_hardening_rollout_completion_network'
+    marker_address='module.cluster.terraform_data.network_hardening_rollout_stage_network'
+    prior_ledger='[]'
+    ;;
+  server)
+    completion_address='module.cluster.terraform_data.network_hardening_rollout_completion_server[0]'
+    marker_address='module.cluster.terraform_data.network_hardening_rollout_stage_server[0]'
+    prior_ledger='[
+      {"address":"module.cluster.terraform_data.network_hardening_rollout_completion_network","input":"network"},
+      {"address":"module.cluster.terraform_data.network_hardening_rollout_stage_network","input":"network"}
+    ]'
+    ;;
+  api)
+    completion_address='module.cluster.terraform_data.network_hardening_rollout_completion_api[0]'
+    marker_address='module.cluster.terraform_data.network_hardening_rollout_stage_api[0]'
+    prior_ledger='[
+      {"address":"module.cluster.terraform_data.network_hardening_rollout_completion_network","input":"network"},
+      {"address":"module.cluster.terraform_data.network_hardening_rollout_stage_network","input":"network"},
+      {"address":"module.cluster.terraform_data.network_hardening_rollout_completion_server[0]","input":"server"},
+      {"address":"module.cluster.terraform_data.network_hardening_rollout_stage_server[0]","input":"server"}
+    ]'
+    ;;
+  worker)
+    completion_address='module.cluster.terraform_data.network_hardening_rollout_completion_worker[0]'
+    marker_address='module.cluster.terraform_data.network_hardening_rollout_stage_worker[0]'
+    prior_ledger='[
+      {"address":"module.cluster.terraform_data.network_hardening_rollout_completion_network","input":"network"},
+      {"address":"module.cluster.terraform_data.network_hardening_rollout_stage_network","input":"network"},
+      {"address":"module.cluster.terraform_data.network_hardening_rollout_completion_server[0]","input":"server"},
+      {"address":"module.cluster.terraform_data.network_hardening_rollout_stage_server[0]","input":"server"},
+      {"address":"module.cluster.terraform_data.network_hardening_rollout_completion_api[0]","input":"api"},
+      {"address":"module.cluster.terraform_data.network_hardening_rollout_stage_api[0]","input":"api"}
+    ]'
+    ;;
+  build)
+    completion_address='module.cluster.terraform_data.network_hardening_rollout_completion_build[0]'
+    marker_address='module.cluster.terraform_data.network_hardening_rollout_stage_build[0]'
+    prior_ledger='[
+      {"address":"module.cluster.terraform_data.network_hardening_rollout_completion_network","input":"network"},
+      {"address":"module.cluster.terraform_data.network_hardening_rollout_stage_network","input":"network"},
+      {"address":"module.cluster.terraform_data.network_hardening_rollout_completion_server[0]","input":"server"},
+      {"address":"module.cluster.terraform_data.network_hardening_rollout_stage_server[0]","input":"server"},
+      {"address":"module.cluster.terraform_data.network_hardening_rollout_completion_api[0]","input":"api"},
+      {"address":"module.cluster.terraform_data.network_hardening_rollout_stage_api[0]","input":"api"},
+      {"address":"module.cluster.terraform_data.network_hardening_rollout_completion_worker[0]","input":"worker"},
+      {"address":"module.cluster.terraform_data.network_hardening_rollout_stage_worker[0]","input":"worker"}
+    ]'
+    ;;
+esac
 
 guard_count="$(jq --arg address "${guard_address}" '[.resource_changes[]? | select(.address == $address)] | length' <<<"${plan_json}")"
 [[ "${guard_count}" -eq 1 ]] || {
@@ -60,8 +109,7 @@ completion_count="$(jq --arg address "${completion_address}" '[.resource_changes
 }
 jq -e \
   --arg address "${completion_address}" \
-  --arg stage "${stage}" \
-  --arg previous "${previous}" '
+  --arg stage "${stage}" '
     .resource_changes[]
     | select(.address == $address)
     | .change.after.input == $stage
@@ -71,15 +119,15 @@ jq -e \
         and .change.actions == ["create"]
       )
       or (
-        .change.before.input == $previous
+        .change.before.input == $stage
         and (
-          .change.actions == ["create"]
-          or .change.actions == ["delete", "create"]
+          .change.actions == ["delete", "create"]
           or .change.actions == ["create", "delete"]
         )
       )
       or (
-        .change.before.input == $stage
+        $stage == "network"
+        and .change.before.input == "disabled"
         and (
           .change.actions == ["delete", "create"]
           or .change.actions == ["create", "delete"]
@@ -99,71 +147,47 @@ marker_count="$(jq --arg address "${marker_address}" '[.resource_changes[]? | se
 }
 jq -e \
   --arg address "${marker_address}" \
-  --arg completion "${completion_address}" \
   --arg stage "${stage}" \
-  --arg previous "${previous}" \
   --arg recovery_stage "${recovery_stage}" '
-    . as $plan
-    | ($plan.resource_changes[] | select(.address == $completion)) as $completion_change
-    | $plan.resource_changes[]
+    .resource_changes[]
     | select(.address == $address)
     | .change.after.input == $stage
     and (
       (
-        (
-          if $stage == "network"
-          then (.change.before == null or .change.before.input == $previous)
-          else .change.before.input == $previous
-          end
-        )
-        and (
-          .change.actions == ["create"]
-          or .change.actions == ["update"]
-        )
-        and (
-          (
-            $completion_change.change.before == null
-            and $completion_change.change.actions == ["create"]
-            and (
-              $stage == "network"
-              or $recovery_stage == $stage
-            )
-          )
-          or (
-            (
-              $completion_change.change.before.input == $previous
-              or $completion_change.change.before.input == $stage
-            )
-            and (
-              $completion_change.change.actions == ["create"]
-              or $completion_change.change.actions == ["delete", "create"]
-              or $completion_change.change.actions == ["create", "delete"]
-            )
-          )
-        )
+        $stage == "network"
+        and (.change.before == null or .change.before.input == "disabled")
+        and (.change.actions == ["create"] or .change.actions == ["update"])
       )
       or (
-        .change.before.input == $stage
+        $stage != "network"
+        and .change.before == null
+        and .change.actions == ["create"]
+      )
+      or (
+        $recovery_stage == $stage
+        and .change.before.input == $stage
         and .change.actions == ["no-op"]
-        and (
-          (
-            $completion_change.change.before == null
-            and $completion_change.change.actions == ["create"]
-            and $recovery_stage == $stage
-          )
-          or (
-            $completion_change.change.before.input == $stage
-            and (
-              $completion_change.change.actions == ["delete", "create"]
-              or $completion_change.change.actions == ["create", "delete"]
-            )
-          )
-        )
       )
     )
   ' <<<"${plan_json}" >/dev/null || {
   printf 'Network-hardening stage must advance exactly %s -> %s or remain a no-op during a forced-convergence retry.\n' \
     "${previous}" "${stage}" >&2
+  exit 1
+}
+
+jq -e --argjson expected "${prior_ledger}" '
+  [
+    $expected[] as $want
+    | [.resource_changes[]? | select(.address == $want.address)] as $matches
+    | ($matches | length) == 1
+      and $matches[0].change.actions == ["no-op"]
+      and $matches[0].change.before.input == $want.input
+      and $matches[0].change.after.input == $want.input
+  ]
+  | all
+' <<<"${plan_json}" >/dev/null || {
+  printf 'Network-hardening %s stage is missing a clean cumulative prior-stage ledger.\n' \
+    "${stage}" >&2
   exit 1
 }
 
@@ -177,6 +201,7 @@ case "${stage}" in
     ;;
   server)
     expected_mutations='[
+      "module.cluster.google_storage_bucket_object.setup_config_objects[\"scripts/run-nomad.sh\"]",
       "module.cluster.google_compute_instance_template.server",
       "module.cluster.google_compute_region_instance_group_manager.server_pool"
     ]'
@@ -230,6 +255,44 @@ if [[ "$(jq 'length' <<<"${unexpected_mutations}")" -ne 0 ]]; then
   exit 1
 fi
 
+if [[ "${stage}" == "server" ]]; then
+  jq -e '
+    [
+      .resource_changes[]?
+      | select(
+          .address
+          == "module.cluster.google_storage_bucket_object.setup_config_objects[\"scripts/run-nomad.sh\"]"
+        )
+    ] as $matches
+    | ($matches | length) == 1
+      and $matches[0].mode == "managed"
+      and $matches[0].type == "google_storage_bucket_object"
+      and (
+        $matches[0].change.actions == ["no-op"]
+        or (
+          (
+            $matches[0].change.actions == ["create"]
+            or
+            $matches[0].change.actions == ["create", "delete"]
+            or $matches[0].change.actions == ["delete", "create"]
+          )
+          and (
+            (
+              $matches[0].change.actions == ["create"]
+              and $matches[0].change.before == null
+            )
+            or ($matches[0].change.before.name | test("^run-nomad-[0-9a-f]{5}\\.sh$"))
+          )
+          and ($matches[0].change.after.name | test("^run-nomad-[0-9a-f]{5}\\.sh$"))
+          and ($matches[0].change.after.source | endswith("nomad-cluster/scripts/run-nomad.sh"))
+        )
+      )
+  ' <<<"${plan_json}" >/dev/null || {
+    printf 'Refusing server stage: the exact restart-safe Nomad bootstrap object is missing or unsafe.\n' >&2
+    exit 1
+  }
+fi
+
 if [[ "${stage}" == "network" ]]; then
   jq -e '
     def ports($rule):
@@ -279,31 +342,39 @@ fi
 # same reviewed stage can be retried, while still rejecting rollback, skips,
 # later-pool changes, and generic-autoscaler ownership changes.
 
-# Enforce cumulative OS Login intent across every managed template. This also
-# proves that a stage cannot accidentally roll a later pool.
+# The cumulative dependency chain pulls every completed template into the
+# exact-stage plan while keeping future pools out. Re-prove OS Login intent for
+# all prior/current templates and reject any mutation outside the current pool.
 template_expectations="$(jq -cn --arg stage "${stage}" '
-  {network: 1, server: 2, api: 3, worker: 4, build: 5} as $rank
-  | ($rank[$stage]) as $current
-  | [
-      {address:"module.cluster.google_compute_instance_template.server", enabled:($current >= 2)},
-      {address:"module.cluster.google_compute_instance_template.api", enabled:($current >= 3)},
-      {address:"module.cluster.module.client_cluster[\"default\"].google_compute_instance_template.template", enabled:($current >= 4)},
-      {address:"module.cluster.module.build_cluster[\"default\"].google_compute_instance_template.template", enabled:($current >= 5)},
-      {address:"module.cluster.google_compute_instance_template.loki", enabled:($current >= 5)},
-      {address:"module.cluster.google_compute_instance_template.clickhouse", enabled:($current >= 5)}
-    ]
+  if $stage == "network" then []
+  elif $stage == "server" then [
+    {address:"module.cluster.google_compute_instance_template.server"}
+  ]
+  elif $stage == "api" then [
+    {address:"module.cluster.google_compute_instance_template.server"},
+    {address:"module.cluster.google_compute_instance_template.api"}
+  ]
+  elif $stage == "worker" then [
+    {address:"module.cluster.google_compute_instance_template.server"},
+    {address:"module.cluster.google_compute_instance_template.api"},
+    {address:"module.cluster.module.client_cluster[\"default\"].google_compute_instance_template.template"}
+  ]
+  else [
+    {address:"module.cluster.google_compute_instance_template.server"},
+    {address:"module.cluster.google_compute_instance_template.api"},
+    {address:"module.cluster.module.client_cluster[\"default\"].google_compute_instance_template.template"},
+    {address:"module.cluster.module.build_cluster[\"default\"].google_compute_instance_template.template"},
+    {address:"module.cluster.google_compute_instance_template.loki"},
+    {address:"module.cluster.google_compute_instance_template.clickhouse"}
+  ]
+  end
 ')"
 jq -e --argjson expected "${template_expectations}" '
   [
     $expected[] as $want
     | [ .resource_changes[]? | select(.address == $want.address) ] as $matches
     | ($matches | length) == 1
-      and (
-        if $want.enabled
-        then $matches[0].change.after.metadata["enable-oslogin"] == "TRUE"
-        else ($matches[0].change.after.metadata | has("enable-oslogin") | not)
-        end
-      )
+      and $matches[0].change.after.metadata["enable-oslogin"] == "TRUE"
   ]
   | all
 ' <<<"${plan_json}" >/dev/null || {

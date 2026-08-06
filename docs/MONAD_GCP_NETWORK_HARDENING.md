@@ -22,6 +22,8 @@ SSH-key value.
   v6.50.0's source-range diff suppression preserves the API's default `0.0.0.0/0` when one sole
   source range is replaced by another. The live union is therefore provider behavior that the
   priority-700/800 overlay must safely shadow, not evidence that the reviewed plan omitted IAP.
+  The bounded recovery installed and proved that overlay; the persisted live stage is now
+  `network`.
 - Project common metadata contains a legacy `ssh-keys` entry and no `enable-oslogin` entry. None of
   the eight live fleet instances has an instance-level `enable-oslogin` value. The effective
   `constraints/compute.requireOsLogin` response did not report enforcement.
@@ -56,25 +58,31 @@ SSH-key value.
   template no longer ignores all metadata changes.
 - `os_login_operator_access_confirmed` defaults to false. Its precondition is inside
   `module.cluster`; every template path and all three dev administrative firewalls consume that in-graph
-  guard. A direct or normal `-target=module.cluster` plan therefore cannot omit it. Worker and
-  build templates consume the guard only in their resource lifecycle precondition: a module-wide
+  guard. The transient complete-module topology audit and every exact saved stage plan therefore
+  include it. Worker and build templates consume the guard only in their resource lifecycle
+  precondition: a module-wide
   dependency would defer their `google_compute_image` reads while the guard changes and spuriously
   plan template/MIG replacement during the network-only stage.
 - The staged replacement path is restricted to the current `dev` invited-beta fleet. Any non-dev
   stage fails at the in-module plan guard, leaving its upstream opportunistic MIG policy unchanged;
   production/staging retain their existing IAP-only firewall posture at `disabled` and require a
   separately reviewed instance-replacement strategy. The ordinary workload-plan guard is
-  environment-aware: it permits non-dev plans to initialize or preserve both state resources at
+  environment-aware: it permits non-dev plans to initialize or preserve only the ledger root at
   `disabled`, while still rejecting any non-dev stage advancement or regression.
-- The rollout marker permits exactly `disabled -> network -> server -> api -> worker -> build`.
-  A stage-specific convergence sentinel waits for the administrative firewalls and affected MIGs
+- The cumulative rollout ledger permits exactly
+  `disabled -> network -> server -> api -> worker -> build`. Every completed stage has its own
+  completion/marker pair. A current-stage convergence sentinel depends on the exact current pool
+  and the previous marker, then waits for the administrative firewalls and affected MIGs
   to report both `status.isStable` and `status.versionTarget.isReached`, inventories their exact
   instance IDs and target templates, proves IAP/OS Login against each ID, and binds the replacement
   names to healthy Nomad quorum/client state before that marker advances. Server/API stages also
   require healthy load-balancer membership for that same inventory.
-  The stage-plan assertion permits only the stage's exact firewall or pool boundary (including a
-  subset left by a partial apply), rejects all other drift, and retains the existing topology,
-  quota, worker-MIG, and generic-autoscaler ownership checks.
+  The saved plan contains the cumulative prior/current chain but excludes future pools. Its
+  assertion permits only the current stage's exact firewall or pool boundary (including a subset
+  left by a partial apply), requires all prior resources and markers to remain no-ops, rejects all
+  other drift, and retains the existing topology, quota, worker-MIG, and generic-autoscaler
+  ownership checks. A separate mode-0600 complete-module plan is used only for topology/quota
+  audit; it is never published or applied and is deleted before mutation starts.
 - Every stage requires a mode-0600, non-symlink checkpoint bound to the exact project, region,
   zone, prefix, Git head, named operator, and a maximum one-hour validity window. Its checks and
   evidence are stage-specific. The complete checkpoint and digest are embedded in the saved-plan
@@ -93,8 +101,9 @@ The local branch passed the following checks before handoff:
   configuration.
 - The complete workload plan-assertion fixture suite, including quota, mutation-lease, release,
   cluster-readiness, template-manager, and worker-startup guards.
-- `network-security-check`, including a real targeted child-module plan that proves the in-graph
-  OS Login guard blocks a replacement when confirmation is false.
+- `network-security-check`, including real Terraform target-closure plans for all five stages that
+  prove the cumulative prior/current graph, future-pool exclusion, precise child-output edges, the
+  initial counted-sentinel replacement behavior, and the closed in-graph OS Login guard.
 - Serial rollout fixtures for every allowed transition, exact mutation boundaries, fresh
   checkpoints, post-plan checkpoint expiry rejection, asynchronous MIG convergence, partial-stage
   retry, reverse-stage rejection, skipped-stage rejection, closed-guard rejection, and protection
@@ -147,15 +156,17 @@ Do not apply this branch merely because validation is green.
      CONFIRM='APPLY NETWORK HARDENING server'
    ```
 
-   The reviewed plan must contain only the exact stage mutation plus the in-module guard and
-   convergence/state sentinels. The cluster plan forces replacement of the convergence sentinel on
-   every attempt, including a marker-only retry, so the apply graph re-proves the live fleet before
+   The reviewed plan must contain only the exact current-stage mutation plus the in-module guard
+   and cumulative prior/current completion/marker ledger. The cluster plan forces replacement of
+   the current convergence sentinel on every attempt, including a marker-only retry, so the apply
+   graph re-proves the live fleet before
    the state marker can advance. The shared rollout lease remains held until the affected MIG is
    stable, has reached its target version, and its identity-bound post-replacement access and service
    evidence passes. Never reuse a checkpoint or plan for another stage.
-   If apply or convergence fails, the persisted marker remains at the prior stage: correct the
-   in-boundary cause. If apply advances the marker but the post-apply plan finds same-stage drift,
-   the bounded retry accepts only a no-op current-stage marker while the forced sentinel replacement
+   A failure before the current waiter succeeds leaves the persisted marker at the prior stage; fix
+   the in-boundary cause. A failure after the marker is created, including a dirty post-apply plan,
+   may leave the current marker and preserved lease. In that case, the bounded retry accepts only a
+   no-op current-stage marker while the forced sentinel replacement
    re-proves convergence. If an interrupted initial transition or forced retry leaves the sentinel
    absent, only a plan carrying the validated, generation-bound recovery token for that exact stage
    may recreate it; ordinary, mismatched-stage, skipped-stage, and next-stage plans remain blocked.
@@ -231,9 +242,10 @@ Do not apply this branch merely because validation is green.
    already proven.
 
 The ordinary full `workload-plan` and `workload-apply` paths never initialize or change this
-stage. They require the convergence sentinel and state marker to be identical, non-disabled
-no-ops in the reviewed plan. Any disabled, forward, skipped, reverse, or mismatched stage is
-rejected before publication and again before apply. Use only the cluster workflow above for a
+stage. They require the exact cumulative completion/marker ledger through the selected stage to be
+non-disabled no-ops, with no missing, duplicate, legacy, or future ledger resource in the reviewed
+plan. Any disabled, forward, skipped, reverse, or mismatched stage is rejected before publication
+and again before apply. Use only the cluster workflow above for a
 stage transition, and persist the proven stage in the selected environment before returning to
 ordinary workload changes.
 

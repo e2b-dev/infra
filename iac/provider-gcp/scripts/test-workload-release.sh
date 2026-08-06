@@ -783,28 +783,47 @@ jq \
       else .
       end
     )
-  | .resource_changes += [
-      {
-        address: "module.cluster.terraform_data.network_hardening_rollout_completion",
-        mode: "managed",
-        type: "terraform_data",
-        change: {
-          actions: ["no-op"],
-          before: {input: "build"},
-          after: {input: "build"}
+  | .resource_changes += (
+      [
+        {
+          stage: "network",
+          completion: "module.cluster.terraform_data.network_hardening_rollout_completion_network",
+          marker: "module.cluster.terraform_data.network_hardening_rollout_stage_network"
+        },
+        {
+          stage: "server",
+          completion: "module.cluster.terraform_data.network_hardening_rollout_completion_server[0]",
+          marker: "module.cluster.terraform_data.network_hardening_rollout_stage_server[0]"
+        },
+        {
+          stage: "api",
+          completion: "module.cluster.terraform_data.network_hardening_rollout_completion_api[0]",
+          marker: "module.cluster.terraform_data.network_hardening_rollout_stage_api[0]"
+        },
+        {
+          stage: "worker",
+          completion: "module.cluster.terraform_data.network_hardening_rollout_completion_worker[0]",
+          marker: "module.cluster.terraform_data.network_hardening_rollout_stage_worker[0]"
+        },
+        {
+          stage: "build",
+          completion: "module.cluster.terraform_data.network_hardening_rollout_completion_build[0]",
+          marker: "module.cluster.terraform_data.network_hardening_rollout_stage_build[0]"
         }
-      },
-      {
-        address: "module.cluster.terraform_data.network_hardening_rollout_stage",
-        mode: "managed",
-        type: "terraform_data",
-        change: {
-          actions: ["no-op"],
-          before: {input: "build"},
-          after: {input: "build"}
-        }
-      }
-    ]
+      ]
+      | map(
+          . as $entry
+          | [$entry.completion, $entry.marker][]
+          | {
+              address: ., mode: "managed", type: "terraform_data",
+              change: {
+                actions: ["no-op"],
+                before: {input: $entry.stage},
+                after: {input: $entry.stage}
+              }
+            }
+        )
+    )
   | .resource_changes |= map(
       if .type == "google_compute_instance_template"
       then (
@@ -821,8 +840,11 @@ jq '
   .resource_changes |= map(
     select(
       (.address | startswith("module.cluster."))
-      and .address != "module.cluster.terraform_data.network_hardening_rollout_completion"
-      and .address != "module.cluster.terraform_data.network_hardening_rollout_stage"
+      and (
+        (.address | startswith("module.cluster.terraform_data.network_hardening_rollout_completion"))
+        or (.address | startswith("module.cluster.terraform_data.network_hardening_rollout_stage"))
+        | not
+      )
     )
   )
   | .resource_changes |= map(
@@ -846,7 +868,7 @@ jq '
         }
       },
       {
-        address: "module.cluster.terraform_data.network_hardening_rollout_completion",
+        address: "module.cluster.terraform_data.network_hardening_rollout_completion_network",
         mode: "managed",
         type: "terraform_data",
         change: {
@@ -856,7 +878,7 @@ jq '
         }
       },
       {
-        address: "module.cluster.terraform_data.network_hardening_rollout_stage",
+        address: "module.cluster.terraform_data.network_hardening_rollout_stage_network",
         mode: "managed",
         type: "terraform_data",
         change: {
@@ -1013,7 +1035,7 @@ cat >"${workflow_make}" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >>"${WORKFLOW_MAKE_LOG}"
-[[ "$*" == *"workload-context-guard"* ]] || {
+[[ "$*" == *"workload-context-guard"* || "$*" == *"workload-cluster-stage-guard"* ]] || {
   printf 'unexpected fake recursive make: %s\n' "$*" >&2
   exit 2
 }
@@ -1266,13 +1288,43 @@ test "$(stat -c '%a' "${workflow_cluster_manifest}" 2>/dev/null || stat -f '%Lp'
 test -z "$(find "${workflow_provider}" -maxdepth 1 -type d -name '.workload-cluster-plan.*' -print)"
 test "$(grep -c '^acquire ' "${workflow_lease_log}")" -eq 3
 test "$(grep -c '^release ' "${workflow_lease_log}")" -eq 2
+expect_pass "exact cluster plan-check accepts the published narrow stage plan" \
+  run_workflow_make workload-cluster-plan-check
 cluster_initial_plan_command="$(
-  grep '^plan ' "${workflow_terraform_log}" | head -1
+  grep '^plan ' "${workflow_terraform_log}" \
+    | grep -F -- '-replace=module.cluster.terraform_data.network_hardening_rollout_completion_network' \
+    | head -1
 )"
-grep -F -- '-target=module.cluster' \
+for expected_cluster_target in \
+  module.cluster.terraform_data.os_login_operator_access_guard \
+  module.cluster.terraform_data.network_hardening_rollout_completion \
+  module.cluster.terraform_data.network_hardening_rollout_stage \
+  module.cluster.terraform_data.network_hardening_rollout_completion_network \
+  module.cluster.terraform_data.network_hardening_rollout_stage_network \
+  'module.cluster.module.network.google_compute_firewall.iap_remote_connection_firewall_ingress[0]' \
+  module.cluster.module.network.google_compute_firewall.internal_remote_connection_firewall_ingress \
+  module.cluster.module.network.google_compute_firewall.remote_connection_firewall_ingress; do
+  grep -F -- "-target=${expected_cluster_target}" \
+    <<<"${cluster_initial_plan_command}" >/dev/null
+done
+if grep -Eq '(^|[[:space:]])-target=module\.cluster([[:space:]]|$)' \
+  <<<"${cluster_initial_plan_command}"; then
+  printf 'cluster workflow fixture observed a broad module target\n' >&2
+  exit 1
+fi
+grep -F -- "-replace=module.cluster.terraform_data.network_hardening_rollout_completion_network" \
   <<<"${cluster_initial_plan_command}" >/dev/null
-grep -F -- "-replace=module.cluster.terraform_data.network_hardening_rollout_completion" \
-  <<<"${cluster_initial_plan_command}" >/dev/null
+cluster_topology_plan_command="$(
+  grep '^plan ' "${workflow_terraform_log}" \
+    | grep -E '(^|[[:space:]])-target=module\.cluster([[:space:]]|$)' \
+    | head -1
+)"
+[[ -n "${cluster_topology_plan_command}" ]]
+if grep -F -- '-replace=module.cluster.terraform_data.network_hardening_rollout_completion_network' \
+  <<<"${cluster_topology_plan_command}" >/dev/null; then
+  printf 'read-only topology audit cannot force the stage sentinel replacement\n' >&2
+  exit 1
+fi
 if grep -Eq -- '(^|[[:space:]])-destroy(=|[[:space:]]|$)' \
   <<<"${cluster_initial_plan_command}"; then
   printf 'cluster workflow fixture observed a destroy plan\n' >&2
@@ -1341,6 +1393,7 @@ test "$(grep -c '^release ' "${workflow_lease_log}" || true)" -eq 0
 cluster_recovery_dir="$(find "${workflow_provider}" -maxdepth 1 -type d -name '.workload-cluster-apply.dev.*' -print -quit)"
 cluster_recovery_token="${cluster_recovery_dir}/lease-token.json"
 test -f "${cluster_recovery_token}"
+test ! -e "${cluster_recovery_dir}/topology.plan"
 jq -e '.holder | startswith("cluster-apply:network:dev:terraform/orchestration/dev/state:")' \
   "${cluster_recovery_token}" >/dev/null
 printf 'pass\n' >"${workflow_mode}"
@@ -1367,6 +1420,7 @@ test "$(grep -c '^release ' "${workflow_lease_log}" || true)" -eq 0
 cluster_recovery_dir="$(find "${workflow_provider}" -maxdepth 1 -type d -name '.workload-cluster-apply.dev.*' -print -quit)"
 cluster_recovery_token="${cluster_recovery_dir}/lease-token.json"
 test -f "${cluster_recovery_token}"
+test ! -e "${cluster_recovery_dir}/topology.plan"
 expect_fail "recovery keeps the lease while convergence remains unproven" \
   run_workflow_make workload-cluster-recover-lease \
     NETWORK_HARDENING_ROLLOUT_WAIT_SECONDS=1 \
@@ -1397,6 +1451,7 @@ test "$(grep -c '^release ' "${workflow_lease_log}" || true)" -eq 0
 cluster_recovery_dir="$(find "${workflow_provider}" -maxdepth 1 -type d -name '.workload-cluster-apply.dev.*' -print -quit)"
 cluster_recovery_token="${cluster_recovery_dir}/lease-token.json"
 test -f "${cluster_recovery_token}"
+test ! -e "${cluster_recovery_dir}/topology.plan"
 expect_fail "direct recovery refuses Terraform post-apply drift" \
   run_workflow_make workload-cluster-recover-lease \
     WORKLOAD_CLUSTER_RECOVERY_TOKEN="${cluster_recovery_token}" \
@@ -1416,16 +1471,16 @@ jq '
     | select(.address == "module.cluster.terraform_data.os_login_operator_access_guard")
     | .change.before) = {input: true}
   | (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion")
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion_network")
     | .change.actions) = ["delete", "create"]
   | (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion")
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_completion_network")
     | .change.before) = {input: "network"}
   | (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_stage")
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_stage_network")
     | .change.actions) = ["no-op"]
   | (.resource_changes[]
-    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_stage")
+    | select(.address == "module.cluster.terraform_data.network_hardening_rollout_stage_network")
     | .change.before) = {input: "network"}
 ' "${test_dir}/workflow-cluster-plan.initial.json" \
   >"${WORKFLOW_PLAN_FIXTURE}.retry"
@@ -1486,8 +1541,13 @@ test -z "$(find "${workflow_provider}" -maxdepth 1 -type d -name '.workload-clus
 cluster_post_apply_plan_command="$(
   grep '^plan ' "${workflow_terraform_log}" | tail -1
 )"
-grep -F -- '-target=module.cluster' \
+grep -F -- '-target=module.cluster.terraform_data.network_hardening_rollout_completion_network' \
   <<<"${cluster_post_apply_plan_command}" >/dev/null
+if grep -Eq '(^|[[:space:]])-target=module\.cluster([[:space:]]|$)' \
+  <<<"${cluster_post_apply_plan_command}"; then
+  printf 'cluster post-apply fixture observed a broad module target\n' >&2
+  exit 1
+fi
 grep -F -- '-detailed-exitcode' \
   <<<"${cluster_post_apply_plan_command}" >/dev/null
 
@@ -1495,6 +1555,13 @@ cluster_plan_recipe="$(
   awk '
     /^workload-cluster-plan:/ {capture = 1}
     /^workload-cluster-apply:/ {capture = 0}
+    capture {print}
+  ' "${provider_root}/Makefile"
+)"
+cluster_plan_check_recipe="$(
+  awk '
+    /^workload-cluster-plan-check:/ {capture = 1}
+    /^workload-plan-assertions-test:/ {capture = 0}
     capture {print}
   ' "${provider_root}/Makefile"
 )"
@@ -1521,7 +1588,16 @@ cluster_wait_recipe="$(
 )"
 grep -F 'rm -f -- "$(WORKLOAD_CLUSTER_PLAN)" "$(WORKLOAD_CLUSTER_PLAN_MANIFEST)"' \
   <<<"${cluster_plan_recipe}" >/dev/null
-grep -F -- '-target=module.cluster' <<<"${cluster_plan_recipe}" >/dev/null
+grep -F './scripts/assert-network-hardening-stage-plan.sh' \
+  <<<"${cluster_plan_check_recipe}" >/dev/null
+if grep -F './scripts/assert-workload-plan.sh' \
+  <<<"${cluster_plan_check_recipe}" >/dev/null; then
+  printf 'exact cluster plan-check cannot require complete-module topology from a narrow plan\n' >&2
+  exit 1
+fi
+grep -F -- '$(WORKLOAD_CLUSTER_TARGETS)' <<<"${cluster_plan_recipe}" >/dev/null
+grep -F -- '$(WORKLOAD_CLUSTER_TOPOLOGY_TARGET)' \
+  <<<"${cluster_plan_recipe}" >/dev/null
 grep -F -- "\$(WORKLOAD_CLUSTER_COMPLETION_REPLACE)" \
   <<<"${cluster_plan_recipe}" >/dev/null
 grep -F '"$${after_artifacts}" cluster' <<<"${cluster_plan_recipe}" >/dev/null
@@ -1555,15 +1631,25 @@ grep -F './scripts/wait-network-hardening-stage.sh' \
   <<<"${cluster_apply_recipe}" >/dev/null
 grep -F './scripts/assert-network-hardening-recovery-token.sh' \
   <<<"${cluster_apply_recipe}" >/dev/null
-grep -F -- '-target=module.cluster' <<<"${cluster_apply_recipe}" >/dev/null
+grep -F -- '$(WORKLOAD_CLUSTER_TARGETS)' <<<"${cluster_apply_recipe}" >/dev/null
+grep -F -- '$(WORKLOAD_CLUSTER_TOPOLOGY_TARGET)' \
+  <<<"${cluster_apply_recipe}" >/dev/null
 grep -F -- '-detailed-exitcode' <<<"${cluster_apply_recipe}" >/dev/null
 cluster_apply_line="$(
   grep -nF '$(TF) apply -input=false "$${apply_plan}"' \
     <<<"${cluster_apply_recipe}" | cut -d: -f1
 )"
+cluster_mutation_started_line="$(
+  grep -nF 'mutation_started=true' \
+    <<<"${cluster_apply_recipe}" | cut -d: -f1
+)"
+cluster_topology_remove_line="$(
+  grep -nF 'rm -f -- "$${topology_plan}"' \
+    <<<"${cluster_apply_recipe}" | cut -d: -f1
+)"
 cluster_lease_assert_line="$(
   grep -nF '"$(WORKLOAD_ROLLOUT_LEASE)" assert-held' \
-    <<<"${cluster_apply_recipe}" | cut -d: -f1
+    <<<"${cluster_apply_recipe}" | tail -1 | cut -d: -f1
 )"
 cluster_checkpoint_assert_line="$(
   grep -nF './scripts/assert-network-hardening-checkpoint.sh' \
@@ -1579,6 +1665,8 @@ cluster_release_line="$(
 )"
 test "${cluster_checkpoint_assert_line}" -lt "${cluster_lease_assert_line}"
 test "${cluster_lease_assert_line}" -lt "${cluster_apply_line}"
+test "${cluster_topology_remove_line}" -lt "${cluster_mutation_started_line}"
+test "${cluster_mutation_started_line}" -lt "${cluster_apply_line}"
 test "${cluster_apply_line}" -lt "${cluster_convergence_line}"
 test "${cluster_convergence_line}" -lt "${cluster_release_line}"
 grep -F 'mutation_started=true' <<<"${cluster_apply_recipe}" >/dev/null

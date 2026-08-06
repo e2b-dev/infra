@@ -950,7 +950,12 @@ managed_changes as $changes
               and .change.actions == ["delete", "create"]
             )
             or (
-              .address == "module.cluster.terraform_data.network_hardening_rollout_completion"
+              (
+                .address
+                | startswith(
+                    "module.cluster.terraform_data.network_hardening_rollout_completion_"
+                  )
+              )
               and .type == "terraform_data"
               and (
                 .change.actions == ["delete", "create"]

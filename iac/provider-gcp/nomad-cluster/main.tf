@@ -48,10 +48,20 @@ locals {
     loki       = local.network_hardening_stage_number >= local.network_hardening_stage_order.build
     clickhouse = local.network_hardening_stage_number >= local.network_hardening_stage_order.build
   }
+  network_hardening_waiter_environment = {
+    GCP_PROJECT_ID                 = var.gcp_project_id
+    GCP_REGION                     = var.gcp_region
+    GCP_ZONE                       = var.gcp_zone
+    DOMAIN_NAME                    = var.domain_name
+    PREFIX                         = var.prefix
+    NETWORK_HARDENING_WAIT_SECONDS = tostring(var.network_hardening_rollout_wait_seconds)
+    NETWORK_HARDENING_POLL_SECONDS = "15"
+  }
 }
 
-# Keep the authorization guard in module.cluster: the normal saved cluster plan
-# targets that module, and every replacement path below also depends on it.
+# Keep the authorization guard in module.cluster: the guarded workflow targets
+# this resource explicitly alongside each exact stage, and every replacement
+# path below also depends on it.
 resource "terraform_data" "os_login_operator_access_guard" {
   input = var.os_login_operator_access_confirmed
 
@@ -69,77 +79,148 @@ resource "terraform_data" "os_login_operator_access_guard" {
   }
 }
 
-# This sentinel is replaced for every stage and does not complete until the
-# stage's administrative firewall and managed group have reached their target
-# versions. The persisted marker below therefore remains at the previous stage
-# after a template, MIG update, or asynchronous replacement failure, allowing a
-# bounded same-stage retry under the reviewed rollout workflow.
-resource "terraform_data" "network_hardening_rollout_completion" {
-  input = var.network_hardening_rollout_stage
+# Preserve the already-applied network stage while replacing the shared
+# completion/marker pair with a cumulative dependency chain. Each later stage
+# targets only its own pair, but Terraform must traverse every completed prior
+# stage and the current pool before it can run the bounded waiter or persist the
+# current marker. Prior-stage drift is therefore visible and future pools stay
+# outside the applyable plan.
+moved {
+  from = terraform_data.network_hardening_rollout_completion
+  to   = terraform_data.network_hardening_rollout_completion_network
+}
+
+moved {
+  from = terraform_data.network_hardening_rollout_stage
+  to   = terraform_data.network_hardening_rollout_stage_network
+}
+
+resource "terraform_data" "network_hardening_rollout_completion_network" {
+  input = local.network_hardening_stage_number >= local.network_hardening_stage_order.network ? "network" : "disabled"
   triggers_replace = [
-    var.network_hardening_rollout_stage,
+    local.network_hardening_stage_number >= local.network_hardening_stage_order.network ? "network" : "disabled",
   ]
 
-  lifecycle {
-    precondition {
-      condition = (
-        var.network_hardening_rollout_stage == "disabled"
-        || (
-          var.environment == "dev"
-          && var.os_login_operator_access_confirmed
-        )
+  provisioner "local-exec" {
+    command = local.network_hardening_stage_number >= local.network_hardening_stage_order.network ? "\"${abspath("${path.module}/../scripts/wait-network-hardening-stage.sh")}\"" : "true"
+    environment = merge(local.network_hardening_waiter_environment, {
+      NETWORK_HARDENING_ROLLOUT_STAGE = "network"
+      NETWORK_HARDENING_RESOURCE_IDENTITY = jsonencode(
+        module.network.network_hardening_stage_ready
       )
-      error_message = "Network hardening stages are dev-only and require proven IAP and OS Login operator access."
-    }
+    })
   }
+
+  depends_on = [terraform_data.os_login_operator_access_guard]
+}
+
+resource "terraform_data" "network_hardening_rollout_stage_network" {
+  input      = local.network_hardening_stage_number >= local.network_hardening_stage_order.network ? "network" : "disabled"
+  depends_on = [terraform_data.network_hardening_rollout_completion_network]
+}
+
+resource "terraform_data" "network_hardening_rollout_completion_server" {
+  count = local.network_hardening_stage_number >= local.network_hardening_stage_order.server ? 1 : 0
+
+  input            = "server"
+  triggers_replace = ["server"]
 
   provisioner "local-exec" {
     command = "\"${abspath("${path.module}/../scripts/wait-network-hardening-stage.sh")}\""
-    environment = {
-      GCP_PROJECT_ID                  = var.gcp_project_id
-      GCP_REGION                      = var.gcp_region
-      GCP_ZONE                        = var.gcp_zone
-      DOMAIN_NAME                     = var.domain_name
-      PREFIX                          = var.prefix
-      NETWORK_HARDENING_ROLLOUT_STAGE = var.network_hardening_rollout_stage
-      NETWORK_HARDENING_WAIT_SECONDS  = tostring(var.network_hardening_rollout_wait_seconds)
-      NETWORK_HARDENING_POLL_SECONDS  = "15"
-    }
+    environment = merge(local.network_hardening_waiter_environment, {
+      NETWORK_HARDENING_ROLLOUT_STAGE = "server"
+    })
   }
 
   depends_on = [
-    terraform_data.os_login_operator_access_guard,
-    module.network,
+    terraform_data.network_hardening_rollout_stage_network,
     google_compute_region_instance_group_manager.server_pool,
+  ]
+}
+
+resource "terraform_data" "network_hardening_rollout_stage_server" {
+  count      = local.network_hardening_stage_number >= local.network_hardening_stage_order.server ? 1 : 0
+  input      = "server"
+  depends_on = [terraform_data.network_hardening_rollout_completion_server]
+}
+
+resource "terraform_data" "network_hardening_rollout_completion_api" {
+  count = local.network_hardening_stage_number >= local.network_hardening_stage_order.api ? 1 : 0
+
+  input            = "api"
+  triggers_replace = ["api"]
+
+  provisioner "local-exec" {
+    command = "\"${abspath("${path.module}/../scripts/wait-network-hardening-stage.sh")}\""
+    environment = merge(local.network_hardening_waiter_environment, {
+      NETWORK_HARDENING_ROLLOUT_STAGE = "api"
+    })
+  }
+
+  depends_on = [
+    terraform_data.network_hardening_rollout_stage_server,
     google_compute_instance_group_manager.api_pool,
-    module.client_cluster,
-    module.build_cluster,
+  ]
+}
+
+resource "terraform_data" "network_hardening_rollout_stage_api" {
+  count      = local.network_hardening_stage_number >= local.network_hardening_stage_order.api ? 1 : 0
+  input      = "api"
+  depends_on = [terraform_data.network_hardening_rollout_completion_api]
+}
+
+resource "terraform_data" "network_hardening_rollout_completion_worker" {
+  count = local.network_hardening_stage_number >= local.network_hardening_stage_order.worker ? 1 : 0
+
+  input            = "worker"
+  triggers_replace = ["worker"]
+
+  provisioner "local-exec" {
+    command = "\"${abspath("${path.module}/../scripts/wait-network-hardening-stage.sh")}\""
+    environment = merge(local.network_hardening_waiter_environment, {
+      NETWORK_HARDENING_ROLLOUT_STAGE = "worker"
+      NETWORK_HARDENING_RESOURCE_IDENTITY = jsonencode(
+        module.client_cluster["default"].network_hardening_stage_ready
+      )
+    })
+  }
+
+  depends_on = [terraform_data.network_hardening_rollout_stage_api]
+}
+
+resource "terraform_data" "network_hardening_rollout_stage_worker" {
+  count      = local.network_hardening_stage_number >= local.network_hardening_stage_order.worker ? 1 : 0
+  input      = "worker"
+  depends_on = [terraform_data.network_hardening_rollout_completion_worker]
+}
+
+resource "terraform_data" "network_hardening_rollout_completion_build" {
+  count = local.network_hardening_stage_number >= local.network_hardening_stage_order.build ? 1 : 0
+
+  input            = "build"
+  triggers_replace = ["build"]
+
+  provisioner "local-exec" {
+    command = "\"${abspath("${path.module}/../scripts/wait-network-hardening-stage.sh")}\""
+    environment = merge(local.network_hardening_waiter_environment, {
+      NETWORK_HARDENING_ROLLOUT_STAGE = "build"
+      NETWORK_HARDENING_RESOURCE_IDENTITY = jsonencode(
+        module.build_cluster["default"].network_hardening_stage_ready
+      )
+    })
+  }
+
+  depends_on = [
+    terraform_data.network_hardening_rollout_stage_worker,
     google_compute_instance_group_manager.loki_pool,
     google_compute_instance_group_manager.clickhouse_pool,
   ]
 }
 
-# The saved-plan assertion verifies an exact one-step transition in this state
-# marker, preventing an operator from skipping or reordering fleet stages. It
-# is deliberately downstream of the convergence sentinel rather than upstream
-# of templates or MIGs.
-resource "terraform_data" "network_hardening_rollout_stage" {
-  input = var.network_hardening_rollout_stage
-
-  lifecycle {
-    precondition {
-      condition = (
-        var.network_hardening_rollout_stage == "disabled"
-        || (
-          var.environment == "dev"
-          && var.os_login_operator_access_confirmed
-        )
-      )
-      error_message = "Network hardening stages are dev-only and require proven IAP and OS Login operator access."
-    }
-  }
-
-  depends_on = [terraform_data.network_hardening_rollout_completion]
+resource "terraform_data" "network_hardening_rollout_stage_build" {
+  count      = local.network_hardening_stage_number >= local.network_hardening_stage_order.build ? 1 : 0
+  input      = "build"
+  depends_on = [terraform_data.network_hardening_rollout_completion_build]
 }
 
 resource "google_secret_manager_secret" "consul_gossip_encryption_key" {
