@@ -12,10 +12,10 @@
       "after": {
         "account_id": "e2b-api-controller",
         "display_name": "API and Worker Capacity Controller Service Account",
+        "email": "e2b-api-controller@operator-canary.iam.gserviceaccount.com",
         "project": "operator-canary"
       },
       "after_unknown": {
-        "email": true,
         "id": true,
         "member": true,
         "name": true,
@@ -35,12 +35,12 @@
       "before": null,
       "after": {
         "location": "us-east4",
-        "member": null,
+        "member": "serviceAccount:e2b-api-controller@operator-canary.iam.gserviceaccount.com",
         "project": "operator-canary",
         "repository": "e2b-orchestration",
         "role": "roles/artifactregistry.reader"
       },
-      "after_unknown": {"member": true}
+      "after_unknown": {}
     }
   },
   {
@@ -55,12 +55,12 @@
       "before": null,
       "after": {
         "location": "us-east4",
-        "member": null,
+        "member": "serviceAccount:e2b-api-controller@operator-canary.iam.gserviceaccount.com",
         "project": "operator-canary",
         "repository": "e2b-core",
         "role": "roles/artifactregistry.reader"
       },
-      "after_unknown": {"member": true}
+      "after_unknown": {}
     }
   },
   {
@@ -76,10 +76,10 @@
       "before": null,
       "after": {
         "bucket": "operator-canary-instance-setup",
-        "member": null,
+        "member": "serviceAccount:e2b-api-controller@operator-canary.iam.gserviceaccount.com",
         "role": "roles/storage.objectViewer"
       },
-      "after_unknown": {"member": true}
+      "after_unknown": {}
     }
   },
   {
@@ -95,10 +95,10 @@
       "before": null,
       "after": {
         "bucket": "operator-canary-fc-env-pipeline",
-        "member": null,
+        "member": "serviceAccount:e2b-api-controller@operator-canary.iam.gserviceaccount.com",
         "role": "roles/storage.objectViewer"
       },
-      "after_unknown": {"member": true}
+      "after_unknown": {}
     }
   },
   {
@@ -114,10 +114,10 @@
       "before": null,
       "after": {
         "bucket": "operator-canary-loki-storage",
-        "member": null,
+        "member": "serviceAccount:e2b-api-controller@operator-canary.iam.gserviceaccount.com",
         "role": "roles/storage.objectUser"
       },
-      "after_unknown": {"member": true}
+      "after_unknown": {}
     }
   },
   {
@@ -132,11 +132,11 @@
       "actions": ["create"],
       "before": null,
       "after": {
-        "member": null,
+        "member": "serviceAccount:e2b-api-controller@operator-canary.iam.gserviceaccount.com",
         "project": "operator-canary",
         "role": "roles/compute.networkViewer"
       },
-      "after_unknown": {"member": true}
+      "after_unknown": {}
     }
   },
   {
@@ -151,11 +151,11 @@
       "actions": ["create"],
       "before": null,
       "after": {
-        "member": null,
+        "member": "serviceAccount:e2b-api-controller@operator-canary.iam.gserviceaccount.com",
         "project": "operator-canary",
         "role": "roles/logging.logWriter"
       },
-      "after_unknown": {"member": true}
+      "after_unknown": {}
     }
   },
   {
@@ -170,11 +170,11 @@
       "actions": ["create"],
       "before": null,
       "after": {
-        "member": null,
+        "member": "serviceAccount:e2b-api-controller@operator-canary.iam.gserviceaccount.com",
         "project": "operator-canary",
         "role": "roles/monitoring.editor"
       },
-      "after_unknown": {"member": true}
+      "after_unknown": {}
     }
   },
   {
@@ -188,12 +188,12 @@
       "before": null,
       "after": {
         "location": "us-east4",
-        "member": null,
+        "member": "serviceAccount:e2b-api-controller@operator-canary.iam.gserviceaccount.com",
         "project": "operator-canary",
         "repository": "e2b-custom-environments",
         "role": "roles/artifactregistry.reader"
       },
-      "after_unknown": {"member": true}
+      "after_unknown": {}
     }
   }
 ]
