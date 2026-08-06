@@ -129,8 +129,9 @@ before this job is enabled. The route must validate the exact configured
 audience and authorize only the dedicated API/controller service account for
 this read-only snapshot. The fleet-wide `e2b-infra-instances` identity remains
 attached to control, build, and worker VMs and is explicitly forbidden as an
-allowlisted controller identity. Apply the foundation identity and grants,
-perform the guarded API-pool replacement, and then bind both Terraform outputs
+allowlisted controller identity. Apply the dedicated identity and grants through
+the guarded live prerequisite workflow, perform the API-pool replacement, and
+then bind both Terraform outputs
 `api_controller_service_account_email` and
 `api_controller_service_account_unique_id` into TAMS before activation. All
 other service accounts, including same-project workers, must be rejected. This
