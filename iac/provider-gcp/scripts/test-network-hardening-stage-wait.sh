@@ -111,6 +111,10 @@ printf '%s\n' \
   '    grep -F "instance/id" <<<"$*" >/dev/null' \
   '    grep -F "attributes/enable-oslogin" <<<"$*" >/dev/null' \
   '    grep -F "${expected_id}" <<<"$*" >/dev/null' \
+  '    grep -F -- "--project=monad-code" <<<"$*" >/dev/null' \
+  '    grep -F -- "--zone=us-east4-c" <<<"$*" >/dev/null' \
+  '    grep -F -- "--tunnel-through-iap" <<<"$*" >/dev/null' \
+  '    grep -F -- "--strict-host-key-checking=no" <<<"$*" >/dev/null' \
   '    ;;' \
   '  *) exit 2 ;;' \
   'esac' \

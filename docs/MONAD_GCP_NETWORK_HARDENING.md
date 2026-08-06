@@ -83,6 +83,11 @@ SSH-key value.
   other drift, and retains the existing topology, quota, worker-MIG, and generic-autoscaler
   ownership checks. A separate mode-0600 complete-module plan is used only for topology/quota
   audit; it is never published or applied and is deleted before mutation starts.
+- The replacement access probe explicitly permits an SSH host-key rotation because a managed
+  instance repair or image replacement can regenerate the guest key before the operator's local
+  `google_compute_known_hosts` entry changes. This exception is confined to the IAP tunnel. The
+  remote probe must still return the exact GCE instance ID from the metadata server and confirm
+  `enable-oslogin=TRUE`; a connection to any other instance or a non-OS-Login guest fails closed.
 - Every stage requires a mode-0600, non-symlink checkpoint bound to the exact project, region,
   zone, prefix, Git head, named operator, and a maximum one-hour validity window. Its checks and
   evidence are stage-specific. The complete checkpoint and digest are embedded in the saved-plan

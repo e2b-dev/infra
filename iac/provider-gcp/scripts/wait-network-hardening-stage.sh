@@ -430,6 +430,7 @@ iap_os_login_ready() {
       --zone="${instance_zone}" \
       --tunnel-through-iap \
       --quiet \
+      --strict-host-key-checking=no \
       --ssh-flag="-o ConnectTimeout=10" \
       --ssh-flag="-o ConnectionAttempts=1" \
       --command="${remote_command}" \
