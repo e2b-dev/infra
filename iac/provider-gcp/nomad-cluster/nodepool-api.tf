@@ -146,7 +146,7 @@ resource "google_compute_instance_template" "api" {
 
   # For a full list of oAuth 2.0 Scopes, see https://developers.google.com/identity/protocols/googlescopes
   service_account {
-    email = var.google_service_account_email
+    email = var.api_controller_service_account_email
     scopes = [
       "userinfo-email",
       "compute-ro",
@@ -162,6 +162,14 @@ resource "google_compute_instance_template" "api" {
   # which this Terraform resource depends will also need this lifecycle statement.
   lifecycle {
     create_before_destroy = true
+
+    precondition {
+      condition = (
+        !var.monad_worker_autoscaler_shadow_enabled
+        || var.api_controller_service_account_email != var.google_service_account_email
+      )
+      error_message = "The worker-capacity observer requires an API-only attached service account distinct from the shared worker/build identity."
+    }
   }
 
   depends_on = [

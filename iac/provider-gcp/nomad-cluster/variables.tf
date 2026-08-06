@@ -239,6 +239,11 @@ variable "google_service_account_email" {
   type = string
 }
 
+variable "api_controller_service_account_email" {
+  description = "Distinct service account attached only to the invited-beta API/controller pool."
+  type        = string
+}
+
 variable "docker_contexts_bucket_name" {
   type = string
 }

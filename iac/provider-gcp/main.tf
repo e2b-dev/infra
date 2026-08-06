@@ -329,7 +329,12 @@ module "cluster" {
   docker_reverse_proxy_port    = var.docker_reverse_proxy_port
   nomad_port                   = var.nomad_port
   google_service_account_email = module.init.service_account_email
-  domain_name                  = var.domain_name
+  api_controller_service_account_email = (
+    var.environment == "dev"
+    ? module.init.api_controller_service_account_email
+    : module.init.service_account_email
+  )
+  domain_name = var.domain_name
 
   additional_domains                      = local.additional_domains
   additional_api_paths_handled_by_ingress = local.normalized_api_paths_handled_by_ingress

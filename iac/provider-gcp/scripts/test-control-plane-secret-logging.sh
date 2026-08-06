@@ -4,10 +4,16 @@ set -euo pipefail
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 nomad_script="${root_dir}/nomad-cluster/scripts/run-nomad.sh"
 consul_script="${root_dir}/nomad-cluster/scripts/run-consul.sh"
+startup_scripts=(
+  "${root_dir}/modules/nodepool-api/scripts/start-api.sh"
+  "${root_dir}/nomad-cluster/scripts/start-clickhouse.sh"
+  "${root_dir}/nomad-cluster/scripts/start-server.sh"
+)
 work_dir="$(mktemp -d)"
 trap 'rm -rf -- "${work_dir}"' EXIT
 
-if grep -Eq '^[[:space:]]*set[[:space:]]+-x([[:space:]]|$)' "${nomad_script}" "${consul_script}"; then
+if grep -Eq '^[[:space:]]*set[[:space:]]+-x([[:space:]]|$)' \
+  "${nomad_script}" "${consul_script}" "${startup_scripts[@]}"; then
   printf 'Control-plane bootstrap scripts must not enable shell tracing.\n' >&2
   exit 1
 fi

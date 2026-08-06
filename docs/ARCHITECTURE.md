@@ -395,7 +395,10 @@ flowchart TB
 - **Server nodes** run only Nomad/Consul servers (scheduling, service discovery, Consul DNS —
   services address each other as `*.service.consul`).
 - **API nodes** host every control-plane container and are the only LB backend. The invited-beta
-  topology runs two API nodes.
+  topology runs two API nodes. On the dev fleet they use a dedicated attached
+  `api-controller` service account rather than the fleet-wide worker/build
+  identity. TAMS binds both its email and immutable numeric Google subject for
+  the read-only capacity route; same-project worker identities remain rejected.
 - **Sandbox ("client") nodes** run the orchestrator as a Nomad *system* job via `raw_exec`
   (it needs root for Firecracker, namespaces, NBD, cgroups). Configured with hugepages and local
   template caches. Terraform holds the invited-beta bootstrap at two workers until the
@@ -412,9 +415,10 @@ flowchart TB
   the task environment. Activation requires a dedicated API/controller service account; the current
   fleet-wide instance identity is forbidden because workers and build nodes share it. Invalid,
   stale, regressing, contradictory, or ambiguous state produces a hold
-  and resets the 15-minute scale-in evidence window. The job is disabled by default pending the
-  documented TAMS `capacity.revision` and `capacity.warm_target` additions; see
-  `docs/MONAD_WORKER_AUTOSCALER.md`. This beta path also requires one two-host
+  and resets the 15-minute scale-in evidence window. The job is disabled by default until the
+  foundation identity, guarded API replacement, TAMS OIDC bindings, and immutable
+  controller artifact have all been applied; see `docs/MONAD_WORKER_AUTOSCALER.md`.
+  This beta path also requires one two-host
   `n1-standard-8` Terraform client cluster named `default` in the Nomad `default` pool,
   preventing another MIG or generic autoscaler from contaminating the observed host count.
 - **Build nodes** run the same binary in template-manager mode. The invited-beta topology keeps
@@ -530,7 +534,9 @@ flowchart TB
   so their Terraform resource IDs never contain active token material; legacy
   UUID generator state is scrubbed before any refresh and prior Secret Manager
   versions are disabled during rotation. Control-plane bootstrap scripts never
-  enable shell tracing, never emit ACL tokens, remove their mode-0600 temporary
+  enable shell tracing on API or data-node user-data paths because their output
+  is copied to persistent system and serial-console logs. They never emit ACL
+  tokens, remove their mode-0600 temporary
   token files, and treat an already-bootstrapped Nomad quorum as a successful
   replacement-host join. A repository guard blocks any
   reintroduced static-key seam. The customer-facing private-GCP-registry
