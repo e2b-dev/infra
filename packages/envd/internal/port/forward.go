@@ -52,7 +52,6 @@ func NewForwarder(
 	cgroupManager cgroups.Manager,
 ) *Forwarder {
 	scannerSub := scanner.AddSubscriber(
-		logger,
 		"port-forwarder",
 		// We only want to forward ports that are actively listening on localhost.
 		&ScannerFilter{

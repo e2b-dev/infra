@@ -1,7 +1,6 @@
 package port
 
 import (
-	"github.com/rs/zerolog"
 	"github.com/shirou/gopsutil/v4/net"
 )
 
@@ -9,15 +8,13 @@ import (
 // from a concrete implementation to combination of generics and interfaces.
 
 type ScannerSubscriber struct {
-	logger   *zerolog.Logger
 	filter   *ScannerFilter
 	Messages chan ([]net.ConnectionStat)
 	id       string
 }
 
-func NewScannerSubscriber(logger *zerolog.Logger, id string, filter *ScannerFilter) *ScannerSubscriber {
+func NewScannerSubscriber(id string, filter *ScannerFilter) *ScannerSubscriber {
 	return &ScannerSubscriber{
-		logger:   logger,
 		id:       id,
 		filter:   filter,
 		Messages: make(chan []net.ConnectionStat),
@@ -28,16 +25,12 @@ func (ss *ScannerSubscriber) ID() string {
 	return ss.id
 }
 
-func (ss *ScannerSubscriber) Destroy() {
-	close(ss.Messages)
-}
-
-func (ss *ScannerSubscriber) Signal(proc []net.ConnectionStat) {
-	// Filter isn't specified. Accept everything.
-	if ss.filter == nil {
-		ss.Messages <- proc
-	} else {
-		filtered := []net.ConnectionStat{}
+// Signal delivers a scan result to the subscriber, blocking until the receiver
+// takes it or exit is closed.
+func (ss *ScannerSubscriber) Signal(proc []net.ConnectionStat, exit <-chan struct{}) {
+	msg := proc
+	if ss.filter != nil {
+		filtered := make([]net.ConnectionStat, 0, len(proc))
 		for i := range proc {
 			// We need to access the list directly otherwise there will be implicit memory aliasing
 			// If the filter matched a process, we will send it to a channel.
@@ -45,6 +38,13 @@ func (ss *ScannerSubscriber) Signal(proc []net.ConnectionStat) {
 				filtered = append(filtered, proc[i])
 			}
 		}
-		ss.Messages <- filtered
+		msg = filtered
+	}
+
+	select {
+	case ss.Messages <- msg:
+	// Messages is unbuffered, so this send waits for the receiver. Without the
+	// exit case it would wait forever once the receiver stops consuming.
+	case <-exit:
 	}
 }
