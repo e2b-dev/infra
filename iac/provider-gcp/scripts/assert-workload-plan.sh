@@ -181,10 +181,10 @@ reviewed_quota_limits="$(
 )"
 reviewed_peak_usage="$(
   jq -cn '{
-    instances: 9,
-    global_vcpus: 42,
-    regional_cpus: 42,
-    pd_ssd_gb: 370,
+    instances: 10,
+    global_vcpus: 44,
+    regional_cpus: 44,
+    pd_ssd_gb: 380,
     pd_standard_gb: 600,
     local_ssd_gb: 1125,
     regional_public_ips: 3
@@ -346,11 +346,35 @@ jq -e \
   and .expected_cloud_sql == $reviewed_cloud_sql
   and .quota_limits == $reviewed_quota_limits
   and (.quota_limits | quota_usage_shape)
-  and (
-    .max_automated_worker_server_surge_per_pool
-    | nonnegative_integer
-  )
-  and .max_automated_worker_server_surge_per_pool == 0
+  and .max_automated_rollout_surge_per_pool == {
+    build: 0,
+    client: 0,
+    server: 1
+  }
+  and .server_control_plane_rollout == {
+    minimum_target_size: 3,
+    type: "PROACTIVE",
+    minimal_action: "REPLACE",
+    replacement_method: "SUBSTITUTE",
+    max_surge: 1,
+    max_unavailable: 0,
+    max_unavailable_percent: 0,
+    min_ready_sec: 120,
+    health_check: {
+      port: 50001,
+      request_path: "/healthz",
+      check_interval_sec: 5,
+      timeout_sec: 5,
+      healthy_threshold: 2,
+      unhealthy_threshold: 10,
+      initial_delay_sec: 120
+    },
+    instance_lifecycle_policy: {
+      default_action_on_failure: "REPAIR",
+      force_update_on_repair: "NO",
+      on_failed_health_check: "DO_NOTHING"
+    }
+  }
 ' <<<"${policy_json}" >/dev/null || {
   printf 'Workload topology policy is invalid or differs from reviewed quota limits: %s\n' \
     "${policy_path}" >&2
@@ -417,9 +441,14 @@ failure_fields=(
   unresolved_max_unavailable
   invalid_surges
   percentage_surges
+  percentage_max_unavailable
   invalid_max_unavailable
   invalid_single_unavailable_regional_migs
-  automated_worker_server_surges
+  invalid_fixed_surge_regional_migs
+  automated_rollout_surges
+  unsafe_server_control_plane_rollouts
+  unsafe_server_voter_health_checks
+  unsafe_server_failure_repair_policies
   unresolved_templates
   invalid_template_disks
 )

@@ -146,7 +146,20 @@ Do not apply this branch merely because validation is green.
    `build_queue_quiesced`.
 5. Follow the existing drain procedure before the worker/build stages: halt placement,
    pause or snapshot workcells, prove durable upload, drain Nomad, and verify zero allocations.
-   Roll server and API pools without losing quorum or load-balancer health.
+   The server pool must retain its reviewed one-surge, explicit-`SUBSTITUTE`, zero-unavailable,
+   120-second-ready policy. Port 50001 `/healthz` must identify that exact GCE instance as an alive,
+   healthy Nomad voter while Autopilot has three healthy voters and failure tolerance at least one;
+   the stock leader-reachable agent endpoint is insufficient. The MIG must retain
+   `on_failed_health_check=DO_NOTHING` so a quorum-wide unhealthy signal gates the Updater but never
+   auto-repairs all remaining voters; infrastructure failures retain non-forced `REPAIR`. This
+   policy's normalized health-check resource ID must exactly match `server_nomad_check`; unknown
+   identity or a different health check is a rollout-stopping plan error. This brings a fourth
+   proven voter up before removing an established member. Roll server and API pools
+   without losing quorum or load-balancer health.
+   Port 50001 is reachable only through the existing load-balancer health rule from
+   `130.211.0.0/22` and `35.191.0.0/16` to the `orch` target tag; a Terraform precondition and
+   static regression test bind the voter endpoint to that narrow rule. The live
+   `e2b-load-balancer-hc` rule was rechecked with that exact shape before this change was published.
 6. Create, inspect, and apply one stage at a time (example for `server`):
 
    ```bash

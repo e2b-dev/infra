@@ -24,7 +24,7 @@ function print_usage {
   echo -e "  --client\t\tIf set, run in client mode. Optional. At least one of --server or --client must be set."
   echo -e "  --num-servers\t\tThe minimum number of servers to expect in the Nomad cluster. Required if --server is true."
   echo -e "  --consul-token\t\tThe ACL token that Consul uses."
-  echo -e "  --nomad-token\t\tThe Nomad ACL token to use."
+  echo -e "  --nomad-token-file\tA root-owned mode-0600 file containing the Nomad ACL token. Required in server mode."
   echo -e "  --config-dir\t\tThe path to the Nomad config folder. Optional. Default is the absolute path of '../config', relative to this script."
   echo -e "  --data-dir\t\tThe path to the Nomad data folder. Optional. Default is the absolute path of '../data', relative to this script."
   echo -e "  --bin-dir\t\tThe path to the folder with Nomad binary. Optional. Default is the absolute path of the parent folder of this script."
@@ -79,6 +79,63 @@ function assert_not_empty {
     print_usage
     exit 1
   fi
+}
+
+function stat_path_fields {
+  local -r path="$1"
+
+  if stat -c '%u:%g:%a:%h:%s' -- "$path" >/dev/null 2>&1; then
+    stat -c '%u:%g:%a:%h:%s' -- "$path"
+  else
+    stat -f '%u:%g:%Lp:%l:%z' -- "$path"
+  fi
+}
+
+function read_nomad_token_file {
+  local -r token_file="$1"
+  local -r token_dir="$(dirname -- "$token_file")"
+  local directory_fields
+  local file_fields
+  local uid gid mode links size
+
+  if [[ "$token_file" != "/run/e2b-nomad-health/token" ]]; then
+    log_error "Nomad token file must use the reviewed /run contract"
+    return 1
+  fi
+  if [[ -L "$token_dir" || ! -d "$token_dir" || -L "$token_file" || ! -f "$token_file" ]]; then
+    log_error "Nomad token path is missing or is not a no-follow regular file"
+    return 1
+  fi
+
+  directory_fields="$(stat_path_fields "$token_dir")"
+  IFS=: read -r uid gid mode links size <<<"$directory_fields"
+  if [[ "$uid" != 0 || "$gid" != 0 || "$mode" != 700 ]]; then
+    log_error "Nomad token directory must be root:root mode 0700"
+    return 1
+  fi
+
+  file_fields="$(stat_path_fields "$token_file")"
+  IFS=: read -r uid gid mode links size <<<"$file_fields"
+  if [[ "$uid" != 0 || "$gid" != 0 || "$mode" != 600 || "$links" != 1 ]]; then
+    log_error "Nomad token file must be single-linked root:root mode 0600"
+    return 1
+  fi
+  if [[ ! "$size" =~ ^[0-9]+$ || "$size" -lt 1 || "$size" -gt 4096 ]]; then
+    log_error "Nomad token file has an invalid size"
+    return 1
+  fi
+  if LC_ALL=C grep -q '[^!-~]' "$token_file"; then
+    log_error "Nomad token file contains forbidden characters"
+    return 1
+  fi
+
+  local token
+  token="$(<"$token_file")"
+  if [[ -z "$token" ]]; then
+    log_error "Nomad token file is empty"
+    return 1
+  fi
+  printf '%s' "$token"
 }
 
 # Get the value at a specific Instance Metadata path.
@@ -342,20 +399,15 @@ function bootstrap {
   done
   log_info "Nomad server started."
 
-  local -r nomad_token="$1"
-  local token_file
+  local -r token_file="$1"
   local bootstrap_output
   local bootstrap_status
   log_info "Bootstrapping Nomad"
-  token_file="$(mktemp "${TMPDIR:-/tmp}/nomad.token.XXXXXX")"
-  chmod 0600 "$token_file"
-  printf '%s\n' "$nomad_token" >"$token_file"
 
   set +e
   bootstrap_output="$(nomad acl bootstrap "$token_file" 2>&1)"
   bootstrap_status=$?
   set -e
-  rm -f -- "$token_file"
 
   if [[ "$bootstrap_status" -eq 0 ]]; then
     log_info "Nomad ACL bootstrap completed"
@@ -391,7 +443,7 @@ node_pool "api" {
   description = "Nodes for api."
 }
 EOF
-    if nomad node pool apply -token "$nomad_token" "$api_node_pool_document"; then
+    if NOMAD_TOKEN="$nomad_token" nomad node pool apply "$api_node_pool_document"; then
       :
     else
       return $?
@@ -403,7 +455,7 @@ node_pool "build" {
   description = "Nodes for template builds."
 }
 EOF
-    if nomad node pool apply -token "$nomad_token" "$build_node_pool_document"; then
+    if NOMAD_TOKEN="$nomad_token" nomad node pool apply "$build_node_pool_document"; then
       :
     else
       return $?
@@ -425,6 +477,8 @@ function run {
   local server="false"
   local client="false"
   local num_servers=""
+  local nomad_token=""
+  local nomad_token_file=""
   local all_args=()
 
   while [[ $# > 0 ]]; do
@@ -441,9 +495,9 @@ function run {
       num_servers="$2"
       shift
       ;;
-    --nomad-token)
+    --nomad-token-file)
       assert_not_empty "$key" "$2"
-      nomad_token="$2"
+      nomad_token_file="$2"
       shift
       ;;
     --consul-token)
@@ -483,6 +537,8 @@ function run {
 
   if [[ "$server" == "true" ]]; then
     assert_not_empty "--num-servers" "$num_servers"
+    assert_not_empty "--nomad-token-file" "$nomad_token_file"
+    nomad_token="$(read_nomad_token_file "$nomad_token_file")"
   fi
 
   if [[ "$server" == "false" && "$client" == "false" ]]; then
@@ -517,8 +573,9 @@ function run {
   start_nomad
 
   if [[ "$server" == "true" ]]; then
-    bootstrap "$nomad_token"
+    bootstrap "$nomad_token_file"
     create_node_pools "$nomad_token"
+    unset nomad_token
   fi
 }
 

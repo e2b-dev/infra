@@ -45,7 +45,7 @@ if [[ "${1:-}" == "compute" && "${2:-}" == "project-info" ]]; then
   [[ "${mode}" != "low-global-limit" ]] || limit=153
   [[ "${mode}" != "low-global-headroom" ]] || usage=159
   [[ "${mode}" != "post-cluster-saturated" ]] || usage=200
-  [[ "${mode}" != "post-cluster-reserve" ]] || usage=196
+  [[ "${mode}" != "post-cluster-reserve" ]] || usage=194
   jq -cn \
     --argjson limit "${limit}" \
     --argjson usage "${usage}" \
@@ -107,9 +107,9 @@ if [[ "${1:-}" == "compute" && "${2:-}" == "regions" ]]; then
       address_usage=16
       ;;
     post-cluster-reserve)
-      instances_usage=31
-      regional_cpu_usage=196
-      ssd_usage=1990
+      instances_usage=30
+      regional_cpu_usage=194
+      ssd_usage=1980
       standard_usage=3896
       address_usage=15
       ;;

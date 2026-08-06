@@ -14,7 +14,9 @@ def prior_state_resources:
 
 def normalize_compute_resource_id:
   if type == "string" then
-    sub("^https://www.googleapis.com/compute/v1/"; "")
+    sub("^https://www.googleapis.com/compute/(v1|beta)/"; "")
+    | sub("^https://compute.googleapis.com/compute/(v1|beta)/"; "")
+    | sub("^//compute.googleapis.com/"; "")
   else
     .
   end;
@@ -108,6 +110,24 @@ def unknown_child_field($resource; $container; $field):
     );
     has($field) and .[$field] == true
   );
+
+def unknown_container($resource; $container):
+  any(
+    (
+      $resource.change.after_unknown[$container]
+      // false
+      | ..
+    );
+    . == true
+  );
+
+def unknown_entire_container($resource; $container):
+  ($resource.change.after_unknown[$container] // false) as $unknown
+  | $unknown == true
+    or (
+      ($unknown | type) == "array"
+      and any($unknown[]?; . == true)
+    );
 
 def capacity($resource; $changes):
   if unknown_field($resource; "target_size") then
@@ -363,6 +383,15 @@ managed_changes as $changes
 | (
     [
       $changes[]
+      | select(
+          .address
+          == "module.cluster.google_compute_health_check.server_nomad_check"
+        )
+    ]
+  ) as $server_voter_health_checks
+| (
+    [
+      $changes[]
       | select(.type == "google_compute_instance_template")
     ]
   ) as $instance_templates
@@ -459,14 +488,50 @@ managed_changes as $changes
               )
             end
           ),
+          max_unavailable_percent: (
+            if $capacity == 0 then
+              0
+            else
+              (
+                $resource.change.after.update_policy[0].max_unavailable_percent
+                // 0
+              )
+            end
+          ),
+          update_type: (
+            $resource.change.after.update_policy[0].type // null
+          ),
+          minimal_action: (
+            $resource.change.after.update_policy[0].minimal_action // null
+          ),
+          replacement_method: (
+            $resource.change.after.update_policy[0].replacement_method // null
+          ),
+          instance_lifecycle_policy: (
+            $resource.change.after.instance_lifecycle_policy[0] // null
+          ),
+          min_ready_sec: (
+            $resource.change.after.update_policy[0].min_ready_sec // null
+          ),
           surge_unknown: (
-            ($resource.change.after_unknown.update_policy // false) == true
+            unknown_entire_container($resource; "update_policy")
             or unknown_field($resource; "max_surge_fixed")
             or unknown_field($resource; "max_surge_percent")
           ),
           max_unavailable_unknown: (
-            ($resource.change.after_unknown.update_policy // false) == true
+            unknown_entire_container($resource; "update_policy")
             or unknown_field($resource; "max_unavailable_fixed")
+            or unknown_field($resource; "max_unavailable_percent")
+          ),
+          replacement_method_unknown: (
+            unknown_entire_container($resource; "update_policy")
+            or unknown_field($resource; "replacement_method")
+          ),
+          instance_lifecycle_policy_unknown: (
+            unknown_container($resource; "instance_lifecycle_policy")
+            or unknown_field($resource; "default_action_on_failure")
+            or unknown_field($resource; "force_update_on_repair")
+            or unknown_field($resource; "on_failed_health_check")
           )
         }
     ]
@@ -860,6 +925,11 @@ managed_changes as $changes
       | select(.surge_percent != 0)
       | .address
     ],
+    percentage_max_unavailable: [
+      $rows[]
+      | select(.max_unavailable_percent != 0)
+      | .address
+    ],
     invalid_max_unavailable: [
       $rows[]
       | select(
@@ -892,7 +962,23 @@ managed_changes as $changes
           distribution_policy_zones
         }
     ],
-    automated_worker_server_surges: [
+    invalid_fixed_surge_regional_migs: [
+      $rows[]
+      | select(.regional and .capacity != 0)
+      | select((.surge | type) == "number" and .surge > 0)
+      | select(
+          .distribution_policy_zones_unknown
+          or (.distribution_policy_zones | type) != "array"
+          or (.distribution_policy_zones | length) == 0
+          or .surge < (.distribution_policy_zones | length)
+        )
+      | {
+          address,
+          surge,
+          distribution_policy_zones
+        }
+    ],
+    automated_rollout_surges: [
       $rows[]
       | select(
           .role == "build"
@@ -903,13 +989,175 @@ managed_changes as $changes
           (.surge | type) != "number"
           or (
             .surge
-            > $expected.max_automated_worker_server_surge_per_pool
+            > $expected.max_automated_rollout_surge_per_pool[.role]
           )
         )
       | {
           address,
           role,
           surge
+        }
+    ],
+    unsafe_server_control_plane_rollouts: [
+      $rows[]
+      | select(.role == "server")
+      | select(
+          .regional != true
+          or (.capacity | type) != "number"
+          or (
+            .capacity
+            < $expected.server_control_plane_rollout.minimum_target_size
+          )
+          or .update_type != $expected.server_control_plane_rollout.type
+          or (
+            .minimal_action
+            != $expected.server_control_plane_rollout.minimal_action
+          )
+          or .replacement_method_unknown
+          or (
+            .replacement_method
+            != $expected.server_control_plane_rollout.replacement_method
+          )
+          or .surge != $expected.server_control_plane_rollout.max_surge
+          or (
+            .max_unavailable
+            != $expected.server_control_plane_rollout.max_unavailable
+          )
+          or (
+            .max_unavailable_percent
+            != $expected.server_control_plane_rollout.max_unavailable_percent
+          )
+          or (
+            (.min_ready_sec | type) != "number"
+            or (
+              .min_ready_sec
+              != $expected.server_control_plane_rollout.min_ready_sec
+            )
+          )
+        )
+      | {
+          address,
+          regional,
+          capacity,
+          update_type,
+          minimal_action,
+          replacement_method,
+          surge,
+          max_unavailable,
+          max_unavailable_percent,
+          min_ready_sec
+        }
+    ],
+    unsafe_server_voter_health_checks: (
+      if ($server_voter_health_checks | length) != 1 then
+        [
+          {
+            reason: "health-check-count",
+            count: ($server_voter_health_checks | length)
+          }
+        ]
+      else
+        $server_voter_health_checks[0] as $health
+        | (
+            [
+              $rows[]
+              | select(.role == "server")
+            ]
+          ) as $servers
+        | [
+            {
+              address: $health.address,
+              health_actions: $health.change.actions,
+              health_resource_id: (
+                $health.change.after.id
+                | normalize_compute_resource_id
+              ),
+              health_resource_id_unknown: (
+                unknown_field($health; "id")
+              ),
+              health_fields_unknown: (
+                unknown_field($health; "check_interval_sec")
+                or unknown_field($health; "timeout_sec")
+                or unknown_field($health; "healthy_threshold")
+                or unknown_field($health; "unhealthy_threshold")
+                or unknown_container($health; "http_health_check")
+              ),
+              check_interval_sec: ($health.change.after.check_interval_sec // null),
+              timeout_sec: ($health.change.after.timeout_sec // null),
+              healthy_threshold: ($health.change.after.healthy_threshold // null),
+              unhealthy_threshold: ($health.change.after.unhealthy_threshold // null),
+              http_health_check: ($health.change.after.http_health_check // null),
+              server_auto_healing: (
+                [
+                  $migs[]
+                  | select(.address == "module.cluster.google_compute_region_instance_group_manager.server_pool")
+                  | .change.after.auto_healing_policies
+                ][0] // null
+              ),
+              server_auto_healing_unknown: (
+                [
+                  $migs[]
+                  | select(.address == "module.cluster.google_compute_region_instance_group_manager.server_pool")
+                  | unknown_container(.; "auto_healing_policies")
+                ]
+                | if length == 1 then .[0] else true end
+              )
+            }
+            | select(
+                ($servers | length) != 1
+                or (.health_actions | index("delete")) != null
+                or .health_resource_id_unknown
+                or (.health_resource_id | type) != "string"
+                or (
+                  .health_resource_id
+                  | test("^projects/[^/]+/global/healthChecks/[^/]+$")
+                  | not
+                )
+                or .health_fields_unknown
+                or .check_interval_sec
+                  != $expected.server_control_plane_rollout.health_check.check_interval_sec
+                or .timeout_sec
+                  != $expected.server_control_plane_rollout.health_check.timeout_sec
+                or .healthy_threshold
+                  != $expected.server_control_plane_rollout.health_check.healthy_threshold
+                or .unhealthy_threshold
+                  != $expected.server_control_plane_rollout.health_check.unhealthy_threshold
+                or (.http_health_check | type) != "array"
+                or (.http_health_check | length) != 1
+                or .http_health_check[0].port
+                  != $expected.server_control_plane_rollout.health_check.port
+                or .http_health_check[0].request_path
+                  != $expected.server_control_plane_rollout.health_check.request_path
+                or (.server_auto_healing | type) != "array"
+                or (.server_auto_healing | length) != 1
+                or .server_auto_healing_unknown
+                or (
+                  .server_auto_healing[0].health_check
+                  | normalize_compute_resource_id
+                ) != .health_resource_id
+                or .server_auto_healing[0].initial_delay_sec
+                  != $expected.server_control_plane_rollout.health_check.initial_delay_sec
+              )
+          ]
+      end
+    ),
+    unsafe_server_failure_repair_policies: [
+      $rows[]
+      | select(.role == "server")
+      | select(
+          .instance_lifecycle_policy_unknown
+          or (.instance_lifecycle_policy | type) != "object"
+          or .instance_lifecycle_policy.default_action_on_failure
+            != $expected.server_control_plane_rollout.instance_lifecycle_policy.default_action_on_failure
+          or .instance_lifecycle_policy.force_update_on_repair
+            != $expected.server_control_plane_rollout.instance_lifecycle_policy.force_update_on_repair
+          or .instance_lifecycle_policy.on_failed_health_check
+            != $expected.server_control_plane_rollout.instance_lifecycle_policy.on_failed_health_check
+        )
+      | {
+          address,
+          instance_lifecycle_policy,
+          instance_lifecycle_policy_unknown
         }
     ],
     unresolved_templates: [

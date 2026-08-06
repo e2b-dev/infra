@@ -495,6 +495,8 @@ workflow_repo="${workspace}/workflow-repo"
 workflow_provider="${workflow_repo}/iac/provider-gcp"
 mkdir -p \
   "${workflow_provider}/init" \
+  "${workflow_provider}/modules/nodepool-api/scripts" \
+  "${workflow_provider}/nomad-cluster/network" \
   "${workflow_provider}/nomad-cluster/scripts"
 cp "${provider_root}/Makefile" "${workflow_provider}/Makefile"
 cp -R "${provider_root}/scripts" "${workflow_provider}/scripts"
@@ -505,13 +507,23 @@ cp \
 cp \
   "${provider_root}/nomad-cluster/main.tf" \
   "${provider_root}/nomad-cluster/nodepool-api.tf" \
+  "${provider_root}/nomad-cluster/nodepool-control-server.tf" \
   "${provider_root}/nomad-cluster/variables.tf" \
   "${workflow_provider}/nomad-cluster/"
 cp \
   "${provider_root}/nomad-cluster/scripts/configure-docker-gcp.sh" \
+  "${provider_root}/nomad-cluster/scripts/nomad-voter-health.py" \
   "${provider_root}/nomad-cluster/scripts/run-consul.sh" \
   "${provider_root}/nomad-cluster/scripts/run-nomad.sh" \
+  "${provider_root}/nomad-cluster/scripts/start-clickhouse.sh" \
+  "${provider_root}/nomad-cluster/scripts/start-server.sh" \
   "${workflow_provider}/nomad-cluster/scripts/"
+cp \
+  "${provider_root}/modules/nodepool-api/scripts/start-api.sh" \
+  "${workflow_provider}/modules/nodepool-api/scripts/"
+cp \
+  "${provider_root}/nomad-cluster/network/main.tf" \
+  "${workflow_provider}/nomad-cluster/network/"
 cp \
   "${provider_root}/main.tf" \
   "${provider_root}/outputs.tf" \
