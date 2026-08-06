@@ -1,6 +1,6 @@
 # Monad runtime template status
 
-Last updated: 2026-08-05
+Last updated: 2026-08-07
 
 ## Remote-desktop entry gate
 
@@ -159,50 +159,67 @@ E2B_TEMPLATE_REF=monad-runtime:desktop-54b32edc942d-c5g
 E2B_IMAGE_ID=886b9312-c1b4-4e09-907e-9fdc6a6dc872
 ```
 
-## Current invited-beta runtime: brokered Git bootstrap
+## Current invited-beta runtime: brokered session credentials
 
-Status: built, verified, and registered in the TAMS `dev` environment by an
-operator workflow run at the exact current `main` revision on 2026-08-05. The
-immutable build uses merged infra revision
-`97d88ab16b63e4ad229fdc431b4bb14c30524f1c` and merged TAMS revision
-`8230ee3082a46882e0ff905bada245bd48cf8059` (TAMS PR #269). The template ID
-remains the stable registered template identity; the image ID and immutable
-create reference identify this build.
+Status: built, current-run cleanup verified, registered in the TAMS `dev`
+environment, refreshed into the live API without changing the application
+release, and exercised through an ordinary-session operator canary.
 
-Pinned provenance:
+The immutable runtime input is TAMS revision
+`7f1c409aae355be5e0cd8b1bc365f9cc806c96fd`, with content version:
 
 ```text
-runtime content version=d839b29d8b6c7e5eadc4ecd6c44ee137465881d6b8ff42b808c7eba5e1d65c1d
-apps/sandbox tree=322a658913532aa66a9c946cb3797f19b660fcca
-apps/monad-sandbox-agent-server tree=28f31feab075fb217b3e747e082895fd2ecc82a1
-apps/cli tree=53ebc83a507fb4e1fb32be540c74a73a8e163250
-packages/executor-sdk tree=bf4835dbce1c07e30e590dd2dfc8ce9389c65bd2
-packages/manifest-schema tree=a82e10d5952f23cc4b95d14ce6524c1f71e641bf
-packages/starter tree=551a6da7e2ec81975469919b1161d9df6e031335
+runtime content version=f5a9baea8a88118b58bcac64518f8c32d792df865e202fb6c1fd42a31c5b6016
 ```
 
-The build/verification workflow run
-[`31015567594`](https://github.com/rehoboam-lab/tams/actions/runs/31015567594)
-proved:
+The ownership-scoped verifier fix merged in infra revision
+`a2dc0f0335c8eb66c05baa4d3841f10ce01fd6b7`. Its corresponding TAMS evidence
+contract merged in PR #286 at
+`2b254c697504c6547f52aad8ba9ac9b7756edafb`.
 
-- the Monad daemon was supervised and waiting on a credential-bootstrap socket
-  whose measured filesystem mode was `0600`; the workflow did not assert the
-  socket UID/GID or perform an exhaustive immutable-image credential scan;
-- OpenCode 1.14.28, agent-browser 0.27.0, Playwright 1.60.0, Git 2.53.0,
-  the Monad CLI, and the exact source provenance were present;
-- Chromium rendered the synthetic `monad-runtime-ok` page;
-- Selkies HTTP 6080 and HTTPS 6081 returned 200, the authenticated external
-  port-6080 surface returned HTML, and the Monad/Xorg/Selkies/nginx service
-  graph was up without Kasm/noVNC/TigerVNC paths;
-- the 4667 MiB guest filesystem retained 543 MiB available after a real
-  256 MiB write probe; and
-- cleanup returned the operator team to zero active sandboxes at
-  `2026-08-05T14:32:44.518Z`.
+Resume verification run
+[`31111780903`](https://github.com/rehoboam-lab/tams/actions/runs/31111780903)
+recovered build run
+[`31108551482`](https://github.com/rehoboam-lab/tams/actions/runs/31108551482)
+without rebuilding the immutable image. The verifier allowed two unrelated
+baseline sandboxes to remain, destroyed only the sandbox it created, and proved
+that the current verification run had zero matching sandboxes after cleanup.
 
 Registered identity:
 
 ```text
 E2B_TEMPLATE=rdtms8je5mx3qrtxn1ap
-E2B_TEMPLATE_REF=monad-runtime:desktop-d839b29d8b6c
-E2B_IMAGE_ID=1ff0f699-2f58-4c69-9251-09dcc17cade9
+E2B_TEMPLATE_REF=monad-runtime:desktop-f5a9baea8a88
+E2B_IMAGE_ID=54184138-95c7-4675-9545-ad8813d087db
+```
+
+Live environment refresh run
+[`31112104912`](https://github.com/rehoboam-lab/tams/actions/runs/31112104912)
+installed that exact triple while preserving application revision
+`7f1c409aae355be5e0cd8b1bc365f9cc806c96fd` and the existing digest-pinned
+release images:
+
+```text
+API=sha256:5c207f178a5ebfcd16162df5d45fc2fc02c57ef49c64134ab7303838ffcd32b6
+frontend=sha256:ce465a0f7806f679840897e011530860317c668699817d892ac8d372d4ce296c
+sandbox=sha256:1173639553a9a59375e0d7ce18a4b61e51e5fa71c5ff3e4ecd9ab8631c677b89
+```
+
+Ordinary-session canary run
+[`31112299980`](https://github.com/rehoboam-lab/tams/actions/runs/31112299980)
+then exercised project `b4524b27-0be5-4aa9-ab19-3881e1ce9d27` through the
+live session API. Readiness was 25.695 seconds and total lifecycle time was
+43.994 seconds. The canary proved verified placement attestation,
+authenticated Selkies access, one exchange followed by revocation for each of
+the `git`, `model`, and `internal_service` credential leases, and zero matching
+sandboxes in the independent post-cleanup inventory.
+
+This is an operator-project admission result, not a global rollout claim. The
+live rollout remains:
+
+```text
+ALLOWED_SANDBOX_PROVIDERS=local_docker,e2b
+invited-beta rollout percentage=0
+E2B warm pool enabled=false
+admission=project-policy operator override only
 ```
