@@ -99,6 +99,12 @@ render_startup 48 "true" "${nondev_render}"
 bash -n "${dev_render}"
 bash -n "${nondev_render}"
 
+if grep -Eq '^[[:space:]]*set[[:space:]]+-x([[:space:]]|$)' \
+  "${template_path}" "${dev_render}" "${nondev_render}"; then
+  printf 'Worker bootstrap must not persist rendered ACL material through shell tracing.\n' >&2
+  exit 1
+fi
+
 grep -F 'readonly SWAP_SIZE_GB=32' "${dev_render}" >/dev/null
 grep -F 'readonly SWAP_SIZE_GB=48' "${nondev_render}" >/dev/null
 grep -F 'fallocate --length "${SWAP_SIZE_GB}G" "$SWAPFILE"' \
