@@ -631,8 +631,14 @@ if ! jq -e \
       == ($expected_prefix + "postgres-beta-password")
     and $candidate_password_secret.change.after.deletion_protection == true
     and $candidate_password_version.change.after_sensitive.secret_data == true
-    and $candidate_password_version.change.after.secret_data == null
-    and $candidate_password_version.change.after_unknown.secret_data == true
+    and (
+      ($candidate_password_version | stable)
+      or (
+        ($candidate_password_version | creating)
+        and $candidate_password_version.change.after.secret_data == null
+        and $candidate_password_version.change.after_unknown.secret_data == true
+      )
+    )
     and $candidate_password_version_config.expressions.secret.references
       == [
         "google_secret_manager_secret.cloud_sql_invited_beta_password.name",
