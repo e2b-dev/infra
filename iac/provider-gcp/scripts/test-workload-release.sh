@@ -556,6 +556,40 @@ expect_pass \
   verify "${plan}" "${manifest}" "${fake_terraform}" \
   "${config_root}" "${metadata_repo_root}" "${artifacts_file}"
 
+refresh_checkpoint="${test_dir}/server-refresh-checkpoint.json"
+refresh_manifest="${test_dir}/server-refresh.plan.manifest"
+jq -n \
+  --arg head "$(git -C "${metadata_repo_root}" rev-parse HEAD)" \
+  '{stage:"server",source_git_head:$head,evidence:{review:"fixture://server-refresh"}}' \
+  >"${refresh_checkpoint}"
+chmod 0600 "${refresh_checkpoint}"
+export WORKLOAD_CLUSTER_STAGE="server"
+export WORKLOAD_CLUSTER_CHECKPOINT="${refresh_checkpoint}"
+export WORKLOAD_CLUSTER_REFRESH_STAGE="server"
+refresh_fingerprint="$(
+  "${script_dir}/workload-plan-metadata.sh" \
+    fingerprint "${fake_terraform}" "${config_root}" "${metadata_repo_root}" \
+    "${artifacts_file}"
+)"
+expect_pass \
+  "planned cluster refresh provenance write" \
+  "${script_dir}/workload-plan-metadata.sh" \
+  write "${plan}" "${refresh_manifest}" "${fake_terraform}" \
+  "${config_root}" "${metadata_repo_root}" "${artifacts_file}" \
+  "${refresh_fingerprint}"
+jq -e '
+  .cluster_rollout.stage == "server"
+  and .cluster_rollout.refresh_stage == "server"
+  and (.cluster_rollout.checkpoint_sha256 | test("^[0-9a-f]{64}$"))
+' "${refresh_manifest}" >/dev/null
+WORKLOAD_CLUSTER_REFRESH_STAGE="api" \
+  expect_fail \
+  "planned cluster refresh provenance must match its stage" \
+  "${script_dir}/workload-plan-metadata.sh" \
+  fingerprint "${fake_terraform}" "${config_root}" "${metadata_repo_root}" \
+  "${artifacts_file}"
+unset WORKLOAD_CLUSTER_STAGE WORKLOAD_CLUSTER_CHECKPOINT WORKLOAD_CLUSTER_REFRESH_STAGE
+
 for identity_mode in different-orchestrator-image different-core-digest; do
   drifted_artifacts="${test_dir}/artifacts-${identity_mode}.json"
   printf '%s\n' "${identity_mode}" >"${fake_gcloud_mode}"
@@ -1168,6 +1202,24 @@ expect_fail "normal cluster stage guard rejects false OS Login authorization" \
   WORKLOAD_CLUSTER_STAGE=network \
   WORKLOAD_CLUSTER_CHECKPOINT="${workflow_checkpoint}" \
   OS_LOGIN_OPERATOR_ACCESS_CONFIRMED=false \
+  workload-cluster-stage-guard
+
+expect_fail "planned cluster refresh stage must match its rollout stage" \
+  make -C "${workflow_provider}" \
+  ENV=dev \
+  WORKLOAD_CLUSTER_STAGE=network \
+  WORKLOAD_CLUSTER_REFRESH_STAGE=server \
+  WORKLOAD_CLUSTER_CHECKPOINT="${workflow_checkpoint}" \
+  OS_LOGIN_OPERATOR_ACCESS_CONFIRMED=true \
+  workload-cluster-stage-guard
+expect_fail "planned cluster refresh cannot borrow a recovery lease" \
+  make -C "${workflow_provider}" \
+  ENV=dev \
+  WORKLOAD_CLUSTER_STAGE=network \
+  WORKLOAD_CLUSTER_REFRESH_STAGE=network \
+  WORKLOAD_CLUSTER_RECOVERY_TOKEN="${test_dir}/fixture-recovery-token.json" \
+  WORKLOAD_CLUSTER_CHECKPOINT="${workflow_checkpoint}" \
+  OS_LOGIN_OPERATOR_ACCESS_CONFIRMED=true \
   workload-cluster-stage-guard
 
 workflow_plan="${workflow_provider}/.tfplan.workload.dev"

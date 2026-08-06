@@ -127,6 +127,7 @@ WORKLOAD_CLUSTER_STAGE ?=
 WORKLOAD_CLUSTER_CHECKPOINT ?=
 WORKLOAD_CLUSTER_RECOVERY_TOKEN ?=
 WORKLOAD_CLUSTER_REBOUND_TOKEN ?=
+WORKLOAD_CLUSTER_REFRESH_STAGE ?=
 override WORKLOAD_CLUSTER_PLAN := .tfplan.workload-cluster.$(WORKLOAD_CLUSTER_STAGE).$(ENV)
 override WORKLOAD_CLUSTER_PLAN_MANIFEST := $(WORKLOAD_CLUSTER_PLAN).manifest
 override WORKLOAD_CLUSTER_TOPOLOGY_TARGET := -target=module.cluster
@@ -235,7 +236,8 @@ endef
 define workload_cluster_metadata_context
 $(workload_metadata_context) \
 WORKLOAD_CLUSTER_STAGE="$(WORKLOAD_CLUSTER_STAGE)" \
-WORKLOAD_CLUSTER_CHECKPOINT="$(WORKLOAD_CLUSTER_CHECKPOINT)"
+WORKLOAD_CLUSTER_CHECKPOINT="$(WORKLOAD_CLUSTER_CHECKPOINT)" \
+WORKLOAD_CLUSTER_REFRESH_STAGE="$(WORKLOAD_CLUSTER_REFRESH_STAGE)"
 endef
 
 .PHONY: workload-plan-check workload-prerequisite-plan-check workload-cluster-plan-check workload-plan-assertions-test workload-release-test packer-reserve-check worker-startup-render-test
@@ -292,7 +294,7 @@ workload-cluster-plan-check:
 		fi; \
 		./scripts/assert-network-hardening-stage-plan.sh \
 			"$(WORKLOAD_CLUSTER_PLAN)" "$(TF)" "$(WORKLOAD_CLUSTER_STAGE)" \
-			"$${recovery_stage}"
+			"$${recovery_stage}" "$(WORKLOAD_CLUSTER_REFRESH_STAGE)"
 
 workload-plan-assertions-test:
 	@ ./scripts/test-network-hardening-rollout.sh
@@ -397,6 +399,8 @@ workload-context-guard:
 .PHONY: workload-cluster-stage-guard
 workload-cluster-stage-guard:
 	@ printf '%s' "$(WORKLOAD_CLUSTER_STAGE)" | grep -Eq '^(network|server|api|worker|build)$$' || (printf "WORKLOAD_CLUSTER_STAGE must be one of network, server, api, worker, or build.\n"; exit 1)
+	@ test -z "$(WORKLOAD_CLUSTER_REFRESH_STAGE)" || test "$(WORKLOAD_CLUSTER_REFRESH_STAGE)" = "$(WORKLOAD_CLUSTER_STAGE)" || (printf "WORKLOAD_CLUSTER_REFRESH_STAGE must be empty or exactly match WORKLOAD_CLUSTER_STAGE.\n"; exit 1)
+	@ test -z "$(WORKLOAD_CLUSTER_REFRESH_STAGE)" || test -z "$(WORKLOAD_CLUSTER_RECOVERY_TOKEN)" || (printf "A planned same-stage refresh cannot borrow a recovery lease.\n"; exit 1)
 	@ test "$(OS_LOGIN_OPERATOR_ACCESS_CONFIRMED)" = "true" || (printf "OS_LOGIN_OPERATOR_ACCESS_CONFIRMED=true is required after proving IAP and OS Login access.\n"; exit 1)
 	@ ./scripts/assert-network-hardening-checkpoint.sh \
 		"$(WORKLOAD_CLUSTER_STAGE)" "$(WORKLOAD_CLUSTER_CHECKPOINT)" \
@@ -438,7 +442,7 @@ workload-cluster-plan:
 		holder_digest="$$( \
 			{ \
 				git -C ../.. rev-parse --verify HEAD; \
-				printf '%s\n' "$(ENV)" "$(WORKLOAD_CLUSTER_STAGE)" \
+				printf '%s\n' "$(ENV)" "$(WORKLOAD_CLUSTER_STAGE)" "$(WORKLOAD_CLUSTER_REFRESH_STAGE)" \
 					"$$(shasum -a 256 "$(WORKLOAD_CLUSTER_CHECKPOINT)" | awk '{print $$1}')" \
 					"$$$$" "$$(date -u +%s)"; \
 			} | shasum -a 256 | awk '{print $$1}' \
@@ -504,7 +508,7 @@ workload-cluster-plan:
 			"$${after_artifacts}" cluster; \
 		./scripts/assert-network-hardening-stage-plan.sh \
 			"$${temp_plan}" "$(TF)" "$(WORKLOAD_CLUSTER_STAGE)" \
-			"$${recovery_stage}"; \
+			"$${recovery_stage}" "$(WORKLOAD_CLUSTER_REFRESH_STAGE)"; \
 		quota_mode="$$(./scripts/select-workload-quota-mode.sh \
 			"$${topology_plan}" "$(TF)" "$(WORKLOAD_TOPOLOGY_POLICY)")"; \
 		./scripts/assert-workload-quota.sh \
@@ -602,7 +606,7 @@ workload-cluster-apply:
 		holder_digest="$$( \
 			{ \
 				printf '%s\n' "$${source_head}"; \
-				printf '%s\n' "$(ENV)" "$(WORKLOAD_CLUSTER_STAGE)" \
+				printf '%s\n' "$(ENV)" "$(WORKLOAD_CLUSTER_STAGE)" "$(WORKLOAD_CLUSTER_REFRESH_STAGE)" \
 					"$$(shasum -a 256 "$(WORKLOAD_CLUSTER_CHECKPOINT)" | awk '{print $$1}')" \
 					"$$$$" "$$(date -u +%s)"; \
 			} | shasum -a 256 | awk '{print $$1}' \
@@ -662,7 +666,7 @@ workload-cluster-apply:
 			"$${before_artifacts}" cluster; \
 		./scripts/assert-network-hardening-stage-plan.sh \
 			"$${apply_plan}" "$(TF)" "$(WORKLOAD_CLUSTER_STAGE)" \
-			"$${recovery_stage}"; \
+			"$${recovery_stage}" "$(WORKLOAD_CLUSTER_REFRESH_STAGE)"; \
 		quota_mode="$$(./scripts/select-workload-quota-mode.sh \
 			"$${topology_plan}" "$(TF)" "$(WORKLOAD_TOPOLOGY_POLICY)")"; \
 		./scripts/assert-workload-quota.sh \
