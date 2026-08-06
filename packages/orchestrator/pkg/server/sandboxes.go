@@ -645,6 +645,12 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	teamID, buildId, eventsTTLDays, eventData := s.prepareSandboxEventData(ctx, sbx)
 	eventData[executionEventDataKey] = s.getSandboxExecutionData(sbx)
 	addKillReason(eventData, killReason)
+	if ip := in.GetRequesterIp(); ip != "" {
+		eventData["requester_ip"] = ip
+	}
+	if ua := in.GetRequesterUserAgent(); ua != "" {
+		eventData["requester_user_agent"] = ua
+	}
 	recordSandboxKill(ctx, s.sandboxKilledCounter, killReason)
 
 	eventType := events.SandboxKilledEventPair
