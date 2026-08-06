@@ -190,8 +190,14 @@ alias.
    its scoped grants. Record the email and immutable numeric subject outputs.
 2. Set the TAMS verifier's exact audience, GCP project, email, and numeric
    subject. A shared worker/build identity must remain rejected.
-3. Use the existing guarded `api` replacement stage to attach the dedicated
-   identity to both API nodes, then prove load-balancer and Nomad convergence.
+3. Read the live network-hardening marker before replacing the API pool. Use
+   the existing guarded `api` stage only when the marker can advance
+   `server -> api`, or when a previously reviewed `api` apply is eligible for
+   its same-stage recovery path. Never reverse a marker that has reached
+   `worker` or `build`. In that case, keep the observer disabled until a
+   separately reviewed post-hardening API maintenance workflow can replace
+   both API nodes without weakening the one-way rollout guard. In every case,
+   prove load-balancer and Nomad convergence before activation.
 4. Build and create-only upload `monad-worker-autoscaler.<infra-sha>`.
 5. Set the five `MONAD_WORKER_AUTOSCALER_*` operator inputs and apply the
    ordinary workload plan with two shadow allocations. Mutation remains
