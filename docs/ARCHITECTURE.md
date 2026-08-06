@@ -536,12 +536,16 @@ flowchart TB
   versions are disabled during rotation. Control-plane bootstrap scripts never
   enable shell tracing on API or data-node user-data paths because their output
   is copied to persistent system and serial-console logs. They never emit ACL
-  tokens, remove their mode-0600 temporary
-  token files, and treat an already-bootstrapped Nomad quorum as a successful
-  replacement-host join. A repository guard blocks any
-  reintroduced static-key seam. The customer-facing private-GCP-registry
-  credential contract is retained as a separate, explicit compatibility
-  surface and is not Monad's runtime identity.
+  tokens, remove their mode-0600 temporary token files, and treat an
+  already-bootstrapped Nomad quorum as a successful replacement-host join.
+  The GCP Nomad node-pool apply documents are created in a mode-0700 temporary
+  directory outside the agent configuration directory and removed after each
+  apply. Before Supervisor starts Nomad, bootstrap removes only the two known
+  legacy node-pool documents that older images left beside the agent config, so
+  a service restart cannot parse CLI input as agent configuration. A repository
+  guard blocks any reintroduced static-key seam. The customer-facing
+  private-GCP-registry credential contract is retained as a separate, explicit
+  compatibility surface and is not Monad's runtime identity.
 - F1 worker capacity uses explicit nouns and separate limits. A durable session
   is a control-plane record or paused snapshot; an active workcell is a running
   Firecracker microVM; a worker host is a GCE client-pool VM; build workers and
