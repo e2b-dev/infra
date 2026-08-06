@@ -64,9 +64,21 @@ func DeserializeBytes(data []byte) (*Header, error) {
 	}
 }
 
+// backfillMissingV3UncompressedBuilds materializes the zero BuildData ("uncompressed,
+// size unknown") for mapping-referenced builds with no entry. On V4+ only the
+// header's own build gets one: runV3 inherits its parent's V4/V5 version, writes no
+// self entry, and only runs with compression off. Ancestor gaps stay absent — the
+// information is lost, claiming uncompressed would 404 the suffix-less object name
+// forever on a compressed build, and createDiff instead resolves the build's own
+// header.
 func backfillMissingV3UncompressedBuilds(h *Header) {
+	v4plus := metadataFormatVersion(h.Metadata.Version) >= MetadataVersionV4
+
 	for _, bid := range h.Mapping.Builds() {
 		if _, ok := h.Builds[bid]; ok {
+			continue
+		}
+		if v4plus && bid != h.Metadata.BuildId {
 			continue
 		}
 		if h.Builds == nil {
