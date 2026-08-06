@@ -1,6 +1,9 @@
 package utils
 
-import "context"
+import (
+	"context"
+	"slices"
+)
 
 // UpdateFunc performs an update and returns a rollback function to revert it.
 // The rollback receives a context that is guaranteed not to be canceled.
@@ -17,8 +20,8 @@ func ApplyAllOrNone(ctx context.Context, updates []UpdateFunc) error {
 		rollback, err := update(ctx)
 		if err != nil {
 			rollbackCtx := context.WithoutCancel(ctx)
-			for i := len(rollbacks) - 1; i >= 0; i-- {
-				rollbacks[i](rollbackCtx)
+			for _, rollback := range slices.Backward(rollbacks) {
+				rollback(rollbackCtx)
 			}
 
 			return err

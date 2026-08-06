@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"sync"
 	"sync/atomic"
 
@@ -83,15 +84,15 @@ func (c *Cleanup) run(ctx context.Context) {
 
 	var errs []error
 
-	for i := len(c.priorityCleanup) - 1; i >= 0; i-- {
-		err := c.priorityCleanup[i](ctx)
+	for _, cleanup := range slices.Backward(c.priorityCleanup) {
+		err := cleanup(ctx)
 		if err != nil {
 			errs = append(errs, err)
 		}
 	}
 
-	for i := len(c.cleanup) - 1; i >= 0; i-- {
-		err := c.cleanup[i](ctx)
+	for _, cleanup := range slices.Backward(c.cleanup) {
+		err := cleanup(ctx)
 		if err != nil {
 			errs = append(errs, err)
 		}

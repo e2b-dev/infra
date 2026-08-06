@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -158,8 +159,8 @@ type testInfra struct {
 
 func (ti *testInfra) close(ctx context.Context) {
 	cleanCtx := context.WithoutCancel(ctx)
-	for i := len(ti.closers) - 1; i >= 0; i-- {
-		ti.closers[i](cleanCtx)
+	for _, closer := range slices.Backward(ti.closers) {
+		closer(cleanCtx)
 	}
 }
 
