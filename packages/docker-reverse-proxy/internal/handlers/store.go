@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -56,10 +57,10 @@ func NewStore(ctx context.Context) *APIStore {
 	proxy.ModifyResponse = func(resp *http.Response) error {
 		if resp.StatusCode == http.StatusUnauthorized {
 			respBody, _ := io.ReadAll(resp.Body)
+			resp.Body = io.NopCloser(bytes.NewReader(respBody))
 			log.Printf("Unauthorized request:[%s] %s\n", resp.Request.Method, respBody)
 		}
 
-		// You can also modify the response here if needed
 		return nil
 	}
 
