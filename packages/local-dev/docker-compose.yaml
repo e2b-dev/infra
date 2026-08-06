@@ -62,16 +62,16 @@ services:
       - "4318:4318" # OTLP HTTP receiver"
 
   postgres:
-    image: postgres:17.4
+    image: postgres:18-alpine
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: postgres
-      PGDATA: /var/lib/postgresql/17/docker
+      PGDATA: /var/lib/postgresql/18/docker
     ports:
       - "5432:5432"
     volumes:
-      - postgres:/var/lib/postgresql/17/docker
+      - postgres:/var/lib/postgresql
 
   redis:
     image: redis:7.4.6

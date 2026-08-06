@@ -31,7 +31,7 @@ const (
 	// must target the same table the harness migrated.
 	TrackingTable = "_migrations"
 
-	testPostgresImage = "postgres:16-alpine"
+	testPostgresImage = "postgres:18-alpine"
 	testDatabaseName  = "test_db"
 	testUsername      = "postgres"
 	testPassword      = "test_password"

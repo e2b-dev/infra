@@ -17,7 +17,7 @@ import (
 
 func TestRun(t *testing.T) {
 	postgresContainer, err := postgres.Run(t.Context(),
-		"postgres:16-alpine",
+		"postgres:18-alpine",
 		postgres.WithDatabase("test"),
 		postgres.WithUsername("postgres"),
 		postgres.WithPassword("password"),
