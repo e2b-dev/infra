@@ -87,7 +87,12 @@ case "${1:-}" in
   node)
     test "${2:-}" = "pool"
     test "${3:-}" = "apply"
-    document="${6:-}"
+    test "${NOMAD_TOKEN:-}" = "test-token"
+    if [[ "$*" == *"test-token"* ]]; then
+      printf 'Nomad token was exposed in node-pool argv.\n' >&2
+      exit 1
+    fi
+    document="${4:-}"
     test -f "$document"
     case "$document" in
       "$NOMAD_TEST_CONFIG_DIR"/*)
@@ -257,12 +262,13 @@ bash -c '
   }
   bootstrap() { :; }
   create_node_pools() { :; }
+  read_nomad_token_file() { printf "%s" "test-nomad"; }
 
   use_sudo=""
   node_pool=""
   node_labels=""
   orchestrator_job_version=""
-  run --server --num-servers 3 --consul-token test-consul --nomad-token test-nomad
+  run --server --num-servers 3 --consul-token test-consul --nomad-token-file /run/e2b-nomad-health/token
 ' bash "${run_fixture}/bin/run-nomad.sh"
 
 printf 'Nomad restart safety regression test passed.\n'

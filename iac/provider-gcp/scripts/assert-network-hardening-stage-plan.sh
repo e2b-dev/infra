@@ -202,6 +202,7 @@ case "${stage}" in
   server)
     expected_mutations='[
       "module.cluster.google_storage_bucket_object.setup_config_objects[\"scripts/run-nomad.sh\"]",
+      "module.cluster.google_compute_health_check.server_nomad_check",
       "module.cluster.google_compute_instance_template.server",
       "module.cluster.google_compute_region_instance_group_manager.server_pool"
     ]'
@@ -289,6 +290,82 @@ if [[ "${stage}" == "server" ]]; then
       )
   ' <<<"${plan_json}" >/dev/null || {
     printf 'Refusing server stage: the exact restart-safe Nomad bootstrap object is missing or unsafe.\n' >&2
+    exit 1
+  }
+
+  jq -e '
+    def one($address):
+      [.resource_changes[]? | select(.address == $address)]
+      | if length == 1 then .[0] else null end;
+    def field_unknown($resource; $field):
+      any(
+        ($resource.change.after_unknown // {} | .. | objects);
+        has($field) and .[$field] == true
+      );
+    def container_unknown($resource; $container):
+      any(
+        ($resource.change.after_unknown[$container] // false | ..);
+        . == true
+      );
+    def normalize_compute_resource_id:
+      if type == "string" then
+        sub("^https://www.googleapis.com/compute/(v1|beta)/"; "")
+        | sub("^https://compute.googleapis.com/compute/(v1|beta)/"; "")
+        | sub("^//compute.googleapis.com/"; "")
+      else
+        .
+      end;
+    one("module.cluster.google_compute_health_check.server_nomad_check") as $health
+    | one("module.cluster.google_compute_region_instance_group_manager.server_pool") as $server
+    | $health != null
+      and $health.type == "google_compute_health_check"
+      and ($health.change.actions | index("delete") | not)
+      and (field_unknown($health; "id") | not)
+      and ($health.change.after.id | type) == "string"
+      and (
+        $health.change.after.id
+        | normalize_compute_resource_id
+        | test("^projects/[^/]+/global/healthChecks/[^/]+$")
+      )
+      and (field_unknown($health; "check_interval_sec") | not)
+      and (field_unknown($health; "timeout_sec") | not)
+      and (field_unknown($health; "healthy_threshold") | not)
+      and (field_unknown($health; "unhealthy_threshold") | not)
+      and (container_unknown($health; "http_health_check") | not)
+      and $health.change.after.check_interval_sec == 5
+      and $health.change.after.timeout_sec == 5
+      and $health.change.after.healthy_threshold == 2
+      and $health.change.after.unhealthy_threshold == 10
+      and ($health.change.after.http_health_check | length) == 1
+      and $health.change.after.http_health_check[0].port == 50001
+      and $health.change.after.http_health_check[0].request_path == "/healthz"
+      and $server != null
+      and ($server.change.actions | index("delete") | not)
+      and ($server.change.after.distribution_policy_zones | type) == "array"
+      and (field_unknown($server; "distribution_policy_zones") | not)
+      and ($server.change.after.distribution_policy_zones | length) >= 1
+      and ($server.change.after.update_policy | length) == 1
+      and (container_unknown($server; "update_policy") | not)
+      and $server.change.after.update_policy[0].replacement_method == "SUBSTITUTE"
+      and $server.change.after.update_policy[0].max_unavailable_fixed == 0
+      and ($server.change.after.update_policy[0].max_unavailable_percent // 0) == 0
+      and $server.change.after.update_policy[0].max_surge_fixed
+        >= ($server.change.after.distribution_policy_zones | length)
+      and ($server.change.after.auto_healing_policies | length) == 1
+      and (container_unknown($server; "auto_healing_policies") | not)
+      and ($server.change.after.auto_healing_policies[0].health_check | type) == "string"
+      and (
+        $server.change.after.auto_healing_policies[0].health_check
+        | normalize_compute_resource_id
+      ) == ($health.change.after.id | normalize_compute_resource_id)
+      and $server.change.after.auto_healing_policies[0].initial_delay_sec == 120
+      and ($server.change.after.instance_lifecycle_policy | length) == 1
+      and (container_unknown($server; "instance_lifecycle_policy") | not)
+      and $server.change.after.instance_lifecycle_policy[0].default_action_on_failure == "REPAIR"
+      and $server.change.after.instance_lifecycle_policy[0].force_update_on_repair == "NO"
+      and $server.change.after.instance_lifecycle_policy[0].on_failed_health_check == "DO_NOTHING"
+  ' <<<"${plan_json}" >/dev/null || {
+    printf 'Refusing server stage: local-voter health, substitute rollout, or zone-surge invariants are unsafe.\n' >&2
     exit 1
   }
 fi

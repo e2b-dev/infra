@@ -197,7 +197,16 @@ unknown fleet shapes, capacity drift, and MIG replacement cannot obtain
 `post-cluster` admission; the preceding topology guard still determines
 whether any initial-create resource is reviewed. An instance-template
 create-before-destroy rollout remains eligible only after the topology guard
-proves its MIG size and reviewed surge policy.
+proves its MIG size and reviewed surge policy. The three-server dev control plane reserves one
+surge VM with explicit `SUBSTITUTE`, zero fixed or percentage unavailable, and a 120-second ready
+window; the reviewed peak includes that server together with the API surge allowance. Its port
+50001 `/healthz` gate proves that the exact metadata-identified instance is an alive healthy Nomad
+voter and that Autopilot remains healthy with three healthy voters and failure tolerance at least
+one. The server lifecycle policy makes failed application health `DO_NOTHING`, so quorum loss
+cannot make the MIG auto-repair every remaining healthy voter; ordinary infrastructure failure
+still uses `REPAIR` without forcing the template update. The topology guard also requires fixed
+regional surge to cover every explicit distribution zone. This prevents a template rollout from
+removing an established voter before its replacement has joined quorum and stabilized.
 
 The apply target consumes only the private verified copy of the exact reviewed stage plan,
 requires a stage-specific literal confirmation, rechecks the still-fresh checkpoint, proves that the
@@ -220,9 +229,9 @@ the exact readiness stage that remained unhealthy.
 After this readiness gate, the full workload plan uses `post-cluster` quota
 admission. That mode still requires every reviewed quota limit and live metric
 to be present. It does not double-count the already-created base fleet, but it
-retains the reviewed peak-minus-base operational reserve for an API rollout or
-Packer worker. The full-plan assertion enforces the corresponding zero cluster
-delta by rejecting any mutating `module.cluster.google_compute_*` action. Only
+retains the reviewed peak-minus-base operational reserve for the server/API rollout envelope or
+the mutually exclusive Packer worker. The full-plan assertion enforces the corresponding zero
+cluster delta by rejecting any mutating `module.cluster.google_compute_*` action. Only
 a reviewed full plan that satisfies both checks may proceed to the Cloud SQL
 and Nomad-job release.
 
@@ -294,10 +303,11 @@ every non-destructive create or update. Unattended promotion remains disabled
 until that allowlist is generated from and reviewed against the first real
 plan.
 
-The checked-in operator-canary policy expects three Nomad/Consul servers, one
-API node, one build node, one sandbox client node, and no ClickHouse or Loki
-node. Server and worker regional MIGs have zero automated surge and replace one
-instance in place; the API zonal MIG retains one surge instance. The example
+The checked-in invited-beta policy expects three Nomad/Consul servers, two API
+nodes, one build node, two sandbox client nodes, and no ClickHouse or Loki node.
+The server regional MIG reserves one surge with `SUBSTITUTE`, zero unavailable, a
+120-second ready window, and the exact local-voter `/healthz` gate; the worker regional MIG replaces one drained instance
+in place, and the API zonal MIG retains one surge instance. The example
 environment fixes those counts, machine types, and disks instead of enabling a
 worker autoscaler.
 
@@ -316,29 +326,29 @@ changes, public database IPv4, plaintext-capable SSL modes, missing backup/PITR
 or deletion protection, and drift from the reviewed shared-core tier and disk
 bounds.
 
-The base fleet is six VMs and 26 vCPUs. Its build and client workers each use a
+The base fleet is eight VMs and 38 vCPUs. Its build and client workers each use a
 100 GB SSD boot disk with an explicit 32 GB swapfile, leaving 68 GB for the
 runtime image, Docker, Nomad, and logs. The worker module retains a 100 GB swap
 default for configurations that omit the new setting, and refuses any
 configuration that leaves less than 20 GB outside swap. Each worker separately
 retains one fixed 375 GB local SSD for sandbox and snapshot cache data.
 
-Two transient scenarios are reviewed:
+Two mutually exclusive transient scenarios are reviewed:
 
-- an API rollout adds one `e2-standard-4` VM and 200 GB standard PD;
+- the conservative MIG rollout envelope reserves one `e2-standard-2` server
+  with 20 GB SSD PD and one `e2-standard-4` API node with 200 GB standard PD;
 - a Packer image build adds one `n1-standard-4` VM, 10 GB SSD PD, and one
   conservatively reserved public IP.
 
-Those scenarios are mutually exclusive. Never run Packer while any MIG rollout
-is active. Adding both at once would require eight VMs and 34 vCPUs, exceeding
-the reviewed 32-vCPU limit. The guard takes the maximum usage across the two
-serialized scenarios, yielding seven VMs, 30 total regional/shared-pool vCPUs,
-270 GB SSD PD, 400 GB standard PD, 750 GB local SSD, and seven regional public
-IPs.
+Never run Packer while any MIG rollout is active. The guard conservatively adds
+both reviewed MIG surges even though the staged workflow and shared lease roll
+only one pool at a time, then takes the maximum against the Packer scenario.
+The resulting peak is ten VMs, 44 total regional/shared-pool vCPUs, 380 GB SSD
+PD, 600 GB standard PD, 1,125 GB local SSD, and three regional public IPs.
 
-The reviewed admission floors are 24 instances, 32 global vCPUs, 32 regional
-shared-pool vCPUs, 500 GB SSD PD, 4,096 GB standard PD, 6,000 GB N1 local SSD,
-and eight regional public IPs.
+The reviewed admission floors are 23 instances, 154 global vCPUs, 154 regional
+shared-pool vCPUs, 1,770 GB SSD PD, 4,096 GB standard PD, 6,375 GB N1 local SSD,
+and 16 regional public IPs.
 The policy and the Packer source are both checked in CI, including the static
 Packer machine/disk/IP reserve. Any policy limit change or plan usage drift
 fails closed. At plan and apply the gate independently reads

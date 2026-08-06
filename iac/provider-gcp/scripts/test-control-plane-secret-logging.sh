@@ -25,6 +25,10 @@ printf '%s\n' '{"server":{"message":"ok","ok":true}}'
 EOF
 cat >"${work_dir}/bin/nomad" <<'EOF'
 #!/usr/bin/env bash
+test "${1:-}" = "acl"
+test "${2:-}" = "bootstrap"
+test "${3:-}" = "${NOMAD_TEST_BOOTSTRAP_TOKEN_FILE}"
+grep -Fxq 'nomad-token-must-not-appear' "${3}"
 if [[ "${NOMAD_STUB_MODE:-already}" == "unexpected" ]]; then
   printf '%s\n' 'permission denied' >&2
   exit 2
@@ -35,11 +39,15 @@ EOF
 chmod +x "${work_dir}/bin/curl" "${work_dir}/bin/nomad"
 
 sentinel='nomad-token-must-not-appear'
+bootstrap_token_file="${work_dir}/bootstrap-token"
+printf '%s\n' "${sentinel}" >"${bootstrap_token_file}"
+chmod 0600 "${bootstrap_token_file}"
 bootstrap_output="$(
-  PATH="${work_dir}/bin:${PATH}" TMPDIR="${work_dir}" bash -c '
+  PATH="${work_dir}/bin:${PATH}" TMPDIR="${work_dir}" \
+    NOMAD_TEST_BOOTSTRAP_TOKEN_FILE="${bootstrap_token_file}" bash -c '
     source "$1"
     bootstrap "$2"
-  ' bash "${nomad_script}" "${sentinel}" 2>&1
+  ' bash "${nomad_script}" "${bootstrap_token_file}" 2>&1
 )"
 
 if grep -Fq "${sentinel}" <<<"${bootstrap_output}"; then
@@ -54,10 +62,12 @@ if find "${work_dir}" -maxdepth 1 -name 'nomad.token.*' -print -quit | grep -q .
 fi
 
 if unexpected_output="$(
-  PATH="${work_dir}/bin:${PATH}" TMPDIR="${work_dir}" NOMAD_STUB_MODE=unexpected bash -c '
+  PATH="${work_dir}/bin:${PATH}" TMPDIR="${work_dir}" \
+    NOMAD_TEST_BOOTSTRAP_TOKEN_FILE="${bootstrap_token_file}" \
+    NOMAD_STUB_MODE=unexpected bash -c '
     source "$1"
     bootstrap "$2"
-  ' bash "${nomad_script}" "${sentinel}" 2>&1
+  ' bash "${nomad_script}" "${bootstrap_token_file}" 2>&1
 )"; then
   printf 'Unexpected Nomad ACL bootstrap failures must remain fatal.\n' >&2
   exit 1

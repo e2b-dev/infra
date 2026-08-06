@@ -168,10 +168,10 @@ expect_success() {
     "${artifacts}" \
     "${scope}" >"${output_path}"
 
-  grep -F '"global_vcpus":42' "${output_path}" >/dev/null
-  grep -F '"regional_cpus":42' "${output_path}" >/dev/null
-  grep -F '"instances":9' "${output_path}" >/dev/null
-  grep -F '"pd_ssd_gb":370' "${output_path}" >/dev/null
+  grep -F '"global_vcpus":44' "${output_path}" >/dev/null
+  grep -F '"regional_cpus":44' "${output_path}" >/dev/null
+  grep -F '"instances":10' "${output_path}" >/dev/null
+  grep -F '"pd_ssd_gb":380' "${output_path}" >/dev/null
   grep -F '"pd_standard_gb":600' "${output_path}" >/dev/null
   grep -F '"local_ssd_gb":1125' "${output_path}" >/dev/null
   grep -F '"regional_public_ips":3' "${output_path}" >/dev/null
@@ -701,7 +701,7 @@ jq '
 ' "${fixture}" >"${test_dir}/worker-surge.json"
 expect_failure \
   "worker-surge" \
-  "automated_worker_server_surges must be empty." \
+  "automated_rollout_surges must be empty." \
   "${test_dir}/worker-surge.json"
 
 jq '
@@ -709,11 +709,11 @@ jq '
     .resource_changes[]
     | select(.name == "server_pool")
     | .change.after.update_policy[0].max_surge_fixed
-  ) = 1
+  ) = 2
 ' "${fixture}" >"${test_dir}/server-surge.json"
 expect_failure \
   "server-surge" \
-  "automated_worker_server_surges must be empty." \
+  "automated_rollout_surges must be empty." \
   "${test_dir}/server-surge.json"
 
 jq '
@@ -721,24 +721,231 @@ jq '
     .resource_changes[]
     | select(.name == "server_pool")
     | .change.after.update_policy[0].max_unavailable_fixed
-  ) = 2
+  ) = 1
 ' "${fixture}" >"${test_dir}/server-unavailable.json"
 expect_failure \
   "server-unavailable" \
-  "role maximum unavailable counts differ from policy." \
+  "unsafe_server_control_plane_rollouts must be empty." \
   "${test_dir}/server-unavailable.json"
 
 jq '
   (
     .resource_changes[]
     | select(.name == "server_pool")
+    | .change.after.update_policy[0].max_unavailable_percent
+  ) = 1
+' "${fixture}" >"${test_dir}/server-percentage-unavailable.json"
+expect_failure \
+  "server-percentage-unavailable" \
+  "percentage_max_unavailable must be empty." \
+  "${test_dir}/server-percentage-unavailable.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.name == "server_pool")
+    | .change.after_unknown.update_policy
+  ) = [{"max_unavailable_percent":true}]
+' "${fixture}" >"${test_dir}/server-unknown-percentage-unavailable.json"
+expect_failure \
+  "server-unknown-percentage-unavailable" \
+  "unresolved_max_unavailable must be empty." \
+  "${test_dir}/server-unknown-percentage-unavailable.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.name == "server_pool")
+    | .change.after.update_policy[0].replacement_method
+  ) = "RECREATE"
+' "${fixture}" >"${test_dir}/server-recreate.json"
+expect_failure \
+  "server-recreate" \
+  "unsafe_server_control_plane_rollouts must be empty." \
+  "${test_dir}/server-recreate.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.name == "server_pool")
+    | .change.after.update_policy[0].min_ready_sec
+  ) = 119
+' "${fixture}" >"${test_dir}/server-short-ready-window.json"
+expect_failure \
+  "server-short-ready-window" \
+  "unsafe_server_control_plane_rollouts must be empty." \
+  "${test_dir}/server-short-ready-window.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.name == "server_pool")
+    | .change.after.update_policy[0].min_ready_sec
+  ) = 121
+' "${fixture}" >"${test_dir}/server-unreviewed-ready-window.json"
+expect_failure \
+  "server-unreviewed-ready-window" \
+  "unsafe_server_control_plane_rollouts must be empty." \
+  "${test_dir}/server-unreviewed-ready-window.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.name == "server_pool")
+    | .change.after.update_policy[0].type
+  ) = "OPPORTUNISTIC"
+' "${fixture}" >"${test_dir}/server-opportunistic.json"
+expect_failure \
+  "server-opportunistic" \
+  "unsafe_server_control_plane_rollouts must be empty." \
+  "${test_dir}/server-opportunistic.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.name == "server_pool")
+    | .change.after.update_policy[0].minimal_action
+  ) = "RESTART"
+' "${fixture}" >"${test_dir}/server-restart.json"
+expect_failure \
+  "server-restart" \
+  "unsafe_server_control_plane_rollouts must be empty." \
+  "${test_dir}/server-restart.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.name == "server_pool")
     | .change.after
-  ) |= del(.distribution_policy_zones)
+  ) |= (
+    .update_policy[0].max_unavailable_fixed = 1
+    | del(.distribution_policy_zones)
+  )
 ' "${fixture}" >"${test_dir}/regional-mig-without-single-zone.json"
 expect_failure \
   "regional-mig-without-single-zone" \
   "invalid_single_unavailable_regional_migs must be empty." \
   "${test_dir}/regional-mig-without-single-zone.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.name == "server_pool")
+    | .change.after.distribution_policy_zones
+  ) = ["us-east4-a", "us-east4-b", "us-east4-c"]
+' "${fixture}" >"${test_dir}/regional-mig-surge-below-zone-count.json"
+expect_failure \
+  "regional-mig-surge-below-zone-count" \
+  "invalid_fixed_surge_regional_migs must be empty." \
+  "${test_dir}/regional-mig-surge-below-zone-count.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.address == "module.cluster.google_compute_health_check.server_nomad_check")
+    | .change.after.http_health_check[0].port
+  ) = 4646
+' "${fixture}" >"${test_dir}/server-leader-only-health.json"
+expect_failure \
+  "server-leader-only-health" \
+  "unsafe_server_voter_health_checks must be empty." \
+  "${test_dir}/server-leader-only-health.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.address == "module.cluster.google_compute_health_check.server_nomad_check")
+    | .change.after.http_health_check[0].request_path
+  ) = "/v1/agent/health"
+' "${fixture}" >"${test_dir}/server-wrong-health-path.json"
+expect_failure \
+  "server-wrong-health-path" \
+  "unsafe_server_voter_health_checks must be empty." \
+  "${test_dir}/server-wrong-health-path.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.name == "server_pool")
+    | .change.after.auto_healing_policies[0].initial_delay_sec
+  ) = 0
+' "${fixture}" >"${test_dir}/server-unsafe-autoheal-delay.json"
+expect_failure \
+  "server-unsafe-autoheal-delay" \
+  "unsafe_server_voter_health_checks must be empty." \
+  "${test_dir}/server-unsafe-autoheal-delay.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.name == "server_pool")
+    | .change.after.auto_healing_policies[0].health_check
+  ) = "https://www.googleapis.com/compute/v1/projects/monad-code/global/healthChecks/permissive-agent-health"
+' "${fixture}" >"${test_dir}/server-wrong-autoheal-health-check.json"
+expect_failure \
+  "server-wrong-autoheal-health-check" \
+  "unsafe_server_voter_health_checks must be empty." \
+  "${test_dir}/server-wrong-autoheal-health-check.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.name == "server_pool")
+    | .change.after_unknown.auto_healing_policies
+  ) = [{"health_check":true}]
+' "${fixture}" >"${test_dir}/server-unknown-autoheal-health-check.json"
+expect_failure \
+  "server-unknown-autoheal-health-check" \
+  "unsafe_server_voter_health_checks must be empty." \
+  "${test_dir}/server-unknown-autoheal-health-check.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.name == "server_pool")
+    | .change.after.instance_lifecycle_policy[0].on_failed_health_check
+  ) = "REPAIR"
+' "${fixture}" >"${test_dir}/server-health-triggered-repair.json"
+expect_failure \
+  "server-health-triggered-repair" \
+  "unsafe_server_failure_repair_policies must be empty." \
+  "${test_dir}/server-health-triggered-repair.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.name == "server_pool")
+    | .change.after.instance_lifecycle_policy[0].default_action_on_failure
+  ) = "DO_NOTHING"
+' "${fixture}" >"${test_dir}/server-disabled-infrastructure-repair.json"
+expect_failure \
+  "server-disabled-infrastructure-repair" \
+  "unsafe_server_failure_repair_policies must be empty." \
+  "${test_dir}/server-disabled-infrastructure-repair.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.name == "server_pool")
+    | .change.after.instance_lifecycle_policy[0].force_update_on_repair
+  ) = "YES"
+' "${fixture}" >"${test_dir}/server-forced-update-on-repair.json"
+expect_failure \
+  "server-forced-update-on-repair" \
+  "unsafe_server_failure_repair_policies must be empty." \
+  "${test_dir}/server-forced-update-on-repair.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.name == "server_pool")
+    | .change.after_unknown.instance_lifecycle_policy
+  ) = [true]
+' "${fixture}" >"${test_dir}/server-unknown-failure-repair-policy.json"
+expect_failure \
+  "server-unknown-failure-repair-policy" \
+  "unsafe_server_failure_repair_policies must be empty." \
+  "${test_dir}/server-unknown-failure-repair-policy.json"
 
 jq '
   (
@@ -2630,6 +2837,22 @@ expect_failure \
   "Workload topology policy is invalid or differs from reviewed quota limits" \
   "${fixture}" \
   "${test_dir}/packer-policy-drift.json"
+
+jq '.max_automated_rollout_surge_per_pool.server = 2' \
+  "${policy}" >"${test_dir}/server-surge-policy-drift.json"
+expect_failure \
+  "server-surge-policy-drift" \
+  "Workload topology policy is invalid or differs from reviewed quota limits" \
+  "${fixture}" \
+  "${test_dir}/server-surge-policy-drift.json"
+
+jq '.server_control_plane_rollout.min_ready_sec = 30' \
+  "${policy}" >"${test_dir}/server-ready-policy-drift.json"
+expect_failure \
+  "server-ready-policy-drift" \
+  "Workload topology policy is invalid or differs from reviewed quota limits" \
+  "${fixture}" \
+  "${test_dir}/server-ready-policy-drift.json"
 
 sed \
   's/machine_type = local.quota_reserve.machine_type/machine_type = "n1-standard-8"/' \

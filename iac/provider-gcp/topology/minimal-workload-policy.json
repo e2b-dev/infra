@@ -18,7 +18,7 @@
     "clickhouse": 0,
     "client": 0,
     "loki": 0,
-    "server": 0
+    "server": 1
   },
   "expected_role_max_unavailable_instances": {
     "api": 1,
@@ -26,7 +26,7 @@
     "clickhouse": 0,
     "client": 1,
     "loki": 0,
-    "server": 1
+    "server": 0
   },
   "expected_role_resources": {
     "api": {
@@ -90,10 +90,10 @@
   },
   "transient_scenarios_are_mutually_exclusive": true,
   "expected_peak_usage": {
-    "instances": 9,
-    "global_vcpus": 42,
-    "regional_cpus": 42,
-    "pd_ssd_gb": 370,
+    "instances": 10,
+    "global_vcpus": 44,
+    "regional_cpus": 44,
+    "pd_ssd_gb": 380,
     "pd_standard_gb": 600,
     "local_ssd_gb": 1125,
     "regional_public_ips": 3
@@ -163,5 +163,33 @@
     "local_ssd_gb": 6375,
     "regional_public_ips": 16
   },
-  "max_automated_worker_server_surge_per_pool": 0
+  "max_automated_rollout_surge_per_pool": {
+    "build": 0,
+    "client": 0,
+    "server": 1
+  },
+  "server_control_plane_rollout": {
+    "minimum_target_size": 3,
+    "type": "PROACTIVE",
+    "minimal_action": "REPLACE",
+    "replacement_method": "SUBSTITUTE",
+    "max_surge": 1,
+    "max_unavailable": 0,
+    "max_unavailable_percent": 0,
+    "min_ready_sec": 120,
+    "health_check": {
+      "port": 50001,
+      "request_path": "/healthz",
+      "check_interval_sec": 5,
+      "timeout_sec": 5,
+      "healthy_threshold": 2,
+      "unhealthy_threshold": 10,
+      "initial_delay_sec": 120
+    },
+    "instance_lifecycle_policy": {
+      "default_action_on_failure": "REPAIR",
+      "force_update_on_repair": "NO",
+      "on_failed_health_check": "DO_NOTHING"
+    }
+  }
 }

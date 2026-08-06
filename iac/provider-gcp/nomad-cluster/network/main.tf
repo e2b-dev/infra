@@ -16,6 +16,11 @@ provider "cloudflare" {
 }
 
 locals {
+  # The server MIG's quorum-aware application health endpoint shares the API
+  # health port. Keep it in the narrow GCP-health-check ingress rule even if
+  # backend definitions are refactored.
+  server_voter_health_port = 50001
+
   domain_map = { for d in var.additional_domains : replace(d, ".", "-") => d }
 
   // All domains (primary + additional)
@@ -508,6 +513,16 @@ resource "google_compute_firewall" "default-hc" {
   allow {
     protocol = "tcp"
     ports    = [var.ingress_port.port]
+  }
+
+  lifecycle {
+    precondition {
+      condition = contains(
+        [for backend in values(local.health_checked_backends) : backend.http_health_check.port],
+        local.server_voter_health_port,
+      )
+      error_message = "The narrow GCP health-check ingress rule must admit the server voter health port 50001."
+    }
   }
 }
 

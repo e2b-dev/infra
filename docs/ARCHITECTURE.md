@@ -470,21 +470,52 @@ flowchart TB
   NFS proxy redirects. Public destinations, including authenticated public TAMS broker/proxy
   routes, continue through host NAT and logged Cloud NAT. Because the nftables rules match only
   the guest tap, host metadata-server access for attached-service-account ADC remains available.
-- The guarded **dev invited-beta topology** gives server and worker regional MIGs zero surge
-  and one unavailable instance, so they replace in place. The API zonal MIG retains one surge
-  instance. Its build and sandbox workers each use a 100 GB SSD boot disk with 32 GB of swap and
-  one fixed 375 GB local SSD for sandbox and snapshot caches. Non-dev keeps the upstream rollout
-  policies. The guarded cluster plan uses full-peak quota headroom for initial or partial fleet
-  creation, and permits peak-minus-base rollout reserve only when the reviewed plan's refreshed
-  prior state proves every positive-capacity MIG is already at its exact policy size. Direct
+- The guarded **dev invited-beta topology** gives the three-node server regional MIG one surge,
+  zero unavailable instances, explicit `SUBSTITUTE` replacement, and a 120-second ready window.
+  Its GCE health check does not use Nomad's leader-reachable `/v1/agent/health`. A root-supervised
+  sidecar on port 50001 reads the Nomad credential on every probe from the volatile,
+  root-owned `/run/e2b-nomad-health/token` contract and returns only generic healthy/unhealthy JSON.
+  It accepts the instance only when GCE metadata name and private IP uniquely match an
+  Autopilot member whose Serf status is `alive` and whose `Healthy` and `Voter` flags are true,
+  while the cluster itself is healthy with at least three such voters and failure tolerance at
+  least one. Unsafe file owner/mode/link/content, malformed or duplicate JSON, metadata mismatch,
+  timeout, restart, or missing `/run` state all fail closed. The token is not passed to the
+  sidecar in argv or environment and is never returned or logged. A replacement must pass that
+  local-voter gate and stabilize as a fourth server before GCP removes an existing voter,
+  preserving the three-voter Raft quorum throughout a serial rollout. Because quorum loss makes
+  every remaining member intentionally fail this strict application-health check, the server MIG
+  lifecycle policy sets `on_failed_health_check=DO_NOTHING`; the check gates Updater/min-ready but
+  cannot auto-repair all healthy voters together. Infrastructure failures retain the reviewed
+  `default_action_on_failure=REPAIR`, with `force_update_on_repair=NO`. Stage and full-plan guards
+  normalize GCP v1/beta resource URIs and require the MIG policy's health-check ID to equal the
+  exact `server_nomad_check` resource ID; an unknown or alternate permissive check fails closed.
+  Fixed regional surge must
+  be at least the explicit distribution-zone count; the dev one-zone pool therefore reserves one
+  surge, while non-dev keeps its provider-discovered zone list. Worker regional MIGs retain
+  zero surge and one unavailable instance, so they replace in place only after the explicit workload
+  drain. The API zonal MIG retains one surge instance. Build and sandbox workers each use a 100 GB SSD boot
+  disk with 32 GB of swap and one fixed 375 GB local SSD for sandbox and snapshot caches. Non-dev
+  keeps the upstream rollout policies. The guarded cluster plan uses full-peak quota headroom for
+  initial or partial fleet creation, and permits peak-minus-base rollout reserve only when the reviewed plan's refreshed
+  prior state proves every positive-capacity MIG is already at its exact policy size. The reviewed
+  peak includes the simultaneous server and API surge allowance, while the shared mutation lease
+  and staged workflow still permit only one pool rollout at a time. Direct
   quota-bearing mutations against an applied fleet and ambiguous/replacing MIGs cannot obtain
-  post-cluster admission. Zero surge does not drain workloads:
+  post-cluster admission. Zero worker surge does not drain workloads:
   before replacing a worker template, the operator must pause/snapshot active sandboxes, verify
   durable uploads, stop placement, drain Nomad allocations, and verify MIG stability. Terraform
   establishes and owns the two-host worker floor. The capacity-controller change must transfer
   target-size ownership to the Nomad-aware controller in the same reviewed deployment that makes
   the 2-15 range live; ownership is not relinquished early. Packer image builds must not overlap
   a rollout.
+- This quorum-health change deliberately does not create a second Nomad ACL secret. Before the
+  ACL-bootstrap lane is rebased, the existing Terraform-rendered management token is atomically
+  projected into the stable `/run` path; that lane must replace the projection source with
+  attached-service-account ADC from Secret Manager before deployment. A separate read-only health
+  token would not yet be a meaningful isolation boundary because the same attached shared service
+  account can fetch the management secret. Splitting that IAM authority remains a prerequisite for
+  claiming least-privilege separation; the current guarantees are no static key file, no token in
+  argv/logs/service environment, strict local file confinement, and a fail-closed probe.
 - Packer image construction and workload rollouts serialize through one
   generation-preconditioned object in the private Terraform state bucket,
   keyed by GCP project and region. The operator Packer path is a staged,

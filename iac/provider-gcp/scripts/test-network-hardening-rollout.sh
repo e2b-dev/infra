@@ -121,6 +121,7 @@ make_plan() {
           "module.cluster.module.network.google_compute_firewall.remote_connection_firewall_ingress"
         ],
         server: [
+          "module.cluster.google_compute_health_check.server_nomad_check",
           "module.cluster.google_compute_instance_template.server",
           "module.cluster.google_compute_region_instance_group_manager.server_pool"
         ],
@@ -231,12 +232,39 @@ make_plan() {
               | {
                   address:$address,
                   mode:"managed",
-                  type:(if ($address | contains("firewall")) then "google_compute_firewall" else "google_compute_instance_group_manager" end),
+                  type:(
+                    if ($address | contains("firewall")) then "google_compute_firewall"
+                    elif ($address | contains("health_check")) then "google_compute_health_check"
+                    elif ($address | contains("region_instance_group_manager")) then "google_compute_region_instance_group_manager"
+                    else "google_compute_instance_group_manager" end
+                  ),
                   change:{
                     actions:(if ($address | contains("iap_remote_connection")) then ["create"] else ["update"] end),
                     before:(if ($address | contains("iap_remote_connection")) then null else {} end),
                     after:(
-                      if ($address | contains("iap_remote_connection")) then {
+                      if ($address | contains("server_nomad_check")) then {
+                        id:"projects/monad-code/global/healthChecks/e2b-orch-server-nomad-check",
+                        check_interval_sec:5, timeout_sec:5,
+                        healthy_threshold:2, unhealthy_threshold:10,
+                        http_health_check:[{port:50001,request_path:"/healthz"}]
+                      } elif ($address | contains("server_pool")) then {
+                        distribution_policy_zones:["us-east4-c"],
+                        update_policy:[{
+                          replacement_method:"SUBSTITUTE",
+                          max_unavailable_fixed:0,
+                          max_unavailable_percent:null,
+                          max_surge_fixed:1
+                        }],
+                        auto_healing_policies:[{
+                          health_check:"https://www.googleapis.com/compute/beta/projects/monad-code/global/healthChecks/e2b-orch-server-nomad-check",
+                          initial_delay_sec:120
+                        }],
+                        instance_lifecycle_policy:[{
+                          default_action_on_failure:"REPAIR",
+                          force_update_on_repair:"NO",
+                          on_failed_health_check:"DO_NOTHING"
+                        }]
+                      } elif ($address | contains("iap_remote_connection")) then {
                         direction:"INGRESS", priority:700,
                         source_ranges:["35.235.240.0/20"], target_tags:["orch"],
                         allow:[{protocol:"tcp",ports:["22","3389"]}], deny:[],
@@ -458,6 +486,43 @@ jq '
 expect_fail "server stage rejects an unbound Nomad bootstrap object" \
   "${script_dir}/assert-network-hardening-stage-plan.sh" \
   "${test_dir}/unsafe-run-nomad-object.plan" "${fake_terraform}" server
+
+jq '
+  (.resource_changes[]
+    | select(.address == "module.cluster.google_compute_region_instance_group_manager.server_pool")
+    | .change.after.auto_healing_policies[0].health_check)
+    = "projects/monad-code/global/healthChecks/permissive-agent-health"
+' "${test_dir}/server.plan" >"${test_dir}/wrong-server-autoheal-health-check.plan"
+expect_fail "server stage binds auto-healing to the exact voter health resource" \
+  "${script_dir}/assert-network-hardening-stage-plan.sh" \
+  "${test_dir}/wrong-server-autoheal-health-check.plan" "${fake_terraform}" server
+
+jq '
+  (.resource_changes[]
+    | select(.address == "module.cluster.google_compute_region_instance_group_manager.server_pool")
+    | .change.after_unknown.auto_healing_policies) = [{health_check:true}]
+' "${test_dir}/server.plan" >"${test_dir}/unknown-server-autoheal-health-check.plan"
+expect_fail "server stage rejects unknown auto-healing health identity" \
+  "${script_dir}/assert-network-hardening-stage-plan.sh" \
+  "${test_dir}/unknown-server-autoheal-health-check.plan" "${fake_terraform}" server
+
+jq '
+  (.resource_changes[]
+    | select(.address == "module.cluster.google_compute_region_instance_group_manager.server_pool")
+    | .change.after.instance_lifecycle_policy[0].on_failed_health_check) = "REPAIR"
+' "${test_dir}/server.plan" >"${test_dir}/unsafe-server-health-repair.plan"
+expect_fail "server stage forbids quorum-health-triggered auto-repair" \
+  "${script_dir}/assert-network-hardening-stage-plan.sh" \
+  "${test_dir}/unsafe-server-health-repair.plan" "${fake_terraform}" server
+
+jq '
+  (.resource_changes[]
+    | select(.address == "module.cluster.google_compute_region_instance_group_manager.server_pool")
+    | .change.after_unknown.instance_lifecycle_policy) = [true]
+' "${test_dir}/server.plan" >"${test_dir}/unknown-server-health-repair.plan"
+expect_fail "server stage rejects unknown lifecycle repair policy" \
+  "${script_dir}/assert-network-hardening-stage-plan.sh" \
+  "${test_dir}/unknown-server-health-repair.plan" "${fake_terraform}" server
 
 # After a successful stage, only a recovery-token retry may keep the current
 # marker as a no-op while replacing the completion sentinel.

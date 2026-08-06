@@ -156,6 +156,7 @@ override WORKLOAD_CLUSTER_STAGE_TARGETS_network := \
 	-target='module.cluster.module.network.google_compute_firewall.internal_remote_connection_firewall_ingress' \
 	-target='module.cluster.module.network.google_compute_firewall.remote_connection_firewall_ingress'
 override WORKLOAD_CLUSTER_STAGE_TARGETS_server := \
+	-target='module.cluster.google_compute_health_check.server_nomad_check' \
 	-target='module.cluster.google_compute_instance_template.server' \
 	-target='module.cluster.google_compute_region_instance_group_manager.server_pool'
 override WORKLOAD_CLUSTER_STAGE_TARGETS_api := \
@@ -356,6 +357,7 @@ keyless-runtime-check:
 	@ ./scripts/test-configure-docker-gcp.sh
 	@ ./scripts/test-control-plane-secret-logging.sh
 	@ ./scripts/test-nomad-restart-safety.sh
+	@ ./scripts/test-server-voter-health.sh
 	@ ./scripts/test-scrub-legacy-acl-token-state.sh
 
 .PHONY: acl-token-state-guard

@@ -186,6 +186,31 @@
       }
     },
     {
+      "address": "module.cluster.google_compute_health_check.server_nomad_check",
+      "mode": "managed",
+      "type": "google_compute_health_check",
+      "name": "server_nomad_check",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "id": "projects/monad-code/global/healthChecks/e2b-orch-server-nomad-check",
+          "check_interval_sec": 5,
+          "timeout_sec": 5,
+          "healthy_threshold": 2,
+          "unhealthy_threshold": 10,
+          "http_health_check": [
+            {
+              "port": 50001,
+              "request_path": "/healthz"
+            }
+          ]
+        },
+        "after_unknown": {}
+      }
+    },
+    {
       "address": "module.cluster.google_compute_region_instance_group_manager.server_pool",
       "mode": "managed",
       "type": "google_compute_region_instance_group_manager",
@@ -199,11 +224,29 @@
             "us-east4-c"
           ],
           "target_size": 3,
+          "auto_healing_policies": [
+            {
+              "health_check": "https://www.googleapis.com/compute/beta/projects/monad-code/global/healthChecks/e2b-orch-server-nomad-check",
+              "initial_delay_sec": 120
+            }
+          ],
+          "instance_lifecycle_policy": [
+            {
+              "default_action_on_failure": "REPAIR",
+              "force_update_on_repair": "NO",
+              "on_failed_health_check": "DO_NOTHING"
+            }
+          ],
           "update_policy": [
             {
-              "max_surge_fixed": 0,
+              "type": "PROACTIVE",
+              "minimal_action": "REPLACE",
+              "replacement_method": "SUBSTITUTE",
+              "min_ready_sec": 120,
+              "max_surge_fixed": 1,
               "max_surge_percent": null,
-              "max_unavailable_fixed": 1
+              "max_unavailable_fixed": 0,
+              "max_unavailable_percent": null
             }
           ]
         }
