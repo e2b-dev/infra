@@ -2,6 +2,7 @@ package sbxlogger
 
 import (
 	"context"
+	"errors"
 
 	"go.opentelemetry.io/otel/log"
 	"go.uber.org/zap"
@@ -35,10 +36,17 @@ func NewLogger(ctx context.Context, loggerProvider log.LoggerProvider, config Sa
 		// Add Vector exporter to the core
 		vectorEncoder := zapcore.NewJSONEncoder(GetSandboxEncoderConfig())
 		httpWriter := newExternalLogWriter(ctx, config)
-		core = zapcore.NewCore(
+		httpCore := zapcore.NewCore(
 			vectorEncoder,
 			httpWriter,
 			level,
+		)
+		otelCore := logger.GetOTELCore(loggerProvider, config.ServiceName)
+		dualWrite := featureflags.NewLogsDualWriteResolver(config.FeatureFlags)
+		core = newDualWriteCore(
+			func() bool { return dualWrite.Resolve(ctx) },
+			httpCore,
+			otelCore,
 		)
 	} else {
 		core = logger.GetOTELCore(loggerProvider, config.ServiceName)
@@ -68,25 +76,57 @@ func NewLogger(ctx context.Context, loggerProvider log.LoggerProvider, config Sa
 // featureflags.LogsWriteConfigFlag on each write, falling back to
 // CollectorAddress; without one it uses the legacy fixed-address writer.
 func newExternalLogWriter(ctx context.Context, config SandboxLoggerConfig) zapcore.WriteSyncer {
-	if config.FeatureFlags == nil {
-		return logger.NewHTTPWriter(ctx, config.CollectorAddress)
+	return logger.NewHTTPWriter(ctx, config.CollectorAddress)
+}
+
+type dualWriteCore struct {
+	resolve boolResolver
+	http    zapcore.Core
+	otlp    zapcore.Core
+	both    zapcore.Core
+}
+
+type boolResolver func() bool
+
+func newDualWriteCore(
+	resolve boolResolver,
+	httpCore zapcore.Core,
+	otlpCore zapcore.Core,
+) *dualWriteCore {
+	return &dualWriteCore{
+		resolve: resolve,
+		http:    httpCore,
+		otlp:    otlpCore,
+		both:    zapcore.NewTee(httpCore, otlpCore),
+	}
+}
+
+func (c *dualWriteCore) Enabled(level zapcore.Level) bool {
+	return c.http.Enabled(level)
+}
+
+func (c *dualWriteCore) With(fields []zapcore.Field) zapcore.Core {
+	return newDualWriteCore(c.resolve, c.http.With(fields), c.otlp.With(fields))
+}
+
+func (c *dualWriteCore) Check(entry zapcore.Entry, checked *zapcore.CheckedEntry) *zapcore.CheckedEntry {
+	return c.selected().Check(entry, checked)
+}
+
+func (c *dualWriteCore) Write(entry zapcore.Entry, fields []zapcore.Field) error {
+	return c.selected().Write(entry, fields)
+}
+
+func (c *dualWriteCore) Sync() error {
+	return errors.Join(c.http.Sync(), c.otlp.Sync())
+}
+
+func (c *dualWriteCore) selected() zapcore.Core {
+	if c.resolve() {
+		return c.both
 	}
 
-	// Cache LaunchDarkly evaluations behind a short TTL so per-line writes on
-	// the hot path don't evaluate the flag every time.
-	resolver := featureflags.NewLogWriteConfigResolver(config.FeatureFlags, config.CollectorAddress)
-	resolve := func(ctx context.Context) logger.LogRoute {
-		cfg := resolver.Resolve(ctx)
-
-		return logger.LogRoute{
-			PrimaryURL:              cfg.PrimaryURL,
-			ShadowURLs:              cfg.ShadowURLs,
-			Timeout:                 cfg.Timeout,
-			MaxInflightShadowWrites: cfg.MaxInflightShadowWrites,
-		}
-	}
-
-	return logger.NewDynamicHTTPWriter(ctx, config.CollectorAddress, resolve)
+	return c.http
 }
 
 func GetSandboxEncoderConfig() zapcore.EncoderConfig {
