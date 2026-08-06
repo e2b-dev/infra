@@ -413,6 +413,40 @@ expect_failure() {
 run_assertion "${test_dir}/reviewed.json" >/dev/null
 
 jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "google_secret_manager_secret_version.cloud_sql_invited_beta_password"
+      )
+    | .change
+  ) |= (
+    .actions = ["no-op"]
+    | .after.secret = "projects/test/secrets/candidate-password/versions/1"
+    | .after.secret_data = "test-sensitive-placeholder"
+    | .before = .after
+    | .after_unknown = {}
+  )
+' "${test_dir}/reviewed.json" >"${test_dir}/stable-candidate-secret-version.json"
+run_assertion "${test_dir}/stable-candidate-secret-version.json" >/dev/null
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "google_secret_manager_secret_version.cloud_sql_invited_beta_password"
+      )
+    | .change.after_sensitive.secret_data
+  ) = false
+' "${test_dir}/stable-candidate-secret-version.json" \
+  >"${test_dir}/unprotected-stable-candidate-secret-version.json"
+expect_failure \
+  unprotected-stable-candidate-secret-version \
+  "invalid_cloud_sql_resources must be empty" \
+  "${test_dir}/unprotected-stable-candidate-secret-version.json"
+
+jq '
   .resource_changes |= map(
     if .address == "module.init.google_service_account.api_controller_service_account" then
       del(.change.after.email)
