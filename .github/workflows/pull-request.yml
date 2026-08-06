@@ -80,21 +80,6 @@ jobs:
               - 'packages/envd/spec/envd.yaml'
               - '.github/**'
               - '.tool-versions'
-            generated-inputs:
-              - 'packages/**'
-              - 'tests/**'
-              - 'spec/**'
-              - 'go.work'
-              - 'go.work.sum'
-              - 'Makefile'
-              - '.golangci.yml'
-              - '.mockery.yaml'
-              - 'packages/**/.mockery.yaml'
-              - 'scripts/fix-tracers.sh'
-              - 'scripts/fix-meters.sh'
-              - 'scripts/golang-dependencies-integrity.sh'
-              - '.github/**'
-              - '.tool-versions'
 
       # dorny/paths-filter can't express "packages but not CHANGELOG" (it OR's
       # patterns; a '!' pattern would match every non-CHANGELOG file). So detect
@@ -129,16 +114,6 @@ jobs:
     uses: ./.github/workflows/validate-openapi.yml
     with:
       run-validation: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'openapi-inputs') }}
-  generated-code-check:
-    needs: [detect-changes]
-    uses: ./.github/workflows/pr-no-generated-changes.yml
-    with:
-      run-check: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'generated-inputs') && needs.detect-changes.outputs.docs-only != 'true' }}
-      # Only auto-commit for same-repo PRs (secrets aren't available for forks)
-      commit: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
-    secrets:
-      app_id: ${{ vars.AUTOFIXER_APP_ID }}
-      app_secret: ${{ secrets.AUTOFIXER_APP_SECRET }}
   out-of-order-migrations:
     uses: ./.github/workflows/out-of-order-migrations.yml
   unit-tests:

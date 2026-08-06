@@ -66,7 +66,7 @@ func TestShutdownFlushesPendingMetrics(t *testing.T) {
 	meterProvider, err := NewMeterProvider(exporter, time.Hour, nil)
 	require.NoError(t, err)
 
-	counter, err := meterProvider.Meter("test").Int64Counter("test.batch.runs")
+	counter, err := meterProvider.Meter("github.com/e2b-dev/infra/packages/shared/pkg/telemetry").Int64Counter("test.batch.runs")
 	require.NoError(t, err)
 	counter.Add(ctx, 1)
 
