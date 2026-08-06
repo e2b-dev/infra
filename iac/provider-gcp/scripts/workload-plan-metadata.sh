@@ -28,6 +28,7 @@ Required environment:
 Optional cluster-rollout environment (both or neither):
   WORKLOAD_CLUSTER_STAGE
   WORKLOAD_CLUSTER_CHECKPOINT
+  WORKLOAD_CLUSTER_REFRESH_STAGE (empty or equal to WORKLOAD_CLUSTER_STAGE)
 EOF
   exit 2
 }
@@ -258,7 +259,7 @@ identity_json() {
       ' "${artifacts_path}"
   )"
 
-  if [[ -n "${WORKLOAD_CLUSTER_STAGE:-}" || -n "${WORKLOAD_CLUSTER_CHECKPOINT:-}" ]]; then
+  if [[ -n "${WORKLOAD_CLUSTER_STAGE:-}" || -n "${WORKLOAD_CLUSTER_CHECKPOINT:-}" || -n "${WORKLOAD_CLUSTER_REFRESH_STAGE:-}" ]]; then
     if [[ -z "${WORKLOAD_CLUSTER_STAGE:-}" || -z "${WORKLOAD_CLUSTER_CHECKPOINT:-}" ]]; then
       printf 'Cluster rollout provenance requires both WORKLOAD_CLUSTER_STAGE and WORKLOAD_CLUSTER_CHECKPOINT.\n' >&2
       exit 1
@@ -271,17 +272,28 @@ identity_json() {
         exit 1
         ;;
     esac
+    if [[ -n "${WORKLOAD_CLUSTER_REFRESH_STAGE:-}" \
+      && "${WORKLOAD_CLUSTER_REFRESH_STAGE}" != "${WORKLOAD_CLUSTER_STAGE}" ]]; then
+      printf 'Cluster rollout refresh provenance must match the reviewed stage: %s != %s\n' \
+        "${WORKLOAD_CLUSTER_REFRESH_STAGE}" "${WORKLOAD_CLUSTER_STAGE}" >&2
+      exit 1
+    fi
     assert_private_regular_file \
       "${WORKLOAD_CLUSTER_CHECKPOINT}" "Network-hardening checkpoint"
     cluster_rollout="$(jq -ceS \
       --arg stage "${WORKLOAD_CLUSTER_STAGE}" \
+      --arg refresh_stage "${WORKLOAD_CLUSTER_REFRESH_STAGE:-}" \
       --arg checkpoint_sha256 "$(sha256_file "${WORKLOAD_CLUSTER_CHECKPOINT}")" '
         if .stage == $stage
-        then {
-          stage: $stage,
-          checkpoint_sha256: $checkpoint_sha256,
-          checkpoint: .
-        }
+        then ({
+            stage: $stage,
+            checkpoint_sha256: $checkpoint_sha256,
+            checkpoint: .
+          }
+          | if $refresh_stage == ""
+            then .
+            else . + {refresh_stage: $refresh_stage}
+            end)
         else error("checkpoint stage does not match rollout context")
         end
       ' "${WORKLOAD_CLUSTER_CHECKPOINT}")"

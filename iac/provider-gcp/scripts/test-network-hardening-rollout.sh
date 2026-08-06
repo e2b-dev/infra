@@ -549,6 +549,22 @@ expect_fail "completed stage cannot be re-entered without recovery context" \
   "${script_dir}/assert-network-hardening-stage-plan.sh" \
   "${test_dir}/post-apply-drift-retry.plan" "${fake_terraform}" server
 
+# A later reviewed server hardening change can deliberately re-enter the
+# already-completed stage under a fresh checkpoint and normal rollout lease.
+# The persisted marker remains immutable while the forced convergence sentinel
+# and exact server boundary are re-proved.
+"${script_dir}/assert-network-hardening-stage-plan.sh" \
+  "${test_dir}/post-apply-drift-retry.plan" "${fake_terraform}" server "" server >/dev/null
+expect_fail "planned refresh cannot recreate a missing convergence sentinel" \
+  "${script_dir}/assert-network-hardening-stage-plan.sh" \
+  "${test_dir}/missing-sentinel-retry.plan" "${fake_terraform}" server "" server
+expect_fail "planned refresh must match the reviewed stage" \
+  "${script_dir}/assert-network-hardening-stage-plan.sh" \
+  "${test_dir}/post-apply-drift-retry.plan" "${fake_terraform}" server "" api
+expect_fail "planned refresh cannot borrow a recovery context" \
+  "${script_dir}/assert-network-hardening-stage-plan.sh" \
+  "${test_dir}/post-apply-drift-retry.plan" "${fake_terraform}" server server server
+
 jq '
   (.resource_changes[]
     | select(.address == "module.cluster.terraform_data.network_hardening_rollout_stage_server[0]")

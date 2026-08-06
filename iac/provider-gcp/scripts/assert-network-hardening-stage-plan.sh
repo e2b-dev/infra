@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-plan_path="${1:?usage: assert-network-hardening-stage-plan.sh PLAN TERRAFORM_BIN STAGE [RECOVERY_STAGE]}"
+plan_path="${1:?usage: assert-network-hardening-stage-plan.sh PLAN TERRAFORM_BIN STAGE [RECOVERY_STAGE] [REFRESH_STAGE]}"
 terraform_bin="${2:-terraform}"
-stage="${3:?usage: assert-network-hardening-stage-plan.sh PLAN TERRAFORM_BIN STAGE [RECOVERY_STAGE]}"
+stage="${3:?usage: assert-network-hardening-stage-plan.sh PLAN TERRAFORM_BIN STAGE [RECOVERY_STAGE] [REFRESH_STAGE]}"
 recovery_stage="${4:-}"
+refresh_stage="${5:-}"
 
 case "${stage}" in
   network) previous='disabled' ;;
@@ -21,6 +22,17 @@ esac
 if [[ -n "${recovery_stage}" && "${recovery_stage}" != "${stage}" ]]; then
   printf 'Network-hardening recovery context must match the reviewed stage: %s != %s\n' \
     "${recovery_stage}" "${stage}" >&2
+  exit 2
+fi
+
+if [[ -n "${refresh_stage}" && "${refresh_stage}" != "${stage}" ]]; then
+  printf 'Network-hardening refresh context must match the reviewed stage: %s != %s\n' \
+    "${refresh_stage}" "${stage}" >&2
+  exit 2
+fi
+
+if [[ -n "${recovery_stage}" && -n "${refresh_stage}" ]]; then
+  printf 'Network-hardening recovery and planned refresh contexts are mutually exclusive.\n' >&2
   exit 2
 fi
 
@@ -109,7 +121,8 @@ completion_count="$(jq --arg address "${completion_address}" '[.resource_changes
 }
 jq -e \
   --arg address "${completion_address}" \
-  --arg stage "${stage}" '
+  --arg stage "${stage}" \
+  --arg refresh_stage "${refresh_stage}" '
     .resource_changes[]
     | select(.address == $address)
     | .change.after.input == $stage
@@ -134,6 +147,16 @@ jq -e \
         )
       )
     )
+    and (
+      $refresh_stage != $stage
+      or (
+        .change.before.input == $stage
+        and (
+          .change.actions == ["delete", "create"]
+          or .change.actions == ["create", "delete"]
+        )
+      )
+    )
   ' <<<"${plan_json}" >/dev/null || {
   printf 'Network-hardening convergence sentinel is not a valid initial or retry transition for %s -> %s.\n' \
     "${previous}" "${stage}" >&2
@@ -148,29 +171,35 @@ marker_count="$(jq --arg address "${marker_address}" '[.resource_changes[]? | se
 jq -e \
   --arg address "${marker_address}" \
   --arg stage "${stage}" \
-  --arg recovery_stage "${recovery_stage}" '
+  --arg recovery_stage "${recovery_stage}" \
+  --arg refresh_stage "${refresh_stage}" '
     .resource_changes[]
     | select(.address == $address)
     | .change.after.input == $stage
     and (
-      (
-        $stage == "network"
-        and (.change.before == null or .change.before.input == "disabled")
-        and (.change.actions == ["create"] or .change.actions == ["update"])
-      )
-      or (
-        $stage != "network"
-        and .change.before == null
-        and .change.actions == ["create"]
-      )
-      or (
-        $recovery_stage == $stage
-        and .change.before.input == $stage
+      if $refresh_stage == $stage then
+        .change.before.input == $stage
         and .change.actions == ["no-op"]
-      )
+      else
+        (
+          $stage == "network"
+          and (.change.before == null or .change.before.input == "disabled")
+          and (.change.actions == ["create"] or .change.actions == ["update"])
+        )
+        or (
+          $stage != "network"
+          and .change.before == null
+          and .change.actions == ["create"]
+        )
+        or (
+          $recovery_stage == $stage
+          and .change.before.input == $stage
+          and .change.actions == ["no-op"]
+        )
+      end
     )
   ' <<<"${plan_json}" >/dev/null || {
-  printf 'Network-hardening stage must advance exactly %s -> %s or remain a no-op during a forced-convergence retry.\n' \
+  printf 'Network-hardening stage must advance exactly %s -> %s, use a validated recovery context, or use an explicit planned same-stage refresh.\n' \
     "${previous}" "${stage}" >&2
   exit 1
 }

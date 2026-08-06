@@ -181,6 +181,29 @@ Do not apply this branch merely because validation is green.
    the state marker can advance. The shared rollout lease remains held until the affected MIG is
    stable, has reached its target version, and its identity-bound post-replacement access and service
    evidence passes. Never reuse a checkpoint or plan for another stage.
+
+   If a later reviewed change strengthens a pool whose stage marker is already
+   complete, re-enter only that same stage with
+   `WORKLOAD_CLUSTER_REFRESH_STAGE=<stage>` on both the plan and apply commands.
+   A planned refresh uses the normal shared rollout lease and a fresh
+   exact-head checkpoint; it cannot borrow a recovery lease. The persisted
+   stage marker must remain a no-op and the existing convergence sentinel must
+   be force-replaced, so this mode cannot recreate a missing sentinel, skip a
+   stage, or mutate outside the stage's existing exact resource boundary. The
+   refresh value is recorded in the saved-plan provenance. For example:
+
+   ```bash
+   mise exec -- make -C iac/provider-gcp workload-cluster-plan \
+     WORKLOAD_CLUSTER_STAGE=server \
+     WORKLOAD_CLUSTER_REFRESH_STAGE=server \
+     WORKLOAD_CLUSTER_CHECKPOINT=/private/path/server-refresh-checkpoint.json
+   mise exec -- make -C iac/provider-gcp workload-cluster-apply \
+     WORKLOAD_CLUSTER_STAGE=server \
+     WORKLOAD_CLUSTER_REFRESH_STAGE=server \
+     WORKLOAD_CLUSTER_CHECKPOINT=/private/path/server-refresh-checkpoint.json \
+     CONFIRM='APPLY NETWORK HARDENING server'
+   ```
+
    A failure before the current waiter succeeds leaves the persisted marker at the prior stage; fix
    the in-boundary cause. A failure after the marker is created, including a dirty post-apply plan,
    may leave the current marker and preserved lease. In that case, the bounded retry accepts only a
