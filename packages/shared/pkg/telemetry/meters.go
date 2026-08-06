@@ -134,6 +134,10 @@ const (
 	SnapshotProcessRootfsDurationName     HistogramType = "orchestrator.sandbox.snapshot.process_rootfs.duration"
 	SnapshotRootfsSealDurationName        HistogramType = "orchestrator.sandbox.snapshot.rootfs_seal.duration"
 
+	// OrchestratorSandboxExecutionDurationName is one sample per Firecracker
+	// run, so a sandbox that is paused and resumed records one per run.
+	OrchestratorSandboxExecutionDurationName HistogramType = "orchestrator.sandbox.execution.duration"
+
 	// OrchestratorEnvdUpgradeDurationName is the wall-time of a resume-time envd
 	// live-upgrade (delivery + trigger + WaitForEnvd) = overhead added to the
 	// resume. Labeled by result.
@@ -484,19 +488,20 @@ func GetGaugeInt(meter metric.Meter, name GaugeIntType) (metric.Int64ObservableG
 var histogramDesc = map[HistogramType]string{
 	ApiRedisStoragePublisherPublishDuration: "Duration of a single Redis PUBLISH round-trip from the storage publisher",
 
-	BuildDurationHistogramName:            "Time taken to build a template",
-	BuildPhaseDurationHistogramName:       "Time taken to build each phase of a template",
-	BuildStepDurationHistogramName:        "Time taken to build each step of a template",
-	BuildRootfsSizeHistogramName:          "Size of the built template rootfs in bytes",
-	OrchestratorSandboxCreateDurationName: "Time taken to create a sandbox",
-	OrchestratorEnvdUpgradeDurationName:   "Wall-time of a resume-time envd upgrade (delivery + trigger + WaitForEnvd)",
-	WaitForEnvdDurationHistogramName:      "Time taken for Envd to initialize successfully",
-	EnvdCollapseDurationHistogramName:     "Time taken for the pre-pause envd heap collapse round-trip",
-	GuestSyncDurationHistogramName:        "Time taken for the mandatory pre-pause guest sync (filesystem-only pause)",
-	PauseDurationHistogramName:            "Time taken to pause a sandbox, labeled by fs_only (filesystem-only vs memory) and success",
-	SnapshotProcessMemoryDurationName:     "Time to export+diff the memory file during a pause snapshot (memory pauses only), labeled by success",
-	SnapshotProcessRootfsDurationName:     "Time to export+diff the rootfs during a pause snapshot, labeled by fs_only and success",
-	SnapshotRootfsSealDurationName:        "Time for the background deferred rootfs reflink seal (off the pause critical path), labeled by success",
+	BuildDurationHistogramName:               "Time taken to build a template",
+	BuildPhaseDurationHistogramName:          "Time taken to build each phase of a template",
+	BuildStepDurationHistogramName:           "Time taken to build each step of a template",
+	BuildRootfsSizeHistogramName:             "Size of the built template rootfs in bytes",
+	OrchestratorSandboxCreateDurationName:    "Time taken to create a sandbox",
+	OrchestratorSandboxExecutionDurationName: "Time a single sandbox execution ran, from the guest being ready until it stopped executing, labeled by stop reason",
+	OrchestratorEnvdUpgradeDurationName:      "Wall-time of a resume-time envd upgrade (delivery + trigger + WaitForEnvd)",
+	WaitForEnvdDurationHistogramName:         "Time taken for Envd to initialize successfully",
+	EnvdCollapseDurationHistogramName:        "Time taken for the pre-pause envd heap collapse round-trip",
+	GuestSyncDurationHistogramName:           "Time taken for the mandatory pre-pause guest sync (filesystem-only pause)",
+	PauseDurationHistogramName:               "Time taken to pause a sandbox, labeled by fs_only (filesystem-only vs memory) and success",
+	SnapshotProcessMemoryDurationName:        "Time to export+diff the memory file during a pause snapshot (memory pauses only), labeled by success",
+	SnapshotProcessRootfsDurationName:        "Time to export+diff the rootfs during a pause snapshot, labeled by fs_only and success",
+	SnapshotRootfsSealDurationName:           "Time for the background deferred rootfs reflink seal (off the pause critical path), labeled by success",
 
 	PauseResumePrefetchHarvestDurationName:  "Time taken for a pause-resume prefetch harvest run (slot-hold cost)",
 	PauseResumePrefetchHarvestPagesName:     "Harvested resume-prefetch trace size in 2 MiB blocks, per successful harvest",
@@ -545,6 +550,7 @@ var histogramUnits = map[HistogramType]string{
 	BuildStepDurationHistogramName:                "ms",
 	BuildRootfsSizeHistogramName:                  "{By}",
 	OrchestratorSandboxCreateDurationName:         "ms",
+	OrchestratorSandboxExecutionDurationName:      "ms",
 	OrchestratorEnvdUpgradeDurationName:           "ms",
 	WaitForEnvdDurationHistogramName:              "ms",
 	EnvdCollapseDurationHistogramName:             "ms",
@@ -590,6 +596,8 @@ var histogramUnits = map[HistogramType]string{
 	UploadCompressionRatio:  "{1}",
 }
 
+// GetHistogram returns an Int64 histogram with the registered description and
+// unit. It sets no bucket boundaries: histogramAggregation discards them.
 func GetHistogram(meter metric.Meter, name HistogramType) (metric.Int64Histogram, error) {
 	desc := histogramDesc[name]
 	unit := histogramUnits[name]

@@ -64,28 +64,29 @@ type Server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 	orchestrator.UnimplementedChunkServiceServer
 
-	config                cfg.Config
-	sandboxFactory        *sandbox.Factory
-	info                  *service.ServiceInfo
-	proxy                 *proxy.SandboxProxy
-	networkPool           *network.Pool
-	templateCache         *template.Cache
-	devicePool            *nbd.DevicePool
-	persistence           storage.StorageProvider
-	featureFlags          *featureflags.Client
-	sbxEventsService      *events.EventsService
-	startingSandboxes     *utils.AdjustableSemaphore
-	peerRegistry          peerclient.Registry
-	uploadedBuilds        *ttlcache.Cache[string, struct{}]
-	uploads               *sandbox.Uploads
-	sandboxCreateDuration metric.Int64Histogram
-	sandboxPauseDuration  metric.Int64Histogram
-	sandboxKilledCounter  metric.Int64Counter
-	uploadFailedCounter   metric.Int64Counter
-	envdUpgradeAttempts   metric.Int64Counter
-	envdUpgradeGated      metric.Int64Counter
-	envdUpgradeHandover   metric.Int64Counter
-	envdUpgradeDuration   metric.Int64Histogram
+	config                   cfg.Config
+	sandboxFactory           *sandbox.Factory
+	info                     *service.ServiceInfo
+	proxy                    *proxy.SandboxProxy
+	networkPool              *network.Pool
+	templateCache            *template.Cache
+	devicePool               *nbd.DevicePool
+	persistence              storage.StorageProvider
+	featureFlags             *featureflags.Client
+	sbxEventsService         *events.EventsService
+	startingSandboxes        *utils.AdjustableSemaphore
+	peerRegistry             peerclient.Registry
+	uploadedBuilds           *ttlcache.Cache[string, struct{}]
+	uploads                  *sandbox.Uploads
+	sandboxCreateDuration    metric.Int64Histogram
+	sandboxExecutionDuration metric.Int64Histogram
+	sandboxPauseDuration     metric.Int64Histogram
+	sandboxKilledCounter     metric.Int64Counter
+	uploadFailedCounter      metric.Int64Counter
+	envdUpgradeAttempts      metric.Int64Counter
+	envdUpgradeGated         metric.Int64Counter
+	envdUpgradeHandover      metric.Int64Counter
+	envdUpgradeDuration      metric.Int64Histogram
 
 	// uploadsWG tracks in-flight async snapshot uploads so a graceful shutdown
 	// can wait for them to finish instead of dropping them. uploadsInFlight is
@@ -150,6 +151,12 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 		return nil, fmt.Errorf("failed to register sandbox create duration histogram: %w", err)
 	}
 	server.sandboxCreateDuration = sandboxCreateDuration
+
+	sandboxExecutionDuration, err := telemetry.GetHistogram(meter, telemetry.OrchestratorSandboxExecutionDurationName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register sandbox execution duration histogram: %w", err)
+	}
+	server.sandboxExecutionDuration = sandboxExecutionDuration
 
 	sandboxPauseDuration, err := telemetry.GetHistogram(meter, telemetry.PauseDurationHistogramName)
 	if err != nil {

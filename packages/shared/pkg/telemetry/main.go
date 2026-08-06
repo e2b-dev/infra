@@ -32,6 +32,26 @@ type Client struct {
 	LogsProvider    LogProvider
 }
 
+// histogramAggregation exports every histogram as base-2 exponential, whose
+// buckets adapt to the data instead of the SDK default boundaries that stop at
+// 10s. It also means metric.WithExplicitBucketBoundaries on an instrument is
+// discarded — that advice only survives when the reader default is an
+// explicit-bucket aggregation. Override per metric with a View, not with
+// boundaries.
+//
+// Sizing from https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/sdk.md#base2-exponential-bucket-histogram-aggregation
+func histogramAggregation(kind sdkmetric.InstrumentKind) sdkmetric.Aggregation {
+	if kind == sdkmetric.InstrumentKindHistogram {
+		return sdkmetric.AggregationBase2ExponentialHistogram{
+			MaxSize:  160,
+			MaxScale: 20,
+			NoMinMax: false,
+		}
+	}
+
+	return sdkmetric.DefaultAggregationSelector(kind)
+}
+
 // New creates a telemetry client that exports traces, metrics, and logs via gRPC.
 // Telemetry is enabled when the OTEL_COLLECTOR_GRPC_ENDPOINT environment variable is set
 // (e.g. "localhost:4317"). When unset, a noop client is returned with zero overhead.
@@ -41,18 +61,7 @@ func New(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion
 	}
 
 	// Setup metrics
-	metricsExporter, err := NewMeterExporter(ctx, otlpmetricgrpc.WithAggregationSelector(func(kind sdkmetric.InstrumentKind) sdkmetric.Aggregation {
-		if kind == sdkmetric.InstrumentKindHistogram {
-			// Defaults from https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/sdk.md#base2-exponential-bucket-histogram-aggregation
-			return sdkmetric.AggregationBase2ExponentialHistogram{
-				MaxSize:  160,
-				MaxScale: 20,
-				NoMinMax: false,
-			}
-		}
-
-		return sdkmetric.DefaultAggregationSelector(kind)
-	}))
+	metricsExporter, err := NewMeterExporter(ctx, otlpmetricgrpc.WithAggregationSelector(histogramAggregation))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create metrics exporter: %w", err)
 	}

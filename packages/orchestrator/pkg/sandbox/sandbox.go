@@ -185,6 +185,21 @@ const (
 	SandboxTypeBuild   SandboxType = "build"
 )
 
+// StopReason says why a sandbox execution ended. It is a metric label, so the
+// set of values has to stay small and closed.
+type StopReason string
+
+const (
+	// StopReasonKilled covers Delete and the teardowns the orchestrator does
+	// itself after an operation leaves the sandbox unusable.
+	StopReasonKilled        StopReason = "killed"
+	StopReasonPaused        StopReason = "paused"
+	StopReasonCheckpointing StopReason = "checkpointing"
+	// StopReasonCrashed is the absence of a recorded reason: nothing asked the
+	// sandbox to stop and it went down anyway.
+	StopReasonCrashed StopReason = "crashed"
+)
+
 // String returns the sandbox type as a string, defaulting to "sandbox" if empty.
 func (t SandboxType) String() string {
 	if t == "" {
@@ -242,9 +257,11 @@ type Metadata struct {
 	Config         *Config
 	Runtime        RuntimeMetadata
 
-	rwmu      sync.RWMutex // protects startedAt, endAt
-	startedAt time.Time
-	endAt     time.Time
+	rwmu       sync.RWMutex // protects startedAt, endAt, stoppedAt, stopReason
+	startedAt  time.Time
+	endAt      time.Time
+	stoppedAt  time.Time
+	stopReason StopReason
 }
 
 // GetEndAt returns the sandbox end time in a thread-safe manner.
@@ -363,6 +380,64 @@ func (m *Metadata) SetStartedAt(t time.Time) {
 	defer m.rwmu.Unlock()
 
 	m.startedAt = t
+}
+
+// SetStoppedAt records when the guest stopped executing. The first call wins:
+// a pause suspends the VM before it snapshots and uploads, and that tail is
+// not time the sandbox was running.
+func (m *Metadata) SetStoppedAt(t time.Time) {
+	m.rwmu.Lock()
+	defer m.rwmu.Unlock()
+
+	if !m.stoppedAt.IsZero() {
+		return
+	}
+
+	m.stoppedAt = t
+}
+
+// SetStopReason records why this execution is being torn down. Call it before
+// triggering the stop, or the stop wins the race and the execution reads as a
+// crash. The first call wins, so a teardown landing on an already-ending
+// sandbox does not relabel it.
+func (m *Metadata) SetStopReason(reason StopReason) {
+	m.rwmu.Lock()
+	defer m.rwmu.Unlock()
+
+	if m.stopReason != "" {
+		return
+	}
+
+	m.stopReason = reason
+}
+
+// GetStopReason returns the recorded teardown reason. An execution that ended
+// with none was never asked to stop, so it crashed. Only meaningful once the
+// execution has ended.
+func (m *Metadata) GetStopReason() StopReason {
+	m.rwmu.RLock()
+	defer m.rwmu.RUnlock()
+
+	if m.stopReason == "" {
+		return StopReasonCrashed
+	}
+
+	return m.stopReason
+}
+
+// ExecutionDuration returns how long the guest ran, from being ready to serve
+// until it stopped executing. It reports false when that span is unknown: no
+// start time (a failed envd init records none), no stop time yet, or the two
+// out of order.
+func (m *Metadata) ExecutionDuration() (time.Duration, bool) {
+	m.rwmu.RLock()
+	defer m.rwmu.RUnlock()
+
+	if m.startedAt.IsZero() || m.stoppedAt.IsZero() || m.stoppedAt.Before(m.startedAt) {
+		return 0, false
+	}
+
+	return m.stoppedAt.Sub(m.startedAt), true
 }
 
 type Factory struct {
@@ -1549,6 +1624,10 @@ func (s *Sandbox) Pause(
 	if err := s.process.Pause(ctx); err != nil {
 		return nil, fmt.Errorf("failed to pause VM: %w", err)
 	}
+
+	// The guest stops executing here; the snapshot, rootfs export and upload
+	// that follow run against a paused VM.
+	s.SetStoppedAt(time.Now())
 
 	// Best-effort flush before the rootfs export goroutine closes the FC API
 	// socket. Non-blocking on the reader; trades precision for pause latency.
