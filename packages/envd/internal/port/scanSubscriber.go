@@ -12,6 +12,7 @@ type ScannerSubscriber struct {
 	logger   *zerolog.Logger
 	filter   *ScannerFilter
 	Messages chan ([]net.ConnectionStat)
+	done     chan struct{}
 	id       string
 }
 
@@ -21,6 +22,7 @@ func NewScannerSubscriber(logger *zerolog.Logger, id string, filter *ScannerFilt
 		id:       id,
 		filter:   filter,
 		Messages: make(chan []net.ConnectionStat),
+		done:     make(chan struct{}),
 	}
 }
 
@@ -28,23 +30,32 @@ func (ss *ScannerSubscriber) ID() string {
 	return ss.id
 }
 
+// Destroy signals the subscriber to stop. Any Signal() call blocked waiting
+// for a receiver will return immediately. The Messages channel is left open so
+// in-progress receivers can drain it; callers exit via ctx.Done() instead.
 func (ss *ScannerSubscriber) Destroy() {
-	close(ss.Messages)
+	close(ss.done)
 }
 
+// Signal delivers a port scan result to the subscriber. If the receiver is not
+// ready (e.g. it has stopped consuming after context cancellation), Signal
+// returns immediately rather than blocking, so ScanAndBroadcast is never
+// stalled by a single slow or stopped subscriber.
 func (ss *ScannerSubscriber) Signal(proc []net.ConnectionStat) {
-	// Filter isn't specified. Accept everything.
-	if ss.filter == nil {
-		ss.Messages <- proc
-	} else {
-		filtered := []net.ConnectionStat{}
+	msg := proc
+	if ss.filter != nil {
+		filtered := make([]net.ConnectionStat, 0, len(proc))
 		for i := range proc {
-			// We need to access the list directly otherwise there will be implicit memory aliasing
-			// If the filter matched a process, we will send it to a channel.
+			// Access the slice directly to avoid implicit memory aliasing.
 			if ss.filter.Match(&proc[i]) {
 				filtered = append(filtered, proc[i])
 			}
 		}
-		ss.Messages <- filtered
+		msg = filtered
+	}
+
+	select {
+	case ss.Messages <- msg:
+	case <-ss.done:
 	}
 }
