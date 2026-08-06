@@ -317,6 +317,7 @@ keyless-runtime-check:
 	@ ./scripts/test-api-controller-identity.sh
 	@ ./scripts/test-configure-docker-gcp.sh
 	@ ./scripts/test-control-plane-secret-logging.sh
+	@ ./scripts/test-nomad-restart-safety.sh
 	@ ./scripts/test-scrub-legacy-acl-token-state.sh
 
 .PHONY: acl-token-state-guard

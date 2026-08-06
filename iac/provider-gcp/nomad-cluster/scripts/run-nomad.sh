@@ -322,6 +322,18 @@ function start_nomad {
   supervisorctl update
 }
 
+function remove_legacy_node_pool_documents {
+  local -r nomad_config_dir="$1"
+  local legacy_document
+
+  for legacy_document in api_node_pool.hcl build_node_pool.hcl; do
+    if [[ -e "$nomad_config_dir/$legacy_document" || -L "$nomad_config_dir/$legacy_document" ]]; then
+      log_warn "Removing legacy node-pool document from the Nomad agent config directory: $legacy_document"
+      rm -f -- "$nomad_config_dir/$legacy_document"
+    fi
+  done
+}
+
 function bootstrap {
   log_info "Waiting for Nomad to start"
   while test -z "$(curl -s http://127.0.0.1:4646/v1/agent/health)"; do
@@ -359,20 +371,48 @@ function bootstrap {
 }
 
 function create_node_pools {
-  local -r nomad_token="$1"
-  log_info "Creating node pools"
-  cat > "$config_dir/api_node_pool.hcl"  <<EOF
+  (
+    local -r nomad_token="$1"
+    local node_pool_dir
+    local api_node_pool_document
+    local build_node_pool_document
+
+    umask 077
+    node_pool_dir="$(mktemp -d "${TMPDIR:-/tmp}/nomad-node-pools.XXXXXX")"
+    chmod 0700 "$node_pool_dir"
+    trap 'rm -rf -- "$node_pool_dir"' EXIT
+
+    api_node_pool_document="$node_pool_dir/api_node_pool.hcl"
+    build_node_pool_document="$node_pool_dir/build_node_pool.hcl"
+
+    log_info "Creating node pools"
+    cat >"$api_node_pool_document" <<EOF
 node_pool "api" {
   description = "Nodes for api."
 }
 EOF
-  nomad node pool apply -token "$nomad_token" "$config_dir/api_node_pool.hcl"
-  cat > "$config_dir/build_node_pool.hcl"  <<EOF
+    if nomad node pool apply -token "$nomad_token" "$api_node_pool_document"; then
+      :
+    else
+      return $?
+    fi
+    rm -f -- "$api_node_pool_document"
+
+    cat >"$build_node_pool_document" <<EOF
 node_pool "build" {
   description = "Nodes for template builds."
 }
 EOF
-  nomad node pool apply -token "$nomad_token" "$config_dir/build_node_pool.hcl"
+    if nomad node pool apply -token "$nomad_token" "$build_node_pool_document"; then
+      :
+    else
+      return $?
+    fi
+    rm -f -- "$build_node_pool_document"
+
+    rmdir "$node_pool_dir"
+    trap - EXIT
+  )
 }
 
 # Based on: http://unix.stackexchange.com/a/7732/215969
@@ -471,6 +511,7 @@ function run {
 
   user=$(get_owner_of_path "$config_dir")
 
+  remove_legacy_node_pool_documents "$config_dir"
   generate_nomad_config "$server" "$client" "$num_servers" "$config_dir" "$user" "$consul_token" "$node_pool" "$orchestrator_job_version" "$node_labels"
   generate_supervisor_config "$SUPERVISOR_CONFIG_PATH" "$config_dir" "$data_dir" "$bin_dir" "$log_dir" "$user" "$use_sudo"
   start_nomad
