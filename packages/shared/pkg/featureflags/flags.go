@@ -573,10 +573,19 @@ var (
 	// and cohort canaries come for free. The fallback is env-overridable
 	// (ENVD_UPGRADE_TARGET) so it can be exercised where there is no LD (dev),
 	// mirroring build-firecracker-version's DEFAULT_FIRECRACKER_VERSION.
-	EnvdUpgradeTargetFlag       = NewStringFlag("envd-upgrade-target", env.GetEnv("ENVD_UPGRADE_TARGET", "off"))
-	DefaultPersistentVolumeType = NewStringFlag("default-persistent-volume-type", "")
-	BuildNodeInfo               = NewJSONFlag("preferred-build-node", ldvalue.Null())
-	FirecrackerVersions         = NewJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(FirecrackerVersionMap))
+	EnvdUpgradeTargetFlag = NewStringFlag("envd-upgrade-target", env.GetEnv("ENVD_UPGRADE_TARGET", "off"))
+	// EnvdOfflineUpgradeTargetFlag drives the OFFLINE envd upgrade of a
+	// filesystem-only snapshot: at cold-boot resume the rootfs binary is rewritten
+	// (jailed debugfs) before the guest boots, reaching envd too old to self-upgrade
+	// (< MinEnvdVersionForUpgrade). Same value grammar and resolver as
+	// EnvdUpgradeTargetFlag ("off" / "promoted" / "<git-sha>"); a SEPARATE flag so
+	// the newer/riskier offline mechanism ramps independently of the live path. The
+	// fallback is env-overridable (ENVD_OFFLINE_UPGRADE_TARGET) for dev, where there
+	// is no LD. Default off.
+	EnvdOfflineUpgradeTargetFlag = NewStringFlag("envd-offline-upgrade-target", env.GetEnv("ENVD_OFFLINE_UPGRADE_TARGET", "off"))
+	DefaultPersistentVolumeType  = NewStringFlag("default-persistent-volume-type", "")
+	BuildNodeInfo                = NewJSONFlag("preferred-build-node", ldvalue.Null())
+	FirecrackerVersions          = NewJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(FirecrackerVersionMap))
 
 	// ClickhouseReadEndpointFlag selects which ClickHouse DSN to use for reads.
 	// "" (empty) → singular CLICKHOUSE_CONNECTION_STRING (self-managed default).
@@ -916,6 +925,25 @@ func ResolveEnvdUpgrade(
 	getVersion func(context.Context, string) (string, error),
 ) (path, version, reason string) {
 	return resolveEnvdUpgradePath(ctx, ff.StringFlag(ctx, EnvdUpgradeTargetFlag), builtWithVersion, hostEnvdPath, getVersion)
+}
+
+// ResolveEnvdOfflineUpgrade is the offline-swap analog of ResolveEnvdUpgrade
+// same pure decision, keyed on EnvdOfflineUpgradeTargetFlag so the
+// offline path ramps independently of the live one. builtWithVersion is the
+// snapshot's recorded envd version (there is no running envd at cold-boot swap
+// time), so — unlike the live path, which keys on the reported LiveEnvdVersion —
+// the built-with never advances across an upgrade and this resolver keeps
+// returning the same target on every resume until a re-pause re-bakes the
+// version (an accepted, idempotent per-resume re-fire).
+func ResolveEnvdOfflineUpgrade(
+	ctx context.Context,
+	ff *Client,
+	builtWithVersion string,
+	hostEnvdPath string,
+	getVersion func(context.Context, string) (string, error),
+	evalContexts ...ldcontext.Context,
+) (path, version, reason string) {
+	return resolveEnvdUpgradePath(ctx, ff.StringFlag(ctx, EnvdOfflineUpgradeTargetFlag, evalContexts...), builtWithVersion, hostEnvdPath, getVersion)
 }
 
 // resolveEnvdUpgradePath is the pure decision, split out so it can be unit-tested

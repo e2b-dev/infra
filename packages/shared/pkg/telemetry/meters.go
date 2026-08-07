@@ -66,6 +66,15 @@ const (
 	// dropped or degraded something it re-adopted across the swap.
 	OrchestratorEnvdUpgradeHandover CounterType = "orchestrator.envd.upgrade.handover"
 
+	// OrchestratorEnvdOfflineUpgradeAttempts counts OFFLINE envd upgrades
+	// — the cold-boot rootfs binary swap of a filesystem-only snapshot — by result
+	// (success|swap_failed|not_quiesced|unrecoverable) and from_version/to_version. Because the
+	// swap keys on the snapshot's built-with version (never advanced by the swap),
+	// a re-resumed already-upgraded snapshot fires again with
+	// from_version==the old built-with and to_version==target; that expected
+	// idempotent re-fire is visible here rather than hidden.
+	OrchestratorEnvdOfflineUpgradeAttempts CounterType = "orchestrator.envd.offline_upgrade.attempts"
+
 	// PauseResumePrefetchHarvestAttempts counts pause-resume prefetch harvest
 	// attempts, by result (success|resume_failed|collect_failed|skipped). The
 	// throwaway is absent from Prometheus otherwise (registration-skip), so this
@@ -141,6 +150,12 @@ const (
 	// live-upgrade (delivery + trigger + WaitForEnvd) = overhead added to the
 	// resume. Labeled by result.
 	OrchestratorEnvdUpgradeDurationName HistogramType = "orchestrator.envd.upgrade.duration"
+
+	// OrchestratorEnvdOfflineUpgradeDurationName is the wall-time of the offline
+	// rootfs envd swap (jailed debugfs), recorded once per swap attempt. Catches
+	// pathological rewrites; the swap runs in the cold-boot PreBootFn, so it adds
+	// directly to resume latency.
+	OrchestratorEnvdOfflineUpgradeDurationName HistogramType = "orchestrator.envd.offline_upgrade.duration"
 
 	// Pre-pause envd heap collapse round-trip duration (the pause-path cost of
 	// POST /collapse: network plus envd's madvise work), recorded once per pause
@@ -272,6 +287,7 @@ var counterDesc = map[CounterType]string{
 	OrchestratorSnapshotUploadFailedCounterName: "Number of pause-snapshot uploads that never landed durably",
 	SandboxPauseFsQuiescedCounterName:           "Filesystem-only pauses by whether the rootfs was frozen (quiesced) vs sync fallback",
 	OrchestratorEnvdUpgradeAttempts:             "Resume-time envd live-upgrade attempts, by result and from/to version",
+	OrchestratorEnvdOfflineUpgradeAttempts:      "Cold-boot offline envd rootfs-swap attempts, by result and from/to version",
 	OrchestratorEnvdUpgradeGated:                "Resumes the envd-upgrade-target flag targeted but the min-version gate skipped",
 	OrchestratorEnvdUpgradeHandover:             "Live-upgrade handover items by item (proc|retained|watcher) and result (ok|failed)",
 	PauseResumePrefetchHarvestAttempts:          "Pause-resume prefetch harvest attempts, by result",
@@ -311,6 +327,7 @@ var counterUnits = map[CounterType]string{
 	OrchestratorSnapshotUploadFailedCounterName: "{snapshot}",
 	SandboxPauseFsQuiescedCounterName:           "{snapshot}",
 	OrchestratorEnvdUpgradeAttempts:             "{attempt}",
+	OrchestratorEnvdOfflineUpgradeAttempts:      "{attempt}",
 	OrchestratorEnvdUpgradeGated:                "{sandbox}",
 	OrchestratorEnvdUpgradeHandover:             "{item}",
 	PauseResumePrefetchHarvestAttempts:          "{attempt}",
@@ -473,20 +490,21 @@ func GetGaugeInt(meter metric.Meter, name GaugeIntType) (metric.Int64ObservableG
 var histogramDesc = map[HistogramType]string{
 	ApiRedisStoragePublisherPublishDuration: "Duration of a single Redis PUBLISH round-trip from the storage publisher",
 
-	BuildDurationHistogramName:               "Time taken to build a template",
-	BuildPhaseDurationHistogramName:          "Time taken to build each phase of a template",
-	BuildStepDurationHistogramName:           "Time taken to build each step of a template",
-	BuildRootfsSizeHistogramName:             "Size of the built template rootfs in bytes",
-	OrchestratorSandboxCreateDurationName:    "Time taken to create a sandbox",
-	OrchestratorSandboxExecutionDurationName: "Time a single sandbox execution ran, from the guest being ready until it stopped executing, labeled by stop reason",
-	OrchestratorEnvdUpgradeDurationName:      "Wall-time of a resume-time envd upgrade (delivery + trigger + WaitForEnvd)",
-	WaitForEnvdDurationHistogramName:         "Time taken for Envd to initialize successfully",
-	EnvdCollapseDurationHistogramName:        "Time taken for the pre-pause envd heap collapse round-trip",
-	GuestSyncDurationHistogramName:           "Time taken for the mandatory pre-pause guest sync (filesystem-only pause)",
-	PauseDurationHistogramName:               "Time taken to pause a sandbox, labeled by fs_only (filesystem-only vs memory) and success",
-	SnapshotProcessMemoryDurationName:        "Time to export+diff the memory file during a pause snapshot (memory pauses only), labeled by success",
-	SnapshotProcessRootfsDurationName:        "Time to export+diff the rootfs during a pause snapshot, labeled by fs_only and success",
-	SnapshotRootfsSealDurationName:           "Time for the background deferred rootfs reflink seal (off the pause critical path), labeled by success",
+	BuildDurationHistogramName:                 "Time taken to build a template",
+	BuildPhaseDurationHistogramName:            "Time taken to build each phase of a template",
+	BuildStepDurationHistogramName:             "Time taken to build each step of a template",
+	BuildRootfsSizeHistogramName:               "Size of the built template rootfs in bytes",
+	OrchestratorSandboxCreateDurationName:      "Time taken to create a sandbox",
+	OrchestratorSandboxExecutionDurationName:   "Time a single sandbox execution ran, from the guest being ready until it stopped executing, labeled by stop reason",
+	OrchestratorEnvdUpgradeDurationName:        "Wall-time of a resume-time envd upgrade (delivery + trigger + WaitForEnvd)",
+	WaitForEnvdDurationHistogramName:           "Time taken for Envd to initialize successfully",
+	EnvdCollapseDurationHistogramName:          "Time taken for the pre-pause envd heap collapse round-trip",
+	GuestSyncDurationHistogramName:             "Time taken for the mandatory pre-pause guest sync (filesystem-only pause)",
+	PauseDurationHistogramName:                 "Time taken to pause a sandbox, labeled by fs_only (filesystem-only vs memory) and success",
+	SnapshotProcessMemoryDurationName:          "Time to export+diff the memory file during a pause snapshot (memory pauses only), labeled by success",
+	SnapshotProcessRootfsDurationName:          "Time to export+diff the rootfs during a pause snapshot, labeled by fs_only and success",
+	SnapshotRootfsSealDurationName:             "Time for the background deferred rootfs reflink seal (off the pause critical path), labeled by success",
+	OrchestratorEnvdOfflineUpgradeDurationName: "Wall-time of the offline cold-boot envd rootfs swap (jailed debugfs)",
 
 	PauseResumePrefetchHarvestDurationName:  "Time taken for a pause-resume prefetch harvest run (slot-hold cost)",
 	PauseResumePrefetchHarvestPagesName:     "Harvested resume-prefetch trace size in 2 MiB blocks, per successful harvest",
@@ -537,6 +555,7 @@ var histogramUnits = map[HistogramType]string{
 	OrchestratorSandboxCreateDurationName:         "ms",
 	OrchestratorSandboxExecutionDurationName:      "ms",
 	OrchestratorEnvdUpgradeDurationName:           "ms",
+	OrchestratorEnvdOfflineUpgradeDurationName:    "ms",
 	WaitForEnvdDurationHistogramName:              "ms",
 	EnvdCollapseDurationHistogramName:             "ms",
 	GuestSyncDurationHistogramName:                "ms",

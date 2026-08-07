@@ -9,14 +9,22 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
+	buildenvd "github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/envd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/constants"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/units"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -28,6 +36,12 @@ const (
 	// rebootEnvdTimeout bounds the systemd boot + envd start; a cold boot needs a
 	// longer window than a memory resume (matches the template build's wait).
 	rebootEnvdTimeout = 60 * time.Second
+)
+
+var (
+	// Offline-upgrade rollout metrics (meter shared with sandbox.go).
+	envdOfflineUpgradeAttempts     = utils.Must(telemetry.GetCounter(meter, telemetry.OrchestratorEnvdOfflineUpgradeAttempts))
+	envdOfflineUpgradeDurationHist = utils.Must(telemetry.GetHistogram(meter, telemetry.OrchestratorEnvdOfflineUpgradeDurationName))
 )
 
 // RebootSandbox cold-boots a fresh Firecracker VM from the template's rootfs,
@@ -128,6 +142,8 @@ func (f *Factory) RebootSandbox(
 		opt(&processOptions)
 	}
 
+	preBoot := f.envdOfflineUpgradePreBoot(ctx, config, runtime, meta.IsFsQuiesced(), buildID)
+
 	sbx, err := f.CreateSandbox(
 		ctx,
 		config,
@@ -140,7 +156,7 @@ func (f *Factory) RebootSandbox(
 		"",
 		processOptions,
 		apiConfigToStore,
-		nil,
+		preBoot,
 		WithDeferredMarkRunning(),
 		withNetworkAssignReason(NetworkAssignReasonReboot),
 	)
@@ -169,4 +185,172 @@ func (f *Factory) RebootSandbox(
 	}
 
 	return sbx, nil
+}
+
+// offlineSwapDecision is the pure outcome of the offline-upgrade gate: whether to
+// rewrite the rootfs envd, and — when not — how to report the no-op.
+type offlineSwapDecision struct {
+	swap         bool   // run the rootfs swap
+	countResult  string // if set, record offline_upgrade.attempts{result=...} for this gated no-op
+	logMisconfig bool   // log the resolver's no-op reason (a misconfigured / unstaged target)
+}
+
+// decideOfflineSwap gates the cold-boot envd swap on the resolver outcome and the
+// snapshot's crash-consistency. resolverPath is "" when the resolver returns no
+// upgrade (reason says why); fsQuiesced is whether the rootfs was frozen at pause.
+//
+//   - no upgrade, benign reason (off / same_version)       -> no swap, silent
+//   - no upgrade, misconfig (not_staged / downgrade / ...)  -> no swap, log the reason
+//   - upgrade wanted but rootfs not frozen                  -> no swap, count not_quiesced
+//   - upgrade wanted and rootfs frozen                      -> swap
+func decideOfflineSwap(resolverPath, reason string, fsQuiesced bool) offlineSwapDecision {
+	if resolverPath == "" {
+		switch reason {
+		case "", "off", "same_version":
+			return offlineSwapDecision{}
+		default:
+			return offlineSwapDecision{logMisconfig: true}
+		}
+	}
+	if !fsQuiesced {
+		return offlineSwapDecision{countResult: "not_quiesced"}
+	}
+
+	return offlineSwapDecision{swap: true}
+}
+
+// envdOfflineUpgradePreBoot returns a PreBootFn that rewrites the rootfs envd
+// binary before the cold boot, or nil when no upgrade applies. It
+// resolves the target through the shared envd-upgrade decision (ResolveEnvdOfflineUpgrade,
+// sibling flag envd-offline-upgrade-target) keyed on the snapshot's built-with
+// version — there is no running envd at cold-boot swap time, so unlike the live
+// path there is no LiveEnvdVersion to key on, and the built-with never advances
+// across an upgrade, so the swap re-fires idempotently on every resume until a
+// re-pause re-bakes the version. The swap runs only when the snapshot's rootfs
+// was frozen at pause (fs_quiesced): a legacy/sync-fallback snapshot is left on
+// its current envd and becomes eligible after its next freezing pause. Fully
+// best-effort — any failure boots the ORIGINAL envd, never aborting the boot.
+func (f *Factory) envdOfflineUpgradePreBoot(
+	ctx context.Context,
+	config *Config,
+	runtime RuntimeMetadata,
+	fsQuiesced bool,
+	buildID uuid.UUID,
+) PreBootFn {
+	from := config.Envd.Version
+
+	sbCtx := featureflags.SandboxContext(runtime.SandboxID)
+	tmplCtx := featureflags.TemplateContext(runtime.TemplateID)
+	path, toVersion, reason := featureflags.ResolveEnvdOfflineUpgrade(
+		ctx, f.featureFlags, from, f.config.HostEnvdPath, buildenvd.GetEnvdVersion, sbCtx, tmplCtx,
+	)
+	dec := decideOfflineSwap(path, reason, fsQuiesced)
+	if !dec.swap {
+		// A misconfigured / unstaged target is worth a logged signal on a ramp;
+		// off / same_version are the expected per-resume no-ops and stay silent.
+		if dec.logMisconfig {
+			logger.L().Info(ctx, "offline envd upgrade: target not resolved",
+				logger.WithSandboxID(runtime.SandboxID),
+				logger.WithBuildID(buildID.String()),
+				zap.String("reason", reason),
+				zap.String("built_with", from),
+			)
+		}
+		// The resolver wanted an upgrade but the rootfs isn't known crash-consistent
+		// (not frozen at pause): don't rewrite it — record the gated skip so a ramp
+		// can see the population waiting for a future freezing pause.
+		if dec.countResult != "" {
+			logger.L().Info(ctx, "skipping offline envd upgrade: snapshot rootfs was not frozen at pause (not crash-consistent); awaiting a future freezing pause",
+				logger.WithSandboxID(runtime.SandboxID),
+				logger.WithBuildID(buildID.String()),
+				zap.String("built_with", from),
+				zap.String("target", path),
+				zap.String("to_version", toVersion),
+			)
+			envdOfflineUpgradeAttempts.Add(ctx, 1, metric.WithAttributes(
+				attribute.String("result", dec.countResult),
+				attribute.String("from_version", from),
+				attribute.String("to_version", toVersion),
+			))
+		}
+
+		return nil
+	}
+
+	return func(ctx context.Context, rootfsPath string) error {
+		start := time.Now()
+		// Cancel-free but time-bounded: a request cancellation must not kill
+		// debugfs mid-write (a half-written inode would break the boot/export that
+		// follows), yet a hung tool must not stall the boot forever. The budget is
+		// EnvdSwapBudget, not the per-invocation EnvdSwapTimeout: the call is several
+		// debugfs runs, and bounding the whole of it at one run's timeout lets a slow
+		// backup starve the phases after it (see EnvdSwapBudget).
+		swapCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rootfs.EnvdSwapBudget)
+		err := rootfs.SwapEnvdBinary(swapCtx, rootfsPath, path)
+		cancel()
+
+		// An unrecoverable swap (failed AND the original was not restored) may leave
+		// the rootfs without a usable envd. Booting it would hand back a running but
+		// envd-less sandbox; instead fail the boot so CreateSandbox tears down and
+		// the dirty overlay is discarded. Every other failure left the original in
+		// place, so it stays best-effort and boots the original.
+		unrecoverable := errors.Is(err, rootfs.ErrOfflineSwapUnrecoverable)
+		result := "success"
+		switch {
+		case err == nil:
+			logger.L().Info(ctx, "swapped envd binary before reboot",
+				logger.WithSandboxID(runtime.SandboxID),
+				logger.WithBuildID(buildID.String()),
+				zap.String("target", path),
+				zap.String("to_version", toVersion),
+				zap.String("built_with", from),
+			)
+		case errors.Is(err, rootfs.ErrEnvdTooLarge):
+			// Declined before anything was touched, so the guest boots its own envd.
+			// Its own result value: this is a property of the rootfs, not a malfunction,
+			// and on a ramp it should not read as swap breakage.
+			result = "envd_too_large"
+			logger.L().Warn(ctx, "skipping offline envd upgrade: rootfs envd is too large to swap",
+				logger.WithSandboxID(runtime.SandboxID),
+				logger.WithBuildID(buildID.String()),
+				zap.String("target", path),
+				zap.String("built_with", from),
+				zap.Error(err),
+			)
+		case unrecoverable:
+			result = "unrecoverable"
+			logger.L().Error(ctx, "offline envd swap left the rootfs without a usable envd; failing boot to discard the overlay",
+				logger.WithSandboxID(runtime.SandboxID),
+				logger.WithBuildID(buildID.String()),
+				zap.String("target", path),
+				zap.String("built_with", from),
+				zap.Error(err),
+			)
+		default:
+			result = "swap_failed"
+			logger.L().Error(ctx, "offline envd swap before reboot failed; booting original envd",
+				logger.WithSandboxID(runtime.SandboxID),
+				logger.WithBuildID(buildID.String()),
+				zap.String("target", path),
+				zap.String("built_with", from),
+				zap.Error(err),
+			)
+		}
+
+		envdOfflineUpgradeAttempts.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("result", result),
+			attribute.String("from_version", from),
+			attribute.String("to_version", toVersion),
+		))
+		envdOfflineUpgradeDurationHist.Record(ctx, time.Since(start).Milliseconds(),
+			metric.WithAttributes(attribute.String("result", result)))
+
+		if unrecoverable {
+			return fmt.Errorf("offline envd upgrade left rootfs unbootable: %w", err)
+		}
+
+		// Best-effort: swallow a recoverable failure so the cold boot proceeds on
+		// the original envd rather than failing the whole resume.
+		return nil
+	}
 }
