@@ -1775,7 +1775,6 @@ components:
         - status
         - statusChangedAt
         - sandboxCount
-        - cachedBuilds
         - createSuccesses
         - createFails
         - version
@@ -1812,11 +1811,6 @@ components:
           description: Number of sandboxes running on the node
         metrics:
           $ref: "#/components/schemas/NodeMetrics"
-        cachedBuilds:
-          type: array
-          description: List of cached builds id on the node
-          items:
-            type: string
         createSuccesses:
           type: integer
           format: uint64
