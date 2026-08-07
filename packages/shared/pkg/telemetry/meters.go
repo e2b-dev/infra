@@ -14,7 +14,6 @@ type (
 	ObservableCounterType       string
 	GaugeFloatType              string
 	GaugeIntType                string
-	UpDownCounterType           string
 	ObservableUpDownCounterType string
 	HistogramType               string
 )
@@ -347,10 +346,6 @@ var observableCounterUnits = map[ObservableCounterType]string{
 	ApiOrchestratorSbxCreateFailure: "{sandbox}",
 }
 
-var upDownCounterDesc = map[UpDownCounterType]string{}
-
-var upDownCounterUnits = map[UpDownCounterType]string{}
-
 var observableUpDownCounterDesc = map[ObservableUpDownCounterType]string{
 	OrchestratorSandboxCountMeterName:                  "Counter of running sandboxes on the orchestrator.",
 	ClientProxyServerConnectionsMeterCounterName:       "Open connections to the client proxy from load balancer.",
@@ -428,16 +423,6 @@ func GetCounter(meter metric.Meter, name CounterType) (metric.Int64Counter, erro
 	unit := counterUnits[name]
 
 	return meter.Int64Counter(string(name),
-		metric.WithDescription(desc),
-		metric.WithUnit(unit),
-	)
-}
-
-func GetUpDownCounter(meter metric.Meter, name UpDownCounterType) (metric.Int64UpDownCounter, error) {
-	desc := upDownCounterDesc[name]
-	unit := upDownCounterUnits[name]
-
-	return meter.Int64UpDownCounter(string(name),
 		metric.WithDescription(desc),
 		metric.WithUnit(unit),
 	)

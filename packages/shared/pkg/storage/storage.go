@@ -61,18 +61,6 @@ func (t SeekableObjectType) String() string {
 	}
 }
 
-type ObjectType int
-
-const (
-	UnknownObjectType ObjectType = iota
-	MemfileHeaderObjectType
-	RootFSHeaderObjectType
-	SnapfileObjectType
-	MetadataObjectType
-	BuildLayerFileObjectType
-	LayerMetadataObjectType
-)
-
 type StorageProvider interface {
 	DeleteObjectsWithPrefix(ctx context.Context, prefix string) error
 	UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error)
