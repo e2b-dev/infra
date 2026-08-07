@@ -134,6 +134,13 @@ func WithAllocatedMemoryBytes(bytes uint64) TestOptions {
 	}
 }
 
+// WithTotalMemoryBytes sets the total physical memory reported by the test node
+func WithTotalMemoryBytes(bytes uint64) TestOptions {
+	return func(node *TestNode) {
+		node.metrics.MemoryTotalBytes = bytes
+	}
+}
+
 // MockSandboxClientCustom allows custom error logic per call
 type MockSandboxClientCustom struct {
 	orchestrator.SandboxServiceClient
