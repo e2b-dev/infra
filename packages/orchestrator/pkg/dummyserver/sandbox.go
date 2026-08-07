@@ -146,7 +146,3 @@ func (s *SandboxServer) Checkpoint(_ context.Context, _ *orchestrator.SandboxChe
 	// No-op: there is no real disk/memory to checkpoint.
 	return &orchestrator.SandboxCheckpointResponse{}, nil
 }
-
-func (s *SandboxServer) ListCachedBuilds(_ context.Context, _ *emptypb.Empty) (*orchestrator.SandboxListCachedBuildsResponse, error) {
-	return &orchestrator.SandboxListCachedBuildsResponse{Builds: nil}, nil
-}

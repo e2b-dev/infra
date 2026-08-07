@@ -20,13 +20,12 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	SandboxService_Create_FullMethodName           = "/SandboxService/Create"
-	SandboxService_Update_FullMethodName           = "/SandboxService/Update"
-	SandboxService_List_FullMethodName             = "/SandboxService/List"
-	SandboxService_Delete_FullMethodName           = "/SandboxService/Delete"
-	SandboxService_Pause_FullMethodName            = "/SandboxService/Pause"
-	SandboxService_Checkpoint_FullMethodName       = "/SandboxService/Checkpoint"
-	SandboxService_ListCachedBuilds_FullMethodName = "/SandboxService/ListCachedBuilds"
+	SandboxService_Create_FullMethodName     = "/SandboxService/Create"
+	SandboxService_Update_FullMethodName     = "/SandboxService/Update"
+	SandboxService_List_FullMethodName       = "/SandboxService/List"
+	SandboxService_Delete_FullMethodName     = "/SandboxService/Delete"
+	SandboxService_Pause_FullMethodName      = "/SandboxService/Pause"
+	SandboxService_Checkpoint_FullMethodName = "/SandboxService/Checkpoint"
 )
 
 // SandboxServiceClient is the client API for SandboxService service.
@@ -39,7 +38,6 @@ type SandboxServiceClient interface {
 	Delete(ctx context.Context, in *SandboxDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	Pause(ctx context.Context, in *SandboxPauseRequest, opts ...grpc.CallOption) (*SandboxPauseResponse, error)
 	Checkpoint(ctx context.Context, in *SandboxCheckpointRequest, opts ...grpc.CallOption) (*SandboxCheckpointResponse, error)
-	ListCachedBuilds(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*SandboxListCachedBuildsResponse, error)
 }
 
 type sandboxServiceClient struct {
@@ -110,16 +108,6 @@ func (c *sandboxServiceClient) Checkpoint(ctx context.Context, in *SandboxCheckp
 	return out, nil
 }
 
-func (c *sandboxServiceClient) ListCachedBuilds(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*SandboxListCachedBuildsResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(SandboxListCachedBuildsResponse)
-	err := c.cc.Invoke(ctx, SandboxService_ListCachedBuilds_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // SandboxServiceServer is the server API for SandboxService service.
 // All implementations must embed UnimplementedSandboxServiceServer
 // for forward compatibility.
@@ -130,7 +118,6 @@ type SandboxServiceServer interface {
 	Delete(context.Context, *SandboxDeleteRequest) (*emptypb.Empty, error)
 	Pause(context.Context, *SandboxPauseRequest) (*SandboxPauseResponse, error)
 	Checkpoint(context.Context, *SandboxCheckpointRequest) (*SandboxCheckpointResponse, error)
-	ListCachedBuilds(context.Context, *emptypb.Empty) (*SandboxListCachedBuildsResponse, error)
 	mustEmbedUnimplementedSandboxServiceServer()
 }
 
@@ -158,9 +145,6 @@ func (UnimplementedSandboxServiceServer) Pause(context.Context, *SandboxPauseReq
 }
 func (UnimplementedSandboxServiceServer) Checkpoint(context.Context, *SandboxCheckpointRequest) (*SandboxCheckpointResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Checkpoint not implemented")
-}
-func (UnimplementedSandboxServiceServer) ListCachedBuilds(context.Context, *emptypb.Empty) (*SandboxListCachedBuildsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListCachedBuilds not implemented")
 }
 func (UnimplementedSandboxServiceServer) mustEmbedUnimplementedSandboxServiceServer() {}
 func (UnimplementedSandboxServiceServer) testEmbeddedByValue()                        {}
@@ -291,24 +275,6 @@ func _SandboxService_Checkpoint_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SandboxService_ListCachedBuilds_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(emptypb.Empty)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(SandboxServiceServer).ListCachedBuilds(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: SandboxService_ListCachedBuilds_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SandboxServiceServer).ListCachedBuilds(ctx, req.(*emptypb.Empty))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 // SandboxService_ServiceDesc is the grpc.ServiceDesc for SandboxService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -339,10 +305,6 @@ var SandboxService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Checkpoint",
 			Handler:    _SandboxService_Checkpoint_Handler,
-		},
-		{
-			MethodName: "ListCachedBuilds",
-			Handler:    _SandboxService_ListCachedBuilds_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

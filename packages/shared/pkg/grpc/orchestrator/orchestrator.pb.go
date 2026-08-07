@@ -1585,108 +1585,6 @@ func (x *SandboxListResponse) GetSandboxes() []*RunningSandbox {
 	return nil
 }
 
-type CachedBuildInfo struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
-	unknownFields protoimpl.UnknownFields
-
-	BuildId        string                 `protobuf:"bytes,1,opt,name=build_id,json=buildId,proto3" json:"build_id,omitempty"`
-	ExpirationTime *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=expiration_time,json=expirationTime,proto3" json:"expiration_time,omitempty"`
-}
-
-func (x *CachedBuildInfo) Reset() {
-	*x = CachedBuildInfo{}
-	if protoimpl.UnsafeEnabled {
-		mi := &file_orchestrator_proto_msgTypes[22]
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		ms.StoreMessageInfo(mi)
-	}
-}
-
-func (x *CachedBuildInfo) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*CachedBuildInfo) ProtoMessage() {}
-
-func (x *CachedBuildInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_orchestrator_proto_msgTypes[22]
-	if protoimpl.UnsafeEnabled && x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use CachedBuildInfo.ProtoReflect.Descriptor instead.
-func (*CachedBuildInfo) Descriptor() ([]byte, []int) {
-	return file_orchestrator_proto_rawDescGZIP(), []int{22}
-}
-
-func (x *CachedBuildInfo) GetBuildId() string {
-	if x != nil {
-		return x.BuildId
-	}
-	return ""
-}
-
-func (x *CachedBuildInfo) GetExpirationTime() *timestamppb.Timestamp {
-	if x != nil {
-		return x.ExpirationTime
-	}
-	return nil
-}
-
-type SandboxListCachedBuildsResponse struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
-	unknownFields protoimpl.UnknownFields
-
-	Builds []*CachedBuildInfo `protobuf:"bytes,1,rep,name=builds,proto3" json:"builds,omitempty"`
-}
-
-func (x *SandboxListCachedBuildsResponse) Reset() {
-	*x = SandboxListCachedBuildsResponse{}
-	if protoimpl.UnsafeEnabled {
-		mi := &file_orchestrator_proto_msgTypes[23]
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		ms.StoreMessageInfo(mi)
-	}
-}
-
-func (x *SandboxListCachedBuildsResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SandboxListCachedBuildsResponse) ProtoMessage() {}
-
-func (x *SandboxListCachedBuildsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_orchestrator_proto_msgTypes[23]
-	if protoimpl.UnsafeEnabled && x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SandboxListCachedBuildsResponse.ProtoReflect.Descriptor instead.
-func (*SandboxListCachedBuildsResponse) Descriptor() ([]byte, []int) {
-	return file_orchestrator_proto_rawDescGZIP(), []int{23}
-}
-
-func (x *SandboxListCachedBuildsResponse) GetBuilds() []*CachedBuildInfo {
-	if x != nil {
-		return x.Builds
-	}
-	return nil
-}
-
 var File_orchestrator_proto protoreflect.FileDescriptor
 
 var file_orchestrator_proto_rawDesc = []byte{
@@ -1991,19 +1889,7 @@ var file_orchestrator_proto_rawDesc = []byte{
 	0x4c, 0x69, 0x73, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x2d, 0x0a, 0x09,
 	0x73, 0x61, 0x6e, 0x64, 0x62, 0x6f, 0x78, 0x65, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32,
 	0x0f, 0x2e, 0x52, 0x75, 0x6e, 0x6e, 0x69, 0x6e, 0x67, 0x53, 0x61, 0x6e, 0x64, 0x62, 0x6f, 0x78,
-	0x52, 0x09, 0x73, 0x61, 0x6e, 0x64, 0x62, 0x6f, 0x78, 0x65, 0x73, 0x22, 0x71, 0x0a, 0x0f, 0x43,
-	0x61, 0x63, 0x68, 0x65, 0x64, 0x42, 0x75, 0x69, 0x6c, 0x64, 0x49, 0x6e, 0x66, 0x6f, 0x12, 0x19,
-	0x0a, 0x08, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09,
-	0x52, 0x07, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x49, 0x64, 0x12, 0x43, 0x0a, 0x0f, 0x65, 0x78, 0x70,
-	0x69, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x74, 0x69, 0x6d, 0x65, 0x18, 0x02, 0x20, 0x01,
-	0x28, 0x0b, 0x32, 0x1a, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74,
-	0x6f, 0x62, 0x75, 0x66, 0x2e, 0x54, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70, 0x52, 0x0e,
-	0x65, 0x78, 0x70, 0x69, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x54, 0x69, 0x6d, 0x65, 0x22, 0x4b,
-	0x0a, 0x1f, 0x53, 0x61, 0x6e, 0x64, 0x62, 0x6f, 0x78, 0x4c, 0x69, 0x73, 0x74, 0x43, 0x61, 0x63,
-	0x68, 0x65, 0x64, 0x42, 0x75, 0x69, 0x6c, 0x64, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
-	0x65, 0x12, 0x28, 0x0a, 0x06, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28,
-	0x0b, 0x32, 0x10, 0x2e, 0x43, 0x61, 0x63, 0x68, 0x65, 0x64, 0x42, 0x75, 0x69, 0x6c, 0x64, 0x49,
-	0x6e, 0x66, 0x6f, 0x52, 0x06, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x73, 0x32, 0xba, 0x03, 0x0a, 0x0e,
+	0x52, 0x09, 0x73, 0x61, 0x6e, 0x64, 0x62, 0x6f, 0x78, 0x65, 0x73, 0x32, 0xec, 0x02, 0x0a, 0x0e,
 	0x53, 0x61, 0x6e, 0x64, 0x62, 0x6f, 0x78, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x12, 0x37,
 	0x0a, 0x06, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x12, 0x15, 0x2e, 0x53, 0x61, 0x6e, 0x64, 0x62,
 	0x6f, 0x78, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a,
@@ -2026,16 +1912,11 @@ var file_orchestrator_proto_rawDesc = []byte{
 	0x69, 0x6e, 0x74, 0x12, 0x19, 0x2e, 0x53, 0x61, 0x6e, 0x64, 0x62, 0x6f, 0x78, 0x43, 0x68, 0x65,
 	0x63, 0x6b, 0x70, 0x6f, 0x69, 0x6e, 0x74, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x1a,
 	0x2e, 0x53, 0x61, 0x6e, 0x64, 0x62, 0x6f, 0x78, 0x43, 0x68, 0x65, 0x63, 0x6b, 0x70, 0x6f, 0x69,
-	0x6e, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x4c, 0x0a, 0x10, 0x4c, 0x69,
-	0x73, 0x74, 0x43, 0x61, 0x63, 0x68, 0x65, 0x64, 0x42, 0x75, 0x69, 0x6c, 0x64, 0x73, 0x12, 0x16,
-	0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66,
-	0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x1a, 0x20, 0x2e, 0x53, 0x61, 0x6e, 0x64, 0x62, 0x6f, 0x78,
-	0x4c, 0x69, 0x73, 0x74, 0x43, 0x61, 0x63, 0x68, 0x65, 0x64, 0x42, 0x75, 0x69, 0x6c, 0x64, 0x73,
-	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x42, 0x2f, 0x5a, 0x2d, 0x68, 0x74, 0x74, 0x70,
-	0x73, 0x3a, 0x2f, 0x2f, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x65,
-	0x32, 0x62, 0x2d, 0x64, 0x65, 0x76, 0x2f, 0x69, 0x6e, 0x66, 0x72, 0x61, 0x2f, 0x6f, 0x72, 0x63,
-	0x68, 0x65, 0x73, 0x74, 0x72, 0x61, 0x74, 0x6f, 0x72, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f,
-	0x33,
+	0x6e, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x42, 0x2f, 0x5a, 0x2d, 0x68, 0x74,
+	0x74, 0x70, 0x73, 0x3a, 0x2f, 0x2f, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d,
+	0x2f, 0x65, 0x32, 0x62, 0x2d, 0x64, 0x65, 0x76, 0x2f, 0x69, 0x6e, 0x66, 0x72, 0x61, 0x2f, 0x6f,
+	0x72, 0x63, 0x68, 0x65, 0x73, 0x74, 0x72, 0x61, 0x74, 0x6f, 0x72, 0x62, 0x06, 0x70, 0x72, 0x6f,
+	0x74, 0x6f, 0x33,
 }
 
 var (
@@ -2050,91 +1931,85 @@ func file_orchestrator_proto_rawDescGZIP() []byte {
 	return file_orchestrator_proto_rawDescData
 }
 
-var file_orchestrator_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
+var file_orchestrator_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
 var file_orchestrator_proto_goTypes = []interface{}{
-	(*SandboxConfig)(nil),                   // 0: SandboxConfig
-	(*SandboxIam)(nil),                      // 1: SandboxIam
-	(*SandboxIamToken)(nil),                 // 2: SandboxIamToken
-	(*SandboxAutoResumeConfig)(nil),         // 3: SandboxAutoResumeConfig
-	(*SandboxVolumeMount)(nil),              // 4: SandboxVolumeMount
-	(*SandboxNetworkConfig)(nil),            // 5: SandboxNetworkConfig
-	(*SandboxNetworkTransform)(nil),         // 6: SandboxNetworkTransform
-	(*SandboxNetworkRule)(nil),              // 7: SandboxNetworkRule
-	(*SandboxNetworkDomainRules)(nil),       // 8: SandboxNetworkDomainRules
-	(*SandboxNetworkEgressConfig)(nil),      // 9: SandboxNetworkEgressConfig
-	(*SandboxNetworkIngressConfig)(nil),     // 10: SandboxNetworkIngressConfig
-	(*SandboxCreateRequest)(nil),            // 11: SandboxCreateRequest
-	(*SandboxCreateResponse)(nil),           // 12: SandboxCreateResponse
-	(*SandboxUpdateRequest)(nil),            // 13: SandboxUpdateRequest
-	(*SandboxDeleteRequest)(nil),            // 14: SandboxDeleteRequest
-	(*SandboxPauseRequest)(nil),             // 15: SandboxPauseRequest
-	(*SchedulingMetadata)(nil),              // 16: SchedulingMetadata
-	(*SandboxPauseResponse)(nil),            // 17: SandboxPauseResponse
-	(*SandboxCheckpointRequest)(nil),        // 18: SandboxCheckpointRequest
-	(*SandboxCheckpointResponse)(nil),       // 19: SandboxCheckpointResponse
-	(*RunningSandbox)(nil),                  // 20: RunningSandbox
-	(*SandboxListResponse)(nil),             // 21: SandboxListResponse
-	(*CachedBuildInfo)(nil),                 // 22: CachedBuildInfo
-	(*SandboxListCachedBuildsResponse)(nil), // 23: SandboxListCachedBuildsResponse
-	nil,                                     // 24: SandboxConfig.EnvVarsEntry
-	nil,                                     // 25: SandboxConfig.MetadataEntry
-	nil,                                     // 26: SandboxIam.TokensEntry
-	nil,                                     // 27: SandboxNetworkTransform.HeadersEntry
-	nil,                                     // 28: SandboxNetworkEgressConfig.RulesEntry
-	nil,                                     // 29: SandboxCheckpointRequest.MetadataEntry
-	(*timestamppb.Timestamp)(nil),           // 30: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),                   // 31: google.protobuf.Empty
+	(*SandboxConfig)(nil),               // 0: SandboxConfig
+	(*SandboxIam)(nil),                  // 1: SandboxIam
+	(*SandboxIamToken)(nil),             // 2: SandboxIamToken
+	(*SandboxAutoResumeConfig)(nil),     // 3: SandboxAutoResumeConfig
+	(*SandboxVolumeMount)(nil),          // 4: SandboxVolumeMount
+	(*SandboxNetworkConfig)(nil),        // 5: SandboxNetworkConfig
+	(*SandboxNetworkTransform)(nil),     // 6: SandboxNetworkTransform
+	(*SandboxNetworkRule)(nil),          // 7: SandboxNetworkRule
+	(*SandboxNetworkDomainRules)(nil),   // 8: SandboxNetworkDomainRules
+	(*SandboxNetworkEgressConfig)(nil),  // 9: SandboxNetworkEgressConfig
+	(*SandboxNetworkIngressConfig)(nil), // 10: SandboxNetworkIngressConfig
+	(*SandboxCreateRequest)(nil),        // 11: SandboxCreateRequest
+	(*SandboxCreateResponse)(nil),       // 12: SandboxCreateResponse
+	(*SandboxUpdateRequest)(nil),        // 13: SandboxUpdateRequest
+	(*SandboxDeleteRequest)(nil),        // 14: SandboxDeleteRequest
+	(*SandboxPauseRequest)(nil),         // 15: SandboxPauseRequest
+	(*SchedulingMetadata)(nil),          // 16: SchedulingMetadata
+	(*SandboxPauseResponse)(nil),        // 17: SandboxPauseResponse
+	(*SandboxCheckpointRequest)(nil),    // 18: SandboxCheckpointRequest
+	(*SandboxCheckpointResponse)(nil),   // 19: SandboxCheckpointResponse
+	(*RunningSandbox)(nil),              // 20: RunningSandbox
+	(*SandboxListResponse)(nil),         // 21: SandboxListResponse
+	nil,                                 // 22: SandboxConfig.EnvVarsEntry
+	nil,                                 // 23: SandboxConfig.MetadataEntry
+	nil,                                 // 24: SandboxIam.TokensEntry
+	nil,                                 // 25: SandboxNetworkTransform.HeadersEntry
+	nil,                                 // 26: SandboxNetworkEgressConfig.RulesEntry
+	nil,                                 // 27: SandboxCheckpointRequest.MetadataEntry
+	(*timestamppb.Timestamp)(nil),       // 28: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),               // 29: google.protobuf.Empty
 }
 var file_orchestrator_proto_depIdxs = []int32{
-	24, // 0: SandboxConfig.env_vars:type_name -> SandboxConfig.EnvVarsEntry
-	25, // 1: SandboxConfig.metadata:type_name -> SandboxConfig.MetadataEntry
+	22, // 0: SandboxConfig.env_vars:type_name -> SandboxConfig.EnvVarsEntry
+	23, // 1: SandboxConfig.metadata:type_name -> SandboxConfig.MetadataEntry
 	5,  // 2: SandboxConfig.network:type_name -> SandboxNetworkConfig
 	4,  // 3: SandboxConfig.volumeMounts:type_name -> SandboxVolumeMount
 	3,  // 4: SandboxConfig.auto_resume:type_name -> SandboxAutoResumeConfig
 	1,  // 5: SandboxConfig.iam:type_name -> SandboxIam
-	26, // 6: SandboxIam.tokens:type_name -> SandboxIam.TokensEntry
+	24, // 6: SandboxIam.tokens:type_name -> SandboxIam.TokensEntry
 	9,  // 7: SandboxNetworkConfig.egress:type_name -> SandboxNetworkEgressConfig
 	10, // 8: SandboxNetworkConfig.ingress:type_name -> SandboxNetworkIngressConfig
-	27, // 9: SandboxNetworkTransform.headers:type_name -> SandboxNetworkTransform.HeadersEntry
+	25, // 9: SandboxNetworkTransform.headers:type_name -> SandboxNetworkTransform.HeadersEntry
 	6,  // 10: SandboxNetworkRule.transform:type_name -> SandboxNetworkTransform
 	7,  // 11: SandboxNetworkDomainRules.rules:type_name -> SandboxNetworkRule
-	28, // 12: SandboxNetworkEgressConfig.rules:type_name -> SandboxNetworkEgressConfig.RulesEntry
+	26, // 12: SandboxNetworkEgressConfig.rules:type_name -> SandboxNetworkEgressConfig.RulesEntry
 	0,  // 13: SandboxCreateRequest.sandbox:type_name -> SandboxConfig
-	30, // 14: SandboxCreateRequest.start_time:type_name -> google.protobuf.Timestamp
-	30, // 15: SandboxCreateRequest.end_time:type_name -> google.protobuf.Timestamp
+	28, // 14: SandboxCreateRequest.start_time:type_name -> google.protobuf.Timestamp
+	28, // 15: SandboxCreateRequest.end_time:type_name -> google.protobuf.Timestamp
 	16, // 16: SandboxCreateResponse.scheduling_metadata:type_name -> SchedulingMetadata
-	30, // 17: SandboxUpdateRequest.end_time:type_name -> google.protobuf.Timestamp
+	28, // 17: SandboxUpdateRequest.end_time:type_name -> google.protobuf.Timestamp
 	9,  // 18: SandboxUpdateRequest.egress:type_name -> SandboxNetworkEgressConfig
 	16, // 19: SandboxPauseResponse.scheduling_metadata:type_name -> SchedulingMetadata
-	29, // 20: SandboxCheckpointRequest.metadata:type_name -> SandboxCheckpointRequest.MetadataEntry
+	27, // 20: SandboxCheckpointRequest.metadata:type_name -> SandboxCheckpointRequest.MetadataEntry
 	16, // 21: SandboxCheckpointResponse.scheduling_metadata:type_name -> SchedulingMetadata
 	0,  // 22: RunningSandbox.config:type_name -> SandboxConfig
-	30, // 23: RunningSandbox.start_time:type_name -> google.protobuf.Timestamp
-	30, // 24: RunningSandbox.end_time:type_name -> google.protobuf.Timestamp
+	28, // 23: RunningSandbox.start_time:type_name -> google.protobuf.Timestamp
+	28, // 24: RunningSandbox.end_time:type_name -> google.protobuf.Timestamp
 	20, // 25: SandboxListResponse.sandboxes:type_name -> RunningSandbox
-	30, // 26: CachedBuildInfo.expiration_time:type_name -> google.protobuf.Timestamp
-	22, // 27: SandboxListCachedBuildsResponse.builds:type_name -> CachedBuildInfo
-	2,  // 28: SandboxIam.TokensEntry.value:type_name -> SandboxIamToken
-	8,  // 29: SandboxNetworkEgressConfig.RulesEntry.value:type_name -> SandboxNetworkDomainRules
-	11, // 30: SandboxService.Create:input_type -> SandboxCreateRequest
-	13, // 31: SandboxService.Update:input_type -> SandboxUpdateRequest
-	31, // 32: SandboxService.List:input_type -> google.protobuf.Empty
-	14, // 33: SandboxService.Delete:input_type -> SandboxDeleteRequest
-	15, // 34: SandboxService.Pause:input_type -> SandboxPauseRequest
-	18, // 35: SandboxService.Checkpoint:input_type -> SandboxCheckpointRequest
-	31, // 36: SandboxService.ListCachedBuilds:input_type -> google.protobuf.Empty
-	12, // 37: SandboxService.Create:output_type -> SandboxCreateResponse
-	31, // 38: SandboxService.Update:output_type -> google.protobuf.Empty
-	21, // 39: SandboxService.List:output_type -> SandboxListResponse
-	31, // 40: SandboxService.Delete:output_type -> google.protobuf.Empty
-	17, // 41: SandboxService.Pause:output_type -> SandboxPauseResponse
-	19, // 42: SandboxService.Checkpoint:output_type -> SandboxCheckpointResponse
-	23, // 43: SandboxService.ListCachedBuilds:output_type -> SandboxListCachedBuildsResponse
-	37, // [37:44] is the sub-list for method output_type
-	30, // [30:37] is the sub-list for method input_type
-	30, // [30:30] is the sub-list for extension type_name
-	30, // [30:30] is the sub-list for extension extendee
-	0,  // [0:30] is the sub-list for field type_name
+	2,  // 26: SandboxIam.TokensEntry.value:type_name -> SandboxIamToken
+	8,  // 27: SandboxNetworkEgressConfig.RulesEntry.value:type_name -> SandboxNetworkDomainRules
+	11, // 28: SandboxService.Create:input_type -> SandboxCreateRequest
+	13, // 29: SandboxService.Update:input_type -> SandboxUpdateRequest
+	29, // 30: SandboxService.List:input_type -> google.protobuf.Empty
+	14, // 31: SandboxService.Delete:input_type -> SandboxDeleteRequest
+	15, // 32: SandboxService.Pause:input_type -> SandboxPauseRequest
+	18, // 33: SandboxService.Checkpoint:input_type -> SandboxCheckpointRequest
+	12, // 34: SandboxService.Create:output_type -> SandboxCreateResponse
+	29, // 35: SandboxService.Update:output_type -> google.protobuf.Empty
+	21, // 36: SandboxService.List:output_type -> SandboxListResponse
+	29, // 37: SandboxService.Delete:output_type -> google.protobuf.Empty
+	17, // 38: SandboxService.Pause:output_type -> SandboxPauseResponse
+	19, // 39: SandboxService.Checkpoint:output_type -> SandboxCheckpointResponse
+	34, // [34:40] is the sub-list for method output_type
+	28, // [28:34] is the sub-list for method input_type
+	28, // [28:28] is the sub-list for extension type_name
+	28, // [28:28] is the sub-list for extension extendee
+	0,  // [0:28] is the sub-list for field type_name
 }
 
 func init() { file_orchestrator_proto_init() }
@@ -2407,30 +2282,6 @@ func file_orchestrator_proto_init() {
 				return nil
 			}
 		}
-		file_orchestrator_proto_msgTypes[22].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CachedBuildInfo); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-		file_orchestrator_proto_msgTypes[23].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*SandboxListCachedBuildsResponse); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
 	}
 	file_orchestrator_proto_msgTypes[0].OneofWrappers = []interface{}{}
 	file_orchestrator_proto_msgTypes[5].OneofWrappers = []interface{}{}
@@ -2444,7 +2295,7 @@ func file_orchestrator_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_orchestrator_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   30,
+			NumMessages:   28,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
