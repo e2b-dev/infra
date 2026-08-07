@@ -30,13 +30,6 @@ func NormalizeGCSPath(path string) string {
 	return path
 }
 
-// ExtractBucketName extracts the bucket name from a GCS path.
-func ExtractBucketName(path string) string {
-	normalized := NormalizeGCSPath(path)
-
-	return strings.TrimPrefix(normalized, "gs://")
-}
-
 // TemplateSpec resolves the template storage destination from the -storage
 // flag value: "gs://bucket" (or "gs:bucket") addresses GCS, anything else is
 // a local directory. The flag is authoritative — no environment variables are

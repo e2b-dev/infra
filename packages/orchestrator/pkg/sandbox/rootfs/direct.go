@@ -169,11 +169,3 @@ func (o *DirectProvider) sync(ctx context.Context) error {
 
 	return flush(ctx, o.path)
 }
-
-type FileCtx struct {
-	*os.File
-}
-
-func (f *FileCtx) ReadAt(_ context.Context, p []byte, off int64) (int, error) {
-	return f.File.ReadAt(p, off)
-}

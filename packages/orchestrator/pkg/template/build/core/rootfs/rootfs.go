@@ -9,7 +9,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -98,21 +97,6 @@ type Rootfs struct {
 	artifactRegistry    artifactsregistry.ArtifactsRegistry
 	dockerhubRepository dockerhub.RemoteRepository
 	featureFlags        *featureflags.Client
-}
-
-type MultiWriter struct {
-	writers []io.Writer
-}
-
-func (mw *MultiWriter) Write(p []byte) (int, error) {
-	for _, writer := range mw.writers {
-		_, err := writer.Write(p)
-		if err != nil {
-			return 0, err
-		}
-	}
-
-	return len(p), nil
 }
 
 func New(
