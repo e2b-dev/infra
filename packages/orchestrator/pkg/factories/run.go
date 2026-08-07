@@ -159,7 +159,6 @@ func ensureDirs(c cfg.Config) error {
 		c.StorageConfig.SandboxCacheDir,
 		c.SandboxDir,
 		c.SharedChunkCacheDir,
-		c.StorageConfig.SnapshotCacheDir,
 		c.StorageConfig.TemplateCacheDir,
 		c.TemplatesDir,
 	} {

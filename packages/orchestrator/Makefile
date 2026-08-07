@@ -217,10 +217,6 @@ build-template: fetch-busybox
 	-firecracker $(FIRECRACKER_VERSION) \
 	-disk $(DISK_SIZE_MB)
 
-.PHONY: migrate
-migrate:
-	./scripts/upload-envs.sh /mnt/disks/fc-envs/v1 $(TEMPLATE_BUCKET_NAME)
-
 .PHONY: lint
 lint:
 	golangci-lint run --fix ./...

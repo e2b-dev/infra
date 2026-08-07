@@ -340,10 +340,10 @@ func locateEnvdSource(t *testing.T) string {
 
 func setupLocalDirs(t *testing.T, dataDir string) {
 	t.Helper()
-	for _, d := range []string{"kernels", "templates", "sandbox", "orchestrator", "snapshot-cache", "fc-versions", "build-cache"} {
+	for _, d := range []string{"kernels", "templates", "sandbox", "orchestrator", "fc-versions", "build-cache"} {
 		require.NoError(t, os.MkdirAll(filepath.Join(dataDir, d), 0o755))
 	}
-	for _, d := range []string{"build", "build-templates", "sandbox", "snapshot-cache", "template"} {
+	for _, d := range []string{"build", "build-templates", "sandbox", "template"} {
 		require.NoError(t, os.MkdirAll(filepath.Join(dataDir, "orchestrator", d), 0o755))
 	}
 }
@@ -367,7 +367,6 @@ func setupEnvVars(t *testing.T, dataDir, envdPath string) {
 		"LOCAL_BUILD_CACHE_STORAGE_BASE_PATH": abs(filepath.Join(dataDir, "build-cache")),
 		"ORCHESTRATOR_BASE_PATH":              abs(filepath.Join(dataDir, "orchestrator")),
 		"SANDBOX_DIR":                         abs(filepath.Join(dataDir, "sandbox")),
-		"SNAPSHOT_CACHE_DIR":                  abs(filepath.Join(dataDir, "snapshot-cache")),
 		"STORAGE_PROVIDER":                    "Local",
 		"USE_LOCAL_NAMESPACE_STORAGE":         "true",
 	}
