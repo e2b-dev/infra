@@ -5,11 +5,13 @@ package volumes
 import (
 	"context"
 	"fmt"
-	"os"
+	"net/http"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc/codes"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
@@ -23,16 +25,29 @@ func (s *Service) DeleteVolume(
 		span.End()
 	}()
 
-	fullPath, err := s.getVolumeRootPath(ctx, request.GetVolume())
+	vol := request.GetVolume()
+	volumeType := vol.GetVolumeType()
+
+	teamID, ok := pkg.TryParseUUID(vol.GetTeamId())
+	if !ok {
+		return nil, newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_INVALID_REQUEST, "invalid team ID %q", vol.GetTeamId()).Err()
+	}
+
+	volumeID, ok := pkg.TryParseUUID(vol.GetVolumeId())
+	if !ok {
+		return nil, newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_INVALID_REQUEST, "invalid volume ID %q", vol.GetVolumeId()).Err()
+	}
+
+	rootPath, err := s.builder.BuildVolumePath(volumeType, teamID, volumeID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
 
-	span.AddEvent("deleting directory", trace.WithAttributes(
-		attribute.String("path", fullPath),
+	span.AddEvent("deleting volume", trace.WithAttributes(
+		attribute.String("path", rootPath),
 	))
 
-	if err := os.RemoveAll(fullPath); err != nil {
+	if err := s.builder.DeleteVolume(ctx, volumeType, teamID, volumeID); err != nil {
 		return nil, fmt.Errorf("failed to delete volume: %w", err)
 	}
 
