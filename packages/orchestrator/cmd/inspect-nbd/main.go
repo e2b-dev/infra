@@ -8,6 +8,13 @@
 // /sys/block/nbdX/pid sentinel — which only exists for connected devices — and
 // prints a concise table of active slots.
 //
+// This is an operator debugging tool, not a service. It is not part of the
+// orchestrator Nomad job and is not uploaded to GCS. To use it on a sandbox
+// node, compile it locally and copy the binary:
+//
+//	GOOS=linux GOARCH=amd64 go build -o /tmp/inspect-nbd ./cmd/inspect-nbd
+//	scp /tmp/inspect-nbd <node>:/tmp/inspect-nbd
+//
 // Usage:
 //
 //	inspect-nbd [-json]
