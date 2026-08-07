@@ -170,10 +170,6 @@ func getSlotName(slotIdx int) string {
 	return fmt.Sprintf("ns-%s", slotIdxStr)
 }
 
-func NamespaceName(slotIdx int) string {
-	return getSlotName(slotIdx)
-}
-
 func SlotIndexFromNamespace(name string) (int, bool) {
 	idxStr, ok := strings.CutPrefix(name, "ns-")
 	if !ok || idxStr == "" {

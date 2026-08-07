@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -158,8 +159,8 @@ type testInfra struct {
 
 func (ti *testInfra) close(ctx context.Context) {
 	cleanCtx := context.WithoutCancel(ctx)
-	for i := len(ti.closers) - 1; i >= 0; i-- {
-		ti.closers[i](cleanCtx)
+	for _, closer := range slices.Backward(ti.closers) {
+		closer(cleanCtx)
 	}
 }
 
@@ -262,6 +263,15 @@ func checkPrerequisites(t *testing.T) {
 	if _, err := os.Stat("/dev/kvm"); err != nil {
 		t.Skip("/dev/kvm not available")
 	}
+
+	// Firecracker host assets, shipped with the orchestrator host image.
+	builderConfig, err := cfg.ParseBuilder()
+	require.NoError(t, err)
+
+	busybox := filepath.Join(builderConfig.HostBusyboxDir, builderConfig.BusyboxVersion, runtime.GOARCH, "busybox")
+	if _, err := os.Stat(busybox); err != nil {
+		t.Skipf("busybox binary %q not available; set HOST_BUSYBOX_DIR/BUSYBOX_VERSION", busybox)
+	}
 }
 
 // --- envd -------------------------------------------------------------------
@@ -308,14 +318,18 @@ func findOrBuildEnvd(t *testing.T) string {
 func locateEnvdSource(t *testing.T) string {
 	t.Helper()
 
-	// Walk up from the test directory to find packages/envd
 	wd, err := os.Getwd()
 	require.NoError(t, err)
 
+	// belt keeps envd at go/oss/envd, infra at packages/envd.
+	layouts := [][]string{{"go", "oss", "envd"}, {"packages", "envd"}}
+
 	for dir := wd; dir != "/"; dir = filepath.Dir(dir) {
-		candidate := filepath.Join(dir, "packages", "envd", "main.go")
-		if _, err := os.Stat(candidate); err == nil {
-			return filepath.Join(dir, "packages", "envd")
+		for _, layout := range layouts {
+			candidate := filepath.Join(append([]string{dir}, layout...)...)
+			if _, err := os.Stat(filepath.Join(candidate, "main.go")); err == nil {
+				return candidate
+			}
 		}
 	}
 
@@ -326,10 +340,10 @@ func locateEnvdSource(t *testing.T) string {
 
 func setupLocalDirs(t *testing.T, dataDir string) {
 	t.Helper()
-	for _, d := range []string{"kernels", "templates", "sandbox", "orchestrator", "snapshot-cache", "fc-versions", "build-cache"} {
+	for _, d := range []string{"kernels", "templates", "sandbox", "orchestrator", "fc-versions", "build-cache"} {
 		require.NoError(t, os.MkdirAll(filepath.Join(dataDir, d), 0o755))
 	}
-	for _, d := range []string{"build", "build-templates", "sandbox", "snapshot-cache", "template"} {
+	for _, d := range []string{"build", "build-templates", "sandbox", "template"} {
 		require.NoError(t, os.MkdirAll(filepath.Join(dataDir, "orchestrator", d), 0o755))
 	}
 }
@@ -353,7 +367,6 @@ func setupEnvVars(t *testing.T, dataDir, envdPath string) {
 		"LOCAL_BUILD_CACHE_STORAGE_BASE_PATH": abs(filepath.Join(dataDir, "build-cache")),
 		"ORCHESTRATOR_BASE_PATH":              abs(filepath.Join(dataDir, "orchestrator")),
 		"SANDBOX_DIR":                         abs(filepath.Join(dataDir, "sandbox")),
-		"SNAPSHOT_CACHE_DIR":                  abs(filepath.Join(dataDir, "snapshot-cache")),
 		"STORAGE_PROVIDER":                    "Local",
 		"USE_LOCAL_NAMESPACE_STORAGE":         "true",
 	}
@@ -368,7 +381,7 @@ func setupEnvVars(t *testing.T, dataDir, envdPath string) {
 func downloadKernel(t *testing.T, dataDir string) {
 	t.Helper()
 	dst := filepath.Join(dataDir, "kernels", featureflags.DefaultKernelVersion, artifact.KernelFileName)
-	url := fmt.Sprintf("https://storage.googleapis.com/e2b-prod-public-builds/kernels/%s/%s", featureflags.DefaultKernelVersion, artifact.KernelFileName)
+	url := fmt.Sprintf("https://storage.googleapis.com/e2b-artifact-binaries/kernels/%s/%s", featureflags.DefaultKernelVersion, artifact.KernelFileName)
 	downloadFile(t, url, dst, 0o644)
 }
 

@@ -51,7 +51,6 @@ func makePathsAbsolute(c *BuilderConfig) error {
 		&c.StorageConfig.SandboxCacheDir,
 		&c.SandboxDir,
 		&c.SharedChunkCacheDir,
-		&c.StorageConfig.SnapshotCacheDir,
 		&c.StorageConfig.TemplateCacheDir,
 		&c.TemplatesDir,
 	} {
@@ -84,7 +83,6 @@ type Config struct {
 	DisableStartupReclaim       bool              `env:"DISABLE_STARTUP_RECLAIM"`
 	ForceStop                   bool              `env:"FORCE_STOP"`
 	GRPCPort                    uint16            `env:"GRPC_PORT"                     envDefault:"5008"`
-	LaunchDarklyAPIKey          string            `env:"LAUNCH_DARKLY_API_KEY"`
 	LocalUploadBaseURL          string            `env:"LOCAL_UPLOAD_BASE_URL"`
 	NodeIP                      string            `env:"NODE_IP"                       envDefault:"localhost"`
 	NodeLabels                  []string          `env:"NODE_LABELS"                   envSeparator:","`

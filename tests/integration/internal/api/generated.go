@@ -634,9 +634,6 @@ type Node struct {
 
 // NodeDetail defines model for NodeDetail.
 type NodeDetail struct {
-	// CachedBuilds List of cached builds id on the node
-	CachedBuilds []string `json:"cachedBuilds"`
-
 	// ClusterID Identifier of the cluster
 	ClusterID string `json:"clusterID"`
 

@@ -335,7 +335,7 @@ func (o *Orchestrator) CreateSandbox(
 
 		clusterID := clusters.WithClusterFallback(team.ClusterID)
 		node = o.GetNode(clusterID, *sbxData.NodeID)
-		if node != nil && node.Status() != api.NodeStatusReady {
+		if node != nil && !node.CanAcceptNewRequests() {
 			node = nil
 		}
 	}

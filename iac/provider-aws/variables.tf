@@ -19,6 +19,12 @@ variable "environment" {
   type = string
 }
 
+variable "docker_reverse_proxy_enabled" {
+  type        = bool
+  default     = true
+  description = "Whether to create the docker-reverse-proxy ECR repository. The component is deprecated and no AWS Nomad job consumes this repository; set to false to stop creating it."
+}
+
 variable "redis_managed" {
   type    = bool
   default = false

@@ -53,11 +53,6 @@ jobs:
             test_path: ./...
             sudo: false
             runner: blacksmith-4vcpu-ubuntu-2404
-          - package: packages/docker-reverse-proxy
-            flag: unit-docker-reverse-proxy
-            test_path: ./...
-            sudo: false
-            runner: blacksmith-4vcpu-ubuntu-2404
           # envd mounts via bindfs (FUSE, no modprobe); this shard doubles as
           # the FUSE-on-Blacksmith canary — if it fails, pin it back to
           # infra-tests.
@@ -66,10 +61,13 @@ jobs:
             test_path: ./...
             sudo: true
             runner: blacksmith-4vcpu-ubuntu-2404
+          # The one shard whose code carries cross-goroutine ownership
+          # invariants (network slot pool, netns state) — race-checked.
           - package: packages/orchestrator
             flag: unit-orchestrator
             test_path: ./...
             sudo: true
+            race: true
             runner: infra-tests
           - package: packages/shared
             flag: unit-shared
@@ -87,6 +85,7 @@ jobs:
           package: ${{ matrix.package }}
           test-path: ${{ matrix.test_path }}
           sudo: ${{ matrix.sudo }}
+          race: ${{ matrix.race || false }}
 
       - name: Upload coverage to Codecov
         if: ${{ !cancelled() && env.CODECOV_TOKEN != '' &&

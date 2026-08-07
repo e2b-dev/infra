@@ -319,13 +319,13 @@ func setupEnv(from string, sandboxDir string, storageExplicit bool) error {
 		dataDir = from
 	}
 
-	for _, d := range []string{"kernels", "templates", "sandbox", "orchestrator", "snapshot-cache", "fc-versions", "envd"} {
+	for _, d := range []string{"kernels", "templates", "sandbox", "orchestrator", "fc-versions", "envd"} {
 		if err := os.MkdirAll(filepath.Join(dataDir, d), 0o755); err != nil {
 			return fmt.Errorf("mkdir %s: %w", d, err)
 		}
 	}
 
-	for _, d := range []string{"build", "build-templates", "sandbox", "snapshot-cache", "template"} {
+	for _, d := range []string{"build", "build-templates", "sandbox", "template"} {
 		if err := os.MkdirAll(filepath.Join(dataDir, "orchestrator", d), 0o755); err != nil {
 			return fmt.Errorf("mkdir orchestrator/%s: %w", d, err)
 		}
@@ -337,7 +337,6 @@ func setupEnv(from string, sandboxDir string, storageExplicit bool) error {
 		"HOST_ENVD_PATH":              abs(filepath.Join(dataDir, "envd", "envd")),
 		"HOST_KERNELS_DIR":            abs(filepath.Join(dataDir, "kernels")),
 		"ORCHESTRATOR_BASE_PATH":      abs(filepath.Join(dataDir, "orchestrator")),
-		"SNAPSHOT_CACHE_DIR":          abs(filepath.Join(dataDir, "snapshot-cache")),
 		"USE_LOCAL_NAMESPACE_STORAGE": "true",
 	}
 

@@ -8,8 +8,6 @@ import (
 
 const MaskRequestHostPortPlaceholder = "${PORT}"
 
-type DestinationContextKey struct{}
-
 // Destination contains information about where to route the request.
 type Destination struct {
 	Url         *url.URL

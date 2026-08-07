@@ -302,6 +302,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			// back a bricked sandbox. MarkRunning is deferred until markSandboxLive
 			// below, so the sandbox is not yet in the live registry — MarkStopping
 			// is a no-op here and stopSandboxAsync does the physical teardown.
+			sbx.SetStopReason(sandbox.StopReasonKilled)
 			s.sandboxFactory.Sandboxes.MarkStopping(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
 			s.stopSandboxAsync(context.WithoutCancel(ctx), sbx)
 
@@ -626,6 +627,8 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 
 	sbxlogger.E(sbx).Info(ctx, "Killing sandbox", zap.String("kill_reason", killReason))
 
+	sbx.SetStopReason(sandbox.StopReasonKilled)
+
 	// Check health metrics before stopping the sandbox
 	sbx.Checks.Healthcheck(ctx, true)
 
@@ -689,6 +692,20 @@ func recordSandboxKill(ctx context.Context, counter metric.Int64Counter, killRea
 	counter.Add(ctx, 1, metric.WithAttributes(attribute.String("kill_reason", killReason)))
 }
 
+// recordExecutionDuration samples how long one sandbox execution ran, labeled
+// by why it ended. An operation that fails after the guest has already stopped
+// — a pause whose snapshot fails — is still labeled by its intent; its failure
+// is counted by that operation's own metric.
+func (s *Server) recordExecutionDuration(ctx context.Context, sbx *sandbox.Sandbox) {
+	duration, ok := sbx.ExecutionDuration()
+	if !ok {
+		return
+	}
+
+	s.sandboxExecutionDuration.Record(ctx, duration.Milliseconds(),
+		metric.WithAttributes(attribute.String("stop_reason", string(sbx.GetStopReason()))))
+}
+
 func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest) (resp *orchestrator.SandboxPauseResponse, err error) {
 	ctx, childSpan := tracer.Start(ctx, "sandbox-pause")
 	defer childSpan.End()
@@ -745,6 +762,10 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	}
 
 	sbxlogger.E(sbx).Info(ctx, "Pausing sandbox")
+
+	// Set before the snapshot, not after it succeeds: snapshotting suspends the
+	// guest and can close the sandbox, which would read as a crash.
+	sbx.SetStopReason(sandbox.StopReasonPaused)
 
 	// Stop the old sandbox in background after we're done
 	defer s.stopSandboxAsync(context.WithoutCancel(ctx), sbx)
@@ -867,6 +888,9 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 	sbxlogger.E(sbx).Info(ctx, "Checkpointing sandbox")
 
+	// Set before the snapshot, as in Pause.
+	sbx.SetStopReason(sandbox.StopReasonCheckpointing)
+
 	// Checkpoint always takes a full memory snapshot; filesystem-only checkpoint
 	// (resume-in-place would need to reboot) is not supported yet.
 	// Checkpoint resumes a fresh sandbox from the new build immediately, so the
@@ -933,6 +957,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		// deferred until markSandboxLive below, so the sandbox is not yet in the
 		// live registry: MarkStopping is a no-op and stopSandboxAsync does the
 		// physical teardown.
+		resumedSbx.SetStopReason(sandbox.StopReasonKilled)
 		s.sandboxFactory.Sandboxes.MarkStopping(ctx, resumedSbx.Runtime.SandboxID, resumedSbx.LifecycleID)
 		s.stopSandboxAsync(context.WithoutCancel(ctx), resumedSbx)
 
@@ -973,6 +998,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
+			resumedSbx.SetStopReason(sandbox.StopReasonKilled)
 			s.sandboxFactory.Sandboxes.MarkStopping(ctx, resumedSbx.Runtime.SandboxID, resumedSbx.LifecycleID)
 			s.stopSandboxAsync(context.WithoutCancel(ctx), resumedSbx)
 
@@ -1214,6 +1240,17 @@ func (s *Server) setupSandboxLifecycle(ctx context.Context, sbx *sandbox.Sandbox
 		if waitErr != nil {
 			sbxlogger.I(sbx).Error(ctx, "failed to wait for sandbox, cleaning up", zap.Error(waitErr))
 		}
+
+		sbx.SetStoppedAt(time.Now())
+
+		// A guest that dies cleanly leaves no wait error, so the log above
+		// misses it.
+		if sbx.GetStopReason() == sandbox.StopReasonCrashed {
+			sbxlogger.I(sbx).Error(ctx, "sandbox crashed", zap.Error(waitErr))
+		}
+
+		// Every ending — kill, pause, checkpoint hand-off, crash — passes here.
+		s.recordExecutionDuration(ctx, sbx)
 
 		cleanupErr := sbx.Close(ctx)
 		if cleanupErr != nil {

@@ -7,7 +7,6 @@ use (
 	./packages/client-proxy
 	./packages/dashboard-api
 	./packages/db
-	./packages/docker-reverse-proxy
 	./packages/envd
 	./packages/local-dev
 	./packages/nomad-nodepool-apm

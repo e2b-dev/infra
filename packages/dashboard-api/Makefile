@@ -2,7 +2,10 @@ ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 PREFIX := $(strip $(subst ",,$(PREFIX)))
 
-expectedMigration := $(shell ./../../scripts/get-latest-migration.sh)
+# Read the latest migration from the sibling db package. The path is relative
+# to this package, not to the repository root, so it resolves both here and in
+# the published repository, where this package sits at packages/dashboard-api.
+expectedMigration := $(shell ls ../db/migrations | sed 's/_.*//' | sort | tail -n 1)
 
 ifeq ($(PROVIDER),aws)
 	IMAGE_REGISTRY := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(PREFIX)core/dashboard-api

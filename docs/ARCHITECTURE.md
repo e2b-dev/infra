@@ -34,10 +34,9 @@ flowchart TB
     subgraph clients["Clients"]
         SDK["SDK / CLI"]
         Browser["Browser / HTTP clients"]
-        Docker["docker push"]
     end
 
-    LB["Load balancer<br/>api.* | *.domain wildcard | docker.*"]
+    LB["Load balancer<br/>api.* | *.domain wildcard"]
 
     VC["volume-content API (belt)<br/>api.&lt;domain&gt;"]
 
@@ -45,7 +44,6 @@ flowchart TB
         API["API<br/>REST :80, gRPC :5009/:5109"]
         DashAPI["dashboard-api :3010"]
         CP["client-proxy<br/>:3002"]
-        DRP["docker-reverse-proxy :5000"]
     end
 
     subgraph datastores["State"]
@@ -69,7 +67,6 @@ flowchart TB
 
     SDK -->|REST| LB --> API
     Browser -->|"port-sandboxid.domain"| LB --> CP
-    Docker --> LB --> DRP
     API -.->|"mint content token + domain"| SDK
     SDK -->|"volume content (token-authed)<br/>api.&lt;BYOC or default domain&gt;"| VC
     API -->|"gRPC Create/Delete/Pause"| ORCH
@@ -95,7 +92,6 @@ flowchart TB
 | Client proxy | `packages/client-proxy` | API nodes | Edge router: sandbox URL → correct node |
 | Envd | `packages/envd` | inside every VM | In-VM agent: process/filesystem API for SDKs |
 | Dashboard API | `packages/dashboard-api` | API nodes | Backend for the web dashboard (teams, builds, admin) |
-| Docker reverse proxy | `packages/docker-reverse-proxy` | API nodes | Registry auth gateway for pushing template images |
 
 Supporting packages: `packages/shared` (protos, telemetry, storage clients, feature flags),
 `packages/auth` (authentication library), `packages/db` (Postgres migrations + sqlc queries),
@@ -230,12 +226,6 @@ the sweep that would find those keys reads `users_teams`, so a removal has to na
 project that ever built one pins its team row — and releasing it needs the API service's
 orchestrator connections, which this service does not have. Projects are not deleted from control
 planes today.
-
-### Docker reverse proxy (`packages/docker-reverse-proxy`)
-
-A Docker Registry v2 auth gateway (port 5000). Users `docker push` template base images with E2B
-credentials; the proxy validates them, swaps in real registry credentials, and rewrites paths
-into the cloud artifact registry (`/v2/e2b/custom-envs/<templateID>` → project registry).
 
 ## Data stores
 
@@ -378,17 +368,12 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     autonumber
-    participant C as SDK / docker push
-    participant DRP as docker-reverse-proxy
+    participant C as SDK
     participant API as API
     participant TM as template-manager (build node)
     participant FC as Firecracker build VMs
     participant OS as Object storage
 
-    opt custom base image
-        C->>DRP: docker push (E2B token)
-        DRP->>DRP: swap credentials, rewrite path → artifact registry
-    end
     C->>API: POST /v3/templates (register build: cpu, ram) → Postgres env_builds
     C->>API: POST /v2/templates/{id}/builds/{buildID} (recipe: steps, start/ready cmd)
     API->>TM: gRPC TemplateCreate(TemplateConfig)
@@ -414,13 +399,13 @@ cluster. Nomad job specs live in `iac/modules/job-*/jobs/*.hcl`.
 
 ```mermaid
 flowchart TB
-    LB["Cloud load balancer + TLS<br/>api.* → API | *.domain → client-proxy | docker.* → registry proxy"]
+    LB["Cloud load balancer + TLS<br/>api.* → API | *.domain → client-proxy"]
 
     subgraph servers["server pool (3 nodes)"]
         NS["Nomad + Consul servers (control plane)"]
     end
     subgraph apipool["api pool"]
-        AJ["api, dashboard-api, client-proxy,<br/>ingress (Traefik), docker-reverse-proxy,<br/>redis, loki, otel-collector, autoscaler"]
+        AJ["api, dashboard-api, client-proxy,<br/>ingress (Traefik),<br/>redis, loki, otel-collector, autoscaler"]
     end
     subgraph clientpool["default pool (autoscaled)"]
         OJ["orchestrator (system job, raw_exec)<br/>+ Firecracker sandboxes"]
@@ -461,7 +446,6 @@ packages/
   client-proxy/         Edge router for sandbox traffic
   envd/                 In-VM agent (bump pkg/version.go on behavior change!)
   dashboard-api/        Web-dashboard backend
-  docker-reverse-proxy/ Registry auth gateway for template images
   shared/               Protos, telemetry, storage clients, proxy engine, feature flags
   auth/                 AuthN library (API keys, JWT/OIDC) used by api + dashboard-api
   db/                   Postgres migrations (goose) + queries (sqlc)

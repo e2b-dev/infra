@@ -2,11 +2,13 @@ package tests
 
 import (
 	"database/sql"
+	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/pressly/goose/v3"
+	"github.com/pressly/goose/v3/database"
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
@@ -127,7 +129,9 @@ func TestDiskEntitlementsMigration(t *testing.T) {
 	require.Equal(t, int64(33000), maximum)
 }
 
-func TestTierMaxDiskSizeMigrationUpdatesExistingTiers(t *testing.T) { //nolint:paralleltest // Goose migration state is process-global.
+func TestTierMaxDiskSizeMigrationUpdatesExistingTiers(t *testing.T) {
+	t.Parallel()
+
 	db := testutils.SetupDatabase(t)
 	ctx := t.Context()
 
@@ -165,8 +169,17 @@ func TestTierMaxDiskSizeMigrationUpdatesExistingTiers(t *testing.T) { //nolint:p
 	err = sqlDB.QueryRowContext(ctx, customTierStateQuery).Scan(&customTierStateBefore)
 	require.NoError(t, err)
 
+	// A provider carrying its own store, so stepping the schema here does not
+	// depend on goose's package-level tracking-table global — which is what used
+	// to make this test unsafe to run alongside anything else.
 	migrationsDir := filepath.Join("..", "..", "migrations")
-	require.NoError(t, goose.DownToContext(ctx, sqlDB, migrationsDir, 20260723030000))
+	store, err := database.NewStore(goose.DialectPostgres, testutils.TrackingTable)
+	require.NoError(t, err)
+	migrations, err := goose.NewProvider("", sqlDB, os.DirFS(migrationsDir), goose.WithStore(store))
+	require.NoError(t, err)
+
+	_, err = migrations.DownTo(ctx, 20260723030000)
+	require.NoError(t, err)
 
 	var invalidPreviousMaximumCount int64
 	err = sqlDB.QueryRowContext(ctx, `
@@ -177,7 +190,8 @@ func TestTierMaxDiskSizeMigrationUpdatesExistingTiers(t *testing.T) { //nolint:p
 	require.NoError(t, err)
 	require.Zero(t, invalidPreviousMaximumCount)
 
-	require.NoError(t, goose.UpContext(ctx, sqlDB, migrationsDir))
+	_, err = migrations.Up(ctx)
+	require.NoError(t, err)
 
 	var invalidMaximumCount int64
 	err = sqlDB.QueryRowContext(ctx, `
@@ -196,5 +210,6 @@ func TestTierMaxDiskSizeMigrationUpdatesExistingTiers(t *testing.T) { //nolint:p
 	require.NoError(t, err)
 	require.Equal(t, customTierStateBefore, customTierStateAfter)
 
-	require.NoError(t, goose.UpContext(ctx, sqlDB, migrationsDir))
+	_, err = migrations.Up(ctx)
+	require.NoError(t, err)
 }

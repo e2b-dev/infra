@@ -21,6 +21,10 @@ inputs:
     description: "Run tests under sudo (needed by envd and orchestrator)"
     required: false
     default: "false"
+  race:
+    description: "Run with the race detector (roughly doubles runtime; raises the go test timeout to 40m)"
+    required: false
+    default: "false"
 
 runs:
   using: "composite"
@@ -96,13 +100,17 @@ runs:
       working-directory: ${{ inputs.package }}
       run: |
         trap 'sudo chown "$(id -u):$(id -g)" coverage.txt junit.xml 2>/dev/null || true' EXIT
+        RACE=""; TEST_TIMEOUT=20m
+        if [ "${{ inputs.race }}" = "true" ]; then RACE="-race"; TEST_TIMEOUT=40m; fi
         sudo -E env "PATH=$PATH" gotestsum --junitfile=junit.xml --format=standard-verbose \
-          -- -timeout 20m -coverprofile=coverage.txt -covermode=atomic ${{ inputs.test-path }}
+          -- -timeout $TEST_TIMEOUT $RACE -coverprofile=coverage.txt -covermode=atomic ${{ inputs.test-path }}
 
     - name: Run tests
       if: inputs.sudo != 'true'
       shell: bash
       working-directory: ${{ inputs.package }}
       run: |
+        RACE=""; TEST_TIMEOUT=20m
+        if [ "${{ inputs.race }}" = "true" ]; then RACE="-race"; TEST_TIMEOUT=40m; fi
         gotestsum --junitfile=junit.xml --format=standard-verbose \
-          -- -timeout 20m -coverprofile=coverage.txt -covermode=atomic ${{ inputs.test-path }}
+          -- -timeout $TEST_TIMEOUT $RACE -coverprofile=coverage.txt -covermode=atomic ${{ inputs.test-path }}

@@ -296,24 +296,6 @@ func ReplayJournal(ctx context.Context, rootfsPath string) (out string, err erro
 	return strings.TrimSpace(string(output)), nil
 }
 
-func ReadFile(ctx context.Context, rootfsPath string, filePath string) (string, error) {
-	_, statSpan := tracer.Start(ctx, "ext4-read-file")
-	defer statSpan.End()
-
-	_, err := os.Lstat(rootfsPath)
-	if err != nil {
-		return "2", fmt.Errorf("rootfs file does not exist: %w", err)
-	}
-
-	cmd := exec.CommandContext(ctx, "debugfs", "-R", fmt.Sprintf("cat \"%s\"", filePath), rootfsPath)
-	out, err := cmd.Output()
-	if err != nil {
-		return "2", fmt.Errorf("error reading file %s: %w", filePath, err)
-	}
-
-	return string(out), nil
-}
-
 func RemoveFile(ctx context.Context, rootfsPath string, filePath string) error {
 	_, statSpan := tracer.Start(ctx, "ext4-remove-file")
 	defer statSpan.End()

@@ -6,7 +6,10 @@ PREFIX := $(strip $(subst ",,$(PREFIX)))
 HOSTNAME := $(shell hostname 2> /dev/null || hostnamectl hostname 2> /dev/null)
 $(if $(HOSTNAME),,$(error Failed to determine hostname: both 'hostname' and 'hostnamectl' failed))
 
-expectedMigration := $(shell ./../../scripts/get-latest-migration.sh)
+# Read the latest migration from the sibling db package. The path is relative
+# to this package, not to the repository root, so it resolves both here and in
+# the published repository, where this package sits at packages/api.
+expectedMigration := $(shell ls ../db/migrations | sed 's/_.*//' | sort | tail -n 1)
 
 ifeq ($(PROVIDER),aws)
 	REGISTRY_PREFIX := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(PREFIX)core
