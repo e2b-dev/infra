@@ -250,17 +250,20 @@ func (s *setReadCount) apply(_ context.Context, o *options) error {
 
 var _ experiment = (*setReadCount)(nil)
 
-type setSkipCount struct {
-	skipCount int
-}
-
-func (s *setSkipCount) apply(_ context.Context, o *options) error {
-	o.skipCount = s.skipCount
-
-	return nil
-}
-
-var _ experiment = (*setSkipCount)(nil)
+// Commented out together with its toggle in the experiments map above;
+// uncomment both to re-enable.
+//
+// type setSkipCount struct {
+// 	skipCount int
+// }
+//
+// func (s *setSkipCount) apply(_ context.Context, o *options) error {
+// 	o.skipCount = s.skipCount
+//
+// 	return nil
+// }
+//
+// var _ experiment = (*setSkipCount)(nil)
 
 type setAllowRepeatReads struct {
 	allowRepeatReads bool
@@ -274,51 +277,57 @@ func (s *setAllowRepeatReads) apply(_ context.Context, o *options) error {
 
 var _ experiment = (*setAllowRepeatReads)(nil)
 
-type skipReads struct {
-	skipCount     int
-	sleepDuration time.Duration
-}
+// Commented out together with its "cache warmup" toggle in the experiments
+// map above; uncomment both to re-enable.
+//
+// type skipReads struct {
+// 	skipCount     int
+// 	sleepDuration time.Duration
+// }
+//
+// var _ experiment = (*skipReads)(nil)
+//
+// func (s skipReads) apply(_ context.Context, p *options) error {
+// 	p.readMiddleware = append(p.readMiddleware, s.middleware)
+//
+// 	return nil
+// }
+//
+// func (s skipReads) middleware(fn readMethod) readMethod {
+// 	return func(ctx context.Context, info readInfo) (time.Duration, error) {
+// 		for range s.skipCount {
+// 			_, err := fn(ctx, info)
+// 			if err != nil {
+// 				return 0, fmt.Errorf("failed to make uncached gcs read: %w", err)
+// 			}
+// 		}
+//
+// 		if s.sleepDuration > 0 {
+// 			time.Sleep(s.sleepDuration)
+// 		}
+//
+// 		return fn(ctx, info)
+// 	}
+// }
 
-var _ experiment = (*skipReads)(nil)
-
-func (s skipReads) apply(_ context.Context, p *options) error {
-	p.readMiddleware = append(p.readMiddleware, s.middleware)
-
-	return nil
-}
-
-func (s skipReads) middleware(fn readMethod) readMethod {
-	return func(ctx context.Context, info readInfo) (time.Duration, error) {
-		for range s.skipCount {
-			_, err := fn(ctx, info)
-			if err != nil {
-				return 0, fmt.Errorf("failed to make uncached gcs read: %w", err)
-			}
-		}
-
-		if s.sleepDuration > 0 {
-			time.Sleep(s.sleepDuration)
-		}
-
-		return fn(ctx, info)
-	}
-}
-
-type sharedBuffer struct {
-	buffer []byte
-}
-
-var _ experiment = (*sharedBuffer)(nil)
-
-func (s *sharedBuffer) apply(_ context.Context, o *options) error {
-	s.buffer = make([]byte, o.chunkSize)
-
-	o.makeBuffer = func() []byte {
-		return s.buffer
-	}
-
-	return nil
-}
+// Commented out together with its "shared buffer" toggle in the experiments
+// map above; uncomment both to re-enable.
+//
+// type sharedBuffer struct {
+// 	buffer []byte
+// }
+//
+// var _ experiment = (*sharedBuffer)(nil)
+//
+// func (s *sharedBuffer) apply(_ context.Context, o *options) error {
+// 	s.buffer = make([]byte, o.chunkSize)
+//
+// 	o.makeBuffer = func() []byte {
+// 		return s.buffer
+// 	}
+//
+// 	return nil
+// }
 
 type alwaysNewBuffer struct{}
 

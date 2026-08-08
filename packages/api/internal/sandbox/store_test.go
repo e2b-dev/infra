@@ -41,7 +41,6 @@ func newTestStorage(t *testing.T) Storage {
 type CallbackTracker struct {
 	mu            sync.Mutex
 	calls         map[string][]Sandbox
-	creationMeta  map[string][]CreationMetadata
 	expectedCalls int
 	actualCalls   atomic.Int32
 	done          chan struct{}
@@ -51,7 +50,6 @@ type CallbackTracker struct {
 func NewCallbackTracker(expectedCalls int) *CallbackTracker {
 	return &CallbackTracker{
 		calls:         make(map[string][]Sandbox),
-		creationMeta:  make(map[string][]CreationMetadata),
 		expectedCalls: expectedCalls,
 		done:          make(chan struct{}),
 	}
@@ -72,12 +70,11 @@ func (ct *CallbackTracker) Track(name string) InsertCallback {
 	}
 }
 
-// TrackCreation returns a CreationCallback that tracks invocations and per-call CreationMetadata.
+// TrackCreation returns a CreationCallback that tracks invocations.
 func (ct *CallbackTracker) TrackCreation(name string) CreationCallback {
-	return func(_ context.Context, sbx Sandbox, meta CreationMetadata) {
+	return func(_ context.Context, sbx Sandbox, _ CreationMetadata) {
 		ct.mu.Lock()
 		ct.calls[name] = append(ct.calls[name], sbx)
-		ct.creationMeta[name] = append(ct.creationMeta[name], meta)
 		ct.mu.Unlock()
 
 		if int(ct.actualCalls.Add(1)) >= ct.expectedCalls {
@@ -86,13 +83,6 @@ func (ct *CallbackTracker) TrackCreation(name string) CreationCallback {
 			})
 		}
 	}
-}
-
-func (ct *CallbackTracker) GetCreationMeta(name string) []CreationMetadata {
-	ct.mu.Lock()
-	defer ct.mu.Unlock()
-
-	return append([]CreationMetadata{}, ct.creationMeta[name]...)
 }
 
 // WaitForCalls blocks until expected number of callbacks received or timeout
@@ -104,14 +94,6 @@ func (ct *CallbackTracker) WaitForCalls(t *testing.T, timeout time.Duration) {
 	case <-time.After(timeout):
 		t.Fatalf("timeout waiting for callbacks: expected %d, got %d", ct.expectedCalls, ct.actualCalls.Load())
 	}
-}
-
-// AssertCalled asserts that a callback was invoked at least once
-func (ct *CallbackTracker) AssertCalled(t *testing.T, name string) {
-	t.Helper()
-	ct.mu.Lock()
-	defer ct.mu.Unlock()
-	assert.NotEmpty(t, ct.calls[name], "expected callback %s to be called", name)
 }
 
 // AssertNotCalled asserts that a callback was never invoked
@@ -128,14 +110,6 @@ func (ct *CallbackTracker) AssertCallCount(t *testing.T, name string, count int)
 	ct.mu.Lock()
 	defer ct.mu.Unlock()
 	assert.Len(t, ct.calls[name], count, "expected callback %s to be called %d times", name, count)
-}
-
-// GetCalls returns all invocations for a callback
-func (ct *CallbackTracker) GetCalls(name string) []Sandbox {
-	ct.mu.Lock()
-	defer ct.mu.Unlock()
-
-	return append([]Sandbox{}, ct.calls[name]...)
 }
 
 // NoOpReservationStorage is a no-op implementation for testing

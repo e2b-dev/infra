@@ -27,20 +27,6 @@ type PaginatedSandbox struct {
 	PaginationTimestamp time.Time `json:"-"`
 }
 
-func ParseNextToken(token *string) (time.Time, string, error) {
-	if token != nil && *token != "" {
-		cursorTime, cursorID, err := ParseCursor(*token)
-		if err != nil {
-			return time.Time{}, "", err
-		}
-
-		return cursorTime, cursorID, nil
-	}
-
-	// default to all sandboxes (older than now) and always lexically after any sandbox ID (the sort is descending)
-	return time.Now(), MaxSandboxID, nil
-}
-
 func ParseMetadata(ctx context.Context, metadata *string) (*map[string]string, error) {
 	// Parse metadata filter (query) if provided
 	var metadataFilter *map[string]string
