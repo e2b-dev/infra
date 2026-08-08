@@ -112,7 +112,7 @@ func (s *Slot) CreateNetwork(ctx context.Context) (retErr error) {
 	// a full (idempotent) RemoveNetwork to reclaim them; deleting only the
 	// namespace would orphan those rules. On failure the anchor is kept and we
 	// abort so the slot is retried later instead of leaking.
-	available, err := isNamespaceAvailable(s.NamespaceID())
+	available, err := isNamespaceAvailable(NetNamespacesDir, s.NamespaceID())
 	if err != nil {
 		return fmt.Errorf("cannot check for stale namespace: %w", err)
 	}

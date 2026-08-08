@@ -95,7 +95,7 @@ type Slot struct {
 
 func NewSlot(key string, idx int, config Config, egressProxy EgressProxy) (*Slot, error) {
 	if idx < 1 || idx > vrtSlotsSize {
-		return nil, fmt.Errorf("slot index %d is out of range [1, %d)", idx, vrtSlotsSize)
+		return nil, fmt.Errorf("slot index %d is out of range [1, %d]", idx, vrtSlotsSize)
 	}
 
 	vEthIp, err := netutils.GetIndexedIP(vrtNetworkCIDR, idx*vrtAddressPerSlot)
