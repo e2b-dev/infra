@@ -43,8 +43,42 @@ var ConfigureScriptTemplate = tt.Must(tt.New("provisioning-finish-script").Parse
 // already refreshes the store per family; this step only has to merge CAs that
 // later build layers dropped in, which is a Debian/Alpine convention anyway.
 const packCertBundleCmd = `set -e
+# Restore any package-owned directories under /etc/ssl/certs that exist in
+# dpkg's file database but are absent in this VM's tmpfs. They were originally
+# created by dpkg into a prior build-layer's tmpfs; finalize boots a fresh VM
+# and e2b-seed-certs re-seeds /etc/ssl/certs from ssl-certs.tar, which never
+# contained those subdirectories, so they silently vanish before this step.
+# The canonical case: ca-certificates-java ships /etc/ssl/certs/java/ and its
+# postinst writes cacerts there — if the directory is missing the trigger fails
+# with FileNotFoundException, update-ca-certificates swallows the error, and
+# the package is baked into the snapshot in half-configured (iF) state.
+if command -v dpkg-query >/dev/null 2>&1; then
+	dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 2>/dev/null \\
+		| awk '/^.i /{print $2}' \\
+		| while IFS= read -r pkg; do dpkg -L "$pkg" 2>/dev/null; done \\
+		| grep '^/etc/ssl/certs/' \\
+		| sort -u \\
+		| while IFS= read -r path; do
+			[ -e "$path" ] || mkdir -p "$path"
+		  done
+fi
+# Resolve any dpkg triggers still pending now that their required paths exist.
+if command -v dpkg >/dev/null 2>&1; then
+	dpkg --configure -a
+fi
 if command -v update-ca-certificates >/dev/null 2>&1; then
 	update-ca-certificates
+fi
+# Fail the build explicitly if any package is still half-configured (iF).
+# update-ca-certificates swallows hook failures, so without this check a
+# broken dpkg state would be silently baked into the snapshot and every
+# subsequent apt-get inside the sandbox would exit 100.
+if command -v dpkg >/dev/null 2>&1; then
+	broken=$(dpkg -l 2>/dev/null | awk '/^iF /{print $2}' | tr '\n' ' ')
+	if [ -n "$broken" ]; then
+		printf 'e2b cert bundle: broken dpkg packages after configure: %s\n' "$broken" >&2
+		exit 1
+	fi
 fi
 mkdir -p /usr/local/share/e2b
 tar -C /etc/ssl/certs -chf /usr/local/share/e2b/ssl-certs.tar .

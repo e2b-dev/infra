@@ -18,9 +18,13 @@
 if ! mountpoint -q /etc/ssl/certs; then
     mkdir -p /run/e2b/certs
     if [ -f /usr/local/share/e2b/ssl-certs.tar ]; then
+        # Seed the underlying rootfs directory first so package-owned subdirectories
+        # (e.g. /etc/ssl/certs/java/ from ca-certificates-java) that exist on the
+        # rootfs but are absent from the tar survive the fresh-VM boot. The tar
+        # overlay then takes precedence for any file present in both sources.
+        cp -aL /etc/ssl/certs/. /run/e2b/certs/ 2>/dev/null || true
         if ! tar -C /run/e2b/certs -xf /usr/local/share/e2b/ssl-certs.tar; then
-            echo "e2b-seed-certs: ssl-certs.tar extraction failed; seeding from the live cert dir instead" >&2
-            cp -aL /etc/ssl/certs/. /run/e2b/certs/
+            echo "e2b-seed-certs: ssl-certs.tar extraction failed; running with rootfs-only certs" >&2
         fi
     else
         # Only expected during the base-layer boot, before finalize packs the tar.
