@@ -357,9 +357,15 @@ func (o *Orchestrator) CreateSandbox(
 			o.maybeRemapResumeOriginNode(ctx, snapshotSandboxID, team, sbxData.NodeID, placed.WarmedNode)
 		}
 
+		clientMsg := "Failed to place sandbox"
+		var placeErr placement.FailedToPlaceSandboxError
+		if errors.As(err, &placeErr) {
+			clientMsg = fmt.Sprintf("Failed to place sandbox: %s", placeErr)
+		}
+
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,
-			ClientMsg: fmt.Sprintf("Failed to place sandbox: %s", err),
+			ClientMsg: clientMsg,
 			Err:       fmt.Errorf("failed to place sandbox: %w", err),
 		}
 	}
