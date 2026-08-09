@@ -9,6 +9,7 @@ import (
 	"io"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -114,6 +115,12 @@ func TestAdditionalOCILayers(t *testing.T) {
 		seedCerts := actualFiles["usr/local/bin/e2b-seed-certs"]
 		require.NotEmpty(t, seedCerts, "cert seeding script must be baked")
 		assert.Contains(t, actualFiles["etc/systemd/system/envd.service"], "ExecStartPre=/usr/local/bin/e2b-seed-certs")
+
+		// Ships verbatim into every guest boot; parse it the way the guest's sh will.
+		seedScript := filepath.Join(t.TempDir(), "e2b-seed-certs")
+		require.NoError(t, os.WriteFile(seedScript, []byte(seedCerts), 0o700))
+		shOut, shErr := exec.Command("sh", "-n", seedScript).CombinedOutput()
+		require.NoErrorf(t, shErr, "e2b-seed-certs is not valid sh:\n%s", shOut)
 
 		// Both init families run the same boot-time chrony source selector, and
 		// the file it writes is the only source chrony.conf gets — a PHC
