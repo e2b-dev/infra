@@ -357,6 +357,12 @@ func (o *Orchestrator) CreateSandbox(
 			o.maybeRemapResumeOriginNode(ctx, snapshotSandboxID, team, sbxData.NodeID, placed.WarmedNode)
 		}
 
+		logger.L().Error(ctx, "failed to place sandbox",
+			logger.WithSandboxID(sandboxID),
+			logger.WithTemplateID(sbxData.TemplateID),
+			zap.Error(err),
+		)
+
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,
 			ClientMsg: "Failed to place sandbox",
