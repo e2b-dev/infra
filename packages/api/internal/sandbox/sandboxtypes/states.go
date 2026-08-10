@@ -78,6 +78,18 @@ type RemoveOpts struct {
 	// snapshot); resuming it cold-boots from disk. Ignored unless Action is a
 	// pause. Default false = full memory snapshot.
 	FilesystemOnly bool
+
+	// ExpectExecutionID pins the removal to one incarnation of the sandbox.
+	// When set, StartRemoving fails with ErrExecutionMismatch if the stored
+	// record carries a different execution ID.
+	//
+	// For callers that decide from a snapshot taken earlier — a background
+	// scan, a queued batch — the sandbox ID alone is not a stable identity:
+	// the record can be removed and the ID reused by a resume before the
+	// removal runs, and the transition would then land on a live sandbox that
+	// was never in scope. Empty means "remove whatever is stored", which is
+	// correct for callers acting on a fresh read or on user intent.
+	ExpectExecutionID string
 }
 
 var AllowedTransitions = map[State]map[State]bool{

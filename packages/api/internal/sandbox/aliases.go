@@ -52,6 +52,7 @@ var (
 	ErrNotFound           = sandboxtypes.ErrNotFound
 	ErrEvictionInProgress = sandboxtypes.ErrEvictionInProgress
 	ErrEvictionNotNeeded  = sandboxtypes.ErrEvictionNotNeeded
+	ErrExecutionMismatch  = sandboxtypes.ErrExecutionMismatch
 
 	AllowedTransitions = sandboxtypes.AllowedTransitions
 
