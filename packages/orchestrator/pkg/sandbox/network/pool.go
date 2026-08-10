@@ -66,8 +66,6 @@ type Config struct {
 	NFSProxyPort       uint16 `env:"SANDBOX_NFS_PROXY_PORT"       envDefault:"5011"`
 	PortmapperPort     uint16 `env:"SANDBOX_PORTMAPPER_PORT"      envDefault:"5012"`
 
-	UseLocalNamespaceStorage bool `env:"USE_LOCAL_NAMESPACE_STORAGE"`
-
 	// Comma-separated CIDRs to allow through the predefined firewall deny list.
 	// These are allowed before the private-range deny rules, so they can
 	// reach hosts in the 10.0.0.0/8, 172.16.0.0/12, etc. blocks.

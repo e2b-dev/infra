@@ -158,7 +158,8 @@ Key mechanisms (all under `pkg/sandbox/`):
 - **Networking** (`network/`): each sandbox gets a slot — a network namespace with a veth pair
   and a tap device, unique host-side IP (from a /16), NAT, and per-slot nftables egress firewall
   (with SNI/Host-inspecting TCP firewall for domain allow/deny lists). Slots are pooled and
-  reused; slot allocation is coordinated through Consul KV.
+  reused; slot indexes are allocated locally against the node's netns state (leftover
+  namespaces from a previous run are torn down by startup reclaim).
 - **Sandbox proxy** (:5007, `pkg/proxy/`): reverse-proxies incoming traffic from client-proxy to
   the sandbox's slot IP and requested port, enforcing per-sandbox traffic access tokens.
 - Writes sandbox lifecycle **events** and cgroup **host stats** to ClickHouse; exports metrics via
@@ -242,7 +243,6 @@ planes today.
 | **Redis** | API, client-proxy, orchestrator | Ephemeral runtime state: running-sandbox store (source of truth), sandbox→node routing catalog, team/template/snapshot caches, rate limiting, P2P chunk peer registry |
 | **ClickHouse** | `packages/clickhouse` | Time-series/analytics: `metrics_gauge`/`metrics_sum` (written by the OTel collector), `sandbox_events`, `sandbox_host_stats` (written by orchestrator), team metrics, and optionally `sandbox_logs` during the log migration. Read by API and dashboard-api |
 | **Object storage** (GCS/S3/local, `packages/shared/pkg/storage`) | orchestrator, template-manager | Template & snapshot artifacts, keyed by build ID: `{buildID}/memfile`, `{buildID}/rootfs.ext4`, `{buildID}/snapfile`, `{buildID}/metadata.json` + `.header` index files |
-| **Consul KV** | orchestrator | Network slot allocation across restarts |
 
 A template and a paused-sandbox snapshot have the **same artifact shape** — a snapshot is just a
 new build whose memfile/rootfs are stored as diffs against the template it came from (diff chains

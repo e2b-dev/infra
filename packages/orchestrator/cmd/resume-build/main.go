@@ -337,7 +337,6 @@ func setupEnv(from string, sandboxDir string, storageExplicit bool) error {
 		"HOST_ENVD_PATH":              abs(filepath.Join(dataDir, "envd", "envd")),
 		"HOST_KERNELS_DIR":            abs(filepath.Join(dataDir, "kernels")),
 		"ORCHESTRATOR_BASE_PATH":      abs(filepath.Join(dataDir, "orchestrator")),
-		"USE_LOCAL_NAMESPACE_STORAGE": "true",
 	}
 
 	for k, v := range env {

@@ -689,9 +689,9 @@ func run(config cfg.Config, opts Options) (success bool) {
 		closers = append(closers, closer{"egress proxy", egressSetup.Close})
 	}
 
-	// Sandbox-runtime reclaim must run before newStorage below: reclaim deletes
-	// leaked ns-* from /run/netns, and NewStorageLocal snapshots the remaining
-	// namespaces as foreign at construction.
+	// Sandbox-runtime reclaim must run before NewStorageLocal below: reclaim
+	// deletes leaked ns-* from /run/netns, and NewStorageLocal snapshots the
+	// remaining namespaces as foreign at construction.
 	if usesSandboxRuntime && !config.DisableStartupReclaim {
 		startupreclaim.Run(ctx, startupreclaim.Config{
 			NetworkConfig: config.NetworkConfig,
@@ -714,7 +714,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	closers = append(closers, closer{"device pool", devicePool.Close})
 
 	// network pool
-	slotStorage, err := newStorage(ctx, nodeID, config.NetworkConfig, egressSetup.Proxy)
+	slotStorage, err := network.NewStorageLocal(ctx, config.NetworkConfig, egressSetup.Proxy)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create network pool", zap.Error(err))
 	}
@@ -1090,12 +1090,4 @@ func setupBuildStorage(ctx context.Context, limiter *limit.Limiter, orchConfig c
 	}
 
 	return provider, uploadHandler, nil
-}
-
-func newStorage(ctx context.Context, nodeID string, config network.Config, egressProxy network.EgressProxy) (network.Storage, error) {
-	if env.IsDevelopment() || config.UseLocalNamespaceStorage {
-		return network.NewStorageLocal(ctx, config, egressProxy)
-	}
-
-	return network.NewStorageKV(nodeID, config, egressProxy)
 }

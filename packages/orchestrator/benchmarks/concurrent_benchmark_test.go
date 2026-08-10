@@ -200,7 +200,6 @@ func BenchmarkConcurrentResume(b *testing.B) {
 	b.Setenv("ORCHESTRATOR_BASE_PATH", tempDir)
 	b.Setenv("SANDBOX_DIR", abs(sandboxDir))
 	b.Setenv("STORAGE_PROVIDER", "Local")
-	b.Setenv("USE_LOCAL_NAMESPACE_STORAGE", "true")
 
 	config, err := cfg.Parse()
 	require.NoError(b, err)

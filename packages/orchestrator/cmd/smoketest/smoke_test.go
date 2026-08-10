@@ -368,7 +368,6 @@ func setupEnvVars(t *testing.T, dataDir, envdPath string) {
 		"ORCHESTRATOR_BASE_PATH":              abs(filepath.Join(dataDir, "orchestrator")),
 		"SANDBOX_DIR":                         abs(filepath.Join(dataDir, "sandbox")),
 		"STORAGE_PROVIDER":                    "Local",
-		"USE_LOCAL_NAMESPACE_STORAGE":         "true",
 	}
 
 	for k, v := range vars {

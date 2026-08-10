@@ -170,7 +170,6 @@ func setupEnv(ctx context.Context, storagePath, sandboxDir, kernel, fc string, l
 			"FIRECRACKER_VERSIONS_DIR":    abs(filepath.Join(dataDir, "fc-versions")),
 			"HOST_KERNELS_DIR":            abs(filepath.Join(dataDir, "kernels")),
 			"ORCHESTRATOR_BASE_PATH":      abs(filepath.Join(dataDir, "orchestrator")),
-			"USE_LOCAL_NAMESPACE_STORAGE": "true",
 		}
 		for k, v := range env {
 			if os.Getenv(k) == "" {
