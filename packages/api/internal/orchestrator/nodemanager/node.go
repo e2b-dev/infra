@@ -43,6 +43,13 @@ type Node struct {
 	client *clusters.GRPCClient
 	status StatusInfo
 
+	// unreachableSince is the time of the first local observation of a full
+	// sync-cycle failure against this node, cleared by the next successful
+	// cycle. Deliberately separate from status: a node whose orchestrator
+	// answers the sync and self-reports Unhealthy is responsive, and must not
+	// count as unreachable.
+	unreachableSince time.Time
+
 	metrics   Metrics
 	metricsMu sync.RWMutex
 

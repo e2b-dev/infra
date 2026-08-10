@@ -2,6 +2,7 @@ package nodemanager
 
 import (
 	"context"
+	"errors"
 	"math/rand"
 	"sync/atomic"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
@@ -25,6 +27,53 @@ type TestNode = Node
 // mockInfoClient implements infogrpc.InfoServiceClient
 type mockInfoClient struct {
 	infogrpc.InfoServiceClient
+}
+
+// ServiceInfo is a mock implementation that answers as a healthy orchestrator.
+func (n *mockInfoClient) ServiceInfo(_ context.Context, _ *emptypb.Empty, _ ...grpc.CallOption) (*infogrpc.ServiceInfoResponse, error) {
+	return &infogrpc.ServiceInfoResponse{
+		NodeId:        "mock-node",
+		ServiceId:     "mock-instance",
+		ServiceStatus: infogrpc.ServiceInfoStatus_Healthy,
+	}, nil
+}
+
+// mockSandboxClientMalformedList answers List successfully with a payload the
+// API cannot decode. This is how a live node fails a sync without ever failing
+// to respond: the RPC succeeds and GetSandboxes rejects the contents.
+type mockSandboxClientMalformedList struct {
+	orchestrator.SandboxServiceClient
+}
+
+func (n *mockSandboxClientMalformedList) List(_ context.Context, _ *emptypb.Empty, _ ...grpc.CallOption) (*orchestrator.SandboxListResponse, error) {
+	return &orchestrator.SandboxListResponse{
+		Sandboxes: []*orchestrator.RunningSandbox{{Config: nil}},
+	}, nil
+}
+
+// WithMalformedSandboxList makes the node answer every RPC but return a sandbox
+// list the API cannot decode.
+func WithMalformedSandboxList() TestOptions {
+	return func(node *TestNode) {
+		node.client.Sandbox = &mockSandboxClientMalformedList{}
+	}
+}
+
+// mockInfoClientSilent never answers, standing in for a node this replica
+// genuinely cannot reach.
+type mockInfoClientSilent struct {
+	infogrpc.InfoServiceClient
+}
+
+func (n *mockInfoClientSilent) ServiceInfo(_ context.Context, _ *emptypb.Empty, _ ...grpc.CallOption) (*infogrpc.ServiceInfoResponse, error) {
+	return nil, errors.New("unreachable")
+}
+
+// WithSilentInfoClient makes every ServiceInfo call fail.
+func WithSilentInfoClient() TestOptions {
+	return func(node *TestNode) {
+		node.client.Info = &mockInfoClientSilent{}
+	}
 }
 
 // mockSandboxClient implements orchestrator.SandboxServiceClient
