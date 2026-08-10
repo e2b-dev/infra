@@ -18,6 +18,6 @@ import (
 // Someone has to choose between a gateway to those teardown routes, moving the
 // operation there, and asynchronous reconciliation. Until then, control planes
 // do not delete projects.
-func (s *APIStore) ManagementDeleteProject(c *gin.Context, _ api.TeamID) {
+func (s *APIStore) ManagementDeleteProject(c *gin.Context, _ api.ProjectID) {
 	sendNotImplemented(c)
 }

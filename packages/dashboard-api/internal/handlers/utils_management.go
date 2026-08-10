@@ -21,23 +21,22 @@ func sendNotImplemented(c *gin.Context) {
 	})
 }
 
-// sendMembershipError maps a membership change's failure onto the contract's
-// status codes. Shared, so the caller's retry behaviour cannot depend on which
-// route it used.
-//
-// An unknown project is 404 on every verb, deletes included. The caller reads
-// that as convergence when deleting and as divergence otherwise, so answering
-// uniformly gives it both without this side guessing which applies.
-func (s *APIStore) sendMembershipError(c *gin.Context, err error, operation string, attrs ...attribute.KeyValue) {
+func (s *APIStore) sendProjectMemberError(c *gin.Context, err error, attrs ...attribute.KeyValue) {
 	ctx := c.Request.Context()
 
-	if errors.Is(err, management.ErrProjectNotFound) {
-		telemetry.ReportErrorByCode(ctx, http.StatusNotFound, operation, err, attrs...)
+	switch {
+	case errors.Is(err, management.ErrProjectNotFound):
+		telemetry.ReportErrorByCode(ctx, http.StatusNotFound, "apply project member failed", err, attrs...)
 		s.sendAPIStoreError(c, http.StatusNotFound, "Project not found")
-
-		return
+	case errors.Is(err, management.ErrInvalidProjectMember),
+		errors.Is(err, management.ErrDuplicateProjectIdentity):
+		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, "apply project member failed", err, attrs...)
+		s.sendAPIStoreError(c, http.StatusBadRequest, "Invalid project member")
+	case errors.Is(err, management.ErrProjectIdentityOwnedByUser):
+		telemetry.ReportErrorByCode(ctx, http.StatusConflict, "apply project member failed", err, attrs...)
+		s.sendAPIStoreError(c, http.StatusConflict, "Identity is linked to another user")
+	default:
+		telemetry.ReportCriticalError(ctx, "apply project member failed", err, attrs...)
+		s.sendAPIStoreError(c, http.StatusInternalServerError, "Error applying project member")
 	}
-
-	telemetry.ReportCriticalError(ctx, operation, err, attrs...)
-	s.sendAPIStoreError(c, http.StatusInternalServerError, "Error applying membership change")
 }

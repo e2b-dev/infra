@@ -16,9 +16,9 @@ import (
 
 // ManagementUpsertProject creates or reconciles a project from a
 // caller-supplied id, answering 201 or 200 to say which happened.
-func (s *APIStore) ManagementUpsertProject(c *gin.Context, teamID api.TeamID) {
+func (s *APIStore) ManagementUpsertProject(c *gin.Context, projectID api.ProjectID) {
 	ctx := c.Request.Context()
-	attrs := []attribute.KeyValue{telemetry.WithTeamID(teamID.String())}
+	attrs := []attribute.KeyValue{telemetry.WithTeamID(projectID.String())}
 	telemetry.SetAttributes(ctx, attrs...)
 
 	body, err := ginutils.ParseBody[api.ManagementProjectUpsertRequest](ctx, c)
@@ -31,7 +31,7 @@ func (s *APIStore) ManagementUpsertProject(c *gin.Context, teamID api.TeamID) {
 	}
 
 	stored, created, err := s.managementService.UpsertProject(ctx, management.Project{
-		ID:    teamID,
+		ID:    projectID,
 		Name:  body.Name,
 		Slug:  body.Slug,
 		Email: body.Email,

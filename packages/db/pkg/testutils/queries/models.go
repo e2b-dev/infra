@@ -171,6 +171,15 @@ type ProjectLimit struct {
 	UpdatedAt                time.Time
 }
 
+type ProjectionProjectMember struct {
+	ProjectID uuid.UUID
+	UserID    uuid.UUID
+	Revision  int64
+	Present   bool
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 type Snapshot struct {
 	CreatedAt           pgtype.Timestamptz
 	EnvID               string

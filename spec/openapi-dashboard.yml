@@ -103,6 +103,22 @@ components:
       schema:
         type: string
         format: uuid
+    projectID:
+      name: projectID
+      in: path
+      required: true
+      description: Identifier of the project.
+      schema:
+        type: string
+        format: uuid
+    userID:
+      name: userID
+      in: path
+      required: true
+      description: Identifier of the user.
+      schema:
+        type: string
+        format: uuid
     userId:
       name: userId
       in: path
@@ -1250,37 +1266,34 @@ components:
               type: string
               format: uuid
 
-    ManagementMemberUpsertRequest:
+    ManagementProjectMemberIdentity:
       type: object
+      required: [issuer, subject]
       properties:
-        added_by:
+        issuer:
           type: string
-          format: uuid
+          minLength: 1
+          maxLength: 2048
+        subject:
+          type: string
+          minLength: 1
+          maxLength: 2048
 
-    ManagementMemberBatchEntry:
+    ManagementProjectMemberApplyRequest:
       type: object
-      required:
-        - user_id
-        - present
+      required: [revision, present]
       properties:
-        user_id:
-          type: string
-          format: uuid
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
         present:
           type: boolean
-          description: >-
-            Whether the user should be a member after this call. Presence is
-            stated rather than implied by inclusion, so one request carries
-            both additions and removals and the caller never has to order them.
-
-    ManagementMemberBatchRequest:
-      type: array
-      description: >-
-        Desired membership for the listed users, ignoring everyone unlisted.
-        Entries are independent, so applying them in any order converges.
-      items:
-        $ref: "#/components/schemas/ManagementMemberBatchEntry"
-      maxItems: 1024
+        identities:
+          type: array
+          maxItems: 16
+          items:
+            $ref: "#/components/schemas/ManagementProjectMemberIdentity"
 
     ManagementProjectLimits:
       type: object
@@ -2053,9 +2066,9 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /v1/management/projects/{teamID}:
+  /v1/management/projects/{projectID}:
     parameters:
-      - $ref: "#/components/parameters/teamID"
+      - $ref: "#/components/parameters/projectID"
     put:
       operationId: managementUpsertProject
       summary: Create or reconcile a project (v1).
@@ -2115,64 +2128,16 @@ paths:
         "501":
           $ref: "#/components/responses/501"
 
-  /v1/management/projects/{teamID}/members/{userId}:
+  /v1/management/projects/{projectID}/members/{userID}:
     parameters:
-      - $ref: "#/components/parameters/teamID"
-      - $ref: "#/components/parameters/userId"
+      - $ref: "#/components/parameters/projectID"
+      - $ref: "#/components/parameters/userID"
     put:
-      operationId: managementUpsertProjectMember
-      summary: Reconcile an opaque user UUID as a project member (v1).
-      tags: [control-plane-management]
-      security:
-        - AdminJWTAuth: []
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ManagementMemberUpsertRequest"
-      responses:
-        "204":
-          description: Membership is present.
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "404":
-          $ref: "#/components/responses/404"
-        "500":
-          $ref: "#/components/responses/500"
-        "501":
-          $ref: "#/components/responses/501"
-    delete:
-      operationId: managementDeleteProjectMember
-      summary: Remove a project member (v1).
-      tags: [control-plane-management]
-      security:
-        - AdminJWTAuth: []
-      responses:
-        "204":
-          description: Membership is absent.
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "404":
-          $ref: "#/components/responses/404"
-        "500":
-          $ref: "#/components/responses/500"
-        "501":
-          $ref: "#/components/responses/501"
-
-  /v1/management/projects/{teamID}/members/batch:
-    parameters:
-      - $ref: "#/components/parameters/teamID"
-    post:
-      operationId: managementBatchSyncProjectMembers
-      summary: Reconcile many project memberships in one call (v1).
+      operationId: managementApplyProjectMember
+      summary: Apply one versioned project member projection (v1).
       description: >-
-        The bulk path behind group and directory fan-outs, where the per-member
-        routes would cost one request each. Callers chunk larger sets.
+        Applies the newest desired presence for one project member. An older
+        or duplicate revision is accepted without changing target state.
       tags: [control-plane-management]
       security:
         - AdminJWTAuth: []
@@ -2181,24 +2146,44 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ManagementMemberBatchRequest"
+              $ref: "#/components/schemas/ManagementProjectMemberApplyRequest"
       responses:
         "204":
-          description: Every listed membership matches the request.
+          description: Membership projection is applied or already superseded.
         "400":
           $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
         "404":
           $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
         "500":
           $ref: "#/components/responses/500"
-        "501":
-          $ref: "#/components/responses/501"
 
-  /v1/management/projects/{teamID}/limits:
+  /v1/management/users/{userID}/access-tokens:
     parameters:
-      - $ref: "#/components/parameters/teamID"
+      - $ref: "#/components/parameters/userID"
+    delete:
+      operationId: managementPurgeUserAccessTokens
+      summary: Revoke a deleted User's access tokens (v1).
+      description: >-
+        Removes every access token for a deleted User while retaining their
+        projected User and identity records.
+      tags: [control-plane-management]
+      security:
+        - AdminJWTAuth: []
+      responses:
+        "204":
+          description: User access tokens are absent.
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /v1/management/projects/{projectID}/limits:
+    parameters:
+      - $ref: "#/components/parameters/projectID"
     put:
       operationId: managementUpsertProjectLimits
       summary: Reconcile effective limits for a project (v1).
@@ -2220,27 +2205,6 @@ paths:
           $ref: "#/components/responses/401"
         "404":
           $ref: "#/components/responses/404"
-        "500":
-          $ref: "#/components/responses/500"
-        "501":
-          $ref: "#/components/responses/501"
-
-  /v1/management/users/{userId}:
-    parameters:
-      - $ref: "#/components/parameters/userId"
-    delete:
-      operationId: managementPurgeUser
-      summary: Purge shard-local membership and access-token state for an opaque user UUID (v1).
-      tags: [control-plane-management]
-      security:
-        - AdminJWTAuth: []
-      responses:
-        "204":
-          description: User-owned shard state is absent.
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
         "500":
           $ref: "#/components/responses/500"
         "501":

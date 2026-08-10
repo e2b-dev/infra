@@ -105,6 +105,18 @@ func TestSandboxRecordDoesNotExposeApiKeyAuth(t *testing.T) {
 	require.False(t, securityIncludesScheme(operation.Security, "ApiKeyAuth"), "sandbox recording must stay out of API-key auth")
 }
 
+func TestProjectMemberApplyRequestIsBounded(t *testing.T) {
+	t.Parallel()
+
+	swagger, err := GetSwagger()
+	require.NoError(t, err)
+
+	request := swagger.Components.Schemas["ManagementProjectMemberApplyRequest"].Value
+	identities := request.Properties["identities"].Value
+	require.NotNil(t, identities.MaxItems)
+	require.EqualValues(t, 16, *identities.MaxItems)
+}
+
 func operationForRoute(t *testing.T, swagger *openapi3.T, method string, path string) *openapi3.Operation {
 	t.Helper()
 

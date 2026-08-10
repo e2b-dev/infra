@@ -13,51 +13,29 @@ import (
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 )
 
-// The batch caller in belt's workspace-api is hand-written rather than
-// generated from this spec, because it predates the route existing. Nothing
-// therefore keeps the two in step: a rename here still compiles on both sides
-// and fails only against a live cluster, as a 400 or a silently ignored field.
-//
-// This pins the wire shape that caller sends — the literal below is the JSON
-// it produces — against the type generated from the spec.
-func TestBatchMemberRequestMatchesTheShapeCallersSend(t *testing.T) {
+func TestProjectMemberApplyRequestMatchesTheProjectionShape(t *testing.T) {
 	t.Parallel()
 
-	present := uuid.New()
-	absent := uuid.New()
+	body := `{"revision":4,"present":true,"identities":[{"issuer":"https://issuer.test","subject":"subject"}]}`
 
-	body := `[{"user_id":"` + present.String() + `","present":true},` +
-		`{"user_id":"` + absent.String() + `","present":false}]`
-
-	var decoded api.ManagementMemberBatchRequest
+	var decoded api.ManagementProjectMemberApplyRequest
 	if err := json.Unmarshal([]byte(body), &decoded); err != nil {
 		t.Fatalf("decoding the payload callers send: %v", err)
 	}
 
-	want := api.ManagementMemberBatchRequest{
-		{UserId: present, Present: true},
-		{UserId: absent, Present: false},
+	want := api.ManagementProjectMemberApplyRequest{
+		Revision: 4,
+		Present:  true,
+		Identities: &[]api.ManagementProjectMemberIdentity{{
+			Issuer:  "https://issuer.test",
+			Subject: "subject",
+		}},
 	}
-
-	if len(decoded) != len(want) {
-		t.Fatalf("decoded %d entries, want %d", len(decoded), len(want))
-	}
-	for i, entry := range decoded {
-		if entry != want[i] {
-			t.Errorf("entry %d = %+v, want %+v", i, entry, want[i])
-		}
+	if decoded.Revision != want.Revision || decoded.Present != want.Present || decoded.Identities == nil || (*decoded.Identities)[0] != (*want.Identities)[0] {
+		t.Errorf("decoded %+v, want %+v", decoded, want)
 	}
 }
 
-// project_type is gone from the contract. It named the caller's plan
-// vocabulary, which this side never had a column for or an opinion about: the
-// tier is assigned once at creation from a local default, and the limits that
-// actually matter arrive absolute through upsertProjectLimits.
-//
-// Removing it is safe to ship ahead of the callers. Nothing declares
-// additionalProperties: false, so a caller still sending the field has it
-// ignored rather than rejected — the break is at their next codegen, not at
-// runtime.
 func TestProjectUpsertIgnoresARetiredProjectType(t *testing.T) {
 	t.Parallel()
 
@@ -74,17 +52,13 @@ func TestProjectUpsertIgnoresARetiredProjectType(t *testing.T) {
 	}
 }
 
-// Every declared operation has to reach its own handler. Only another
-// repository's generated client exercises this surface, so a route registered
-// against the wrong path fails first in an integration nobody runs here.
-//
-// The batch route is why this is a table: it sits beside /members/{userId},
-// exactly where a router reads "batch" as a user id and dispatches wrongly.
 func TestEveryManagementRouteReachesItsHandler(t *testing.T) {
 	t.Parallel()
 
-	teamID, userID := uuid.New().String(), uuid.New().String()
-	project := "/v1/management/projects/" + teamID
+	projectID := uuid.New().String()
+	userID := uuid.New().String()
+	project := "/v1/management/projects/" + projectID
+	user := "/v1/management/users/" + userID
 
 	for _, tt := range []struct {
 		operation string
@@ -94,11 +68,9 @@ func TestEveryManagementRouteReachesItsHandler(t *testing.T) {
 	}{
 		{"upsertProject", http.MethodPut, project, `{"name":"a","slug":"a","project_type":"base_v1"}`},
 		{"deleteProject", http.MethodDelete, project, ""},
-		{"upsertMember", http.MethodPut, project + "/members/" + userID, `{}`},
-		{"deleteMember", http.MethodDelete, project + "/members/" + userID, ""},
-		{"batchMembers", http.MethodPost, project + "/members/batch", `[]`},
+		{"applyProjectMember", http.MethodPut, project + "/members/" + userID, `{"revision":1,"present":false}`},
+		{"purgeUserAccessTokens", http.MethodDelete, user + "/access-tokens", ""},
 		{"upsertLimits", http.MethodPut, project + "/limits", `{}`},
-		{"purgeUser", http.MethodDelete, "/v1/management/users/" + userID, ""},
 	} {
 		t.Run(tt.operation, func(t *testing.T) {
 			t.Parallel()
@@ -125,8 +97,6 @@ func TestEveryManagementRouteReachesItsHandler(t *testing.T) {
 	}
 }
 
-// routeRecorder reports which operation ran. Embedding the generated interface
-// leaves the rest nil: reaching one panics, which is the failure under test.
 type routeRecorder struct {
 	api.ServerInterface
 
@@ -138,30 +108,22 @@ func (r *routeRecorder) report(c *gin.Context, operation string) {
 	c.Status(http.StatusNoContent)
 }
 
-func (r *routeRecorder) ManagementUpsertProject(c *gin.Context, _ api.TeamID) {
+func (r *routeRecorder) ManagementUpsertProject(c *gin.Context, _ api.ProjectID) {
 	r.report(c, "upsertProject")
 }
 
-func (r *routeRecorder) ManagementDeleteProject(c *gin.Context, _ api.TeamID) {
+func (r *routeRecorder) ManagementDeleteProject(c *gin.Context, _ api.ProjectID) {
 	r.report(c, "deleteProject")
 }
 
-func (r *routeRecorder) ManagementUpsertProjectMember(c *gin.Context, _ api.TeamID, _ api.UserId) {
-	r.report(c, "upsertMember")
+func (r *routeRecorder) ManagementApplyProjectMember(c *gin.Context, _ api.ProjectID, _ api.UserID) {
+	r.report(c, "applyProjectMember")
 }
 
-func (r *routeRecorder) ManagementDeleteProjectMember(c *gin.Context, _ api.TeamID, _ api.UserId) {
-	r.report(c, "deleteMember")
+func (r *routeRecorder) ManagementPurgeUserAccessTokens(c *gin.Context, _ api.UserID) {
+	r.report(c, "purgeUserAccessTokens")
 }
 
-func (r *routeRecorder) ManagementBatchSyncProjectMembers(c *gin.Context, _ api.TeamID) {
-	r.report(c, "batchMembers")
-}
-
-func (r *routeRecorder) ManagementUpsertProjectLimits(c *gin.Context, _ api.TeamID) {
+func (r *routeRecorder) ManagementUpsertProjectLimits(c *gin.Context, _ api.ProjectID) {
 	r.report(c, "upsertLimits")
-}
-
-func (r *routeRecorder) ManagementPurgeUser(c *gin.Context, _ api.UserId) {
-	r.report(c, "purgeUser")
 }

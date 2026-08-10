@@ -213,13 +213,20 @@ orchestrators.
 
 The `/v1/management` operations are the cluster's half of a contract the workspace residency owns:
 project upsert (a project is a `public.teams` row created from a caller-supplied UUID; the tier is
-assigned once at creation from a local default and no push moves it; a changed slug renames the project, and nothing else follows it), member sync (granular and
-batched, over opaque user UUIDs in `users_teams`),
-limit sync (into `project_limits`, which `team_limits` reads in preference to `tiers`), and user
-purge (memberships and access tokens; the `public.users` row survives). All are idempotent, because
-the caller is level-triggered and retries. Membership writes live in `internal/management` with
-their cache evictions rather than in the handlers: auth caches a copy of the team per member, and
-the sweep that would find those keys reads `users_teams`, so a removal has to name them itself.
+assigned once at creation from a local default and no push moves it; a changed slug renames the project, and nothing else follows it), per-member projection,
+and limit sync (into `project_limits`, which `team_limits` reads in preference to `tiers`). All are
+idempotent, because the caller is level-triggered and retries. `PUT
+/v1/management/projects/{projectID}/members/{userID}` applies the desired presence for one user,
+gated by a monotonic per-project/user revision stored in `projection.project_members`; duplicate or
+older revisions succeed without changing target state. A present projection includes that User's
+OIDC issuer/subject identities. Every projected user has at least one identity, and an identity
+already owned by a different user returns 409. A revocation removes only that User's
+`users_teams` row; projected Users and identities are retained. Membership writes live in
+`internal/management` with their post-commit cache eviction rather than in the handlers: auth
+caches member authorization, so each accepted command invalidates that User's authorization for
+the Project after commit. `DELETE /v1/management/users/{userID}/access-tokens` separately
+removes every access token for a deleted User while retaining their projected User and identity
+records.
 
 `DELETE /v1/management/projects/{teamID}` is declared and answers 501. `envs`, `snapshots` and
 `volumes` reference `teams` with `ON DELETE NO ACTION` and templates are only soft-deleted, so a

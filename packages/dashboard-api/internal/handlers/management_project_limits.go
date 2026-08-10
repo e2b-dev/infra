@@ -26,9 +26,9 @@ import (
 // Idempotent, because the caller retries. A repeated push writes the same nine
 // values and touches updated_at, so a duplicate delivery is indistinguishable
 // from the first.
-func (s *APIStore) ManagementUpsertProjectLimits(c *gin.Context, teamID api.TeamID) {
+func (s *APIStore) ManagementUpsertProjectLimits(c *gin.Context, projectID api.ProjectID) {
 	ctx := c.Request.Context()
-	attrs := []attribute.KeyValue{telemetry.WithTeamID(teamID.String())}
+	attrs := []attribute.KeyValue{telemetry.WithTeamID(projectID.String())}
 
 	body, err := ginutils.ParseBody[api.ManagementProjectLimits](ctx, c)
 	if err != nil {
@@ -40,7 +40,7 @@ func (s *APIStore) ManagementUpsertProjectLimits(c *gin.Context, teamID api.Team
 	}
 
 	err = s.db.UpsertProjectLimits(ctx, queries.UpsertProjectLimitsParams{
-		TeamID:                   teamID,
+		TeamID:                   projectID,
 		MaxLengthHours:           int64(body.MaxSandboxLengthHours),
 		ConcurrentSandboxes:      int64(body.ConcurrentSandboxes),
 		ConcurrentTemplateBuilds: int64(body.ConcurrentTemplateBuilds),
@@ -78,9 +78,9 @@ func (s *APIStore) ManagementUpsertProjectLimits(c *gin.Context, teamID api.Team
 	// until the entry expires. Logged rather than returned: the row is already
 	// committed, and answering with an error would invite a retry that cannot
 	// improve on a stale cache.
-	if err := s.authService.InvalidateTeamCache(ctx, teamID); err != nil {
+	if err := s.authService.InvalidateTeamCache(ctx, projectID); err != nil {
 		logger.L().Error(ctx, "invalidating team cache after limits update",
-			logger.WithTeamID(teamID.String()), zap.Error(err))
+			logger.WithTeamID(projectID.String()), zap.Error(err))
 	}
 
 	c.Status(http.StatusNoContent)

@@ -11,80 +11,40 @@ import (
 	"github.com/google/uuid"
 )
 
-const syncTeamMembersAbsent = `-- name: SyncTeamMembersAbsent :many
+const deleteTeamMember = `-- name: DeleteTeamMember :exec
 DELETE FROM public.users_teams
 WHERE team_id = $1::uuid
-  AND user_id = ANY($2::uuid[])
-RETURNING user_id, is_default
+  AND user_id = $2::uuid
 `
 
-type SyncTeamMembersAbsentParams struct {
-	TeamID  uuid.UUID
-	UserIds []uuid.UUID
+type DeleteTeamMemberParams struct {
+	TeamID uuid.UUID
+	UserID uuid.UUID
 }
 
-type SyncTeamMembersAbsentRow struct {
-	UserID    uuid.UUID
-	IsDefault bool
-}
-
-// Returns what it removed, because afterwards the rows are gone — the same
-// reason InvalidateTeamCache cannot find them either.
-func (q *Queries) SyncTeamMembersAbsent(ctx context.Context, arg SyncTeamMembersAbsentParams) ([]SyncTeamMembersAbsentRow, error) {
-	rows, err := q.db.Query(ctx, syncTeamMembersAbsent, arg.TeamID, arg.UserIds)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []SyncTeamMembersAbsentRow
-	for rows.Next() {
-		var i SyncTeamMembersAbsentRow
-		if err := rows.Scan(&i.UserID, &i.IsDefault); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const syncTeamMembersPresent = `-- name: SyncTeamMembersPresent :exec
-INSERT INTO public.users_teams (user_id, team_id, is_default, added_by)
-SELECT
-    candidate,
-    $1::uuid,
-    false,
-    $2::uuid
-FROM unnest($3::uuid[]) AS candidate
-ON CONFLICT (team_id, user_id) DO NOTHING
-`
-
-type SyncTeamMembersPresentParams struct {
-	TeamID  uuid.UUID
-	AddedBy *uuid.UUID
-	UserIds []uuid.UUID
-}
-
-func (q *Queries) SyncTeamMembersPresent(ctx context.Context, arg SyncTeamMembersPresentParams) error {
-	_, err := q.db.Exec(ctx, syncTeamMembersPresent, arg.TeamID, arg.AddedBy, arg.UserIds)
+func (q *Queries) DeleteTeamMember(ctx context.Context, arg DeleteTeamMemberParams) error {
+	_, err := q.db.Exec(ctx, deleteTeamMember, arg.TeamID, arg.UserID)
 	return err
 }
 
-const teamExists = `-- name: TeamExists :one
-
-SELECT EXISTS (
-    SELECT 1 FROM public.teams WHERE id = $1::uuid
-)::boolean
+const upsertTeamMember = `-- name: UpsertTeamMember :exec
+INSERT INTO public.users_teams (user_id, team_id, is_default, added_by)
+VALUES (
+    $1::uuid,
+    $2::uuid,
+    false,
+    $3::uuid
+)
+ON CONFLICT (team_id, user_id) DO NOTHING
 `
 
-// Membership reconciliation for the control-plane management interface. Unlike
-// the dashboard's member routes these enforce no team-side rules: the caller
-// owns membership, and a rule here would make its pushes unrepeatable.
-func (q *Queries) TeamExists(ctx context.Context, teamID uuid.UUID) (bool, error) {
-	row := q.db.QueryRow(ctx, teamExists, teamID)
-	var column_1 bool
-	err := row.Scan(&column_1)
-	return column_1, err
+type UpsertTeamMemberParams struct {
+	UserID  uuid.UUID
+	TeamID  uuid.UUID
+	AddedBy *uuid.UUID
+}
+
+func (q *Queries) UpsertTeamMember(ctx context.Context, arg UpsertTeamMemberParams) error {
+	_, err := q.db.Exec(ctx, upsertTeamMember, arg.UserID, arg.TeamID, arg.AddedBy)
+	return err
 }
