@@ -2357,27 +2357,6 @@ func serveMemory(
 	return nil
 }
 
-func (s *Sandbox) WaitForExit(ctx context.Context) error {
-	ctx, span := tracer.Start(ctx, "sandbox-wait-for-exit")
-	defer span.End()
-
-	timeout := time.Until(s.GetEndAt())
-
-	select {
-	case <-time.After(timeout):
-		return errors.New("waiting for exit took too long")
-	case <-ctx.Done():
-		return nil
-	case <-s.exit.Done():
-		err := s.exit.Error()
-		if err == nil {
-			return nil
-		}
-
-		return fmt.Errorf("fc process exited prematurely: %w", err)
-	}
-}
-
 func (s *Sandbox) WaitForEnvd(
 	ctx context.Context,
 	startType StartType,
