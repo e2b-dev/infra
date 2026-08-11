@@ -53,6 +53,7 @@ var (
 	envdCollapseChunks            = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdCollapseChunks))
 	guestSyncDurationHistogram    = utils.Must(telemetry.GetHistogram(meter, telemetry.GuestSyncDurationHistogramName))
 	fsQuiescedPauseCounter        = utils.Must(telemetry.GetCounter(meter, telemetry.SandboxPauseFsQuiescedCounterName))
+	resumeWPModeCounter           = utils.Must(telemetry.GetCounter(meter, telemetry.SandboxResumeWPModeCounterName))
 
 	processMemoryDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotProcessMemoryDurationName))
 	processRootfsDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotProcessRootfsDurationName))
@@ -1247,6 +1248,17 @@ func (f *Factory) ResumeSandbox(
 	// use_sync_wp: FC's MemBackendConfig is deny_unknown_fields, so a mismatch
 	// fails the snapshot load loudly instead of silently downgrading.
 	useSyncWP := f.featureFlags.BoolFlag(ctx, featureflags.UseSyncWPFlag, sandboxLDContext(runtime, config))
+	// Throwaway resumes (skipLiveRegistration, e.g. the pause-resume prefetch
+	// harvest) promise "no per-sandbox metrics" and never pause, so counting
+	// them would inflate the wp_mode denominator with resumes that can never
+	// contribute wp_resolve or divergence samples.
+	if !ropts.skipLiveRegistration {
+		wpMode := "async"
+		if useSyncWP {
+			wpMode = "sync"
+		}
+		resumeWPModeCounter.Add(ctx, 1, metric.WithAttributes(attribute.String("mode", wpMode)))
+	}
 
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
 	// This is to prevent race condition of reporting unhealthy sandbox

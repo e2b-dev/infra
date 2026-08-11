@@ -387,6 +387,15 @@ func (s *Slot) UpdateInternet(ctx context.Context, egress *orchestrator.SandboxN
 	))
 	defer span.End()
 
+	// A slot without a firewall (NewSlot does not attach one) must fail
+	// cleanly, not nil-panic inside the netns closure. This is also load-
+	// bearing for tests: namespace names are ns-<idx> only, so a fixture
+	// slot's GetNS can unexpectedly SUCCEED when a parallel test binary has
+	// a real netns with the same index open.
+	if s.Firewall == nil {
+		return fmt.Errorf("no firewall attached to slot namespace '%s'", s.NamespaceID())
+	}
+
 	allowedCIDRs := egress.GetAllowedCidrs()
 	deniedCIDRs := egress.GetDeniedCidrs()
 	hasBYOP := egress.GetEgressProxyAddress() != ""

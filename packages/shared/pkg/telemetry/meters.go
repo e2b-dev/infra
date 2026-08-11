@@ -50,6 +50,15 @@ const (
 	// population for the offline envd upgrade built on top of this flag.
 	SandboxPauseFsQuiescedCounterName CounterType = "orchestrator.sandbox.pause.fs_quiesced"
 
+	// SandboxResumeWPModeCounterName counts sandbox resumes by the write-protect
+	// tracking mode the resume chose (mode=sync|async, the use-sync-wp flag
+	// decision). This is the denominator for every sync-WP burn-in signal:
+	// wp_resolve rates and dirty-divergence readings only come from mode=sync
+	// sandboxes, so without this counter the fleet's sync coverage — and
+	// whether an error rate is "all sync sandboxes" or "one loud one" — is
+	// invisible.
+	SandboxResumeWPModeCounterName CounterType = "orchestrator.sandbox.resume.wp_mode"
+
 	// OrchestratorEnvdUpgradeAttempts counts resume-time envd live-upgrade
 	// attempts, by result (success|delivery_failed|not_ready|panic) and
 	// from_version/to_version. success/total is the rollout success rate;
@@ -286,6 +295,7 @@ var counterDesc = map[CounterType]string{
 	OrchestratorSandboxKilledCounterName:        "Number of sandboxes killed, labeled by kill reason",
 	OrchestratorSnapshotUploadFailedCounterName: "Number of pause-snapshot uploads that never landed durably",
 	SandboxPauseFsQuiescedCounterName:           "Filesystem-only pauses by whether the rootfs was frozen (quiesced) vs sync fallback",
+	SandboxResumeWPModeCounterName:              "Sandbox resumes by write-protect tracking mode (sync|async)",
 	OrchestratorEnvdUpgradeAttempts:             "Resume-time envd live-upgrade attempts, by result and from/to version",
 	OrchestratorEnvdOfflineUpgradeAttempts:      "Cold-boot offline envd rootfs-swap attempts, by result and from/to version",
 	OrchestratorEnvdUpgradeGated:                "Resumes the envd-upgrade-target flag targeted but the min-version gate skipped",
@@ -326,6 +336,7 @@ var counterUnits = map[CounterType]string{
 	OrchestratorSandboxKilledCounterName:        "{sandbox}",
 	OrchestratorSnapshotUploadFailedCounterName: "{snapshot}",
 	SandboxPauseFsQuiescedCounterName:           "{snapshot}",
+	SandboxResumeWPModeCounterName:              "{resume}",
 	OrchestratorEnvdUpgradeAttempts:             "{attempt}",
 	OrchestratorEnvdOfflineUpgradeAttempts:      "{attempt}",
 	OrchestratorEnvdUpgradeGated:                "{sandbox}",

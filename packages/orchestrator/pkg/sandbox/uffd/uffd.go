@@ -14,7 +14,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/RoaringBitmap/roaring/v2"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
@@ -280,16 +279,18 @@ func (u *Uffd) DiffMetadata(ctx context.Context, f *fc.Process) (*header.DiffMet
 	//     tracker the dirty source promotes them on the WP resolve instead.
 	// Emitted only when sync-WP actually delivered faults this run: under
 	// WP_ASYNC the pagemap diverges from the tracker on every pause by
-	// design, and logging that fleet-wide would be pure noise — the burn-in
-	// this log exists for is the sync mode.
+	// design, and recording that fleet-wide would be pure noise — the burn-in
+	// this telemetry exists for is the sync mode.
 	if handler.WPFaultsResolved() > 0 {
-		trackerOnly := roaring.AndNot(faulted, diff.Dirty)
-		pagemapOnly := roaring.AndNot(diff.Dirty, faulted)
+		trackerOnly, pagemapOnly, pagemapDirty := divergenceCardinalities(faulted, diff.Dirty)
+		dirtyDivergencePages.Record(ctx, int64(trackerOnly), dirtyDivergenceAttrs["tracker_only"])
+		dirtyDivergencePages.Record(ctx, int64(pagemapOnly), dirtyDivergenceAttrs["pagemap_only"])
+		dirtyDivergencePages.Record(ctx, int64(pagemapDirty), dirtyDivergenceAttrs["pagemap_dirty"])
 		handler.Logger().Info(ctx, "dirty-source divergence (tracker vs pagemap)",
-			zap.Uint64("tracker_only_pages", trackerOnly.GetCardinality()),
-			zap.Uint64("pagemap_only_pages", pagemapOnly.GetCardinality()),
+			zap.Uint64("tracker_only_pages", trackerOnly),
+			zap.Uint64("pagemap_only_pages", pagemapOnly),
 			zap.Uint64("tracker_dirty_pages", faulted.GetCardinality()),
-			zap.Uint64("pagemap_dirty_pages", diff.Dirty.GetCardinality()))
+			zap.Uint64("pagemap_dirty_pages", pagemapDirty))
 	}
 
 	// Pages that were zero-installed and later written show up in diff.Dirty —
