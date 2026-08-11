@@ -85,7 +85,7 @@ jobs:
       # patterns; a '!' pattern would match every non-CHANGELOG file). So detect
       # docs-only changes (release-please PRs) separately and gate on it below.
       - name: Checkout for docs-only detection
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
