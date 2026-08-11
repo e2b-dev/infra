@@ -26,8 +26,7 @@ func TestCreateNetworkV2_FullLifecycle(t *testing.T) { //nolint:paralleltest // 
 	require.NoError(t, err)
 	defer observer.Close()
 
-	// Use high index to avoid conflicts with running orchestrator's namespaces
-	slot := makeTestSlot(t, 30001)
+	slot := makeTestSlot(t, reserveNSTestIdx(t))
 	sv2 := NewSlotV2(slot)
 
 	// Create network
@@ -65,7 +64,7 @@ func TestCreateNetworkV2_NoIptablesRules(t *testing.T) { //nolint:paralleltest /
 	require.NoError(t, err)
 	defer hf.Close()
 
-	slot := makeTestSlot(t, 30002)
+	slot := makeTestSlot(t, reserveNSTestIdx(t))
 	sv2 := NewSlotV2(slot)
 
 	err = CreateNetworkV2(ctx, slot, sv2, hf, nil)
@@ -98,7 +97,7 @@ func TestCreateNetworkV2_CleanTeardown(t *testing.T) { //nolint:paralleltest // 
 	observer, _ := NewVethObserver()
 	defer observer.Close()
 
-	slot := makeTestSlot(t, 30003)
+	slot := makeTestSlot(t, reserveNSTestIdx(t))
 	sv2 := NewSlotV2(slot)
 
 	err = CreateNetworkV2(ctx, slot, sv2, hf, observer)

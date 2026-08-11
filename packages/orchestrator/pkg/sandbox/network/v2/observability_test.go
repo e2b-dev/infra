@@ -3,6 +3,7 @@
 package v2
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,11 +11,14 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
-// createTestVeth brings up a real veth pair; Attach and ReadCounters resolve
-// the interface through netlink, so a name with no link behind it fails.
-func createTestVeth(t *testing.T, name string) {
+// createTestVeth brings up a real veth pair and returns its host-side name;
+// Attach and ReadCounters resolve the interface through netlink, so a name
+// with no link behind it fails. The name is unique per call so a concurrent
+// package, a repeat run, or a live orchestrator cannot collide with it.
+func createTestVeth(t *testing.T) string {
 	t.Helper()
 
+	name := fmt.Sprintf("vt-%d", reserveNSTestIdx(t))
 	link := &netlink.Veth{
 		LinkAttrs: netlink.LinkAttrs{Name: name},
 		PeerName:  name + "-peer",
@@ -24,46 +28,52 @@ func createTestVeth(t *testing.T, name string) {
 	t.Cleanup(func() {
 		_ = netlink.LinkDel(link)
 	})
+
+	return name
 }
 
-func TestVethObserver_AttachDetach(t *testing.T) { //nolint:paralleltest // creates the fixed-name host veth link "veth-1" shared across VethObserver tests
-	createTestVeth(t, "veth-1")
+func TestVethObserver_AttachDetach(t *testing.T) {
+	t.Parallel()
+
+	veth := createTestVeth(t)
 
 	obs, err := NewVethObserver()
 	require.NoError(t, err)
 	defer obs.Close()
 
 	// Attach
-	err = obs.Attach("veth-1")
+	err = obs.Attach(veth)
 	require.NoError(t, err)
 
 	// Double attach should fail
-	err = obs.Attach("veth-1")
+	err = obs.Attach(veth)
 	require.Error(t, err)
 
 	// Detach
-	err = obs.Detach("veth-1")
+	err = obs.Detach(veth)
 	require.NoError(t, err)
 
 	// Double detach is idempotent
-	err = obs.Detach("veth-1")
+	err = obs.Detach(veth)
 	assert.NoError(t, err)
 }
 
-func TestVethObserver_ReadCounters(t *testing.T) { //nolint:paralleltest // creates the fixed-name host veth link "veth-1" shared across VethObserver tests
-	createTestVeth(t, "veth-1")
+func TestVethObserver_ReadCounters(t *testing.T) {
+	t.Parallel()
+
+	veth := createTestVeth(t)
 
 	obs, err := NewVethObserver()
 	require.NoError(t, err)
 	defer obs.Close()
 
 	// Not attached → error
-	_, _, err = obs.ReadCounters("veth-1")
+	_, _, err = obs.ReadCounters(veth)
 	require.Error(t, err)
 
 	// Attach and read
-	require.NoError(t, obs.Attach("veth-1"))
-	packets, bytes, err := obs.ReadCounters("veth-1")
+	require.NoError(t, obs.Attach(veth))
+	packets, bytes, err := obs.ReadCounters(veth)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(0), packets)
 	assert.Equal(t, uint64(0), bytes)
@@ -74,25 +84,28 @@ func TestVethObserver_NilSafe(t *testing.T) {
 
 	var obs *VethObserver
 
-	assert.NoError(t, obs.Attach("veth-1"))
-	assert.NoError(t, obs.Detach("veth-1"))
+	// A nil observer returns before touching netlink, so the name need not exist.
+	assert.NoError(t, obs.Attach("vt-absent"))
+	assert.NoError(t, obs.Detach("vt-absent"))
 	assert.NoError(t, obs.Close())
 
-	p, b, err := obs.ReadCounters("veth-1")
+	p, b, err := obs.ReadCounters("vt-absent")
 	require.NoError(t, err)
 	assert.Equal(t, uint64(0), p)
 	assert.Equal(t, uint64(0), b)
 }
 
-func TestVethObserver_Close(t *testing.T) { //nolint:paralleltest // creates the fixed-name host veth links "veth-1"/"veth-2" shared across VethObserver tests
-	createTestVeth(t, "veth-1")
-	createTestVeth(t, "veth-2")
+func TestVethObserver_Close(t *testing.T) {
+	t.Parallel()
+
+	veth1 := createTestVeth(t)
+	veth2 := createTestVeth(t)
 
 	obs, err := NewVethObserver()
 	require.NoError(t, err)
 
-	require.NoError(t, obs.Attach("veth-1"))
-	require.NoError(t, obs.Attach("veth-2"))
+	require.NoError(t, obs.Attach(veth1))
+	require.NoError(t, obs.Attach(veth2))
 
 	err = obs.Close()
 	require.NoError(t, err)

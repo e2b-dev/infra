@@ -3,6 +3,7 @@
 package v2
 
 import (
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,6 +11,17 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
 )
+
+// Slot indices for tests that create real netns/veth state. The v1 package
+// reserves 30000+ for the same purpose and `go test ./...` runs the two
+// packages concurrently, so the ranges must not overlap.
+var nsTestIdx atomic.Int32
+
+func reserveNSTestIdx(t *testing.T) int {
+	t.Helper()
+
+	return 31000 + int(nsTestIdx.Add(1))
+}
 
 func makeTestSlot(t *testing.T, idx int) *network.Slot {
 	t.Helper()
