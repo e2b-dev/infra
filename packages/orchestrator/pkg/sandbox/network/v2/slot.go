@@ -25,17 +25,8 @@ type SlotV2 struct {
 	SandboxID      string
 	ExecutionID    string
 
-	// EgressProfileID links this slot to an EgressProfile for policy routing.
-	EgressProfileID string
-
-	// PublishProfileID links this slot to a PublishProfile (stub).
-	PublishProfileID string
-
 	// FwMark is the nftables/policy-routing mark for this slot's traffic.
 	FwMark uint32
-
-	// WgPeerIndex identifies the WireGuard peer for migration (0 = not set).
-	WgPeerIndex int
 }
 
 // NewSlotV2 wraps a base Slot with v2 metadata.
@@ -95,5 +86,5 @@ func (r *SlotV2Registry) Range(fn func(idx int, s *SlotV2) bool) {
 
 // String returns a debug-friendly representation.
 func (s *SlotV2) String() string {
-	return fmt.Sprintf("SlotV2{idx=%d, fwmark=0x%x, egress=%s}", s.Slot.Idx, s.FwMark, s.EgressProfileID)
+	return fmt.Sprintf("SlotV2{idx=%d, fwmark=0x%x}", s.Slot.Idx, s.FwMark)
 }

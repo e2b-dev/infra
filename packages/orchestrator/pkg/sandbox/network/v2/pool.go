@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -58,6 +59,13 @@ type V2Pool struct {
 	reusedSlots chan *network.Slot
 	done        chan struct{}
 	doneOnce    sync.Once
+
+	closeMu sync.RWMutex
+	closed  bool
+
+	// returnsWG tracks in-flight asynchronous slot returns; Close waits for
+	// it before draining the pool.
+	returnsWG sync.WaitGroup
 }
 
 // Compile-time check that V2Pool satisfies network.PoolInterface.
@@ -145,7 +153,9 @@ func (p *V2Pool) Populate(ctx context.Context) {
 	}
 }
 
-func (p *V2Pool) Get(ctx context.Context, netConfig *orchestrator.SandboxNetworkConfig) (*network.Slot, error) {
+// Get acquires a slot. The egress class is accepted for interface parity with
+// the v1 pool; v2 does not stamp egress DSCP.
+func (p *V2Pool) Get(ctx context.Context, netConfig *orchestrator.SandboxNetworkConfig, _ network.EgressClass) (*network.Slot, error) {
 	var slot *network.Slot
 
 	select {
@@ -171,48 +181,124 @@ func (p *V2Pool) Get(ctx context.Context, netConfig *orchestrator.SandboxNetwork
 	}
 
 	if err := slot.ConfigureInternet(ctx, netConfig); err != nil {
-		go func() {
-			if returnErr := p.Return(context.WithoutCancel(ctx), slot); returnErr != nil {
-				logger.L().Error(ctx, "failed to return v2 slot to pool", zap.Error(returnErr), zap.Int("slot_index", slot.Idx))
-			}
-		}()
+		// Never handed out, so nobody listens for the release notification.
+		if rerr := p.ReturnAsync(context.WithoutCancel(ctx), slot, func(context.Context, string) {}, 0); rerr != nil {
+			logger.L().Error(ctx, "failed to return v2 slot to pool", zap.Error(rerr), zap.Int("slot_index", slot.Idx))
+		}
+
 		return nil, fmt.Errorf("error setting v2 slot internet access: %w", err)
 	}
 
 	return slot, nil
 }
 
-func (p *V2Pool) Return(ctx context.Context, slot *network.Slot) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-p.done:
-		return network.ErrClosed
-	default:
+func (p *V2Pool) tryTrackReturn() bool {
+	p.closeMu.RLock()
+	defer p.closeMu.RUnlock()
+
+	if p.closed {
+		return false
 	}
 
-	if err := slot.ResetInternet(ctx); err != nil {
-		if cerr := p.cleanup(ctx, slot); cerr != nil {
-			return fmt.Errorf("reset internet: %w; cleanup: %w", err, cerr)
+	p.returnsWG.Add(1)
+
+	return true
+}
+
+// ReturnAsync recycles a slot in the background, logging errors instead of
+// returning them. Close waits for all in-flight returns before draining the
+// pool. If the pool is already closed the slot is cleaned up synchronously.
+func (p *V2Pool) ReturnAsync(ctx context.Context, slot *network.Slot, releasedFn network.ReleaseNotify, returnDelay time.Duration) error {
+	if !p.tryTrackReturn() {
+		return p.returnSlot(ctx, slot, releasedFn, returnDelay)
+	}
+
+	go func() {
+		defer p.returnsWG.Done()
+
+		err := p.returnSlot(ctx, slot, releasedFn, returnDelay)
+		switch {
+		case err == nil:
+		case errors.Is(err, network.ErrClosed), errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+			logger.L().Warn(ctx, "v2 network slot returned during pool shutdown", zap.Error(err), zap.Int("slot_index", slot.Idx))
+		default:
+			logger.L().Error(ctx, "failed to return v2 network slot to pool", zap.Error(err), zap.Int("slot_index", slot.Idx))
 		}
-		return fmt.Errorf("error resetting v2 slot internet access: %w", err)
+	}()
+
+	return nil
+}
+
+// returnSlot recycles a slot that was used by a sandbox. It waits returnDelay
+// before making the slot reusable to let inflight requests on the previous
+// sandbox drain.
+func (p *V2Pool) returnSlot(ctx context.Context, slot *network.Slot, releasedFn network.ReleaseNotify, returnDelay time.Duration) error {
+	notifyNetworkRelease := sync.OnceFunc(func() {
+		releasedFn(ctx, slot.HostIPString())
+	})
+	defer notifyNetworkRelease()
+
+	// If the pool is closed or the context is cancelled during the delay we
+	// still fall through and clean up the slot to avoid leaking it.
+	select {
+	case <-ctx.Done():
+		return p.cleanupWith(ctx, slot, ctx.Err())
+	case <-p.done:
+		return p.cleanupWith(ctx, slot, network.ErrClosed)
+	case <-time.After(returnDelay):
+	}
+
+	notifyNetworkRelease()
+
+	return p.recycle(ctx, slot)
+}
+
+func (p *V2Pool) recycle(ctx context.Context, slot *network.Slot) error {
+	if err := slot.ResetInternet(ctx); err != nil {
+		return p.cleanupWith(ctx, slot, fmt.Errorf("error resetting v2 slot internet access: %w", err))
+	}
+
+	reused, cause := p.tryReuse(ctx, slot)
+	if reused {
+		return nil
+	}
+
+	// cause is nil when the pool is simply full.
+	return p.cleanupWith(ctx, slot, cause)
+}
+
+// tryReuse attempts to push the slot into the reused pool. The RLock pairs
+// with Close's Lock so a send can never race the drain.
+func (p *V2Pool) tryReuse(ctx context.Context, slot *network.Slot) (reused bool, cause error) {
+	p.closeMu.RLock()
+	defer p.closeMu.RUnlock()
+
+	if p.closed {
+		return false, network.ErrClosed
 	}
 
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return false, ctx.Err()
 	case <-p.done:
-		return network.ErrClosed
+		return false, network.ErrClosed
 	case p.reusedSlots <- slot:
 		returnedSlotCounter.Add(ctx, 1)
 		reusableSlotsAvailableCounter.Add(ctx, 1)
+
+		return true, nil
 	default:
-		if err := p.cleanup(ctx, slot); err != nil {
-			return fmt.Errorf("failed to return v2 slot '%d': %w", slot.Idx, err)
-		}
+		return false, nil
+	}
+}
+
+// cleanupWith tears the slot down and attaches any cleanup error to cause.
+func (p *V2Pool) cleanupWith(ctx context.Context, slot *network.Slot, cause error) error {
+	if cerr := p.cleanup(ctx, slot); cerr != nil {
+		return errors.Join(cause, fmt.Errorf("cleanup v2 slot '%d': %w", slot.Idx, cerr))
 	}
 
-	return nil
+	return cause
 }
 
 func (p *V2Pool) cleanup(ctx context.Context, slot *network.Slot) error {
@@ -247,28 +333,42 @@ func (p *V2Pool) Close(ctx context.Context) error {
 		close(p.done)
 	})
 
+	p.closeMu.Lock()
+	p.closed = true
+	p.closeMu.Unlock()
+
+	// Wait for in-flight asynchronous returns: each either cleans its slot
+	// up itself or has already pushed it into reusedSlots, drained below.
+	p.returnsWG.Wait()
+
 	var errs []error
 
 	for slot := range p.newSlots {
+		newSlotsAvailableCounter.Add(ctx, -1)
+
 		if err := p.cleanup(ctx, slot); err != nil {
 			errs = append(errs, fmt.Errorf("failed to cleanup v2 slot '%d': %w", slot.Idx, err))
 		}
 	}
 
-	close(p.reusedSlots)
+drain:
+	for {
+		select {
+		case slot := <-p.reusedSlots:
+			reusableSlotsAvailableCounter.Add(ctx, -1)
 
-	for slot := range p.reusedSlots {
-		if err := p.cleanup(ctx, slot); err != nil {
-			errs = append(errs, fmt.Errorf("failed to cleanup v2 slot '%d': %w", slot.Idx, err))
+			if err := p.cleanup(ctx, slot); err != nil {
+				errs = append(errs, fmt.Errorf("failed to cleanup v2 slot '%d': %w", slot.Idx, err))
+			}
+		default:
+			break drain
 		}
 	}
 
-	// Close host firewall table
 	if err := p.hostFw.Close(); err != nil {
 		errs = append(errs, fmt.Errorf("failed to close host firewall: %w", err))
 	}
 
-	// Close eBPF observer
 	if err := p.observer.Close(); err != nil {
 		errs = append(errs, fmt.Errorf("failed to close observer: %w", err))
 	}

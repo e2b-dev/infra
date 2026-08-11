@@ -22,7 +22,7 @@ func makeTestSlot(t *testing.T, idx int) *network.Slot {
 		SandboxTCPFirewallTLSPort:      5017,
 		SandboxTCPFirewallOtherPort:    5018,
 	}
-	slot, err := network.NewSlot("test-key", idx, cfg)
+	slot, err := network.NewSlot("test-key", idx, cfg, network.NewNoopEgressProxy())
 	require.NoError(t, err)
 	return slot
 }
@@ -35,7 +35,6 @@ func TestSlotV2_Creation(t *testing.T) {
 	assert.Equal(t, slot, sv2.Slot)
 	assert.Equal(t, uint32(fwMarkBase+1), sv2.FwMark)
 	assert.Equal(t, "", sv2.SandboxID)
-	assert.Equal(t, "", sv2.EgressProfileID)
 }
 
 func TestSlotV2_FwMarkUniqueness(t *testing.T) {
@@ -58,12 +57,10 @@ func TestSlotV2_FwMarkForIndex(t *testing.T) {
 func TestSlotV2_String(t *testing.T) {
 	slot := makeTestSlot(t, 5)
 	sv2 := NewSlotV2(slot)
-	sv2.EgressProfileID = "test-profile"
 
 	s := sv2.String()
 	assert.Contains(t, s, "idx=5")
 	assert.Contains(t, s, "fwmark=0x205")
-	assert.Contains(t, s, "egress=test-profile")
 }
 
 func TestSlotV2Registry(t *testing.T) {

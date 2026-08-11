@@ -48,6 +48,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
+	networkv2 "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network/v2"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerclient"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/server"
@@ -718,12 +719,40 @@ func run(config cfg.Config, opts Options) (success bool) {
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create network pool", zap.Error(err))
 	}
-	networkPool := network.NewPool(network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, slotStorage, config.NetworkConfig)
-	startService("network pool", func() error {
-		networkPool.Populate(ctx)
+	var networkPool network.PoolInterface
+	if config.NetworkConfig.NetworkVersion == 2 {
+		logger.L().Info(ctx, "using v2 network pool (nftables)")
 
-		return nil
-	})
+		if err := networkv2.ValidateV2Prerequisites(); err != nil {
+			logger.L().Fatal(ctx, "v2 network prerequisites not met", zap.Error(err))
+		}
+
+		hostFw, hfErr := networkv2.NewHostFirewall(network.DefaultGateway(), config.NetworkConfig)
+		if hfErr != nil {
+			logger.L().Fatal(ctx, "failed to create v2 host firewall", zap.Error(hfErr))
+		}
+
+		observer, obsErr := networkv2.NewVethObserver()
+		if obsErr != nil {
+			logger.L().Fatal(ctx, "failed to create v2 veth observer", zap.Error(obsErr))
+		}
+
+		v2Pool := networkv2.NewV2Pool(slotStorage, config.NetworkConfig, hostFw, observer)
+		startService("network pool", func() error {
+			v2Pool.Populate(ctx)
+
+			return nil
+		})
+		networkPool = v2Pool
+	} else {
+		v1Pool := network.NewPool(network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, slotStorage, config.NetworkConfig)
+		startService("network pool", func() error {
+			v1Pool.Populate(ctx)
+
+			return nil
+		})
+		networkPool = v1Pool
+	}
 	closers = append(closers, closer{"network pool", networkPool.Close})
 
 	// sandbox factory

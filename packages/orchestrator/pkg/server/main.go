@@ -68,7 +68,7 @@ type Server struct {
 	sandboxFactory           *sandbox.Factory
 	info                     *service.ServiceInfo
 	proxy                    *proxy.SandboxProxy
-	networkPool              *network.Pool
+	networkPool              network.PoolInterface
 	templateCache            *template.Cache
 	devicePool               *nbd.DevicePool
 	persistence              storage.StorageProvider
@@ -101,7 +101,7 @@ type Server struct {
 type ServiceConfig struct {
 	Config           cfg.Config
 	Tel              *telemetry.Client
-	NetworkPool      *network.Pool
+	NetworkPool      network.PoolInterface
 	DevicePool       *nbd.DevicePool
 	TemplateCache    *template.Cache
 	Info             *service.ServiceInfo

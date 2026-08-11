@@ -59,10 +59,6 @@ type HostFirewall struct {
 	config    network.Config
 	mu        sync.Mutex
 
-	// migrationRules tracks active migration DNAT/forward rules by old host IP.
-	// Protected by mu.
-	migrationRules map[string]*migrationDNATEntry
-
 	// mangleChain is the prerouting mangle chain used for fwmark rules.
 	// Stored here so fwmark rules can be added/removed without re-creating the chain.
 	mangleChain *nftables.Chain
@@ -98,12 +94,11 @@ func NewHostFirewall(defaultGw string, config network.Config) (*HostFirewall, er
 	})
 
 	hf := &HostFirewall{
-		conn:           conn,
-		table:          table,
-		defaultGw:      defaultGw,
-		config:         config,
-		migrationRules: make(map[string]*migrationDNATEntry),
-		fwmarkRules:    make(map[string]uint64),
+		conn:        conn,
+		table:       table,
+		defaultGw:   defaultGw,
+		config:      config,
+		fwmarkRules: make(map[string]uint64),
 	}
 
 	if err := hf.ensureSets(); err != nil {

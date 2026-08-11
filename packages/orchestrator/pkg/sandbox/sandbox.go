@@ -455,7 +455,7 @@ func (m *Metadata) ExecutionDuration() (time.Duration, bool) {
 type Factory struct {
 	Sandboxes         *Map
 	config            cfg.BuilderConfig
-	networkPool       *network.Pool
+	networkPool       network.PoolInterface
 	devicePool        *nbd.DevicePool
 	featureFlags      *featureflags.Client
 	hostStatsDelivery hoststats.Delivery
@@ -466,7 +466,7 @@ type Factory struct {
 
 func NewFactory(
 	config cfg.BuilderConfig,
-	networkPool *network.Pool,
+	networkPool network.PoolInterface,
 	devicePool *nbd.DevicePool,
 	featureFlags *featureflags.Client,
 	hostStatsDelivery hoststats.Delivery,
@@ -2318,7 +2318,7 @@ func createCgroup(ctx context.Context, cgroupManager cgroup.Manager, cgroupName 
 
 func getNetworkSlot(
 	ctx context.Context,
-	networkPool *network.Pool,
+	networkPool network.PoolInterface,
 	cleanup *Cleanup,
 	networkConfig *orchestrator.SandboxNetworkConfig,
 	networkReleased network.ReleaseNotify,
