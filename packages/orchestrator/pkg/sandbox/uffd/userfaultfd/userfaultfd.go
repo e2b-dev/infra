@@ -32,6 +32,24 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/san
 
 const maxRequestsInProgress = 4096
 
+// maxWPResolvesInProgress bounds the dedicated WP-resolve pool. Resolves are
+// single ioctls; the bound only guards against pathological fault storms.
+const maxWPResolvesInProgress = 256
+
+// wpResolveRetryDelay paces the redispatch of a WP resolve that hit
+// mmap_changing, bounding the serve loop's self-wake spin while an address-
+// space change (madvise batch) is in flight.
+const wpResolveRetryDelay = 250 * time.Microsecond
+
+// wpResolveErrEscalation is the number of consecutive failed unprotects OF
+// THE SAME PAGE (reset by that page resolving) after which the handler stops
+// treating the failure as transient and fails the serve loop: the wake→
+// re-fault retry would otherwise livelock the guest writer forever on a
+// deterministic failure. Per-page, not global: a burst of concurrent
+// transient failures across different pages (each writer woken, each
+// recovering on re-fault) must not be mistaken for a livelock.
+const wpResolveErrEscalation = 8
+
 const (
 	// sliceMaxRetries is the number of times to retry source.Slice() after the initial attempt.
 	// Total attempts = sliceMaxRetries + 1.
@@ -42,6 +60,13 @@ const (
 	// sliceRetryMaxDelay is the maximum backoff delay between retries.
 	sliceRetryMaxDelay = 500 * time.Millisecond
 )
+
+// errWPResolveAgain reports that a WP resolve hit EAGAIN (the address space
+// is changing, mmap_changing); the caller re-queues the fault via the
+// deferred queue instead of retrying in place — a worker sleeping under
+// settleRequests.RLock would block the REMOVE batch whose completion clears
+// the condition.
+var errWPResolveAgain = errors.New("uffd WP resolve: address space changing")
 
 var ErrUnexpectedEventType = errors.New("unexpected event type")
 
@@ -95,6 +120,12 @@ type Userfaultfd struct {
 
 	wg errgroup.Group
 
+	// wgWP is a dedicated pool for write-protect resolves. WP resolves are
+	// microsecond ioctls, but the shared pool's MISSING workers can hold a
+	// slot through seconds of source-read backoff — a full pool would then
+	// queue guest writes to already-present pages behind slow fetches.
+	wgWP errgroup.Group
+
 	// wakeupPipe is a self-pipe that wakes the poll loop after a worker
 	// defers a fault, so a deferred fault isn't orphaned waiting for the
 	// next unrelated UFFD event.
@@ -120,6 +151,20 @@ type Userfaultfd struct {
 	// genBucket tags this sandbox's serve/prefault metrics with its snapshot
 	// generation range, so fault latency can be cut by chain depth.
 	genBucket generationBucket
+
+	// wpFaultsResolved counts synchronous userfault write-protect faults resolved
+	// (non-zero only when paired with a sync-WP Firecracker that omits WP_ASYNC).
+	wpFaultsResolved atomic.Int64
+
+	// wpResolveErrPages counts consecutive failed unprotects per page
+	// (entry removed when that page resolves). A transient failure
+	// self-heals via wake→re-fault; a deterministic one re-fails the SAME
+	// page repeatedly, so a per-page streak reaching wpResolveErrEscalation
+	// escalates to a serve-loop exit. wpResolveErrPending gates the success
+	// path: it stays lock-free until at least one failure is outstanding.
+	wpResolveErrMu      sync.Mutex
+	wpResolveErrPages   map[uintptr]int32
+	wpResolveErrPending atomic.Int32
 
 	logger logger.Logger
 }
@@ -188,8 +233,21 @@ func NewUserfaultfdFromFd(fd uintptr, src PageReader, m *memory.Mapping, generat
 		logger:          logger,
 	}
 	u.wg.SetLimit(maxRequestsInProgress)
+	u.wgWP.SetLimit(maxWPResolvesInProgress)
 
 	return u, nil
+}
+
+// Logger returns this handler's logger, already tagged with the sandbox ID.
+func (u *Userfaultfd) Logger() logger.Logger {
+	return u.logger
+}
+
+// WPFaultsResolved returns the number of synchronous write-protect faults
+// this handler has resolved — non-zero only when the paired Firecracker
+// registered guest memory for sync WP delivery.
+func (u *Userfaultfd) WPFaultsResolved() int64 {
+	return u.wpFaultsResolved.Load()
 }
 
 // ExportPageStates returns snapshots of the faulted and removed page-index
@@ -255,10 +313,23 @@ func (u *Userfaultfd) Serve(
 	ctx context.Context,
 	fdExit *fdexit.FdExit,
 ) error {
-	// Workers spawned via u.wg.Go may still be running when an error path
+	var deferred deferredFaults
+
+	// Workers spawned via the pools may still be running when an error path
 	// returns early. Drain them before returning so a worker can't outlive
-	// Serve and race with Close() on wakeupPipe / the uffd fd.
-	defer func() { _ = u.wg.Wait() }()
+	// Serve and race with Close() on wakeupPipe / the uffd fd. Then wake any
+	// fault still parked in the deferred queue: the kernel never redelivers
+	// it, so a guest thread blocked on it would otherwise have no retry
+	// signal until the uffd itself closes. The wake makes it re-fault; if
+	// this handler is gone the close releases it.
+	defer func() {
+		_ = u.wg.Wait()
+		_ = u.wgWP.Wait()
+		for _, pf := range deferred.drain() {
+			addr := getPagefaultAddress(pf)
+			_ = u.fd.wake(addr&^(u.pageSize-1), u.pageSize)
+		}
+	}()
 
 	pollFds := []unix.PollFd{
 		{Fd: int32(u.fd), Events: unix.POLLIN},
@@ -284,8 +355,6 @@ func (u *Userfaultfd) Serve(
 		unix.POLLNVAL: "POLLNVAL",
 	}
 
-	var deferred deferredFaults
-
 	for {
 		if _, err := unix.Poll(
 			pollFds,
@@ -310,7 +379,7 @@ func (u *Userfaultfd) Serve(
 
 		exitFd := pollFds[1]
 		if hasEvent(exitFd.Revents, unix.POLLIN) {
-			errMsg := u.wg.Wait()
+			errMsg := errors.Join(u.wg.Wait(), u.wgWP.Wait())
 			if errMsg != nil {
 				u.logger.Warn(ctx, "UFFD fd exit error while waiting for goroutines to finish", zap.Error(errMsg))
 
@@ -408,17 +477,51 @@ func (u *Userfaultfd) Serve(
 				return errors.New("unexpected MINOR pagefault event, closing UFFD")
 			}
 
-			// WP faults are not registered: we use UFFD_FEATURE_WP_ASYNC.
-			if pf.flags&UFFD_PAGEFAULT_FLAG_WP != 0 {
-				return errors.New("unexpected WP pagefault event, closing UFFD")
-			}
-
 			addr := getPagefaultAddress(pf)
 			offset, err := u.ma.GetOffset(addr)
 			if err != nil {
 				u.logger.Error(ctx, "UFFD serve got mapping error", zap.Error(err))
 
 				return fmt.Errorf("failed to map: %w", err)
+			}
+
+			if pf.flags&UFFD_PAGEFAULT_FLAG_WP != 0 {
+				// Synchronous WP fault: the guest wrote a write-protected present
+				// page (the paired sync-WP Firecracker build registers guest RAM
+				// without WP_ASYNC). Clear the protection so the write proceeds;
+				// dirtiness is not recorded here — the kernel's WP-bit clear is
+				// what the pagemap read at pause observes. With a WP_ASYNC
+				// Firecracker these events are never delivered, so this path is
+				// inert.
+				//
+				// The stall clock starts here, before the worker-pool dispatch,
+				// so the recorded latency is what the blocked guest write
+				// actually observes (including any queueing behind slow
+				// MISSING serves).
+				start := time.Now()
+				u.wgWP.Go(func() error {
+					err := u.resolveWriteProtect(ctx, addr, fdExit.SignalExit, start)
+					if errors.Is(err, errWPResolveAgain) {
+						// mmap_changing (e.g. a REMOVE batch in flight):
+						// retry via the deferred queue like MISSING EAGAINs
+						// rather than blocking a worker under
+						// settleRequests.RLock, which the REMOVE batch needs
+						// to make progress. The short sleep damps the
+						// redispatch: with no other events pending, the
+						// self-wake would otherwise spin the serve loop at
+						// full speed for as long as mmap_changing stays set
+						// (e.g. a multi-second balloon drain).
+						time.Sleep(wpResolveRetryDelay)
+						deferred.push(pf)
+						u.signalWakeup()
+
+						return nil
+					}
+
+					return err
+				})
+
+				continue
 			}
 
 			u.wg.Go(func() error {
@@ -537,6 +640,117 @@ func (u *Userfaultfd) Serve(
 	}
 }
 
+// resolveWriteProtect handles a synchronous userfault write-protect fault:
+// the guest wrote a write-protected, present page. It clears the protection,
+// which also wakes the blocked writer. Dirty state stays owned by the install
+// paths and the pause-time pagemap readout — marking here could tag a page a
+// concurrent REMOVE just zapped, and the Dirty short-circuit would then
+// satisfy its reinstall fault without installing or waking. Returns
+// errWPResolveAgain on EAGAIN so the caller defers the fault (re-served and
+// re-timed like a deferred MISSING fault). Tracking-only for now — the
+// copy-before-unprotect (background memory export) lands later.
+//
+// A failed unprotect is self-healing as long as the writer can be woken: it
+// re-faults and the resolve retries (a REMOVEd page re-faults MISSING and is
+// served normally), so that case is logged but does not fail the handler — a
+// transient hiccup the guest already recovered from must not surface as a
+// sandbox failure at teardown. Two cases escalate to onFailure (the serve
+// exit signal) and a returned error: the wake ALSO failing (guest thread
+// stranded mid-write with no retry signal, mirroring the MISSING path's
+// data-fetch failure), and wpResolveErrEscalation consecutive failures of
+// the same page (a deterministic failure that the retry loop would
+// otherwise turn into an unbounded fault/wake livelock).
+func (u *Userfaultfd) resolveWriteProtect(ctx context.Context, addr uintptr, onFailure func() error, start time.Time) error {
+	outcome := wpResolveOK
+	defer func() {
+		attrs := wpResolveAttrs[u.genBucket][outcome]
+		wpResolveDuration.Record(ctx, time.Since(start).Microseconds(), attrs)
+		wpResolveCount.Add(ctx, 1, attrs)
+	}()
+
+	u.settleRequests.RLock()
+	defer u.settleRequests.RUnlock()
+
+	if u.closed {
+		outcome = wpResolveClosed
+
+		return nil
+	}
+
+	alignedAddr := addr &^ (u.pageSize - 1)
+	// mode 0 = clear write-protection + wake the faulting thread (no DONTWAKE).
+	err := u.fd.writeProtectRange(alignedAddr, u.pageSize, u.pageSize, 0)
+	if errors.Is(err, syscall.EAGAIN) {
+		// Deferred: record the attempt under its own outcome so a fault
+		// bouncing off mmap_changing repeatedly stays diagnosable; the
+		// eventual re-serve records the resolution separately.
+		outcome = wpResolveDeferred
+
+		return errWPResolveAgain
+	}
+	if err != nil {
+		wakeErr := u.fd.wake(alignedAddr, u.pageSize)
+		outcome = wpResolveError
+		streak := u.recordWPResolveFailure(alignedAddr)
+		if wakeErr == nil && streak < wpResolveErrEscalation {
+			u.logger.Error(ctx, "uffd WP resolve failed; writer woken to re-fault",
+				zap.Uintptr("addr", addr), zap.Int32("consecutive_failures", streak), zap.Error(err))
+
+			return nil
+		}
+
+		var signalErr error
+		if onFailure != nil {
+			signalErr = onFailure()
+		}
+		if wakeErr != nil {
+			return fmt.Errorf("uffd WP resolve at %#x stranded the writer: %w",
+				addr, errors.Join(err, wakeErr, signalErr))
+		}
+
+		return fmt.Errorf("uffd WP resolve of page %#x failed %d consecutive times (deterministic failure, not retrying): %w",
+			alignedAddr, streak, errors.Join(err, signalErr))
+	}
+
+	u.clearWPResolveFailure(alignedAddr)
+	u.wpFaultsResolved.Add(1)
+
+	return nil
+}
+
+// recordWPResolveFailure bumps the consecutive-failure streak for one page
+// and returns it. Streaks are per page: only the same page failing again and
+// again indicates the deterministic fault/wake livelock the escalation
+// exists for.
+func (u *Userfaultfd) recordWPResolveFailure(alignedAddr uintptr) int32 {
+	u.wpResolveErrMu.Lock()
+	defer u.wpResolveErrMu.Unlock()
+
+	if u.wpResolveErrPages == nil {
+		u.wpResolveErrPages = make(map[uintptr]int32)
+	}
+	u.wpResolveErrPages[alignedAddr]++
+	u.wpResolveErrPending.Store(int32(len(u.wpResolveErrPages)))
+
+	return u.wpResolveErrPages[alignedAddr]
+}
+
+// clearWPResolveFailure drops the page's failure streak after a successful
+// resolve. The pending gate keeps the common all-successes path lock-free.
+func (u *Userfaultfd) clearWPResolveFailure(alignedAddr uintptr) {
+	if u.wpResolveErrPending.Load() == 0 {
+		return
+	}
+
+	u.wpResolveErrMu.Lock()
+	defer u.wpResolveErrMu.Unlock()
+
+	if _, ok := u.wpResolveErrPages[alignedAddr]; ok {
+		delete(u.wpResolveErrPages, alignedAddr)
+		u.wpResolveErrPending.Store(int32(len(u.wpResolveErrPages)))
+	}
+}
+
 func (u *Userfaultfd) faultPage(
 	ctx context.Context,
 	addr uintptr,
@@ -573,7 +787,7 @@ func (u *Userfaultfd) faultPage(
 		if writeErr != nil {
 			break
 		}
-		writeErr = u.fd.writeProtect(addr, u.pageSize, UFFDIO_WRITEPROTECT_MODE_WP)
+		writeErr = u.fd.writeProtectRange(addr&^(u.pageSize-1), u.pageSize, u.pageSize, UFFDIO_WRITEPROTECT_MODE_WP)
 		if writeErr != nil {
 			writeErr = errors.Join(writeErr, u.fd.wake(addr, u.pageSize))
 

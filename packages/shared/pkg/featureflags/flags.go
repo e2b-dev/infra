@@ -149,6 +149,15 @@ var (
 	// directly instead of using process_vm_readv on pause.
 	UseMemFdFlag = NewBoolFlag("use-memfd", true)
 
+	// UseSyncWPFlag asks Firecracker (via use_sync_wp on snapshot load) to
+	// register guest memory for SYNCHRONOUS userfault write-protect events,
+	// which the orchestrator's serve loop resolves, instead of the kernel's
+	// in-place WP_ASYNC clears. Foundation for the copy-on-write background
+	// memory snapshot. Default off = WP_ASYNC, today's behavior. Enable only
+	// where the deployed FC accepts the use_sync_wp field: FC rejects unknown
+	// fields on snapshot load, so a mismatch fails the resume loudly.
+	UseSyncWPFlag = NewBoolFlag("use-sync-wp", false)
+
 	// MemfdBackgroundCopyFlag streams the memfd into the snapshot cache on
 	// a goroutine so Pause returns as soon as the diff metadata is written.
 	// Only takes effect when UseMemFdFlag is also on.

@@ -1241,6 +1241,13 @@ func (f *Factory) ResumeSandbox(
 	useMemfd := fc.FCSupportsMemfd(config.FirecrackerConfig.FirecrackerVersion) &&
 		f.featureFlags.BoolFlag(ctx, featureflags.UseMemFdFlag, sandboxLDContext(runtime, config))
 
+	// Synchronous WP fault delivery (vs the kernel's in-place WP_ASYNC clears).
+	// The serve loop resolves WP faults in both modes (inert under WP_ASYNC).
+	// The operator must only enable the flag where the deployed FC accepts
+	// use_sync_wp: FC's MemBackendConfig is deny_unknown_fields, so a mismatch
+	// fails the snapshot load loudly instead of silently downgrading.
+	useSyncWP := f.featureFlags.BoolFlag(ctx, featureflags.UseSyncWPFlag, sandboxLDContext(runtime, config))
+
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
 	// This is to prevent race condition of reporting unhealthy sandbox
 	sbx.Checks = NewChecks(sbx)
@@ -1305,6 +1312,7 @@ func (f *Factory) ResumeSandbox(
 		config.Envd.AccessToken,
 		cgroupFD,
 		useMemfd,
+		useSyncWP,
 		fc.RateLimiterConfig{
 			Ops:       fc.TokenBucketConfig(resumeThrottleConfig.Ops),
 			Bandwidth: fc.TokenBucketConfig(resumeThrottleConfig.Bandwidth),

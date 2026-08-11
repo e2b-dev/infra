@@ -519,6 +519,7 @@ func (p *Process) Resume(
 	accessToken *string,
 	cgroupFD int,
 	useMemfd bool,
+	useSyncWP bool,
 	txRateLimit RateLimiterConfig,
 	driveRateLimit RateLimiterConfig,
 ) error {
@@ -608,6 +609,7 @@ func (p *Process) Resume(
 		uffdReady,
 		snapfile,
 		useMemfd,
+		useSyncWP,
 	)
 	if err != nil {
 		fcStopErr := p.Stop(ctx)

@@ -163,6 +163,73 @@ var prefaultTimer = utils.Must(telemetry.NewTimerFactory(
 	"UFFD prefault attempts",
 ))
 
+// wpResolveMetricName is the metric under which synchronous write-protect
+// fault resolution latency (us histogram) and count (counter) are reported.
+// Only sync-WP guests (use_sync_wp on snapshot load) emit it: under WP_ASYNC
+// no WP events are ever delivered.
+const wpResolveMetricName = "orchestrator.sandbox.uffd.wp_resolve"
+
+// wpResolveDuration is the guest-observed write stall: measured from the
+// serve loop reading the WP event to unprotect+wake completing, so it
+// INCLUDES the worker-pool dispatch wait (a WP resolve can queue behind
+// ms-scale MISSING serves — exactly the tail this metric exists to expose).
+// Microseconds, not ms: the whole distribution sits at tens of us.
+//
+// Known undercount: kernel-queue time before the serve loop reads the event
+// is not observable (uffd events carry no timestamps); the largest such
+// window is ExportPageStates holding readSerial during pause.
+var wpResolveDuration = utils.Must(meter.Int64Histogram(wpResolveMetricName,
+	metric.WithDescription("Time to resolve a synchronous userfault write-protect fault, from serve-loop event read to unprotect+wake"),
+	metric.WithUnit("us"),
+))
+
+// wpResolveCount counts WP fault resolutions under wpResolveMetricName,
+// tagged like wpResolveDuration.
+var wpResolveCount = utils.Must(meter.Int64Counter(wpResolveMetricName,
+	metric.WithDescription("Synchronous userfault write-protect faults resolved"),
+))
+
+// wpResolveOutcome is the terminal classification of a resolveWriteProtect call.
+type wpResolveOutcome uint8
+
+const (
+	wpResolveOK wpResolveOutcome = iota
+	// wpResolveDeferred: the unprotect hit EAGAIN (mmap_changing) and the
+	// fault was re-queued; the re-serve records the resolution separately.
+	wpResolveDeferred
+	// wpResolveClosed: the handler was already closed; nothing was resolved.
+	wpResolveClosed
+	// wpResolveError: the unprotect ioctl failed.
+	wpResolveError
+	numWPResolveOutcome
+)
+
+// wpResolveAttrs holds a precomputed metric.MeasurementOption per
+// (generationBucket, wpResolveOutcome) so the per-fault hot path allocates no
+// attributes.
+var wpResolveAttrs = buildWPResolveAttrs()
+
+func buildWPResolveAttrs() [numGenerationBucket][numWPResolveOutcome]metric.MeasurementOption {
+	outcomeNames := [numWPResolveOutcome]string{
+		wpResolveOK:       "resolved",
+		wpResolveDeferred: "deferred",
+		wpResolveClosed:   "closed",
+		wpResolveError:    "error",
+	}
+
+	var t [numGenerationBucket][numWPResolveOutcome]metric.MeasurementOption
+	for g := range generationBucketNames {
+		for o := range outcomeNames {
+			t[g][o] = telemetry.PrecomputeAttrs(
+				attribute.String("generation_bucket", generationBucketNames[g]),
+				attribute.String("result", outcomeNames[o]),
+			)
+		}
+	}
+
+	return t
+}
+
 // ServeSnapshot is a cumulative count of demand faults a handler has served,
 // read at a point in time via Userfaultfd.ServeStats. Prefaults bypass the
 // serve loop and are not counted. Sampling it at the envd-init boundary yields
@@ -180,6 +247,10 @@ type ServeSnapshot struct {
 	// times the page size, but it is tracked directly so it stays correct
 	// across mixed page sizes.
 	Bytes int64
+	// WPFaults is the number of synchronous write-protect faults resolved
+	// (guest writes to protected pages). Zero under WP_ASYNC guests. Sampled
+	// per interval it approximates the dirty-set growth at 2 MiB granularity.
+	WPFaults int64
 }
 
 // ServeStats returns a cumulative snapshot of the demand faults served so far.
@@ -188,6 +259,7 @@ func (u *Userfaultfd) ServeStats() ServeSnapshot {
 		Pages:       u.servedPages.Load(),
 		SourcePages: u.servedSourcePages.Load(),
 		Bytes:       u.servedBytes.Load(),
+		WPFaults:    u.wpFaultsResolved.Load(),
 	}
 }
 

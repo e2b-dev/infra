@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/RoaringBitmap/roaring/v2"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
@@ -254,17 +255,46 @@ func (u *Uffd) DiffMetadata(ctx context.Context, f *fc.Process) (*header.DiffMet
 	}
 
 	// Settle in-flight UFFD workers (and the REMOVE batch) before sampling
-	// FC's WP-async pagemap, so a Zero→Write install can't slip in between
-	// and escape both bitmaps.
-	_, empty := handler.ExportPageStates()
+	// FC's pagemap, so a Zero→Write install can't slip in between and escape
+	// both bitmaps.
+	faulted, empty := handler.ExportPageStates()
 
 	diff, err := f.DirtyMemory(ctx, handler.PageSize())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get dirty memory: %w", err)
 	}
 
-	// Pages that were zero-installed and later written show up in diff.Dirty
-	// via WP-async, so dirty wins over empty for those.
+	// Dirty-source divergence telemetry: compare the page tracker's view with
+	// the pagemap readout, as burn-in evidence for eventually retiring the
+	// DirtyMemory RPC in favor of the tracker.
+	//   tracker_only: tracker Dirty, pagemap clean — expected for
+	//     prefault-installed pages that were never written (installed WP-set,
+	//     but recorded Dirty by the serve tracker).
+	//   pagemap_only: pagemap dirty, tracker unaware — expected under WP_ASYNC
+	//     builds (in-kernel WP clears deliver no event). Under sync-WP one
+	//     class remains: a zero-installed page (read fault on a hole; tracker
+	//     keeps it Zero so the diff can mark it Empty) that the guest later
+	//     writes — the WP resolve unprotects but does not promote it. The
+	//     pagemap is the dirty source and dirty wins over empty below, so
+	//     such pages are exported correctly; the follow-up that makes the
+	//     tracker the dirty source promotes them on the WP resolve instead.
+	// Emitted only when sync-WP actually delivered faults this run: under
+	// WP_ASYNC the pagemap diverges from the tracker on every pause by
+	// design, and logging that fleet-wide would be pure noise — the burn-in
+	// this log exists for is the sync mode.
+	if handler.WPFaultsResolved() > 0 {
+		trackerOnly := roaring.AndNot(faulted, diff.Dirty)
+		pagemapOnly := roaring.AndNot(diff.Dirty, faulted)
+		handler.Logger().Info(ctx, "dirty-source divergence (tracker vs pagemap)",
+			zap.Uint64("tracker_only_pages", trackerOnly.GetCardinality()),
+			zap.Uint64("pagemap_only_pages", pagemapOnly.GetCardinality()),
+			zap.Uint64("tracker_dirty_pages", faulted.GetCardinality()),
+			zap.Uint64("pagemap_dirty_pages", diff.Dirty.GetCardinality()))
+	}
+
+	// Pages that were zero-installed and later written show up in diff.Dirty —
+	// via the in-kernel WP-async clear or the synchronous WP-fault resolve —
+	// so dirty wins over empty for those.
 	empty.AndNot(diff.Dirty)
 
 	return &header.DiffMetadata{

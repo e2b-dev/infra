@@ -45,6 +45,7 @@ func (c *apiClient) loadSnapshot(
 	uffdReady chan struct{},
 	snapfile template.File,
 	useMemfd bool,
+	useSyncWP bool,
 ) error {
 	ctx, span := tracer.Start(ctx, "load-snapshot")
 	defer span.End()
@@ -56,6 +57,11 @@ func (c *apiClient) loadSnapshot(
 	}
 	if useMemfd {
 		backend.UseMemfd = &useMemfd
+	}
+	// Only sent when set: MemBackendConfig is deny_unknown_fields, so an FC
+	// build without the feature rejects the request (loud failure by design).
+	if useSyncWP {
+		backend.UseSyncWp = &useSyncWP
 	}
 
 	snapfilePath := snapfile.Path()
