@@ -138,5 +138,6 @@ func SetupNamespaceNAT(conn *nftables.Conn, table *nftables.Table, vpeerIface, h
 func ifnameBytes(name string) []byte {
 	b := make([]byte, 16) // IFNAMSIZ
 	copy(b, name)
+
 	return b
 }

@@ -88,6 +88,7 @@ func ValidateV2Prerequisites() error {
 		val, err := os.ReadFile(c.path)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("cannot read %s: %w", c.path, err))
+
 			continue
 		}
 		if strings.TrimSpace(string(val)) != c.expected {
@@ -97,6 +98,7 @@ func ValidateV2Prerequisites() error {
 	if len(errs) > 0 {
 		return fmt.Errorf("v2 networking prerequisites not met: %w", errors.Join(errs...))
 	}
+
 	return nil
 }
 
@@ -125,6 +127,7 @@ func (p *V2Pool) createNetworkSlot(ctx context.Context) (*network.Slot, error) {
 	if err := CreateNetworkV2(ctx, slot, slotV2, p.hostFw, p.observer); err != nil {
 		p.registry.Delete(slot.Idx)
 		releaseErr := p.storage.Release(slot)
+
 		return nil, fmt.Errorf("failed to create v2 network: %w", errors.Join(err, releaseErr))
 	}
 
@@ -144,6 +147,7 @@ func (p *V2Pool) Populate(ctx context.Context) {
 			slot, err := p.createNetworkSlot(ctx)
 			if err != nil {
 				logger.L().Error(ctx, "[v2 network slot pool]: failed to create network", zap.Error(err))
+
 				continue
 			}
 

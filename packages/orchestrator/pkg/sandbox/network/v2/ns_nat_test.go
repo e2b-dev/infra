@@ -22,7 +22,7 @@ func skipIfNotLinuxRoot(t *testing.T) {
 	}
 }
 
-func TestNamespaceNAT_Setup(t *testing.T) {
+func TestNamespaceNAT_Setup(t *testing.T) { //nolint:paralleltest // creates the nftables table "test-nat" in the host netns and lists chains family-wide
 	skipIfNotLinuxRoot(t)
 
 	conn, err := nftables.New(nftables.AsLasting())
@@ -40,7 +40,7 @@ func TestNamespaceNAT_Setup(t *testing.T) {
 	}()
 
 	err = SetupNamespaceNAT(conn, table, "eth0", "10.11.0.1", "169.254.0.21")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Verify chains were created
 	chains, err := conn.ListChainsOfTableFamily(nftables.TableFamilyINet)
@@ -56,7 +56,7 @@ func TestNamespaceNAT_Setup(t *testing.T) {
 	assert.True(t, chainNames["preroute_nat"], "preroute_nat chain should exist")
 }
 
-func TestNamespaceNAT_InvalidIP(t *testing.T) {
+func TestNamespaceNAT_InvalidIP(t *testing.T) { //nolint:paralleltest // creates the nftables table "test-nat-invalid" in the host netns
 	skipIfNotLinuxRoot(t)
 
 	conn, err := nftables.New(nftables.AsLasting())
@@ -74,11 +74,13 @@ func TestNamespaceNAT_InvalidIP(t *testing.T) {
 	}()
 
 	err = SetupNamespaceNAT(conn, table, "eth0", "not-an-ip", "169.254.0.21")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid host IP")
 }
 
 func TestIfnameBytes(t *testing.T) {
+	t.Parallel()
+
 	b := ifnameBytes("eth0")
 	assert.Len(t, b, 16)
 	assert.Equal(t, byte('e'), b[0])

@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
+	"slices"
 	"sync"
 
 	"github.com/google/nftables"
@@ -318,8 +319,8 @@ func (hf *HostFirewall) ReconcileSlots(activeSlots []*SlotV2) error {
 	// Remove stale veths (in set but not in active slots)
 	var staleVethElems []nftables.SetElement
 	for _, elem := range currentVeths {
-		name := string(elem.Key[:len(elem.Key)-1]) // strip null terminator
-		if !desiredVeths[name] {
+		// strip null terminator
+		if !desiredVeths[string(elem.Key[:len(elem.Key)-1])] {
 			staleVethElems = append(staleVethElems, elem)
 		}
 	}
@@ -493,23 +494,26 @@ func tcpCatchAllExprs(vethSet *nftables.Set, rport uint16) []expr.Any {
 func portBytes(port uint16) []byte {
 	b := make([]byte, 2)
 	binary.BigEndian.PutUint16(b, port)
+
 	return b
 }
 
 func incrementIP(ip net.IP) net.IP {
 	result := make(net.IP, len(ip))
 	copy(result, ip)
-	for i := len(result) - 1; i >= 0; i-- {
+	for i := range slices.Backward(result) {
 		result[i]++
 		if result[i] != 0 {
 			break
 		}
 	}
+
 	return result
 }
 
 func bitmask32(v uint32) []byte {
 	buf := make([]byte, 4)
 	binary.NativeEndian.PutUint32(buf, v)
+
 	return buf
 }

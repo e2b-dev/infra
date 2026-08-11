@@ -24,7 +24,7 @@ func testConfig() network.Config {
 	}
 }
 
-func TestHostFirewall_Init(t *testing.T) {
+func TestHostFirewall_Init(t *testing.T) { //nolint:paralleltest // creates/deletes the singleton nftables table "v2-host-firewall" shared by all HostFirewall tests
 	skipIfNotLinuxRoot(t)
 
 	hf, err := NewHostFirewall("lo", testConfig())
@@ -37,7 +37,7 @@ func TestHostFirewall_Init(t *testing.T) {
 	assert.NotNil(t, hf.cidrSet)
 }
 
-func TestHostFirewall_AddRemoveSlot(t *testing.T) {
+func TestHostFirewall_AddRemoveSlot(t *testing.T) { //nolint:paralleltest // creates/deletes the singleton nftables table "v2-host-firewall" shared by all HostFirewall tests
 	skipIfNotLinuxRoot(t)
 
 	hf, err := NewHostFirewall("lo", testConfig())
@@ -49,29 +49,29 @@ func TestHostFirewall_AddRemoveSlot(t *testing.T) {
 
 	// Add slot
 	err = hf.AddSlot(sv2)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Verify veth set has the element
 	elements, err := hf.conn.GetSetElements(hf.vethSet)
 	require.NoError(t, err)
-	assert.Greater(t, len(elements), 0, "veth set should have elements")
+	assert.NotEmpty(t, elements, "veth set should have elements")
 
 	// Verify cidr set has elements
 	cidrElements, err := hf.conn.GetSetElements(hf.cidrSet)
 	require.NoError(t, err)
-	assert.Greater(t, len(cidrElements), 0, "cidr set should have elements")
+	assert.NotEmpty(t, cidrElements, "cidr set should have elements")
 
 	// Remove slot
 	err = hf.RemoveSlot(sv2)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Verify veth set is empty
 	elements, err = hf.conn.GetSetElements(hf.vethSet)
 	require.NoError(t, err)
-	assert.Equal(t, 0, len(elements), "veth set should be empty after removal")
+	assert.Empty(t, elements, "veth set should be empty after removal")
 }
 
-func TestHostFirewall_ConcurrentAccess(t *testing.T) {
+func TestHostFirewall_ConcurrentAccess(t *testing.T) { //nolint:paralleltest // creates/deletes the singleton nftables table "v2-host-firewall" shared by all HostFirewall tests
 	skipIfNotLinuxRoot(t)
 
 	hf, err := NewHostFirewall("lo", testConfig())
@@ -81,25 +81,26 @@ func TestHostFirewall_ConcurrentAccess(t *testing.T) {
 	// Add multiple slots concurrently
 	done := make(chan error, 10)
 	for i := 1; i <= 10; i++ {
-		go func(idx int) {
-			slot := makeTestSlot(t, idx)
-			sv2 := NewSlotV2(slot)
+		sv2 := NewSlotV2(makeTestSlot(t, i))
+		go func() {
 			done <- hf.AddSlot(sv2)
-		}(i)
+		}()
 	}
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		err := <-done
-		assert.NoError(t, err, "concurrent AddSlot should not fail")
+		require.NoError(t, err, "concurrent AddSlot should not fail")
 	}
 
 	// Verify all 10 veths added
 	elements, err := hf.conn.GetSetElements(hf.vethSet)
 	require.NoError(t, err)
-	assert.Equal(t, 10, len(elements))
+	assert.Len(t, elements, 10)
 }
 
 func TestIncrementIP(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		input    string
 		expected string
@@ -118,6 +119,8 @@ func TestIncrementIP(t *testing.T) {
 }
 
 func TestPortBytes(t *testing.T) {
+	t.Parallel()
+
 	b := portBytes(80)
 	assert.Equal(t, []byte{0, 80}, b)
 

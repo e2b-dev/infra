@@ -12,21 +12,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPolicyRoute_Setup(t *testing.T) {
+func TestPolicyRoute_Setup(t *testing.T) { //nolint:paralleltest // mutates host netns state: fixed-name dummy link "dummy-test", policy rule and route table 300
 	skipIfNotLinuxRoot(t)
 
+	ctx := t.Context()
 	fwmark := uint32(0x300)
 	tableID := 300
 
 	// Setup: create a dummy device to route through
-	err := exec.Command("ip", "link", "add", "dummy-test", "type", "dummy").Run()
+	err := exec.CommandContext(ctx, "ip", "link", "add", "dummy-test", "type", "dummy").Run()
 	require.NoError(t, err)
-	defer exec.Command("ip", "link", "del", "dummy-test").Run()
+	defer exec.CommandContext(ctx, "ip", "link", "del", "dummy-test").Run()
 
-	err = exec.Command("ip", "link", "set", "dummy-test", "up").Run()
+	err = exec.CommandContext(ctx, "ip", "link", "set", "dummy-test", "up").Run()
 	require.NoError(t, err)
 
-	err = exec.Command("ip", "addr", "add", "10.99.99.1/24", "dev", "dummy-test").Run()
+	err = exec.CommandContext(ctx, "ip", "addr", "add", "10.99.99.1/24", "dev", "dummy-test").Run()
 	require.NoError(t, err)
 
 	// Test setup
@@ -35,24 +36,23 @@ func TestPolicyRoute_Setup(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify ip rule exists
-	out, err := exec.Command("ip", "rule", "list").Output()
+	out, err := exec.CommandContext(ctx, "ip", "rule", "list").Output()
 	require.NoError(t, err)
 	assert.Contains(t, string(out), "lookup 300")
 
 	// Verify route table has route
-	out, err = exec.Command("ip", "route", "show", "table", "300").Output()
+	out, err = exec.CommandContext(ctx, "ip", "route", "show", "table", "300").Output()
 	require.NoError(t, err)
 	assert.Contains(t, string(out), "dummy-test")
 
 	// Teardown
 	err = TeardownPolicyRoute(fwmark, tableID)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Verify rule is gone
-	out, err = exec.Command("ip", "rule", "list").Output()
+	out, err = exec.CommandContext(ctx, "ip", "rule", "list").Output()
 	require.NoError(t, err)
-	lines := strings.Split(string(out), "\n")
-	for _, line := range lines {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		assert.NotContains(t, line, "lookup 300",
 			"policy rule should be removed after teardown")
 	}

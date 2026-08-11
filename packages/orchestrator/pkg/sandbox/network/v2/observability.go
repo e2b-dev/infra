@@ -42,6 +42,7 @@ func (o *VethObserver) Attach(vethName string) error {
 		return fmt.Errorf("interface %s not found: %w", vethName, err)
 	}
 	o.attached[vethName] = true
+
 	return nil
 }
 
@@ -54,6 +55,7 @@ func (o *VethObserver) Detach(vethName string) error {
 	defer o.mu.Unlock()
 
 	delete(o.attached, vethName)
+
 	return nil
 }
 
@@ -86,6 +88,7 @@ func (o *VethObserver) ReadCounters(vethName string) (packets, bytes uint64, err
 	// Host veth tx = sandbox rx (internet → sandbox).
 	packets = stats.RxPackets + stats.TxPackets
 	bytes = stats.RxBytes + stats.TxBytes
+
 	return packets, bytes, nil
 }
 
@@ -127,5 +130,6 @@ func (o *VethObserver) Close() error {
 	for name := range o.attached {
 		delete(o.attached, name)
 	}
+
 	return nil
 }

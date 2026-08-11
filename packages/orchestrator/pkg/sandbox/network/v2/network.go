@@ -27,8 +27,8 @@ import (
 //   - Host firewall: hf.AddSlot() replaces 8 iptables rules with 2 set element adds
 //   - eBPF: observer.Attach() adds optional per-veth counters (best-effort)
 func CreateNetworkV2(ctx context.Context, slot *network.Slot, slotV2 *SlotV2,
-	hf *HostFirewall, observer *VethObserver) error {
-
+	hf *HostFirewall, observer *VethObserver,
+) error {
 	// Prevent thread changes so we can safely manipulate namespaces
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -163,6 +163,7 @@ func CreateNetworkV2(ctx context.Context, slot *network.Slot, slotV2 *SlotV2,
 
 	if err := SetupNamespaceNAT(nsConn, nsTable, slot.VpeerName(), slot.HostIPString(), slot.NamespaceIP()); err != nil {
 		nsConn.CloseLasting()
+
 		return fmt.Errorf("setup namespace NAT: %w", err)
 	}
 	nsConn.CloseLasting()
@@ -201,9 +202,9 @@ func CreateNetworkV2(ctx context.Context, slot *network.Slot, slotV2 *SlotV2,
 }
 
 // RemoveNetworkV2 tears down the network for a v2 slot.
-func RemoveNetworkV2(ctx context.Context, slot *network.Slot, slotV2 *SlotV2,
-	hf *HostFirewall, observer *VethObserver) error {
-
+func RemoveNetworkV2(_ context.Context, slot *network.Slot, slotV2 *SlotV2,
+	hf *HostFirewall, observer *VethObserver,
+) error {
 	var errs []error
 
 	// Close in-namespace firewall

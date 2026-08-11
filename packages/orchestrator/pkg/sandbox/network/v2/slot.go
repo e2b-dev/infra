@@ -65,6 +65,7 @@ func (r *SlotV2Registry) Load(idx int) (*SlotV2, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	s, ok := r.slots[idx]
+
 	return s, ok
 }
 

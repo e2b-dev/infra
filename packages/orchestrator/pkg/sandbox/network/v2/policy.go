@@ -16,7 +16,7 @@ import (
 // for fwmark-based policy routing of forwarded traffic. Without this, the kernel
 // may not re-route forwarded packets based on marks set in prerouting.
 func EnsureSrcValidMark() error {
-	return os.WriteFile("/proc/sys/net/ipv4/conf/all/src_valid_mark", []byte("1"), 0644)
+	return os.WriteFile("/proc/sys/net/ipv4/conf/all/src_valid_mark", []byte("1"), 0o644)
 }
 
 // SetupPolicyRoute creates a policy routing rule and route table entry
@@ -137,6 +137,7 @@ func SetupFwmarkInNftables(hf *HostFirewall, vethName string, fwmark uint32) err
 	for _, r := range rules {
 		if matchesFwmarkRule(r, vethName) {
 			hf.fwmarkRules[vethName] = r.Handle
+
 			break
 		}
 	}
@@ -160,6 +161,7 @@ func matchesFwmarkRule(r *nftables.Rule, vethName string) bool {
 				for j := range cmp.Data {
 					if cmp.Data[j] != expected[j] {
 						match = false
+
 						break
 					}
 				}
@@ -169,6 +171,7 @@ func matchesFwmarkRule(r *nftables.Rule, vethName string) bool {
 			}
 		}
 	}
+
 	return false
 }
 
@@ -194,5 +197,6 @@ func RemoveFwmarkInNftables(hf *HostFirewall, vethName string) error {
 	}
 
 	delete(hf.fwmarkRules, vethName)
+
 	return nil
 }
