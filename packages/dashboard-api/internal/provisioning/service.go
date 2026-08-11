@@ -13,7 +13,7 @@ import (
 
 const (
 	baseTierID                   = "base_v1"
-	maxTeamsPerUser              = 3
+	maxTeamsPerUser              = 10
 	maxTeamsPerUserWithProTier   = 10
 	bootstrapProvisionRetryAge   = 30 * time.Second
 	teamProvisionRollbackTimeout = 5 * time.Second
