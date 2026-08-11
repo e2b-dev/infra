@@ -87,6 +87,9 @@ type Config struct {
 	// an explicit 0 disables marking for builds only. Range 0..63.
 	// Set-but-empty behaves as unset (inherits): the env parser skips it.
 	BuildSandboxEgressDSCP *uint8 `env:"BUILD_SANDBOX_EGRESS_DSCP"`
+
+	// NetworkVersion selects v1 (iptables per-sandbox) or v2 (nftables verdict maps).
+	NetworkVersion int `env:"NETWORK_VERSION" envDefault:"1"`
 }
 
 // EgressClass selects which configured egress DSCP applies to a sandbox. It
