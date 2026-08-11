@@ -22,7 +22,7 @@ func (db *Client) GetUserEmailsByUserIDs(ctx context.Context, userIDs []uuid.UUI
 		  AND ut.is_default = true
 	`
 
-	rows, err := db.readConn.Query(ctx, q, userIDs)
+	rows, err := db.conn.Query(ctx, q, userIDs)
 	if err != nil {
 		return nil, fmt.Errorf("query user emails from default teams: %w", err)
 	}
@@ -56,7 +56,7 @@ func (db *Client) FindUserIDsByEmail(ctx context.Context, email string) ([]uuid.
 		  AND ut.is_default = true
 	`
 
-	rows, err := db.readConn.Query(ctx, q, email)
+	rows, err := db.conn.Query(ctx, q, email)
 	if err != nil {
 		return nil, fmt.Errorf("find user ids by email: %w", err)
 	}

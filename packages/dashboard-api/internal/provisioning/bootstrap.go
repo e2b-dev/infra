@@ -267,7 +267,7 @@ func (s *Service) existingTeamByEmail(ctx context.Context, email string) (Provis
 		return ProvisionedTeam{}, errors.New("no unique provisioned user for email")
 	}
 
-	team, err := s.authDB.Read.GetDefaultTeamByUserID(ctx, userIDs[0])
+	team, err := s.authDB.GetDefaultTeamByUserID(ctx, userIDs[0])
 	if err != nil {
 		return ProvisionedTeam{}, err
 	}

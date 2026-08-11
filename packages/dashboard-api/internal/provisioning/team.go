@@ -6,10 +6,12 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/identity"
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 )
 
@@ -115,11 +117,28 @@ func (s *Service) resolveProfile(ctx context.Context, userID uuid.UUID) (identit
 	}
 
 	profile, ok := profiles[userID]
-	if !ok {
+	if ok {
+		return profile, nil
+	}
+
+	// Pre-Ory fallback: user exists in user_identities but the identity
+	// provider has no record for this subject. Resolve the email from the
+	// user's existing default team so team creation can proceed.
+	emails, dbErr := s.authDB.GetUserEmailsByUserIDs(ctx, []uuid.UUID{userID})
+	if dbErr != nil {
+		return identity.Profile{}, fmt.Errorf("get user profile: %w", fmt.Errorf("%w: %s", identity.ErrUserNotFound, userID))
+	}
+
+	email, found := emails[userID]
+	if !found {
 		return identity.Profile{}, fmt.Errorf("%w: %s", identity.ErrUserNotFound, userID)
 	}
 
-	return profile, nil
+	logger.L().Warn(ctx, "resolved profile via DB fallback for pre-Ory user",
+		zap.String("user_id", userID.String()),
+	)
+
+	return identity.Profile{UserID: userID, Email: email}, nil
 }
 
 func (s *Service) provisionBillingOrDeleteTeam(ctx context.Context, teamID uuid.UUID, req teamprovision.TeamBillingProvisionRequestedV1) error {
