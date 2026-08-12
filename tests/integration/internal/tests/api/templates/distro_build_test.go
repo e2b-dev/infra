@@ -82,7 +82,13 @@ func TestTemplateBuildDistroFamilies(t *testing.T) {
 				// Proves the parity binaries exist in the booted sandbox, not
 				// just that their packages resolved (Alpine ships ss in the
 				// iproute2-ss subpackage — a name-level check can't see it).
-				ReadyCmd: new("command -v ss && command -v curl"),
+				//
+				// The trailing sleep holds the start command's log stream open:
+				// the build cancels it the moment the ready command returns, so
+				// a ready command that answers in milliseconds races the start
+				// command's stdout to the build log and the assertion below on
+				// "[start] [stdout]" then fails.
+				ReadyCmd: new("command -v ss && command -v curl && sleep 1"),
 			}
 
 			outcome := runTemplateBuild(t, tc.templateName, buildConfig, logHandler)
