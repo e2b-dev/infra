@@ -20,7 +20,7 @@ require (
 	github.com/prometheus/procfs v0.20.1
 	github.com/rs/cors v1.11.1
 	github.com/rs/zerolog v1.34.0
-	github.com/shirou/gopsutil/v4 v4.26.3
+	github.com/shirou/gopsutil/v4 v4.26.5
 	github.com/stretchr/testify v1.11.1
 	github.com/txn2/txeh v1.7.0
 	golang.org/x/sync v0.22.0

@@ -51,10 +51,10 @@ require (
 	github.com/oapi-codegen/gin-middleware v1.0.2
 	github.com/oapi-codegen/runtime v1.6.0
 	github.com/redis/go-redis/v9 v9.17.3
-	github.com/shirou/gopsutil/v4 v4.26.3
+	github.com/shirou/gopsutil/v4 v4.26.5
 	github.com/soheilhy/cmux v0.1.5
 	github.com/stretchr/testify v1.11.1
-	github.com/testcontainers/testcontainers-go v0.42.0
+	github.com/testcontainers/testcontainers-go v0.43.0
 	github.com/tklauser/go-sysconf v0.3.16
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5

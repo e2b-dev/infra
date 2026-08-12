@@ -332,7 +332,7 @@ require (
 	github.com/sercand/kuberesolver/v6 v6.0.0 // indirect
 	github.com/sergi/go-diff v1.4.0 // indirect
 	github.com/sethvargo/go-retry v0.3.0 // indirect
-	github.com/shirou/gopsutil/v4 v4.26.3 // indirect
+	github.com/shirou/gopsutil/v4 v4.26.5 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/sony/gobreaker/v2 v2.3.0 // indirect
@@ -343,8 +343,8 @@ require (
 	github.com/stretchr/objx v0.5.3 // indirect
 	github.com/tdewolff/parse/v2 v2.8.12 // indirect
 	github.com/tdewolff/test v1.0.12 // indirect
-	github.com/testcontainers/testcontainers-go v0.42.0 // indirect
-	github.com/testcontainers/testcontainers-go/modules/postgres v0.42.0 // indirect
+	github.com/testcontainers/testcontainers-go v0.43.0 // indirect
+	github.com/testcontainers/testcontainers-go/modules/postgres v0.43.0 // indirect
 	github.com/tjhop/slog-gokit v0.1.4 // indirect
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
 	github.com/tklauser/numcpus v0.11.0 // indirect
