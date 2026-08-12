@@ -176,7 +176,7 @@
   # passwd by name, the same way it does on the families that install
   # shadow/shadow-utils via Packages.
   environment.systemPackages = with pkgs; [
-    shadow socat curl git jq less fuse3 iptables nftables iputils nfs-utils
+    shadow socat curl git jq less fuse3 iptables nftables iputils iproute2 nfs-utils
   ];
 
   # Tracks the nixpkgs pin in build.sh, and is meant to. The usual "never

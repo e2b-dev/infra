@@ -116,6 +116,14 @@ var capabilities = []struct {
 		"arch":   {"iputils"},
 		"alpine": {"iputils"},
 	}},
+	{"socket-stats", map[string][]string{
+		// ss — Debian and RHEL slim images omit it, busybox ships netstat but
+		// not ss; Arch's base metapackage already depends on iproute2.
+		"debian": {"iproute2"},
+		"rhel":   {"iproute"},
+		"arch":   {},
+		"alpine": {"iproute2"},
+	}},
 	{"archiver", map[string][]string{
 		// Only the RPM family needs tar declared: yum-era CentOS 7 doesn't ship
 		// it, while Debian, Arch and busybox all provide tar in the base image.

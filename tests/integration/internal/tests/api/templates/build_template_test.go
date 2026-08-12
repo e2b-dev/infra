@@ -1065,6 +1065,7 @@ func TestTemplateBuildInstalledPackagesAvailable(t *testing.T) {
 		"nftables",
 		"iputils-ping",
 		"jq",
+		"iproute2",
 	}
 
 	steps := make([]api.TemplateStep, 0, len(packages))

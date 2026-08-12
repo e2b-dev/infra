@@ -10,7 +10,7 @@ import (
 // Golden lines lifted VERBATIM from the pre-change provision.sh so the debian
 // profile reproduces them and Debian/Ubuntu behaviour is preserved.
 const (
-	goldenDebianPackages = "systemd systemd-sysv openssh-server sudo chrony socat curl ca-certificates fuse3 iptables git nfs-common less nftables iputils-ping jq"
+	goldenDebianPackages = "systemd systemd-sysv openssh-server sudo chrony socat curl ca-certificates fuse3 iptables git nfs-common less nftables iputils-ping jq iproute2"
 	goldenDebianQuery    = `dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q "install ok installed"`
 	goldenDebianInit     = "/lib/systemd/systemd"
 )

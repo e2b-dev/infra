@@ -54,7 +54,7 @@ var Profiles = []Profile{
 		Packages: []string{
 			"systemd", "systemd-sysv", "openssh-server", "sudo", "chrony", "socat",
 			"curl", "ca-certificates", "fuse3", "iptables", "git", "nfs-common",
-			"less", "nftables", "iputils-ping", "jq",
+			"less", "nftables", "iputils-ping", "jq", "iproute2",
 		},
 		PkgQueryBody: `dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q "install ok installed"`,
 		PkgInstall:   `apt-get -q update && DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get -qq -o=Dpkg::Use-Pty=0 install -y --no-install-recommends "$@"`,
@@ -81,6 +81,7 @@ var Profiles = []Profile{
 			"systemd", "shadow-utils", "passwd", "openssh-server", "sudo", "chrony",
 			"socat", "curl", "ca-certificates", "fuse3", "iptables", "git",
 			"nfs-utils", "less", "nftables", "iputils", "jq", "bash", "tar",
+			"iproute",
 		},
 		PkgQueryBody: `rpm -q "$1" >/dev/null 2>&1`,
 		// dnf → microdnf → yum spans the family (yum for CentOS 7); errors reach
@@ -132,7 +133,7 @@ var Profiles = []Profile{
 		Packages: []string{
 			"openrc", "shadow", "openssh", "sudo", "chrony", "socat", "curl",
 			"ca-certificates", "fuse3", "iptables", "git", "nfs-utils", "less",
-			"nftables", "iputils", "jq", "bash", "util-linux-misc",
+			"nftables", "iputils", "jq", "bash", "util-linux-misc", "iproute2",
 		},
 		PkgQueryBody: `apk info -e "$1" >/dev/null 2>&1`,
 		PkgInstall:   `apk add --no-cache "$@"`,

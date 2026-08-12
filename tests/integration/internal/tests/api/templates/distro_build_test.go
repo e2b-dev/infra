@@ -79,7 +79,10 @@ func TestTemplateBuildDistroFamilies(t *testing.T) {
 				FromImage: new(tc.fromImage),
 				Steps:     new([]api.TemplateStep{}),
 				StartCmd:  new("echo 'Sandbox started'"),
-				ReadyCmd:  new("sleep 1"),
+				// Proves the parity binaries exist in the booted sandbox, not
+				// just that their packages resolved (Alpine ships ss in the
+				// iproute2-ss subpackage — a name-level check can't see it).
+				ReadyCmd: new("command -v ss && command -v curl"),
 			}
 
 			outcome := runTemplateBuild(t, tc.templateName, buildConfig, logHandler)
