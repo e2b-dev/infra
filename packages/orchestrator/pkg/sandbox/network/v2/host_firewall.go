@@ -501,10 +501,11 @@ func ifnameString(key []byte) string {
 	return string(bytes.TrimRight(key, "\x00"))
 }
 
-// resetConnOnError replaces the shared conn whenever a mutation fails: a
-// failed buffer or Flush leaves the batch queued and the serialization error
-// sticky, and nftables.Conn exposes no way to clear either, so the next caller
-// would replay them. Every slot on the host shares this conn.
+// resetConnOnError replaces the shared conn whenever a mutation fails. A
+// serialization error sticks to the conn for its lifetime, and a mutation that
+// returns before reaching Flush leaves its messages queued for whoever flushes
+// next; nftables.Conn exposes no way to clear either. Every slot on the host
+// shares this conn, so one failure would otherwise follow every later slot.
 func (hf *HostFirewall) resetConnOnError(ctx context.Context, err *error) {
 	if *err == nil {
 		return
