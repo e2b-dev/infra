@@ -80,7 +80,6 @@ func ValidateV2Prerequisites() error {
 		desc     string
 	}{
 		{"/proc/sys/net/ipv4/ip_forward", "1", "IPv4 forwarding"},
-		{"/proc/sys/net/ipv4/conf/all/src_valid_mark", "1", "src_valid_mark (required for fwmark-based policy routing)"},
 	}
 
 	var errs []error
@@ -151,8 +150,20 @@ func (p *V2Pool) Populate(ctx context.Context) {
 				continue
 			}
 
-			newSlotsAvailableCounter.Add(ctx, 1)
-			p.newSlots <- slot
+			select {
+			case p.newSlots <- slot:
+				newSlotsAvailableCounter.Add(ctx, 1)
+
+				continue
+			case <-p.done:
+			case <-ctx.Done():
+			}
+
+			if err := p.cleanup(context.WithoutCancel(ctx), slot); err != nil {
+				logger.L().Error(ctx, "[v2 network slot pool]: failed to cleanup created slot while closing", zap.Error(err), zap.Int("slot_index", slot.Idx))
+			}
+
+			return
 		}
 	}
 }

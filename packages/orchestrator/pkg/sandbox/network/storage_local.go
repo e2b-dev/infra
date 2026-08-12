@@ -175,6 +175,11 @@ func (s *StorageLocal) Release(ips *Slot) error {
 	return nil
 }
 
+// IsNamespaceAvailable reports whether the named network namespace is free.
+func IsNamespaceAvailable(dir, name string) (bool, error) {
+	return isNamespaceAvailable(dir, name)
+}
+
 func isNamespaceAvailable(dir, name string) (bool, error) {
 	nsPath := filepath.Join(dir, name)
 	_, err := os.Stat(nsPath)

@@ -27,9 +27,7 @@ func testConfig() network.Config {
 func TestHostFirewall_Init(t *testing.T) { //nolint:paralleltest // creates/deletes the singleton nftables table "v2-host-firewall" shared by all HostFirewall tests
 	skipIfNotLinuxRoot(t)
 
-	hf, err := NewHostFirewall("lo", testConfig())
-	require.NoError(t, err)
-	defer hf.Close()
+	hf := newTestHostFirewall(t, testConfig())
 
 	assert.NotNil(t, hf.conn)
 	assert.NotNil(t, hf.table)
@@ -40,16 +38,13 @@ func TestHostFirewall_Init(t *testing.T) { //nolint:paralleltest // creates/dele
 func TestHostFirewall_AddRemoveSlot(t *testing.T) { //nolint:paralleltest // creates/deletes the singleton nftables table "v2-host-firewall" shared by all HostFirewall tests
 	skipIfNotLinuxRoot(t)
 
-	hf, err := NewHostFirewall("lo", testConfig())
-	require.NoError(t, err)
-	defer hf.Close()
+	hf := newTestHostFirewall(t, testConfig())
 
 	slot := makeTestSlot(t, 1)
 	sv2 := NewSlotV2(slot)
 
 	// Add slot
-	err = hf.AddSlot(sv2)
-	require.NoError(t, err)
+	require.NoError(t, hf.AddSlot(sv2))
 
 	// Verify veth set has the element
 	elements, err := hf.conn.GetSetElements(hf.vethSet)
@@ -62,8 +57,7 @@ func TestHostFirewall_AddRemoveSlot(t *testing.T) { //nolint:paralleltest // cre
 	assert.NotEmpty(t, cidrElements, "cidr set should have elements")
 
 	// Remove slot
-	err = hf.RemoveSlot(sv2)
-	require.NoError(t, err)
+	require.NoError(t, hf.RemoveSlot(sv2))
 
 	// Verify veth set is empty
 	elements, err = hf.conn.GetSetElements(hf.vethSet)
@@ -74,14 +68,13 @@ func TestHostFirewall_AddRemoveSlot(t *testing.T) { //nolint:paralleltest // cre
 func TestHostFirewall_ConcurrentAccess(t *testing.T) { //nolint:paralleltest // creates/deletes the singleton nftables table "v2-host-firewall" shared by all HostFirewall tests
 	skipIfNotLinuxRoot(t)
 
-	hf, err := NewHostFirewall("lo", testConfig())
-	require.NoError(t, err)
-	defer hf.Close()
+	hf := newTestHostFirewall(t, testConfig())
 
 	// Add multiple slots concurrently
 	done := make(chan error, 10)
 	for i := 1; i <= 10; i++ {
 		sv2 := NewSlotV2(makeTestSlot(t, i))
+		t.Cleanup(func() { _ = hf.RemoveSlot(sv2) })
 		go func() {
 			done <- hf.AddSlot(sv2)
 		}()

@@ -28,7 +28,7 @@ import (
 //   - eBPF: observer.Attach() adds optional per-veth counters (best-effort)
 func CreateNetworkV2(ctx context.Context, slot *network.Slot, slotV2 *SlotV2,
 	hf *HostFirewall, observer *VethObserver,
-) error {
+) (retErr error) {
 	// Prevent thread changes so we can safely manipulate namespaces
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -38,18 +38,46 @@ func CreateNetworkV2(ctx context.Context, slot *network.Slot, slotV2 *SlotV2,
 	if err != nil {
 		return fmt.Errorf("cannot get current (host) namespace: %w", err)
 	}
+
+	cleanupNeeded := false
 	defer func() {
-		if err := netns.Set(hostNS); err != nil {
-			logger.L().Error(ctx, "error resetting network namespace back to host", zap.Error(err))
+		restoreErr := netns.Set(hostNS)
+		if restoreErr != nil {
+			logger.L().Error(ctx, "error resetting network namespace back to host", zap.Error(restoreErr))
 		}
+
+		if retErr != nil && cleanupNeeded {
+			if restoreErr != nil {
+				retErr = errors.Join(retErr, fmt.Errorf("error resetting network namespace back to host before cleanup: %w", restoreErr))
+			} else if cleanupErr := RemoveNetworkV2(ctx, slot, slotV2, hf, observer); cleanupErr != nil {
+				retErr = errors.Join(retErr, fmt.Errorf("error cleaning up partially created v2 network: %w", cleanupErr))
+			}
+		}
+
 		hostNS.Close()
 	}()
+
+	// An existing namespace for this index is a stale reclaim anchor from a
+	// failed teardown whose rules, routes and veth may still exist. Run a full
+	// (idempotent) teardown to reclaim them; deleting only the namespace would
+	// orphan that state.
+	available, err := network.IsNamespaceAvailable(network.NetNamespacesDir, slot.NamespaceID())
+	if err != nil {
+		return fmt.Errorf("cannot check for stale namespace: %w", err)
+	}
+	if !available {
+		if err := RemoveNetworkV2(ctx, slot, slotV2, hf, observer); err != nil {
+			return fmt.Errorf("cannot reclaim stale v2 network slot: %w", err)
+		}
+	}
 
 	// --- Create namespace ---
 	ns, err := netns.NewNamed(slot.NamespaceID())
 	if err != nil {
 		return fmt.Errorf("cannot create new namespace: %w", err)
 	}
+	cleanupNeeded = true
+
 	defer ns.Close()
 
 	// --- Create veth pair (inside new namespace, then move veth to host) ---
@@ -119,6 +147,12 @@ func CreateNetworkV2(ctx context.Context, slot *network.Slot, slotV2 *SlotV2,
 
 	if err := netlink.LinkAdd(tap); err != nil {
 		return fmt.Errorf("error creating tap device: %w", err)
+	}
+
+	// Keep resumed guests' cached gateway ARP entries valid. Tap devices are
+	// isolated in per-sandbox network namespaces, so sharing this MAC is safe.
+	if err := netlink.LinkSetHardwareAddr(tap, network.TapHostHardwareAddr()); err != nil {
+		return fmt.Errorf("error setting tap device hardware address: %w", err)
 	}
 
 	if err := netlink.LinkSetUp(tap); err != nil {
@@ -209,7 +243,9 @@ func CreateNetworkV2(ctx context.Context, slot *network.Slot, slotV2 *SlotV2,
 	return nil
 }
 
-// RemoveNetworkV2 tears down the network for a v2 slot.
+// RemoveNetworkV2 tears down the network for a v2 slot. It is idempotent:
+// state that is already gone is not an error, so it can reclaim a partially
+// created or previously half-torn-down slot.
 func RemoveNetworkV2(_ context.Context, slot *network.Slot, slotV2 *SlotV2,
 	hf *HostFirewall, observer *VethObserver,
 ) error {
@@ -233,27 +269,31 @@ func RemoveNetworkV2(_ context.Context, slot *network.Slot, slotV2 *SlotV2,
 	}
 
 	// Delete host route
-	if err := netlink.RouteDel(&netlink.Route{
+	err := netlink.RouteDel(&netlink.Route{
 		Gw:  slot.VpeerIP(),
 		Dst: slot.HostNet(),
-	}); err != nil {
-		errs = append(errs, fmt.Errorf("error deleting route from host to FC: %w", err))
-	}
+	})
+	appendUnlessAbsent(&errs, err, isRouteNotExist, "error deleting route from host to FC: %w")
 
 	// Delete veth device explicitly (prevents race on reuse)
 	vethLink, err := netlink.LinkByName(slot.VethName())
 	if err != nil {
-		errs = append(errs, fmt.Errorf("error finding veth: %w", err))
+		appendUnlessAbsent(&errs, err, isLinkNotExist, "error finding veth: %w")
 	} else {
-		if err := netlink.LinkDel(vethLink); err != nil {
-			errs = append(errs, fmt.Errorf("error deleting veth device: %w", err))
-		}
+		appendUnlessAbsent(&errs, netlink.LinkDel(vethLink), isLinkNotExist, "error deleting veth device: %w")
 	}
 
-	// Delete namespace
-	if err := netns.DeleteNamed(slot.NamespaceID()); err != nil {
-		errs = append(errs, fmt.Errorf("error deleting namespace: %w", err))
+	// The /run/netns entry is the anchor startup reclaim uses to rediscover a
+	// leaked slot, and every host-side item above is keyed by the slot index:
+	// deleting it after a failed teardown would orphan that state with no way
+	// to retry it. CreateNetworkV2 removes a stale anchor before reusing the
+	// slot.
+	if len(errs) > 0 {
+		return errors.Join(errs...)
 	}
+
+	err = netns.DeleteNamed(slot.NamespaceID())
+	appendUnlessAbsent(&errs, err, isNamespaceNotExist, "error deleting namespace: %w")
 
 	return errors.Join(errs...)
 }

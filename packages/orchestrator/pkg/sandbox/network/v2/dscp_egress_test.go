@@ -191,8 +191,7 @@ func TestV2Pool_GetStampsAndRecycleRestoresDSCP(t *testing.T) { //nolint:paralle
 	ctx := context.Background()
 	config := dscpConfig(t, "8", "16")
 
-	hf, err := NewHostFirewall("lo", config)
-	require.NoError(t, err)
+	hf := newTestHostFirewall(t, config)
 
 	observer, err := NewVethObserver()
 	require.NoError(t, err)
@@ -237,9 +236,7 @@ func TestEgressDSCP_WireTOS(t *testing.T) { //nolint:paralleltest // mutates hos
 	ctx := context.Background()
 	config := dscpConfig(t, "8", "16")
 
-	hf, err := NewHostFirewall("lo", config)
-	require.NoError(t, err)
-	defer hf.Close()
+	hf := newTestHostFirewall(t, config)
 
 	slot := makeTestSlot(t, reserveNSTestIdx(t))
 	sv2 := NewSlotV2(slot)

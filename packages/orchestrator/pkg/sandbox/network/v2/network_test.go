@@ -18,9 +18,7 @@ func TestCreateNetworkV2_FullLifecycle(t *testing.T) { //nolint:paralleltest // 
 	ctx := context.Background()
 
 	// Create host firewall
-	hf, err := NewHostFirewall("lo", testConfig())
-	require.NoError(t, err)
-	defer hf.Close()
+	hf := newTestHostFirewall(t, testConfig())
 
 	observer, err := NewVethObserver()
 	require.NoError(t, err)
@@ -30,8 +28,7 @@ func TestCreateNetworkV2_FullLifecycle(t *testing.T) { //nolint:paralleltest // 
 	sv2 := NewSlotV2(slot)
 
 	// Create network
-	err = CreateNetworkV2(ctx, slot, sv2, hf, observer)
-	require.NoError(t, err)
+	require.NoError(t, CreateNetworkV2(ctx, slot, sv2, hf, observer))
 
 	// Verify namespace exists
 	out, err := exec.CommandContext(ctx, "ip", "netns", "list").Output()
@@ -60,16 +57,13 @@ func TestCreateNetworkV2_NoIptablesRules(t *testing.T) { //nolint:paralleltest /
 
 	ctx := context.Background()
 
-	hf, err := NewHostFirewall("lo", testConfig())
-	require.NoError(t, err)
-	defer hf.Close()
+	hf := newTestHostFirewall(t, testConfig())
 
 	slot := makeTestSlot(t, reserveNSTestIdx(t))
 	sv2 := NewSlotV2(slot)
 
-	err = CreateNetworkV2(ctx, slot, sv2, hf, nil)
-	require.NoError(t, err)
-	defer RemoveNetworkV2(ctx, slot, sv2, hf, nil)
+	require.NoError(t, CreateNetworkV2(ctx, slot, sv2, hf, nil))
+	t.Cleanup(func() { _ = RemoveNetworkV2(ctx, slot, sv2, hf, nil) })
 
 	// Verify NO iptables rules reference this veth
 	out, err := exec.CommandContext(ctx, "iptables", "-t", "nat", "-L", "PREROUTING", "-n").Output()
@@ -90,9 +84,7 @@ func TestCreateNetworkV2_CleanTeardown(t *testing.T) { //nolint:paralleltest // 
 
 	ctx := context.Background()
 
-	hf, err := NewHostFirewall("lo", testConfig())
-	require.NoError(t, err)
-	defer hf.Close()
+	hf := newTestHostFirewall(t, testConfig())
 
 	observer, _ := NewVethObserver()
 	defer observer.Close()
@@ -100,11 +92,8 @@ func TestCreateNetworkV2_CleanTeardown(t *testing.T) { //nolint:paralleltest // 
 	slot := makeTestSlot(t, reserveNSTestIdx(t))
 	sv2 := NewSlotV2(slot)
 
-	err = CreateNetworkV2(ctx, slot, sv2, hf, observer)
-	require.NoError(t, err)
-
-	err = RemoveNetworkV2(ctx, slot, sv2, hf, observer)
-	require.NoError(t, err)
+	require.NoError(t, CreateNetworkV2(ctx, slot, sv2, hf, observer))
+	require.NoError(t, RemoveNetworkV2(ctx, slot, sv2, hf, observer))
 
 	// Verify veth set is empty
 	elements, err := hf.conn.GetSetElements(hf.vethSet)

@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"sync/atomic"
 
@@ -494,6 +495,11 @@ func getHostNetworkCIDR() *net.IPNet {
 	log.Println("Using host network cidr", "cidr", cidr)
 
 	return subnet
+}
+
+// TapHostHardwareAddr returns the fixed host-side tap MAC.
+func TapHostHardwareAddr() net.HardwareAddr {
+	return slices.Clone(tapHostHardwareAddr)
 }
 
 // getTapHostHardwareAddr parses the fixed tapHostMAC constant once at package

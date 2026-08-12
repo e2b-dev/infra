@@ -23,6 +23,20 @@ func reserveNSTestIdx(t *testing.T) int {
 	return 31000 + int(nsTestIdx.Add(1))
 }
 
+// newTestHostFirewall opens the singleton host firewall and registers its
+// close first, so it runs after every later-registered slot teardown (t.Cleanup
+// is LIFO). Closing it while a slot is still registered deliberately preserves
+// the table, which would leak that slot's elements into the next test.
+func newTestHostFirewall(t *testing.T, config network.Config) *HostFirewall {
+	t.Helper()
+
+	hf, err := NewHostFirewall("lo", config)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = hf.Close() })
+
+	return hf
+}
+
 func makeTestSlot(t *testing.T, idx int) *network.Slot {
 	t.Helper()
 	cfg := network.Config{

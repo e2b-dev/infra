@@ -1,0 +1,227 @@
+//go:build linux
+
+package v2
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/containernetworking/plugins/pkg/ns"
+	"github.com/google/nftables"
+	"github.com/google/nftables/expr"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/vishvananda/netlink"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
+)
+
+// Resumed guests keep a cached ARP entry for the gateway, so the tap MAC must
+// be the same fixed address v1 stamps.
+func TestCreateNetworkV2_TapUsesFixedHostMAC(t *testing.T) { //nolint:paralleltest // mutates host netns state: singleton nftables table "v2-host-firewall", named netns, veth links
+	skipIfNotLinuxRoot(t)
+
+	ctx := context.Background()
+
+	hf := newTestHostFirewall(t, testConfig())
+
+	slot := makeTestSlot(t, reserveNSTestIdx(t))
+	sv2 := NewSlotV2(slot)
+	require.NoError(t, CreateNetworkV2(ctx, slot, sv2, hf, nil))
+	t.Cleanup(func() { _ = RemoveNetworkV2(ctx, slot, sv2, hf, nil) })
+
+	nsHandle, err := ns.GetNS(filepath.Join(network.NetNamespacesDir, slot.NamespaceID()))
+	require.NoError(t, err)
+	defer nsHandle.Close()
+
+	var got string
+	require.NoError(t, nsHandle.Do(func(_ ns.NetNS) error {
+		tap, err := netlink.LinkByName(slot.TapName())
+		if err != nil {
+			return err
+		}
+		got = tap.Attrs().HardwareAddr.String()
+
+		return nil
+	}))
+
+	assert.Equal(t, network.TapHostHardwareAddr().String(), got)
+}
+
+// v1's host FORWARD rules only ever append ACCEPTs, so the v2 table must not
+// drop anything: no default-drop policy, and the gw→veth ACCEPT is
+// unconditional (a ct-state match would reject new inbound flows v1 allows).
+func TestHostFirewall_ForwardChainMatchesV1(t *testing.T) { //nolint:paralleltest // creates/deletes the singleton nftables table "v2-host-firewall" shared by all HostFirewall tests
+	skipIfNotLinuxRoot(t)
+
+	hf := newTestHostFirewall(t, testConfig())
+
+	chains, err := hf.conn.ListChainsOfTableFamily(nftables.TableFamilyINet)
+	require.NoError(t, err)
+
+	var fwd *nftables.Chain
+	for _, c := range chains {
+		if c.Table.Name == hostFwTableName && c.Name == "forward" {
+			fwd = c
+
+			break
+		}
+	}
+	require.NotNil(t, fwd, "forward chain must exist")
+	require.NotNil(t, fwd.Policy)
+	assert.Equal(t, nftables.ChainPolicyAccept, *fwd.Policy, "v2 must not install a default-drop forward hook")
+
+	rules, err := hf.conn.GetRules(hf.table, fwd)
+	require.NoError(t, err)
+	require.Len(t, rules, 2, "forward chain holds exactly v1's two ACCEPTs")
+
+	for _, r := range rules {
+		accepts := false
+		for _, e := range r.Exprs {
+			if v, ok := e.(*expr.Verdict); ok && v.Kind == expr.VerdictAccept {
+				accepts = true
+			}
+			_, isCt := e.(*expr.Ct)
+			assert.False(t, isCt, "forward ACCEPTs must be unconditional, as v1's are")
+		}
+		assert.True(t, accepts, "every forward rule must be an ACCEPT")
+	}
+}
+
+// A slot left in the sets by a crashed run must not block its index: reclaim
+// tears the slot down, then reconcile drops what it left behind.
+func TestHostFirewall_ReconcileClearsStaleSlots(t *testing.T) { //nolint:paralleltest // creates/deletes the singleton nftables table "v2-host-firewall" shared by all HostFirewall tests
+	skipIfNotLinuxRoot(t)
+
+	hf := newTestHostFirewall(t, testConfig())
+
+	slot := makeTestSlot(t, reserveNSTestIdx(t))
+	sv2 := NewSlotV2(slot)
+	require.NoError(t, hf.AddSlot(sv2))
+
+	require.NoError(t, hf.ReconcileSlots(nil))
+
+	elements, err := hf.conn.GetSetElements(hf.vethSet)
+	require.NoError(t, err)
+	assert.Empty(t, elements, "reconcile must drop set elements no live slot owns")
+
+	// A live slot is re-added rather than dropped.
+	require.NoError(t, hf.AddSlot(sv2))
+	require.NoError(t, hf.ReconcileSlots([]*SlotV2{sv2}))
+
+	elements, err = hf.conn.GetSetElements(hf.vethSet)
+	require.NoError(t, err)
+	require.Len(t, elements, 1)
+
+	require.NoError(t, hf.RemoveSlot(sv2))
+}
+
+// Sandboxes outlive the orchestrator process: closing the pool while a slot is
+// still registered must leave its rules in place.
+func TestHostFirewall_ClosePreservesLiveSlots(t *testing.T) { //nolint:paralleltest // creates/deletes the singleton nftables table "v2-host-firewall" shared by all HostFirewall tests
+	skipIfNotLinuxRoot(t)
+
+	hf, err := NewHostFirewall("lo", testConfig())
+	require.NoError(t, err)
+
+	slot := makeTestSlot(t, reserveNSTestIdx(t))
+	sv2 := NewSlotV2(slot)
+	require.NoError(t, hf.AddSlot(sv2))
+	require.NoError(t, hf.Close())
+
+	reopened := newTestHostFirewall(t, testConfig())
+	require.NoError(t, vethSetHas(reopened, slot.VethName()), "a live slot's rules must survive Close")
+
+	require.NoError(t, reopened.RemoveSlot(sv2))
+
+	// With no slot left, Close does tear the table down.
+	require.NoError(t, reopened.Close())
+	after := newTestHostFirewall(t, testConfig())
+	elements, err := after.conn.GetSetElements(after.vethSet)
+	require.NoError(t, err)
+	assert.Empty(t, elements, "Close must delete the table once no slot is left")
+}
+
+// vethSetHas reports whether the veth set holds the named interface.
+func vethSetHas(hf *HostFirewall, veth string) error {
+	elements, err := hf.conn.GetSetElements(hf.vethSet)
+	if err != nil {
+		return err
+	}
+
+	want := ifnameBytes(veth)
+	for _, e := range elements {
+		if bytes.Equal(e.Key, want) {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("veth %s not in set (%d elements)", veth, len(elements))
+}
+
+// Teardown is idempotent: repeated calls, and calls against a slot that was
+// never created, must not error — that is what makes create-failure cleanup
+// and startup reclaim safe.
+func TestRemoveNetworkV2_Idempotent(t *testing.T) { //nolint:paralleltest // mutates host netns state: singleton nftables table "v2-host-firewall", named netns, veth links
+	skipIfNotLinuxRoot(t)
+
+	ctx := context.Background()
+
+	hf := newTestHostFirewall(t, testConfig())
+
+	slot := makeTestSlot(t, reserveNSTestIdx(t))
+	sv2 := NewSlotV2(slot)
+
+	// Never created.
+	require.NoError(t, RemoveNetworkV2(ctx, slot, sv2, hf, nil))
+
+	require.NoError(t, CreateNetworkV2(ctx, slot, sv2, hf, nil))
+	require.NoError(t, RemoveNetworkV2(ctx, slot, sv2, hf, nil))
+	require.NoError(t, RemoveNetworkV2(ctx, slot, sv2, hf, nil))
+}
+
+// A stale namespace from a failed teardown is the reclaim anchor: create must
+// reclaim it rather than fail, so the index stays usable.
+func TestCreateNetworkV2_ReclaimsStaleNamespace(t *testing.T) { //nolint:paralleltest // mutates host netns state: singleton nftables table "v2-host-firewall", named netns, veth links
+	skipIfNotLinuxRoot(t)
+
+	ctx := context.Background()
+
+	hf := newTestHostFirewall(t, testConfig())
+
+	slot := makeTestSlot(t, reserveNSTestIdx(t))
+	sv2 := NewSlotV2(slot)
+
+	require.NoError(t, CreateNetworkV2(ctx, slot, sv2, hf, nil))
+
+	// Leave the namespace and the set elements behind, as a crashed run would.
+	require.NoError(t, slot.CloseFirewall())
+
+	require.NoError(t, CreateNetworkV2(ctx, slot, sv2, hf, nil), "a stale anchor must be reclaimed, not fatal")
+	t.Cleanup(func() { _ = RemoveNetworkV2(ctx, slot, sv2, hf, nil) })
+
+	_, err := os.Stat(filepath.Join(network.NetNamespacesDir, slot.NamespaceID()))
+	require.NoError(t, err, "the rebuilt slot must have its namespace")
+}
+
+// fwmark policy routing is not part of this datapath, so its sysctl must not
+// gate startup.
+func TestValidateV2Prerequisites_IgnoresSrcValidMark(t *testing.T) {
+	t.Parallel()
+
+	raw, err := os.ReadFile("/proc/sys/net/ipv4/conf/all/src_valid_mark")
+	require.NoError(t, err)
+	require.Equal(t, "0", string(raw[:1]), "this box must have src_valid_mark=0 for the check to mean anything")
+
+	forwarding, err := os.ReadFile("/proc/sys/net/ipv4/ip_forward")
+	require.NoError(t, err)
+	if string(forwarding[:1]) != "1" {
+		t.Skip("ip_forward is off; the prerequisite check cannot pass here for unrelated reasons")
+	}
+
+	require.NoError(t, ValidateV2Prerequisites())
+}

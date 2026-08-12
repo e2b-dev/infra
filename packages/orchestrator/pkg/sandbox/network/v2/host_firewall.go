@@ -4,6 +4,7 @@ package v2
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"net"
 	"slices"
@@ -154,7 +155,9 @@ func (hf *HostFirewall) ensureChains() error {
 	orchIP := net.ParseIP(hf.config.OrchestratorInSandboxIPAddress).To4()
 
 	// --- FORWARD chain ---
-	fwdPolicy := nftables.ChainPolicyDrop
+	// Accept policy, matching v1: the slot rules below only add ACCEPTs, so
+	// this chain stays transparent to every other forwarding path on the host.
+	fwdPolicy := nftables.ChainPolicyAccept
 	fwdChain := hf.conn.AddChain(&nftables.Chain{
 		Name:     "forward",
 		Table:    hf.table,
@@ -178,7 +181,9 @@ func (hf *HostFirewall) ensureChains() error {
 		},
 	})
 
-	// iifname <gw> oifname @v2_veths ct state established,related accept
+	// iifname <gw> oifname @v2_veths accept — unconditional, as v1's FORWARD
+	// rule is; a conntrack-state match here would break new inbound flows v1
+	// allows.
 	hf.conn.AddRule(&nftables.Rule{
 		Table: hf.table,
 		Chain: fwdChain,
@@ -187,13 +192,6 @@ func (hf *HostFirewall) ensureChains() error {
 			&expr.Cmp{Register: 1, Op: expr.CmpOpEq, Data: gwBytes},
 			&expr.Meta{Key: expr.MetaKeyOIFNAME, Register: 1},
 			&expr.Lookup{SourceRegister: 1, SetName: hf.vethSet.Name, SetID: hf.vethSet.ID},
-			&expr.Ct{Key: expr.CtKeySTATE, Register: 1},
-			&expr.Bitwise{
-				SourceRegister: 1, DestRegister: 1, Len: 4,
-				Mask: bitmask32(expr.CtStateBitESTABLISHED | expr.CtStateBitRELATED),
-				Xor:  bitmask32(0),
-			},
-			&expr.Cmp{Op: expr.CmpOpNeq, Register: 1, Data: bitmask32(0)},
 			&expr.Verdict{Kind: expr.VerdictAccept},
 		},
 	})
@@ -420,21 +418,33 @@ func (hf *HostFirewall) RemoveSlot(slotV2 *SlotV2) error {
 		{Key: nextIP, IntervalEnd: true},
 	})
 
-	if err := hf.conn.Flush(); err != nil {
+	// Already-absent elements make this a no-op, not a failure: teardown has
+	// to be retryable after a partial create.
+	if err := hf.conn.Flush(); err != nil && !errors.Is(err, unix.ENOENT) {
 		return fmt.Errorf("flush remove slot: %w", err)
 	}
 
 	return nil
 }
 
-// Close tears down the entire host firewall table.
+// Close releases the netlink connection, and deletes the table only when no
+// slot is left in it. Sandboxes outlive the orchestrator process: deleting the
+// table while their veths are still registered would cut their connectivity
+// until the next start rebuilt it.
 func (hf *HostFirewall) Close() error {
 	hf.mu.Lock()
 	defer hf.mu.Unlock()
 
-	hf.conn.DelTable(hf.table)
-	if err := hf.conn.Flush(); err != nil {
-		return fmt.Errorf("delete host firewall table: %w", err)
+	elements, err := hf.conn.GetSetElements(hf.vethSet)
+	if err != nil {
+		return errors.Join(fmt.Errorf("get veth set elements: %w", err), hf.conn.CloseLasting())
+	}
+
+	if len(elements) == 0 {
+		hf.conn.DelTable(hf.table)
+		if err := hf.conn.Flush(); err != nil {
+			return errors.Join(fmt.Errorf("delete host firewall table: %w", err), hf.conn.CloseLasting())
+		}
 	}
 
 	return hf.conn.CloseLasting()
