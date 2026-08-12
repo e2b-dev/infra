@@ -52,6 +52,21 @@ func TestParseStorageURL(t *testing.T) {
 			want: Spec{Provider: AWSStorageProvider, Bucket: "my-bucket"},
 		},
 		{
+			name: "azure blob container",
+			url:  "azblob://my-container",
+			want: Spec{Provider: AzureStorageProvider, Bucket: "my-container"},
+		},
+		{
+			name: "azure blob container trailing slash",
+			url:  "azblob://my-container/",
+			want: Spec{Provider: AzureStorageProvider, Bucket: "my-container"},
+		},
+		{
+			name:    "azblob rejects query parameters",
+			url:     "azblob://my-container?endpoint=http://azurite:10000",
+			wantErr: "azblob:// does not accept query parameters",
+		},
+		{
 			name: "local filesystem",
 			url:  "file:///var/lib/storage",
 			want: Spec{Provider: LocalStorageProvider, BasePath: "/var/lib/storage"},
@@ -78,7 +93,7 @@ func TestParseStorageURL(t *testing.T) {
 		},
 		{
 			name:    "unknown scheme",
-			url:     "azblob://my-bucket",
+			url:     "ftp://my-bucket",
 			wantErr: "unsupported scheme",
 		},
 		{
@@ -168,7 +183,8 @@ func TestParseStorageURLDoesNotLeakCredentials(t *testing.T) {
 
 	urls := []string{
 		"s3://AKIAKEY:supersecret@bucket",                    // credentials rejection
-		"azblob://AKIAKEY:supersecret@bucket",                // unsupported scheme
+		"azblob://AKIAKEY:supersecret@bucket",                // credentials rejection
+		"ftps://AKIAKEY:supersecret@bucket",                  // unsupported-scheme branch must redact too
 		"s3://AKIAKEY:supersecret@bucket/prefix",             // key prefix rejection
 		"s3://AKIAKEY:supersecret@bucket?bogus=1",            // unknown query parameter
 		"gs://AKIAKEY:supersecret@bucket?x=1",                // gs query parameter rejection

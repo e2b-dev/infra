@@ -43,6 +43,8 @@ func NewProvider(ctx context.Context, spec Spec, opts ...Option) (StorageProvide
 		return newAWSStorage(ctx, spec, o.limiter)
 	case GCPStorageProvider:
 		return NewGCP(ctx, spec.Bucket, o.limiter)
+	case AzureStorageProvider:
+		return newAzureStorage(ctx, spec.Bucket, o.limiter)
 	}
 
 	return nil, fmt.Errorf("unknown storage provider: %s", spec.Provider)

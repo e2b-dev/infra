@@ -69,6 +69,12 @@ func TestTemplateStorage_Legacy(t *testing.T) {
 			want:        storage.Spec{Provider: storage.AWSStorageProvider, Bucket: "legacy-bucket", UsePathStyle: true},
 		},
 		{
+			name:     "azure container",
+			provider: "AzureBucket",
+			bucket:   "fc-templates",
+			want:     storage.Spec{Provider: storage.AzureStorageProvider, Bucket: "fc-templates"},
+		},
+		{
 			name:     "local absolute path",
 			provider: "Local",
 			basePath: "/tmp/some-cache",
