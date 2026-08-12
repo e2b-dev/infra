@@ -62,29 +62,7 @@ func TestSlotV2_Creation(t *testing.T) {
 
 	assert.Equal(t, 2, sv2.NetworkVersion)
 	assert.Equal(t, slot, sv2.Slot)
-	assert.Equal(t, uint32(fwMarkBase+1), sv2.FwMark)
 	assert.Empty(t, sv2.SandboxID)
-}
-
-func TestSlotV2_FwMarkUniqueness(t *testing.T) {
-	t.Parallel()
-
-	marks := make(map[uint32]bool)
-
-	for i := 1; i <= 100; i++ {
-		slot := makeTestSlot(t, i)
-		sv2 := NewSlotV2(slot)
-
-		assert.False(t, marks[sv2.FwMark], "duplicate fwmark at index %d: 0x%x", i, sv2.FwMark)
-		marks[sv2.FwMark] = true
-	}
-}
-
-func TestSlotV2_FwMarkForIndex(t *testing.T) {
-	t.Parallel()
-
-	assert.Equal(t, uint32(0x201), FwMarkForIndex(1))
-	assert.Equal(t, uint32(0x264), FwMarkForIndex(100))
 }
 
 func TestSlotV2_String(t *testing.T) {
@@ -93,9 +71,7 @@ func TestSlotV2_String(t *testing.T) {
 	slot := makeTestSlot(t, 5)
 	sv2 := NewSlotV2(slot)
 
-	s := sv2.String()
-	assert.Contains(t, s, "idx=5")
-	assert.Contains(t, s, "fwmark=0x205")
+	assert.Contains(t, sv2.String(), "idx=5")
 }
 
 func TestSlotV2Registry(t *testing.T) {

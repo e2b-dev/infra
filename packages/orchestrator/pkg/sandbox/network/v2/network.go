@@ -31,11 +31,12 @@ func CreateNetworkV2(ctx context.Context, slot *network.Slot, slotV2 *SlotV2,
 ) (retErr error) {
 	// Prevent thread changes so we can safely manipulate namespaces
 	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 
 	// Save the original (host) namespace
 	hostNS, err := netns.Get()
 	if err != nil {
+		runtime.UnlockOSThread()
+
 		return fmt.Errorf("cannot get current (host) namespace: %w", err)
 	}
 
@@ -43,7 +44,12 @@ func CreateNetworkV2(ctx context.Context, slot *network.Slot, slotV2 *SlotV2,
 	defer func() {
 		restoreErr := netns.Set(hostNS)
 		if restoreErr != nil {
+			// Leaving the thread locked dooms it with the goroutine instead of
+			// returning it to the pool still inside the sandbox namespace,
+			// where the next user would build its slot in the wrong netns.
 			logger.L().Error(ctx, "error resetting network namespace back to host", zap.Error(restoreErr))
+		} else {
+			runtime.UnlockOSThread()
 		}
 
 		if retErr != nil && cleanupNeeded {
@@ -229,7 +235,7 @@ func CreateNetworkV2(ctx context.Context, slot *network.Slot, slotV2 *SlotV2,
 	}
 
 	// --- Host firewall: add slot to sets (replaces 8 iptables rules) ---
-	if err := hf.AddSlot(slotV2); err != nil {
+	if err := hf.AddSlot(ctx, slotV2); err != nil {
 		return fmt.Errorf("error adding slot to host firewall: %w", err)
 	}
 
@@ -246,7 +252,7 @@ func CreateNetworkV2(ctx context.Context, slot *network.Slot, slotV2 *SlotV2,
 // RemoveNetworkV2 tears down the network for a v2 slot. It is idempotent:
 // state that is already gone is not an error, so it can reclaim a partially
 // created or previously half-torn-down slot.
-func RemoveNetworkV2(_ context.Context, slot *network.Slot, slotV2 *SlotV2,
+func RemoveNetworkV2(ctx context.Context, slot *network.Slot, slotV2 *SlotV2,
 	hf *HostFirewall, observer *VethObserver,
 ) error {
 	var errs []error
@@ -257,7 +263,7 @@ func RemoveNetworkV2(_ context.Context, slot *network.Slot, slotV2 *SlotV2,
 	}
 
 	// Remove from host firewall sets
-	if err := hf.RemoveSlot(slotV2); err != nil {
+	if err := hf.RemoveSlot(ctx, slotV2); err != nil {
 		errs = append(errs, fmt.Errorf("error removing slot from host firewall: %w", err))
 	}
 

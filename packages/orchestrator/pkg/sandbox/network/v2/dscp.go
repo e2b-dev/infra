@@ -148,8 +148,9 @@ func dscpRuleValue(r *nftables.Rule, vpeerIface string) (uint8, bool) {
 				writes = true
 			}
 		case *expr.Bitwise:
-			if len(v.Xor) == 1 {
-				tos = v.Xor[0]
+			// The xor carries the new TOS byte in the second header byte.
+			if len(v.Xor) == 2 {
+				tos = v.Xor[1]
 			}
 		}
 	}
@@ -184,6 +185,12 @@ func hasOifnameCmp(r *nftables.Rule, name string) bool {
 // dscpSetExprs builds: meta nfproto ipv4 oifname <vpeer> ip dscp set <dscp> —
 // a write of the TOS byte that preserves the ECN bits and fixes the IPv4
 // header checksum, equivalent to v1's `-o <vpeer> -j DSCP --set-dscp <dscp>`.
+//
+// The read-modify-write spans the two leading header bytes rather than the TOS
+// byte alone: the kernel's inet checksum fixup works on 16-bit words, so a
+// 1-byte write at odd offset 1 folds the delta into the wrong half and every
+// stamped packet leaves with a corrupt header checksum. Masking version/IHL
+// through keeps them unchanged.
 func dscpSetExprs(vpeerIface string, dscp uint8) []expr.Any {
 	return []expr.Any{
 		&expr.Meta{Key: expr.MetaKeyNFPROTO, Register: 1},
@@ -194,22 +201,22 @@ func dscpSetExprs(vpeerIface string, dscp uint8) []expr.Any {
 			OperationType: expr.PayloadLoad,
 			DestRegister:  1,
 			Base:          expr.PayloadBaseNetworkHeader,
-			Offset:        1, // TOS byte in the IPv4 header
-			Len:           1,
+			Offset:        0, // version/IHL + TOS
+			Len:           2,
 		},
 		&expr.Bitwise{
 			SourceRegister: 1,
 			DestRegister:   1,
-			Len:            1,
-			Mask:           []byte{0x03},
-			Xor:            []byte{dscp << 2},
+			Len:            2,
+			Mask:           []byte{0xff, 0x03}, // keep version/IHL and the ECN bits
+			Xor:            []byte{0x00, dscp << 2},
 		},
 		&expr.Payload{
 			OperationType:  expr.PayloadWrite,
 			SourceRegister: 1,
 			Base:           expr.PayloadBaseNetworkHeader,
-			Offset:         1,
-			Len:            1,
+			Offset:         0,
+			Len:            2,
 			CsumType:       expr.CsumTypeInet,
 			CsumOffset:     10, // IPv4 header checksum
 		},

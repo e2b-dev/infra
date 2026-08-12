@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/containernetworking/plugins/pkg/ns"
@@ -97,27 +98,31 @@ func TestHostFirewall_ForwardChainMatchesV1(t *testing.T) { //nolint:paralleltes
 func TestHostFirewall_ReconcileClearsStaleSlots(t *testing.T) { //nolint:paralleltest // creates/deletes the singleton nftables table "v2-host-firewall" shared by all HostFirewall tests
 	skipIfNotLinuxRoot(t)
 
+	ctx := t.Context()
+
 	hf := newTestHostFirewall(t, testConfig())
 
 	slot := makeTestSlot(t, reserveNSTestIdx(t))
 	sv2 := NewSlotV2(slot)
-	require.NoError(t, hf.AddSlot(sv2))
+	require.NoError(t, hf.AddSlot(ctx, sv2))
 
-	require.NoError(t, hf.ReconcileSlots(nil))
+	require.NoError(t, hf.ReconcileSlots(ctx, nil))
 
 	elements, err := hf.conn.GetSetElements(hf.vethSet)
 	require.NoError(t, err)
 	assert.Empty(t, elements, "reconcile must drop set elements no live slot owns")
 
-	// A live slot is re-added rather than dropped.
-	require.NoError(t, hf.AddSlot(sv2))
-	require.NoError(t, hf.ReconcileSlots([]*SlotV2{sv2}))
+	// A live slot is left alone: reconcile must recognise it as already
+	// present, not delete and re-add it. Comparing set membership by a
+	// mis-trimmed key classifies every live veth as both stale and missing,
+	// which nets out to the same element count — so count the delete instead.
+	require.NoError(t, hf.AddSlot(ctx, sv2))
+	require.Zero(t, staleVeths(t, hf, []*SlotV2{sv2}), "a live slot must not be classified stale")
 
-	elements, err = hf.conn.GetSetElements(hf.vethSet)
-	require.NoError(t, err)
-	require.Len(t, elements, 1)
+	require.NoError(t, hf.ReconcileSlots(ctx, []*SlotV2{sv2}))
+	require.NoError(t, vethSetHas(hf, slot.VethName()))
 
-	require.NoError(t, hf.RemoveSlot(sv2))
+	require.NoError(t, hf.RemoveSlot(ctx, sv2))
 }
 
 // Sandboxes outlive the orchestrator process: closing the pool while a slot is
@@ -125,18 +130,20 @@ func TestHostFirewall_ReconcileClearsStaleSlots(t *testing.T) { //nolint:paralle
 func TestHostFirewall_ClosePreservesLiveSlots(t *testing.T) { //nolint:paralleltest // creates/deletes the singleton nftables table "v2-host-firewall" shared by all HostFirewall tests
 	skipIfNotLinuxRoot(t)
 
+	ctx := t.Context()
+
 	hf, err := NewHostFirewall("lo", testConfig())
 	require.NoError(t, err)
 
 	slot := makeTestSlot(t, reserveNSTestIdx(t))
 	sv2 := NewSlotV2(slot)
-	require.NoError(t, hf.AddSlot(sv2))
+	require.NoError(t, hf.AddSlot(ctx, sv2))
 	require.NoError(t, hf.Close())
 
 	reopened := newTestHostFirewall(t, testConfig())
 	require.NoError(t, vethSetHas(reopened, slot.VethName()), "a live slot's rules must survive Close")
 
-	require.NoError(t, reopened.RemoveSlot(sv2))
+	require.NoError(t, reopened.RemoveSlot(ctx, sv2))
 
 	// With no slot left, Close does tear the table down.
 	require.NoError(t, reopened.Close())
@@ -144,6 +151,29 @@ func TestHostFirewall_ClosePreservesLiveSlots(t *testing.T) { //nolint:parallelt
 	elements, err := after.conn.GetSetElements(after.vethSet)
 	require.NoError(t, err)
 	assert.Empty(t, elements, "Close must delete the table once no slot is left")
+}
+
+// staleVeths counts the set elements reconcile would delete for the given
+// live slots, using the same key comparison ReconcileSlots does.
+func staleVeths(t *testing.T, hf *HostFirewall, live []*SlotV2) int {
+	t.Helper()
+
+	desired := make(map[string]bool, len(live))
+	for _, sv2 := range live {
+		desired[sv2.Slot.VethName()] = true
+	}
+
+	elements, err := hf.conn.GetSetElements(hf.vethSet)
+	require.NoError(t, err)
+
+	stale := 0
+	for _, e := range elements {
+		if !desired[ifnameString(e.Key)] {
+			stale++
+		}
+	}
+
+	return stale
 }
 
 // vethSetHas reports whether the veth set holds the named interface.
@@ -213,15 +243,24 @@ func TestCreateNetworkV2_ReclaimsStaleNamespace(t *testing.T) { //nolint:paralle
 func TestValidateV2Prerequisites_IgnoresSrcValidMark(t *testing.T) {
 	t.Parallel()
 
-	raw, err := os.ReadFile("/proc/sys/net/ipv4/conf/all/src_valid_mark")
-	require.NoError(t, err)
-	require.Equal(t, "0", string(raw[:1]), "this box must have src_valid_mark=0 for the check to mean anything")
-
-	forwarding, err := os.ReadFile("/proc/sys/net/ipv4/ip_forward")
-	require.NoError(t, err)
-	if string(forwarding[:1]) != "1" {
-		t.Skip("ip_forward is off; the prerequisite check cannot pass here for unrelated reasons")
+	// Both reads gate on the host's actual sysctls: the assertion only means
+	// something where src_valid_mark is off, and ip_forward would fail the
+	// check for an unrelated reason.
+	if sysctlValue(t, "/proc/sys/net/ipv4/conf/all/src_valid_mark") != "0" {
+		t.Skip("src_valid_mark is already 1; this box cannot show that the check is gone")
+	}
+	if sysctlValue(t, "/proc/sys/net/ipv4/ip_forward") != "1" {
+		t.Skip("ip_forward is off; the prerequisite check fails here for an unrelated reason")
 	}
 
 	require.NoError(t, ValidateV2Prerequisites())
+}
+
+func sysctlValue(t *testing.T, path string) string {
+	t.Helper()
+
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	return strings.TrimSpace(string(raw))
 }

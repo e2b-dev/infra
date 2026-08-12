@@ -258,7 +258,8 @@ const wireProbePort = 48765
 // the host and returns the IPv4 TOS byte it carries on the veth link — the
 // same wire bytes v1's in-namespace mangle rule produces. The AF_PACKET
 // capture sees the frame as it leaves the namespace, before any host
-// netfilter hook.
+// netfilter hook — so it also verifies the header checksum the stamp has to
+// keep valid: an L2 capture accepts a packet the next hop would drop.
 func observeEgressTOS(t *testing.T, slot *network.Slot) int {
 	t.Helper()
 
@@ -292,11 +293,27 @@ func observeEgressTOS(t *testing.T, slot *network.Slot) int {
 			continue
 		}
 
+		require.Zerof(t, ipHeaderChecksum(buf[:ihl]), "stamped packet carries a corrupt IPv4 header checksum: % x", buf[:ihl])
+
 		return int(buf[1])
 	}
 }
 
 func htons(v uint16) uint16 { return v<<8 | v>>8 }
+
+// ipHeaderChecksum folds the one's-complement sum over a whole IPv4 header,
+// including its checksum field: a valid header sums to zero.
+func ipHeaderChecksum(header []byte) uint16 {
+	var sum uint32
+	for i := 0; i+1 < len(header); i += 2 {
+		sum += uint32(header[i])<<8 | uint32(header[i+1])
+	}
+	for sum>>16 != 0 {
+		sum = sum&0xffff + sum>>16
+	}
+
+	return ^uint16(sum)
+}
 
 func sendFromNamespace(t *testing.T, slot *network.Slot, port int) {
 	t.Helper()

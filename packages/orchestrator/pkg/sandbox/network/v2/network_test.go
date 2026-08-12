@@ -65,17 +65,21 @@ func TestCreateNetworkV2_NoIptablesRules(t *testing.T) { //nolint:paralleltest /
 	require.NoError(t, CreateNetworkV2(ctx, slot, sv2, hf, nil))
 	t.Cleanup(func() { _ = RemoveNetworkV2(ctx, slot, sv2, hf, nil) })
 
-	// Verify NO iptables rules reference this veth
-	out, err := exec.CommandContext(ctx, "iptables", "-t", "nat", "-L", "PREROUTING", "-n").Output()
-	if err == nil {
-		assert.NotContains(t, string(out), slot.VethName(),
-			"v2 sandbox should not create iptables rules")
+	// A conditional assertion would pass vacuously wherever iptables is
+	// missing, which is exactly the host v2 targets.
+	if _, err := exec.LookPath("iptables"); err != nil {
+		t.Skip("iptables binary not on PATH; cannot prove the absence of iptables rules")
 	}
 
-	out, err = exec.CommandContext(ctx, "iptables", "-t", "filter", "-L", "FORWARD", "-n").Output()
-	if err == nil {
-		assert.NotContains(t, string(out), slot.VethName(),
-			"v2 sandbox should not create iptables FORWARD rules")
+	for _, chain := range []struct{ table, name string }{
+		{"nat", "PREROUTING"},
+		{"nat", "POSTROUTING"},
+		{"filter", "FORWARD"},
+	} {
+		out, err := exec.CommandContext(ctx, "iptables", "-t", chain.table, "-L", chain.name, "-n").Output()
+		require.NoError(t, err)
+		assert.NotContainsf(t, string(out), slot.VethName(),
+			"a v2 sandbox must not appear in iptables %s/%s", chain.table, chain.name)
 	}
 }
 

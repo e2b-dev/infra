@@ -88,7 +88,7 @@ type Config struct {
 	// Set-but-empty behaves as unset (inherits): the env parser skips it.
 	BuildSandboxEgressDSCP *uint8 `env:"BUILD_SANDBOX_EGRESS_DSCP"`
 
-	// NetworkVersion selects v1 (iptables per-sandbox) or v2 (nftables verdict maps).
+	// NetworkVersion selects v1 (iptables per-sandbox) or v2 (nftables, host sets).
 	NetworkVersion int `env:"NETWORK_VERSION" envDefault:"1"`
 }
 

@@ -3,6 +3,7 @@
 package v2
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
@@ -27,7 +28,7 @@ func reconcileHostFirewall() error {
 		return err
 	}
 
-	if err := hf.ReconcileSlots(nil); err != nil {
+	if err := hf.ReconcileSlots(context.Background(), nil); err != nil {
 		return err
 	}
 

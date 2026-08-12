@@ -738,7 +738,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 		// an existing element on AddSlot. Skipped when reclaim is disabled:
 		// the live slots are then unknown, and flushing would cut them off.
 		if !config.DisableStartupReclaim {
-			if err := hostFw.ReconcileSlots(nil); err != nil {
+			if err := hostFw.ReconcileSlots(ctx, nil); err != nil {
 				logger.L().Fatal(ctx, "failed to reconcile v2 host firewall slots", zap.Error(err))
 			}
 		}

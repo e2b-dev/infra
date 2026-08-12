@@ -185,7 +185,13 @@ func (p *V2Pool) Get(ctx context.Context, netConfig *orchestrator.SandboxNetwork
 			return nil, network.ErrClosed
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case s := <-p.newSlots:
+		case s, ok := <-p.newSlots:
+			// Populate closes the channel on its way out, and a closed channel
+			// wins this select as readily as done does.
+			if !ok {
+				return nil, network.ErrClosed
+			}
+
 			newSlotsAvailableCounter.Add(ctx, -1)
 			acquiredSlots.Add(ctx, 1, metric.WithAttributes(attribute.String("pool", "new")))
 			telemetry.ReportEvent(ctx, "new v2 network slot")

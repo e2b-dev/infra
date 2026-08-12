@@ -3,6 +3,8 @@
 package v2
 
 import (
+	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -12,9 +14,11 @@ import (
 
 	"github.com/google/nftables"
 	"github.com/google/nftables/expr"
+	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 // HostFirewall is a singleton that manages the host-level nftables table
@@ -27,9 +31,9 @@ import (
 //	  set v2_veths      { type ifname; }
 //	  set v2_host_cidrs { type ipv4_addr; flags interval; }
 //
-//	  chain forward { type filter hook forward priority 0; policy drop;
+//	  chain forward { type filter hook forward priority 0; policy accept;
 //	    iifname @v2_veths oifname <gw> accept
-//	    iifname <gw> oifname @v2_veths ct state established,related accept
+//	    iifname <gw> oifname @v2_veths accept
 //	  }
 //	  chain prerouting { type nat hook prerouting priority -100;
 //	    # service redirects (all slots share same ports)
@@ -39,17 +43,15 @@ import (
 //	    # TCP firewall proxy redirects
 //	    iifname @v2_veths tcp dport 80  redirect to :tcpHTTPPort
 //	    iifname @v2_veths tcp dport 443 redirect to :tcpTLSPort
-//	    iifname @v2_veths tcp dport != { 80, 111, 443, 2049 } redirect to :tcpOtherPort
+//	    iifname @v2_veths tcp redirect to :tcpOtherPort   # every remaining TCP
 //	  }
 //	  chain postrouting { type nat hook postrouting priority 100;
 //	    ip saddr @v2_host_cidrs oifname <gw> masquerade
 //	  }
 //	}
 //
-// The key insight: since all slots share the same redirect ports (configured
-// per-orchestrator, not per-slot), we don't need verdict maps. Simple rules
-// with set-based iifname matching give us O(1) lookups. Only per-slot data
-// (veth names and host CIDRs) goes into sets.
+// All slots share the same redirect ports, so only per-slot data (veth names
+// and host CIDRs) goes into sets and the rule count stays constant.
 type HostFirewall struct {
 	conn  *nftables.Conn
 	table *nftables.Table
@@ -60,14 +62,6 @@ type HostFirewall struct {
 	defaultGw string
 	config    network.Config
 	mu        sync.Mutex
-
-	// mangleChain is the prerouting mangle chain used for fwmark rules.
-	// Stored here so fwmark rules can be added/removed without re-creating the chain.
-	mangleChain *nftables.Chain
-
-	// fwmarkRules tracks per-veth fwmark rule handles for surgical removal.
-	// Protected by mu.
-	fwmarkRules map[string]uint64
 }
 
 const (
@@ -81,11 +75,17 @@ const (
 // restart with live sandboxes), existing set elements are preserved. Only chain rules
 // are refreshed with current config. This prevents connectivity loss for sandboxes
 // that survived the restart.
-func NewHostFirewall(defaultGw string, config network.Config) (*HostFirewall, error) {
+func NewHostFirewall(defaultGw string, config network.Config) (_ *HostFirewall, err error) {
 	conn, err := nftables.New(nftables.AsLasting())
 	if err != nil {
 		return nil, fmt.Errorf("new nftables conn: %w", err)
 	}
+
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, conn.CloseLasting())
+		}
+	}()
 
 	// Ensure table exists — idempotent: creates if new, opens if existing.
 	// We do NOT delete the table on startup. Existing set elements represent
@@ -96,11 +96,10 @@ func NewHostFirewall(defaultGw string, config network.Config) (*HostFirewall, er
 	})
 
 	hf := &HostFirewall{
-		conn:        conn,
-		table:       table,
-		defaultGw:   defaultGw,
-		config:      config,
-		fwmarkRules: make(map[string]uint64),
+		conn:      conn,
+		table:     table,
+		defaultGw: defaultGw,
+		config:    config,
 	}
 
 	if err := hf.ensureSets(); err != nil {
@@ -272,18 +271,6 @@ func (hf *HostFirewall) ensureChains() error {
 		},
 	})
 
-	// --- MANGLE PREROUTING chain (for fwmark rules) ---
-	hf.mangleChain = hf.conn.AddChain(&nftables.Chain{
-		Name:     "mangle_prerouting",
-		Table:    hf.table,
-		Type:     nftables.ChainTypeFilter,
-		Hooknum:  nftables.ChainHookPrerouting,
-		Priority: nftables.ChainPriorityMangle,
-	})
-	// NOTE: we do NOT flush the mangle chain here. Fwmark rules are per-veth
-	// state, not config. They are managed individually via Add/RemoveFwmark.
-	// On restart, stale fwmark rules are cleaned up by ReconcileSlots.
-
 	if err := hf.conn.Flush(); err != nil {
 		return fmt.Errorf("flush chains: %w", err)
 	}
@@ -295,10 +282,11 @@ func (hf *HostFirewall) ensureChains() error {
 // Call on startup after rebuilding the in-memory slot registry from surviving sandboxes.
 // - Slots in the registry but missing from sets are added.
 // - Set entries not in the registry are removed (stale leftovers from crashed sandboxes).
-// - Stale fwmark rules in the mangle chain are flushed.
-func (hf *HostFirewall) ReconcileSlots(activeSlots []*SlotV2) error {
+func (hf *HostFirewall) ReconcileSlots(ctx context.Context, activeSlots []*SlotV2) (err error) {
 	hf.mu.Lock()
 	defer hf.mu.Unlock()
+
+	defer hf.resetConnOnError(ctx, &err)
 
 	// Build desired state from active slots
 	desiredVeths := make(map[string]bool)
@@ -317,8 +305,7 @@ func (hf *HostFirewall) ReconcileSlots(activeSlots []*SlotV2) error {
 	// Remove stale veths (in set but not in active slots)
 	var staleVethElems []nftables.SetElement
 	for _, elem := range currentVeths {
-		// strip null terminator
-		if !desiredVeths[string(elem.Key[:len(elem.Key)-1])] {
+		if !desiredVeths[ifnameString(elem.Key)] {
 			staleVethElems = append(staleVethElems, elem)
 		}
 	}
@@ -329,8 +316,7 @@ func (hf *HostFirewall) ReconcileSlots(activeSlots []*SlotV2) error {
 	// Add missing veths (in active slots but not in set)
 	currentVethNames := make(map[string]bool)
 	for _, elem := range currentVeths {
-		name := string(elem.Key[:len(elem.Key)-1])
-		currentVethNames[name] = true
+		currentVethNames[ifnameString(elem.Key)] = true
 	}
 	for _, sv2 := range activeSlots {
 		veth := sv2.Slot.VethName()
@@ -357,11 +343,6 @@ func (hf *HostFirewall) ReconcileSlots(activeSlots []*SlotV2) error {
 		}
 	}
 
-	// Flush stale fwmark rules: we lost in-memory handles on restart,
-	// so flush the mangle chain and let egress profile re-assignment
-	// re-create needed rules.
-	hf.conn.FlushChain(hf.mangleChain)
-
 	if err := hf.conn.Flush(); err != nil {
 		return fmt.Errorf("flush reconcile: %w", err)
 	}
@@ -370,9 +351,11 @@ func (hf *HostFirewall) ReconcileSlots(activeSlots []*SlotV2) error {
 }
 
 // AddSlot adds the veth name and host CIDR for a v2 slot.
-func (hf *HostFirewall) AddSlot(slotV2 *SlotV2) error {
+func (hf *HostFirewall) AddSlot(ctx context.Context, slotV2 *SlotV2) (err error) {
 	hf.mu.Lock()
 	defer hf.mu.Unlock()
+
+	defer hf.resetConnOnError(ctx, &err)
 
 	slot := slotV2.Slot
 
@@ -401,9 +384,11 @@ func (hf *HostFirewall) AddSlot(slotV2 *SlotV2) error {
 }
 
 // RemoveSlot removes the veth name and host CIDR for a v2 slot.
-func (hf *HostFirewall) RemoveSlot(slotV2 *SlotV2) error {
+func (hf *HostFirewall) RemoveSlot(ctx context.Context, slotV2 *SlotV2) (err error) {
 	hf.mu.Lock()
 	defer hf.mu.Unlock()
+
+	defer hf.resetConnOnError(ctx, &err)
 
 	slot := slotV2.Slot
 
@@ -501,6 +486,57 @@ func tcpCatchAllExprs(vethSet *nftables.Set, rport uint16) []expr.Any {
 
 // --- helpers ---
 
+// ifnameString reads a set key back as an interface name, dropping the NUL
+// padding nftables stores it with.
+func ifnameString(key []byte) string {
+	return string(bytes.TrimRight(key, "\x00"))
+}
+
+// resetConnOnError replaces the shared conn whenever a mutation fails: a
+// failed buffer or Flush leaves the batch queued and the serialization error
+// sticky, and nftables.Conn exposes no way to clear either, so the next caller
+// would replay them. Every slot on the host shares this conn.
+func (hf *HostFirewall) resetConnOnError(ctx context.Context, err *error) {
+	if *err == nil {
+		return
+	}
+
+	*err = errors.Join(*err, hf.resetConn(ctx))
+}
+
+func (hf *HostFirewall) resetConn(ctx context.Context) error {
+	closeErr := hf.conn.CloseLasting()
+
+	conn, err := nftables.New(nftables.AsLasting())
+	if err != nil {
+		err = fmt.Errorf("open new lasting nftables conn: %w", err)
+
+		var transientErr error
+		conn, transientErr = nftables.New()
+		if transientErr != nil {
+			err = errors.Join(err, fmt.Errorf("open transient nftables conn: %w", transientErr))
+		}
+	}
+
+	resetErr := errors.Join(closeErr, err)
+	if conn == nil {
+		// Keep the old (closed, poisoned) conn rather than storing nil and
+		// panicking on next use; the firewall is left degraded.
+		logger.L().Error(ctx, "host firewall nftables conn reset failed; reusing the old conn", zap.Error(resetErr))
+
+		return resetErr
+	}
+
+	hf.conn = conn
+	if resetErr != nil {
+		logger.L().Error(ctx, "host firewall nftables conn reset encountered errors", zap.Error(resetErr))
+	} else {
+		logger.L().Warn(ctx, "host firewall nftables conn reset after a failed mutation")
+	}
+
+	return resetErr
+}
+
 func portBytes(port uint16) []byte {
 	b := make([]byte, 2)
 	binary.BigEndian.PutUint16(b, port)
@@ -519,11 +555,4 @@ func incrementIP(ip net.IP) net.IP {
 	}
 
 	return result
-}
-
-func bitmask32(v uint32) []byte {
-	buf := make([]byte, 4)
-	binary.NativeEndian.PutUint32(buf, v)
-
-	return buf
 }

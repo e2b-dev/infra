@@ -9,12 +9,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
 )
 
-const (
-	// fwMarkBase is the base fwmark for v2 slots.
-	// v2 slot N gets fwmark = fwMarkBase + Slot.Idx.
-	fwMarkBase = 0x200
-)
-
 // SlotV2 extends a base network.Slot with v2-specific metadata.
 // It wraps (composition) rather than embeds so the base *Slot flows
 // through the existing sandbox pipeline unchanged.
@@ -24,9 +18,6 @@ type SlotV2 struct {
 	NetworkVersion int
 	SandboxID      string
 	ExecutionID    string
-
-	// FwMark is the nftables/policy-routing mark for this slot's traffic.
-	FwMark uint32
 }
 
 // NewSlotV2 wraps a base Slot with v2 metadata.
@@ -34,13 +25,7 @@ func NewSlotV2(slot *network.Slot) *SlotV2 {
 	return &SlotV2{
 		Slot:           slot,
 		NetworkVersion: 2,
-		FwMark:         fwMarkBase + uint32(slot.Idx),
 	}
-}
-
-// FwMarkForIndex returns the fwmark that will be assigned to a slot with the given index.
-func FwMarkForIndex(idx int) uint32 {
-	return fwMarkBase + uint32(idx)
 }
 
 // SlotV2Registry tracks v2 metadata for slots by their index.
@@ -87,5 +72,5 @@ func (r *SlotV2Registry) Range(fn func(idx int, s *SlotV2) bool) {
 
 // String returns a debug-friendly representation.
 func (s *SlotV2) String() string {
-	return fmt.Sprintf("SlotV2{idx=%d, fwmark=0x%x}", s.Slot.Idx, s.FwMark)
+	return fmt.Sprintf("SlotV2{idx=%d}", s.Slot.Idx)
 }
