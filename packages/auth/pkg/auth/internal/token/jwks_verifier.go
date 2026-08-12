@@ -20,9 +20,10 @@ const jwksClockSkew = 30 * time.Second
 // JWKSVerifier verifies JWTs against one or more configured issuers
 // and returns the first successful verification.
 //
-// Keys come from each issuer's conventional JWKS path rather than an OIDC
-// discovery document, which suits a token minted by a peer service: there is
-// no discovery to perform, and no separate issuer declaration to cross-check.
+// Keys come from each issuer's conventional JWKS path, which suits a token
+// minted by a peer service: there is no discovery to perform. An issuer that
+// sets discoveryURL is resolved through its discovery document instead, with
+// the same issuer cross-check the OIDC verifiers apply.
 type JWKSVerifier struct {
 	verifiers []*jwks.Verifier
 }

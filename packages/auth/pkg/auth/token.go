@@ -31,11 +31,13 @@ const AudienceMatchAny = jwks.AudienceMatchAny
 // validation are identical across both OIDC levels.
 
 // JWKSVerifier verifies a JWT against keys published at each issuer's
-// conventional JWKS path, without an OIDC discovery document.
+// conventional JWKS path, or through the issuer's OIDC discovery document
+// when JWTIssuer.DiscoveryURL is set.
 //
-// Suited to a token minted by a peer service, where there is no discovery to
-// perform. Not suited to one from an identity provider: it neither fetches
-// the discovery document nor cross-checks the issuer that document declares.
+// Suited to a token minted by a peer service, where there is usually no
+// discovery to perform. An issuer that publishes its key set somewhere other
+// than the conventional path is reached by setting the discovery URL, which
+// then carries the same issuer cross-check as OIDCVerifier.
 type JWKSVerifier = token.JWKSVerifier
 
 func ParseProviderConfig(value string) (ProviderConfig, error) {

@@ -55,6 +55,41 @@ func NewVerifier(ctx context.Context, entry Config, httpClient *http.Client, opt
 		return nil, err
 	}
 
+	return newVerifierViaDiscovery(ctx, entry, httpClient, options...)
+}
+
+// NewVerifierFromIssuerJWKS resolves keys from the issuer's conventional JWKS
+// path, unless the config sets a discovery URL explicitly, in which case keys
+// are resolved through the issuer's OIDC discovery document instead.
+//
+// The opt-in is on the raw field rather than on Config.discoveryURL, which
+// defaults to the conventional discovery path and is therefore never empty. A
+// config that leaves issuer.discoveryURL unset keeps the conventional-path
+// behavior exactly, so honoring it changes nothing for an existing caller.
+func NewVerifierFromIssuerJWKS(ctx context.Context, entry Config, httpClient *http.Client, options ...Option) (*Verifier, error) {
+	entry, err := validateConfig(entry, httpClient)
+	if err != nil {
+		return nil, err
+	}
+
+	if entry.Issuer.DiscoveryURL != "" {
+		return newVerifierViaDiscovery(ctx, entry, httpClient, options...)
+	}
+
+	jwksURL := strings.TrimRight(entry.Issuer.URL, "/") + defaultJWKSPath
+	if err := validateHTTPSURL(jwksURL, "jwksURL"); err != nil {
+		return nil, err
+	}
+
+	return newVerifier(ctx, entry, jwksURL, httpClient, options...)
+}
+
+// newVerifierViaDiscovery takes the key-set location from the issuer's
+// discovery document. The declared issuer is cross-checked against the
+// configured one before the document is trusted for anything: without it, a
+// hijacked document redirects key resolution to a key set of its author's
+// choosing.
+func newVerifierViaDiscovery(ctx context.Context, entry Config, httpClient *http.Client, options ...Option) (*Verifier, error) {
 	discoveryURL := entry.discoveryURL()
 	if err := validateHTTPSURL(discoveryURL, "discoveryURL"); err != nil {
 		return nil, err
@@ -74,21 +109,6 @@ func NewVerifier(ctx context.Context, entry Config, httpClient *http.Client, opt
 	}
 
 	return newVerifier(ctx, entry, doc.JWKSURI, httpClient, options...)
-}
-
-func NewVerifierFromIssuerJWKS(ctx context.Context, entry Config, httpClient *http.Client, options ...Option) (*Verifier, error) {
-	entry.Issuer.DiscoveryURL = ""
-	entry, err := validateConfig(entry, httpClient)
-	if err != nil {
-		return nil, err
-	}
-
-	jwksURL := strings.TrimRight(entry.Issuer.URL, "/") + defaultJWKSPath
-	if err := validateHTTPSURL(jwksURL, "jwksURL"); err != nil {
-		return nil, err
-	}
-
-	return newVerifier(ctx, entry, jwksURL, httpClient, options...)
 }
 
 func validateConfig(entry Config, httpClient *http.Client) (Config, error) {
