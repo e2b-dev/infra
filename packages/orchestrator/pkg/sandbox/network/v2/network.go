@@ -28,6 +28,22 @@ import (
 //   - eBPF: observer.Attach() adds optional per-veth counters (best-effort)
 func CreateNetworkV2(ctx context.Context, slot *network.Slot, slotV2 *SlotV2,
 	hf *HostFirewall, observer *VethObserver,
+) error {
+	// Run on a goroutine of its own so the thread it pins is this call's
+	// alone. createNetworkV2 keeps that thread locked if it cannot get back to
+	// the host namespace, and the runtime destroys a still-locked thread when
+	// its goroutine exits — a caller's long-lived goroutine would instead keep
+	// building every later slot inside the namespace it got stuck in.
+	done := make(chan error, 1)
+	go func() {
+		done <- createNetworkV2(ctx, slot, slotV2, hf, observer)
+	}()
+
+	return <-done
+}
+
+func createNetworkV2(ctx context.Context, slot *network.Slot, slotV2 *SlotV2,
+	hf *HostFirewall, observer *VethObserver,
 ) (retErr error) {
 	// Prevent thread changes so we can safely manipulate namespaces
 	runtime.LockOSThread()
@@ -44,19 +60,19 @@ func CreateNetworkV2(ctx context.Context, slot *network.Slot, slotV2 *SlotV2,
 	defer func() {
 		restoreErr := netns.Set(hostNS)
 		if restoreErr != nil {
-			// Leaving the thread locked dooms it with the goroutine instead of
-			// returning it to the pool still inside the sandbox namespace,
-			// where the next user would build its slot in the wrong netns.
+			// Deliberately no UnlockOSThread: the thread is still inside the
+			// sandbox namespace, so it must die with this goroutine rather
+			// than be reused. The slot fails with it — its host-side state
+			// cannot be trusted, and cleanup would run in the wrong namespace.
+			retErr = errors.Join(retErr, fmt.Errorf("error resetting network namespace back to host: %w", restoreErr))
 			logger.L().Error(ctx, "error resetting network namespace back to host", zap.Error(restoreErr))
 		} else {
 			runtime.UnlockOSThread()
-		}
 
-		if retErr != nil && cleanupNeeded {
-			if restoreErr != nil {
-				retErr = errors.Join(retErr, fmt.Errorf("error resetting network namespace back to host before cleanup: %w", restoreErr))
-			} else if cleanupErr := RemoveNetworkV2(ctx, slot, slotV2, hf, observer); cleanupErr != nil {
-				retErr = errors.Join(retErr, fmt.Errorf("error cleaning up partially created v2 network: %w", cleanupErr))
+			if retErr != nil && cleanupNeeded {
+				if cleanupErr := RemoveNetworkV2(ctx, slot, slotV2, hf, observer); cleanupErr != nil {
+					retErr = errors.Join(retErr, fmt.Errorf("error cleaning up partially created v2 network: %w", cleanupErr))
+				}
 			}
 		}
 

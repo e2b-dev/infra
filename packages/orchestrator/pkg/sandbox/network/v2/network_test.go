@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCreateNetworkV2_FullLifecycle(t *testing.T) { //nolint:paralleltest // mutates host netns state: singleton nftables table "v2-host-firewall", named netns, veth links, policy routes
+func TestCreateNetworkV2_FullLifecycle(t *testing.T) { //nolint:paralleltest // mutates host netns state: singleton nftables table "v2-host-firewall", named netns, veth links
 	skipIfNotLinuxRoot(t)
 
 	ctx := context.Background()
@@ -52,7 +52,7 @@ func TestCreateNetworkV2_FullLifecycle(t *testing.T) { //nolint:paralleltest // 
 	}
 }
 
-func TestCreateNetworkV2_NoIptablesRules(t *testing.T) { //nolint:paralleltest // mutates host netns state: singleton nftables table "v2-host-firewall", named netns, veth links, policy routes
+func TestCreateNetworkV2_NoIptablesRules(t *testing.T) { //nolint:paralleltest // mutates host netns state: singleton nftables table "v2-host-firewall", named netns, veth links
 	skipIfNotLinuxRoot(t)
 
 	ctx := context.Background()
@@ -83,7 +83,7 @@ func TestCreateNetworkV2_NoIptablesRules(t *testing.T) { //nolint:paralleltest /
 	}
 }
 
-func TestCreateNetworkV2_CleanTeardown(t *testing.T) { //nolint:paralleltest // mutates host netns state: singleton nftables table "v2-host-firewall", named netns, veth links, policy routes
+func TestCreateNetworkV2_CleanTeardown(t *testing.T) { //nolint:paralleltest // mutates host netns state: singleton nftables table "v2-host-firewall", named netns, veth links
 	skipIfNotLinuxRoot(t)
 
 	ctx := context.Background()

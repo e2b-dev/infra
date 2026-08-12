@@ -278,6 +278,30 @@ func (hf *HostFirewall) ensureChains() error {
 	return nil
 }
 
+// classifyVeths splits the set's current elements into those no live slot
+// owns and the live veths the set is missing. Pure, so the padded-key
+// comparison it turns on can be pinned by a unit test.
+func classifyVeths(current []nftables.SetElement, desired map[string]bool) (stale []nftables.SetElement, missing []string) {
+	present := make(map[string]bool, len(current))
+	for _, elem := range current {
+		name := ifnameString(elem.Key)
+		present[name] = true
+		if !desired[name] {
+			stale = append(stale, elem)
+		}
+	}
+
+	for name := range desired {
+		if !present[name] {
+			missing = append(missing, name)
+		}
+	}
+
+	slices.Sort(missing)
+
+	return stale, missing
+}
+
 // ReconcileSlots reconciles host firewall set membership with actual active slots.
 // Call on startup after rebuilding the in-memory slot registry from surviving sandboxes.
 // - Slots in the registry but missing from sets are added.
@@ -302,30 +326,15 @@ func (hf *HostFirewall) ReconcileSlots(ctx context.Context, activeSlots []*SlotV
 		return fmt.Errorf("get veth set elements: %w", err)
 	}
 
-	// Remove stale veths (in set but not in active slots)
-	var staleVethElems []nftables.SetElement
-	for _, elem := range currentVeths {
-		if !desiredVeths[ifnameString(elem.Key)] {
-			staleVethElems = append(staleVethElems, elem)
-		}
+	stale, missing := classifyVeths(currentVeths, desiredVeths)
+	if len(stale) > 0 {
+		hf.conn.SetDeleteElements(hf.vethSet, stale)
 	}
-	if len(staleVethElems) > 0 {
-		hf.conn.SetDeleteElements(hf.vethSet, staleVethElems)
-	}
-
-	// Add missing veths (in active slots but not in set)
-	currentVethNames := make(map[string]bool)
-	for _, elem := range currentVeths {
-		currentVethNames[ifnameString(elem.Key)] = true
-	}
-	for _, sv2 := range activeSlots {
-		veth := sv2.Slot.VethName()
-		if !currentVethNames[veth] {
-			if err := hf.conn.SetAddElements(hf.vethSet, []nftables.SetElement{
-				{Key: ifnameBytes(veth)},
-			}); err != nil {
-				return fmt.Errorf("add missing veth %s: %w", veth, err)
-			}
+	for _, veth := range missing {
+		if err := hf.conn.SetAddElements(hf.vethSet, []nftables.SetElement{
+			{Key: ifnameBytes(veth)},
+		}); err != nil {
+			return fmt.Errorf("add missing veth %s: %w", veth, err)
 		}
 	}
 

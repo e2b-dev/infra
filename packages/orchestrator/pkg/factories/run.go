@@ -733,10 +733,9 @@ func run(config cfg.Config, opts Options) (success bool) {
 		}
 
 		// Startup reclaim tore down every slot that survived the last run, so
-		// the surviving set is empty and this drops the set elements and
-		// fwmark rules they left behind. Without it a reused slot index hits
-		// an existing element on AddSlot. Skipped when reclaim is disabled:
-		// the live slots are then unknown, and flushing would cut them off.
+		// the surviving set is empty and this drops the elements they left
+		// behind. Skipped when reclaim is disabled: the live slots are then
+		// unknown, and flushing would cut them off.
 		if !config.DisableStartupReclaim {
 			if err := hostFw.ReconcileSlots(ctx, nil); err != nil {
 				logger.L().Fatal(ctx, "failed to reconcile v2 host firewall slots", zap.Error(err))

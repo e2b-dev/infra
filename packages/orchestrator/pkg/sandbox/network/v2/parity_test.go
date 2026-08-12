@@ -117,8 +117,6 @@ func TestHostFirewall_ReconcileClearsStaleSlots(t *testing.T) { //nolint:paralle
 	// mis-trimmed key classifies every live veth as both stale and missing,
 	// which nets out to the same element count — so count the delete instead.
 	require.NoError(t, hf.AddSlot(ctx, sv2))
-	require.Zero(t, staleVeths(t, hf, []*SlotV2{sv2}), "a live slot must not be classified stale")
-
 	require.NoError(t, hf.ReconcileSlots(ctx, []*SlotV2{sv2}))
 	require.NoError(t, vethSetHas(hf, slot.VethName()))
 
@@ -153,27 +151,24 @@ func TestHostFirewall_ClosePreservesLiveSlots(t *testing.T) { //nolint:parallelt
 	assert.Empty(t, elements, "Close must delete the table once no slot is left")
 }
 
-// staleVeths counts the set elements reconcile would delete for the given
-// live slots, using the same key comparison ReconcileSlots does.
-func staleVeths(t *testing.T, hf *HostFirewall, live []*SlotV2) int {
-	t.Helper()
+// A live slot's padded set key must match its name: the classification is
+// what decides whether reconcile deletes a live sandbox's veth, and comparing
+// the raw 16-byte key against the name silently makes every live slot look
+// both stale and missing.
+func TestClassifyVeths(t *testing.T) {
+	t.Parallel()
 
-	desired := make(map[string]bool, len(live))
-	for _, sv2 := range live {
-		desired[sv2.Slot.VethName()] = true
+	current := []nftables.SetElement{
+		{Key: ifnameBytes("veth-1")},
+		{Key: ifnameBytes("veth-99")},
 	}
+	desired := map[string]bool{"veth-1": true, "veth-2": true}
 
-	elements, err := hf.conn.GetSetElements(hf.vethSet)
-	require.NoError(t, err)
+	stale, missing := classifyVeths(current, desired)
 
-	stale := 0
-	for _, e := range elements {
-		if !desired[ifnameString(e.Key)] {
-			stale++
-		}
-	}
-
-	return stale
+	require.Len(t, stale, 1, "only the veth no live slot owns is stale")
+	require.Equal(t, ifnameBytes("veth-99"), stale[0].Key)
+	require.Equal(t, []string{"veth-2"}, missing)
 }
 
 // vethSetHas reports whether the veth set holds the named interface.
