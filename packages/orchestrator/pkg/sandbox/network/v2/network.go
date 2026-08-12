@@ -166,6 +166,14 @@ func CreateNetworkV2(ctx context.Context, slot *network.Slot, slotV2 *SlotV2,
 
 		return fmt.Errorf("setup namespace NAT: %w", err)
 	}
+
+	// Slots are pooled: seed the untenanted (regular-sandbox) class; the pool
+	// re-stamps per tenant on Get and restores it on recycle.
+	if err := SetupEgressDSCP(nsConn, nsTable, slot.VpeerName(), hf.config.EgressDSCP(network.EgressClassSandbox)); err != nil {
+		nsConn.CloseLasting()
+
+		return fmt.Errorf("setup egress DSCP: %w", err)
+	}
 	nsConn.CloseLasting()
 
 	// --- Initialize in-namespace firewall (reuse v1 Firewall) ---

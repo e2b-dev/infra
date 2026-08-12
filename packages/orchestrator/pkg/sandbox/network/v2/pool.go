@@ -157,9 +157,7 @@ func (p *V2Pool) Populate(ctx context.Context) {
 	}
 }
 
-// Get acquires a slot. The egress class is accepted for interface parity with
-// the v1 pool; v2 does not stamp egress DSCP.
-func (p *V2Pool) Get(ctx context.Context, netConfig *orchestrator.SandboxNetworkConfig, _ network.EgressClass) (*network.Slot, error) {
+func (p *V2Pool) Get(ctx context.Context, netConfig *orchestrator.SandboxNetworkConfig, class network.EgressClass) (*network.Slot, error) {
 	var slot *network.Slot
 
 	select {
@@ -184,16 +182,30 @@ func (p *V2Pool) Get(ctx context.Context, netConfig *orchestrator.SandboxNetwork
 		}
 	}
 
-	if err := slot.ConfigureInternet(ctx, netConfig); err != nil {
+	if err := p.configureSlot(ctx, slot, netConfig, class); err != nil {
 		// Never handed out, so nobody listens for the release notification.
 		if rerr := p.ReturnAsync(context.WithoutCancel(ctx), slot, func(context.Context, string) {}, 0); rerr != nil {
 			logger.L().Error(ctx, "failed to return v2 slot to pool", zap.Error(rerr), zap.Int("slot_index", slot.Idx))
 		}
 
-		return nil, fmt.Errorf("error setting v2 slot internet access: %w", err)
+		return nil, err
 	}
 
 	return slot, nil
+}
+
+func (p *V2Pool) configureSlot(ctx context.Context, slot *network.Slot, netConfig *orchestrator.SandboxNetworkConfig, class network.EgressClass) error {
+	// Slots are created before their tenant is known, so a build re-stamps the
+	// rule CreateNetworkV2 seeded. No-op when both classes resolve alike.
+	if err := ApplyEgressDSCP(slot, p.config.EgressDSCP(class)); err != nil {
+		return fmt.Errorf("error setting v2 slot egress DSCP for %s: %w", class, err)
+	}
+
+	if err := slot.ConfigureInternet(ctx, netConfig); err != nil {
+		return fmt.Errorf("error setting v2 slot internet access: %w", err)
+	}
+
+	return nil
 }
 
 func (p *V2Pool) tryTrackReturn() bool {
@@ -258,6 +270,11 @@ func (p *V2Pool) returnSlot(ctx context.Context, slot *network.Slot, releasedFn 
 }
 
 func (p *V2Pool) recycle(ctx context.Context, slot *network.Slot) error {
+	// Undo any build-specific DSCP before the next tenant can inherit it.
+	if err := ApplyEgressDSCP(slot, p.config.EgressDSCP(network.EgressClassSandbox)); err != nil {
+		return p.cleanupWith(ctx, slot, fmt.Errorf("error resetting v2 slot egress DSCP: %w", err))
+	}
+
 	if err := slot.ResetInternet(ctx); err != nil {
 		return p.cleanupWith(ctx, slot, fmt.Errorf("error resetting v2 slot internet access: %w", err))
 	}
