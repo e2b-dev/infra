@@ -400,22 +400,29 @@ func (hf *HostFirewall) RemoveSlot(ctx context.Context, slotV2 *SlotV2) (err err
 	defer hf.resetConnOnError(ctx, &err)
 
 	slot := slotV2.Slot
+	hostIP := slot.HostIP.To4()
 
-	hf.conn.SetDeleteElements(hf.vethSet, []nftables.SetElement{
+	// One flush per set, not one for both: an nftables batch is atomic, so an
+	// already-absent element aborts the whole thing and would leave the other
+	// set's element installed while teardown reported success.
+	vethErr := hf.deleteElements(hf.vethSet, []nftables.SetElement{
 		{Key: ifnameBytes(slot.VethName())},
 	})
-
-	hostIP := slot.HostIP.To4()
-	nextIP := incrementIP(hostIP)
-	hf.conn.SetDeleteElements(hf.cidrSet, []nftables.SetElement{
+	cidrErr := hf.deleteElements(hf.cidrSet, []nftables.SetElement{
 		{Key: hostIP},
-		{Key: nextIP, IntervalEnd: true},
+		{Key: incrementIP(hostIP), IntervalEnd: true},
 	})
 
-	// Already-absent elements make this a no-op, not a failure: teardown has
-	// to be retryable after a partial create.
+	return errors.Join(vethErr, cidrErr)
+}
+
+// deleteElements drops elements from a set, treating already-absent ones as
+// success: teardown has to be retryable after a partial create.
+func (hf *HostFirewall) deleteElements(set *nftables.Set, elements []nftables.SetElement) error {
+	hf.conn.SetDeleteElements(set, elements)
+
 	if err := hf.conn.Flush(); err != nil && !errors.Is(err, unix.ENOENT) {
-		return fmt.Errorf("flush remove slot: %w", err)
+		return fmt.Errorf("flush delete from %s: %w", set.Name, err)
 	}
 
 	return nil

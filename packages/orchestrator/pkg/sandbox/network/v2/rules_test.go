@@ -167,3 +167,31 @@ func TestHostFirewall_ChainRulesMatchConfig(t *testing.T) { //nolint:paralleltes
 	require.Len(t, post, 1)
 	require.True(t, hasExpr[*expr.Masq](post[0]), "sandbox egress must be masqueraded to the gateway")
 }
+
+// One absent element must not stop the other from being removed: an nftables
+// batch is atomic, so deleting both in one flush would abort and silently
+// leave a stale veth matching the forward and redirect rules.
+func TestHostFirewall_RemoveSlotWithOneElementAlreadyGone(t *testing.T) { //nolint:paralleltest // creates/deletes the singleton nftables table "v2-host-firewall" shared by all HostFirewall tests
+	skipIfNotLinuxRoot(t)
+
+	ctx := t.Context()
+	hf := newTestHostFirewall(t, testConfig())
+
+	slot := makeTestSlot(t, reserveNSTestIdx(t))
+	sv2 := NewSlotV2(slot)
+	require.NoError(t, hf.AddSlot(ctx, sv2))
+
+	// Drop the CIDR entry behind RemoveSlot's back, as a partially reconciled
+	// or half-torn-down host would have.
+	hostIP := slot.HostIP.To4()
+	hf.conn.SetDeleteElements(hf.cidrSet, []nftables.SetElement{
+		{Key: hostIP},
+		{Key: incrementIP(hostIP), IntervalEnd: true},
+	})
+	require.NoError(t, hf.conn.Flush())
+
+	require.NoError(t, hf.RemoveSlot(ctx, sv2))
+
+	require.Error(t, vethSetHas(hf, slot.VethName()),
+		"the veth element must be gone even though the CIDR element already was")
+}
