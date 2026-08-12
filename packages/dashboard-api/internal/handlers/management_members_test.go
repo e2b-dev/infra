@@ -76,7 +76,7 @@ func newMembershipStore(db *testutils.Database) *APIStore {
 	return &APIStore{
 		authDB:            db.AuthDB,
 		authService:       auth,
-		managementService: management.NewService(db.AuthDB, auth),
+		managementService: management.NewService(db.AuthDB, db.SqlcClient, auth),
 	}
 }
 

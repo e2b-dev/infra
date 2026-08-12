@@ -51,7 +51,7 @@ func NewAPIStore(
 		authService:         authService,
 		identityService:     identityService,
 		provisioningService: provisioning.New(authDB, identityService, teamProvisionSink),
-		managementService:   management.NewService(authDB, authService),
+		managementService:   management.NewService(authDB, db, authService),
 	}
 }
 

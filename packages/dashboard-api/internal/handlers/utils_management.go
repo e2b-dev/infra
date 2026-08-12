@@ -40,3 +40,24 @@ func (s *APIStore) sendProjectMemberError(c *gin.Context, err error, attrs ...at
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Error applying project member")
 	}
 }
+
+// A cache eviction that failed is reported: the values are committed, so the
+// caller retrying is what gets the stale entry cleared.
+func (s *APIStore) sendProjectLimitsError(c *gin.Context, err error, attrs ...attribute.KeyValue) {
+	ctx := c.Request.Context()
+
+	switch {
+	case errors.Is(err, management.ErrProjectNotFound):
+		telemetry.ReportErrorByCode(ctx, http.StatusNotFound, "upsert project limits failed", err, attrs...)
+		s.sendAPIStoreError(c, http.StatusNotFound, "Project not found")
+	case errors.Is(err, management.ErrInvalidProjectLimits):
+		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, "upsert project limits failed", err, attrs...)
+		s.sendAPIStoreError(c, http.StatusBadRequest, "Invalid project limits")
+	case errors.Is(err, management.ErrProjectLimitsRejected):
+		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, "upsert project limits failed", err, attrs...)
+		s.sendAPIStoreError(c, http.StatusBadRequest, "Limits violate a constraint")
+	default:
+		telemetry.ReportCriticalError(ctx, "upsert project limits failed", err, attrs...)
+		s.sendAPIStoreError(c, http.StatusInternalServerError, "Error updating project limits")
+	}
+}

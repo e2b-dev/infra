@@ -219,7 +219,14 @@ and limit sync (into `project_limits`, which `team_limits` reads in preference t
 idempotent, because the caller is level-triggered and retries. `PUT
 /v1/management/projects/{projectID}/members/{userID}` applies the desired presence for one user,
 gated by a monotonic per-project/user revision stored in `projection.project_members`; duplicate or
-older revisions succeed without changing target state. A present projection includes that User's
+older revisions succeed without changing target state. `PUT
+/v1/management/projects/{projectID}/limits` is gated the same way, by a monotonic per-project
+revision in `projection.project_limits`: the caller raises it whenever the limits it resolved for a
+project change, and a delivery at or below the recorded revision is dropped and still answers 204.
+The ledger and the values in `public.project_limits` advance in one transaction, so a revision is
+never recorded without the values it admitted. Both fences are the target's, and both exist for the
+same reason — the caller can only fence what it sends, so two deliveries in flight arrive in
+whichever order the network gives them and the older one has to be refused where it lands. A present projection includes that User's
 OIDC issuer/subject identities. Every projected user has at least one identity, and an identity
 already owned by a different user returns 409. A revocation removes only that User's
 `users_teams` row; projected Users and identities are retained. Membership writes live in

@@ -1309,6 +1309,7 @@ components:
         that only rejects the impossible keeps a future decision about what is
         allowed a change to this schema rather than a migration.
       required:
+        - revision
         - concurrent_sandboxes
         - max_sandbox_length_hours
         - max_vcpu
@@ -1319,6 +1320,20 @@ components:
         - default_free_disk_size_mb
         - max_disk_size_mb
       properties:
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+          description: >-
+            The caller's version of this answer, raised whenever the limits it
+            resolved for the project change. Delivery is over a network, so two
+            pushes can be in flight at once and arrive in either order: this
+            side stores the revision it accepted and drops a delivery at or
+            below it, which is what keeps a delayed retry from putting the
+            project back on limits it has already left.
+
+
+            Comparable only against earlier revisions for the same project.
         concurrent_sandboxes:
           type: integer
           format: int32

@@ -13,10 +13,12 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
 
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/management"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 )
 
 const validLimitsBody = `{
+	"revision": 2,
 	"concurrent_sandboxes": 40,
 	"max_sandbox_length_hours": 12,
 	"max_vcpu": 16,
@@ -53,32 +55,21 @@ func TestUpsertProjectLimitsIsVisibleThroughTheView(t *testing.T) {
 	require.Equal(t, []uuid.UUID{teamID}, auth.invalidated)
 }
 
-// The caller retries, so a redelivered push must land on the same state rather
-// than being rejected as a duplicate or applied twice.
-func TestUpsertProjectLimitsIsIdempotent(t *testing.T) {
+// The revision decides which delivery writes, so a body without one is a caller
+// this side cannot fence and must refuse. The schema requires the field; this is
+// the value the schema still admits.
+func TestUpsertProjectLimitsRejectsARevisionThatIsNotPositive(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
 	teamID := testutils.CreateTestTeam(t, db)
-	store, _ := newLimitsStore(db)
+	store, auth := newLimitsStore(db)
 
-	first := callUpsertProjectLimits(t, store, teamID, validLimitsBody)
-	require.Equal(t, http.StatusNoContent, first.Code)
-	after := readTeamLimits(t, db, teamID)
+	body := strings.NewReplacer(`"revision": 2`, `"revision": 0`).Replace(validLimitsBody)
 
-	second := callUpsertProjectLimits(t, store, teamID, validLimitsBody)
-	require.Equal(t, http.StatusNoContent, second.Code)
-	require.Equal(t, after, readTeamLimits(t, db, teamID))
-
-	var rows int
-	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(t.Context(),
-		`SELECT COUNT(*) FROM public.project_limits WHERE team_id = $1`,
-		func(r pgx.Rows) error {
-			r.Next()
-
-			return r.Scan(&rows)
-		}, teamID))
-	require.Equal(t, 1, rows)
+	recorder := callUpsertProjectLimits(t, store, teamID, body)
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+	require.Empty(t, auth.invalidated)
 }
 
 // The team is the row's only foreign key, so a violation means the project is
@@ -112,10 +103,25 @@ func TestUpsertProjectLimitsRejectsFreeDiskAboveTheCeiling(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, recorder.Code)
 }
 
+func TestUpsertProjectLimitsRejectsAMalformedBody(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+	teamID := testutils.CreateTestTeam(t, db)
+	store, _ := newLimitsStore(db)
+
+	recorder := callUpsertProjectLimits(t, store, teamID, `{"revision":`)
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+}
+
 func newLimitsStore(db *testutils.Database) (*APIStore, *recordingCacheAuthService) {
 	auth := &recordingCacheAuthService{}
 
-	return &APIStore{db: db.SqlcClient, authService: auth}, auth
+	return &APIStore{
+		db:                db.SqlcClient,
+		authService:       auth,
+		managementService: management.NewService(db.AuthDB, db.SqlcClient, auth),
+	}, auth
 }
 
 func callUpsertProjectLimits(t *testing.T, store *APIStore, teamID uuid.UUID, body string) *httptest.ResponseRecorder {

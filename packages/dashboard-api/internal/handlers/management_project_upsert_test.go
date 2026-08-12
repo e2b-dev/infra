@@ -242,7 +242,7 @@ func (p projectFixture) request() api.ManagementProjectUpsertRequest {
 func newUpsertStore(db *testutils.Database) (*APIStore, *recordingCacheAuthService) {
 	auth := &recordingCacheAuthService{}
 
-	return &APIStore{managementService: management.NewService(db.AuthDB, auth)}, auth
+	return &APIStore{managementService: management.NewService(db.AuthDB, db.SqlcClient, auth)}, auth
 }
 
 func callUpsertProject(t *testing.T, store *APIStore, projectID uuid.UUID, request api.ManagementProjectUpsertRequest) *httptest.ResponseRecorder {

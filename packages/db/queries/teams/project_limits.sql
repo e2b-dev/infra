@@ -1,13 +1,46 @@
+-- Taken first, so the branch is decided by whether the project exists rather
+-- than by an insert failing.
+-- name: LockManagedProject :one
+SELECT id FROM public.teams
+WHERE id = sqlc.arg(id)::uuid
+FOR UPDATE;
+
+-- Advances the ledger that decides whether a delivery gets to write, and
+-- answers whether it did.
+--
+-- The guard is what makes a delayed retry safe: a delivery carrying a revision
+-- at or below the one recorded arrived after a newer one, so it is dropped and
+-- the values it carried are never written. The caller cannot enforce this on
+-- its own -- it fences what it sends, and two deliveries in flight arrive in
+-- whichever order the network gives them.
+--
+-- The conflict action takes a row lock held to commit, so a second delivery for
+-- the same project waits here and is compared against the winner's revision
+-- rather than against what it read.
+-- name: ApplyProjectLimitsProjection :one
+WITH changed AS (
+    INSERT INTO projection.project_limits (project_id, revision)
+    VALUES (
+        sqlc.arg(project_id)::uuid,
+        sqlc.arg(revision)::bigint
+    )
+    ON CONFLICT (project_id) DO UPDATE
+    SET
+        revision = EXCLUDED.revision,
+        updated_at = now()
+    WHERE projection.project_limits.revision < EXCLUDED.revision
+    RETURNING project_id
+)
+SELECT EXISTS (SELECT 1 FROM changed) AS applied;
+
 -- UpsertProjectLimits records a project's effective limits, which the
 -- team_limits view reads in preference to the tier-plus-addons arithmetic.
 --
 -- Every column is supplied on every call: the caller sends a complete set, so
--- there is no partial update to merge and no prior row to read first. That
--- makes a retry of the same push a no-op rather than a second edit.
+-- there is no partial update to merge and no prior row to read first.
 --
--- Returns nothing. A caller that names a team which does not exist gets a
--- foreign key violation, which the handler turns into a 404 -- the team is the
--- only thing that could be missing.
+-- Which deliveries reach this statement is the ledger's decision, and the two
+-- writes share a transaction. Nothing here compares revisions.
 -- name: UpsertProjectLimits :exec
 INSERT INTO public.project_limits (
     team_id,
