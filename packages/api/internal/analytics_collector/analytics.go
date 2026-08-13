@@ -23,6 +23,9 @@ const (
 	infraVersionKey = "infra_version"
 	infraVersion    = "v1"
 
+	// duplicates the team group key: PostHog is not promoting $groups.team to $group_0
+	teamIDKey = "team_id"
+
 	jsSDKUserAgentPrefix     = "e2b-js-sdk/"
 	pythonSDKUserAgentPrefix = "e2b-python-sdk/"
 )
@@ -78,7 +81,7 @@ func (p *PosthogClient) CreateAnalyticsTeamEvent(ctx context.Context, teamID, ev
 	err := p.client.Enqueue(posthog.Capture{
 		DistinctId: placeholderTeamGroupUser,
 		Event:      event,
-		Properties: properties.Set(infraVersionKey, infraVersion),
+		Properties: properties.Set(infraVersionKey, infraVersion).Set(teamIDKey, teamID),
 		Groups: posthog.NewGroups().
 			Set("team", teamID),
 	})
@@ -91,7 +94,7 @@ func (p *PosthogClient) CreateAnalyticsUserEvent(ctx context.Context, userID str
 	err := p.client.Enqueue(posthog.Capture{
 		DistinctId: userID,
 		Event:      event,
-		Properties: properties.Set(infraVersionKey, infraVersion),
+		Properties: properties.Set(infraVersionKey, infraVersion).Set(teamIDKey, teamID),
 		Groups: posthog.NewGroups().
 			Set("team", teamID),
 	})
