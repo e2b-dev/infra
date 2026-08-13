@@ -121,6 +121,10 @@ FOUNDATION_PLAN_MANIFEST := $(FOUNDATION_PLAN).manifest
 FOUNDATION_DESTROY_PLAN := .tfplan.foundation-destroy.$(ENV)
 override WORKLOAD_PLAN := .tfplan.workload.$(ENV)
 override WORKLOAD_PLAN_MANIFEST := $(WORKLOAD_PLAN).manifest
+override WORKLOAD_ORCHESTRATOR_PLAN := .tfplan.workload-orchestrator.$(ENV)
+override WORKLOAD_ORCHESTRATOR_PLAN_MANIFEST := $(WORKLOAD_ORCHESTRATOR_PLAN).manifest
+override WORKLOAD_ORCHESTRATOR_TARGET := -target='module.nomad.module.orchestrator[0]'
+WORKLOAD_ORCHESTRATOR_RECOVERY_TOKEN ?=
 override WORKLOAD_PREREQUISITE_PLAN := .tfplan.workload-prerequisite.$(ENV)
 override WORKLOAD_PREREQUISITE_PLAN_MANIFEST := $(WORKLOAD_PREREQUISITE_PLAN).manifest
 WORKLOAD_CLUSTER_STAGE ?=
@@ -182,6 +186,8 @@ override WORKLOAD_ROLLOUT_LEASE := scripts/rollout-mutation-lease.sh
 override FOUNDATION_CONFIRMATION := APPLY KEYLESS FOUNDATION
 override ACL_STATE_SCRUB_CONFIRMATION := FORGET LEAKING ACL TOKEN GENERATORS
 override WORKLOAD_CONFIRMATION := APPLY ONE WORKCELL CANARY
+override WORKLOAD_ORCHESTRATOR_CONFIRMATION := APPLY ORCHESTRATOR RELEASE
+override WORKLOAD_ORCHESTRATOR_RECOVERY_CONFIRMATION := RELEASE ORCHESTRATOR LEASE
 override WORKLOAD_PREREQUISITE_CONFIRMATION := APPLY WORKLOAD PREREQUISITES
 override WORKLOAD_CLUSTER_CONFIRMATION := APPLY NETWORK HARDENING $(WORKLOAD_CLUSTER_STAGE)
 override WORKLOAD_CLUSTER_RECOVERY_CONFIRMATION := RELEASE NETWORK HARDENING LEASE $(WORKLOAD_CLUSTER_STAGE)
@@ -205,6 +211,7 @@ override WORKLOAD_PREREQUISITE_TARGETS := \
 	-target='google_artifact_registry_repository_iam_member.custom_environments_repository_member' \
 	-target='google_artifact_registry_repository_iam_member.custom_environments_repository_api_controller_member'
 WORKLOAD_CLUSTER_WAIT_SECONDS ?= 1800
+WORKLOAD_ORCHESTRATOR_WAIT_SECONDS ?= 600
 NETWORK_HARDENING_ROLLOUT_WAIT_SECONDS ?= $(WORKLOAD_CLUSTER_WAIT_SECONDS)
 
 define foundation_metadata_context
@@ -240,7 +247,7 @@ WORKLOAD_CLUSTER_CHECKPOINT="$(WORKLOAD_CLUSTER_CHECKPOINT)" \
 WORKLOAD_CLUSTER_REFRESH_STAGE="$(WORKLOAD_CLUSTER_REFRESH_STAGE)"
 endef
 
-.PHONY: workload-plan-check workload-prerequisite-plan-check workload-cluster-plan-check workload-plan-assertions-test workload-release-test packer-reserve-check worker-startup-render-test
+.PHONY: workload-plan-check workload-orchestrator-plan-check workload-prerequisite-plan-check workload-cluster-plan-check workload-plan-assertions-test workload-release-test packer-reserve-check worker-startup-render-test
 workload-plan-check:
 	@ test -f "$(WORKLOAD_PLAN_MANIFEST)" || (printf "Missing workload plan provenance %s.\n" "$(WORKLOAD_PLAN_MANIFEST)"; exit 1)
 	@ set -eu; \
@@ -255,6 +262,22 @@ workload-plan-check:
 			"$${artifacts}"; \
 		./scripts/assert-network-hardening-normal-plan.sh \
 			"$(WORKLOAD_PLAN)" "$(TF)" "$(TERRAFORM_ENVIRONMENT)"
+
+workload-orchestrator-plan-check:
+	@ test -f "$(WORKLOAD_ORCHESTRATOR_PLAN_MANIFEST)" || (printf "Missing orchestrator release plan provenance %s.\n" "$(WORKLOAD_ORCHESTRATOR_PLAN_MANIFEST)"; exit 1)
+	@ set -eu; \
+		umask 077; \
+		artifacts="$$(mktemp ".workload-orchestrator-plan-check.$(ENV).XXXXXX")"; \
+		trap 'rm -f -- "$${artifacts}"' EXIT HUP INT TERM; \
+		jq -eS '.release_artifacts' "$(WORKLOAD_ORCHESTRATOR_PLAN_MANIFEST)" >"$${artifacts}"; \
+		chmod 0600 "$${artifacts}"; \
+		$(workload_metadata_context) ./scripts/workload-plan-metadata.sh verify \
+			"$(WORKLOAD_ORCHESTRATOR_PLAN)" "$(WORKLOAD_ORCHESTRATOR_PLAN_MANIFEST)" \
+			"$(TF)" "." "../.." "$${artifacts}"; \
+		./scripts/assert-workload-plan.sh \
+			"$(WORKLOAD_ORCHESTRATOR_PLAN)" "$(TF)" \
+			"$(WORKLOAD_TOPOLOGY_POLICY)" "$(WORKLOAD_PACKER_TEMPLATE)" \
+			"$${artifacts}" orchestrator
 
 workload-prerequisite-plan-check:
 	@ test -f "$(WORKLOAD_PREREQUISITE_PLAN_MANIFEST)" || (printf "Missing workload prerequisite plan provenance %s.\n" "$(WORKLOAD_PREREQUISITE_PLAN_MANIFEST)"; exit 1)
@@ -303,6 +326,7 @@ workload-plan-assertions-test:
 	@ ./scripts/test-rebind-network-hardening-recovery-token.sh
 	@ ./scripts/test-network-hardening-stage-wait.sh
 	@ ./scripts/test-workload-plan-assertions.sh
+	@ ./scripts/test-orchestrator-release-wait.sh
 	@ ./scripts/test-workload-prerequisite-plan.sh
 	@ ./scripts/test-legacy-workload-mutation-disabled.sh
 	@ ./scripts/test-rollout-mutation-lease.sh
@@ -317,6 +341,7 @@ workload-plan-assertions-test:
 
 workload-release-test:
 	@ ./scripts/test-rollout-mutation-lease.sh
+	@ ./scripts/test-orchestrator-release-wait.sh
 	@ ./scripts/test-workload-quota-mode.sh
 	@ ./scripts/test-workload-release.sh
 
@@ -1038,6 +1063,289 @@ workload-prerequisite-apply:
 		manifest_moved=false; \
 		rm -rf -- "$${temp_dir}"; \
 		trap - EXIT HUP INT TERM
+
+.PHONY: workload-orchestrator-plan workload-orchestrator-apply workload-orchestrator-recover-lease
+workload-orchestrator-plan:
+	@ printf '%s' "$(ENV)" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$$' || (printf "Invalid environment name: %s\n" "$(ENV)"; exit 1)
+	@ $(MAKE) workload-context-guard
+	@ set -eu; \
+		temp_dir="$$(mktemp -d ".workload-orchestrator-plan.$(ENV).XXXXXX")"; \
+		temp_plan="$${temp_dir}/plan"; \
+		temp_manifest="$${temp_dir}/manifest"; \
+		before_artifacts="$${temp_dir}/artifacts-before.json"; \
+		after_artifacts="$${temp_dir}/artifacts-after.json"; \
+		lease_token="$${temp_dir}/lease-token.json"; \
+		lease_acquired=false; \
+		cleanup() { \
+			status=$$?; \
+			trap - EXIT HUP INT TERM; \
+			if [ "$${lease_acquired}" = true ]; then \
+				if ! "$(WORKLOAD_ROLLOUT_LEASE)" release "$(GCLOUD)" "$${lease_token}"; then \
+					printf "Shared rollout lease release failed; inspect it before another rollout.\n" >&2; \
+					if [ "$${status}" -eq 0 ]; then status=1; fi; \
+				fi; \
+			fi; \
+			rm -rf -- "$${temp_dir}"; \
+			exit "$${status}"; \
+		}; \
+		trap cleanup EXIT HUP INT TERM; \
+		umask 077; \
+		holder_digest="$$( \
+			{ \
+				git -C ../.. rev-parse --verify HEAD; \
+				printf '%s\n' "$(ENV)" "$$$$" "$$(date -u +%s)"; \
+			} | shasum -a 256 | awk '{print $$1}' \
+		)"; \
+		"$(WORKLOAD_ROLLOUT_LEASE)" acquire \
+			"$(GCLOUD)" "$(TERRAFORM_STATE_BUCKET)" \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" \
+			"orchestrator-plan:$${holder_digest}" "$${lease_token}"; \
+		lease_acquired=true; \
+		rm -f -- "$(WORKLOAD_ORCHESTRATOR_PLAN)" "$(WORKLOAD_ORCHESTRATOR_PLAN_MANIFEST)"; \
+		./scripts/assert-workload-artifacts.sh \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(PREFIX)" \
+			"$(WORKLOAD_IMAGE_REVISION)" "$(WORKLOAD_JOB_BINARY_BUCKET)" \
+			"$(GCLOUD)" >"$${before_artifacts}"; \
+		chmod 0600 "$${before_artifacts}"; \
+		before_fingerprint="$$($(workload_metadata_context) ./scripts/workload-plan-metadata.sh fingerprint \
+			"$(TF)" "." "../.." "$${before_artifacts}")"; \
+		$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) \
+			-out="$${temp_plan}" \
+			-input=false \
+			-compact-warnings \
+			$(WORKLOAD_ORCHESTRATOR_TARGET); \
+		chmod 0600 "$${temp_plan}"; \
+		./scripts/assert-workload-artifacts.sh \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(PREFIX)" \
+			"$(WORKLOAD_IMAGE_REVISION)" "$(WORKLOAD_JOB_BINARY_BUCKET)" \
+			"$(GCLOUD)" >"$${after_artifacts}"; \
+		chmod 0600 "$${after_artifacts}"; \
+		after_fingerprint="$$($(workload_metadata_context) ./scripts/workload-plan-metadata.sh fingerprint \
+			"$(TF)" "." "../.." "$${after_artifacts}")"; \
+		if [ "$${before_fingerprint}" != "$${after_fingerprint}" ]; then \
+			printf "Refusing orchestrator release plan: configuration or release artifacts changed while Terraform was planning.\n" >&2; \
+			exit 1; \
+		fi; \
+		./scripts/assert-workload-plan.sh \
+			"$${temp_plan}" "$(TF)" \
+			"$(WORKLOAD_TOPOLOGY_POLICY)" "$(WORKLOAD_PACKER_TEMPLATE)" \
+			"$${after_artifacts}" orchestrator; \
+		$(workload_metadata_context) ./scripts/workload-plan-metadata.sh write \
+			"$${temp_plan}" "$${temp_manifest}" "$(TF)" "." "../.." \
+			"$${after_artifacts}" "$${after_fingerprint}"; \
+		mv -f -- "$${temp_manifest}" "$(WORKLOAD_ORCHESTRATOR_PLAN_MANIFEST)"; \
+		mv -f -- "$${temp_plan}" "$(WORKLOAD_ORCHESTRATOR_PLAN)"; \
+		rm -f -- "$${before_artifacts}" "$${after_artifacts}"; \
+		"$(WORKLOAD_ROLLOUT_LEASE)" release "$(GCLOUD)" "$${lease_token}"; \
+		lease_acquired=false; \
+		rmdir "$${temp_dir}"; \
+		trap - EXIT HUP INT TERM
+	@ printf "Saved orchestrator-only plan and provenance are ready for review: %s and %s\n" "$(WORKLOAD_ORCHESTRATOR_PLAN)" "$(WORKLOAD_ORCHESTRATOR_PLAN_MANIFEST)"
+
+workload-orchestrator-apply:
+	@ if [ "$(CONFIRM)" != "$(WORKLOAD_ORCHESTRATOR_CONFIRMATION)" ]; then \
+		printf "Refusing orchestrator release apply. Re-run with CONFIRM='$(WORKLOAD_ORCHESTRATOR_CONFIRMATION)'.\n"; \
+		exit 1; \
+	fi
+	@ $(MAKE) workload-context-guard
+	@ set -eu; \
+		temp_dir="$$(mktemp -d ".workload-orchestrator-apply.$(ENV).XXXXXX")"; \
+		before_artifacts="$${temp_dir}/artifacts-before.json"; \
+		after_artifacts="$${temp_dir}/artifacts-after.json"; \
+		apply_plan="$${temp_dir}/reviewed.plan"; \
+		apply_manifest="$${temp_dir}/reviewed.plan.manifest"; \
+		consumed_plan="$${temp_dir}/consumed.plan"; \
+		consumed_manifest="$${temp_dir}/consumed.plan.manifest"; \
+		lease_token="$${temp_dir}/lease-token.json"; \
+		lease_acquired=false; \
+		mutation_started=false; \
+		plan_moved=false; \
+		manifest_moved=false; \
+		cleanup() { \
+			status=$$?; \
+			restore_failed=false; \
+			trap - EXIT HUP INT TERM; \
+			if [ "$${plan_moved}" = true ]; then \
+				if [ ! -e "$(WORKLOAD_ORCHESTRATOR_PLAN)" ] \
+					&& mv "$${consumed_plan}" "$(WORKLOAD_ORCHESTRATOR_PLAN)"; then \
+					plan_moved=false; \
+				else \
+					printf "Could not restore consumed orchestrator release plan; preserving private recovery directory %s.\n" "$${temp_dir}" >&2; \
+					restore_failed=true; \
+					status=1; \
+				fi; \
+			fi; \
+			if [ "$${manifest_moved}" = true ]; then \
+				if [ ! -e "$(WORKLOAD_ORCHESTRATOR_PLAN_MANIFEST)" ] \
+					&& mv "$${consumed_manifest}" "$(WORKLOAD_ORCHESTRATOR_PLAN_MANIFEST)"; then \
+					manifest_moved=false; \
+				else \
+					printf "Could not restore consumed orchestrator release manifest; preserving private recovery directory %s.\n" "$${temp_dir}" >&2; \
+					restore_failed=true; \
+					status=1; \
+				fi; \
+			fi; \
+			if [ "$${lease_acquired}" = true ] && [ "$${mutation_started}" = true ]; then \
+				printf "Orchestrator release may have mutated live state; preserving its generation-bound lease and recovery directory %s.\n" "$${temp_dir}" >&2; \
+				printf "After proving no apply is running, recover with WORKLOAD_ORCHESTRATOR_RECOVERY_TOKEN=%s CONFIRM='%s'.\n" "$${lease_token}" "$(WORKLOAD_ORCHESTRATOR_RECOVERY_CONFIRMATION)" >&2; \
+				restore_failed=true; \
+				status=1; \
+			elif [ "$${lease_acquired}" = true ]; then \
+				if ! "$(WORKLOAD_ROLLOUT_LEASE)" release "$(GCLOUD)" "$${lease_token}"; then \
+					printf "Shared rollout lease release failed; inspect it before another rollout.\n" >&2; \
+					if [ "$${status}" -eq 0 ]; then status=1; fi; \
+				fi; \
+			fi; \
+			if [ "$${restore_failed}" = false ]; then \
+				rm -rf -- "$${temp_dir}"; \
+			fi; \
+			exit "$${status}"; \
+		}; \
+		trap cleanup EXIT HUP INT TERM; \
+		umask 077; \
+		holder_digest="$$( \
+			{ \
+				git -C ../.. rev-parse --verify HEAD; \
+				printf '%s\n' "$(ENV)" "$$$$" "$$(date -u +%s)"; \
+			} | shasum -a 256 | awk '{print $$1}' \
+		)"; \
+		"$(WORKLOAD_ROLLOUT_LEASE)" acquire \
+			"$(GCLOUD)" "$(TERRAFORM_STATE_BUCKET)" \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" \
+			"orchestrator-apply:$${holder_digest}" "$${lease_token}"; \
+		lease_acquired=true; \
+		test -f "$(WORKLOAD_ORCHESTRATOR_PLAN)" || { \
+			printf "Missing reviewed orchestrator release plan %s. Run 'make workload-orchestrator-plan' first.\n" "$(WORKLOAD_ORCHESTRATOR_PLAN)" >&2; \
+			exit 1; \
+		}; \
+		test -f "$(WORKLOAD_ORCHESTRATOR_PLAN_MANIFEST)" || { \
+			printf "Missing orchestrator release plan provenance %s. Run 'make workload-orchestrator-plan' first.\n" "$(WORKLOAD_ORCHESTRATOR_PLAN_MANIFEST)" >&2; \
+			exit 1; \
+		}; \
+		./scripts/assert-workload-artifacts.sh \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(PREFIX)" \
+			"$(WORKLOAD_IMAGE_REVISION)" "$(WORKLOAD_JOB_BINARY_BUCKET)" \
+			"$(GCLOUD)" >"$${before_artifacts}"; \
+		chmod 0600 "$${before_artifacts}"; \
+		$(workload_metadata_context) ./scripts/workload-plan-metadata.sh verify \
+			"$(WORKLOAD_ORCHESTRATOR_PLAN)" "$(WORKLOAD_ORCHESTRATOR_PLAN_MANIFEST)" \
+			"$(TF)" "." "../.." "$${before_artifacts}"; \
+		cp "$(WORKLOAD_ORCHESTRATOR_PLAN)" "$${apply_plan}"; \
+		cp "$(WORKLOAD_ORCHESTRATOR_PLAN_MANIFEST)" "$${apply_manifest}"; \
+		chmod 0600 "$${apply_plan}" "$${apply_manifest}"; \
+		$(workload_metadata_context) ./scripts/workload-plan-metadata.sh verify \
+			"$${apply_plan}" "$${apply_manifest}" "$(TF)" "." "../.." \
+			"$${before_artifacts}"; \
+		./scripts/assert-workload-plan.sh \
+			"$${apply_plan}" "$(TF)" \
+			"$(WORKLOAD_TOPOLOGY_POLICY)" "$(WORKLOAD_PACKER_TEMPLATE)" \
+			"$${before_artifacts}" orchestrator; \
+		./scripts/assert-workload-artifacts.sh \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(PREFIX)" \
+			"$(WORKLOAD_IMAGE_REVISION)" "$(WORKLOAD_JOB_BINARY_BUCKET)" \
+			"$(GCLOUD)" >"$${after_artifacts}"; \
+		chmod 0600 "$${after_artifacts}"; \
+		$(workload_metadata_context) ./scripts/workload-plan-metadata.sh verify \
+			"$${apply_plan}" "$${apply_manifest}" "$(TF)" "." "../.." \
+			"$${after_artifacts}"; \
+		"$(WORKLOAD_ROLLOUT_LEASE)" assert-held \
+			"$(GCLOUD)" "$(TERRAFORM_STATE_BUCKET)" \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$${lease_token}"; \
+		mutation_started=true; \
+		$(TF) apply -input=false "$${apply_plan}"; \
+		expected_source="$$(jq -er '.job_binaries.orchestrator.nomad_source' "$${after_artifacts}")"; \
+		./scripts/wait-orchestrator-release.sh \
+			"$(GCP_PROJECT_ID)" "$(PREFIX)" "$(DOMAIN_NAME)" \
+			"$${expected_source}" "$(GCLOUD)" \
+			"$(WORKLOAD_ORCHESTRATOR_WAIT_SECONDS)"; \
+		set +e; \
+		$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) \
+			-out="$${temp_dir}/post-apply.plan" \
+			-input=false \
+			-compact-warnings \
+			-detailed-exitcode \
+			$(WORKLOAD_ORCHESTRATOR_TARGET) \
+			>/dev/null; \
+		post_apply_status=$$?; \
+		set -e; \
+		if [ "$${post_apply_status}" -ne 0 ]; then \
+			printf "Post-apply orchestrator convergence check was not clean (Terraform exit %s).\n" "$${post_apply_status}" >&2; \
+			exit 1; \
+		fi; \
+		if ! cmp -s "$(WORKLOAD_ORCHESTRATOR_PLAN)" "$${apply_plan}" \
+			|| ! cmp -s "$(WORKLOAD_ORCHESTRATOR_PLAN_MANIFEST)" "$${apply_manifest}"; then \
+			printf "Applied reviewed bytes, but the published orchestrator release plan changed concurrently; preserving the replacement.\n" >&2; \
+			exit 1; \
+		fi; \
+		mv "$(WORKLOAD_ORCHESTRATOR_PLAN)" "$${consumed_plan}"; \
+		plan_moved=true; \
+		mv "$(WORKLOAD_ORCHESTRATOR_PLAN_MANIFEST)" "$${consumed_manifest}"; \
+		manifest_moved=true; \
+		"$(WORKLOAD_ROLLOUT_LEASE)" release "$(GCLOUD)" "$${lease_token}"; \
+		lease_acquired=false; \
+		mutation_started=false; \
+		plan_moved=false; \
+		manifest_moved=false; \
+		rm -rf -- "$${temp_dir}"; \
+		trap - EXIT HUP INT TERM
+
+workload-orchestrator-recover-lease:
+	@ if [ "$(CONFIRM)" != "$(WORKLOAD_ORCHESTRATOR_RECOVERY_CONFIRMATION)" ]; then \
+		printf "Refusing orchestrator release lease recovery. Re-run with CONFIRM='$(WORKLOAD_ORCHESTRATOR_RECOVERY_CONFIRMATION)'.\n"; \
+		exit 1; \
+	fi
+	@ $(MAKE) workload-context-guard
+	@ set -eu; \
+		token="$(WORKLOAD_ORCHESTRATOR_RECOVERY_TOKEN)"; \
+		test -n "$${token}" || { \
+			printf "WORKLOAD_ORCHESTRATOR_RECOVERY_TOKEN must name the preserved generation-bound token.\n" >&2; \
+			exit 1; \
+		}; \
+		test -f "$${token}" && test ! -L "$${token}" || { \
+			printf "Orchestrator recovery token must be a regular, non-symlink file.\n" >&2; \
+			exit 1; \
+		}; \
+		jq -e '.holder | startswith("orchestrator-apply:")' "$${token}" >/dev/null || { \
+			printf "Recovery token was not issued by an orchestrator release apply.\n" >&2; \
+			exit 1; \
+		}; \
+		"$(WORKLOAD_ROLLOUT_LEASE)" assert-held \
+			"$(GCLOUD)" "$(TERRAFORM_STATE_BUCKET)" \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$${token}"; \
+		temp_dir="$$(mktemp -d ".workload-orchestrator-recovery.$(ENV).XXXXXX")"; \
+		trap 'rm -rf -- "$${temp_dir}"' EXIT HUP INT TERM; \
+		umask 077; \
+		./scripts/assert-workload-artifacts.sh \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(PREFIX)" \
+			"$(WORKLOAD_IMAGE_REVISION)" "$(WORKLOAD_JOB_BINARY_BUCKET)" \
+			"$(GCLOUD)" >"$${temp_dir}/artifacts.json"; \
+		chmod 0600 "$${temp_dir}/artifacts.json"; \
+		expected_source="$$(jq -er '.job_binaries.orchestrator.nomad_source' "$${temp_dir}/artifacts.json")"; \
+		./scripts/wait-orchestrator-release.sh \
+			"$(GCP_PROJECT_ID)" "$(PREFIX)" "$(DOMAIN_NAME)" \
+			"$${expected_source}" "$(GCLOUD)" \
+			"$(WORKLOAD_ORCHESTRATOR_WAIT_SECONDS)"; \
+		set +e; \
+		$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) \
+			-out="$${temp_dir}/recovery.plan" \
+			-input=false \
+			-compact-warnings \
+			-detailed-exitcode \
+			$(WORKLOAD_ORCHESTRATOR_TARGET) \
+			>/dev/null; \
+		recovery_status=$$?; \
+		set -e; \
+		if [ "$${recovery_status}" -ne 0 ]; then \
+			printf "Orchestrator release is not Terraform-clean (exit %s); preserving the exact lease.\n" "$${recovery_status}" >&2; \
+			exit 1; \
+		fi; \
+		"$(WORKLOAD_ROLLOUT_LEASE)" assert-held \
+			"$(GCLOUD)" "$(TERRAFORM_STATE_BUCKET)" \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$${token}"; \
+		"$(WORKLOAD_ROLLOUT_LEASE)" release "$(GCLOUD)" "$${token}"; \
+		rm -rf -- "$${temp_dir}"; \
+		trap - EXIT HUP INT TERM; \
+		printf "Recovered the Terraform-clean orchestrator release and released its exact shared lease.\n"
 
 workload-plan:
 	@ printf '%s' "$(ENV)" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$$' || (printf "Invalid environment name: %s\n" "$(ENV)"; exit 1)

@@ -127,6 +127,10 @@ configuration_sha256() {
         -path "${config_root}/.workload-plan.*" -prune -o \
         -path "${config_root}/.workload-apply.*" -prune -o \
         -path "${config_root}/.workload-plan-check.*" -prune -o \
+        -path "${config_root}/.workload-orchestrator-plan.*" -prune -o \
+        -path "${config_root}/.workload-orchestrator-apply.*" -prune -o \
+        -path "${config_root}/.workload-orchestrator-plan-check.*" -prune -o \
+        -path "${config_root}/.workload-orchestrator-recovery.*" -prune -o \
         -path "${config_root}/.workload-cluster-plan.*" -prune -o \
         -path "${config_root}/.workload-cluster-apply.*" -prune -o \
         -path "${config_root}/.workload-cluster-plan-check.*" -prune -o \

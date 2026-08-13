@@ -12,6 +12,7 @@ artifact_prior_fixture="${script_dir}/testdata/workload-artifact-prior-state-bin
 artifacts="${script_dir}/testdata/workload-artifacts.json"
 policy="${script_dir}/../topology/minimal-workload-policy.json"
 packer_template="${script_dir}/../nomad-cluster-disk-image/main.pkr.hcl"
+orchestrator_release_job="${script_dir}/testdata/orchestrator-release-job.hcl"
 cloud_sql_config="${script_dir}/../cloud-sql.tf"
 nomad_config="${script_dir}/../nomad/main.tf"
 reverse_proxy_store="${script_dir}/../../../packages/docker-reverse-proxy/internal/handlers/store.go"
@@ -168,16 +169,22 @@ expect_success() {
     "${artifacts}" \
     "${scope}" >"${output_path}"
 
-  grep -F '"global_vcpus":44' "${output_path}" >/dev/null
-  grep -F '"regional_cpus":44' "${output_path}" >/dev/null
-  grep -F '"instances":10' "${output_path}" >/dev/null
-  grep -F '"pd_ssd_gb":380' "${output_path}" >/dev/null
-  grep -F '"pd_standard_gb":600' "${output_path}" >/dev/null
-  grep -F '"local_ssd_gb":1125' "${output_path}" >/dev/null
-  grep -F '"regional_public_ips":3' "${output_path}" >/dev/null
+  if [[ "${scope}" != "orchestrator" ]]; then
+    grep -F '"global_vcpus":44' "${output_path}" >/dev/null
+    grep -F '"regional_cpus":44' "${output_path}" >/dev/null
+    grep -F '"instances":10' "${output_path}" >/dev/null
+    grep -F '"pd_ssd_gb":380' "${output_path}" >/dev/null
+    grep -F '"pd_standard_gb":600' "${output_path}" >/dev/null
+    grep -F '"local_ssd_gb":1125' "${output_path}" >/dev/null
+    grep -F '"regional_public_ips":3' "${output_path}" >/dev/null
+  fi
   if [[ "${scope}" == "cluster" ]]; then
     grep -F \
       'Cluster bootstrap scope passed: only module.cluster may mutate' \
+      "${output_path}" >/dev/null
+  elif [[ "${scope}" == "orchestrator" ]]; then
+    grep -F \
+      'Orchestrator release scope passed: the exact pinned binary is the only workload rollout.' \
       "${output_path}" >/dev/null
   fi
 }
@@ -2863,6 +2870,109 @@ expect_failure \
   "${fixture}" \
   "${policy}" \
   "${test_dir}/packer-drift.pkr.hcl"
+
+jq --rawfile jobspec "${orchestrator_release_job}" '
+  .resource_changes |= map(
+    if .mode == "managed" then
+      .change.before = .change.after
+      | .change.actions = ["no-op"]
+    else .
+    end
+  )
+  | (
+      .resource_changes[]
+      | select(
+          .address
+          == "module.nomad.module.orchestrator[0].nomad_job.orchestrator"
+        )
+      | .change
+    ) |= (
+      .actions = ["update"]
+      | .before.jobspec = "prior orchestrator jobspec"
+      | .after.jobspec = $jobspec
+      | .after_unknown = {}
+    )
+  | .resource_changes += [{
+      address: "module.nomad.module.orchestrator[0].random_id.orchestrator_job",
+      mode: "managed",
+      type: "random_id",
+      name: "orchestrator_job",
+      change: {
+        actions: ["delete", "create"],
+        before: {hex: "1111111111111111"},
+        after: {hex: "2222222222222222"},
+        after_unknown: {}
+      }
+    }]
+' "${fixture}" >"${test_dir}/orchestrator-release.json"
+expect_success \
+  "orchestrator-release" \
+  "${test_dir}/orchestrator-release.json" \
+  "orchestrator"
+
+jq '
+  .resource_changes += [{
+    address: "module.nomad.module.api.nomad_job.api",
+    mode: "managed",
+    type: "nomad_job",
+    name: "api",
+    change: {
+      actions: ["update"],
+      before: {jobspec: "old"},
+      after: {jobspec: "new"},
+      after_unknown: {}
+    }
+  }]
+' "${test_dir}/orchestrator-release.json" \
+  >"${test_dir}/orchestrator-release-extra-mutation.json"
+expect_failure \
+  "orchestrator-release-extra-mutation" \
+  "only the exact orchestrator job and its rollout markers may mutate" \
+  "${test_dir}/orchestrator-release-extra-mutation.json" \
+  "${policy}" \
+  "${packer_template}" \
+  "${artifacts}" \
+  "orchestrator"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "module.nomad.module.orchestrator[0].nomad_job.orchestrator"
+      )
+    | .change.actions
+  ) = ["no-op"]
+' "${test_dir}/orchestrator-release.json" \
+  >"${test_dir}/orchestrator-release-no-update.json"
+expect_failure \
+  "orchestrator-release-no-update" \
+  "the job must update exactly once" \
+  "${test_dir}/orchestrator-release-no-update.json" \
+  "${policy}" \
+  "${packer_template}" \
+  "${artifacts}" \
+  "orchestrator"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        == "module.nomad.module.orchestrator[0].nomad_job.orchestrator"
+      )
+    | .change.after.jobspec
+  ) |= sub("orchestrator\\.0123456789ab#2001"; "orchestrator.0123456789ab#9999")
+' "${test_dir}/orchestrator-release.json" \
+  >"${test_dir}/orchestrator-release-wrong-generation.json"
+expect_failure \
+  "orchestrator-release-wrong-generation" \
+  "invalid_job_binary_jobs contains an invalid orchestrator binding" \
+  "${test_dir}/orchestrator-release-wrong-generation.json" \
+  "${policy}" \
+  "${packer_template}" \
+  "${artifacts}" \
+  "orchestrator"
 
 "${packer_assertion_script}" "${policy}" "${packer_template}" >/dev/null
 

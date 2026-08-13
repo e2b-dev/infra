@@ -1902,4 +1902,101 @@ test "$(
     "${repo_root}/packages/monad-worker-autoscaler/Makefile"
 )" -eq 1
 
+orchestrator_plan_recipe="$(
+  awk '
+    /^workload-orchestrator-plan:/ {capture = 1}
+    /^workload-orchestrator-apply:/ {capture = 0}
+    capture {print}
+  ' "${provider_root}/Makefile"
+)"
+orchestrator_apply_recipe="$(
+  awk '
+    /^workload-orchestrator-apply:/ {capture = 1}
+    /^workload-orchestrator-recover-lease:/ {capture = 0}
+    capture {print}
+  ' "${provider_root}/Makefile"
+)"
+orchestrator_recovery_recipe="$(
+  awk '
+    /^workload-orchestrator-recover-lease:/ {capture = 1}
+    /^workload-plan:/ {capture = 0}
+    capture {print}
+  ' "${provider_root}/Makefile"
+)"
+test -n "${orchestrator_plan_recipe}"
+test -n "${orchestrator_apply_recipe}"
+test -n "${orchestrator_recovery_recipe}"
+test "$(grep -Fc '$(WORKLOAD_ORCHESTRATOR_TARGET)' <<<"${orchestrator_plan_recipe}")" -eq 1
+test "$(grep -Fc '$(WORKLOAD_ORCHESTRATOR_TARGET)' <<<"${orchestrator_apply_recipe}")" -eq 1
+grep -F '"$${after_artifacts}" orchestrator' \
+  <<<"${orchestrator_plan_recipe}" >/dev/null
+grep -F '"$${before_artifacts}" orchestrator' \
+  <<<"${orchestrator_apply_recipe}" >/dev/null
+grep -F '$(WORKLOAD_ORCHESTRATOR_CONFIRMATION)' \
+  <<<"${orchestrator_apply_recipe}" >/dev/null
+grep -F 'orchestrator-plan:$${holder_digest}' \
+  <<<"${orchestrator_plan_recipe}" >/dev/null
+grep -F 'orchestrator-apply:$${holder_digest}' \
+  <<<"${orchestrator_apply_recipe}" >/dev/null
+grep -F './scripts/workload-plan-metadata.sh write' \
+  <<<"${orchestrator_plan_recipe}" >/dev/null
+test "$(
+  grep -Fc './scripts/workload-plan-metadata.sh verify' \
+    <<<"${orchestrator_apply_recipe}"
+)" -eq 3
+orchestrator_lease_assert_line="$(
+  grep -nF '"$(WORKLOAD_ROLLOUT_LEASE)" assert-held' \
+    <<<"${orchestrator_apply_recipe}" | cut -d: -f1
+)"
+orchestrator_apply_line="$(
+  grep -nF '$(TF) apply -input=false "$${apply_plan}"' \
+    <<<"${orchestrator_apply_recipe}" | cut -d: -f1
+)"
+orchestrator_post_plan_line="$(
+  grep -nF '$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG)' \
+    <<<"${orchestrator_apply_recipe}" | cut -d: -f1
+)"
+orchestrator_wait_line="$(
+  grep -nF './scripts/wait-orchestrator-release.sh' \
+    <<<"${orchestrator_apply_recipe}" | cut -d: -f1
+)"
+orchestrator_release_line="$(
+  grep -nF '"$(WORKLOAD_ROLLOUT_LEASE)" release' \
+    <<<"${orchestrator_apply_recipe}" | tail -1 | cut -d: -f1
+)"
+test "${orchestrator_lease_assert_line}" -lt "${orchestrator_apply_line}"
+test "${orchestrator_apply_line}" -lt "${orchestrator_wait_line}"
+test "${orchestrator_wait_line}" -lt "${orchestrator_post_plan_line}"
+test "${orchestrator_post_plan_line}" -lt "${orchestrator_release_line}"
+grep -F '$(WORKLOAD_ORCHESTRATOR_RECOVERY_CONFIRMATION)' \
+  <<<"${orchestrator_recovery_recipe}" >/dev/null
+grep -F '.holder | startswith("orchestrator-apply:")' \
+  <<<"${orchestrator_recovery_recipe}" >/dev/null
+test "$(grep -Fc '$(WORKLOAD_ORCHESTRATOR_TARGET)' <<<"${orchestrator_recovery_recipe}")" -eq 1
+recovery_plan_line="$(
+  grep -nF '$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG)' \
+    <<<"${orchestrator_recovery_recipe}" | cut -d: -f1
+)"
+recovery_wait_line="$(
+  grep -nF './scripts/wait-orchestrator-release.sh' \
+    <<<"${orchestrator_recovery_recipe}" | cut -d: -f1
+)"
+recovery_release_line="$(
+  grep -nF '"$(WORKLOAD_ROLLOUT_LEASE)" release' \
+    <<<"${orchestrator_recovery_recipe}" | cut -d: -f1
+)"
+test "${recovery_wait_line}" -lt "${recovery_plan_line}"
+test "${recovery_plan_line}" -lt "${recovery_release_line}"
+grep -F 'mutation_started=true' <<<"${orchestrator_apply_recipe}" >/dev/null
+grep -F 'preserving its generation-bound lease' \
+  <<<"${orchestrator_apply_recipe}" >/dev/null
+for metadata_temp_path in \
+  '.workload-orchestrator-plan.*' \
+  '.workload-orchestrator-apply.*' \
+  '.workload-orchestrator-plan-check.*' \
+  '.workload-orchestrator-recovery.*'; do
+  grep -F "${metadata_temp_path}" \
+    "${script_dir}/workload-plan-metadata.sh" >/dev/null
+done
+
 printf 'Workload release gate tests passed without contacting GCP.\n'

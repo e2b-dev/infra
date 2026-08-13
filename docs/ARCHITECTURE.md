@@ -546,6 +546,18 @@ flowchart TB
   promotion preserves the lease. The lease is released only by its captured
   object generation; stale leases require explicit inspection and recovery
   rather than automatic stealing.
+- An orchestrator binary hotfix does not advance the independent
+  network-hardening instance-replacement sequence. The GCP provider therefore
+  has a narrow saved-plan lane that targets only the orchestrator Nomad module.
+  It uses the same shared mutation lease and provenance manifest as an ordinary
+  workload release, permits only the system job update plus its Terraform-local
+  rollout marker, parses the job with the pinned Nomad CLI, and binds the exact
+  immutable GCS object generation. Any compute or unrelated workload mutation
+  fails closed. Apply consumes only the reviewed plan and holds the lease until
+  every ready default-pool client runs the exact current system-job version,
+  both Nomad services register those allocations, and a targeted post-apply
+  plan is clean; an interrupted apply requires explicit generation-bound
+  recovery with those same convergence checks.
 - **ClickHouse nodes** have an explicit MIG target size equal to the configured ClickHouse cluster
   size so the instance count cannot silently remain at the provider default.
 - The Monad invited-beta topology provisions a dedicated Cloud SQL for PostgreSQL 16 instance in

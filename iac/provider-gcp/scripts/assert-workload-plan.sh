@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-plan_path="${1:?usage: assert-workload-plan.sh PLAN_PATH TERRAFORM_BIN POLICY_PATH PACKER_TEMPLATE_PATH ARTIFACTS_PATH [full|cluster]}"
+plan_path="${1:?usage: assert-workload-plan.sh PLAN_PATH TERRAFORM_BIN POLICY_PATH PACKER_TEMPLATE_PATH ARTIFACTS_PATH [full|cluster|orchestrator]}"
 terraform_bin="${2:-terraform}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 policy_path="${3:-${script_dir}/../topology/minimal-workload-policy.json}"
 packer_template_path="${4:-${script_dir}/../nomad-cluster-disk-image/main.pkr.hcl}"
-artifacts_path="${5:?usage: assert-workload-plan.sh PLAN_PATH TERRAFORM_BIN POLICY_PATH PACKER_TEMPLATE_PATH ARTIFACTS_PATH [full|cluster]}"
+artifacts_path="${5:?usage: assert-workload-plan.sh PLAN_PATH TERRAFORM_BIN POLICY_PATH PACKER_TEMPLATE_PATH ARTIFACTS_PATH [full|cluster|orchestrator]}"
 scope="${6:-full}"
 analysis_filter="${script_dir}/workload-plan-topology.jq"
 artifact_filter="${script_dir}/workload-plan-artifacts.jq"
 
 case "${scope}" in
-  full | cluster) ;;
+  full | cluster | orchestrator) ;;
   *)
     printf 'Unknown workload plan assertion scope: %s\n' "${scope}" >&2
     exit 2
@@ -25,7 +25,7 @@ command -v jq >/dev/null 2>&1 || {
 }
 
 nomad_bin=""
-if [[ "${scope}" == "full" ]]; then
+if [[ "${scope}" != "cluster" ]]; then
   nomad_candidate="${NOMAD_BIN:-nomad}"
   if [[ "${nomad_candidate}" == */* ]]; then
     [[ -x "${nomad_candidate}" ]] || {
@@ -419,12 +419,13 @@ if [[ "${scope}" == "full" ]]; then
   fi
 fi
 
-topology="$(
-  jq -c \
-    --argjson expected "${policy_json}" \
-    -f "${analysis_filter}" \
-    <<<"${plan_json}"
-)"
+if [[ "${scope}" != "orchestrator" ]]; then
+  topology="$(
+    jq -c \
+      --argjson expected "${policy_json}" \
+      -f "${analysis_filter}" \
+      <<<"${plan_json}"
+  )"
 
 failure_fields=(
   destructive_migs
@@ -462,42 +463,45 @@ if [[ "${scope}" == "full" ]]; then
   )
 fi
 failure_fields+=(
-  destructive_managed_resources
   quota_violations
 )
+if [[ "${scope}" != "orchestrator" ]]; then
+  failure_fields+=(destructive_managed_resources)
+fi
 
-for field in "${failure_fields[@]}"; do
-  if [[ "$(jq ".${field} | length" <<<"${topology}")" -ne 0 ]]; then
-    printf 'Refusing workload plan: %s must be empty.\n' "${field}" >&2
-    jq -c ".${field}[]" <<<"${topology}" >&2
-    exit 1
-  fi
-done
+  for field in "${failure_fields[@]}"; do
+    if [[ "$(jq ".${field} | length" <<<"${topology}")" -ne 0 ]]; then
+      printf 'Refusing workload plan: %s must be empty.\n' "${field}" >&2
+      jq -c ".${field}[]" <<<"${topology}" >&2
+      exit 1
+    fi
+  done
 
-for comparison in \
-  "role maximum instance counts|role_max_instances|expected_role_max_instances" \
-  "role rollout surge counts|role_surge_instances|expected_role_surge_instances" \
-  "role maximum unavailable counts|role_max_unavailable_instances|expected_role_max_unavailable_instances" \
-  "role machine and disk resources|role_resources|expected_role_resources" \
-  "fixed regional public IPs|fixed_regional_public_ip_addresses|fixed_regional_public_ip_addresses" \
-  "peak quota usage|peak_usage|expected_peak_usage"; do
-  description="${comparison%%|*}"
-  remaining="${comparison#*|}"
-  topology_field="${remaining%%|*}"
-  policy_field="${remaining#*|}"
+  for comparison in \
+    "role maximum instance counts|role_max_instances|expected_role_max_instances" \
+    "role rollout surge counts|role_surge_instances|expected_role_surge_instances" \
+    "role maximum unavailable counts|role_max_unavailable_instances|expected_role_max_unavailable_instances" \
+    "role machine and disk resources|role_resources|expected_role_resources" \
+    "fixed regional public IPs|fixed_regional_public_ip_addresses|fixed_regional_public_ip_addresses" \
+    "peak quota usage|peak_usage|expected_peak_usage"; do
+    description="${comparison%%|*}"
+    remaining="${comparison#*|}"
+    topology_field="${remaining%%|*}"
+    policy_field="${remaining#*|}"
 
-  if ! jq -e \
-    --argjson expected "$(jq -c ".${policy_field}" <<<"${policy_json}")" \
-    ".${topology_field} == \$expected" <<<"${topology}" >/dev/null; then
-    printf 'Refusing workload plan: %s differ from policy.\n' \
-      "${description}" >&2
-    printf 'Expected: %s\n' \
-      "$(jq -c ".${policy_field}" <<<"${policy_json}")" >&2
-    printf 'Planned:  %s\n' \
-      "$(jq -c ".${topology_field}" <<<"${topology}")" >&2
-    exit 1
-  fi
-done
+    if ! jq -e \
+      --argjson expected "$(jq -c ".${policy_field}" <<<"${policy_json}")" \
+      ".${topology_field} == \$expected" <<<"${topology}" >/dev/null; then
+      printf 'Refusing workload plan: %s differ from policy.\n' \
+        "${description}" >&2
+      printf 'Expected: %s\n' \
+        "$(jq -c ".${policy_field}" <<<"${policy_json}")" >&2
+      printf 'Planned:  %s\n' \
+        "$(jq -c ".${topology_field}" <<<"${topology}")" >&2
+      exit 1
+    fi
+  done
+fi
 
 if [[ "${scope}" == "cluster" ]]; then
   unexpected_nomad_resources="$(
@@ -543,6 +547,57 @@ if [[ "${scope}" == "cluster" ]]; then
   if [[ "$(jq 'length' <<<"${unexpected_cluster_mutations}")" -ne 0 ]]; then
     printf 'Refusing cluster bootstrap plan: mutations outside module.cluster must be empty.\n' >&2
     jq -c '.[]' <<<"${unexpected_cluster_mutations}" >&2
+    exit 1
+  fi
+fi
+
+if [[ "${scope}" == "orchestrator" ]]; then
+  orchestrator_mutations="$(
+    jq -c '
+      [
+        .resource_changes[]?
+        | select(.mode == "managed")
+        | select(
+            .change.actions != ["no-op"]
+            and .change.actions != ["read"]
+          )
+        | {
+            address,
+            type,
+            actions: .change.actions
+          }
+      ]
+    ' <<<"${plan_json}"
+  )"
+  if ! jq -e '
+    length >= 1
+    and all(
+      .[];
+      if .address == "module.nomad.module.orchestrator[0].nomad_job.orchestrator"
+      then .type == "nomad_job" and .actions == ["update"]
+      elif .address == "module.nomad.module.orchestrator[0].random_id.orchestrator_job"
+      then .type == "random_id" and (
+        .actions == ["delete", "create"]
+        or .actions == ["create", "delete"]
+      )
+      elif .address == "module.nomad.module.orchestrator[0].nomad_variable.orchestrator_hash"
+      then .type == "nomad_variable" and .actions == ["update"]
+      else false
+      end
+    )
+    and (
+      [
+        .[]
+        | select(
+            .address
+            == "module.nomad.module.orchestrator[0].nomad_job.orchestrator"
+          )
+      ]
+      | length
+    ) == 1
+  ' <<<"${orchestrator_mutations}" >/dev/null; then
+    printf 'Refusing orchestrator release plan: only the exact orchestrator job and its rollout markers may mutate, and the job must update exactly once.\n' >&2
+    jq -c '.[]' <<<"${orchestrator_mutations}" >&2
     exit 1
   fi
 fi
@@ -692,6 +747,103 @@ if [[ "${scope}" == "full" ]]; then
     missing_or_duplicate_job_binary_jobs
     invalid_job_binary_jobs
   )
+elif [[ "${scope}" == "orchestrator" ]]; then
+  for field in \
+    invalid_job_binary_objects \
+    missing_or_duplicate_job_binary_jobs \
+    invalid_job_binary_jobs; do
+    invalid_orchestrator_rows="$(
+      jq -c --arg field "${field}" '
+        [.[$field][]? | select(.binary == "orchestrator")]
+      ' <<<"${artifact_bindings}"
+    )"
+    if [[ "$(jq 'length' <<<"${invalid_orchestrator_rows}")" -ne 0 ]]; then
+      printf 'Refusing orchestrator release plan: %s contains an invalid orchestrator binding.\n' "${field}" >&2
+      jq -c '.[]' <<<"${invalid_orchestrator_rows}" >&2
+      exit 1
+    fi
+  done
+
+  orchestrator_object_count="$(
+    jq '
+      [
+        (
+          .planned_values.root_module
+          | recurse(.child_modules[]?)
+          | .resources[]?
+        ),
+        (
+          .prior_state.values.root_module?
+          | select(. != null)
+          | recurse(.child_modules[]?)
+          | .resources[]?
+        )
+      ]
+      | map(
+          select(
+            .address
+            == "module.nomad.data.google_storage_bucket_object.orchestrator[0]"
+          )
+        )
+      | unique_by([.address, .values.bucket, .values.name, (.values.generation | tostring)])
+      | length
+    ' <<<"${plan_json}"
+  )"
+  if [[ "${orchestrator_object_count}" -ne 1 ]]; then
+    printf 'Refusing orchestrator release plan: the exact orchestrator object must resolve once across planned and prior state.\n' >&2
+    exit 1
+  fi
+
+  temp_root="${TMPDIR:-/tmp}"
+  orchestrator_job_dir="$(mktemp -d "${temp_root%/}/workload-orchestrator-job.XXXXXX")"
+  chmod 0700 "${orchestrator_job_dir}"
+  cleanup_orchestrator_job() {
+    rm -rf -- "${orchestrator_job_dir}"
+  }
+  trap cleanup_orchestrator_job EXIT
+  orchestrator_jobspec="${orchestrator_job_dir}/orchestrator.hcl"
+  orchestrator_rendered="${orchestrator_job_dir}/orchestrator.json"
+  jq -er '
+    .resource_changes[]
+    | select(
+        .address
+        == "module.nomad.module.orchestrator[0].nomad_job.orchestrator"
+      )
+    | .change.after.jobspec
+  ' <<<"${plan_json}" >"${orchestrator_jobspec}"
+  chmod 0600 "${orchestrator_jobspec}"
+  if ! "${nomad_bin}" job run -output "${orchestrator_jobspec}" \
+    >"${orchestrator_rendered}" 2>/dev/null; then
+    printf 'Refusing orchestrator release plan: the reviewed orchestrator jobspec is not parseable by Nomad 1.8.4.\n' >&2
+    exit 1
+  fi
+  chmod 0600 "${orchestrator_rendered}"
+  orchestrator_source="$(
+    jq -er '.job_binaries.orchestrator.nomad_source' <<<"${artifacts_json}"
+  )"
+  if ! jq -e --arg source "${orchestrator_source}" '
+    .Job.Type == "system"
+    and (
+      .Job.ID == "orchestrator-dev"
+      or (.Job.ID | test("^orchestrator-[0-9a-f]{16}$"))
+    )
+    and (.Job.TaskGroups | length) == 1
+    and .Job.TaskGroups[0].Name == "client-orchestrator"
+    and (.Job.TaskGroups[0].Tasks | length) == 1
+    and .Job.TaskGroups[0].Tasks[0].Name == "start"
+    and .Job.TaskGroups[0].Tasks[0].Driver == "raw_exec"
+    and .Job.TaskGroups[0].Tasks[0].Config.command == "/bin/bash"
+    and .Job.TaskGroups[0].Tasks[0].Config.args
+      == ["-c", " chmod +x local/orchestrator && local/orchestrator"]
+    and (.Job.TaskGroups[0].Tasks[0].Artifacts | length) == 1
+    and .Job.TaskGroups[0].Tasks[0].Artifacts[0].GetterSource == $source
+    and .Job.TaskGroups[0].Tasks[0].Artifacts[0].GetterMode == "file"
+    and .Job.TaskGroups[0].Tasks[0].Artifacts[0].RelativeDest
+      == "local/orchestrator"
+  ' "${orchestrator_rendered}" >/dev/null; then
+    printf 'Refusing orchestrator release plan: parsed system jobspec does not match the reviewed raw-exec artifact contract.\n' >&2
+    exit 1
+  fi
 fi
 
 for field in "${artifact_failure_fields[@]}"; do
@@ -702,16 +854,20 @@ for field in "${artifact_failure_fields[@]}"; do
   fi
 done
 
-printf 'Workload plan topology passed: roles=%s surge=%s unavailable=%s base=%s rollout=%s packer=%s peak=%s limits=%s.\n' \
-  "$(jq -c '.role_max_instances' <<<"${topology}")" \
-  "$(jq -c '.role_surge_instances' <<<"${topology}")" \
-  "$(jq -c '.role_max_unavailable_instances' <<<"${topology}")" \
-  "$(jq -c '.base_usage' <<<"${topology}")" \
-  "$(jq -c '.rollout_usage' <<<"${topology}")" \
-  "$(jq -c '.packer_usage' <<<"${topology}")" \
-  "$(jq -c '.peak_usage' <<<"${topology}")" \
-  "$(jq -c '.quota_limits' <<<"${policy_json}")"
-printf 'The API rollout and Packer reserve are mutually exclusive; verify live quotas immediately before apply.\n'
+if [[ "${scope}" != "orchestrator" ]]; then
+  printf 'Workload plan topology passed: roles=%s surge=%s unavailable=%s base=%s rollout=%s packer=%s peak=%s limits=%s.\n' \
+    "$(jq -c '.role_max_instances' <<<"${topology}")" \
+    "$(jq -c '.role_surge_instances' <<<"${topology}")" \
+    "$(jq -c '.role_max_unavailable_instances' <<<"${topology}")" \
+    "$(jq -c '.base_usage' <<<"${topology}")" \
+    "$(jq -c '.rollout_usage' <<<"${topology}")" \
+    "$(jq -c '.packer_usage' <<<"${topology}")" \
+    "$(jq -c '.peak_usage' <<<"${topology}")" \
+    "$(jq -c '.quota_limits' <<<"${policy_json}")"
+  printf 'The API rollout and Packer reserve are mutually exclusive; verify live quotas immediately before apply.\n'
+fi
 if [[ "${scope}" == "cluster" ]]; then
   printf 'Cluster bootstrap scope passed: only module.cluster may mutate and no Nomad workload resources are present.\n'
+elif [[ "${scope}" == "orchestrator" ]]; then
+  printf 'Orchestrator release scope passed: the exact pinned binary is the only workload rollout.\n'
 fi
