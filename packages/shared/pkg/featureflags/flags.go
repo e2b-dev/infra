@@ -2,7 +2,6 @@ package featureflags
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"net/url"
 	"os"
@@ -18,6 +17,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/fcversion"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -883,25 +883,53 @@ func isSafeLogURL(raw string) bool {
 	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()
 }
 
+// Named under orchestrator.* (the resolver's sole caller) so it passes the
+// otel collector's include-only metric allow-list.
+var firecrackerVersionResolutionMetric = mustLogRoutingCounter(
+	"orchestrator.firecracker.version_resolution",
+	"Number of firecracker version resolutions by outcome, fallback reason and map key",
+)
+
+func recordFirecrackerVersionResolution(ctx context.Context, outcome, reason, key string) {
+	if firecrackerVersionResolutionMetric == nil {
+		return
+	}
+
+	firecrackerVersionResolutionMetric.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("outcome", outcome),
+		attribute.String("reason", reason),
+		attribute.String("key", key),
+	))
+}
+
 // ResolveFirecrackerVersion resolves the firecracker version using the FirecrackerVersions feature flag.
-// The buildVersion format is "v1.12.1_210cbac" — we extract "v1.12" as the lookup key.
+// The stored version's LD key (e.g. "v1.12" for "v1.12.1_210cbac", "v1.14-0"
+// for "v1.14-0.1.0") is looked up in the flag map; on parse failure or a
+// missing key the stored version is returned unchanged.
 func ResolveFirecrackerVersion(ctx context.Context, ff *Client, buildVersion string) string {
-	parts := strings.Split(buildVersion, "_")
-	if len(parts) < 2 {
+	info, err := fcversion.New(buildVersion)
+	if err != nil {
+		recordFirecrackerVersionResolution(ctx, "fallback", "parse_error", "")
+
 		return buildVersion
 	}
 
-	versionParts := strings.Split(strings.TrimPrefix(parts[0], "v"), ".")
-	if len(versionParts) < 2 {
+	key, ok := info.LDKey()
+	if !ok {
+		recordFirecrackerVersionResolution(ctx, "fallback", "no_ld_key", "")
+
 		return buildVersion
 	}
 
-	key := fmt.Sprintf("v%s.%s", versionParts[0], versionParts[1])
 	versions := ff.JSONFlag(ctx, FirecrackerVersions).AsValueMap()
 
 	if resolved, ok := versions.Get(key).AsOptionalString().Get(); ok {
+		recordFirecrackerVersionResolution(ctx, "resolved", "", key)
+
 		return resolved
 	}
+
+	recordFirecrackerVersionResolution(ctx, "fallback", "key_absent", key)
 
 	return buildVersion
 }
