@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Uploads vmlinux-*-{amd64,arm64}.bin assets from a fc-kernels GitHub release
 # to GCS at:
-#   gs://<bucket>/vmlinux-<version>_<short_hash>/<arch>/vmlinux.bin
+#   <deployment destination>/vmlinux-<version>_<short_hash>/<arch>/vmlinux.bin
 #
 # Existing objects are never overwritten. The legacy non-arch release asset
 # (vmlinux-<version>.bin) is intentionally skipped — under a fresh
@@ -9,47 +9,58 @@
 # backwards-compatible with.
 #
 # Usage:
-#   ./scripts/upload-release-to-gcs.sh --hash <hash> --bucket <bucket> [--dry-run] [--repo <repo>]
+#   ./scripts/upload-release-to-gcs.sh --hash <hash> --deployment <name> [--dry-run] [--repo <repo>]
 #
 # Options:
-#   --hash <hash>      Commit hash (full or short prefix) of the build to upload.
-#   --bucket <bucket>  Target bucket (with optional path prefix), e.g.
-#                        my-bucket
-#                        my-bucket/kernels
-#                        gs://my-bucket/kernels
-#   --repo <repo>      GitHub repo (default: e2b-dev/fc-kernels).
-#   --dry-run          Print what would be uploaded without writing.
-#   -h, --help         Show this help.
+#   --hash <hash>        Commit hash (full or short prefix) of the build to upload.
+#   --deployment <name>  Deployment to upload to. One of:
+#                          public, legacy-public, or a cluster name (root from FC_CLUSTER_BUCKET_ROOT)
+#                        Every deployment but public and legacy-public reads
+#                        its bucket root from FC_CLUSTER_BUCKET_ROOT.
+#   --repo <repo>        GitHub repo (default: e2b-dev/fc-kernels).
+#   --dry-run            Print what would be uploaded without writing.
+#   -h, --help           Show this help.
 
 set -euo pipefail
 
 REPO="e2b-dev/fc-kernels"
 HASH=""
-BUCKET=""
+DEPLOYMENT=""
 DRY_RUN=false
 
 usage() { sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --hash)    HASH="${2:?--hash needs a value}"; shift 2 ;;
-    --bucket)  BUCKET="${2:?--bucket needs a value}"; shift 2 ;;
-    --repo)    REPO="${2:?--repo needs a value}"; shift 2 ;;
-    --dry-run) DRY_RUN=true; shift ;;
-    -h|--help) usage 0 ;;
+    --hash)       HASH="${2:?--hash needs a value}"; shift 2 ;;
+    --deployment) DEPLOYMENT="${2:?--deployment needs a value}"; shift 2 ;;
+    --repo)       REPO="${2:?--repo needs a value}"; shift 2 ;;
+    --dry-run)    DRY_RUN=true; shift ;;
+    -h|--help)    usage 0 ;;
     *) echo "Unknown argument: $1" >&2; usage 1 ;;
   esac
 done
 
-[[ -n "$HASH"   ]] || { echo "ERROR: --hash is required"   >&2; usage 1; }
-[[ -n "$BUCKET" ]] || { echo "ERROR: --bucket is required" >&2; usage 1; }
+[[ -n "$HASH"       ]] || { echo "ERROR: --hash is required"       >&2; usage 1; }
+[[ -n "$DEPLOYMENT" ]] || { echo "ERROR: --deployment is required" >&2; usage 1; }
 
 command -v gh     >/dev/null || { echo "ERROR: gh CLI not found"     >&2; exit 1; }
 command -v gcloud >/dev/null || { echo "ERROR: gcloud CLI not found" >&2; exit 1; }
 
-BUCKET="${BUCKET#gs://}"
-BUCKET="${BUCKET%/}"
-BUCKET_URI="gs://${BUCKET}"
+# Cluster buckets are not public names, so their roots arrive through the
+# environment; cluster hosts read versions at the bucket root, no prefix.
+case "$DEPLOYMENT" in
+  public)        BUCKET_URI="gs://e2b-artifact-binaries/kernels" ;;
+  legacy-public) BUCKET_URI="gs://e2b-prod-public-builds/kernels" ;;
+  *)
+    [[ -n "${FC_CLUSTER_BUCKET_ROOT:-}" ]] || {
+      echo "ERROR: unknown deployment '$DEPLOYMENT'" >&2
+      echo "Shared destinations: public, legacy-public. A cluster deployment needs FC_CLUSTER_BUCKET_ROOT set to its bucket root, e.g. gs://a-bucket" >&2
+      exit 1
+    }
+    BUCKET_URI="${FC_CLUSTER_BUCKET_ROOT%/}"
+    ;;
+esac
 
 if ! FULL_HASH=$(gh api "repos/$REPO/commits/$HASH" --jq '.sha' 2>/dev/null) \
   || [[ -z "$FULL_HASH" || "$FULL_HASH" == "null" ]]; then
