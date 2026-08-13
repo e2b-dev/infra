@@ -359,7 +359,7 @@ func (o *Orchestrator) CreateSandbox(
 
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,
-			ClientMsg: "Failed to place sandbox",
+			ClientMsg: placement.ClientMessage(err),
 			Err:       fmt.Errorf("failed to place sandbox: %w", err),
 		}
 	}

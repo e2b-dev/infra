@@ -2,8 +2,6 @@ package placement
 
 import (
 	"context"
-	"errors"
-	"fmt"
 
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
@@ -19,8 +17,6 @@ import (
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement")
-
-var errSandboxCreateFailed = errors.New("failed to create a new sandbox, if the problem persists, contact us")
 
 // PlacementResult carries the outcome of a placement attempt alongside the error.
 type PlacementResult struct {
@@ -64,6 +60,8 @@ func PlaceSandbox(
 	// First node that attempted the create (not a fast ResourceExhausted refusal).
 	var firstTriedNode *nodemanager.Node
 
+	var lastCreateErr error
+
 	// failed reports the warming node only when the failure was caused by the
 	// request context being cancelled or timing out (ctx.Err() != nil). Hard
 	// failures (where the context is still live) carry no node, so callers never
@@ -82,10 +80,21 @@ func PlaceSandbox(
 	}
 
 	attempt := 0
+	refusals := 0
+
+	// Nothing but capacity refusals before the deadline is capacity, not a slow placement.
+	deadline := func() (PlacementResult, error) {
+		if attempt == 0 && refusals > 0 {
+			return failed(NoNodesAvailableError{})
+		}
+
+		return failed(PlacementTimeoutError{Attempts: attempt})
+	}
+
 	for attempt < maxRetries {
 		select {
 		case <-ctx.Done():
-			return failed(fmt.Errorf("request timed out during %d. attempt", attempt+1))
+			return deadline()
 		default:
 			// Continue
 		}
@@ -94,11 +103,21 @@ func PlaceSandbox(
 			telemetry.ReportEvent(ctx, "Placing sandbox on the preferred node", telemetry.WithNodeID(node.ID))
 		} else {
 			if len(nodesExcluded) >= len(clusterNodes) {
-				return failed(errors.New("no nodes available"))
+				if lastCreateErr != nil {
+					return failed(SandboxCreateError{Attempts: attempt, LastErr: lastCreateErr})
+				}
+
+				return failed(NoNodesAvailableError{})
 			}
 
 			node, err = algorithm.chooseNode(ctx, clusterNodes, nodesExcluded, nodemanager.SandboxResources{CPUs: sbxRequest.GetSandbox().GetVcpu(), MiBMemory: sbxRequest.GetSandbox().GetRamMb()}, buildMachineInfo, labelFilteringEnabled, requiredLabels)
 			if err != nil {
+				// A create was already attempted: its error explains the failure
+				// better than the empty candidate set it caused.
+				if lastCreateErr != nil {
+					return failed(SandboxCreateError{Attempts: attempt, LastErr: lastCreateErr})
+				}
+
 				return failed(err)
 			}
 
@@ -148,15 +167,22 @@ func PlaceSandbox(
 
 		switch statusCode {
 		case codes.ResourceExhausted:
+			refusals++
 			failedNode.PlacementMetrics.Skip(sbxRequest.GetSandbox().GetSandboxId())
 			logger.L().Warn(ctx, "Node exhausted, trying another node", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(failedNode.ID), zap.Error(utils.UnwrapGRPCError(err)))
 		default:
 			nodesExcluded[failedNode.ID] = struct{}{}
 			failedNode.PlacementMetrics.Fail(sbxRequest.GetSandbox().GetSandboxId())
 			logger.L().Error(ctx, "Failed to create sandbox", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(failedNode.ID), zap.Int("attempt", attempt+1), zap.Error(utils.UnwrapGRPCError(err)))
+			lastCreateErr = err
 			attempt++
 		}
 	}
 
-	return failed(errSandboxCreateFailed)
+	// A deadline hitting mid-create is a timeout, not a node failure.
+	if ctx.Err() != nil {
+		return deadline()
+	}
+
+	return failed(SandboxCreateError{Attempts: attempt, LastErr: lastCreateErr})
 }
