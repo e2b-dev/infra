@@ -170,7 +170,10 @@ func (f *Factory) RebootSandbox(
 		if startUser == "" && config.Envd.DefaultUser != nil {
 			startUser = *config.Envd.DefaultUser
 		}
-		startCtx, cancel := context.WithTimeout(ctx, rebootStartCommandTimeout)
+		// Do not use context.WithTimeout here. Connect projects a context
+		// deadline into Connect-Timeout-Ms, and envd applies that header to the
+		// child process rather than only the start handshake.
+		startCtx, cancel := rebootStartControlContext(ctx, rebootStartCommandTimeout)
 		err = sbx.StartEnvdBackgroundCommand(
 			startCtx,
 			startCommand,
