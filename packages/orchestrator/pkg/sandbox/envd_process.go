@@ -27,7 +27,7 @@ func (s *Sandbox) StartEnvdShell(
 	user string,
 	timeout time.Duration,
 ) (*connect.ServerStreamForClient[process.StartResponse], error) {
-	return s.startEnvdProcess(ctx, shell, shellArgs, user, timeout, nil)
+	return s.startEnvdProcess(ctx, &process.ProcessConfig{Cmd: shell, Args: shellArgs}, user, timeout, nil)
 }
 
 // StartEnvdSystemShell runs the process in envd's root cgroup via the SystemTag.
@@ -40,13 +40,53 @@ func (s *Sandbox) StartEnvdSystemShell(
 ) (*connect.ServerStreamForClient[process.StartResponse], error) {
 	tag := consts.SystemTag
 
-	return s.startEnvdProcess(ctx, shell, shellArgs, user, timeout, &tag)
+	return s.startEnvdProcess(ctx, &process.ProcessConfig{Cmd: shell, Args: shellArgs}, user, timeout, &tag)
+}
+
+// StartEnvdBackgroundCommand starts a template-owned long-running command and
+// returns after envd confirms that the process exists. Envd deliberately
+// detaches process lifetime from the request context, so closing the stream
+// after the start event does not terminate the command.
+func (s *Sandbox) StartEnvdBackgroundCommand(
+	ctx context.Context,
+	command string,
+	cwd *string,
+	envs map[string]string,
+	user string,
+) error {
+	stream, err := s.startEnvdProcess(ctx, &process.ProcessConfig{
+		Cmd:  "/bin/bash",
+		Cwd:  cwd,
+		Args: []string{"-l", "-c", command},
+		Envs: envs,
+	}, user, 0, nil)
+	if err != nil {
+		return err
+	}
+	defer stream.Close()
+
+	for stream.Receive() {
+		event := stream.Msg().GetEvent()
+		if event == nil {
+			continue
+		}
+		if event.GetStart() != nil {
+			return nil
+		}
+		if end := event.GetEnd(); end != nil {
+			return fmt.Errorf("background command exited before its start was confirmed with code %d", end.GetExitCode())
+		}
+	}
+	if err := stream.Err(); err != nil {
+		return fmt.Errorf("background command start stream: %w", err)
+	}
+
+	return fmt.Errorf("background command start stream closed before confirmation")
 }
 
 func (s *Sandbox) startEnvdProcess(
 	ctx context.Context,
-	shell string,
-	shellArgs []string,
+	config *process.ProcessConfig,
 	user string,
 	timeout time.Duration,
 	tag *string,
@@ -55,7 +95,7 @@ func (s *Sandbox) startEnvdProcess(
 	pc := processconnect.NewProcessClient(&http.Client{Transport: sandboxHttpClient.Transport}, addr)
 
 	req := connect.NewRequest(&process.StartRequest{
-		Process: &process.ProcessConfig{Cmd: shell, Args: shellArgs},
+		Process: config,
 		Tag:     tag,
 	})
 	if timeout > 0 {

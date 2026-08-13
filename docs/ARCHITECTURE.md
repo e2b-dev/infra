@@ -305,7 +305,9 @@ sequenceDiagram
   cache) against the template, caches the snapshot locally, and uploads asynchronously to object
   storage (with a retry budget). The sandbox leaves the Redis catalog.
 - **Resume**: same path as creation, but placement prefers the **origin node** — if the snapshot
-  is still in its local cache, resume avoids any object-storage reads. `Checkpoint` is a
+  is still in its local cache, resume avoids any object-storage reads. A filesystem-only snapshot
+  cold-boots outer systemd and envd from its persisted rootfs, then replays the immutable template
+  start command and context because no user-process memory survived the pause. `Checkpoint` is a
   pause+resume in place used to persist state while keeping the sandbox running.
 - **Reusable snapshot restore**: a snapshot-template build retains a durable
   `snapshot_templates` row plus build/tag assignment. Restores and their later pause/resume

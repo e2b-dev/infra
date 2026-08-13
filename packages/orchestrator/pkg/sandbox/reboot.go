@@ -28,6 +28,9 @@ const (
 	// rebootEnvdTimeout bounds the systemd boot + envd start; a cold boot needs a
 	// longer window than a memory resume (matches the template build's wait).
 	rebootEnvdTimeout = 60 * time.Second
+	// Envd confirms a process start immediately after fork. Bound this control
+	// request independently so a broken stream cannot pin filesystem resume.
+	rebootStartCommandTimeout = 15 * time.Second
 )
 
 // RebootSandbox cold-boots a fresh Firecracker VM from the template's rootfs,
@@ -155,6 +158,32 @@ func (f *Factory) RebootSandbox(
 		closeErr := sbx.Close(context.WithoutCancel(ctx))
 
 		return nil, errors.Join(fmt.Errorf("wait for envd after reboot: %w", err), closeErr)
+	}
+
+	// Memory resumes restore the template's already-running start command. A
+	// filesystem-only resume has no guest memory, so outer systemd and envd
+	// return but template-owned services (for example a container /init graph)
+	// do not. Replay the exact immutable start command and context recorded in
+	// template metadata before publishing the sandbox as running.
+	startCommand, startCwd, startEnvs, startUser, hasStartCommand := rebootStartContext(meta)
+	if hasStartCommand {
+		if startUser == "" && config.Envd.DefaultUser != nil {
+			startUser = *config.Envd.DefaultUser
+		}
+		startCtx, cancel := context.WithTimeout(ctx, rebootStartCommandTimeout)
+		err = sbx.StartEnvdBackgroundCommand(
+			startCtx,
+			startCommand,
+			startCwd,
+			startEnvs,
+			startUser,
+		)
+		cancel()
+		if err != nil {
+			closeErr := sbx.Close(context.WithoutCancel(ctx))
+
+			return nil, errors.Join(fmt.Errorf("replay start command after reboot: %w", err), closeErr)
+		}
 	}
 
 	f.Sandboxes.MarkRunning(ctx, sbx)
