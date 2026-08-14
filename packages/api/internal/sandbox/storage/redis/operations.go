@@ -38,9 +38,13 @@ func (s *Storage) Add(ctx context.Context, sbx sandboxtypes.Sandbox) error {
 		return fmt.Errorf("failed to add sandbox to global expiration index: %w", err)
 	}
 
-	// Execute Lua script for atomic SET + SADD
-	err = addSandboxScript.Run(ctx, s.redisClient, []string{key, teamKey}, data, sbx.SandboxID).Err()
-	if err != nil {
+	// MULTI/EXEC: SET sandboxKey + SADD teamIndex — no conditional logic needed,
+	// both keys share the {teamID} hash tag so they land on the same cluster slot.
+	if _, err = s.redisClient.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+		pipe.Set(ctx, key, data, 0)
+		pipe.SAdd(ctx, teamKey, sbx.SandboxID)
+		return nil
+	}); err != nil {
 		return fmt.Errorf("failed to store sandbox in Redis: %w", err)
 	}
 
@@ -93,13 +97,19 @@ func (s *Storage) Remove(ctx context.Context, teamID uuid.UUID, sandboxID string
 		}
 	}()
 
-	// Execute Lua script for atomic DEL + SREM; it returns the deleted JSON
-	// so the expiration-index cleanup below is scoped to the execution we
-	// actually removed.
-	raw, err := removeSandboxScript.Run(ctx, s.redisClient, []string{key, teamKey}, sandboxID).Text()
-	if err != nil && !errors.Is(err, redis.Nil) {
+	// MULTI/EXEC: GET + DEL sandboxKey + SREM teamIndex atomically.
+	// GET is first so we can scope expiration-index cleanup to the execution we
+	// actually removed. Both keys share the {teamID} hash tag (same cluster slot).
+	var getCmd *redis.StringCmd
+	if _, err = s.redisClient.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+		getCmd = pipe.Get(ctx, key)
+		pipe.Del(ctx, key)
+		pipe.SRem(ctx, teamKey, sandboxID)
+		return nil
+	}); err != nil && !errors.Is(err, redis.Nil) {
 		return fmt.Errorf("failed to remove sandbox from Redis: %w", err)
 	}
+	raw := getCmd.Val()
 
 	// Clean up from the global expiration index.
 	// Do it after the removal to prevent leaking expired sandboxes.
