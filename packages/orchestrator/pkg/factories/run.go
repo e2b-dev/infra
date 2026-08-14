@@ -48,6 +48,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
+	networkv2 "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network/v2"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerclient"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/server"
@@ -692,13 +693,19 @@ func run(config cfg.Config, opts Options) (success bool) {
 	// Sandbox-runtime reclaim must run before NewStorageLocal below: reclaim
 	// deletes leaked ns-* from /run/netns, and NewStorageLocal snapshots the
 	// remaining namespaces as foreign at construction.
+	// reclaimClean is true only when reclaim ran AND tore every slot down; a
+	// partial failure leaves anchor namespaces that must keep their v2 set entries.
+	reclaimClean := false
+	reclaimRan := false
 	if usesSandboxRuntime && !config.DisableStartupReclaim {
-		startupreclaim.Run(ctx, startupreclaim.Config{
+		reclaimRan = true
+		summary := startupreclaim.Run(ctx, startupreclaim.Config{
 			NetworkConfig: config.NetworkConfig,
 			EgressProxy:   egressSetup.Proxy,
 			CgroupManager: cgroupManager,
 			StorageConfig: config.StorageConfig,
 		})
+		reclaimClean = !summary.HasFailures()
 	}
 
 	// device pool
@@ -718,13 +725,76 @@ func run(config cfg.Config, opts Options) (success bool) {
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create network pool", zap.Error(err))
 	}
-	networkPool := network.NewPool(network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, slotStorage, config.NetworkConfig)
-	startService("network pool", func() error {
-		networkPool.Populate(ctx)
+	var networkPool network.PoolInterface
+	selectedNetworkVersion := 0
+	switch config.NetworkConfig.NetworkVersion {
+	case 2:
+		logger.L().Info(ctx, "using v2 network pool (nftables)")
+		v2Metrics, metricsErr := networkv2.NewMetrics(tel.MeterProvider)
+		if metricsErr != nil {
+			logger.L().Fatal(ctx, "failed to create v2 network metrics", zap.Error(metricsErr))
+		}
 
-		return nil
-	})
+		if err := networkv2.ValidateV2Prerequisites(); err != nil {
+			logger.L().Fatal(ctx, "v2 network prerequisites not met", zap.Error(err))
+		}
+
+		hostFw, hfErr := networkv2.NewHostFirewallWithMetrics(network.DefaultGateway(), config.NetworkConfig, v2Metrics)
+		if hfErr != nil {
+			logger.L().Fatal(ctx, "failed to create v2 host firewall", zap.Error(hfErr))
+		}
+
+		// Flush to empty only when reclaim tore every slot down; a partial
+		// failure leaves anchor namespaces whose set entries must survive.
+		if reclaimClean {
+			if err := hostFw.ReconcileSlots(ctx, nil); err != nil {
+				logger.L().Fatal(ctx, "failed to reconcile v2 host firewall slots", zap.Error(err))
+			}
+		} else if reclaimRan {
+			v2Metrics.RecordReconciliationSkipped(ctx)
+		}
+
+		observer, obsErr := networkv2.NewVethObserver()
+		if obsErr != nil {
+			logger.L().Fatal(ctx, "failed to create v2 veth observer", zap.Error(obsErr))
+		}
+
+		v2Pool := networkv2.NewV2Pool(slotStorage, config.NetworkConfig, hostFw, observer, networkv2.WithPoolMetrics(v2Metrics))
+		startService("network pool", func() error {
+			v2Pool.Populate(ctx)
+
+			return nil
+		})
+		networkPool = v2Pool
+		selectedNetworkVersion = 2
+	case 1:
+		if usesSandboxRuntime && !config.DisableStartupReclaim {
+			if err := networkv2.PurgeHostFirewallTable(); err != nil {
+				logger.L().Fatal(ctx, "refusing to start v1: stale v2 host firewall table could hijack v1 sandbox egress", zap.Error(err))
+			}
+		}
+		v1Pool := network.NewPool(network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, slotStorage, config.NetworkConfig)
+		startService("network pool", func() error {
+			v1Pool.Populate(ctx)
+
+			return nil
+		})
+		networkPool = v1Pool
+		selectedNetworkVersion = 1
+	default:
+		// Config validation runs before startup side effects. Keep this exhaustive
+		// defense so future parsing and selection logic cannot silently diverge.
+		logger.L().Fatal(ctx, "unsupported NETWORK_VERSION after validated config", zap.Int("network_version", config.NetworkConfig.NetworkVersion))
+	}
 	closers = append(closers, closer{"network pool", networkPool.Close})
+
+	datapathRegistration, err := network.RegisterDatapathMetric(tel.MeterProvider, selectedNetworkVersion)
+	if err != nil {
+		logger.L().Fatal(ctx, "failed to register network datapath metric", zap.Error(err))
+	}
+	closers = append(closers, closer{"network datapath metric", func(context.Context) error {
+		return datapathRegistration.Unregister()
+	}})
 
 	// sandbox factory
 	networkAssignHook := egressSetup.NetworkAssignHook

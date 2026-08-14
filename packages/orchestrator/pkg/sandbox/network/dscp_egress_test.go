@@ -152,7 +152,7 @@ func BenchmarkEgressTOS_For(b *testing.B) {
 	tos := Config{SandboxEgressDSCP: 8, BuildSandboxEgressDSCP: DSCP(16)}.EgressTOS()
 
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		benchTOS = tos.For(EgressClassBuild)
 	}
 }
@@ -167,16 +167,16 @@ func TestConfig_Validate_EgressDSCPRange(t *testing.T) {
 		config  Config
 		wantErr string
 	}{
-		{name: "both unset", config: Config{}},
-		{name: "both at the top of the range", config: Config{SandboxEgressDSCP: 63, BuildSandboxEgressDSCP: DSCP(63)}},
+		{name: "both unset", config: Config{NetworkVersion: 1}},
+		{name: "both at the top of the range", config: Config{NetworkVersion: 1, SandboxEgressDSCP: 63, BuildSandboxEgressDSCP: DSCP(63)}},
 		{
 			name:    "sandbox value out of range",
-			config:  Config{SandboxEgressDSCP: 64},
+			config:  Config{NetworkVersion: 1, SandboxEgressDSCP: 64},
 			wantErr: "SANDBOX_EGRESS_DSCP=64 out of range (0..63)",
 		},
 		{
 			name:    "build value out of range",
-			config:  Config{BuildSandboxEgressDSCP: DSCP(255)},
+			config:  Config{NetworkVersion: 1, BuildSandboxEgressDSCP: DSCP(255)},
 			wantErr: "BUILD_SANDBOX_EGRESS_DSCP=255 out of range (0..63)",
 		},
 	}
@@ -198,18 +198,18 @@ func TestConfig_Validate_EgressDSCPRange(t *testing.T) {
 }
 
 // An absent BUILD_SANDBOX_EGRESS_DSCP must leave the pointer nil, not 0.
-func TestParseConfig_BuildEgressDSCP(t *testing.T) { //nolint:paralleltest // t.Setenv
+func TestParseConfig_BuildEgressDSCP(t *testing.T) {
 	// Inherited by every subtest.
 	t.Setenv("SANDBOX_EGRESS_DSCP", "8")
 
-	t.Run("absent leaves the build value unset", func(t *testing.T) { //nolint:paralleltest // t.Setenv
+	t.Run("absent leaves the build value unset", func(t *testing.T) { //nolint:paralleltest // the parent test sets shared process environment
 		config, err := ParseConfig()
 		require.NoError(t, err)
 		require.Nil(t, config.BuildSandboxEgressDSCP)
 		require.Equal(t, uint8(8), config.EgressDSCP(EgressClassBuild))
 	})
 
-	t.Run("set but empty behaves as unset and inherits", func(t *testing.T) { //nolint:paralleltest // t.Setenv
+	t.Run("set but empty behaves as unset and inherits", func(t *testing.T) {
 		t.Setenv("BUILD_SANDBOX_EGRESS_DSCP", "")
 
 		config, err := ParseConfig()
@@ -218,7 +218,7 @@ func TestParseConfig_BuildEgressDSCP(t *testing.T) { //nolint:paralleltest // t.
 		require.Equal(t, uint8(8), config.EgressDSCP(EgressClassBuild))
 	})
 
-	t.Run("explicit zero is distinct from absent", func(t *testing.T) { //nolint:paralleltest // t.Setenv
+	t.Run("explicit zero is distinct from absent", func(t *testing.T) {
 		t.Setenv("BUILD_SANDBOX_EGRESS_DSCP", "0")
 
 		config, err := ParseConfig()
@@ -227,7 +227,7 @@ func TestParseConfig_BuildEgressDSCP(t *testing.T) { //nolint:paralleltest // t.
 		require.Equal(t, uint8(0), config.EgressDSCP(EgressClassBuild))
 	})
 
-	t.Run("set value is used for builds", func(t *testing.T) { //nolint:paralleltest // t.Setenv
+	t.Run("set value is used for builds", func(t *testing.T) {
 		t.Setenv("BUILD_SANDBOX_EGRESS_DSCP", "16")
 
 		config, err := ParseConfig()
@@ -236,14 +236,14 @@ func TestParseConfig_BuildEgressDSCP(t *testing.T) { //nolint:paralleltest // t.
 		require.Equal(t, uint8(16), config.EgressDSCP(EgressClassBuild))
 	})
 
-	t.Run("out of range fails loudly", func(t *testing.T) { //nolint:paralleltest // t.Setenv
+	t.Run("out of range fails loudly", func(t *testing.T) {
 		t.Setenv("BUILD_SANDBOX_EGRESS_DSCP", "64")
 
 		_, err := ParseConfig()
 		require.ErrorContains(t, err, "BUILD_SANDBOX_EGRESS_DSCP=64 out of range (0..63)")
 	})
 
-	t.Run("non-numeric fails loudly", func(t *testing.T) { //nolint:paralleltest // t.Setenv
+	t.Run("non-numeric fails loudly", func(t *testing.T) {
 		t.Setenv("BUILD_SANDBOX_EGRESS_DSCP", "scavenger")
 
 		_, err := ParseConfig()
@@ -253,7 +253,7 @@ func TestParseConfig_BuildEgressDSCP(t *testing.T) { //nolint:paralleltest // t.
 
 // A transient iptables.New() failure must not be cached: the next call has to
 // retry, or one fork failure would poison every restamp for the process life.
-func TestIptablesHandle_TransientFailureIsNotCached(t *testing.T) { //nolint:paralleltest // t.Setenv + package-level handle cache
+func TestIptablesHandle_TransientFailureIsNotCached(t *testing.T) {
 	// Unlike the netns tests this one runs without root, so gate on the one
 	// thing it does need: the binary.
 	if _, err := exec.LookPath("iptables"); err != nil {
@@ -270,7 +270,7 @@ func TestIptablesHandle_TransientFailureIsNotCached(t *testing.T) { //nolint:par
 	_, err := iptablesHandle()
 	require.Error(t, err, "New() must fail with no iptables on PATH")
 
-	require.NoError(t, os.Setenv("PATH", origPath))
+	t.Setenv("PATH", origPath)
 	tables, err := iptablesHandle()
 	require.NoError(t, err, "a past transient failure must not be cached")
 	require.NotNil(t, tables)

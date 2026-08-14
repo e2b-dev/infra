@@ -165,7 +165,7 @@ func TestStorageLocal_UntrackedNamespaceSkippedWithoutPoisoning(t *testing.T) {
 // indexes inside Acquire's 500ms budget, which is milliseconds uncontended
 // but can exceed the budget when competing with the package's parallel
 // tests on a loaded CI runner.
-func TestStorageLocal_FailedNewSlotIsNotAllocated(t *testing.T) {
+func TestStorageLocal_FailedNewSlotIsNotAllocated(t *testing.T) { //nolint:paralleltest // intentionally serialized to stay within Acquire's deadline on loaded runners
 	// Block every valid index so the walk reaches vrtSlotsSize+1, which
 	// NewSlot rejects.
 	foreign := make(map[string]struct{}, vrtSlotsSize)

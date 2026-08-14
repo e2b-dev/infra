@@ -87,6 +87,9 @@ type Config struct {
 	// an explicit 0 disables marking for builds only. Range 0..63.
 	// Set-but-empty behaves as unset (inherits): the env parser skips it.
 	BuildSandboxEgressDSCP *uint8 `env:"BUILD_SANDBOX_EGRESS_DSCP"`
+
+	// NetworkVersion selects v1 (iptables per-sandbox) or v2 (nftables, host sets).
+	NetworkVersion int `env:"NETWORK_VERSION" envDefault:"1"`
 }
 
 // EgressClass selects which configured egress DSCP applies to a sandbox. It
@@ -156,6 +159,10 @@ func (c Config) untenantedDSCP() uint8 {
 func DSCP(v uint8) *uint8 { return new(v) }
 
 func (c Config) Validate() error {
+	if c.NetworkVersion != 1 && c.NetworkVersion != 2 {
+		return fmt.Errorf("NETWORK_VERSION=%d unsupported (must be 1 or 2)", c.NetworkVersion)
+	}
+
 	if c.SandboxEgressDSCP > maxDSCP {
 		return fmt.Errorf("SANDBOX_EGRESS_DSCP=%d out of range (0..%d)", c.SandboxEgressDSCP, maxDSCP)
 	}

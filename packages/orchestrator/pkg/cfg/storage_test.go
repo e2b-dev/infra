@@ -1,4 +1,3 @@
-//nolint:paralleltest // env-driven tests use t.Setenv
 package cfg
 
 import (

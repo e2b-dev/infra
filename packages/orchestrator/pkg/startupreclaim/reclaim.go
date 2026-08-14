@@ -66,6 +66,11 @@ func (s Summary) totalFailed() int {
 	return total(s.Failed)
 }
 
+// HasFailures reports whether any resource failed to reclaim.
+func (s Summary) HasFailures() bool {
+	return s.totalFailed() > 0
+}
+
 func total(values map[string]int) int {
 	total := 0
 	for _, value := range values {
