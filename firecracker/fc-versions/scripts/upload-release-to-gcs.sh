@@ -9,7 +9,7 @@
 #   ./scripts/upload-release-to-gcs.sh --tag <tag> --deployment <name> [--dry-run] [--repo <repo>]
 #
 # Options:
-#   --tag <tag>          Release tag / version name (e.g. v1.14.1_af9c995).
+#   --tag <tag>          Release tag / version name (e.g. v1.14-0.1.0).
 #   --deployment <name>  Deployment to upload to. One of:
 #                          public, legacy-public, or a cluster name (root from FC_CLUSTER_BUCKET_ROOT)
 #                        Every deployment but public and legacy-public reads

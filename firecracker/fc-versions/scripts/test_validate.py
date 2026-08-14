@@ -8,11 +8,9 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from validate import (
-    validate_inputs,
+    main,
     resolve_tag_to_commit,
-    validate_commit,
-    find_tag_for_commit,
-    resolve_tag_and_commit,
+    resolve_release_tag,
     check_ci_status,
     generate_build_matrix,
     get_existing_release_assets,
@@ -23,7 +21,6 @@ from validate import (
 
 # Test fixtures
 SAMPLE_COMMIT_SHA = "abc123def456789012345678901234567890abcd"
-SAMPLE_TAG_COMMIT_SHA = "def456abc789012345678901234567890abcdef12"
 
 
 def mock_run_command(responses: dict):
@@ -44,38 +41,6 @@ def mock_run_command(responses: dict):
         result.stderr = "not found"
         return result
     return _mock
-
-
-class TestValidateInputs:
-    """Tests for validate_inputs function."""
-
-    def test_no_architectures_selected(self):
-        error = validate_inputs("v1.0.0", None, False, False)
-        assert error == "At least one architecture must be selected"
-
-    def test_no_tag_or_commit(self):
-        error = validate_inputs(None, None, True, True)
-        assert error == "Either tag or commit_hash must be provided"
-
-    def test_tag_only_valid(self):
-        error = validate_inputs("v1.0.0", None, True, False)
-        assert error is None
-
-    def test_commit_only_valid(self):
-        error = validate_inputs(None, SAMPLE_COMMIT_SHA, False, True)
-        assert error is None
-
-    def test_both_tag_and_commit_valid(self):
-        error = validate_inputs("v1.0.0", SAMPLE_COMMIT_SHA, True, True)
-        assert error is None
-
-    def test_amd64_only(self):
-        error = validate_inputs("v1.0.0", None, True, False)
-        assert error is None
-
-    def test_arm64_only(self):
-        error = validate_inputs("v1.0.0", None, False, True)
-        assert error is None
 
 
 class TestResolveTagToCommit:
@@ -112,136 +77,69 @@ class TestResolveTagToCommit:
             assert error is None
 
 
-class TestValidateCommit:
-    """Tests for validate_commit function."""
+class TestResolveReleaseTag:
+    """Tests for resolve_release_tag function."""
 
-    def test_commit_not_found(self):
+    def test_lightweight_tag(self):
+        with patch("validate.gh_api") as mock_api:
+            mock_api.side_effect = [
+                {"object": {"sha": SAMPLE_COMMIT_SHA}},
+                None,
+            ]
+            version_name, commit, error = resolve_release_tag("v1.14-0.1.0")
+            assert error is None
+            assert version_name == "v1.14-0.1.0"
+            assert commit == SAMPLE_COMMIT_SHA
+
+    def test_annotated_tag(self):
+        with patch("validate.gh_api") as mock_api:
+            mock_api.side_effect = [
+                {"object": {"sha": "tag123456789"}},
+                {"object": {"sha": SAMPLE_COMMIT_SHA}},
+            ]
+            version_name, commit, error = resolve_release_tag("v1.14-0.1.0")
+            assert error is None
+            assert version_name == "v1.14-0.1.0"
+            assert commit == SAMPLE_COMMIT_SHA
+
+    def test_version_name_carries_no_commit_suffix(self):
+        with patch("validate.gh_api") as mock_api:
+            mock_api.side_effect = [
+                {"object": {"sha": SAMPLE_COMMIT_SHA}},
+                None,
+            ]
+            version_name, _, _ = resolve_release_tag("v1.14-0.1.0")
+            assert version_name == "v1.14-0.1.0"
+            assert SAMPLE_COMMIT_SHA[:7] not in version_name
+
+    def test_tag_does_not_exist(self):
         with patch("validate.gh_api", return_value=None):
-            sha, error = validate_commit("nonexistent")
-            assert sha == ""
+            version_name, commit, error = resolve_release_tag("v1.14-0.1.0")
+            assert version_name == ""
+            assert commit == ""
             assert "does not exist" in error
 
-    def test_commit_found(self):
-        with patch("validate.gh_api", return_value={"sha": SAMPLE_COMMIT_SHA}):
-            sha, error = validate_commit(SAMPLE_COMMIT_SHA[:7])
-            assert sha == SAMPLE_COMMIT_SHA
-            assert error is None
-
-
-class TestFindTagForCommit:
-    """Tests for find_tag_for_commit function."""
-
-    def test_no_tags_in_repo(self):
-        with patch("validate.gh_api", return_value=None):
-            tag, error = find_tag_for_commit(SAMPLE_COMMIT_SHA)
-            assert tag == ""
-            assert "Failed to fetch tags" in error
-
-    def test_exact_match(self):
-        """Test when commit exactly matches a tag."""
+    @pytest.mark.parametrize("tag", [
+        "v1.14.1",
+        "v1.14",
+        "v1.14.1_abc1234",
+        "1.14-0.1.0",
+        "v1.14-0.1",
+        "v1.14-0.1.0-rc1",
+        "v01.14-0.1.0",
+        "v1.14-01.0.0",
+        "v1.14-0.1.00",
+        "",
+    ])
+    def test_rejects_non_release_tag_without_calling_the_api(self, tag):
         with patch("validate.gh_api") as mock_api:
-            mock_api.side_effect = [
-                [{"name": "v1.0.0", "commit": {"sha": SAMPLE_COMMIT_SHA}}],
-            ]
-            tag, error = find_tag_for_commit(SAMPLE_COMMIT_SHA)
-            assert tag == "v1.0.0"
-            assert error is None
-
-    def test_commit_ahead_of_tag(self):
-        """Test when commit is ahead of a tag."""
-        with patch("validate.gh_api") as mock_api:
-            mock_api.side_effect = [
-                [{"name": "v1.0.0", "commit": {"sha": SAMPLE_TAG_COMMIT_SHA}}],
-                {"status": "ahead"},  # compare API result
-            ]
-            tag, error = find_tag_for_commit(SAMPLE_COMMIT_SHA)
-            assert tag == "v1.0.0"
-            assert error is None
-
-    def test_no_matching_tag(self):
-        """Test when no tag is an ancestor of the commit."""
-        with patch("validate.gh_api") as mock_api:
-            mock_api.side_effect = [
-                [{"name": "v1.0.0", "commit": {"sha": SAMPLE_TAG_COMMIT_SHA}}],
-                {"status": "diverged"},  # compare API result
-            ]
-            tag, error = find_tag_for_commit(SAMPLE_COMMIT_SHA)
-            assert tag == ""
-            assert "No tag found" in error
-
-
-class TestResolveTagAndCommit:
-    """Tests for resolve_tag_and_commit function."""
-
-    def test_neither_provided(self):
-        tag, commit, error = resolve_tag_and_commit(None, None)
-        assert error == "Either tag or commit_hash must be provided"
-
-    def test_tag_only_success(self):
-        """Test with only tag provided."""
-        with patch("validate.resolve_tag_to_commit", return_value=(SAMPLE_COMMIT_SHA, None)):
-            tag, commit, error = resolve_tag_and_commit("v1.0.0", None)
-            assert tag == "v1.0.0"
-            assert commit == SAMPLE_COMMIT_SHA
-            assert error is None
-
-    def test_tag_only_not_found(self):
-        """Test with only tag provided but tag doesn't exist."""
-        with patch("validate.resolve_tag_to_commit", return_value=("", "Tag not found")):
-            tag, commit, error = resolve_tag_and_commit("v1.0.0", None)
-            assert error == "Tag not found"
-
-    def test_commit_only_success(self):
-        """Test with only commit provided."""
-        with patch("validate.validate_commit", return_value=(SAMPLE_COMMIT_SHA, None)):
-            with patch("validate.find_tag_for_commit", return_value=("v1.0.0", None)):
-                tag, commit, error = resolve_tag_and_commit(None, SAMPLE_COMMIT_SHA)
-                assert tag == "v1.0.0"
-                assert commit == SAMPLE_COMMIT_SHA
-                assert error is None
-
-    def test_commit_only_no_tag_found(self):
-        """Test with only commit provided but no tag found."""
-        with patch("validate.validate_commit", return_value=(SAMPLE_COMMIT_SHA, None)):
-            with patch("validate.find_tag_for_commit", return_value=("", "No tag found")):
-                tag, commit, error = resolve_tag_and_commit(None, SAMPLE_COMMIT_SHA)
-                assert "No tag found" in error
-
-    def test_both_provided_commit_at_tag(self):
-        """Test with both provided and commit is at the tag."""
-        with patch("validate.validate_commit", return_value=(SAMPLE_COMMIT_SHA, None)):
-            with patch("validate.resolve_tag_to_commit", return_value=(SAMPLE_COMMIT_SHA, None)):
-                tag, commit, error = resolve_tag_and_commit("v1.0.0", SAMPLE_COMMIT_SHA)
-                assert tag == "v1.0.0"
-                assert commit == SAMPLE_COMMIT_SHA
-                assert error is None
-
-    def test_both_provided_commit_ahead_of_tag(self):
-        """Test with both provided and commit is ahead of tag."""
-        with patch("validate.validate_commit", return_value=(SAMPLE_COMMIT_SHA, None)):
-            with patch("validate.resolve_tag_to_commit", return_value=(SAMPLE_TAG_COMMIT_SHA, None)):
-                with patch("validate.gh_api", return_value={"status": "ahead"}):
-                    tag, commit, error = resolve_tag_and_commit("v1.0.0", SAMPLE_COMMIT_SHA)
-                    assert tag == "v1.0.0"
-                    assert commit == SAMPLE_COMMIT_SHA
-                    assert error is None
-
-    def test_both_provided_commit_behind_tag(self):
-        """Test with both provided but commit is behind tag (invalid)."""
-        with patch("validate.validate_commit", return_value=(SAMPLE_COMMIT_SHA, None)):
-            with patch("validate.resolve_tag_to_commit", return_value=(SAMPLE_TAG_COMMIT_SHA, None)):
-                with patch("validate.gh_api", return_value={"status": "behind"}):
-                    tag, commit, error = resolve_tag_and_commit("v1.0.0", SAMPLE_COMMIT_SHA)
-                    assert "not at or after tag" in error
-
-    def test_both_provided_commit_diverged(self):
-        """Test with both provided but commit is on different branch (invalid)."""
-        with patch("validate.validate_commit", return_value=(SAMPLE_COMMIT_SHA, None)):
-            with patch("validate.resolve_tag_to_commit", return_value=(SAMPLE_TAG_COMMIT_SHA, None)):
-                with patch("validate.gh_api", return_value={"status": "diverged"}):
-                    tag, commit, error = resolve_tag_and_commit("v1.0.0", SAMPLE_COMMIT_SHA)
-                    assert "not at or after tag" in error
-                    assert "diverged" in error
+            version_name, commit, error = resolve_release_tag(tag)
+            assert mock_api.call_count == 0
+            assert version_name == ""
+            assert commit == ""
+            assert "is not a vX.Y-<e2b-semver> release tag" in error
+            assert "never rebuilt" in error
+            assert "release runbook" in error
 
 
 class TestCheckCIStatus:
@@ -541,3 +439,38 @@ class TestCheckArtifactsNeeded:
         """Test returns False when no architectures are requested."""
         with patch("validate.get_existing_release_assets", return_value=set()):
             assert check_artifacts_needed("v1.0.0_abc1234", False, False) is False
+
+class TestMain:
+    """End-to-end tests through the real entry point."""
+
+    def _run(self, argv, api_responses):
+        outputs = {}
+        with patch("sys.argv", ["validate.py"] + argv), \
+             patch("validate.gh_api", side_effect=api_responses), \
+             patch("validate.get_existing_release_assets", return_value=set()), \
+             patch("validate.write_github_output", side_effect=lambda o: outputs.update(o)):
+            rc = main()
+        return rc, outputs
+
+    def test_no_architectures_selected(self):
+        rc, outputs = self._run(
+            ["--tag", "v1.14-0.1.0", "--build-amd64", "false", "--build-arm64", "false"], []
+        )
+        assert rc == 1
+        assert outputs == {}
+
+    def test_single_arch_dispatch_outputs_verbatim_version_name(self):
+        rc, outputs = self._run(
+            ["--tag", "v1.14-0.1.0", "--build-arm64", "false"],
+            [
+                {"object": {"sha": SAMPLE_COMMIT_SHA, "type": "commit"}},  # tag ref
+                None,  # annotated-tag dereference miss (lightweight tag)
+                {"state": "success", "total_count": 1,
+                 "statuses": [{"state": "success", "context": "ci"}]},
+                {"check_runs": []},
+            ],
+        )
+        assert rc == 0
+        assert outputs["version_name"] == "v1.14-0.1.0"
+        assert outputs["commit_hash"] == SAMPLE_COMMIT_SHA
+        assert json.loads(outputs["build_matrix"]) == {"include": [{"arch": "amd64", "runner": "ubuntu-24.04"}]}

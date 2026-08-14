@@ -2,14 +2,14 @@
 
 set -euo pipefail
 
-FIRECRACKER_REPO_HOST="github.com/e2b-dev/firecracker.git"
+FIRECRACKER_REPO_HOST="github.com/${FIRECRACKER_SOURCE_REPO:-e2b-dev/e2b-firecracker}.git"
 
 : "${FIRECRACKER_REPO_TOKEN:?must be set to clone the firecracker repo}"
 
 if [[ $# -lt 2 ]]; then
   echo "Usage: $0 <commit_hash> <version_name> [arch]" >&2
   echo "  commit_hash:  Full git commit hash to build" >&2
-  echo "  version_name: Output directory name (e.g., v1.14.1_abc1234)" >&2
+  echo "  version_name: Output directory name (e.g., v1.14-0.1.0)" >&2
   echo "  arch:         amd64 (default) or arm64" >&2
   exit 1
 fi
