@@ -143,3 +143,37 @@ func (s Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 func (s Sandbox) IsExpired(now time.Time) bool {
 	return now.After(s.EndTime)
 }
+
+// NodeSandbox is a sandbox as reported by an orchestrator node, reduced to the
+// fields needed to reconcile the node against the store and to kill a sandbox
+// the store does not know about. Redis is the source of truth for everything
+// else, so a NodeSandbox is never written back to the store.
+type NodeSandbox struct {
+	SandboxID   string
+	ExecutionID string
+	TeamID      uuid.UUID
+	NodeID      string
+	ClusterID   uuid.UUID
+	// StartTime is used to spare freshly started sandboxes from the orphan
+	// check, since the store write may not have landed yet.
+	StartTime time.Time
+	// VCpu and RamMB correct the node's optimistic resource accounting after a
+	// kill.
+	VCpu  int64
+	RamMB int64
+}
+
+// ToNodeSandbox reduces a stored sandbox to the node-reported view, so the kill
+// path can take the same argument for orphans and for regular removals.
+func (s Sandbox) ToNodeSandbox() NodeSandbox {
+	return NodeSandbox{
+		SandboxID:   s.SandboxID,
+		ExecutionID: s.ExecutionID,
+		TeamID:      s.TeamID,
+		NodeID:      s.NodeID,
+		ClusterID:   s.ClusterID,
+		StartTime:   s.StartTime,
+		VCpu:        s.VCpu,
+		RamMB:       s.RamMB,
+	}
+}

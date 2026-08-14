@@ -184,7 +184,7 @@ func New(
 		sandbox.Callbacks{
 			AddSandboxToRoutingTable: o.addSandboxToRoutingTable,
 			AsyncNewlyCreatedSandbox: o.handleNewlyCreatedSandbox,
-			RemoveSandboxFromNode:    o.killOrphanSandbox,
+			KillOrphanSandbox:        o.killOrphanSandbox,
 		},
 	)
 

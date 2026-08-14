@@ -206,11 +206,26 @@ message SandboxCheckpointResponse {
 }
 
 message RunningSandbox {
-  SandboxConfig config = 1;
+  // Deprecated: the API no longer rebuilds sandbox state from this list. Redis
+  // is the source of truth; List is only used to detect sandboxes running on a
+  // node that the store does not know about, so they can be killed. The fields
+  // below carry everything that decision needs. Still populated so API
+  // instances predating those fields keep working during a rollout.
+  SandboxConfig config = 1 [deprecated = true];
   string client_id = 2;
 
   google.protobuf.Timestamp start_time = 3;
   google.protobuf.Timestamp end_time = 4;
+
+  // Minimal set required to detect an orphaned sandbox and kill it.
+  // sandbox_id + team_id form the store key. execution_id is carried in the
+  // edge sandbox-catalog delete event, so a cluster node's routing entry is
+  // evicted too. vcpu/ram_mb feed the node's optimistic resource accounting.
+  string sandbox_id = 5;
+  string team_id = 6;
+  string execution_id = 7;
+  int64 vcpu = 8;
+  int64 ram_mb = 9;
 }
 
 message SandboxListResponse {

@@ -564,16 +564,24 @@ func (s *Server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 			continue
 		}
 
+		// Build sandboxes are not owned by the API and must never show up here,
+		// or the API would treat them as orphans and kill them. They are the only
+		// sandboxes created without an APIStoredConfig.
 		if sbx.APIStoredConfig == nil {
 			continue
 		}
 
 		startedAt := sbx.GetStartedAt()
 		sandboxes = append(sandboxes, &orchestrator.RunningSandbox{
-			Config:    sbx.APIStoredConfig,
-			ClientId:  s.info.ClientId,
-			StartTime: timestamppb.New(startedAt),
-			EndTime:   timestamppb.New(sbx.GetEndAt()),
+			Config:      sbx.APIStoredConfig, //nolint:staticcheck // kept until every API instance reads the scalar fields below
+			ClientId:    s.info.ClientId,
+			StartTime:   timestamppb.New(startedAt),
+			EndTime:     timestamppb.New(sbx.GetEndAt()),
+			SandboxId:   sbx.Runtime.SandboxID,
+			TeamId:      sbx.Runtime.TeamID,
+			ExecutionId: sbx.Runtime.ExecutionID,
+			Vcpu:        sbx.Config.Vcpu,
+			RamMb:       sbx.Config.RamMB,
 		})
 	}
 

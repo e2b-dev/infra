@@ -39,11 +39,10 @@ func TestMarkUnreachable_KeepsTheFirstObservation(t *testing.T) {
 }
 
 // TestMarkUnhealthyLocal_DoesNotImplyUnreachable pins the separation the two
-// signals need. A sync can fail on a response the node did deliver — a nil
-// sandbox config or an unparseable ID makes the payload undecodable after the
-// RPC succeeded — so marking a node unhealthy must not also assert that this
-// replica cannot reach it. Conflating them lets one malformed record present a
-// live node as a candidate for reclamation.
+// signals need. A sync can fail on a node this replica demonstrably reached —
+// ServiceInfo answers and the sandbox list call then errors — so marking a node
+// unhealthy must not also assert that this replica cannot reach it. Conflating
+// them lets one failed call present a live node as a candidate for reclamation.
 func TestMarkUnhealthyLocal_DoesNotImplyUnreachable(t *testing.T) {
 	t.Parallel()
 
@@ -75,9 +74,8 @@ func TestMarkReachable_ClearsUnreachableSince(t *testing.T) {
 }
 
 // TestSync_NodeThatAnsweredIsNotUnreachable drives the reported scenario end to
-// end. The node answers ServiceInfo and Sandbox.List, but the list contains a
-// sandbox with no config, so GetSandboxes rejects the payload and the sync never
-// completes — four times over, exhausting the retries.
+// end. The node answers ServiceInfo, but the sandbox list call fails, so the
+// sync never completes — four times over, exhausting the retries.
 //
 // The node has demonstrably answered this replica, so it must not come out of
 // that unreachable. It does come out unhealthy: the cycle genuinely failed.
@@ -87,7 +85,7 @@ func TestMarkReachable_ClearsUnreachableSince(t *testing.T) {
 func TestSync_NodeThatAnsweredIsNotUnreachable(t *testing.T) {
 	t.Parallel()
 
-	n := NewTestNode("test-node", api.NodeStatusReady, 0, 1, WithMalformedSandboxList())
+	n := NewTestNode("test-node", api.NodeStatusReady, 0, 1, WithFailingSandboxList())
 
 	n.Sync(context.Background(), nil)
 
