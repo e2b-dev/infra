@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"net/http"
 	"regexp"
+	"strings"
 )
 
 var browserRegex = regexp.MustCompile(`(?i)mozilla|chrome|safari|firefox|edge|opera|msie`)
@@ -43,7 +44,7 @@ func (e *TemplatedError[T]) HandleError(
 		return fmt.Errorf("invalid status code: %d", e.vars.StatusCode())
 	}
 
-	if isBrowser(r) {
+	if wantsHtml(r) {
 		body, buildErr := e.buildHtml()
 		if buildErr != nil {
 			return buildErr
@@ -73,6 +74,44 @@ func (e *TemplatedError[T]) HandleError(
 	}
 
 	return nil
+}
+
+// wantsHtml reports whether the error should be rendered as the browser error
+// page rather than as JSON.
+//
+// Intent comes first, because a fetch() from page scripts carries the browser's
+// own User-Agent and cannot override it — sniffing the User-Agent alone hands an
+// HTML page to a caller that is about to parse it as JSON. Sniffing is left as
+// the fallback, where it only catches genuine top-level navigations.
+func wantsHtml(r *http.Request) bool {
+	if prefersJson(r) || isScriptInitiated(r) {
+		return false
+	}
+
+	return isBrowser(r)
+}
+
+// prefersJson reports whether the Accept header asks for JSON over HTML.
+func prefersJson(r *http.Request) bool {
+	accept := strings.ToLower(r.Header.Get("Accept"))
+
+	return strings.Contains(accept, "application/json") && !strings.Contains(accept, "text/html")
+}
+
+// isScriptInitiated reports whether the request was made by page scripts rather
+// than by navigating to the URL. Sec-Fetch-Mode is set by the browser itself and
+// is a forbidden header name for scripts; X-Requested-With covers older clients.
+func isScriptInitiated(r *http.Request) bool {
+	// A top-level navigation, which is what the HTML pages are for, says so
+	// outright, and is trusted over any header the caller can set.
+	switch strings.ToLower(r.Header.Get("Sec-Fetch-Mode")) {
+	case "cors", "no-cors", "same-origin", "websocket":
+		return true
+	case "navigate":
+		return false
+	}
+
+	return r.Header.Get("X-Requested-With") != ""
 }
 
 func isBrowser(r *http.Request) bool {
