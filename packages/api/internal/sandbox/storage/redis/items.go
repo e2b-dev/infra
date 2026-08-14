@@ -102,13 +102,11 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandboxtypes.Sandbox, err
 		for i, raw := range batch.cmd.Val() {
 			ref := batch.refs[i]
 
-			// Sandbox key gone but ZSET entry remains — orphaned. Members are
-			// execution-scoped, so this removal can never unindex a fresh
-			// execution concurrently re-added under the same sandbox ID.
-			// MGET confirmed the key is absent, so SREM the stale team index
-			// entry. A concurrent Add that writes the key after our MGET will
-			// SADD the sandboxID back, so this can at worst leave a brief gap
-			// in TeamItems results that the next Add corrects.
+			// Sandbox key gone but ZSET entry remains — orphaned.
+			// MGET confirmed the key is absent; SREM the stale team index entry
+			// so it does not accumulate indefinitely. Sandbox IDs are randomly
+			// generated and never reused, so a concurrent Add cannot write the
+			// same sandboxID back after this SREM.
 			if raw == nil {
 				staleMembers = append(staleMembers, ref.member)
 				orphanCount++
