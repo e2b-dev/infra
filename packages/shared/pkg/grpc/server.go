@@ -22,12 +22,18 @@ type ServerOption func(*serverOptions)
 
 type serverOptions struct {
 	withSandboxResumeMetrics bool
+	recoveryHandler          recovery.RecoveryHandlerFunc
 }
 
 // WithSandboxResumeMetrics adds sandbox.resume attribute to otelgrpc metrics,
 // read from incoming gRPC metadata.
 func WithSandboxResumeMetrics() ServerOption {
 	return func(o *serverOptions) { o.withSandboxResumeMetrics = true }
+}
+
+// WithRecoveryHandler configures the unary panic recovery handler.
+func WithRecoveryHandler(handler recovery.RecoveryHandlerFunc) ServerOption {
+	return func(o *serverOptions) { o.recoveryHandler = handler }
 }
 
 func NewGRPCServer(tel *telemetry.Client, opts ...ServerOption) *grpc.Server {
@@ -57,6 +63,11 @@ func NewGRPCServer(tel *telemetry.Client, opts ...ServerOption) *grpc.Server {
 		otelOpts = append(otelOpts, otelgrpc.WithMetricAttributesFn(extractSandboxResumeAttrs))
 	}
 
+	var recoveryOpts []recovery.Option
+	if cfg.recoveryHandler != nil {
+		recoveryOpts = append(recoveryOpts, recovery.WithRecoveryHandler(cfg.recoveryHandler))
+	}
+
 	return grpc.NewServer(
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
 			MinTime:             5 * time.Second,
@@ -70,7 +81,7 @@ func NewGRPCServer(tel *telemetry.Client, opts ...ServerOption) *grpc.Server {
 			NewStatsWrapper(
 				otelgrpc.NewServerHandler(otelOpts...))),
 		grpc.ChainUnaryInterceptor(
-			recovery.UnaryServerInterceptor(),
+			recovery.UnaryServerInterceptor(recoveryOpts...),
 			selector.UnaryServerInterceptor(
 				logging.UnaryServerInterceptor(logger.GRPCLogger(logger.L()), logOpts...),
 				ignoredLoggingRoutes,
