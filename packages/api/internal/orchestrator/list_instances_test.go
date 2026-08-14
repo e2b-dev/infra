@@ -52,7 +52,6 @@ func TestGetSandboxesFromNodes_AllNodesFail(t *testing.T) {
 
 	_, err := getSandboxesFromNodes(t.Context(), nodes, uuid.New(), nil)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "all 2 orchestrator nodes failed")
 }
 
 func TestGetSandboxesFromNodes_FiltersByTeam(t *testing.T) {
@@ -128,9 +127,8 @@ func TestGetSandboxesFromNodes_PartialNodeFailure(t *testing.T) {
 		{id: "node-fail", lister: &fakeLister{err: errors.New("unreachable")}},
 	}
 
-	// Partial failure: still returns results from the responding node.
-	result, err := getSandboxesFromNodes(t.Context(), nodes, team, nil)
-	require.NoError(t, err)
-	require.Len(t, result, 1)
-	assert.Equal(t, "sbx-1", result[0].SandboxID)
+	// Fail-closed: any node failure returns an error to avoid unsafe partial results.
+	_, err := getSandboxesFromNodes(t.Context(), nodes, team, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "node-fail")
 }

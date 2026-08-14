@@ -56,8 +56,16 @@ func (o *Orchestrator) GetSandboxes(ctx context.Context, teamID uuid.UUID, state
 // in parallel, filters by teamID and states, and deduplicates by sandboxID (a
 // sandbox mid-migration may transiently appear on two nodes).
 //
-// Per-node errors are logged and skipped. If every node fails, an error is
-// returned.
+// The function is fail-closed: if any node returns an error the whole call
+// fails. This is intentional — callers such as template deletion and admin
+// team-kill make safety decisions from the result, and a partial listing could
+// miss sandboxes on the failed node, leading to incorrect actions.
+//
+// Note: node.GetSandboxes reconstructs sandbox records via NewSandbox, which
+// always sets State = StateRunning. Sandboxes that are mid-transition
+// (StatePausing, StateSnapshotting) are returned as StateRunning during the
+// fallback. State filtering therefore works correctly only for callers that
+// include StateRunning in their allowed set, which all current callers do.
 func getSandboxesFromNodes(ctx context.Context, nodes []namedLister, teamID uuid.UUID, states []sandboxtypes.State) ([]sandbox.Sandbox, error) {
 	if len(nodes) == 0 {
 		return nil, fmt.Errorf("no orchestrator nodes connected")
@@ -83,17 +91,15 @@ func getSandboxesFromNodes(ctx context.Context, nodes []namedLister, teamID uuid
 
 	seen := make(map[string]struct{})
 	var out []sandbox.Sandbox
-	var nodeErrors int
 
 	for i, r := range results {
 		if r.err != nil {
-			nodeErrors++
-			logger.L().Warn(ctx, "Node gRPC fallback: failed to list sandboxes from node",
+			logger.L().Error(ctx, "Node gRPC fallback: failed to list sandboxes from node — aborting to avoid partial result",
 				zap.Error(r.err),
 				logger.WithNodeID(nodes[i].id),
 			)
 
-			continue
+			return nil, fmt.Errorf("node %s failed to respond during Redis fallback: %w", nodes[i].id, r.err)
 		}
 
 		for _, sbx := range r.sandboxes {
@@ -109,10 +115,6 @@ func getSandboxesFromNodes(ctx context.Context, nodes []namedLister, teamID uuid
 			seen[sbx.SandboxID] = struct{}{}
 			out = append(out, sbx)
 		}
-	}
-
-	if nodeErrors == len(nodes) {
-		return nil, fmt.Errorf("all %d orchestrator nodes failed to respond during Redis fallback", len(nodes))
 	}
 
 	return out, nil
