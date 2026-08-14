@@ -49,6 +49,12 @@ const (
 	harvestResumeFailed  harvestOutcome = "resume_failed"  // couldn't bring the throwaway up
 	harvestCollectFailed harvestOutcome = "collect_failed" // throwaway up but the trace couldn't be read
 	harvestSkipped       harvestOutcome = "skipped"        // couldn't acquire a start slot
+	// harvestPersistDeadline: a mapping WAS harvested but never reached the
+	// artifact, because the snapshot upload it has to be written after did not
+	// finish inside the persist budget. Kept apart from success deliberately —
+	// the customer's next resume then demand-faults everything, and counting that
+	// as a success is what made the loss invisible.
+	harvestPersistDeadline harvestOutcome = "persist_deadline"
 )
 
 var (
@@ -57,7 +63,32 @@ var (
 	harvestDurationHistogram  = utils.Must(telemetry.GetHistogram(harvestMeter, telemetry.PauseResumePrefetchHarvestDurationName))
 	harvestPagesHistogram     = utils.Must(telemetry.GetHistogram(harvestMeter, telemetry.PauseResumePrefetchHarvestPagesName))
 	sealWaitDurationHistogram = utils.Must(telemetry.GetHistogram(harvestMeter, telemetry.PauseResumePrefetchSealWaitDurationName))
+	persistWaitHistogram      = utils.Must(telemetry.GetHistogram(harvestMeter, telemetry.PauseResumePrefetchPersistWaitDurationName))
 )
+
+// harvestRun is what one harvest attempt produced. A struct rather than a tuple
+// because the attempt has several independently interesting quantities, and
+// positional returns of the same two types are easy to transpose at a call site.
+type harvestRun struct {
+	// pages is the harvested trace size in blocks. Meaningful only once a trace
+	// was actually collected.
+	pages int
+	// outcome classifies the attempt for the attempts/duration metrics.
+	outcome harvestOutcome
+	// slotHold is how long the throwaway occupied a start slot: its resume, the
+	// trace collection and the reap. This, and only this, is what the
+	// harvest-timeout flag is a cap on.
+	slotHold time.Duration
+	// persistWait is how long the persist waited on the in-flight snapshot upload
+	// before it could rewrite metadata. It holds no node resources, so it is
+	// deliberately not part of slotHold. Only meaningful when persistAttempted.
+	persistWait time.Duration
+	// persistAttempted records whether the persist ran at all. A harvest that
+	// failed to resume, collected an empty trace, or ran with consume off never
+	// waits on the upload, and recording a 0 ms wait for it would bury the real
+	// distribution under a spike at zero.
+	persistAttempted bool
+}
 
 // harvestResumer resumes the throwaway instance the harvest records its trace
 // from. It is an interface so the orchestration can be unit-tested with a fake.
@@ -124,6 +155,10 @@ type prefetchHarvester struct {
 	// acquire bounds concurrent harvests; release frees the slot acquire took.
 	acquire func(context.Context) error
 	release func()
+	// persistBudget caps the persist's wait on the in-flight snapshot upload.
+	// Zero means the upload's own retry budget, which is the only bound that
+	// cannot cut a still-landing upload short. Tests set it to keep the wait short.
+	persistBudget time.Duration
 }
 
 func (s *Server) newPrefetchHarvester() *prefetchHarvester {
@@ -174,7 +209,6 @@ func (s *Server) harvestResumePrefetchAsync(
 	// nothing — so resumes are unaffected and we can validate harvest behaviour
 	// with no customer-visible change before enabling prefetch on resume.
 	consume := s.featureFlags.BoolFlag(ctx, featureflags.PauseResumePrefetchConsumeFlag)
-
 	harvester := s.newPrefetchHarvester()
 
 	go func() {
@@ -203,33 +237,37 @@ func (s *Server) harvestResumePrefetchAsync(
 		_, sealWaitErr := res.rootfsDiff.CachePath(hCtx)
 		sealWaitDurationHistogram.Record(hCtx, time.Since(sealWaitStart).Milliseconds())
 
-		start := time.Now()
 		var (
-			pages   int
-			outcome harvestOutcome
-			err     error
+			result harvestRun
+			err    error
 		)
 		if sealWaitErr != nil {
-			outcome, err = harvestSkipped, fmt.Errorf("waiting for rootfs seal: %w", sealWaitErr)
+			result.outcome, err = harvestSkipped, fmt.Errorf("waiting for rootfs seal: %w", sealWaitErr)
 		} else {
-			pages, outcome, err = harvester.run(hCtx, sbx, res.meta, res.upload, buildID, objectMetadata, consume)
+			result, err = harvester.run(hCtx, sbx, res.meta, res.upload, buildID, objectMetadata, consume)
 		}
 
-		durationMs := time.Since(start).Milliseconds()
-
-		resultAttr := metric.WithAttributes(attribute.String("result", string(outcome)))
+		resultAttr := metric.WithAttributes(attribute.String("result", string(result.outcome)))
 		harvestAttemptsCounter.Add(hCtx, 1, resultAttr)
-		harvestDurationHistogram.Record(hCtx, durationMs, resultAttr)
-		if outcome == harvestSuccess {
+		// Slot hold and persist wait are recorded apart because only the first is
+		// a node-capacity cost. Summing them into one "harvest duration" is what
+		// made the timeout look like it bounded the persist as well.
+		harvestDurationHistogram.Record(hCtx, result.slotHold.Milliseconds(), resultAttr)
+		if result.persistAttempted {
+			persistWaitHistogram.Record(hCtx, result.persistWait.Milliseconds(), resultAttr)
+		}
+		if result.outcome == harvestSuccess {
 			// pages is meaningful only when a trace was harvested; its bottom
 			// bucket then surfaces the empty-trace (idle-at-pause) rate.
-			harvestPagesHistogram.Record(hCtx, int64(pages))
+			harvestPagesHistogram.Record(hCtx, int64(result.pages))
 		}
 
 		span.SetAttributes(
-			attribute.Int64("harvest.duration_ms", durationMs),
-			attribute.Int("harvest.pages", pages),
-			attribute.String("harvest.result", string(outcome)),
+			attribute.Int64("harvest.duration_ms", result.slotHold.Milliseconds()),
+			attribute.Bool("harvest.persist_attempted", result.persistAttempted),
+			attribute.Int64("harvest.persist_wait_ms", result.persistWait.Milliseconds()),
+			attribute.Int("harvest.pages", result.pages),
+			attribute.String("harvest.result", string(result.outcome)),
 		)
 		if err != nil {
 			span.RecordError(err)
@@ -256,32 +294,53 @@ func (h *prefetchHarvester) run(
 	buildID string,
 	objectMetadata storage.ObjectMetadata,
 	consume bool,
-) (int, harvestOutcome, error) {
+) (harvestRun, error) {
 	// The throwaway resume and its start slot are confined to resumeMapping, so
-	// they are released before we wait on the upload below.
+	// they are released before we wait on the upload below — which is exactly why
+	// its duration is the slot-hold cost and the rest of this function is not.
+	slotHoldStart := time.Now()
 	mapping, outcome, err := h.resumeMapping(ctx, sbx, buildID)
+	slotHold := time.Since(slotHoldStart)
 	if err != nil {
-		return 0, outcome, err
+		return harvestRun{outcome: outcome, slotHold: slotHold}, err
 	}
 
-	pages := mapping.Count() // nil-safe
+	// Count is nil-safe.
+	result := harvestRun{pages: mapping.Count(), outcome: harvestSuccess, slotHold: slotHold}
 
 	if !consume || mapping == nil {
 		// Harvest-only: trace measured (page count returned/logged), persist
 		// nothing, so the customer's resume is unaffected.
-		return pages, harvestSuccess, nil
+		return result, nil
 	}
+
+	// Everything from here on is resource-free: resumeMapping has already released
+	// the throwaway and the start slot it held. The harvest timeout in ctx caps
+	// that slot hold, so applying it here would throw away a finished mapping to
+	// protect nothing. Detach from it, and bound the persist by the upload's own
+	// retry budget instead — the upload is the only thing this waits on, and it
+	// cannot outlive its own budget.
+	persistBudget := h.persistBudget
+	if persistBudget <= 0 {
+		persistBudget = uploadTotalBudget
+	}
+	persistCtx, cancelPersist := context.WithTimeout(context.WithoutCancel(ctx), persistBudget)
+	defer cancelPersist()
 
 	// The async snapshot upload (uploadSnapshotAsync) is still in flight: it reads
 	// this build's local metafile and writes the remote metadata object, with
 	// retries, from another goroutine. Rewriting the metafile in place (the local
 	// update) or the remote object while it runs would risk a torn read or a
 	// clobbered mapping, so wait for it to finish first. Once Wait returns on its
-	// own the upload is done with both files; if instead the harvest deadline
-	// fired we must leave them untouched.
-	uploadErr := upload.Wait(ctx)
-	if ctx.Err() != nil {
-		return pages, harvestSuccess, nil //nolint:nilerr // harvest deadline fired while the upload was still running; leave its metadata untouched
+	// own the upload is done with both files; only if it outlived even its own
+	// retry budget do we leave them untouched — and then say so.
+	persistWaitStart := time.Now()
+	uploadErr := upload.Wait(persistCtx)
+	result.persistWait, result.persistAttempted = time.Since(persistWaitStart), true
+	if persistCtx.Err() != nil {
+		result.outcome = harvestPersistDeadline
+
+		return result, fmt.Errorf("waiting for snapshot upload: %w", persistCtx.Err())
 	}
 
 	// Carry the mapping through the same-version pause metadata. The local cache
@@ -292,7 +351,7 @@ func (h *prefetchHarvester) run(
 	if err := h.templates.UpdateMetadata(buildID, meta); err != nil {
 		localUpdateErr = fmt.Errorf("update local metadata: %w", err)
 		if !errors.Is(err, metadata.ErrReplaceCommitted) {
-			return pages, harvestSuccess, localUpdateErr
+			return result, localUpdateErr
 		}
 	}
 
@@ -300,13 +359,13 @@ func (h *prefetchHarvester) run(
 	// failure the remote build is incomplete, so there is nothing to enrich (the
 	// local update above still lets a same-node resume prefetch).
 	if uploadErr != nil {
-		return pages, harvestSuccess, localUpdateErr
+		return result, localUpdateErr
 	}
-	if err := h.uploadMetadata(ctx, meta, objectMetadata); err != nil {
-		return pages, harvestSuccess, errors.Join(localUpdateErr, fmt.Errorf("re-upload metadata: %w", err))
+	if err := h.uploadMetadata(persistCtx, meta, objectMetadata); err != nil {
+		return result, errors.Join(localUpdateErr, fmt.Errorf("re-upload metadata: %w", err))
 	}
 
-	return pages, harvestSuccess, localUpdateErr
+	return result, localUpdateErr
 }
 
 // resumeMapping resumes a throwaway warm copy of the just-paused snapshot,

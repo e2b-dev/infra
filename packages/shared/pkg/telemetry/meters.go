@@ -171,13 +171,18 @@ const (
 	// when the collapse-envd-heap flag is on.
 	EnvdCollapseDurationHistogramName HistogramType = "orchestrator.sandbox.envd.collapse.duration"
 
-	// Pause-resume prefetch harvest cost, recorded once per harvest attempt:
-	// duration is the whole throwaway resume-and-persist run (slot-hold cost);
+	// Pause-resume prefetch harvest cost, recorded once per harvest attempt.
+	// duration is the SLOT-HOLD cost alone — the throwaway resume, its trace
+	// collection and its reap — which is what the harvest-timeout flag caps.
+	// persist_wait is the separate, resource-free wait on the in-flight snapshot
+	// upload that the mapping has to be written after; keeping it out of duration
+	// is what lets "harvests at the timeout" stay a meaningful signal.
 	// pages is the harvested trace size (distinct 2 MiB blocks), recorded only on
 	// success, so its bottom bucket surfaces the empty-trace (idle-at-pause) rate.
-	PauseResumePrefetchHarvestDurationName  HistogramType = "orchestrator.sandbox.pause_resume_prefetch.harvest.duration"
-	PauseResumePrefetchHarvestPagesName     HistogramType = "orchestrator.sandbox.pause_resume_prefetch.harvest.pages"
-	PauseResumePrefetchSealWaitDurationName HistogramType = "orchestrator.sandbox.pause_resume_prefetch.seal_wait.duration"
+	PauseResumePrefetchHarvestDurationName     HistogramType = "orchestrator.sandbox.pause_resume_prefetch.harvest.duration"
+	PauseResumePrefetchHarvestPagesName        HistogramType = "orchestrator.sandbox.pause_resume_prefetch.harvest.pages"
+	PauseResumePrefetchSealWaitDurationName    HistogramType = "orchestrator.sandbox.pause_resume_prefetch.seal_wait.duration"
+	PauseResumePrefetchPersistWaitDurationName HistogramType = "orchestrator.sandbox.pause_resume_prefetch.persist_wait.duration"
 
 	// Sandbox startup working-set histograms: demand-fault pages/bytes a guest
 	// needed to reach a successful envd init, recorded once per start. Sampled
@@ -517,9 +522,10 @@ var histogramDesc = map[HistogramType]string{
 	SnapshotRootfsSealDurationName:             "Time for the background deferred rootfs reflink seal (off the pause critical path), labeled by success",
 	OrchestratorEnvdOfflineUpgradeDurationName: "Wall-time of the offline cold-boot envd rootfs swap (jailed debugfs)",
 
-	PauseResumePrefetchHarvestDurationName:  "Time taken for a pause-resume prefetch harvest run (slot-hold cost)",
-	PauseResumePrefetchHarvestPagesName:     "Harvested resume-prefetch trace size in 2 MiB blocks, per successful harvest",
-	PauseResumePrefetchSealWaitDurationName: "Time the prefetch harvest waited for the deferred rootfs seal before its warm resume",
+	PauseResumePrefetchHarvestDurationName:     "Time the pause-resume prefetch harvest held a start slot (throwaway resume, trace collection, reap)",
+	PauseResumePrefetchHarvestPagesName:        "Harvested resume-prefetch trace size in 2 MiB blocks, per successful harvest",
+	PauseResumePrefetchSealWaitDurationName:    "Time the prefetch harvest waited for the deferred rootfs seal before its warm resume",
+	PauseResumePrefetchPersistWaitDurationName: "Time the prefetch harvest waited for the in-flight snapshot upload before persisting the mapping",
 
 	UffdStartupPagesHistogramName:       "Demand-fault pages a guest needed to reach a successful envd init, per start",
 	UffdStartupSourcePagesHistogramName: "Subset of startup demand-fault pages pulled from the source (e.g. GCS), per start",
@@ -577,6 +583,7 @@ var histogramUnits = map[HistogramType]string{
 	PauseResumePrefetchHarvestDurationName:        "ms",
 	PauseResumePrefetchHarvestPagesName:           "{page}",
 	PauseResumePrefetchSealWaitDurationName:       "ms",
+	PauseResumePrefetchPersistWaitDurationName:    "ms",
 	UffdStartupPagesHistogramName:                 "{page}",
 	UffdStartupSourcePagesHistogramName:           "{page}",
 	UffdStartupBytesHistogramName:                 "{By}",

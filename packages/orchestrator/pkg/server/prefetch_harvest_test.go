@@ -124,6 +124,10 @@ type harvestProbe struct {
 	uploadCalled bool
 	uploadErr    error
 	acquireErr   error
+
+	// last is the full result of the most recent run, so tests can assert the
+	// phase durations the metrics are recorded from.
+	last harvestRun
 }
 
 func newHarvestProbe() *harvestProbe {
@@ -157,7 +161,10 @@ func newHarvestProbe() *harvestProbe {
 }
 
 func (p *harvestProbe) run(ctx context.Context, consume bool) (int, harvestOutcome, error) {
-	return p.h.run(ctx, testHarvestSandbox(), metadata.Template{}, p.upload, "build-1", storage.ObjectMetadata{}, consume)
+	res, err := p.h.run(ctx, testHarvestSandbox(), metadata.Template{}, p.upload, "build-1", storage.ObjectMetadata{}, consume)
+	p.last = res
+
+	return res.pages, res.outcome, err
 }
 
 func testHarvestSandbox() *sandbox.Sandbox {
@@ -357,10 +364,15 @@ func TestHarvestRun_CommittedLocalUpdateErrorStillUpdatesRemote(t *testing.T) {
 	require.True(t, p.uploadCalled, "remote metadata should be updated after the local replacement commits")
 }
 
-// TestHarvestRun_DeadlineDuringWaitLeavesMetadataUntouched: if the harvest
-// deadline fires while waiting for the upload, neither local nor remote metadata
-// is touched (the upload may still be reading/writing them).
-func TestHarvestRun_DeadlineDuringWaitLeavesMetadataUntouched(t *testing.T) {
+// TestHarvestRun_HarvestDeadlineDoesNotDropTheMapping: the harvest timeout caps
+// the slot hold, and the slot is already released by the time the persist runs.
+// Its firing during the upload wait must NOT discard a mapping that was fully
+// harvested — there is no resource left for the cap to protect.
+//
+// This is the regression test for the reported bug: before the fix the harvest
+// returned success here and persisted nothing, so the pause artifact shipped
+// without a prefetch mapping and no log, metric or trace recorded the loss.
+func TestHarvestRun_HarvestDeadlineDoesNotDropTheMapping(t *testing.T) {
 	t.Parallel()
 
 	p := newHarvestProbe()
@@ -375,6 +387,79 @@ func TestHarvestRun_DeadlineDuringWaitLeavesMetadataUntouched(t *testing.T) {
 	require.Equal(t, harvestSuccess, outcome)
 	require.Equal(t, 2, pages)
 	require.True(t, p.upload.called)
+	require.True(t, p.tmpls.updated, "the harvest deadline must not discard a harvested mapping")
+	require.NotNil(t, p.tmpls.updatedMeta.Prefetch, "the persisted metadata must carry the mapping")
+	require.Equal(t, 2, p.tmpls.updatedMeta.Prefetch.Memory.Count())
+	require.True(t, p.uploadCalled, "the remote metadata must still be enriched")
+}
+
+// TestHarvestRun_PersistDeadlineIsReported: if the upload outlives even the
+// persist budget, the metadata is still left untouched — the upload may be
+// mid-write — but the drop is reported as its own outcome, with an error, rather
+// than counted as a success.
+func TestHarvestRun_PersistDeadlineIsReported(t *testing.T) {
+	t.Parallel()
+
+	p := newHarvestProbe()
+	p.h.persistBudget = time.Millisecond
+	// An upload that is still running when the persist budget expires.
+	p.upload.onWait = func() { time.Sleep(50 * time.Millisecond) }
+
+	pages, outcome, err := p.run(t.Context(), true)
+
+	require.Error(t, err)
+	require.Equal(t, harvestPersistDeadline, outcome)
+	require.Equal(t, 2, pages, "the trace was harvested — it is the persist that failed")
 	require.False(t, p.tmpls.updated, "must not rewrite the metafile while the upload may still be using it")
 	require.False(t, p.uploadCalled)
+}
+
+// TestHarvestRun_SlotHoldExcludesTheUploadWait locks the split the harvest
+// duration metric depends on: the wait on the snapshot upload is a resource-free
+// wait and must land in persistWait, never in the slot hold. Folding it back into
+// slotHold is what made "harvests sitting at the timeout" unreadable as a
+// node-capacity signal.
+func TestHarvestRun_SlotHoldExcludesTheUploadWait(t *testing.T) {
+	t.Parallel()
+
+	const uploadWait = 60 * time.Millisecond
+
+	p := newHarvestProbe()
+	p.upload.onWait = func() { time.Sleep(uploadWait) }
+
+	_, outcome, err := p.run(t.Context(), true)
+
+	require.NoError(t, err)
+	require.Equal(t, harvestSuccess, outcome)
+	require.True(t, p.last.persistAttempted, "a persist ran, so its wait must be recorded")
+	require.GreaterOrEqual(t, p.last.persistWait, uploadWait, "the upload wait belongs to persistWait")
+	require.Less(t, p.last.slotHold, uploadWait, "and must not be charged to the slot hold")
+}
+
+// TestHarvestRun_NoPersistAttemptedWhenNothingToWriteFor: with consume off the
+// persist never runs, so persistAttempted stays false and no zero-millisecond
+// sample is recorded — a spike at zero would bury the real wait distribution.
+func TestHarvestRun_NoPersistAttemptedWhenNothingToWriteFor(t *testing.T) {
+	t.Parallel()
+
+	p := newHarvestProbe()
+	_, outcome, err := p.run(t.Context(), false)
+
+	require.NoError(t, err)
+	require.Equal(t, harvestSuccess, outcome)
+	require.False(t, p.last.persistAttempted)
+	require.Zero(t, p.last.persistWait)
+}
+
+// TestHarvestPersistBudgetOutlastsAnUploadAttempt guards against the regression a
+// hand-picked number invites: a persist budget shorter than a single upload
+// attempt would re-drop the mapping for uploads slower than it — the exact
+// failure this change prevents, and it would hit the slowest uploads, whose
+// mappings are worth the most. Deriving the budget from the upload's own retry
+// budget makes that hold by construction rather than by choosing a value.
+func TestHarvestPersistBudgetOutlastsAnUploadAttempt(t *testing.T) {
+	t.Parallel()
+
+	require.GreaterOrEqual(t, uploadTotalBudget, uploadTimeout,
+		"the persist must outlast a single upload attempt, or slow uploads lose their mapping")
 }
