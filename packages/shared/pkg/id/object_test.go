@@ -19,7 +19,21 @@ var nonCanonical = strings.Repeat("a", slackIndex) + "b" + strings.Repeat("a", e
 // allKinds is every kind the package defines. A kind added without being
 // added here is a kind these tests do not check, so it is also listed in
 // TestAllKindsAreListed.
-var allKinds = []ObjectKind{KindProject, KindWorkspace}
+var allKinds = []ObjectKind{KindProject, KindWorkspace, KindSecret}
+
+func TestKindValuesDoNotMove(t *testing.T) {
+	t.Parallel()
+
+	for kind, want := range map[ObjectKind]ObjectKind{
+		KindProject:   1,
+		KindWorkspace: 2,
+		KindSecret:    3,
+	} {
+		if kind != want {
+			t.Errorf("%s = %d, want %d", kind, kind, want)
+		}
+	}
+}
 
 // TestWidthIsFixed is the claim the parser rests on: every ID of every kind
 // is ObjectIDLen characters, made of a prefixLen tag, the separator, and a
@@ -39,10 +53,10 @@ func TestWidthIsFixed(t *testing.T) {
 			separatorIndex, bodyIndex, prefixLen)
 	}
 
-	// The extremes and a real v7, as both kinds: nothing about the width
+	// The extremes and a real v7, as every kind: nothing about the width
 	// depends on the value.
 	for _, u := range []uuid.UUID{uuid.Nil, uuid.Max, uuid.MustParse(goldenV7[0].id)} {
-		for _, s := range []string{ProjectID(u).String(), WorkspaceID(u).String()} {
+		for _, s := range []string{ProjectID(u).String(), WorkspaceID(u).String(), SecretID(u).String()} {
 			if len(s) != ObjectIDLen {
 				t.Errorf("%q is %d characters, want %d", s, len(s), ObjectIDLen)
 			}
@@ -126,6 +140,9 @@ func TestStringIsPrefixedEncoding(t *testing.T) {
 		if got, want := WorkspaceID(u).String(), "wrk_"+g.want; got != want {
 			t.Errorf("WorkspaceID(%v).String() = %q, want %q", u, got, want)
 		}
+		if got, want := SecretID(u).String(), "sec_"+g.want; got != want {
+			t.Errorf("SecretID(%v).String() = %q, want %q", u, got, want)
+		}
 	}
 }
 
@@ -138,17 +155,22 @@ func TestKindIsInTheType(t *testing.T) {
 	if got := (WorkspaceID{}).Kind(); got != KindWorkspace {
 		t.Errorf("WorkspaceID.Kind() = %v, want %v", got, KindWorkspace)
 	}
+	if got := (SecretID{}).Kind(); got != KindSecret {
+		t.Errorf("SecretID.Kind() = %v, want %v", got, KindSecret)
+	}
 
 	// Distinct types, so one cannot be assigned to the other by accident.
 	// The compiler enforces this; the test records it, since a careless
 	// edit could collapse both aliases onto one instantiation and nothing
 	// else here would notice.
-	p, w := reflect.TypeFor[ProjectID](), reflect.TypeFor[WorkspaceID]()
-	if p == w {
-		t.Fatalf("ProjectID and WorkspaceID are the same type %v", p)
+	p, w, s := reflect.TypeFor[ProjectID](), reflect.TypeFor[WorkspaceID](), reflect.TypeFor[SecretID]()
+	if p == w || p == s || w == s {
+		t.Fatalf("object ID aliases are not distinct: project=%v workspace=%v secret=%v", p, w, s)
 	}
-	if p.Kind() != reflect.Array || p.Size() != reflect.TypeFor[uuid.UUID]().Size() {
-		t.Errorf("ProjectID is %v of size %d, want a uuid", p.Kind(), p.Size())
+	for name, typ := range map[string]reflect.Type{"ProjectID": p, "WorkspaceID": w, "SecretID": s} {
+		if typ.Kind() != reflect.Array || typ.Size() != reflect.TypeFor[uuid.UUID]().Size() {
+			t.Errorf("%s is %v of size %d, want a uuid", name, typ.Kind(), typ.Size())
+		}
 	}
 }
 
@@ -179,7 +201,7 @@ func TestConvertTeamIDToProjectID(t *testing.T) {
 	}
 }
 
-// TestRoundTripThroughStrings is the property both parsers exist for, over
+// TestRoundTripThroughStrings is the property the parsers exist for, over
 // the codec's corpus: whatever String writes, Parse reads back unchanged.
 func TestRoundTripThroughStrings(t *testing.T) {
 	t.Parallel()
@@ -202,12 +224,21 @@ func TestRoundTripThroughStrings(t *testing.T) {
 		if gotW != w {
 			t.Fatalf("ParseWorkspaceID(%q) = %v, want %v", w, uuid.UUID(gotW), u)
 		}
+
+		s := SecretID(u)
+		gotS, err := ParseSecretID(s.String())
+		if err != nil {
+			t.Fatalf("ParseSecretID(%q): %v", s, err)
+		}
+		if gotS != s {
+			t.Fatalf("ParseSecretID(%q) = %v, want %v", s, uuid.UUID(gotS), u)
+		}
 	}
 }
 
 // TestParseRejects is the list of things that are not an ID of the kind
-// asked for. Each case is run against both parsers, with the prefix
-// substituted, since neither should be laxer than the other.
+// asked for. Each case is run against every parser, with the prefix
+// substituted, since none should be laxer than another.
 func TestParseRejects(t *testing.T) {
 	t.Parallel()
 
@@ -266,6 +297,8 @@ func TestParseRejects(t *testing.T) {
 					_, err = ParseProjectID(in)
 				case KindWorkspace:
 					_, err = ParseWorkspaceID(in)
+				case KindSecret:
+					_, err = ParseSecretID(in)
 				}
 
 				if err == nil {
@@ -304,6 +337,18 @@ func TestParseRejectsTheOtherKind(t *testing.T) {
 	if _, err = ParseWorkspaceID(project); !errors.Is(err, ErrWrongKind) {
 		t.Errorf("ParseWorkspaceID(%q) = %v, want %v", project, err, ErrWrongKind)
 	}
+
+	// A secret ID is not a project ID and a project ID is not a secret ID:
+	// the customer-facing secret identifier crosses a tenant boundary, so
+	// pasting one where the other belongs must be rejected at the edge
+	// rather than becoming a lookup of another kind's row.
+	secret := SecretID(u).String()
+	if _, err = ParseSecretID(project); !errors.Is(err, ErrWrongKind) {
+		t.Errorf("ParseSecretID(%q) = %v, want %v", project, err, ErrWrongKind)
+	}
+	if _, err = ParseProjectID(secret); !errors.Is(err, ErrWrongKind) {
+		t.Errorf("ParseProjectID(%q) = %v, want %v", secret, err, ErrWrongKind)
+	}
 }
 
 // TestParseFailsToTheZeroValue: a rejected string yields nothing usable, so a
@@ -332,6 +377,9 @@ func TestMustParse(t *testing.T) {
 	if got := MustParseWorkspaceID(WorkspaceID(u).String()); got != WorkspaceID(u) {
 		t.Errorf("MustParseWorkspaceID = %v, want %v", uuid.UUID(got), u)
 	}
+	if got := MustParseSecretID(SecretID(u).String()); got != SecretID(u) {
+		t.Errorf("MustParseSecretID = %v, want %v", uuid.UUID(got), u)
+	}
 
 	for _, tc := range []struct {
 		name string
@@ -339,6 +387,7 @@ func TestMustParse(t *testing.T) {
 	}{
 		{"project", func() { MustParseProjectID("nope") }},
 		{"workspace", func() { MustParseWorkspaceID("nope") }},
+		{"secret", func() { MustParseSecretID("nope") }},
 		{"wrong kind", func() { MustParseProjectID(WorkspaceID(u).String()) }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

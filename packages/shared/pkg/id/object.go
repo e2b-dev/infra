@@ -3,6 +3,7 @@
 //
 //	prj_uk75vf2v7iagp2kgn7pfze3car
 //	wrk_imkhttdroeagp2kgn7t53cvkiw
+//	sec_uk75vf2v7iagp2kgn7pfze3car
 //
 // The tag is there for the reader and for the parser: it says what the ID
 // names, so a project ID pasted where a workspace ID belongs is rejected at
@@ -19,11 +20,11 @@
 // two- or four-character prefix does not build.
 //
 // In Go the tag is carried in the type, not in the value. ObjectID is generic
-// over a phantom type that names one ObjectKind, and ProjectID and
-// WorkspaceID are that generic instantiated: distinct types, so assigning one
-// to the other does not compile, sharing one copy of the parsing and
-// formatting. The underlying type is uuid.UUID, so conversion in either
-// direction is a conversion and needs no accessor:
+// over a phantom type that names one ObjectKind. ProjectID, WorkspaceID, and
+// SecretID are that generic instantiated: distinct types, so assigning one to
+// another does not compile, sharing one copy of the parsing and formatting.
+// The underlying type is uuid.UUID, so conversion in either direction is a
+// conversion and needs no accessor:
 //
 //	pid := ProjectID(uuid.Must(uuid.NewV7()))
 //	u := uuid.UUID(pid)
@@ -49,6 +50,7 @@ type ObjectKind uint8
 const (
 	KindProject ObjectKind = iota + 1
 	KindWorkspace
+	KindSecret
 )
 
 // The prefixes. Three lowercase letters each, one per kind, none of them a
@@ -56,6 +58,7 @@ const (
 const (
 	projectPrefix   = "prj"
 	workspacePrefix = "wrk"
+	secretPrefix    = "sec"
 )
 
 const (
@@ -85,6 +88,7 @@ const (
 var (
 	_ [prefixLen]byte = [len(projectPrefix)]byte{}
 	_ [prefixLen]byte = [len(workspacePrefix)]byte{}
+	_ [prefixLen]byte = [len(secretPrefix)]byte{}
 )
 
 var (
@@ -104,6 +108,8 @@ func (k ObjectKind) Prefix() string {
 		return projectPrefix
 	case KindWorkspace:
 		return workspacePrefix
+	case KindSecret:
+		return secretPrefix
 	default:
 		return ""
 	}
@@ -126,10 +132,12 @@ type kind interface{ objectKind() ObjectKind }
 type (
 	projectKind   struct{}
 	workspaceKind struct{}
+	secretKind    struct{}
 )
 
 func (projectKind) objectKind() ObjectKind   { return KindProject }
 func (workspaceKind) objectKind() ObjectKind { return KindWorkspace }
+func (secretKind) objectKind() ObjectKind    { return KindSecret }
 
 // ObjectID is a UUID that knows, in its type, what it names. Use the aliases
 // below rather than naming it directly.
@@ -138,6 +146,7 @@ type ObjectID[K kind] uuid.UUID
 type (
 	ProjectID   = ObjectID[projectKind]
 	WorkspaceID = ObjectID[workspaceKind]
+	SecretID    = ObjectID[secretKind]
 )
 
 // Kind is the kind this ID names, the same for every value of the type.
@@ -148,8 +157,8 @@ func (o ObjectID[K]) Kind() ObjectKind {
 }
 
 // String is the external form: prefix, underscore, 26 base32 characters,
-// ObjectIDLen in all. It is what ParseProjectID and ParseWorkspaceID accept,
-// and the only spelling they accept.
+// ObjectIDLen in all. It is what the kind-specific parsers accept, and the only
+// spelling they accept.
 func (o ObjectID[K]) String() string {
 	return o.Kind().Prefix() + string(prefixSeparator) + Encode(uuid.UUID(o))
 }
@@ -165,6 +174,11 @@ func ParseWorkspaceID(s string) (WorkspaceID, error) {
 	return parseObjectID[workspaceKind](s)
 }
 
+// ParseSecretID reads a secret ID, under the same rules.
+func ParseSecretID(s string) (SecretID, error) {
+	return parseObjectID[secretKind](s)
+}
+
 // MustParseProjectID is ParseProjectID for IDs fixed in the source, where a
 // failure is a bug in the program rather than in its input. It panics.
 func MustParseProjectID(s string) ProjectID {
@@ -174,6 +188,12 @@ func MustParseProjectID(s string) ProjectID {
 // MustParseWorkspaceID is MustParseProjectID for workspaces.
 func MustParseWorkspaceID(s string) WorkspaceID {
 	return mustParseObjectID(ParseWorkspaceID(s))
+}
+
+// MustParseSecretID is ParseSecretID for IDs fixed in the source. It panics on
+// invalid input.
+func MustParseSecretID(s string) SecretID {
+	return mustParseObjectID(ParseSecretID(s))
 }
 
 // ConvertTeamIDToProjectID names a team by the word the outside world uses.
