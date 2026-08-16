@@ -295,6 +295,50 @@ test('runtime verifier renders standalone bootstrap and tenant probes as valid s
     const script = Buffer.from(encoded, 'base64').toString('utf8');
     assert.doesNotThrow(() => new Function(script));
   }
+
+  const tenantScript = Buffer.from(
+    probes.tenantBoundaryProbe,
+    'base64',
+  ).toString('utf8');
+  const helperStart = tenantScript.indexOf('const exactProcRootFile');
+  const helperEnd = tenantScript.indexOf('let probeStage');
+  assert.ok(helperStart >= 0 && helperEnd > helperStart);
+  const helperFactory = new Function(
+    'lstatSync',
+    'procRootPathChain',
+    `${tenantScript.slice(helperStart, helperEnd)}; return { exactProcRootFile, exactProcRootDirectory };`,
+  );
+  const observedPids = [];
+  const helpers = helperFactory(
+    (path) => ({
+      isDirectory: () => !path.endsWith('tenant-cgroup-ready'),
+      isFile: () => path.endsWith('tenant-cgroup-ready'),
+      isSymbolicLink: () => false,
+      uid: 0,
+      gid: 0,
+      mode: path.endsWith('tenant-cgroup-ready') ? 0o444 : 0o700,
+    }),
+    (supervisorPid, runtimePath) => {
+      observedPids.push(supervisorPid);
+      return runtimePath === '/run/monad-admission/tenant-cgroup-ready'
+        ? ['/proc/1006/root/run', '/proc/1006/root/run/monad-admission',
+          '/proc/1006/root/run/monad-admission/tenant-cgroup-ready']
+        : ['/proc/1006/root/run', '/proc/1006/root/run/monad-admission'];
+    },
+  );
+  assert.equal(
+    helpers.exactProcRootFile(
+      1006,
+      '/run/monad-admission/tenant-cgroup-ready',
+      0o444,
+    ),
+    true,
+  );
+  assert.equal(
+    helpers.exactProcRootDirectory(1006, '/run/monad-admission', 0o700),
+    true,
+  );
+  assert.deepEqual(observedPids, [1006, 1006]);
 });
 
 test('runtime version changes with tree identity', async () => {

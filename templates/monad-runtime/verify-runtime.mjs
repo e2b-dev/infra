@@ -510,7 +510,7 @@ const exactFile = (path, mode) => {
   return value.isFile() && !value.isSymbolicLink() && value.uid === 0 &&
     value.gid === 0 && (value.mode & 0o7777) === mode && realpathSync(path) === path;
 };
-const exactProcRootFile = (runtimePath, mode) => {
+const exactProcRootFile = (supervisorPid, runtimePath, mode) => {
   const chain = procRootPathChain(supervisorPid, runtimePath);
   const ancestors = chain.slice(0, -1);
   if (!ancestors.every((path) => {
@@ -522,7 +522,7 @@ const exactProcRootFile = (runtimePath, mode) => {
   return value.isFile() && !value.isSymbolicLink() && value.uid === 0 &&
     value.gid === 0 && (value.mode & 0o7777) === mode;
 };
-const exactProcRootDirectory = (runtimePath, mode) => {
+const exactProcRootDirectory = (supervisorPid, runtimePath, mode) => {
   const chain = procRootPathChain(supervisorPid, runtimePath);
   return chain.every((path, index) => {
     const value = lstatSync(path);
@@ -546,8 +546,8 @@ probeStage = "marker_file";
 const attestationPath = "/etc/monad/session-rebind-tenant-boundary.json";
 const markerPaths = procRootPaths(supervisorPid);
 const runtimeRootPath = (path) => procRootRuntimePath(supervisorPid, path);
-if (!exactProcRootDirectory("/run/monad-admission", 0o700) ||
-    !exactProcRootFile("/run/monad-admission/tenant-cgroup-ready", 0o444)) {
+if (!exactProcRootDirectory(supervisorPid, "/run/monad-admission", 0o700) ||
+    !exactProcRootFile(supervisorPid, "/run/monad-admission/tenant-cgroup-ready", 0o444)) {
   throw new Error("tenant cgroup marker file is invalid");
 }
 const marker = readFileSync(markerPaths.marker, "utf8");
@@ -556,7 +556,7 @@ if (marker !== "/sys/fs/cgroup/monad-tenant\n") {
 }
 const tenantCgroup = marker.slice(0, -1);
 probeStage = "marker_target";
-if (!exactProcRootDirectory("/sys/fs/cgroup/monad-tenant")) {
+if (!exactProcRootDirectory(supervisorPid, "/sys/fs/cgroup/monad-tenant")) {
   throw new Error("tenant cgroup marker target is invalid");
 }
 const expectedMembership = "0::/monad-tenant";
@@ -629,18 +629,18 @@ const daemonSha256 = sha256(daemonExecutablePath);
 const runtimeDaemonSha256 = sha256(runtimeDaemonPath);
 const admissionHelperSha256 = sha256(runtimeAdmissionHelperPath);
 const attestationFilesExact =
-  exactProcRootFile(attestationPath, 0o444) &&
-  exactProcRootFile("/usr/local/bin/monad-agent", 0o755) &&
-  exactProcRootFile("/usr/local/libexec/monad-tenant-admission", 0o755) &&
+  exactProcRootFile(supervisorPid, attestationPath, 0o444) &&
+  exactProcRootFile(supervisorPid, "/usr/local/bin/monad-agent", 0o755) &&
+  exactProcRootFile(supervisorPid, "/usr/local/libexec/monad-tenant-admission", 0o755) &&
   serviceNames.every((name) =>
-    exactProcRootFile("/usr/local/libexec/monad-webtop-svc-" + name, 0o555) &&
-    exactProcRootFile("/etc/s6-overlay/s6-rc.d/svc-" + name + "/run", 0o755)) &&
-  exactProcRootFile("/etc/s6-overlay/s6-rc.d/svc-cron/run", 0o755);
+    exactProcRootFile(supervisorPid, "/usr/local/libexec/monad-webtop-svc-" + name, 0o555) &&
+    exactProcRootFile(supervisorPid, "/etc/s6-overlay/s6-rc.d/svc-" + name + "/run", 0o755)) &&
+  exactProcRootFile(supervisorPid, "/etc/s6-overlay/s6-rc.d/svc-cron/run", 0o755);
 const markerExact =
-  exactProcRootFile("/run/monad-admission/tenant-cgroup-ready", 0o444) &&
+  exactProcRootFile(supervisorPid, "/run/monad-admission/tenant-cgroup-ready", 0o444) &&
   readFileSync(markerPaths.marker, "utf8") === "/sys/fs/cgroup/monad-tenant\n" &&
-  exactProcRootDirectory("/run/monad-admission", 0o700) &&
-  exactProcRootDirectory("/sys/fs/cgroup/monad-tenant");
+  exactProcRootDirectory(supervisorPid, "/run/monad-admission", 0o700) &&
+  exactProcRootDirectory(supervisorPid, "/sys/fs/cgroup/monad-tenant");
 const finalSupervisorPid = uniqueNamedPid("s6-svscan");
 const supervisorStateStable =
   finalSupervisorPid === supervisorPid &&
