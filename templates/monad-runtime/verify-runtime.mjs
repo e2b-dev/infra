@@ -21,6 +21,10 @@ import {
   summarizeSandboxInventory,
   SYNTHETIC_METADATA_KEY,
 } from './runtime-verification-inventory.mjs';
+import {
+  classifyTenantBoundaryEvidence,
+  waitForTenantBoundaryEvidence,
+} from './runtime-verification-convergence.mjs';
 
 const environment = process.env;
 const apiKey = requiredEnv(environment, 'E2B_API_KEY');
@@ -86,9 +90,13 @@ async function waitForCleanupInventory(currentSandboxId) {
   return result;
 }
 
-async function run(command, timeoutMs = 120_000) {
+async function run(
+  command,
+  timeoutMs = 120_000,
+  commandRequestTimeoutMs = requestTimeoutMs,
+) {
   const result = await sandbox.commands.run(command, {
-    requestTimeoutMs,
+    requestTimeoutMs: commandRequestTimeoutMs,
     timeoutMs,
   });
   if (result.exitCode !== 0) {
@@ -490,11 +498,14 @@ const processSnapshot = (value) => ({
 });
 const verifyPinnedNginxProcesses = ${verifyPinnedNginxProcesses.toString()};
 const verifyPinnedWatchdogProcesses = ${verifyPinnedWatchdogProcesses.toString()};
+const classifyBoundaryEvidence = ${classifyTenantBoundaryEvidence.toString()};
 const exactFile = (path, mode) => {
   const value = lstatSync(path);
   return value.isFile() && !value.isSymbolicLink() && value.uid === 0 &&
     value.gid === 0 && (value.mode & 0o7777) === mode && realpathSync(path) === path;
 };
+let probeStage = "marker";
+try {
 const markerPath = "/run/monad-admission/tenant-cgroup-ready";
 const attestationPath = "/etc/monad/session-rebind-tenant-boundary.json";
 const marker = readFileSync(markerPath, "utf8");
@@ -507,6 +518,7 @@ if (realpathSync(tenantCgroup) !== tenantCgroup ||
   throw new Error("tenant cgroup marker escaped the cgroup mount");
 }
 const expectedMembership = "0::" + tenantCgroup.slice("/sys/fs/cgroup".length);
+probeStage = "supervisor";
 const daemonPid = uniqueNamedPid("monad-agent");
 const supervisorPid = uniqueNamedPid("s6-svscan");
 const supervisorNamespacePids = namespacePidVector(status(supervisorPid));
@@ -514,6 +526,7 @@ const supervisorNamespace = readlinkSync("/proc/" + supervisorPid + "/ns/pid");
 if (supervisorNamespacePids.length === 0 || supervisorNamespacePids[0] !== supervisorPid) {
   throw new Error("supervisor namespace identity is not canonical");
 }
+probeStage = "service_mapping";
 const initialServiceStates = Object.fromEntries(
   serviceNames.map((name) => [name, serviceState(name)]),
 );
@@ -543,6 +556,7 @@ const supervisorStateStable =
 if (!serviceStateStable || !supervisorStateStable) {
   throw new Error("supervised service state changed during namespace mapping");
 }
+probeStage = "process_attestation";
 const serviceTrees = Object.fromEntries(
   serviceNames.map((name) => [name, processTree(serviceLeaders[name])]),
 );
@@ -573,10 +587,11 @@ const watchdogIdentityMatch = verifyPinnedWatchdogProcesses({
   leaderPid: serviceLeaders.watchdog,
   processes: serviceTrees.watchdog.map(processSnapshot),
 });
+probeStage = "filesystem_attestation";
 const attestation = JSON.parse(readFileSync(attestationPath, "utf8"));
 const daemonSha256 = sha256("/usr/local/bin/monad-agent");
 const admissionHelperSha256 = sha256("/usr/local/libexec/monad-tenant-admission");
-process.stdout.write(JSON.stringify({
+const boundaryEvidence = {
   daemon_sha256: daemonSha256,
   admission_helper_sha256: admissionHelperSha256,
   attestation_hash_match:
@@ -632,7 +647,11 @@ process.stdout.write(JSON.stringify({
   supervisor_state_stable: supervisorStateStable,
   service_state_stable: serviceStateStable,
   final_processes: finalProcesses,
-}));
+};
+process.stdout.write(JSON.stringify(classifyBoundaryEvidence(boundaryEvidence)));
+} catch {
+  process.stdout.write(JSON.stringify({ probe_ok: false, stage: probeStage }));
+}
 `).toString('base64');
 
 let verificationError;
@@ -698,9 +717,18 @@ try {
     bootstrap_socket_mode: bootstrapGate.socket_mode,
   };
 
-  const tenantBoundary = JSON.parse(
-    await run(`printf '%s' '${tenantBoundaryProbe}' | base64 -d | node`),
-  );
+  const tenantBoundary = await waitForTenantBoundaryEvidence({
+    probe: async ({ remainingMs }) => {
+      const attemptTimeoutMs = Math.min(30_000, remainingMs);
+      return JSON.parse(await run(
+        `printf '%s' '${tenantBoundaryProbe}' | base64 -d | node`,
+        attemptTimeoutMs,
+        attemptTimeoutMs,
+      ));
+    },
+    timeoutMs: 180_000,
+    intervalMs: 3_000,
+  });
   if (
     tenantBoundary.daemon_sha256 !== manifest.daemon_sha256 ||
     tenantBoundary.admission_helper_sha256 !==

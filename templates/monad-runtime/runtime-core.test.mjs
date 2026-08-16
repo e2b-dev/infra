@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { Template } from 'e2b';
 import { RUNTIME_BOOTSTRAP_READY_COMMAND } from './template.mjs';
+import { classifyTenantBoundaryEvidence } from './runtime-verification-convergence.mjs';
 import {
   parseNamespacePidVector,
   selectOuterPidForNamespacePid,
@@ -213,6 +214,9 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
   assert.match(verifier, /service_process_namespace_match/);
   assert.match(verifier, /service_state_stable/);
   assert.match(verifier, /supervisor_state_stable/);
+  assert.match(verifier, /waitForTenantBoundaryEvidence/);
+  assert.match(verifier, /probe_ok: false, stage: probeStage/);
+  assert.match(verifier, /classifyBoundaryEvidence\(boundaryEvidence\)/);
   assert.match(verifier, /expectedNamespace: supervisorNamespace/);
   assert.match(verifier, /expectedNamespaceDepth: supervisorNamespacePids\.length/);
   assert.match(verifier, /processes: namespaceProcesses/);
@@ -246,6 +250,7 @@ test('runtime verifier renders standalone bootstrap and tenant probes as valid s
     'selectOuterPidForNamespacePid',
     'verifyPinnedNginxProcesses',
     'verifyPinnedWatchdogProcesses',
+    'classifyTenantBoundaryEvidence',
     `${verifier.slice(start, end)}; return { bootstrapReadinessProbe, tenantBoundaryProbe };`,
   );
   const probes = factory(
@@ -253,6 +258,7 @@ test('runtime verifier renders standalone bootstrap and tenant probes as valid s
     selectOuterPidForNamespacePid,
     verifyPinnedNginxProcesses,
     verifyPinnedWatchdogProcesses,
+    classifyTenantBoundaryEvidence,
   );
   for (const encoded of Object.values(probes)) {
     const script = Buffer.from(encoded, 'base64').toString('utf8');
