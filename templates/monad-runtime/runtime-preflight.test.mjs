@@ -148,6 +148,7 @@ test('rejects a non-native Docker host before creating a privileged container', 
 
 test('cleans only a container this invocation created when evidence never appears', async () => {
   const calls = [];
+  let logReads = 0;
   let now = 0;
   const runDocker = (args) => {
     calls.push(args);
@@ -156,7 +157,7 @@ test('cleans only a container this invocation created when evidence never appear
       case 'create': return 'preflight-container-id';
       case 'start': return inputs.containerName;
       case 'exec': throw new Error('private daemon detail');
-      case 'container inspect': return 'true';
+      case 'container inspect': return 'true 0';
       case 'container rm': return inputs.containerName;
       default: throw new Error(`unexpected docker command: ${args.join(' ')}`);
     }
@@ -164,12 +165,219 @@ test('cleans only a container this invocation created when evidence never appear
   await assert.rejects(runNativeAmd64RuntimePreflight({
     ...inputs,
     runDocker,
+    readContainerLogs: () => { logReads += 1; return ''; },
     now: () => now,
     sleep: async (milliseconds) => { now += milliseconds; },
     timeoutMs: 2_000,
     intervalMs: 1_000,
   }), /did not publish exact credential-free evidence/);
+  assert.equal(logReads, 0, 'a running container must never trigger log collection');
   assert.equal(calls.filter((args) => commandKey(args) === 'container rm').length, 1);
+});
+
+test('reports only bounded structured boot-fatal evidence when the daemon exits', async () => {
+  const calls = [];
+  const rawSecret = 'MONAD_CREDENTIAL_LEASE_BUNDLE=must-not-leak';
+  const longMessage = `tenant cgroup unavailable ${'x'.repeat(400)}`;
+  const runDocker = (args) => {
+    calls.push(args);
+    switch (commandKey(args)) {
+      case 'info': return 'linux/amd64';
+      case 'create': return 'preflight-container-id';
+      case 'start': return inputs.containerName;
+      case 'exec': throw new Error(rawSecret);
+      case 'container inspect': return 'false 23';
+      case 'container rm': return inputs.containerName;
+      default: throw new Error(`unexpected docker command: ${args.join(' ')}`);
+    }
+  };
+
+  await assert.rejects(runNativeAmd64RuntimePreflight({
+    ...inputs,
+    runDocker,
+    readContainerLogs: () => [
+      JSON.stringify({ t: 'now', level: 'info', msg: '[boot] starting', rawSecret }),
+      JSON.stringify({
+        t: 'now',
+        level: 'error',
+        msg: '[boot] fatal',
+        error: { name: 'Error', message: longMessage, stack: rawSecret },
+      }),
+      rawSecret,
+    ].join('\n'),
+    sleep: async () => {},
+  }), (error) => {
+    assert.equal(error.name, 'Error');
+    assert.match(error.message, /"exit_code":23/);
+    assert.match(error.message, /"name":"Error"/);
+    assert.match(error.message, /"message":"tenant_cgroup"/);
+    assert.doesNotMatch(error.message, /tenant cgroup unavailable|x{20}/);
+    assert.ok(error.message.length < 500, 'diagnostic must remain bounded');
+    assert.doesNotMatch(error.message, /MONAD_CREDENTIAL_LEASE_BUNDLE|must-not-leak|stack/);
+    return true;
+  });
+  assert.equal(calls.filter((args) => commandKey(args) === 'container rm').length, 1);
+});
+
+test('redacts opaque secret-bearing fatal messages before reporting stopped-daemon evidence', async () => {
+  const secret = 'ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  await assert.rejects(runNativeAmd64RuntimePreflight({
+    ...inputs,
+    runDocker: (args) => {
+      switch (commandKey(args)) {
+        case 'info': return 'linux/amd64';
+        case 'create': return 'preflight-container-id';
+        case 'start': return inputs.containerName;
+        case 'exec': throw new Error('probe failed');
+        case 'container inspect': return 'false 1';
+        case 'container rm': return inputs.containerName;
+        default: throw new Error(`unexpected docker command: ${args.join(' ')}`);
+      }
+    },
+    readContainerLogs: () => JSON.stringify({
+      level: 'error',
+      msg: '[boot] fatal',
+      error: { name: secret, message: `request failed for ${secret}` },
+    }),
+    sleep: async () => {},
+  }), (error) => {
+    assert.match(error.message, /"exit_code":1/);
+    assert.match(error.message, /"name":"\[redacted\]"/);
+    assert.match(error.message, /"message":"\[redacted\]"/);
+    assert.doesNotMatch(error.message, new RegExp(secret));
+    return true;
+  });
+});
+
+test('classifies a system boot failure without exposing its raw path', async () => {
+  const privatePath = '/private/runtime/path';
+  const privateErrno = 'EPRIVATELEAK';
+  await assert.rejects(runNativeAmd64RuntimePreflight({
+    ...inputs,
+    runDocker: (args) => {
+      switch (commandKey(args)) {
+        case 'info': return 'linux/amd64';
+        case 'create': return 'preflight-container-id';
+        case 'start': return inputs.containerName;
+        case 'exec': throw new Error('probe failed');
+        case 'container inspect': return 'false 1';
+        case 'container rm': return inputs.containerName;
+        default: throw new Error(`unexpected docker command: ${args.join(' ')}`);
+      }
+    },
+    readContainerLogs: () => JSON.stringify({
+      level: 'error',
+      msg: '[boot] fatal',
+      error: { name: 'Error', message: `${privateErrno}: permission denied, mkdir '${privatePath}'` },
+    }),
+    sleep: async () => {},
+  }), (error) => {
+    assert.match(error.message, /"message":"system_error"/);
+    assert.doesNotMatch(error.message, /EPRIVATELEAK|permission denied|private\/runtime/);
+    return true;
+  });
+});
+
+test('distinguishes exact tenant-boundary attestation policy failures', async () => {
+  for (const message of [
+    'tenant_boundary_attestation_missing',
+    'tenant_boundary_attestation_invalid',
+  ]) {
+    await assert.rejects(runNativeAmd64RuntimePreflight({
+      ...inputs,
+      runDocker: (args) => {
+        switch (commandKey(args)) {
+          case 'info': return 'linux/amd64';
+          case 'create': return 'preflight-container-id';
+          case 'start': return inputs.containerName;
+          case 'exec': throw new Error('probe failed');
+          case 'container inspect': return 'false 1';
+          case 'container rm': return inputs.containerName;
+          default: throw new Error(`unexpected docker command: ${args.join(' ')}`);
+        }
+      },
+      readContainerLogs: () => JSON.stringify({
+        level: 'error',
+        msg: '[boot] fatal',
+        error: { name: 'Error', message },
+      }),
+      sleep: async () => {},
+    }), (error) => {
+      assert.match(error.message, new RegExp(`"message":"${message}"`));
+      return true;
+    });
+  }
+});
+
+test('does not claim the daemon stopped when Docker state is unavailable', async () => {
+  const calls = [];
+  let logReads = 0;
+  await assert.rejects(runNativeAmd64RuntimePreflight({
+    ...inputs,
+    runDocker: (args) => {
+      calls.push(args);
+      switch (commandKey(args)) {
+        case 'info': return 'linux/amd64';
+        case 'create': return 'preflight-container-id';
+        case 'start': return inputs.containerName;
+        case 'exec': throw new Error('private probe failure');
+        case 'container inspect': return 'false 999';
+        case 'container rm': return inputs.containerName;
+        default: throw new Error(`unexpected docker command: ${args.join(' ')}`);
+      }
+    },
+    readContainerLogs: () => {
+      logReads += 1;
+      return '';
+    },
+    sleep: async () => {},
+  }), /native amd64 runtime preflight container state is unavailable/);
+  assert.equal(logReads, 0, 'an unknown state must never trigger log collection');
+  assert.equal(calls.filter((args) => commandKey(args) === 'container rm').length, 1);
+});
+
+test('reads logs only for canonical stopped exit codes from 0 through 255', async () => {
+  for (const exitCode of [0, 255]) {
+    let logReads = 0;
+    await assert.rejects(runNativeAmd64RuntimePreflight({
+      ...inputs,
+      runDocker: (args) => {
+        switch (commandKey(args)) {
+          case 'info': return 'linux/amd64';
+          case 'create': return 'preflight-container-id';
+          case 'start': return inputs.containerName;
+          case 'exec': throw new Error('probe failed');
+          case 'container inspect': return `false ${exitCode}`;
+          case 'container rm': return inputs.containerName;
+          default: throw new Error(`unexpected docker command: ${args.join(' ')}`);
+        }
+      },
+      readContainerLogs: () => { logReads += 1; return ''; },
+      sleep: async () => {},
+    }), new RegExp(`"exit_code":${exitCode}`));
+    assert.equal(logReads, 1);
+  }
+
+  for (const state of ['false 256', 'false 025', 'false -1', 'malformed']) {
+    let logReads = 0;
+    await assert.rejects(runNativeAmd64RuntimePreflight({
+      ...inputs,
+      runDocker: (args) => {
+        switch (commandKey(args)) {
+          case 'info': return 'linux/amd64';
+          case 'create': return 'preflight-container-id';
+          case 'start': return inputs.containerName;
+          case 'exec': throw new Error('probe failed');
+          case 'container inspect': return state;
+          case 'container rm': return inputs.containerName;
+          default: throw new Error(`unexpected docker command: ${args.join(' ')}`);
+        }
+      },
+      readContainerLogs: () => { logReads += 1; return ''; },
+      sleep: async () => {},
+    }), /native amd64 runtime preflight container state is unavailable/);
+    assert.equal(logReads, 0, `state ${state} must not trigger log collection`);
+  }
 });
 
 test('does not remove an unowned colliding container when create fails', async () => {
