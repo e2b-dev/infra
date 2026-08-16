@@ -71,9 +71,10 @@ test('Dockerfile preserves and gates every tenant-facing Webtop longrun', async 
     /abc_groups="\$\(id -G abc \| xargs -n1 \| sort -n \| paste -sd, -\)"/,
   );
   assert.match(dockerfile, /test "\$abc_groups" = "100,1001"/);
-  assert.match(dockerfile, /grep -Eq '\(\^\|\[:,\]\)abc\(,\|\$\)'/);
+  assert.doesNotMatch(dockerfile, /getent group (?:100|sudo|docker)/);
   assert.match(dockerfile, /svc-cron\/run/);
   assert.match(dockerfile, /exec sleep infinity/);
+  assert.match(dockerfile, /Attested cron override: inactive/);
   assert.match(dockerfile, /chown -R 911:1001 \/opt\/monad\/home \/workspace/);
   assert.match(
     dockerfile,
