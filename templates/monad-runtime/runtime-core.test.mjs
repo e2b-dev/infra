@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { Template } from 'e2b';
 import {
   S6_SERVICE_FILES,
   RUNTIME_BUILD_FILES,
@@ -91,6 +92,21 @@ test('Dockerfile preserves and gates every tenant-facing Webtop longrun', async 
   assert.match(dockerfile, /execFileSync\("sha256sum"/);
   assert.match(dockerfile, /svc-monad-agent/);
   assert.doesNotMatch(dockerfile, /\b(?:kasm|novnc|tigervnc)\b/i);
+});
+
+test('E2B Dockerfile rendering preserves the runtime hash verifier', async () => {
+  const dockerfile = await readFile(
+    new URL('./e2b.Dockerfile', import.meta.url),
+    'utf8',
+  );
+  const rendered = Template.toDockerfile(Template().fromDockerfile(dockerfile));
+  const hashCheck = rendered
+    .split('\n')
+    .find((line) => line.includes('prepared daemon hash mismatch'));
+
+  assert.ok(hashCheck, 'rendered Dockerfile must retain the runtime hash check');
+  assert.match(hashCheck, /\.slice\(0,64\)/);
+  assert.doesNotMatch(hashCheck, /\.split\(\/s\+\/\)/);
 });
 
 test('template readiness composes bootstrap-await and desktop health under s6', async () => {

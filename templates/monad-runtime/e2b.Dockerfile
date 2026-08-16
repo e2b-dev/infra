@@ -45,7 +45,7 @@ COPY .build-assets/session-rebind-tenant-boundary.json /etc/monad/session-rebind
 
 # Fail the build before init can ever see bytes that differ from the prepared
 # same-descriptor hashes bound into the immutable tenant-boundary claim.
-RUN node -e 'const {execFileSync}=require("node:child_process"); const attestation=require("/etc/monad/session-rebind-tenant-boundary.json"); const sha256=(path)=>execFileSync("sha256sum",[path],{encoding:"utf8"}).trim().split(/\s+/)[0]; if(attestation.daemon.sha256!==sha256("/usr/local/bin/monad-agent")) throw new Error("prepared daemon hash mismatch"); if(attestation.admission_helper.sha256!==sha256("/usr/local/libexec/monad-tenant-admission")) throw new Error("prepared admission helper hash mismatch");'
+RUN node -e 'const {execFileSync}=require("node:child_process"); const attestation=require("/etc/monad/session-rebind-tenant-boundary.json"); const sha256=(path)=>{const digest=execFileSync("sha256sum",[path],{encoding:"utf8"}).slice(0,64); if(!/^[a-f0-9]{64}$/.test(digest)) throw new Error("invalid sha256sum output"); return digest;}; if(attestation.daemon.sha256!==sha256("/usr/local/bin/monad-agent")) throw new Error("prepared daemon hash mismatch"); if(attestation.admission_helper.sha256!==sha256("/usr/local/libexec/monad-tenant-admission")) throw new Error("prepared admission helper hash mismatch");'
 
 COPY .build-assets/monad /usr/local/bin/monad
 COPY .build-assets/entrypoint.sh /usr/local/bin/monad-entrypoint
