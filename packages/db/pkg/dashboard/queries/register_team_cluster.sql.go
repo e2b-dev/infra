@@ -72,3 +72,17 @@ func (q *Queries) CreateCluster(ctx context.Context, arg CreateClusterParams) (u
 	err := row.Scan(&id)
 	return id, err
 }
+
+const teamClusterAssignment = `-- name: TeamClusterAssignment :one
+SELECT cluster_id
+FROM public.teams
+WHERE id = $1::uuid
+  AND cluster_id IS NOT NULL
+`
+
+func (q *Queries) TeamClusterAssignment(ctx context.Context, teamID uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, teamClusterAssignment, teamID)
+	var clusterID uuid.UUID
+	err := row.Scan(&clusterID)
+	return clusterID, err
+}

@@ -460,6 +460,15 @@ components:
           type: string
           format: uuid
 
+    AdminTeamClusterAssignmentResponse:
+      type: object
+      required:
+        - cluster_id
+      properties:
+        cluster_id:
+          type: string
+          format: uuid
+
     BuildStatus:
       type: string
       description: Build status mapped for dashboard clients.
@@ -1629,6 +1638,29 @@ paths:
           $ref: "#/components/responses/500"
 
   /admin/teams/{teamID}/cluster:
+    get:
+      summary: Get a team's assigned cluster
+      description: Returns the current cluster assignment without exposing cluster credentials.
+      tags: [admin]
+      security:
+        - AdminApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/teamID"
+      responses:
+        "200":
+          description: Cluster assignment returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTeamClusterAssignmentResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
     put:
       summary: Assign a cluster to a team
       description: Updates the team's cluster reference to an existing cluster.

@@ -59,6 +59,25 @@ func (s *APIStore) PostAdminClusters(c *gin.Context) {
 	c.JSON(http.StatusCreated, api.AdminClusterCreateResponse{ClusterId: clusterID})
 }
 
+func (s *APIStore) GetAdminTeamsTeamIDCluster(c *gin.Context, teamID api.TeamID) {
+	clusterID, err := s.db.Dashboard.TeamClusterAssignment(
+		c.Request.Context(),
+		teamID,
+	)
+	if dberrors.IsNotFoundError(err) {
+		s.sendAPIStoreError(c, http.StatusNotFound, "Team cluster assignment not found")
+
+		return
+	}
+	if err != nil {
+		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to load team cluster assignment")
+
+		return
+	}
+
+	c.JSON(http.StatusOK, api.AdminTeamClusterAssignmentResponse{ClusterId: clusterID})
+}
+
 func (s *APIStore) PutAdminTeamsTeamIDCluster(c *gin.Context, teamID api.TeamID) {
 	ctx := c.Request.Context()
 

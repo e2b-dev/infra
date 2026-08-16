@@ -101,6 +101,34 @@ func TestPutAdminTeamsTeamIDClusterAssignsExistingCluster(t *testing.T) {
 	require.Equal(t, clusterID, assignedClusterID)
 }
 
+func TestGetAdminTeamsTeamIDClusterReturnsOnlyAssignment(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+	teamID := createClusterAssignmentTestTeam(t, db)
+	clusterID := uuid.New()
+	require.NoError(t, db.SqlcClient.TestsRawSQL(t.Context(),
+		`INSERT INTO public.clusters (id, name, endpoint, endpoint_tls, token) VALUES ($1, 'managed', 'api.example.test:5008', true, 'secret-token')`,
+		clusterID,
+	))
+	require.NoError(t, db.SqlcClient.TestsRawSQL(t.Context(),
+		`UPDATE public.teams SET cluster_id = $1 WHERE id = $2`,
+		clusterID,
+		teamID,
+	))
+
+	store := &APIStore{db: db.SqlcClient}
+	response := callGetClusterAssignment(t, store, teamID)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	var assignment api.AdminTeamClusterAssignmentResponse
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &assignment))
+	require.Equal(t, clusterID, assignment.ClusterId)
+	require.NotContains(t, response.Body.String(), "secret-token")
+
+	missing := callGetClusterAssignment(t, store, uuid.New())
+	require.Equal(t, http.StatusNotFound, missing.Code, missing.Body.String())
+}
+
 func TestPutAdminTeamsTeamIDClusterRejectsMissingResources(t *testing.T) {
 	t.Parallel()
 
@@ -152,6 +180,27 @@ func callAssignCluster(
 	ginCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/admin/teams/"+teamID.String()+"/cluster", bytes.NewReader(body))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 	store.PutAdminTeamsTeamIDCluster(ginCtx, teamID)
+	ginCtx.Writer.WriteHeaderNow()
+
+	return recorder
+}
+
+func callGetClusterAssignment(
+	t *testing.T,
+	store *APIStore,
+	teamID uuid.UUID,
+) *httptest.ResponseRecorder {
+	t.Helper()
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	ginCtx.Request = httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		"/admin/teams/"+teamID.String()+"/cluster",
+		nil,
+	)
+	store.GetAdminTeamsTeamIDCluster(ginCtx, teamID)
 	ginCtx.Writer.WriteHeaderNow()
 
 	return recorder
