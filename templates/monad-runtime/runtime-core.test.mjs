@@ -66,7 +66,11 @@ test('Dockerfile preserves and gates every tenant-facing Webtop longrun', async 
   assert.doesNotMatch(dockerfile, /grep -Fq 's6-setuidgid abc'/);
   assert.match(dockerfile, /gpasswd -d abc sudo/);
   assert.match(dockerfile, /gpasswd -d abc docker/);
-  assert.match(dockerfile, /test "\$\(id -G abc\)" = "1001 100"/);
+  assert.match(
+    dockerfile,
+    /abc_groups="\$\(id -G abc \| xargs -n1 \| sort -n \| paste -sd, -\)"/,
+  );
+  assert.match(dockerfile, /test "\$abc_groups" = "100,1001"/);
   assert.match(dockerfile, /grep -Eq '\(\^\|\[:,\]\)abc\(,\|\$\)'/);
   assert.match(dockerfile, /svc-cron\/run/);
   assert.match(dockerfile, /exec sleep infinity/);
@@ -94,7 +98,7 @@ test('Dockerfile preserves and gates every tenant-facing Webtop longrun', async 
   assert.doesNotMatch(dockerfile, /\b(?:kasm|novnc|tigervnc)\b/i);
 });
 
-test('E2B Dockerfile rendering preserves the runtime hash verifier', async () => {
+test('E2B Dockerfile rendering preserves runtime hash and group verifiers', async () => {
   const dockerfile = await readFile(
     new URL('./e2b.Dockerfile', import.meta.url),
     'utf8',
@@ -107,6 +111,11 @@ test('E2B Dockerfile rendering preserves the runtime hash verifier', async () =>
   assert.ok(hashCheck, 'rendered Dockerfile must retain the runtime hash check');
   assert.match(hashCheck, /\.slice\(0,64\)/);
   assert.doesNotMatch(hashCheck, /\.split\(\/s\+\/\)/);
+  assert.match(
+    rendered,
+    /abc_groups="\$\(id -G abc \| xargs -n1 \| sort -n \| paste -sd, -\)"/,
+  );
+  assert.match(rendered, /test "\$abc_groups" = "100,1001"/);
 });
 
 test('template readiness composes bootstrap-await and desktop health under s6', async () => {

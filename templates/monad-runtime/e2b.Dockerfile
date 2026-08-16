@@ -124,7 +124,9 @@ RUN chmod +x \
     && test "$(id -u abc):$(id -g abc)" = "911:1001" \
     && gpasswd -d abc sudo \
     && gpasswd -d abc docker \
-    && test "$(id -G abc)" = "1001 100" \
+    && abc_groups="$(id -G abc | xargs -n1 | sort -n | paste -sd, -)" \
+    && echo "Attested abc groups: $abc_groups" \
+    && test "$abc_groups" = "100,1001" \
     && test "$(getent group 100)" = "users:x:100:abc" \
     && ! getent group sudo | grep -Eq '(^|[:,])abc(,|$)' \
     && ! getent group docker | grep -Eq '(^|[:,])abc(,|$)' \
