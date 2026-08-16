@@ -248,6 +248,36 @@ process.stdout.write(JSON.stringify({
 }));
 `).toString('base64');
 
+const bootstrapReadinessProbe = Buffer.from(String.raw`
+const { execFileSync } = require("node:child_process");
+const { lstatSync, readFileSync } = require("node:fs");
+const servicePath = "/run/service/svc-monad-agent";
+const socketPath = "/var/run/monad/credential-bootstrap.sock";
+const servicePidText = execFileSync(
+  "s6-svstat",
+  ["-o", "pid", servicePath],
+  { encoding: "utf8" },
+).trim();
+if (!/^[1-9][0-9]*$/.test(servicePidText)) {
+  throw new Error("supervised monad-agent PID is not canonical");
+}
+const servicePid = Number(servicePidText);
+const serviceComm = readFileSync("/proc/" + servicePid + "/comm", "utf8").trim();
+const namedPids = execFileSync("pgrep", ["-x", "monad-agent"], {
+  encoding: "utf8",
+}).trim().split(/\s+/).filter(Boolean);
+const socket = lstatSync(socketPath);
+process.stdout.write(JSON.stringify({
+  service_pid: servicePid,
+  service_comm: serviceComm,
+  unique_named_process: namedPids.length === 1 && namedPids[0] === servicePidText,
+  socket_is_exact_type: socket.isSocket() && !socket.isSymbolicLink(),
+  socket_uid: socket.uid,
+  socket_gid: socket.gid,
+  socket_mode: (socket.mode & 0o7777).toString(8),
+}));
+`).toString('base64');
+
 const tenantBoundaryProbe = Buffer.from(String.raw`
 const { execFileSync } = require("node:child_process");
 const { lstatSync, readFileSync, readdirSync, realpathSync } = require("node:fs");
@@ -503,28 +533,30 @@ try {
   // process is supervised and up, and it is awaiting the private bootstrap
   // on its root-only socket. Full runtime health belongs to the session path
   // and credentialed canaries.
-  const bootstrapGate = (
-    await run(
-      "sh -c 'pgrep -x monad-agent >/dev/null && echo daemon-running || echo daemon-missing; test -S /var/run/monad/credential-bootstrap.sock && echo awaiting-bootstrap || echo socket-missing; stat -c %a /var/run/monad/credential-bootstrap.sock 2>/dev/null || true'",
-    )
-  ).trim().split('\n');
+  const bootstrapGate = JSON.parse(
+    await run(`printf '%s' '${bootstrapReadinessProbe}' | base64 -d | node`),
+  );
   if (
-    bootstrapGate[0] !== 'daemon-running' ||
-    bootstrapGate[1] !== 'awaiting-bootstrap'
+    !Number.isSafeInteger(bootstrapGate.service_pid) ||
+    bootstrapGate.service_pid <= 1 ||
+    bootstrapGate.service_comm !== 'monad-agent' ||
+    bootstrapGate.unique_named_process !== true ||
+    bootstrapGate.socket_is_exact_type !== true ||
+    bootstrapGate.socket_uid !== 0 ||
+    bootstrapGate.socket_gid !== 0 ||
+    bootstrapGate.socket_mode !== '600'
   ) {
     throw new Error(
-      `daemon is not awaiting credential bootstrap: ${bootstrapGate.join(', ')}`,
-    );
-  }
-  if (bootstrapGate[2] !== '600') {
-    throw new Error(
-      `credential bootstrap socket mode is ${bootstrapGate[2] ?? 'unknown'}; expected root-only 600`,
+      `daemon bootstrap readiness contract failed: ${JSON.stringify(bootstrapGate)}`,
     );
   }
   evidence.health = {
-    daemon: 'running',
+    daemon: 'supervised',
+    daemon_pid: bootstrapGate.service_pid,
     credential_bootstrap: 'awaiting',
-    bootstrap_socket_mode: bootstrapGate[2],
+    bootstrap_socket_uid: bootstrapGate.socket_uid,
+    bootstrap_socket_gid: bootstrapGate.socket_gid,
+    bootstrap_socket_mode: bootstrapGate.socket_mode,
   };
 
   const tenantBoundary = JSON.parse(

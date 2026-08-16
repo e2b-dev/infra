@@ -8,6 +8,15 @@ const assetManifestPath = fileURLToPath(
   new URL('./.build-assets/manifest.json', import.meta.url),
 );
 
+export const RUNTIME_BOOTSTRAP_READY_COMMAND =
+  'agent_pid="$(s6-svstat -o pid /run/service/svc-monad-agent)"' +
+  ' && test "$agent_pid" -gt 1' +
+  ' && test "$(cat /proc/$agent_pid/comm)" = monad-agent' +
+  ' && test "$(pgrep -x monad-agent)" = "$agent_pid"' +
+  ' && test -S /var/run/monad/credential-bootstrap.sock' +
+  ' && test ! -L /var/run/monad/credential-bootstrap.sock' +
+  ' && test "$(stat -c %u:%g:%a /var/run/monad/credential-bootstrap.sock)" = 0:0:600';
+
 export async function createMonadRuntimeTemplate() {
   await access(assetManifestPath);
   const source = await loadRuntimeSource();
@@ -47,10 +56,11 @@ export async function createMonadRuntimeTemplate() {
         // is baked into the image) and cannot serve /monad/health until a
         // session bootstrap arrives — which never happens at build time, and
         // could not mint anyway under the build/verify deny-all egress posture.
-        // Build-time readiness is therefore: daemon up AND awaiting bootstrap
-        // (socket present) plus the desktop surfaces. Full runtime health is
-        // proven by the session path / credentialed canaries, not the build.
-        "test -S /var/run/monad/credential-bootstrap.sock && curl -fsS http://127.0.0.1:6080/ >/dev/null && curl -fkSs https://127.0.0.1:6081/ >/dev/null",
+        // Build-time readiness is therefore only the supervised daemon waiting
+        // on its exact root-only bootstrap socket. The post-build verifier is
+        // the authority for the marker-gated desktop/cgroup surface, and the
+        // credentialed canary remains the authority for session runtime health.
+        RUNTIME_BOOTSTRAP_READY_COMMAND,
       );
     return { template, runtimeVersion, source, assetManifest };
   } finally {

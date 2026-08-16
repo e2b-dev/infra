@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { Template } from 'e2b';
+import { RUNTIME_BOOTSTRAP_READY_COMMAND } from './template.mjs';
 import {
   S6_SERVICE_FILES,
   RUNTIME_BUILD_FILES,
@@ -119,7 +120,7 @@ test('E2B Dockerfile rendering preserves runtime hash and group verifiers', asyn
   assert.match(rendered, /test "\$abc_groups" = "100,1001"/);
 });
 
-test('template readiness composes bootstrap-await and desktop health under s6', async () => {
+test('template build readiness proves bootstrap wait and delegates desktop proof', async () => {
   const definition = await readFile(
     new URL('./template.mjs', import.meta.url),
     'utf8',
@@ -130,11 +131,33 @@ test('template readiness composes bootstrap-await and desktop health under s6', 
   // and the build/verify posture denies all egress anyway.
   assert.match(
     definition,
+    /RUNTIME_BOOTSTRAP_READY_COMMAND/,
+  );
+  assert.match(
+    RUNTIME_BOOTSTRAP_READY_COMMAND,
+    /s6-svstat -o pid \/run\/service\/svc-monad-agent/,
+  );
+  assert.match(
+    RUNTIME_BOOTSTRAP_READY_COMMAND,
+    /cat \/proc\/\$agent_pid\/comm/,
+  );
+  assert.match(RUNTIME_BOOTSTRAP_READY_COMMAND, /pgrep -x monad-agent/);
+  assert.match(
+    RUNTIME_BOOTSTRAP_READY_COMMAND,
     /test -S \/var\/run\/monad\/credential-bootstrap\.sock/,
   );
-  assert.doesNotMatch(definition, /8000\/monad\/health/);
-  assert.match(definition, /127\.0\.0\.1:6080/);
-  assert.match(definition, /127\.0\.0\.1:6081/);
+  assert.match(
+    RUNTIME_BOOTSTRAP_READY_COMMAND,
+    /test ! -L \/var\/run\/monad\/credential-bootstrap\.sock/,
+  );
+  assert.match(
+    RUNTIME_BOOTSTRAP_READY_COMMAND,
+    /stat -c %u:%g:%a \/var\/run\/monad\/credential-bootstrap\.sock/,
+  );
+  assert.match(RUNTIME_BOOTSTRAP_READY_COMMAND, /0:0:600/);
+  assert.doesNotMatch(RUNTIME_BOOTSTRAP_READY_COMMAND, /8000\/monad\/health/);
+  assert.doesNotMatch(RUNTIME_BOOTSTRAP_READY_COMMAND, /127\.0\.0\.1:6080/);
+  assert.doesNotMatch(RUNTIME_BOOTSTRAP_READY_COMMAND, /127\.0\.0\.1:6081/);
   assert.match(
     definition,
     /unshare --pid --fork --mount-proc --kill-child=TERM \/init/,
@@ -179,6 +202,12 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
   assert.match(verifier, /dockerd_absent/);
   assert.match(verifier, /marker_basename_match/);
   assert.match(verifier, /marker_direct_parent_match/);
+  assert.match(verifier, /s6-svstat/);
+  assert.match(verifier, /unique_named_process/);
+  assert.match(verifier, /socket_is_exact_type/);
+  assert.match(verifier, /socket_uid !== 0/);
+  assert.match(verifier, /socket_gid !== 0/);
+  assert.match(verifier, /socket_mode !== '600'/);
   assert.match(verifier, /executable\(value\) === "\/usr\/sbin\/nginx"/);
   assert.match(verifier, /verifyPinnedNginxProcesses\.toString\(\)/);
   assert.match(verifier, /verifyPinnedWatchdogProcesses\.toString\(\)/);
