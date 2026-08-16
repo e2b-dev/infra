@@ -133,6 +133,12 @@ RUN chmod +x \
     && chown -R 911:1001 /opt/monad/home /workspace \
     && touch /etc/s6-overlay/s6-rc.d/user/contents.d/svc-monad-agent \
     && bash /opt/monad/apps/sandbox/agent-cli/install-shims.sh /opt/monad/apps/sandbox/agent-cli \
+    && test -d /usr/local/bin \
+    && test ! -L /usr/local/bin \
+    && install -d -o root -g root -m 0755 /usr/local/bin \
+    && test -d /usr/local/bin \
+    && test ! -L /usr/local/bin \
+    && test "$(stat -c '%u:%g:%a' -- /usr/local/bin)" = "0:0:755" \
     && bun --version \
     && monad --version
 

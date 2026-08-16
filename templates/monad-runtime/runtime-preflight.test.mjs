@@ -64,6 +64,7 @@ test('runs the exact daemon credential-free in one native private cgroup and cle
     platform: 'linux/amd64',
     cgroup_namespace: 'private',
     network: 'none',
+    daemon_directory_metadata: '0:0:755',
     admission_root_mode: '700',
     marker_mode: '444',
     marker_path: '/sys/fs/cgroup/monad-tenant',
@@ -82,7 +83,12 @@ test('runs the exact daemon credential-free in one native private cgroup and cle
   assert.equal(create[entrypointIndex + 1], '/bin/bash');
   assert.equal(imageIndex, entrypointIndex + 2);
   assert.deepEqual(create.slice(imageIndex + 1, -1), ['-ceu']);
-  assert.match(create.at(-1), /^install -d [\s\S]*exec \/bin\/bash \/opt\/monad-preflight\/svc-monad-agent-run$/);
+  assert.match(create.at(-1), /^test -d \/usr\/local\/bin[\s\S]*exec \/bin\/bash \/opt\/monad-preflight\/svc-monad-agent-run$/);
+  assert.match(
+    create.at(-1),
+    /test -d \/usr\/local\/bin[\s\S]*test ! -L \/usr\/local\/bin[\s\S]*install -d -o root -g root -m 0755 \/usr\/local\/bin[\s\S]*stat -c '%u:%g:%a' -- \/usr\/local\/bin[\s\S]*0:0:755/,
+    'native boot must canonicalize and prove the launcher directory before install',
+  );
   for (const required of [
     '--platform', 'linux/amd64',
     '--init',
@@ -135,6 +141,13 @@ test('runs the exact daemon credential-free in one native private cgroup and cle
   assert.match(serializedProbe, /read -r -d '' first_argv/);
   assert.match(serializedProbe, /\/usr\/local\/bin\/monad-agent/);
   assert.doesNotMatch(serializedProbe, /\/proc\/1\/exe/);
+  assert.match(serializedProbe, /daemon_directory=\/usr\/local\/bin/);
+  assert.match(serializedProbe, /test -d "\$daemon_directory"/);
+  assert.match(serializedProbe, /test ! -L "\$daemon_directory"/);
+  assert.match(
+    serializedProbe,
+    /stat -c '%u:%g:%a' -- "\$daemon_directory"[\s\S]*0:0:755/,
+  );
   assert.match(serializedProbe, /sha256sum "\$launcher"/);
   assert.ok(serializedProbe.includes(inputs.daemonSha256));
   assert.ok(serializedProbe.includes(inputs.admissionHelperSha256));
@@ -436,6 +449,7 @@ test('accepts only closed preflight evidence bound to both prepared executables'
     platform: 'linux/amd64',
     cgroup_namespace: 'private',
     network: 'none',
+    daemon_directory_metadata: '0:0:755',
     admission_root_mode: '700',
     marker_mode: '444',
     marker_path: '/sys/fs/cgroup/user/monad-tenant',
@@ -451,6 +465,7 @@ test('accepts only closed preflight evidence bound to both prepared executables'
   for (const invalid of [
     { ...evidence, platform: 'linux/arm64' },
     { ...evidence, network: 'bridge' },
+    { ...evidence, daemon_directory_metadata: '1000:1000:755' },
     { ...evidence, marker_path: '/sys/fs/cgroup/../monad-tenant' },
     { ...evidence, daemon_sha256: 'e'.repeat(64) },
     { ...evidence, tenant_admission_helper_sha256: 'e'.repeat(64) },

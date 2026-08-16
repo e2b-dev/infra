@@ -60,6 +60,23 @@ test('Dockerfile preserves and gates every tenant-facing Webtop longrun', async 
     new URL('./e2b.Dockerfile', import.meta.url),
     'utf8',
   );
+  const lastRuntimeBinMutation = dockerfile.indexOf(
+    'bash /opt/monad/apps/sandbox/agent-cli/install-shims.sh',
+  );
+  const canonicalBinMetadata = dockerfile.indexOf(
+    'install -d -o root -g root -m 0755 /usr/local/bin',
+    lastRuntimeBinMutation,
+  );
+  assert.ok(lastRuntimeBinMutation >= 0, 'runtime shims must be installed');
+  assert.ok(
+    canonicalBinMetadata > lastRuntimeBinMutation,
+    '/usr/local/bin must be canonicalized after its final build-time mutation',
+  );
+  assert.match(
+    dockerfile.slice(canonicalBinMetadata),
+    /test -d \/usr\/local\/bin[\s\S]*test ! -L \/usr\/local\/bin[\s\S]*stat -c '%u:%g:%a' -- \/usr\/local\/bin[\s\S]*0:0:755/,
+    'the final image must prove /usr/local/bin is one real root:root 0755 directory',
+  );
   assert.match(dockerfile, /opencode-ai@1\.14\.28/);
   assert.match(dockerfile, /agent-browser@0\.27\.0/);
   assert.match(dockerfile, /playwright@1\.60\.0/);
@@ -165,6 +182,14 @@ test('E2B Dockerfile rendering preserves runtime hash and group verifiers', asyn
     /abc_groups="\$\(id -G abc \| xargs -n1 \| sort -n \| paste -sd, -\)"/,
   );
   assert.match(rendered, /test "\$abc_groups" = "100,1001"/);
+  assert.match(
+    rendered,
+    /install -d -o root -g root -m 0755 \/usr\/local\/bin/,
+  );
+  assert.match(
+    rendered,
+    /stat -c '%u:%g:%a' -- \/usr\/local\/bin\)" = "0:0:755"/,
+  );
 });
 
 test('template build readiness proves bootstrap wait and delegates desktop proof', async () => {

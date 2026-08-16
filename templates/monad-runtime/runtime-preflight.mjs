@@ -16,7 +16,12 @@ const SAFE_FATAL_NAMES = new Set([
   'TypeError',
 ]);
 
-const launchDaemon = String.raw`install -d -o root -g root -m 0755 /usr/local/libexec /etc/monad
+const launchDaemon = String.raw`test -d /usr/local/bin
+test ! -L /usr/local/bin
+install -d -o root -g root -m 0755 /usr/local/bin /usr/local/libexec /etc/monad
+test -d /usr/local/bin
+test ! -L /usr/local/bin
+test "$(stat -c '%u:%g:%a' -- /usr/local/bin)" = 0:0:755
 install -o root -g root -m 0755 /opt/monad-preflight/assets/monad-agent /usr/local/bin/monad-agent
 install -o root -g root -m 0755 /opt/monad-preflight/assets/monad-tenant-admission /usr/local/libexec/monad-tenant-admission
 install -o root -g root -m 0444 /opt/monad-preflight/assets/session-rebind-tenant-boundary.json /etc/monad/session-rebind-tenant-boundary.json
@@ -27,6 +32,7 @@ function buildEvidenceProbe(daemonSha256, admissionHelperSha256) {
   return String.raw`admission_root=/run/monad-admission
 marker="$admission_root/tenant-cgroup-ready"
 socket=/var/run/monad/credential-bootstrap.sock
+daemon_directory=/usr/local/bin
 launcher=/usr/local/bin/monad-agent
 helper=/usr/local/libexec/monad-tenant-admission
 expected_daemon_sha256='${daemonSha256}'
@@ -43,6 +49,9 @@ case "$daemon_pid" in ''|*[!0-9]*) exit 1 ;; esac
 test "$daemon_pid" -gt 1
 IFS= read -r -d '' first_argv < "/proc/$daemon_pid/cmdline"
 test "$first_argv" = "$launcher"
+test -d "$daemon_directory"
+test ! -L "$daemon_directory"
+test "$(stat -c '%u:%g:%a' -- "$daemon_directory")" = 0:0:755
 test -f "$launcher"
 test ! -L "$launcher"
 test "$(stat -c '%u:%g:%a' -- "$launcher")" = 0:0:755
@@ -191,6 +200,7 @@ export function validateNativeAmd64RuntimePreflightEvidence(evidence, {
     'platform',
     'cgroup_namespace',
     'network',
+    'daemon_directory_metadata',
     'admission_root_mode',
     'marker_mode',
     'marker_path',
@@ -209,6 +219,7 @@ export function validateNativeAmd64RuntimePreflightEvidence(evidence, {
     evidence.platform === PLATFORM &&
     evidence.cgroup_namespace === 'private' &&
     evidence.network === 'none' &&
+    evidence.daemon_directory_metadata === '0:0:755' &&
     evidence.admission_root_mode === '700' &&
     evidence.marker_mode === '444' &&
     canonicalMarkerPath(evidence.marker_path) &&
@@ -353,6 +364,7 @@ export async function runNativeAmd64RuntimePreflight({
         platform: PLATFORM,
         cgroup_namespace: 'private',
         network: 'none',
+        daemon_directory_metadata: '0:0:755',
         admission_root_mode: '700',
         marker_mode: '444',
         marker_path: markerPath,
