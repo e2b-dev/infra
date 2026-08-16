@@ -202,8 +202,8 @@ export async function runNativeAmd64RuntimePreflight({
     '--env', 'MONAD_WORKSPACE=/workspace',
     '--mount', bindMount(assetsDir, '/opt/monad-preflight/assets'),
     '--mount', bindMount(serviceRunPath, '/opt/monad-preflight/svc-monad-agent-run'),
+    '--entrypoint', '/bin/bash',
     baseImage,
-    '/bin/bash',
     '-ceu',
     launchDaemon,
   ];

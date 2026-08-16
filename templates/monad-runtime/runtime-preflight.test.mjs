@@ -26,7 +26,19 @@ test('runs the exact daemon credential-free in one native private cgroup and cle
     calls.push(args);
     switch (commandKey(args)) {
       case 'info': return 'linux/x86_64';
-      case 'create': return 'preflight-container-id';
+      case 'create': {
+        const imageIndex = args.indexOf(inputs.baseImage);
+        const entrypointIndex = args.indexOf('--entrypoint');
+        const effectiveEntrypoint = entrypointIndex === -1
+          ? '/usr/local/bin/docker-entrypoint.sh'
+          : args[entrypointIndex + 1];
+        assert.deepEqual(
+          [effectiveEntrypoint, ...args.slice(imageIndex + 1, imageIndex + 3)],
+          ['/bin/bash', '-ceu', args.at(-1)],
+          'the pinned Bun entrypoint must be replaced by the preflight shell',
+        );
+        return 'preflight-container-id';
+      }
       case 'start': return inputs.containerName;
       case 'exec': {
         const probe = args.at(-1);
@@ -64,6 +76,13 @@ test('runs the exact daemon credential-free in one native private cgroup and cle
   const create = calls.find((args) => args[0] === 'create');
   assert.ok(create);
   const serializedCreate = create.join('\n');
+  const entrypointIndex = create.indexOf('--entrypoint');
+  const imageIndex = create.indexOf(inputs.baseImage);
+  assert.ok(entrypointIndex >= 0);
+  assert.equal(create[entrypointIndex + 1], '/bin/bash');
+  assert.equal(imageIndex, entrypointIndex + 2);
+  assert.deepEqual(create.slice(imageIndex + 1, -1), ['-ceu']);
+  assert.match(create.at(-1), /^install -d [\s\S]*exec \/bin\/bash \/opt\/monad-preflight\/svc-monad-agent-run$/);
   for (const required of [
     '--platform', 'linux/amd64',
     '--privileged',
