@@ -1,10 +1,68 @@
 const RETRYABLE_STAGES = new Set([
   'marker',
+  'marker_file',
+  'marker_target',
   'supervisor',
   'service_mapping',
   'process_attestation',
   'filesystem_attestation',
 ]);
+
+export function tenantBoundaryProcRootPaths(supervisorPid) {
+  if (!Number.isSafeInteger(supervisorPid) || supervisorPid <= 1) {
+    throw new Error('tenant boundary supervisor PID is invalid');
+  }
+  const root = `/proc/${supervisorPid}/root`;
+  const admissionRoot = `${root}/run/monad-admission`;
+  return {
+    root,
+    admissionRoot,
+    marker: `${admissionRoot}/tenant-cgroup-ready`,
+    tenantCgroup: `${root}/sys/fs/cgroup/monad-tenant`,
+  };
+}
+
+export function tenantBoundaryRuntimePath(supervisorPid, runtimePath) {
+  if (!Number.isSafeInteger(supervisorPid) || supervisorPid <= 1) {
+    throw new Error('tenant boundary supervisor PID is invalid');
+  }
+  if (
+    typeof runtimePath !== 'string' ||
+    !runtimePath.startsWith('/') ||
+    runtimePath.startsWith('//') ||
+    runtimePath.includes('\0') ||
+    runtimePath.split('/').slice(1).some(
+      (segment) => segment === '' || segment === '.' || segment === '..',
+    )
+  ) {
+    throw new Error('tenant boundary runtime path is invalid');
+  }
+  return `/proc/${supervisorPid}/root${runtimePath}`;
+}
+
+export function tenantBoundaryRuntimePathChain(supervisorPid, runtimePath) {
+  if (!Number.isSafeInteger(supervisorPid) || supervisorPid <= 1) {
+    throw new Error('tenant boundary supervisor PID is invalid');
+  }
+  if (
+    typeof runtimePath !== 'string' ||
+    !runtimePath.startsWith('/') ||
+    runtimePath.startsWith('//') ||
+    runtimePath.includes('\0') ||
+    runtimePath.split('/').slice(1).some(
+      (segment) => segment === '' || segment === '.' || segment === '..',
+    )
+  ) {
+    throw new Error('tenant boundary runtime path is invalid');
+  }
+  const chain = [];
+  let current = `/proc/${supervisorPid}/root`;
+  for (const segment of runtimePath.split('/').slice(1)) {
+    current += `/${segment}`;
+    chain.push(current);
+  }
+  return chain;
+}
 
 function hasExactKeys(value, expected) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
@@ -29,6 +87,7 @@ export function classifyTenantBoundaryEvidence(evidence) {
     'supervisor_state_stable',
   ];
   const filesystemKeys = [
+    'daemon_executable_match',
     'attestation_hash_match',
     'attestation_identity_match',
     'attestation_files_exact',

@@ -3,7 +3,12 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { Template } from 'e2b';
 import { RUNTIME_BOOTSTRAP_READY_COMMAND } from './template.mjs';
-import { classifyTenantBoundaryEvidence } from './runtime-verification-convergence.mjs';
+import {
+  classifyTenantBoundaryEvidence,
+  tenantBoundaryProcRootPaths,
+  tenantBoundaryRuntimePath,
+  tenantBoundaryRuntimePathChain,
+} from './runtime-verification-convergence.mjs';
 import {
   parseNamespacePidVector,
   selectOuterPidForNamespacePid,
@@ -192,7 +197,7 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
     new URL('./verify-runtime.mjs', import.meta.url),
     'utf8',
   );
-  assert.match(verifier, /tenant-cgroup-ready/);
+  assert.match(verifier, /tenantBoundaryProcRootPaths/);
   assert.match(verifier, /session-rebind-tenant-boundary\.json/);
   for (const service of TENANT_SUPERVISED_SERVICES) {
     assert.match(verifier, new RegExp(`svc-${service}`));
@@ -217,6 +222,26 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
   assert.match(verifier, /waitForTenantBoundaryEvidence/);
   assert.match(verifier, /probe_ok: false, stage: probeStage/);
   assert.match(verifier, /classifyBoundaryEvidence\(boundaryEvidence\)/);
+  assert.match(verifier, /tenantBoundaryProcRootPaths/);
+  assert.match(verifier, /supervisor_mount_namespace/);
+  assert.match(verifier, /runtimeRootPath/);
+  assert.match(verifier, /procRootPathChain/);
+  assert.match(verifier, /"\/proc\/" \+ daemonPid \+ "\/exe"/);
+  assert.doesNotMatch(verifier, /sha256\("\/usr\/local\/bin\/monad-agent"\)/);
+  assert.doesNotMatch(verifier, /JSON\.parse\(readFileSync\(attestationPath/);
+  assert.match(verifier, /probeStage = "marker_file"/);
+  assert.match(verifier, /probeStage = "marker_target"/);
+  assert.doesNotMatch(verifier, /realpathSync\(tenantCgroup\)/);
+  assert.ok(
+    verifier.indexOf('const supervisorPid = uniqueNamedPid("s6-svscan")') <
+      verifier.indexOf('const markerPaths = procRootPaths(supervisorPid)'),
+    'the stable supervisor must anchor marker access',
+  );
+  assert.ok(
+    verifier.indexOf('const finalSupervisorPid = uniqueNamedPid("s6-svscan")') >
+      verifier.indexOf('const markerExact ='),
+    'the supervisor identity must be rechecked after proc-root evidence reads',
+  );
   assert.match(verifier, /expectedNamespace: supervisorNamespace/);
   assert.match(verifier, /expectedNamespaceDepth: supervisorNamespacePids\.length/);
   assert.match(verifier, /processes: namespaceProcesses/);
@@ -251,6 +276,9 @@ test('runtime verifier renders standalone bootstrap and tenant probes as valid s
     'verifyPinnedNginxProcesses',
     'verifyPinnedWatchdogProcesses',
     'classifyTenantBoundaryEvidence',
+    'tenantBoundaryProcRootPaths',
+    'tenantBoundaryRuntimePath',
+    'tenantBoundaryRuntimePathChain',
     `${verifier.slice(start, end)}; return { bootstrapReadinessProbe, tenantBoundaryProbe };`,
   );
   const probes = factory(
@@ -259,6 +287,9 @@ test('runtime verifier renders standalone bootstrap and tenant probes as valid s
     verifyPinnedNginxProcesses,
     verifyPinnedWatchdogProcesses,
     classifyTenantBoundaryEvidence,
+    tenantBoundaryProcRootPaths,
+    tenantBoundaryRuntimePath,
+    tenantBoundaryRuntimePathChain,
   );
   for (const encoded of Object.values(probes)) {
     const script = Buffer.from(encoded, 'base64').toString('utf8');

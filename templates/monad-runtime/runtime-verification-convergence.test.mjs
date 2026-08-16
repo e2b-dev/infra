@@ -3,9 +3,58 @@ import test from 'node:test';
 
 import {
   classifyTenantBoundaryEvidence,
+  tenantBoundaryProcRootPaths,
+  tenantBoundaryRuntimePath,
+  tenantBoundaryRuntimePathChain,
   TenantBoundaryConvergenceError,
   waitForTenantBoundaryEvidence,
 } from './runtime-verification-convergence.mjs';
+
+test('binds marker inspection to one validated supervisor proc root', () => {
+  assert.deepEqual(tenantBoundaryProcRootPaths(1006), {
+    root: '/proc/1006/root',
+    admissionRoot: '/proc/1006/root/run/monad-admission',
+    marker: '/proc/1006/root/run/monad-admission/tenant-cgroup-ready',
+    tenantCgroup: '/proc/1006/root/sys/fs/cgroup/monad-tenant',
+  });
+  for (const invalid of [undefined, null, 0, 1, -1, 1.5, NaN, Infinity, '1006']) {
+    assert.throws(
+      () => tenantBoundaryProcRootPaths(invalid),
+      /tenant boundary supervisor PID is invalid/,
+    );
+  }
+});
+
+test('enumerates every immutable runtime ancestor below the proc-root anchor', () => {
+  assert.deepEqual(
+    tenantBoundaryRuntimePathChain(1006, '/etc/monad/runtime.json'),
+    [
+      '/proc/1006/root/etc',
+      '/proc/1006/root/etc/monad',
+      '/proc/1006/root/etc/monad/runtime.json',
+    ],
+  );
+});
+
+test('maps immutable runtime evidence through the same supervisor proc root', () => {
+  assert.equal(
+    tenantBoundaryRuntimePath(1006, '/etc/monad/session-rebind-tenant-boundary.json'),
+    '/proc/1006/root/etc/monad/session-rebind-tenant-boundary.json',
+  );
+  for (const invalid of [
+    'etc/monad/file',
+    '//etc/monad/file',
+    '/etc/../shadow',
+    '/etc//shadow',
+    '/etc/./shadow',
+    '/etc/monad\0file',
+  ]) {
+    assert.throws(
+      () => tenantBoundaryRuntimePath(1006, invalid),
+      /tenant boundary runtime path is invalid/,
+    );
+  }
+});
 
 const readyEvidence = Object.freeze({
   root_daemon_outside_tenant_cgroup: true,
@@ -17,6 +66,7 @@ const readyEvidence = Object.freeze({
   important_descendant_cgroup_match: true,
   service_state_stable: true,
   supervisor_state_stable: true,
+  daemon_executable_match: true,
   attestation_hash_match: true,
   attestation_identity_match: true,
   attestation_files_exact: true,

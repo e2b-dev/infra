@@ -23,6 +23,9 @@ import {
 } from './runtime-verification-inventory.mjs';
 import {
   classifyTenantBoundaryEvidence,
+  tenantBoundaryProcRootPaths,
+  tenantBoundaryRuntimePath,
+  tenantBoundaryRuntimePathChain,
   waitForTenantBoundaryEvidence,
 } from './runtime-verification-convergence.mjs';
 
@@ -499,33 +502,64 @@ const processSnapshot = (value) => ({
 const verifyPinnedNginxProcesses = ${verifyPinnedNginxProcesses.toString()};
 const verifyPinnedWatchdogProcesses = ${verifyPinnedWatchdogProcesses.toString()};
 const classifyBoundaryEvidence = ${classifyTenantBoundaryEvidence.toString()};
+const procRootPaths = ${tenantBoundaryProcRootPaths.toString()};
+const procRootRuntimePath = ${tenantBoundaryRuntimePath.toString()};
+const procRootPathChain = ${tenantBoundaryRuntimePathChain.toString()};
 const exactFile = (path, mode) => {
   const value = lstatSync(path);
   return value.isFile() && !value.isSymbolicLink() && value.uid === 0 &&
     value.gid === 0 && (value.mode & 0o7777) === mode && realpathSync(path) === path;
 };
-let probeStage = "marker";
+const exactProcRootFile = (runtimePath, mode) => {
+  const chain = procRootPathChain(supervisorPid, runtimePath);
+  const ancestors = chain.slice(0, -1);
+  if (!ancestors.every((path) => {
+    const value = lstatSync(path);
+    return value.isDirectory() && !value.isSymbolicLink() &&
+      value.uid === 0 && value.gid === 0;
+  })) return false;
+  const value = lstatSync(chain[chain.length - 1]);
+  return value.isFile() && !value.isSymbolicLink() && value.uid === 0 &&
+    value.gid === 0 && (value.mode & 0o7777) === mode;
+};
+const exactProcRootDirectory = (runtimePath, mode) => {
+  const chain = procRootPathChain(supervisorPid, runtimePath);
+  return chain.every((path, index) => {
+    const value = lstatSync(path);
+    return value.isDirectory() && !value.isSymbolicLink() &&
+      value.uid === 0 && value.gid === 0 &&
+      (index !== chain.length - 1 || mode === undefined ||
+        (value.mode & 0o7777) === mode);
+  });
+};
+let probeStage = "supervisor";
 try {
-const markerPath = "/run/monad-admission/tenant-cgroup-ready";
-const attestationPath = "/etc/monad/session-rebind-tenant-boundary.json";
-const marker = readFileSync(markerPath, "utf8");
-if (!marker.endsWith("\n") || marker.slice(0, -1).includes("\n")) {
-  throw new Error("tenant cgroup marker is not canonical");
-}
-const tenantCgroup = marker.slice(0, -1);
-if (realpathSync(tenantCgroup) !== tenantCgroup ||
-    !tenantCgroup.startsWith("/sys/fs/cgroup/")) {
-  throw new Error("tenant cgroup marker escaped the cgroup mount");
-}
-const expectedMembership = "0::" + tenantCgroup.slice("/sys/fs/cgroup".length);
-probeStage = "supervisor";
 const daemonPid = uniqueNamedPid("monad-agent");
 const supervisorPid = uniqueNamedPid("s6-svscan");
 const supervisorNamespacePids = namespacePidVector(status(supervisorPid));
 const supervisorNamespace = readlinkSync("/proc/" + supervisorPid + "/ns/pid");
+const supervisorMountNamespace = readlinkSync("/proc/" + supervisorPid + "/ns/mnt");
 if (supervisorNamespacePids.length === 0 || supervisorNamespacePids[0] !== supervisorPid) {
   throw new Error("supervisor namespace identity is not canonical");
 }
+probeStage = "marker_file";
+const attestationPath = "/etc/monad/session-rebind-tenant-boundary.json";
+const markerPaths = procRootPaths(supervisorPid);
+const runtimeRootPath = (path) => procRootRuntimePath(supervisorPid, path);
+if (!exactProcRootDirectory("/run/monad-admission", 0o700) ||
+    !exactProcRootFile("/run/monad-admission/tenant-cgroup-ready", 0o444)) {
+  throw new Error("tenant cgroup marker file is invalid");
+}
+const marker = readFileSync(markerPaths.marker, "utf8");
+if (marker !== "/sys/fs/cgroup/monad-tenant\n") {
+  throw new Error("tenant cgroup marker is not canonical");
+}
+const tenantCgroup = marker.slice(0, -1);
+probeStage = "marker_target";
+if (!exactProcRootDirectory("/sys/fs/cgroup/monad-tenant")) {
+  throw new Error("tenant cgroup marker target is invalid");
+}
+const expectedMembership = "0::/monad-tenant";
 probeStage = "service_mapping";
 const initialServiceStates = Object.fromEntries(
   serviceNames.map((name) => [name, serviceState(name)]),
@@ -549,11 +583,7 @@ const finalServiceStates = Object.fromEntries(
 const serviceStateStable = serviceNames.every((name) =>
   finalServiceStates[name].up === true &&
   finalServiceStates[name].pid === initialServiceStates[name].pid);
-const finalSupervisorPid = uniqueNamedPid("s6-svscan");
-const supervisorStateStable =
-  finalSupervisorPid === supervisorPid &&
-  readlinkSync("/proc/" + finalSupervisorPid + "/ns/pid") === supervisorNamespace;
-if (!serviceStateStable || !supervisorStateStable) {
+if (!serviceStateStable) {
   throw new Error("supervised service state changed during namespace mapping");
 }
 probeStage = "process_attestation";
@@ -588,12 +618,40 @@ const watchdogIdentityMatch = verifyPinnedWatchdogProcesses({
   processes: serviceTrees.watchdog.map(processSnapshot),
 });
 probeStage = "filesystem_attestation";
-const attestation = JSON.parse(readFileSync(attestationPath, "utf8"));
-const daemonSha256 = sha256("/usr/local/bin/monad-agent");
-const admissionHelperSha256 = sha256("/usr/local/libexec/monad-tenant-admission");
+const runtimeAttestationPath = runtimeRootPath(attestationPath);
+const daemonExecutablePath = "/proc/" + daemonPid + "/exe";
+const runtimeDaemonPath = runtimeRootPath("/usr/local/bin/monad-agent");
+const runtimeAdmissionHelperPath = runtimeRootPath(
+  "/usr/local/libexec/monad-tenant-admission",
+);
+const attestation = JSON.parse(readFileSync(runtimeAttestationPath, "utf8"));
+const daemonSha256 = sha256(daemonExecutablePath);
+const runtimeDaemonSha256 = sha256(runtimeDaemonPath);
+const admissionHelperSha256 = sha256(runtimeAdmissionHelperPath);
+const attestationFilesExact =
+  exactProcRootFile(attestationPath, 0o444) &&
+  exactProcRootFile("/usr/local/bin/monad-agent", 0o755) &&
+  exactProcRootFile("/usr/local/libexec/monad-tenant-admission", 0o755) &&
+  serviceNames.every((name) =>
+    exactProcRootFile("/usr/local/libexec/monad-webtop-svc-" + name, 0o555) &&
+    exactProcRootFile("/etc/s6-overlay/s6-rc.d/svc-" + name + "/run", 0o755)) &&
+  exactProcRootFile("/etc/s6-overlay/s6-rc.d/svc-cron/run", 0o755);
+const markerExact =
+  exactProcRootFile("/run/monad-admission/tenant-cgroup-ready", 0o444) &&
+  readFileSync(markerPaths.marker, "utf8") === "/sys/fs/cgroup/monad-tenant\n" &&
+  exactProcRootDirectory("/run/monad-admission", 0o700) &&
+  exactProcRootDirectory("/sys/fs/cgroup/monad-tenant");
+const finalSupervisorPid = uniqueNamedPid("s6-svscan");
+const supervisorStateStable =
+  finalSupervisorPid === supervisorPid &&
+  readlinkSync("/proc/" + finalSupervisorPid + "/ns/pid") === supervisorNamespace &&
+  readlinkSync("/proc/" + finalSupervisorPid + "/ns/mnt") === supervisorMountNamespace;
 const boundaryEvidence = {
   daemon_sha256: daemonSha256,
   admission_helper_sha256: admissionHelperSha256,
+  daemon_executable_match:
+    readlinkSync(daemonExecutablePath) === "/usr/local/bin/monad-agent" &&
+    runtimeDaemonSha256 === daemonSha256,
   attestation_hash_match:
     attestation.daemon?.sha256 === daemonSha256 &&
     attestation.admission_helper?.sha256 === admissionHelperSha256,
@@ -608,18 +666,8 @@ const boundaryEvidence = {
       selkies: expectedIdentity.uid,
       xorg: expectedIdentity.uid,
     }),
-  attestation_files_exact:
-    exactFile(attestationPath, 0o444) &&
-    exactFile("/usr/local/bin/monad-agent", 0o755) &&
-    exactFile("/usr/local/libexec/monad-tenant-admission", 0o755) &&
-    serviceNames.every((name) =>
-      exactFile("/usr/local/libexec/monad-webtop-svc-" + name, 0o555) &&
-      exactFile("/etc/s6-overlay/s6-rc.d/svc-" + name + "/run", 0o755)) &&
-    exactFile("/etc/s6-overlay/s6-rc.d/svc-cron/run", 0o755),
-  marker_exact:
-    exactFile(markerPath, 0o444) &&
-    realpathSync("/run/monad-admission") === "/run/monad-admission" &&
-    (lstatSync("/run/monad-admission").mode & 0o7777) === 0o700,
+  attestation_files_exact: attestationFilesExact,
+  marker_exact: markerExact,
   marker_basename_match: basename(tenantCgroup) === "monad-tenant",
   marker_direct_parent_match: dirname(tenantCgroup) === "/sys/fs/cgroup",
   root_daemon_outside_tenant_cgroup:
@@ -644,6 +692,7 @@ const boundaryEvidence = {
   service_namespace_pids: serviceNamespacePids,
   supervisor_pid: supervisorPid,
   supervisor_namespace: supervisorNamespace,
+  supervisor_mount_namespace: supervisorMountNamespace,
   supervisor_state_stable: supervisorStateStable,
   service_state_stable: serviceStateStable,
   final_processes: finalProcesses,
