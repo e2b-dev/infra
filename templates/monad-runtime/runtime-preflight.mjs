@@ -35,8 +35,7 @@ daemon_pid=
 for comm_path in /proc/[0-9]*/comm; do
   test -r "$comm_path" || continue
   test "$(cat "$comm_path")" = monad-agent || continue
-  candidate="\${comm_path#/proc/}"
-  candidate="\${candidate%/comm}"
+  candidate="$(basename "$(dirname "$comm_path")")"
   test -z "$daemon_pid" || exit 1
   daemon_pid="$candidate"
 done
@@ -62,7 +61,10 @@ test "$(grep -c '^0::/' "/proc/$daemon_pid/cgroup")" = 1
 membership="$(cat "/proc/$daemon_pid/cgroup")"
 case "$membership" in
   0::/) expected=/sys/fs/cgroup/monad-tenant ;;
-  0::/*) expected="/sys/fs/cgroup\${membership#0::}/monad-tenant" ;;
+  0::/*)
+    membership_path="$(printf '%s' "$membership" | cut -c4-)"
+    expected="/sys/fs/cgroup$membership_path/monad-tenant"
+    ;;
   *) exit 1 ;;
 esac
 test -d "$expected"

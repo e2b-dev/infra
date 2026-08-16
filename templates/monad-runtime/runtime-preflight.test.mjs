@@ -126,6 +126,10 @@ test('runs the exact daemon credential-free in one native private cgroup and cle
   const serializedProbe = probe.join('\n');
   assert.match(serializedProbe, /\/proc\/\$daemon_pid\/cmdline/);
   assert.match(serializedProbe, /\/proc\/\[0-9\]\*\/comm/);
+  assert.match(serializedProbe, /candidate="\$\(basename "\$\(dirname "\$comm_path"\)"\)"/);
+  assert.doesNotMatch(serializedProbe, /\\\$\{comm_path/);
+  assert.match(serializedProbe, /membership_path="\$\(printf '%s' "\$membership" \| cut -c4-\)"/);
+  assert.doesNotMatch(serializedProbe, /\\\$\{membership/);
   assert.match(serializedProbe, /test "\$daemon_pid" -gt 1/);
   assert.doesNotMatch(serializedProbe, /\/proc\/1\/(?:cmdline|cgroup)/);
   assert.match(serializedProbe, /read -r -d '' first_argv/);
