@@ -32,8 +32,14 @@ import {
 
 test('runtime source pins immutable TAMS and tool inputs', async () => {
   const source = await loadRuntimeSource();
-  assert.match(source.tams_revision, /^[0-9a-f]{40}$/);
-  assert.match(source.tams_apps_sandbox_tree_oid, /^[0-9a-f]{40}$/);
+  assert.equal(
+    source.tams_revision,
+    '0fcebbac8b417c206fe2927143b4f734362bc784',
+  );
+  assert.equal(
+    source.tams_apps_sandbox_tree_oid,
+    'd02032fa44e1834d1e84583a01e25701e1166cd4',
+  );
   assert.equal(source.tool_versions.opencode, '1.14.28');
   assert.equal(source.tool_versions.agent_browser, '0.27.0');
   assert.equal(source.tool_versions.playwright, '1.60.0');
@@ -89,6 +95,11 @@ test('Dockerfile preserves and gates every tenant-facing Webtop longrun', async 
     /abc_groups="\$\(id -G abc \| xargs -n1 \| sort -n \| paste -sd, -\)"/,
   );
   assert.match(dockerfile, /test "\$abc_groups" = "100,1001"/);
+  assert.deepEqual(
+    dockerfile.match(/ENV MONAD_TENANT_BOUNDARY_REQUIRED=1/g),
+    ['ENV MONAD_TENANT_BOUNDARY_REQUIRED=1'],
+    'the immutable runtime must fail closed when tenant-boundary setup is unavailable',
+  );
   assert.doesNotMatch(dockerfile, /getent group (?:100|sudo|docker)/);
   assert.match(dockerfile, /svc-cron\/run/);
   assert.match(dockerfile, /exec sleep infinity/);
@@ -115,6 +126,25 @@ test('Dockerfile preserves and gates every tenant-facing Webtop longrun', async 
   assert.match(dockerfile, /execFileSync\("sha256sum"/);
   assert.match(dockerfile, /svc-monad-agent/);
   assert.doesNotMatch(dockerfile, /\b(?:kasm|novnc|tigervnc)\b/i);
+});
+
+test('daemon longrun establishes one exact real admission root before every exec', async () => {
+  const runScript = await readFile(
+    new URL('./s6-overlay/s6-rc.d/svc-monad-agent/run', import.meta.url),
+    'utf8',
+  );
+  assert.match(runScript, /^#!\/usr\/bin\/with-contenv bash\nset -euo pipefail\n/);
+  assert.match(runScript, /admission_root=\/run\/monad-admission/);
+  assert.match(runScript, /install -d -o root -g root -m 0700/);
+  assert.match(runScript, /test -d "\$admission_root"/);
+  assert.match(runScript, /test ! -L "\$admission_root"/);
+  assert.match(runScript, /stat -c '%u:%g:%a' -- "\$admission_root"/);
+  assert.match(runScript, /0:0:700/);
+  assert.ok(
+    runScript.indexOf('0:0:700') <
+      runScript.indexOf('exec /usr/local/bin/monad-entrypoint'),
+    'admission-root verification must precede daemon exec',
+  );
 });
 
 test('E2B Dockerfile rendering preserves runtime hash and group verifiers', async () => {
@@ -180,7 +210,11 @@ test('template build readiness proves bootstrap wait and delegates desktop proof
   assert.doesNotMatch(definition, /\.setEnvs\(/);
   assert.doesNotMatch(definition, /8000\/health/);
   assert.equal(S6_SERVICE_FILES.length, 12);
-  assert.equal(RUNTIME_BUILD_FILES.length, 4);
+  assert.equal(RUNTIME_BUILD_FILES.length, 5);
+  assert.ok(
+    RUNTIME_BUILD_FILES.some((file) => file.pathname.endsWith('/runtime-preflight.mjs')),
+    'native runtime preflight code must contribute to the immutable digest',
+  );
   const serviceFiles = await Promise.all(
     S6_SERVICE_FILES.map((file) => readFile(file, 'utf8')),
   );
@@ -195,6 +229,37 @@ test('template build readiness proves bootstrap wait and delegates desktop proof
   for (const content of serviceFiles) {
     assert.doesNotMatch(content, /--supervised-service \S+\s+\d/);
   }
+});
+
+test('asset preparation gates manifest acceptance on the native daemon preflight', async () => {
+  const preparation = await readFile(
+    new URL('./prepare-assets.mjs', import.meta.url),
+    'utf8',
+  );
+  assert.match(preparation, /runNativeAmd64RuntimePreflight/);
+  const preflight = preparation.indexOf('await runNativeAmd64RuntimePreflight(');
+  const manifest = preparation.indexOf('const manifest = {');
+  assert.ok(preflight >= 0 && manifest > preflight);
+  for (const binding of [
+    'assetsDir',
+    'serviceRunPath',
+    'baseImage: source.tool_versions.bun_base_image',
+    'runtimeVersion',
+    'daemonSha256',
+    'admissionHelperSha256',
+  ]) {
+    assert.ok(
+      preparation.slice(preflight, manifest).includes(binding),
+      `preflight must receive ${binding}`,
+    );
+  }
+
+  const template = await readFile(
+    new URL('./template.mjs', import.meta.url),
+    'utf8',
+  );
+  assert.match(template, /validateNativeAmd64RuntimePreflightEvidence/);
+  assert.match(template, /assetManifest\.native_amd64_preflight/);
 });
 
 test('runtime verifier proves containment and disables ambient schedulers and nested Docker', async () => {

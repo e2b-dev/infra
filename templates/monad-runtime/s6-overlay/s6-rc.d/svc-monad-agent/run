@@ -1,2 +1,15 @@
 #!/usr/bin/with-contenv bash
+set -euo pipefail
+
+admission_root=/run/monad-admission
+if test -e "$admission_root" || test -L "$admission_root"; then
+    test -d "$admission_root"
+    test ! -L "$admission_root"
+else
+    install -d -o root -g root -m 0700 -- "$admission_root"
+fi
+test -d "$admission_root"
+test ! -L "$admission_root"
+test "$(stat -c '%u:%g:%a' -- "$admission_root")" = 0:0:700
+
 exec /usr/local/bin/monad-entrypoint

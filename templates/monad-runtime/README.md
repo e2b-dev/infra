@@ -11,6 +11,11 @@ The build is fail-closed:
   `runtime-source.json`;
 - the `apps/sandbox` tree and every runtime input tree are recorded;
 - the Docker recipe and E2B start/readiness definition are content-addressed;
+- asset preparation must run on a native Linux/amd64 Docker host and boot the
+  exact prepared daemon in a privileged, network-isolated private cgroup;
+- that local boot must publish the exact root-owned marker and root-only
+  credential-bootstrap socket without receiving any credential before an E2B
+  build is accepted;
 - immutable source provenance is stored in
   `/opt/monad/runtime-provenance.json` because E2B build environments are not
   runtime environments;
@@ -51,6 +56,12 @@ retained but inert under `START_DOCKER=false`. A rebind fence removes the marker
 before cancelling and draining tenant activity, so no supervised desktop
 process can start outside the new generation's boundary.
 
+At every s6 daemon start, the longrun creates `/run/monad-admission` if absent
+and otherwise accepts only a real root-owned directory with mode `0700`. The
+image also bakes both credential-bootstrap-required and
+tenant-boundary-required policy; a missing or invalid attestation is therefore
+a boot failure, not a legacy-mode fallback.
+
 The JSON file is a prospective, content-bound build claim—not proof that a
 runtime has enforced it. Registration becomes authoritative only after
 `verify-runtime.mjs` independently observes the exact hashes, ownership and
@@ -77,6 +88,10 @@ export E2B_TEMPLATE_REF=monad-runtime:desktop-<content-version>
 
 make build-monad-runtime-template
 ```
+
+The build command intentionally fails before invoking E2B's `Template.build`
+path when Docker is not a native `linux/amd64` engine. Emulation is not accepted
+for the privileged cgroup preflight.
 
 Verify the resulting reference in a network-denied synthetic sandbox,
 including real Chromium execution, internal HTTP/HTTPS desktop checks,

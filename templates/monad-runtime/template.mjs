@@ -2,6 +2,7 @@ import { access, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { Template } from 'e2b';
 import { calculateRuntimeVersion, loadRuntimeSource } from './runtime-core.mjs';
+import { validateNativeAmd64RuntimePreflightEvidence } from './runtime-preflight.mjs';
 
 const templateDir = fileURLToPath(new URL('.', import.meta.url));
 const assetManifestPath = fileURLToPath(
@@ -23,6 +24,13 @@ export async function createMonadRuntimeTemplate() {
   if (assetManifest.tams_revision !== source.tams_revision) {
     throw new Error('prepared assets do not match the pinned TAMS revision');
   }
+  validateNativeAmd64RuntimePreflightEvidence(
+    assetManifest.native_amd64_preflight,
+    {
+      daemonSha256: assetManifest.daemon_sha256,
+      admissionHelperSha256: assetManifest.tenant_admission_helper_sha256,
+    },
+  );
 
   const sourceWithTrees = {
     ...source,

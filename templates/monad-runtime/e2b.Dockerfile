@@ -144,6 +144,7 @@ ENV MONAD_WORKSPACE=/workspace
 # credential-free and await the private stdin bootstrap, so the flag is a
 # property of this template, baked here where with-contenv delivers it.
 ENV MONAD_CREDENTIAL_BOOTSTRAP_REQUIRED=1
+ENV MONAD_TENANT_BOUNDARY_REQUIRED=1
 ENV PUID=911
 ENV PGID=1001
 ENV PLAYWRIGHT_BROWSERS_PATH=0

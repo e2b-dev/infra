@@ -4,10 +4,14 @@ import { constants } from 'node:fs';
 import { cp, lstat, mkdir, open, readFile, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { calculateRuntimeVersion, loadRuntimeSource, requiredEnv } from './runtime-core.mjs';
+import { runNativeAmd64RuntimePreflight } from './runtime-preflight.mjs';
 import { buildTenantBoundaryAttestation } from './tenant-boundary.mjs';
 
 const templateDir = fileURLToPath(new URL('.', import.meta.url));
 const assetsDir = fileURLToPath(new URL('./.build-assets/', import.meta.url));
+const serviceRunPath = fileURLToPath(
+  new URL('./s6-overlay/s6-rc.d/svc-monad-agent/run', import.meta.url),
+);
 
 function run(command, args, options = {}) {
   return execFileSync(command, args, {
@@ -251,6 +255,15 @@ export async function prepareRuntimeAssets(environment = process.env) {
     { mode: 0o444 },
   );
 
+  const nativeAmd64Preflight = await runNativeAmd64RuntimePreflight({
+    assetsDir,
+    serviceRunPath,
+    baseImage: source.tool_versions.bun_base_image,
+    runtimeVersion,
+    daemonSha256,
+    admissionHelperSha256,
+  });
+
   const manifest = {
     prepared_at: new Date().toISOString(),
     tams_revision: revision,
@@ -259,6 +272,7 @@ export async function prepareRuntimeAssets(environment = process.env) {
     runtime_version: runtimeVersion,
     daemon_sha256: daemonSha256,
     tenant_admission_helper_sha256: admissionHelperSha256,
+    native_amd64_preflight: nativeAmd64Preflight,
   };
   await writeFile(
     `${assetsDir}/manifest.json`,

@@ -383,6 +383,15 @@ service inert. Rebind removes the marker,
 fences new work, drains activity, kills the old subtree, and publishes a new
 marker only after the replacement boundary is ready.
 
+Before the operator runtime can enter the remote template-build flow, asset
+preparation must run on a native Linux/amd64 Docker engine. It starts the exact
+prepared daemon and helper in a privileged, network-isolated container with a
+private cgroup namespace, requires the root-owned tenant marker and root-only
+credential-bootstrap socket to appear without any credential, and removes the
+owned preflight container on every outcome. The image bakes tenant-boundary
+enforcement as required, and the daemon s6 longrun creates or verifies the real
+root-owned `0700` admission directory before every daemon exec.
+
 The embedded claim is deliberately not self-certifying. Template registration
 requires an independent synthetic-runtime verifier to match the built hashes,
 root/non-root process identities and groups, all wrapped service leaders and

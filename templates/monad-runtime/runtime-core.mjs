@@ -8,6 +8,7 @@ export const RUNTIME_BUILD_FILES = [
   new URL('./prepare-assets.mjs', import.meta.url),
   new URL('./runtime-core.mjs', import.meta.url),
   new URL('./runtime-process-contract.mjs', import.meta.url),
+  new URL('./runtime-preflight.mjs', import.meta.url),
   new URL('./tenant-boundary.mjs', import.meta.url),
 ];
 export const TENANT_SUPERVISED_SERVICES = Object.freeze([
