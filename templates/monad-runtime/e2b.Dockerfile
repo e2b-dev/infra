@@ -39,15 +39,20 @@ RUN mkdir -p /opt/monad/home/.bun/install/cache /tmp/oc-deps \
     && BUN_INSTALL_CACHE_DIR=/opt/monad/home/.bun/install/cache bun install \
     && rm -rf /tmp/oc-deps
 
-RUN install -d -o root -g root -m 0755 /opt/monad/runtime/bin
+RUN install -d -o root -g root -m 0755 \
+        /opt \
+        /opt/monad \
+        /opt/monad/runtime \
+        /opt/monad/runtime/bin \
+        /opt/monad/runtime/libexec
 
 COPY .build-assets/monad-agent /opt/monad/runtime/bin/monad-agent
-COPY .build-assets/monad-tenant-admission /usr/local/libexec/monad-tenant-admission
+COPY .build-assets/monad-tenant-admission /opt/monad/runtime/libexec/monad-tenant-admission
 COPY .build-assets/session-rebind-tenant-boundary.json /etc/monad/session-rebind-tenant-boundary.json
 
 # Fail the build before init can ever see bytes that differ from the prepared
 # same-descriptor hashes bound into the immutable tenant-boundary claim.
-RUN node -e 'const {execFileSync}=require("node:child_process"); const attestation=require("/etc/monad/session-rebind-tenant-boundary.json"); const sha256=(path)=>{const digest=execFileSync("sha256sum",[path],{encoding:"utf8"}).slice(0,64); if(!/^[a-f0-9]{64}$/.test(digest)) throw new Error("invalid sha256sum output"); return digest;}; if(attestation.daemon.sha256!==sha256("/opt/monad/runtime/bin/monad-agent")) throw new Error("prepared daemon hash mismatch"); if(attestation.admission_helper.sha256!==sha256("/usr/local/libexec/monad-tenant-admission")) throw new Error("prepared admission helper hash mismatch");'
+RUN node -e 'const {execFileSync}=require("node:child_process"); const attestation=require("/etc/monad/session-rebind-tenant-boundary.json"); const sha256=(path)=>{const digest=execFileSync("sha256sum",[path],{encoding:"utf8"}).slice(0,64); if(!/^[a-f0-9]{64}$/.test(digest)) throw new Error("invalid sha256sum output"); return digest;}; if(attestation.daemon.sha256!==sha256("/opt/monad/runtime/bin/monad-agent")) throw new Error("prepared daemon hash mismatch"); if(attestation.admission_helper.sha256!==sha256("/opt/monad/runtime/libexec/monad-tenant-admission")) throw new Error("prepared admission helper hash mismatch");'
 
 COPY .build-assets/monad /usr/local/bin/monad
 COPY .build-assets/entrypoint.sh /opt/monad/runtime/bin/monad-entrypoint
@@ -108,7 +113,7 @@ COPY s6-overlay/s6-rc.d/ /etc/s6-overlay/s6-rc.d/
 
 RUN chmod +x \
         /opt/monad/runtime/bin/monad-agent \
-        /usr/local/libexec/monad-tenant-admission \
+        /opt/monad/runtime/libexec/monad-tenant-admission \
         /usr/local/bin/monad \
         /opt/monad/runtime/bin/monad-entrypoint \
         /etc/s6-overlay/s6-rc.d/svc-monad-agent/run \
@@ -138,6 +143,15 @@ RUN chmod +x \
     && test -d /opt/monad/runtime/bin \
     && test ! -L /opt/monad/runtime/bin \
     && install -d -o root -g root -m 0755 /opt/monad/runtime/bin \
+    && for runtime_directory in /opt /opt/monad /opt/monad/runtime /opt/monad/runtime/libexec; do \
+        test -d "$runtime_directory"; \
+        test ! -L "$runtime_directory"; \
+    done \
+    && install -d -o root -g root -m 0755 \
+        /opt \
+        /opt/monad \
+        /opt/monad/runtime \
+        /opt/monad/runtime/libexec \
     && test -d /opt/monad/runtime/bin \
     && test ! -L /opt/monad/runtime/bin \
     && test "$(stat -c '%u:%g:%a' -- /opt/monad/runtime/bin)" = "0:0:755" \
@@ -147,6 +161,14 @@ RUN chmod +x \
     && test -f /opt/monad/runtime/bin/monad-entrypoint \
     && test ! -L /opt/monad/runtime/bin/monad-entrypoint \
     && test "$(stat -c '%u:%g:%a' -- /opt/monad/runtime/bin/monad-entrypoint)" = "0:0:755" \
+    && for runtime_directory in /opt /opt/monad /opt/monad/runtime /opt/monad/runtime/libexec; do \
+        test -d "$runtime_directory"; \
+        test ! -L "$runtime_directory"; \
+        test "$(stat -c '%u:%g:%a' -- "$runtime_directory")" = "0:0:755"; \
+    done \
+    && test -f /opt/monad/runtime/libexec/monad-tenant-admission \
+    && test ! -L /opt/monad/runtime/libexec/monad-tenant-admission \
+    && test "$(stat -c '%u:%g:%a' -- /opt/monad/runtime/libexec/monad-tenant-admission)" = "0:0:755" \
     && bun --version \
     && monad --version
 
