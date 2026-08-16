@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { Template } from 'e2b';
 import { prepareRuntimeAssets } from './prepare-assets.mjs';
 import {
+  assertCanonicalRuntimeTemplateRef,
   normalizeApiUrl,
   requiredEnv,
   safeErrorMessage,
@@ -41,6 +42,7 @@ try {
   await prepareRuntimeAssets(environment);
   const { template, runtimeVersion, source, assetManifest } =
     await createMonadRuntimeTemplate();
+  assertCanonicalRuntimeTemplateRef(templateRef, runtimeVersion);
   const result = await Template.build(template, templateRef, {
     ...connection,
     cpuCount: source.template_resources.cpu_count,

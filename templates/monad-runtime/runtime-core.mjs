@@ -68,6 +68,23 @@ export function validateTemplateRef(value) {
   return value;
 }
 
+export function canonicalRuntimeTemplateRef(runtimeVersion) {
+  if (!/^[0-9a-f]{64}$/.test(runtimeVersion)) {
+    throw new Error('runtime version must be one canonical SHA-256 digest');
+  }
+  return `monad-runtime:desktop-${runtimeVersion.slice(0, 12)}`;
+}
+
+export function assertCanonicalRuntimeTemplateRef(templateRef, runtimeVersion) {
+  const expected = canonicalRuntimeTemplateRef(runtimeVersion);
+  if (templateRef !== expected) {
+    throw new Error(
+      'E2B_TEMPLATE_REF must exactly match runtime version as ' + expected,
+    );
+  }
+  return templateRef;
+}
+
 export async function loadRuntimeSource() {
   return JSON.parse(await readFile(SOURCE_FILE, 'utf8'));
 }

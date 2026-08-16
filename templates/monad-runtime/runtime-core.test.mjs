@@ -24,17 +24,64 @@ import {
   S6_SERVICE_FILES,
   RUNTIME_BUILD_FILES,
   TENANT_SUPERVISED_SERVICES,
+  assertCanonicalRuntimeTemplateRef,
   calculateRuntimeVersion,
+  canonicalRuntimeTemplateRef,
   loadRuntimeSource,
   normalizeApiUrl,
   validateTemplateRef,
 } from './runtime-core.mjs';
 
+test('runtime template reference is canonically derived from the exact digest', () => {
+  const runtimeVersion = '0123456789abcdef'.padEnd(64, '0');
+  assert.equal(
+    canonicalRuntimeTemplateRef(runtimeVersion),
+    'monad-runtime:desktop-0123456789ab',
+  );
+  assert.equal(
+    assertCanonicalRuntimeTemplateRef(
+      'monad-runtime:desktop-0123456789ab',
+      runtimeVersion,
+    ),
+    'monad-runtime:desktop-0123456789ab',
+  );
+  assert.throws(
+    () => assertCanonicalRuntimeTemplateRef(
+      'monad-runtime:desktop-deadbeefcafe',
+      runtimeVersion,
+    ),
+    /must exactly match runtime version/,
+  );
+  for (const invalid of ['', 'abc', 'A'.repeat(64), '0'.repeat(63), '0'.repeat(65)]) {
+    assert.throws(() => canonicalRuntimeTemplateRef(invalid));
+  }
+});
+
+test('build rejects a noncanonical reference before any provider build', async () => {
+  const build = await readFile(new URL('./build.mjs', import.meta.url), 'utf8');
+  const create = build.indexOf('await createMonadRuntimeTemplate()');
+  const canonical = build.indexOf(
+    'assertCanonicalRuntimeTemplateRef(templateRef, runtimeVersion)',
+  );
+  const providerBuild = build.indexOf('await Template.build(');
+  assert.ok(create >= 0);
+  assert.ok(canonical > create);
+  assert.ok(providerBuild > canonical);
+  const verifier = await readFile(
+    new URL('./verify-runtime.mjs', import.meta.url),
+    'utf8',
+  );
+  assert.match(
+    verifier,
+    /assertCanonicalRuntimeTemplateRef\(templateRef, manifest\.runtime_version\)/,
+  );
+});
+
 test('runtime source pins immutable TAMS and tool inputs', async () => {
   const source = await loadRuntimeSource();
   assert.equal(
     source.tams_revision,
-    '6c4d434741ba71c5132c8e737fab60360d05f3a1',
+    '9f4782f93613bfd50a28b81b496ea0a9b3a4266c',
   );
   assert.equal(
     source.tams_apps_sandbox_tree_oid,
@@ -138,12 +185,16 @@ test('Dockerfile preserves and gates every tenant-facing Webtop longrun', async 
     'xsettingsd',
   ]);
   for (const service of TENANT_SUPERVISED_SERVICES) {
-    assert.match(dockerfile, new RegExp(`monad-webtop-svc-${service}`));
+    assert.match(
+      dockerfile,
+      new RegExp(`/opt/monad/runtime/libexec/monad-webtop-svc-${service}`),
+    );
     assert.match(
       dockerfile,
       new RegExp(`s6-overlay/s6-rc\\.d/svc-${service}/run`),
     );
   }
+  assert.doesNotMatch(dockerfile, /\/usr\/local\/libexec\/monad-webtop-svc-/);
   assert.doesNotMatch(dockerfile, /sed -i 's\/s6-setuidgid abc\/\/g'/);
   assert.doesNotMatch(dockerfile, /grep -Fq 's6-setuidgid abc'/);
   assert.match(dockerfile, /gpasswd -d abc sudo/);
@@ -375,6 +426,14 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
     assert.match(verifier, new RegExp(`svc-${service}`));
   }
   assert.match(verifier, /monad-webtop-svc-/);
+  assert.match(
+    verifier,
+    /exactProcRootFile\(supervisorPid, "\/opt\/monad\/runtime\/libexec\/monad-webtop-svc-"/,
+  );
+  assert.doesNotMatch(
+    verifier,
+    /exactProcRootFile\(supervisorPid, "\/usr\/local\/libexec\/monad-webtop-svc-"/,
+  );
   assert.match(verifier, /root_daemon_outside_tenant_cgroup/);
   assert.match(verifier, /tenant_service_identity_match/);
   assert.match(verifier, /service_leader_cgroup_match/);
@@ -513,7 +572,7 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
   assert.doesNotMatch(verifier, /\/usr\/local\/bin\/monad-(?:agent|entrypoint)/);
   assert.match(
     verifier,
-    /exactProcRootFile\(supervisorPid, "\/usr\/local\/libexec\/monad-webtop-svc-"/,
+    /exactProcRootFile\(supervisorPid, "\/opt\/monad\/runtime\/libexec\/monad-webtop-svc-"/,
   );
   assert.doesNotMatch(
     verifier,
