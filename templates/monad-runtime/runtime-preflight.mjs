@@ -31,7 +31,18 @@ launcher=/usr/local/bin/monad-agent
 helper=/usr/local/libexec/monad-tenant-admission
 expected_daemon_sha256='${daemonSha256}'
 expected_helper_sha256='${admissionHelperSha256}'
-IFS= read -r -d '' first_argv < /proc/1/cmdline
+daemon_pid=
+for comm_path in /proc/[0-9]*/comm; do
+  test -r "$comm_path" || continue
+  test "$(cat "$comm_path")" = monad-agent || continue
+  candidate="\${comm_path#/proc/}"
+  candidate="\${candidate%/comm}"
+  test -z "$daemon_pid" || exit 1
+  daemon_pid="$candidate"
+done
+case "$daemon_pid" in ''|*[!0-9]*) exit 1 ;; esac
+test "$daemon_pid" -gt 1
+IFS= read -r -d '' first_argv < "/proc/$daemon_pid/cmdline"
 test "$first_argv" = "$launcher"
 test -f "$launcher"
 test ! -L "$launcher"
@@ -47,8 +58,8 @@ test "$(stat -c '%u:%g:%a' -- "$admission_root")" = 0:0:700
 test -f "$marker"
 test ! -L "$marker"
 test "$(stat -c '%u:%g:%a' -- "$marker")" = 0:0:444
-test "$(grep -c '^0::/' /proc/1/cgroup)" = 1
-membership="$(cat /proc/1/cgroup)"
+test "$(grep -c '^0::/' "/proc/$daemon_pid/cgroup")" = 1
+membership="$(cat "/proc/$daemon_pid/cgroup")"
 case "$membership" in
   0::/) expected=/sys/fs/cgroup/monad-tenant ;;
   0::/*) expected="/sys/fs/cgroup\${membership#0::}/monad-tenant" ;;
@@ -258,6 +269,7 @@ export async function runNativeAmd64RuntimePreflight({
     'create',
     '--name', containerName,
     '--platform', PLATFORM,
+    '--init',
     '--privileged',
     '--cgroupns', 'private',
     '--network', 'none',

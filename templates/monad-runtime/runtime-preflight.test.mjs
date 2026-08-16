@@ -85,6 +85,7 @@ test('runs the exact daemon credential-free in one native private cgroup and cle
   assert.match(create.at(-1), /^install -d [\s\S]*exec \/bin\/bash \/opt\/monad-preflight\/svc-monad-agent-run$/);
   for (const required of [
     '--platform', 'linux/amd64',
+    '--init',
     '--privileged',
     '--cgroupns', 'private',
     '--network', 'none',
@@ -123,7 +124,10 @@ test('runs the exact daemon credential-free in one native private cgroup and cle
   }
   const probe = calls.find((args) => args[0] === 'exec');
   const serializedProbe = probe.join('\n');
-  assert.match(serializedProbe, /\/proc\/1\/cmdline/);
+  assert.match(serializedProbe, /\/proc\/\$daemon_pid\/cmdline/);
+  assert.match(serializedProbe, /\/proc\/\[0-9\]\*\/comm/);
+  assert.match(serializedProbe, /test "\$daemon_pid" -gt 1/);
+  assert.doesNotMatch(serializedProbe, /\/proc\/1\/(?:cmdline|cgroup)/);
   assert.match(serializedProbe, /read -r -d '' first_argv/);
   assert.match(serializedProbe, /\/usr\/local\/bin\/monad-agent/);
   assert.doesNotMatch(serializedProbe, /\/proc\/1\/exe/);
