@@ -1,24 +1,42 @@
 const RETRYABLE_STAGES = new Set([
   'marker',
-  'marker_proc_root_run_access',
-  'marker_proc_root_run_type',
-  'marker_proc_root_run_owner',
-  'marker_directory_access',
-  'marker_directory_type',
-  'marker_directory_owner',
-  'marker_directory_mode',
-  'marker_file_access',
-  'marker_file_type',
-  'marker_file_owner',
-  'marker_file_mode',
-  'marker_binding',
-  'marker_target',
+  'marker_daemon_proc_root_run_missing',
+  'marker_daemon_directory_missing',
+  'marker_daemon_file_missing',
+  'marker_supervisor_proc_root_run_missing',
+  'marker_supervisor_directory_missing',
+  'marker_supervisor_file_missing',
   'supervisor',
   'service_mapping',
   'process_attestation',
   'filesystem_attestation',
 ]);
-const TERMINAL_STAGES = new Set(['probe_identity']);
+const TERMINAL_STAGES = new Set([
+  'probe_identity',
+  'daemon_service_mapping',
+  'daemon_supervisor_mount_namespace',
+  'daemon_supervisor_root_identity',
+  'daemon_supervisor_run_identity',
+  'daemon_supervisor_filesystem_stability',
+  'marker_binding',
+  'marker_target',
+  ...['daemon', 'supervisor'].flatMap((authority) => [
+    `marker_${authority}_proc_root_run_denied`,
+    `marker_${authority}_proc_root_run_error`,
+    `marker_${authority}_proc_root_run_type`,
+    `marker_${authority}_proc_root_run_owner`,
+    `marker_${authority}_directory_denied`,
+    `marker_${authority}_directory_error`,
+    `marker_${authority}_directory_type`,
+    `marker_${authority}_directory_owner`,
+    `marker_${authority}_directory_mode`,
+    `marker_${authority}_file_denied`,
+    `marker_${authority}_file_error`,
+    `marker_${authority}_file_type`,
+    `marker_${authority}_file_owner`,
+    `marker_${authority}_file_mode`,
+  ]),
+]);
 
 export function classifyTenantBoundaryProbeIdentity({ getuid, getgid }) {
   try {
@@ -29,16 +47,115 @@ export function classifyTenantBoundaryProbeIdentity({ getuid, getgid }) {
   return { probe_ok: false, stage: 'probe_identity' };
 }
 
+export function classifyTenantBoundaryTopology({
+  daemonPid,
+  supervisorPid,
+  daemonServicePid,
+  daemonNamespacePids,
+  supervisorNamespacePids,
+  daemonNamespace,
+  supervisorNamespace,
+  daemonMountNamespace,
+  supervisorMountNamespace,
+  daemonRoot,
+  supervisorRoot,
+  daemonRun,
+  supervisorRun,
+}) {
+  const failure = (stage) => ({ probe_ok: false, stage });
+  const canonicalVector = (value, outerPid) =>
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((pid) => Number.isSafeInteger(pid) && pid > 0) &&
+    value[0] === outerPid;
+  const exactIdentity = (left, right) => {
+    const validValue = (value) =>
+      (Number.isSafeInteger(value) && value >= 0) ||
+      (typeof value === 'bigint' && value >= 0n);
+    return left !== null && typeof left === 'object' && !Array.isArray(left) &&
+      right !== null && typeof right === 'object' && !Array.isArray(right) &&
+      validValue(left.dev) && validValue(left.ino) &&
+      validValue(right.dev) && validValue(right.ino) &&
+      left.dev === right.dev && left.ino === right.ino;
+  };
+  if (
+    !Number.isSafeInteger(daemonPid) || daemonPid <= 1 ||
+    !Number.isSafeInteger(supervisorPid) || supervisorPid <= 1 ||
+    !Number.isSafeInteger(daemonServicePid) || daemonServicePid <= 0 ||
+    !canonicalVector(daemonNamespacePids, daemonPid) ||
+    !canonicalVector(supervisorNamespacePids, supervisorPid) ||
+    daemonNamespacePids.length !== supervisorNamespacePids.length ||
+    daemonNamespacePids[daemonNamespacePids.length - 1] !== daemonServicePid ||
+    typeof daemonNamespace !== 'string' || daemonNamespace.length === 0 ||
+    daemonNamespace !== supervisorNamespace
+  ) {
+    return failure('daemon_service_mapping');
+  }
+  if (
+    typeof daemonMountNamespace !== 'string' ||
+    daemonMountNamespace.length === 0 ||
+    daemonMountNamespace !== supervisorMountNamespace
+  ) {
+    return failure('daemon_supervisor_mount_namespace');
+  }
+  if (!exactIdentity(daemonRoot, supervisorRoot)) {
+    return failure('daemon_supervisor_root_identity');
+  }
+  if (!exactIdentity(daemonRun, supervisorRun)) {
+    return failure('daemon_supervisor_run_identity');
+  }
+  return { probe_ok: true };
+}
+
+export function classifyTenantBoundaryFilesystemStability({
+  initialDaemonRoot,
+  initialSupervisorRoot,
+  initialDaemonRun,
+  initialSupervisorRun,
+  finalDaemonRoot,
+  finalSupervisorRoot,
+  finalDaemonRun,
+  finalSupervisorRun,
+}) {
+  const exactIdentity = (left, right) => {
+    const validValue = (value) =>
+      (Number.isSafeInteger(value) && value >= 0) ||
+      (typeof value === 'bigint' && value >= 0n);
+    return left !== null && typeof left === 'object' && !Array.isArray(left) &&
+      right !== null && typeof right === 'object' && !Array.isArray(right) &&
+      validValue(left.dev) && validValue(left.ino) &&
+      validValue(right.dev) && validValue(right.ino) &&
+      left.dev === right.dev && left.ino === right.ino;
+  };
+  const stable =
+    exactIdentity(initialDaemonRoot, initialSupervisorRoot) &&
+    exactIdentity(initialDaemonRoot, finalDaemonRoot) &&
+    exactIdentity(initialDaemonRoot, finalSupervisorRoot) &&
+    exactIdentity(initialDaemonRun, initialSupervisorRun) &&
+    exactIdentity(initialDaemonRun, finalDaemonRun) &&
+    exactIdentity(initialDaemonRun, finalSupervisorRun);
+  return stable
+    ? { probe_ok: true }
+    : {
+        probe_ok: false,
+        stage: 'daemon_supervisor_filesystem_stability',
+      };
+}
+
 export function inspectTenantBoundaryMarkerFilesystem({
+  authority,
   lstat,
   procRootRun,
   admissionRoot,
   marker,
 }) {
+  if (authority !== 'daemon' && authority !== 'supervisor') {
+    throw new Error('tenant boundary marker authority is invalid');
+  }
   const failure = (stage) => ({ probe_ok: false, stage });
   const inspect = ({
     path,
-    accessStage,
+    target,
     expectedType,
     typeStage,
     ownerStage,
@@ -48,8 +165,16 @@ export function inspectTenantBoundaryMarkerFilesystem({
     let metadata;
     try {
       metadata = lstat(path);
-    } catch {
-      return failure(accessStage);
+    } catch (error) {
+      const code = error !== null && typeof error === 'object'
+        ? error.code
+        : undefined;
+      const category = code === 'ENOENT'
+        ? 'missing'
+        : code === 'EACCES' || code === 'EPERM'
+          ? 'denied'
+          : 'error';
+      return failure(`marker_${authority}_${target}_${category}`);
     }
     try {
       const typeMatches = expectedType === 'directory'
@@ -82,28 +207,28 @@ export function inspectTenantBoundaryMarkerFilesystem({
   const checks = [
     {
       path: procRootRun,
-      accessStage: 'marker_proc_root_run_access',
+      target: 'proc_root_run',
       expectedType: 'directory',
-      typeStage: 'marker_proc_root_run_type',
-      ownerStage: 'marker_proc_root_run_owner',
+      typeStage: `marker_${authority}_proc_root_run_type`,
+      ownerStage: `marker_${authority}_proc_root_run_owner`,
     },
     {
       path: admissionRoot,
-      accessStage: 'marker_directory_access',
+      target: 'directory',
       expectedType: 'directory',
-      typeStage: 'marker_directory_type',
-      ownerStage: 'marker_directory_owner',
+      typeStage: `marker_${authority}_directory_type`,
+      ownerStage: `marker_${authority}_directory_owner`,
       mode: 0o700,
-      modeStage: 'marker_directory_mode',
+      modeStage: `marker_${authority}_directory_mode`,
     },
     {
       path: marker,
-      accessStage: 'marker_file_access',
+      target: 'file',
       expectedType: 'file',
-      typeStage: 'marker_file_type',
-      ownerStage: 'marker_file_owner',
+      typeStage: `marker_${authority}_file_type`,
+      ownerStage: `marker_${authority}_file_owner`,
       mode: 0o444,
-      modeStage: 'marker_file_mode',
+      modeStage: `marker_${authority}_file_mode`,
     },
   ];
   for (const check of checks) {
@@ -218,6 +343,13 @@ function hasExactKeys(value, expected) {
 
 export function classifyTenantBoundaryEvidence(evidence) {
   const processKeys = [
+    'daemon_service_mapping',
+    'daemon_supervisor_mount_namespace_match',
+    'daemon_supervisor_root_identity_match',
+    'daemon_supervisor_run_identity_match',
+    'daemon_supervisor_filesystem_stable',
+    'service_leader_mount_namespace_match',
+    'daemon_state_stable',
     'root_daemon_outside_tenant_cgroup',
     'tenant_service_identity_match',
     'nginx_identity_match',

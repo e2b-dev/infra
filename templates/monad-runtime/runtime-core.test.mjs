@@ -5,8 +5,10 @@ import { Template } from 'e2b';
 import { RUNTIME_BOOTSTRAP_READY_COMMAND } from './template.mjs';
 import {
   bindTenantBoundaryMarker,
+  classifyTenantBoundaryFilesystemStability,
   classifyTenantBoundaryProbeIdentity,
   classifyTenantBoundaryEvidence,
+  classifyTenantBoundaryTopology,
   inspectTenantBoundaryMarkerFilesystem,
   tenantBoundaryProcRootPaths,
   tenantBoundaryRuntimePath,
@@ -229,7 +231,14 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
   assert.match(verifier, /classifyBoundaryEvidence\(boundaryEvidence\)/);
   assert.match(verifier, /tenantBoundaryProcRootPaths/);
   assert.match(verifier, /supervisor_mount_namespace/);
-  assert.match(verifier, /runtimeRootPath/);
+  assert.match(verifier, /daemon_mount_namespace/);
+  assert.match(verifier, /daemon_service_mapping/);
+  assert.match(verifier, /daemon_supervisor_mount_namespace_match/);
+  assert.match(verifier, /daemon_supervisor_root_identity_match/);
+  assert.match(verifier, /daemon_supervisor_run_identity_match/);
+  assert.match(verifier, /daemon_supervisor_filesystem_stable/);
+  assert.match(verifier, /service_leader_mount_namespace_match/);
+  assert.match(verifier, /daemonRuntimeRootPath/);
   assert.match(verifier, /procRootPathChain/);
   assert.match(verifier, /"\/proc\/" \+ daemonPid \+ "\/exe"/);
   assert.doesNotMatch(verifier, /sha256\("\/usr\/local\/bin\/monad-agent"\)/);
@@ -245,6 +254,10 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
   assert.match(
     verifier,
     /bindBoundaryMarker\(cgroup\(daemonPid\), marker\)/,
+  );
+  assert.match(
+    verifier,
+    /exactProcRootDirectory\(daemonPid, tenantCgroup\)/,
   );
   assert.match(
     verifier,
@@ -273,11 +286,56 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
       new RegExp(`\\$\\{${ordinaryProbe}\\}[^;]+['\"]root['\"]`),
     );
   }
-  assert.ok(
-    verifier.indexOf('const supervisorPid = uniqueNamedPid("s6-svscan")') <
-      verifier.indexOf('const markerPaths = procRootPaths(supervisorPid)'),
-    'the stable supervisor must anchor marker access',
+  assert.match(verifier, /const daemonServiceState = serviceState\("monad-agent"\)/);
+  assert.match(verifier, /const daemonMarkerPaths = procRootPaths\(daemonPid\)/);
+  assert.match(verifier, /const supervisorMarkerPaths = procRootPaths\(supervisorPid\)/);
+  assert.match(verifier, /authority: "daemon"/);
+  assert.match(verifier, /authority: "supervisor"/);
+  assert.match(verifier, /readFileSync\(daemonMarkerPaths\.marker, "utf8"\)/);
+  assert.match(verifier, /readFileSync\(supervisorMarkerPaths\.marker, "utf8"\)/);
+  assert.doesNotMatch(verifier, /const markerPaths = procRootPaths\(supervisorPid\)/);
+  const daemonMarkerCheck = verifier.indexOf(
+    'const daemonMarkerFilesystem = inspectBoundaryMarkerFilesystem',
   );
+  const supervisorMarkerCheck = verifier.indexOf(
+    'const supervisorMarkerFilesystem = inspectBoundaryMarkerFilesystem',
+  );
+  const markerContentRead = verifier.indexOf(
+    'const marker = readFileSync(daemonMarkerPaths.marker, "utf8")',
+  );
+  assert.ok(
+    daemonMarkerCheck >= 0 &&
+    supervisorMarkerCheck > daemonMarkerCheck &&
+    markerContentRead > supervisorMarkerCheck,
+    'both marker views must pass in order before content is trusted',
+  );
+  assert.match(
+    verifier.slice(supervisorMarkerCheck, markerContentRead),
+    /if \(supervisorMarkerFilesystem\.probe_ok !== true\)[\s\S]*process\.exit\(0\)/,
+  );
+  assert.doesNotMatch(verifier, /daemonMarkerFilesystem\.probe_ok === true\s*\|\|/);
+  assert.match(verifier, /exactProcRootFile\(daemonPid, attestationPath, 0o444\)/);
+  assert.match(
+    verifier,
+    /exactProcRootFile\(daemonPid, "\/usr\/local\/bin\/monad-agent", 0o755\)/,
+  );
+  assert.match(
+    verifier,
+    /exactProcRootFile\(supervisorPid, "\/usr\/local\/libexec\/monad-webtop-svc-"/,
+  );
+  assert.doesNotMatch(
+    verifier,
+    /exactProcRootFile\(supervisorPid, attestationPath/,
+  );
+  assert.ok(
+    verifier.indexOf('const finalDaemonRootIdentity = statSync') >
+      verifier.indexOf('const markerExact ='),
+    'final followed-root identity must be sampled after proc-root evidence',
+  );
+  assert.match(verifier, /const finalSupervisorRootIdentity = statSync/);
+  assert.match(verifier, /const finalDaemonRunIdentity = statSync/);
+  assert.match(verifier, /const finalSupervisorRunIdentity = statSync/);
+  assert.match(verifier, /classifyBoundaryFilesystemStability\(\{/);
   assert.ok(
     verifier.indexOf('const finalSupervisorPid = uniqueNamedPid("s6-svscan")') >
       verifier.indexOf('const markerExact ='),
@@ -317,8 +375,10 @@ test('runtime verifier renders standalone bootstrap and tenant probes as valid s
     'verifyPinnedNginxProcesses',
     'verifyPinnedWatchdogProcesses',
     'bindTenantBoundaryMarker',
+    'classifyTenantBoundaryFilesystemStability',
     'classifyTenantBoundaryProbeIdentity',
     'classifyTenantBoundaryEvidence',
+    'classifyTenantBoundaryTopology',
     'inspectTenantBoundaryMarkerFilesystem',
     'tenantBoundaryProcRootPaths',
     'tenantBoundaryRuntimePath',
@@ -331,8 +391,10 @@ test('runtime verifier renders standalone bootstrap and tenant probes as valid s
     verifyPinnedNginxProcesses,
     verifyPinnedWatchdogProcesses,
     bindTenantBoundaryMarker,
+    classifyTenantBoundaryFilesystemStability,
     classifyTenantBoundaryProbeIdentity,
     classifyTenantBoundaryEvidence,
+    classifyTenantBoundaryTopology,
     inspectTenantBoundaryMarkerFilesystem,
     tenantBoundaryProcRootPaths,
     tenantBoundaryRuntimePath,
@@ -347,18 +409,14 @@ test('runtime verifier renders standalone bootstrap and tenant probes as valid s
     probes.tenantBoundaryProbe,
     'base64',
   ).toString('utf8');
+  assert.match(tenantScript, /marker_\$\{authority\}_\$\{target\}_\$\{category\}/);
+  assert.match(tenantScript, /code === 'ENOENT'/);
+  assert.match(tenantScript, /code === 'EACCES' \|\| code === 'EPERM'/);
   for (const stage of [
-    'marker_proc_root_run_access',
-    'marker_proc_root_run_type',
-    'marker_proc_root_run_owner',
-    'marker_directory_access',
-    'marker_directory_type',
-    'marker_directory_owner',
-    'marker_directory_mode',
-    'marker_file_access',
-    'marker_file_type',
-    'marker_file_owner',
-    'marker_file_mode',
+    'daemon_service_mapping',
+    'daemon_supervisor_mount_namespace',
+    'daemon_supervisor_root_identity',
+    'daemon_supervisor_run_identity',
   ]) {
     assert.match(tenantScript, new RegExp(stage));
   }

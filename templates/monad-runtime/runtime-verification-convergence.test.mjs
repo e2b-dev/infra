@@ -4,7 +4,9 @@ import test from 'node:test';
 import * as convergence from './runtime-verification-convergence.mjs';
 
 import {
+  classifyTenantBoundaryFilesystemStability,
   classifyTenantBoundaryEvidence,
+  classifyTenantBoundaryTopology,
   tenantBoundaryProcRootPaths,
   tenantBoundaryRuntimePath,
   tenantBoundaryRuntimePathChain,
@@ -110,6 +112,7 @@ test('isolates marker filesystem failures into exact safe stages', () => {
   const inspect = ({ path, value, throws = false } = {}) =>
     convergence.inspectTenantBoundaryMarkerFilesystem({
       ...paths,
+      authority: 'daemon',
       lstat: (candidate) => {
         if (candidate === path && throws) throw new Error('private lstat failure');
         return candidate === path ? value : valid.get(candidate);
@@ -118,34 +121,163 @@ test('isolates marker filesystem failures into exact safe stages', () => {
 
   assert.deepEqual(inspect(), { probe_ok: true });
   for (const testCase of [
-    [paths.procRootRun, undefined, true, 'marker_proc_root_run_access'],
+    [paths.procRootRun, undefined, true, 'marker_daemon_proc_root_run_error'],
     [paths.procRootRun, directory({ isDirectory: () => false }), false,
-      'marker_proc_root_run_type'],
+      'marker_daemon_proc_root_run_type'],
     [paths.procRootRun, directory({ isSymbolicLink: () => true }), false,
-      'marker_proc_root_run_type'],
+      'marker_daemon_proc_root_run_type'],
     [paths.procRootRun, directory({ uid: 911 }), false,
-      'marker_proc_root_run_owner'],
-    [paths.admissionRoot, undefined, true, 'marker_directory_access'],
+      'marker_daemon_proc_root_run_owner'],
+    [paths.admissionRoot, undefined, true, 'marker_daemon_directory_error'],
     [paths.admissionRoot, directory({ isDirectory: () => false }), false,
-      'marker_directory_type'],
+      'marker_daemon_directory_type'],
     [paths.admissionRoot, directory({ isSymbolicLink: () => true }), false,
-      'marker_directory_type'],
+      'marker_daemon_directory_type'],
     [paths.admissionRoot, directory({ gid: 1001 }), false,
-      'marker_directory_owner'],
+      'marker_daemon_directory_owner'],
     [paths.admissionRoot, directory({ mode: 0o755 }), false,
-      'marker_directory_mode'],
-    [paths.marker, undefined, true, 'marker_file_access'],
-    [paths.marker, file({ isFile: () => false }), false, 'marker_file_type'],
+      'marker_daemon_directory_mode'],
+    [paths.marker, undefined, true, 'marker_daemon_file_error'],
+    [paths.marker, file({ isFile: () => false }), false,
+      'marker_daemon_file_type'],
     [paths.marker, file({ isSymbolicLink: () => true }), false,
-      'marker_file_type'],
-    [paths.marker, file({ uid: 911 }), false, 'marker_file_owner'],
-    [paths.marker, file({ mode: 0o400 }), false, 'marker_file_mode'],
+      'marker_daemon_file_type'],
+    [paths.marker, file({ uid: 911 }), false, 'marker_daemon_file_owner'],
+    [paths.marker, file({ mode: 0o400 }), false, 'marker_daemon_file_mode'],
   ]) {
     const [path, value, throws, stage] = testCase;
     assert.deepEqual(inspect({ path, value, throws }), {
       probe_ok: false,
       stage,
     });
+  }
+});
+
+test('classifies marker lstat failures without leaking raw error details', () => {
+  const paths = {
+    procRootRun: '/proc/1006/root/run',
+    admissionRoot: '/proc/1006/root/run/monad-admission',
+    marker: '/proc/1006/root/run/monad-admission/tenant-cgroup-ready',
+  };
+  const cases = [
+    [{ code: 'ENOENT', message: 'private missing path' }, 'missing'],
+    [{ code: 'EACCES', message: 'private denied path' }, 'denied'],
+    [{ code: 'EPERM', message: 'private denied operation' }, 'denied'],
+    [{ code: 'EIO', message: 'private device detail' }, 'error'],
+    ['private non-object failure', 'error'],
+  ];
+  for (const authority of ['daemon', 'supervisor']) {
+    for (const [thrown, category] of cases) {
+      const result = convergence.inspectTenantBoundaryMarkerFilesystem({
+        ...paths,
+        authority,
+        lstat: () => { throw thrown; },
+      });
+      assert.deepEqual(result, {
+        probe_ok: false,
+        stage: `marker_${authority}_proc_root_run_${category}`,
+      });
+      const serialized = JSON.stringify(result);
+      assert.doesNotMatch(serialized, /private|ENOENT|EACCES|EPERM|EIO/);
+    }
+  }
+});
+
+test('requires complete marker evidence through daemon and supervisor roots', () => {
+  const metadata = (type, mode) => ({
+    isDirectory: () => type === 'directory',
+    isFile: () => type === 'file',
+    isSymbolicLink: () => false,
+    uid: 0,
+    gid: 0,
+    mode,
+  });
+  const inspect = (authority, missingDirectory = false) =>
+    convergence.inspectTenantBoundaryMarkerFilesystem({
+      authority,
+      procRootRun: `/${authority}/run`,
+      admissionRoot: `/${authority}/run/monad-admission`,
+      marker: `/${authority}/run/monad-admission/tenant-cgroup-ready`,
+      lstat: (path) => {
+        if (missingDirectory && path.endsWith('/monad-admission')) {
+          throw Object.assign(new Error('raw missing path'), { code: 'ENOENT' });
+        }
+        return path.endsWith('tenant-cgroup-ready')
+          ? metadata('file', 0o444)
+          : metadata('directory', 0o700);
+      },
+    });
+  assert.deepEqual(inspect('daemon'), { probe_ok: true });
+  assert.deepEqual(inspect('supervisor', true), {
+    probe_ok: false,
+    stage: 'marker_supervisor_directory_missing',
+  });
+});
+
+test('binds the daemon service mapping and rejects split runtime topology safely', () => {
+  const complete = {
+    daemonPid: 284,
+    supervisorPid: 1006,
+    daemonServicePid: 284,
+    daemonNamespacePids: [284],
+    supervisorNamespacePids: [1006],
+    daemonNamespace: 'pid:[4026533000]',
+    supervisorNamespace: 'pid:[4026533000]',
+    daemonMountNamespace: 'mnt:[4026533001]',
+    supervisorMountNamespace: 'mnt:[4026533001]',
+    daemonRoot: { dev: 1, ino: 2 },
+    supervisorRoot: { dev: 1, ino: 2 },
+    daemonRun: { dev: 3, ino: 4 },
+    supervisorRun: { dev: 3, ino: 4 },
+  };
+  assert.deepEqual(classifyTenantBoundaryTopology(complete), { probe_ok: true });
+  for (const [overrides, stage] of [
+    [{ daemonServicePid: 999 }, 'daemon_service_mapping'],
+    [{ daemonNamespacePids: [284, 7] }, 'daemon_service_mapping'],
+    [{ daemonNamespace: 'pid:[other]' }, 'daemon_service_mapping'],
+    [{ daemonMountNamespace: 'mnt:[other]' },
+      'daemon_supervisor_mount_namespace'],
+    [{ daemonRoot: { dev: 1, ino: 9 } },
+      'daemon_supervisor_root_identity'],
+    [{ daemonRun: { dev: 3, ino: 9 } },
+      'daemon_supervisor_run_identity'],
+  ]) {
+    assert.deepEqual(classifyTenantBoundaryTopology({
+      ...complete,
+      ...overrides,
+    }), { probe_ok: false, stage });
+  }
+});
+
+test('rejects followed root or run replacement after namespace topology is pinned', () => {
+  const stable = {
+    initialDaemonRoot: { dev: 1, ino: 2 },
+    initialSupervisorRoot: { dev: 1, ino: 2 },
+    initialDaemonRun: { dev: 3, ino: 4 },
+    initialSupervisorRun: { dev: 3, ino: 4 },
+    finalDaemonRoot: { dev: 1, ino: 2 },
+    finalSupervisorRoot: { dev: 1, ino: 2 },
+    finalDaemonRun: { dev: 3, ino: 4 },
+    finalSupervisorRun: { dev: 3, ino: 4 },
+  };
+  assert.deepEqual(classifyTenantBoundaryFilesystemStability(stable), {
+    probe_ok: true,
+  });
+  for (const overrides of [
+    { finalDaemonRoot: { dev: 1, ino: 9 } },
+    { finalSupervisorRoot: { dev: 9, ino: 2 } },
+    { finalDaemonRun: { dev: 3, ino: 9 } },
+    { finalSupervisorRun: { dev: 9, ino: 4 } },
+  ]) {
+    const result = classifyTenantBoundaryFilesystemStability({
+      ...stable,
+      ...overrides,
+    });
+    assert.deepEqual(result, {
+      probe_ok: false,
+      stage: 'daemon_supervisor_filesystem_stability',
+    });
+    assert.doesNotMatch(JSON.stringify(result), /dev|ino|[1-9]/);
   }
 });
 
@@ -195,6 +327,13 @@ test('maps immutable runtime evidence through the same supervisor proc root', ()
 });
 
 const readyEvidence = Object.freeze({
+  daemon_service_mapping: true,
+  daemon_supervisor_mount_namespace_match: true,
+  daemon_supervisor_root_identity_match: true,
+  daemon_supervisor_run_identity_match: true,
+  daemon_supervisor_filesystem_stable: true,
+  service_leader_mount_namespace_match: true,
+  daemon_state_stable: true,
   root_daemon_outside_tenant_cgroup: true,
   tenant_service_identity_match: true,
   nginx_identity_match: true,
@@ -257,19 +396,12 @@ test('waits for a bounded tenant-boundary startup stage and returns exact eviden
 
 test('accepts only bounded safe marker convergence stages', async () => {
   for (const stage of [
-    'marker_proc_root_run_access',
-    'marker_proc_root_run_type',
-    'marker_proc_root_run_owner',
-    'marker_directory_access',
-    'marker_directory_type',
-    'marker_directory_owner',
-    'marker_directory_mode',
-    'marker_file_access',
-    'marker_file_type',
-    'marker_file_owner',
-    'marker_file_mode',
-    'marker_binding',
-    'marker_target',
+    'marker_daemon_proc_root_run_missing',
+    'marker_daemon_directory_missing',
+    'marker_daemon_file_missing',
+    'marker_supervisor_proc_root_run_missing',
+    'marker_supervisor_directory_missing',
+    'marker_supervisor_file_missing',
   ]) {
     let now = 0;
     const records = [
@@ -283,6 +415,38 @@ test('accepts only bounded safe marker convergence stages', async () => {
       timeoutMs: 1_000,
       intervalMs: 100,
     }));
+  }
+});
+
+test('fails closed immediately for denied, unexpected, and topology stages', async () => {
+  for (const stage of [
+    'marker_daemon_directory_denied',
+    'marker_daemon_directory_error',
+    'marker_supervisor_directory_denied',
+    'marker_supervisor_directory_error',
+    'marker_daemon_directory_type',
+    'marker_supervisor_file_mode',
+    'marker_binding',
+    'marker_target',
+    'daemon_service_mapping',
+    'daemon_supervisor_mount_namespace',
+    'daemon_supervisor_root_identity',
+    'daemon_supervisor_run_identity',
+    'daemon_supervisor_filesystem_stability',
+  ]) {
+    let calls = 0;
+    await assert.rejects(waitForTenantBoundaryEvidence({
+      probe: async () => { calls += 1; return { probe_ok: false, stage }; },
+      now: () => 0,
+      sleep: async () => assert.fail('terminal topology evidence must not retry'),
+      timeoutMs: 1_000,
+      intervalMs: 100,
+    }), (error) => {
+      assert.ok(error instanceof TenantBoundaryConvergenceError);
+      assert.equal(error.stage, stage);
+      return true;
+    });
+    assert.equal(calls, 1);
   }
 });
 
