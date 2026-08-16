@@ -8,6 +8,10 @@ import {
   validateTemplateRef,
 } from './runtime-core.mjs';
 import {
+  verifyPinnedNginxProcesses,
+  verifyPinnedWatchdogProcesses,
+} from './runtime-process-contract.mjs';
+import {
   assertSafeVerificationBaseline,
   buildCleanupEvidence,
   RUNTIME_VERIFICATION_METADATA_KEY,
@@ -189,9 +193,15 @@ process.stdout.write(JSON.stringify({
   },
   services: {
     monad_agent: service("svc-monad-agent"),
-    selkies: service("svc-selkies"),
-    xorg: service("svc-xorg"),
     nginx: service("svc-nginx"),
+    xorg: service("svc-xorg"),
+    dbus: service("svc-dbus"),
+    pulseaudio: service("svc-pulseaudio"),
+    selkies: service("svc-selkies"),
+    de: service("svc-de"),
+    watchdog: service("svc-watchdog"),
+    xsettingsd: service("svc-xsettingsd"),
+    cron_guard: service("svc-cron"),
     docker_guard: service("svc-docker"),
   },
   docker: {
@@ -205,8 +215,261 @@ process.stdout.write(JSON.stringify({
       "-x",
       "dockerd",
     ]),
+    dockerd_absent: !succeeds("nsenter", [
+      "--target",
+      String(s6Pid),
+      "--pid",
+      "--mount",
+      "pgrep",
+      "-x",
+      "dockerd",
+    ]),
   },
+  cron_disabled:
+    !succeeds("nsenter", [
+      "--target",
+      String(s6Pid),
+      "--pid",
+      "--mount",
+      "pgrep",
+      "-x",
+      "cron",
+    ]) &&
+    !succeeds("nsenter", [
+      "--target",
+      String(s6Pid),
+      "--pid",
+      "--mount",
+      "pgrep",
+      "-x",
+      "crond",
+    ]),
   forbidden_paths: forbiddenPaths ? forbiddenPaths.split("\n") : [],
+}));
+`).toString('base64');
+
+const tenantBoundaryProbe = Buffer.from(String.raw`
+const { execFileSync } = require("node:child_process");
+const { lstatSync, readFileSync, readdirSync, realpathSync } = require("node:fs");
+const { basename, dirname } = require("node:path");
+const sha256 = (path) =>
+  execFileSync("sha256sum", [path], { encoding: "utf8" }).trim().split(/\s+/)[0];
+const pid = (args) => Number(execFileSync("pgrep", args, { encoding: "utf8" }).trim());
+const serviceNames = [
+  "nginx", "xorg", "dbus", "pulseaudio", "selkies", "de", "watchdog", "xsettingsd",
+];
+const serviceLeaderPid = (name) => Number(execFileSync(
+  "s6-svstat",
+  ["-o", "pid", "/run/service/svc-" + name],
+  { encoding: "utf8" },
+).trim());
+const status = (value) => readFileSync("/proc/" + value + "/status", "utf8");
+const cgroup = (value) => readFileSync("/proc/" + value + "/cgroup", "utf8").trim();
+const command = (value) => {
+  try {
+    return readFileSync("/proc/" + value + "/cmdline", "utf8")
+      .split("\\0").filter(Boolean).join(" ");
+  } catch {
+    return "";
+  }
+};
+const argv = (value) => {
+  try {
+    return readFileSync("/proc/" + value + "/cmdline", "utf8")
+      .split("\\0").filter(Boolean);
+  } catch {
+    return [];
+  }
+};
+const executable = (value) => {
+  try {
+    return realpathSync("/proc/" + value + "/exe");
+  } catch {
+    return "";
+  }
+};
+const processEnvironment = (value) => {
+  try {
+    return Object.fromEntries(
+      readFileSync("/proc/" + value + "/environ", "utf8")
+        .split("\\0")
+        .filter(Boolean)
+        .map((entry) => {
+          const separator = entry.indexOf("=");
+          return separator > 0
+            ? [entry.slice(0, separator), entry.slice(separator + 1)]
+            : [entry, ""];
+        }),
+    );
+  } catch {
+    return {};
+  }
+};
+const processIds = () => readdirSync("/proc")
+  .filter((value) => /^\\d+$/.test(value))
+  .map(Number);
+const parentPid = (value) => {
+  try {
+    const match = status(value).match(/^PPid:[ \\t]+(\\d+)$/m);
+    return match ? Number(match[1]) : 0;
+  } catch {
+    return 0;
+  }
+};
+const processTree = (root) => {
+  const found = new Set([root]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const candidate of processIds()) {
+      if (!found.has(candidate) && found.has(parentPid(candidate))) {
+        found.add(candidate);
+        changed = true;
+      }
+    }
+  }
+  return [...found];
+};
+const ids = (raw, name) => {
+  const match = raw.match(new RegExp("^" + name + ":[ \\t]+(.+)$", "m"));
+  return match ? match[1].trim().split(/\s+/).map(Number) : [];
+};
+const groups = (raw) => {
+  const match = raw.match(/^Groups:[ \\t]*(.*)$/m);
+  const payload = match ? match[1].trim() : "";
+  return payload ? payload.split(/\s+/).map(Number) : [];
+};
+const exactIdentity = (raw, expected) => {
+  const uids = ids(raw, "Uid");
+  const gids = ids(raw, "Gid");
+  return uids.length === 4 && uids.every((value) => value === expected.uid) &&
+    gids.length === 4 && gids.every((value) => value === expected.gid) &&
+    JSON.stringify(groups(raw)) === JSON.stringify(expected.groups);
+};
+const observedIdentity = (raw) => {
+  const uids = ids(raw, "Uid");
+  const gids = ids(raw, "Gid");
+  return {
+    uid: uids.length === 4 && uids.every((value) => value === uids[0]) ? uids[0] : -1,
+    gid: gids.length === 4 && gids.every((value) => value === gids[0]) ? gids[0] : -1,
+    groups: groups(raw),
+  };
+};
+const processSnapshot = (value) => ({
+  pid: value,
+  ppid: parentPid(value),
+  executable: executable(value),
+  argv: argv(value),
+  identity: observedIdentity(status(value)),
+  environment: processEnvironment(value),
+});
+const verifyPinnedNginxProcesses = ${verifyPinnedNginxProcesses.toString()};
+const verifyPinnedWatchdogProcesses = ${verifyPinnedWatchdogProcesses.toString()};
+const exactFile = (path, mode) => {
+  const value = lstatSync(path);
+  return value.isFile() && !value.isSymbolicLink() && value.uid === 0 &&
+    value.gid === 0 && (value.mode & 0o7777) === mode && realpathSync(path) === path;
+};
+const markerPath = "/run/monad-admission/tenant-cgroup-ready";
+const attestationPath = "/etc/monad/session-rebind-tenant-boundary.json";
+const marker = readFileSync(markerPath, "utf8");
+if (!marker.endsWith("\n") || marker.slice(0, -1).includes("\n")) {
+  throw new Error("tenant cgroup marker is not canonical");
+}
+const tenantCgroup = marker.slice(0, -1);
+if (realpathSync(tenantCgroup) !== tenantCgroup ||
+    !tenantCgroup.startsWith("/sys/fs/cgroup/")) {
+  throw new Error("tenant cgroup marker escaped the cgroup mount");
+}
+const expectedMembership = "0::" + tenantCgroup.slice("/sys/fs/cgroup".length);
+const daemonPid = pid(["-o", "-x", "monad-agent"]);
+const serviceLeaders = Object.fromEntries(
+  serviceNames.map((name) => [name, serviceLeaderPid(name)]),
+);
+const serviceTrees = Object.fromEntries(
+  serviceNames.map((name) => [name, processTree(serviceLeaders[name])]),
+);
+const finalMatchers = {
+  nginx: (value) => executable(value) === "/usr/sbin/nginx",
+  xorg: (value) => /(^|\\/)Xvfb(\\s|$)/.test(command(value)),
+  dbus: (value) => /(^|\\/)dbus-daemon(\\s|$)/.test(command(value)),
+  pulseaudio: (value) => /(^|\\/)pulseaudio(\\s|$)/.test(command(value)),
+  selkies: (value) => command(value).includes("/lsiopy/bin/selkies"),
+  de: (value) => /(^|\\/)i3(\\s|$)/.test(command(value)),
+  watchdog: (value) =>
+    executable(value) === "/usr/bin/sleep" &&
+    JSON.stringify(argv(value)) === JSON.stringify(["sleep", "infinity"]),
+  xsettingsd: (value) => /(^|\\/)xsettingsd(\\s|$)/.test(command(value)),
+};
+const finalProcesses = Object.fromEntries(serviceNames.map((name) => [
+  name,
+  serviceTrees[name].filter(finalMatchers[name]),
+]));
+const expectedIdentity = { uid: 911, gid: 1001, groups: [100] };
+const daemonStatus = status(daemonPid);
+const nonRootFinalServices = ["xorg", "dbus", "pulseaudio", "selkies", "de", "xsettingsd"];
+const nginxIdentityMatch = verifyPinnedNginxProcesses({
+  leaderPid: serviceLeaders.nginx,
+  processes: serviceTrees.nginx.map(processSnapshot),
+});
+const watchdogIdentityMatch = verifyPinnedWatchdogProcesses({
+  leaderPid: serviceLeaders.watchdog,
+  processes: serviceTrees.watchdog.map(processSnapshot),
+});
+const attestation = JSON.parse(readFileSync(attestationPath, "utf8"));
+const daemonSha256 = sha256("/usr/local/bin/monad-agent");
+const admissionHelperSha256 = sha256("/usr/local/libexec/monad-tenant-admission");
+process.stdout.write(JSON.stringify({
+  daemon_sha256: daemonSha256,
+  admission_helper_sha256: admissionHelperSha256,
+  attestation_hash_match:
+    attestation.daemon?.sha256 === daemonSha256 &&
+    attestation.admission_helper?.sha256 === admissionHelperSha256,
+  attestation_identity_match:
+    attestation.tenant?.uid === expectedIdentity.uid &&
+    attestation.tenant?.gid === expectedIdentity.gid &&
+    JSON.stringify(attestation.tenant?.groups) === JSON.stringify(expectedIdentity.groups) &&
+    JSON.stringify(attestation.tenant?.services) === JSON.stringify({
+      chromium: expectedIdentity.uid,
+      git: expectedIdentity.uid,
+      opencode: expectedIdentity.uid,
+      selkies: expectedIdentity.uid,
+      xorg: expectedIdentity.uid,
+    }),
+  attestation_files_exact:
+    exactFile(attestationPath, 0o444) &&
+    exactFile("/usr/local/bin/monad-agent", 0o755) &&
+    exactFile("/usr/local/libexec/monad-tenant-admission", 0o755) &&
+    serviceNames.every((name) =>
+      exactFile("/usr/local/libexec/monad-webtop-svc-" + name, 0o555) &&
+      exactFile("/etc/s6-overlay/s6-rc.d/svc-" + name + "/run", 0o755)) &&
+    exactFile("/etc/s6-overlay/s6-rc.d/svc-cron/run", 0o755),
+  marker_exact:
+    exactFile(markerPath, 0o444) &&
+    realpathSync("/run/monad-admission") === "/run/monad-admission" &&
+    (lstatSync("/run/monad-admission").mode & 0o7777) === 0o700,
+  marker_basename_match: basename(tenantCgroup) === "monad-tenant",
+  marker_direct_parent_match: dirname(tenantCgroup) === "/sys/fs/cgroup",
+  root_daemon_outside_tenant_cgroup:
+    exactIdentity(daemonStatus, { uid: 0, gid: 0, groups: [0] }) &&
+    cgroup(daemonPid) !== expectedMembership,
+  tenant_service_identity_match:
+    nonRootFinalServices.every((name) =>
+      finalProcesses[name].length > 0 &&
+      finalProcesses[name].every((value) => exactIdentity(status(value), expectedIdentity))),
+  nginx_identity_match: nginxIdentityMatch,
+  watchdog_identity_match: watchdogIdentityMatch,
+  tenant_service_cgroup_match:
+    serviceNames.every((name) =>
+      serviceTrees[name].every((value) => cgroup(value) === expectedMembership)),
+  service_leader_cgroup_match:
+    serviceNames.every((name) => cgroup(serviceLeaders[name]) === expectedMembership),
+  important_descendant_cgroup_match:
+    serviceNames.every((name) =>
+      finalProcesses[name].length > 0 &&
+      finalProcesses[name].every((value) => cgroup(value) === expectedMembership)),
+  service_leaders: serviceLeaders,
+  final_processes: finalProcesses,
 }));
 `).toString('base64');
 
@@ -264,6 +527,31 @@ try {
     bootstrap_socket_mode: bootstrapGate[2],
   };
 
+  const tenantBoundary = JSON.parse(
+    await run(`printf '%s' '${tenantBoundaryProbe}' | base64 -d | node`),
+  );
+  if (
+    tenantBoundary.daemon_sha256 !== manifest.daemon_sha256 ||
+    tenantBoundary.admission_helper_sha256 !==
+      manifest.tenant_admission_helper_sha256 ||
+    tenantBoundary.attestation_hash_match !== true ||
+    tenantBoundary.attestation_identity_match !== true ||
+    tenantBoundary.attestation_files_exact !== true ||
+    tenantBoundary.marker_exact !== true ||
+    tenantBoundary.marker_basename_match !== true ||
+    tenantBoundary.marker_direct_parent_match !== true ||
+    tenantBoundary.root_daemon_outside_tenant_cgroup !== true ||
+    tenantBoundary.tenant_service_identity_match !== true ||
+    tenantBoundary.nginx_identity_match !== true ||
+    tenantBoundary.watchdog_identity_match !== true ||
+    tenantBoundary.tenant_service_cgroup_match !== true ||
+    tenantBoundary.service_leader_cgroup_match !== true ||
+    tenantBoundary.important_descendant_cgroup_match !== true
+  ) {
+    throw new Error('runtime tenant-boundary attestation did not verify');
+  }
+  evidence.tenant_boundary = tenantBoundary;
+
   evidence.versions = JSON.parse(
     await run(
       String.raw`node -e 'const {execFileSync}=require("node:child_process"); const commands={opencode:["opencode","--version"],agent_browser:["agent-browser","--version"],playwright:["playwright","--version"],git:["git","--version"],monad:["monad","--version"]}; const out={}; for(const [name,args] of Object.entries(commands)){out[name]=execFileSync(args[0],args.slice(1),{encoding:"utf8"}).trim()} process.stdout.write(JSON.stringify(out))'`,
@@ -311,6 +599,8 @@ try {
     Object.values(desktop.processes).some((ready) => ready !== true) ||
     Object.values(desktop.services).some((service) => service.ok !== true) ||
     desktop.docker.desktop_namespace_running !== false ||
+    desktop.docker.dockerd_absent !== true ||
+    desktop.cron_disabled !== true ||
     desktop.forbidden_paths.length !== 0
   ) {
     throw new Error(`desktop runtime contract failed: ${JSON.stringify(desktop)}`);

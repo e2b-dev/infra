@@ -3,6 +3,8 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
   S6_SERVICE_FILES,
+  RUNTIME_BUILD_FILES,
+  TENANT_SUPERVISED_SERVICES,
   calculateRuntimeVersion,
   loadRuntimeSource,
   normalizeApiUrl,
@@ -28,7 +30,7 @@ test('runtime source pins immutable TAMS and tool inputs', async () => {
   assert.equal(source.template_resources.memory_mb, 4096);
 });
 
-test('PR B Dockerfile has the base runtime and pinned Selkies desktop', async () => {
+test('Dockerfile preserves and gates every tenant-facing Webtop longrun', async () => {
   const dockerfile = await readFile(
     new URL('./e2b.Dockerfile', import.meta.url),
     'utf8',
@@ -37,6 +39,37 @@ test('PR B Dockerfile has the base runtime and pinned Selkies desktop', async ()
   assert.match(dockerfile, /agent-browser@0\.27\.0/);
   assert.match(dockerfile, /playwright@1\.60\.0/);
   assert.match(dockerfile, /COPY \.build-assets\/monad-agent/);
+  assert.match(dockerfile, /COPY \.build-assets\/monad-tenant-admission/);
+  assert.match(
+    dockerfile,
+    /COPY \.build-assets\/session-rebind-tenant-boundary\.json/,
+  );
+  assert.deepEqual(TENANT_SUPERVISED_SERVICES, [
+    'nginx',
+    'xorg',
+    'dbus',
+    'pulseaudio',
+    'selkies',
+    'de',
+    'watchdog',
+    'xsettingsd',
+  ]);
+  for (const service of TENANT_SUPERVISED_SERVICES) {
+    assert.match(dockerfile, new RegExp(`monad-webtop-svc-${service}`));
+    assert.match(
+      dockerfile,
+      new RegExp(`s6-overlay/s6-rc\\.d/svc-${service}/run`),
+    );
+  }
+  assert.doesNotMatch(dockerfile, /sed -i 's\/s6-setuidgid abc\/\/g'/);
+  assert.doesNotMatch(dockerfile, /grep -Fq 's6-setuidgid abc'/);
+  assert.match(dockerfile, /gpasswd -d abc sudo/);
+  assert.match(dockerfile, /gpasswd -d abc docker/);
+  assert.match(dockerfile, /test "\$\(id -G abc\)" = "1001 100"/);
+  assert.match(dockerfile, /grep -Eq '\(\^\|\[:,\]\)abc\(,\|\$\)'/);
+  assert.match(dockerfile, /svc-cron\/run/);
+  assert.match(dockerfile, /exec sleep infinity/);
+  assert.match(dockerfile, /chown -R 911:1001 \/opt\/monad\/home \/workspace/);
   assert.match(
     dockerfile,
     /FROM lscr\.io\/linuxserver\/webtop@sha256:[0-9a-f]{64}/,
@@ -46,6 +79,16 @@ test('PR B Dockerfile has the base runtime and pinned Selkies desktop', async ()
   assert.match(dockerfile, /NPM_CONFIG_CACHE=\/tmp\/npm-cache/);
   assert.match(dockerfile, /apt-get purge -y[\s\S]*docker-ce/);
   assert.match(dockerfile, /START_DOCKER=false/);
+  assert.match(dockerfile, /RESTART_APP=false/);
+  assert.match(
+    dockerfile,
+    /attestation\.daemon\.sha256!==sha256\("\/usr\/local\/bin\/monad-agent"\)/,
+  );
+  assert.match(
+    dockerfile,
+    /attestation\.admission_helper\.sha256!==sha256\("\/usr\/local\/libexec\/monad-tenant-admission"\)/,
+  );
+  assert.match(dockerfile, /execFileSync\("sha256sum"/);
   assert.match(dockerfile, /svc-monad-agent/);
   assert.doesNotMatch(dockerfile, /\b(?:kasm|novnc|tigervnc)\b/i);
 });
@@ -73,12 +116,53 @@ test('template readiness composes bootstrap-await and desktop health under s6', 
   assert.match(definition, /runtime-provenance\.json/);
   assert.doesNotMatch(definition, /\.setEnvs\(/);
   assert.doesNotMatch(definition, /8000\/health/);
-  assert.equal(S6_SERVICE_FILES.length, 3);
+  assert.equal(S6_SERVICE_FILES.length, 12);
+  assert.equal(RUNTIME_BUILD_FILES.length, 4);
   const serviceFiles = await Promise.all(
     S6_SERVICE_FILES.map((file) => readFile(file, 'utf8')),
   );
   assert.ok(serviceFiles.some((content) => content.includes('monad-entrypoint')));
   assert.ok(serviceFiles.some((content) => content.trim() === 'longrun'));
+  for (const service of TENANT_SUPERVISED_SERVICES) {
+    assert.ok(serviceFiles.some((content) => content.includes(
+      `--supervised-service ${service}`,
+    )));
+  }
+  assert.ok(serviceFiles.some((content) => content.includes('exec sleep infinity')));
+  for (const content of serviceFiles) {
+    assert.doesNotMatch(content, /--supervised-service \S+\s+\d/);
+  }
+});
+
+test('runtime verifier proves containment and disables ambient schedulers and nested Docker', async () => {
+  const verifier = await readFile(
+    new URL('./verify-runtime.mjs', import.meta.url),
+    'utf8',
+  );
+  assert.match(verifier, /tenant-cgroup-ready/);
+  assert.match(verifier, /session-rebind-tenant-boundary\.json/);
+  for (const service of TENANT_SUPERVISED_SERVICES) {
+    assert.match(verifier, new RegExp(`svc-${service}`));
+  }
+  assert.match(verifier, /monad-webtop-svc-/);
+  assert.match(verifier, /root_daemon_outside_tenant_cgroup/);
+  assert.match(verifier, /tenant_service_identity_match/);
+  assert.match(verifier, /service_leader_cgroup_match/);
+  assert.match(verifier, /important_descendant_cgroup_match/);
+  assert.match(verifier, /cron_disabled/);
+  assert.match(verifier, /dockerd_absent/);
+  assert.match(verifier, /marker_basename_match/);
+  assert.match(verifier, /marker_direct_parent_match/);
+  assert.match(verifier, /executable\(value\) === "\/usr\/sbin\/nginx"/);
+  assert.match(verifier, /verifyPinnedNginxProcesses\.toString\(\)/);
+  assert.match(verifier, /verifyPinnedWatchdogProcesses\.toString\(\)/);
+  assert.match(verifier, /nginx_identity_match/);
+  assert.match(verifier, /watchdog_identity_match/);
+  assert.match(verifier, /JSON\.stringify\(attestation\.tenant\?\.services\)/);
+  for (const service of ['chromium', 'git', 'opencode', 'selkies', 'xorg']) {
+    assert.match(verifier, new RegExp(`${service}: expectedIdentity\\.uid`));
+  }
+  assert.doesNotMatch(verifier, /Object\.values\(attestation\.tenant\?\.services/);
 });
 
 test('runtime version changes with tree identity', async () => {

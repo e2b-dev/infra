@@ -4,6 +4,22 @@ import { readFile } from 'node:fs/promises';
 export const SOURCE_FILE = new URL('./runtime-source.json', import.meta.url);
 export const DOCKERFILE = new URL('./e2b.Dockerfile', import.meta.url);
 export const TEMPLATE_DEFINITION = new URL('./template.mjs', import.meta.url);
+export const RUNTIME_BUILD_FILES = [
+  new URL('./prepare-assets.mjs', import.meta.url),
+  new URL('./runtime-core.mjs', import.meta.url),
+  new URL('./runtime-process-contract.mjs', import.meta.url),
+  new URL('./tenant-boundary.mjs', import.meta.url),
+];
+export const TENANT_SUPERVISED_SERVICES = Object.freeze([
+  'nginx',
+  'xorg',
+  'dbus',
+  'pulseaudio',
+  'selkies',
+  'de',
+  'watchdog',
+  'xsettingsd',
+]);
 export const S6_SERVICE_FILES = [
   new URL('./s6-overlay/s6-rc.d/svc-monad-agent/run', import.meta.url),
   new URL('./s6-overlay/s6-rc.d/svc-monad-agent/type', import.meta.url),
@@ -11,6 +27,10 @@ export const S6_SERVICE_FILES = [
     './s6-overlay/s6-rc.d/svc-monad-agent/dependencies.d/init-services',
     import.meta.url,
   ),
+  ...TENANT_SUPERVISED_SERVICES.map(
+    (service) => new URL(`./s6-overlay/s6-rc.d/svc-${service}/run`, import.meta.url),
+  ),
+  new URL('./s6-overlay/s6-rc.d/svc-cron/run', import.meta.url),
 ];
 
 export function requiredEnv(environment, name) {
@@ -54,6 +74,9 @@ export async function loadRuntimeSource() {
 export async function calculateRuntimeVersion(source) {
   const dockerfile = await readFile(DOCKERFILE);
   const templateDefinition = await readFile(TEMPLATE_DEFINITION);
+  const runtimeBuildFiles = await Promise.all(
+    RUNTIME_BUILD_FILES.map((file) => readFile(file)),
+  );
   const s6ServiceFiles = await Promise.all(
     S6_SERVICE_FILES.map((file) => readFile(file)),
   );
@@ -72,6 +95,9 @@ export async function calculateRuntimeVersion(source) {
     .update('\0')
     .update(JSON.stringify(versionInput));
   for (const file of s6ServiceFiles) {
+    hash.update('\0').update(file);
+  }
+  for (const file of runtimeBuildFiles) {
     hash.update('\0').update(file);
   }
   return hash.digest('hex');

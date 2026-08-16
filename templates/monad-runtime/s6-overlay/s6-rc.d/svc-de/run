@@ -1,0 +1,3 @@
+#!/command/execlineb -P
+with-contenv
+/usr/local/libexec/monad-tenant-admission --supervised-service de

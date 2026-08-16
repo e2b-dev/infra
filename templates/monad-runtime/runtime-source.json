@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "tams_repository": "rehoboam-lab/tams",
-  "tams_revision": "f10baa4303b8eae62098b94e194dc1f39cb35cc5",
-  "tams_apps_sandbox_tree_oid": "322a658913532aa66a9c946cb3797f19b660fcca",
+  "tams_revision": "2000591c573a6fc0a2d3c890f65d370bf44612fd",
+  "tams_apps_sandbox_tree_oid": "d02032fa44e1834d1e84583a01e25701e1166cd4",
   "runtime_input_paths": [
     "apps/sandbox",
     "apps/monad-sandbox-agent-server",

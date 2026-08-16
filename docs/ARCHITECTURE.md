@@ -364,6 +364,32 @@ are removed, and Webtop's retained `svc-docker` guard sleeps with
 `START_DOCKER=false`; the E2B guest's outer infrastructure dockerd remains
 outside the desktop PID and mount namespaces.
 
+Session rebind uses one attested cgroup-v2 tenant boundary inside the runtime.
+The root Monad daemon remains outside it as the control process. Its immutable
+build claim binds the daemon and native admission-helper hashes, exact file
+ownership/modes, non-root tenant identity, supported service set, and runtime
+configuration digest algorithm. The daemon validates that claim before
+credential activation or tenant process admission, exercises `cgroup.kill`
+with a detached-descendant probe, and only then publishes a root-protected
+readiness marker. Daemon-spawned Git, OpenCode, Chromium, and workspace work,
+plus the independently supervised nginx, Xorg, D-Bus, PulseAudio, Selkies,
+desktop-environment, watchdog, and xsettingsd services, all use the same
+join-only helper and exact tenant cgroup. Their preserved upstream scripts keep
+root setup and internal non-root transitions; the image removes `abc` from
+`sudo` and `docker`, pins nginx's root-master/`www-data`-worker identities,
+forces the watchdog into its childless `RESTART_APP=false` guard, disables the
+cron service with an immutable inert run script, and keeps Webtop's Docker
+service inert. Rebind removes the marker,
+fences new work, drains activity, kills the old subtree, and publishes a new
+marker only after the replacement boundary is ready.
+
+The embedded claim is deliberately not self-certifying. Template registration
+requires an independent synthetic-runtime verifier to match the built hashes,
+root/non-root process identities and groups, all wrapped service leaders and
+important descendants, exact file modes and marker placement, cron/dockerd
+absence, desktop function, and zero-provider-leak cleanup before the protected
+template ID/reference/image triple is updated.
+
 ## Deployment topology
 
 Deployed with **Terraform** (`iac/provider-gcp/`, `iac/provider-aws/`) onto a **Nomad + Consul**
