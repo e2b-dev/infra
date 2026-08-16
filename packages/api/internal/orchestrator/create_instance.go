@@ -344,6 +344,7 @@ func (o *Orchestrator) CreateSandbox(
 	clusterNodes := o.GetClusterNodes(nodeClusterID)
 
 	allLabels, labelFilteringEnabled := o.generateRequiredNodeLabels(ctx, sandboxID, team, sbxData)
+	allLabels, labelFilteringEnabled = addRuntimePlacementLabels(sbxRequest.GetSandbox().GetMetadata(), allLabels, labelFilteringEnabled)
 
 	placed, err := placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, allLabels)
 	if err != nil {
@@ -447,6 +448,17 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	return sbx, nil
+}
+
+func addRuntimePlacementLabels(metadata map[string]string, labels []string, filteringEnabled bool) ([]string, bool) {
+	runtimeClass := metadata[consts.OrchestratorRuntimeClassMetadataKey]
+	if runtimeClass == "" {
+		return labels, filteringEnabled
+	}
+
+	// An explicit Kata request must not be sent to a Firecracker node in a
+	// mixed fleet. The backend still validates its operator allow-list.
+	return append(labels, consts.OrchestratorRuntimeOCIKataLabel, runtimeClass), true
 }
 
 // maybeRemapResumeOriginNode repoints the snapshot's origin_node_id to the

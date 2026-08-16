@@ -2,6 +2,7 @@ package placement
 
 import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 )
 
@@ -16,6 +17,9 @@ func isNodeCPUCompatible(node *nodemanager.Node, buildMachineInfo machineinfo.Ma
 	}
 
 	nodeMachineInfo := node.MachineInfo()
+	if node.HasLabel(consts.OrchestratorRuntimeOCIKataLabel) {
+		return nodeMachineInfo.CPUArchitecture != "" && buildMachineInfo.CPUArchitecture == nodeMachineInfo.CPUArchitecture
+	}
 
 	return buildMachineInfo.IsCompatibleWith(nodeMachineInfo)
 }

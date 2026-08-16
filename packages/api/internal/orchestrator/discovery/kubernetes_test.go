@@ -152,3 +152,32 @@ func TestKubernetesDiscovery_FiltersMissingIP(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, nodes)
 }
+
+func TestKubernetesDiscovery_UsesPodIPWithoutHostNetwork(t *testing.T) {
+	t.Parallel()
+
+	pod := newOrchestratorPod("orchestrator-deployment-abcde", "10.0.0.9", true)
+	pod.Status.PodIP = "10.128.2.14"
+
+	client := fake.NewSimpleClientset(pod)
+	d := NewKubernetes(client, testNamespace, testLabelSelector)
+	nodes, err := d.ListNodes(t.Context())
+	require.NoError(t, err)
+	require.Len(t, nodes, 1)
+	assert.Equal(t, "10.128.2.14", nodes[0].IPAddress)
+}
+
+func TestKubernetesDiscovery_UsesHostIPWithHostNetwork(t *testing.T) {
+	t.Parallel()
+
+	pod := newOrchestratorPod("orchestrator-daemonset-abcde", "10.0.0.9", true)
+	pod.Spec.HostNetwork = true
+	pod.Status.PodIP = "10.128.2.14"
+
+	client := fake.NewSimpleClientset(pod)
+	d := NewKubernetes(client, testNamespace, testLabelSelector)
+	nodes, err := d.ListNodes(t.Context())
+	require.NoError(t, err)
+	require.Len(t, nodes, 1)
+	assert.Equal(t, "10.0.0.9", nodes[0].IPAddress)
+}

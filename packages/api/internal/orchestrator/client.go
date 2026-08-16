@@ -22,8 +22,12 @@ func (o *Orchestrator) connectToNode(ctx context.Context, discovered nodemanager
 	defer childSpan.End()
 
 	_, err, _ := o.connectGroup.Do(discovered.NomadNodeShortID, func() (any, error) {
-		// Re-check inside the singleflight to prevent race issues due to overwriting existing nodes in the map
-		if o.GetNodeByNomadShortID(discovered.NomadNodeShortID) != nil {
+		// Re-check inside the singleflight to prevent race issues due to
+		// overwriting existing nodes in the map. A regular-networked Kubernetes
+		// Pod keeps its discovery ID across restarts but receives a new Pod IP, so
+		// the address change must replace the stale gRPC client.
+		existing := o.GetNodeByNomadShortID(discovered.NomadNodeShortID)
+		if existing != nil && existing.IPAddress == discovered.IPAddress {
 			return nil, nil
 		}
 
@@ -35,7 +39,13 @@ func (o *Orchestrator) connectToNode(ctx context.Context, discovered nodemanager
 			return nil, err
 		}
 
+		if existing != nil && existing.ID != orchestratorNode.ID {
+			o.deregisterNode(existing)
+		}
 		o.registerNode(orchestratorNode)
+		if existing != nil {
+			_ = existing.Close(context.WithoutCancel(ctx))
+		}
 
 		return nil, nil
 	})
@@ -215,7 +225,8 @@ func (o *Orchestrator) discoverNomadNodes(ctx context.Context) {
 	defer wg.Wait()
 
 	for _, n := range nomadNodes {
-		if o.GetNodeByNomadShortID(n.NomadNodeShortID) == nil {
+		existing := o.GetNodeByNomadShortID(n.NomadNodeShortID)
+		if existing == nil || existing.IPAddress != n.IPAddress {
 			wg.Go(func() {
 				if err := o.connectToNode(ctx, n); err != nil {
 					logger.L().Error(ctx, "Error connecting to Nomad node on demand",

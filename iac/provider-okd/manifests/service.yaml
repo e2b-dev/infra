@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: e2b-kubernetes-orchestrator
+  labels:
+    app.kubernetes.io/name: orchestrator
+    app.kubernetes.io/component: kubernetes-orchestrator
+    app.kubernetes.io/part-of: e2b
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: orchestrator
+    app.kubernetes.io/component: kubernetes-orchestrator
+  ports:
+    - name: grpc
+      port: 5008
+      targetPort: grpc
+    - name: proxy
+      port: 5007
+      targetPort: proxy
+    - name: health
+      port: 5018
+      targetPort: health

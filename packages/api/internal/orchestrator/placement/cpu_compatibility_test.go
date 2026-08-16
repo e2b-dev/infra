@@ -7,6 +7,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 )
 
@@ -118,4 +119,24 @@ func TestIsNodeCPUCompatible_AllFieldsMatch(t *testing.T) {
 
 	result := isNodeCPUCompatible(node, buildCPU)
 	assert.True(t, result, "Node should be compatible when architecture, family, and model all match")
+}
+
+func TestIsNodeCPUCompatible_OCIKataRequiresOnlyArchitecture(t *testing.T) {
+	t.Parallel()
+	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4,
+		nodemanager.WithCPUInfo("x86_64", "", ""),
+		nodemanager.WithLabels([]string{consts.OrchestratorRuntimeOCIKataLabel}))
+	buildCPU := machineinfo.MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: "106"}
+
+	assert.True(t, isNodeCPUCompatible(node, buildCPU))
+}
+
+func TestIsNodeCPUCompatible_OCIKataRejectsArchitectureMismatch(t *testing.T) {
+	t.Parallel()
+	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4,
+		nodemanager.WithCPUInfo("aarch64", "", ""),
+		nodemanager.WithLabels([]string{consts.OrchestratorRuntimeOCIKataLabel}))
+	buildCPU := machineinfo.MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: "106"}
+
+	assert.False(t, isNodeCPUCompatible(node, buildCPU))
 }
