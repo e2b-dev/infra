@@ -32,6 +32,10 @@ func (l *ConnectionLimiter) getCounter(key string) *atomic.Int64 {
 // Returns (current count after increment, true) if successful, or (current count, false) if limit exceeded.
 // If maxLimit is negative, no limit is enforced. If maxLimit is 0, all connections are blocked.
 func (l *ConnectionLimiter) TryAcquire(key string, maxLimit int) (int64, bool) {
+	if maxLimit == 0 {
+		return l.Count(key), false
+	}
+
 	for {
 		counter := l.getCounter(key)
 		current := counter.Load()

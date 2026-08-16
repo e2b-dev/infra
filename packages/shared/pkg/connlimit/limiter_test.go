@@ -40,7 +40,7 @@ func TestConnectionLimiter_TryAcquire(t *testing.T) {
 		assert.Equal(t, int64(5), count)
 	})
 
-	t.Run("zero limit blocks all connections", func(t *testing.T) {
+	t.Run("zero limit blocks all connections without retaining map entry", func(t *testing.T) {
 		t.Parallel()
 		limiter := NewConnectionLimiter()
 
@@ -48,6 +48,38 @@ func TestConnectionLimiter_TryAcquire(t *testing.T) {
 		assert.False(t, ok)
 		assert.Equal(t, int64(0), count)
 		assert.Equal(t, int64(0), limiter.Count("sandbox1"))
+		assert.Equal(t, 0, limiter.connections.Count())
+	})
+
+	t.Run("zero limit across multiple keys leaves zero retained map entries", func(t *testing.T) {
+		t.Parallel()
+		limiter := NewConnectionLimiter()
+
+		for i := range 100 {
+			key := "blocked-key-" + string(rune(i))
+			count, ok := limiter.TryAcquire(key, 0)
+			assert.False(t, ok)
+			assert.Equal(t, int64(0), count)
+		}
+
+		assert.Equal(t, 0, limiter.connections.Count())
+	})
+
+	t.Run("zero limit on existing connection reports current count without modifying", func(t *testing.T) {
+		t.Parallel()
+		limiter := NewConnectionLimiter()
+
+		count, ok := limiter.TryAcquire("sandbox1", 5)
+		assert.True(t, ok)
+		assert.Equal(t, int64(1), count)
+
+		count, ok = limiter.TryAcquire("sandbox1", 0)
+		assert.False(t, ok)
+		assert.Equal(t, int64(1), count)
+		assert.Equal(t, 1, limiter.connections.Count())
+
+		limiter.Release("sandbox1")
+		assert.Equal(t, 0, limiter.connections.Count())
 	})
 
 	t.Run("negative limit means no limit", func(t *testing.T) {
