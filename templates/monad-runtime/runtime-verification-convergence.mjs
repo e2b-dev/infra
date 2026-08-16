@@ -1,7 +1,16 @@
 const RETRYABLE_STAGES = new Set([
   'marker',
-  'marker_directory',
-  'marker_file',
+  'marker_proc_root_run_access',
+  'marker_proc_root_run_type',
+  'marker_proc_root_run_owner',
+  'marker_directory_access',
+  'marker_directory_type',
+  'marker_directory_owner',
+  'marker_directory_mode',
+  'marker_file_access',
+  'marker_file_type',
+  'marker_file_owner',
+  'marker_file_mode',
   'marker_binding',
   'marker_target',
   'supervisor',
@@ -9,6 +18,100 @@ const RETRYABLE_STAGES = new Set([
   'process_attestation',
   'filesystem_attestation',
 ]);
+const TERMINAL_STAGES = new Set(['probe_identity']);
+
+export function classifyTenantBoundaryProbeIdentity({ getuid, getgid }) {
+  try {
+    if (getuid() === 0 && getgid() === 0) {
+      return { probe_ok: true };
+    }
+  } catch {}
+  return { probe_ok: false, stage: 'probe_identity' };
+}
+
+export function inspectTenantBoundaryMarkerFilesystem({
+  lstat,
+  procRootRun,
+  admissionRoot,
+  marker,
+}) {
+  const failure = (stage) => ({ probe_ok: false, stage });
+  const inspect = ({
+    path,
+    accessStage,
+    expectedType,
+    typeStage,
+    ownerStage,
+    mode,
+    modeStage,
+  }) => {
+    let metadata;
+    try {
+      metadata = lstat(path);
+    } catch {
+      return failure(accessStage);
+    }
+    try {
+      const typeMatches = expectedType === 'directory'
+        ? metadata.isDirectory()
+        : metadata.isFile();
+      if (!typeMatches || metadata.isSymbolicLink()) {
+        return failure(typeStage);
+      }
+    } catch {
+      return failure(typeStage);
+    }
+    try {
+      if (metadata.uid !== 0 || metadata.gid !== 0) {
+        return failure(ownerStage);
+      }
+    } catch {
+      return failure(ownerStage);
+    }
+    if (mode !== undefined) {
+      try {
+        if ((metadata.mode & 0o7777) !== mode) {
+          return failure(modeStage);
+        }
+      } catch {
+        return failure(modeStage);
+      }
+    }
+    return null;
+  };
+  const checks = [
+    {
+      path: procRootRun,
+      accessStage: 'marker_proc_root_run_access',
+      expectedType: 'directory',
+      typeStage: 'marker_proc_root_run_type',
+      ownerStage: 'marker_proc_root_run_owner',
+    },
+    {
+      path: admissionRoot,
+      accessStage: 'marker_directory_access',
+      expectedType: 'directory',
+      typeStage: 'marker_directory_type',
+      ownerStage: 'marker_directory_owner',
+      mode: 0o700,
+      modeStage: 'marker_directory_mode',
+    },
+    {
+      path: marker,
+      accessStage: 'marker_file_access',
+      expectedType: 'file',
+      typeStage: 'marker_file_type',
+      ownerStage: 'marker_file_owner',
+      mode: 0o444,
+      modeStage: 'marker_file_mode',
+    },
+  ];
+  for (const check of checks) {
+    const result = inspect(check);
+    if (result !== null) return result;
+  }
+  return { probe_ok: true };
+}
 
 export function bindTenantBoundaryMarker(daemonMembership, marker) {
   if (
@@ -214,9 +317,13 @@ export async function waitForTenantBoundaryEvidence({
       !hasExactKeys(record, ['probe_ok', 'stage']) ||
       record.probe_ok !== false ||
       typeof record.stage !== 'string' ||
-      !RETRYABLE_STAGES.has(record.stage)
+      (!RETRYABLE_STAGES.has(record.stage) &&
+        !TERMINAL_STAGES.has(record.stage))
     ) {
       throw new Error('tenant boundary probe returned an invalid record');
+    }
+    if (TERMINAL_STAGES.has(record.stage)) {
+      throw new TenantBoundaryConvergenceError(record.stage);
     }
     lastStage = record.stage;
     await sleep(Math.min(intervalMs, remaining));

@@ -23,7 +23,9 @@ import {
 } from './runtime-verification-inventory.mjs';
 import {
   bindTenantBoundaryMarker,
+  classifyTenantBoundaryProbeIdentity,
   classifyTenantBoundaryEvidence,
+  inspectTenantBoundaryMarkerFilesystem,
   tenantBoundaryProcRootPaths,
   tenantBoundaryRuntimePath,
   tenantBoundaryRuntimePathChain,
@@ -98,10 +100,12 @@ async function run(
   command,
   timeoutMs = 120_000,
   commandRequestTimeoutMs = requestTimeoutMs,
+  user,
 ) {
   const result = await sandbox.commands.run(command, {
     requestTimeoutMs: commandRequestTimeoutMs,
     timeoutMs,
+    ...(user === undefined ? {} : { user }),
   });
   if (result.exitCode !== 0) {
     const diagnostics = [result.stdout, result.stderr]
@@ -503,7 +507,9 @@ const processSnapshot = (value) => ({
 const verifyPinnedNginxProcesses = ${verifyPinnedNginxProcesses.toString()};
 const verifyPinnedWatchdogProcesses = ${verifyPinnedWatchdogProcesses.toString()};
 const bindBoundaryMarker = ${bindTenantBoundaryMarker.toString()};
+const classifyBoundaryProbeIdentity = ${classifyTenantBoundaryProbeIdentity.toString()};
 const classifyBoundaryEvidence = ${classifyTenantBoundaryEvidence.toString()};
+const inspectBoundaryMarkerFilesystem = ${inspectTenantBoundaryMarkerFilesystem.toString()};
 const procRootPaths = ${tenantBoundaryProcRootPaths.toString()};
 const procRootRuntimePath = ${tenantBoundaryRuntimePath.toString()};
 const procRootPathChain = ${tenantBoundaryRuntimePathChain.toString()};
@@ -534,8 +540,17 @@ const exactProcRootDirectory = (supervisorPid, runtimePath, mode) => {
         (value.mode & 0o7777) === mode);
   });
 };
-let probeStage = "supervisor";
+let probeStage = "probe_identity";
 try {
+const probeIdentity = classifyBoundaryProbeIdentity({
+  getuid: () => process.getuid(),
+  getgid: () => process.getgid(),
+});
+if (probeIdentity.probe_ok !== true) {
+  process.stdout.write(JSON.stringify(probeIdentity));
+  process.exit(0);
+}
+probeStage = "supervisor";
 const daemonPid = uniqueNamedPid("monad-agent");
 const supervisorPid = uniqueNamedPid("s6-svscan");
 const supervisorNamespacePids = namespacePidVector(status(supervisorPid));
@@ -547,17 +562,16 @@ if (supervisorNamespacePids.length === 0 || supervisorNamespacePids[0] !== super
 const attestationPath = "/etc/monad/session-rebind-tenant-boundary.json";
 const markerPaths = procRootPaths(supervisorPid);
 const runtimeRootPath = (path) => procRootRuntimePath(supervisorPid, path);
-probeStage = "marker_directory";
-if (!exactProcRootDirectory(supervisorPid, "/run/monad-admission", 0o700)) {
-  throw new Error("tenant cgroup marker directory is invalid");
-}
-probeStage = "marker_file";
-if (!exactProcRootFile(
-  supervisorPid,
-  "/run/monad-admission/tenant-cgroup-ready",
-  0o444,
-)) {
-  throw new Error("tenant cgroup marker file is invalid");
+probeStage = "marker_proc_root_run_access";
+const markerFilesystem = inspectBoundaryMarkerFilesystem({
+  lstat: lstatSync,
+  procRootRun: markerPaths.root + "/run",
+  admissionRoot: markerPaths.admissionRoot,
+  marker: markerPaths.marker,
+});
+if (markerFilesystem.probe_ok !== true) {
+  process.stdout.write(JSON.stringify(markerFilesystem));
+  process.exit(0);
 }
 probeStage = "marker_binding";
 const marker = readFileSync(markerPaths.marker, "utf8");
@@ -786,6 +800,7 @@ try {
         `printf '%s' '${tenantBoundaryProbe}' | base64 -d | node`,
         attemptTimeoutMs,
         attemptTimeoutMs,
+        'root',
       ));
     },
     timeoutMs: 180_000,

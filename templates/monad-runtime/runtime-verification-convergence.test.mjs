@@ -57,6 +57,98 @@ test('rejects a marker outside the exact daemon cgroup child binding', () => {
   }
 });
 
+test('requires an exact root identity without returning raw identity data', () => {
+  assert.deepEqual(
+    convergence.classifyTenantBoundaryProbeIdentity({
+      getuid: () => 0,
+      getgid: () => 0,
+    }),
+    { probe_ok: true },
+  );
+  for (const identity of [
+    { getuid: () => 911, getgid: () => 0 },
+    { getuid: () => 0, getgid: () => 1001 },
+    { getuid: () => { throw new Error('private uid failure'); }, getgid: () => 0 },
+    { getuid: () => 0, getgid: () => { throw new Error('private gid failure'); } },
+  ]) {
+    assert.deepEqual(
+      convergence.classifyTenantBoundaryProbeIdentity(identity),
+      { probe_ok: false, stage: 'probe_identity' },
+    );
+  }
+});
+
+test('isolates marker filesystem failures into exact safe stages', () => {
+  const paths = {
+    procRootRun: '/proc/1006/root/run',
+    admissionRoot: '/proc/1006/root/run/monad-admission',
+    marker: '/proc/1006/root/run/monad-admission/tenant-cgroup-ready',
+  };
+  const directory = (overrides = {}) => ({
+    isDirectory: () => true,
+    isFile: () => false,
+    isSymbolicLink: () => false,
+    uid: 0,
+    gid: 0,
+    mode: 0o700,
+    ...overrides,
+  });
+  const file = (overrides = {}) => ({
+    isDirectory: () => false,
+    isFile: () => true,
+    isSymbolicLink: () => false,
+    uid: 0,
+    gid: 0,
+    mode: 0o444,
+    ...overrides,
+  });
+  const valid = new Map([
+    [paths.procRootRun, directory()],
+    [paths.admissionRoot, directory()],
+    [paths.marker, file()],
+  ]);
+  const inspect = ({ path, value, throws = false } = {}) =>
+    convergence.inspectTenantBoundaryMarkerFilesystem({
+      ...paths,
+      lstat: (candidate) => {
+        if (candidate === path && throws) throw new Error('private lstat failure');
+        return candidate === path ? value : valid.get(candidate);
+      },
+    });
+
+  assert.deepEqual(inspect(), { probe_ok: true });
+  for (const testCase of [
+    [paths.procRootRun, undefined, true, 'marker_proc_root_run_access'],
+    [paths.procRootRun, directory({ isDirectory: () => false }), false,
+      'marker_proc_root_run_type'],
+    [paths.procRootRun, directory({ isSymbolicLink: () => true }), false,
+      'marker_proc_root_run_type'],
+    [paths.procRootRun, directory({ uid: 911 }), false,
+      'marker_proc_root_run_owner'],
+    [paths.admissionRoot, undefined, true, 'marker_directory_access'],
+    [paths.admissionRoot, directory({ isDirectory: () => false }), false,
+      'marker_directory_type'],
+    [paths.admissionRoot, directory({ isSymbolicLink: () => true }), false,
+      'marker_directory_type'],
+    [paths.admissionRoot, directory({ gid: 1001 }), false,
+      'marker_directory_owner'],
+    [paths.admissionRoot, directory({ mode: 0o755 }), false,
+      'marker_directory_mode'],
+    [paths.marker, undefined, true, 'marker_file_access'],
+    [paths.marker, file({ isFile: () => false }), false, 'marker_file_type'],
+    [paths.marker, file({ isSymbolicLink: () => true }), false,
+      'marker_file_type'],
+    [paths.marker, file({ uid: 911 }), false, 'marker_file_owner'],
+    [paths.marker, file({ mode: 0o400 }), false, 'marker_file_mode'],
+  ]) {
+    const [path, value, throws, stage] = testCase;
+    assert.deepEqual(inspect({ path, value, throws }), {
+      probe_ok: false,
+      stage,
+    });
+  }
+});
+
 test('binds marker inspection to one validated supervisor proc root', () => {
   assert.deepEqual(tenantBoundaryProcRootPaths(1006), {
     root: '/proc/1006/root',
@@ -165,8 +257,17 @@ test('waits for a bounded tenant-boundary startup stage and returns exact eviden
 
 test('accepts only bounded safe marker convergence stages', async () => {
   for (const stage of [
-    'marker_directory',
-    'marker_file',
+    'marker_proc_root_run_access',
+    'marker_proc_root_run_type',
+    'marker_proc_root_run_owner',
+    'marker_directory_access',
+    'marker_directory_type',
+    'marker_directory_owner',
+    'marker_directory_mode',
+    'marker_file_access',
+    'marker_file_type',
+    'marker_file_owner',
+    'marker_file_mode',
     'marker_binding',
     'marker_target',
   ]) {
@@ -183,6 +284,26 @@ test('accepts only bounded safe marker convergence stages', async () => {
       intervalMs: 100,
     }));
   }
+});
+
+test('fails closed immediately when the verifier is not root', async () => {
+  let calls = 0;
+  await assert.rejects(waitForTenantBoundaryEvidence({
+    probe: async () => {
+      calls += 1;
+      return { probe_ok: false, stage: 'probe_identity' };
+    },
+    now: () => 0,
+    sleep: async () => assert.fail('terminal identity failure must not retry'),
+    timeoutMs: 1_000,
+    intervalMs: 100,
+  }), (error) => {
+    assert.ok(error instanceof TenantBoundaryConvergenceError);
+    assert.equal(error.stage, 'probe_identity');
+    assert.equal(error.message, 'tenant boundary did not converge at probe_identity');
+    return true;
+  });
+  assert.equal(calls, 1);
 });
 
 test('fails with only a safe stage when tenant-boundary convergence expires', async () => {
@@ -215,6 +336,7 @@ test('rejects malformed or expanded probe records without retrying', async () =>
     null,
     { probe_ok: false, stage: 'unknown' },
     { probe_ok: false, stage: 'service_mapping', diagnostic: 'secret' },
+    { probe_ok: false, stage: 'probe_identity', uid: 911 },
     { probe_ok: true, evidence: null },
     { probe_ok: true, evidence: {}, extra: true },
   ]) {

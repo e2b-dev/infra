@@ -5,7 +5,9 @@ import { Template } from 'e2b';
 import { RUNTIME_BOOTSTRAP_READY_COMMAND } from './template.mjs';
 import {
   bindTenantBoundaryMarker,
+  classifyTenantBoundaryProbeIdentity,
   classifyTenantBoundaryEvidence,
+  inspectTenantBoundaryMarkerFilesystem,
   tenantBoundaryProcRootPaths,
   tenantBoundaryRuntimePath,
   tenantBoundaryRuntimePathChain,
@@ -223,6 +225,7 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
   assert.match(verifier, /supervisor_state_stable/);
   assert.match(verifier, /waitForTenantBoundaryEvidence/);
   assert.match(verifier, /probe_ok: false, stage: probeStage/);
+  assert.match(verifier, /user === undefined \? \{\} : \{ user \}/);
   assert.match(verifier, /classifyBoundaryEvidence\(boundaryEvidence\)/);
   assert.match(verifier, /tenantBoundaryProcRootPaths/);
   assert.match(verifier, /supervisor_mount_namespace/);
@@ -231,8 +234,10 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
   assert.match(verifier, /"\/proc\/" \+ daemonPid \+ "\/exe"/);
   assert.doesNotMatch(verifier, /sha256\("\/usr\/local\/bin\/monad-agent"\)/);
   assert.doesNotMatch(verifier, /JSON\.parse\(readFileSync\(attestationPath/);
-  assert.match(verifier, /probeStage = "marker_directory"/);
-  assert.match(verifier, /probeStage = "marker_file"/);
+  assert.match(verifier, /classifyBoundaryProbeIdentity/);
+  assert.match(verifier, /inspectBoundaryMarkerFilesystem/);
+  assert.doesNotMatch(verifier, /probeStage = "marker_directory"/);
+  assert.doesNotMatch(verifier, /probeStage = "marker_file"/);
   assert.match(verifier, /probeStage = "marker_binding"/);
   assert.match(verifier, /probeStage = "marker_target"/);
   assert.doesNotMatch(verifier, /realpathSync\(tenantCgroup\)/);
@@ -249,6 +254,25 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
     verifier,
     /bindBoundaryMarker\(cgroup\(daemonPid\), finalMarker\)/,
   );
+  assert.match(
+    verifier,
+    /attemptTimeoutMs,\s*attemptTimeoutMs,\s*'root'/,
+  );
+  assert.deepEqual(
+    verifier.match(/'root'/g),
+    ["'root'"],
+    'only the tenant-boundary probe may opt into root execution',
+  );
+  for (const ordinaryProbe of [
+    'bootstrapReadinessProbe',
+    'browserProbe',
+    'desktopProbe',
+  ]) {
+    assert.doesNotMatch(
+      verifier,
+      new RegExp(`\\$\\{${ordinaryProbe}\\}[^;]+['\"]root['\"]`),
+    );
+  }
   assert.ok(
     verifier.indexOf('const supervisorPid = uniqueNamedPid("s6-svscan")') <
       verifier.indexOf('const markerPaths = procRootPaths(supervisorPid)'),
@@ -293,7 +317,9 @@ test('runtime verifier renders standalone bootstrap and tenant probes as valid s
     'verifyPinnedNginxProcesses',
     'verifyPinnedWatchdogProcesses',
     'bindTenantBoundaryMarker',
+    'classifyTenantBoundaryProbeIdentity',
     'classifyTenantBoundaryEvidence',
+    'inspectTenantBoundaryMarkerFilesystem',
     'tenantBoundaryProcRootPaths',
     'tenantBoundaryRuntimePath',
     'tenantBoundaryRuntimePathChain',
@@ -305,7 +331,9 @@ test('runtime verifier renders standalone bootstrap and tenant probes as valid s
     verifyPinnedNginxProcesses,
     verifyPinnedWatchdogProcesses,
     bindTenantBoundaryMarker,
+    classifyTenantBoundaryProbeIdentity,
     classifyTenantBoundaryEvidence,
+    inspectTenantBoundaryMarkerFilesystem,
     tenantBoundaryProcRootPaths,
     tenantBoundaryRuntimePath,
     tenantBoundaryRuntimePathChain,
@@ -319,6 +347,21 @@ test('runtime verifier renders standalone bootstrap and tenant probes as valid s
     probes.tenantBoundaryProbe,
     'base64',
   ).toString('utf8');
+  for (const stage of [
+    'marker_proc_root_run_access',
+    'marker_proc_root_run_type',
+    'marker_proc_root_run_owner',
+    'marker_directory_access',
+    'marker_directory_type',
+    'marker_directory_owner',
+    'marker_directory_mode',
+    'marker_file_access',
+    'marker_file_type',
+    'marker_file_owner',
+    'marker_file_mode',
+  ]) {
+    assert.match(tenantScript, new RegExp(stage));
+  }
   const helperStart = tenantScript.indexOf('const exactProcRootFile');
   const helperEnd = tenantScript.indexOf('let probeStage');
   assert.ok(helperStart >= 0 && helperEnd > helperStart);
