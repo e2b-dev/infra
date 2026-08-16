@@ -20,6 +20,7 @@ import (
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	sandboxcountscache "github.com/e2b-dev/infra/packages/api/internal/cache/sandboxcounts"
 	snapshotcache "github.com/e2b-dev/infra/packages/api/internal/cache/snapshots"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
@@ -65,12 +66,17 @@ func newInClusterKubeClient() (kubernetes.Interface, error) {
 
 var _ api.ServerInterface = (*APIStore)(nil)
 
+type teamRunningSandboxCounter interface {
+	TeamRunningSandboxCounts(ctx context.Context) (map[uuid.UUID]int64, error)
+}
+
 type APIStore struct {
 	Healthy               atomic.Bool
 	config                cfg.Config
 	posthog               *analyticscollector.PosthogClient
 	Telemetry             *telemetry.Client
 	orchestrator          *orchestrator.Orchestrator
+	teamSandboxCounter    teamRunningSandboxCounter
 	templateManager       *template_manager.TemplateManager
 	sqlcDB                *sqlcdb.Client
 	authDB                *authdb.Client
@@ -274,6 +280,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 	a := &APIStore{
 		config:                config,
 		orchestrator:          orch,
+		teamSandboxCounter:    sandboxcountscache.NewCountsCache(orch, redisClient),
 		templateManager:       templateManager,
 		sqlcDB:                sqlcDB,
 		authDB:                authDB,

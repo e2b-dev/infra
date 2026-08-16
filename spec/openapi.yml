@@ -970,6 +970,17 @@ components:
           type: integer
           description: Number of sandboxes that failed to kill
 
+    AdminTeamRunningSandboxCounts:
+      type: object
+      description: |
+        Cached live sandbox index count keyed by team ID. Counts may briefly
+        include sandboxes transitioning out of running; teams without indexed
+        sandboxes are omitted.
+      additionalProperties:
+        type: integer
+        format: int64
+        minimum: 1
+
     AdminBuildCancelResult:
       required:
         - cancelledCount
@@ -3618,6 +3629,27 @@ paths:
           $ref: "#/components/responses/401"
         "404":
           $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/sandboxes/running-counts:
+    get:
+      summary: Count running sandboxes by team
+      description: |
+        Returns a shared snapshot normally refreshed after five seconds. A
+        sandbox transitioning out of running can remain counted until removal.
+      tags: [admin]
+      security:
+        - AdminApiKeyAuth: []
+      responses:
+        "200":
+          description: Running sandbox counts keyed by team ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTeamRunningSandboxCounts"
+        "401":
+          $ref: "#/components/responses/401"
         "500":
           $ref: "#/components/responses/500"
 

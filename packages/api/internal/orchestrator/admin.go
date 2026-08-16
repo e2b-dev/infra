@@ -2,12 +2,17 @@ package orchestrator
 
 import (
 	"cmp"
+	"context"
 	"slices"
 
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 )
+
+func (o *Orchestrator) TeamRunningSandboxCounts(ctx context.Context) (map[uuid.UUID]int64, error) {
+	return o.sandboxStore.TeamsWithSandboxes(ctx)
+}
 
 func (o *Orchestrator) AdminNodes(clusterID uuid.UUID) ([]*api.Node, error) {
 	var result []*api.Node
