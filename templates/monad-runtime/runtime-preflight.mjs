@@ -15,25 +15,6 @@ const SAFE_FATAL_NAMES = new Set([
   'SystemError',
   'TypeError',
 ]);
-const SAFE_EXACT_FATAL_MESSAGES = new Set([
-  'tenant_boundary_attestation_missing',
-  'tenant_boundary_attestation_invalid',
-]);
-const SAFE_FATAL_MESSAGE_CATEGORIES = Object.freeze([
-  ['tenant boundary ', 'tenant_boundary'],
-  ['unified cgroup ', 'unified_cgroup'],
-  ['tenant cgroup ', 'tenant_cgroup'],
-  ['tenant identity ', 'tenant_identity'],
-  ['tenant probe ', 'tenant_probe'],
-  ['tenant admission ', 'tenant_admission'],
-  ['daemon ', 'daemon'],
-  ['session rebind ', 'session_rebind'],
-  ['persisted session rebind ', 'session_rebind'],
-  ['credential bootstrap ', 'credential_bootstrap'],
-  ['runtime config ', 'runtime_config'],
-  ['spawned process ', 'tenant_process'],
-  ['detached descendant ', 'tenant_process'],
-]);
 
 const launchDaemon = String.raw`install -d -o root -g root -m 0755 /usr/local/libexec /etc/monad
 install -o root -g root -m 0755 /opt/monad-preflight/assets/monad-agent /usr/local/bin/monad-agent
@@ -103,19 +84,8 @@ function defaultReadContainerLogs(containerName) {
 
 function boundedDiagnosticField(value, maxLength) {
   if (typeof value !== 'string') return null;
-  const normalized = value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
+  const normalized = value.replace(/[\p{Cc}\p{Cf}]+/gu, ' ').trim();
   return normalized.length > 0 ? normalized.slice(0, maxLength) : null;
-}
-
-function classifyFatalMessage(value) {
-  const message = boundedDiagnosticField(value, MAX_FATAL_MESSAGE_LENGTH);
-  if (!message) return null;
-  if (SAFE_EXACT_FATAL_MESSAGES.has(message)) return message;
-  if (/^E[A-Z0-9]{1,15}:/.test(message)) return 'system_error';
-  for (const [prefix, category] of SAFE_FATAL_MESSAGE_CATEGORIES) {
-    if (message.startsWith(prefix)) return category;
-  }
-  return '[redacted]';
 }
 
 function parseBootFatal(logs) {
@@ -145,7 +115,7 @@ function parseBootFatal(logs) {
     const name = SAFE_FATAL_NAMES.has(boundedName)
       ? boundedName
       : '[redacted]';
-    const message = classifyFatalMessage(record.error.message);
+    const message = boundedDiagnosticField(record.error.message, MAX_FATAL_MESSAGE_LENGTH);
     if (name && message) return { name, message };
   }
   return null;

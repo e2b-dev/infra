@@ -101,12 +101,17 @@ test('runs the exact daemon credential-free in one native private cgroup and cle
       'MONAD_CREDENTIAL_BOOTSTRAP_REQUIRED=1',
       'MONAD_WORKSPACE=/workspace',
     ],
-    'the credential-free preflight must not inherit or inject a credential',
+    'Docker must receive only the three fixed non-secret environment values',
   );
-  assert.ok(serializedCreate.includes(
-    `source=${inputs.assetsDir},target=/opt/monad-preflight/assets,readonly`,
-  ));
-  assert.ok(serializedCreate.includes(inputs.serviceRunPath));
+  assert.doesNotMatch(serializedCreate, /E2B_API_KEY|MONAD_CREDENTIAL_LEASE_BUNDLE|--env-file/);
+  assert.deepEqual(
+    create.flatMap((value, index) => value === '--mount' ? [create[index + 1]] : []),
+    [
+      `type=bind,source=${inputs.assetsDir},target=/opt/monad-preflight/assets,readonly`,
+      `type=bind,source=${inputs.serviceRunPath},target=/opt/monad-preflight/svc-monad-agent-run,readonly`,
+    ],
+    'the credential-free preflight must mount only readonly prepared build inputs',
+  );
   assert.match(serializedCreate, /\/opt\/monad-preflight\/svc-monad-agent-run/);
   for (const install of [
     'install -o root -g root -m 0755 /opt/monad-preflight/assets/monad-agent /usr/local/bin/monad-agent',
@@ -178,7 +183,8 @@ test('cleans only a container this invocation created when evidence never appear
 test('reports only bounded structured boot-fatal evidence when the daemon exits', async () => {
   const calls = [];
   const rawSecret = 'MONAD_CREDENTIAL_LEASE_BUNDLE=must-not-leak';
-  const longMessage = `tenant cgroup unavailable ${'x'.repeat(400)}`;
+  const longMessage = `tenant cgroup unavailable\n\u009b\u202e${'x'.repeat(400)}\u0000trailing`;
+  const expectedMessage = `tenant cgroup unavailable ${'x'.repeat(214)}`;
   const runDocker = (args) => {
     calls.push(args);
     switch (commandKey(args)) {
@@ -208,10 +214,12 @@ test('reports only bounded structured boot-fatal evidence when the daemon exits'
     sleep: async () => {},
   }), (error) => {
     assert.equal(error.name, 'Error');
-    assert.match(error.message, /"exit_code":23/);
-    assert.match(error.message, /"name":"Error"/);
-    assert.match(error.message, /"message":"tenant_cgroup"/);
-    assert.doesNotMatch(error.message, /tenant cgroup unavailable|x{20}/);
+    const diagnostic = JSON.parse(error.message.slice(error.message.indexOf('{')));
+    assert.deepEqual(diagnostic, {
+      exit_code: 23,
+      fatal: { name: 'Error', message: expectedMessage },
+    });
+    assert.doesNotMatch(error.message, /trailing/);
     assert.ok(error.message.length < 500, 'diagnostic must remain bounded');
     assert.doesNotMatch(error.message, /MONAD_CREDENTIAL_LEASE_BUNDLE|must-not-leak|stack/);
     return true;
@@ -219,7 +227,7 @@ test('reports only bounded structured boot-fatal evidence when the daemon exits'
   assert.equal(calls.filter((args) => commandKey(args) === 'container rm').length, 1);
 });
 
-test('redacts opaque secret-bearing fatal messages before reporting stopped-daemon evidence', async () => {
+test('redacts an untrusted error name but preserves its single sanitized message', async () => {
   const secret = 'ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   await assert.rejects(runNativeAmd64RuntimePreflight({
     ...inputs,
@@ -237,19 +245,19 @@ test('redacts opaque secret-bearing fatal messages before reporting stopped-daem
     readContainerLogs: () => JSON.stringify({
       level: 'error',
       msg: '[boot] fatal',
-      error: { name: secret, message: `request failed for ${secret}` },
+      error: { name: secret, message: 'deterministic daemon failure\nsubstage' },
     }),
     sleep: async () => {},
   }), (error) => {
     assert.match(error.message, /"exit_code":1/);
     assert.match(error.message, /"name":"\[redacted\]"/);
-    assert.match(error.message, /"message":"\[redacted\]"/);
+    assert.match(error.message, /"message":"deterministic daemon failure substage"/);
     assert.doesNotMatch(error.message, new RegExp(secret));
     return true;
   });
 });
 
-test('classifies a system boot failure without exposing its raw path', async () => {
+test('reports one sanitized bounded system boot failure message', async () => {
   const privatePath = '/private/runtime/path';
   const privateErrno = 'EPRIVATELEAK';
   await assert.rejects(runNativeAmd64RuntimePreflight({
@@ -272,8 +280,10 @@ test('classifies a system boot failure without exposing its raw path', async () 
     }),
     sleep: async () => {},
   }), (error) => {
-    assert.match(error.message, /"message":"system_error"/);
-    assert.doesNotMatch(error.message, /EPRIVATELEAK|permission denied|private\/runtime/);
+    assert.match(
+      error.message,
+      /"message":"EPRIVATELEAK: permission denied, mkdir '\/private\/runtime\/path'"/,
+    );
     return true;
   });
 });
