@@ -8,6 +8,8 @@ import {
   validateTemplateRef,
 } from './runtime-core.mjs';
 import {
+  parseNamespacePidVector,
+  selectOuterPidForNamespacePid,
   verifyPinnedNginxProcesses,
   verifyPinnedWatchdogProcesses,
 } from './runtime-process-contract.mjs';
@@ -250,9 +252,14 @@ process.stdout.write(JSON.stringify({
 
 const bootstrapReadinessProbe = Buffer.from(String.raw`
 const { execFileSync } = require("node:child_process");
-const { lstatSync, readFileSync } = require("node:fs");
+const { lstatSync, readFileSync, readlinkSync } = require("node:fs");
 const servicePath = "/run/service/svc-monad-agent";
 const socketPath = "/var/run/monad/credential-bootstrap.sock";
+const serviceStatus = execFileSync(
+  "s6-svstat",
+  [servicePath],
+  { encoding: "utf8" },
+).trim();
 const servicePidText = execFileSync(
   "s6-svstat",
   ["-o", "pid", servicePath],
@@ -262,15 +269,73 @@ if (!/^[1-9][0-9]*$/.test(servicePidText)) {
   throw new Error("supervised monad-agent PID is not canonical");
 }
 const servicePid = Number(servicePidText);
-const serviceComm = readFileSync("/proc/" + servicePid + "/comm", "utf8").trim();
 const namedPids = execFileSync("pgrep", ["-x", "monad-agent"], {
   encoding: "utf8",
 }).trim().split(/\s+/).filter(Boolean);
+const processPidText = namedPids.length === 1 ? namedPids[0] : "";
+const processPid = /^[1-9][0-9]*$/.test(processPidText) ? Number(processPidText) : null;
+const supervisorPids = execFileSync("pgrep", ["-x", "s6-svscan"], {
+  encoding: "utf8",
+}).trim().split(/\s+/).filter(Boolean);
+const supervisorPidText = supervisorPids.length === 1 ? supervisorPids[0] : "";
+const supervisorPid = /^[1-9][0-9]*$/.test(supervisorPidText)
+  ? Number(supervisorPidText)
+  : null;
+let processNamespacePids = [];
+let supervisorNamespacePids = [];
+let processNamespace = "";
+let supervisorNamespace = "";
+if (processPid !== null) {
+  processNamespacePids = (${parseNamespacePidVector.toString()})(readFileSync(
+    "/proc/" + processPid + "/status",
+    "utf8",
+  ));
+  processNamespace = readlinkSync("/proc/" + processPid + "/ns/pid");
+}
+if (supervisorPid !== null) {
+  supervisorNamespacePids = (${parseNamespacePidVector.toString()})(readFileSync(
+    "/proc/" + supervisorPid + "/status",
+    "utf8",
+  ));
+  supervisorNamespace = readlinkSync("/proc/" + supervisorPid + "/ns/pid");
+}
 const socket = lstatSync(socketPath);
+const finalServiceStatus = execFileSync(
+  "s6-svstat",
+  [servicePath],
+  { encoding: "utf8" },
+).trim();
+const finalServicePidText = execFileSync(
+  "s6-svstat",
+  ["-o", "pid", servicePath],
+  { encoding: "utf8" },
+).trim();
+const finalSupervisorPids = execFileSync("pgrep", ["-x", "s6-svscan"], {
+  encoding: "utf8",
+}).trim().split(/\s+/).filter(Boolean);
+const supervisorStable =
+  finalSupervisorPids.length === 1 &&
+  finalSupervisorPids[0] === supervisorPidText &&
+  supervisorPid !== null &&
+  readlinkSync("/proc/" + supervisorPid + "/ns/pid") === supervisorNamespace;
 process.stdout.write(JSON.stringify({
+  service_up: /^up(?: |$)/.test(serviceStatus),
+  service_stable:
+    finalServicePidText === servicePidText &&
+    /^up(?: |$)/.test(finalServiceStatus),
   service_pid: servicePid,
-  service_comm: serviceComm,
-  unique_named_process: namedPids.length === 1 && namedPids[0] === servicePidText,
+  process_pid: processPid,
+  unique_supervisor_process: supervisorPids.length === 1,
+  supervisor_stable: supervisorStable,
+  service_process_namespace_match:
+    processNamespacePids.length > 0 &&
+    supervisorNamespacePids.length > 0 &&
+    processNamespacePids[0] === processPid &&
+    supervisorNamespacePids[0] === supervisorPid &&
+    processNamespacePids.length === supervisorNamespacePids.length &&
+    processNamespacePids[processNamespacePids.length - 1] === servicePid &&
+    processNamespace === supervisorNamespace,
+  unique_named_process: namedPids.length === 1,
   socket_is_exact_type: socket.isSocket() && !socket.isSymbolicLink(),
   socket_uid: socket.uid,
   socket_gid: socket.gid,
@@ -280,25 +345,19 @@ process.stdout.write(JSON.stringify({
 
 const tenantBoundaryProbe = Buffer.from(String.raw`
 const { execFileSync } = require("node:child_process");
-const { lstatSync, readFileSync, readdirSync, realpathSync } = require("node:fs");
+const { lstatSync, readFileSync, readlinkSync, readdirSync, realpathSync } = require("node:fs");
 const { basename, dirname } = require("node:path");
 const sha256 = (path) =>
   execFileSync("sha256sum", [path], { encoding: "utf8" }).trim().split(/\s+/)[0];
-const pid = (args) => Number(execFileSync("pgrep", args, { encoding: "utf8" }).trim());
 const serviceNames = [
   "nginx", "xorg", "dbus", "pulseaudio", "selkies", "de", "watchdog", "xsettingsd",
 ];
-const serviceLeaderPid = (name) => Number(execFileSync(
-  "s6-svstat",
-  ["-o", "pid", "/run/service/svc-" + name],
-  { encoding: "utf8" },
-).trim());
 const status = (value) => readFileSync("/proc/" + value + "/status", "utf8");
 const cgroup = (value) => readFileSync("/proc/" + value + "/cgroup", "utf8").trim();
 const command = (value) => {
   try {
     return readFileSync("/proc/" + value + "/cmdline", "utf8")
-      .split("\\0").filter(Boolean).join(" ");
+      .split("\0").filter(Boolean).join(" ");
   } catch {
     return "";
   }
@@ -306,7 +365,7 @@ const command = (value) => {
 const argv = (value) => {
   try {
     return readFileSync("/proc/" + value + "/cmdline", "utf8")
-      .split("\\0").filter(Boolean);
+      .split("\0").filter(Boolean);
   } catch {
     return [];
   }
@@ -322,7 +381,7 @@ const processEnvironment = (value) => {
   try {
     return Object.fromEntries(
       readFileSync("/proc/" + value + "/environ", "utf8")
-        .split("\\0")
+        .split("\0")
         .filter(Boolean)
         .map((entry) => {
           const separator = entry.indexOf("=");
@@ -336,11 +395,47 @@ const processEnvironment = (value) => {
   }
 };
 const processIds = () => readdirSync("/proc")
-  .filter((value) => /^\\d+$/.test(value))
+  .filter((value) => /^\d+$/.test(value))
   .map(Number);
+const namespacePidVector = ${parseNamespacePidVector.toString()};
+const selectNamespacePid = ${selectOuterPidForNamespacePid.toString()};
+const namespaceProcessEvidence = () => processIds().flatMap((outerPid) => {
+    try {
+      const namespacePids = namespacePidVector(status(outerPid));
+      return namespacePids.length === 0 ? [] : [{
+        pid: outerPid,
+        namespacePids,
+        namespace: readlinkSync("/proc/" + outerPid + "/ns/pid"),
+        cgroup: cgroup(outerPid),
+      }];
+    } catch {
+      return [];
+    }
+  });
+const uniqueNamedPid = (name) => {
+  const values = execFileSync("pgrep", ["-x", name], { encoding: "utf8" })
+    .trim().split(/\s+/).filter(Boolean);
+  if (values.length !== 1 || !/^[1-9][0-9]*$/.test(values[0])) {
+    throw new Error("named process identity is not unique and canonical");
+  }
+  return Number(values[0]);
+};
+const serviceState = (name) => {
+  const path = "/run/service/svc-" + name;
+  const serviceStatus = execFileSync("s6-svstat", [path], { encoding: "utf8" }).trim();
+  const value = execFileSync(
+    "s6-svstat",
+    ["-o", "pid", path],
+    { encoding: "utf8" },
+  ).trim();
+  if (!/^up(?: |$)/.test(serviceStatus) || !/^[1-9][0-9]*$/.test(value)) {
+    throw new Error("supervised service PID is not canonical");
+  }
+  return { pid: Number(value), up: true };
+};
 const parentPid = (value) => {
   try {
-    const match = status(value).match(/^PPid:[ \\t]+(\\d+)$/m);
+    const match = status(value).match(/^PPid:[ \t]+(\d+)$/m);
     return match ? Number(match[1]) : 0;
   } catch {
     return 0;
@@ -361,11 +456,11 @@ const processTree = (root) => {
   return [...found];
 };
 const ids = (raw, name) => {
-  const match = raw.match(new RegExp("^" + name + ":[ \\t]+(.+)$", "m"));
+  const match = raw.match(new RegExp("^" + name + ":[ \t]+(.+)$", "m"));
   return match ? match[1].trim().split(/\s+/).map(Number) : [];
 };
 const groups = (raw) => {
-  const match = raw.match(/^Groups:[ \\t]*(.*)$/m);
+  const match = raw.match(/^Groups:[ \t]*(.*)$/m);
   const payload = match ? match[1].trim() : "";
   return payload ? payload.split(/\s+/).map(Number) : [];
 };
@@ -412,24 +507,56 @@ if (realpathSync(tenantCgroup) !== tenantCgroup ||
   throw new Error("tenant cgroup marker escaped the cgroup mount");
 }
 const expectedMembership = "0::" + tenantCgroup.slice("/sys/fs/cgroup".length);
-const daemonPid = pid(["-o", "-x", "monad-agent"]);
-const serviceLeaders = Object.fromEntries(
-  serviceNames.map((name) => [name, serviceLeaderPid(name)]),
+const daemonPid = uniqueNamedPid("monad-agent");
+const supervisorPid = uniqueNamedPid("s6-svscan");
+const supervisorNamespacePids = namespacePidVector(status(supervisorPid));
+const supervisorNamespace = readlinkSync("/proc/" + supervisorPid + "/ns/pid");
+if (supervisorNamespacePids.length === 0 || supervisorNamespacePids[0] !== supervisorPid) {
+  throw new Error("supervisor namespace identity is not canonical");
+}
+const initialServiceStates = Object.fromEntries(
+  serviceNames.map((name) => [name, serviceState(name)]),
 );
+const serviceNamespacePids = Object.fromEntries(
+  serviceNames.map((name) => [name, initialServiceStates[name].pid]),
+);
+const namespaceProcesses = namespaceProcessEvidence();
+const serviceLeaders = Object.fromEntries(
+  serviceNames.map((name) => [name, selectNamespacePid({
+    innerPid: serviceNamespacePids[name],
+    expectedMembership,
+    expectedNamespace: supervisorNamespace,
+    expectedNamespaceDepth: supervisorNamespacePids.length,
+    processes: namespaceProcesses,
+  })]),
+);
+const finalServiceStates = Object.fromEntries(
+  serviceNames.map((name) => [name, serviceState(name)]),
+);
+const serviceStateStable = serviceNames.every((name) =>
+  finalServiceStates[name].up === true &&
+  finalServiceStates[name].pid === initialServiceStates[name].pid);
+const finalSupervisorPid = uniqueNamedPid("s6-svscan");
+const supervisorStateStable =
+  finalSupervisorPid === supervisorPid &&
+  readlinkSync("/proc/" + finalSupervisorPid + "/ns/pid") === supervisorNamespace;
+if (!serviceStateStable || !supervisorStateStable) {
+  throw new Error("supervised service state changed during namespace mapping");
+}
 const serviceTrees = Object.fromEntries(
   serviceNames.map((name) => [name, processTree(serviceLeaders[name])]),
 );
 const finalMatchers = {
   nginx: (value) => executable(value) === "/usr/sbin/nginx",
-  xorg: (value) => /(^|\\/)Xvfb(\\s|$)/.test(command(value)),
-  dbus: (value) => /(^|\\/)dbus-daemon(\\s|$)/.test(command(value)),
-  pulseaudio: (value) => /(^|\\/)pulseaudio(\\s|$)/.test(command(value)),
+  xorg: (value) => /(^|\/)Xvfb(\s|$)/.test(command(value)),
+  dbus: (value) => /(^|\/)dbus-daemon(\s|$)/.test(command(value)),
+  pulseaudio: (value) => /(^|\/)pulseaudio(\s|$)/.test(command(value)),
   selkies: (value) => command(value).includes("/lsiopy/bin/selkies"),
-  de: (value) => /(^|\\/)i3(\\s|$)/.test(command(value)),
+  de: (value) => /(^|\/)i3(\s|$)/.test(command(value)),
   watchdog: (value) =>
     executable(value) === "/usr/bin/sleep" &&
     JSON.stringify(argv(value)) === JSON.stringify(["sleep", "infinity"]),
-  xsettingsd: (value) => /(^|\\/)xsettingsd(\\s|$)/.test(command(value)),
+  xsettingsd: (value) => /(^|\/)xsettingsd(\s|$)/.test(command(value)),
 };
 const finalProcesses = Object.fromEntries(serviceNames.map((name) => [
   name,
@@ -499,6 +626,11 @@ process.stdout.write(JSON.stringify({
       finalProcesses[name].length > 0 &&
       finalProcesses[name].every((value) => cgroup(value) === expectedMembership)),
   service_leaders: serviceLeaders,
+  service_namespace_pids: serviceNamespacePids,
+  supervisor_pid: supervisorPid,
+  supervisor_namespace: supervisorNamespace,
+  supervisor_state_stable: supervisorStateStable,
+  service_state_stable: serviceStateStable,
   final_processes: finalProcesses,
 }));
 `).toString('base64');
@@ -537,9 +669,15 @@ try {
     await run(`printf '%s' '${bootstrapReadinessProbe}' | base64 -d | node`),
   );
   if (
+    bootstrapGate.service_up !== true ||
+    bootstrapGate.service_stable !== true ||
     !Number.isSafeInteger(bootstrapGate.service_pid) ||
     bootstrapGate.service_pid <= 1 ||
-    bootstrapGate.service_comm !== 'monad-agent' ||
+    !Number.isSafeInteger(bootstrapGate.process_pid) ||
+    bootstrapGate.process_pid <= 1 ||
+    bootstrapGate.service_process_namespace_match !== true ||
+    bootstrapGate.unique_supervisor_process !== true ||
+    bootstrapGate.supervisor_stable !== true ||
     bootstrapGate.unique_named_process !== true ||
     bootstrapGate.socket_is_exact_type !== true ||
     bootstrapGate.socket_uid !== 0 ||
@@ -552,7 +690,8 @@ try {
   }
   evidence.health = {
     daemon: 'supervised',
-    daemon_pid: bootstrapGate.service_pid,
+    daemon_namespace_pid: bootstrapGate.service_pid,
+    daemon_pid: bootstrapGate.process_pid,
     credential_bootstrap: 'awaiting',
     bootstrap_socket_uid: bootstrapGate.socket_uid,
     bootstrap_socket_gid: bootstrapGate.socket_gid,
@@ -578,7 +717,9 @@ try {
     tenantBoundary.watchdog_identity_match !== true ||
     tenantBoundary.tenant_service_cgroup_match !== true ||
     tenantBoundary.service_leader_cgroup_match !== true ||
-    tenantBoundary.important_descendant_cgroup_match !== true
+    tenantBoundary.important_descendant_cgroup_match !== true ||
+    tenantBoundary.service_state_stable !== true ||
+    tenantBoundary.supervisor_state_stable !== true
   ) {
     throw new Error('runtime tenant-boundary attestation did not verify');
   }

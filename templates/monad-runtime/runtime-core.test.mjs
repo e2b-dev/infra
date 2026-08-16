@@ -4,6 +4,12 @@ import test from 'node:test';
 import { Template } from 'e2b';
 import { RUNTIME_BOOTSTRAP_READY_COMMAND } from './template.mjs';
 import {
+  parseNamespacePidVector,
+  selectOuterPidForNamespacePid,
+  verifyPinnedNginxProcesses,
+  verifyPinnedWatchdogProcesses,
+} from './runtime-process-contract.mjs';
+import {
   S6_SERVICE_FILES,
   RUNTIME_BUILD_FILES,
   TENANT_SUPERVISED_SERVICES,
@@ -135,13 +141,10 @@ test('template build readiness proves bootstrap wait and delegates desktop proof
   );
   assert.match(
     RUNTIME_BOOTSTRAP_READY_COMMAND,
-    /s6-svstat -o pid \/run\/service\/svc-monad-agent/,
-  );
-  assert.match(
-    RUNTIME_BOOTSTRAP_READY_COMMAND,
-    /cat \/proc\/\$agent_pid\/comm/,
+    /s6-svstat \/run\/service\/svc-monad-agent/,
   );
   assert.match(RUNTIME_BOOTSTRAP_READY_COMMAND, /pgrep -x monad-agent/);
+  assert.doesNotMatch(RUNTIME_BOOTSTRAP_READY_COMMAND, /\/proc\/\$agent_pid/);
   assert.match(
     RUNTIME_BOOTSTRAP_READY_COMMAND,
     /test -S \/var\/run\/monad\/credential-bootstrap\.sock/,
@@ -203,6 +206,16 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
   assert.match(verifier, /marker_basename_match/);
   assert.match(verifier, /marker_direct_parent_match/);
   assert.match(verifier, /s6-svstat/);
+  assert.match(verifier, /selectOuterPidForNamespacePid/);
+  assert.match(verifier, /parseNamespacePidVector\.toString\(\)/);
+  assert.match(verifier, /selectOuterPidForNamespacePid\.toString\(\)/);
+  assert.match(verifier, /service_up/);
+  assert.match(verifier, /service_process_namespace_match/);
+  assert.match(verifier, /service_state_stable/);
+  assert.match(verifier, /supervisor_state_stable/);
+  assert.match(verifier, /expectedNamespace: supervisorNamespace/);
+  assert.match(verifier, /expectedNamespaceDepth: supervisorNamespacePids\.length/);
+  assert.match(verifier, /processes: namespaceProcesses/);
   assert.match(verifier, /unique_named_process/);
   assert.match(verifier, /socket_is_exact_type/);
   assert.match(verifier, /socket_uid !== 0/);
@@ -218,6 +231,33 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
     assert.match(verifier, new RegExp(`${service}: expectedIdentity\\.uid`));
   }
   assert.doesNotMatch(verifier, /Object\.values\(attestation\.tenant\?\.services/);
+});
+
+test('runtime verifier renders standalone bootstrap and tenant probes as valid scripts', async () => {
+  const verifier = await readFile(
+    new URL('./verify-runtime.mjs', import.meta.url),
+    'utf8',
+  );
+  const start = verifier.indexOf('const bootstrapReadinessProbe');
+  const end = verifier.indexOf('let verificationError;');
+  assert.ok(start >= 0 && end > start);
+  const factory = new Function(
+    'parseNamespacePidVector',
+    'selectOuterPidForNamespacePid',
+    'verifyPinnedNginxProcesses',
+    'verifyPinnedWatchdogProcesses',
+    `${verifier.slice(start, end)}; return { bootstrapReadinessProbe, tenantBoundaryProbe };`,
+  );
+  const probes = factory(
+    parseNamespacePidVector,
+    selectOuterPidForNamespacePid,
+    verifyPinnedNginxProcesses,
+    verifyPinnedWatchdogProcesses,
+  );
+  for (const encoded of Object.values(probes)) {
+    const script = Buffer.from(encoded, 'base64').toString('utf8');
+    assert.doesNotThrow(() => new Function(script));
+  }
 });
 
 test('runtime version changes with tree identity', async () => {

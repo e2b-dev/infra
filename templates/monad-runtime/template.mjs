@@ -9,10 +9,9 @@ const assetManifestPath = fileURLToPath(
 );
 
 export const RUNTIME_BOOTSTRAP_READY_COMMAND =
-  'agent_pid="$(s6-svstat -o pid /run/service/svc-monad-agent)"' +
+  "s6-svstat /run/service/svc-monad-agent | grep -q '^up '" +
+  ' && agent_pid="$(pgrep -x monad-agent)"' +
   ' && test "$agent_pid" -gt 1' +
-  ' && test "$(cat /proc/$agent_pid/comm)" = monad-agent' +
-  ' && test "$(pgrep -x monad-agent)" = "$agent_pid"' +
   ' && test -S /var/run/monad/credential-bootstrap.sock' +
   ' && test ! -L /var/run/monad/credential-bootstrap.sock' +
   ' && test "$(stat -c %u:%g:%a /var/run/monad/credential-bootstrap.sock)" = 0:0:600';

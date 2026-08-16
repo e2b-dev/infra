@@ -2,9 +2,91 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  parseNamespacePidVector,
+  selectOuterPidForNamespacePid,
   verifyPinnedNginxProcesses,
   verifyPinnedWatchdogProcesses,
 } from './runtime-process-contract.mjs';
+
+test('selects exactly one outer process for a nested or same-namespace service PID', () => {
+  assert.deepEqual(
+    parseNamespacePidVector('Name:\tnginx\nNSpid:\t4100\t278\n'),
+    [4100, 278],
+  );
+  assert.equal(selectOuterPidForNamespacePid({
+    innerPid: 278,
+    expectedMembership: '0::/monad-tenant',
+    expectedNamespace: 'pid:[4026533000]',
+    expectedNamespaceDepth: 2,
+    processes: [
+      {
+        pid: 4100,
+        namespacePids: [4100, 278],
+        namespace: 'pid:[4026533000]',
+        cgroup: '0::/monad-tenant',
+      },
+      {
+        pid: 5100,
+        namespacePids: [5100, 278],
+        namespace: 'pid:[4026534000]',
+        cgroup: '0::/unrelated',
+      },
+    ],
+  }), 4100);
+  assert.equal(selectOuterPidForNamespacePid({
+    innerPid: 278,
+    expectedMembership: '0::/monad-tenant',
+    expectedNamespace: 'pid:[4026531000]',
+    expectedNamespaceDepth: 1,
+    processes: [
+      {
+        pid: 278,
+        namespacePids: [278],
+        namespace: 'pid:[4026531000]',
+        cgroup: '0::/monad-tenant',
+      },
+    ],
+  }), 278);
+});
+
+test('rejects malformed, absent, or ambiguous namespace PID evidence', () => {
+  for (const raw of [
+    '',
+    'Name:\tnginx\n',
+    'NSpid:\t0\n',
+    'NSpid:\t4100 nope\n',
+    'NSpid:\t4100\nNSpid:\t4100\n',
+  ]) {
+    assert.deepEqual(parseNamespacePidVector(raw), []);
+  }
+  const base = {
+    innerPid: 278,
+    expectedMembership: '0::/monad-tenant',
+    expectedNamespace: 'pid:[4026533000]',
+    expectedNamespaceDepth: 2,
+  };
+  assert.throws(() => selectOuterPidForNamespacePid({ ...base, processes: [] }));
+  assert.throws(() => selectOuterPidForNamespacePid({
+    ...base,
+    processes: [
+      { pid: 4100, namespacePids: [4100, 278], namespace: 'pid:[4026533000]', cgroup: '0::/monad-tenant' },
+      { pid: 4200, namespacePids: [4200, 278], namespace: 'pid:[4026533000]', cgroup: '0::/monad-tenant' },
+    ],
+  }));
+  assert.throws(() => selectOuterPidForNamespacePid({
+    ...base,
+    processes: [
+      { pid: 278, namespacePids: [278], namespace: 'pid:[4026533000]', cgroup: '0::/unrelated' },
+    ],
+  }));
+  for (const process of [
+    { pid: 5100, namespacePids: [5100, 278], namespace: 'pid:[4026534000]', cgroup: '0::/monad-tenant' },
+    { pid: 6100, namespacePids: [6100, 88, 278], namespace: 'pid:[4026535000]', cgroup: '0::/monad-tenant' },
+    { pid: 278, namespacePids: [278], namespace: 'pid:[4026531000]', cgroup: '0::/monad-tenant' },
+  ]) {
+    assert.throws(() => selectOuterPidForNamespacePid({ ...base, processes: [process] }));
+  }
+});
 
 const rootIdentity = { uid: 0, gid: 0, groups: [0] };
 const workerIdentity = { uid: 33, gid: 33, groups: [33] };

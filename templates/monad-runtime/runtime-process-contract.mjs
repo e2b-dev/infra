@@ -1,3 +1,71 @@
+export function parseNamespacePidVector(raw) {
+  if (typeof raw !== 'string') return [];
+  const matches = [...raw.matchAll(/^NSpid:[ \t]+(.+)$/gm)];
+  if (matches.length !== 1) return [];
+  const values = matches[0][1].trim().split(/\s+/);
+  if (
+    values.length === 0 ||
+    values.some((value) => !/^[1-9][0-9]*$/.test(value))
+  ) {
+    return [];
+  }
+  return values.map(Number);
+}
+
+export function selectOuterPidForNamespacePid({
+  innerPid,
+  expectedMembership,
+  expectedNamespace,
+  expectedNamespaceDepth,
+  processes,
+}) {
+  if (
+    !Number.isSafeInteger(innerPid) ||
+    innerPid <= 1 ||
+    typeof expectedMembership !== 'string' ||
+    expectedMembership.length === 0 ||
+    typeof expectedNamespace !== 'string' ||
+    !/^pid:\[[1-9][0-9]*\]$/.test(expectedNamespace) ||
+    !Number.isSafeInteger(expectedNamespaceDepth) ||
+    expectedNamespaceDepth < 1 ||
+    !Array.isArray(processes)
+  ) {
+    throw new Error('namespace PID selection input is invalid');
+  }
+  const observed = new Set();
+  for (const process of processes) {
+    if (
+      process === null ||
+      typeof process !== 'object' ||
+      !Number.isSafeInteger(process.pid) ||
+      process.pid <= 1 ||
+      observed.has(process.pid) ||
+      !Array.isArray(process.namespacePids) ||
+      process.namespacePids.length === 0 ||
+      process.namespacePids.some(
+        (value) => !Number.isSafeInteger(value) || value <= 0,
+      ) ||
+      process.namespacePids[0] !== process.pid ||
+      typeof process.namespace !== 'string' ||
+      !/^pid:\[[1-9][0-9]*\]$/.test(process.namespace) ||
+      typeof process.cgroup !== 'string'
+    ) {
+      throw new Error('namespace PID process evidence is invalid');
+    }
+    observed.add(process.pid);
+  }
+  const candidates = processes.filter((process) =>
+    process.cgroup === expectedMembership &&
+    process.namespace === expectedNamespace &&
+    process.namespacePids.length === expectedNamespaceDepth &&
+    process.namespacePids[process.namespacePids.length - 1] === innerPid);
+  if (candidates.length === 1) return candidates[0].pid;
+  if (candidates.length > 1) {
+    throw new Error('namespace PID maps to multiple outer processes');
+  }
+  throw new Error('namespace PID has no exact outer process mapping');
+}
+
 export function verifyPinnedNginxProcesses({ leaderPid, processes }) {
   const sameArray = (actual, expected) =>
     Array.isArray(actual) &&
