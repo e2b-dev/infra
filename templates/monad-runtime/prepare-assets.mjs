@@ -64,14 +64,18 @@ function sameFileMetadata(first, second) {
     first.ctimeMs === second.ctimeMs;
 }
 
-export async function attestPreparedExecutable(path) {
+async function attestPreparedFileDescriptor(path, {
+  mode,
+  kind,
+  validateContents = () => {},
+}) {
   const pathMetadata = await lstat(path);
   if (
     !pathMetadata.isFile() ||
     pathMetadata.isSymbolicLink() ||
-    (pathMetadata.mode & 0o7777) !== 0o755
+    (pathMetadata.mode & 0o7777) !== mode
   ) {
-    throw new Error(`prepared executable is not an exact regular no-follow file: ${path}`);
+    throw new Error(`prepared ${kind} is not an exact regular no-follow file: ${path}`);
   }
   const handle = await open(
     path,
@@ -84,26 +88,18 @@ export async function attestPreparedExecutable(path) {
       metadata.dev !== pathMetadata.dev ||
       metadata.ino !== pathMetadata.ino ||
       metadata.size !== pathMetadata.size ||
-      (metadata.mode & 0o7777) !== 0o755
+      (metadata.mode & 0o7777) !== mode
     ) {
-      throw new Error(`prepared executable is not an exact regular no-follow file: ${path}`);
+      throw new Error(`prepared ${kind} is not an exact regular no-follow file: ${path}`);
     }
-    const header = Buffer.alloc(20);
-    const { bytesRead } = await handle.read(header, 0, header.length, 0);
-    if (
-      bytesRead !== header.length ||
-      header.subarray(0, 4).toString('hex') !== '7f454c46' ||
-      header.subarray(18, 20).toString('hex') !== '3e00'
-    ) {
-      throw new Error(`prepared executable is not Linux amd64 ELF: ${path}`);
-    }
+    await validateContents(handle, path);
     const digest = await sha256FileHandle(handle);
     const finalMetadata = await handle.stat();
     let finalPathMetadata;
     try {
       finalPathMetadata = await lstat(path);
     } catch {
-      throw new Error(`prepared executable changed during attestation: ${path}`);
+      throw new Error(`prepared ${kind} changed during attestation: ${path}`);
     }
     if (
       !sameFileMetadata(metadata, finalMetadata) ||
@@ -112,12 +108,37 @@ export async function attestPreparedExecutable(path) {
       !finalPathMetadata.isFile() ||
       finalPathMetadata.isSymbolicLink()
     ) {
-      throw new Error(`prepared executable changed during attestation: ${path}`);
+      throw new Error(`prepared ${kind} changed during attestation: ${path}`);
     }
     return digest;
   } finally {
     await handle.close();
   }
+}
+
+export async function attestPreparedEntrypoint(path) {
+  return attestPreparedFileDescriptor(path, {
+    mode: 0o755,
+    kind: 'entrypoint',
+  });
+}
+
+export async function attestPreparedExecutable(path) {
+  return attestPreparedFileDescriptor(path, {
+    mode: 0o755,
+    kind: 'executable',
+    async validateContents(handle, executablePath) {
+      const header = Buffer.alloc(20);
+      const { bytesRead } = await handle.read(header, 0, header.length, 0);
+      if (
+        bytesRead !== header.length ||
+        header.subarray(0, 4).toString('hex') !== '7f454c46' ||
+        header.subarray(18, 20).toString('hex') !== '3e00'
+      ) {
+        throw new Error(`prepared executable is not Linux amd64 ELF: ${executablePath}`);
+      }
+    },
+  });
 }
 
 export async function prepareRuntimeAssets(environment = process.env) {
@@ -242,6 +263,9 @@ export async function prepareRuntimeAssets(environment = process.env) {
   );
 
   const daemonSha256 = await attestPreparedExecutable(`${assetsDir}/monad-agent`);
+  const entrypointSha256 = await attestPreparedEntrypoint(
+    `${assetsDir}/entrypoint.sh`,
+  );
   const admissionHelperSha256 = await attestPreparedExecutable(
     `${assetsDir}/monad-tenant-admission`,
   );
@@ -261,6 +285,7 @@ export async function prepareRuntimeAssets(environment = process.env) {
     baseImage: source.tool_versions.bun_base_image,
     runtimeVersion,
     daemonSha256,
+    entrypointSha256,
     admissionHelperSha256,
   });
 
@@ -271,6 +296,7 @@ export async function prepareRuntimeAssets(environment = process.env) {
     runtime_input_tree_oids: runtimeInputTreeOids,
     runtime_version: runtimeVersion,
     daemon_sha256: daemonSha256,
+    entrypoint_sha256: entrypointSha256,
     tenant_admission_helper_sha256: admissionHelperSha256,
     native_amd64_preflight: nativeAmd64Preflight,
   };

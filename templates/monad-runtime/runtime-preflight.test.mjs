@@ -12,6 +12,7 @@ const inputs = Object.freeze({
   baseImage: 'oven/bun:1-debian@sha256:' + 'a'.repeat(64),
   runtimeVersion: 'b'.repeat(64),
   daemonSha256: 'c'.repeat(64),
+  entrypointSha256: 'e'.repeat(64),
   admissionHelperSha256: 'd'.repeat(64),
   containerName: 'monad-runtime-preflight-bbbbbbbbbbbb',
 });
@@ -71,6 +72,7 @@ test('runs the exact daemon credential-free in one native private cgroup and cle
     bootstrap_socket_mode: '600',
     credential_bootstrap: 'awaiting',
     daemon_sha256: inputs.daemonSha256,
+    entrypoint_sha256: inputs.entrypointSha256,
     tenant_admission_helper_sha256: inputs.admissionHelperSha256,
   });
 
@@ -83,10 +85,10 @@ test('runs the exact daemon credential-free in one native private cgroup and cle
   assert.equal(create[entrypointIndex + 1], '/bin/bash');
   assert.equal(imageIndex, entrypointIndex + 2);
   assert.deepEqual(create.slice(imageIndex + 1, -1), ['-ceu']);
-  assert.match(create.at(-1), /^test -d \/usr\/local\/bin[\s\S]*exec \/bin\/bash \/opt\/monad-preflight\/svc-monad-agent-run$/);
+  assert.match(create.at(-1), /^install -d -o root -g root -m 0755 \/opt\/monad\/runtime\/bin[\s\S]*exec \/bin\/bash \/opt\/monad-preflight\/svc-monad-agent-run$/);
   assert.match(
     create.at(-1),
-    /test -d \/usr\/local\/bin[\s\S]*test ! -L \/usr\/local\/bin[\s\S]*install -d -o root -g root -m 0755 \/usr\/local\/bin[\s\S]*stat -c '%u:%g:%a' -- \/usr\/local\/bin[\s\S]*0:0:755/,
+    /install -d -o root -g root -m 0755 \/opt\/monad\/runtime\/bin[\s\S]*test -d \/opt\/monad\/runtime\/bin[\s\S]*test ! -L \/opt\/monad\/runtime\/bin[\s\S]*stat -c '%u:%g:%a' -- \/opt\/monad\/runtime\/bin[\s\S]*0:0:755/,
     'native boot must canonicalize and prove the launcher directory before install',
   );
   for (const required of [
@@ -121,10 +123,10 @@ test('runs the exact daemon credential-free in one native private cgroup and cle
   );
   assert.match(serializedCreate, /\/opt\/monad-preflight\/svc-monad-agent-run/);
   for (const install of [
-    'install -o root -g root -m 0755 /opt/monad-preflight/assets/monad-agent /usr/local/bin/monad-agent',
+    'install -o root -g root -m 0755 /opt/monad-preflight/assets/monad-agent /opt/monad/runtime/bin/monad-agent',
     'install -o root -g root -m 0755 /opt/monad-preflight/assets/monad-tenant-admission /usr/local/libexec/monad-tenant-admission',
     'install -o root -g root -m 0444 /opt/monad-preflight/assets/session-rebind-tenant-boundary.json /etc/monad/session-rebind-tenant-boundary.json',
-    'install -o root -g root -m 0755 /opt/monad-preflight/assets/entrypoint.sh /usr/local/bin/monad-entrypoint',
+    'install -o root -g root -m 0755 /opt/monad-preflight/assets/entrypoint.sh /opt/monad/runtime/bin/monad-entrypoint',
   ]) {
     assert.ok(serializedCreate.includes(install), `missing canonical install: ${install}`);
   }
@@ -139,9 +141,9 @@ test('runs the exact daemon credential-free in one native private cgroup and cle
   assert.match(serializedProbe, /test "\$daemon_pid" -gt 1/);
   assert.doesNotMatch(serializedProbe, /\/proc\/1\/(?:cmdline|cgroup)/);
   assert.match(serializedProbe, /read -r -d '' first_argv/);
-  assert.match(serializedProbe, /\/usr\/local\/bin\/monad-agent/);
+  assert.match(serializedProbe, /\/opt\/monad\/runtime\/bin\/monad-agent/);
   assert.doesNotMatch(serializedProbe, /\/proc\/1\/exe/);
-  assert.match(serializedProbe, /daemon_directory=\/usr\/local\/bin/);
+  assert.match(serializedProbe, /daemon_directory=\/opt\/monad\/runtime\/bin/);
   assert.match(serializedProbe, /test -d "\$daemon_directory"/);
   assert.match(serializedProbe, /test ! -L "\$daemon_directory"/);
   assert.match(
@@ -149,7 +151,9 @@ test('runs the exact daemon credential-free in one native private cgroup and cle
     /stat -c '%u:%g:%a' -- "\$daemon_directory"[\s\S]*0:0:755/,
   );
   assert.match(serializedProbe, /sha256sum "\$launcher"/);
+  assert.match(serializedProbe, /sha256sum "\$entrypoint"/);
   assert.ok(serializedProbe.includes(inputs.daemonSha256));
+  assert.ok(serializedProbe.includes(inputs.entrypointSha256));
   assert.ok(serializedProbe.includes(inputs.admissionHelperSha256));
   assert.match(serializedProbe, /sha256sum \/usr\/local\/libexec\/monad-tenant-admission/);
   assert.match(serializedProbe, /test ! -L "\$helper"/);
@@ -444,7 +448,7 @@ test('rejects noncanonical marker evidence and still cleans the container', asyn
   assert.equal(calls.filter((args) => commandKey(args) === 'container rm').length, 1);
 });
 
-test('accepts only closed preflight evidence bound to both prepared executables', () => {
+test('accepts only closed preflight evidence bound to all prepared runtime executables', () => {
   const evidence = {
     platform: 'linux/amd64',
     cgroup_namespace: 'private',
@@ -456,10 +460,12 @@ test('accepts only closed preflight evidence bound to both prepared executables'
     bootstrap_socket_mode: '600',
     credential_bootstrap: 'awaiting',
     daemon_sha256: inputs.daemonSha256,
+    entrypoint_sha256: inputs.entrypointSha256,
     tenant_admission_helper_sha256: inputs.admissionHelperSha256,
   };
   assert.deepEqual(validateNativeAmd64RuntimePreflightEvidence(evidence, {
     daemonSha256: inputs.daemonSha256,
+    entrypointSha256: inputs.entrypointSha256,
     admissionHelperSha256: inputs.admissionHelperSha256,
   }), evidence);
   for (const invalid of [
@@ -468,12 +474,14 @@ test('accepts only closed preflight evidence bound to both prepared executables'
     { ...evidence, daemon_directory_metadata: '1000:1000:755' },
     { ...evidence, marker_path: '/sys/fs/cgroup/../monad-tenant' },
     { ...evidence, daemon_sha256: 'e'.repeat(64) },
+    { ...evidence, entrypoint_sha256: 'f'.repeat(64) },
     { ...evidence, tenant_admission_helper_sha256: 'e'.repeat(64) },
     { ...evidence, diagnostic: 'expanded record' },
   ]) {
     assert.throws(
       () => validateNativeAmd64RuntimePreflightEvidence(invalid, {
         daemonSha256: inputs.daemonSha256,
+        entrypointSha256: inputs.entrypointSha256,
         admissionHelperSha256: inputs.admissionHelperSha256,
       }),
       /native amd64 runtime preflight evidence is invalid/,

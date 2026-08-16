@@ -34,11 +34,11 @@ test('runtime source pins immutable TAMS and tool inputs', async () => {
   const source = await loadRuntimeSource();
   assert.equal(
     source.tams_revision,
-    'd3a3fa457c34841adca6996c1676556992e7908c',
+    'f4194ec4304f46a37eb15905a17a5d670f8c4042',
   );
   assert.equal(
     source.tams_apps_sandbox_tree_oid,
-    'd02032fa44e1834d1e84583a01e25701e1166cd4',
+    'f8b561c5efbd0b303e178d58e0608a184e8b7b13',
   );
   assert.equal(source.tool_versions.opencode, '1.14.28');
   assert.equal(source.tool_versions.agent_browser, '0.27.0');
@@ -61,22 +61,47 @@ test('Dockerfile preserves and gates every tenant-facing Webtop longrun', async 
     'utf8',
   );
   const lastRuntimeBinMutation = dockerfile.indexOf(
-    'bash /opt/monad/apps/sandbox/agent-cli/install-shims.sh',
+    'COPY .build-assets/entrypoint.sh /opt/monad/runtime/bin/monad-entrypoint',
   );
   const canonicalBinMetadata = dockerfile.indexOf(
-    'install -d -o root -g root -m 0755 /usr/local/bin',
+    'install -d -o root -g root -m 0755 /opt/monad/runtime/bin',
     lastRuntimeBinMutation,
   );
-  assert.ok(lastRuntimeBinMutation >= 0, 'runtime shims must be installed');
+  assert.ok(lastRuntimeBinMutation >= 0, 'runtime entrypoint must be installed');
   assert.ok(
     canonicalBinMetadata > lastRuntimeBinMutation,
-    '/usr/local/bin must be canonicalized after its final build-time mutation',
+    'the dedicated runtime directory must be canonicalized after its final build-time mutation',
   );
   assert.match(
     dockerfile.slice(canonicalBinMetadata),
-    /test -d \/usr\/local\/bin[\s\S]*test ! -L \/usr\/local\/bin[\s\S]*stat -c '%u:%g:%a' -- \/usr\/local\/bin[\s\S]*0:0:755/,
-    'the final image must prove /usr/local/bin is one real root:root 0755 directory',
+    /test -d \/opt\/monad\/runtime\/bin[\s\S]*test ! -L \/opt\/monad\/runtime\/bin[\s\S]*stat -c '%u:%g:%a' -- \/opt\/monad\/runtime\/bin[\s\S]*0:0:755/,
+    'the final image must prove the dedicated runtime path is one real root:root 0755 directory',
   );
+  for (const runtimeFile of ['monad-agent', 'monad-entrypoint']) {
+    assert.match(
+      dockerfile.slice(canonicalBinMetadata),
+      new RegExp(
+        `test -f /opt/monad/runtime/bin/${runtimeFile}` +
+        `[\\s\\S]*test ! -L /opt/monad/runtime/bin/${runtimeFile}` +
+        `[\\s\\S]*stat -c '%u:%g:%a' -- /opt/monad/runtime/bin/${runtimeFile}` +
+        `[\\s\\S]*0:0:755`,
+      ),
+    );
+  }
+  assert.match(
+    dockerfile,
+    /COPY \.build-assets\/monad-agent \/opt\/monad\/runtime\/bin\/monad-agent/,
+  );
+  assert.match(
+    dockerfile,
+    /COPY \.build-assets\/entrypoint\.sh \/opt\/monad\/runtime\/bin\/monad-entrypoint/,
+  );
+  assert.match(
+    dockerfile,
+    /COPY \.build-assets\/monad \/usr\/local\/bin\/monad/,
+    'the ordinary CLI must remain on the shared command path',
+  );
+  assert.doesNotMatch(dockerfile, /\/usr\/local\/bin\/monad-(?:agent|entrypoint)/);
   assert.match(dockerfile, /opencode-ai@1\.14\.28/);
   assert.match(dockerfile, /agent-browser@0\.27\.0/);
   assert.match(dockerfile, /playwright@1\.60\.0/);
@@ -134,7 +159,7 @@ test('Dockerfile preserves and gates every tenant-facing Webtop longrun', async 
   assert.match(dockerfile, /RESTART_APP=false/);
   assert.match(
     dockerfile,
-    /attestation\.daemon\.sha256!==sha256\("\/usr\/local\/bin\/monad-agent"\)/,
+    /attestation\.daemon\.sha256!==sha256\("\/opt\/monad\/runtime\/bin\/monad-agent"\)/,
   );
   assert.match(
     dockerfile,
@@ -145,7 +170,7 @@ test('Dockerfile preserves and gates every tenant-facing Webtop longrun', async 
   assert.doesNotMatch(dockerfile, /\b(?:kasm|novnc|tigervnc)\b/i);
 });
 
-test('daemon longrun establishes one exact real admission root before every exec', async () => {
+test('daemon longrun verifies the immutable runtime path and establishes one exact admission root before every exec', async () => {
   const runScript = await readFile(
     new URL('./s6-overlay/s6-rc.d/svc-monad-agent/run', import.meta.url),
     'utf8',
@@ -157,9 +182,22 @@ test('daemon longrun establishes one exact real admission root before every exec
   assert.match(runScript, /test ! -L "\$admission_root"/);
   assert.match(runScript, /stat -c '%u:%g:%a' -- "\$admission_root"/);
   assert.match(runScript, /0:0:700/);
+  assert.match(runScript, /runtime_bin=\/opt\/monad\/runtime\/bin/);
+  assert.match(runScript, /test -d "\$runtime_bin"/);
+  assert.match(runScript, /test ! -L "\$runtime_bin"/);
+  assert.match(runScript, /stat -c '%u:%g:%a' -- "\$runtime_bin"/);
+  assert.match(runScript, /entrypoint="\$runtime_bin\/monad-entrypoint"/);
+  assert.match(runScript, /test -f "\$entrypoint"/);
+  assert.match(runScript, /test ! -L "\$entrypoint"/);
+  assert.match(runScript, /stat -c '%u:%g:%a' -- "\$entrypoint"/);
+  assert.doesNotMatch(
+    runScript,
+    /(?:install|chmod|chown)[^\n]*\$runtime_bin/,
+    'runtime startup must fail closed instead of repairing immutable path metadata',
+  );
   assert.ok(
     runScript.indexOf('0:0:700') <
-      runScript.indexOf('exec /usr/local/bin/monad-entrypoint'),
+      runScript.indexOf('exec "$entrypoint"'),
     'admission-root verification must precede daemon exec',
   );
 });
@@ -184,11 +222,11 @@ test('E2B Dockerfile rendering preserves runtime hash and group verifiers', asyn
   assert.match(rendered, /test "\$abc_groups" = "100,1001"/);
   assert.match(
     rendered,
-    /install -d -o root -g root -m 0755 \/usr\/local\/bin/,
+    /install -d -o root -g root -m 0755 \/opt\/monad\/runtime\/bin/,
   );
   assert.match(
     rendered,
-    /stat -c '%u:%g:%a' -- \/usr\/local\/bin\)" = "0:0:755"/,
+    /stat -c '%u:%g:%a' -- \/opt\/monad\/runtime\/bin\)" = "0:0:755"/,
   );
 });
 
@@ -271,6 +309,7 @@ test('asset preparation gates manifest acceptance on the native daemon preflight
     'baseImage: source.tool_versions.bun_base_image',
     'runtimeVersion',
     'daemonSha256',
+    'entrypointSha256',
     'admissionHelperSha256',
   ]) {
     assert.ok(
@@ -285,6 +324,9 @@ test('asset preparation gates manifest acceptance on the native daemon preflight
   );
   assert.match(template, /validateNativeAmd64RuntimePreflightEvidence/);
   assert.match(template, /assetManifest\.native_amd64_preflight/);
+  assert.match(template, /entrypointSha256: assetManifest\.entrypoint_sha256/);
+  assert.match(template, /entrypoint_sha256: assetManifest\.entrypoint_sha256/);
+  assert.match(preparation, /entrypoint_sha256: entrypointSha256/);
 });
 
 test('runtime verifier proves containment and disables ambient schedulers and nested Docker', async () => {
@@ -407,8 +449,22 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
   assert.match(verifier, /exactProcRootFile\(daemonPid, attestationPath, 0o444\)/);
   assert.match(
     verifier,
-    /exactProcRootFile\(daemonPid, "\/usr\/local\/bin\/monad-agent", 0o755\)/,
+    /exactProcRootDirectory\(daemonPid, "\/opt\/monad\/runtime\/bin", 0o755\)/,
   );
+  assert.match(
+    verifier,
+    /exactProcRootFile\(daemonPid, "\/opt\/monad\/runtime\/bin\/monad-agent", 0o755\)/,
+  );
+  assert.match(
+    verifier,
+    /exactProcRootFile\(daemonPid, "\/opt\/monad\/runtime\/bin\/monad-entrypoint", 0o755\)/,
+  );
+  assert.match(verifier, /entrypoint_sha256: entrypointSha256/);
+  assert.match(
+    verifier,
+    /tenantBoundary\.entrypoint_sha256 !== manifest\.entrypoint_sha256/,
+  );
+  assert.doesNotMatch(verifier, /\/usr\/local\/bin\/monad-(?:agent|entrypoint)/);
   assert.match(
     verifier,
     /exactProcRootFile\(supervisorPid, "\/usr\/local\/libexec\/monad-webtop-svc-"/,

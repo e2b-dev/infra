@@ -28,6 +28,7 @@ export async function createMonadRuntimeTemplate() {
     assetManifest.native_amd64_preflight,
     {
       daemonSha256: assetManifest.daemon_sha256,
+      entrypointSha256: assetManifest.entrypoint_sha256,
       admissionHelperSha256: assetManifest.tenant_admission_helper_sha256,
     },
   );
@@ -49,6 +50,10 @@ export async function createMonadRuntimeTemplate() {
       tams_revision: source.tams_revision,
       tams_apps_sandbox_tree_oid: source.tams_apps_sandbox_tree_oid,
       runtime_input_tree_oids: assetManifest.runtime_input_tree_oids,
+      daemon_sha256: assetManifest.daemon_sha256,
+      entrypoint_sha256: assetManifest.entrypoint_sha256,
+      tenant_admission_helper_sha256:
+        assetManifest.tenant_admission_helper_sha256,
     });
     const provenanceBase64 = Buffer.from(provenance).toString('base64');
     const template = Template()

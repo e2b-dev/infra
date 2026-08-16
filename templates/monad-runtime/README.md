@@ -35,7 +35,11 @@ the E2B guest's outer infrastructure dockerd is not part of the desktop PID
 and mount namespaces.
 
 The Monad daemon remains a root control process outside the ordinary-session
-tenant cgroup. Before it admits tenant work, it validates the root-owned
+tenant cgroup. The daemon and its entrypoint occupy the dedicated real
+root-owned `0755` `/opt/monad/runtime/bin` directory, while the ordinary
+`monad` CLI remains in `/usr/local/bin`. The s6 longrun verifies the dedicated
+directory and both regular root-owned executables on every start and fails
+closed rather than repairing runtime metadata. Before it admits tenant work, it validates the root-owned
 `/etc/monad/session-rebind-tenant-boundary.json` build claim against the exact
 daemon and admission-helper bytes, creates and probes the cgroup-v2 boundary,
 then publishes a root-protected readiness marker. Git, OpenCode, Chromium, and
@@ -64,7 +68,8 @@ a boot failure, not a legacy-mode fallback.
 
 The JSON file is a prospective, content-bound build claim—not proof that a
 runtime has enforced it. Registration becomes authoritative only after
-`verify-runtime.mjs` independently observes the exact hashes, ownership and
+`verify-runtime.mjs` independently observes the exact daemon, entrypoint, and
+helper hashes, paths, ownership and
 modes, root-daemon separation, non-root desktop identities and groups, all
 eight s6 leaders and their important descendants, exact nginx/watchdog roles,
 marker basename/direct-parent placement, absence of cron/crond and nested dockerd, desktop behavior, and

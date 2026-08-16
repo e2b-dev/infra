@@ -39,16 +39,18 @@ RUN mkdir -p /opt/monad/home/.bun/install/cache /tmp/oc-deps \
     && BUN_INSTALL_CACHE_DIR=/opt/monad/home/.bun/install/cache bun install \
     && rm -rf /tmp/oc-deps
 
-COPY .build-assets/monad-agent /usr/local/bin/monad-agent
+RUN install -d -o root -g root -m 0755 /opt/monad/runtime/bin
+
+COPY .build-assets/monad-agent /opt/monad/runtime/bin/monad-agent
 COPY .build-assets/monad-tenant-admission /usr/local/libexec/monad-tenant-admission
 COPY .build-assets/session-rebind-tenant-boundary.json /etc/monad/session-rebind-tenant-boundary.json
 
 # Fail the build before init can ever see bytes that differ from the prepared
 # same-descriptor hashes bound into the immutable tenant-boundary claim.
-RUN node -e 'const {execFileSync}=require("node:child_process"); const attestation=require("/etc/monad/session-rebind-tenant-boundary.json"); const sha256=(path)=>{const digest=execFileSync("sha256sum",[path],{encoding:"utf8"}).slice(0,64); if(!/^[a-f0-9]{64}$/.test(digest)) throw new Error("invalid sha256sum output"); return digest;}; if(attestation.daemon.sha256!==sha256("/usr/local/bin/monad-agent")) throw new Error("prepared daemon hash mismatch"); if(attestation.admission_helper.sha256!==sha256("/usr/local/libexec/monad-tenant-admission")) throw new Error("prepared admission helper hash mismatch");'
+RUN node -e 'const {execFileSync}=require("node:child_process"); const attestation=require("/etc/monad/session-rebind-tenant-boundary.json"); const sha256=(path)=>{const digest=execFileSync("sha256sum",[path],{encoding:"utf8"}).slice(0,64); if(!/^[a-f0-9]{64}$/.test(digest)) throw new Error("invalid sha256sum output"); return digest;}; if(attestation.daemon.sha256!==sha256("/opt/monad/runtime/bin/monad-agent")) throw new Error("prepared daemon hash mismatch"); if(attestation.admission_helper.sha256!==sha256("/usr/local/libexec/monad-tenant-admission")) throw new Error("prepared admission helper hash mismatch");'
 
 COPY .build-assets/monad /usr/local/bin/monad
-COPY .build-assets/entrypoint.sh /usr/local/bin/monad-entrypoint
+COPY .build-assets/entrypoint.sh /opt/monad/runtime/bin/monad-entrypoint
 COPY .build-assets/agent-cli/ /opt/monad/apps/sandbox/agent-cli/
 COPY .build-assets/executor-sdk/ /opt/monad/packages/executor-sdk/
 
@@ -105,10 +107,10 @@ RUN install -d -o root -g root -m 0755 /usr/local/libexec /etc/monad \
 COPY s6-overlay/s6-rc.d/ /etc/s6-overlay/s6-rc.d/
 
 RUN chmod +x \
-        /usr/local/bin/monad-agent \
+        /opt/monad/runtime/bin/monad-agent \
         /usr/local/libexec/monad-tenant-admission \
         /usr/local/bin/monad \
-        /usr/local/bin/monad-entrypoint \
+        /opt/monad/runtime/bin/monad-entrypoint \
         /etc/s6-overlay/s6-rc.d/svc-monad-agent/run \
         /etc/s6-overlay/s6-rc.d/svc-nginx/run \
         /etc/s6-overlay/s6-rc.d/svc-xorg/run \
@@ -133,12 +135,18 @@ RUN chmod +x \
     && chown -R 911:1001 /opt/monad/home /workspace \
     && touch /etc/s6-overlay/s6-rc.d/user/contents.d/svc-monad-agent \
     && bash /opt/monad/apps/sandbox/agent-cli/install-shims.sh /opt/monad/apps/sandbox/agent-cli \
-    && test -d /usr/local/bin \
-    && test ! -L /usr/local/bin \
-    && install -d -o root -g root -m 0755 /usr/local/bin \
-    && test -d /usr/local/bin \
-    && test ! -L /usr/local/bin \
-    && test "$(stat -c '%u:%g:%a' -- /usr/local/bin)" = "0:0:755" \
+    && test -d /opt/monad/runtime/bin \
+    && test ! -L /opt/monad/runtime/bin \
+    && install -d -o root -g root -m 0755 /opt/monad/runtime/bin \
+    && test -d /opt/monad/runtime/bin \
+    && test ! -L /opt/monad/runtime/bin \
+    && test "$(stat -c '%u:%g:%a' -- /opt/monad/runtime/bin)" = "0:0:755" \
+    && test -f /opt/monad/runtime/bin/monad-agent \
+    && test ! -L /opt/monad/runtime/bin/monad-agent \
+    && test "$(stat -c '%u:%g:%a' -- /opt/monad/runtime/bin/monad-agent)" = "0:0:755" \
+    && test -f /opt/monad/runtime/bin/monad-entrypoint \
+    && test ! -L /opt/monad/runtime/bin/monad-entrypoint \
+    && test "$(stat -c '%u:%g:%a' -- /opt/monad/runtime/bin/monad-entrypoint)" = "0:0:755" \
     && bun --version \
     && monad --version
 

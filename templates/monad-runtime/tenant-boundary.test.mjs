@@ -19,7 +19,7 @@ test('builds the closed immutable tenant-boundary claim for the pinned Webtop id
     schema_version: 1,
     kind: 'monad.session-rebind-tenant-boundary',
     daemon: {
-      executable_path: '/usr/local/bin/monad-agent',
+      executable_path: '/opt/monad/runtime/bin/monad-agent',
       sha256: 'a'.repeat(64),
       uid: 0,
     },

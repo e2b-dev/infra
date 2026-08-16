@@ -710,17 +710,25 @@ const watchdogIdentityMatch = verifyPinnedWatchdogProcesses({
 probeStage = "filesystem_attestation";
 const runtimeAttestationPath = daemonRuntimeRootPath(attestationPath);
 const daemonExecutablePath = "/proc/" + daemonPid + "/exe";
-const runtimeDaemonPath = daemonRuntimeRootPath("/usr/local/bin/monad-agent");
+const runtimeDaemonPath = daemonRuntimeRootPath(
+  "/opt/monad/runtime/bin/monad-agent",
+);
+const runtimeEntrypointPath = daemonRuntimeRootPath(
+  "/opt/monad/runtime/bin/monad-entrypoint",
+);
 const runtimeAdmissionHelperPath = daemonRuntimeRootPath(
   "/usr/local/libexec/monad-tenant-admission",
 );
 const attestation = JSON.parse(readFileSync(runtimeAttestationPath, "utf8"));
 const daemonSha256 = sha256(daemonExecutablePath);
 const runtimeDaemonSha256 = sha256(runtimeDaemonPath);
+const entrypointSha256 = sha256(runtimeEntrypointPath);
 const admissionHelperSha256 = sha256(runtimeAdmissionHelperPath);
 const attestationFilesExact =
   exactProcRootFile(daemonPid, attestationPath, 0o444) &&
-  exactProcRootFile(daemonPid, "/usr/local/bin/monad-agent", 0o755) &&
+  exactProcRootDirectory(daemonPid, "/opt/monad/runtime/bin", 0o755) &&
+  exactProcRootFile(daemonPid, "/opt/monad/runtime/bin/monad-agent", 0o755) &&
+  exactProcRootFile(daemonPid, "/opt/monad/runtime/bin/monad-entrypoint", 0o755) &&
   exactProcRootFile(daemonPid, "/usr/local/libexec/monad-tenant-admission", 0o755) &&
   serviceNames.every((name) =>
     exactProcRootFile(supervisorPid, "/usr/local/libexec/monad-webtop-svc-" + name, 0o555) &&
@@ -798,6 +806,7 @@ const finalServiceLeaderMountNamespaceMatch = serviceNames.every((name) =>
 );
 const boundaryEvidence = {
   daemon_sha256: daemonSha256,
+  entrypoint_sha256: entrypointSha256,
   admission_helper_sha256: admissionHelperSha256,
   daemon_service_mapping: true,
   daemon_supervisor_mount_namespace_match: true,
@@ -807,7 +816,7 @@ const boundaryEvidence = {
   service_leader_mount_namespace_match:
     serviceLeaderMountNamespaceMatch && finalServiceLeaderMountNamespaceMatch,
   daemon_executable_match:
-    readlinkSync(daemonExecutablePath) === "/usr/local/bin/monad-agent" &&
+    readlinkSync(daemonExecutablePath) === "/opt/monad/runtime/bin/monad-agent" &&
     runtimeDaemonSha256 === daemonSha256,
   attestation_hash_match:
     attestation.daemon?.sha256 === daemonSha256 &&
@@ -942,6 +951,7 @@ try {
   });
   if (
     tenantBoundary.daemon_sha256 !== manifest.daemon_sha256 ||
+    tenantBoundary.entrypoint_sha256 !== manifest.entrypoint_sha256 ||
     tenantBoundary.admission_helper_sha256 !==
       manifest.tenant_admission_helper_sha256 ||
     tenantBoundary.daemon_service_mapping !== true ||
@@ -992,7 +1002,11 @@ try {
     provenance.runtime_version !== manifest.runtime_version ||
     provenance.tams_revision !== manifest.tams_revision ||
     provenance.tams_apps_sandbox_tree_oid !==
-      manifest.tams_apps_sandbox_tree_oid
+      manifest.tams_apps_sandbox_tree_oid ||
+    provenance.daemon_sha256 !== manifest.daemon_sha256 ||
+    provenance.entrypoint_sha256 !== manifest.entrypoint_sha256 ||
+    provenance.tenant_admission_helper_sha256 !==
+      manifest.tenant_admission_helper_sha256
   ) {
     throw new Error('runtime provenance does not match prepared assets');
   }

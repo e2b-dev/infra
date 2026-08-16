@@ -66,6 +66,10 @@ try {
         tams_revision: source.tams_revision,
         tams_apps_sandbox_tree_oid: source.tams_apps_sandbox_tree_oid,
         runtime_input_tree_oids: assetManifest.runtime_input_tree_oids,
+        daemon_sha256: assetManifest.daemon_sha256,
+        entrypoint_sha256: assetManifest.entrypoint_sha256,
+        tenant_admission_helper_sha256:
+          assetManifest.tenant_admission_helper_sha256,
       },
       null,
       2,

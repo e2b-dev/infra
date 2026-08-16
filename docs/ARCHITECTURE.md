@@ -366,7 +366,11 @@ outside the desktop PID and mount namespaces.
 
 Session rebind uses one attested cgroup-v2 tenant boundary inside the runtime.
 The root Monad daemon remains outside it as the control process. Its immutable
-build claim binds the daemon and native admission-helper hashes, exact file
+daemon and entrypoint live under the dedicated real root-owned `0755`
+`/opt/monad/runtime/bin` directory; the user-facing `monad` CLI remains in
+`/usr/local/bin`. The s6 longrun verifies this dedicated path and its two
+root-owned regular executables and fails closed instead of repairing runtime
+metadata. The immutable build claim binds the daemon and native admission-helper hashes, exact file
 ownership/modes, non-root tenant identity, supported service set, and runtime
 configuration digest algorithm. The daemon validates that claim before
 credential activation or tenant process admission, exercises `cgroup.kill`
@@ -385,7 +389,7 @@ marker only after the replacement boundary is ready.
 
 Before the operator runtime can enter the remote template-build flow, asset
 preparation must run on a native Linux/amd64 Docker engine. It starts the exact
-prepared daemon and helper in a privileged, network-isolated container with a
+prepared daemon, entrypoint, and helper in a privileged, network-isolated container with a
 private cgroup namespace, requires the root-owned tenant marker and root-only
 credential-bootstrap socket to appear without any credential, and removes the
 owned preflight container on every outcome. The image bakes tenant-boundary

@@ -14,7 +14,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-import { attestPreparedExecutable } from './prepare-assets.mjs';
+import {
+  attestPreparedEntrypoint,
+  attestPreparedExecutable,
+} from './prepare-assets.mjs';
 
 function amd64ElfFixture() {
   const value = Buffer.alloc(64);
@@ -32,6 +35,22 @@ test('attests and hashes a regular executable through one no-follow descriptor',
     assert.equal(
       await attestPreparedExecutable(executable),
       createHash('sha256').update(amd64ElfFixture()).digest('hex'),
+    );
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test('attests and hashes the exact regular entrypoint through one no-follow descriptor', async () => {
+  const fixture = await mkdtemp(join(tmpdir(), 'monad-prepared-entrypoint-'));
+  try {
+    const entrypoint = join(fixture, 'entrypoint.sh');
+    const bytes = Buffer.from('#!/bin/bash\nexec /opt/monad/runtime/bin/monad-agent "$@"\n');
+    await writeFile(entrypoint, bytes);
+    await chmod(entrypoint, 0o755);
+    assert.equal(
+      await attestPreparedEntrypoint(entrypoint),
+      createHash('sha256').update(bytes).digest('hex'),
     );
   } finally {
     await rm(fixture, { recursive: true, force: true });

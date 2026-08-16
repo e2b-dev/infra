@@ -16,26 +16,26 @@ const SAFE_FATAL_NAMES = new Set([
   'TypeError',
 ]);
 
-const launchDaemon = String.raw`test -d /usr/local/bin
-test ! -L /usr/local/bin
-install -d -o root -g root -m 0755 /usr/local/bin /usr/local/libexec /etc/monad
-test -d /usr/local/bin
-test ! -L /usr/local/bin
-test "$(stat -c '%u:%g:%a' -- /usr/local/bin)" = 0:0:755
-install -o root -g root -m 0755 /opt/monad-preflight/assets/monad-agent /usr/local/bin/monad-agent
+const launchDaemon = String.raw`install -d -o root -g root -m 0755 /opt/monad/runtime/bin /usr/local/libexec /etc/monad
+test -d /opt/monad/runtime/bin
+test ! -L /opt/monad/runtime/bin
+test "$(stat -c '%u:%g:%a' -- /opt/monad/runtime/bin)" = 0:0:755
+install -o root -g root -m 0755 /opt/monad-preflight/assets/monad-agent /opt/monad/runtime/bin/monad-agent
 install -o root -g root -m 0755 /opt/monad-preflight/assets/monad-tenant-admission /usr/local/libexec/monad-tenant-admission
 install -o root -g root -m 0444 /opt/monad-preflight/assets/session-rebind-tenant-boundary.json /etc/monad/session-rebind-tenant-boundary.json
-install -o root -g root -m 0755 /opt/monad-preflight/assets/entrypoint.sh /usr/local/bin/monad-entrypoint
+install -o root -g root -m 0755 /opt/monad-preflight/assets/entrypoint.sh /opt/monad/runtime/bin/monad-entrypoint
 exec /bin/bash /opt/monad-preflight/svc-monad-agent-run`;
 
-function buildEvidenceProbe(daemonSha256, admissionHelperSha256) {
+function buildEvidenceProbe(daemonSha256, entrypointSha256, admissionHelperSha256) {
   return String.raw`admission_root=/run/monad-admission
 marker="$admission_root/tenant-cgroup-ready"
 socket=/var/run/monad/credential-bootstrap.sock
-daemon_directory=/usr/local/bin
-launcher=/usr/local/bin/monad-agent
+daemon_directory=/opt/monad/runtime/bin
+launcher=/opt/monad/runtime/bin/monad-agent
+entrypoint=/opt/monad/runtime/bin/monad-entrypoint
 helper=/usr/local/libexec/monad-tenant-admission
 expected_daemon_sha256='${daemonSha256}'
+expected_entrypoint_sha256='${entrypointSha256}'
 expected_helper_sha256='${admissionHelperSha256}'
 daemon_pid=
 for comm_path in /proc/[0-9]*/comm; do
@@ -56,6 +56,10 @@ test -f "$launcher"
 test ! -L "$launcher"
 test "$(stat -c '%u:%g:%a' -- "$launcher")" = 0:0:755
 test "$(sha256sum "$launcher" | cut -d ' ' -f 1)" = "$expected_daemon_sha256"
+test -f "$entrypoint"
+test ! -L "$entrypoint"
+test "$(stat -c '%u:%g:%a' -- "$entrypoint")" = 0:0:755
+test "$(sha256sum "$entrypoint" | cut -d ' ' -f 1)" = "$expected_entrypoint_sha256"
 test -f "$helper"
 test ! -L "$helper"
 test "$(stat -c '%u:%g:%a' -- "$helper")" = 0:0:755
@@ -153,6 +157,7 @@ function validateOptions({
   baseImage,
   runtimeVersion,
   daemonSha256,
+  entrypointSha256,
   admissionHelperSha256,
   containerName,
   runDocker,
@@ -172,6 +177,7 @@ function validateOptions({
     !/@sha256:[a-f0-9]{64}$/.test(baseImage) ||
     !exactHash(runtimeVersion) ||
     !exactHash(daemonSha256) ||
+    !exactHash(entrypointSha256) ||
     !exactHash(admissionHelperSha256) ||
     typeof containerName !== 'string' ||
     !/^monad-runtime-preflight-[a-z0-9-]{1,80}$/.test(containerName) ||
@@ -194,6 +200,7 @@ function canonicalMarkerPath(value) {
 
 export function validateNativeAmd64RuntimePreflightEvidence(evidence, {
   daemonSha256,
+  entrypointSha256,
   admissionHelperSha256,
 } = {}) {
   const expectedKeys = [
@@ -207,6 +214,7 @@ export function validateNativeAmd64RuntimePreflightEvidence(evidence, {
     'bootstrap_socket_mode',
     'credential_bootstrap',
     'daemon_sha256',
+    'entrypoint_sha256',
     'tenant_admission_helper_sha256',
   ].sort();
   const keys = evidence !== null && typeof evidence === 'object' &&
@@ -227,9 +235,12 @@ export function validateNativeAmd64RuntimePreflightEvidence(evidence, {
     evidence.credential_bootstrap === 'awaiting' &&
     typeof daemonSha256 === 'string' &&
     /^[a-f0-9]{64}$/.test(daemonSha256) &&
+    typeof entrypointSha256 === 'string' &&
+    /^[a-f0-9]{64}$/.test(entrypointSha256) &&
     typeof admissionHelperSha256 === 'string' &&
     /^[a-f0-9]{64}$/.test(admissionHelperSha256) &&
     evidence.daemon_sha256 === daemonSha256 &&
+    evidence.entrypoint_sha256 === entrypointSha256 &&
     evidence.tenant_admission_helper_sha256 === admissionHelperSha256;
   if (!valid) {
     throw new Error('native amd64 runtime preflight evidence is invalid');
@@ -243,6 +254,7 @@ export async function runNativeAmd64RuntimePreflight({
   baseImage,
   runtimeVersion,
   daemonSha256,
+  entrypointSha256,
   admissionHelperSha256,
   containerName = `monad-runtime-preflight-${runtimeVersion?.slice(0, 12)}-${randomUUID()}`,
   runDocker = defaultRunDocker,
@@ -259,6 +271,7 @@ export async function runNativeAmd64RuntimePreflight({
     baseImage,
     runtimeVersion,
     daemonSha256,
+    entrypointSha256,
     admissionHelperSha256,
     containerName,
     runDocker,
@@ -312,7 +325,7 @@ export async function runNativeAmd64RuntimePreflight({
           containerName,
           '/bin/bash',
           '-ceu',
-          buildEvidenceProbe(daemonSha256, admissionHelperSha256),
+          buildEvidenceProbe(daemonSha256, entrypointSha256, admissionHelperSha256),
         ]);
       } catch {
         let running = false;
@@ -371,8 +384,9 @@ export async function runNativeAmd64RuntimePreflight({
         bootstrap_socket_mode: '600',
         credential_bootstrap: 'awaiting',
         daemon_sha256: daemonSha256,
+        entrypoint_sha256: entrypointSha256,
         tenant_admission_helper_sha256: admissionHelperSha256,
-      }, { daemonSha256, admissionHelperSha256 });
+      }, { daemonSha256, entrypointSha256, admissionHelperSha256 });
     }
     throw new Error(
       'native amd64 runtime preflight did not publish exact credential-free evidence',

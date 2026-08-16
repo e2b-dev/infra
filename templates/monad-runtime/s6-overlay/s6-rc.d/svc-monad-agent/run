@@ -1,6 +1,19 @@
 #!/usr/bin/with-contenv bash
 set -euo pipefail
 
+runtime_bin=/opt/monad/runtime/bin
+daemon="$runtime_bin/monad-agent"
+entrypoint="$runtime_bin/monad-entrypoint"
+test -d "$runtime_bin"
+test ! -L "$runtime_bin"
+test "$(stat -c '%u:%g:%a' -- "$runtime_bin")" = 0:0:755
+test -f "$daemon"
+test ! -L "$daemon"
+test "$(stat -c '%u:%g:%a' -- "$daemon")" = 0:0:755
+test -f "$entrypoint"
+test ! -L "$entrypoint"
+test "$(stat -c '%u:%g:%a' -- "$entrypoint")" = 0:0:755
+
 admission_root=/run/monad-admission
 if test -e "$admission_root" || test -L "$admission_root"; then
     test -d "$admission_root"
@@ -12,4 +25,4 @@ test -d "$admission_root"
 test ! -L "$admission_root"
 test "$(stat -c '%u:%g:%a' -- "$admission_root")" = 0:0:700
 
-exec /usr/local/bin/monad-entrypoint
+exec "$entrypoint"
