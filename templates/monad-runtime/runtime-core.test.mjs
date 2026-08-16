@@ -34,7 +34,7 @@ test('runtime source pins immutable TAMS and tool inputs', async () => {
   const source = await loadRuntimeSource();
   assert.equal(
     source.tams_revision,
-    'f4194ec4304f46a37eb15905a17a5d670f8c4042',
+    '6c4d434741ba71c5132c8e737fab60360d05f3a1',
   );
   assert.equal(
     source.tams_apps_sandbox_tree_oid,
@@ -88,6 +88,22 @@ test('Dockerfile preserves and gates every tenant-facing Webtop longrun', async 
       ),
     );
   }
+  const helperCopy = dockerfile.indexOf(
+    'COPY .build-assets/monad-tenant-admission /opt/monad/runtime/libexec/monad-tenant-admission',
+  );
+  const canonicalHelperMetadata = dockerfile.indexOf(
+    'for runtime_directory in /opt /opt/monad /opt/monad/runtime /opt/monad/runtime/libexec',
+    helperCopy,
+  );
+  assert.ok(helperCopy >= 0, 'the admission helper must use the dedicated runtime path');
+  assert.ok(
+    canonicalHelperMetadata > helperCopy,
+    'the helper directory must be canonicalized after its final build-time mutation',
+  );
+  assert.match(
+    dockerfile.slice(canonicalHelperMetadata),
+    /for runtime_directory in \/opt \/opt\/monad \/opt\/monad\/runtime \/opt\/monad\/runtime\/libexec[\s\S]*test -d "\$runtime_directory"[\s\S]*test ! -L "\$runtime_directory"[\s\S]*stat -c '%u:%g:%a' -- "\$runtime_directory"[\s\S]*0:0:755[\s\S]*test -f \/opt\/monad\/runtime\/libexec\/monad-tenant-admission[\s\S]*test ! -L \/opt\/monad\/runtime\/libexec\/monad-tenant-admission[\s\S]*0:0:755/,
+  );
   assert.match(
     dockerfile,
     /COPY \.build-assets\/monad-agent \/opt\/monad\/runtime\/bin\/monad-agent/,
@@ -163,8 +179,9 @@ test('Dockerfile preserves and gates every tenant-facing Webtop longrun', async 
   );
   assert.match(
     dockerfile,
-    /attestation\.admission_helper\.sha256!==sha256\("\/usr\/local\/libexec\/monad-tenant-admission"\)/,
+    /attestation\.admission_helper\.sha256!==sha256\("\/opt\/monad\/runtime\/libexec\/monad-tenant-admission"\)/,
   );
+  assert.doesNotMatch(dockerfile, /\/usr\/local\/libexec\/monad-tenant-admission/);
   assert.match(dockerfile, /execFileSync\("sha256sum"/);
   assert.match(dockerfile, /svc-monad-agent/);
   assert.doesNotMatch(dockerfile, /\b(?:kasm|novnc|tigervnc)\b/i);
@@ -190,6 +207,18 @@ test('daemon longrun verifies the immutable runtime path and establishes one exa
   assert.match(runScript, /test -f "\$entrypoint"/);
   assert.match(runScript, /test ! -L "\$entrypoint"/);
   assert.match(runScript, /stat -c '%u:%g:%a' -- "\$entrypoint"/);
+  assert.match(runScript, /runtime_libexec=\/opt\/monad\/runtime\/libexec/);
+  assert.match(runScript, /helper="\$runtime_libexec\/monad-tenant-admission"/);
+  assert.match(
+    runScript,
+    /for runtime_directory in \/opt \/opt\/monad \/opt\/monad\/runtime "\$runtime_libexec"/,
+  );
+  assert.match(runScript, /test -d "\$runtime_directory"/);
+  assert.match(runScript, /test ! -L "\$runtime_directory"/);
+  assert.match(runScript, /stat -c '%u:%g:%a' -- "\$runtime_directory"/);
+  assert.match(runScript, /test -f "\$helper"/);
+  assert.match(runScript, /test ! -L "\$helper"/);
+  assert.match(runScript, /stat -c '%u:%g:%a' -- "\$helper"/);
   assert.doesNotMatch(
     runScript,
     /(?:install|chmod|chown)[^\n]*\$runtime_bin/,
@@ -287,6 +316,12 @@ test('template build readiness proves bootstrap wait and delegates desktop proof
     assert.ok(serviceFiles.some((content) => content.includes(
       `--supervised-service ${service}`,
     )));
+  }
+  assert.ok(serviceFiles.some((content) => content.includes(
+    '/opt/monad/runtime/libexec/monad-tenant-admission',
+  )));
+  for (const content of serviceFiles) {
+    assert.doesNotMatch(content, /\/usr\/local\/libexec\/monad-tenant-admission/);
   }
   assert.ok(serviceFiles.some((content) => content.includes('exec sleep infinity')));
   for (const content of serviceFiles) {
@@ -459,6 +494,17 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
     verifier,
     /exactProcRootFile\(daemonPid, "\/opt\/monad\/runtime\/bin\/monad-entrypoint", 0o755\)/,
   );
+  for (const directory of [
+    '/opt',
+    '/opt/monad',
+    '/opt/monad/runtime',
+    '/opt/monad/runtime/libexec',
+  ]) {
+    assert.ok(
+      verifier.includes(`exactProcRootDirectory(daemonPid, "${directory}", 0o755)`),
+      `the verifier must prove exact helper ancestor metadata for ${directory}`,
+    );
+  }
   assert.match(verifier, /entrypoint_sha256: entrypointSha256/);
   assert.match(
     verifier,

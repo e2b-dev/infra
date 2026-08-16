@@ -43,7 +43,7 @@ test('builds the closed immutable tenant-boundary claim for the pinned Webtop id
       root_daemon_survives_kill: true,
     },
     admission_helper: {
-      path: '/usr/local/libexec/monad-tenant-admission',
+      path: '/opt/monad/runtime/libexec/monad-tenant-admission',
       sha256: 'b'.repeat(64),
       protocol_version: 3,
     },

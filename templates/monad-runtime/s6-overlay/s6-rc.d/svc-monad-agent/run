@@ -4,6 +4,8 @@ set -euo pipefail
 runtime_bin=/opt/monad/runtime/bin
 daemon="$runtime_bin/monad-agent"
 entrypoint="$runtime_bin/monad-entrypoint"
+runtime_libexec=/opt/monad/runtime/libexec
+helper="$runtime_libexec/monad-tenant-admission"
 test -d "$runtime_bin"
 test ! -L "$runtime_bin"
 test "$(stat -c '%u:%g:%a' -- "$runtime_bin")" = 0:0:755
@@ -13,6 +15,14 @@ test "$(stat -c '%u:%g:%a' -- "$daemon")" = 0:0:755
 test -f "$entrypoint"
 test ! -L "$entrypoint"
 test "$(stat -c '%u:%g:%a' -- "$entrypoint")" = 0:0:755
+for runtime_directory in /opt /opt/monad /opt/monad/runtime "$runtime_libexec"; do
+    test -d "$runtime_directory"
+    test ! -L "$runtime_directory"
+    test "$(stat -c '%u:%g:%a' -- "$runtime_directory")" = 0:0:755
+done
+test -f "$helper"
+test ! -L "$helper"
+test "$(stat -c '%u:%g:%a' -- "$helper")" = 0:0:755
 
 admission_root=/run/monad-admission
 if test -e "$admission_root" || test -L "$admission_root"; then

@@ -16,12 +16,26 @@ const SAFE_FATAL_NAMES = new Set([
   'TypeError',
 ]);
 
-const launchDaemon = String.raw`install -d -o root -g root -m 0755 /opt/monad/runtime/bin /usr/local/libexec /etc/monad
+const launchDaemon = String.raw`for helper_directory in /opt /opt/monad /opt/monad/runtime /opt/monad/runtime/libexec; do
+  if test -e "$helper_directory" || test -L "$helper_directory"; then
+    test -d "$helper_directory"
+    test ! -L "$helper_directory"
+  fi
+done
+install -d -o root -g root -m 0755 /opt /opt/monad /opt/monad/runtime /opt/monad/runtime/bin /opt/monad/runtime/libexec /etc/monad
+for helper_directory in /opt /opt/monad /opt/monad/runtime /opt/monad/runtime/libexec; do
+  test -d "$helper_directory"
+  test ! -L "$helper_directory"
+  test "$(stat -c '%u:%g:%a' -- "$helper_directory")" = 0:0:755
+done
 test -d /opt/monad/runtime/bin
 test ! -L /opt/monad/runtime/bin
 test "$(stat -c '%u:%g:%a' -- /opt/monad/runtime/bin)" = 0:0:755
+test -d /opt/monad/runtime/libexec
+test ! -L /opt/monad/runtime/libexec
+test "$(stat -c '%u:%g:%a' -- /opt/monad/runtime/libexec)" = 0:0:755
 install -o root -g root -m 0755 /opt/monad-preflight/assets/monad-agent /opt/monad/runtime/bin/monad-agent
-install -o root -g root -m 0755 /opt/monad-preflight/assets/monad-tenant-admission /usr/local/libexec/monad-tenant-admission
+install -o root -g root -m 0755 /opt/monad-preflight/assets/monad-tenant-admission /opt/monad/runtime/libexec/monad-tenant-admission
 install -o root -g root -m 0444 /opt/monad-preflight/assets/session-rebind-tenant-boundary.json /etc/monad/session-rebind-tenant-boundary.json
 install -o root -g root -m 0755 /opt/monad-preflight/assets/entrypoint.sh /opt/monad/runtime/bin/monad-entrypoint
 exec /bin/bash /opt/monad-preflight/svc-monad-agent-run`;
@@ -31,9 +45,10 @@ function buildEvidenceProbe(daemonSha256, entrypointSha256, admissionHelperSha25
 marker="$admission_root/tenant-cgroup-ready"
 socket=/var/run/monad/credential-bootstrap.sock
 daemon_directory=/opt/monad/runtime/bin
+helper_directory=/opt/monad/runtime/libexec
 launcher=/opt/monad/runtime/bin/monad-agent
 entrypoint=/opt/monad/runtime/bin/monad-entrypoint
-helper=/usr/local/libexec/monad-tenant-admission
+helper=/opt/monad/runtime/libexec/monad-tenant-admission
 expected_daemon_sha256='${daemonSha256}'
 expected_entrypoint_sha256='${entrypointSha256}'
 expected_helper_sha256='${admissionHelperSha256}'
@@ -60,10 +75,15 @@ test -f "$entrypoint"
 test ! -L "$entrypoint"
 test "$(stat -c '%u:%g:%a' -- "$entrypoint")" = 0:0:755
 test "$(sha256sum "$entrypoint" | cut -d ' ' -f 1)" = "$expected_entrypoint_sha256"
+for helper_directory in /opt /opt/monad /opt/monad/runtime /opt/monad/runtime/libexec; do
+  test -d "$helper_directory"
+  test ! -L "$helper_directory"
+  test "$(stat -c '%u:%g:%a' -- "$helper_directory")" = 0:0:755
+done
 test -f "$helper"
 test ! -L "$helper"
 test "$(stat -c '%u:%g:%a' -- "$helper")" = 0:0:755
-test "$(sha256sum /usr/local/libexec/monad-tenant-admission | cut -d ' ' -f 1)" = "$expected_helper_sha256"
+test "$(sha256sum "$helper" | cut -d ' ' -f 1)" = "$expected_helper_sha256"
 test -d "$admission_root"
 test ! -L "$admission_root"
 test "$(stat -c '%u:%g:%a' -- "$admission_root")" = 0:0:700
@@ -208,6 +228,7 @@ export function validateNativeAmd64RuntimePreflightEvidence(evidence, {
     'cgroup_namespace',
     'network',
     'daemon_directory_metadata',
+    'admission_helper_directory_metadata',
     'admission_root_mode',
     'marker_mode',
     'marker_path',
@@ -228,6 +249,7 @@ export function validateNativeAmd64RuntimePreflightEvidence(evidence, {
     evidence.cgroup_namespace === 'private' &&
     evidence.network === 'none' &&
     evidence.daemon_directory_metadata === '0:0:755' &&
+    evidence.admission_helper_directory_metadata === '0:0:755' &&
     evidence.admission_root_mode === '700' &&
     evidence.marker_mode === '444' &&
     canonicalMarkerPath(evidence.marker_path) &&
@@ -378,6 +400,7 @@ export async function runNativeAmd64RuntimePreflight({
         cgroup_namespace: 'private',
         network: 'none',
         daemon_directory_metadata: '0:0:755',
+        admission_helper_directory_metadata: '0:0:755',
         admission_root_mode: '700',
         marker_mode: '444',
         marker_path: markerPath,

@@ -717,7 +717,7 @@ const runtimeEntrypointPath = daemonRuntimeRootPath(
   "/opt/monad/runtime/bin/monad-entrypoint",
 );
 const runtimeAdmissionHelperPath = daemonRuntimeRootPath(
-  "/usr/local/libexec/monad-tenant-admission",
+  "/opt/monad/runtime/libexec/monad-tenant-admission",
 );
 const attestation = JSON.parse(readFileSync(runtimeAttestationPath, "utf8"));
 const daemonSha256 = sha256(daemonExecutablePath);
@@ -729,7 +729,11 @@ const attestationFilesExact =
   exactProcRootDirectory(daemonPid, "/opt/monad/runtime/bin", 0o755) &&
   exactProcRootFile(daemonPid, "/opt/monad/runtime/bin/monad-agent", 0o755) &&
   exactProcRootFile(daemonPid, "/opt/monad/runtime/bin/monad-entrypoint", 0o755) &&
-  exactProcRootFile(daemonPid, "/usr/local/libexec/monad-tenant-admission", 0o755) &&
+  exactProcRootDirectory(daemonPid, "/opt", 0o755) &&
+  exactProcRootDirectory(daemonPid, "/opt/monad", 0o755) &&
+  exactProcRootDirectory(daemonPid, "/opt/monad/runtime", 0o755) &&
+  exactProcRootDirectory(daemonPid, "/opt/monad/runtime/libexec", 0o755) &&
+  exactProcRootFile(daemonPid, "/opt/monad/runtime/libexec/monad-tenant-admission", 0o755) &&
   serviceNames.every((name) =>
     exactProcRootFile(supervisorPid, "/usr/local/libexec/monad-webtop-svc-" + name, 0o555) &&
     exactProcRootFile(supervisorPid, "/etc/s6-overlay/s6-rc.d/svc-" + name + "/run", 0o755)) &&

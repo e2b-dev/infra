@@ -66,6 +66,7 @@ test('runs the exact daemon credential-free in one native private cgroup and cle
     cgroup_namespace: 'private',
     network: 'none',
     daemon_directory_metadata: '0:0:755',
+    admission_helper_directory_metadata: '0:0:755',
     admission_root_mode: '700',
     marker_mode: '444',
     marker_path: '/sys/fs/cgroup/monad-tenant',
@@ -85,11 +86,34 @@ test('runs the exact daemon credential-free in one native private cgroup and cle
   assert.equal(create[entrypointIndex + 1], '/bin/bash');
   assert.equal(imageIndex, entrypointIndex + 2);
   assert.deepEqual(create.slice(imageIndex + 1, -1), ['-ceu']);
-  assert.match(create.at(-1), /^install -d -o root -g root -m 0755 \/opt\/monad\/runtime\/bin[\s\S]*exec \/bin\/bash \/opt\/monad-preflight\/svc-monad-agent-run$/);
+  assert.match(create.at(-1), /^for helper_directory in \/opt \/opt\/monad \/opt\/monad\/runtime \/opt\/monad\/runtime\/libexec[\s\S]*install -d -o root -g root -m 0755[\s\S]*\/opt\/monad\/runtime\/bin[\s\S]*exec \/bin\/bash \/opt\/monad-preflight\/svc-monad-agent-run$/);
   assert.match(
     create.at(-1),
-    /install -d -o root -g root -m 0755 \/opt\/monad\/runtime\/bin[\s\S]*test -d \/opt\/monad\/runtime\/bin[\s\S]*test ! -L \/opt\/monad\/runtime\/bin[\s\S]*stat -c '%u:%g:%a' -- \/opt\/monad\/runtime\/bin[\s\S]*0:0:755/,
+    /install -d -o root -g root -m 0755[\s\S]*\/opt\/monad\/runtime\/bin[\s\S]*test -d \/opt\/monad\/runtime\/bin[\s\S]*test ! -L \/opt\/monad\/runtime\/bin[\s\S]*stat -c '%u:%g:%a' -- \/opt\/monad\/runtime\/bin[\s\S]*0:0:755/,
     'native boot must canonicalize and prove the launcher directory before install',
+  );
+  assert.match(
+    create.at(-1),
+    /install -d -o root -g root -m 0755[\s\S]*\/opt\/monad\/runtime\/libexec[\s\S]*test -d "\$helper_directory"[\s\S]*test ! -L "\$helper_directory"[\s\S]*stat -c '%u:%g:%a' -- "\$helper_directory"[\s\S]*0:0:755/,
+    'native boot must canonicalize and prove the helper directory before install',
+  );
+  const launch = create.at(-1);
+  const helperPrecheck = launch.indexOf(
+    'for helper_directory in /opt /opt/monad /opt/monad/runtime /opt/monad/runtime/libexec',
+  );
+  const helperDirectoryInstall = launch.indexOf(
+    'install -d -o root -g root -m 0755 /opt /opt/monad /opt/monad/runtime /opt/monad/runtime/bin /opt/monad/runtime/libexec',
+  );
+  assert.ok(helperPrecheck >= 0 && helperPrecheck < helperDirectoryInstall);
+  assert.match(
+    launch.slice(helperPrecheck, helperDirectoryInstall),
+    /test -d "\$helper_directory"[\s\S]*test ! -L "\$helper_directory"/,
+    'native boot must reject a pre-existing symlink or non-directory helper root',
+  );
+  assert.equal(
+    launch.match(/for helper_directory in \/opt \/opt\/monad \/opt\/monad\/runtime \/opt\/monad\/runtime\/libexec/g)?.length,
+    2,
+    'native boot must validate the complete chain before and after canonicalization',
   );
   for (const required of [
     '--platform', 'linux/amd64',
@@ -124,7 +148,7 @@ test('runs the exact daemon credential-free in one native private cgroup and cle
   assert.match(serializedCreate, /\/opt\/monad-preflight\/svc-monad-agent-run/);
   for (const install of [
     'install -o root -g root -m 0755 /opt/monad-preflight/assets/monad-agent /opt/monad/runtime/bin/monad-agent',
-    'install -o root -g root -m 0755 /opt/monad-preflight/assets/monad-tenant-admission /usr/local/libexec/monad-tenant-admission',
+    'install -o root -g root -m 0755 /opt/monad-preflight/assets/monad-tenant-admission /opt/monad/runtime/libexec/monad-tenant-admission',
     'install -o root -g root -m 0444 /opt/monad-preflight/assets/session-rebind-tenant-boundary.json /etc/monad/session-rebind-tenant-boundary.json',
     'install -o root -g root -m 0755 /opt/monad-preflight/assets/entrypoint.sh /opt/monad/runtime/bin/monad-entrypoint',
   ]) {
@@ -144,6 +168,7 @@ test('runs the exact daemon credential-free in one native private cgroup and cle
   assert.match(serializedProbe, /\/opt\/monad\/runtime\/bin\/monad-agent/);
   assert.doesNotMatch(serializedProbe, /\/proc\/1\/exe/);
   assert.match(serializedProbe, /daemon_directory=\/opt\/monad\/runtime\/bin/);
+  assert.match(serializedProbe, /helper_directory=\/opt\/monad\/runtime\/libexec/);
   assert.match(serializedProbe, /test -d "\$daemon_directory"/);
   assert.match(serializedProbe, /test ! -L "\$daemon_directory"/);
   assert.match(
@@ -155,7 +180,19 @@ test('runs the exact daemon credential-free in one native private cgroup and cle
   assert.ok(serializedProbe.includes(inputs.daemonSha256));
   assert.ok(serializedProbe.includes(inputs.entrypointSha256));
   assert.ok(serializedProbe.includes(inputs.admissionHelperSha256));
-  assert.match(serializedProbe, /sha256sum \/usr\/local\/libexec\/monad-tenant-admission/);
+  assert.match(serializedProbe, /sha256sum "\$helper"/);
+  assert.match(serializedProbe, /test -d "\$helper_directory"/);
+  assert.match(serializedProbe, /test ! -L "\$helper_directory"/);
+  assert.match(
+    serializedProbe,
+    /stat -c '%u:%g:%a' -- "\$helper_directory"[\s\S]*0:0:755/,
+  );
+  assert.match(
+    serializedProbe,
+    /for helper_directory in \/opt \/opt\/monad \/opt\/monad\/runtime \/opt\/monad\/runtime\/libexec/,
+  );
+  assert.doesNotMatch(serializedCreate, /\/usr\/local\/libexec\/monad-tenant-admission/);
+  assert.doesNotMatch(serializedProbe, /\/usr\/local\/libexec\/monad-tenant-admission/);
   assert.match(serializedProbe, /test ! -L "\$helper"/);
   assert.match(serializedProbe, /0:0:700/);
   assert.match(serializedProbe, /0:0:444/);
@@ -454,6 +491,7 @@ test('accepts only closed preflight evidence bound to all prepared runtime execu
     cgroup_namespace: 'private',
     network: 'none',
     daemon_directory_metadata: '0:0:755',
+    admission_helper_directory_metadata: '0:0:755',
     admission_root_mode: '700',
     marker_mode: '444',
     marker_path: '/sys/fs/cgroup/user/monad-tenant',
@@ -472,6 +510,7 @@ test('accepts only closed preflight evidence bound to all prepared runtime execu
     { ...evidence, platform: 'linux/arm64' },
     { ...evidence, network: 'bridge' },
     { ...evidence, daemon_directory_metadata: '1000:1000:755' },
+    { ...evidence, admission_helper_directory_metadata: '1000:1000:755' },
     { ...evidence, marker_path: '/sys/fs/cgroup/../monad-tenant' },
     { ...evidence, daemon_sha256: 'e'.repeat(64) },
     { ...evidence, entrypoint_sha256: 'f'.repeat(64) },
