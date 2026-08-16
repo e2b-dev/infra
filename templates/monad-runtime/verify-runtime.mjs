@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { Sandbox } from 'e2b';
 import {
+  assertCanonicalRuntimeTemplateRef,
   normalizeApiUrl,
   requiredEnv,
   safeErrorMessage,
@@ -44,6 +45,7 @@ const templateRef = validateTemplateRef(
 const manifest = JSON.parse(
   await readFile(new URL('./.build-assets/manifest.json', import.meta.url)),
 );
+assertCanonicalRuntimeTemplateRef(templateRef, manifest.runtime_version);
 const requestTimeoutMs = 10 * 60 * 1000;
 const connection = { apiKey, apiUrl, domain, requestTimeoutMs };
 const verificationRunId = randomUUID();
@@ -735,7 +737,7 @@ const attestationFilesExact =
   exactProcRootDirectory(daemonPid, "/opt/monad/runtime/libexec", 0o755) &&
   exactProcRootFile(daemonPid, "/opt/monad/runtime/libexec/monad-tenant-admission", 0o755) &&
   serviceNames.every((name) =>
-    exactProcRootFile(supervisorPid, "/usr/local/libexec/monad-webtop-svc-" + name, 0o555) &&
+    exactProcRootFile(supervisorPid, "/opt/monad/runtime/libexec/monad-webtop-svc-" + name, 0o555) &&
     exactProcRootFile(supervisorPid, "/etc/s6-overlay/s6-rc.d/svc-" + name + "/run", 0o755)) &&
   exactProcRootFile(supervisorPid, "/etc/s6-overlay/s6-rc.d/svc-cron/run", 0o755);
 const finalMarker = readFileSync(daemonMarkerPaths.marker, "utf8");

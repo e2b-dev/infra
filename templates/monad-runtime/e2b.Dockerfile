@@ -65,49 +65,49 @@ COPY .build-assets/executor-sdk/ /opt/monad/packages/executor-sdk/
 # container environment; the join-only helper removes loader and shell startup
 # hooks before executing the upstream root setup inside the tenant cgroup. The
 # upstream scripts retain their internal s6-setuidgid transitions.
-RUN install -d -o root -g root -m 0755 /usr/local/libexec /etc/monad \
+RUN install -d -o root -g root -m 0755 /opt/monad/runtime/libexec /etc/monad \
     && install -o root -g root -m 0555 \
         /etc/s6-overlay/s6-rc.d/svc-nginx/run \
-        /usr/local/libexec/monad-webtop-svc-nginx \
+        /opt/monad/runtime/libexec/monad-webtop-svc-nginx \
     && install -o root -g root -m 0555 \
         /etc/s6-overlay/s6-rc.d/svc-xorg/run \
-        /usr/local/libexec/monad-webtop-svc-xorg \
+        /opt/monad/runtime/libexec/monad-webtop-svc-xorg \
     && install -o root -g root -m 0555 \
         /etc/s6-overlay/s6-rc.d/svc-dbus/run \
-        /usr/local/libexec/monad-webtop-svc-dbus \
+        /opt/monad/runtime/libexec/monad-webtop-svc-dbus \
     && install -o root -g root -m 0555 \
         /etc/s6-overlay/s6-rc.d/svc-pulseaudio/run \
-        /usr/local/libexec/monad-webtop-svc-pulseaudio \
+        /opt/monad/runtime/libexec/monad-webtop-svc-pulseaudio \
     && install -o root -g root -m 0555 \
         /etc/s6-overlay/s6-rc.d/svc-selkies/run \
-        /usr/local/libexec/monad-webtop-svc-selkies \
+        /opt/monad/runtime/libexec/monad-webtop-svc-selkies \
     && install -o root -g root -m 0555 \
         /etc/s6-overlay/s6-rc.d/svc-de/run \
-        /usr/local/libexec/monad-webtop-svc-de \
+        /opt/monad/runtime/libexec/monad-webtop-svc-de \
     && install -o root -g root -m 0555 \
         /etc/s6-overlay/s6-rc.d/svc-watchdog/run \
-        /usr/local/libexec/monad-webtop-svc-watchdog \
+        /opt/monad/runtime/libexec/monad-webtop-svc-watchdog \
     && install -o root -g root -m 0555 \
         /etc/s6-overlay/s6-rc.d/svc-xsettingsd/run \
-        /usr/local/libexec/monad-webtop-svc-xsettingsd \
+        /opt/monad/runtime/libexec/monad-webtop-svc-xsettingsd \
     && sed -i '1c#!/bin/bash' \
-        /usr/local/libexec/monad-webtop-svc-nginx \
-        /usr/local/libexec/monad-webtop-svc-xorg \
-        /usr/local/libexec/monad-webtop-svc-dbus \
-        /usr/local/libexec/monad-webtop-svc-pulseaudio \
-        /usr/local/libexec/monad-webtop-svc-selkies \
-        /usr/local/libexec/monad-webtop-svc-de \
-        /usr/local/libexec/monad-webtop-svc-watchdog \
-        /usr/local/libexec/monad-webtop-svc-xsettingsd \
+        /opt/monad/runtime/libexec/monad-webtop-svc-nginx \
+        /opt/monad/runtime/libexec/monad-webtop-svc-xorg \
+        /opt/monad/runtime/libexec/monad-webtop-svc-dbus \
+        /opt/monad/runtime/libexec/monad-webtop-svc-pulseaudio \
+        /opt/monad/runtime/libexec/monad-webtop-svc-selkies \
+        /opt/monad/runtime/libexec/monad-webtop-svc-de \
+        /opt/monad/runtime/libexec/monad-webtop-svc-watchdog \
+        /opt/monad/runtime/libexec/monad-webtop-svc-xsettingsd \
     && bash -n \
-        /usr/local/libexec/monad-webtop-svc-nginx \
-        /usr/local/libexec/monad-webtop-svc-xorg \
-        /usr/local/libexec/monad-webtop-svc-dbus \
-        /usr/local/libexec/monad-webtop-svc-pulseaudio \
-        /usr/local/libexec/monad-webtop-svc-selkies \
-        /usr/local/libexec/monad-webtop-svc-de \
-        /usr/local/libexec/monad-webtop-svc-watchdog \
-        /usr/local/libexec/monad-webtop-svc-xsettingsd
+        /opt/monad/runtime/libexec/monad-webtop-svc-nginx \
+        /opt/monad/runtime/libexec/monad-webtop-svc-xorg \
+        /opt/monad/runtime/libexec/monad-webtop-svc-dbus \
+        /opt/monad/runtime/libexec/monad-webtop-svc-pulseaudio \
+        /opt/monad/runtime/libexec/monad-webtop-svc-selkies \
+        /opt/monad/runtime/libexec/monad-webtop-svc-de \
+        /opt/monad/runtime/libexec/monad-webtop-svc-watchdog \
+        /opt/monad/runtime/libexec/monad-webtop-svc-xsettingsd
 
 COPY s6-overlay/s6-rc.d/ /etc/s6-overlay/s6-rc.d/
 
