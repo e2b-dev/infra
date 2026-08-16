@@ -1,12 +1,52 @@
 const RETRYABLE_STAGES = new Set([
   'marker',
+  'marker_directory',
   'marker_file',
+  'marker_binding',
   'marker_target',
   'supervisor',
   'service_mapping',
   'process_attestation',
   'filesystem_attestation',
 ]);
+
+export function bindTenantBoundaryMarker(daemonMembership, marker) {
+  if (
+    typeof daemonMembership !== 'string' ||
+    typeof marker !== 'string' ||
+    !daemonMembership.startsWith('0::/') ||
+    daemonMembership.includes('\n') ||
+    daemonMembership.includes('\r') ||
+    daemonMembership.includes('\0')
+  ) {
+    throw new Error('tenant boundary marker binding is invalid');
+  }
+  const relative = daemonMembership.slice(3);
+  const segments = relative.split('/').slice(1);
+  if (
+    relative !== '/' &&
+    (segments.length === 0 || segments.some(
+      (segment) =>
+        segment === '' ||
+        segment === '.' ||
+        segment === '..' ||
+        /[\u0000-\u001f\u007f]/.test(segment),
+    ))
+  ) {
+    throw new Error('tenant boundary marker binding is invalid');
+  }
+  const daemonCgroup = relative === '/'
+    ? '/sys/fs/cgroup'
+    : `/sys/fs/cgroup${relative}`;
+  const tenantCgroup = `${daemonCgroup}/monad-tenant`;
+  if (marker !== `${tenantCgroup}\n`) {
+    throw new Error('tenant boundary marker binding is invalid');
+  }
+  return {
+    tenantCgroup,
+    expectedMembership: `0::${relative === '/' ? '' : relative}/monad-tenant`,
+  };
+}
 
 export function tenantBoundaryProcRootPaths(supervisorPid) {
   if (!Number.isSafeInteger(supervisorPid) || supervisorPid <= 1) {
@@ -18,7 +58,6 @@ export function tenantBoundaryProcRootPaths(supervisorPid) {
     root,
     admissionRoot,
     marker: `${admissionRoot}/tenant-cgroup-ready`,
-    tenantCgroup: `${root}/sys/fs/cgroup/monad-tenant`,
   };
 }
 
@@ -93,7 +132,7 @@ export function classifyTenantBoundaryEvidence(evidence) {
     'attestation_files_exact',
     'marker_exact',
     'marker_basename_match',
-    'marker_direct_parent_match',
+    'marker_parent_daemon_cgroup_match',
   ];
   if (
     evidence === null ||

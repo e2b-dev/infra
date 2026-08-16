@@ -4,6 +4,7 @@ import test from 'node:test';
 import { Template } from 'e2b';
 import { RUNTIME_BOOTSTRAP_READY_COMMAND } from './template.mjs';
 import {
+  bindTenantBoundaryMarker,
   classifyTenantBoundaryEvidence,
   tenantBoundaryProcRootPaths,
   tenantBoundaryRuntimePath,
@@ -210,7 +211,8 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
   assert.match(verifier, /cron_disabled/);
   assert.match(verifier, /dockerd_absent/);
   assert.match(verifier, /marker_basename_match/);
-  assert.match(verifier, /marker_direct_parent_match/);
+  assert.match(verifier, /marker_parent_daemon_cgroup_match/);
+  assert.doesNotMatch(verifier, /marker_direct_parent_match/);
   assert.match(verifier, /s6-svstat/);
   assert.match(verifier, /selectOuterPidForNamespacePid/);
   assert.match(verifier, /parseNamespacePidVector\.toString\(\)/);
@@ -229,9 +231,24 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
   assert.match(verifier, /"\/proc\/" \+ daemonPid \+ "\/exe"/);
   assert.doesNotMatch(verifier, /sha256\("\/usr\/local\/bin\/monad-agent"\)/);
   assert.doesNotMatch(verifier, /JSON\.parse\(readFileSync\(attestationPath/);
+  assert.match(verifier, /probeStage = "marker_directory"/);
   assert.match(verifier, /probeStage = "marker_file"/);
+  assert.match(verifier, /probeStage = "marker_binding"/);
   assert.match(verifier, /probeStage = "marker_target"/);
   assert.doesNotMatch(verifier, /realpathSync\(tenantCgroup\)/);
+  assert.doesNotMatch(verifier, /marker !== "\/sys\/fs\/cgroup\/monad-tenant\\n"/);
+  assert.match(
+    verifier,
+    /bindBoundaryMarker\(cgroup\(daemonPid\), marker\)/,
+  );
+  assert.match(
+    verifier,
+    /exactProcRootDirectory\(supervisorPid, tenantCgroup\)/,
+  );
+  assert.match(
+    verifier,
+    /bindBoundaryMarker\(cgroup\(daemonPid\), finalMarker\)/,
+  );
   assert.ok(
     verifier.indexOf('const supervisorPid = uniqueNamedPid("s6-svscan")') <
       verifier.indexOf('const markerPaths = procRootPaths(supervisorPid)'),
@@ -275,6 +292,7 @@ test('runtime verifier renders standalone bootstrap and tenant probes as valid s
     'selectOuterPidForNamespacePid',
     'verifyPinnedNginxProcesses',
     'verifyPinnedWatchdogProcesses',
+    'bindTenantBoundaryMarker',
     'classifyTenantBoundaryEvidence',
     'tenantBoundaryProcRootPaths',
     'tenantBoundaryRuntimePath',
@@ -286,6 +304,7 @@ test('runtime verifier renders standalone bootstrap and tenant probes as valid s
     selectOuterPidForNamespacePid,
     verifyPinnedNginxProcesses,
     verifyPinnedWatchdogProcesses,
+    bindTenantBoundaryMarker,
     classifyTenantBoundaryEvidence,
     tenantBoundaryProcRootPaths,
     tenantBoundaryRuntimePath,

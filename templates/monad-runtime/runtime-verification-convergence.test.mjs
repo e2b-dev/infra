@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import * as convergence from './runtime-verification-convergence.mjs';
+
 import {
   classifyTenantBoundaryEvidence,
   tenantBoundaryProcRootPaths,
@@ -10,12 +12,56 @@ import {
   waitForTenantBoundaryEvidence,
 } from './runtime-verification-convergence.mjs';
 
+test('binds the marker to the daemon current cgroup and derives tenant membership', () => {
+  assert.equal(typeof convergence.bindTenantBoundaryMarker, 'function');
+  assert.deepEqual(
+    convergence.bindTenantBoundaryMarker(
+      '0::/user',
+      '/sys/fs/cgroup/user/monad-tenant\n',
+    ),
+    {
+      tenantCgroup: '/sys/fs/cgroup/user/monad-tenant',
+      expectedMembership: '0::/user/monad-tenant',
+    },
+  );
+  assert.deepEqual(
+    convergence.bindTenantBoundaryMarker(
+      '0::/',
+      '/sys/fs/cgroup/monad-tenant\n',
+    ),
+    {
+      tenantCgroup: '/sys/fs/cgroup/monad-tenant',
+      expectedMembership: '0::/monad-tenant',
+    },
+  );
+});
+
+test('rejects a marker outside the exact daemon cgroup child binding', () => {
+  const invalid = [
+    ['0::/user', '/sys/fs/cgroup/monad-tenant\n'],
+    ['0::/user', '/sys/fs/cgroup/sibling/monad-tenant\n'],
+    ['0::/user', '/sys/fs/cgroup/user/../monad-tenant\n'],
+    ['0::/user', '/sys/fs/cgroup/user/monad-tenant\nextra\n'],
+    ['0::/user', '/sys/fs/cgroup/user/monad-tenant\0\n'],
+    ['0::', '/sys/fs/cgroup/monad-tenant\n'],
+    ['1::/user', '/sys/fs/cgroup/user/monad-tenant\n'],
+    ['0:://user', '/sys/fs/cgroup/user/monad-tenant\n'],
+    ['0::/user/../other', '/sys/fs/cgroup/user/monad-tenant\n'],
+    ['0::/user\n0::/other', '/sys/fs/cgroup/user/monad-tenant\n'],
+  ];
+  for (const [daemonMembership, marker] of invalid) {
+    assert.throws(
+      () => convergence.bindTenantBoundaryMarker(daemonMembership, marker),
+      /tenant boundary marker binding is invalid/,
+    );
+  }
+});
+
 test('binds marker inspection to one validated supervisor proc root', () => {
   assert.deepEqual(tenantBoundaryProcRootPaths(1006), {
     root: '/proc/1006/root',
     admissionRoot: '/proc/1006/root/run/monad-admission',
     marker: '/proc/1006/root/run/monad-admission/tenant-cgroup-ready',
-    tenantCgroup: '/proc/1006/root/sys/fs/cgroup/monad-tenant',
   });
   for (const invalid of [undefined, null, 0, 1, -1, 1.5, NaN, Infinity, '1006']) {
     assert.throws(
@@ -72,7 +118,7 @@ const readyEvidence = Object.freeze({
   attestation_files_exact: true,
   marker_exact: true,
   marker_basename_match: true,
-  marker_direct_parent_match: true,
+  marker_parent_daemon_cgroup_match: true,
 });
 
 test('classifies startup-dependent process and filesystem evidence before success', () => {
@@ -115,6 +161,28 @@ test('waits for a bounded tenant-boundary startup stage and returns exact eviden
   assert.deepEqual(evidence, { marker_exact: true });
   assert.deepEqual(sleeps, [2_000]);
   assert.deepEqual(remainingBudgets, [10_000, 8_000]);
+});
+
+test('accepts only bounded safe marker convergence stages', async () => {
+  for (const stage of [
+    'marker_directory',
+    'marker_file',
+    'marker_binding',
+    'marker_target',
+  ]) {
+    let now = 0;
+    const records = [
+      { probe_ok: false, stage },
+      { probe_ok: true, evidence: { marker_exact: true } },
+    ];
+    await assert.doesNotReject(waitForTenantBoundaryEvidence({
+      probe: async () => records.shift(),
+      now: () => now,
+      sleep: async (milliseconds) => { now += milliseconds; },
+      timeoutMs: 1_000,
+      intervalMs: 100,
+    }));
+  }
 });
 
 test('fails with only a safe stage when tenant-boundary convergence expires', async () => {
