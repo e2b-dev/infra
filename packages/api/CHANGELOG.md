@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.1.0](https://github.com/e2b-dev/infra/compare/api-v0.0.1...api-v0.1.0) (2026-08-17)
+
+
+### Features
+
+* **api:** add secret management RPC client ([#1725](https://github.com/e2b-dev/infra/issues/1725)) ([62223a9](https://github.com/e2b-dev/infra/commit/62223a9bd59abace02fcdbb90d74d81f9039073d))
+* **api:** let a removal pin the sandbox incarnation it meant to remove ([#1609](https://github.com/e2b-dev/infra/issues/1609)) ([23f6eb1](https://github.com/e2b-dev/infra/commit/23f6eb172ceda25808e1a4b70be0d3917746b09b))
+* **api:** track whether a node is reachable, apart from its status ([#1617](https://github.com/e2b-dev/infra/issues/1617)) ([fecfd7b](https://github.com/e2b-dev/infra/commit/fecfd7b9b92ddf421745c7fa8dd88ae1de68fd87))
+* **storage:** Azure Blob storage provider behind an azblob:// URL ([#1585](https://github.com/e2b-dev/infra/issues/1585)) ([c0f65b6](https://github.com/e2b-dev/infra/commit/c0f65b6730e4b2131f55bc33b1e62c0cb9d97e36))
+
+
+### Bug Fixes
+
+* **api:** forward detailed placement-failure reasons to clients ([#1752](https://github.com/e2b-dev/infra/issues/1752)) ([71c9d69](https://github.com/e2b-dev/infra/commit/71c9d691b994afc736f7bf60bcb30ba022cd71e5))
+* **api:** send team_id as a flat property on PostHog events ([#1758](https://github.com/e2b-dev/infra/issues/1758)) ([f517312](https://github.com/e2b-dev/infra/commit/f5173120113e3c6b64990cc0eb0d9b9562751928))
+* **deps:** update module cloud.google.com/go/storage to v1.64.0 ([#1793](https://github.com/e2b-dev/infra/issues/1793)) ([e66f1a8](https://github.com/e2b-dev/infra/commit/e66f1a8610c8119df23292620d16ed84e98e700e))
+* **deps:** update module github.com/getkin/kin-openapi to v0.146.0 ([#1582](https://github.com/e2b-dev/infra/issues/1582)) ([5307ba8](https://github.com/e2b-dev/infra/commit/5307ba8613599106061c0b55f71be75718c2ad3c))
+* **deps:** update module google.golang.org/api to v0.292.0 ([#1699](https://github.com/e2b-dev/infra/issues/1699)) ([a10138c](https://github.com/e2b-dev/infra/commit/a10138ce9b7db87b614444ac85c581ae2d7839c8))
+* **deps:** update module google.golang.org/grpc to v1.83.0 ([#1583](https://github.com/e2b-dev/infra/issues/1583)) ([acbefda](https://github.com/e2b-dev/infra/commit/acbefdae0e45d5c816cc8659dc8d34784ffa0056))
+* **deps:** update opentelemetry ([#1700](https://github.com/e2b-dev/infra/issues/1700)) ([ea3100a](https://github.com/e2b-dev/infra/commit/ea3100a890ad7e2ba890b0112c41576589eb0e9d))
+* **deps:** update opentelemetry-go-contrib monorepo ([#1607](https://github.com/e2b-dev/infra/issues/1607)) ([5852c94](https://github.com/e2b-dev/infra/commit/5852c942f9b5cff8a66ad008196d7025273febea))
+* **deps:** update testcontainers-go monorepo to v0.43.0 ([#1701](https://github.com/e2b-dev/infra/issues/1701)) ([08b1cbe](https://github.com/e2b-dev/infra/commit/08b1cbe6b6e4e4cddf4b91c068e0b4632ce2e94c))
+
 ## 0.0.1 (2026-07-30)
 
 
