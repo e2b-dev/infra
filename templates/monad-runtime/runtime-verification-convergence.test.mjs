@@ -511,6 +511,62 @@ test('accepts only bounded safe marker convergence stages', async () => {
   }
 });
 
+test('retries a discarded cross-time filesystem sample and accepts only a later stable probe', async () => {
+  let now = 0;
+  let calls = 0;
+  const sleeps = [];
+  const evidence = await waitForTenantBoundaryEvidence({
+    probe: async () => {
+      calls += 1;
+      if (calls === 1) {
+        return {
+          probe_ok: false,
+          stage: 'daemon_supervisor_filesystem_stability',
+        };
+      }
+      return { probe_ok: true, evidence: { filesystem_stable: true } };
+    },
+    now: () => now,
+    sleep: async (milliseconds) => {
+      sleeps.push(milliseconds);
+      now += milliseconds;
+    },
+    timeoutMs: 1_000,
+    intervalMs: 100,
+  });
+  assert.deepEqual(evidence, { filesystem_stable: true });
+  assert.equal(calls, 2);
+  assert.deepEqual(sleeps, [100]);
+});
+
+test('persistent cross-time filesystem instability remains fail-closed at the deadline', async () => {
+  let now = 0;
+  let calls = 0;
+  await assert.rejects(waitForTenantBoundaryEvidence({
+    probe: async () => {
+      calls += 1;
+      return {
+        probe_ok: false,
+        stage: 'daemon_supervisor_filesystem_stability',
+      };
+    },
+    now: () => now,
+    sleep: async (milliseconds) => { now += milliseconds; },
+    timeoutMs: 300,
+    intervalMs: 100,
+  }), (error) => {
+    assert.ok(error instanceof TenantBoundaryConvergenceError);
+    assert.equal(error.stage, 'daemon_supervisor_filesystem_stability');
+    assert.equal(
+      error.message,
+      'tenant boundary did not converge at daemon_supervisor_filesystem_stability',
+    );
+    return true;
+  });
+  assert.equal(calls, 3);
+  assert.equal(now, 300);
+});
+
 test('fails closed immediately for denied, unexpected, and topology stages', async () => {
   for (const stage of [
     'marker_daemon_directory_denied',
@@ -525,7 +581,6 @@ test('fails closed immediately for denied, unexpected, and topology stages', asy
     'daemon_supervisor_mount_namespace',
     'daemon_supervisor_root_identity',
     'daemon_supervisor_run_identity',
-    'daemon_supervisor_filesystem_stability',
   ]) {
     let calls = 0;
     await assert.rejects(waitForTenantBoundaryEvidence({

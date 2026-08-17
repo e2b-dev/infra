@@ -27,6 +27,7 @@ const RETRYABLE_STAGES = new Set([
   'supervisor',
   'service_mapping',
   'process_attestation',
+  'daemon_supervisor_filesystem_stability',
   ...PROCESS_ATTESTATION_STAGES,
   'filesystem_attestation',
 ]);
@@ -36,7 +37,6 @@ const TERMINAL_STAGES = new Set([
   'daemon_supervisor_mount_namespace',
   'daemon_supervisor_root_identity',
   'daemon_supervisor_run_identity',
-  'daemon_supervisor_filesystem_stability',
   'marker_binding',
   'marker_target',
   ...['daemon', 'supervisor'].flatMap((authority) => [
