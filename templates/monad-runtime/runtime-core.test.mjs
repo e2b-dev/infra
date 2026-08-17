@@ -524,6 +524,11 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
     verifier,
     /probeStage = "supervisor_run_final_access";\s*const finalSupervisorRunIdentity = statSync/,
   );
+  assert.match(
+    verifier,
+    /if \(filesystemStability\.probe_ok !== true\) \{[\s\S]*?process\.exit\(0\);[\s\S]*?\}\s*probeStage = "process_attestation";\s*const finalDaemonPid/,
+    'post-filesystem process reads must not inherit the terminal filesystem stage',
+  );
   assert.match(verifier, /service_leader_mount_namespace_match/);
   assert.match(verifier, /daemonRuntimeRootPath/);
   assert.match(verifier, /procRootPathChain/);
