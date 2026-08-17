@@ -25,6 +25,8 @@ const (
 func setupTestService(t *testing.T) (*Service, string, *orchestrator.VolumeInfo) {
 	t.Helper()
 
+	ctx := t.Context()
+
 	if os.Geteuid() != 0 {
 		t.Skip("Test requires root privileges")
 	}
@@ -37,9 +39,11 @@ func setupTestService(t *testing.T) (*Service, string, *orchestrator.VolumeInfo)
 		PersistentVolumeMounts: map[string]string{
 			volumeType: tmpDir,
 		},
+		VolumeBackendType: "local",
 	}
 
-	builder := chrooted.NewBuilder(config)
+	builder, err := chrooted.NewBuilder(ctx, config)
+	require.NoError(t, err)
 	s := New(config, builder)
 
 	volumeInfo := &orchestrator.VolumeInfo{

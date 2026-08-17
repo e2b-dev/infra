@@ -138,7 +138,8 @@ func TestIntegrationTest(t *testing.T) {
 			volumeType: volumeTypePath,
 		},
 	}
-	builder := chrooted.NewBuilder(config)
+	builder, err := chrooted.NewBuilder(ctx, config)
+	require.NoError(t, err)
 
 	createVolumeDir(t, builder, volumeType, teamID, volumeID)
 
