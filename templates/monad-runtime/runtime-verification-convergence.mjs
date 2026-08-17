@@ -27,7 +27,14 @@ const RETRYABLE_STAGES = new Set([
   'supervisor',
   'service_mapping',
   'process_attestation',
-  'daemon_supervisor_filesystem_stability',
+  'daemon_root_final_access',
+  'supervisor_root_final_access',
+  'daemon_run_final_access',
+  'supervisor_run_final_access',
+  'daemon_root_identity_stable',
+  'supervisor_root_identity_stable',
+  'daemon_run_identity_stable',
+  'supervisor_run_identity_stable',
   ...PROCESS_ATTESTATION_STAGES,
   'filesystem_attestation',
 ]);
@@ -37,6 +44,7 @@ const TERMINAL_STAGES = new Set([
   'daemon_supervisor_mount_namespace',
   'daemon_supervisor_root_identity',
   'daemon_supervisor_run_identity',
+  'daemon_supervisor_filesystem_stability',
   'marker_binding',
   'marker_target',
   ...['daemon', 'supervisor'].flatMap((authority) => [
@@ -167,19 +175,26 @@ export function classifyTenantBoundaryFilesystemStability({
       validValue(right.dev) && validValue(right.ino) &&
       left.dev === right.dev && left.ino === right.ino;
   };
-  const stable =
-    exactIdentity(initialDaemonRoot, initialSupervisorRoot) &&
-    exactIdentity(initialDaemonRoot, finalDaemonRoot) &&
-    exactIdentity(initialDaemonRoot, finalSupervisorRoot) &&
-    exactIdentity(initialDaemonRun, initialSupervisorRun) &&
-    exactIdentity(initialDaemonRun, finalDaemonRun) &&
-    exactIdentity(initialDaemonRun, finalSupervisorRun);
-  return stable
-    ? { probe_ok: true }
-    : {
-        probe_ok: false,
-        stage: 'daemon_supervisor_filesystem_stability',
-      };
+  if (
+    !exactIdentity(initialDaemonRoot, initialSupervisorRoot) ||
+    !exactIdentity(initialDaemonRun, initialSupervisorRun)
+  ) {
+    return {
+      probe_ok: false,
+      stage: 'daemon_supervisor_filesystem_stability',
+    };
+  }
+  for (const [initial, final, stage] of [
+    [initialDaemonRoot, finalDaemonRoot, 'daemon_root_identity_stable'],
+    [initialSupervisorRoot, finalSupervisorRoot, 'supervisor_root_identity_stable'],
+    [initialDaemonRun, finalDaemonRun, 'daemon_run_identity_stable'],
+    [initialSupervisorRun, finalSupervisorRun, 'supervisor_run_identity_stable'],
+  ]) {
+    if (!exactIdentity(initial, final)) {
+      return { probe_ok: false, stage };
+    }
+  }
+  return { probe_ok: true };
 }
 
 export function inspectTenantBoundaryMarkerFilesystem({
