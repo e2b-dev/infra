@@ -526,9 +526,35 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
   );
   assert.match(
     verifier,
-    /if \(filesystemStability\.probe_ok !== true\) \{[\s\S]*?process\.exit\(0\);[\s\S]*?\}\s*probeStage = "process_attestation";\s*const finalDaemonPid/,
+    /if \(filesystemStability\.probe_ok !== true\) \{[\s\S]*?process\.exit\(0\);[\s\S]*?\}\s*probeStage = "daemon_state_stable";\s*const finalDaemonPid/,
     'post-filesystem process reads must not inherit the terminal filesystem stage',
   );
+  for (const [stage, declaration] of [
+    ['important_descendant_cgroup_match', 'const serviceTrees'],
+    ['root_daemon_outside_tenant_cgroup', 'const daemonStatus'],
+    ['nginx_identity_match', 'const nginxIdentityMatch'],
+    ['watchdog_identity_match', 'const watchdogIdentityMatch'],
+    ['daemon_state_stable', 'const finalDaemonPid'],
+    ['supervisor_state_stable', 'const finalSupervisorPid'],
+    ['service_state_stable', 'const finalBoundaryServiceStates'],
+    ['service_leader_mount_namespace_match',
+      'const finalServiceLeaderMountNamespaceMatch'],
+    ['filesystem_attestation', 'const daemonExecutableMatch'],
+    ['root_daemon_outside_tenant_cgroup',
+      'const rootDaemonOutsideTenantCgroup'],
+    ['tenant_service_identity_match',
+      'const tenantServiceIdentityMatch'],
+    ['tenant_service_cgroup_match', 'const tenantServiceCgroupMatch'],
+    ['service_leader_cgroup_match', 'const serviceLeaderCgroupMatch'],
+    ['important_descendant_cgroup_match',
+      'const importantDescendantCgroupMatch'],
+  ]) {
+    assert.match(
+      verifier,
+      new RegExp(`probeStage = "${stage}";\\s*${declaration}`),
+      `${stage} must own thrown access failures in its final recheck`,
+    );
+  }
   assert.match(verifier, /service_leader_mount_namespace_match/);
   assert.match(verifier, /daemonRuntimeRootPath/);
   assert.match(verifier, /procRootPathChain/);
