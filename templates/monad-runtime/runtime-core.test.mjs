@@ -532,7 +532,15 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
   );
   assert.match(
     verifier,
-    /attemptTimeoutMs,\s*attemptTimeoutMs,\s*'root'/,
+    /tenantBoundaryProbeTimeoutMs\(remainingMs\)/,
+  );
+  assert.match(
+    verifier,
+    /probeTimeoutMs,\s*probeTimeoutMs,\s*'root'/,
+  );
+  assert.match(
+    verifier,
+    /timeoutMs: TENANT_BOUNDARY_CONVERGENCE_TIMEOUT_MS/,
   );
   assert.deepEqual(
     verifier.match(/'root'/g),

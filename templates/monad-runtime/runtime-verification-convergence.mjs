@@ -38,6 +38,27 @@ const TERMINAL_STAGES = new Set([
   ]),
 ]);
 
+// Evidence must converge before the final transport window so a safe terminal
+// stage can cross the E2B command stream within the original total deadline.
+const TENANT_BOUNDARY_TOTAL_TIMEOUT_MS = 180_000;
+const TENANT_BOUNDARY_TRANSPORT_HEADROOM_MS = 5_000;
+const TENANT_BOUNDARY_MAX_PROBE_EXECUTION_MS = 30_000;
+
+export const TENANT_BOUNDARY_CONVERGENCE_TIMEOUT_MS =
+  TENANT_BOUNDARY_TOTAL_TIMEOUT_MS - TENANT_BOUNDARY_TRANSPORT_HEADROOM_MS;
+
+export function tenantBoundaryProbeTimeoutMs(remainingMs) {
+  if (
+    !Number.isSafeInteger(remainingMs) ||
+    remainingMs <= 0 ||
+    remainingMs > TENANT_BOUNDARY_CONVERGENCE_TIMEOUT_MS
+  ) {
+    throw new Error('tenant boundary probe remaining time is invalid');
+  }
+  return Math.min(TENANT_BOUNDARY_MAX_PROBE_EXECUTION_MS, remainingMs) +
+    TENANT_BOUNDARY_TRANSPORT_HEADROOM_MS;
+}
+
 export function classifyTenantBoundaryProbeIdentity({ getuid, getgid }) {
   try {
     if (getuid() === 0 && getgid() === 0) {
@@ -427,7 +448,19 @@ export async function waitForTenantBoundaryEvidence({
     if (probeBudget <= 0) {
       throw new TenantBoundaryConvergenceError(lastStage);
     }
-    const record = await probe({ remainingMs: probeBudget });
+    let record;
+    try {
+      record = await probe({ remainingMs: probeBudget });
+    } catch (error) {
+      const afterFailure = now();
+      if (!Number.isFinite(afterFailure)) {
+        throw new Error('tenant boundary convergence clock is invalid');
+      }
+      if (deadline - afterFailure <= 0) {
+        throw new TenantBoundaryConvergenceError(lastStage);
+      }
+      throw error;
+    }
     const afterProbe = now();
     if (!Number.isFinite(afterProbe)) {
       throw new Error('tenant boundary convergence clock is invalid');
