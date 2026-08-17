@@ -137,7 +137,29 @@ func (f *Factory) RebootSandbox(
 		KvmClock:       kvmClock,
 		IoEngine:       &ioEngine,
 		AccessToken:    &accessToken,
+		// This is a cold boot, so unlike a memory resume it re-reads the command line —
+		// and the snapshot's own metadata is the only record of what it was built with.
+		// Replayed verbatim rather than re-resolved from the feature flag: what a
+		// variant name means can change after the build, so re-resolving would boot a
+		// different guest than the one this lineage was created as.
+		CmdlineArgs: meta.CmdlineArgs,
 	}
+
+	// Recorded so a dropped variant is detectable after the fact: a cold boot carrying
+	// the default under a lineage whose build recorded a variant means the field was
+	// lost somewhere between build and boot. That is otherwise invisible, because the
+	// guest simply comes back without whatever the variant provided.
+	//
+	// Reports what was APPLIED, not what was stored. buildKernelArgs drops an overlay
+	// whose arguments this binary rejects — which is reachable if the reserved set grew
+	// since the build that stamped them — so recording the stored name unconditionally
+	// would claim a variant the guest never got, defeating the attribute's purpose.
+	applied := ""
+	if fc.ValidateCmdlineArgs(meta.CmdlineArgs) == nil {
+		applied = fc.KernelArgs(meta.CmdlineArgs).String()
+	}
+
+	span.SetAttributes(attribute.String("sandbox.cmdline_args", applied))
 	for _, opt := range procOpts {
 		opt(&processOptions)
 	}

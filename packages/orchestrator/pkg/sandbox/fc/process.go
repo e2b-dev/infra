@@ -102,6 +102,16 @@ type ProcessOptions struct {
 	// KvmClock is a flag to enable kvm-clock as the clocksource for the kernel.
 	KvmClock bool
 
+	// CmdlineArgs are extra guest kernel command line arguments overlaid on the
+	// defaults. Empty is the command line every sandbox has always booted with.
+	// Rejected wholesale if they include a key the orchestrator reserves
+	// (see ValidateCmdlineArgs).
+	//
+	// Only boots that produce or restore a template's kernel need to set this: the
+	// layer sandbox whose memory becomes the template, and the cold boot of a
+	// filesystem-only snapshot. A memory resume never re-reads the command line.
+	CmdlineArgs map[string]string
+
 	// AccessToken, when non-nil, makes Create write the guest MMDS metadata
 	// (sandbox/template IDs, logs address, and the access-token hash) before the
 	// VM boots, so a cold-booted envd can authenticate /init the same way it does
@@ -366,48 +376,7 @@ func (p *Process) Create(
 
 	// IPv4 configuration - format: [local_ip]::[gateway_ip]:[netmask]:hostname:iface:dhcp_option:[dns]
 	ipv4 := fmt.Sprintf("%s::%s:%s:instance:%s:off:%s", p.slot.NamespaceIP(), p.slot.TapIPString(), p.slot.TapMaskString(), p.slot.VpeerName(), p.slot.TapName())
-	args := KernelArgs{
-		// Disable kernel logs for production to speed the FC operations
-		// https://github.com/firecracker-microvm/firecracker/blob/main/docs/prod-host-setup.md#logging-and-performance
-		"quiet":    "",
-		"loglevel": "1",
-
-		// Define kernel init path
-		"init": options.InitScriptPath,
-
-		// Networking IPv4 and IPv6
-		"ip":            ipv4,
-		"ipv6.disable":  "0",
-		"ipv6.autoconf": "1",
-
-		// Wait 1 second before exiting FC after panic or reboot
-		"panic": "1",
-
-		"reboot":           "k",
-		"pci":              "off",
-		"i8042.nokbd":      "",
-		"i8042.noaux":      "",
-		"random.trust_cpu": "on",
-
-		"rootflags": ext4RootFlags,
-	}
-
-	if options.KvmClock {
-		args["clocksource"] = "kvm-clock"
-	}
-
-	if options.SystemdToKernelLogs {
-		args["systemd.journald.forward_to_console"] = ""
-	}
-
-	if options.KernelLogs || options.SystemdToKernelLogs {
-		// Forward kernel logs to the ttyS0, which will be picked up by the stdout of FC process
-		delete(args, "quiet")
-		args["console"] = "ttyS0"
-		args["loglevel"] = "5" // KERN_NOTICE
-	}
-
-	kernelArgs := args.String()
+	kernelArgs := buildKernelArgs(ipv4, options).String()
 	err = p.client.setBootSource(ctx, kernelArgs, p.kernelPath)
 	if err != nil {
 		fcStopErr := p.Stop(ctx)

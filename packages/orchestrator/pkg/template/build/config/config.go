@@ -72,6 +72,12 @@ type TemplateConfig struct {
 
 	// Kernel version to use
 	KernelVersion string
+
+	// CmdlineArgs carries the extra guest kernel command line parameters this build boots
+	// with, already parsed. Nil is the default command line. Read from the per-team feature
+	// flag once, at the start of the build, so every boot in the build agrees and the
+	// stored snapshot is self-describing.
+	CmdlineArgs map[string]string
 }
 
 // ObjectMetadata is the provenance stamped on a build's uploaded objects.

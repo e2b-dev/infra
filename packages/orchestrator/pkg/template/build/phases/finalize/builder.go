@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -116,6 +117,19 @@ func (ppb *PostProcessingBuilder) Layer(
 		BuildID:            ppb.Template.BuildID,
 		KernelVersion:      ppb.Config.KernelVersion,
 		FirecrackerVersion: ppb.Config.FirecrackerVersion,
+	}
+
+	// Stamped from the same config as the kernel version above, because it describes
+	// the same thing: how this template's kernel was booted. From here the
+	// copy-constructors carry it, so every later pause of this lineage keeps it and a
+	// filesystem-only cold boot can re-apply it.
+	//
+	// Assigned unconditionally, including the empty case. result starts as the source
+	// layer's metadata, so leaving the field alone would let a value from elsewhere
+	// stand as this build's — recording arguments its kernel never booted with.
+	result.CmdlineArgs = nil
+	if len(ppb.Config.CmdlineArgs) > 0 {
+		result.CmdlineArgs = maps.Clone(ppb.Config.CmdlineArgs)
 	}
 
 	return phases.LayerResult{

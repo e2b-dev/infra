@@ -84,6 +84,16 @@ const (
 	// idempotent re-fire is visible here rather than hidden.
 	OrchestratorEnvdOfflineUpgradeAttempts CounterType = "orchestrator.envd.offline_upgrade.attempts"
 
+	// TemplateBuildCmdlineArgs counts template builds by the guest kernel command line
+	// parameters they actually booted with, after parsing and validation. This is the
+	// engagement signal for the per-team cmdline-variant flag: a non-zero rate on a
+	// non-empty label is proof builds ran the path, which is what the flag
+	// reading "on" in the feature-flag service does not tell you. Zero here while the
+	// flag is targeted is the alarm that the opt-in is silently inert. Because it
+	// records what was APPLIED, a rejected fragment shows up as the empty label rather
+	// than as the parameters that were asked for.
+	TemplateBuildCmdlineArgs CounterType = "orchestrator.template.build.cmdline_args"
+
 	// PauseResumePrefetchHarvestAttempts counts pause-resume prefetch harvest
 	// attempts, by result (success|resume_failed|collect_failed|skipped). The
 	// throwaway is absent from Prometheus otherwise (registration-skip), so this
@@ -303,6 +313,7 @@ var counterDesc = map[CounterType]string{
 	SandboxResumeWPModeCounterName:              "Sandbox resumes by write-protect tracking mode (sync|async)",
 	OrchestratorEnvdUpgradeAttempts:             "Resume-time envd live-upgrade attempts, by result and from/to version",
 	OrchestratorEnvdOfflineUpgradeAttempts:      "Cold-boot offline envd rootfs-swap attempts, by result and from/to version",
+	TemplateBuildCmdlineArgs:                    "Template builds by the guest kernel cmdline parameters applied",
 	OrchestratorEnvdUpgradeGated:                "Resumes the envd-upgrade-target flag targeted but the min-version gate skipped",
 	OrchestratorEnvdUpgradeHandover:             "Live-upgrade handover items by item (proc|retained|watcher) and result (ok|failed)",
 	PauseResumePrefetchHarvestAttempts:          "Pause-resume prefetch harvest attempts, by result",
@@ -344,6 +355,7 @@ var counterUnits = map[CounterType]string{
 	SandboxResumeWPModeCounterName:              "{resume}",
 	OrchestratorEnvdUpgradeAttempts:             "{attempt}",
 	OrchestratorEnvdOfflineUpgradeAttempts:      "{attempt}",
+	TemplateBuildCmdlineArgs:                    "{build}",
 	OrchestratorEnvdUpgradeGated:                "{sandbox}",
 	OrchestratorEnvdUpgradeHandover:             "{item}",
 	PauseResumePrefetchHarvestAttempts:          "{attempt}",
