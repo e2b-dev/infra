@@ -801,6 +801,7 @@ if (filesystemStability.probe_ok !== true) {
   process.stdout.write(JSON.stringify(filesystemStability));
   process.exit(0);
 }
+probeStage = "process_attestation";
 const finalDaemonPid = uniqueNamedPid("monad-agent");
 const finalSupervisorPid = uniqueNamedPid("s6-svscan");
 const finalDaemonServiceState = serviceState("monad-agent");
