@@ -530,24 +530,17 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
     'post-filesystem process reads must not inherit the terminal filesystem stage',
   );
   for (const [stage, declaration] of [
-    ['important_descendant_cgroup_match', 'const serviceTrees'],
-    ['root_daemon_outside_tenant_cgroup', 'const daemonStatus'],
-    ['nginx_identity_match', 'const nginxIdentityMatch'],
-    ['watchdog_identity_match', 'const watchdogIdentityMatch'],
     ['daemon_state_stable', 'const finalDaemonPid'],
     ['supervisor_state_stable', 'const finalSupervisorPid'],
     ['service_state_stable', 'const finalBoundaryServiceStates'],
     ['service_leader_mount_namespace_match',
       'const finalServiceLeaderMountNamespaceMatch'],
     ['filesystem_attestation', 'const daemonExecutableMatch'],
-    ['root_daemon_outside_tenant_cgroup',
-      'const rootDaemonOutsideTenantCgroup'],
+    ['root_daemon_outside_tenant_cgroup', 'const daemonStatus'],
     ['tenant_service_identity_match',
       'const tenantServiceIdentityMatch'],
     ['tenant_service_cgroup_match', 'const tenantServiceCgroupMatch'],
     ['service_leader_cgroup_match', 'const serviceLeaderCgroupMatch'],
-    ['important_descendant_cgroup_match',
-      'const importantDescendantCgroupMatch'],
   ]) {
     assert.match(
       verifier,
@@ -555,6 +548,37 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
       `${stage} must own thrown access failures in its final recheck`,
     );
   }
+  for (const service of [
+    'nginx', 'xorg', 'dbus', 'pulseaudio', 'selkies', 'de', 'watchdog',
+    'xsettingsd',
+  ]) {
+    for (const category of ['missing', 'access', 'cgroup']) {
+      assert.match(
+        verifier,
+        new RegExp(`${category}: "important_descendant_${service}_${category}"`),
+      );
+    }
+  }
+  assert.match(verifier, /const processStartTime = \(value\) =>/);
+  assert.match(verifier, /const stableProcessSnapshot = \(value\) =>/);
+  assert.match(verifier, /beforeStartTime !== afterStartTime/);
+  assert.match(verifier, /beforeCgroup !== afterCgroup/);
+  assert.match(verifier, /const firstTree = processTree\(serviceLeaders\[name\]\)/);
+  assert.match(verifier, /const secondTree = processTree\(serviceLeaders\[name\]\)/);
+  assert.match(verifier, /JSON\.stringify\(firstTree\) !== JSON\.stringify\(secondTree\)/);
+  assert.match(verifier, /processStartTime\(value\.pid\) !== value\.startTime/);
+  assert.match(verifier, /cgroup\(value\.pid\) !== value\.cgroup/);
+  assert.match(verifier, /snapshotServiceStates\[name\] = serviceState\(name\)/);
+  assert.match(verifier, /const snapshotServiceStateStable = serviceNames\.every/);
+  assert.doesNotMatch(
+    verifier,
+    /finalProcesses\[name\]\.every\(\s*\(value\) => cgroup\(value\)/,
+  );
+  assert.match(
+    verifier,
+    /finalProcesses\[name\] = finalProcessSnapshots\[name\]\.map\(\(value\) => value\.pid\)/,
+  );
+  assert.doesNotMatch(verifier, /final_processes: serviceProcessSnapshots/);
   assert.match(verifier, /service_leader_mount_namespace_match/);
   assert.match(verifier, /daemonRuntimeRootPath/);
   assert.match(verifier, /procRootPathChain/);
@@ -700,7 +724,7 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
   assert.match(verifier, /socket_uid !== 0/);
   assert.match(verifier, /socket_gid !== 0/);
   assert.match(verifier, /socket_mode !== '600'/);
-  assert.match(verifier, /executable\(value\) === "\/usr\/sbin\/nginx"/);
+  assert.match(verifier, /value\.executable === "\/usr\/sbin\/nginx"/);
   assert.match(verifier, /verifyPinnedNginxProcesses\.toString\(\)/);
   assert.match(verifier, /verifyPinnedWatchdogProcesses\.toString\(\)/);
   assert.match(verifier, /nginx_identity_match/);

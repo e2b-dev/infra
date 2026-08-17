@@ -16,6 +16,15 @@ const PROCESS_ATTESTATION_STAGES = Object.freeze([
   'supervisor_state_stable',
 ]);
 
+const IMPORTANT_DESCENDANT_STAGES = Object.freeze([
+  'nginx', 'xorg', 'dbus', 'pulseaudio', 'selkies', 'de', 'watchdog',
+  'xsettingsd',
+].flatMap((service) => [
+  `important_descendant_${service}_missing`,
+  `important_descendant_${service}_access`,
+  `important_descendant_${service}_cgroup`,
+]));
+
 const RETRYABLE_STAGES = new Set([
   'marker',
   'marker_daemon_proc_root_run_missing',
@@ -36,6 +45,7 @@ const RETRYABLE_STAGES = new Set([
   'daemon_run_identity_stable',
   'supervisor_run_identity_stable',
   ...PROCESS_ATTESTATION_STAGES,
+  ...IMPORTANT_DESCENDANT_STAGES,
   'filesystem_attestation',
 ]);
 const TERMINAL_STAGES = new Set([

@@ -378,46 +378,6 @@ const serviceNames = [
 ];
 const status = (value) => readFileSync("/proc/" + value + "/status", "utf8");
 const cgroup = (value) => readFileSync("/proc/" + value + "/cgroup", "utf8").trim();
-const command = (value) => {
-  try {
-    return readFileSync("/proc/" + value + "/cmdline", "utf8")
-      .split("\0").filter(Boolean).join(" ");
-  } catch {
-    return "";
-  }
-};
-const argv = (value) => {
-  try {
-    return readFileSync("/proc/" + value + "/cmdline", "utf8")
-      .split("\0").filter(Boolean);
-  } catch {
-    return [];
-  }
-};
-const executable = (value) => {
-  try {
-    return realpathSync("/proc/" + value + "/exe");
-  } catch {
-    return "";
-  }
-};
-const processEnvironment = (value) => {
-  try {
-    return Object.fromEntries(
-      readFileSync("/proc/" + value + "/environ", "utf8")
-        .split("\0")
-        .filter(Boolean)
-        .map((entry) => {
-          const separator = entry.indexOf("=");
-          return separator > 0
-            ? [entry.slice(0, separator), entry.slice(separator + 1)]
-            : [entry, ""];
-        }),
-    );
-  } catch {
-    return {};
-  }
-};
 const processIds = () => readdirSync("/proc")
   .filter((value) => /^\d+$/.test(value))
   .map(Number);
@@ -520,14 +480,57 @@ const observedIdentity = (raw) => {
     groups: groups(raw),
   };
 };
-const processSnapshot = (value) => ({
-  pid: value,
-  ppid: parentPid(value),
-  executable: executable(value),
-  argv: argv(value),
-  identity: observedIdentity(status(value)),
-  environment: processEnvironment(value),
-});
+const processStartTime = (value) => {
+  const raw = readFileSync("/proc/" + value + "/stat", "utf8");
+  const close = raw.lastIndexOf(")");
+  if (close < 0) throw new Error("process stat is malformed");
+  const fields = raw.slice(close + 1).trim().split(/\s+/);
+  const startTime = fields[19];
+  if (!/^[0-9]+$/.test(startTime ?? "")) {
+    throw new Error("process start time is malformed");
+  }
+  return startTime;
+};
+const stableProcessSnapshot = (value) => {
+  const beforeStartTime = processStartTime(value);
+  const beforeCgroup = cgroup(value);
+  const rawStatus = status(value);
+  const rawArgv = readFileSync("/proc/" + value + "/cmdline", "utf8")
+    .split("\0").filter(Boolean);
+  const rawExecutable = realpathSync("/proc/" + value + "/exe");
+  const rawEnvironment = Object.fromEntries(
+    readFileSync("/proc/" + value + "/environ", "utf8")
+      .split("\0")
+      .filter(Boolean)
+      .map((entry) => {
+        const separator = entry.indexOf("=");
+        return separator > 0
+          ? [entry.slice(0, separator), entry.slice(separator + 1)]
+          : [entry, ""];
+      }),
+  );
+  const afterCgroup = cgroup(value);
+  const afterStartTime = processStartTime(value);
+  if (
+    beforeStartTime !== afterStartTime ||
+    beforeCgroup !== afterCgroup
+  ) {
+    throw new Error("process identity changed during snapshot");
+  }
+  const ppidMatch = rawStatus.match(/^PPid:[ \t]+(\d+)$/m);
+  if (!ppidMatch) throw new Error("process parent identity is malformed");
+  return Object.freeze({
+    pid: value,
+    ppid: Number(ppidMatch[1]),
+    executable: rawExecutable,
+    argv: rawArgv,
+    status: rawStatus,
+    identity: observedIdentity(rawStatus),
+    environment: rawEnvironment,
+    cgroup: beforeCgroup,
+    startTime: beforeStartTime,
+  });
+};
 const verifyPinnedNginxProcesses = ${verifyPinnedNginxProcesses.toString()};
 const verifyPinnedWatchdogProcesses = ${verifyPinnedWatchdogProcesses.toString()};
 const bindBoundaryMarker = ${bindTenantBoundaryMarker.toString()};
@@ -695,39 +698,6 @@ const mappingServiceStateStable = serviceNames.every((name) =>
 if (!mappingServiceStateStable) {
   throw new Error("supervised service state changed during namespace mapping");
 }
-probeStage = "important_descendant_cgroup_match";
-const serviceTrees = Object.fromEntries(
-  serviceNames.map((name) => [name, processTree(serviceLeaders[name])]),
-);
-const finalMatchers = {
-  nginx: (value) => executable(value) === "/usr/sbin/nginx",
-  xorg: (value) => /(^|\/)Xvfb(\s|$)/.test(command(value)),
-  dbus: (value) => /(^|\/)dbus-daemon(\s|$)/.test(command(value)),
-  pulseaudio: (value) => /(^|\/)pulseaudio(\s|$)/.test(command(value)),
-  selkies: (value) => command(value).includes("/lsiopy/bin/selkies"),
-  de: (value) => /(^|\/)i3(\s|$)/.test(command(value)),
-  watchdog: (value) =>
-    executable(value) === "/usr/bin/sleep" &&
-    JSON.stringify(argv(value)) === JSON.stringify(["sleep", "infinity"]),
-  xsettingsd: (value) => /(^|\/)xsettingsd(\s|$)/.test(command(value)),
-};
-const finalProcesses = Object.fromEntries(serviceNames.map((name) => [
-  name,
-  serviceTrees[name].filter(finalMatchers[name]),
-]));
-probeStage = "root_daemon_outside_tenant_cgroup";
-const daemonStatus = status(daemonPid);
-const nonRootFinalServices = ["xorg", "dbus", "pulseaudio", "selkies", "de", "xsettingsd"];
-probeStage = "nginx_identity_match";
-const nginxIdentityMatch = verifyPinnedNginxProcesses({
-  leaderPid: serviceLeaders.nginx,
-  processes: serviceTrees.nginx.map(processSnapshot),
-});
-probeStage = "watchdog_identity_match";
-const watchdogIdentityMatch = verifyPinnedWatchdogProcesses({
-  leaderPid: serviceLeaders.watchdog,
-  processes: serviceTrees.watchdog.map(processSnapshot),
-});
 probeStage = "filesystem_attestation";
 const runtimeAttestationPath = daemonRuntimeRootPath(attestationPath);
 const daemonExecutablePath = "/proc/" + daemonPid + "/exe";
@@ -837,31 +807,146 @@ const finalServiceLeaderMountNamespaceMatch = serviceNames.every((name) =>
   readlinkSync("/proc/" + serviceLeaders[name] + "/ns/mnt") ===
     supervisorMountNamespace,
 );
+const importantDescendantStages = Object.freeze({
+  nginx: Object.freeze({
+    missing: "important_descendant_nginx_missing",
+    access: "important_descendant_nginx_access",
+    cgroup: "important_descendant_nginx_cgroup",
+  }),
+  xorg: Object.freeze({
+    missing: "important_descendant_xorg_missing",
+    access: "important_descendant_xorg_access",
+    cgroup: "important_descendant_xorg_cgroup",
+  }),
+  dbus: Object.freeze({
+    missing: "important_descendant_dbus_missing",
+    access: "important_descendant_dbus_access",
+    cgroup: "important_descendant_dbus_cgroup",
+  }),
+  pulseaudio: Object.freeze({
+    missing: "important_descendant_pulseaudio_missing",
+    access: "important_descendant_pulseaudio_access",
+    cgroup: "important_descendant_pulseaudio_cgroup",
+  }),
+  selkies: Object.freeze({
+    missing: "important_descendant_selkies_missing",
+    access: "important_descendant_selkies_access",
+    cgroup: "important_descendant_selkies_cgroup",
+  }),
+  de: Object.freeze({
+    missing: "important_descendant_de_missing",
+    access: "important_descendant_de_access",
+    cgroup: "important_descendant_de_cgroup",
+  }),
+  watchdog: Object.freeze({
+    missing: "important_descendant_watchdog_missing",
+    access: "important_descendant_watchdog_access",
+    cgroup: "important_descendant_watchdog_cgroup",
+  }),
+  xsettingsd: Object.freeze({
+    missing: "important_descendant_xsettingsd_missing",
+    access: "important_descendant_xsettingsd_access",
+    cgroup: "important_descendant_xsettingsd_cgroup",
+  }),
+});
+const finalMatchers = {
+  nginx: (value) => value.executable === "/usr/sbin/nginx",
+  xorg: (value) => /(^|\/)Xvfb(\s|$)/.test(value.argv.join(" ")),
+  dbus: (value) => /(^|\/)dbus-daemon(\s|$)/.test(value.argv.join(" ")),
+  pulseaudio: (value) => /(^|\/)pulseaudio(\s|$)/.test(value.argv.join(" ")),
+  selkies: (value) => value.argv.join(" ").includes("/lsiopy/bin/selkies"),
+  de: (value) => /(^|\/)i3(\s|$)/.test(value.argv.join(" ")),
+  watchdog: (value) =>
+    value.executable === "/usr/bin/sleep" &&
+    JSON.stringify(value.argv) === JSON.stringify(["sleep", "infinity"]),
+  xsettingsd: (value) => /(^|\/)xsettingsd(\s|$)/.test(value.argv.join(" ")),
+};
+const serviceProcessSnapshots = {};
+const finalProcessSnapshots = {};
+const finalProcesses = {};
+const snapshotServiceStates = {};
+for (const name of serviceNames) {
+  const stages = importantDescendantStages[name];
+  probeStage = stages.access;
+  const firstTree = processTree(serviceLeaders[name]).sort((left, right) => left - right);
+  const snapshots = firstTree.map(stableProcessSnapshot);
+  const secondTree = processTree(serviceLeaders[name]).sort((left, right) => left - right);
+  if (JSON.stringify(firstTree) !== JSON.stringify(secondTree)) {
+    throw new Error("service process tree changed during snapshot");
+  }
+  if (snapshots.some((value) =>
+    processStartTime(value.pid) !== value.startTime ||
+    cgroup(value.pid) !== value.cgroup)) {
+    throw new Error("service process identity changed after snapshot");
+  }
+  snapshotServiceStates[name] = serviceState(name);
+  if (
+    snapshotServiceStates[name].up !== true ||
+    snapshotServiceStates[name].pid !== initialServiceStates[name].pid
+  ) {
+    throw new Error("supervised service state changed after snapshot");
+  }
+  const processSet = new Set(firstTree);
+  if (!snapshots.every((value) =>
+    value.pid === serviceLeaders[name] || processSet.has(value.ppid))) {
+    throw new Error("service process tree parent closure changed");
+  }
+  serviceProcessSnapshots[name] = snapshots;
+  finalProcessSnapshots[name] = snapshots.filter(finalMatchers[name]);
+  finalProcesses[name] = finalProcessSnapshots[name].map((value) => value.pid);
+  probeStage = stages.missing;
+  if (finalProcessSnapshots[name].length === 0) {
+    process.stdout.write(JSON.stringify({ probe_ok: false, stage: probeStage }));
+    process.exit(0);
+  }
+  probeStage = stages.cgroup;
+  if (!snapshots.every((value) => value.cgroup === expectedMembership)) {
+    process.stdout.write(JSON.stringify({ probe_ok: false, stage: probeStage }));
+    process.exit(0);
+  }
+}
+const snapshotServiceStateStable = serviceNames.every((name) =>
+  snapshotServiceStates[name].up === true &&
+  snapshotServiceStates[name].pid === initialServiceStates[name].pid);
+probeStage = "nginx_identity_match";
+const nginxIdentityMatch = verifyPinnedNginxProcesses({
+  leaderPid: serviceLeaders.nginx,
+  processes: serviceProcessSnapshots.nginx,
+});
+probeStage = "watchdog_identity_match";
+const watchdogIdentityMatch = verifyPinnedWatchdogProcesses({
+  leaderPid: serviceLeaders.watchdog,
+  processes: serviceProcessSnapshots.watchdog,
+});
 probeStage = "filesystem_attestation";
 const daemonExecutableMatch =
   readlinkSync(daemonExecutablePath) === "/opt/monad/runtime/bin/monad-agent" &&
   runtimeDaemonSha256 === daemonSha256;
 probeStage = "root_daemon_outside_tenant_cgroup";
+const daemonStatus = status(daemonPid);
 const rootDaemonOutsideTenantCgroup =
   exactIdentity(daemonStatus, { uid: 0, gid: 0, groups: [0] }) &&
   cgroup(daemonPid) !== expectedMembership;
+const nonRootFinalServices = ["xorg", "dbus", "pulseaudio", "selkies", "de", "xsettingsd"];
 probeStage = "tenant_service_identity_match";
 const tenantServiceIdentityMatch =
   nonRootFinalServices.every((name) =>
-    finalProcesses[name].length > 0 &&
-    finalProcesses[name].every((value) =>
-      exactSupervisedServiceIdentity(status(value))));
+    finalProcessSnapshots[name].length > 0 &&
+    finalProcessSnapshots[name].every((value) =>
+      exactSupervisedServiceIdentity(value.status)));
 probeStage = "tenant_service_cgroup_match";
 const tenantServiceCgroupMatch = serviceNames.every((name) =>
-  serviceTrees[name].every((value) => cgroup(value) === expectedMembership));
+  serviceProcessSnapshots[name].every(
+    (value) => value.cgroup === expectedMembership));
 probeStage = "service_leader_cgroup_match";
 const serviceLeaderCgroupMatch = serviceNames.every((name) =>
-  cgroup(serviceLeaders[name]) === expectedMembership);
-probeStage = "important_descendant_cgroup_match";
-const importantDescendantCgroupMatch =
-  serviceNames.every((name) =>
-    finalProcesses[name].length > 0 &&
-    finalProcesses[name].every((value) => cgroup(value) === expectedMembership));
+  serviceProcessSnapshots[name].some(
+    (value) => value.pid === serviceLeaders[name] &&
+      value.cgroup === expectedMembership));
+const importantDescendantCgroupMatch = serviceNames.every((name) =>
+  finalProcessSnapshots[name].every(
+    (value) => value.cgroup === expectedMembership));
+probeStage = "process_attestation";
 const boundaryEvidence = {
   daemon_sha256: daemonSha256,
   entrypoint_sha256: entrypointSha256,
@@ -907,7 +992,7 @@ const boundaryEvidence = {
   supervisor_namespace: supervisorNamespace,
   supervisor_mount_namespace: supervisorMountNamespace,
   supervisor_state_stable: supervisorStateStable,
-  service_state_stable: serviceStateStable,
+  service_state_stable: serviceStateStable && snapshotServiceStateStable,
   final_processes: finalProcesses,
 };
 process.stdout.write(JSON.stringify(classifyBoundaryEvidence(boundaryEvidence)));

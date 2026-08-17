@@ -554,6 +554,43 @@ test('accepts every fixed final filesystem access and identity stage as retryabl
   }
 });
 
+test('accepts only fixed per-service important-descendant stages as retryable evidence', async () => {
+  for (const service of [
+    'nginx', 'xorg', 'dbus', 'pulseaudio', 'selkies', 'de', 'watchdog',
+    'xsettingsd',
+  ]) {
+    for (const category of ['missing', 'access', 'cgroup']) {
+      const stage = `important_descendant_${service}_${category}`;
+      let now = 0;
+      let calls = 0;
+      const evidence = await waitForTenantBoundaryEvidence({
+        probe: async () => {
+          calls += 1;
+          if (calls === 1) return { probe_ok: false, stage };
+          return { probe_ok: true, evidence: { descendants_exact: true } };
+        },
+        now: () => now,
+        sleep: async (milliseconds) => { now += milliseconds; },
+        timeoutMs: 1_000,
+        intervalMs: 100,
+      });
+      assert.deepEqual(evidence, { descendants_exact: true });
+      assert.equal(calls, 2);
+      assert.equal(now, 100);
+    }
+  }
+  await assert.rejects(waitForTenantBoundaryEvidence({
+    probe: async () => ({
+      probe_ok: false,
+      stage: 'important_descendant_unknown_access',
+    }),
+    now: () => 0,
+    sleep: async () => assert.fail('unknown descendant stage must not retry'),
+    timeoutMs: 1_000,
+    intervalMs: 100,
+  }), /invalid record/);
+});
+
 test('retries a discarded cross-time filesystem sample and accepts only a later stable probe', async () => {
   let now = 0;
   let calls = 0;
