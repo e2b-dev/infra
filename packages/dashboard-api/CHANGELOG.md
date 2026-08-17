@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.2.0](https://github.com/e2b-dev/infra/compare/dashboard-api-v0.1.0...dashboard-api-v0.2.0) (2026-08-17)
+
+
+### Features
+
+* add versioned project member projection ([#1467](https://github.com/e2b-dev/infra/issues/1467)) ([c09bfcd](https://github.com/e2b-dev/infra/commit/c09bfcdd300db7b7a56b9c9fa75316668833847b))
+* add versioned project membership projection ([4c75786](https://github.com/e2b-dev/infra/commit/4c75786f26c8bf6375c00c8d775428b8447e7ca9))
+* **dashboard-api:** fence pushed project limits with a revision ([#1732](https://github.com/e2b-dev/infra/issues/1732)) ([c6b4a1a](https://github.com/e2b-dev/infra/commit/c6b4a1aa7536f1a27e16fadba629608fb050dba1))
+* **fcversion:** parse vX.Y-&lt;e2b-semver&gt; tags alongside {tag}_{sha} ([#1679](https://github.com/e2b-dev/infra/issues/1679)) ([a8cb6fb](https://github.com/e2b-dev/infra/commit/a8cb6fb8ce04d60fadfe566ef23bdc59b82c089d))
+
+
+### Bug Fixes
+
+* complete project member projection contract ([a9a327d](https://github.com/e2b-dev/infra/commit/a9a327d6fe3ed9924bf46c3c09098073ce6b5e7a))
+* correct identity projection test ([ab12cee](https://github.com/e2b-dev/infra/commit/ab12cee5bbcdcb9bb91590725e02c9f5cb7835c1))
+* **deps:** update module github.com/getkin/kin-openapi to v0.146.0 ([#1582](https://github.com/e2b-dev/infra/issues/1582)) ([5307ba8](https://github.com/e2b-dev/infra/commit/5307ba8613599106061c0b55f71be75718c2ad3c))
+* **deps:** update module google.golang.org/grpc to v1.83.0 ([#1583](https://github.com/e2b-dev/infra/issues/1583)) ([acbefda](https://github.com/e2b-dev/infra/commit/acbefdae0e45d5c816cc8659dc8d34784ffa0056))
+* **deps:** update opentelemetry ([#1700](https://github.com/e2b-dev/infra/issues/1700)) ([ea3100a](https://github.com/e2b-dev/infra/commit/ea3100a890ad7e2ba890b0112c41576589eb0e9d))
+* **deps:** update opentelemetry-go-contrib monorepo ([#1607](https://github.com/e2b-dev/infra/issues/1607)) ([5852c94](https://github.com/e2b-dev/infra/commit/5852c942f9b5cff8a66ad008196d7025273febea))
+* **deps:** update testcontainers-go monorepo to v0.43.0 ([#1701](https://github.com/e2b-dev/infra/issues/1701)) ([08b1cbe](https://github.com/e2b-dev/infra/commit/08b1cbe6b6e4e4cddf4b91c068e0b4632ce2e94c))
+* harden project projection recovery ([c958d13](https://github.com/e2b-dev/infra/commit/c958d13ebc7d9b94f9d5c03ab6a4c353c291ae1d))
+* preserve dashboard API generator path ([6c8ff94](https://github.com/e2b-dev/infra/commit/6c8ff9437eeb92842a6dd29cdbdc8ca14a7d2f6e))
+* revoke access tokens on user deletion ([9127116](https://github.com/e2b-dev/infra/commit/912711613fbac71d42f8ead99e69da708e0a9b1e))
+
 ## [0.1.0](https://github.com/e2b-dev/infra/compare/dashboard-api-v0.0.1...dashboard-api-v0.1.0) (2026-07-31)
 
 
