@@ -109,27 +109,15 @@ RUN install -d -o root -g root -m 0755 /opt/monad/runtime/libexec /etc/monad \
         /opt/monad/runtime/libexec/monad-webtop-svc-watchdog \
         /opt/monad/runtime/libexec/monad-webtop-svc-xsettingsd
 
-# The pinned Webtop launcher executes a bare `selkies`, but the admission helper
-# intentionally supplies a minimal PATH that excludes /lsiopy/bin. Require the
-# exact upstream line, rewrite exactly one occurrence, and attest the result so
-# upstream drift fails the immutable image build instead of stalling at boot.
-RUN selkies_launcher=/opt/monad/runtime/libexec/monad-webtop-svc-selkies \
-    && expected_before='  selkies \' \
-    && expected_after='  /lsiopy/bin/selkies \' \
-    && test -x /lsiopy/bin/selkies \
-    && test -f "$selkies_launcher" \
-    && test ! -L "$selkies_launcher" \
-    && test "$(node -e 'const value=require("node:fs").lstatSync(process.argv[1]); process.stdout.write(`${value.uid}:${value.gid}:${(value.mode&0o7777).toString(8)}`);' "$selkies_launcher")" = "0:0:555" \
-    && test "$(grep -Fxc "$expected_before" "$selkies_launcher")" = 1 \
-    && test "$(grep -Fxc "$expected_after" "$selkies_launcher")" = 0 \
-    && node -e 'const fs=require("node:fs"); const [path,before,after]=process.argv.slice(1); const lines=fs.readFileSync(path,"utf8").split("\n"); const matches=lines.flatMap((line,index)=>line===before?[index]:[]); if(matches.length!==1) process.exit(1); lines[matches[0]]=after; const replacement=path+".rewrite"; fs.writeFileSync(replacement,lines.join("\n"),{flag:"wx",mode:0o555}); fs.chmodSync(replacement,0o555); fs.renameSync(replacement,path);' \
-        "$selkies_launcher" "$expected_before" "$expected_after" \
-    && test "$(grep -Fxc "$expected_before" "$selkies_launcher")" = 0 \
-    && test "$(grep -Fxc "$expected_after" "$selkies_launcher")" = 1 \
-    && test -f "$selkies_launcher" \
-    && test ! -L "$selkies_launcher" \
-    && test "$(node -e 'const value=require("node:fs").lstatSync(process.argv[1]); process.stdout.write(`${value.uid}:${value.gid}:${(value.mode&0o7777).toString(8)}`);' "$selkies_launcher")" = "0:0:555" \
-    && bash -n "$selkies_launcher"
+# The E2B Dockerfile renderer consumes command-string backslashes. Transport
+# this digest-bound helper as a file so the exact pinned continuation line and
+# line-feed parsing cannot be altered before the image build executes them.
+COPY selkies-launcher-rewrite.mjs /tmp/monad-selkies-launcher-rewrite.mjs
+
+RUN test -x /lsiopy/bin/selkies \
+    && node /tmp/monad-selkies-launcher-rewrite.mjs \
+        /opt/monad/runtime/libexec/monad-webtop-svc-selkies \
+    && rm -f /tmp/monad-selkies-launcher-rewrite.mjs
 
 COPY s6-overlay/s6-rc.d/ /etc/s6-overlay/s6-rc.d/
 
