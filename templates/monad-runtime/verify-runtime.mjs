@@ -695,7 +695,7 @@ const mappingServiceStateStable = serviceNames.every((name) =>
 if (!mappingServiceStateStable) {
   throw new Error("supervised service state changed during namespace mapping");
 }
-probeStage = "process_attestation";
+probeStage = "important_descendant_cgroup_match";
 const serviceTrees = Object.fromEntries(
   serviceNames.map((name) => [name, processTree(serviceLeaders[name])]),
 );
@@ -715,12 +715,15 @@ const finalProcesses = Object.fromEntries(serviceNames.map((name) => [
   name,
   serviceTrees[name].filter(finalMatchers[name]),
 ]));
+probeStage = "root_daemon_outside_tenant_cgroup";
 const daemonStatus = status(daemonPid);
 const nonRootFinalServices = ["xorg", "dbus", "pulseaudio", "selkies", "de", "xsettingsd"];
+probeStage = "nginx_identity_match";
 const nginxIdentityMatch = verifyPinnedNginxProcesses({
   leaderPid: serviceLeaders.nginx,
   processes: serviceTrees.nginx.map(processSnapshot),
 });
+probeStage = "watchdog_identity_match";
 const watchdogIdentityMatch = verifyPinnedWatchdogProcesses({
   leaderPid: serviceLeaders.watchdog,
   processes: serviceTrees.watchdog.map(processSnapshot),
@@ -801,18 +804,9 @@ if (filesystemStability.probe_ok !== true) {
   process.stdout.write(JSON.stringify(filesystemStability));
   process.exit(0);
 }
-probeStage = "process_attestation";
+probeStage = "daemon_state_stable";
 const finalDaemonPid = uniqueNamedPid("monad-agent");
-const finalSupervisorPid = uniqueNamedPid("s6-svscan");
 const finalDaemonServiceState = serviceState("monad-agent");
-const finalBoundaryServiceStates = Object.fromEntries(
-  serviceNames.map((name) => [name, serviceState(name)]),
-);
-const serviceStateStable =
-  mappingServiceStateStable &&
-  serviceNames.every((name) =>
-    finalBoundaryServiceStates[name].up === true &&
-    finalBoundaryServiceStates[name].pid === initialServiceStates[name].pid);
 const daemonStateStable =
   finalDaemonPid === daemonPid &&
   finalDaemonServiceState.up === true &&
@@ -821,16 +815,53 @@ const daemonStateStable =
     JSON.stringify(daemonNamespacePids) &&
   readlinkSync("/proc/" + finalDaemonPid + "/ns/pid") === daemonNamespace &&
   readlinkSync("/proc/" + finalDaemonPid + "/ns/mnt") === daemonMountNamespace;
+probeStage = "supervisor_state_stable";
+const finalSupervisorPid = uniqueNamedPid("s6-svscan");
 const supervisorStateStable =
   finalSupervisorPid === supervisorPid &&
   JSON.stringify(namespacePidVector(status(finalSupervisorPid))) ===
     JSON.stringify(supervisorNamespacePids) &&
   readlinkSync("/proc/" + finalSupervisorPid + "/ns/pid") === supervisorNamespace &&
   readlinkSync("/proc/" + finalSupervisorPid + "/ns/mnt") === supervisorMountNamespace;
+probeStage = "service_state_stable";
+const finalBoundaryServiceStates = Object.fromEntries(
+  serviceNames.map((name) => [name, serviceState(name)]),
+);
+const serviceStateStable =
+  mappingServiceStateStable &&
+  serviceNames.every((name) =>
+    finalBoundaryServiceStates[name].up === true &&
+    finalBoundaryServiceStates[name].pid === initialServiceStates[name].pid);
+probeStage = "service_leader_mount_namespace_match";
 const finalServiceLeaderMountNamespaceMatch = serviceNames.every((name) =>
   readlinkSync("/proc/" + serviceLeaders[name] + "/ns/mnt") ===
     supervisorMountNamespace,
 );
+probeStage = "filesystem_attestation";
+const daemonExecutableMatch =
+  readlinkSync(daemonExecutablePath) === "/opt/monad/runtime/bin/monad-agent" &&
+  runtimeDaemonSha256 === daemonSha256;
+probeStage = "root_daemon_outside_tenant_cgroup";
+const rootDaemonOutsideTenantCgroup =
+  exactIdentity(daemonStatus, { uid: 0, gid: 0, groups: [0] }) &&
+  cgroup(daemonPid) !== expectedMembership;
+probeStage = "tenant_service_identity_match";
+const tenantServiceIdentityMatch =
+  nonRootFinalServices.every((name) =>
+    finalProcesses[name].length > 0 &&
+    finalProcesses[name].every((value) =>
+      exactSupervisedServiceIdentity(status(value))));
+probeStage = "tenant_service_cgroup_match";
+const tenantServiceCgroupMatch = serviceNames.every((name) =>
+  serviceTrees[name].every((value) => cgroup(value) === expectedMembership));
+probeStage = "service_leader_cgroup_match";
+const serviceLeaderCgroupMatch = serviceNames.every((name) =>
+  cgroup(serviceLeaders[name]) === expectedMembership);
+probeStage = "important_descendant_cgroup_match";
+const importantDescendantCgroupMatch =
+  serviceNames.every((name) =>
+    finalProcesses[name].length > 0 &&
+    finalProcesses[name].every((value) => cgroup(value) === expectedMembership));
 const boundaryEvidence = {
   daemon_sha256: daemonSha256,
   entrypoint_sha256: entrypointSha256,
@@ -842,9 +873,7 @@ const boundaryEvidence = {
   daemon_supervisor_filesystem_stable: true,
   service_leader_mount_namespace_match:
     serviceLeaderMountNamespaceMatch && finalServiceLeaderMountNamespaceMatch,
-  daemon_executable_match:
-    readlinkSync(daemonExecutablePath) === "/opt/monad/runtime/bin/monad-agent" &&
-    runtimeDaemonSha256 === daemonSha256,
+  daemon_executable_match: daemonExecutableMatch,
   attestation_hash_match:
     attestation.daemon?.sha256 === daemonSha256 &&
     attestation.admission_helper?.sha256 === admissionHelperSha256,
@@ -861,25 +890,13 @@ const boundaryEvidence = {
   marker_exact: markerExact,
   marker_basename_match: basename(tenantCgroup) === "monad-tenant",
   marker_parent_daemon_cgroup_match: markerParentDaemonCgroupMatch,
-  root_daemon_outside_tenant_cgroup:
-    exactIdentity(daemonStatus, { uid: 0, gid: 0, groups: [0] }) &&
-    cgroup(daemonPid) !== expectedMembership,
-  tenant_service_identity_match:
-    nonRootFinalServices.every((name) =>
-      finalProcesses[name].length > 0 &&
-      finalProcesses[name].every((value) =>
-        exactSupervisedServiceIdentity(status(value)))),
+  root_daemon_outside_tenant_cgroup: rootDaemonOutsideTenantCgroup,
+  tenant_service_identity_match: tenantServiceIdentityMatch,
   nginx_identity_match: nginxIdentityMatch,
   watchdog_identity_match: watchdogIdentityMatch,
-  tenant_service_cgroup_match:
-    serviceNames.every((name) =>
-      serviceTrees[name].every((value) => cgroup(value) === expectedMembership)),
-  service_leader_cgroup_match:
-    serviceNames.every((name) => cgroup(serviceLeaders[name]) === expectedMembership),
-  important_descendant_cgroup_match:
-    serviceNames.every((name) =>
-      finalProcesses[name].length > 0 &&
-      finalProcesses[name].every((value) => cgroup(value) === expectedMembership)),
+  tenant_service_cgroup_match: tenantServiceCgroupMatch,
+  service_leader_cgroup_match: serviceLeaderCgroupMatch,
+  important_descendant_cgroup_match: importantDescendantCgroupMatch,
   service_leaders: serviceLeaders,
   service_namespace_pids: serviceNamespacePids,
   daemon_pid: daemonPid,
