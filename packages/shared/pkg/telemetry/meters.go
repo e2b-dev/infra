@@ -75,13 +75,32 @@ const (
 	// dropped or degraded something it re-adopted across the swap.
 	OrchestratorEnvdUpgradeHandover CounterType = "orchestrator.envd.upgrade.handover"
 
-	// OrchestratorEnvdOfflineUpgradeAttempts counts OFFLINE envd upgrades
-	// — the cold-boot rootfs binary swap of a filesystem-only snapshot — by result
-	// (success|swap_failed|not_quiesced|unrecoverable) and from_version/to_version. Because the
-	// swap keys on the snapshot's built-with version (never advanced by the swap),
-	// a re-resumed already-upgraded snapshot fires again with
-	// from_version==the old built-with and to_version==target; that expected
-	// idempotent re-fire is visible here rather than hidden.
+	// OrchestratorEnvdOfflineUpgradeAttempts counts every OFFLINE envd upgrade
+	// OUTCOME on the cold boot of a filesystem-only snapshot — not only the ones that
+	// reach the rootfs binary swap — by result and from_version/to_version:
+	//
+	//	success | swap_failed | unrecoverable | envd_too_large
+	//	    the swap ran, or the rootfs itself declined it (see rootfs.SwapEnvdBinary)
+	//	not_quiesced
+	//	    an upgrade was wanted, but the snapshot's rootfs was not frozen at pause,
+	//	    so it must not be rewritten
+	//	same_version
+	//	    already on the target
+	//	not_staged | downgrade | invalid_target | getversion_failed
+	//	    the resolver refused the configured target
+	//
+	// Every no-op except flag-off is counted, so the eligible population adds up.
+	// Flag-off is deliberately absent: it is the whole filesystem-only population
+	// minus the rest, already available as sandbox.create.duration{fs_only="true"}.
+	// to_version is empty on the resolver's refusals — it has no target to name.
+	//
+	// On result=success a refire label says whether the rootfs ALREADY held the target
+	// bytes. from_version cannot answer that on its own: it is a claim read off the
+	// snapshot record, and the swap keys on that record without ever advancing it, so
+	// an already-upgraded snapshot resolves the same upgrade on every cold boot and
+	// rewrites identical bytes while reporting the same from_version as a genuine
+	// upgrade. refire="false" is the count that actually moved sandboxes. The label is
+	// absent on every other result, where nothing was compared.
 	OrchestratorEnvdOfflineUpgradeAttempts CounterType = "orchestrator.envd.offline_upgrade.attempts"
 
 	// TemplateBuildCmdlineArgs counts template builds by the guest kernel command line

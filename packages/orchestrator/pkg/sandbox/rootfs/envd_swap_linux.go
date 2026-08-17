@@ -76,6 +76,28 @@ var ErrOfflineSwapUnrecoverable = errors.New("offline envd swap failed and the o
 // can tell "we declined this rootfs" from "the swap broke".
 var ErrEnvdTooLarge = errors.New("rootfs envd is too large to swap offline")
 
+// SwapResult reports what the swap observed about the rootfs, for telemetry the
+// caller emits. It is returned on every path, including failures, and its zero
+// value means "the swap did not get far enough to tell".
+type SwapResult struct {
+	// Refire is true when the rootfs ALREADY held the target bytes before the swap
+	// ran (the backed-up original hashes equal to the staged target). That is the
+	// steady state of the idempotent re-fire: the swap keys on the snapshot's
+	// recorded built-with version, which it never advances and pause never
+	// re-bakes, so an already-upgraded snapshot resolves an upgrade again on every
+	// cold boot and rewrites the same bytes over themselves.
+	//
+	// It matters because `from_version` is a CLAIM about provenance read from the
+	// snapshot record, not an observation of the rootfs — so a re-fire is reported
+	// as another success from the same from_version, and a raw success count
+	// overstates how many sandboxes actually moved. Refire is the only signal that
+	// separates the two, and it is free: both hashes are already in hand.
+	//
+	// False on paths that never reached the comparison (an oversized rootfs, an
+	// unreadable backup), so read it only alongside a result that got that far.
+	Refire bool
+}
+
 // SwapEnvdBinary replaces /usr/bin/envd inside an unmounted ext4 rootfs device
 // with the binary at srcPath, entirely in userspace via debugfs (libext2fs) —
 // never a host-kernel mount of the tenant image. Intended to run in the reboot
@@ -104,7 +126,7 @@ var ErrEnvdTooLarge = errors.New("rootfs envd is too large to swap offline")
 // give it EnvdSwapBudget. Steps 4-5 decide the outcome and run on their own budgets,
 // so a spent ctx cannot make the rootfs state unknowable and fail an otherwise fine
 // boot.
-func SwapEnvdBinary(ctx context.Context, devicePath, srcPath string) (e error) {
+func SwapEnvdBinary(ctx context.Context, devicePath, srcPath string) (SwapResult, error) {
 	ctx, span := tracer.Start(ctx, "envd-binary-swap", trace.WithAttributes(
 		attribute.String("device", devicePath),
 		attribute.String("src", srcPath),
@@ -117,7 +139,7 @@ func SwapEnvdBinary(ctx context.Context, devicePath, srcPath string) (e error) {
 	// namespace, so copy it onto local disk first.
 	stage, err := os.MkdirTemp("", "envd-swap-*")
 	if err != nil {
-		return fmt.Errorf("create swap stage dir: %w", err)
+		return SwapResult{}, fmt.Errorf("create swap stage dir: %w", err)
 	}
 	defer os.RemoveAll(stage)
 
@@ -125,7 +147,7 @@ func SwapEnvdBinary(ctx context.Context, devicePath, srcPath string) (e error) {
 	// directory to read the staged binary/scripts and write its dumps; MkdirTemp
 	// creates it 0700 (owner-only), so widen it to 0755.
 	if err := os.Chmod(stage, 0o755); err != nil {
-		return fmt.Errorf("chmod swap stage dir: %w", err)
+		return SwapResult{}, fmt.Errorf("chmod swap stage dir: %w", err)
 	}
 
 	return swapEnvd(ctx, swapIO{
@@ -149,27 +171,27 @@ type swapIO struct {
 
 // swapEnvd is SwapEnvdBinary's body, minus the staging directory's lifecycle. See
 // SwapEnvdBinary for the contract; the numbered steps below match its doc comment.
-func swapEnvd(ctx context.Context, dbg swapIO, srcPath string) error {
+func swapEnvd(ctx context.Context, dbg swapIO, srcPath string) (res SwapResult, err error) {
 	stage := dbg.stageDir
 	stagedNew := filepath.Join(stage, "envd.new")
 	if err := copyFile(srcPath, stagedNew, 0o755); err != nil {
-		return fmt.Errorf("stage target envd %q: %w", srcPath, err)
+		return res, fmt.Errorf("stage target envd %q: %w", srcPath, err)
 	}
 	// The jailed debugfs runs as an unprivileged DynamicUser with no
 	// CAP_DAC_OVERRIDE, so it can only read the staged binary via its world bits.
 	// copyFile's mode is subject to the orchestrator umask, so set it explicitly.
 	if err := os.Chmod(stagedNew, 0o755); err != nil {
-		return fmt.Errorf("chmod staged envd: %w", err)
+		return res, fmt.Errorf("chmod staged envd: %w", err)
 	}
 	// An empty staged binary would make wantSHA the empty-file digest, which a failed
 	// (empty) read-back would then MATCH — the one way a broken swap could report
 	// success. dumpSHA256 rejects empty reads; refuse an empty source to close the pair.
 	if fi, serr := os.Stat(stagedNew); serr != nil || fi.Size() == 0 {
-		return fmt.Errorf("refusing offline swap: staged target envd %q is empty or unreadable", srcPath)
+		return res, fmt.Errorf("refusing offline swap: staged target envd %q is empty or unreadable", srcPath)
 	}
 	wantSHA, err := fileSHA256(stagedNew)
 	if err != nil {
-		return fmt.Errorf("hash target envd: %w", err)
+		return res, fmt.Errorf("hash target envd: %w", err)
 	}
 
 	// 1. Refuse an implausibly large rootfs envd BEFORE dumping it: the size is
@@ -178,10 +200,10 @@ func swapEnvd(ctx context.Context, dbg swapIO, srcPath string) error {
 	// `stat` reads the size from the inode without transferring its contents.
 	origSize, err := statEnvdSize(ctx, dbg)
 	if err != nil {
-		return fmt.Errorf("size-check original envd: %w", err)
+		return res, fmt.Errorf("size-check original envd: %w", err)
 	}
 	if origSize > maxEnvdSize {
-		return fmt.Errorf("%w: %s is %d bytes, over the %d-byte limit",
+		return res, fmt.Errorf("%w: %s is %d bytes, over the %d-byte limit",
 			ErrEnvdTooLarge, guestEnvdPath, origSize, int64(maxEnvdSize))
 	}
 
@@ -191,27 +213,29 @@ func swapEnvd(ctx context.Context, dbg swapIO, srcPath string) error {
 	// the root-owned stage dir, but can write an already-existing 0666 file.
 	origPath := filepath.Join(stage, "envd.orig")
 	if err := createJailWritable(origPath); err != nil {
-		return fmt.Errorf("pre-create backup target: %w", err)
+		return res, fmt.Errorf("pre-create backup target: %w", err)
 	}
 	if out, derr := dbg.run(ctx, "backup",
 		fmt.Sprintf("dump %s %s\n", guestEnvdPath, origPath), false); derr != nil {
-		return fmt.Errorf("back up original envd: %w (output: %q)", derr, string(out))
+		return res, fmt.Errorf("back up original envd: %w (output: %q)", derr, string(out))
 	}
 	if fi, serr := os.Stat(origPath); serr != nil || fi.Size() == 0 {
 		// No original to fall back to — refuse rather than risk an unrecoverable
 		// swap. (A well-formed rootfs always has /usr/bin/envd.)
-		return fmt.Errorf("refusing offline swap: could not read original %s to back up (dump produced nothing)", guestEnvdPath)
+		return res, fmt.Errorf("refusing offline swap: could not read original %s to back up (dump produced nothing)", guestEnvdPath)
 	}
 	// createJailWritable left the backup 0666 so the jail could write the dump; the
 	// rollback later `write`s it back, so make it executable-moded now (belt-and-
 	// suspenders — the rollback also `sif`s it and verifyEnvd asserts the result).
 	if err := os.Chmod(origPath, 0o755); err != nil {
-		return fmt.Errorf("chmod original backup: %w", err)
+		return res, fmt.Errorf("chmod original backup: %w", err)
 	}
 	origSHA, err := fileSHA256(origPath)
 	if err != nil {
-		return fmt.Errorf("hash original envd: %w", err)
+		return res, fmt.Errorf("hash original envd: %w", err)
 	}
+	// Both hashes are known here, so the re-fire question is answerable for free.
+	res.Refire = origSHA == wantSHA
 
 	// 3. Swap: remove the old inode and write the new one. Do NOT branch on the
 	// process exit — debugfs exits 0 even on per-command failures, and a non-zero
@@ -236,29 +260,29 @@ func swapEnvd(ctx context.Context, dbg swapIO, srcPath string) error {
 
 	switch classifyEnvdState(state.presence, state.content) {
 	case envdSwapApplied:
-		return nil // envd IS the new binary and executable — the swap landed
+		return res, nil // envd IS the new binary and executable — the swap landed
 
 	case envdOriginalIntact:
 		// The original is untouched and bootable (the swap never modified it — e.g.
 		// the jail failed to start). Boot it: no destructive rollback. Recoverable.
-		return fmt.Errorf("offline envd swap did not apply; original left in place (%s)", swapCtx)
+		return res, fmt.Errorf("offline envd swap did not apply; original left in place (%s)", swapCtx)
 
 	case envdDamaged:
 		// envd is absent, or present but neither bootable nor recognisable — the
 		// canonical never-brick case. Restore the original from the host backup.
 		if rbErr := rollbackEnvd(ctx, dbg, origPath); rbErr != nil {
-			return fmt.Errorf("%w: swap left envd damaged and rollback failed (%s): %w",
+			return res, fmt.Errorf("%w: swap left envd damaged and rollback failed (%s): %w",
 				ErrOfflineSwapUnrecoverable, swapCtx, rbErr)
 		}
 
-		return fmt.Errorf("offline envd swap did not land (envd was %s, %s); original envd restored",
+		return res, fmt.Errorf("offline envd swap did not land (envd was %s, %s); original envd restored",
 			state.describe(), swapCtx)
 
 	default: // envdUnknown
 		// We could not establish what is on the rootfs at all. Not the same as
 		// "damaged": rolling back means `rm` first, which on an unknown device could
 		// destroy a perfectly good envd. Fail the boot so the overlay is discarded.
-		return fmt.Errorf("%w: swap did not land and rootfs state is indeterminate (%s): %s",
+		return res, fmt.Errorf("%w: swap did not land and rootfs state is indeterminate (%s): %s",
 			ErrOfflineSwapUnrecoverable, swapCtx, state.describe())
 	}
 }

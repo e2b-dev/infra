@@ -217,25 +217,44 @@ type offlineSwapDecision struct {
 	logMisconfig bool   // log the resolver's no-op reason (a misconfigured / unstaged target)
 }
 
+// offlineNoopNotQuiesced is the countResult for the one no-op that is neither a
+// resolver outcome nor an operator error: the resolver wanted an upgrade, but the
+// snapshot's rootfs was not frozen at pause.
+const offlineNoopNotQuiesced = "not_quiesced"
+
 // decideOfflineSwap gates the cold-boot envd swap on the resolver outcome and the
 // snapshot's crash-consistency. resolverPath is "" when the resolver returns no
 // upgrade (reason says why); fsQuiesced is whether the rootfs was frozen at pause.
 //
-//   - no upgrade, benign reason (off / same_version)       -> no swap, silent
-//   - no upgrade, misconfig (not_staged / downgrade / ...)  -> no swap, log the reason
+//   - flag off (off / no reason)                            -> no swap, silent, uncounted
+//   - no upgrade, already on target (same_version)          -> no swap, count it
+//   - no upgrade, misconfig (not_staged / downgrade / ...)   -> no swap, count AND log
 //   - upgrade wanted but rootfs not frozen                  -> no swap, count not_quiesced
 //   - upgrade wanted and rootfs frozen                      -> swap
+//
+// Every no-op except `off` is counted, so the eligible population adds up: a cold boot
+// that did not upgrade is either counted here or counted as an attempt below, and a ramp
+// can read what fraction each reason holds. `off` is the deliberate exemption — it is the
+// whole fs-only population minus the rest, already available as
+// sandbox.create.duration{fs_only="true"}, and counting it would add a series per
+// version pair for every cold boot in the fleet to say nothing.
 func decideOfflineSwap(resolverPath, reason string, fsQuiesced bool) offlineSwapDecision {
 	if resolverPath == "" {
 		switch reason {
-		case "", "off", "same_version":
+		case "", "off":
 			return offlineSwapDecision{}
+		case "same_version":
+			// Expected, and the goal state of a ramp — counted so it is visible, not
+			// logged because it recurs on every cold boot of an upgraded snapshot.
+			return offlineSwapDecision{countResult: reason}
 		default:
-			return offlineSwapDecision{logMisconfig: true}
+			// not_staged / downgrade / invalid_target / getversion_failed, and anything
+			// the resolver's vocabulary grows: an operator error, so log each one.
+			return offlineSwapDecision{countResult: reason, logMisconfig: true}
 		}
 	}
 	if !fsQuiesced {
-		return offlineSwapDecision{countResult: "not_quiesced"}
+		return offlineSwapDecision{countResult: offlineNoopNotQuiesced}
 	}
 
 	return offlineSwapDecision{swap: true}
@@ -279,9 +298,9 @@ func (f *Factory) envdOfflineUpgradePreBoot(
 			)
 		}
 		// The resolver wanted an upgrade but the rootfs isn't known crash-consistent
-		// (not frozen at pause): don't rewrite it — record the gated skip so a ramp
-		// can see the population waiting for a future freezing pause.
-		if dec.countResult != "" {
+		// (not frozen at pause): don't rewrite it — this population is waiting for a
+		// future freezing pause, so it is worth a line each as well as the count.
+		if dec.countResult == offlineNoopNotQuiesced {
 			logger.L().Info(ctx, "skipping offline envd upgrade: snapshot rootfs was not frozen at pause (not crash-consistent); awaiting a future freezing pause",
 				logger.WithSandboxID(runtime.SandboxID),
 				logger.WithBuildID(buildID.String()),
@@ -289,6 +308,10 @@ func (f *Factory) envdOfflineUpgradePreBoot(
 				zap.String("target", path),
 				zap.String("to_version", toVersion),
 			)
+		}
+		// One emission for every counted no-op, whatever its kind — the logging above
+		// varies by reason, the accounting must not.
+		if dec.countResult != "" {
 			envdOfflineUpgradeAttempts.Add(ctx, 1, metric.WithAttributes(
 				attribute.String("result", dec.countResult),
 				attribute.String("from_version", from),
@@ -308,7 +331,7 @@ func (f *Factory) envdOfflineUpgradePreBoot(
 		// debugfs runs, and bounding the whole of it at one run's timeout lets a slow
 		// backup starve the phases after it (see EnvdSwapBudget).
 		swapCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rootfs.EnvdSwapBudget)
-		err := rootfs.SwapEnvdBinary(swapCtx, rootfsPath, path)
+		swapped, err := rootfs.SwapEnvdBinary(swapCtx, rootfsPath, path)
 		cancel()
 
 		// An unrecoverable swap (failed AND the original was not restored) may leave
@@ -326,6 +349,9 @@ func (f *Factory) envdOfflineUpgradePreBoot(
 				zap.String("target", path),
 				zap.String("to_version", toVersion),
 				zap.String("built_with", from),
+				// built_with is what the snapshot RECORDS; refire is what the rootfs
+				// actually held. They disagree on every re-fire — see SwapResult.Refire.
+				zap.Bool("refire", swapped.Refire),
 			)
 		case errors.Is(err, rootfs.ErrEnvdTooLarge):
 			// Declined before anything was touched, so the guest boots its own envd.
@@ -359,11 +385,21 @@ func (f *Factory) envdOfflineUpgradePreBoot(
 			)
 		}
 
-		envdOfflineUpgradeAttempts.Add(ctx, 1, metric.WithAttributes(
+		attrs := []attribute.KeyValue{
 			attribute.String("result", result),
 			attribute.String("from_version", from),
 			attribute.String("to_version", toVersion),
-		))
+		}
+		// from_version is a CLAIM read off the snapshot record, not an observation of the
+		// rootfs, so a success count alone overstates how many sandboxes actually moved:
+		// an already-upgraded snapshot re-resolves the same upgrade on every cold boot
+		// (the record is never advanced) and rewrites the same bytes. refire splits the
+		// two. Attached on success only — that is where the comparison is known to have
+		// happened, and an absent label beats a false one that means "no idea".
+		if err == nil {
+			attrs = append(attrs, attribute.Bool("refire", swapped.Refire))
+		}
+		envdOfflineUpgradeAttempts.Add(ctx, 1, metric.WithAttributes(attrs...))
 		envdOfflineUpgradeDurationHist.Record(ctx, time.Since(start).Milliseconds(),
 			metric.WithAttributes(attribute.String("result", result)))
 

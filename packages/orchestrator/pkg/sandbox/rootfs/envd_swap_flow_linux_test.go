@@ -108,7 +108,7 @@ func TestSwapFlowAbsentRollsBack(t *testing.T) {
 	f.stdout["rollback-verify-stat"] = statFound("0755", 15)
 	f.dumpBody["rollback-verify"] = "ORIGINAL-BINARY"
 
-	err := swapEnvd(t.Context(), dbg, src)
+	_, err := swapEnvd(t.Context(), dbg, src)
 
 	require.Error(t, err)
 	require.NotErrorIs(t, err, ErrOfflineSwapUnrecoverable,
@@ -145,7 +145,7 @@ func TestSwapFlowUnreadableNeverRollsBack(t *testing.T) {
 			f.dumpBody["backup"] = "ORIGINAL-BINARY"
 			tc.setup(f)
 
-			err := swapEnvd(t.Context(), dbg, src)
+			_, err := swapEnvd(t.Context(), dbg, src)
 
 			require.Error(t, err)
 			require.ErrorIs(t, err, ErrOfflineSwapUnrecoverable,
@@ -172,8 +172,10 @@ func TestSwapFlowAppliedAndIntact(t *testing.T) {
 		f.stdout["state-stat"] = statFound("0755", 10)
 		f.dumpBody["state"] = "NEW-BINARY"
 
-		require.NoError(t, swapEnvd(t.Context(), dbg, src))
+		res, err := swapEnvd(t.Context(), dbg, src)
+		require.NoError(t, err)
 		assert.False(t, f.ran("rollback"), "a landed swap must not be rolled back")
+		assert.False(t, res.Refire, "the rootfs held different bytes — this moved a sandbox")
 	})
 
 	t.Run("original untouched -> recoverable, no rollback", func(t *testing.T) {
@@ -186,7 +188,7 @@ func TestSwapFlowAppliedAndIntact(t *testing.T) {
 		f.stdout["state-stat"] = statFound("0755", 15)
 		f.dumpBody["state"] = "ORIGINAL-BINARY"
 
-		err := swapEnvd(t.Context(), dbg, src)
+		_, err := swapEnvd(t.Context(), dbg, src)
 
 		require.Error(t, err)
 		require.NotErrorIs(t, err, ErrOfflineSwapUnrecoverable)
@@ -205,12 +207,50 @@ func TestSwapFlowAppliedAndIntact(t *testing.T) {
 		f.stdout["rollback-verify-stat"] = statFound("0755", 15)
 		f.dumpBody["rollback-verify"] = "ORIGINAL-BINARY"
 
-		err := swapEnvd(t.Context(), dbg, src)
+		_, err := swapEnvd(t.Context(), dbg, src)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "original envd restored")
 		assert.True(t, f.ran("rollback"),
 			"content matched the target, so only the mode check can catch this")
+	})
+}
+
+// TestSwapFlowRefire pins the re-fire signal. The swap keys on the version the snapshot
+// RECORDS, which it never advances and pause never re-bakes, so an already-upgraded
+// snapshot resolves the same upgrade again on every cold boot and rewrites the same bytes
+// over themselves. Those are successes that moved nobody, and from_version — a claim off
+// the snapshot record — cannot tell them apart from the real thing. Refire is what does.
+func TestSwapFlowRefire(t *testing.T) {
+	t.Parallel()
+
+	t.Run("rootfs already held the target -> refire", func(t *testing.T) {
+		t.Parallel()
+
+		f, dbg, src := newSwapFixture(t, "NEW-BINARY")
+		f.stdout["size-stat"] = statFound("0755", 4096)
+		f.dumpBody["backup"] = "NEW-BINARY" // the "original" IS the target already
+		f.stdout["state-stat"] = statFound("0755", 10)
+		f.dumpBody["state"] = "NEW-BINARY"
+
+		res, err := swapEnvd(t.Context(), dbg, src)
+
+		require.NoError(t, err, "rewriting identical bytes still succeeds")
+		assert.True(t, res.Refire, "same bytes in and out — no sandbox moved versions")
+	})
+
+	t.Run("declined before the comparison -> not claimed", func(t *testing.T) {
+		t.Parallel()
+
+		f, dbg, src := newSwapFixture(t, "NEW-BINARY")
+		f.stdout["size-stat"] = statFound("0755", int(maxEnvdSize)+1)
+
+		res, err := swapEnvd(t.Context(), dbg, src)
+
+		require.ErrorIs(t, err, ErrEnvdTooLarge)
+		assert.False(t, res.Refire,
+			"nothing was hashed, so there is no re-fire claim to make — the caller drops the label")
+		assert.False(t, f.ran("backup"), "declined before touching the rootfs")
 	})
 }
 
@@ -228,7 +268,7 @@ func TestSwapFlowRollbackIgnoresProcessExit(t *testing.T) {
 	f.stdout["rollback-verify-stat"] = statFound("0755", 15)
 	f.dumpBody["rollback-verify"] = "ORIGINAL-BINARY" // but the restore IS on disk
 
-	err := swapEnvd(t.Context(), dbg, src)
+	_, err := swapEnvd(t.Context(), dbg, src)
 
 	require.Error(t, err)
 	require.NotErrorIs(t, err, ErrOfflineSwapUnrecoverable,
@@ -247,7 +287,7 @@ func TestSwapFlowRollbackFailureIsUnrecoverable(t *testing.T) {
 	f.stdout["state-stat"] = statNotFound
 	f.stdout["rollback-verify-stat"] = statNotFound // the restore did not take
 
-	err := swapEnvd(t.Context(), dbg, src)
+	_, err := swapEnvd(t.Context(), dbg, src)
 
 	require.ErrorIs(t, err, ErrOfflineSwapUnrecoverable)
 	assert.True(t, f.ran("rollback"))
@@ -266,7 +306,7 @@ func TestSwapFlowRefusalsHappenBeforeMutating(t *testing.T) {
 		f, dbg, src := newSwapFixture(t, "NEW-BINARY")
 		f.stdout["size-stat"] = statFound("0755", maxEnvdSize+1)
 
-		err := swapEnvd(t.Context(), dbg, src)
+		_, err := swapEnvd(t.Context(), dbg, src)
 
 		require.ErrorIs(t, err, ErrEnvdTooLarge)
 		assert.False(t, f.ran("backup"), "must refuse before dumping anything to the host")
@@ -280,7 +320,7 @@ func TestSwapFlowRefusalsHappenBeforeMutating(t *testing.T) {
 		f.stdout["size-stat"] = statFound("0755", 4096)
 		// no dumpBody for "backup" -> empty backup file
 
-		err := swapEnvd(t.Context(), dbg, src)
+		_, err := swapEnvd(t.Context(), dbg, src)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "refusing offline swap")
@@ -293,7 +333,7 @@ func TestSwapFlowRefusalsHappenBeforeMutating(t *testing.T) {
 		f, dbg, src := newSwapFixture(t, "")
 		f.stdout["size-stat"] = statFound("0755", 4096)
 
-		err := swapEnvd(t.Context(), dbg, src)
+		_, err := swapEnvd(t.Context(), dbg, src)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "is empty or unreadable")
