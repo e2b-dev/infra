@@ -502,7 +502,7 @@ const attestedTenantIdentity = { uid: 911, gid: 1001, groups: [100] };
 const supervisedServiceIdentity = {
   uid: 911,
   gid: 1001,
-  groups: [100, 1001],
+  groups: [100],
 };
 const exactAttestedTenantIdentity = (value) =>
   value?.uid === attestedTenantIdentity.uid &&
