@@ -29,7 +29,9 @@ import {
   classifyTenantBoundaryEvidence,
   classifyTenantBoundaryTopology,
   inspectTenantBoundaryMarkerFilesystem,
+  TENANT_BOUNDARY_CONVERGENCE_TIMEOUT_MS,
   tenantBoundaryProcRootPaths,
+  tenantBoundaryProbeTimeoutMs,
   tenantBoundaryRuntimePath,
   tenantBoundaryRuntimePathChain,
   waitForTenantBoundaryEvidence,
@@ -957,15 +959,15 @@ try {
 
   const tenantBoundary = await waitForTenantBoundaryEvidence({
     probe: async ({ remainingMs }) => {
-      const attemptTimeoutMs = Math.min(30_000, remainingMs);
+      const probeTimeoutMs = tenantBoundaryProbeTimeoutMs(remainingMs);
       return JSON.parse(await run(
         `printf '%s' '${tenantBoundaryProbe}' | base64 -d | node`,
-        attemptTimeoutMs,
-        attemptTimeoutMs,
+        probeTimeoutMs,
+        probeTimeoutMs,
         'root',
       ));
     },
-    timeoutMs: 180_000,
+    timeoutMs: TENANT_BOUNDARY_CONVERGENCE_TIMEOUT_MS,
     intervalMs: 3_000,
   });
   if (

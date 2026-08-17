@@ -7,12 +7,44 @@ import {
   classifyTenantBoundaryFilesystemStability,
   classifyTenantBoundaryEvidence,
   classifyTenantBoundaryTopology,
+  TENANT_BOUNDARY_CONVERGENCE_TIMEOUT_MS,
   tenantBoundaryProcRootPaths,
+  tenantBoundaryProbeTimeoutMs,
   tenantBoundaryRuntimePath,
   tenantBoundaryRuntimePathChain,
   TenantBoundaryConvergenceError,
   waitForTenantBoundaryEvidence,
 } from './runtime-verification-convergence.mjs';
+
+test('reserves bounded transport headroom inside the tenant verification deadline', () => {
+  assert.equal(TENANT_BOUNDARY_CONVERGENCE_TIMEOUT_MS, 175_000);
+  for (const [remainingMs, elapsedMs, expectedTimeoutMs] of [
+    [175_000, 0, 35_000],
+    [30_000, 145_000, 35_000],
+    [1_600, 173_400, 6_600],
+    [1, 174_999, 5_001],
+  ]) {
+    const timeoutMs = tenantBoundaryProbeTimeoutMs(remainingMs);
+    assert.equal(timeoutMs, expectedTimeoutMs);
+    assert.ok(elapsedMs + timeoutMs <= 180_000);
+  }
+
+  for (const remainingMs of [
+    undefined,
+    null,
+    0,
+    -1,
+    1.5,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    175_001,
+  ]) {
+    assert.throws(
+      () => tenantBoundaryProbeTimeoutMs(remainingMs),
+      /tenant boundary probe remaining time is invalid/,
+    );
+  }
+});
 
 test('binds the marker to the daemon current cgroup and derives tenant membership', () => {
   assert.equal(typeof convergence.bindTenantBoundaryMarker, 'function');
@@ -518,18 +550,59 @@ test('rejects malformed or expanded probe records without retrying', async () =>
 
 test('rejects success that arrives only after the shared wall-clock deadline', async () => {
   let now = 10_000;
+  let calls = 0;
   await assert.rejects(waitForTenantBoundaryEvidence({
     probe: async ({ remainingMs }) => {
+      calls += 1;
+      if (calls === 1) {
+        return { probe_ok: false, stage: 'process_attestation' };
+      }
       now += remainingMs;
       return { probe_ok: true, evidence: { marker_exact: true } };
     },
     now: () => now,
-    sleep: async () => assert.fail('late success must not sleep'),
+    sleep: async (milliseconds) => { now += milliseconds; },
     timeoutMs: 1_000,
     intervalMs: 100,
   }), (error) => {
     assert.ok(error instanceof TenantBoundaryConvergenceError);
-    assert.equal(error.stage, 'marker');
+    assert.equal(error.stage, 'process_attestation');
     return true;
   });
+  assert.equal(calls, 2);
+});
+
+test('preserves the last safe stage when probe transport rejects after the logical deadline', async () => {
+  let now = 20_000;
+  let calls = 0;
+  await assert.rejects(waitForTenantBoundaryEvidence({
+    probe: async ({ remainingMs }) => {
+      calls += 1;
+      if (calls === 1) {
+        return { probe_ok: false, stage: 'process_attestation' };
+      }
+      now += remainingMs;
+      throw new Error('synthetic transport deadline');
+    },
+    now: () => now,
+    sleep: async (milliseconds) => { now += milliseconds; },
+    timeoutMs: 1_000,
+    intervalMs: 100,
+  }), (error) => {
+    assert.ok(error instanceof TenantBoundaryConvergenceError);
+    assert.equal(error.stage, 'process_attestation');
+    return true;
+  });
+  assert.equal(calls, 2);
+});
+
+test('does not mask a probe transport rejection before the logical deadline', async () => {
+  const transportError = new Error('synthetic early transport failure');
+  await assert.rejects(waitForTenantBoundaryEvidence({
+    probe: async () => { throw transportError; },
+    now: () => 30_000,
+    sleep: async () => assert.fail('transport rejection must not retry'),
+    timeoutMs: 1_000,
+    intervalMs: 100,
+  }), (error) => error === transportError);
 });
