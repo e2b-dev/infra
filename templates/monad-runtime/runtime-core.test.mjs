@@ -621,6 +621,15 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
     verifier,
     /leaderSnapshot\.executable\.startsWith\("\/usr\/bin\/"\)\s*\? stages\.missing\.executableUsrBin\s*: stages\.missing\.executableElsewhere/,
   );
+  assert.match(verifier, /const stageDetailSlug = \(value\) =>/);
+  assert.match(
+    verifier,
+    /failureRecord\.stage_detail = stageDetailSlug\(leaderSnapshot\.executable\)/,
+  );
+  assert.match(
+    verifier,
+    /probeStage === stages\.missing\.executableUsrBin \|\|\s*probeStage === stages\.missing\.executableElsewhere/,
+  );
   assert.match(
     verifier,
     /snapshots\.length === 1\s*\? stages\.missing\.leaderOnly\s*: stages\.missing\.noMatch/,

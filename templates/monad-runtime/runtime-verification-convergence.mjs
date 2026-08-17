@@ -456,11 +456,18 @@ export function classifyTenantBoundaryEvidence(evidence) {
   return { probe_ok: true, evidence };
 }
 
+const STAGE_DETAIL_PATTERN = /^[A-Za-z0-9/_.-]{1,96}$/;
+
 export class TenantBoundaryConvergenceError extends Error {
-  constructor(stage) {
-    super(`tenant boundary did not converge at ${stage}`);
+  constructor(stage, stageDetail = null) {
+    super(
+      stageDetail === null
+        ? `tenant boundary did not converge at ${stage}`
+        : `tenant boundary did not converge at ${stage} (detail: ${stageDetail})`,
+    );
     this.name = 'TenantBoundaryConvergenceError';
     this.stage = stage;
+    this.stageDetail = stageDetail;
   }
 }
 
@@ -491,6 +498,7 @@ export async function waitForTenantBoundaryEvidence({
   }
   const deadline = startedAt + timeoutMs;
   let lastStage = 'marker';
+  let lastStageDetail = null;
   while (true) {
     const beforeProbe = now();
     if (!Number.isFinite(beforeProbe)) {
@@ -498,7 +506,7 @@ export async function waitForTenantBoundaryEvidence({
     }
     const probeBudget = deadline - beforeProbe;
     if (probeBudget <= 0) {
-      throw new TenantBoundaryConvergenceError(lastStage);
+      throw new TenantBoundaryConvergenceError(lastStage, lastStageDetail);
     }
     let record;
     try {
@@ -509,7 +517,7 @@ export async function waitForTenantBoundaryEvidence({
         throw new Error('tenant boundary convergence clock is invalid');
       }
       if (deadline - afterFailure <= 0) {
-        throw new TenantBoundaryConvergenceError(lastStage);
+        throw new TenantBoundaryConvergenceError(lastStage, lastStageDetail);
       }
       throw error;
     }
@@ -519,7 +527,7 @@ export async function waitForTenantBoundaryEvidence({
     }
     const remaining = deadline - afterProbe;
     if (remaining <= 0) {
-      throw new TenantBoundaryConvergenceError(lastStage);
+      throw new TenantBoundaryConvergenceError(lastStage, lastStageDetail);
     }
     if (
       hasExactKeys(record, ['probe_ok', 'evidence']) &&
@@ -530,19 +538,28 @@ export async function waitForTenantBoundaryEvidence({
     ) {
       return record.evidence;
     }
+    const detailedFailure = hasExactKeys(
+      record,
+      ['probe_ok', 'stage', 'stage_detail'],
+    );
     if (
-      !hasExactKeys(record, ['probe_ok', 'stage']) ||
+      (!hasExactKeys(record, ['probe_ok', 'stage']) && !detailedFailure) ||
       record.probe_ok !== false ||
       typeof record.stage !== 'string' ||
       (!RETRYABLE_STAGES.has(record.stage) &&
-        !TERMINAL_STAGES.has(record.stage))
+        !TERMINAL_STAGES.has(record.stage)) ||
+      (detailedFailure &&
+        (typeof record.stage_detail !== 'string' ||
+          !STAGE_DETAIL_PATTERN.test(record.stage_detail)))
     ) {
       throw new Error('tenant boundary probe returned an invalid record');
     }
+    const stageDetail = detailedFailure ? record.stage_detail : null;
     if (TERMINAL_STAGES.has(record.stage)) {
-      throw new TenantBoundaryConvergenceError(record.stage);
+      throw new TenantBoundaryConvergenceError(record.stage, stageDetail);
     }
     lastStage = record.stage;
+    lastStageDetail = stageDetail;
     await sleep(Math.min(intervalMs, remaining));
   }
 }

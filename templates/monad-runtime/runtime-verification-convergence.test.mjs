@@ -620,6 +620,64 @@ test('accepts only fixed per-service important-descendant stages as retryable ev
   }
 });
 
+test('carries a bounded stage detail through retries into the terminal error', async () => {
+  const stage = 'important_descendant_watchdog_missing_executable_elsewhere';
+  let now = 0;
+  await assert.rejects(
+    waitForTenantBoundaryEvidence({
+      probe: async () => ({
+        probe_ok: false,
+        stage,
+        stage_detail: '/opt/example/bin/parked-leader',
+      }),
+      now: () => now,
+      sleep: async (milliseconds) => { now += milliseconds; },
+      timeoutMs: 1_000,
+      intervalMs: 100,
+    }),
+    (error) => {
+      assert.equal(error.name, 'TenantBoundaryConvergenceError');
+      assert.equal(error.stage, stage);
+      assert.equal(error.stageDetail, '/opt/example/bin/parked-leader');
+      assert.match(
+        error.message,
+        /did not converge at important_descendant_watchdog_missing_executable_elsewhere \(detail: \/opt\/example\/bin\/parked-leader\)/,
+      );
+      return true;
+    },
+  );
+});
+
+test('rejects malformed stage detail as an invalid record', async () => {
+  const stage = 'important_descendant_watchdog_missing_executable_elsewhere';
+  for (const malformed of [
+    'bad detail with spaces',
+    'x'.repeat(97),
+    '',
+    42,
+  ]) {
+    await assert.rejects(waitForTenantBoundaryEvidence({
+      probe: async () => ({ probe_ok: false, stage, stage_detail: malformed }),
+      now: () => 0,
+      sleep: async () => assert.fail('malformed stage detail must not retry'),
+      timeoutMs: 1_000,
+      intervalMs: 100,
+    }), /invalid record/);
+  }
+  await assert.rejects(waitForTenantBoundaryEvidence({
+    probe: async () => ({
+      probe_ok: false,
+      stage,
+      stage_detail: 'ok-detail',
+      extra_key: true,
+    }),
+    now: () => 0,
+    sleep: async () => assert.fail('extra keys must not retry'),
+    timeoutMs: 1_000,
+    intervalMs: 100,
+  }), /invalid record/);
+});
+
 test('retries a discarded cross-time filesystem sample and accepts only a later stable probe', async () => {
   let now = 0;
   let calls = 0;

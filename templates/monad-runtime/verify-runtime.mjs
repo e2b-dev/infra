@@ -807,6 +807,10 @@ const finalServiceLeaderMountNamespaceMatch = serviceNames.every((name) =>
   readlinkSync("/proc/" + serviceLeaders[name] + "/ns/mnt") ===
     supervisorMountNamespace,
 );
+const stageDetailSlug = (value) => {
+  const slug = String(value).replace(/[^A-Za-z0-9/_.-]/g, ".").slice(0, 96);
+  return /^[A-Za-z0-9/_.-]{1,96}$/.test(slug) ? slug : "unrepresentable";
+};
 const supervisedAdmissionReadyState = () => {
   try {
     statSync(
@@ -966,7 +970,15 @@ for (const name of serviceNames) {
       : snapshots.length === 1
         ? stages.missing.leaderOnly
         : stages.missing.noMatch;
-    process.stdout.write(JSON.stringify({ probe_ok: false, stage: probeStage }));
+    const failureRecord = { probe_ok: false, stage: probeStage };
+    if (
+      name === "watchdog" &&
+      (probeStage === stages.missing.executableUsrBin ||
+        probeStage === stages.missing.executableElsewhere)
+    ) {
+      failureRecord.stage_detail = stageDetailSlug(leaderSnapshot.executable);
+    }
+    process.stdout.write(JSON.stringify(failureRecord));
     process.exit(0);
   }
   probeStage = stages.cgroup;
