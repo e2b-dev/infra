@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import { Template } from 'e2b';
 import { RUNTIME_BOOTSTRAP_READY_COMMAND } from './template.mjs';
@@ -236,6 +239,68 @@ test('Dockerfile preserves and gates every tenant-facing Webtop longrun', async 
   assert.match(dockerfile, /execFileSync\("sha256sum"/);
   assert.match(dockerfile, /svc-monad-agent/);
   assert.doesNotMatch(dockerfile, /\b(?:kasm|novnc|tigervnc)\b/i);
+});
+
+test('Dockerfile rewrites exactly one pinned Selkies launcher and fails closed on drift', async () => {
+  const dockerfile = await readFile(
+    new URL('./e2b.Dockerfile', import.meta.url),
+    'utf8',
+  );
+  const rewriteBlock = dockerfile.match(
+    /RUN selkies_launcher=\/opt\/monad\/runtime\/libexec\/monad-webtop-svc-selkies[\s\S]*?(?=\n\nCOPY s6-overlay\/)/,
+  )?.[0];
+  assert.ok(rewriteBlock, 'the immutable copied launcher must have a dedicated rewrite gate');
+
+  const directory = await mkdtemp(join(tmpdir(), 'monad-selkies-rewrite-'));
+  const launcher = join(directory, 'monad-webtop-svc-selkies');
+  const binary = join(directory, 'selkies');
+  const runRewrite = () => {
+    execFileSync('/bin/bash', ['-c', rewriteBlock
+      .replace(/^RUN /, '')
+      .replace(/\\\n\s*/g, ' ')
+      .replaceAll(
+        '/opt/monad/runtime/libexec/monad-webtop-svc-selkies',
+        launcher,
+      )
+      .replaceAll('/lsiopy/bin/selkies', binary)
+      .replaceAll(
+        '"0:0:555"',
+        `"${process.getuid()}:${process.getgid()}:555"`,
+      )], {
+      encoding: 'utf8',
+    });
+    return readFile(launcher, 'utf8');
+  };
+
+  try {
+    await writeFile(binary, '#!/bin/sh\nexit 0\n');
+    await chmod(binary, 0o755);
+    await writeFile(
+      launcher,
+      '#!/bin/bash\nsetup\nexec s6-setuidgid abc \\\n  selkies \\\n    --addr 0.0.0.0 \\\n    --port 3000\n',
+    );
+    await chmod(launcher, 0o555);
+    assert.equal(
+      await runRewrite(),
+      `#!/bin/bash\nsetup\nexec s6-setuidgid abc \\\n  ${binary} \\\n    --addr 0.0.0.0 \\\n    --port 3000\n`,
+    );
+
+    for (const drifted of [
+      '#!/bin/bash\nexec s6-setuidgid abc \\\n  selkies \\\n  selkies \\\n    --port 3000\n',
+      '#!/bin/bash\nexec s6-setuidgid abc \\\n  /unexpected/selkies \\\n    --port 3000\n',
+    ]) {
+      await chmod(launcher, 0o644);
+      await writeFile(launcher, drifted);
+      await chmod(launcher, 0o555);
+      assert.throws(
+        () => runRewrite(),
+        /Command failed/,
+        'duplicate or changed upstream launchers must fail the image build',
+      );
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test('daemon longrun verifies the immutable runtime path and establishes one exact admission root before every exec', async () => {
@@ -660,6 +725,47 @@ test('runtime verifier renders standalone bootstrap and tenant probes as valid s
     probes.tenantBoundaryProbe,
     'base64',
   ).toString('utf8');
+  const filterStart = tenantScript.indexOf(
+    'const filterNamespaceProcesses =',
+  );
+  const filterEnd = tenantScript.indexOf(
+    ';\nconst namespaceProcessEvidence',
+    filterStart,
+  );
+  assert.ok(
+    filterStart >= 0 && filterEnd > filterStart,
+    'the rendered verifier must filter namespace inventory before selection',
+  );
+  const filterNamespaceProcesses = new Function(
+    `${tenantScript.slice(filterStart, filterEnd + 1)}; return filterNamespaceProcesses;`,
+  )();
+  const common = {
+    namespace: 'pid:[4026533000]',
+    mountNamespace: 'mnt:[4026533001]',
+    cgroup: '0::/daemon/monad-tenant',
+  };
+  const processes = filterNamespaceProcesses([
+    { pid: 1, namespacePids: [1], ...common },
+    { pid: 82, namespacePids: [82, 17], ...common },
+  ]);
+  assert.deepEqual(processes.map(({ pid }) => pid), [82]);
+  assert.equal(selectOuterPidForNamespacePid({
+    innerPid: 17,
+    expectedMembership: common.cgroup,
+    expectedNamespace: common.namespace,
+    expectedNamespaceDepth: 2,
+    processes,
+  }), 82);
+  const malformed = filterNamespaceProcesses([
+    { pid: 91, namespacePids: [91, 0], ...common },
+  ]);
+  assert.throws(() => selectOuterPidForNamespacePid({
+    innerPid: 17,
+    expectedMembership: common.cgroup,
+    expectedNamespace: common.namespace,
+    expectedNamespaceDepth: 2,
+    processes: malformed,
+  }), /namespace PID process evidence is invalid/);
   assert.match(tenantScript, /marker_\$\{authority\}_\$\{target\}_\$\{category\}/);
   assert.match(tenantScript, /code === 'ENOENT'/);
   assert.match(tenantScript, /code === 'EACCES' \|\| code === 'EPERM'/);

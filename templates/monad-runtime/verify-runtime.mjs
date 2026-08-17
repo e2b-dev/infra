@@ -421,6 +421,8 @@ const processIds = () => readdirSync("/proc")
   .map(Number);
 const namespacePidVector = ${parseNamespacePidVector.toString()};
 const selectNamespacePid = ${selectOuterPidForNamespacePid.toString()};
+const filterNamespaceProcesses = (processes) =>
+  processes.filter((process) => process?.pid !== 1);
 const namespaceProcessEvidence = () => processIds().flatMap((outerPid) => {
     try {
       const namespacePids = namespacePidVector(status(outerPid));
@@ -652,7 +654,7 @@ const initialServiceStates = Object.fromEntries(
 const serviceNamespacePids = Object.fromEntries(
   serviceNames.map((name) => [name, initialServiceStates[name].pid]),
 );
-const namespaceProcesses = namespaceProcessEvidence();
+const namespaceProcesses = filterNamespaceProcesses(namespaceProcessEvidence());
 const serviceLeaders = Object.fromEntries(
   serviceNames.map((name) => [name, selectNamespacePid({
     innerPid: serviceNamespacePids[name],
