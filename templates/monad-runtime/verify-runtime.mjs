@@ -874,7 +874,10 @@ const importantDescendantStages = Object.freeze({
       executableHelperReadyPresent: "important_descendant_watchdog_missing_executable_helper_ready_present",
       executableHelperReadyError: "important_descendant_watchdog_missing_executable_helper_ready_error",
       executableShell: "important_descendant_watchdog_missing_executable_shell",
-      executableOther: "important_descendant_watchdog_missing_executable_other",
+      executablePackageTree: "important_descendant_watchdog_missing_executable_package_tree",
+      executableCommandTree: "important_descendant_watchdog_missing_executable_command_tree",
+      executableUsrBin: "important_descendant_watchdog_missing_executable_usr_bin",
+      executableElsewhere: "important_descendant_watchdog_missing_executable_elsewhere",
       argv: "important_descendant_watchdog_missing_argv",
     }),
     access: "important_descendant_watchdog_access",
@@ -953,7 +956,13 @@ for (const name of serviceNames) {
             : leaderSnapshot.executable === "/usr/bin/bash" ||
                 leaderSnapshot.executable === "/bin/bash"
               ? stages.missing.executableShell
-              : stages.missing.executableOther
+              : leaderSnapshot.executable.startsWith("/package/")
+                ? stages.missing.executablePackageTree
+                : leaderSnapshot.executable.startsWith("/command/")
+                  ? stages.missing.executableCommandTree
+                  : leaderSnapshot.executable.startsWith("/usr/bin/")
+                    ? stages.missing.executableUsrBin
+                    : stages.missing.executableElsewhere
       : snapshots.length === 1
         ? stages.missing.leaderOnly
         : stages.missing.noMatch;

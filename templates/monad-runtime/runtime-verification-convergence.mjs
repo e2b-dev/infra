@@ -27,7 +27,10 @@ const IMPORTANT_DESCENDANT_STAGES = Object.freeze([
         'important_descendant_watchdog_missing_executable_helper_ready_present',
         'important_descendant_watchdog_missing_executable_helper_ready_error',
         'important_descendant_watchdog_missing_executable_shell',
-        'important_descendant_watchdog_missing_executable_other',
+        'important_descendant_watchdog_missing_executable_package_tree',
+        'important_descendant_watchdog_missing_executable_command_tree',
+        'important_descendant_watchdog_missing_executable_usr_bin',
+        'important_descendant_watchdog_missing_executable_elsewhere',
         'important_descendant_watchdog_missing_argv',
       ]
     : [

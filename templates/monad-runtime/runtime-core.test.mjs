@@ -565,7 +565,10 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
           ['executableHelperReadyPresent', 'important_descendant_watchdog_missing_executable_helper_ready_present'],
           ['executableHelperReadyError', 'important_descendant_watchdog_missing_executable_helper_ready_error'],
           ['executableShell', 'important_descendant_watchdog_missing_executable_shell'],
-          ['executableOther', 'important_descendant_watchdog_missing_executable_other'],
+          ['executablePackageTree', 'important_descendant_watchdog_missing_executable_package_tree'],
+          ['executableCommandTree', 'important_descendant_watchdog_missing_executable_command_tree'],
+          ['executableUsrBin', 'important_descendant_watchdog_missing_executable_usr_bin'],
+          ['executableElsewhere', 'important_descendant_watchdog_missing_executable_elsewhere'],
           ['argv', 'important_descendant_watchdog_missing_argv'],
         ]
       : [
@@ -604,7 +607,19 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
   );
   assert.match(
     verifier,
-    /leaderSnapshot\.executable === "\/usr\/bin\/bash" \|\|\s*leaderSnapshot\.executable === "\/bin\/bash"\s*\? stages\.missing\.executableShell\s*: stages\.missing\.executableOther/,
+    /leaderSnapshot\.executable === "\/usr\/bin\/bash" \|\|\s*leaderSnapshot\.executable === "\/bin\/bash"\s*\? stages\.missing\.executableShell/,
+  );
+  assert.match(
+    verifier,
+    /leaderSnapshot\.executable\.startsWith\("\/package\/"\)\s*\? stages\.missing\.executablePackageTree/,
+  );
+  assert.match(
+    verifier,
+    /leaderSnapshot\.executable\.startsWith\("\/command\/"\)\s*\? stages\.missing\.executableCommandTree/,
+  );
+  assert.match(
+    verifier,
+    /leaderSnapshot\.executable\.startsWith\("\/usr\/bin\/"\)\s*\? stages\.missing\.executableUsrBin\s*: stages\.missing\.executableElsewhere/,
   );
   assert.match(
     verifier,

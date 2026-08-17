@@ -566,7 +566,10 @@ test('accepts only fixed per-service important-descendant stages as retryable ev
           'missing_executable_helper_ready_present',
           'missing_executable_helper_ready_error',
           'missing_executable_shell',
-          'missing_executable_other',
+          'missing_executable_package_tree',
+          'missing_executable_command_tree',
+          'missing_executable_usr_bin',
+          'missing_executable_elsewhere',
           'missing_argv',
         ]
       : ['missing_leader_only', 'missing_no_match'];
@@ -604,6 +607,7 @@ test('accepts only fixed per-service important-descendant stages as retryable ev
     'important_descendant_watchdog_missing',
     'important_descendant_watchdog_missing_executable',
     'important_descendant_watchdog_missing_executable_helper',
+    'important_descendant_watchdog_missing_executable_other',
     'important_descendant_nginx_missing',
   ]) {
     await assert.rejects(waitForTenantBoundaryEvidence({
