@@ -385,9 +385,32 @@ const readyEvidence = Object.freeze({
 });
 
 test('classifies startup-dependent process and filesystem evidence before success', () => {
+  const processStages = [
+    'daemon_supervisor_mount_namespace_match',
+    'daemon_supervisor_root_identity_match',
+    'daemon_supervisor_run_identity_match',
+    'daemon_supervisor_filesystem_stable',
+    'service_leader_mount_namespace_match',
+    'daemon_state_stable',
+    'root_daemon_outside_tenant_cgroup',
+    'tenant_service_identity_match',
+    'nginx_identity_match',
+    'watchdog_identity_match',
+    'tenant_service_cgroup_match',
+    'service_leader_cgroup_match',
+    'important_descendant_cgroup_match',
+    'service_state_stable',
+    'supervisor_state_stable',
+  ];
+  for (const stage of processStages) {
+    assert.deepEqual(classifyTenantBoundaryEvidence({
+      ...readyEvidence,
+      [stage]: false,
+    }), { probe_ok: false, stage });
+  }
   assert.deepEqual(classifyTenantBoundaryEvidence({
     ...readyEvidence,
-    important_descendant_cgroup_match: false,
+    daemon_service_mapping: false,
   }), { probe_ok: false, stage: 'process_attestation' });
   assert.deepEqual(classifyTenantBoundaryEvidence({
     ...readyEvidence,
@@ -398,6 +421,44 @@ test('classifies startup-dependent process and filesystem evidence before succes
     probe_ok: true,
     evidence: complete,
   });
+});
+
+test('accepts every fixed process-attestation substage as bounded retryable evidence', async () => {
+  for (const stage of [
+    'daemon_supervisor_mount_namespace_match',
+    'daemon_supervisor_root_identity_match',
+    'daemon_supervisor_run_identity_match',
+    'daemon_supervisor_filesystem_stable',
+    'service_leader_mount_namespace_match',
+    'daemon_state_stable',
+    'root_daemon_outside_tenant_cgroup',
+    'tenant_service_identity_match',
+    'nginx_identity_match',
+    'watchdog_identity_match',
+    'tenant_service_cgroup_match',
+    'service_leader_cgroup_match',
+    'important_descendant_cgroup_match',
+    'service_state_stable',
+    'supervisor_state_stable',
+  ]) {
+    let now = 0;
+    let sleeps = 0;
+    await assert.rejects(waitForTenantBoundaryEvidence({
+      probe: async () => ({ probe_ok: false, stage }),
+      now: () => now,
+      sleep: async (milliseconds) => {
+        sleeps += 1;
+        now += milliseconds;
+      },
+      timeoutMs: 100,
+      intervalMs: 100,
+    }), (error) => {
+      assert.ok(error instanceof TenantBoundaryConvergenceError);
+      assert.equal(error.stage, stage);
+      return true;
+    });
+    assert.equal(sleeps, 1, `${stage} must remain retryable until the deadline`);
+  }
 });
 
 test('waits for a bounded tenant-boundary startup stage and returns exact evidence', async () => {

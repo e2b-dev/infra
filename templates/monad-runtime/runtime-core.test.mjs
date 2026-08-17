@@ -724,20 +724,20 @@ test('runtime verifier renders standalone bootstrap and tenant probes as valid s
     `Groups:\t${groups.join(' ')}\n`;
   assert.equal(
     identityPredicates.exactSupervisedServiceIdentity(
-      status({ groups: [100, 1001] }),
+      status({ groups: [100] }),
     ),
     true,
-    'the exact pinned s6-setuidgid abc identity must verify',
+    'the exact pinned s6-setuidgid abc supplementary group must verify',
   );
   for (const groups of [
-    [100],
+    [100, 1001],
     [27, 100, 1001],
     [100, 990, 1001],
   ]) {
     assert.equal(
       identityPredicates.exactSupervisedServiceIdentity(status({ groups })),
       false,
-      'missing primary-group evidence and sudo/docker group drift must fail closed',
+      'redundant primary-gid and sudo/docker supplementary drift must fail closed',
     );
   }
   const attestedTenant = {

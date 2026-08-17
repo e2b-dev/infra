@@ -1,3 +1,21 @@
+const PROCESS_ATTESTATION_STAGES = Object.freeze([
+  'daemon_supervisor_mount_namespace_match',
+  'daemon_supervisor_root_identity_match',
+  'daemon_supervisor_run_identity_match',
+  'daemon_supervisor_filesystem_stable',
+  'service_leader_mount_namespace_match',
+  'daemon_state_stable',
+  'root_daemon_outside_tenant_cgroup',
+  'tenant_service_identity_match',
+  'nginx_identity_match',
+  'watchdog_identity_match',
+  'tenant_service_cgroup_match',
+  'service_leader_cgroup_match',
+  'important_descendant_cgroup_match',
+  'service_state_stable',
+  'supervisor_state_stable',
+]);
+
 const RETRYABLE_STAGES = new Set([
   'marker',
   'marker_daemon_proc_root_run_missing',
@@ -9,6 +27,7 @@ const RETRYABLE_STAGES = new Set([
   'supervisor',
   'service_mapping',
   'process_attestation',
+  ...PROCESS_ATTESTATION_STAGES,
   'filesystem_attestation',
 ]);
 const TERMINAL_STAGES = new Set([
@@ -363,24 +382,6 @@ function hasExactKeys(value, expected) {
 }
 
 export function classifyTenantBoundaryEvidence(evidence) {
-  const processKeys = [
-    'daemon_service_mapping',
-    'daemon_supervisor_mount_namespace_match',
-    'daemon_supervisor_root_identity_match',
-    'daemon_supervisor_run_identity_match',
-    'daemon_supervisor_filesystem_stable',
-    'service_leader_mount_namespace_match',
-    'daemon_state_stable',
-    'root_daemon_outside_tenant_cgroup',
-    'tenant_service_identity_match',
-    'nginx_identity_match',
-    'watchdog_identity_match',
-    'tenant_service_cgroup_match',
-    'service_leader_cgroup_match',
-    'important_descendant_cgroup_match',
-    'service_state_stable',
-    'supervisor_state_stable',
-  ];
   const filesystemKeys = [
     'daemon_executable_match',
     'attestation_hash_match',
@@ -393,10 +394,20 @@ export function classifyTenantBoundaryEvidence(evidence) {
   if (
     evidence === null ||
     typeof evidence !== 'object' ||
-    Array.isArray(evidence) ||
-    !processKeys.every((key) => evidence[key] === true)
+    Array.isArray(evidence)
   ) {
     return { probe_ok: false, stage: 'process_attestation' };
+  }
+  // The daemon mapping also has an earlier dedicated terminal stage. Keep a
+  // malformed/false evidence value in the generic process bucket rather than
+  // reusing that terminal label as a retryable substage.
+  if (evidence.daemon_service_mapping !== true) {
+    return { probe_ok: false, stage: 'process_attestation' };
+  }
+  for (const stage of PROCESS_ATTESTATION_STAGES) {
+    if (evidence[stage] !== true) {
+      return { probe_ok: false, stage };
+    }
   }
   if (!filesystemKeys.every((key) => evidence[key] === true)) {
     return { probe_ok: false, stage: 'filesystem_attestation' };
