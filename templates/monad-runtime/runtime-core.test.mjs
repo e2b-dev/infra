@@ -1,8 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { Template } from 'e2b';
 import { RUNTIME_BOOTSTRAP_READY_COMMAND } from './template.mjs';
@@ -241,66 +238,35 @@ test('Dockerfile preserves and gates every tenant-facing Webtop longrun', async 
   assert.doesNotMatch(dockerfile, /\b(?:kasm|novnc|tigervnc)\b/i);
 });
 
-test('Dockerfile rewrites exactly one pinned Selkies launcher and fails closed on drift', async () => {
+test('Dockerfile transports the digest-bound Selkies rewrite helper without inline escaping', async () => {
   const dockerfile = await readFile(
     new URL('./e2b.Dockerfile', import.meta.url),
     'utf8',
   );
-  const rewriteBlock = dockerfile.match(
-    /RUN selkies_launcher=\/opt\/monad\/runtime\/libexec\/monad-webtop-svc-selkies[\s\S]*?(?=\n\nCOPY s6-overlay\/)/,
-  )?.[0];
-  assert.ok(rewriteBlock, 'the immutable copied launcher must have a dedicated rewrite gate');
-
-  const directory = await mkdtemp(join(tmpdir(), 'monad-selkies-rewrite-'));
-  const launcher = join(directory, 'monad-webtop-svc-selkies');
-  const binary = join(directory, 'selkies');
-  const runRewrite = () => {
-    execFileSync('/bin/bash', ['-c', rewriteBlock
-      .replace(/^RUN /, '')
-      .replace(/\\\n\s*/g, ' ')
-      .replaceAll(
-        '/opt/monad/runtime/libexec/monad-webtop-svc-selkies',
-        launcher,
-      )
-      .replaceAll('/lsiopy/bin/selkies', binary)
-      .replaceAll(
-        '"0:0:555"',
-        `"${process.getuid()}:${process.getgid()}:555"`,
-      )], {
-      encoding: 'utf8',
-    });
-    return readFile(launcher, 'utf8');
-  };
-
-  try {
-    await writeFile(binary, '#!/bin/sh\nexit 0\n');
-    await chmod(binary, 0o755);
-    await writeFile(
-      launcher,
-      '#!/bin/bash\nsetup\nexec s6-setuidgid abc \\\n  selkies \\\n    --addr 0.0.0.0 \\\n    --port 3000\n',
-    );
-    await chmod(launcher, 0o555);
-    assert.equal(
-      await runRewrite(),
-      `#!/bin/bash\nsetup\nexec s6-setuidgid abc \\\n  ${binary} \\\n    --addr 0.0.0.0 \\\n    --port 3000\n`,
-    );
-
-    for (const drifted of [
-      '#!/bin/bash\nexec s6-setuidgid abc \\\n  selkies \\\n  selkies \\\n    --port 3000\n',
-      '#!/bin/bash\nexec s6-setuidgid abc \\\n  /unexpected/selkies \\\n    --port 3000\n',
-    ]) {
-      await chmod(launcher, 0o644);
-      await writeFile(launcher, drifted);
-      await chmod(launcher, 0o555);
-      assert.throws(
-        () => runRewrite(),
-        /Command failed/,
-        'duplicate or changed upstream launchers must fail the image build',
-      );
-    }
-  } finally {
-    await rm(directory, { recursive: true, force: true });
+  const rendered = Template.toDockerfile(Template().fromDockerfile(dockerfile));
+  for (const value of [
+    'COPY selkies-launcher-rewrite.mjs /tmp/monad-selkies-launcher-rewrite.mjs',
+    'test -x /lsiopy/bin/selkies',
+    'rm -f /tmp/monad-selkies-launcher-rewrite.mjs',
+  ]) {
+    assert.match(dockerfile, new RegExp(value.replaceAll('/', '\\/')));
+    assert.match(rendered, new RegExp(value.replaceAll('/', '\\/')));
   }
+  assert.match(
+    dockerfile,
+    /node \/tmp\/monad-selkies-launcher-rewrite\.mjs \\\n\s*\/opt\/monad\/runtime\/libexec\/monad-webtop-svc-selkies/,
+  );
+  assert.match(
+    rendered,
+    /node \/tmp\/monad-selkies-launcher-rewrite\.mjs \/opt\/monad\/runtime\/libexec\/monad-webtop-svc-selkies/,
+  );
+  const renderedStart = rendered.indexOf(
+    'RUN test -x /lsiopy/bin/selkies',
+  );
+  const renderedEnd = rendered.indexOf('COPY s6-overlay/', renderedStart);
+  assert.ok(renderedStart >= 0 && renderedEnd > renderedStart);
+  const renderedRewrite = rendered.slice(renderedStart, renderedEnd);
+  assert.doesNotMatch(renderedRewrite, /node -e|split\(|join\(|expected_before/);
 });
 
 test('daemon longrun verifies the immutable runtime path and establishes one exact admission root before every exec', async () => {
@@ -418,10 +384,16 @@ test('template build readiness proves bootstrap wait and delegates desktop proof
   assert.doesNotMatch(definition, /\.setEnvs\(/);
   assert.doesNotMatch(definition, /8000\/health/);
   assert.equal(S6_SERVICE_FILES.length, 12);
-  assert.equal(RUNTIME_BUILD_FILES.length, 5);
+  assert.equal(RUNTIME_BUILD_FILES.length, 6);
   assert.ok(
     RUNTIME_BUILD_FILES.some((file) => file.pathname.endsWith('/runtime-preflight.mjs')),
     'native runtime preflight code must contribute to the immutable digest',
+  );
+  assert.ok(
+    RUNTIME_BUILD_FILES.some(
+      (file) => file.pathname.endsWith('/selkies-launcher-rewrite.mjs'),
+    ),
+    'the transported Selkies rewrite helper must contribute to the immutable digest',
   );
   const serviceFiles = await Promise.all(
     S6_SERVICE_FILES.map((file) => readFile(file, 'utf8')),
