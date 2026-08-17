@@ -295,11 +295,20 @@ test('rejects followed root or run replacement after namespace topology is pinne
   assert.deepEqual(classifyTenantBoundaryFilesystemStability(stable), {
     probe_ok: true,
   });
-  for (const overrides of [
-    { finalDaemonRoot: { dev: 1, ino: 9 } },
-    { finalSupervisorRoot: { dev: 9, ino: 2 } },
-    { finalDaemonRun: { dev: 3, ino: 9 } },
-    { finalSupervisorRun: { dev: 9, ino: 4 } },
+  const splitInitialTopology = classifyTenantBoundaryFilesystemStability({
+    ...stable,
+    initialSupervisorRoot: { dev: 1, ino: 9 },
+  });
+  assert.deepEqual(splitInitialTopology, {
+    probe_ok: false,
+    stage: 'daemon_supervisor_filesystem_stability',
+  });
+  assert.doesNotMatch(JSON.stringify(splitInitialTopology), /dev|ino|[1-9]/);
+  for (const [overrides, stage] of [
+    [{ finalDaemonRoot: { dev: 1, ino: 9 } }, 'daemon_root_identity_stable'],
+    [{ finalSupervisorRoot: { dev: 9, ino: 2 } }, 'supervisor_root_identity_stable'],
+    [{ finalDaemonRun: { dev: 3, ino: 9 } }, 'daemon_run_identity_stable'],
+    [{ finalSupervisorRun: { dev: 9, ino: 4 } }, 'supervisor_run_identity_stable'],
   ]) {
     const result = classifyTenantBoundaryFilesystemStability({
       ...stable,
@@ -307,7 +316,7 @@ test('rejects followed root or run replacement after namespace topology is pinne
     });
     assert.deepEqual(result, {
       probe_ok: false,
-      stage: 'daemon_supervisor_filesystem_stability',
+      stage,
     });
     assert.doesNotMatch(JSON.stringify(result), /dev|ino|[1-9]/);
   }
@@ -511,6 +520,40 @@ test('accepts only bounded safe marker convergence stages', async () => {
   }
 });
 
+test('accepts every fixed final filesystem access and identity stage as retryable evidence', async () => {
+  for (const stage of [
+    'daemon_root_final_access',
+    'supervisor_root_final_access',
+    'daemon_run_final_access',
+    'supervisor_run_final_access',
+    'daemon_root_identity_stable',
+    'supervisor_root_identity_stable',
+    'daemon_run_identity_stable',
+    'supervisor_run_identity_stable',
+  ]) {
+    let now = 0;
+    let calls = 0;
+    const sleeps = [];
+    const evidence = await waitForTenantBoundaryEvidence({
+      probe: async () => {
+        calls += 1;
+        if (calls === 1) return { probe_ok: false, stage };
+        return { probe_ok: true, evidence: { filesystem_stable: true } };
+      },
+      now: () => now,
+      sleep: async (milliseconds) => {
+        sleeps.push(milliseconds);
+        now += milliseconds;
+      },
+      timeoutMs: 1_000,
+      intervalMs: 100,
+    });
+    assert.deepEqual(evidence, { filesystem_stable: true });
+    assert.equal(calls, 2);
+    assert.deepEqual(sleeps, [100]);
+  }
+});
+
 test('retries a discarded cross-time filesystem sample and accepts only a later stable probe', async () => {
   let now = 0;
   let calls = 0;
@@ -521,7 +564,7 @@ test('retries a discarded cross-time filesystem sample and accepts only a later 
       if (calls === 1) {
         return {
           probe_ok: false,
-          stage: 'daemon_supervisor_filesystem_stability',
+          stage: 'daemon_root_identity_stable',
         };
       }
       return { probe_ok: true, evidence: { filesystem_stable: true } };
@@ -547,7 +590,7 @@ test('persistent cross-time filesystem instability remains fail-closed at the de
       calls += 1;
       return {
         probe_ok: false,
-        stage: 'daemon_supervisor_filesystem_stability',
+        stage: 'supervisor_run_identity_stable',
       };
     },
     now: () => now,
@@ -556,10 +599,10 @@ test('persistent cross-time filesystem instability remains fail-closed at the de
     intervalMs: 100,
   }), (error) => {
     assert.ok(error instanceof TenantBoundaryConvergenceError);
-    assert.equal(error.stage, 'daemon_supervisor_filesystem_stability');
+    assert.equal(error.stage, 'supervisor_run_identity_stable');
     assert.equal(
       error.message,
-      'tenant boundary did not converge at daemon_supervisor_filesystem_stability',
+      'tenant boundary did not converge at supervisor_run_identity_stable',
     );
     return true;
   });
@@ -581,6 +624,7 @@ test('fails closed immediately for denied, unexpected, and topology stages', asy
     'daemon_supervisor_mount_namespace',
     'daemon_supervisor_root_identity',
     'daemon_supervisor_run_identity',
+    'daemon_supervisor_filesystem_stability',
   ]) {
     let calls = 0;
     await assert.rejects(waitForTenantBoundaryEvidence({

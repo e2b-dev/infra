@@ -778,11 +778,15 @@ const markerExact =
   exactProcRootDirectory(supervisorPid, "/run/monad-admission", 0o700) &&
   exactProcRootDirectory(daemonPid, tenantCgroup) &&
   exactProcRootDirectory(supervisorPid, tenantCgroup);
-probeStage = "daemon_supervisor_filesystem_stability";
+probeStage = "daemon_root_final_access";
 const finalDaemonRootIdentity = statSync("/proc/" + daemonPid + "/root");
+probeStage = "supervisor_root_final_access";
 const finalSupervisorRootIdentity = statSync("/proc/" + supervisorPid + "/root");
+probeStage = "daemon_run_final_access";
 const finalDaemonRunIdentity = statSync("/proc/" + daemonPid + "/root/run");
+probeStage = "supervisor_run_final_access";
 const finalSupervisorRunIdentity = statSync("/proc/" + supervisorPid + "/root/run");
+probeStage = "daemon_supervisor_filesystem_stability";
 const filesystemStability = classifyBoundaryFilesystemStability({
   initialDaemonRoot: daemonRootIdentity,
   initialSupervisorRoot: supervisorRootIdentity,

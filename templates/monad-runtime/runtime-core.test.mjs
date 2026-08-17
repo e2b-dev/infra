@@ -500,6 +500,30 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
   assert.match(verifier, /daemon_supervisor_root_identity_match/);
   assert.match(verifier, /daemon_supervisor_run_identity_match/);
   assert.match(verifier, /daemon_supervisor_filesystem_stable/);
+  for (const stage of [
+    'daemon_root_final_access',
+    'supervisor_root_final_access',
+    'daemon_run_final_access',
+    'supervisor_run_final_access',
+  ]) {
+    assert.match(verifier, new RegExp(stage));
+  }
+  assert.match(
+    verifier,
+    /probeStage = "daemon_root_final_access";\s*const finalDaemonRootIdentity = statSync/,
+  );
+  assert.match(
+    verifier,
+    /probeStage = "supervisor_root_final_access";\s*const finalSupervisorRootIdentity = statSync/,
+  );
+  assert.match(
+    verifier,
+    /probeStage = "daemon_run_final_access";\s*const finalDaemonRunIdentity = statSync/,
+  );
+  assert.match(
+    verifier,
+    /probeStage = "supervisor_run_final_access";\s*const finalSupervisorRunIdentity = statSync/,
+  );
   assert.match(verifier, /service_leader_mount_namespace_match/);
   assert.match(verifier, /daemonRuntimeRootPath/);
   assert.match(verifier, /procRootPathChain/);
@@ -807,6 +831,14 @@ test('runtime verifier renders standalone bootstrap and tenant probes as valid s
     'daemon_supervisor_mount_namespace',
     'daemon_supervisor_root_identity',
     'daemon_supervisor_run_identity',
+    'daemon_root_final_access',
+    'supervisor_root_final_access',
+    'daemon_run_final_access',
+    'supervisor_run_final_access',
+    'daemon_root_identity_stable',
+    'supervisor_root_identity_stable',
+    'daemon_run_identity_stable',
+    'supervisor_run_identity_stable',
   ]) {
     assert.match(tenantScript, new RegExp(stage));
   }
