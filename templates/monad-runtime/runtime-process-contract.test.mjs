@@ -150,11 +150,21 @@ test('accepts only the pinned inert root watchdog leader with no children', () =
     leaderPid: 200,
     processes: [watchdog],
   }), true);
+  const uutilsWatchdog = {
+    ...watchdog,
+    executable: '/usr/lib/cargo/bin/coreutils/sleep',
+  };
+  assert.equal(verifyPinnedWatchdogProcesses({
+    leaderPid: 200,
+    processes: [uutilsWatchdog],
+  }), true);
   const standalone = (0, eval)(`(${verifyPinnedWatchdogProcesses.toString()})`);
   assert.equal(standalone({ leaderPid: 200, processes: [watchdog] }), true);
+  assert.equal(standalone({ leaderPid: 200, processes: [uutilsWatchdog] }), true);
   for (const processes of [
     [{ ...watchdog, identity: { uid: 0, gid: 0, groups: [] } }],
     [{ ...watchdog, executable: '/bin/bash' }],
+    [{ ...watchdog, executable: '/usr/lib/cargo/bin/coreutils/timeout' }],
     [{ ...watchdog, argv: ['sleep', '30'] }],
     [{ ...watchdog, environment: { RESTART_APP: 'true' } }],
     [{ ...watchdog, environment: {} }],

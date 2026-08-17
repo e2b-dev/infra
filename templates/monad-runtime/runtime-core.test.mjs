@@ -591,7 +591,11 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
   );
   assert.match(
     verifier,
-    /leaderSnapshot\.executable === "\/usr\/bin\/sleep"\s*\? stages\.missing\.argv/,
+    /WATCHDOG_SLEEP_EXECUTABLES\.includes\(leaderSnapshot\.executable\)\s*\? stages\.missing\.argv/,
+  );
+  assert.match(
+    verifier,
+    /const WATCHDOG_SLEEP_EXECUTABLES = Object\.freeze\(\[\s*"\/usr\/bin\/sleep",\s*"\/usr\/lib\/cargo\/bin\/coreutils\/sleep",\s*\]\)/,
   );
   assert.match(
     verifier,

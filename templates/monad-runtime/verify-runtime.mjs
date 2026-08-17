@@ -896,6 +896,10 @@ const importantDescendantStages = Object.freeze({
     cgroup: "important_descendant_xsettingsd_cgroup",
   }),
 });
+const WATCHDOG_SLEEP_EXECUTABLES = Object.freeze([
+  "/usr/bin/sleep",
+  "/usr/lib/cargo/bin/coreutils/sleep",
+]);
 const finalMatchers = {
   nginx: (value) => value.executable === "/usr/sbin/nginx",
   xorg: (value) => /(^|\/)Xvfb(\s|$)/.test(value.argv.join(" ")),
@@ -904,7 +908,7 @@ const finalMatchers = {
   selkies: (value) => value.argv.join(" ").includes("/lsiopy/bin/selkies"),
   de: (value) => /(^|\/)i3(\s|$)/.test(value.argv.join(" ")),
   watchdog: (value) =>
-    value.executable === "/usr/bin/sleep" &&
+    WATCHDOG_SLEEP_EXECUTABLES.includes(value.executable) &&
     JSON.stringify(value.argv) === JSON.stringify(["sleep", "infinity"]),
   xsettingsd: (value) => /(^|\/)xsettingsd(\s|$)/.test(value.argv.join(" ")),
 };
@@ -948,7 +952,7 @@ for (const name of serviceNames) {
     probeStage = name === "watchdog"
       ? snapshots.length > 1
         ? stages.missing.multi
-        : leaderSnapshot.executable === "/usr/bin/sleep"
+        : WATCHDOG_SLEEP_EXECUTABLES.includes(leaderSnapshot.executable)
           ? stages.missing.argv
           : leaderSnapshot.executable ===
               "/opt/monad/runtime/libexec/monad-tenant-admission"

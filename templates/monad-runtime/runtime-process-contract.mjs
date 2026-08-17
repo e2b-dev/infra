@@ -108,6 +108,10 @@ export function verifyPinnedNginxProcesses({ leaderPid, processes }) {
 }
 
 export function verifyPinnedWatchdogProcesses({ leaderPid, processes }) {
+  const watchdogSleepExecutables = [
+    '/usr/bin/sleep',
+    '/usr/lib/cargo/bin/coreutils/sleep',
+  ];
   const sameArray = (actual, expected) =>
     Array.isArray(actual) &&
     actual.length === expected.length &&
@@ -128,7 +132,7 @@ export function verifyPinnedWatchdogProcesses({ leaderPid, processes }) {
   }
   const [leader] = processes;
   return leader?.pid === leaderPid &&
-    leader.executable === '/usr/bin/sleep' &&
+    watchdogSleepExecutables.includes(leader.executable) &&
     sameArray(leader.argv, ['sleep', 'infinity']) &&
     leader.environment?.RESTART_APP === 'false' &&
     exactIdentity(leader.identity);
