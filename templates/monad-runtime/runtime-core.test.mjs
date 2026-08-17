@@ -552,13 +552,44 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
     'nginx', 'xorg', 'dbus', 'pulseaudio', 'selkies', 'de', 'watchdog',
     'xsettingsd',
   ]) {
-    for (const category of ['missing', 'access', 'cgroup']) {
+    for (const category of ['access', 'cgroup']) {
       assert.match(
         verifier,
         new RegExp(`${category}: "important_descendant_${service}_${category}"`),
       );
     }
+    const missingEntries = service === 'watchdog'
+      ? [
+          ['multi', 'important_descendant_watchdog_missing_multi'],
+          ['executable', 'important_descendant_watchdog_missing_executable'],
+          ['argv', 'important_descendant_watchdog_missing_argv'],
+        ]
+      : [
+          ['leaderOnly', `important_descendant_${service}_missing_leader_only`],
+          ['noMatch', `important_descendant_${service}_missing_no_match`],
+        ];
+    for (const [key, stage] of missingEntries) {
+      assert.match(verifier, new RegExp(`${key}: "${stage}"`));
+    }
+    assert.doesNotMatch(
+      verifier,
+      new RegExp(`"important_descendant_${service}_missing"`),
+    );
   }
+  assert.match(verifier, /probeStage = name === "watchdog"/);
+  assert.match(verifier, /snapshots\.length > 1\s*\? stages\.missing\.multi/);
+  assert.match(
+    verifier,
+    /const leaderSnapshot = snapshots\.find\(\s*\(value\) => value\.pid === serviceLeaders\[name\],\s*\)/,
+  );
+  assert.match(
+    verifier,
+    /leaderSnapshot\.executable === "\/usr\/bin\/sleep"\s*\? stages\.missing\.argv\s*: stages\.missing\.executable/,
+  );
+  assert.match(
+    verifier,
+    /snapshots\.length === 1\s*\? stages\.missing\.leaderOnly\s*: stages\.missing\.noMatch/,
+  );
   assert.match(verifier, /const processStartTime = \(value\) =>/);
   assert.match(verifier, /const stableProcessSnapshot = \(value\) =>/);
   assert.match(verifier, /beforeStartTime !== afterStartTime/);

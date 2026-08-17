@@ -559,7 +559,10 @@ test('accepts only fixed per-service important-descendant stages as retryable ev
     'nginx', 'xorg', 'dbus', 'pulseaudio', 'selkies', 'de', 'watchdog',
     'xsettingsd',
   ]) {
-    for (const category of ['missing', 'access', 'cgroup']) {
+    const missingCategories = service === 'watchdog'
+      ? ['missing_multi', 'missing_executable', 'missing_argv']
+      : ['missing_leader_only', 'missing_no_match'];
+    for (const category of [...missingCategories, 'access', 'cgroup']) {
       const stage = `important_descendant_${service}_${category}`;
       let now = 0;
       let calls = 0;
@@ -589,6 +592,18 @@ test('accepts only fixed per-service important-descendant stages as retryable ev
     timeoutMs: 1_000,
     intervalMs: 100,
   }), /invalid record/);
+  for (const retiredStage of [
+    'important_descendant_watchdog_missing',
+    'important_descendant_nginx_missing',
+  ]) {
+    await assert.rejects(waitForTenantBoundaryEvidence({
+      probe: async () => ({ probe_ok: false, stage: retiredStage }),
+      now: () => 0,
+      sleep: async () => assert.fail('retired unsplit missing stage must not retry'),
+      timeoutMs: 1_000,
+      intervalMs: 100,
+    }), /invalid record/);
+  }
 });
 
 test('retries a discarded cross-time filesystem sample and accepts only a later stable probe', async () => {

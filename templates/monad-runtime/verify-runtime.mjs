@@ -809,42 +809,67 @@ const finalServiceLeaderMountNamespaceMatch = serviceNames.every((name) =>
 );
 const importantDescendantStages = Object.freeze({
   nginx: Object.freeze({
-    missing: "important_descendant_nginx_missing",
+    missing: Object.freeze({
+      leaderOnly: "important_descendant_nginx_missing_leader_only",
+      noMatch: "important_descendant_nginx_missing_no_match",
+    }),
     access: "important_descendant_nginx_access",
     cgroup: "important_descendant_nginx_cgroup",
   }),
   xorg: Object.freeze({
-    missing: "important_descendant_xorg_missing",
+    missing: Object.freeze({
+      leaderOnly: "important_descendant_xorg_missing_leader_only",
+      noMatch: "important_descendant_xorg_missing_no_match",
+    }),
     access: "important_descendant_xorg_access",
     cgroup: "important_descendant_xorg_cgroup",
   }),
   dbus: Object.freeze({
-    missing: "important_descendant_dbus_missing",
+    missing: Object.freeze({
+      leaderOnly: "important_descendant_dbus_missing_leader_only",
+      noMatch: "important_descendant_dbus_missing_no_match",
+    }),
     access: "important_descendant_dbus_access",
     cgroup: "important_descendant_dbus_cgroup",
   }),
   pulseaudio: Object.freeze({
-    missing: "important_descendant_pulseaudio_missing",
+    missing: Object.freeze({
+      leaderOnly: "important_descendant_pulseaudio_missing_leader_only",
+      noMatch: "important_descendant_pulseaudio_missing_no_match",
+    }),
     access: "important_descendant_pulseaudio_access",
     cgroup: "important_descendant_pulseaudio_cgroup",
   }),
   selkies: Object.freeze({
-    missing: "important_descendant_selkies_missing",
+    missing: Object.freeze({
+      leaderOnly: "important_descendant_selkies_missing_leader_only",
+      noMatch: "important_descendant_selkies_missing_no_match",
+    }),
     access: "important_descendant_selkies_access",
     cgroup: "important_descendant_selkies_cgroup",
   }),
   de: Object.freeze({
-    missing: "important_descendant_de_missing",
+    missing: Object.freeze({
+      leaderOnly: "important_descendant_de_missing_leader_only",
+      noMatch: "important_descendant_de_missing_no_match",
+    }),
     access: "important_descendant_de_access",
     cgroup: "important_descendant_de_cgroup",
   }),
   watchdog: Object.freeze({
-    missing: "important_descendant_watchdog_missing",
+    missing: Object.freeze({
+      multi: "important_descendant_watchdog_missing_multi",
+      executable: "important_descendant_watchdog_missing_executable",
+      argv: "important_descendant_watchdog_missing_argv",
+    }),
     access: "important_descendant_watchdog_access",
     cgroup: "important_descendant_watchdog_cgroup",
   }),
   xsettingsd: Object.freeze({
-    missing: "important_descendant_xsettingsd_missing",
+    missing: Object.freeze({
+      leaderOnly: "important_descendant_xsettingsd_missing_leader_only",
+      noMatch: "important_descendant_xsettingsd_missing_no_match",
+    }),
     access: "important_descendant_xsettingsd_access",
     cgroup: "important_descendant_xsettingsd_cgroup",
   }),
@@ -894,8 +919,19 @@ for (const name of serviceNames) {
   serviceProcessSnapshots[name] = snapshots;
   finalProcessSnapshots[name] = snapshots.filter(finalMatchers[name]);
   finalProcesses[name] = finalProcessSnapshots[name].map((value) => value.pid);
-  probeStage = stages.missing;
   if (finalProcessSnapshots[name].length === 0) {
+    const leaderSnapshot = snapshots.find(
+      (value) => value.pid === serviceLeaders[name],
+    );
+    probeStage = name === "watchdog"
+      ? snapshots.length > 1
+        ? stages.missing.multi
+        : leaderSnapshot.executable === "/usr/bin/sleep"
+          ? stages.missing.argv
+          : stages.missing.executable
+      : snapshots.length === 1
+        ? stages.missing.leaderOnly
+        : stages.missing.noMatch;
     process.stdout.write(JSON.stringify({ probe_ok: false, stage: probeStage }));
     process.exit(0);
   }

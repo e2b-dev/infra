@@ -20,7 +20,16 @@ const IMPORTANT_DESCENDANT_STAGES = Object.freeze([
   'nginx', 'xorg', 'dbus', 'pulseaudio', 'selkies', 'de', 'watchdog',
   'xsettingsd',
 ].flatMap((service) => [
-  `important_descendant_${service}_missing`,
+  ...(service === 'watchdog'
+    ? [
+        'important_descendant_watchdog_missing_multi',
+        'important_descendant_watchdog_missing_executable',
+        'important_descendant_watchdog_missing_argv',
+      ]
+    : [
+        `important_descendant_${service}_missing_leader_only`,
+        `important_descendant_${service}_missing_no_match`,
+      ]),
   `important_descendant_${service}_access`,
   `important_descendant_${service}_cgroup`,
 ]));
