@@ -560,7 +560,15 @@ test('accepts only fixed per-service important-descendant stages as retryable ev
     'xsettingsd',
   ]) {
     const missingCategories = service === 'watchdog'
-      ? ['missing_multi', 'missing_executable', 'missing_argv']
+      ? [
+          'missing_multi',
+          'missing_executable_helper_ready_absent',
+          'missing_executable_helper_ready_present',
+          'missing_executable_helper_ready_error',
+          'missing_executable_shell',
+          'missing_executable_other',
+          'missing_argv',
+        ]
       : ['missing_leader_only', 'missing_no_match'];
     for (const category of [...missingCategories, 'access', 'cgroup']) {
       const stage = `important_descendant_${service}_${category}`;
@@ -594,6 +602,8 @@ test('accepts only fixed per-service important-descendant stages as retryable ev
   }), /invalid record/);
   for (const retiredStage of [
     'important_descendant_watchdog_missing',
+    'important_descendant_watchdog_missing_executable',
+    'important_descendant_watchdog_missing_executable_helper',
     'important_descendant_nginx_missing',
   ]) {
     await assert.rejects(waitForTenantBoundaryEvidence({

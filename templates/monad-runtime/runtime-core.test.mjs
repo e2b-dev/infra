@@ -561,7 +561,11 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
     const missingEntries = service === 'watchdog'
       ? [
           ['multi', 'important_descendant_watchdog_missing_multi'],
-          ['executable', 'important_descendant_watchdog_missing_executable'],
+          ['executableHelperReadyAbsent', 'important_descendant_watchdog_missing_executable_helper_ready_absent'],
+          ['executableHelperReadyPresent', 'important_descendant_watchdog_missing_executable_helper_ready_present'],
+          ['executableHelperReadyError', 'important_descendant_watchdog_missing_executable_helper_ready_error'],
+          ['executableShell', 'important_descendant_watchdog_missing_executable_shell'],
+          ['executableOther', 'important_descendant_watchdog_missing_executable_other'],
           ['argv', 'important_descendant_watchdog_missing_argv'],
         ]
       : [
@@ -584,7 +588,23 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
   );
   assert.match(
     verifier,
-    /leaderSnapshot\.executable === "\/usr\/bin\/sleep"\s*\? stages\.missing\.argv\s*: stages\.missing\.executable/,
+    /leaderSnapshot\.executable === "\/usr\/bin\/sleep"\s*\? stages\.missing\.argv/,
+  );
+  assert.match(
+    verifier,
+    /"\/opt\/monad\/runtime\/libexec\/monad-tenant-admission"\s*\? supervisedAdmissionReadyState\(\) === "present"/,
+  );
+  assert.match(
+    verifier,
+    /const supervisedAdmissionReadyState = \(\) =>/,
+  );
+  assert.match(
+    verifier,
+    /"\/root\/run\/monad-admission\/tenant-cgroup-ready"/,
+  );
+  assert.match(
+    verifier,
+    /leaderSnapshot\.executable === "\/usr\/bin\/bash" \|\|\s*leaderSnapshot\.executable === "\/bin\/bash"\s*\? stages\.missing\.executableShell\s*: stages\.missing\.executableOther/,
   );
   assert.match(
     verifier,

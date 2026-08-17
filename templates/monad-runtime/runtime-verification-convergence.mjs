@@ -23,7 +23,11 @@ const IMPORTANT_DESCENDANT_STAGES = Object.freeze([
   ...(service === 'watchdog'
     ? [
         'important_descendant_watchdog_missing_multi',
-        'important_descendant_watchdog_missing_executable',
+        'important_descendant_watchdog_missing_executable_helper_ready_absent',
+        'important_descendant_watchdog_missing_executable_helper_ready_present',
+        'important_descendant_watchdog_missing_executable_helper_ready_error',
+        'important_descendant_watchdog_missing_executable_shell',
+        'important_descendant_watchdog_missing_executable_other',
         'important_descendant_watchdog_missing_argv',
       ]
     : [

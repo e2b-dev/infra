@@ -807,6 +807,17 @@ const finalServiceLeaderMountNamespaceMatch = serviceNames.every((name) =>
   readlinkSync("/proc/" + serviceLeaders[name] + "/ns/mnt") ===
     supervisorMountNamespace,
 );
+const supervisedAdmissionReadyState = () => {
+  try {
+    statSync(
+      "/proc/" + supervisorPid +
+        "/root/run/monad-admission/tenant-cgroup-ready",
+    );
+    return "present";
+  } catch (error) {
+    return error && error.code === "ENOENT" ? "absent" : "error";
+  }
+};
 const importantDescendantStages = Object.freeze({
   nginx: Object.freeze({
     missing: Object.freeze({
@@ -859,7 +870,11 @@ const importantDescendantStages = Object.freeze({
   watchdog: Object.freeze({
     missing: Object.freeze({
       multi: "important_descendant_watchdog_missing_multi",
-      executable: "important_descendant_watchdog_missing_executable",
+      executableHelperReadyAbsent: "important_descendant_watchdog_missing_executable_helper_ready_absent",
+      executableHelperReadyPresent: "important_descendant_watchdog_missing_executable_helper_ready_present",
+      executableHelperReadyError: "important_descendant_watchdog_missing_executable_helper_ready_error",
+      executableShell: "important_descendant_watchdog_missing_executable_shell",
+      executableOther: "important_descendant_watchdog_missing_executable_other",
       argv: "important_descendant_watchdog_missing_argv",
     }),
     access: "important_descendant_watchdog_access",
@@ -928,7 +943,17 @@ for (const name of serviceNames) {
         ? stages.missing.multi
         : leaderSnapshot.executable === "/usr/bin/sleep"
           ? stages.missing.argv
-          : stages.missing.executable
+          : leaderSnapshot.executable ===
+              "/opt/monad/runtime/libexec/monad-tenant-admission"
+            ? supervisedAdmissionReadyState() === "present"
+              ? stages.missing.executableHelperReadyPresent
+              : supervisedAdmissionReadyState() === "absent"
+                ? stages.missing.executableHelperReadyAbsent
+                : stages.missing.executableHelperReadyError
+            : leaderSnapshot.executable === "/usr/bin/bash" ||
+                leaderSnapshot.executable === "/bin/bash"
+              ? stages.missing.executableShell
+              : stages.missing.executableOther
       : snapshots.length === 1
         ? stages.missing.leaderOnly
         : stages.missing.noMatch;
