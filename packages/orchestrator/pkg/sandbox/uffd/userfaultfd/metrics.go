@@ -7,6 +7,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -43,8 +44,8 @@ type pageClass uint8
 
 const (
 	pageClassNew      pageClass = iota // block.NotPresent: pulled from the source chunker
-	pageClassZero                      // block.Zero: zero-filled
-	pageClassResident                  // block.Dirty: already present, short-circuited
+	pageClassZero                      // block.Zero / block.Removed: zero-filled
+	pageClassResident                  // block.Dirty / block.Clean: already present, short-circuited
 	pageClassUnknown                   // classification failed (unexpected tracker state)
 	numPageClass
 )
@@ -58,7 +59,7 @@ const (
 	faultResultDeferred                     // EAGAIN: must be retried later
 	faultResultDiscarded                    // ESRCH: faulting thread gone, retry pointless
 	faultResultError                        // serving failed
-	faultResultSkipped                      // prefault only: tracker already Dirty/Zero — prefetch arrived too late
+	faultResultSkipped                      // prefault only: tracker not NotPresent — prefetch arrived too late (or page was removed)
 	numFaultResult
 )
 
@@ -201,6 +202,10 @@ const (
 	wpResolveClosed
 	// wpResolveError: the unprotect ioctl failed.
 	wpResolveError
+	// wpResolveStale: a REMOVE raced ahead of the resolve and the presence
+	// probe confirmed the page absent; it was zero-installed armed and the
+	// writer woken — the retried write WP-faults and promotes normally.
+	wpResolveStale
 	numWPResolveOutcome
 )
 
@@ -215,6 +220,7 @@ func buildWPResolveAttrs() [numGenerationBucket][numWPResolveOutcome]metric.Meas
 		wpResolveDeferred: "deferred",
 		wpResolveClosed:   "closed",
 		wpResolveError:    "error",
+		wpResolveStale:    "stale_removed",
 	}
 
 	var t [numGenerationBucket][numWPResolveOutcome]metric.MeasurementOption
@@ -223,6 +229,39 @@ func buildWPResolveAttrs() [numGenerationBucket][numWPResolveOutcome]metric.Meas
 			t[g][o] = telemetry.PrecomputeAttrs(
 				attribute.String("generation_bucket", generationBucketNames[g]),
 				attribute.String("result", outcomeNames[o]),
+			)
+		}
+	}
+
+	return t
+}
+
+// wpPromoteMetricName counts tracker dirty-promotions performed by WP fault
+// resolutions, tagged by the state the page was promoted from. This is the
+// write signal the tracker-based dirty source relies on. The "removed"
+// bucket stays at zero by construction: a stale WP fault that raced a
+// REMOVE returns from the resolve (wp_resolve result="stale_removed")
+// before the promotion, under the same lock that excludes the REMOVE
+// batch — a non-zero reading here means that guard was bypassed.
+const wpPromoteMetricName = "orchestrator.sandbox.uffd.wp_promote"
+
+var wpPromoteCount = utils.Must(meter.Int64Counter(wpPromoteMetricName,
+	metric.WithDescription("Tracker dirty-promotions from synchronous write-protect faults, by prior page state"),
+))
+
+// wpPromoteAttrs holds a precomputed metric.MeasurementOption per
+// (generationBucket, prior block.State). Sized by block.NumStates and named
+// by State.String(), both owned by the block package next to the enum, so a
+// new state cannot leave this table short or unnamed.
+var wpPromoteAttrs = buildWPPromoteAttrs()
+
+func buildWPPromoteAttrs() [numGenerationBucket][block.NumStates]metric.MeasurementOption {
+	var t [numGenerationBucket][block.NumStates]metric.MeasurementOption
+	for g := range generationBucketNames {
+		for s := range block.NumStates {
+			t[g][s] = telemetry.PrecomputeAttrs(
+				attribute.String("generation_bucket", generationBucketNames[g]),
+				attribute.String("from_state", block.State(s).String()),
 			)
 		}
 	}

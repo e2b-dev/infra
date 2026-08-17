@@ -59,6 +59,8 @@ func main() {
 	noPrefetch := flag.Bool("no-prefetch", false, "disable memory prefetching")
 	noEgress := flag.Bool("no-egress", false, "block all guest internet egress")
 	disableMemfd := flag.Bool("disable-memfd", false, "disable memfd-backed guest memory")
+	syncWP := flag.Bool("sync-wp", false, "resume with synchronous userfault write-protect delivery (use_sync_wp; requires an FC build that accepts the field)")
+	trackerDirty := flag.Bool("tracker-dirty", false, "serve the pause dirty set from the page tracker instead of the pagemap RPC (implies -sync-wp)")
 	memfileDiffDedup := flag.Bool("memfile-diff-dedup", false, "enable 4KiB-page deduplication of memfile diff against the base template")
 	verbose := flag.Bool("v", false, "verbose logging")
 	console := flag.Bool("console", false, "forward Firecracker's output and the guest kernel serial console (tty) to stdout (fresh boot / -reboot only)")
@@ -112,6 +114,14 @@ func main() {
 
 	if *disableMemfd {
 		featureflags.OverrideBoolFlag(featureflags.UseMemFdFlag, false)
+	}
+
+	if *syncWP || *trackerDirty {
+		featureflags.OverrideBoolFlag(featureflags.UseSyncWPFlag, true)
+	}
+
+	if *trackerDirty {
+		featureflags.OverrideBoolFlag(featureflags.SyncWPTrackerDirtyFlag, true)
 	}
 
 	if *collapseEnvdHeap {

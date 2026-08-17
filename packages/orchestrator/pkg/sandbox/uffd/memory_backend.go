@@ -13,7 +13,12 @@ import (
 )
 
 type MemoryBackend interface {
-	DiffMetadata(ctx context.Context, f *fc.Process) (*header.DiffMetadata, error)
+	// DiffMetadata returns the pause-time dirty/empty page sets. With
+	// useTrackerDirty set, the UFFD backend derives them from its own page
+	// tracker (installs + synchronous WP-fault promotions) without calling
+	// Firecracker; callers must only set it for sandboxes resumed with
+	// use_sync_wp — under WP_ASYNC the tracker never sees guest writes.
+	DiffMetadata(ctx context.Context, f *fc.Process, useTrackerDirty bool) (*header.DiffMetadata, error)
 	PrefetchData(ctx context.Context) (block.PrefetchData, error)
 	// Prefault returns whether this call installed the page (false on
 	// skipped/present/deferred nil-error paths); see Userfaultfd.Prefault.

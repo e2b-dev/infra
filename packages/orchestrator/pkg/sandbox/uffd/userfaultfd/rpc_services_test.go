@@ -197,8 +197,9 @@ func (u *Userfaultfd) pageStateEntries() ([]testharness.PageStateEntry, error) {
 	u.settleRequests.Lock()
 	defer u.settleRequests.Unlock()
 
-	bmDirty, bmZero := u.pageTracker.Export()
-	entries := make([]testharness.PageStateEntry, 0, bmDirty.GetCardinality()+bmZero.GetCardinality())
+	bmDirty, bmZero, bmRemoved, bmClean := u.pageTracker.ExportStates()
+	entries := make([]testharness.PageStateEntry, 0,
+		bmDirty.GetCardinality()+bmZero.GetCardinality()+bmRemoved.GetCardinality()+bmClean.GetCardinality())
 	emit := func(bm *roaring.Bitmap, state block.State) {
 		for _, idx := range bm.ToArray() {
 			entries = append(entries, testharness.PageStateEntry{
@@ -209,6 +210,8 @@ func (u *Userfaultfd) pageStateEntries() ([]testharness.PageStateEntry, error) {
 	}
 	emit(bmDirty, block.Dirty)
 	emit(bmZero, block.Zero)
+	emit(bmRemoved, block.Removed)
+	emit(bmClean, block.Clean)
 
 	return entries, nil
 }

@@ -319,6 +319,11 @@ type Sandbox struct {
 	process      *fc.Process
 	cgroupHandle *cgroup.CgroupHandle
 
+	// useSyncWP records whether this sandbox was resumed with synchronous
+	// userfault write-protect delivery (use_sync_wp on snapshot load). Only
+	// then can the page tracker serve as the pause-time dirty source.
+	useSyncWP bool
+
 	Template template.Template
 
 	// liveEnvdVersion is the version the running envd reported on its most recent
@@ -1259,6 +1264,12 @@ func (f *Factory) ResumeSandbox(
 		}
 		resumeWPModeCounter.Add(ctx, 1, metric.WithAttributes(attribute.String("mode", wpMode)))
 	}
+	// Remembered for pause: only a sync-WP sandbox may use the page tracker
+	// as its dirty source (see processMemorySnapshot).
+	sbx.useSyncWP = useSyncWP
+	// The backend records its own mode so DiffMetadata can refuse the
+	// tracker dirty source for a WP_ASYNC sandbox (fail closed).
+	fcUffd.SetSyncWP(useSyncWP)
 
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
 	// This is to prevent race condition of reporting unhealthy sandbox
@@ -1818,7 +1829,14 @@ func (s *Sandbox) processMemorySnapshot(ctx context.Context, buildID uuid.UUID) 
 		}
 	}
 
-	memfileDiffMetadata, err := s.Resources.memory.DiffMetadata(ctx, s.process)
+	// Dirty-source selection: a sandbox resumed with use_sync_wp can derive
+	// the dirty set from the page tracker and skip FC's pagemap RPC. The kill
+	// switch is evaluated fresh at each pause, so flipping it off reverts
+	// running sandboxes to the pagemap source without a redeploy.
+	useTrackerDirty := s.useSyncWP &&
+		s.featureFlags.BoolFlag(ctx, featureflags.SyncWPTrackerDirtyFlag, sandboxLDContext(s.Runtime, s.Config))
+
+	memfileDiffMetadata, err := s.Resources.memory.DiffMetadata(ctx, s.process, useTrackerDirty)
 	if err != nil {
 		return MemorySnapshot{}, fmt.Errorf("failed to get memfile metadata: %w", err)
 	}

@@ -158,6 +158,19 @@ var (
 	// fields on snapshot load, so a mismatch fails the resume loudly.
 	UseSyncWPFlag = NewBoolFlag("use-sync-wp", false)
 
+	// SyncWPTrackerDirtyFlag derives the pause-time dirty set from the
+	// orchestrator's page tracker (installs + synchronous WP-fault
+	// promotions) instead of Firecracker's GetDirtyMemory pagemap scan,
+	// skipping that RPC entirely. Only consulted for sandboxes resumed with
+	// UseSyncWPFlag on — under WP_ASYNC the kernel clears protections
+	// in-place and the tracker never sees guest writes. Evaluated fresh at
+	// each pause, so flipping it off immediately reverts running sandboxes to
+	// the pagemap source (kill switch). Burn-in gate before enabling: the
+	// dirty-source divergence log (emitted while this flag is off) must
+	// show pagemap_only == 0 for sync-WP sandboxes — a nonzero count means
+	// the tracker missed a write and would corrupt the snapshot.
+	SyncWPTrackerDirtyFlag = NewBoolFlag("sync-wp-tracker-dirty", false)
+
 	// MemfdBackgroundCopyFlag streams the memfd into the snapshot cache on
 	// a goroutine so Pause returns as soon as the diff metadata is written.
 	// Only takes effect when UseMemFdFlag is also on.

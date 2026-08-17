@@ -45,6 +45,13 @@ type Uffd struct {
 	memfd      atomic.Pointer[block.Memfd]
 	handler    utils.SetOnce[*userfaultfd.Userfaultfd]
 	fdExit     utils.SetOnce[*fdexit.FdExit]
+
+	// syncWP records whether the paired Firecracker was resumed with
+	// use_sync_wp (synchronous WP fault delivery). Set once at resume from
+	// the same decision passed to fc.Resume; the backend owns its mode so
+	// DiffMetadata can refuse the tracker dirty source for a WP_ASYNC
+	// sandbox instead of trusting the caller's comment-enforced precondition.
+	syncWP atomic.Bool
 }
 
 var _ MemoryBackend = (*Uffd)(nil)
@@ -58,6 +65,11 @@ func New(memfile block.ReadonlyDevice, socketPath string) *Uffd {
 		handler:    *utils.NewSetOnce[*userfaultfd.Userfaultfd](),
 		fdExit:     *utils.NewSetOnce[*fdexit.FdExit](),
 	}
+}
+
+// SetSyncWP records the sandbox's write-protect delivery mode; see the field.
+func (u *Uffd) SetSyncWP(v bool) {
+	u.syncWP.Store(v)
 }
 
 func (u *Uffd) Prefault(ctx context.Context, offset int64, data []byte) (installed bool, e error) {
@@ -247,16 +259,66 @@ func (u *Uffd) Exit() *utils.ErrorOnce {
 // DiffMetadata waits for the current requests to finish and returns the dirty pages.
 //
 // It *MUST* be only called after the sandbox was successfully paused via API and after the snapshot endpoint was called.
-func (u *Uffd) DiffMetadata(ctx context.Context, f *fc.Process) (*header.DiffMetadata, error) {
+//
+// With useTrackerDirty set (sync-WP sandboxes only, behind the
+// sync-wp-tracker-dirty kill switch) the dirty and empty sets come entirely
+// from the page tracker — installs plus synchronous WP-fault promotions —
+// and Firecracker's GetDirtyMemory pagemap scan is skipped. Otherwise the
+// pagemap RPC stays the dirty source and the tracker view is only compared
+// against it (the divergence telemetry below: the dirty_divergence metric
+// and the per-pause log line), which doubles as the burn-in gate for
+// enabling the tracker source: pagemap_only must be zero for sync-WP
+// sandboxes, since a page only the pagemap sees dirty is a write the tracker
+// missed (snapshot corruption if the RPC were dropped). Flag off is thus the
+// dual-source shadow mode: both views are computed each pause and compared,
+// with the pagemap staying authoritative.
+func (u *Uffd) DiffMetadata(ctx context.Context, f *fc.Process, useTrackerDirty bool) (*header.DiffMetadata, error) {
 	handler, err := u.handler.WaitWithContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get uffd: %w", err)
 	}
 
-	// Settle in-flight UFFD workers (and the REMOVE batch) before sampling
-	// FC's pagemap, so a Zero→Write install can't slip in between and escape
-	// both bitmaps.
+	// Settle in-flight UFFD workers (WP resolves and the REMOVE batch
+	// included) before reading the dirty set, so a Zero→Write install or a
+	// pending promotion can't slip in after the readout. The vCPUs are
+	// paused, so no new faults arrive after the drain.
 	faulted, empty := handler.ExportPageStates()
+
+	// The build this sandbox resumed FROM, to correlate divergence readings
+	// with a template/build without a Loki join.
+	var buildID string
+	if u.memfile != nil {
+		if h := u.memfile.Header(); h != nil && h.Metadata != nil {
+			buildID = h.Metadata.BuildId.String()
+		}
+	}
+
+	if useTrackerDirty {
+		// Fail closed: under WP_ASYNC no WP events reach the serve loop, so
+		// the tracker misses every post-install guest write — a caller bug
+		// here must be a loud pause failure, not a silently corrupt snapshot.
+		if !u.syncWP.Load() {
+			return nil, errors.New("tracker dirty source requested for a sandbox without sync-WP fault delivery")
+		}
+
+		// The tracker state bitmaps are disjoint by invariant, so the empty
+		// set (zero ∪ removed) never intersects the dirty set. Enforce it
+		// anyway: downstream MergeMappings lets EMPTY win on overlap, which
+		// would restore a written page as zeros — if the invariant ever
+		// breaks, dirty must win (mirrors the pagemap branch below).
+		empty.AndNot(faulted)
+
+		handler.Logger().Info(ctx, "dirty source: page tracker (sync-WP)",
+			zap.String("build_id", buildID),
+			zap.Uint64("tracker_dirty_pages", faulted.GetCardinality()),
+			zap.Uint64("tracker_empty_pages", empty.GetCardinality()))
+
+		return &header.DiffMetadata{
+			BlockSize: handler.PageSize(),
+			Dirty:     faulted,
+			Empty:     empty,
+		}, nil
+	}
 
 	diff, err := f.DirtyMemory(ctx, handler.PageSize())
 	if err != nil {
@@ -264,33 +326,30 @@ func (u *Uffd) DiffMetadata(ctx context.Context, f *fc.Process) (*header.DiffMet
 	}
 
 	// Dirty-source divergence telemetry: compare the page tracker's view with
-	// the pagemap readout, as burn-in evidence for eventually retiring the
-	// DirtyMemory RPC in favor of the tracker.
-	//   tracker_only: tracker Dirty, pagemap clean — expected for
-	//     prefault-installed pages that were never written (installed WP-set,
-	//     but recorded Dirty by the serve tracker).
+	// the pagemap readout, as burn-in evidence for the tracker source above.
+	//   tracker_only: tracker Dirty, pagemap clean — should converge to zero
+	//     now that MODE_WP installs are recorded Clean instead of Dirty.
 	//   pagemap_only: pagemap dirty, tracker unaware — expected under WP_ASYNC
-	//     builds (in-kernel WP clears deliver no event). Under sync-WP one
-	//     class remains: a zero-installed page (read fault on a hole; tracker
-	//     keeps it Zero so the diff can mark it Empty) that the guest later
-	//     writes — the WP resolve unprotects but does not promote it. The
-	//     pagemap is the dirty source and dirty wins over empty below, so
-	//     such pages are exported correctly; the follow-up that makes the
-	//     tracker the dirty source promotes them on the WP resolve instead.
-	// Emitted only when sync-WP actually delivered faults this run: under
-	// WP_ASYNC the pagemap diverges from the tracker on every pause by
-	// design, and recording that fleet-wide would be pure noise — the burn-in
-	// this telemetry exists for is the sync mode.
-	if handler.WPFaultsResolved() > 0 {
+	//     (in-kernel WP clears deliver no event); must be zero under sync-WP,
+	//     where every clear passes through the serve loop and promotes.
+	// Gated on the sandbox's MODE, not on WPFaultsResolved() > 0: a sync-WP
+	// sandbox whose WP delivery silently broke resolves zero faults and has
+	// massive pagemap_only divergence — exactly the case the burn-in exists
+	// to catch, and exactly the case a fault-count gate would suppress.
+	// Under WP_ASYNC the pagemap diverges on every pause by design, so
+	// those sandboxes stay silent.
+	if u.syncWP.Load() {
 		trackerOnly, pagemapOnly, pagemapDirty := divergenceCardinalities(faulted, diff.Dirty)
 		dirtyDivergencePages.Record(ctx, int64(trackerOnly), dirtyDivergenceAttrs["tracker_only"])
 		dirtyDivergencePages.Record(ctx, int64(pagemapOnly), dirtyDivergenceAttrs["pagemap_only"])
 		dirtyDivergencePages.Record(ctx, int64(pagemapDirty), dirtyDivergenceAttrs["pagemap_dirty"])
 		handler.Logger().Info(ctx, "dirty-source divergence (tracker vs pagemap)",
+			zap.String("build_id", buildID),
 			zap.Uint64("tracker_only_pages", trackerOnly),
 			zap.Uint64("pagemap_only_pages", pagemapOnly),
 			zap.Uint64("tracker_dirty_pages", faulted.GetCardinality()),
-			zap.Uint64("pagemap_dirty_pages", pagemapDirty))
+			zap.Uint64("pagemap_dirty_pages", pagemapDirty),
+			zap.Int64("wp_faults_resolved", handler.WPFaultsResolved()))
 	}
 
 	// Pages that were zero-installed and later written show up in diff.Dirty —
