@@ -496,6 +496,19 @@ const exactIdentity = (raw, expected) => {
     gids.length === 4 && gids.every((value) => value === expected.gid) &&
     JSON.stringify(groups(raw)) === JSON.stringify(expected.groups);
 };
+const attestedTenantIdentity = { uid: 911, gid: 1001, groups: [100] };
+const supervisedServiceIdentity = {
+  uid: 911,
+  gid: 1001,
+  groups: [100, 1001],
+};
+const exactAttestedTenantIdentity = (value) =>
+  value?.uid === attestedTenantIdentity.uid &&
+  value?.gid === attestedTenantIdentity.gid &&
+  JSON.stringify(value?.groups) ===
+    JSON.stringify(attestedTenantIdentity.groups);
+const exactSupervisedServiceIdentity = (raw) =>
+  exactIdentity(raw, supervisedServiceIdentity);
 const observedIdentity = (raw) => {
   const uids = ids(raw, "Uid");
   const gids = ids(raw, "Gid");
@@ -700,7 +713,6 @@ const finalProcesses = Object.fromEntries(serviceNames.map((name) => [
   name,
   serviceTrees[name].filter(finalMatchers[name]),
 ]));
-const expectedIdentity = { uid: 911, gid: 1001, groups: [100] };
 const daemonStatus = status(daemonPid);
 const nonRootFinalServices = ["xorg", "dbus", "pulseaudio", "selkies", "de", "xsettingsd"];
 const nginxIdentityMatch = verifyPinnedNginxProcesses({
@@ -830,15 +842,13 @@ const boundaryEvidence = {
     attestation.daemon?.sha256 === daemonSha256 &&
     attestation.admission_helper?.sha256 === admissionHelperSha256,
   attestation_identity_match:
-    attestation.tenant?.uid === expectedIdentity.uid &&
-    attestation.tenant?.gid === expectedIdentity.gid &&
-    JSON.stringify(attestation.tenant?.groups) === JSON.stringify(expectedIdentity.groups) &&
+    exactAttestedTenantIdentity(attestation.tenant) &&
     JSON.stringify(attestation.tenant?.services) === JSON.stringify({
-      chromium: expectedIdentity.uid,
-      git: expectedIdentity.uid,
-      opencode: expectedIdentity.uid,
-      selkies: expectedIdentity.uid,
-      xorg: expectedIdentity.uid,
+      chromium: attestedTenantIdentity.uid,
+      git: attestedTenantIdentity.uid,
+      opencode: attestedTenantIdentity.uid,
+      selkies: attestedTenantIdentity.uid,
+      xorg: attestedTenantIdentity.uid,
     }),
   attestation_files_exact: attestationFilesExact,
   marker_exact: markerExact,
@@ -850,7 +860,8 @@ const boundaryEvidence = {
   tenant_service_identity_match:
     nonRootFinalServices.every((name) =>
       finalProcesses[name].length > 0 &&
-      finalProcesses[name].every((value) => exactIdentity(status(value), expectedIdentity))),
+      finalProcesses[name].every((value) =>
+        exactSupervisedServiceIdentity(status(value)))),
   nginx_identity_match: nginxIdentityMatch,
   watchdog_identity_match: watchdogIdentityMatch,
   tenant_service_cgroup_match:

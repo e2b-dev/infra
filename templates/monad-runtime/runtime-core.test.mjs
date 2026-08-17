@@ -644,7 +644,7 @@ test('runtime verifier proves containment and disables ambient schedulers and ne
   assert.match(verifier, /watchdog_identity_match/);
   assert.match(verifier, /JSON\.stringify\(attestation\.tenant\?\.services\)/);
   for (const service of ['chromium', 'git', 'opencode', 'selkies', 'xorg']) {
-    assert.match(verifier, new RegExp(`${service}: expectedIdentity\\.uid`));
+    assert.match(verifier, new RegExp(`${service}: attestedTenantIdentity\\.uid`));
   }
   assert.doesNotMatch(verifier, /Object\.values\(attestation\.tenant\?\.services/);
 });
@@ -697,6 +697,59 @@ test('runtime verifier renders standalone bootstrap and tenant probes as valid s
     probes.tenantBoundaryProbe,
     'base64',
   ).toString('utf8');
+  const identityStart = tenantScript.indexOf('const ids =');
+  const identityEnd = tenantScript.indexOf(
+    'const observedIdentity =',
+    identityStart,
+  );
+  assert.ok(
+    identityStart >= 0 && identityEnd > identityStart,
+    'the rendered verifier must expose exact attested and supervised identity predicates',
+  );
+  const identityPredicates = new Function(
+    `${tenantScript.slice(identityStart, identityEnd)}; ` +
+      'return { exactAttestedTenantIdentity, exactSupervisedServiceIdentity };',
+  )();
+  const status = ({ groups }) =>
+    'Uid:\t911\t911\t911\t911\n' +
+    'Gid:\t1001\t1001\t1001\t1001\n' +
+    `Groups:\t${groups.join(' ')}\n`;
+  assert.equal(
+    identityPredicates.exactSupervisedServiceIdentity(
+      status({ groups: [100, 1001] }),
+    ),
+    true,
+    'the exact pinned s6-setuidgid abc identity must verify',
+  );
+  for (const groups of [
+    [100],
+    [27, 100, 1001],
+    [100, 990, 1001],
+  ]) {
+    assert.equal(
+      identityPredicates.exactSupervisedServiceIdentity(status({ groups })),
+      false,
+      'missing primary-group evidence and sudo/docker group drift must fail closed',
+    );
+  }
+  const attestedTenant = {
+    uid: 911,
+    gid: 1001,
+    groups: [100],
+  };
+  assert.equal(
+    identityPredicates.exactAttestedTenantIdentity(attestedTenant),
+    true,
+    'the native admission-helper identity must remain exact',
+  );
+  assert.equal(
+    identityPredicates.exactAttestedTenantIdentity({
+      ...attestedTenant,
+      groups: [100, 1001],
+    }),
+    false,
+    'the supervised identity must not weaken the attested helper identity',
+  );
   const filterStart = tenantScript.indexOf(
     'const filterNamespaceProcesses =',
   );
