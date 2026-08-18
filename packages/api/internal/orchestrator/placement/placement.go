@@ -142,7 +142,7 @@ func PlaceSandbox(
 			// Optimistic update: assume resources are occupied after successful creation.
 			// Manually update node.metrics with the newly allocated resources.
 			// This will be overwritten by the next real Metrics report for auto-correction.
-			node.OptimisticAdd(ctx, nodemanager.SandboxResources{
+			node.OptimisticAdd(nodemanager.SandboxResources{
 				CPUs:      sbxRequest.GetSandbox().GetVcpu(),
 				MiBMemory: sbxRequest.GetSandbox().GetRamMb(),
 			})

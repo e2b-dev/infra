@@ -19,6 +19,14 @@ import (
 func UploadFile(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, path string, content string) {
 	tb.Helper()
 
+	UploadFileAs(tb, ctx, sbx, envdClient, path, content, "user")
+}
+
+// UploadFileAs uploads content to path as username, for the paths the default
+// user cannot write.
+func UploadFileAs(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, path, content, username string) {
+	tb.Helper()
+
 	buffer, contentType := CreateTextFile(tb, path, content)
 
 	reqEditors := []envd.RequestEditorFn{setup.WithSandbox(tb, sbx.SandboxID)}
@@ -28,7 +36,7 @@ func UploadFile(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient
 
 	writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
 		ctx,
-		&envd.PostFilesParams{Path: &path, Username: new("user")},
+		&envd.PostFilesParams{Path: &path, Username: &username},
 		contentType,
 		buffer,
 		reqEditors...,

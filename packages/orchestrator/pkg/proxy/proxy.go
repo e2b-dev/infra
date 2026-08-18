@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/envd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
@@ -41,8 +42,89 @@ type SandboxProxy struct {
 	limiter *connlimit.ConnectionLimiter
 }
 
-func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes *sandbox.Map, featureFlags *featureflags.Client) (*SandboxProxy, error) {
+// newDestinationResolver returns the proxy's routing decision: which sandbox and
+// port a request is for, or why it is refused.
+func newDestinationResolver(sandboxes *sandbox.Map) func(r *http.Request) (*pool.Destination, error) {
 	getTargetFromRequest := reverseproxy.GetTargetFromRequest()
+
+	return func(r *http.Request) (*pool.Destination, error) {
+		sandboxId, port, err := getTargetFromRequest(r)
+		if err != nil {
+			return nil, err
+		}
+
+		isNonEnvdTraffic := int64(port) != consts.DefaultEnvdServerPort
+
+		// envd serves the orchestrator's control plane (/init, the pause
+		// freeze/thaw hooks, the live self-upgrade) on the same port as the
+		// sandbox's public surface. The orchestrator calls those routes directly
+		// at the slot IP and never through this proxy, so a request for one that
+		// arrived here came from outside and has no business reaching envd —
+		// envd's own access-token check would let the sandbox's owner wedge or
+		// re-image their guest, and /init is exempt from that check altogether.
+		//
+		// Refused before the sandbox is looked up: the answer is the same whether
+		// or not the addressed sandbox is on this node, so the reply carries
+		// nothing about which sandboxes exist here.
+		if !isNonEnvdTraffic && envd.IsInternalPath(r.URL.Path) {
+			return nil, reverseproxy.NewErrInternalRoute(sandboxId, r.URL.Path)
+		}
+
+		sbx, found := sandboxes.Get(sandboxId)
+		if !found {
+			return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
+		}
+
+		ingress := sbx.Config.GetNetworkIngress()
+		accessToken := ingress.GetTrafficAccessToken()
+
+		// Handle traffic access token validation.
+		// We are skipping envd port as it has its own access validation mechanism.
+		if accessToken != "" && isNonEnvdTraffic {
+			accessTokenRaw := r.Header.Get(trafficAccessTokenHeader)
+			if accessTokenRaw == "" {
+				return nil, reverseproxy.NewErrMissingTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
+			} else if subtle.ConstantTimeCompare([]byte(accessTokenRaw), []byte(accessToken)) != 1 {
+				return nil, reverseproxy.NewErrInvalidTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
+			}
+		}
+
+		// Handle request host masking only for non-envd traffic.
+		var maskRequestHost *string = nil
+		if h := ingress.GetMaskRequestHost(); isNonEnvdTraffic && h != "" {
+			h = strings.ReplaceAll(h, pool.MaskRequestHostPortPlaceholder, strconv.FormatUint(port, 10))
+			maskRequestHost = &h
+		}
+
+		url := &url.URL{
+			Scheme: "http",
+			Host:   net.JoinHostPort(sbx.Slot.HostIPString(), strconv.FormatUint(port, 10)),
+		}
+
+		logger := logger.L().With(
+			append(
+				logger.ProxyRequestFields(r, sbx.Runtime.SandboxID, port),
+				logger.WithTeamID(sbx.Runtime.TeamID),
+				logger.WithSandboxIP(sbx.Slot.HostIPString()),
+			)...,
+		)
+
+		return &pool.Destination{
+			Url:                                url,
+			SandboxId:                          sbx.Runtime.SandboxID,
+			SandboxPort:                        port,
+			DefaultToPortError:                 true,
+			IncludeSandboxIdInProxyErrorLogger: true,
+			// We need to include id unique to sandbox to prevent reuse of connection to the same IP:port pair by different sandboxes reusing the network slot.
+			// We are not using sandbox id to prevent removing connections based on sandbox id (pause/resume race condition).
+			ConnectionKey:   sbx.LifecycleID,
+			RequestLogger:   logger,
+			MaskRequestHost: maskRequestHost,
+		}, nil
+	}
+}
+
+func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes *sandbox.Map, featureFlags *featureflags.Client) (*SandboxProxy, error) {
 	limiter := connlimit.NewConnectionLimiter()
 	metrics := NewMetrics(meterProvider)
 
@@ -63,66 +145,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 		// Retry 5 times to handle port forwarding delays in sandbox envd.
 		reverseproxy.SandboxProxyRetries,
 		idleTimeout,
-		func(r *http.Request) (*pool.Destination, error) {
-			sandboxId, port, err := getTargetFromRequest(r)
-			if err != nil {
-				return nil, err
-			}
-
-			sbx, found := sandboxes.Get(sandboxId)
-			if !found {
-				return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
-			}
-
-			ingress := sbx.Config.GetNetworkIngress()
-			accessToken := ingress.GetTrafficAccessToken()
-
-			isNonEnvdTraffic := int64(port) != consts.DefaultEnvdServerPort
-
-			// Handle traffic access token validation.
-			// We are skipping envd port as it has its own access validation mechanism.
-			if accessToken != "" && isNonEnvdTraffic {
-				accessTokenRaw := r.Header.Get(trafficAccessTokenHeader)
-				if accessTokenRaw == "" {
-					return nil, reverseproxy.NewErrMissingTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
-				} else if subtle.ConstantTimeCompare([]byte(accessTokenRaw), []byte(accessToken)) != 1 {
-					return nil, reverseproxy.NewErrInvalidTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
-				}
-			}
-
-			// Handle request host masking only for non-envd traffic.
-			var maskRequestHost *string = nil
-			if h := ingress.GetMaskRequestHost(); isNonEnvdTraffic && h != "" {
-				h = strings.ReplaceAll(h, pool.MaskRequestHostPortPlaceholder, strconv.FormatUint(port, 10))
-				maskRequestHost = &h
-			}
-
-			url := &url.URL{
-				Scheme: "http",
-				Host:   net.JoinHostPort(sbx.Slot.HostIPString(), strconv.FormatUint(port, 10)),
-			}
-
-			logger := logger.L().With(
-				append(
-					logger.ProxyRequestFields(r, sbx.Runtime.SandboxID, port),
-					logger.WithTeamID(sbx.Runtime.TeamID),
-					logger.WithSandboxIP(sbx.Slot.HostIPString()),
-				)...,
-			)
-
-			return &pool.Destination{
-				Url:                                url,
-				SandboxId:                          sbx.Runtime.SandboxID,
-				SandboxPort:                        port,
-				DefaultToPortError:                 true,
-				IncludeSandboxIdInProxyErrorLogger: true,
-				// We need to include id unique to sandbox to prevent reuse of connection to the same IP:port pair by different sandboxes reusing the network slot.
-				// We are not using sandbox id to prevent removing connections based on sandbox id (pause/resume race condition).
-				ConnectionKey:   sbx.LifecycleID,
-				RequestLogger:   logger,
-				MaskRequestHost: maskRequestHost,
-			}, nil
-		},
+		newDestinationResolver(sandboxes),
 		connLimitConfig,
 		// We are not using keepalives for orchestrator proxy,
 		// because the servers inside of the sandbox can be unstable (restarts),
