@@ -48,9 +48,14 @@ jobs:
 
       - name: Build every workspace module
         shell: bash
+        # The repo root is not itself a module, so `go build ./...` from the
+        # root resolves nothing; build each module go.work lists.
         run: |
           set -euo pipefail
-          go build ./...
+          go work edit -json | jq -r '.Use[].DiskPath' | while read -r dir; do
+            echo "=== ${dir}"
+            (cd "${dir}" && go build ./...)
+          done
 
       - name: Unit tests
         shell: bash
