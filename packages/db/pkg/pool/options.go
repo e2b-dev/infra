@@ -19,3 +19,9 @@ func WithMinIdle(minIdle int32) Option {
 		config.MinIdleConns = minIdle
 	}
 }
+
+func WithRuntimeParam(name string, value string) Option {
+	return func(config *pgxpool.Config, _ *retry.Config) {
+		config.ConnConfig.RuntimeParams[name] = value
+	}
+}
