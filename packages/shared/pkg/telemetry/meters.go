@@ -281,6 +281,7 @@ const (
 	// Symmetric read/write metrics carry a direction=read/write attribute.
 	SandboxFCBlockBytes                 HistogramType = "orchestrator.sandbox.fc.block.bytes"
 	SandboxFCBlockCount                 HistogramType = "orchestrator.sandbox.fc.block.count"
+	SandboxFCBlockQueueEventCount       HistogramType = "orchestrator.sandbox.fc.block.queue_event_count"
 	SandboxFCBlockRateLimiterThrottled  HistogramType = "orchestrator.sandbox.fc.block.rate_limiter_throttled"
 	SandboxFCBlockRateLimiterEventCount HistogramType = "orchestrator.sandbox.fc.block.rate_limiter_event_count"
 	SandboxFCBlockIOEngineThrottled     HistogramType = "orchestrator.sandbox.fc.block.io_engine_throttled"
@@ -587,6 +588,7 @@ var histogramDesc = map[HistogramType]string{
 	// Firecracker block histograms (direction=read/write attribute)
 	SandboxFCBlockBytes:                 "Distribution of Firecracker VMM block bytes per metrics flush",
 	SandboxFCBlockCount:                 "Distribution of Firecracker VMM block I/O operations per metrics flush",
+	SandboxFCBlockQueueEventCount:       "Distribution of Firecracker VMM block queue notifications per metrics flush",
 	SandboxFCBlockRateLimiterThrottled:  "Distribution of Firecracker VMM block ops throttled by rate limiter per metrics flush",
 	SandboxFCBlockRateLimiterEventCount: "Distribution of Firecracker VMM block rate limiter events per metrics flush",
 	SandboxFCBlockIOEngineThrottled:     "Distribution of Firecracker VMM block ops throttled by io_uring engine per metrics flush",
@@ -644,6 +646,7 @@ var histogramUnits = map[HistogramType]string{
 	// Firecracker block histograms
 	SandboxFCBlockBytes:                 "{By}",
 	SandboxFCBlockCount:                 "{op}",
+	SandboxFCBlockQueueEventCount:       "{event}",
 	SandboxFCBlockRateLimiterThrottled:  "{op}",
 	SandboxFCBlockRateLimiterEventCount: "{event}",
 	SandboxFCBlockIOEngineThrottled:     "{op}",
