@@ -97,7 +97,9 @@ locals {
 
   redis_cluster_url   = var.redis_managed ? "rediss://${module.redis[0].endpoint_address}:${local.redis_port}" : ""
   redis_tls_ca_base64 = var.redis_managed ? module.redis[0].endpoint_ca_pem_base64 : ""
-  redis_url           = local.redis_cluster_url == "" ? "redis.service.consul:${local.redis_port}" : ""
+  # CA implies TLS: the factory refuses a CA without the flag.
+  redis_tls_enabled = var.redis_managed ? "true" : "false"
+  redis_url         = local.redis_cluster_url == "" ? "redis.service.consul:${local.redis_port}" : ""
 
   clickhouse_connection_string = var.clickhouse_cluster_size > 0 ? "clickhouse://${module.init.clickhouse.username}:${module.init.clickhouse.password}@clickhouse.service.consul:${local.clickhouse_port}/${local.clickhouse_database}" : ""
 
@@ -131,6 +133,7 @@ locals {
     REDIS_POOL_SIZE     = "160"
     REDIS_CLUSTER_URL   = local.redis_cluster_url
     REDIS_TLS_CA_BASE64 = local.redis_tls_ca_base64
+    REDIS_TLS_ENABLED   = local.redis_tls_enabled
     REDIS_URL           = local.redis_url
 
     LAUNCH_DARKLY_API_KEY = module.init.launch_darkly_api_key
@@ -155,6 +158,7 @@ locals {
     REDIS_POOL_SIZE              = "40"
     REDIS_CLUSTER_URL            = local.redis_cluster_url
     REDIS_TLS_CA_BASE64          = local.redis_tls_ca_base64
+    REDIS_TLS_ENABLED            = local.redis_tls_enabled
     REDIS_URL                    = local.redis_url
     # Used by in-cluster client-proxy to call API ResumeSandbox over gRPC.
     API_INTERNAL_GRPC_ADDRESS = "api-internal-grpc.service.consul:${var.api_internal_grpc_port}"
@@ -172,6 +176,7 @@ locals {
     REDIS_POOL_SIZE              = "10"
     REDIS_CLUSTER_URL            = local.redis_cluster_url
     REDIS_TLS_CA_BASE64          = local.redis_tls_ca_base64
+    REDIS_TLS_ENABLED            = local.redis_tls_enabled
     REDIS_URL                    = local.redis_url
     GIN_MODE                     = "release"
     CONSUL_TOKEN                 = module.init.cluster.consul_acl_token
