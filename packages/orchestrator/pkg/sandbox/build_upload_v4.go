@@ -4,13 +4,16 @@ package sandbox
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	headers "github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -147,6 +150,12 @@ func (u *Upload) uploadFramed(
 //
 // V3 callers pass dst=nil — they need the barrier but have no Builds map.
 //
+// When Wait returns nil for a build dst still lacks (a gap inherited from the
+// source header), the entry is recovered from the build's own stored header so
+// the gap stops propagating to descendant headers; builds with no header file
+// (legacy uncompressed) stay absent, resolved by the read path. The heal is
+// best-effort: a failed load leaves the gap rather than failing the pause.
+//
 // Local ancestors resolve from the in-memory futures map without I/O;
 // cross-orch ancestors take a single remote storage round-trip. Sequential —
 // the critical path is the slowest pending Wait either way.
@@ -170,8 +179,31 @@ func (u *Upload) appendAncestorBuilds(
 		if err != nil {
 			return fmt.Errorf("wait for ancestor %s/%s: %w", buildID, fileType, err)
 		}
-		if h == nil || dst == nil {
+		if dst == nil {
 			continue
+		}
+		if h == nil {
+			if _, ok := dst[buildID]; ok {
+				continue
+			}
+			h, _, err = headers.LoadHeader(ctx, u.store, storage.Paths{BuildID: buildID.String()}.HeaderFile(string(fileType)))
+			if errors.Is(err, storage.ErrObjectNotExist) {
+				continue
+			}
+			if err != nil {
+				// createDiff resolves an absent entry on its own, so don't fail
+				// a snapshot over the heal — unless the context is already done.
+				if ctx.Err() != nil {
+					return fmt.Errorf("recover ancestor %s/%s build data: %w", buildID, fileType, err)
+				}
+				logger.L().Warn(ctx, "ancestor build data recovery failed, persisting header with the gap",
+					logger.WithBuildID(buildID.String()),
+					zap.String("file_type", string(fileType)),
+					zap.Error(err),
+				)
+
+				continue
+			}
 		}
 
 		if bd, ok := h.Builds[buildID]; ok {
