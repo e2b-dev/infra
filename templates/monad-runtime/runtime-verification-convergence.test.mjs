@@ -620,6 +620,90 @@ test('accepts only fixed per-service important-descendant stages as retryable ev
   }
 });
 
+const RETRYABLE_STAGES_EXPORT_CHECK = (stage) => {
+  let retried = false;
+  return waitForTenantBoundaryEvidence({
+    probe: (() => {
+      let calls = 0;
+      return async () => {
+        calls += 1;
+        if (calls === 1) return { probe_ok: false, stage };
+        retried = true;
+        return { probe_ok: true, evidence: { ok: true } };
+      };
+    })(),
+    now: (() => { let t = 0; return () => t += 10; })(),
+    sleep: async () => {},
+    timeoutMs: 1_000,
+    intervalMs: 1,
+  }).then(() => retried, () => false);
+};
+
+test('classifier stays self-contained and covers every attestation stage standalone', async () => {
+  const standalone = (0, eval)(`(${classifyTenantBoundaryEvidence.toString()})`);
+  assert.deepEqual(standalone(null), {
+    probe_ok: false,
+    stage: 'process_attestation',
+  });
+  const stages = [
+    'daemon_supervisor_mount_namespace_match',
+    'daemon_supervisor_root_identity_match',
+    'daemon_supervisor_run_identity_match',
+    'daemon_supervisor_filesystem_stable',
+    'service_leader_mount_namespace_match',
+    'daemon_state_stable',
+    'root_daemon_outside_tenant_cgroup',
+    'tenant_service_identity_match',
+    'nginx_identity_match',
+    'watchdog_identity_match',
+    'tenant_service_cgroup_match',
+    'service_leader_cgroup_match',
+    'important_descendant_cgroup_match',
+    'service_state_stable',
+    'supervisor_state_stable',
+  ];
+  const allTrue = Object.fromEntries(
+    ['daemon_service_mapping', ...stages].map((stage) => [stage, true]),
+  );
+  for (const stage of stages) {
+    const evidence = { ...allTrue, [stage]: false };
+    assert.deepEqual(standalone(evidence), { probe_ok: false, stage });
+    assert.equal(await RETRYABLE_STAGES_EXPORT_CHECK(stage), true);
+  }
+});
+
+test('every probe-embedded helper is free of module-scope references', () => {
+  const moduleScopeNames = [
+    'PROCESS_ATTESTATION_STAGES',
+    'IMPORTANT_DESCENDANT_STAGES',
+    'RETRYABLE_STAGES',
+    'TERMINAL_STAGES',
+    'STAGE_DETAIL_PATTERN',
+    'hasExactKeys',
+    'sameKeys',
+  ];
+  for (const helper of [
+    convergence.bindTenantBoundaryMarker,
+    convergence.classifyTenantBoundaryFilesystemStability,
+    convergence.classifyTenantBoundaryProbeIdentity,
+    convergence.classifyTenantBoundaryEvidence,
+    convergence.classifyTenantBoundaryTopology,
+    convergence.inspectTenantBoundaryMarkerFilesystem,
+    convergence.tenantBoundaryProcRootPaths,
+    convergence.tenantBoundaryRuntimePath,
+    convergence.tenantBoundaryRuntimePathChain,
+  ]) {
+    const body = helper.toString();
+    for (const name of moduleScopeNames) {
+      assert.doesNotMatch(
+        body,
+        new RegExp(`\\b${name}\\b`),
+        `${helper.name} must not reference module-scope ${name}`,
+      );
+    }
+  }
+});
+
 test('carries a bounded stage detail through retries into the terminal error', async () => {
   const stage = 'important_descendant_watchdog_missing_executable_elsewhere';
   let now = 0;

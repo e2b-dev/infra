@@ -67,16 +67,18 @@ export function selectOuterPidForNamespacePid({
 }
 
 export function verifyPinnedNginxProcesses({ leaderPid, processes }) {
-  const sameArray = (actual, expected) =>
-    Array.isArray(actual) &&
-    actual.length === expected.length &&
-    actual.every((value, index) => value === expected[index]);
+  const normalizedGroupSet = (values, gid) =>
+    Array.isArray(values) &&
+    JSON.stringify([...new Set([...values, gid])].sort(
+      (left, right) => left - right,
+    ));
   const exactIdentity = (actual, uid, gid, groups) =>
     actual !== null &&
     typeof actual === 'object' &&
     actual.uid === uid &&
     actual.gid === gid &&
-    sameArray(actual.groups, groups);
+    Array.isArray(actual.groups) &&
+    normalizedGroupSet(actual.groups, gid) === normalizedGroupSet(groups, gid);
   const exactNginxExecutable = (process) =>
     process !== null &&
     typeof process === 'object' &&
@@ -116,12 +118,15 @@ export function verifyPinnedWatchdogProcesses({ leaderPid, processes }) {
     Array.isArray(actual) &&
     actual.length === expected.length &&
     actual.every((value, index) => value === expected[index]);
+  const rootGroupSet = (values) =>
+    Array.isArray(values) &&
+    values.every((value) => value === 0);
   const exactIdentity = (actual) =>
     actual !== null &&
     typeof actual === 'object' &&
     actual.uid === 0 &&
     actual.gid === 0 &&
-    sameArray(actual.groups, [0]);
+    rootGroupSet(actual.groups);
   if (
     !Number.isSafeInteger(leaderPid) ||
     leaderPid <= 1 ||

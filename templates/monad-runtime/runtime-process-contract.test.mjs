@@ -124,9 +124,18 @@ test('rejects nginx identity, command, ancestry, or missing-worker drift', () =>
     identity: workerIdentity,
     argv: ['nginx: worker process'],
   });
+  assert.equal(verifyPinnedNginxProcesses({
+    leaderPid: 100,
+    processes: [process({ identity: { uid: 0, gid: 0, groups: [] } }), worker],
+  }), true, 'root master with no supplementary groups is at least as tight as [0]');
+  assert.equal(verifyPinnedNginxProcesses({
+    leaderPid: 100,
+    processes: [process({ identity: { uid: 0, gid: 0, groups: [0, 0] } }), worker],
+  }), true, 'redundant root group entries collapse to the same exact set');
   for (const processes of [
     [master],
-    [process({ identity: { uid: 0, gid: 0, groups: [] } }), worker],
+    [process({ identity: { uid: 0, gid: 0, groups: [0, 999] } }), worker],
+    [master, { ...worker, identity: { uid: 33, gid: 33, groups: [27, 33] } }],
     [master, { ...worker, identity: { uid: 911, gid: 1001, groups: [100] } }],
     [master, { ...worker, ppid: 99 }],
     [master, { ...worker, executable: '/tmp/nginx' }],
@@ -161,8 +170,16 @@ test('accepts only the pinned inert root watchdog leader with no children', () =
   const standalone = (0, eval)(`(${verifyPinnedWatchdogProcesses.toString()})`);
   assert.equal(standalone({ leaderPid: 200, processes: [watchdog] }), true);
   assert.equal(standalone({ leaderPid: 200, processes: [uutilsWatchdog] }), true);
+  assert.equal(standalone({
+    leaderPid: 200,
+    processes: [{ ...watchdog, identity: { uid: 0, gid: 0, groups: [] } }],
+  }), true, 'root watchdog with no supplementary groups is acceptable');
+  assert.equal(standalone({
+    leaderPid: 200,
+    processes: [{ ...watchdog, identity: { uid: 0, gid: 0, groups: [0, 0] } }],
+  }), true, 'redundant root group entries are acceptable');
   for (const processes of [
-    [{ ...watchdog, identity: { uid: 0, gid: 0, groups: [] } }],
+    [{ ...watchdog, identity: { uid: 0, gid: 0, groups: [0, 27] } }],
     [{ ...watchdog, executable: '/bin/bash' }],
     [{ ...watchdog, executable: '/usr/lib/cargo/bin/coreutils/timeout' }],
     [{ ...watchdog, argv: ['sleep', '30'] }],

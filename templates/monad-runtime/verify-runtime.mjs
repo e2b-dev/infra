@@ -451,12 +451,15 @@ const groups = (raw) => {
   const payload = match ? match[1].trim() : "";
   return payload ? payload.split(/\s+/).map(Number) : [];
 };
+const normalizedGroupSet = (values, gid) =>
+  JSON.stringify([...new Set([...values, gid])].sort((left, right) => left - right));
 const exactIdentity = (raw, expected) => {
   const uids = ids(raw, "Uid");
   const gids = ids(raw, "Gid");
   return uids.length === 4 && uids.every((value) => value === expected.uid) &&
     gids.length === 4 && gids.every((value) => value === expected.gid) &&
-    JSON.stringify(groups(raw)) === JSON.stringify(expected.groups);
+    normalizedGroupSet(groups(raw), expected.gid) ===
+      normalizedGroupSet(expected.groups, expected.gid);
 };
 const attestedTenantIdentity = { uid: 911, gid: 1001, groups: [100] };
 const supervisedServiceIdentity = {

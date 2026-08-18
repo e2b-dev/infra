@@ -445,7 +445,27 @@ export function classifyTenantBoundaryEvidence(evidence) {
   if (evidence.daemon_service_mapping !== true) {
     return { probe_ok: false, stage: 'process_attestation' };
   }
-  for (const stage of PROCESS_ATTESTATION_STAGES) {
+  // Inlined so the function stays self-contained when embedded into the
+  // sandbox probe via toString(); a dedicated test keeps this list in sync
+  // with the module-level attestation stage list.
+  const processAttestationStages = [
+    'daemon_supervisor_mount_namespace_match',
+    'daemon_supervisor_root_identity_match',
+    'daemon_supervisor_run_identity_match',
+    'daemon_supervisor_filesystem_stable',
+    'service_leader_mount_namespace_match',
+    'daemon_state_stable',
+    'root_daemon_outside_tenant_cgroup',
+    'tenant_service_identity_match',
+    'nginx_identity_match',
+    'watchdog_identity_match',
+    'tenant_service_cgroup_match',
+    'service_leader_cgroup_match',
+    'important_descendant_cgroup_match',
+    'service_state_stable',
+    'supervisor_state_stable',
+  ];
+  for (const stage of processAttestationStages) {
     if (evidence[stage] !== true) {
       return { probe_ok: false, stage };
     }

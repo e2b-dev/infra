@@ -880,22 +880,29 @@ test('runtime verifier renders standalone bootstrap and tenant probes as valid s
     'Uid:\t911\t911\t911\t911\n' +
     'Gid:\t1001\t1001\t1001\t1001\n' +
     `Groups:\t${groups.join(' ')}\n`;
-  assert.equal(
-    identityPredicates.exactSupervisedServiceIdentity(
-      status({ groups: [100] }),
-    ),
-    true,
-    'the exact pinned s6-setuidgid abc supplementary group must verify',
-  );
   for (const groups of [
+    [100],
+    // Live runtime evidence: s6-setuidgid passes the full id -G list to
+    // setgroups, so the primary gid legitimately appears in the
+    // supplementary list. The normalized set compare accepts it.
     [100, 1001],
+    [100, 100, 1001],
+  ]) {
+    assert.equal(
+      identityPredicates.exactSupervisedServiceIdentity(status({ groups })),
+      true,
+      'the exact pinned s6-setuidgid abc supplementary set must verify',
+    );
+  }
+  for (const groups of [
     [27, 100, 1001],
     [100, 990, 1001],
+    [1001],
   ]) {
     assert.equal(
       identityPredicates.exactSupervisedServiceIdentity(status({ groups })),
       false,
-      'redundant primary-gid and sudo/docker supplementary drift must fail closed',
+      'sudo/docker or missing-users supplementary drift must fail closed',
     );
   }
   const attestedTenant = {
