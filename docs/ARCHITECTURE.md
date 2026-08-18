@@ -174,11 +174,19 @@ The agent inside every VM (started by systemd very early in boot), port 49983, c
 - **Process service** (`spec/process/process.proto`): start/list/connect to processes, stream
   stdout/stderr, stdin, signals, PTYs — this is what SDKs use to "run code".
 - **Filesystem service** (`spec/filesystem/filesystem.proto`): stat/list/make/move/remove/watch.
-- **REST**: `/health`, `/metrics`, `/files` upload/download, `/init` (orchestrator pushes env
-  vars, access token, metadata after boot/resume), `/upgrade` (live self-upgrade, below),
+- **REST**: `/health`, `/metrics`, `/envs`, `/files` upload/download, `/init` (orchestrator pushes
+  env vars, access token, metadata after boot/resume), `/upgrade` (live self-upgrade, below),
   freeze/thaw hooks used during pause.
+- **Public vs. control-plane routes**: the control routes (`/init`, `/upgrade`, and the freeze/thaw
+  hooks) are marked `x-internal: true` in `spec/envd.yaml`, and `/upgrade` — which the spec does not
+  describe — is listed alongside them in the orchestrator's `pkg/sandbox/envd`. The orchestrator
+  reaches them over the host network at the sandbox slot IP; the sandbox proxy refuses them with a
+  404, for every method, so they are not reachable through a sandbox URL. Adding a control route
+  therefore means marking it in the spec (`go generate` carries the marker into the proxy's
+  rejection list) — otherwise it ships reachable from the internet.
 - **Auth**: `X-Access-Token` header checked against a token delivered via Firecracker MMDS;
-  signed URLs for file endpoints.
+  signed URLs for file endpoints. `/init` is exempt (it is what *delivers* the token), which is the
+  main reason the proxy refuses it outright.
 - **Live upgrade** (`internal/services/process/upgrade.go`): an authenticated `POST /upgrade` lets
   the orchestrator swap envd inside a *running* sandbox at resume. It streams the new binary in the
   request body and envd `syscall.Exec`s into it **with the same PID**, carrying the workload's

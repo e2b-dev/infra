@@ -50,6 +50,24 @@ func newAPIWithFreezer(f *fakeFreezer) *API {
 	return api
 }
 
+// These tests cover the handlers against a fake freezer: the status codes, the
+// mountpoint, and the idempotency the orchestrator relies on. They say nothing
+// about FIFREEZE itself.
+//
+// The ioctls are covered by TestFreezeBlocksWritesAndThawReleasesThem in
+// internal/services/fsfreeze, which freezes a real ext4 mount and shows that
+// writes then block while reads do not. That assertion used to live in an
+// integration test calling POST /fsfreeze on a live guest; it moved here when the
+// sandbox proxy stopped routing control-plane routes, which left the integration
+// suite no way to reach envd.
+//
+// What no test covers any more is the two joined up on a real guest: this
+// handler, the real freezer and an actual sandbox rootfs. The filesystem-only
+// pause tests do not close that — they assert a marker survives pause and resume,
+// which also holds when the freeze is a no-op, because the pause falls back to an
+// exec fsfreeze or a plain guest sync (see guestPrepareFsForPause in the
+// orchestrator).
+
 func TestPostFsfreeze(t *testing.T) {
 	t.Parallel()
 

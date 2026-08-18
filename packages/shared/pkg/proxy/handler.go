@@ -105,6 +105,26 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
+		var internalRouteErr *InternalRouteError
+		if errors.As(err, &internalRouteErr) {
+			logger.L().Warn(ctx, "internal route requested through the proxy",
+				zap.String("host", r.Host),
+				zap.String("path", internalRouteErr.Path),
+				logger.WithSandboxID(internalRouteErr.SandboxId))
+
+			err := template.
+				NewInternalRouteError(r.Host, internalRouteErr.Path).
+				HandleError(w, r)
+			if err != nil {
+				logger.L().Error(ctx, "failed to handle internal route error", zap.Error(err), logger.WithSandboxID(internalRouteErr.SandboxId))
+				http.Error(w, "Failed to handle internal route error", http.StatusInternalServerError)
+
+				return
+			}
+
+			return
+		}
+
 		var resourceExhaustedErr *SandboxResourceExhaustedError
 		if errors.As(err, &resourceExhaustedErr) {
 			logger.L().Warn(ctx, "team sandbox limit reached",

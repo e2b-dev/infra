@@ -338,6 +338,69 @@ func TestProxySandboxStillTransitioningErrorTemplate(t *testing.T) {
 	})
 }
 
+func TestProxyInternalRouteErrorTemplate(t *testing.T) {
+	t.Parallel()
+
+	getDestination := func(r *http.Request) (*pool.Destination, error) {
+		return nil, NewErrInternalRoute("test-sandbox", r.URL.Path)
+	}
+
+	proxy, port, err := newTestProxy(t, getDestination)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		proxy.Close()
+	})
+
+	t.Run("json for non-browser", func(t *testing.T) {
+		t.Parallel()
+		proxyURL := fmt.Sprintf("http://127.0.0.1:%d/init", port)
+		resp, err := httpGet(t, proxyURL)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_ = resp.Body.Close()
+		})
+
+		require.Equal(t, http.StatusNotFound, resp.StatusCode)
+		require.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
+
+		var response struct {
+			SandboxID string `json:"sandboxId"`
+			Message   string `json:"message"`
+			Path      string `json:"path"`
+			Code      int    `json:"code"`
+		}
+		err = json.NewDecoder(resp.Body).Decode(&response)
+		require.NoError(t, err)
+		assert.Equal(t, "This endpoint is reserved for the E2B control plane and is not reachable through the sandbox URL", response.Message)
+		assert.Equal(t, "/init", response.Path)
+		assert.Equal(t, http.StatusNotFound, response.Code)
+		assert.Empty(t, response.SandboxID, "the response should not name the sandbox")
+	})
+
+	t.Run("html for browser", func(t *testing.T) {
+		t.Parallel()
+		proxyURL := fmt.Sprintf("http://127.0.0.1:%d/init", port)
+		headers := http.Header{
+			"User-Agent": {"Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+		}
+
+		resp, err := httpGetWithHeaders(t, proxyURL, headers)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_ = resp.Body.Close()
+		})
+
+		require.Equal(t, http.StatusNotFound, resp.StatusCode)
+		require.Equal(t, "text/html; charset=utf-8", resp.Header.Get("Content-Type"))
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		assert.Contains(t, string(body), "Endpoint Not Available")
+		assert.Contains(t, string(body), "/init")
+		assert.NotContains(t, string(body), "test-sandbox")
+	})
+}
+
 func TestProxyTeamSandboxLimitError(t *testing.T) {
 	t.Parallel()
 

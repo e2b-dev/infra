@@ -96,6 +96,26 @@ func NewErrInvalidTrafficAccessToken(sandboxId string, header string) *InvalidTr
 	}
 }
 
+// InternalRouteError means the request addressed a route reserved for the
+// control plane, which nothing reaching the proxy is entitled to call. It is
+// named for what happened so the logs say so; for why the response is a 404 that
+// still explains itself, see template.NewInternalRouteError.
+type InternalRouteError struct {
+	SandboxId string
+	Path      string
+}
+
+func NewErrInternalRoute(sandboxId, path string) *InternalRouteError {
+	return &InternalRouteError{
+		SandboxId: sandboxId,
+		Path:      path,
+	}
+}
+
+func (e InternalRouteError) Error() string {
+	return "internal route is not reachable through the proxy"
+}
+
 type SandboxResourceExhaustedError struct {
 	SandboxId string
 	Message   string

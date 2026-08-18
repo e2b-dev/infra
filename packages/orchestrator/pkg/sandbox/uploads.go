@@ -104,7 +104,8 @@ func (u *Uploads) Start(buildID uuid.UUID) (*utils.ErrorOnce, error) {
 
 // Wait returns the parent's post-upload header, or (nil, nil) when the
 // ancestor was never opened locally and no peer is mid-upload — the caller
-// already carries its BuildData through srcHeader.Builds.
+// usually carries its BuildData through srcHeader.Builds already, and
+// appendAncestorBuilds recovers it from the build's stored header otherwise.
 func (u *Uploads) Wait(ctx context.Context, buildID uuid.UUID, t build.DiffType) (*header.Header, error) {
 	ctx, span := tracer.Start(ctx, "wait-for-parent-upload", trace.WithAttributes(
 		telemetry.WithBuildID(buildID.String()),

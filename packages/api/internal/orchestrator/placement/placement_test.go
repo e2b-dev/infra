@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -16,7 +15,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
-	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 )
@@ -220,14 +218,8 @@ func TestPlaceSandbox_TriggersOptimisticUpdate(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 
-	// Enable the optimistic resource accounting flag for this test
-	td := ldtestdata.DataSource()
-	td.Update(td.Flag(featureflags.OptimisticResourceAccountingFlag.Key()).VariationForAll(true))
-	ffClient, err := featureflags.NewClientWithDatasource(td)
-	require.NoError(t, err)
-
 	// Create a node and record the initial allocated CPU
-	node1 := nodemanager.NewTestNode("node1", api.NodeStatusReady, 0, 4, nodemanager.WithFeatureFlags(ffClient))
+	node1 := nodemanager.NewTestNode("node1", api.NodeStatusReady, 0, 4)
 	initialCpuAllocated := node1.Metrics().CpuAllocated
 
 	nodes := []*nodemanager.Node{node1}

@@ -80,8 +80,6 @@ internal/tests/api/templates	TestTemplateBuildRUN
 internal/tests/api/templates	TestTemplateBuildWithDifferentSourceImages
 
 # Guest filesystem state across freeze/snapshot/resume.
-internal/tests/envd	TestFsFreezeThaw
-internal/tests/envd	TestCACertRotationOnResume
 internal/tests/envd	TestSecureSandboxFilesystemOnlyResumeAuth
 internal/tests/envd	TestAccessAuthorizedPathWithResumedSandboxWithValidAccessToken
 internal/tests/envd	TestAccessAuthorizedPathWithResumedSandboxWithoutAccessToken
