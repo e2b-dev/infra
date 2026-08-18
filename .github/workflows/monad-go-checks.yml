@@ -73,9 +73,13 @@ jobs:
         # KVM, no root network namespaces, no live GCP. Widen deliberately, not
         # by glob: several orchestrator and api packages assume a privileged or
         # networked environment and hang rather than fail fast.
+        # sudo mirrors upstream's quarantined pr-tests shards: the FUSE mount
+        # and user-namespace (OCI layer extraction) tests need root on GitHub
+        # runners. sudo strips PATH; pass it through so `go` resolves to the
+        # pinned toolchain.
         run: |
           set -euo pipefail
-          go test -count=1 -timeout 10m \
+          sudo -E env "PATH=$PATH" go test -count=1 -timeout 10m \
             ./packages/shared/pkg/proxy/... \
             ./packages/shared/pkg/telemetry/... \
             ./packages/envd/... \
