@@ -54,6 +54,16 @@ func TestBuildKernelArgs_DefaultIsUnchanged(t *testing.T) {
 				" random.trust_cpu=on reboot=k rootflags=discard" +
 				" systemd.journald.forward_to_console",
 		},
+		{
+			// When the host tap has a full IPv6 router configured, IPv6 must be
+			// enabled in the guest (ipv6.disable=0) so SLAAC can obtain a routable
+			// address and dual-stack connections work without Happy Eyeballs penalty.
+			name:    "ipv6 router configured",
+			options: ProcessOptions{InitScriptPath: "/sbin/init", IPv6RouterConfigured: true},
+			want: "i8042.noaux i8042.nokbd init=/sbin/init ip=" + testIPv4 +
+				" ipv6.disable=0 loglevel=1 panic=1 pci=off quiet" +
+				" random.trust_cpu=on reboot=k rootflags=discard",
+		},
 	}
 
 	for _, tt := range tests {
