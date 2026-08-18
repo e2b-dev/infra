@@ -118,7 +118,14 @@ func (s *Sandbox) doRequestWithInfiniteRetries(
 		cancel()
 
 		if err == nil {
-			return response, requestCount, nil
+			// Treat 503 as a transient failure and retry: envd returns 503 when a
+			// concurrent /init is still in progress (e.g. an NFS mount outlived the
+			// previous per-request timeout). Discard the body and loop.
+			if response.StatusCode == http.StatusServiceUnavailable {
+				response.Body.Close()
+			} else {
+				return response, requestCount, nil
+			}
 		}
 
 		select {

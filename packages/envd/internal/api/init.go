@@ -33,6 +33,7 @@ var pinMMDSWarnLimit = ratelimit.New(10 * time.Second)
 var (
 	ErrAccessTokenMismatch           = errors.New("access token validation failed")
 	ErrAccessTokenResetNotAuthorized = errors.New("access token reset not authorized")
+	ErrConcurrentNFSInit             = errors.New("NFS mount already in progress")
 )
 
 const (
@@ -334,6 +335,12 @@ func writeInitError(w http.ResponseWriter, logger zerolog.Logger, err error) {
 	switch {
 	case errors.Is(err, ErrAccessTokenMismatch), errors.Is(err, ErrAccessTokenResetNotAuthorized):
 		w.WriteHeader(http.StatusUnauthorized)
+	case errors.Is(err, ErrConcurrentNFSInit):
+		// Transient: a previous /init is still mounting NFS (setupNFS uses
+		// context.WithoutCancel so it outlives a request cancelled by EnvdInitRequestTimeout).
+		// The orchestrator retries on 503.
+		logger.Warn().Err(err).Msg("NFS mount already in progress, retrying")
+		w.WriteHeader(http.StatusServiceUnavailable)
 	case errors.Is(err, host.ErrCAInstallInProgress):
 		// Not a failure, a concurrent install still holds the CA lock.
 		logger.Warn().Err(err).Msg("CA initialization still in progress, retrying")
@@ -371,7 +378,7 @@ func (a *API) setupNFS(ctx context.Context, logger zerolog.Logger, lifecycleID *
 	if !a.isMountingNFS.CompareAndSwap(false, true) {
 		logger.Debug().Msg("NFS volumes already mounting")
 
-		return e
+		return ErrConcurrentNFSInit
 	}
 	defer a.isMountingNFS.Store(false)
 
