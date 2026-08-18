@@ -30,9 +30,11 @@ const envdSpecFile = "spec/envd.yaml"
 // If you add a route here, decide whether it is control plane. If it is, also add
 // it to unspecifiedInternalPaths in packages/orchestrator/pkg/sandbox/envd, or the
 // proxy will route it to the internet.
-var handRegisteredRoutes = []string{
-	"/upgrade",
-}
+//
+// This fork's envd registers everything through the spec, so the list is empty.
+// (Upstream's /upgrade stays in the orchestrator's unspecifiedInternalPaths as
+// defense-in-depth even though this envd does not serve it.)
+var handRegisteredRoutes = []string{}
 
 // chiRoutingMethods are the chi.Router methods that bind a pattern to a handler.
 var chiRoutingMethods = map[string]int{
