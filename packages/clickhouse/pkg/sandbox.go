@@ -24,6 +24,12 @@ type Metrics struct {
 	DiskUsed       float64   `ch:"disk_used"`
 }
 
+// maxSandboxTTL is an upper bound on how long a sandbox can run. It must stay
+// >= the largest tiers.max_length_hours so a running sandbox's metrics always
+// fall inside the scan window. Used to bound latest-metric lookups instead of
+// sweeping the table's full retention history.
+const maxSandboxTTL = 24 * time.Hour
+
 var latestMetricsSelectQuery = fmt.Sprintf(`
 SELECT sandbox_id,
        team_id,
@@ -39,9 +45,13 @@ SELECT sandbox_id,
 FROM   sandbox_metrics_gauge
 WHERE  sandbox_id IN ?
        AND team_id = ?
+       -- No sandbox runs longer than maxSandboxTTL, so its latest values are
+       -- always inside this window; bound the scan instead of sweeping the
+       -- table's full retention history for argMaxIf.
+       AND timestamp >= now() - INTERVAL %d HOUR
 GROUP  BY sandbox_id,
           team_id; 
-`, telemetry.SandboxCpuTotalGaugeName, telemetry.SandboxCpuUsedGaugeName, telemetry.SandboxRamTotalGaugeName, telemetry.SandboxRamUsedGaugeName, telemetry.SandboxRamCacheGaugeName, telemetry.SandboxDiskTotalGaugeName, telemetry.SandboxDiskUsedGaugeName)
+`, telemetry.SandboxCpuTotalGaugeName, telemetry.SandboxCpuUsedGaugeName, telemetry.SandboxRamTotalGaugeName, telemetry.SandboxRamUsedGaugeName, telemetry.SandboxRamCacheGaugeName, telemetry.SandboxDiskTotalGaugeName, telemetry.SandboxDiskUsedGaugeName, int(maxSandboxTTL.Hours()))
 
 // QueryLatestMetrics returns rows ordered by timestamp, paged by limit.
 func (c *Client) QueryLatestMetrics(ctx context.Context, sandboxIDs []string, teamID string) ([]Metrics, error) {

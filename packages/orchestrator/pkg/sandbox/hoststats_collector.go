@@ -21,6 +21,12 @@ type CgroupStatsFunc func(ctx context.Context) (*cgroup.Stats, error)
 
 const hostStatsSamplingInterval = 1 * time.Second
 
+// HostStatsCollector periodically samples a sandbox's cgroup counters and
+// delivers one row per sample with deltas relative to the previous sample.
+// Deltas are computed against the in-memory prev sample only; no baseline row
+// is persisted. prev is seeded at construction with zero counters and
+// Timestamp=now, so the first sample's deltas cover everything accumulated
+// since the sandbox started and its interval_us spans start-to-first-tick.
 type HostStatsCollector struct {
 	metadata    HostStatsMetadata
 	delivery    hoststats.Delivery
@@ -121,26 +127,10 @@ func (h *HostStatsCollector) CollectSample(ctx context.Context) error {
 func (h *HostStatsCollector) Start(ctx context.Context) {
 	defer close(h.stoppedCh)
 
-	// Push the zero baseline as the first row. The first real CollectSample
-	// on the ticker tick will diff against prev (zero counters at prev.Timestamp),
-	// capturing all values accumulated since then without missing anything.
-	initial := hoststats.SandboxHostStat{
-		Timestamp:          h.prev.Timestamp,
-		SandboxID:          h.metadata.SandboxID,
-		SandboxExecutionID: h.metadata.ExecutionID,
-		SandboxTemplateID:  h.metadata.TemplateID,
-		SandboxBuildID:     h.metadata.BuildID,
-		SandboxTeamID:      h.metadata.TeamID,
-		SandboxVCPUCount:   h.metadata.VCPUCount,
-		SandboxMemoryMB:    h.metadata.MemoryMB,
-		SandboxType:        h.metadata.SandboxType.String(),
-	}
-	if err := h.delivery.Push(initial); err != nil {
-		logger.L().Error(ctx, "failed to push initial host stats baseline",
-			logger.WithSandboxID(h.metadata.SandboxID),
-			zap.Error(err))
-	}
-
+	// No baseline row is persisted: the constructor seeds prev with zero
+	// counters at Timestamp=now, so the first CollectSample diffs against it
+	// and captures everything accumulated since start. Persisting the baseline
+	// would only add an all-zeros row (interval_us=0) per sandbox start.
 	ticker := time.NewTicker(hostStatsSamplingInterval)
 	defer ticker.Stop()
 
