@@ -158,6 +158,15 @@ var (
 	// fields on snapshot load, so a mismatch fails the resume loudly.
 	UseSyncWPFlag = NewBoolFlag("use-sync-wp", false)
 
+	// InPlaceCheckpointFlag makes Checkpoint pause, snapshot and resume the
+	// SAME Firecracker process (in-place) instead of resuming a fresh sandbox
+	// from the new build. Only honored for sandboxes resumed with
+	// UseSyncWPFlag on: in-place skips the snapshot re-load that re-arms
+	// write-protection, so dirty tracking across repeated checkpoints relies
+	// on the sync-WP serve loop; resume-fresh stays the fallback for async
+	// sandboxes and when this flag is off.
+	InPlaceCheckpointFlag = NewBoolFlag("in-place-checkpoint", false)
+
 	// SyncWPTrackerDirtyFlag derives the pause-time dirty set from the
 	// orchestrator's page tracker (installs + synchronous WP-fault
 	// promotions) instead of Firecracker's GetDirtyMemory pagemap scan,
@@ -209,12 +218,13 @@ var (
 	PeerToPeerAsyncCheckpointFlag = NewBoolFlag("peer-to-peer-async-checkpoint", false)
 
 	// DeferRootfsExportFlag moves the rootfs diff seal (the reflink, which forces a
-	// synchronous host->NVMe writeback) off the pause critical path: pause() ejects
-	// the cache and stops the sandbox, then reflinks the diff in the background so
-	// the call returns without the writeback stall. Applied only to the suspend
-	// (pause) path, where nothing reads the diff until a later resume. Off by
-	// default; falls back to the synchronous export when off or on a non-NBD
-	// provider.
+	// synchronous host->NVMe writeback) off the pause critical path. On the
+	// suspend (pause) path, pause() ejects the cache and stops the sandbox, then
+	// reflinks the diff in the background — nothing reads the diff until a later
+	// resume. On the in-place checkpoint path, pause() swaps a fresh writable
+	// cache in, resumes the VM, seals the frozen old cache in the background and
+	// folds it back into the writable cache when done. Off by default; falls
+	// back to the synchronous export when off or on a non-NBD provider.
 	DeferRootfsExportFlag = NewBoolFlag("defer-rootfs-export", false)
 
 	PersistentVolumesFlag           = NewBoolFlag("can-use-persistent-volumes", env.IsDevelopment())

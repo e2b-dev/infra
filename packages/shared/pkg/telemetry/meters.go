@@ -37,6 +37,10 @@ const (
 	OrchestratorHostBalanceDirtyPagesThreads CounterType = "orchestrator.host.balance_dirty_pages.threads"
 
 	OrchestratorSandboxKilledCounterName CounterType = "orchestrator.sandbox.killed"
+	// OrchestratorSandboxCheckpointCounterName counts Checkpoint RPCs by flow —
+	// the denominator that makes the in_place-labeled duration histograms
+	// cuttable as a ramp (what fraction went in-place, at what success rate).
+	OrchestratorSandboxCheckpointCounterName CounterType = "orchestrator.sandbox.checkpoint"
 
 	// OrchestratorSnapshotUploadFailedCounterName counts pause-snapshot uploads
 	// that never landed durably (budget exhausted or a non-retryable error).
@@ -179,6 +183,7 @@ const (
 	SnapshotProcessMemoryDurationName     HistogramType = "orchestrator.sandbox.snapshot.process_memory.duration"
 	SnapshotProcessRootfsDurationName     HistogramType = "orchestrator.sandbox.snapshot.process_rootfs.duration"
 	SnapshotRootfsSealDurationName        HistogramType = "orchestrator.sandbox.snapshot.rootfs_seal.duration"
+	SnapshotGuestFreezeDurationName       HistogramType = "orchestrator.sandbox.snapshot.guest_freeze.duration"
 
 	// OrchestratorSandboxExecutionDurationName is one sample per Firecracker
 	// run, so a sandbox that is paused and resumed records one per run.
@@ -327,6 +332,7 @@ var counterDesc = map[CounterType]string{
 	EnvdInitCalls:                               "Number of envd initialization calls",
 	EnvdCollapseChunks:                          "2 MiB chunks the pre-pause envd heap collapse attempted, by result",
 	OrchestratorSandboxKilledCounterName:        "Number of sandboxes killed, labeled by kill reason",
+	OrchestratorSandboxCheckpointCounterName:    "Number of sandbox checkpoints taken, labeled by in_place and success",
 	OrchestratorSnapshotUploadFailedCounterName: "Number of pause-snapshot uploads that never landed durably",
 	SandboxPauseFsQuiescedCounterName:           "Filesystem-only pauses by whether the rootfs was frozen (quiesced) vs sync fallback",
 	SandboxResumeWPModeCounterName:              "Sandbox resumes by write-protect tracking mode (sync|async)",
@@ -369,6 +375,7 @@ var counterUnits = map[CounterType]string{
 	EnvdInitCalls:                               "1",
 	EnvdCollapseChunks:                          "{chunk}",
 	OrchestratorSandboxKilledCounterName:        "{sandbox}",
+	OrchestratorSandboxCheckpointCounterName:    "{checkpoint}",
 	OrchestratorSnapshotUploadFailedCounterName: "{snapshot}",
 	SandboxPauseFsQuiescedCounterName:           "{snapshot}",
 	SandboxResumeWPModeCounterName:              "{resume}",
@@ -550,7 +557,8 @@ var histogramDesc = map[HistogramType]string{
 	PauseDurationHistogramName:                 "Time taken to pause a sandbox, labeled by fs_only (filesystem-only vs memory) and success",
 	SnapshotProcessMemoryDurationName:          "Time to export+diff the memory file during a pause snapshot (memory pauses only), labeled by success",
 	SnapshotProcessRootfsDurationName:          "Time to export+diff the rootfs during a pause snapshot, labeled by fs_only and success",
-	SnapshotRootfsSealDurationName:             "Time for the background deferred rootfs reflink seal (off the pause critical path), labeled by success",
+	SnapshotRootfsSealDurationName:             "Time for the background deferred rootfs reflink seal (off the pause critical path), labeled by in_place and success",
+	SnapshotGuestFreezeDurationName:            "Wall time the guest is frozen during an in-place checkpoint, from the FC pause call to the in-place resume; success=false means the resume ran on the pause-failure cleanup path",
 	OrchestratorEnvdOfflineUpgradeDurationName: "Wall-time of the offline cold-boot envd rootfs swap (jailed debugfs)",
 
 	PauseResumePrefetchHarvestDurationName:     "Time the pause-resume prefetch harvest held a start slot (throwaway resume, trace collection, reap)",
@@ -611,6 +619,7 @@ var histogramUnits = map[HistogramType]string{
 	SnapshotProcessMemoryDurationName:             "ms",
 	SnapshotProcessRootfsDurationName:             "ms",
 	SnapshotRootfsSealDurationName:                "ms",
+	SnapshotGuestFreezeDurationName:               "ms",
 	PauseResumePrefetchHarvestDurationName:        "ms",
 	PauseResumePrefetchHarvestPagesName:           "{page}",
 	PauseResumePrefetchSealWaitDurationName:       "ms",

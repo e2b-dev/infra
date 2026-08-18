@@ -72,7 +72,8 @@ const (
 )
 
 // doRequestWithInfiniteRetries does a request with infinite retries until the context is done.
-// The parent context should have a deadline or a timeout.
+// The parent context must be bounded — by a deadline/timeout, or by a cancel
+// the caller races against sandbox liveness (WaitForEnvd, bestEffortEnvdReinit).
 func (s *Sandbox) doRequestWithInfiniteRetries(
 	ctx context.Context,
 	method,

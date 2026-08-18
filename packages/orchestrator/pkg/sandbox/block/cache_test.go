@@ -13,6 +13,7 @@ import (
 	"os"
 	"syscall"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/RoaringBitmap/roaring/v2"
@@ -1180,4 +1181,84 @@ func TestCache_FileSize_MatchesActualAllocation(t *testing.T) {
 	require.Equal(t, expected, got,
 		"FileSize must report on-disk allocation in bytes; a value ~%d× expected suggests stat.Blocks was multiplied by statfs.Bsize instead of the POSIX 512",
 		int64(4096)/int64(512))
+}
+
+// TestCacheExportToDiffWithMetadata_ProceedsUnderReadLock pins the lock
+// contract of the deferred-seal export: ExportToDiffWithMetadata takes only the
+// cache's READ lock (the cache it exports is frozen), so the live sandbox's
+// miss-reads that fall through to the sealing layer proceed concurrently
+// instead of stalling behind the full copy. The test holds c.mu.RLock itself —
+// standing in for such a miss-read — and requires the export to complete while
+// the lock is held: under the correct RLock the export proceeds; under an
+// exclusive Lock it blocks on the held reader and the deadline fails the test.
+func TestCacheExportToDiffWithMetadata_ProceedsUnderReadLock(t *testing.T) {
+	t.Parallel()
+
+	blockSize := int64(header.PageSize)
+	numBlocks := int64(64)
+	size := blockSize * numBlocks
+
+	c, err := NewCache(size, blockSize, t.TempDir()+"/frozen.cow", false)
+	require.NoError(t, err)
+	defer c.Close()
+
+	want := make([]byte, blockSize)
+	for i := range want {
+		want[i] = 0xAB
+	}
+	for i := range numBlocks {
+		_, err = c.WriteAt(want, i*blockSize)
+		require.NoError(t, err)
+	}
+
+	meta, err := c.DiffMetadata()
+	require.NoError(t, err)
+
+	// The exporter goroutine owns its output file end to end: if the timeout
+	// branch below Fatals with the export still in flight (the regression this
+	// test exists to catch), the test goroutine must not close a file the
+	// exporter is writing — that buries the real failure under a data race
+	// pointing at production code.
+	outPath := t.TempDir() + "/diff"
+
+	// A concurrent miss-read of the frozen sealing layer holds the read lock
+	// for the whole export.
+	c.mu.RLock()
+	done := make(chan error, 1)
+	go func() {
+		out, oerr := os.Create(outPath)
+		if oerr != nil {
+			done <- oerr
+
+			return
+		}
+		defer out.Close()
+		_, eerr := c.ExportToDiffWithMetadata(context.Background(), out, meta)
+		done <- eerr
+	}()
+
+	// Release the read lock before any assertion can FailNow: the deferred
+	// c.Close needs the write lock, so failing while the RLock is still held
+	// would hang the test instead of failing it.
+	var exportErr error
+	select {
+	case exportErr = <-done:
+	case <-time.After(10 * time.Second):
+		c.mu.RUnlock()
+		t.Fatal("export blocked behind a held read lock: ExportToDiffWithMetadata must take RLock, not Lock")
+	}
+	c.mu.RUnlock()
+	require.NoError(t, exportErr)
+
+	// Smoke-check the exported bytes. Every block holds the same pattern, so
+	// this cannot distinguish packed from identity offsets — the range-packing
+	// layout is pinned by
+	// TestCacheExportToDiff_NonContiguousDirtyBlocksPreserveRangeOrder.
+	got := make([]byte, blockSize)
+	outFile, err := os.Open(outPath)
+	require.NoError(t, err)
+	defer outFile.Close()
+	_, err = outFile.ReadAt(got, (numBlocks/2)*blockSize)
+	require.NoError(t, err)
+	require.Equal(t, want, got)
 }

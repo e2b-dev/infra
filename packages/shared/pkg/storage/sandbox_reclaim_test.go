@@ -19,6 +19,10 @@ func TestReclaimSandboxFiles(t *testing.T) {
 		filepath.Join(tmpDir, "fc-metrics-sbx-rand.fifo"),
 		filepath.Join(cacheDir, "rootfs-sbx-rand.cow"),
 		filepath.Join(cacheDir, "rootfs-sbx-rand.link"),
+		// The swapped-in live cache of an in-place checkpoint: named with the
+		// ".cow" suffix ("…-sealN.cow") precisely so this glob keeps matching
+		// — after the first fold it is the ONLY rootfs COW on disk.
+		filepath.Join(cacheDir, "rootfs-sbx-rand-seal1.cow"),
 	}
 	for _, path := range matching {
 		require.NoError(t, os.WriteFile(path, []byte("x"), 0o600))

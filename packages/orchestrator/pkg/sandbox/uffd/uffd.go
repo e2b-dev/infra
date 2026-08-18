@@ -380,6 +380,12 @@ func (u *Uffd) Memfd(_ context.Context) *block.Memfd {
 	return u.memfd.Swap(nil)
 }
 
+// PeekMemfd returns the memfd without taking ownership (unlike Memfd, which
+// swaps it out). The running VM keeps using it after an in-place snapshot.
+func (u *Uffd) PeekMemfd(_ context.Context) *block.Memfd {
+	return u.memfd.Load()
+}
+
 // ServeStats returns a cumulative snapshot of demand faults served so far, or a
 // zero snapshot if the handler has not been created yet (FC has not connected).
 // It never blocks.
