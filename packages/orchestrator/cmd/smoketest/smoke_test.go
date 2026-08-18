@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -37,6 +38,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/metrics"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -140,6 +142,9 @@ func TestSmokeAllFCVersions(t *testing.T) { //nolint:paralleltest // subtests sh
 			)
 			require.NoError(t, err, "resume failed for FC %s", fcVersion)
 			t.Logf("resumed in %s", time.Since(t0))
+
+			// Phase 3: freeze and thaw the live guest rootfs.
+			assertFsFreezeQuiescesRootfs(t, ctx, sbx, token)
 
 			sbx.Close(context.WithoutCancel(ctx))
 		})
@@ -416,4 +421,197 @@ func downloadFile(t *testing.T, url, dst string, perm os.FileMode) {
 
 	_, err = io.Copy(f, resp.Body)
 	require.NoError(t, err)
+}
+
+// --- fsfreeze ---------------------------------------------------------------
+
+const (
+	// rootfsProbeDir is on the guest root filesystem — the one /fsfreeze
+	// quiesces. /tmp can be a separate tmpfs, which freezing the rootfs would not
+	// touch, so probes have to target the rootfs to observe anything.
+	rootfsProbeDir = "/var/tmp"
+
+	// frozenWriteWindow is how long a write is given to prove it is blocked. A
+	// write to a frozen filesystem blocks until thaw, so any completion at all
+	// means the freeze did not take; the wait only has to outlast an unblocked
+	// write.
+	frozenWriteWindow = 3 * time.Second
+
+	// thawedWriteTimeout bounds that same write once thawed.
+	thawedWriteTimeout = 60 * time.Second
+
+	envdRequestTimeout = 30 * time.Second
+)
+
+// assertFsFreezeQuiescesRootfs drives envd's /fsfreeze and /fsthaw against the
+// live guest and checks the property the filesystem-only pause rests on: freezing
+// does not merely flush the rootfs, it stops writes, so nothing can be
+// acknowledged between the flush and the VM pause.
+//
+// It reaches envd at the sandbox slot IP, the way the orchestrator does. The
+// sandbox proxy does not route control-plane routes, so this is the only side
+// from which they can be driven — which is why the assertion lives here rather
+// than in the integration suite.
+//
+// Writes and reads go through envd's public file API, so a blocked write is
+// observed exactly as a caller would experience one. That envd serves them at all
+// while its own root filesystem is frozen is the other half of the claim: it is
+// what lets envd answer the thaw on the pause-failure rollback path.
+func assertFsFreezeQuiescesRootfs(t *testing.T, ctx context.Context, sbx *sandbox.Sandbox, accessToken string) {
+	t.Helper()
+
+	assertFsFreezeQuiescesRootfsAt(t, ctx, fmt.Sprintf("http://%s:%d", sbx.Slot.HostIPString(), consts.DefaultEnvdServerPort), accessToken)
+}
+
+// assertFsFreezeQuiescesRootfsAt is the body of assertFsFreezeQuiescesRootfs
+// against an arbitrary envd address, so the probe's own control flow — detecting
+// a write that never returns, and releasing it on every exit path — is testable
+// without a guest. See fsfreeze_probe_test.go.
+func assertFsFreezeQuiescesRootfsAt(t *testing.T, ctx context.Context, envdURL, accessToken string) {
+	t.Helper()
+
+	// Outlasts the blocked write so the client does not give up before the thaw
+	// releases it, which would look like a completion.
+	client := &http.Client{Timeout: thawedWriteTimeout + envdRequestTimeout}
+
+	readable := rootfsProbeDir + "/smoke-before-freeze"
+	status, err := writeGuestFile(ctx, client, envdURL, accessToken, readable, "before freeze")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, status, "a rootfs write should succeed before the freeze")
+
+	status, err = postEnvd(ctx, client, envdURL, accessToken, "/fsfreeze")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, status, "freezing the guest rootfs should succeed")
+
+	// A write to a frozen filesystem blocks in the kernel and cannot be
+	// interrupted, so it is left running and collected after the thaw. Closing
+	// after the send lets the cleanup below wait on the same channel whether or
+	// not the body already collected the result.
+	blocked := make(chan int, 1)
+
+	go func() {
+		defer close(blocked)
+
+		blockedStatus, blockedErr := writeGuestFile(ctx, client, envdURL, accessToken, rootfsProbeDir+"/smoke-while-frozen", "released by thaw")
+		if blockedErr != nil {
+			t.Logf("write released by the thaw failed: %v", blockedErr)
+		}
+
+		blocked <- blockedStatus
+	}()
+
+	thawed := false
+
+	defer func() {
+		// However this exits, leave the rootfs writable: sbx.Close has to tear
+		// down a VM whose filesystem is not wedged.
+		//
+		// On its own context, because the reason for the exit may well be that ctx
+		// was cancelled — a thaw that gives up because the deadline already passed
+		// is the one case that strands a frozen guest.
+		if !thawed {
+			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), envdRequestTimeout)
+			defer cancel()
+
+			if _, err := postEnvd(cleanupCtx, client, envdURL, accessToken, "/fsthaw"); err != nil {
+				t.Errorf("thawing the guest rootfs during cleanup failed: %v", err)
+			}
+		}
+
+		select {
+		case <-blocked:
+		case <-time.After(thawedWriteTimeout):
+			t.Error("the write blocked by the freeze never completed after the thaw")
+		}
+	}()
+
+	select {
+	case blockedStatus := <-blocked:
+		t.Fatalf("a write to the frozen rootfs completed with HTTP %d; the freeze did not take", blockedStatus)
+	case <-time.After(frozenWriteWindow):
+	}
+
+	// Reads are unaffected — freezing is a write barrier — and serving this at all
+	// shows envd is still responsive with its own filesystem frozen.
+	status, err = readGuestFile(ctx, client, envdURL, accessToken, readable)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, status, "reads should still work while the rootfs is frozen")
+
+	status, err = postEnvd(ctx, client, envdURL, accessToken, "/fsthaw")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, status, "thawing the guest rootfs should succeed")
+
+	thawed = true
+
+	select {
+	case blockedStatus := <-blocked:
+		require.Equal(t, http.StatusOK, blockedStatus, "the write blocked by the freeze should succeed once thawed")
+	case <-time.After(thawedWriteTimeout):
+		t.Fatal("the write blocked by the freeze did not complete after the thaw")
+	}
+}
+
+// postEnvd calls one of envd's control routes. These are the calls the sandbox
+// proxy refuses; reaching envd directly at the slot IP is the orchestrator's own
+// path to them.
+//
+// Kept free of testing assertions so it is safe to call from a goroutine.
+func postEnvd(ctx context.Context, client *http.Client, envdURL, accessToken, route string) (int, error) {
+	reqCtx, cancel := context.WithTimeout(ctx, envdRequestTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, envdURL+route, http.NoBody)
+	if err != nil {
+		return 0, err
+	}
+
+	return doEnvd(client, req, accessToken)
+}
+
+// writeGuestFile uploads content to path on the guest as root, through envd's
+// public file API. Writing as root keeps the probe off any assumption about which
+// unprivileged user a template ships.
+func writeGuestFile(ctx context.Context, client *http.Client, envdURL, accessToken, path, content string) (int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, envdURL+"/files?"+guestFileQuery(path), strings.NewReader(content))
+	if err != nil {
+		return 0, err
+	}
+
+	// envd takes the body verbatim only for application/octet-stream; anything
+	// else is parsed as multipart.
+	req.Header.Set("Content-Type", "application/octet-stream")
+
+	return doEnvd(client, req, accessToken)
+}
+
+func readGuestFile(ctx context.Context, client *http.Client, envdURL, accessToken, path string) (int, error) {
+	reqCtx, cancel := context.WithTimeout(ctx, envdRequestTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, envdURL+"/files?"+guestFileQuery(path), http.NoBody)
+	if err != nil {
+		return 0, err
+	}
+
+	return doEnvd(client, req, accessToken)
+}
+
+func guestFileQuery(path string) string {
+	return url.Values{"path": {path}, "username": {"root"}}.Encode()
+}
+
+func doEnvd(client *http.Client, req *http.Request, accessToken string) (int, error) {
+	req.Header.Set("X-Access-Token", accessToken)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	// Drain so the connection can be reused; the guest is on the other side of a
+	// freeze and connections are not free.
+	_, _ = io.Copy(io.Discard, resp.Body)
+
+	return resp.StatusCode, nil
 }

@@ -14,6 +14,7 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/e2b-dev/fsnotify v0.0.1
 	github.com/e2b-dev/infra/packages/shared v0.0.0
+	github.com/getkin/kin-openapi v0.139.0
 	github.com/go-chi/chi/v5 v5.2.4
 	github.com/google/uuid v1.6.0
 	github.com/oapi-codegen/runtime v1.4.0
@@ -35,7 +36,6 @@ require (
 	github.com/dchest/uniuri v1.2.0 // indirect
 	github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
-	github.com/getkin/kin-openapi v0.139.0 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-openapi/jsonpointer v0.22.5 // indirect
 	github.com/go-openapi/swag/jsonname v0.25.5 // indirect

@@ -21,10 +21,10 @@ import (
 // rootfs the kernel may have already frozen is thawed instead of leaving the
 // sandbox deadlocked.
 //
-// This pins the orchestrator wiring. The companion integration test
-// (tests/integration/.../envd/fsfreeze_test.go) proves the real FIFREEZE/FITHAW
-// ioctls actually freeze and thaw a live guest; together they cover
-// "freeze fails mid-pause -> thaw rolls the sandbox back".
+// This pins the orchestrator wiring only. That the ioctls behind those endpoints
+// really freeze and thaw a filesystem is covered on envd's side, by
+// TestFreezeBlocksWritesAndThawReleasesThem in
+// packages/envd/internal/services/fsfreeze.
 func TestGuestPrepareFsForPause_FreezeFailureRollsBackThaw(t *testing.T) {
 	t.Parallel()
 
