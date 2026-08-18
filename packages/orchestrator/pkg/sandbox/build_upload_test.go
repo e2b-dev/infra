@@ -3,6 +3,10 @@
 package sandbox
 
 import (
+	"bytes"
+	"context"
+	"errors"
+	"io"
 	"testing"
 
 	"github.com/google/uuid"
@@ -13,6 +17,7 @@ import (
 	blockmocks "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/mocks"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	templatemocks "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/mocks"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerclient"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	headers "github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -149,6 +154,114 @@ func TestAppendAncestorBuilds_NilDstSkipsSynthesis(t *testing.T) {
 	u := &Upload{buildID: uuid.New(), uploads: uploads}
 	err := u.appendAncestorBuilds(t.Context(), nil, mappingTo(t, 4096, ancestorID, 4096), build.Memfile)
 	require.NoError(t, err)
+}
+
+// gapUpload builds an Upload whose ancestor is neither cached locally nor
+// peer-served, so Wait returns nil — the inherited-gap case.
+func gapUpload(t *testing.T, provider storage.StorageProvider) *Upload {
+	t.Helper()
+	uploads, _ := newUploads(t)
+	uploads.p2p = peerclient.NopResolver()
+
+	return &Upload{buildID: uuid.New(), uploads: uploads, store: provider}
+}
+
+// A mapping-referenced build missing from both dst and the local cache (a gap
+// inherited from the source header) must not be persisted as a gap — the entry
+// is recovered from the build's own stored header so it stops propagating to
+// descendant headers.
+func TestAppendAncestorBuilds_RecoversInheritedGapFromStoredHeader(t *testing.T) {
+	t.Parallel()
+
+	ancestorID := uuid.New()
+	ancestorHeader, err := headers.NewHeader(
+		&headers.Metadata{Version: headers.MetadataVersionV4, BlockSize: 4096, Size: 4096, BuildId: ancestorID, BaseBuildId: ancestorID},
+		nil,
+	)
+	require.NoError(t, err)
+	want := headers.BuildData{Size: 12345}
+	ancestorHeader.SetBuild(ancestorID, want)
+	ancestorHeaderBytes, err := headers.SerializeHeader(ancestorHeader)
+	require.NoError(t, err)
+
+	provider := storage.NewMockStorageProvider(t)
+	headerBlob := storage.NewMockBlob(t)
+	headerBlob.EXPECT().
+		WriteTo(mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, w io.Writer) (int64, error) {
+			return io.Copy(w, bytes.NewReader(ancestorHeaderBytes))
+		}).Once()
+	provider.EXPECT().
+		OpenBlob(mock.Anything, storage.Paths{BuildID: ancestorID.String()}.HeaderFile(storage.MemfileName)).
+		Return(headerBlob, nil).Once()
+
+	dst := map[uuid.UUID]headers.BuildData{}
+	require.NoError(t, gapUpload(t, provider).appendAncestorBuilds(t.Context(), dst, mappingTo(t, 4096, ancestorID, 4096), build.Memfile))
+	require.Equal(t, want, dst[ancestorID])
+}
+
+// A gap whose build has no stored header (legacy uncompressed build) stays
+// absent — the read path resolves it — and must not fail the upload.
+func TestAppendAncestorBuilds_LeavesGapAbsentWithoutStoredHeader(t *testing.T) {
+	t.Parallel()
+
+	ancestorID := uuid.New()
+	provider := storage.NewMockStorageProvider(t)
+	provider.EXPECT().
+		OpenBlob(mock.Anything, storage.Paths{BuildID: ancestorID.String()}.HeaderFile(storage.MemfileName)).
+		Return(nil, storage.ErrObjectNotExist).Once()
+
+	dst := map[uuid.UUID]headers.BuildData{}
+	require.NoError(t, gapUpload(t, provider).appendAncestorBuilds(t.Context(), dst, mappingTo(t, 4096, ancestorID, 4096), build.Memfile))
+	require.NotContains(t, dst, ancestorID)
+}
+
+// A transient failure loading the ancestor's header must not fail the pause:
+// the heal is an optimization, and leaving the gap absent is what every release
+// before it did — createDiff still resolves the build's own header per fault.
+func TestAppendAncestorBuilds_TransientLoadFailureKeepsUploadAlive(t *testing.T) {
+	t.Parallel()
+
+	ancestorID := uuid.New()
+	provider := storage.NewMockStorageProvider(t)
+	provider.EXPECT().
+		OpenBlob(mock.Anything, storage.Paths{BuildID: ancestorID.String()}.HeaderFile(storage.MemfileName)).
+		Return(nil, errors.New("storage unavailable")).Once()
+
+	dst := map[uuid.UUID]headers.BuildData{}
+	require.NoError(t, gapUpload(t, provider).appendAncestorBuilds(t.Context(), dst, mappingTo(t, 4096, ancestorID, 4096), build.Memfile))
+	require.NotContains(t, dst, ancestorID)
+}
+
+// A load failure on an already-cancelled context still fails: continuing would
+// bury the real cause under a store-header error further down the pause.
+func TestAppendAncestorBuilds_CancelledContextFailsUpload(t *testing.T) {
+	t.Parallel()
+
+	ancestorID := uuid.New()
+	provider := storage.NewMockStorageProvider(t)
+	provider.EXPECT().
+		OpenBlob(mock.Anything, storage.Paths{BuildID: ancestorID.String()}.HeaderFile(storage.MemfileName)).
+		Return(nil, context.Canceled).Once()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	dst := map[uuid.UUID]headers.BuildData{}
+	err := gapUpload(t, provider).appendAncestorBuilds(ctx, dst, mappingTo(t, 4096, ancestorID, 4096), build.Memfile)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+// An entry already carried through the source header is kept as-is, with no
+// storage round-trip (the mock provider fails on any unexpected call).
+func TestAppendAncestorBuilds_ExistingEntrySkipsStorage(t *testing.T) {
+	t.Parallel()
+
+	ancestorID := uuid.New()
+	want := headers.BuildData{Size: 777}
+	dst := map[uuid.UUID]headers.BuildData{ancestorID: want}
+	require.NoError(t, gapUpload(t, storage.NewMockStorageProvider(t)).appendAncestorBuilds(t.Context(), dst, mappingTo(t, 4096, ancestorID, 4096), build.Memfile))
+	require.Equal(t, want, dst[ancestorID])
 }
 
 // A filesystem-only snapshot has no memfile, so its MemorySnapshot.BlockSize is
