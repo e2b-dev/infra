@@ -75,8 +75,11 @@ func NewForwarder(
 	scannerSub := scanner.AddSubscriber(
 		"port-forwarder",
 		// We only want to forward ports that are actively listening on localhost.
+		// "::" is included for IPv6 wildcard sockets (:::PORT): on a dual-stack
+		// kernel many frameworks bind "::" rather than "0.0.0.0", so gopsutil
+		// reports Laddr.IP = "::" for those connections.
 		&ScannerFilter{
-			IPs:   []string{"127.0.0.1", "localhost", "::1"},
+			IPs:   []string{"127.0.0.1", "localhost", "::1", "::"},
 			State: "LISTEN",
 		},
 	)
@@ -124,7 +127,10 @@ func (f *Forwarder) StartForwarding(ctx context.Context) {
 			// Let's refresh our map of currently forwarded ports and mark the currently opened ones with the "FORWARD" state.
 			// This will make sure we won't delete them later.
 			for _, p := range procs {
-				key := fmt.Sprintf("%d-%d", p.Pid, p.Laddr.Port)
+				// Include IP in the key so that a service listening on both
+				// 127.0.0.1:PORT and ::1:PORT gets two independent socats instead
+				// of the second entry silently overwriting the first.
+				key := fmt.Sprintf("%d-%d-%s", p.Pid, p.Laddr.Port, p.Laddr.IP)
 
 				// We check if the opened port is in our map of forwarded ports.
 				val, portOk := f.ports[key]
@@ -133,10 +139,18 @@ func (f *Forwarder) StartForwarding(ctx context.Context) {
 					// The actual socat process that handles forwarding should be running from the last iteration.
 					val.state = PortStateForward
 				} else {
+					// A "::" wildcard socket accepts both IPv4 and IPv6; connect
+					// via IPv4 so socat resolves "127.0.0.1" without relying on
+					// /etc/hosts containing "::1 localhost" (missing on minimal images).
+					family := familyToIPVersion(p.Family)
+					if p.Laddr.IP == "::" {
+						family = 4
+					}
+
 					f.logger.Debug().
 						Str("ip", p.Laddr.IP).
 						Uint32("port", p.Laddr.Port).
-						Uint32("family", familyToIPVersion(p.Family)).
+						Uint32("family", family).
 						Str("state", p.Status).
 						Msg("Detected new opened port on localhost that is not forwarded")
 
@@ -145,7 +159,7 @@ func (f *Forwarder) StartForwarding(ctx context.Context) {
 						pid:    p.Pid,
 						port:   p.Laddr.Port,
 						state:  PortStateForward,
-						family: familyToIPVersion(p.Family),
+						family: family,
 					}
 					f.ports[key] = ptf
 					f.startPortForwarding(ctx, ptf)
@@ -167,12 +181,20 @@ func (f *Forwarder) StartForwarding(ctx context.Context) {
 
 func (f *Forwarder) startPortForwarding(ctx context.Context, p *PortToForward) {
 	// https://unix.stackexchange.com/questions/311492/redirect-application-listening-on-localhost-to-listening-on-external-interface
-	// socat -d -d TCP4-LISTEN:4000,bind=169.254.0.21,fork TCP4:localhost:4000
+	// socat -d -d TCP4-LISTEN:4000,bind=169.254.0.21,fork TCP4:127.0.0.1:4000
 	// reuseaddr is used to fix the "Address already in use" error when restarting socat quickly.
+	//
+	// Use literal addresses rather than "localhost" so that socat's name
+	// resolution does not depend on /etc/hosts containing "::1 localhost",
+	// which is absent on Alpine and many minimal base images.
+	backendAddr := "127.0.0.1"
+	if p.family == 6 {
+		backendAddr = "[::1]"
+	}
 	cmd := exec.CommandContext(ctx,
 		"socat", "-d", "-d", "-d",
 		fmt.Sprintf("TCP4-LISTEN:%v,bind=%s,reuseaddr,fork", p.port, f.sourceIP.To4()),
-		fmt.Sprintf("TCP%d:localhost:%v", p.family, p.port),
+		fmt.Sprintf("TCP%d:%s:%v", p.family, backendAddr, p.port),
 	)
 
 	cgroupFD, ok := f.cgroupManager.GetFileDescriptor(cgroups.ProcessTypeSocat)
