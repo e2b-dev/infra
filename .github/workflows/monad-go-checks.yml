@@ -46,6 +46,16 @@ jobs:
           go-version: ${{ steps.go-version.outputs.version }}
           cache-dependency-path: go.work.sum
 
+      - name: Install test prerequisites
+        shell: bash
+        # envd's filesystem tests mount via bindfs (FUSE — same as upstream's
+        # quarantined pr-tests shard), and the OCI export tests unshare a user
+        # namespace, which Ubuntu 24.04 runners block by default via AppArmor.
+        run: |
+          set -euo pipefail
+          sudo apt-get update && sudo apt-get install -y bindfs
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+
       - name: Build every workspace module
         shell: bash
         # The repo root is not itself a module, so `go build ./...` from the
