@@ -88,13 +88,22 @@ func (b *BestOfK) UpdateConfig(config BestOfKConfig) {
 	b.config = config
 }
 
+// nodeRejectionCounts tracks how many nodes were filtered out for each reason
+// during a single placement attempt.
+type nodeRejectionCounts struct {
+	notAccepting  int
+	cpuMismatch   int
+	labelMismatch int
+	excluded      int
+}
+
 // chooseNode selects the best node for placing a VM with the given quota
 func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, excludedNodes map[string]struct{}, resources nodemanager.SandboxResources, buildMachineInfo machineinfo.MachineInfo, filterByLabels bool, requiredLabels []string) (bestNode *nodemanager.Node, err error) {
 	// Fix the config, we want to dynamically update it
 	config := b.getConfig()
 
 	// Filter eligible nodes
-	candidates := b.sample(nodes, config, excludedNodes, buildMachineInfo, filterByLabels, requiredLabels)
+	candidates, rejections := b.sample(nodes, config, excludedNodes, buildMachineInfo, filterByLabels, requiredLabels)
 
 	// Find the best node among candidates
 	bestScore := math.MaxFloat64
@@ -114,6 +123,8 @@ func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, exclu
 			filterByLabels:   filterByLabels,
 			requiredLabels:   requiredLabels,
 			buildMachineInfo: buildMachineInfo,
+			totalNodes:       len(nodes),
+			rejections:       rejections,
 		}
 	}
 
@@ -124,24 +135,41 @@ type FailedToPlaceSandboxError struct {
 	filterByLabels   bool
 	requiredLabels   []string
 	buildMachineInfo machineinfo.MachineInfo
+	totalNodes       int
+	rejections       nodeRejectionCounts
 }
 
 var _ error = FailedToPlaceSandboxError{}
 
 func (e FailedToPlaceSandboxError) Error() string {
-	message := fmt.Sprintf("no node available with required metadata: machine=%v", e.buildMachineInfo)
+	r := e.rejections
+	msg := fmt.Sprintf(
+		"no compatible node found (%d nodes checked: %d not-accepting, %d cpu-incompatible, %d label-filtered, %d excluded)",
+		e.totalNodes, r.notAccepting, r.cpuMismatch, r.labelMismatch, r.excluded,
+	)
 
-	if e.filterByLabels {
-		message += fmt.Sprintf(", labels=%v", e.requiredLabels)
+	if e.buildMachineInfo.CPUArchitecture != "" {
+		msg += fmt.Sprintf(
+			"; build cpu: arch=%s family=%s model=%s",
+			e.buildMachineInfo.CPUArchitecture,
+			e.buildMachineInfo.CPUFamily,
+			e.buildMachineInfo.CPUModel,
+		)
 	}
 
-	return message
+	if e.filterByLabels && len(e.requiredLabels) > 0 {
+		msg += fmt.Sprintf("; required labels: %v", e.requiredLabels)
+	}
+
+	return msg
 }
 
 // sample returns up to k items chosen uniformly from those passing ok.
-func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, excludedNodes map[string]struct{}, buildMachineInfo machineinfo.MachineInfo, filterByLabels bool, requiredLabels []string) []*nodemanager.Node {
+func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, excludedNodes map[string]struct{}, buildMachineInfo machineinfo.MachineInfo, filterByLabels bool, requiredLabels []string) ([]*nodemanager.Node, nodeRejectionCounts) {
+	var rejections nodeRejectionCounts
+
 	if config.K <= 0 || len(items) == 0 {
-		return nil
+		return nil, rejections
 	}
 
 	indices := make([]int, len(items))
@@ -165,26 +193,30 @@ func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, exclud
 
 		// Excluded filter
 		if _, ok := excludedNodes[n.ID]; ok {
+			rejections.excluded++
 			continue
 		}
 
 		// If the node can't take new sandboxes, skip it
 		if !n.CanAcceptNewRequests() {
+			rejections.notAccepting++
 			continue
 		}
 
 		// Skip if node is not CPU compatible
 		if !isNodeCPUCompatible(n, buildMachineInfo) {
+			rejections.cpuMismatch++
 			continue
 		}
 
 		// Skip if node doesn't have the required labels
 		if filterByLabels && !isNodeLabelsCompatible(n, requiredLabels) {
+			rejections.labelMismatch++
 			continue
 		}
 
 		candidates = append(candidates, n)
 	}
 
-	return candidates
+	return candidates, rejections
 }

@@ -1,7 +1,6 @@
 package placement
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -179,7 +178,7 @@ func TestBestOfK_ChooseNode_NoAvailableNodes(t *testing.T) {
 	selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources, machineinfo.MachineInfo{}, false, nil)
 	require.Error(t, err)
 	assert.Nil(t, selected)
-	assert.Contains(t, err.Error(), "no node available")
+	assert.Contains(t, err.Error(), "no compatible node found")
 }
 
 func TestFailedToPlaceSandboxError_Error(t *testing.T) {
@@ -196,6 +195,8 @@ func TestFailedToPlaceSandboxError_Error(t *testing.T) {
 		name           string
 		filterByLabels bool
 		requiredLabels []string
+		rejections     nodeRejectionCounts
+		totalNodes     int
 		wantContains   []string
 		wantNotContain string
 	}{
@@ -203,39 +204,54 @@ func TestFailedToPlaceSandboxError_Error(t *testing.T) {
 			name:           "without label filtering",
 			filterByLabels: false,
 			requiredLabels: nil,
+			totalNodes:     10,
+			rejections:     nodeRejectionCounts{cpuMismatch: 10},
 			wantContains: []string{
-				"no node available with required metadata",
-				fmt.Sprintf("machine=%v", machine),
+				"no compatible node found",
+				"10 nodes checked",
+				"10 cpu-incompatible",
+				"arch=x86_64",
+				"model=" + machineinfo.IceLakeModel,
 			},
-			wantNotContain: "labels=",
+			wantNotContain: "required labels",
 		},
 		{
 			name:           "with label filtering",
 			filterByLabels: true,
 			requiredLabels: []string{"gpu", "fast-disk"},
+			totalNodes:     5,
+			rejections:     nodeRejectionCounts{notAccepting: 2, labelMismatch: 3},
 			wantContains: []string{
-				"no node available with required metadata",
-				fmt.Sprintf("machine=%v", machine),
-				"labels=[gpu fast-disk]",
+				"no compatible node found",
+				"5 nodes checked",
+				"2 not-accepting",
+				"3 label-filtered",
+				"required labels: [gpu fast-disk]",
 			},
 		},
 		{
 			name:           "label filtering enabled with no labels",
 			filterByLabels: true,
 			requiredLabels: nil,
+			totalNodes:     3,
+			rejections:     nodeRejectionCounts{notAccepting: 3},
 			wantContains: []string{
-				"no node available with required metadata",
-				"labels=[]",
+				"no compatible node found",
+				"3 nodes checked",
 			},
 		},
 		{
 			name:           "labels present but filtering disabled",
 			filterByLabels: false,
 			requiredLabels: []string{"gpu"},
+			totalNodes:     4,
+			rejections:     nodeRejectionCounts{excluded: 4},
 			wantContains: []string{
-				"no node available with required metadata",
+				"no compatible node found",
+				"4 nodes checked",
+				"4 excluded",
 			},
-			wantNotContain: "labels=",
+			wantNotContain: "required labels",
 		},
 	}
 
@@ -247,6 +263,8 @@ func TestFailedToPlaceSandboxError_Error(t *testing.T) {
 				filterByLabels:   tt.filterByLabels,
 				requiredLabels:   tt.requiredLabels,
 				buildMachineInfo: machine,
+				totalNodes:       tt.totalNodes,
+				rejections:       tt.rejections,
 			}
 
 			msg := err.Error()
@@ -302,8 +320,8 @@ func TestBestOfK_ChooseNode_ReturnsPlacementError(t *testing.T) {
 	var placeErr FailedToPlaceSandboxError
 	require.ErrorAs(t, err, &placeErr)
 	assert.Equal(t, requiredLabels, placeErr.requiredLabels)
-	assert.Contains(t, err.Error(), "labels=[gpu]")
-	assert.Contains(t, err.Error(), fmt.Sprintf("machine=%v", machine))
+	assert.Contains(t, err.Error(), "required labels: [gpu]")
+	assert.Contains(t, err.Error(), "not-accepting")
 }
 
 func TestBestOfK_Sample(t *testing.T) {
@@ -321,7 +339,7 @@ func TestBestOfK_Sample(t *testing.T) {
 	excludedNodes := make(map[string]struct{})
 
 	// Test sampling fewer nodes than available
-	sampled := algo.sample(nodes, config, excludedNodes, machineinfo.MachineInfo{}, false, nil)
+	sampled, _ := algo.sample(nodes, config, excludedNodes, machineinfo.MachineInfo{}, false, nil)
 	assert.LessOrEqual(t, len(sampled), 3)
 
 	// Check all sampled nodes are unique
@@ -334,7 +352,7 @@ func TestBestOfK_Sample(t *testing.T) {
 	// Test sampling with exclusions
 	excludedNodes["a"] = struct{}{}
 	excludedNodes["b"] = struct{}{}
-	sampled = algo.sample(nodes, config, excludedNodes, machineinfo.MachineInfo{}, false, nil)
+	sampled, _ = algo.sample(nodes, config, excludedNodes, machineinfo.MachineInfo{}, false, nil)
 
 	for _, n := range sampled {
 		assert.NotEqual(t, "a", n.ID)
