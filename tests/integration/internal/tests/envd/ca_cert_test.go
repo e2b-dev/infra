@@ -9,7 +9,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"math/big"
-	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -18,7 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
-	"github.com/e2b-dev/infra/tests/integration/internal/envd"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
@@ -51,24 +49,6 @@ func generateSelfSignedCA(t *testing.T, cn string) string {
 	return buf.String()
 }
 
-// postInitWithCA calls /init on the given sandbox with the provided PEM cert.
-func postInitWithCA(t *testing.T, sbx *api.Sandbox, client *setup.EnvdClient, certPEM string) {
-	t.Helper()
-
-	now := time.Now()
-	res, err := client.HTTPClient.PostInitWithResponse(
-		t.Context(),
-		envd.PostInitJSONRequestBody{
-			CaBundle:  &certPEM,
-			Timestamp: &now,
-		},
-		setup.WithSandbox(t, sbx.SandboxID),
-	)
-
-	require.NoError(t, err)
-	require.Equal(t, http.StatusNoContent, res.StatusCode())
-}
-
 // readBundle execs cat on the CA bundle inside the sandbox and returns its content.
 func readBundle(t *testing.T, sbx *api.Sandbox, client *setup.EnvdClient) string {
 	t.Helper()
@@ -97,69 +77,18 @@ func TestCACertBundleOnTmpfs(t *testing.T) {
 	assert.Contains(t, out, "tmpfs", "/etc/ssl/certs should be on tmpfs")
 }
 
-// TestCACertInjection verifies that a CA cert sent via the caBundle field of
-// /init is appended to the system trust bundle immediately.
-func TestCACertInjection(t *testing.T) {
-	t.Parallel()
-
-	c := setup.GetAPIClient()
-	sbx := utils.SetupSandboxWithCleanup(t, c)
-	client := setup.GetEnvdClient(t, t.Context())
-
-	certPEM := generateSelfSignedCA(t, "e2b-test-ca-inject")
-
-	postInitWithCA(t, sbx, client, certPEM)
-
-	bundle := readBundle(t, sbx, client)
-	assert.Contains(t, bundle, strings.TrimRight(certPEM, "\n"),
-		"injected cert should appear in CA bundle")
-}
-
-// TestCACertRotationOnResume simulates a sandbox pause/resume where the
-// orchestrator supplies a different CA cert on resume (e.g. different egress
-// proxy). The old cert must be removed and the new cert must be present.
-func TestCACertRotationOnResume(t *testing.T) {
-	t.Parallel()
-
-	c := setup.GetAPIClient()
-	sbx := utils.SetupSandboxWithCleanup(t, c)
-	client := setup.GetEnvdClient(t, t.Context())
-
-	certA := generateSelfSignedCA(t, "e2b-test-ca-A")
-	certB := generateSelfSignedCA(t, "e2b-test-ca-B")
-
-	normalizedA := strings.TrimRight(certA, "\n")
-	normalizedB := strings.TrimRight(certB, "\n")
-
-	// First /init — simulates sandbox creation.
-	postInitWithCA(t, sbx, client, certA)
-
-	bundle := readBundle(t, sbx, client)
-	require.Contains(t, bundle, normalizedA, "certA should be in bundle after first /init")
-
-	// Second /init with a different cert — simulates resume with new proxy cert.
-	postInitWithCA(t, sbx, client, certB)
-
-	// Poll until the background goroutine removes certA (up to 5 s).
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		bundle = readBundle(t, sbx, client)
-		if !strings.Contains(bundle, normalizedA) {
-			break
-		}
-
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	assert.NotContains(t, bundle, normalizedA, "old cert should be removed after rotation")
-	assert.Contains(t, bundle, normalizedB, "new cert should be present after rotation")
-}
-
-// TestCACertPersistsThroughUpdateCACertificates verifies that the injected cert
-// survives a full bundle rebuild triggered by update-ca-certificates. This works
-// because the background goroutine also writes the cert to
-// /usr/local/share/ca-certificates/e2b-ca.crt, which is read as a source by
-// update-ca-certificates.
+// TestCACertPersistsThroughUpdateCACertificates checks the platform assumption
+// envd's CA installer is built on: that a cert dropped in its extra-certs path is
+// picked up when update-ca-certificates rebuilds the trust bundle from its source
+// directories. envd persists every injected cert there for exactly that reason,
+// so if the template's tooling or layout ever stopped honouring the directory,
+// injected certs would silently vanish on the next rebuild.
+//
+// It deliberately exercises the guest, not envd: the cert is written straight to
+// the path rather than through /init, which is how the orchestrator delivers it
+// in production but is not reachable through the sandbox URL. envd's own side —
+// that it appends, rotates and persists the cert — is covered by
+// TestInstallCACert_* in packages/envd/internal/host.
 func TestCACertPersistsThroughUpdateCACertificates(t *testing.T) {
 	t.Parallel()
 
@@ -169,10 +98,12 @@ func TestCACertPersistsThroughUpdateCACertificates(t *testing.T) {
 
 	certPEM := generateSelfSignedCA(t, "e2b-test-ca-persist")
 
-	postInitWithCA(t, sbx, client, certPEM)
+	// caExtraPath in packages/envd/internal/host/cacerts.go, which this module
+	// cannot import (it is internal to envd). Change it there, change it here —
+	// otherwise this keeps passing while testing a path envd no longer writes.
+	const caExtraPath = "/usr/local/share/ca-certificates/e2b-ca.crt"
 
-	// Wait for the background goroutine to write to /usr/local/share/ca-certificates/.
-	time.Sleep(500 * time.Millisecond)
+	utils.UploadFileAs(t, t.Context(), sbx, client, caExtraPath, certPEM, "root")
 
 	// Rebuild the bundle from source directories.
 	err := utils.ExecCommandAsRoot(t, t.Context(), sbx, client, "update-ca-certificates")
@@ -180,5 +111,5 @@ func TestCACertPersistsThroughUpdateCACertificates(t *testing.T) {
 
 	bundle := readBundle(t, sbx, client)
 	assert.Contains(t, bundle, strings.TrimRight(certPEM, "\n"),
-		"injected cert should survive update-ca-certificates rebuild")
+		"a cert in envd's extra-certs path should survive an update-ca-certificates rebuild")
 }
