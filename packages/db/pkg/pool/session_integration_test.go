@@ -89,30 +89,38 @@ func TestAdvisoryLockRetriesSerializableTransactionOnItsSession(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = lock.Release(context.Background()) })
 
+	type transactionResult struct {
+		attempt int
+		backend int
+	}
 	attempts := 0
-	var transactionBackend int
-	require.NoError(t, lock.InSerializableTx(t.Context(), func(ctx context.Context, tx pgx.Tx) error {
+	result, err := InSerializableTxReturn1(t.Context(), lock, func(ctx context.Context, tx pgx.Tx) (transactionResult, error) {
 		attempts++
 
 		var value int
+		var backend int
 		if err := tx.QueryRow(ctx,
 			"SELECT value, pg_backend_pid() FROM counters WHERE id = 1",
-		).Scan(&value, &transactionBackend); err != nil {
-			return err
+		).Scan(&value, &backend); err != nil {
+			return transactionResult{}, err
 		}
 		if attempts == 1 {
 			if _, err := client.Pool().Exec(ctx,
 				"UPDATE counters SET value = 1 WHERE id = 1",
 			); err != nil {
-				return err
+				return transactionResult{}, err
 			}
 		}
 
-		_, err := tx.Exec(ctx, "UPDATE counters SET value = 2 WHERE id = 1")
+		if _, err := tx.Exec(ctx, "UPDATE counters SET value = 2 WHERE id = 1"); err != nil {
+			return transactionResult{attempt: attempts, backend: backend}, err
+		}
 
-		return err
-	}))
+		return transactionResult{attempt: attempts, backend: backend}, nil
+	})
+	require.NoError(t, err)
 	assert.Equal(t, 2, attempts)
+	assert.Equal(t, 2, result.attempt, "returned a value from an attempt that did not commit")
 
 	var value int
 	var lockBackend int
@@ -124,7 +132,7 @@ func TestAdvisoryLockRetriesSerializableTransactionOnItsSession(t *testing.T) {
 		  AND database = (SELECT oid FROM pg_database WHERE datname = current_database())`,
 	).Scan(&lockBackend))
 	assert.Equal(t, 2, value)
-	assert.Equal(t, lockBackend, transactionBackend)
+	assert.Equal(t, lockBackend, result.backend)
 }
 
 func TestSerializableTransactionCleansUpAndBoundsReplays(t *testing.T) {
@@ -141,15 +149,16 @@ func TestSerializableTransactionCleansUpAndBoundsReplays(t *testing.T) {
 	t.Cleanup(func() { _ = lock.Release(context.Background()) })
 
 	refused := errors.New("refused")
-	err = lock.InSerializableTx(t.Context(), func(ctx context.Context, tx pgx.Tx) error {
+	returned, err := InSerializableTxReturn1(t.Context(), lock, func(ctx context.Context, tx pgx.Tx) (int, error) {
 		_, err := tx.Exec(ctx, "UPDATE counters SET value = 1 WHERE id = 1")
 		if err != nil {
-			return err
+			return 0, err
 		}
 
-		return refused
+		return 42, refused
 	})
 	require.ErrorIs(t, err, refused)
+	assert.Zero(t, returned, "returned a value from a refused transaction")
 	var value int
 	require.NoError(t, client.Pool().QueryRow(t.Context(),
 		"SELECT value FROM counters WHERE id = 1",

@@ -82,38 +82,60 @@ func (c *Client) TryAcquireAdvisoryLock(ctx context.Context, key string) (*Advis
 // holds the lock. Serialization failures and deadlocks replay the whole
 // callback, so fn must not perform work outside PostgreSQL.
 func (l *AdvisoryLock) InSerializableTx(ctx context.Context, fn func(context.Context, pgx.Tx) error) error {
-	if l.conn == nil {
-		return errLockReleased
+	_, err := InSerializableTxReturn1(ctx, l, func(ctx context.Context, tx pgx.Tx) (struct{}, error) {
+		return struct{}{}, fn(ctx, tx)
+	})
+
+	return err
+}
+
+// InSerializableTxReturn1 runs fn in a SERIALIZABLE transaction on the session
+// that holds the lock. Serialization failures and deadlocks replay the whole
+// callback; only the value produced by the attempt that commits is returned.
+func InSerializableTxReturn1[T any](
+	ctx context.Context,
+	lock *AdvisoryLock,
+	fn func(context.Context, pgx.Tx) (T, error),
+) (T, error) {
+	var zero T
+	if lock.conn == nil {
+		return zero, errLockReleased
 	}
 
 	var conflict error
 	for attempt := 1; attempt <= serializableAttempts; attempt++ {
-		err := runInTx(ctx, l.conn, fn)
+		value, err := runInTxReturn1(ctx, lock.conn, fn)
 		switch {
 		case err == nil:
-			return nil
+			return value, nil
 		case isSerializationConflict(err):
 			conflict = err
 		default:
-			return err
+			return zero, err
 		}
 
 		if attempt == serializableAttempts {
 			break
 		}
 		if err := waitToReplay(ctx, attempt); err != nil {
-			return errors.Join(err, conflict)
+			return zero, errors.Join(err, conflict)
 		}
 	}
 
-	return fmt.Errorf("serializable transaction did not commit in %d attempts: %w",
+	return zero, fmt.Errorf("serializable transaction did not commit in %d attempts: %w",
 		serializableAttempts, conflict)
 }
 
-func runInTx(ctx context.Context, conn *pgxpool.Conn, fn func(context.Context, pgx.Tx) error) error {
+func runInTxReturn1[T any](
+	ctx context.Context,
+	conn *pgxpool.Conn,
+	fn func(context.Context, pgx.Tx) (T, error),
+) (T, error) {
+	var zero T
+
 	tx, err := conn.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
 	if err != nil {
-		return fmt.Errorf("begin a serializable transaction: %w", err)
+		return zero, fmt.Errorf("begin a serializable transaction: %w", err)
 	}
 	defer func() {
 		releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), sessionReleaseTimeout)
@@ -122,14 +144,15 @@ func runInTx(ctx context.Context, conn *pgxpool.Conn, fn func(context.Context, p
 		_ = tx.Rollback(releaseCtx)
 	}()
 
-	if err := fn(ctx, tx); err != nil {
-		return err
+	value, err := fn(ctx, tx)
+	if err != nil {
+		return zero, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("commit a serializable transaction: %w", err)
+		return zero, fmt.Errorf("commit a serializable transaction: %w", err)
 	}
 
-	return nil
+	return value, nil
 }
 
 func isSerializationConflict(err error) bool {
