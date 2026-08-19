@@ -181,12 +181,12 @@ reviewed_quota_limits="$(
 )"
 reviewed_peak_usage="$(
   jq -cn '{
-    instances: 10,
-    global_vcpus: 44,
-    regional_cpus: 44,
-    pd_ssd_gb: 380,
+    instances: 14,
+    global_vcpus: 76,
+    regional_cpus: 76,
+    pd_ssd_gb: 780,
     pd_standard_gb: 600,
-    local_ssd_gb: 1125,
+    local_ssd_gb: 2625,
     regional_public_ips: 3
   }'
 )"

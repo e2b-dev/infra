@@ -427,7 +427,7 @@ resource "terraform_data" "monad_worker_autoscaler_shadow_guard" {
         && var.orchestrator_node_pool == "default"
         && length(var.monad_worker_autoscaler_worker_cluster_keys) == 1
         && toset(var.monad_worker_autoscaler_worker_cluster_keys) == toset(["default"])
-        && var.monad_worker_autoscaler_worker_cluster_size == 2
+        && var.monad_worker_autoscaler_worker_cluster_size == 6
         && var.monad_worker_autoscaler_worker_machine_type == "n1-standard-8"
       )
       error_message = "The shadow controller is dev-only and requires an immutable revision, an origin-bound TAMS identity audience, and one isolated default worker cluster in the Nomad default pool."

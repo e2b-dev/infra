@@ -25,7 +25,7 @@ The Terraform switch is disabled by default:
   contract and topology are deliberately generalized.
 - enabling the job requires exactly one Terraform client cluster named
   `default`, assigned to the Nomad `default` node pool, with the reviewed
-  two-host `n1-standard-8` floor.
+  six-host `n1-standard-8` floor.
 
 The Nomad job module adds no IAM grants. The GCP foundation provisions a
 dedicated `api-controller` service account, attaches it only to the dev API
@@ -43,7 +43,7 @@ are never placed in Terraform, the Nomad job, environment, URL, filesystem,
 logs, or artifacts. The Nomad task sets mutation disabled explicitly. A
 Terraform precondition also refuses to deploy the shadow observer for the
 default worker pool while the generic GCE CPU/memory autoscaler owns the MIG.
-During shadow mode Terraform must retain the reviewed two-host target size.
+During shadow mode Terraform must retain the reviewed six-host target size.
 SHA-named controller artifacts are published create-only (`if-generation-match=0`
 on GCS and `if-none-match=*` on S3), so rebuilding a revision cannot replace the
 generation already pinned in a Nomad job.

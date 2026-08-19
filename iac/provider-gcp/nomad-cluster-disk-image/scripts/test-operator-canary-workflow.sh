@@ -713,7 +713,7 @@ set -euo pipefail
 if [[ "$1 $2 $3" == "compute project-info describe" ]]; then
   jq -n '{
     name: "test-project",
-    quotas: [{metric: "CPUS_ALL_REGIONS", limit: 64, usage: 0}]
+    quotas: [{metric: "CPUS_ALL_REGIONS", limit: 96, usage: 0}]
   }'
 elif [[ "$1 $2 $3" == "compute regions describe" ]]; then
   cpu_limit="${FAKE_CPU_LIMIT:-200}"
@@ -722,7 +722,7 @@ elif [[ "$1 $2 $3" == "compute regions describe" ]]; then
     quotas: [
       {metric: "CPUS", limit: $cpu_limit, usage: 0},
       {metric: "INSTANCES", limit: 32, usage: 0},
-      {metric: "SSD_TOTAL_GB", limit: 500, usage: 0},
+      {metric: "SSD_TOTAL_GB", limit: 1000, usage: 0},
       {metric: "DISKS_TOTAL_GB", limit: 4096, usage: 0},
       {metric: "LOCAL_SSD_TOTAL_GB", limit: 6000, usage: 0},
       {metric: "IN_USE_ADDRESSES", limit: 8, usage: 0}

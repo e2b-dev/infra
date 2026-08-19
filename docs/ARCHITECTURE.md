@@ -473,7 +473,7 @@ flowchart TB
   and resets the 15-minute scale-in evidence window. The job is disabled by default until the
   foundation identity, guarded API replacement, TAMS OIDC bindings, and immutable
   controller artifact have all been applied; see `docs/MONAD_WORKER_AUTOSCALER.md`.
-  This beta path also requires one two-host
+  This beta path also requires one six-host
   `n1-standard-8` Terraform client cluster named `default` in the Nomad `default` pool,
   preventing another MIG or generic autoscaler from contaminating the observed host count.
 - **Build nodes** run the same binary in template-manager mode. The invited-beta topology keeps
@@ -559,7 +559,7 @@ flowchart TB
   post-cluster admission. Zero worker surge does not drain workloads:
   before replacing a worker template, the operator must pause/snapshot active sandboxes, verify
   durable uploads, stop placement, drain Nomad allocations, and verify MIG stability. Terraform
-  establishes and owns the two-host worker floor. The capacity-controller change must transfer
+  establishes and owns the six-host worker floor. The capacity-controller change must transfer
   target-size ownership to the Nomad-aware controller in the same reviewed deployment that makes
   the 2-15 range live; ownership is not relinquished early. Packer image builds must not overlap
   a rollout.

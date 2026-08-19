@@ -170,12 +170,12 @@ expect_success() {
     "${scope}" >"${output_path}"
 
   if [[ "${scope}" != "orchestrator" ]]; then
-    grep -F '"global_vcpus":44' "${output_path}" >/dev/null
-    grep -F '"regional_cpus":44' "${output_path}" >/dev/null
-    grep -F '"instances":10' "${output_path}" >/dev/null
-    grep -F '"pd_ssd_gb":380' "${output_path}" >/dev/null
+    grep -F '"global_vcpus":76' "${output_path}" >/dev/null
+    grep -F '"regional_cpus":76' "${output_path}" >/dev/null
+    grep -F '"instances":14' "${output_path}" >/dev/null
+    grep -F '"pd_ssd_gb":780' "${output_path}" >/dev/null
     grep -F '"pd_standard_gb":600' "${output_path}" >/dev/null
-    grep -F '"local_ssd_gb":1125' "${output_path}" >/dev/null
+    grep -F '"local_ssd_gb":2625' "${output_path}" >/dev/null
     grep -F '"regional_public_ips":3' "${output_path}" >/dev/null
   fi
   if [[ "${scope}" == "cluster" ]]; then

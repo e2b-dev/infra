@@ -22,10 +22,10 @@ resource "nomad_job" "shadow" {
         var.worker_node_pool == "default"
         && length(var.worker_cluster_keys) == 1
         && toset(var.worker_cluster_keys) == toset(["default"])
-        && var.worker_cluster_size == 2
+        && var.worker_cluster_size == 6
         && var.worker_machine_type == "n1-standard-8"
       )
-      error_message = "The invited-beta observer requires one isolated two-host n1-standard-8 Terraform client cluster named default in the Nomad default node pool."
+      error_message = "The invited-beta observer requires one isolated six-host n1-standard-8 Terraform client cluster named default in the Nomad default node pool."
     }
   }
 }
