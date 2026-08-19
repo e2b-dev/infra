@@ -3008,6 +3008,41 @@ expect_failure \
   "unresolved_capacities must be empty." \
   "${test_dir}/released-target-without-mutation.json"
 
+# The shadow-phase Nomad job id migration is a reviewed one-time delete; any
+# other bare nomad_job delete stays destructive.
+jq '
+  .resource_changes += [
+    {
+      address: "module.nomad.module.monad_worker_autoscaler[0].nomad_job.shadow",
+      module_address: "module.nomad.module.monad_worker_autoscaler[0]",
+      mode: "managed",
+      type: "nomad_job",
+      name: "shadow",
+      provider_name: "registry.terraform.io/hashicorp/nomad",
+      change: { actions: ["delete"], before: { id: "monad-worker-autoscaler-shadow" }, after: null, after_unknown: {} }
+    }
+  ]
+' "${fixture}" >"${test_dir}/autoscaler-job-id-migration.json"
+expect_success "autoscaler-job-id-migration" "${test_dir}/autoscaler-job-id-migration.json"
+
+jq '
+  .resource_changes += [
+    {
+      address: "module.nomad.module.loki.nomad_job.loki",
+      module_address: "module.nomad.module.loki",
+      mode: "managed",
+      type: "nomad_job",
+      name: "loki",
+      provider_name: "registry.terraform.io/hashicorp/nomad",
+      change: { actions: ["delete"], before: { id: "loki" }, after: null, after_unknown: {} }
+    }
+  ]
+' "${fixture}" >"${test_dir}/unreviewed-nomad-job-delete.json"
+expect_failure \
+  "unreviewed-nomad-job-delete" \
+  "destructive_managed_resources must be empty." \
+  "${test_dir}/unreviewed-nomad-job-delete.json"
+
 "${packer_assertion_script}" "${policy}" "${packer_template}" >/dev/null
 
 printf 'Workload plan assertion fixtures passed.\n'

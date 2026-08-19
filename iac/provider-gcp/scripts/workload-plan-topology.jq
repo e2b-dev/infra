@@ -1233,6 +1233,15 @@ managed_changes as $changes
                 or .change.actions == ["create", "delete"]
               )
             )
+            # One-time migration: the worker controller's Nomad job id sheds
+            # its shadow-phase suffix, so the stateless observer job is
+            # deregistered and re-registered under the new id. Remove this
+            # allowance once the dev fleet has applied the rename.
+            or (
+              .address == "module.nomad.module.monad_worker_autoscaler[0].nomad_job.shadow"
+              and .type == "nomad_job"
+              and .change.actions == ["delete"]
+            )
           )
           | not
         )
