@@ -172,9 +172,10 @@ func validateSnapshot(now time.Time, overview Overview, fleet Fleet) error {
 			return fmt.Errorf("capacity %s exceeds the bounded observation limit", name)
 		}
 	}
-	if capacity.DurableSessions > MaximumDurableSessions {
-		return fmt.Errorf("capacity durable_sessions exceeds the invited-beta limit of %d", MaximumDurableSessions)
-	}
+	// durable_sessions counts lifetime session rows, so it grows without
+	// bound; live dev exceeded 100 within weeks and wedged the observer in a
+	// permanent hold. Only the bounded-observation limit applies to it — the
+	// invited-beta envelope is enforced on active/queued/density/bounds.
 	if capacity.ActiveLimit != InvitedBetaActiveLimit {
 		return fmt.Errorf("capacity active_limit must remain %d for invited beta", InvitedBetaActiveLimit)
 	}
