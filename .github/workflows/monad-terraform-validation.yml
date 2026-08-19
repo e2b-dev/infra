@@ -160,7 +160,9 @@ jobs:
               \( -name '*.yml' -o -name '*.yaml' \) \
               -print | LC_ALL=C sort
           )"
-          expected=".github/workflows/monad-terraform-validation.yml"
+          expected="$(printf '%s\n' \
+            .github/workflows/monad-go-checks.yml \
+            .github/workflows/monad-terraform-validation.yml)"
           if [[ "$active_workflows" != "$expected" ]]; then
             printf 'unexpected active workflows:\n%s\n' "${active_workflows:-<none>}" >&2
             exit 1

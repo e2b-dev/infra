@@ -106,7 +106,7 @@ ifeq ($(PROVIDER),aws)
 	aws s3 cp ./bin/orchestrator "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/orchestrator" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
 	aws s3api put-object --bucket "${AWS_BUCKET_PREFIX}fc-env-pipeline" --key "orchestrator.$(COMMIT_SHA)" --body "fileb://$(CURDIR)/bin/orchestrator" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0" --if-none-match '*'
 else
-	gsutil -h "Cache-Control:no-cache, max-age=0" cp ./bin/orchestrator "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/orchestrator"
+	gcloud storage cp --cache-control="no-cache, max-age=0" ./bin/orchestrator "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/orchestrator"
 	gcloud storage cp --if-generation-match=0 --cache-control="no-cache, max-age=0" ./bin/orchestrator "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/orchestrator.$(COMMIT_SHA)"
 endif
 

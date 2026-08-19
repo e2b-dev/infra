@@ -1,0 +1,92 @@
+name: Monad Go Checks
+
+# Fork-owned Go verification. The inherited upstream workflows are quarantined
+# (.github/upstream-workflows-disabled) because they assume e2b's own infra and
+# secrets; this lean replacement builds every workspace module on Linux — which
+# covers the linux-only orchestrator packages (pkg/server, pkg/sandbox/*,
+# pkg/template/build/*) that a darwin dev machine cannot even type-check — and
+# runs the unit-test packages that need no privileged sandbox runtime.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: monad-go-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build workspace, unit tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Read pinned Go version
+        id: go-version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(awk '$1 == "go" { print $2; exit }' .tool-versions)"
+          test -n "$version"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5
+        with:
+          go-version: ${{ steps.go-version.outputs.version }}
+          cache-dependency-path: go.work.sum
+
+      - name: Install test prerequisites
+        shell: bash
+        # envd's filesystem tests mount via bindfs (FUSE — same as upstream's
+        # quarantined pr-tests shard), and the OCI export tests unshare a user
+        # namespace, which Ubuntu 24.04 runners block by default via AppArmor.
+        run: |
+          set -euo pipefail
+          sudo apt-get update && sudo apt-get install -y bindfs
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+
+      - name: Build every workspace module
+        shell: bash
+        # The repo root is not itself a module, so `go build ./...` from the
+        # root resolves nothing; build each module go.work lists.
+        run: |
+          set -euo pipefail
+          go work edit -json | jq -r '.Use[].DiskPath' | while read -r dir; do
+            echo "=== ${dir}"
+            (cd "${dir}" && go build ./...)
+          done
+
+      - name: Unit tests
+        shell: bash
+        # Scoped to packages whose tests run against fakes or plain files — no
+        # KVM, no root network namespaces, no live GCP. Widen deliberately, not
+        # by glob: several orchestrator and api packages assume a privileged or
+        # networked environment and hang rather than fail fast.
+        # sudo mirrors upstream's quarantined pr-tests shards: the FUSE mount
+        # and user-namespace (OCI layer extraction) tests need root on GitHub
+        # runners. sudo strips PATH; pass it through so `go` resolves to the
+        # pinned toolchain.
+        run: |
+          set -euo pipefail
+          sudo -E env "PATH=$PATH" go test -count=1 -timeout 10m \
+            ./packages/shared/pkg/proxy/... \
+            ./packages/shared/pkg/telemetry/... \
+            ./packages/envd/... \
+            ./packages/api/internal/orchestrator/placement/... \
+            ./packages/api/internal/orchestrator/nodemanager/... \
+            ./packages/orchestrator/pkg/server/... \
+            ./packages/orchestrator/pkg/sandbox/build/... \
+            ./packages/orchestrator/pkg/sandbox/envd/... \
+            ./packages/orchestrator/pkg/template/build/... \
+            ./packages/orchestrator/pkg/template/metadata/...

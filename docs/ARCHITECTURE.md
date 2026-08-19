@@ -192,8 +192,16 @@ The agent inside every VM (started by systemd very early in boot), port 49983, c
 - **Filesystem service** (`spec/filesystem/filesystem.proto`): stat/list/make/move/remove/watch.
 - **REST**: `/health`, `/metrics`, `/files` upload/download, `/init` (orchestrator pushes env
   vars, access token, metadata after boot/resume), freeze/thaw hooks used during pause.
+- **Public vs. control-plane routes**: the control routes (`/init` and the freeze/thaw hooks) are
+  marked `x-internal: true` in `spec/envd.yaml`. The orchestrator reaches them over the host
+  network at the sandbox slot IP; the sandbox proxy refuses them with a 404, for every method, so
+  they are not reachable through a sandbox URL. Adding a control route therefore means marking it
+  in the spec (`go generate` carries the marker into the proxy's rejection list) — otherwise it
+  ships reachable from the internet. (The rejection list also carries upstream's `/upgrade` route,
+  which this fork's envd does not serve.)
 - **Auth**: `X-Access-Token` header checked against a token delivered via Firecracker MMDS;
-  signed URLs for file endpoints.
+  signed URLs for file endpoints. `/init` is exempt (it is what *delivers* the token), which is the
+  main reason the proxy refuses it outright.
 - Scans guest ports and forwards them so any port a user process opens becomes reachable through
   sandbox URLs. **`pkg/version.go` must be bumped on every behavioral change** — the API and the
   orchestrator gate features on the envd version recorded in each template build.

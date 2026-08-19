@@ -40,3 +40,9 @@ var ErrAlreadyExists = errors.New("sandbox already exists")
 var ErrEvictionInProgress = errors.New("sandbox eviction already in progress")
 
 var ErrEvictionNotNeeded = errors.New("sandbox eviction not needed")
+
+// ErrExecutionMismatch reports that the stored sandbox is a different
+// incarnation than the caller intended to remove — the one it saw was already
+// removed and the ID reused by a resume or recreate. Raised only when the
+// caller opted in via RemoveOpts.ExpectExecutionID.
+var ErrExecutionMismatch = errors.New("sandbox execution no longer matches")

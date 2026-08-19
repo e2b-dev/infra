@@ -72,6 +72,55 @@ func (n *Node) markUnhealthyLocal(ctx context.Context) {
 	n.status = StatusInfo{Status: api.NodeStatusUnhealthy, ChangedAt: time.Now()}
 }
 
+// markReachable records that the node answered this replica, clearing any
+// unreachable observation.
+func (n *Node) markReachable() {
+	n.mutex.Lock()
+	defer n.mutex.Unlock()
+
+	n.unreachableSince = time.Time{}
+}
+
+// markUnreachable records that the node did not answer this replica at all.
+//
+// First write wins, so the unreachable duration keeps accumulating across
+// consecutive silent cycles — unlike status.ChangedAt, which is set on the
+// transition and would restart the clock on every retry.
+//
+// Deliberately not called from markUnhealthyLocal, even though a sync failure
+// usually implies both. A sync can fail on a response the node did deliver: a
+// nil sandbox config or an unparseable team or build ID makes GetSandboxes
+// reject the payload after the RPC succeeded. The node has demonstrably
+// answered, so it is not unreachable, and conflating the two would let one
+// malformed record present a live node as a candidate for reclamation.
+func (n *Node) markUnreachable() {
+	n.mutex.Lock()
+	defer n.mutex.Unlock()
+
+	if n.unreachableSince.IsZero() {
+		n.unreachableSince = time.Now()
+	}
+}
+
+// UnreachableSince reports when this replica first failed a full sync cycle
+// against the node, and whether it is currently unreachable at all.
+//
+// Deliberately separate from Status, because the two answer different
+// questions. A node that answers the sync and reports itself Unhealthy is
+// responsive — it is telling us something. A node this replica cannot reach at
+// all is not telling us anything. Both currently collapse into
+// api.NodeStatusUnhealthy, and anything reasoning about whether a node is
+// still there needs them apart.
+//
+// A local, single-replica signal: it says nothing about whether other replicas
+// can reach the node, so it is only ever evidence about this replica's view.
+func (n *Node) UnreachableSince() (time.Time, bool) {
+	n.mutex.RLock()
+	defer n.mutex.RUnlock()
+
+	return n.unreachableSince, !n.unreachableSince.IsZero()
+}
+
 func (n *Node) SendStatusChange(ctx context.Context, s api.NodeStatus) error {
 	nodeStatus, ok := ApiNodeToOrchestratorStateMapper[s]
 	if !ok {

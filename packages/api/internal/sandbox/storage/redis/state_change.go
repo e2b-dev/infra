@@ -69,6 +69,22 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 		return sandboxtypes.Sandbox{}, false, nil, fmt.Errorf("failed to unmarshal sandbox: %w", err)
 	}
 
+	// Fast path for a caller-pinned removal: refuse a stale one before doing any
+	// further work, and before possibly waiting out an unrelated transition
+	// below only to be refused at the end of it.
+	//
+	// This is not where the pin is enforced. The lock this holds excludes the
+	// other lock-taking operations but not Add, which is lockless, so a resume
+	// can still install a new incarnation between this comparison and the write.
+	// The authority is the equivalent check inside startTransitionScript, which
+	// is atomic with that write.
+	if opts.ExpectExecutionID != "" && sbx.ExecutionID != opts.ExpectExecutionID {
+		return sbx, false, nil, fmt.Errorf(
+			"sandbox %q is execution %q, expected %q: %w",
+			sandboxID, sbx.ExecutionID, opts.ExpectExecutionID, sandboxtypes.ErrExecutionMismatch,
+		)
+	}
+
 	// Check if there's an existing transition
 	transactionID, err := s.redisClient.Get(ctx, transitionKey).Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
@@ -96,7 +112,7 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 			logger.L().Warn(ctx, "Failed to release lock before waiting", zap.Error(releaseErr))
 		}
 
-		return s.handleExistingTransition(ctx, teamID, sbx, opts.Action, newState, transactionID)
+		return s.handleExistingTransition(ctx, teamID, sbx, opts, transactionID)
 	}
 
 	// Check if already in target state
@@ -135,9 +151,21 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 	ttlSeconds := int(transitionKeyTTL.Seconds())
 	resultTtlSeconds := int(transitionResultKeyTTL.Seconds())
 
-	err = startTransitionScript.Run(ctx, s.redisClient, []string{key, transitionKey, resultKey}, newData, transitionID, ttlSeconds, resultTtlSeconds).Err()
+	written, err := startTransitionScript.Run(ctx, s.redisClient,
+		[]string{key, transitionKey, resultKey},
+		newData, transitionID, ttlSeconds, resultTtlSeconds, opts.ExpectExecutionID,
+	).Int64()
 	if err != nil {
 		return sbx, false, nil, fmt.Errorf("failed to update sandbox state: %w", err)
+	}
+	if written == 0 {
+		// The pin no longer holds. Add is lockless, so the incarnation can have
+		// been replaced since the check above; the script refused rather than
+		// overwrite whatever is there now, and nothing has been written.
+		return sbx, false, nil, fmt.Errorf(
+			"sandbox %q is no longer execution %q: %w",
+			sandboxID, opts.ExpectExecutionID, sandboxtypes.ErrExecutionMismatch,
+		)
 	}
 
 	logger.L().Debug(ctx, "Started state transition", logger.WithSandboxID(sandboxID), zap.String("state", string(newState)), zap.String("transitionID", transitionID))
@@ -302,14 +330,25 @@ func (s *Storage) checkTransitionResult(ctx context.Context, resultKey string) e
 	return nil
 }
 
+// handleExistingTransition waits out a transition that is already in flight and
+// then either joins its result or retries the caller's own removal.
+//
+// It takes the whole RemoveOpts rather than the action alone because the retry
+// is the caller's removal, attempted again: anything it drops is a caller
+// instruction silently discarded across the wait. That has bitten
+// FilesystemOnly (a filesystem-only pause retrying as a full memory snapshot)
+// and Reason (a kill reason arriving as "unknown"), and matters most for
+// ExpectExecutionID, since the wait is exactly the window in which the sandbox
+// can be resumed under a new incarnation.
 func (s *Storage) handleExistingTransition(
 	ctx context.Context,
 	teamID uuid.UUID,
 	sbx sandboxtypes.Sandbox,
-	stateAction sandboxtypes.StateAction,
-	newState sandboxtypes.State,
+	opts sandboxtypes.RemoveOpts,
 	transactionID string,
 ) (sandboxtypes.Sandbox, bool, func(context.Context, error), error) {
+	newState := opts.Action.TargetState
+
 	if sbx.State == newState {
 		// Same target state - wait for completion and return alreadyDone=true.
 		// The caller inherits the in-flight transition's result without
@@ -338,6 +377,8 @@ func (s *Storage) handleExistingTransition(
 		return sbx, false, nil, fmt.Errorf("failed waiting for transition: %w", err)
 	}
 
-	// Retry with new state after transition completes
-	return s.StartRemoving(ctx, teamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: stateAction})
+	// Retry the caller's removal, in full, now the way is clear. Re-reading the
+	// record under the lock is what re-checks the pin against whatever the
+	// sandbox became while we waited.
+	return s.StartRemoving(ctx, teamID, sbx.SandboxID, opts)
 }

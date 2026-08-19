@@ -240,7 +240,9 @@ func (ppb *PostProcessingBuilder) postProcessingFn(userLogger logger.Logger) lay
 			// tar that envd.service seeds the boot-time cert tmpfs from reflects the
 			// final trust store. Runs before the sync below so it is flushed to disk.
 			if err := packCertBundle(ctx, userLogger, ppb.proxy, sbx.Runtime.SandboxID); err != nil {
-				e = err
+				// The gate inside packCertBundleCmd fails on user-image state;
+				// unwrapped errors surface as internal and page ops.
+				e = phases.NewPhaseBuildError(ppb.Metadata(), err)
 
 				return
 			}

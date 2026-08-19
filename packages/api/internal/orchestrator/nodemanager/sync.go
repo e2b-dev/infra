@@ -17,6 +17,13 @@ const syncMaxRetries = 4
 func (n *Node) Sync(ctx context.Context, store *sandbox.Store) {
 	syncRetrySuccess := false
 
+	// Tracked separately from success because the two answer different
+	// questions. A sync can fail on a response the node did deliver — a nil
+	// sandbox config or an unparseable ID makes GetSandboxes reject the payload
+	// after the RPC succeeded — and a node that answered is not unreachable
+	// however little sense its answer made.
+	answered := false
+
 	for range syncMaxRetries {
 		client, ctx := n.GetClient(ctx)
 		nodeInfo, err := client.Info.ServiceInfo(ctx, &emptypb.Empty{})
@@ -25,6 +32,8 @@ func (n *Node) Sync(ctx context.Context, store *sandbox.Store) {
 
 			continue
 		}
+
+		answered = true
 
 		// update node status (if changed)
 		nodeStatus, ok := OrchestratorToApiNodeStateMapper[nodeInfo.GetServiceStatus()]
@@ -65,11 +74,21 @@ func (n *Node) Sync(ctx context.Context, store *sandbox.Store) {
 		break
 	}
 
+	// Reachability keys off whether the node answered at all; status keys off
+	// whether the cycle completed. They are set independently because they can
+	// legitimately disagree.
+	if answered {
+		n.markReachable()
+	} else {
+		n.markUnreachable()
+	}
+
 	if !syncRetrySuccess {
-		logger.L().Error(ctx, "Failed to sync node after max retries, temporarily marking as unhealthy", logger.WithNodeID(n.ID))
+		logger.L().Error(ctx, "Failed to sync node after max retries, temporarily marking as unhealthy",
+			logger.WithNodeID(n.ID),
+			zap.Bool("answered", answered),
+		)
 		// Local status change, the timestamp is the time of the first unhealthy observation.
 		n.markUnhealthyLocal(ctx)
-
-		return
 	}
 }
