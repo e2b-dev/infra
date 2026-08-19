@@ -49,7 +49,7 @@ flowchart TB
     subgraph datastores["State"]
         PG[("PostgreSQL<br/>teams, templates, builds, snapshots")]
         RD[("Redis<br/>running sandboxes, routing catalog, caches")]
-        CH[("ClickHouse<br/>metrics, events, optional logs")]
+        CH[("ClickHouse<br/>metrics, events, customer logs by default")]
         OS[("Object storage GCS/S3<br/>template + snapshot artifacts")]
     end
 
@@ -123,10 +123,9 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
   (templates, builds, snapshots, teams) live in Postgres.
 - **Extra listeners**: internal gRPC :5009 and edge gRPC :5109 expose `ResumeSandbox` so
   client-proxy can wake paused sandboxes on incoming traffic.
-- Reads ClickHouse for sandbox/team metrics endpoints. Sandbox and template-build logs default to
-  Loki, with a LaunchDarkly-gated ClickHouse read path for local-cluster logs during the log
-  storage migration. LaunchDarkly feature flags also gate placement parameters, rate limits, and
-  rollouts.
+- Reads ClickHouse for sandbox/team metrics and, when `CLICKHOUSE_LOGS_READ_ENABLED` is true or
+  unset, sandbox and template-build logs. When it is false, those logs use Loki only. Log backend
+  selection is not controlled by LaunchDarkly; the read environment setting is the sole switch.
 
 ### Orchestrator (`packages/orchestrator`)
 
@@ -163,9 +162,19 @@ Key mechanisms (all under `pkg/sandbox/`):
 - **Sandbox proxy** (:5007, `pkg/proxy/`): reverse-proxies incoming traffic from client-proxy to
   the sandbox's slot IP and requested port, enforcing per-sandbox traffic access tokens.
 - Writes sandbox lifecycle **events** and cgroup **host stats** to ClickHouse; exports metrics via
-  OTel. Sandbox and template-build log writes go through a flag-resolved HTTP route: the legacy
-  collector remains the fallback primary destination, and configured shadow destinations can mirror
-  writes during collector/storage migrations without changing sandbox behavior.
+  OTel. Sandbox, template-build, and envd log writes select one fixed destination using
+  `CLICKHOUSE_LOGS_WRITE_ONLY`: true sends directly to the existing local otel-router
+  `/logs/clickhouse` writer endpoint, while false sends durably to `LOGS_COLLECTOR_ADDRESS`
+  (Vector/Loki) and best-effort shadows ClickHouse. There is no read fallback. Read and write
+  settings are independent, so all four combinations are valid for BYOC migrations.
+
+The application code defaults are BYOC-safe: Loki reads and dual writes. Cloud staging/foxtrot/
+juliett/tango deployments explicitly override both settings to `true` for ClickHouse-only reads
+and writes. BYOC deployments explicitly set `CLICKHOUSE_LOGS_READ_ENABLED=false` and
+`CLICKHOUSE_LOGS_WRITE_ONLY=false`: reads use Loki, while writes durably use the Loki collector
+as primary and best-effort shadow the fixed ClickHouse endpoint. Setting
+`CLICKHOUSE_LOGS_READ_ENABLED=true` enables BYOC ClickHouse reads; setting
+`CLICKHOUSE_LOGS_WRITE_ONLY=true` changes BYOC writes to ClickHouse-only.
 
 ### Envd (`packages/envd`)
 
@@ -256,7 +265,7 @@ planes today.
 |---|---|---|
 | **PostgreSQL** | `packages/db` (goose migrations, sqlc) | Durable control-plane state: `teams`, `users`, `tiers` (quota defaults), `project_limits` (per-team quota overrides pushed in by the owning service; the `team_limits` view reads it in preference to `tiers`), `envs` (templates), `env_builds` (build rows: vcpu, ram_mb, status, versions), `env_aliases`, `snapshots` (paused sandboxes), `team_api_keys`, `access_tokens`, `volumes`, `clusters` |
 | **Redis** | API, client-proxy, orchestrator | Ephemeral runtime state: running-sandbox store (source of truth), sandbox→node routing catalog, team/template/snapshot caches, rate limiting, P2P chunk peer registry |
-| **ClickHouse** | `packages/clickhouse` | Time-series/analytics: `metrics_gauge`/`metrics_sum` (written by the OTel collector), `sandbox_events`, `sandbox_host_stats` (written by orchestrator), team metrics, and optionally `sandbox_logs` during the log migration. Read by API and dashboard-api |
+| **ClickHouse** | `packages/clickhouse` | Time-series/analytics: `metrics_gauge`/`metrics_sum` (written by the OTel collector), `sandbox_events`, `sandbox_host_stats` (written by orchestrator), team metrics, and customer `sandbox_logs` when `CLICKHOUSE_LOGS_READ_ENABLED` is true. Read by API and dashboard-api |
 | **Object storage** (GCS/S3/local, `packages/shared/pkg/storage`) | orchestrator, template-manager | Template & snapshot artifacts, keyed by build ID: `{buildID}/memfile`, `{buildID}/rootfs.ext4`, `{buildID}/snapfile`, `{buildID}/metadata.json` + `.header` index files |
 
 A template and a paused-sandbox snapshot have the **same artifact shape** — a snapshot is just a
@@ -466,9 +475,12 @@ flowchart TB
 - PostgreSQL is external (connection string via secrets); Redis runs as a Nomad job or as a
   managed service; ClickHouse runs on its own pool.
 - Observability: everything exports OTel; the collector fans out to ClickHouse (product metrics)
-  and Grafana Cloud/stack. Logs default to the legacy Vector → Loki path; dynamic log routing can
-  select a primary collector and shadow collectors, and local-cluster log reads can be switched to
-  ClickHouse with `logs-read-config` after `sandbox_logs` is populated.
+  and Grafana Cloud/stack. Application log writers route directly to the existing local otel-router
+  `/logs/clickhouse` endpoint when `CLICKHOUSE_LOGS_WRITE_ONLY` is true. When false, the durable
+  destination is `LOGS_COLLECTOR_ADDRESS` (Vector/Loki) and ClickHouse is a bounded best-effort
+  shadow. The otel-router listener is an existing external deployment contract, not created by
+  this repository; true requires the colocated listener and intentionally fails/drops rather than
+  falling back to Loki when unavailable.
 
 ## Repository layout
 

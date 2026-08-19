@@ -126,6 +126,8 @@ locals {
 
     LOKI_URL                     = "http://loki.service.consul:${local.loki_port}"
     CLICKHOUSE_CONNECTION_STRING = local.clickhouse_connection_string
+    CLICKHOUSE_LOGS_READ_ENABLED = "false"
+    CLICKHOUSE_LOGS_WRITE_ONLY   = "false"
 
     LOGS_COLLECTOR_ADDRESS       = "http://localhost:${local.logs_proxy_port}"
     OTEL_COLLECTOR_GRPC_ENDPOINT = "localhost:${local.otel_collector_port}"
@@ -173,6 +175,7 @@ locals {
     OTEL_COLLECTOR_GRPC_ENDPOINT = "localhost:${local.otel_collector_port}"
     ALLOW_SANDBOX_INTERNAL_CIDRS = var.allow_sandbox_internal_cidrs
     CLICKHOUSE_CONNECTION_STRING = local.clickhouse_connection_string
+    CLICKHOUSE_LOGS_WRITE_ONLY   = "false"
     REDIS_POOL_SIZE              = "10"
     REDIS_CLUSTER_URL            = local.redis_cluster_url
     REDIS_TLS_CA_BASE64          = local.redis_tls_ca_base64
@@ -210,6 +213,7 @@ locals {
     ORCHESTRATOR_SERVICES        = "template-manager"
     REDIS_POOL_SIZE              = "10"
     CLICKHOUSE_CONNECTION_STRING = local.clickhouse_connection_string
+    CLICKHOUSE_LOGS_WRITE_ONLY   = "false"
     GIN_MODE                     = "release"
     LAUNCH_DARKLY_API_KEY        = module.init.launch_darkly_api_key
   }, var.template_manager_env_vars)

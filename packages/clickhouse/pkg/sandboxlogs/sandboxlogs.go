@@ -1,6 +1,6 @@
 // Package sandboxlogs is a minimal ClickHouse reader for the sandbox_logs
 // table, used by the API local cluster to serve sandbox/build logs from
-// ClickHouse behind the logs-read-config LaunchDarkly flag.
+// ClickHouse customer-log reader.
 package sandboxlogs
 
 import (

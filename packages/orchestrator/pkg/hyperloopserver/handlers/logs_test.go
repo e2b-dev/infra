@@ -11,7 +11,23 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
+
+func TestNewHyperloopStoreWriteModes(t *testing.T) {
+	t.Parallel()
+
+	dual := NewHyperloopStore(nil, sandbox.NewSandboxesMap(), "http://collector/logs", false)
+	assert.Equal(t, "http://collector/logs", dual.sandboxCollectorAddr)
+	assert.Equal(t, sbxlogger.ClickhouseLogsWriteEndpoint, dual.sandboxClickhouseAddr)
+	assert.True(t, dual.shadowEnabled)
+
+	writeOnly := NewHyperloopStore(nil, sandbox.NewSandboxesMap(), "http://collector/logs", true)
+	assert.Equal(t, sbxlogger.ClickhouseLogsWriteEndpoint, writeOnly.sandboxCollectorAddr)
+	assert.False(t, writeOnly.shadowEnabled)
+}
 
 func TestHasStaleLogTimestamp(t *testing.T) {
 	t.Parallel()

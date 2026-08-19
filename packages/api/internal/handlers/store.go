@@ -132,13 +132,13 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 	}
 
 	// ClickHouse-backed sandbox/build log reader for the local cluster, gated at
-	// read time by the logs-read-config flag. Built from the singular DSN; when
-	// it is unset, the local cluster stays on Loki.
+	// read time by CLICKHOUSE_LOGS_READ_ENABLED. Enabled reads fail when the reader
+	// is unavailable and never fall back to Loki.
 	var sandboxLogsReader *sandboxlogs.Reader
 	// clusterLogsReader carries the reader into the clusters pool as an
 	// interface. It is left as a nil interface (not a typed-nil pointer boxed in
 	// an interface) when no reader is configured, so the nil check in the local
-	// cluster resource provider fires correctly and reads stay on Loki.
+	// cluster resource provider fires correctly and missing readers surface errors.
 	var clusterLogsReader clusters.ClickhouseLogsReader
 	if config.ClickhouseConnectionString != "" {
 		conn, readerErr := clickhouse.NewDriver(config.ClickhouseConnectionString)
@@ -226,7 +226,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		logger.L().Fatal(ctx, "error when getting logs query provider", zap.Error(err))
 	}
 
-	clusters, err := clusters.NewPool(ctx, tel, sqlcDB, templateBuilderDiscovery, clickhouseStore, queryLogsProvider, clusterLogsReader, featureFlags, config)
+	clusters, err := clusters.NewPool(ctx, tel, sqlcDB, templateBuilderDiscovery, clickhouseStore, queryLogsProvider, clusterLogsReader, config)
 	if err != nil {
 		logger.L().Fatal(ctx, "initializing edge clusters pool failed", zap.Error(err))
 	}

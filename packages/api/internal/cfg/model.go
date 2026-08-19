@@ -41,6 +41,8 @@ type Config struct {
 
 	ClickhouseConnectionString  string   `env:"CLICKHOUSE_CONNECTION_STRING"`
 	ClickhouseConnectionStrings []string `env:"CLICKHOUSE_CONNECTION_STRINGS" envSeparator:";"`
+	ClickhouseLogsReadEnabled   bool     `env:"CLICKHOUSE_LOGS_READ_ENABLED"  envDefault:"false"`
+	ClickhouseLogsWriteOnly     bool     `env:"CLICKHOUSE_LOGS_WRITE_ONLY"    envDefault:"false"`
 
 	LokiPassword string `env:"LOKI_PASSWORD"`
 	LokiURL      string `env:"LOKI_URL,required"`

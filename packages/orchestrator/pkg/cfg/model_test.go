@@ -4,6 +4,7 @@
 package cfg
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,6 +12,26 @@ import (
 )
 
 func TestParse(t *testing.T) {
+	t.Run("ClickHouse logs write-only parses strictly", func(t *testing.T) {
+		removeEnv(t, "CLICKHOUSE_LOGS_WRITE_ONLY")
+		config, err := Parse()
+		require.NoError(t, err)
+		assert.False(t, config.ClickhouseLogsWriteOnly)
+
+		t.Setenv("CLICKHOUSE_LOGS_WRITE_ONLY", "true")
+		config, err = Parse()
+		require.NoError(t, err)
+		assert.True(t, config.ClickhouseLogsWriteOnly)
+
+		t.Setenv("CLICKHOUSE_LOGS_WRITE_ONLY", "false")
+		config, err = Parse()
+		require.NoError(t, err)
+		assert.False(t, config.ClickhouseLogsWriteOnly)
+
+		t.Setenv("CLICKHOUSE_LOGS_WRITE_ONLY", "invalid")
+		_, err = Parse()
+		assert.Error(t, err)
+	})
 	t.Run("embedded structs get defaults", func(t *testing.T) {
 		config, err := Parse()
 		require.NoError(t, err)
@@ -70,6 +91,19 @@ func TestParse(t *testing.T) {
 		config, err := Parse()
 		require.NoError(t, err)
 		assert.True(t, config.DisableStartupReclaim)
+	})
+}
+
+func removeEnv(t *testing.T, key string) {
+	t.Helper()
+	previous, present := os.LookupEnv(key)
+	require.NoError(t, os.Unsetenv(key))
+	t.Cleanup(func() {
+		if present {
+			_ = os.Setenv(key, previous) //nolint:usetesting // restoring process environment
+		} else {
+			_ = os.Unsetenv(key)
+		}
 	})
 }
 

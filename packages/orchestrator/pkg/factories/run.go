@@ -401,17 +401,16 @@ func run(config cfg.Config, opts Options) (success bool) {
 	featureFlags.SetDeploymentName(config.DomainName)
 	featureFlags.RegisterContextProvider(orchestratorContextProvider(nodeID, commitSHA))
 
-	// External sandbox logger routes through LaunchDarkly (LogsWriteConfigFlag),
-	// falling back to the fixed collector address. Created here so it can use the
-	// feature flags client.
+	// External sandbox logs select the dedicated ClickHouse endpoint or
+	// LOGS_COLLECTOR_ADDRESS from CLICKHOUSE_LOGS_WRITE_ONLY.
 	sbxLoggerExternal := sbxlogger.NewLogger(
 		ctx,
 		tel.LogsProvider,
 		sbxlogger.SandboxLoggerConfig{
-			ServiceName:      serviceName,
-			IsInternal:       false,
-			CollectorAddress: env.LogsCollectorAddress(),
-			FeatureFlags:     featureFlags,
+			ServiceName:             serviceName,
+			IsInternal:              false,
+			CollectorAddress:        env.LogsCollectorAddress(),
+			ClickhouseLogsWriteOnly: config.ClickhouseLogsWriteOnly,
 		},
 	)
 	defer func(l logger.Logger) {
@@ -843,10 +842,10 @@ func run(config cfg.Config, opts Options) (success bool) {
 		ctx,
 		tel.LogsProvider,
 		sbxlogger.SandboxLoggerConfig{
-			ServiceName:      constants.ServiceNameTemplate,
-			IsInternal:       false,
-			CollectorAddress: env.LogsCollectorAddress(),
-			FeatureFlags:     featureFlags,
+			ServiceName:             constants.ServiceNameTemplate,
+			IsInternal:              false,
+			CollectorAddress:        env.LogsCollectorAddress(),
+			ClickhouseLogsWriteOnly: config.ClickhouseLogsWriteOnly,
 		},
 	)
 	closers = append(closers, closer{
@@ -870,7 +869,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	}
 
 	// hyperloop server
-	hyperloopSrv, err := hyperloopserver.NewHyperloopServer(ctx, config.NetworkConfig.HyperloopProxyPort, globalLogger, sandboxes, featureFlags)
+	hyperloopSrv, err := hyperloopserver.NewHyperloopServer(ctx, config.NetworkConfig.HyperloopProxyPort, globalLogger, sandboxes, config.ClickhouseLogsWriteOnly)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create hyperloop server", zap.Error(err))
 	}
