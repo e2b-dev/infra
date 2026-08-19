@@ -120,3 +120,44 @@ run "worker_stage_enables_os_login" {
     error_message = "The reviewed worker/build stages must still add OS Login metadata."
   }
 }
+
+run "mutation_releases_terraform_target" {
+  command = plan
+
+  # A released target_size is provider-computed, so its null-ness is not
+  # observable at plan time; this run proves the mutating configuration still
+  # plans cleanly, and the workload-plan assertions review the released
+  # target as the policy floor pin.
+  variables {
+    autoscaler                           = { size_max = 2, cpu_target = 1, memory_target = 100 }
+    workload_autoscaler_mutation_enabled = true
+  }
+
+  assert {
+    condition     = google_compute_region_instance_group_manager.pool.name == "monad-orch-client-rig"
+    error_message = "Mutating mode must keep planning the reviewed worker MIG."
+  }
+}
+
+run "mutation_rejects_generic_gce_autoscaler" {
+  command = plan
+
+  variables {
+    autoscaler                           = { size_max = 15, cpu_target = 0.7, memory_target = 90 }
+    workload_autoscaler_mutation_enabled = true
+  }
+
+  expect_failures = [google_compute_region_instance_group_manager.pool]
+}
+
+run "mutation_requires_deployed_workload_autoscaler" {
+  command = plan
+
+  variables {
+    autoscaler                           = { size_max = 2, cpu_target = 1, memory_target = 100 }
+    workload_autoscaler_shadow_enabled   = false
+    workload_autoscaler_mutation_enabled = true
+  }
+
+  expect_failures = [google_compute_region_instance_group_manager.pool]
+}

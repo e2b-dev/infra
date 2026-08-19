@@ -151,7 +151,9 @@ for pool_module in build_cluster client_cluster; do
     printf 'Missing %s module block.\n' "${pool_module}" >&2
     exit 1
   }
-  grep -F 'os_login_operator_access_confirmed = terraform_data.os_login_operator_access_guard.output' \
+  # Alignment-tolerant: terraform fmt re-columns this block as neighboring
+  # arguments change length.
+  grep -E 'os_login_operator_access_confirmed[[:space:]]+= terraform_data\.os_login_operator_access_guard\.output' \
     <<<"${pool_block}" >/dev/null
   if [[ "$(grep -Fc 'terraform_data.os_login_operator_access_guard' <<<"${pool_block}")" -ne 1 ]]; then
     printf '%s must consume the OS Login guard only through its narrow template input.\n' \
