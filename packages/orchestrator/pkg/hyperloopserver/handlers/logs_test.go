@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,14 +20,11 @@ import (
 func TestNewHyperloopStoreWriteModes(t *testing.T) {
 	t.Parallel()
 
-	dual := NewHyperloopStore(nil, sandbox.NewSandboxesMap(), "http://collector/logs", false)
-	assert.Equal(t, "http://collector/logs", dual.sandboxCollectorAddr)
-	assert.Equal(t, sbxlogger.ClickhouseLogsWriteEndpoint, dual.sandboxClickhouseAddr)
-	assert.True(t, dual.shadowEnabled)
+	collector := NewHyperloopStore(nil, sandbox.NewSandboxesMap(), "http://collector/logs", false)
+	assert.Equal(t, "http://collector/logs", collector.sandboxLogsAddr)
 
 	writeOnly := NewHyperloopStore(nil, sandbox.NewSandboxesMap(), "http://collector/logs", true)
-	assert.Equal(t, sbxlogger.ClickhouseLogsWriteEndpoint, writeOnly.sandboxCollectorAddr)
-	assert.False(t, writeOnly.shadowEnabled)
+	assert.Equal(t, sbxlogger.ClickhouseLogsWriteEndpoint, writeOnly.sandboxLogsAddr)
 }
 
 func TestHasStaleLogTimestamp(t *testing.T) {
@@ -139,7 +137,9 @@ func TestAPIStoreForwardLogsStatus(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
+			var requests atomic.Int32
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				requests.Add(1)
 				w.WriteHeader(tt.status)
 				_, _ = w.Write([]byte("collector diagnostic"))
 			}))
@@ -155,6 +155,9 @@ func TestAPIStoreForwardLogsStatus(t *testing.T) {
 			}
 			if err != nil && strings.Contains(err.Error(), "not-in-error") {
 				t.Fatalf("error contains request payload: %v", err)
+			}
+			if got := requests.Load(); got != 1 {
+				t.Fatalf("forwardLogs sent %d requests, want exactly 1", got)
 			}
 		})
 	}

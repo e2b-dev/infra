@@ -11,8 +11,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/require"
 )
 
 func TestHTTPWriterSendLogLineStatus(t *testing.T) {
@@ -55,52 +53,25 @@ func TestHTTPWriterSendLogLineStatus(t *testing.T) {
 	}
 }
 
-func TestDualHTTPWriterPrimaryAndShadow(t *testing.T) {
+func TestHTTPWriterSendsExactlyOnceToConfiguredEndpoint(t *testing.T) {
 	t.Parallel()
-	var primaryCount, shadowCount atomic.Int32
-	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		primaryCount.Add(1)
+	var requestCount atomic.Int32
+	collector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requestCount.Add(1)
 		w.WriteHeader(http.StatusNoContent)
 	}))
-	shadow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		shadowCount.Add(1)
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	t.Cleanup(primary.Close)
-	t.Cleanup(shadow.Close)
+	t.Cleanup(collector.Close)
 
-	writer := NewDualHTTPWriter(t.Context(), primary.URL, shadow.URL)
+	writer := NewHTTPWriter(t.Context(), collector.URL)
 	_, err := writer.Write([]byte(`{"msg":"line"}` + "\n"))
-	require.NoError(t, err)
-	require.NoError(t, writer.Sync())
-	deadline := time.Now().Add(time.Second)
-	for shadowCount.Load() == 0 && time.Now().Before(deadline) {
-		time.Sleep(time.Millisecond)
+	if err != nil {
+		t.Fatalf("Write failed: %v", err)
 	}
-	if primaryCount.Load() != 1 || shadowCount.Load() != 1 {
-		t.Fatalf("expected one primary and shadow request, got %d and %d", primaryCount.Load(), shadowCount.Load())
+	if err := writer.Sync(); err != nil {
+		t.Fatalf("Sync failed: %v", err)
 	}
-}
-
-func TestDualHTTPWriterShadowFailureDoesNotAffectPrimary(t *testing.T) {
-	t.Parallel()
-	var primaryCount atomic.Int32
-	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		primaryCount.Add(1)
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	shadow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	t.Cleanup(primary.Close)
-	t.Cleanup(shadow.Close)
-
-	writer := NewDualHTTPWriter(t.Context(), primary.URL, shadow.URL)
-	_, err := writer.Write([]byte(`{"msg":"line"}` + "\n"))
-	require.NoError(t, err)
-	require.NoError(t, writer.Sync())
-	if primaryCount.Load() != 1 {
-		t.Fatalf("expected one primary request, got %d", primaryCount.Load())
+	if requestCount.Load() != 1 {
+		t.Fatalf("expected one request to the configured endpoint, got %d", requestCount.Load())
 	}
 }
 

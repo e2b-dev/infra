@@ -90,9 +90,10 @@ func (h *APIStore) Logs(c *gin.Context) {
 		return
 	}
 
-	// The caller selected the dedicated ClickHouse endpoint or LOGS_COLLECTOR_ADDRESS
-	// from CLICKHOUSE_LOGS_WRITE_ONLY; forward to that address without fallback.
-	if err := h.forwardLogs(c.Request.Context(), h.sandboxCollectorAddr, logs, 0); err != nil {
+	// CLICKHOUSE_LOGS_WRITE_ONLY selects exactly one destination. In BYOC the
+	// collector owns the Loki and ClickHouse fan-out; managed cloud writes only
+	// to the local ClickHouse endpoint. There is no fallback or shadow write.
+	if err := h.forwardLogs(c.Request.Context(), h.sandboxLogsAddr, logs, 0); err != nil {
 		recordLogForwardWrite(ctx, "primary", "failure", "send_error")
 		h.sendAPIStoreError(c, http.StatusInternalServerError, "Error when forwarding sandbox logs")
 		h.logger.Error(ctx, "error when forwarding sandbox logs", zap.Error(err), logger.WithSandboxID(sbxID))
@@ -100,30 +101,8 @@ func (h *APIStore) Logs(c *gin.Context) {
 		return
 	}
 	recordLogForwardWrite(ctx, "primary", "success", "")
-	if h.shadowEnabled && h.tryAcquireShadow() {
-		shadowCtx := context.WithoutCancel(ctx)
-		go func(payload []byte) {
-			defer h.shadowInflight.Add(-1)
-			if err := h.forwardLogs(shadowCtx, h.sandboxClickhouseAddr, payload, 0); err != nil {
-				h.logger.Error(shadowCtx, "error forwarding sandbox log shadow", zap.Error(err), logger.WithSandboxID(sbxID))
-			}
-		}(logs)
-	}
 
 	c.Status(http.StatusOK)
-}
-
-func (h *APIStore) tryAcquireShadow() bool {
-	const maxShadowInflight = 1024
-	for {
-		current := h.shadowInflight.Load()
-		if current >= maxShadowInflight {
-			return false
-		}
-		if h.shadowInflight.CompareAndSwap(current, current+1) {
-			return true
-		}
-	}
 }
 
 func recordLogForwardWrite(ctx context.Context, route, result, reason string) {

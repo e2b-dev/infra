@@ -9,7 +9,6 @@ import (
 	"log"
 	"net/http"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -26,8 +25,6 @@ var (
 	)
 )
 
-const maxStaticShadowWrites = 1024
-
 func mustLogWriterCounter(name, description string) metric.Int64Counter {
 	counter, err := logWriterMeter.Int64Counter(name, metric.WithDescription(description))
 	if err != nil {
@@ -38,11 +35,9 @@ func mustLogWriterCounter(name, description string) metric.Int64Counter {
 }
 
 type HTTPWriter struct {
-	ctx            context.Context //nolint:containedctx // todo: fix the interface so this can be removed
-	url            string
-	httpClient     *http.Client
-	shadowURL      string
-	shadowInflight atomic.Int64
+	ctx        context.Context //nolint:containedctx // todo: fix the interface so this can be removed
+	url        string
+	httpClient *http.Client
 
 	wgLock sync.Mutex
 	wg     *sync.WaitGroup
@@ -58,16 +53,6 @@ func NewHTTPWriter(ctx context.Context, endpoint string) zapcore.WriteSyncer {
 		wgLock: sync.Mutex{},
 		wg:     &sync.WaitGroup{},
 	}
-}
-
-// NewDualHTTPWriter writes synchronously to primary and asynchronously to one
-// fixed, bounded best-effort shadow destination. The shadow never affects the
-// primary result and is not dynamically resolved.
-func NewDualHTTPWriter(ctx context.Context, primary, shadow string) zapcore.WriteSyncer {
-	writer := NewHTTPWriter(ctx, primary).(*HTTPWriter)
-	writer.shadowURL = shadow
-
-	return writer
 }
 
 func (h *HTTPWriter) Write(source []byte) (n int, err error) {
@@ -131,16 +116,6 @@ func (h *HTTPWriter) Sync() error {
 
 // routeLogLine sends ONE log line to the fixed endpoint.
 func (h *HTTPWriter) routeLogLine(line []byte) error {
-	if h.shadowURL != "" && h.tryAcquireShadow() {
-		shadowLine := append([]byte(nil), line...)
-		go func() {
-			defer h.shadowInflight.Add(-1)
-			if err := h.sendLogLine(h.ctx, h.shadowURL, shadowLine); err != nil {
-				log.Printf("error sending log shadow: %v\n", err)
-			}
-		}()
-	}
-
 	if err := h.sendLogLine(h.ctx, h.url, line); err != nil {
 		recordLogWriterWrite(h.ctx, "primary", "failure", "send_error")
 
@@ -149,18 +124,6 @@ func (h *HTTPWriter) routeLogLine(line []byte) error {
 	recordLogWriterWrite(h.ctx, "primary", "success", "")
 
 	return nil
-}
-
-func (h *HTTPWriter) tryAcquireShadow() bool {
-	for {
-		current := h.shadowInflight.Load()
-		if current >= maxStaticShadowWrites {
-			return false
-		}
-		if h.shadowInflight.CompareAndSwap(current, current+1) {
-			return true
-		}
-	}
 }
 
 func recordLogWriterWrite(ctx context.Context, route, result, reason string) {

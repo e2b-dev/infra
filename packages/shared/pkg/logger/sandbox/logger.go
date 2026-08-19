@@ -40,12 +40,7 @@ func NewLogger(ctx context.Context, loggerProvider log.LoggerProvider, config Sa
 	if !config.IsInternal && externalAddress != "" {
 		// Add the selected external HTTP log exporter to the core.
 		vectorEncoder := zapcore.NewJSONEncoder(GetSandboxEncoderConfig())
-		var httpWriter zapcore.WriteSyncer
-		if config.ClickhouseLogsWriteOnly {
-			httpWriter = logger.NewHTTPWriter(ctx, externalAddress)
-		} else {
-			httpWriter = logger.NewDualHTTPWriter(ctx, externalAddress, ClickhouseLogsWriteEndpoint)
-		}
+		httpWriter := logger.NewHTTPWriter(ctx, externalAddress)
 		core = zapcore.NewCore(
 			vectorEncoder,
 			httpWriter,

@@ -4,7 +4,6 @@ package handlers
 
 import (
 	"net/http"
-	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -21,11 +20,8 @@ type APIStore struct {
 	logger    logger.Logger
 	sandboxes *sandbox.Map
 
-	collectorClient       http.Client
-	sandboxCollectorAddr  string
-	sandboxClickhouseAddr string
-	shadowEnabled         bool
-	shadowInflight        atomic.Int64
+	collectorClient http.Client
+	sandboxLogsAddr string
 }
 
 func NewHyperloopStore(logger logger.Logger, sandboxes *sandbox.Map, sandboxCollectorAddr string, writeOnly bool) *APIStore {
@@ -36,10 +32,7 @@ func NewHyperloopStore(logger logger.Logger, sandboxes *sandbox.Map, sandboxColl
 		collectorClient: http.Client{
 			Timeout: CollectorExporterTimeout,
 		},
-		sandboxCollectorAddr:  sbxlogger.ExternalLogEndpoint(sandboxCollectorAddr, writeOnly),
-		sandboxClickhouseAddr: sbxlogger.ClickhouseLogsWriteEndpoint,
-		shadowEnabled:         !writeOnly,
-		shadowInflight:        atomic.Int64{},
+		sandboxLogsAddr: sbxlogger.ExternalLogEndpoint(sandboxCollectorAddr, writeOnly),
 	}
 }
 

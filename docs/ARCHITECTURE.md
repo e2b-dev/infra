@@ -164,17 +164,16 @@ Key mechanisms (all under `pkg/sandbox/`):
 - Writes sandbox lifecycle **events** and cgroup **host stats** to ClickHouse; exports metrics via
   OTel. Sandbox, template-build, and envd log writes select one fixed destination using
   `CLICKHOUSE_LOGS_WRITE_ONLY`: true sends directly to the existing local otel-router
-  `/logs/clickhouse` writer endpoint, while false sends durably to `LOGS_COLLECTOR_ADDRESS`
-  (Vector/Loki) and best-effort shadows ClickHouse. There is no read fallback. Read and write
+  `/logs/clickhouse` writer endpoint, while false sends exactly once to `LOGS_COLLECTOR_ADDRESS`;
+  logs-collector owns the Loki and ClickHouse fan-out. There is no read fallback. Read and write
   settings are independent, so all four combinations are valid for BYOC migrations.
 
-The application code defaults are BYOC-safe: Loki reads and dual writes. Cloud staging/foxtrot/
-juliett/tango deployments explicitly override both settings to `true` for ClickHouse-only reads
-and writes. BYOC deployments explicitly set `CLICKHOUSE_LOGS_READ_ENABLED=false` and
-`CLICKHOUSE_LOGS_WRITE_ONLY=false`: reads use Loki, while writes durably use the Loki collector
-as primary and best-effort shadow the fixed ClickHouse endpoint. Setting
-`CLICKHOUSE_LOGS_READ_ENABLED=true` enables BYOC ClickHouse reads; setting
-`CLICKHOUSE_LOGS_WRITE_ONLY=true` changes BYOC writes to ClickHouse-only.
+The application code defaults are BYOC-safe: Loki reads and exactly-once writes to logs-collector.
+The collector/system owns the dual write to Loki and ClickHouse. Cloud staging/foxtrot/juliett/
+tango deployments explicitly override both settings to `true` for ClickHouse-only reads and
+writes. BYOC deployments explicitly set `CLICKHOUSE_LOGS_READ_ENABLED=false` and
+`CLICKHOUSE_LOGS_WRITE_ONLY=false`. Setting `CLICKHOUSE_LOGS_READ_ENABLED=true` enables BYOC
+ClickHouse reads; setting `CLICKHOUSE_LOGS_WRITE_ONLY=true` changes BYOC writes to ClickHouse-only.
 
 ### Envd (`packages/envd`)
 
@@ -476,9 +475,9 @@ flowchart TB
   managed service; ClickHouse runs on its own pool.
 - Observability: everything exports OTel; the collector fans out to ClickHouse (product metrics)
   and Grafana Cloud/stack. Application log writers route directly to the existing local otel-router
-  `/logs/clickhouse` endpoint when `CLICKHOUSE_LOGS_WRITE_ONLY` is true. When false, the durable
-  destination is `LOGS_COLLECTOR_ADDRESS` (Vector/Loki) and ClickHouse is a bounded best-effort
-  shadow. The otel-router listener is an existing external deployment contract, not created by
+  `/logs/clickhouse` endpoint when `CLICKHOUSE_LOGS_WRITE_ONLY` is true. When false, the sole
+  application destination is `LOGS_COLLECTOR_ADDRESS`; logs-collector owns the dual write to
+  Loki and ClickHouse. The otel-router listener is an existing external deployment contract, not created by
   this repository; true requires the colocated listener and intentionally fails/drops rather than
   falling back to Loki when unavailable.
 
