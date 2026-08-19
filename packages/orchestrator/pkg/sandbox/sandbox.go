@@ -57,6 +57,7 @@ var (
 
 	processMemoryDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotProcessMemoryDurationName))
 	processRootfsDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotProcessRootfsDurationName))
+	guestFreezeDurationHistogram   = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotGuestFreezeDurationName))
 	rootfsSealDurationHistogram    = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotRootfsSealDurationName))
 
 	uffdStartupPagesHistogram       = utils.Must(telemetry.GetHistogram(meter, telemetry.UffdStartupPagesHistogramName))
@@ -185,6 +186,16 @@ const (
 	SandboxTypeSandbox SandboxType = "sandbox"
 	SandboxTypeBuild   SandboxType = "build"
 )
+
+// inPlaceStateFlipTimeout bounds the FC pause and resume calls of an in-place
+// checkpoint. The PATCH is a state flip that normally completes in
+// milliseconds, but the bound must exceed Firecracker's own internal 30s
+// vcpu-ack deadline (RECV_TIMEOUT_SEC — FC's deadlock detector on the same
+// wait), so a Go-side trip means FC itself has given up on the flip, not that
+// we abandoned one still in progress on FC's serial API loop. Tripping it is
+// not just a failed call: the pause path answers it with the cleanup resume,
+// and a failed resume tears the sandbox down (ErrSandboxLost).
+const inPlaceStateFlipTimeout = 40 * time.Second
 
 // StopReason says why a sandbox execution ended. It is a metric label, so the
 // set of values has to stay small and closed.
@@ -319,9 +330,18 @@ type Sandbox struct {
 	process      *fc.Process
 	cgroupHandle *cgroup.CgroupHandle
 
+	// inPlaceCheckpointInFlight excludes concurrent in-place checkpoints of
+	// this sandbox: it stays live and addressable through one (no MarkStopping),
+	// so nothing else prevents a second Checkpoint RPC from racing
+	// Pause/CreateSnapshot/ResumeInPlace on the same FC process. See
+	// Server.checkpointInPlace.
+	inPlaceCheckpointInFlight atomic.Bool
+
 	// useSyncWP records whether this sandbox was resumed with synchronous
 	// userfault write-protect delivery (use_sync_wp on snapshot load). Only
 	// then can the page tracker serve as the pause-time dirty source.
+	// Written once during resume, before the sandbox is published; read-only
+	// afterwards (see UseSyncWP).
 	useSyncWP bool
 
 	Template template.Template
@@ -350,6 +370,14 @@ type Sandbox struct {
 
 	stop utils.Lazy[error]
 
+	// rootfsSealMu guards rootfsSealDone.
+	rootfsSealMu sync.Mutex
+	// rootfsSealDone is resolved when the most recent in-place background rootfs
+	// seal (swap + reflink + fold) finishes. A subsequent in-place checkpoint
+	// waits on it so the writable COW cache is a complete diff before it swaps
+	// again. nil until the first in-place seal runs.
+	rootfsSealDone *utils.SetOnce[struct{}]
+
 	// startupRecorded guards ALL first-WaitForEnvd recording — the envd-init
 	// duration + uffd.startup.* histograms, the envd-init call counter (in
 	// initEnvd), and SetStartedAt — so they fire only on the actual sandbox
@@ -368,11 +396,30 @@ type Sandbox struct {
 	skipStartupMetrics bool
 }
 
+// BeginInPlaceCheckpoint marks an in-place checkpoint in flight; false means
+// one is already running and the caller must refuse. Pair with
+// EndInPlaceCheckpoint.
+func (s *Sandbox) BeginInPlaceCheckpoint() bool {
+	return s.inPlaceCheckpointInFlight.CompareAndSwap(false, true)
+}
+
+// EndInPlaceCheckpoint clears the in-flight marker set by BeginInPlaceCheckpoint.
+func (s *Sandbox) EndInPlaceCheckpoint() {
+	s.inPlaceCheckpointInFlight.Store(false)
+}
+
 func (s *Sandbox) RunUpdate(update func() error) error {
 	s.updateMu.Lock()
 	defer s.updateMu.Unlock()
 
 	return update()
+}
+
+// UseSyncWP reports whether this sandbox was resumed with synchronous
+// userfault write-protect delivery (use_sync_wp on snapshot load). Set once
+// during resume before the sandbox is published, so it needs no locking.
+func (s *Sandbox) UseSyncWP() bool {
+	return s.useSyncWP
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -1523,9 +1570,19 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 type pauseOptions struct {
 	filesystemSnapshot bool
 	deferRootfsExport  bool
+	maintainSandbox    bool
 }
 
 type PauseOption func(*pauseOptions)
+
+// WithMaintainSandbox keeps the sandbox process and all its resources alive
+// through the snapshot and resumes it in place afterwards (an in-place
+// checkpoint), instead of stopping it. Combined with WithDeferredRootfsExport it
+// swaps a fresh COW cache onto the live overlay and seals the old one in the
+// background; without it the in-place export is synchronous.
+func WithMaintainSandbox() PauseOption {
+	return func(o *pauseOptions) { o.maintainSandbox = true }
+}
 
 // WithFilesystemSnapshot makes the pause produce a filesystem-only snapshot:
 // guest memory is not snapshotted, only the filesystem (rootfs) is persisted.
@@ -1543,6 +1600,14 @@ func WithFilesystemSnapshot() PauseOption {
 func WithDeferredRootfsExport() PauseOption {
 	return func(o *pauseOptions) { o.deferRootfsExport = true }
 }
+
+// ErrSandboxLost reports that an operation destroyed the sandbox in the
+// process of failing (e.g. the final in-place resume failed and the frozen VM
+// was torn down). Callers translating errors into API status codes must map
+// this to a fatal code: the "sandbox still healthy, restore to Running"
+// treatment that fits every other in-place checkpoint failure would leave a
+// phantom row routed, billed and holding a concurrency slot until expiry.
+var ErrSandboxLost = errors.New("sandbox lost")
 
 // Pause creates a snapshot of the sandbox.
 //
@@ -1594,6 +1659,21 @@ func (s *Sandbox) Pause(
 	buildID, err := uuid.Parse(cachePaths.BuildID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse build id: %w", err)
+	}
+
+	// Serialize against a still-running background seal from a PRIOR in-place
+	// snapshot of this sandbox: its fold makes the writable COW cache a complete
+	// diff again, which this snapshot's export relies on. UNCONDITIONAL (the
+	// seal state lives on the long-lived Sandbox, so a plain autopause can race
+	// a seal too — the destroy-path export never consults the sealing layer),
+	// and FIRST: waiting here, before checks stop and before the FC pause,
+	// keeps an overrunning reflink+fold out of the guest-frozen window, and a
+	// latched seal error aborts while the sandbox is still fully intact.
+	// Server.Pause additionally checks this BEFORE arming its teardown, so a
+	// latched error fails a plain pause cleanly instead of destroying the
+	// sandbox with nothing persisted.
+	if err := s.waitForRootfsSeal(ctx); err != nil {
+		return nil, fmt.Errorf("previous rootfs seal did not complete: %w", err)
 	}
 
 	// Stop the health check before pausing the VM
@@ -1663,13 +1743,105 @@ func (s *Sandbox) Pause(
 		cancel()
 	}
 
-	if err := s.process.Pause(ctx); err != nil {
-		return nil, fmt.Errorf("failed to pause VM: %w", err)
+	// For an in-place checkpoint the VM must come back up even if the snapshot
+	// fails, and health checks — stopped at the top of Pause — must restart, or
+	// the still-live sandbox is left with checks permanently off. Registered
+	// BEFORE the FC pause, and the resume runs on EVERY outcome — the pre-arm
+	// rule: a pause whose round-trip failed may still have landed in FC, and
+	// resuming a never-paused VM is an idempotent no-op (a running vCPU
+	// answers Resumed), so skipping the resume on any "failed" pause is what
+	// would hand the API a frozen VM labeled healthy. pauseLanded gates only
+	// the freeze metric and the clock re-sync: a pause KNOWN to have failed
+	// before reaching the guest froze nothing and drifted nothing.
+	// resumeOnError is cleared just before the real ResumeInPlace on the
+	// success path.
+	pauseLanded := false
+	var freezeStart time.Time
+	resumeOnError := pauseOpts.maintainSandbox
+	if pauseOpts.maintainSandbox {
+		cleanup.Add(ctx, func(ctx context.Context) error {
+			if !resumeOnError {
+				return nil
+			}
+
+			// WithoutCancel: this runs when the pause is already failing —
+			// often BECAUSE the request context died (client disconnect).
+			// The resume must not inherit that cancellation or the VM is
+			// left frozen forever. The fresh timeout is the call's ONLY
+			// bound (nothing in the FC client stack sets one): without it
+			// a wedged FC API socket would hang this cleanup forever.
+			resumeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), inPlaceStateFlipTimeout)
+			err := s.process.ResumeInPlace(resumeCtx)
+			cancel()
+			if err != nil {
+				// Same failure mode and same handling as the success-path
+				// resume below: the VM is stuck paused and unrecoverable,
+				// so tear it down and tag ErrSandboxLost. Returning a
+				// plain error instead would surface as FailedPrecondition,
+				// which the API answers by restoring a permanently frozen
+				// VM to Running — routed, billed, checks off, unreapable.
+				// The stop reason must land BEFORE the Close or the
+				// lifecycle goroutine reads this orchestrator-chosen
+				// teardown as a guest crash.
+				s.SetStopReason(StopReasonKilled)
+
+				return fmt.Errorf(
+					"resume in place failed during pause cleanup, sandbox torn down: %w",
+					errors.Join(ErrSandboxLost, err, s.Close(context.WithoutCancel(ctx))))
+			}
+
+			if pauseLanded {
+				// The freeze window ended on the failure path; success=false
+				// keeps these samples separable from clean checkpoints.
+				guestFreezeDurationHistogram.Record(ctx, time.Since(freezeStart).Milliseconds(),
+					metric.WithAttributes(attribute.Bool("success", false)))
+
+				// The failed checkpoint restores a live sandbox, so it needs
+				// the same clock re-sync as the success path — the guest was
+				// paused just as long.
+				go s.bestEffortEnvdReinit(ctx)
+			}
+
+			s.Checks = NewChecks(s)
+			go s.Checks.Start(context.WithoutCancel(ctx))
+
+			return nil
+		})
+	}
+
+	freezeStart = time.Now()
+	if pauseOpts.maintainSandbox {
+		// The pause PATCH is the one state flip whose failure is AMBIGUOUS: a
+		// request-ctx cancellation (client disconnect) can kill the round-trip
+		// after FC already applied it. So it runs immune to request
+		// cancellation under the same state-flip bound as the resume, and the
+		// cleanup above resumes on EVERY outcome (see the pre-arm rule at its
+		// registration). pauseLanded — the metric/clock gate — is set only on
+		// a successful return, the one case the guest is KNOWN to have frozen.
+		pauseCtx, cancelPause := context.WithTimeout(context.WithoutCancel(ctx), inPlaceStateFlipTimeout)
+		err := s.process.Pause(pauseCtx)
+		cancelPause()
+		if err != nil {
+			return nil, fmt.Errorf("failed to pause VM: %w", err)
+		}
+		pauseLanded = true
+	} else {
+		// Destroy path: no resume cleanup exists (resumeOnError is false), so
+		// the ambiguity above has no consumer; keep the plain request-scoped
+		// call.
+		if err := s.process.Pause(ctx); err != nil {
+			return nil, fmt.Errorf("failed to pause VM: %w", err)
+		}
 	}
 
 	// The guest stops executing here; the snapshot, rootfs export and upload
-	// that follow run against a paused VM.
-	s.SetStoppedAt(time.Now())
+	// that follow run against a paused VM. Not recorded for an in-place
+	// checkpoint: the sandbox resumes and keeps running, and SetStoppedAt is
+	// first-call-wins — recording now would freeze the stop time at the
+	// checkpoint and undercount the execution.
+	if !pauseOpts.maintainSandbox {
+		s.SetStoppedAt(time.Now())
+	}
 
 	// Best-effort flush before the rootfs export goroutine closes the FC API
 	// socket. Non-blocking on the reader; trades precision for pause latency.
@@ -1703,7 +1875,7 @@ func (s *Sandbox) Pause(
 		DiffHeader: NewResolvedDiffHeader(nil),
 	}
 	if !pauseOpts.filesystemSnapshot {
-		mem, err = s.processMemorySnapshot(ctx, buildID)
+		mem, err = s.processMemorySnapshot(ctx, buildID, pauseOpts.maintainSandbox)
 		if err != nil {
 			return nil, err
 		}
@@ -1715,8 +1887,9 @@ func (s *Sandbox) Pause(
 	var (
 		rootfsDiff   build.Diff
 		rootfsHeader *header.Header
-		// startSeal, when non-nil, reflinks the ejected cache into the diff in the
-		// background; the caller invokes it after the metadata is written.
+		// startSeal, when non-nil, reflinks the frozen cache into the diff in the
+		// background; the caller invokes it after the metadata is written (and,
+		// for an in-place checkpoint, after the guest has resumed).
 		startSeal func(context.Context)
 	)
 
@@ -1752,8 +1925,71 @@ func (s *Sandbox) Pause(
 		return nil, err
 	}
 
-	// The sandbox is stopped and the cache ejected; reflink it to the diff in the
-	// background so the pause returned without paying the writeback stall.
+	// In-place checkpoint: resume the same VM now that the snapshot's metadata is
+	// written, BEFORE the (possibly deferred) rootfs seal runs, so the reflink
+	// stall stays off the resume critical path. The destroy path skips this — its
+	// sandbox is already stopped.
+	if pauseOpts.maintainSandbox {
+		resumeOnError = false
+
+		// WithoutCancel: a client disconnect that cancels the request context
+		// must not fail this resume — the VM is paused and a failure here tears
+		// down a sandbox whose snapshot already succeeded. The fresh timeout is
+		// the call's ONLY bound (the FC client stack sets none): request-ctx
+		// cancellation used to be the one thing that could end a wedged FC API
+		// call, and dropping it without a deadline would hang the Checkpoint
+		// handler forever — leaking the start permit and the in-flight
+		// checkpoint guard, with a frozen VM nothing reaps. On timeout the
+		// ErrSandboxLost branch below tears the sandbox down instead.
+		resumeCtx, cancelResume := context.WithTimeout(context.WithoutCancel(ctx), inPlaceStateFlipTimeout)
+		err := s.process.ResumeInPlace(resumeCtx)
+		cancelResume()
+		if err != nil {
+			// Final resume failed -> VM stuck paused and unrecoverable. Tear it
+			// down so we don't leak a frozen VM, and fail the checkpoint —
+			// tagged ErrSandboxLost so the RPC layer reports a FATAL code
+			// instead of the healthy-sandbox FailedPrecondition. Stop reason
+			// BEFORE the Close, or this orchestrator-chosen teardown reads as
+			// a guest crash (ERROR log + stop_reason="crashed" sample).
+			s.SetStopReason(StopReasonKilled)
+
+			return nil, fmt.Errorf(
+				"resume in place failed, sandbox torn down: %w",
+				errors.Join(ErrSandboxLost, err, s.Close(context.WithoutCancel(ctx))))
+		}
+
+		// The guest-visible freeze window: from the FC pause call to the in-place
+		// resume. This is the number the in-place feature exists to move —
+		// process_memory/process_rootfs cover their exports but also run against
+		// a paused VM only partially, so no other series isolates the freeze.
+		guestFreezeDurationHistogram.Record(ctx, time.Since(freezeStart).Milliseconds(),
+			metric.WithAttributes(attribute.Bool("success", true)))
+
+		// The live VM keeps running, so undo anything the pause froze. Unlike the
+		// destroy path (VM discarded with its frozen state), an in-place resume
+		// must actually thaw, matching how guestPrepareFsForPause froze the rootfs:
+		// native /fsthaw when envd supports it, otherwise the exec fsfreeze -u path
+		// (a no-op if the guest was only sync'd). A native-only thaw would leave an
+		// exec-frozen guest's filesystem frozen after resume.
+		s.bestEffortUnfreeze(ctx)
+		if pauseOpts.filesystemSnapshot {
+			if s.envdSupportsFsFreeze(ctx) {
+				s.bestEffortFsthaw(ctx)
+			} else {
+				s.bestEffortFsthawViaExec(ctx)
+			}
+		}
+
+		go s.bestEffortEnvdReinit(ctx)
+
+		s.Checks = NewChecks(s)
+		go s.Checks.Start(context.WithoutCancel(ctx))
+	}
+
+	// Seal the rootfs diff in the background: for the destroy path the cache is
+	// ejected and the sandbox stopped; for the in-place path the guest has already
+	// resumed onto a fresh cache. Either way the pause returns without paying the
+	// reflink/writeback stall.
 	if startSeal != nil {
 		startSeal(context.WithoutCancel(ctx))
 	}
@@ -1808,7 +2044,11 @@ type MemorySnapshot struct {
 // and builds its header — steps 3-5 of Pause. Only called for a full memory
 // snapshot; a filesystem-only pause skips it. The returned diff's Close must be
 // registered for cleanup by the caller.
-func (s *Sandbox) processMemorySnapshot(ctx context.Context, buildID uuid.UUID) (MemorySnapshot, error) {
+// processMemorySnapshot copies the dirty guest memory to a local diff. When
+// keepMemfdOpen is set (an in-place snapshot that resumes the same VM) it borrows
+// the memfd without consuming it and skips dedup/provisional serving, since the
+// running guest still faults on that fd.
+func (s *Sandbox) processMemorySnapshot(ctx context.Context, buildID uuid.UUID, keepMemfdOpen bool) (MemorySnapshot, error) {
 	originalMemfile, err := s.Template.Memfile(ctx)
 	if err != nil {
 		return MemorySnapshot{}, fmt.Errorf("failed to get original memfile: %w", err)
@@ -1859,6 +2099,21 @@ func (s *Sandbox) processMemorySnapshot(ctx context.Context, buildID uuid.UUID) 
 		}
 	}
 
+	// In-place snapshot borrows the memfd via PeekMemfd (the running VM keeps
+	// using it) and turns off dedup + inflight-serve, which would consume or
+	// double-manage it. The destroy path consumes the memfd via Memfd. We must NOT
+	// call Memfd on the in-place path: it swaps the memfd out of uffd, which both
+	// leaks the fd and makes the subsequent PeekMemfd return nil.
+	var memfd *block.Memfd
+	dedupInflightServe := s.featureFlags.BoolFlag(ctx, featureflags.MemfdDedupInflightServeFlag, sandboxLDContext(s.Runtime, s.Config))
+	if keepMemfdOpen {
+		memfd = s.memory.PeekMemfd(ctx)
+		dedupBase = nil
+		dedupInflightServe = false
+	} else {
+		memfd = s.memory.Memfd(ctx)
+	}
+
 	memfileDiff, memfileDiffHeader, provMemfileHeader, provMemfileDiff, provMemfileSwapDone, err := pauseProcessMemory(
 		ctx,
 		buildID,
@@ -1866,13 +2121,14 @@ func (s *Sandbox) processMemorySnapshot(ctx context.Context, buildID uuid.UUID) 
 		memfileDiffMetadata,
 		s.config.DefaultCacheDir,
 		s.process,
-		s.memory.Memfd(ctx),
+		memfd,
 		s.featureFlags.BoolFlag(ctx, featureflags.MemfdBackgroundCopyFlag, sandboxLDContext(s.Runtime, s.Config)),
 		dedupBase,
 		dedupBestEffort,
 		dedupDirectIO,
 		dedupBudget,
-		s.featureFlags.BoolFlag(ctx, featureflags.MemfdDedupInflightServeFlag, sandboxLDContext(s.Runtime, s.Config)),
+		dedupInflightServe,
+		keepMemfdOpen,
 	)
 	if err != nil {
 		return MemorySnapshot{}, fmt.Errorf("error while post processing: %w", err)
@@ -1920,6 +2176,7 @@ func pauseProcessMemory(
 	dedupDirectIO bool,
 	dedupBudget block.DedupBudget,
 	dedupInflightServe bool,
+	keepMemfdOpen bool,
 ) (d build.Diff, h *DiffHeader, provisionalHeader *header.Header, provisionalDiff build.Diff, provisionalSwapDone func(), e error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
@@ -1929,16 +2186,23 @@ func pauseProcessMemory(
 	start := time.Now()
 	defer func() {
 		processMemoryDurationHistogram.Record(ctx, time.Since(start).Milliseconds(),
-			metric.WithAttributes(attribute.Bool("success", e == nil)))
+			metric.WithAttributes(
+				// in_place splits the cohorts: an in-place checkpoint (VM
+				// resumes after) vs a destroy-path pause / resume-fresh flow.
+				attribute.Bool("in_place", keepMemfdOpen),
+				attribute.Bool("success", e == nil),
+			))
 	}()
 
 	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
 	metaOut := utils.NewSetOnce[*header.DiffMetadata]()
-	// ExportMemory owns memfd and closes it on all paths.
+	// ExportMemory owns memfd and closes it on all paths, EXCEPT when
+	// keepMemfdOpen is set (in-place snapshot): then it borrows the fd and the
+	// running VM keeps ownership.
 	cache, err := fc.ExportMemory(
 		ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd, bgCopy,
 		originalMemfile, dedupBestEffort, dedupDirectIO, dedupBudget, diffMetadata.Empty, metaOut,
-		dedupInflightServe,
+		dedupInflightServe, keepMemfdOpen,
 	)
 	if err != nil {
 		return nil, nil, nil, nil, nil, fmt.Errorf("failed to export memory: %w", err)
@@ -1957,7 +2221,12 @@ func pauseProcessMemory(
 	// a distinct provisional build id at identity offsets. Gated on the memfd
 	// dedup path + the inflight-serve flag; best-effort (fall back to the deduped
 	// header on any error). The upload always uses the deduped header below.
-	provisionalHeader, provisionalDiff, provisionalSwapDone = buildProvisionalMemfile(ctx, cache, dedupInflightServe, originalMemfile, originalHeader, diffMetadata)
+	// Skipped entirely when keepMemfdOpen: the running in-place VM owns the memfd,
+	// so a provisional source serving from (and later releasing) it would
+	// double-manage the live fd.
+	if !keepMemfdOpen {
+		provisionalHeader, provisionalDiff, provisionalSwapDone = buildProvisionalMemfile(ctx, cache, dedupInflightServe, originalMemfile, originalHeader, diffMetadata)
+	}
 
 	// Build the diff header on a goroutine so Pause returns without waiting
 	// on memfd-dedup compare. ExportMemory resolves metaOut sync for every
@@ -2066,9 +2335,48 @@ func (s *Sandbox) processRootfsSnapshot(
 			metric.WithAttributes(
 				attribute.Bool("fs_only", pauseOpts.filesystemSnapshot),
 				attribute.Bool("deferred", pauseOpts.deferRootfsExport),
+				// in_place splits the cohorts: an in-place checkpoint (VM
+				// resumes after) vs a destroy-path pause / resume-fresh flow.
+				attribute.Bool("in_place", pauseOpts.maintainSandbox),
 				attribute.Bool("success", e == nil),
 			))
 	}()
+
+	// In-place checkpoint: the sandbox keeps running. With deferred export, swap a
+	// fresh COW cache onto the live overlay and seal the frozen one in the
+	// background (then fold it back); otherwise export in place synchronously.
+	// Both keep the VM alive; the destroy-path branches below never run for it.
+	if pauseOpts.maintainSandbox {
+		if pauseOpts.deferRootfsExport {
+			rootfsDiff, rootfsHeader, startSeal, err := s.setupInPlaceRootfsExport(ctx, buildID, originalHeader, cleanup)
+			switch {
+			case errors.Is(err, rootfs.ErrDeferredExportNotSupported):
+				// Provider can't swap (e.g. DirectProvider); fall through to the
+				// synchronous in-place export below.
+				pauseOpts.deferRootfsExport = false
+			case err != nil:
+				return nil, nil, nil, fmt.Errorf("in-place rootfs export setup failed: %w", err)
+			default:
+				return rootfsDiff, rootfsHeader, startSeal, nil
+			}
+		}
+
+		// Synchronous in-place export: reflink on the critical path but keep the VM
+		// alive (closeHook nil -> ExportDiffInPlace).
+		rootfsDiff, rootfsHeader, err := pauseProcessRootfs(
+			ctx,
+			buildID,
+			originalHeader,
+			&RootfsDiffCreator{rootfs: s.rootfs},
+			s.config.DefaultCacheDir,
+		)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("synchronous in-place rootfs export failed: %w", err)
+		}
+		cleanup.AddNoContext(ctx, rootfsDiff.Close)
+
+		return rootfsDiff, rootfsHeader, nil, nil
+	}
 
 	if pauseOpts.deferRootfsExport {
 		rootfsDiff, rootfsHeader, startSeal, err := s.setupDeferredRootfsExport(ctx, buildID, originalHeader, cleanup)
@@ -2146,6 +2454,87 @@ func pauseProcessRootfs(
 // diff in the background, so the pause returns without paying the reflink stall.
 // Only safe on the suspend path, where nothing reads the diff before the seal
 // completes.
+// rootfsSealPrep carries the artifacts of the setup steps shared by both
+// deferred-seal flows (destroy-path eject and in-place swap). When empty is
+// set, the frozen cache has no dirty blocks and only rootfsHeader is valid.
+type rootfsSealPrep struct {
+	diffMetadata *header.DiffMetadata
+	rootfsHeader *header.Header
+	blockSize    int64
+	diffPromise  *utils.SetOnce[build.Diff]
+	rootfsDiff   build.Diff
+	empty        bool
+}
+
+// prepareRootfsSeal runs the setup shared by setupDeferredRootfsExport and
+// setupInPlaceRootfsExport: read the frozen cache's diff metadata, emit the
+// same rootfs size/ratio metrics the synchronous path does, build the diff
+// header, detect the empty-diff case, and construct the deferred-diff
+// plumbing. Disposing of the frozen cache on error is deliberately the
+// caller's job — that is exactly where the two flows differ (Close for the
+// ejected cache vs fold-back for the swapped one).
+func (s *Sandbox) prepareRootfsSeal(
+	ctx context.Context,
+	sealCache *block.Cache,
+	originalHeader *header.Header,
+	buildID uuid.UUID,
+) (*rootfsSealPrep, error) {
+	diffMetadata, err := sealCache.DiffMetadata()
+	if err != nil {
+		return nil, fmt.Errorf("reading frozen cache metadata: %w", err)
+	}
+	recordSnapshotDiff(ctx, "rootfs", diffMetadata, originalHeader)
+
+	rootfsHeader, err := diffMetadata.ToDiffHeader(ctx, originalHeader, buildID)
+	if err != nil {
+		return nil, fmt.Errorf("building rootfs diff header: %w", err)
+	}
+
+	prep := &rootfsSealPrep{diffMetadata: diffMetadata, rootfsHeader: rootfsHeader}
+
+	// No dirty filesystem blocks: the seal would produce an empty diff, i.e. the
+	// same *NoDiff the synchronous path returns. The caller returns NoDiff (and
+	// skips the background seal — nothing to reflink) so AddSnapshot omits it
+	// from the DiffStore and peer LookupDiff keeps returning ErrNotAvailable
+	// rather than an entry whose Slice/Size yield NoDiffError.
+	if diffMetadata.Dirty.IsEmpty() {
+		prep.empty = true
+
+		return prep, nil
+	}
+
+	prep.blockSize = int64(originalHeader.Metadata.BlockSize)
+	prep.diffPromise = utils.NewSetOnce[build.Diff]()
+	prep.rootfsDiff = build.NewDeferredDiff(build.GetDiffStoreKey(buildID.String(), build.Rootfs), prep.blockSize, prep.diffPromise)
+
+	return prep, nil
+}
+
+// runRootfsSealCore is the timed reflink shared by both background seal
+// runners: seal the frozen cache into the diff, resolve the promise, and
+// record the seal histogram split by flow (in_place) and outcome. What happens
+// to the frozen cache afterwards — Close for the destroy path, fold-back for
+// in-place — stays with the caller.
+func (s *Sandbox) runRootfsSealCore(
+	ctx context.Context,
+	sealCache *block.Cache,
+	buildID uuid.UUID,
+	blockSize int64,
+	meta *header.DiffMetadata,
+	diffPromise *utils.SetOnce[build.Diff],
+	inPlace bool,
+) error {
+	start := time.Now()
+	err := s.sealCacheToDiff(ctx, sealCache, buildID, blockSize, meta, diffPromise)
+	rootfsSealDurationHistogram.Record(ctx, time.Since(start).Milliseconds(),
+		metric.WithAttributes(
+			attribute.Bool("in_place", inPlace),
+			attribute.Bool("success", err == nil),
+		))
+
+	return err
+}
+
 func (s *Sandbox) setupDeferredRootfsExport(
 	ctx context.Context,
 	buildID uuid.UUID,
@@ -2157,36 +2546,22 @@ func (s *Sandbox) setupDeferredRootfsExport(
 		return nil, nil, nil, err
 	}
 
-	diffMetadata, err := sealCache.DiffMetadata()
+	prep, err := s.prepareRootfsSeal(ctx, sealCache, originalHeader, buildID)
 	if err != nil {
-		return nil, nil, nil, errors.Join(fmt.Errorf("reading ejected cache metadata: %w", err), sealCache.Close())
-	}
-	// Emit the same rootfs size/ratio metrics the synchronous pauseProcessRootfs
-	// path does, so deferring the export doesn't blind the snapshot dashboards.
-	recordSnapshotDiff(ctx, "rootfs", diffMetadata, originalHeader)
-
-	rootfsHeader, err := diffMetadata.ToDiffHeader(ctx, originalHeader, buildID)
-	if err != nil {
-		return nil, nil, nil, errors.Join(fmt.Errorf("building rootfs diff header: %w", err), sealCache.Close())
+		return nil, nil, nil, errors.Join(err, sealCache.Close())
 	}
 
-	// No dirty filesystem blocks: the seal would produce an empty diff, i.e. the
-	// same *NoDiff the synchronous path returns. Return NoDiff directly (and skip
-	// the background seal — nothing to reflink) so AddSnapshot omits it from the
-	// DiffStore and peer LookupDiff keeps returning ErrNotAvailable rather than an
-	// entry whose Slice/Size yield NoDiffError. Close the ejected cache now since
-	// no seal will own it.
-	if diffMetadata.Dirty.IsEmpty() {
+	// Empty diff: close the ejected cache now since no seal will own it.
+	if prep.empty {
 		if err := sealCache.Close(); err != nil {
 			return nil, nil, nil, fmt.Errorf("closing empty ejected cache: %w", err)
 		}
 
-		return &build.NoDiff{}, rootfsHeader, func(context.Context) {}, nil
+		return &build.NoDiff{}, prep.rootfsHeader, func(context.Context) {}, nil
 	}
 
-	blockSize := int64(originalHeader.Metadata.BlockSize)
-	diffPromise := utils.NewSetOnce[build.Diff]()
-	rootfsDiff := build.NewDeferredDiff(build.GetDiffStoreKey(buildID.String(), build.Rootfs), blockSize, diffPromise)
+	diffPromise := prep.diffPromise
+	rootfsDiff := prep.rootfsDiff
 
 	// The ejected cache and the deferred diff's promise are both owned by the
 	// background seal once it starts. If Pause aborts before startSeal runs (e.g.
@@ -2221,10 +2596,10 @@ func (s *Sandbox) setupDeferredRootfsExport(
 
 	startSeal = func(sealCtx context.Context) {
 		started.Store(true)
-		go s.runDeferredRootfsExport(sealCtx, sealCache, buildID, blockSize, diffMetadata, diffPromise)
+		go s.runDeferredRootfsExport(sealCtx, sealCache, buildID, prep.blockSize, prep.diffMetadata, diffPromise)
 	}
 
-	return rootfsDiff, rootfsHeader, startSeal, nil
+	return rootfsDiff, prep.rootfsHeader, startSeal, nil
 }
 
 // runDeferredRootfsExport reflinks the ejected cache into the rootfs diff and
@@ -2242,13 +2617,10 @@ func (s *Sandbox) runDeferredRootfsExport(
 	ctx, span := tracer.Start(ctx, "deferred-rootfs-export")
 	defer span.End()
 
-	// Record the background reflink seal latency separately from the
+	// The seal core records the background reflink latency separately from the
 	// critical-path process_rootfs.duration, so the deferred export's off-path
 	// cost stays visible.
-	start := time.Now()
-	err := s.sealCacheToDiff(ctx, sealCache, buildID, blockSize, meta, diffPromise)
-	rootfsSealDurationHistogram.Record(ctx, time.Since(start).Milliseconds(),
-		metric.WithAttributes(attribute.Bool("success", err == nil)))
+	err := s.runRootfsSealCore(ctx, sealCache, buildID, blockSize, meta, diffPromise, false)
 	if err != nil {
 		logger.L().Error(ctx, "deferred rootfs export failed", zap.Error(err))
 	} else {
@@ -2307,6 +2679,315 @@ func (s *Sandbox) failRootfsSeal(diffPromise *utils.SetOnce[build.Diff], err err
 	_ = diffPromise.SetError(sealErr)
 
 	return sealErr
+}
+
+// EnsurePausable surfaces any latched in-place seal failure before the pause
+// machinery spins up: a latched error means the writable COW cache is missing
+// blocks and no valid snapshot can ever be produced for this sandbox again.
+// The caller uses it to fail fast WITH the real cause — it cannot use it to
+// spare the sandbox, because the API pause chain deletes routing and removes
+// the store record regardless of this RPC's result (and the sandbox state
+// machine has no Pausing→Running edge), so a "refused" pause just leaves a
+// live VM for the orphan reconciler to kill ~20s later, misattributed. It
+// intentionally does NOT wait for a healthy in-flight seal — Pause itself
+// does that.
+func (s *Sandbox) EnsurePausable() error {
+	s.rootfsSealMu.Lock()
+	done := s.rootfsSealDone
+	s.rootfsSealMu.Unlock()
+
+	if done == nil {
+		return nil
+	}
+	// Result is non-blocking: NotSetError means the seal is still healthy and
+	// in flight, which is Pause's job to wait out, not a reason to refuse.
+	if _, err := done.Result(); err != nil && !errors.Is(err, utils.NotSetError{}) {
+		return fmt.Errorf("sandbox cannot be paused: %w", err)
+	}
+
+	return nil
+}
+
+// bestEffortEnvdReinit re-runs the envd /init a real resume makes, after an
+// in-place resume (success or error-cleanup path). The FC-paused window
+// stopped the guest's clocks; envd steps CLOCK_REALTIME from /init's host
+// timestamp when it lags by >50ms — less than a single checkpoint's pause
+// window — so without this every checkpoint leaves the guest's wall clock
+// behind by the paused duration and repeated checkpoints accumulate the
+// drift. Best-effort: it is the same /init every resume already makes against
+// a live envd, and a failure only leaves the clock lagging until the next
+// resume. WithoutCancel so a dying request ctx can't skip it.
+//
+// The episode budget is the envd-timeout flag (~10s) — the same bound a real
+// resume gives WaitForEnvd — NOT EnvdInitRequestTimeout: that 50ms value is
+// the PER-ATTEMPT deadline inside initEnvd's retry loop, calibrated for
+// fail-fast-and-retry, and using it as the total would allow exactly one
+// attempt against a guest that is busy working through its post-freeze
+// backlog. Callers run this on a goroutine: a sick envd must cost the
+// checkpoint nothing, and a missed sync only lasts until the next /init.
+func (s *Sandbox) bestEffortEnvdReinit(ctx context.Context) {
+	budget := time.Duration(s.featureFlags.IntFlag(ctx, featureflags.EnvdTimeoutMilliseconds)) * time.Millisecond
+	initCtx, cancel := context.WithCancelCause(context.WithoutCancel(ctx))
+	defer cancel(nil)
+
+	// The same race WaitForEnvd runs around this exact retry loop: bound it on
+	// sandbox LIVENESS, not just time. Detached from the request, a re-init
+	// that only times out would outlive a sandbox killed mid-budget — and
+	// outlive the network pool's 3s slot drain, POSTing this sandbox's /init
+	// body (access token, env vars, CA bundle) at whichever tenant is handed
+	// the recycled slot IP next.
+	go func() {
+		select {
+		case <-time.After(budget):
+			cancel(errors.New("envd re-init budget exceeded"))
+		case <-initCtx.Done():
+			return
+		case <-s.process.Exit.Done():
+			// Exit.Error() is nil for every orchestrator-initiated teardown
+			// (SIGTERM/SIGKILL both store nil); a nil %w renders as
+			// %!w(<nil>), garbling the dominant cause string.
+			if exitErr := s.process.Exit.Error(); exitErr != nil {
+				cancel(fmt.Errorf("%w: %w", ErrFcProcessExited, exitErr))
+			} else {
+				cancel(ErrFcProcessExited)
+			}
+		}
+	}()
+
+	if err := s.initEnvd(initCtx, StartTypeResume, false); err != nil {
+		logger.L().Warn(ctx, "envd re-init after in-place resume failed (guest clock may lag)",
+			logger.WithSandboxID(s.Runtime.SandboxID), zap.Error(err))
+	}
+}
+
+// waitForRootfsSeal blocks until the most recent in-place background rootfs seal
+// of this sandbox has completed (its fold made the writable COW cache whole
+// again). Returns immediately if none has run. A failed prior seal surfaces its
+// error so the caller aborts rather than exporting an incomplete writable cache.
+func (s *Sandbox) waitForRootfsSeal(ctx context.Context) error {
+	s.rootfsSealMu.Lock()
+	done := s.rootfsSealDone
+	s.rootfsSealMu.Unlock()
+
+	if done == nil {
+		return nil
+	}
+
+	_, err := done.WaitWithContext(ctx)
+
+	return err
+}
+
+// foldAndCloseSeal folds the just-swapped sealing cache back into the live
+// writable cache and closes it, undoing a SwapForBackgroundSeal. Used on the
+// setup error / empty-diff paths (VM still paused) so the writable cache stays a
+// complete diff and the sealing slot is freed.
+func (s *Sandbox) foldAndCloseSeal(ctx context.Context, sealCache *block.Cache) error {
+	detached, err := s.rootfs.FoldSealed(ctx)
+	if err != nil {
+		return fmt.Errorf("fold sealed cache: %w", err)
+	}
+	if detached != nil {
+		// The fold has already done everything correctness depends on: the
+		// writable cache is a complete diff and the sealing slot is free.
+		// Close only unmaps and unlinks a file nothing reads any more, so a
+		// failure here is a leaked file — not an incomplete cache — and must
+		// not feed the callers' latch. Mirrors the success-path seal close.
+		if closeErr := detached.Close(); closeErr != nil {
+			logger.L().Warn(ctx, "closing folded seal cache failed (leaked file)", zap.Error(closeErr))
+		}
+
+		return nil
+	}
+
+	// Nothing was sealing: either the swap was already undone, or a teardown
+	// beat this cleanup to it — on a ResumeInPlace failure the sandbox Close
+	// tears down the overlay (closing the sealing cache) BEFORE the Pause
+	// cleanup stack runs. Closing what we hold is then a double-close;
+	// tolerate it rather than misreport the fold-back as failed.
+	if err := sealCache.Close(); err != nil {
+		var closed *block.CacheClosedError
+		if errors.As(err, &closed) {
+			return nil
+		}
+
+		return err
+	}
+
+	return nil
+}
+
+// failSealSetup unwinds a failed in-place seal setup: it folds the
+// just-swapped cache back so the writable cache stays a complete diff, and —
+// when the fold-back ITSELF fails — latches the state into rootfsSealDone.
+// These setup failures happen BEFORE rootfsSealDone is assigned, so without
+// the latch a stuck sealing slot would be invisible: waitForRootfsSeal would
+// succeed and a later destroy-path export would silently drop every block
+// still only in the sealing layer, while the next in-place swap failed
+// forever on the occupied slot. With the latch, every later pause aborts
+// loudly instead (the sandbox itself survives via Pause's resume-on-error).
+func (s *Sandbox) failSealSetup(ctx context.Context, sealCache *block.Cache, cause error) error {
+	foldErr := s.foldAndCloseSeal(ctx, sealCache)
+	if foldErr == nil {
+		return cause
+	}
+
+	latched := utils.NewSetOnce[struct{}]()
+	_ = latched.SetError(fmt.Errorf("%w: seal setup failed and the fold-back failed too: %w",
+		build.ErrDeferredSealFailed, errors.Join(cause, foldErr)))
+	s.rootfsSealMu.Lock()
+	s.rootfsSealDone = latched
+	s.rootfsSealMu.Unlock()
+
+	return errors.Join(cause, foldErr)
+}
+
+// setupInPlaceRootfsExport swaps a fresh COW cache onto the live overlay and
+// prepares the deferred rootfs diff + header from the now-frozen previous cache,
+// all synchronously (the VM is paused). It returns a startSeal closure the caller
+// invokes AFTER the guest has resumed in place, which reflinks the frozen cache
+// off the critical path and folds it back into the writable cache. Returns
+// rootfs.ErrDeferredExportNotSupported (via SwapForBackgroundSeal) when the
+// provider can't swap, so the caller falls back to a synchronous in-place export.
+func (s *Sandbox) setupInPlaceRootfsExport(
+	ctx context.Context,
+	buildID uuid.UUID,
+	originalHeader *header.Header,
+	cleanup *Cleanup,
+) (d build.Diff, h *header.Header, startSeal func(context.Context), e error) {
+	sealCache, err := s.rootfs.SwapForBackgroundSeal(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	// From here the overlay is swapped: any failure must fold the frozen cache
+	// back so the writable cache stays complete (the caller then aborts).
+
+	prep, err := s.prepareRootfsSeal(ctx, sealCache, originalHeader, buildID)
+	if err != nil {
+		return nil, nil, nil, s.failSealSetup(ctx, sealCache, err)
+	}
+
+	sealDone := utils.NewSetOnce[struct{}]()
+	s.rootfsSealMu.Lock()
+	s.rootfsSealDone = sealDone
+	s.rootfsSealMu.Unlock()
+
+	// Empty dirty set: nothing to seal. Fold the (empty) swapped cache back now,
+	// resolve the seal signal, and return NoDiff (matching the synchronous path).
+	if prep.empty {
+		if err := s.foldAndCloseSeal(ctx, sealCache); err != nil {
+			_ = sealDone.SetError(err)
+
+			return nil, nil, nil, fmt.Errorf("folding empty swapped cache: %w", err)
+		}
+		_ = sealDone.SetValue(struct{}{})
+
+		return &build.NoDiff{}, prep.rootfsHeader, func(context.Context) {}, nil
+	}
+
+	diffPromise := prep.diffPromise
+	rootfsDiff := prep.rootfsDiff
+
+	// If Pause aborts before startSeal runs (e.g. m.ToFile or ResumeInPlace fails),
+	// the seal goroutine never runs. Guarded by `started`: settle the deferred
+	// diff's promise so nothing blocks forever, and FOLD the frozen cache back
+	// into the writable one. Leaving it attached is not an option: under
+	// maintainSandbox a failed pause resumes the sandbox and it KEEPS RUNNING,
+	// so an occupied sealing slot plus an errored seal signal would fail every
+	// later in-place checkpoint of this sandbox (waitForRootfsSeal surfaces the
+	// error; SwapCache refuses a second swap). After a successful fold-back the
+	// writable cache is a complete diff again — only the aborted checkpoint's
+	// artifact failed — so the seal signal resolves SUCCESS; a failed fold-back
+	// keeps it errored, correctly poisoning exports of a genuinely incomplete
+	// cache. The fold is safe with the guest running: FillMissingFrom only
+	// fills blocks the writable cache lacks, so concurrent guest writes win.
+	var started atomic.Bool
+	cleanup.AddNoContext(ctx, rootfsDiff.Close)
+	cleanup.Add(ctx, func(context.Context) error {
+		if started.Load() {
+			return nil
+		}
+		abortErr := errors.New("pause aborted before in-place rootfs export ran")
+		_ = diffPromise.SetError(abortErr)
+		if foldErr := s.foldAndCloseSeal(ctx, sealCache); foldErr != nil {
+			_ = sealDone.SetError(fmt.Errorf("%w; folding the seal back also failed: %w", abortErr, foldErr))
+
+			return fmt.Errorf("aborted in-place rootfs export fold-back: %w", foldErr)
+		}
+		_ = sealDone.SetValue(struct{}{})
+
+		return nil
+	})
+
+	startSeal = func(sealCtx context.Context) {
+		started.Store(true)
+		go s.runInPlaceRootfsExport(sealCtx, sealCache, buildID, prep.blockSize, prep.diffMetadata, diffPromise, sealDone)
+	}
+
+	return rootfsDiff, prep.rootfsHeader, startSeal, nil
+}
+
+// runInPlaceRootfsExport reflinks the frozen sealing cache into the rootfs diff,
+// resolves the deferred diff, then folds the sealing cache back into the live
+// writable cache and releases it, freeing the sealing slot for the next
+// checkpoint. It runs on its own goroutine after the guest has resumed; the
+// upload waits on the deferred diff, so the server's upload WaitGroup transitively
+// gates graceful shutdown on this seal.
+func (s *Sandbox) runInPlaceRootfsExport(
+	ctx context.Context,
+	sealCache *block.Cache,
+	buildID uuid.UUID,
+	blockSize int64,
+	meta *header.DiffMetadata,
+	diffPromise *utils.SetOnce[build.Diff],
+	sealDone *utils.SetOnce[struct{}],
+) {
+	ctx, span := tracer.Start(ctx, "in-place-rootfs-export")
+	defer span.End()
+
+	err := s.runRootfsSealCore(ctx, sealCache, buildID, blockSize, meta, diffPromise, true)
+	if err != nil {
+		logger.L().Error(ctx, "in-place rootfs export failed", zap.Error(err))
+		// The checkpoint's artifact is lost (diffPromise already carries
+		// ErrDeferredSealFailed), but the SANDBOX must stay serviceable:
+		// sealDone is a write-once field on the long-lived Sandbox, and an
+		// error latched here would fail waitForRootfsSeal on every later
+		// checkpoint AND every later pause — where Server.Pause has already
+		// armed its deferred stop, so the first autopause would destroy the
+		// sandbox with nothing persisted. The frozen cache is intact (the
+		// failed reflink never closes it), so recover exactly like the
+		// abort path: fold it back into the writable cache and resolve the
+		// seal signal SUCCESS; latch the error only if the fold-back itself
+		// fails, which is the genuinely unrecoverable-cache case.
+		if foldErr := s.foldAndCloseSeal(ctx, sealCache); foldErr != nil {
+			logger.L().Error(ctx, "in-place rootfs export fold-back failed", zap.Error(foldErr))
+			_ = sealDone.SetError(fmt.Errorf("%w; folding the seal back also failed: %w", err, foldErr))
+
+			return
+		}
+		_ = sealDone.SetValue(struct{}{})
+
+		return
+	}
+	telemetry.ReportEvent(ctx, "rootfs diff sealed (in-place)")
+
+	// Fold the sealed cache into the live writable cache so it becomes a complete
+	// diff again and the sealing slot frees for the next checkpoint.
+	detached, err := s.rootfs.FoldSealed(ctx)
+	if err != nil {
+		logger.L().Error(ctx, "folding sealed rootfs cache failed", zap.Error(err))
+		_ = sealDone.SetError(fmt.Errorf("fold sealed rootfs cache: %w", err))
+
+		return
+	}
+	if detached != nil {
+		if closeErr := detached.Close(); closeErr != nil {
+			logger.L().Warn(ctx, "closing folded rootfs cache", zap.Error(closeErr))
+		}
+	}
+
+	telemetry.ReportEvent(ctx, "rootfs seal folded")
+	_ = sealDone.SetValue(struct{}{})
 }
 
 // createCgroup creates a cgroup for sandbox resource accounting.
@@ -2464,9 +3145,13 @@ func (s *Sandbox) WaitForEnvd(
 		case <-ctx.Done():
 			return
 		case <-s.process.Exit.Done():
-			err := s.process.Exit.Error()
-
-			cancel(fmt.Errorf("%w: %w", ErrFcProcessExited, err))
+			// Exit.Error() is nil for orchestrator-initiated teardowns; a nil
+			// %w renders as %!w(<nil>).
+			if exitErr := s.process.Exit.Error(); exitErr != nil {
+				cancel(fmt.Errorf("%w: %w", ErrFcProcessExited, exitErr))
+			} else {
+				cancel(ErrFcProcessExited)
+			}
 		}
 	}()
 

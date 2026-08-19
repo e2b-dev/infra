@@ -143,8 +143,14 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 // and exports later in the background) use this so the copied ranges are
 // guaranteed to match a header built from the same bitmap read.
 func (c *Cache) ExportToDiffWithMetadata(ctx context.Context, out *os.File, meta *header.DiffMetadata) (*header.DiffMetadata, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	// Read lock, not exclusive: this entry point exports a FROZEN cache (the
+	// sealing layer after a swap) while the live sandbox's miss-reads still
+	// fall through to it — an exclusive lock would stall every such read for
+	// the full export. The export only reads cache state and copies to out;
+	// writers (WriteAt, Close) still take the write lock, so they remain
+	// excluded for the duration either way.
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 
 	return c.exportToDiffLocked(ctx, out, meta)
 }
@@ -611,6 +617,68 @@ func (c *Cache) WriteZeroesAt(off, length int64) (int, error) {
 	)
 
 	return int(end - off), nil
+}
+
+// writeAtIfAbsent writes b at off only if the block is not already present in
+// this cache, so a fold never overwrites a newer write the guest made after the
+// swap. Callers must hold no other lock on this cache.
+func (c *Cache) writeAtIfAbsent(b []byte, off int64) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.mmap == nil {
+		return nil
+	}
+
+	if c.isClosed() {
+		return NewErrCacheClosed(c.filePath)
+	}
+
+	if c.isCached(off, int64(len(b))) {
+		return nil
+	}
+
+	_, err := c.WriteAtWithoutLock(b, off)
+
+	return err
+}
+
+// FillMissingFrom copies every block present (Dirty or Zero) in older into this
+// cache, but only where this cache does not already hold that block. After it
+// returns, this cache is a superset of older ∪ itself — i.e. a complete diff
+// again once older held "everything written before the swap" and this cache held
+// "everything written after". Reading a Zero block from older yields zeroes,
+// which writeAtIfAbsent re-detects and punches, so a single pass over the union
+// handles both dirty and zero blocks.
+//
+// older must be frozen (no concurrent writes); this cache may be written
+// concurrently by the guest — writeAtIfAbsent keeps each block's newest writer.
+func (c *Cache) FillMissingFrom(older *Cache) error {
+	if older == nil {
+		return nil
+	}
+
+	meta, err := older.DiffMetadata()
+	if err != nil {
+		return fmt.Errorf("reading older cache metadata: %w", err)
+	}
+
+	present := meta.Dirty.Clone()
+	present.Or(meta.Empty)
+
+	buf := make([]byte, c.blockSize)
+	for r := range BitsetRanges(present, c.blockSize) {
+		for off := r.Start; off < r.End(); off += c.blockSize {
+			if _, err := older.ReadAt(buf, off); err != nil {
+				return fmt.Errorf("reading older block at %d: %w", off, err)
+			}
+			if err := c.writeAtIfAbsent(buf, off); err != nil {
+				return fmt.Errorf("filling block at %d: %w", off, err)
+			}
+		}
+	}
+
+	return nil
 }
 
 // FileSize returns the size of the cache on disk.

@@ -7,7 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"strings"
+	"net"
 	"time"
 
 	"github.com/redis/go-redis/extra/redisotel/v9"
@@ -23,6 +23,10 @@ type RedisConfig struct {
 	RedisURL         string
 	RedisClusterURL  string
 	RedisTLSCABase64 string
+	// RedisPassword authenticates deployments that require it (Azure Managed Redis access key); aws/gcp leave it empty.
+	RedisPassword string
+	// RedisTLSEnabled turns on TLS without a custom CA, for publicly-signed endpoints like Azure Managed Redis.
+	RedisTLSEnabled bool
 	// PoolSize overrides the default connection pool size.
 	// When non-positive, defaults to 40.
 	PoolSize int
@@ -61,6 +65,61 @@ func resolvePoolSize(config RedisConfig) (poolSize, minIdleConns int) {
 	return poolSize, minIdleConns
 }
 
+// resolveTLSConfig builds the TLS config for a Redis endpoint, or nil when TLS is off.
+// TLS is on iff RedisTLSEnabled; a CA only customizes verification and requires the flag.
+func resolveTLSConfig(ctx context.Context, config RedisConfig, addr string) (*tls.Config, error) {
+	if config.RedisTLSCABase64 != "" && !config.RedisTLSEnabled {
+		// A trust anchor for a plaintext connection is always a misconfiguration; fail once, named, at startup.
+		return nil, errors.New("REDIS_TLS_CA_BASE64 is set but REDIS_TLS_ENABLED is not: a CA without TLS is meaningless -- set REDIS_TLS_ENABLED=true or remove the CA")
+	}
+
+	if !config.RedisTLSEnabled {
+		return nil, nil
+	}
+
+	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
+
+	// Pin ServerName to the host: IP-redirecting clusters (Azure Managed Redis private endpoints) present hostname-only certs with no IP SANs.
+	tlsConfig.ServerName = addr
+	if host, _, err := net.SplitHostPort(addr); err == nil {
+		tlsConfig.ServerName = host
+	}
+
+	if config.RedisTLSCABase64 != "" {
+		cert, err := base64.StdEncoding.DecodeString(config.RedisTLSCABase64)
+		if err != nil {
+			logger.L().Error(ctx, "Failed to decode Redis TLS CA certificate from base64", zap.Error(err))
+
+			return nil, err
+		}
+
+		certPool := x509.NewCertPool()
+		if !certPool.AppendCertsFromPEM(cert) {
+			logger.L().Error(ctx, "Failed to parse Redis TLS CA certificate")
+
+			return nil, errors.New("failed to parse Redis TLS CA certificate")
+		}
+
+		tlsConfig.RootCAs = certPool
+		logger.L().Info(ctx, "Redis will be started with TLS enabled (custom CA)")
+
+		return tlsConfig, nil
+	}
+
+	logger.L().Info(ctx, "Redis will be started with TLS enabled (system CA)")
+
+	return tlsConfig, nil
+}
+
+// refusePlaintextPassword: go-redis sends AUTH on every connection, so a password without TLS puts the credential on the wire in cleartext -- fail once at startup with a named error instead.
+func refusePlaintextPassword(config RedisConfig, tlsConfig *tls.Config) error {
+	if config.RedisPassword != "" && tlsConfig == nil {
+		return errors.New("REDIS_PASSWORD is set but TLS is not enabled: refusing to send credentials over plaintext (set REDIS_TLS_ENABLED, or unset REDIS_PASSWORD)")
+	}
+
+	return nil
+}
+
 func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalClient, error) {
 	var redisClient redis.UniversalClient
 
@@ -75,6 +134,7 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 
 		clusterOpts := &redis.ClusterOptions{
 			Addrs:        []string{config.RedisClusterURL},
+			Password:     config.RedisPassword,
 			PoolSize:     poolSize,
 			MinIdleConns: minIdleConns,
 			// Disable idle-time eviction; use lifetime-based recycling with jitter instead.
@@ -85,36 +145,29 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 			ConnMaxLifetimeJitter: connMaxLifetimeJitter,
 		}
 
-		if config.RedisTLSCABase64 != "" {
-			cert, err := base64.StdEncoding.DecodeString(config.RedisTLSCABase64)
-			if err != nil {
-				logger.L().Error(ctx, "Failed to decode Redis cluster TLS CA certificate from base64", zap.Error(err))
-
-				return nil, err
-			}
-
-			certPool := x509.NewCertPool()
-			if !certPool.AppendCertsFromPEM(cert) {
-				logger.L().Error(ctx, "Failed to parse Redis cluster TLS CA certificate")
-
-				return nil, errors.New("failed to parse Redis cluster TLS CA certificate")
-			}
-
-			// Remove the port if present
-			serverName := strings.Split(config.RedisClusterURL, ":")[0]
-			clusterOpts.TLSConfig = &tls.Config{
-				RootCAs:    certPool,
-				MinVersion: tls.VersionTLS12,
-				ServerName: serverName,
-			}
-
-			logger.L().Info(ctx, "Redis cluster will be started with TLS enabled")
+		tlsConfig, err := resolveTLSConfig(ctx, config, config.RedisClusterURL)
+		if err != nil {
+			return nil, err
 		}
+		if err := refusePlaintextPassword(config, tlsConfig); err != nil {
+			return nil, err
+		}
+		clusterOpts.TLSConfig = tlsConfig
 
 		redisClient = redis.NewClusterClient(clusterOpts)
 	case config.RedisURL != "":
+		tlsConfig, err := resolveTLSConfig(ctx, config, config.RedisURL)
+		if err != nil {
+			return nil, err
+		}
+		if err := refusePlaintextPassword(config, tlsConfig); err != nil {
+			return nil, err
+		}
+
 		opts := &redis.Options{
 			Addr:                  config.RedisURL,
+			Password:              config.RedisPassword,
+			TLSConfig:             tlsConfig,
 			PoolSize:              poolSize,
 			MinIdleConns:          minIdleConns,
 			ConnMaxIdleTime:       -1,

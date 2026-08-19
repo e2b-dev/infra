@@ -571,3 +571,39 @@ func TestMemfdIdentitySource_ServesThenReleases(t *testing.T) {
 	require.ErrorAs(t, err, &bna)
 	require.False(t, src.IsCached(t.Context(), 0, ps))
 }
+
+// TestNewCacheFromMemfdKeepOpen pins the ownership contract the in-place
+// checkpoint depends on: the KeepOpen constructor borrows the memfd instead of
+// consuming it, so the running VM's memory backing stays readable afterwards.
+// The closing constructor is then run over the SAME memfd to prove the fd
+// survived the first call.
+func TestNewCacheFromMemfdKeepOpen(t *testing.T) {
+	t.Parallel()
+
+	pageSize := int64(header.PageSize)
+	size := pageSize * 4
+	memfd, expected := newTestMemfd(t, size)
+
+	dirty := fullDirty(size, pageSize)
+
+	kept, err := NewCacheFromMemfdKeepOpen(t.Context(), pageSize, t.TempDir()+"/kept", memfd, dirty)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = kept.Close() })
+
+	got := make([]byte, size)
+	_, err = kept.ReadAt(got, 0)
+	require.NoError(t, err)
+	require.Equal(t, expected, got)
+
+	// The memfd must still be alive: the consuming constructor reads it again
+	// (and closes it, matching production where a later destroy-path pause
+	// takes ownership).
+	second, err := NewCacheFromMemfd(t.Context(), pageSize, t.TempDir()+"/second", memfd, dirty)
+	require.NoError(t, err, "memfd must remain readable after the KeepOpen constructor")
+	t.Cleanup(func() { _ = second.Close() })
+
+	got2 := make([]byte, size)
+	_, err = second.ReadAt(got2, 0)
+	require.NoError(t, err)
+	require.Equal(t, expected, got2)
+}

@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.1.0](https://github.com/e2b-dev/infra/compare/orchestrator-v0.0.2...orchestrator-v0.1.0) (2026-08-18)
+
+
+### Features
+
+* **checkpoint:** in-place checkpoint — snapshot a sandbox without stopping it ([#1852](https://github.com/e2b-dev/infra/issues/1852)) ([0001909](https://github.com/e2b-dev/infra/commit/0001909770c6a8f7ff25331ddbc0970e1f289967))
+* **data-exporter:** add export pipeline metrics ([#1324](https://github.com/e2b-dev/infra/issues/1324)) ([46df4d2](https://github.com/e2b-dev/infra/commit/46df4d2320ea38bb12e991cfda6d5da860b9fbfb))
+* **fcversion:** parse vX.Y-&lt;e2b-semver&gt; tags alongside {tag}_{sha} ([#1679](https://github.com/e2b-dev/infra/issues/1679)) ([a8cb6fb](https://github.com/e2b-dev/infra/commit/a8cb6fb8ce04d60fadfe566ef23bdc59b82c089d))
+* **orchestrator:** install ss in template builds and the NixOS base image ([#1724](https://github.com/e2b-dev/infra/issues/1724)) ([e14d760](https://github.com/e2b-dev/infra/commit/e14d760bd84f68849e58a9c00d69883ad10d16be))
+* **orchestrator:** nftables sandbox network datapath behind NETWORK_VERSION=2 ([#1718](https://github.com/e2b-dev/infra/issues/1718)) ([9aafb50](https://github.com/e2b-dev/infra/commit/9aafb5027f983ee9d2de62bbf803873b2f295ea3))
+* **orchestrator:** record sandbox execution duration by stop reason ([#1464](https://github.com/e2b-dev/infra/issues/1464)) ([9708b49](https://github.com/e2b-dev/infra/commit/9708b49a4a802aea54166ae3bd4ff2c334687b13))
+* **orch:** export the virtio-blk queue notification count ([#1914](https://github.com/e2b-dev/infra/issues/1914)) ([31df2e3](https://github.com/e2b-dev/infra/commit/31df2e3383670add37b159175dd17efe540d9e62))
+* **orch:** forbid envd's private endpoints in the sandbox proxy ([#1862](https://github.com/e2b-dev/infra/issues/1862)) ([b6de7ae](https://github.com/e2b-dev/infra/commit/b6de7ae33d1d687fe7c115680916d9f3ddbc8feb))
+* **orch:** separate egress DSCP for template builds and sandboxes ([#1356](https://github.com/e2b-dev/infra/issues/1356)) ([f464c74](https://github.com/e2b-dev/infra/commit/f464c74bbe777c154461e0c4d979389ea666dda4))
+* **orch:** supply guest kernel cmdline parameters per team from a feature flag ([#1790](https://github.com/e2b-dev/infra/issues/1790)) ([65e33c4](https://github.com/e2b-dev/infra/commit/65e33c4cab9a7c27cb18117ecc6a70f49e7e771e))
+* **orch:** swap rootfs envd binary before fs-only reboot ([d3385ef](https://github.com/e2b-dev/infra/commit/d3385ef3d609382cee82cc42dc5d1eb755a3b303))
+* **orch:** upgrade envd in filesystem-only snapshots via offline rootfs swap ([#1363](https://github.com/e2b-dev/infra/issues/1363)) ([695992b](https://github.com/e2b-dev/infra/commit/695992bfb00b275b8269369311dcfbe0fe537aff))
+* **redis:** password auth and explicit TLS enablement ([#1587](https://github.com/e2b-dev/infra/issues/1587)) ([1c49ecf](https://github.com/e2b-dev/infra/commit/1c49ecfc08c1b65d280a440c42cddd45b113744d))
+* **registry:** Azure Container Registry providers ([#1586](https://github.com/e2b-dev/infra/issues/1586)) ([8bc0e78](https://github.com/e2b-dev/infra/commit/8bc0e78dd211d547b20f6a9095b8e1b319648bc8))
+* **storage:** Azure Blob storage provider behind an azblob:// URL ([#1585](https://github.com/e2b-dev/infra/issues/1585)) ([c0f65b6](https://github.com/e2b-dev/infra/commit/c0f65b6730e4b2131f55bc33b1e62c0cb9d97e36))
+* **uffd:** export sync-WP burn-in metrics (wp_mode, dirty divergence) ([#1676](https://github.com/e2b-dev/infra/issues/1676)) ([a6bb2bf](https://github.com/e2b-dev/infra/commit/a6bb2bf0dab8a0395a9835d663fc4507afece4e1))
+* **uffd:** implement handling of synchronous WP faults in UFFD handler and use them to track dirty state ([#1459](https://github.com/e2b-dev/infra/issues/1459)) ([2808228](https://github.com/e2b-dev/infra/commit/2808228b628086ebc2d333a309667046a122830b))
+* **uffd:** serve the pause-time dirty set from the page tracker under sync-WP ([#1759](https://github.com/e2b-dev/infra/issues/1759)) ([fdc3793](https://github.com/e2b-dev/infra/commit/fdc3793cde85c7cfb4e7de9522fbf135f66c1e5b))
+
+
+### Bug Fixes
+
+* **deps:** update module cloud.google.com/go/artifactregistry to v1.26.0 ([#1791](https://github.com/e2b-dev/infra/issues/1791)) ([7d1778c](https://github.com/e2b-dev/infra/commit/7d1778cb404c723a3e05f9becc8bdf6210c4989c))
+* **deps:** update module cloud.google.com/go/storage to v1.64.0 ([#1793](https://github.com/e2b-dev/infra/issues/1793)) ([e66f1a8](https://github.com/e2b-dev/infra/commit/e66f1a8610c8119df23292620d16ed84e98e700e))
+* **deps:** update module github.com/getkin/kin-openapi to v0.146.0 ([#1582](https://github.com/e2b-dev/infra/issues/1582)) ([5307ba8](https://github.com/e2b-dev/infra/commit/5307ba8613599106061c0b55f71be75718c2ad3c))
+* **deps:** update module google.golang.org/api to v0.292.0 ([#1699](https://github.com/e2b-dev/infra/issues/1699)) ([a10138c](https://github.com/e2b-dev/infra/commit/a10138ce9b7db87b614444ac85c581ae2d7839c8))
+* **deps:** update module google.golang.org/grpc to v1.83.0 ([#1583](https://github.com/e2b-dev/infra/issues/1583)) ([acbefda](https://github.com/e2b-dev/infra/commit/acbefdae0e45d5c816cc8659dc8d34784ffa0056))
+* **deps:** update opentelemetry ([#1700](https://github.com/e2b-dev/infra/issues/1700)) ([ea3100a](https://github.com/e2b-dev/infra/commit/ea3100a890ad7e2ba890b0112c41576589eb0e9d))
+* **deps:** update opentelemetry-go-contrib monorepo ([#1607](https://github.com/e2b-dev/infra/issues/1607)) ([5852c94](https://github.com/e2b-dev/infra/commit/5852c942f9b5cff8a66ad008196d7025273febea))
+* **deps:** update testcontainers-go monorepo to v0.43.0 ([#1701](https://github.com/e2b-dev/infra/issues/1701)) ([08b1cbe](https://github.com/e2b-dev/infra/commit/08b1cbe6b6e4e4cddf4b91c068e0b4632ce2e94c))
+* **orchestrator:** harden local network slot storage ([#1490](https://github.com/e2b-dev/infra/issues/1490)) ([b3f5cd2](https://github.com/e2b-dev/infra/commit/b3f5cd27a66c7c2f31ee2fd46f0fbc915f6c752b))
+* **orchestrator:** recover lost ancestor entries when persisting headers ([#1389](https://github.com/e2b-dev/infra/issues/1389)) ([48d6a6b](https://github.com/e2b-dev/infra/commit/48d6a6b4267bc320a563d51764fbeff641b1d2b7))
+* **orchestrator:** restore dpkg-owned paths under /etc/ssl/certs before packing the cert bundle ([#1574](https://github.com/e2b-dev/infra/issues/1574)) ([7800eac](https://github.com/e2b-dev/infra/commit/7800eac55fb393504b56912eb60beb6b33cab8ff))
+* **orch:** keep the harvested prefetch mapping when the snapshot upload is slow ([#1765](https://github.com/e2b-dev/infra/issues/1765)) ([38f6593](https://github.com/e2b-dev/infra/commit/38f659329c3015a1138454137cb817407f91dfeb))
+* **orch:** report NBD device writeback failures at flush ([#1865](https://github.com/e2b-dev/infra/issues/1865)) ([539375e](https://github.com/e2b-dev/infra/commit/539375e40cbb139f7bf3f353643231e1e3b6443e))
+* **orch:** smoketest never ran on infra — envd locator predates the restructure ([#1386](https://github.com/e2b-dev/infra/issues/1386)) ([139a6bd](https://github.com/e2b-dev/infra/commit/139a6bd8e1a1516096bbfc965744969a80fe290d))
+* **oss:** upload with gcloud storage instead of gsutil ([#1302](https://github.com/e2b-dev/infra/issues/1302)) ([5f05b8f](https://github.com/e2b-dev/infra/commit/5f05b8f247c3b3b1ddc1bce0f8a837c5568dd70a))
+* **smoketest:** wait for envd before probing the freshly-resumed guest ([#1898](https://github.com/e2b-dev/infra/issues/1898)) ([041ff92](https://github.com/e2b-dev/infra/commit/041ff929ee6001dd4ed00da9020dbb6b13612995))
+
 ## [0.0.2](https://github.com/e2b-dev/infra/compare/orchestrator-v0.0.1...orchestrator-v0.0.2) (2026-07-31)
 
 

@@ -84,6 +84,7 @@ func (p *Process) ExportMemory(
 	inputEmpty *roaring.Bitmap,
 	metaOut *utils.SetOnce[*header.DiffMetadata],
 	dedupInflightServe bool,
+	keepMemfdOpen bool,
 ) (_ block.DiffSource, e error) {
 	// Resolve metaOut on every sync error so Wait-ers don't hang. Success paths
 	// resolve it inline; the memfd-dedup goroutine owns metaOut after this returns.
@@ -97,6 +98,20 @@ func (p *Process) ExportMemory(
 	}()
 
 	inputMeta := &header.DiffMetadata{Dirty: include, Empty: inputEmpty, BlockSize: blockSize}
+	// In-place snapshot: the running VM still owns the memfd, so copy the dirty
+	// pages without consuming it and skip dedup/async/provisional (which would
+	// close or double-manage the fd the live guest is faulting on).
+	if memfd != nil && keepMemfdOpen {
+		src, err := block.NewCacheFromMemfdKeepOpen(ctx, blockSize, cachePath, memfd, include)
+		if err != nil {
+			return nil, err
+		}
+		if setErr := metaOut.SetValue(inputMeta); setErr != nil {
+			logger.L().Warn(ctx, "set metaOut", zap.Error(setErr))
+		}
+
+		return src, nil
+	}
 	if memfd != nil {
 		if originalMemfile != nil {
 			return block.NewCacheFromMemfdDeduped(ctx, originalMemfile, blockSize, cachePath, memfd, include,
