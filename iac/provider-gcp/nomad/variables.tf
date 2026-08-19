@@ -565,3 +565,38 @@ variable "orchestrator_enabled" {
   default     = true
   description = "Whether the orchestrator job should be deployed"
 }
+
+variable "monad_worker_autoscaler_mode" {
+  type        = string
+  description = "Controller phase: non-mutating shadow observer or scale-out-only actuation."
+  default     = "shadow"
+
+  validation {
+    condition     = contains(["shadow", "scale-out"], var.monad_worker_autoscaler_mode)
+    error_message = "monad_worker_autoscaler_mode must be shadow or scale-out."
+  }
+}
+
+variable "monad_worker_autoscaler_worker_floor" {
+  type        = number
+  description = "Reviewed worker-host floor; must equal the default client cluster_size while the controller is enabled."
+  default     = 0
+}
+
+variable "monad_worker_autoscaler_mig_project_id" {
+  type        = string
+  description = "GCP project of the worker managed instance group; scale-out mode only."
+  default     = ""
+}
+
+variable "monad_worker_autoscaler_mig_region" {
+  type        = string
+  description = "GCP region of the worker managed instance group; scale-out mode only."
+  default     = ""
+}
+
+variable "monad_worker_autoscaler_mig_name" {
+  type        = string
+  description = "Name of the worker managed instance group; scale-out mode only."
+  default     = ""
+}

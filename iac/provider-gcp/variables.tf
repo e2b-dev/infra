@@ -1005,3 +1005,25 @@ variable "traefik_config_files" {
   description = "Map of filename => content for additional Traefik dynamic configuration files"
   default     = {}
 }
+
+variable "monad_worker_autoscaler_mode" {
+  type        = string
+  description = "Worker-capacity controller phase: non-mutating shadow observer or scale-out-only actuation."
+  default     = "shadow"
+
+  validation {
+    condition     = contains(["shadow", "scale-out"], var.monad_worker_autoscaler_mode)
+    error_message = "monad_worker_autoscaler_mode must be shadow or scale-out."
+  }
+}
+
+variable "monad_worker_autoscaler_worker_floor" {
+  type        = number
+  description = "Reviewed worker-host floor; must equal the default client cluster_size. Zero while the controller is disabled."
+  default     = 0
+
+  validation {
+    condition     = var.monad_worker_autoscaler_worker_floor == 0 || (var.monad_worker_autoscaler_worker_floor >= 2 && var.monad_worker_autoscaler_worker_floor <= 15 && floor(var.monad_worker_autoscaler_worker_floor) == var.monad_worker_autoscaler_worker_floor)
+    error_message = "monad_worker_autoscaler_worker_floor must be zero or an integer from 2 to 15."
+  }
+}

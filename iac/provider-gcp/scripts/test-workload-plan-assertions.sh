@@ -2974,6 +2974,40 @@ expect_failure \
   "${artifacts}" \
   "orchestrator"
 
+# Scale-out mutation mode: a released client target_size is reviewed as the
+# policy floor pin; the same released target without mutation mode stays an
+# unresolvable capacity.
+jq '
+  .variables = {
+    monad_worker_autoscaler_shadow_enabled: { value: true },
+    monad_worker_autoscaler_mode: { value: "scale-out" }
+  }
+  | (
+      .resource_changes[]
+      | select(
+          .address
+          | test("client_cluster\\[\"[^\"]+\"\\]\\.google_compute_region_instance_group_manager\\.pool$")
+        )
+      | .change.after.target_size
+    ) = null
+' "${fixture}" >"${test_dir}/scale-out-released-target.json"
+expect_success "scale-out-released-target" "${test_dir}/scale-out-released-target.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        | test("client_cluster\\[\"[^\"]+\"\\]\\.google_compute_region_instance_group_manager\\.pool$")
+      )
+    | .change.after.target_size
+  ) = null
+' "${fixture}" >"${test_dir}/released-target-without-mutation.json"
+expect_failure \
+  "released-target-without-mutation" \
+  "unresolved_capacities must be empty." \
+  "${test_dir}/released-target-without-mutation.json"
+
 "${packer_assertion_script}" "${policy}" "${packer_template}" >/dev/null
 
 printf 'Workload plan assertion fixtures passed.\n'
