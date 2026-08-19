@@ -312,3 +312,59 @@ func validOverview(observed time.Time) Overview {
 		},
 	}
 }
+
+func TestScaleOutMutationEnabledGatesMutationAllowed(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 8, 19, 2, 0, 0, 0, time.UTC)
+
+	scaleOut := validOverview(now)
+	scaleOut.Capacity.ActiveWorkcells = 6
+	scaleOut.Capacity.DurableSessions = 6
+	scaleOut.Capacity.CountedWorkcells = 6
+	scaleOut.Capacity.DesiredWorkerHosts = 4
+
+	engine := &Engine{ScaleOutMutationEnabled: true}
+	decision, err := engine.Evaluate(now, scaleOut, Fleet{ActualHosts: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Direction != DirectionScaleOut || !decision.MutationAllowed {
+		t.Fatalf("expected mutation-allowed scale-out, got %+v", decision)
+	}
+	if decision.Mode != "scale-out" {
+		t.Fatalf("expected scale-out mode, got %q", decision.Mode)
+	}
+
+	hold := validOverview(now.Add(time.Second))
+	hold.Capacity.ActiveWorkcells = 6
+	hold.Capacity.DurableSessions = 6
+	hold.Capacity.CountedWorkcells = 6
+	hold.Capacity.DesiredWorkerHosts = 4
+	hold.Capacity.Revision = "revision-hold-1"
+	decision, err = engine.Evaluate(now.Add(time.Second), hold, Fleet{ActualHosts: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Direction != DirectionHold || decision.MutationAllowed {
+		t.Fatalf("hold must never allow mutation: %+v", decision)
+	}
+
+	scaleIn := validOverview(now.Add(2 * time.Second))
+	scaleIn.Capacity.Revision = "revision-scale-in-1"
+	decision, err = engine.Evaluate(now.Add(2*time.Second), scaleIn, Fleet{ActualHosts: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Direction != DirectionScaleIn || decision.MutationAllowed || !decision.RequiresDrainVerification {
+		t.Fatalf("scale-in must never allow mutation: %+v", decision)
+	}
+
+	shadow := &Engine{}
+	decision, err = shadow.Evaluate(now, scaleOut, Fleet{ActualHosts: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.MutationAllowed || decision.Mode != "shadow" {
+		t.Fatalf("shadow engine must not allow mutation: %+v", decision)
+	}
+}

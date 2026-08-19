@@ -7,6 +7,11 @@ import (
 )
 
 type Engine struct {
+	// ScaleOutMutationEnabled marks scale-out decisions as actuatable. It can
+	// never mark scale-in: that stays decision-only until a typed drain owner
+	// exists on both sides of the capacity contract.
+	ScaleOutMutationEnabled bool
+
 	lastRevision    string
 	lastDigest      [32]byte
 	lastObservedAt  time.Time
@@ -64,8 +69,12 @@ func (e *Engine) Evaluate(now time.Time, overview Overview, fleet Fleet) (Decisi
 
 	required := RequiredWorkcells(overview.Capacity)
 	desired := DesiredHosts(required)
+	mode := "shadow"
+	if e.ScaleOutMutationEnabled {
+		mode = "scale-out"
+	}
 	decision := Decision{
-		Mode:                   "shadow",
+		Mode:                   mode,
 		Revision:               overview.Capacity.Revision,
 		ObservedAt:             overview.GeneratedAt,
 		SnapshotAgeSeconds:     max(0, now.Sub(overview.GeneratedAt).Seconds()),
@@ -88,6 +97,7 @@ func (e *Engine) Evaluate(now time.Time, overview Overview, fleet Fleet) (Decisi
 		e.lowDemandSince = nil
 		e.lowDemandTarget = 0
 		decision.Direction = DirectionScaleOut
+		decision.MutationAllowed = e.ScaleOutMutationEnabled
 		decision.Reason = "desired hosts exceed observed Nomad worker hosts"
 	case desired < fleet.ActualHosts:
 		if e.lowDemandSince == nil || e.lowDemandTarget != desired {
