@@ -223,6 +223,11 @@ if ! jq -e \
     .change.actions == ["no-op"] and .change.before == .change.after;
   def reviewed_change:
     creating or stable;
+  # Live state stores bucket IAM bucket ids with the storage API b/ prefix,
+  # so the stable (already-applied) path must normalize what a fresh create
+  # plan reports as the bare bucket name.
+  def bucket_name:
+    if type == "string" and startswith("b/") then .[2:] else . end;
   def artifact_repository_name:
     if type == "string" and startswith("projects/") then split("/")[-1] else . end;
   def resolved_or_deferred($value; $unknown; $expected):
@@ -299,13 +304,13 @@ if ! jq -e \
   and ($core_reader.change.after.repository | artifact_repository_name) == ($expected_prefix + "core")
   and $core_reader.change.after.role == "roles/artifactregistry.reader"
   and dedicated_member($core_reader; $expected_member)
-  and $instance_setup_reader.change.after.bucket == ($expected_project + "-instance-setup")
+  and ($instance_setup_reader.change.after.bucket | bucket_name) == ($expected_project + "-instance-setup")
   and $instance_setup_reader.change.after.role == "roles/storage.objectViewer"
   and dedicated_member($instance_setup_reader; $expected_member)
-  and $controller_artifact_reader.change.after.bucket == ($expected_project + "-fc-env-pipeline")
+  and ($controller_artifact_reader.change.after.bucket | bucket_name) == ($expected_project + "-fc-env-pipeline")
   and $controller_artifact_reader.change.after.role == "roles/storage.objectViewer"
   and dedicated_member($controller_artifact_reader; $expected_member)
-  and $loki_writer.change.after.bucket == ($expected_project + "-loki-storage")
+  and ($loki_writer.change.after.bucket | bucket_name) == ($expected_project + "-loki-storage")
   and $loki_writer.change.after.role == "roles/storage.objectUser"
   and dedicated_member($loki_writer; $expected_member)
   and $network_viewer.change.after.project == $expected_project
