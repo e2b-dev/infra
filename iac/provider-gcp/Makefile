@@ -1885,7 +1885,7 @@ workload-controller-plan:
 		./scripts/assert-workload-plan.sh \
 			"$${temp_plan}" "$(TF)" \
 			"$(WORKLOAD_TOPOLOGY_POLICY)" "$(WORKLOAD_PACKER_TEMPLATE)" \
-			"$${after_artifacts}" orchestrator; \
+			"$${after_artifacts}" controller; \
 		$(workload_metadata_context) ./scripts/workload-plan-metadata.sh write \
 			"$${temp_plan}" "$${temp_manifest}" "$(TF)" "." "../.." \
 			"$${after_artifacts}" "$${after_fingerprint}"; \
@@ -1995,7 +1995,7 @@ workload-controller-apply:
 		./scripts/assert-workload-plan.sh \
 			"$${apply_plan}" "$(TF)" \
 			"$(WORKLOAD_TOPOLOGY_POLICY)" "$(WORKLOAD_PACKER_TEMPLATE)" \
-			"$${before_artifacts}" orchestrator; \
+			"$${before_artifacts}" controller; \
 		./scripts/assert-workload-artifacts.sh \
 			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(PREFIX)" \
 			"$(WORKLOAD_IMAGE_REVISION)" "$(WORKLOAD_JOB_BINARY_BUCKET)" \
