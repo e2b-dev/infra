@@ -128,8 +128,10 @@ func (o *Orchestrator) syncLocalDiscoveredNodes(ctx context.Context, discovered 
 	defer wg.Wait()
 
 	for _, n := range discovered {
-		// If the node is not in the list, connect to it
-		if o.GetNodeByNomadShortID(n.NomadNodeShortID) == nil {
+		// Connect unknown nodes and reconnect stable Kubernetes Pod identities
+		// whose routable Pod IP changed after a restart.
+		existing := o.GetNodeByNomadShortID(n.NomadNodeShortID)
+		if existing == nil || existing.IPAddress != n.IPAddress {
 			wg.Go(func() {
 				// Make sure slow/failed connections don't block the whole sync loop
 				connectCtx, connectCancel := context.WithTimeout(ctx, nodeConnectTimeout)

@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: e2b-kubernetes-orchestrator
+  labels:
+    app.kubernetes.io/name: orchestrator
+    app.kubernetes.io/component: kubernetes-orchestrator
+    app.kubernetes.io/part-of: e2b
+spec:
+  serviceName: e2b-kubernetes-orchestrator
+  replicas: 1
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orchestrator
+      app.kubernetes.io/component: kubernetes-orchestrator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: orchestrator
+        app.kubernetes.io/component: kubernetes-orchestrator
+        app.kubernetes.io/part-of: e2b
+        app.kubernetes.io/managed-by: e2b-kubernetes-orchestrator
+    spec:
+      serviceAccountName: e2b-kubernetes-orchestrator
+      automountServiceAccountToken: true
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: kubernetes-orchestrator
+          image: controller.invalid/e2b-kubernetes-orchestrator:replace
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          ports:
+            - name: grpc
+              containerPort: 5008
+            - name: proxy
+              containerPort: 5007
+            - name: health
+              containerPort: 5018
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: KATA_RUNTIME_CLASSES
+              value: runtimes.invalid
+            - name: DEFAULT_KATA_RUNTIME_CLASS
+              value: runtime-default.invalid
+            - name: SANDBOX_IMAGE_TEMPLATE
+              value: sandbox.invalid/e2b/{template_id}:{build_id}
+            - name: SANDBOX_NODE_SELECTOR
+              value: selector.invalid=true
+            - name: SANDBOX_SERVICE_ACCOUNT
+              value: e2b-sandbox
+            - name: SANDBOX_CAPACITY_CPU
+              value: capacity-cpu.invalid
+            - name: SANDBOX_CAPACITY_MEMORY_MIB
+              value: capacity-memory.invalid
+            - name: SANDBOX_CPU_ARCHITECTURE
+              value: architecture.invalid
+            - name: NODE_LABELS
+              value: labels.invalid
+            - name: SANDBOX_ENVD_COMMAND
+              value: /usr/bin/envd
+            - name: SANDBOX_ENVD_ARGS
+              value: -isnotfc -no-cgroups -verbose
+            - name: SANDBOX_DNS_NAMESERVERS
+              value: dns.invalid
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: health
+            periodSeconds: 2
+            timeoutSeconds: 1
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: health
+            periodSeconds: 10
+            timeoutSeconds: 1
+            failureThreshold: 3

@@ -14,12 +14,9 @@ import (
 )
 
 // k8sDiscovery implements Discovery by listing pods of the orchestrator
-// DaemonSet via the K8s API server.
-//
-// Orchestrator pods run with host_network=true (see iac/k8s/job-orchestrator),
-// so each pod's status.HostIP equals status.PodIP and is the address the
-// orchestrator gRPC server listens on. We only return pods that are Running and
-// have Ready=True, mirroring the Nomad equivalent's "Status == ready" filter.
+// DaemonSet or Deployment via the K8s API server. It supports both the legacy
+// host-networked orchestrator and the regular-networked Kubernetes/Kata
+// controller. Only Running, Ready pods with a routable address are returned.
 type k8sDiscovery struct {
 	client        kubernetes.Interface
 	namespace     string
@@ -54,11 +51,12 @@ func (d *k8sDiscovery) ListNodes(ctx context.Context) ([]Node, error) {
 			continue
 		}
 
-		// host_network=true means HostIP == PodIP and is reachable from any
-		// pod in the cluster (kube-proxy isn't even involved).
-		ip := p.Status.HostIP
-		if ip == "" {
-			ip = p.Status.PodIP
+		ip := p.Status.PodIP
+		if p.Spec.HostNetwork {
+			ip = p.Status.HostIP
+			if ip == "" {
+				ip = p.Status.PodIP
+			}
 		}
 		if ip == "" {
 			continue

@@ -1,5 +1,12 @@
 # Self-hosting E2B
 
+> The Indentia fork contains a phase-one Kubernetes provider under
+> `iac/provider-okd`. On `indentia-ap`, E2B sandboxes use `kata-clh` by default
+> and `kata-qemu` as fallback. This provider deliberately does not install or
+> use Firecracker, Nomad, privileged host access, NBD, UFFD, or host mounts.
+> See its README for the supported contract, guarded deployment workflow, and
+> explicit snapshot/storage limitations.
+
 ## Prerequisites
 
 **Tools**

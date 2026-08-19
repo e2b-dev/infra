@@ -23,3 +23,10 @@ func (n *Node) Labels() map[string]struct{} {
 
 	return n.labels
 }
+
+func (n *Node) HasLabel(label string) bool {
+	n.mutex.RLock()
+	defer n.mutex.RUnlock()
+	_, ok := n.labels[label]
+	return ok
+}

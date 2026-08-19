@@ -1,4 +1,4 @@
-// Package discovery enumerates running orchestrator (Firecracker host) instances
+// Package discovery enumerates running orchestrator instances
 // for the API to route sandbox calls to.
 //
 // The Discovery interface has several implementations:
@@ -18,8 +18,8 @@
 //     ShortID with primary winning. Used to combine the two Nomad backends
 //     during the migration.
 //
-//   - NewKubernetes: lists pods of the orchestrator DaemonSet via the
-//     in-cluster K8s API. Used by the K8s deploy.
+//   - NewKubernetes: lists orchestrator Pods (DaemonSet, Deployment, or
+//     StatefulSet) via the in-cluster K8s API. Used by K8s deploys.
 //
 // The shape of the returned []Node mirrors what the existing
 // orchestrator package was deriving from a Nomad node listing
@@ -38,7 +38,7 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/orchest
 // Node is a single discovered orchestrator instance.
 type Node struct {
 	// ShortID identifies the orchestrator at the discovery layer. It is the
-	// (truncated) Nomad node ID for the Nomad backend, and the (truncated) pod
+	// truncated Nomad node ID for the Nomad backend, and the stable full Pod
 	// name for the Kubernetes backend. The orchestrator stores it on
 	// nodemanager.Node.NomadNodeShortID, which is what
 	// Orchestrator.GetNodeByNomadShortID linearly scans for; it is not used as
@@ -49,12 +49,13 @@ type Node struct {
 	ShortID string
 
 	// IPAddress is the orchestrator host's IP. For Nomad it's the Nomad node
-	// IP; for Kubernetes it's the pod's status.HostIP (orchestrator pods run
-	// with host_network=true, so status.HostIP and status.PodIP are the same
-	// and directly reachable from API pods).
+	// IP; for Kubernetes it is status.HostIP for a host-networked Pod and
+	// status.PodIP for a regular-networked Pod.
 	IPAddress string
 
 	// OrchestratorAddress is "<IPAddress>:<gRPC port>", precomputed for callers.
+	// A changed address for the same ShortID replaces the existing client; this
+	// is required when a regular-networked Kubernetes Pod restarts with a new IP.
 	OrchestratorAddress string
 }
 

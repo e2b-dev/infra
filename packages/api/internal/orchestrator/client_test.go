@@ -257,6 +257,37 @@ func TestConnectToNode_SingleflightDedup(t *testing.T) {
 	assert.LessOrEqual(t, o.nodes.Count(), 1, "singleflight should prevent duplicate registrations")
 }
 
+func TestSyncLocalDiscoveredNodesReconnectsStablePodAfterIPChange(t *testing.T) {
+	t.Parallel()
+
+	o := newTestOrchestrator(t, nil)
+	const nodeID = "e2b-kubernetes-orchestrator-0"
+	const discoveryID = "e2b-kubernetes-orchestrator-0"
+	firstPort := startFakeOrchestratorGRPC(t, nodeID)
+	secondPort := startFakeOrchestratorGRPC(t, nodeID)
+
+	first := nodemanager.NomadServiceDiscovery{
+		NomadNodeShortID:    discoveryID,
+		OrchestratorAddress: fmt.Sprintf("127.0.0.1:%d", firstPort),
+		IPAddress:           "10.128.1.10",
+	}
+	require.NoError(t, o.connectToNode(t.Context(), first))
+	original := o.GetNode(consts.LocalClusterID, nodeID)
+	require.NotNil(t, original)
+
+	second := nodemanager.NomadServiceDiscovery{
+		NomadNodeShortID:    discoveryID,
+		OrchestratorAddress: fmt.Sprintf("127.0.0.1:%d", secondPort),
+		IPAddress:           "10.128.2.20",
+	}
+	o.syncLocalDiscoveredNodes(t.Context(), []nodemanager.NomadServiceDiscovery{second})
+
+	reconnected := o.GetNode(consts.LocalClusterID, nodeID)
+	require.NotNil(t, reconnected)
+	assert.NotSame(t, original, reconnected)
+	assert.Equal(t, second.IPAddress, reconnected.IPAddress)
+}
+
 // TestGetOrConnectNode_CacheMiss_DiscoversAndConnects is the end-to-end
 // test for a race condition. It simulates following scenario:
 //

@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: e2b-kubernetes-orchestrator
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: orchestrator
+      app.kubernetes.io/component: kubernetes-orchestrator
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: e2b
+          podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values: ["api", "client-proxy"]
+      ports:
+        - protocol: TCP
+          port: 5007
+        - protocol: TCP
+          port: 5008
+        - protocol: TCP
+          port: 5018
