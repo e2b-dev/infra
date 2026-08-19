@@ -47,7 +47,7 @@ sudo chown -R "$(id -u):$(id -g)" configs      # the resolved configs come back 
 
 Then add the version to `kernel_versions.txt` and build.
 
-Every pinned version is rebuilt on every release, so the list cannot grow forever. A pin whose comment says `candidate` is one nothing has taken into use yet, and is the one the next version supersedes; adopting a version means deleting that comment. Published artifacts are never overwritten, so dropping a pin does not remove the kernels already in a bucket.
+`make build` builds every version in the file, so keep the list to the versions you still want built. A pin whose comment says `candidate` is one nothing has taken into use yet — those are the ones to drop first; adopting a version means deleting that comment. Dropping a pin is safe whenever it happens: published artifacts are never overwritten or deleted, and a template records the kernel version it was built with.
 
 ## New kernel in E2B's infra
 _Note: these steps should give you a new kernel on your self-hosted E2B using https://github.com/e2b-dev/infra_
