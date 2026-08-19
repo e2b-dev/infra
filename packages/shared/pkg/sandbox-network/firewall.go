@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"unicode/utf8"
 
+	"github.com/miekg/dns"
 	"github.com/ngrok/firewall_toolkit/pkg/set"
+	"k8s.io/apimachinery/pkg/util/validation"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -119,4 +122,54 @@ func ParseAddressesAndDomains(entries []string) (addresses []string, domains []s
 	}
 
 	return addresses, domains
+}
+
+// MatchDomainPattern reports whether hostname matches an exact domain, the
+// all-domains wildcard, or a leading-label wildcard such as *.example.com.
+func MatchDomainPattern(hostname, pattern string) bool {
+	if hostname == "" || pattern == "" || strings.HasPrefix(hostname, ".") {
+		return false
+	}
+
+	switch {
+	case strings.EqualFold(pattern, hostname):
+		return true
+	case pattern == "*":
+		return true
+	case !strings.HasPrefix(pattern, "*."):
+		return false
+	}
+
+	suffix := strings.TrimPrefix(pattern, "*.")
+	if suffix == "" || strings.HasPrefix(suffix, ".") {
+		return false
+	}
+	if strings.HasSuffix(hostname, ".") != strings.HasSuffix(suffix, ".") {
+		return false
+	}
+	if _, ok := dns.IsDomainName(suffix); !ok {
+		return false
+	}
+	if _, ok := dns.IsDomainName(hostname); !ok {
+		return false
+	}
+
+	return !strings.EqualFold(hostname, suffix) && dns.IsSubDomain(suffix, hostname)
+}
+
+// IsValidWildcardDomainPattern reports whether pattern contains exactly one
+// leading wildcard label followed by a DNS-1123 subdomain.
+func IsValidWildcardDomainPattern(pattern string) bool {
+	if len(pattern) > validation.DNS1123SubdomainMaxLength {
+		return false
+	}
+	for i := range len(pattern) {
+		if pattern[i] >= utf8.RuneSelf {
+			return false
+		}
+	}
+
+	suffix, ok := strings.CutPrefix(pattern, "*.")
+
+	return ok && len(validation.IsDNS1123Subdomain(strings.ToLower(suffix))) == 0
 }
