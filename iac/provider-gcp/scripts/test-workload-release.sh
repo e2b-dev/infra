@@ -1785,7 +1785,7 @@ workload_plan_recipe="$(
 workload_apply_recipe="$(
   awk '
     /^workload-apply:/ {capture = 1}
-    /^\\.PHONY: foundation-init/ {capture = 0}
+    /^\.PHONY: foundation-init/ {capture = 0}
     capture {print}
   ' "${provider_root}/Makefile"
 )"
