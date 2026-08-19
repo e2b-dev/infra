@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -18,6 +19,7 @@ import (
 )
 
 type config struct {
+	Mode         string
 	TAMSURL      string
 	TAMSAudience string
 	NomadAddress string
@@ -29,6 +31,10 @@ type config struct {
 	InstanceID   string
 	MetricsAddr  string
 	Interval     time.Duration
+	MIGProject   string
+	MIGRegion    string
+	MIGName      string
+	Floor        int
 }
 
 func main() {
@@ -65,7 +71,22 @@ func main() {
 			Address: cfg.ConsulAddr, Token: cfg.ConsulToken, LockKey: cfg.ConsulKey,
 			InstanceID: cfg.InstanceID, TTL: max(30*time.Second, cfg.Interval*4), Client: httpClient,
 		},
-		Engine: &controller.Engine{}, Metrics: metrics, Logger: logger, Interval: cfg.Interval,
+		Engine:  &controller.Engine{ScaleOutMutationEnabled: cfg.Mode == "scale-out"},
+		Metrics: metrics, Logger: logger, Interval: cfg.Interval,
+	}
+	if cfg.Mode == "scale-out" {
+		accessTokens := &controller.MetadataAccessTokenSource{Client: controller.NewMetadataHTTPClient()}
+		actuator, err := controller.NewGCERegionMIGActuator(httpClient, accessTokens, "https://compute.googleapis.com", cfg.MIGProject, cfg.MIGRegion, cfg.MIGName)
+		if err != nil {
+			logger.Error("invalid resize target", "error", err)
+			os.Exit(1)
+		}
+		mutator, err := controller.NewScaleOutMutator(actuator, cfg.Floor, metrics, logger)
+		if err != nil {
+			logger.Error("invalid scale-out mutator", "error", err)
+			os.Exit(1)
+		}
+		runner.Mutator = mutator
 	}
 	if err := runner.Run(ctx); err != nil {
 		logger.Error("controller stopped with error", "error", err)
@@ -78,13 +99,25 @@ func main() {
 }
 
 func loadConfig() (config, error) {
-	if mode := strings.TrimSpace(os.Getenv("MONAD_WORKER_AUTOSCALER_MODE")); mode != "shadow" {
-		return config{}, fmt.Errorf("MONAD_WORKER_AUTOSCALER_MODE must be exactly shadow, got %q", mode)
+	mode := strings.TrimSpace(os.Getenv("MONAD_WORKER_AUTOSCALER_MODE"))
+	if mode != "shadow" && mode != "scale-out" {
+		return config{}, fmt.Errorf("MONAD_WORKER_AUTOSCALER_MODE must be shadow or scale-out, got %q", mode)
 	}
-	if mutation := strings.TrimSpace(os.Getenv("MONAD_WORKER_AUTOSCALER_MUTATION_ENABLED")); mutation != "" && mutation != "false" && mutation != "0" {
-		return config{}, errors.New("worker mutation is not implemented and must remain disabled")
+	// The mutation switch is double-keyed: scale-out demands the exact phrase
+	// and shadow refuses every truthy value, so one mistyped variable can
+	// never flip a shadow observer into a mutating controller.
+	mutation := strings.TrimSpace(os.Getenv("MONAD_WORKER_AUTOSCALER_MUTATION_ENABLED"))
+	if mode == "shadow" && mutation != "" && mutation != "false" && mutation != "0" {
+		return config{}, errors.New("worker mutation must remain disabled in shadow mode; scale-out mode requires MONAD_WORKER_AUTOSCALER_MUTATION_ENABLED=scale-out-only")
+	}
+	if mode == "scale-out" && mutation != "scale-out-only" {
+		return config{}, errors.New("scale-out mode requires MONAD_WORKER_AUTOSCALER_MUTATION_ENABLED=scale-out-only")
 	}
 	cfg := config{
+		Mode:       mode,
+		MIGProject: strings.TrimSpace(os.Getenv("MIG_PROJECT_ID")),
+		MIGRegion:  strings.TrimSpace(os.Getenv("MIG_REGION")),
+		MIGName:    strings.TrimSpace(os.Getenv("MIG_NAME")),
 		TAMSURL:      strings.TrimSpace(os.Getenv("TAMS_OPS_CAPACITY_URL")),
 		TAMSAudience: strings.TrimSpace(os.Getenv("TAMS_OPS_AUDIENCE")),
 		NomadAddress: strings.TrimSpace(os.Getenv("NOMAD_ADDR")),
@@ -134,6 +167,30 @@ func loadConfig() (config, error) {
 		return config{}, fmt.Errorf("RECONCILE_INTERVAL must be a duration from 5s to 30s, got %q", intervalText)
 	}
 	cfg.Interval = interval
+
+	floorText := strings.TrimSpace(os.Getenv("WORKER_HOST_FLOOR"))
+	if mode == "shadow" {
+		if cfg.MIGProject != "" || cfg.MIGRegion != "" || cfg.MIGName != "" || floorText != "" {
+			return config{}, errors.New("shadow mode must not configure a resize target or worker floor")
+		}
+
+		return cfg, nil
+	}
+	for name, value := range map[string]string{
+		"MIG_PROJECT_ID":    cfg.MIGProject,
+		"MIG_REGION":        cfg.MIGRegion,
+		"MIG_NAME":          cfg.MIGName,
+		"WORKER_HOST_FLOOR": floorText,
+	} {
+		if value == "" {
+			return config{}, fmt.Errorf("%s is required in scale-out mode", name)
+		}
+	}
+	floor, err := strconv.Atoi(floorText)
+	if err != nil || floor < 2 || floor > 15 {
+		return config{}, fmt.Errorf("WORKER_HOST_FLOOR must be an integer from 2 to 15, got %q", floorText)
+	}
+	cfg.Floor = floor
 
 	return cfg, nil
 }

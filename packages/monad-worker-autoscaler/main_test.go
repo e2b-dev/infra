@@ -60,3 +60,72 @@ func setValidEnvironment(t *testing.T) {
 	t.Setenv("CONTROLLER_INSTANCE_ID", "test-allocation")
 	t.Setenv("RECONCILE_INTERVAL", "10s")
 }
+
+func setValidScaleOutEnvironment(t *testing.T) {
+	t.Helper()
+	setValidEnvironment(t)
+	t.Setenv("MONAD_WORKER_AUTOSCALER_MODE", "scale-out")
+	t.Setenv("MONAD_WORKER_AUTOSCALER_MUTATION_ENABLED", "scale-out-only")
+	t.Setenv("MIG_PROJECT_ID", "monad-code")
+	t.Setenv("MIG_REGION", "us-east4")
+	t.Setenv("MIG_NAME", "e2b-orch-client-rig")
+	t.Setenv("WORKER_HOST_FLOOR", "4")
+}
+
+func TestLoadConfigAcceptsScaleOutConfiguration(t *testing.T) { //nolint:paralleltest // t.Setenv cannot be used safely in a parallel test.
+	setValidScaleOutEnvironment(t)
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Mode != "scale-out" || cfg.MIGProject != "monad-code" || cfg.MIGRegion != "us-east4" || cfg.MIGName != "e2b-orch-client-rig" || cfg.Floor != 4 {
+		t.Fatalf("unexpected config: %+v", cfg)
+	}
+}
+
+func TestLoadConfigScaleOutRequiresDoubleKeyedMutation(t *testing.T) {
+	for _, mutation := range []string{"", "false", "0", "true", "1", "scale-out", "enabled"} {
+		setValidScaleOutEnvironment(t)
+		t.Setenv("MONAD_WORKER_AUTOSCALER_MUTATION_ENABLED", mutation)
+		if _, err := loadConfig(); err == nil || !strings.Contains(err.Error(), "scale-out-only") {
+			t.Fatalf("expected double-keyed mutation guard for %q, got %v", mutation, err)
+		}
+	}
+}
+
+func TestLoadConfigScaleOutRequiresResizeTarget(t *testing.T) {
+	for _, name := range []string{"MIG_PROJECT_ID", "MIG_REGION", "MIG_NAME", "WORKER_HOST_FLOOR"} {
+		setValidScaleOutEnvironment(t)
+		t.Setenv(name, "")
+		if _, err := loadConfig(); err == nil {
+			t.Fatalf("expected missing %s rejection", name)
+		}
+	}
+	for _, floor := range []string{"1", "16", "0", "-2", "four", "4.5"} {
+		setValidScaleOutEnvironment(t)
+		t.Setenv("WORKER_HOST_FLOOR", floor)
+		if _, err := loadConfig(); err == nil || !strings.Contains(err.Error(), "WORKER_HOST_FLOOR") {
+			t.Fatalf("expected floor rejection for %q, got %v", floor, err)
+		}
+	}
+}
+
+func TestLoadConfigShadowRejectsResizeTargetLeftovers(t *testing.T) {
+	for _, name := range []string{"MIG_PROJECT_ID", "MIG_REGION", "MIG_NAME", "WORKER_HOST_FLOOR"} {
+		setValidEnvironment(t)
+		t.Setenv(name, "leftover-value")
+		if _, err := loadConfig(); err == nil || !strings.Contains(err.Error(), "shadow") {
+			t.Fatalf("expected shadow half-configuration rejection for %s, got %v", name, err)
+		}
+	}
+}
+
+func TestLoadConfigRejectsUnknownMode(t *testing.T) {
+	for _, mode := range []string{"", "mutate", "scale_out", "SHADOW"} {
+		setValidEnvironment(t)
+		t.Setenv("MONAD_WORKER_AUTOSCALER_MODE", mode)
+		if _, err := loadConfig(); err == nil || !strings.Contains(err.Error(), "MONAD_WORKER_AUTOSCALER_MODE") {
+			t.Fatalf("expected mode rejection for %q, got %v", mode, err)
+		}
+	}
+}
