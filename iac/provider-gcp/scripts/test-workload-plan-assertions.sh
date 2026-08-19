@@ -169,7 +169,7 @@ expect_success() {
     "${artifacts}" \
     "${scope}" >"${output_path}"
 
-  if [[ "${scope}" != "orchestrator" ]]; then
+  if [[ "${scope}" != "orchestrator" && "${scope}" != "controller" ]]; then
     grep -F '"global_vcpus":76' "${output_path}" >/dev/null
     grep -F '"regional_cpus":76' "${output_path}" >/dev/null
     grep -F '"instances":14' "${output_path}" >/dev/null
@@ -185,6 +185,10 @@ expect_success() {
   elif [[ "${scope}" == "orchestrator" ]]; then
     grep -F \
       'Orchestrator release scope passed: the exact pinned binary is the only workload rollout.' \
+      "${output_path}" >/dev/null
+  elif [[ "${scope}" == "controller" ]]; then
+    grep -F \
+      'Worker-controller scope passed: only the worker-capacity controller job, its one-time shadow retirement, and its guard mutate.' \
       "${output_path}" >/dev/null
   fi
 }
@@ -3042,6 +3046,57 @@ expect_failure \
   "unreviewed-nomad-job-delete" \
   "destructive_managed_resources must be empty." \
   "${test_dir}/unreviewed-nomad-job-delete.json"
+
+# Worker-controller scope: only the controller job, its one-time shadow
+# retirement, and its deployment guard may mutate; anything else is refused.
+jq '
+  .resource_changes |= map(
+    if .mode == "managed" then (
+      .change.before = .change.after
+      | .change.actions = ["no-op"]
+    ) else . end
+  )
+  | .resource_changes += [
+    {
+      address: "module.nomad.module.monad_worker_autoscaler[0].nomad_job.controller",
+      module_address: "module.nomad.module.monad_worker_autoscaler[0]",
+      mode: "managed", type: "nomad_job", name: "controller",
+      provider_name: "registry.terraform.io/hashicorp/nomad",
+      change: { actions: ["create"], before: null, after: { id: "monad-worker-autoscaler" }, after_unknown: {} }
+    },
+    {
+      address: "module.nomad.module.monad_worker_autoscaler[0].nomad_job.shadow",
+      module_address: "module.nomad.module.monad_worker_autoscaler[0]",
+      mode: "managed", type: "nomad_job", name: "shadow",
+      provider_name: "registry.terraform.io/hashicorp/nomad",
+      change: { actions: ["delete"], before: { id: "monad-worker-autoscaler-shadow" }, after: null, after_unknown: {} }
+    },
+    {
+      address: "module.nomad.terraform_data.monad_worker_autoscaler_shadow_guard[0]",
+      module_address: "module.nomad",
+      mode: "managed", type: "terraform_data", name: "monad_worker_autoscaler_shadow_guard", index: 0,
+      provider_name: "terraform.io/builtin/terraform",
+      change: { actions: ["create"], before: null, after: {}, after_unknown: {} }
+    }
+  ]
+' "${fixture}" >"${test_dir}/controller-scope.json"
+expect_success "controller-scope" "${test_dir}/controller-scope.json" "controller"
+
+jq '
+  (
+    .resource_changes[]
+    | select(.address == "module.nomad.module.api.nomad_job.api")
+    | .change.actions
+  ) = ["update"]
+' "${test_dir}/controller-scope.json" >"${test_dir}/controller-scope-extra-mutation.json"
+expect_failure \
+  "controller-scope-extra-mutation" \
+  "Refusing worker-controller plan" \
+  "${test_dir}/controller-scope-extra-mutation.json" \
+  "${policy}" \
+  "${packer_template}" \
+  "${artifacts}" \
+  "controller"
 
 "${packer_assertion_script}" "${policy}" "${packer_template}" >/dev/null
 

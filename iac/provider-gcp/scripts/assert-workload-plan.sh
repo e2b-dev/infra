@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-plan_path="${1:?usage: assert-workload-plan.sh PLAN_PATH TERRAFORM_BIN POLICY_PATH PACKER_TEMPLATE_PATH ARTIFACTS_PATH [full|cluster|orchestrator]}"
+plan_path="${1:?usage: assert-workload-plan.sh PLAN_PATH TERRAFORM_BIN POLICY_PATH PACKER_TEMPLATE_PATH ARTIFACTS_PATH [full|cluster|orchestrator|controller]}"
 terraform_bin="${2:-terraform}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 policy_path="${3:-${script_dir}/../topology/minimal-workload-policy.json}"
 packer_template_path="${4:-${script_dir}/../nomad-cluster-disk-image/main.pkr.hcl}"
-artifacts_path="${5:?usage: assert-workload-plan.sh PLAN_PATH TERRAFORM_BIN POLICY_PATH PACKER_TEMPLATE_PATH ARTIFACTS_PATH [full|cluster|orchestrator]}"
+artifacts_path="${5:?usage: assert-workload-plan.sh PLAN_PATH TERRAFORM_BIN POLICY_PATH PACKER_TEMPLATE_PATH ARTIFACTS_PATH [full|cluster|orchestrator|controller]}"
 scope="${6:-full}"
 analysis_filter="${script_dir}/workload-plan-topology.jq"
 artifact_filter="${script_dir}/workload-plan-artifacts.jq"
 
 case "${scope}" in
-  full | cluster | orchestrator) ;;
+  full | cluster | orchestrator | controller) ;;
   *)
     printf 'Unknown workload plan assertion scope: %s\n' "${scope}" >&2
     exit 2
@@ -419,7 +419,7 @@ if [[ "${scope}" == "full" ]]; then
   fi
 fi
 
-if [[ "${scope}" != "orchestrator" ]]; then
+if [[ "${scope}" != "orchestrator" && "${scope}" != "controller" ]]; then
   topology="$(
     jq -c \
       --argjson expected "${policy_json}" \
@@ -598,6 +598,62 @@ if [[ "${scope}" == "orchestrator" ]]; then
   ' <<<"${orchestrator_mutations}" >/dev/null; then
     printf 'Refusing orchestrator release plan: only the exact orchestrator job and its rollout markers may mutate, and the job must update exactly once.\n' >&2
     jq -c '.[]' <<<"${orchestrator_mutations}" >&2
+    exit 1
+  fi
+fi
+
+if [[ "${scope}" == "controller" ]]; then
+  controller_mutations="$(
+    jq -c '
+      [
+        .resource_changes[]?
+        | select(.mode == "managed")
+        | select(
+            .change.actions != ["no-op"]
+            and .change.actions != ["read"]
+          )
+        | {
+            address,
+            type,
+            actions: .change.actions
+          }
+      ]
+    ' <<<"${plan_json}"
+  )"
+  if ! jq -e '
+    length >= 1
+    and all(
+      .[];
+      if .address == "module.nomad.module.monad_worker_autoscaler[0].nomad_job.controller"
+      then .type == "nomad_job" and (
+        .actions == ["create"]
+        or .actions == ["update"]
+      )
+      elif .address == "module.nomad.module.monad_worker_autoscaler[0].nomad_job.shadow"
+      then .type == "nomad_job" and .actions == ["delete"]
+      elif .address == "module.nomad.terraform_data.monad_worker_autoscaler_shadow_guard[0]"
+      then .type == "terraform_data" and (
+        .actions == ["create"]
+        or .actions == ["update"]
+        or .actions == ["delete", "create"]
+        or .actions == ["create", "delete"]
+      )
+      else false
+      end
+    )
+    and (
+      [
+        .[]
+        | select(
+            .address
+            == "module.nomad.module.monad_worker_autoscaler[0].nomad_job.controller"
+          )
+      ]
+      | length
+    ) == 1
+  ' <<<"${controller_mutations}" >/dev/null; then
+    printf 'Refusing worker-controller plan: only the worker-capacity controller job, its one-time shadow-job retirement, and its deployment guard may mutate, and the controller job must change exactly once.\n' >&2
+    jq -c '.[]' <<<"${controller_mutations}" >&2
     exit 1
   fi
 fi
@@ -854,7 +910,7 @@ for field in "${artifact_failure_fields[@]}"; do
   fi
 done
 
-if [[ "${scope}" != "orchestrator" ]]; then
+if [[ "${scope}" != "orchestrator" && "${scope}" != "controller" ]]; then
   printf 'Workload plan topology passed: roles=%s surge=%s unavailable=%s base=%s rollout=%s packer=%s peak=%s limits=%s.\n' \
     "$(jq -c '.role_max_instances' <<<"${topology}")" \
     "$(jq -c '.role_surge_instances' <<<"${topology}")" \
@@ -870,4 +926,6 @@ if [[ "${scope}" == "cluster" ]]; then
   printf 'Cluster bootstrap scope passed: only module.cluster may mutate and no Nomad workload resources are present.\n'
 elif [[ "${scope}" == "orchestrator" ]]; then
   printf 'Orchestrator release scope passed: the exact pinned binary is the only workload rollout.\n'
+elif [[ "${scope}" == "controller" ]]; then
+  printf 'Worker-controller scope passed: only the worker-capacity controller job, its one-time shadow retirement, and its guard mutate.\n'
 fi
