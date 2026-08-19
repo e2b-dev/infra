@@ -20,17 +20,36 @@ if ! id -u user >/dev/null 2>&1; then
 fi
 # useradd -m skips skeleton files when /home/user already exists, so copy them
 # explicitly (no-clobber). Not every image ships /etc/skel — say so instead of
-# hiding it. Walked file-by-file because `cp -n` exits non-zero when it skips an
-# existing file on coreutils >= 9.2 (Fedora 40+), which is a skip, not a failure.
+# hiding it. Walked entry by entry because `cp -n` exits non-zero when it skips
+# an existing file on coreutils >= 9.2 (Fedora 40+), which is a skip, not a failure.
 if [ -d /home/user ]; then
     if [ -d /etc/skel ]; then
         echo "Copy skeleton files to /home/user (keeping existing files)"
-        (cd /etc/skel && find . -type f -print | while IFS= read -r f; do
-            if [ ! -e "/home/user/$f" ]; then
-                mkdir -p "/home/user/$(dirname "$f")"
-                cp -a "/etc/skel/$f" "/home/user/$f"
+        find /etc/skel/ -mindepth 1 \( -type f -o -type d -o -type l \) -print0 | while IFS= read -r -d '' src; do
+            rel="${src#/etc/skel/}"
+            if [ -e "/home/user/$rel" ] || [ -L "/home/user/$rel" ]; then
+                echo "skel: keeping existing $rel"
+                continue
             fi
-        done)
+            parent="${rel%/*}"
+            if [ "$parent" != "$rel" ]; then
+                if [ -L "/home/user/$parent" ]; then
+                    echo "skel: skipping $rel (parent is a symlink)"
+                    continue
+                fi
+                if [ ! -d "/home/user/$parent" ]; then
+                    echo "skel: skipping $rel (parent is not a directory)"
+                    continue
+                fi
+            fi
+            if [ -d "$src" ] && [ ! -L "$src" ]; then
+                # Created, not copied: cp -a on a dir would drag specials past the type filter.
+                mkdir "/home/user/$rel"
+                chmod "$(stat -c %a "$src")" "/home/user/$rel"
+            else
+                cp -a "$src" "/home/user/$rel"
+            fi
+        done
     else
         echo "No /etc/skel on this image; skipping skeleton copy"
     fi
