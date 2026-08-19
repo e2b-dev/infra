@@ -4,6 +4,7 @@ package sandbox
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -21,9 +22,18 @@ import (
 // Slack covers shell start + envd round-trip overhead.
 const reclaimOuterSlack = 500 * time.Millisecond
 
-// freezeTimeout bounds the native POST /freeze call. The freeze itself is a
-// single sysfs write but envd may be slow to schedule under load, so this
-// must stay independent of the reclaim shell deadline.
+// freezeRoundTripMargin is held back from the freeze budget when telling envd how long
+// to spend waiting, so envd stops waiting slightly before we stop listening. Without it
+// a freeze that lands only just in time would still surface as a client timeout, which
+// reports nothing about what the freeze achieved.
+const freezeRoundTripMargin = 500 * time.Millisecond
+
+// freezeTimeout bounds the native POST /freeze call when the flag is unavailable. The
+// write is a single sysfs write, but the call also WAITS for the workload to stop, and
+// that wait is the guest's cost: a cgroup whose tasks are idle stops in single-digit
+// milliseconds, one in continuous I/O has been measured taking seconds. Kept at the
+// historical value for now; the freeze metrics show how often it binds, and
+// FreezeUserCgroupTimeoutMsFlag raises it without a redeploy once they do.
 const freezeTimeout = 2 * time.Second
 
 const (
@@ -484,8 +494,94 @@ func (s *Sandbox) bestEffortFreeze(ctx context.Context) {
 		return
 	}
 
-	if err := s.callEnvdFreeze(ctx, freezeTimeout); err != nil {
+	ctx, span := tracer.Start(ctx, "envd-freeze")
+	defer span.End()
+
+	timeout := freezeTimeout
+	if ms := s.featureFlags.IntFlag(ctx, featureflags.FreezeUserCgroupTimeoutMsFlag); ms > 0 {
+		timeout = time.Duration(ms) * time.Millisecond
+	}
+
+	start := time.Now()
+	res, reported, err := s.callEnvdFreeze(ctx, timeout)
+	elapsedMs := time.Since(start).Milliseconds()
+	success := err == nil
+	// Distinguish "we gave up waiting" from "envd refused": both are failures, but only
+	// the first says the budget is the binding constraint, which is what decides whether
+	// to raise the flag.
+	timedOut := errors.Is(err, context.DeadlineExceeded)
+
+	// Record the round trip whether or not it succeeded: a freeze that burned the whole
+	// budget still spent that time on the pause path and must be visible. Before this,
+	// neither outcome was recorded anywhere -- a freeze that timed out and one that was
+	// a silent no-op looked identical from outside.
+	envdFreezeDurationHistogram.Record(ctx, elapsedMs, metric.WithAttributes(
+		attribute.Bool("success", success),
+		attribute.Bool("reported", reported),
+		attribute.Bool("timed_out", timedOut),
+		attribute.Int64("timeout_ms", timeout.Milliseconds()),
+	))
+	span.SetAttributes(
+		attribute.Bool("freeze.success", success),
+		attribute.Int64("freeze.duration_ms", elapsedMs),
+		attribute.Bool("freeze.reported", reported),
+		attribute.Bool("freeze.timed_out", timedOut),
+		attribute.Int64("freeze.timeout_ms", timeout.Milliseconds()),
+	)
+
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		logger.L().Warn(ctx, "envd freeze failed", logger.WithSandboxID(s.Runtime.SandboxID), zap.Error(err))
+
+		return
+	}
+
+	if !reported {
+		// An envd too old to answer with a body. The freeze was issued; whether it took
+		// effect is unknowable, so record nothing rather than a misleading zero.
+		return
+	}
+
+	// Split the two durations: sweep is our own cost and scales with cgroup count, wait
+	// is the guest's and scales with how deep in I/O its tasks were. A single combined
+	// number would send us tuning whichever is not the problem.
+	envdFreezeSweepHistogram.Record(ctx, res.SweepMs)
+	envdFreezeWaitHistogram.Record(ctx, res.WaitMs)
+
+	// Outcome split so a freeze that is issued but never lands is distinguishable from
+	// one that works: not_frozen > 0 means the snapshot may capture a running workload.
+	for outcome, count := range map[string]int{
+		"frozen":     res.Frozen,
+		"not_frozen": res.NotFrozen,
+		"failed":     res.Failed,
+		// Held apart from not_frozen: a guest that cannot report freeze state is not a
+		// workload refusing to stop, and folding the two together would make guests with
+		// no cgroup manager look like the failure this metric exists to catch.
+		"unobservable": res.Unobservable,
+	} {
+		envdFreezeCgroupsHistogram.Record(ctx, int64(count),
+			metric.WithAttributes(attribute.String("outcome", outcome)))
+	}
+
+	span.SetAttributes(
+		attribute.Int("freeze.requested", res.Requested),
+		attribute.Int("freeze.frozen", res.Frozen),
+		attribute.Int("freeze.not_frozen", res.NotFrozen),
+		attribute.Int("freeze.failed", res.Failed),
+		attribute.Int("freeze.unobservable", res.Unobservable),
+		attribute.Int64("freeze.sweep_ms", res.SweepMs),
+		attribute.Int64("freeze.wait_ms", res.WaitMs),
+	)
+
+	if res.NotFrozen > 0 || res.Failed > 0 {
+		logger.L().Warn(ctx, "pre-pause freeze did not stop the whole workload",
+			logger.WithSandboxID(s.Runtime.SandboxID),
+			zap.Int("requested", res.Requested),
+			zap.Int("frozen", res.Frozen),
+			zap.Int("not_frozen", res.NotFrozen),
+			zap.Int("failed", res.Failed),
+			zap.Int64("wait_ms", res.WaitMs),
+		)
 	}
 }
 
@@ -500,7 +596,12 @@ func (s *Sandbox) bestEffortUnfreeze(ctx context.Context) {
 		return
 	}
 
-	if err := s.callEnvdUnfreeze(context.WithoutCancel(ctx), freezeTimeout); err != nil {
+	start := time.Now()
+	err := s.callEnvdUnfreeze(context.WithoutCancel(ctx), freezeTimeout)
+	envdUnfreezeDurationHistogram.Record(ctx, time.Since(start).Milliseconds(),
+		metric.WithAttributes(attribute.Bool("success", err == nil)))
+
+	if err != nil {
 		logger.L().Warn(ctx, "envd unfreeze failed", logger.WithSandboxID(s.Runtime.SandboxID), zap.Error(err))
 	}
 }

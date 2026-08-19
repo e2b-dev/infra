@@ -278,27 +278,103 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 // Orchestrator calls this just before pause; the frozen state persists into the
 // snapshot and /init thaws on resume. Best-effort: tries every cgroup even if
 // one fails so we freeze as many as possible before the snapshot.
-func (a *API) PostFreeze(w http.ResponseWriter, r *http.Request) {
+func (a *API) PostFreeze(w http.ResponseWriter, r *http.Request, params PostFreezeParams) {
 	defer r.Body.Close()
 
 	logger := a.logger.With().Str(string(logs.OperationIDKey), logs.AssignOperationID()).Logger()
 
-	if err := a.workloadFreezer.Freeze(r.Context()); err != nil {
-		// A failed lock acquire means the request ctx was cancelled; a failed
-		// sweep leaves ctx intact.
-		if r.Context().Err() != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+	// maxWaitMs is what tells the two callers apart. One that sends it wants the
+	// structured result; one that does not is an orchestrator predating it, which treats
+	// any status but 204 as a failed freeze. So an absent parameter keeps the original
+	// contract exactly: no wait at all (that caller's request timeout is shorter than a
+	// useful one anyway) and a bare 204. The budget belongs to the caller either way,
+	// because the caller owns the request timeout and a wait outliving it cannot be
+	// observed.
+	report := params.MaxWaitMs != nil && *params.MaxWaitMs > 0
+	var maxWait time.Duration
+	if report {
+		maxWait = time.Duration(*params.MaxWaitMs) * time.Millisecond
+	}
 
-			return
-		}
-		logger.Error().Err(err).Msg("freeze workload cgroups")
-		jsonError(w, http.StatusInternalServerError, err)
+	// Pause stays best-effort: report an incomplete freeze, never fail the pause on it.
+	res, err := a.workloadFreezer.Freeze(r.Context(), maxWait)
+
+	// A failed lock acquire surfaces the ctx error itself, which is what distinguishes it
+	// from a sweep that ran and collected per-cgroup errors -- those are joined, and a
+	// joined write error never matches a ctx cause. Testing the error rather than "some
+	// error happened while ctx also happens to be done" keeps a real result from being
+	// discarded as contention.
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+
+		return
+	}
+	if err != nil {
+		// Per-cgroup failures are counted in res.Failed and reported in the body, not
+		// raised as a 500: a threaded cgroup rejecting cgroup.freeze and a cgroup
+		// removed mid-sweep are both expected, and answering with an error would hide
+		// the very counts that make them visible.
+		logger.Error().Err(err).
+			Int("failed", res.Failed).
+			Msg("some cgroups failed to freeze; reporting them in the result")
+	}
+	if !report {
+		// Nothing was observed, so there is nothing to say about whether the workload
+		// stopped: a zero budget means the state was never read, which leaves every
+		// written cgroup counted as NotFrozen. Warning on that would fire for every pause
+		// from an orchestrator predating maxWaitMs -- claiming a running workload on the
+		// strength of a check we deliberately skipped. Hence the observation warnings live
+		// below this return, not above it.
+		w.WriteHeader(http.StatusNoContent)
 
 		return
 	}
 
+	// An interrupted wait is the same situation as a skipped one: we stopped looking
+	// early, so the counts describe what we managed to read rather than what the workload
+	// did, and warning on them would be a claim we cannot support. The caller has gone,
+	// so the status is for the record only.
+	if r.Context().Err() != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+
+		return
+	}
+
+	if !res.AllFrozen() {
+		logger.Warn().
+			Int("requested", res.Requested).
+			Int("frozen", res.Frozen).
+			Int("not_frozen", res.NotFrozen).
+			Int("failed", res.Failed).
+			Dur("wait_duration", res.WaitDuration).
+			Msg("pre-pause freeze did not stop the whole workload; snapshot may capture it running")
+	}
+	if res.Unobservable > 0 {
+		// Not a failure, but never silent: this guest cannot report freeze state at all,
+		// so every pause here snapshots without the guarantee the rest of the fleet has.
+		logger.Warn().
+			Int("unobservable", res.Unobservable).
+			Msg("cgroup freeze state is unobservable on this guest; freeze issued but unverifiable")
+	}
+
+	sweepMs := res.SweepDuration.Milliseconds()
+	waitMs := res.WaitDuration.Milliseconds()
+	result := FreezeResult{
+		Requested:    &res.Requested,
+		Frozen:       &res.Frozen,
+		NotFrozen:    &res.NotFrozen,
+		Failed:       &res.Failed,
+		Unobservable: &res.Unobservable,
+		SweepMs:      &sweepMs,
+		WaitMs:       &waitMs,
+	}
+
 	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(http.StatusNoContent)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		logger.Error().Err(err).Msg("encode freeze result")
+	}
 }
 
 // PostUnfreeze thaws user/pty cgroups directly. Exists ONLY for the

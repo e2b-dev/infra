@@ -92,6 +92,30 @@ type Error struct {
 	Message string `json:"message"`
 }
 
+// FreezeResult Per-call statistics from a pre-pause workload freeze
+type FreezeResult struct {
+	// Failed Cgroups whose freeze write or state read errored (expected for a threaded cgroup, and for one removed mid-sweep)
+	Failed *int `json:"failed,omitempty"`
+
+	// Frozen Cgroups that read back "frozen 1" from cgroup.events within the budget; their tasks have stopped
+	Frozen *int `json:"frozen,omitempty"`
+
+	// NotFrozen Cgroups still reading "frozen 0" when the budget expired; their tasks may still be running, so a snapshot taken now can capture a live workload
+	NotFrozen *int `json:"notFrozen,omitempty"`
+
+	// Requested Cgroups this call wrote cgroup.freeze to
+	Requested *int `json:"requested,omitempty"`
+
+	// SweepMs Time spent issuing the freeze writes, in milliseconds (scales with cgroup count)
+	SweepMs *int64 `json:"sweepMs,omitempty"`
+
+	// Unobservable Cgroups whose freeze state cannot be read because this guest has no cgroup manager; the write was accepted but nothing can be read back, so these are neither frozen nor notFrozen
+	Unobservable *int `json:"unobservable,omitempty"`
+
+	// WaitMs Time spent polling cgroup.events, in milliseconds (scales with how deep in I/O the guest tasks were). Outcome neutral - the wait ends either because everything stopped or because the budget ran out
+	WaitMs *int64 `json:"waitMs,omitempty"`
+}
+
 // Metrics Resource usage metrics
 type Metrics struct {
 	// CpuCount Number of CPU cores
@@ -202,6 +226,18 @@ type PostFilesParams struct {
 	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
 }
 
+// PostFreezeParams defines parameters for PostFreeze.
+type PostFreezeParams struct {
+	// MaxWaitMs How long to wait for the cgroups to read back frozen, in milliseconds. The
+	// caller owns this budget because it also owns the request timeout, and a wait
+	// longer than that timeout cannot be observed.
+	//
+	// Supplying it also selects the response: with it, the call waits and answers 200
+	// with a FreezeResult; omitted or non-positive, the call does not wait at all and
+	// answers 204, which is the contract callers older than this parameter expect.
+	MaxWaitMs *int64 `form:"maxWaitMs,omitempty" json:"maxWaitMs,omitempty"`
+}
+
 // PostInitJSONBody defines parameters for PostInit.
 type PostInitJSONBody struct {
 	// AccessToken Access token for secure access to envd service
@@ -256,9 +292,9 @@ type ServerInterface interface {
 	// PostFilesCompose Compose multiple files into a single file using zero-copy concatenation. Source files are deleted after successful composition.
 	// (POST /files/compose)
 	PostFilesCompose(w http.ResponseWriter, r *http.Request)
-	// PostFreeze Freeze user/pty cgroups before pause. Written directly by envd to avoid Process.Start / shell overhead under load.
+	// PostFreeze Freeze user/pty cgroups before pause and wait for them to stop. Written directly by envd to avoid Process.Start / shell overhead under load.
 	// (POST /freeze)
-	PostFreeze(w http.ResponseWriter, r *http.Request)
+	PostFreeze(w http.ResponseWriter, r *http.Request, params PostFreezeParams)
 	// PostFsfreeze Freeze the guest rootfs (FIFREEZE) before a filesystem-only pause so it is flushed to a consistent on-disk state, closing the sync->pause race. Idempotent. On a successful filesystem-only pause the VM is rebooted, so no thaw is needed; the orchestrator thaws only on the pause-failure path.
 	// (POST /fsfreeze)
 	PostFsfreeze(w http.ResponseWriter, r *http.Request)
@@ -313,9 +349,9 @@ func (_ Unimplemented) PostFilesCompose(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// PostFreeze Freeze user/pty cgroups before pause. Written directly by envd to avoid Process.Start / shell overhead under load.
+// PostFreeze Freeze user/pty cgroups before pause and wait for them to stop. Written directly by envd to avoid Process.Start / shell overhead under load.
 // (POST /freeze)
-func (_ Unimplemented) PostFreeze(w http.ResponseWriter, r *http.Request) {
+func (_ Unimplemented) PostFreeze(w http.ResponseWriter, r *http.Request, params PostFreezeParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -553,8 +589,27 @@ func (siw *ServerInterfaceWrapper) PostFilesCompose(w http.ResponseWriter, r *ht
 // PostFreeze operation middleware
 func (siw *ServerInterfaceWrapper) PostFreeze(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PostFreezeParams
+
+	// ------------- Optional query parameter "maxWaitMs" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "maxWaitMs", r.URL.Query(), &params.MaxWaitMs, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "maxWaitMs"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "maxWaitMs", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PostFreeze(w, r)
+		siw.Handler.PostFreeze(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {

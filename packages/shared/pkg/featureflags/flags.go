@@ -244,6 +244,25 @@ var (
 	// (returned when LD is unavailable or the flag is unset) is the default.
 	CollapseEnvdHeapTimeoutMsFlag = NewIntFlag("collapse-envd-heap-timeout-ms", 10000) // 10s in milliseconds
 
+	// FreezeUserCgroupTimeoutMsFlag bounds the pre-pause freeze call that
+	// FreezeUserCgroupFlag enables, in milliseconds. The call waits for the workload's
+	// cgroups to actually stop, and quiesce latency is the guest's cost, not ours: a
+	// cgroup whose tasks are idle confirms in single-digit milliseconds, one in
+	// continuous I/O has been measured taking seconds. The default keeps the historical
+	// budget; raise it once the freeze metrics show how often it is the binding
+	// constraint. envd is told to confirm within a margin of this, so one knob moves
+	// both halves.
+	//
+	// The value bounds pause latency directly: a sandbox that will not quiesce holds the
+	// pause for this long before we give up on it. That is the cost being traded against
+	// snapshotting a running workload, and it is why raising it wants evidence.
+	//
+	// Effective ceiling of 10s. The shared sandbox HTTP client caps every request at that,
+	// so a larger value here is silently truncated to it while the failure is still
+	// recorded against the value set here. Tracked separately; until it is lifted, a value
+	// above 10s buys nothing and makes the timeout metric misleading.
+	FreezeUserCgroupTimeoutMsFlag = NewIntFlag("freeze-user-cgroup-timeout-ms", 2000) // 2s in milliseconds
+
 	// VolumeFallbackToUnmatchedNodesFlag allows volume operations to fall back to
 	// orchestrator nodes that don't advertise the volume's type label when every
 	// labeled node fails with a retryable error. This is a transitional flag for

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
@@ -32,10 +33,24 @@ func mustMarshalHandover(t *testing.T, st *upgrade.HandoverState) []byte {
 // always thawed. Everything else is a no-op.
 type spyCgroupManager struct {
 	unfreezes atomic.Int64
+	// neverFreezes makes cgroup.events never report frozen, i.e. a workload whose
+	// tasks are stuck in an uninterruptible wait.
+	neverFreezes bool
+	// unobservable models a guest with no cgroup manager, where freeze state cannot be
+	// read back at all.
+	unobservable bool
 }
 
 func (m *spyCgroupManager) GetFileDescriptor(cgroups.ProcessType) (int, bool) { return -1, false }
 func (m *spyCgroupManager) Freeze(cgroups.ProcessType) error                  { return nil }
+
+func (m *spyCgroupManager) Frozen(cgroups.ProcessType) (bool, error) {
+	if m.unobservable {
+		return false, cgroups.ErrFrozenUnobservable
+	}
+
+	return !m.neverFreezes, nil
+}
 
 func (m *spyCgroupManager) Unfreeze(cgroups.ProcessType) error {
 	m.unfreezes.Add(1)
@@ -213,4 +228,54 @@ func TestResumeFromHandover_RejectsNewerSchema(t *testing.T) {
 	require.Error(t, err, "a newer-than-known schema must be refused")
 	assert.Contains(t, err.Error(), "schema")
 	assert.Positive(t, spy.unfreezes.Load(), "workload must be thawed even when the schema is rejected")
+}
+
+// TestFreezeWorkloadHold_RefusesSwapOverRunningWorkload pins the handover's strict
+// policy. Unlike a pause -- which must never fail because a customer task will not
+// stop -- the handover has a cheap safe alternative: abort and leave the current
+// envd running. execve-ing over a workload that is still executing is exactly what
+// the freeze exists to prevent, so a workload still running must stop the swap.
+func TestFreezeWorkloadHold_RefusesSwapOverRunningWorkload(t *testing.T) {
+	t.Parallel()
+
+	spy := &spyCgroupManager{neverFreezes: true}
+	svc := newHandoverTestService(t, spy)
+	svc.handoverMaxWait = 20 * time.Millisecond
+
+	release, err := svc.FreezeWorkloadHold()
+	t.Cleanup(release)
+
+	require.ErrorIs(t, err, ErrWorkloadNotFrozen)
+}
+
+// TestFreezeWorkloadHold_ProceedsWhenFreezeStateUnobservable covers the guest that
+// cannot report freeze state at all (--no-cgroups, or a failed cgroup setup). Refusing
+// there would newly block every live upgrade on such a guest while protecting nothing:
+// the observation this policy depends on was never available, before this change or
+// after it.
+func TestFreezeWorkloadHold_ProceedsWhenFreezeStateUnobservable(t *testing.T) {
+	t.Parallel()
+
+	svc := newHandoverTestService(t, &spyCgroupManager{unobservable: true})
+	svc.handoverMaxWait = 10 * time.Second
+
+	start := time.Now()
+	release, err := svc.FreezeWorkloadHold()
+	t.Cleanup(release)
+
+	require.NoError(t, err)
+	assert.Less(t, time.Since(start), time.Second, "must not wait out the budget")
+}
+
+// TestFreezeWorkloadHold_ProceedsWhenFrozen is the counterpart: a workload that
+// does stop must not block the upgrade.
+func TestFreezeWorkloadHold_ProceedsWhenFrozen(t *testing.T) {
+	t.Parallel()
+
+	svc := newHandoverTestService(t, &spyCgroupManager{})
+
+	release, err := svc.FreezeWorkloadHold()
+	t.Cleanup(release)
+
+	require.NoError(t, err)
 }

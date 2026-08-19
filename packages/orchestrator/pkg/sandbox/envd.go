@@ -130,11 +130,43 @@ func (s *Sandbox) doRequestWithInfiniteRetries(
 	}
 }
 
-// callEnvdFreeze calls envd's native POST /freeze endpoint to freeze
-// user/pty cgroups directly (no Process.Start, no shell). Used pre-pause
-// with a tight, freeze-only timeout.
-func (s *Sandbox) callEnvdFreeze(ctx context.Context, timeout time.Duration) error {
-	return s.callEnvdPostOp(ctx, timeout, envdOpFreeze)
+// callEnvdFreeze issues the pre-pause freeze through envd's native POST /freeze --
+// freezing the workload cgroups directly, with no Process.Start and no shell -- and
+// returns what envd observed.
+//
+// We always send maxWaitMs, which is what asks for the structured result. An envd
+// predating that parameter answers 204 instead; that is not an error, only an envd whose
+// observed counts are unavailable, so the zero result comes back with ok=false.
+func (s *Sandbox) callEnvdFreeze(ctx context.Context, timeout time.Duration) (result envd.FreezeResult, ok bool, err error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	// Tell envd how long to wait, derived from our own timeout minus a round-trip
+	// margin, so one flag moves both halves and envd never waits past the point where
+	// we would have given up on it.
+	maxWaitMs := max((timeout - freezeRoundTripMargin).Milliseconds(), 1)
+
+	resp, err := s.doEnvdPost(ctx, string(envdOpFreeze), fmt.Sprintf("maxWaitMs=%d", maxWaitMs))
+	if err != nil {
+		return envd.FreezeResult{}, false, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNoContent {
+		return envd.FreezeResult{}, false, nil
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+
+		return envd.FreezeResult{}, false, fmt.Errorf("freeze returned %d: %s", resp.StatusCode, utils.Truncate(string(body), 100))
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return envd.FreezeResult{}, false, fmt.Errorf("decode freeze result: %w", err)
+	}
+
+	return result, true, nil
 }
 
 // callEnvdUnfreeze calls envd's native POST /unfreeze endpoint. Reserved for
@@ -380,8 +412,11 @@ func (s *Sandbox) envdServerURL() string {
 // returns 200 with a body, while the cgroup ops return 204 No Content. The
 // deadline must live on ctx (callers set it via context.WithTimeout) so it
 // stays in force while the caller reads the body.
-func (s *Sandbox) doEnvdPost(ctx context.Context, path string) (*http.Response, error) {
+func (s *Sandbox) doEnvdPost(ctx context.Context, path string, query ...string) (*http.Response, error) {
 	address := s.envdServerURL() + "/" + path
+	if len(query) > 0 && query[0] != "" {
+		address += "?" + query[0]
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, address, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build %s request: %w", path, err)

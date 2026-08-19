@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"golang.org/x/sys/unix"
 )
@@ -156,6 +157,30 @@ func (c Cgroup2Manager) Freeze(procType ProcessType) error {
 
 func (c Cgroup2Manager) Unfreeze(procType ProcessType) error {
 	return c.setFreezeState(procType, "0")
+}
+
+// Frozen reads the "frozen" field of the cgroup's cgroup.events. The file lists one
+// "key value" pair per line; absence of the key is reported as not frozen, which is
+// what a cgroup that has never been frozen looks like.
+func (c Cgroup2Manager) Frozen(procType ProcessType) (bool, error) {
+	path, ok := c.cgroupPaths[procType]
+	if !ok {
+		return false, fmt.Errorf("unknown process type: %s", procType)
+	}
+
+	b, err := os.ReadFile(filepath.Join(path, "cgroup.events"))
+	if err != nil {
+		return false, err
+	}
+
+	for line := range strings.SplitSeq(string(b), "\n") {
+		key, value, found := strings.Cut(strings.TrimSpace(line), " ")
+		if found && key == "frozen" {
+			return value == "1", nil
+		}
+	}
+
+	return false, nil
 }
 
 func (c Cgroup2Manager) setFreezeState(procType ProcessType, value string) error {

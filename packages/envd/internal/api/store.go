@@ -48,8 +48,9 @@ type API struct {
 	// API's /freeze, /unfreeze and /init deferred thaw, plus the upgrade — is
 	// serialized through one lock.
 	workloadFreezer *cgroups.WorkloadFreezer
-	isMountingNFS   atomic.Bool
-	mountedPaths    sync.Map // map[path]lifecycleID - tracks which lifecycle each path was mounted for
+
+	isMountingNFS atomic.Bool
+	mountedPaths  sync.Map // map[path]lifecycleID - tracks which lifecycle each path was mounted for
 
 	// fsFreezer freezes/thaws the guest rootfs for filesystem-only pauses;
 	// fsFreezeLock serializes /fsfreeze and /fsthaw.

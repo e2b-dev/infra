@@ -2,6 +2,7 @@ package process
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"syscall"
@@ -462,26 +463,38 @@ func (s *Service) restoreTerminated(entries []*upgrade.HandoverExit) (failed int
 	return failed
 }
 
-// FreezeWorkload freezes the user/pty cgroups ahead of an Upgrade, serialized
-// (via the shared freezer) against the HTTP API's freeze/unfreeze paths.
-func (s *Service) FreezeWorkload() {
-	if err := s.workloadFreezer.Freeze(context.Background()); err != nil {
-		s.logger.Warn().Err(err).Msg("handover: freeze failed")
-	}
-}
+// ErrWorkloadNotFrozen means the pre-handover freeze was issued but the workload
+// had not stopped by the deadline, so the swap was refused.
+var ErrWorkloadNotFrozen = errors.New("workload was not frozen before the handover")
 
 // FreezeWorkloadHold freezes the workload and keeps the shared freeze lock held,
 // returning a release func, so the freeze stays uninterruptible across the
 // handover: a concurrent /init or /unfreeze thaw blocks until release. The caller
 // MUST release on any path that does not execve; a successful execve drops the
 // lock with the process image.
+// Unlike the pause path, this one is STRICT: if the workload did not fully stop
+// the handover is refused. execve-ing over a still-running workload is exactly what
+// the freeze exists to prevent, and unlike a pause the handover has a safe
+// alternative -- abort and thaw, leaving a working envd in place.
 func (s *Service) FreezeWorkloadHold() (release func(), err error) {
-	release, err = s.workloadFreezer.FreezeHold(context.Background())
+	release, res, err := s.workloadFreezer.FreezeHold(context.Background(), s.handoverMaxWait)
 	if err != nil {
 		s.logger.Warn().Err(err).Msg("handover: freeze failed")
+
+		return release, err
+	}
+	if !res.AllFrozen() {
+		s.logger.Warn().
+			Int("frozen", res.Frozen).
+			Int("not_frozen", res.NotFrozen).
+			Int("failed", res.Failed).
+			Dur("wait_duration", res.WaitDuration).
+			Msg("handover: refusing to swap over a workload that did not stop")
+
+		return release, ErrWorkloadNotFrozen
 	}
 
-	return release, err
+	return release, nil
 }
 
 // UnfreezeWorkload thaws the user/pty cgroups. Idempotent (thawing a non-frozen

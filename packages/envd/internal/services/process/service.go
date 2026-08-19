@@ -55,6 +55,11 @@ type Service struct {
 	// shared with the HTTP API so both serialize on one lock.
 	cgroupManager   cgroups.Manager
 	workloadFreezer *cgroups.WorkloadFreezer
+
+	// handoverMaxWait bounds how long the pre-handover freeze waits for the
+	// workload to quiesce. Overridden in tests so they need not sleep for the real
+	// budget.
+	handoverMaxWait time.Duration
 }
 
 func newService(l *zerolog.Logger, defaults *execcontext.Defaults, workloadFreezer *cgroups.WorkloadFreezer) *Service {
@@ -65,6 +70,7 @@ func newService(l *zerolog.Logger, defaults *execcontext.Defaults, workloadFreez
 		defaults:        defaults,
 		cgroupManager:   workloadFreezer.Manager(),
 		workloadFreezer: workloadFreezer,
+		handoverMaxWait: cgroups.HandoverMaxWait,
 	}
 }
 

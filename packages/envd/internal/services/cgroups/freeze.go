@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
+	"time"
 
 	"golang.org/x/sync/semaphore"
 )
@@ -13,6 +15,21 @@ import (
 // processes/shells envd spawns (user) and PTY sessions (ptys). These are frozen
 // before a pause and thawed on resume; envd's own system processes are excluded.
 var WorkloadProcessTypes = []ProcessType{ProcessTypeUser, ProcessTypePTY}
+
+// freezePollInterval is how often cgroup.events is re-read while waiting for a
+// freeze to land. Short enough that a fast freeze is not rounded up to something
+// visible on the pause path, long enough not to spin.
+const freezePollInterval = 2 * time.Millisecond
+
+// HandoverMaxWait bounds the live-upgrade wait, where the policy is strict: the swap is
+// refused rather than execve over a running workload. It stays modest because the
+// fallback is cheap (keep the current envd) and a slow handover holds the freeze lock,
+// blocking the resume thaw.
+//
+// The pre-pause wait has no constant here on purpose: that budget belongs entirely to
+// the orchestrator, which sends it as maxWaitMs. It owns the call timeout, so only it
+// knows what wait is observable, and a default of ours would silently compete with it.
+const HandoverMaxWait = 2 * time.Second
 
 // WorkloadFreezer serializes freeze/unfreeze of the workload cgroups across
 // every caller — the pre-pause /freeze, the pause-rollback /unfreeze, the /init
@@ -69,13 +86,69 @@ func (f *WorkloadFreezer) signalThawed() {
 // for non-freeze work such as process placement.
 func (f *WorkloadFreezer) Manager() Manager { return f.mgr }
 
-// Freeze freezes the workload cgroups, serialized against all other callers. The
-// ctx bounds only the wait for the lock.
-func (f *WorkloadFreezer) Freeze(ctx context.Context) error {
-	release, err := f.FreezeHold(ctx)
+// FreezeResult reports what a freeze achieved, separating what we DID from what we
+// OBSERVED.
+//
+// Frozen+NotFrozen+Unobservable accounts for every cgroup whose state we managed to read,
+// and those are a subset of Requested. Failed does NOT reconcile against Requested,
+// because it spans both phases: a write that never landed (so the cgroup was never
+// Requested at all) and a state read that errored (so it was). The totals therefore are
+//
+//	Requested + <writes that failed> == cgroups attempted
+//	Frozen + NotFrozen + Unobservable + <reads that failed> == Requested
+//
+// with Failed being the sum of the two failure terms. Splitting Failed in two would make
+// both lines add up on their own; it is kept as one count because a caller acting on it
+// does the same thing either way -- tolerate and carry on.
+//
+// Note that Frozen is a state read back from cgroup.events, not an acknowledgement of
+// our write -- a cgroup the guest froze itself reads frozen too. We never establish
+// that our write caused it, only that the workload is stopped, which is the property
+// the snapshot actually depends on.
+type FreezeResult struct {
+	// Requested is the number of cgroups this call wrote cgroup.freeze to.
+	Requested int
+	// Frozen read back "frozen 1" from cgroup.events within the budget: their tasks
+	// have stopped, so a snapshot taken now captures them stopped.
+	Frozen int
+	// NotFrozen still read "frozen 0" when the budget expired. Their tasks may still
+	// be running, so a snapshot taken now can capture a live workload.
+	NotFrozen int
+	// Failed is the number of cgroups whose write or read errored. Expected and
+	// tolerated: a threaded cgroup rejects cgroup.freeze, and a cgroup removed
+	// mid-sweep reports ENOENT.
+	Failed int
+	// Unobservable is the number of cgroups whose freeze state cannot be read at all,
+	// because this guest has no cgroup manager. Neither a success nor a failure: the
+	// write was accepted and there is simply nothing to read back, so these are held
+	// apart from NotFrozen rather than reported as a workload that refused to stop.
+	Unobservable int
+	// SweepDuration is the time spent issuing the writes -- our own cost, scaling
+	// with the number of cgroups.
+	SweepDuration time.Duration
+	// WaitDuration is the time spent polling cgroup.events -- the guest's cost,
+	// scaling with how deep in I/O its tasks were. Kept separate from SweepDuration
+	// because the two have different causes and different fixes. It is outcome
+	// neutral: the wait ends either because everything stopped or because the budget
+	// ran out, and this records how long it took either way.
+	WaitDuration time.Duration
+}
+
+// AllFrozen reports whether every cgroup this call wrote to was then read back frozen.
+// Unobservable is not counted against it: a guest with no cgroup manager never had this
+// guarantee, and withholding it would newly block the live-upgrade handover there rather
+// than protect anything.
+func (r FreezeResult) AllFrozen() bool { return r.NotFrozen == 0 && r.Failed == 0 }
+
+// Freeze freezes the workload cgroups and waits for them to read back frozen,
+// serialized against all other callers. The ctx bounds both the wait for the lock and
+// the wait for the state: a caller that has gone away must not leave us polling, because
+// the poll holds the freeze lock and would delay the rollback thaw behind it.
+func (f *WorkloadFreezer) Freeze(ctx context.Context, maxWait time.Duration) (FreezeResult, error) {
+	release, res, err := f.FreezeHold(ctx, maxWait)
 	release()
 
-	return err
+	return res, err
 }
 
 // FreezeHold freezes the workload cgroups and KEEPS the lock held, returning a
@@ -86,22 +159,89 @@ func (f *WorkloadFreezer) Freeze(ctx context.Context) error {
 // thaw the workload mid-handover. The frozen cgroup state persists after release;
 // release only drops the lock and is idempotent. On a lock-acquire failure it
 // returns a no-op release and the error.
-func (f *WorkloadFreezer) FreezeHold(ctx context.Context) (release func(), err error) {
+func (f *WorkloadFreezer) FreezeHold(ctx context.Context, maxWait time.Duration) (release func(), res FreezeResult, err error) {
 	if err := f.lock.Acquire(ctx, 1); err != nil {
-		return func() {}, err
+		return func() {}, FreezeResult{}, err
 	}
 
 	var once sync.Once
 	release = func() { once.Do(func() { f.lock.Release(1) }) }
 
 	var errs []error
+	sweepStart := time.Now()
+	pending := make([]ProcessType, 0, len(WorkloadProcessTypes))
 	for _, pt := range WorkloadProcessTypes {
 		if e := f.mgr.Freeze(pt); e != nil {
 			errs = append(errs, fmt.Errorf("freeze %s cgroup: %w", pt, e))
+			res.Failed++
+
+			continue
 		}
+		res.Requested++
+		pending = append(pending, pt)
+	}
+	res.SweepDuration = time.Since(sweepStart)
+
+	frozen, failed, unobservable, waitErrs := f.awaitFrozen(ctx, pending, maxWait)
+	res.Frozen = frozen
+	res.Unobservable = unobservable
+	res.NotFrozen = res.Requested - frozen - failed - unobservable
+	res.Failed += failed
+	res.WaitDuration = time.Since(sweepStart) - res.SweepDuration
+	errs = append(errs, waitErrs...)
+
+	return release, res, errors.Join(errs...)
+}
+
+// awaitFrozen polls the given cgroups until each reports frozen, the budget expires, or
+// ctx is cancelled. All cgroups are polled together rather than one after another: the wait
+// is then bounded by the slowest cgroup instead of by the sum, which matters because
+// a single busy cgroup has been measured taking seconds to stop while the whole
+// pre-pause freeze budget is of that order.
+func (f *WorkloadFreezer) awaitFrozen(ctx context.Context, pts []ProcessType, budget time.Duration) (frozen, failed, unobservable int, errs []error) {
+	if len(pts) == 0 || budget <= 0 {
+		return 0, 0, 0, nil
 	}
 
-	return release, errors.Join(errs...)
+	remaining := slices.Clone(pts)
+	deadline := time.Now().Add(budget)
+
+	for {
+		next := remaining[:0]
+		for _, pt := range remaining {
+			isFrozen, err := f.mgr.Frozen(pt)
+			switch {
+			case errors.Is(err, ErrFrozenUnobservable):
+				// Nothing to read and nothing to wait for. Drop it from the poll set so
+				// the loop exits immediately instead of spinning out the whole budget.
+				unobservable++
+			case err != nil:
+				failed++
+				errs = append(errs, fmt.Errorf("read %s cgroup.events: %w", pt, err))
+			case isFrozen:
+				frozen++
+			default:
+				next = append(next, pt)
+			}
+		}
+		remaining = next
+
+		// Cancellation is checked alongside the deadline: the caller owns the budget, so
+		// once it stops listening the rest of that budget is ours to give back rather
+		// than spend holding the lock.
+		if len(remaining) == 0 || !time.Now().Before(deadline) || ctx.Err() != nil {
+			return frozen, failed, unobservable, errs
+		}
+
+		sleep := min(freezePollInterval, time.Until(deadline))
+		if sleep > 0 {
+			select {
+			case <-ctx.Done():
+				return frozen, failed, unobservable, errs
+			case <-time.After(sleep):
+			}
+		}
+	}
 }
 
 // Unfreeze thaws the workload cgroups, serialized against all other callers. It

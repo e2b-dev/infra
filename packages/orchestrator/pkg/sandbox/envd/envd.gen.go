@@ -87,6 +87,30 @@ type Error struct {
 	Message string `json:"message"`
 }
 
+// FreezeResult Per-call statistics from a pre-pause workload freeze
+type FreezeResult struct {
+	// Failed Cgroups whose freeze write or state read errored (expected for a threaded cgroup, and for one removed mid-sweep)
+	Failed int `json:"failed,omitempty"`
+
+	// Frozen Cgroups that read back "frozen 1" from cgroup.events within the budget; their tasks have stopped
+	Frozen int `json:"frozen,omitempty"`
+
+	// NotFrozen Cgroups still reading "frozen 0" when the budget expired; their tasks may still be running, so a snapshot taken now can capture a live workload
+	NotFrozen int `json:"notFrozen,omitempty"`
+
+	// Requested Cgroups this call wrote cgroup.freeze to
+	Requested int `json:"requested,omitempty"`
+
+	// SweepMs Time spent issuing the freeze writes, in milliseconds (scales with cgroup count)
+	SweepMs int64 `json:"sweepMs,omitempty"`
+
+	// Unobservable Cgroups whose freeze state cannot be read because this guest has no cgroup manager; the write was accepted but nothing can be read back, so these are neither frozen nor notFrozen
+	Unobservable int `json:"unobservable,omitempty"`
+
+	// WaitMs Time spent polling cgroup.events, in milliseconds (scales with how deep in I/O the guest tasks were). Outcome neutral - the wait ends either because everything stopped or because the budget ran out
+	WaitMs int64 `json:"waitMs,omitempty"`
+}
+
 // Metrics Resource usage metrics
 type Metrics struct {
 	// CpuCount Number of CPU cores
@@ -195,6 +219,18 @@ type PostFilesParams struct {
 
 	// SignatureExpiration Unix timestamp (seconds) after which the signature expires. Only used with the signature parameter.
 	SignatureExpiration SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
+}
+
+// PostFreezeParams defines parameters for PostFreeze.
+type PostFreezeParams struct {
+	// MaxWaitMs How long to wait for the cgroups to read back frozen, in milliseconds. The
+	// caller owns this budget because it also owns the request timeout, and a wait
+	// longer than that timeout cannot be observed.
+	//
+	// Supplying it also selects the response: with it, the call waits and answers 200
+	// with a FreezeResult; omitted or non-positive, the call does not wait at all and
+	// answers 204, which is the contract callers older than this parameter expect.
+	MaxWaitMs int64 `form:"maxWaitMs,omitempty" json:"maxWaitMs,omitempty"`
 }
 
 // PostInitJSONBody defines parameters for PostInit.

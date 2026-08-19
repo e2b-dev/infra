@@ -222,6 +222,11 @@ const (
 	// needed to reach a successful envd init, recorded once per start. Sampled
 	// per start (not per fault), so histogram_quantile yields per-sandbox
 	// percentiles.
+	EnvdFreezeDurationHistogramName     HistogramType = "orchestrator.sandbox.envd.freeze.duration"
+	EnvdFreezeSweepHistogramName        HistogramType = "orchestrator.sandbox.envd.freeze.sweep"
+	EnvdFreezeWaitHistogramName         HistogramType = "orchestrator.sandbox.envd.freeze.wait"
+	EnvdFreezeCgroupsHistogramName      HistogramType = "orchestrator.sandbox.envd.freeze.cgroups"
+	EnvdUnfreezeDurationHistogramName   HistogramType = "orchestrator.sandbox.envd.unfreeze.duration"
 	UffdStartupPagesHistogramName       HistogramType = "orchestrator.sandbox.uffd.startup.pages"
 	UffdStartupSourcePagesHistogramName HistogramType = "orchestrator.sandbox.uffd.startup.source_pages"
 	UffdStartupBytesHistogramName       HistogramType = "orchestrator.sandbox.uffd.startup.bytes"
@@ -567,6 +572,11 @@ var histogramDesc = map[HistogramType]string{
 	PauseResumePrefetchSealWaitDurationName:    "Time the prefetch harvest waited for the deferred rootfs seal before its warm resume",
 	PauseResumePrefetchPersistWaitDurationName: "Time the prefetch harvest waited for the in-flight snapshot upload before persisting the mapping",
 
+	EnvdFreezeDurationHistogramName:     "Round-trip duration of the pre-pause workload freeze call, per pause",
+	EnvdFreezeSweepHistogramName:        "Time envd spent issuing cgroup.freeze writes, per pause (scales with cgroup count)",
+	EnvdFreezeWaitHistogramName:         "Time envd spent waiting for cgroups to quiesce, per pause (scales with guest I/O depth)",
+	EnvdFreezeCgroupsHistogramName:      "Cgroups affected by a pre-pause freeze, per pause, split by outcome",
+	EnvdUnfreezeDurationHistogramName:   "Round-trip duration of the pause-rollback workload thaw call, per rollback",
 	UffdStartupPagesHistogramName:       "Demand-fault pages a guest needed to reach a successful envd init, per start",
 	UffdStartupSourcePagesHistogramName: "Subset of startup demand-fault pages pulled from the source (e.g. GCS), per start",
 	UffdStartupBytesHistogramName:       "Bytes faulted into a guest to reach a successful envd init, per start",
@@ -626,6 +636,11 @@ var histogramUnits = map[HistogramType]string{
 	PauseResumePrefetchHarvestPagesName:           "{page}",
 	PauseResumePrefetchSealWaitDurationName:       "ms",
 	PauseResumePrefetchPersistWaitDurationName:    "ms",
+	EnvdFreezeDurationHistogramName:               "ms",
+	EnvdFreezeSweepHistogramName:                  "ms",
+	EnvdFreezeWaitHistogramName:                   "ms",
+	EnvdFreezeCgroupsHistogramName:                "{cgroup}",
+	EnvdUnfreezeDurationHistogramName:             "ms",
 	UffdStartupPagesHistogramName:                 "{page}",
 	UffdStartupSourcePagesHistogramName:           "{page}",
 	UffdStartupBytesHistogramName:                 "{By}",
