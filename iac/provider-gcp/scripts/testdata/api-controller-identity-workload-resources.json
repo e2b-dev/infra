@@ -1,199 +1,268 @@
 [
-  {
-    "address": "module.init.google_service_account.api_controller_service_account",
-    "module_address": "module.init",
-    "mode": "managed",
-    "type": "google_service_account",
-    "name": "api_controller_service_account",
-    "provider_name": "registry.terraform.io/hashicorp/google",
-    "change": {
-      "actions": ["create"],
-      "before": null,
-      "after": {
-        "account_id": "e2b-api-controller",
-        "display_name": "API and Worker Capacity Controller Service Account",
-        "email": "e2b-api-controller@operator-canary.iam.gserviceaccount.com",
-        "project": "operator-canary"
-      },
-      "after_unknown": {
-        "id": true,
-        "member": true,
-        "name": true,
-        "unique_id": true
-      }
-    }
-  },
-  {
-    "address": "module.init.google_artifact_registry_repository_iam_member.api_controller_orchestration_reader",
-    "module_address": "module.init",
-    "mode": "managed",
-    "type": "google_artifact_registry_repository_iam_member",
-    "name": "api_controller_orchestration_reader",
-    "provider_name": "registry.terraform.io/hashicorp/google",
-    "change": {
-      "actions": ["create"],
-      "before": null,
-      "after": {
-        "location": "us-east4",
-        "member": "serviceAccount:e2b-api-controller@operator-canary.iam.gserviceaccount.com",
-        "project": "operator-canary",
-        "repository": "e2b-orchestration",
-        "role": "roles/artifactregistry.reader"
-      },
-      "after_unknown": {}
-    }
-  },
-  {
-    "address": "module.init.google_artifact_registry_repository_iam_member.api_controller_core_reader",
-    "module_address": "module.init",
-    "mode": "managed",
-    "type": "google_artifact_registry_repository_iam_member",
-    "name": "api_controller_core_reader",
-    "provider_name": "registry.terraform.io/hashicorp/google",
-    "change": {
-      "actions": ["create"],
-      "before": null,
-      "after": {
-        "location": "us-east4",
-        "member": "serviceAccount:e2b-api-controller@operator-canary.iam.gserviceaccount.com",
-        "project": "operator-canary",
-        "repository": "e2b-core",
-        "role": "roles/artifactregistry.reader"
-      },
-      "after_unknown": {}
-    }
-  },
-  {
-    "address": "module.init.google_storage_bucket_iam_member.api_controller[\"instance_setup\"]",
-    "module_address": "module.init",
-    "mode": "managed",
-    "type": "google_storage_bucket_iam_member",
-    "name": "api_controller",
-    "index": "instance_setup",
-    "provider_name": "registry.terraform.io/hashicorp/google",
-    "change": {
-      "actions": ["create"],
-      "before": null,
-      "after": {
-        "bucket": "operator-canary-instance-setup",
-        "member": "serviceAccount:e2b-api-controller@operator-canary.iam.gserviceaccount.com",
-        "role": "roles/storage.objectViewer"
-      },
-      "after_unknown": {}
-    }
-  },
-  {
-    "address": "module.init.google_storage_bucket_iam_member.api_controller[\"controller_artifact\"]",
-    "module_address": "module.init",
-    "mode": "managed",
-    "type": "google_storage_bucket_iam_member",
-    "name": "api_controller",
-    "index": "controller_artifact",
-    "provider_name": "registry.terraform.io/hashicorp/google",
-    "change": {
-      "actions": ["create"],
-      "before": null,
-      "after": {
-        "bucket": "operator-canary-fc-env-pipeline",
-        "member": "serviceAccount:e2b-api-controller@operator-canary.iam.gserviceaccount.com",
-        "role": "roles/storage.objectViewer"
-      },
-      "after_unknown": {}
-    }
-  },
-  {
-    "address": "module.init.google_storage_bucket_iam_member.api_controller[\"loki\"]",
-    "module_address": "module.init",
-    "mode": "managed",
-    "type": "google_storage_bucket_iam_member",
-    "name": "api_controller",
-    "index": "loki",
-    "provider_name": "registry.terraform.io/hashicorp/google",
-    "change": {
-      "actions": ["create"],
-      "before": null,
-      "after": {
-        "bucket": "operator-canary-loki-storage",
-        "member": "serviceAccount:e2b-api-controller@operator-canary.iam.gserviceaccount.com",
-        "role": "roles/storage.objectUser"
-      },
-      "after_unknown": {}
-    }
-  },
-  {
-    "address": "module.init.google_project_iam_member.api_controller[\"roles/compute.networkViewer\"]",
-    "module_address": "module.init",
-    "mode": "managed",
-    "type": "google_project_iam_member",
-    "name": "api_controller",
-    "index": "roles/compute.networkViewer",
-    "provider_name": "registry.terraform.io/hashicorp/google",
-    "change": {
-      "actions": ["create"],
-      "before": null,
-      "after": {
-        "member": "serviceAccount:e2b-api-controller@operator-canary.iam.gserviceaccount.com",
-        "project": "operator-canary",
-        "role": "roles/compute.networkViewer"
-      },
-      "after_unknown": {}
-    }
-  },
-  {
-    "address": "module.init.google_project_iam_member.api_controller[\"roles/logging.logWriter\"]",
-    "module_address": "module.init",
-    "mode": "managed",
-    "type": "google_project_iam_member",
-    "name": "api_controller",
-    "index": "roles/logging.logWriter",
-    "provider_name": "registry.terraform.io/hashicorp/google",
-    "change": {
-      "actions": ["create"],
-      "before": null,
-      "after": {
-        "member": "serviceAccount:e2b-api-controller@operator-canary.iam.gserviceaccount.com",
-        "project": "operator-canary",
-        "role": "roles/logging.logWriter"
-      },
-      "after_unknown": {}
-    }
-  },
-  {
-    "address": "module.init.google_project_iam_member.api_controller[\"roles/monitoring.editor\"]",
-    "module_address": "module.init",
-    "mode": "managed",
-    "type": "google_project_iam_member",
-    "name": "api_controller",
-    "index": "roles/monitoring.editor",
-    "provider_name": "registry.terraform.io/hashicorp/google",
-    "change": {
-      "actions": ["create"],
-      "before": null,
-      "after": {
-        "member": "serviceAccount:e2b-api-controller@operator-canary.iam.gserviceaccount.com",
-        "project": "operator-canary",
-        "role": "roles/monitoring.editor"
-      },
-      "after_unknown": {}
-    }
-  },
-  {
-    "address": "google_artifact_registry_repository_iam_member.custom_environments_repository_api_controller_member",
-    "mode": "managed",
-    "type": "google_artifact_registry_repository_iam_member",
-    "name": "custom_environments_repository_api_controller_member",
-    "provider_name": "registry.terraform.io/hashicorp/google",
-    "change": {
-      "actions": ["create"],
-      "before": null,
-      "after": {
-        "location": "us-east4",
-        "member": "serviceAccount:e2b-api-controller@operator-canary.iam.gserviceaccount.com",
-        "project": "operator-canary",
-        "repository": "e2b-custom-environments",
-        "role": "roles/artifactregistry.reader"
-      },
-      "after_unknown": {}
-    }
+ {
+  "address": "module.init.google_service_account.api_controller_service_account",
+  "module_address": "module.init",
+  "mode": "managed",
+  "type": "google_service_account",
+  "name": "api_controller_service_account",
+  "provider_name": "registry.terraform.io/hashicorp/google",
+  "change": {
+   "actions": [
+    "create"
+   ],
+   "before": null,
+   "after": {
+    "account_id": "e2b-api-controller",
+    "display_name": "API and Worker Capacity Controller Service Account",
+    "email": "e2b-api-controller@operator-canary.iam.gserviceaccount.com",
+    "project": "operator-canary"
+   },
+   "after_unknown": {
+    "id": true,
+    "member": true,
+    "name": true,
+    "unique_id": true
+   }
   }
+ },
+ {
+  "address": "module.init.google_artifact_registry_repository_iam_member.api_controller_orchestration_reader",
+  "module_address": "module.init",
+  "mode": "managed",
+  "type": "google_artifact_registry_repository_iam_member",
+  "name": "api_controller_orchestration_reader",
+  "provider_name": "registry.terraform.io/hashicorp/google",
+  "change": {
+   "actions": [
+    "create"
+   ],
+   "before": null,
+   "after": {
+    "location": "us-east4",
+    "member": "serviceAccount:e2b-api-controller@operator-canary.iam.gserviceaccount.com",
+    "project": "operator-canary",
+    "repository": "e2b-orchestration",
+    "role": "roles/artifactregistry.reader"
+   },
+   "after_unknown": {}
+  }
+ },
+ {
+  "address": "module.init.google_artifact_registry_repository_iam_member.api_controller_core_reader",
+  "module_address": "module.init",
+  "mode": "managed",
+  "type": "google_artifact_registry_repository_iam_member",
+  "name": "api_controller_core_reader",
+  "provider_name": "registry.terraform.io/hashicorp/google",
+  "change": {
+   "actions": [
+    "create"
+   ],
+   "before": null,
+   "after": {
+    "location": "us-east4",
+    "member": "serviceAccount:e2b-api-controller@operator-canary.iam.gserviceaccount.com",
+    "project": "operator-canary",
+    "repository": "e2b-core",
+    "role": "roles/artifactregistry.reader"
+   },
+   "after_unknown": {}
+  }
+ },
+ {
+  "address": "module.init.google_storage_bucket_iam_member.api_controller[\"instance_setup\"]",
+  "module_address": "module.init",
+  "mode": "managed",
+  "type": "google_storage_bucket_iam_member",
+  "name": "api_controller",
+  "index": "instance_setup",
+  "provider_name": "registry.terraform.io/hashicorp/google",
+  "change": {
+   "actions": [
+    "create"
+   ],
+   "before": null,
+   "after": {
+    "bucket": "operator-canary-instance-setup",
+    "member": "serviceAccount:e2b-api-controller@operator-canary.iam.gserviceaccount.com",
+    "role": "roles/storage.objectViewer"
+   },
+   "after_unknown": {}
+  }
+ },
+ {
+  "address": "module.init.google_storage_bucket_iam_member.api_controller[\"controller_artifact\"]",
+  "module_address": "module.init",
+  "mode": "managed",
+  "type": "google_storage_bucket_iam_member",
+  "name": "api_controller",
+  "index": "controller_artifact",
+  "provider_name": "registry.terraform.io/hashicorp/google",
+  "change": {
+   "actions": [
+    "create"
+   ],
+   "before": null,
+   "after": {
+    "bucket": "operator-canary-fc-env-pipeline",
+    "member": "serviceAccount:e2b-api-controller@operator-canary.iam.gserviceaccount.com",
+    "role": "roles/storage.objectViewer"
+   },
+   "after_unknown": {}
+  }
+ },
+ {
+  "address": "module.init.google_storage_bucket_iam_member.api_controller[\"loki\"]",
+  "module_address": "module.init",
+  "mode": "managed",
+  "type": "google_storage_bucket_iam_member",
+  "name": "api_controller",
+  "index": "loki",
+  "provider_name": "registry.terraform.io/hashicorp/google",
+  "change": {
+   "actions": [
+    "create"
+   ],
+   "before": null,
+   "after": {
+    "bucket": "operator-canary-loki-storage",
+    "member": "serviceAccount:e2b-api-controller@operator-canary.iam.gserviceaccount.com",
+    "role": "roles/storage.objectUser"
+   },
+   "after_unknown": {}
+  }
+ },
+ {
+  "address": "module.init.google_project_iam_member.api_controller[\"roles/compute.networkViewer\"]",
+  "module_address": "module.init",
+  "mode": "managed",
+  "type": "google_project_iam_member",
+  "name": "api_controller",
+  "index": "roles/compute.networkViewer",
+  "provider_name": "registry.terraform.io/hashicorp/google",
+  "change": {
+   "actions": [
+    "create"
+   ],
+   "before": null,
+   "after": {
+    "member": "serviceAccount:e2b-api-controller@operator-canary.iam.gserviceaccount.com",
+    "project": "operator-canary",
+    "role": "roles/compute.networkViewer"
+   },
+   "after_unknown": {}
+  }
+ },
+ {
+  "address": "module.init.google_project_iam_member.api_controller[\"roles/logging.logWriter\"]",
+  "module_address": "module.init",
+  "mode": "managed",
+  "type": "google_project_iam_member",
+  "name": "api_controller",
+  "index": "roles/logging.logWriter",
+  "provider_name": "registry.terraform.io/hashicorp/google",
+  "change": {
+   "actions": [
+    "create"
+   ],
+   "before": null,
+   "after": {
+    "member": "serviceAccount:e2b-api-controller@operator-canary.iam.gserviceaccount.com",
+    "project": "operator-canary",
+    "role": "roles/logging.logWriter"
+   },
+   "after_unknown": {}
+  }
+ },
+ {
+  "address": "module.init.google_project_iam_member.api_controller[\"roles/monitoring.editor\"]",
+  "module_address": "module.init",
+  "mode": "managed",
+  "type": "google_project_iam_member",
+  "name": "api_controller",
+  "index": "roles/monitoring.editor",
+  "provider_name": "registry.terraform.io/hashicorp/google",
+  "change": {
+   "actions": [
+    "create"
+   ],
+   "before": null,
+   "after": {
+    "member": "serviceAccount:e2b-api-controller@operator-canary.iam.gserviceaccount.com",
+    "project": "operator-canary",
+    "role": "roles/monitoring.editor"
+   },
+   "after_unknown": {}
+  }
+ },
+ {
+  "address": "google_artifact_registry_repository_iam_member.custom_environments_repository_api_controller_member",
+  "mode": "managed",
+  "type": "google_artifact_registry_repository_iam_member",
+  "name": "custom_environments_repository_api_controller_member",
+  "provider_name": "registry.terraform.io/hashicorp/google",
+  "change": {
+   "actions": [
+    "create"
+   ],
+   "before": null,
+   "after": {
+    "location": "us-east4",
+    "member": "serviceAccount:e2b-api-controller@operator-canary.iam.gserviceaccount.com",
+    "project": "operator-canary",
+    "repository": "e2b-custom-environments",
+    "role": "roles/artifactregistry.reader"
+   },
+   "after_unknown": {}
+  }
+ },
+ {
+  "address": "module.init.google_project_iam_custom_role.api_controller_worker_resize",
+  "module_address": "module.init",
+  "mode": "managed",
+  "type": "google_project_iam_custom_role",
+  "name": "api_controller_worker_resize",
+  "provider_name": "registry.terraform.io/hashicorp/google",
+  "change": {
+   "actions": [
+    "create"
+   ],
+   "before": null,
+   "after": {
+    "role_id": "monadWorkerAutoscalerResize",
+    "title": "Monad Worker Autoscaler Resize",
+    "description": "Read and resize managed instance groups for workload-aware worker scale-out.",
+    "permissions": [
+     "compute.instanceGroupManagers.get",
+     "compute.instanceGroupManagers.update"
+    ]
+   },
+   "after_unknown": {
+    "id": true,
+    "project": true
+   }
+  }
+ },
+ {
+  "address": "module.init.google_project_iam_member.api_controller_worker_resize",
+  "module_address": "module.init",
+  "mode": "managed",
+  "type": "google_project_iam_member",
+  "name": "api_controller_worker_resize",
+  "provider_name": "registry.terraform.io/hashicorp/google",
+  "change": {
+   "actions": [
+    "create"
+   ],
+   "before": null,
+   "after": {
+    "member": "serviceAccount:e2b-api-controller@operator-canary.iam.gserviceaccount.com",
+    "project": "operator-canary"
+   },
+   "after_unknown": {
+    "role": true,
+    "id": true
+   }
+  }
+ }
 ]

@@ -1,12 +1,58 @@
 # Monad Worker Autoscaler
 
-## Current phase: shadow only
+## Phases: shadow and scale-out
 
-`packages/monad-worker-autoscaler` is the non-mutating foundation for the
-invited-beta worker controller. It calculates and publishes the worker-host
-recommendation, but it has no GCP SDK, resize target, instance-delete path, or
-drain mutation. `MONAD_WORKER_AUTOSCALER_MODE` must be exactly `shadow`; any
-truthy `MONAD_WORKER_AUTOSCALER_MUTATION_ENABLED` value makes the process exit.
+`packages/monad-worker-autoscaler` is the invited-beta worker controller. It
+runs in one of two phases selected by `MONAD_WORKER_AUTOSCALER_MODE`:
+
+- **shadow** — non-mutating. It calculates and publishes the worker-host
+  recommendation only. Any truthy `MONAD_WORKER_AUTOSCALER_MUTATION_ENABLED`
+  value makes the process exit.
+- **scale-out** — actuating, growth only. The elected leader may resize the
+  worker managed instance group *upward* toward the recommendation. The
+  mutation switch is double-keyed: scale-out mode requires
+  `MONAD_WORKER_AUTOSCALER_MUTATION_ENABLED` to be the exact phrase
+  `scale-out-only`, and it requires `MIG_PROJECT_ID`, `MIG_REGION`,
+  `MIG_NAME`, and `WORKER_HOST_FLOOR` (which shadow mode refuses to accept).
+
+Scale-out actuation rails, in order, on every accepted scale-out decision:
+
+1. Target = max(desired hosts, reviewed floor); refuse anything above the
+   15-host ceiling.
+2. Read the MIG's current **targetSize** through the GCE API. Refuse an
+   observed target above 16 as ambiguous external state.
+3. If target <= current targetSize, do nothing. Comparing against the MIG
+   target — not Nomad's actual hosts, which lag boot by minutes — makes the
+   resize idempotent across reconcile cycles.
+4. Otherwise POST a resize to exactly the configured group and record it
+   (`monad_worker_autoscaler_resizes_total`, `last_resize_target`).
+
+Scale-in is never actuated in either phase. There is no typed drain owner on
+either side of the capacity contract (TAMS hardcodes `draining_workcells` to
+zero), so a lower recommendation only accumulates the 15-minute low-demand
+window and reports `requires_drain_verification`. The future scale-in phase
+must still select one host, stop placement, drain Nomad, prove zero
+allocations and workcells, perform a targeted MIG deletion, and abort on
+timeout or ambiguous state.
+
+The GCE calls use OAuth access tokens minted from the metadata server for the
+attached api-controller identity; the IAM grant is a project custom role
+(`monadWorkerAutoscalerResize`) limited to `compute.instanceGroupManagers.get`
+and `.update`. In scale-out mode Terraform releases the worker MIG's
+`target_size` (null) so an apply never reconciles a scaled-out fleet back to
+the floor, and the workload-plan assertions review the client role at the
+policy floor pin — Terraform asserts the guaranteed floor it manages, while
+controller growth is bounded in code. Regional quota headroom for the full
+15-host ceiling was measured on 2026-08-19 (CPUs 54/3000 used, instances
+10/32, SSD ample).
+
+## Reviewed worker-host floor
+
+The Terraform guards no longer freeze the fleet at the original two-host
+topology. The floor is re-keyed explicitly: `MONAD_WORKER_AUTOSCALER_WORKER_FLOOR`
+must equal the default client `cluster_size` (double-keyed operator intent),
+the job refuses to deploy when they disagree, and the controller never
+resizes below it.
 
 This phase can run as one or two Nomad allocations on the API pool. With two
 allocations, a Consul session lock elects the only allocation allowed to read
@@ -24,8 +70,12 @@ The Terraform switch is disabled by default:
 - the provider wiring refuses non-`dev` environments until this beta-specific
   contract and topology are deliberately generalized.
 - enabling the job requires exactly one Terraform client cluster named
-  `default`, assigned to the Nomad `default` node pool, with the reviewed
-  six-host `n1-standard-8` floor.
+  `default`, assigned to the Nomad `default` node pool, of `n1-standard-8`
+  hosts sized exactly at the reviewed floor
+  (`monad_worker_autoscaler_worker_floor` must equal `cluster_size`).
+- `monad_worker_autoscaler_mode` selects the phase (`shadow` default);
+  `scale-out` additionally requires the worker MIG identity, which the root
+  wiring derives from the managed client cluster rather than operator input.
 
 The Nomad job module adds no IAM grants. The GCP foundation provisions a
 dedicated `api-controller` service account, attaches it only to the dev API
@@ -40,10 +90,13 @@ capacity endpoint is origin-bound to the token audience before a token is
 minted. The metadata client bypasses proxies;
 bearer bytes
 are never placed in Terraform, the Nomad job, environment, URL, filesystem,
-logs, or artifacts. The Nomad task sets mutation disabled explicitly. A
-Terraform precondition also refuses to deploy the shadow observer for the
-default worker pool while the generic GCE CPU/memory autoscaler owns the MIG.
-During shadow mode Terraform must retain the reviewed six-host target size.
+logs, or artifacts. The Nomad task derives the mutation switch from the mode; only
+scale-out mode can render the exact double-keyed phrase the binary accepts. A
+Terraform precondition also refuses to deploy the workload controller for the
+default worker pool while the generic GCE CPU/memory autoscaler owns the MIG,
+in either phase.
+During shadow mode Terraform must retain the reviewed floor target size; in
+scale-out mode Terraform releases the target to the controller.
 SHA-named controller artifacts are published create-only (`if-generation-match=0`
 on GCS and `if-none-match=*` on S3), so rebuilding a revision cannot replace the
 generation already pinned in a Nomad job.
@@ -61,13 +114,17 @@ Two workcells per `n1-standard-8` worker is planned density. Three remains the
 hard emergency admission ceiling and is never used by the desired-host
 calculation. The additional host is readiness reserve.
 
-The input contract is fixed to the invited-beta envelope: at most 100 durable
-sessions, an active limit of 25, and a queue limit of 75. Active plus draining
-session workcells may not exceed 25. A snapshot requiring more than the fleet's
+The input contract is fixed to the invited-beta envelope: an active limit of
+25 and a queue limit of 75. Active plus draining session workcells may not
+exceed 25. `durable_sessions` is a lifetime count of session rows and is
+deliberately not envelope-capped (live dev exceeded 100 within weeks of beta
+operation and a former cap wedged the shadow observer in a permanent hold);
+only the generic bounded-observation limit applies to it. A snapshot requiring more than the fleet's
 45-workcell hard emergency ceiling is rejected instead of being silently
 clamped to 15 hosts.
 
-`durable_sessions` counts user session records. Active and draining workcells
+`durable_sessions` counts lifetime user session records — it grows without
+bound and is informational. Active and draining workcells
 belong to durable sessions. In contrast, `booting_workcells` and
 `parked_workcells` are provider-native warm-pool rows and can legitimately
 exist before any durable session claims them. The controller therefore does
@@ -209,3 +266,19 @@ alias.
    disabled.
 6. Prove one elected leader reports a fresh accepted capacity revision, the
    follower publishes no stale decision, and no GCE resize or deletion occurs.
+
+## Scale-out activation order
+
+After the shadow phase is proven on the running revision:
+
+1. Apply the `workload-prerequisite` plan so the api-controller identity holds
+   the `monadWorkerAutoscalerResize` custom role (two additive IAM resources).
+2. Set `MONAD_WORKER_AUTOSCALER_MODE=scale-out` and
+   `MONAD_WORKER_AUTOSCALER_WORKER_FLOOR=<cluster_size>` in the operator
+   environment and apply the ordinary workload plan. The plan updates the
+   Nomad job in place (mode, mutation phrase, MIG identity, floor) and
+   releases the worker MIG `target_size`.
+3. Prove the leader accepts a fresh revision, `mutation_allowed` reports 1
+   only for scale-out decisions, and the first demand burst produces exactly
+   one `instanceGroupManagers.resize` operation to the recommended count with
+   placements succeeding while new hosts join Nomad.

@@ -356,6 +356,17 @@ def is_safe_setup_object_replacement:
     and $resource.change.after.name != $resource.change.before.name;
 
 managed_changes as $changes
+# In scale-out mutation mode the workload autoscaler owns the client MIG's
+# target size and Terraform stops sending one (target_size null). The client
+# role's capacity is then reviewed as the policy floor pin: Terraform asserts
+# the guaranteed floor it manages, while controller-driven growth is bounded
+# in code (15 hosts) and never flows through a plan. Without this, a released
+# target lands in unresolved_capacities, and observed controller growth would
+# read as a Terraform capacity reduction.
+| (
+    ((.variables.monad_worker_autoscaler_shadow_enabled.value // false) == true)
+    and ((.variables.monad_worker_autoscaler_mode.value // "shadow") == "scale-out")
+  ) as $workload_autoscaler_mutation
 | (
     [
       $changes[]
@@ -446,13 +457,25 @@ managed_changes as $changes
       $migs[] as $resource
       | ($resource | mig_role) as $role
       | select($role != null)
-      | capacity($resource; $changes) as $capacity
+      | (
+          if $workload_autoscaler_mutation and $role == "client" then
+            $expected.expected_role_max_instances.client
+          else
+            capacity($resource; $changes)
+          end
+        ) as $capacity
       | {
           address: $resource.address,
           role: $role,
           actions: $resource.change.actions,
           capacity: $capacity,
-          previous_capacity: previous_capacity($resource; $changes),
+          previous_capacity: (
+            if $workload_autoscaler_mutation and $role == "client" then
+              $expected.expected_role_max_instances.client
+            else
+              previous_capacity($resource; $changes)
+            end
+          ),
           regional: (
             $resource.type
             == "google_compute_region_instance_group_manager"
@@ -1209,6 +1232,15 @@ managed_changes as $changes
                 .change.actions == ["delete", "create"]
                 or .change.actions == ["create", "delete"]
               )
+            )
+            # One-time migration: the worker controller's Nomad job id sheds
+            # its shadow-phase suffix, so the stateless observer job is
+            # deregistered and re-registered under the new id. Remove this
+            # allowance once the dev fleet has applied the rename.
+            or (
+              .address == "module.nomad.module.monad_worker_autoscaler[0].nomad_job.shadow"
+              and .type == "nomad_job"
+              and .change.actions == ["delete"]
             )
           )
           | not

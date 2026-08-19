@@ -427,10 +427,16 @@ resource "terraform_data" "monad_worker_autoscaler_shadow_guard" {
         && var.orchestrator_node_pool == "default"
         && length(var.monad_worker_autoscaler_worker_cluster_keys) == 1
         && toset(var.monad_worker_autoscaler_worker_cluster_keys) == toset(["default"])
-        && var.monad_worker_autoscaler_worker_cluster_size == 6
+        && var.monad_worker_autoscaler_worker_floor >= 2
+        && var.monad_worker_autoscaler_worker_cluster_size == var.monad_worker_autoscaler_worker_floor
         && var.monad_worker_autoscaler_worker_machine_type == "n1-standard-8"
+        && (var.monad_worker_autoscaler_mode == "shadow" || (
+          var.monad_worker_autoscaler_mig_project_id != ""
+          && var.monad_worker_autoscaler_mig_region != ""
+          && var.monad_worker_autoscaler_mig_name != ""
+        ))
       )
-      error_message = "The shadow controller is dev-only and requires an immutable revision, an origin-bound TAMS identity audience, and one isolated default worker cluster in the Nomad default pool."
+      error_message = "The worker-capacity controller is dev-only and requires an immutable revision, an origin-bound TAMS identity audience, one isolated default worker cluster in the Nomad default pool sized exactly at the reviewed floor, and (in scale-out mode) a fully named worker MIG resize target."
     }
   }
 }
@@ -448,17 +454,22 @@ module "monad_worker_autoscaler" {
   source = "../../modules/job-monad-worker-autoscaler"
   count  = var.monad_worker_autoscaler_shadow_enabled ? 1 : 0
 
+  mode                = var.monad_worker_autoscaler_mode
   node_pool           = var.api_node_pool
   worker_node_pool    = var.orchestrator_node_pool
   worker_cluster_keys = var.monad_worker_autoscaler_worker_cluster_keys
   worker_cluster_size = var.monad_worker_autoscaler_worker_cluster_size
   worker_machine_type = var.monad_worker_autoscaler_worker_machine_type
+  worker_host_floor   = var.monad_worker_autoscaler_worker_floor
   allocation_count    = var.monad_worker_autoscaler_allocations
   artifact_source     = "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/${data.google_storage_bucket_object.monad_worker_autoscaler[0].name}#${data.google_storage_bucket_object.monad_worker_autoscaler[0].generation}"
   tams_capacity_url   = var.monad_worker_autoscaler_tams_capacity_url
   tams_audience       = var.monad_worker_autoscaler_tams_audience
   nomad_token         = var.nomad_acl_token_secret
   consul_token        = var.consul_acl_token_secret
+  mig_project_id      = var.monad_worker_autoscaler_mig_project_id
+  mig_region          = var.monad_worker_autoscaler_mig_region
+  mig_name            = var.monad_worker_autoscaler_mig_name
 }
 
 module "loki" {

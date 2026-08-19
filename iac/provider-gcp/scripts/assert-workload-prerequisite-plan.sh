@@ -135,6 +135,8 @@ expected_resources="$(
     {address:"module.init.google_project_iam_member.api_controller[\"roles/compute.networkViewer\"]",type:"google_project_iam_member"},
     {address:"module.init.google_project_iam_member.api_controller[\"roles/logging.logWriter\"]",type:"google_project_iam_member"},
     {address:"module.init.google_project_iam_member.api_controller[\"roles/monitoring.editor\"]",type:"google_project_iam_member"},
+    {address:"module.init.google_project_iam_custom_role.api_controller_worker_resize",type:"google_project_iam_custom_role"},
+    {address:"module.init.google_project_iam_member.api_controller_worker_resize",type:"google_project_iam_member"},
     {address:"module.init.google_service_account.api_controller_service_account",type:"google_service_account"},
     {address:"module.init.google_storage_bucket_iam_member.api_controller[\"controller_artifact\"]",type:"google_storage_bucket_iam_member"},
     {address:"module.init.google_storage_bucket_iam_member.api_controller[\"instance_setup\"]",type:"google_storage_bucket_iam_member"},

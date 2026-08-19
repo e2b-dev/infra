@@ -277,3 +277,9 @@ variable "persistent_volume_types" {
     nfs_mount_opts   = string
   }))
 }
+
+variable "workload_autoscaler_mutation_enabled" {
+  type        = bool
+  description = "Whether the workload-aware controller owns this MIG's target size; Terraform then stops reconciling it."
+  default     = false
+}

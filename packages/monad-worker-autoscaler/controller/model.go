@@ -23,7 +23,6 @@ const (
 	MaximumObservationGap  = 75 * time.Second
 	MaximumReportedCount   = 1_000_000
 	FixedControlPlaneNodes = 6
-	MaximumDurableSessions = 100
 	InvitedBetaActiveLimit = 25
 	InvitedBetaQueuedLimit = 75
 	EmergencyFleetCapacity = MaximumWorkerHosts * EmergencyDensity

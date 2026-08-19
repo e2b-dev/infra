@@ -1,9 +1,9 @@
-job "monad-worker-autoscaler-shadow" {
+job "monad-worker-autoscaler" {
   type      = "service"
   node_pool = "${node_pool}"
   priority  = 90
 
-  group "observer" {
+  group "controller" {
     count = ${allocation_count}
 
     constraint {
@@ -34,7 +34,7 @@ job "monad-worker-autoscaler-shadow" {
     }
 
     service {
-      name     = "monad-worker-autoscaler-shadow"
+      name     = "monad-worker-autoscaler"
       port     = "metrics"
       provider = "nomad"
 
@@ -46,12 +46,12 @@ job "monad-worker-autoscaler-shadow" {
       }
     }
 
-    task "observe" {
+    task "controller" {
       driver = "raw_exec"
 
       env {
-        MONAD_WORKER_AUTOSCALER_MODE             = "shadow"
-        MONAD_WORKER_AUTOSCALER_MUTATION_ENABLED = "false"
+        MONAD_WORKER_AUTOSCALER_MODE             = "${mode}"
+        MONAD_WORKER_AUTOSCALER_MUTATION_ENABLED = "${mutation_enabled}"
         TAMS_OPS_CAPACITY_URL                    = "${tams_capacity_url}"
         TAMS_OPS_AUDIENCE                        = "${tams_audience}"
         NOMAD_ADDR                               = "http://127.0.0.1:4646"
@@ -63,6 +63,12 @@ job "monad-worker-autoscaler-shadow" {
         CONTROLLER_INSTANCE_ID                   = "$${NOMAD_ALLOC_ID}"
         METRICS_ADDR                             = "0.0.0.0:${metrics_port}"
         RECONCILE_INTERVAL                       = "10s"
+%{ if mode == "scale-out" ~}
+        MIG_PROJECT_ID    = "${mig_project_id}"
+        MIG_REGION        = "${mig_region}"
+        MIG_NAME          = "${mig_name}"
+        WORKER_HOST_FLOOR = "${worker_host_floor}"
+%{ endif ~}
       }
 
       config {

@@ -6,6 +6,10 @@ import (
 	"time"
 )
 
+type Mutator interface {
+	Apply(ctx context.Context, decision Decision) error
+}
+
 type Runner struct {
 	Overview   OverviewSource
 	Fleet      FleetSource
@@ -14,6 +18,9 @@ type Runner struct {
 	Metrics    *Metrics
 	Logger     *slog.Logger
 	Interval   time.Duration
+	// Mutator actuates accepted scale-out decisions; nil in shadow mode. It
+	// only runs on the leader path after a decision was accepted and recorded.
+	Mutator Mutator
 }
 
 func (r *Runner) Run(ctx context.Context) error {
@@ -78,7 +85,8 @@ func (r *Runner) reconcile(ctx context.Context) {
 		return
 	}
 	r.Metrics.Record(decision)
-	r.Logger.Info("shadow capacity decision",
+	r.Logger.Info("capacity decision",
+		"mode", decision.Mode,
 		"revision", decision.Revision,
 		"observed_at", decision.ObservedAt,
 		"snapshot_age_seconds", decision.SnapshotAgeSeconds,
@@ -97,4 +105,11 @@ func (r *Runner) reconcile(ctx context.Context) {
 		"mutation_allowed", decision.MutationAllowed,
 		"reason", decision.Reason,
 	)
+	if r.Mutator != nil {
+		// A mutation failure holds actuation only; the accepted observation
+		// stays valid and the next cycle retries from fresh MIG state.
+		if err := r.Mutator.Apply(cycleCtx, decision); err != nil {
+			r.Logger.Error("scale-out mutation failed; holding", "error", err, "revision", decision.Revision)
+		}
+	}
 }

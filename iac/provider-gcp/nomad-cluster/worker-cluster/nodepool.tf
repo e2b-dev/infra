@@ -109,7 +109,9 @@ resource "google_compute_region_instance_group_manager" "pool" {
   name   = "${var.cluster_name}-rig"
   region = var.gcp_region
 
-  target_size = var.cluster_size == try(var.autoscaler.size_max, var.cluster_size) ? var.cluster_size : null
+  # In mutating workload-autoscaler mode the controller owns the target size;
+  # Terraform must not reconcile a scaled-out fleet back to the floor.
+  target_size = var.workload_autoscaler_mutation_enabled ? null : (var.cluster_size == try(var.autoscaler.size_max, var.cluster_size) ? var.cluster_size : null)
 
   version {
     name              = google_compute_instance_template.template.id
@@ -153,8 +155,13 @@ resource "google_compute_region_instance_group_manager" "pool" {
 
   lifecycle {
     precondition {
-      condition     = !var.workload_autoscaler_shadow_enabled || !try(var.autoscaler.size_max > var.cluster_size, false)
-      error_message = "The workload-aware shadow observer cannot run while the generic GCE CPU/memory autoscaler owns this worker MIG. Keep Terraform target_size at the reviewed floor during shadow mode."
+      condition     = !(var.workload_autoscaler_shadow_enabled || var.workload_autoscaler_mutation_enabled) || !try(var.autoscaler.size_max > var.cluster_size, false)
+      error_message = "The workload-aware controller (shadow or scale-out) cannot run while the generic GCE CPU/memory autoscaler owns this worker MIG."
+    }
+
+    precondition {
+      condition     = !var.workload_autoscaler_mutation_enabled || var.workload_autoscaler_shadow_enabled
+      error_message = "Mutating workload-autoscaler mode requires the workload autoscaler to be deployed for this cluster."
     }
   }
 }

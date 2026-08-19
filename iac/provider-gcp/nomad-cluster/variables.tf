@@ -441,3 +441,9 @@ variable "additional_api_paths_handled_by_ingress" {
     timeout_sec = optional(number)
   }))
 }
+
+variable "monad_worker_autoscaler_mutation_enabled" {
+  type        = bool
+  description = "Whether the workload-aware controller may grow the default client MIG; releases Terraform's target-size pin."
+  default     = false
+}

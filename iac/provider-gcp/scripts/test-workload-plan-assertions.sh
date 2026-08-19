@@ -2974,6 +2974,75 @@ expect_failure \
   "${artifacts}" \
   "orchestrator"
 
+# Scale-out mutation mode: a released client target_size is reviewed as the
+# policy floor pin; the same released target without mutation mode stays an
+# unresolvable capacity.
+jq '
+  .variables = {
+    monad_worker_autoscaler_shadow_enabled: { value: true },
+    monad_worker_autoscaler_mode: { value: "scale-out" }
+  }
+  | (
+      .resource_changes[]
+      | select(
+          .address
+          | test("client_cluster\\[\"[^\"]+\"\\]\\.google_compute_region_instance_group_manager\\.pool$")
+        )
+      | .change.after.target_size
+    ) = null
+' "${fixture}" >"${test_dir}/scale-out-released-target.json"
+expect_success "scale-out-released-target" "${test_dir}/scale-out-released-target.json"
+
+jq '
+  (
+    .resource_changes[]
+    | select(
+        .address
+        | test("client_cluster\\[\"[^\"]+\"\\]\\.google_compute_region_instance_group_manager\\.pool$")
+      )
+    | .change.after.target_size
+  ) = null
+' "${fixture}" >"${test_dir}/released-target-without-mutation.json"
+expect_failure \
+  "released-target-without-mutation" \
+  "unresolved_capacities must be empty." \
+  "${test_dir}/released-target-without-mutation.json"
+
+# The shadow-phase Nomad job id migration is a reviewed one-time delete; any
+# other bare nomad_job delete stays destructive.
+jq '
+  .resource_changes += [
+    {
+      address: "module.nomad.module.monad_worker_autoscaler[0].nomad_job.shadow",
+      module_address: "module.nomad.module.monad_worker_autoscaler[0]",
+      mode: "managed",
+      type: "nomad_job",
+      name: "shadow",
+      provider_name: "registry.terraform.io/hashicorp/nomad",
+      change: { actions: ["delete"], before: { id: "monad-worker-autoscaler-shadow" }, after: null, after_unknown: {} }
+    }
+  ]
+' "${fixture}" >"${test_dir}/autoscaler-job-id-migration.json"
+expect_success "autoscaler-job-id-migration" "${test_dir}/autoscaler-job-id-migration.json"
+
+jq '
+  .resource_changes += [
+    {
+      address: "module.nomad.module.loki.nomad_job.loki",
+      module_address: "module.nomad.module.loki",
+      mode: "managed",
+      type: "nomad_job",
+      name: "loki",
+      provider_name: "registry.terraform.io/hashicorp/nomad",
+      change: { actions: ["delete"], before: { id: "loki" }, after: null, after_unknown: {} }
+    }
+  ]
+' "${fixture}" >"${test_dir}/unreviewed-nomad-job-delete.json"
+expect_failure \
+  "unreviewed-nomad-job-delete" \
+  "destructive_managed_resources must be empty." \
+  "${test_dir}/unreviewed-nomad-job-delete.json"
+
 "${packer_assertion_script}" "${policy}" "${packer_template}" >/dev/null
 
 printf 'Workload plan assertion fixtures passed.\n'

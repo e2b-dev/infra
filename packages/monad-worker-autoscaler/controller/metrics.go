@@ -8,11 +8,15 @@ import (
 )
 
 type Metrics struct {
-	mu       sync.RWMutex
-	leader   bool
-	valid    bool
-	decision Decision
-	failures uint64
+	mu               sync.RWMutex
+	leader           bool
+	valid            bool
+	decision         Decision
+	failures         uint64
+	resizes          uint64
+	lastResizeTarget int
+	migTarget        int
+	migTargetKnown   bool
 }
 
 func (m *Metrics) SetLeader(leader bool) {
@@ -39,6 +43,22 @@ func (m *Metrics) Clear() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.valid = false
+	m.migTargetKnown = false
+	m.lastResizeTarget = 0
+}
+
+func (m *Metrics) SetMIGTarget(target int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.migTarget = target
+	m.migTargetKnown = true
+}
+
+func (m *Metrics) RecordResize(target int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.resizes++
+	m.lastResizeTarget = target
 }
 
 func (m *Metrics) Handler() http.Handler {
@@ -66,7 +86,14 @@ func (m *Metrics) writePrometheus(w http.ResponseWriter, _ *http.Request) {
 	_, _ = fmt.Fprintf(w, "# HELP monad_worker_autoscaler_leader Whether this allocation currently owns the Consul observation lock.\n# TYPE monad_worker_autoscaler_leader gauge\nmonad_worker_autoscaler_leader %d\n", boolean(m.leader))
 	_, _ = fmt.Fprintf(w, "# HELP monad_worker_autoscaler_snapshot_valid Whether the most recent observation produced a valid decision.\n# TYPE monad_worker_autoscaler_snapshot_valid gauge\nmonad_worker_autoscaler_snapshot_valid %d\n", boolean(m.valid))
 	_, _ = fmt.Fprintf(w, "# HELP monad_worker_autoscaler_failures_total Invalid or unavailable observation cycles.\n# TYPE monad_worker_autoscaler_failures_total counter\nmonad_worker_autoscaler_failures_total %d\n", m.failures)
-	_, _ = fmt.Fprintf(w, "# HELP monad_worker_autoscaler_mutation_allowed Constant zero while the controller is shadow-only.\n# TYPE monad_worker_autoscaler_mutation_allowed gauge\nmonad_worker_autoscaler_mutation_allowed 0\n")
+	_, _ = fmt.Fprintf(w, "# HELP monad_worker_autoscaler_mutation_allowed Whether the current decision may actuate a worker scale-out.\n# TYPE monad_worker_autoscaler_mutation_allowed gauge\nmonad_worker_autoscaler_mutation_allowed %d\n", boolean(m.valid && m.decision.MutationAllowed))
+	_, _ = fmt.Fprintf(w, "# HELP monad_worker_autoscaler_resizes_total Worker-group scale-out resizes issued by this process.\n# TYPE monad_worker_autoscaler_resizes_total counter\nmonad_worker_autoscaler_resizes_total %d\n", m.resizes)
+	if m.migTargetKnown {
+		_, _ = fmt.Fprintf(w, "# HELP monad_worker_autoscaler_mig_target_hosts Worker-group target size last observed before actuation.\n# TYPE monad_worker_autoscaler_mig_target_hosts gauge\nmonad_worker_autoscaler_mig_target_hosts %d\n", m.migTarget)
+	}
+	if m.lastResizeTarget > 0 {
+		_, _ = fmt.Fprintf(w, "# HELP monad_worker_autoscaler_last_resize_target Target of the most recent scale-out resize.\n# TYPE monad_worker_autoscaler_last_resize_target gauge\nmonad_worker_autoscaler_last_resize_target %d\n", m.lastResizeTarget)
+	}
 	if !m.valid {
 		return
 	}

@@ -36,6 +36,8 @@ tf_vars := \
 	$(call tfvar, NETWORK_HARDENING_ROLLOUT_STAGE) \
 	$(call tfvar, NETWORK_HARDENING_ROLLOUT_WAIT_SECONDS) \
 	$(call tfvar, MONAD_WORKER_AUTOSCALER_SHADOW_ENABLED) \
+	$(call tfvar, MONAD_WORKER_AUTOSCALER_MODE) \
+	$(call tfvar, MONAD_WORKER_AUTOSCALER_WORKER_FLOOR) \
 	$(call tfvar, MONAD_WORKER_AUTOSCALER_REVISION) \
 	$(call tfvar, MONAD_WORKER_AUTOSCALER_TAMS_CAPACITY_URL) \
 	$(call tfvar, MONAD_WORKER_AUTOSCALER_TAMS_AUDIENCE) \
@@ -208,6 +210,8 @@ override WORKLOAD_PREREQUISITE_TARGETS := \
 	-target='module.init.google_artifact_registry_repository_iam_member.api_controller_core_reader' \
 	-target='module.init.google_storage_bucket_iam_member.api_controller' \
 	-target='module.init.google_project_iam_member.api_controller' \
+	-target='module.init.google_project_iam_custom_role.api_controller_worker_resize' \
+	-target='module.init.google_project_iam_member.api_controller_worker_resize' \
 	-target='google_artifact_registry_repository_iam_member.custom_environments_repository_member' \
 	-target='google_artifact_registry_repository_iam_member.custom_environments_repository_api_controller_member'
 WORKLOAD_CLUSTER_WAIT_SECONDS ?= 1800

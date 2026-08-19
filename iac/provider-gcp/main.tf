@@ -298,10 +298,11 @@ module "cluster" {
   build_clusters_config  = var.build_clusters_config
   client_clusters_config = var.client_clusters_config
 
-  monad_worker_autoscaler_shadow_enabled = var.monad_worker_autoscaler_shadow_enabled
-  network_hardening_rollout_stage        = var.network_hardening_rollout_stage
-  network_hardening_rollout_wait_seconds = var.network_hardening_rollout_wait_seconds
-  os_login_operator_access_confirmed     = var.os_login_operator_access_confirmed
+  monad_worker_autoscaler_shadow_enabled   = var.monad_worker_autoscaler_shadow_enabled
+  monad_worker_autoscaler_mutation_enabled = var.monad_worker_autoscaler_shadow_enabled && var.monad_worker_autoscaler_mode == "scale-out"
+  network_hardening_rollout_stage          = var.network_hardening_rollout_stage
+  network_hardening_rollout_wait_seconds   = var.network_hardening_rollout_wait_seconds
+  os_login_operator_access_confirmed       = var.os_login_operator_access_confirmed
 
   api_cluster_size        = var.api_cluster_size
   clickhouse_cluster_size = var.clickhouse_cluster_size
@@ -509,9 +510,14 @@ module "nomad" {
   orchestrator_env_vars          = local.orchestrator_env_vars
   orchestrator_enabled           = var.orchestrator_enabled
 
-  # Workload-aware worker-capacity observer. This phase is shadow-only: it
-  # reads TAMS, Nomad, and a Consul election lock and has no GCE mutation path.
+  # Workload-aware worker-capacity controller. Shadow mode reads TAMS, Nomad,
+  # and a Consul election lock without mutating; scale-out mode may addition-
+  # ally grow the default client MIG toward the recommended host count. It can
+  # never shrink it: scale-in stays decision-only until a typed drain owner
+  # exists on both sides of the capacity contract.
   monad_worker_autoscaler_shadow_enabled      = var.monad_worker_autoscaler_shadow_enabled
+  monad_worker_autoscaler_mode                = var.monad_worker_autoscaler_mode
+  monad_worker_autoscaler_worker_floor        = var.monad_worker_autoscaler_worker_floor
   monad_worker_autoscaler_revision            = var.monad_worker_autoscaler_revision
   monad_worker_autoscaler_tams_capacity_url   = var.monad_worker_autoscaler_tams_capacity_url
   monad_worker_autoscaler_tams_audience       = var.monad_worker_autoscaler_tams_audience
@@ -519,6 +525,9 @@ module "nomad" {
   monad_worker_autoscaler_worker_cluster_keys = keys(var.client_clusters_config)
   monad_worker_autoscaler_worker_cluster_size = try(var.client_clusters_config["default"].cluster_size, 0)
   monad_worker_autoscaler_worker_machine_type = try(var.client_clusters_config["default"].machine.type, "")
+  monad_worker_autoscaler_mig_project_id      = var.monad_worker_autoscaler_mode == "scale-out" ? var.gcp_project_id : ""
+  monad_worker_autoscaler_mig_region          = var.monad_worker_autoscaler_mode == "scale-out" ? var.gcp_region : ""
+  monad_worker_autoscaler_mig_name            = var.monad_worker_autoscaler_mode == "scale-out" ? module.cluster.default_client_managed_instance_group_name : ""
 
   # Template manager
   builder_node_pool                   = var.build_node_pool

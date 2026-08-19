@@ -82,7 +82,7 @@ func TestInvitedBetaEnvelopeAndEmergencyBoundary(t *testing.T) {
 		{
 			name: "normal invited-beta maximum",
 			mutate: func(capacity *Capacity) {
-				capacity.DurableSessions = MaximumDurableSessions
+				capacity.DurableSessions = 100
 				capacity.ActiveWorkcells = InvitedBetaActiveLimit
 				capacity.ParkedWorkcells = 2
 				warm := 2
@@ -95,7 +95,7 @@ func TestInvitedBetaEnvelopeAndEmergencyBoundary(t *testing.T) {
 		{
 			name: "hard emergency ceiling",
 			mutate: func(capacity *Capacity) {
-				capacity.DurableSessions = MaximumDurableSessions
+				capacity.DurableSessions = 100
 				capacity.ActiveWorkcells = InvitedBetaActiveLimit
 				capacity.BootingWorkcells = EmergencyFleetCapacity - InvitedBetaActiveLimit
 				capacity.CountedWorkcells = EmergencyFleetCapacity
@@ -222,7 +222,6 @@ func TestEvaluateFailsClosed(t *testing.T) {
 		{"future", func(o *Overview, _ *Fleet) { o.GeneratedAt = now.Add(MaximumFutureSkew + time.Second) }, "future"},
 		{"negative", func(o *Overview, _ *Fleet) { o.Capacity.ActiveWorkcells = -1 }, "negative"},
 		{"unbounded", func(o *Overview, _ *Fleet) { o.Capacity.DurableSessions = MaximumReportedCount + 1 }, "bounded"},
-		{"durable beta cap", func(o *Overview, _ *Fleet) { o.Capacity.DurableSessions = MaximumDurableSessions + 1 }, "invited-beta limit"},
 		{"active limit drift", func(o *Overview, _ *Fleet) { o.Capacity.ActiveLimit = InvitedBetaActiveLimit + 1 }, "active_limit"},
 		{"queued limit drift", func(o *Overview, _ *Fleet) { o.Capacity.QueuedLimit = InvitedBetaQueuedLimit + 1 }, "queued_limit"},
 		{"session contradiction", func(o *Overview, _ *Fleet) { o.Capacity.DurableSessions = 0; o.Capacity.ActiveWorkcells = 1 }, "durable_sessions"},
@@ -310,5 +309,89 @@ func validOverview(observed time.Time) Overview {
 			WorkerHostBounds:              HostBounds{Min: MinimumWorkerHosts, Max: MaximumWorkerHosts},
 			FixedControlPlaneNodes:        FixedControlPlaneNodes,
 		},
+	}
+}
+
+func TestScaleOutMutationEnabledGatesMutationAllowed(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 8, 19, 2, 0, 0, 0, time.UTC)
+
+	scaleOut := validOverview(now)
+	scaleOut.Capacity.ActiveWorkcells = 6
+	scaleOut.Capacity.DurableSessions = 6
+	scaleOut.Capacity.CountedWorkcells = 6
+	scaleOut.Capacity.DesiredWorkerHosts = 4
+
+	engine := &Engine{ScaleOutMutationEnabled: true}
+	decision, err := engine.Evaluate(now, scaleOut, Fleet{ActualHosts: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Direction != DirectionScaleOut || !decision.MutationAllowed {
+		t.Fatalf("expected mutation-allowed scale-out, got %+v", decision)
+	}
+	if decision.Mode != "scale-out" {
+		t.Fatalf("expected scale-out mode, got %q", decision.Mode)
+	}
+
+	hold := validOverview(now.Add(time.Second))
+	hold.Capacity.ActiveWorkcells = 6
+	hold.Capacity.DurableSessions = 6
+	hold.Capacity.CountedWorkcells = 6
+	hold.Capacity.DesiredWorkerHosts = 4
+	hold.Capacity.Revision = "revision-hold-1"
+	decision, err = engine.Evaluate(now.Add(time.Second), hold, Fleet{ActualHosts: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Direction != DirectionHold || decision.MutationAllowed {
+		t.Fatalf("hold must never allow mutation: %+v", decision)
+	}
+
+	scaleIn := validOverview(now.Add(2 * time.Second))
+	scaleIn.Capacity.Revision = "revision-scale-in-1"
+	decision, err = engine.Evaluate(now.Add(2*time.Second), scaleIn, Fleet{ActualHosts: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Direction != DirectionScaleIn || decision.MutationAllowed || !decision.RequiresDrainVerification {
+		t.Fatalf("scale-in must never allow mutation: %+v", decision)
+	}
+
+	shadow := &Engine{}
+	decision, err = shadow.Evaluate(now, scaleOut, Fleet{ActualHosts: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.MutationAllowed || decision.Mode != "shadow" {
+		t.Fatalf("shadow engine must not allow mutation: %+v", decision)
+	}
+}
+
+func TestDurableSessionsIsLifetimeInformationalNotCapped(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 8, 19, 3, 0, 0, 0, time.UTC)
+	// Live dev evidence 2026-08-19: durable_sessions counts lifetime
+	// project_sessions rows and exceeded 100 while only a handful of
+	// workcells were active, wedging the shadow observer in a permanent
+	// hold. The beta envelope caps live on active/queued/density/bounds.
+	overview := validOverview(now)
+	overview.Capacity.DurableSessions = 4321
+	overview.Capacity.ActiveWorkcells = 6
+	overview.Capacity.CountedWorkcells = 6
+	overview.Capacity.DesiredWorkerHosts = 4
+
+	decision, err := (&Engine{}).Evaluate(now, overview, Fleet{ActualHosts: 4})
+	if err != nil {
+		t.Fatalf("lifetime durable_sessions must not wedge the controller: %v", err)
+	}
+	if decision.DurableSessions != 4321 || decision.Direction != DirectionHold {
+		t.Fatalf("unexpected decision: %+v", decision)
+	}
+
+	overview = validOverview(now)
+	overview.Capacity.DurableSessions = 1_000_001
+	if _, err := (&Engine{}).Evaluate(now, overview, Fleet{ActualHosts: 4}); err == nil {
+		t.Fatal("expected absurd durable_sessions rejection")
 	}
 }
