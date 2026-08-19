@@ -126,6 +126,9 @@ override WORKLOAD_PLAN_MANIFEST := $(WORKLOAD_PLAN).manifest
 override WORKLOAD_ORCHESTRATOR_PLAN := .tfplan.workload-orchestrator.$(ENV)
 override WORKLOAD_ORCHESTRATOR_PLAN_MANIFEST := $(WORKLOAD_ORCHESTRATOR_PLAN).manifest
 override WORKLOAD_ORCHESTRATOR_TARGET := -target='module.nomad.module.orchestrator[0]'
+override WORKLOAD_CONTROLLER_PLAN := .tfplan.workload-controller.$(ENV)
+override WORKLOAD_CONTROLLER_PLAN_MANIFEST := $(WORKLOAD_CONTROLLER_PLAN).manifest
+override WORKLOAD_CONTROLLER_TARGET := -target='module.nomad.module.monad_worker_autoscaler[0]' -target='module.nomad.terraform_data.monad_worker_autoscaler_shadow_guard[0]'
 WORKLOAD_ORCHESTRATOR_RECOVERY_TOKEN ?=
 override WORKLOAD_PREREQUISITE_PLAN := .tfplan.workload-prerequisite.$(ENV)
 override WORKLOAD_PREREQUISITE_PLAN_MANIFEST := $(WORKLOAD_PREREQUISITE_PLAN).manifest
@@ -189,6 +192,7 @@ override FOUNDATION_CONFIRMATION := APPLY KEYLESS FOUNDATION
 override ACL_STATE_SCRUB_CONFIRMATION := FORGET LEAKING ACL TOKEN GENERATORS
 override WORKLOAD_CONFIRMATION := APPLY ONE WORKCELL CANARY
 override WORKLOAD_ORCHESTRATOR_CONFIRMATION := APPLY ORCHESTRATOR RELEASE
+override WORKLOAD_CONTROLLER_CONFIRMATION := APPLY WORKER CONTROLLER
 override WORKLOAD_ORCHESTRATOR_RECOVERY_CONFIRMATION := RELEASE ORCHESTRATOR LEASE
 override WORKLOAD_PREREQUISITE_CONFIRMATION := APPLY WORKLOAD PREREQUISITES
 override WORKLOAD_CLUSTER_CONFIRMATION := APPLY NETWORK HARDENING $(WORKLOAD_CLUSTER_STAGE)
@@ -436,7 +440,7 @@ workload-cluster-stage-guard:
 		"$(WORKLOAD_CLUSTER_STAGE)" "$(WORKLOAD_CLUSTER_CHECKPOINT)" \
 		"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(GCP_ZONE)" "$(PREFIX)" "../.."
 
-.PHONY: workload-cluster-plan workload-cluster-apply workload-cluster-rebind-recovery-source workload-cluster-recover-lease workload-cluster-wait workload-prerequisite-plan workload-prerequisite-apply workload-plan workload-apply
+.PHONY: workload-cluster-plan workload-cluster-apply workload-cluster-rebind-recovery-source workload-cluster-recover-lease workload-cluster-wait workload-prerequisite-plan workload-prerequisite-apply workload-plan workload-apply workload-controller-plan workload-controller-apply
 workload-cluster-plan:
 	@ printf '%s' "$(ENV)" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$$' || (printf "Invalid environment name: %s\n" "$(ENV)"; exit 1)
 	@ $(MAKE) workload-context-guard workload-cluster-stage-guard
@@ -1816,3 +1820,222 @@ provider-login:
 	gcloud --quiet auth login --update-adc
 	gcloud config set project "$(GCP_PROJECT_ID)"
 	gcloud --quiet auth configure-docker "$(GCP_REGION)-docker.pkg.dev"
+
+workload-controller-plan:
+	@ printf '%s' "$(ENV)" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$$' || (printf "Invalid environment name: %s\n" "$(ENV)"; exit 1)
+	@ $(MAKE) workload-context-guard
+	@ set -eu; \
+		temp_dir="$$(mktemp -d ".workload-controller-plan.$(ENV).XXXXXX")"; \
+		temp_plan="$${temp_dir}/plan"; \
+		temp_manifest="$${temp_dir}/manifest"; \
+		before_artifacts="$${temp_dir}/artifacts-before.json"; \
+		after_artifacts="$${temp_dir}/artifacts-after.json"; \
+		lease_token="$${temp_dir}/lease-token.json"; \
+		lease_acquired=false; \
+		cleanup() { \
+			status=$$?; \
+			trap - EXIT HUP INT TERM; \
+			if [ "$${lease_acquired}" = true ]; then \
+				if ! "$(WORKLOAD_ROLLOUT_LEASE)" release "$(GCLOUD)" "$${lease_token}"; then \
+					printf "Shared rollout lease release failed; inspect it before another rollout.\n" >&2; \
+					if [ "$${status}" -eq 0 ]; then status=1; fi; \
+				fi; \
+			fi; \
+			rm -rf -- "$${temp_dir}"; \
+			exit "$${status}"; \
+		}; \
+		trap cleanup EXIT HUP INT TERM; \
+		umask 077; \
+		holder_digest="$$( \
+			{ \
+				git -C ../.. rev-parse --verify HEAD; \
+				printf '%s\n' "$(ENV)" "$$$$" "$$(date -u +%s)"; \
+			} | shasum -a 256 | awk '{print $$1}' \
+		)"; \
+		"$(WORKLOAD_ROLLOUT_LEASE)" acquire \
+			"$(GCLOUD)" "$(TERRAFORM_STATE_BUCKET)" \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" \
+			"controller-plan:$${holder_digest}" "$${lease_token}"; \
+		lease_acquired=true; \
+		rm -f -- "$(WORKLOAD_CONTROLLER_PLAN)" "$(WORKLOAD_CONTROLLER_PLAN_MANIFEST)"; \
+		./scripts/assert-workload-artifacts.sh \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(PREFIX)" \
+			"$(WORKLOAD_IMAGE_REVISION)" "$(WORKLOAD_JOB_BINARY_BUCKET)" \
+			"$(GCLOUD)" >"$${before_artifacts}"; \
+		chmod 0600 "$${before_artifacts}"; \
+		before_fingerprint="$$($(workload_metadata_context) ./scripts/workload-plan-metadata.sh fingerprint \
+			"$(TF)" "." "../.." "$${before_artifacts}")"; \
+		$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) \
+			-out="$${temp_plan}" \
+			-input=false \
+			-compact-warnings \
+			$(WORKLOAD_CONTROLLER_TARGET); \
+		chmod 0600 "$${temp_plan}"; \
+		./scripts/assert-workload-artifacts.sh \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(PREFIX)" \
+			"$(WORKLOAD_IMAGE_REVISION)" "$(WORKLOAD_JOB_BINARY_BUCKET)" \
+			"$(GCLOUD)" >"$${after_artifacts}"; \
+		chmod 0600 "$${after_artifacts}"; \
+		after_fingerprint="$$($(workload_metadata_context) ./scripts/workload-plan-metadata.sh fingerprint \
+			"$(TF)" "." "../.." "$${after_artifacts}")"; \
+		if [ "$${before_fingerprint}" != "$${after_fingerprint}" ]; then \
+			printf "Refusing worker-controller plan: configuration or release artifacts changed while Terraform was planning.\n" >&2; \
+			exit 1; \
+		fi; \
+		./scripts/assert-workload-plan.sh \
+			"$${temp_plan}" "$(TF)" \
+			"$(WORKLOAD_TOPOLOGY_POLICY)" "$(WORKLOAD_PACKER_TEMPLATE)" \
+			"$${after_artifacts}" orchestrator; \
+		$(workload_metadata_context) ./scripts/workload-plan-metadata.sh write \
+			"$${temp_plan}" "$${temp_manifest}" "$(TF)" "." "../.." \
+			"$${after_artifacts}" "$${after_fingerprint}"; \
+		mv -f -- "$${temp_manifest}" "$(WORKLOAD_CONTROLLER_PLAN_MANIFEST)"; \
+		mv -f -- "$${temp_plan}" "$(WORKLOAD_CONTROLLER_PLAN)"; \
+		rm -f -- "$${before_artifacts}" "$${after_artifacts}"; \
+		"$(WORKLOAD_ROLLOUT_LEASE)" release "$(GCLOUD)" "$${lease_token}"; \
+		lease_acquired=false; \
+		rmdir "$${temp_dir}"; \
+		trap - EXIT HUP INT TERM
+	@ printf "Saved controller-only plan and provenance are ready for review: %s and %s\n" "$(WORKLOAD_CONTROLLER_PLAN)" "$(WORKLOAD_CONTROLLER_PLAN_MANIFEST)"
+
+workload-controller-apply:
+	@ if [ "$(CONFIRM)" != "$(WORKLOAD_CONTROLLER_CONFIRMATION)" ]; then \
+		printf "Refusing worker-controller rollout apply. Re-run with CONFIRM='$(WORKLOAD_CONTROLLER_CONFIRMATION)'.\n"; \
+		exit 1; \
+	fi
+	@ $(MAKE) workload-context-guard
+	@ set -eu; \
+		temp_dir="$$(mktemp -d ".workload-controller-apply.$(ENV).XXXXXX")"; \
+		before_artifacts="$${temp_dir}/artifacts-before.json"; \
+		after_artifacts="$${temp_dir}/artifacts-after.json"; \
+		apply_plan="$${temp_dir}/reviewed.plan"; \
+		apply_manifest="$${temp_dir}/reviewed.plan.manifest"; \
+		consumed_plan="$${temp_dir}/consumed.plan"; \
+		consumed_manifest="$${temp_dir}/consumed.plan.manifest"; \
+		lease_token="$${temp_dir}/lease-token.json"; \
+		lease_acquired=false; \
+		mutation_started=false; \
+		plan_moved=false; \
+		manifest_moved=false; \
+		cleanup() { \
+			status=$$?; \
+			restore_failed=false; \
+			trap - EXIT HUP INT TERM; \
+			if [ "$${plan_moved}" = true ]; then \
+				if [ ! -e "$(WORKLOAD_CONTROLLER_PLAN)" ] \
+					&& mv "$${consumed_plan}" "$(WORKLOAD_CONTROLLER_PLAN)"; then \
+					plan_moved=false; \
+				else \
+					printf "Could not restore consumed worker-controller plan; preserving private recovery directory %s.\n" "$${temp_dir}" >&2; \
+					restore_failed=true; \
+					status=1; \
+				fi; \
+			fi; \
+			if [ "$${manifest_moved}" = true ]; then \
+				if [ ! -e "$(WORKLOAD_CONTROLLER_PLAN_MANIFEST)" ] \
+					&& mv "$${consumed_manifest}" "$(WORKLOAD_CONTROLLER_PLAN_MANIFEST)"; then \
+					manifest_moved=false; \
+				else \
+					printf "Could not restore consumed worker-controller manifest; preserving private recovery directory %s.\n" "$${temp_dir}" >&2; \
+					restore_failed=true; \
+					status=1; \
+				fi; \
+			fi; \
+			if [ "$${lease_acquired}" = true ] && [ "$${mutation_started}" = true ]; then \
+				printf "Worker-controller rollout may have mutated live state; preserving its generation-bound lease and recovery directory %s.\n" "$${temp_dir}" >&2; \
+				printf "After proving no apply is running, recover with WORKLOAD_CONTROLLER_RECOVERY_TOKEN=%s CONFIRM='%s'.\n" "$${lease_token}" "$(WORKLOAD_CONTROLLER_RECOVERY_CONFIRMATION)" >&2; \
+				restore_failed=true; \
+				status=1; \
+			elif [ "$${lease_acquired}" = true ]; then \
+				if ! "$(WORKLOAD_ROLLOUT_LEASE)" release "$(GCLOUD)" "$${lease_token}"; then \
+					printf "Shared rollout lease release failed; inspect it before another rollout.\n" >&2; \
+					if [ "$${status}" -eq 0 ]; then status=1; fi; \
+				fi; \
+			fi; \
+			if [ "$${restore_failed}" = false ]; then \
+				rm -rf -- "$${temp_dir}"; \
+			fi; \
+			exit "$${status}"; \
+		}; \
+		trap cleanup EXIT HUP INT TERM; \
+		umask 077; \
+		holder_digest="$$( \
+			{ \
+				git -C ../.. rev-parse --verify HEAD; \
+				printf '%s\n' "$(ENV)" "$$$$" "$$(date -u +%s)"; \
+			} | shasum -a 256 | awk '{print $$1}' \
+		)"; \
+		"$(WORKLOAD_ROLLOUT_LEASE)" acquire \
+			"$(GCLOUD)" "$(TERRAFORM_STATE_BUCKET)" \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" \
+			"controller-apply:$${holder_digest}" "$${lease_token}"; \
+		lease_acquired=true; \
+		test -f "$(WORKLOAD_CONTROLLER_PLAN)" || { \
+			printf "Missing reviewed worker-controller plan %s. Run 'make workload-controller-plan' first.\n" "$(WORKLOAD_CONTROLLER_PLAN)" >&2; \
+			exit 1; \
+		}; \
+		test -f "$(WORKLOAD_CONTROLLER_PLAN_MANIFEST)" || { \
+			printf "Missing worker-controller plan provenance %s. Run 'make workload-controller-plan' first.\n" "$(WORKLOAD_CONTROLLER_PLAN_MANIFEST)" >&2; \
+			exit 1; \
+		}; \
+		./scripts/assert-workload-artifacts.sh \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(PREFIX)" \
+			"$(WORKLOAD_IMAGE_REVISION)" "$(WORKLOAD_JOB_BINARY_BUCKET)" \
+			"$(GCLOUD)" >"$${before_artifacts}"; \
+		chmod 0600 "$${before_artifacts}"; \
+		$(workload_metadata_context) ./scripts/workload-plan-metadata.sh verify \
+			"$(WORKLOAD_CONTROLLER_PLAN)" "$(WORKLOAD_CONTROLLER_PLAN_MANIFEST)" \
+			"$(TF)" "." "../.." "$${before_artifacts}"; \
+		cp "$(WORKLOAD_CONTROLLER_PLAN)" "$${apply_plan}"; \
+		cp "$(WORKLOAD_CONTROLLER_PLAN_MANIFEST)" "$${apply_manifest}"; \
+		chmod 0600 "$${apply_plan}" "$${apply_manifest}"; \
+		$(workload_metadata_context) ./scripts/workload-plan-metadata.sh verify \
+			"$${apply_plan}" "$${apply_manifest}" "$(TF)" "." "../.." \
+			"$${before_artifacts}"; \
+		./scripts/assert-workload-plan.sh \
+			"$${apply_plan}" "$(TF)" \
+			"$(WORKLOAD_TOPOLOGY_POLICY)" "$(WORKLOAD_PACKER_TEMPLATE)" \
+			"$${before_artifacts}" orchestrator; \
+		./scripts/assert-workload-artifacts.sh \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$(PREFIX)" \
+			"$(WORKLOAD_IMAGE_REVISION)" "$(WORKLOAD_JOB_BINARY_BUCKET)" \
+			"$(GCLOUD)" >"$${after_artifacts}"; \
+		chmod 0600 "$${after_artifacts}"; \
+		$(workload_metadata_context) ./scripts/workload-plan-metadata.sh verify \
+			"$${apply_plan}" "$${apply_manifest}" "$(TF)" "." "../.." \
+			"$${after_artifacts}"; \
+		"$(WORKLOAD_ROLLOUT_LEASE)" assert-held \
+			"$(GCLOUD)" "$(TERRAFORM_STATE_BUCKET)" \
+			"$(GCP_PROJECT_ID)" "$(GCP_REGION)" "$${lease_token}"; \
+		mutation_started=true; \
+		$(TF) apply -input=false "$${apply_plan}"; \
+		set +e; \
+		$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) \
+			-out="$${temp_dir}/post-apply.plan" \
+			-input=false \
+			-compact-warnings \
+			-detailed-exitcode \
+			$(WORKLOAD_CONTROLLER_TARGET) \
+			>/dev/null; \
+		post_apply_status=$$?; \
+		set -e; \
+		if [ "$${post_apply_status}" -ne 0 ]; then \
+			printf "Post-apply controller convergence check was not clean (Terraform exit %s).\n" "$${post_apply_status}" >&2; \
+			exit 1; \
+		fi; \
+		if ! cmp -s "$(WORKLOAD_CONTROLLER_PLAN)" "$${apply_plan}" \
+			|| ! cmp -s "$(WORKLOAD_CONTROLLER_PLAN_MANIFEST)" "$${apply_manifest}"; then \
+			printf "Applied reviewed bytes, but the published worker-controller plan changed concurrently; preserving the replacement.\n" >&2; \
+			exit 1; \
+		fi; \
+		mv "$(WORKLOAD_CONTROLLER_PLAN)" "$${consumed_plan}"; \
+		plan_moved=true; \
+		mv "$(WORKLOAD_CONTROLLER_PLAN_MANIFEST)" "$${consumed_manifest}"; \
+		manifest_moved=true; \
+		"$(WORKLOAD_ROLLOUT_LEASE)" release "$(GCLOUD)" "$${lease_token}"; \
+		lease_acquired=false; \
+		mutation_started=false; \
+		plan_moved=false; \
+		manifest_moved=false; \
+		rm -rf -- "$${temp_dir}"; \
+		trap - EXIT HUP INT TERM
