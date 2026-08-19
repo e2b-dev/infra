@@ -10,6 +10,14 @@ set -euo pipefail
 # arch is one of: x86_64 (default), arm64 (kernel-style names).
 # Output: builds/vmlinux-<version>/<output_arch>/vmlinux.bin where
 # <output_arch> is the Go/OCI name (amd64/arm64) used by the orchestrator.
+#
+# CONFIG_ONLY=1 stops after olddefconfig and writes the resolved config back to
+# configs/<arch>/<version>.config instead of building. Use it to settle a config
+# copied from another version against the tree it will actually be built from:
+# the symbols the new tree added are then in the file, and reviewable, rather
+# than silently taking upstream defaults at build time. It needs an explicit
+# version — it overwrites the config it reads, and doing that to every pinned
+# version at once is never what anyone means.
 
 HOST_ARCH="$(uname -m)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -34,13 +42,28 @@ install_dependencies() {
   apt install -y "${packages[@]}"
 }
 
-# Newest-tag matching the requested kernel version.
+# The tag to build a kernel version from: the microvm flavour when it has one,
+# else the general kernel tag, and among those the highest rpm release.
+#
+# The release is compared numerically (sort -V), because a rebuild bumps only
+# that field and a string compare puts 9.100 above 46.372. Selecting by release
+# rather than by tag creation date also makes the choice a property of the tag
+# names alone, so anything that only has the tag list — an automated bump
+# deciding what to propose — resolves the same tag this build will check out.
 get_tag() {
-  local kernel_version="$1"
-  {
-    git --no-pager tag -l --sort=-creatordate | grep "microvm-kernel-${kernel_version}-.*\.amzn2" \
-    || git --no-pager tag -l --sort=-creatordate | grep "kernel-${kernel_version}-.*\.amzn2"
-  } | head -n1
+  local kernel_version="$1" prefix tag
+  for prefix in microvm-kernel kernel; do
+    # Loose between the prefix and the version, because upstream puts arbitrary
+    # text there (microvm-kernel6.18-6.18.33-65.128.amzn2023). The glob is
+    # anchored, so the 'kernel' pass still does not match microvm tags, and the
+    # '-' after the version keeps 6.1.177 from matching 6.1.1770.
+    tag="$(git --no-pager tag -l "${prefix}*${kernel_version}-*.amzn2*" | sort -V | tail -n1)"
+    if [ -n "$tag" ]; then
+      echo "$tag"
+      return 0
+    fi
+  done
+  return 1
 }
 
 apply_patches() {
@@ -68,8 +91,15 @@ build_version() {
 
   cp "$SCRIPT_DIR/configs/${target_arch}/${version}.config" .config
 
-  echo "Checking out repo for kernel at version: $version"
-  git checkout -f "$(get_tag "$version")"
+  local tag=""
+  # get_tag greps, so no match is a non-zero exit, not just empty output.
+  tag="$(get_tag "$version")" || true
+  if [ -z "$tag" ]; then
+    echo "No amzn tag for kernel version $version" >&2
+    return 1
+  fi
+  echo "Checking out $tag for kernel version: $version"
+  git checkout -f "$tag"
 
   apply_patches "$version"
 
@@ -83,9 +113,16 @@ build_version() {
     fi
   fi
 
-  echo "Building kernel version: $version"
+  echo "Resolving config against the $version tree"
   make $make_opts olddefconfig
 
+  if [[ "${CONFIG_ONLY:-}" == "1" ]]; then
+    echo "Writing the resolved config back to configs/${target_arch}/${version}.config"
+    cp .config "$SCRIPT_DIR/configs/${target_arch}/${version}.config"
+    return 0
+  fi
+
+  echo "Building kernel version: $version"
   if [[ "$target_arch" == "arm64" ]]; then
     make $make_opts Image -j "$(nproc)"
   else
@@ -130,6 +167,11 @@ ensure_linux_repo() {
 main() {
   local single_version="${1:-}"
   local target_arch="${2:-${TARGET_ARCH:-x86_64}}"
+
+  if [[ "${CONFIG_ONLY:-}" == "1" && -z "$single_version" ]]; then
+    echo "CONFIG_ONLY=1 needs a version: it rewrites configs/<arch>/<version>.config" >&2
+    exit 1
+  fi
 
   install_dependencies "$target_arch"
 
