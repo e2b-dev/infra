@@ -52,6 +52,16 @@ var (
 		metric.WithDescription("Flushes of the kernel NBD device buffers, by outcome. A sync failure means the backend is missing writes the guest was told had landed, so a snapshot exported from it is incomplete."),
 		metric.WithUnit("{flush}"),
 	))
+	// nbdUnwoundCounter is the only signal that a connect which cannot be handed
+	// back was torn down rather than stranded. Without it neither the rate of the
+	// failure nor the effect of handling it is visible: the pool counters answer
+	// the class-level question (acquired - released has a floor that should return
+	// to zero), not which path lost a device.
+	nbdUnwoundCounter = utils.Must(meter.Int64Counter("orchestrator.nbd.device.unwound",
+		metric.WithDescription("Connected NBD devices torn down by Open because it cannot return them, by the stage that failed. Each count is a kernel device and a pool slot that would otherwise be held for the life of the process."),
+		metric.WithUnit("{device}"),
+	))
+
 	nbdFlushSuccess           = metric.WithAttributeSet(attribute.NewSet(attribute.String("result", "success")))
 	nbdFlushOpenFailure       = metric.WithAttributeSet(attribute.NewSet(attribute.String("result", "failure"), attribute.String("stage", "open")))
 	nbdFlushSyncFailure       = metric.WithAttributeSet(attribute.NewSet(attribute.String("result", "failure"), attribute.String("stage", "sync")))
@@ -76,6 +86,11 @@ type DirectPathMount struct {
 	// opened at flush time is blind to a backend failure that happened while the
 	// guest was running - which is the failure worth reporting.
 	deviceFile *os.File
+
+	// afterConnect runs as soon as nbdnl.Connect has succeeded, before the
+	// wait-for-connected poll. Only tests set it, to cancel the context inside
+	// the window where the kernel holds the device but Open has not returned it.
+	afterConnect func(deviceIndex uint32)
 
 	dispatchers []*Dispatch
 	socksClient []*os.File
@@ -222,6 +237,10 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			// but we will use the one returned by nbdnl
 			deviceIndex = idx
 
+			if d.afterConnect != nil {
+				d.afterConnect(deviceIndex)
+			}
+
 			break
 		}
 
@@ -255,7 +274,9 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 	for {
 		select {
 		case <-ctx.Done():
-			return math.MaxUint32, ctx.Err()
+			closeErr := d.closeConnected(ctx, deviceIndex, "wait_connected")
+
+			return math.MaxUint32, errors.Join(ctx.Err(), closeErr)
 		default:
 		}
 
@@ -279,15 +300,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 
 	deviceFile, err := os.Open(devicePath)
 	if err != nil {
-		// The device is fully connected by now, so hand it to Close rather than
-		// unwinding here: it cancels the handlers and drains the dispatchers
-		// before disconnecting, and releases the slot with infinite retry. Close
-		// reads the index off the mount, and the deferred assignment above has
-		// not run yet, so set it first. Detach the context Close is given -
-		// Close cancels ours as its first step.
-		d.deviceIndex = deviceIndex
-
-		closeErr := d.Close(context.WithoutCancel(ctx))
+		closeErr := d.closeConnected(ctx, deviceIndex, "device_open")
 
 		return math.MaxUint32, errors.Join(
 			fmt.Errorf("error opening NBD device %s: %w", devicePath, err),
@@ -298,6 +311,29 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 	d.deviceFile = deviceFile
 
 	return deviceIndex, nil
+}
+
+// closeConnected tears down a device that is connected but that Open cannot
+// return. It hands the work to Close rather than unwinding by hand: Close
+// cancels the handlers and drains the dispatchers before disconnecting, and
+// releases the slot with infinite retry. Close reads the index off the mount,
+// and Open's deferred assignment has not run yet, so set it first. The context
+// Close is given has to be detached, because Close cancels Open's as its first
+// step.
+func (d *DirectPathMount) closeConnected(ctx context.Context, deviceIndex uint32, stage string) error {
+	nbdUnwoundCounter.Add(ctx, 1, metric.WithAttributes(attribute.String("stage", stage)))
+
+	// Warn, not Debug: this is rare, it means a device and a pool slot came within
+	// one branch of being stranded, and the build failure the caller reports does
+	// not name either of them.
+	logger.L().Warn(ctx, "tearing down a connected NBD device Open cannot return",
+		zap.Uint32("device_index", deviceIndex),
+		zap.String("stage", stage),
+	)
+
+	d.deviceIndex = deviceIndex
+
+	return d.Close(context.WithoutCancel(ctx))
 }
 
 // Flush writes all pending data through the NBD connection and then clears the
