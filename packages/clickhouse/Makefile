@@ -123,4 +123,4 @@ run:
 				--health-retries=5 \
 				-v ./local/users.xml:/etc/clickhouse-server/users.d/users.xml \
 				-v ./local/config.xml:/etc/clickhouse-server/config.d/config.xml \
-				clickhouse/clickhouse-server:25.4.5.24
+				clickhouse/clickhouse-server:25.8.30.16

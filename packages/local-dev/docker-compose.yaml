@@ -1,6 +1,6 @@
 services:
   clickhouse:
-    image: "clickhouse:25.4.5.24"
+    image: "clickhouse/clickhouse-server:25.8.30.16"
     environment:
       CLICKHOUSE_DB: default
       CLICKHOUSE_USER: clickhouse
