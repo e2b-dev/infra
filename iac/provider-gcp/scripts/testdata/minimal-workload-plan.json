@@ -352,7 +352,7 @@
           "distribution_policy_zones": [
             "us-east4-c"
           ],
-          "target_size": 2,
+          "target_size": 6,
           "update_policy": [
             {
               "max_surge_fixed": 0,

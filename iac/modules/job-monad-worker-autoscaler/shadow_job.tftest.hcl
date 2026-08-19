@@ -4,7 +4,7 @@ variables {
   node_pool           = "api"
   worker_node_pool    = "default"
   worker_cluster_keys = ["default"]
-  worker_cluster_size = 2
+  worker_cluster_size = 6
   worker_machine_type = "n1-standard-8"
   allocation_count    = 2
   artifact_source     = "gcs::https://www.googleapis.com/storage/v1/monad-code-fc-env-pipeline/monad-worker-autoscaler.0123456789ab#123"
