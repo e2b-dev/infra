@@ -88,3 +88,57 @@ variable "metrics_port" {
     error_message = "metrics_port must be between 1024 and 65535."
   }
 }
+
+variable "mode" {
+  type        = string
+  description = "Controller phase: non-mutating shadow observer or scale-out-only actuation."
+  default     = "shadow"
+
+  validation {
+    condition     = contains(["shadow", "scale-out"], var.mode)
+    error_message = "mode must be shadow or scale-out."
+  }
+}
+
+variable "worker_host_floor" {
+  type        = number
+  description = "Reviewed worker-host floor; must equal the Terraform client cluster_size and is never resized below."
+
+  validation {
+    condition     = var.worker_host_floor >= 2 && var.worker_host_floor <= 15 && floor(var.worker_host_floor) == var.worker_host_floor
+    error_message = "worker_host_floor must be an integer from 2 to 15."
+  }
+}
+
+variable "mig_project_id" {
+  type        = string
+  description = "GCP project of the worker managed instance group; scale-out mode only."
+  default     = ""
+
+  validation {
+    condition     = var.mig_project_id == "" || can(regex("^[a-z][-a-z0-9]{4,28}[a-z0-9]$", var.mig_project_id))
+    error_message = "mig_project_id must be empty or a valid GCP project id."
+  }
+}
+
+variable "mig_region" {
+  type        = string
+  description = "GCP region of the worker managed instance group; scale-out mode only."
+  default     = ""
+
+  validation {
+    condition     = var.mig_region == "" || can(regex("^[a-z]+-[a-z0-9]+[0-9]$", var.mig_region))
+    error_message = "mig_region must be empty or a valid GCP region."
+  }
+}
+
+variable "mig_name" {
+  type        = string
+  description = "Name of the worker managed instance group; scale-out mode only."
+  default     = ""
+
+  validation {
+    condition     = var.mig_name == "" || can(regex("^[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?$", var.mig_name))
+    error_message = "mig_name must be empty or a valid GCE resource name."
+  }
+}
