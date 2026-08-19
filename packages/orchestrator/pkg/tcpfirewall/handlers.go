@@ -15,7 +15,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
 
@@ -51,31 +50,31 @@ func markDSCP(c syscall.RawConn, tos int) error {
 }
 
 // domainHandler handles connections with hostname information (HTTP Host header or TLS SNI).
-func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol, tos int) {
+func domainHandler(ctx context.Context, c egressConn) {
 	// Get hostname from tcpproxy's wrapped connection (HTTP Host or TLS SNI).
 	// Hostname can be empty, e.g. for https://1.1.1.1 like requests.
 	var hostname string
-	if tc, ok := conn.(*tcpproxy.Conn); ok {
+	if tc, ok := c.conn.(*tcpproxy.Conn); ok {
 		hostname = tc.HostName
 	}
 
-	allowed, matchType, err := isEgressAllowed(sbx, hostname, dstIP)
+	allowed, matchType, err := isEgressAllowed(c.sbx, hostname, c.dstIP)
 	if err != nil {
-		logger.Error(ctx, "Egress check failed", zap.Error(err))
-		metrics.RecordError(ctx, ErrorTypeEgressCheck, protocol)
-		conn.Close()
+		c.logger.Error(ctx, "Egress check failed", zap.Error(err))
+		c.metrics.RecordError(ctx, ErrorTypeEgressCheck, c.protocol)
+		c.conn.Close()
 
 		return
 	}
 
 	if !allowed {
-		metrics.RecordDecision(ctx, DecisionBlocked, protocol, matchType)
-		conn.Close()
+		c.metrics.RecordDecision(ctx, DecisionBlocked, c.protocol, matchType)
+		c.conn.Close()
 
 		return
 	}
 
-	metrics.RecordDecision(ctx, DecisionAllowed, protocol, matchType)
+	c.metrics.RecordDecision(ctx, DecisionAllowed, c.protocol, matchType)
 
 	// When allowed by domain match, dial the hostname directly (not the sandbox's resolved IP).
 	// This prevents DNS spoofing attacks where the sandbox modifies /etc/hosts to redirect
@@ -83,46 +82,42 @@ func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int
 	// Happy Eyeballs (RFC 8305) for multi-IP fallback when some IPs are unreachable.
 	// After connecting, we verify the connected IP is not internal/private.
 	if matchType == MatchTypeDomain {
-		upstreamAddr := net.JoinHostPort(hostname, fmt.Sprintf("%d", dstPort))
-		proxyWithIPVerification(ctx, conn, upstreamAddr, logger, metrics, protocol, tos)
+		proxyWithIPVerification(ctx, c, net.JoinHostPort(hostname, fmt.Sprintf("%d", c.dstPort)))
 
 		return
 	}
 
 	// For non-domain matches, use the original destination IP
-	upstreamAddr := net.JoinHostPort(dstIP.String(), fmt.Sprintf("%d", dstPort))
-	proxy(ctx, conn, upstreamAddr, metrics, protocol, tos)
+	proxy(ctx, c, c.upstreamAddr())
 }
 
 // cidrOnlyHandler handles connections without hostname information.
-func cidrOnlyHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol, tos int) {
+func cidrOnlyHandler(ctx context.Context, c egressConn) {
 	// No hostname available for CIDR-only handler
-	allowed, matchType, err := isEgressAllowed(sbx, noHostnameValue, dstIP)
+	allowed, matchType, err := isEgressAllowed(c.sbx, noHostnameValue, c.dstIP)
 	if err != nil {
-		logger.Error(ctx, "Egress check failed", zap.Error(err))
-		metrics.RecordError(ctx, ErrorTypeEgressCheck, protocol)
-		conn.Close()
+		c.logger.Error(ctx, "Egress check failed", zap.Error(err))
+		c.metrics.RecordError(ctx, ErrorTypeEgressCheck, c.protocol)
+		c.conn.Close()
 
 		return
 	}
 
 	if !allowed {
-		metrics.RecordDecision(ctx, DecisionBlocked, protocol, matchType)
-		conn.Close()
+		c.metrics.RecordDecision(ctx, DecisionBlocked, c.protocol, matchType)
+		c.conn.Close()
 
 		return
 	}
 
-	metrics.RecordDecision(ctx, DecisionAllowed, protocol, matchType)
+	c.metrics.RecordDecision(ctx, DecisionAllowed, c.protocol, matchType)
 
-	upstreamAddr := net.JoinHostPort(dstIP.String(), fmt.Sprintf("%d", dstPort))
-
-	proxy(ctx, conn, upstreamAddr, metrics, protocol, tos)
+	proxy(ctx, c, c.upstreamAddr())
 }
 
 // proxy proxies the connection to the upstream address.
-func proxy(ctx context.Context, conn net.Conn, upstreamAddr string, metrics *Metrics, protocol Protocol, tos int) {
-	tracker := metrics.TrackConnection(protocol)
+func proxy(ctx context.Context, c egressConn, upstreamAddr string) {
+	tracker := c.metrics.TrackConnection(c.protocol)
 	defer tracker.Close(ctx)
 
 	dp := &tcpproxy.DialProxy{
@@ -131,15 +126,15 @@ func proxy(ctx context.Context, conn net.Conn, upstreamAddr string, metrics *Met
 		DialContext: func(dialCtx context.Context, network, addr string) (net.Conn, error) {
 			dialer := &net.Dialer{
 				Timeout: upstreamDialTimeout,
-				Control: func(_, _ string, c syscall.RawConn) error {
-					return markDSCP(c, tos)
+				Control: func(_, _ string, rawConn syscall.RawConn) error {
+					return markDSCP(rawConn, c.tos)
 				},
 			}
 
 			return dialer.DialContext(dialCtx, network, addr)
 		},
 	}
-	dp.HandleConn(conn)
+	dp.HandleConn(c.conn)
 }
 
 // proxyWithIPVerification dials the upstream hostname using Go's net.Dialer (which provides
@@ -149,8 +144,8 @@ func proxy(ctx context.Context, conn net.Conn, upstreamAddr string, metrics *Met
 //
 // The ControlContext callback is called after DNS resolution but before the TCP connect()
 // syscall, so no TCP handshake occurs to internal IPs.
-func proxyWithIPVerification(ctx context.Context, conn net.Conn, upstreamAddr string, logger logger.Logger, metrics *Metrics, protocol Protocol, tos int) {
-	tracker := metrics.TrackConnection(protocol)
+func proxyWithIPVerification(ctx context.Context, c egressConn, upstreamAddr string) {
+	tracker := c.metrics.TrackConnection(c.protocol)
 	defer tracker.Close(ctx)
 
 	// Use tcpproxy.DialProxy with a custom DialContext that verifies resolved IPs
@@ -165,7 +160,7 @@ func proxyWithIPVerification(ctx context.Context, conn net.Conn, upstreamAddr st
 				// ControlContext is called after DNS resolution but BEFORE the TCP connect() syscall.
 				// The 'address' parameter contains the resolved IP:port, allowing us to block
 				// connections to internal IPs before any TCP handshake occurs.
-				ControlContext: func(_ context.Context, _, address string, c syscall.RawConn) error {
+				ControlContext: func(_ context.Context, _, address string, rawConn syscall.RawConn) error {
 					host, _, err := net.SplitHostPort(address)
 					if err != nil {
 						return fmt.Errorf("failed to parse resolved address %q: %w", address, err)
@@ -177,22 +172,22 @@ func proxyWithIPVerification(ctx context.Context, conn net.Conn, upstreamAddr st
 					}
 
 					if isIPInAlwaysDeniedCIDRs(resolvedIP) {
-						logger.Warn(ctx, "Blocked connection to internal IP via hostname",
+						c.logger.Warn(ctx, "Blocked connection to internal IP via hostname",
 							zap.String("upstream_addr", addr),
 							zap.String("resolved_ip", resolvedIP.String()))
-						metrics.RecordError(ctx, ErrorTypeResolvedIPBlocked, protocol)
+						c.metrics.RecordError(ctx, ErrorTypeResolvedIPBlocked, c.protocol)
 
 						return fmt.Errorf("hostname resolved to internal IP %s", resolvedIP)
 					}
 
-					return markDSCP(c, tos)
+					return markDSCP(rawConn, c.tos)
 				},
 			}
 
 			return dialer.DialContext(dialCtx, network, addr)
 		},
 	}
-	dp.HandleConn(conn)
+	dp.HandleConn(c.conn)
 }
 
 // isEgressAllowed checks if egress is allowed based on domain and CIDR rules.
