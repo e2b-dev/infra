@@ -527,7 +527,13 @@ module "nomad" {
   monad_worker_autoscaler_worker_machine_type = try(var.client_clusters_config["default"].machine.type, "")
   monad_worker_autoscaler_mig_project_id      = var.monad_worker_autoscaler_mode == "scale-out" ? var.gcp_project_id : ""
   monad_worker_autoscaler_mig_region          = var.monad_worker_autoscaler_mode == "scale-out" ? var.gcp_region : ""
-  monad_worker_autoscaler_mig_name            = var.monad_worker_autoscaler_mode == "scale-out" ? module.cluster.default_client_managed_instance_group_name : ""
+  # Derived by the same naming rule the worker cluster uses (prefix +
+  # nomad-cluster's client_cluster_name default + the worker-cluster "-rig"
+  # suffix) instead of the module output: a module.cluster reference would
+  # drag the whole cluster compute graph into the scoped controller plan as
+  # -target dependencies, exactly what that path exists to avoid. A name
+  # drift fails closed — the controller holds when its MIG read errors.
+  monad_worker_autoscaler_mig_name = var.monad_worker_autoscaler_mode == "scale-out" ? "${var.prefix}orch-client-rig" : ""
 
   # Template manager
   builder_node_pool                   = var.build_node_pool
