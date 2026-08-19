@@ -179,6 +179,18 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    "503":
+      description: Service unavailable
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    "504":
+      description: Gateway timeout
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
 
   schemas:
     Team:
@@ -2001,6 +2013,12 @@ components:
           type: integer
           format: int32
           description: Error code
+        error_code:
+          type: string
+          description: >-
+            Machine-readable semantic error code. Not a closed set; initial values:
+            sandbox_capacity_unavailable, sandbox_placement_timeout,
+            sandbox_no_compatible_node, sandbox_create_failed, internal_server_error.
         message:
           type: string
           description: Error
@@ -2272,6 +2290,10 @@ paths:
           $ref: "#/components/responses/400"
         "500":
           $ref: "#/components/responses/500"
+        "503":
+          $ref: "#/components/responses/503"
+        "504":
+          $ref: "#/components/responses/504"
 
   /v2/sandboxes:
     get:
@@ -2621,10 +2643,16 @@ paths:
           $ref: "#/components/responses/409"
         "404":
           $ref: "#/components/responses/404"
+        "400":
+          $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
         "500":
           $ref: "#/components/responses/500"
+        "503":
+          $ref: "#/components/responses/503"
+        "504":
+          $ref: "#/components/responses/504"
 
   /sandboxes/{sandboxID}/fork:
     post:
@@ -2671,6 +2699,8 @@ paths:
           $ref: "#/components/responses/401"
         "500":
           $ref: "#/components/responses/500"
+        "503":
+          $ref: "#/components/responses/503"
 
   /sandboxes/{sandboxID}/connect:
     post:
@@ -2710,8 +2740,14 @@ paths:
           $ref: "#/components/responses/401"
         "404":
           $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
         "500":
           $ref: "#/components/responses/500"
+        "503":
+          $ref: "#/components/responses/503"
+        "504":
+          $ref: "#/components/responses/504"
 
   /sandboxes/{sandboxID}/timeout:
     post:

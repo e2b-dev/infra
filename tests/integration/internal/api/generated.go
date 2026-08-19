@@ -265,6 +265,11 @@ type AdminSandboxKillResult struct {
 	KilledCount int `json:"killedCount"`
 }
 
+// AdminTeamRunningSandboxCounts Cached live sandbox index count keyed by team ID. Counts may briefly
+// include sandboxes transitioning out of running; teams without indexed
+// sandboxes are omitted.
+type AdminTeamRunningSandboxCounts map[string]int64
+
 // AssignTemplateTagsRequest defines model for AssignTemplateTagsRequest.
 type AssignTemplateTagsRequest struct {
 	// Tags Tags to assign to the template
@@ -395,6 +400,9 @@ type EnvdVersion = string
 type Error struct {
 	// Code Error code
 	Code int32 `json:"code"`
+
+	// ErrorCode Machine-readable semantic error code. Not a closed set; initial values: sandbox_capacity_unavailable, sandbox_placement_timeout, sandbox_no_compatible_node, sandbox_create_failed, internal_server_error.
+	ErrorCode *string `json:"error_code,omitempty"`
 
 	// Message Error
 	Message string `json:"message"`
@@ -1531,6 +1539,12 @@ type N410 = Error
 // N500 defines model for 500.
 type N500 = Error
 
+// N503 defines model for 503.
+type N503 = Error
+
+// N504 defines model for 504.
+type N504 = Error
+
 // GetNodesParams defines parameters for GetNodes.
 type GetNodesParams struct {
 	// ClusterID Identifier of the cluster
@@ -2010,6 +2024,14 @@ type ClientInterface interface {
 	//
 	// Corresponds with DELETE /access-tokens/{accessTokenID} (the `DeleteAccessTokensAccessTokenID` operationId).
 	DeleteAccessTokensAccessTokenID(ctx context.Context, accessTokenID AccessTokenID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAdminSandboxesRunningCounts Count running sandboxes by team
+	//
+	// Returns a shared snapshot normally refreshed after five seconds. A
+	// sandbox transitioning out of running can remain counted until removal.
+	//
+	// Corresponds with GET /admin/sandboxes/running-counts (the `GetAdminSandboxesRunningCounts` operationId).
+	GetAdminSandboxesRunningCounts(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PostAdminTeamsTeamIDApiKeysWithBody Create team API key as admin
 	//
@@ -2726,6 +2748,24 @@ func (c *Client) PostAccessTokens(ctx context.Context, body PostAccessTokensJSON
 // Corresponds with DELETE /access-tokens/{accessTokenID} (the `DeleteAccessTokensAccessTokenID` operationId).
 func (c *Client) DeleteAccessTokensAccessTokenID(ctx context.Context, accessTokenID AccessTokenID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteAccessTokensAccessTokenIDRequest(c.Server, accessTokenID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetAdminSandboxesRunningCounts Count running sandboxes by team
+//
+// Returns a shared snapshot normally refreshed after five seconds. A
+// sandbox transitioning out of running can remain counted until removal.
+//
+// Corresponds with GET /admin/sandboxes/running-counts (the `GetAdminSandboxesRunningCounts` operationId).
+func (c *Client) GetAdminSandboxesRunningCounts(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAdminSandboxesRunningCountsRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -4246,6 +4286,33 @@ func NewDeleteAccessTokensAccessTokenIDRequest(server string, accessTokenID Acce
 	}
 
 	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetAdminSandboxesRunningCountsRequest constructs an http.Request for the GetAdminSandboxesRunningCounts method
+func NewGetAdminSandboxesRunningCountsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/sandboxes/running-counts")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -7156,6 +7223,16 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with DELETE /access-tokens/{accessTokenID} (the `DeleteAccessTokensAccessTokenID` operationId).
 	DeleteAccessTokensAccessTokenIDWithResponse(ctx context.Context, accessTokenID AccessTokenID, reqEditors ...RequestEditorFn) (*DeleteAccessTokensAccessTokenIDResponse, error)
 
+	// GetAdminSandboxesRunningCountsWithResponse Count running sandboxes by team
+	//
+	// Returns a shared snapshot normally refreshed after five seconds. A
+	// sandbox transitioning out of running can remain counted until removal.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /admin/sandboxes/running-counts (the `GetAdminSandboxesRunningCounts` operationId).
+	GetAdminSandboxesRunningCountsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetAdminSandboxesRunningCountsResponse, error)
+
 	// PostAdminTeamsTeamIDApiKeysWithBodyWithResponse Create team API key as admin
 	//
 	// Creates a team API key for internal service workflows.
@@ -8007,6 +8084,61 @@ func (r DeleteAccessTokensAccessTokenIDResponse) ContentType() string {
 	return ""
 }
 
+type GetAdminSandboxesRunningCountsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AdminTeamRunningSandboxCounts
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetAdminSandboxesRunningCountsResponse) GetJSON200() *AdminTeamRunningSandboxCounts {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetAdminSandboxesRunningCountsResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetAdminSandboxesRunningCountsResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetAdminSandboxesRunningCountsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAdminSandboxesRunningCountsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAdminSandboxesRunningCountsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetAdminSandboxesRunningCountsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type PostAdminTeamsTeamIDApiKeysResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -8782,6 +8914,10 @@ type PostSandboxesResponse struct {
 	JSON401 *N401
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *N500
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *N503
+	// JSON504 the response for an HTTP 504 `application/json` response
+	JSON504 *N504
 }
 
 // GetJSON201 returns the response for an HTTP 201 `application/json` response
@@ -8802,6 +8938,16 @@ func (r PostSandboxesResponse) GetJSON401() *N401 {
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
 func (r PostSandboxesResponse) GetJSON500() *N500 {
 	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r PostSandboxesResponse) GetJSON503() *N503 {
+	return r.JSON503
+}
+
+// GetJSON504 returns the response for an HTTP 504 `application/json` response
+func (r PostSandboxesResponse) GetJSON504() *N504 {
+	return r.JSON504
 }
 
 // GetBody returns the raw response body bytes
@@ -9025,8 +9171,14 @@ type PostSandboxesSandboxIDConnectResponse struct {
 	JSON401 *N401
 	// JSON404 the response for an HTTP 404 `application/json` response
 	JSON404 *N404
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *N409
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *N500
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *N503
+	// JSON504 the response for an HTTP 504 `application/json` response
+	JSON504 *N504
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -9054,9 +9206,24 @@ func (r PostSandboxesSandboxIDConnectResponse) GetJSON404() *N404 {
 	return r.JSON404
 }
 
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PostSandboxesSandboxIDConnectResponse) GetJSON409() *N409 {
+	return r.JSON409
+}
+
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
 func (r PostSandboxesSandboxIDConnectResponse) GetJSON500() *N500 {
 	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r PostSandboxesSandboxIDConnectResponse) GetJSON503() *N503 {
+	return r.JSON503
+}
+
+// GetJSON504 returns the response for an HTTP 504 `application/json` response
+func (r PostSandboxesSandboxIDConnectResponse) GetJSON504() *N504 {
+	return r.JSON504
 }
 
 // GetBody returns the raw response body bytes
@@ -9101,6 +9268,8 @@ type PostSandboxesSandboxIDForkResponse struct {
 	JSON409 *N409
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *N500
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *N503
 }
 
 // GetJSON201 returns the response for an HTTP 201 `application/json` response
@@ -9126,6 +9295,11 @@ func (r PostSandboxesSandboxIDForkResponse) GetJSON409() *N409 {
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
 func (r PostSandboxesSandboxIDForkResponse) GetJSON500() *N500 {
 	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r PostSandboxesSandboxIDForkResponse) GetJSON503() *N503 {
+	return r.JSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -9465,6 +9639,8 @@ type PostSandboxesSandboxIDResumeResponse struct {
 	HTTPResponse *http.Response
 	// JSON201 the response for an HTTP 201 `application/json` response
 	JSON201 *Sandbox
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *N401
 	// JSON404 the response for an HTTP 404 `application/json` response
@@ -9473,11 +9649,20 @@ type PostSandboxesSandboxIDResumeResponse struct {
 	JSON409 *N409
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *N500
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *N503
+	// JSON504 the response for an HTTP 504 `application/json` response
+	JSON504 *N504
 }
 
 // GetJSON201 returns the response for an HTTP 201 `application/json` response
 func (r PostSandboxesSandboxIDResumeResponse) GetJSON201() *Sandbox {
 	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PostSandboxesSandboxIDResumeResponse) GetJSON400() *N400 {
+	return r.JSON400
 }
 
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
@@ -9498,6 +9683,16 @@ func (r PostSandboxesSandboxIDResumeResponse) GetJSON409() *N409 {
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
 func (r PostSandboxesSandboxIDResumeResponse) GetJSON500() *N500 {
 	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r PostSandboxesSandboxIDResumeResponse) GetJSON503() *N503 {
+	return r.JSON503
+}
+
+// GetJSON504 returns the response for an HTTP 504 `application/json` response
+func (r PostSandboxesSandboxIDResumeResponse) GetJSON504() *N504 {
+	return r.JSON504
 }
 
 // GetBody returns the raw response body bytes
@@ -11486,6 +11681,22 @@ func (c *ClientWithResponses) DeleteAccessTokensAccessTokenIDWithResponse(ctx co
 	return ParseDeleteAccessTokensAccessTokenIDResponse(rsp)
 }
 
+// GetAdminSandboxesRunningCountsWithResponse Count running sandboxes by team
+//
+// Returns a shared snapshot normally refreshed after five seconds. A
+// sandbox transitioning out of running can remain counted until removal.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /admin/sandboxes/running-counts (the `GetAdminSandboxesRunningCounts` operationId).
+func (c *ClientWithResponses) GetAdminSandboxesRunningCountsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetAdminSandboxesRunningCountsResponse, error) {
+	rsp, err := c.GetAdminSandboxesRunningCounts(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAdminSandboxesRunningCountsResponse(rsp)
+}
+
 // PostAdminTeamsTeamIDApiKeysWithBodyWithResponse Create team API key as admin
 //
 // Creates a team API key for internal service workflows.
@@ -12778,6 +12989,46 @@ func ParseDeleteAccessTokensAccessTokenIDResponse(rsp *http.Response) (*DeleteAc
 	return response, nil
 }
 
+// ParseGetAdminSandboxesRunningCountsResponse parses an HTTP response from a GetAdminSandboxesRunningCountsWithResponse call
+func ParseGetAdminSandboxesRunningCountsResponse(rsp *http.Response) (*GetAdminSandboxesRunningCountsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAdminSandboxesRunningCountsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AdminTeamRunningSandboxCounts
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParsePostAdminTeamsTeamIDApiKeysResponse parses an HTTP response from a PostAdminTeamsTeamIDApiKeysWithResponse call
 func ParsePostAdminTeamsTeamIDApiKeysResponse(rsp *http.Response) (*PostAdminTeamsTeamIDApiKeysResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -13404,6 +13655,20 @@ func ParsePostSandboxesResponse(rsp *http.Response) (*PostSandboxesResponse, err
 		}
 		response.JSON500 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest N503
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 504:
+		var dest N504
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON504 = &dest
+
 	}
 
 	return response, nil
@@ -13595,12 +13860,33 @@ func ParsePostSandboxesSandboxIDConnectResponse(rsp *http.Response) (*PostSandbo
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest N503
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 504:
+		var dest N504
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON504 = &dest
 
 	}
 
@@ -13655,6 +13941,13 @@ func ParsePostSandboxesSandboxIDForkResponse(rsp *http.Response) (*PostSandboxes
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest N503
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
 
 	}
 
@@ -13919,6 +14212,13 @@ func ParsePostSandboxesSandboxIDResumeResponse(rsp *http.Response) (*PostSandbox
 		}
 		response.JSON201 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest N401
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -13946,6 +14246,20 @@ func ParsePostSandboxesSandboxIDResumeResponse(rsp *http.Response) (*PostSandbox
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest N503
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 504:
+		var dest N504
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON504 = &dest
 
 	}
 

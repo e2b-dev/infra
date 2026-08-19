@@ -357,11 +357,7 @@ func (o *Orchestrator) CreateSandbox(
 			o.maybeRemapResumeOriginNode(ctx, snapshotSandboxID, team, sbxData.NodeID, placed.WarmedNode)
 		}
 
-		return sandbox.Sandbox{}, &api.APIError{
-			Code:      http.StatusInternalServerError,
-			ClientMsg: placement.ClientMessage(err),
-			Err:       fmt.Errorf("failed to place sandbox: %w", err),
-		}
+		return sandbox.Sandbox{}, placementAPIError(err)
 	}
 
 	node = placed.Node

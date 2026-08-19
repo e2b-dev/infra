@@ -28,6 +28,7 @@ import (
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
@@ -328,7 +329,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		mcp,
 	)
 	if createErr != nil {
-		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)
+		apierrors.SendAPIError(c, createErr)
 
 		return
 	}
