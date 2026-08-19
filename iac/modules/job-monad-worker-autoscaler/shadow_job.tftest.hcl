@@ -4,7 +4,7 @@ variables {
   node_pool           = "api"
   worker_node_pool    = "default"
   worker_cluster_keys = ["default"]
-  worker_cluster_size = 6
+  worker_cluster_size = 2
   worker_machine_type = "n1-standard-8"
   worker_host_floor   = 2
   allocation_count    = 2
