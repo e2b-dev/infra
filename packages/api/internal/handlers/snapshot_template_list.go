@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -11,7 +10,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -93,22 +91,16 @@ func (a *APIStore) GetSnapshots(c *gin.Context, params api.GetSnapshotsParams) {
 			tagFilter = &defaultTag
 		}
 
-		// Resolve alias using the cache — same pattern as template builds. Team
-		// ownership is enforced by the query's team_id predicate, so a name that
-		// resolves to another team's template yields an empty list.
-		aliasInfo, err := a.templateCache.ResolveAlias(ctx, identifier, teamInfo.Slug)
-		switch {
-		case err == nil:
-			envIDFilter = &aliasInfo.TemplateID
-		case errors.Is(err, templatecache.ErrTemplateNotFound):
+		// Resolve alias using the cache — same pattern as template builds.
+		templateID, outcome := a.resolveTemplateFilter(c, identifier, teamInfo.Slug, "error resolving snapshot template alias")
+		switch outcome {
+		case templateFilterResolved:
+			envIDFilter = &templateID
+		case templateFilterNoMatch:
 			c.JSON(http.StatusOK, []api.SnapshotInfo{})
 
 			return
-		default:
-			apiErr := templatecache.ErrorToAPIError(err, identifier)
-			a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
-			telemetry.ReportCriticalError(ctx, "error resolving snapshot template alias", apiErr.Err)
-
+		case templateFilterFailed:
 			return
 		}
 	}
