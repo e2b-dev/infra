@@ -60,3 +60,24 @@ resource "google_project_iam_member" "api_controller" {
   role    = each.value
   member  = "serviceAccount:${google_service_account.api_controller_service_account.email}"
 }
+
+# Scale-out actuation: the controller may only grow the worker MIG. Managed
+# instance groups accept no resource-level IAM, so the grant is a project
+# custom role limited to the two permissions the resize path uses; the
+# controller binary additionally refuses any group other than its configured
+# worker MIG and any non-growth target.
+resource "google_project_iam_custom_role" "api_controller_worker_resize" {
+  role_id     = "monadWorkerAutoscalerResize"
+  title       = "Monad Worker Autoscaler Resize"
+  description = "Read and resize managed instance groups for workload-aware worker scale-out."
+  permissions = [
+    "compute.instanceGroupManagers.get",
+    "compute.instanceGroupManagers.update",
+  ]
+}
+
+resource "google_project_iam_member" "api_controller_worker_resize" {
+  project = var.gcp_project_id
+  role    = google_project_iam_custom_role.api_controller_worker_resize.id
+  member  = "serviceAccount:${google_service_account.api_controller_service_account.email}"
+}
