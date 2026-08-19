@@ -28,12 +28,12 @@ func TestForwarder_ExportForwards(t *testing.T) {
 	t.Parallel()
 
 	f := newHandoverTestForwarder()
-	f.ports["100-8080"] = &PortToForward{pid: 100, port: 8080, family: 4, socatPid: 555, state: PortStateForward}
-	f.ports["101-9090"] = &PortToForward{pid: 101, port: 9090, family: 4, state: PortStateForward} // no socat
+	f.ports["100-8080-127.0.0.1"] = &PortToForward{pid: 100, port: 8080, family: 4, socatPid: 555, state: PortStateForward}
+	f.ports["101-9090-127.0.0.1"] = &PortToForward{pid: 101, port: 9090, family: 4, state: PortStateForward} // no socat
 
 	out := f.ExportForwards()
 	require.Len(t, out, 1)
-	assert.Equal(t, "100-8080", out[0].GetKey())
+	assert.Equal(t, "100-8080-127.0.0.1", out[0].GetKey())
 	assert.Equal(t, uint32(8080), out[0].GetPort())
 	assert.Equal(t, int32(100), out[0].GetListenerPid())
 	assert.Equal(t, uint32(4), out[0].GetFamily())
@@ -49,7 +49,7 @@ func TestForwarder_ImportForwards_SkipsDeadSocat(t *testing.T) {
 	f := newHandoverTestForwarder()
 	// A very high pid that is overwhelmingly unlikely to exist: kill -0 fails.
 	n := f.ImportForwards([]*upgrade.ForwardedPort{
-		{Key: "1-1", Port: 1, ListenerPid: 1, Family: 4, SocatPid: 2147483646},
+		{Key: "1-1-127.0.0.1", Port: 1, ListenerPid: 1, Family: 4, SocatPid: 2147483646},
 	})
 	assert.Zero(t, n)
 	assert.Empty(t, f.ports)
@@ -72,12 +72,39 @@ func TestForwarder_ImportForwards_ReadoptsLiveSocat(t *testing.T) {
 
 	f := newHandoverTestForwarder()
 	n := f.ImportForwards([]*upgrade.ForwardedPort{
+		{Key: "100-8080-127.0.0.1", Port: 8080, ListenerPid: 100, Family: 4, SocatPid: int32(pid)},
+	})
+	require.Equal(t, 1, n)
+
+	p, ok := f.ports["100-8080-127.0.0.1"]
+	require.True(t, ok, "a live socat must be re-adopted into the ports map")
+	assert.Equal(t, pid, p.socatPID())
+	assert.Nil(t, p.socat, "a re-adopted socat has no *exec.Cmd")
+}
+
+// TestForwarder_ImportForwards_NormalizesOldKey re-adopts a socat exported by an
+// old envd binary whose key was "<pid>-<port>" (no IP suffix), translating it to
+// "<pid>-<port>-<ip>" so the next scan doesn't spawn a duplicate socat.
+func TestForwarder_ImportForwards_NormalizesOldKey(t *testing.T) {
+	t.Parallel()
+
+	cmd := exec.CommandContext(t.Context(), "sleep", "30")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	require.NoError(t, cmd.Start())
+	pid := cmd.Process.Pid
+	t.Cleanup(func() { _ = syscall.Kill(-pid, syscall.SIGKILL) })
+
+	f := newHandoverTestForwarder()
+	// Old-format key (one dash): family 4 → must normalise to "100-8080-127.0.0.1"
+	n := f.ImportForwards([]*upgrade.ForwardedPort{
 		{Key: "100-8080", Port: 8080, ListenerPid: 100, Family: 4, SocatPid: int32(pid)},
 	})
 	require.Equal(t, 1, n)
 
-	p, ok := f.ports["100-8080"]
-	require.True(t, ok, "a live socat must be re-adopted into the ports map")
+	_, oldOk := f.ports["100-8080"]
+	assert.False(t, oldOk, "old-format key must not remain in the map")
+
+	p, newOk := f.ports["100-8080-127.0.0.1"]
+	require.True(t, newOk, "old-format key must be normalised to new format")
 	assert.Equal(t, pid, p.socatPID())
-	assert.Nil(t, p.socat, "a re-adopted socat has no *exec.Cmd")
 }

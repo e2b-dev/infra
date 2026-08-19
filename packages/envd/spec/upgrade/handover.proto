@@ -47,7 +47,7 @@ message MountEntry {
 // carrying its pid lets the new forwarder re-adopt it (suppressing a duplicate
 // socat and reaping it when the port closes) instead of respawning.
 message ForwardedPort {
-  string key = 1;           // the forwarder map key: "<listener_pid>-<port>"
+  string key = 1;           // the forwarder map key: "<listener_pid>-<port>-<ip>" (old binaries emit "<listener_pid>-<port>"; ImportForwards normalises on read)
   uint32 port = 2;
   int32 listener_pid = 3;   // pid of the guest process listening on the port
   uint32 family = 4;        // IP version (4 or 6)

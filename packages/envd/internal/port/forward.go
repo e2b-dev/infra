@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
+	"strings"
 	"sync"
 	"syscall"
 
@@ -333,7 +334,7 @@ func (f *Forwarder) ImportForwards(forwards []*upgrade.ForwardedPort) (readopted
 		if syscall.Kill(pid, 0) != nil {
 			continue
 		}
-		f.ports[fp.GetKey()] = &PortToForward{
+		f.ports[normalizeForwardKey(fp)] = &PortToForward{
 			pid:      fp.GetListenerPid(),
 			port:     fp.GetPort(),
 			family:   fp.GetFamily(),
@@ -345,6 +346,22 @@ func (f *Forwarder) ImportForwards(forwards []*upgrade.ForwardedPort) (readopted
 	}
 
 	return readopted
+}
+
+// normalizeForwardKey returns the canonical map key for a re-adopted port.
+// Old envd binaries exported Key as "<pid>-<port>" (one dash); new binaries use
+// "<pid>-<port>-<ip>" (two dashes). When the old format is detected the IP is
+// inferred from Family so the seeded key matches what the scan loop will produce.
+func normalizeForwardKey(fp *upgrade.ForwardedPort) string {
+	key := fp.GetKey()
+	if strings.Count(key, "-") == 1 {
+		ip := "127.0.0.1"
+		if fp.GetFamily() == 6 {
+			ip = "::1"
+		}
+		key += "-" + ip
+	}
+	return key
 }
 
 func familyToIPVersion(family uint32) uint32 {

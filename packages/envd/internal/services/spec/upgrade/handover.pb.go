@@ -203,7 +203,7 @@ type ForwardedPort struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Key         string `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"` // the forwarder map key: "<listener_pid>-<port>"
+	Key         string `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"` // the forwarder map key: "<listener_pid>-<port>-<ip>" (old binaries emit "<listener_pid>-<port>"; ImportForwards normalises on read)
 	Port        uint32 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
 	ListenerPid int32  `protobuf:"varint,3,opt,name=listener_pid,json=listenerPid,proto3" json:"listener_pid,omitempty"` // pid of the guest process listening on the port
 	Family      uint32 `protobuf:"varint,4,opt,name=family,proto3" json:"family,omitempty"`                              // IP version (4 or 6)
