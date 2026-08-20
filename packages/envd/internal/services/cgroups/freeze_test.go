@@ -56,6 +56,7 @@ type fakeFreezeManager struct {
 	reads     map[ProcessType]int
 	freezeErr map[ProcessType]error
 	frozenErr map[ProcessType]error
+	readOrder []ProcessType
 }
 
 func newFakeFreezeManager() *fakeFreezeManager {
@@ -97,6 +98,10 @@ func (m *fakeFreezeManager) Frozen(pt ProcessType) (bool, error) {
 		return false, err
 	}
 	m.reads[pt]++
+	// The ORDER matters, not only the count: polling every cgroup once per round and polling
+	// one cgroup to completion before starting the next produce identical counts, and differ
+	// only in how the reads interleave.
+	m.readOrder = append(m.readOrder, pt)
 	at, ok := m.frozenAt[pt]
 	if !ok {
 		return m.frozen[pt], nil
@@ -166,20 +171,37 @@ func TestFreeze_WaitIsBoundedBySlowestNotSum(t *testing.T) {
 	// Every cgroup needs several reads before it reads frozen. Polled together the wait is
 	// one slow cgroup's worth; polled one after another it would be the sum, which is
 	// what would blow the pause budget on a guest with many busy cgroups.
+	const readsBeforeFrozen = 5
 	for _, pt := range WorkloadProcessTypes {
-		mgr.frozenAt[pt] = 5
+		mgr.frozenAt[pt] = readsBeforeFrozen
 	}
 	f := NewWorkloadFreezer(mgr)
 
-	start := time.Now()
 	res, err := f.Freeze(t.Context(), 5*time.Second)
-	elapsed := time.Since(start)
 
 	require.NoError(t, err)
 	require.True(t, res.AllFrozen())
-	// Serialized, this would cost len(types) * 5 poll intervals; concurrent, ~5.
-	serialFloor := time.Duration(len(WorkloadProcessTypes)*5) * freezePollInterval
-	assert.Less(t, elapsed, serialFloor, "cgroups must be polled together, not in sequence")
+
+	// EVERY round must name every cgroup, not just the first: a sweep of everything followed by
+	// draining each remaining cgroup in turn passes a first-round check and still costs the sum.
+	// Read ORDER is what distinguishes them -- both orders read each cgroup the same number of
+	// times, so an assertion on counts would pass either.
+	order := mgr.readOrder
+
+	// Every cgroup needs the same number of reads here, so none drops out early and the order
+	// must be exactly `reads` whole rounds. That exactness is what lets each round be checked.
+	require.Len(t, order, len(WorkloadProcessTypes)*readsBeforeFrozen,
+		"expected %d whole rounds over %d cgroups, got %v",
+		readsBeforeFrozen, len(WorkloadProcessTypes), order)
+
+	for i := 0; i < len(order); i += len(WorkloadProcessTypes) {
+		round := order[i : i+len(WorkloadProcessTypes)]
+		for _, pt := range WorkloadProcessTypes {
+			assert.Contains(t, round, pt,
+				"cgroups must be polled together in every round: %s missing from round %d (%v); full order %v",
+				pt, i/len(WorkloadProcessTypes)+1, round, order)
+		}
+	}
 }
 
 // TestFreeze_UnreadableStateIsCountedFailedNotAwaited covers the read-error arm of the
