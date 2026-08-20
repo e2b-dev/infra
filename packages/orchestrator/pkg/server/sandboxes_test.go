@@ -3,7 +3,6 @@
 package server
 
 import (
-	"context"
 	"net"
 	"reflect"
 	"testing"
@@ -176,11 +175,11 @@ func TestRecordSandboxKill(t *testing.T) {
 	counter, err := telemetry.GetCounter(meter, telemetry.OrchestratorSandboxKilledCounterName)
 	require.NoError(t, err)
 
-	recordSandboxKill(context.Background(), counter, "timeout")
-	recordSandboxKill(context.Background(), counter, "")
+	recordSandboxKill(t.Context(), counter, "timeout")
+	recordSandboxKill(t.Context(), counter, "")
 
 	var rm metricdata.ResourceMetrics
-	require.NoError(t, reader.Collect(context.Background(), &rm))
+	require.NoError(t, reader.Collect(t.Context(), &rm))
 
 	got := map[string]int64{}
 	for _, sm := range rm.ScopeMetrics {
@@ -236,17 +235,17 @@ func TestRecordExecutionDuration(t *testing.T) {
 
 	s := &Server{sandboxExecutionDuration: histogram}
 
-	s.recordExecutionDuration(context.Background(), endedSandbox(sandbox.StopReasonKilled))
-	s.recordExecutionDuration(context.Background(), endedSandbox(sandbox.StopReasonPaused))
-	s.recordExecutionDuration(context.Background(), endedSandbox(sandbox.StopReasonCheckpointing))
+	s.recordExecutionDuration(t.Context(), endedSandbox(sandbox.StopReasonKilled))
+	s.recordExecutionDuration(t.Context(), endedSandbox(sandbox.StopReasonPaused))
+	s.recordExecutionDuration(t.Context(), endedSandbox(sandbox.StopReasonCheckpointing))
 	// An execution nobody asked to stop is a crash.
-	s.recordExecutionDuration(context.Background(), crashed)
+	s.recordExecutionDuration(t.Context(), crashed)
 	// Neither of these ran a guest for a known span, so they record nothing.
-	s.recordExecutionDuration(context.Background(), neverStarted)
-	s.recordExecutionDuration(context.Background(), stillRunning)
+	s.recordExecutionDuration(t.Context(), neverStarted)
+	s.recordExecutionDuration(t.Context(), stillRunning)
 
 	var rm metricdata.ResourceMetrics
-	require.NoError(t, reader.Collect(context.Background(), &rm))
+	require.NoError(t, reader.Collect(t.Context(), &rm))
 
 	got := map[string]uint64{}
 	sum := map[string]int64{}

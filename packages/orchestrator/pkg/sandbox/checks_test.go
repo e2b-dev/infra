@@ -3,7 +3,6 @@
 package sandbox
 
 import (
-	"context"
 	"testing"
 	"time"
 )
@@ -30,7 +29,7 @@ func TestChecks_StopBeforeStart_DoesNotStartHealthLoop(t *testing.T) {
 
 	returned := make(chan struct{})
 	go func() {
-		c.Start(context.Background())
+		c.Start(t.Context())
 		close(returned)
 	}()
 

@@ -195,7 +195,7 @@ func vethSetHas(hf *HostFirewall, veth string) error {
 func TestRemoveNetworkV2_Idempotent(t *testing.T) { //nolint:paralleltest // mutates host netns state: singleton nftables table "v2-host-firewall", named netns, veth links
 	skipIfNotLinuxRoot(t)
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	hf := newTestHostFirewall(t, testConfig())
 

@@ -1,7 +1,6 @@
 package joined
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,14 +9,14 @@ import (
 // Mark must be safe even when the context carries no holder.
 func TestMark_NoHolder_Noop(t *testing.T) {
 	t.Parallel()
-	Mark(context.Background())
+	Mark(t.Context())
 }
 
 // Attribute must return request.joined=false when no holder is on ctx.
 func TestAttribute_NoHolder_ReturnsFalse(t *testing.T) {
 	t.Parallel()
 
-	a := Attribute(context.Background())
+	a := Attribute(t.Context())
 	assert.Equal(t, AttributeKey, string(a.Key))
 	assert.False(t, a.Value.AsBool())
 }
@@ -27,7 +26,7 @@ func TestAttribute_NoHolder_ReturnsFalse(t *testing.T) {
 func TestAttribute_FreshHolder_ReturnsFalse(t *testing.T) {
 	t.Parallel()
 
-	ctx := WithHolder(context.Background())
+	ctx := WithHolder(t.Context())
 
 	a := Attribute(ctx)
 	assert.False(t, a.Value.AsBool())
@@ -37,7 +36,7 @@ func TestAttribute_FreshHolder_ReturnsFalse(t *testing.T) {
 func TestMark_FlipsAttributeToTrue(t *testing.T) {
 	t.Parallel()
 
-	ctx := WithHolder(context.Background())
+	ctx := WithHolder(t.Context())
 	Mark(ctx)
 
 	a := Attribute(ctx)
@@ -50,7 +49,7 @@ func TestMark_FlipsAttributeToTrue(t *testing.T) {
 func TestWithHolder_Idempotent(t *testing.T) {
 	t.Parallel()
 
-	ctx1 := WithHolder(context.Background())
+	ctx1 := WithHolder(t.Context())
 	ctx2 := WithHolder(ctx1)
 
 	Mark(ctx1)
@@ -64,7 +63,7 @@ func TestWithHolder_Idempotent(t *testing.T) {
 func TestMark_DescendantGoroutine(t *testing.T) {
 	t.Parallel()
 
-	ctx := WithHolder(context.Background())
+	ctx := WithHolder(t.Context())
 	done := make(chan struct{})
 	go func() {
 		Mark(ctx)

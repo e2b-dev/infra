@@ -3,7 +3,6 @@
 package finalize
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -68,7 +67,7 @@ func TestLayerStampsThisBuildsCmdlineArgs(t *testing.T) {
 			}
 
 			got, err := ppb.Layer(
-				context.Background(),
+				t.Context(),
 				phases.LayerResult{Metadata: metadata.Template{CmdlineArgs: tt.inherit}},
 				"hash",
 			)

@@ -14,7 +14,7 @@ import (
 func TestWrapContextAsUserError_NilError(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	ctx := t.Context()
 	if got := WrapContextAsUserError(ctx, nil); got != nil {
 		t.Errorf("expected nil, got %v", got)
 	}
@@ -23,7 +23,7 @@ func TestWrapContextAsUserError_NilError(t *testing.T) {
 func TestWrapContextAsUserError_AlreadyUserError(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	ctx := t.Context()
 	userErr := phases.NewPhaseBuildError(phases.PhaseMeta{}, errors.New("user mistake"))
 	got := WrapContextAsUserError(ctx, userErr)
 	if !errors.Is(got, userErr) {
@@ -36,7 +36,7 @@ func TestWrapContextAsUserError_InternalTimeout_NotMisclassified(t *testing.T) {
 
 	// Simulate: build context is still active, but error contains context.Canceled
 	// from an internal child-context timeout (e.g., WaitForEnvd).
-	buildCtx := context.Background() // not canceled
+	buildCtx := t.Context() // not canceled
 
 	// This is what doRequestWithInfiniteRetries returns when a child context is canceled
 	internalErr := fmt.Errorf("%w with cause: %w", context.Canceled, errors.New("syncing took too long"))
@@ -57,7 +57,7 @@ func TestWrapContextAsUserError_UserCancellation(t *testing.T) {
 	t.Parallel()
 
 	// Simulate: user cancels the build → build context is canceled
-	buildCtx, cancel := context.WithCancel(context.Background())
+	buildCtx, cancel := context.WithCancel(t.Context())
 	cancel() // user canceled
 
 	// Error must contain context.Canceled (as it would in real code via errors.Join or wrapping)
@@ -77,7 +77,7 @@ func TestWrapContextAsUserError_BuildContextCanceled_ErrorUnrelated(t *testing.T
 
 	// Build context is canceled, but the error is unrelated (e.g., disk error).
 	// Should NOT be wrapped as user error.
-	buildCtx, cancel := context.WithCancel(context.Background())
+	buildCtx, cancel := context.WithCancel(t.Context())
 	cancel()
 
 	diskErr := errors.New("disk I/O error")
@@ -95,7 +95,7 @@ func TestWrapContextAsUserError_BuildDeadlineExceeded(t *testing.T) {
 	t.Parallel()
 
 	// Simulate: build context deadline exceeded
-	buildCtx, cancel := context.WithTimeout(context.Background(), 0)
+	buildCtx, cancel := context.WithTimeout(t.Context(), 0)
 	defer cancel()
 	<-buildCtx.Done() // ensure it's expired
 
@@ -116,7 +116,7 @@ func TestWrapContextAsUserError_InternalCanceledError_BuildContextAlive(t *testi
 
 	// The key regression test: error chain contains context.Canceled from a child
 	// context, but the build context is NOT canceled. Must NOT be treated as user error.
-	buildCtx := context.Background()
+	buildCtx := t.Context()
 
 	// Simulate WaitForEnvd timeout chain:
 	// child context canceled → doRequestWithInfiniteRetries wraps ctx.Err()

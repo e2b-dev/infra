@@ -3,7 +3,6 @@
 package network
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -36,7 +35,7 @@ func TestRegisterDatapathMetric(t *testing.T) {
 
 			require.NoError(t, registration.Unregister())
 			collected = metricdata.ResourceMetrics{}
-			require.NoError(t, reader.Collect(context.Background(), &collected))
+			require.NoError(t, reader.Collect(t.Context(), &collected))
 			require.Empty(t, datapathPoints(t, collected))
 		})
 	}

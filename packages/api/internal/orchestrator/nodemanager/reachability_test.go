@@ -1,7 +1,6 @@
 package nodemanager
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -48,7 +47,7 @@ func TestMarkUnhealthyLocal_DoesNotImplyUnreachable(t *testing.T) {
 
 	n := NewTestNode("test-node", api.NodeStatusReady, 0, 1)
 
-	n.markUnhealthyLocal(context.Background())
+	n.markUnhealthyLocal(t.Context())
 
 	assert.Equal(t, api.NodeStatusUnhealthy, n.Status())
 	_, unreachable := n.UnreachableSince()
@@ -87,7 +86,7 @@ func TestSync_NodeThatAnsweredIsNotUnreachable(t *testing.T) {
 
 	n := NewTestNode("test-node", api.NodeStatusReady, 0, 1, WithFailingSandboxList())
 
-	n.Sync(context.Background(), nil)
+	n.Sync(t.Context(), nil)
 
 	_, unreachable := n.UnreachableSince()
 	assert.False(t, unreachable, "a node that answered every RPC must not be marked unreachable")
@@ -101,7 +100,7 @@ func TestSync_SilentNodeIsUnreachable(t *testing.T) {
 
 	n := NewTestNode("test-node", api.NodeStatusReady, 0, 1, WithSilentInfoClient())
 
-	n.Sync(context.Background(), nil)
+	n.Sync(t.Context(), nil)
 
 	since, unreachable := n.UnreachableSince()
 	require.True(t, unreachable, "a node that never answered must be marked unreachable")
@@ -116,7 +115,7 @@ func TestSelfReportedUnhealthyIsNotUnreachable(t *testing.T) {
 	t.Parallel()
 
 	n := NewTestNode("test-node", api.NodeStatusReady, 0, 1)
-	n.setStatus(context.Background(), api.NodeStatusUnhealthy, time.Now().Add(-time.Hour))
+	n.setStatus(t.Context(), api.NodeStatusUnhealthy, time.Now().Add(-time.Hour))
 
 	_, unreachable := n.UnreachableSince()
 	assert.False(t, unreachable)

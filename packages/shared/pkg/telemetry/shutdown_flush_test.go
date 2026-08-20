@@ -58,7 +58,7 @@ func (e *recordingExporter) names() []string {
 func TestShutdownFlushesPendingMetrics(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	ctx := t.Context()
 	exporter := &recordingExporter{}
 
 	// An export period far longer than the test guarantees the reader never
@@ -89,6 +89,6 @@ func TestNoopClientShutdownIsSafe(t *testing.T) {
 	t.Parallel()
 
 	assert.NotPanics(t, func() {
-		assert.NoError(t, NewNoopClient().Shutdown(context.Background()))
+		assert.NoError(t, NewNoopClient().Shutdown(t.Context()))
 	})
 }

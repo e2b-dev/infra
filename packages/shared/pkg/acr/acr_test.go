@@ -265,7 +265,7 @@ func TestAuthorizationContextHonorsCancellation(t *testing.T) {
 	})
 	t.Cleanup(func() { close(release) })
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	go func() {
 		<-started
 		cancel()

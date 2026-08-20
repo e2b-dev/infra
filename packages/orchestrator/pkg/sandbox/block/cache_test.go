@@ -1233,7 +1233,7 @@ func TestCacheExportToDiffWithMetadata_ProceedsUnderReadLock(t *testing.T) {
 			return
 		}
 		defer out.Close()
-		_, eerr := c.ExportToDiffWithMetadata(context.Background(), out, meta)
+		_, eerr := c.ExportToDiffWithMetadata(t.Context(), out, meta)
 		done <- eerr
 	}()
 

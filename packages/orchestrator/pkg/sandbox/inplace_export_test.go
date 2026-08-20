@@ -323,7 +323,7 @@ func TestWaitForRootfsSeal_SerializesNextSnapshot(t *testing.T) {
 	s.rootfsSealDone = sealDone
 
 	returned := make(chan error, 1)
-	go func() { returned <- s.waitForRootfsSeal(context.Background()) }()
+	go func() { returned <- s.waitForRootfsSeal(t.Context()) }()
 
 	// Still sealing: the wait must not return.
 	select {
@@ -340,7 +340,7 @@ func TestWaitForRootfsSeal_SerializesNextSnapshot(t *testing.T) {
 	failed := utils.NewSetOnce[struct{}]()
 	require.NoError(t, failed.SetError(errors.New("seal failed")))
 	s2.rootfsSealDone = failed
-	require.Error(t, s2.waitForRootfsSeal(context.Background()))
+	require.Error(t, s2.waitForRootfsSeal(t.Context()))
 }
 
 // TestBeginEndInPlaceCheckpoint pins the guard that keeps two Checkpoint RPCs
@@ -421,7 +421,7 @@ func TestSetupInPlaceRootfsExport_AbortCleanupOrder(t *testing.T) {
 	require.Equal(t, blockA, buf, "pre-swap dirty block must survive the abort fold-back")
 
 	// ...the seal signal resolved SUCCESS (a later pause/checkpoint proceeds)...
-	require.NoError(t, s.waitForRootfsSeal(context.Background()))
+	require.NoError(t, s.waitForRootfsSeal(t.Context()))
 
 	// ...and the sealing slot is free.
 	_, err = fake.SwapForBackgroundSeal(t.Context())
@@ -467,7 +467,7 @@ func TestSetupInPlaceRootfsExport_EmptyDirtySet(t *testing.T) {
 	startSeal(t.Context())
 
 	// The seal signal resolved and the slot is free for the next checkpoint.
-	require.NoError(t, s.waitForRootfsSeal(context.Background()))
+	require.NoError(t, s.waitForRootfsSeal(t.Context()))
 	nextSeal, err := fake.SwapForBackgroundSeal(t.Context())
 	require.NoError(t, err, "sealing slot must be free after the empty fold-back")
 	require.NotNil(t, nextSeal)
@@ -521,7 +521,7 @@ func TestFailSealSetup(t *testing.T) {
 		require.ErrorIs(t, err, cause)
 
 		// Nothing latched: a later pause of this still-running sandbox proceeds.
-		require.NoError(t, s.waitForRootfsSeal(context.Background()))
+		require.NoError(t, s.waitForRootfsSeal(t.Context()))
 		require.NoError(t, s.EnsurePausable())
 
 		// The writable cache is complete again and the slot is free.
@@ -552,7 +552,7 @@ func TestFailSealSetup(t *testing.T) {
 
 		// The unrecoverable state latched, tagged as the permanent seal failure:
 		// both the pause wait and the pre-arm guard now refuse.
-		latchErr := s.waitForRootfsSeal(context.Background())
+		latchErr := s.waitForRootfsSeal(t.Context())
 		require.Error(t, latchErr)
 		require.ErrorIs(t, latchErr, build.ErrDeferredSealFailed)
 		require.Error(t, s.EnsurePausable())

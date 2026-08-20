@@ -1,7 +1,6 @@
 package analyticscollector
 
 import (
-	"context"
 	"net/http"
 	"testing"
 
@@ -145,7 +144,7 @@ func TestTeamEventCarriesTeamID(t *testing.T) {
 	recorder := &captureRecorder{}
 	p := &PosthogClient{client: recorder}
 
-	p.CreateAnalyticsTeamEvent(context.Background(), "team-uuid", "created_instance", posthog.NewProperties().Set("environment", "tpl"))
+	p.CreateAnalyticsTeamEvent(t.Context(), "team-uuid", "created_instance", posthog.NewProperties().Set("environment", "tpl"))
 
 	capture := recorder.capture(t)
 	assert.Equal(t, "team-uuid", capture.Properties[teamIDKey])
@@ -160,7 +159,7 @@ func TestUserEventCarriesTeamID(t *testing.T) {
 	recorder := &captureRecorder{}
 	p := &PosthogClient{client: recorder}
 
-	p.CreateAnalyticsUserEvent(context.Background(), "user-id", "team-uuid", "built environment", posthog.NewProperties())
+	p.CreateAnalyticsUserEvent(t.Context(), "user-id", "team-uuid", "built environment", posthog.NewProperties())
 
 	capture := recorder.capture(t)
 	assert.Equal(t, "user-id", capture.DistinctId)

@@ -35,7 +35,7 @@ func TestGatedClickhouseDelivery_PublishFlagOffDrops(t *testing.T) {
 	setWriteFanoutFlag(t, source, false)
 	d := &GatedClickhouseDelivery{ClickhouseDelivery: &ClickhouseDelivery{}, ff: ff}
 
-	err := d.Publish(context.Background(), "key", sharedevents.SandboxEvent{SandboxID: "sbx-1"})
+	err := d.Publish(t.Context(), "key", sharedevents.SandboxEvent{SandboxID: "sbx-1"})
 	require.NoError(t, err)
 }
 
@@ -48,7 +48,7 @@ func TestClickhouseDelivery_PublishSkipsFlagCheck(t *testing.T) {
 	d := &ClickhouseDelivery{}
 
 	require.Panics(t, func() {
-		_ = d.Publish(context.Background(), "key", sharedevents.SandboxEvent{})
+		_ = d.Publish(t.Context(), "key", sharedevents.SandboxEvent{})
 	}, "ungated delivery should bypass the flag and reach batcher.Push (panics on nil batcher)")
 }
 
@@ -57,6 +57,6 @@ func TestGatedClickhouseDelivery_PublishNilFeatureFlagsDrops(t *testing.T) {
 
 	d := &GatedClickhouseDelivery{ClickhouseDelivery: &ClickhouseDelivery{}, ff: nil}
 
-	err := d.Publish(context.Background(), "key", sharedevents.SandboxEvent{})
+	err := d.Publish(t.Context(), "key", sharedevents.SandboxEvent{})
 	require.NoError(t, err)
 }

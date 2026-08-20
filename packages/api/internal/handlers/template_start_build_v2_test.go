@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -54,7 +53,7 @@ func TestUserAgentToTemplateVersion(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := userAgentToTemplateVersion(context.Background(), logger.L(), tt.userAgent)
+			got, err := userAgentToTemplateVersion(t.Context(), logger.L(), tt.userAgent)
 			require.NoError(t, err)
 			require.Equal(t, tt.want, got)
 		})
