@@ -54,6 +54,22 @@ func TestParse(t *testing.T) {
 		}, result.DefaultPersistentVolumeTypeByRegion)
 	})
 
+	t.Run("secrets store backend address is optional and has no default", func(t *testing.T) { //nolint:paralleltest // cannot call t.Setenv and t.Parallel
+		removeEnv(t, "SECRETS_STORE_BACKEND_GRPC_ADDRESS")
+
+		result, err := Parse()
+		require.NoError(t, err)
+		assert.Empty(t, result.SecretsStoreBackendGrpcAddress)
+	})
+
+	t.Run("secrets store backend address is read when set", func(t *testing.T) {
+		t.Setenv("SECRETS_STORE_BACKEND_GRPC_ADDRESS", "secrets-backend:5000")
+
+		result, err := Parse()
+		require.NoError(t, err)
+		assert.Equal(t, "secrets-backend:5000", result.SecretsStoreBackendGrpcAddress)
+	})
+
 	t.Run("invalid service discovery provider exposes failure condition", func(t *testing.T) {
 		t.Setenv("SERVICE_DISCOVERY_PROVIDER", "invalid")
 

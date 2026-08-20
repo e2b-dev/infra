@@ -103,7 +103,7 @@ Supporting packages: `packages/shared` (protos, telemetry, storage clients, feat
 The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, port 80).
 
 - **Resources**: sandboxes (create/list/kill/pause/resume/connect/timeout/metrics/logs),
-  templates and builds, teams, volumes, API keys/access tokens, admin operations.
+  templates and builds, teams, volumes, API keys/access tokens, secrets, admin operations.
 - **Auth** (via `packages/auth`): team API keys (`X-API-Key`, `e2b_` prefix), auth-provider JWTs
   (OIDC), admin token. Backed by an auth DB (Postgres) with a Redis team cache.
 - **Workload identity**: sandbox create accepts an optional `iam.tokens` map of caller-named
@@ -121,6 +121,17 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
 - **State**: writes sandbox records to Redis (source of truth for *running* sandboxes) and the
   sandbox→node **routing catalog** in Redis that client-proxy reads. Persistent entities
   (templates, builds, snapshots, teams) live in Postgres.
+- **Secrets**: `/secrets` is the only public surface for secret management (create, list, get,
+  update, delete). The API authenticates the caller with the customer alternatives above, converts
+  the authenticated team UUID to the project UUID the backend knows, checks the `customer-secrets`
+  feature flag, and forwards a metadata-only request over a unary gRPC contract
+  (`e2b.secretsstore.management.v1`) to the secrets store backend named by
+  `SECRETS_STORE_BACKEND_GRPC_ADDRESS`. No caller credential, header or client-supplied tenant
+  crosses that hop, and no response - here or in a log, a span or an error - carries a secret
+  value. What a caller stores is a runtime marker, not a resolved secret; orchestrator-ee resolves
+  a marker to a value at sandbox egress, never here. Without a configured address, or with the flag
+  off, the routes stay registered and answer 403. Responses are `Cache-Control: no-store`, request bodies are capped at 512 KiB, and values
+  at 64 KiB.
 - **Extra listeners**: internal gRPC :5009 and edge gRPC :5109 expose `ResumeSandbox` so
   client-proxy can wake paused sandboxes on incoming traffic.
 - Reads ClickHouse for sandbox/team metrics endpoints. Sandbox and template-build logs default to

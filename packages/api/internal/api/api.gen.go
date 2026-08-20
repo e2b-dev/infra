@@ -600,6 +600,18 @@ type NewSandbox struct {
 	VolumeMounts *[]SandboxVolumeMount `json:"volumeMounts,omitempty"`
 }
 
+// NewSecret defines model for NewSecret.
+type NewSecret struct {
+	// Metadata Customer metadata of the secret. Always present, empty when unset. At most 32 entries; keys are limited to 128 bytes, values to 1024 bytes, and a secret's metadata to 8192 bytes in total.
+	Metadata *SecretMetadata `json:"metadata,omitempty"`
+
+	// Name Name of the secret, unique within the project. Names are lower-cased before storage and returned in that canonical form; the sec_ prefix is reserved for secret identifiers.
+	Name string `json:"name"`
+
+	// Value Runtime marker stored as the secret's first version. The runtime resolves it to a value at sandbox egress.
+	Value string `json:"value"`
+}
+
 // NewTeamAPIKey defines model for NewTeamAPIKey.
 type NewTeamAPIKey struct {
 	// Name Name of the API key
@@ -1066,6 +1078,39 @@ type SandboxVolumeMount struct {
 // SandboxesWithMetrics defines model for SandboxesWithMetrics.
 type SandboxesWithMetrics struct {
 	Sandboxes map[string]SandboxMetric `json:"sandboxes"`
+}
+
+// Secret Metadata of a secret. It never carries the secret value.
+type Secret struct {
+	// CreatedAt Time when the secret was created
+	CreatedAt time.Time `json:"createdAt"`
+
+	// CurrentVersion Version served to readers that do not name one
+	CurrentVersion int64 `json:"currentVersion"`
+
+	// Metadata Customer metadata of the secret. Always present, empty when unset. At most 32 entries; keys are limited to 128 bytes, values to 1024 bytes, and a secret's metadata to 8192 bytes in total.
+	Metadata SecretMetadata `json:"metadata"`
+
+	// Name Name of the secret, unique within the project
+	Name string `json:"name"`
+
+	// SecretID Identifier of the secret
+	SecretID string `json:"secretID"`
+
+	// UpdatedAt Time when the secret was last updated
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// SecretMetadata Customer metadata of the secret. Always present, empty when unset. At most 32 entries; keys are limited to 128 bytes, values to 1024 bytes, and a secret's metadata to 8192 bytes in total.
+type SecretMetadata map[string]string
+
+// SecretUpdate defines model for SecretUpdate.
+type SecretUpdate struct {
+	// Metadata Customer metadata of the secret. Always present, empty when unset. At most 32 entries; keys are limited to 128 bytes, values to 1024 bytes, and a secret's metadata to 8192 bytes in total.
+	Metadata *SecretMetadata `json:"metadata,omitempty"`
+
+	// Value Runtime marker stored as the secret's new version. The runtime resolves it to a value at sandbox egress.
+	Value string `json:"value"`
 }
 
 // SnapshotInfo defines model for SnapshotInfo.
@@ -1535,6 +1580,9 @@ type PaginationNextToken = string
 // SandboxID defines model for sandboxID.
 type SandboxID = string
 
+// SecretID Identifier of the secret (sec_ prefixed), or its canonical lower-case name
+type SecretID = string
+
 // TeamID defines model for teamID.
 type TeamID = string
 
@@ -1562,8 +1610,14 @@ type N409 = Error
 // N410 defines model for 410.
 type N410 = Error
 
+// N429 defines model for 429.
+type N429 = Error
+
 // N500 defines model for 500.
 type N500 = Error
+
+// N502 defines model for 502.
+type N502 = Error
 
 // N503 defines model for 503.
 type N503 = Error
@@ -1609,6 +1663,15 @@ type GetSandboxesSandboxIDMetricsParams struct {
 	// Start Unix timestamp for the start of the interval, in seconds, for which the metrics
 	Start *int64 `form:"start,omitempty" json:"start,omitempty"`
 	End   *int64 `form:"end,omitempty" json:"end,omitempty"`
+}
+
+// GetSecretsParams defines parameters for GetSecrets.
+type GetSecretsParams struct {
+	// NextToken Cursor to start the list from
+	NextToken *PaginationNextToken `form:"nextToken,omitempty" json:"nextToken,omitempty"`
+
+	// Limit Maximum number of items to return per page
+	Limit *PaginationLimit `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // GetSnapshotsParams defines parameters for GetSnapshots.
@@ -1781,6 +1844,12 @@ type PostSandboxesSandboxIDSnapshotsJSONRequestBody = SandboxSnapshotRequest
 
 // PostSandboxesSandboxIDTimeoutJSONRequestBody defines body for PostSandboxesSandboxIDTimeout for application/json ContentType.
 type PostSandboxesSandboxIDTimeoutJSONRequestBody = SandboxTimeoutRequest
+
+// PostSecretsJSONRequestBody defines body for PostSecrets for application/json ContentType.
+type PostSecretsJSONRequestBody = NewSecret
+
+// PostSecretsSecretIDJSONRequestBody defines body for PostSecretsSecretID for application/json ContentType.
+type PostSecretsSecretIDJSONRequestBody = SecretUpdate
 
 // PostTemplatesJSONRequestBody defines body for PostTemplates for application/json ContentType.
 //
@@ -2405,6 +2474,63 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /sandboxes/{sandboxID}/timeout (the `PostSandboxesSandboxIDTimeout` operationId).
 	PostSandboxesSandboxIDTimeout(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDTimeoutJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSecrets List project secrets
+	//
+	// List the project's secrets. No response carries a secret value.
+	//
+	// Corresponds with GET /secrets (the `GetSecrets` operationId).
+	GetSecrets(ctx context.Context, params *GetSecretsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostSecretsWithBody Create a secret
+	//
+	// Create a secret by storing a runtime marker as its first version. The response carries metadata only.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /secrets (the `PostSecrets` operationId).
+	PostSecretsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostSecrets Create a secret
+	//
+	// Create a secret by storing a runtime marker as its first version. The response carries metadata only.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /secrets (the `PostSecrets` operationId).
+	PostSecrets(ctx context.Context, body PostSecretsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteSecretsSecretID Delete a secret
+	//
+	// Revoke the secret and schedule its versions for cleanup.
+	//
+	// Corresponds with DELETE /secrets/{secretID} (the `DeleteSecretsSecretID` operationId).
+	DeleteSecretsSecretID(ctx context.Context, secretID SecretID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSecretsSecretID Get a secret
+	//
+	// Get one secret's metadata, selected by identifier or name.
+	//
+	// Corresponds with GET /secrets/{secretID} (the `GetSecretsSecretID` operationId).
+	GetSecretsSecretID(ctx context.Context, secretID SecretID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostSecretsSecretIDWithBody Update a secret
+	//
+	// Replace the secret's stored marker by appending a new version. The response carries metadata only.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /secrets/{secretID} (the `PostSecretsSecretID` operationId).
+	PostSecretsSecretIDWithBody(ctx context.Context, secretID SecretID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostSecretsSecretID Update a secret
+	//
+	// Replace the secret's stored marker by appending a new version. The response carries metadata only.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /secrets/{secretID} (the `PostSecretsSecretID` operationId).
+	PostSecretsSecretID(ctx context.Context, secretID SecretID, body PostSecretsSecretIDJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetSnapshots List snapshots
 	//
@@ -3535,6 +3661,133 @@ func (c *Client) PostSandboxesSandboxIDTimeoutWithBody(ctx context.Context, sand
 // Corresponds with POST /sandboxes/{sandboxID}/timeout (the `PostSandboxesSandboxIDTimeout` operationId).
 func (c *Client) PostSandboxesSandboxIDTimeout(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDTimeoutJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPostSandboxesSandboxIDTimeoutRequest(c.Server, sandboxID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetSecrets List project secrets
+//
+// List the project's secrets. No response carries a secret value.
+//
+// Corresponds with GET /secrets (the `GetSecrets` operationId).
+func (c *Client) GetSecrets(ctx context.Context, params *GetSecretsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSecretsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostSecretsWithBody Create a secret
+//
+// Create a secret by storing a runtime marker as its first version. The response carries metadata only.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /secrets (the `PostSecrets` operationId).
+func (c *Client) PostSecretsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostSecretsRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostSecrets Create a secret
+//
+// Create a secret by storing a runtime marker as its first version. The response carries metadata only.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /secrets (the `PostSecrets` operationId).
+func (c *Client) PostSecrets(ctx context.Context, body PostSecretsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostSecretsRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteSecretsSecretID Delete a secret
+//
+// Revoke the secret and schedule its versions for cleanup.
+//
+// Corresponds with DELETE /secrets/{secretID} (the `DeleteSecretsSecretID` operationId).
+func (c *Client) DeleteSecretsSecretID(ctx context.Context, secretID SecretID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteSecretsSecretIDRequest(c.Server, secretID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetSecretsSecretID Get a secret
+//
+// Get one secret's metadata, selected by identifier or name.
+//
+// Corresponds with GET /secrets/{secretID} (the `GetSecretsSecretID` operationId).
+func (c *Client) GetSecretsSecretID(ctx context.Context, secretID SecretID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSecretsSecretIDRequest(c.Server, secretID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostSecretsSecretIDWithBody Update a secret
+//
+// Replace the secret's stored marker by appending a new version. The response carries metadata only.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /secrets/{secretID} (the `PostSecretsSecretID` operationId).
+func (c *Client) PostSecretsSecretIDWithBody(ctx context.Context, secretID SecretID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostSecretsSecretIDRequestWithBody(c.Server, secretID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostSecretsSecretID Update a secret
+//
+// Replace the secret's stored marker by appending a new version. The response carries metadata only.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /secrets/{secretID} (the `PostSecretsSecretID` operationId).
+func (c *Client) PostSecretsSecretID(ctx context.Context, secretID SecretID, body PostSecretsSecretIDJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostSecretsSecretIDRequest(c.Server, secretID, body)
 	if err != nil {
 		return nil, err
 	}
@@ -5567,6 +5820,227 @@ func NewPostSandboxesSandboxIDTimeoutRequestWithBody(server string, sandboxID Sa
 	}
 
 	operationPath := fmt.Sprintf("/sandboxes/%s/timeout", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetSecretsRequest constructs an http.Request for the GetSecrets method
+func NewGetSecretsRequest(server string, params *GetSecretsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/secrets")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.NextToken != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "nextToken", *params.NextToken, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostSecretsRequest calls the generic PostSecrets builder with application/json body
+func NewPostSecretsRequest(server string, body PostSecretsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostSecretsRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPostSecretsRequestWithBody constructs an http.Request for the PostSecrets method, with any body, and a specified content type
+func NewPostSecretsRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/secrets")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteSecretsSecretIDRequest constructs an http.Request for the DeleteSecretsSecretID method
+func NewDeleteSecretsSecretIDRequest(server string, secretID SecretID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "secretID", secretID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/secrets/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSecretsSecretIDRequest constructs an http.Request for the GetSecretsSecretID method
+func NewGetSecretsSecretIDRequest(server string, secretID SecretID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "secretID", secretID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/secrets/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostSecretsSecretIDRequest calls the generic PostSecretsSecretID builder with application/json body
+func NewPostSecretsSecretIDRequest(server string, secretID SecretID, body PostSecretsSecretIDJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostSecretsSecretIDRequestWithBody(server, secretID, "application/json", bodyReader)
+}
+
+// NewPostSecretsSecretIDRequestWithBody constructs an http.Request for the PostSecretsSecretID method, with any body, and a specified content type
+func NewPostSecretsSecretIDRequestWithBody(server string, secretID SecretID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "secretID", secretID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/secrets/%s", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -7669,6 +8143,69 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /sandboxes/{sandboxID}/timeout (the `PostSandboxesSandboxIDTimeout` operationId).
 	PostSandboxesSandboxIDTimeoutWithResponse(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDTimeoutJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDTimeoutResponse, error)
+
+	// GetSecretsWithResponse List project secrets
+	//
+	// List the project's secrets. No response carries a secret value.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /secrets (the `GetSecrets` operationId).
+	GetSecretsWithResponse(ctx context.Context, params *GetSecretsParams, reqEditors ...RequestEditorFn) (*GetSecretsResponse, error)
+
+	// PostSecretsWithBodyWithResponse Create a secret
+	//
+	// Create a secret by storing a runtime marker as its first version. The response carries metadata only.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /secrets (the `PostSecrets` operationId).
+	PostSecretsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSecretsResponse, error)
+
+	// PostSecretsWithResponse Create a secret
+	//
+	// Create a secret by storing a runtime marker as its first version. The response carries metadata only.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /secrets (the `PostSecrets` operationId).
+	PostSecretsWithResponse(ctx context.Context, body PostSecretsJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSecretsResponse, error)
+
+	// DeleteSecretsSecretIDWithResponse Delete a secret
+	//
+	// Revoke the secret and schedule its versions for cleanup.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /secrets/{secretID} (the `DeleteSecretsSecretID` operationId).
+	DeleteSecretsSecretIDWithResponse(ctx context.Context, secretID SecretID, reqEditors ...RequestEditorFn) (*DeleteSecretsSecretIDResponse, error)
+
+	// GetSecretsSecretIDWithResponse Get a secret
+	//
+	// Get one secret's metadata, selected by identifier or name.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /secrets/{secretID} (the `GetSecretsSecretID` operationId).
+	GetSecretsSecretIDWithResponse(ctx context.Context, secretID SecretID, reqEditors ...RequestEditorFn) (*GetSecretsSecretIDResponse, error)
+
+	// PostSecretsSecretIDWithBodyWithResponse Update a secret
+	//
+	// Replace the secret's stored marker by appending a new version. The response carries metadata only.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /secrets/{secretID} (the `PostSecretsSecretID` operationId).
+	PostSecretsSecretIDWithBodyWithResponse(ctx context.Context, secretID SecretID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSecretsSecretIDResponse, error)
+
+	// PostSecretsSecretIDWithResponse Update a secret
+	//
+	// Replace the secret's stored marker by appending a new version. The response carries metadata only.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /secrets/{secretID} (the `PostSecretsSecretID` operationId).
+	PostSecretsSecretIDWithResponse(ctx context.Context, secretID SecretID, body PostSecretsSecretIDJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSecretsSecretIDResponse, error)
 
 	// GetSnapshotsWithResponse List snapshots
 	//
@@ -9913,6 +10450,526 @@ func (r PostSandboxesSandboxIDTimeoutResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r PostSandboxesSandboxIDTimeoutResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetSecretsResponse200Headers the declared response headers of an HTTP 200 response for GetSecrets
+type GetSecretsResponse200Headers struct {
+	XNextToken *string
+}
+
+type GetSecretsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]Secret
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *N403
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *N409
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *N429
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// JSON502 the response for an HTTP 502 `application/json` response
+	JSON502 *N502
+	// JSON504 the response for an HTTP 504 `application/json` response
+	JSON504 *N504
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetSecretsResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetSecretsResponse) GetJSON200() *[]Secret {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetSecretsResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetSecretsResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetSecretsResponse) GetJSON403() *N403 {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetSecretsResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r GetSecretsResponse) GetJSON409() *N409 {
+	return r.JSON409
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r GetSecretsResponse) GetJSON429() *N429 {
+	return r.JSON429
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetSecretsResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetJSON502 returns the response for an HTTP 502 `application/json` response
+func (r GetSecretsResponse) GetJSON502() *N502 {
+	return r.JSON502
+}
+
+// GetJSON504 returns the response for an HTTP 504 `application/json` response
+func (r GetSecretsResponse) GetJSON504() *N504 {
+	return r.JSON504
+}
+
+// GetBody returns the raw response body bytes
+func (r GetSecretsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSecretsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSecretsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetSecretsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PostSecretsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *Secret
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *N403
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *N409
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *N429
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// JSON502 the response for an HTTP 502 `application/json` response
+	JSON502 *N502
+	// JSON504 the response for an HTTP 504 `application/json` response
+	JSON504 *N504
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r PostSecretsResponse) GetJSON201() *Secret {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PostSecretsResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PostSecretsResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r PostSecretsResponse) GetJSON403() *N403 {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PostSecretsResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PostSecretsResponse) GetJSON409() *N409 {
+	return r.JSON409
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r PostSecretsResponse) GetJSON429() *N429 {
+	return r.JSON429
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r PostSecretsResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetJSON502 returns the response for an HTTP 502 `application/json` response
+func (r PostSecretsResponse) GetJSON502() *N502 {
+	return r.JSON502
+}
+
+// GetJSON504 returns the response for an HTTP 504 `application/json` response
+func (r PostSecretsResponse) GetJSON504() *N504 {
+	return r.JSON504
+}
+
+// GetBody returns the raw response body bytes
+func (r PostSecretsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PostSecretsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostSecretsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostSecretsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteSecretsSecretIDResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *N403
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *N409
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *N429
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// JSON502 the response for an HTTP 502 `application/json` response
+	JSON502 *N502
+	// JSON504 the response for an HTTP 504 `application/json` response
+	JSON504 *N504
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r DeleteSecretsSecretIDResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeleteSecretsSecretIDResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r DeleteSecretsSecretIDResponse) GetJSON403() *N403 {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteSecretsSecretIDResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r DeleteSecretsSecretIDResponse) GetJSON409() *N409 {
+	return r.JSON409
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r DeleteSecretsSecretIDResponse) GetJSON429() *N429 {
+	return r.JSON429
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r DeleteSecretsSecretIDResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetJSON502 returns the response for an HTTP 502 `application/json` response
+func (r DeleteSecretsSecretIDResponse) GetJSON502() *N502 {
+	return r.JSON502
+}
+
+// GetJSON504 returns the response for an HTTP 504 `application/json` response
+func (r DeleteSecretsSecretIDResponse) GetJSON504() *N504 {
+	return r.JSON504
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteSecretsSecretIDResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteSecretsSecretIDResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteSecretsSecretIDResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteSecretsSecretIDResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetSecretsSecretIDResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Secret
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *N403
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *N409
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *N429
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// JSON502 the response for an HTTP 502 `application/json` response
+	JSON502 *N502
+	// JSON504 the response for an HTTP 504 `application/json` response
+	JSON504 *N504
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetSecretsSecretIDResponse) GetJSON200() *Secret {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetSecretsSecretIDResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetSecretsSecretIDResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetSecretsSecretIDResponse) GetJSON403() *N403 {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetSecretsSecretIDResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r GetSecretsSecretIDResponse) GetJSON409() *N409 {
+	return r.JSON409
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r GetSecretsSecretIDResponse) GetJSON429() *N429 {
+	return r.JSON429
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetSecretsSecretIDResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetJSON502 returns the response for an HTTP 502 `application/json` response
+func (r GetSecretsSecretIDResponse) GetJSON502() *N502 {
+	return r.JSON502
+}
+
+// GetJSON504 returns the response for an HTTP 504 `application/json` response
+func (r GetSecretsSecretIDResponse) GetJSON504() *N504 {
+	return r.JSON504
+}
+
+// GetBody returns the raw response body bytes
+func (r GetSecretsSecretIDResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSecretsSecretIDResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSecretsSecretIDResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetSecretsSecretIDResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PostSecretsSecretIDResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Secret
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *N403
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *N409
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *N429
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// JSON502 the response for an HTTP 502 `application/json` response
+	JSON502 *N502
+	// JSON504 the response for an HTTP 504 `application/json` response
+	JSON504 *N504
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PostSecretsSecretIDResponse) GetJSON200() *Secret {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PostSecretsSecretIDResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PostSecretsSecretIDResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r PostSecretsSecretIDResponse) GetJSON403() *N403 {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PostSecretsSecretIDResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PostSecretsSecretIDResponse) GetJSON409() *N409 {
+	return r.JSON409
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r PostSecretsSecretIDResponse) GetJSON429() *N429 {
+	return r.JSON429
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r PostSecretsSecretIDResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetJSON502 returns the response for an HTTP 502 `application/json` response
+func (r PostSecretsSecretIDResponse) GetJSON502() *N502 {
+	return r.JSON502
+}
+
+// GetJSON504 returns the response for an HTTP 504 `application/json` response
+func (r PostSecretsSecretIDResponse) GetJSON504() *N504 {
+	return r.JSON504
+}
+
+// GetBody returns the raw response body bytes
+func (r PostSecretsSecretIDResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PostSecretsSecretIDResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostSecretsSecretIDResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostSecretsSecretIDResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -12373,6 +13430,111 @@ func (c *ClientWithResponses) PostSandboxesSandboxIDTimeoutWithResponse(ctx cont
 	return ParsePostSandboxesSandboxIDTimeoutResponse(rsp)
 }
 
+// GetSecretsWithResponse List project secrets
+//
+// List the project's secrets. No response carries a secret value.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /secrets (the `GetSecrets` operationId).
+func (c *ClientWithResponses) GetSecretsWithResponse(ctx context.Context, params *GetSecretsParams, reqEditors ...RequestEditorFn) (*GetSecretsResponse, error) {
+	rsp, err := c.GetSecrets(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSecretsResponse(rsp)
+}
+
+// PostSecretsWithBodyWithResponse Create a secret
+//
+// Create a secret by storing a runtime marker as its first version. The response carries metadata only.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /secrets (the `PostSecrets` operationId).
+func (c *ClientWithResponses) PostSecretsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSecretsResponse, error) {
+	rsp, err := c.PostSecretsWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostSecretsResponse(rsp)
+}
+
+// PostSecretsWithResponse Create a secret
+//
+// Create a secret by storing a runtime marker as its first version. The response carries metadata only.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /secrets (the `PostSecrets` operationId).
+func (c *ClientWithResponses) PostSecretsWithResponse(ctx context.Context, body PostSecretsJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSecretsResponse, error) {
+	rsp, err := c.PostSecrets(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostSecretsResponse(rsp)
+}
+
+// DeleteSecretsSecretIDWithResponse Delete a secret
+//
+// Revoke the secret and schedule its versions for cleanup.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /secrets/{secretID} (the `DeleteSecretsSecretID` operationId).
+func (c *ClientWithResponses) DeleteSecretsSecretIDWithResponse(ctx context.Context, secretID SecretID, reqEditors ...RequestEditorFn) (*DeleteSecretsSecretIDResponse, error) {
+	rsp, err := c.DeleteSecretsSecretID(ctx, secretID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteSecretsSecretIDResponse(rsp)
+}
+
+// GetSecretsSecretIDWithResponse Get a secret
+//
+// Get one secret's metadata, selected by identifier or name.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /secrets/{secretID} (the `GetSecretsSecretID` operationId).
+func (c *ClientWithResponses) GetSecretsSecretIDWithResponse(ctx context.Context, secretID SecretID, reqEditors ...RequestEditorFn) (*GetSecretsSecretIDResponse, error) {
+	rsp, err := c.GetSecretsSecretID(ctx, secretID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSecretsSecretIDResponse(rsp)
+}
+
+// PostSecretsSecretIDWithBodyWithResponse Update a secret
+//
+// Replace the secret's stored marker by appending a new version. The response carries metadata only.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /secrets/{secretID} (the `PostSecretsSecretID` operationId).
+func (c *ClientWithResponses) PostSecretsSecretIDWithBodyWithResponse(ctx context.Context, secretID SecretID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSecretsSecretIDResponse, error) {
+	rsp, err := c.PostSecretsSecretIDWithBody(ctx, secretID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostSecretsSecretIDResponse(rsp)
+}
+
+// PostSecretsSecretIDWithResponse Update a secret
+//
+// Replace the secret's stored marker by appending a new version. The response carries metadata only.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /secrets/{secretID} (the `PostSecretsSecretID` operationId).
+func (c *ClientWithResponses) PostSecretsSecretIDWithResponse(ctx context.Context, secretID SecretID, body PostSecretsSecretIDJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSecretsSecretIDResponse, error) {
+	rsp, err := c.PostSecretsSecretID(ctx, secretID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostSecretsSecretIDResponse(rsp)
+}
+
 // GetSnapshotsWithResponse List snapshots
 //
 // List all snapshots for the team.
@@ -14434,6 +15596,460 @@ func ParsePostSandboxesSandboxIDTimeoutResponse(rsp *http.Response) (*PostSandbo
 	return response, nil
 }
 
+// ParseGetSecretsResponse parses an HTTP response from a GetSecretsWithResponse call
+func ParseGetSecretsResponse(rsp *http.Response) (*GetSecretsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSecretsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []Secret
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest N403
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest N429
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest N502
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 504:
+		var dest N504
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON504 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetSecretsResponse200Headers
+		if values := rsp.Header.Values("X-Next-Token"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Next-Token", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XNextToken = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParsePostSecretsResponse parses an HTTP response from a PostSecretsWithResponse call
+func ParsePostSecretsResponse(rsp *http.Response) (*PostSecretsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostSecretsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Secret
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest N403
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest N429
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest N502
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 504:
+		var dest N504
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON504 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteSecretsSecretIDResponse parses an HTTP response from a DeleteSecretsSecretIDWithResponse call
+func ParseDeleteSecretsSecretIDResponse(rsp *http.Response) (*DeleteSecretsSecretIDResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteSecretsSecretIDResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest N403
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest N429
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest N502
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 504:
+		var dest N504
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON504 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSecretsSecretIDResponse parses an HTTP response from a GetSecretsSecretIDWithResponse call
+func ParseGetSecretsSecretIDResponse(rsp *http.Response) (*GetSecretsSecretIDResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSecretsSecretIDResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Secret
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest N403
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest N429
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest N502
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 504:
+		var dest N504
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON504 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostSecretsSecretIDResponse parses an HTTP response from a PostSecretsSecretIDWithResponse call
+func ParsePostSecretsSecretIDResponse(rsp *http.Response) (*PostSecretsSecretIDResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostSecretsSecretIDResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Secret
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest N403
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest N429
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest N502
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 504:
+		var dest N504
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON504 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetSnapshotsResponse parses an HTTP response from a GetSnapshotsWithResponse call
 func ParseGetSnapshotsResponse(rsp *http.Response) (*GetSnapshotsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -15932,6 +17548,21 @@ type ServerInterface interface {
 	// PostSandboxesSandboxIDTimeout Set sandbox timeout
 	// (POST /sandboxes/{sandboxID}/timeout)
 	PostSandboxesSandboxIDTimeout(c *gin.Context, sandboxID SandboxID)
+	// GetSecrets List project secrets
+	// (GET /secrets)
+	GetSecrets(c *gin.Context, params GetSecretsParams)
+	// PostSecrets Create a secret
+	// (POST /secrets)
+	PostSecrets(c *gin.Context)
+	// DeleteSecretsSecretID Delete a secret
+	// (DELETE /secrets/{secretID})
+	DeleteSecretsSecretID(c *gin.Context, secretID SecretID)
+	// GetSecretsSecretID Get a secret
+	// (GET /secrets/{secretID})
+	GetSecretsSecretID(c *gin.Context, secretID SecretID)
+	// PostSecretsSecretID Update a secret
+	// (POST /secrets/{secretID})
+	PostSecretsSecretID(c *gin.Context, secretID SecretID)
 	// GetSnapshots List snapshots
 	// (GET /snapshots)
 	GetSnapshots(c *gin.Context, params GetSnapshotsParams)
@@ -16782,6 +18413,129 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDTimeout(c *gin.Context)
 	}
 
 	siw.Handler.PostSandboxesSandboxIDTimeout(c, sandboxID)
+}
+
+// GetSecrets operation middleware
+func (siw *ServerInterfaceWrapper) GetSecrets(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetSecretsParams
+
+	// ------------- Optional query parameter "nextToken" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "nextToken", c.Request.URL.Query(), &params.NextToken, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter nextToken: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", c.Request.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetSecrets(c, params)
+}
+
+// PostSecrets operation middleware
+func (siw *ServerInterfaceWrapper) PostSecrets(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PostSecrets(c)
+}
+
+// DeleteSecretsSecretID operation middleware
+func (siw *ServerInterfaceWrapper) DeleteSecretsSecretID(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "secretID" -------------
+	var secretID SecretID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "secretID", c.Param("secretID"), &secretID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter secretID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteSecretsSecretID(c, secretID)
+}
+
+// GetSecretsSecretID operation middleware
+func (siw *ServerInterfaceWrapper) GetSecretsSecretID(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "secretID" -------------
+	var secretID SecretID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "secretID", c.Param("secretID"), &secretID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter secretID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetSecretsSecretID(c, secretID)
+}
+
+// PostSecretsSecretID operation middleware
+func (siw *ServerInterfaceWrapper) PostSecretsSecretID(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "secretID" -------------
+	var secretID SecretID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "secretID", c.Param("secretID"), &secretID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter secretID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PostSecretsSecretID(c, secretID)
 }
 
 // GetSnapshots operation middleware
@@ -17818,6 +19572,11 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/volumes", wrapper.PostVolumes)
 	router.DELETE(options.BaseURL+"/volumes/:volumeID", wrapper.DeleteVolumesVolumeID)
 	router.GET(options.BaseURL+"/volumes/:volumeID", wrapper.GetVolumesVolumeID)
+	router.GET(options.BaseURL+"/secrets", wrapper.GetSecrets)
+	router.POST(options.BaseURL+"/secrets", wrapper.PostSecrets)
+	router.DELETE(options.BaseURL+"/secrets/:secretID", wrapper.DeleteSecretsSecretID)
+	router.GET(options.BaseURL+"/secrets/:secretID", wrapper.GetSecretsSecretID)
+	router.POST(options.BaseURL+"/secrets/:secretID", wrapper.PostSecretsSecretID)
 }
 
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
@@ -17825,220 +19584,235 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"59v/FwAA//8=",
+	"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",
+	"SoRSLk2S6VpKl6gk7baQDJERTMNzwpDzEucMjhm84KiyLD8rnbzcY4me2Q76uhml+/OffBV8ZPlaS3iV",
+	"oLMZEdbiICZUCSzKJC4REmQKrsbS5n9xj89yTpYQmehArFMyFUTOWw85sU9UQPXiuzi21hmZEHRBcoUw",
+	"GFsre6pv2H35t5pldzVj6pnFnhVT/pcOAvA0lVY+Zxt3LitjdDT1s+2UDjf2Rdc8NBD11MQhwI3XWAP2",
+	"ZFOVyAkuuKzfZFiYkjp4Va2kIjgB6zuUwgCGQI/EWYuRrRUszvlopTSLFv8dbUi6iIMlSO21wr75EjYB",
+	"V6fbpMsI+MuE0v6e4Crpb1vfcIYRGK9jI0T+RtW8taRE6fZwS5urVX7fNEI/yvFBCVYmx2nXtmMrIkDo",
+	"ESOa24uxEC7FspUfILFKk03uKT7jPZVmmCssPWe5gfVnDLr2Vjiw8YU2XAmErjlWKOHAVpmEkIwMVQE/",
+	"YPagoJ+jV0B8WCHw0ChGxFrtuCCa23Zcz2boVTd3pWXqR+rB2y874683eOPqwO+4UH4upJ3dV1Gf6H5Q",
+	"SMUzIlC2bJayV2XfyEq5IJIwFSHweTHgK5iEFgplXCr0ctdJTT+hC6dfgir6Bldf7P7dGBIiW7MCftzZ",
+	"feV+1bwRrrIplStSHP39xY+7phlIM1zhtMz95APg5W4r9Iygfpfps26VK0o/w/ecKao9RZTjcsIpdW0I",
+	"YqOYj2ayjQTncKTBx5h6o4YLwZlpDRY6DNkWZ1Zq1x+3ZFrMtrPFlhtl73L3+UqSn+s4kFZ0LXYO1TTH",
+	"6KPmictVb0PEiE30aOjqlefq1LkZK8Q8jxDX8soVlUTLIqlEExxfOKZN4KtqPUeHdkQ8iV/sviyH6D9p",
+	"DxKRPb7QsZ8T4/S2pADKabjss60A5rhZvc9gQTx56AS2LtchQAjrTW53tjSkp4cYUlgrvBr9+1Bv99AI",
+	"DWdzGK6k5xZY/q4/W8g+la1rjfP901eds9gTrHx4Rym1Y84ss3Hmc97NRNNVgoiqi+ekvHTdB7h/+Amq",
+	"ToNyYrBSt3Ufzomwgtsgt5An/4I+/4IAHgTOyGEeUIEGzSKZjaDsg/Ab3dBtvJAQ9t97OYfRFztaD3EJ",
+	"3TazerNDG84ZDgZ1V6QnRt80vUWNbFsPu9fvyqhXa6FYmhLqzmrYXVyhtDiIO5XzvlUv6etvsst3hcJO",
+	"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",
+	"XPl3xfBUk9ryADefb/5vAAAA//8=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

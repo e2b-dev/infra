@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -10,14 +11,52 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
 
+	"github.com/e2b-dev/infra/packages/api/internal/middleware"
 	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+// errSecretsRejected is what a secrets request refused before its handler is
+// recorded as. The validator's own message can quote the request body, the
+// selector or the query, so it is dropped rather than reported.
+var errSecretsRejected = errors.New("secrets request rejected before the handler")
+
+// secretsErrorMessage is the fixed text such a request gets back.
+func secretsErrorMessage(statusCode int) string {
+	switch statusCode {
+	case http.StatusUnauthorized:
+		return middleware.SecretsUnauthorizedMessage
+	case http.StatusForbidden:
+		return middleware.SecretsUnavailableMessage
+	case http.StatusNotFound:
+		return "Not found"
+	default:
+		return middleware.SecretsInvalidRequestMessage
+	}
+}
 
 func ErrorHandler(c *gin.Context, message string, statusCode int) {
 	var errMsg error
 
 	ctx := c.Request.Context()
+
+	// Secret management routes answer with fixed text and report a fixed
+	// error: neither the raw body (which GetRawData would read below) nor the
+	// upstream message may reach the client, the access log or the span.
+	if middleware.IsSecretsRoute(c) {
+		telemetry.ReportError(ctx, "secrets request rejected before the handler", errSecretsRejected,
+			attribute.Int("http.status_code", statusCode),
+		)
+
+		c.Error(errSecretsRejected)
+
+		c.AbortWithStatusJSON(statusCode, gin.H{
+			"code":    statusCode,
+			"message": secretsErrorMessage(statusCode),
+		})
+
+		return
+	}
 
 	switch {
 	case strings.HasPrefix(c.Request.URL.Path, "/instances"),

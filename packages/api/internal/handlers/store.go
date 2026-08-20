@@ -15,6 +15,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
@@ -29,6 +30,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	orchdiscovery "github.com/e2b-dev/infra/packages/api/internal/orchestrator/discovery"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	managementv1 "github.com/e2b-dev/infra/packages/api/internal/secretsstore/management/v1"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
@@ -94,6 +96,12 @@ type APIStore struct {
 	snapshotUpsertSem     *sharedutils.AdjustableSemaphore
 	sandboxListSem        *sharedutils.AdjustableSemaphore
 	snapshotBuildQuerySem *sharedutils.AdjustableSemaphore
+
+	// secretsConn and secretsManagement are nil when no secrets store backend
+	// address is configured. The routes stay registered either way and answer
+	// as they do when the feature gate is closed.
+	secretsConn       *grpc.ClientConn
+	secretsManagement managementv1.SecretManagementServiceClient
 }
 
 func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.UniversalClient, featureFlags *featureflags.Client, config cfg.Config) *APIStore {
@@ -277,6 +285,21 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 	// Start the periodic sync of template builds statuses
 	go templateManager.BuildsStatusPeriodicalSync(ctx)
 
+	// An unset address leaves the secret management routes registered and
+	// answering as they do when the feature gate is closed.
+	var (
+		secretsConn       *grpc.ClientConn
+		secretsManagement managementv1.SecretManagementServiceClient
+	)
+	if config.SecretsStoreBackendGrpcAddress != "" {
+		secretsConn, err = newSecretsManagementClient(config.SecretsStoreBackendGrpcAddress)
+		if err != nil {
+			logger.L().Fatal(ctx, "Initializing secrets store management client", zap.Error(err))
+		}
+
+		secretsManagement = managementv1.NewSecretManagementServiceClient(secretsConn)
+	}
+
 	a := &APIStore{
 		config:                config,
 		orchestrator:          orch,
@@ -300,6 +323,8 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		snapshotUpsertSem:     snapshotUpsertSem,
 		sandboxListSem:        sandboxListSem,
 		snapshotBuildQuerySem: snapshotBuildQuerySem,
+		secretsConn:           secretsConn,
+		secretsManagement:     secretsManagement,
 	}
 
 	go a.updateDBThrottleLimits(ctx)
@@ -377,6 +402,12 @@ func (a *APIStore) Close(ctx context.Context) error {
 	if a.sandboxLogsReader != nil {
 		if err := a.sandboxLogsReader.Close(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("closing ClickHouse sandbox logs reader: %w", err))
+		}
+	}
+
+	if a.secretsConn != nil {
+		if err := a.secretsConn.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("closing secrets store management client: %w", err))
 		}
 	}
 

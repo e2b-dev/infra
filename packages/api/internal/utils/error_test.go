@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -111,6 +113,67 @@ func TestErrorHandlerSecurityStatusMapping(t *testing.T) {
 			code, message := runErrorHandler(t, selected.Error(), http.StatusUnauthorized)
 			assert.Equal(t, tc.wantCode, code)
 			assert.Equal(t, tc.wantMessage, message)
+		})
+	}
+}
+
+// TestErrorHandlerOnSecretsRouteIsFixedAndBodyBlind proves the handler answers a
+// secrets route with fixed text, records a fixed error, and never reads the
+// request body to build one.
+func TestErrorHandlerOnSecretsRouteIsFixedAndBodyBlind(t *testing.T) {
+	t.Parallel()
+
+	const sentinel = "sentinel-value-DO-NOT-LOG-0000"
+
+	tests := []struct {
+		name        string
+		statusCode  int
+		wantMessage string
+	}{
+		{name: "validation", statusCode: http.StatusBadRequest, wantMessage: "Invalid secrets request"},
+		{name: "authentication", statusCode: http.StatusUnauthorized, wantMessage: "You are not authenticated"},
+		{name: "forbidden", statusCode: http.StatusForbidden, wantMessage: "Secrets are not available for this team"},
+		{name: "unmatched path", statusCode: http.StatusNotFound, wantMessage: "Not found"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/secrets/"+sentinel+"?metadata="+sentinel,
+				strings.NewReader(`{"value":"`+sentinel+`"}`))
+
+			ErrorHandler(c, "request body has an error: "+sentinel, test.statusCode)
+
+			if recorder.Code != test.statusCode {
+				t.Fatalf("got status %d, want %d", recorder.Code, test.statusCode)
+			}
+
+			if strings.Contains(recorder.Body.String(), sentinel) {
+				t.Fatal("the response echoed confidential request material")
+			}
+
+			if !strings.Contains(recorder.Body.String(), test.wantMessage) {
+				t.Fatalf("the response does not carry the fixed message %q", test.wantMessage)
+			}
+
+			for _, ginErr := range c.Errors {
+				if strings.Contains(ginErr.Error(), sentinel) {
+					t.Fatal("a gin error carried confidential request material")
+				}
+			}
+
+			// The body was never consumed, so a handler could still read it.
+			body, err := io.ReadAll(c.Request.Body)
+			if err != nil {
+				t.Fatalf("reading the request body: %v", err)
+			}
+
+			if len(body) == 0 {
+				t.Fatal("the error handler consumed the request body")
+			}
 		})
 	}
 }

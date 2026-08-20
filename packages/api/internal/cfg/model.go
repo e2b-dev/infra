@@ -108,6 +108,12 @@ type Config struct {
 
 	SandboxAccessTokenHashSeed string `env:"SANDBOX_ACCESS_TOKEN_HASH_SEED"`
 
+	// SecretsStoreBackendGrpcAddress is the "host:port" address of the secrets
+	// store management backend. Optional: when empty the API keeps serving
+	// every other route and answers the secret management routes with the same
+	// forbidden response the feature gate produces.
+	SecretsStoreBackendGrpcAddress string `env:"SECRETS_STORE_BACKEND_GRPC_ADDRESS"`
+
 	VolumesToken VolumesTokenConfig
 
 	AuthProvider sharedauth.ProviderConfig `env:"AUTH_PROVIDER_CONFIG"`

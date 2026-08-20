@@ -595,6 +595,18 @@ type NewSandbox struct {
 	VolumeMounts *[]SandboxVolumeMount `json:"volumeMounts,omitempty"`
 }
 
+// NewSecret defines model for NewSecret.
+type NewSecret struct {
+	// Metadata Customer metadata of the secret. Always present, empty when unset. At most 32 entries; keys are limited to 128 bytes, values to 1024 bytes, and a secret's metadata to 8192 bytes in total.
+	Metadata *SecretMetadata `json:"metadata,omitempty"`
+
+	// Name Name of the secret, unique within the project. Names are lower-cased before storage and returned in that canonical form; the sec_ prefix is reserved for secret identifiers.
+	Name string `json:"name"`
+
+	// Value Runtime marker stored as the secret's first version. The runtime resolves it to a value at sandbox egress.
+	Value string `json:"value"`
+}
+
 // NewTeamAPIKey defines model for NewTeamAPIKey.
 type NewTeamAPIKey struct {
 	// Name Name of the API key
@@ -1061,6 +1073,39 @@ type SandboxVolumeMount struct {
 // SandboxesWithMetrics defines model for SandboxesWithMetrics.
 type SandboxesWithMetrics struct {
 	Sandboxes map[string]SandboxMetric `json:"sandboxes"`
+}
+
+// Secret Metadata of a secret. It never carries the secret value.
+type Secret struct {
+	// CreatedAt Time when the secret was created
+	CreatedAt time.Time `json:"createdAt"`
+
+	// CurrentVersion Version served to readers that do not name one
+	CurrentVersion int64 `json:"currentVersion"`
+
+	// Metadata Customer metadata of the secret. Always present, empty when unset. At most 32 entries; keys are limited to 128 bytes, values to 1024 bytes, and a secret's metadata to 8192 bytes in total.
+	Metadata SecretMetadata `json:"metadata"`
+
+	// Name Name of the secret, unique within the project
+	Name string `json:"name"`
+
+	// SecretID Identifier of the secret
+	SecretID string `json:"secretID"`
+
+	// UpdatedAt Time when the secret was last updated
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// SecretMetadata Customer metadata of the secret. Always present, empty when unset. At most 32 entries; keys are limited to 128 bytes, values to 1024 bytes, and a secret's metadata to 8192 bytes in total.
+type SecretMetadata map[string]string
+
+// SecretUpdate defines model for SecretUpdate.
+type SecretUpdate struct {
+	// Metadata Customer metadata of the secret. Always present, empty when unset. At most 32 entries; keys are limited to 128 bytes, values to 1024 bytes, and a secret's metadata to 8192 bytes in total.
+	Metadata *SecretMetadata `json:"metadata,omitempty"`
+
+	// Value Runtime marker stored as the secret's new version. The runtime resolves it to a value at sandbox egress.
+	Value string `json:"value"`
 }
 
 // SnapshotInfo defines model for SnapshotInfo.
@@ -1530,6 +1575,9 @@ type PaginationNextToken = string
 // SandboxID defines model for sandboxID.
 type SandboxID = string
 
+// SecretID Identifier of the secret (sec_ prefixed), or its canonical lower-case name
+type SecretID = string
+
 // TeamID defines model for teamID.
 type TeamID = string
 
@@ -1557,8 +1605,14 @@ type N409 = Error
 // N410 defines model for 410.
 type N410 = Error
 
+// N429 defines model for 429.
+type N429 = Error
+
 // N500 defines model for 500.
 type N500 = Error
+
+// N502 defines model for 502.
+type N502 = Error
 
 // N503 defines model for 503.
 type N503 = Error
@@ -1604,6 +1658,15 @@ type GetSandboxesSandboxIDMetricsParams struct {
 	// Start Unix timestamp for the start of the interval, in seconds, for which the metrics
 	Start *int64 `form:"start,omitempty" json:"start,omitempty"`
 	End   *int64 `form:"end,omitempty" json:"end,omitempty"`
+}
+
+// GetSecretsParams defines parameters for GetSecrets.
+type GetSecretsParams struct {
+	// NextToken Cursor to start the list from
+	NextToken *PaginationNextToken `form:"nextToken,omitempty" json:"nextToken,omitempty"`
+
+	// Limit Maximum number of items to return per page
+	Limit *PaginationLimit `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // GetSnapshotsParams defines parameters for GetSnapshots.
@@ -1776,6 +1839,12 @@ type PostSandboxesSandboxIDSnapshotsJSONRequestBody = SandboxSnapshotRequest
 
 // PostSandboxesSandboxIDTimeoutJSONRequestBody defines body for PostSandboxesSandboxIDTimeout for application/json ContentType.
 type PostSandboxesSandboxIDTimeoutJSONRequestBody = SandboxTimeoutRequest
+
+// PostSecretsJSONRequestBody defines body for PostSecrets for application/json ContentType.
+type PostSecretsJSONRequestBody = NewSecret
+
+// PostSecretsSecretIDJSONRequestBody defines body for PostSecretsSecretID for application/json ContentType.
+type PostSecretsSecretIDJSONRequestBody = SecretUpdate
 
 // PostTemplatesJSONRequestBody defines body for PostTemplates for application/json ContentType.
 //
@@ -2400,6 +2469,63 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /sandboxes/{sandboxID}/timeout (the `PostSandboxesSandboxIDTimeout` operationId).
 	PostSandboxesSandboxIDTimeout(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDTimeoutJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSecrets List project secrets
+	//
+	// List the project's secrets. No response carries a secret value.
+	//
+	// Corresponds with GET /secrets (the `GetSecrets` operationId).
+	GetSecrets(ctx context.Context, params *GetSecretsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostSecretsWithBody Create a secret
+	//
+	// Create a secret by storing a runtime marker as its first version. The response carries metadata only.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /secrets (the `PostSecrets` operationId).
+	PostSecretsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostSecrets Create a secret
+	//
+	// Create a secret by storing a runtime marker as its first version. The response carries metadata only.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /secrets (the `PostSecrets` operationId).
+	PostSecrets(ctx context.Context, body PostSecretsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteSecretsSecretID Delete a secret
+	//
+	// Revoke the secret and schedule its versions for cleanup.
+	//
+	// Corresponds with DELETE /secrets/{secretID} (the `DeleteSecretsSecretID` operationId).
+	DeleteSecretsSecretID(ctx context.Context, secretID SecretID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSecretsSecretID Get a secret
+	//
+	// Get one secret's metadata, selected by identifier or name.
+	//
+	// Corresponds with GET /secrets/{secretID} (the `GetSecretsSecretID` operationId).
+	GetSecretsSecretID(ctx context.Context, secretID SecretID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostSecretsSecretIDWithBody Update a secret
+	//
+	// Replace the secret's stored marker by appending a new version. The response carries metadata only.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /secrets/{secretID} (the `PostSecretsSecretID` operationId).
+	PostSecretsSecretIDWithBody(ctx context.Context, secretID SecretID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostSecretsSecretID Update a secret
+	//
+	// Replace the secret's stored marker by appending a new version. The response carries metadata only.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /secrets/{secretID} (the `PostSecretsSecretID` operationId).
+	PostSecretsSecretID(ctx context.Context, secretID SecretID, body PostSecretsSecretIDJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetSnapshots List snapshots
 	//
@@ -3530,6 +3656,133 @@ func (c *Client) PostSandboxesSandboxIDTimeoutWithBody(ctx context.Context, sand
 // Corresponds with POST /sandboxes/{sandboxID}/timeout (the `PostSandboxesSandboxIDTimeout` operationId).
 func (c *Client) PostSandboxesSandboxIDTimeout(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDTimeoutJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPostSandboxesSandboxIDTimeoutRequest(c.Server, sandboxID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetSecrets List project secrets
+//
+// List the project's secrets. No response carries a secret value.
+//
+// Corresponds with GET /secrets (the `GetSecrets` operationId).
+func (c *Client) GetSecrets(ctx context.Context, params *GetSecretsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSecretsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostSecretsWithBody Create a secret
+//
+// Create a secret by storing a runtime marker as its first version. The response carries metadata only.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /secrets (the `PostSecrets` operationId).
+func (c *Client) PostSecretsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostSecretsRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostSecrets Create a secret
+//
+// Create a secret by storing a runtime marker as its first version. The response carries metadata only.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /secrets (the `PostSecrets` operationId).
+func (c *Client) PostSecrets(ctx context.Context, body PostSecretsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostSecretsRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteSecretsSecretID Delete a secret
+//
+// Revoke the secret and schedule its versions for cleanup.
+//
+// Corresponds with DELETE /secrets/{secretID} (the `DeleteSecretsSecretID` operationId).
+func (c *Client) DeleteSecretsSecretID(ctx context.Context, secretID SecretID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteSecretsSecretIDRequest(c.Server, secretID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetSecretsSecretID Get a secret
+//
+// Get one secret's metadata, selected by identifier or name.
+//
+// Corresponds with GET /secrets/{secretID} (the `GetSecretsSecretID` operationId).
+func (c *Client) GetSecretsSecretID(ctx context.Context, secretID SecretID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSecretsSecretIDRequest(c.Server, secretID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostSecretsSecretIDWithBody Update a secret
+//
+// Replace the secret's stored marker by appending a new version. The response carries metadata only.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /secrets/{secretID} (the `PostSecretsSecretID` operationId).
+func (c *Client) PostSecretsSecretIDWithBody(ctx context.Context, secretID SecretID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostSecretsSecretIDRequestWithBody(c.Server, secretID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostSecretsSecretID Update a secret
+//
+// Replace the secret's stored marker by appending a new version. The response carries metadata only.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /secrets/{secretID} (the `PostSecretsSecretID` operationId).
+func (c *Client) PostSecretsSecretID(ctx context.Context, secretID SecretID, body PostSecretsSecretIDJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostSecretsSecretIDRequest(c.Server, secretID, body)
 	if err != nil {
 		return nil, err
 	}
@@ -5562,6 +5815,227 @@ func NewPostSandboxesSandboxIDTimeoutRequestWithBody(server string, sandboxID Sa
 	}
 
 	operationPath := fmt.Sprintf("/sandboxes/%s/timeout", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetSecretsRequest constructs an http.Request for the GetSecrets method
+func NewGetSecretsRequest(server string, params *GetSecretsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/secrets")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.NextToken != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "nextToken", *params.NextToken, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostSecretsRequest calls the generic PostSecrets builder with application/json body
+func NewPostSecretsRequest(server string, body PostSecretsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostSecretsRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPostSecretsRequestWithBody constructs an http.Request for the PostSecrets method, with any body, and a specified content type
+func NewPostSecretsRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/secrets")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteSecretsSecretIDRequest constructs an http.Request for the DeleteSecretsSecretID method
+func NewDeleteSecretsSecretIDRequest(server string, secretID SecretID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "secretID", secretID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/secrets/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSecretsSecretIDRequest constructs an http.Request for the GetSecretsSecretID method
+func NewGetSecretsSecretIDRequest(server string, secretID SecretID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "secretID", secretID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/secrets/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostSecretsSecretIDRequest calls the generic PostSecretsSecretID builder with application/json body
+func NewPostSecretsSecretIDRequest(server string, secretID SecretID, body PostSecretsSecretIDJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostSecretsSecretIDRequestWithBody(server, secretID, "application/json", bodyReader)
+}
+
+// NewPostSecretsSecretIDRequestWithBody constructs an http.Request for the PostSecretsSecretID method, with any body, and a specified content type
+func NewPostSecretsSecretIDRequestWithBody(server string, secretID SecretID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "secretID", secretID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/secrets/%s", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -7664,6 +8138,69 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /sandboxes/{sandboxID}/timeout (the `PostSandboxesSandboxIDTimeout` operationId).
 	PostSandboxesSandboxIDTimeoutWithResponse(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDTimeoutJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDTimeoutResponse, error)
+
+	// GetSecretsWithResponse List project secrets
+	//
+	// List the project's secrets. No response carries a secret value.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /secrets (the `GetSecrets` operationId).
+	GetSecretsWithResponse(ctx context.Context, params *GetSecretsParams, reqEditors ...RequestEditorFn) (*GetSecretsResponse, error)
+
+	// PostSecretsWithBodyWithResponse Create a secret
+	//
+	// Create a secret by storing a runtime marker as its first version. The response carries metadata only.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /secrets (the `PostSecrets` operationId).
+	PostSecretsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSecretsResponse, error)
+
+	// PostSecretsWithResponse Create a secret
+	//
+	// Create a secret by storing a runtime marker as its first version. The response carries metadata only.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /secrets (the `PostSecrets` operationId).
+	PostSecretsWithResponse(ctx context.Context, body PostSecretsJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSecretsResponse, error)
+
+	// DeleteSecretsSecretIDWithResponse Delete a secret
+	//
+	// Revoke the secret and schedule its versions for cleanup.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /secrets/{secretID} (the `DeleteSecretsSecretID` operationId).
+	DeleteSecretsSecretIDWithResponse(ctx context.Context, secretID SecretID, reqEditors ...RequestEditorFn) (*DeleteSecretsSecretIDResponse, error)
+
+	// GetSecretsSecretIDWithResponse Get a secret
+	//
+	// Get one secret's metadata, selected by identifier or name.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /secrets/{secretID} (the `GetSecretsSecretID` operationId).
+	GetSecretsSecretIDWithResponse(ctx context.Context, secretID SecretID, reqEditors ...RequestEditorFn) (*GetSecretsSecretIDResponse, error)
+
+	// PostSecretsSecretIDWithBodyWithResponse Update a secret
+	//
+	// Replace the secret's stored marker by appending a new version. The response carries metadata only.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /secrets/{secretID} (the `PostSecretsSecretID` operationId).
+	PostSecretsSecretIDWithBodyWithResponse(ctx context.Context, secretID SecretID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSecretsSecretIDResponse, error)
+
+	// PostSecretsSecretIDWithResponse Update a secret
+	//
+	// Replace the secret's stored marker by appending a new version. The response carries metadata only.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /secrets/{secretID} (the `PostSecretsSecretID` operationId).
+	PostSecretsSecretIDWithResponse(ctx context.Context, secretID SecretID, body PostSecretsSecretIDJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSecretsSecretIDResponse, error)
 
 	// GetSnapshotsWithResponse List snapshots
 	//
@@ -9908,6 +10445,526 @@ func (r PostSandboxesSandboxIDTimeoutResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r PostSandboxesSandboxIDTimeoutResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetSecretsResponse200Headers the declared response headers of an HTTP 200 response for GetSecrets
+type GetSecretsResponse200Headers struct {
+	XNextToken *string
+}
+
+type GetSecretsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]Secret
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *N403
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *N409
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *N429
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// JSON502 the response for an HTTP 502 `application/json` response
+	JSON502 *N502
+	// JSON504 the response for an HTTP 504 `application/json` response
+	JSON504 *N504
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetSecretsResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetSecretsResponse) GetJSON200() *[]Secret {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetSecretsResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetSecretsResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetSecretsResponse) GetJSON403() *N403 {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetSecretsResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r GetSecretsResponse) GetJSON409() *N409 {
+	return r.JSON409
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r GetSecretsResponse) GetJSON429() *N429 {
+	return r.JSON429
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetSecretsResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetJSON502 returns the response for an HTTP 502 `application/json` response
+func (r GetSecretsResponse) GetJSON502() *N502 {
+	return r.JSON502
+}
+
+// GetJSON504 returns the response for an HTTP 504 `application/json` response
+func (r GetSecretsResponse) GetJSON504() *N504 {
+	return r.JSON504
+}
+
+// GetBody returns the raw response body bytes
+func (r GetSecretsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSecretsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSecretsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetSecretsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PostSecretsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *Secret
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *N403
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *N409
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *N429
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// JSON502 the response for an HTTP 502 `application/json` response
+	JSON502 *N502
+	// JSON504 the response for an HTTP 504 `application/json` response
+	JSON504 *N504
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r PostSecretsResponse) GetJSON201() *Secret {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PostSecretsResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PostSecretsResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r PostSecretsResponse) GetJSON403() *N403 {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PostSecretsResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PostSecretsResponse) GetJSON409() *N409 {
+	return r.JSON409
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r PostSecretsResponse) GetJSON429() *N429 {
+	return r.JSON429
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r PostSecretsResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetJSON502 returns the response for an HTTP 502 `application/json` response
+func (r PostSecretsResponse) GetJSON502() *N502 {
+	return r.JSON502
+}
+
+// GetJSON504 returns the response for an HTTP 504 `application/json` response
+func (r PostSecretsResponse) GetJSON504() *N504 {
+	return r.JSON504
+}
+
+// GetBody returns the raw response body bytes
+func (r PostSecretsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PostSecretsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostSecretsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostSecretsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteSecretsSecretIDResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *N403
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *N409
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *N429
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// JSON502 the response for an HTTP 502 `application/json` response
+	JSON502 *N502
+	// JSON504 the response for an HTTP 504 `application/json` response
+	JSON504 *N504
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r DeleteSecretsSecretIDResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeleteSecretsSecretIDResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r DeleteSecretsSecretIDResponse) GetJSON403() *N403 {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteSecretsSecretIDResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r DeleteSecretsSecretIDResponse) GetJSON409() *N409 {
+	return r.JSON409
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r DeleteSecretsSecretIDResponse) GetJSON429() *N429 {
+	return r.JSON429
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r DeleteSecretsSecretIDResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetJSON502 returns the response for an HTTP 502 `application/json` response
+func (r DeleteSecretsSecretIDResponse) GetJSON502() *N502 {
+	return r.JSON502
+}
+
+// GetJSON504 returns the response for an HTTP 504 `application/json` response
+func (r DeleteSecretsSecretIDResponse) GetJSON504() *N504 {
+	return r.JSON504
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteSecretsSecretIDResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteSecretsSecretIDResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteSecretsSecretIDResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteSecretsSecretIDResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetSecretsSecretIDResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Secret
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *N403
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *N409
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *N429
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// JSON502 the response for an HTTP 502 `application/json` response
+	JSON502 *N502
+	// JSON504 the response for an HTTP 504 `application/json` response
+	JSON504 *N504
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetSecretsSecretIDResponse) GetJSON200() *Secret {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetSecretsSecretIDResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetSecretsSecretIDResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetSecretsSecretIDResponse) GetJSON403() *N403 {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetSecretsSecretIDResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r GetSecretsSecretIDResponse) GetJSON409() *N409 {
+	return r.JSON409
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r GetSecretsSecretIDResponse) GetJSON429() *N429 {
+	return r.JSON429
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetSecretsSecretIDResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetJSON502 returns the response for an HTTP 502 `application/json` response
+func (r GetSecretsSecretIDResponse) GetJSON502() *N502 {
+	return r.JSON502
+}
+
+// GetJSON504 returns the response for an HTTP 504 `application/json` response
+func (r GetSecretsSecretIDResponse) GetJSON504() *N504 {
+	return r.JSON504
+}
+
+// GetBody returns the raw response body bytes
+func (r GetSecretsSecretIDResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSecretsSecretIDResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSecretsSecretIDResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetSecretsSecretIDResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PostSecretsSecretIDResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Secret
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *N403
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *N409
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *N429
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// JSON502 the response for an HTTP 502 `application/json` response
+	JSON502 *N502
+	// JSON504 the response for an HTTP 504 `application/json` response
+	JSON504 *N504
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PostSecretsSecretIDResponse) GetJSON200() *Secret {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PostSecretsSecretIDResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PostSecretsSecretIDResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r PostSecretsSecretIDResponse) GetJSON403() *N403 {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PostSecretsSecretIDResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PostSecretsSecretIDResponse) GetJSON409() *N409 {
+	return r.JSON409
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r PostSecretsSecretIDResponse) GetJSON429() *N429 {
+	return r.JSON429
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r PostSecretsSecretIDResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetJSON502 returns the response for an HTTP 502 `application/json` response
+func (r PostSecretsSecretIDResponse) GetJSON502() *N502 {
+	return r.JSON502
+}
+
+// GetJSON504 returns the response for an HTTP 504 `application/json` response
+func (r PostSecretsSecretIDResponse) GetJSON504() *N504 {
+	return r.JSON504
+}
+
+// GetBody returns the raw response body bytes
+func (r PostSecretsSecretIDResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PostSecretsSecretIDResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostSecretsSecretIDResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostSecretsSecretIDResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -12368,6 +13425,111 @@ func (c *ClientWithResponses) PostSandboxesSandboxIDTimeoutWithResponse(ctx cont
 	return ParsePostSandboxesSandboxIDTimeoutResponse(rsp)
 }
 
+// GetSecretsWithResponse List project secrets
+//
+// List the project's secrets. No response carries a secret value.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /secrets (the `GetSecrets` operationId).
+func (c *ClientWithResponses) GetSecretsWithResponse(ctx context.Context, params *GetSecretsParams, reqEditors ...RequestEditorFn) (*GetSecretsResponse, error) {
+	rsp, err := c.GetSecrets(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSecretsResponse(rsp)
+}
+
+// PostSecretsWithBodyWithResponse Create a secret
+//
+// Create a secret by storing a runtime marker as its first version. The response carries metadata only.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /secrets (the `PostSecrets` operationId).
+func (c *ClientWithResponses) PostSecretsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSecretsResponse, error) {
+	rsp, err := c.PostSecretsWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostSecretsResponse(rsp)
+}
+
+// PostSecretsWithResponse Create a secret
+//
+// Create a secret by storing a runtime marker as its first version. The response carries metadata only.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /secrets (the `PostSecrets` operationId).
+func (c *ClientWithResponses) PostSecretsWithResponse(ctx context.Context, body PostSecretsJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSecretsResponse, error) {
+	rsp, err := c.PostSecrets(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostSecretsResponse(rsp)
+}
+
+// DeleteSecretsSecretIDWithResponse Delete a secret
+//
+// Revoke the secret and schedule its versions for cleanup.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /secrets/{secretID} (the `DeleteSecretsSecretID` operationId).
+func (c *ClientWithResponses) DeleteSecretsSecretIDWithResponse(ctx context.Context, secretID SecretID, reqEditors ...RequestEditorFn) (*DeleteSecretsSecretIDResponse, error) {
+	rsp, err := c.DeleteSecretsSecretID(ctx, secretID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteSecretsSecretIDResponse(rsp)
+}
+
+// GetSecretsSecretIDWithResponse Get a secret
+//
+// Get one secret's metadata, selected by identifier or name.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /secrets/{secretID} (the `GetSecretsSecretID` operationId).
+func (c *ClientWithResponses) GetSecretsSecretIDWithResponse(ctx context.Context, secretID SecretID, reqEditors ...RequestEditorFn) (*GetSecretsSecretIDResponse, error) {
+	rsp, err := c.GetSecretsSecretID(ctx, secretID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSecretsSecretIDResponse(rsp)
+}
+
+// PostSecretsSecretIDWithBodyWithResponse Update a secret
+//
+// Replace the secret's stored marker by appending a new version. The response carries metadata only.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /secrets/{secretID} (the `PostSecretsSecretID` operationId).
+func (c *ClientWithResponses) PostSecretsSecretIDWithBodyWithResponse(ctx context.Context, secretID SecretID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSecretsSecretIDResponse, error) {
+	rsp, err := c.PostSecretsSecretIDWithBody(ctx, secretID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostSecretsSecretIDResponse(rsp)
+}
+
+// PostSecretsSecretIDWithResponse Update a secret
+//
+// Replace the secret's stored marker by appending a new version. The response carries metadata only.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /secrets/{secretID} (the `PostSecretsSecretID` operationId).
+func (c *ClientWithResponses) PostSecretsSecretIDWithResponse(ctx context.Context, secretID SecretID, body PostSecretsSecretIDJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSecretsSecretIDResponse, error) {
+	rsp, err := c.PostSecretsSecretID(ctx, secretID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostSecretsSecretIDResponse(rsp)
+}
+
 // GetSnapshotsWithResponse List snapshots
 //
 // List all snapshots for the team.
@@ -14423,6 +15585,460 @@ func ParsePostSandboxesSandboxIDTimeoutResponse(rsp *http.Response) (*PostSandbo
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSecretsResponse parses an HTTP response from a GetSecretsWithResponse call
+func ParseGetSecretsResponse(rsp *http.Response) (*GetSecretsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSecretsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []Secret
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest N403
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest N429
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest N502
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 504:
+		var dest N504
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON504 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetSecretsResponse200Headers
+		if values := rsp.Header.Values("X-Next-Token"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Next-Token", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XNextToken = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParsePostSecretsResponse parses an HTTP response from a PostSecretsWithResponse call
+func ParsePostSecretsResponse(rsp *http.Response) (*PostSecretsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostSecretsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Secret
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest N403
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest N429
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest N502
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 504:
+		var dest N504
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON504 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteSecretsSecretIDResponse parses an HTTP response from a DeleteSecretsSecretIDWithResponse call
+func ParseDeleteSecretsSecretIDResponse(rsp *http.Response) (*DeleteSecretsSecretIDResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteSecretsSecretIDResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest N403
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest N429
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest N502
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 504:
+		var dest N504
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON504 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSecretsSecretIDResponse parses an HTTP response from a GetSecretsSecretIDWithResponse call
+func ParseGetSecretsSecretIDResponse(rsp *http.Response) (*GetSecretsSecretIDResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSecretsSecretIDResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Secret
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest N403
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest N429
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest N502
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 504:
+		var dest N504
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON504 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostSecretsSecretIDResponse parses an HTTP response from a PostSecretsSecretIDWithResponse call
+func ParsePostSecretsSecretIDResponse(rsp *http.Response) (*PostSecretsSecretIDResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostSecretsSecretIDResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Secret
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest N403
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest N429
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest N502
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 504:
+		var dest N504
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON504 = &dest
 
 	}
 

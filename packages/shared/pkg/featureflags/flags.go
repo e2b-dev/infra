@@ -284,6 +284,11 @@ var (
 	// (iam.tokens) per team during beta.
 	SandboxIamTokensFlag = NewBoolFlag("enable-sandbox-iam-tokens", env.IsDevelopment())
 
+	// CustomerSecretsFlag gates the customer-facing secret management routes
+	// per project during rollout. It falls back to off, so a deployment that
+	// cannot reach LaunchDarkly keeps the routes dark.
+	CustomerSecretsFlag = NewBoolFlag("customer-secrets", false)
+
 	// V4HeaderForUncompressedFlag forces the V4 header layout on uncompressed
 	// uploads. Independent of compress-config: it changes the header format,
 	// not whether data is compressed.

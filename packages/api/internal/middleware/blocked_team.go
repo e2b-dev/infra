@@ -20,6 +20,8 @@ var blockedTeamAllowlist = auth.BlockedTeamAllowlist{
 		"/sandboxes/:sandboxID":                         {},
 		"/sandboxes/:sandboxID/logs":                    {},
 		"/sandboxes/:sandboxID/metrics":                 {},
+		"/secrets":                                      {},
+		"/secrets/:secretID":                            {},
 		"/snapshots":                                    {},
 		"/teams/:teamID/metrics":                        {},
 		"/teams/:teamID/metrics/max":                    {},
