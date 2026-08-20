@@ -73,6 +73,56 @@ func (q *Queries) CreateCluster(ctx context.Context, arg CreateClusterParams) (u
 	return id, err
 }
 
+const deleteCluster = `-- name: DeleteCluster :execrows
+DELETE FROM public.clusters
+WHERE id = $1::uuid
+`
+
+func (q *Queries) DeleteCluster(ctx context.Context, clusterID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteCluster, clusterID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const detachTeamCluster = `-- name: DetachTeamCluster :one
+WITH locked_team AS MATERIALIZED (
+    SELECT cluster_id
+    FROM public.teams
+    WHERE id = $1::uuid
+    FOR UPDATE
+),
+detached AS (
+    UPDATE public.teams AS team
+    SET cluster_id = NULL
+    FROM locked_team
+    WHERE team.id = $1::uuid
+      AND locked_team.cluster_id = $2::uuid
+    RETURNING TRUE
+)
+SELECT locked_team.cluster_id,
+       EXISTS (SELECT FROM detached) AS detached
+FROM locked_team
+`
+
+type DetachTeamClusterParams struct {
+	TeamID    uuid.UUID
+	ClusterID uuid.UUID
+}
+
+type DetachTeamClusterRow struct {
+	ClusterID *uuid.UUID
+	Detached  bool
+}
+
+func (q *Queries) DetachTeamCluster(ctx context.Context, arg DetachTeamClusterParams) (DetachTeamClusterRow, error) {
+	row := q.db.QueryRow(ctx, detachTeamCluster, arg.TeamID, arg.ClusterID)
+	var i DetachTeamClusterRow
+	err := row.Scan(&i.ClusterID, &i.Detached)
+	return i, err
+}
+
 const teamClusterAssignment = `-- name: TeamClusterAssignment :one
 SELECT cluster_id
 FROM public.teams

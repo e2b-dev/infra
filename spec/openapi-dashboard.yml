@@ -103,6 +103,14 @@ components:
       schema:
         type: string
         format: uuid
+    clusterID:
+      name: clusterID
+      in: path
+      required: true
+      description: Identifier of the cluster.
+      schema:
+        type: string
+        format: uuid
     projectID:
       name: projectID
       in: path
@@ -1625,8 +1633,8 @@ paths:
 
   /admin/clusters:
     post:
-      summary: Create an immutable cluster
-      description: Creates a cluster row. Existing cluster rows are never modified.
+      summary: Create a cluster
+      description: Creates a cluster whose configuration cannot be modified.
       tags: [admin]
       security:
         - AdminApiKeyAuth: []
@@ -1643,6 +1651,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AdminClusterCreateResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "409":
+          $ref: "#/components/responses/409"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/clusters/{clusterID}:
+    delete:
+      summary: Delete an unreferenced cluster
+      description: Deletes a cluster only after all team assignments are detached and no environment history references it. Repeating a completed deletion succeeds.
+      tags: [admin]
+      security:
+        - AdminApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/clusterID"
+      responses:
+        "204":
+          description: Cluster deleted or already absent.
         "400":
           $ref: "#/components/responses/400"
         "401":
@@ -1699,6 +1728,30 @@ paths:
           $ref: "#/components/responses/401"
         "404":
           $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/teams/{teamID}/cluster/{clusterID}:
+    delete:
+      summary: Detach a cluster from a team
+      description: Clears the assignment only when the team is unassigned or assigned to the specified cluster.
+      tags: [admin]
+      security:
+        - AdminApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/teamID"
+        - $ref: "#/components/parameters/clusterID"
+      responses:
+        "204":
+          description: Cluster detached or the team was already unassigned.
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
         "500":
           $ref: "#/components/responses/500"
 

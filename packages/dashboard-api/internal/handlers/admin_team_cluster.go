@@ -59,6 +59,24 @@ func (s *APIStore) PostAdminClusters(c *gin.Context) {
 	c.JSON(http.StatusCreated, api.AdminClusterCreateResponse{ClusterId: clusterID})
 }
 
+func (s *APIStore) DeleteAdminClustersClusterID(c *gin.Context, clusterID api.ClusterID) {
+	ctx := c.Request.Context()
+
+	_, err := s.db.Dashboard.DeleteCluster(ctx, clusterID)
+	if err != nil {
+		if dberrors.IsForeignKeyViolation(err) {
+			s.sendAPIStoreError(c, http.StatusConflict, "Cluster is still referenced by a team or environment")
+		} else {
+			s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to delete cluster")
+		}
+
+		return
+	}
+
+	logger.L().Info(ctx, "admin cluster deleted", logger.WithClusterID(clusterID))
+	c.Status(http.StatusNoContent)
+}
+
 func (s *APIStore) GetAdminTeamsTeamIDCluster(c *gin.Context, teamID api.TeamID) {
 	clusterID, err := s.db.Dashboard.TeamClusterAssignment(
 		c.Request.Context(),
@@ -118,6 +136,47 @@ func (s *APIStore) PutAdminTeamsTeamIDCluster(c *gin.Context, teamID api.TeamID)
 	if err := s.authService.InvalidateTeamCache(ctx, teamID); err != nil {
 		logger.L().Error(ctx, "invalidating team cache after cluster assignment",
 			logger.WithTeamID(teamID.String()), zap.Error(err))
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+func (s *APIStore) DeleteAdminTeamsTeamIDClusterClusterID(
+	c *gin.Context,
+	teamID api.TeamID,
+	clusterID api.ClusterID,
+) {
+	ctx := c.Request.Context()
+
+	result, err := s.db.Dashboard.DetachTeamCluster(ctx, dashboardqueries.DetachTeamClusterParams{
+		TeamID:    teamID,
+		ClusterID: clusterID,
+	})
+	if dberrors.IsNotFoundError(err) {
+		s.sendAPIStoreError(c, http.StatusNotFound, "Team not found")
+
+		return
+	}
+	if err != nil {
+		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to detach cluster from team")
+
+		return
+	}
+	if result.ClusterID != nil && !result.Detached {
+		s.sendAPIStoreError(c, http.StatusConflict, "Team is assigned to a different cluster")
+
+		return
+	}
+
+	logger.L().Info(ctx, "admin team cluster detached",
+		logger.WithTeamID(teamID.String()), logger.WithClusterID(clusterID))
+
+	if err := s.authService.InvalidateTeamCache(ctx, teamID); err != nil {
+		logger.L().Error(ctx, "invalidating team cache after cluster detachment",
+			logger.WithTeamID(teamID.String()), zap.Error(err))
+		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to invalidate team cache after cluster detachment")
+
+		return
 	}
 
 	c.Status(http.StatusNoContent)
