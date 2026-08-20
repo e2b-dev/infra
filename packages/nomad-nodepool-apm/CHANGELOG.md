@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.2](https://github.com/e2b-dev/infra/compare/nomad-nodepool-apm-v0.0.1...nomad-nodepool-apm-v0.0.2) (2026-08-20)
+
+
+### Bug Fixes
+
+* **deps:** update module google.golang.org/grpc to v1.83.0 ([#1583](https://github.com/e2b-dev/infra/issues/1583)) ([acbefda](https://github.com/e2b-dev/infra/commit/acbefdae0e45d5c816cc8659dc8d34784ffa0056))
+* **deps:** update opentelemetry-go-contrib monorepo ([#1607](https://github.com/e2b-dev/infra/issues/1607)) ([5852c94](https://github.com/e2b-dev/infra/commit/5852c942f9b5cff8a66ad008196d7025273febea))
+
 ## 0.0.1 (2026-07-30)
 
 
