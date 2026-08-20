@@ -33,7 +33,7 @@ func newV4HeaderFF(t *testing.T, on bool) *featureflags.Client {
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		_ = ff.Close(t.Context())
+		_ = ff.Close(context.WithoutCancel(t.Context()))
 	})
 
 	return ff

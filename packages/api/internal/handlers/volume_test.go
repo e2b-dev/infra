@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"testing"
 
 	"github.com/google/uuid"
@@ -196,7 +197,7 @@ func TestGetVolumeType(t *testing.T) {
 			ff, err := featureflags.NewClientWithDatasource(td)
 			require.NoError(t, err)
 			t.Cleanup(func() {
-				assert.NoError(t, ff.Close(t.Context()))
+				assert.NoError(t, ff.Close(context.WithoutCancel(t.Context())))
 			})
 
 			if tt.flagValue != "" {

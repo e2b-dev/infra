@@ -15,6 +15,7 @@ package build
 // causing a race when closing the cancel channel.
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"testing"
@@ -626,7 +627,7 @@ func TestEvictionThreshold(t *testing.T) {
 		flags, err := featureflags.NewClientWithDatasource(datastore)
 		require.NoError(t, err)
 		t.Cleanup(func() {
-			assert.NoError(t, flags.Close(t.Context()))
+			assert.NoError(t, flags.Close(context.WithoutCancel(t.Context())))
 		})
 
 		got := evictionThreshold(t.Context(), flags, cfg.Services{cfg.Orchestrator, cfg.TemplateManager})
@@ -648,7 +649,7 @@ func flagsWithMaxBuildCachePercentage(tb testing.TB, maxBuildCachePercentage int
 	require.NoError(tb, err)
 
 	tb.Cleanup(func() {
-		err := flags.Close(tb.Context())
+		err := flags.Close(context.WithoutCancel(tb.Context()))
 		assert.NoError(tb, err)
 	})
 

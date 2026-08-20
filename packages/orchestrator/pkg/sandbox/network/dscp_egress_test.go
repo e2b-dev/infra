@@ -3,6 +3,7 @@
 package network
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"runtime"
@@ -437,7 +438,7 @@ func TestPool_GetFailureReturnsSlotWithSandboxDSCP(t *testing.T) { //nolint:para
 	t.Cleanup(func() { _ = slot.RemoveNetwork() })
 
 	pool := NewPool(2, 1, &fakeStorage{}, config)
-	t.Cleanup(func() { _ = pool.Close(t.Context()) })
+	t.Cleanup(func() { _ = pool.Close(context.WithoutCancel(t.Context())) })
 
 	requireSingleDSCPRule(t, slot, "0x08")
 
@@ -477,7 +478,7 @@ func TestPool_RecycleRestoresSandboxDSCP(t *testing.T) { //nolint:paralleltest /
 	t.Cleanup(func() { _ = slot.RemoveNetwork() })
 
 	pool := NewPool(2, 1, &fakeStorage{}, config)
-	t.Cleanup(func() { _ = pool.Close(t.Context()) })
+	t.Cleanup(func() { _ = pool.Close(context.WithoutCancel(t.Context())) })
 
 	requireSingleDSCPRule(t, slot, "0x08")
 

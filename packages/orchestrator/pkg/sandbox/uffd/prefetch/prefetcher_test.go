@@ -303,7 +303,7 @@ func TestStartFetchOnlyNeverPrefaults(t *testing.T) {
 
 	ff, err := featureflags.NewClient()
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = ff.Close(t.Context()) })
+	t.Cleanup(func() { _ = ff.Close(context.WithoutCancel(t.Context())) })
 
 	const bs = int64(4096)
 	be := &countingBackend{}

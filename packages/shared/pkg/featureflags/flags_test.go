@@ -1,6 +1,7 @@
 package featureflags
 
 import (
+	"context"
 	"testing"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
@@ -20,7 +21,7 @@ func newResolverTestClient(t *testing.T, versions map[string]string) *Client {
 	client, err := NewClientWithDatasource(td)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		assert.NoError(t, client.Close(t.Context()))
+		assert.NoError(t, client.Close(context.WithoutCancel(t.Context())))
 	})
 
 	return client

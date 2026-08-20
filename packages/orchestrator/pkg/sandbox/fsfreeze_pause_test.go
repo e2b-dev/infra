@@ -3,6 +3,7 @@
 package sandbox
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -98,7 +99,7 @@ func newFsFreezeSandbox(t *testing.T, envdURL string) *Sandbox {
 
 	ff, err := featureflags.NewClientWithDatasource(ldtestdata.DataSource())
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = ff.Close(t.Context()) })
+	t.Cleanup(func() { _ = ff.Close(context.WithoutCancel(t.Context())) })
 
 	token := "test-token"
 	s := &Sandbox{Metadata: &Metadata{

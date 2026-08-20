@@ -20,7 +20,7 @@ func TestOfflineDatastore(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		err = client.Close(t.Context())
+		err = client.Close(context.WithoutCancel(t.Context()))
 		assert.NoError(t, err)
 	})
 

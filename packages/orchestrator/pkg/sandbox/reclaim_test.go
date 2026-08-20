@@ -3,6 +3,7 @@
 package sandbox
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -43,7 +44,7 @@ func newSandboxWithFF(t *testing.T, ramMB int64, td *ldtestdata.TestDataSource) 
 
 	ff, err := featureflags.NewClientWithDatasource(td)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = ff.Close(t.Context()) })
+	t.Cleanup(func() { _ = ff.Close(context.WithoutCancel(t.Context())) })
 
 	s := &Sandbox{Metadata: &Metadata{Config: &Config{RamMB: ramMB}}}
 	s.featureFlags = ff

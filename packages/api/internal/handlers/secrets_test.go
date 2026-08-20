@@ -222,7 +222,7 @@ func newSecretsStore(t *testing.T, client managementv1.SecretManagementServiceCl
 	td.Update(td.Flag(featureflags.CustomerSecretsFlag.Key()).VariationForAll(gateOpen))
 	ff, err := featureflags.NewClientWithDatasource(td)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = ff.Close(t.Context()) })
+	t.Cleanup(func() { _ = ff.Close(context.WithoutCancel(t.Context())) })
 
 	return &APIStore{featureFlags: ff, secretsManagement: client}
 }

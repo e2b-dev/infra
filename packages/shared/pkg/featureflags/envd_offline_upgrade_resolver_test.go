@@ -32,7 +32,7 @@ func TestResolveEnvdOfflineUpgrade_ReadsSiblingFlag(t *testing.T) {
 	source.Update(source.Flag(EnvdUpgradeTargetFlag.Key()).ValueForAll(ldvalue.String("promoted")))
 	ff, err := NewClientWithDatasource(source)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = ff.Close(t.Context()) })
+	t.Cleanup(func() { _ = ff.Close(context.WithoutCancel(t.Context())) })
 
 	path, _, reason := ResolveEnvdOfflineUpgrade(t.Context(), ff, "0.6.5", promoted, getVersion)
 	assert.Empty(t, path, "offline resolver must ignore the live-path flag")
