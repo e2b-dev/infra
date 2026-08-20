@@ -16,6 +16,7 @@ tool github.com/vektra/mockery/v3
 require (
 	cloud.google.com/go/storage v1.64.0
 	connectrpc.com/connect v1.18.1
+	github.com/ClickHouse/clickhouse-go/v2 v2.46.0
 	github.com/Merovius/nbd v0.0.0-20240812113926-fd65a54c9949
 	github.com/RoaringBitmap/roaring/v2 v2.18.0
 	github.com/aws/aws-sdk-go-v2/config v1.32.12
@@ -98,7 +99,6 @@ require (
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.7.2 // indirect
 	github.com/ClickHouse/ch-go v0.71.0 // indirect
-	github.com/ClickHouse/clickhouse-go/v2 v2.46.0 // indirect
 	github.com/DataDog/datadog-go/v5 v5.2.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.33.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.57.0 // indirect
