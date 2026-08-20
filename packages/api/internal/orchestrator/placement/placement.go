@@ -27,6 +27,8 @@ type PlacementResult struct {
 	WarmedNode *nodemanager.Node
 	// TimedOut reports whether placement failed due to context cancellation/deadline.
 	TimedOut bool
+	// Response is the successful create's RPC response; nil on failure.
+	Response *orchestrator.SandboxCreateResponse
 }
 
 // Algorithm defines the interface for sandbox placement strategies.
@@ -134,7 +136,7 @@ func PlaceSandbox(
 			telemetry.WithNodeID(node.ID),
 			telemetry.WithClusterID(node.ClusterID),
 		)
-		err = node.SandboxCreate(ctx, sbxRequest)
+		resp, err := node.SandboxCreate(ctx, sbxRequest)
 		span.End()
 		if err == nil {
 			node.PlacementMetrics.Success(sbxRequest.GetSandbox().GetSandboxId())
@@ -147,7 +149,7 @@ func PlaceSandbox(
 				MiBMemory: sbxRequest.GetSandbox().GetRamMb(),
 			})
 
-			return PlacementResult{Node: node}, nil
+			return PlacementResult{Node: node, Response: resp}, nil
 		}
 
 		failedNode := node

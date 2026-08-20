@@ -19,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
 	buildenvd "github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/envd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/constants"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -44,9 +45,17 @@ var (
 	envdOfflineUpgradeDurationHist = utils.Must(telemetry.GetHistogram(meter, telemetry.OrchestratorEnvdOfflineUpgradeDurationName))
 )
 
+// rebootAllowed reports whether a snapshot may be cold-booted: it is marked
+// filesystem-only, or the request explicitly demanded a filesystem boot of its
+// memory-inclusive snapshot, accepting crash-recovery semantics for the rootfs.
+func rebootAllowed(meta metadata.Template, requestFilesystemBoot bool) bool {
+	return meta.IsFilesystemOnly() || requestFilesystemBoot
+}
+
 // RebootSandbox cold-boots a fresh Firecracker VM from the template's rootfs,
-// without restoring guest memory. Used to resume filesystem-only snapshots:
-// guest RAM, processes, and sockets are lost; only the filesystem survives.
+// without restoring guest memory. Used to resume filesystem-only snapshots and
+// explicitly requested filesystem boots of memory snapshots: guest RAM,
+// processes, and sockets are lost; only the filesystem survives.
 // The sandbox is marked running only after envd is ready, matching
 // ResumeSandbox's routing guarantees; endAt is the caller's absolute end time.
 // procOpts, if any, adjust the fc.ProcessOptions of the cold boot after the
@@ -60,6 +69,7 @@ func (f *Factory) RebootSandbox(
 	endAt time.Time,
 	apiConfigToStore *orchestrator.SandboxConfig,
 	deferMarkRunning bool,
+	requestFilesystemBoot bool,
 	procOpts ...func(*fc.ProcessOptions),
 ) (*Sandbox, error) {
 	ctx, span := tracer.Start(ctx, "reboot sandbox")
@@ -70,16 +80,16 @@ func (f *Factory) RebootSandbox(
 		return nil, fmt.Errorf("parse build ID: %w", err)
 	}
 
-	// Safety gate: only filesystem-only snapshots are safe to cold-boot from. A
-	// memory snapshot's rootfs may be missing writes that lived only in the
-	// guest page cache (restored on a memory resume), so rebooting it would
-	// serve an inconsistent disk. Refuse unless the snapshot is marked fs-only.
+	// Safety gate: a memory snapshot's rootfs may be missing writes that lived
+	// only in the guest page cache (restored on a memory resume), so cold-booting
+	// it serves a crash-consistent disk at best. Refuse unless the snapshot is
+	// marked fs-only or the request explicitly demanded the filesystem boot.
 	meta, err := t.Metadata()
 	if err != nil {
 		return nil, fmt.Errorf("get template metadata: %w", err)
 	}
-	if !meta.IsFilesystemOnly() {
-		return nil, fmt.Errorf("refusing to reboot build %s: not a filesystem-only snapshot", buildID)
+	if !rebootAllowed(meta, requestFilesystemBoot) {
+		return nil, fmt.Errorf("refusing to reboot build %s: not a filesystem-only snapshot and the request did not demand a filesystem boot", buildID)
 	}
 
 	// A cold boot starts envd with no prior state, so unlike a memory resume it
@@ -159,7 +169,10 @@ func (f *Factory) RebootSandbox(
 		applied = fc.KernelArgs(meta.CmdlineArgs).String()
 	}
 
-	span.SetAttributes(attribute.String("sandbox.cmdline_args", applied))
+	span.SetAttributes(
+		attribute.String("sandbox.cmdline_args", applied),
+		attribute.Bool("sandbox.filesystem_boot_requested", requestFilesystemBoot),
+	)
 	for _, opt := range procOpts {
 		opt(&processOptions)
 	}

@@ -304,7 +304,8 @@ sequenceDiagram
 
 The API blocks on the gRPC `Create`, which itself blocks on envd's `/init` — when the client
 gets a response, the sandbox is fully usable. Fresh creates are internally a *resume* of the
-template's base snapshot (cold boots only happen for filesystem-only templates and builds).
+template's base snapshot (cold boots happen for filesystem-only templates and builds, or when
+an explicit resume requests one — see pause and resume below; template creates never do).
 
 ### Sandbox traffic
 
@@ -387,6 +388,13 @@ sequenceDiagram
 - **Resume**: same path as creation, but placement prefers the **origin node** — if the snapshot
   is still in its local cache, resume avoids any object-storage reads. `Checkpoint` is a
   pause+resume in place used to persist state while keeping the sandbox running.
+- **Explicit filesystem-only resume**: `memory: false` on resume/connect demands a cold boot
+  (`RebootSandbox`) even when the snapshot includes memory, as a self-serve rescue when the
+  restored memory state is unusable. Gated per team by the `fs-only-resume-api` flag; when off
+  the request is rejected with an explicit error, never silently downgraded to a memory restore.
+  The disk has crash-recovery semantics (unflushed pre-pause writes are lost), nothing durable
+  is mutated (the memory snapshot survives untouched), and auto-resume never takes this path —
+  traffic always memory-resumes.
 - **Envd live-upgrade on resume**: the orchestrator can upgrade the sandbox's envd to a newer
   node-local build during resume (gated by the `envd-upgrade-target` flag in
   `packages/shared/pkg/featureflags`), via envd's `POST /upgrade` (see the envd section). It is

@@ -854,6 +854,16 @@ components:
           type: boolean
           deprecated: true
           description: Automatically pauses the sandbox after the timeout
+        memory:
+          type: boolean
+          x-not-implemented: true
+          description: >-
+            Defaults to true. When false, resume from disk state only: the sandbox cold-boots fresh and
+            any memory in the snapshot is ignored, never modified or deleted. Disk
+            state has crash-recovery semantics — writes not flushed before the pause
+            may be lost. A no-op for snapshots that contain no memory. Rejected with
+            an error in environments where this capability is not enabled, never
+            silently downgraded to a memory restore.
 
     ConnectSandbox:
       type: object
@@ -865,6 +875,16 @@ components:
           type: integer
           format: int32
           minimum: 0
+        memory:
+          type: boolean
+          x-not-implemented: true
+          description: >-
+            Defaults to true. When false and the sandbox is paused, resume from disk state only: the
+            sandbox cold-boots fresh and any memory in the snapshot is ignored, never
+            modified or deleted. Disk state has crash-recovery semantics — writes not
+            flushed before the pause may be lost. A no-op for snapshots that contain
+            no memory. Rejected with an error in environments where this capability
+            is not enabled, never silently downgraded to a memory restore.
 
     SandboxTimeoutRequest:
       type: object
@@ -2751,7 +2771,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema:

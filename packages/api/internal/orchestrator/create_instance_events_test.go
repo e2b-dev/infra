@@ -140,6 +140,7 @@ func TestCreateSandbox_FreshCreate_FiresCallbackOnce(t *testing.T) {
 		successFetcher(),
 		now, now.Add(time.Hour), time.Hour,
 		false,
+		false,
 		sandbox.CreationMetadata{IsResume: false, TeamName: "test-team"},
 	)
 	require.Nil(t, apiErr)
@@ -168,6 +169,7 @@ func TestCreateSandbox_Resume_FiresCallbackOnceWithResumeFlag(t *testing.T) {
 		successFetcher(),
 		now, now.Add(time.Hour), time.Hour,
 		true,
+		false,
 		sandbox.CreationMetadata{IsResume: true, TeamName: "test-team"},
 	)
 	require.Nil(t, apiErr)
@@ -218,6 +220,7 @@ func TestCreateSandbox_ConcurrentRace_LoserPathSkipsCallback(t *testing.T) {
 			team, winnerFetcher,
 			now, now.Add(time.Hour), time.Hour,
 			false,
+			false,
 			sandbox.CreationMetadata{TeamName: "winner"},
 		)
 	})
@@ -230,6 +233,7 @@ func TestCreateSandbox_ConcurrentRace_LoserPathSkipsCallback(t *testing.T) {
 			sbxID, uuid.New().String(),
 			team, successFetcher(),
 			now, now.Add(time.Hour), time.Hour,
+			false,
 			false,
 			sandbox.CreationMetadata{TeamName: "loser"},
 		)
@@ -289,6 +293,7 @@ func TestCreateSandbox_ManyConcurrentRacers_OnlyOneCallback(t *testing.T) {
 			team, fetcher,
 			now, now.Add(time.Hour), time.Hour,
 			false,
+			false,
 			sandbox.CreationMetadata{},
 		)
 		if apiErr == nil {
@@ -305,6 +310,7 @@ func TestCreateSandbox_ManyConcurrentRacers_OnlyOneCallback(t *testing.T) {
 				sbxID, uuid.New().String(),
 				team, successFetcher(),
 				now, now.Add(time.Hour), time.Hour,
+				false,
 				false,
 				sandbox.CreationMetadata{},
 			)
@@ -342,6 +348,7 @@ func TestCreateSandbox_SequentialDuplicate_SecondCallSkipsCallback(t *testing.T)
 		team, successFetcher(),
 		now, now.Add(time.Hour), time.Hour,
 		false,
+		false,
 		sandbox.CreationMetadata{},
 	)
 	require.Nil(t, apiErr)
@@ -352,6 +359,7 @@ func TestCreateSandbox_SequentialDuplicate_SecondCallSkipsCallback(t *testing.T)
 		sbxID, uuid.New().String(),
 		team, successFetcher(),
 		now, now.Add(time.Hour), time.Hour,
+		false,
 		false,
 		sandbox.CreationMetadata{},
 	)
@@ -374,6 +382,7 @@ func TestCreateSandbox_FetcherError_NoCallback(t *testing.T) {
 		team,
 		failingFetcher(http.StatusInternalServerError, "synthetic-fetcher-failure"),
 		now, now.Add(time.Hour), time.Hour,
+		false,
 		false,
 		sandbox.CreationMetadata{},
 	)
@@ -398,6 +407,7 @@ func TestCreateSandbox_QuotaExceeded_NoCallback(t *testing.T) {
 		team, successFetcher(),
 		now, now.Add(time.Hour), time.Hour,
 		false,
+		false,
 		sandbox.CreationMetadata{},
 	)
 	require.Nil(t, apiErr)
@@ -408,6 +418,7 @@ func TestCreateSandbox_QuotaExceeded_NoCallback(t *testing.T) {
 		fixedSandboxID(t), uuid.New().String(),
 		team, successFetcher(),
 		now, now.Add(time.Hour), time.Hour,
+		false,
 		false,
 		sandbox.CreationMetadata{},
 	)

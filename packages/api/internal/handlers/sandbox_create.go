@@ -45,6 +45,7 @@ import (
 const (
 	InstanceIDPrefix            = "i"
 	metricTemplateAlias         = metrics.MetricPrefix + "template.alias"
+	metricMemoryOverride        = metrics.MetricPrefix + "memory_override"
 	minEnvdVersionForSecureFlag = "0.2.0" // Minimum version of envd that supports secure flag
 
 	// Network validation error messages
@@ -326,6 +327,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		teamInfo,
 		getSandboxData,
 		&c.Request.Header,
+		false,
 		false,
 		mcp,
 	)

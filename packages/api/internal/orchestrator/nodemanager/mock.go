@@ -78,9 +78,24 @@ type mockSandboxClient struct {
 	orchestrator.SandboxServiceClient
 }
 
-// Create is a mock implementation that always returns success
-func (n *mockSandboxClient) Create(_ context.Context, _ *orchestrator.SandboxCreateRequest, _ ...grpc.CallOption) (*orchestrator.SandboxCreateResponse, error) {
+// Create is a mock implementation that always returns success, echoing the
+// filesystem-boot demand like a current orchestrator build.
+func (n *mockSandboxClient) Create(_ context.Context, req *orchestrator.SandboxCreateRequest, _ ...grpc.CallOption) (*orchestrator.SandboxCreateResponse, error) {
+	return &orchestrator.SandboxCreateResponse{FilesystemBootApplied: req.GetFilesystemBoot()}, nil
+}
+
+// mockLegacySandboxClient mimics an orchestrator that predates the
+// filesystem_boot field: it succeeds but never echoes the applied boot path.
+type mockLegacySandboxClient struct {
+	orchestrator.SandboxServiceClient
+}
+
+func (n *mockLegacySandboxClient) Create(_ context.Context, _ *orchestrator.SandboxCreateRequest, _ ...grpc.CallOption) (*orchestrator.SandboxCreateResponse, error) {
 	return &orchestrator.SandboxCreateResponse{}, nil
+}
+
+func (n *mockLegacySandboxClient) Delete(_ context.Context, _ *orchestrator.SandboxDeleteRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
 }
 
 // mockTemplateClient implements templatemanager.TemplateServiceClient
@@ -118,6 +133,12 @@ func newMockGRPCClient() *clusters.GRPCClient {
 }
 
 type TestOptions func(node *TestNode)
+
+func WithLegacySandboxClient() TestOptions {
+	return func(node *TestNode) {
+		node.client.Sandbox = &mockLegacySandboxClient{}
+	}
+}
 
 func WithSandboxSleepingClient(baseSandboxCreateTime time.Duration) TestOptions {
 	return func(node *TestNode) {

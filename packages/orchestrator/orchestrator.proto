@@ -136,11 +136,24 @@ message SandboxCreateRequest {
 
   google.protobuf.Timestamp start_time = 2;
   google.protobuf.Timestamp end_time = 3;
+
+  // When true, resume by cold-booting from the snapshot's rootfs even when it
+  // includes a memory snapshot. The request can only widen toward the no-memory
+  // path — it can never force a memory restore of a snapshot that has none.
+  // Absent = the snapshot's own metadata alone selects the boot path, so
+  // existing callers are unaffected. Request-scoped: nothing durable records it.
+  optional bool filesystem_boot = 4;
 }
 
 message SandboxCreateResponse {
   string client_id = 1;
   SchedulingMetadata scheduling_metadata = 2;
+
+  // Echoes whether the sandbox cold-booted from its rootfs (vs a memory
+  // restore). Absent from orchestrators that predate filesystem_boot, so a
+  // caller that demanded a filesystem boot can detect an unhonored demand
+  // instead of trusting deploy ordering.
+  bool filesystem_boot_applied = 3;
 }
 
 message SandboxUpdateRequest {

@@ -137,6 +137,11 @@ var (
 	// guest lacks fsfreeze or the freeze fails.
 	FsFreezeViaExecFlag = NewBoolFlag("fsfreeze-via-exec", false)
 
+	// FsOnlyResumeAPIFlag accepts memory:false on resume/connect of a
+	// memory-inclusive snapshot (an explicit cold-boot rescue). Off = the
+	// request is rejected, never silently downgraded to a memory restore.
+	FsOnlyResumeAPIFlag = NewBoolFlag("fs-only-resume-api", false)
+
 	// StorageSoftDeleteCheckFlag enables reading the storage-index soft-delete
 	// tombstone on header load (one extra GCS Attrs on cold load). Off = no overhead.
 	StorageSoftDeleteCheckFlag = NewBoolFlag("storage-soft-delete-check", false)

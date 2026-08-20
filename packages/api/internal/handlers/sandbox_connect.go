@@ -146,6 +146,15 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 	// connect is the intended way to bring such a sandbox back. (Auto-resume,
 	// which can be triggered by arbitrary traffic, still refuses it.)
 
+	// Pre-flight of the fetcher's authoritative gate so a disabled flag answers
+	// 400 even when the start would otherwise join an in-flight one (409).
+	if _, apiErr := resolveFilesystemBoot(ctx, a.featureFlags, body.Memory, lastSnapshot.Snapshot); apiErr != nil {
+		setMemoryOverrideOutcome(c, body.Memory, apiErr)
+		apierrors.SendAPIError(c, apiErr)
+
+		return
+	}
+
 	sbxlogger.E(&sbxlogger.SandboxMetadata{
 		SandboxID:  sandboxID,
 		TemplateID: lastSnapshot.Snapshot.EnvID,
@@ -157,11 +166,13 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		sandboxID,
 		timeout,
 		teamInfo,
-		a.buildResumeSandboxData(sandboxID, nil),
+		a.buildResumeSandboxData(sandboxID, nil, body.Memory),
 		&c.Request.Header,
 		true,
+		demandsFilesystemBoot(body.Memory, lastSnapshot.Snapshot),
 		nil, // mcp
 	)
+	setMemoryOverrideOutcome(c, body.Memory, createErr)
 	if createErr != nil {
 		apierrors.SendAPIError(c, createErr)
 

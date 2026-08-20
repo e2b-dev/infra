@@ -389,15 +389,12 @@ type runner struct {
 	gdbOrigVersionsDir string
 }
 
-// wrapTemplate applies the CLI's template masks: -no-prefetch drops the
-// prefetch mapping and -force-reboot masks the metadata as filesystem-only so
-// RebootSandbox's safety gate accepts a memory-snapshot build.
-func wrapTemplate(tmpl template.Template, noPrefetch, forceFsOnly bool) template.Template {
+// wrapTemplate applies the CLI's template masks (-no-prefetch drops the
+// prefetch mapping). -force-reboot needs no mask: it is passed to RebootSandbox
+// as the request-side demand, the same predicate a memory:false resume takes.
+func wrapTemplate(tmpl template.Template, noPrefetch bool) template.Template {
 	if noPrefetch {
 		tmpl = &noPrefetchTemplate{tmpl}
-	}
-	if forceFsOnly {
-		tmpl = &forceFsOnlyTemplate{tmpl}
 	}
 
 	return tmpl
@@ -418,7 +415,7 @@ func (r *runner) startSandbox(ctx context.Context, runtime sandbox.RuntimeMetada
 			})
 		}
 
-		return r.factory.RebootSandbox(ctx, r.tmpl, r.sbxConfig, runtime, end, nil, false, procOpts...)
+		return r.factory.RebootSandbox(ctx, r.tmpl, r.sbxConfig, runtime, end, nil, false, r.forceReboot, procOpts...)
 	}
 
 	return r.factory.ResumeSandbox(ctx, r.tmpl, r.sbxConfig, runtime, start, end, nil)
@@ -563,7 +560,7 @@ func (r *runner) cmdBenchmark(ctx context.Context, opts runOptions) error {
 			if err != nil {
 				return fmt.Errorf("reload template: %w", err)
 			}
-			r.tmpl = wrapTemplate(tmpl, r.noPrefetch, r.forceReboot)
+			r.tmpl = wrapTemplate(tmpl, r.noPrefetch)
 		}
 
 		fmt.Printf("\r[%d/%d] Running...    ", i+1, opts.iterations)
@@ -848,7 +845,7 @@ func (r *runner) pauseBenchmark(ctx context.Context, opts pauseOptions) error {
 			if err != nil {
 				return fmt.Errorf("reload template: %w", err)
 			}
-			r.tmpl = wrapTemplate(tmpl, r.noPrefetch, r.forceReboot)
+			r.tmpl = wrapTemplate(tmpl, r.noPrefetch)
 		}
 
 		// Generate unique build ID for each iteration (not saved)
@@ -1093,7 +1090,7 @@ func (r *runner) benchmark(ctx context.Context, n int) error {
 			if err != nil {
 				return fmt.Errorf("reload template: %w", err)
 			}
-			r.tmpl = wrapTemplate(tmpl, r.noPrefetch, r.forceReboot)
+			r.tmpl = wrapTemplate(tmpl, r.noPrefetch)
 		}
 
 		fmt.Printf("\r[%d/%d] Running...    ", i+1, n)
@@ -1292,7 +1289,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if forceReboot && !meta.IsFilesystemOnly() {
 		fmt.Println("⚠️  Forcing reboot of a memory-snapshot build: the disk is only crash-consistent — writes that lived in the guest page cache at pause time may be missing.")
 	}
-	tmpl = wrapTemplate(tmpl, noPrefetch, forceReboot)
+	tmpl = wrapTemplate(tmpl, noPrefetch)
 
 	fcVersion := meta.Template.FirecrackerVersion
 	if runOpts.firecrackerVersion != "" {
@@ -1675,23 +1672,6 @@ func (t *noPrefetchTemplate) Metadata() (metadata.Template, error) {
 	meta.Prefetch = nil
 
 	return meta, nil
-}
-
-// forceFsOnlyTemplate wraps a template to mask its metadata as filesystem-only
-// so RebootSandbox's safety gate accepts a memory-snapshot build (-force-reboot).
-// The mask never touches the stored metadata; a memory snapshot's disk is only
-// crash-consistent, so writes cached in guest RAM at pause time may be missing.
-type forceFsOnlyTemplate struct {
-	template.Template
-}
-
-func (t *forceFsOnlyTemplate) Metadata() (metadata.Template, error) {
-	meta, err := t.Template.Metadata()
-	if err != nil {
-		return meta, err
-	}
-
-	return meta.MarkFilesystemOnly(true), nil
 }
 
 // noEgressProxy is an EgressProxy that removes the default route from the

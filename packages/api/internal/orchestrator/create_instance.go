@@ -33,6 +33,14 @@ import (
 	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+// Semantic error codes for the explicit filesystem-boot (memory:false) path,
+// emitted in APIError.ErrorCode so callers and metrics can distinguish these
+// from ambient 4xx/5xx on the same routes.
+const (
+	ErrCodeStartInFlight             = "sandbox_start_in_flight"
+	ErrCodeFilesystemBootUnconfirmed = "sandbox_filesystem_boot_unconfirmed"
+)
+
 // SandboxDataFetcher is a callback that fetches sandbox metadata.
 // It is called after the concurrency lock is acquired to ensure fresh data.
 type SandboxDataFetcher func(ctx context.Context) (SandboxMetadata, *api.APIError)
@@ -60,6 +68,10 @@ type SandboxMetadata struct {
 	// SnapshotSandboxID is the sandbox ID the resume snapshot is stored under.
 	// It differs from the ID of the sandbox being started when forking.
 	SnapshotSandboxID string
+	// FilesystemBoot demands a cold boot of a memory-inclusive snapshot
+	// (explicit memory:false resume). Set only by the resume data fetchers;
+	// template creates and auto-resume never set it.
+	FilesystemBoot bool
 }
 
 // iamToProto maps the sandbox workload identity configuration into the
@@ -167,6 +179,7 @@ func (o *Orchestrator) CreateSandbox(
 	endTime time.Time,
 	timeout time.Duration,
 	isResume bool,
+	demandFilesystemBoot bool,
 	creationMeta sandbox.CreationMetadata,
 ) (sbx sandbox.Sandbox, apiErr *api.APIError) {
 	ctx, childSpan := tracer.Start(ctx, "create-sandbox")
@@ -201,6 +214,18 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	if waitForStart != nil {
+		// A joined request rides whatever start is already in flight — which may
+		// be a memory restore (e.g. a traffic-triggered auto-resume) that an
+		// explicit memory:false must never be silently answered with.
+		if demandFilesystemBoot {
+			return sandbox.Sandbox{}, &api.APIError{
+				Code:      http.StatusConflict,
+				ErrorCode: ErrCodeStartInFlight,
+				ClientMsg: "Sandbox is already starting; memory: false cannot be applied to a start already in flight — retry once it is running or paused",
+				Err:       fmt.Errorf("filesystem-boot resume of '%s' cannot join an in-flight start", sandboxID),
+			}
+		}
+
 		// Mark as a joined request for telemetry purposes
 		joined.Mark(ctx)
 
@@ -327,6 +352,11 @@ func (o *Orchestrator) CreateSandbox(
 		StartTime: timestamppb.New(startTime),
 		EndTime:   timestamppb.New(endTime),
 	}
+	if sbxData.FilesystemBoot {
+		// Left absent otherwise, so requests without the rescue are
+		// byte-identical to before the field existed.
+		sbxRequest.FilesystemBoot = new(true)
+	}
 
 	var node *nodemanager.Node
 
@@ -410,6 +440,35 @@ func (o *Orchestrator) CreateSandbox(
 		nodemanager.ConvertOrchestratorMountsToDatabaseMounts(sbxData.VolumeMounts),
 		sbxData.Iam,
 	)
+
+	// An orchestrator that predates the filesystem_boot field ignores it and
+	// memory-restores; only the echo proves the demand was honored. Kill the
+	// wrong-path VM on the node (the snapshot row is untouched) and fail loudly
+	// rather than hand back a silent memory restore.
+	if demandFilesystemBoot && !placed.Response.GetFilesystemBootApplied() {
+		// Torn down synchronously: the 503 invites a retry, and an async kill
+		// would race it with the sandbox ID still live on the node.
+		killErr := o.removeSandboxFromNode(
+			context.WithoutCancel(ctx),
+			sbx,
+			sandbox.StateActionKill,
+			sandbox.KillReasonUnknown,
+			false, // kill: no snapshot
+		)
+		if killErr != nil {
+			logger.L().Error(ctx, "Error removing memory-restored sandbox after unhonored filesystem-boot demand",
+				zap.Error(killErr),
+				logger.WithSandboxID(sbx.SandboxID),
+			)
+		}
+
+		return sandbox.Sandbox{}, &api.APIError{
+			Code:      http.StatusServiceUnavailable,
+			ErrorCode: ErrCodeFilesystemBootUnconfirmed,
+			ClientMsg: "This cluster cannot resume without memory yet (memory: false); the resume was rolled back and the snapshot is untouched — retry shortly",
+			Err:       fmt.Errorf("filesystem-boot demand for '%s' not confirmed by node %s", sandboxID, node.ID),
+		}
+	}
 
 	err = o.sandboxStore.Add(ctx, sbx, &creationMeta)
 	if err != nil {

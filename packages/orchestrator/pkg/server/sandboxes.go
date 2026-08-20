@@ -84,6 +84,15 @@ const (
 	killReasonResumeFailed = "resume_failed"
 )
 
+// filesystemBoot reports whether a snapshot resumes by cold-booting (rebooting)
+// from its rootfs instead of restoring memory: when the artifact has no memory
+// to restore, or when the request demands a cold boot of one that does. The
+// request can only widen toward the no-memory path — it can never force a
+// memory restore of a snapshot that has none.
+func filesystemBoot(meta metadata.Template, req *orchestrator.SandboxCreateRequest) bool {
+	return meta.IsFilesystemOnly() || req.GetFilesystemBoot()
+}
+
 func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (_ *orchestrator.SandboxCreateResponse, createErr error) {
 	// set max request timeout for this request
 	ctx, cancel := context.WithTimeoutCause(ctx, requestTimeout, errors.New("request timed out"))
@@ -94,12 +103,15 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	defer childSpan.End()
 
 	isResume := req.GetSandbox().GetSnapshot()
-	// fsOnly is set at the resume fork below when this takes the filesystem-only
-	// reboot path (vs a memory restore), so create/resume e2e latency can be
-	// split reboot vs memory — mirroring the fs_only pause label. Combined with
-	// sandbox.resume: resume=false → fresh create; resume=true,fs_only=false →
-	// memory resume; resume=true,fs_only=true → filesystem-only reboot.
+	// fsOnly reports the ARTIFACT kind (filesystem-only snapshot), mirroring the
+	// fs_only pause label, so the historical fs-only latency cohort stays pure.
+	// Combined with fs_boot_requested the population decomposes fully: the boot
+	// path taken is fs_only OR fs_boot_requested; a rescue of a memory snapshot
+	// is fs_only=false, fs_boot_requested=true. Set after metadata loads below.
 	var fsOnly bool
+	// filesystemBooted is the dispatch outcome (the reboot path ran); echoed in
+	// the response so a demanding caller can verify the demand was honored.
+	var filesystemBooted bool
 	createStart := time.Now()
 	// Set by maybeUpgradeEnvd below; labels the resume-latency histogram so the
 	// treated (upgraded) vs untreated cohorts can be compared during the rollout.
@@ -109,6 +121,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			metric.WithAttributes(
 				attribute.Bool("sandbox.resume", isResume),
 				attribute.Bool("fs_only", fsOnly),
+				attribute.Bool("fs_boot_requested", req.GetFilesystemBoot()),
 				attribute.Bool("success", createErr == nil),
 				attribute.Bool("envd.upgraded", envdUpgraded),
 			),
@@ -238,17 +251,16 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		SandboxType: sandbox.SandboxTypeSandbox,
 	}
 
-	// A filesystem-only snapshot has no memory to restore; resume it by
-	// cold-booting (rebooting) from its rootfs. The snapshot's own metadata is
-	// the source of truth, so a memory snapshot can never be rebooted.
 	meta, err := template.Metadata()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read template metadata: %w", err)
 	}
 
+	fsOnly = meta.IsFilesystemOnly()
+	filesystemBooted = filesystemBoot(meta, req)
+
 	var sbx *sandbox.Sandbox
-	if meta.IsFilesystemOnly() {
-		fsOnly = true
+	if filesystemBooted {
 		sbx, err = s.sandboxFactory.RebootSandbox(
 			ctx,
 			template,
@@ -260,6 +272,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			// post-/init, so the sandbox isn't reachable during its pre-init
 			// auth window. Promoted below via markSandboxLive.
 			true,
+			req.GetFilesystemBoot(),
 		)
 	} else {
 		sbx, err = s.sandboxFactory.ResumeSandbox(
@@ -286,6 +299,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		err = errors.Join(err, context.Cause(ctx))
 		telemetry.ReportCriticalError(ctx, "failed to create sandbox", err)
 		logger.L().Error(ctx, "failed to create sandbox", zap.Error(err),
+			zap.Bool("filesystem_boot_requested", req.GetFilesystemBoot()),
 			logger.WithSandboxID(runtime.SandboxID),
 			logger.WithBuildID(runtime.BuildID),
 			logger.WithTemplateID(runtime.TemplateID),
@@ -361,8 +375,9 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	)
 
 	return &orchestrator.SandboxCreateResponse{
-		ClientId:           s.info.ClientId,
-		SchedulingMetadata: schedulingMetadata,
+		ClientId:              s.info.ClientId,
+		SchedulingMetadata:    schedulingMetadata,
+		FilesystemBootApplied: filesystemBooted,
 	}, nil
 }
 

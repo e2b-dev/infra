@@ -28,6 +28,7 @@ func (a *APIStore) startSandbox(
 	getSandboxData orchestrator.SandboxDataFetcher,
 	requestHeader *http.Header,
 	isResume bool,
+	demandFilesystemBoot bool,
 	mcp api.Mcp,
 ) (*api.Sandbox, *api.APIError) {
 	sbx, apiErr := a.startSandboxInternal(
@@ -38,6 +39,7 @@ func (a *APIStore) startSandbox(
 		getSandboxData,
 		requestHeader,
 		isResume,
+		demandFilesystemBoot,
 		mcp,
 	)
 	if apiErr != nil {
@@ -56,6 +58,7 @@ func (a *APIStore) startSandboxInternal(
 	getSandboxData orchestrator.SandboxDataFetcher,
 	requestHeader *http.Header,
 	isResume bool,
+	demandFilesystemBoot bool,
 	mcp api.Mcp,
 ) (sandbox.Sandbox, *api.APIError) {
 	startTime := time.Now()
@@ -76,6 +79,7 @@ func (a *APIStore) startSandboxInternal(
 		endTime,
 		timeout,
 		isResume,
+		demandFilesystemBoot,
 		creationMeta,
 	)
 	if instanceErr != nil {
