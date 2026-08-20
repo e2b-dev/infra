@@ -777,6 +777,21 @@ components:
           items:
             $ref: "#/components/schemas/UserTeam"
 
+    TeamStatusResponse:
+      type: object
+      required:
+        - isBlocked
+        - isBanned
+        - blockedReason
+      properties:
+        isBlocked:
+          type: boolean
+        isBanned:
+          type: boolean
+        blockedReason:
+          type: string
+          nullable: true
+
     TeamMember:
       type: object
       required:
@@ -1837,6 +1852,30 @@ paths:
           $ref: "#/components/responses/401"
         "403":
           $ref: "#/components/responses/403"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /teams/{teamID}/status:
+    get:
+      summary: Get team access status
+      description: Returns whether the team is blocked or banned and its recorded blocked reason. Bearer-authenticated users may read only teams they belong to.
+      tags: [teams]
+      security:
+        - AuthProviderBearerAuth: []
+        - AdminApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/teamID"
+      responses:
+        "200":
+          description: Successfully returned team access status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamStatusResponse"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
         "500":
           $ref: "#/components/responses/500"
 
