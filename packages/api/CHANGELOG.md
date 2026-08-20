@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.0](https://github.com/e2b-dev/belt/compare/api-v0.1.0...api-v0.2.0) (2026-08-20)
+
+
+### Features
+
+* **api:** add sandbox list sorting and filters ([#1713](https://github.com/e2b-dev/belt/issues/1713)) ([f8a9bec](https://github.com/e2b-dev/belt/commit/f8a9bec1bae4ceac385a51de0c5dbc37c619f167))
+* **api:** expose secrets management ([#1755](https://github.com/e2b-dev/belt/issues/1755)) ([b4ce6c5](https://github.com/e2b-dev/belt/commit/b4ce6c5763995cbedff21170622fbb4dab08dc82))
+* **api:** semantic error codes and differentiated statuses for sandbox placement failures ([#1772](https://github.com/e2b-dev/belt/issues/1772)) ([0a4dfb1](https://github.com/e2b-dev/belt/commit/0a4dfb1b07e9bbb959024a95bbc7052784f9d60b))
+* **auth:** share the security-requirements error selection ([#1955](https://github.com/e2b-dev/belt/issues/1955)) ([2fe094c](https://github.com/e2b-dev/belt/commit/2fe094c69c54b4043348919867317dbac3e7bcca))
+* **checkpoint:** in-place checkpoint — snapshot a sandbox without stopping it ([#1852](https://github.com/e2b-dev/belt/issues/1852)) ([0001909](https://github.com/e2b-dev/belt/commit/0001909770c6a8f7ff25331ddbc0970e1f289967))
+* **db:** add PostgreSQL session primitives ([#1899](https://github.com/e2b-dev/belt/issues/1899)) ([22f0ccb](https://github.com/e2b-dev/belt/commit/22f0ccb618081ad4388cf510a9f3ec2f11c56a81))
+* filesystem-only resume of memory-inclusive snapshots ([#1958](https://github.com/e2b-dev/belt/issues/1958)) ([6061743](https://github.com/e2b-dev/belt/commit/60617431dda40837e8530508f2ed29ac077c2319))
+* **orchestrator-ee:** resolve customer secrets for egress headers ([#1434](https://github.com/e2b-dev/belt/issues/1434)) ([36c966f](https://github.com/e2b-dev/belt/commit/36c966f0cf32c2354267fb21fbd52fe5b8275c04))
+* **redis:** password auth and explicit TLS enablement ([#1587](https://github.com/e2b-dev/belt/issues/1587)) ([1c49ecf](https://github.com/e2b-dev/belt/commit/1c49ecfc08c1b65d280a440c42cddd45b113744d))
+
 ## [0.1.0](https://github.com/e2b-dev/infra/compare/api-v0.0.1...api-v0.1.0) (2026-08-17)
 
 
