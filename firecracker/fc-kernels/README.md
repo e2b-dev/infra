@@ -43,7 +43,7 @@ sudo env CONFIG_ONLY=1 ./build.sh 6.1.177 arm64
 sudo chown -R "$(id -u):$(id -g)" configs      # the resolved configs come back root-owned
 ```
 
-`CONFIG_ONLY=1` stops after `olddefconfig` and writes the resolved config back to `configs/<arch>/<version>.config`, so the symbols the newer tree added are recorded and reviewable rather than silently taking upstream defaults at build time. It applies `patches/<version>/` on the way, which is where a carried patch that no longer applies shows up. Run it per architecture on that architecture's machine: Kconfig probes the compiler, so a config resolved cross is not the one a native build resolves.
+`CONFIG_ONLY=1` stops after `olddefconfig` and writes the resolved config back to `configs/<arch>/<version>.config`, so the symbols the newer tree added are recorded and reviewable rather than silently taking upstream defaults at build time. It applies `patches/<version>/` on the way, which is where a carried patch that no longer applies shows up, and it sets `CONFIG_BUILD_SALT` from the tag being built — the salt is a plain string symbol that `olddefconfig` leaves as it finds it, so a seeded config would otherwise ship the version it was seeded from. Run it per architecture on that architecture's machine: Kconfig probes the compiler, so a config resolved cross is not the one a native build resolves.
 
 Then add the version to `kernel_versions.txt` and build.
 

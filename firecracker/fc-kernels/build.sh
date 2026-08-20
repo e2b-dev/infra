@@ -66,6 +66,26 @@ get_tag() {
   return 1
 }
 
+# The salt Kconfig carries into the vmlinux as an ELF note, naming what the
+# binary was built from. It is a plain string symbol, so olddefconfig keeps
+# whatever the config it reads says: a config seeded from another version names
+# that version until this recomputes it.
+#
+# Version, the distro the tag belongs to, and rpm's arch name. Not the tag's rpm
+# release: that field moves when upstream rebuilds a version, and the config is
+# resolved once and built from weeks later, so carrying it would go stale on its
+# own. It would also separate nothing — one pinned version publishes one
+# artifact per architecture, whichever release is current when the build runs.
+build_salt() {
+  local tag="$1" version="$2" target_arch="$3" rpm_arch
+  case "$target_arch" in
+    arm64) rpm_arch="aarch64" ;;
+    *)     rpm_arch="$target_arch" ;;
+  esac
+  # The distro is the tag's last dot-separated field: amzn2, amzn2023.
+  echo "${version}-${tag##*.}.${rpm_arch}"
+}
+
 apply_patches() {
   local version="$1"
   local patches_dir="$SCRIPT_DIR/patches/$version"
@@ -111,6 +131,15 @@ build_version() {
     else
       make_opts="ARCH=arm64"
     fi
+  fi
+
+  if [[ "${CONFIG_ONLY:-}" == "1" ]]; then
+    # Only while resolving: a build takes the salt as committed, like the rest
+    # of the config, so what ships is what was reviewed.
+    local salt
+    salt="$(build_salt "$tag" "$version" "$target_arch")"
+    echo "Setting the build salt to $salt"
+    ./scripts/config --set-str BUILD_SALT "$salt"
   fi
 
   echo "Resolving config against the $version tree"
