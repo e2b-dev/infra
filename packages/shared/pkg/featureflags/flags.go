@@ -956,12 +956,25 @@ func isSafeLogURL(raw string) bool {
 
 // Named under orchestrator.* (the resolver's sole caller) so it passes the
 // otel collector's include-only metric allow-list.
+const firecrackerVersionResolutionMetricName = "orchestrator.firecracker.version_resolution"
+
 var firecrackerVersionResolutionMetric = mustLogRoutingCounter(
-	"orchestrator.firecracker.version_resolution",
-	"Number of firecracker version resolutions by outcome, fallback reason and map key",
+	firecrackerVersionResolutionMetricName,
+	"Number of firecracker version resolutions by outcome, fallback reason, map key and served version",
 )
 
-func recordFirecrackerVersionResolution(ctx context.Context, outcome, reason, key string) {
+// The version attribute is set only on hits, where it is a flag-map value.
+// The raw stored string never becomes a label: it carries per-build entropy
+// that LDKey strips to the release line, so fallbacks record only the key.
+func recordFirecrackerResolved(ctx context.Context, key, version string) {
+	addFirecrackerResolution(ctx, "resolved", "", key, version)
+}
+
+func recordFirecrackerFallback(ctx context.Context, reason, key string) {
+	addFirecrackerResolution(ctx, "fallback", reason, key, "")
+}
+
+func addFirecrackerResolution(ctx context.Context, outcome, reason, key, version string) {
 	if firecrackerVersionResolutionMetric == nil {
 		return
 	}
@@ -970,6 +983,7 @@ func recordFirecrackerVersionResolution(ctx context.Context, outcome, reason, ke
 		attribute.String("outcome", outcome),
 		attribute.String("reason", reason),
 		attribute.String("key", key),
+		attribute.String("version", version),
 	))
 }
 
@@ -980,14 +994,14 @@ func recordFirecrackerVersionResolution(ctx context.Context, outcome, reason, ke
 func ResolveFirecrackerVersion(ctx context.Context, ff *Client, buildVersion string) string {
 	info, err := fcversion.New(buildVersion)
 	if err != nil {
-		recordFirecrackerVersionResolution(ctx, "fallback", "parse_error", "")
+		recordFirecrackerFallback(ctx, "parse_error", "")
 
 		return buildVersion
 	}
 
 	key, ok := info.LDKey()
 	if !ok {
-		recordFirecrackerVersionResolution(ctx, "fallback", "no_ld_key", "")
+		recordFirecrackerFallback(ctx, "no_ld_key", "")
 
 		return buildVersion
 	}
@@ -995,12 +1009,19 @@ func ResolveFirecrackerVersion(ctx context.Context, ff *Client, buildVersion str
 	versions := ff.JSONFlag(ctx, FirecrackerVersions).AsValueMap()
 
 	if resolved, ok := versions.Get(key).AsOptionalString().Get(); ok {
-		recordFirecrackerVersionResolution(ctx, "resolved", "", key)
+		// An empty map value would blank the binary path fleet-wide; serve
+		// the stored version instead and make the misconfiguration loud.
+		if resolved == "" {
+			recordFirecrackerFallback(ctx, "empty_value", key)
+
+			return buildVersion
+		}
+		recordFirecrackerResolved(ctx, key, resolved)
 
 		return resolved
 	}
 
-	recordFirecrackerVersionResolution(ctx, "fallback", "key_absent", key)
+	recordFirecrackerFallback(ctx, "key_absent", key)
 
 	return buildVersion
 }

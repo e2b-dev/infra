@@ -8,6 +8,10 @@ import (
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/fcversion"
 )
@@ -99,5 +103,72 @@ func TestResolveFirecrackerVersion_MixedFormatMap(t *testing.T) {
 
 			assert.Equal(t, tc.want, ResolveFirecrackerVersion(t.Context(), client, tc.stored))
 		})
+	}
+}
+
+// testMetricReader collects the package's OTel metrics; the provider is
+// installed once in TestMain because otel's global instruments delegate on
+// the first SetMeterProvider only.
+var testMetricReader = sdkmetric.NewManualReader()
+
+func TestMain(m *testing.M) {
+	otel.SetMeterProvider(sdkmetric.NewMeterProvider(sdkmetric.WithReader(testMetricReader)))
+	m.Run()
+}
+
+// TestResolveFirecrackerVersion_MetricAttributes pins the exact attribute set
+// of every resolution datapoint — the served-version dashboard groups by
+// these names, so a renamed, dropped, or added attribute breaks it silently.
+func TestResolveFirecrackerVersion_MetricAttributes(t *testing.T) {
+	t.Parallel()
+
+	client := newResolverTestClient(t, map[string]string{
+		"v9.9-9": "v9.9-9.9.9",
+		"v7.7-7": "",
+	})
+
+	require.Equal(t, "v9.9-9.9.9", ResolveFirecrackerVersion(t.Context(), client, "v9.9-9.0.0"))
+	require.Equal(t, "v8.8-8.8.8", ResolveFirecrackerVersion(t.Context(), client, "v8.8-8.8.8"))
+	require.Equal(t, "v7.7-7.0.0", ResolveFirecrackerVersion(t.Context(), client, "v7.7-7.0.0"))
+	require.Equal(t, "surely-not-a-version-xyz", ResolveFirecrackerVersion(t.Context(), client, "surely-not-a-version-xyz"))
+
+	attrs := func(outcome, reason, key, version string) attribute.Set {
+		return attribute.NewSet(
+			attribute.String("outcome", outcome),
+			attribute.String("reason", reason),
+			attribute.String("key", key),
+			attribute.String("version", version),
+		)
+	}
+	want := []attribute.Set{
+		attrs("resolved", "", "v9.9-9", "v9.9-9.9.9"),
+		attrs("fallback", "key_absent", "v8.8-8", ""),
+		attrs("fallback", "empty_value", "v7.7-7", ""),
+		attrs("fallback", "parse_error", "", ""),
+	}
+
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, testMetricReader.Collect(t.Context(), &rm))
+
+	found := make([]bool, len(want))
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != firecrackerVersionResolutionMetricName {
+				continue
+			}
+			sum, ok := m.Data.(metricdata.Sum[int64])
+			require.True(t, ok)
+			for _, dp := range sum.DataPoints {
+				for i, w := range want {
+					// Full-set equality: an added attribute fails the match.
+					if dp.Attributes.Equals(&w) {
+						found[i] = true
+					}
+				}
+			}
+		}
+	}
+	for i, w := range want {
+		assert.True(t, found[i], "no datapoint with exactly %v", w.Encoded(attribute.DefaultEncoder()))
 	}
 }
