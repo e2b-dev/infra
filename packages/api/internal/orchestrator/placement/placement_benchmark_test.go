@@ -308,11 +308,7 @@ func toNodeManagerNodes(simNodes []NodeSimulator) []*nodemanager.Node {
 func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig, nodeFactory NodeFactory) *BenchmarkMetrics {
 	b.Helper()
 
-	parentCtx := b.Context()
-	if parentCtx == nil {
-		parentCtx = context.Background()
-	}
-	ctx, cancel := context.WithTimeout(parentCtx, config.BenchmarkDuration)
+	ctx, cancel := context.WithTimeout(b.Context(), config.BenchmarkDuration)
 	defer cancel()
 
 	// Create nodes using factory
@@ -649,11 +645,7 @@ func BenchmarkPlacementDistribution(b *testing.B) {
 		b.Run(alg.name, func(b *testing.B) {
 			b.Logf("Running distribution test for %s with LaggyNodes...", alg.name)
 
-			parentCtx := b.Context()
-			if parentCtx == nil {
-				parentCtx = context.Background()
-			}
-			ctx, cancel := context.WithTimeout(parentCtx, config.BenchmarkDuration)
+			ctx, cancel := context.WithTimeout(b.Context(), config.BenchmarkDuration)
 			defer cancel()
 
 			// 1. Create nodes using NewLaggyNode (default: only update internal real state, not Metrics)
