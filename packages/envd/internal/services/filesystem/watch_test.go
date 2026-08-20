@@ -71,7 +71,7 @@ func TestWatcherIncludeEntryInfo(t *testing.T) {
 			require.NoError(t, err)
 			watcherID := created.Msg.GetWatcherId()
 			t.Cleanup(func() {
-				_, _ = svc.RemoveWatcher(ctx, connect.NewRequest(&filesystem.RemoveWatcherRequest{
+				_, _ = svc.RemoveWatcher(context.WithoutCancel(ctx), connect.NewRequest(&filesystem.RemoveWatcherRequest{
 					WatcherId: watcherID,
 				}))
 			})
@@ -125,7 +125,7 @@ func TestWatcherIncludeEntryInfo_RemoveDoesNotCarryReplacement(t *testing.T) {
 	require.NoError(t, err)
 	watcherID := created.Msg.GetWatcherId()
 	t.Cleanup(func() {
-		_, _ = svc.RemoveWatcher(ctx, connect.NewRequest(&filesystem.RemoveWatcherRequest{
+		_, _ = svc.RemoveWatcher(context.WithoutCancel(ctx), connect.NewRequest(&filesystem.RemoveWatcherRequest{
 			WatcherId: watcherID,
 		}))
 	})
@@ -209,7 +209,7 @@ func TestCreateWatcherOnNetworkMount(t *testing.T) {
 	require.NoError(t, err)
 	watcherID := created.Msg.GetWatcherId()
 	t.Cleanup(func() {
-		_, _ = svc.RemoveWatcher(ctx, connect.NewRequest(&filesystem.RemoveWatcherRequest{
+		_, _ = svc.RemoveWatcher(context.WithoutCancel(ctx), connect.NewRequest(&filesystem.RemoveWatcherRequest{
 			WatcherId: watcherID,
 		}))
 	})

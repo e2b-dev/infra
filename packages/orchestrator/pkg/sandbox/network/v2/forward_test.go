@@ -102,7 +102,7 @@ func probeForwarded(t *testing.T, slot *network.Slot, gw string, timeout time.Du
 func TestCreateNetworkV2_ForwardsUnderDropPolicy(t *testing.T) { //nolint:paralleltest // mutates host netns state and the host FORWARD policy
 	skipIfNotLinuxRoot(t)
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	tables, err := iptables.New()
 	require.NoError(t, err)
@@ -114,7 +114,7 @@ func TestCreateNetworkV2_ForwardsUnderDropPolicy(t *testing.T) { //nolint:parall
 	slot := makeTestSlot(t, reserveNSTestIdx(t))
 	sv2 := NewSlotV2(slot)
 	require.NoError(t, CreateNetworkV2(ctx, slot, sv2, hf, nil))
-	t.Cleanup(func() { _ = RemoveNetworkV2(ctx, slot, sv2, hf, nil) })
+	t.Cleanup(func() { _ = RemoveNetworkV2(context.WithoutCancel(t.Context()), slot, sv2, hf, nil) })
 
 	// The delivered leg proves the capture rig, so the silent leg below means
 	// dropped, not broken.

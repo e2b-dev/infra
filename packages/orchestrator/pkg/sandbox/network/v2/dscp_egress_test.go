@@ -188,7 +188,7 @@ func (f *fakeStorage) Release(*network.Slot) error { return nil }
 func TestV2Pool_GetStampsAndRecycleRestoresDSCP(t *testing.T) { //nolint:paralleltest // mutates host netns state: singleton nftables table "v2-host-firewall", named netns, veth links; t.Setenv
 	skipIfNotLinuxRoot(t)
 
-	ctx := context.Background()
+	ctx := t.Context()
 	config := dscpConfig(t, "8", "16")
 
 	hf := newTestHostFirewall(t, config)
@@ -197,13 +197,13 @@ func TestV2Pool_GetStampsAndRecycleRestoresDSCP(t *testing.T) { //nolint:paralle
 	require.NoError(t, err)
 
 	pool := NewV2Pool(&fakeStorage{}, config, hf, observer)
-	t.Cleanup(func() { _ = pool.Close(context.Background()) })
+	t.Cleanup(func() { _ = pool.Close(context.WithoutCancel(t.Context())) })
 
 	slot := makeTestSlot(t, reserveNSTestIdx(t))
 	sv2 := NewSlotV2(slot)
 	pool.registry.Store(sv2)
 	require.NoError(t, CreateNetworkV2(ctx, slot, sv2, hf, observer))
-	t.Cleanup(func() { _ = RemoveNetworkV2(ctx, slot, sv2, hf, observer) })
+	t.Cleanup(func() { _ = RemoveNetworkV2(context.WithoutCancel(t.Context()), slot, sv2, hf, observer) })
 
 	// Queue and close before any assertion can fail the test: Close ranges
 	// over newSlots, so leaving it open would deadlock the cleanup.
@@ -233,7 +233,7 @@ func TestV2Pool_GetStampsAndRecycleRestoresDSCP(t *testing.T) { //nolint:paralle
 func TestEgressDSCP_WireTOS(t *testing.T) { //nolint:paralleltest // mutates host netns state: singleton nftables table "v2-host-firewall", named netns, veth links; t.Setenv
 	skipIfNotLinuxRoot(t)
 
-	ctx := context.Background()
+	ctx := t.Context()
 	config := dscpConfig(t, "8", "16")
 
 	hf := newTestHostFirewall(t, config)
@@ -241,7 +241,7 @@ func TestEgressDSCP_WireTOS(t *testing.T) { //nolint:paralleltest // mutates hos
 	slot := makeTestSlot(t, reserveNSTestIdx(t))
 	sv2 := NewSlotV2(slot)
 	require.NoError(t, CreateNetworkV2(ctx, slot, sv2, hf, nil))
-	t.Cleanup(func() { _ = RemoveNetworkV2(ctx, slot, sv2, hf, nil) })
+	t.Cleanup(func() { _ = RemoveNetworkV2(context.WithoutCancel(t.Context()), slot, sv2, hf, nil) })
 
 	assert.Equal(t, config.EgressTOS().For(network.EgressClassSandbox), observeEgressTOS(t, slot))
 

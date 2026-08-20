@@ -82,7 +82,7 @@ func TestHostFirewall_ConcurrentAccess(t *testing.T) { //nolint:paralleltest // 
 	done := make(chan error, 10)
 	for i := 1; i <= 10; i++ {
 		sv2 := NewSlotV2(makeTestSlot(t, i))
-		t.Cleanup(func() { _ = hf.RemoveSlot(ctx, sv2) })
+		t.Cleanup(func() { _ = hf.RemoveSlot(context.WithoutCancel(ctx), sv2) })
 		go func() {
 			done <- hf.AddSlot(ctx, sv2)
 		}()

@@ -27,14 +27,14 @@ import (
 func TestCreateNetworkV2_TapUsesFixedHostMAC(t *testing.T) { //nolint:paralleltest // mutates host netns state: singleton nftables table "v2-host-firewall", named netns, veth links
 	skipIfNotLinuxRoot(t)
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	hf := newTestHostFirewall(t, testConfig())
 
 	slot := makeTestSlot(t, reserveNSTestIdx(t))
 	sv2 := NewSlotV2(slot)
 	require.NoError(t, CreateNetworkV2(ctx, slot, sv2, hf, nil))
-	t.Cleanup(func() { _ = RemoveNetworkV2(ctx, slot, sv2, hf, nil) })
+	t.Cleanup(func() { _ = RemoveNetworkV2(context.WithoutCancel(t.Context()), slot, sv2, hf, nil) })
 
 	nsHandle, err := ns.GetNS(filepath.Join(network.NetNamespacesDir, slot.NamespaceID()))
 	require.NoError(t, err)
@@ -215,7 +215,7 @@ func TestRemoveNetworkV2_Idempotent(t *testing.T) { //nolint:paralleltest // mut
 func TestCreateNetworkV2_ReclaimsStaleNamespace(t *testing.T) { //nolint:paralleltest // mutates host netns state: singleton nftables table "v2-host-firewall", named netns, veth links
 	skipIfNotLinuxRoot(t)
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	hf := newTestHostFirewall(t, testConfig())
 
@@ -228,7 +228,7 @@ func TestCreateNetworkV2_ReclaimsStaleNamespace(t *testing.T) { //nolint:paralle
 	require.NoError(t, slot.CloseFirewall())
 
 	require.NoError(t, CreateNetworkV2(ctx, slot, sv2, hf, nil), "a stale anchor must be reclaimed, not fatal")
-	t.Cleanup(func() { _ = RemoveNetworkV2(ctx, slot, sv2, hf, nil) })
+	t.Cleanup(func() { _ = RemoveNetworkV2(context.WithoutCancel(t.Context()), slot, sv2, hf, nil) })
 
 	_, err := os.Stat(filepath.Join(network.NetNamespacesDir, slot.NamespaceID()))
 	require.NoError(t, err, "the rebuilt slot must have its namespace")

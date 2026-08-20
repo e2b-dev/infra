@@ -58,7 +58,7 @@ func TestCreateNetworkV2_FullLifecycle(t *testing.T) { //nolint:paralleltest // 
 func TestCreateNetworkV2_IptablesFootprint(t *testing.T) { //nolint:paralleltest // mutates host netns state: singleton nftables table "v2-host-firewall", named netns, veth links
 	skipIfNotLinuxRoot(t)
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	hf := newTestHostFirewall(t, testConfig())
 
@@ -66,7 +66,7 @@ func TestCreateNetworkV2_IptablesFootprint(t *testing.T) { //nolint:paralleltest
 	sv2 := NewSlotV2(slot)
 
 	require.NoError(t, CreateNetworkV2(ctx, slot, sv2, hf, nil))
-	t.Cleanup(func() { _ = RemoveNetworkV2(ctx, slot, sv2, hf, nil) })
+	t.Cleanup(func() { _ = RemoveNetworkV2(context.WithoutCancel(t.Context()), slot, sv2, hf, nil) })
 
 	tables, err := iptables.New()
 	require.NoError(t, err)
