@@ -876,6 +876,16 @@ func simpleRule(headers map[string]string) api.SandboxNetworkRule {
 	}
 }
 
+// markerRun concatenates count unique secret markers starting at index from.
+func markerRun(from, count int) string {
+	var builder strings.Builder
+	for i := from; i < from+count; i++ {
+		fmt.Fprintf(&builder, "${e2b.secrets.name-%d}", i)
+	}
+
+	return builder.String()
+}
+
 func TestValidateNetworkRules(t *testing.T) {
 	t.Parallel()
 
@@ -1028,6 +1038,35 @@ func TestValidateNetworkRules(t *testing.T) {
 			setupFF:  ffEnabled,
 			wantCode: http.StatusBadRequest,
 			wantMsg:  fmt.Sprintf("at most %d transform rule", maxNetworkRuleTransformsPerDomain),
+		},
+		// ── secret marker count ────────────────────────────────────────────────────
+		{
+			name:        "thirty-two unique secret markers in one domain is valid",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules: new(map[string][]api.SandboxNetworkRule{
+				"api.openai.com": {simpleRule(map[string]string{"X-Secrets": markerRun(0, 32)})},
+			}),
+			setupFF: ffEnabled,
+		},
+		{
+			name:        "thirty-three unique secret markers returns 400",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules: new(map[string][]api.SandboxNetworkRule{
+				"api.openai.com": {simpleRule(map[string]string{"X-Secrets": markerRun(0, 33)})},
+			}),
+			setupFF:  ffEnabled,
+			wantCode: http.StatusBadRequest,
+			wantMsg:  "references more than 32 secrets",
+		},
+		{
+			name:        "case-variant marker spellings count once",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules: new(map[string][]api.SandboxNetworkRule{
+				"api.openai.com": {simpleRule(map[string]string{
+					"X-Secrets": markerRun(0, 32) + "${e2b.secrets.NAME-0}",
+				})},
+			}),
+			setupFF: ffEnabled,
 		},
 		// ── nil transform (no headers to check) ───────────────────────────────────
 		{

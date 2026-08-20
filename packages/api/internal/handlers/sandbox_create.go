@@ -37,6 +37,7 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/metrics"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
+	"github.com/e2b-dev/infra/packages/shared/pkg/secretsstore"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -827,6 +828,24 @@ func validateNetworkRules(ctx context.Context, featureFlags featureFlagsClient, 
 				Code:      http.StatusBadRequest,
 				Err:       fmt.Errorf("rule domain %q is not a valid domain", domain),
 				ClientMsg: fmt.Sprintf("Rule domain %q is not a valid domain name.", domain),
+			}
+		}
+
+		var markerNames []string
+		markerSeen := make(map[string]struct{})
+		for _, domainRule := range domainRules {
+			if domainRule.Transform == nil || domainRule.Transform.Headers == nil {
+				continue
+			}
+			for _, headerValue := range *domainRule.Transform.Headers {
+				markerNames = secretsstore.AppendMarkerNames(markerNames, markerSeen, headerValue)
+			}
+		}
+		if len(markerNames) > secretsstore.MaxMarkerNames {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("domain %q references %d secrets (max %d)", domain, len(markerNames), secretsstore.MaxMarkerNames),
+				ClientMsg: fmt.Sprintf("Rule domain %q references more than %d secrets.", domain, secretsstore.MaxMarkerNames),
 			}
 		}
 
