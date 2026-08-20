@@ -2,6 +2,7 @@ package clusters
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -17,7 +18,6 @@ import (
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/sandboxlogs"
 	clickhouseutils "github.com/e2b-dev/infra/packages/clickhouse/pkg/utils"
-	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs/loki"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -64,7 +64,6 @@ type LocalClusterResourceProvider struct {
 	querySandboxMetricsProvider clickhouse.SandboxQueriesProvider
 	queryLogsProvider           *loki.LokiQueryProvider
 	sandboxLogsReader           ClickhouseLogsReader
-	featureFlags                *featureflags.Client
 	instances                   *smap.Map[*Instance]
 }
 
@@ -72,7 +71,6 @@ func newLocalClusterResourceProvider(
 	querySandboxMetricsProvider clickhouse.SandboxQueriesProvider,
 	queryLogsProvider *loki.LokiQueryProvider,
 	sandboxLogsReader ClickhouseLogsReader,
-	featureFlags *featureflags.Client,
 	instances *smap.Map[*Instance],
 	config cfg.Config,
 ) ClusterResource {
@@ -81,20 +79,12 @@ func newLocalClusterResourceProvider(
 		querySandboxMetricsProvider: querySandboxMetricsProvider,
 		queryLogsProvider:           queryLogsProvider,
 		sandboxLogsReader:           sandboxLogsReader,
-		featureFlags:                featureFlags,
 		instances:                   instances,
 	}
 }
 
-// readFromClickhouse reports whether log reads should hit ClickHouse. It is
-// true only when the logs-read-config flag is enabled AND a ClickHouse reader
-// is configured; otherwise reads stay on Loki (default behavior).
-func (l *LocalClusterResourceProvider) readFromClickhouse(ctx context.Context) bool {
-	if l.sandboxLogsReader == nil || l.featureFlags == nil {
-		return false
-	}
-
-	return l.featureFlags.BoolFlag(ctx, featureflags.LogsReadConfigFlag)
+func (l *LocalClusterResourceProvider) readFromClickhouse() bool {
+	return l.config.ClickhouseLogsReadEnabled
 }
 
 // apiLogDirectionToSandboxLogsSortOrder converts an API log direction into the
@@ -203,7 +193,10 @@ func (l *LocalClusterResourceProvider) GetSandboxLogs(ctx context.Context, teamI
 		raw []logs.LogEntry
 		err error
 	)
-	if l.readFromClickhouse(ctx) {
+	if l.readFromClickhouse() {
+		if l.sandboxLogsReader == nil {
+			return api.SandboxLogs{}, &api.APIError{Err: errors.New("ClickHouse logs reader is unavailable"), ClientMsg: "Failed to fetch sandbox logs", Code: http.StatusInternalServerError}
+		}
 		teamUUID, parseErr := uuid.Parse(teamID)
 		if parseErr != nil {
 			return api.SandboxLogs{}, &api.APIError{
@@ -258,12 +251,11 @@ func (l *LocalClusterResourceProvider) GetBuildLogs(
 	direction api.LogsDirection,
 	source *api.LogsSource,
 ) ([]logs.LogEntry, *api.APIError) {
-	// The persistent log backend is Loki by default, ClickHouse when the
-	// logs-read-config flag is enabled and a ClickHouse reader is configured.
+	// The persistent log backend is selected exclusively by CLICKHOUSE_LOGS_READ_ENABLED.
 	start, end := LogQueryWindow(cursor, direction)
 
 	var persistentFetcher logSourceFunc
-	if l.readFromClickhouse(ctx) {
+	if l.readFromClickhouse() {
 		persistentFetcher = l.logsFromClickhouse(ctx, templateID, buildID, start, end, int(limit), offset, level, apiLogDirectionToSandboxLogsSortOrder(&direction))
 	} else {
 		persistentFetcher = l.logsFromLocalLoki(ctx, templateID, buildID, start, end, int(limit), offset, level, apiLogDirectionToLokiProtoDirection(&direction))
@@ -274,6 +266,9 @@ func (l *LocalClusterResourceProvider) GetBuildLogs(
 
 func (l *LocalClusterResourceProvider) logsFromClickhouse(ctx context.Context, templateID string, buildID string, start time.Time, end time.Time, limit int, offset int32, level *logs.LogLevel, order sandboxlogs.SortOrder) logSourceFunc {
 	return func() ([]logs.LogEntry, *api.APIError) {
+		if l.sandboxLogsReader == nil {
+			return nil, &api.APIError{Err: errors.New("ClickHouse logs reader is unavailable"), ClientMsg: "Failed to fetch build logs", Code: http.StatusInternalServerError}
+		}
 		entries, err := l.sandboxLogsReader.QueryBuildLogs(ctx, templateID, buildID, start, end, limit, offset, level, order)
 		if err != nil {
 			recordClickhouseLogReadError(ctx, "build")

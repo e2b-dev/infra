@@ -19,6 +19,38 @@ func TestParse(t *testing.T) {
 	t.Setenv("VOLUME_TOKEN_SIGNING_KEY", fmt.Sprintf("HMAC:%s", base64.StdEncoding.EncodeToString([]byte("secret"))))
 	t.Setenv("VOLUME_TOKEN_SIGNING_KEY_NAME", "my-key-name")
 
+	for _, variable := range []string{"CLICKHOUSE_LOGS_READ_ENABLED", "CLICKHOUSE_LOGS_WRITE_ONLY"} {
+		t.Run(variable+" parses strictly", func(t *testing.T) { //nolint:paralleltest // mutates process environment
+			removeEnv(t, "CLICKHOUSE_LOGS_READ_ENABLED")
+			removeEnv(t, variable)
+			config, err := Parse()
+			require.NoError(t, err)
+			assert.False(t, config.ClickhouseLogsReadEnabled)
+			assert.False(t, config.ClickhouseLogsWriteOnly)
+
+			t.Setenv(variable, "true")
+			config, err = Parse()
+			require.NoError(t, err)
+			if variable == "CLICKHOUSE_LOGS_READ_ENABLED" {
+				assert.True(t, config.ClickhouseLogsReadEnabled)
+				assert.False(t, config.ClickhouseLogsWriteOnly)
+			} else {
+				assert.False(t, config.ClickhouseLogsReadEnabled)
+				assert.True(t, config.ClickhouseLogsWriteOnly)
+			}
+
+			t.Setenv(variable, "false")
+			config, err = Parse()
+			require.NoError(t, err)
+			assert.False(t, config.ClickhouseLogsReadEnabled)
+			assert.False(t, config.ClickhouseLogsWriteOnly)
+
+			t.Setenv(variable, "invalid")
+			_, err = Parse()
+			assert.Error(t, err)
+		})
+	}
+
 	t.Run("postgres connection string is required", func(t *testing.T) { //nolint:paralleltest // cannot call t.Setenv and t.Parallel
 		removeEnv(t, "POSTGRES_CONNECTION_STRING")
 

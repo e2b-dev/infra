@@ -16,16 +16,14 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/hyperloopserver/handlers"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/httpserver"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const maxUploadLimit = 1 << 28 // 256 MiB
 
-func NewHyperloopServer(ctx context.Context, port uint16, logger logger.Logger, sandboxes *sandbox.Map, featureFlags *featureflags.Client) (*http.Server, error) {
-	sandboxCollectorAddr := env.LogsCollectorAddress()
-	store := handlers.NewHyperloopStore(logger, sandboxes, sandboxCollectorAddr, featureFlags)
+func NewHyperloopServer(ctx context.Context, port uint16, logger logger.Logger, sandboxes *sandbox.Map, clickhouseLogsWriteOnly bool) (*http.Server, error) {
+	store := handlers.NewHyperloopStore(logger, sandboxes, env.LogsCollectorAddress(), clickhouseLogsWriteOnly)
 	swagger, err := contracts.GetSwagger()
 	if err != nil {
 		return nil, fmt.Errorf("error getting swagger spec: %w", err)

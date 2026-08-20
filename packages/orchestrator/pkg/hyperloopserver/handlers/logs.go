@@ -28,23 +28,10 @@ var (
 		"hyperloop_log_forward_write_count",
 		"Number of hyperloop log forward HTTP attempts by route and result",
 	)
-	logForwardShadowInflight = mustLogForwardUpDownCounter(
-		"hyperloop_log_forward_shadow_inflight",
-		"Current number of in-flight best-effort shadow log forwards",
-	)
 )
 
 func mustLogForwardCounter(name, description string) metric.Int64Counter {
 	counter, err := logForwardMeter.Int64Counter(name, metric.WithDescription(description))
-	if err != nil {
-		return nil
-	}
-
-	return counter
-}
-
-func mustLogForwardUpDownCounter(name, description string) metric.Int64UpDownCounter {
-	counter, err := logForwardMeter.Int64UpDownCounter(name, metric.WithDescription(description))
 	if err != nil {
 		return nil
 	}
@@ -103,45 +90,10 @@ func (h *APIStore) Logs(c *gin.Context) {
 		return
 	}
 
-	// Resolve log destinations from LaunchDarkly (cached behind a short TTL),
-	// falling back to the fixed collector address. This lets operators retarget
-	// logs without a redeploy.
-	route := h.logWriteConfig.Resolve(ctx)
-
-	// Fire-and-forget shadow writes: never affect the response. Concurrency is
-	// bounded by the resolved route limit; excess writes are dropped silently to avoid
-	// unbounded goroutine growth (and a shadow log storm) under high volume.
-	maxInflight := route.MaxInflightShadowWrites
-	if maxInflight <= 0 {
-		maxInflight = defaultMaxInflightShadowWrites
-	}
-	for _, shadowURL := range route.ShadowURLs {
-		if !h.tryAcquireShadow(maxInflight) {
-			// Semaphore full: drop this shadow write.
-			recordLogForwardWrite(ctx, "shadow", "dropped", "saturated")
-
-			continue
-		}
-		recordLogForwardShadowInflight(ctx, 1)
-
-		go func(url string, payload []byte) {
-			defer func() {
-				h.shadowInflight.Add(-1)
-				recordLogForwardShadowInflight(context.WithoutCancel(ctx), -1)
-			}()
-
-			shadowCtx := context.WithoutCancel(ctx)
-			if err := h.forwardLogs(shadowCtx, url, payload, route.Timeout); err != nil {
-				recordLogForwardWrite(shadowCtx, "shadow", "failure", "send_error")
-
-				return
-			}
-			recordLogForwardWrite(shadowCtx, "shadow", "success", "")
-		}(shadowURL, logs)
-	}
-
-	// The primary write controls the response, preserving today's behavior.
-	if err := h.forwardLogs(c.Request.Context(), route.PrimaryURL, logs, route.Timeout); err != nil {
+	// CLICKHOUSE_LOGS_WRITE_ONLY selects exactly one destination. In BYOC the
+	// collector owns the Loki and ClickHouse fan-out; managed cloud writes only
+	// to the local ClickHouse endpoint. There is no fallback or shadow write.
+	if err := h.forwardLogs(c.Request.Context(), h.sandboxLogsAddr, logs, 0); err != nil {
 		recordLogForwardWrite(ctx, "primary", "failure", "send_error")
 		h.sendAPIStoreError(c, http.StatusInternalServerError, "Error when forwarding sandbox logs")
 		h.logger.Error(ctx, "error when forwarding sandbox logs", zap.Error(err), logger.WithSandboxID(sbxID))
@@ -151,18 +103,6 @@ func (h *APIStore) Logs(c *gin.Context) {
 	recordLogForwardWrite(ctx, "primary", "success", "")
 
 	c.Status(http.StatusOK)
-}
-
-func (h *APIStore) tryAcquireShadow(maxInflight int64) bool {
-	for {
-		current := h.shadowInflight.Load()
-		if current >= maxInflight {
-			return false
-		}
-		if h.shadowInflight.CompareAndSwap(current, current+1) {
-			return true
-		}
-	}
 }
 
 func recordLogForwardWrite(ctx context.Context, route, result, reason string) {
@@ -175,14 +115,6 @@ func recordLogForwardWrite(ctx context.Context, route, result, reason string) {
 		attribute.String("result", result),
 		attribute.String("reason", reason),
 	))
-}
-
-func recordLogForwardShadowInflight(ctx context.Context, delta int64) {
-	if logForwardShadowInflight == nil {
-		return
-	}
-
-	logForwardShadowInflight.Add(ctx, delta)
 }
 
 // forwardLogs POSTs the marshaled logs payload to url, bounded by timeout.

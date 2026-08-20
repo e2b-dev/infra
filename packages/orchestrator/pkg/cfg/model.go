@@ -80,6 +80,7 @@ type Config struct {
 
 	ClickhouseConnectionString  string            `env:"CLICKHOUSE_CONNECTION_STRING"`
 	ClickhouseConnectionStrings []string          `env:"CLICKHOUSE_CONNECTION_STRINGS" envSeparator:";"`
+	ClickhouseLogsWriteOnly     bool              `env:"CLICKHOUSE_LOGS_WRITE_ONLY"    envDefault:"false"`
 	DisableStartupReclaim       bool              `env:"DISABLE_STARTUP_RECLAIM"`
 	ForceStop                   bool              `env:"FORCE_STOP"`
 	GRPCPort                    uint16            `env:"GRPC_PORT"                     envDefault:"5008"`

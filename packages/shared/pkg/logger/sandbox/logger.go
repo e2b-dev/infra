@@ -7,7 +7,6 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -17,13 +16,19 @@ type SandboxLoggerConfig struct {
 	ServiceName string
 	// IsInternal differentiates between our (internal) logs, and user accessible (external) logs.
 	// For external logger, we also disable stacktraces
-	IsInternal       bool
-	CollectorAddress string
-	// FeatureFlags, when set for an external logger with a CollectorAddress,
-	// enables LaunchDarkly-controlled log write routing (see
-	// featureflags.LogsWriteConfigFlag). When nil the logger keeps writing only
-	// to CollectorAddress (legacy behavior).
-	FeatureFlags *featureflags.Client
+	IsInternal              bool
+	CollectorAddress        string
+	ClickhouseLogsWriteOnly bool
+}
+
+const ClickhouseLogsWriteEndpoint = "http://127.0.0.1:4321/logs/clickhouse"
+
+func ExternalLogEndpoint(collectorAddress string, clickhouseLogsWriteOnly bool) string {
+	if clickhouseLogsWriteOnly {
+		return ClickhouseLogsWriteEndpoint
+	}
+
+	return collectorAddress
 }
 
 func NewLogger(ctx context.Context, loggerProvider log.LoggerProvider, config SandboxLoggerConfig) logger.Logger {
@@ -31,10 +36,11 @@ func NewLogger(ctx context.Context, loggerProvider log.LoggerProvider, config Sa
 
 	enableConsole := false
 	var core zapcore.Core
-	if !config.IsInternal && config.CollectorAddress != "" {
-		// Add Vector exporter to the core
+	externalAddress := ExternalLogEndpoint(config.CollectorAddress, config.ClickhouseLogsWriteOnly)
+	if !config.IsInternal && externalAddress != "" {
+		// Add the selected external HTTP log exporter to the core.
 		vectorEncoder := zapcore.NewJSONEncoder(GetSandboxEncoderConfig())
-		httpWriter := newExternalLogWriter(ctx, config)
+		httpWriter := logger.NewHTTPWriter(ctx, externalAddress)
 		core = zapcore.NewCore(
 			vectorEncoder,
 			httpWriter,
@@ -61,32 +67,6 @@ func NewLogger(ctx context.Context, loggerProvider log.LoggerProvider, config Sa
 	}
 
 	return lg
-}
-
-// newExternalLogWriter builds the write syncer for external sandbox logs.
-// With a FeatureFlags client it resolves destinations from
-// featureflags.LogsWriteConfigFlag on each write, falling back to
-// CollectorAddress; without one it uses the legacy fixed-address writer.
-func newExternalLogWriter(ctx context.Context, config SandboxLoggerConfig) zapcore.WriteSyncer {
-	if config.FeatureFlags == nil {
-		return logger.NewHTTPWriter(ctx, config.CollectorAddress)
-	}
-
-	// Cache LaunchDarkly evaluations behind a short TTL so per-line writes on
-	// the hot path don't evaluate the flag every time.
-	resolver := featureflags.NewLogWriteConfigResolver(config.FeatureFlags, config.CollectorAddress)
-	resolve := func(ctx context.Context) logger.LogRoute {
-		cfg := resolver.Resolve(ctx)
-
-		return logger.LogRoute{
-			PrimaryURL:              cfg.PrimaryURL,
-			ShadowURLs:              cfg.ShadowURLs,
-			Timeout:                 cfg.Timeout,
-			MaxInflightShadowWrites: cfg.MaxInflightShadowWrites,
-		}
-	}
-
-	return logger.NewDynamicHTTPWriter(ctx, config.CollectorAddress, resolve)
 }
 
 func GetSandboxEncoderConfig() zapcore.EncoderConfig {

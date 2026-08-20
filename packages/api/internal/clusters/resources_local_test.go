@@ -3,6 +3,9 @@ package clusters
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -10,13 +13,123 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/sandboxlogs"
+	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs/loki"
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
 type stubClickhouseLogsReader struct {
 	sandbox func(context.Context, uuid.UUID, string, time.Time, time.Time, int, sandboxlogs.SortOrder, *logs.LogLevel, *string) ([]logs.LogEntry, error)
 	build   func(context.Context, string, string, time.Time, time.Time, int, int32, *logs.LogLevel, sandboxlogs.SortOrder) ([]logs.LogEntry, error)
+}
+
+func newLokiSpy(t *testing.T, calls *atomic.Int32) *loki.LokiQueryProvider {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(server.Close)
+	provider, err := loki.NewLokiQueryProvider(server.URL, "", "")
+	require.NoError(t, err)
+
+	return provider
+}
+
+func TestLogSelectorsUseOnlySelectedBackend(t *testing.T) {
+	t.Parallel()
+	clickhouseEntry := []logs.LogEntry{{Message: "clickhouse"}}
+	clickhouseErr := errors.New("clickhouse unavailable")
+
+	tests := []struct {
+		name             string
+		enabled          bool
+		reader           ClickhouseLogsReader
+		clickhouseResult []logs.LogEntry
+		clickhouseErr    error
+		wantClickhouse   bool
+		wantErr          bool
+	}{
+		{name: "true uses ClickHouse", enabled: true, reader: &stubClickhouseLogsReader{sandbox: func(context.Context, uuid.UUID, string, time.Time, time.Time, int, sandboxlogs.SortOrder, *logs.LogLevel, *string) ([]logs.LogEntry, error) {
+			return clickhouseEntry, nil
+		}, build: func(context.Context, string, string, time.Time, time.Time, int, int32, *logs.LogLevel, sandboxlogs.SortOrder) ([]logs.LogEntry, error) {
+			return clickhouseEntry, nil
+		}}, wantClickhouse: true},
+		{name: "false uses Loki", enabled: false, reader: &stubClickhouseLogsReader{sandbox: func(context.Context, uuid.UUID, string, time.Time, time.Time, int, sandboxlogs.SortOrder, *logs.LogLevel, *string) ([]logs.LogEntry, error) {
+			t.Fatal("ClickHouse sandbox reader called")
+
+			return nil, nil
+		}, build: func(context.Context, string, string, time.Time, time.Time, int, int32, *logs.LogLevel, sandboxlogs.SortOrder) ([]logs.LogEntry, error) {
+			t.Fatal("ClickHouse build reader called")
+
+			return nil, nil
+		}}, wantClickhouse: false},
+		{name: "missing reader fails", enabled: true, wantClickhouse: true, wantErr: true},
+		{name: "ClickHouse error fails", enabled: true, reader: &stubClickhouseLogsReader{sandbox: func(context.Context, uuid.UUID, string, time.Time, time.Time, int, sandboxlogs.SortOrder, *logs.LogLevel, *string) ([]logs.LogEntry, error) {
+			return nil, clickhouseErr
+		}, build: func(context.Context, string, string, time.Time, time.Time, int, int32, *logs.LogLevel, sandboxlogs.SortOrder) ([]logs.LogEntry, error) {
+			return nil, clickhouseErr
+		}}, wantClickhouse: true, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var lokiCalls atomic.Int32
+			provider := &LocalClusterResourceProvider{config: cfg.Config{ClickhouseLogsReadEnabled: tt.enabled}, queryLogsProvider: newLokiSpy(t, &lokiCalls), sandboxLogsReader: tt.reader, instances: smap.New[*Instance]()}
+			teamID := uuid.NewString()
+			_, sandboxErr := provider.GetSandboxLogs(t.Context(), teamID, "sandbox", nil, nil, nil, nil, nil, nil)
+			_, buildErr := provider.GetBuildLogs(t.Context(), nil, "template", "build", 0, 10, nil, nil, api.LogsDirectionForward, nil)
+			if tt.wantErr {
+				require.NotNil(t, sandboxErr)
+				require.NotNil(t, buildErr)
+			} else {
+				require.Nil(t, sandboxErr)
+				require.Nil(t, buildErr)
+			}
+			if tt.wantClickhouse {
+				assert.Equal(t, int32(0), lokiCalls.Load())
+			}
+			if !tt.wantClickhouse {
+				assert.Positive(t, lokiCalls.Load())
+			}
+		})
+	}
+}
+
+func TestGetBuildLogsDoesNotRequireClickHouseForTemporarySource(t *testing.T) {
+	t.Parallel()
+
+	nodeID := "node-id"
+	instances := smap.New[*Instance]()
+	instances.Insert(nodeID, &Instance{
+		NodeID: nodeID,
+		client: &GRPCClient{
+			Template: &mockTemplateServiceClient{response: &templatemanagergrpc.TemplateBuildStatusResponse{
+				LogEntries: []*templatemanagergrpc.TemplateBuildLogEntry{{Message: "temporary"}},
+			}},
+		},
+	})
+
+	provider := &LocalClusterResourceProvider{
+		config:            cfg.Config{ClickhouseLogsReadEnabled: true},
+		instances:         instances,
+		sandboxLogsReader: nil,
+	}
+	temporary := api.LogsSourceTemporary
+	entries, apiErr := provider.GetBuildLogs(t.Context(), &nodeID, "template", "build", 0, 10, nil, nil, api.LogsDirectionForward, &temporary)
+	require.Nil(t, apiErr)
+	require.Len(t, entries, 1)
+	assert.Equal(t, "temporary", entries[0].Message)
+
+	persistent := api.LogsSourcePersistent
+	_, apiErr = provider.GetBuildLogs(t.Context(), nil, "template", "build", 0, 10, nil, nil, api.LogsDirectionForward, &persistent)
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusInternalServerError, apiErr.Code)
 }
 
 func (s *stubClickhouseLogsReader) QuerySandboxLogs(ctx context.Context, teamID uuid.UUID, sandboxID string, start, end time.Time, limit int, order sandboxlogs.SortOrder, level *logs.LogLevel, search *string) ([]logs.LogEntry, error) {
@@ -29,9 +142,7 @@ func (s *stubClickhouseLogsReader) QueryBuildLogs(ctx context.Context, templateI
 
 // TestBuildLogsFromClickhouseFailsFast asserts that a ClickHouse read error
 // during GetBuildLogs is propagated directly (no automatic Loki fallback).
-// The migration relies on the logs-read-config flag plus alerting on
-// log_read_clickhouse_error_count to drive rollback decisions, rather than
-// per-request fallback masking a degraded ClickHouse.
+// ClickHouse errors are intentionally surfaced rather than masked by a Loki fallback.
 func TestBuildLogsFromClickhouseFailsFast(t *testing.T) {
 	t.Parallel()
 

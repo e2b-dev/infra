@@ -402,17 +402,16 @@ func run() int {
 	featureFlags.SetServiceName(serviceName)
 	featureFlags.SetDeploymentName(config.DomainName)
 
-	// External sandbox logger routes through LaunchDarkly (LogsWriteConfigFlag),
-	// falling back to the fixed collector address. Created here so it can use the
-	// feature flags client.
+	// External sandbox logs select the dedicated ClickHouse endpoint or
+	// LOGS_COLLECTOR_ADDRESS from CLICKHOUSE_LOGS_WRITE_ONLY.
 	sbxLoggerExternal := sbxlogger.NewLogger(
 		ctx,
 		tel.LogsProvider,
 		sbxlogger.SandboxLoggerConfig{
-			ServiceName:      serviceName,
-			IsInternal:       false,
-			CollectorAddress: env.LogsCollectorAddress(),
-			FeatureFlags:     featureFlags,
+			ServiceName:             serviceName,
+			IsInternal:              false,
+			CollectorAddress:        env.LogsCollectorAddress(),
+			ClickhouseLogsWriteOnly: config.ClickhouseLogsWriteOnly,
 		},
 	)
 	defer sbxLoggerExternal.Sync()
