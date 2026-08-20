@@ -321,7 +321,7 @@ func TestBestOfK_Sample(t *testing.T) {
 	excludedNodes := make(map[string]struct{})
 
 	// Test sampling fewer nodes than available
-	sampled := algo.sample(nodes, config, excludedNodes, machineinfo.MachineInfo{}, false, nil)
+	sampled := algo.sample(nodes, config, nodemanager.SandboxResources{}, excludedNodes, machineinfo.MachineInfo{}, false, nil)
 	assert.LessOrEqual(t, len(sampled), 3)
 
 	// Check all sampled nodes are unique
@@ -334,7 +334,7 @@ func TestBestOfK_Sample(t *testing.T) {
 	// Test sampling with exclusions
 	excludedNodes["a"] = struct{}{}
 	excludedNodes["b"] = struct{}{}
-	sampled = algo.sample(nodes, config, excludedNodes, machineinfo.MachineInfo{}, false, nil)
+	sampled = algo.sample(nodes, config, nodemanager.SandboxResources{}, excludedNodes, machineinfo.MachineInfo{}, false, nil)
 
 	for _, n := range sampled {
 		assert.NotEqual(t, "a", n.ID)
