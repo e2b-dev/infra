@@ -28,7 +28,7 @@ func TestPostAdminClustersCreatesImmutableCluster(t *testing.T) {
 	authOrgID := "org_test"
 	sandboxDomain := "sandbox.example.test"
 	request := api.AdminClusterCreateRequest{
-		Name:               "Managed BYOC",
+		Name:               "AutoBYOC",
 		Endpoint:           "api.example.test:5008",
 		EndpointTls:        true,
 		Token:              "cluster-token",
