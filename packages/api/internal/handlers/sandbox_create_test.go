@@ -627,7 +627,6 @@ func TestPostSandboxes_MissingBareAliasUsesPromotedFallbackKey(t *testing.T) {
 		Limits: &authtypes.TeamLimits{MaxLengthHours: 24},
 	})
 
-	//nolint:contextcheck // PostSandboxes reads ctx from ginCtx.Request.Context().
 	store.PostSandboxes(ginCtx)
 
 	require.Equal(t, http.StatusNotFound, recorder.Code)
@@ -688,7 +687,6 @@ func TestPostSandboxes_PrivateTemplateHidesAccessDenied(t *testing.T) {
 		Limits: &authtypes.TeamLimits{MaxLengthHours: 24},
 	})
 
-	//nolint:contextcheck // PostSandboxes reads ctx from ginCtx.Request.Context().
 	store.PostSandboxes(ginCtx)
 
 	require.Equal(t, http.StatusNotFound, recorder.Code)
@@ -743,7 +741,6 @@ func assertMissingTagDisclosure(t *testing.T, public bool, alias string) {
 		Limits: &authtypes.TeamLimits{MaxLengthHours: 24},
 	})
 
-	//nolint:contextcheck // PostSandboxes reads ctx from ginCtx.Request.Context().
 	store.PostSandboxes(ginCtx)
 
 	require.Equal(t, http.StatusNotFound, recorder.Code)
@@ -805,7 +802,6 @@ func assertMissingDefaultTagDisclosure(t *testing.T) {
 		Limits: &authtypes.TeamLimits{MaxLengthHours: 24},
 	})
 
-	//nolint:contextcheck // PostSandboxes reads ctx from ginCtx.Request.Context().
 	store.PostSandboxes(ginCtx)
 
 	require.Equal(t, http.StatusNotFound, recorder.Code)
@@ -898,6 +894,7 @@ func TestValidateNetworkRules(t *testing.T) {
 		setupFF     func(t *testing.T) *handlersmocks.MockFeatureFlagsClient
 		wantCode    int
 		wantMsg     string // substring of ClientMsg; empty means expect no error
+		notWant     []string
 	}{
 		// ── nil / empty ──────────────────────────────────────────────────────────
 		{
@@ -1133,6 +1130,19 @@ func TestValidateNetworkRules(t *testing.T) {
 			wantCode: http.StatusBadRequest,
 			wantMsg:  "maximum length",
 		},
+		{
+			name:        "malformed known placeholder returns generic 400",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules: new(map[string][]api.SandboxNetworkRule{
+				"api.openai.com": {simpleRule(map[string]string{
+					"Authorization": "Bearer ${e2b.secrets.private-canary",
+				})},
+			}),
+			setupFF:  ffEnabled,
+			wantCode: http.StatusBadRequest,
+			wantMsg:  "Network transform header contains a malformed E2B placeholder.",
+			notWant:  []string{"${e2b.secrets.", "private-canary"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -1151,6 +1161,10 @@ func TestValidateNetworkRules(t *testing.T) {
 			if assert.NotNil(t, apiErr) {
 				assert.Equal(t, tt.wantCode, apiErr.Code)
 				assert.Contains(t, apiErr.ClientMsg, tt.wantMsg)
+				for _, forbidden := range tt.notWant {
+					assert.NotContains(t, apiErr.ClientMsg, forbidden)
+					assert.NotContains(t, apiErr.Err.Error(), forbidden)
+				}
 			}
 		})
 	}
