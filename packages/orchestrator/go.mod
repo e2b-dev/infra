@@ -32,6 +32,7 @@ require (
 	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/edsrzf/mmap-go v1.2.1-0.20241212181136-fad1cd13edbd
 	github.com/firecracker-microvm/firecracker-go-sdk v1.0.0
+	github.com/gaissmai/extnetip v0.3.3
 	github.com/getkin/kin-openapi v0.146.0
 	github.com/gin-contrib/size v1.0.2
 	github.com/gin-gonic/gin v1.12.0
@@ -161,7 +162,6 @@ require (
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.15 // indirect
-	github.com/gaissmai/extnetip v0.3.3 // indirect
 	github.com/gin-contrib/sse v1.1.1 // indirect
 	github.com/go-faster/city v1.0.1 // indirect
 	github.com/go-faster/errors v0.7.1 // indirect
