@@ -28,7 +28,7 @@ func NormalizeName(input string) (string, error) {
 	}
 
 	name = strings.ToLower(name)
-	if strings.HasPrefix(name, id.KindSecret.Prefix()+"_") {
+	if strings.HasPrefix(name, id.SecretIDPrefix) {
 		return "", ErrInvalidName
 	}
 

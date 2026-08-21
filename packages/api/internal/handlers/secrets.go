@@ -407,7 +407,7 @@ func secretRef(selector string) (*managementv1.SecretRef, bool) {
 	// A canonical secret identifier starts with the secret kind's prefix and
 	// its separator. The separator stays in the check: only "sec_" is
 	// reserved, while plain names such as "secret-key" remain valid.
-	if strings.HasPrefix(classified, id.KindSecret.Prefix()+"_") {
+	if strings.HasPrefix(classified, id.SecretIDPrefix) {
 		secretID, err := id.ParseSecretID(classified)
 		if err != nil {
 			return nil, false
