@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { Sandbox } from 'e2b';
+import { CommandExitError, Sandbox } from 'e2b';
 import {
   assertCanonicalRuntimeTemplateRef,
   normalizeApiUrl,
@@ -129,27 +129,52 @@ async function waitForCleanupInventory(currentSandboxId) {
   return result;
 }
 
+function describeCommandFailure(exitCode, stdout, stderr) {
+  const diagnostics = [stdout, stderr]
+    .map((value) => (value ?? '').trim())
+    .filter(Boolean)
+    .join('\n')
+    .slice(0, 1_000);
+  return `runtime probe failed with exit code ${exitCode}${
+    diagnostics ? `: ${diagnostics}` : ''
+  }`;
+}
+
 async function run(
   command,
   timeoutMs = 120_000,
   commandRequestTimeoutMs = requestTimeoutMs,
   user,
 ) {
-  const result = await sandbox.commands.run(command, {
-    requestTimeoutMs: commandRequestTimeoutMs,
-    timeoutMs,
-    ...(user === undefined ? {} : { user }),
-  });
+  // The e2b SDK's `sandbox.commands.run()` (CommandHandle.wait()) throws a
+  // `CommandExitError` itself for any nonzero exit -- it never resolves with
+  // a `result.exitCode !== 0` object -- so a bare `try`-less call here loses
+  // the command's stdout/stderr and surfaces only `CommandExitError`'s own
+  // message (the low-detail envd-level `result.error`, e.g. literally "exit
+  // status 1"). Every probe in this file shares this helper, so this was a
+  // systemic gap, not specific to one probe: catch it and rethrow with the
+  // same descriptive format the (previously unreachable) manual exit-code
+  // check below was already trying to produce.
+  let result;
+  try {
+    result = await sandbox.commands.run(command, {
+      requestTimeoutMs: commandRequestTimeoutMs,
+      timeoutMs,
+      ...(user === undefined ? {} : { user }),
+    });
+  } catch (error) {
+    if (error instanceof CommandExitError) {
+      throw new Error(
+        describeCommandFailure(error.exitCode, error.stdout, error.stderr),
+      );
+    }
+    throw error;
+  }
   if (result.exitCode !== 0) {
-    const diagnostics = [result.stdout, result.stderr]
-      .map((value) => value.trim())
-      .filter(Boolean)
-      .join('\n')
-      .slice(0, 1_000);
+    // Defense in depth only -- CommandExitError above is expected to be the
+    // sole path for a nonzero exit given the SDK behavior confirmed above.
     throw new Error(
-      `runtime probe failed with exit code ${result.exitCode}${
-        diagnostics ? `: ${diagnostics}` : ''
-      }`,
+      describeCommandFailure(result.exitCode, result.stdout, result.stderr),
     );
   }
   return result.stdout.trim();
