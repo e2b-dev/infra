@@ -60,6 +60,31 @@ const evidence = {
 let sandbox;
 let baseline;
 
+// Guards against a runaway/pagination-bug listing (e.g. `hasNext` never
+// settling) rather than any particular inventory size being "correct" --
+// pagination itself is unbounded (`limit: 100` below is only the per-page
+// fetch size; the loop already walks every page via `paginator.hasNext`).
+// 2026-08-21: raised from 100 to 300. The team's live inventory legitimately
+// held 107 sandboxes (evidence run 32442715119: 107/107 classified
+// `durable_session`, `destruction_authorized: false`, mostly `paused` --
+// paused-sandbox session durability is the product design), which tripped
+// the old bound that predates durable-session accumulation at this scale.
+// Tunable via MONAD_RUNTIME_VERIFY_INVENTORY_BOUND for future fleet growth
+// without another code change.
+const SANDBOX_INVENTORY_SAFETY_BOUND = (() => {
+  const raw = environment.MONAD_RUNTIME_VERIFY_INVENTORY_BOUND;
+  if (raw === undefined || raw.trim() === '') {
+    return 300;
+  }
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error(
+      'MONAD_RUNTIME_VERIFY_INVENTORY_BOUND must be a positive integer',
+    );
+  }
+  return parsed;
+})();
+
 async function listSandboxes(metadata) {
   const paginator = Sandbox.list({
     ...connection,
@@ -72,8 +97,10 @@ async function listSandboxes(metadata) {
   const items = [];
   while (paginator.hasNext) {
     items.push(...(await paginator.nextItems(connection)));
-    if (items.length > 100) {
-      throw new Error('sandbox inventory exceeded the 100-item safety bound');
+    if (items.length > SANDBOX_INVENTORY_SAFETY_BOUND) {
+      throw new Error(
+        `sandbox inventory exceeded the ${SANDBOX_INVENTORY_SAFETY_BOUND}-item safety bound`,
+      );
     }
   }
   return items;
