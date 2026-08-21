@@ -188,7 +188,7 @@ func TestCreateWatcherOnNetworkMount(t *testing.T) {
 
 	require.NoError(t, exec.CommandContext(t.Context(), "bindfs", sourceDir, mountDir).Run(), "failed to mount bindfs")
 	t.Cleanup(func() {
-		_ = exec.CommandContext(context.Background(), "fusermount", "-u", mountDir).Run()
+		_ = exec.CommandContext(context.Background(), "fusermount", "-u", mountDir).Run() //nolint:usetesting // Cleanup runs after t.Context() is cancelled.
 	})
 
 	svc := mockService()

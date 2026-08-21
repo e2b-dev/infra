@@ -51,7 +51,7 @@ func TestIsPathOnNetworkMount_FuseMount(t *testing.T) {
 
 	// Ensure we unmount on cleanup
 	t.Cleanup(func() {
-		_ = exec.CommandContext(context.Background(), "fusermount", "-u", mountDir).Run()
+		_ = exec.CommandContext(context.Background(), "fusermount", "-u", mountDir).Run() //nolint:usetesting // Cleanup runs after t.Context() is cancelled.
 	})
 
 	// Test that the FUSE mount is detected

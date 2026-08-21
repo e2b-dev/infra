@@ -87,7 +87,7 @@ func TestAdvisoryLockRetriesSerializableTransactionOnItsSession(t *testing.T) {
 
 	lock, err := client.AcquireAdvisoryLock(t.Context(), "counter")
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = lock.Release(context.Background()) })
+	t.Cleanup(func() { _ = lock.Release(context.Background()) }) //nolint:usetesting // Cleanup runs after t.Context() is cancelled.
 
 	type transactionResult struct {
 		attempt int
@@ -146,7 +146,7 @@ func TestSerializableTransactionCleansUpAndBoundsReplays(t *testing.T) {
 
 	lock, err := client.AcquireAdvisoryLock(t.Context(), "counter")
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = lock.Release(context.Background()) })
+	t.Cleanup(func() { _ = lock.Release(context.Background()) }) //nolint:usetesting // Cleanup runs after t.Context() is cancelled.
 
 	refused := errors.New("refused")
 	returned, err := InSerializableTxReturn1(t.Context(), lock, func(ctx context.Context, tx pgx.Tx) (int, error) {
@@ -261,7 +261,7 @@ func testDatabaseURL(t *testing.T) string {
 		postgres.BasicWaitStrategies(),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, container.Terminate(context.Background())) })
+	t.Cleanup(func() { require.NoError(t, container.Terminate(context.Background())) }) //nolint:usetesting // Cleanup runs after t.Context() is cancelled.
 
 	endpoint, err := container.Endpoint(t.Context(), "")
 	require.NoError(t, err)

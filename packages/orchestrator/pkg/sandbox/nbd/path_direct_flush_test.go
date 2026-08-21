@@ -158,7 +158,7 @@ func setupNBDMount(t *testing.T, featureFlags *featureflags.Client, backend bloc
 	devicePool, err := NewDevicePool(64)
 	require.NoError(t, err, "failed to create device pool")
 
-	poolCtx, poolCancel := context.WithCancel(context.Background())
+	poolCtx, poolCancel := context.WithCancel(t.Context())
 	poolClosed := make(chan struct{})
 
 	go func() {
@@ -172,7 +172,7 @@ func setupNBDMount(t *testing.T, featureFlags *featureflags.Client, backend bloc
 	require.NoError(t, err, "failed to open nbd mount")
 
 	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second) //nolint:usetesting // Cleanup runs after t.Context() is cancelled.
 		defer cancel()
 
 		if err := mnt.Close(ctx); err != nil {

@@ -59,7 +59,7 @@ func startFakeGCSBackend(t *testing.T) *gcpStorage {
 	require.NoError(t, err, "start fake-gcs-server container")
 
 	t.Cleanup(func() {
-		if err := container.Terminate(context.Background()); err != nil {
+		if err := container.Terminate(context.Background()); err != nil { //nolint:usetesting // Cleanup runs after t.Context() is cancelled.
 			t.Logf("cleanup: failed to terminate fake-gcs-server container: %v", err)
 		}
 	})

@@ -76,6 +76,11 @@ linters:
           - revive
 
   settings:
+    usetesting:
+      # t.Context() is cancelled just before the test's Cleanup functions run,
+      # so teardown that must outlive the test keeps context.Background().
+      context-background: true
+      context-todo: true
     forbidigo:
       forbid:
         - pattern: '.*\.ErrNoRows$'

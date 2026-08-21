@@ -321,7 +321,7 @@ func (b *s3TestBackend) object(t *testing.T, client *s3.Client, key string) *aws
 
 	t.Cleanup(func() {
 		// t.Context() is done by cleanup time; use a fresh one.
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second) //nolint:usetesting // Cleanup runs after t.Context() is cancelled.
 		defer cancel()
 		if err := obj.Delete(ctx); err != nil {
 			t.Logf("cleanup: failed to delete s3://%s/%s: %v", b.bucket, key, err)
