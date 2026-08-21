@@ -32,21 +32,27 @@ RUN npm install -g --no-audit --no-fund \
 # workspace setup runs `pnpm install --frozen-lockfile` (on_boot: `pnpm dev`).
 # Without pnpm on this image that step exit-127's for every session on the
 # fleet: it was the root cause behind three separate manifest workarounds
-# (tams #540, #542, #545). corepack ships with the apt nodejs package
-# installed above (verified: /usr/bin/corepack), so pin the exact tams-side
-# version through it instead of an unpinned `npm install -g pnpm`. corepack's
-# shim already resolves on the default PATH (/usr/bin) for both a login and a
-# non-login shell, but symlink it into /usr/local/bin too, next to the bun
-# binary below, as a second, independent way to find it.
-RUN corepack enable \
-    && corepack prepare pnpm@8.11.0 --activate \
+# (tams #540, #542, #545). Install via `npm install -g` — REAL FILES under the
+# npm prefix — and NOT `corepack prepare --activate`: corepack activation is
+# cache/shim state that passed every build-time self-check here but did NOT
+# survive into the running E2B sandbox; at runtime the shim fell back to
+# corepack's own NETWORK resolution (registry.npmjs.org) and failed closed in
+# the egress-restricted workcell (rotation run 32470431726, 2026-08-21 — the
+# CommandExitError-diagnostics fix in verify-runtime finally surfaced it).
+# The self-check below runs with corepack's network hard-disabled and its
+# home pointed at a nonexistent dir, so any regression back to
+# activation-state-only pnpm fails THIS BUILD, not the fleet.
+RUN npm install -g pnpm@8.11.0 \
     && test "$(pnpm --version)" = 8.11.0 \
-    && ln -sf "$(command -v pnpm)" /usr/local/bin/pnpm \
-    && ln -sf "$(command -v pnpx)" /usr/local/bin/pnpx \
+    && pnpm_real="$(readlink -f "$(command -v pnpm)")" \
+    && pnpx_real="$(readlink -f "$(command -v pnpx)")" \
+    && ln -sf "$pnpm_real" /usr/local/bin/pnpm \
+    && ln -sf "$pnpx_real" /usr/local/bin/pnpx \
     && sh -lc 'command -v pnpm' \
     && sh -c 'command -v pnpm' \
-    && sh -lc 'test "$(pnpm --version)" = 8.11.0' \
-    && sh -c 'test "$(pnpm --version)" = 8.11.0'
+    && COREPACK_ENABLE_NETWORK=0 COREPACK_HOME=/nonexistent sh -lc 'test "$(pnpm --version)" = 8.11.0' \
+    && COREPACK_ENABLE_NETWORK=0 COREPACK_HOME=/nonexistent sh -c 'test "$(pnpm --version)" = 8.11.0' \
+    && ! head -c 512 "$(readlink -f /usr/local/bin/pnpm)" | grep -qi corepack
 
 COPY .build-assets/bun /usr/local/bin/bun
 
