@@ -1200,16 +1200,34 @@ try {
 
   evidence.versions = JSON.parse(
     await run(
-      String.raw`node -e 'const {execFileSync}=require("node:child_process"); const commands={opencode:["opencode","--version"],agent_browser:["agent-browser","--version"],playwright:["playwright","--version"],git:["git","--version"],monad:["monad","--version"]}; const out={}; for(const [name,args] of Object.entries(commands)){out[name]=execFileSync(args[0],args.slice(1),{encoding:"utf8"}).trim()} process.stdout.write(JSON.stringify(out))'`,
+      String.raw`node -e 'const {execFileSync}=require("node:child_process"); const commands={opencode:["opencode","--version"],agent_browser:["agent-browser","--version"],playwright:["playwright","--version"],git:["git","--version"],monad:["monad","--version"],pnpm:["pnpm","--version"]}; const out={}; for(const [name,args] of Object.entries(commands)){out[name]=execFileSync(args[0],args.slice(1),{encoding:"utf8"}).trim()} process.stdout.write(JSON.stringify(out))'`,
     ),
   );
   if (
     evidence.versions.opencode !== '1.14.28' ||
     evidence.versions.agent_browser !== 'agent-browser 0.27.0' ||
-    evidence.versions.playwright !== 'Version 1.60.0'
+    evidence.versions.playwright !== 'Version 1.60.0' ||
+    evidence.versions.pnpm !== '8.11.0'
   ) {
     throw new Error('runtime tool versions do not match their pins');
   }
+
+  // pnpm must resolve identically for a login shell and a plain non-login
+  // `sh -c` invocation — the tams workspace-setup step runs the latter, and
+  // an earlier incident showed /usr/local/bin silently missing from that
+  // PATH. Fail the verification, not just the build, if that regresses.
+  const pnpmShellPaths = JSON.parse(
+    await run(
+      String.raw`node -e 'const {execFileSync}=require("node:child_process"); const out={login:execFileSync("sh",["-lc","command -v pnpm"],{encoding:"utf8"}).trim(),non_login:execFileSync("sh",["-c","command -v pnpm"],{encoding:"utf8"}).trim()}; process.stdout.write(JSON.stringify(out))'`,
+    ),
+  );
+  if (
+    !pnpmShellPaths.login ||
+    pnpmShellPaths.login !== pnpmShellPaths.non_login
+  ) {
+    throw new Error('pnpm is not resolvable identically from login and non-login shells');
+  }
+  evidence.versions.pnpm_shell_path = pnpmShellPaths.non_login;
 
   const provenance = JSON.parse(
     await run('cat /opt/monad/runtime-provenance.json'),

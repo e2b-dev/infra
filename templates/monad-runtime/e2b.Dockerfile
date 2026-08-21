@@ -28,6 +28,26 @@ RUN npm install -g --no-audit --no-fund \
     && /usr/bin/chromium --version \
     && rm -rf /tmp/npm-cache
 
+# The tams monorepo pins `"packageManager": "pnpm@8.11.0"`, and its monad.toml
+# workspace setup runs `pnpm install --frozen-lockfile` (on_boot: `pnpm dev`).
+# Without pnpm on this image that step exit-127's for every session on the
+# fleet: it was the root cause behind three separate manifest workarounds
+# (tams #540, #542, #545). corepack ships with the apt nodejs package
+# installed above (verified: /usr/bin/corepack), so pin the exact tams-side
+# version through it instead of an unpinned `npm install -g pnpm`. corepack's
+# shim already resolves on the default PATH (/usr/bin) for both a login and a
+# non-login shell, but symlink it into /usr/local/bin too, next to the bun
+# binary below, as a second, independent way to find it.
+RUN corepack enable \
+    && corepack prepare pnpm@8.11.0 --activate \
+    && test "$(pnpm --version)" = 8.11.0 \
+    && ln -sf "$(command -v pnpm)" /usr/local/bin/pnpm \
+    && ln -sf "$(command -v pnpx)" /usr/local/bin/pnpx \
+    && sh -lc 'command -v pnpm' \
+    && sh -c 'command -v pnpm' \
+    && sh -lc 'test "$(pnpm --version)" = 8.11.0' \
+    && sh -c 'test "$(pnpm --version)" = 8.11.0'
+
 COPY .build-assets/bun /usr/local/bin/bun
 
 RUN chmod +x /usr/local/bin/bun \
