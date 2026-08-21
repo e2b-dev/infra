@@ -29,6 +29,42 @@ func (e EntryInfoType) Valid() bool {
 	}
 }
 
+// Defines values for FreezeResultMode.
+const (
+	FreezeResultModeHierarchy FreezeResultMode = "hierarchy"
+	FreezeResultModeLegacy    FreezeResultMode = "legacy"
+)
+
+// Valid indicates whether the value is a known member of the FreezeResultMode enum.
+func (e FreezeResultMode) Valid() bool {
+	switch e {
+	case FreezeResultModeHierarchy:
+		return true
+	case FreezeResultModeLegacy:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostFreezeParamsMode.
+const (
+	PostFreezeParamsModeHierarchy PostFreezeParamsMode = "hierarchy"
+	PostFreezeParamsModeLegacy    PostFreezeParamsMode = "legacy"
+)
+
+// Valid indicates whether the value is a known member of the PostFreezeParamsMode enum.
+func (e PostFreezeParamsMode) Valid() bool {
+	switch e {
+	case PostFreezeParamsModeHierarchy:
+		return true
+	case PostFreezeParamsModeLegacy:
+		return true
+	default:
+		return false
+	}
+}
+
 // CollapseResult Per-call statistics from a heap collapse
 type CollapseResult struct {
 	// AlreadyHuge Chunks MADV_COLLAPSE accepted but were already hugepages (no work)
@@ -94,14 +130,23 @@ type Error struct {
 
 // FreezeResult Per-call statistics from a pre-pause workload freeze
 type FreezeResult struct {
+	// Allowlisted Cgroups skipped because the resume path depends on them (systemd, journald, envd's port forwarding). Reported because the allowlist is expected to grow, and a distro that routes journald differently changes this count
+	Allowlisted *int `json:"allowlisted,omitempty"`
+
 	// Failed Cgroups whose freeze write or state read errored (expected for a threaded cgroup, and for one removed mid-sweep)
 	Failed *int `json:"failed,omitempty"`
 
 	// Frozen Cgroups that read back "frozen 1" from cgroup.events within the budget; their tasks have stopped
 	Frozen *int `json:"frozen,omitempty"`
 
+	// Mode Which sweep actually ran. Echoed back rather than inferred from the flag, so a caller can tell that envd honoured what it asked for
+	Mode *FreezeResultMode `json:"mode,omitempty"`
+
 	// NotFrozen Cgroups still reading "frozen 0" when the budget expired; their tasks may still be running, so a snapshot taken now can capture a live workload
 	NotFrozen *int `json:"notFrozen,omitempty"`
+
+	// PreFrozen Cgroups the guest itself had already frozen before the sweep ran (docker pause writes cgroup.freeze). Not written to and deliberately left frozen by the resume thaw, so the guest's own suspension survives the snapshot
+	PreFrozen *int `json:"preFrozen,omitempty"`
 
 	// Requested Cgroups this call wrote cgroup.freeze to
 	Requested *int `json:"requested,omitempty"`
@@ -109,12 +154,21 @@ type FreezeResult struct {
 	// SweepMs Time spent issuing the freeze writes, in milliseconds (scales with cgroup count)
 	SweepMs *int64 `json:"sweepMs,omitempty"`
 
+	// Truncated True when the walk stopped because it hit the bound rather than because it ran out of tree, so coverage is incomplete
+	Truncated *bool `json:"truncated,omitempty"`
+
 	// Unobservable Cgroups whose freeze state cannot be read because this guest has no cgroup manager; the write was accepted but nothing can be read back, so these are neither frozen nor notFrozen
 	Unobservable *int `json:"unobservable,omitempty"`
+
+	// Visited Cgroups the walk examined, whether or not it froze them. The input for sizing the bound; meaningless in legacy mode
+	Visited *int `json:"visited,omitempty"`
 
 	// WaitMs Time spent polling cgroup.events, in milliseconds (scales with how deep in I/O the guest tasks were). Outcome neutral - the wait ends either because everything stopped or because the budget ran out
 	WaitMs *int64 `json:"waitMs,omitempty"`
 }
+
+// FreezeResultMode Which sweep actually ran. Echoed back rather than inferred from the flag, so a caller can tell that envd honoured what it asked for
+type FreezeResultMode string
 
 // Metrics Resource usage metrics
 type Metrics struct {
@@ -228,6 +282,25 @@ type PostFilesParams struct {
 
 // PostFreezeParams defines parameters for PostFreeze.
 type PostFreezeParams struct {
+	// Mode Which cgroups to freeze. "hierarchy" freezes the complement of envd's own
+	// ancestor chain, so cgroups the customer created anywhere in the tree are
+	// covered; "legacy" freezes only the user and pty cgroups envd itself creates.
+	// Omitted means legacy, which is what an orchestrator predating this parameter
+	// gets.
+	//
+	// The mode is chosen by the caller because the feature flag that selects it is
+	// evaluated there — envd has no access to it. FreezeResult echoes the mode back
+	// so the caller can confirm envd honoured the request rather than inferring it
+	// from the flag's value: an envd too old to know about modes reports legacy
+	// while the flag reads on.
+	Mode *PostFreezeParamsMode `form:"mode,omitempty" json:"mode,omitempty"`
+
+	// MaxCgroups Bounds how many cgroups a hierarchy sweep may visit. A safety guard against a
+	// pathological or hostile hierarchy rather than a performance knob — the guest is
+	// the threat model. Omitted or non-positive means envd's own default. Ignored in
+	// legacy mode.
+	MaxCgroups *int `form:"maxCgroups,omitempty" json:"maxCgroups,omitempty"`
+
 	// MaxWaitMs How long to wait for the cgroups to read back frozen, in milliseconds. The
 	// caller owns this budget because it also owns the request timeout, and a wait
 	// longer than that timeout cannot be observed.
@@ -237,6 +310,9 @@ type PostFreezeParams struct {
 	// answers 204, which is the contract callers older than this parameter expect.
 	MaxWaitMs *int64 `form:"maxWaitMs,omitempty" json:"maxWaitMs,omitempty"`
 }
+
+// PostFreezeParamsMode defines parameters for PostFreeze.
+type PostFreezeParamsMode string
 
 // PostInitJSONBody defines parameters for PostInit.
 type PostInitJSONBody struct {
@@ -594,6 +670,32 @@ func (siw *ServerInterfaceWrapper) PostFreeze(w http.ResponseWriter, r *http.Req
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params PostFreezeParams
+
+	// ------------- Optional query parameter "mode" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "mode", r.URL.Query(), &params.Mode, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "mode"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "mode", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "maxCgroups" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "maxCgroups", r.URL.Query(), &params.MaxCgroups, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "maxCgroups"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "maxCgroups", Err: err})
+		}
+		return
+	}
 
 	// ------------- Optional query parameter "maxWaitMs" -------------
 

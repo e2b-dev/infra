@@ -137,7 +137,7 @@ func (s *Sandbox) doRequestWithInfiniteRetries(
 // We always send maxWaitMs, which is what asks for the structured result. An envd
 // predating that parameter answers 204 instead; that is not an error, only an envd whose
 // observed counts are unavailable, so the zero result comes back with ok=false.
-func (s *Sandbox) callEnvdFreeze(ctx context.Context, timeout time.Duration) (result envd.FreezeResult, ok bool, err error) {
+func (s *Sandbox) callEnvdFreeze(ctx context.Context, timeout time.Duration, hierarchy bool, maxCgroups int) (result envd.FreezeResult, ok bool, err error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -146,7 +146,15 @@ func (s *Sandbox) callEnvdFreeze(ctx context.Context, timeout time.Duration) (re
 	// we would have given up on it.
 	maxWaitMs := max((timeout - freezeRoundTripMargin).Milliseconds(), 1)
 
-	resp, err := s.doEnvdPost(ctx, string(envdOpFreeze), fmt.Sprintf("maxWaitMs=%d", maxWaitMs))
+	query := fmt.Sprintf("maxWaitMs=%d", maxWaitMs)
+	if hierarchy {
+		// The flag lives here because envd has no LaunchDarkly, so the mode travels on
+		// the request. FreezeResult echoes back what envd actually ran, which is what
+		// makes an envd that ignores this parameter visible rather than assumed.
+		query += fmt.Sprintf("&mode=%s&maxCgroups=%d", envd.PostFreezeParamsModeHierarchy, maxCgroups)
+	}
+
+	resp, err := s.doEnvdPost(ctx, string(envdOpFreeze), query)
 	if err != nil {
 		return envd.FreezeResult{}, false, err
 	}
@@ -510,6 +518,12 @@ func (s *Sandbox) initEnvd(ctx context.Context, startType StartType, recordMetri
 	// version with no extra round-trip.
 	if v := response.Header.Get("X-Envd-Version"); v != "" {
 		s.setLiveEnvdVersion(v)
+	}
+	// The resume-time audit of the frozen cgroup set (X-Envd-Freeze-Audit). envd exports
+	// no metrics of its own, so this header is what turns the audit into a fleet-wide
+	// number instead of a guest log line nothing joins against.
+	if a := response.Header.Get("X-Envd-Freeze-Audit"); a != "" {
+		s.recordFreezeAudit(ctx, a)
 	}
 	// Alongside the version, capture the handover outcome the new envd advertises
 	// after a live upgrade (X-Envd-Handover) so the trigger can record it.

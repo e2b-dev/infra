@@ -4,6 +4,7 @@ package sandbox
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -12,8 +13,10 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/envd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -502,8 +505,17 @@ func (s *Sandbox) bestEffortFreeze(ctx context.Context) {
 		timeout = time.Duration(ms) * time.Millisecond
 	}
 
+	// The flag is the only gate. There is deliberately no envd version check: an envd that
+	// predates the mode parameter ignores it, freezes the legacy set and says so in the
+	// response, which is both safe and visible. A version constant would add a number
+	// nobody can set correctly before the release that carries this is cut, to prevent a
+	// request that costs nothing -- the same reasoning that kept one out of the
+	// confirmation work.
+	hierarchy := s.featureFlags.BoolFlag(ctx, featureflags.FreezeGuestHierarchyFlag)
+	maxCgroups := s.featureFlags.IntFlag(ctx, featureflags.FreezeGuestHierarchyMaxCgroupsFlag)
+
 	start := time.Now()
-	res, reported, err := s.callEnvdFreeze(ctx, timeout)
+	res, reported, err := s.callEnvdFreeze(ctx, timeout, hierarchy, maxCgroups)
 	elapsedMs := time.Since(start).Milliseconds()
 	success := err == nil
 	// Distinguish "we gave up waiting" from "envd refused": both are failures, but only
@@ -545,8 +557,22 @@ func (s *Sandbox) bestEffortFreeze(ctx context.Context) {
 	// Split the two durations: sweep is our own cost and scales with cgroup count, wait
 	// is the guest's and scales with how deep in I/O its tasks were. A single combined
 	// number would send us tuning whichever is not the problem.
-	envdFreezeSweepHistogram.Record(ctx, res.SweepMs)
-	envdFreezeWaitHistogram.Record(ctx, res.WaitMs)
+	// An envd predating the mode parameter omits it, which reads as legacy because that is
+	// what it performed. Normalised once here so no metric ever carries an empty label.
+	mode := string(res.Mode)
+	if mode == "" {
+		mode = string(envd.FreezeResultModeLegacy)
+	}
+
+	// Every freeze metric is cut by the mode that actually ran. Without it the walk's
+	// numbers would be pooled with the legacy ones during any partial rollout, and the
+	// legacy arm is precisely the baseline the walk's added cost has to be measured
+	// against.
+	modeAttr := metric.WithAttributes(attribute.String("mode", mode))
+
+	envdFreezeSweepHistogram.Record(ctx, res.SweepMs, modeAttr)
+	envdFreezeWaitHistogram.Record(ctx, res.WaitMs, modeAttr)
+	envdFreezeVisitedHistogram.Record(ctx, int64(res.Visited), modeAttr)
 
 	// Outcome split so a freeze that is issued but never lands is distinguishable from
 	// one that works: not_frozen > 0 means the snapshot may capture a running workload.
@@ -558,12 +584,27 @@ func (s *Sandbox) bestEffortFreeze(ctx context.Context) {
 		// workload refusing to stop, and folding the two together would make guests with
 		// no cgroup manager look like the failure this metric exists to catch.
 		"unobservable": res.Unobservable,
+		// Cgroups the guest had frozen itself, which we neither wrote to nor will thaw.
+		// Counted so "the guest suspends its own containers" is visible as a population
+		// rather than inferred from a thaw that quietly does less.
+		"pre_frozen": res.PreFrozen,
 	} {
 		envdFreezeCgroupsHistogram.Record(ctx, int64(count),
-			metric.WithAttributes(attribute.String("outcome", outcome)))
+			metric.WithAttributes(
+				attribute.String("outcome", outcome),
+				attribute.String("mode", mode),
+			))
 	}
 
+	// The mode envd reports, not the mode we asked for -- conflating the two would hide
+	// exactly the case worth seeing during a rollout.
 	span.SetAttributes(
+		attribute.String("freeze.mode", mode),
+		attribute.Bool("freeze.mode_requested_hierarchy", hierarchy),
+		attribute.Int("freeze.visited", res.Visited),
+		attribute.Int("freeze.allowlisted", res.Allowlisted),
+		attribute.Bool("freeze.truncated", res.Truncated),
+		attribute.Int("freeze.pre_frozen", res.PreFrozen),
 		attribute.Int("freeze.requested", res.Requested),
 		attribute.Int("freeze.frozen", res.Frozen),
 		attribute.Int("freeze.not_frozen", res.NotFrozen),
@@ -573,6 +614,14 @@ func (s *Sandbox) bestEffortFreeze(ctx context.Context) {
 		attribute.Int64("freeze.wait_ms", res.WaitMs),
 	)
 
+	if res.Truncated {
+		logger.L().Warn(ctx, "pre-pause freeze walk hit its bound; coverage is incomplete",
+			logger.WithSandboxID(s.Runtime.SandboxID),
+			zap.Int("visited", res.Visited),
+			zap.Int("max_cgroups", maxCgroups),
+			zap.Int("requested", res.Requested),
+		)
+	}
 	if res.NotFrozen > 0 || res.Failed > 0 {
 		logger.L().Warn(ctx, "pre-pause freeze did not stop the whole workload",
 			logger.WithSandboxID(s.Runtime.SandboxID),
@@ -618,5 +667,81 @@ func (s *Sandbox) bestEffortFsthaw(ctx context.Context) {
 
 	if err := s.callEnvdFsthaw(context.WithoutCancel(ctx), s.guestSyncTimeout(ctx)); err != nil {
 		logger.L().Warn(ctx, "envd fsthaw failed", logger.WithSandboxID(s.Runtime.SandboxID), zap.Error(err))
+	}
+}
+
+// freezeAudit is envd's resume-time audit of the frozen cgroup set, as carried by
+// X-Envd-Freeze-Audit. JSON, and decoded field by field: a field a newer envd adds is
+// ignored here rather than failing the whole parse, and one an older envd omits reads as its
+// zero value -- which is why truncated is the field whose zero has to be the safe answer
+// ("these counts are complete").
+type freezeAudit struct {
+	Visited    int64 `json:"visited"`
+	Frozen     int64 `json:"frozen"`
+	Escaped    int64 `json:"escaped"`
+	Violations int64 `json:"violations"`
+	Truncated  bool  `json:"truncated"`
+}
+
+// recordFreezeAudit turns envd's resume-time audit header into metrics and span attributes.
+//
+// Two counts, and they mean very different things:
+//
+//   - escaped is the residual the walk cannot close. A cgroup created after the pre-pause
+//     sweep and before the snapshot was never a candidate, and cgroup v2 has no
+//     freeze-on-create semantics to prevent it. A non-zero rate here sizes a race we
+//     currently only reason about.
+//   - violations is a BUG, not a race: a cgroup the resume depends on was frozen, meaning
+//     either the allowlist is missing a name or the sweep froze a parent of one. Zero is
+//     the only acceptable value, and two separate defects in this area were found by other
+//     means before this counter existed.
+//
+// Advisory in that it never fails the resume, but a header that will not decode is LOGGED
+// rather than dropped in silence. The alternative reads identically to a fleet where the
+// audit is clean: violations is the signal this exists for, and its absence must not be
+// indistinguishable from its being zero.
+func (s *Sandbox) recordFreezeAudit(ctx context.Context, header string) {
+	var a freezeAudit
+	if err := json.Unmarshal([]byte(header), &a); err != nil {
+		logger.L().Warn(ctx, "could not decode the resume freeze audit header",
+			logger.WithSandboxID(s.Runtime.SandboxID),
+			zap.Error(err),
+		)
+
+		return
+	}
+
+	envdFreezeAuditHistogram.Record(ctx, a.Escaped,
+		metric.WithAttributes(attribute.String("kind", "escaped")))
+	envdFreezeAuditHistogram.Record(ctx, a.Violations,
+		metric.WithAttributes(attribute.String("kind", "violations")))
+
+	if span := trace.SpanFromContext(ctx); span.IsRecording() {
+		span.SetAttributes(
+			attribute.Int64("freeze.audit.visited", a.Visited),
+			attribute.Int64("freeze.audit.frozen", a.Frozen),
+			attribute.Int64("freeze.audit.escaped", a.Escaped),
+			attribute.Int64("freeze.audit.violations", a.Violations),
+			// Absent from an envd that predates the field, which decodes as false -- the
+			// same as "not truncated", and the only safe default for a signal that means
+			// "these counts are a floor".
+			attribute.Bool("freeze.audit.truncated", a.Truncated),
+		)
+	}
+
+	if a.Truncated {
+		logger.L().Warn(ctx, "the resume freeze audit stopped at its bound; its counts are a floor",
+			logger.WithSandboxID(s.Runtime.SandboxID),
+			zap.Int64("visited", a.Visited),
+		)
+	}
+
+	if a.Violations > 0 {
+		logger.L().Error(ctx, "cgroups the resume depends on were frozen; the freeze allowlist did not hold",
+			logger.WithSandboxID(s.Runtime.SandboxID),
+			zap.Int64("violations", a.Violations),
+			zap.Int64("frozen", a.Frozen),
+			zap.Int64("visited", a.Visited),
+		)
 	}
 }

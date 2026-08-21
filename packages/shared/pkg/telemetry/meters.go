@@ -233,6 +233,8 @@ const (
 	EnvdFreezeDurationHistogramName     HistogramType = "orchestrator.sandbox.envd.freeze.duration"
 	EnvdFreezeSweepHistogramName        HistogramType = "orchestrator.sandbox.envd.freeze.sweep"
 	EnvdFreezeWaitHistogramName         HistogramType = "orchestrator.sandbox.envd.freeze.wait"
+	EnvdFreezeVisitedHistogramName      HistogramType = "orchestrator.sandbox.envd.freeze.visited"
+	EnvdFreezeAuditHistogramName        HistogramType = "orchestrator.sandbox.envd.freeze.audit"
 	EnvdFreezeCgroupsHistogramName      HistogramType = "orchestrator.sandbox.envd.freeze.cgroups"
 	EnvdUnfreezeDurationHistogramName   HistogramType = "orchestrator.sandbox.envd.unfreeze.duration"
 	UffdStartupPagesHistogramName       HistogramType = "orchestrator.sandbox.uffd.startup.pages"
@@ -586,6 +588,8 @@ var histogramDesc = map[HistogramType]string{
 	EnvdFreezeDurationHistogramName:     "Round-trip duration of the pre-pause workload freeze call, per pause",
 	EnvdFreezeSweepHistogramName:        "Time envd spent issuing cgroup.freeze writes, per pause (scales with cgroup count)",
 	EnvdFreezeWaitHistogramName:         "Time envd spent waiting for cgroups to quiesce, per pause (scales with guest I/O depth)",
+	EnvdFreezeVisitedHistogramName:      "Cgroups the pre-pause freeze walk examined, per pause. Sizes the walk's bound: the bound should sit an order of magnitude above this",
+	EnvdFreezeAuditHistogramName:        "Resume-time audit of the frozen cgroup set, by kind: escaped (ran through the snapshot, whether created after the sweep or missed by a truncated or failed one -- read alongside freeze.truncated and the failed outcome) and violations (a cgroup the resume depends on was frozen -- a bug, expected to be zero)",
 	EnvdFreezeCgroupsHistogramName:      "Cgroups affected by a pre-pause freeze, per pause, split by outcome",
 	EnvdUnfreezeDurationHistogramName:   "Round-trip duration of the pause-rollback workload thaw call, per rollback",
 	UffdStartupPagesHistogramName:       "Demand-fault pages a guest needed to reach a successful envd init, per start",
@@ -651,6 +655,8 @@ var histogramUnits = map[HistogramType]string{
 	EnvdFreezeDurationHistogramName:               "ms",
 	EnvdFreezeSweepHistogramName:                  "ms",
 	EnvdFreezeWaitHistogramName:                   "ms",
+	EnvdFreezeVisitedHistogramName:                "{cgroup}",
+	EnvdFreezeAuditHistogramName:                  "{cgroup}",
 	EnvdFreezeCgroupsHistogramName:                "{cgroup}",
 	EnvdUnfreezeDurationHistogramName:             "ms",
 	UffdStartupPagesHistogramName:                 "{page}",

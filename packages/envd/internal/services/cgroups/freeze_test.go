@@ -19,7 +19,7 @@ func TestWorkloadFreezer_FreezeHoldBlocksUnfreeze(t *testing.T) {
 
 	f := NewWorkloadFreezer(NewNoopManager())
 
-	release, _, err := f.FreezeHold(t.Context(), 0)
+	release, _, err := f.FreezeHold(t.Context(), FreezeOptions{MaxWait: 0})
 	require.NoError(t, err)
 
 	unfrozen := make(chan struct{})
@@ -114,7 +114,7 @@ func TestFreeze_ReadsBackEveryCgroupFrozen(t *testing.T) {
 	t.Parallel()
 	f := NewWorkloadFreezer(newFakeFreezeManager())
 
-	res, err := f.Freeze(t.Context(), time.Second)
+	res, err := f.Freeze(t.Context(), FreezeOptions{MaxWait: time.Second})
 	require.NoError(t, err)
 	assert.Equal(t, len(WorkloadProcessTypes), res.Requested)
 	assert.Equal(t, len(WorkloadProcessTypes), res.Frozen)
@@ -135,7 +135,7 @@ func TestFreeze_UnobservableIsNeitherAwaitedNorCountedNotFrozen(t *testing.T) {
 	// A budget far larger than the test's patience: if the wait were entered at all, the
 	// elapsed assertion below would catch it.
 	start := time.Now()
-	res, err := f.Freeze(t.Context(), 10*time.Second)
+	res, err := f.Freeze(t.Context(), FreezeOptions{MaxWait: 10 * time.Second})
 	elapsed := time.Since(start)
 
 	require.NoError(t, err)
@@ -158,7 +158,7 @@ func TestFreeze_ReportsNotFrozenRatherThanFailing(t *testing.T) {
 	mgr.frozenAt[WorkloadProcessTypes[0]] = 1 << 30
 	f := NewWorkloadFreezer(mgr)
 
-	res, err := f.Freeze(t.Context(), 20*time.Millisecond)
+	res, err := f.Freeze(t.Context(), FreezeOptions{MaxWait: 20 * time.Millisecond})
 	require.NoError(t, err, "a workload that will not stop is reported, not an error")
 	assert.Equal(t, 1, res.NotFrozen)
 	assert.Equal(t, len(WorkloadProcessTypes)-1, res.Frozen)
@@ -177,7 +177,7 @@ func TestFreeze_WaitIsBoundedBySlowestNotSum(t *testing.T) {
 	}
 	f := NewWorkloadFreezer(mgr)
 
-	res, err := f.Freeze(t.Context(), 5*time.Second)
+	res, err := f.Freeze(t.Context(), FreezeOptions{MaxWait: 5 * time.Second})
 
 	require.NoError(t, err)
 	require.True(t, res.AllFrozen())
@@ -218,7 +218,7 @@ func TestFreeze_UnreadableStateIsCountedFailedNotAwaited(t *testing.T) {
 	f := NewWorkloadFreezer(mgr)
 
 	start := time.Now()
-	res, err := f.Freeze(t.Context(), 10*time.Second)
+	res, err := f.Freeze(t.Context(), FreezeOptions{MaxWait: 10 * time.Second})
 	elapsed := time.Since(start)
 
 	require.Error(t, err, "the failure is surfaced, as it is for a rejected write")
@@ -239,7 +239,7 @@ func TestFreeze_CountsWriteFailuresWithoutAborting(t *testing.T) {
 	mgr.freezeErr[WorkloadProcessTypes[0]] = errors.New("invalid argument")
 	f := NewWorkloadFreezer(mgr)
 
-	res, err := f.Freeze(t.Context(), time.Second)
+	res, err := f.Freeze(t.Context(), FreezeOptions{MaxWait: time.Second})
 	require.Error(t, err, "the failure is surfaced")
 	assert.Equal(t, 1, res.Failed)
 	assert.Equal(t, len(WorkloadProcessTypes)-1, res.Requested)
@@ -252,7 +252,7 @@ func TestFreeze_ZeroBudgetSkipsTheWait(t *testing.T) {
 	mgr := newFakeFreezeManager()
 	f := NewWorkloadFreezer(mgr)
 
-	res, err := f.Freeze(t.Context(), 0)
+	res, err := f.Freeze(t.Context(), FreezeOptions{MaxWait: 0})
 	require.NoError(t, err)
 	assert.Equal(t, len(WorkloadProcessTypes), res.Requested)
 	assert.Zero(t, res.Frozen, "no budget means the state was never read")
@@ -283,7 +283,7 @@ func TestFreeze_CancellationStopsThePollAndReleasesTheLock(t *testing.T) {
 	}()
 
 	start := time.Now()
-	_, err := f.Freeze(ctx, 10*time.Second)
+	_, err := f.Freeze(ctx, FreezeOptions{MaxWait: 10 * time.Second})
 	elapsed := time.Since(start)
 
 	require.NoError(t, err, "cancellation is not a freeze failure: the writes still landed")
@@ -301,5 +301,34 @@ func TestFreeze_CancellationStopsThePollAndReleasesTheLock(t *testing.T) {
 	case <-unfrozen:
 	case <-time.After(2 * time.Second):
 		t.Fatal("Unfreeze blocked: the freeze lock was still held after cancellation")
+	}
+}
+
+// TestFreezeOptions_MaxCgroupsIsClampedAtTheThawCap: the sweep must never be allowed to cover more
+// cgroups than a thaw can reach. That is the drift DefaultThawMaxCgroups forbids, reached by raising
+// this knob rather than lowering that constant -- and this one is an int flag, tunable without a
+// deploy, so the mistake is a typo rather than a code change. Its consequence is the worst one this
+// design has: a workload frozen for the life of the sandbox, with a backstop that re-walks the same
+// truncated prefix forever and can never reach what was frozen beyond it.
+func TestFreezeOptions_MaxCgroupsIsClampedAtTheThawCap(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		set  int
+		want int
+	}{
+		{"zero means the default", 0, DefaultFreezeMaxCgroups},
+		{"negative means the default", -1, DefaultFreezeMaxCgroups},
+		{"an ordinary raise is honoured", 4096, 4096},
+		{"the thaw cap itself is allowed", DefaultThawMaxCgroups, DefaultThawMaxCgroups},
+		{"past the thaw cap is clamped", DefaultThawMaxCgroups + 1, DefaultThawMaxCgroups},
+		{"a fat-fingered flag is clamped", 163840, DefaultThawMaxCgroups},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tc.want, FreezeOptions{MaxCgroups: tc.set}.maxCgroups())
+		})
 	}
 }

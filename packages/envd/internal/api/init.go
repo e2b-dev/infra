@@ -22,6 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs/ratelimit"
+	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
 	"github.com/e2b-dev/infra/packages/envd/pkg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
@@ -112,6 +113,27 @@ func (a *API) checkMMDSHash(ctx context.Context, requestToken *SecureToken) (boo
 	return keys.HashAccessTokenBytes(tokenBytes) == mmdsHash, true
 }
 
+// freezeAuditHeader carries the resume-time audit of the frozen cgroup set. A header
+// rather than a response body because /init answers 204 and the orchestrator already reads
+// headers off this call.
+//
+// The value is JSON, like X-Envd-Handover on the same response, rather than a bespoke k=v
+// string. Both ends then get field-by-field decoding for free: a reader on an older
+// orchestrator ignores a field this envd adds instead of failing the whole parse, and a
+// reader on a newer one sees a field this envd omits as its zero value. A single header
+// format across the resume path is also one fewer thing to get right.
+const freezeAuditHeader = "X-Envd-Freeze-Audit"
+
+// freezeAudit is the wire form of the audit. Counts are pointers-free and omitempty-free on
+// purpose: a zero violation count is a meaningful report, not an absent one.
+type freezeAudit struct {
+	Visited    int  `json:"visited"`
+	Frozen     int  `json:"frozen"`
+	Escaped    int  `json:"escaped"`
+	Violations int  `json:"violations"`
+	Truncated  bool `json:"truncated"`
+}
+
 func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
@@ -178,6 +200,19 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 
 			return
 		}
+
+		// Audit the frozen set BEFORE anything thaws it, and advertise the counts on the
+		// response header so the orchestrator can record them fleet-wide. envd exports no
+		// metrics of its own, and the guest's logs land somewhere the freeze dashboards
+		// cannot join against, so the header is the only channel that turns this into a
+		// number rather than a story. It rides a call the orchestrator already makes, the
+		// same way X-Envd-Version does.
+		//
+		// Two things it can see that nothing else can: a cgroup that was never frozen
+		// although it was the sweep's business (created in the window between the sweep and
+		// the snapshot, which no freeze-on-create semantics exist to prevent), and a cgroup
+		// frozen that must not have been. The second is the one that catches bugs.
+		a.auditFrozenSet(w, logger)
 
 		// Run on every /init regardless of the Timestamp guard, so stale/replayed
 		// requests still thaw cgroups after pre-pause freeze.
@@ -297,7 +332,23 @@ func (a *API) PostFreeze(w http.ResponseWriter, r *http.Request, params PostFree
 	}
 
 	// Pause stays best-effort: report an incomplete freeze, never fail the pause on it.
-	res, err := a.workloadFreezer.Freeze(r.Context(), maxWait)
+	// The mode is the caller's choice because the flag that selects it lives there. An
+	// absent or unknown value means legacy, so an orchestrator predating the parameter
+	// keeps today's frozen set.
+	mode := cgroups.ModeLegacy
+	if params.Mode != nil && *params.Mode == PostFreezeParamsModeHierarchy {
+		mode = cgroups.ModeHierarchy
+	}
+	var maxCgroups int
+	if params.MaxCgroups != nil {
+		maxCgroups = *params.MaxCgroups
+	}
+
+	res, err := a.workloadFreezer.Freeze(r.Context(), cgroups.FreezeOptions{
+		MaxWait:    maxWait,
+		Mode:       mode,
+		MaxCgroups: maxCgroups,
+	})
 
 	// A failed lock acquire surfaces the ctx error itself, which is what distinguishes it
 	// from a sweep that ran and collected per-cgroup errors -- those are joined, and a
@@ -349,6 +400,24 @@ func (a *API) PostFreeze(w http.ResponseWriter, r *http.Request, params PostFree
 			Dur("wait_duration", res.WaitDuration).
 			Msg("pre-pause freeze did not stop the whole workload; snapshot may capture it running")
 	}
+	if res.ScanFailed > 0 {
+		// Not an error, but not silent either: the guest-freeze record is incomplete by this
+		// many cgroups, so that many of the guest's own freezes get cleared on resume.
+		logger.Warn().
+			Int("scan_failed", res.ScanFailed).
+			Int("pre_frozen", res.PreFrozen).
+			Msg("could not classify some cgroups as the guest's own; those will be thawed on resume")
+	}
+
+	if res.Truncated {
+		// Coverage is incomplete: cgroups past the bound were never examined, so some of
+		// the workload may still be running. A degradation rather than a failure, but
+		// never a silent one -- if this fires the bound is wrong, and that is the finding.
+		logger.Warn().
+			Int("visited", res.Visited).
+			Int("requested", res.Requested).
+			Msg("freeze walk hit its bound; some cgroups were never examined")
+	}
 	if res.Unobservable > 0 {
 		// Not a failure, but never silent: this guest cannot report freeze state at all,
 		// so every pause here snapshots without the guarantee the rest of the fleet has.
@@ -359,7 +428,13 @@ func (a *API) PostFreeze(w http.ResponseWriter, r *http.Request, params PostFree
 
 	sweepMs := res.SweepDuration.Milliseconds()
 	waitMs := res.WaitDuration.Milliseconds()
+	resultMode := FreezeResultMode(res.Mode)
 	result := FreezeResult{
+		Mode:         &resultMode,
+		Visited:      &res.Visited,
+		Allowlisted:  &res.Allowlisted,
+		Truncated:    &res.Truncated,
+		PreFrozen:    &res.PreFrozen,
 		Requested:    &res.Requested,
 		Frozen:       &res.Frozen,
 		NotFrozen:    &res.NotFrozen,
@@ -647,4 +722,75 @@ func getIPFamily(address string) (txeh.IPFamily, error) {
 // maxTimeInPast before the hostTime or more than maxTimeInFuture after the hostTime.
 func shouldSetSystemTime(sandboxTime, hostTime time.Time) bool {
 	return sandboxTime.Before(hostTime.Add(-maxTimeInPast)) || sandboxTime.After(hostTime.Add(maxTimeInFuture))
+}
+
+// auditFrozenSet classifies the frozen cgroups at resume and reports the counts on the
+// /init response header. Advisory throughout: an observer must never be able to fail the
+// resume it is observing, so every error path here degrades to "say nothing".
+func (a *API) auditFrozenSet(w http.ResponseWriter, logger zerolog.Logger) {
+	pm, ok := a.workloadFreezer.Manager().(cgroups.PathManager)
+	if !ok {
+		// No hierarchy to walk (no-op manager, or a non-Linux build). Nothing to audit.
+		return
+	}
+
+	// AuditFrozenSet rather than AuditFrozenState: the freezer owns both the mode and the
+	// guard against a thaw landing mid-walk, so the decision belongs next to that state
+	// rather than here.
+	res, err := a.workloadFreezer.AuditFrozenSet(pm, cgroups.ProcSelfCgroup, cgroups.DefaultThawMaxCgroups)
+	if err != nil {
+		logger.Warn().Err(err).Msg("could not audit the frozen cgroup set at resume")
+
+		return
+	}
+	if !res.Applicable {
+		// Nothing was frozen, so this guest was not resumed from a paused snapshot that
+		// froze anything -- a fresh create, most likely. Reporting escapes here would
+		// count every legitimately running cgroup as one.
+		return
+	}
+
+	// Marshal failure cannot happen for a struct of ints and a bool, but the audit is advisory
+	// and must never fail the resume it observes, so an error still degrades to no header.
+	if b, err := json.Marshal(freezeAudit{
+		Visited:    res.Visited,
+		Frozen:     res.Frozen,
+		Escaped:    res.Escaped,
+		Violations: res.Violations,
+		Truncated:  res.Truncated,
+	}); err == nil {
+		w.Header().Set(freezeAuditHeader, string(b))
+	} else {
+		logger.Warn().Err(err).Msg("could not encode the resume freeze audit")
+	}
+
+	if res.Truncated {
+		// Every count above is a floor, so a zero-violations audit says nothing here.
+		logger.Warn().
+			Int("visited", res.Visited).
+			Msg("the resume audit stopped at its bound; the rest of the hierarchy was not classified")
+	}
+
+	if res.Violations > 0 {
+		// A frozen cgroup that the resume depends on. Not a race and not tolerable: it
+		// means either the allowlist is missing a name or the walk froze a parent of one.
+		logger.Error().
+			Int("violations", res.Violations).
+			Int("frozen", res.Frozen).
+			Int("visited", res.Visited).
+			// Joined into ONE string rather than logged as an array: envd's log pipeline
+			// carries scalar fields and drops the rest, so a Strs() field never reaches
+			// the place an operator reads it -- which was measured on a dev guest, where
+			// the counts arrived and the paths did not. The paths are the whole reason
+			// this line names anything, so they have to survive the transport.
+			Str("paths", strings.Join(res.ViolationPaths, " ")).
+			Msg("cgroups the resume depends on were frozen; the allowlist did not hold")
+	}
+	if res.Escaped > 0 {
+		logger.Warn().
+			Int("escaped", res.Escaped).
+			Int("frozen", res.Frozen).
+			Str("paths", strings.Join(res.EscapedPaths, " ")).
+			Msg("cgroups were running at resume that the pre-pause sweep should have stopped; created after it, or missed by a truncated or failed sweep")
+	}
 }

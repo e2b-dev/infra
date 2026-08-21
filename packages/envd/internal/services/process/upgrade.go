@@ -26,12 +26,42 @@ import (
 // tests can point it at a temp file.
 var HandoverPath = "/run/e2b/envd-handover.pb"
 
-// handoverSchema is the version of the HandoverState layout this envd writes and
-// the maximum it will read. A reader refuses a blob whose schema exceeds this
-// (design §6.4: decode every schema <= N, abort on schema > N) rather than
-// mis-read a newer-than-known layout — the outgoing envd then keeps running the
-// old binary and the resume proceeds unupgraded.
-const handoverSchema = 1
+// handoverSchema is the maximum HandoverState schema this envd will read: a reader refuses a
+// blob whose schema exceeds it (design §6.4 — decode every schema <= N, abort on schema > N)
+// rather than mis-read a newer-than-known layout.
+//
+// Refusing is a hard failure, not a graceful decline. The read happens after the execve, in the
+// new image, so there is no old binary left to fall back to: the handover is abandoned, the
+// workload is not re-adopted, and SetHandoverResult(failed) tells the orchestrator to tear the
+// sandbox down. That cost is why the version a writer STAMPS is chosen per blob
+// (schemaFor) rather than pinned to this maximum.
+const handoverSchema = handoverSchemaGuestFrozen
+
+// The schema versions themselves. A writer stamps the LOWEST version that can express the blob
+// it actually produced, so a field's mere existence in the layout costs nothing at runtime.
+const (
+	// handoverSchemaBase is every field through forwarded ports.
+	handoverSchemaBase = 1
+	// handoverSchemaGuestFrozen adds guest_frozen_cgroups.
+	handoverSchemaGuestFrozen = 2
+)
+
+// schemaFor is the lowest schema that can carry st without loss.
+//
+// guest_frozen_cgroups is absent-safe on the wire, but a reader that predates it would drop the
+// record and then thaw cgroups the guest froze itself -- so a blob that carries the list must be
+// refused by such a reader, and stamping 2 is what refuses it. A blob with an EMPTY list is a
+// different case: there is nothing for an older reader to lose, and stamping 2 anyway would fail
+// the upgrade for a peer that could have handled the blob perfectly. Empty is the common case,
+// since most guests freeze nothing of their own, so pinning the stamp at the maximum would trade
+// away nearly every downgrade for a guarantee only the non-empty blob needs.
+func schemaFor(st *upgrade.HandoverState) uint32 {
+	if len(st.GetGuestFrozenCgroups()) > 0 {
+		return handoverSchemaGuestFrozen
+	}
+
+	return handoverSchemaBase
+}
 
 // fdBase is where carried fds are dup3'd to; high enough that the fresh runtime
 // in the new image won't have grabbed these numbers during early startup.
@@ -77,12 +107,16 @@ func (s *Service) Upgrade(newBin, fromVer string, watchers []*upgrade.HandoverWa
 	}
 
 	st := &upgrade.HandoverState{
-		Schema:   handoverSchema,
 		FromVer:  fromVer,
 		Watchers: watchers,
 		Mounts:   mounts,
 		Forwards: forwards,
+		// Which cgroups the GUEST had frozen before the pre-pause sweep. Read from the
+		// freezer here rather than plumbed in by the caller: it is the freezer's own
+		// state, and the new image needs it before its /init thaws anything.
+		GuestFrozenCgroups: s.workloadFreezer.GuestFrozenPaths(),
 	}
+	st.Schema = schemaFor(st)
 
 	// Serialize the process table and relocate each carried fd to its fixed
 	// target, holding syscall.ForkLock so no concurrent Go fd allocation can
@@ -281,11 +315,11 @@ func (s *Service) ResumeFromHandover(reArmWatchers func([]*upgrade.HandoverWatch
 		return HandoverResult{}, fmt.Errorf("unmarshal handover: %w", err)
 	}
 
-	// Schema gate (design §6.4): refuse a blob written by a newer envd whose
-	// layout this binary does not understand, rather than mis-read it. The
-	// outgoing envd is already gone (this runs post-execve), so we can't fall
-	// back to it — but the orchestrator's post-upgrade /init readiness wait will
-	// fail and the resume is reported unupgraded rather than corrupt.
+	// Schema gate (design §6.4): refuse a blob written by a newer envd whose layout this binary
+	// does not understand, rather than mis-read it. This runs post-execve, so the outgoing envd
+	// is gone and there is nothing to fall back to -- the caller reports the handover failed and
+	// the orchestrator tears the sandbox down, which is the intended outcome. A refusal is worse
+	// than a successful handover and better than a silently mis-decoded one.
 	if st.GetSchema() > handoverSchema {
 		return HandoverResult{}, fmt.Errorf("handover schema %d exceeds max supported %d", st.GetSchema(), handoverSchema)
 	}
@@ -412,6 +446,19 @@ func (s *Service) ResumeFromHandover(reArmWatchers func([]*upgrade.HandoverWatch
 
 	// Handover succeeded: keep the workload frozen (see the deferred thaw above);
 	// the orchestrator's post-upgrade /init thaws it once auth is restored.
+	// Restore before returning: the incoming envd's /init thaws the workload, and
+	// without this the thaw would clear cgroups the guest itself had frozen. An absent
+	// or empty list leaves the record empty, which thaws everything -- the safe
+	// direction, and what an older outgoing envd produces.
+	s.workloadFreezer.SetGuestFrozenPaths(st.GetGuestFrozenCgroups())
+
+	// The workload stays frozen past this point, so tell the freezer it owns a live freeze
+	// again: neither the freeze-active state nor the watchdog timer crossed the execve, and
+	// without them a freeze before the post-upgrade /init would adopt our own frozen cgroups
+	// as the guest's, and an /init that never arrives would leave the guest frozen with no
+	// backstop.
+	s.workloadFreezer.ResumeFrozen(context.Background())
+
 	keepFrozen = true
 
 	return HandoverResult{
@@ -477,7 +524,7 @@ var ErrWorkloadNotFrozen = errors.New("workload was not frozen before the handov
 // the freeze exists to prevent, and unlike a pause the handover has a safe
 // alternative -- abort and thaw, leaving a working envd in place.
 func (s *Service) FreezeWorkloadHold() (release func(), err error) {
-	release, res, err := s.workloadFreezer.FreezeHold(context.Background(), s.handoverMaxWait)
+	release, res, err := s.workloadFreezer.FreezeHold(context.Background(), cgroups.FreezeOptions{MaxWait: s.handoverMaxWait})
 	if err != nil {
 		s.logger.Warn().Err(err).Msg("handover: freeze failed")
 

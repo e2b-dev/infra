@@ -32,6 +32,16 @@ message HandoverState {
   // forwards is the port forwarder's active socat set, carried so the new envd
   // re-adopts the running socat children instead of spawning duplicates.
   repeated ForwardedPort forwards = 7;
+  // guest_frozen_cgroups are cgroup paths, relative to the cgroup root, that the
+  // GUEST had frozen before our pre-pause sweep ran. The resume thaw must leave
+  // these alone: clearing them would restart processes the guest deliberately
+  // suspended (docker pause writes cgroup.freeze). Carried because the thaw runs
+  // after a live upgrade may have replaced the process image that recorded them.
+  //
+  // Absent or empty means "no record", and the thaw then clears everything it
+  // finds frozen -- the behaviour that predates this field. That degradation is
+  // deliberate: a lost record must never leave a guest frozen.
+  repeated string guest_frozen_cgroups = 8;
 }
 
 // MountEntry is one NFS volume mount the outgoing envd had set up, keyed by the

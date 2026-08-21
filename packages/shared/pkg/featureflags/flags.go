@@ -251,6 +251,26 @@ var (
 	SandboxLabelBasedSchedulingFlag = NewBoolFlag("sandbox-label-based-scheduling", false)
 	FreePageReportingFlag           = NewBoolFlag("free-page-reporting", false)
 	FreezeUserCgroupFlag            = NewBoolFlag("freeze-user-cgroup", env.IsDevelopment())
+	// FreezeGuestHierarchyFlag selects the hierarchy walk over the static user/pty list,
+	// i.e. whether cgroups the customer created anywhere in the tree are frozen before a
+	// pause. Default off: it changes which cgroups are stopped, which is a behaviour
+	// change on the pause path.
+	//
+	// Evaluated here rather than in envd because envd has no LaunchDarkly, so the mode
+	// travels on the /freeze call. That also means it can be ON at pause and OFF at the
+	// following resume, which is why the thaw discovers what is frozen instead of
+	// recomputing what should have been.
+	FreezeGuestHierarchyFlag = NewBoolFlag("freeze-guest-hierarchy", false)
+
+	// FreezeGuestHierarchyMaxCgroupsFlag bounds one hierarchy sweep. A safety guard, not
+	// a performance one -- the walk is breadth-bounded along a 2-deep chain, so a normal
+	// guest visits tens. It exists for a pathological or hostile hierarchy, the guest
+	// being the threat model, and truncation is reported rather than swallowed.
+	//
+	// Safe to lower; the THAW's bound (in envd) is separate and must never be lowered,
+	// because a thaw that truncates below what a freeze covered strands a guest frozen.
+	FreezeGuestHierarchyMaxCgroupsFlag = NewIntFlag("freeze-guest-hierarchy-max-cgroups", 512)
+
 	// CollapseEnvdHeapFlag makes the orchestrator ask envd to collapse its own
 	// anonymous heap into 2 MiB hugepages just before pause, reducing the number
 	// of distinct frames envd faults on resume. Off by default; rolled out via LD.

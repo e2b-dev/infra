@@ -104,6 +104,34 @@ paths:
         maxWaitMs: see that parameter.
       x-internal: true
       parameters:
+        - name: mode
+          in: query
+          required: false
+          description: |
+            Which cgroups to freeze. "hierarchy" freezes the complement of envd's own
+            ancestor chain, so cgroups the customer created anywhere in the tree are
+            covered; "legacy" freezes only the user and pty cgroups envd itself creates.
+            Omitted means legacy, which is what an orchestrator predating this parameter
+            gets.
+
+            The mode is chosen by the caller because the feature flag that selects it is
+            evaluated there — envd has no access to it. FreezeResult echoes the mode back
+            so the caller can confirm envd honoured the request rather than inferring it
+            from the flag's value: an envd too old to know about modes reports legacy
+            while the flag reads on.
+          schema:
+            type: string
+            enum: [legacy, hierarchy]
+        - name: maxCgroups
+          in: query
+          required: false
+          description: |
+            Bounds how many cgroups a hierarchy sweep may visit. A safety guard against a
+            pathological or hostile hierarchy rather than a performance knob — the guest is
+            the threat model. Omitted or non-positive means envd's own default. Ignored in
+            legacy mode.
+          schema:
+            type: integer
         - name: maxWaitMs
           in: query
           required: false
@@ -522,6 +550,22 @@ components:
       type: object
       description: Per-call statistics from a pre-pause workload freeze
       properties:
+        mode:
+          type: string
+          enum: [legacy, hierarchy]
+          description: Which sweep actually ran. Echoed back rather than inferred from the flag, so a caller can tell that envd honoured what it asked for
+        visited:
+          type: integer
+          description: Cgroups the walk examined, whether or not it froze them. The input for sizing the bound; meaningless in legacy mode
+        allowlisted:
+          type: integer
+          description: Cgroups skipped because the resume path depends on them (systemd, journald, envd's port forwarding). Reported because the allowlist is expected to grow, and a distro that routes journald differently changes this count
+        truncated:
+          type: boolean
+          description: True when the walk stopped because it hit the bound rather than because it ran out of tree, so coverage is incomplete
+        preFrozen:
+          type: integer
+          description: Cgroups the guest itself had already frozen before the sweep ran (docker pause writes cgroup.freeze). Not written to and deliberately left frozen by the resume thaw, so the guest's own suspension survives the snapshot
         requested:
           type: integer
           description: Cgroups this call wrote cgroup.freeze to

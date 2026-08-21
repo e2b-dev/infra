@@ -219,6 +219,17 @@ func run() error {
 	// HTTP API (/freeze, /unfreeze, /init thaw) so every freeze/unfreeze caller
 	// serializes on a single lock.
 	workloadFreezer := cgroups.NewWorkloadFreezer(cgroupManager)
+	// Backstop for a freeze that never gets its thaw -- an orchestrator that resumes and
+	// never calls /init, or a thaw that fails outright. Without it such a guest stays
+	// frozen for the rest of its life.
+	workloadFreezer.SetThawWatchdog(cgroups.DefaultThawWatchdogWindow, func(res cgroups.ThawResult, err error) {
+		e := l.Warn().Int("thawed", res.Thawed).Int("visited", res.Visited).
+			Int("failed", res.Failed).Bool("truncated", res.Truncated)
+		if err != nil {
+			e = e.Err(err)
+		}
+		e.Msg("thaw watchdog fired: a freeze was never followed by a thaw")
+	})
 
 	processLogger := l.With().Str("logger", "process").Logger()
 	processService := processRpc.Handle(m, &processLogger, defaults, workloadFreezer)
