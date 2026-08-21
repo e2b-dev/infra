@@ -133,13 +133,20 @@ func (s *Storage) TeamItems(ctx context.Context, teamID uuid.UUID, states []sand
 		return []sandboxtypes.Sandbox{}, nil
 	}
 
-	// One MGET over the whole team, decoded by the same helper the store scans
-	// use. Deliberately not the batching iterator above it: that reaches teams
-	// through SSCAN, which is weakly consistent and may repeat members, and a
-	// user-facing listing wants the atomic snapshot SMembers gives.
-	fetched, err := s.fetchSandboxBatch(ctx, teamID.String(), sandboxIDs)
-	if err != nil {
-		return nil, err
+	// SMEMBERS gives the atomic snapshot we want (vs SSCAN which is weakly
+	// consistent). The MGET fan-out is split into sandboxScanBatchSize-key
+	// chunks so that teams with many sandboxes do not produce a single giant
+	// command that blocks the Redis event loop or spikes response-buffer memory.
+	// All keys share the {teamID} hash tag, so every batch lands on the same
+	// cluster slot regardless of chunk boundaries.
+	var fetched []sandboxtypes.Sandbox
+	for start := 0; start < len(sandboxIDs); start += sandboxScanBatchSize {
+		end := min(start+sandboxScanBatchSize, len(sandboxIDs))
+		batch, err := s.fetchSandboxBatch(ctx, teamID.String(), sandboxIDs[start:end])
+		if err != nil {
+			return nil, err
+		}
+		fetched = append(fetched, batch...)
 	}
 
 	// Filter by state if states are specified

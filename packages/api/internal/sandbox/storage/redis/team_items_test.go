@@ -2,6 +2,7 @@ package redis
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -145,4 +146,26 @@ func TestTeamItems_IsScopedToOneTeam(t *testing.T) {
 	items, err := storage.TeamItems(t.Context(), teamA, nil)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"sbx-a"}, sandboxIDsOf(items))
+}
+
+// TestTeamItems_BatchesLargeTeams verifies that teams with more sandboxes than
+// sandboxScanBatchSize (256) are still fully returned. This exercises the
+// chunked MGET path introduced to avoid a single giant MGET command.
+func TestTeamItems_BatchesLargeTeams(t *testing.T) {
+	t.Parallel()
+
+	storage, _ := setupTestStorage(t)
+	teamID := uuid.New()
+
+	const count = sandboxScanBatchSize*2 + 1 // 513: forces 3 MGET batches
+	want := make([]string, 0, count)
+	for i := range count {
+		id := fmt.Sprintf("sbx-%04d", i)
+		writeTeamSandbox(t, storage, seedTeamSandbox(t, teamID, id, sandboxtypes.StateRunning))
+		want = append(want, id)
+	}
+
+	items, err := storage.TeamItems(t.Context(), teamID, nil)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, want, sandboxIDsOf(items))
 }
