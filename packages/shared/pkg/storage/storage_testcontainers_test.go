@@ -54,7 +54,7 @@ func startMinioBackend(t *testing.T) *s3TestBackend {
 	require.NoError(t, err, "start minio container")
 
 	t.Cleanup(func() {
-		if err := container.Terminate(context.Background()); err != nil { //nolint:usetesting // Cleanup runs after t.Context() is cancelled.
+		if err := container.Terminate(context.WithoutCancel(t.Context())); err != nil {
 			t.Logf("cleanup: failed to terminate minio container: %v", err)
 		}
 	})

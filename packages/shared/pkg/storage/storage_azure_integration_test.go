@@ -50,7 +50,7 @@ func startAzuriteBackend(t *testing.T) string {
 	require.NoError(t, err, "start azurite container")
 
 	t.Cleanup(func() {
-		if err := container.Terminate(context.Background()); err != nil { //nolint:usetesting // Cleanup runs after t.Context() is cancelled.
+		if err := container.Terminate(context.WithoutCancel(t.Context())); err != nil {
 			t.Logf("cleanup: failed to terminate azurite container: %v", err)
 		}
 	})
@@ -84,7 +84,7 @@ func TestAzureIntegration(t *testing.T) {
 	_, err = adminClient.CreateContainer(ctx, containerName, nil)
 	require.NoError(t, err, "failed to create test container %q", containerName)
 	t.Cleanup(func() {
-		_, err := adminClient.DeleteContainer(context.Background(), containerName, nil) //nolint:usetesting // Cleanup runs after t.Context() is cancelled.
+		_, err := adminClient.DeleteContainer(context.WithoutCancel(t.Context()), containerName, nil)
 		if err != nil && !bloberror.HasCode(err, bloberror.ContainerNotFound) {
 			t.Logf("failed to delete test container %q: %v", containerName, err)
 		}

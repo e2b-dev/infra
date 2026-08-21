@@ -25,7 +25,7 @@ func TestRun(t *testing.T) {
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		err := postgresContainer.Terminate(context.Background()) //nolint:usetesting // Cleanup runs after t.Context() is cancelled.
+		err := postgresContainer.Terminate(context.WithoutCancel(t.Context()))
 		assert.NoError(t, err)
 	})
 

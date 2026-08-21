@@ -172,7 +172,7 @@ func setupNBDMount(t *testing.T, featureFlags *featureflags.Client, backend bloc
 	require.NoError(t, err, "failed to open nbd mount")
 
 	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second) //nolint:usetesting // Cleanup runs after t.Context() is cancelled.
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(t.Context()), 30*time.Second)
 		defer cancel()
 
 		if err := mnt.Close(ctx); err != nil {

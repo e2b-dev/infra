@@ -78,7 +78,9 @@ linters:
   settings:
     usetesting:
       # t.Context() is cancelled just before the test's Cleanup functions run,
-      # so teardown that must outlive the test keeps context.Background().
+      # so teardown that must outlive the test takes
+      # context.WithoutCancel(t.Context()) — it keeps the test's values and
+      # drops only the cancellation.
       context-background: true
       context-todo: true
     forbidigo:
